@@ -6,6 +6,10 @@
 /[Ll]ibrary/
 /[Tt]emp/
 /[Oo]bj/
+/[Bb]in/
+# .NET build artifacts in tool projects (e.g. Tools/P1bTests)
+bin/
+obj/
 /[Bb]uild/
 /[Bb]uilds/
 /[Ll]ogs/
