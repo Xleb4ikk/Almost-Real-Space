@@ -6,11 +6,17 @@
 /[Ll]ibrary/
 /[Tt]emp/
 /[Oo]bj/
+/[Bb]in/
 /[Bb]uild/
 /[Bb]uilds/
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
 *.log
+
+# .NET build artifacts in tool projects (Tools/P1bTests Р С‘ Р С—РЎР‚.) + РЎРѓРЎвЂљР В°РЎР‚РЎвЂ№Р в„– РЎвЂљР ВµРЎРѓРЎвЂљР С•Р Р†РЎвЂ№Р в„– Р С—РЎР‚Р С•Р ВµР С”РЎвЂљ
+bin/
+obj/
+tests/
 
 # MemoryCaptures can get excessive in size.
 # They also could contain extremely sensitive data
