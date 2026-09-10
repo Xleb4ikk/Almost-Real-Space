@@ -24,13 +24,7 @@ namespace Galilego.Universe
 
         private void LateUpdate()
         {
-            if (Runner == null || Runner.Debris == null || Runner.SystemState == null || Runner.DominantBody == null)
-            {
-                return;
-            }
-
-            if (Runner.SystemView == null
-                || !Runner.SystemView.TryGetBodyTransform(Runner.DominantBody.Name, out Transform bodyTransform))
+            if (Runner == null || Runner.Debris == null || Runner.SystemState == null)
             {
                 return;
             }
@@ -40,14 +34,12 @@ namespace Galilego.Universe
                 CreateMarkers();
             }
 
-            Runner.SystemState.EvaluateBodyState(Runner.DominantBody, Runner.TimeSeconds, out Vector3d bodyPosition, out _);
             for (int i = 0; i < DebrisPool.Capacity; i++)
             {
                 DebrisSlot slot = Runner.Debris.SlotAt(i);
                 if (slot.Active)
                 {
-                    Vector3d delta = slot.Body.Position - bodyPosition;
-                    markers[i].position = bodyTransform.position + AstroFrame.ToSimulation(delta);
+                    markers[i].position = FloatingOrigin.ToRender(slot.Body.Position);
                     markers[i].localScale = Vector3.one * MarkerScale;
                     if (!markers[i].gameObject.activeSelf)
                     {

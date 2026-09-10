@@ -62,6 +62,65 @@ namespace Galilego.Universe
         [Tooltip("Уровень моря над средним радиусом (м). Ниже −1e30 = моря нет.")]
         public double TerrainSeaLevelMeters = -1e30d;
 
+        [Header("Продвинутый heightfield (фаза 1): нули = legacy-fBm")]
+        [Tooltip("Лакунарность fBm (множитель частоты на октаву). 2 = legacy.")]
+        public double TerrainLacunarity = 2d;
+
+        [Tooltip("Затухание амплитуды на октаву. 0.5 = legacy.")]
+        public double TerrainGain = 0.5d;
+
+        [Tooltip("Частота континентальной маски (океан/суша). 0 = выключена.")]
+        public double TerrainContinentFrequency = 0d;
+
+        [Tooltip("Число октав маски континентов.")]
+        public int TerrainContinentOctaves = 3;
+
+        [Tooltip("Порог маски: выше — суша, ниже — океан.")]
+        public double TerrainContinentThreshold = 0d;
+
+        [Tooltip("Полуширина smoothstep-перехода маски.")]
+        public double TerrainContinentSharpness = 0.25d;
+
+        [Tooltip("Глубина океанических впадин в долях амплитуды.")]
+        public double TerrainContinentDepth = 0.75d;
+
+        [Tooltip("Доля ridged-шума 0..1 (горные хребты, только на континентах). 0 = выключен.")]
+        public double TerrainRidgedMix = 0d;
+
+        [Tooltip("Сила domain-warp в единицах направления (типично 0.05..0.3). 0 = выключен.")]
+        public double TerrainWarpStrength = 0d;
+
+        [Tooltip("Базовая частота warp-шума (независимый поток сида).")]
+        public double TerrainWarpFrequency = 1d;
+
+        [Tooltip("Число октав warp-шума.")]
+        public int TerrainWarpOctaves = 2;
+
+        [Tooltip("Сдвиг warp-потока (целый).")]
+        public int TerrainWarpSeedOffset = 0;
+
+        [Header("Цвет рельефа (фаза 2): нули = legacy-палитра")]
+        [Tooltip("Порог rock-override в tan склона (круче — скала на любой высоте). 0 = выключен.")]
+        public double TerrainColorRockSlopeTan = 0d;
+
+        [Tooltip("Полуширина бленда в скалу (единицы tan).")]
+        public double TerrainColorRockSlopeWidth = 0.1d;
+
+        [Tooltip("Макс. склон для снега в tan (круче — скала). 0 = выключен (снег по высоте).")]
+        public double TerrainColorSnowSlopeTan = 0d;
+
+        [Tooltip("Частота шума цветовой маски (разбивка полос). 0 = выключена.")]
+        public double TerrainColorNoiseFrequency = 0d;
+
+        [Tooltip("Число октав шума маски.")]
+        public int TerrainColorNoiseOctaves = 3;
+
+        [Tooltip("Сила маски (сдвиг t перед bands). 0 = выключена.")]
+        public double TerrainColorNoiseStrength = 0d;
+
+        [Tooltip("Сдвиг потока маски (целый).")]
+        public int TerrainColorNoiseSeedOffset = 0;
+
         public BodyBlueprint ToBlueprint(int parentIndex)
         {
             return new BodyBlueprint
@@ -92,8 +151,98 @@ namespace Galilego.Universe
                 TerrainBaseFrequency = TerrainBaseFrequency,
                 TerrainOctaves = TerrainOctaves,
                 TerrainSeaLevelMeters = TerrainSeaLevelMeters,
+                TerrainLacunarity = TerrainLacunarity,
+                TerrainGain = TerrainGain,
+                TerrainContinentFrequency = TerrainContinentFrequency,
+                TerrainContinentOctaves = TerrainContinentOctaves,
+                TerrainContinentThreshold = TerrainContinentThreshold,
+                TerrainContinentSharpness = TerrainContinentSharpness,
+                TerrainContinentDepth = TerrainContinentDepth,
+                TerrainRidgedMix = TerrainRidgedMix,
+                TerrainWarpStrength = TerrainWarpStrength,
+                TerrainWarpFrequency = TerrainWarpFrequency,
+                TerrainWarpOctaves = TerrainWarpOctaves,
+                TerrainWarpSeedOffset = TerrainWarpSeedOffset,
+                TerrainColorRockSlopeTan = TerrainColorRockSlopeTan,
+                TerrainColorRockSlopeWidth = TerrainColorRockSlopeWidth,
+                TerrainColorSnowSlopeTan = TerrainColorSnowSlopeTan,
+                TerrainColorNoiseFrequency = TerrainColorNoiseFrequency,
+                TerrainColorNoiseOctaves = TerrainColorNoiseOctaves,
+                TerrainColorNoiseStrength = TerrainColorNoiseStrength,
+                TerrainColorNoiseSeedOffset = TerrainColorNoiseSeedOffset,
                 ParentIndex = parentIndex
             };
+        }
+
+        /// <summary>
+        /// Перенести авторские параметры рельефа в живой HeightfieldTerrain
+        /// (live-тюнинг в Play-режиме). Единственное место копирования — не
+        /// дублируется по вызывающим.
+        /// </summary>
+        public void ApplyToTerrain(HeightfieldTerrain terrain)
+        {
+            if (terrain == null)
+            {
+                return;
+            }
+
+            terrain.Seed = TerrainSeed;
+            terrain.AmplitudeMeters = TerrainAmplitudeMeters;
+            terrain.BaseFrequency = TerrainBaseFrequency;
+            terrain.Octaves = TerrainOctaves;
+            terrain.SeaLevelMeters = TerrainSeaLevelMeters;
+            terrain.Lacunarity = TerrainLacunarity;
+            terrain.Gain = TerrainGain;
+            terrain.ContinentFrequency = TerrainContinentFrequency;
+            terrain.ContinentOctaves = TerrainContinentOctaves;
+            terrain.ContinentThreshold = TerrainContinentThreshold;
+            terrain.ContinentSharpness = TerrainContinentSharpness;
+            terrain.ContinentDepth = TerrainContinentDepth;
+            terrain.RidgedMix = TerrainRidgedMix;
+            terrain.WarpStrength = TerrainWarpStrength;
+            terrain.WarpFrequency = TerrainWarpFrequency;
+            terrain.WarpOctaves = TerrainWarpOctaves;
+            terrain.WarpSeedOffset = TerrainWarpSeedOffset;
+            terrain.ColorRockSlopeTan = TerrainColorRockSlopeTan;
+            terrain.ColorRockSlopeWidth = TerrainColorRockSlopeWidth;
+            terrain.ColorSnowSlopeTan = TerrainColorSnowSlopeTan;
+            terrain.ColorNoiseFrequency = TerrainColorNoiseFrequency;
+            terrain.ColorNoiseOctaves = TerrainColorNoiseOctaves;
+            terrain.ColorNoiseStrength = TerrainColorNoiseStrength;
+            terrain.ColorNoiseSeedOffset = TerrainColorNoiseSeedOffset;
+        }
+
+        /// <summary>
+        /// Пресет «планета как Земля»: невысокий рельеф относительно радиуса,
+        /// континенты + хребты + лёгкий warp, slope-цвет (скалы/снег) и
+        /// noise-маска. Амплитуда — доля радиуса (≈0.26%): при 1143 км это
+        /// ~3 км над уровнем моря, а не 50 км, как в дефолте сцены.
+        /// </summary>
+        [ContextMenu("Earth-like terrain preset")]
+        public void ApplyEarthLikeTerrainPreset()
+        {
+            TerrainEnabled = true;
+            TerrainAmplitudeMeters = System.Math.Max(200d, Radius * 0.008d);
+            TerrainBaseFrequency = 6d;
+            TerrainOctaves = 7;
+            TerrainSeaLevelMeters = 0d;
+            TerrainLacunarity = 2d;
+            TerrainGain = 0.5d;
+            TerrainContinentFrequency = 4d;
+            TerrainContinentOctaves = 3;
+            TerrainContinentThreshold = -0.1d;
+            TerrainContinentSharpness = 0.3d;
+            TerrainContinentDepth = 0.9d;
+            TerrainRidgedMix = 0.8d;
+            TerrainWarpStrength = 0.1d;
+            TerrainWarpFrequency = 2d;
+            TerrainWarpOctaves = 2;
+            TerrainColorRockSlopeTan = 0.6d;
+            TerrainColorRockSlopeWidth = 0.15d;
+            TerrainColorSnowSlopeTan = 0.5d;
+            TerrainColorNoiseFrequency = 4d;
+            TerrainColorNoiseOctaves = 3;
+            TerrainColorNoiseStrength = 0.06d;
         }
     }
 }

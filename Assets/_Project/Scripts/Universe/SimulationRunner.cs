@@ -67,6 +67,12 @@ namespace Galilego.Universe
         [Tooltip("Начальная высота над поверхностью тела спавна (м).")]
         public double SpawnAltitudeMeters = 200000d;
 
+        [Tooltip("Спавнить корабль на солнечной стороне (со стороны звезды) вместо противоположной.")]
+        public bool SpawnFacingSun;
+
+        [Tooltip("Стартовая фаза по орбите (градусы). 0 — солнце в зените (при SpawnFacingSun), 90 — солнце на горизонте, 180 — за планетой. Фаза вращает точку старта вдоль плоскости орбиты.")]
+        public double SpawnPhaseDegrees;
+
         [Tooltip("Начальная горизонтальная скорость (м/с): 0 — сидим, ~7800 — орбита.")]
         public double SpawnHorizontalSpeedMps = 7800d;
 
@@ -84,6 +90,9 @@ namespace Galilego.Universe
 
         [Tooltip("Тело спавна (имя из иерархии); пусто — самое глубокое тело под корнем.")]
         public string SpawnBodyName;
+
+        [Tooltip("Спавнить игрока пешком на поверхности (OnSurface), корабль — рядом на земле. Иначе старт в корабле на орбите.")]
+        public bool SpawnOnSurface;
 
         [Tooltip("Отступ спавна обломков над поверхностью при разрушении (м).")]
         public double SpawnEpsilonMeters = 1d;
@@ -124,6 +133,18 @@ namespace Galilego.Universe
         /// <summary>Режим корабля: летит, стоит на поверхности или разрушен.</summary>
         public VesselRegime Regime { get; private set; }
 
+        /// <summary>Режим игрока: в корабле / EVA / на поверхности.</summary>
+        public PlayerMode PlayerMode { get; private set; }
+
+        /// <summary>Позиция игрока в double-мире (астро-кадр, инерциальный).</summary>
+        public Vector3d PlayerPosition { get; private set; }
+
+        /// <summary>Скорость игрока в double-мире.</summary>
+        public Vector3d PlayerVelocity { get; private set; }
+
+        /// <summary>Намерение игрока на кадр (заполняет PlayerController).</summary>
+        public PlayerIntent PlayerIntent;
+
         /// <summary>Сырой газ 0..1 от ввода (ShipController); EffectiveThrottle капает выше ×3.</summary>
         public double RawThrottle { get; set; }
 
@@ -143,11 +164,18 @@ namespace Galilego.Universe
         private KahanAccumulator time;
         private IBreakupModel breakupModel;
         private DebrisUpdater debrisUpdater;
+        private bool playerAirborne;
 
-        private static readonly SphericalTerrain surfaceTerrain = new SphericalTerrain();
+        /// <summary>Скорость прыжка игрока (м/с, вертикально от поверхности).</summary>
+        private const double PlayerJumpSpeed = 2.5d;
+
+        /// <summary>Максимальный подшаг интегрирования игрока (с).</summary>
+        private const double PlayerMaxStepSeconds = 0.5d;
 
         /// <summary>Верхняя граница подшага на поверхности (с), согласована с зерном control-tick.</summary>
         private const double SurfaceMaxStepSeconds = 0.5d;
+
+        private static readonly SphericalTerrain surfaceTerrain = new SphericalTerrain();
 
         private void Awake()
         {
@@ -199,6 +227,16 @@ namespace Galilego.Universe
             time = new KahanAccumulator(0d);
             TimeSeconds = 0d;
             Regime = VesselRegime.Flying;
+            PlayerMode = PlayerMode.InShip;
+            PlayerPosition = Ship.Position;
+            PlayerVelocity = Ship.Velocity;
+            if (SpawnOnSurface)
+            {
+                SpawnPlayerOnSurface();
+            }
+
+            FloatingOrigin.Anchor = PlayerPosition;
+
             if (!baked)
             {
                 Debug.LogWarning("SimulationRunner: эфемериды не прицеплены — тела на кеплеровых рельсах (штатно, точность ниже).");
@@ -216,6 +254,11 @@ namespace Galilego.Universe
             }
 
             radial = radial.Normalized;
+            if (SpawnFacingSun)
+            {
+                radial = -radial;
+            }
+
             Vector3d horizontal = Vector3d.Cross(new Vector3d(0d, 0d, 1d), radial);
             if (horizontal.SqrMagnitude < 1e-30d)
             {
@@ -223,10 +266,60 @@ namespace Galilego.Universe
             }
 
             horizontal = horizontal.Normalized;
+
+            // Фаза: поворот точки старта вдоль плоскости орбиты. 0° — точка
+            // «под солнцем» (или против него), 90° — четверть витка (солнце на
+            // горизонте), 180° — противоположная сторона планеты.
+            double phase = SpawnPhaseDegrees * (Math.PI / 180d);
+            Vector3d positionDirection = radial;
+            Vector3d velocityDirection = horizontal;
+            if (Math.Abs(phase) > 1e-12d)
+            {
+                Vector3d normal = Vector3d.Cross(radial, horizontal);
+                Vector3d towardPhase = Vector3d.Cross(normal, radial);
+                positionDirection = (radial * Math.Cos(phase)) + (towardPhase * Math.Sin(phase));
+                velocityDirection = Vector3d.Cross(normal, positionDirection);
+            }
+
             Ship = new Ship(
-                bodyP + (radial * (DominantBody.Radius + SpawnAltitudeMeters)),
-                bodyV + (horizontal * SpawnHorizontalSpeedMps),
+                bodyP + (positionDirection * (DominantBody.Radius + SpawnAltitudeMeters)),
+                bodyV + (velocityDirection * SpawnHorizontalSpeedMps),
                 SpawnMassKg);
+        }
+
+        /// <summary>
+        /// Спавн пешком: корабль ставится на рельеф в точке спавна, игрок — в
+        /// нескольких метрах по касательной (чтобы камера не оказалась внутри
+        /// корабля, но дистанция входа E была в пределах EnterDistance).
+        /// </summary>
+        private void SpawnPlayerOnSurface()
+        {
+            OrbitingBody body = DominantBody;
+            body.EvaluateWorldState(0d, out Vector3d bodyP, out _);
+            body.SurfaceLatLonAt(Ship.Position, 0d, out double latDeg, out double lonDeg);
+            double ground = GroundHeight(body, latDeg, lonDeg);
+            body.GetSurfaceState(latDeg, lonDeg, ground, 0d, out Vector3d surfacePos, out Vector3d surfaceVel);
+
+            Ship.Position = surfacePos;
+            Ship.Velocity = surfaceVel;
+            Regime = VesselRegime.Landed;
+
+            Vector3d up = (surfacePos - bodyP).Normalized;
+            Vector3d east = Vector3d.Cross(new Vector3d(0d, 0d, 1d), up);
+            if (east.SqrMagnitude < 1e-12d)
+            {
+                east = new Vector3d(1d, 0d, 0d);
+            }
+
+            east = east.Normalized;
+            body.SurfaceLatLonAt(surfacePos + (east * 4d), 0d, out double playLat, out double playLon);
+            double playGround = GroundHeight(body, playLat, playLon);
+            body.GetSurfaceState(playLat, playLon, playGround, 0d, out Vector3d playPos, out Vector3d playVel);
+
+            PlayerPosition = playPos;
+            PlayerVelocity = playVel;
+            PlayerMode = PlayerMode.OnSurface;
+            playerAirborne = false;
         }
 
         private OrbitingBody FindSpawnBody()
@@ -267,6 +360,7 @@ namespace Galilego.Universe
                 return;
             }
 
+            double frameStartTime = TimeSeconds;
             if (Regime == VesselRegime.Landed)
             {
                 StepLanded(realDt);
@@ -281,16 +375,217 @@ namespace Galilego.Universe
                 debrisUpdater.AdvanceAll(Debris, TimeSeconds, Ship.Position);
             }
 
+            StepPlayer(frameStartTime);
             DominantBody = SystemState.FindDominantBody(Ship.Position, TimeSeconds);
+
+            // Якорь рендера — позиция игрока (floating origin): вьюхи в LateUpdate
+            // читают свежий якорь, поэтому ставим в самом конце шага физики.
+            FloatingOrigin.Anchor = PlayerPosition;
+        }
+
+        // ─── Игрок ───────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Выход из корабля (только из InShip). Игрок ставится в 3 м вдоль
+        /// exitDirection с малым толчком; если корабль на поверхности — первый
+        /// же шаг посадит игрока на землю (OnSurface).
+        /// </summary>
+        public bool TryExitShip(Vector3d exitDirection, double pushSpeed)
+        {
+            if (PlayerMode != PlayerMode.InShip || Ship == null)
+            {
+                return false;
+            }
+
+            Vector3d direction = exitDirection.Normalized;
+            PlayerPosition = Ship.Position + (direction * 3d);
+            PlayerVelocity = Ship.Velocity + (direction * pushSpeed);
+            PlayerMode = PlayerMode.EVA;
+            playerAirborne = false;
+            return true;
+        }
+
+        /// <summary>Вход в корабль: EVA/OnSurface и дистанция до корабля ≤ EnterDistance.</summary>
+        public bool TryEnterShip(double enterDistanceMeters)
+        {
+            if (PlayerMode == PlayerMode.InShip || Ship == null)
+            {
+                return false;
+            }
+
+            if ((PlayerPosition - Ship.Position).Magnitude > enterDistanceMeters)
+            {
+                return false;
+            }
+
+            PlayerMode = PlayerMode.InShip;
+            PlayerPosition = Ship.Position;
+            PlayerVelocity = Ship.Velocity;
+            playerAirborne = false;
+            return true;
+        }
+
+        /// <summary>
+        /// Шаг игрока за кадр. Пока игрок вне корабля, физическое время капится
+        /// (см. StepFlying/StepLanded: варп-фактор ≤ 4), поэтому подшаг ≤ 0.5 с
+        /// всегда успевает за кадр; дальний варп — только когда игрок в корабле.
+        /// </summary>
+        private void StepPlayer(double fromTime)
+        {
+            double t = fromTime;
+            while (t < TimeSeconds - 1e-12)
+            {
+                double dt = Math.Min(PlayerMaxStepSeconds, TimeSeconds - t);
+                switch (PlayerMode)
+                {
+                    case PlayerMode.InShip:
+                        PlayerPosition = Ship.Position;
+                        PlayerVelocity = Ship.Velocity;
+                        break;
+                    case PlayerMode.EVA:
+                        StepPlayerEva(t, dt);
+                        break;
+                    case PlayerMode.OnSurface:
+                        StepPlayerSurface(t, dt);
+                        break;
+                }
+
+                t += dt;
+            }
+        }
+
+        private void StepPlayerEva(double t, double dt)
+        {
+            Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
+            PlayerVelocity += (gravity + PlayerIntent.JetpackAccel) * dt;
+            PlayerPosition += PlayerVelocity * dt;
+
+            OrbitingBody body = DominantBody;
+            if (body == null)
+            {
+                return;
+            }
+
+            // Позиция уже в t+dt — контакт проверяем и сажаем в t+dt, не в t.
+            double tEnd = t + dt;
+            body.EvaluateWorldState(tEnd, out Vector3d bodyPos, out _);
+            body.SurfaceLatLonAt(PlayerPosition, tEnd, out double latDeg, out double lonDeg);
+            double terrainRadius = body.Radius + GroundHeight(body, latDeg, lonDeg);
+            if ((PlayerPosition - bodyPos).Magnitude <= terrainRadius)
+            {
+                LandPlayer(body, tEnd);
+            }
+        }
+
+        /// <summary>
+        /// Касание поверхности игроком: позиция проецируется на поверхность,
+        /// нормальная скорость съедается, тангенциальная сохраняется. Жёсткость
+        /// удара логируется (травмы/смерть — будущий этап). Спавн-эпсилон не
+        /// нужен — игрок становится ровно на поверхность.
+        /// </summary>
+        private void LandPlayer(OrbitingBody body, double t)
+        {
+            body.SurfaceLatLonAt(PlayerPosition, t, out double latDeg, out double lonDeg);
+            body.GetSurfaceState(latDeg, lonDeg, GroundHeight(body, latDeg, lonDeg), t, out Vector3d surfacePos, out Vector3d surfaceVel);
+            body.EvaluateWorldState(t, out Vector3d bodyPos, out _);
+            Vector3d normal = body.Terrain != null
+                ? body.Terrain.GetOutwardNormal(body, PlayerPosition - bodyPos, t).Normalized
+                : (PlayerPosition - bodyPos).Normalized;
+            Vector3d relativeVelocity = PlayerVelocity - surfaceVel;
+            double normalSpeed = Vector3d.Dot(relativeVelocity, normal);
+            Vector3d tangential = relativeVelocity - (normal * normalSpeed);
+            PlayerPosition = surfacePos;
+            PlayerVelocity = surfaceVel + tangential;
+            PlayerMode = PlayerMode.OnSurface;
+            playerAirborne = false;
+            if (normalSpeed < -10d)
+            {
+                Debug.Log("Жёсткое приземление игрока: " + (-normalSpeed).ToString("F1") + " м/с (травмы — будущий этап)");
+            }
+        }
+
+        private void StepPlayerSurface(double t, double dt)
+        {
+            OrbitingBody body = DominantBody;
+            if (body == null)
+            {
+                return;
+            }
+
+            body.EvaluateWorldState(t, out Vector3d bodyPos, out Vector3d bodyVel);
+
+            if (playerAirborne)
+            {
+                // Баллистика прыжка: свободное падение до контакта.
+                Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
+                PlayerVelocity += gravity * dt;
+                PlayerPosition += PlayerVelocity * dt;
+                // Позиция уже в t+dt — контакт проверяем и сажаем в t+dt, не в t.
+                double airEnd = t + dt;
+                body.SurfaceLatLonAt(PlayerPosition, airEnd, out double airLat, out double airLon);
+                body.EvaluateWorldState(airEnd, out Vector3d airBodyPos, out _);
+                double groundRadius = body.Radius + GroundHeight(body, airLat, airLon);
+                if ((PlayerPosition - airBodyPos).Magnitude <= groundRadius)
+                {
+                    LandPlayer(body, airEnd);
+                }
+
+                return;
+            }
+
+            // Ходьба: контакт с поверхностью, скорость = поверхность + намерение.
+            body.SurfaceLatLonAt(PlayerPosition, t, out double latDeg, out double lonDeg);
+            double ground = GroundHeight(body, latDeg, lonDeg);
+            body.GetSurfaceState(latDeg, lonDeg, ground, t, out Vector3d contact, out Vector3d surfaceVel);
+            body.EvaluateWorldState(t, out Vector3d bodyPos2, out _);
+            Vector3d normal = body.Terrain != null
+                ? body.Terrain.GetOutwardNormal(body, contact - bodyPos2, t).Normalized
+                : (contact - bodyPos2).Normalized;
+
+            Vector3d walk = PlayerIntent.WalkDirection * PlayerIntent.WalkSpeed;
+            Vector3d tangential = walk - (normal * Vector3d.Dot(walk, normal));
+            PlayerVelocity = surfaceVel + tangential;
+            PlayerPosition += PlayerVelocity * dt;
+
+            // Проекция обратно на поверхность НА КОНЕЦ подшага: и lat/lon, и
+            // центр тела берём в t+dt. Иначе позиция (уже в t+dt) проецируется
+            // на сферу времени t — остаётся тангенциальная ошибка bodyVel·dt
+            // (орбитальная скорость тела ~5 км/с), игрока тянет к точке, где
+            // орбитальная скорость радиальна, и он там осциллирует: сильная
+            // дрожь на месте, адская на бегу. Тот же принцип, что CoRotate в
+            // SurfaceMotion (перенос в toTime + проекция в toBodyP).
+            double tEnd = t + dt;
+            body.SurfaceLatLonAt(PlayerPosition, tEnd, out double newLat, out double newLon);
+            double newGround = GroundHeight(body, newLat, newLon);
+            body.EvaluateWorldState(tEnd, out Vector3d bodyPos3, out _);
+            Vector3d radial = PlayerPosition - bodyPos3;
+            PlayerPosition = bodyPos3 + (radial.Normalized * (body.Radius + newGround));
+
+            if (PlayerIntent.Jump)
+            {
+                playerAirborne = true;
+                PlayerVelocity += normal * PlayerJumpSpeed;
+            }
+        }
+
+        /// <summary>Высота рельефа тела в точке (lat/lon, градусы); сфера при null.</summary>
+        private static double GroundHeight(OrbitingBody body, double latDeg, double lonDeg)
+        {
+            return body.Terrain?.GetHeightMeters(body, latDeg * (Math.PI / 180d), lonDeg * (Math.PI / 180d)) ?? 0d;
         }
 
         private void StepFlying(float realDt)
         {
             WarpFrameDecision decision = EphemerisRuntime.ComputeFrame(
                 SystemState, Warp, Ship.Position, TimeSeconds, realDt);
-            double frameEnd = TimeSeconds + decision.SimSeconds;
+            // Игрок вне корабля (EVA/на поверхности) — дальний варп запрещён,
+            // физический кап ×4: иначе игрока не догнать подшагами и он
+            // «потеряется» в полёте за один кадр.
+            double playerCap = PlayerMode == PlayerMode.InShip ? double.PositiveInfinity : 4d;
+            double factor = Math.Min(decision.EffectiveFactor, playerCap);
+            double frameEnd = TimeSeconds + (realDt * factor);
 
-            if (decision.UseLongWarp)
+            if (decision.UseLongWarp && playerCap == double.PositiveInfinity)
             {
                 // Дальний варп: баллистика целиком, тяга запрещена по построению.
                 Warp.PrepareForLongWarp(TimeSeconds);
@@ -301,7 +596,7 @@ namespace Galilego.Universe
                 return;
             }
 
-            double throttle = Warp.EffectiveThrottle(RawThrottle, decision.EffectiveFactor);
+            double throttle = Warp.EffectiveThrottle(RawThrottle, factor);
             bool thrustActive = mainThrust != null && throttle > 0d;
             while (TimeSeconds < frameEnd - 1e-12d)
             {
@@ -338,7 +633,9 @@ namespace Galilego.Universe
                 SystemState, Warp, Ship.Position, TimeSeconds, realDt);
             // На поверхности дальний варп запрещён: кап физического ×3,
             // как в атмосфере (SurfaceMotion точен на любом dt, зерно — control-tick).
-            double factor = Math.Min(decision.EffectiveFactor, WarpController.AtmosphereMaxWarpFactor);
+            // Игрок вне корабля добавляет свой кап ×4 (см. StepFlying).
+            double playerCap = PlayerMode == PlayerMode.InShip ? double.PositiveInfinity : 4d;
+            double factor = Math.Min(Math.Min(decision.EffectiveFactor, WarpController.AtmosphereMaxWarpFactor), playerCap);
             double frameEnd = TimeSeconds + (realDt * factor);
             double throttle = Warp.EffectiveThrottle(RawThrottle, factor);
             bool thrustActive = mainThrust != null && throttle > 0d;

@@ -16,7 +16,7 @@
 # .NET build artifacts in tool projects (Tools/P1bTests Р С‘ Р С—РЎР‚.) + РЎРѓРЎвЂљР В°РЎР‚РЎвЂ№Р в„– РЎвЂљР ВµРЎРѓРЎвЂљР С•Р Р†РЎвЂ№Р в„– Р С—РЎР‚Р С•Р ВµР С”РЎвЂљ
 bin/
 obj/
-tests/
+/tests/
 
 # MemoryCaptures can get excessive in size.
 # They also could contain extremely sensitive data

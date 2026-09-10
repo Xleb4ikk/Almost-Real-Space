@@ -358,6 +358,143 @@ MonoBehaviour:
   m_AreaLightEmissiveMeshShadowCastingMode: 0
   m_AreaLightEmissiveMeshMotionVectorGenerationMode: 0
   m_AreaLightEmissiveMeshLayer: -1
+--- !u!1 &230795293
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 230795297}
+  - component: {fileID: 230795296}
+  - component: {fileID: 230795295}
+  - component: {fileID: 230795294}
+  m_Layer: 0
+  m_Name: Sol
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &230795294
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 230795293}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4bc77af65d6ffdf47952941f8a2464cc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.StarSystemAuthoring
+  SpanYears: 1024
+  Degree: 12
+  MaxStepSeconds: 900
+  QuantBudgetMeters: 2
+  CompressFiles: 1
+  OutputFolder: Assets/StreamingAssets/Ephemerides
+--- !u!114 &230795295
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 230795293}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d7bb586c9cc3da549bc90d89a0c0a345, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyView
+  Runner: {fileID: 1332194275}
+--- !u!114 &230795296
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 230795293}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7d79bac471c083a40bd345864d557347, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyAuthoring
+  StandardGravitationalParameter: 7.1e+17
+  Radius: 122000000
+  CrashToleranceMps: 5
+  SurfaceStaticFrictionMu: 0.7
+  SurfaceKineticFrictionMu: 0.5
+  SemiMajorAxis: 100000000000
+  Eccentricity: 0
+  InclinationDegrees: 0
+  LongitudeOfAscendingNodeDegrees: 0
+  ArgumentOfPeriapsisDegrees: 0
+  MeanAnomalyAtEpochDegrees: 0
+  EpochTimeSeconds: 0
+  RotationPeriodSeconds: 0
+  TidallyLocked: 0
+  PrimeMeridianOffsetDegrees: 0
+  NorthPoleDirection:
+    X: 0
+    Y: 0
+    Z: 1
+  Atmosphere:
+    TopAltitudeMeters: 0
+    SeaLevelPressurePascals: 0
+    SeaLevelDensityKgPerCubicMeter: 0
+    ScaleHeightMeters: 0
+    VisualEnabled: 0
+    RayleighColor: {r: 0.3, g: 0.55, b: 1, a: 1}
+    MieColor: {r: 1, g: 0.85, b: 0.62, a: 1}
+    Intensity: 1
+    MieAnisotropy: 0.76
+    DensityFalloff: 1
+    StepCount: 32
+    MultiScatter: 0.35
+    PlanetOcclusion: 1
+  TerrainEnabled: 0
+  TerrainSeed: 0
+  TerrainAmplitudeMeters: 1000
+  TerrainBaseFrequency: 3
+  TerrainOctaves: 5
+  TerrainSeaLevelMeters: -1e+30
+  TerrainLacunarity: 2
+  TerrainGain: 0.5
+  TerrainContinentFrequency: 0
+  TerrainContinentOctaves: 3
+  TerrainContinentThreshold: 0
+  TerrainContinentSharpness: 0.25
+  TerrainContinentDepth: 0.75
+  TerrainRidgedMix: 0
+  TerrainWarpStrength: 0
+  TerrainWarpFrequency: 1
+  TerrainWarpOctaves: 2
+  TerrainWarpSeedOffset: 0
+  TerrainColorRockSlopeTan: 0
+  TerrainColorRockSlopeWidth: 0.1
+  TerrainColorSnowSlopeTan: 0
+  TerrainColorNoiseFrequency: 0
+  TerrainColorNoiseOctaves: 3
+  TerrainColorNoiseStrength: 0
+  TerrainColorNoiseSeedOffset: 0
+--- !u!4 &230795297
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 230795293}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1081663216}
+  - {fileID: 1982425600}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &432432459
 GameObject:
   m_ObjectHideFlags: 0
@@ -407,6 +544,428 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1081663215
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1081663216}
+  - component: {fileID: 1081663221}
+  - component: {fileID: 1081663220}
+  - component: {fileID: 1081663219}
+  - component: {fileID: 1081663218}
+  - component: {fileID: 1081663217}
+  - component: {fileID: 1081663222}
+  - component: {fileID: 1081663223}
+  m_Layer: 0
+  m_Name: Terra
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1081663216
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1081663215}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 2286000, y: 2286000, z: 2286000}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 230795297}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1081663217
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1081663215}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d7bb586c9cc3da549bc90d89a0c0a345, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyView
+  Runner: {fileID: 1332194275}
+--- !u!114 &1081663218
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1081663215}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7d79bac471c083a40bd345864d557347, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyAuthoring
+  StandardGravitationalParameter: 12800000000000
+  Radius: 1143000
+  CrashToleranceMps: 5
+  SurfaceStaticFrictionMu: 0.7
+  SurfaceKineticFrictionMu: 0.5
+  SemiMajorAxis: 26000000000
+  Eccentricity: 0.017
+  InclinationDegrees: 0
+  LongitudeOfAscendingNodeDegrees: 0
+  ArgumentOfPeriapsisDegrees: 0
+  MeanAnomalyAtEpochDegrees: 0
+  EpochTimeSeconds: 0
+  RotationPeriodSeconds: 86400
+  TidallyLocked: 0
+  PrimeMeridianOffsetDegrees: 0
+  NorthPoleDirection:
+    X: 0
+    Y: 0
+    Z: 1
+  Atmosphere:
+    TopAltitudeMeters: 100000
+    SeaLevelPressurePascals: 101325
+    SeaLevelDensityKgPerCubicMeter: 1.225
+    ScaleHeightMeters: 8500
+    VisualEnabled: 1
+    RayleighColor: {r: 0.3, g: 0.55, b: 1, a: 1}
+    MieColor: {r: 1, g: 0.85, b: 0.62, a: 1}
+    Intensity: 0.4
+    MieAnisotropy: 0.76
+    DensityFalloff: 1
+    StepCount: 32
+    MultiScatter: 0.35
+    PlanetOcclusion: 1
+  TerrainEnabled: 1
+  TerrainSeed: 24334543
+  TerrainAmplitudeMeters: 9144
+  TerrainBaseFrequency: 6
+  TerrainOctaves: 7
+  TerrainSeaLevelMeters: 0
+  TerrainLacunarity: 2
+  TerrainGain: 0.5
+  TerrainContinentFrequency: 4
+  TerrainContinentOctaves: 3
+  TerrainContinentThreshold: -0.1
+  TerrainContinentSharpness: 0.3
+  TerrainContinentDepth: 0.9
+  TerrainRidgedMix: 0.8
+  TerrainWarpStrength: 0.1
+  TerrainWarpFrequency: 2
+  TerrainWarpOctaves: 2
+  TerrainWarpSeedOffset: 0
+  TerrainColorRockSlopeTan: 0.6
+  TerrainColorRockSlopeWidth: 0.15
+  TerrainColorSnowSlopeTan: 0.5
+  TerrainColorNoiseFrequency: 4
+  TerrainColorNoiseOctaves: 3
+  TerrainColorNoiseStrength: 0.06
+  TerrainColorNoiseSeedOffset: 0
+--- !u!135 &1081663219
+SphereCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1081663215}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Radius: 0.5
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!23 &1081663220
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1081663215}
+  m_Enabled: 1
+  m_CastShadows: 1
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RayTracingAccelStructBuildFlagsOverride: 0
+  m_RayTracingAccelStructBuildFlags: 1
+  m_SmallMeshCulling: 1
+  m_ForceMeshLod: -1
+  m_MeshLodSelectionBias: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: 73c176f402d2c2f4d929aa5da7585d17, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 0
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_GlobalIlluminationMeshLod: 0
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_MaskInteraction: 0
+  m_AdditionalVertexStreams: {fileID: 0}
+--- !u!33 &1081663221
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1081663215}
+  m_Mesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!114 &1081663222
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1081663215}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c4f8a1b2d3e64f5a9b0c1d2e3f4a5b6c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlanetSurfaceRenderer
+  Runner: {fileID: 1332194275}
+  TileResolution: 65
+  MaxDepth: 10
+  SplitFactor: 4
+  MergeHysteresis: 1.3
+  SkirtFactor: 0.03
+  BuildsPerFrame: 12
+  MaxNodes: 4000
+  MaxAltitudeMeters: 5000000
+  MaxCachedChunks: 2048
+--- !u!114 &1081663223
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1081663215}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5e6f7a8b9c04d1e8f2a3b4c5d6e7f80, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlanetAtmosphereView
+  Runner: {fileID: 1332194275}
+  LatitudeSegments: 24
+  LongitudeSegments: 48
+--- !u!1 &1250304429
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1250304431}
+  - component: {fileID: 1250304430}
+  - component: {fileID: 1250304432}
+  m_Layer: 0
+  m_Name: Player
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1250304430
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1250304429}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e46d6f0673cca2b43835afd857334a3a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlayerController
+  Runner: {fileID: 1332194275}
+  ShipTransform: {fileID: 1644257543}
+  WalkSpeed: 5000
+  RunSpeed: 100000
+  JetpackThrust: 1500000
+  EnterDistanceMeters: 5
+  ShipWalkRadius: 3
+--- !u!4 &1250304431
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1250304429}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 425756.72, y: 0.04527, z: -2192972.2}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1250304432
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1250304429}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f98dd745c62d75e42ad46eb6da7e2aea, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlayerView
+  Runner: {fileID: 1332194275}
+  Controller: {fileID: 1250304430}
+--- !u!1 &1332194273
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1332194276}
+  - component: {fileID: 1332194275}
+  - component: {fileID: 1332194274}
+  m_Layer: 0
+  m_Name: Simulation
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1332194274
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1332194273}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 522c38b2a69cb644cb4455c23d6f9cdd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.ShipController
+  Runner: {fileID: 1332194275}
+  ThrottleStep: 0.1
+--- !u!114 &1332194275
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1332194273}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 605eb84181f343e48b36362a365a1617, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SimulationRunner
+  System: {fileID: 230795294}
+  Paused: 0
+  SpawnAltitudeMeters: 50000
+  SpawnFacingSun: 1
+  SpawnPhaseDegrees: 60
+  SpawnHorizontalSpeedMps: 3278
+  SpawnMassKg: 5000
+  MainThrustNewtons: 100000
+  MainIspSeconds: 320
+  DryMassKg: 1000
+  SpawnBodyName: Terra
+  SpawnOnSurface: 1
+  SpawnEpsilonMeters: 1
+  Parts: []
+  DebrisLifetimeSeconds: 600
+  DebrisSurfaceRestitution: 0.2
+--- !u!4 &1332194276
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1332194273}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 425756.72, y: 0.04527, z: -2192972.2}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1644257541
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1644257543}
+  - component: {fileID: 1644257542}
+  m_Layer: 0
+  m_Name: Ship
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1644257542
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1644257541}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c3110e5ab6ddd79478a2486ffaf62518, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.ShipView
+  Runner: {fileID: 1332194275}
+--- !u!4 &1644257543
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1644257541}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 425756.72, y: 0.04527, z: -2192972.2}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1823688464
 GameObject:
   m_ObjectHideFlags: 0
@@ -419,6 +978,7 @@ GameObject:
   - component: {fileID: 1823688466}
   - component: {fileID: 1823688465}
   - component: {fileID: 1823688468}
+  - component: {fileID: 1823688469}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -639,6 +1199,119 @@ MonoBehaviour:
       data1: 0
       data2: 0
   defaultFrameSettings: 0
+--- !u!114 &1823688469
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1823688464}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7071f01ce4c00a7449e0071823433dd4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.FirstPersonCamera
+  Runner: {fileID: 1332194275}
+  Target: {fileID: 1250304431}
+  MouseSensitivity: 0.5
+  PitchClamp: 85
+  LockCursor: 1
+  TemporalAA: 0
+  LogCameraDiagnostics: 1
+  EyeHeightMeters: 2
+--- !u!1 &1982425599
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1982425600}
+  - component: {fileID: 1982425601}
+  - component: {fileID: 1982425602}
+  - component: {fileID: 1982425603}
+  m_Layer: 0
+  m_Name: 'SunVisual '
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1982425600
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1982425599}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 230795297}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1982425601
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1982425599}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 774fb6f339a6ec347abf0361f6153c6b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SunBillboard
+  Runner: {fileID: 1332194275}
+  PlayerCamera: {fileID: 1823688466}
+  SunLight: {fileID: 157207113}
+  Sky: {fileID: 1982425602}
+  TemperatureKelvin: 5772
+  DiscBrightness: 4
+  LightDimmer: 8
+  BillboardFarFraction: 0.9
+  SurfaceTextureWidth: 512
+  SurfaceSeed: 1
+  Tint: {r: 1, g: 1, b: 1, a: 1}
+  DebugHud: 0
+  RenderDisc: 1
+  RenderBodySphere: 1
+--- !u!114 &1982425602
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1982425599}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e1f2a3b4c5d64e7f8091a2b3c4d5e6f7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SkyEnvironment
+  Runner: {fileID: 1332194275}
+  SunLight: {fileID: 157207113}
+  SunLightIntensity: 1.6
+  StarVisibilityK: 6
+  TerrainSunIntensity: 0.6
+  NightAmbient: 0.005
+  SkyAmbient: 0.05
+--- !u!114 &1982425603
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1982425599}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2a3b4c5d6e74f8091a2b3c4d5e6f708, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.StarFieldView
+  TargetCamera: {fileID: 1823688466}
+  BlackCameraBackground: 1
 --- !u!1 &2013410473
 GameObject:
   m_ObjectHideFlags: 1
@@ -696,3 +1369,7 @@ SceneRoots:
   - {fileID: 157207114}
   - {fileID: 432432461}
   - {fileID: 2013410475}
+  - {fileID: 230795297}
+  - {fileID: 1332194276}
+  - {fileID: 1250304431}
+  - {fileID: 1644257543}

@@ -12,6 +12,7 @@ namespace Galilego.Universe
     /// соответствий тело→трансформ, заполняется BodyView при старте), без
     /// перебора иерархии каждый кадр.
     /// </summary>
+    [UnityEngine.DefaultExecutionOrder(-90)]
     public sealed class ShipView : MonoBehaviour
     {
         [Tooltip("SimulationRunner сцены.")]
@@ -19,20 +20,13 @@ namespace Galilego.Universe
 
         private void LateUpdate()
         {
-            if (Runner == null || Runner.Ship == null || Runner.DominantBody == null)
+            if (Runner == null || Runner.Ship == null)
             {
                 return;
             }
 
-            if (Runner.SystemView == null || !Runner.SystemView.TryGetBodyTransform(Runner.DominantBody.Name, out Transform bodyTransform))
-            {
-                return;
-            }
-
-            Runner.SystemState.EvaluateBodyState(Runner.DominantBody, Runner.TimeSeconds, out Vector3d bodyP, out _);
-            Vector3d delta = Runner.Ship.Position - bodyP;
-            Vector3 simDelta = AstroFrame.ToSimulation(delta);
-            transform.position = bodyTransform.position + simDelta;
+            // Floating origin: единый якорь (FloatingOrigin.Anchor).
+            transform.position = FloatingOrigin.ToRender(Runner.Ship.Position);
         }
     }
 }

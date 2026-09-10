@@ -26,28 +26,28 @@ namespace Galilego.Universe
             }
 
             // Ступени варпа: клавиши 1..7 снапятся вниз в SetWarpFactor.
-            for (int key = (int)KeyCode.Alpha1; key <= (int)KeyCode.Alpha7; key++)
+            for (int rung = 0; rung < WarpController.WarpRungs.Length; rung++)
             {
-                if (Input.GetKeyDown((KeyCode)key))
+                if (PlayerInput.Down((GameKey)((int)GameKey.Digit1 + rung)))
                 {
-                    Runner.Warp.SetWarpFactor(WarpController.WarpRungs[key - (int)KeyCode.Alpha1]);
+                    Runner.Warp.SetWarpFactor(WarpController.WarpRungs[rung]);
                 }
             }
 
             double throttle = Runner.RawThrottle;
-            if (Input.GetKey(KeyCode.LeftShift))
+            if (PlayerInput.Held(GameKey.LeftShift))
             {
                 throttle = System.Math.Min(1d, throttle + ThrottleStep * Time.deltaTime * 2d);
             }
 
-            if (Input.GetKey(KeyCode.LeftControl))
+            if (PlayerInput.Held(GameKey.LeftControl))
             {
                 throttle = System.Math.Max(0d, throttle - ThrottleStep * Time.deltaTime * 2d);
             }
 
             Runner.RawThrottle = throttle;
 
-            if (Input.GetKeyDown(KeyCode.P))
+            if (PlayerInput.Down(GameKey.P))
             {
                 Runner.Paused = !Runner.Paused;
             }
