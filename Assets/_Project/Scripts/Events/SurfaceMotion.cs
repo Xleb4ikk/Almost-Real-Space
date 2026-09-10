@@ -102,7 +102,7 @@ namespace Galilego.Events
             Vector3d omegaVector = axis * omega;
 
             Vector3d contact = ProjectToSurface(body, terrain, bodyPosition, position, timeSeconds);
-            Vector3d normal = terrain.GetOutwardNormal(body, contact - bodyPosition).Normalized;
+            Vector3d normal = terrain.GetOutwardNormal(body, contact - bodyPosition, timeSeconds).Normalized;
             Vector3d surfaceVelocity = bodyVelocity + Vector3d.Cross(omegaVector, contact - bodyPosition);
             Vector3d relativeVelocity = velocity - surfaceVelocity;
             Vector3d tangentialVelocity = relativeVelocity - (normal * Vector3d.Dot(relativeVelocity, normal));
@@ -184,7 +184,7 @@ namespace Galilego.Events
             // Силы в момент остановки — заново, не из начала шага: гравитация
             // и тело берутся в stopMoment/stop-точке (нюанс 3).
             body.EvaluateWorldState(stopMoment, out Vector3d stopBodyP, out Vector3d stopBodyV);
-            Vector3d stopNormal = terrain.GetOutwardNormal(body, atStop.Position - stopBodyP).Normalized;
+            Vector3d stopNormal = terrain.GetOutwardNormal(body, atStop.Position - stopBodyP, stopMoment).Normalized;
             Vector3d stopSurfV = stopBodyV + Vector3d.Cross(omegaVector, atStop.Position - stopBodyP);
             Vector3d stopRel = atStop.Velocity - stopSurfV;
             Vector3d stopTangent = stopRel - (stopNormal * Vector3d.Dot(stopRel, stopNormal));
@@ -267,7 +267,7 @@ namespace Galilego.Events
             Vector3d average = (tangentStart + tangentEnd) * 0.5d;
             Vector3d transported = RotateAboutAxis((contact - fromBodyP) + (average * dt), axis, omega * dt);
             Vector3d endPosition = ProjectToSurface(body, terrain, toBodyP, toBodyP + transported, toTime);
-            Vector3d endNormal = terrain.GetOutwardNormal(body, endPosition - toBodyP).Normalized;
+            Vector3d endNormal = terrain.GetOutwardNormal(body, endPosition - toBodyP, toTime).Normalized;
             Vector3d rotatedEnd = RotateAboutAxis(tangentEnd, axis, omega * dt);
             Vector3d endTangent = rotatedEnd - (endNormal * Vector3d.Dot(rotatedEnd, endNormal));
             Vector3d endVelocity = toBodyV + Vector3d.Cross(axis * omega, endPosition - toBodyP) + endTangent;

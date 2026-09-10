@@ -96,7 +96,7 @@ namespace Galilego.Events
         /// мягкая. Граница детерминирована: |v_n| ≤ допуск → посадка.
         /// Нормаль здесь радиальная; ITerrainNormal обобщит её в A4.4.
         /// </summary>
-        public static TouchdownOutcome ApplyTouchdown(Ship ship, EventOccurrence occurrence, OrbitingBody body, IBreakupModel breakup, double spawnEpsilonMeters)
+        public static TouchdownOutcome ApplyTouchdown(Ship ship, EventOccurrence occurrence, OrbitingBody body, IBreakupModel breakup, double spawnEpsilonMeters, System.Collections.Generic.IReadOnlyList<Part> parts = null)
         {
             if (ship == null)
                 throw new ArgumentNullException(nameof(ship));
@@ -109,10 +109,13 @@ namespace Galilego.Events
 
             double t = occurrence.TimeSeconds;
             body.SurfaceLatLonAt(ship.Position, t, out double latDeg, out double lonDeg);
-            body.GetSurfaceState(latDeg, lonDeg, 0d, t, out Vector3d surfacePosition, out Vector3d surfaceVelocity);
+            double groundAltitude = GroundAltitude(body, latDeg, lonDeg);
+            body.GetSurfaceState(latDeg, lonDeg, groundAltitude, t, out Vector3d surfacePosition, out Vector3d surfaceVelocity);
             body.EvaluateWorldState(t, out Vector3d bodyPosition, out _);
 
-            Vector3d normal = (ship.Position - bodyPosition).Normalized;
+            Vector3d normal = body.Terrain != null
+                ? body.Terrain.GetOutwardNormal(body, ship.Position - bodyPosition, t).Normalized
+                : (ship.Position - bodyPosition).Normalized;
             Vector3d impactVelocity = ship.Velocity - surfaceVelocity;
             double normalSpeed = Vector3d.Dot(impactVelocity, normal);
             Vector3d tangentialVelocity = impactVelocity - (normal * normalSpeed);
@@ -126,7 +129,7 @@ namespace Galilego.Events
 
             var input = new BreakupInput(
                 ship.Mass, impactVelocity, surfaceVelocity,
-                surfacePosition, normal, spawnEpsilonMeters);
+                surfacePosition, normal, spawnEpsilonMeters, parts);
             return new TouchdownOutcome(breakup.PlanBreakup(input));
         }
 
@@ -159,10 +162,12 @@ namespace Galilego.Events
                 throw new ArgumentNullException(nameof(body));
 
             body.SurfaceLatLonAt(ship.Position, timeSeconds, out double latDeg, out double lonDeg);
-            body.GetSurfaceState(latDeg, lonDeg, 0d, timeSeconds, out Vector3d surfacePosition, out Vector3d surfaceVelocity);
+            body.GetSurfaceState(latDeg, lonDeg, GroundAltitude(body, latDeg, lonDeg), timeSeconds, out Vector3d surfacePosition, out Vector3d surfaceVelocity);
             body.EvaluateWorldState(timeSeconds, out Vector3d bodyPosition, out _);
 
-            Vector3d normal = (ship.Position - bodyPosition).Normalized;
+            Vector3d normal = body.Terrain != null
+                ? body.Terrain.GetOutwardNormal(body, ship.Position - bodyPosition, timeSeconds).Normalized
+                : (ship.Position - bodyPosition).Normalized;
             Vector3d impactVelocity = ship.Velocity - surfaceVelocity;
             double normalSpeed = Vector3d.Dot(impactVelocity, normal);
             Vector3d tangentialVelocity = impactVelocity - (normal * normalSpeed);
@@ -187,6 +192,12 @@ namespace Galilego.Events
             ship.Position = surfacePosition;
             ship.Velocity = surfaceVelocity + tangentialVelocity;
             return new LandedState(latDeg, lonDeg, surfacePosition, ship.Velocity, normalSpeed, tangentialSpeed);
+        }
+
+        /// <summary>Высота поверхности в точке (lat/lon, градусы) по модели тела; сфера при null.</summary>
+        private static double GroundAltitude(OrbitingBody body, double latDeg, double lonDeg)
+        {
+            return body.Terrain?.GetHeightMeters(body, latDeg * (Math.PI / 180d), lonDeg * (Math.PI / 180d)) ?? 0d;
         }
 
         /// <summary>

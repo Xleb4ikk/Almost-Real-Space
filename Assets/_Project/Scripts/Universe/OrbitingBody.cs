@@ -92,6 +92,12 @@ namespace Galilego.Universe
         [Header("Атмосфера (null = нет атмосферы; см. AtmosphereProfile)")]
         public AtmosphereProfile Atmosphere;
 
+        /// <summary>
+        /// Модель поверхности (SphericalTerrain по умолчанию). null — потребители
+        /// (детектор касания, SurfaceMotion) обязаны трактовать как сферу.
+        /// </summary>
+        public ITerrainModel Terrain;
+
         public double SphereOfInfluenceRadius;
         public double HillSphereRadius;
 
@@ -483,6 +489,74 @@ namespace Galilego.Universe
         {
             Vector3d kCross = Vector3d.Cross(k, equatorial);
             return equatorial + kCross + (Vector3d.Cross(k, kCross) / (1d + cosAngle));
+        }
+
+        /// <summary>
+        /// Приливный захват 1:1. Период = орбитальный период тела по ПРИВЕДЁННОЙ
+        /// массе μ_local = μ_родителя(собств.) + μ_своего поддерева — ровно той же,
+        /// что использует EvaluateLocalOffset (Step 0: орбита планеты с луной летит
+        /// по барицентру подсистемы). «Похожая» μ_родителя(собств.) дала бы период,
+        /// чуть меньший орбитального, и сторона уползала бы виток за витком —
+        /// ловится T79 на десятках витков, не на одном снимке.
+        ///
+        /// Автодоворот: в эпоху к родителю смотрит долгота 0 (замок без «нужной
+        /// стороны» бессмысленен): θ(Epoch) = atan2-угол направления на родителя
+        /// в тел-экваториальном базисе (тот же базис, что у SurfaceLatLonAt).
+        ///
+        /// Лиbrация: при e>0 направление на родителя гуляет вокруг среднего с
+        /// амплитудой ±2e (уравнение центра ν−M ≈ 2e·sin M; Луна: 2e≈6.3° —
+        /// близко к наблюдаемой оптической либрации). Фаза привязана к СРЕДНЕЙ
+        /// аномалии — осознанная модель, не баг. Только 1:1: на высоком e реальные
+        /// тела иногда предпочитают резонанс (Меркурий 3:2 при e≈0.206) —
+        /// оговорка без громкой валидации: физически корректное поведение, а не ошибка.
+        ///
+        /// Идемпотентно: читает только элементы + состояния на эпоху → пересборка
+        /// без правки данных даёт бит-в-бит тот же период/оффсет (T79).
+        /// Ретроградный захват (h·axis ≤ 0) громко отвергается: ω вращения ядра
+        /// в RotationAngleAtTime всегда положительна.
+        /// </summary>
+        public void ApplyTidalLock()
+        {
+            if (Parent == null)
+            {
+                throw new InvalidOperationException("Приливный захват требует родителя: у корня дерева (звезды) его нет.");
+            }
+
+            if (!(SemiMajorAxis > 0d))
+            {
+                throw new InvalidOperationException("Приливный захват \"" + Name + "\": SemiMajorAxis обязан быть положительным.");
+            }
+
+            double muLocal = Parent.ResolveStandardGravitationalParameter() + ResolveSubtreeStandardGravitationalParameter();
+            if (!(muLocal > 0d))
+            {
+                throw new InvalidOperationException("Приливный захват \"" + Name + "\": μ_local (родитель + поддерево) обязана быть положительной.");
+            }
+
+            EvaluateWorldState(EpochTimeSeconds, out Vector3d bodyP0, out Vector3d bodyV0);
+            Parent.EvaluateWorldState(EpochTimeSeconds, out Vector3d parentP0, out Vector3d parentV0);
+            Vector3d relative = bodyP0 - parentP0;
+            Vector3d relativeVelocity = bodyV0 - parentV0;
+            GetTiltParams(out Vector3d axis, out Vector3d k, out double cosAngle);
+
+            Vector3d orbitAngularMomentum = Vector3d.Cross(relative, relativeVelocity);
+            if (Vector3d.Dot(orbitAngularMomentum, axis) <= 0d)
+            {
+                throw new InvalidOperationException(
+                    "Приливный захват \"" + Name + "\": поддержан только для проградных орбит (h·axis > 0).");
+            }
+
+            RotationPeriodSeconds = 2d * Math.PI * Math.Sqrt(
+                (SemiMajorAxis * SemiMajorAxis * SemiMajorAxis) / muLocal);
+            double omega = 2d * Math.PI / RotationPeriodSeconds;
+
+            // θ(Epoch) = lonFacing ⇒ SurfaceLatLonAt(подродительская точка, Epoch) = 0.
+            Vector3d u = ApplyAxisTilt(new Vector3d(1d, 0d, 0d), k, cosAngle);
+            Vector3d v = ApplyAxisTilt(new Vector3d(0d, 1d, 0d), k, cosAngle);
+            double axial = Vector3d.Dot(relative, axis);
+            Vector3d equatorialProjection = relative - (axis * axial);
+            double lonFacing = Math.Atan2(Vector3d.Dot(equatorialProjection, v), Vector3d.Dot(equatorialProjection, u));
+            PrimeMeridianOffsetDegrees = KeplerMath.NormalizeAngle(lonFacing) * (180d / Math.PI);
         }
     }
 }

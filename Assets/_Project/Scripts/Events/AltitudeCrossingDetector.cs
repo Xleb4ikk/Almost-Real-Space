@@ -18,6 +18,7 @@ namespace Galilego.Events
     {
         private readonly OrbitingBody body;
         private readonly double thresholdAltitude;
+        private readonly ITerrainModel terrain;
 
         public EventDirection Direction { get; }
 
@@ -34,9 +35,20 @@ namespace Galilego.Events
 
         public AltitudeCrossingDetector(
             OrbitingBody body, double thresholdAltitude, EventDirection direction, int priority, string name, EventKind kind)
+            : this(body, thresholdAltitude, direction, priority, name, kind, null)
+        {
+        }
+
+        /// <summary>
+        /// Вариант с рельефом: порог отсчитывается от локальной высоты поверхности
+        /// (используется для касания: g = |rel| − (R + H(lat,lon))). null — сферический путь.
+        /// </summary>
+        public AltitudeCrossingDetector(
+            OrbitingBody body, double thresholdAltitude, EventDirection direction, int priority, string name, EventKind kind, ITerrainModel terrainModel)
         {
             this.body = body ?? throw new ArgumentNullException(nameof(body));
             this.thresholdAltitude = thresholdAltitude;
+            terrain = terrainModel;
             Direction = direction;
             Priority = priority;
             Name = name ?? throw new ArgumentNullException(nameof(name));
@@ -67,20 +79,29 @@ namespace Galilego.Events
                 EventPriorities.Atmosphere, "AtmosphereExit:" + body.Name, EventKind.AtmosphereExit);
         }
 
-        /// <summary>Касание поверхности (g: + → − через Radius).</summary>
+        /// <summary>Касание поверхности (g: + → − через Radius); рельеф тела учитывается автоматически.</summary>
         public static AltitudeCrossingDetector ForTouchdown(OrbitingBody body)
         {
             if (body == null)
                 throw new ArgumentNullException(nameof(body));
             return new AltitudeCrossingDetector(
                 body, 0d, EventDirection.Falling,
-                EventPriorities.Touchdown, "Touchdown:" + body.Name, EventKind.Touchdown);
+                EventPriorities.Touchdown, "Touchdown:" + body.Name, EventKind.Touchdown, body.Terrain);
         }
 
         public double Evaluate(SpacecraftIntegrationState state, double timeSeconds)
         {
             body.EvaluateWorldState(timeSeconds, out Vector3d bodyPosition, out _);
-            return (state.Position - bodyPosition).Magnitude - (body.Radius + thresholdAltitude);
+            Vector3d relative = state.Position - bodyPosition;
+            if (terrain == null)
+            {
+                return relative.Magnitude - (body.Radius + thresholdAltitude);
+            }
+
+            body.SurfaceLatLonAt(state.Position, timeSeconds, out double latDeg, out double lonDeg);
+            double surfaceRadius = body.Radius + thresholdAltitude
+                + terrain.GetHeightMeters(body, latDeg * (Math.PI / 180d), lonDeg * (Math.PI / 180d));
+            return relative.Magnitude - surfaceRadius;
         }
     }
 }

@@ -75,12 +75,14 @@ namespace Galilego.Universe
         }
     }
 
-#if !UNITY_5_3_OR_NEWER
     /// <summary>
     /// Официальный тип sim-кадра (Y-up) вне Unity — типизированная граница
     /// astro/sim: sim-вектор не совместим по типу с Vector3d, перепутать кадр
     /// мимо AstroFrame невозможно без явного каста полей. В Unity роль играет
     /// сам UnityEngine.Vector3 (float, тот же порядок полей x/y/z).
+    /// ВАЖНО: сам struct компилируется ВСЕГДА — T76 roundtrip-тесты ссылаются
+    /// на тип по имени; ветки ToSimulation/ToAstro выше всё равно взаимно
+    /// исключающие, конфликта сигнатур нет.
     /// </summary>
     public struct SimVector3
     {
@@ -95,5 +97,4 @@ namespace Galilego.Universe
             Z = z;
         }
     }
-#endif
 }

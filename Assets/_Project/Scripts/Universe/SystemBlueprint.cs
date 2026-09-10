@@ -36,7 +36,37 @@ namespace Galilego.Universe
         public double NorthPoleY = 1d;
         public double NorthPoleZ;
 
+        /// <summary>Приливный захват 1:1 (см. OrbitingBody.ApplyTidalLock): ручной период/оффсет игнорируются.</summary>
+        public bool TidallyLocked;
+
         public AtmosphereProfile Atmosphere;
+
+        /// <summary>Рельеф: null — гладкая сфера. Параметры — см. HeightfieldTerrain.</summary>
+        public int TerrainSeed;
+        public bool TerrainEnabled;
+        public double TerrainAmplitudeMeters = 1000d;
+        public double TerrainBaseFrequency = 3d;
+        public int TerrainOctaves = 5;
+        public double TerrainSeaLevelMeters = double.NegativeInfinity;
+        public double TerrainLacunarity = 2d;
+        public double TerrainGain = 0.5d;
+        public double TerrainContinentFrequency = 0d;
+        public int TerrainContinentOctaves = 3;
+        public double TerrainContinentThreshold = 0d;
+        public double TerrainContinentSharpness = 0.25d;
+        public double TerrainContinentDepth = 0.75d;
+        public double TerrainRidgedMix = 0d;
+        public double TerrainWarpStrength = 0d;
+        public double TerrainWarpFrequency = 1d;
+        public int TerrainWarpOctaves = 2;
+        public int TerrainWarpSeedOffset = 0;
+        public double TerrainColorRockSlopeTan = 0d;
+        public double TerrainColorRockSlopeWidth = 0.1d;
+        public double TerrainColorSnowSlopeTan = 0d;
+        public double TerrainColorNoiseFrequency = 0d;
+        public int TerrainColorNoiseOctaves = 3;
+        public double TerrainColorNoiseStrength = 0d;
+        public int TerrainColorNoiseSeedOffset = 0;
 
         /// <summary>Индекс родителя в списке; -1 — корень дерева (звезда).</summary>
         public int ParentIndex = -1;
@@ -102,6 +132,37 @@ namespace Galilego.Universe
                     NorthPoleDirection = new Vector3d(bp.NorthPoleX, bp.NorthPoleY, bp.NorthPoleZ),
                     Atmosphere = bp.Atmosphere
                 };
+                if (bp.TerrainEnabled)
+                {
+                    body.Terrain = new HeightfieldTerrain
+                    {
+                        Seed = bp.TerrainSeed,
+                        AmplitudeMeters = bp.TerrainAmplitudeMeters,
+                        BaseFrequency = bp.TerrainBaseFrequency,
+                        Octaves = bp.TerrainOctaves,
+                        SeaLevelMeters = bp.TerrainSeaLevelMeters,
+                        Lacunarity = bp.TerrainLacunarity,
+                        Gain = bp.TerrainGain,
+                        ContinentFrequency = bp.TerrainContinentFrequency,
+                        ContinentOctaves = bp.TerrainContinentOctaves,
+                        ContinentThreshold = bp.TerrainContinentThreshold,
+                        ContinentSharpness = bp.TerrainContinentSharpness,
+                        ContinentDepth = bp.TerrainContinentDepth,
+                        RidgedMix = bp.TerrainRidgedMix,
+                        WarpStrength = bp.TerrainWarpStrength,
+                        WarpFrequency = bp.TerrainWarpFrequency,
+                        WarpOctaves = bp.TerrainWarpOctaves,
+                        WarpSeedOffset = bp.TerrainWarpSeedOffset,
+                        ColorRockSlopeTan = bp.TerrainColorRockSlopeTan,
+                        ColorRockSlopeWidth = bp.TerrainColorRockSlopeWidth,
+                        ColorSnowSlopeTan = bp.TerrainColorSnowSlopeTan,
+                        ColorNoiseFrequency = bp.TerrainColorNoiseFrequency,
+                        ColorNoiseOctaves = bp.TerrainColorNoiseOctaves,
+                        ColorNoiseStrength = bp.TerrainColorNoiseStrength,
+                        ColorNoiseSeedOffset = bp.TerrainColorNoiseSeedOffset
+                    };
+                }
+
                 created.Add(body);
             }
 
@@ -121,6 +182,17 @@ namespace Galilego.Universe
 
                 created[i].Parent = created[p];
                 created[p].Children.Add(created[i]);
+            }
+
+            // Приливный захват — ПОСЛЕ связки иерархии: μ_local требует дерева
+            // (μ_родителя + μ_своего поддерева). Pure-функция данных элементов —
+            // пересборка даёт бит-в-бит тот же результат.
+            for (int i = 0; i < Bodies.Count; i++)
+            {
+                if (Bodies[i].TidallyLocked)
+                {
+                    created[i].ApplyTidalLock();
+                }
             }
 
             return new StarSystem(created[rootIndex]);

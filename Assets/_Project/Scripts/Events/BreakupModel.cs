@@ -92,6 +92,177 @@ namespace Galilego.Events
     ///   f_i = v_impact + s_i,  s_i ← s_i − (Σ m_j·s_j)/(Σ m_j).
     /// Проверка инвариантов — громким исключением, не комментарием.
     /// </summary>
+    /// <summary>
+    /// Разрушение по стыкам сборки (детали + прочность стыков из Parts).
+    /// Модель импульсная, детерминированная:
+    ///   v_n  — нормальная компонента ОТНОСИТЕЛЬНОЙ скорости удара;
+    ///   load = m_детали·|v_n|/PulseSeconds — импульсная перегрузка на стык
+    ///          (характерное время гашения PulseSeconds);
+    ///   стык держит ⟺ load ≤ JointStrengthNewtons. Перегруженные детали
+    ///   отсоединяются целиком, выжившие остаются кораблём (Landed).
+    ///
+    /// Отскок отсоединённой детали: нормальная компонента отражается с
+    /// SurfaceRestitution («не сильно отскакивают»), тангенциальная гасится
+    /// в TangentialDampFactor раз у ВСЕХ участков, сверху детерминированный
+    /// разброс в КАСАТЕЛЬНОЙ плоскости (золотой угол × SpreadFactor·|v_n|).
+    /// Книжка импульса (проверяется громко, как в SingleThreshold):
+    ///   ТАНГЕНЦИАЛЬНЫЙ инвариант точный: Σ m_i·f_i^t = m_ship·v_t
+    ///   (момент касания без внешнего тангенциального импульса; трение
+    ///   грунта догасит скорость уже после).
+    ///   НОРМАЛЬНАЯ компонента НЕ сохраняется по построению: есть внешний
+    ///   импульс грунта (гасит прижатие) + отражённый отскок деталей —
+    ///   осознанное отличие от free-разлёта SingleThreshold.
+    /// Пустой список спеков = стыки выдержали удар → посадка с повреждениями.
+    /// input.Parts null/пусто → вырожденный whole-ship путь SingleThreshold.
+    /// </summary>
+    public sealed class JointedBreakup : IBreakupModel
+    {
+        private const double GoldenAngle = 2.3999632297286535d;
+
+        /// <summary>Характерное время гашения удара (с) для перегрузки стыков.</summary>
+        public double PulseSeconds = 0.05d;
+
+        /// <summary>Коэффициент отскока нормальной скорости отсоединённых деталей.</summary>
+        public double SurfaceRestitution = 0.2d;
+
+        /// <summary>Во сколько раз гасится тангенциальная скорость отломанных деталей.</summary>
+        public double TangentialDampFactor = 0.5d;
+
+        /// <summary>Разброс скоростей деталей (доля от |v_n|).</summary>
+        public double SpreadFactor = 0.3d;
+
+        private readonly SingleThresholdBreakup fallback = new SingleThresholdBreakup();
+
+        public IReadOnlyList<PartSeparationSpec> PlanBreakup(BreakupInput input)
+        {
+            if (input.ShipMass <= 0d)
+            {
+                throw new ArgumentOutOfRangeException(nameof(input), "Масса корабля обязана быть положительной.");
+            }
+
+            if (input.Parts == null || input.Parts.Count == 0)
+            {
+                return fallback.PlanBreakup(input);
+            }
+
+            Vector3d normal = input.SurfaceNormal.Normalized;
+            double normalSpeed = Vector3d.Dot(input.ImpactVelocity, normal);
+            Vector3d tangential = input.ImpactVelocity - (normal * normalSpeed);
+
+            // Эффективные массы: детали нормируются к фактической массе корабля
+            // (топливо выгорает — масса сборки дрейфует от сумки деталей).
+            double partsMass = 0d;
+            for (int i = 0; i < input.Parts.Count; i++)
+            {
+                partsMass += input.Parts[i].MassKg;
+            }
+
+            if (partsMass <= 0d)
+            {
+                throw new InvalidOperationException("JointedBreakup: суммарная масса деталей обязана быть положительной.");
+            }
+
+            double scale = input.ShipMass / partsMass;
+            var effective = new double[input.Parts.Count];
+            for (int i = 0; i < input.Parts.Count; i++)
+            {
+                effective[i] = input.Parts[i].MassKg * scale;
+            }
+
+            // Перегрузка на стык: импульс детали, делённый на время гашения.
+            double pulse = PulseSeconds > 0d ? PulseSeconds : throw new InvalidOperationException("JointedBreakup: PulseSeconds обязан быть положительным.");
+            double loadPerKg = Math.Abs(normalSpeed) / pulse;
+            var broken = new List<int>();
+            double survivorsMass = 0d;
+            for (int i = 0; i < input.Parts.Count; i++)
+            {
+                double load = effective[i] * loadPerKg;
+                if (load > input.Parts[i].JointStrengthNewtons)
+                {
+                    broken.Add(i);
+                }
+                else
+                {
+                    survivorsMass += effective[i];
+                }
+            }
+
+            if (broken.Count == 0)
+            {
+                // Стыки держат: посадка с повреждениями, без спеков.
+                return new PartSeparationSpec[0];
+            }
+
+            Vector3d survivorVelocity = tangential * (1d - TangentialDampFactor);
+            double brokenMass = input.ShipMass - survivorsMass;
+
+            // Средняя тангенциальная скорость отломанных деталей — из точного
+            // тангенциального инварианта: Σ m_i·f_i^t = m_ship·v_t − m_surv·f_surv^t.
+            Vector3d brokenMeanTangent = ((tangential * input.ShipMass) - (survivorVelocity * survivorsMass)) / brokenMass;
+
+            // Детерминированный разброс в КАСАТЕЛЬНОЙ плоскости (золотой угол),
+            // центрируется взвешенной поправкой в ноль — нормаль не трогает.
+            double spreadSpeed = SpreadFactor * Math.Abs(normalSpeed);
+            Vector3d t1 = Math.Abs(normal.X) < 0.9d ? new Vector3d(1d, 0d, 0d) : new Vector3d(0d, 1d, 0d);
+            t1 = (t1 - (normal * Vector3d.Dot(t1, normal))).Normalized;
+            Vector3d t2 = Vector3d.Cross(normal, t1);
+            var scatter = new Vector3d[broken.Count];
+            Vector3d weightedMean = Vector3d.Zero;
+            for (int i = 0; i < broken.Count; i++)
+            {
+                double phi = i * GoldenAngle;
+                scatter[i] = (t1 * (Math.Cos(phi) * spreadSpeed)) + (t2 * (Math.Sin(phi) * spreadSpeed));
+                weightedMean += scatter[i] * effective[broken[i]];
+            }
+
+            weightedMean = weightedMean / brokenMass;
+
+            var specs = new List<PartSeparationSpec>(broken.Count);
+            Vector3d checkMomentum = Vector3d.Zero;
+            double checkMass = 0d;
+            for (int i = 0; i < broken.Count; i++)
+            {
+                int partIndex = broken[i];
+                Vector3d fragmentVelocity = brokenMeanTangent
+                    + (normal * (-normalSpeed * SurfaceRestitution))
+                    + (scatter[i] - weightedMean);
+                specs.Add(new PartSeparationSpec(
+                    partIndex, effective[partIndex],
+                    input.SurfacePoint + (normal * input.SpawnEpsilonMeters),
+                    input.SurfacePointVelocity + fragmentVelocity,
+                    fragmentVelocity));
+                checkMass += effective[partIndex];
+                Vector3d fragmentTangent = fragmentVelocity - (normal * Vector3d.Dot(fragmentVelocity, normal));
+                checkMomentum += fragmentTangent * effective[partIndex];
+            }
+
+            double massTolerance = 1e-9d * Math.Max(1d, input.ShipMass);
+            if (Math.Abs(checkMass - brokenMass) > massTolerance)
+            {
+                throw new InvalidOperationException("JointedBreakup: нарушен инвариант Σm_broken = m_ship − m_surv.");
+            }
+
+            Vector3d expectTangent = (tangential * input.ShipMass) - (survivorVelocity * survivorsMass);
+            double tangentTolerance = 1e-9d * Math.Max(1d, expectTangent.Magnitude);
+            if ((checkMomentum - expectTangent).Magnitude > tangentTolerance)
+            {
+                throw new InvalidOperationException("JointedBreakup: нарушен тангенциальный инвариант Σm_i·f_i^t = m_ship·v_t − m_surv·f_surv^t.");
+            }
+
+            return specs;
+        }
+    }
+
+    /// <summary>
+    /// Тестовая реализация: whole-ship как сборка из одной «детали» делится на
+    /// N фрагментов. N=10 — приватная константа ЭТОЙ реализации (см. п.3 v3),
+    /// контракту IBreakupModel количество неизвестно. Разброс детерминированный
+    /// (Фибоначчи-сфера × SpreadFactor·|v_impact|), центрирование — ВЗВЕШЕННЫМ
+    /// по массе средним (при равных массах совпадает с обычным, но контракт
+    /// писан под будущие неравные детали):
+    ///   f_i = v_impact + s_i,  s_i ← s_i − (Σ m_j·s_j)/(Σ m_j).
+    /// Проверка инвариантов — громким исключением, не комментарием.
+    /// </summary>
     public sealed class SingleThresholdBreakup : IBreakupModel
     {
         private const int FragmentCount = 10;

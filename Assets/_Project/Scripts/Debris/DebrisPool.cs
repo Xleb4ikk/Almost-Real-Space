@@ -169,6 +169,17 @@ namespace Galilego.Debris
         /// <summary>Пол прыжка: кап для тел мельче ~MinHop·v/k перестаёт работать.</summary>
         public const double MinHopSeconds = 0.25d;
 
+        /// <summary>
+        /// Коэффициент отскока от поверхности (0 = старое поведение: обломок
+        /// исчезает при входе в тело). > 0 — упрощённый игровой отскок: позиция
+        /// проецируется на радиус тела, нормальная скорость отражается с этим
+        /// коэффициентом, тангенциальная гасится TangentialDampFactor раз.
+        /// </summary>
+        public double SurfaceRestitution;
+
+        /// <summary>Во сколько раз гасится тангенциальная скорость при отскоке.</summary>
+        public double TangentialDampFactor = 0.5d;
+
         private readonly StarSystem starSystem;
         private readonly SpacecraftPhysics physics;
 
@@ -293,10 +304,13 @@ namespace Galilego.Debris
             physics.Step(slot.Body, nowSeconds, hop);
 
             double checkTime = nowSeconds + hop;
-            if (starSystem.IsInsideAnyBody(slot.Body.Position, checkTime, out _))
+            if (starSystem.IsInsideAnyBody(slot.Body.Position, checkTime, out OrbitingBody hitBody))
             {
-                pool.Release(index);
-                return false;
+                if (!BounceOffSurface(slot, hitBody, checkTime))
+                {
+                    pool.Release(index);
+                    return false;
+                }
             }
 
             if (checkTime >= slot.DeathTimeSeconds)
@@ -306,6 +320,46 @@ namespace Galilego.Debris
             }
 
             slot.NextCheckTimeSeconds = checkTime;
+            return true;
+        }
+
+        /// <summary>
+        /// Упрощённый отскок от поверхности: проекция на радиус тела (сферическая
+        /// модель, ITerrainModel рельеф добавит высоту позже), отражение нормали
+        /// с restitution, гашение тангенциальной. false — отскок невозможен
+        /// (реституция выключена или вырожденная геометрия) → слот освобождается.
+        /// </summary>
+        private bool BounceOffSurface(DebrisSlot slot, OrbitingBody body, double timeSeconds)
+        {
+            if (SurfaceRestitution <= 0d || body == null)
+            {
+                return false;
+            }
+
+            if (timeSeconds >= slot.DeathTimeSeconds)
+            {
+                return false;
+            }
+
+            body.EvaluateWorldState(timeSeconds, out Vector3d bodyPosition, out Vector3d bodyVelocity);
+            Vector3d relative = slot.Body.Position - bodyPosition;
+            double distance = relative.Magnitude;
+            if (distance <= 0d)
+            {
+                return false;
+            }
+
+            Vector3d normal = relative / distance;
+            Vector3d surfaceVelocity = bodyVelocity
+                + Vector3d.Cross(body.SpinAxis * body.SpinAngularSpeed, normal * body.Radius);
+            Vector3d relativeVelocity = slot.Body.Velocity - surfaceVelocity;
+            double normalSpeed = Vector3d.Dot(relativeVelocity, normal);
+            Vector3d tangential = relativeVelocity - (normal * normalSpeed);
+
+            slot.Body.Position = bodyPosition + (normal * (body.Radius * 1.001d));
+            slot.Body.Velocity = surfaceVelocity
+                + (tangential * TangentialDampFactor)
+                + (normal * (Math.Abs(normalSpeed) * SurfaceRestitution));
             return true;
         }
 
