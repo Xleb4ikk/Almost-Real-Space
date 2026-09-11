@@ -165,6 +165,13 @@ namespace Galilego.Universe
         public double ColorRockSlopeWidth = 0.1d;
 
         /// <summary>
+        /// Минимальная нормированная высота t=(h−sea)/amp для rock-override:
+        /// скала только на крупных горах, пляж и низменности остаются зелёными.
+        /// ≤0 = без порога по высоте (legacy: скала по одному склону).
+        /// </summary>
+        public double ColorRockHeightMin = 0d;
+
+        /// <summary>
         /// Макс. склон для снега (tan): круче — скала вместо снега. ≤0 =
         /// выключен (legacy: снег чисто по высоте). Guard симметричен rock:
         /// при 0 условие «slope ≤ 0» не проходило бы почти нигде.

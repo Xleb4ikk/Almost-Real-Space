@@ -20,8 +20,7 @@ internal static partial class P1bTests
         {
             TopAltitudeMeters = 100000d,
             SeaLevelDensityKgPerCubicMeter = 1.2d,
-            ScaleHeightMeters = 8500d,
-            SeaLevelPressurePascals = 101325d
+            ScaleHeightMeters = 8500d
         };
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
 
@@ -393,8 +392,7 @@ internal static partial class P1bTests
         {
             TopAltitudeMeters = 100000d,
             SeaLevelDensityKgPerCubicMeter = 1.2d,
-            ScaleHeightMeters = 8500d,
-            SeaLevelPressurePascals = 101325d
+            ScaleHeightMeters = 8500d
         };
         planet.RotationPeriodSeconds = 86400d;
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
@@ -468,8 +466,7 @@ internal static partial class P1bTests
         {
             TopAltitudeMeters = 2000000d,
             SeaLevelDensityKgPerCubicMeter = 0.1d,
-            ScaleHeightMeters = 1000000d,
-            SeaLevelPressurePascals = 10000d
+            ScaleHeightMeters = 1000000d
         };
         planet.RotationPeriodSeconds = 0d;
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
@@ -1020,6 +1017,13 @@ internal static partial class P1bTests
         bool rockSkipsSea = ColorsEqual(
             TerrainPalette.HeightColorEx(-1000d, sea, amp, 5d, 0d, 0.5d, 0.1d, 0d, 0d), seaColor);
 
+        // Порог скалы по высоте: на пляже (h=1000, t=0.02) скала подавлена,
+        // на горе (h=30000, t=0.6) срабатывает — камни только на крупных горах.
+        bool rockHeightGate = ColorsEqual(
+            TerrainPalette.HeightColorEx(1000d, sea, amp, 1d, 0d, 0.5d, 0.1d, 0d, 0d, 0d, 0d, 0d, 0.4d), rockBase)
+            && ColorsEqual(
+                TerrainPalette.HeightColorEx(30000d, sea, amp, 1d, 0d, 0.5d, 0.1d, 0d, 0d, 0d, 0d, 0d, 0.4d), rock);
+
         // Snow-gate: t = 0.85 (h = 85000). Пологий — снег legacy, крутой — скала.
         UnityEngine.Color snowLeg = TerrainPalette.HeightColorLegacy(85000d, sea, amp);
         bool snowGentle = ColorsEqual(
@@ -1151,6 +1155,7 @@ internal static partial class P1bTests
 
         Check(legacyExact, "T83 terrain-color", "Ex(всё выкл) = бит-в-бит legacy (guard'ы, склоны, маска)");
         Check(rockFull && rockBlend && rockBelow && rockSkipsSea, "T83 terrain-color", "rock-override: скала/бленд/порог/море");
+        Check(rockHeightGate, "T83 terrain-color", "rock-override: порог по высоте (пляж без скал, горы со скалой)");
         Check(snowGentle && snowSteep && snowGuard, "T83 terrain-color", "snow-gate: пологий снег, крутой скала, guard 0");
         Check(maskShifts && maskOff, "T83 terrain-color", "маска сдвигает bands; strength 0 = игнор");
         Check(slopeZero && slopeOne && slopeHuge && slopeMono, "T83 terrain-color", "SlopeTan: 0/1/вертикаль/монотонность");

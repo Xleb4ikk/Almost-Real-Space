@@ -43,9 +43,11 @@ namespace Galilego.Universe
         public SimulationRunner Runner;
 
         [Tooltip("Сегментов по широте купола.")]
+        [Range(4, 128)]
         public int LatitudeSegments = 24;
 
         [Tooltip("Сегментов по долготе купола.")]
+        [Range(8, 256)]
         public int LongitudeSegments = 48;
 
         [Tooltip("Отладочный вывод вместо финального кадра (0 = выключено).")]

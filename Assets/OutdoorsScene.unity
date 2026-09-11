@@ -441,7 +441,6 @@ MonoBehaviour:
     Z: 1
   Atmosphere:
     TopAltitudeMeters: 0
-    SeaLevelPressurePascals: 0
     SeaLevelDensityKgPerCubicMeter: 0
     ScaleHeightMeters: 0
     OzoneEnabled: 1
@@ -643,7 +642,6 @@ MonoBehaviour:
     Z: 1
   Atmosphere:
     TopAltitudeMeters: 100000
-    SeaLevelPressurePascals: 101325
     SeaLevelDensityKgPerCubicMeter: 1.225
     ScaleHeightMeters: 8500
     OzoneEnabled: 1
@@ -686,14 +684,15 @@ MonoBehaviour:
   TerrainWarpSeedOffset: 0
   TerrainColorRockSlopeTan: 0.6
   TerrainColorRockSlopeWidth: 0.15
+  TerrainColorRockHeightMin: 0.4
   TerrainColorSnowSlopeTan: 0.5
   TerrainColorNoiseFrequency: 25
   TerrainColorNoiseOctaves: 4
   TerrainColorNoiseStrength: 0.09
   TerrainColorNoiseSeedOffset: 0
-  TerrainColorDetailFrequency: 1500
+  TerrainColorDetailFrequency: 400
   TerrainColorDetailOctaves: 3
-  TerrainColorDetailStrength: 0.35
+  TerrainColorDetailStrength: 0.15
   TerrainColorDetailSeedOffset: 0
 --- !u!135 &1081663219
 SphereCollider:
@@ -787,12 +786,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlanetSurfaceRenderer
   Runner: {fileID: 1332194275}
   TileResolution: 65
-  MaxDepth: 10
-  SplitFactor: 4
+  MaxDepth: 12
+  SplitFactor: 3.5
   MergeHysteresis: 1.3
   SkirtFactor: 0.03
-  BuildsPerFrame: 12
-  MaxNodes: 4000
+  BuildsPerFrame: 16
+  MaxNodes: 6000
   MaxAltitudeMeters: 5000000
   MaxCachedChunks: 2048
 --- !u!114 &1081663223
@@ -1247,6 +1246,7 @@ MonoBehaviour:
   PitchClamp: 85
   LockCursor: 1
   TemporalAA: 0
+  SubpixelAA: 1
   LogCameraDiagnostics: 1
   EyeHeightMeters: 2
 --- !u!1 &1982425599

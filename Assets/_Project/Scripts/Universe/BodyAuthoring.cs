@@ -133,6 +133,9 @@ namespace Galilego.Universe
         [Tooltip("Полуширина бленда в скалу (единицы tan).")]
         public double TerrainColorRockSlopeWidth = 0.1d;
 
+        [Tooltip("Мин. нормированная высота (t=(h−море)/амплитуда) для скалы: камни только на крупных горах. 0 = без порога.")]
+        public double TerrainColorRockHeightMin = 0d;
+
         [Tooltip("Макс. склон для снега в tan (круче — скала). 0 = выключен (снег по высоте).")]
         public double TerrainColorSnowSlopeTan = 0d;
 
@@ -213,6 +216,7 @@ namespace Galilego.Universe
                 TerrainWarpSeedOffset = TerrainWarpSeedOffset,
                 TerrainColorRockSlopeTan = TerrainColorRockSlopeTan,
                 TerrainColorRockSlopeWidth = TerrainColorRockSlopeWidth,
+                TerrainColorRockHeightMin = TerrainColorRockHeightMin,
                 TerrainColorSnowSlopeTan = TerrainColorSnowSlopeTan,
                 TerrainColorNoiseFrequency = TerrainColorNoiseFrequency,
                 TerrainColorNoiseOctaves = TerrainColorNoiseOctaves,
@@ -266,6 +270,7 @@ namespace Galilego.Universe
             terrain.WarpSeedOffset = TerrainWarpSeedOffset;
             terrain.ColorRockSlopeTan = TerrainColorRockSlopeTan;
             terrain.ColorRockSlopeWidth = TerrainColorRockSlopeWidth;
+            terrain.ColorRockHeightMin = TerrainColorRockHeightMin;
             terrain.ColorSnowSlopeTan = TerrainColorSnowSlopeTan;
             terrain.ColorNoiseFrequency = TerrainColorNoiseFrequency;
             terrain.ColorNoiseOctaves = TerrainColorNoiseOctaves;
@@ -313,13 +318,14 @@ namespace Galilego.Universe
             TerrainWarpOctaves = 2;
             TerrainColorRockSlopeTan = 0.6d;
             TerrainColorRockSlopeWidth = 0.15d;
+            TerrainColorRockHeightMin = 0.4d;
             TerrainColorSnowSlopeTan = 0.5d;
             TerrainColorNoiseFrequency = 25d;
             TerrainColorNoiseOctaves = 4;
             TerrainColorNoiseStrength = 0.09d;
-            TerrainColorDetailFrequency = 1500d;
+            TerrainColorDetailFrequency = 400d;
             TerrainColorDetailOctaves = 3;
-            TerrainColorDetailStrength = 0.35d;
+            TerrainColorDetailStrength = 0.15d;
         }
     }
 }

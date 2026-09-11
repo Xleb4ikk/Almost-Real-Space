@@ -25,7 +25,6 @@ namespace Galilego.Universe
     {
         [Header("Физика (высотная модель плотности)")]
         public double TopAltitudeMeters;
-        public double SeaLevelPressurePascals;
         public double SeaLevelDensityKgPerCubicMeter;
         public double ScaleHeightMeters;
 
@@ -44,15 +43,19 @@ namespace Galilego.Universe
         public Color MieColor = new Color(1f, 1f, 1f, 1f);
 
         [Tooltip("Общий множитель яркости неба. Мал — тускло, велик — пересвет; 1 = физическая калибровка.")]
+        [Min(0f)]
         public float Intensity = 1f;
 
         [Tooltip("Анизотропия Ми (−1..1): 0.76 — выраженный солнечный ореол.")]
+        [Range(-0.9f, 0.9f)]
         public float MieAnisotropy = 0.8f;
 
         [Tooltip("Turbidity: множитель плотности аэрозоля (мутность горизонта). 1 = физическая. Яркость — это Intensity; форма профиля — ScaleHeight. Крутить «слишком туманно» нужно этим.")]
+        [Min(0f)]
         public float AerosolScale = 1f;
 
         [Tooltip("Число шагов raymarch (больше — плавнее и дороже).")]
+        [Range(2, 96)]
         public int StepCount = 48;
 
         [Tooltip("Считать ли планету преградой для луча, когда глубины сцены нет (пиксель неба): закаты/тень. При наличии глубины она приоритетнее.")]
@@ -62,6 +65,7 @@ namespace Galilego.Universe
         public Color GroundColor = new Color(0.16f, 0.18f, 0.14f, 1f);
 
         [Tooltip("Ширина плавного стыка небо/земля у горизонта (в косинусе зенита луча). Больше — мягче и шире; 0.01 ≈ 0.6°.")]
+        [Range(0.001f, 0.2f)]
         public float HorizonFade = 0.01f;
 
         /// <summary>Единый набор коэффициентов для CPU и GPU (см. AtmosphereOptics).</summary>
