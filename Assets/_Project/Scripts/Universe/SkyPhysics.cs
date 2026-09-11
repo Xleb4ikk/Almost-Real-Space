@@ -21,9 +21,6 @@ namespace Galilego.Universe
     /// </summary>
     public static class SkyPhysics
     {
-        /// <summary>Относительная рэлеевская экстинкция по каналам (λ⁻⁴, нормирована на G).</summary>
-        public static readonly Vector3d RayleighExtinction = new Vector3d(0.34d, 1.0d, 3.05d);
-
         /// <summary>Плотность атмосферы на высоте (0..1), ноль выше topAltitude.</summary>
         public static double Density(double altitude, double scaleHeight, double topAltitude)
         {
@@ -81,11 +78,37 @@ namespace Galilego.Universe
                 Math.Exp(-opticalDepth * extinctionPerMeter.Z));
         }
 
-        /// <summary>Рэлеевская экстинкция β (1/м) из плотности у поверхности (Земля ≈ 1.225 кг/м³).</summary>
+        /// <summary>
+        /// Рэлеевская экстинкция β (1/м) из плотности у поверхности. Раньше это
+        /// был эмпирический вектор (0.34,1,3.05) со своей подгонкой масштаба —
+        /// второй несогласованный источник β. Теперь — реальные коэффициенты
+        /// AtmosphereOptics, общие с шейдером неба.
+        /// </summary>
         public static Vector3d ExtinctionPerMeter(double seaLevelDensityKgPerCubicMeter)
         {
-            double scale = 2.4e-5d * (seaLevelDensityKgPerCubicMeter / 1.225d);
-            return RayleighExtinction * scale;
+            double scale = seaLevelDensityKgPerCubicMeter > 0d
+                ? seaLevelDensityKgPerCubicMeter / AtmosphereOptics.EarthSeaLevelDensityKgPerCubicMeter
+                : 0d;
+            return AtmosphereOptics.EarthRayleighScattering * scale;
+        }
+
+        /// <summary>
+        /// Прозрачность к Солнцу по полной модели (Рэлей + Ми + озон), с
+        /// раздельными масштабными высотами. Согласована с GPU-шейдером (тот же
+        /// AtmosphereOptics.Coefficients), поэтому цвет диска/света и цвет неба
+        /// не расходятся на закате.
+        /// </summary>
+        public static Vector3d SunTransmittance(double sinElevation, double relativeDensity, in AtmosphereOptics.Coefficients c)
+        {
+            double am = Airmass(sinElevation);
+            double ozoneColumn = c.OzoneEnabled ? c.OzoneHalfWidth : 0d;
+
+            Vector3d tau = (c.RayleighScattering * (c.RayleighScaleHeight * relativeDensity))
+                + (c.MieScattering * (c.MieScaleHeight * relativeDensity))
+                + (c.OzoneAbsorption * ozoneColumn);
+            tau *= am;
+
+            return AtmosphereOptics.Exp(-tau);
         }
 
         /// <summary>Относительная яркость неба (день→сумерки→ночь) × плотность над наблюдателем.</summary>

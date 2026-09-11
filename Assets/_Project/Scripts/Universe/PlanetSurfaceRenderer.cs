@@ -51,8 +51,11 @@ namespace Galilego.Universe
         [Tooltip("Ограничитель активных узлов (защита от лавины).")]
         public int MaxNodes = 4000;
 
-        [Tooltip("Высота над рельефом, выше которой планета не рендерится (м).")]
+        [Tooltip("Высота над рельефом, выше которой чанки рельефа не рендерятся (м). На этой дистанции вместо них включается базовая сфера (см. BaseSphereColor).")]
         public double MaxAltitudeMeters = 5e6d;
+
+        [Tooltip("Диффузный цвет базовой сферы планеты на большой дистанции. Нужна, чтобы тело было непрозрачным и честно закрывало звёзды/солнце по глубине.")]
+        public Color BaseSphereColor = new Color(0.16f, 0.24f, 0.32f, 1f);
 
         [Tooltip("Максимум закэшированных мешей (лишние вытесняются).")]
         public int MaxCachedChunks = 2048;
@@ -79,6 +82,8 @@ namespace Galilego.Universe
         private TerrainNoiseParams noiseParams;
         private Transform surfaceRoot;
         private Material materialCache;
+        private MeshRenderer baseSphereRenderer;
+        private Material baseSphereMaterial;
 
         private readonly Dictionary<long, Chunk> chunks = new Dictionary<long, Chunk>();
         private readonly List<Node> desired = new List<Node>();
@@ -119,12 +124,20 @@ namespace Galilego.Universe
             }
 
             noiseParams = TerrainNoiseParams.FromTerrain(terrain);
-
-            // Скрываем примитив-сферу: её роль теперь играет cube-sphere.
-            MeshRenderer baseSphere = GetComponent<MeshRenderer>();
-            if (baseSphere != null)
+            // Базовая сфера — не списываем навсегда: на малой высоте её роль
+            // играет cube-sphere (сфера гасится), а на большой дистанции, где
+            // чанки отключаются, сфера включается как непрозрачное тело, которое
+            // пишет depth и закрывает звёзды/солнце. Иначе на удалении от тела
+            // геометрии нет вообще и небо просвечивает планету.
+            baseSphereRenderer = GetComponent<MeshRenderer>();
+            if (baseSphereRenderer != null && baseSphereRenderer.sharedMaterial != null)
             {
-                baseSphere.enabled = false;
+                baseSphereMaterial = new Material(baseSphereRenderer.sharedMaterial);
+                baseSphereMaterial.color = BaseSphereColor;
+                baseSphereMaterial.SetColor("_BaseColor", BaseSphereColor);
+                baseSphereMaterial.SetColor("_UnlitColor", BaseSphereColor);
+                baseSphereRenderer.sharedMaterial = baseSphereMaterial;
+                baseSphereRenderer.enabled = false;
             }
 
             if (Runner.SystemView == null)
@@ -151,6 +164,11 @@ namespace Galilego.Universe
             if (materialCache != null)
             {
                 Destroy(materialCache);
+            }
+
+            if (baseSphereMaterial != null)
+            {
+                Destroy(baseSphereMaterial);
             }
         }
 
@@ -210,16 +228,80 @@ namespace Galilego.Universe
             ApplyAuthoringAndRebuild();
         }
 
+        /// <summary>
+        /// Live-тюнинг: если поля рельефа в BodyAuthoring изменили в Play,
+        /// переносим их в живой terrain и перестраиваем чанки автоматически —
+        /// иначе правки в Inspector не влияют на уже построенную геометрию.
+        /// </summary>
+        private void Update()
+        {
+            if (body == null || terrain == null)
+            {
+                return;
+            }
+
+            BodyAuthoring authoring = GetComponent<BodyAuthoring>();
+            if (authoring == null)
+            {
+                return;
+            }
+
+            authoring.ApplyToTerrain(terrain);
+            TerrainNoiseParams current = TerrainNoiseParams.FromTerrain(terrain);
+            if (!ParamsEqual(current, noiseParams))
+            {
+                noiseParams = current;
+                ClearChunkCache();
+                firstFrameGuard = -1;
+            }
+        }
+
+        private static bool ParamsEqual(TerrainNoiseParams a, TerrainNoiseParams b)
+        {
+            return a.Seed == b.Seed
+                && a.BaseFrequency == b.BaseFrequency
+                && a.Octaves == b.Octaves
+                && a.Lacunarity == b.Lacunarity
+                && a.Gain == b.Gain
+                && a.ContinentFrequency == b.ContinentFrequency
+                && a.ContinentOctaves == b.ContinentOctaves
+                && a.ContinentThreshold == b.ContinentThreshold
+                && a.ContinentSharpness == b.ContinentSharpness
+                && a.ContinentDepth == b.ContinentDepth
+                && a.RidgedMix == b.RidgedMix
+                && a.PlainMix == b.PlainMix
+                && a.PlainFrequency == b.PlainFrequency
+                && a.PlainOctaves == b.PlainOctaves
+                && a.PlainThreshold == b.PlainThreshold
+                && a.PlainSharpness == b.PlainSharpness
+                && a.PlainElevation == b.PlainElevation
+                && a.DetailMix == b.DetailMix
+                && a.DetailFrequency == b.DetailFrequency
+                && a.DetailOctaves == b.DetailOctaves
+                && a.WarpStrength == b.WarpStrength
+                && a.WarpFrequency == b.WarpFrequency
+                && a.WarpOctaves == b.WarpOctaves
+                && a.WarpSeedOffset == b.WarpSeedOffset
+                && a.ColorNoiseFrequency == b.ColorNoiseFrequency
+                && a.ColorNoiseOctaves == b.ColorNoiseOctaves
+                && a.ColorNoiseSeedOffset == b.ColorNoiseSeedOffset
+                && a.ColorDetailFrequency == b.ColorDetailFrequency
+                && a.ColorDetailOctaves == b.ColorDetailOctaves
+                && a.ColorDetailSeedOffset == b.ColorDetailSeedOffset
+                && a.ComputeMask == b.ComputeMask
+                && a.ComputeDetail == b.ComputeDetail;
+        }
+
         private void LateUpdate()
         {
             if (body == null || terrain == null || Runner.Ship == null)
             {
                 return;
             }
-
             if (Runner.DominantBody != body)
             {
                 SetAllInvisible();
+                SetBaseSphereVisible(false);
                 return;
             }
 
@@ -227,9 +309,16 @@ namespace Galilego.Universe
             double altitude = (Runner.Ship.Position - bodyPosition).Magnitude - body.Radius;
             if (altitude > MaxAltitudeMeters)
             {
+                // Чанки рельефа на такой дистанции отключаются — включаем
+                // базовую сферу, иначе у тела нет никакой геометрии и звёзды
+                // рисуются «сквозь планету».
                 SetAllInvisible();
+                SetBaseSphereVisible(true);
                 return;
             }
+
+            // Малая высота: рельеф играет роль поверхности, сферу гасим.
+            SetBaseSphereVisible(false);
 
             Camera camera = Camera.main;
             if (camera == null)
@@ -440,6 +529,7 @@ namespace Galilego.Universe
             var dirs = new NativeArray<double3>(grid * grid, Allocator.TempJob);
             var jobHeights = new NativeArray<double>(grid * grid, Allocator.TempJob);
             var jobMasks = new NativeArray<float>(grid * grid, Allocator.TempJob);
+            var jobDetails = new NativeArray<float>(grid * grid, Allocator.TempJob);
 
             for (int gi = 0; gi < grid; gi++)
             {
@@ -457,20 +547,25 @@ namespace Galilego.Universe
                 Params = noiseParams,
                 Directions = dirs,
                 Heights = jobHeights,
-                ColorMasks = jobMasks
+                ColorMasks = jobMasks,
+                ColorDetails = jobDetails
             };
             tileJob.Schedule(grid * grid, 64, new JobHandle()).Complete();
 
             var positions = new Vector3[grid * grid];
             var heights = new double[grid * grid];
             var masks = new float[grid * grid];
+            var details = new float[grid * grid];
+            var latitudes = new float[grid * grid];
+            var waterDepthNorm = new float[grid * grid];
             for (int gi = 0; gi < grid; gi++)
             {
                 for (int gj = 0; gj < grid; gj++)
                 {
                     int vi = (gi * grid) + gj;
                     double3 d = dirs[vi];
-                    double height = jobHeights[vi] * amplitude;
+                    double rawHeight = jobHeights[vi] * amplitude;
+                    double height = rawHeight;
                     if (height < seaLevel)
                     {
                         height = seaLevel;
@@ -478,6 +573,14 @@ namespace Galilego.Universe
 
                     heights[vi] = height;
                     masks[vi] = jobMasks[vi];
+                    details[vi] = jobDetails[vi];
+                    // z тела-fixed направления = sin(lat): широта для полярных шапок.
+                    latitudes[vi] = (float)System.Math.Asin(System.Math.Max(-1d, System.Math.Min(1d, d.z)));
+                    // Глубина воды (до клампа): уходит в шейдер через uv.x.
+                    double depth = seaLevel - rawHeight;
+                    waterDepthNorm[vi] = depth > 0d
+                        ? (float)System.Math.Min(1d, depth / System.Math.Max(1d, amplitude))
+                        : 0f;
                     Vector3d absAstro = new Vector3d(d.x, d.y, d.z) * (body.Radius + height);
                     positions[vi] = AstroFrame.ToSimulation(absAstro - centerAstro);
                 }
@@ -486,12 +589,30 @@ namespace Galilego.Universe
             dirs.Dispose();
             jobHeights.Dispose();
             jobMasks.Dispose();
+            jobDetails.Dispose();
 
             var vertices = new Vector3[totalVerts];
             var normals = new Vector3[totalVerts];
             var colors = new Color[totalVerts];
+            var uvs = new Vector2[totalVerts];
 
             bool maskOn = terrain.ColorNoiseFrequency > 0d && terrain.ColorNoiseStrength != 0d;
+            // Цветовая деталь живёт в ЦВЕТЕ ВЕРШИН: если шаг вершин грубее
+            // самой детали (дальний/крупный LOD), высокочастотный шум алиасится
+            // в однотонное пятно. Гасим её на грубых тайлах — при подлёте
+            // деталь включается сама, без «грязного» шума вдали.
+            double detailStrength = terrain.ColorDetailStrength;
+            if (detailStrength != 0d && terrain.ColorDetailFrequency > 0d)
+            {
+                double vertSpacing = body.Radius * 1.5707963267948966d / (1 << node.Depth) / (n - 1);
+                double featureSize = body.Radius / terrain.ColorDetailFrequency;
+                if (vertSpacing > featureSize * 0.75d)
+                {
+                    detailStrength = 0d;
+                }
+            }
+
+            bool detailOn = terrain.ColorDetailFrequency > 0d && detailStrength != 0d;
 
             for (int row = 0; row < n; row++)
             {
@@ -516,14 +637,19 @@ namespace Galilego.Universe
                     double cosA = Vector3.Dot(normals[index], radial);
                     double slopeTan = TerrainPalette.SlopeTan(cosA);
                     double mask = maskOn ? masks[halo] : 0d;
+                    double detail = detailOn ? details[halo] : 0d;
 
                     Color color = TerrainPalette.HeightColorEx(
                         heights[halo], seaLevel, amplitude, slopeTan, mask,
                         terrain.ColorRockSlopeTan, terrain.ColorRockSlopeWidth,
-                        terrain.ColorSnowSlopeTan, terrain.ColorNoiseStrength);
+                        terrain.ColorSnowSlopeTan, terrain.ColorNoiseStrength,
+                        detail, detailStrength, latitudes[halo]);
 
                     bool isWater = heights[halo] <= seaLevel + seaEps;
                     colors[index] = new Color(color.r, color.g, color.b, isWater ? 1f : 0f);
+                    uvs[index] = isWater
+                        ? new Vector2(waterDepthNorm[halo], 0f)
+                        : new Vector2(0f, 0f);
                 }
             }
 
@@ -571,6 +697,7 @@ namespace Galilego.Universe
                     vertices[baseIndex + k] = p - (inward * skirtDepth);
                     normals[baseIndex + k] = normals[coreIndex];
                     colors[baseIndex + k] = colors[coreIndex];
+                    uvs[baseIndex + k] = uvs[coreIndex];
                 }
             }
 
@@ -640,6 +767,7 @@ namespace Galilego.Universe
             chunk.Mesh.vertices = vertices;
             chunk.Mesh.normals = normals;
             chunk.Mesh.colors = colors;
+            chunk.Mesh.uv = uvs;
             chunk.Mesh.triangles = triangles;
             chunk.Mesh.RecalculateBounds();
 
@@ -685,6 +813,14 @@ namespace Galilego.Universe
                     kv.Value.Go.SetActive(false);
                     kv.Value.Visible = false;
                 }
+            }
+        }
+
+        private void SetBaseSphereVisible(bool visible)
+        {
+            if (baseSphereRenderer != null && baseSphereRenderer.enabled != visible)
+            {
+                baseSphereRenderer.enabled = visible;
             }
         }
 

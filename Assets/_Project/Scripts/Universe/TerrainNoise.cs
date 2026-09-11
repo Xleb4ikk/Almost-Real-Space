@@ -25,6 +25,15 @@ namespace Galilego.Universe
         public double ContinentSharpness;
         public double ContinentDepth;
         public double RidgedMix;
+        public double PlainMix;
+        public double PlainFrequency;
+        public int PlainOctaves;
+        public double PlainThreshold;
+        public double PlainSharpness;
+        public double PlainElevation;
+        public double DetailMix;
+        public double DetailFrequency;
+        public int DetailOctaves;
         public double WarpStrength;
         public double WarpFrequency;
         public int WarpOctaves;
@@ -32,9 +41,15 @@ namespace Galilego.Universe
         public double ColorNoiseFrequency;
         public int ColorNoiseOctaves;
         public int ColorNoiseSeedOffset;
+        public double ColorDetailFrequency;
+        public int ColorDetailOctaves;
+        public int ColorDetailSeedOffset;
 
         /// <summary>Считать ли маску в job'е (иначе пишет 0). Экономит ~15% при выключенной маске.</summary>
         public bool ComputeMask;
+
+        /// <summary>Считать ли мелкомасштабную цветовую деталь (моттлинг земли).</summary>
+        public bool ComputeDetail;
 
         public static TerrainNoiseParams FromTerrain(HeightfieldTerrain terrain)
         {
@@ -51,6 +66,15 @@ namespace Galilego.Universe
                 ContinentSharpness = terrain.ContinentSharpness,
                 ContinentDepth = terrain.ContinentDepth,
                 RidgedMix = terrain.RidgedMix,
+                PlainMix = terrain.PlainMix,
+                PlainFrequency = terrain.PlainFrequency,
+                PlainOctaves = terrain.PlainOctaves,
+                PlainThreshold = terrain.PlainThreshold,
+                PlainSharpness = terrain.PlainSharpness,
+                PlainElevation = terrain.PlainElevation,
+                DetailMix = terrain.DetailMix,
+                DetailFrequency = terrain.DetailFrequency,
+                DetailOctaves = terrain.DetailOctaves,
                 WarpStrength = terrain.WarpStrength,
                 WarpFrequency = terrain.WarpFrequency,
                 WarpOctaves = terrain.WarpOctaves,
@@ -58,7 +82,11 @@ namespace Galilego.Universe
                 ColorNoiseFrequency = terrain.ColorNoiseFrequency,
                 ColorNoiseOctaves = terrain.ColorNoiseOctaves,
                 ColorNoiseSeedOffset = terrain.ColorNoiseSeedOffset,
-                ComputeMask = terrain.ColorNoiseFrequency > 0d && terrain.ColorNoiseStrength != 0d
+                ColorDetailFrequency = terrain.ColorDetailFrequency,
+                ColorDetailOctaves = terrain.ColorDetailOctaves,
+                ColorDetailSeedOffset = terrain.ColorDetailSeedOffset,
+                ComputeMask = terrain.ColorNoiseFrequency > 0d && terrain.ColorNoiseStrength != 0d,
+                ComputeDetail = terrain.ColorDetailFrequency > 0d && terrain.ColorDetailStrength != 0d
             };
         }
     }
@@ -77,6 +105,8 @@ namespace Galilego.Universe
             double gain = EffectiveGain(p.Gain);
             double lacunarity = EffectiveLacunarity(p.Lacunarity);
             if (p.WarpStrength <= 0d && p.RidgedMix <= 0d && p.ContinentFrequency <= 0d
+                && (p.PlainMix <= 0d || p.PlainFrequency <= 0d)
+                && (p.DetailMix <= 0d || p.DetailFrequency <= 0d)
                 && lacunarity == 2d && gain == 0.5d)
             {
                 return SampleFbmLegacy(p, direction);
@@ -107,6 +137,30 @@ namespace Galilego.Universe
             }
 
             h -= (1d - continent) * math.max(0d, p.ContinentDepth);
+
+            double plainK = 0d;
+            if (p.PlainMix > 0d && p.PlainFrequency > 0d)
+            {
+                // Равнины: низкочастотная маска (свой поток, salt 5) выделяет зоны,
+                // где рельеф стягивается к низкому плато; между зонами остаются
+                // хребты. Множитель continent — равнины только на суше.
+                double plainNoise = SampleFbmEx(q, p.PlainFrequency, p.PlainOctaves, p.Seed, 5, gain, lacunarity);
+                double plainMask = Smoothstep01((plainNoise - (p.PlainThreshold - p.PlainSharpness))
+                    / math.max(1e-9d, 2d * p.PlainSharpness));
+                plainK = math.min(1d, math.max(0d, p.PlainMix)) * plainMask * continent;
+                h = p.PlainElevation + ((h - p.PlainElevation) * (1d - plainK));
+            }
+
+            if (p.DetailMix > 0d && p.DetailFrequency > 0d)
+            {
+                // Мелкомасштабная деталь (скалы/осыпи): высокочастотный свой поток
+                // (salt 6), абсолютная доля амплитуды. Только на суше и гаснет в
+                // равнинах — хребты становятся изрезанными, равнины остаются гладкими.
+                double detail = SampleFbmEx(q, p.DetailFrequency, p.DetailOctaves, p.Seed, 6, gain, lacunarity);
+                double detailLand = continent * (1d - plainK);
+                h += detail * p.DetailMix * detailLand;
+            }
+
             return h;
         }
 
@@ -117,6 +171,19 @@ namespace Galilego.Universe
             return SampleFbmEx(
                 direction, p.ColorNoiseFrequency, p.ColorNoiseOctaves,
                 p.Seed + (p.ColorNoiseSeedOffset * 7919), 4, gain, lacunarity);
+        }
+
+        /// <summary>
+        /// Мелкомасштабная цветовая деталь ~[−1,1] (моттлинг земли: пятна
+        /// почвы/света), свой поток (salt 7). Цвет физику не касается.
+        /// </summary>
+        public static double SampleColorDetailNoise(TerrainNoiseParams p, double3 direction)
+        {
+            double gain = EffectiveGain(p.Gain);
+            double lacunarity = EffectiveLacunarity(p.Lacunarity);
+            return SampleFbmEx(
+                direction, p.ColorDetailFrequency, p.ColorDetailOctaves,
+                p.Seed + (p.ColorDetailSeedOffset * 7919), 7, gain, lacunarity);
         }
 
         public static double EffectiveGain(double gain)
@@ -199,7 +266,9 @@ namespace Galilego.Universe
                 offset = new double3(offset.y + 19.19d, offset.z + 7.47d, offset.x + 3.13d);
             }
 
-            return norm > 0d ? sum / norm : 0d;
+            // smoothstep сохраняет средний уровень 0.5, но обостряет контраст:
+            // узкие гребни и плоские долины вместо равномерной «ряби».
+            return norm > 0d ? Smoothstep01(sum / norm) : 0d;
         }
 
         private static double3 SaltOffset(int seed, int salt)
@@ -212,6 +281,18 @@ namespace Galilego.Universe
                     return new double3(seed * 23.17d + 503.7d, seed * 89.31d + 311.3d, seed * 11.71d + 877.9d);
                 case 4:
                     return new double3(seed * 17.13d + 2100.7d, seed * 37.31d + 1900.4d, seed * 73.17d + 2300.8d);
+                case 5:
+                    // Собственный поток маски равнин: НЕ default (там уже сидят
+                    // база salt 0 и warp-Z salt 300) — иначе равнины коррелируют
+                    // с warp'ом, а через него с хребтами.
+                    return new double3(seed * 83.77d + 2600.3d, seed * 29.13d + 2900.7d, seed * 67.31d + 2700.1d);
+                case 6:
+                    // Поток мелкомасштабной детали (rock detail): снова свой,
+                    // чтобы не коррелировать ни с формой, ни с масками.
+                    return new double3(seed * 53.19d + 3600.9d, seed * 97.31d + 3300.5d, seed * 41.77d + 3900.3d);
+                case 7:
+                    // Поток мелкомасштабной цветовой детали (моттлинг).
+                    return new double3(seed * 71.93d + 4600.1d, seed * 33.47d + 4900.7d, seed * 89.11d + 4300.5d);
                 case 100:
                     return new double3(seed * 91.7d + 1000.3d, seed * 47.31d + 700.7d, seed * 13.17d + 400.9d);
                 case 200:
@@ -306,12 +387,19 @@ namespace Galilego.Universe
 
         public NativeArray<double> Heights;
         public NativeArray<float> ColorMasks;
+        public NativeArray<float> ColorDetails;
 
         public void Execute(int index)
         {
             double3 direction = Directions[index];
             Heights[index] = TerrainNoise.SampleHeight(Params, direction);
             ColorMasks[index] = Params.ComputeMask ? (float)TerrainNoise.SampleColorNoise(Params, direction) : 0f;
+            if (ColorDetails.IsCreated)
+            {
+                ColorDetails[index] = Params.ComputeDetail
+                    ? (float)TerrainNoise.SampleColorDetailNoise(Params, direction)
+                    : 0f;
+            }
         }
     }
 }

@@ -8,7 +8,9 @@ Shader "Galilego/SunDisc"
     }
     SubShader
     {
-        Tags { "RenderPipeline" = "HDRenderPipeline" "RenderType" = "Transparent" "Queue" = "Transparent" }
+        // Transparent+2: рисуется после атмосферы (её ручной композит заменяет
+        // фон), чтобы диск солнца не затирался.
+        Tags { "RenderPipeline" = "HDRenderPipeline" "RenderType" = "Transparent" "Queue" = "Transparent+2" }
 
         Pass
         {
@@ -68,6 +70,13 @@ Shader "Galilego/SunDisc"
                 float glow = pow(saturate(1.0 - radius), _GlowFalloff);
                 float alpha = saturate((core + glow) * 0.9);
                 if (alpha <= 0.001)
+                {
+                    discard;
+                }
+
+                // Солнце за планетой прячем по глубине (а не по ZTest диска,
+                // который на большой дистанции оказывается ближе планеты).
+                if (!IsSky(uint2(input.positionCS.xy)))
                 {
                     discard;
                 }
