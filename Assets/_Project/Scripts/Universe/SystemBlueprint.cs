@@ -71,6 +71,7 @@ namespace Galilego.Universe
         public int TerrainWarpSeedOffset = 0;
         public double TerrainColorRockSlopeTan = 0d;
         public double TerrainColorRockSlopeWidth = 0.1d;
+        public double TerrainColorRockHeightMin = 0d;
         public double TerrainColorSnowSlopeTan = 0d;
         public double TerrainColorNoiseFrequency = 0d;
         public int TerrainColorNoiseOctaves = 3;
@@ -177,6 +178,7 @@ namespace Galilego.Universe
                         WarpSeedOffset = bp.TerrainWarpSeedOffset,
                         ColorRockSlopeTan = bp.TerrainColorRockSlopeTan,
                         ColorRockSlopeWidth = bp.TerrainColorRockSlopeWidth,
+                        ColorRockHeightMin = bp.TerrainColorRockHeightMin,
                         ColorSnowSlopeTan = bp.TerrainColorSnowSlopeTan,
                         ColorNoiseFrequency = bp.TerrainColorNoiseFrequency,
                         ColorNoiseOctaves = bp.TerrainColorNoiseOctaves,

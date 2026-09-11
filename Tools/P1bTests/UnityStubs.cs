@@ -98,6 +98,13 @@ namespace UnityEngine
         public static Color operator *(Color a, float d) => new Color(a.r * d, a.g * d, a.b * d, a.a * d);
     }
 
+    [Serializable]
+    public struct Vector4
+    {
+        public float x, y, z, w;
+        public Vector4(float x, float y, float z, float w) { this.x = x; this.y = y; this.z = z; this.w = w; }
+    }
+
     public struct Quaternion
     {
         public float x, y, z, w;
@@ -193,6 +200,9 @@ namespace UnityEngine
         public void Clear() { }
         public void RecalculateNormals() { }
         public void RecalculateBounds() { }
+        public void SetUVs(int channel, System.Collections.Generic.List<Vector2> uvs) { }
+        public void SetUVs(int channel, System.Collections.Generic.List<Vector3> uvs) { }
+        public void SetUVs(int channel, System.Collections.Generic.List<Vector4> uvs) { }
     }
 
     public class MeshFilter : Component
@@ -226,6 +236,7 @@ namespace UnityEngine
         public Material(Material source) { shader = source?.shader; color = source != null ? source.color : default; }
         public void SetColor(string name, Color value) { }
         public void SetFloat(string name, float value) { }
+        public void SetVector(string name, Vector4 value) { }
         public void SetTexture(string name, Texture2D value) { }
     }
 
@@ -377,6 +388,11 @@ namespace UnityEngine
     public sealed class RangeAttribute : Attribute
     {
         public RangeAttribute(float min, float max) { }
+    }
+
+    public sealed class MinAttribute : Attribute
+    {
+        public MinAttribute(float min) { }
     }
 
     public sealed class ContextMenuAttribute : Attribute
@@ -535,7 +551,7 @@ namespace UnityEngine.Rendering.HighDefinition
 {
     public sealed class HDAdditionalCameraData : UnityEngine.Component
     {
-        public enum AntialiasingMode { None, FastApproximateAntialiasing, TemporalAntialiasing }
+        public enum AntialiasingMode { None, FastApproximateAntialiasing, TemporalAntialiasing, SubpixelMorphologicalAntiAliasing }
         public enum ClearColorMode { Sky, Color, None }
         public AntialiasingMode antialiasing;
         public ClearColorMode clearColorMode;

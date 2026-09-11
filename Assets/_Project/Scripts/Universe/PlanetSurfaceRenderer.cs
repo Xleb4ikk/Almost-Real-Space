@@ -31,25 +31,32 @@ namespace Galilego.Universe
         public SimulationRunner Runner;
 
         [Tooltip("Вершин на сторону узла (65 ≈ 64 квада).")]
+        [Range(9, 257)]
         public int TileResolution = 65;
 
         [Tooltip("Максимальная глубина quadtree (0 = 6 граней целиком).")]
-        public int MaxDepth = 10;
+        [Range(0, 16)]
+        public int MaxDepth = 12;
 
         [Tooltip("Сплит: узел делится, если дистанция до центра < размера узла × фактор.")]
-        public float SplitFactor = 4f;
+        [Range(1f, 12f)]
+        public float SplitFactor = 3.5f;
 
         [Tooltip("Гистерезис слияния: уже поделённый узел сливается обратно только при дистанции > размера × SplitFactor × это. Между порогами держится прошлый уровень (против LOD-флапа на скорости).")]
+        [Range(1f, 3f)]
         public float MergeHysteresis = 1.3f;
 
         [Tooltip("Глубина юбки как доля размера узла.")]
+        [Range(0f, 0.2f)]
         public float SkirtFactor = 0.03f;
 
         [Tooltip("Сколько чанков строить за кадр (первый кадр — без лимита).")]
-        public int BuildsPerFrame = 12;
+        [Range(1, 64)]
+        public int BuildsPerFrame = 16;
 
         [Tooltip("Ограничитель активных узлов (защита от лавины).")]
-        public int MaxNodes = 4000;
+        [Min(64)]
+        public int MaxNodes = 6000;
 
         [Tooltip("Высота над рельефом, выше которой чанки рельефа не рендерятся (м). На этой дистанции вместо них включается базовая сфера (см. BaseSphereColor).")]
         public double MaxAltitudeMeters = 5e6d;
@@ -58,6 +65,7 @@ namespace Galilego.Universe
         public Color BaseSphereColor = new Color(0.16f, 0.24f, 0.32f, 1f);
 
         [Tooltip("Максимум закэшированных мешей (лишние вытесняются).")]
+        [Min(64)]
         public int MaxCachedChunks = 2048;
 
         private struct Node
@@ -209,6 +217,11 @@ namespace Galilego.Universe
 
             authoring.ApplyToTerrain(terrain);
             noiseParams = TerrainNoiseParams.FromTerrain(terrain);
+            if (materialCache != null)
+            {
+                ApplyTerrainUniforms(materialCache);
+            }
+
             ClearChunkCache();
             firstFrameGuard = -1;
         }
@@ -251,9 +264,69 @@ namespace Galilego.Universe
             if (!ParamsEqual(current, noiseParams))
             {
                 noiseParams = current;
+                if (materialCache != null)
+                {
+                    ApplyTerrainUniforms(materialCache);
+                }
+
                 ClearChunkCache();
                 firstFrameGuard = -1;
             }
+            else if (materialCache != null && !ColorStateEquals(CaptureColorState(), colorStateCache))
+            {
+                // Правки ТОЛЬКО цвета (сила/частота моттлинга, пороги скалы/снега)
+                // не меняют геометрию — перестраивать чанки не нужно, достаточно
+                // перелить униформы в материал.
+                ApplyTerrainUniforms(materialCache);
+            }
+        }
+
+        /// <summary>Снимок цветовых униформ (без геометрии) для live-тюнинга.</summary>
+        private struct TerrainColorState
+        {
+            public double RockSlopeTan;
+            public double RockSlopeWidth;
+            public double RockHeightMin;
+            public double SnowSlopeTan;
+            public double NoiseFrequency;
+            public int NoiseOctaves;
+            public double NoiseStrength;
+            public double DetailFrequency;
+            public int DetailOctaves;
+            public double DetailStrength;
+        }
+
+        private TerrainColorState colorStateCache;
+
+        private TerrainColorState CaptureColorState()
+        {
+            return new TerrainColorState
+            {
+                RockSlopeTan = terrain.ColorRockSlopeTan,
+                RockSlopeWidth = terrain.ColorRockSlopeWidth,
+                RockHeightMin = terrain.ColorRockHeightMin,
+                SnowSlopeTan = terrain.ColorSnowSlopeTan,
+                NoiseFrequency = terrain.ColorNoiseFrequency,
+                NoiseOctaves = terrain.ColorNoiseOctaves,
+                NoiseStrength = terrain.ColorNoiseStrength,
+                DetailFrequency = terrain.ColorDetailFrequency,
+                DetailOctaves = terrain.ColorDetailOctaves,
+                DetailStrength = terrain.ColorDetailStrength
+            };
+        }
+
+        private static bool ColorStateEquals(TerrainColorState a, TerrainColorState b)
+        {
+            return a.RockSlopeTan == b.RockSlopeTan
+                && a.RockSlopeWidth == b.RockSlopeWidth
+                && a.RockHeightMin == b.RockHeightMin
+                && a.SnowSlopeTan == b.SnowSlopeTan
+                && a.NoiseFrequency == b.NoiseFrequency
+                && a.NoiseOctaves == b.NoiseOctaves
+                && a.NoiseStrength == b.NoiseStrength
+                && a.DetailFrequency == b.DetailFrequency
+                && a.DetailOctaves == b.DetailOctaves
+                && a.DetailStrength == b.DetailStrength;
         }
 
         private static bool ParamsEqual(TerrainNoiseParams a, TerrainNoiseParams b)
@@ -542,9 +615,16 @@ namespace Galilego.Universe
                 }
             }
 
+            // Цвет маски/детали теперь считается на пиксель в шейдере — в
+            // tile-job'е эти потоки не нужны. Правку делаем в ЛОКАЛЬНОЙ копии,
+            // чтобы не сломать ParamsEqual по кэшированному noiseParams.
+            TerrainNoiseParams jobParams = noiseParams;
+            jobParams.ComputeMask = false;
+            jobParams.ComputeDetail = false;
+
             TerrainTileJob tileJob = new TerrainTileJob
             {
-                Params = noiseParams,
+                Params = jobParams,
                 Directions = dirs,
                 Heights = jobHeights,
                 ColorMasks = jobMasks,
@@ -553,11 +633,6 @@ namespace Galilego.Universe
             tileJob.Schedule(grid * grid, 64, new JobHandle()).Complete();
 
             var positions = new Vector3[grid * grid];
-            var heights = new double[grid * grid];
-            var masks = new float[grid * grid];
-            var details = new float[grid * grid];
-            var latitudes = new float[grid * grid];
-            var waterDepthNorm = new float[grid * grid];
             for (int gi = 0; gi < grid; gi++)
             {
                 for (int gj = 0; gj < grid; gj++)
@@ -565,54 +640,25 @@ namespace Galilego.Universe
                     int vi = (gi * grid) + gj;
                     double3 d = dirs[vi];
                     double rawHeight = jobHeights[vi] * amplitude;
-                    double height = rawHeight;
-                    if (height < seaLevel)
-                    {
-                        height = seaLevel;
-                    }
-
-                    heights[vi] = height;
-                    masks[vi] = jobMasks[vi];
-                    details[vi] = jobDetails[vi];
-                    // z тела-fixed направления = sin(lat): широта для полярных шапок.
-                    latitudes[vi] = (float)System.Math.Asin(System.Math.Max(-1d, System.Math.Min(1d, d.z)));
-                    // Глубина воды (до клампа): уходит в шейдер через uv.x.
-                    double depth = seaLevel - rawHeight;
-                    waterDepthNorm[vi] = depth > 0d
-                        ? (float)System.Math.Min(1d, depth / System.Math.Max(1d, amplitude))
-                        : 0f;
+                    double height = rawHeight < seaLevel ? seaLevel : rawHeight;
                     Vector3d absAstro = new Vector3d(d.x, d.y, d.z) * (body.Radius + height);
                     positions[vi] = AstroFrame.ToSimulation(absAstro - centerAstro);
                 }
             }
 
-            dirs.Dispose();
-            jobHeights.Dispose();
+            // dirs/jobHeights ещё нужны для per-pixel атрибутов ниже.
             jobMasks.Dispose();
             jobDetails.Dispose();
 
             var vertices = new Vector3[totalVerts];
             var normals = new Vector3[totalVerts];
-            var colors = new Color[totalVerts];
-            var uvs = new Vector2[totalVerts];
-
-            bool maskOn = terrain.ColorNoiseFrequency > 0d && terrain.ColorNoiseStrength != 0d;
-            // Цветовая деталь живёт в ЦВЕТЕ ВЕРШИН: если шаг вершин грубее
-            // самой детали (дальний/крупный LOD), высокочастотный шум алиасится
-            // в однотонное пятно. Гасим её на грубых тайлах — при подлёте
-            // деталь включается сама, без «грязного» шума вдали.
-            double detailStrength = terrain.ColorDetailStrength;
-            if (detailStrength != 0d && terrain.ColorDetailFrequency > 0d)
-            {
-                double vertSpacing = body.Radius * 1.5707963267948966d / (1 << node.Depth) / (n - 1);
-                double featureSize = body.Radius / terrain.ColorDetailFrequency;
-                if (vertSpacing > featureSize * 0.75d)
-                {
-                    detailStrength = 0d;
-                }
-            }
-
-            bool detailOn = terrain.ColorDetailFrequency > 0d && detailStrength != 0d;
+            // Альбедо считается НА ПИКСЕЛЬ во фрагментном шейдере (per-pixel
+            // процедурный цвет): на грубом LOD вершинный цвет давал блочные
+            // границы пятен. Сюда кладём только то, что нельзя вывести из
+            // геометрии: тел-fixed направление, сырую высоту (до клампа морем)
+            // и косинус уклона (rock/snow-полосы по склону).
+            var surfaceDirs = new Vector3[totalVerts];
+            var surfaceExtra = new Vector2[totalVerts];
 
             for (int row = 0; row < n; row++)
             {
@@ -634,24 +680,16 @@ namespace Galilego.Universe
                         normals[index] = -normals[index];
                     }
 
-                    double cosA = Vector3.Dot(normals[index], radial);
-                    double slopeTan = TerrainPalette.SlopeTan(cosA);
-                    double mask = maskOn ? masks[halo] : 0d;
-                    double detail = detailOn ? details[halo] : 0d;
-
-                    Color color = TerrainPalette.HeightColorEx(
-                        heights[halo], seaLevel, amplitude, slopeTan, mask,
-                        terrain.ColorRockSlopeTan, terrain.ColorRockSlopeWidth,
-                        terrain.ColorSnowSlopeTan, terrain.ColorNoiseStrength,
-                        detail, detailStrength, latitudes[halo]);
-
-                    bool isWater = heights[halo] <= seaLevel + seaEps;
-                    colors[index] = new Color(color.r, color.g, color.b, isWater ? 1f : 0f);
-                    uvs[index] = isWater
-                        ? new Vector2(waterDepthNorm[halo], 0f)
-                        : new Vector2(0f, 0f);
+                    double3 d = dirs[halo];
+                    surfaceDirs[index] = new Vector3((float)d.x, (float)d.y, (float)d.z);
+                    double rawHeight = jobHeights[halo] * amplitude;
+                    surfaceExtra[index] = new Vector2(
+                        (float)rawHeight, Vector3.Dot(normals[index], radial));
                 }
             }
+
+            dirs.Dispose();
+            jobHeights.Dispose();
 
             if (diagnosticChunksLogged < 8)
             {
@@ -661,13 +699,14 @@ namespace Galilego.Universe
                 double maxH = double.MinValue;
                 for (int k = 0; k < coreCount; k++)
                 {
-                    if (colors[k].a < 0.5f)
+                    double raw = surfaceExtra[k].x;
+                    if (raw > seaLevel + seaEps)
                     {
                         landCore++;
                     }
 
-                    minH = System.Math.Min(minH, heights[((k / n) + 1) * grid + ((k % n) + 1)]);
-                    maxH = System.Math.Max(maxH, heights[((k / n) + 1) * grid + ((k % n) + 1)]);
+                    minH = System.Math.Min(minH, raw);
+                    maxH = System.Math.Max(maxH, raw);
                 }
 
                 Debug.Log(string.Format(
@@ -696,8 +735,8 @@ namespace Galilego.Universe
                     Vector3 inward = (p + centerUnity).normalized;
                     vertices[baseIndex + k] = p - (inward * skirtDepth);
                     normals[baseIndex + k] = normals[coreIndex];
-                    colors[baseIndex + k] = colors[coreIndex];
-                    uvs[baseIndex + k] = uvs[coreIndex];
+                    surfaceDirs[baseIndex + k] = surfaceDirs[coreIndex];
+                    surfaceExtra[baseIndex + k] = surfaceExtra[coreIndex];
                 }
             }
 
@@ -766,8 +805,8 @@ namespace Galilego.Universe
             chunk.Mesh.Clear();
             chunk.Mesh.vertices = vertices;
             chunk.Mesh.normals = normals;
-            chunk.Mesh.colors = colors;
-            chunk.Mesh.uv = uvs;
+            chunk.Mesh.SetUVs(1, new List<Vector3>(surfaceDirs));
+            chunk.Mesh.SetUVs(2, new List<Vector2>(surfaceExtra));
             chunk.Mesh.triangles = triangles;
             chunk.Mesh.RecalculateBounds();
 
@@ -830,9 +869,53 @@ namespace Galilego.Universe
             {
                 Shader shader = Shader.Find("Galilego/PlanetSurface");
                 materialCache = new Material(shader);
+                ApplyTerrainUniforms(materialCache);
             }
 
             return materialCache;
+        }
+
+        /// <summary>
+        /// Параметры per-pixel палитры/шума в материал из единственного источника
+        /// (HeightfieldTerrain + TerrainPalette). Цвета передаём как float4 через
+        /// SetVector: они уже линейные, повторная sRGB-конверсия не нужна.
+        /// </summary>
+        private void ApplyTerrainUniforms(Material m)
+        {
+            m.SetFloat("_TerrainAmplitude", (float)System.Math.Max(1d, terrain.AmplitudeMeters));
+            m.SetFloat("_TerrainSeaLevel", (float)System.Math.Max(terrain.SeaLevelMeters, -1e30d));
+            m.SetFloat("_TerrainSeed", terrain.Seed);
+            m.SetFloat("_TerrainGain", (float)TerrainNoise.EffectiveGain(terrain.Gain));
+            m.SetFloat("_TerrainLacunarity", (float)TerrainNoise.EffectiveLacunarity(terrain.Lacunarity));
+            m.SetFloat("_TerrainRockSlopeTan", (float)terrain.ColorRockSlopeTan);
+            m.SetFloat("_TerrainRockSlopeWidth", (float)terrain.ColorRockSlopeWidth);
+            m.SetFloat("_TerrainRockHeightMin", (float)terrain.ColorRockHeightMin);
+            m.SetFloat("_TerrainSnowSlopeTan", (float)terrain.ColorSnowSlopeTan);
+            m.SetFloat("_ColorNoiseFrequency", (float)terrain.ColorNoiseFrequency);
+            m.SetFloat("_ColorNoiseOctaves", terrain.ColorNoiseOctaves);
+            m.SetFloat("_ColorNoiseStrength", (float)terrain.ColorNoiseStrength);
+            m.SetFloat("_ColorDetailFrequency", (float)terrain.ColorDetailFrequency);
+            m.SetFloat("_ColorDetailOctaves", terrain.ColorDetailOctaves);
+            m.SetFloat("_ColorDetailStrength", (float)terrain.ColorDetailStrength);
+
+            m.SetVector("_ColSand", ToVec(TerrainPalette.Sand));
+            m.SetVector("_ColDesert", ToVec(TerrainPalette.Desert));
+            m.SetVector("_ColDryGrass", ToVec(TerrainPalette.DryGrass));
+            m.SetVector("_ColGrass", ToVec(TerrainPalette.Grass));
+            m.SetVector("_ColForest", ToVec(TerrainPalette.Forest));
+            m.SetVector("_ColTundra", ToVec(TerrainPalette.Tundra));
+            m.SetVector("_ColRock", ToVec(TerrainPalette.Rock));
+            m.SetVector("_ColSnow", ToVec(TerrainPalette.Snow));
+            m.SetVector("_ColSea", ToVec(TerrainPalette.Sea));
+            m.SetVector("_ColSoil", ToVec(TerrainPalette.Soil));
+            m.SetVector("_ColLush", ToVec(TerrainPalette.Lush));
+
+            colorStateCache = CaptureColorState();
+        }
+
+        private static Vector4 ToVec(Color c)
+        {
+            return new Vector4(c.r, c.g, c.b, c.a);
         }
 
         private static long NodeId(int face, int depth, int ix, int iy)

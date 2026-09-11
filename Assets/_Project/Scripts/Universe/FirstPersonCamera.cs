@@ -32,6 +32,9 @@ namespace Galilego.Universe
         [Tooltip("TAA на камере. Выключено: TAA покадрово дробит проекцию и «плывёт» яркой звездой/деталями.")]
         public bool TemporalAA = false;
 
+        [Tooltip("SMAA — пространственное сглаживание (без TAA-гостинга). Включается, когда TAA выключен: убирает рваный силуэт рельефа на фоне неба.")]
+        public bool SubpixelAA = true;
+
         [Tooltip("Диагностика: раз в секунду писать позицию камеры и цели.")]
         public bool LogCameraDiagnostics = true;
 
@@ -52,7 +55,9 @@ namespace Galilego.Universe
             {
                 hdCamera.antialiasing = TemporalAA
                     ? UnityEngine.Rendering.HighDefinition.HDAdditionalCameraData.AntialiasingMode.TemporalAntialiasing
-                    : UnityEngine.Rendering.HighDefinition.HDAdditionalCameraData.AntialiasingMode.None;
+                    : SubpixelAA
+                        ? UnityEngine.Rendering.HighDefinition.HDAdditionalCameraData.AntialiasingMode.SubpixelMorphologicalAntiAliasing
+                        : UnityEngine.Rendering.HighDefinition.HDAdditionalCameraData.AntialiasingMode.None;
             }
 
             if (LockCursor)
