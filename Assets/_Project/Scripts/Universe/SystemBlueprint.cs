@@ -56,6 +56,15 @@ namespace Galilego.Universe
         public double TerrainContinentSharpness = 0.25d;
         public double TerrainContinentDepth = 0.75d;
         public double TerrainRidgedMix = 0d;
+        public double TerrainPlainMix = 0d;
+        public double TerrainPlainFrequency = 0d;
+        public int TerrainPlainOctaves = 2;
+        public double TerrainPlainThreshold = 0d;
+        public double TerrainPlainSharpness = 0.3d;
+        public double TerrainPlainElevation = 0.1d;
+        public double TerrainDetailMix = 0d;
+        public double TerrainDetailFrequency = 0d;
+        public int TerrainDetailOctaves = 5;
         public double TerrainWarpStrength = 0d;
         public double TerrainWarpFrequency = 1d;
         public int TerrainWarpOctaves = 2;
@@ -67,6 +76,10 @@ namespace Galilego.Universe
         public int TerrainColorNoiseOctaves = 3;
         public double TerrainColorNoiseStrength = 0d;
         public int TerrainColorNoiseSeedOffset = 0;
+        public double TerrainColorDetailFrequency = 0d;
+        public int TerrainColorDetailOctaves = 3;
+        public double TerrainColorDetailStrength = 0d;
+        public int TerrainColorDetailSeedOffset = 0;
 
         /// <summary>Индекс родителя в списке; -1 — корень дерева (звезда).</summary>
         public int ParentIndex = -1;
@@ -149,6 +162,15 @@ namespace Galilego.Universe
                         ContinentSharpness = bp.TerrainContinentSharpness,
                         ContinentDepth = bp.TerrainContinentDepth,
                         RidgedMix = bp.TerrainRidgedMix,
+                        PlainMix = bp.TerrainPlainMix,
+                        PlainFrequency = bp.TerrainPlainFrequency,
+                        PlainOctaves = bp.TerrainPlainOctaves,
+                        PlainThreshold = bp.TerrainPlainThreshold,
+                        PlainSharpness = bp.TerrainPlainSharpness,
+                        PlainElevation = bp.TerrainPlainElevation,
+                        DetailMix = bp.TerrainDetailMix,
+                        DetailFrequency = bp.TerrainDetailFrequency,
+                        DetailOctaves = bp.TerrainDetailOctaves,
                         WarpStrength = bp.TerrainWarpStrength,
                         WarpFrequency = bp.TerrainWarpFrequency,
                         WarpOctaves = bp.TerrainWarpOctaves,
@@ -159,7 +181,11 @@ namespace Galilego.Universe
                         ColorNoiseFrequency = bp.TerrainColorNoiseFrequency,
                         ColorNoiseOctaves = bp.TerrainColorNoiseOctaves,
                         ColorNoiseStrength = bp.TerrainColorNoiseStrength,
-                        ColorNoiseSeedOffset = bp.TerrainColorNoiseSeedOffset
+                        ColorNoiseSeedOffset = bp.TerrainColorNoiseSeedOffset,
+                        ColorDetailFrequency = bp.TerrainColorDetailFrequency,
+                        ColorDetailOctaves = bp.TerrainColorDetailOctaves,
+                        ColorDetailStrength = bp.TerrainColorDetailStrength,
+                        ColorDetailSeedOffset = bp.TerrainColorDetailSeedOffset
                     };
                 }
 

@@ -28,14 +28,14 @@ namespace Galilego.Universe
         [Tooltip("Множитель видимости звёзд (k в exp(−L·k)): больше — звёзды прячутся раньше.")]
         public float StarVisibilityK = 6f;
 
-        [Tooltip("Сила солнечного члена террейна (пересвет → меньше).")]
-        public float TerrainSunIntensity = 0.6f;
+        [Tooltip("Сила солнечного члена террейна. Шейдер мягко сжимает пересвет (Reinhard), поэтому диапазон ~1..9 даёт насыщенный цвет без выгорания.")]
+        public float TerrainSunIntensity = 3f;
 
         [Tooltip("Ночная засветка террейна (звёздный свет); почти 0 = кромешная тьма.")]
         public float NightAmbient = 0.005f;
 
         [Tooltip("Дневная засветка террейна небом.")]
-        public float SkyAmbient = 0.06f;
+        public float SkyAmbient = 0.1f;
 
         /// <summary>Прозрачность к солнцу по каналам (обновляется каждый кадр).</summary>
         public Vector3 Transmittance { get; private set; } = Vector3.one;
@@ -73,15 +73,17 @@ namespace Galilego.Universe
 
             double sinEl = Vector3d.Dot(sunDir, up);
 
-            double scaleHeight = atmosphere != null && atmosphere.ScaleHeightMeters > 0d
-                ? atmosphere.ScaleHeightMeters
-                : 8500d;
+            // Единый источник β: те же коэффициенты, что у GPU-купола
+            // (AtmosphereOptics). Раньше здесь был эмпирический ExtinctionPerMeter —
+            // небо и свет Солнца считались по разным моделям и расходились.
+            AtmosphereOptics.Coefficients coeff = atmosphere != null
+                ? atmosphere.ToOptics()
+                : AtmosphereOptics.FromProfile(0d, 0d, 0d, 0d, false);
+            double scaleHeight = coeff.RayleighScaleHeight;
             double topAltitude = atmosphere != null ? atmosphere.TopAltitudeMeters : 0d;
             double density = SkyPhysics.Density(altitude, scaleHeight, topAltitude);
-            Vector3d extinction = SkyPhysics.ExtinctionPerMeter(
-                atmosphere != null ? atmosphere.SeaLevelDensityKgPerCubicMeter : 0d);
 
-            Vector3d transmittance = SkyPhysics.SunTransmittance(sinEl, density, scaleHeight, extinction);
+            Vector3d transmittance = SkyPhysics.SunTransmittance(sinEl, density, coeff);
             double occlusion = SkyPhysics.SunOcclusion(sinEl, altitude, body.Radius);
             double day = SkyPhysics.DayFactor(sinEl);
             double skyLuminance = SkyPhysics.SkyLuminance(sinEl, density);

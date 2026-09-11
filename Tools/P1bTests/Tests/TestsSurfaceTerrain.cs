@@ -1002,7 +1002,7 @@ internal static partial class P1bTests
         }
 
         // Rock-override: пляж (t = 0.01) + крутой склон → ровно скала.
-        UnityEngine.Color rock = new UnityEngine.Color(0.40f, 0.36f, 0.32f);
+        UnityEngine.Color rock = TerrainPalette.Rock;
         bool rockFull = ColorsEqual(
             TerrainPalette.HeightColorEx(1000d, sea, amp, 1d, 0d, 0.5d, 0.1d, 0d, 0d), rock);
 
@@ -1094,12 +1094,69 @@ internal static partial class P1bTests
             }
         }
 
+        // Цветовая деталь (моттлинг): меняет цвет земли, strength 0 = игнор,
+        // на море не влияет (изоляция от water-ветки).
+        bool detailChanges = !ColorsEqual(
+            TerrainPalette.HeightColorEx(24000d, sea, amp, 0d, 0d, 0d, 0.1d, 0d, 0d, 1d, 0.35d), bandBase)
+            && !ColorsEqual(
+                TerrainPalette.HeightColorEx(24000d, sea, amp, 0d, 0d, 0d, 0.1d, 0d, 0d, -1d, 0.35d), bandBase);
+        bool detailOff = ColorsEqual(
+            TerrainPalette.HeightColorEx(24000d, sea, amp, 0d, 0d, 0d, 0.1d, 0d, 0d, 1d, 0d), bandBase);
+        bool detailSkipsSea = ColorsEqual(
+            TerrainPalette.HeightColorEx(-1000d, sea, amp, 0d, 0d, 0d, 0.1d, 0d, 0d, 1d, 0.35d), seaColor);
+
+        // SampleColorDetailNoise: детерминизм, диапазон, независимость seed offset.
+        HeightfieldTerrain detailT = MakeTerrain(42);
+        detailT.ColorDetailFrequency = 50d;
+        detailT.ColorDetailOctaves = 3;
+        bool detailDet = true;
+        bool detailRange = true;
+        for (int i = 0; i <= 20; i++)
+        {
+            for (int j = 0; j <= 20; j++)
+            {
+                double lat = (-80d + (160d * i / 20d)) * (Math.PI / 180d);
+                double lon = (-180d + (360d * j / 20d)) * (Math.PI / 180d);
+                double m1 = detailT.SampleColorDetailNoise(lat, lon);
+                double m2 = detailT.SampleColorDetailNoise(lat, lon);
+                if (m1 != m2)
+                {
+                    detailDet = false;
+                }
+
+                if (!(m1 >= -1d - 1e-9d && m1 <= 1d + 1e-9d))
+                {
+                    detailRange = false;
+                }
+            }
+        }
+
+        HeightfieldTerrain detailT2 = MakeTerrain(42);
+        detailT2.ColorDetailFrequency = 50d;
+        detailT2.ColorDetailOctaves = 3;
+        detailT2.ColorDetailSeedOffset = 5;
+        bool detailSeedDiffers = false;
+        for (int i = 0; i <= 20; i++)
+        {
+            for (int j = 0; j <= 20; j++)
+            {
+                double lat = (-80d + (160d * i / 20d)) * (Math.PI / 180d);
+                double lon = (-180d + (360d * j / 20d)) * (Math.PI / 180d);
+                if (detailT.SampleColorDetailNoise(lat, lon) != detailT2.SampleColorDetailNoise(lat, lon))
+                {
+                    detailSeedDiffers = true;
+                }
+            }
+        }
+
         Check(legacyExact, "T83 terrain-color", "Ex(всё выкл) = бит-в-бит legacy (guard'ы, склоны, маска)");
         Check(rockFull && rockBlend && rockBelow && rockSkipsSea, "T83 terrain-color", "rock-override: скала/бленд/порог/море");
         Check(snowGentle && snowSteep && snowGuard, "T83 terrain-color", "snow-gate: пологий снег, крутой скала, guard 0");
         Check(maskShifts && maskOff, "T83 terrain-color", "маска сдвигает bands; strength 0 = игнор");
         Check(slopeZero && slopeOne && slopeHuge && slopeMono, "T83 terrain-color", "SlopeTan: 0/1/вертикаль/монотонность");
         Check(noiseDet && noiseRange && noiseSeedDiffers, "T83 terrain-color", "SampleColorNoise: детерминизм, [−1,1], seed offset");
+        Check(detailChanges && detailOff && detailSkipsSea, "T83 terrain-color", "цветовая деталь: меняет землю, strength 0 = игнор, море не трогает");
+        Check(detailDet && detailRange && detailSeedDiffers, "T83 terrain-color", "SampleColorDetailNoise: детерминизм, [−1,1], seed offset");
         return 0;
     }
 
@@ -1119,8 +1176,8 @@ internal static partial class P1bTests
         {
             Seed = 24334543,
             AmplitudeMeters = 9144d,
-            BaseFrequency = 6d,
-            Octaves = 7,
+            BaseFrequency = 20d,
+            Octaves = 10,
             SeaLevelMeters = 0d,
             Lacunarity = 2d,
             Gain = 0.5d,
@@ -1129,10 +1186,28 @@ internal static partial class P1bTests
             ContinentThreshold = -0.1d,
             ContinentSharpness = 0.3d,
             ContinentDepth = 0.9d,
-            RidgedMix = 0.8d,
+            RidgedMix = 0.7d,
+            PlainMix = 0.85d,
+            PlainFrequency = 1.8d,
+            PlainOctaves = 2,
+            PlainThreshold = 0.05d,
+            PlainSharpness = 0.25d,
+            PlainElevation = 0.1d,
+            DetailMix = 0d,
+            DetailFrequency = 700d,
+            DetailOctaves = 5,
             WarpStrength = 0.1d,
             WarpFrequency = 2d,
-            WarpOctaves = 2
+            WarpOctaves = 2,
+            ColorRockSlopeTan = 0.6d,
+            ColorRockSlopeWidth = 0.15d,
+            ColorSnowSlopeTan = 0.5d,
+            ColorNoiseFrequency = 25d,
+            ColorNoiseOctaves = 4,
+            ColorNoiseStrength = 0.09d,
+            ColorDetailFrequency = 1500d,
+            ColorDetailOctaves = 3,
+            ColorDetailStrength = 0.35d
         };
     }
 
@@ -1443,5 +1518,233 @@ internal static partial class P1bTests
     private static Vector3d ToVector3d(UnityEngine.Vector3 v)
     {
         return new Vector3d(v.x, v.y, v.z);
+    }
+
+    /// <summary>
+    /// Средняя вторая разность высот вдоль экватора — изолирует мелкомасштабную
+    /// шероховатость (крупный наклон/низкие частоты первой разностью не ловятся).
+    /// </summary>
+    private static double FineRoughness(TerrainNoiseParams p, int samples, double stepRad)
+    {
+        double sum = 0d;
+        double prev2 = TerrainNoise.SampleHeight(p, new Unity.Mathematics.double3(1d, 0d, 0d));
+        double prev1 = TerrainNoise.SampleHeight(p, new Unity.Mathematics.double3(Math.Cos(stepRad), Math.Sin(stepRad), 0d));
+        for (int k = 2; k < samples; k++)
+        {
+            double lon = k * stepRad;
+            double cur = TerrainNoise.SampleHeight(p, new Unity.Mathematics.double3(Math.Cos(lon), Math.Sin(lon), 0d));
+            sum += Math.Abs(cur - (2d * prev1) + prev2);
+            prev2 = prev1;
+            prev1 = cur;
+        }
+
+        return sum / Math.Max(1, samples - 2);
+    }
+
+    private static int Test89_TerrainPlains()
+    {
+        // Маска равнин должна идти на СОБСТВЕННОМ потоке (salt 5), а не в
+        // default (там база salt 0 и warp-Z salt 300). Косвенно проверяем:
+        // смена PlainFrequency при PlainMix=0 не должна менять вывод, а
+        // включённый PlainMix — сплющивать рельеф только по маске.
+        HeightfieldTerrain freqOnly = SceneLikeTerrain();
+        freqOnly.PlainMix = 0d;
+        freqOnly.PlainFrequency = 1.8d;
+        freqOnly.DetailMix = 0d;
+        freqOnly.DetailFrequency = 0d;
+        HeightfieldTerrain off = SceneLikeTerrain();
+        off.PlainMix = 0d;
+        off.PlainFrequency = 0d;
+        off.DetailMix = 0d;
+        off.DetailFrequency = 0d;
+
+        // flat — ровно сценическая конфигурация (валидируем реальные значения).
+        HeightfieldTerrain flat = SceneLikeTerrain();
+
+        // detailOn — та же форма, но без равнин: изолируем вклад детали.
+        HeightfieldTerrain detailOn = SceneLikeTerrain();
+        detailOn.PlainMix = 0d;
+        detailOn.DetailMix = 0.06d;
+        detailOn.DetailFrequency = 700d;
+        detailOn.DetailOctaves = 5;
+
+        TerrainNoiseParams pFreq = TerrainNoiseParams.FromTerrain(freqOnly);
+        TerrainNoiseParams pOff = TerrainNoiseParams.FromTerrain(off);
+        TerrainNoiseParams pFlat = TerrainNoiseParams.FromTerrain(flat);
+        TerrainNoiseParams pDetail = TerrainNoiseParams.FromTerrain(detailOn);
+
+        const int n = 80;
+        double[,] aOff = new double[n + 1, n + 1];
+        double[,] aFlat = new double[n + 1, n + 1];
+        bool freqIgnored = true;
+        bool differs = false;
+        bool nonFinite = false;
+        double roughOff = 0d;
+        double roughFlat = 0d;
+        long roughCount = 0;
+        long total = 0;
+        long nearPlain = 0;
+        long nearPlainOff = 0;
+        long highFlat = 0;
+        long highOff = 0;
+        long landFlat = 0;
+        long landOff = 0;
+
+        for (int face = 0; face < CubeSphere.FaceCount; face++)
+        {
+            for (int i = 0; i <= n; i++)
+            {
+                for (int j = 0; j <= n; j++)
+                {
+                    Vector3d d = CubeSphere.Direction(face, i / (double)n, j / (double)n);
+                    Unity.Mathematics.double3 dir = new Unity.Mathematics.double3(d.X, d.Y, d.Z);
+                    double hOff = TerrainNoise.SampleHeight(pOff, dir);
+                    double hFreq = TerrainNoise.SampleHeight(pFreq, dir);
+                    double hFlat = TerrainNoise.SampleHeight(pFlat, dir);
+                    if (hFreq != hOff)
+                    {
+                        freqIgnored = false;
+                    }
+
+                    if (hFlat != hOff)
+                    {
+                        differs = true;
+                    }
+
+                    if (double.IsNaN(hFlat) || double.IsInfinity(hFlat))
+                    {
+                        nonFinite = true;
+                    }
+
+                    aOff[i, j] = hOff;
+                    aFlat[i, j] = hFlat;
+                    total++;
+                    if (hFlat > 0d && Math.Abs(hFlat - flat.PlainElevation) < 0.05d)
+                    {
+                        nearPlain++;
+                    }
+
+                    if (hOff > 0d && Math.Abs(hOff - flat.PlainElevation) < 0.05d)
+                    {
+                        nearPlainOff++;
+                    }
+
+                    if (hFlat > 0.4d)
+                    {
+                        highFlat++;
+                    }
+
+                    if (hOff > 0.4d)
+                    {
+                        highOff++;
+                    }
+
+                    if (hFlat > 0d)
+                    {
+                        landFlat++;
+                    }
+
+                    if (hOff > 0d)
+                    {
+                        landOff++;
+                    }
+                }
+            }
+
+            for (int i = 1; i < n; i++)
+            {
+                for (int j = 1; j < n; j++)
+                {
+                    roughOff += Math.Abs(aOff[i + 1, j] - aOff[i - 1, j])
+                        + Math.Abs(aOff[i, j + 1] - aOff[i, j - 1]);
+                    roughFlat += Math.Abs(aFlat[i + 1, j] - aFlat[i - 1, j])
+                        + Math.Abs(aFlat[i, j + 1] - aFlat[i, j - 1]);
+                    roughCount++;
+                }
+            }
+        }
+
+        double meanOff = roughOff / roughCount;
+        double meanFlat = roughFlat / roughCount;
+        double fineOff = FineRoughness(pOff, 4000, 1e-4d);
+        double fineDetail = FineRoughness(pDetail, 4000, 1e-4d);
+        double plainFrac = (double)nearPlain / total;
+        double plainFracOff = (double)nearPlainOff / total;
+        System.Console.WriteLine("PLAINS nearPlain=" + plainFrac.ToString("F3")
+            + " nearPlainOff=" + plainFracOff.ToString("F3")
+            + " highFlat=" + ((double)highFlat / total).ToString("F3")
+            + " highOff=" + ((double)highOff / total).ToString("F3")
+            + " landFlat=" + ((double)landFlat / total).ToString("F3")
+            + " landOff=" + ((double)landOff / total).ToString("F3")
+            + " roughOff=" + meanOff.ToString("E3") + " roughFlat=" + meanFlat.ToString("E3")
+            + " fineOff=" + fineOff.ToString("E3") + " fineDetail=" + fineDetail.ToString("E3"));
+
+        // Job (та же реализация, что физика/рендер) обязан совпасть с
+        // HeightfieldTerrain бит-в-бит и с включённой маской равнин.
+        int m = 40;
+        int count = (m + 1) * (m + 1);
+        Unity.Collections.NativeArray<Unity.Mathematics.double3> dirs =
+            new Unity.Collections.NativeArray<Unity.Mathematics.double3>(count, Unity.Collections.Allocator.TempJob);
+        Unity.Collections.NativeArray<double> hs =
+            new Unity.Collections.NativeArray<double>(count, Unity.Collections.Allocator.TempJob);
+        Unity.Collections.NativeArray<float> ms =
+            new Unity.Collections.NativeArray<float>(count, Unity.Collections.Allocator.TempJob);
+        Unity.Collections.NativeArray<float> cds =
+            new Unity.Collections.NativeArray<float>(count, Unity.Collections.Allocator.TempJob);
+        for (int i = 0; i <= m; i++)
+        {
+            for (int j = 0; j <= m; j++)
+            {
+                int k = (i * (m + 1)) + j;
+                double lat = (-85d + (170d * i / m)) * (Math.PI / 180d);
+                double lon = (-180d + (360d * j / m)) * (Math.PI / 180d);
+                double cosLat = Math.Cos(lat);
+                dirs[k] = new Unity.Mathematics.double3(cosLat * Math.Cos(lon), cosLat * Math.Sin(lon), Math.Sin(lat));
+            }
+        }
+
+        TerrainTileJob job = new TerrainTileJob { Params = pFlat, Directions = dirs, Heights = hs, ColorMasks = ms, ColorDetails = cds };
+        bool jobExact = true;
+        bool detailWired = false;
+        double worstDetail = 0d;
+        for (int k = 0; k < count; k++)
+        {
+            job.Execute(k);
+            if (hs[k] != TerrainNoise.SampleHeight(pFlat, dirs[k]))
+            {
+                jobExact = false;
+            }
+
+            double sd = TerrainNoise.SampleColorDetailNoise(pFlat, dirs[k]);
+            if (Math.Abs(cds[k]) > 1e-6d)
+            {
+                detailWired = true;
+            }
+
+            double div = Math.Abs(cds[k] - sd);
+            if (div > worstDetail)
+            {
+                worstDetail = div;
+            }
+        }
+
+        dirs.Dispose();
+        hs.Dispose();
+        ms.Dispose();
+        cds.Dispose();
+
+        Check(freqIgnored, "T89 terrain-plains", "PlainFrequency без PlainMix не меняет рельеф");
+        Check(differs, "T89 terrain-plains", "PlainMix>0 меняет рельеф");
+        Check(plainFrac > 0.1d, "T89 terrain-plains",
+            "доля равнин заметна: " + plainFrac.ToString("F3"));
+        Check(meanFlat < meanOff, "T89 terrain-plains",
+            "равнины снижают шероховатость: " + meanFlat.ToString("E3") + " < " + meanOff.ToString("E3"));
+        Check(fineDetail > fineOff * 1.05d, "T89 terrain-plains",
+            "деталь добавляет мелкомасштабный рельеф: " + fineDetail.ToString("E3") + " > " + (fineOff * 1.05d).ToString("E3"));
+        Check(!nonFinite, "T89 terrain-plains", "нет не-конечных высот");
+        Check(jobExact, "T89 terrain-plains", "job == managed бит-в-бит с маской равнин");
+        Check(detailWired && worstDetail <= 5e-6d, "T89 terrain-plains",
+            "job пишет цветовую деталь (расхождение " + worstDetail.ToString("E3") + ")");
+        return 0;
     }
 }

@@ -12,13 +12,30 @@ namespace Galilego.Universe
     /// </summary>
     internal static class TerrainPalette
     {
-        private static readonly Color Sand = new Color(0.72f, 0.68f, 0.50f);
-        private static readonly Color Desert = new Color(0.64f, 0.54f, 0.34f);
-        private static readonly Color Grass = new Color(0.26f, 0.46f, 0.21f);
-        private static readonly Color Forest = new Color(0.13f, 0.31f, 0.13f);
-        private static readonly Color Rock = new Color(0.40f, 0.36f, 0.32f);
-        private static readonly Color Snow = new Color(0.92f, 0.92f, 0.95f);
-        private static readonly Color Sea = new Color(0.12f, 0.30f, 0.58f);
+        // Цвета заданы в привычном sRGB (как в редакторе), а проект рендерит в
+        // Linear: без конверсии альбедо попадает в шейдер как линейное и на
+        // выходе гамма-осветляется/обесцвечивается (бледная поверхность).
+        private static float ToLinear(float c)
+        {
+            return c <= 0.04045f
+                ? c / 12.92f
+                : (float)System.Math.Pow((c + 0.055f) / 1.055f, 2.4d);
+        }
+
+        private static Color Srgb(float r, float g, float b)
+        {
+            return new Color(ToLinear(r), ToLinear(g), ToLinear(b), 1f);
+        }
+
+        internal static readonly Color Sand = Srgb(0.80f, 0.73f, 0.55f);
+        internal static readonly Color Desert = Srgb(0.74f, 0.60f, 0.36f);
+        internal static readonly Color DryGrass = Srgb(0.50f, 0.52f, 0.27f);
+        internal static readonly Color Grass = Srgb(0.28f, 0.46f, 0.17f);
+        internal static readonly Color Forest = Srgb(0.12f, 0.28f, 0.10f);
+        internal static readonly Color Tundra = Srgb(0.46f, 0.44f, 0.37f);
+        internal static readonly Color Rock = Srgb(0.45f, 0.41f, 0.36f);
+        internal static readonly Color Snow = Srgb(0.96f, 0.97f, 0.99f);
+        internal static readonly Color Sea = Srgb(0.05f, 0.20f, 0.42f);
 
         /// <summary>
         /// Тангенс угла склона по косинусу между нормалью и радиалью.
@@ -40,16 +57,38 @@ namespace Galilego.Universe
             double height, double seaLevel, double amplitude,
             double slopeTan, double colorMask,
             double rockSlopeTan, double rockWidth,
-            double snowSlopeTan, double maskStrength)
+            double snowSlopeTan, double maskStrength,
+            double colorDetail = 0d, double detailStrength = 0d,
+            double latitudeRadians = 0d)
         {
-            if (rockSlopeTan <= 0d && snowSlopeTan <= 0d && maskStrength == 0d)
+            if (rockSlopeTan <= 0d && snowSlopeTan <= 0d && maskStrength == 0d
+                && detailStrength == 0d)
             {
                 return HeightColorLegacy(height, seaLevel, amplitude);
             }
 
             bool maskOn = maskStrength != 0d;
-            Color c = BaseColor(height, seaLevel, amplitude, colorMask, maskOn, maskStrength);
+            Color c = BaseColor(height, seaLevel, amplitude, colorMask, maskOn, maskStrength, latitudeRadians);
             bool isSea = height <= seaLevel + (amplitude * 0.001d);
+
+            // Мелкомасштабное разнообразие земли: пятна почвы (в тёплый коричневый)
+            // и более сочной/тёмной зелени. Середина остаётся базовым цветом, а не
+            // уходит в оливковую грязь (в отличие от простого lerp двух тонов).
+            if (!isSea && detailStrength != 0d)
+            {
+                double d = Clamp(colorDetail, -1d, 1d);
+                if (d > 0d)
+                {
+                    Color soil = Srgb(0.50f, 0.40f, 0.26f);
+                    c = Color.Lerp(c, soil, (float)(d * detailStrength));
+                }
+                else
+                {
+                    Color lush = Srgb(0.13f, 0.40f, 0.12f);
+                    c = Color.Lerp(c, lush, (float)((-d) * detailStrength * 0.6d));
+                }
+            }
+
             bool snowBand = !isSea && IsSnowBand(height, seaLevel, amplitude);
 
             if (!isSea && rockSlopeTan > 0d && slopeTan >= rockSlopeTan)
@@ -57,7 +96,7 @@ namespace Galilego.Universe
                 double w = (slopeTan - rockSlopeTan) / System.Math.Max(1e-9d, rockWidth);
                 w = System.Math.Min(1d, w);
                 w = w * w * (3d - (2d * w));
-                c = Color.Lerp(c, Rock, (float)w);
+                c = w >= 1d ? Rock : Color.Lerp(c, Rock, (float)w);
             }
 
             if (snowBand && snowSlopeTan > 0d && slopeTan > snowSlopeTan)
@@ -70,16 +109,18 @@ namespace Galilego.Universe
 
         internal static Color HeightColorLegacy(double height, double seaLevel, double amplitude)
         {
-            return BaseColor(height, seaLevel, amplitude, 0d, false, 0d);
+            return BaseColor(height, seaLevel, amplitude, 0d, false, 0d, 0d);
         }
 
         private static bool IsSnowBand(double height, double seaLevel, double amplitude)
         {
             double t = (height - seaLevel) / System.Math.Max(1d, amplitude);
-            return t >= 0.62d;
+            return t >= 0.55d;
         }
 
-        private static Color BaseColor(double height, double seaLevel, double amplitude, double mask, bool maskOn, double maskStrength)
+        private static Color BaseColor(
+            double height, double seaLevel, double amplitude,
+            double mask, bool maskOn, double maskStrength, double latitudeRadians)
         {
             if (height <= seaLevel + (amplitude * 0.001d))
             {
@@ -97,34 +138,86 @@ namespace Galilego.Universe
                 t = 0d;
             }
 
-            if (t < 0.05d)
+            if (t < 0.03d)
             {
                 return Sand;
             }
 
-            // Биом по влажности: маска −1 (сухо) → пустыня, +1 (влажно) → лес.
-            double wet = maskOn ? Clamp01(0.5d + (0.5d * Clamp(mask, -1d, 1d))) : 0.5d;
-            Color lowland;
-            if (wet < 0.5d)
+            // Биом по влажности: сухо → пустыня → сухая трава → луг → лес.
+            // Маска усиливается (×1.6): её сырое значение жмётся к нулю fBm'ом,
+            // без усиления весь континент получается одним тоном.
+            double wet = maskOn ? Clamp01(0.5d + (Clamp(mask, -1d, 1d) * 1.6d)) : 0.5d;
+            Color lowland = BiomeColor(wet);
+            Color c;
+            if (t < 0.45d)
             {
-                lowland = Color.Lerp(Desert, Grass, (float)(wet * 2d));
+                c = lowland;
+            }
+            else if (t < 0.70d)
+            {
+                c = Color.Lerp(lowland, Rock, (float)((t - 0.45d) * (1d / 0.25d)));
             }
             else
             {
-                lowland = Color.Lerp(Grass, Forest, (float)((wet - 0.5d) * 2d));
+                c = Color.Lerp(Rock, Snow, (float)((t - 0.70d) * (1d / 0.30d)));
             }
 
-            if (t < 0.4d)
+            // Полярные широты: тундра у границы леса, ледяная шапка у полюсов.
+            double lat01 = Clamp01(System.Math.Abs(latitudeRadians) / (System.Math.PI * 0.5d));
+            double tundra = Smoothstep01((lat01 - 0.52d) / 0.22d);
+            double ice = Smoothstep01((lat01 - 0.70d) / 0.16d);
+            if (tundra > 0d)
             {
-                return lowland;
+                c = Color.Lerp(c, Tundra, (float)(tundra * 0.85d));
             }
 
-            if (t < 0.62d)
+            if (ice > 0d)
             {
-                return Color.Lerp(lowland, Rock, (float)((t - 0.4d) * (1d / 0.22d)));
+                c = Color.Lerp(c, Snow, (float)ice);
             }
 
-            return Color.Lerp(Rock, Snow, (float)((t - 0.62d) * (1d / 0.38d)));
+            return c;
+        }
+
+        /// <summary>Цвет низменности по нормированной влажности 0..1.</summary>
+        private static Color BiomeColor(double wet)
+        {
+            if (wet < 0.18d)
+            {
+                return Desert;
+            }
+
+            if (wet < 0.38d)
+            {
+                return Color.Lerp(Desert, DryGrass, (float)((wet - 0.18d) / 0.20d));
+            }
+
+            if (wet < 0.58d)
+            {
+                return Color.Lerp(DryGrass, Grass, (float)((wet - 0.38d) / 0.20d));
+            }
+
+            if (wet < 0.80d)
+            {
+                return Color.Lerp(Grass, Forest, (float)((wet - 0.58d) / 0.22d));
+            }
+
+            return Forest;
+        }
+
+        private static double Smoothstep01(double t)
+        {
+            if (t <= 0d)
+            {
+                return 0d;
+            }
+
+            if (t >= 1d)
+            {
+                return 1d;
+            }
+
+            return t * t * (3d - (2d * t));
         }
 
         private static double Clamp(double v, double min, double max)

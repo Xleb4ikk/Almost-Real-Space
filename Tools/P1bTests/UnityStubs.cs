@@ -148,6 +148,7 @@ namespace UnityEngine
         public static void Destroy(GameObject target) { }
         public static void Destroy(Material target) { }
         public static void Destroy(Component target) { }
+        public static void Destroy(Texture2D target) { }
     }
 
     public static class Application
@@ -213,6 +214,8 @@ namespace UnityEngine
         public static void SetGlobalVector(string name, Vector3 value) { }
         public static void SetGlobalFloat(string name, float value) { }
         public static void SetGlobalColor(string name, Color value) { }
+        public static void SetGlobalInt(string name, int value) { }
+        public static void SetGlobalTexture(string name, Texture2D value) { }
     }
 
     public class Material
@@ -220,6 +223,7 @@ namespace UnityEngine
         public Color color;
         public Shader shader;
         public Material(Shader shader) { this.shader = shader; }
+        public Material(Material source) { shader = source?.shader; color = source != null ? source.color : default; }
         public void SetColor(string name, Color value) { }
         public void SetFloat(string name, float value) { }
         public void SetTexture(string name, Texture2D value) { }
@@ -227,10 +231,17 @@ namespace UnityEngine
 
     public enum FilterMode { Point, Bilinear, Trilinear }
 
+    public enum TextureWrapMode { Repeat, Clamp, Mirror }
+
+    public enum TextureFormat { Alpha8, RGBA32, ARGB32, RGB24, RGBAHalf, RGBAFloat, RFloat }
+
     public class Texture2D
     {
         public FilterMode filterMode;
+        public TextureWrapMode wrapMode;
         public Texture2D(int width, int height) { }
+        public Texture2D(int width, int height, TextureFormat format, bool mipChain) { }
+        public Texture2D(int width, int height, TextureFormat format, bool mipChain, bool linear) { }
         public void SetPixels(Color[] pixels) { }
         public void Apply() { }
     }

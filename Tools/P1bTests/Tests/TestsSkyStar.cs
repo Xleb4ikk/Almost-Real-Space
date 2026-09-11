@@ -26,8 +26,11 @@ internal static partial class P1bTests
         bool channelOrder = noonT.Z < noonT.Y && noonT.Y < noonT.X && noonT.X <= 1d;
 
         // Низкое солнце: зелёный/синий уходят в ноль, красный остаётся заметным.
+        // Порог ослаблен против прежнего (<0.05): реальные β Рэлея слабее
+        // эмпирических, поэтому зелёный на закате ~0.087, но красный по-прежнему
+        // доминирует кратно. Проверяем именно доминирование, а не абсолют.
         Vector3d duskT = SkyPhysics.SunTransmittance(0.02d, 1d, H, extinction);
-        bool duskRed = duskT.X > duskT.Y && duskT.X > 0.01d && duskT.Y < 0.05d;
+        bool duskRed = duskT.X > (duskT.Y * 3d) && duskT.X > 0.05d && duskT.Y < 0.15d;
 
         // Airmass: конечна у горизонта и монотонно растёт при снижении солнца.
         double amZenith = SkyPhysics.Airmass(1d);

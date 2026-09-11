@@ -444,15 +444,17 @@ MonoBehaviour:
     SeaLevelPressurePascals: 0
     SeaLevelDensityKgPerCubicMeter: 0
     ScaleHeightMeters: 0
+    OzoneEnabled: 1
     VisualEnabled: 0
-    RayleighColor: {r: 0.3, g: 0.55, b: 1, a: 1}
-    MieColor: {r: 1, g: 0.85, b: 0.62, a: 1}
+    RayleighColor: {r: 1, g: 1, b: 1, a: 1}
+    MieColor: {r: 1, g: 1, b: 1, a: 1}
     Intensity: 1
-    MieAnisotropy: 0.76
-    DensityFalloff: 1
-    StepCount: 32
-    MultiScatter: 0.35
+    MieAnisotropy: 0.8
+    AerosolScale: 1
+    StepCount: 48
     PlanetOcclusion: 1
+    GroundColor: {r: 0.16, g: 0.18, b: 0.14, a: 1}
+    HorizonFade: 0.01
   TerrainEnabled: 0
   TerrainSeed: 0
   TerrainAmplitudeMeters: 1000
@@ -467,6 +469,15 @@ MonoBehaviour:
   TerrainContinentSharpness: 0.25
   TerrainContinentDepth: 0.75
   TerrainRidgedMix: 0
+  TerrainPlainMix: 0
+  TerrainPlainFrequency: 0
+  TerrainPlainOctaves: 2
+  TerrainPlainThreshold: 0
+  TerrainPlainSharpness: 0.3
+  TerrainPlainElevation: 0.1
+  TerrainDetailMix: 0
+  TerrainDetailFrequency: 0
+  TerrainDetailOctaves: 5
   TerrainWarpStrength: 0
   TerrainWarpFrequency: 1
   TerrainWarpOctaves: 2
@@ -478,6 +489,10 @@ MonoBehaviour:
   TerrainColorNoiseOctaves: 3
   TerrainColorNoiseStrength: 0
   TerrainColorNoiseSeedOffset: 0
+  TerrainColorDetailFrequency: 0
+  TerrainColorDetailOctaves: 3
+  TerrainColorDetailStrength: 0
+  TerrainColorDetailSeedOffset: 0
 --- !u!4 &230795297
 Transform:
   m_ObjectHideFlags: 0
@@ -631,20 +646,22 @@ MonoBehaviour:
     SeaLevelPressurePascals: 101325
     SeaLevelDensityKgPerCubicMeter: 1.225
     ScaleHeightMeters: 8500
+    OzoneEnabled: 1
     VisualEnabled: 1
-    RayleighColor: {r: 0.3, g: 0.55, b: 1, a: 1}
-    MieColor: {r: 1, g: 0.85, b: 0.62, a: 1}
-    Intensity: 0.4
-    MieAnisotropy: 0.76
-    DensityFalloff: 1
-    StepCount: 32
-    MultiScatter: 0.35
+    RayleighColor: {r: 1, g: 1, b: 1, a: 1}
+    MieColor: {r: 1, g: 1, b: 1, a: 1}
+    Intensity: 1
+    MieAnisotropy: 0.8
+    AerosolScale: 1
+    StepCount: 48
     PlanetOcclusion: 1
+    GroundColor: {r: 0.16, g: 0.18, b: 0.14, a: 1}
+    HorizonFade: 0.01
   TerrainEnabled: 1
   TerrainSeed: 24334543
   TerrainAmplitudeMeters: 9144
-  TerrainBaseFrequency: 6
-  TerrainOctaves: 7
+  TerrainBaseFrequency: 20
+  TerrainOctaves: 10
   TerrainSeaLevelMeters: 0
   TerrainLacunarity: 2
   TerrainGain: 0.5
@@ -653,7 +670,16 @@ MonoBehaviour:
   TerrainContinentThreshold: -0.1
   TerrainContinentSharpness: 0.3
   TerrainContinentDepth: 0.9
-  TerrainRidgedMix: 0.8
+  TerrainRidgedMix: 0.7
+  TerrainPlainMix: 0.85
+  TerrainPlainFrequency: 1.8
+  TerrainPlainOctaves: 2
+  TerrainPlainThreshold: 0.05
+  TerrainPlainSharpness: 0.25
+  TerrainPlainElevation: 0.1
+  TerrainDetailMix: 0
+  TerrainDetailFrequency: 0
+  TerrainDetailOctaves: 5
   TerrainWarpStrength: 0.1
   TerrainWarpFrequency: 2
   TerrainWarpOctaves: 2
@@ -661,10 +687,14 @@ MonoBehaviour:
   TerrainColorRockSlopeTan: 0.6
   TerrainColorRockSlopeWidth: 0.15
   TerrainColorSnowSlopeTan: 0.5
-  TerrainColorNoiseFrequency: 4
-  TerrainColorNoiseOctaves: 3
-  TerrainColorNoiseStrength: 0.06
+  TerrainColorNoiseFrequency: 25
+  TerrainColorNoiseOctaves: 4
+  TerrainColorNoiseStrength: 0.09
   TerrainColorNoiseSeedOffset: 0
+  TerrainColorDetailFrequency: 1500
+  TerrainColorDetailOctaves: 3
+  TerrainColorDetailStrength: 0.35
+  TerrainColorDetailSeedOffset: 0
 --- !u!135 &1081663219
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -894,7 +924,7 @@ MonoBehaviour:
   Paused: 0
   SpawnAltitudeMeters: 50000
   SpawnFacingSun: 1
-  SpawnPhaseDegrees: 60
+  SpawnPhaseDegrees: 1
   SpawnHorizontalSpeedMps: 3278
   SpawnMassKg: 5000
   MainThrustNewtons: 100000
@@ -1295,9 +1325,9 @@ MonoBehaviour:
   SunLight: {fileID: 157207113}
   SunLightIntensity: 1.6
   StarVisibilityK: 6
-  TerrainSunIntensity: 0.6
+  TerrainSunIntensity: 3
   NightAmbient: 0.005
-  SkyAmbient: 0.05
+  SkyAmbient: 0.1
 --- !u!114 &1982425603
 MonoBehaviour:
   m_ObjectHideFlags: 0

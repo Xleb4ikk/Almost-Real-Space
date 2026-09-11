@@ -126,6 +126,8 @@ internal static partial class P1bTests
             new P1bCase("Test86_NaNProbe", Test86_NaNProbe, false),
             new P1bCase("Test87_LandFraction", Test87_LandFraction, false),
             new P1bCase("Test88_SkyPhysics", Test88_SkyPhysics, false),
+            new P1bCase("Test89_TerrainPlains", Test89_TerrainPlains, false),
+            new P1bCase("Test90_AtmosphereOptics", Test90_AtmosphereOptics, false),
         };
     }
 }

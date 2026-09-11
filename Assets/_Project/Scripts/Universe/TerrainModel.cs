@@ -106,6 +106,40 @@ namespace Galilego.Universe
         /// <summary>Доля ridged-шума 0..1 (горные хребты, только на континентах). 0 = выключен (legacy).</summary>
         public double RidgedMix = 0d;
 
+        /// <summary>
+        /// Сила равнин 0..1: в зонах маски рельеф стягивается к низкому плато.
+        /// 0 = выключено (legacy, бит-в-бит). Равнины только на континентах.
+        /// </summary>
+        public double PlainMix = 0d;
+
+        /// <summary>Частота низкочастотной маски равнин. ≤0 = выключена (legacy).</summary>
+        public double PlainFrequency = 0d;
+
+        /// <summary>Число октав маски равнин.</summary>
+        public int PlainOctaves = 2;
+
+        /// <summary>Порог маски равнин: выше — равнина.</summary>
+        public double PlainThreshold = 0d;
+
+        /// <summary>Полуширина smoothstep-перехода маски равнин.</summary>
+        public double PlainSharpness = 0.3d;
+
+        /// <summary>Нормализованная высота плато равнин (доля AmplitudeMeters).</summary>
+        public double PlainElevation = 0.1d;
+
+        /// <summary>
+        /// Мелкомасштабная деталь (скалы/осыпи) как доля AmplitudeMeters.
+        /// Добавляется высокочастотным потоком только на суше, гаснет в равнинах.
+        /// 0 = выключено (legacy).
+        /// </summary>
+        public double DetailMix = 0d;
+
+        /// <summary>Базовая частота детали (циклов на единичный вектор). ≤0 = выключена.</summary>
+        public double DetailFrequency = 0d;
+
+        /// <summary>Число октав детали.</summary>
+        public int DetailOctaves = 5;
+
         /// <summary>Сила domain-warp в единицах направления (типично 0.05..0.3). 0 = выключен (legacy).</summary>
         public double WarpStrength = 0d;
 
@@ -155,6 +189,21 @@ namespace Galilego.Universe
 
         /// <summary>Сдвиг потока маски (целый).</summary>
         public int ColorNoiseSeedOffset = 0;
+
+        /// <summary>
+        /// Частота мелкомасштабной цветовой детали (моттлинг земли). ≤0 = выкл.
+        /// Отдельный поток (salt 7): пятна почвы на земле.
+        /// </summary>
+        public double ColorDetailFrequency = 0d;
+
+        /// <summary>Число октав цветовой детали.</summary>
+        public int ColorDetailOctaves = 3;
+
+        /// <summary>Сила моттлинга 0..1 (0 = выкл).</summary>
+        public double ColorDetailStrength = 0d;
+
+        /// <summary>Сдвиг потока цветовой детали (целый).</summary>
+        public int ColorDetailSeedOffset = 0;
 
         /// <summary>Угловой шаг соседей для нормали (рад): разрешает 5 октав с запасом.</summary>
         private const double NormalEpsilonRadians = 1e-4d;
@@ -209,6 +258,15 @@ namespace Galilego.Universe
         {
             Vector3d direction = LatLonToDirection(latitudeRadians, longitudeRadians);
             return TerrainNoise.SampleColorNoise(
+                TerrainNoiseParams.FromTerrain(this),
+                new double3(direction.X, direction.Y, direction.Z));
+        }
+
+        /// <summary>Мелкомасштабная цветовая деталь (моттлинг) в ~[−1, 1] по lat/lon.</summary>
+        public double SampleColorDetailNoise(double latitudeRadians, double longitudeRadians)
+        {
+            Vector3d direction = LatLonToDirection(latitudeRadians, longitudeRadians);
+            return TerrainNoise.SampleColorDetailNoise(
                 TerrainNoiseParams.FromTerrain(this),
                 new double3(direction.X, direction.Y, direction.Z));
         }
