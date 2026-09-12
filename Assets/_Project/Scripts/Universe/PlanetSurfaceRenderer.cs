@@ -74,6 +74,18 @@ namespace Galilego.Universe
         [Min(64)]
         public int MaxCachedChunks = 2048;
 
+        [Header("Простая тень травы (блоб)")]
+        [Tooltip("Цвет пятна простой тени (opaque alpha-test; альфа не используется).")]
+        public Color BlobShadowColor = new Color(0.05f, 0.08f, 0.04f, 1f);
+
+        [Tooltip("Размер пятна относительно масштаба инстанса травы.")]
+        [Range(0.2f, 2f)]
+        public float BlobScaleFactor = 1.5f;
+
+        [Tooltip("Смещение пятна от солнца (доля размера): тень уходит из-под куста и становится видна, как настоящий каст.")]
+        [Range(0f, 2f)]
+        public float BlobSunOffset = 0.6f;
+
         private struct Node
         {
             public int Face;
@@ -111,6 +123,11 @@ namespace Galilego.Universe
         private GroundDecorProfile decorProfile;
         private Matrix4x4[] decorBatchScratch;
         private Matrix4x4[] decorPerMeshScratch;
+        private Matrix4x4[] decorCastScratch;
+        private Matrix4x4[] decorRestScratch;
+        private Matrix4x4[] decorBlobScratch;
+        private Mesh blobMesh;
+        private Material blobMaterial;
 
         private readonly Dictionary<long, Chunk> chunks = new Dictionary<long, Chunk>();
         private readonly List<Node> desired = new List<Node>();
@@ -120,6 +137,7 @@ namespace Galilego.Universe
         private readonly List<long> toEvict = new List<long>();
         private int firstFrameGuard = -1;
         private int diagnosticChunksLogged;
+        private bool blobDiagLogged;
         private Vector3 bodyRenderPosition;
         private Quaternion currentBodyRotation = Quaternion.identity;
         private Vector3d currentBodyPosition;
@@ -202,6 +220,16 @@ namespace Galilego.Universe
             {
                 Destroy(materialCache);
             }
+
+            if (blobMaterial != null)
+            {
+                Destroy(blobMaterial);
+            }
+
+            if (blobMesh != null)
+            {
+                Destroy(blobMesh);
+            }
         }
 
         /// <summary>Сбросить кэш мешей (после live-смены параметров рельефа).</summary>
@@ -255,10 +283,7 @@ namespace Galilego.Universe
 
             authoring.ApplyToTerrain(terrain);
             noiseParams = TerrainNoiseParams.FromTerrain(terrain);
-            if (materialCache != null)
-            {
-                ApplyTerrainUniforms(materialCache);
-            }
+            ApplyTerrainGlobals();
 
             ClearChunkCache();
             firstFrameGuard = -1;
@@ -297,20 +322,16 @@ namespace Galilego.Universe
             if (!ParamsEqual(current, noiseParams))
             {
                 noiseParams = current;
-                if (materialCache != null)
-                {
-                    ApplyTerrainUniforms(materialCache);
-                }
-
+                ApplyTerrainGlobals();
                 ClearChunkCache();
                 firstFrameGuard = -1;
             }
-            else if (materialCache != null && !ColorStateEquals(CaptureColorState(), colorStateCache))
+            else if (!ColorStateEquals(CaptureColorState(), colorStateCache))
             {
                 // Правки ТОЛЬКО цвета (сила/частота моттлинга, пороги скалы/снега)
                 // не меняют геометрию — перестраивать чанки не нужно, достаточно
-                // перелить униформы в материал.
-                ApplyTerrainUniforms(materialCache);
+                // перелить униформы в глобалы.
+                ApplyTerrainGlobals();
             }
         }
 
@@ -435,6 +456,8 @@ namespace Galilego.Universe
             currentBodyPosition = bodyPosition;
             currentBodyOrientation = body.GetVisualOrientation(Runner.TimeSeconds);
             currentBodyRotation = FloatingOrigin.RenderRotation(currentBodyOrientation);
+            UpdateTerrainTextureOrigin();
+            ApplyTerrainGlobals();
 
             {
                 // Тел-fixed направления для current-кадра.
@@ -540,6 +563,50 @@ namespace Galilego.Universe
             Shader.SetGlobalFloat("_GroundDecorTime", Time.time);
             UpdateDecorCollision();
             DrawDecor(cameraPosition);
+        }
+
+        /// <summary>
+        /// Трипланарные UV текстур рельефа — camera-relative. Абсолютные координаты
+        /// от центра планеты (~1.14e6 м) во float квантуются шагом ~6 см (~2.5
+        /// текселя при TextureScale 0.04) — из этого квантования рождался муар
+        /// («полосы», «двигались» вместе с origin). Шейдер считает дельту позиции
+        /// от камеры (малые точные числа в сцене с floating origin) и поворачивает
+        /// её в тело-fixed оси матрицей _TerrainWorldToBody; фазу текстуры (доли
+        /// UV в double) возвращают глобалы фаз — паттерн «прибит» к земле.
+        /// </summary>
+        private void UpdateTerrainTextureOrigin()
+        {
+            if (terrain == null || !(terrain.TextureScale > 0d))
+            {
+                return;
+            }
+
+            double scale = terrain.TextureScale;
+            Vector3d relative = Runner.PlayerPosition - currentBodyPosition;
+            Vector3d bodyAstro = currentBodyOrientation.Conjugated.Rotate(relative);
+
+            // Фазы — в sim-осях шейдера (positionWS): _TerrainWorldToBody даёт
+            // дельту в sim-тело-осях, а astro-вектор здесь в Z-up. Мост тот же,
+            // что AstroFrame.ToSimulation: sim = (x, z, −y). Без конверсии фаза
+            // и дельта живут в разных кадрах — текстура «ползёт» при движении.
+            double sx = bodyAstro.X;
+            double sy = bodyAstro.Z;
+            double sz = -bodyAstro.Y;
+
+            // Мир → тело-fixed (объектные оси мешей): обратный поворот чанка.
+            Shader.SetGlobalMatrix("_TerrainWorldToBody", Matrix4x4.Rotate(Quaternion.Inverse(currentBodyRotation)));
+
+            // uvX = pos.zy, uvY = pos.xz, uvZ = pos.xy.
+            Shader.SetGlobalVector("_TerrainUVPhase0", new Vector4(
+                (float)Wrap01(sz * scale), (float)Wrap01(sy * scale),
+                (float)Wrap01(sx * scale), (float)Wrap01(sz * scale)));
+            Shader.SetGlobalVector("_TerrainUVPhase1", new Vector4(
+                (float)Wrap01(sx * scale), (float)Wrap01(sy * scale), 0f, 0f));
+        }
+
+        private static double Wrap01(double value)
+        {
+            return value - System.Math.Floor(value);
         }
 
         /// <summary>
@@ -961,9 +1028,17 @@ namespace Galilego.Universe
                 return;
             }
 
+            // Снимок РЕНДЕР-меша чанка: базы декора сажаем на него, а не на
+            // аналитическую высоту — на грубом LOD (шаг вершины ~7 м) меш
+            // отличается на десятки сантиметров, из-за чего плоские элементы
+            // (блобы тени травы) прятались под рельефом.
+            Vector3[] meshVertices = chunk.Mesh.vertices;
+            int coreN = System.Math.Max(2, TileResolution) + 1;
+
             double sizeUv = 1d / (1 << node.Depth);
             double u0 = node.Ix * sizeUv;
             double v0 = node.Iy * sizeUv;
+            double stepUv = sizeUv / (coreN - 1);
             double chunkArc = body.Radius * 1.5707963267948966d * sizeUv;
 
             for (int layerIndex = 0; layerIndex < decorProfile.Layers.Count; layerIndex++)
@@ -981,6 +1056,7 @@ namespace Galilego.Universe
                 int count = cells * cells;
 
                 var dirs = new NativeArray<double3>(count, Allocator.TempJob);
+                var uvs = new NativeArray<float2>(count, Allocator.TempJob);
                 var randoms = new NativeArray<double3>(count, Allocator.TempJob);
                 var meshPicks = new NativeArray<double>(count, Allocator.TempJob);
                 var accepted = new NativeArray<int>(count, Allocator.TempJob);
@@ -997,6 +1073,7 @@ namespace Galilego.Universe
                         double v = v0 + (((b + vJitter) / cells) * sizeUv);
                         Vector3d direction = CubeSphere.Direction(node.Face, u, v);
                         dirs[index] = new double3(direction.X, direction.Y, direction.Z);
+                        uvs[index] = new float2((float)u, (float)v);
                         randoms[index] = new double3(
                             GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Ix + node.Iy, (index * 31) + layerIndex, 21),
                             GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Iy, (index * 37) + layerIndex, 22),
@@ -1038,10 +1115,25 @@ namespace Galilego.Universe
                     int write = 0;
                     for (int i = 0; i < count && write < take; i++)
                     {
-                        if (accepted[i] != 0)
+                        if (accepted[i] == 0)
                         {
-                            persisted[write++] = instances[i];
+                            continue;
                         }
+
+                        GroundDecorInstance instance = instances[i];
+                        float2 uv = uvs[i];
+                        Vector3 meshPoint = MeshSurfacePoint(
+                            meshVertices, coreN, (uv.x - u0) / stepUv, (uv.y - v0) / stepUv);
+                        Vector3 normal = new Vector3(instance.Normal.x, instance.Normal.y, instance.Normal.z);
+                        Vector3 instancePosition = new Vector3(instance.Position.x, instance.Position.y, instance.Position.z);
+
+                        // Поправка «аналитическая высота → рендер-меш» вдоль
+                        // нормали; осевой офсет слоя (GroundOffset/Sink) сохраняем.
+                        double layerOffset = layer.GroundOffsetMeters - (instance.Scale * layer.GroundSinkFactor);
+                        float delta = Vector3.Dot(meshPoint - instancePosition, normal) + (float)layerOffset;
+                        instancePosition += normal * delta;
+                        instance.Position = new float3(instancePosition.x, instancePosition.y, instancePosition.z);
+                        persisted[write++] = instance;
                     }
 
                     chunk.Decor.Add(new DecorLayerRuntime
@@ -1052,6 +1144,7 @@ namespace Galilego.Universe
                     });
                 }
 
+                uvs.Dispose();
                 accepted.Dispose();
                 instances.Dispose();
             }
@@ -1120,6 +1213,12 @@ namespace Galilego.Universe
                     int count = runtime.Instances.Length;
                     if (near)
                     {
+                        // Тень слоя в shadow map: трава — только в радиусе
+                        // (ShadowCastDistanceMeters), деревья/камни/кактусы — целиком.
+                        ShadowCastingMode decorShadow = layer.CastShadows
+                            ? ShadowCastingMode.On
+                            : ShadowCastingMode.Off;
+
                         for (int k = 0; k < count; k++)
                         {
                             GroundDecorInstance instance = runtime.Instances[k];
@@ -1159,7 +1258,80 @@ namespace Galilego.Universe
                             runtime.Matrices[k] = chunkMatrix * Matrix4x4.TRS(position, rotation, scale);
                         }
 
-                        if (layer.NearMeshes.Length > 1)
+                        if (layer.CastShadows && layer.ShadowCastDistanceMeters > 0f
+                            && layer.NearMeshes.Length == 1 && layer.NearMeshes[0] != null)
+                        {
+                            // Лимит каста по радиусу (трава): инстансы в радиусе
+                            // идут в shadow map, остальные — только форвард.
+                            EnsureDecorShadowScratch(count);
+                            EnsureDecorBlobScratch(count);
+                            Vector3 sunDirWS = GetSunDirectionWS();
+                            float limitSq = layer.ShadowCastDistanceMeters * layer.ShadowCastDistanceMeters;
+                            int castCount = 0;
+                            int restCount = 0;
+                            for (int k = 0; k < count; k++)
+                            {
+                                Matrix4x4 grassMatrix = runtime.Matrices[k];
+                                Vector3 worldPosition = grassMatrix.GetPosition();
+                                if ((worldPosition - cameraPosition).sqrMagnitude <= limitSq)
+                                {
+                                    decorCastScratch[castCount++] = grassMatrix;
+                                    continue;
+                                }
+
+                                // Дальше радиуса настоящего каста — простая тень:
+                                // пятно, смещённое ОТ солнца (иначе спрятано под
+                                // самим кустом). Внутри радиуса пятна нет — там
+                                // уже настоящая тень.
+                                Vector3 groundUp = grassMatrix.rotation * Vector3.up;
+                                float blobScale = runtime.Instances[k].Scale * BlobScaleFactor;
+                                Vector3 sunTangent = sunDirWS - (groundUp * Vector3.Dot(sunDirWS, groundUp));
+                                if (sunTangent.sqrMagnitude > 1e-6f)
+                                {
+                                    sunTangent.Normalize();
+                                }
+                                else
+                                {
+                                    sunTangent = Vector3.zero;
+                                }
+
+                                decorBlobScratch[restCount] = Matrix4x4.TRS(
+                                    worldPosition + (groundUp * 0.12f) - (sunTangent * (blobScale * BlobSunOffset)),
+                                    grassMatrix.rotation,
+                                    new Vector3(blobScale, 1f, blobScale));
+                                decorRestScratch[restCount++] = grassMatrix;
+                            }
+
+                            if (castCount > 0)
+                            {
+                                DrawDecorBatches(
+                                    layer.NearMeshes[0], material, decorCastScratch, castCount, ShadowCastingMode.On);
+                            }
+
+                            if (restCount > 0)
+                            {
+                                DrawDecorBatches(
+                                    layer.NearMeshes[0], material, decorRestScratch, restCount, ShadowCastingMode.Off);
+                            }
+
+                            Material blobMat = GetBlobMaterial();
+                            if (blobMat != null)
+                            {
+                                if (!blobDiagLogged)
+                                {
+                                    blobDiagLogged = true;
+                                    Debug.Log(string.Format(
+                                        "[Blob] layer={0} count={1} queue={2} instancing={3} shader={4} sunDir=({5:F3},{6:F3},{7:F3}) color={8}",
+                                        layer.Name, restCount, blobMat.renderQueue, blobMat.enableInstancing,
+                                        blobMat.shader.name, sunDirWS.x, sunDirWS.y, sunDirWS.z, BlobShadowColor));
+                                }
+
+                                blobMat.SetColor("_Color", BlobShadowColor);
+                                DrawDecorBatches(
+                                    GetBlobMesh(), blobMat, decorBlobScratch, restCount, ShadowCastingMode.Off);
+                            }
+                        }
+                        else if (layer.NearMeshes.Length > 1)
                         {
                             EnsureDecorScratch(count);
                             for (int m = 0; m < layer.NearMeshes.Length; m++)
@@ -1181,13 +1353,15 @@ namespace Galilego.Universe
 
                                 if (written > 0)
                                 {
-                                    DrawDecorBatches(variant, material, decorPerMeshScratch, written);
+                                    DrawDecorBatches(
+                                        variant, material, decorPerMeshScratch, written, decorShadow);
                                 }
                             }
                         }
                         else if (layer.NearMeshes[0] != null)
                         {
-                            DrawDecorBatches(layer.NearMeshes[0], material, runtime.Matrices, count);
+                            DrawDecorBatches(
+                                layer.NearMeshes[0], material, runtime.Matrices, count, decorShadow);
                         }
                     }
                     else
@@ -1201,6 +1375,8 @@ namespace Galilego.Universe
                         // Биллборд в МИРОВЫХ координатах: локальный +Y инстанса =
                         // нормаль поверхности, +Z = взгляд камеры в касательной
                         // плоскости. Вся ориентация здесь, шейдер — passthrough.
+                        EnsureDecorBlobScratch(count);
+                        Vector3 sunDirWS = GetSunDirectionWS();
                         for (int k = 0; k < count; k++)
                         {
                             GroundDecorInstance instance = runtime.Instances[k];
@@ -1230,6 +1406,25 @@ namespace Galilego.Universe
 
                             float size = instance.Scale;
                             Quaternion rotation = Quaternion.LookRotation(facing.normalized, worldUp);
+
+                            // Простая тень: то же смещённое от солнца пятно, что
+                            // и у ближнего LOD, — тень травы живёт до MaxDistance.
+                            Vector3 sunTangent = sunDirWS - (worldUp * Vector3.Dot(sunDirWS, worldUp));
+                            if (sunTangent.sqrMagnitude > 1e-6f)
+                            {
+                                sunTangent.Normalize();
+                            }
+                            else
+                            {
+                                sunTangent = Vector3.zero;
+                            }
+
+                            float blobSize = instance.Scale * BlobScaleFactor;
+                            decorBlobScratch[k] = Matrix4x4.TRS(
+                                worldPosition + (worldUp * 0.12f) - (sunTangent * (blobSize * BlobSunOffset)),
+                                rotation,
+                                new Vector3(blobSize, 1f, blobSize));
+
                             // Квад центрирован по высоте: поднимаем, чтобы основание
                             // стояло на земле.
                             worldPosition += worldUp * (0.5f * size);
@@ -1237,7 +1432,15 @@ namespace Galilego.Universe
                                 worldPosition, rotation, new Vector3(size, size, size));
                         }
 
-                        DrawDecorBatches(billboard, material, runtime.Matrices, count);
+                        DrawDecorBatches(billboard, material, runtime.Matrices, count, ShadowCastingMode.Off);
+
+                        Material blobMatFar = GetBlobMaterial();
+                        if (blobMatFar != null)
+                        {
+                            blobMatFar.SetColor("_Color", BlobShadowColor);
+                            DrawDecorBatches(
+                                GetBlobMesh(), blobMatFar, decorBlobScratch, count, ShadowCastingMode.Off);
+                        }
                     }
                 }
             }
@@ -1251,7 +1454,117 @@ namespace Galilego.Universe
             }
         }
 
-        private void DrawDecorBatches(Mesh mesh, Material material, Matrix4x4[] matrices, int count)
+        private void EnsureDecorShadowScratch(int size)
+        {
+            if (decorCastScratch == null || decorCastScratch.Length < size)
+            {
+                decorCastScratch = new Matrix4x4[size];
+            }
+
+            if (decorRestScratch == null || decorRestScratch.Length < size)
+            {
+                decorRestScratch = new Matrix4x4[size];
+            }
+        }
+
+        private void EnsureDecorBlobScratch(int size)
+        {
+            if (decorBlobScratch == null || decorBlobScratch.Length < size)
+            {
+                decorBlobScratch = new Matrix4x4[size];
+            }
+        }
+
+        /// <summary>Направление НА солнце из глобалов (SunBillboard/SkyEnvironment).</summary>
+        private static Vector3 GetSunDirectionWS()
+        {
+            Vector3 sun = Shader.GetGlobalVector("_TerrainSunDir");
+            if (sun.sqrMagnitude < 1e-6f)
+            {
+                sun = Shader.GetGlobalVector("_SkySunDir");
+            }
+
+            return sun;
+        }
+
+        /// <summary>Точка на РЕНДЕР-меше чанка под (u,v) кандидата: интерполяция
+        /// позиций вершин ровно по треугольникам BuildChunk (a,c,b / b,c,d).</summary>
+        private static Vector3 MeshSurfacePoint(Vector3[] meshVertices, int coreN, double gridU, double gridV)
+        {
+            gridU = System.Math.Max(0d, System.Math.Min(gridU, coreN - 1d));
+            gridV = System.Math.Max(0d, System.Math.Min(gridV, coreN - 1d));
+            int uIndex = System.Math.Min((int)System.Math.Floor(gridU), coreN - 2);
+            int vIndex = System.Math.Min((int)System.Math.Floor(gridV), coreN - 2);
+            float fu = (float)(gridU - uIndex);
+            float fv = (float)(gridV - vIndex);
+
+            Vector3 p00 = meshVertices[(uIndex * coreN) + vIndex];
+            Vector3 p10 = meshVertices[((uIndex + 1) * coreN) + vIndex];
+            Vector3 p01 = meshVertices[(uIndex * coreN) + vIndex + 1];
+            Vector3 p11 = meshVertices[((uIndex + 1) * coreN) + vIndex + 1];
+
+            if (fu + fv <= 1f)
+            {
+                return p00 + (fu * (p10 - p00)) + (fv * (p01 - p00));
+            }
+
+            return p11 + ((1f - fu) * (p01 - p11)) + ((1f - fv) * (p10 - p11));
+        }
+
+        /// <summary>Квад в XZ-плоскости (центр в начале): инстанс-матрица кладёт
+        /// его плашмя на поверхность — локальный +Y меша = нормаль.</summary>
+        private Mesh GetBlobMesh()
+        {
+            if (blobMesh == null)
+            {
+                blobMesh = new Mesh { name = "GroundDecorBlobQuad" };
+                blobMesh.vertices = new[]
+                {
+                    new Vector3(-0.5f, 0f, -0.5f),
+                    new Vector3(0.5f, 0f, -0.5f),
+                    new Vector3(-0.5f, 0f, 0.5f),
+                    new Vector3(0.5f, 0f, 0.5f)
+                };
+                blobMesh.uv = new[]
+                {
+                    new Vector2(0f, 0f),
+                    new Vector2(1f, 0f),
+                    new Vector2(0f, 1f),
+                    new Vector2(1f, 1f)
+                };
+                blobMesh.normals = new[] { Vector3.up, Vector3.up, Vector3.up, Vector3.up };
+                blobMesh.triangles = new[] { 0, 2, 1, 1, 2, 3 };
+                blobMesh.RecalculateBounds();
+            }
+
+            return blobMesh;
+        }
+
+        private Material GetBlobMaterial()
+        {
+            if (blobMaterial == null)
+            {
+                Shader shader = Shader.Find("Galilego/GroundDecorBlob");
+                if (shader == null)
+                {
+                    if (!blobDiagLogged)
+                    {
+                        blobDiagLogged = true;
+                        Debug.LogWarning("[Blob] шейдер Galilego/GroundDecorBlob не найден — простой тени не будет.");
+                    }
+
+                    return null;
+                }
+
+                blobMaterial = new Material(shader);
+                blobMaterial.enableInstancing = true;
+            }
+
+            return blobMaterial;
+        }
+
+        private void DrawDecorBatches(
+            Mesh mesh, Material material, Matrix4x4[] matrices, int count, ShadowCastingMode shadowMode)
         {
             const int batchSize = 1023;
             if (!material.enableInstancing)
@@ -1281,7 +1594,7 @@ namespace Galilego.Universe
                 for (int sub = 0; sub < mesh.subMeshCount; sub++)
                 {
                     Graphics.DrawMeshInstanced(
-                        mesh, sub, material, batch, n, null, ShadowCastingMode.Off, false, gameObject.layer);
+                        mesh, sub, material, batch, n, null, shadowMode, false, gameObject.layer);
                 }
 
                 start += n;
@@ -1336,47 +1649,50 @@ namespace Galilego.Universe
             {
                 Shader shader = Shader.Find("Galilego/PlanetSurface");
                 materialCache = new Material(shader);
-                ApplyTerrainUniforms(materialCache);
+                ApplyTerrainGlobals();
             }
 
             return materialCache;
         }
 
         /// <summary>
-        /// Параметры per-pixel палитры/шума в материал из единственного источника
-        /// (HeightfieldTerrain + TerrainPalette). Цвета передаём как float4 через
-        /// SetVector: они уже линейные, повторная sRGB-конверсия не нужна.
+        /// Параметры per-pixel палитры/шума/текстур рельефа — в ГЛОБАЛЫ шейдера,
+        /// а не в материал: пер-материальные значения, не объявленные в Properties,
+        /// не доезжали до материала (в свежих сессиях материал оказывался с нулями,
+        /// `_SteepBlendStart == _SteepBlendEnd == 0` → rock-текстура на всей земле,
+        /// рельеф чёрный). Глобалы ставит доминантное тело каждый кадр, состояние
+        /// материала роли не играет. Цвета — float4: они уже линейные.
         /// </summary>
-        private void ApplyTerrainUniforms(Material m)
+        private void ApplyTerrainGlobals()
         {
             TerrainPaletteData palette = terrain.Palette ?? new TerrainPaletteData();
-            m.SetFloat("_TerrainAmplitude", (float)System.Math.Max(1d, terrain.AmplitudeMeters));
-            m.SetFloat("_TerrainSeaLevel", (float)System.Math.Max(terrain.SeaLevelMeters, -1e30d));
-            m.SetFloat("_TerrainSeed", terrain.Seed);
-            m.SetFloat("_TerrainGain", (float)TerrainNoise.EffectiveGain(terrain.Gain));
-            m.SetFloat("_TerrainLacunarity", (float)TerrainNoise.EffectiveLacunarity(terrain.Lacunarity));
-            m.SetFloat("_TerrainRockSlopeTan", (float)terrain.ColorRockSlopeTan);
-            m.SetFloat("_TerrainRockSlopeWidth", (float)terrain.ColorRockSlopeWidth);
-            m.SetFloat("_TerrainRockHeightMin", (float)terrain.ColorRockHeightMin);
-            m.SetFloat("_TerrainSnowSlopeTan", (float)terrain.ColorSnowSlopeTan);
-            m.SetFloat("_ColorNoiseFrequency", (float)terrain.ColorNoiseFrequency);
-            m.SetFloat("_ColorNoiseOctaves", terrain.ColorNoiseOctaves);
-            m.SetFloat("_ColorNoiseStrength", (float)terrain.ColorNoiseStrength);
-            m.SetFloat("_ColorDetailFrequency", (float)terrain.ColorDetailFrequency);
-            m.SetFloat("_ColorDetailOctaves", terrain.ColorDetailOctaves);
-            m.SetFloat("_ColorDetailStrength", (float)terrain.ColorDetailStrength);
+            Shader.SetGlobalFloat("_TerrainAmplitude", (float)System.Math.Max(1d, terrain.AmplitudeMeters));
+            Shader.SetGlobalFloat("_TerrainSeaLevel", (float)System.Math.Max(terrain.SeaLevelMeters, -1e30d));
+            Shader.SetGlobalFloat("_TerrainSeed", terrain.Seed);
+            Shader.SetGlobalFloat("_TerrainGain", (float)TerrainNoise.EffectiveGain(terrain.Gain));
+            Shader.SetGlobalFloat("_TerrainLacunarity", (float)TerrainNoise.EffectiveLacunarity(terrain.Lacunarity));
+            Shader.SetGlobalFloat("_TerrainRockSlopeTan", (float)terrain.ColorRockSlopeTan);
+            Shader.SetGlobalFloat("_TerrainRockSlopeWidth", (float)terrain.ColorRockSlopeWidth);
+            Shader.SetGlobalFloat("_TerrainRockHeightMin", (float)terrain.ColorRockHeightMin);
+            Shader.SetGlobalFloat("_TerrainSnowSlopeTan", (float)terrain.ColorSnowSlopeTan);
+            Shader.SetGlobalFloat("_ColorNoiseFrequency", (float)terrain.ColorNoiseFrequency);
+            Shader.SetGlobalFloat("_ColorNoiseOctaves", terrain.ColorNoiseOctaves);
+            Shader.SetGlobalFloat("_ColorNoiseStrength", (float)terrain.ColorNoiseStrength);
+            Shader.SetGlobalFloat("_ColorDetailFrequency", (float)terrain.ColorDetailFrequency);
+            Shader.SetGlobalFloat("_ColorDetailOctaves", terrain.ColorDetailOctaves);
+            Shader.SetGlobalFloat("_ColorDetailStrength", (float)terrain.ColorDetailStrength);
 
-            m.SetVector("_ColSand", ToVec(palette.SandLinear));
-            m.SetVector("_ColDesert", ToVec(palette.DesertLinear));
-            m.SetVector("_ColDryGrass", ToVec(palette.DryGrassLinear));
-            m.SetVector("_ColGrass", ToVec(palette.GrassLinear));
-            m.SetVector("_ColForest", ToVec(palette.ForestLinear));
-            m.SetVector("_ColTundra", ToVec(palette.TundraLinear));
-            m.SetVector("_ColRock", ToVec(palette.RockLinear));
-            m.SetVector("_ColSnow", ToVec(palette.SnowLinear));
-            m.SetVector("_ColSea", ToVec(palette.SeaLinear));
-            m.SetVector("_ColSoil", ToVec(palette.SoilLinear));
-            m.SetVector("_ColLush", ToVec(palette.LushLinear));
+            Shader.SetGlobalVector("_ColSand", ToVec(palette.SandLinear));
+            Shader.SetGlobalVector("_ColDesert", ToVec(palette.DesertLinear));
+            Shader.SetGlobalVector("_ColDryGrass", ToVec(palette.DryGrassLinear));
+            Shader.SetGlobalVector("_ColGrass", ToVec(palette.GrassLinear));
+            Shader.SetGlobalVector("_ColForest", ToVec(palette.ForestLinear));
+            Shader.SetGlobalVector("_ColTundra", ToVec(palette.TundraLinear));
+            Shader.SetGlobalVector("_ColRock", ToVec(palette.RockLinear));
+            Shader.SetGlobalVector("_ColSnow", ToVec(palette.SnowLinear));
+            Shader.SetGlobalVector("_ColSea", ToVec(palette.SeaLinear));
+            Shader.SetGlobalVector("_ColSoil", ToVec(palette.SoilLinear));
+            Shader.SetGlobalVector("_ColLush", ToVec(palette.LushLinear));
 
             // Текстуры рельефа: трипланарный блендинг по высоте
             // и склону. Все четыре альбедо обязательны, иначе — процедурная палитра.
@@ -1385,22 +1701,21 @@ namespace Galilego.Universe
             Texture2D texHigh = terrain.TextureHigh;
             Texture2D texSteep = terrain.TextureSteep;
             bool useTextures = texLow != null && texMid != null && texHigh != null && texSteep != null;
-            m.SetFloat("_TerrainUseTextures", useTextures ? 1f : 0f);
+            Shader.SetGlobalFloat("_TerrainUseTextures", useTextures ? 1f : 0f);
             if (useTextures)
             {
-                m.SetTexture("_TexLow", texLow);
-                m.SetTexture("_TexMid", texMid);
-                m.SetTexture("_TexHigh", texHigh);
-                m.SetTexture("_TexSteep", texSteep);
-                m.SetTexture("_TexOcclusion", terrain.TextureOcclusion != null ? terrain.TextureOcclusion : Texture2D.whiteTexture);
-                m.SetFloat("_TerrainTextureScale", (float)terrain.TextureScale);
-                m.SetFloat("_BodyRadius", (float)body.Radius);
-                m.SetFloat("_LowMidBlendStart", (float)terrain.LowMidBlendStart);
-                m.SetFloat("_LowMidBlendEnd", (float)terrain.LowMidBlendEnd);
-                m.SetFloat("_MidHighBlendStart", (float)terrain.MidHighBlendStart);
-                m.SetFloat("_MidHighBlendEnd", (float)terrain.MidHighBlendEnd);
-                m.SetFloat("_SteepBlendStart", (float)terrain.SteepBlendStart);
-                m.SetFloat("_SteepBlendEnd", (float)terrain.SteepBlendEnd);
+                Shader.SetGlobalTexture("_TexLow", texLow);
+                Shader.SetGlobalTexture("_TexMid", texMid);
+                Shader.SetGlobalTexture("_TexHigh", texHigh);
+                Shader.SetGlobalTexture("_TexSteep", texSteep);
+                Shader.SetGlobalTexture("_TexOcclusion", terrain.TextureOcclusion != null ? terrain.TextureOcclusion : Texture2D.whiteTexture);
+                Shader.SetGlobalFloat("_TerrainTextureScale", (float)terrain.TextureScale);
+                Shader.SetGlobalFloat("_LowMidBlendStart", (float)terrain.LowMidBlendStart);
+                Shader.SetGlobalFloat("_LowMidBlendEnd", (float)terrain.LowMidBlendEnd);
+                Shader.SetGlobalFloat("_MidHighBlendStart", (float)terrain.MidHighBlendStart);
+                Shader.SetGlobalFloat("_MidHighBlendEnd", (float)terrain.MidHighBlendEnd);
+                Shader.SetGlobalFloat("_SteepBlendStart", (float)terrain.SteepBlendStart);
+                Shader.SetGlobalFloat("_SteepBlendEnd", (float)terrain.SteepBlendEnd);
             }
 
             colorStateCache = CaptureColorState();

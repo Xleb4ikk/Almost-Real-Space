@@ -62,6 +62,14 @@ namespace Galilego.Universe.EditorTools
 
         private static Texture2D Load(string name)
         {
+            // Приоритет — «чистые» текстуры без направленного паттерна
+            // (TerrainTextureDeband): старые фото-тайлы давали газонные полосы.
+            Texture2D clean = AssetDatabase.LoadAssetAtPath<Texture2D>(Folder + "/" + name + "_clean.jpg");
+            if (clean != null)
+            {
+                return clean;
+            }
+
             return AssetDatabase.LoadAssetAtPath<Texture2D>(Folder + "/" + name + ".jpg");
         }
     }

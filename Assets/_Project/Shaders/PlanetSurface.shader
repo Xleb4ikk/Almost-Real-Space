@@ -7,11 +7,9 @@ Shader "Galilego/PlanetSurface"
         _SpecularPower("Specular Power", Float) = 120.0
         _SpecularIntensity("Specular Intensity", Float) = 0.8
         _RimColor("Water Sky Rim", Color) = (0.35, 0.55, 0.85, 1)
-        _TexLow("Terrain Low", 2D) = "white" {}
-        _TexMid("Terrain Mid", 2D) = "white" {}
-        _TexHigh("Terrain High", 2D) = "white" {}
-        _TexSteep("Terrain Steep", 2D) = "white" {}
-        _TexOcclusion("Terrain Occlusion", 2D) = "white" {}
+        // _TexLow/_TexMid/_TexHigh/_TexSteep/_TexOcclusion НЕ в Properties:
+        // иначе рантайм-материал получает свои дефолтные "white" текстуры,
+        // которые перекрывают глобалы PlanetSurfaceRenderer (земля белела).
     }
     SubShader
     {
@@ -25,19 +23,26 @@ Shader "Galilego/PlanetSurface"
             HLSLPROGRAM
             #pragma vertex Vert
             #pragma fragment Frag
+            #pragma multi_compile_fragment PUNCTUAL_SHADOW_LOW PUNCTUAL_SHADOW_MEDIUM PUNCTUAL_SHADOW_HIGH
+            #pragma multi_compile_fragment DIRECTIONAL_SHADOW_LOW DIRECTIONAL_SHADOW_MEDIUM DIRECTIONAL_SHADOW_HIGH
+            #pragma multi_compile_fragment AREA_SHADOW_MEDIUM AREA_SHADOW_HIGH
             #pragma target 4.5
 
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
+            #include "GalilegoLighting.hlsl"
 
-            // Глобально, ставит SunBillboard каждый кадр (направление НА звезду).
-            float3 _TerrainSunDir;
             // Глобально, ставит PlanetSurfaceRenderer (мировая позиция камеры).
             float3 _PlanetCameraPos;
-            // Глобально, ставит SkyEnvironment: звёздный/небесный ambient и солнце.
-            float _NightAmbient;
-            float _SkyAmbient;
-            float _TerrainSun;
+
+            // Трипланарные UV текстур рельефа — camera-relative: дельты мировой
+            // позиции от камеры малы и точны (floating origin), поворот в
+            // тело-fixed оси даёт _TerrainWorldToBody (ставит PlanetSurfaceRenderer
+            // каждый кадр). Абсолютные координаты ~1.14e6 м во float квантуются
+            // шагом ~6 см (~2.5 текселя при scale 0.04) — отсюда шли «полосы».
+            float4x4 _TerrainWorldToBody;
+            float4 _TerrainUVPhase0; // uvX.xy: (z, y), uvY.xy: (x, z)
+            float4 _TerrainUVPhase1; // uvZ.xy: (x, y)
 
             float4 _WaterDeep;
             float4 _WaterShallow;
@@ -82,7 +87,6 @@ Shader "Galilego/PlanetSurface"
             sampler2D _TexOcclusion;
             float _TerrainTextureScale;
             float _TerrainUseTextures;
-            float _BodyRadius;
             float _LowMidBlendStart;
             float _LowMidBlendEnd;
             float _MidHighBlendStart;
@@ -334,11 +338,8 @@ Shader "Galilego/PlanetSurface"
                 return c;
             }
 
-            float3 Triplanar(sampler2D tex, float3 pos, float3 weights)
+            float3 Triplanar(sampler2D tex, float2 uvX, float2 uvY, float2 uvZ, float3 weights)
             {
-                float2 uvX = pos.zy * _TerrainTextureScale;
-                float2 uvY = pos.xz * _TerrainTextureScale;
-                float2 uvZ = pos.xy * _TerrainTextureScale;
                 return (tex2D(tex, uvX).rgb * weights.x)
                     + (tex2D(tex, uvY).rgb * weights.y)
                     + (tex2D(tex, uvZ).rgb * weights.z);
@@ -347,10 +348,15 @@ Shader "Galilego/PlanetSurface"
             // Альбедо из текстур рельефа: низ/середина/верх по высоте над
             // морем, скалы по склону, мягкий AO из occlusion. Биомный тинт
             // (процедурная палитра) сохраняет климатические зоны читаемыми.
-            // pos и нормаль — в тел-fixed (object) осях: трипланер согласован.
-            float3 TerrainTextureAlbedo(float3 dir, float raw, float slopeTan, float3 normalObject, float3 biome)
+            // Координаты — дельта от камеры, повёрнутая в тело-fixed оси:
+            // малые числа без квантования ~6 см (см. _TerrainWorldToBody).
+            float3 TerrainTextureAlbedo(float3 positionWS, float raw, float slopeTan, float3 normalObject, float3 biome)
             {
-                float3 pos = dir * (_BodyRadius + raw);
+                float3 relBody = mul((float3x3)_TerrainWorldToBody, positionWS - _PlanetCameraPos);
+                float2 uvX = (relBody.zy * _TerrainTextureScale) + _TerrainUVPhase0.xy;
+                float2 uvY = (relBody.xz * _TerrainTextureScale) + _TerrainUVPhase0.zw;
+                float2 uvZ = (relBody.xy * _TerrainTextureScale) + _TerrainUVPhase1.xy;
+
                 float3 tri = abs(normalObject);
                 tri = tri * tri * tri * tri;
                 tri /= max(1e-5, tri.x + tri.y + tri.z);
@@ -360,12 +366,12 @@ Shader "Galilego/PlanetSurface"
                 float highW = smoothstep(_MidHighBlendStart, _MidHighBlendEnd, altitude);
                 float midW = max(0.0, 1.0 - lowW - highW);
 
-                float3 c = (Triplanar(_TexLow, pos, tri) * lowW)
-                    + (Triplanar(_TexMid, pos, tri) * midW)
-                    + (Triplanar(_TexHigh, pos, tri) * highW);
-                c = lerp(c, Triplanar(_TexSteep, pos, tri), smoothstep(_SteepBlendStart, _SteepBlendEnd, slopeTan));
+                float3 c = (Triplanar(_TexLow, uvX, uvY, uvZ, tri) * lowW)
+                    + (Triplanar(_TexMid, uvX, uvY, uvZ, tri) * midW)
+                    + (Triplanar(_TexHigh, uvX, uvY, uvZ, tri) * highW);
+                c = lerp(c, Triplanar(_TexSteep, uvX, uvY, uvZ, tri), smoothstep(_SteepBlendStart, _SteepBlendEnd, slopeTan));
 
-                float occl = dot(Triplanar(_TexOcclusion, pos, tri), float3(0.3333, 0.3333, 0.3333));
+                float occl = dot(Triplanar(_TexOcclusion, uvX, uvY, uvZ, tri), float3(0.3333, 0.3333, 0.3333));
                 c *= lerp(1.0, saturate(occl * 1.3), 0.65);
 
                 c *= lerp(float3(1.0, 1.0, 1.0), saturate(biome * 1.9), 0.45);
@@ -379,6 +385,10 @@ Shader "Galilego/PlanetSurface"
                 float3 viewDir = normalize(_PlanetCameraPos - input.positionWS);
                 float ndl = saturate(dot(normal, sunDir));
 
+                // Тень HDRP (PCSS/PCF) от деревьев/камней/рельефа; гасит только
+                // солнечный член — ambient остаётся, теневые зоны не чёрные.
+                float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, normal, sunDir);
+
                 // Единый световой член, пофрагментный: ночная засветка (звёзды) +
                 // небесная засветка и солнце по нормали к НЕЙ. Ночью ndl=0 →
                 // остаётся только _NightAmbient (≈0) → поверхность почти черна.
@@ -386,7 +396,7 @@ Shader "Galilego/PlanetSurface"
                 // значении _TerrainSun сохраняется затенение по нормали (рельеф
                 // читается), но яркость не улетает в белый.
                 float sun = _TerrainSun / (1.0 + _TerrainSun);
-                float light = _NightAmbient + ((_SkyAmbient + sun) * ndl);
+                float light = _NightAmbient + (_SkyAmbient * ndl) + (sun * ndl * shadow);
                 float3 lightTerm = float3(light, light, light);
 
                 // --- Per-pixel альбедо -----------------------------------------
@@ -422,7 +432,7 @@ Shader "Galilego/PlanetSurface"
                 if (_TerrainUseTextures > 0.5 && isWater < 0.5)
                 {
                     float3 normalObject = normalize(TransformWorldToObjectNormal(normal));
-                    albedo = TerrainTextureAlbedo(dir, raw, slopeTan, normalObject, albedo);
+                    albedo = TerrainTextureAlbedo(input.positionWS, raw, slopeTan, normalObject, albedo);
                 }
 
                 // Суша.
@@ -444,7 +454,7 @@ Shader "Galilego/PlanetSurface"
                 float3 waterBase = lerp(_WaterShallow.rgb, _WaterDeep.rgb, waterDepth);
                 float3 water = (waterBase * lightTerm)
                     + (_RimColor.rgb * fresnel * lightTerm)
-                    + (spec * _TerrainSun);
+                    + (spec * _TerrainSun * shadow);
 
                 float3 color = lerp(land, water, isWater);
                 return float4(color, 1.0);

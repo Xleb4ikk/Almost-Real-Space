@@ -66,6 +66,10 @@ namespace Galilego.Universe.EditorTools
             {
                 Name = "Grass",
                 Enabled = true,
+                // Трава кастует только вблизи (радиус): тысячи инстансов,
+                // дальше по дистанции — лишь приём тени.
+                CastShadows = true,
+                ShadowCastDistanceMeters = 35f,
                 NearMeshes = new[] { card },
                 NearMaterial = grassSolid,
                 FarBillboardMesh = billboard,
@@ -100,7 +104,8 @@ namespace Galilego.Universe.EditorTools
                     CreateOrLoadMaterial("DryGrassBillboard", "Galilego/GroundDecorBillboard", dryGrass, 0.4f, 0.25f),
                     spacing: 2.0d, frequency: 2200d, threshold: 0.2d, seedOffset: 2,
                     wetMin: 0d, wetMax: 0.35d, minScale: 0.7d, maxScale: 1.2d,
-                    nearDistance: 60f, maxDistance: 600f, maxAltitude: TreeLineMaxAltitudeMeters));
+                    nearDistance: 60f, maxDistance: 600f, maxAltitude: TreeLineMaxAltitudeMeters,
+                    shadowCastDistance: 35f));
             }
 
             if (daisy != null)
@@ -111,6 +116,8 @@ namespace Galilego.Universe.EditorTools
                 {
                     Name = "Daisy",
                     Enabled = true,
+                    // Ромашки тоже не кастуют: лежат на земле, теней не видно.
+                    CastShadows = false,
                     NearMeshes = new[] { billboard },
                     NearMaterial = CreateOrLoadMaterial("DaisySolid", "Galilego/GroundDecorSolid", daisy, 0.4f, 0f),
                     FarBillboardMesh = null,
@@ -249,12 +256,15 @@ namespace Galilego.Universe.EditorTools
             string name, Mesh card, Mesh billboard, Material nearMaterial, Material farMaterial,
             double spacing, double frequency, double threshold, int seedOffset,
             double wetMin, double wetMax, double minScale, double maxScale,
-            float nearDistance, float maxDistance, double maxAltitude = 6000d)
+            float nearDistance, float maxDistance, double maxAltitude = 6000d,
+            bool castShadows = true, float shadowCastDistance = 0f)
         {
             return new GroundDecorLayer
             {
                 Name = name,
                 Enabled = true,
+                CastShadows = castShadows,
+                ShadowCastDistanceMeters = shadowCastDistance,
                 NearMeshes = new[] { card },
                 NearMaterial = nearMaterial,
                 FarBillboardMesh = billboard,
