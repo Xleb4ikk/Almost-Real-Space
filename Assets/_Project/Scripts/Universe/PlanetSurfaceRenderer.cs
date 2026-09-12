@@ -4,6 +4,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Galilego.Universe
 {
@@ -27,6 +28,17 @@ namespace Galilego.Universe
     [UnityEngine.DefaultExecutionOrder(-70)]
     public sealed class PlanetSurfaceRenderer : MonoBehaviour
     {
+        // ===== [ГРАФИКА] Качество и дальность рельефа =====
+        // TileResolution / MaxDepth / SplitFactor / BuildsPerFrame / MaxNodes /
+        // MaxCachedChunks — кандидаты в будущие пресеты настроек графики (от
+        // минимального до максимального качества).
+        // Дальность видимости задаётся камерой (FirstPersonCamera.UpdateClipPlanes,
+        // физический горизонт с запасом на вершины) — здесь рельеф строится на
+        // всю видимую полусферу без высотного порога.
+        // Сглаживание кадра (SMAA/TAA) задаётся на Main Camera в сцене
+        // OutdoorsScene: HDAdditionalCameraData (antialiasing / SMAAQuality / TAA*).
+        // Поиск по тегу: [ГРАФИКА].
+
         [Tooltip("SimulationRunner сцены.")]
         public SimulationRunner Runner;
 
@@ -58,12 +70,6 @@ namespace Galilego.Universe
         [Min(64)]
         public int MaxNodes = 6000;
 
-        [Tooltip("Высота над рельефом, выше которой чанки рельефа не рендерятся (м). На этой дистанции вместо них включается базовая сфера (см. BaseSphereColor).")]
-        public double MaxAltitudeMeters = 5e6d;
-
-        [Tooltip("Диффузный цвет базовой сферы планеты на большой дистанции. Нужна, чтобы тело было непрозрачным и честно закрывало звёзды/солнце по глубине.")]
-        public Color BaseSphereColor = new Color(0.16f, 0.24f, 0.32f, 1f);
-
         [Tooltip("Максимум закэшированных мешей (лишние вытесняются).")]
         [Min(64)]
         public int MaxCachedChunks = 2048;
@@ -82,7 +88,18 @@ namespace Galilego.Universe
             public Mesh Mesh;
             public MeshRenderer Renderer;
             public bool Visible;
+            public int Depth;
             public Vector3d CenterAstro;
+            public float BoundsRadius;
+            public readonly List<DecorLayerRuntime> Decor = new List<DecorLayerRuntime>();
+        }
+
+        /// <summary>Готовые инстансы одного слоя декора в чанке (локально чанку).</summary>
+        private sealed class DecorLayerRuntime
+        {
+            public GroundDecorLayer Profile;
+            public NativeArray<GroundDecorInstance> Instances;
+            public Matrix4x4[] Matrices;
         }
 
         private OrbitingBody body;
@@ -90,8 +107,10 @@ namespace Galilego.Universe
         private TerrainNoiseParams noiseParams;
         private Transform surfaceRoot;
         private Material materialCache;
-        private MeshRenderer baseSphereRenderer;
-        private Material baseSphereMaterial;
+        private BodyAuthoring bodyAuthoring;
+        private GroundDecorProfile decorProfile;
+        private Matrix4x4[] decorBatchScratch;
+        private Matrix4x4[] decorPerMeshScratch;
 
         private readonly Dictionary<long, Chunk> chunks = new Dictionary<long, Chunk>();
         private readonly List<Node> desired = new List<Node>();
@@ -132,21 +151,17 @@ namespace Galilego.Universe
             }
 
             noiseParams = TerrainNoiseParams.FromTerrain(terrain);
-            // Базовая сфера — не списываем навсегда: на малой высоте её роль
-            // играет cube-sphere (сфера гасится), а на большой дистанции, где
-            // чанки отключаются, сфера включается как непрозрачное тело, которое
-            // пишет depth и закрывает звёзды/солнце. Иначе на удалении от тела
-            // геометрии нет вообще и небо просвечивает планету.
-            baseSphereRenderer = GetComponent<MeshRenderer>();
-            if (baseSphereRenderer != null && baseSphereRenderer.sharedMaterial != null)
+            // Примитив-сфера тела — только заглушка на время, пока не был
+            // cube-sphere. Её радиус равен среднему (уровню моря): с включёнными
+            // чанками она копланарна океану и мерцает, поэтому гасим навсегда.
+            // Непрозрачность планеты на любой дистанции теперь даёт сам рельеф
+            // (cube-sphere рендерится и в космосе, без высотного порога).
+            MeshRenderer sphereRenderer = GetComponent<MeshRenderer>();
+            if (sphereRenderer != null)
             {
-                baseSphereMaterial = new Material(baseSphereRenderer.sharedMaterial);
-                baseSphereMaterial.color = BaseSphereColor;
-                baseSphereMaterial.SetColor("_BaseColor", BaseSphereColor);
-                baseSphereMaterial.SetColor("_UnlitColor", BaseSphereColor);
-                baseSphereRenderer.sharedMaterial = baseSphereMaterial;
-                baseSphereRenderer.enabled = false;
+                sphereRenderer.enabled = false;
             }
+
 
             if (Runner.SystemView == null)
             {
@@ -160,6 +175,15 @@ namespace Galilego.Universe
             surfaceRoot.position = Vector3.zero;
             surfaceRoot.rotation = Quaternion.identity;
             surfaceRoot.localScale = Vector3.one;
+
+            bodyAuthoring = GetComponent<BodyAuthoring>();
+            decorProfile = bodyAuthoring != null && bodyAuthoring.GroundDecorPreset != null
+                ? bodyAuthoring.GroundDecorPreset.Profile
+                : null;
+            // Чистое состояние на каждый Play: с Enter Play Mode Options (без
+            // Reload Scene/Domain) приватные поля компонента могут пережить
+            // прошлый запуск, а их чанки уже уничтожены.
+            ClearChunkCache();
         }
 
         private void OnDestroy()
@@ -169,14 +193,14 @@ namespace Galilego.Universe
                 Destroy(surfaceRoot.gameObject);
             }
 
+            foreach (KeyValuePair<long, Chunk> kv in chunks)
+            {
+                DisposeDecor(kv.Value);
+            }
+
             if (materialCache != null)
             {
                 Destroy(materialCache);
-            }
-
-            if (baseSphereMaterial != null)
-            {
-                Destroy(baseSphereMaterial);
             }
         }
 
@@ -186,6 +210,7 @@ namespace Galilego.Universe
         {
             foreach (KeyValuePair<long, Chunk> kv in chunks)
             {
+                DisposeDecor(kv.Value);
                 if (kv.Value.Go != null)
                 {
                     Destroy(kv.Value.Go);
@@ -194,6 +219,19 @@ namespace Galilego.Universe
 
             chunks.Clear();
             splitNodes.Clear();
+        }
+
+        private static void DisposeDecor(Chunk chunk)
+        {
+            for (int i = 0; i < chunk.Decor.Count; i++)
+            {
+                if (chunk.Decor[i].Instances.IsCreated)
+                {
+                    chunk.Decor[i].Instances.Dispose();
+                }
+            }
+
+            chunk.Decor.Clear();
         }
 
         /// <summary>
@@ -226,21 +264,6 @@ namespace Galilego.Universe
             firstFrameGuard = -1;
         }
 
-        /// <summary>Пресет «как Земля» (низкий рельеф, континенты, хребты) + перестройка.</summary>
-        [ContextMenu("Earth-like preset + rebuild")]
-        public void ApplyEarthLikePresetAndRebuild()
-        {
-            BodyAuthoring authoring = GetComponent<BodyAuthoring>();
-            if (authoring == null)
-            {
-                Debug.LogWarning("[PlanetSurfaceRenderer] нет BodyAuthoring.");
-                return;
-            }
-
-            authoring.ApplyEarthLikeTerrainPreset();
-            ApplyAuthoringAndRebuild();
-        }
-
         /// <summary>
         /// Live-тюнинг: если поля рельефа в BodyAuthoring изменили в Play,
         /// переносим их в живой terrain и перестраиваем чанки автоматически —
@@ -253,13 +276,23 @@ namespace Galilego.Universe
                 return;
             }
 
-            BodyAuthoring authoring = GetComponent<BodyAuthoring>();
-            if (authoring == null)
+            if (bodyAuthoring == null)
             {
                 return;
             }
 
-            authoring.ApplyToTerrain(terrain);
+            bodyAuthoring.ApplyToTerrain(terrain);
+
+            GroundDecorProfile currentDecor = bodyAuthoring.GroundDecorPreset != null
+                ? bodyAuthoring.GroundDecorPreset.Profile
+                : null;
+            if (!ReferenceEquals(currentDecor, decorProfile))
+            {
+                decorProfile = currentDecor;
+                ClearChunkCache();
+                firstFrameGuard = -1;
+            }
+
             TerrainNoiseParams current = TerrainNoiseParams.FromTerrain(terrain);
             if (!ParamsEqual(current, noiseParams))
             {
@@ -294,6 +327,7 @@ namespace Galilego.Universe
             public double DetailFrequency;
             public int DetailOctaves;
             public double DetailStrength;
+            public TerrainPaletteData Palette;
         }
 
         private TerrainColorState colorStateCache;
@@ -311,7 +345,8 @@ namespace Galilego.Universe
                 NoiseStrength = terrain.ColorNoiseStrength,
                 DetailFrequency = terrain.ColorDetailFrequency,
                 DetailOctaves = terrain.ColorDetailOctaves,
-                DetailStrength = terrain.ColorDetailStrength
+                DetailStrength = terrain.ColorDetailStrength,
+                Palette = terrain.Palette
             };
         }
 
@@ -326,7 +361,9 @@ namespace Galilego.Universe
                 && a.NoiseStrength == b.NoiseStrength
                 && a.DetailFrequency == b.DetailFrequency
                 && a.DetailOctaves == b.DetailOctaves
-                && a.DetailStrength == b.DetailStrength;
+                && a.DetailStrength == b.DetailStrength
+                && ((a.Palette == null && b.Palette == null)
+                    || (a.Palette != null && a.Palette.Matches(b.Palette)));
         }
 
         private static bool ParamsEqual(TerrainNoiseParams a, TerrainNoiseParams b)
@@ -374,25 +411,13 @@ namespace Galilego.Universe
             if (Runner.DominantBody != body)
             {
                 SetAllInvisible();
-                SetBaseSphereVisible(false);
                 return;
             }
 
             body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPosition, out _);
-            double altitude = (Runner.Ship.Position - bodyPosition).Magnitude - body.Radius;
-            if (altitude > MaxAltitudeMeters)
-            {
-                // Чанки рельефа на такой дистанции отключаются — включаем
-                // базовую сферу, иначе у тела нет никакой геометрии и звёзды
-                // рисуются «сквозь планету».
-                SetAllInvisible();
-                SetBaseSphereVisible(true);
-                return;
-            }
 
-            // Малая высота: рельеф играет роль поверхности, сферу гасим.
-            SetBaseSphereVisible(false);
-
+            // [ГРАФИКА] Сглаживание (SMAA/TAA) живёт на этом же Main Camera:
+            // HDAdditionalCameraData в сцене (antialiasing / SMAAQuality / TAA*).
             Camera camera = Camera.main;
             if (camera == null)
             {
@@ -509,6 +534,99 @@ namespace Galilego.Universe
                     kv.Value.Go.transform.rotation = currentBodyRotation;
                 }
             }
+
+            // Декор после расстановки трансформов чанков: матрицы инстансов
+            // берут мировой трансформ чанка текущего кадра.
+            Shader.SetGlobalFloat("_GroundDecorTime", Time.time);
+            UpdateDecorCollision();
+            DrawDecor(cameraPosition);
+        }
+
+        /// <summary>
+        /// Обновить цилиндры-коллайдеры стволов (слои с Collides) для физики
+        /// игрока: инстансы только из чанков в ~60 м от игрока, позиции — в
+        /// инерциальный astro-кадр (как PlayerPosition).
+        /// </summary>
+        private void UpdateDecorCollision()
+        {
+            if (decorProfile == null || decorProfile.Layers == null || body == null || Runner == null)
+            {
+                return;
+            }
+
+            GroundDecorCollisionRegistry.Begin(body.Name);
+            bool anyCollides = false;
+            for (int i = 0; i < decorProfile.Layers.Count; i++)
+            {
+                GroundDecorLayer layer = decorProfile.Layers[i];
+                if (layer != null && layer.Enabled && layer.Collides)
+                {
+                    anyCollides = true;
+                    break;
+                }
+            }
+
+            if (!anyCollides)
+            {
+                return;
+            }
+
+            const float collisionRange = 60f;
+            Vector3 playerRender = FloatingOrigin.ToRender(Runner.PlayerPosition);
+            foreach (KeyValuePair<long, Chunk> kv in chunks)
+            {
+                Chunk chunk = kv.Value;
+                if (chunk.Decor.Count == 0)
+                {
+                    continue;
+                }
+
+                float chunkDistance = Mathf.Max(
+                    0f, Vector3.Distance(playerRender, chunk.Go.transform.position) - chunk.BoundsRadius);
+                // Коллайдеры нужны независимо от видимости: во время LOD-перехода
+                // ближний чанк может быть скрыт, но стволы физически на месте.
+                if (chunkDistance > collisionRange)
+                {
+                    continue;
+                }
+
+                Matrix4x4 chunkMatrix = chunk.Go.transform.localToWorldMatrix;
+                for (int i = 0; i < chunk.Decor.Count; i++)
+                {
+                    DecorLayerRuntime runtime = chunk.Decor[i];
+                    GroundDecorLayer layer = runtime.Profile;
+                    if (layer == null || !layer.Collides || runtime.Instances.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    int count = runtime.Instances.Length;
+                    for (int k = 0; k < count; k++)
+                    {
+                        GroundDecorInstance instance = runtime.Instances[k];
+                        Vector3 localPosition = new Vector3(instance.Position.x, instance.Position.y, instance.Position.z);
+                        if ((chunkMatrix.MultiplyPoint3x4(localPosition) - playerRender).sqrMagnitude
+                            > collisionRange * collisionRange)
+                        {
+                            continue;
+                        }
+
+                        Vector3 localNormal = new Vector3(instance.Normal.x, instance.Normal.y, instance.Normal.z);
+                        if (localNormal.sqrMagnitude < 1e-6f)
+                        {
+                            localNormal = Vector3.up;
+                        }
+
+                        Vector3d relAstro = AstroFrame.ToAstro(localPosition);
+                        Vector3d bodyFixed = chunk.CenterAstro + relAstro;
+                        Vector3d inertial = currentBodyPosition + currentBodyOrientation.Rotate(bodyFixed);
+                        Vector3d upAstro = AstroFrame.ToAstro(localNormal).Normalized;
+                        Vector3d upInertial = currentBodyOrientation.Rotate(upAstro);
+                        GroundDecorCollisionRegistry.Add(
+                            inertial, upInertial, layer.CollisionRadiusMeters, layer.CollisionHeightMeters);
+                    }
+                }
+            }
         }
 
         private void Traverse(int face, int depth, int ix, int iy, Vector3 cameraPosition)
@@ -529,6 +647,12 @@ namespace Galilego.Universe
 
             double nodeSize = body.Radius * 1.5707963267948966d / (1 << depth);
             float distance = Vector3.Distance(cameraPosition, worldCenter);
+            // Дистанция до БЛИЖАЙШЕЙ точки узла, а не до центра: у крупного
+            // узла центр может быть далеко за порогом, хотя его край виден
+            // вплотную. С центром такой узел не дробился, а при повороте камеры
+            // край «внезапно» требовал детализации — LOD-скачок/мигание.
+            // Полудиагональ патча ≈ nodeSize·√2/2.
+            float closestDistance = Mathf.Max(0f, distance - (float)(nodeSize * 0.70710678d));
 
             bool split;
             if (depth < MaxDepth && desired.Count + 4 < MaxNodes)
@@ -539,8 +663,8 @@ namespace Galilego.Universe
                 // сильнее заметный на скорости).
                 double splitDistance = nodeSize * SplitFactor;
                 split = splitNodes.Contains(NodeId(face, depth, ix, iy))
-                    ? distance < splitDistance * MergeHysteresis
-                    : distance < splitDistance;
+                    ? closestDistance < splitDistance * MergeHysteresis
+                    : closestDistance < splitDistance;
             }
             else
             {
@@ -795,6 +919,8 @@ namespace Galilego.Universe
             chunk.Go.transform.SetParent(surfaceRoot, false);
             chunk.Go.transform.localScale = Vector3.one;
             chunk.CenterAstro = centerAstro;
+            chunk.Depth = node.Depth;
+            chunk.BoundsRadius = (float)(body.Radius * 1.5707963267948966d / (1 << node.Depth) * 0.70710678d);
             chunk.Go.transform.position = NodeRenderPosition(centerAstro);
             chunk.Go.transform.rotation = currentBodyRotation;
             MeshFilter filter = chunk.Go.AddComponent<MeshFilter>();
@@ -809,9 +935,357 @@ namespace Galilego.Universe
             chunk.Mesh.SetUVs(2, new List<Vector2>(surfaceExtra));
             chunk.Mesh.triangles = triangles;
             chunk.Mesh.RecalculateBounds();
+            // Запас к границам (полразмера узла): страховка от ложного
+            // фрустум-куллинга чанка на краю кадра — иначе при повороте камеры
+            // далёкие чанки мигают («появляется/пропадает»). Цена — чуть меньше
+            // отсекается за кадром, точность видимости не страдает.
+            Bounds paddedBounds = chunk.Mesh.bounds;
+            paddedBounds.Expand(chunk.BoundsRadius);
+            chunk.Mesh.bounds = paddedBounds;
 
             chunk.Visible = true;
             chunks[id] = chunk;
+            BuildChunkDecor(node, chunk, centerAstro);
+        }
+
+        /// <summary>
+        /// Построить инстансы декора для чанка: кандидаты — джиттер-сетка в UV
+        /// чанка, фильтры/высоты — Burst-джоба на той же TerrainNoise, что
+        /// физика. Результат кэшируется в чанке (тел-fixed рельеф статичен) и
+        /// живёт до вытеснения чанка.
+        /// </summary>
+        private void BuildChunkDecor(Node node, Chunk chunk, Vector3d centerAstro)
+        {
+            if (decorProfile == null || decorProfile.Layers == null || decorProfile.Layers.Count == 0)
+            {
+                return;
+            }
+
+            double sizeUv = 1d / (1 << node.Depth);
+            double u0 = node.Ix * sizeUv;
+            double v0 = node.Iy * sizeUv;
+            double chunkArc = body.Radius * 1.5707963267948966d * sizeUv;
+
+            for (int layerIndex = 0; layerIndex < decorProfile.Layers.Count; layerIndex++)
+            {
+                GroundDecorLayer layer = decorProfile.Layers[layerIndex];
+                if (layer == null || !layer.Enabled || layer.NearMeshes == null || layer.NearMeshes.Length == 0
+                    || layer.MaxInstancesPerChunk <= 0)
+                {
+                    continue;
+                }
+
+                double spacing = System.Math.Max(0.25d, layer.SpacingMeters);
+                int cells = (int)System.Math.Ceiling(chunkArc / spacing);
+                cells = System.Math.Max(1, System.Math.Min(System.Math.Max(1, layer.MaxCellsPerAxis), cells));
+                int count = cells * cells;
+
+                var dirs = new NativeArray<double3>(count, Allocator.TempJob);
+                var randoms = new NativeArray<double3>(count, Allocator.TempJob);
+                var meshPicks = new NativeArray<double>(count, Allocator.TempJob);
+                var accepted = new NativeArray<int>(count, Allocator.TempJob);
+                var instances = new NativeArray<GroundDecorInstance>(count, Allocator.TempJob);
+
+                for (int a = 0; a < cells; a++)
+                {
+                    double uJitter = GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Ix, (a * 97) + node.Iy, 11);
+                    for (int b = 0; b < cells; b++)
+                    {
+                        int index = (a * cells) + b;
+                        double vJitter = GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Iy, (b * 89) + node.Ix, 12);
+                        double u = u0 + (((a + uJitter) / cells) * sizeUv);
+                        double v = v0 + (((b + vJitter) / cells) * sizeUv);
+                        Vector3d direction = CubeSphere.Direction(node.Face, u, v);
+                        dirs[index] = new double3(direction.X, direction.Y, direction.Z);
+                        randoms[index] = new double3(
+                            GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Ix + node.Iy, (index * 31) + layerIndex, 21),
+                            GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Iy, (index * 37) + layerIndex, 22),
+                            GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Ix, (index * 41) + layerIndex, 23));
+                        meshPicks[index] = GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Ix, (index * 43) + layerIndex, 24);
+                    }
+                }
+
+                GroundDecorPlacementParams placement = GroundDecorPlacementParams.FromLayer(layer, terrain, body.Radius, centerAstro);
+                var job = new GroundDecorCandidateJob
+                {
+                    Directions = dirs,
+                    Randoms = randoms,
+                    MeshPicks = meshPicks,
+                    Terrain = noiseParams,
+                    Placement = placement,
+                    Accepted = accepted,
+                    Instances = instances
+                };
+                job.Schedule(count, 64, new JobHandle()).Complete();
+
+                int acceptedCount = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    if (accepted[i] != 0)
+                    {
+                        acceptedCount++;
+                    }
+                }
+
+                dirs.Dispose();
+                randoms.Dispose();
+                meshPicks.Dispose();
+
+                int take = System.Math.Min(acceptedCount, layer.MaxInstancesPerChunk);
+                if (take > 0)
+                {
+                    var persisted = new NativeArray<GroundDecorInstance>(take, Allocator.Persistent);
+                    int write = 0;
+                    for (int i = 0; i < count && write < take; i++)
+                    {
+                        if (accepted[i] != 0)
+                        {
+                            persisted[write++] = instances[i];
+                        }
+                    }
+
+                    chunk.Decor.Add(new DecorLayerRuntime
+                    {
+                        Profile = layer,
+                        Instances = persisted,
+                        Matrices = new Matrix4x4[write]
+                    });
+                }
+
+                accepted.Dispose();
+                instances.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Нарисовать декор видимых чанков: near — solid-меш, дальше —
+        /// биллборд до MaxDistance. Матрицы — мировой трансформ чанка ×
+        /// локальный TRS инстанса (пересчёт каждый кадр: floating origin/спин).
+        /// </summary>
+        private void DrawDecor(Vector3 cameraPosition)
+        {
+            if (decorProfile == null)
+            {
+                return;
+            }
+
+            // Дистанция декора — тангенциальная (по касательной к поверхности):
+            // высота полёта НЕ выключает весь декор разом. Иначе на наборе
+            // высоты ~MaxDistance всё исчезало одной границей (деревья ~3 км).
+            Vector3 cameraUp = cameraPosition - bodyRenderPosition;
+            if (cameraUp.sqrMagnitude < 1e-6f)
+            {
+                cameraUp = Vector3.up;
+            }
+            else
+            {
+                cameraUp.Normalize();
+            }
+
+            foreach (KeyValuePair<long, Chunk> kv in chunks)
+            {
+                Chunk chunk = kv.Value;
+                if (!chunk.Visible || chunk.Decor.Count == 0)
+                {
+                    continue;
+                }
+
+                Matrix4x4 chunkMatrix = chunk.Go.transform.localToWorldMatrix;
+                Vector3 toChunk = chunk.Go.transform.position - cameraPosition;
+                Vector3 tangential = toChunk - (Vector3.Dot(toChunk, cameraUp) * cameraUp);
+                float distance = Mathf.Max(0f, tangential.magnitude - chunk.BoundsRadius);
+                for (int i = 0; i < chunk.Decor.Count; i++)
+                {
+                    DecorLayerRuntime runtime = chunk.Decor[i];
+                    GroundDecorLayer layer = runtime.Profile;
+                    if (distance > layer.MaxDistanceMeters || runtime.Instances.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    // Слой без billboard-меша (деревья) всегда идёт 3D-путём:                    // иначе его рисовало бы камеро-ориентированным и он крутился
+                    // бы за игроком.
+                    bool near = distance <= layer.NearDistanceMeters || layer.FarBillboardMesh == null;
+                    Material material = near ? layer.NearMaterial : layer.FarMaterial;
+                    if (material == null)
+                    {
+                        material = layer.NearMaterial;
+                    }
+
+                    if (material == null)
+                    {
+                        continue;
+                    }
+
+                    int count = runtime.Instances.Length;
+                    if (near)
+                    {
+                        for (int k = 0; k < count; k++)
+                        {
+                            GroundDecorInstance instance = runtime.Instances[k];
+                            Vector3 position = new Vector3(instance.Position.x, instance.Position.y, instance.Position.z);
+
+                            // Ориентация по НОРМАЛИ поверхности: локальный +Y меша
+                            // (верх карточки/дерева) смотрит вдоль радиали, yaw —
+                            // поворот вокруг неё. Раньше был yaw вокруг мировой Y:
+                            // на широтах карточки ложились плашмя и тонули в земле.
+                            Vector3 up = new Vector3(instance.Normal.x, instance.Normal.y, instance.Normal.z);
+                            if (up.sqrMagnitude < 1e-6f)
+                            {
+                                up = Vector3.up;
+                            }
+                            else
+                            {
+                                up.Normalize();
+                            }
+
+                            Vector3 reference = Mathf.Abs(up.y) < 0.99f ? Vector3.up : Vector3.right;
+                            Vector3 tangent = Vector3.Cross(reference, up).normalized;
+                            Quaternion rotation;
+                            if (layer.FlatOnGround)
+                            {
+                                // Плашмя, без случайного поворота: «пятачок» лежит
+                                // ровно (локальный Z меша = нормаль поверхности).
+                                rotation = Quaternion.LookRotation(up, tangent);
+                            }
+                            else
+                            {
+                                Vector3 forward = Vector3.Cross(up, tangent);
+                                Quaternion align = Quaternion.LookRotation(forward, up);
+                                rotation = Quaternion.AngleAxis(instance.Yaw * 57.29578f, up) * align;
+                            }
+
+                            Vector3 scale = new Vector3(instance.Scale, instance.Scale, instance.Scale);
+                            runtime.Matrices[k] = chunkMatrix * Matrix4x4.TRS(position, rotation, scale);
+                        }
+
+                        if (layer.NearMeshes.Length > 1)
+                        {
+                            EnsureDecorScratch(count);
+                            for (int m = 0; m < layer.NearMeshes.Length; m++)
+                            {
+                                Mesh variant = layer.NearMeshes[m];
+                                if (variant == null)
+                                {
+                                    continue;
+                                }
+
+                                int written = 0;
+                                for (int k = 0; k < count; k++)
+                                {
+                                    if (runtime.Instances[k].MeshIndex == m)
+                                    {
+                                        decorPerMeshScratch[written++] = runtime.Matrices[k];
+                                    }
+                                }
+
+                                if (written > 0)
+                                {
+                                    DrawDecorBatches(variant, material, decorPerMeshScratch, written);
+                                }
+                            }
+                        }
+                        else if (layer.NearMeshes[0] != null)
+                        {
+                            DrawDecorBatches(layer.NearMeshes[0], material, runtime.Matrices, count);
+                        }
+                    }
+                    else
+                    {
+                        Mesh billboard = layer.FarBillboardMesh != null ? layer.FarBillboardMesh : layer.NearMeshes[0];
+                        if (billboard == null)
+                        {
+                            continue;
+                        }
+
+                        // Биллборд в МИРОВЫХ координатах: локальный +Y инстанса =
+                        // нормаль поверхности, +Z = взгляд камеры в касательной
+                        // плоскости. Вся ориентация здесь, шейдер — passthrough.
+                        for (int k = 0; k < count; k++)
+                        {
+                            GroundDecorInstance instance = runtime.Instances[k];
+                            Vector3 localPosition = new Vector3(instance.Position.x, instance.Position.y, instance.Position.z);
+                            Vector3 localUp = new Vector3(instance.Normal.x, instance.Normal.y, instance.Normal.z);
+                            if (localUp.sqrMagnitude < 1e-6f)
+                            {
+                                localUp = Vector3.up;
+                            }
+                            else
+                            {
+                                localUp.Normalize();
+                            }
+
+                            Vector3 worldPosition = chunkMatrix.MultiplyPoint3x4(localPosition);
+                            Vector3 worldUp = chunkMatrix.MultiplyVector(localUp).normalized;
+
+                            Vector3 facing = Vector3.ProjectOnPlane(cameraPosition - worldPosition, worldUp);
+                            if (facing.sqrMagnitude < 1e-6f)
+                            {
+                                facing = Vector3.ProjectOnPlane(Vector3.forward, worldUp);
+                                if (facing.sqrMagnitude < 1e-6f)
+                                {
+                                    facing = Vector3.ProjectOnPlane(Vector3.right, worldUp);
+                                }
+                            }
+
+                            float size = instance.Scale;
+                            Quaternion rotation = Quaternion.LookRotation(facing.normalized, worldUp);
+                            // Квад центрирован по высоте: поднимаем, чтобы основание
+                            // стояло на земле.
+                            worldPosition += worldUp * (0.5f * size);
+                            runtime.Matrices[k] = Matrix4x4.TRS(
+                                worldPosition, rotation, new Vector3(size, size, size));
+                        }
+
+                        DrawDecorBatches(billboard, material, runtime.Matrices, count);
+                    }
+                }
+            }
+        }
+
+        private void EnsureDecorScratch(int size)
+        {
+            if (decorPerMeshScratch == null || decorPerMeshScratch.Length < size)
+            {
+                decorPerMeshScratch = new Matrix4x4[size];
+            }
+        }
+
+        private void DrawDecorBatches(Mesh mesh, Material material, Matrix4x4[] matrices, int count)
+        {
+            const int batchSize = 1023;
+            if (!material.enableInstancing)
+            {
+                // DrawMeshInstanced требует включённого инстансинга у материала.
+                material.enableInstancing = true;
+            }
+
+            int start = 0;
+            while (start < count)
+            {
+                int n = System.Math.Min(batchSize, count - start);
+                Matrix4x4[] batch = matrices;
+                if (start > 0)
+                {
+                    if (decorBatchScratch == null || decorBatchScratch.Length < batchSize)
+                    {
+                        decorBatchScratch = new Matrix4x4[batchSize];
+                    }
+
+                    System.Array.Copy(matrices, start, decorBatchScratch, 0, n);
+                    batch = decorBatchScratch;
+                }
+
+                // Все сабмеши: у FBX ствол и листва могут быть одним мешем
+                // с двумя материалами, иначе дерево рисуется без кроны.
+                for (int sub = 0; sub < mesh.subMeshCount; sub++)
+                {
+                    Graphics.DrawMeshInstanced(
+                        mesh, sub, material, batch, n, null, ShadowCastingMode.Off, false, gameObject.layer);
+                }
+
+                start += n;
+            }
         }
 
         private void EvictIfNeeded()
@@ -834,6 +1308,7 @@ namespace Galilego.Universe
             {
                 long id = toEvict[i];
                 Chunk chunk = chunks[id];
+                DisposeDecor(chunk);
                 if (chunk.Go != null)
                 {
                     Destroy(chunk.Go);
@@ -852,14 +1327,6 @@ namespace Galilego.Universe
                     kv.Value.Go.SetActive(false);
                     kv.Value.Visible = false;
                 }
-            }
-        }
-
-        private void SetBaseSphereVisible(bool visible)
-        {
-            if (baseSphereRenderer != null && baseSphereRenderer.enabled != visible)
-            {
-                baseSphereRenderer.enabled = visible;
             }
         }
 
@@ -882,6 +1349,7 @@ namespace Galilego.Universe
         /// </summary>
         private void ApplyTerrainUniforms(Material m)
         {
+            TerrainPaletteData palette = terrain.Palette ?? new TerrainPaletteData();
             m.SetFloat("_TerrainAmplitude", (float)System.Math.Max(1d, terrain.AmplitudeMeters));
             m.SetFloat("_TerrainSeaLevel", (float)System.Math.Max(terrain.SeaLevelMeters, -1e30d));
             m.SetFloat("_TerrainSeed", terrain.Seed);
@@ -898,17 +1366,42 @@ namespace Galilego.Universe
             m.SetFloat("_ColorDetailOctaves", terrain.ColorDetailOctaves);
             m.SetFloat("_ColorDetailStrength", (float)terrain.ColorDetailStrength);
 
-            m.SetVector("_ColSand", ToVec(TerrainPalette.Sand));
-            m.SetVector("_ColDesert", ToVec(TerrainPalette.Desert));
-            m.SetVector("_ColDryGrass", ToVec(TerrainPalette.DryGrass));
-            m.SetVector("_ColGrass", ToVec(TerrainPalette.Grass));
-            m.SetVector("_ColForest", ToVec(TerrainPalette.Forest));
-            m.SetVector("_ColTundra", ToVec(TerrainPalette.Tundra));
-            m.SetVector("_ColRock", ToVec(TerrainPalette.Rock));
-            m.SetVector("_ColSnow", ToVec(TerrainPalette.Snow));
-            m.SetVector("_ColSea", ToVec(TerrainPalette.Sea));
-            m.SetVector("_ColSoil", ToVec(TerrainPalette.Soil));
-            m.SetVector("_ColLush", ToVec(TerrainPalette.Lush));
+            m.SetVector("_ColSand", ToVec(palette.SandLinear));
+            m.SetVector("_ColDesert", ToVec(palette.DesertLinear));
+            m.SetVector("_ColDryGrass", ToVec(palette.DryGrassLinear));
+            m.SetVector("_ColGrass", ToVec(palette.GrassLinear));
+            m.SetVector("_ColForest", ToVec(palette.ForestLinear));
+            m.SetVector("_ColTundra", ToVec(palette.TundraLinear));
+            m.SetVector("_ColRock", ToVec(palette.RockLinear));
+            m.SetVector("_ColSnow", ToVec(palette.SnowLinear));
+            m.SetVector("_ColSea", ToVec(palette.SeaLinear));
+            m.SetVector("_ColSoil", ToVec(palette.SoilLinear));
+            m.SetVector("_ColLush", ToVec(palette.LushLinear));
+
+            // Текстуры рельефа: трипланарный блендинг по высоте
+            // и склону. Все четыре альбедо обязательны, иначе — процедурная палитра.
+            Texture2D texLow = terrain.TextureLow;
+            Texture2D texMid = terrain.TextureMid;
+            Texture2D texHigh = terrain.TextureHigh;
+            Texture2D texSteep = terrain.TextureSteep;
+            bool useTextures = texLow != null && texMid != null && texHigh != null && texSteep != null;
+            m.SetFloat("_TerrainUseTextures", useTextures ? 1f : 0f);
+            if (useTextures)
+            {
+                m.SetTexture("_TexLow", texLow);
+                m.SetTexture("_TexMid", texMid);
+                m.SetTexture("_TexHigh", texHigh);
+                m.SetTexture("_TexSteep", texSteep);
+                m.SetTexture("_TexOcclusion", terrain.TextureOcclusion != null ? terrain.TextureOcclusion : Texture2D.whiteTexture);
+                m.SetFloat("_TerrainTextureScale", (float)terrain.TextureScale);
+                m.SetFloat("_BodyRadius", (float)body.Radius);
+                m.SetFloat("_LowMidBlendStart", (float)terrain.LowMidBlendStart);
+                m.SetFloat("_LowMidBlendEnd", (float)terrain.LowMidBlendEnd);
+                m.SetFloat("_MidHighBlendStart", (float)terrain.MidHighBlendStart);
+                m.SetFloat("_MidHighBlendEnd", (float)terrain.MidHighBlendEnd);
+                m.SetFloat("_SteepBlendStart", (float)terrain.SteepBlendStart);
+                m.SetFloat("_SteepBlendEnd", (float)terrain.SteepBlendEnd);
+            }
 
             colorStateCache = CaptureColorState();
         }

@@ -7,6 +7,11 @@ Shader "Galilego/PlanetSurface"
         _SpecularPower("Specular Power", Float) = 120.0
         _SpecularIntensity("Specular Intensity", Float) = 0.8
         _RimColor("Water Sky Rim", Color) = (0.35, 0.55, 0.85, 1)
+        _TexLow("Terrain Low", 2D) = "white" {}
+        _TexMid("Terrain Mid", 2D) = "white" {}
+        _TexHigh("Terrain High", 2D) = "white" {}
+        _TexSteep("Terrain Steep", 2D) = "white" {}
+        _TexOcclusion("Terrain Occlusion", 2D) = "white" {}
     }
     SubShader
     {
@@ -69,6 +74,21 @@ Shader "Galilego/PlanetSurface"
             float4 _ColSea;
             float4 _ColSoil;
             float4 _ColLush;
+
+            sampler2D _TexLow;
+            sampler2D _TexMid;
+            sampler2D _TexHigh;
+            sampler2D _TexSteep;
+            sampler2D _TexOcclusion;
+            float _TerrainTextureScale;
+            float _TerrainUseTextures;
+            float _BodyRadius;
+            float _LowMidBlendStart;
+            float _LowMidBlendEnd;
+            float _MidHighBlendStart;
+            float _MidHighBlendEnd;
+            float _SteepBlendStart;
+            float _SteepBlendEnd;
 
             struct Attributes
             {
@@ -314,6 +334,44 @@ Shader "Galilego/PlanetSurface"
                 return c;
             }
 
+            float3 Triplanar(sampler2D tex, float3 pos, float3 weights)
+            {
+                float2 uvX = pos.zy * _TerrainTextureScale;
+                float2 uvY = pos.xz * _TerrainTextureScale;
+                float2 uvZ = pos.xy * _TerrainTextureScale;
+                return (tex2D(tex, uvX).rgb * weights.x)
+                    + (tex2D(tex, uvY).rgb * weights.y)
+                    + (tex2D(tex, uvZ).rgb * weights.z);
+            }
+
+            // Альбедо из текстур рельефа: низ/середина/верх по высоте над
+            // морем, скалы по склону, мягкий AO из occlusion. Биомный тинт
+            // (процедурная палитра) сохраняет климатические зоны читаемыми.
+            // pos и нормаль — в тел-fixed (object) осях: трипланер согласован.
+            float3 TerrainTextureAlbedo(float3 dir, float raw, float slopeTan, float3 normalObject, float3 biome)
+            {
+                float3 pos = dir * (_BodyRadius + raw);
+                float3 tri = abs(normalObject);
+                tri = tri * tri * tri * tri;
+                tri /= max(1e-5, tri.x + tri.y + tri.z);
+
+                float altitude = max(raw - _TerrainSeaLevel, 0.0);
+                float lowW = 1.0 - smoothstep(_LowMidBlendStart, _LowMidBlendEnd, altitude);
+                float highW = smoothstep(_MidHighBlendStart, _MidHighBlendEnd, altitude);
+                float midW = max(0.0, 1.0 - lowW - highW);
+
+                float3 c = (Triplanar(_TexLow, pos, tri) * lowW)
+                    + (Triplanar(_TexMid, pos, tri) * midW)
+                    + (Triplanar(_TexHigh, pos, tri) * highW);
+                c = lerp(c, Triplanar(_TexSteep, pos, tri), smoothstep(_SteepBlendStart, _SteepBlendEnd, slopeTan));
+
+                float occl = dot(Triplanar(_TexOcclusion, pos, tri), float3(0.3333, 0.3333, 0.3333));
+                c *= lerp(1.0, saturate(occl * 1.3), 0.65);
+
+                c *= lerp(float3(1.0, 1.0, 1.0), saturate(biome * 1.9), 0.45);
+                return c;
+            }
+
             float4 Frag(Varyings input) : SV_Target
             {
                 float3 normal = normalize(input.normalWS);
@@ -358,6 +416,15 @@ Shader "Galilego/PlanetSurface"
 
                 float3 albedo = TerrainAlbedo(raw, mask, detail, slopeTan, lat01);
 
+                // Текстуры рельефа вместо процедурного альбедо —
+                // только на суше: море остаётся процедурным/водным.
+                float isWater = raw <= _TerrainSeaLevel + (_TerrainAmplitude * 0.001) ? 1.0 : 0.0;
+                if (_TerrainUseTextures > 0.5 && isWater < 0.5)
+                {
+                    float3 normalObject = normalize(TransformWorldToObjectNormal(normal));
+                    albedo = TerrainTextureAlbedo(dir, raw, slopeTan, normalObject, albedo);
+                }
+
                 // Суша.
                 float3 land = albedo * lightTerm;
 
@@ -379,7 +446,6 @@ Shader "Galilego/PlanetSurface"
                     + (_RimColor.rgb * fresnel * lightTerm)
                     + (spec * _TerrainSun);
 
-                float isWater = raw <= _TerrainSeaLevel + (_TerrainAmplitude * 0.001) ? 1.0 : 0.0;
                 float3 color = lerp(land, water, isWater);
                 return float4(color, 1.0);
             }

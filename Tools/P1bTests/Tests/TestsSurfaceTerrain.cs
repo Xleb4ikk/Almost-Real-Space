@@ -1752,4 +1752,454 @@ internal static partial class P1bTests
             "job пишет цветовую деталь (расхождение " + worstDetail.ToString("E3") + ")");
         return 0;
     }
+
+    /// <summary>
+    /// Профиль рельефа — единственная точка копирования (T91): FromProfile
+    /// обязан перенести ВСЕ поля в HeightfieldTerrain, Build — собрать terrain
+    /// из BodyBlueprint.Terrain, Clone — не делить палитру с оригиналом.
+    /// Забытое при копировании поле ловится здесь, а не глазами в четырёх местах.
+    /// </summary>
+    private static int Test91_TerrainProfile()
+    {
+        TerrainProfile profile = TerrainProfile.CreateEarthLike(1143000d);
+        profile.AmplitudeMeters = 3210.5d;
+        profile.ColorDetailStrength = 0.22d;
+        profile.WarpSeedOffset = 17;
+
+        const int seed = 24334543;
+        HeightfieldTerrain t = HeightfieldTerrain.FromProfile(profile, seed);
+
+        bool fieldsCopied = t.Seed == seed
+            && t.AmplitudeMeters == profile.AmplitudeMeters
+            && t.BaseFrequency == profile.BaseFrequency
+            && t.Octaves == profile.Octaves
+            && t.SeaLevelMeters == profile.SeaLevelMeters
+            && t.Lacunarity == profile.Lacunarity
+            && t.Gain == profile.Gain
+            && t.ContinentFrequency == profile.ContinentFrequency
+            && t.ContinentOctaves == profile.ContinentOctaves
+            && t.ContinentThreshold == profile.ContinentThreshold
+            && t.ContinentSharpness == profile.ContinentSharpness
+            && t.ContinentDepth == profile.ContinentDepth
+            && t.RidgedMix == profile.RidgedMix
+            && t.PlainMix == profile.PlainMix
+            && t.PlainFrequency == profile.PlainFrequency
+            && t.PlainOctaves == profile.PlainOctaves
+            && t.PlainThreshold == profile.PlainThreshold
+            && t.PlainSharpness == profile.PlainSharpness
+            && t.PlainElevation == profile.PlainElevation
+            && t.DetailMix == profile.DetailMix
+            && t.DetailFrequency == profile.DetailFrequency
+            && t.DetailOctaves == profile.DetailOctaves
+            && t.WarpStrength == profile.WarpStrength
+            && t.WarpFrequency == profile.WarpFrequency
+            && t.WarpOctaves == profile.WarpOctaves
+            && t.WarpSeedOffset == profile.WarpSeedOffset
+            && t.ColorRockSlopeTan == profile.ColorRockSlopeTan
+            && t.ColorRockSlopeWidth == profile.ColorRockSlopeWidth
+            && t.ColorRockHeightMin == profile.ColorRockHeightMin
+            && t.ColorSnowSlopeTan == profile.ColorSnowSlopeTan
+            && t.ColorNoiseFrequency == profile.ColorNoiseFrequency
+            && t.ColorNoiseOctaves == profile.ColorNoiseOctaves
+            && t.ColorNoiseStrength == profile.ColorNoiseStrength
+            && t.ColorNoiseSeedOffset == profile.ColorNoiseSeedOffset
+            && t.ColorDetailFrequency == profile.ColorDetailFrequency
+            && t.ColorDetailOctaves == profile.ColorDetailOctaves
+            && t.ColorDetailStrength == profile.ColorDetailStrength
+            && t.ColorDetailSeedOffset == profile.ColorDetailSeedOffset
+            && t.Palette != null
+            && !ReferenceEquals(t.Palette, profile.Palette)
+            && t.Palette.Matches(profile.Palette);
+
+        // Эталонная ручная сборка (как было в SystemBlueprint.Build): форма
+        // должна совпасть бит-в-бит.
+        var manual = new HeightfieldTerrain
+        {
+            Seed = seed,
+            AmplitudeMeters = profile.AmplitudeMeters,
+            BaseFrequency = profile.BaseFrequency,
+            Octaves = profile.Octaves,
+            SeaLevelMeters = profile.SeaLevelMeters,
+            Lacunarity = profile.Lacunarity,
+            Gain = profile.Gain,
+            ContinentFrequency = profile.ContinentFrequency,
+            ContinentOctaves = profile.ContinentOctaves,
+            ContinentThreshold = profile.ContinentThreshold,
+            ContinentSharpness = profile.ContinentSharpness,
+            ContinentDepth = profile.ContinentDepth,
+            RidgedMix = profile.RidgedMix,
+            PlainMix = profile.PlainMix,
+            PlainFrequency = profile.PlainFrequency,
+            PlainOctaves = profile.PlainOctaves,
+            PlainThreshold = profile.PlainThreshold,
+            PlainSharpness = profile.PlainSharpness,
+            PlainElevation = profile.PlainElevation,
+            DetailMix = profile.DetailMix,
+            DetailFrequency = profile.DetailFrequency,
+            DetailOctaves = profile.DetailOctaves,
+            WarpStrength = profile.WarpStrength,
+            WarpFrequency = profile.WarpFrequency,
+            WarpOctaves = profile.WarpOctaves,
+            WarpSeedOffset = profile.WarpSeedOffset,
+            ColorRockSlopeTan = profile.ColorRockSlopeTan,
+            ColorRockSlopeWidth = profile.ColorRockSlopeWidth,
+            ColorRockHeightMin = profile.ColorRockHeightMin,
+            ColorSnowSlopeTan = profile.ColorSnowSlopeTan,
+            ColorNoiseFrequency = profile.ColorNoiseFrequency,
+            ColorNoiseOctaves = profile.ColorNoiseOctaves,
+            ColorNoiseStrength = profile.ColorNoiseStrength,
+            ColorNoiseSeedOffset = profile.ColorNoiseSeedOffset,
+            ColorDetailFrequency = profile.ColorDetailFrequency,
+            ColorDetailOctaves = profile.ColorDetailOctaves,
+            ColorDetailStrength = profile.ColorDetailStrength,
+            ColorDetailSeedOffset = profile.ColorDetailSeedOffset
+        };
+
+        TerrainNoiseParams fromProfile = TerrainNoiseParams.FromTerrain(t);
+        TerrainNoiseParams fromManual = TerrainNoiseParams.FromTerrain(manual);
+        bool heightsExact = true;
+        for (int i = 0; i < 240; i++)
+        {
+            double lat = (-80d + (160d * i / 239d)) * (Math.PI / 180d);
+            double lon = (-180d + (360d * i / 97d)) * (Math.PI / 180d);
+            double cosLat = Math.Cos(lat);
+            Unity.Mathematics.double3 dir = new Unity.Mathematics.double3(
+                cosLat * Math.Cos(lon), cosLat * Math.Sin(lon), Math.Sin(lat));
+            if (TerrainNoise.SampleHeight(fromProfile, dir) != TerrainNoise.SampleHeight(fromManual, dir))
+            {
+                heightsExact = false;
+                break;
+            }
+        }
+
+        // Build: BodyBlueprint.Terrain -> OrbitingBody.Terrain; профиль
+        // защелкивается на момент сборки (правка после Build не влияет).
+        var blueprint = new SystemBlueprint();
+        blueprint.Bodies.Add(new BodyBlueprint
+        {
+            Name = "Тело",
+            ParentIndex = -1,
+            StandardGravitationalParameter = 1.327e20d,
+            Terrain = profile,
+            TerrainSeed = seed
+        });
+        StarSystem system = blueprint.Build();
+        HeightfieldTerrain built = system.Root.Terrain as HeightfieldTerrain;
+        bool buildWired = built != null
+            && built.Seed == seed
+            && built.AmplitudeMeters == profile.AmplitudeMeters
+            && built.WarpSeedOffset == profile.WarpSeedOffset;
+        if (built != null)
+        {
+            profile.AmplitudeMeters += 1d;
+            buildWired = buildWired && built.AmplitudeMeters != profile.AmplitudeMeters;
+        }
+
+        TerrainProfile clone = profile.Clone();
+        clone.Palette.Rock.r = 0.123456f;
+        bool cloneIndependent = profile.Palette.Rock.r != 0.123456f;
+
+        Check(fieldsCopied, "T91 terrain-profile", "FromProfile копирует все поля + палитру");
+        Check(heightsExact, "T91 terrain-profile", "высоты из профиля == ручная сборка бит-в-бит");
+        Check(buildWired, "T91 terrain-profile", "Build собирает terrain из BodyBlueprint.Terrain");
+        Check(cloneIndependent, "T91 terrain-profile", "Clone не делит палитру с оригиналом");
+        return 0;
+    }
+
+    /// <summary>
+    /// Палитра из ассета (sRGB→Linear) обязана бит-в-бит совпадать со старыми
+    /// константами TerrainPalette — иначе миграция незаметно поменяет картинку.
+    /// </summary>
+    private static int Test92_TerrainPaletteData()
+    {
+        TerrainPaletteData palette = new TerrainPaletteData();
+        bool defaults = ColorsEqual(palette.SandLinear, TerrainPalette.Sand)
+            && ColorsEqual(palette.DesertLinear, TerrainPalette.Desert)
+            && ColorsEqual(palette.DryGrassLinear, TerrainPalette.DryGrass)
+            && ColorsEqual(palette.GrassLinear, TerrainPalette.Grass)
+            && ColorsEqual(palette.ForestLinear, TerrainPalette.Forest)
+            && ColorsEqual(palette.TundraLinear, TerrainPalette.Tundra)
+            && ColorsEqual(palette.RockLinear, TerrainPalette.Rock)
+            && ColorsEqual(palette.SnowLinear, TerrainPalette.Snow)
+            && ColorsEqual(palette.SeaLinear, TerrainPalette.Sea)
+            && ColorsEqual(palette.SoilLinear, TerrainPalette.Soil)
+            && ColorsEqual(palette.LushLinear, TerrainPalette.Lush);
+
+        TerrainPaletteData clone = palette.Clone();
+        bool matches = clone.Matches(palette);
+        clone.Grass.r += 0.05f;
+        bool detects = !clone.Matches(palette);
+
+        Check(defaults, "T92 terrain-palette", "данные палитры == legacy-константы");
+        Check(matches && detects, "T92 terrain-palette", "Matches ловит копию и правку");
+        return 0;
+    }
+
+    /// <summary>
+    /// Размещение декора: детерминизм (та же точка — тот же инстанс),
+    /// паритет Burst-джобы и прямой функции, диапазоны масштаба/поворота и
+    /// фильтры (плотность, высота, вода, биом).
+    /// </summary>
+    private static int Test93_GroundDecorDistribution()
+    {
+        TerrainProfile profile = TerrainProfile.CreateEarthLike(1143000d);
+        HeightfieldTerrain terrain = HeightfieldTerrain.FromProfile(profile, 24334543);
+        TerrainNoiseParams terrainParams = TerrainNoiseParams.FromTerrain(terrain);
+
+        var layer = new GroundDecorLayer
+        {
+            NearMeshes = new UnityEngine.Mesh[] { new UnityEngine.Mesh(), new UnityEngine.Mesh(), new UnityEngine.Mesh() },
+            SpacingMeters = 2d,
+            MaxInstancesPerChunk = 5000,
+            Density = 1d,
+            DistributionFrequency = 5000d,
+            DistributionOctaves = 4,
+            ClusterThreshold = 0d,
+            MinAltitudeMeters = 0d,
+            MaxAltitudeMeters = 1e9d,
+            MaxSlopeTan = 1.2d,
+            AvoidWater = true,
+            WetMin = 0d,
+            WetMax = 1d,
+            MinScale = 0.6d,
+            MaxScale = 1.4d,
+            SteepPower = 4d
+        };
+
+        GroundDecorPlacementParams p = GroundDecorPlacementParams.FromLayer(layer, terrain, 1143000d, Vector3d.Zero);
+
+        int n = 24;
+        int count = CubeSphere.FaceCount * (n + 1) * (n + 1);
+        var dirs = new Unity.Mathematics.double3[count];
+        var randoms = new Unity.Mathematics.double3[count];
+        var meshPicks = new double[count];
+        int index = 0;
+        for (int face = 0; face < CubeSphere.FaceCount; face++)
+        {
+            for (int i = 0; i <= n; i++)
+            {
+                for (int j = 0; j <= n; j++)
+                {
+                    Vector3d d = CubeSphere.Direction(face, i / (double)n, j / (double)n);
+                    dirs[index] = new Unity.Mathematics.double3(d.X, d.Y, d.Z);
+                    randoms[index] = new Unity.Mathematics.double3(
+                        0d,
+                        GroundDecorDistribution.Hash01(face, i, j, 4, 22),
+                        GroundDecorDistribution.Hash01(face, j, i, 9, 23));
+                    meshPicks[index] = GroundDecorDistribution.Hash01(face, i, j, 11, 24);
+                    index++;
+                }
+            }
+        }
+
+        var jobDirs = new Unity.Collections.NativeArray<Unity.Mathematics.double3>(count, Unity.Collections.Allocator.TempJob);
+        var jobRandoms = new Unity.Collections.NativeArray<Unity.Mathematics.double3>(count, Unity.Collections.Allocator.TempJob);
+        var jobMeshPicks = new Unity.Collections.NativeArray<double>(count, Unity.Collections.Allocator.TempJob);
+        var jobAccepted = new Unity.Collections.NativeArray<int>(count, Unity.Collections.Allocator.TempJob);
+        var jobInstances = new Unity.Collections.NativeArray<GroundDecorInstance>(count, Unity.Collections.Allocator.TempJob);
+        for (int k = 0; k < count; k++)
+        {
+            jobDirs[k] = dirs[k];
+            jobRandoms[k] = randoms[k];
+            jobMeshPicks[k] = meshPicks[k];
+        }
+
+        var job = new GroundDecorCandidateJob
+        {
+            Directions = jobDirs,
+            Randoms = jobRandoms,
+            MeshPicks = jobMeshPicks,
+            Terrain = terrainParams,
+            Placement = p,
+            Accepted = jobAccepted,
+            Instances = jobInstances
+        };
+        for (int k = 0; k < count; k++)
+        {
+            job.Execute(k);
+        }
+
+        int acceptedCount = 0;
+        bool jobParity = true;
+        bool rangesOk = true;
+        bool finiteOk = true;
+        bool deterministic = true;
+        bool meshIndexOk = true;
+        for (int k = 0; k < count; k++)
+        {
+            bool direct = GroundDecorDistribution.TryEvaluate(p, terrainParams, dirs[k], randoms[k], meshPicks[k], out GroundDecorInstance directInstance);
+            if (direct != (jobAccepted[k] != 0))
+            {
+                jobParity = false;
+            }
+
+            if (!direct)
+            {
+                continue;
+            }
+
+            acceptedCount++;
+            GroundDecorInstance jobInstance = jobInstances[k];
+            if (directInstance.Scale != jobInstance.Scale || directInstance.Yaw != jobInstance.Yaw
+                || directInstance.MeshIndex != jobInstance.MeshIndex
+                || directInstance.Position.x != jobInstance.Position.x
+                || directInstance.Position.y != jobInstance.Position.y
+                || directInstance.Position.z != jobInstance.Position.z)
+            {
+                jobParity = false;
+            }
+
+            if (directInstance.MeshIndex < 0 || directInstance.MeshIndex >= layer.NearMeshes.Length)
+            {
+                meshIndexOk = false;
+            }
+
+            if (directInstance.Scale < (float)p.MinScale || directInstance.Scale > (float)p.MaxScale
+                || directInstance.Yaw < 0f || directInstance.Yaw >= 6.283186f)
+            {
+                rangesOk = false;
+            }
+
+            if (float.IsNaN(directInstance.Position.x) || float.IsNaN(directInstance.Position.y) || float.IsNaN(directInstance.Position.z)
+                || float.IsNaN(directInstance.Normal.x) || float.IsNaN(directInstance.Normal.y) || float.IsNaN(directInstance.Normal.z))
+            {
+                finiteOk = false;
+            }
+
+            if (!GroundDecorDistribution.TryEvaluate(p, terrainParams, dirs[k], randoms[k], meshPicks[k], out GroundDecorInstance again)
+                || again.Scale != directInstance.Scale || again.Yaw != directInstance.Yaw
+                || again.Position.x != directInstance.Position.x)
+            {
+                deterministic = false;
+            }
+        }
+
+        jobDirs.Dispose();
+        jobRandoms.Dispose();
+        jobMeshPicks.Dispose();
+        jobAccepted.Dispose();
+        jobInstances.Dispose();
+
+        // Фильтры обязаны занулять посадки.
+        GroundDecorPlacementParams noDensity = p;
+        noDensity.Density = 0d;
+        GroundDecorPlacementParams tooHigh = p;
+        tooHigh.MinAltitudeMeters = 1e9d;
+        GroundDecorPlacementParams tooWet = p;
+        tooWet.WetMax = -0.001d;
+        GroundDecorPlacementParams drowned = p;
+        drowned.SeaLevelMeters = 1e9d;
+
+        int zeroDensity = 0;
+        int zeroAltitude = 0;
+        int zeroWet = 0;
+        int zeroWater = 0;
+        for (int k = 0; k < count; k++)
+        {
+            if (GroundDecorDistribution.TryEvaluate(noDensity, terrainParams, dirs[k], randoms[k], meshPicks[k], out _)) zeroDensity++;
+            if (GroundDecorDistribution.TryEvaluate(tooHigh, terrainParams, dirs[k], randoms[k], meshPicks[k], out _)) zeroAltitude++;
+            if (GroundDecorDistribution.TryEvaluate(tooWet, terrainParams, dirs[k], randoms[k], meshPicks[k], out _)) zeroWet++;
+            if (GroundDecorDistribution.TryEvaluate(drowned, terrainParams, dirs[k], randoms[k], meshPicks[k], out _)) zeroWater++;
+        }
+
+        double hashA = GroundDecorDistribution.Hash01(1, 2, 3, 4, 5);
+        double hashB = GroundDecorDistribution.Hash01(1, 2, 3, 4, 5);
+        bool hashOk = hashA == hashB && hashA >= 0d && hashA < 1d;
+
+        Check(acceptedCount > 0, "T93 decor-distribution", "посадки есть: " + acceptedCount + " из " + count);
+        Check(jobParity && deterministic, "T93 decor-distribution", "джоба == прямая функция, бит-в-бит");
+        Check(rangesOk && finiteOk, "T93 decor-distribution", "масштаб/поворот/позиции в границах");
+        Check(meshIndexOk, "T93 decor-distribution", "MeshIndex в [0, " + layer.NearMeshes.Length + ")");
+        Check(zeroDensity == 0 && zeroAltitude == 0 && zeroWet == 0 && zeroWater == 0,
+            "T93 decor-distribution",
+            "фильтры нулят: density=" + zeroDensity + " altitude=" + zeroAltitude + " wet=" + zeroWet + " water=" + zeroWater);
+        Check(hashOk, "T93 decor-distribution", "Hash01 детерминирован и в [0,1)");
+        return 0;
+    }
+
+    /// <summary>
+    /// Проверка «верхней границы леса»: сэмплируем рельеф Terra и считаем, что
+    /// фильтр слоя Trees (MinAltitude 5, MaxAltitude 3200, slope 0.9,
+    /// wet 0.1..1) принимает деревья в высокогорье, но не выше 3.2 км.
+    /// </summary>
+    private static int Test94_TreeHighAltitude()
+    {
+        TerrainProfile profile = TerrainProfile.CreateEarthLike(1143000d);
+        HeightfieldTerrain terrain = HeightfieldTerrain.FromProfile(profile, 24334543);
+        TerrainNoiseParams terrainParams = TerrainNoiseParams.FromTerrain(terrain);
+
+        var trees = new GroundDecorLayer
+        {
+            SpacingMeters = 60d,
+            Density = 0.8d,
+            DistributionFrequency = 150d,
+            DistributionOctaves = 4,
+            ClusterThreshold = 0d,
+            MinAltitudeMeters = 5d,
+            MaxAltitudeMeters = 3200d,
+            MaxSlopeTan = 0.9d,
+            AvoidWater = true,
+            WetMin = 0.1d,
+            WetMax = 1d,
+            MinScale = 1d,
+            MaxScale = 2d,
+            SteepPower = 3d
+        };
+        GroundDecorPlacementParams p = GroundDecorPlacementParams.FromLayer(trees, terrain, 1143000d, Vector3d.Zero);
+
+        const int n = 128;
+        int total = 0;
+        int above25 = 0;
+        int above32 = 0;
+        int acceptedAbove25 = 0;
+        int acceptedAbove32 = 0;
+        double maxHeight = double.MinValue;
+        for (int face = 0; face < CubeSphere.FaceCount; face++)
+        {
+            for (int i = 0; i <= n; i++)
+            {
+                for (int j = 0; j <= n; j++)
+                {
+                    Vector3d d = CubeSphere.Direction(face, i / (double)n, j / (double)n);
+                    var dir = new Unity.Mathematics.double3(d.X, d.Y, d.Z);
+                    double raw = TerrainNoise.SampleHeight(terrainParams, dir) * terrain.AmplitudeMeters;
+                    maxHeight = Math.Max(maxHeight, raw);
+                    if (raw > 2500d)
+                    {
+                        above25++;
+                    }
+
+                    if (raw > 3200d)
+                    {
+                        above32++;
+                    }
+
+                    if (raw <= terrain.SeaLevelMeters + (terrain.AmplitudeMeters * 0.001d))
+                    {
+                        continue;
+                    }
+
+                    total++;
+                    bool accepted = GroundDecorDistribution.TryEvaluate(
+                        p, terrainParams, dir, new Unity.Mathematics.double3(0d, 0.5d, 0.5d), 0.5d, out _);
+                    if (accepted && raw > 2500d)
+                    {
+                        acceptedAbove25++;
+                    }
+
+                    if (accepted && raw > 3200d)
+                    {
+                        acceptedAbove32++;
+                    }
+                }
+            }
+        }
+
+        System.Console.WriteLine("TREEALT total=" + total + " maxH=" + maxHeight.ToString("F0")
+            + " above2.5k=" + above25 + " above3.2k=" + above32
+            + " accepted2.5k=" + acceptedAbove25 + " accepted3.2k=" + acceptedAbove32);
+        Check(acceptedAbove25 > 0, "T94 tree-high-altitude", "деревья принимаются выше 2.5 км: " + acceptedAbove25);
+        Check(acceptedAbove32 == 0, "T94 tree-high-altitude", "выше 3.2 км деревьев нет: " + acceptedAbove32);
+        return 0;
+    }
 }

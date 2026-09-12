@@ -4,12 +4,10 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Инспектор тела: вместо плоской стены из ~45 полей рельефа — сворачиваемые
-    /// секции (Тело / Атмосфера / Рельеф), а физически второстепенные параметры
-    /// (художественные тинты, континенты, равнины, warp, цвет) — под тумблером
-    /// «Дополнительно». Это ЧИСТО ВИЗУАЛЬНОЕ изменение: пути сериализации не
-    /// меняются, значения сцены сохраняются. Изменение модели данных (вложенный
-    /// TerrainProfile) — отдельная задача.
+    /// Инспектор тела: физика/орбита/вращение плоскими секциями, рельеф и
+    /// атмосфера — ссылками на ассеты-пресеты (редактируются встроенно своими
+    /// инспекторами). Плоские ~45 полей рельефа ушли в TerrainProfileAsset:
+    /// один пресет можно переиспользовать между телами и сценами.
     /// </summary>
     [CustomEditor(typeof(BodyAuthoring))]
     public sealed class BodyAuthoringEditor : Editor
@@ -17,25 +15,39 @@ namespace Galilego.Universe.EditorTools
         private static bool showBody = true;
         private static bool showOrbit = true;
         private static bool showRotation = true;
+        private static bool showProfiles = true;
 
-        private static bool showAtmosphere = true;
-        private static bool showTerrain = true;
-        private static bool showAtmosphereAdvanced;
-        private static bool showTerrainAdvanced;
+        private Editor terrainEditor;
+        private Editor atmosphereEditor;
+        private Editor decorEditor;
+        private Object terrainEditorTarget;
+        private Object atmosphereEditorTarget;
+        private Object decorEditorTarget;
 
-        private static bool showShape = true;
-        private static bool showContinents = true;
-        private static bool showPlains;
-        private static bool showWarp;
-        private static bool showColor = true;
+        private void OnDisable()
+        {
+            if (terrainEditor != null)
+            {
+                DestroyImmediate(terrainEditor);
+            }
+
+            if (atmosphereEditor != null)
+            {
+                DestroyImmediate(atmosphereEditor);
+            }
+
+            if (decorEditor != null)
+            {
+                DestroyImmediate(decorEditor);
+            }
+        }
 
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
 
             DrawBody();
-            DrawAtmosphere();
-            DrawTerrain();
+            DrawProfiles();
             DrawActions();
 
             serializedObject.ApplyModifiedProperties();
@@ -85,120 +97,48 @@ namespace Galilego.Universe.EditorTools
             EditorGUILayout.EndFoldoutHeaderGroup();
         }
 
-        private void DrawAtmosphere()
+        private void DrawProfiles()
         {
-            showAtmosphere = EditorGUILayout.BeginFoldoutHeaderGroup(showAtmosphere, "Атмосфера");
-            if (showAtmosphere)
+            showProfiles = EditorGUILayout.BeginFoldoutHeaderGroup(showProfiles, "Профили-пресеты");
+            if (showProfiles)
             {
                 EditorGUI.indentLevel++;
-                Field("Atmosphere.TopAltitudeMeters");
-                Field("Atmosphere.SeaLevelDensityKgPerCubicMeter");
-                Field("Atmosphere.ScaleHeightMeters");
-                Field("Atmosphere.OzoneEnabled");
-                Field("Atmosphere.VisualEnabled");
 
-                DrawAdvanced(ref showAtmosphereAdvanced, () =>
-                {
-                    Field("Atmosphere.RayleighColor");
-                    Field("Atmosphere.MieColor");
-                    Field("Atmosphere.Intensity");
-                    Field("Atmosphere.MieAnisotropy");
-                    Field("Atmosphere.AerosolScale");
-                    Field("Atmosphere.StepCount");
-                    Field("Atmosphere.PlanetOcclusion");
-                    Field("Atmosphere.GroundColor");
-                    Field("Atmosphere.HorizonFade");
-                });
-
-                EditorGUI.indentLevel--;
-            }
-
-            EditorGUILayout.EndFoldoutHeaderGroup();
-        }
-
-        private void DrawTerrain()
-        {
-            showTerrain = EditorGUILayout.BeginFoldoutHeaderGroup(showTerrain, "Процедурный рельеф");
-            if (showTerrain)
-            {
-                EditorGUI.indentLevel++;
-                Field("TerrainEnabled");
+                Field("TerrainPreset");
+                TerrainProfileAsset terrainPreset = serializedObject.FindProperty("TerrainPreset").objectReferenceValue as TerrainProfileAsset;
                 Field("TerrainSeed");
-                Field("TerrainAmplitudeMeters");
-                Field("TerrainBaseFrequency");
-                Field("TerrainOctaves");
-                Field("TerrainSeaLevelMeters");
-
-                DrawAdvanced(ref showTerrainAdvanced, () =>
+                if (terrainPreset == null)
                 {
-                    showShape = EditorGUILayout.Foldout(showShape, "Форма (fBm, хребты, деталь)", true);
-                    if (showShape)
-                    {
-                        EditorGUI.indentLevel++;
-                        Field("TerrainLacunarity");
-                        Field("TerrainGain");
-                        Slider("TerrainRidgedMix", 0f, 1f);
-                        Slider("TerrainDetailMix", 0f, 0.5f);
-                        Field("TerrainDetailFrequency");
-                        Field("TerrainDetailOctaves");
-                        EditorGUI.indentLevel--;
-                    }
+                    EditorGUILayout.HelpBox("Рельеф выключен (гладкая сфера). Пресет-пример: Assets/_Project/Profiles/Terrain/EarthLike.asset.", MessageType.Info);
+                }
+                else
+                {
+                    DrawNested(terrainPreset, ref terrainEditor, ref terrainEditorTarget);
+                }
 
-                    showContinents = EditorGUILayout.Foldout(showContinents, "Континенты (океан/суша)", true);
-                    if (showContinents)
-                    {
-                        EditorGUI.indentLevel++;
-                        Field("TerrainContinentFrequency");
-                        Field("TerrainContinentOctaves");
-                        Field("TerrainContinentThreshold");
-                        Slider("TerrainContinentSharpness", 0f, 1f);
-                        Slider("TerrainContinentDepth", 0f, 1.5f);
-                        EditorGUI.indentLevel--;
-                    }
+                EditorGUILayout.Space(6);
+                Field("AtmospherePreset");
+                AtmosphereProfileAsset atmospherePreset = serializedObject.FindProperty("AtmospherePreset").objectReferenceValue as AtmosphereProfileAsset;
+                if (atmospherePreset == null)
+                {
+                    EditorGUILayout.HelpBox("Атмосферы нет (физика и визуал выключены). Пресет-пример: Assets/_Project/Profiles/Atmosphere/EarthAtmosphere.asset.", MessageType.Info);
+                }
+                else
+                {
+                    DrawNested(atmospherePreset, ref atmosphereEditor, ref atmosphereEditorTarget);
+                }
 
-                    showPlains = EditorGUILayout.Foldout(showPlains, "Равнины", true);
-                    if (showPlains)
-                    {
-                        EditorGUI.indentLevel++;
-                        Slider("TerrainPlainMix", 0f, 1f);
-                        Field("TerrainPlainFrequency");
-                        Field("TerrainPlainOctaves");
-                        Field("TerrainPlainThreshold");
-                        Slider("TerrainPlainSharpness", 0f, 1f);
-                        Slider("TerrainPlainElevation", 0f, 1f);
-                        EditorGUI.indentLevel--;
-                    }
-
-                    showWarp = EditorGUILayout.Foldout(showWarp, "Domain warp (складки)", true);
-                    if (showWarp)
-                    {
-                        EditorGUI.indentLevel++;
-                        Slider("TerrainWarpStrength", 0f, 0.5f);
-                        Field("TerrainWarpFrequency");
-                        Field("TerrainWarpOctaves");
-                        Field("TerrainWarpSeedOffset");
-                        EditorGUI.indentLevel--;
-                    }
-
-                    showColor = EditorGUILayout.Foldout(showColor, "Цвет (скалы, снег, биомы)", true);
-                    if (showColor)
-                    {
-                        EditorGUI.indentLevel++;
-                        Slider("TerrainColorRockSlopeTan", 0f, 3f);
-                        Slider("TerrainColorRockSlopeWidth", 0f, 1f);
-                        Slider("TerrainColorRockHeightMin", 0f, 1f);
-                        Slider("TerrainColorSnowSlopeTan", 0f, 3f);
-                        Field("TerrainColorNoiseFrequency");
-                        Field("TerrainColorNoiseOctaves");
-                        Slider("TerrainColorNoiseStrength", 0f, 0.5f);
-                        Field("TerrainColorNoiseSeedOffset");
-                        Field("TerrainColorDetailFrequency");
-                        Field("TerrainColorDetailOctaves");
-                        Slider("TerrainColorDetailStrength", 0f, 1f);
-                        Field("TerrainColorDetailSeedOffset");
-                        EditorGUI.indentLevel--;
-                    }
-                });
+                EditorGUILayout.Space(6);
+                Field("GroundDecorPreset");
+                GroundDecorProfileAsset decorPreset = serializedObject.FindProperty("GroundDecorPreset").objectReferenceValue as GroundDecorProfileAsset;
+                if (decorPreset == null)
+                {
+                    EditorGUILayout.HelpBox("Декора местности нет (слой выключен).", MessageType.Info);
+                }
+                else
+                {
+                    DrawNested(decorPreset, ref decorEditor, ref decorEditorTarget);
+                }
 
                 EditorGUI.indentLevel--;
             }
@@ -213,8 +153,16 @@ namespace Galilego.Universe.EditorTools
             BodyAuthoring authoring = (BodyAuthoring)target;
             if (GUILayout.Button("Пресет рельефа «Земля»"))
             {
-                Undo.RecordObject(authoring, "Earth-like terrain preset");
-                authoring.ApplyEarthLikeTerrainPreset();
+                const string presetPath = "Assets/_Project/Profiles/Terrain/EarthLike.asset";
+                TerrainProfileAsset preset = AssetDatabase.LoadAssetAtPath<TerrainProfileAsset>(presetPath);
+                if (preset == null)
+                {
+                    Debug.LogWarning("[BodyAuthoring] нет ассета " + presetPath + ".");
+                    return;
+                }
+
+                Undo.RecordObject(authoring, "Assign Earth-like terrain preset");
+                authoring.TerrainPreset = preset;
                 EditorUtility.SetDirty(authoring);
                 serializedObject.Update();
 
@@ -226,27 +174,26 @@ namespace Galilego.Universe.EditorTools
             }
         }
 
-        private void DrawAdvanced(ref bool expanded, System.Action draw)
+        private void DrawNested(Object asset, ref Editor cachedEditor, ref Object cachedTarget)
         {
-            expanded = EditorGUILayout.ToggleLeft("Дополнительно", expanded);
-            if (!expanded)
+            if (cachedEditor == null || cachedTarget != asset)
             {
-                return;
+                if (cachedEditor != null)
+                {
+                    DestroyImmediate(cachedEditor);
+                }
+
+                cachedEditor = CreateEditor(asset);
+                cachedTarget = asset;
             }
 
-            EditorGUI.indentLevel++;
-            draw();
-            EditorGUI.indentLevel--;
+            EditorGUILayout.Space(4);
+            cachedEditor.OnInspectorGUI();
         }
 
         private void Field(string path)
         {
             InspectorFields.Field(serializedObject, path);
-        }
-
-        private void Slider(string path, float min, float max)
-        {
-            InspectorFields.Slider(serializedObject, path, min, max);
         }
     }
 }

@@ -68,6 +68,12 @@ namespace Galilego.Universe
         [Range(0.001f, 0.2f)]
         public float HorizonFade = 0.01f;
 
+        /// <summary>Копия профиля: runtime не должен мутировать данные ассета.</summary>
+        public AtmosphereProfile Clone()
+        {
+            return (AtmosphereProfile)MemberwiseClone();
+        }
+
         /// <summary>Единый набор коэффициентов для CPU и GPU (см. AtmosphereOptics).</summary>
         public AtmosphereOptics.Coefficients ToOptics()
         {

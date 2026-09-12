@@ -186,6 +186,21 @@ namespace Galilego.Universe
                 p.Seed + (p.ColorDetailSeedOffset * 7919), 7, gain, lacunarity);
         }
 
+        /// <summary>
+        /// Шум распределения декора (кластеры) ~[−1,1], свой поток (salt 8):
+        /// не коррелирует ни с формой, ни с цветовой маской. Сид — от рельефа
+        /// тела + оффсет слоя, поэтому слои и планеты не совпадают.
+        /// </summary>
+        public static double SampleDecorNoise(
+            TerrainNoiseParams terrain, int seedOffset, double frequency, int octaves, double3 direction)
+        {
+            double gain = EffectiveGain(terrain.Gain);
+            double lacunarity = EffectiveLacunarity(terrain.Lacunarity);
+            return SampleFbmEx(
+                direction, frequency, octaves,
+                terrain.Seed + (seedOffset * 7919), 8, gain, lacunarity);
+        }
+
         public static double EffectiveGain(double gain)
         {
             return gain > 0d && gain <= 1d ? gain : 0.5d;
@@ -293,6 +308,9 @@ namespace Galilego.Universe
                 case 7:
                     // Поток мелкомасштабной цветовой детали (моттлинг).
                     return new double3(seed * 71.93d + 4600.1d, seed * 33.47d + 4900.7d, seed * 89.11d + 4300.5d);
+                case 8:
+                    // Поток распределения декора (кластеры травы/камней).
+                    return new double3(seed * 47.11d + 6100.3d, seed * 31.79d + 6400.7d, seed * 73.31d + 6700.1d);
                 case 100:
                     return new double3(seed * 91.7d + 1000.3d, seed * 47.31d + 700.7d, seed * 13.17d + 400.9d);
                 case 200:
