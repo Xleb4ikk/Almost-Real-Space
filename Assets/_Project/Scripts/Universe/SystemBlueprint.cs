@@ -41,46 +41,11 @@ namespace Galilego.Universe
 
         public AtmosphereProfile Atmosphere;
 
-        /// <summary>Рельеф: null — гладкая сфера. Параметры — см. HeightfieldTerrain.</summary>
+        /// <summary>Рельеф: null — гладкая сфера. Пресет формы/цвета/палитры; при сборке копируется в HeightfieldTerrain.</summary>
+        public TerrainProfile Terrain;
+
+        /// <summary>Зерно шума per-body: один профиль-пресет — разные сиды у тел.</summary>
         public int TerrainSeed;
-        public bool TerrainEnabled;
-        public double TerrainAmplitudeMeters = 1000d;
-        public double TerrainBaseFrequency = 3d;
-        public int TerrainOctaves = 5;
-        public double TerrainSeaLevelMeters = double.NegativeInfinity;
-        public double TerrainLacunarity = 2d;
-        public double TerrainGain = 0.5d;
-        public double TerrainContinentFrequency = 0d;
-        public int TerrainContinentOctaves = 3;
-        public double TerrainContinentThreshold = 0d;
-        public double TerrainContinentSharpness = 0.25d;
-        public double TerrainContinentDepth = 0.75d;
-        public double TerrainRidgedMix = 0d;
-        public double TerrainPlainMix = 0d;
-        public double TerrainPlainFrequency = 0d;
-        public int TerrainPlainOctaves = 2;
-        public double TerrainPlainThreshold = 0d;
-        public double TerrainPlainSharpness = 0.3d;
-        public double TerrainPlainElevation = 0.1d;
-        public double TerrainDetailMix = 0d;
-        public double TerrainDetailFrequency = 0d;
-        public int TerrainDetailOctaves = 5;
-        public double TerrainWarpStrength = 0d;
-        public double TerrainWarpFrequency = 1d;
-        public int TerrainWarpOctaves = 2;
-        public int TerrainWarpSeedOffset = 0;
-        public double TerrainColorRockSlopeTan = 0d;
-        public double TerrainColorRockSlopeWidth = 0.1d;
-        public double TerrainColorRockHeightMin = 0d;
-        public double TerrainColorSnowSlopeTan = 0d;
-        public double TerrainColorNoiseFrequency = 0d;
-        public int TerrainColorNoiseOctaves = 3;
-        public double TerrainColorNoiseStrength = 0d;
-        public int TerrainColorNoiseSeedOffset = 0;
-        public double TerrainColorDetailFrequency = 0d;
-        public int TerrainColorDetailOctaves = 3;
-        public double TerrainColorDetailStrength = 0d;
-        public int TerrainColorDetailSeedOffset = 0;
 
         /// <summary>Индекс родителя в списке; -1 — корень дерева (звезда).</summary>
         public int ParentIndex = -1;
@@ -146,49 +111,9 @@ namespace Galilego.Universe
                     NorthPoleDirection = new Vector3d(bp.NorthPoleX, bp.NorthPoleY, bp.NorthPoleZ),
                     Atmosphere = bp.Atmosphere
                 };
-                if (bp.TerrainEnabled)
+                if (bp.Terrain != null)
                 {
-                    body.Terrain = new HeightfieldTerrain
-                    {
-                        Seed = bp.TerrainSeed,
-                        AmplitudeMeters = bp.TerrainAmplitudeMeters,
-                        BaseFrequency = bp.TerrainBaseFrequency,
-                        Octaves = bp.TerrainOctaves,
-                        SeaLevelMeters = bp.TerrainSeaLevelMeters,
-                        Lacunarity = bp.TerrainLacunarity,
-                        Gain = bp.TerrainGain,
-                        ContinentFrequency = bp.TerrainContinentFrequency,
-                        ContinentOctaves = bp.TerrainContinentOctaves,
-                        ContinentThreshold = bp.TerrainContinentThreshold,
-                        ContinentSharpness = bp.TerrainContinentSharpness,
-                        ContinentDepth = bp.TerrainContinentDepth,
-                        RidgedMix = bp.TerrainRidgedMix,
-                        PlainMix = bp.TerrainPlainMix,
-                        PlainFrequency = bp.TerrainPlainFrequency,
-                        PlainOctaves = bp.TerrainPlainOctaves,
-                        PlainThreshold = bp.TerrainPlainThreshold,
-                        PlainSharpness = bp.TerrainPlainSharpness,
-                        PlainElevation = bp.TerrainPlainElevation,
-                        DetailMix = bp.TerrainDetailMix,
-                        DetailFrequency = bp.TerrainDetailFrequency,
-                        DetailOctaves = bp.TerrainDetailOctaves,
-                        WarpStrength = bp.TerrainWarpStrength,
-                        WarpFrequency = bp.TerrainWarpFrequency,
-                        WarpOctaves = bp.TerrainWarpOctaves,
-                        WarpSeedOffset = bp.TerrainWarpSeedOffset,
-                        ColorRockSlopeTan = bp.TerrainColorRockSlopeTan,
-                        ColorRockSlopeWidth = bp.TerrainColorRockSlopeWidth,
-                        ColorRockHeightMin = bp.TerrainColorRockHeightMin,
-                        ColorSnowSlopeTan = bp.TerrainColorSnowSlopeTan,
-                        ColorNoiseFrequency = bp.TerrainColorNoiseFrequency,
-                        ColorNoiseOctaves = bp.TerrainColorNoiseOctaves,
-                        ColorNoiseStrength = bp.TerrainColorNoiseStrength,
-                        ColorNoiseSeedOffset = bp.TerrainColorNoiseSeedOffset,
-                        ColorDetailFrequency = bp.TerrainColorDetailFrequency,
-                        ColorDetailOctaves = bp.TerrainColorDetailOctaves,
-                        ColorDetailStrength = bp.TerrainColorDetailStrength,
-                        ColorDetailSeedOffset = bp.TerrainColorDetailSeedOffset
-                    };
+                    body.Terrain = HeightfieldTerrain.FromProfile(bp.Terrain, bp.TerrainSeed);
                 }
 
                 created.Add(body);

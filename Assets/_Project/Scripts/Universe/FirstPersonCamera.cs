@@ -311,18 +311,32 @@ namespace Galilego.Universe
             body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPos, out _);
             Vector3d relative = Runner.PlayerPosition - bodyPos;
             double radius = body.Radius;
+            double groundHeight = 0d;
             if (body.Terrain != null)
             {
                 body.SurfaceLatLonAt(Runner.PlayerPosition, Runner.TimeSeconds, out double latDeg, out double lonDeg);
-                radius += body.Terrain.GetHeightMeters(body, latDeg * (System.Math.PI / 180d), lonDeg * (System.Math.PI / 180d));
+                groundHeight = body.Terrain.GetHeightMeters(body, latDeg * (System.Math.PI / 180d), lonDeg * (System.Math.PI / 180d));
             }
 
-            double altitude = System.Math.Max(0.5d, relative.Magnitude - radius);
+            // near — от высоты над ЛОКАЛЬНЫМ рельефом (камера у земли).
+            double altitude = System.Math.Max(0.5d, relative.Magnitude - (radius + groundHeight));
             double near = System.Math.Max(0.1d, altitude * 0.001d);
-            double horizon = System.Math.Sqrt((2d * radius * altitude) + (altitude * altitude));
-            // far — не меньше запаса 20 км: высокие дальние горы выше геометрического
-            // горизонта тоже должны попадать в кадр (иначе их режет по far).
-            double far = System.Math.Max((horizon * 1.5d) + 1e3d, 20000d);
+
+            // far — до физического горизонта с запасом на дальние ВЕРШИНЫ:
+            // высота камеры и пиков считается от СРЕДНЕГО радиуса. Раньше высота
+            // бралась над рельефом под наблюдателем: стоя на холме, «горизонт»
+            // выходил ~1 км, far падал к минимуму 20 км, и всё, что дальше,
+            // резалось фрустумом (видимая «стена»/обрыв и фолбэк атмосферы).
+            double cameraHeight = System.Math.Max(0.5d, relative.Magnitude - radius);
+            double peakHeight = 0d;
+            if (body.Terrain is HeightfieldTerrain heightfield)
+            {
+                peakHeight = System.Math.Max(0d, heightfield.AmplitudeMeters)
+                    * (1d + System.Math.Max(0d, heightfield.ContinentDepth));
+            }
+
+            double horizon = SkyPhysics.MaxSightDistance(radius, cameraHeight, peakHeight);
+            double far = System.Math.Max((horizon * 1.1d) + 1e3d, 20000d);
 
             // far НЕ растягиваем под атмосферу: она рисуется камера-центрированным
             // куполом и всегда влезает во фрустум. Иначе near/far ~1e8 → z-fighting

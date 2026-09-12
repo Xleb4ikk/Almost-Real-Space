@@ -15,11 +15,17 @@ namespace Galilego.Universe
         // Цвета заданы в привычном sRGB (как в редакторе), а проект рендерит в
         // Linear: без конверсии альбедо попадает в шейдер как линейное и на
         // выходе гамма-осветляется/обесцвечивается (бледная поверхность).
-        private static float ToLinear(float c)
+        internal static float ToLinear(float c)
         {
             return c <= 0.04045f
                 ? c / 12.92f
                 : (float)System.Math.Pow((c + 0.055f) / 1.055f, 2.4d);
+        }
+
+        /// <summary>sRGB→Linear для палитры из TerrainProfile.Palette (T92).</summary>
+        internal static Color ToLinear(Color c)
+        {
+            return new Color(ToLinear(c.r), ToLinear(c.g), ToLinear(c.b), 1f);
         }
 
         private static Color Srgb(float r, float g, float b)

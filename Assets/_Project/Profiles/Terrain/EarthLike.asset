@@ -1,0 +1,76 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d445d08b279aaf1468ccc32db002e7a2, type: 3}
+  m_Name: EarthLike
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.TerrainProfileAsset
+  Profile:
+    AmplitudeMeters: 9144
+    BaseFrequency: 20
+    Octaves: 10
+    SeaLevelMeters: 0
+    Lacunarity: 2
+    Gain: 0.5
+    RidgedMix: 0.7
+    ContinentFrequency: 4
+    ContinentOctaves: 3
+    ContinentThreshold: -0.1
+    ContinentSharpness: 0.3
+    ContinentDepth: 0.9
+    PlainMix: 0.85
+    PlainFrequency: 1.8
+    PlainOctaves: 2
+    PlainThreshold: 0.05
+    PlainSharpness: 0.25
+    PlainElevation: 0.1
+    DetailMix: 0
+    DetailFrequency: 0
+    DetailOctaves: 5
+    WarpStrength: 0.1
+    WarpFrequency: 2
+    WarpOctaves: 2
+    WarpSeedOffset: 0
+    ColorRockSlopeTan: 0.6
+    ColorRockSlopeWidth: 0.15
+    ColorRockHeightMin: 0.4
+    ColorSnowSlopeTan: 0.5
+    ColorNoiseFrequency: 25
+    ColorNoiseOctaves: 4
+    ColorNoiseStrength: 0.09
+    ColorNoiseSeedOffset: 0
+    ColorDetailFrequency: 400
+    ColorDetailOctaves: 3
+    ColorDetailStrength: 0.15
+    ColorDetailSeedOffset: 0
+    Palette:
+      Sand: {r: 0.8, g: 0.73, b: 0.55, a: 1}
+      Desert: {r: 0.74, g: 0.6, b: 0.36, a: 1}
+      DryGrass: {r: 0.5, g: 0.52, b: 0.27, a: 1}
+      Grass: {r: 0.28, g: 0.46, b: 0.17, a: 1}
+      Forest: {r: 0.12, g: 0.28, b: 0.1, a: 1}
+      Tundra: {r: 0.46, g: 0.44, b: 0.37, a: 1}
+      Rock: {r: 0.45, g: 0.41, b: 0.36, a: 1}
+      Snow: {r: 0.96, g: 0.97, b: 0.99, a: 1}
+      Sea: {r: 0.05, g: 0.2, b: 0.42, a: 1}
+      Soil: {r: 0.5, g: 0.4, b: 0.26, a: 1}
+      Lush: {r: 0.13, g: 0.4, b: 0.12, a: 1}
+    TextureLow: {fileID: 2800000, guid: 8140e46bc59e2dc4ba53f288806989f4, type: 3}
+    TextureMid: {fileID: 2800000, guid: cb6190067d355924e8662561fcfc2299, type: 3}
+    TextureHigh: {fileID: 2800000, guid: 0629d07a72ee348478dd48173019db04, type: 3}
+    TextureSteep: {fileID: 2800000, guid: 1e3ffd1866d663547b122e65a4299ca8, type: 3}
+    TextureOcclusion: {fileID: 2800000, guid: ab60c3e597bcf1b49aeccf1a75148fdb, type: 3}
+    TextureScale: 0.04
+    LowMidBlendStart: 30
+    LowMidBlendEnd: 60
+    MidHighBlendStart: 2500
+    MidHighBlendEnd: 3500
+    SteepBlendStart: 0.7
+    SteepBlendEnd: 1.4

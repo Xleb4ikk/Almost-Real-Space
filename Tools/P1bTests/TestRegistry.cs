@@ -128,6 +128,11 @@ internal static partial class P1bTests
             new P1bCase("Test88_SkyPhysics", Test88_SkyPhysics, false),
             new P1bCase("Test89_TerrainPlains", Test89_TerrainPlains, false),
             new P1bCase("Test90_AtmosphereOptics", Test90_AtmosphereOptics, false),
+            new P1bCase("Test91_TerrainProfile", Test91_TerrainProfile, false),
+            new P1bCase("Test92_TerrainPaletteData", Test92_TerrainPaletteData, false),
+            new P1bCase("Test93_GroundDecorDistribution", Test93_GroundDecorDistribution, false),
+            new P1bCase("Test94_TreeHighAltitude", Test94_TreeHighAltitude, false),
+            new P1bCase("Test95_HorizonDistance", Test95_HorizonDistance, false),
         };
     }
 }

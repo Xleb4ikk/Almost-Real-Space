@@ -4,8 +4,8 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Инспектор рендера планеты: LOD, производительность и дальний вид разнесены
-    /// по секциям, dev-действия (пересборка чанков, очистка кэша) — кнопками.
+    /// Инспектор рендера планеты: LOD и производительность разнесены по
+    /// секциям, dev-действия (пересборка чанков, очистка кэша) — кнопками.
     /// Кнопки работают только в Play: вне его живой HeightfieldTerrain ещё не
     /// существует, и пересобирать нечего.
     /// </summary>
@@ -14,7 +14,6 @@ namespace Galilego.Universe.EditorTools
     {
         private static bool showLod = true;
         private static bool showPerformance;
-        private static bool showFarView = true;
 
         public override void OnInspectorGUI()
         {
@@ -48,17 +47,6 @@ namespace Galilego.Universe.EditorTools
 
             EditorGUILayout.EndFoldoutHeaderGroup();
 
-            showFarView = EditorGUILayout.BeginFoldoutHeaderGroup(showFarView, "Дальний вид (базовая сфера)");
-            if (showFarView)
-            {
-                EditorGUI.indentLevel++;
-                Field("MaxAltitudeMeters");
-                Field("BaseSphereColor");
-                EditorGUI.indentLevel--;
-            }
-
-            EditorGUILayout.EndFoldoutHeaderGroup();
-
             serializedObject.ApplyModifiedProperties();
 
             DrawActions();
@@ -83,7 +71,7 @@ namespace Galilego.Universe.EditorTools
 
                 if (GUILayout.Button("Пресет «Земля» + пересобрать"))
                 {
-                    renderer.ApplyEarthLikePresetAndRebuild();
+                    AssignEarthLikePreset(renderer);
                 }
 
                 if (GUILayout.Button("Очистить кэш мешей"))
@@ -91,6 +79,23 @@ namespace Galilego.Universe.EditorTools
                     renderer.ClearChunkCache();
                 }
             }
+        }
+
+        private static void AssignEarthLikePreset(PlanetSurfaceRenderer renderer)
+        {
+            const string presetPath = "Assets/_Project/Profiles/Terrain/EarthLike.asset";
+            BodyAuthoring authoring = renderer.GetComponent<BodyAuthoring>();
+            TerrainProfileAsset preset = AssetDatabase.LoadAssetAtPath<TerrainProfileAsset>(presetPath);
+            if (authoring == null || preset == null)
+            {
+                Debug.LogWarning("[PlanetSurfaceRenderer] нет BodyAuthoring или ассета " + presetPath + ".");
+                return;
+            }
+
+            Undo.RecordObject(authoring, "Assign Earth-like terrain preset");
+            authoring.TerrainPreset = preset;
+            EditorUtility.SetDirty(authoring);
+            renderer.ApplyAuthoringAndRebuild();
         }
 
         private void Field(string path)

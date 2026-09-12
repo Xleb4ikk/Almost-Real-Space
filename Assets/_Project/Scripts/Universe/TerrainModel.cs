@@ -1,6 +1,7 @@
 using System;
 using Galilego.Core;
 using Unity.Mathematics;
+using UnityEngine;
 
 namespace Galilego.Universe
 {
@@ -211,6 +212,101 @@ namespace Galilego.Universe
 
         /// <summary>Сдвиг потока цветовой детали (целый).</summary>
         public int ColorDetailSeedOffset = 0;
+
+        /// <summary>
+        /// Палитра поверхности (sRGB). Рендер переводит её в Linear на лету;
+        /// пресет живёт в TerrainProfile. Дефолт = старые константы TerrainPalette.
+        /// </summary>
+        public TerrainPaletteData Palette = new TerrainPaletteData();
+
+        /// <summary>Текстуры рельефа из профиля (null = процедурная палитра).</summary>
+        public Texture2D TextureLow;
+        public Texture2D TextureMid;
+        public Texture2D TextureHigh;
+        public Texture2D TextureSteep;
+        public Texture2D TextureOcclusion;
+        public double TextureScale = 0.04d;
+        public double LowMidBlendStart = 30d;
+        public double LowMidBlendEnd = 60d;
+        public double MidHighBlendStart = 2500d;
+        public double MidHighBlendEnd = 3500d;
+        public double SteepBlendStart = 0.7d;
+        public double SteepBlendEnd = 1.4d;
+
+        /// <summary>
+        /// Скопировать профиль в живое runtime-представление. ЕДИНСТВЕННОЕ место
+        /// копирования (T91): раньше ~39 полей дублировались в BodyAuthoring,
+        /// BodyBlueprint, SystemBlueprint.Build и ApplyToTerrain.
+        /// Seed — параметр: он per-body, профиль — пресет.
+        /// </summary>
+        public void ApplyProfile(TerrainProfile profile, int seed)
+        {
+            if (profile == null)
+            {
+                return;
+            }
+
+            Seed = seed;
+            AmplitudeMeters = profile.AmplitudeMeters;
+            BaseFrequency = profile.BaseFrequency;
+            Octaves = profile.Octaves;
+            SeaLevelMeters = profile.SeaLevelMeters;
+            Lacunarity = profile.Lacunarity;
+            Gain = profile.Gain;
+            ContinentFrequency = profile.ContinentFrequency;
+            ContinentOctaves = profile.ContinentOctaves;
+            ContinentThreshold = profile.ContinentThreshold;
+            ContinentSharpness = profile.ContinentSharpness;
+            ContinentDepth = profile.ContinentDepth;
+            RidgedMix = profile.RidgedMix;
+            PlainMix = profile.PlainMix;
+            PlainFrequency = profile.PlainFrequency;
+            PlainOctaves = profile.PlainOctaves;
+            PlainThreshold = profile.PlainThreshold;
+            PlainSharpness = profile.PlainSharpness;
+            PlainElevation = profile.PlainElevation;
+            DetailMix = profile.DetailMix;
+            DetailFrequency = profile.DetailFrequency;
+            DetailOctaves = profile.DetailOctaves;
+            WarpStrength = profile.WarpStrength;
+            WarpFrequency = profile.WarpFrequency;
+            WarpOctaves = profile.WarpOctaves;
+            WarpSeedOffset = profile.WarpSeedOffset;
+            ColorRockSlopeTan = profile.ColorRockSlopeTan;
+            ColorRockSlopeWidth = profile.ColorRockSlopeWidth;
+            ColorRockHeightMin = profile.ColorRockHeightMin;
+            ColorSnowSlopeTan = profile.ColorSnowSlopeTan;
+            ColorNoiseFrequency = profile.ColorNoiseFrequency;
+            ColorNoiseOctaves = profile.ColorNoiseOctaves;
+            ColorNoiseStrength = profile.ColorNoiseStrength;
+            ColorNoiseSeedOffset = profile.ColorNoiseSeedOffset;
+            ColorDetailFrequency = profile.ColorDetailFrequency;
+            ColorDetailOctaves = profile.ColorDetailOctaves;
+            ColorDetailStrength = profile.ColorDetailStrength;
+            ColorDetailSeedOffset = profile.ColorDetailSeedOffset;
+            Palette = profile.Palette ?? new TerrainPaletteData();
+            TextureLow = profile.TextureLow;
+            TextureMid = profile.TextureMid;
+            TextureHigh = profile.TextureHigh;
+            TextureSteep = profile.TextureSteep;
+            TextureOcclusion = profile.TextureOcclusion;
+            TextureScale = profile.TextureScale;
+            LowMidBlendStart = profile.LowMidBlendStart;
+            LowMidBlendEnd = profile.LowMidBlendEnd;
+            MidHighBlendStart = profile.MidHighBlendStart;
+            MidHighBlendEnd = profile.MidHighBlendEnd;
+            SteepBlendStart = profile.SteepBlendStart;
+            SteepBlendEnd = profile.SteepBlendEnd;
+        }
+
+        /// <summary>Собрать runtime-рельеф из профиля (копия палитры — ассет не мутируем).</summary>
+        public static HeightfieldTerrain FromProfile(TerrainProfile profile, int seed)
+        {
+            var terrain = new HeightfieldTerrain();
+            terrain.ApplyProfile(profile, seed);
+            terrain.Palette = terrain.Palette.Clone();
+            return terrain;
+        }
 
         /// <summary>Угловой шаг соседей для нормали (рад): разрешает 5 октав с запасом.</summary>
         private const double NormalEpsilonRadians = 1e-4d;

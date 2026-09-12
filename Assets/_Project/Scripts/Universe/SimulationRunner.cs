@@ -172,6 +172,9 @@ namespace Galilego.Universe
         /// <summary>Максимальный подшаг интегрирования игрока (с).</summary>
         private const double PlayerMaxStepSeconds = 0.5d;
 
+        /// <summary>Радиус игрока для коллизий со стволами деревьев (м).</summary>
+        private const double PlayerCollisionRadiusMeters = 0.45d;
+
         /// <summary>Верхняя граница подшага на поверхности (с), согласована с зерном control-tick.</summary>
         private const double SurfaceMaxStepSeconds = 0.5d;
 
@@ -520,6 +523,11 @@ namespace Galilego.Universe
                 Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
                 PlayerVelocity += gravity * dt;
                 PlayerPosition += PlayerVelocity * dt;
+                if (GroundDecorCollisionRegistry.TryResolve(body.Name, PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d airPushed))
+                {
+                    PlayerPosition = airPushed;
+                }
+
                 // Позиция уже в t+dt — контакт проверяем и сажаем в t+dt, не в t.
                 double airEnd = t + dt;
                 body.SurfaceLatLonAt(PlayerPosition, airEnd, out double airLat, out double airLon);
@@ -546,6 +554,12 @@ namespace Galilego.Universe
             Vector3d tangential = walk - (normal * Vector3d.Dot(walk, normal));
             PlayerVelocity = surfaceVel + tangential;
             PlayerPosition += PlayerVelocity * dt;
+
+            // Коллизия стволов деревьев: вытолкнуть из цилиндров декора.
+            if (GroundDecorCollisionRegistry.TryResolve(body.Name, PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d treePushed))
+            {
+                PlayerPosition = treePushed;
+            }
 
             // Проекция обратно на поверхность НА КОНЕЦ подшага: и lat/lon, и
             // центр тела берём в t+dt. Иначе позиция (уже в t+dt) проецируется

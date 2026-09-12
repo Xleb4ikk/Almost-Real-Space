@@ -44,6 +44,32 @@ namespace Galilego.Universe
             return 1d / (s + (0.15d * Math.Pow(s + 3.885d, -1.253d)));
         }
 
+        /// <summary>
+        /// Дистанция до геометрического горизонта наблюдателя на высоте h над
+        /// сферой радиуса R: √(2Rh + h²). Для рендера дальних гор: камера видит
+        /// и точку на высоте пика по ту сторону горизонта.
+        /// </summary>
+        public static double HorizonDistance(double planetRadius, double altitude)
+        {
+            if (planetRadius <= 0d)
+            {
+                return 0d;
+            }
+
+            double h = altitude < 0d ? 0d : altitude;
+            return Math.Sqrt((2d * planetRadius * h) + (h * h));
+        }
+
+        /// <summary>
+        /// Максимальная дистанция видимости: наблюдатель на высоте cameraHeight
+        /// видит точку на высоте peakHeight — сумма их горизонтов (касательная
+        /// двух возвышений). Консервативно: между точками гора не проверяется.
+        /// </summary>
+        public static double MaxSightDistance(double planetRadius, double cameraHeight, double peakHeight)
+        {
+            return HorizonDistance(planetRadius, cameraHeight) + HorizonDistance(planetRadius, peakHeight);
+        }
+
         /// <summary>Наклон видимого горизонта (рад) для наблюдателя на высоте: acos(R / (R+h)).</summary>
         public static double HorizonDip(double altitude, double planetRadius)
         {
