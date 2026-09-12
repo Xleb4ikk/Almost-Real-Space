@@ -25,16 +25,16 @@ Shader "Galilego/GroundDecorSolid"
             #pragma fragment Frag
             #pragma multi_compile_instancing
             #pragma instancing_options assumeuniformscaling
+            #pragma multi_compile_fragment PUNCTUAL_SHADOW_LOW PUNCTUAL_SHADOW_MEDIUM PUNCTUAL_SHADOW_HIGH
+            #pragma multi_compile_fragment DIRECTIONAL_SHADOW_LOW DIRECTIONAL_SHADOW_MEDIUM DIRECTIONAL_SHADOW_HIGH
+            #pragma multi_compile_fragment AREA_SHADOW_MEDIUM AREA_SHADOW_HIGH
             #pragma target 4.5
 
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
+            #include "GalilegoLighting.hlsl"
 
-            // Глобально: солнце/ambient ставит SkyEnvironment, время — PlanetSurfaceRenderer.
-            float3 _TerrainSunDir;
-            float _NightAmbient;
-            float _SkyAmbient;
-            float _TerrainSun;
+            // Время — ставит PlanetSurfaceRenderer.
             float _GroundDecorTime;
 
             sampler2D _BaseColorMap;
@@ -100,8 +100,11 @@ Shader "Galilego/GroundDecorSolid"
                 // Аппроксимация подповерхностного рассеяния: свет проходит сквозь лист.
                 float back = saturate(dot(-n, l)) * _Translucency;
 
-                float3 ambient = (_NightAmbient + _SkyAmbient) * albedo.rgb;
-                float3 direct = albedo.rgb * (_TerrainSun * (ndl + back));
+                // Тень HDRP (PCSS/PCF): гасит прямой свет, ambient остаётся.
+                float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, n, l);
+
+                float3 ambient = GalilegoAmbient(n, albedo.rgb);
+                float3 direct = albedo.rgb * (_TerrainSun * (ndl + back) * shadow);
                 return float4(ambient + direct, 1.0);
             }
             ENDHLSL
@@ -164,6 +167,79 @@ Shader "Galilego/GroundDecorSolid"
                 // проходов расходятся (forward смещён, depth нет) → дыры и
                 // чёрные экранные артефакты, ползущие вместе с ветром.
                 // color.r — маска ветра (1 листва, 0 ствол).
+                float3 positionOS = input.positionOS;
+                float phase = (_GroundDecorTime * _WindSpeed) + (positionOS.x * 2.1) + (positionOS.z * 1.7);
+                float bend = saturate(positionOS.y) * _WindStrength * input.color.r;
+                positionOS.x += sin(phase) * bend;
+                positionOS.z += cos(phase * 0.83) * bend;
+
+                output.positionCS = TransformObjectToHClip(positionOS);
+                output.uv = TRANSFORM_TEX(input.uv, _BaseColorMap);
+                return output;
+            }
+
+            float4 Frag(Varyings input) : SV_Target
+            {
+                UNITY_SETUP_INSTANCE_ID(input);
+                float4 albedo = tex2D(_BaseColorMap, input.uv) * _BaseColor;
+                clip(albedo.a - _Cutoff);
+                return 0;
+            }
+            ENDHLSL
+        }
+
+        // Тени: этим пассом HDRP рисует кастеров в shadow map. Альфа-клип и
+        // ветер — ровно как в forward: иначе силуэт тени не совпадает с
+        // геометрией и «дрожит» относительно неё.
+        Pass
+        {
+            Name "ShadowCaster"
+            Tags { "LightMode" = "ShadowCaster" }
+
+            ZWrite On
+            ZTest LEqual
+            ColorMask 0
+            Cull Off
+
+            HLSLPROGRAM
+            #pragma vertex Vert
+            #pragma fragment Frag
+            #pragma multi_compile_instancing
+            #pragma instancing_options assumeuniformscaling
+            #pragma target 4.5
+
+            #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+            #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
+
+            sampler2D _BaseColorMap;
+            float4 _BaseColorMap_ST;
+            float4 _BaseColor;
+            float _Cutoff;
+            float _GroundDecorTime;
+            float _WindStrength;
+            float _WindSpeed;
+
+            struct Attributes
+            {
+                float3 positionOS : POSITION;
+                float2 uv         : TEXCOORD0;
+                float4 color      : COLOR;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
+
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+                float2 uv         : TEXCOORD0;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
+
+            Varyings Vert(Attributes input)
+            {
+                Varyings output;
+                UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_TRANSFER_INSTANCE_ID(input, output);
+
                 float3 positionOS = input.positionOS;
                 float phase = (_GroundDecorTime * _WindSpeed) + (positionOS.x * 2.1) + (positionOS.z * 1.7);
                 float bend = saturate(positionOS.y) * _WindStrength * input.color.r;

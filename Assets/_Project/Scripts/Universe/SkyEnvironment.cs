@@ -37,6 +37,18 @@ namespace Galilego.Universe
         [Tooltip("Дневная засветка террейна небом.")]
         public float SkyAmbient = 0.1f;
 
+        [Tooltip("Сила тени HDRP 0..1: 1 — тень гасит прямой свет полностью (чёрно), 0 — тени нет.")]
+        public float ShadowStrength = 0.85f;
+
+        [Tooltip("До этой дистанции тени фильтруются штатным HQ-фильтром HDRP (PCSS).")]
+        public float ShadowHighDistanceMeters = 150f;
+
+        [Tooltip("До этой дистанции — средний фильтр (GATHER, 4 taps); дальше самый дешёвый (1 tap).")]
+        public float ShadowMediumDistanceMeters = 400f;
+
+        [Tooltip("Ширина переходной зоны между тирами фильтрации (м): выбор тира — dither, без двойной стоимости.")]
+        public float ShadowBlendWidthMeters = 25f;
+
         /// <summary>Прозрачность к солнцу по каналам (обновляется каждый кадр).</summary>
         public Vector3 Transmittance { get; private set; } = Vector3.one;
 
@@ -48,6 +60,21 @@ namespace Galilego.Universe
 
         /// <summary>Видимость звёзд 0..1.</summary>
         public float StarVisibility { get; private set; } = 1f;
+
+        private void Start()
+        {
+            // [ГРАФИКА] Максимум разрешения теней: в сцене у солнца стоит ручной
+            // override 512 — поднимаем до 4096. Пресеты (GraphicsQualityController)
+            // позже будут задавать это сами.
+            var hdLight = SunLight != null
+                ? SunLight.GetComponent<UnityEngine.Rendering.HighDefinition.HDAdditionalLightData>()
+                : null;
+            if (hdLight != null)
+            {
+                hdLight.SetShadowResolutionOverride(true);
+                hdLight.SetShadowResolution(4096);
+            }
+        }
 
         private void LateUpdate()
         {
@@ -105,6 +132,10 @@ namespace Galilego.Universe
             Shader.SetGlobalFloat("_NightAmbient", NightAmbient);
             Shader.SetGlobalFloat("_SkyAmbient", SkyAmbient);
             Shader.SetGlobalFloat("_TerrainSun", TerrainSunIntensity);
+            Shader.SetGlobalFloat("_ShadowStrength", Mathf.Clamp01(ShadowStrength));
+            Shader.SetGlobalFloat("_ShadowHighDistance", Mathf.Max(0f, ShadowHighDistanceMeters));
+            Shader.SetGlobalFloat("_ShadowMediumDistance", Mathf.Max(0f, ShadowMediumDistanceMeters));
+            Shader.SetGlobalFloat("_ShadowBlendWidth", Mathf.Max(1f, ShadowBlendWidthMeters));
 
             if (SunLight != null)
             {

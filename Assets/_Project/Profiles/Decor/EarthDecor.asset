@@ -16,6 +16,8 @@ MonoBehaviour:
     Layers:
     - Name: Grass
       Enabled: 1
+      CastShadows: 1
+      ShadowCastDistanceMeters: 35
       NearMeshes:
       - {fileID: 4300000, guid: 032791f31b98d7644b1b8418514a2ebd, type: 2}
       FarBillboardMesh: {fileID: 4300000, guid: b2eeeca961a46cc4292822b7e4c2a829, type: 2}
@@ -48,6 +50,8 @@ MonoBehaviour:
       MaxDistanceMeters: 700
     - Name: DryGrass
       Enabled: 1
+      CastShadows: 1
+      ShadowCastDistanceMeters: 35
       NearMeshes:
       - {fileID: 4300000, guid: 032791f31b98d7644b1b8418514a2ebd, type: 2}
       FarBillboardMesh: {fileID: 4300000, guid: b2eeeca961a46cc4292822b7e4c2a829, type: 2}
@@ -80,6 +84,7 @@ MonoBehaviour:
       MaxDistanceMeters: 600
     - Name: Daisy
       Enabled: 1
+      CastShadows: 0
       NearMeshes:
       - {fileID: 4300000, guid: b2eeeca961a46cc4292822b7e4c2a829, type: 2}
       FarBillboardMesh: {fileID: 0}

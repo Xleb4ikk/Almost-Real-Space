@@ -80,6 +80,13 @@ namespace Galilego.Universe
         [Tooltip("Класть меш плашмя на землю (ромашки-пятачки): локальный Z меша смотрит вдоль нормали, а не Y.")]
         public bool FlatOnGround;
 
+        [Header("Тени")]
+        [Tooltip("Писать слой в shadow map HDRP. Тысячи инстансов травы — дорого: каст ограничивается радиусом ниже.")]
+        public bool CastShadows = true;
+
+        [Tooltip("Радиус каста теней (м, от камеры): 0 = без ограничения. Для травы дешёвый компромисс: настоящие тени вблизи, дальше только приём.")]
+        public float ShadowCastDistanceMeters = 0f;
+
         [Header("Коллизия")]
         [Tooltip("Стволы слоя физически не пропускают игрока (цилиндр по нормали).")]
         public bool Collides;

@@ -46,6 +46,7 @@ namespace Galilego.Universe.EditorTools
             {
                 Name = "Trees",
                 Enabled = true,
+                CastShadows = true,
                 NearMeshes = meshes,
                 FarBillboardMesh = null,
                 NearMaterial = material,
