@@ -53,7 +53,7 @@ namespace Galilego.Universe.EditorTools
 
             Material grassSolid = CreateOrLoadMaterial("GrassSolid", "Galilego/GroundDecorSolid", grass, 0.35f, 0.35f);
             Material grassFar = CreateOrLoadMaterial("GrassBillboard", "Galilego/GroundDecorBillboard", grass, 0.35f, 0.35f);
-            Color grassTint = new Color(0.45f, 0.80f, 0.35f, 1f);
+            Color grassTint = new Color(0.3066f, 0.8595f, 0.6106f, 1f);
             Tint(grassSolid, grassTint);
             Tint(grassFar, grassTint);
 
@@ -399,7 +399,7 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Маска ветра в vertex color: 1 = гнётся (трава/листва), 0 = нет.
+        /// Маска ветра в vertex color: alpha 1 = гнётся (трава/листва), 0 = нет.
         /// Нужна шейдеру GroundDecorSolid, чтобы стволы деревьев не качались.
         /// </summary>
         private static void EnsureWindMask(Mesh mesh)
@@ -525,7 +525,7 @@ namespace Galilego.Universe.EditorTools
     [InitializeOnLoad]
     internal static class GroundDecorSetupAuto
     {
-        private const string VersionMarker = "Temp/decor-content-v41.done";
+        private const string VersionMarker = "Temp/decor-content-v42.done";
 
         static GroundDecorSetupAuto()
         {

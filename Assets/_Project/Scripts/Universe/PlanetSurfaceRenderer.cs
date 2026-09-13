@@ -1064,11 +1064,16 @@ namespace Galilego.Universe
 
                 for (int a = 0; a < cells; a++)
                 {
-                    double uJitter = GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Ix, (a * 97) + node.Iy, 11);
                     for (int b = 0; b < cells; b++)
                     {
                         int index = (a * cells) + b;
-                        double vJitter = GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Iy, (b * 89) + node.Ix, 12);
+                        // Джиттер по ЯЧЕЙКЕ (u и v зависят и от a, и от b):
+                        // построчный джиттер давал строго коллинеарные ряды —
+                        // деревья выстраивались в линии «саженого» леса.
+                        double uJitter = GroundDecorDistribution.Hash01(
+                            node.Face, node.Depth, node.Ix, (a * 97) + node.Iy + (b * 131), 11);
+                        double vJitter = GroundDecorDistribution.Hash01(
+                            node.Face, node.Depth, node.Iy, (b * 89) + node.Ix + (a * 137), 12);
                         double u = u0 + (((a + uJitter) / cells) * sizeUv);
                         double v = v0 + (((b + vJitter) / cells) * sizeUv);
                         Vector3d direction = CubeSphere.Direction(node.Face, u, v);
@@ -1112,9 +1117,39 @@ namespace Galilego.Universe
                 if (take > 0)
                 {
                     var persisted = new NativeArray<GroundDecorInstance>(take, Allocator.Persistent);
-                    int write = 0;
-                    for (int i = 0; i < count && write < take; i++)
+                    // Лимит — не «обрезать хвост» чанка (это давало полосу леса
+                    // с одного края сетки и пустой остаток чанка), а равномерно
+                    // проредить: обход по перестановке i = (k·stride) mod count
+                    // со stride золотого сечения, взаимно простым с count.
+                    // Любой префикс такого обхода равномерно покрывает чанк.
+                    int stride = 1;
+                    if (acceptedCount > take && count > 1)
                     {
+                        stride = (int)(count * 0.6180339887498949d);
+                        if (stride < 1)
+                        {
+                            stride = 1;
+                        }
+
+                        if (stride >= count)
+                        {
+                            stride = count - 1;
+                        }
+
+                        while (Gcd(stride, count) != 1)
+                        {
+                            stride++;
+                            if (stride >= count)
+                            {
+                                stride = 1;
+                            }
+                        }
+                    }
+
+                    int write = 0;
+                    for (int k = 0; k < count && write < take; k++)
+                    {
+                        int i = (int)(((long)k * stride) % count);
                         if (accepted[i] == 0)
                         {
                             continue;
@@ -1509,6 +1544,19 @@ namespace Galilego.Universe
             }
 
             return p11 + ((1f - fu) * (p01 - p11)) + ((1f - fv) * (p10 - p11));
+        }
+
+        /// <summary>НОД: stride для обхода-перестановки обязан быть взаимно прост с count.</summary>
+        private static int Gcd(int a, int b)
+        {
+            while (b != 0)
+            {
+                int t = a % b;
+                a = b;
+                b = t;
+            }
+
+            return a < 0 ? -a : a;
         }
 
         /// <summary>Квад в XZ-плоскости (центр в начале): инстанс-матрица кладёт

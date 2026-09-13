@@ -15,7 +15,7 @@ namespace Galilego.Universe
         public Color Sand = new Color(0.80f, 0.73f, 0.55f, 1f);
         public Color Desert = new Color(0.74f, 0.60f, 0.36f, 1f);
         public Color DryGrass = new Color(0.50f, 0.52f, 0.27f, 1f);
-        public Color Grass = new Color(0.28f, 0.46f, 0.17f, 1f);
+        public Color Grass = new Color(0.102f, 0.290f, 0.145f, 1f);
         public Color Forest = new Color(0.12f, 0.28f, 0.10f, 1f);
         public Color Tundra = new Color(0.46f, 0.44f, 0.37f, 1f);
         public Color Rock = new Color(0.45f, 0.41f, 0.36f, 1f);

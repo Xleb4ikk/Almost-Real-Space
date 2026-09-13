@@ -19,11 +19,13 @@ namespace Galilego.Universe.EditorTools
         private const string Folder = "Assets/_Project/Textures/Terrain";
         private const int Size = 1024;
 
+        private static readonly Color VegetationBase = new Color(0.1449f, 0.3701f, 0.1993f, 1f);
+
         [MenuItem("Tools/Galilego/Regenerate clean terrain textures")]
         public static void Run()
         {
-            Regenerate("terrain_low", 0.10f, 0.030f, 1);
-            Regenerate("terrain_mid", 0.16f, 0.035f, 2);
+            Regenerate("terrain_low", 0.10f, 0.030f, 1, VegetationBase);
+            Regenerate("terrain_mid", 0.16f, 0.035f, 2, VegetationBase);
             Regenerate("terrain_high", 0.18f, 0.040f, 3);
             Regenerate("terrain_steep", 0.16f, 0.030f, 4);
             GenerateOcclusion("terrain_occlusion", 5);
@@ -34,7 +36,7 @@ namespace Galilego.Universe.EditorTools
             Debug.Log("[TerrainTextureDeband] чистые текстуры рельефа сгенерированы и назначены.");
         }
 
-        private static void Regenerate(string name, float grainContrast, float speckle, int seed)
+        private static void Regenerate(string name, float grainContrast, float speckle, int seed, Color? baseOverride = null)
         {
             string sourcePath = Folder + "/" + name + ".jpg";
             byte[] bytes = File.ReadAllBytes(sourcePath);
@@ -57,9 +59,9 @@ namespace Galilego.Universe.EditorTools
                 sumB += src[i].b;
             }
 
-            double baseR = sumR / src.Length;
-            double baseG = sumG / src.Length;
-            double baseB = sumB / src.Length;
+            double baseR = baseOverride.HasValue ? baseOverride.Value.r * 255d : sumR / src.Length;
+            double baseG = baseOverride.HasValue ? baseOverride.Value.g * 255d : sumG / src.Length;
+            double baseB = baseOverride.HasValue ? baseOverride.Value.b * 255d : sumB / src.Length;
             Object.DestroyImmediate(source);
 
             var output = new Texture2D(Size, Size, TextureFormat.RGBA32, false);

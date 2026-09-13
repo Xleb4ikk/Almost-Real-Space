@@ -54,7 +54,7 @@ MonoBehaviour:
       Sand: {r: 0.8, g: 0.73, b: 0.55, a: 1}
       Desert: {r: 0.74, g: 0.6, b: 0.36, a: 1}
       DryGrass: {r: 0.5, g: 0.52, b: 0.27, a: 1}
-      Grass: {r: 0.28, g: 0.46, b: 0.17, a: 1}
+      Grass: {r: 0.102, g: 0.29, b: 0.145, a: 1}
       Forest: {r: 0.12, g: 0.28, b: 0.1, a: 1}
       Tundra: {r: 0.46, g: 0.44, b: 0.37, a: 1}
       Rock: {r: 0.45, g: 0.41, b: 0.36, a: 1}

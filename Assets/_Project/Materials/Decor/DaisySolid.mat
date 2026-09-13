@@ -31,6 +31,7 @@ Material:
     m_Floats:
     - _Cutoff: 0.4
     - _Translucency: 0.35
+    - _VertexColorTint: 0
     - _WindSpeed: 1.5
     - _WindStrength: 0
     m_Colors:
