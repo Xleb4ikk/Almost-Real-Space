@@ -18,6 +18,12 @@ namespace Galilego.Universe.EditorTools
         private const string MaterialPath = DecorMaterialsFolder + "/TreeSolid.mat";
         private const float TargetTreeHeightMeters = 15f;
 
+        /// <summary>Кора: цвет Blender-материала Bark; альфа 0 — ветер не гнёт ствол.</summary>
+        private static readonly Color TrunkVertexColor = new Color(0.55f, 0.18f, 0.03f, 0f);
+
+        /// <summary>Листва: текущий стилизованный зелёный; альфа 1 — гнётся ветром.</summary>
+        private static readonly Color LeafVertexColor = new Color(0.01034f, 0.06838f, 0.01848f, 1f);
+
         /// <summary>
         /// Слой деревьев: меши из Models/Tree, цвет-материал, осевой офсет по
         /// bbox (пивот FBX может быть в центре — поднимаем, чтобы ствол стоял
@@ -52,9 +58,9 @@ namespace Galilego.Universe.EditorTools
                 NearMaterial = material,
                 FarMaterial = null,
                 SpacingMeters = 12d,
-                MaxInstancesPerChunk = 600,
+                MaxInstancesPerChunk = 200,
                 MaxCellsPerAxis = 128,
-                Density = 1.0d,
+                Density = 1.0d / 3.0d,
                 DistributionFrequency = 150d,
                 DistributionOctaves = 4,
                 DistributionSeedOffset = 3,
@@ -95,7 +101,12 @@ namespace Galilego.Universe.EditorTools
             }
 
             material.shader = shader;
-            material.SetColor("_BaseColor", new Color(0.30f, 0.44f, 0.20f, 1f));
+            // Цвет ствола/кроны запечён в vertex colors (см. LoadCombinedMesh):
+            // материал белый, иначе его тинт перекрасит кору. Флагом
+            // _VertexColorTint включаем тинт только у деревьев — трава/камни/
+            // ромашки/кактусы рисуются без изменений.
+            material.SetColor("_BaseColor", Color.white);
+            material.SetFloat("_VertexColorTint", 1f);
             material.SetFloat("_Cutoff", 0.5f);
             material.SetFloat("_WindStrength", 0.05f);
             material.SetFloat("_WindSpeed", 1.1f);
@@ -203,10 +214,10 @@ namespace Galilego.Universe.EditorTools
                         continue;
                     }
 
-                    // Копия с vertex color = маска ветра: 1 у листвы, 0 у ствола.
-                    // Маску ставим ПО САБМЕШАМ: у моделей с одной меш-оболочкой
-                    // ствол и крона — разные материалы (Bark/Leaf), и если брать
-                    // только имя меша, крона помечается как ствол и не гнётся.
+                    // Vertex color: RGB — цвет части (ствол/листва), альфа —
+                    // маска ветра. Шейдер GroundDecorSolid красит albedo по RGB
+                    // и гнёт ветром по альфе: раньше здесь был чёрно-белый
+                    // mask, а весь меш красился одним зелёным материалом.
                     Mesh temp = Object.Instantiate(mesh);
                     MeshRenderer partRenderer = filters[i].GetComponent<MeshRenderer>();
                     Material[] partMaterials = partRenderer != null ? partRenderer.sharedMaterials : null;
@@ -216,7 +227,7 @@ namespace Galilego.Universe.EditorTools
                     // крона в одном меше, и маска по имени меша гнула всё.
                     for (int v = 0; v < colors.Length; v++)
                     {
-                        colors[v] = Color.black;
+                        colors[v] = TrunkVertexColor;
                     }
 
                     bool hasMaterials = partMaterials != null && partMaterials.Length > 0;
@@ -241,7 +252,7 @@ namespace Galilego.Universe.EditorTools
                                     int vertex = triangles[t];
                                     if (vertex >= 0 && vertex < colors.Length)
                                     {
-                                        colors[vertex] = Color.white;
+                                        colors[vertex] = LeafVertexColor;
                                     }
                                 }
                             }
@@ -257,7 +268,7 @@ namespace Galilego.Universe.EditorTools
                         // Материалов нет — классифицируем по имени меша.
                         for (int v = 0; v < colors.Length; v++)
                         {
-                            colors[v] = Color.white;
+                            colors[v] = LeafVertexColor;
                         }
                     }
 

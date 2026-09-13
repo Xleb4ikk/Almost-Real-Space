@@ -8,6 +8,9 @@ Shader "Galilego/GroundDecorSolid"
         _WindStrength("Wind Strength", Range(0.0, 1.0)) = 0.15
         _WindSpeed("Wind Speed", Float) = 1.5
         _Translucency("Translucency", Range(0.0, 1.0)) = 0.35
+        // Тинт альбедо vertex-цветом (ствол/листва деревьев). 0 — прочие
+        // слои декора (трава, камни) рисуются как раньше.
+        _VertexColorTint("Vertex Color Tint", Range(0.0, 1.0)) = 0.0
     }
     SubShader
     {
@@ -44,6 +47,7 @@ Shader "Galilego/GroundDecorSolid"
             float _WindStrength;
             float _WindSpeed;
             float _Translucency;
+            float _VertexColorTint;
 
             struct Attributes
             {
@@ -60,6 +64,7 @@ Shader "Galilego/GroundDecorSolid"
                 float2 uv         : TEXCOORD0;
                 float3 normalWS   : TEXCOORD1;
                 float3 positionWS : TEXCOORD2;
+                float4 color      : COLOR;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
@@ -72,10 +77,10 @@ Shader "Galilego/GroundDecorSolid"
                 // Ветер: гнём верх меша (локальный Y) в ЛОКАЛЬНЫХ осях XZ.
                 // Мировые XZ на планете не горизонтальны — из-за этого трава
                 // «летала» вверх-вниз и уходила под землю на склонах.
-                // Vertex color.r — маска ветра: 1 листва, 0 ствол (деревья).
+                // Vertex color.a — маска ветра: 1 листва, 0 ствол (деревья).
                 float3 positionOS = input.positionOS;
                 float phase = (_GroundDecorTime * _WindSpeed) + (positionOS.x * 2.1) + (positionOS.z * 1.7);
-                float bend = saturate(positionOS.y) * _WindStrength * input.color.r;
+                float bend = saturate(positionOS.y) * _WindStrength * input.color.a;
                 positionOS.x += sin(phase) * bend;
                 positionOS.z += cos(phase * 0.83) * bend;
 
@@ -84,6 +89,7 @@ Shader "Galilego/GroundDecorSolid"
                 output.positionCS = TransformWorldToHClip(positionWS);
                 output.normalWS = TransformObjectToWorldNormal(input.normalOS);
                 output.uv = TRANSFORM_TEX(input.uv, _BaseColorMap);
+                output.color = input.color;
                 return output;
             }
 
@@ -92,6 +98,8 @@ Shader "Galilego/GroundDecorSolid"
                 UNITY_SETUP_INSTANCE_ID(input);
 
                 float4 albedo = tex2D(_BaseColorMap, input.uv) * _BaseColor;
+                // Vertex RGB — цвет части меша (деревья: кора/листва).
+                albedo.rgb *= lerp(float3(1.0, 1.0, 1.0), input.color.rgb, _VertexColorTint);
                 clip(albedo.a - _Cutoff);
 
                 float3 n = normalize(input.normalWS);
@@ -166,10 +174,10 @@ Shader "Galilego/GroundDecorSolid"
                 // Ветер — тот же, что в forward-пассе: иначе глубины двух
                 // проходов расходятся (forward смещён, depth нет) → дыры и
                 // чёрные экранные артефакты, ползущие вместе с ветром.
-                // color.r — маска ветра (1 листва, 0 ствол).
+                // color.a — маска ветра (1 листва, 0 ствол).
                 float3 positionOS = input.positionOS;
                 float phase = (_GroundDecorTime * _WindSpeed) + (positionOS.x * 2.1) + (positionOS.z * 1.7);
-                float bend = saturate(positionOS.y) * _WindStrength * input.color.r;
+                float bend = saturate(positionOS.y) * _WindStrength * input.color.a;
                 positionOS.x += sin(phase) * bend;
                 positionOS.z += cos(phase * 0.83) * bend;
 
@@ -242,7 +250,7 @@ Shader "Galilego/GroundDecorSolid"
 
                 float3 positionOS = input.positionOS;
                 float phase = (_GroundDecorTime * _WindSpeed) + (positionOS.x * 2.1) + (positionOS.z * 1.7);
-                float bend = saturate(positionOS.y) * _WindStrength * input.color.r;
+                float bend = saturate(positionOS.y) * _WindStrength * input.color.a;
                 positionOS.x += sin(phase) * bend;
                 positionOS.z += cos(phase * 0.83) * bend;
 

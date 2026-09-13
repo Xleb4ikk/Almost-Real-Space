@@ -36,7 +36,7 @@ namespace Galilego.Universe
         internal static readonly Color Sand = Srgb(0.80f, 0.73f, 0.55f);
         internal static readonly Color Desert = Srgb(0.74f, 0.60f, 0.36f);
         internal static readonly Color DryGrass = Srgb(0.50f, 0.52f, 0.27f);
-        internal static readonly Color Grass = Srgb(0.28f, 0.46f, 0.17f);
+        internal static readonly Color Grass = Srgb(0.102f, 0.290f, 0.145f);
         internal static readonly Color Forest = Srgb(0.12f, 0.28f, 0.10f);
         internal static readonly Color Tundra = Srgb(0.46f, 0.44f, 0.37f);
         internal static readonly Color Rock = Srgb(0.45f, 0.41f, 0.36f);

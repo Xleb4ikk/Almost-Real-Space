@@ -694,6 +694,9 @@ MonoBehaviour:
   BuildsPerFrame: 64
   MaxNodes: 12000
   MaxCachedChunks: 8192
+  BlobShadowColor: {r: 0.03, g: 0.035, b: 0.04, a: 0.35}
+  BlobScaleFactor: 1
+  BlobSunOffset: 0.6
 --- !u!114 &1081663223
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -742,9 +745,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlayerController
   Runner: {fileID: 1332194275}
   ShipTransform: {fileID: 1644257543}
-  WalkSpeed: 100
-  RunSpeed: 2000
-  JetpackThrust: 1000
+  WalkSpeed: 50
+  RunSpeed: 1000
+  JetpackThrust: 1500000
   EnterDistanceMeters: 5
   ShipWalkRadius: 3
 --- !u!4 &1250304431
@@ -1229,6 +1232,10 @@ MonoBehaviour:
   TerrainSunIntensity: 3
   NightAmbient: 0.005
   SkyAmbient: 0.1
+  ShadowStrength: 0.85
+  ShadowHighDistanceMeters: 150
+  ShadowMediumDistanceMeters: 400
+  ShadowBlendWidthMeters: 25
 --- !u!114 &1982425603
 MonoBehaviour:
   m_ObjectHideFlags: 0
