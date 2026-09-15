@@ -5,6 +5,8 @@ Shader "Galilego/GroundDecorBillboard"
         _BaseColorMap("Albedo (RGB) Alpha (A)", 2D) = "white" {}
         _BaseColor("Base Color", Color) = (0.30, 0.50, 0.20, 1)
         _Cutoff("Alpha Cutoff", Range(0.0, 1.0)) = 0.5
+        // Домножает альбедо к тону земли (окклюзия/моттлинг/текстуры рельефа).
+        _GroundTint("Ground Match Tint", Color) = (1, 1, 1, 1)
     }
     SubShader
     {
@@ -36,6 +38,7 @@ Shader "Galilego/GroundDecorBillboard"
             float4 _BaseColorMap_ST;
             float4 _BaseColor;
             float _Cutoff;
+            float4 _GroundTint;
 
             struct Attributes
             {
@@ -74,16 +77,24 @@ Shader "Galilego/GroundDecorBillboard"
             {
                 UNITY_SETUP_INSTANCE_ID(input);
 
-                float4 albedo = tex2D(_BaseColorMap, input.uv) * _BaseColor;
-                clip(albedo.a - _Cutoff);
+                float4 tex = tex2D(_BaseColorMap, input.uv);
+                float alpha = tex.a * _BaseColor.a;
+                // Край листа в текстуре тёмный (RGB на низкой альфе уходит в
+                // чёрное) — именно это читалось «чёрной обводкой» вокруг травы.
+                // Подмешиваем базовый цвет по альфе: пиксели у самой границы
+                // клипа получают цвет травы, а не грязь текстуры.
+                float3 albedo = tex.rgb * _BaseColor.rgb;
+                albedo = lerp(_BaseColor.rgb, albedo, saturate(alpha * 1.6));
+                clip(alpha - _Cutoff);
 
                 float3 n = normalize(input.normalWS);
                 float3 l = normalize(_TerrainSunDir);
                 // Двусторонний лист: светим с обеих сторон.
                 float ndl = saturate(abs(dot(n, l)));
-                float3 ambient = (_NightAmbient + _SkyAmbient) * albedo.rgb;
-                float3 direct = albedo.rgb * (_TerrainSun * ndl);
-                return float4(ambient + direct, 1.0);
+                // Свет — как у рельефа: солнце сжато, ambient по ndl.
+                float sun = _TerrainSun / (1.0 + _TerrainSun);
+                float light = _NightAmbient + (_SkyAmbient * ndl) + (sun * ndl);
+                return float4(albedo * light * _GroundTint.rgb, 1.0);
             }
             ENDHLSL
         }

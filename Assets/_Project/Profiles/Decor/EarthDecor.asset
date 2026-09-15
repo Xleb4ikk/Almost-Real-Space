@@ -17,37 +17,55 @@ MonoBehaviour:
     - Name: Grass
       Enabled: 1
       NearMeshes:
-      - {fileID: 4300000, guid: 032791f31b98d7644b1b8418514a2ebd, type: 2}
-      FarBillboardMesh: {fileID: 4300000, guid: b2eeeca961a46cc4292822b7e4c2a829, type: 2}
-      NearMaterial: {fileID: 2100000, guid: 0144023b0372d0f44a0381e27f6ed184, type: 2}
-      FarMaterial: {fileID: 2100000, guid: 89832b0e302208f468e0c2181fb02424, type: 2}
-      SpacingMeters: 1.4
-      MaxInstancesPerChunk: 1500
-      Density: 0.9
-      DistributionFrequency: 2500
+      - {fileID: 4300000, guid: 26c15081539f9a84597106d2660c2b58, type: 2}
+      FarBillboardMesh: {fileID: 4300000, guid: 26c15081539f9a84597106d2660c2b58, type: 2}
+      NearMaterial: {fileID: 2100000, guid: 8a6f3bef5d673104381754b197da59b9, type: 2}
+      FarMaterial: {fileID: 2100000, guid: 8a6f3bef5d673104381754b197da59b9, type: 2}
+      SpacingMeters: 0.45
+      MaxInstancesPerChunk: 160000
+      Density: 1
+      DistributionFrequency: 20000
+      ClusterPatchMeters: 120
       DistributionOctaves: 4
       DistributionSeedOffset: 1
-      ClusterThreshold: 0
+      ClusterThreshold: 0.36
+      ClusterFade: 0.12
       MinAltitudeMeters: 2
+      MinNormalizedHeight: 0.032
       MaxAltitudeMeters: 3200
-      MaxSlopeTan: 1.2
+      MaxSlopeTan: 2.8
       AvoidWater: 1
-      WetMin: 0
+      WetMin: 0.3
       WetMax: 1
-      MinScale: 1
-      MaxScale: 1.9
+      WetFade: 0.12
+      MinScale: 0.6326915514345928
+      MaxScale: 1.3159983787134184
       GroundOffsetMeters: 0
       GroundSinkFactor: 0
+      WindZoneFrequency: 2.5
+      WindZoneOctaves: 3
+      WindZoneSeedOffset: 20
+      WindLeanMinDegrees: 10
+      WindLeanMaxDegrees: 20
+      WindJitterDegrees: 12
+      MinGroundSinkFactor: 0
+      MaxGroundSinkFactor: 0.5
       FlatOnGround: 0
-      CastShadows: 1
-      ShadowCastDistanceMeters: 35
+      CastShadows: 0
+      ShadowCastDistanceMeters: 0
       Collides: 0
       CollisionRadiusMeters: 0.5
       CollisionHeightMeters: 20
-      SteepPower: 3
-      NearDistanceMeters: 90
-      MaxCellsPerAxis: 64
-      MaxDistanceMeters: 700
+      SteepPower: 0.4
+      NearDistanceMeters: 100
+      MaxCellsPerAxis: 192
+      MaxDistanceMeters: 300
+      DensityFalloffMeters: 50
+      DensityCoreMeters: 45
+      PerInstanceDensity: 1
+      FarDensity: 0.05
+      SpawnMarginMeters: 150
+      SubInstancesPerCell: 400
     - Name: DryGrass
       Enabled: 1
       NearMeshes:
@@ -59,19 +77,31 @@ MonoBehaviour:
       MaxInstancesPerChunk: 600
       Density: 0.6
       DistributionFrequency: 2200
+      ClusterPatchMeters: 0
       DistributionOctaves: 4
       DistributionSeedOffset: 2
       ClusterThreshold: 0.2
+      ClusterFade: 0
       MinAltitudeMeters: 2
+      MinNormalizedHeight: 0
       MaxAltitudeMeters: 3200
       MaxSlopeTan: 1
       AvoidWater: 1
       WetMin: 0
       WetMax: 0.35
+      WetFade: 0
       MinScale: 0.7
       MaxScale: 1.2
       GroundOffsetMeters: 0
       GroundSinkFactor: 0
+      WindZoneFrequency: 0
+      WindZoneOctaves: 3
+      WindZoneSeedOffset: 20
+      WindLeanMinDegrees: 0
+      WindLeanMaxDegrees: 0
+      WindJitterDegrees: 360
+      MinGroundSinkFactor: -1
+      MaxGroundSinkFactor: -1
       FlatOnGround: 0
       CastShadows: 1
       ShadowCastDistanceMeters: 35
@@ -82,6 +112,12 @@ MonoBehaviour:
       NearDistanceMeters: 60
       MaxCellsPerAxis: 64
       MaxDistanceMeters: 600
+      DensityFalloffMeters: 0
+      DensityCoreMeters: 0
+      PerInstanceDensity: 0
+      FarDensity: 1
+      SpawnMarginMeters: 150
+      SubInstancesPerCell: 1
     - Name: Daisy
       Enabled: 1
       NearMeshes:
@@ -93,19 +129,31 @@ MonoBehaviour:
       MaxInstancesPerChunk: 600
       Density: 0.6
       DistributionFrequency: 1500
+      ClusterPatchMeters: 0
       DistributionOctaves: 4
       DistributionSeedOffset: 5
       ClusterThreshold: 0.5
+      ClusterFade: 0
       MinAltitudeMeters: 2
+      MinNormalizedHeight: 0
       MaxAltitudeMeters: 3200
       MaxSlopeTan: 0.8
       AvoidWater: 1
       WetMin: 0.35
       WetMax: 1
+      WetFade: 0
       MinScale: 0.8
       MaxScale: 1.2
       GroundOffsetMeters: 0
       GroundSinkFactor: 0
+      WindZoneFrequency: 0
+      WindZoneOctaves: 3
+      WindZoneSeedOffset: 20
+      WindLeanMinDegrees: 0
+      WindLeanMaxDegrees: 0
+      WindJitterDegrees: 360
+      MinGroundSinkFactor: -1
+      MaxGroundSinkFactor: -1
       FlatOnGround: 1
       CastShadows: 0
       ShadowCastDistanceMeters: 0
@@ -116,6 +164,12 @@ MonoBehaviour:
       NearDistanceMeters: 45
       MaxCellsPerAxis: 64
       MaxDistanceMeters: 400
+      DensityFalloffMeters: 0
+      DensityCoreMeters: 0
+      PerInstanceDensity: 0
+      FarDensity: 1
+      SpawnMarginMeters: 150
+      SubInstancesPerCell: 1
     - Name: Rocks
       Enabled: 1
       NearMeshes:
@@ -129,19 +183,31 @@ MonoBehaviour:
       MaxInstancesPerChunk: 200
       Density: 0.27
       DistributionFrequency: 350
+      ClusterPatchMeters: 0
       DistributionOctaves: 3
       DistributionSeedOffset: 6
       ClusterThreshold: 0.05
+      ClusterFade: 0
       MinAltitudeMeters: 2
+      MinNormalizedHeight: 0
       MaxAltitudeMeters: 8100
       MaxSlopeTan: 3
       AvoidWater: 1
       WetMin: 0
       WetMax: 1
+      WetFade: 0
       MinScale: 1.5
       MaxScale: 4.5
       GroundOffsetMeters: 0
       GroundSinkFactor: 0.65
+      WindZoneFrequency: 0
+      WindZoneOctaves: 3
+      WindZoneSeedOffset: 20
+      WindLeanMinDegrees: 0
+      WindLeanMaxDegrees: 0
+      WindJitterDegrees: 360
+      MinGroundSinkFactor: -1
+      MaxGroundSinkFactor: -1
       FlatOnGround: 0
       CastShadows: 1
       ShadowCastDistanceMeters: 0
@@ -152,6 +218,12 @@ MonoBehaviour:
       NearDistanceMeters: 120
       MaxCellsPerAxis: 64
       MaxDistanceMeters: 1200
+      DensityFalloffMeters: 0
+      DensityCoreMeters: 0
+      PerInstanceDensity: 0
+      FarDensity: 1
+      SpawnMarginMeters: 150
+      SubInstancesPerCell: 1
     - Name: Cactus
       Enabled: 1
       NearMeshes:
@@ -165,19 +237,31 @@ MonoBehaviour:
       MaxInstancesPerChunk: 80
       Density: 0.6
       DistributionFrequency: 800
+      ClusterPatchMeters: 0
       DistributionOctaves: 3
       DistributionSeedOffset: 9
       ClusterThreshold: 0.25
+      ClusterFade: 0
       MinAltitudeMeters: 2
+      MinNormalizedHeight: 0
       MaxAltitudeMeters: 4000
       MaxSlopeTan: 0.8
       AvoidWater: 1
       WetMin: 0
       WetMax: 0.32
+      WetFade: 0
       MinScale: 2
       MaxScale: 5
       GroundOffsetMeters: 0
       GroundSinkFactor: 0
+      WindZoneFrequency: 0
+      WindZoneOctaves: 3
+      WindZoneSeedOffset: 20
+      WindLeanMinDegrees: 0
+      WindLeanMaxDegrees: 0
+      WindJitterDegrees: 360
+      MinGroundSinkFactor: -1
+      MaxGroundSinkFactor: -1
       FlatOnGround: 0
       CastShadows: 1
       ShadowCastDistanceMeters: 0
@@ -188,6 +272,12 @@ MonoBehaviour:
       NearDistanceMeters: 120
       MaxCellsPerAxis: 64
       MaxDistanceMeters: 1200
+      DensityFalloffMeters: 0
+      DensityCoreMeters: 0
+      PerInstanceDensity: 0
+      FarDensity: 1
+      SpawnMarginMeters: 150
+      SubInstancesPerCell: 1
     - Name: Trees
       Enabled: 1
       NearMeshes:
@@ -201,19 +291,31 @@ MonoBehaviour:
       MaxInstancesPerChunk: 200
       Density: 0.3333333333333333
       DistributionFrequency: 150
+      ClusterPatchMeters: 0
       DistributionOctaves: 4
       DistributionSeedOffset: 3
       ClusterThreshold: 0
+      ClusterFade: 0
       MinAltitudeMeters: 5
+      MinNormalizedHeight: 0
       MaxAltitudeMeters: 3200
       MaxSlopeTan: 0.9
       AvoidWater: 1
       WetMin: 0.1
       WetMax: 1
+      WetFade: 0
       MinScale: 1.604756585072252
       MaxScale: 2.8319233059883118
       GroundOffsetMeters: 0
       GroundSinkFactor: 0
+      WindZoneFrequency: 0
+      WindZoneOctaves: 3
+      WindZoneSeedOffset: 20
+      WindLeanMinDegrees: 0
+      WindLeanMaxDegrees: 0
+      WindJitterDegrees: 360
+      MinGroundSinkFactor: -1
+      MaxGroundSinkFactor: -1
       FlatOnGround: 0
       CastShadows: 1
       ShadowCastDistanceMeters: 0
@@ -224,3 +326,9 @@ MonoBehaviour:
       NearDistanceMeters: 150
       MaxCellsPerAxis: 128
       MaxDistanceMeters: 3000
+      DensityFalloffMeters: 0
+      DensityCoreMeters: 0
+      PerInstanceDensity: 0
+      FarDensity: 1
+      SpawnMarginMeters: 150
+      SubInstancesPerCell: 1
