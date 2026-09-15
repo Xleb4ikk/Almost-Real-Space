@@ -39,6 +39,11 @@ namespace Galilego.Universe
         [Tooltip("Частота шума распределения (кластеры).")]
         public double DistributionFrequency = 5000d;
 
+        [Tooltip("Размер пятна кластеризации (м, диаметр базовой волны): " +
+                 "переводится в частоту по радиусу тела (планета-независимо). " +
+                 "0 = использовать DistributionFrequency как есть.")]
+        public double ClusterPatchMeters = 0d;
+
         [Tooltip("Число октав шума распределения.")]
         public int DistributionOctaves = 4;
 
@@ -48,9 +53,18 @@ namespace Galilego.Universe
         [Tooltip("Порог кластеризации: ниже — реже. 0 = шум не режет.")]
         public double ClusterThreshold = 0d;
 
+        [Tooltip("Ширина мягкого края островов в единицах шума распределения: " +
+                 "0 = жёсткий порог (старое поведение). Больше — плавнее граница пятна.")]
+        public double ClusterFade = 0d;
+
         [Header("Фильтры поверхности")]
         [Tooltip("Мин. высота над уровнем моря (м).")]
         public double MinAltitudeMeters = 0d;
+
+        [Tooltip("Мин. нормированная высота (доля амплитуды, с той же цветовой " +
+                 "маской, что у палитры): ниже — песчаная полоса пляжа. 0.03 = " +
+                 "граница песка в шейдере рельефа. 0 = фильтр выключен.")]
+        public double MinNormalizedHeight = 0d;
 
         [Tooltip("Макс. высота над уровнем моря (м).")]
         public double MaxAltitudeMeters = 1e9d;
@@ -67,6 +81,10 @@ namespace Galilego.Universe
         [Tooltip("Биом по влажности: макс. wet01.")]
         public double WetMax = 1d;
 
+        [Tooltip("Ширина мягкого края по влажности (0 = жёсткий порог). " +
+                 "Убирает резкую границу травы по биому — плотность гаснет плавно.")]
+        public double WetFade = 0d;
+
         [Header("Масштаб и LOD")]
         public double MinScale = 0.7d;
         public double MaxScale = 1.3d;
@@ -76,6 +94,28 @@ namespace Galilego.Universe
 
         [Tooltip("Погружение в землю: доля масштаба инстанса (0.3 = закопать на 30% высоты). Для камней.")]
         public double GroundSinkFactor = 0d;
+
+        [Header("Ветер (направление по зонам)")]
+        [Tooltip("Частота крупных ветровых зон. 0 = зональный ветер выключен " +
+                 "(инстансы смотрят полностью случайно, как раньше).")]
+        public double WindZoneFrequency = 0d;
+        public int WindZoneOctaves = 3;
+        [Tooltip("Смещение шумового потока (см. TerrainNoise.SampleDecorNoise). " +
+                 "Оставь зазор с DistributionSeedOffset других слоёв, чтобы " +
+                 "ветровые зоны не совпали с их кластерами.")]
+        public int WindZoneSeedOffset = 20;
+        public double WindLeanMinDegrees = 0d;
+        public double WindLeanMaxDegrees = 0d;
+        [Tooltip("Разброс угла вокруг направления зоны (градусы). При " +
+                 "WindZoneFrequency=0 держи 360 — тогда поведение как раньше " +
+                 "(полностью случайный поворот).")]
+        public double WindJitterDegrees = 360d;
+
+        [Header("Закапывание (разброс на инстанс)")]
+        [Tooltip("-1 = не задано: используем старое поведение (один " +
+                 "GroundSinkFactor на весь слой, как сейчас у камней).")]
+        public double MinGroundSinkFactor = -1d;
+        public double MaxGroundSinkFactor = -1d;
 
         [Tooltip("Класть меш плашмя на землю (ромашки-пятачки): локальный Z меша смотрит вдоль нормали, а не Y.")]
         public bool FlatOnGround;
@@ -108,6 +148,38 @@ namespace Galilego.Universe
 
         [Tooltip("Дальше этой дистанции слой не рисуется (м).")]
         public float MaxDistanceMeters = 600f;
+
+        [Tooltip("Масштаб экспоненциального затухания плотности от камеры (м). " +
+                 "Больше 0 — плотность падает как exp(−(d−core)/scale): основная " +
+                 "масса инстансов у игрока, дальше редко, и лимит чанка не режет " +
+                 "острова. 0 = линейное затухание NearDistance..MaxDistance.")]
+        public float DensityFalloffMeters = 0f;
+
+        [Tooltip("Радиус «плоского ядра» плотности (м): до этой дистанции от центра " +
+                 "облака плотность полная, дальше гаснет по DensityFalloffMeters. " +
+                 "Ядро больше порога пересборки — плотность под игроком не «дышит». " +
+                 "0 = затухание от самого центра (старое поведение).")]
+        public float DensityCoreMeters = 0f;
+
+        [Tooltip("Плотность и затухание — НА КАЖДЫЙ ПОДТУФТ, а не на клетку: " +
+                 "край острова получается плавным, а не блочным (важно, когда " +
+                 "ячейка сетки крупнее шага и внутри неё много подтуфт).")]
+        public bool PerInstanceDensity;
+
+        [Tooltip("Плотность на дальней границе (0..1). 1 = не резать по дистанции; " +
+                 "меньше — плавно прореживаем дальние чанки (дешевле cpu/гпу).")]
+        public double FarDensity = 1d;
+
+        [Tooltip("Запас (м) к MaxDistanceMeters: декор строится чуть раньше, " +
+                 "чем чанк войдёт в зону видимости — без «выскакивания» травы.")]
+        public float SpawnMarginMeters = 150f;
+
+        [Tooltip("Максимум подтуфт на ячейку сетки. Подтуфты включаются " +
+                 "АДАПТИВНО, когда ячейка крупнее SpacingMeters (грузный LOD/" +
+                 "высота): внутри ячейки сажается сетка jitter-подтуфт с шагом " +
+                 "≈ SpacingMeters, чтобы острова травы не рассыпались. " +
+                 "1 = одна туфта на ячейку (старое поведение).")]
+        public int SubInstancesPerCell = 1;
     }
 
     /// <summary>

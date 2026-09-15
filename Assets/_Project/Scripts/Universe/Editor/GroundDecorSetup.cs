@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
+using Galilego.Core;
+using Unity.Mathematics;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -51,49 +53,18 @@ namespace Galilego.Universe.EditorTools
             Mesh card = CreateOrLoadCardMesh();
             Mesh billboard = CreateOrLoadBillboardMesh();
 
-            Material grassSolid = CreateOrLoadMaterial("GrassSolid", "Galilego/GroundDecorSolid", grass, 0.35f, 0.35f);
             Material grassFar = CreateOrLoadMaterial("GrassBillboard", "Galilego/GroundDecorBillboard", grass, 0.35f, 0.35f);
-            Color grassTint = new Color(0.3066f, 0.8595f, 0.6106f, 1f);
-            Tint(grassSolid, grassTint);
-            Tint(grassFar, grassTint);
 
             // ===== [ГРАФИКА] Дистанции и плотность декора =====
             // NearDistanceMeters / MaxDistanceMeters слоёв ниже — кандидаты в
             // будущие настройки графики (пресеты «минимально…максимально»):
             // трава, сухая трава, ромашки, камни, деревья. Поиск по тегу [ГРАФИКА].
             var layers = new List<GroundDecorLayer>();
-            layers.Add(new GroundDecorLayer
+            GroundDecorLayer grassLayer = GrassModelSetup.BuildGrassLayer(billboard, grassFar);
+            if (grassLayer != null)
             {
-                Name = "Grass",
-                Enabled = true,
-                // Трава кастует только вблизи (радиус): тысячи инстансов,
-                // дальше по дистанции — лишь приём тени.
-                CastShadows = true,
-                ShadowCastDistanceMeters = 35f,
-                NearMeshes = new[] { card },
-                NearMaterial = grassSolid,
-                FarBillboardMesh = billboard,
-                FarMaterial = grassFar,
-                SpacingMeters = 1.4d,
-                MaxInstancesPerChunk = 1500,
-                Density = 0.9d,
-                DistributionFrequency = 2500d,
-                DistributionOctaves = 4,
-                DistributionSeedOffset = 1,
-                ClusterThreshold = 0d,
-                MinAltitudeMeters = 2d,
-                MaxAltitudeMeters = TreeLineMaxAltitudeMeters,
-                MaxSlopeTan = 1.2d,
-                AvoidWater = true,
-                WetMin = 0d,
-                WetMax = 1d,
-                MinScale = 1.0d,
-                MaxScale = 1.9d,
-                SteepPower = 3d,
-                // [ГРАФИКА] дальность травы (near/far).
-                NearDistanceMeters = 90f,
-                MaxDistanceMeters = 700f
-            });
+                layers.Add(grassLayer);
+            }
 
             if (dryGrass != null)
             {
@@ -250,6 +221,108 @@ namespace Galilego.Universe.EditorTools
 
             AssignToTerra(asset);
             Debug.Log("[GroundDecorSetup] готово: " + ProfilePath + ", слоёв=" + layers.Count);
+        }
+
+        private const string TerrainProfilePath = "Assets/_Project/Profiles/Terrain/EarthLike.asset";
+
+        /// <summary>
+        /// Диагностика покрытия травой: гоняет ту же TryEvaluate по сфере
+        /// (фибоначчиева выборка) и печатает долю принятых клеток от суши и от
+        /// зелёного биома. Нужна для калибровки Density/ClusterThreshold.
+        /// </summary>
+        [MenuItem("Tools/Galilego/Diagnose grass coverage")]
+        public static void DiagnoseGrassCoverage()
+        {
+            const int samples = 200000;
+
+            GroundDecorProfileAsset decor = AssetDatabase.LoadAssetAtPath<GroundDecorProfileAsset>(ProfilePath);
+            TerrainProfileAsset terrainAsset = AssetDatabase.LoadAssetAtPath<TerrainProfileAsset>(TerrainProfilePath);
+            if (decor == null || decor.Profile == null || decor.Profile.Layers.Count == 0 || terrainAsset == null)
+            {
+                Debug.LogWarning("[GrassDiag] нет " + ProfilePath + " или " + TerrainProfilePath);
+                return;
+            }
+
+            GroundDecorLayer grass = decor.Profile.Layers[0];
+            int seed = 24334543;
+            double radius = 1143000d;
+            TerrainProfile terrainProfile = terrainAsset.Profile;
+            BodyAuthoring[] bodies = Object.FindObjectsByType<BodyAuthoring>();
+            for (int i = 0; i < bodies.Length; i++)
+            {
+                if (bodies[i].TerrainPreset == null || bodies[i].TerrainPreset.Profile == null)
+                {
+                    continue;
+                }
+
+                seed = bodies[i].TerrainSeed;
+                radius = bodies[i].Radius;
+                terrainProfile = bodies[i].TerrainPreset.Profile;
+                break;
+            }
+
+            HeightfieldTerrain terrain = new HeightfieldTerrain();
+            terrain.ApplyProfile(terrainProfile, seed);
+            TerrainNoiseParams noise = TerrainNoiseParams.FromTerrain(terrain);
+            GroundDecorPlacementParams p = GroundDecorPlacementParams.FromLayer(grass, terrain, radius, new Vector3d(0d, 0d, 0d));
+            p.WindAzimuthRad = 0d;
+
+            long land = 0;
+            long green = 0;
+            long accepted = 0;
+            long acceptedGreen = 0;
+            double golden = System.Math.PI * (3d - System.Math.Sqrt(5d));
+            for (int i = 0; i < samples; i++)
+            {
+                double z = 1d - (2d * ((i + 0.5d) / samples));
+                double r = System.Math.Sqrt(System.Math.Max(0d, 1d - (z * z)));
+                double phi = i * golden;
+                double3 dir = new double3(System.Math.Cos(phi) * r, System.Math.Sin(phi) * r, z);
+
+                double rawHeight = TerrainNoise.SampleHeight(noise, dir) * p.AmplitudeMeters;
+                if (rawHeight <= p.SeaLevelMeters + (p.AmplitudeMeters * 0.001d))
+                {
+                    continue;
+                }
+
+                land++;
+                double mask = System.Math.Max(-1d, System.Math.Min(1d, TerrainNoise.SampleColorNoise(noise, dir)));
+                double wet = System.Math.Max(0d, System.Math.Min(1d, 0.5d + (mask * 1.6d)));
+                double tMasked = ((rawHeight - p.SeaLevelMeters) / System.Math.Max(1d, p.AmplitudeMeters))
+                    + (mask * p.ColorNoiseStrength);
+                bool isGreen = wet >= 0.38d && tMasked >= 0.03d && tMasked < 0.45d;
+                if (isGreen)
+                {
+                    green++;
+                }
+
+                double3 random = new double3(
+                    GroundDecorDistribution.Hash01(i, 1, 0, 0, 21),
+                    GroundDecorDistribution.Hash01(i, 2, 0, 0, 22),
+                    GroundDecorDistribution.Hash01(i, 3, 0, 0, 23));
+                bool ok = GroundDecorDistribution.TryEvaluate(
+                    p, noise, dir, random,
+                    GroundDecorDistribution.Hash01(i, 4, 0, 0, 24),
+                    GroundDecorDistribution.Hash01(i, 5, 0, 0, 25),
+                    GroundDecorDistribution.Hash01(i, 6, 0, 0, 26),
+                    out _);
+                if (ok)
+                {
+                    accepted++;
+                    if (isGreen)
+                    {
+                        acceptedGreen++;
+                    }
+                }
+            }
+
+            Debug.Log(string.Format(
+                "[GrassDiag] samples={0} land={1} green={2} accepted={3} acceptedGreen={4} | coverage land={5:P1} green={6:P1} | layer spacing={7} density={8} cluster={9}+fade{10} wet={11}+fade{12}",
+                samples, land, green, accepted, acceptedGreen,
+                land > 0 ? (double)accepted / land : 0d,
+                green > 0 ? (double)acceptedGreen / green : 0d,
+                grass.SpacingMeters, grass.Density, grass.ClusterThreshold, grass.ClusterFade,
+                grass.WetMin, grass.WetFade));
         }
 
         private static GroundDecorLayer CreateLayer(
@@ -525,7 +598,7 @@ namespace Galilego.Universe.EditorTools
     [InitializeOnLoad]
     internal static class GroundDecorSetupAuto
     {
-        private const string VersionMarker = "Temp/decor-content-v42.done";
+        private const string VersionMarker = "Temp/decor-content-v54.done";
 
         static GroundDecorSetupAuto()
         {

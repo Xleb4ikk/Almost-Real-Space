@@ -32,6 +32,7 @@ Material:
     - _BillboardSize: 2
     - _Cutoff: 0.35
     m_Colors:
-    - _BaseColor: {r: 0.3066, g: 0.8595, b: 0.6106, a: 1}
+    - _BaseColor: {r: 0.14612332, g: 0.37061265, b: 0.20122004, a: 1}
+    - _GroundTint: {r: 1, g: 1, b: 1, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

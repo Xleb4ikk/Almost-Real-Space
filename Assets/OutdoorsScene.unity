@@ -692,6 +692,10 @@ MonoBehaviour:
   MergeHysteresis: 1.5
   SkirtFactor: 0.03
   BuildsPerFrame: 64
+  DecorBuildsPerFrame: 3
+  DecorBuildBudgetMs: 3
+  MaxDecorBuildSessions: 4
+  LogDecorAllocation: 0
   MaxNodes: 12000
   MaxCachedChunks: 8192
   BlobShadowColor: {r: 0.03, g: 0.035, b: 0.04, a: 0.35}
