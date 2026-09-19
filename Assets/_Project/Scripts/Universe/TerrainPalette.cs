@@ -68,17 +68,21 @@ namespace Galilego.Universe
             double rockSlopeTan, double rockWidth,
             double snowSlopeTan, double maskStrength,
             double colorDetail = 0d, double detailStrength = 0d,
-            double latitudeRadians = 0d, double rockHeightMin = 0d)
+            double latitudeRadians = 0d, double rockHeightMin = 0d,
+            double beachHeightMeters = 0d)
         {
             if (rockSlopeTan <= 0d && snowSlopeTan <= 0d && maskStrength == 0d
-                && detailStrength == 0d)
+                && detailStrength == 0d && beachHeightMeters <= 0d)
             {
                 return HeightColorLegacy(height, seaLevel, amplitude);
             }
 
             bool maskOn = maskStrength != 0d;
-            Color c = BaseColor(height, seaLevel, amplitude, colorMask, maskOn, maskStrength, latitudeRadians);
+            Color c = BaseColor(height, seaLevel, amplitude, colorMask, maskOn, maskStrength, latitudeRadians, beachHeightMeters);
             bool isSea = height <= seaLevel + (amplitude * 0.001d);
+            // Пляж — абсолютными метрами: моттлинг и скала его не трогают
+            // (паритет шейдеру), даже если маска подняла t выше песчаной полосы.
+            bool isBeach = beachHeightMeters > 0d && !isSea && (height - seaLevel) < beachHeightMeters;
 
             // Нормированная высота t как в шейдере (маска сдвигает пороги):
             // используется и для отсечения пляжа от моттлинга, и для порога
@@ -97,7 +101,7 @@ namespace Galilego.Universe
             // Мелкомасштабное разнообразие земли: пятна почвы (в тёплый коричневый)
             // и более сочной/тёмной зелени. Только на земле выше пляжной зоны —
             // на песке пятен быть не должно.
-            if (!isSea && tMasked >= 0.03d && detailStrength != 0d)
+            if (!isSea && !isBeach && tMasked >= 0.03d && detailStrength != 0d)
             {
                 double d = Clamp(colorDetail, -1d, 1d);
                 if (d > 0d)
@@ -114,7 +118,7 @@ namespace Galilego.Universe
 
             // Скала — только на крутых И достаточно высоких склонах (крупные
             // горы). Порог по высоте отсекает пляж, дюны и низменности.
-            if (!isSea && rockSlopeTan > 0d && slopeTan >= rockSlopeTan
+            if (!isSea && !isBeach && rockSlopeTan > 0d && slopeTan >= rockSlopeTan
                 && (rockHeightMin <= 0d || tMasked >= rockHeightMin))
             {
                 double w = (slopeTan - rockSlopeTan) / System.Math.Max(1e-9d, rockWidth);
@@ -133,7 +137,7 @@ namespace Galilego.Universe
 
         internal static Color HeightColorLegacy(double height, double seaLevel, double amplitude)
         {
-            return BaseColor(height, seaLevel, amplitude, 0d, false, 0d, 0d);
+            return BaseColor(height, seaLevel, amplitude, 0d, false, 0d, 0d, 0d);
         }
 
         private static bool IsSnowBand(double height, double seaLevel, double amplitude)
@@ -144,11 +148,19 @@ namespace Galilego.Universe
 
         private static Color BaseColor(
             double height, double seaLevel, double amplitude,
-            double mask, bool maskOn, double maskStrength, double latitudeRadians)
+            double mask, bool maskOn, double maskStrength, double latitudeRadians,
+            double beachHeightMeters)
         {
             if (height <= seaLevel + (amplitude * 0.001d))
             {
                 return Sea;
+            }
+
+            // Пляж — абсолютными метрами над морем, маской не стирается:
+            // иначе на «плюсовых» берегах зелень начинается от уреза воды.
+            if (beachHeightMeters > 0d && (height - seaLevel) < beachHeightMeters)
+            {
+                return Sand;
             }
 
             double t = (height - seaLevel) / System.Math.Max(1d, amplitude);

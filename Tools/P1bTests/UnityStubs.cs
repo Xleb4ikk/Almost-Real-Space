@@ -632,6 +632,35 @@ namespace Simulation
 namespace UnityEngine.Rendering
 {
     public enum ShadowCastingMode { Off, On, DoubleSided, ShadowsOnly }
+
+    /// <summary>
+    /// Минимальные стабы Volume API для компиляции SkyEnvironment в стенде:
+    /// глаз-адаптация (Exposure.compensation) в тестах не выполняется.
+    /// </summary>
+    public class VolumeParameter<T>
+    {
+        public T value;
+        public void Override(T v) { value = v; }
+    }
+
+    public sealed class FloatParameter : VolumeParameter<float> { }
+
+    public class VolumeComponent : UnityEngine.ScriptableObject { }
+
+    public sealed class VolumeProfile : UnityEngine.ScriptableObject
+    {
+        public bool TryGet<T>(out T component) where T : VolumeComponent
+        {
+            component = null;
+            return false;
+        }
+    }
+
+    public sealed class Volume : UnityEngine.Component
+    {
+        public VolumeProfile profile;
+        public VolumeProfile sharedProfile;
+    }
 }
 
 namespace UnityEngine.Rendering.HighDefinition
@@ -643,5 +672,18 @@ namespace UnityEngine.Rendering.HighDefinition
         public AntialiasingMode antialiasing;
         public ClearColorMode clearColorMode;
         public UnityEngine.Color backgroundColorHDR;
+    }
+
+    /// <summary>Стаб для SkyEnvironment.Start (разрешение теней) — в стенде не нужен.</summary>
+    public sealed class HDAdditionalLightData : UnityEngine.Component
+    {
+        public void SetShadowResolutionOverride(bool value) { }
+        public void SetShadowResolution(int value) { }
+    }
+
+    /// <summary>Стаб для глаз-адаптации SkyEnvironment — в стенде не выполняется.</summary>
+    public sealed class Exposure : UnityEngine.Rendering.VolumeComponent
+    {
+        public UnityEngine.Rendering.FloatParameter compensation = new UnityEngine.Rendering.FloatParameter();
     }
 }

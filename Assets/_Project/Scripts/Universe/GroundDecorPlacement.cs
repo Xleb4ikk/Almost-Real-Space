@@ -32,6 +32,13 @@ namespace Galilego.Universe
         /// <summary>Мин. нормированная высота палитры (песчаная полоса пляжа).</summary>
         public double MinNormalizedHeight;
 
+        /// <summary>Макс. нормированная высота палитры (скалы/снег). &lt;=0 = выключен.</summary>
+        public double MaxNormalizedHeight;
+
+        /// <summary>Высота пляжа над морем (м) — из HeightfieldTerrain: ниже
+        /// не сажаем НИЧЕГО (ни траву, ни камни). 0 = пляжа нет.</summary>
+        public double BeachHeightMeters;
+
         /// <summary>Сила цветовой маски рельефа (та же, что в шейдере палитры).</summary>
         public double ColorNoiseStrength;
 
@@ -40,6 +47,10 @@ namespace Galilego.Universe
         public double WetMin;
         public double WetMax;
         public double WetFade;
+
+        /// <summary>Не применять полярный фейд (тундра/снег): камни лежат и на снегу.</summary>
+        public bool IgnoreLatitude;
+
         public double Density;
         public double DistributionFrequency;
         public int DistributionOctaves;
@@ -116,12 +127,15 @@ namespace Galilego.Universe
                 MinAltitudeMeters = layer.MinAltitudeMeters,
                 MaxAltitudeMeters = layer.MaxAltitudeMeters,
                 MinNormalizedHeight = layer.MinNormalizedHeight,
+                MaxNormalizedHeight = layer.MaxNormalizedHeight,
+                BeachHeightMeters = terrain.BeachHeightMeters,
                 ColorNoiseStrength = terrain.ColorNoiseStrength,
                 MaxSlopeTan = layer.MaxSlopeTan,
                 AvoidWater = layer.AvoidWater,
                 WetMin = layer.WetMin,
                 WetMax = layer.WetMax,
                 WetFade = layer.WetFade,
+                IgnoreLatitude = layer.IgnoreLatitude,
                 Density = layer.Density,
                 // Пятно задано в метрах — частоту считаем от радиуса тела:
                 // один период шума ≈ R/frequency метров по поверхности.
@@ -199,9 +213,161 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Нормированная высота палитры: t = h/amp + mask·strength. Та же
+        /// величина, что красит рельеф (TerrainPalette) и тот же сдвиг маской.
+        /// </summary>
+        public static double NormalizedHeight(GroundDecorPlacementParams p, double aboveSeaMeters, double colorNoise)
+        {
+            return (aboveSeaMeters / Math.Max(1d, p.AmplitudeMeters))
+                + (colorNoise * p.ColorNoiseStrength);
+        }
+
+        /// <summary>
+        /// Полярный фейд растительности — зеркало визуального биома
+        /// (TerrainPalette.BaseColor и шейдер PlanetSurface): тундра с lat01=0.52
+        /// (широта ~47°), ледяная шапка с lat01=0.70 (~63°), сплошной лёд — 0.86
+        /// (~77°). Направление — тел-fixed единичное (z = sin широты).
+        /// Возвращает множитель плотности 0..1: тундра прореживает (как визуал,
+        /// до ×0.15), сплошной лёд даёт 0 (там только камни — у них IgnoreLatitude).
+        /// </summary>
+        public static double LatitudeGreenWeight(GroundDecorPlacementParams p, double3 direction)
+        {
+            if (p.IgnoreLatitude)
+            {
+                return 1d;
+            }
+
+            double z = direction.z < -1d ? -1d : (direction.z > 1d ? 1d : direction.z);
+            double lat01 = Math.Abs(Math.Asin(z)) / 1.5707963267948966d;
+            double tundra = Smoothstep01((lat01 - 0.52d) / 0.22d);
+            double ice = Smoothstep01((lat01 - 0.70d) / 0.16d);
+            return (1d - (tundra * 0.85d)) * (1d - ice);
+        }
+
+        /// <summary>
+        /// Дешёвые жёсткие фильтры поверхности (вода/высоты/пляж/верх зелени/
+        /// wet-биом/полярная шапка) — без склона, кластеров и плотности. Для перепроверки
+        /// КАЖДОГО подтуфта в expand-путях: базовый кандидат проходит полный
+        /// TryEvaluate в центре клетки, а подтуфты разбросаны по всей клетке и
+        /// на грубом LOD уходят в воду, на песок и в горы. Любой accepted
+        /// TryEvaluate обязан проходить и здесь (необходимое условие).
+        /// Склон осознанно остаётся на уровне клетки: SlopeTan — 3 сэмпла
+        /// высоты на точку, на подтуфт это слишком дорого, а границы биомов
+        /// (вода/песок/скалы) — именно то, что видно глазом.
+        /// </summary>
+        public static bool IsSurfaceAllowed(
+            GroundDecorPlacementParams p, TerrainNoiseParams terrain, double3 direction)
+        {
+            double rawHeight = TerrainNoise.SampleHeight(terrain, direction) * p.AmplitudeMeters;
+            if (p.AvoidWater && rawHeight <= p.SeaLevelMeters + (p.AmplitudeMeters * 0.001d))
+            {
+                return false;
+            }
+
+            double aboveSea = rawHeight - p.SeaLevelMeters;
+            if (aboveSea < p.MinAltitudeMeters || aboveSea > p.MaxAltitudeMeters)
+            {
+                return false;
+            }
+
+            // Пляж: ниже его верхней границы не сажаем НИЧЕГО — ни траву,
+            // ни деревья, ни камни (единый источник — профиль террейна).
+            if (p.BeachHeightMeters > 0d && aboveSea < p.BeachHeightMeters)
+            {
+                return false;
+            }
+
+            double colorNoise = Clamp(TerrainNoise.SampleColorNoise(terrain, direction), -1d, 1d);
+            if (p.MinNormalizedHeight > 0d || p.MaxNormalizedHeight > 0d)
+            {
+                double normalized = NormalizedHeight(p, aboveSea, colorNoise);
+                if ((p.MinNormalizedHeight > 0d && normalized < p.MinNormalizedHeight)
+                    || (p.MaxNormalizedHeight > 0d && normalized > p.MaxNormalizedHeight))
+                {
+                    return false;
+                }
+            }
+
+            double wet = Clamp01(0.5d + (colorNoise * 1.6d));
+            if (wet < p.WetMin || wet > p.WetMax)
+            {
+                return false;
+            }
+
+            // Полярная шапка: на сплошном льду растительности нет (только камни).
+            if (LatitudeGreenWeight(p, direction) <= 0d)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Направление грани cube-sphere по (u,v) на double3 — Burst-совместимый
+        /// двойник CubeSphere.Direction (тот использует Vector3d и живёт только
+        /// на main thread). Формула граней обязана зеркалить CubeSphere:
+        /// при рассинхроне перепроверка подтуфтов будет смотреть не туда.
+        /// </summary>
+        public static double3 CubeFaceDirection(int face, double u, double v)
+        {
+            double a = (u * 2d) - 1d;
+            double b = (v * 2d) - 1d;
+            double x;
+            double y;
+            double z;
+            switch (face)
+            {
+                case 0: x = 1d; y = b; z = -a; break;
+                case 1: x = -1d; y = b; z = a; break;
+                case 2: x = a; y = 1d; z = -b; break;
+                case 3: x = a; y = -1d; z = b; break;
+                case 4: x = a; y = b; z = 1d; break;
+                default: x = -a; y = b; z = -1d; break;
+            }
+
+            return math.normalize(new double3(x, y, z));
+        }
+
+        /// <summary>
+        /// Радиальная высота точки рендер-меша (chunk-local sim-координаты)
+        /// над радиусом тела. Обратный мост sim→astro (sim = (x, z, −y) от
+        /// astro-rel, см. AstroFrame): без зависимости от UnityEngine,
+        /// работает и в Burst. Нужна, потому что фильтр считается по
+        /// аналитической высоте, а позиция снэпится к грубому мешу чанка:
+        /// на крупном LOD меш ныряет ниже моря там, где аналитика видит сушу.
+        /// </summary>
+        public static double MeshPointHeightAboveRadius(GroundDecorPlacementParams p, float3 simPoint)
+        {
+            double ax = p.ChunkCenterX + simPoint.x;
+            double ay = p.ChunkCenterY - simPoint.z;
+            double az = p.ChunkCenterZ + simPoint.y;
+            return Math.Sqrt((ax * ax) + (ay * ay) + (az * az)) - p.RadiusMeters;
+        }
+
+        /// <summary>
+        /// Дешёвый страж снэпа к мешу (без сэмплов шума): точка рендер-меша
+        /// обязана быть над водой и в диапазоне высот слоя. Ловит деревья и
+        /// камни, «утонувшие» из-за отклонения грубого меша от аналитической
+        /// высоты. Биом/песок/скалы здесь не проверяются — их ловит
+        /// IsSurfaceAllowed по направлению.
+        /// </summary>
+        public static bool IsMeshPointAboveWater(GroundDecorPlacementParams p, float3 simPoint)
+        {
+            double height = MeshPointHeightAboveRadius(p, simPoint);
+            if (p.AvoidWater && height <= p.SeaLevelMeters + (p.AmplitudeMeters * 0.001d))
+            {
+                return false;
+            }
+
+            double aboveSea = height - p.SeaLevelMeters;
+            return aboveSea >= p.MinAltitudeMeters && aboveSea <= p.MaxAltitudeMeters;
+        }
+
+        /// <summary>
         /// Попытка посадить инстанс. random.x — доля отбора, random.y — масштаб,
         /// random.z — поворот, meshPick — выбор варианта меша [0,1). Фильтры:
-        /// вода, высота, склон, wet-биом, кластерный шум; плотность дополнительно
+        /// вода, высота, склон, wet-биом, полярная широта, кластерный шум; плотность дополнительно
         /// гасится склоном (SteepPower).
         /// </summary>
         public static bool TryEvaluate(
@@ -223,15 +389,23 @@ namespace Galilego.Universe
                 return false;
             }
 
+            // Пляж: ниже его верхней границы не сажаем НИЧЕГО — ни траву,
+            // ни деревья, ни камни (единый источник — профиль террейна).
+            if (p.BeachHeightMeters > 0d && aboveSea < p.BeachHeightMeters)
+            {
+                return false;
+            }
+
             double colorNoise = Clamp(TerrainNoise.SampleColorNoise(terrain, direction), -1d, 1d);
 
-            // Та же песчаная граница, что у палитры рельефа: t = h/amp + mask·strength.
-            // Трава не должна расти на пляжной полосе (её красит Sand).
-            if (p.MinNormalizedHeight > 0d)
+            // Та же нормированная высота, что у палитры рельефа:
+            // t = h/amp + mask·strength. Нижняя граница отсекает пляжную
+            // полосу (её красит Sand), верхняя — скалы/снег (там только камни).
+            if (p.MinNormalizedHeight > 0d || p.MaxNormalizedHeight > 0d)
             {
-                double normalized = (aboveSea / Math.Max(1d, p.AmplitudeMeters))
-                    + (colorNoise * p.ColorNoiseStrength);
-                if (normalized < p.MinNormalizedHeight)
+                double normalized = NormalizedHeight(p, aboveSea, colorNoise);
+                if ((p.MinNormalizedHeight > 0d && normalized < p.MinNormalizedHeight)
+                    || (p.MaxNormalizedHeight > 0d && normalized > p.MaxNormalizedHeight))
                 {
                     return false;
                 }
@@ -294,6 +468,14 @@ namespace Galilego.Universe
                 }
             }
 
+            // Полярный фейд: тундра прореживает плотность, сплошной лёд
+            // запрещает (камни идут с IgnoreLatitude и его не видят).
+            double latWeight = LatitudeGreenWeight(p, direction);
+            if (latWeight <= 0d)
+            {
+                return false;
+            }
+
             double slopeWeight = 1d - (slope / Math.Max(1e-9d, p.MaxSlopeTan));
             slopeWeight = Clamp01(slopeWeight);
             if (p.SteepPower > 0d)
@@ -311,7 +493,7 @@ namespace Galilego.Universe
             // sim = (x, z, −y) — тот же мост, что AstroFrame (без ссылки на UnityEngine).
             float3 simPosition = new float3((float)rel.x, (float)rel.z, (float)-rel.y);
 
-            double accept = p.Density * clusterWeight * wetWeight * slopeWeight;
+            double accept = p.Density * clusterWeight * wetWeight * slopeWeight * latWeight;
             if (!p.PerInstanceDensity)
             {
                 // Затухание по ТАНГЕНЦИАЛЬНОЙ дистанции до камеры ВНУТРИ чанка:
@@ -342,12 +524,17 @@ namespace Galilego.Universe
             // Режим PerInstanceDensity: форма острова — клеточный вес, а
             // затухание по дистанции до камеры считает РЕНДЕРЕР (там обе точки
             // гарантированно в одной системе координат — меш-фрейме чанка).
-            instance.DensityWeight = (float)(clusterWeight * wetWeight * slopeWeight);
+            instance.DensityWeight = (float)(clusterWeight * wetWeight * slopeWeight * latWeight);
             instance.Normal = surfaceNormal;
             instance.Scale = (float)radius;
             instance.SinkFactor = (float)sinkFactor;
             double jitter = (random.z - 0.5d) * 2d * p.WindJitterRad;
-            instance.Yaw = (float)(p.WindAzimuthRad + jitter);
+            // Азимут ветра ± джиттер может уйти в минус: матрицы это терпят,
+            // но контракт инстанса — Yaw в [0, 2π), на него опираются тесты.
+            double turn = Math.PI * 2d;
+            double yaw = p.WindAzimuthRad + jitter;
+            yaw -= Math.Floor(yaw / turn) * turn;
+            instance.Yaw = (float)yaw;
             instance.LeanDegrees = (float)(p.WindLeanMinDegrees + (leanRandom * Math.Max(0d, p.WindLeanMaxDegrees - p.WindLeanMinDegrees)));
             instance.MeshIndex = p.NearMeshCount > 1
                 ? Math.Min(p.NearMeshCount - 1, (int)(meshPick * p.NearMeshCount))
@@ -479,6 +666,13 @@ namespace Galilego.Universe
             {
                 Accepted[index] = 1;
                 Instances[index] = instance;
+            }
+            else
+            {
+                // Массивы — из пула (DecorArrayPool) с чужими данными: без
+                // явного сброса stale Accepted=1 рисовал бы декор чужого чанка
+                // (трава в небе). Instances при Accepted=0 никто не читает.
+                Accepted[index] = 0;
             }
         }
     }

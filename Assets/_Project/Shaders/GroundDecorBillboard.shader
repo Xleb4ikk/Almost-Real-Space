@@ -5,6 +5,7 @@ Shader "Galilego/GroundDecorBillboard"
         _BaseColorMap("Albedo (RGB) Alpha (A)", 2D) = "white" {}
         _BaseColor("Base Color", Color) = (0.30, 0.50, 0.20, 1)
         _Cutoff("Alpha Cutoff", Range(0.0, 1.0)) = 0.5
+        _Translucency("Translucency", Range(0.0, 1.0)) = 0.35
         // Домножает альбедо к тону земли (окклюзия/моттлинг/текстуры рельефа).
         _GroundTint("Ground Match Tint", Color) = (1, 1, 1, 1)
     }
@@ -24,20 +25,20 @@ Shader "Galilego/GroundDecorBillboard"
             #pragma fragment Frag
             #pragma multi_compile_instancing
             #pragma instancing_options assumeuniformscaling
+            #pragma multi_compile_fragment PUNCTUAL_SHADOW_LOW PUNCTUAL_SHADOW_MEDIUM PUNCTUAL_SHADOW_HIGH
+            #pragma multi_compile_fragment DIRECTIONAL_SHADOW_LOW DIRECTIONAL_SHADOW_MEDIUM DIRECTIONAL_SHADOW_HIGH
+            #pragma multi_compile_fragment AREA_SHADOW_MEDIUM AREA_SHADOW_HIGH
             #pragma target 4.5
 
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
-
-            float3 _TerrainSunDir;
-            float _NightAmbient;
-            float _SkyAmbient;
-            float _TerrainSun;
+            #include "GalilegoLighting.hlsl"
 
             sampler2D _BaseColorMap;
             float4 _BaseColorMap_ST;
             float4 _BaseColor;
             float _Cutoff;
+            float _Translucency;
             float4 _GroundTint;
 
             struct Attributes
@@ -53,6 +54,7 @@ Shader "Galilego/GroundDecorBillboard"
                 float4 positionCS : SV_POSITION;
                 float2 uv         : TEXCOORD0;
                 float3 normalWS   : TEXCOORD1;
+                float3 positionWS : TEXCOORD2;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
@@ -67,6 +69,7 @@ Shader "Galilego/GroundDecorBillboard"
                 // passthrough: никакой шейдерной ориентации (та ломалась под
                 // HDRP-инстансингом и ложила траву плашмя).
                 float3 positionWS = TransformObjectToWorld(input.positionOS);
+                output.positionWS = positionWS;
                 output.positionCS = TransformWorldToHClip(positionWS);
                 output.normalWS = TransformObjectToWorldNormal(input.normalOS);
                 output.uv = TRANSFORM_TEX(input.uv, _BaseColorMap);
@@ -91,9 +94,20 @@ Shader "Galilego/GroundDecorBillboard"
                 float3 l = normalize(_TerrainSunDir);
                 // Двусторонний лист: светим с обеих сторон.
                 float ndl = saturate(abs(dot(n, l)));
-                // Свет — как у рельефа: солнце сжато, ambient по ndl.
-                float sun = _TerrainSun / (1.0 + _TerrainSun);
-                float light = _NightAmbient + (_SkyAmbient * ndl) + (sun * ndl);
+                // Просвет против солнца — как у solid-слоя, иначе дальняя
+                // трава в контровом свете темнее ближней.
+                float back = saturate(dot(-n, l)) * _Translucency;
+                // Свет — как у рельефа: честное солнце (_TerrainSun, может
+                // превышать 1), ambient — полусферический от неба (без *ndl:
+                // на закате небо светит, даже когда прямой луч погас); цвет
+                // солнца (фотосфера × T) и ambient — общие глобалы.
+                // Тень HDRP гасит прямой свет, ambient остаётся.
+                float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, n, l);
+                float sun = _TerrainSun;
+                float3 light = float3(_NightAmbient, _NightAmbient, _NightAmbient)
+                    + (GalilegoSkyAmbient(n) * _TerrainRadianceScale)
+                    + (_SunLightColor * (sun * ndl * shadow) * _TerrainRadianceScale)
+                    + (_SunLightColor * (sun * back * shadow) * _TerrainRadianceScale);
                 return float4(albedo * light * _GroundTint.rgb, 1.0);
             }
             ENDHLSL

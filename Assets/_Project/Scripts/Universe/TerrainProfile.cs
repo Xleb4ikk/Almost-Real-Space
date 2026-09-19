@@ -130,6 +130,16 @@ namespace Galilego.Universe
         [Tooltip("Нормализованная высота плато равнин (доля амплитуды).")]
         public double PlainElevation = 0.1d;
 
+        [Header("Пляж (полоса у воды)")]
+        [Tooltip("Высота пляжа над морем (м): ниже — песок в цвете и запрет спавна всего декора. 0 = пляжа нет (legacy).")]
+        public double BeachHeightMeters = 0d;
+
+        [Tooltip("Высота полки пляжа над морем (м): береговой рельеф стягивается к ней у уреза воды. 0 = полка выключена (legacy).")]
+        public double BeachShelfAltitudeMeters = 0d;
+
+        [Tooltip("Полуширина полки в единицах continent-маски (расстояние сырого шума от берегового порога). 0 = полка выключена (legacy).")]
+        public double BeachShelfWidth = 0d;
+
         [Header("Деталь и domain warp")]
         [Tooltip("Мелкомасштабная деталь как доля амплитуды (0 = выключена).")]
         public double DetailMix = 0d;

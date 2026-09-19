@@ -132,7 +132,16 @@ internal static partial class P1bTests
             new P1bCase("Test92_TerrainPaletteData", Test92_TerrainPaletteData, false),
             new P1bCase("Test93_GroundDecorDistribution", Test93_GroundDecorDistribution, false),
             new P1bCase("Test94_TreeHighAltitude", Test94_TreeHighAltitude, false),
+            new P1bCase("Test99_DecorGreenBand", Test99_DecorGreenBand, false),
+            new P1bCase("Test100_DecorStalePoolReset", Test100_DecorStalePoolReset, false),
+            new P1bCase("Test101_BeachBand", Test101_BeachBand, false),
+            new P1bCase("Test102_PolarDecorLatitude", Test102_PolarDecorLatitude, false),
+            new P1bCase("Test103_VertexMaskInterp", Test103_VertexMaskInterp, false),
+            new P1bCase("Test104_DrySteppeVegetation", Test104_DrySteppeVegetation, false),
             new P1bCase("Test95_HorizonDistance", Test95_HorizonDistance, false),
+            new P1bCase("Test96_SunLightTransmittance", Test96_SunLightTransmittance, false),
+            new P1bCase("Test97_SkyAmbient", Test97_SkyAmbient, false),
+            new P1bCase("Test98_SunsetTwilight", Test98_SunsetTwilight, false),
         };
     }
 }

@@ -570,6 +570,7 @@ namespace Galilego.Universe
         /// <summary>РЎРЅРёРјРѕРє С†РІРµС‚РѕРІС‹С… СѓРЅРёС„РѕСЂРј (Р±РµР· РіРµРѕРјРµС‚СЂРёРё) РґР»СЏ live-С‚СЋРЅРёРЅРіР°.</summary>
         private struct TerrainColorState
         {
+            public double BeachHeightMeters;
             public double RockSlopeTan;
             public double RockSlopeWidth;
             public double RockHeightMin;
@@ -589,6 +590,7 @@ namespace Galilego.Universe
         {
             return new TerrainColorState
             {
+                BeachHeightMeters = terrain.BeachHeightMeters,
                 RockSlopeTan = terrain.ColorRockSlopeTan,
                 RockSlopeWidth = terrain.ColorRockSlopeWidth,
                 RockHeightMin = terrain.ColorRockHeightMin,
@@ -605,7 +607,8 @@ namespace Galilego.Universe
 
         private static bool ColorStateEquals(TerrainColorState a, TerrainColorState b)
         {
-            return a.RockSlopeTan == b.RockSlopeTan
+            return a.BeachHeightMeters == b.BeachHeightMeters
+                && a.RockSlopeTan == b.RockSlopeTan
                 && a.RockSlopeWidth == b.RockSlopeWidth
                 && a.RockHeightMin == b.RockHeightMin
                 && a.SnowSlopeTan == b.SnowSlopeTan
@@ -645,6 +648,10 @@ namespace Galilego.Universe
                 && a.WarpFrequency == b.WarpFrequency
                 && a.WarpOctaves == b.WarpOctaves
                 && a.WarpSeedOffset == b.WarpSeedOffset
+                && a.SeaLevelMeters == b.SeaLevelMeters
+                && a.AmplitudeMeters == b.AmplitudeMeters
+                && a.BeachShelfAltitudeMeters == b.BeachShelfAltitudeMeters
+                && a.BeachShelfWidth == b.BeachShelfWidth
                 && a.ColorNoiseFrequency == b.ColorNoiseFrequency
                 && a.ColorNoiseOctaves == b.ColorNoiseOctaves
                 && a.ColorNoiseSeedOffset == b.ColorNoiseSeedOffset
@@ -1073,13 +1080,13 @@ namespace Galilego.Universe
             // Р¦РІРµС‚ РјР°СЃРєРё/РґРµС‚Р°Р»Рё С‚РµРїРµСЂСЊ СЃС‡РёС‚Р°РµС‚СЃСЏ РЅР° РїРёРєСЃРµР»СЊ РІ С€РµР№РґРµСЂРµ вЂ” РІ
             // tile-job'Рµ СЌС‚Рё РїРѕС‚РѕРєРё РЅРµ РЅСѓР¶РЅС‹. РџСЂР°РІРєСѓ РґРµР»Р°РµРј РІ Р›РћРљРђР›Р¬РќРћР™ РєРѕРїРёРё,
             // С‡С‚РѕР±С‹ РЅРµ СЃР»РѕРјР°С‚СЊ ParamsEqual РїРѕ РєСЌС€РёСЂРѕРІР°РЅРЅРѕРјСѓ noiseParams.
-            TerrainNoiseParams jobParams = noiseParams;
-            jobParams.ComputeMask = false;
-            jobParams.ComputeDetail = false;
-
+            // Color mask + detail come from the SAME CPU noise the decor
+            // placement reads (parity paint/placement): the shader interpolates
+            // per-vertex values and runs no Fbm of its own. noiseParams is used
+            // as-is, so ParamsEqual caching is untouched.
             TerrainTileJob tileJob = new TerrainTileJob
             {
-                Params = jobParams,
+                Params = noiseParams,
                 Directions = dirs,
                 Heights = jobHeights,
                 ColorMasks = jobMasks,
@@ -1102,18 +1109,14 @@ namespace Galilego.Universe
             }
 
             // dirs/jobHeights РµС‰С‘ РЅСѓР¶РЅС‹ РґР»СЏ per-pixel Р°С‚СЂРёР±СѓС‚РѕРІ РЅРёР¶Рµ.
-            jobMasks.Dispose();
-            jobDetails.Dispose();
-
             var vertices = new Vector3[totalVerts];
             var normals = new Vector3[totalVerts];
-            // РђР»СЊР±РµРґРѕ СЃС‡РёС‚Р°РµС‚СЃСЏ РќРђ РџРРљРЎР•Р›Р¬ РІРѕ С„СЂР°РіРјРµРЅС‚РЅРѕРј С€РµР№РґРµСЂРµ (per-pixel
-            // РїСЂРѕС†РµРґСѓСЂРЅС‹Р№ С†РІРµС‚): РЅР° РіСЂСѓР±РѕРј LOD РІРµСЂС€РёРЅРЅС‹Р№ С†РІРµС‚ РґР°РІР°Р» Р±Р»РѕС‡РЅС‹Рµ
-            // РіСЂР°РЅРёС†С‹ РїСЏС‚РµРЅ. РЎСЋРґР° РєР»Р°РґС‘Рј С‚РѕР»СЊРєРѕ С‚Рѕ, С‡С‚Рѕ РЅРµР»СЊР·СЏ РІС‹РІРµСЃС‚Рё РёР·
-            // РіРµРѕРјРµС‚СЂРёРё: С‚РµР»-fixed РЅР°РїСЂР°РІР»РµРЅРёРµ, СЃС‹СЂСѓСЋ РІС‹СЃРѕС‚Сѓ (РґРѕ РєР»Р°РјРїР° РјРѕСЂРµРј)
-            // Рё РєРѕСЃРёРЅСѓСЃ СѓРєР»РѕРЅР° (rock/snow-РїРѕР»РѕСЃС‹ РїРѕ СЃРєР»РѕРЅСѓ).
+            // Albedo: fragment shader interpolates per-vertex data (vertex color on coarse LOD
+            // gave blocky patch borders). We pass what geometry cannot derive: body-fixed direction,
+            // raw height (pre-sea-clamp), slope cosine (rock/snow bands) AND the CPU color mask +
+            // detail — the same pattern the decor placement reads (parity paint/placement).
             var surfaceDirs = new Vector3[totalVerts];
-            var surfaceExtra = new Vector2[totalVerts];
+            var surfaceExtra = new Vector4[totalVerts];
 
             for (int row = 0; row < n; row++)
             {
@@ -1138,13 +1141,16 @@ namespace Galilego.Universe
                     double3 d = dirs[halo];
                     surfaceDirs[index] = new Vector3((float)d.x, (float)d.y, (float)d.z);
                     double rawHeight = jobHeights[halo] * amplitude;
-                    surfaceExtra[index] = new Vector2(
-                        (float)rawHeight, Vector3.Dot(normals[index], radial));
+                    surfaceExtra[index] = new Vector4(
+                        (float)rawHeight, Vector3.Dot(normals[index], radial),
+                        jobMasks[halo], jobDetails[halo]);
                 }
             }
 
             dirs.Dispose();
             jobHeights.Dispose();
+            jobMasks.Dispose();
+            jobDetails.Dispose();
 
             if (diagnosticChunksLogged < 8)
             {
@@ -1264,7 +1270,7 @@ namespace Galilego.Universe
             chunk.Mesh.vertices = vertices;
             chunk.Mesh.normals = normals;
             chunk.Mesh.SetUVs(1, new List<Vector3>(surfaceDirs));
-            chunk.Mesh.SetUVs(2, new List<Vector2>(surfaceExtra));
+            chunk.Mesh.SetUVs(2, new List<Vector4>(surfaceExtra));
             chunk.Mesh.triangles = triangles;
             chunk.Mesh.RecalculateBounds();
             // Р—Р°РїР°СЃ Рє РіСЂР°РЅРёС†Р°Рј (РїРѕР»СЂР°Р·РјРµСЂР° СѓР·Р»Р°): СЃС‚СЂР°С…РѕРІРєР° РѕС‚ Р»РѕР¶РЅРѕРіРѕ
@@ -2064,6 +2070,8 @@ namespace Galilego.Universe
                 V0 = session.V0,
                 StepUv = session.StepUv,
                 CameraLocal = new float3(session.CameraLocal.x, session.CameraLocal.y, session.CameraLocal.z),
+                Terrain = noiseParams,
+                Placement = session.Placement,
                 SubPerCell = session.SubPerCell,
                 // 13 РІР·Р°РёРјРЅРѕ РїСЂРѕСЃС‚Рѕ СЃ 36: СЂР°Р·СЂРµР¶РµРЅРЅС‹Р№ РїРѕСЂСЏРґРѕРє РїРѕРєСЂС‹РІР°РµС‚ СЃРµС‚РєСѓ 6Г—6
                 // С†РµР»РёРєРѕРј, РїРµСЂРІС‹Рµ k РїРѕРґС‚СѓС„С‚РѕРІ СЂР°СЃСЃС‹РїР°РЅС‹ РїРѕ РІСЃРµР№ РєР»РµС‚РєРµ.
@@ -2438,10 +2446,34 @@ namespace Galilego.Universe
                         normal.Normalize();
                     }
 
+                    if (session.CurrentSubs > 1)
+                    {
+                        // Подтуфт ушёл от проверенного TryEvaluate центра клетки:
+                        // перепроверяем жёсткие фильтры (вода/песок/горы/биом) по
+                        // его собственному направлению. Без этого край клетки на
+                        // грубом LOD сажал декор в воду и на пляж.
+                        Vector3d subDirection = CubeSphere.Direction(session.Node.Face, finalU, finalV);
+                        if (!GroundDecorDistribution.IsSurfaceAllowed(
+                            session.Placement, noiseParams,
+                            new double3(subDirection.X, subDirection.Y, subDirection.Z)))
+                        {
+                            continue;
+                        }
+                    }
+
                     Vector3 meshPoint = MeshSurfacePoint(
                         session.MeshVertices, session.CoreN,
                         (finalU - session.U0) / session.StepUv,
                         (finalV - session.V0) / session.StepUv);
+
+                    // Страж снэпа: грубый меш чанка отклоняется от аналитической
+                    // высоты на метры — точка обязана сама быть над водой,
+                    // иначе деревья/камни «тонут» там, где аналитика видит сушу.
+                    if (!GroundDecorDistribution.IsMeshPointAboveWater(
+                        session.Placement, new float3(meshPoint.x, meshPoint.y, meshPoint.z)))
+                    {
+                        continue;
+                    }
 
                     if (layer.PerInstanceDensity)
                     {
@@ -3793,6 +3825,7 @@ namespace Galilego.Universe
             TerrainPaletteData palette = terrain.Palette ?? new TerrainPaletteData();
             Shader.SetGlobalFloat("_TerrainAmplitude", (float)System.Math.Max(1d, terrain.AmplitudeMeters));
             Shader.SetGlobalFloat("_TerrainSeaLevel", (float)System.Math.Max(terrain.SeaLevelMeters, -1e30d));
+            Shader.SetGlobalFloat("_BeachHeightMeters", (float)System.Math.Max(0d, terrain.BeachHeightMeters));
             Shader.SetGlobalFloat("_TerrainSeed", terrain.Seed);
             Shader.SetGlobalFloat("_TerrainGain", (float)TerrainNoise.EffectiveGain(terrain.Gain));
             Shader.SetGlobalFloat("_TerrainLacunarity", (float)TerrainNoise.EffectiveLacunarity(terrain.Lacunarity));

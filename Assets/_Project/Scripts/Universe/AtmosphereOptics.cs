@@ -162,14 +162,27 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Полоса сглаживания горизонта по косинусу зенита (~±0.46°): у Солнца
+        /// конечный угловой радиус (~0.26°) плюс рефракция у горизонта (~0.5°),
+        /// поэтому прямой свет гаснет не ступенькой, а за полградуса захода.
+        /// Глубоко ниже горизонта — ровно 0.
+        /// </summary>
+        public const double HorizonSoftening = 0.008d;
+
+        /// <summary>
         /// Прозрачность к Солнцу для точки на радиусе r и косинусе зенита cosTheta.
-        /// Ниже геометрического горизонта луч упирается в планету → 0. Численно
+        /// Ниже геометрического горизонта луч упирается в планету → 0, но с
+        /// мягкой полосой HorizonSoftening (конечный диск + рефракция), иначе
+        /// заход даёт видимый поп диска/света за один кадр. Численно
         /// интегрируем экспоненциальную плотность (согласовано с GPU-моделью).
         /// </summary>
         public static Vector3d TransmittanceToSpace(
             in Coefficients c, double planetRadius, double atmosphereRadius, double r, double cosTheta, int steps = 8)
         {
-            if (cosTheta < CosineOfHorizon(planetRadius, Math.Max(r, planetRadius)))
+            double cosHor = CosineOfHorizon(planetRadius, Math.Max(r, planetRadius));
+            double horizonFade = Saturate((cosTheta - (cosHor - HorizonSoftening)) / (2d * HorizonSoftening));
+            horizonFade = horizonFade * horizonFade * (3d - (2d * horizonFade));
+            if (horizonFade <= 0d)
             {
                 return Vector3d.Zero;
             }
@@ -195,7 +208,7 @@ namespace Galilego.Universe
                 tau += Extinction(c, height) * ds;
             }
 
-            return Exp(-tau);
+            return Exp(-tau) * horizonFade;
         }
 
         /// <summary>
@@ -416,6 +429,85 @@ namespace Galilego.Universe
         {
             const double goldenAngle = Math.PI * (3d - 2.2360679774997896964d);
             double y = 1d - (2d * (index + 0.5d) / count);
+            double radius = Math.Sqrt(Saturate(1d - (y * y)));
+            double phi = goldenAngle * index;
+            return new Vector3d(Math.Cos(phi) * radius, y, Math.Sin(phi) * radius);
+        }
+
+        /// <summary>
+        /// Оценка яркости неба для ambient-засветки поверхности тем же
+        /// single-scatter интегратором, что строит Multi-Scattering LUT.
+        /// Возвращает «доминирующий оттенок × среднюю энергию»: величина — это
+        /// косинус-взвешенное среднее radiance по верхней полусфере (как
+        /// irradiance/π), а оттенок — средний цвет ярких областей неба БЕЗ
+        /// косинусного веса. Иначе тёплая полоса горизонта на закате тонула бы
+        /// и в синеве зенита, и в собственном косинусном подавлении (у горизонта
+        /// вес ≈ 0), хотя именно эта полоса освещает землю. Поэтому цвет
+        /// согласован с GPU-небом: днём — синий, на закате — тёплый,
+        /// ночью ≈ 0 (верхние слои уже не освещены).
+        ///
+        /// Кадр — локальный: наблюдатель в (0, r, 0), зенит +Y, солнце в
+        /// плоскости YZ (cosSunZenith = косинус зенитного угла солнца).
+        /// Дёшево: directions × 16 шагов марша (по умолчанию 12 направлений).
+        /// Выше верха атмосферы — ровно 0 (рассеивать нечему).
+        /// </summary>
+        public static Vector3d SkyAmbientRadiance(
+            in Coefficients c, double planetRadius, double atmosphereRadius,
+            double observerRadius, double cosSunZenith, int directions = 12)
+        {
+            if (directions <= 0 || observerRadius >= atmosphereRadius)
+            {
+                return Vector3d.Zero;
+            }
+
+            double r = Math.Max(observerRadius, planetRadius);
+            double sinSun = Math.Sqrt(Saturate(1d - (cosSunZenith * cosSunZenith)));
+            var origin = new Vector3d(0d, r, 0d);
+            var sunDir = new Vector3d(0d, cosSunZenith, sinSun);
+
+            Vector3d energySum = Vector3d.Zero;
+            Vector3d hueSum = Vector3d.Zero;
+            double energyWeight = 0d;
+            double hueWeight = 0d;
+            for (int i = 0; i < directions; i++)
+            {
+                Vector3d dir = HemisphereFibonacci(i, directions);
+                IntegrateSkyRay(c, planetRadius, atmosphereRadius, origin, dir, sunDir,
+                    out Vector3d skyColor, out _);
+                double w = dir.Y;
+                double lum = Luminance(skyColor);
+                energySum += skyColor * w;
+                energyWeight += w;
+                // Оттенок — по яркости без косинуса: иначе горизонт (вес ≈ 0)
+                // никогда не пробьётся, и закат останется синим.
+                hueSum += skyColor * lum;
+                hueWeight += lum;
+            }
+
+            if (energyWeight <= 0d || hueWeight <= 0d)
+            {
+                return Vector3d.Zero;
+            }
+
+            double meanLuminance = Luminance(energySum / energyWeight);
+            Vector3d dominantHue = hueSum / hueWeight;
+            double hueLuminance = Luminance(dominantHue);
+            if (meanLuminance <= 0d || hueLuminance <= 0d)
+            {
+                return Vector3d.Zero;
+            }
+
+            return dominantHue * (meanLuminance / hueLuminance);
+        }
+
+        private static double Luminance(Vector3d v) =>
+            (0.2126d * v.X) + (0.7152d * v.Y) + (0.0722d * v.Z);
+
+        /// <summary>Детерминированная равномерная верхняя полусфера (спираль Фибоначчи), y ∈ (0, 1].</summary>
+        private static Vector3d HemisphereFibonacci(int index, int count)
+        {
+            const double goldenAngle = Math.PI * (3d - 2.2360679774997896964d);
+            double y = 1d - ((index + 0.5d) / count);
             double radius = Math.Sqrt(Saturate(1d - (y * y)));
             double phi = goldenAngle * index;
             return new Vector3d(Math.Cos(phi) * radius, y, Math.Sin(phi) * radius);

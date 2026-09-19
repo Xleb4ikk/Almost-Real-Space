@@ -13,6 +13,7 @@ namespace Galilego.Universe.EditorTools
         private static bool showShape = true;
         private static bool showContinents = true;
         private static bool showPlains;
+        private static bool showBeach = true;
         private static bool showWarp;
         private static bool showColor = true;
         private static bool showPalette;
@@ -64,6 +65,18 @@ namespace Galilego.Universe.EditorTools
                 Field("Profile.PlainThreshold");
                 Slider("Profile.PlainSharpness", 0f, 1f);
                 Slider("Profile.PlainElevation", 0f, 1f);
+                EditorGUI.indentLevel--;
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+
+            showBeach = EditorGUILayout.BeginFoldoutHeaderGroup(showBeach, "Пляж (полоса у воды)");
+            if (showBeach)
+            {
+                EditorGUI.indentLevel++;
+                Field("Profile.BeachHeightMeters");
+                Field("Profile.BeachShelfAltitudeMeters");
+                Slider("Profile.BeachShelfWidth", 0f, 0.5f);
                 EditorGUI.indentLevel--;
             }
 
