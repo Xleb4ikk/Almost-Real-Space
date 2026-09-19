@@ -172,12 +172,18 @@
                 // Тень HDRP (PCSS/PCF): гасит прямой свет, ambient остаётся.
                 float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, n, l);
 
-                // Свет — РОВНО как у рельефа (PlanetSurface.shader): солнце
-                // сжато (_TerrainSun/(1+_TerrainSun)), ambient по ndl. Раньше
-                // декор умножал на сырой _TerrainSun и улетал в пересвет —
-                // из-за этого цвет материала почти не влиял на картинку.
-                float sun = _TerrainSun / (1.0 + _TerrainSun);
-                float light = _NightAmbient + (_SkyAmbient * ndl) + (sun * ndl * shadow);
+                // Свет — РОВНО как у рельефа (PlanetSurface.shader): честное
+                // солнце (_TerrainSun, может превышать 1), ambient —
+                // полусферический от неба (см. GalilegoSkyAmbient: без *ndl,
+                // иначе закат чёрный); цвет солнца (фотосфера × T) и ambient —
+                // общие глобалы. Плюс просвет листвы против солнца (back):
+                // в контровом свете крона тёпло светится насквозь,
+                // а не чёрным силуэтом.
+                float sun = _TerrainSun;
+                float3 light = float3(_NightAmbient, _NightAmbient, _NightAmbient)
+                    + (GalilegoSkyAmbient(n) * _TerrainRadianceScale)
+                    + (_SunLightColor * (sun * ndl * shadow) * _TerrainRadianceScale)
+                    + (_SunLightColor * (sun * back * shadow) * _TerrainRadianceScale);
                 return float4(albedo.rgb * light * _GroundTint.rgb, 1.0);
             }
             ENDHLSL

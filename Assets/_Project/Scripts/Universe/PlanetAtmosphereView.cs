@@ -277,8 +277,8 @@ namespace Galilego.Universe
             }
 
             // Цвет фотосферы (~5772 K) для вклада рассеяния: единый источник
-            // с SunBillboard/SkyEnvironment. Формула Планка → линейный sRGB.
-            Vector3d starLinear = StarColorUtil.FromTemperature(5772d);
+            // с SunBillboard/SkyEnvironment (SkyEnvironment.PhotosphereLinear).
+            Vector3d starLinear = SkyEnvironment.PhotosphereLinear;
             Shader.SetGlobalVector("_AtmSunColor",
                 new Vector3((float)starLinear.X, (float)starLinear.Y, (float)starLinear.Z));
 

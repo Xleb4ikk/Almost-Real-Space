@@ -13,6 +13,26 @@ namespace Galilego.Universe
     [Serializable]
     public sealed class GroundDecorLayer
     {
+        /// <summary>
+        /// Верх песчаной полосы в нормированной высоте палитры (t = h/amp +
+        /// mask·strength): зеркалит порог Sand в TerrainPalette.BaseColor.
+        /// Растительность обязана стоять выше.
+        /// </summary>
+        public const double SandTopNormalizedHeight = 0.03d;
+
+        /// <summary>
+        /// Низ скальной зоны в нормированной высоте палитры: зеркалит порог
+        /// перехода lowland→Rock в TerrainPalette.BaseColor. Выше — только камни.
+        /// </summary>
+        public const double RockBottomNormalizedHeight = 0.45d;
+
+        /// <summary>
+        /// Нижняя граница зелени палитры по влажности (wet01 из той же маски,
+        /// что красит рельеф): зеркалит переход DryGrass→Grass в
+        /// TerrainPalette.BiomeColor. Трава/деревья/луговые цветы — не ниже.
+        /// </summary>
+        public const double GreenWetMin = 0.38d;
+
         public string Name = "Grass";
         public bool Enabled = true;
 
@@ -66,6 +86,12 @@ namespace Galilego.Universe
                  "граница песка в шейдере рельефа. 0 = фильтр выключен.")]
         public double MinNormalizedHeight = 0d;
 
+        [Tooltip("Макс. нормированная высота (доля амплитуды, с той же цветовой " +
+                 "маской, что у палитры): выше — скалы/снег, растительности нет. 0.45 = " +
+                 "начало скальной зоны в шейдере рельефа. <=0 = фильтр выключен " +
+                 "(камни — единственный слой без верхней границы).")]
+        public double MaxNormalizedHeight = 0d;
+
         [Tooltip("Макс. высота над уровнем моря (м).")]
         public double MaxAltitudeMeters = 1e9d;
 
@@ -80,6 +106,11 @@ namespace Galilego.Universe
 
         [Tooltip("Биом по влажности: макс. wet01.")]
         public double WetMax = 1d;
+
+        [Tooltip("Не применять полярный фейд (тундра/снег) к слою: растительность " +
+                 "гаснет к полюсам как визуальный биом, а камни/валуны лежат и на снегу. " +
+                 "false = слой ограничен широтой (дефолт для растительности).")]
+        public bool IgnoreLatitude;
 
         [Tooltip("Ширина мягкого края по влажности (0 = жёсткий порог). " +
                  "Убирает резкую границу травы по биому — плотность гаснет плавно.")]

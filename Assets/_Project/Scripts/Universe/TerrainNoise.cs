@@ -38,6 +38,18 @@ namespace Galilego.Universe
         public double WarpFrequency;
         public int WarpOctaves;
         public int WarpSeedOffset;
+
+        /// <summary>Уровень моря (м) — для береговой полки (нормировка высот).</summary>
+        public double SeaLevelMeters;
+
+        /// <summary>Амплитуда рельефа (м) — для береговой полки (нормировка высот).</summary>
+        public double AmplitudeMeters;
+
+        /// <summary>Высота полки пляжа над морем (м). 0 = полка выключена.</summary>
+        public double BeachShelfAltitudeMeters;
+
+        /// <summary>Полуширина полки в единицах continent-маски. 0 = выключена.</summary>
+        public double BeachShelfWidth;
         public double ColorNoiseFrequency;
         public int ColorNoiseOctaves;
         public int ColorNoiseSeedOffset;
@@ -79,6 +91,10 @@ namespace Galilego.Universe
                 WarpFrequency = terrain.WarpFrequency,
                 WarpOctaves = terrain.WarpOctaves,
                 WarpSeedOffset = terrain.WarpSeedOffset,
+                SeaLevelMeters = terrain.SeaLevelMeters,
+                AmplitudeMeters = terrain.AmplitudeMeters,
+                BeachShelfAltitudeMeters = terrain.BeachShelfAltitudeMeters,
+                BeachShelfWidth = terrain.BeachShelfWidth,
                 ColorNoiseFrequency = terrain.ColorNoiseFrequency,
                 ColorNoiseOctaves = terrain.ColorNoiseOctaves,
                 ColorNoiseSeedOffset = terrain.ColorNoiseSeedOffset,
@@ -121,10 +137,11 @@ namespace Galilego.Universe
             double baseHeight = SampleFbmEx(q, p.BaseFrequency, p.Octaves, p.Seed, 0, gain, lacunarity);
 
             double continent = 1d;
+            double continentRaw = 0d;
             if (p.ContinentFrequency > 0d)
             {
-                double c = SampleFbmEx(q, p.ContinentFrequency, p.ContinentOctaves, p.Seed, 1, gain, lacunarity);
-                continent = Smoothstep01((c - (p.ContinentThreshold - p.ContinentSharpness))
+                continentRaw = SampleFbmEx(q, p.ContinentFrequency, p.ContinentOctaves, p.Seed, 1, gain, lacunarity);
+                continent = Smoothstep01((continentRaw - (p.ContinentThreshold - p.ContinentSharpness))
                     / math.max(1e-9d, 2d * p.ContinentSharpness));
             }
 
@@ -161,7 +178,46 @@ namespace Galilego.Universe
                 h += detail * p.DetailMix * detailLand;
             }
 
+            h = ApplyBeachShelf(p, h, continentRaw);
+
             return h;
+        }
+
+        /// <summary>
+        /// Береговая полка: у уреза воды (сырая continent-маска рядом с порогом
+        /// со стороны суши) суша стягивается к пологой высоте над морем — иначе
+        /// берег прыгает из воды сразу на склон/равнину и полосе пляжа негде
+        /// лечь. Только суша (h выше моря): океанское дно не трогаем, иначе
+        /// всплыли бы острова; без моря (SeaLevel −∞) и без континентов полка
+        /// выключена. Все пороги в нуле — возврат h без изменений (legacy
+        /// бит-в-бит). Вес — гладкий купол с нулевыми производными на краях,
+        /// чтобы в нормалях не было излома.
+        /// </summary>
+        public static double ApplyBeachShelf(TerrainNoiseParams p, double h, double continentRaw)
+        {
+            if (p.BeachShelfWidth <= 0d || p.BeachShelfAltitudeMeters <= 0d
+                || p.ContinentFrequency <= 0d || p.SeaLevelMeters <= -1e29d)
+            {
+                return h;
+            }
+
+            double amp = math.max(1d, p.AmplitudeMeters);
+            double seaN = p.SeaLevelMeters / amp;
+            if (!(h > seaN))
+            {
+                return h;
+            }
+
+            double coastDist = (continentRaw - p.ContinentThreshold) / math.max(1e-9d, p.BeachShelfWidth);
+            if (!(coastDist > 0d))
+            {
+                return h;
+            }
+
+            double t = math.min(1d, coastDist * coastDist);
+            double w = (1d - t) * (1d - t);
+            double shelf = seaN + (p.BeachShelfAltitudeMeters / amp);
+            return h + ((shelf - h) * w);
         }
 
         public static double SampleColorNoise(TerrainNoiseParams p, double3 direction)

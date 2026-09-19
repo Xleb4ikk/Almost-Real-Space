@@ -750,7 +750,7 @@ MonoBehaviour:
   Runner: {fileID: 1332194275}
   ShipTransform: {fileID: 1644257543}
   WalkSpeed: 50
-  RunSpeed: 1000
+  RunSpeed: 60000
   JetpackThrust: 1500000
   EnterDistanceMeters: 5
   ShipWalkRadius: 3
@@ -831,7 +831,7 @@ MonoBehaviour:
   Paused: 0
   SpawnAltitudeMeters: 50000
   SpawnFacingSun: 1
-  SpawnPhaseDegrees: 1
+  SpawnPhaseDegrees: 60
   SpawnHorizontalSpeedMps: 3278
   SpawnMassKg: 5000
   MainThrustNewtons: 100000
@@ -1209,7 +1209,6 @@ MonoBehaviour:
   Sky: {fileID: 1982425602}
   TemperatureKelvin: 5772
   DiscBrightness: 4
-  LightDimmer: 8
   BillboardFarFraction: 0.9
   SurfaceTextureWidth: 512
   SurfaceSeed: 1
@@ -1231,12 +1230,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SkyEnvironment
   Runner: {fileID: 1332194275}
   SunLight: {fileID: 157207113}
-  SunLightIntensity: 1.6
+  SunLightDayLux: 80000
+  SunsetDiagLog: 0
   StarVisibilityK: 6
-  TerrainSunIntensity: 3
-  NightAmbient: 0.005
+  TerrainSunIntensity: 1
+  TerrainRadianceScale: 2.5
+  NightAmbient: 0.01
   SkyAmbient: 0.1
   ShadowStrength: 0.85
+  ExposureVolume: {fileID: 432432460}
+  TwilightExposureMax: 2
+  NightExposure: 0.5
   ShadowHighDistanceMeters: 150
   ShadowMediumDistanceMeters: 400
   ShadowBlendWidthMeters: 25

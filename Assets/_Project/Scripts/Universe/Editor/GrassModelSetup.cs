@@ -98,10 +98,16 @@ namespace Galilego.Universe.EditorTools
                 ClusterFade = 0.12d,
                 MinAltitudeMeters = 2d,
                 MinNormalizedHeight = 0.032d,
+                // Верх зелени палитры: выше t=0.45 рельеф красится скалой —
+                // там только камни. Нижняя граница wet — начало Grass в палитре.
+                MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
                 MaxAltitudeMeters = GroundDecorSetup.TreeLineMaxAltitudeMeters,
                 MaxSlopeTan = 2.8d,
                 AvoidWater = true,
-                WetMin = 0.3d,
+                // Ковёр лезвий — на любой земле зелёных высот, включая сухую
+                // степь: песок (t), скалы, снег, пляж, лёд и вода по-прежнему
+                // отсекают. Иначе сухие холмы с зелёным фото лысые.
+                WetMin = 0d,
                 WetMax = 1d,
                 WetFade = 0.12d,
                 MinScale = TargetMinHeightMeters / meshHeight,

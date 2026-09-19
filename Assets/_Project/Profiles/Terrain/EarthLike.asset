@@ -31,6 +31,9 @@ MonoBehaviour:
     PlainThreshold: 0.05
     PlainSharpness: 0.25
     PlainElevation: 0.1
+    BeachHeightMeters: 200
+    BeachShelfAltitudeMeters: 8
+    BeachShelfWidth: 0.08
     DetailMix: 0
     DetailFrequency: 0
     DetailOctaves: 5

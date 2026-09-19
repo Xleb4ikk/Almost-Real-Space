@@ -32,14 +32,16 @@ MonoBehaviour:
       ClusterFade: 0.12
       MinAltitudeMeters: 2
       MinNormalizedHeight: 0.032
-      MaxAltitudeMeters: 3200
+      MaxNormalizedHeight: 0.45
+      MaxAltitudeMeters: 3500
       MaxSlopeTan: 2.8
       AvoidWater: 1
-      WetMin: 0.3
+      WetMin: 0
       WetMax: 1
+      IgnoreLatitude: 0
       WetFade: 0.12
       MinScale: 0.6326915514345928
-      MaxScale: 1.3159983787134184
+      MaxScale: 1.3159983787134182
       GroundOffsetMeters: 0
       GroundSinkFactor: 0
       WindZoneFrequency: 2.5
@@ -60,64 +62,12 @@ MonoBehaviour:
       NearDistanceMeters: 100
       MaxCellsPerAxis: 192
       MaxDistanceMeters: 300
-      DensityFalloffMeters: 50
-      DensityCoreMeters: 45
+      DensityFalloffMeters: 45
+      DensityCoreMeters: 30
       PerInstanceDensity: 1
       FarDensity: 0.05
       SpawnMarginMeters: 150
       SubInstancesPerCell: 400
-    - Name: DryGrass
-      Enabled: 1
-      NearMeshes:
-      - {fileID: 4300000, guid: 032791f31b98d7644b1b8418514a2ebd, type: 2}
-      FarBillboardMesh: {fileID: 4300000, guid: b2eeeca961a46cc4292822b7e4c2a829, type: 2}
-      NearMaterial: {fileID: 2100000, guid: 7f39537648bb24a428ea760a1992c5b1, type: 2}
-      FarMaterial: {fileID: 2100000, guid: 2f841d8be2350ba4c881417567ce6242, type: 2}
-      SpacingMeters: 2
-      MaxInstancesPerChunk: 600
-      Density: 0.6
-      DistributionFrequency: 2200
-      ClusterPatchMeters: 0
-      DistributionOctaves: 4
-      DistributionSeedOffset: 2
-      ClusterThreshold: 0.2
-      ClusterFade: 0
-      MinAltitudeMeters: 2
-      MinNormalizedHeight: 0
-      MaxAltitudeMeters: 3200
-      MaxSlopeTan: 1
-      AvoidWater: 1
-      WetMin: 0
-      WetMax: 0.35
-      WetFade: 0
-      MinScale: 0.7
-      MaxScale: 1.2
-      GroundOffsetMeters: 0
-      GroundSinkFactor: 0
-      WindZoneFrequency: 0
-      WindZoneOctaves: 3
-      WindZoneSeedOffset: 20
-      WindLeanMinDegrees: 0
-      WindLeanMaxDegrees: 0
-      WindJitterDegrees: 360
-      MinGroundSinkFactor: -1
-      MaxGroundSinkFactor: -1
-      FlatOnGround: 0
-      CastShadows: 1
-      ShadowCastDistanceMeters: 35
-      Collides: 0
-      CollisionRadiusMeters: 0.5
-      CollisionHeightMeters: 20
-      SteepPower: 4
-      NearDistanceMeters: 60
-      MaxCellsPerAxis: 64
-      MaxDistanceMeters: 600
-      DensityFalloffMeters: 0
-      DensityCoreMeters: 0
-      PerInstanceDensity: 0
-      FarDensity: 1
-      SpawnMarginMeters: 150
-      SubInstancesPerCell: 1
     - Name: Daisy
       Enabled: 1
       NearMeshes:
@@ -135,12 +85,14 @@ MonoBehaviour:
       ClusterThreshold: 0.5
       ClusterFade: 0
       MinAltitudeMeters: 2
-      MinNormalizedHeight: 0
-      MaxAltitudeMeters: 3200
+      MinNormalizedHeight: 0.032
+      MaxNormalizedHeight: 0.45
+      MaxAltitudeMeters: 3500
       MaxSlopeTan: 0.8
       AvoidWater: 1
-      WetMin: 0.35
+      WetMin: 0.38
       WetMax: 1
+      IgnoreLatitude: 0
       WetFade: 0
       MinScale: 0.8
       MaxScale: 1.2
@@ -190,11 +142,13 @@ MonoBehaviour:
       ClusterFade: 0
       MinAltitudeMeters: 2
       MinNormalizedHeight: 0
+      MaxNormalizedHeight: 0
       MaxAltitudeMeters: 8100
       MaxSlopeTan: 3
       AvoidWater: 1
       WetMin: 0
       WetMax: 1
+      IgnoreLatitude: 1
       WetFade: 0
       MinScale: 1.5
       MaxScale: 4.5
@@ -243,12 +197,14 @@ MonoBehaviour:
       ClusterThreshold: 0.25
       ClusterFade: 0
       MinAltitudeMeters: 2
-      MinNormalizedHeight: 0
+      MinNormalizedHeight: 0.032
+      MaxNormalizedHeight: 0.45
       MaxAltitudeMeters: 4000
       MaxSlopeTan: 0.8
       AvoidWater: 1
       WetMin: 0
       WetMax: 0.32
+      IgnoreLatitude: 0
       WetFade: 0
       MinScale: 2
       MaxScale: 5
@@ -297,12 +253,14 @@ MonoBehaviour:
       ClusterThreshold: 0
       ClusterFade: 0
       MinAltitudeMeters: 5
-      MinNormalizedHeight: 0
-      MaxAltitudeMeters: 3200
+      MinNormalizedHeight: 0.032
+      MaxNormalizedHeight: 0.45
+      MaxAltitudeMeters: 3500
       MaxSlopeTan: 0.9
       AvoidWater: 1
-      WetMin: 0.1
+      WetMin: 0.2
       WetMax: 1
+      IgnoreLatitude: 0
       WetFade: 0
       MinScale: 1.604756585072252
       MaxScale: 2.8319233059883118

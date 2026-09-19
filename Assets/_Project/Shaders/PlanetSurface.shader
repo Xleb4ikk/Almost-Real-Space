@@ -67,6 +67,7 @@ Shader "Galilego/PlanetSurface"
             float _ColorDetailFrequency;
             float _ColorDetailOctaves;
             float _ColorDetailStrength;
+            float _BeachHeightMeters;
 
             float4 _ColSand;
             float4 _ColDesert;
@@ -99,7 +100,7 @@ Shader "Galilego/PlanetSurface"
                 float3 positionOS : POSITION;
                 float3 normalOS   : NORMAL;
                 float3 dirOS      : TEXCOORD1; // тел-fixed единичное направление
-                float2 extra      : TEXCOORD2; // x: сырая высота (м), y: косинус уклона
+                float4 extra      : TEXCOORD2; // x: сырая высота (м), y: косинус уклона, z: маска цвета CPU, w: деталь CPU
             };
 
             struct Varyings
@@ -108,7 +109,7 @@ Shader "Galilego/PlanetSurface"
                 float3 normalWS   : TEXCOORD0;
                 float3 positionWS : TEXCOORD1;
                 float3 dirOS      : TEXCOORD2;
-                float2 extra      : TEXCOORD3;
+                float4 extra      : TEXCOORD3;
             };
 
             Varyings Vert(Attributes input)
@@ -258,7 +259,8 @@ Shader "Galilego/PlanetSurface"
                 }
 
                 float height = max(raw, sea);
-                float t = (height - sea) / max(1.0, amp);
+                float aboveSea = height - sea;
+                float t = aboveSea / max(1.0, amp);
                 bool maskOn = _ColorNoiseStrength != 0.0;
                 if (maskOn)
                 {
@@ -268,7 +270,13 @@ Shader "Galilego/PlanetSurface"
                 t = max(t, 0.0);
 
                 float3 c;
-                if (t < 0.03)
+                // Пляж — абсолютными метрами над морем, маской не стирается:
+                // иначе на «плюсовых» берегах зелень начинается от уреза воды.
+                if (_BeachHeightMeters > 0.0 && aboveSea < _BeachHeightMeters)
+                {
+                    c = _ColSand.rgb;
+                }
+                else if (t < 0.03)
                 {
                     c = _ColSand.rgb;
                 }
@@ -304,7 +312,8 @@ Shader "Galilego/PlanetSurface"
 
                 // Моттлинг земли: пятна почвы / сочной зелени. Только на земле
                 // выше пляжной зоны — на песке пятен быть не должно.
-                if (_ColorDetailStrength != 0.0 && t >= 0.03)
+                bool isBeach = _BeachHeightMeters > 0.0 && aboveSea < _BeachHeightMeters;
+                if (_ColorDetailStrength != 0.0 && t >= 0.03 && !isBeach)
                 {
                     float d = clamp(detail, -1.0, 1.0);
                     if (d > 0.0)
@@ -321,7 +330,7 @@ Shader "Galilego/PlanetSurface"
                 // склонах (крупные горы). Порог по высоте отсекает пляж, дюны
                 // и низменности, где скалы не должны появляться.
                 if (_TerrainRockSlopeTan > 0.0 && slopeTan >= _TerrainRockSlopeTan
-                    && t >= _TerrainRockHeightMin)
+                    && t >= _TerrainRockHeightMin && !isBeach)
                 {
                     float w = min(1.0, (slopeTan - _TerrainRockSlopeTan) / max(1e-9, _TerrainRockSlopeWidth));
                     w = w * w * (3.0 - (2.0 * w));
@@ -348,6 +357,9 @@ Shader "Galilego/PlanetSurface"
             // Альбедо из текстур рельефа: низ/середина/верх по высоте над
             // морем, скалы по склону, мягкий AO из occlusion. Биомный тинт
             // (процедурная палитра) сохраняет климатические зоны читаемыми.
+            // Тинт обязан доминировать над насыщенным зелёным фото: иначе
+            // сухая степь выглядит лугом и противоречит декору (там нет ни
+            // травинок, ни деревьев — по биому).
             // Координаты — дельта от камеры, повёрнутая в тело-fixed оси:
             // малые числа без квантования ~6 см (см. _TerrainWorldToBody).
             float3 TerrainTextureAlbedo(float3 positionWS, float raw, float slopeTan, float3 normalObject, float3 biome)
@@ -374,7 +386,17 @@ Shader "Galilego/PlanetSurface"
                 float occl = dot(Triplanar(_TexOcclusion, uvX, uvY, uvZ, tri), float3(0.3333, 0.3333, 0.3333));
                 c *= lerp(1.0, saturate(occl * 1.3), 0.65);
 
-                c *= lerp(float3(1.0, 1.0, 1.0), saturate(biome * 1.9), 0.45);
+                c *= lerp(float3(1.0, 1.0, 1.0), saturate(biome * 1.9), 0.65);
+
+                // Пляж поверх текстур: низковысотная текстура — зелёное фото,
+                // без этого полоса песка стиралась бы текстурным путём.
+                // Край мягкий, чтобы не было ступеньки у верхней границы.
+                if (_BeachHeightMeters > 0.0)
+                {
+                    float beachW = 1.0 - smoothstep(_BeachHeightMeters * 0.5, _BeachHeightMeters, altitude);
+                    c = lerp(c, _ColSand.rgb, beachW);
+                }
+
                 return c;
             }
 
@@ -390,14 +412,18 @@ Shader "Galilego/PlanetSurface"
                 float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, normal, sunDir);
 
                 // Единый световой член, пофрагментный: ночная засветка (звёзды) +
-                // небесная засветка и солнце по нормали к НЕЙ. Ночью ndl=0 →
-                // остаётся только _NightAmbient (≈0) → поверхность почти черна.
-                // Сжимаем САМ параметр солнца (а не итоговый свет): тогда при любом
-                // значении _TerrainSun сохраняется затенение по нормали (рельеф
-                // читается), но яркость не улетает в белый.
-                float sun = _TerrainSun / (1.0 + _TerrainSun);
-                float light = _NightAmbient + (_SkyAmbient * ndl) + (sun * ndl * shadow);
-                float3 lightTerm = float3(light, light, light);
+                // небесная засветка (средняя яркость неба: день голубая, закат
+                // тёплая — полусферический градиент, НЕ зависит от ndl: на
+                // терминаторе небо светит, даже когда прямой луч уже погас)
+                // и солнце по нормали к НЕЙ, с цветом фотосфера × T атмосферы.
+                // Ночью остаётся только _NightAmbient (≈0) → поверхность почти черна.
+                // Честный солнечный член (вариант B): свет может превышать 1,
+                // пересвет разруливает глобальный тонмаппинг HDRP. Затенение по
+                // нормали сохраняется (множитель ndl ниже), рельеф читается.
+                float sun = _TerrainSun;
+                float3 lightTerm = float3(_NightAmbient, _NightAmbient, _NightAmbient)
+                    + (GalilegoSkyAmbient(normal) * _TerrainRadianceScale)
+                    + (_SunLightColor * (sun * ndl * shadow) * _TerrainRadianceScale);
 
                 // --- Per-pixel альбедо -----------------------------------------
                 float3 dir = normalize(input.dirOS);
@@ -410,16 +436,14 @@ Shader "Galilego/PlanetSurface"
                 // пикселя (иначе высокочастотный шум мерцает/алиасится вдали).
                 float angular = max(max(fwidth(dir.x), fwidth(dir.y)), fwidth(dir.z));
 
-                float mask = 0.0;
-                if (_ColorNoiseStrength != 0.0 && _ColorNoiseFrequency > 0.0)
-                {
-                    mask = Fbm(dir, _ColorNoiseFrequency, (int)_ColorNoiseOctaves, StreamOffset(4.0));
-                }
-
-                float detail = 0.0;
+                // Маска и деталь — интерполяция вершинных значений, посчитанных
+                // тем же CPU-шумом, что читает декор (паритет paint/placement).
+                // Своего Fbm у шейдера больше нет: его float-safe оффсеты давали
+                // другой паттерн, и лес на картинке оказывался степью для декора.
+                float mask = input.extra.z;
+                float detail = input.extra.w;
                 if (_ColorDetailStrength != 0.0 && _ColorDetailFrequency > 0.0)
                 {
-                    detail = Fbm(dir, _ColorDetailFrequency, (int)_ColorDetailOctaves, StreamOffset(7.0));
                     float footprint = angular * _ColorDetailFrequency;
                     detail *= saturate(1.0 - (footprint * 0.7));
                 }
@@ -454,7 +478,7 @@ Shader "Galilego/PlanetSurface"
                 float3 waterBase = lerp(_WaterShallow.rgb, _WaterDeep.rgb, waterDepth);
                 float3 water = (waterBase * lightTerm)
                     + (_RimColor.rgb * fresnel * lightTerm)
-                    + (spec * _TerrainSun * shadow);
+                    + (spec * sun * shadow * _SunLightColor * _TerrainRadianceScale);
 
                 float3 color = lerp(land, water, isWater);
                 return float4(color, 1.0);

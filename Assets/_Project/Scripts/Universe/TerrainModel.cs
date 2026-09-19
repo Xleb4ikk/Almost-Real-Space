@@ -129,6 +129,24 @@ namespace Galilego.Universe
         public double PlainElevation = 0.1d;
 
         /// <summary>
+        /// Высота пляжа над морем (м): ниже — песок и запрет спавна.
+        /// 0 = пляжа нет (legacy).
+        /// </summary>
+        public double BeachHeightMeters = 0d;
+
+        /// <summary>
+        /// Высота полки пляжа над морем (м): береговой рельеф стягивается
+        /// к ней у уреза воды (только суша, океан не трогаем).
+        /// 0 = полка выключена (legacy).
+        /// </summary>
+        public double BeachShelfAltitudeMeters = 0d;
+
+        /// <summary>
+        /// Полуширина полки в единицах continent-маски. 0 = выключена (legacy).
+        /// </summary>
+        public double BeachShelfWidth = 0d;
+
+        /// <summary>
         /// Мелкомасштабная деталь (скалы/осыпи) как доля AmplitudeMeters.
         /// Добавляется высокочастотным потоком только на суше, гаснет в равнинах.
         /// 0 = выключено (legacy).
@@ -265,6 +283,9 @@ namespace Galilego.Universe
             PlainThreshold = profile.PlainThreshold;
             PlainSharpness = profile.PlainSharpness;
             PlainElevation = profile.PlainElevation;
+            BeachHeightMeters = profile.BeachHeightMeters;
+            BeachShelfAltitudeMeters = profile.BeachShelfAltitudeMeters;
+            BeachShelfWidth = profile.BeachShelfWidth;
             DetailMix = profile.DetailMix;
             DetailFrequency = profile.DetailFrequency;
             DetailOctaves = profile.DetailOctaves;

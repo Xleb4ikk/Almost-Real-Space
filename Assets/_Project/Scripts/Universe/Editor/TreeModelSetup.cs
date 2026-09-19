@@ -66,11 +66,17 @@ namespace Galilego.Universe.EditorTools
                 DistributionSeedOffset = 3,
                 ClusterThreshold = 0d,
                 MinAltitudeMeters = 5d,
-                // Верхняя граница леса — общая с травой (см. TreeLineMaxAltitudeMeters).
+                // Только зелёная земля палитры: ниже — пляж (Sand), выше —
+                // скалы (там только камни). Верхняя граница леса — общая
+                // с травой (см. TreeLineMaxAltitudeMeters).
+                MinNormalizedHeight = 0.032d,
+                MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
                 MaxAltitudeMeters = GroundDecorSetup.TreeLineMaxAltitudeMeters,
                 MaxSlopeTan = 0.9d,
                 AvoidWater = true,
-                WetMin = 0.1d,
+                // Деревья избегают лишь крайней пустыни: сухая степь зарастает,
+                // иначе зелёные с фото холмы стоят без леса.
+                WetMin = 0.2d,
                 WetMax = 1d,
                 MinScale = baseScale * 0.85f,
                 MaxScale = baseScale * 1.5f,

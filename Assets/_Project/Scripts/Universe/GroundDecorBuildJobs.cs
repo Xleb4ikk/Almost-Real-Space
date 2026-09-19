@@ -306,6 +306,12 @@ namespace Galilego.Universe
         public double StepUv;
         public float3 CameraLocal;
 
+        /// <summary>Шум рельефа — для перепроверки подтуфтов (вода/песок/горы).</summary>
+        public TerrainNoiseParams Terrain;
+
+        /// <summary>Фильтры слоя — для перепроверки подтуфтов и стража снэпа.</summary>
+        public GroundDecorPlacementParams Placement;
+
         public int SubPerCell;
         /// <summary>Шаг разреженного порядка подтуфтов (взаимно прост с числом клеток сетки).</summary>
         public int SpreadStride;
@@ -404,25 +410,60 @@ namespace Galilego.Universe
                         + (leanHash * math.max(0d, WindLeanMaxDegrees - WindLeanMinDegrees)));
                 }
 
+                // Отсев — БЕЗ continue: слоты заранее расписаны аллокатором, а
+                // Stored — из пула с чужими данными. Пропущенная запись оставила
+                // бы в слоте позиции чужого чанка (трава в небе), поэтому
+                // отсеянный подтуфт пишется вырожденным (Scale 0 → точка 1e-4).
+                bool culled = false;
+                if (SubPerCell > 1)
+                {
+                    // Подтуфт ушёл от проверенного TryEvaluate центра клетки:
+                    // перепроверяем жёсткие фильтры (вода/песок/горы/биом) по
+                    // его собственному направлению. Без этого на грубом LOD
+                    // край клетки заливал травой воду и пляж. Одиночные
+                    // инстансы здесь не разбрасываются — им проверка не нужна.
+                    double3 subDirection = GroundDecorDistribution.CubeFaceDirection(Face, finalU, finalV);
+                    if (!GroundDecorDistribution.IsSurfaceAllowed(Placement, Terrain, subDirection))
+                    {
+                        culled = true;
+                    }
+                }
+
                 Vector3 meshPoint = MeshPoint(finalU, finalV);
                 float3 meshPoint3 = new float3(meshPoint.x, meshPoint.y, meshPoint.z);
+
+                // Страж снэпа: грубый меш чанка отклоняется от аналитической
+                // высоты на метры — точка обязана сама быть над водой.
+                if (!culled && !GroundDecorDistribution.IsMeshPointAboveWater(Placement, meshPoint3))
+                {
+                    culled = true;
+                }
 
                 float3 toCamera = meshPoint3 - CameraLocal;
                 float along = math.dot(toCamera, normal);
                 float3 tangential = toCamera - (normal * along);
                 float distance = math.length(tangential);
-                if (distance > Selection[0] + Selection[2])
+                if (!culled && distance > Selection[0] + Selection[2])
                 {
-                    continue;
+                    culled = true;
                 }
 
-                float layerOffset = (float)(GroundOffsetMeters - (sub.Scale * sub.SinkFactor));
-                sub.Position = meshPoint3 + (normal * layerOffset);
-                // Появление: время + случайный сдвиг по (клетка, подтуфт).
-                sub.BirthTime = StaggerSeconds > 0f
-                    ? BuildTime + ((float)GroundDecorDistribution.Hash01(
-                        subSlot, Face, index + Ix + 1997, Iy, 42) * StaggerSeconds)
-                    : 0f;
+                if (culled)
+                {
+                    sub.Scale = 0f;
+                    sub.BirthTime = 0f;
+                    sub.Position = meshPoint3;
+                }
+                else
+                {
+                    float layerOffset = (float)(GroundOffsetMeters - (sub.Scale * sub.SinkFactor));
+                    sub.Position = meshPoint3 + (normal * layerOffset);
+                    // Появление: время + случайный сдвиг по (клетка, подтуфт).
+                    sub.BirthTime = StaggerSeconds > 0f
+                        ? BuildTime + ((float)GroundDecorDistribution.Hash01(
+                            subSlot, Face, index + Ix + 1997, Iy, 42) * StaggerSeconds)
+                        : 0f;
+                }
 
                 int slot = baseSlot + s;
                 if (slot < Take)

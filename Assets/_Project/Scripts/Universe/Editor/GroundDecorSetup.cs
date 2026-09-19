@@ -21,12 +21,12 @@ namespace Galilego.Universe.EditorTools
         internal const string ProfilePath = "Assets/_Project/Profiles/Decor/EarthDecor.asset";
 
         /// <summary>
-        /// Верхняя граница леса/травы: 300 м ниже конца зелёной текстуры
-        /// рельефа (MidHighBlendEnd = 3500 м у Terra). Общая для деревьев,
+        /// Верхняя граница леса/травы: конец зелёной текстуры рельефа
+        /// (MidHighBlendEnd = 3500 м у Terra). Общая для деревьев,
         /// травы, сухой травы и ромашек. Камни игнорируют границу и спавнятся
         /// до максимальной высоты.
         /// </summary>
-        internal const double TreeLineMaxAltitudeMeters = 3200d;
+        internal const double TreeLineMaxAltitudeMeters = 3500d;
 
         private const string DecorModelsFolder = "Assets/_Project/Models/Decor";
         private const string DecorMaterialsFolder = "Assets/_Project/Materials/Decor";
@@ -39,10 +39,8 @@ namespace Galilego.Universe.EditorTools
             EnsureFolder(DecorMaterialsFolder);
             ReimportTextures();
 
-            // Куст травы (RGB+alpha) — общая текстура для обычной и сухой травы,
-            // различаются тинтом материала.
+            // Куст травы (RGB+alpha) — текстура дальнего биллборда травы.
             Texture2D grass = LoadTexture("grass_clump");
-            Texture2D dryGrass = LoadTexture("grass_clump");
             Texture2D daisy = LoadTexture("daisy");
             if (grass == null)
             {
@@ -50,7 +48,6 @@ namespace Galilego.Universe.EditorTools
                 return;
             }
 
-            Mesh card = CreateOrLoadCardMesh();
             Mesh billboard = CreateOrLoadBillboardMesh();
 
             Material grassFar = CreateOrLoadMaterial("GrassBillboard", "Galilego/GroundDecorBillboard", grass, 0.35f, 0.35f);
@@ -58,25 +55,12 @@ namespace Galilego.Universe.EditorTools
             // ===== [ГРАФИКА] Дистанции и плотность декора =====
             // NearDistanceMeters / MaxDistanceMeters слоёв ниже — кандидаты в
             // будущие настройки графики (пресеты «минимально…максимально»):
-            // трава, сухая трава, ромашки, камни, деревья. Поиск по тегу [ГРАФИКА].
+            // трава, ромашки, камни, деревья. Поиск по тегу [ГРАФИКА].
             var layers = new List<GroundDecorLayer>();
             GroundDecorLayer grassLayer = GrassModelSetup.BuildGrassLayer(billboard, grassFar);
             if (grassLayer != null)
             {
                 layers.Add(grassLayer);
-            }
-
-            if (dryGrass != null)
-            {
-                // [ГРАФИКА] дальность сухой травы (near/far).
-                layers.Add(CreateLayer(
-                    "DryGrass", card, billboard,
-                    CreateOrLoadMaterial("DryGrassSolid", "Galilego/GroundDecorSolid", dryGrass, 0.4f, 0.25f),
-                    CreateOrLoadMaterial("DryGrassBillboard", "Galilego/GroundDecorBillboard", dryGrass, 0.4f, 0.25f),
-                    spacing: 2.0d, frequency: 2200d, threshold: 0.2d, seedOffset: 2,
-                    wetMin: 0d, wetMax: 0.35d, minScale: 0.7d, maxScale: 1.2d,
-                    nearDistance: 60f, maxDistance: 600f, maxAltitude: TreeLineMaxAltitudeMeters,
-                    shadowCastDistance: 35f));
             }
 
             if (daisy != null)
@@ -101,10 +85,13 @@ namespace Galilego.Universe.EditorTools
                     DistributionSeedOffset = 5,
                     ClusterThreshold = 0.5d,
                     MinAltitudeMeters = 2d,
+                    // Ромашки — луговые цветы: только зелёная земля палитры.
+                    MinNormalizedHeight = 0.032d,
+                    MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
                     MaxAltitudeMeters = TreeLineMaxAltitudeMeters,
                     MaxSlopeTan = 0.8d,
                     AvoidWater = true,
-                    WetMin = 0.35d,
+                    WetMin = GroundDecorLayer.GreenWetMin,
                     WetMax = 1d,
                     MinScale = 0.8d,
                     MaxScale = 1.2d,
@@ -143,12 +130,16 @@ namespace Galilego.Universe.EditorTools
                     ClusterThreshold = 0.05d,
                     MinAltitudeMeters = 2d,
                     // Камни — единственный слой до максимальной высоты (пики,
-                    // выше границы леса). 8100 покрывает высшую точку Terra.
+                    // выше границы леса) и без нормированных границ палитры:
+                    // в горах и на пляже только камни. 8100 покрывает высшую
+                    // точку Terra.
                     MaxAltitudeMeters = 8100d,
                     MaxSlopeTan = 3d,
                     AvoidWater = true,
                     WetMin = 0d,
                     WetMax = 1d,
+                    // Камни лежат и на полярной шапке: широтный фейд не применяем.
+                    IgnoreLatitude = true,
                     MinScale = 1.5d,
                     MaxScale = 4.5d,
                     SteepPower = 1.2d,
@@ -186,6 +177,9 @@ namespace Galilego.Universe.EditorTools
                     DistributionSeedOffset = 9,
                     ClusterThreshold = 0.25d,
                     MinAltitudeMeters = 2d,
+                    // Кактусы — сухой биом, но не пляж и не скалы.
+                    MinNormalizedHeight = 0.032d,
+                    MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
                     MaxAltitudeMeters = 4000d,
                     MaxSlopeTan = 0.8d,
                     AvoidWater = true,
@@ -290,7 +284,14 @@ namespace Galilego.Universe.EditorTools
                 double wet = System.Math.Max(0d, System.Math.Min(1d, 0.5d + (mask * 1.6d)));
                 double tMasked = ((rawHeight - p.SeaLevelMeters) / System.Math.Max(1d, p.AmplitudeMeters))
                     + (mask * p.ColorNoiseStrength);
-                bool isGreen = wet >= 0.38d && tMasked >= 0.03d && tMasked < 0.45d;
+                // Та же полярная шапка, что в декоре: сплошной лёд — не зелень.
+                double zc = dir.z < -1d ? -1d : (dir.z > 1d ? 1d : dir.z);
+                double lat01 = System.Math.Abs(System.Math.Asin(zc)) / (System.Math.PI * 0.5d);
+                double iceT = (lat01 - 0.70d) / 0.16d;
+                double ice = iceT <= 0d ? 0d : (iceT >= 1d ? 1d : iceT * iceT * (3d - (2d * iceT)));
+                bool isGreen = wet >= 0.38d && tMasked >= 0.03d && tMasked < 0.45d
+                    && (rawHeight - terrain.SeaLevelMeters) >= terrain.BeachHeightMeters
+                    && ice < 1d;
                 if (isGreen)
                 {
                     green++;
@@ -317,50 +318,12 @@ namespace Galilego.Universe.EditorTools
             }
 
             Debug.Log(string.Format(
-                "[GrassDiag] samples={0} land={1} green={2} accepted={3} acceptedGreen={4} | coverage land={5:P1} green={6:P1} | layer spacing={7} density={8} cluster={9}+fade{10} wet={11}+fade{12}",
+                "[GrassDiag] samples={0} land={1} green={2} accepted={3} acceptedGreen={4} | coverage land={5:P1} green={6:P1} | layer spacing={7} density={8} cluster={9}+fade{10} wet={11}+fade{12} norm=[{13},{14}]",
                 samples, land, green, accepted, acceptedGreen,
                 land > 0 ? (double)accepted / land : 0d,
                 green > 0 ? (double)acceptedGreen / green : 0d,
                 grass.SpacingMeters, grass.Density, grass.ClusterThreshold, grass.ClusterFade,
-                grass.WetMin, grass.WetFade));
-        }
-
-        private static GroundDecorLayer CreateLayer(
-            string name, Mesh card, Mesh billboard, Material nearMaterial, Material farMaterial,
-            double spacing, double frequency, double threshold, int seedOffset,
-            double wetMin, double wetMax, double minScale, double maxScale,
-            float nearDistance, float maxDistance, double maxAltitude = 6000d,
-            bool castShadows = true, float shadowCastDistance = 0f)
-        {
-            return new GroundDecorLayer
-            {
-                Name = name,
-                Enabled = true,
-                CastShadows = castShadows,
-                ShadowCastDistanceMeters = shadowCastDistance,
-                NearMeshes = new[] { card },
-                NearMaterial = nearMaterial,
-                FarBillboardMesh = billboard,
-                FarMaterial = farMaterial,
-                SpacingMeters = spacing,
-                MaxInstancesPerChunk = 600,
-                Density = 0.6d,
-                DistributionFrequency = frequency,
-                DistributionOctaves = 4,
-                DistributionSeedOffset = seedOffset,
-                ClusterThreshold = threshold,
-                MinAltitudeMeters = 2d,
-                MaxAltitudeMeters = maxAltitude,
-                MaxSlopeTan = 1.0d,
-                AvoidWater = true,
-                WetMin = wetMin,
-                WetMax = wetMax,
-                MinScale = minScale,
-                MaxScale = maxScale,
-                SteepPower = 4d,
-                NearDistanceMeters = nearDistance,
-                MaxDistanceMeters = maxDistance
-            };
+                grass.WetMin, grass.WetFade, grass.MinNormalizedHeight, grass.MaxNormalizedHeight));
         }
 
         private static void ReimportTextures()
@@ -598,7 +561,7 @@ namespace Galilego.Universe.EditorTools
     [InitializeOnLoad]
     internal static class GroundDecorSetupAuto
     {
-        private const string VersionMarker = "Temp/decor-content-v54.done";
+        private const string VersionMarker = "Temp/decor-content-v55.done";
 
         static GroundDecorSetupAuto()
         {

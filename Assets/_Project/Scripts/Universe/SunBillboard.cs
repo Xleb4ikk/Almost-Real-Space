@@ -14,8 +14,9 @@ namespace Galilego.Universe
     ///   — Цвет — физика: спектр Планка → линейный sRGB при
     ///     TemperatureKelvin (StarColorUtil). HDR-множитель DiscBrightness
     ///     кормит bloom (корона получается пост-обработкой).
-    ///   — Directional Light: поворот по направлению на звезду + цвет света =
-    ///     цвет звезды (притушенный) — день/ночь на вращающейся планете.
+    ///   — Directional Light: только ПОВОРОТ по направлению на звезду; цвет
+    ///     света (фотосфера × прозрачность атмосферы) ставит SkyEnvironment
+    ///     каждый кадр — день/ночь, закат и космос без второго владельца.
     /// Вызов — LateUpdate ПОСЛЕ FirstPersonCamera (читает farClipPlane).
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-30)]
@@ -38,9 +39,6 @@ namespace Galilego.Universe
 
         [Tooltip("HDR-яркость диска/сферы (>1 питает bloom = корона).")]
         public float DiscBrightness = 4f;
-
-        [Tooltip("Во сколько раз притушен цвет Directional Light (иначе планета пересвечена).")]
-        public float LightDimmer = 8f;
 
         [Tooltip("Доля far plane для диск-билборда.")]
         public float BillboardFarFraction = 0.9f;
@@ -95,11 +93,6 @@ namespace Galilego.Universe
                     ? " — СЛИШКОМ МАЛ: диск будет субпиксельным и невидимым! Проверь Radius в BodyAuthoring звезды."
                     : ""));
             starColor = Tint * ToUnityColor(StarColorUtil.FromTemperature(TemperatureKelvin)) * DiscBrightness;
-            if (SunLight != null)
-            {
-                SunLight.color = Tint * ToUnityColor(StarColorUtil.FromTemperature(TemperatureKelvin))
-                    * Mathf.Max(0.01f, 1f / Mathf.Max(0.01f, LightDimmer));
-            }
 
             starMaterial = new Material(FindDiscShader(shader)) { color = starColor };
             ApplyColor(starMaterial, starColor);

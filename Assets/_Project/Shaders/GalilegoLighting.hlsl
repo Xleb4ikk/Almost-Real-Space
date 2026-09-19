@@ -22,6 +22,34 @@ float _ShadowHighDistance;
 float _ShadowMediumDistance;
 float _ShadowBlendWidth;
 
+// Цвет прямого солнечного света: фотосфера × прозрачность атмосферы
+// (в космосе белый, у земли жёлтый, на закате красный) — единый для всех
+// кастомных шейдеров поверхности.
+float3 _SunLightColor;
+
+// Тинт ambient-засветки (день: голубой, закат: тёплый) × яркость неба.
+float3 _SkyAmbientColor;
+
+// Локальная вертикаль наблюдателя (ставит SkyEnvironment): для
+// полусферического градиента ambient в мировых координатах.
+float3 _SkyUp;
+
+// HDR-буст земли (аналог ATM_RADIANCE_SCALE неба): ставит SkyEnvironment.
+// 1 = как раньше (обратная совместимость); подбирать глазами вместе с
+// TerrainSunIntensity (ориентир 2–4, не переносить 5 вслепую).
+float _TerrainRadianceScale;
+
+// Небесная засветка поверхности: тинт и величина — из CPU-оценки яркости
+// неба (_SkyAmbientColor/_SkyAmbient), градиент — по полусфере нормали.
+// КРИТИЧНО: не зависит от направления на солнце — на закате и в сумерках
+// небо светит, даже когда прямой луч уже погас (старая формула
+// _SkyAmbient*ndl давала там ровно ноль → чёрную землю при ярком небе).
+float3 GalilegoSkyAmbient(float3 normalWS)
+{
+    float hemi = saturate((dot(normalWS, _SkyUp) * 0.5) + 0.5);
+    return _SkyAmbientColor * (_SkyAmbient * (0.35 + 0.65 * hemi));
+}
+
 #include "Packages/com.unity.render-pipelines.high-definition/Runtime/Lighting/LightLoop/HDShadow.hlsl"
 
 // Координаты выбранного каскада для точки (как EvalShadow_CascadedDepth_Dither,
@@ -142,8 +170,9 @@ float GalilegoSunShadow(float2 positionSS, float3 positionWS, float3 normalWS, f
     return lerp(1.0, shadow, saturate(_ShadowStrength));
 }
 
-// Ambient: ночная засветка + небо (верх) / слабое отражение от земли (низ).
-// Мягкий градиент по вертикали нормали: бока — как раньше, верх чуть светлее.
+// [DEPRECATED] Не используется ни одним шейдером (актуальная формула —
+// GalilegoSkyAmbient выше). Оставлено, чтобы не ломать внешние вызовы;
+// новые шейдеры должны звать GalilegoSkyAmbient().
 float3 GalilegoAmbient(float3 normalWS, float3 albedo)
 {
     float hemi = saturate((normalWS.y * 0.5) + 0.5);
