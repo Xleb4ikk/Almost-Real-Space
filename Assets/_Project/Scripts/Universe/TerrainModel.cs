@@ -1,6 +1,7 @@
 using System;
 using Galilego.Core;
 using Unity.Mathematics;
+using UnityEngine;
 
 namespace Galilego.Universe
 {
@@ -106,6 +107,58 @@ namespace Galilego.Universe
         /// <summary>Доля ridged-шума 0..1 (горные хребты, только на континентах). 0 = выключен (legacy).</summary>
         public double RidgedMix = 0d;
 
+        /// <summary>
+        /// Сила равнин 0..1: в зонах маски рельеф стягивается к низкому плато.
+        /// 0 = выключено (legacy, бит-в-бит). Равнины только на континентах.
+        /// </summary>
+        public double PlainMix = 0d;
+
+        /// <summary>Частота низкочастотной маски равнин. ≤0 = выключена (legacy).</summary>
+        public double PlainFrequency = 0d;
+
+        /// <summary>Число октав маски равнин.</summary>
+        public int PlainOctaves = 2;
+
+        /// <summary>Порог маски равнин: выше — равнина.</summary>
+        public double PlainThreshold = 0d;
+
+        /// <summary>Полуширина smoothstep-перехода маски равнин.</summary>
+        public double PlainSharpness = 0.3d;
+
+        /// <summary>Нормализованная высота плато равнин (доля AmplitudeMeters).</summary>
+        public double PlainElevation = 0.1d;
+
+        /// <summary>
+        /// Высота пляжа над морем (м): ниже — песок и запрет спавна.
+        /// 0 = пляжа нет (legacy).
+        /// </summary>
+        public double BeachHeightMeters = 0d;
+
+        /// <summary>
+        /// Высота полки пляжа над морем (м): береговой рельеф стягивается
+        /// к ней у уреза воды (только суша, океан не трогаем).
+        /// 0 = полка выключена (legacy).
+        /// </summary>
+        public double BeachShelfAltitudeMeters = 0d;
+
+        /// <summary>
+        /// Полуширина полки в единицах continent-маски. 0 = выключена (legacy).
+        /// </summary>
+        public double BeachShelfWidth = 0d;
+
+        /// <summary>
+        /// Мелкомасштабная деталь (скалы/осыпи) как доля AmplitudeMeters.
+        /// Добавляется высокочастотным потоком только на суше, гаснет в равнинах.
+        /// 0 = выключено (legacy).
+        /// </summary>
+        public double DetailMix = 0d;
+
+        /// <summary>Базовая частота детали (циклов на единичный вектор). ≤0 = выключена.</summary>
+        public double DetailFrequency = 0d;
+
+        /// <summary>Число октав детали.</summary>
+        public int DetailOctaves = 5;
+
         /// <summary>Сила domain-warp в единицах направления (типично 0.05..0.3). 0 = выключен (legacy).</summary>
         public double WarpStrength = 0d;
 
@@ -129,6 +182,13 @@ namespace Galilego.Universe
 
         /// <summary>Полуширина smoothstep-бленда в скалу (в единицах tan).</summary>
         public double ColorRockSlopeWidth = 0.1d;
+
+        /// <summary>
+        /// Минимальная нормированная высота t=(h−sea)/amp для rock-override:
+        /// скала только на крупных горах, пляж и низменности остаются зелёными.
+        /// ≤0 = без порога по высоте (legacy: скала по одному склону).
+        /// </summary>
+        public double ColorRockHeightMin = 0d;
 
         /// <summary>
         /// Макс. склон для снега (tan): круче — скала вместо снега. ≤0 =
@@ -155,6 +215,119 @@ namespace Galilego.Universe
 
         /// <summary>Сдвиг потока маски (целый).</summary>
         public int ColorNoiseSeedOffset = 0;
+
+        /// <summary>
+        /// Частота мелкомасштабной цветовой детали (моттлинг земли). ≤0 = выкл.
+        /// Отдельный поток (salt 7): пятна почвы на земле.
+        /// </summary>
+        public double ColorDetailFrequency = 0d;
+
+        /// <summary>Число октав цветовой детали.</summary>
+        public int ColorDetailOctaves = 3;
+
+        /// <summary>Сила моттлинга 0..1 (0 = выкл).</summary>
+        public double ColorDetailStrength = 0d;
+
+        /// <summary>Сдвиг потока цветовой детали (целый).</summary>
+        public int ColorDetailSeedOffset = 0;
+
+        /// <summary>
+        /// Палитра поверхности (sRGB). Рендер переводит её в Linear на лету;
+        /// пресет живёт в TerrainProfile. Дефолт = старые константы TerrainPalette.
+        /// </summary>
+        public TerrainPaletteData Palette = new TerrainPaletteData();
+
+        /// <summary>Текстуры рельефа из профиля (null = процедурная палитра).</summary>
+        public Texture2D TextureLow;
+        public Texture2D TextureMid;
+        public Texture2D TextureHigh;
+        public Texture2D TextureSteep;
+        public Texture2D TextureOcclusion;
+        public double TextureScale = 0.04d;
+        public double LowMidBlendStart = 30d;
+        public double LowMidBlendEnd = 60d;
+        public double MidHighBlendStart = 2500d;
+        public double MidHighBlendEnd = 3500d;
+        public double SteepBlendStart = 0.7d;
+        public double SteepBlendEnd = 1.4d;
+
+        /// <summary>
+        /// Скопировать профиль в живое runtime-представление. ЕДИНСТВЕННОЕ место
+        /// копирования (T91): раньше ~39 полей дублировались в BodyAuthoring,
+        /// BodyBlueprint, SystemBlueprint.Build и ApplyToTerrain.
+        /// Seed — параметр: он per-body, профиль — пресет.
+        /// </summary>
+        public void ApplyProfile(TerrainProfile profile, int seed)
+        {
+            if (profile == null)
+            {
+                return;
+            }
+
+            Seed = seed;
+            AmplitudeMeters = profile.AmplitudeMeters;
+            BaseFrequency = profile.BaseFrequency;
+            Octaves = profile.Octaves;
+            SeaLevelMeters = profile.SeaLevelMeters;
+            Lacunarity = profile.Lacunarity;
+            Gain = profile.Gain;
+            ContinentFrequency = profile.ContinentFrequency;
+            ContinentOctaves = profile.ContinentOctaves;
+            ContinentThreshold = profile.ContinentThreshold;
+            ContinentSharpness = profile.ContinentSharpness;
+            ContinentDepth = profile.ContinentDepth;
+            RidgedMix = profile.RidgedMix;
+            PlainMix = profile.PlainMix;
+            PlainFrequency = profile.PlainFrequency;
+            PlainOctaves = profile.PlainOctaves;
+            PlainThreshold = profile.PlainThreshold;
+            PlainSharpness = profile.PlainSharpness;
+            PlainElevation = profile.PlainElevation;
+            BeachHeightMeters = profile.BeachHeightMeters;
+            BeachShelfAltitudeMeters = profile.BeachShelfAltitudeMeters;
+            BeachShelfWidth = profile.BeachShelfWidth;
+            DetailMix = profile.DetailMix;
+            DetailFrequency = profile.DetailFrequency;
+            DetailOctaves = profile.DetailOctaves;
+            WarpStrength = profile.WarpStrength;
+            WarpFrequency = profile.WarpFrequency;
+            WarpOctaves = profile.WarpOctaves;
+            WarpSeedOffset = profile.WarpSeedOffset;
+            ColorRockSlopeTan = profile.ColorRockSlopeTan;
+            ColorRockSlopeWidth = profile.ColorRockSlopeWidth;
+            ColorRockHeightMin = profile.ColorRockHeightMin;
+            ColorSnowSlopeTan = profile.ColorSnowSlopeTan;
+            ColorNoiseFrequency = profile.ColorNoiseFrequency;
+            ColorNoiseOctaves = profile.ColorNoiseOctaves;
+            ColorNoiseStrength = profile.ColorNoiseStrength;
+            ColorNoiseSeedOffset = profile.ColorNoiseSeedOffset;
+            ColorDetailFrequency = profile.ColorDetailFrequency;
+            ColorDetailOctaves = profile.ColorDetailOctaves;
+            ColorDetailStrength = profile.ColorDetailStrength;
+            ColorDetailSeedOffset = profile.ColorDetailSeedOffset;
+            Palette = profile.Palette ?? new TerrainPaletteData();
+            TextureLow = profile.TextureLow;
+            TextureMid = profile.TextureMid;
+            TextureHigh = profile.TextureHigh;
+            TextureSteep = profile.TextureSteep;
+            TextureOcclusion = profile.TextureOcclusion;
+            TextureScale = profile.TextureScale;
+            LowMidBlendStart = profile.LowMidBlendStart;
+            LowMidBlendEnd = profile.LowMidBlendEnd;
+            MidHighBlendStart = profile.MidHighBlendStart;
+            MidHighBlendEnd = profile.MidHighBlendEnd;
+            SteepBlendStart = profile.SteepBlendStart;
+            SteepBlendEnd = profile.SteepBlendEnd;
+        }
+
+        /// <summary>Собрать runtime-рельеф из профиля (копия палитры — ассет не мутируем).</summary>
+        public static HeightfieldTerrain FromProfile(TerrainProfile profile, int seed)
+        {
+            var terrain = new HeightfieldTerrain();
+            terrain.ApplyProfile(profile, seed);
+            terrain.Palette = terrain.Palette.Clone();
+            return terrain;
+        }
 
         /// <summary>Угловой шаг соседей для нормали (рад): разрешает 5 октав с запасом.</summary>
         private const double NormalEpsilonRadians = 1e-4d;
@@ -209,6 +382,15 @@ namespace Galilego.Universe
         {
             Vector3d direction = LatLonToDirection(latitudeRadians, longitudeRadians);
             return TerrainNoise.SampleColorNoise(
+                TerrainNoiseParams.FromTerrain(this),
+                new double3(direction.X, direction.Y, direction.Z));
+        }
+
+        /// <summary>Мелкомасштабная цветовая деталь (моттлинг) в ~[−1, 1] по lat/lon.</summary>
+        public double SampleColorDetailNoise(double latitudeRadians, double longitudeRadians)
+        {
+            Vector3d direction = LatLonToDirection(latitudeRadians, longitudeRadians);
+            return TerrainNoise.SampleColorDetailNoise(
                 TerrainNoiseParams.FromTerrain(this),
                 new double3(direction.X, direction.Y, direction.Z));
         }

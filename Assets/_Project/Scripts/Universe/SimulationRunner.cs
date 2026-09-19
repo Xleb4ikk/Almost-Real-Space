@@ -94,6 +94,42 @@ namespace Galilego.Universe
         [Tooltip("Спавнить игрока пешком на поверхности (OnSurface), корабль — рядом на земле. Иначе старт в корабле на орбите.")]
         public bool SpawnOnSurface;
 
+        [Tooltip("Спавн по координатам: вместо точки из орбитальной фазы игрок и корабль ставятся в lat/lon ниже (тело — SpawnBodyName). Для проверки биомов и декора в конкретных местах.")]
+        public bool SpawnByCoordinates;
+
+        [Tooltip("Широта точки спавна (градусы, −90..90). Работает только со SpawnByCoordinates и SpawnOnSurface.")]
+        public double SpawnLatitudeDegrees;
+
+        [Tooltip("Долгота точки спавна (градусы). Работает только со SpawnByCoordinates и SpawnOnSurface.")]
+        public double SpawnLongitudeDegrees;
+
+        /// <summary>Последний вывод координат пешехода (троттлинг спама).</summary>
+        private double lastPosLogSeconds = -1e9d;
+
+        /// <summary>
+        /// Координаты игрока пешком (троттлинг 15 с сим-времени): чтобы по скриншоту
+        /// лысой поляны можно было найти точку (lat/lon/рельеф) и проверить её фильтры.
+        /// </summary>
+        private void LogSurfacePosition()
+        {
+            if (PlayerMode != PlayerMode.OnSurface || DominantBody == null)
+            {
+                return;
+            }
+
+            if (TimeSeconds - lastPosLogSeconds < 15d)
+            {
+                return;
+            }
+
+            lastPosLogSeconds = TimeSeconds;
+            OrbitingBody body = DominantBody;
+            body.SurfaceLatLonAt(PlayerPosition, TimeSeconds, out double latDeg, out double lonDeg);
+            Debug.Log(string.Format(
+                "[Walk] {0}: lat={1:F2}°, lon={2:F2}°, relief={3:F0} м",
+                body.Name, latDeg, lonDeg, GroundHeight(body, latDeg, lonDeg)));
+        }
+
         [Tooltip("Отступ спавна обломков над поверхностью при разрушении (м).")]
         public double SpawnEpsilonMeters = 1d;
 
@@ -171,6 +207,9 @@ namespace Galilego.Universe
 
         /// <summary>Максимальный подшаг интегрирования игрока (с).</summary>
         private const double PlayerMaxStepSeconds = 0.5d;
+
+        /// <summary>Радиус игрока для коллизий со стволами деревьев (м).</summary>
+        private const double PlayerCollisionRadiusMeters = 0.45d;
 
         /// <summary>Верхняя граница подшага на поверхности (с), согласована с зерном control-tick.</summary>
         private const double SurfaceMaxStepSeconds = 0.5d;
@@ -297,7 +336,17 @@ namespace Galilego.Universe
             OrbitingBody body = DominantBody;
             body.EvaluateWorldState(0d, out Vector3d bodyP, out _);
             body.SurfaceLatLonAt(Ship.Position, 0d, out double latDeg, out double lonDeg);
+            if (SpawnByCoordinates)
+            {
+                latDeg = Math.Max(-90d, Math.Min(90d, SpawnLatitudeDegrees));
+                lonDeg = SpawnLongitudeDegrees;
+            }
+
             double ground = GroundHeight(body, latDeg, lonDeg);
+            Debug.Log(string.Format(
+                "[Spawn] {0}: тело={1} lat={2:F3}° lon={3:F3}° relief={4:F0} м",
+                SpawnByCoordinates ? "по координатам" : "точка фазы",
+                body.Name, latDeg, lonDeg, ground));
             body.GetSurfaceState(latDeg, lonDeg, ground, 0d, out Vector3d surfacePos, out Vector3d surfaceVel);
 
             Ship.Position = surfacePos;
@@ -381,6 +430,8 @@ namespace Galilego.Universe
             // Якорь рендера — позиция игрока (floating origin): вьюхи в LateUpdate
             // читают свежий якорь, поэтому ставим в самом конце шага физики.
             FloatingOrigin.Anchor = PlayerPosition;
+
+            LogSurfacePosition();
         }
 
         // ─── Игрок ───────────────────────────────────────────────────────────
@@ -520,6 +571,11 @@ namespace Galilego.Universe
                 Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
                 PlayerVelocity += gravity * dt;
                 PlayerPosition += PlayerVelocity * dt;
+                if (GroundDecorCollisionRegistry.TryResolve(body.Name, PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d airPushed))
+                {
+                    PlayerPosition = airPushed;
+                }
+
                 // Позиция уже в t+dt — контакт проверяем и сажаем в t+dt, не в t.
                 double airEnd = t + dt;
                 body.SurfaceLatLonAt(PlayerPosition, airEnd, out double airLat, out double airLon);
@@ -546,6 +602,12 @@ namespace Galilego.Universe
             Vector3d tangential = walk - (normal * Vector3d.Dot(walk, normal));
             PlayerVelocity = surfaceVel + tangential;
             PlayerPosition += PlayerVelocity * dt;
+
+            // Коллизия стволов деревьев: вытолкнуть из цилиндров декора.
+            if (GroundDecorCollisionRegistry.TryResolve(body.Name, PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d treePushed))
+            {
+                PlayerPosition = treePushed;
+            }
 
             // Проекция обратно на поверхность НА КОНЕЦ подшага: и lat/lon, и
             // центр тела берём в t+dt. Иначе позиция (уже в t+dt) проецируется

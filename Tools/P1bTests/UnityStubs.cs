@@ -60,6 +60,10 @@ namespace UnityEngine
             c = c < -1f ? -1f : (c > 1f ? 1f : c);
             return (float)System.Math.Acos(c) * 57.29578f;
         }
+
+        public override string ToString() => x + "," + y + "," + z;
+
+        public string ToString(string format) => x.ToString(format) + "," + y.ToString(format) + "," + z.ToString(format);
     }
 
     public sealed class Transform
@@ -69,6 +73,7 @@ namespace UnityEngine
         public Vector3 localPosition;
         public Quaternion localRotation;
         public Vector3 localScale;
+        public Matrix4x4 localToWorldMatrix => Matrix4x4.identity;
         public Vector3 lossyScale => localScale;
         public Quaternion rotation;
         public Vector3 right => new Vector3(1f, 0f, 0f);
@@ -96,6 +101,17 @@ namespace UnityEngine
         public static Color white => new Color(1f, 1f, 1f, 1f);
         public static Color operator *(Color a, Color b) => new Color(a.r * b.r, a.g * b.g, a.b * b.b, a.a * b.a);
         public static Color operator *(Color a, float d) => new Color(a.r * d, a.g * d, a.b * d, a.a * d);
+        public static bool operator ==(Color a, Color b) => a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+        public static bool operator !=(Color a, Color b) => !(a == b);
+        public override bool Equals(object obj) => obj is Color c && this == c;
+        public override int GetHashCode() => r.GetHashCode() ^ (g.GetHashCode() << 2) ^ (b.GetHashCode() >> 2) ^ (a.GetHashCode() << 1);
+    }
+
+    [Serializable]
+    public struct Vector4
+    {
+        public float x, y, z, w;
+        public Vector4(float x, float y, float z, float w) { this.x = x; this.y = y; this.z = z; this.w = w; }
     }
 
     public struct Quaternion
@@ -110,6 +126,7 @@ namespace UnityEngine
         public static Quaternion FromToRotation(Vector3 from, Vector3 to) => new Quaternion();
         public static Quaternion identity => new Quaternion();
         public static Vector3 operator *(Quaternion q, Vector3 v) => v;
+        public static Quaternion operator *(Quaternion a, Quaternion b) => new Quaternion();
         public static bool operator ==(Quaternion a, Quaternion b) => a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
         public static bool operator !=(Quaternion a, Quaternion b) => !(a == b);
         public override bool Equals(object obj) => obj is Quaternion q && this == q;
@@ -119,6 +136,7 @@ namespace UnityEngine
     public class GameObject
     {
         public string name;
+        public int layer;
         public Transform transform => new Transform();
         public bool activeSelf;
         public GameObject() { }
@@ -148,6 +166,7 @@ namespace UnityEngine
         public static void Destroy(GameObject target) { }
         public static void Destroy(Material target) { }
         public static void Destroy(Component target) { }
+        public static void Destroy(Texture2D target) { }
     }
 
     public static class Application
@@ -171,6 +190,19 @@ namespace UnityEngine
         public static void Destroy(Component target) { }
     }
 
+    public class ScriptableObject : Object
+    {
+        public string name;
+    }
+
+    [AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
+    public sealed class CreateAssetMenuAttribute : Attribute
+    {
+        public string menuName;
+        public string fileName;
+        public int order;
+    }
+
     public class Light : Component
     {
         public float intensity;
@@ -188,10 +220,47 @@ namespace UnityEngine
         public Color[] colors;
         public int[] triangles;
         public Vector2[] uv;
+        public int subMeshCount = 1;
+        public Bounds bounds;
         public void MarkDynamic() { }
         public void Clear() { }
         public void RecalculateNormals() { }
         public void RecalculateBounds() { }
+        public void SetUVs(int channel, System.Collections.Generic.List<Vector2> uvs) { }
+        public void SetUVs(int channel, System.Collections.Generic.List<Vector3> uvs) { }
+        public void SetUVs(int channel, System.Collections.Generic.List<Vector4> uvs) { }
+    }
+
+    public struct Bounds
+    {
+        public Vector3 center;
+        public Vector3 size;
+        public void Expand(float amount)
+        {
+            size = new Vector3(size.x + (2f * amount), size.y + (2f * amount), size.z + (2f * amount));
+        }
+    }
+
+    public struct Matrix4x4
+    {
+        public static Matrix4x4 identity => new Matrix4x4();
+        public static Matrix4x4 TRS(Vector3 position, Quaternion rotation, Vector3 scale) => new Matrix4x4();
+        public static Matrix4x4 operator *(Matrix4x4 a, Matrix4x4 b) => new Matrix4x4();
+        public Vector3 MultiplyPoint3x4(Vector3 point) => point;
+        public Vector3 MultiplyVector(Vector3 vector) => vector;
+    }
+
+    public sealed class MaterialPropertyBlock
+    {
+    }
+
+    public static class Graphics
+    {
+        public const int maxDrawMeshInstancedInstancesCount = 1023;
+        public static void DrawMeshInstanced(Mesh mesh, int submeshIndex, Material material, Matrix4x4[] matrices, int count) { }
+        public static void DrawMeshInstanced(
+            Mesh mesh, int submeshIndex, Material material, Matrix4x4[] matrices, int count,
+            MaterialPropertyBlock properties, UnityEngine.Rendering.ShadowCastingMode castShadows, bool receiveShadows, int layer) { }
     }
 
     public class MeshFilter : Component
@@ -213,24 +282,37 @@ namespace UnityEngine
         public static void SetGlobalVector(string name, Vector3 value) { }
         public static void SetGlobalFloat(string name, float value) { }
         public static void SetGlobalColor(string name, Color value) { }
+        public static void SetGlobalInt(string name, int value) { }
+        public static void SetGlobalTexture(string name, Texture2D value) { }
     }
 
     public class Material
     {
         public Color color;
         public Shader shader;
+        public bool enableInstancing;
         public Material(Shader shader) { this.shader = shader; }
+        public Material(Material source) { shader = source?.shader; color = source != null ? source.color : default; }
         public void SetColor(string name, Color value) { }
         public void SetFloat(string name, float value) { }
+        public void SetVector(string name, Vector4 value) { }
         public void SetTexture(string name, Texture2D value) { }
     }
 
     public enum FilterMode { Point, Bilinear, Trilinear }
 
+    public enum TextureWrapMode { Repeat, Clamp, Mirror }
+
+    public enum TextureFormat { Alpha8, RGBA32, ARGB32, RGB24, RGBAHalf, RGBAFloat, RFloat }
+
     public class Texture2D
     {
         public FilterMode filterMode;
+        public TextureWrapMode wrapMode;
+        public static Texture2D whiteTexture => new Texture2D(1, 1);
         public Texture2D(int width, int height) { }
+        public Texture2D(int width, int height, TextureFormat format, bool mipChain) { }
+        public Texture2D(int width, int height, TextureFormat format, bool mipChain, bool linear) { }
         public void SetPixels(Color[] pixels) { }
         public void Apply() { }
     }
@@ -368,6 +450,11 @@ namespace UnityEngine
         public RangeAttribute(float min, float max) { }
     }
 
+    public sealed class MinAttribute : Attribute
+    {
+        public MinAttribute(float min) { }
+    }
+
     public sealed class ContextMenuAttribute : Attribute
     {
         public ContextMenuAttribute(string itemName) { }
@@ -381,11 +468,22 @@ namespace UnityEngine
     public static class Time
     {
         public static float deltaTime => 0.016f;
+        public static float time => 1f;
+        public static int frameCount => 100;
     }
 
     public static class SystemInfo
     {
         public static int processorCount => 4;
+    }
+}
+
+namespace UnityEngine.Serialization
+{
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class FormerlySerializedAsAttribute : Attribute
+    {
+        public FormerlySerializedAsAttribute(string oldName) { }
     }
 }
 
@@ -398,6 +496,7 @@ namespace Unity.Mathematics
         public double3(double v) { x = v; y = v; z = v; }
         public static double3 operator +(double3 a, double3 b) => new double3(a.x + b.x, a.y + b.y, a.z + b.z);
         public static double3 operator -(double3 a, double3 b) => new double3(a.x - b.x, a.y - b.y, a.z - b.z);
+        public static double3 operator -(double3 a) => new double3(-a.x, -a.y, -a.z);
         public static double3 operator *(double3 a, double b) => new double3(a.x * b, a.y * b, a.z * b);
         public static double3 operator *(double b, double3 a) => new double3(a.x * b, a.y * b, a.z * b);
         public static double3 operator /(double3 a, double b) => new double3(a.x / b, a.y / b, a.z / b);
@@ -435,6 +534,21 @@ namespace Unity.Mathematics
         public static double abs(double v) => v >= 0d ? v : -v;
         public static double sqrt(double v) => System.Math.Sqrt(v);
         public static double floor(double v) => System.Math.Floor(v);
+        public static double3 cross(double3 a, double3 b) => new double3(
+            (a.y * b.z) - (a.z * b.y), (a.z * b.x) - (a.x * b.z), (a.x * b.y) - (a.y * b.x));
+        public static double dot(double3 a, double3 b) => (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
+        public static float dot(float3 a, float3 b) => (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
+        public static double3 normalize(double3 v)
+        {
+            double m = System.Math.Sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
+            return m > 0d ? new double3(v.x / m, v.y / m, v.z / m) : v;
+        }
+
+        public static float3 normalize(float3 v)
+        {
+            float m = (float)System.Math.Sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
+            return m > 0f ? new float3(v.x / m, v.y / m, v.z / m) : v;
+        }
     }
 #pragma warning restore CS8981
 }
@@ -518,16 +632,58 @@ namespace Simulation
 namespace UnityEngine.Rendering
 {
     public enum ShadowCastingMode { Off, On, DoubleSided, ShadowsOnly }
+
+    /// <summary>
+    /// Минимальные стабы Volume API для компиляции SkyEnvironment в стенде:
+    /// глаз-адаптация (Exposure.compensation) в тестах не выполняется.
+    /// </summary>
+    public class VolumeParameter<T>
+    {
+        public T value;
+        public void Override(T v) { value = v; }
+    }
+
+    public sealed class FloatParameter : VolumeParameter<float> { }
+
+    public class VolumeComponent : UnityEngine.ScriptableObject { }
+
+    public sealed class VolumeProfile : UnityEngine.ScriptableObject
+    {
+        public bool TryGet<T>(out T component) where T : VolumeComponent
+        {
+            component = null;
+            return false;
+        }
+    }
+
+    public sealed class Volume : UnityEngine.Component
+    {
+        public VolumeProfile profile;
+        public VolumeProfile sharedProfile;
+    }
 }
 
 namespace UnityEngine.Rendering.HighDefinition
 {
     public sealed class HDAdditionalCameraData : UnityEngine.Component
     {
-        public enum AntialiasingMode { None, FastApproximateAntialiasing, TemporalAntialiasing }
+        public enum AntialiasingMode { None, FastApproximateAntialiasing, TemporalAntialiasing, SubpixelMorphologicalAntiAliasing }
         public enum ClearColorMode { Sky, Color, None }
         public AntialiasingMode antialiasing;
         public ClearColorMode clearColorMode;
         public UnityEngine.Color backgroundColorHDR;
+    }
+
+    /// <summary>Стаб для SkyEnvironment.Start (разрешение теней) — в стенде не нужен.</summary>
+    public sealed class HDAdditionalLightData : UnityEngine.Component
+    {
+        public void SetShadowResolutionOverride(bool value) { }
+        public void SetShadowResolution(int value) { }
+    }
+
+    /// <summary>Стаб для глаз-адаптации SkyEnvironment — в стенде не выполняется.</summary>
+    public sealed class Exposure : UnityEngine.Rendering.VolumeComponent
+    {
+        public UnityEngine.Rendering.FloatParameter compensation = new UnityEngine.Rendering.FloatParameter();
     }
 }

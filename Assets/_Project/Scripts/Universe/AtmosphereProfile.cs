@@ -10,45 +10,80 @@ namespace Galilego.Universe
     ///
     /// обнуляется при h >= TopAltitudeMeters.
     ///
+    /// Коэффициенты рассеяния НЕ задаются здесь художественно: они выводятся из
+    /// SeaLevelDensityKgPerCubicMeter и земных констант в AtmosphereOptics —
+    /// едином источнике для CPU (SkyPhysics/SkyEnvironment) и GPU (шейдер).
+    /// RayleighColor/MieColor ниже — только множители поверх физики (тинты),
+    /// 1 = без изменений.
+    ///
     /// Визуал (PlanetAtmosphereView + Galilego/PlanetAtmosphere) читает те же
-    /// высоту/плотность и добавляет цвет/оптику — один профиль в инспекторе на
-    /// оба слоя. Всё визуальное за тумблером VisualEnabled и настраиваемо.
+    /// высоту/плотность и добавляет оптику — один профиль в инспекторе на оба
+    /// слоя. Всё визуальное за тумблером VisualEnabled и настраиваемо.
     /// </summary>
     [System.Serializable]
     public sealed class AtmosphereProfile
     {
         [Header("Физика (высотная модель плотности)")]
         public double TopAltitudeMeters;
-        public double SeaLevelPressurePascals;
         public double SeaLevelDensityKgPerCubicMeter;
         public double ScaleHeightMeters;
+
+        [Tooltip("Считать ли озон (тонкий слой ~25 км): синий зенит и чистый закат. Отключено — проще, но небо бледнее.")]
+        public bool OzoneEnabled = true;
 
         [Header("Визуал (raymarch-атмосфера)")]
         [Tooltip("Рисовать атмосферу. Выключено — физика работает, визуала нет.")]
         public bool VisualEnabled;
 
-        [Tooltip("Цвет рэлеевского рассеяния (голубой день).")]
-        public Color RayleighColor = new Color(0.30f, 0.55f, 1f, 1f);
+        [Header("Визуал: художественные тинты (множители поверх физики)")]
+        [Tooltip("МНОЖИТЕЛЬ поверх физического рассеяния Рэлея (не цвет неба!). 1=без изменений. Синева исходит из физики, тут только правка оттенка.")]
+        public Color RayleighColor = new Color(1f, 1f, 1f, 1f);
 
-        [Tooltip("Цвет Ми-рассеяния (тёплая дымка/закат у горизонта).")]
-        public Color MieColor = new Color(1f, 0.85f, 0.62f, 1f);
+        [Tooltip("МНОЖИТЕЛЬ поверх физического рассеяния Ми (дымка/гало). 1=без изменений; цвет аэрозоля по умолчанию нейтральный.")]
+        public Color MieColor = new Color(1f, 1f, 1f, 1f);
 
-        [Tooltip("Общая яркость/оптическая плотность.")]
+        [Tooltip("Общий множитель яркости неба. Мал — тускло, велик — пересвет; 1 = физическая калибровка.")]
+        [Min(0f)]
         public float Intensity = 1f;
 
         [Tooltip("Анизотропия Ми (−1..1): 0.76 — выраженный солнечный ореол.")]
-        public float MieAnisotropy = 0.76f;
+        [Range(-0.9f, 0.9f)]
+        public float MieAnisotropy = 0.8f;
 
-        [Tooltip("Множитель высотного профиля плотности (1 = как в физике).")]
-        public float DensityFalloff = 1f;
+        [Tooltip("Turbidity: множитель плотности аэрозоля (мутность горизонта). 1 = физическая. Яркость — это Intensity; форма профиля — ScaleHeight. Крутить «слишком туманно» нужно этим.")]
+        [Min(0f)]
+        public float AerosolScale = 1f;
 
         [Tooltip("Число шагов raymarch (больше — плавнее и дороже).")]
-        public int StepCount = 32;
+        [Range(2, 96)]
+        public int StepCount = 48;
 
-        [Tooltip("Многократное рассеяние: голубое небо и в зените (single-scatter даёт почти чёрный зенит).")]
-        public float MultiScatter = 0.35f;
-
-        [Tooltip("Считать ли планету преградой для луча (закаты/тень).")]
+        [Tooltip("Считать ли планету преградой для луча, когда глубины сцены нет (пиксель неба): закаты/тень. При наличии глубины она приоритетнее.")]
         public bool PlanetOcclusion = true;
+
+        [Tooltip("Цвет фолбэк-земли там, где рельеф не дорисован за горизонтом: сфера закрашивается затенённой землёй с дымкой вместо тёмной дыры.")]
+        public Color GroundColor = new Color(0.16f, 0.18f, 0.14f, 1f);
+
+        [Tooltip("Ширина плавного стыка небо/земля у горизонта (в косинусе зенита луча). Больше — мягче и шире; 0.01 ≈ 0.6°.")]
+        [Range(0.001f, 0.2f)]
+        public float HorizonFade = 0.01f;
+
+        /// <summary>Копия профиля: runtime не должен мутировать данные ассета.</summary>
+        public AtmosphereProfile Clone()
+        {
+            return (AtmosphereProfile)MemberwiseClone();
+        }
+
+        /// <summary>Единый набор коэффициентов для CPU и GPU (см. AtmosphereOptics).</summary>
+        public AtmosphereOptics.Coefficients ToOptics()
+        {
+            return AtmosphereOptics.FromProfile(
+                SeaLevelDensityKgPerCubicMeter,
+                ScaleHeightMeters,
+                ScaleHeightMeters > 0d ? System.Math.Max(1d, ScaleHeightMeters * 0.15d) : 0d,
+                MieAnisotropy,
+                OzoneEnabled,
+                AerosolScale);
+        }
     }
 }
