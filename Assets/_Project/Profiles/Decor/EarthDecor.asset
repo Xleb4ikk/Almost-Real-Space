@@ -1,0 +1,292 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fadbad8dc4ffd94ba71a75550dde54a, type: 3}
+  m_Name: EarthDecor
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.GroundDecorProfileAsset
+  Profile:
+    Layers:
+    - Name: Grass
+      Enabled: 1
+      NearMeshes:
+      - {fileID: 4300000, guid: 26c15081539f9a84597106d2660c2b58, type: 2}
+      FarBillboardMesh: {fileID: 4300000, guid: 26c15081539f9a84597106d2660c2b58, type: 2}
+      NearMaterial: {fileID: 2100000, guid: 8a6f3bef5d673104381754b197da59b9, type: 2}
+      FarMaterial: {fileID: 2100000, guid: 8a6f3bef5d673104381754b197da59b9, type: 2}
+      SpacingMeters: 0.45
+      MaxInstancesPerChunk: 160000
+      Density: 1
+      DistributionFrequency: 20000
+      ClusterPatchMeters: 120
+      DistributionOctaves: 4
+      DistributionSeedOffset: 1
+      ClusterThreshold: 0.36
+      ClusterFade: 0.12
+      MinAltitudeMeters: 2
+      MinNormalizedHeight: 0.032
+      MaxNormalizedHeight: 0.45
+      MaxAltitudeMeters: 3500
+      MaxSlopeTan: 2.8
+      AvoidWater: 1
+      WetMin: 0
+      WetMax: 1
+      IgnoreLatitude: 0
+      WetFade: 0.12
+      MinScale: 0.6326915514345928
+      MaxScale: 1.3159983787134182
+      GroundOffsetMeters: 0
+      GroundSinkFactor: 0
+      WindZoneFrequency: 2.5
+      WindZoneOctaves: 3
+      WindZoneSeedOffset: 20
+      WindLeanMinDegrees: 10
+      WindLeanMaxDegrees: 20
+      WindJitterDegrees: 12
+      MinGroundSinkFactor: 0
+      MaxGroundSinkFactor: 0.5
+      FlatOnGround: 0
+      CastShadows: 0
+      ShadowCastDistanceMeters: 0
+      Collides: 0
+      CollisionRadiusMeters: 0.5
+      CollisionHeightMeters: 20
+      SteepPower: 0.4
+      NearDistanceMeters: 100
+      MaxCellsPerAxis: 192
+      MaxDistanceMeters: 300
+      DensityFalloffMeters: 45
+      DensityCoreMeters: 30
+      PerInstanceDensity: 1
+      FarDensity: 0.05
+      SpawnMarginMeters: 150
+      SubInstancesPerCell: 400
+    - Name: Daisy
+      Enabled: 1
+      NearMeshes:
+      - {fileID: 4300000, guid: b2eeeca961a46cc4292822b7e4c2a829, type: 2}
+      FarBillboardMesh: {fileID: 0}
+      NearMaterial: {fileID: 2100000, guid: c7b998a93717c0a41a1c67736195e67c, type: 2}
+      FarMaterial: {fileID: 0}
+      SpacingMeters: 10
+      MaxInstancesPerChunk: 600
+      Density: 0.6
+      DistributionFrequency: 1500
+      ClusterPatchMeters: 0
+      DistributionOctaves: 4
+      DistributionSeedOffset: 5
+      ClusterThreshold: 0.5
+      ClusterFade: 0
+      MinAltitudeMeters: 2
+      MinNormalizedHeight: 0.032
+      MaxNormalizedHeight: 0.45
+      MaxAltitudeMeters: 3500
+      MaxSlopeTan: 0.8
+      AvoidWater: 1
+      WetMin: 0.38
+      WetMax: 1
+      IgnoreLatitude: 0
+      WetFade: 0
+      MinScale: 0.8
+      MaxScale: 1.2
+      GroundOffsetMeters: 0
+      GroundSinkFactor: 0
+      WindZoneFrequency: 0
+      WindZoneOctaves: 3
+      WindZoneSeedOffset: 20
+      WindLeanMinDegrees: 0
+      WindLeanMaxDegrees: 0
+      WindJitterDegrees: 360
+      MinGroundSinkFactor: -1
+      MaxGroundSinkFactor: -1
+      FlatOnGround: 1
+      CastShadows: 0
+      ShadowCastDistanceMeters: 0
+      Collides: 0
+      CollisionRadiusMeters: 0.5
+      CollisionHeightMeters: 20
+      SteepPower: 4
+      NearDistanceMeters: 45
+      MaxCellsPerAxis: 64
+      MaxDistanceMeters: 400
+      DensityFalloffMeters: 0
+      DensityCoreMeters: 0
+      PerInstanceDensity: 0
+      FarDensity: 1
+      SpawnMarginMeters: 150
+      SubInstancesPerCell: 1
+    - Name: Rocks
+      Enabled: 1
+      NearMeshes:
+      - {fileID: 4300000, guid: 0d84dec12d5295e40b3651870b3d1f17, type: 2}
+      - {fileID: 4300000, guid: be106782af53a9446934f9f23d0ccd00, type: 2}
+      - {fileID: 4300000, guid: 22d5d990ae74b184da9fbd45aba933a8, type: 2}
+      FarBillboardMesh: {fileID: 0}
+      NearMaterial: {fileID: 2100000, guid: f96e50589e32feb48b151a93b05da259, type: 2}
+      FarMaterial: {fileID: 0}
+      SpacingMeters: 60
+      MaxInstancesPerChunk: 200
+      Density: 0.27
+      DistributionFrequency: 350
+      ClusterPatchMeters: 0
+      DistributionOctaves: 3
+      DistributionSeedOffset: 6
+      ClusterThreshold: 0.05
+      ClusterFade: 0
+      MinAltitudeMeters: 2
+      MinNormalizedHeight: 0
+      MaxNormalizedHeight: 0
+      MaxAltitudeMeters: 8100
+      MaxSlopeTan: 3
+      AvoidWater: 1
+      WetMin: 0
+      WetMax: 1
+      IgnoreLatitude: 1
+      WetFade: 0
+      MinScale: 1.5
+      MaxScale: 4.5
+      GroundOffsetMeters: 0
+      GroundSinkFactor: 0.65
+      WindZoneFrequency: 0
+      WindZoneOctaves: 3
+      WindZoneSeedOffset: 20
+      WindLeanMinDegrees: 0
+      WindLeanMaxDegrees: 0
+      WindJitterDegrees: 360
+      MinGroundSinkFactor: -1
+      MaxGroundSinkFactor: -1
+      FlatOnGround: 0
+      CastShadows: 1
+      ShadowCastDistanceMeters: 0
+      Collides: 1
+      CollisionRadiusMeters: 1.8
+      CollisionHeightMeters: 6
+      SteepPower: 1.2
+      NearDistanceMeters: 120
+      MaxCellsPerAxis: 64
+      MaxDistanceMeters: 1200
+      DensityFalloffMeters: 0
+      DensityCoreMeters: 0
+      PerInstanceDensity: 0
+      FarDensity: 1
+      SpawnMarginMeters: 150
+      SubInstancesPerCell: 1
+    - Name: Cactus
+      Enabled: 1
+      NearMeshes:
+      - {fileID: 4300000, guid: 86c26018b02663f4b9c56a948d578c57, type: 2}
+      - {fileID: 4300000, guid: 7142b588017afaf49a26d1755897e45c, type: 2}
+      - {fileID: 4300000, guid: c51bda54fd8ab9f488c1ce456c560224, type: 2}
+      FarBillboardMesh: {fileID: 0}
+      NearMaterial: {fileID: 2100000, guid: 641e6fe8fc3c95a47944d77c82f7c3f0, type: 2}
+      FarMaterial: {fileID: 0}
+      SpacingMeters: 90
+      MaxInstancesPerChunk: 80
+      Density: 0.6
+      DistributionFrequency: 800
+      ClusterPatchMeters: 0
+      DistributionOctaves: 3
+      DistributionSeedOffset: 9
+      ClusterThreshold: 0.25
+      ClusterFade: 0
+      MinAltitudeMeters: 2
+      MinNormalizedHeight: 0.032
+      MaxNormalizedHeight: 0.45
+      MaxAltitudeMeters: 4000
+      MaxSlopeTan: 0.8
+      AvoidWater: 1
+      WetMin: 0
+      WetMax: 0.32
+      IgnoreLatitude: 0
+      WetFade: 0
+      MinScale: 2
+      MaxScale: 5
+      GroundOffsetMeters: 0
+      GroundSinkFactor: 0
+      WindZoneFrequency: 0
+      WindZoneOctaves: 3
+      WindZoneSeedOffset: 20
+      WindLeanMinDegrees: 0
+      WindLeanMaxDegrees: 0
+      WindJitterDegrees: 360
+      MinGroundSinkFactor: -1
+      MaxGroundSinkFactor: -1
+      FlatOnGround: 0
+      CastShadows: 1
+      ShadowCastDistanceMeters: 0
+      Collides: 1
+      CollisionRadiusMeters: 0.8
+      CollisionHeightMeters: 4
+      SteepPower: 4
+      NearDistanceMeters: 120
+      MaxCellsPerAxis: 64
+      MaxDistanceMeters: 1200
+      DensityFalloffMeters: 0
+      DensityCoreMeters: 0
+      PerInstanceDensity: 0
+      FarDensity: 1
+      SpawnMarginMeters: 150
+      SubInstancesPerCell: 1
+    - Name: Trees
+      Enabled: 1
+      NearMeshes:
+      - {fileID: 4300000, guid: 55afd82a442dd2245a365624d4865458, type: 2}
+      - {fileID: 4300000, guid: 2028b324b99d01948b5e5fa4eb7606c3, type: 2}
+      - {fileID: 4300000, guid: f260e3d9c54f3a94b8afc8cd41f4ac41, type: 2}
+      FarBillboardMesh: {fileID: 0}
+      NearMaterial: {fileID: 2100000, guid: 0bf20071ca4cfea41b67d775f20d2f5c, type: 2}
+      FarMaterial: {fileID: 0}
+      SpacingMeters: 12
+      MaxInstancesPerChunk: 200
+      Density: 0.3333333333333333
+      DistributionFrequency: 150
+      ClusterPatchMeters: 0
+      DistributionOctaves: 4
+      DistributionSeedOffset: 3
+      ClusterThreshold: 0
+      ClusterFade: 0
+      MinAltitudeMeters: 5
+      MinNormalizedHeight: 0.032
+      MaxNormalizedHeight: 0.45
+      MaxAltitudeMeters: 3500
+      MaxSlopeTan: 0.9
+      AvoidWater: 1
+      WetMin: 0.2
+      WetMax: 1
+      IgnoreLatitude: 0
+      WetFade: 0
+      MinScale: 1.604756585072252
+      MaxScale: 2.8319233059883118
+      GroundOffsetMeters: 0
+      GroundSinkFactor: 0
+      WindZoneFrequency: 0
+      WindZoneOctaves: 3
+      WindZoneSeedOffset: 20
+      WindLeanMinDegrees: 0
+      WindLeanMaxDegrees: 0
+      WindJitterDegrees: 360
+      MinGroundSinkFactor: -1
+      MaxGroundSinkFactor: -1
+      FlatOnGround: 0
+      CastShadows: 1
+      ShadowCastDistanceMeters: 0
+      Collides: 1
+      CollisionRadiusMeters: 1.2
+      CollisionHeightMeters: 16
+      SteepPower: 3
+      NearDistanceMeters: 150
+      MaxCellsPerAxis: 128
+      MaxDistanceMeters: 3000
+      DensityFalloffMeters: 0
+      DensityCoreMeters: 0
+      PerInstanceDensity: 0
+      FarDensity: 1
+      SpawnMarginMeters: 150
+      SubInstancesPerCell: 1

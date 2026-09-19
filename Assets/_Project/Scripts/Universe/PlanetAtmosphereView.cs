@@ -9,25 +9,68 @@ namespace Galilego.Universe
     /// марширует луч и аналитически пересекает его со сферами атмосферы и
     /// планеты в мировом кадре. Купол всегда влезает в far, поэтому основную
     /// камеру НЕ надо растягивать под атмосферу (иначе far/near → z-fighting).
-    /// Все параметры — из AtmosphereProfile (общий с физикой), тумблер VisualEnabled.
+    ///
+    /// Физические коэффициенты β берутся из AtmosphereOptics (общий источник с
+    /// CPU SkyPhysics/SkyEnvironment). Тут же на CPU строятся две LUT, которые
+    /// шейдер только сэмплирует:
+    ///   * Transmittance LUT — прозрачность к Солнцу от (высота, cos θ);
+    ///   * Multi-Scattering LUT — приближение бесконечного многократного
+    ///     рассеяния (синий зенит без пересвета горизонта).
+    /// LUT зависят только от профиля/радиуса, поэтому строятся один раз при
+    /// старте (и пересчитываются, если параметры изменились).
+    ///
+    /// Все параметры — из AtmosphereProfile, тумблер VisualEnabled, плюс
+    /// DebugMode для визуализации полей шейдера.
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-35)]
     public sealed class PlanetAtmosphereView : MonoBehaviour
     {
+        public enum AtmosphereDebugMode
+        {
+            Final = 0,
+            ViewTransmittance = 1,
+            RayEntry = 2,
+            RayExit = 3,
+            SceneDepth = 4,
+            Extinction = 5,
+            InScatterOnly = 6,
+            SunTransmittance = 7,
+            RTHandleScale = 8,
+            ColorUv = 9,
+        }
+
         [Tooltip("SimulationRunner сцены.")]
         public SimulationRunner Runner;
 
         [Tooltip("Сегментов по широте купола.")]
+        [Range(4, 128)]
         public int LatitudeSegments = 24;
 
         [Tooltip("Сегментов по долготе купола.")]
+        [Range(8, 256)]
         public int LongitudeSegments = 48;
+
+        [Tooltip("Отладочный вывод вместо финального кадра (0 = выключено).")]
+        public AtmosphereDebugMode DebugMode = AtmosphereDebugMode.Final;
 
         private OrbitingBody body;
         private AtmosphereProfile profile;
         private Transform shell;
         private Material materialCache;
+        private Texture2D transmittanceLut;
+        private Texture2D multiScatterLut;
         private bool loggedOnce;
+
+        // Подпись параметров, от которых зависят LUT. Пока совпадает — LUT не
+        // пересобираем. Иначе смена AerosolScale/плотности/озона в рантайме не
+        // влияла бы на небо (LUT запекались один раз в Start).
+        private bool lutBuilt;
+        private double lutDensity;
+        private double lutScaleHeight;
+        private double lutAerosolScale;
+        private bool lutOzone;
+        private double lutTopAltitude;
+        private double lutRadius;
 
         private void Start()
         {
@@ -56,6 +99,8 @@ namespace Galilego.Universe
             Shader shader = Shader.Find("Galilego/PlanetAtmosphere");
             materialCache = new Material(shader);
 
+            BuildLuts();
+
             // Купол — top-level (НЕ под Terra: у неё скейл 2286000).
             GameObject go = new GameObject("AtmosphereDome");
             MeshFilter filter = go.AddComponent<MeshFilter>();
@@ -77,6 +122,97 @@ namespace Galilego.Universe
             {
                 Destroy(materialCache);
             }
+
+            if (transmittanceLut != null)
+            {
+                Destroy(transmittanceLut);
+            }
+
+            if (multiScatterLut != null)
+            {
+                Destroy(multiScatterLut);
+            }
+        }
+
+        private bool LutNeedsRebuild()
+        {
+            return !lutBuilt
+                || lutDensity != profile.SeaLevelDensityKgPerCubicMeter
+                || lutScaleHeight != profile.ScaleHeightMeters
+                || lutAerosolScale != profile.AerosolScale
+                || lutOzone != profile.OzoneEnabled
+                || lutTopAltitude != profile.TopAltitudeMeters
+                || lutRadius != body.Radius;
+        }
+
+        private void BuildLuts()
+        {
+            lutBuilt = false;
+
+            if (transmittanceLut != null)
+            {
+                Destroy(transmittanceLut);
+                transmittanceLut = null;
+            }
+
+            if (multiScatterLut != null)
+            {
+                Destroy(multiScatterLut);
+                multiScatterLut = null;
+            }
+
+            if (profile.ScaleHeightMeters <= 0d || profile.SeaLevelDensityKgPerCubicMeter <= 0d
+                || profile.TopAltitudeMeters <= 0d)
+            {
+                return;
+            }
+
+            System.Diagnostics.Stopwatch watch = System.Diagnostics.Stopwatch.StartNew();
+            AtmosphereOptics.Coefficients coeff = profile.ToOptics();
+            double planetRadius = body.Radius;
+            double atmosphereRadius = body.Radius + profile.TopAltitudeMeters;
+
+            AtmosphereOptics.Lut transmittance = AtmosphereOptics.BuildTransmittanceLut(
+                coeff, planetRadius, atmosphereRadius, 48);
+            AtmosphereOptics.Lut multiScatter = AtmosphereOptics.BuildMultiScatteringLut(
+                coeff, planetRadius, atmosphereRadius, 32, 32);
+
+            transmittanceLut = BuildTexture(transmittance);
+            multiScatterLut = BuildTexture(multiScatter);
+            watch.Stop();
+
+            lutDensity = profile.SeaLevelDensityKgPerCubicMeter;
+            lutScaleHeight = profile.ScaleHeightMeters;
+            lutAerosolScale = profile.AerosolScale;
+            lutOzone = profile.OzoneEnabled;
+            lutTopAltitude = profile.TopAltitudeMeters;
+            lutRadius = body.Radius;
+            lutBuilt = true;
+
+            Debug.Log(string.Format(
+                "[PlanetAtmosphere] LUT построены за {0} мс (R={1:E2}, R_atm={2:E2}, Hr={3}, Hm={4}, aerosol={5})",
+                watch.ElapsedMilliseconds, planetRadius, atmosphereRadius,
+                coeff.RayleighScaleHeight, coeff.MieScaleHeight, profile.AerosolScale));
+        }
+
+        private static Texture2D BuildTexture(AtmosphereOptics.Lut lut)
+        {
+            Texture2D texture = new Texture2D(lut.Width, lut.Height, TextureFormat.RGBAHalf, false, true)
+            {
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+            };
+
+            Color[] pixels = new Color[lut.Width * lut.Height];
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                Vector3d v = lut.Pixels[i];
+                pixels[i] = new Color((float)v.X, (float)v.Y, (float)v.Z, 1f);
+            }
+
+            texture.SetPixels(pixels);
+            texture.Apply();
+            return texture;
         }
 
         private void LateUpdate()
@@ -99,23 +235,28 @@ namespace Galilego.Universe
                 return;
             }
 
+            // Профиль мог смениться в рантайме (AerosolScale и т.п.) — тогда
+            // пересобираем LUT, иначе небо не отреагирует.
+            if (LutNeedsRebuild())
+            {
+                BuildLuts();
+            }
+
             Camera camera = Camera.main;
             if (camera == null)
             {
                 return;
             }
 
-            double radius = body.Radius + profile.TopAltitudeMeters;
-            float scaleHeight = profile.ScaleHeightMeters > 0d
-                ? (float)profile.ScaleHeightMeters
-                : (float)(profile.TopAltitudeMeters / 8d);
+            double atmosphereRadius = body.Radius + profile.TopAltitudeMeters;
+            double atmosphereDepth = profile.TopAltitudeMeters;
+            AtmosphereOptics.Coefficients coeff = profile.ToOptics();
 
             Vector3 cameraPosition = camera.transform.position;
             // Меш купола — единичный радиус (BuildSphereMesh(1f, …)), поэтому
             // localScale == мировой радиус. Радиус 0.5·far держит поверхность
-            // купола ВНУТРИ far: если выставить её ровно в far, вершины у края
-            // фрустума зарезаются far-плоскостью по округлению — в небе
-            // появляются чёрные дыры-кляксы, «плывущие» при повороте камеры.
+            // купола ВНУТРИ far: иначе вершины у края фрустума зарезаются
+            // far-плоскостью и в небе появляются чёрные дыры.
             float domeRadius = Mathf.Max(1f, camera.farClipPlane * 0.5f);
             shell.position = cameraPosition;
             shell.rotation = Quaternion.identity;
@@ -135,27 +276,64 @@ namespace Galilego.Universe
                 }
             }
 
+            // Цвет фотосферы (~5772 K) для вклада рассеяния: единый источник
+            // с SunBillboard/SkyEnvironment (SkyEnvironment.PhotosphereLinear).
+            Vector3d starLinear = SkyEnvironment.PhotosphereLinear;
+            Shader.SetGlobalVector("_AtmSunColor",
+                new Vector3((float)starLinear.X, (float)starLinear.Y, (float)starLinear.Z));
+
+            // Тинты — только множители поверх физики (1 = без изменений).
+            Color rayleighTint = profile.RayleighColor;
+            Color mieTint = profile.MieColor;
+            Vector3d betaRayleigh = AtmosphereOptics.VecMul(
+                coeff.RayleighScattering,
+                new Vector3d(rayleighTint.r, rayleighTint.g, rayleighTint.b));
+            Vector3d betaMie = AtmosphereOptics.VecMul(
+                coeff.MieScattering,
+                new Vector3d(mieTint.r, mieTint.g, mieTint.b));
+
             Shader.SetGlobalVector("_AtmCameraWS", cameraPosition);
+            Shader.SetGlobalVector("_AtmCameraForwardWS", camera.transform.forward);
             Shader.SetGlobalVector("_AtmBodyCenterWS", FloatingOrigin.ToRender(bodyPos));
             Shader.SetGlobalVector("_AtmSunDirWS", sunDirWorld);
             Shader.SetGlobalFloat("_AtmPlanetRadius", (float)body.Radius);
-            Shader.SetGlobalFloat("_AtmRadius", (float)radius);
-            Shader.SetGlobalFloat("_AtmScaleHeight", scaleHeight);
-            Shader.SetGlobalColor("_AtmRayleighColor", profile.RayleighColor);
-            Shader.SetGlobalColor("_AtmMieColor", profile.MieColor);
+            Shader.SetGlobalFloat("_AtmRadius", (float)atmosphereRadius);
+            Shader.SetGlobalFloat("_AtmAtmDepth", (float)atmosphereDepth);
+            Shader.SetGlobalVector("_AtmBetaRayleigh",
+                new Vector3((float)betaRayleigh.X, (float)betaRayleigh.Y, (float)betaRayleigh.Z));
+            Shader.SetGlobalVector("_AtmBetaMie",
+                new Vector3((float)betaMie.X, (float)betaMie.Y, (float)betaMie.Z));
+            Shader.SetGlobalVector("_AtmBetaOzone",
+                new Vector3((float)coeff.OzoneAbsorption.X, (float)coeff.OzoneAbsorption.Y, (float)coeff.OzoneAbsorption.Z));
+            Shader.SetGlobalFloat("_AtmHr", (float)coeff.RayleighScaleHeight);
+            Shader.SetGlobalFloat("_AtmHm", (float)coeff.MieScaleHeight);
+            Shader.SetGlobalFloat("_AtmOzoneCenter", (float)coeff.OzoneCenterAltitude);
+            Shader.SetGlobalFloat("_AtmOzoneWidth", (float)coeff.OzoneHalfWidth);
+            Shader.SetGlobalFloat("_AtmMieG", (float)coeff.MieAnisotropy);
             Shader.SetGlobalFloat("_AtmIntensity", profile.Intensity);
-            Shader.SetGlobalFloat("_AtmMieAnisotropy", profile.MieAnisotropy);
             Shader.SetGlobalFloat("_AtmStepCount", Mathf.Clamp(profile.StepCount, 2, 96));
-            Shader.SetGlobalFloat("_AtmDensityFalloff", Mathf.Max(0.01f, profile.DensityFalloff));
             Shader.SetGlobalFloat("_AtmPlanetOcclusion", profile.PlanetOcclusion ? 1f : 0f);
-            Shader.SetGlobalFloat("_AtmMultiScatter", profile.MultiScatter);
+            Shader.SetGlobalColor("_AtmGroundColor", profile.GroundColor);
+            Shader.SetGlobalFloat("_AtmHorizonFade", Mathf.Max(0.001f, profile.HorizonFade));
+            Shader.SetGlobalFloat("_AtmDebugMode", (float)(int)DebugMode);
+
+            if (transmittanceLut != null)
+            {
+                Shader.SetGlobalTexture("_AtmTransmittanceTex", transmittanceLut);
+            }
+
+            if (multiScatterLut != null)
+            {
+                Shader.SetGlobalTexture("_AtmMultiScatterTex", multiScatterLut);
+            }
 
             if (!loggedOnce)
             {
                 loggedOnce = true;
                 Debug.Log(string.Format(
-                    "[PlanetAtmosphere] active=True, domeR={0:E2}, R={1}, R_atm={2}, H={3}, Intensity={4}, dominant={5}",
-                    domeRadius, body.Radius, radius, scaleHeight, profile.Intensity,
+                    "[PlanetAtmosphere] active=True, domeR={0:E2}, R={1}, R_atm={2}, Hr={3}, Hm={4}, Intensity={5}, dominant={6}",
+                    domeRadius, body.Radius, atmosphereRadius,
+                    coeff.RayleighScaleHeight, coeff.MieScaleHeight, profile.Intensity,
                     Runner.DominantBody != null ? Runner.DominantBody.Name : "null"));
             }
         }

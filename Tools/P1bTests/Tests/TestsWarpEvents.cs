@@ -465,8 +465,7 @@ internal static partial class P1bTests
         {
             TopAltitudeMeters = 100000d,
             SeaLevelDensityKgPerCubicMeter = 1.2d,
-            ScaleHeightMeters = 8500d,
-            SeaLevelPressurePascals = 101325d
+            ScaleHeightMeters = 8500d
         };
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
         Vector3d p0 = bp0 + new Vector3d(0d, planet.Radius + 50000d, 0d);
@@ -619,8 +618,7 @@ internal static partial class P1bTests
         {
             TopAltitudeMeters = 100000d,
             SeaLevelDensityKgPerCubicMeter = 1.2d,
-            ScaleHeightMeters = 8500d,
-            SeaLevelPressurePascals = 101325d
+            ScaleHeightMeters = 8500d
         };
         planet.EvaluateWorldState(0d, out Vector3d bp, out _);
 
@@ -722,8 +720,7 @@ internal static partial class P1bTests
         {
             TopAltitudeMeters = 100000d,
             SeaLevelDensityKgPerCubicMeter = 1.2d,
-            ScaleHeightMeters = 8500d,
-            SeaLevelPressurePascals = 101325d
+            ScaleHeightMeters = 8500d
         };
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
 
@@ -830,8 +827,7 @@ internal static partial class P1bTests
         {
             TopAltitudeMeters = 100000d,
             SeaLevelDensityKgPerCubicMeter = 1.2d,
-            ScaleHeightMeters = 8500d,
-            SeaLevelPressurePascals = 101325d
+            ScaleHeightMeters = 8500d
         };
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
         double earthR = planet.Radius;
@@ -1528,8 +1524,7 @@ internal static partial class P1bTests
         {
             TopAltitudeMeters = 100000d,
             SeaLevelDensityKgPerCubicMeter = 1.2d,
-            ScaleHeightMeters = 8500d,
-            SeaLevelPressurePascals = 101325d
+            ScaleHeightMeters = 8500d
         };
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
         // Старт ВЫШЕ атмосферы со сходящей траекторией — вход (~25 с) внутри

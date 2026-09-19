@@ -26,8 +26,11 @@ internal static partial class P1bTests
         bool channelOrder = noonT.Z < noonT.Y && noonT.Y < noonT.X && noonT.X <= 1d;
 
         // Низкое солнце: зелёный/синий уходят в ноль, красный остаётся заметным.
+        // Порог ослаблен против прежнего (<0.05): реальные β Рэлея слабее
+        // эмпирических, поэтому зелёный на закате ~0.087, но красный по-прежнему
+        // доминирует кратно. Проверяем именно доминирование, а не абсолют.
         Vector3d duskT = SkyPhysics.SunTransmittance(0.02d, 1d, H, extinction);
-        bool duskRed = duskT.X > duskT.Y && duskT.X > 0.01d && duskT.Y < 0.05d;
+        bool duskRed = duskT.X > (duskT.Y * 3d) && duskT.X > 0.05d && duskT.Y < 0.15d;
 
         // Airmass: конечна у горизонта и монотонно растёт при снижении солнца.
         double amZenith = SkyPhysics.Airmass(1d);
@@ -153,6 +156,52 @@ internal static partial class P1bTests
         Check(inRange, "T81 star-granulation", "значения в [0,1]");
         Check(contrast, "T81 star-granulation", string.Format("контраст ячеек: min={0:F2}, max={1:F2}", min, max));
         Check(seamless, "T81 star-granulation", "чистая функция направления (швов нет по построению)");
+        return 0;
+    }
+
+    /// <summary>
+    /// Дальность видимости рельефа: горизонт наблюдателя √(2Rh+h²) и сумма
+    /// горизонтов (камера + дальний пик) — база far-плоскости камеры
+    /// (FirstPersonCamera). Проверяем формулу, монотонность и боевые числа
+    /// Terra (R=1.143e6, Amplitude=9144, ContinentDepth=0.9): пик 17.4 км
+    /// виден с земли почти за 200 км, с пика — почти за 400 км.
+    /// </summary>
+    private static int Test95_HorizonDistance()
+    {
+        double earth = 6371000d;
+        double earthKnown = SkyPhysics.HorizonDistance(earth, 2d);
+        bool formula = Math.Abs(earthKnown - 5048d) < 15d
+            && SkyPhysics.HorizonDistance(earth, 0d) == 0d
+            && SkyPhysics.HorizonDistance(0d, 1000d) == 0d
+            && SkyPhysics.HorizonDistance(earth, -50d) == 0d;
+
+        bool monotonic = true;
+        double previous = 0d;
+        for (int i = 0; i < 200; i++)
+        {
+            double d = SkyPhysics.HorizonDistance(earth, i * 1000d);
+            if (d < previous)
+            {
+                monotonic = false;
+            }
+
+            previous = d;
+        }
+
+        double terra = 1143000d;
+        double peak = 9144d * (1d + 0.9d);
+        double groundSight = SkyPhysics.MaxSightDistance(terra, 2d, peak);
+        double peakSight = SkyPhysics.MaxSightDistance(terra, peak, peak);
+        bool terraNumbers = groundSight > 195000d && groundSight < 210000d
+            && Math.Abs(peakSight - (2d * SkyPhysics.HorizonDistance(terra, peak))) < 1e-6d;
+        bool additive = Math.Abs(SkyPhysics.MaxSightDistance(terra, 100d, 200d)
+            - (SkyPhysics.HorizonDistance(terra, 100d) + SkyPhysics.HorizonDistance(terra, 200d))) < 1e-9d;
+
+        Check(formula, "T95 horizon", "Земля h=2 м ≈ 5.05 км; нули и отрицательные высоты клампятся");
+        Check(monotonic, "T95 horizon", "горизонт монотонен по высоте");
+        Check(terraNumbers && additive, "T95 horizon", string.Format(
+            "Terra: пик виден с земли на {0:F0} км, с пика — на {1:F0} км",
+            groundSight / 1000d, peakSight / 1000d));
         return 0;
     }
 }

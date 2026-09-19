@@ -175,8 +175,7 @@ internal static partial class P1bTests
         {
             TopAltitudeMeters = 100000d,
             SeaLevelDensityKgPerCubicMeter = 1.2d,
-            ScaleHeightMeters = 8500d,
-            SeaLevelPressurePascals = 101325d
+            ScaleHeightMeters = 8500d
         };
         planet.RotationPeriodSeconds = 0d;
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
@@ -268,8 +267,7 @@ internal static partial class P1bTests
         {
             TopAltitudeMeters = 100000d,
             SeaLevelDensityKgPerCubicMeter = 1.2d,
-            ScaleHeightMeters = 8500d,
-            SeaLevelPressurePascals = 101325d
+            ScaleHeightMeters = 8500d
         };
         planet.RotationPeriodSeconds = 0d;
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
@@ -324,8 +322,7 @@ internal static partial class P1bTests
         {
             TopAltitudeMeters = 300000d,
             SeaLevelDensityKgPerCubicMeter = 1e-6d,
-            ScaleHeightMeters = 30000d,
-            SeaLevelPressurePascals = 10d
+            ScaleHeightMeters = 30000d
         };
     }
 
@@ -466,8 +463,7 @@ internal static partial class P1bTests
         {
             TopAltitudeMeters = 100000d,
             SeaLevelDensityKgPerCubicMeter = 1.2d,
-            ScaleHeightMeters = 8500d,
-            SeaLevelPressurePascals = 101325d
+            ScaleHeightMeters = 8500d
         };
         planet.RotationPeriodSeconds = 0d;
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
@@ -670,8 +666,7 @@ internal static partial class P1bTests
         {
             TopAltitudeMeters = 100000d,
             SeaLevelDensityKgPerCubicMeter = 1.2d,
-            ScaleHeightMeters = 8500d,
-            SeaLevelPressurePascals = 101325d
+            ScaleHeightMeters = 8500d
         };
         Vector3d dipP = bp0 + new Vector3d(0d, planet.Radius + 50000d, 0d);
         Vector3d dipV = bv0 + new Vector3d(500d, 2000d, 0d);
@@ -1035,8 +1030,7 @@ internal static partial class P1bTests
         {
             TopAltitudeMeters = 100000d,
             SeaLevelDensityKgPerCubicMeter = 1.2d,
-            ScaleHeightMeters = 8500d,
-            SeaLevelPressurePascals = 101325d
+            ScaleHeightMeters = 8500d
         };
         var dipState = new SpacecraftIntegrationState
         {

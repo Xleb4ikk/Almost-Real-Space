@@ -2,7 +2,9 @@ Shader "Galilego/StarField"
 {
     SubShader
     {
-        Tags { "RenderPipeline" = "HDRenderPipeline" "RenderType" = "Transparent" "Queue" = "Transparent" }
+        // Transparent+1: рисуется ПОСЛЕ атмосферы (она делает ручной композит
+        // с заменой фона), иначе звёзды затёрлись бы её выводом.
+        Tags { "RenderPipeline" = "HDRenderPipeline" "RenderType" = "Transparent" "Queue" = "Transparent+1" }
 
         Pass
         {
@@ -69,6 +71,15 @@ Shader "Galilego/StarField"
             float4 Frag(Varyings input) : SV_Target
             {
                 if (_StarVisibility <= 0.001)
+                {
+                    discard;
+                }
+
+                // Окклюзия по глубине, а не по радиусу купола: если в пикселе
+                // есть непрозрачная геометрия (планета/рельеф) — звёзды не
+                // рисуем. Иначе на дистанции больше купола (0.5·far) звёзды
+                // оказывались бы ПЕРЕД далёкой планетой.
+                if (!IsSky(uint2(input.positionCS.xy)))
                 {
                     discard;
                 }

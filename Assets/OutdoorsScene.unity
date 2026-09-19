@@ -439,45 +439,10 @@ MonoBehaviour:
     X: 0
     Y: 0
     Z: 1
-  Atmosphere:
-    TopAltitudeMeters: 0
-    SeaLevelPressurePascals: 0
-    SeaLevelDensityKgPerCubicMeter: 0
-    ScaleHeightMeters: 0
-    VisualEnabled: 0
-    RayleighColor: {r: 0.3, g: 0.55, b: 1, a: 1}
-    MieColor: {r: 1, g: 0.85, b: 0.62, a: 1}
-    Intensity: 1
-    MieAnisotropy: 0.76
-    DensityFalloff: 1
-    StepCount: 32
-    MultiScatter: 0.35
-    PlanetOcclusion: 1
-  TerrainEnabled: 0
+  TerrainPreset: {fileID: 0}
+  AtmospherePreset: {fileID: 11400000, guid: 0f2f567f675cabc4291bb22c37d6876d, type: 2}
+  GroundDecorPreset: {fileID: 0}
   TerrainSeed: 0
-  TerrainAmplitudeMeters: 1000
-  TerrainBaseFrequency: 3
-  TerrainOctaves: 5
-  TerrainSeaLevelMeters: -1e+30
-  TerrainLacunarity: 2
-  TerrainGain: 0.5
-  TerrainContinentFrequency: 0
-  TerrainContinentOctaves: 3
-  TerrainContinentThreshold: 0
-  TerrainContinentSharpness: 0.25
-  TerrainContinentDepth: 0.75
-  TerrainRidgedMix: 0
-  TerrainWarpStrength: 0
-  TerrainWarpFrequency: 1
-  TerrainWarpOctaves: 2
-  TerrainWarpSeedOffset: 0
-  TerrainColorRockSlopeTan: 0
-  TerrainColorRockSlopeWidth: 0.1
-  TerrainColorSnowSlopeTan: 0
-  TerrainColorNoiseFrequency: 0
-  TerrainColorNoiseOctaves: 3
-  TerrainColorNoiseStrength: 0
-  TerrainColorNoiseSeedOffset: 0
 --- !u!4 &230795297
 Transform:
   m_ObjectHideFlags: 0
@@ -626,45 +591,10 @@ MonoBehaviour:
     X: 0
     Y: 0
     Z: 1
-  Atmosphere:
-    TopAltitudeMeters: 100000
-    SeaLevelPressurePascals: 101325
-    SeaLevelDensityKgPerCubicMeter: 1.225
-    ScaleHeightMeters: 8500
-    VisualEnabled: 1
-    RayleighColor: {r: 0.3, g: 0.55, b: 1, a: 1}
-    MieColor: {r: 1, g: 0.85, b: 0.62, a: 1}
-    Intensity: 0.4
-    MieAnisotropy: 0.76
-    DensityFalloff: 1
-    StepCount: 32
-    MultiScatter: 0.35
-    PlanetOcclusion: 1
-  TerrainEnabled: 1
+  TerrainPreset: {fileID: 11400000, guid: 08d29115435911343a409aa5906089a2, type: 2}
+  AtmospherePreset: {fileID: 11400000, guid: 04cd67a1c36ca9249926bf7a20997ff8, type: 2}
+  GroundDecorPreset: {fileID: 11400000, guid: b70dba692e6607b4985ce5eaa0a0df5e, type: 2}
   TerrainSeed: 24334543
-  TerrainAmplitudeMeters: 9144
-  TerrainBaseFrequency: 6
-  TerrainOctaves: 7
-  TerrainSeaLevelMeters: 0
-  TerrainLacunarity: 2
-  TerrainGain: 0.5
-  TerrainContinentFrequency: 4
-  TerrainContinentOctaves: 3
-  TerrainContinentThreshold: -0.1
-  TerrainContinentSharpness: 0.3
-  TerrainContinentDepth: 0.9
-  TerrainRidgedMix: 0.8
-  TerrainWarpStrength: 0.1
-  TerrainWarpFrequency: 2
-  TerrainWarpOctaves: 2
-  TerrainWarpSeedOffset: 0
-  TerrainColorRockSlopeTan: 0.6
-  TerrainColorRockSlopeWidth: 0.15
-  TerrainColorSnowSlopeTan: 0.5
-  TerrainColorNoiseFrequency: 4
-  TerrainColorNoiseOctaves: 3
-  TerrainColorNoiseStrength: 0.06
-  TerrainColorNoiseSeedOffset: 0
 --- !u!135 &1081663219
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -757,14 +687,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlanetSurfaceRenderer
   Runner: {fileID: 1332194275}
   TileResolution: 65
-  MaxDepth: 10
-  SplitFactor: 4
-  MergeHysteresis: 1.3
+  MaxDepth: 12
+  SplitFactor: 3.5
+  MergeHysteresis: 1.5
   SkirtFactor: 0.03
-  BuildsPerFrame: 12
-  MaxNodes: 4000
-  MaxAltitudeMeters: 5000000
-  MaxCachedChunks: 2048
+  BuildsPerFrame: 64
+  DecorBuildsPerFrame: 3
+  DecorBuildBudgetMs: 3
+  MaxDecorBuildSessions: 4
+  LogDecorAllocation: 0
+  MaxNodes: 12000
+  MaxCachedChunks: 8192
+  BlobShadowColor: {r: 0.03, g: 0.035, b: 0.04, a: 0.35}
+  BlobScaleFactor: 1
+  BlobSunOffset: 0.6
 --- !u!114 &1081663223
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -780,6 +716,7 @@ MonoBehaviour:
   Runner: {fileID: 1332194275}
   LatitudeSegments: 24
   LongitudeSegments: 48
+  DebugMode: 0
 --- !u!1 &1250304429
 GameObject:
   m_ObjectHideFlags: 0
@@ -812,8 +749,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlayerController
   Runner: {fileID: 1332194275}
   ShipTransform: {fileID: 1644257543}
-  WalkSpeed: 5000
-  RunSpeed: 100000
+  WalkSpeed: 50
+  RunSpeed: 60000
   JetpackThrust: 1500000
   EnterDistanceMeters: 5
   ShipWalkRadius: 3
@@ -1217,6 +1154,7 @@ MonoBehaviour:
   PitchClamp: 85
   LockCursor: 1
   TemporalAA: 0
+  SubpixelAA: 1
   LogCameraDiagnostics: 1
   EyeHeightMeters: 2
 --- !u!1 &1982425599
@@ -1271,7 +1209,6 @@ MonoBehaviour:
   Sky: {fileID: 1982425602}
   TemperatureKelvin: 5772
   DiscBrightness: 4
-  LightDimmer: 8
   BillboardFarFraction: 0.9
   SurfaceTextureWidth: 512
   SurfaceSeed: 1
@@ -1293,11 +1230,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SkyEnvironment
   Runner: {fileID: 1332194275}
   SunLight: {fileID: 157207113}
-  SunLightIntensity: 1.6
+  SunLightDayLux: 80000
+  SunsetDiagLog: 0
   StarVisibilityK: 6
-  TerrainSunIntensity: 0.6
-  NightAmbient: 0.005
-  SkyAmbient: 0.05
+  TerrainSunIntensity: 1
+  TerrainRadianceScale: 2.5
+  NightAmbient: 0.01
+  SkyAmbient: 0.1
+  ShadowStrength: 0.85
+  ExposureVolume: {fileID: 432432460}
+  TwilightExposureMax: 2
+  NightExposure: 0.5
+  ShadowHighDistanceMeters: 150
+  ShadowMediumDistanceMeters: 400
+  ShadowBlendWidthMeters: 25
 --- !u!114 &1982425603
 MonoBehaviour:
   m_ObjectHideFlags: 0
