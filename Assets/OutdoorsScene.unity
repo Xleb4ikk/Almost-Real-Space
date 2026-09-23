@@ -441,6 +441,7 @@ MonoBehaviour:
     Z: 1
   TerrainPreset: {fileID: 0}
   AtmospherePreset: {fileID: 11400000, guid: 0f2f567f675cabc4291bb22c37d6876d, type: 2}
+  CloudsPreset: {fileID: 0}
   GroundDecorPreset: {fileID: 0}
   TerrainSeed: 0
 --- !u!4 &230795297
@@ -525,6 +526,7 @@ GameObject:
   - component: {fileID: 1081663217}
   - component: {fileID: 1081663222}
   - component: {fileID: 1081663223}
+  - component: {fileID: 1081663224}
   m_Layer: 0
   m_Name: Terra
   m_TagString: Untagged
@@ -593,6 +595,7 @@ MonoBehaviour:
     Z: 1
   TerrainPreset: {fileID: 11400000, guid: 08d29115435911343a409aa5906089a2, type: 2}
   AtmospherePreset: {fileID: 11400000, guid: 04cd67a1c36ca9249926bf7a20997ff8, type: 2}
+  CloudsPreset: {fileID: 11400000, guid: d3bc22e4e10e05047ae0493324cd61fc, type: 2}
   GroundDecorPreset: {fileID: 11400000, guid: b70dba692e6607b4985ce5eaa0a0df5e, type: 2}
   TerrainSeed: 24334543
 --- !u!135 &1081663219
@@ -751,6 +754,21 @@ MonoBehaviour:
   LatitudeSegments: 24
   LongitudeSegments: 48
   DebugMode: 0
+--- !u!114 &1081663224
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1081663215}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 399382107422b90478da22ae8ba39aad, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlanetCloudsView
+  Runner: {fileID: 1332194275}
+  LatitudeSegments: 24
+  LongitudeSegments: 48
 --- !u!1 &1250304429
 GameObject:
   m_ObjectHideFlags: 0

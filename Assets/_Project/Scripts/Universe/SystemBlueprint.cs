@@ -41,6 +41,8 @@ namespace Galilego.Universe
 
         public AtmosphereProfile Atmosphere;
 
+        public CloudProfile Clouds;
+
         /// <summary>Рельеф: null — гладкая сфера. Пресет формы/цвета/палитры; при сборке копируется в HeightfieldTerrain.</summary>
         public TerrainProfile Terrain;
 
@@ -109,7 +111,8 @@ namespace Galilego.Universe
                     RotationPeriodSeconds = bp.RotationPeriodSeconds,
                     PrimeMeridianOffsetDegrees = bp.PrimeMeridianOffsetDegrees,
                     NorthPoleDirection = new Vector3d(bp.NorthPoleX, bp.NorthPoleY, bp.NorthPoleZ),
-                    Atmosphere = bp.Atmosphere
+                    Atmosphere = bp.Atmosphere,
+                    Clouds = bp.Clouds
                 };
                 if (bp.Terrain != null)
                 {

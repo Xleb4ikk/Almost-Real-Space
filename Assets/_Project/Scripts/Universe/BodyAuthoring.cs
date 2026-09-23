@@ -47,6 +47,9 @@ namespace Galilego.Universe
         [Tooltip("Пресет атмосферы (физика+визуал). null = атмосферы нет.")]
         public AtmosphereProfileAsset AtmospherePreset;
 
+        [Tooltip("Пресет облаков (см. PlanetCloudsView). null = облаков нет.")]
+        public CloudProfileAsset CloudsPreset;
+
         [Tooltip("Пресет декора местности (трава/камни/деревья). null = декора нет.")]
         public GroundDecorProfileAsset GroundDecorPreset;
 
@@ -77,6 +80,7 @@ namespace Galilego.Universe
                 NorthPoleY = NorthPoleDirection.Y,
                 NorthPoleZ = NorthPoleDirection.Z,
                 Atmosphere = ResolveAtmosphere(),
+                Clouds = ResolveClouds(),
                 Terrain = ResolveTerrain(),
                 TerrainSeed = TerrainSeed,
                 ParentIndex = parentIndex
@@ -96,6 +100,13 @@ namespace Galilego.Universe
         {
             return AtmospherePreset != null && AtmospherePreset.Profile != null
                 ? AtmospherePreset.Profile.Clone()
+                : null;
+        }
+
+        private CloudProfile ResolveClouds()
+        {
+            return CloudsPreset != null && CloudsPreset.Profile != null
+                ? CloudsPreset.Profile.Clone()
                 : null;
         }
 
