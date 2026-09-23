@@ -43,6 +43,11 @@ namespace Galilego.Universe
         [Tooltip("Высота глаз над точкой корабля (м; вдоль нормали поверхности).")]
         public double EyeHeightMeters = 2d;
 
+        [Tooltip("Высота глаз вплавь (м): пловец лежит, голова ~0.5 м над ногами. " +
+            "Синхронизировано с SimulationRunner.SwimEyeHeightMeters/UnderwaterEffect: " +
+            "иначе на мелководье у берега голова на 2-метровом росте никогда не уходит под воду.")]
+        public double SwimEyeHeightMeters = 0.5d;
+
         private Vector3 lookDirection;
         private Vector3 lastUp;
         private bool hasLook;
@@ -286,7 +291,9 @@ namespace Galilego.Universe
         /// <summary>
         /// Оффсет глаз: вдоль нормали поверхности доминантного тела (на земле
         /// корабль лежит на рельефе — без оффсета камера «в земле»; в полёте
-        /// оффсет вдоль радиуса визуально нейтрален).
+        /// оффсет вдоль радиуса визуально нейтрален). Вплавь — низкий
+        /// SwimEyeHeightMeters (пловец лежит), иначе голова не уходит под
+        /// воду на мелководье.
         /// </summary>
         private void ComputeEyeOffset()
         {
@@ -296,7 +303,8 @@ namespace Galilego.Universe
                 return;
             }
 
-            eyeOffset = ComputeLocalUp() * (float)EyeHeightMeters;
+            double eye = Runner.PlayerMode == PlayerMode.Swimming ? SwimEyeHeightMeters : EyeHeightMeters;
+            eyeOffset = ComputeLocalUp() * (float)eye;
         }
 
         private void UpdateClipPlanes()

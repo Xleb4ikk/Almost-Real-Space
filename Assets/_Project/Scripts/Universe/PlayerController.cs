@@ -8,7 +8,9 @@ namespace Galilego.Universe
     /// Режимы: InShip (ходьба внутри — заглушка вокруг точки корабля, интерьер
     /// и коллизии позже), EVA (джетпак: WASD вдоль камеры, Space вверх,
     /// LeftCtrl вниз; топливо — IJetpackFuel, сейчас бесконечное), OnSurface
-    /// (WASD ходьба по касательной, Shift бег, Space прыжок).
+    /// (WASD ходьба по касательной, Shift бег, Space прыжок), Swimming
+    /// (WASD плавание по камере — взгляд вниз + W = нырнуть, Space всплыть,
+    /// LeftCtrl погрузиться, Shift ускорение).
     /// E — универсальное действие: интеракция (луч из камеры ≤ 4 м) →
     /// сесть/встать → выйти/войти в корабль.
     /// </summary>
@@ -28,6 +30,12 @@ namespace Galilego.Universe
 
         [Tooltip("Ускорение джетпака (м/с²).")]
         public float JetpackThrust = 1.5f;
+
+        [Tooltip("Скорость плавания (м/с).")]
+        public float SwimSpeed = 2.5f;
+
+        [Tooltip("Скорость плавания с ускорением (м/с, Shift).")]
+        public float SwimFastSpeed = 5f;
 
         [Tooltip("Дистанция входа в корабль (м, в double-мире).")]
         public double EnterDistanceMeters = 5d;
@@ -187,6 +195,25 @@ namespace Galilego.Universe
                         }
 
                         intent.Jump = PlayerInput.Down(GameKey.Space);
+                    }
+
+                    break;
+
+                case PlayerMode.Swimming:
+                    if (camera != null)
+                    {
+                        // Полный 3D по камере: взгляд вниз + W = нырнуть,
+                        // Space/Ctrl — явные всплытие/погружение.
+                        Vector3 swim = (camera.transform.forward * ((PlayerInput.Held(GameKey.W) ? 1f : 0f) - (PlayerInput.Held(GameKey.S) ? 1f : 0f)))
+                            + (camera.transform.right * ((PlayerInput.Held(GameKey.D) ? 1f : 0f) - (PlayerInput.Held(GameKey.A) ? 1f : 0f)))
+                            + (camera.transform.up * ((PlayerInput.Held(GameKey.Space) ? 1f : 0f) - (PlayerInput.Held(GameKey.LeftControl) ? 1f : 0f)));
+                        if (swim.sqrMagnitude > 0f)
+                        {
+                            float speed = PlayerInput.Held(GameKey.LeftShift) ? SwimFastSpeed : SwimSpeed;
+                            Vector3d swimAstro = AstroFrame.ToAstro(swim.normalized);
+                            intent.SwimDirection = swimAstro.Normalized;
+                            intent.SwimSpeed = speed;
+                        }
                     }
 
                     break;

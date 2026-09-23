@@ -3,12 +3,13 @@ using Galilego.Core;
 
 namespace Galilego.Universe
 {
-    /// <summary>Режим игрока: в корабле / EVA (полёт) / на поверхности.</summary>
+    /// <summary>Режим игрока: в корабле / EVA (полёт) / на поверхности / в воде.</summary>
     public enum PlayerMode
     {
         InShip,
         EVA,
-        OnSurface
+        OnSurface,
+        Swimming
     }
 
     /// <summary>
@@ -54,6 +55,12 @@ namespace Galilego.Universe
 
         /// <summary>Ускорение джетпака (м/с², только в EVA).</summary>
         public Vector3d JetpackAccel;
+
+        /// <summary>Направление плавания (мировой астро-кадр, единичный или ноль).</summary>
+        public Vector3d SwimDirection;
+
+        /// <summary>Скорость плавания (м/с).</summary>
+        public double SwimSpeed;
 
         public static PlayerIntent Idle => default;
     }

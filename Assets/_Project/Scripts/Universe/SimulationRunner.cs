@@ -367,7 +367,11 @@ namespace Galilego.Universe
 
             PlayerPosition = playPos;
             PlayerVelocity = playVel;
-            PlayerMode = PlayerMode.OnSurface;
+            // Спавн в океане — сразу вплавь (для проверки воды: спавн по
+            // координатам в океан Biome-тестов).
+            PlayerMode = WaterQuery.IsWaterAt(body, playLat, playLon)
+                ? PlayerMode.Swimming
+                : PlayerMode.OnSurface;
             playerAirborne = false;
         }
 
@@ -499,6 +503,9 @@ namespace Galilego.Universe
                     case PlayerMode.OnSurface:
                         StepPlayerSurface(t, dt);
                         break;
+                    case PlayerMode.Swimming:
+                        StepPlayerSwimming(t, dt);
+                        break;
                 }
 
                 t += dt;
@@ -529,14 +536,21 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Касание поверхности игроком: позиция проецируется на поверхность,
-        /// нормальная скорость съедается, тангенциальная сохраняется. Жёсткость
-        /// удара логируется (травмы/смерть — будущий этап). Спавн-эпсилон не
-        /// нужен — игрок становится ровно на поверхность.
+        /// Касание поверхности игроком: над водой — всплеск (EnterWater),
+        /// над сушей — проекция на поверхность, нормальная скорость съедается,
+        /// тангенциальная сохраняется. Жёсткость удара логируется
+        /// (травмы/смерть — будущий этап). Спавн-эпсилон не нужен — игрок
+        /// становится ровно на поверхность.
         /// </summary>
         private void LandPlayer(OrbitingBody body, double t)
         {
             body.SurfaceLatLonAt(PlayerPosition, t, out double latDeg, out double lonDeg);
+            if (WaterQuery.IsWaterAt(body, latDeg, lonDeg))
+            {
+                EnterWater(body, t);
+                return;
+            }
+
             body.GetSurfaceState(latDeg, lonDeg, GroundHeight(body, latDeg, lonDeg), t, out Vector3d surfacePos, out Vector3d surfaceVel);
             body.EvaluateWorldState(t, out Vector3d bodyPos, out _);
             Vector3d normal = body.Terrain != null
@@ -552,6 +566,204 @@ namespace Galilego.Universe
             if (normalSpeed < -10d)
             {
                 Debug.Log("Жёсткое приземление игрока: " + (-normalSpeed).ToString("F1") + " м/с (травмы — будущий этап)");
+            }
+        }
+
+        /// <summary>
+        /// Просвет над сырым дном (м): игрок в воде не проваливается сквозь дно.
+        /// </summary>
+        private const double SwimSeabedClearanceMeters = 0.3d;
+
+        /// <summary>
+        /// Скорость свободного всплытия/погружения без ввода у поверхности
+        /// (м/с): к висению в SwimSurfaceHoldMeters под поверхностью.
+        /// Глубже SwimNeutralDepthMeters — нейтральная плавучесть (висение):
+        /// нырнул, отпустил клавиши — висишь и смотришь вверх, не выталкивает.
+        /// Всплытие/погружение там — только вводом (Space/Ctrl или взгляд+W/S).
+        /// </summary>
+        private const double SwimBuoyancySpeed = 0.6d;
+
+        /// <summary>
+        /// Глубина висения ног у поверхности без ввода (м): голова (~2 м выше
+        /// ног) остаётся над водой, эффект/туман не мутнеет вплавь.
+        /// </summary>
+        private const double SwimSurfaceHoldMeters = 0.4d;
+
+        /// <summary>
+        /// Глубина ног (м), глубже которой без ввода — нейтраль (0): глаза
+        /// пловца (~0.5 м выше ног — пловец лежит, см. SwimEyeHeightMeters)
+        /// уже под водой, игрок висит и смотрит на поверхность.
+        /// Должно быть &gt; SwimEyeHeightMeters.
+        /// </summary>
+        private const double SwimNeutralDepthMeters = 1d;
+
+        /// <summary>
+        /// Высота глаз пловца над ногами (м): в воде тело лежит, голова
+        /// ~0.5 м выше ног (не 2 м как стоя). Синхронизировано с
+        /// FirstPersonCamera.SwimEyeHeightMeters и
+        /// UnderwaterEffect.SwimEyeHeightMeters: при висении на
+        /// SwimSurfaceHoldMeters голова остаётся над водой, при нейтрали —
+        /// уже под водой. Иначе на мелководье у берега (2–6 м) голова на
+        /// 2-метровом росте никогда не уходила под воду — «выталкивает».
+        /// </summary>
+        private const double SwimEyeHeightMeters = 0.5d;
+
+        /// <summary>
+        /// Вход в воду: позиция клампится между поверхностью и дном+просвет,
+        /// скорость гасится как всплеск (тангенциальная ×0.3, встречная
+        /// нормальная — максимум 3 м/с вниз). Та же идея ляжет в основу
+        /// будущего мягкого приводнения корабля (см. WaterQuery.GetSplashdownInfo).
+        /// </summary>
+        private void EnterWater(OrbitingBody body, double t)
+        {
+            body.EvaluateWorldState(t, out Vector3d bodyPos, out _);
+            body.SurfaceLatLonAt(PlayerPosition, t, out double latDeg, out double lonDeg);
+            double sea = body.Terrain.GetSeaLevelMeters();
+            double raw = WaterQuery.RawSeabedHeightAt(body, latDeg, lonDeg);
+            body.GetSurfaceState(latDeg, lonDeg, sea, t, out _, out Vector3d surfaceVel);
+
+            Vector3d radial = PlayerPosition - bodyPos;
+            double dist = radial.Magnitude;
+            Vector3d up = dist > 1e-9d ? radial / dist : new Vector3d(0d, 0d, 1d);
+            double clampedDist = Math.Min(dist, body.Radius + sea);
+            if (!double.IsNaN(raw))
+            {
+                clampedDist = Math.Max(clampedDist, body.Radius + raw + SwimSeabedClearanceMeters);
+            }
+
+            PlayerPosition = bodyPos + (up * clampedDist);
+
+            Vector3d relativeVelocity = PlayerVelocity - surfaceVel;
+            double normalSpeed = Vector3d.Dot(relativeVelocity, up);
+            Vector3d tangential = relativeVelocity - (up * normalSpeed);
+            double softNormal = normalSpeed < 0d ? Math.Max(normalSpeed * 0.2d, -3d) : 0d;
+            PlayerVelocity = surfaceVel + (tangential * 0.3d) + (up * softNormal);
+            PlayerMode = PlayerMode.Swimming;
+            playerAirborne = false;
+            if (normalSpeed < -10d)
+            {
+                Debug.Log("Всплеск: вход в воду на " + (-normalSpeed).ToString("F1") + " м/с погашен водой");
+            }
+        }
+
+        /// <summary>
+        /// Плавание за подшаг: скорость = со-вращение планеты + намерение
+        /// (вода держит — баллистики нет), без ввода — у поверхности дрейф к
+        /// SwimSurfaceHoldMeters, на глубине глубже SwimNeutralDepthMeters —
+        /// нейтральное висение (не выталкивает, можно смотреть вверх).
+        /// Упор в сырое дно, кламп у поверхности; выпрыгивание из глубокой
+        /// воды — в EVA (упадёт обратно), выход на сушу — через LandPlayer.
+        /// </summary>
+        private void StepPlayerSwimming(double t, double dt)
+        {
+            OrbitingBody body = DominantBody;
+            if (body == null || body.Terrain == null || !WaterQuery.HasOcean(body))
+            {
+                PlayerMode = PlayerMode.EVA;
+                playerAirborne = false;
+                return;
+            }
+
+            body.EvaluateWorldState(t, out Vector3d bodyPos, out _);
+            double sea = body.Terrain.GetSeaLevelMeters();
+            double seaRadius = body.Radius + sea;
+            double dist = (PlayerPosition - bodyPos).Magnitude;
+            double submersion = seaRadius - dist;
+
+            body.SurfaceLatLonAt(PlayerPosition, t, out double latDeg, out double lonDeg);
+            if (!WaterQuery.IsWaterAt(body, latDeg, lonDeg))
+            {
+                // Течение вынесло на сушу: у поверхности — встать, иначе — в воздух.
+                if (submersion > -1d)
+                {
+                    LandPlayer(body, t);
+                }
+                else
+                {
+                    PlayerMode = PlayerMode.EVA;
+                    playerAirborne = false;
+                }
+
+                return;
+            }
+
+            Vector3d up = dist > 1e-9d ? (PlayerPosition - bodyPos) / dist : new Vector3d(0d, 0d, 1d);
+            body.GetSurfaceState(latDeg, lonDeg, sea, t, out _, out Vector3d surfaceVel);
+
+            Vector3d swimVel = PlayerIntent.SwimDirection * PlayerIntent.SwimSpeed;
+            if (swimVel.SqrMagnitude < 1e-12d)
+            {
+                // Мелководье у берега (глубина не достаёт до нейтрали +
+                // просвет над дном): висеть негде — нейтраль везде, лежим
+                // на дне/висим где оставили, к поверхности не тянем.
+                // Иначе на глубине 1–2 м дно держит ноги выше нейтрали и
+                // hold-логика вечно тащит к 0.4 м — «выталкивает».
+                double rawHere = WaterQuery.RawSeabedHeightAt(body, latDeg, lonDeg);
+                double waterDepthHere = double.IsNaN(rawHere) ? double.PositiveInfinity : sea - rawHere;
+                if (waterDepthHere < SwimNeutralDepthMeters + SwimSeabedClearanceMeters + 0.2d)
+                {
+                    swimVel = new Vector3d(0d, 0d, 0d);
+                }
+                else if (submersion > SwimNeutralDepthMeters)
+                {
+                    swimVel = new Vector3d(0d, 0d, 0d);
+                }
+                else
+                {
+                    swimVel = up * Math.Max(-SwimBuoyancySpeed, Math.Min(SwimBuoyancySpeed, submersion - SwimSurfaceHoldMeters));
+                }
+            }
+
+            PlayerVelocity = surfaceVel + swimVel;
+
+            // Кривизна орбиты: линейная адвекция со скоростью со-вращения
+            // (~5 км/с) даёт радиальную ошибку v²dt²/2R — при подшаге 0.5 с
+            // это метры, и кламп ниже ложно срабатывал выходом в EVA
+            // («выталкивает с огромной силой» на низком fps). Поэтому глубину
+            // ведём явно: tangential — адвекцией, radial — intended
+            // (минус: submersion = seaRadius − dist). Ходьбе это не нужно — она перепроецируется на
+            // поверхность, у плавания проекции нет (глубина — состояние).
+            double intendedSubmersion = submersion - Vector3d.Dot(swimVel, up) * dt;
+            double tAfter = t + dt;
+            body.EvaluateWorldState(tAfter, out Vector3d bodyPosAfter, out _);
+            Vector3d advected = PlayerPosition + PlayerVelocity * dt;
+            Vector3d radialAfter = advected - bodyPosAfter;
+            double distAfter = radialAfter.Magnitude;
+            Vector3d upAfter = distAfter > 1e-9d ? radialAfter / distAfter : up;
+            PlayerPosition = bodyPosAfter + (upAfter * (seaRadius - intendedSubmersion));
+
+            // Кламеры НА КОНЕЦ подшага (тот же принцип, что ходьба: проекция
+            // в toTime, иначе орбитальная скорость тела даёт ошибку bodyVel·dt).
+            double tEnd = t + dt;
+            body.EvaluateWorldState(tEnd, out Vector3d bodyPosEnd, out _);
+            body.SurfaceLatLonAt(PlayerPosition, tEnd, out double latEnd, out double lonEnd);
+            double rawEnd = WaterQuery.RawSeabedHeightAt(body, latEnd, lonEnd);
+            Vector3d radialEnd = PlayerPosition - bodyPosEnd;
+            double distEnd = radialEnd.Magnitude;
+            Vector3d upEnd = distEnd > 1e-9d ? radialEnd / distEnd : up;
+
+            if (!double.IsNaN(rawEnd))
+            {
+                double minDist = body.Radius + rawEnd + SwimSeabedClearanceMeters;
+                if (distEnd < minDist)
+                {
+                    PlayerPosition = bodyPosEnd + (upEnd * minDist);
+                    distEnd = minDist;
+                }
+            }
+
+            double submEnd = seaRadius - distEnd;
+            if (submEnd < -0.3d)
+            {
+                if (WaterQuery.WaterDepthAt(body, latEnd, lonEnd) > 1d)
+                {
+                    PlayerMode = PlayerMode.EVA;
+                    playerAirborne = false;
+                }
+                else
+                {
+                    LandPlayer(body, tEnd);
+                }
             }
         }
 
@@ -618,6 +830,14 @@ namespace Galilego.Universe
             // SurfaceMotion (перенос в toTime + проекция в toBodyP).
             double tEnd = t + dt;
             body.SurfaceLatLonAt(PlayerPosition, tEnd, out double newLat, out double newLon);
+            // Зашёл в воду — дальше плавание (вход через всплеск, не ходьба
+            // по плоскости моря).
+            if (WaterQuery.IsWaterAt(body, newLat, newLon))
+            {
+                EnterWater(body, tEnd);
+                return;
+            }
+
             double newGround = GroundHeight(body, newLat, newLon);
             body.EvaluateWorldState(tEnd, out Vector3d bodyPos3, out _);
             Vector3d radial = PlayerPosition - bodyPos3;

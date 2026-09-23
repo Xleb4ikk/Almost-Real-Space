@@ -24,14 +24,14 @@ MonoBehaviour:
     ContinentOctaves: 3
     ContinentThreshold: -0.1
     ContinentSharpness: 0.3
-    ContinentDepth: 0.9
+    ContinentDepth: 1.2
     PlainMix: 0.85
     PlainFrequency: 1.8
     PlainOctaves: 2
     PlainThreshold: 0.05
     PlainSharpness: 0.25
     PlainElevation: 0.1
-    BeachHeightMeters: 200
+    BeachHeightMeters: 12
     BeachShelfAltitudeMeters: 8
     BeachShelfWidth: 0.08
     DetailMix: 0

@@ -21,8 +21,23 @@ namespace Galilego.Universe
         /// Высота поверхности над Radius (м) в тел-fixed координатах
         /// (lat/lon в радианах — те же, что выдаёт OrbitingBody.SurfaceLatLonAt).
         /// Вращение тела учтено самим фактом body-fixed координат.
+        /// Включает кламп морем: в океане возвращает уровень моря (плоская
+        /// вода для посадки кораблей и детекторов касания).
         /// </summary>
         double GetHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians);
+
+        /// <summary>
+        /// СЫРАЯ высота рельефа над Radius (м) БЕЗ клампа морем: в океане —
+        /// глубина дна (отрицательная относительно уровня моря). Единственный
+        /// путь узнать настоящее дно (для плавания, водной геометрии, глубины).
+        /// </summary>
+        double GetRawHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians);
+
+        /// <summary>
+        /// Уровень моря над Radius (м). NegativeInfinity (и любое ≤ −1e29) =
+        /// моря нет. Совпадает с порогом, по которому рендер красит воду.
+        /// </summary>
+        double GetSeaLevelMeters();
 
         /// <summary>
         /// Внешняя нормаль поверхности в точке relPos (относительно центра тела,
@@ -42,6 +57,16 @@ namespace Galilego.Universe
         public double GetHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians)
         {
             return 0d;
+        }
+
+        public double GetRawHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians)
+        {
+            return 0d;
+        }
+
+        public double GetSeaLevelMeters()
+        {
+            return double.NegativeInfinity;
         }
 
         public Vector3d GetOutwardNormal(OrbitingBody body, Vector3d relativePosition, double timeSeconds)
@@ -334,18 +359,29 @@ namespace Galilego.Universe
 
         public double GetHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians)
         {
-            // Форма считается ЕДИНСТВЕННОЙ реализацией — TerrainNoise (Burst):
-            // физика и рендер читают одну функцию, дублирования нет.
-            Vector3d direction = LatLonToDirection(latitudeRadians, longitudeRadians);
-            double height = TerrainNoise.SampleHeight(
-                TerrainNoiseParams.FromTerrain(this),
-                new double3(direction.X, direction.Y, direction.Z)) * AmplitudeMeters;
+            double height = GetRawHeightMeters(body, latitudeRadians, longitudeRadians);
             if (height < SeaLevelMeters)
             {
                 height = SeaLevelMeters;
             }
 
             return height;
+        }
+
+        public double GetRawHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians)
+        {
+            // Форма считается ЕДИНСТВЕННОЙ реализацией — TerrainNoise (Burst):
+            // физика и рендер читают одну функцию, дублирования нет.
+            // БЕЗ клампа морем: дно океана ниже уровня моря.
+            Vector3d direction = LatLonToDirection(latitudeRadians, longitudeRadians);
+            return TerrainNoise.SampleHeight(
+                TerrainNoiseParams.FromTerrain(this),
+                new double3(direction.X, direction.Y, direction.Z)) * AmplitudeMeters;
+        }
+
+        public double GetSeaLevelMeters()
+        {
+            return SeaLevelMeters;
         }
 
         public Vector3d GetOutwardNormal(OrbitingBody body, Vector3d relativePosition, double timeSeconds)

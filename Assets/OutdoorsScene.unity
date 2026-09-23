@@ -701,6 +701,40 @@ MonoBehaviour:
   BlobShadowColor: {r: 0.03, g: 0.035, b: 0.04, a: 0.35}
   BlobScaleFactor: 1
   BlobSunOffset: 0.6
+  WaterWaveStrength: 0.35
+  WaterWaveScale: 0.18
+  WaterAmplitudeMeters: 0.25
+  WaterSparkleStrength: 0.12
+  WaterSparkleScale: 8
+  WaterFoamCrest: 0.03
+  WaterShadingFadeFloor: 0.85
+  WaterDetailFadeFloor: 0
+  WaterRippleStrength: 0.2
+  WaterRippleScale: 4
+  WaterRippleSpeed: 2.2
+  WaterFoamSlopeGain: 0
+  WaterFoamDepthMeters: 1.5
+  WaterShoreFadeMeters: 8
+  WaterAbsorbShallow: 4.5
+  WaterAbsorbDeep: 28
+  WaterShallowAlpha: 0.5
+  WaterSurfStrength: 0
+  WaterSurfSpeed: 2
+  WaterFresnelStrength: 0.7
+  WaterSpecularIntensity: 0.65
+  WaterSpecularPower: 80
+  WaterNormalA: {fileID: 2800000, guid: 1965f88a815b03f439a4cff8fd8cb711, type: 3}
+  WaterNormalB: {fileID: 2800000, guid: 42b04fe2c4a26bf42b76e10258c76b33, type: 3}
+  WaterNormalStrength: 0.7
+  UseHdrpWaterPatch: 0
+  HdrpWaterPatchSizeMeters: 512
+  UseLitWaterFallback: 0
+  LitWaterColor: {r: 0.06, g: 0.42, b: 0.62, a: 0.82}
+  LitWaterSmoothness: 0.9
+  WaterBobAmplitude: 0
+  WaterBobLength: 28
+  WaterBobSpeed: 1.1
+  WaterBobRadius: 700
 --- !u!114 &1081663223
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -750,8 +784,10 @@ MonoBehaviour:
   Runner: {fileID: 1332194275}
   ShipTransform: {fileID: 1644257543}
   WalkSpeed: 50
-  RunSpeed: 60000
+  RunSpeed: 2000
   JetpackThrust: 1500000
+  SwimSpeed: 2.5
+  SwimFastSpeed: 5
   EnterDistanceMeters: 5
   ShipWalkRadius: 3
 --- !u!4 &1250304431
@@ -794,6 +830,7 @@ GameObject:
   - component: {fileID: 1332194276}
   - component: {fileID: 1332194275}
   - component: {fileID: 1332194274}
+  - component: {fileID: 1332194277}
   m_Layer: 0
   m_Name: Simulation
   m_TagString: Untagged
@@ -831,7 +868,7 @@ MonoBehaviour:
   Paused: 0
   SpawnAltitudeMeters: 50000
   SpawnFacingSun: 1
-  SpawnPhaseDegrees: 60
+  SpawnPhaseDegrees: 1
   SpawnHorizontalSpeedMps: 3278
   SpawnMassKg: 5000
   MainThrustNewtons: 100000
@@ -839,6 +876,9 @@ MonoBehaviour:
   DryMassKg: 1000
   SpawnBodyName: Terra
   SpawnOnSurface: 1
+  SpawnByCoordinates: 1
+  SpawnLatitudeDegrees: -28
+  SpawnLongitudeDegrees: -119.5
   SpawnEpsilonMeters: 1
   Parts: []
   DebrisLifetimeSeconds: 600
@@ -858,6 +898,28 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1332194277
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1332194273}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c79652bc0b4b7414a925ffbcb77cb445, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.UnderwaterEffect
+  Runner: {fileID: 1332194275}
+  WaterFogColor: {r: 0.02, g: 0.16, b: 0.3, a: 1}
+  ShallowVisibilityMeters: 35
+  DeepVisibilityMeters: 4
+  MaxFogDistanceMeters: 250
+  FullEffectDepthMeters: 25
+  MaxDarkeningEv: -3.5
+  SurfaceFadeMeters: 1
+  EyeHeightMeters: 2
+  SwimEyeHeightMeters: 0.5
 --- !u!1 &1644257541
 GameObject:
   m_ObjectHideFlags: 0
@@ -1157,6 +1219,7 @@ MonoBehaviour:
   SubpixelAA: 1
   LogCameraDiagnostics: 1
   EyeHeightMeters: 2
+  SwimEyeHeightMeters: 0.5
 --- !u!1 &1982425599
 GameObject:
   m_ObjectHideFlags: 0
