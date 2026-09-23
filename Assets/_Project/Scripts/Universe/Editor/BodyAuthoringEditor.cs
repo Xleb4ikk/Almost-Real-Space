@@ -19,9 +19,11 @@ namespace Galilego.Universe.EditorTools
 
         private Editor terrainEditor;
         private Editor atmosphereEditor;
+        private Editor cloudsEditor;
         private Editor decorEditor;
         private Object terrainEditorTarget;
         private Object atmosphereEditorTarget;
+        private Object cloudsEditorTarget;
         private Object decorEditorTarget;
 
         private void OnDisable()
@@ -34,6 +36,11 @@ namespace Galilego.Universe.EditorTools
             if (atmosphereEditor != null)
             {
                 DestroyImmediate(atmosphereEditor);
+            }
+
+            if (cloudsEditor != null)
+            {
+                DestroyImmediate(cloudsEditor);
             }
 
             if (decorEditor != null)
@@ -126,6 +133,18 @@ namespace Galilego.Universe.EditorTools
                 else
                 {
                     DrawNested(atmospherePreset, ref atmosphereEditor, ref atmosphereEditorTarget);
+                }
+
+                EditorGUILayout.Space(6);
+                Field("CloudsPreset");
+                CloudProfileAsset cloudsPreset = serializedObject.FindProperty("CloudsPreset").objectReferenceValue as CloudProfileAsset;
+                if (cloudsPreset == null)
+                {
+                    EditorGUILayout.HelpBox("Облака выключены. Создайте пресет Galilego/Cloud Profile.", MessageType.Info);
+                }
+                else
+                {
+                    DrawNested(cloudsPreset, ref cloudsEditor, ref cloudsEditorTarget);
                 }
 
                 EditorGUILayout.Space(6);

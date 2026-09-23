@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 652c7761734d09f4c83db03a2cf9e3d3, type: 3}
+  m_Name: EarthClouds
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.CloudProfileAsset
+  Profile:
+    BottomAltitudeMeters: 7000
+    TopAltitudeMeters: 8500
+    VisualEnabled: 1
+    DebugMode: 0
+    Coverage: 0.35
+    ShapeCellMeters: 1400
+    DetailCellMeters: 140
+    WeatherCellMeters: 24000
+    DetailErosion: 0.55
+    BottomFeather: 0.15
+    TopFeather: 0.45
+    WindVelocityMps: {x: 6, y: 0, z: 2}
+    Extinction: 0.08
+    ScatterAlbedo: 0.98
+    PhaseAnisotropy: 0.65
+    PowderStrength: 0.8
+    Intensity: 0.005
+    AmbientTint: {r: 0.7, g: 0.78, b: 0.92, a: 1}
+    StepCount: 64
+    LightSteps: 5
+    EarlyExitTransmittance: 0.01
+    ShapeTextureResolution: 64
+    DetailTextureResolution: 32
+    WeatherTextureResolution: 24
+    NoiseSeed: 1337
