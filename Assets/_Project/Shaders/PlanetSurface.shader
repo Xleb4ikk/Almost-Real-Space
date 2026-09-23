@@ -404,7 +404,6 @@ Shader "Galilego/PlanetSurface"
             {
                 float3 normal = normalize(input.normalWS);
                 float3 sunDir = normalize(_TerrainSunDir);
-                float3 viewDir = normalize(_PlanetCameraPos - input.positionWS);
                 float ndl = saturate(dot(normal, sunDir));
 
                 // Тень HDRP (PCSS/PCF) от деревьев/камней/рельефа; гасит только
@@ -462,25 +461,25 @@ Shader "Galilego/PlanetSurface"
                 // Суша.
                 float3 land = albedo * lightTerm;
 
-                // Вода: глубина из сырой высоты (0 — мелководье, 1 — глубина),
-                // процедурная рябь ломает зеркальную нормаль, блик солнца —
-                // только на освещённой стороне.
-                float waterDepth = saturate((_TerrainSeaLevel - raw) / max(1.0, _TerrainAmplitude));
-                float3 n = normal
-                    + (float3(
-                        sin(dot(input.positionWS, float3(0.31, 0.17, 0.23))),
-                        0.0,
-                        sin(dot(input.positionWS, float3(-0.19, 0.29, 0.13)))) * 0.035);
-                n = normalize(n);
-                float fresnel = pow(1.0 - saturate(dot(n, viewDir)), 5.0);
-                float3 halfVec = normalize(sunDir + viewDir);
-                float spec = pow(saturate(dot(n, halfVec)), max(1.0, _SpecularPower)) * _SpecularIntensity;
-                float3 waterBase = lerp(_WaterShallow.rgb, _WaterDeep.rgb, waterDepth);
-                float3 water = (waterBase * lightTerm)
-                    + (_RimColor.rgb * fresnel * lightTerm)
-                    + (spec * sun * shadow * _SunLightColor * _TerrainRadianceScale);
+                // Дно океана (сырая высота ниже моря): геометрия чанков
+                // раскламплена до настоящего дна, а вода — отдельным
+                // почти непрозрачным мешем чанка (Galilego/WaterSurface: волны,
+                // блик, пена). Поглощение — в МЕТРАХ глубины. Дно гаснет БЫСТРО
+                // (к ~10 м — глухая темнота под почти непрозрачной водой):
+                // детальный рельеф дна сквозь воду не читается, "странного дна"
+                // нет — только тёмная глубина. Мокрый песок у кромки темнее.
+                float depthMeters = max(0.0, _TerrainSeaLevel - raw);
+                float absorb = sqrt(saturate(depthMeters / 10.0));
+                float3 shallowBed = _ColSand.rgb * float3(0.30, 0.38, 0.36);
+                float3 seabedBase = lerp(shallowBed, _WaterDeep.rgb, smoothstep(0.0, 0.45, absorb));
+                float3 seabed = seabedBase * lightTerm * (1.0 - (0.85 * absorb));
 
-                float3 color = lerp(land, water, isWater);
+                // Мокрая кромка: полоса суши 0–3 м над морем темнеет — линия
+                // уреза воды читается, пляж не сливается с мелководьем.
+                float wetBand = (1.0 - smoothstep(0.0, 3.0, raw - _TerrainSeaLevel)) * (1.0 - isWater);
+                float3 landWet = land * (1.0 - (0.45 * wetBand));
+
+                float3 color = lerp(landWet, seabed, isWater);
                 return float4(color, 1.0);
             }
             ENDHLSL

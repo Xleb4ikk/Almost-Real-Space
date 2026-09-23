@@ -22,8 +22,8 @@ namespace Galilego.Universe
     /// (Рё depth < MaxDepth). Р“РѕС‚РѕРІС‹Рµ РјРµС€Рё РєСЌС€РёСЂСѓСЋС‚СЃСЏ РїРѕ id СѓР·Р»Р° (СЂРµР»СЊРµС„
     /// СЃС‚Р°С‚РёС‡РµРЅ РІ С‚РµР»-fixed РєР°РґСЂРµ), РІРёРґРёРјС‹Р№ РЅР°Р±РѕСЂ вЂ” РїРѕ РєСѓР»Р»РёРЅРіСѓ Р·Р°РґРЅРµР№
     /// РїРѕР»СѓСЃС„РµСЂС‹. Р®Р±РєРё РїРѕ РєСЂР°СЏРј СЃРєСЂС‹РІР°СЋС‚ С‚СЂРµС‰РёРЅС‹ РјРµР¶РґСѓ СЂР°Р·РЅС‹РјРё LOD.
-    /// РћРєРµР°РЅ вЂ” РІРЅСѓС‚СЂРё С‡Р°РЅРєРѕРІ: Р·Р°С‚РѕРїР»РµРЅРЅС‹Рµ РІРµСЂС€РёРЅС‹ РЅРµСЃСѓС‚ water-С„Р»Р°Рі (color.a),
-    /// С€РµР№РґРµСЂ СЂРёСЃСѓРµС‚ РёРј РІРѕРґСѓ (fresnel + Р±Р»РёРє). Р’С‹Р·РѕРІ вЂ” LateUpdate РїРѕСЃР»Рµ BodyView.
+    /// Океан — два слоя: геометрия чанков идёт до СЫРОГО дна (без клампа, шейдер затемняет дно глубиной),
+    /// сверху — отдельный почти непрозрачный водный меш чанка (Galilego/WaterSurface: волны, блик, пена, подводный тинт). Физика дна/глубины — WaterQuery. Вызов — LateUpdate после BodyView.
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-70)]
     public sealed class PlanetSurfaceRenderer : MonoBehaviour
@@ -103,6 +103,137 @@ namespace Galilego.Universe
         [Range(0f, 2f)]
         public float BlobSunOffset = 0.6f;
 
+        [Header("Water — красивое море")]
+        [Tooltip("Normal ripple strength (0 = dead flat water). Спокойная HOWTO-вода: 0.35 — живая зыбь в упор, без молочной заливки.")]
+        [Range(0f, 1f)]
+        public float WaterWaveStrength = 0.35f;
+
+        [Tooltip("Base wave frequency (same scale as _WaveScale in shader). Красивое море: 0.18 — длинная океанская зыбь.")]
+        public float WaterWaveScale = 0.18f;
+
+        [Tooltip("Geometric wave amplitude in Vert, meters along radial normal. Visual only - physics/landing stays on flat sea level via WaterQuery.")]
+        [Range(0f, 2f)]
+        public float WaterAmplitudeMeters = 0.25f;
+
+        [Tooltip("HF sparkle octave strength (specular only, diffuse/foam untouched).")]
+        [Range(0f, 1f)]
+        public float WaterSparkleStrength = 0.35f;
+
+        [Tooltip("Sparkle frequency multiplier relative to base wave scale.")]
+        public float WaterSparkleScale = 8f;
+
+        [Tooltip("How much stronger wave crests foam (0 = as before). Лёгкие барашки на гребнях.")]
+        [Range(0f, 1f)]
+        public float WaterFoamCrest = 0.03f;
+
+        [Tooltip("Shading fade floor: macro normal/foam never fade below this (0 = old dead-flat far water).")]
+        [Range(0f, 1f)]
+        public float WaterShadingFadeFloor = 0.85f;
+
+        [Tooltip("Detail fade floor for HF sparkle/ripple. Keep 0: HF must reach true zero far away or it aliases to grain.")]
+        [Range(0f, 1f)]
+        public float WaterDetailFadeFloor = 0f;
+
+        [Tooltip("Fine chop octave strength: goes into main normal (diffuse/fresnel/skyRef), not just specular.")]
+        [Range(0f, 1f)]
+        public float WaterRippleStrength = 0.45f;
+
+        [Tooltip("Ripple frequency multiplier relative to base wave scale.")]
+        public float WaterRippleScale = 10f;
+
+        [Tooltip("Ripple animation speed (rad/s).")]
+        public float WaterRippleSpeed = 2.2f;
+
+        [Tooltip("Widens the foam band on steep underwater slopes via screen-space depth gradient (0 = fixed band). На скользящем взгляде fwidth глубины взрывается и пена заливает весь шельф — держим 0.")]
+        public float WaterFoamSlopeGain = 0f;
+
+        [Tooltip("Ширина полосы пены у уреза (м). HOWTO: пена только у берега, не по всему мелководью.")]
+        [Min(0.01f)]
+        public float WaterFoamDepthMeters = 1.5f;
+
+        [Tooltip("Depth-buffer shore softening distance in meters (Phase 2).")]
+        public float WaterShoreFadeMeters = 8f;
+
+        [Tooltip("Глубина бирюзового мелководья (м): экспонента Beer-Lambert для перехода shallow→deep.")]
+        [Min(0.5f)]
+        public float WaterAbsorbShallow = 4.5f;
+
+        [Tooltip("Глубина глухого цвета (м): дальше этой глубины вода полностью _WaterDeep.")]
+        [Min(1f)]
+        public float WaterAbsorbDeep = 28f;
+
+        [Tooltip("Видимость воды у самой кромки: ~0.5 — дно просвечивает сквозь screen-door (прозрачное мелководье), 1 — сплошная текстура.")]
+        [Range(0f, 1f)]
+        public float WaterShallowAlpha = 0.5f;
+
+        [Tooltip("Сила бегущих линий прибоя (0 = только статичная полоса пены). Контурные линии по глубине на скользящем взгляде дают молочную зебру — держим 0.")]
+        [Range(0f, 2f)]
+        public float WaterSurfStrength = 0f;
+
+        [Tooltip("Скорость набегания прибоя (рад/с).")]
+        [Min(0f)]
+        public float WaterSurfSpeed = 2.0f;
+
+        [Tooltip("Сила зеркала неба по Френелю-Шлику (F0 воды 0.06 для красивого моря): вдаль море зеркалит небо. 0 = без отражений.")]
+        [Range(0f, 1.2f)]
+        public float WaterFresnelStrength = 0.7f;
+
+        [Tooltip("Яркость солнечного блика (HOWTO: Reflection/refraction distort + spec). 1.0 выжигал шельф в молоко.")]
+        [Range(0f, 1.5f)]
+        public float WaterSpecularIntensity = 0.65f;
+
+        [Tooltip("Фокус солнечного блика: больше = уже и острее дорожка.")]
+        [Min(8f)]
+        public float WaterSpecularPower = 600f;
+
+        [Tooltip("Текстурная рябь HOWTO-Water (две normal map в противоход). Пусто — автозагрузка Resources/Water/water_normal_{a,b} (бейкер: Tools/Galilego/Bake water normal maps). Нет текстур — чисто процедурные нормали.")]
+        public UnityEngine.Texture2D WaterNormalA;
+
+        [Tooltip("Вторая normal map (мельче первой). Пусто — автозагрузка из Resources.")]
+        public UnityEngine.Texture2D WaterNormalB;
+
+        [Tooltip("Сила текстурной ряби (0 = только процедурные нормали).")]
+        [Range(0f, 2f)]
+        public float WaterNormalStrength = 0.7f;
+
+        [Header("Water — штатный HDRP-патч (новая вода)")]
+        [Tooltip("Автосоздавать локальный патч штатной HDRP Water у игрока (Ocean/Sea/Lake, Quad) при старте. ВЫКЛ по умолчанию: две воды (патч + чанки) дают шов, двойной берег и разный цвет вблизи — одна чанковая вода везде.")]
+        public bool UseHdrpWaterPatch = false;
+
+        [Tooltip("Размер HDRP-патча (м). 512 м: просадка края от кривизны ~3 см.")]
+        [Min(64f)]
+        public float HdrpWaterPatchSizeMeters = 512f;
+
+        private GameObject hdrpWaterPatchGo;
+
+        [Header("Water — красивое видимое море")]
+        [Tooltip("Рисовать воду штатным HDRP/Unlit в художественном аквамарине (видно всегда, без пересвета от физических 80k люкс; мелководье светится сквозь прозрачность над песком). Выкл = вернуться к Galilego/WaterSurface (новый WIP-шейдер с волнами/пеной, сейчас не даёт пикселей — чинится отдельно).")]
+        public bool UseLitWaterFallback = false;
+
+        [Tooltip("Цвет красивого моря (linear): аквамарин тропического мелководья.")]
+        public Color LitWaterColor = new Color(0.06f, 0.42f, 0.62f, 0.82f);
+
+        [Tooltip("Зарезервировано под WaterSurface (пока не используется).")]
+        [Range(0f, 1f)]
+        public float LitWaterSmoothness = 0.9f;
+
+        [Header("Water — живая зыбь (без шейдеров)")]
+        [Tooltip("ДЕРЖАТЬ 0: сдвиг считается от центра чанка — соседние чанки расходятся до ±2×амплитуды и вода РВЁТСЯ на стыках (+ступень на границе WaterBobRadius). Живое дыхание даёт вершинная волна шейдера (WaterAmplitudeMeters) — она непрерывна по мировым координатам.")]
+        [Range(0f, 1f)]
+        public float WaterBobAmplitude = 0f;
+
+        [Tooltip("Длина бегущей волны зыби (м).")]
+        [Min(1f)]
+        public float WaterBobLength = 28f;
+
+        [Tooltip("Скорость бега волны (рад/с).")]
+        [Min(0f)]
+        public float WaterBobSpeed = 1.1f;
+
+        [Tooltip("Радиус живой воды вокруг камеры (м): дальше — плоский штиль (экономия).")]
+        [Min(50f)]
+        public float WaterBobRadius = 700f;
+
         private struct Node
         {
             public int Face;
@@ -116,6 +247,11 @@ namespace Galilego.Universe
             public GameObject Go;
             public Mesh Mesh;
             public MeshRenderer Renderer;
+            /// <summary>Прозрачная водная поверхность чанка (плоскость уровня
+            /// моря, тот же грид LOD). null — в чанке нет воды. Ребёнок Go:
+            /// видимость наследуется, эвикшн — вместе с родителем.</summary>
+            public GameObject WaterGo;
+            public Mesh WaterMesh;
             public bool Visible;
             public int DecorBuiltMask;
             /// <summary>Р›РѕРєР°Р»СЊРЅР°СЏ РєР°РјРµСЂР° СЃР±РѕСЂРєРё РїРѕ СЃР»РѕСЏРј (РґР°Р¶Рµ РµСЃР»Рё СЃР»РѕР№ РґР°Р»
@@ -275,6 +411,9 @@ namespace Galilego.Universe
         private TerrainNoiseParams noiseParams;
         private Transform surfaceRoot;
         private Material materialCache;
+        private Material waterMaterialCache;
+        private int waterChunkCount;
+        private bool waterDiagLogged;
         private BodyAuthoring bodyAuthoring;
         private GroundDecorProfile decorProfile;
         private Matrix4x4[] decorBatchScratch;
@@ -409,6 +548,44 @@ namespace Galilego.Universe
             // Reload Scene/Domain) РїСЂРёРІР°С‚РЅС‹Рµ РїРѕР»СЏ РєРѕРјРїРѕРЅРµРЅС‚Р° РјРѕРіСѓС‚ РїРµСЂРµР¶РёС‚СЊ
             // РїСЂРѕС€Р»С‹Р№ Р·Р°РїСѓСЃРє, Р° РёС… С‡Р°РЅРєРё СѓР¶Рµ СѓРЅРёС‡С‚РѕР¶РµРЅС‹.
             ClearChunkCache();
+            EnsureHdrpWaterPatch();
+        }
+
+        /// <summary>
+        /// Новая вода без ручных шагов: при старте создаём под surfaceRoot
+        /// объект с HDRP Water Surface + WaterPatchFollower (Ocean/Sea/Lake,
+        /// Quad у игрока). Выкл — флагом UseHdrpWaterPatch в инспекторе.
+        /// </summary>
+        private void EnsureHdrpWaterPatch()
+        {
+            if (!UseHdrpWaterPatch || body == null || !WaterQuery.HasOcean(body))
+            {
+                DestroyHdrpWaterPatch();
+                return;
+            }
+
+            if (hdrpWaterPatchGo != null)
+            {
+                return;
+            }
+
+            hdrpWaterPatchGo = new GameObject("HdrpWaterPatch (auto)");
+            hdrpWaterPatchGo.transform.SetParent(surfaceRoot, false);
+            hdrpWaterPatchGo.AddComponent<UnityEngine.Rendering.HighDefinition.WaterSurface>();
+            WaterPatchFollower follower = hdrpWaterPatchGo.AddComponent<WaterPatchFollower>();
+            follower.Runner = Runner;
+            follower.PatchSizeMeters = Mathf.Max(64f, HdrpWaterPatchSizeMeters);
+            Debug.Log("[PlanetSurface] HDRP-патч воды создан автоматически (Ocean/Sea/Lake, Quad 512 м). " +
+                "Старая чанковая вода — дальний фон. Отключить: UseHdrpWaterPatch.");
+        }
+
+        private void DestroyHdrpWaterPatch()
+        {
+            if (hdrpWaterPatchGo != null)
+            {
+                Destroy(hdrpWaterPatchGo);
+                hdrpWaterPatchGo = null;
+            }
         }
 
         private void OnDestroy()
@@ -419,6 +596,8 @@ namespace Galilego.Universe
                 Destroy(surfaceRoot.gameObject);
             }
 
+            DestroyHdrpWaterPatch();
+
             foreach (KeyValuePair<long, Chunk> kv in chunks)
             {
                 DisposeDecor(kv.Value);
@@ -427,6 +606,11 @@ namespace Galilego.Universe
             if (materialCache != null)
             {
                 Destroy(materialCache);
+            }
+
+            if (waterMaterialCache != null)
+            {
+                Destroy(waterMaterialCache);
             }
 
             if (blobMaterial != null)
@@ -452,6 +636,12 @@ namespace Galilego.Universe
             foreach (KeyValuePair<long, Chunk> kv in chunks)
             {
                 DisposeDecor(kv.Value);
+                if (kv.Value.WaterMesh != null)
+                {
+                    Destroy(kv.Value.WaterMesh);
+                    kv.Value.WaterMesh = null;
+                }
+
                 if (kv.Value.Go != null)
                 {
                     Destroy(kv.Value.Go);
@@ -460,6 +650,15 @@ namespace Galilego.Universe
 
             chunks.Clear();
             splitNodes.Clear();
+
+            // Материал воды пересоздаём каждый Play: иначе при Enter Play Mode
+            // без Reload Domain старый материал (другой шейдер/цвета) переживёт
+            // запуск и смена UseLitWaterFallback/шейдера не подействует.
+            if (waterMaterialCache != null)
+            {
+                Destroy(waterMaterialCache);
+                waterMaterialCache = null;
+            }
         }
 
         /// <summary>РЎРЅСЏС‚СЊ РІСЃРµ РЅРµР·Р°РІРµСЂС€С‘РЅРЅС‹Рµ СЃР±РѕСЂРєРё РґРµРєРѕСЂР° (teardown): РґР¶РѕР±С‹
@@ -664,6 +863,18 @@ namespace Galilego.Universe
 
         private void LateUpdate()
         {
+            // Вода должна жить всегда: время анимации волн и позиция камеры
+            // ставятся ДО всех early-out (нет Ship / чужой DominantBody / нет
+            // MainCamera). Иначе _WaterTime замирает на последнем значении —
+            // океан статичен: ни геометрии, ни ряби, ни прибоя.
+            Shader.SetGlobalFloat("_WaterTime", Time.time);
+            Camera cameraEarly = Camera.main;
+            if (cameraEarly != null)
+            {
+                Shader.SetGlobalVector("_PlanetCameraPos", cameraEarly.transform.position);
+            }
+
+            ApplyWaterParams();
             if (body == null || terrain == null || Runner.Ship == null)
             {
                 return;
@@ -685,7 +896,11 @@ namespace Galilego.Universe
             }
 
             Vector3 cameraPosition = camera.transform.position;
-            Shader.SetGlobalVector("_PlanetCameraPos", cameraPosition);
+            if (!waterDiagLogged && Time.frameCount > 30)
+            {
+                waterDiagLogged = true;
+                Debug.Log("[PlanetSurface] чанков: " + chunks.Count + ", водных мешей построено: " + waterChunkCount);
+            }
 
             // РўСЂР°РІРµСЂСЃ Р›РћР” вЂ” РєР°Р¶РґС‹Р№ РєР°РґСЂ. Р Р°РЅСЊС€Рµ Р±С‹Р» РіРёСЃС‚РµСЂРµР·РёСЃ РїРѕ СЂРµРЅРґРµСЂ-РїРѕР·РёС†РёРё
             // РєР°РјРµСЂС‹, РЅРѕ РїРѕРґ floating origin РѕРЅР° ~0 Рё РїСЂРё РґРІРёР¶РµРЅРёРё РёРіСЂРѕРєР° РїРѕ С‚РµР»Сѓ
@@ -710,6 +925,7 @@ namespace Galilego.Universe
             lastSurfaceLocalPosition = surfaceLocal;
             hasSurfaceLocalPosition = true;
             UpdateTerrainTextureOrigin();
+            UpdateWaterAnchor();
             ApplyTerrainGlobals();
 
             {
@@ -811,6 +1027,8 @@ namespace Galilego.Universe
                 }
             }
 
+            UpdateWaterBob(cameraPosition);
+
             // Р”РµРєРѕСЂ РїРѕСЃР»Рµ СЂР°СЃСЃС‚Р°РЅРѕРІРєРё С‚СЂР°РЅСЃС„РѕСЂРјРѕРІ С‡Р°РЅРєРѕРІ: РјР°С‚СЂРёС†С‹ РёРЅСЃС‚Р°РЅСЃРѕРІ
             // Р±РµСЂСѓС‚ РјРёСЂРѕРІРѕР№ С‚СЂР°РЅСЃС„РѕСЂРј С‡Р°РЅРєР° С‚РµРєСѓС‰РµРіРѕ РєР°РґСЂР°.
             Shader.SetGlobalFloat("_GroundDecorTime", Time.time);
@@ -878,6 +1096,37 @@ namespace Galilego.Universe
         private static double Wrap01(double value)
         {
             return value - System.Math.Floor(value);
+        }
+
+        /// <summary>
+        /// Якорь узора воды в тело-fixed осях. Проблема та же, что у текстур
+        /// террейна (см. UpdateTerrainTextureOrigin): шейдер видит только
+        /// render-пространство, а его ноль — FloatingOrigin.Anchor = позиция
+        /// игрока, т.е. оно едет вместе с игроком. Узор воды, посчитанный от
+        /// positionWS напрямую, «прибит» к игроку: стоит/плывёт вместе с ним.
+        /// Шейдер считает дельту от камеры (малые точные числа) и поворачивает
+        /// её в тело-fixed оси матрицей _WaterWorldToBody; абсолютную фазу
+        /// (тело-fixed позиция игрока в double) возвращает глобал
+        /// _WaterBodyAnchor — узор «прибит» к морю, а не к игроку.
+        /// Квантование float на радиусе ~1.1e6 м — те же ~6 см, что у террейна.
+        /// </summary>
+        private void UpdateWaterAnchor()
+        {
+            if (body == null || Runner == null)
+            {
+                return;
+            }
+
+            Vector3d relative = Runner.PlayerPosition - currentBodyPosition;
+            Vector3d bodyAstro = currentBodyOrientation.Conjugated.Rotate(relative);
+
+            // Тот же мост astro→sim, что в UpdateTerrainTextureOrigin:
+            // sim = (x, z, −y).
+            Vector3 anchorSim = new Vector3(
+                (float)bodyAstro.X, (float)bodyAstro.Z, (float)(-bodyAstro.Y));
+
+            Shader.SetGlobalMatrix("_WaterWorldToBody", Matrix4x4.Rotate(Quaternion.Inverse(currentBodyRotation)));
+            Shader.SetGlobalVector("_WaterBodyAnchor", anchorSim);
         }
 
         /// <summary>
@@ -1101,9 +1350,13 @@ namespace Galilego.Universe
                 {
                     int vi = (gi * grid) + gj;
                     double3 d = dirs[vi];
+                    // Дно океана НЕ клампим к уровню моря: геометрия идёт до
+                    // сырого дна (физика дна — WaterQuery, визуал — затемнение
+                    // в шейдере), сверху лежит отдельный прозрачный водный меш
+                    // чанка (BuildWaterMesh). Корабли по-прежнему садятся на
+                    // клампнутую высоту (GetHeightMeters) — как на воду.
                     double rawHeight = jobHeights[vi] * amplitude;
-                    double height = rawHeight < seaLevel ? seaLevel : rawHeight;
-                    Vector3d absAstro = new Vector3d(d.x, d.y, d.z) * (body.Radius + height);
+                    Vector3d absAstro = new Vector3d(d.x, d.y, d.z) * (body.Radius + rawHeight);
                     positions[vi] = AstroFrame.ToSimulation(absAstro - centerAstro);
                 }
             }
@@ -1117,6 +1370,13 @@ namespace Galilego.Universe
             // detail — the same pattern the decor placement reads (parity paint/placement).
             var surfaceDirs = new Vector3[totalVerts];
             var surfaceExtra = new Vector4[totalVerts];
+            // Водная плоскость чанка: те же core-вершины, спроецированные на
+            // уровень моря (физика воды — плоская, волны только в нормалях
+            // шейдера). Глубина per-vertex — для цвета/пены/альфы.
+            var waterVerts = new Vector3[coreCount];
+            var waterNormals = new Vector3[coreCount];
+            var waterExtra = new Vector4[coreCount];
+            bool hasWater = seaLevel > -1e29d;
 
             for (int row = 0; row < n; row++)
             {
@@ -1144,6 +1404,30 @@ namespace Galilego.Universe
                     surfaceExtra[index] = new Vector4(
                         (float)rawHeight, Vector3.Dot(normals[index], radial),
                         jobMasks[halo], jobDetails[halo]);
+
+                    if (hasWater)
+                    {
+                        // Водный квад — целиком на чанк (кромка берега режется
+                        // самим рельефом); над сушей глубина 0 — пены там нет.
+                        Vector3d absWater = new Vector3d(d.x, d.y, d.z) * (body.Radius + seaLevel);
+                        waterVerts[index] = AstroFrame.ToSimulation(absWater - centerAstro);
+                        waterNormals[index] = (waterVerts[index] + centerUnity).normalized;
+                        waterExtra[index] = new Vector4((float)System.Math.Max(0d, seaLevel - rawHeight), 0f, 0f, 0f);
+                    }
+                }
+            }
+
+            // Чанк целиком над морем — воду не строим.
+            if (hasWater)
+            {
+                hasWater = false;
+                for (int k = 0; k < coreCount; k++)
+                {
+                    if (waterExtra[k].x > 0f)
+                    {
+                        hasWater = true;
+                        break;
+                    }
                 }
             }
 
@@ -1281,8 +1565,329 @@ namespace Galilego.Universe
             paddedBounds.Expand(chunk.BoundsRadius);
             chunk.Mesh.bounds = paddedBounds;
 
+            if (hasWater)
+            {
+                BuildWaterMesh(chunk, waterVerts, waterNormals, waterExtra, n, triangles, skirtDepth, centerUnity);
+            }
+
             chunk.Visible = true;
             chunks[id] = chunk;
+        }
+
+        /// <summary>
+        /// Водная поверхность чанка: core-грид на уровне моря + юбки вниз
+        /// (как у рельефа — закрывают трещины между соседними LOD на стыках,
+        /// иначе у берега видна "лесенка" просветов до дна/неба),
+        /// per-vertex глубина в UV2.x для цвета/пены/альфы шейдера. Ребёнок
+        /// чанка — видимость и эвикшн наследуются от родителя. Тени не пишем
+        /// и не принимаем: вода светится своим шейдером (солнце + небо).
+        /// </summary>
+        private void BuildWaterMesh(Chunk chunk, Vector3[] coreVerts, Vector3[] coreNormals, Vector4[] coreExtra, int n, int[] coreTriangles, float skirtDepth, Vector3 centerUnity)
+        {
+            int res = n - 1;
+            int perEdge = n;
+            int coreCount = n * n;
+            int totalVerts = coreCount + (4 * perEdge);
+            int coreTriCount = res * res * 6;
+            int totalTris = coreTriCount + (4 * res * 6);
+
+            var waterVerts = new Vector3[totalVerts];
+            var waterNormals = new Vector3[totalVerts];
+            var waterExtra = new Vector4[totalVerts];
+            System.Array.Copy(coreVerts, waterVerts, coreCount);
+            System.Array.Copy(coreNormals, waterNormals, coreCount);
+            System.Array.Copy(coreExtra, waterExtra, coreCount);
+
+            // Юбки: дублируем рёбра, топим к центру планеты — как у рельефа.
+            // Глубина/нормаль — как у кромки: шейдер дорисует кромку попиксельно
+            // по depth buffer, лесенки от грубой сетки не будет.
+            for (int edge = 0; edge < 4; edge++)
+            {
+                int baseIndex = coreCount + (edge * perEdge);
+                for (int k = 0; k < perEdge; k++)
+                {
+                    int coreIndex;
+                    switch (edge)
+                    {
+                        case 0: coreIndex = k; break;                        // row 0
+                        case 1: coreIndex = (res * n) + k; break;            // row res
+                        case 2: coreIndex = k * n; break;                    // col 0
+                        default: coreIndex = (k * n) + res; break;           // col res
+                    }
+
+                    Vector3 p = waterVerts[coreIndex];
+                    Vector3 inward = (p + centerUnity).normalized;
+                    waterVerts[baseIndex + k] = p - (inward * skirtDepth);
+                    waterNormals[baseIndex + k] = waterNormals[coreIndex];
+                    waterExtra[baseIndex + k] = waterExtra[coreIndex];
+                }
+            }
+
+            var waterTris = new int[totalTris];
+            System.Array.Copy(coreTriangles, waterTris, coreTriCount);
+            int t = coreTriCount;
+            for (int edge = 0; edge < 4; edge++)
+            {
+                int baseIndex = coreCount + (edge * perEdge);
+                for (int k = 0; k < res; k++)
+                {
+                    int a;
+                    int b;
+                    switch (edge)
+                    {
+                        case 0: a = k; b = k + 1; break;
+                        case 1: a = (res * n) + k; b = a + 1; break;
+                        case 2: a = k * n; b = a + n; break;
+                        default: a = (k * n) + res; b = a + n; break;
+                    }
+
+                    int c = baseIndex + k;
+                    int d = baseIndex + k + 1;
+                    waterTris[t++] = a;
+                    waterTris[t++] = c;
+                    waterTris[t++] = b;
+                    waterTris[t++] = b;
+                    waterTris[t++] = c;
+                    waterTris[t++] = d;
+                }
+            }
+
+            chunk.WaterMesh = new Mesh();
+            chunk.WaterMesh.MarkDynamic();
+            chunk.WaterMesh.vertices = waterVerts;
+            chunk.WaterMesh.normals = waterNormals;
+            chunk.WaterMesh.SetUVs(2, new System.Collections.Generic.List<Vector4>(waterExtra));
+            chunk.WaterMesh.triangles = waterTris;
+            chunk.WaterMesh.RecalculateBounds();
+            Bounds padded = chunk.WaterMesh.bounds;
+            padded.Expand(chunk.BoundsRadius);
+            chunk.WaterMesh.bounds = padded;
+
+            chunk.WaterGo = new GameObject("Water");
+            chunk.WaterGo.transform.SetParent(chunk.Go.transform, false);
+            chunk.WaterGo.transform.localPosition = Vector3.zero;
+            chunk.WaterGo.transform.localRotation = Quaternion.identity;
+            chunk.WaterGo.transform.localScale = Vector3.one;
+            MeshFilter filter = chunk.WaterGo.AddComponent<MeshFilter>();
+            filter.sharedMesh = chunk.WaterMesh;
+            MeshRenderer renderer = chunk.WaterGo.AddComponent<MeshRenderer>();
+            Material waterMaterial = GetWaterMaterial();
+            if (waterMaterial == null)
+            {
+                Destroy(chunk.WaterGo);
+                Destroy(chunk.WaterMesh);
+                chunk.WaterGo = null;
+                chunk.WaterMesh = null;
+                return;
+            }
+
+            renderer.sharedMaterial = waterMaterial;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            renderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
+            waterChunkCount++;
+        }
+
+        private Material GetWaterMaterial()
+        {
+            if (waterMaterialCache == null)
+            {
+                // Красивое видимое море: штатный HDRP/Unlit в аквамарине
+                // рисуется всегда (доказано тестом геометрии), не пересвечивается
+                // от физических 80k люкс (как Lit), прозрачность даёт градиент
+                // глубины над дном. Кастомный WaterSurface с волнами/пеной —
+                // новый WIP, пока не даёт пикселей (чинится отдельно).
+                if (UseLitWaterFallback)
+                {
+                    Shader unlit = Shader.Find("HDRP/Unlit");
+                    if (unlit == null)
+                    {
+                        Debug.LogError("[PlanetSurface] шейдер HDRP/Unlit не найден — водные меши нечем рисовать.");
+                        return null;
+                    }
+
+                    waterMaterialCache = new Material(unlit);
+                    waterMaterialCache.SetFloat("_SurfaceType", 1f);
+                    ApplyWaterParams();
+                    return waterMaterialCache;
+                }
+
+                Shader shader = Shader.Find("Galilego/WaterSurface");
+                if (shader == null)
+                {
+                    Debug.LogError("[PlanetSurface] шейдер Galilego/WaterSurface не найден — водные меши нечем рисовать.");
+                    return null;
+                }
+
+                waterMaterialCache = new Material(shader);
+                ApplyWaterParams();
+            }
+
+            return waterMaterialCache;
+        }
+
+        /// <summary>
+        /// Push water tuning fields into the shared water material.
+        /// Called on creation + every LateUpdate so Inspector edits apply live
+        /// to the already cached material (no chunk rebuild needed).
+        /// </summary>
+        private void ApplyWaterParams()
+        {
+            if (waterMaterialCache == null)
+            {
+                return;
+            }
+
+            // Единый радиальный центр воды (борется со ступенью яркости на
+            // стыках LOD). bodyRenderPosition — готовое поле, свежий когда
+            // чанки видимы; отдельный EvaluateWorldState давал нули при
+            // чужой доминанте и гасил воду в черноту. До гейта доминантности.
+            Shader.SetGlobalVector("_PlanetWaterCenter", bodyRenderPosition);
+
+            // Красивое море: аквамарин во все слоты цвета Unlit
+            // (color + _UnlitColor + _BaseColor), прозрачность для градиента
+            // глубины. Волны WaterSurface неприменимы — штиль.
+            if (UseLitWaterFallback)
+            {
+                waterMaterialCache.color = LitWaterColor;
+                waterMaterialCache.SetColor("_UnlitColor", LitWaterColor);
+                waterMaterialCache.SetColor("_BaseColor", LitWaterColor);
+                return;
+            }
+
+            waterMaterialCache.SetFloat("_WaveStrength", WaterWaveStrength);
+            waterMaterialCache.SetFloat("_WaveScale", WaterWaveScale);
+            waterMaterialCache.SetFloat("_WaveAmplitude", WaterAmplitudeMeters);
+            waterMaterialCache.SetFloat("_SparkleStrength", WaterSparkleStrength);
+            waterMaterialCache.SetFloat("_SparkleScale", WaterSparkleScale);
+            waterMaterialCache.SetFloat("_FoamCrestStrength", WaterFoamCrest);
+            waterMaterialCache.SetFloat("_ShadingFadeFloor", WaterShadingFadeFloor);
+            waterMaterialCache.SetFloat("_DetailFadeFloor", WaterDetailFadeFloor);
+            waterMaterialCache.SetFloat("_RippleStrength", WaterRippleStrength);
+            waterMaterialCache.SetFloat("_RippleScale", WaterRippleScale);
+            waterMaterialCache.SetFloat("_RippleSpeed", WaterRippleSpeed);
+            waterMaterialCache.SetFloat("_FoamSlopeGain", WaterFoamSlopeGain);
+            waterMaterialCache.SetFloat("_FoamDepthMeters", Mathf.Max(0.5f, WaterFoamDepthMeters));
+            waterMaterialCache.SetFloat("_ShoreFadeMeters", WaterShoreFadeMeters);
+            waterMaterialCache.SetFloat("_AbsorbShallow", WaterAbsorbShallow);
+            waterMaterialCache.SetFloat("_AbsorbDeep", WaterAbsorbDeep);
+            waterMaterialCache.SetFloat("_ShallowAlpha", WaterShallowAlpha);
+            waterMaterialCache.SetFloat("_SurfStrength", WaterSurfStrength);
+            waterMaterialCache.SetFloat("_SurfSpeed", WaterSurfSpeed);
+            waterMaterialCache.SetFloat("_FresnelStrength", WaterFresnelStrength);
+            waterMaterialCache.SetFloat("_SpecularIntensity", WaterSpecularIntensity);
+            waterMaterialCache.SetFloat("_SpecularPower", Mathf.Max(8f, WaterSpecularPower));
+            ApplyWaterNormalMaps();
+            // Чанки держат sharedMaterial, взятый в момент постройки. Если кэш
+            // пересоздался (ClearChunkCache / смена шейдера), старые чанки смотрят
+            // на мёртвый материал и live-тюнинг их не касается — отсюда «зебра»,
+            // которая не реагирует на инспектор. Лечим переназначением.
+            foreach (KeyValuePair<long, Chunk> kv in chunks)
+            {
+                Chunk chunk = kv.Value;
+                if (chunk.WaterGo == null)
+                {
+                    continue;
+                }
+
+                MeshRenderer renderer = chunk.WaterGo.GetComponent<MeshRenderer>();
+                if (renderer != null && !ReferenceEquals(renderer.sharedMaterial, waterMaterialCache))
+                {
+                    renderer.sharedMaterial = waterMaterialCache;
+                }
+            }
+        }
+
+        private static UnityEngine.Texture2D cachedWaterNormalA;
+        private static UnityEngine.Texture2D cachedWaterNormalB;
+        private static bool waterNormalsLoadAttempted;
+
+        /// <summary>
+        /// Текстурная рябь HOWTO-Water: ручное назначение в инспекторе — в
+        /// приоритете, иначе однократно грузим запечённые из Resources/Water/.
+        /// Нет обеих текстур — шейдер остаётся на процедурных нормалях.
+        /// </summary>
+        private void ApplyWaterNormalMaps()
+        {
+            // Бейкер могли запустить уже после первой попытки (кэш null) —
+            // повторяем загрузку, пока обеих текстур нет.
+            if (!waterNormalsLoadAttempted || cachedWaterNormalA == null || cachedWaterNormalB == null)
+            {
+                waterNormalsLoadAttempted = true;
+                if (cachedWaterNormalA == null)
+                {
+                    cachedWaterNormalA = UnityEngine.Resources.Load<UnityEngine.Texture2D>("Water/water_normal_a");
+                }
+
+                if (cachedWaterNormalB == null)
+                {
+                    cachedWaterNormalB = UnityEngine.Resources.Load<UnityEngine.Texture2D>("Water/water_normal_b");
+                }
+            }
+
+            UnityEngine.Texture2D normalA = WaterNormalA != null ? WaterNormalA : cachedWaterNormalA;
+            UnityEngine.Texture2D normalB = WaterNormalB != null ? WaterNormalB : cachedWaterNormalB;
+            if (normalA != null)
+            {
+                waterMaterialCache.SetTexture("_NormalMap0", normalA);
+            }
+
+            if (normalB != null)
+            {
+                waterMaterialCache.SetTexture("_NormalMap1", normalB);
+            }
+
+            bool useMaps = normalA != null && normalB != null && WaterNormalStrength > 0f;
+            waterMaterialCache.SetFloat("_UseNormalMap", useMaps ? 1f : 0f);
+            waterMaterialCache.SetFloat("_NormalStrength", WaterNormalStrength);
+        }
+
+        /// <summary>
+        /// Living sea without shaders: near water meshes ride a slow travelling
+        /// swell (rigid per-chunk offset along the local radial, sampled from a
+        /// shared world-space wave function so neighbours stay continuous).
+        /// Visible as waterline lapping on the beach + gentle breathing offshore.
+        /// Far water stays flat (perf). Runs every LateUpdate after chunk transforms.
+        /// </summary>
+        private void UpdateWaterBob(Vector3 cameraPosition)
+        {
+            if (WaterBobAmplitude <= 0f || WaterBobLength <= 0f)
+            {
+                return;
+            }
+
+            float t = Time.time * WaterBobSpeed;
+            float k = (Mathf.PI * 2f) / WaterBobLength;
+            float radiusSqr = WaterBobRadius * WaterBobRadius;
+            // Fixed diagonal swell direction (world XZ): cheap, stable, no params.
+            const float dirX = 0.8f;
+            const float dirZ = 0.6f;
+            foreach (KeyValuePair<long, Chunk> kv in chunks)
+            {
+                Chunk chunk = kv.Value;
+                if (!chunk.Visible || chunk.WaterGo == null)
+                {
+                    continue;
+                }
+
+                Vector3 center = chunk.Go.transform.position;
+                Vector3 toChunk = center - cameraPosition;
+                if (toChunk.sqrMagnitude > radiusSqr)
+                {
+                    continue;
+                }
+
+                float phase = (center.x * dirX + center.z * dirZ) * k - t;
+                Vector3 radial = center - bodyRenderPosition;
+                float radialLen = radial.magnitude;
+                if (radialLen < 1e-3f)
+                {
+                    continue;
+                }
+
+                float bob = Mathf.Sin(phase) * WaterBobAmplitude;
+                chunk.WaterGo.transform.position = center + (radial / radialLen) * bob;
+            }
         }
 
         /// <summary>
@@ -3779,6 +4384,12 @@ namespace Galilego.Universe
                 long id = toEvict[i];
                 Chunk chunk = chunks[id];
                 DisposeDecor(chunk);
+                if (chunk.WaterMesh != null)
+                {
+                    Destroy(chunk.WaterMesh);
+                    chunk.WaterMesh = null;
+                }
+
                 if (chunk.Go != null)
                 {
                     Destroy(chunk.Go);

@@ -109,6 +109,12 @@ namespace Galilego.Events
 
             double t = occurrence.TimeSeconds;
             body.SurfaceLatLonAt(ship.Position, t, out double latDeg, out double lonDeg);
+            // Хук мягкого приводнения (этап «корабль садится на воду»):
+            // посадка ПОКА идёт по клампнутой высоте (плоскость моря) без
+            // изменения поведения. Будущее правило: splash.IsWater и глубина
+            // больше посадочной осадки и |v_n| в допуске приводнения →
+            // посадка вместо разрушения (вода смягчает удар).
+            WaterQuery.SplashdownInfo splash = WaterQuery.GetSplashdownInfo(body, latDeg, lonDeg);
             double groundAltitude = GroundAltitude(body, latDeg, lonDeg);
             body.GetSurfaceState(latDeg, lonDeg, groundAltitude, t, out Vector3d surfacePosition, out Vector3d surfaceVelocity);
             body.EvaluateWorldState(t, out Vector3d bodyPosition, out _);

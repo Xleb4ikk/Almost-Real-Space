@@ -278,6 +278,16 @@ internal static partial class P1bTests
             return 0d;
         }
 
+        public double GetRawHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians)
+        {
+            return 0d;
+        }
+
+        public double GetSeaLevelMeters()
+        {
+            return double.NegativeInfinity;
+        }
+
         public Vector3d GetOutwardNormal(OrbitingBody body, Vector3d relativePosition, double timeSeconds)
         {
             return normal;
@@ -524,6 +534,8 @@ internal static partial class P1bTests
     private sealed class SphereOnlyTerrain : ITerrainModel
     {
         public double GetHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians) => 0d;
+        public double GetRawHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians) => 0d;
+        public double GetSeaLevelMeters() => double.NegativeInfinity;
         public Vector3d GetOutwardNormal(OrbitingBody body, Vector3d relativePosition, double timeSeconds) => relativePosition.Normalized;
     }
 
