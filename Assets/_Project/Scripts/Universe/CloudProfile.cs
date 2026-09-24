@@ -34,13 +34,40 @@ namespace Galilego.Universe
         [Tooltip("Рисовать облака. Выключено — компонент неактивен.")]
         public bool VisualEnabled;
 
-        [Tooltip("Debug-режим вместо финального кадра.")]
-        public CloudDebugMode DebugMode = CloudDebugMode.Final;
+         [Tooltip("Debug-режим вместо финального кадра.")]
+         public CloudDebugMode DebugMode = CloudDebugMode.Final;
 
-        [Header("Форма/покрытие")]
+         public CloudNoiseStyle NoiseStyle = CloudNoiseStyle.EarthClusters;
+
+         [Header("Форма/покрытие")]
         [Tooltip("Целевая доля неба под облаками (0 = чисто, 1 = сплошная облачность). Множитель поверх weather-шума.")]
         [Range(0f, 1f)]
         public float Coverage = 0.45f;
+
+        [Header("Масштаб и распределение")]
+        [Min(50f)]
+        public float SmallCloudCellMeters = 3500f;
+
+        [Min(100f)]
+        public float MediumCloudCellMeters = 18000f;
+
+        [Min(500f)]
+        public float LargeCloudCellMeters = 100000f;
+
+        [Range(0f, 1f)]
+        public float SizeVariation = 0.8f;
+
+        [Min(50000f)]
+        public float ClearZoneCellMeters = 250000f;
+
+        [Range(0f, 0.1f)]
+        public float ClearZoneFraction = 0.01f;
+
+        [Range(0.01f, 0.5f)]
+        public float ClearZoneSoftness = 0.08f;
+
+        [Min(0f)]
+        public float ShapeWarpMeters = 1800f;
 
         [Tooltip("Размер одного облака (диаметр типичной кучевой 'шапки'), метры. Задаёт частоту shape-текстуры: 1/ShapeCellMeters.")]
         [Min(50f)]
@@ -52,7 +79,7 @@ namespace Galilego.Universe
 
         [Tooltip("Размер погодных фронтов (крупные зоны облачности/просветов), метры. Обычно в 10–30 раз крупнее ShapeCellMeters.")]
         [Min(500f)]
-        public float WeatherCellMeters = 24000f;
+        public float WeatherCellMeters = 200000f;
 
         [Tooltip("Сила эрозии краёв детальным шумом (0 = гладкие блобы, 1 = сильно рваные/дымные края).")]
         [Range(0f, 1f)]
@@ -70,6 +97,10 @@ namespace Galilego.Universe
         public Vector3 WindVelocityMps = new Vector3(6f, 0f, 2f);
 
         [Header("Оптика")]
+        [Tooltip("Сила облачной тени на поверхности и декоре.")]
+        [Range(0f, 1f)]
+        public float CloudShadowStrength = 0.65f;
+
         [Tooltip("Базовый коэффициент экстинкции, 1/м (плотный кучевой ~0.05–0.15). Больше — плотнее и темнее в глубине.")]
         [Min(0f)]
         public float Extinction = 0.08f;
@@ -85,6 +116,10 @@ namespace Galilego.Universe
         [Tooltip("Сила эффекта пудры (тёмные края, обращённые к солнцу, в глубине облака).")]
         [Range(0f, 2f)]
         public float PowderStrength = 0.8f;
+
+        [Tooltip("Мягкое многократное рассеяние, заполняющее тени внутри облака.")]
+        [Range(0f, 1f)]
+        public float MultipleScattering = 0.65f;
 
         [Tooltip("Общий множитель яркости.")]
         [Min(0f)]
@@ -134,5 +169,14 @@ namespace Galilego.Universe
         Transmittance = 3,
         StepCount = 4,
         Lod = 5,
+        ClearMask = 6,
+        CloudSize = 7,
+        WeatherLod = 8,
+    }
+
+    public enum CloudNoiseStyle
+    {
+        LegacyBands = 0,
+        EarthClusters = 1,
     }
 }

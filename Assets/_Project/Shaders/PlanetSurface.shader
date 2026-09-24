@@ -409,6 +409,7 @@ Shader "Galilego/PlanetSurface"
                 // Тень HDRP (PCSS/PCF) от деревьев/камней/рельефа; гасит только
                 // солнечный член — ambient остаётся, теневые зоны не чёрные.
                 float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, normal, sunDir);
+                float cloudShadow = SampleCloudShadow(input.positionWS);
 
                 // Единый световой член, пофрагментный: ночная засветка (звёзды) +
                 // небесная засветка (средняя яркость неба: день голубая, закат
@@ -422,7 +423,7 @@ Shader "Galilego/PlanetSurface"
                 float sun = _TerrainSun;
                 float3 lightTerm = float3(_NightAmbient, _NightAmbient, _NightAmbient)
                     + (GalilegoSkyAmbient(normal) * _TerrainRadianceScale)
-                    + (_SunLightColor * (sun * ndl * shadow) * _TerrainRadianceScale);
+                     + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale);
 
                 // --- Per-pixel альбедо -----------------------------------------
                 float3 dir = normalize(input.dirOS);
@@ -480,7 +481,7 @@ Shader "Galilego/PlanetSurface"
                 float3 landWet = land * (1.0 - (0.45 * wetBand));
 
                 float3 color = lerp(landWet, seabed, isWater);
-                return float4(color, 1.0);
+                 return float4(color, 1.0);
             }
             ENDHLSL
         }

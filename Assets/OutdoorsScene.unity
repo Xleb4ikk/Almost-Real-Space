@@ -803,7 +803,7 @@ MonoBehaviour:
   ShipTransform: {fileID: 1644257543}
   WalkSpeed: 50
   RunSpeed: 2000
-  JetpackThrust: 1500000
+  JetpackThrust: 4000
   SwimSpeed: 2.5
   SwimFastSpeed: 5
   EnterDistanceMeters: 5

@@ -73,8 +73,9 @@ Shader "Galilego/WaterSurface"
             #pragma fragment Frag
             #pragma target 4.5
 
-            #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
-            #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
+             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
+             #include "GalilegoCloudField.hlsl"
             // DEBUG-MINIMAL3: локальные стабы вместо GalilegoLighting.hlsl.
             float3 _TerrainSunDir;
             float _NightAmbient;
@@ -280,8 +281,9 @@ Shader "Galilego/WaterSurface"
                 float3 color = float3(0.0, 0.0, 0.0);
                 float alpha = 1.0;
                 float cameraDist = length(_PlanetCameraPos - input.positionWS);
-                float sun = _TerrainSun;
-                float3 sunDir = normalize(_TerrainSunDir);
+                 float sun = _TerrainSun;
+                 float3 sunDir = normalize(_TerrainSunDir);
+                 float cloudShadow = SampleCloudShadow(input.positionWS);
                 // Та же единая радиаль, что в вершинном шейдере.
                 float3 centerDeltaF = input.positionWS - _PlanetWaterCenter;
                 float3 baseNFace = dot(centerDeltaF, centerDeltaF) > 1.0
@@ -364,10 +366,10 @@ Shader "Galilego/WaterSurface"
                     float3 deepRefl = (_UnderwaterColor.rgb * waterRad * dayDimUw) * (0.6 + 0.4 * (1.0 - cosUp));
                     // Каустики слабо просвечивают и в зеркальной зоне (рассеянный
                     // свет толщи), заметнее — в окне (добавлено ниже к sunThrough).
-                    deepRefl += _SunLightColor * waterRad * dayDimUw * caustic * 0.25;
+                     deepRefl += _SunLightColor * waterRad * dayDimUw * caustic * 0.25 * cloudShadow;
 
-                    float3 skyThrough = (GalilegoSkyAmbient(toSurf) * waterRad * 1.2
-                        + (_SunLightColor * waterRad * 0.12)) * dayDimUw;
+                     float3 skyThrough = (GalilegoSkyAmbient(toSurf) * waterRad * 1.2
+                         + (_SunLightColor * waterRad * 0.12 * cloudShadow)) * dayDimUw;
                     // Солнце сквозь воду: диск + ближнее гало + широкое рассеяние.
                     // Смотрим на солнце через потолок — ярко, в сторону — спад.
                     float sunDotUw = saturate(dot(toSurf, sunDir));
@@ -375,17 +377,17 @@ Shader "Galilego/WaterSurface"
                         + pow(sunDotUw, 24.0) * 0.9
                         + pow(sunDotUw, 6.0) * 0.35;
                     float glitterUw = 0.75 + (0.5 * h01Uw);
-                    float3 sunThrough = _SunLightColor * (sun * sunDiskUw * glitterUw) * waterRad;
+                     float3 sunThrough = _SunLightColor * (sun * sunDiskUw * glitterUw) * waterRad * cloudShadow;
                     // Каустики в окне — самое яркое и читаемое место: солнечная
                     // рябь преломляется в пятна света, как настоящее дно бассейна.
-                    sunThrough += _SunLightColor * waterRad * sun * caustic * 0.8;
+                     sunThrough += _SunLightColor * waterRad * sun * caustic * 0.8 * cloudShadow;
                     // Поглощение до поверхности: видимость толщи 20-30 м —
                     // в упор потолок яркий и читаемый, вдали тонет в цвет воды.
                     float absorbUw = exp(-camDistUw / 28.0);
                     float3 transmit = (skyThrough + sunThrough) * (0.35 + 0.65 * absorbUw)
                         + (_UnderwaterColor.rgb * waterRad * dayDimUw * 0.25 * (1.0 - absorbUw));
                     color = lerp(deepRefl, transmit, snell);
-                    color += _SunLightColor * waterRad * dayDimUw * rim * 0.5;
+                     color += _SunLightColor * waterRad * dayDimUw * rim * 0.5 * cloudShadow;
                     // Живая рябь яркости по волне (гребень светлее впадины).
                     // Диапазон расширен (было ±10%) — иначе потолок между
                     // блёстками всё ещё читался как почти ровная заливка.
@@ -491,14 +493,14 @@ Shader "Galilego/WaterSurface"
                 // горизонта -> ndl=0, небо 0.1). Вода светится толщей:
                 // wrap-диффуз + усиленный полусферический скайлайт, иначе
                 // взгляд строго вниз — плоская чёрная заливка.
-                float ndl = saturate(dot(n, sunDir));
-                float ndlWrap = saturate((dot(n, sunDir) + 0.6) / 1.6);
+                 float ndl = saturate(dot(n, sunDir));
+                 float ndlWrap = saturate((dot(n, sunDir) + 0.6) / 1.6);
                 // HOWTO-вода светится отражением, а не ambient-пересветом:
                 // было *3.0 — мелководье выжигалось в молочно-белое.
                 float3 waterSky = GalilegoSkyAmbient(n) * waterRad * 1.15;
                 float3 lightTerm = float3(_NightAmbient, _NightAmbient, _NightAmbient)
                     + waterSky
-                    + (_SunLightColor * (sun * (ndl * 0.35 + ndlWrap * 0.65)) * waterRad);
+                     + (_SunLightColor * (sun * (ndl * 0.35 + ndlWrap * 0.65) * cloudShadow) * waterRad);
 
                 float cosT = saturate(dot(n, viewDir));
                 float fresnelPow = pow(1.0 - cosT, 5.0);
@@ -525,7 +527,7 @@ Shader "Galilego/WaterSurface"
                 spec *= (0.2 + (0.7 * glitter * saturate(sparkleFade + 0.25)));
 
                 color = (waterBase * lightTerm)
-                    + (spec * sun * _SunLightColor * waterRad);
+                     + (spec * sun * _SunLightColor * waterRad * cloudShadow);
 
                 // Подсветка толщи волны (SSS-приближение как в Crest/NorthStar):
                 // смотря сквозь гребень на солнце, волна светится бирюзой
@@ -536,20 +538,20 @@ Shader "Galilego/WaterSurface"
                 float sssForward = pow(sunView, 3.0) * pow(crest01, 2.0);
                 float sssThick = (1.0 - crest01) * 0.35;
                 float3 sssColor = float3(0.05, 0.38, 0.40);
-                color += sssColor * (sssThick + sssForward * 0.9)
-                    * saturate(sun * ndl + 0.25) * (1.0 - deepW) * waterRad;
+                 color += sssColor * (sssThick + sssForward * 0.9)
+                     * saturate(sun * ndl + 0.25) * (1.0 - deepW) * waterRad * cloudShadow;
 
                 // Зеркало неба по Шлику (F0 воды 0.06 для красивого моря):
                 // вдаль море светлеет к горизонту, а не остаётся тёмной заливкой.
                 // Неба подмешиваем щедро + тёплый солнечный оттенок — море
                 // зеркалит небо, как настоящий океан в ясный день.
                 float3 reflectDir = reflect(-viewDir, n);
-                float3 skyRef = GalilegoSkyAmbient(reflectDir) * waterRad * 1.0
-                    + (_SunLightColor * waterRad * 0.06);
+                 float3 skyRef = GalilegoSkyAmbient(reflectDir) * waterRad * 1.0
+                     + (_SunLightColor * waterRad * 0.06 * cloudShadow);
                 // Широкая солнечная дорожка на воде (шеен к солнцу поверх
                 // зеркала; сам глиттер даёт spec ниже).
                 float sunPath = pow(saturate(dot(reflectDir, sunDir)), 10.0);
-                skyRef += _SunLightColor * (sunPath * 0.05 * waterRad);
+                 skyRef += _SunLightColor * (sunPath * 0.05 * waterRad * cloudShadow);
                 color = lerp(color, skyRef, saturate(fresnelF * _FresnelStrength));
                 // Дальняя дымка воды: горизонт уходит в небо.
                 // Усилена для морских просторов — океаны до горизонта.

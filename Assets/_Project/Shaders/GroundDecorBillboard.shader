@@ -102,12 +102,13 @@ Shader "Galilego/GroundDecorBillboard"
                 // на закате небо светит, даже когда прямой луч погас); цвет
                 // солнца (фотосфера × T) и ambient — общие глобалы.
                 // Тень HDRP гасит прямой свет, ambient остаётся.
-                float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, n, l);
-                float sun = _TerrainSun;
+                 float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, n, l);
+                 float cloudShadow = SampleCloudShadow(input.positionWS);
+                 float sun = _TerrainSun;
                 float3 light = float3(_NightAmbient, _NightAmbient, _NightAmbient)
                     + (GalilegoSkyAmbient(n) * _TerrainRadianceScale)
-                    + (_SunLightColor * (sun * ndl * shadow) * _TerrainRadianceScale)
-                    + (_SunLightColor * (sun * back * shadow) * _TerrainRadianceScale);
+                     + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale)
+                     + (_SunLightColor * (sun * back * shadow * cloudShadow) * _TerrainRadianceScale);
                 return float4(albedo * light * _GroundTint.rgb, 1.0);
             }
             ENDHLSL

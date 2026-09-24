@@ -10,37 +10,37 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 652c7761734d09f4c83db03a2cf9e3d3, type: 3}
-  m_Name: EarthClouds
+  m_Name: AlienClouds_Legacy
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.CloudProfileAsset
   Profile:
     BottomAltitudeMeters: 7000
     TopAltitudeMeters: 8500
     VisualEnabled: 1
     DebugMode: 0
-    NoiseStyle: 1
-    Coverage: 0.25
-    SmallCloudCellMeters: 8000
-    MediumCloudCellMeters: 40000
-    LargeCloudCellMeters: 200000
-    SizeVariation: 0.4
+    NoiseStyle: 0
+    Coverage: 0.35
+    SmallCloudCellMeters: 3500
+    MediumCloudCellMeters: 18000
+    LargeCloudCellMeters: 100000
+    SizeVariation: 0.8
     ClearZoneCellMeters: 250000
     ClearZoneFraction: 0.01
     ClearZoneSoftness: 0.08
-    ShapeWarpMeters: 3000
+    ShapeWarpMeters: 1800
     ShapeCellMeters: 18000
     DetailCellMeters: 1800
     WeatherCellMeters: 200000
-    DetailErosion: 0.65
+    DetailErosion: 0.55
     BottomFeather: 0.15
     TopFeather: 0.45
     WindVelocityMps: {x: 6, y: 0, z: 2}
-    CloudShadowStrength: 0.7
+    CloudShadowStrength: 0
     Extinction: 0.08
-    ScatterAlbedo: 0.9
-    PhaseAnisotropy: 0.35
-    PowderStrength: 0.2
-    MultipleScattering: 0.75
-    Intensity: 0.0013
+    ScatterAlbedo: 0.98
+    PhaseAnisotropy: 0.65
+    PowderStrength: 0.8
+    MultipleScattering: 0
+    Intensity: 0.005
     AmbientTint: {r: 0.7, g: 0.78, b: 0.92, a: 1}
     StepCount: 128
     LightSteps: 5

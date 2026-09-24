@@ -170,9 +170,10 @@
                 float back = saturate(dot(-n, l)) * _Translucency * lerp(1.0, 0.25, saturate(_TwoSided));
 
                 // Тень HDRP (PCSS/PCF): гасит прямой свет, ambient остаётся.
-                float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, n, l);
+                 float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, n, l);
+                 float cloudShadow = SampleCloudShadow(input.positionWS);
 
-                // Свет — РОВНО как у рельефа (PlanetSurface.shader): честное
+                 // Свет — РОВНО как у рельефа (PlanetSurface.shader): честное
                 // солнце (_TerrainSun, может превышать 1), ambient —
                 // полусферический от неба (см. GalilegoSkyAmbient: без *ndl,
                 // иначе закат чёрный); цвет солнца (фотосфера × T) и ambient —
@@ -182,8 +183,8 @@
                 float sun = _TerrainSun;
                 float3 light = float3(_NightAmbient, _NightAmbient, _NightAmbient)
                     + (GalilegoSkyAmbient(n) * _TerrainRadianceScale)
-                    + (_SunLightColor * (sun * ndl * shadow) * _TerrainRadianceScale)
-                    + (_SunLightColor * (sun * back * shadow) * _TerrainRadianceScale);
+                     + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale)
+                     + (_SunLightColor * (sun * back * shadow * cloudShadow) * _TerrainRadianceScale);
                 return float4(albedo.rgb * light * _GroundTint.rgb, 1.0);
             }
             ENDHLSL

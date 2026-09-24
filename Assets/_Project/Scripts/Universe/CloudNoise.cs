@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Galilego.Universe
@@ -269,40 +271,121 @@ namespace Galilego.Universe
             return ToTexture3D(pixels, resolution, TextureFormat.RGB24);
         }
 
-        /// <summary>
-        /// R = крупномасштабное покрытие (погодные фронты), G = вторичная
-        /// вариация (зарезервировано под тип облака/высотный сдвиг). Низкое
-        /// разрешение и низкая частота — это САМЫЙ крупный масштаб шума в
-        /// системе, сэмплируется в шейдере по тем же мировым координатам
-        /// (никакого lat-long).
-        /// </summary>
-        public static Texture3D BuildWeatherTexture(int resolution, int seed)
+        private static Vector3 FaceDirection(int face, float u, float v)
         {
-            resolution = Mathf.Clamp(resolution, 4, 64);
-            var pixels = new Color[resolution * resolution * resolution];
+            switch (face)
+            {
+                case 0: return new Vector3(1f, -v, -u);
+                case 1: return new Vector3(-1f, -v, u);
+                case 2: return new Vector3(u, 1f, v);
+                case 3: return new Vector3(u, -1f, -v);
+                case 4: return new Vector3(u, -v, 1f);
+                default: return new Vector3(-u, -v, -1f);
+            }
+        }
 
-            const int basePeriod = 3;
-            for (int z = 0; z < resolution; z++)
+        private static float UnitNoise(Vector3 direction, int period, int octaves, float gain, int seed)
+        {
+            float value = CloudNoiseGen.PerlinFbm(direction * period, period, octaves, gain, seed);
+            return Mathf.Clamp01((value * 0.5f) + 0.5f);
+        }
+
+        private static Vector3 WarpDirection(Vector3 direction, int scale, int seed)
+        {
+            float x = UnitNoise(direction, Mathf.Max(2, scale / 2), 2, 0.5f, seed + 811);
+            float y = UnitNoise(direction, Mathf.Max(2, scale / 2), 2, 0.5f, seed + 1223);
+            float z = UnitNoise(direction, Mathf.Max(2, scale / 2), 2, 0.5f, seed + 1637);
+            Vector3 warp = new Vector3(x, y, z) - new Vector3(0.5f, 0.5f, 0.5f);
+            return (direction + (warp * 0.18f)).normalized;
+        }
+
+        public static Cubemap BuildWeatherCubemap(
+            int resolution,
+            float weatherCellMeters,
+            float clearZoneCellMeters,
+            float clearZoneFraction,
+            float clearZoneSoftness,
+            double planetRadius,
+            int seed)
+        {
+            resolution = Mathf.Clamp(resolution, 16, 256);
+            int weatherPeriod = Mathf.Clamp(
+                Mathf.RoundToInt((float)((2.0 * Math.PI * planetRadius) / Math.Max(1.0, weatherCellMeters))),
+                2, 32);
+            int clearPeriod = Mathf.Clamp(
+                Mathf.RoundToInt((float)((2.0 * Math.PI * planetRadius) / Math.Max(1.0, clearZoneCellMeters))),
+                2, 32);
+
+            var faces = new Color[6][];
+            var clearFields = new float[6][];
+            var clearValues = new List<float>(resolution * resolution * 6);
+            for (int face = 0; face < 6; face++)
+            {
+                faces[face] = new Color[resolution * resolution];
+                clearFields[face] = new float[resolution * resolution];
+            }
+
+            for (int face = 0; face < 6; face++)
             {
                 for (int y = 0; y < resolution; y++)
                 {
+                    float v = (y + 0.5f) / resolution;
                     for (int x = 0; x < resolution; x++)
                     {
-                        Vector3 uvw = new Vector3(x, y, z) / resolution;
+                        float u = (x + 0.5f) / resolution;
+                        Vector3 direction = FaceDirection(face, u, v).normalized;
+                        Vector3 warped = WarpDirection(direction, weatherPeriod, seed);
 
-                        float coverage = CloudNoiseGen.PerlinFbm(uvw * basePeriod, basePeriod, 3, 0.55f, seed + 71);
-                        coverage = Mathf.Clamp01((coverage * 0.5f) + 0.5f);
+                        float broad = UnitNoise(warped, weatherPeriod, 4, 0.55f, seed + 71);
+                        float medium = UnitNoise(direction, weatherPeriod * 2, 3, 0.5f, seed + 173);
+                        float coverage = Mathf.Clamp01(((broad * 0.72f) + (medium * 0.28f) - 0.16f) / 0.68f);
 
-                        float variation = CloudNoiseGen.PerlinFbm(uvw * basePeriod, basePeriod, 3, 0.55f, seed + 137);
-                        variation = Mathf.Clamp01((variation * 0.5f) + 0.5f);
+                        float size = UnitNoise(warped, Mathf.Max(2, weatherPeriod - 1), 3, 0.55f, seed + 311);
+                        size = Mathf.Clamp01((size - 0.2f) / 0.6f);
+                        float clear = UnitNoise(direction, clearPeriod, 3, 0.5f, seed + 577);
+                        float storm = Mathf.Clamp01((coverage * 0.65f) + (size * 0.35f));
 
-                        int i = x + (y * resolution) + (z * resolution * resolution);
-                        pixels[i] = new Color(coverage, variation, 0f, 1f);
+                        int index = x + (y * resolution);
+                        faces[face][index] = new Color(coverage, size, clear, storm);
+                        clearFields[face][index] = clear;
+                        clearValues.Add(clear);
                     }
                 }
             }
 
-            return ToTexture3D(pixels, resolution, TextureFormat.RGBA32);
+            float[] sortedClear = clearValues.ToArray();
+            Array.Sort(sortedClear);
+            float fraction = Mathf.Clamp(clearZoneFraction, 0f, 0.1f);
+            int thresholdIndex = Mathf.Clamp(
+                Mathf.FloorToInt((sortedClear.Length - 1) * (1f - fraction)),
+                0,
+                sortedClear.Length - 1);
+            float threshold = sortedClear[thresholdIndex];
+            float softness = Mathf.Max(0.001f, clearZoneSoftness);
+
+            var weather = new Cubemap(resolution, TextureFormat.RGBAHalf, true)
+            {
+                name = "CloudWeather",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Trilinear,
+                anisoLevel = 0,
+            };
+
+            for (int face = 0; face < 6; face++)
+            {
+                Color[] pixels = faces[face];
+                for (int i = 0; i < pixels.Length; i++)
+                {
+                    float clear = clearFields[face][i];
+                    float t = Mathf.Clamp01((clear - (threshold - softness)) / (softness * 2f));
+                    pixels[i].b = t * t * (3f - (2f * t));
+                }
+
+                weather.SetPixels(pixels, (CubemapFace)face);
+            }
+
+            weather.Apply(true, false);
+            return weather;
         }
 
         private static Texture3D ToTexture3D(Color[] pixels, int resolution, TextureFormat format)

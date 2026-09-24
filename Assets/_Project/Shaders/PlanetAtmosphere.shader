@@ -100,19 +100,22 @@ Shader "Galilego/PlanetAtmosphere"
 
             bool RaySphere(float3 ro, float3 rd, float radius, out float t0, out float t1)
             {
-                float b = dot(ro, rd);
-                float c = dot(ro, ro) - (radius * radius);
+                float safeRadius = max(abs(radius), 1e-4);
+                float3 safeDirection = rd * rsqrt(max(dot(rd, rd), 1e-8));
+                float3 normalizedOrigin = ro / safeRadius;
+                float b = dot(normalizedOrigin, safeDirection);
+                float c = dot(normalizedOrigin, normalizedOrigin) - 1.0;
                 float h = (b * b) - c;
-                if (h < 0.0)
+                if (h < -1e-7)
                 {
                     t0 = 0.0;
                     t1 = 0.0;
                     return false;
                 }
 
-                h = sqrt(h);
-                t0 = -b - h;
-                t1 = -b + h;
+                h = sqrt(max(h, 0.0));
+                t0 = (-b - h) * safeRadius;
+                t1 = (-b + h) * safeRadius;
                 return true;
             }
 

@@ -45,25 +45,22 @@ namespace Galilego.Universe
         private CloudProfile profile;
         private Transform shell;
         private Material materialCache;
+        private SkyEnvironment skyEnvironment;
 
         private Texture3D shapeTex;
         private Texture3D detailTex;
-        private Texture3D weatherTex;
+        private Cubemap weatherTex;
         private bool texturesBuilt;
         private bool loggedOnce;
 
-        // Подпись параметров, от которых зависят текстуры шума. Пока совпадает —
-        // не пересобираем (печать не бесплатна, ~сотни мс на профиль).
         private int bakedShapeRes;
         private int bakedDetailRes;
         private int bakedWeatherRes;
         private int bakedSeed;
-
-        // Накопленный сдвиг domain-координат от ветра. Копится в double и
-        // заворачивается по модулю — иначе за долгую игровую сессию float
-        // потеряет точность и облака начнут "прыгать"/дрожать при сэмплинге.
-        private Vector3d windOffset = Vector3d.Zero;
-        private const double WindWrapMeters = 2_000_000d; // период шума всё равно периодичен — обёртка тут не даёт видимого шва
+        private float bakedWeatherCellMeters;
+        private float bakedClearZoneCellMeters;
+        private float bakedClearZoneFraction;
+        private float bakedClearZoneSoftness;
 
         private void Start()
         {
@@ -88,6 +85,8 @@ namespace Galilego.Universe
                 enabled = false;
                 return;
             }
+
+            skyEnvironment = FindAnyObjectByType<SkyEnvironment>();
 
             Shader shader = Shader.Find("Galilego/PlanetClouds");
             if (shader == null)
@@ -145,6 +144,10 @@ namespace Galilego.Universe
                 || bakedShapeRes != profile.ShapeTextureResolution
                 || bakedDetailRes != profile.DetailTextureResolution
                 || bakedWeatherRes != profile.WeatherTextureResolution
+                || bakedWeatherCellMeters != profile.WeatherCellMeters
+                || bakedClearZoneCellMeters != profile.ClearZoneCellMeters
+                || bakedClearZoneFraction != profile.ClearZoneFraction
+                || bakedClearZoneSoftness != profile.ClearZoneSoftness
                 || bakedSeed != profile.NoiseSeed;
         }
 
@@ -160,23 +163,37 @@ namespace Galilego.Universe
 
             shapeTex = CloudNoiseBaker.BuildShapeTexture(profile.ShapeTextureResolution, profile.NoiseSeed);
             detailTex = CloudNoiseBaker.BuildDetailTexture(profile.DetailTextureResolution, profile.NoiseSeed);
-            weatherTex = CloudNoiseBaker.BuildWeatherTexture(profile.WeatherTextureResolution, profile.NoiseSeed);
+            weatherTex = CloudNoiseBaker.BuildWeatherCubemap(
+                profile.WeatherTextureResolution,
+                profile.WeatherCellMeters,
+                profile.ClearZoneCellMeters,
+                profile.ClearZoneFraction,
+                profile.ClearZoneSoftness,
+                body.Radius,
+                profile.NoiseSeed);
 
             watch.Stop();
 
             bakedShapeRes = profile.ShapeTextureResolution;
             bakedDetailRes = profile.DetailTextureResolution;
             bakedWeatherRes = profile.WeatherTextureResolution;
+            bakedWeatherCellMeters = profile.WeatherCellMeters;
+            bakedClearZoneCellMeters = profile.ClearZoneCellMeters;
+            bakedClearZoneFraction = profile.ClearZoneFraction;
+            bakedClearZoneSoftness = profile.ClearZoneSoftness;
             bakedSeed = profile.NoiseSeed;
             texturesBuilt = true;
 
             Debug.Log(string.Format(
-                "[PlanetClouds] Шум напечен за {0} мс (shape={1}³, detail={2}³, weather={3}³, seed={4})",
+                "[PlanetClouds] Шум напечен за {0} мс (shape={1}³, detail={2}³, weather={3}², seed={4})",
                 watch.ElapsedMilliseconds, bakedShapeRes, bakedDetailRes, bakedWeatherRes, bakedSeed));
         }
 
         private void LateUpdate()
         {
+            Shader.SetGlobalFloat("_CldCloudActive", 0f);
+            Shader.SetGlobalFloat("_CldShadowStrength", 0f);
+
             if (body == null || profile == null || shell == null)
             {
                 return;
@@ -184,7 +201,7 @@ namespace Galilego.Universe
 
             bool active = profile.VisualEnabled
                 && profile.TopAltitudeMeters > profile.BottomAltitudeMeters
-                && Runner.DominantBody == body;
+                && (Runner.DominantBody == body || IsCloudBodyRelevant(Camera.main));
             if (shell.gameObject.activeSelf != active)
             {
                 shell.gameObject.SetActive(active);
@@ -194,6 +211,9 @@ namespace Galilego.Universe
             {
                 return;
             }
+
+            Shader.SetGlobalFloat("_CldCloudActive", 1f);
+            Shader.SetGlobalFloat("_CldShadowStrength", Mathf.Clamp01(profile.CloudShadowStrength));
 
             if (TexturesNeedRebuild())
             {
@@ -215,6 +235,19 @@ namespace Galilego.Universe
             shell.localScale = new Vector3(domeRadius, domeRadius, domeRadius);
 
             body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPos, out _);
+            Vector3 bodyRenderPosition = FloatingOrigin.ToRender(bodyPos);
+            float bodyDistance = Vector3.Distance(cameraPosition, bodyRenderPosition);
+            if (bodyDistance > (float)body.Radius * 1.2f)
+            {
+                float requiredDomeRadius = bodyDistance + (float)body.Radius + (float)profile.TopAltitudeMeters + 1000f;
+                float requiredFar = requiredDomeRadius * 2f;
+                if (camera.farClipPlane < requiredFar)
+                {
+                    camera.farClipPlane = requiredFar;
+                    domeRadius = requiredDomeRadius;
+                    shell.localScale = Vector3.one * domeRadius;
+                }
+            }
 
             Vector3 sunDirWorld = Vector3.up;
             if (Runner.SystemState.Root != null && Runner.Ship != null)
@@ -228,46 +261,71 @@ namespace Galilego.Universe
                 }
             }
 
-            // Ветер: сдвиг доменных координат шума во времени, в метрах.
-            // Копится в double (см. комментарий у windOffset), в шейдер уходит
-            // как float — на масштабе одного кадра ветра точности с запасом.
-            double dt = Time.deltaTime;
-            windOffset += new Vector3d(profile.WindVelocityMps.x, profile.WindVelocityMps.y, profile.WindVelocityMps.z) * dt;
-            windOffset = new Vector3d(
-                WrapDouble(windOffset.X, WindWrapMeters),
-                WrapDouble(windOffset.Y, WindWrapMeters),
-                WrapDouble(windOffset.Z, WindWrapMeters));
+             Vector3d windVelocity = new Vector3d(
+                profile.WindVelocityMps.x,
+                profile.WindVelocityMps.y,
+                profile.WindVelocityMps.z);
+            Vector3d mediumWindOffset = WrapVector(windVelocity * Runner.TimeSeconds, profile.MediumCloudCellMeters);
+            Vector3d smallWindOffset = WrapVector(windVelocity * Runner.TimeSeconds, profile.SmallCloudCellMeters);
+            Vector3d largeWindOffset = WrapVector(windVelocity * Runner.TimeSeconds, profile.LargeCloudCellMeters);
+            Vector3d detailWindOffset = WrapVector(windVelocity * Runner.TimeSeconds, profile.DetailCellMeters);
 
             double planetRadius = body.Radius;
             double bottomRadius = planetRadius + profile.BottomAltitudeMeters;
             double topRadius = planetRadius + profile.TopAltitudeMeters;
 
             Vector3d starLinear = SkyEnvironment.PhotosphereLinear;
+            Vector3 cloudSunColor = new Vector3((float)starLinear.X, (float)starLinear.Y, (float)starLinear.Z);
+            if (skyEnvironment != null)
+            {
+                Vector3 transmittance = skyEnvironment.Transmittance;
+                float directVisibility = Mathf.Clamp01(skyEnvironment.DayFactor * skyEnvironment.SunOcclusion);
+                cloudSunColor = new Vector3(
+                    cloudSunColor.x * transmittance.x * directVisibility,
+                    cloudSunColor.y * transmittance.y * directVisibility,
+                    cloudSunColor.z * transmittance.z * directVisibility);
+            }
+            Vector4 skyAmbientVector = Shader.GetGlobalVector("_SkyAmbientColor");
+            Vector3 cloudSkyAmbient = new Vector3(skyAmbientVector.x, skyAmbientVector.y, skyAmbientVector.z);
 
             float shapeFreq = 1f / Mathf.Max(1f, profile.ShapeCellMeters);
+            float smallFreq = 1f / Mathf.Max(1f, profile.SmallCloudCellMeters);
+            float mediumFreq = 1f / Mathf.Max(1f, profile.MediumCloudCellMeters);
+            float largeFreq = 1f / Mathf.Max(1f, profile.LargeCloudCellMeters);
             float detailFreq = 1f / Mathf.Max(1f, profile.DetailCellMeters);
-            float weatherFreq = 1f / Mathf.Max(1f, profile.WeatherCellMeters);
-            // Мировой размер одного тексела mip0 shape-текстуры — точка отсчёта
-            // для footprint-based LOD в шейдере (round 3: LOD по шагу марша, не
-            // по расстоянию до камеры — иначе мимо цели на больших дистанциях).
             float shapeTexelWorldSize = 1f / Mathf.Max(1f, shapeFreq * Mathf.Max(1, bakedShapeRes));
+            float weatherTexelWorldSize = (float)(2.0 * System.Math.PI * planetRadius) /
+                Mathf.Max(1f, bakedWeatherRes);
+
+            Quaternion bodyRotation = FloatingOrigin.RenderRotation(body.GetVisualOrientation(Runner.TimeSeconds));
+            Matrix4x4 worldToBody = Matrix4x4.Rotate(Quaternion.Inverse(bodyRotation));
 
             Shader.SetGlobalVector("_CldCameraWS", cameraPosition);
             Shader.SetGlobalVector("_CldCameraForwardWS", camera.transform.forward);
-            Shader.SetGlobalVector("_CldBodyCenterWS", FloatingOrigin.ToRender(bodyPos));
+             Shader.SetGlobalVector("_CldBodyCenterWS", bodyRenderPosition);
             Shader.SetGlobalVector("_CldSunDirWS", sunDirWorld);
-            Shader.SetGlobalVector("_CldSunColor",
-                new Vector3((float)starLinear.X, (float)starLinear.Y, (float)starLinear.Z));
+            Shader.SetGlobalVector("_CldSunColor", cloudSunColor);
+            Shader.SetGlobalVector("_CldSkyAmbient", cloudSkyAmbient);
             Shader.SetGlobalFloat("_CldPlanetRadius", (float)planetRadius);
             Shader.SetGlobalFloat("_CldBottomRadius", (float)bottomRadius);
             Shader.SetGlobalFloat("_CldTopRadius", (float)topRadius);
 
-            Shader.SetGlobalVector("_CldWindOffset", new Vector3((float)windOffset.X, (float)windOffset.Y, (float)windOffset.Z));
+            Shader.SetGlobalMatrix("_CldWorldToBody", worldToBody);
+            Shader.SetGlobalVector("_CldWindOffset", new Vector3((float)mediumWindOffset.X, (float)mediumWindOffset.Y, (float)mediumWindOffset.Z));
+            Shader.SetGlobalVector("_CldSmallWindOffset", new Vector3((float)smallWindOffset.X, (float)smallWindOffset.Y, (float)smallWindOffset.Z));
+            Shader.SetGlobalVector("_CldLargeWindOffset", new Vector3((float)largeWindOffset.X, (float)largeWindOffset.Y, (float)largeWindOffset.Z));
+            Shader.SetGlobalVector("_CldDetailWindOffset", new Vector3((float)detailWindOffset.X, (float)detailWindOffset.Y, (float)detailWindOffset.Z));
 
-            Shader.SetGlobalFloat("_CldShapeFreq", shapeFreq);
+            Shader.SetGlobalFloat("_CldSmallShapeFreq", smallFreq);
+            Shader.SetGlobalFloat("_CldMediumShapeFreq", mediumFreq);
+            Shader.SetGlobalFloat("_CldLargeShapeFreq", largeFreq);
             Shader.SetGlobalFloat("_CldDetailFreq", detailFreq);
-            Shader.SetGlobalFloat("_CldWeatherFreq", weatherFreq);
             Shader.SetGlobalFloat("_CldShapeTexelWorldSize", shapeTexelWorldSize);
+            Shader.SetGlobalFloat("_CldWeatherTexelWorldSize", weatherTexelWorldSize);
+             Shader.SetGlobalFloat("_CldSizeVariation", profile.SizeVariation);
+             Shader.SetGlobalFloat("_CldNoiseStyle", (float)profile.NoiseStyle);
+             materialCache.SetFloat("_CldNoiseStyle", (float)profile.NoiseStyle);
+             Shader.SetGlobalFloat("_CldShapeWarp", Mathf.Max(0f, profile.ShapeWarpMeters));
 
             Shader.SetGlobalFloat("_CldCoverage", profile.Coverage);
             Shader.SetGlobalFloat("_CldDetailErosion", profile.DetailErosion);
@@ -277,14 +335,16 @@ namespace Galilego.Universe
             Shader.SetGlobalFloat("_CldExtinction", Mathf.Max(0f, profile.Extinction));
             Shader.SetGlobalFloat("_CldScatterAlbedo", Mathf.Clamp01(profile.ScatterAlbedo));
             Shader.SetGlobalFloat("_CldPhaseG", Mathf.Clamp(profile.PhaseAnisotropy, 0f, 0.95f));
-            Shader.SetGlobalFloat("_CldPowderStrength", Mathf.Max(0f, profile.PowderStrength));
-            Shader.SetGlobalFloat("_CldIntensity", Mathf.Max(0f, profile.Intensity));
+             Shader.SetGlobalFloat("_CldPowderStrength", Mathf.Max(0f, profile.PowderStrength));
+             Shader.SetGlobalFloat("_CldMultipleScattering", Mathf.Clamp01(profile.MultipleScattering));
+             Shader.SetGlobalFloat("_CldIntensity", Mathf.Max(0f, profile.Intensity));
             Shader.SetGlobalColor("_CldAmbientTint", profile.AmbientTint);
 
             Shader.SetGlobalFloat("_CldStepCount", Mathf.Clamp(profile.StepCount, 8, 128));
             Shader.SetGlobalFloat("_CldLightSteps", Mathf.Clamp(profile.LightSteps, 2, 8));
             Shader.SetGlobalFloat("_CldEarlyExitT", Mathf.Clamp(profile.EarlyExitTransmittance, 0.001f, 0.1f));
             Shader.SetGlobalFloat("_CldDebugMode", (float)(int)profile.DebugMode);
+            materialCache.SetFloat("_CldDebugMode", (float)(int)profile.DebugMode);
 
             if (shapeTex != null) Shader.SetGlobalTexture("_CldShapeTex", shapeTex);
             if (detailTex != null) Shader.SetGlobalTexture("_CldDetailTex", detailTex);
@@ -298,6 +358,31 @@ namespace Galilego.Universe
                     domeRadius, planetRadius, bottomRadius, topRadius, profile.ShapeCellMeters,
                     Runner.DominantBody != null ? Runner.DominantBody.Name : "null"));
             }
+        }
+
+        private bool IsCloudBodyRelevant(Camera camera)
+        {
+            if (camera == null)
+            {
+                return false;
+            }
+
+            body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPosition, out _);
+            Vector3 renderPosition = FloatingOrigin.ToRender(bodyPosition);
+            double distance = (camera.transform.position - renderPosition).magnitude;
+            double limit = System.Math.Max(
+                body.Radius * 1000d,
+                body.SphereOfInfluenceRadius * 4d);
+            return distance <= limit;
+        }
+
+        private static Vector3d WrapVector(Vector3d value, double period)
+        {
+            double safePeriod = System.Math.Max(1.0, period);
+            return new Vector3d(
+                WrapDouble(value.X, safePeriod),
+                WrapDouble(value.Y, safePeriod),
+                WrapDouble(value.Z, safePeriod));
         }
 
         private static double WrapDouble(double v, double period)

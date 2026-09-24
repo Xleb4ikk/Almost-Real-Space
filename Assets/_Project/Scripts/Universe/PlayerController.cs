@@ -14,6 +14,7 @@ namespace Galilego.Universe
     /// E — универсальное действие: интеракция (луч из камеры ≤ 4 м) →
     /// сесть/встать → выйти/войти в корабль.
     /// </summary>
+    [UnityEngine.DefaultExecutionOrder(-100)]
     public sealed class PlayerController : MonoBehaviour
     {
         [Tooltip("SimulationRunner сцены.")]
@@ -29,7 +30,7 @@ namespace Galilego.Universe
         public float RunSpeed = 5f;
 
         [Tooltip("Ускорение джетпака (м/с²).")]
-        public float JetpackThrust = 1.5f;
+        public float JetpackThrust = 20f;
 
         [Tooltip("Скорость плавания (м/с).")]
         public float SwimSpeed = 2.5f;
@@ -64,13 +65,14 @@ namespace Galilego.Universe
                 return;
             }
 
+            bool jetpackToggle = PlayerInput.DoubleDown(GameKey.Space);
             UpdateFocus();
             if (PlayerInput.Down(GameKey.E))
             {
                 HandleE();
             }
 
-            UpdateIntent();
+            UpdateIntent(jetpackToggle);
         }
 
         private void HandleE()
@@ -135,7 +137,23 @@ namespace Galilego.Universe
             }
         }
 
-        private void UpdateIntent()
+        private void ApplyJetpackInput(ref PlayerIntent intent, Camera camera, bool active)
+        {
+            if (!active || camera == null || JetpackFuel == null)
+            {
+                return;
+            }
+
+            Vector3 thrust = (camera.transform.forward * ((PlayerInput.Held(GameKey.W) ? 1f : 0f) - (PlayerInput.Held(GameKey.S) ? 1f : 0f)))
+                + (camera.transform.right * ((PlayerInput.Held(GameKey.D) ? 1f : 0f) - (PlayerInput.Held(GameKey.A) ? 1f : 0f)))
+                + (camera.transform.up * ((PlayerInput.Held(GameKey.Space) ? 1f : 0f) - (PlayerInput.Held(GameKey.LeftControl) ? 1f : 0f)));
+            if (thrust.sqrMagnitude > 0f && JetpackFuel.TryConsume(Time.deltaTime))
+            {
+                intent.JetpackAccel = AstroFrame.ToAstro(thrust.normalized * JetpackThrust);
+            }
+        }
+
+        private void UpdateIntent(bool jetpackToggle)
         {
             PlayerIntent intent = PlayerIntent.Idle;
             Camera camera = Camera.main;
@@ -166,20 +184,12 @@ namespace Galilego.Universe
                     break;
 
                 case PlayerMode.EVA:
-                    if (camera != null)
-                    {
-                        Vector3 thrust = (camera.transform.forward * ((PlayerInput.Held(GameKey.W) ? 1f : 0f) - (PlayerInput.Held(GameKey.S) ? 1f : 0f)))
-                            + (camera.transform.right * ((PlayerInput.Held(GameKey.D) ? 1f : 0f) - (PlayerInput.Held(GameKey.A) ? 1f : 0f)))
-                            + (camera.transform.up * ((PlayerInput.Held(GameKey.Space) ? 1f : 0f) - (PlayerInput.Held(GameKey.LeftControl) ? 1f : 0f)));
-                        if (thrust.sqrMagnitude > 0f && JetpackFuel.TryConsume(Time.deltaTime))
-                        {
-                            intent.JetpackAccel = AstroFrame.ToAstro(thrust.normalized * JetpackThrust);
-                        }
-                    }
-
+                    intent.JetpackToggle = jetpackToggle;
+                    ApplyJetpackInput(ref intent, camera, Runner.JetpackActive || jetpackToggle);
                     break;
 
                 case PlayerMode.OnSurface:
+                    intent.JetpackToggle = jetpackToggle;
                     if (camera != null)
                     {
                         Vector3 flatForward = Vector3.ProjectOnPlane(camera.transform.forward, camera.transform.up);
@@ -194,7 +204,8 @@ namespace Galilego.Universe
                             intent.WalkSpeed = speed;
                         }
 
-                        intent.Jump = PlayerInput.Down(GameKey.Space);
+                        intent.Jump = PlayerInput.Down(GameKey.Space) && !jetpackToggle;
+                        ApplyJetpackInput(ref intent, camera, (Runner.JetpackActive && Runner.PlayerAirborne) || jetpackToggle);
                     }
 
                     break;

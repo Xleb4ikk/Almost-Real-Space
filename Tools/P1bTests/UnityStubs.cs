@@ -341,6 +341,7 @@ namespace UnityEngine
         public static bool GetMouseButton(int button) => false;
         public static bool GetMouseButtonDown(int button) => false;
         public static bool GetKeyDown(KeyCode key) => false;
+        public static bool GetKeyUp(KeyCode key) => false;
         public static bool GetKey(KeyCode key) => false;
         public static float GetAxis(string axis) => 0f;
         public static float GetAxisRaw(string axis) => 0f;
@@ -469,6 +470,7 @@ namespace UnityEngine
     {
         public static float deltaTime => 0.016f;
         public static float time => 1f;
+        public static float unscaledTime => 1f;
         public static int frameCount => 100;
     }
 
