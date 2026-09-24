@@ -43,38 +43,35 @@ Shader "Galilego/PlanetClouds"
 
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
+            #include "GalilegoCloudField.hlsl"
 
-            // --- Камера/тело/солнце ---
             float3 _CldCameraWS;
             float3 _CldCameraForwardWS;
-            float3 _CldBodyCenterWS;
-            float3 _CldSunDirWS;
             float3 _CldSunColor;
-
-            // --- Геометрия слоя ---
-            float _CldPlanetRadius;
-            float _CldBottomRadius;
-            float _CldTopRadius;
 
             // --- Domain шума (мировые координаты относительно центра тела) ---
             float3 _CldWindOffset;
-            float _CldShapeFreq;
+            float3 _CldSmallWindOffset;
+            float3 _CldLargeWindOffset;
+             float3 _CldDetailWindOffset;
+             float _CldSmallShapeFreq;
+            float _CldMediumShapeFreq;
+            float _CldLargeShapeFreq;
             float _CldDetailFreq;
-            float _CldWeatherFreq;
             float _CldShapeTexelWorldSize;
+            float _CldWeatherTexelWorldSize;
+             float _CldSizeVariation;
+             float _CldShapeWarp;
 
             // --- Форма/покрытие ---
-            float _CldCoverage;
             float _CldDetailErosion;
-            float _CldBottomFeather;
-            float _CldTopFeather;
 
             // --- Оптика ---
-            float _CldExtinction;
             float _CldScatterAlbedo;
-            float _CldPhaseG;
-            float _CldPowderStrength;
-            float _CldIntensity;
+             float _CldPhaseG;
+             float _CldPowderStrength;
+             float _CldMultipleScattering;
+             float _CldIntensity;
             float4 _CldAmbientTint;
 
             // --- Raymarch ---
@@ -87,7 +84,7 @@ Shader "Galilego/PlanetClouds"
             SAMPLER(sampler_CldShapeTex);
             TEXTURE3D(_CldDetailTex);
             SAMPLER(sampler_CldDetailTex);
-            TEXTURE3D(_CldWeatherTex);
+            TEXTURECUBE(_CldWeatherTex);
             SAMPLER(sampler_CldWeatherTex);
 
             #define CLD_PI 3.14159265358979
@@ -111,24 +108,6 @@ Shader "Galilego/PlanetClouds"
                 return output;
             }
 
-            bool RaySphere(float3 ro, float3 rd, float radius, out float t0, out float t1)
-            {
-                float b = dot(ro, rd);
-                float c = dot(ro, ro) - (radius * radius);
-                float h = (b * b) - c;
-                if (h < 0.0)
-                {
-                    t0 = 0.0;
-                    t1 = 0.0;
-                    return false;
-                }
-
-                h = sqrt(h);
-                t0 = -b - h;
-                t1 = -b + h;
-                return true;
-            }
-
             // c + (x-a)*(d-c)/(b-a), без внутреннего saturate — вызывающий код
             // сатурейтит результат там, где это физически осмысленно.
             float CloudRemap(float x, float a, float b, float c, float d)
@@ -142,25 +121,39 @@ Shader "Galilego/PlanetClouds"
                 return (1.0 / (4.0 * CLD_PI)) * (1.0 - g2) / pow(max(1e-4, 1.0 + g2 - (2.0 * g * cosTheta)), 1.5);
             }
 
-            // Крупномасштабное покрытие (погодные фронты). Сэмплируется по
-            // МИРОВОЙ позиции относительно центра тела — бесшовно на всей
-            // сфере, полюсов/швов нет в принципе (в отличие от lat-long).
-            float SampleWeatherCoverage(float3 posRel)
+            float4 SampleWeather(float3 posRel, float weatherLod)
             {
-                float4 w = SAMPLE_TEXTURE3D_LOD(_CldWeatherTex, sampler_CldWeatherTex,
-                    (posRel * _CldWeatherFreq) + (_CldWindOffset * _CldWeatherFreq * 0.15), 0.0);
-                // *2: чтобы Coverage=0.5 давал ~половину неба, а не четверть
-                // (weather-текстура сама по себе центрирована на 0.5).
-                return saturate(w.r * _CldCoverage * 2.0);
+                float3 bodyPos = mul(_CldWorldToBody, float4(posRel, 1.0)).xyz;
+                float3 direction = normalize(bodyPos);
+                float4 weather = SAMPLE_TEXTURECUBE_LOD(
+                    _CldWeatherTex,
+                    sampler_CldWeatherTex,
+                    direction,
+                    weatherLod);
+                float coverageScale = _CldNoiseStyle < 0.5 ? 2.0 : 1.5;
+                float coverage = saturate(weather.r * _CldCoverage * coverageScale);
+                return float4(coverage, weather.g, weather.b, weather.a);
             }
 
-            // Плотность облака в точке (posRel — относительно центра тела).
-            // lod — footprint-based LOD текстуры формы (см. PlanetCloudsView).
-            float SampleCloudDensity(float3 posRel, float lod)
+            float MakeCloudDensity(float shape, float coverage, float heightGradient)
+            {
+                float normalizedShape = saturate((shape - 0.1) / 0.6);
+                float safeCoverage = max(0.001, coverage);
+                float threshold = 1.0 - safeCoverage;
+                float density = saturate((normalizedShape - threshold) / safeCoverage);
+                return density * safeCoverage * heightGradient;
+            }
+
+            float MakeEarthCloudDensity(float earthMask, float heightGradient)
+            {
+                float earthCoverage = saturate(_CldCoverage * 1.35);
+                return smoothstep(0.08, 0.78, earthMask) * earthCoverage * heightGradient;
+            }
+
+            float SampleCloudDensity(float3 posRel, float lod, float weatherLod, float earthMask)
             {
                 float r = length(posRel);
                 float heightFrac = saturate((r - _CldBottomRadius) / max(1.0, _CldTopRadius - _CldBottomRadius));
-
                 float bottomFeather = smoothstep(0.0, max(0.001, _CldBottomFeather), heightFrac);
                 float topFeather = 1.0 - smoothstep(1.0 - max(0.001, _CldTopFeather), 1.0, heightFrac);
                 float heightGradient = bottomFeather * topFeather;
@@ -169,39 +162,75 @@ Shader "Galilego/PlanetClouds"
                     return 0.0;
                 }
 
-                float coverage = SampleWeatherCoverage(posRel);
-                if (coverage <= 0.001)
+                if (_CldNoiseStyle > 0.5)
+                {
+                    earthMask = SampleCloudEarthMask(posRel);
+                    return MakeEarthCloudDensity(earthMask, heightGradient);
+                }
+
+                float4 weather = SampleWeather(posRel, weatherLod);
+                if (_CldNoiseStyle < 0.5 && weather.x <= 0.001)
                 {
                     return 0.0;
                 }
 
-                float3 windedPos = posRel + _CldWindOffset;
+                float clearFactor = _CldNoiseStyle > 0.5 ? 1.0 : saturate(1.0 - weather.z);
+                float3 bodyPos = mul(_CldWorldToBody, float4(posRel, 1.0)).xyz;
+                float3 warp = (weather.rgb - 0.5) * _CldShapeWarp;
+                float3 samplePos = bodyPos + warp;
+                float shapeLod = lod;
 
-                float4 shapeSample = SAMPLE_TEXTURE3D_LOD(_CldShapeTex, sampler_CldShapeTex, windedPos * _CldShapeFreq, lod);
-                float baseShape = shapeSample.r;
+                float4 smallSample = SAMPLE_TEXTURE3D_LOD(
+                    _CldShapeTex, sampler_CldShapeTex,
+                    (samplePos + _CldSmallWindOffset) * _CldSmallShapeFreq, shapeLod);
+                float4 mediumSample = SAMPLE_TEXTURE3D_LOD(
+                    _CldShapeTex, sampler_CldShapeTex,
+                    (samplePos + _CldWindOffset) * _CldMediumShapeFreq, shapeLod);
+                float4 largeSample = SAMPLE_TEXTURE3D_LOD(
+                    _CldShapeTex, sampler_CldShapeTex,
+                    (samplePos + _CldLargeWindOffset) * _CldLargeShapeFreq, shapeLod);
 
-                float shaped = saturate(baseShape * heightGradient);
-                float baseCloud = saturate(CloudRemap(shaped, 1.0 - coverage, 1.0, 0.0, 1.0)) * coverage;
-                if (baseCloud <= 0.0)
+                float sizeT = saturate(0.5 + ((weather.y - 0.5) * (1.0 + (_CldSizeVariation * 2.0))));
+                float smallWeight = 1.0 - smoothstep(0.18, 0.42, sizeT);
+                float mediumWeight = smoothstep(0.18, 0.42, sizeT) *
+                    (1.0 - smoothstep(0.62, 0.86, sizeT));
+                float largeWeight = smoothstep(0.68, 0.92, sizeT);
+
+                float density;
+                if (_CldNoiseStyle < 0.5)
+                {
+                    float smallDensity = MakeCloudDensity(smallSample.g, weather.x, heightGradient);
+                    float mediumDensity = MakeCloudDensity(mediumSample.r, weather.x, heightGradient);
+                    float largeDensity = MakeCloudDensity(largeSample.b, weather.x * (0.85 + weather.w * 0.2), heightGradient);
+                    density = max(smallDensity * smallWeight, max(mediumDensity * mediumWeight, largeDensity * largeWeight));
+                }
+                else
+                {
+                    density = MakeEarthCloudDensity(
+                        earthMask,
+                        heightGradient);
+                }
+                if (density <= 0.0)
                 {
                     return 0.0;
                 }
 
-                float3 detailSample = SAMPLE_TEXTURE3D_LOD(_CldDetailTex, sampler_CldDetailTex, windedPos * _CldDetailFreq, lod).rgb;
-                float detailFbm = dot(detailSample, float3(0.55, 0.3, 0.15));
+                 if (_CldNoiseStyle > 0.5)
+                 {
+                     return density;
+                 }
 
-                // Эрозия сильнее у низа/верха (там, где heightGradient уже
-                // мал) — даёт рваный "дымный" край именно там, где по ТЗ
-                // нужен пролёт сквозь дым, а не жёсткий блоб.
-                float erodeWeight = lerp(0.15, 1.0, 1.0 - heightGradient) * _CldDetailErosion;
-                float finalCloud = CloudRemap(baseCloud, erodeWeight * detailFbm, 1.0, 0.0, 1.0);
-
-                return saturate(finalCloud);
+                 float3 detailSample = SAMPLE_TEXTURE3D_LOD(
+                     _CldDetailTex, sampler_CldDetailTex,
+                     (samplePos + _CldDetailWindOffset) * _CldDetailFreq, shapeLod).rgb;
+                 float detailFbm = dot(detailSample, float3(0.55, 0.3, 0.15));
+                 float legacyErodeWeight = lerp(0.15, 1.0, 1.0 - heightGradient) * _CldDetailErosion;
+                 return saturate(CloudRemap(density, legacyErodeWeight * detailFbm, 1.0, 0.0, 1.0)) * clearFactor;
             }
 
             // Короткий марш к солнцу (самозатенение). Растущий шаг —
             // дешёвая замена honest cone sampling.
-            float LightMarch(float3 posRel, float3 sunDir, float baseStep, float lod)
+            float LightMarch(float3 posRel, float3 sunDir, float baseStep, float lod, float weatherLod, float earthMask)
             {
                 float totalDensity = 0.0;
                 float stepSize = max(1.0, baseStep);
@@ -216,7 +245,7 @@ Shader "Galilego/PlanetClouds"
                     }
 
                     float3 p = posRel + (sunDir * t);
-                    totalDensity += SampleCloudDensity(p, lod + 1.0) * stepSize;
+                    totalDensity += SampleCloudDensity(p, lod + 1.0, weatherLod, earthMask) * stepSize;
                     t += stepSize;
                     stepSize *= 1.7;
                 }
@@ -232,7 +261,7 @@ Shader "Galilego/PlanetClouds"
 
                 float top0;
                 float top1;
-                bool hitTop = RaySphere(ro, rd, _CldTopRadius, top0, top1);
+                bool hitTop = CloudRaySphere(ro, rd, _CldTopRadius, top0, top1);
                 if (!hitTop || top1 < 0.0)
                 {
                     discard;
@@ -240,7 +269,7 @@ Shader "Galilego/PlanetClouds"
 
                 float bot0;
                 float bot1;
-                bool hitBot = RaySphere(ro, rd, _CldBottomRadius, bot0, bot1);
+                bool hitBot = CloudRaySphere(ro, rd, _CldBottomRadius, bot0, bot1);
 
                 float r0 = length(ro);
                 float marchStart;
@@ -285,7 +314,7 @@ Shader "Galilego/PlanetClouds"
 
                 float planet0;
                 float planet1;
-                bool hitPlanet = RaySphere(ro, rd, _CldPlanetRadius, planet0, planet1) && planet1 > 0.0;
+                bool hitPlanet = CloudRaySphere(ro, rd, _CldPlanetRadius, planet0, planet1) && planet1 > 0.0;
                 float tPlanet = hitPlanet ? max(planet0, 0.0) : 1e30;
 
                 marchEnd = min(marchEnd, tDepth);
@@ -297,15 +326,21 @@ Shader "Galilego/PlanetClouds"
 
                 int steps = clamp((int)_CldStepCount, 8, 128);
                 float ds = (marchEnd - marchStart) / (float)steps;
-                float lod = clamp(log2(max(ds / max(1e-3, _CldShapeTexelWorldSize), 1.0)), 0.0, 6.0);
+                float pixelWorldSize = max(length(fwidth(rd)) * max(marchStart + ds, 1.0), ds);
+                 float lod = clamp(log2(max(pixelWorldSize / max(1e-3, _CldShapeTexelWorldSize), 1.0)), 0.0, 6.0);
+                 float weatherLod = clamp(log2(max(pixelWorldSize / max(1e-3, _CldWeatherTexelWorldSize), 1.0)), 0.0, 5.0);
+                 float earthMask = _CldNoiseStyle > 0.5
+                     ? SampleCloudEarthMask(ro + (rd * marchStart))
+                     : 0.0;
 
-                // Тот же джиттер, что и в PlanetAtmosphere (проверенный,
-                // не даёт дополнительной screen-space периодики).
-                float jitter = frac(sin(dot(input.positionCS.xy, float2(12.9898, 78.233))) * 43758.5453);
+                 float jitter = frac(sin(dot(input.positionCS.xy, float2(12.9898, 78.233))) * 43758.5453);
 
-                float cosSunView = dot(rd, sunDir);
-                float phase = HenyeyGreenstein(cosSunView, clamp(_CldPhaseG, 0.0, 0.95));
-                float3 ambient = _CldAmbientTint.rgb * _CldSunColor * 0.35;
+                 float cosSunView = dot(rd, sunDir);
+                 float phase = HenyeyGreenstein(cosSunView, clamp(_CldPhaseG, 0.0, 0.95));
+                 float fill = lerp(0.04, 0.12, saturate(_CldMultipleScattering));
+                 float fillScatter = lerp(0.05, 0.16, saturate(_CldMultipleScattering));
+                 float3 neutralScatterColor = lerp(float3(1.0, 1.0, 1.0), _CldAmbientTint.rgb, 0.25);
+                 float3 ambient = (_CldAmbientTint.rgb * (fill + (_CldSkyAmbient * 0.35))) + (_CldSunColor * 0.02);
 
                 float sigmaExt = max(1e-5, _CldExtinction);
                 float lightStepBase = max(1.0, (_CldTopRadius - _CldBottomRadius) / max(1.0, _CldLightSteps));
@@ -313,7 +348,10 @@ Shader "Galilego/PlanetClouds"
                 float transmittance = 1.0;
                 float3 inScatter = 0.0;
                 float debugSteps = 0.0;
-                float debugCoverage = SampleWeatherCoverage(ro + (rd * marchStart));
+                float4 debugWeather = SampleWeather(ro + (rd * marchStart), weatherLod);
+                float debugCoverage = debugWeather.x;
+                float debugClear = debugWeather.z;
+                float debugSize = debugWeather.y;
 
                 [loop]
                 for (int i = 0; i < 128; i++)
@@ -326,20 +364,25 @@ Shader "Galilego/PlanetClouds"
                     float t = marchStart + ((i + jitter) * ds);
                     float3 p = ro + (rd * t);
 
-                    float density = SampleCloudDensity(p, lod);
+                     float density = SampleCloudDensity(p, lod, weatherLod, earthMask);
                     if (density > 0.0001)
                     {
                         debugSteps += 1.0;
 
-                        float sunOpticalDepth = LightMarch(p, sunDir, lightStepBase, lod);
-                        float sunTrans = exp(-sunOpticalDepth * sigmaExt);
+                         float sunOpticalDepth = LightMarch(p, sunDir, lightStepBase, lod, weatherLod, earthMask);
+                         float radialSun = saturate(dot(normalize(p), sunDir));
+                         float sunFacing = smoothstep(-0.05, 0.72, radialSun);
+                         float sunTrans = exp(-sunOpticalDepth * sigmaExt * 0.08);
+                         sunTrans = max(sunTrans, 0.12 + (sunFacing * 0.40));
 
-                        float powderRaw = 1.0 - exp(-density * sigmaExt * 2.0 * _CldPowderStrength);
-                        // Пудра заметнее на "тёмной" от камеры стороне облака.
-                        float powder = lerp(1.0, powderRaw, saturate((cosSunView * 0.5) + 0.5));
+                         float powderRaw = 1.0 - exp(-density * sigmaExt * 2.0 * _CldPowderStrength);
+                         // Пудра заметнее на "тёмной" от камеры стороне облака.
+                         float powder = lerp(1.0, powderRaw, saturate((cosSunView * 0.5) + 0.5));
 
-                        float3 sunLit = _CldSunColor * sunTrans * phase * powder;
-                        float3 lit = (sunLit + ambient) * _CldScatterAlbedo * _CldIntensity;
+                         float directLighting = lerp(0.12, 0.30, sunFacing);
+                         float3 sunLit = _CldSunColor * (directLighting + (phase * sunTrans * 0.75)) * powder;
+                         float3 lit = (sunLit + ambient) * _CldScatterAlbedo * _CldIntensity;
+                         lit += neutralScatterColor * (fillScatter * density);
 
                         float sigmaT = sigmaExt * density;
                         float segTrans = exp(-sigmaT * ds);
@@ -348,14 +391,17 @@ Shader "Galilego/PlanetClouds"
                         inScatter += transmittance * integScatter;
                         transmittance *= segTrans;
 
-                        if (transmittance < _CldEarlyExitT)
-                        {
-                            break;
-                        }
-                    }
-                }
+                         if (transmittance < _CldEarlyExitT)
+                         {
+                             break;
+                         }
+                     }
+                 }
 
-                float alpha = saturate(1.0 - transmittance);
+                 float3 highlight = max(inScatter - 0.55, 0.0);
+                 inScatter -= highlight / (1.0 + (1.5 * highlight));
+
+                 float alpha = saturate(1.0 - transmittance);
 
                 if (_CldDebugMode > 0.5)
                 {
@@ -379,7 +425,22 @@ Shader "Galilego/PlanetClouds"
                         return float4(debugSteps / (float)steps, 0.0, 0.0, 1.0);
                     }
 
-                    return float4(lod / 6.0, 0.0, 0.0, 1.0);
+                    if (_CldDebugMode < 5.5)
+                    {
+                        return float4(lod / 6.0, 0.0, 0.0, 1.0);
+                    }
+
+                    if (_CldDebugMode < 6.5)
+                    {
+                        return float4(debugClear.xxx, 1.0);
+                    }
+
+                    if (_CldDebugMode < 7.5)
+                    {
+                        return float4(debugSize.xxx, 1.0);
+                    }
+
+                    return float4(weatherLod / 5.0, 0.0, 0.0, 1.0);
                 }
 
                 return float4(inScatter, alpha);

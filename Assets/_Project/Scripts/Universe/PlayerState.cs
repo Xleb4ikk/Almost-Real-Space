@@ -53,6 +53,8 @@ namespace Galilego.Universe
         /// <summary>Прыжок (срабатывает один раз, на земле).</summary>
         public bool Jump;
 
+        public bool JetpackToggle;
+
         /// <summary>Ускорение джетпака (м/с², только в EVA).</summary>
         public Vector3d JetpackAccel;
 

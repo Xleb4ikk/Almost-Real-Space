@@ -22,6 +22,35 @@ namespace Galilego.Universe
     /// </summary>
     internal static class PlayerInput
     {
+        private const float DoubleTapWindowSeconds = 0.3f;
+        private static bool spaceIsDown;
+        private static float lastSpacePressTime = float.NegativeInfinity;
+
+        public static bool DoubleDown(GameKey key)
+        {
+            if (key != GameKey.Space)
+            {
+                return false;
+            }
+
+#if ENABLE_INPUT_SYSTEM
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null)
+            {
+                spaceIsDown = false;
+                return false;
+            }
+
+            var space = keyboard[Key.Space];
+            return TrackDoubleTap(space.isPressed, space.wasPressedThisFrame, space.wasReleasedThisFrame);
+#else
+            return TrackDoubleTap(
+                Input.GetKey(KeyCode.Space),
+                Input.GetKeyDown(KeyCode.Space),
+                Input.GetKeyUp(KeyCode.Space));
+#endif
+        }
+
 #if ENABLE_INPUT_SYSTEM
         public static bool Held(GameKey key)
         {
@@ -104,5 +133,23 @@ namespace Galilego.Universe
             }
         }
 #endif
+
+        private static bool TrackDoubleTap(bool isPressed, bool wasPressedThisFrame, bool wasReleasedThisFrame)
+        {
+            bool doubleDown = false;
+            if (wasPressedThisFrame && !spaceIsDown)
+            {
+                doubleDown = Time.unscaledTime - lastSpacePressTime <= DoubleTapWindowSeconds;
+                lastSpacePressTime = Time.unscaledTime;
+                spaceIsDown = true;
+            }
+
+            if (wasReleasedThisFrame || (!isPressed && spaceIsDown))
+            {
+                spaceIsDown = false;
+            }
+
+            return doubleDown;
+        }
     }
 }

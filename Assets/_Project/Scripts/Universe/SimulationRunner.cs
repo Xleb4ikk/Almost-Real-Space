@@ -172,6 +172,10 @@ namespace Galilego.Universe
         /// <summary>Режим игрока: в корабле / EVA / на поверхности.</summary>
         public PlayerMode PlayerMode { get; private set; }
 
+        public bool JetpackActive { get; private set; }
+
+        public bool PlayerAirborne => playerAirborne;
+
         /// <summary>Позиция игрока в double-мире (астро-кадр, инерциальный).</summary>
         public Vector3d PlayerPosition { get; private set; }
 
@@ -201,9 +205,11 @@ namespace Galilego.Universe
         private IBreakupModel breakupModel;
         private DebrisUpdater debrisUpdater;
         private bool playerAirborne;
+        private bool playerJumpQueued;
+        private bool jetpackToggleQueued;
 
         /// <summary>Скорость прыжка игрока (м/с, вертикально от поверхности).</summary>
-        private const double PlayerJumpSpeed = 2.5d;
+        private const double PlayerJumpSpeed = 5d;
 
         /// <summary>Максимальный подшаг интегрирования игрока (с).</summary>
         private const double PlayerMaxStepSeconds = 0.5d;
@@ -267,6 +273,7 @@ namespace Galilego.Universe
             TimeSeconds = 0d;
             Regime = VesselRegime.Flying;
             PlayerMode = PlayerMode.InShip;
+            JetpackActive = false;
             PlayerPosition = Ship.Position;
             PlayerVelocity = Ship.Velocity;
             if (SpawnOnSurface)
@@ -373,6 +380,7 @@ namespace Galilego.Universe
                 ? PlayerMode.Swimming
                 : PlayerMode.OnSurface;
             playerAirborne = false;
+            JetpackActive = false;
         }
 
         private OrbitingBody FindSpawnBody()
@@ -457,6 +465,7 @@ namespace Galilego.Universe
             PlayerVelocity = Ship.Velocity + (direction * pushSpeed);
             PlayerMode = PlayerMode.EVA;
             playerAirborne = false;
+            JetpackActive = false;
             return true;
         }
 
@@ -477,6 +486,7 @@ namespace Galilego.Universe
             PlayerPosition = Ship.Position;
             PlayerVelocity = Ship.Velocity;
             playerAirborne = false;
+            JetpackActive = false;
             return true;
         }
 
@@ -487,7 +497,19 @@ namespace Galilego.Universe
         /// </summary>
         private void StepPlayer(double fromTime)
         {
+            playerJumpQueued |= PlayerIntent.Jump;
+            jetpackToggleQueued |= PlayerIntent.JetpackToggle;
+            PlayerIntent.Jump = false;
+            PlayerIntent.JetpackToggle = false;
+
+            if (jetpackToggleQueued)
+            {
+                jetpackToggleQueued = false;
+                ToggleJetpack();
+            }
+
             double t = fromTime;
+            bool jump = playerJumpQueued;
             while (t < TimeSeconds - 1e-12)
             {
                 double dt = Math.Min(PlayerMaxStepSeconds, TimeSeconds - t);
@@ -501,7 +523,9 @@ namespace Galilego.Universe
                         StepPlayerEva(t, dt);
                         break;
                     case PlayerMode.OnSurface:
-                        StepPlayerSurface(t, dt);
+                        StepPlayerSurface(t, dt, jump);
+                        playerJumpQueued = false;
+                        jump = false;
                         break;
                     case PlayerMode.Swimming:
                         StepPlayerSwimming(t, dt);
@@ -510,12 +534,58 @@ namespace Galilego.Universe
 
                 t += dt;
             }
+
+            if (PlayerMode != PlayerMode.OnSurface)
+            {
+                playerJumpQueued = false;
+            }
+        }
+
+        private void ToggleJetpack()
+        {
+            if (PlayerMode != PlayerMode.EVA && PlayerMode != PlayerMode.OnSurface)
+            {
+                return;
+            }
+
+            bool launchFromGround = PlayerMode == PlayerMode.OnSurface && !playerAirborne;
+            JetpackActive = !JetpackActive;
+            if (!launchFromGround || !JetpackActive)
+            {
+                return;
+            }
+
+            playerAirborne = true;
+            Vector3d normal = new Vector3d(0d, 0d, 1d);
+            OrbitingBody body = DominantBody;
+            if (body != null)
+            {
+                body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out _);
+                Vector3d radial = PlayerPosition - bodyPos;
+                if (radial.SqrMagnitude > 1e-12d)
+                {
+                    normal = radial.Normalized;
+                }
+
+                if (body.Terrain != null)
+                {
+                    body.SurfaceLatLonAt(PlayerPosition, TimeSeconds, out double latDeg, out double lonDeg);
+                    Vector3d terrainNormal = body.Terrain.GetOutwardNormal(body, radial, TimeSeconds).Normalized;
+                    if (terrainNormal.SqrMagnitude > 1e-12d)
+                    {
+                        normal = terrainNormal;
+                    }
+                }
+            }
+
+            PlayerVelocity += normal * PlayerJumpSpeed;
         }
 
         private void StepPlayerEva(double t, double dt)
         {
             Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
-            PlayerVelocity += (gravity + PlayerIntent.JetpackAccel) * dt;
+            Vector3d jetpackAccel = JetpackActive ? PlayerIntent.JetpackAccel : Vector3d.Zero;
+            PlayerVelocity += (gravity + jetpackAccel) * dt;
             PlayerPosition += PlayerVelocity * dt;
 
             OrbitingBody body = DominantBody;
@@ -640,6 +710,7 @@ namespace Galilego.Universe
             PlayerVelocity = surfaceVel + (tangential * 0.3d) + (up * softNormal);
             PlayerMode = PlayerMode.Swimming;
             playerAirborne = false;
+            JetpackActive = false;
             if (normalSpeed < -10d)
             {
                 Debug.Log("Всплеск: вход в воду на " + (-normalSpeed).ToString("F1") + " м/с погашен водой");
@@ -661,6 +732,7 @@ namespace Galilego.Universe
             {
                 PlayerMode = PlayerMode.EVA;
                 playerAirborne = false;
+                JetpackActive = false;
                 return;
             }
 
@@ -682,6 +754,7 @@ namespace Galilego.Universe
                 {
                     PlayerMode = PlayerMode.EVA;
                     playerAirborne = false;
+                    JetpackActive = false;
                 }
 
                 return;
@@ -759,6 +832,7 @@ namespace Galilego.Universe
                 {
                     PlayerMode = PlayerMode.EVA;
                     playerAirborne = false;
+                    JetpackActive = false;
                 }
                 else
                 {
@@ -767,7 +841,7 @@ namespace Galilego.Universe
             }
         }
 
-        private void StepPlayerSurface(double t, double dt)
+        private void StepPlayerSurface(double t, double dt, bool jumpRequested)
         {
             OrbitingBody body = DominantBody;
             if (body == null)
@@ -781,7 +855,8 @@ namespace Galilego.Universe
             {
                 // Баллистика прыжка: свободное падение до контакта.
                 Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
-                PlayerVelocity += gravity * dt;
+                Vector3d jetpackAccel = JetpackActive ? PlayerIntent.JetpackAccel : Vector3d.Zero;
+                PlayerVelocity += (gravity + jetpackAccel) * dt;
                 PlayerPosition += PlayerVelocity * dt;
                 if (GroundDecorCollisionRegistry.TryResolve(body.Name, PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d airPushed))
                 {
@@ -843,7 +918,7 @@ namespace Galilego.Universe
             Vector3d radial = PlayerPosition - bodyPos3;
             PlayerPosition = bodyPos3 + (radial.Normalized * (body.Radius + newGround));
 
-            if (PlayerIntent.Jump)
+            if (jumpRequested)
             {
                 playerAirborne = true;
                 PlayerVelocity += normal * PlayerJumpSpeed;

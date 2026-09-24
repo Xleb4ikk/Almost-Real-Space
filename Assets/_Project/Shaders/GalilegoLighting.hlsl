@@ -1,6 +1,8 @@
 #ifndef GALILEGO_LIGHTING_INCLUDED
 #define GALILEGO_LIGHTING_INCLUDED
 
+#include "GalilegoCloudField.hlsl"
+
 // Световая часть кастомных forward-шейдеров Galilego: направленная тень HDRP
 // и ambient. В fragment-пассе обязательно объявить варианты качества теней:
 //   #pragma multi_compile_fragment PUNCTUAL_SHADOW_LOW PUNCTUAL_SHADOW_MEDIUM PUNCTUAL_SHADOW_HIGH
