@@ -120,6 +120,23 @@ namespace Galilego.Universe
             return surface - (worldPosition - bodyPos).Magnitude;
         }
 
+        public static bool IsSubmergedAt(
+            OrbitingBody body,
+            Vector3d worldPosition,
+            double timeSeconds,
+            out double depthMeters)
+        {
+            depthMeters = SubmersionDepthAt(body, worldPosition, timeSeconds);
+            if (double.IsNaN(depthMeters) || depthMeters <= 0d)
+            {
+                return false;
+            }
+
+            body.SurfaceLatLonAt(
+                worldPosition, timeSeconds, out double latitudeDegrees, out double longitudeDegrees);
+            return IsWaterAt(body, latitudeDegrees, longitudeDegrees);
+        }
+
         /// <summary>
         /// Высота точки мира над СЫРЫМ дном (м): дистанция до центра минус
         /// радиус дна в этой lat/lon. Для упора при нырянии (в отличие от

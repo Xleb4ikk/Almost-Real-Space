@@ -694,6 +694,7 @@ MonoBehaviour:
   SplitFactor: 3.5
   MergeHysteresis: 1.5
   SkirtFactor: 0.03
+  WaterSkirtFactor: 0
   BuildsPerFrame: 64
   DecorBuildsPerFrame: 3
   DecorBuildBudgetMs: 3
@@ -929,13 +930,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.UnderwaterEffect
   Runner: {fileID: 1332194275}
+  EffectCamera: {fileID: 0}
   WaterFogColor: {r: 0.02, g: 0.16, b: 0.3, a: 1}
-  ShallowVisibilityMeters: 35
-  DeepVisibilityMeters: 4
-  MaxFogDistanceMeters: 250
-  FullEffectDepthMeters: 25
-  MaxDarkeningEv: -3.5
-  SurfaceFadeMeters: 1
+  ShallowVisibilityMeters: 400
+  DeepVisibilityMeters: 150
+  MaxFogDistanceMeters: 64
+  FullEffectDepthMeters: 50
+  MaxDarkeningEv: -1.5
+  SurfaceFadeMeters: 3
   EyeHeightMeters: 2
   SwimEyeHeightMeters: 0.5
 --- !u!1 &1644257541

@@ -48,6 +48,7 @@ Shader "Galilego/WaterSurface"
         _UnderwaterCausticScale("Underwater Caustic Scale", Float) = 0.4
         _UnderwaterCausticSpeed("Underwater Caustic Speed", Float) = 1.6
         _UnderwaterRimStrength("Underwater Window Rim", Float) = 0.5
+        _UnderwaterSunStrength("Underwater Sun Strength", Range(0.0, 1.0)) = 0.12
     }
     SubShader
     {
@@ -146,10 +147,12 @@ Shader "Galilego/WaterSurface"
             float _MaxAlpha;
             float _UnderwaterAlpha;
             float _UnderwaterRippleStrength;
+            float _UnderwaterCameraDepth;
             float _UnderwaterCausticStrength;
             float _UnderwaterCausticScale;
             float _UnderwaterCausticSpeed;
             float _UnderwaterRimStrength;
+            float _UnderwaterSunStrength;
 
             struct Attributes
             {
@@ -306,7 +309,7 @@ Shader "Galilego/WaterSurface"
                 // волновой рябью, к горизонту — глухое зеркало толщи
                 // (полное внутреннее отражение). Без этого потолок — плоская
                 // заливка и солнце не читается.
-                bool isUnderwater = (dot(baseNFace, viewDir) < 0.0);
+                bool isUnderwater = (_UnderwaterCameraDepth > 0.0);
                 if (isUnderwater)
                 {
                     float3 upW = baseNFace;
@@ -366,10 +369,10 @@ Shader "Galilego/WaterSurface"
                     float3 deepRefl = (_UnderwaterColor.rgb * waterRad * dayDimUw) * (0.6 + 0.4 * (1.0 - cosUp));
                     // Каустики слабо просвечивают и в зеркальной зоне (рассеянный
                     // свет толщи), заметнее — в окне (добавлено ниже к sunThrough).
-                     deepRefl += _SunLightColor * waterRad * dayDimUw * caustic * 0.25 * cloudShadow;
+                     deepRefl += _SunLightColor * waterRad * dayDimUw * caustic * 0.25 * cloudShadow * _UnderwaterSunStrength;
 
                      float3 skyThrough = (GalilegoSkyAmbient(toSurf) * waterRad * 1.2
-                         + (_SunLightColor * waterRad * 0.12 * cloudShadow)) * dayDimUw;
+                         + (_SunLightColor * waterRad * 0.12 * cloudShadow * _UnderwaterSunStrength)) * dayDimUw;
                     // Солнце сквозь воду: диск + ближнее гало + широкое рассеяние.
                     // Смотрим на солнце через потолок — ярко, в сторону — спад.
                     float sunDotUw = saturate(dot(toSurf, sunDir));
@@ -377,17 +380,17 @@ Shader "Galilego/WaterSurface"
                         + pow(sunDotUw, 24.0) * 0.9
                         + pow(sunDotUw, 6.0) * 0.35;
                     float glitterUw = 0.75 + (0.5 * h01Uw);
-                     float3 sunThrough = _SunLightColor * (sun * sunDiskUw * glitterUw) * waterRad * cloudShadow;
-                    // Каустики в окне — самое яркое и читаемое место: солнечная
-                    // рябь преломляется в пятна света, как настоящее дно бассейна.
-                     sunThrough += _SunLightColor * waterRad * sun * caustic * 0.8 * cloudShadow;
+                     float3 sunThrough = _SunLightColor * (sun * sunDiskUw * glitterUw) * waterRad * cloudShadow * _UnderwaterSunStrength;
+                     // Каустики в окне — самое яркое и читаемое место: солнечная
+                     // рябь преломляется в пятна света, как настоящее дно бассейна.
+                      sunThrough += _SunLightColor * waterRad * sun * caustic * 0.8 * cloudShadow * _UnderwaterSunStrength;
                     // Поглощение до поверхности: видимость толщи 20-30 м —
                     // в упор потолок яркий и читаемый, вдали тонет в цвет воды.
                     float absorbUw = exp(-camDistUw / 28.0);
                     float3 transmit = (skyThrough + sunThrough) * (0.35 + 0.65 * absorbUw)
                         + (_UnderwaterColor.rgb * waterRad * dayDimUw * 0.25 * (1.0 - absorbUw));
                     color = lerp(deepRefl, transmit, snell);
-                     color += _SunLightColor * waterRad * dayDimUw * rim * 0.5 * cloudShadow;
+                     color += _SunLightColor * waterRad * dayDimUw * rim * 0.5 * cloudShadow * _UnderwaterSunStrength;
                     // Живая рябь яркости по волне (гребень светлее впадины).
                     // Диапазон расширен (было ±10%) — иначе потолок между
                     // блёстками всё ещё читался как почти ровная заливка.
