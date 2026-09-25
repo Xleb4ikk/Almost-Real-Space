@@ -62,6 +62,9 @@ namespace Galilego.Universe
         [Range(0f, 0.2f)]
         public float SkirtFactor = 0.03f;
 
+        [Range(0f, 0.2f)]
+        public float WaterSkirtFactor = 0f;
+
         [Tooltip("РЎРєРѕР»СЊРєРѕ С‡Р°РЅРєРѕРІ СЃС‚СЂРѕРёС‚СЊ Р·Р° РєР°РґСЂ (РїРµСЂРІС‹Р№ РєР°РґСЂ вЂ” Р±РµР· Р»РёРјРёС‚Р°).")]
         [Range(1, 64)]
         public int BuildsPerFrame = 16;
@@ -896,6 +899,7 @@ namespace Galilego.Universe
             }
 
             Vector3 cameraPosition = camera.transform.position;
+            UpdateUnderwaterCameraDepth(cameraPosition);
             if (!waterDiagLogged && Time.frameCount > 30)
             {
                 waterDiagLogged = true;
@@ -1063,6 +1067,22 @@ namespace Galilego.Universe
         /// РµС‘ РІ С‚РµР»Рѕ-fixed РѕСЃРё РјР°С‚СЂРёС†РµР№ _TerrainWorldToBody; С„Р°Р·Сѓ С‚РµРєСЃС‚СѓСЂС‹ (РґРѕР»Рё
         /// UV РІ double) РІРѕР·РІСЂР°С‰Р°СЋС‚ РіР»РѕР±Р°Р»С‹ С„Р°Р· вЂ” РїР°С‚С‚РµСЂРЅ В«РїСЂРёР±РёС‚В» Рє Р·РµРјР»Рµ.
         /// </summary>
+        private void UpdateUnderwaterCameraDepth(Vector3 cameraPosition)
+        {
+            Shader.SetGlobalFloat("_UnderwaterCameraDepth", 0f);
+            if (Runner == null || Runner.DominantBody == null)
+            {
+                return;
+            }
+
+            Vector3d observer = FloatingOrigin.Anchor + AstroFrame.ToAstro(cameraPosition);
+            if (WaterQuery.IsSubmergedAt(
+                Runner.DominantBody, observer, Runner.TimeSeconds, out double depthMeters))
+            {
+                Shader.SetGlobalFloat("_UnderwaterCameraDepth", (float)depthMeters);
+            }
+        }
+
         private void UpdateTerrainTextureOrigin()
         {
             if (terrain == null || !(terrain.TextureScale > 0d))
@@ -1567,7 +1587,7 @@ namespace Galilego.Universe
 
             if (hasWater)
             {
-                BuildWaterMesh(chunk, waterVerts, waterNormals, waterExtra, n, triangles, skirtDepth, centerUnity);
+                BuildWaterMesh(chunk, waterVerts, waterNormals, waterExtra, n, triangles, skirtDepth * WaterSkirtFactor, centerUnity);
             }
 
             chunk.Visible = true;

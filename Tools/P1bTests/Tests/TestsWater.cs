@@ -102,6 +102,19 @@ internal static partial class P1bTests
         Check(Math.Abs(sub0) < 1e-6d && Math.Abs(subBelow - 10d) < 1e-6d && Math.Abs(subAbove + 10d) < 1e-6d,
             "T105 water-query", "погружение: 0/−10/+10 м → " + sub0.ToString("F3") + "/" + subBelow.ToString("F3") + "/" + subAbove.ToString("F3"));
 
+        bool submergedInWater = WaterQuery.IsSubmergedAt(body, tenBelow, 0d, out double waterDepth);
+        Check(submergedInWater && Math.Abs(waterDepth - 10d) < 1e-6d,
+            "T105 water-query", "точка ниже поверхности над водой считается погружённой");
+        Check(!WaterQuery.IsSubmergedAt(body, atSurface, 0d, out _)
+            && !WaterQuery.IsSubmergedAt(body, tenAbove, 0d, out _),
+            "T105 water-query", "точка на поверхности и выше водой не считается погружённой");
+
+        body.GetSurfaceState(landLat, landLon, sea - 10d, 0d, out Vector3d landInsideSeaShell, out _);
+        bool submergedOnLand = WaterQuery.IsSubmergedAt(body, landInsideSeaShell, 0d, out double landDepth);
+        Check(WaterQuery.SubmersionDepthAt(body, landInsideSeaShell, 0d) > 0d
+            && !submergedOnLand && Math.Abs(landDepth - 10d) < 1e-6d,
+            "T105 water-query", "точка ниже моря, но внутри суши не считается погружённой");
+
         // Просвет над дном: точка на сыром дне → ~0.
         double rawWater = WaterQuery.RawSeabedHeightAt(body, waterLat, waterLon);
         body.GetSurfaceState(waterLat, waterLon, rawWater, 0d, out Vector3d atSeabed, out _);
@@ -120,9 +133,11 @@ internal static partial class P1bTests
         // Тело без океана: всё честно пустое.
         var dryBody = new OrbitingBody { Name = "Dry", Radius = 1000d };
         dryBody.Terrain = new SphericalTerrain();
+        bool drySubmerged = WaterQuery.IsSubmergedAt(dryBody, Vector3d.Zero, 0d, out double dryDepth);
         Check(!WaterQuery.HasOcean(dryBody) && !WaterQuery.TryGetSeaLevel(dryBody, out _)
             && WaterQuery.WaterDepthAt(dryBody, 0d, 0d) == 0d
             && !WaterQuery.IsWaterAt(dryBody, 0d, 0d)
+            && !drySubmerged && double.IsNaN(dryDepth)
             && double.IsNaN(WaterQuery.SeaSurfaceRadius(dryBody))
             && double.IsNaN(WaterQuery.SubmersionDepthAt(dryBody, Vector3d.Zero, 0d)),
             "T105 water-query", "тело без океана: HasOcean=false, везде NaN/0");

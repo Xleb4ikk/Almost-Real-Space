@@ -33,6 +33,7 @@ Shader "Galilego/GroundDecorBillboard"
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
             #include "GalilegoLighting.hlsl"
+            #include "GalilegoUnderwaterCaustics.hlsl"
 
             sampler2D _BaseColorMap;
             float4 _BaseColorMap_ST;
@@ -109,7 +110,9 @@ Shader "Galilego/GroundDecorBillboard"
                     + (GalilegoSkyAmbient(n) * _TerrainRadianceScale)
                      + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale)
                      + (_SunLightColor * (sun * back * shadow * cloudShadow) * _TerrainRadianceScale);
-                return float4(albedo * light * _GroundTint.rgb, 1.0);
+                float3 color = albedo * light * _GroundTint.rgb;
+                color += _UnderwaterCausticColor.rgb * UnderwaterCausticMask(input.positionWS, n);
+                return float4(color, 1.0);
             }
             ENDHLSL
         }

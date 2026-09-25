@@ -194,14 +194,16 @@ namespace Galilego.Universe
             Shader.SetGlobalFloat("_CldCloudActive", 0f);
             Shader.SetGlobalFloat("_CldShadowStrength", 0f);
 
-            if (body == null || profile == null || shell == null)
+            if (Runner == null || Runner.SystemState == null || Runner.SystemState.Root == null
+                || body == null || profile == null || shell == null)
             {
                 return;
             }
 
             bool active = profile.VisualEnabled
                 && profile.TopAltitudeMeters > profile.BottomAltitudeMeters
-                && (Runner.DominantBody == body || IsCloudBodyRelevant(Camera.main));
+                && (Runner.DominantBody == body || IsCloudBodyRelevant(Camera.main))
+                && !UnderwaterEffect.CameraIsUnderwater;
             if (shell.gameObject.activeSelf != active)
             {
                 shell.gameObject.SetActive(active);

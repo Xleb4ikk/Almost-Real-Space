@@ -31,6 +31,7 @@ Shader "Galilego/PlanetSurface"
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
             #include "GalilegoLighting.hlsl"
+            #include "GalilegoUnderwaterCaustics.hlsl"
 
             // Глобально, ставит PlanetSurfaceRenderer (мировая позиция камеры).
             float3 _PlanetCameraPos;
@@ -481,7 +482,8 @@ Shader "Galilego/PlanetSurface"
                 float3 landWet = land * (1.0 - (0.45 * wetBand));
 
                 float3 color = lerp(landWet, seabed, isWater);
-                 return float4(color, 1.0);
+                color += _UnderwaterCausticColor.rgb * UnderwaterCausticMask(input.positionWS, normal);
+                return float4(color, 1.0);
             }
             ENDHLSL
         }

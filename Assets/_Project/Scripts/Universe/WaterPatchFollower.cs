@@ -235,9 +235,8 @@ namespace Galilego.Universe
             if (patchActive && Runner != null && Runner.DominantBody != null
                 && WaterQuery.HasOcean(Runner.DominantBody))
             {
-                double depth = WaterQuery.SubmersionDepthAt(
-                    Runner.DominantBody, Runner.PlayerPosition, Runner.TimeSeconds);
-                submerged = !double.IsNaN(depth) && depth > 0d;
+                submerged = WaterQuery.IsSubmergedAt(
+                    Runner.DominantBody, Runner.PlayerPosition, Runner.TimeSeconds, out _);
             }
 
             bool hdrpLeads = submerged && waterSurface != null
