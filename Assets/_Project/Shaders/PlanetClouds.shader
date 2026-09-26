@@ -333,8 +333,6 @@ Shader "Galilego/PlanetClouds"
                      ? SampleCloudEarthMask(ro + (rd * marchStart))
                      : 0.0;
 
-                 float jitter = frac(sin(dot(input.positionCS.xy, float2(12.9898, 78.233))) * 43758.5453);
-
                  float cosSunView = dot(rd, sunDir);
                  float phase = HenyeyGreenstein(cosSunView, clamp(_CldPhaseG, 0.0, 0.95));
                  float fill = lerp(0.04, 0.12, saturate(_CldMultipleScattering));
@@ -361,7 +359,14 @@ Shader "Galilego/PlanetClouds"
                         break;
                     }
 
-                    float t = marchStart + ((i + jitter) * ds);
+                    // Смещение 0.5 — сэмпл в середине сегмента (стратифицированная
+                    // выборка). Раньше здесь был per-pixel белый шум: он разбирается
+                    // только временным накоплением, а TAA выключен (FirstPersonCamera.
+                    // TemporalAA = false, стоит SMAA) — из-за него шум висел сеткой
+                    // точек, прибитой к экрану. Сегмент ~12 м, а плотность сэмплится
+                    // по LOD от размера пикселя, так что на масштабе сегмента поле
+                    // гладкое: midpoint не даёт ни мерцания, ни бандинга.
+                    float t = marchStart + ((i + 0.5) * ds);
                     float3 p = ro + (rd * t);
 
                      float density = SampleCloudDensity(p, lod, weatherLod, earthMask);
