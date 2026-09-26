@@ -40,8 +40,9 @@ Shader "Galilego/WaterSurface"
         _SurfStrength("Surf Strength", Float) = 1.2
         _SurfSpeed("Surf Speed", Float) = 2.0
         _FresnelStrength("Fresnel Strength", Float) = 1.2
-        _MinAlpha("Min Alpha", Range(0.0, 1.0)) = 0.55
+        _MinAlpha("Min Alpha", Range(0.0, 1.0)) = 0.93
         _MaxAlpha("Max Alpha", Range(0.0, 1.0)) = 1.0
+        _ShallowAlphaMeters("Shallow Alpha Band (m)", Float) = 0.35
         _UnderwaterAlpha("Underwater Alpha", Range(0.0, 1.0)) = 1.0
         _UnderwaterRippleStrength("Underwater Ceiling Ripple", Float) = 0.4
         _UnderwaterCausticStrength("Underwater Caustic Strength", Float) = 0.6
@@ -145,6 +146,7 @@ Shader "Galilego/WaterSurface"
             float _FresnelStrength;
             float _MinAlpha;
             float _MaxAlpha;
+            float _ShallowAlphaMeters;
             float _UnderwaterAlpha;
             float _UnderwaterRippleStrength;
             float _UnderwaterCameraDepth;
@@ -625,10 +627,15 @@ Shader "Galilego/WaterSurface"
                 // отброшенные пиксели показывают дно под водой.
                 // Глубина дополнительно читается цветом (waterBase).
                 float shallowT = smoothstep(0.0, 8.0, depth);
-                // Полоса прозрачности УЖЕ цветовой (8 м): зерно screen-door держим
-                // только у самого уреза (0-2 м), иначе при ходьбе пол-экрана
-                // зернистой ряби ползёт вместе с камерой.
-                float alphaT = smoothstep(0.0, 2.0, depth);
+                // Полоса частичной прозрачности — УЗКАЯ, в метрах, а не в
+                // «диапазоне шейдера». Раньше здесь стояло smoothstep(0, 2, depth):
+                // на пологом шельфе (замерено: глубины 1.8..30 м на километр)
+                // эти 2 м растягивались на сотни метров уреза, вода рисовалась
+                // screen-door'ом (clip(alpha - ign)) поверх СЫРОГО песка — и давала
+                // ровную «шахматную» полосу цвета пляжа с резкой прямой границей
+                // там, где альфа насыщается. Теперь полупрозрачна только тонкая
+                // кромка самого уреза (_ShallowAlphaMeters), дальше вода плотная.
+                float alphaT = smoothstep(0.0, max(0.02, _ShallowAlphaMeters), depth);
                 float alphaBase = lerp(_MinAlpha, _MaxAlpha, max(alphaT, fresnelPow));
                 float alphaShore = max(foam * 0.98, _ShallowAlpha * (1.0 - (alphaT * 0.35)));
                 alpha = clamp(max(alphaBase, alphaShore), 0.0, 1.0);
@@ -643,6 +650,114 @@ Shader "Galilego/WaterSurface"
                     clip(alpha - ign);
                 }
                 return float4(color, 1.0);
+            }
+            ENDHLSL
+        }
+        // Вода обязана попадать в depth pyramid. Иначе прозрачные шейдеры
+        // (атмосфера, звёзды, диск солнца) в IsSky() считают пиксели воды небом
+        // и рисуют небо ПОВЕРХ океана. На горизонте путь через атмосферу
+        // огромный, поэтому там это даёт ровную непрозрачную полосу цвета
+        // атмосферы ровно по линии горизонта: океан под ней не виден, и полоса
+        // повторяет силуэт берега. Рельеф ту же проблему уже закрыл пассом
+        // DepthForwardOnly (PlanetSurface.shader), вода — нет.
+        // HDRP требует DepthForwardOnly у forward-материалов
+        // (см. HDRenderPipeline.RenderGraph.cs:952-956).
+        Pass
+        {
+            Name "DepthForwardOnly"
+            Tags { "LightMode" = "DepthForwardOnly" }
+
+            ZWrite On
+            ColorMask 0
+            Cull Off
+
+            HLSLPROGRAM
+            #pragma vertex Vert
+            #pragma fragment Frag
+            #pragma target 4.5
+
+            #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+            #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
+
+            // Те же глобалы и та же волна, что в WaterSurfaceForward: смещение
+            // обязано быть ПОБАЙТОВО тем же. Без него препасс лежит на
+            // невозмущённой поверхности, а forward-vertex с волной ниже неё
+            // проваливается под свой же depth и отсекается ZTest LEqual —
+            // чёрные дыры на воде в ложбинах гребней.
+            float3 _PlanetCameraPos;
+            float3 _PlanetWaterCenter;
+            float _WaterTime;
+            float _WaveScale;
+            float _WaveAmplitude;
+            float4x4 _WaterWorldToBody;
+            float3 _WaterBodyAnchor;
+
+            float3 WaterBodyFixedDepth(float3 positionWS)
+            {
+                float3 relBody = mul((float3x3)_WaterWorldToBody, positionWS - _PlanetCameraPos);
+                return relBody + _WaterBodyAnchor;
+            }
+
+            float WaterWaveHeight01Depth(float3 wp, float t, out float3 gradDir)
+            {
+                float2 p = wp.xz;
+                float2 d1 = float2(0.958, 0.287);
+                float2 d2 = float2(-0.552, 0.834);
+                float2 d3 = float2(0.707, -0.707);
+                float2 d4 = float2(-0.196, -0.981);
+                float2 d5 = float2(0.831, -0.556);
+                float p1 = dot(p, d1) * 1.0 + (t * 1.1);
+                float p2 = dot(p, d2) * 1.7 - (t * 1.35);
+                float p3 = dot(p, d3) * 2.7 + (t * 1.9);
+                float p4 = dot(p, d4) * 4.5 - (t * 2.6);
+                float p5 = dot(p, d5) * 7.0 + (t * 3.4);
+                float s1 = sin(p1);
+                float s2 = sin(p2);
+                float s3 = sin(p3);
+                float s4 = sin(p4);
+                float s5 = sin(p5);
+                float h = (0.38 * s1) + (0.26 * s2) + (0.18 * s3) + (0.11 * s4) + (0.07 * s5);
+                float qShape = 0.25;
+                float dhds = 1.0 + (2.0 * qShape * h);
+                float2 grad = ((0.38 * 1.0 * d1) * cos(p1)
+                    + (0.26 * 1.7 * d2) * cos(p2)
+                    + (0.18 * 2.7 * d3) * cos(p3)
+                    + (0.11 * 4.5 * d4) * cos(p4)
+                    + (0.07 * 7.0 * d5) * cos(p5)) * dhds;
+                gradDir = float3(grad.x, 0.0, grad.y);
+                return h + (qShape * h * h);
+            }
+
+            struct Attributes
+            {
+                float3 positionOS : POSITION;
+            };
+
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+            };
+
+            Varyings Vert(Attributes input)
+            {
+                Varyings output;
+                float3 baseWS = TransformObjectToWorld(input.positionOS);
+                float3 centerDeltaV = baseWS - _PlanetWaterCenter;
+                float3 baseN = dot(centerDeltaV, centerDeltaV) > 1.0
+                    ? normalize(centerDeltaV)
+                    : TransformObjectToWorldNormal(float3(0.0, 0.0, 1.0));
+                float camDistV = length(_PlanetCameraPos - baseWS);
+                float fadeV = exp(-camDistV * 0.00012);
+                float3 gdirV;
+                float h01 = WaterWaveHeight01Depth(WaterBodyFixedDepth(baseWS) * _WaveScale, _WaterTime, gdirV);
+                float h = _WaveAmplitude * h01 * fadeV;
+                output.positionCS = TransformWorldToHClip(baseWS + (baseN * h));
+                return output;
+            }
+
+            float4 Frag(Varyings input) : SV_Target
+            {
+                return 0;
             }
             ENDHLSL
         }

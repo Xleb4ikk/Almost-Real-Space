@@ -7,6 +7,11 @@ Shader "Galilego/PlanetSurface"
         _SpecularPower("Specular Power", Float) = 120.0
         _SpecularIntensity("Specular Intensity", Float) = 0.8
         _RimColor("Water Sky Rim", Color) = (0.35, 0.55, 0.85, 1)
+        // _ShoreWetMeters/_ShoreWetTint НЕ в Properties — намеренно: свойство
+        // материала перекрывает глобал, и рантайм-материал (new Material(shader))
+        // молча взял бы свой дефолт. Значения приезжают только из
+        // PlanetSurfaceRenderer.ApplyTerrainGlobals, как _BeachHeightMeters.
+        // (Проверено: с ними в Properties A/B давал 0 изменённых пикселей.)
         // _TexLow/_TexMid/_TexHigh/_TexSteep/_TexOcclusion НЕ в Properties:
         // иначе рантайм-материал получает свои дефолтные "white" текстуры,
         // которые перекрывают глобалы PlanetSurfaceRenderer (земля белела).
@@ -69,6 +74,8 @@ Shader "Galilego/PlanetSurface"
             float _ColorDetailOctaves;
             float _ColorDetailStrength;
             float _BeachHeightMeters;
+            float _ShoreWetMeters;
+            float4 _ShoreWetTint;
 
             float4 _ColSand;
             float4 _ColDesert;
@@ -250,11 +257,25 @@ Shader "Galilego/PlanetSurface"
                 return _ColForest.rgb;
             }
 
+            // Допуск у уровня моря — АБСОЛЮТНЫЙ, в метрах, и почти не зависит от
+            // амплитуды. Раньше здесь стояло amp*0.001 «на всякий случай», но при
+            // амплитуде рельефа 9144 м это 9.14 м: полоса СУШИ высотой 9 метров
+            // над водой классифицировалась как вода и рисовалась по ветке дна
+            // (sand * (0.30,0.38,0.36)), а на границе +9.14 м резко щёлкала на
+            // обычный цвет. Контур постоянной высоты на сфере с 2 м высоты
+            // проецируется почти в прямую горизонтальную линию через весь кадр —
+            // это и была «серая полоса на горизонте». Плюс из-за isWater=1 вся
+            // полоса мокрого песка домножалась на ноль и не рисовалась вовсе.
+            static float SeaEpsilon(float amp)
+            {
+                return max(0.05, amp * 1e-6);
+            }
+
             float3 TerrainAlbedo(float raw, float mask, float detail, float slopeTan, float lat01)
             {
                 float amp = _TerrainAmplitude;
                 float sea = _TerrainSeaLevel;
-                if (raw <= sea + (amp * 0.001))
+                if (raw <= sea + SeaEpsilon(amp))
                 {
                     return _ColSea.rgb;
                 }
@@ -453,7 +474,7 @@ Shader "Galilego/PlanetSurface"
 
                 // Текстуры рельефа вместо процедурного альбедо —
                 // только на суше: море остаётся процедурным/водным.
-                float isWater = raw <= _TerrainSeaLevel + (_TerrainAmplitude * 0.001) ? 1.0 : 0.0;
+                float isWater = raw <= _TerrainSeaLevel + SeaEpsilon(_TerrainAmplitude) ? 1.0 : 0.0;
                 if (_TerrainUseTextures > 0.5 && isWater < 0.5)
                 {
                     float3 normalObject = normalize(TransformWorldToObjectNormal(normal));
@@ -476,10 +497,22 @@ Shader "Galilego/PlanetSurface"
                 float3 seabedBase = lerp(shallowBed, _WaterDeep.rgb, smoothstep(0.0, 0.45, absorb));
                 float3 seabed = seabedBase * lightTerm * (1.0 - (0.85 * absorb));
 
-                // Мокрая кромка: полоса суши 0–3 м над морем темнеет — линия
-                // уреза воды читается, пляж не сливается с мелководьем.
-                float wetBand = (1.0 - smoothstep(0.0, 3.0, raw - _TerrainSeaLevel)) * (1.0 - isWater);
-                float3 landWet = land * (1.0 - (0.45 * wetBand));
+                // Мокрая кромка. Раньше здесь было плоское затемнение на 45 % во всех
+                // каналах: урез читался, но это просто «темнее», без перехода и без
+                // привязки к пляжу — тёмная лента лежала и на траве, и на камне.
+                // Теперь это градиент МЕТРОВ над уровнем моря: у самой кромки —
+                // тёмный прохладный мокрый песок (красный гаснет первым, как у
+                // песка под водой), выше — плавно к обычному цвету. Полоса
+                // ограничена пляжной зоной (beachW), поэтому берег остаётся
+                // мокрым на 3 м, а не весь пляж. Геометрия, уровень моря, вода и
+                // screen-door не трогаются — это только вид суши у кромки.
+                float shoreAlt = max(raw - _TerrainSeaLevel, 0.0);
+                float beachW = _BeachHeightMeters > 0.0
+                    ? 1.0 - smoothstep(_BeachHeightMeters * 0.5, _BeachHeightMeters, shoreAlt)
+                    : 0.0;
+                float wetBand = (1.0 - smoothstep(0.0, max(0.05, _ShoreWetMeters), shoreAlt))
+                    * (1.0 - isWater) * beachW;
+                float3 landWet = land * lerp(float3(1.0, 1.0, 1.0), _ShoreWetTint.rgb, wetBand);
 
                 float3 color = lerp(landWet, seabed, isWater);
                 color += _UnderwaterCausticColor.rgb * UnderwaterCausticMask(input.positionWS, normal);
