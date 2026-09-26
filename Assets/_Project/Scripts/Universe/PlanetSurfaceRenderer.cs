@@ -109,7 +109,102 @@ namespace Galilego.Universe
         public int MaxNodes = 6000;
         [Tooltip("РњР°РєСЃРёРјСѓРј Р·Р°РєСЌС€РёСЂРѕРІР°РЅРЅС‹С… РјРµС€РµР№ (Р»РёС€РЅРёРµ РІС‹С‚РµСЃРЅСЏСЋС‚СЃСЏ).")]
         [Min(64)]
-        public int MaxCachedChunks = 2048;
+        public int MaxCachedChunks = 1024;
+
+        [Header("Бюджет геометрии: горизонт и плотность сетки")]
+        [Tooltip("Отбрасывать узлы, чья БЛИЖАЙШАЯ точка дальше предельной дальности " +
+                 "видимости (горизонт планеты при максимальном рельефе). Такой узел " +
+                 "не может закрыть ни одного пикселя, но без проверки он рисуется " +
+                 "каждый кадр: на depth 2-6 это половина всех чанков.")]
+        public bool CullBeyondHorizon = true;
+
+        [Tooltip("Запас к предельной дальности (м). 1 = без запаса, 1.15 = +15 %.")]
+        [Range(1f, 2f)]
+        public float HorizonMargin = 1.15f;
+
+        [Tooltip("Нижняя граница разрешения чанка. 9 = 8 квадов по стороне " +
+                 "(это только дальняя полоса у горизонта, до неё горизонт не доходит).")]
+        [Range(5, 65)]
+        public int MinTileResolution = 9;
+
+        [Tooltip("Через сколько уровней глубины делить разрешение сетки пополам. " +
+                 "4 = ближние 4 уровня (MaxDepth-3…MaxDepth, при SplitFactor 3.5 это " +
+                 "весь радиус 162 км вокруг игрока) на полном TileResolution без " +
+                 "изменений, дальше вдвое каждые 4 уровня. " +
+                 "99 = огрубление выключено, все чанки на полном разрешении.")]
+        [Range(1, 99)]
+        public int ResolutionHalveEveryLevels = 4;
+
+        /// <summary>
+        /// Периодический отчёт по бюджету геометрии: сколько чанков реально
+        /// видно, сколько это треугольников и как распределены глубины. Нужен,
+        /// чтобы проверять эффект отсечения по горизонту и огрубления сетки
+        /// не на глаз, а по числам (2 раза в секунду, в консоль).
+        /// </summary>
+        private void LogGeometryBudget()
+        {
+            if (!LogGeometryStats || Time.unscaledTime < nextGeometryDiagTime)
+            {
+                return;
+            }
+
+            nextGeometryDiagTime = Time.unscaledTime + 0.5f;
+
+            int visible = 0;
+            int waterMeshes = 0;
+            int perDepthTris = 0;
+            var trisByDepth = new int[MaxDepth + 1];
+            for (int i = 0; i < desired.Count; i++)
+            {
+                if (!chunks.ContainsKey(NodeId(desired[i])))
+                {
+                    continue;
+                }
+
+                visible++;
+                int res = ResolutionForDepth(desired[i].Depth);
+                trisByDepth[desired[i].Depth] += (2 * res * res) + (8 * (res - 1));
+            }
+
+            for (int d = 0; d <= MaxDepth; d++)
+            {
+                perDepthTris += trisByDepth[d];
+            }
+
+            foreach (KeyValuePair<long, Chunk> kv in chunks)
+            {
+                if (kv.Value.WaterMesh != null)
+                {
+                    waterMeshes++;
+                }
+            }
+
+            string bands = string.Empty;
+            for (int d = 0; d <= MaxDepth; d++)
+            {
+                if (trisByDepth[d] > 0)
+                {
+                    bands += " d" + d + "=" + (trisByDepth[d] / 1000) + "k";
+                }
+            }
+
+            Debug.Log(string.Format(
+                "[PlanetSurface] видно чанков: {0} (в кэше {1}, из них водных {2}), " +
+                "треугольников рельефа: {3:N1}M, горизонт: {4:N0} км |{5}",
+                visible, chunks.Count, waterMeshes, perDepthTris / 1000000f,
+                maxVisibleDistance / 1000f, bands));
+        }
+
+        /// <summary>
+        /// Предельная дальность видимости на текущий кадр (м). Считается в
+        /// LateUpdate из радиуса камеры и максимального рельефа, читает Traverse.</summary>
+        private double maxVisibleDistance;
+
+        [Tooltip("Печатать в консоль бюджет геометрии раз в 0.5 с (видно чанки, " +
+                 "треугольники, горизонт). Для замера эффекта оптимизации.")]
+        public bool LogGeometryStats = false;
+
+        private float nextGeometryDiagTime;
 
         [Header("РџСЂРѕСЃС‚Р°СЏ С‚РµРЅСЊ С‚СЂР°РІС‹ (Р±Р»РѕР±)")]
         [Tooltip("Р¦РІРµС‚ РїСЏС‚РЅР° РїСЂРѕСЃС‚РѕР№ С‚РµРЅРё (opaque alpha-test; Р°Р»СЊС„Р° РЅРµ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ).")]
@@ -968,6 +1063,29 @@ namespace Galilego.Universe
                 // РўРµР»-fixed РЅР°РїСЂР°РІР»РµРЅРёСЏ РґР»СЏ current-РєР°РґСЂР°.
                 desired.Clear();
                 splitNext.Clear();
+
+                // Предельная дальность видимости рельефа с этой точки.
+                //
+                // Камера на радиусе r1, рельеф высотой до h. Дальше точки
+                // касания (R+h)·r1-окружности поверхность не видно: она ушла
+                // за выпуклость планеты. Отсюда d = sqrt((R+h)² - R²).
+                // h берём как terrain.AmplitudeMeters — это верхняя граница
+                // высоты над морем (генератор не может дать больше), поэтому
+                // отсечение заведомо не съедает видимый рельеф, даже если
+                // игрок стоит на пике или летит высоко (радиус камеры входит
+                // в формулу, поэтому в атмосфере/орбите горизонт сам отодвигается).
+                maxVisibleDistance = double.MaxValue;
+                if (CullBeyondHorizon && terrain != null)
+                {
+                    double camRadius = (cameraPosition - bodyRenderPosition).magnitude;
+                    double height = System.Math.Max(1d, terrain.AmplitudeMeters)
+                                    + System.Math.Max(0d, camRadius - body.Radius);
+                    double tangentRadius = body.Radius + height;
+                    maxVisibleDistance = System.Math.Sqrt(
+                        (tangentRadius * tangentRadius) - (body.Radius * body.Radius))
+                        * System.Math.Max(1d, HorizonMargin);
+                }
+
                 for (int face = 0; face < CubeSphere.FaceCount; face++)
                 {
                     Traverse(face, 0, 0, 0, cameraPosition);
@@ -1051,6 +1169,7 @@ namespace Galilego.Universe
                 }
 
                 EvictIfNeeded();
+                LogGeometryBudget();
             }
 
             // РўСЂР°РЅСЃС„РѕСЂРјС‹ РІРёРґРёРјС‹С… С‡Р°РЅРєРѕРІ вЂ” РєР°Р¶РґС‹Р№ РєР°РґСЂ (floating origin + СЃРїРёРЅ).
@@ -1293,6 +1412,16 @@ namespace Galilego.Universe
             // РџРѕР»СѓРґРёР°РіРѕРЅР°Р»СЊ РїР°С‚С‡Р° в‰€ nodeSizeВ·в€љ2/2.
             float closestDistance = Mathf.Max(0f, distance - (float)(nodeSize * 0.70710678d));
 
+            // Отсечение по горизонту. Проверяем ПЕРЕД раскрытием: дети лежат
+            // внутри родительской грани, поэтому если ближайшая точка родителя
+            // за горизонтом, то и все дети — тоже. Один такой тест срезает
+            // весь дальний купол планеты (на Earth-пресете depth 2-6 = ~51 %
+            // всех чанков, они дальше 549 км при пределе видимости ~341 км).
+            if (closestDistance > maxVisibleDistance)
+            {
+                return;
+            }
+
             bool split;
             if (depth < MaxDepth && desired.Count + 4 < MaxNodes)
             {
@@ -1335,9 +1464,50 @@ namespace Galilego.Universe
             return FloatingOrigin.ToRender(absolute);
         }
 
+        /// <summary>
+        /// Разрешение сетки чанка для данной глубины LOD: ближние уровни
+        /// (MaxDepth-ResolutionHalveEveryLevels+1 … MaxDepth) остаются на полном
+        /// TileResolution, дальние огрубляются вдвое каждые
+        /// ResolutionHalveEveryLevels уровней до MinTileResolution.
+        ///
+        /// Почему огрубление дальних уровней не видно. У листа quadtree
+        /// ближайшая точка лежит примерно на SplitFactor·размерУзла от центра,
+        /// а сторона квада = размерУзла/(res-1). Угловой размер квада на
+        /// экране = 1/(SplitFactor·(res-1)) и НЕ зависит ни от глубины, ни от
+        /// расстояния: разрешение задаёт экранную плотность сетки, а не её
+        /// масштаб. Полная сетка (res 65, SplitFactor 3.5) даёт ~6.1 px на квад
+        /// при FOV 60° и 1440p; огрубление вдвое поднимает до ~12.7 px.
+        ///
+        /// При ResolutionHalveEveryLevels = 4 полное разрешение держат уровни
+        /// MaxDepth-3…MaxDepth — при SplitFactor 3.5 это весь радиус 162 км
+        /// вокруг игрока, то есть практически всё, что видно с поверхности
+        /// невооружённым глазом. Огрубляется только дальний конус 162-393 км,
+        /// который у горизонта схлопнут в тонкую полосу, где рельеф уже
+        /// гладкий и шаг сетки не читается.
+        /// ResolutionHalveEveryLevels = 99 отключает огрубление полностью.
+        /// </summary>
+        private int ResolutionForDepth(int depth)
+        {
+            int full = System.Math.Max(2, TileResolution);
+            if (ResolutionHalveEveryLevels >= 99)
+            {
+                return full;
+            }
+
+            int stepsBelowFinest = MaxDepth - depth;
+            if (stepsBelowFinest <= 0)
+            {
+                return full;
+            }
+
+            int shift = stepsBelowFinest / ResolutionHalveEveryLevels;
+            int minRes = System.Math.Min(full, System.Math.Max(2, MinTileResolution));
+            return System.Math.Max(minRes, full >> shift);
+        }
+
         private void BuildChunk(Node node)
         {
-            int res = System.Math.Max(2, TileResolution);
+            int res = ResolutionForDepth(node.Depth);
             int n = res + 1;
             int grid = n + 2;
             int coreCount = n * n;
@@ -1594,7 +1764,11 @@ namespace Galilego.Universe
                 Go = new GameObject("PlanetChunk_" + node.Face + "_" + node.Depth + "_" + node.Ix + "_" + node.Iy),
                 Mesh = new Mesh()
             };
-            chunk.Mesh.MarkDynamic();
+            // Без MarkDynamic(): меш чанка строится ОДИН раз и больше не
+            // меняется (только transform ездит). MarkDynamic() заставляет
+            // Unity держать его в динамическом VB-пути без оптимизации
+            // формата и перезаливать вместо кэширования — на 1000+ чанков
+            // это и лишняя память, и лишняя работа каждый кадр.
             chunk.Go.transform.SetParent(surfaceRoot, false);
             chunk.Go.transform.localScale = Vector3.one;
             chunk.CenterAstro = centerAstro;
@@ -1615,15 +1789,21 @@ namespace Galilego.Universe
             chunk.Mesh.SetUVs(2, new List<Vector4>(surfaceExtra));
             chunk.Mesh.triangles = triangles;
             chunk.Mesh.RecalculateBounds();
-            // Р—Р°РїР°СЃ Рє РіСЂР°РЅРёС†Р°Рј (РїРѕР»СЂР°Р·РјРµСЂР° СѓР·Р»Р°): СЃС‚СЂР°С…РѕРІРєР° РѕС‚ Р»РѕР¶РЅРѕРіРѕ
-            // С„СЂСѓСЃС‚СѓРј-РєСѓР»Р»РёРЅРіР° С‡Р°РЅРєР° РЅР° РєСЂР°СЋ РєР°РґСЂР° вЂ” РёРЅР°С‡Рµ РїСЂРё РїРѕРІРѕСЂРѕС‚Рµ РєР°РјРµСЂС‹
-            // РґР°Р»С‘РєРёРµ С‡Р°РЅРєРё РјРёРіР°СЋС‚ (В«РїРѕСЏРІР»СЏРµС‚СЃСЏ/РїСЂРѕРїР°РґР°РµС‚В»). Р¦РµРЅР° вЂ” С‡СѓС‚СЊ РјРµРЅСЊС€Рµ
-            // РѕС‚СЃРµРєР°РµС‚СЃСЏ Р·Р° РєР°РґСЂРѕРј, С‚РѕС‡РЅРѕСЃС‚СЊ РІРёРґРёРјРѕСЃС‚Рё РЅРµ СЃС‚СЂР°РґР°РµС‚.
+            // Запас границ. RecalculateBounds уже даёт истинный AABB меша
+            // (координаты камера-относительные, юбка внутри меша). Раздувать
+            // на BoundsRadius не нужно: это РАДИУС ОПИСАННОЙ СФЕРЫ узла, а
+            // грань куба плоская (половина узла), и Bounds.Expand растёт по
+            // всем шести осям сразу. Старый запас давал +41 % лишнего по
+            // каждой оси (на depth 2 это +518 км в каждую сторону), из-за чего
+            // в frustum проходили чанки, полностью лежащие за кадром.
+            // Оставляем юбку и относительный допуск на джиттер float при
+            // смене позиции чанка (floating origin / движение камеры).
             Bounds paddedBounds = chunk.Mesh.bounds;
-            paddedBounds.Expand(chunk.BoundsRadius);
+            paddedBounds.Expand(skirtDepth * 1.5f + (paddedBounds.size.magnitude * 0.001f));
             chunk.Mesh.bounds = paddedBounds;
 
             if (hasWater)
+
             {
                 BuildWaterMesh(chunk, waterVerts, waterNormals, waterExtra, n, triangles, skirtDepth * WaterSkirtFactor, centerUnity);
             }
@@ -1711,7 +1891,6 @@ namespace Galilego.Universe
             }
 
             chunk.WaterMesh = new Mesh();
-            chunk.WaterMesh.MarkDynamic();
             chunk.WaterMesh.vertices = waterVerts;
             chunk.WaterMesh.normals = waterNormals;
             chunk.WaterMesh.SetUVs(2, new System.Collections.Generic.List<Vector4>(waterExtra));
@@ -2016,7 +2195,13 @@ namespace Galilego.Universe
             // РѕС‚Р»РёС‡Р°РµС‚СЃСЏ РЅР° РґРµСЃСЏС‚РєРё СЃР°РЅС‚РёРјРµС‚СЂРѕРІ, РёР·-Р·Р° С‡РµРіРѕ С‚СЂР°РІР° РІРёСЃРµР»Р° Рё
             // С‚РѕРЅСѓР»Р° РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅРѕ РІРёРґРёРјРѕР№ Р·РµРјР»Рё. Р”Р»СЏ С‚СЂР°РІС‹ (Burst-РїСѓС‚СЊ) вЂ”
             // РЅР°С‚РёРІРЅР°СЏ РєРѕРїРёСЏ Р±РµР· managed-Р°Р»Р»РѕРєР°С†РёРё.
-            int coreN = System.Math.Max(2, TileResolution) + 1;
+            // Строка сетки меша ДОЛЖНА совпадать с тем, чем реально построен
+            // чанк: BuildChunk берёт ResolutionForDepth(node.Depth), а не
+            // TileResolution. При огрублении дальних уровней (MinTileResolution
+            // / ResolutionHalveEveryLevels) здесь осталось бы старое 65+1 —
+            // тогда индексы в MeshSurfacePoint уехали бы за конец буфера и
+            // декарь села бы мимо рельефа.
+            int coreN = ResolutionForDepth(chunk.Node.Depth) + 1;
             NativeArray<Vector3> meshVerticesNative = default;
             Vector3[] meshVertices = null;
             if (layer.PerInstanceDensity)

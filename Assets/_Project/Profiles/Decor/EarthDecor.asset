@@ -21,8 +21,8 @@ MonoBehaviour:
       FarBillboardMesh: {fileID: 4300000, guid: 26c15081539f9a84597106d2660c2b58, type: 2}
       NearMaterial: {fileID: 2100000, guid: 8a6f3bef5d673104381754b197da59b9, type: 2}
       FarMaterial: {fileID: 2100000, guid: 8a6f3bef5d673104381754b197da59b9, type: 2}
-      SpacingMeters: 0.45
-      MaxInstancesPerChunk: 160000
+      SpacingMeters: 0.7
+      MaxInstancesPerChunk: 20000
       Density: 1
       DistributionFrequency: 20000
       ClusterPatchMeters: 120
@@ -59,14 +59,14 @@ MonoBehaviour:
       CollisionRadiusMeters: 0.5
       CollisionHeightMeters: 20
       SteepPower: 0.4
-      NearDistanceMeters: 100
+      NearDistanceMeters: 55
       MaxCellsPerAxis: 192
-      MaxDistanceMeters: 300
+      MaxDistanceMeters: 80
       DensityFalloffMeters: 45
       DensityCoreMeters: 30
       PerInstanceDensity: 1
       FarDensity: 0.05
-      SpawnMarginMeters: 150
+      SpawnMarginMeters: 40
       SubInstancesPerCell: 400
     - Name: Daisy
       Enabled: 1
@@ -164,7 +164,7 @@ MonoBehaviour:
       MaxGroundSinkFactor: -1
       FlatOnGround: 0
       CastShadows: 1
-      ShadowCastDistanceMeters: 0
+      ShadowCastDistanceMeters: 150
       Collides: 1
       CollisionRadiusMeters: 1.8
       CollisionHeightMeters: 6
@@ -220,7 +220,7 @@ MonoBehaviour:
       MaxGroundSinkFactor: -1
       FlatOnGround: 0
       CastShadows: 1
-      ShadowCastDistanceMeters: 0
+      ShadowCastDistanceMeters: 150
       Collides: 1
       CollisionRadiusMeters: 0.8
       CollisionHeightMeters: 4
@@ -276,7 +276,7 @@ MonoBehaviour:
       MaxGroundSinkFactor: -1
       FlatOnGround: 0
       CastShadows: 1
-      ShadowCastDistanceMeters: 0
+      ShadowCastDistanceMeters: 150
       Collides: 1
       CollisionRadiusMeters: 1.2
       CollisionHeightMeters: 16

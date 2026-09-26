@@ -69,7 +69,7 @@ namespace Galilego.Universe
         public float NightExposure = 0.5f;
 
         [Tooltip("До этой дистанции тени фильтруются штатным HQ-фильтром HDRP (PCSS).")]
-        public float ShadowHighDistanceMeters = 150f;
+        public float ShadowHighDistanceMeters = 70f;
 
         [Tooltip("До этой дистанции — средний фильтр (GATHER, 4 taps); дальше самый дешёвый (1 tap).")]
         public float ShadowMediumDistanceMeters = 400f;
@@ -152,16 +152,16 @@ namespace Galilego.Universe
 
         private void Start()
         {
-            // [ГРАФИКА] Максимум разрешения теней: в сцене у солнца стоит ручной
-            // override 512 — поднимаем до 4096. Пресеты (GraphicsQualityController)
-            // позже будут задавать это сами.
+            // [ГРАФИКА] Разрешение теней солнца задаётся HDRP-ассетом
+            // (Max Directional Shadow Map Resolution), а не этим кодом: ручной
+            // override здесь перебивал бы и ассет, и пресеты
+            // (GraphicsQualityController). В сцене стоял override 512 — снимаем.
             var hdLight = SunLight != null
                 ? SunLight.GetComponent<UnityEngine.Rendering.HighDefinition.HDAdditionalLightData>()
                 : null;
             if (hdLight != null)
             {
-                hdLight.SetShadowResolutionOverride(true);
-                hdLight.SetShadowResolution(4096);
+                hdLight.SetShadowResolutionOverride(false);
             }
         }
 

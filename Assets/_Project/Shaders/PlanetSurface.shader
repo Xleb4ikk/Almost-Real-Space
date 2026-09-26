@@ -399,13 +399,45 @@ Shader "Galilego/PlanetSurface"
                 float lowW = 1.0 - smoothstep(_LowMidBlendStart, _LowMidBlendEnd, altitude);
                 float highW = smoothstep(_MidHighBlendStart, _MidHighBlendEnd, altitude);
                 float midW = max(0.0, 1.0 - lowW - highW);
+                float steepW = smoothstep(_SteepBlendStart, _SteepBlendEnd, slopeTan);
 
-                float3 c = (Triplanar(_TexLow, uvX, uvY, uvZ, tri) * lowW)
-                    + (Triplanar(_TexMid, uvX, uvY, uvZ, tri) * midW)
-                    + (Triplanar(_TexHigh, uvX, uvY, uvZ, tri) * highW);
-                c = lerp(c, Triplanar(_TexSteep, uvX, uvY, uvZ, tri), smoothstep(_SteepBlendStart, _SteepBlendEnd, slopeTan));
+                // Каждый Triplanar — это 3 выборки из текстуры, и их тут пять
+                // (low/mid/high/steep/occlusion), то есть 15 tex2D на КАЖДЫЙ
+                // пиксель земли. Но веса высот по определению суммируются в 1,
+                // и на равнине lowW = 1, а midW = highW = 0 — три четверти
+                // выборок считались впустую и умножались на ноль. То же с
+                // steepW на ровном грунте. Ветки когерентны (высота и уклон
+                // меняются плавно, на квад 8x8 почти всегда одна ветка), так
+                // что дивергенции тут не возникает, а на типичной равнине
+                // остаётся 6 выборок вместо 15.
+                float3 c = float3(0.0, 0.0, 0.0);
+                if (lowW > 0.002)
+                {
+                    c += Triplanar(_TexLow, uvX, uvY, uvZ, tri) * lowW;
+                }
+                if (midW > 0.002)
+                {
+                    c += Triplanar(_TexMid, uvX, uvY, uvZ, tri) * midW;
+                }
+                if (highW > 0.002)
+                {
+                    c += Triplanar(_TexHigh, uvX, uvY, uvZ, tri) * highW;
+                }
+                if (steepW > 0.002)
+                {
+                    c = lerp(c, Triplanar(_TexSteep, uvX, uvY, uvZ, tri), steepW);
+                }
 
-                float occl = dot(Triplanar(_TexOcclusion, uvX, uvY, uvZ, tri), float3(0.3333, 0.3333, 0.3333));
+                // AO-текстура: на близкой дистанции полный трипланар, дальше одна
+                // проекция. Тексель AO-текстуры на сотни метрах от камеры много
+                // мельче пикселя, поэтому все три проекции попадают в ОДИН И ТОТ
+                // ЖЕ дальний мип и дают практически одинакое значение — три
+                // выборки, чтобы сложить одно и то же число. Переключение не
+                // даёт ступеньки яркости именно потому, что на этой дистанции
+                // значения и так почти совпадают.
+                float occl = distance(positionWS, GetCameraPositionWS()) < 220.0
+                    ? dot(Triplanar(_TexOcclusion, uvX, uvY, uvZ, tri), float3(0.3333, 0.3333, 0.3333))
+                    : dot(Triplanar(_TexOcclusion, uvX, uvY, uvZ, float3(0.0, 0.0, 1.0)), float3(0.0, 0.0, 1.0));
                 c *= lerp(1.0, saturate(occl * 1.3), 0.65);
 
                 c *= lerp(float3(1.0, 1.0, 1.0), saturate(biome * 1.9), 0.65);
