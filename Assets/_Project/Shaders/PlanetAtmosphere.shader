@@ -169,8 +169,17 @@ Shader "Galilego/PlanetAtmosphere"
 
             // Один raymarch от tStart до tEnd. Возвращает in-scatter, в
             // outTransmittance — прозрачность к концу пути.
+            //
+            // Сэмплы — середины N равных сегментов (смещение 0.5), т.е.
+            // стратифицированная выборка. Раньше смещение бралось из per-pixel
+            // белого шума: он разбирается только временным накоплением, а TAA в
+            // проекте выключен (FirstPersonCamera.TemporalAA = false, стоит
+            // SMAA) — поэтому шум оставался прибитым к экрану и шёл за поворотом
+            // камеры (сетка точек в ореоле Солнца и по диску планеты из космоса).
+            // При 48 сегментах и Hr ≈ 8.5 км погрешность midpoint гладкая, мерцания
+            // и бандинга не даёт, поэтому разброс шага не нужен.
             float3 IntegrateAtmosphere(float3 ro, float3 rd, float3 sunDir,
-                float tStart, float tEnd, float jitter, out float3 outTransmittance)
+                float tStart, float tEnd, out float3 outTransmittance)
             {
                 int steps = clamp((int)_AtmStepCount, 2, 128);
                 float ds = (tEnd - tStart) / (float)steps;
@@ -189,7 +198,7 @@ Shader "Galilego/PlanetAtmosphere"
                         break;
                     }
 
-                    float t = tStart + ((i + jitter) * ds);
+                    float t = tStart + ((i + 0.5) * ds);
                     float3 p = ro + (rd * t);
                     float r = length(p);
                     float height = max(0.0, r - _AtmPlanetRadius);
@@ -277,7 +286,6 @@ Shader "Galilego/PlanetAtmosphere"
                 float3 bgRaw = SAMPLE_TEXTURE2D_X_LOD(
                     _ColorPyramidTexture, s_trilinear_clamp_sampler, colorUv, 0).rgb;
 
-                float jitter = frac(sin(dot(input.positionCS.xy, float2(12.9898, 78.233))) * 43758.5453);
                 float3 radianceScale = _AtmSunColor * (_AtmIntensity * ATM_RADIANCE_SCALE);
 
                 bool hasGround = hasTerrain || planetOccludes;
@@ -302,7 +310,7 @@ Shader "Galilego/PlanetAtmosphere"
                         groundBg = _AtmGroundColor.rgb * saturate(cosSunG) * sunG;
                     }
 
-                    float3 groundScatter = IntegrateAtmosphere(ro, rd, sunDir, 0.0, tGround, jitter, groundT);
+                    float3 groundScatter = IntegrateAtmosphere(ro, rd, sunDir, 0.0, tGround, groundT);
                     groundColor = (groundBg * groundT) + (groundScatter * radianceScale);
                 }
 
@@ -315,7 +323,7 @@ Shader "Galilego/PlanetAtmosphere"
                 float3 skyColor = 0.0;
                 if (!hasTerrain && !planetOccludes)
                 {
-                    float3 skyScatter = IntegrateAtmosphere(ro, rd, sunDir, 0.0, tAtm, jitter, skyT);
+                    float3 skyScatter = IntegrateAtmosphere(ro, rd, sunDir, 0.0, tAtm, skyT);
                     skyColor = (bgRaw * skyT) + (skyScatter * radianceScale);
                 }
 
@@ -346,7 +354,7 @@ Shader "Galilego/PlanetAtmosphere"
                             }
 
                             float3 horT;
-                            float3 horScatter = IntegrateAtmosphere(ro, dirHor, sunDir, 0.0, tAtmHor, jitter, horT);
+                            float3 horScatter = IntegrateAtmosphere(ro, dirHor, sunDir, 0.0, tAtmHor, horT);
                             float3 skyHorizonColor = (bgRaw * horT) + (horScatter * radianceScale);
                             color = lerp(groundColor, skyHorizonColor, horizon);
                         }
@@ -390,7 +398,7 @@ Shader "Galilego/PlanetAtmosphere"
                     {
                         float3 dbgT;
                         float3 dbgScatter = IntegrateAtmosphere(ro, rd, sunDir, 0.0,
-                            hasGround ? tGround : tAtm, jitter, dbgT);
+                            hasGround ? tGround : tAtm, dbgT);
                         return float4(dbgScatter * radianceScale, 1.0);
                     }
 
