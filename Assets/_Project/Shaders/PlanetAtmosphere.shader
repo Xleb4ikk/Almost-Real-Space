@@ -31,7 +31,22 @@ Shader "Galilego/PlanetAtmosphere"
             Blend One Zero
             ZWrite Off
             ZTest Always
-            Cull Off
+            // Cull Back, а не Cull Off: купол центрирован на камере
+            // (PlanetAtmosphereView: shell.position = cameraPosition), то есть
+            // камера ВНУТРИ замкнутой сферы. Cull Off рисовал её дважды —
+            // ближнюю и дальнюю полусферу, — с ОДИНАКОВЫМ результатом: Vert
+            // отдаёт output.dir = positionOS, а камера в центре, так что обе
+            // половины дают один и тот же direction и одно IntegrateAtmosphere.
+            // Это была ровно вдвое посчитанная впустую растеризация
+            // fullscreen-пасса.
+            //
+            // Именно Cull Back, а НЕ Cull Front: BuildSphereMesh в
+            // PlanetAtmosphereView woundит треугольники нормалью ВНУТРЬ
+            // (проверено на данных меша: right-handed cross product смотрит к
+            // центру, тогда как у встроенной сферы Unity — наружу). Камера
+            // внутри видит такие треугольники с фронтальной стороны, поэтому
+            // Cull Front вырезал купол целиком и небо становилось чёрным.
+            Cull Back
 
             HLSLPROGRAM
             #pragma vertex Vert
@@ -181,7 +196,28 @@ Shader "Galilego/PlanetAtmosphere"
             float3 IntegrateAtmosphere(float3 ro, float3 rd, float3 sunDir,
                 float tStart, float tEnd, out float3 outTransmittance)
             {
-                int steps = clamp((int)_AtmStepCount, 2, 128);
+                int maxSteps = clamp((int)_AtmStepCount, 2, 128);
+
+                // Число шагов — ПО ДЛИНЕ ПУТИ, а не всегда максимум.
+                //
+                // Профиль плотности экспоненциальный с масштабом Hr, и он
+                // разрешается, когда шаг ds = L/N много меньше Hr. Требование
+                // ds <= Hr/16 (изменение плотности на шаг <= 6 %) даёт
+                // N = 16·L/Hr; при такой сетке ошибка midpoint по интегралу
+                // ~0.4 %, то есть ниже порога видимости.
+                //
+                // Что это даёт. Для НЕБА путь — сотни километров, так что
+                // N упирается в maxSteps и картинка неба не меняется ВООБЩЕ.
+                // Для РЕЛЬЕФА путь до ближайшего песка — единицы и десятки
+                // метров, и там 48 одинаковых шагов были чистой переплатой:
+                // один шаг длиной 5 м интегрирует экспоненту точнее, чем 48
+                // шагов по 10 см. Таких пикселей в кадре (земля в упор под
+                // ногами и близкий берег) — больше половины экрана.
+                //
+                // round, а не ceil: ступеньки числа шагов при смене L не
+                // дают видимого стыка — на границе меняется только ошибка
+                // интегрирования, и она уже ниже 0.4 %.
+                int steps = clamp((int)round((16.0 * (tEnd - tStart)) / max(1.0, _AtmHr)), 1, maxSteps);
                 float ds = (tEnd - tStart) / (float)steps;
 
                 float cosA = dot(rd, sunDir);

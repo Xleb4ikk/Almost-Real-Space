@@ -113,9 +113,32 @@ float SampleCloudShadow(float3 positionWS)
         return 1.0;
     }
 
-    float stepLength = (end - start) / 4.0;
+    // Сколько сэмплов поля плотности берём вдоль луча к солнцу.
+    //
+    // Каждый сэмпл — это SampleCloudEarthMask, а там CloudFbm на 3 октавы
+    // плюс ещё одна CloudNoise: 4 × CloudHash × 8 = 32 хеша, примерно тысяча
+    // ALU-операций на СЭМПЛ, и ни одной выборки из текстуры — всё в регистрах.
+    // Считается это на КАЖДЫЙ пиксель земли, травы, камня и воды.
+    //
+    // Шаг берём по длине пути, а не всегда по потолку — ровно как это уже
+    // сделано в PlanetAtmosphere для IntegrateAtmosphere. Луч к солнцу идёт
+    // сквозь слой 7000-8500 м (всего 1.5 км): при высоком солнце почти
+    // отвесно, и 4 одинаковых шага по ~370 м — переплата, потому что
+    // плотность по толще меняется плавно и midpoint-правило с двумя точками
+    // даёт ту же оптическую толщину. При низком солнце (закат) луч идёт
+    // сквозь слой по касательной на сотни километров, там шаг становится
+    // мелким и число сэмплов само поднимается до потолка — то есть на
+    // горизонтальных лучах качество остаётся ровно прежним.
+    //
+    // CLOUD_SHADOW_STEP_METERS — длина пути на один сэмпл;
+    // CLOUD_SHADOW_STEPS_MAX — потолок (было фиксированное 4).
+    const float CLOUD_SHADOW_STEP_METERS = 800.0;
+    const int CLOUD_SHADOW_STEPS_MAX = 4;
+
+    int steps = clamp((int)ceil((end - start) / CLOUD_SHADOW_STEP_METERS), 2, CLOUD_SHADOW_STEPS_MAX);
+    float stepLength = (end - start) / float(steps);
     float opticalDepth = 0.0;
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < steps; i++)
     {
         float3 samplePosition = origin + (direction * (start + (stepLength * (i + 0.5))));
         float radius = length(samplePosition);

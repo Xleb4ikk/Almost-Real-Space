@@ -42,8 +42,8 @@ MonoBehaviour:
     MultipleScattering: 0.75
     Intensity: 0.0013
     AmbientTint: {r: 0.7, g: 0.78, b: 0.92, a: 1}
-    StepCount: 128
-    LightSteps: 5
+    StepCount: 48
+    LightSteps: 3
     EarlyExitTransmittance: 0.01
     ShapeTextureResolution: 64
     DetailTextureResolution: 32
