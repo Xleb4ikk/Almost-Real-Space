@@ -694,7 +694,8 @@ MonoBehaviour:
   SplitFactor: 3.5
   MergeHysteresis: 1.5
   SkirtFactor: 0.03
-  WaterSkirtFactor: 0
+  WaterSkirtFactor: 0.03
+  ShoreWetMeters: 3
   BuildsPerFrame: 64
   DecorBuildsPerFrame: 3
   DecorBuildBudgetMs: 3
@@ -719,6 +720,8 @@ MonoBehaviour:
   WaterFoamSlopeGain: 0
   WaterFoamDepthMeters: 1.5
   WaterShoreFadeMeters: 8
+  WaterMinAlpha: 0.93
+  WaterShallowAlphaMeters: 0.35
   WaterAbsorbShallow: 4.5
   WaterAbsorbDeep: 28
   WaterShallowAlpha: 0.5

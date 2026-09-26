@@ -62,8 +62,25 @@ namespace Galilego.Universe
         [Range(0f, 0.2f)]
         public float SkirtFactor = 0.03f;
 
+        [Tooltip("Глубина юбок ВОДЫ, доля от размера узла. Водная плоскость покрывает " +
+                 "ровно core-грид; без юбок на стыках соседних LOD (где их высоты различаются) " +
+                 "возникают щели, и сквозь них видно небо/атмосферу — ровная серая полоса " +
+                 "вдоль границы узла. Держим равным SkirtFactor, как у рельефа. 0 = полоса вернётся.")]
         [Range(0f, 0.2f)]
-        public float WaterSkirtFactor = 0f;
+        public float WaterSkirtFactor = 0.03f;
+
+        [Tooltip("Ширина градиента «мокрый песок → сухой песок» над уровнем моря (м). " +
+                 "У самого уреза цвет гаснет и уходит в холодный (красный первым), выше — " +
+                 "плавно к обычному. Полоса ограничена пляжной зоной (_BeachHeightMeters), " +
+                 "так что мокрым остаётся только низ берега, а не весь пляж. " +
+                 "Геометрию, уровень моря и воду не трогает — только вид суши у кромки.")]
+        [Range(0.5f, 20f)]
+        public float ShoreWetMeters = 3f;
+
+        [Tooltip("Цвет множителя мокрого песка у кромки: темнее и холоднее сухого. " +
+                 "У старого плоского затемнения 45 % был одинаковый по всем каналам — " +
+                 "получалось просто «темнее», без перехода.")]
+        public Color ShoreWetTint = new Color(0.42f, 0.52f, 0.56f, 1f);
 
         [Tooltip("РЎРєРѕР»СЊРєРѕ С‡Р°РЅРєРѕРІ СЃС‚СЂРѕРёС‚СЊ Р·Р° РєР°РґСЂ (РїРµСЂРІС‹Р№ РєР°РґСЂ вЂ” Р±РµР· Р»РёРјРёС‚Р°).")]
         [Range(1, 64)]
@@ -156,6 +173,21 @@ namespace Galilego.Universe
 
         [Tooltip("Depth-buffer shore softening distance in meters (Phase 2).")]
         public float WaterShoreFadeMeters = 8f;
+
+        [Tooltip("Минимальная непрозрачность воды. Блендинга нет (AlphaTest-очередь), " +
+                 "прозрачность сделана screen-door'ом (clip(alpha - ign)), поэтому всё, " +
+                 "что меньше 1, показывает СЫРОЕ дно. На пологом шельфе это давало " +
+                 "шахматную полосу цвета пляжа с резкой прямой границей. 0.93 = у воды " +
+                 "есть только тонкая мокрая кромка, дно просвечивает лишь у самого уреза.")]
+        [Range(0.3f, 1f)]
+        public float WaterMinAlpha = 0.93f;
+
+        [Tooltip("Ширина полосы частичной прозрачности у уреза, В МЕТРАХ глубины. " +
+                 "Раньше стоялло 2 м: на пологом дне эти 2 м растягивались на сотни " +
+                 "метров, и screen-door рисовал дно шахматкой через всю мель. " +
+                 "0.35 м = дно видно только там, где по колено.")]
+        [Range(0.05f, 3f)]
+        public float WaterShallowAlphaMeters = 0.35f;
 
         [Tooltip("Глубина бирюзового мелководья (м): экспонента Beer-Lambert для перехода shallow→deep.")]
         [Min(0.5f)]
@@ -1327,7 +1359,13 @@ namespace Galilego.Universe
 
             double amplitude = System.Math.Max(1d, terrain.AmplitudeMeters);
             double seaLevel = terrain.SeaLevelMeters;
-            double seaEps = amplitude * 0.001d;
+            // Допуск уровня моря — тот же, что в PlanetSurface.shader (SeaEpsilon):
+            // АБСОЛЮТНЫЕ метры, почти не зависят от амплитуды. Раньше здесь стояло
+            // amp*0.001 — при амплитуде 9144 м это 9.14 м, и полоса СУШИ в 9 метров
+            // над водой считалась водой. Дальше seaEps используется только в
+            // диагностическом логе ниже, но оставляем его согласованным с шейдером,
+            // иначе лог врёт о доле суши.
+            double seaEps = System.Math.Max(0.05d, amplitude * 1e-6d);
 
             // РўР°Р№Р»С‹ СЃ РѕРІРµСЂР»Р°РїРѕРј РІ 1 РІРµСЂС€РёРЅСѓ вЂ” РЅРѕСЂРјР°Р»Рё РёР· С†РµРЅС‚СЂР°Р»СЊРЅС‹С… СЂР°Р·РЅРѕСЃС‚РµР№.
             var dirs = new NativeArray<double3>(grid * grid, Allocator.TempJob);
@@ -1792,6 +1830,8 @@ namespace Galilego.Universe
             waterMaterialCache.SetFloat("_AbsorbShallow", WaterAbsorbShallow);
             waterMaterialCache.SetFloat("_AbsorbDeep", WaterAbsorbDeep);
             waterMaterialCache.SetFloat("_ShallowAlpha", WaterShallowAlpha);
+            waterMaterialCache.SetFloat("_MinAlpha", WaterMinAlpha);
+            waterMaterialCache.SetFloat("_ShallowAlphaMeters", WaterShallowAlphaMeters);
             waterMaterialCache.SetFloat("_SurfStrength", WaterSurfStrength);
             waterMaterialCache.SetFloat("_SurfSpeed", WaterSurfSpeed);
             waterMaterialCache.SetFloat("_FresnelStrength", WaterFresnelStrength);
@@ -4457,6 +4497,8 @@ namespace Galilego.Universe
             Shader.SetGlobalFloat("_TerrainAmplitude", (float)System.Math.Max(1d, terrain.AmplitudeMeters));
             Shader.SetGlobalFloat("_TerrainSeaLevel", (float)System.Math.Max(terrain.SeaLevelMeters, -1e30d));
             Shader.SetGlobalFloat("_BeachHeightMeters", (float)System.Math.Max(0d, terrain.BeachHeightMeters));
+            Shader.SetGlobalFloat("_ShoreWetMeters", ShoreWetMeters);
+            Shader.SetGlobalVector("_ShoreWetTint", ShoreWetTint);
             Shader.SetGlobalFloat("_TerrainSeed", terrain.Seed);
             Shader.SetGlobalFloat("_TerrainGain", (float)TerrainNoise.EffectiveGain(terrain.Gain));
             Shader.SetGlobalFloat("_TerrainLacunarity", (float)TerrainNoise.EffectiveLacunarity(terrain.Lacunarity));
