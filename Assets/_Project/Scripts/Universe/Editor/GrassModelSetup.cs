@@ -87,8 +87,8 @@ namespace Galilego.Universe.EditorTools
                 // переход near→far — только разворот к камере и рост размера.
                 FarBillboardMesh = blade,
                 FarMaterial = material,
-                SpacingMeters = 0.45d,
-                MaxInstancesPerChunk = 160000,
+                SpacingMeters = 0.8d,
+                MaxInstancesPerChunk = 26000,
                 Density = 1.0d,
                 DistributionFrequency = 20000d,
                 ClusterPatchMeters = 120d,
@@ -97,7 +97,11 @@ namespace Galilego.Universe.EditorTools
                 ClusterThreshold = 0.36d,
                 ClusterFade = 0.12d,
                 MinAltitudeMeters = 2d,
-                MinNormalizedHeight = 0.032d,
+                // Песок — только абсолютный пляж (BeachHeightMeters профиля
+                // террейна), нормированной нижней границы у травы нет: 0.03 при
+                // амплитуде 9144 м — это 274 м высоты, и такая граница оставляла
+                // всю прибрежную равнину (зелёную по рельефу) без травы.
+                MinNormalizedHeight = 0d,
                 // Верх зелени палитры: выше t=0.45 рельеф красится скалой —
                 // там только камни. Нижняя граница wet — начало Grass в палитре.
                 MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
@@ -122,13 +126,13 @@ namespace Galilego.Universe.EditorTools
                 WindJitterDegrees = 12d,
                 MinGroundSinkFactor = 0d,
                 MaxGroundSinkFactor = 0.5d,
-                NearDistanceMeters = 100f,
-                MaxDistanceMeters = 300f,
+                NearDistanceMeters = 55f,
+                MaxDistanceMeters = 110f,
                 FarDensity = 0.05d,
-                DensityFalloffMeters = 45f,
-                DensityCoreMeters = 30f,
+                DensityFalloffMeters = 55f,
+                DensityCoreMeters = 28f,
                 PerInstanceDensity = true,
-                SpawnMarginMeters = 150f,
+                SpawnMarginMeters = 70f,
                 SubInstancesPerCell = 400,
                 MaxCellsPerAxis = 192
             };

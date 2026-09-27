@@ -415,6 +415,34 @@ namespace Galilego.Universe
             /// РІСЂРµРјСЏ РЅР° TRS РЅР° РєР°Р¶РґСѓСЋ С‚СЂР°РІРёРЅРєСѓ.</summary>
             public NativeArray<Matrix4x4> WorldMatrices;
 
+            /// <summary>Сколько инстансов в начале Instances живые. Хвост после
+            /// них — травинки, выпавшие из новой выборки при пересборке пула: они
+            /// ещё рисуются, но гаснут масштабом по своему DeathTime (уходят под
+            /// землю). 0 = хвоста нет.</summary>
+            public int AliveCount;
+
+            /// <summary>Момент (Time.time), после которого хвост Instances погас
+            /// и его можно отрезать. 0 = хвоста нет.</summary>
+            public float RetireDeadline;
+
+            /// <summary>Пул целиком уходит под землю (слои без PerInstanceDensity —
+            /// деревья/камни/кактусы/ромашки: у них нет разметки по инстансам).
+            /// Такой рантайм ещё рисуется, но гаснет масштабом; см.
+            /// RetireStart/RetireFadeSeconds. Пересборка пула и уход чанка за
+            /// радиус не удаляют его мгновенно — иначе деревья щёлкали на всём
+            /// поле при первом же движении игрока.</summary>
+            public bool Retiring;
+
+            /// <summary>Момент начала ухода пула и длительность (с).</summary>
+            public float RetireStart;
+            public float RetireFadeSeconds;
+
+            /// <summary>Длительность ухода травинок под землю для этого пула (с).
+            /// Считается по частоте кадров в момент пересборки (DecorFadeSeconds)
+            /// и хранится здесь, чтобы матричная джоба и RetireDeadline считали
+            /// переход по одной и той же формуле.</summary>
+            public float SinkFadeSeconds;
+
             /// <summary>РРЅРґРёСЂРµРєС‚-РїСѓС‚СЊ С‚СЂР°РІС‹: РјР°С‚СЂРёС†С‹ РёРЅСЃС‚Р°РЅСЃРѕРІ (С‡Р°РЅРє-С„СЂРµР№Рј) РІ
             /// Р±СѓС„РµСЂРµ + Р°СЂРіСѓРјРµРЅС‚С‹ РґСЂРѕСѓ. РЎС‡РёС‚Р°СЋС‚СЃСЏ РћР”РРќ Р РђР— РїСЂРё СЃР±РѕСЂРєРµ, РјРёСЂРѕРІР°СЏ
             /// С‡Р°СЃС‚СЊ вЂ” С‡РµСЂРµР· _DecorChunkToWorld. РћРґРёРЅ РґСЂРѕСѓ РЅР° СЃР°Р±РјРµС€ РІРјРµСЃС‚Рѕ
@@ -594,6 +622,35 @@ namespace Galilego.Universe
         /// <summary>Разброс момента появления по травинкам (с): новые появляются
         /// поштучно в этом окне, а не всей пачкой.</summary>
         private const float DecorBladeStaggerSeconds = 1.2f;
+        /// <summary>За сколько секунд травинка уходит ПОД землю (масштаб 1→0):
+        /// зеркало DecorBladeFadeSeconds. Травинки, выпавшие из новой выборки при
+        /// пересборке пула, не исчезают кадр в кадр, а заходят в землю.</summary>
+        private const float DecorBladeSinkSeconds = 0.9f;
+        /// <summary>Разброс начала ухода (с): затухающие травинки гаснут не
+        /// синхронно, иначе кромка поля «мигнула» бы одной волной.</summary>
+        private const float DecorBladeSinkStaggerSeconds = 1f;
+        /// <summary>За сколько секунд проп (дерево/камень/кактус/ромашка) уходит
+        /// под землю целиком: пул слоя не PerInstanceDensity, там нет разметки по
+        /// инстансам, поэтому гаснет весь пул сразу (мягко, как появляется).</summary>
+        private const float DecorPropSinkSeconds = 1.4f;
+        /// <summary>Минимум кадров, за которые должен пройти любой переход
+        /// появления/исчезновения декора. На низком FPS (сборка идёт ~1 fps)
+        /// фиксированные 0.6-0.9 с — это 0-1 кадр, то есть визуально мгновенный
+        /// щелчок; с этим полом длительность растягивается до N кадров.</summary>
+        private const int DecorFadeMinFrames = 5;
+
+        /// <summary>
+        /// Длительность перехода с учётом частоты кадров: не короче
+        /// DecorFadeMinFrames кадров, иначе базовая. Считается ОДИН раз на
+        /// пересборку пула и хранится в рантайме, чтобы все кадры перехода
+        /// считались по одной и той же формуле.
+        /// </summary>
+        private static float DecorFadeSeconds(float baseSeconds)
+        {
+            float dt = Time.deltaTime;
+            float minSeconds = dt > 0f ? DecorFadeMinFrames * dt : 0f;
+            return baseSeconds > minSeconds ? baseSeconds : minSeconds;
+        }
         /// <summary>Прорастание пропов (деревья/камни/кактусы/ромашки): длительность
         /// и разброс появления. Крупные объекты растут медленнее травинок.</summary>
         private const float DecorPropFadeSeconds = 1.0f;
@@ -1353,7 +1410,9 @@ namespace Galilego.Universe
                 {
                     DecorLayerRuntime runtime = chunk.Decor[i];
                     GroundDecorLayer layer = runtime.Profile;
-                    if (layer == null || !layer.Collides || runtime.Instances.Length == 0)
+                    // Уходящий под землю пул в коллизиях не участвует.
+                    if (layer == null || !layer.Collides || runtime.Retiring
+                        || runtime.Instances.Length == 0)
                     {
                         continue;
                     }
@@ -1362,6 +1421,13 @@ namespace Galilego.Universe
                     for (int k = 0; k < count; k++)
                     {
                         GroundDecorInstance instance = runtime.Instances[k];
+                        // Уходящие под землю инстансы (хвост пула травы) в
+                        // коллизии не участвуют — они уже не на поверхности.
+                        if (instance.DeathTime > 0f)
+                        {
+                            continue;
+                        }
+
                         Vector3 localPosition = new Vector3(instance.Position.x, instance.Position.y, instance.Position.z);
                         if ((chunkMatrix.MultiplyPoint3x4(localPosition) - playerRender).sqrMagnitude
                             > collisionRange * collisionRange)
@@ -2183,7 +2249,9 @@ namespace Galilego.Universe
             DecorLayerRuntime previous = null;
             for (int i = 0; i < chunk.Decor.Count; i++)
             {
-                if (chunk.Decor[i].LayerIndex == layerIndex)
+                // Уходящий под землю пул не «предыдущий» — его нельзя переносить
+                // в новую сборку (иначе под землёй вырастет копия пула).
+                if (chunk.Decor[i].LayerIndex == layerIndex && !chunk.Decor[i].Retiring)
                 {
                     previous = chunk.Decor[i];
                     break;
@@ -3418,6 +3486,20 @@ namespace Galilego.Universe
 
             session.Stored = default;
 
+            // Травинки, выпавшие из новой выборки, не выбрасываются: их хвостом
+            // дописываем в конец нового пула с DeathTime, и матричная джоба
+            // гасит их масштабом (уходят под землю). Без этого кромка поля
+            // исчезала кадр в кадр — игрок видел, как трава пропадает, особенно
+            // сзади. Перенесённые джобой MergeKept инстансы не трогаем: они
+            // остаются и в новой выборке, и в хвосте (матрица одна и та же).
+            int aliveCount = write;
+            float retireDeadline = 0f;
+            float sinkFadeSeconds = DecorFadeSeconds(DecorBladeSinkSeconds);
+            if (layer.PerInstanceDensity && write > 0)
+            {
+                retireDeadline = AppendRetiringInstances(session, ref stored, ref write, sinkFadeSeconds);
+            }
+
             // РќР°С…РѕРґРёРј РїСЂРµР¶РЅРёР№ СЃР»РѕР№ СЌС‚РѕР№ Р»РёС‡РЅРѕСЃС‚Рё (РµСЃР»Рё СЌС‚Рѕ РїРµСЂРµСЃР±РѕСЂРєР°):
             // Р·Р°РјРµРЅСЏРµРј РіРѕС‚РѕРІС‹Рј, Р° РїСЂРё РїСѓСЃС‚РѕРј СЂРµР·СѓР»СЊС‚Р°С‚Рµ вЂ” СѓР±РёСЂР°РµРј, РёРЅР°С‡Рµ
             // СЃС‚Р°СЂС‹Р№ СЃР»РѕР№ РѕСЃС‚Р°Р»СЃСЏ Р±С‹ В«СѓСЃС‚Р°СЂРµРІС€РёРјВ» РЅР°РІСЃРµРіРґР° Рё РїРµСЂРµСЃРѕР±РёСЂР°Р»СЃСЏ
@@ -3425,7 +3507,8 @@ namespace Galilego.Universe
             int existingIndex = -1;
             for (int i = 0; i < session.Chunk.Decor.Count; i++)
             {
-                if (session.Chunk.Decor[i].LayerIndex == session.LayerIndex)
+                if (session.Chunk.Decor[i].LayerIndex == session.LayerIndex
+                    && !session.Chunk.Decor[i].Retiring)
                 {
                     existingIndex = i;
                     break;
@@ -3444,12 +3527,15 @@ namespace Galilego.Universe
                     // Трава рисуется Burst-матрицами (WorldMatrices), managed
                     // Matrices ей не нужен: раньше на каждую пересборку
                     // аллоцировался массив до 6.4 МБ в мусор.
-                    Matrices = layer.PerInstanceDensity ? null : new Matrix4x4[write]
+                    Matrices = layer.PerInstanceDensity ? null : new Matrix4x4[write],
+                    SinkFadeSeconds = sinkFadeSeconds
                 };
 
                 if (layer.PerInstanceDensity)
                 {
                     runtime.WorldMatrices = DecorArrayPool.Rent<Matrix4x4>(write);
+                    runtime.AliveCount = aliveCount;
+                    runtime.RetireDeadline = retireDeadline;
                     // Таблица раскладки пула по клеткам переходит рантайму:
                     // по ней следующая пересборка перенесёт уже выросшие травинки.
                     runtime.CellOffsets = session.WriteOffsets;
@@ -3460,8 +3546,20 @@ namespace Galilego.Universe
 
                 if (existingIndex >= 0)
                 {
-                    DisposeDecorLayerRuntime(session.Chunk.Decor[existingIndex]);
-                    session.Chunk.Decor[existingIndex] = runtime;
+                    // Старый пул не удаляем, а отдаём под землю (у слоёв без
+                    // PerInstanceDensity инстансов много и они не «помечены»
+                    // поштучно, как трава: гаснет пул целиком). Для травы хвост
+                    // уже собран в новом пуле, старый можно освободить сразу.
+                    if (layer.PerInstanceDensity)
+                    {
+                        DisposeDecorLayerRuntime(session.Chunk.Decor[existingIndex]);
+                        session.Chunk.Decor[existingIndex] = runtime;
+                    }
+                    else
+                    {
+                        RetireDecorLayerRuntime(session.Chunk.Decor[existingIndex]);
+                        session.Chunk.Decor.Add(runtime);
+                    }
                 }
                 else
                 {
@@ -3470,8 +3568,10 @@ namespace Galilego.Universe
             }
             else if (existingIndex >= 0)
             {
-                DisposeDecorLayerRuntime(session.Chunk.Decor[existingIndex]);
-                session.Chunk.Decor.RemoveAt(existingIndex);
+                // Новая сборка пуста (игрок ушёл на скалы/песок): старый пул не
+                // удаляем, а отдаём под землю — иначе деревья на краю зоны
+                // исчезали бы одним кадром. Уберёт его RetireFinishedDecor.
+                RetireDecorLayerRuntime(session.Chunk.Decor[existingIndex]);
             }
 
             session.Chunk.DecorBuiltMask |= 1 << session.LayerIndex;
@@ -3716,7 +3816,7 @@ namespace Galilego.Universe
                     DecorLayerRuntime runtime = null;
                     for (int i = 0; i < chunk.Decor.Count; i++)
                     {
-                        if (chunk.Decor[i].LayerIndex == layerIndex)
+                        if (chunk.Decor[i].LayerIndex == layerIndex && !chunk.Decor[i].Retiring)
                         {
                             runtime = chunk.Decor[i];
                             break;
@@ -3850,8 +3950,19 @@ namespace Galilego.Universe
                     {
                         if (chunk.Decor[i].LayerIndex == layerIndex)
                         {
-                            DisposeDecorLayerRuntime(chunk.Decor[i]);
-                            chunk.Decor.RemoveAt(i);
+                            // Трава: пул уже весь в хвосте/за радиусом, убираем
+                            // сразу. Остальные слои (деревья и пр.) — под землю,
+                            // чтобы не было мгновенной пропажи на кромке.
+                            if (chunk.Decor[i].Retiring
+                                || decorProfile.Layers[layerIndex].PerInstanceDensity)
+                            {
+                                DisposeDecorLayerRuntime(chunk.Decor[i]);
+                                chunk.Decor.RemoveAt(i);
+                            }
+                            else
+                            {
+                                RetireDecorLayerRuntime(chunk.Decor[i]);
+                            }
                         }
                     }
 
@@ -3862,6 +3973,230 @@ namespace Galilego.Universe
 
         /// <summary>Р›РѕРєР°Р»СЊРЅР°СЏ (С‡Р°РЅРєСѓ) РјР°С‚СЂРёС†Р° РёРЅСЃС‚Р°РЅСЃР°: РїРѕР·РёС†РёСЏ/РЅРѕСЂРјР°Р»СЊ/yaw/
         /// РЅР°РєР»РѕРЅ/РјР°СЃС€С‚Р°Р±. РќРµ Р·Р°РІРёСЃРёС‚ РѕС‚ РєР°РјРµСЂС‹ вЂ” СЃС‡РёС‚Р°РµС‚СЃСЏ РѕРґРёРЅ СЂР°Р· РїСЂРё СЃР±РѕСЂРєРµ.</summary>
+        /// <summary>
+        /// Дописывает в конец нового пула те инстансы СТАРОГО пула, которых в
+        /// новой выборке уже нет, и проставляет им DeathTime: они ещё рисуются,
+        /// но гаснут масштабом и заходят под землю (см. GroundDecorMatrixJob).
+        /// Без этого выпавшие травинки исчезали мгновенно — кромка поля дёргалась
+        /// на каждой пересборке пула (каждые ~18 м пройденного пути), и игрок
+        /// видел, как трава пропадает рядом с ним, особенно сзади.
+        ///
+        /// Раскладка пула по клеткам у обоих пулов одинаковая (та же сетка и тот
+        /// же SubPerCell), поэтому «осталось в новой выборке» = первые
+        /// min(prev, new) подтуфтов клетки — ровно то, что переносит
+        /// GroundDecorMergeKeptJob. Значит выпавшие = хвост каждой клетки плюс
+        /// клетки, которым в новом бюджете не досталось ни одного слота.
+        ///
+        /// Возвращает момент, когда хвост погаснет (0 = хвоста нет).
+        /// </summary>
+        private static float AppendRetiringInstances(
+            DecorBuildSession session, ref NativeArray<GroundDecorInstance> stored, ref int write,
+            float sinkFadeSeconds)
+        {
+            DecorLayerRuntime previous = session.Previous;
+            if (previous == null || !previous.Instances.IsCreated
+                || !previous.CellOffsets.IsCreated || !previous.CellCounts.IsCreated)
+            {
+                return 0f;
+            }
+
+            NativeArray<GroundDecorInstance> prev = previous.Instances;
+            NativeArray<int> prevOffsets = previous.CellOffsets;
+            NativeArray<int> prevCounts = previous.CellCounts;
+            NativeArray<int> newCounts = session.WriteCounts;
+            if (!newCounts.IsCreated)
+            {
+                return 0f;
+            }
+
+            int cells = System.Math.Min(prevCounts.Length, newCounts.Length);
+            int dropped = 0;
+            for (int i = 0; i < cells; i++)
+            {
+                int prevCount = prevCounts[i];
+                if (prevCount <= 0)
+                {
+                    continue;
+                }
+
+                int offset = prevOffsets[i];
+                if (offset == int.MaxValue)
+                {
+                    continue;
+                }
+
+                int newCount = newCounts[i];
+                int keep = newCount < prevCount ? newCount : prevCount;
+                for (int s = keep; s < prevCount; s++)
+                {
+                    int from = offset + s;
+                    if (from >= 0 && from < prev.Length && prev[from].Scale > 0f)
+                    {
+                        dropped++;
+                    }
+                }
+            }
+
+            if (dropped <= 0)
+            {
+                return 0f;
+            }
+
+            // Уже гаснущий хвост ПРОШЛОГО пула переносим вперёд: без этого
+            // полугаснущая травинка исчезала бы скачком на следующей же
+            // пересборке (хвост просто уничтожался вместе со старым пулом).
+            // Совсем погасшие (DeathTime + длительность < now) не тащим.
+            int carried = 0;
+            int prevAlive = previous.AliveCount;
+            for (int i = prevAlive; i < prev.Length; i++)
+            {
+                GroundDecorInstance dying = prev[i];
+                if (dying.Scale > 0f && dying.DeathTime > 0f
+                    && dying.DeathTime + sinkFadeSeconds > Time.time)
+                {
+                    carried++;
+                }
+            }
+
+            // Новый буфер: живая часть + уходящий хвост (обе половины — из пула).
+            int total = write + dropped + carried;
+            NativeArray<GroundDecorInstance> grown = DecorArrayPool.Rent<GroundDecorInstance>(total);
+            if (write > 0)
+            {
+                NativeArray<GroundDecorInstance>.Copy(stored, grown, write);
+            }
+
+            DecorArrayPool.Return(ref stored);
+            stored = grown;
+
+            float now = Time.time;
+            float latest = 0f;
+            int dst = write;
+            for (int i = 0; i < cells; i++)
+            {
+                int prevCount = prevCounts[i];
+                if (prevCount <= 0)
+                {
+                    continue;
+                }
+
+                int offset = prevOffsets[i];
+                if (offset == int.MaxValue)
+                {
+                    continue;
+                }
+
+                int newCount = newCounts[i];
+                int keep = newCount < prevCount ? newCount : prevCount;
+                for (int s = keep; s < prevCount; s++)
+                {
+                    int from = offset + s;
+                    if (from < 0 || from >= prev.Length)
+                    {
+                        continue;
+                    }
+
+                    GroundDecorInstance dying = prev[from];
+                    if (dying.Scale <= 0f)
+                    {
+                        continue;
+                    }
+
+                    // Разброс по хешу слота: уходящие гаснут не одной волной.
+                    dying.DeathTime = now + (DecorBladeSinkStaggerSeconds > 0f
+                        ? (float)(GroundDecorDistribution.Hash01(from, session.LayerIndex, i, session.Node.Ix, 46)
+                            * DecorBladeSinkStaggerSeconds)
+                        : 0f);
+                    latest = System.Math.Max(latest, dying.DeathTime);
+                    stored[dst++] = dying;
+                }
+            }
+
+            // Дописываем гаснущий хвост прошлого пула с его прежним DeathTime:
+            // травинка продолжает уходить, а не начинает заново и не щёлкает.
+            for (int i = prevAlive; i < prev.Length; i++)
+            {
+                GroundDecorInstance dying = prev[i];
+                if (dying.Scale <= 0f || dying.DeathTime <= 0f
+                    || dying.DeathTime + sinkFadeSeconds <= now)
+                {
+                    continue;
+                }
+
+                latest = System.Math.Max(latest, dying.DeathTime);
+                stored[dst++] = dying;
+            }
+
+            write = dst;
+            return latest + sinkFadeSeconds;
+        }
+
+        /// <summary>
+        /// Отрезает погасший хвост пула (RetireDeadline прошёл): Instances и
+        /// WorldMatrices укорачиваются до AliveCount. Вызывается из отрисовки —
+        /// единственного потребителя этих массивов.
+        /// </summary>
+        private static void CompactRetiredDecor(DecorLayerRuntime runtime)
+        {
+            int alive = runtime.AliveCount;
+            if (alive <= 0 || alive >= runtime.Instances.Length)
+            {
+                runtime.RetireDeadline = 0f;
+                return;
+            }
+
+            NativeArray<GroundDecorInstance> instances = DecorArrayPool.Rent<GroundDecorInstance>(alive);
+            NativeArray<GroundDecorInstance>.Copy(runtime.Instances, instances, alive);
+            DecorArrayPool.Return(ref runtime.Instances);
+            runtime.Instances = instances;
+
+            if (runtime.WorldMatrices.IsCreated)
+            {
+                NativeArray<Matrix4x4> matrices = DecorArrayPool.Rent<Matrix4x4>(alive);
+                NativeArray<Matrix4x4>.Copy(runtime.WorldMatrices, matrices, alive);
+                DecorArrayPool.Return(ref runtime.WorldMatrices);
+                runtime.WorldMatrices = matrices;
+            }
+
+            runtime.AliveCount = 0;
+            runtime.RetireDeadline = 0f;
+        }
+
+        /// <summary>
+        /// Освобождает пулы, которые ушли под землю (Retiring) и догасли.
+        /// Вызывается из DrawDecor до отрисовки: там же единственный
+        /// потребитель их массивов. Идёт по всем чанкам, а не только по
+        /// видимым: ушедший пул мог остаться в невидимом чанке.
+        /// </summary>
+        private void RetireFinishedDecor()
+        {
+            foreach (KeyValuePair<long, Chunk> kv in chunks)
+            {
+                Chunk chunk = kv.Value;
+                if (chunk.Decor.Count == 0)
+                {
+                    continue;
+                }
+
+                for (int i = chunk.Decor.Count - 1; i >= 0; i--)
+                {
+                    DecorLayerRuntime runtime = chunk.Decor[i];
+                    if (!runtime.Retiring)
+                    {
+                        continue;
+                    }
+
+                    if (Time.time < runtime.RetireStart + runtime.RetireFadeSeconds)
+                    {
+                        continue;
+                    }
+
+                    DisposeDecorLayerRuntime(runtime);
+                    chunk.Decor.RemoveAt(i);
+                }
+            }
+        }
+
         /// <summary>Множитель прорастания пропа по его BirthTime: 0 сразу после
         /// появления, 1 — вырос. Ничего не делает для старых сборок (BirthTime 0).</summary>
         private static float DecorBirthFade(GroundDecorInstance instance, float fadeSeconds)
@@ -3872,6 +4207,33 @@ namespace Galilego.Universe
             }
 
             return Mathf.Clamp01((Time.time - instance.BirthTime) / fadeSeconds);
+        }
+
+        /// <summary>Множитель ухода пула под землю: 1 — ещё стоит, 0 — ушёл.
+        /// Зеркало DecorBirthFade, но для слоя целиком (деревья и прочие пробы).</summary>
+        private static float DecorRetireFade(DecorLayerRuntime runtime)
+        {
+            if (runtime == null || !runtime.Retiring || runtime.RetireFadeSeconds <= 0f)
+            {
+                return 1f;
+            }
+
+            return Mathf.Clamp01((runtime.RetireStart + runtime.RetireFadeSeconds - Time.time)
+                / runtime.RetireFadeSeconds);
+        }
+
+        /// <summary>Помечает пул уходящим под землю вместо мгновенного удаления.
+        /// Его освободит RetireFinishedDecor (см. DrawDecor).</summary>
+        private static void RetireDecorLayerRuntime(DecorLayerRuntime runtime)
+        {
+            if (runtime == null || runtime.Retiring)
+            {
+                return;
+            }
+
+            runtime.Retiring = true;
+            runtime.RetireStart = Time.time;
+            runtime.RetireFadeSeconds = DecorFadeSeconds(DecorPropSinkSeconds);
         }
 
         private static Matrix4x4 DecorLocalMatrix(GroundDecorInstance instance, GroundDecorLayer layer, Vector3 up)
@@ -3946,6 +4308,10 @@ namespace Galilego.Universe
                 return;
             }
 
+            // Освобождаем пулы, догасшие после ухода под землю (деревья/камни/
+            // кактусы при пересборке и уходе чанка за радиус).
+            RetireFinishedDecor();
+
             // РЎС‚СЂР°С…РѕРІРєР°: РµСЃР»Рё РїСЂРѕС€Р»С‹Р№ РєР°РґСЂ Р·Р°РІРµСЂС€РёР»СЃСЏ РёСЃРєР»СЋС‡РµРЅРёРµРј РґРѕ Flush,
             // РґРѕРІРѕРґРёРј Р·Р°РїР»Р°РЅРёСЂРѕРІР°РЅРЅС‹Рµ РґР¶РѕР±С‹, РёРЅР°С‡Рµ РЅРѕРІС‹Рµ РїРёСЃР°Р»Рё Р±С‹ РІ С‚Рµ Р¶Рµ
             // РјР°СЃСЃРёРІС‹ РјР°С‚СЂРёС† РїР°СЂР°Р»Р»РµР»СЊРЅРѕ.
@@ -4015,6 +4381,14 @@ namespace Galilego.Universe
                         continue;
                     }
 
+                    // Погасший хвост пула (трава, выпавшая из новой выборки при
+                    // пересборке) убираем из массивов: с этого кадра рисуются
+                    // только живые инстансы.
+                    if (runtime.RetireDeadline > 0f && Time.time >= runtime.RetireDeadline)
+                    {
+                        CompactRetiredDecor(runtime);
+                    }
+
                     if (!chunkInFrustum && !layer.CastShadows)
                     {
                         continue;
@@ -4061,6 +4435,11 @@ namespace Galilego.Universe
                             ? ShadowCastingMode.On
                             : ShadowCastingMode.Off;
 
+                        // Уходящий пул гаснет целиком: иначе деревья исчезали
+                        // кадр в кадр при пересборке и уходе чанка за радиус.
+                        float retireFade = DecorRetireFade(runtime);
+                        float growFade = DecorFadeSeconds(DecorPropFadeSeconds);
+
                         for (int k = 0; k < count; k++)
                         {
                             GroundDecorInstance instance = runtime.Instances[k];
@@ -4080,7 +4459,7 @@ namespace Galilego.Universe
                                 up.Normalize();
                             }
 
-                            float fade = DecorBirthFade(instance, DecorPropFadeSeconds);
+                            float fade = DecorBirthFade(instance, growFade) * retireFade;
                             runtime.Matrices[k] = chunkMatrix * DecorLocalMatrix(instance, layer, up, fade);
                         }
 
@@ -4111,7 +4490,7 @@ namespace Galilego.Universe
                                 // СѓР¶Рµ РЅР°СЃС‚РѕСЏС‰Р°СЏ С‚РµРЅСЊ.
                                 Vector3 groundUp = grassMatrix.rotation * Vector3.up;
                                 float blobScale = runtime.Instances[k].Scale * BlobScaleFactor
-                                    * DecorBirthFade(runtime.Instances[k], DecorPropFadeSeconds);
+                                    * DecorBirthFade(runtime.Instances[k], growFade) * retireFade;
                                 Vector3 sunTangent = sunDirWS - (groundUp * Vector3.Dot(sunDirWS, groundUp));
                                 if (sunTangent.sqrMagnitude > 1e-6f)
                                 {
@@ -4484,7 +4863,10 @@ namespace Galilego.Universe
                 BillboardFarScale = 1.9f,
                 BillboardPivotFraction = pivotFraction,
                 Now = Time.time,
-                FadeSeconds = DecorBladeFadeSeconds
+                FadeSeconds = DecorFadeSeconds(DecorBladeFadeSeconds),
+                SinkSeconds = runtime.Retiring
+                    ? 0f
+                    : (runtime.RetireDeadline > 0f ? runtime.SinkFadeSeconds : DecorFadeSeconds(DecorBladeSinkSeconds))
             };
 
             ShadowCastingMode shadow = near && layer.CastShadows

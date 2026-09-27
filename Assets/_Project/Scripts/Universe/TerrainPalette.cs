@@ -101,7 +101,7 @@ namespace Galilego.Universe
             // Мелкомасштабное разнообразие земли: пятна почвы (в тёплый коричневый)
             // и более сочной/тёмной зелени. Только на земле выше пляжной зоны —
             // на песке пятен быть не должно.
-            if (!isSea && !isBeach && tMasked >= 0.03d && detailStrength != 0d)
+            if (!isSea && !isBeach && detailStrength != 0d)
             {
                 double d = Clamp(colorDetail, -1d, 1d);
                 if (d > 0d)
@@ -174,15 +174,20 @@ namespace Galilego.Universe
                 t = 0d;
             }
 
-            if (t < 0.03d)
-            {
-                return Sand;
-            }
-
             // Биом по влажности: сухо → пустыня → сухая трава → луг → лес.
-            // Маска усиливается (×1.6): её сырое значение жмётся к нулю fBm'ом,
-            // без усиления весь континент получается одним тоном.
-            double wet = maskOn ? Clamp01(0.5d + (Clamp(mask, -1d, 1d) * 1.6d)) : 0.5d;
+            // Ниже НИКАКОЙ нормированной «песчаной» полосы: песок — это только
+            // абсолютный пляж (beachHeightMeters) выше по коду. Полоса t<0.03 при
+            // амплитуде 9144 м — это 274 м высоты, и она красила песком ВСЮ
+            // прибрежную равнину (а Grass/Tree ещё и отсекали её по MinNormalizedHeight,
+            // т.е. зелёная по рельефу земля оставалась без травы).
+            //
+            // Кривая wet01 — общая с декором (GroundDecorDistribution.BiomeWetness,
+            // зеркало в PlanetSurface.shader). Мягкая, tanh вместо clamp: маска
+            // SampleColorNoise на сфере широкая (p10=−0.33, p90=+0.32), и старая
+            // clamp(0.5+1.6·mask) САТУРИРОВАЛА 21% планеты в ровные 0/1: четверть
+            // суши получала wet ровно 0, по краям была ровная «пустыня/лес», а
+            // деревья (WetMin=0.2) не росли нигде на площади в десятки километров.
+            double wet = maskOn ? GroundDecorDistribution.BiomeWetness(mask) : 0.5d;
             Color lowland = BiomeColor(wet);
             Color c;
             if (t < 0.45d)

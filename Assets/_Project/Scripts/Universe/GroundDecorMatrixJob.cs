@@ -38,6 +38,10 @@ namespace Galilego.Universe
         /// появляется поштучно и плавно, без полос и «пачек».</summary>
         public float Now;
         public float FadeSeconds;
+        /// <summary>Длительность ухода под землю (с). Инстансы с DeathTime &gt; 0
+        /// гаснут масштабом 1→0 за это время от своего DeathTime: выпавшие из
+        /// новой выборки травинки заходят в землю, а не исчезают кадр в кадр.</summary>
+        public float SinkSeconds;
 
         public void Execute(int index)
         {
@@ -51,6 +55,15 @@ namespace Galilego.Universe
             if (FadeSeconds > 0f && instance.BirthTime > 0f)
             {
                 scale *= math.saturate((Now - instance.BirthTime) / FadeSeconds);
+            }
+
+            // Уход под землю: от DeathTime масштаб падает 1 → 0 за SinkSeconds
+            // (пивот у травинки в основании, так что это визуально «заходит в
+            // землю» тем же движением, каким появляется). Мёртвые инстансы
+            // схлопываются в точку — их матрица вырожденная, GPU их не видит.
+            if (SinkSeconds > 0f && instance.DeathTime > 0f)
+            {
+                scale *= math.saturate((instance.DeathTime + SinkSeconds - Now) / SinkSeconds);
             }
 
             if (Billboard)
