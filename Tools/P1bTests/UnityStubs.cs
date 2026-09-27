@@ -147,7 +147,7 @@ namespace UnityEngine
         public T AddComponent<T>() where T : new() => new T();
     }
 
-    public class Component
+    public class Component : Object
     {
         public GameObject gameObject => new GameObject();
         public Transform transform => gameObject.transform;
@@ -167,6 +167,7 @@ namespace UnityEngine
         public static void Destroy(Material target) { }
         public static void Destroy(Component target) { }
         public static void Destroy(Texture2D target) { }
+        public static void Destroy(ScriptableObject target) { }
     }
 
     public static class Application
@@ -188,11 +189,18 @@ namespace UnityEngine
     {
         public static void Destroy(Object target) { }
         public static void Destroy(Component target) { }
+
+        /// <summary>Стаб поиска сцены: в стенде сцены нет, всегда null.</summary>
+        public static T FindAnyObjectByType<T>() where T : Object => null;
+
+        public static T FindFirstObjectByType<T>() where T : Object => null;
     }
 
     public class ScriptableObject : Object
     {
         public string name;
+
+        public static T CreateInstance<T>() where T : ScriptableObject, new() => new T();
     }
 
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
@@ -321,6 +329,8 @@ namespace UnityEngine
     {
         public float nearClipPlane;
         public float farClipPlane;
+        public Color backgroundColor;
+        public Rendering.CameraClearFlags clearFlags = Rendering.CameraClearFlags.Skybox;
         public static Camera main => new Camera();
         public Vector3 WorldToViewportPoint(Vector3 worldPoint) => worldPoint;
         public Vector3 WorldToScreenPoint(Vector3 worldPoint) => worldPoint;
@@ -635,6 +645,9 @@ namespace UnityEngine.Rendering
 {
     public enum ShadowCastingMode { Off, On, DoubleSided, ShadowsOnly }
 
+    /// <summary>Стаб Camera.clearFlags (UnderwaterEffect) — в стенде не выполняется.</summary>
+    public enum CameraClearFlags { Skybox = 1, SolidColor = 2, Depth = 3, Nothing = 4 }
+
     /// <summary>
     /// Минимальные стабы Volume API для компиляции SkyEnvironment в стенде:
     /// глаз-адаптация (Exposure.compensation) в тестах не выполняется.
@@ -656,12 +669,49 @@ namespace UnityEngine.Rendering
             component = null;
             return false;
         }
+
+        public T Add<T>(bool overrides = false) where T : VolumeComponent, new()
+        {
+            return new T();
+        }
     }
 
     public sealed class Volume : UnityEngine.Component
     {
         public VolumeProfile profile;
         public VolumeProfile sharedProfile;
+        public bool isGlobal;
+        public float priority;
+        public float weight;
+    }
+
+    public enum FogColorMode { ConstantColor = 0, Gradient = 1 }
+
+    public enum FogDenoisingMode { None = 0, Gaussian = 1, QuarterRes = 2, FullRes = 3 }
+
+    /// <summary>Стаб HDRP Fog (UnderwaterEffect) — в стенде не выполняется.</summary>
+    public sealed class Fog : VolumeComponent
+    {
+        public VolumeParameter<bool> enabled = new VolumeParameter<bool>();
+        public VolumeParameter<Color> color = new VolumeParameter<Color>();
+        public VolumeParameter<Color> albedo = new VolumeParameter<Color>();
+        public VolumeParameter<FogColorMode> colorMode = new VolumeParameter<FogColorMode>();
+        public VolumeParameter<float> maxFogDistance = new VolumeParameter<float>();
+        public VolumeParameter<float> meanFreePath = new VolumeParameter<float>();
+        public VolumeParameter<bool> enableVolumetricFog = new VolumeParameter<bool>();
+        public VolumeParameter<float> anisotropy = new VolumeParameter<float>();
+        public VolumeParameter<FogDenoisingMode> denoisingMode = new VolumeParameter<FogDenoisingMode>();
+        public VolumeParameter<bool> directionalLightsOnly = new VolumeParameter<bool>();
+        public VolumeParameter<float> depthExtent = new VolumeParameter<float>();
+    }
+
+    /// <summary>Стаб HDRP ColorAdjustments (UnderwaterEffect) — в стенде не выполняется.</summary>
+    public sealed class ColorAdjustments : VolumeComponent
+    {
+        public VolumeParameter<float> postExposure = new VolumeParameter<float>();
+        public VolumeParameter<float> contrast = new VolumeParameter<float>();
+        public VolumeParameter<float> saturation = new VolumeParameter<float>();
+        public VolumeParameter<Color> colorFilter = new VolumeParameter<Color>();
     }
 }
 

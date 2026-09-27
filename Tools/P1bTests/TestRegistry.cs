@@ -143,6 +143,8 @@ internal static partial class P1bTests
             new P1bCase("Test97_SkyAmbient", Test97_SkyAmbient, false),
             new P1bCase("Test98_SunsetTwilight", Test98_SunsetTwilight, false),
             new P1bCase("Test105_WaterQuery", Test105_WaterQuery, false),
+            new P1bCase("Test106_SandIsBeachBandOnly", Test106_SandIsBeachBandOnly, false),
+            new P1bCase("Test107_WetnessNeverSaturates", Test107_WetnessNeverSaturates, false),
         };
     }
 }

@@ -294,17 +294,22 @@ Shader "Galilego/PlanetSurface"
                 float3 c;
                 // Пляж — абсолютными метрами над морем, маской не стирается:
                 // иначе на «плюсовых» берегах зелень начинается от уреза воды.
+                // НИЖЕ нет нормированной «песчаной» полосы: t<0.03 при амплитуде
+                // 9144 м — это 274 м высоты, то есть весь прибрежный пляж/равнина.
+                // Песок = только абсолютная полка у воды (зеркалит TerrainPalette
+                // и фильтр BeachHeightMeters у декора).
                 if (_BeachHeightMeters > 0.0 && aboveSea < _BeachHeightMeters)
-                {
-                    c = _ColSand.rgb;
-                }
-                else if (t < 0.03)
                 {
                     c = _ColSand.rgb;
                 }
                 else
                 {
-                    float wet = maskOn ? saturate(0.5 + (clamp(mask, -1.0, 1.0) * 1.6)) : 0.5;
+                    // wet01 — ОБЩАЯ кривая с декором (GroundDecorDistribution.
+                    // BiomeWetness) и с CPU-палитрой. Мягкая, tanh вместо clamp:
+                    // маска широкая (p10=−0.33, p90=+0.32), clamp(0.5+1.6·mask)
+                    // насыщал 21% планеты в ровные 0/1 — отсюда были огромные
+                    // мёртвые зоны без травы/деревьев и ровные тональные заливки.
+                    float wet = maskOn ? (0.5 + 0.5 * tanh(1.6 * clamp(mask, -1.0, 1.0))) : 0.5;
                     float3 lowland = BiomeColor(wet);
                     if (t < 0.45)
                     {
@@ -335,7 +340,7 @@ Shader "Galilego/PlanetSurface"
                 // Моттлинг земли: пятна почвы / сочной зелени. Только на земле
                 // выше пляжной зоны — на песке пятен быть не должно.
                 bool isBeach = _BeachHeightMeters > 0.0 && aboveSea < _BeachHeightMeters;
-                if (_ColorDetailStrength != 0.0 && t >= 0.03 && !isBeach)
+                if (_ColorDetailStrength != 0.0 && !isBeach)
                 {
                     float d = clamp(detail, -1.0, 1.0);
                     if (d > 0.0)

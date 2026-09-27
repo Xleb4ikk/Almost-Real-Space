@@ -86,13 +86,17 @@ namespace Galilego.Universe.EditorTools
                     ClusterThreshold = 0.5d,
                     MinAltitudeMeters = 2d,
                     // Ромашки — луговые цветы: только зелёная земля палитры.
-                    MinNormalizedHeight = 0.032d,
+                    // Нормированной нижней границы нет (песок = абсолютный пляж).
+                    MinNormalizedHeight = 0d,
                     MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
                     MaxAltitudeMeters = TreeLineMaxAltitudeMeters,
                     MaxSlopeTan = 0.8d,
                     AvoidWater = true,
-                    WetMin = GroundDecorLayer.GreenWetMin,
+                    // Ромашки — луговые цветы: влажнее степи, но мягким краем
+                    // (WetFade), иначе видно линию, где цветы кончились.
+                    WetMin = 0.3d,
                     WetMax = 1d,
+                    WetFade = 0.25d,
                     MinScale = 0.8d,
                     MaxScale = 1.2d,
                     SteepPower = 4d,
@@ -178,13 +182,15 @@ namespace Galilego.Universe.EditorTools
                     ClusterThreshold = 0.25d,
                     MinAltitudeMeters = 2d,
                     // Кактусы — сухой биом, но не пляж и не скалы.
-                    MinNormalizedHeight = 0.032d,
+                    MinNormalizedHeight = 0d,
                     MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
                     MaxAltitudeMeters = 4000d,
                     MaxSlopeTan = 0.8d,
                     AvoidWater = true,
                     WetMin = 0d,
                     WetMax = 0.32d,
+                    // мягкий спад к влажным зонам, без линии на границе
+                    WetFade = 0.2d,
                     MinScale = 2d,
                     MaxScale = 5d,
                     SteepPower = 4d,
