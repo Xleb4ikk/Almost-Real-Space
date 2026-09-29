@@ -95,6 +95,22 @@ namespace Galilego.Universe
         [Range(0.5f, 8f)]
         public float DecorBuildBudgetMs = 3f;
 
+        // [ФАЗА 4] Пауза после полного обхода, который ничего не нашёл.
+        //
+        // Обход «все чанки × все слои» стоит ~1.8 мс на 1263 чанках, и когда
+        // строить нечего (всё построено, либо всё дальше MaxDistance) эта
+        // работа повторялась КАЖДЫЙ кадр вхолостую — профиль показывал 1.8 мс
+        // при нулевом числе пулов. Обход запоминает, что ничего не нашёл, и на
+        // пару сотых секунды не повторяется.
+        //
+        // Пауза короткая намеренно: за это время камера успевает долететь до
+        // нового чанка, и появление декора глазом не задерживается.
+        [Tooltip("How long to stop re-scanning after a full scan found nothing to build.")]
+        [Range(0.02f, 2f)]
+        public float DecorRescanCooldownSeconds = 0.2f;
+
+        private float decorScanBlockedUntil;
+
         [Tooltip("РњР°РєСЃРёРјСѓРј РѕРґРЅРѕРІСЂРµРјРµРЅРЅС‹С… Р°СЃРёРЅС…СЂРѕРЅРЅС‹С… СЃР±РѕСЂРѕРє РґРµРєРѕСЂР° (РїР°РјСЏС‚СЊ/Р»Р°С‚РµРЅС‚РЅРѕСЃС‚СЊ).")]
         [Range(1, 8)]
         public int MaxDecorBuildSessions = 4;
@@ -5072,6 +5088,15 @@ namespace Galilego.Universe
                 return;
             }
 
+            // [ФАЗА 4] Предыдущий полный обход не нашёл ничего строить. Пока
+            // не истёк пауза, повторный обход заведомо ничего не даст: набор
+            // чанков и видимость за 0.2 с не меняются настолько, чтобы это
+            // стоило ещё одного полного прохода.
+            if (Time.unscaledTime < decorScanBlockedUntil)
+            {
+                return;
+            }
+
             Vector3 cameraUp = cameraPosition - bodyRenderPosition;
             if (cameraUp.sqrMagnitude < 1e-6f)
             {
@@ -5149,6 +5174,12 @@ namespace Galilego.Universe
 
                 if (bestChunk == null)
                 {
+                    // [ФАЗА 4] Ничего не нашли — запоминаем, чтобы не гонять
+                    // полный обход каждый кадр вхолостую. Раньше именно здесь
+                    // стоял голый return, и этот путь был самым дорогим в
+                    // кадре: 1.8 мс на пустой работе.
+                    decorScanBlockedUntil = Time.unscaledTime
+                        + Mathf.Max(0.02f, DecorRescanCooldownSeconds);
                     return;
                 }
 

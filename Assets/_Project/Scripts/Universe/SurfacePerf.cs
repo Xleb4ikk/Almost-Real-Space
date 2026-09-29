@@ -5,6 +5,7 @@ using System.IO;
 using System.Text;
 using Galilego.Core;
 using Unity.Profiling;
+using Unity.Profiling.LowLevel.Unsafe;
 using UnityEngine;
 using UnityEngine.Profiling;
 
@@ -35,17 +36,25 @@ namespace Galilego.Universe
         // ===== Маркеры профилировщика =====
         // Префикс PSR. — чтобы находить в Profiler одним фильтром.
         // В сборке без Development Build маркеры компилируются в ничто.
+        //
+        // Категория задана ЯВНО. У одноаргументного конструктора она своя
+        // внутренняя, и ProfilerRecorder, стартованный на ProfilerCategory.
+        // Scripts, такой маркер не увидит — рекордер вернёт пустоту, и выглядит
+        // это как «фаза ничего не стоит», а не как «я ищу не там». Явная
+        // категория заодно кладёт маркеры в раздел Scripts.
 
-        public static readonly ProfilerMarker TraverseMarker = new ProfilerMarker("PSR.Traverse");
-        public static readonly ProfilerMarker BuildChunkMarker = new ProfilerMarker("PSR.BuildChunk");
-        public static readonly ProfilerMarker EvictMarker = new ProfilerMarker("PSR.Evict");
-        public static readonly ProfilerMarker ChunkTransformsMarker = new ProfilerMarker("PSR.ChunkTransforms");
-        public static readonly ProfilerMarker RefreshMovingDecorMarker = new ProfilerMarker("PSR.Decor.RefreshMoving");
-        public static readonly ProfilerMarker EnsureVisibleDecorMarker = new ProfilerMarker("PSR.Decor.EnsureVisible");
-        public static readonly ProfilerMarker TrimDistantDecorMarker = new ProfilerMarker("PSR.Decor.TrimDistant");
-        public static readonly ProfilerMarker StepDecorBuildsMarker = new ProfilerMarker("PSR.Decor.StepBuilds");
-        public static readonly ProfilerMarker UpdateDecorCollisionMarker = new ProfilerMarker("PSR.Decor.UpdateCollision");
-        public static readonly ProfilerMarker DrawDecorMarker = new ProfilerMarker("PSR.Decor.Draw");
+        private static readonly ProfilerCategory PhaseCategory = ProfilerCategory.Scripts;
+
+        public static readonly ProfilerMarker TraverseMarker = new ProfilerMarker(PhaseCategory, "PSR.Traverse");
+        public static readonly ProfilerMarker BuildChunkMarker = new ProfilerMarker(PhaseCategory, "PSR.BuildChunk");
+        public static readonly ProfilerMarker EvictMarker = new ProfilerMarker(PhaseCategory, "PSR.Evict");
+        public static readonly ProfilerMarker ChunkTransformsMarker = new ProfilerMarker(PhaseCategory, "PSR.ChunkTransforms");
+        public static readonly ProfilerMarker RefreshMovingDecorMarker = new ProfilerMarker(PhaseCategory, "PSR.Decor.RefreshMoving");
+        public static readonly ProfilerMarker EnsureVisibleDecorMarker = new ProfilerMarker(PhaseCategory, "PSR.Decor.EnsureVisible");
+        public static readonly ProfilerMarker TrimDistantDecorMarker = new ProfilerMarker(PhaseCategory, "PSR.Decor.TrimDistant");
+        public static readonly ProfilerMarker StepDecorBuildsMarker = new ProfilerMarker(PhaseCategory, "PSR.Decor.StepBuilds");
+        public static readonly ProfilerMarker UpdateDecorCollisionMarker = new ProfilerMarker(PhaseCategory, "PSR.Decor.UpdateCollision");
+        public static readonly ProfilerMarker DrawDecorMarker = new ProfilerMarker(PhaseCategory, "PSR.Decor.Draw");
 
         // ===== Счётчики за кадр (обнуляются в BeginFrame) =====
 
@@ -269,6 +278,112 @@ namespace Galilego.Universe
         }
 
         private static readonly StringBuilder hudBuilder = new StringBuilder(256);
+
+        // ===== Замеры самих маркеров (Фаза 4: решать по профилю) =====
+        //
+        // ProfilerRecorder умеет читать пользовательский ProfilerMarker по
+        // имени, поэтому фазы рендера меряются из кода, без Profiler и без
+        // ручного разбора. Работает и в сборке. Выключено по умолчанию:
+        // набор рекордеров сам стоит денег на каждом кадре.
+        private static ProfilerRecorder[] markerRecorders;
+        private static string[] markerNames;
+
+        private static readonly string[] MarkerList =
+        {
+            "PSR.Traverse", "PSR.BuildChunk", "PSR.Evict", "PSR.ChunkTransforms",
+            "PSR.Decor.RefreshMoving", "PSR.Decor.EnsureVisible", "PSR.Decor.TrimDistant",
+            "PSR.Decor.StepBuilds", "PSR.Decor.UpdateCollision", "PSR.Decor.Draw",
+        };
+
+        /// <summary>Включить замеры фаз. Расход — по одному счётчику на
+        /// маркер, это не то же самое, что открытый Profiler.</summary>
+        public static bool MarkerTimersEnabled;
+
+        private static void EnsureMarkerRecorders()
+        {
+            if (markerRecorders != null || !MarkerTimersEnabled)
+            {
+                return;
+            }
+
+            markerNames = MarkerList;
+            markerRecorders = new ProfilerRecorder[markerNames.Length];
+            for (int i = 0; i < markerNames.Length; i++)
+            {
+                markerRecorders[i] = ProfilerRecorder.StartNew(
+                    PhaseCategory, markerNames[i], 64);
+            }
+        }
+
+        private static void ReleaseMarkerRecorders()
+        {
+            if (markerRecorders == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < markerRecorders.Length; i++)
+            {
+                if (markerRecorders[i].Valid)
+                {
+                    markerRecorders[i].Dispose();
+                }
+            }
+
+            markerRecorders = null;
+            markerNames = null;
+        }
+
+        /// <summary>Разбор фаз за окно в миллисекундах. Пусто, если замеры
+        /// выключены.</summary>
+        public static string MarkerTimings()
+        {
+            EnsureMarkerRecorders();
+            if (markerRecorders == null)
+            {
+                return string.Empty;
+            }
+
+            var sb = new StringBuilder(256);
+            for (int i = 0; i < markerRecorders.Length; i++)
+            {
+                if (!markerRecorders[i].Valid)
+                {
+                    sb.Append(markerNames[i]).Append(": нет данных\n");
+                    continue;
+                }
+
+                // LastValue в наносекундах; усредняем по накопленному окну,
+                // иначе на экране мелькают одиночные кадры.
+                long sum = 0;
+                int count = 0;
+                for (int s = 0; s < markerRecorders[i].Capacity && s < 64; s++)
+                {
+                    ProfilerRecorderSample sample = markerRecorders[i].GetSample(s);
+                    long v = sample.Value;
+                    if (v <= 0)
+                    {
+                        continue;
+                    }
+
+                    sum += v;
+                    count++;
+                }
+
+                sb.Append(markerNames[i]).Append(": ")
+                    .Append(count > 0 ? (sum / (double)count / 1e6).ToString("F3", CultureInfo.InvariantCulture) : "-")
+                    .Append(" мс\n");
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>Однократный разбор в консоль — для профиля, который
+        /// снимают раз в полчаса, а не постоянно.</summary>
+        public static void LogMarkerTimings()
+        {
+            Debug.Log("[SurfacePerf] разбор фаз (мс на кадр):\n" + MarkerTimings());
+        }
 
         /// <summary>
         /// Компактные счётчики для HUD читов. Строка собирается в кэшированный
