@@ -73,6 +73,11 @@ namespace Galilego.Universe
         /// размеру кэша, вычистить нечего — кэш упирается в keep, а не в лимит.</summary>
         public static int KeepCount;
 
+        /// <summary>Сколько узлов из desired попало в keep. По построению равно
+        /// VisibleChunks того же кадра. Расхождение означает, что кэш изменился
+        /// между постановкой в visible и сборкой keep, и на экране есть дыры.</summary>
+        public static int DesiredInKeep;
+
         /// <summary>Сколько кандидатов на выгрузку нашлось на последнем проходе.</summary>
         public static int EvictCandidates;
 
@@ -105,6 +110,12 @@ namespace Galilego.Universe
         /// FinalizeChunk). Ненулевое значение означает, что async-путь сыпет
         /// ошибками: смотрите консоль, там же печатается причина.</summary>
         public static int FinalizeErrors;
+
+        /// <summary>Сколько префетч-узлов попало в очередь на постройку.</summary>
+        public static int PrefetchQueued;
+
+        /// <summary>Сколько узлов выдал префетч-обход.</summary>
+        public static int PrefetchNodes;
 
         // ===== Диагностика декора =====
 
@@ -206,6 +217,10 @@ namespace Galilego.Universe
             InFlightBuilds = 0;
             ChunksEnqueued = 0;
             QueueDropped = 0;
+            KeepCount = 0;
+            DesiredInKeep = 0;
+            PrefetchQueued = 0;
+            PrefetchNodes = 0;
             DecorPools = 0;
             DecorInstances = 0;
         }
@@ -273,6 +288,9 @@ namespace Galilego.Universe
             hudBuilder.Append(DesiredNodes.ToString(inv));
             hudBuilder.Append(", активных ");
             hudBuilder.Append(ActiveChunks.ToString(inv));
+            hudBuilder.Append(" (в keep ");
+            hudBuilder.Append(DesiredInKeep.ToString(inv));
+            hudBuilder.Append(")");
             hudBuilder.Append(", трис ");
             hudBuilder.Append((TerrainTriangles / 1000).ToString(inv));
             hudBuilder.Append("k");
@@ -531,19 +549,29 @@ namespace Galilego.Universe
         {
             if (Running)
             {
+                LastStartError = "бенчмарк уже идёт";
                 return;
             }
 
             ResolveReferences();
-            if (Runner == null || Runner.DominantBody == null)
+            if (Runner == null)
             {
-                Debug.LogWarning("[Benchmark] Нет SimulationRunner или доминантного тела — нечего мерить.");
+                LastStartError = "не найден SimulationRunner";
+                Debug.LogWarning("[Benchmark] " + LastStartError);
+                return;
+            }
+
+            if (Runner.DominantBody == null)
+            {
+                LastStartError = "нет доминантного тела (DominantBody == null)";
+                Debug.LogWarning("[Benchmark] " + LastStartError);
                 return;
             }
 
             if (Speeds == null || Speeds.Length == 0 || Altitudes == null || Altitudes.Length == 0)
             {
-                Debug.LogWarning("[Benchmark] Пустые списки высот/скоростей.");
+                LastStartError = "пустые списки высот или скоростей";
+                Debug.LogWarning("[Benchmark] " + LastStartError);
                 return;
             }
 
@@ -567,8 +595,15 @@ namespace Galilego.Universe
             }
 
             runIndex = 0;
+            LastStartError = string.Empty;
             BeginClimb();
         }
+
+        /// <summary>Почему последний StartBenchmark не начал прогон. Пусто —
+        /// начал. Раньше причины ранних выходов были только в консоли, и из
+        /// командной строки (eval, автоматический запуск) было видно лишь
+        /// «Бенчмарк не запущен» без причины.</summary>
+        public string LastStartError { get; private set; } = string.Empty;
 
         public void StopBenchmark()
         {

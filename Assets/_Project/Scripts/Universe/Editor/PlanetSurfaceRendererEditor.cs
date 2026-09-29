@@ -14,6 +14,8 @@ namespace Galilego.Universe.EditorTools
     {
         private static bool showLod = true;
         private static bool showPerformance;
+        private static bool showAsync;
+        private static bool showTiers;
 
         public override void OnInspectorGUI()
         {
@@ -30,6 +32,59 @@ namespace Galilego.Universe.EditorTools
                 Field("SplitFactor");
                 Field("MergeHysteresis");
                 Field("SkirtFactor");
+                // [ФАЗА 2.5] Раньше в этом списке не было MinTileResolution и
+                // ResolutionHalveEveryLevels, хотя оба напрямую определяют
+                // разрешение дальних чанков. Поля были видны только в
+                // «полном» инспекторе, то есть настраивать их приходилось
+                // переключателем вверху окна — мелочь, которая стоила реального
+                // времени при подборе LOD.
+                Field("MinTileResolution");
+                Field("ResolutionHalveEveryLevels");
+                EditorGUI.indentLevel--;
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+
+            showAsync = EditorGUILayout.BeginFoldoutHeaderGroup(showAsync, "Асинхронная постройка (Фаза 2)");
+            if (showAsync)
+            {
+                EditorGUI.indentLevel++;
+                Field("AsyncChunkBuild");
+                Field("MaxChunkJobsInFlight");
+                Field("ChunkFinalizeBudgetMs");
+                Field("MaxChunkQueueAgeFrames");
+                EditorGUILayout.HelpBox(
+                    "AsyncChunkBuild выключен по умолчанию осознанно: код написан "
+                    + "и замеры сняты (постройка 42.75 -> 0.3-1.4 мс/кадр, очередь "
+                    + "дренируется), но дефолтом включать рельеф, который можно "
+                    + "не увидеть, нельзя. Включайте и смотрите глазами.",
+                    MessageType.Info);
+                EditorGUI.indentLevel--;
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+
+            showTiers = EditorGUILayout.BeginFoldoutHeaderGroup(showTiers, "Тиры качества по скорости (Фаза 3)");
+            if (showTiers)
+            {
+                EditorGUI.indentLevel++;
+                Field("EnableQualityTiers");
+                Field("TierFastSpeed");
+                Field("TierExtremeSpeed");
+                Field("TierDownDelaySeconds");
+                Field("TierDepthDropFast");
+                Field("TierDepthDropExtreme");
+                Field("TierSplitScaleFast");
+                Field("TierSplitScaleExtreme");
+                Field("TierAutoRaise");
+                Field("TierTargetFrameMs");
+                Field("PrefetchEnabled");
+                Field("PrefetchSeconds");
+                Field("PrefetchVelSmoothSeconds");
+                Field("PrefetchMinLeadMeters");
+                Field("MaxPrefetchNodes");
+                Field("MaxPrefetchQueued");
+                Field("TierHalveResolution");
                 EditorGUI.indentLevel--;
             }
 
@@ -42,6 +97,10 @@ namespace Galilego.Universe.EditorTools
                 Field("BuildsPerFrame");
                 Field("MaxNodes");
                 Field("MaxCachedChunks");
+                Field("MaxEvictionsPerFrame");
+                Field("CullBeyondHorizon");
+                Field("HorizonMargin");
+                Field("LogGeometryStats");
                 EditorGUI.indentLevel--;
             }
 
