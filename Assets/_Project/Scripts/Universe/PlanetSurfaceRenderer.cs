@@ -127,6 +127,27 @@ namespace Galilego.Universe
         [Range(0, 99)]
         public int TerrainShadowDepthBand = 3;
 
+        [Header("Фаза 2: асинхронная постройка чанков")]
+        [Tooltip("Строить чанки в Burst-джобах, а не на главном потоке. Выкл — " +
+                 "старый синхронный путь: он оставлен как эталон, чтобы можно " +
+                 "было сравнить картинку и убедиться, что перенос в Burst " +
+                 "ничего не сдвинул.")]
+        public bool AsyncChunkBuild = true;
+
+        [Tooltip("Сколько джоб постройки может висеть одновременно. Больше — " +
+                 "ровнее сглаживание, но больше одновременной нагрузки на " +
+                 "процессор и больше живой нативной памяти.")]
+        [Range(1, 16)]
+        public int MaxChunkJobsInFlight = 6;
+
+        [Tooltip("Мс на кадр, которые можно потратить на ЗАЛИВКУ готовых " +
+                 "чанков в меши. Заливка копирует память без вычислений и " +
+                 "стоит порядка сотни микросекунд на чанк, поэтому 1.5 мс — " +
+                 "это единицы чанков. Всё, что не уложилось, ждёт следующего " +
+                 "кадра: лучше отстать от LOD, чем встать.")]
+        [Range(0.25f, 8f)]
+        public float ChunkFinalizeBudgetMs = 1.5f;
+
         [Header("Декор: высота и скорость")]
         [Tooltip("М/с, выше которых новые сборки декора не запускаются. На " +
                  "такой скорости игрок проезжает поле быстрее, чем декор успевает " +
@@ -651,6 +672,40 @@ namespace Galilego.Universe
         /// чтобы проход трансформов шёл поactive-списку, а не по всему
         /// словарю: в полёте в кэше тысячи узлов, из них видны сотни.</summary>
         private readonly List<Chunk> visibleChunks = new List<Chunk>();
+
+        // ===== [ФАЗА 2] Асинхронная постройка чанков =====
+        // Очередь узлов, ожидающих постройки; запросы, уже ушедшие в джобы;
+        // множество id для дедупликации (без него узел попадал бы в очередь
+        // каждый кадр, пока не построится, и очередь росла бы быстрее полёта).
+        private readonly List<ChunkQueueItem> chunkBuildQueue = new List<ChunkQueueItem>();
+        private readonly List<ChunkBuildInFlight> chunkBuildsInFlight = new List<ChunkBuildInFlight>();
+        private readonly HashSet<long> queuedChunkIds = new HashSet<long>();
+
+        private struct ChunkQueueItem
+        {
+            public Node Node;
+            public long Id;
+            public float Priority;
+            public float Distance;
+        }
+
+        private struct ChunkBuildInFlight
+        {
+            public long Id;
+            public ChunkBuildRequest Request;
+        }
+
+        /// <summary>Версия параметров рельефа. Инкрементится при смене шума:
+        /// результаты, посчитанные по старым параметрам, при финализации
+        /// отбрасываются — иначе в кэше смешались бы два разных рельефа.</summary>
+        private int paramsVersion;
+
+        /// <summary>Параметры живы (не идёт ClearChunkCache). Пока false,
+        /// любой результат в полёте устаревший и утилизируется, а не
+        /// заливается в меш.</summary>
+        private bool paramsAlive;
+
+        private Vector3 lastCameraPosition;
         private readonly List<DecorBuildSession> decorBuildSessions = new List<DecorBuildSession>();
         private readonly List<BurstDecorDraw> burstDecorDraws = new List<BurstDecorDraw>();
         private MaterialPropertyBlock decorDrawPropertyBlock;
@@ -800,6 +855,7 @@ namespace Galilego.Universe
             // Reload Scene/Domain) РїСЂРёРІР°С‚РЅС‹Рµ РїРѕР»СЏ РєРѕРјРїРѕРЅРµРЅС‚Р° РјРѕРіСѓС‚ РїРµСЂРµР¶РёС‚СЊ
             // РїСЂРѕС€Р»С‹Р№ Р·Р°РїСѓСЃРє, Р° РёС… С‡Р°РЅРєРё СѓР¶Рµ СѓРЅРёС‡С‚РѕР¶РµРЅС‹.
             ClearChunkCache();
+            paramsAlive = true;
             EnsureHdrpWaterPatch();
         }
 
@@ -884,8 +940,11 @@ namespace Galilego.Universe
             }
 
             // Teardown: дренируем пул буферов декора (иначе Persistent-массивы
-            // утекут на выходе из play/при перезагрузке домена).
+            // утекут на выходе из play/при перезагрузке домена). Тот же
+            // обязательный шаг для пула чанков и общих индексных буферов.
             DecorArrayPool.ClearAll();
+            CancelAllChunkBuilds();
+            SurfaceChunkPool.ClearAll();
         }
 
         /// <summary>РЎР±СЂРѕСЃРёС‚СЊ РєСЌС€ РјРµС€РµР№ (РїРѕСЃР»Рµ live-СЃРјРµРЅС‹ РїР°СЂР°РјРµС‚СЂРѕРІ СЂРµР»СЊРµС„Р°).</summary>
@@ -893,6 +952,13 @@ namespace Galilego.Universe
         public void ClearChunkCache()
         {
             CancelAllDecorBuilds();
+            // [ФАЗА 2] Порядок важен: сначала гасим интенты, потом paramsAlive,
+            // и только потом сбрасываем кэш. Джобы, уже висящие в полёте,
+            // дожидаются и возвращают массивы в пул; их результаты при этом
+            // уже помечены устаревшими.
+            CancelAllChunkBuilds();
+            paramsVersion++;
+            paramsAlive = false;
             foreach (KeyValuePair<long, Chunk> kv in chunks)
             {
                 DestroyChunkResources(kv.Value);
@@ -1156,6 +1222,7 @@ namespace Galilego.Universe
             }
 
             Vector3 cameraPosition = camera.transform.position;
+            lastCameraPosition = cameraPosition;
             UpdateUnderwaterCameraDepth(cameraPosition);
             if (!waterDiagLogged && Time.frameCount > 30)
             {
@@ -1190,7 +1257,15 @@ namespace Galilego.Universe
             ApplyTerrainGlobals();
 
             {
-                // РўРµР»-fixed РЅР°РїСЂР°РІР»РµРЅРёСЏ РґР»СЏ current-РєР°РґСЂР°.
+                // РµР»-fixed РЅР°РїСЂР°РІР»РµРЅРёРµ РґР»СЏ current-РєР°РґСЂ.
+                // [ФАЗА 2] Поднимаем флаг «параметры живы» ДО постановки в очередь:
+                // ClearChunkCache его снимает, и без этого после любой пересборки
+                // кэша (смена шума, ApplyAuthoringAndRebuild) результаты в полёте
+                // вечно считались бы устаревшими и не доливались в меши — кэш
+                // оставался бы пустым навсегда. In-flight запросы при этом уже
+                // дренированы в CancelAllChunkBuilds, так что «устаревших» здесь
+                // быть не может.
+                paramsAlive = true;
                 desired.Clear();
                 splitNext.Clear();
 
@@ -1235,32 +1310,45 @@ namespace Galilego.Universe
                 // РїРѕ С„Р°РєС‚РёС‡РµСЃРєРѕРјСѓ СЃРѕСЃС‚РѕСЏРЅРёСЋ РєР°РґСЂР°. РРЅР°С‡Рµ РЅР° РєР°РґСЂРµ РїРѕСЏРІР»РµРЅРёСЏ СЂРµР±С‘РЅРєР°
                 // keep РµС‰С‘ РІРєР»СЋС‡Р°РµС‚ СЂРѕРґРёС‚РµР»СЏ (СЂРµР±С‘РЅРѕРє Р±С‹Р» РєСЌС€-РїСЂРѕРјР°С…РѕРј) вЂ” РіСЂСѓР±С‹Р№ Рё
                 // РїРѕРґСЂРѕР±РЅС‹Р№ С‡Р°РЅРєРё РІРёРґРЅС‹ РІРјРµСЃС‚Рµ: z-fight/В«С…Р»РѕРїРѕРєВ» РЅР° РєР°Р¶РґРѕРј РїРµСЂРµС…РѕРґРµ.
-                int budget = firstFrameGuard < 0 ? int.MaxValue : BuildsPerFrame;
-                firstFrameGuard = 0;
-                int built = 0;
-                // [ФАЗА 0] Время постройки меряем Stopwatch, а не ProfilerMarker:
-                // здесь нужен ещё и счётчик, а не только запись в профайлер.
-                // Бюджет BuildsPerFrame ограничивает ЧИСЛО чанков, а не миллисекунды
-                // — при 16 чанках по 3 мс это 48 мс кадра, то есть фриз.
-                var buildClock = System.Diagnostics.Stopwatch.StartNew();
-                int visibleNow = 0;
-                int terrainTrisNow = 0;
-                for (int i = 0; i < desired.Count; i++)
+            int budget = firstFrameGuard < 0 ? int.MaxValue : BuildsPerFrame;
+            bool firstFrame = firstFrameGuard < 0;
+            firstFrameGuard = 0;
+            int built = 0;
+            int enqueued = 0;
+            // [ФАЗА 0] Время постройки меряем Stopwatch, а не ProfilerMarker:
+            // здесь нужен ещё и счётчик, а не только запись в профайлер.
+            //
+            // [ФАЗА 2] Бюджет BuildsPerFrame ограничивал ЧИСЛО чанков, а не
+            // миллисекунды, и в сцене он стоит 64: при замеренных 3.7-4 мс на
+            // чанк это до 260 мс постройки В ОДНОМ кадре. Отсюда фризы. Теперь
+            // бюджет — ChunkFinalizeBudgetMs, то есть миллисекунды, а сама
+            // постройка уходит в джобы и на главном потоке остаётся только
+            // дешёвая заливка готового буфера.
+            var buildClock = System.Diagnostics.Stopwatch.StartNew();
+            int visibleNow = 0;
+            int terrainTrisNow = 0;
+            for (int i = 0; i < desired.Count; i++)
+            {
+                Node wanted = desired[i];
+                long id = NodeId(wanted);
+                if (chunks.TryGetValue(id, out Chunk cached))
                 {
-                    Node wanted = desired[i];
-                    long id = NodeId(wanted);
-                    if (chunks.TryGetValue(id, out Chunk cached))
+                    if (!cached.Visible)
                     {
-                        if (!cached.Visible)
-                        {
-                            SetChunkVisible(cached, true);
-                        }
-
-                        visibleNow++;
-                        terrainTrisNow += ChunkTriangleCount(wanted.Depth);
-                        continue;
+                        SetChunkVisible(cached, true);
                     }
 
+                    visibleNow++;
+                    terrainTrisNow += ChunkTriangleCount(wanted.Depth);
+                    continue;
+                }
+
+                if (firstFrame || !AsyncChunkBuild)
+                {
+                    // Первый кадр и режим «строить синхронно» остаются
+                    // синхронными: там важна не плавность, а чтобы к первому
+                    // показу кадра мир уже был готов. Асинхронный путь наполнял
+                    // бы кэш секундами, и игрок улетел бы с дырами.
                     if (built >= budget)
                     {
                         continue;
@@ -1268,16 +1356,28 @@ namespace Galilego.Universe
 
                     BuildChunk(wanted);
                     built++;
-                    visibleNow++;
-                    terrainTrisNow += ChunkTriangleCount(wanted.Depth);
+                }
+                else
+                {
+                    EnqueueChunkBuild(wanted);
+                    enqueued++;
                 }
 
-                buildClock.Stop();
-                SurfacePerf.ChunksBuilt = built;
-                SurfacePerf.BuildChunkMs = (float)buildClock.Elapsed.TotalMilliseconds;
-                SurfacePerf.VisibleChunks = visibleNow;
-                SurfacePerf.TerrainTriangles = terrainTrisNow;
-                SurfacePerf.CachedChunks = chunks.Count;
+                visibleNow++;
+                terrainTrisNow += ChunkTriangleCount(wanted.Depth);
+            }
+
+            PumpChunkBuilds();
+
+            buildClock.Stop();
+            SurfacePerf.ChunksBuilt = built;
+            SurfacePerf.BuildChunkMs = (float)buildClock.Elapsed.TotalMilliseconds;
+            SurfacePerf.VisibleChunks = visibleNow;
+            SurfacePerf.TerrainTriangles = terrainTrisNow;
+            SurfacePerf.CachedChunks = chunks.Count;
+            SurfacePerf.ChunksEnqueued = enqueued;
+            SurfacePerf.QueuedBuilds = chunkBuildQueue.Count;
+            SurfacePerf.InFlightBuilds = chunkBuildsInFlight.Count;
 
                 // keep = РїРѕСЃС‚СЂРѕРµРЅРЅС‹Рµ Р¶РµР»Р°РµРјС‹Рµ Р»РёСЃС‚СЊСЏ + РїСЂРµРґРєРё С‚РµС… Р¶РµР»Р°РµРјС‹С…, С‡С‚Рѕ РЅРµ
                 // СѓСЃРїРµР»Рё РїРѕСЃС‚СЂРѕРёС‚СЊ РІ СЌС‚РѕРј РєР°РґСЂРµ (В«Р·Р°С‚С‹С‡РєР°В» РѕС‚ РґС‹СЂ РЅР° СЃРјРµРЅРµ LOD).
@@ -1903,6 +2003,437 @@ namespace Galilego.Universe
         /// нельзя. Маркер нужен, чтобы увидеть, сколько именно миллисекунд
         /// кадра съедает постройка чанков, а не только их количество.
         /// </summary>
+        /// <summary>
+        /// Ставит узел в очередь постройки. Синхронной работы здесь нет: только
+        /// план и приоритет.
+        ///
+        /// Приоритет — «дыра» важнее листа: узел, в котором сейчас пусто, виден
+        /// игроку немедленно, а тот, что через полкилометра, — нет. Внутри
+        /// группы ближе к камере.
+        ///
+        /// Дедупликация по queuedChunkIds обязательна: без неё один и тот же узел
+        /// попадал бы в очередь каждый кадр, пока не построится, и на скорости
+        /// очередь разрасталась бы быстрее, чем в полёте. Множество покрывает и
+        /// очередь, и всё, что в полёте: id убирается из него только при
+        /// финализации, поэтому вторая проверка «а не в полёте ли он» была бы
+        /// тем же поиском дважды.
+        /// </summary>
+        private void EnqueueChunkBuild(Node node)
+        {
+            long id = NodeId(node);
+            if (chunks.ContainsKey(id) || !queuedChunkIds.Add(id))
+            {
+                return;
+            }
+
+            chunkBuildQueue.Add(new ChunkQueueItem
+            {
+                Node = node,
+                Id = id,
+                Priority = HasBuiltAncestor(node) ? 1f : 0f,
+                Distance = (float)ChunkDistanceFromCamera(node)
+            });
+        }
+
+        /// <summary>Есть ли хоть один построенный предок. Нет предка — узел
+        /// зияет дырой в рельефе, и это единственное, что видно игроку прямо
+        /// сейчас.</summary>
+        private bool HasBuiltAncestor(Node node)
+        {
+            int face = node.Face;
+            int depth = node.Depth;
+            int ix = node.Ix;
+            int iy = node.Iy;
+            while (depth > 0)
+            {
+                depth--;
+                ix >>= 1;
+                iy >>= 1;
+                if (chunks.ContainsKey(NodeId(face, depth, ix, iy)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>Расстояние до БЛИЖАЙШЕЙ точки узла — та же метрика, по
+        /// которой Traverse решает, split-ить ли. Смешивать «до центра» и «до
+        /// края» нельзя: тогда близкий крупный узел окажется дальше дальнего
+        /// мелкого и порядок очереди поедет.</summary>
+        private double ChunkDistanceFromCamera(Node node)
+        {
+            Vector3d dir = CubeSphere.NodeCenterDirection(node.Face, node.Depth, node.Ix, node.Iy);
+            double nodeSize = body.Radius * 1.5707963267948966d / (1 << node.Depth);
+            Vector3 worldCenter = NodeRenderPosition(dir * body.Radius);
+            float distance = Vector3.Distance(lastCameraPosition, worldCenter);
+            return System.Math.Max(0d, distance - (nodeSize * 0.70710678d));
+        }
+
+        /// <summary>
+        /// Планировщик постройки.
+        ///
+        /// Бюджет именно в миллисекундах: работа на кадре складывается из
+        /// ожидания готовых джоб (обычно 0) и заливки вершин в меш. Заливка
+        /// стоит порядка сотни микросекунд на чанк, поэтому при нормальном
+        /// темпе 1.5 мс — это единицы чанков. Если очередь при этом растёт
+        /// (на 2 км/с она будет), чинится это не бюджетом, а тиром качества
+        /// в Фазе 3: строить нужно меньше и реже, а не быстрее заливать.
+        /// </summary>
+        private void PumpChunkBuilds()
+        {
+            if (!AsyncChunkBuild)
+            {
+                return;
+            }
+
+            long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+
+            for (int i = chunkBuildsInFlight.Count - 1; i >= 0; i--)
+            {
+                ChunkBuildInFlight entry = chunkBuildsInFlight[i];
+                if (!entry.Request.Handle.IsCompleted)
+                {
+                    continue;
+                }
+
+                if (ElapsedMs(startTicks) > ChunkFinalizeBudgetMs)
+                {
+                    break;
+                }
+
+                entry.Request.Handle.Complete();
+                chunkBuildsInFlight.RemoveAt(i);
+                queuedChunkIds.Remove(entry.Id);
+
+                if (entry.Request.ParamsVersion != paramsVersion || !paramsAlive)
+                {
+                    SurfaceChunkPool.Return(entry.Request);
+                    continue;
+                }
+
+                FinalizeChunk(entry);
+            }
+
+            // Слоты держим занятыми: пока есть свободные, джобы идут внахлёст с
+            // рендером. Копятся они только при жёстком лимите, и тогда ждут
+            // процессор сами.
+            while (chunkBuildsInFlight.Count < MaxChunkJobsInFlight
+                && TryDequeueBest(out ChunkQueueItem item))
+            {
+                ScheduleChunkBuild(item);
+            }
+
+            JobHandle.ScheduleBatchedJobs();
+        }
+
+        /// <summary>Достаёт из очереди узел с наивысшим приоритетом, а внутри
+        /// приоритета — ближайший. Линейный выбор, а не сортировка: сортировать
+        /// каждый кадр ради одного элемента дороже, чем пройти список.</summary>
+        private bool TryDequeueBest(out ChunkQueueItem best)
+        {
+            best = default;
+            int bestIndex = -1;
+            for (int i = 0; i < chunkBuildQueue.Count; i++)
+            {
+                if (bestIndex < 0)
+                {
+                    bestIndex = i;
+                    continue;
+                }
+
+                ChunkQueueItem candidate = chunkBuildQueue[i];
+                ChunkQueueItem current = chunkBuildQueue[bestIndex];
+                if (candidate.Priority < current.Priority
+                    || (candidate.Priority == current.Priority && candidate.Distance < current.Distance))
+                {
+                    bestIndex = i;
+                }
+            }
+
+            if (bestIndex < 0)
+            {
+                return false;
+            }
+
+            best = chunkBuildQueue[bestIndex];
+            chunkBuildQueue.RemoveAt(bestIndex);
+            return true;
+        }
+
+        private void ScheduleChunkBuild(ChunkQueueItem item)
+        {
+            Node node = item.Node;
+            int res = ResolutionForDepth(node.Depth);
+            int n = res + 1;
+            int grid = n + 2;
+            int totalVerts = (n * n) + (4 * n);
+
+            ChunkBuildRequest request = SurfaceChunkPool.Rent();
+            SurfaceChunkPool.Prepare(request, res, n, grid, totalVerts);
+            request.Plan = new ChunkNodePlan { Face = node.Face, Depth = node.Depth, Ix = node.Ix, Iy = node.Iy };
+            request.ParamsVersion = paramsVersion;
+            request.Priority = item.Priority;
+
+            double sizeUv = 1d / (1 << node.Depth);
+            double u0 = node.Ix * sizeUv;
+            double v0 = node.Iy * sizeUv;
+            double stepUv = sizeUv / (n - 1);
+
+            Vector3d centerAstro = CubeSphere.NodeCenterDirection(node.Face, node.Depth, node.Ix, node.Iy) * body.Radius;
+            double amplitude = System.Math.Max(1d, terrain.AmplitudeMeters);
+            double skirtDepth = body.Radius * 1.5707963267948966d / (1 << node.Depth) * SkirtFactor;
+
+            // Цепочка из трёх джоб. Зависимости через JobHandle, Complete() на
+            // главном потоке нет — он только забирает уже готовые результаты
+            // в пределах бюджета.
+            JobHandle fill = new FillDirectionsJob
+            {
+                Face = node.Face,
+                Grid = grid,
+                U0 = u0,
+                V0 = v0,
+                StepUv = stepUv,
+                Dirs = request.Dirs
+            }.Schedule(grid * grid, 64, new JobHandle());
+
+            JobHandle tile = new TerrainTileJob
+            {
+                Params = noiseParams,
+                Directions = request.Dirs,
+                Heights = request.Heights,
+                ColorMasks = request.Masks,
+                ColorDetails = request.Details
+            }.Schedule(grid * grid, 64, fill);
+
+            request.Handle = new AssembleChunkMeshJob
+            {
+                Dirs = request.Dirs,
+                Heights = request.Heights,
+                Masks = request.Masks,
+                Details = request.Details,
+                Res = res,
+                N = n,
+                Grid = grid,
+                CoreCount = n * n,
+                TotalVerts = totalVerts,
+                Amplitude = amplitude,
+                Radius = body.Radius,
+                SeaLevel = terrain.SeaLevelMeters,
+                SkirtDepth = skirtDepth,
+                WaterSkirtDepth = skirtDepth * WaterSkirtFactor,
+                CenterAstro = new double3(centerAstro.X, centerAstro.Y, centerAstro.Z),
+                Positions = request.Positions,
+                Vertices = request.Vertices,
+                WaterVertices = request.WaterVertices,
+                WaterFlags = request.WaterFlags,
+                BoundsMinMax = request.BoundsMinMax
+            }.Schedule(tile);
+
+            request.CenterAstro = centerAstro;
+            request.SkirtDepth = skirtDepth;
+            chunkBuildsInFlight.Add(new ChunkBuildInFlight { Id = item.Id, Request = request });
+        }
+
+        private static double ElapsedMs(long startTicks)
+        {
+            return (System.Diagnostics.Stopwatch.GetTimestamp() - startTicks) * 1000d
+                / System.Diagnostics.Stopwatch.Frequency;
+        }
+
+        /// <summary>
+        /// Заливка готового буфера в меш. Единственная дорогая операция на
+        /// главном потоке, и она копирует память без вычислений.
+        ///
+        /// Индексы берутся из общего кэша по res: топология одинакова для всех
+        /// чанков одной сетки, и собирать свой int[] на 51840 элементов на
+        /// каждый чанк было и аллокацией, и разбором со стороны Unity.
+        /// </summary>
+        private void FinalizeChunk(ChunkBuildInFlight entry)
+        {
+            ChunkBuildRequest request = entry.Request;
+            Node node = new Node
+            {
+                Face = request.Plan.Face,
+                Depth = request.Plan.Depth,
+                Ix = request.Plan.Ix,
+                Iy = request.Plan.Iy
+            };
+
+            long id = NodeId(node);
+            Chunk chunk = chunks.TryGetValue(id, out Chunk existing) ? existing : CreateChunkShell(node);
+            chunks[id] = chunk;
+
+            // Меш привязан к центру чанка, а трансформ ставится в общем проходе
+            // ниже по visibleChunks. Здесь только геометрия.
+            chunk.CenterAstro = request.CenterAstro;
+            chunk.Go.transform.position = NodeRenderPosition(request.CenterAstro);
+            chunk.Go.transform.rotation = currentBodyRotation;
+
+            Mesh mesh = chunk.Mesh;
+            mesh.Clear();
+            mesh.indexFormat = IndexFormat.UInt16;
+            mesh.SetVertexBufferParams(
+                request.TotalVerts,
+                new VertexAttributeDescriptor(VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
+                new VertexAttributeDescriptor(VertexAttribute.Normal, VertexAttributeFormat.Float32, 3),
+                new VertexAttributeDescriptor(VertexAttribute.TexCoord1, VertexAttributeFormat.Float32, 3),
+                new VertexAttributeDescriptor(VertexAttribute.TexCoord2, VertexAttributeFormat.Float32, 4));
+            mesh.SetVertexBufferData(
+                request.Vertices, 0, 0, request.TotalVerts, 0,
+                MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
+
+            // Общий буфер совпадает с нужной длиной один в один, поэтому
+            // заливаем его целиком с нуля. В Unity 6 у SetIndexBufferData пять
+            // параметров (никакого startIndex), отсюда и форма вызова.
+            NativeArray<ushort> indices = SurfaceChunkPool.GetSharedIndices(request.Res);
+            mesh.SetIndexBufferParams(indices.Length, IndexFormat.UInt16);
+            mesh.SetIndexBufferData(
+                indices, 0, 0, indices.Length,
+                MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
+            mesh.subMeshCount = 1;
+            mesh.SetSubMesh(
+                0, new SubMeshDescriptor(0, indices.Length),
+                MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
+
+            // Та же формула запаса, что и в синхронном пути: юбка уже внутри
+            // меша, RecalculateBounds заменён расчётом в джобе, поэтому Expand
+            // идёт от того же AABB.
+            Bounds bounds = BoundsFrom(request.BoundsMinMax[0], request.BoundsMinMax[1]);
+            bounds.Expand((float)(request.SkirtDepth * 1.5d) + (bounds.size.magnitude * 0.001f));
+            mesh.bounds = bounds;
+
+            if (request.HasWater)
+            {
+                BuildAsyncWaterMesh(chunk, request);
+            }
+
+            if (!chunk.Visible)
+            {
+                SetChunkVisible(chunk, true);
+            }
+
+            SurfaceChunkPool.Return(request);
+            SurfacePerf.ChunksFinalized++;
+        }
+
+        private static Bounds BoundsFrom(float3 min, float3 max)
+        {
+            var center = new Vector3(
+                (min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f, (min.z + max.z) * 0.5f);
+            var size = new Vector3(max.x - min.x, max.y - min.y, max.z - min.z);
+            return new Bounds(center, size);
+        }
+
+        private void BuildAsyncWaterMesh(Chunk chunk, ChunkBuildRequest request)
+        {
+            Material waterMaterial = GetWaterMaterial();
+            if (waterMaterial == null)
+            {
+                return;
+            }
+
+            if (chunk.WaterMesh == null)
+            {
+                chunk.WaterMesh = new Mesh();
+                SurfacePerf.NoteMeshCreated();
+            }
+
+            if (chunk.WaterGo == null)
+            {
+                chunk.WaterGo = new GameObject("Water");
+                chunk.WaterGo.transform.SetParent(chunk.Go.transform, false);
+                chunk.WaterGo.transform.localPosition = Vector3.zero;
+                chunk.WaterGo.transform.localRotation = Quaternion.identity;
+                chunk.WaterGo.transform.localScale = Vector3.one;
+                chunk.WaterGo.AddComponent<MeshFilter>().sharedMesh = chunk.WaterMesh;
+                MeshRenderer waterRenderer = chunk.WaterGo.AddComponent<MeshRenderer>();
+                waterRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                waterRenderer.receiveShadows = false;
+                waterRenderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
+                waterRenderer.lightProbeUsage = LightProbeUsage.Off;
+                waterRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+                waterRenderer.allowOcclusionWhenDynamic = false;
+                waterRenderer.enabled = chunk.Visible;
+                chunk.WaterRenderer = waterRenderer;
+                waterChunkCount++;
+            }
+
+            chunk.WaterRenderer.sharedMaterial = waterMaterial;
+
+            Mesh mesh = chunk.WaterMesh;
+            mesh.Clear();
+            mesh.indexFormat = IndexFormat.UInt16;
+            mesh.SetVertexBufferParams(
+                request.TotalVerts,
+                new VertexAttributeDescriptor(VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
+                new VertexAttributeDescriptor(VertexAttribute.Normal, VertexAttributeFormat.Float32, 3),
+                new VertexAttributeDescriptor(VertexAttribute.TexCoord2, VertexAttributeFormat.Float32, 4));
+            mesh.SetVertexBufferData(
+                request.WaterVertices, 0, 0, request.TotalVerts, 0,
+                MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
+
+            NativeArray<ushort> indices = SurfaceChunkPool.GetSharedIndices(request.Res);
+            mesh.SetIndexBufferParams(indices.Length, IndexFormat.UInt16);
+            mesh.SetIndexBufferData(
+                indices, 0, 0, indices.Length,
+                MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
+            mesh.subMeshCount = 1;
+            mesh.SetSubMesh(
+                0, new SubMeshDescriptor(0, indices.Length),
+                MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
+
+            Bounds bounds = BoundsFrom(request.BoundsMinMax[0], request.BoundsMinMax[1]);
+            bounds.Expand(chunk.BoundsRadius);
+            mesh.bounds = bounds;
+        }
+
+        /// <summary>Каркас чанка: объект, меш и рендерер создаются один раз на
+        /// узел и переиспользуются при перестроении. Раньше на каждый чанк были
+        /// свои new GameObject + new Mesh + два AddComponent, и на 2 км/с это
+        /// десятки созданий в секунду — плюс лишние Destroy на выгрузке.</summary>
+        private Chunk CreateChunkShell(Node node)
+        {
+            var chunk = new Chunk
+            {
+                Go = new GameObject("PlanetChunk_" + node.Face + "_" + node.Depth + "_" + node.Ix + "_" + node.Iy),
+                Mesh = new Mesh()
+            };
+            SurfacePerf.NoteMeshCreated();
+            chunk.Go.transform.SetParent(surfaceRoot, false);
+            chunk.Go.transform.localScale = Vector3.one;
+            chunk.Node = node;
+            chunk.Depth = node.Depth;
+            chunk.BoundsRadius = (float)(body.Radius * 1.5707963267948966d / (1 << node.Depth) * 0.70710678d);
+            MeshFilter filter = chunk.Go.AddComponent<MeshFilter>();
+            chunk.Renderer = chunk.Go.AddComponent<MeshRenderer>();
+            chunk.Renderer.sharedMaterial = GetMaterial();
+            chunk.Renderer.enabled = false;
+            filter.sharedMesh = chunk.Mesh;
+            ApplyChunkRenderFlags(chunk, node.Depth);
+            chunk.Visible = false;
+            return chunk;
+        }
+
+        /// <summary>Дождаться и освободить все запросы в полёте. Обязательно
+        /// перед ClearChunkCache и OnDestroy: Persistent-массивы из рента и
+        /// общие индексные буферы иначе живут до конца домена, и Unity
+        /// напишет об утечке нативной памяти.</summary>
+        private void CancelAllChunkBuilds()
+        {
+            for (int i = chunkBuildsInFlight.Count - 1; i >= 0; i--)
+            {
+                ChunkBuildInFlight entry = chunkBuildsInFlight[i];
+                entry.Request.Handle.Complete();
+                SurfaceChunkPool.Return(entry.Request);
+            }
+
+            chunkBuildsInFlight.Clear();
+            chunkBuildQueue.Clear();
+            queuedChunkIds.Clear();
+        }
+
         private void BuildChunk(Node node)
         {
             using (SurfacePerf.BuildChunkMarker.Auto())

@@ -91,6 +91,12 @@ namespace Galilego.Universe
         /// <summary>Построек в полёте, не дождавшихся финализации.</summary>
         public static int InFlightBuilds;
 
+        /// <summary>Чанков, перелитых в меш с начала сессии.</summary>
+        public static int ChunksFinalized;
+
+        /// <summary>Сколько узлов поставлено в очередь на этом кадре.</summary>
+        public static int ChunksEnqueued;
+
         // ===== Диагностика декора =====
 
         /// <summary>Высота камеры над рельефом, м. 0 = не вычислена.</summary>
@@ -189,6 +195,7 @@ namespace Galilego.Universe
             TerrainTriangles = 0;
             QueuedBuilds = 0;
             InFlightBuilds = 0;
+            ChunksEnqueued = 0;
             DecorPools = 0;
             DecorInstances = 0;
         }
