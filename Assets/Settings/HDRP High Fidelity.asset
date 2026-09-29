@@ -396,7 +396,7 @@ MonoBehaviour:
       dynResType: 1
       upsampleFilter: 1
       forceResolution: 1
-      forcedPercentage: 75
+      forcedPercentage: 100
       lowResTransparencyMinimumThreshold: 0
       rayTracingHalfResThreshold: 50
       lowResSSGIMinimumThreshold: 0
