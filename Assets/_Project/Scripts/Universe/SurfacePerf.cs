@@ -61,6 +61,21 @@ namespace Galilego.Universe
         /// <summary>Сколько узлов построено и видимо.</summary>
         public static int VisibleChunks;
 
+        /// <summary>Сколько чанков реально активны (Visible == true). Больше
+        /// VisibleChunks — значит в кадр рисуются предки, оставленные
+        /// видимыми как затычки дыр; это лишний overdraw.</summary>
+        public static int ActiveChunks;
+
+        /// <summary>Сколько чанков выгружено на последнем проходе выгрузки.</summary>
+        public static int EvictedLast;
+
+        /// <summary>Размер множества keep на последнем кадре. Если он близок к
+        /// размеру кэша, вычистить нечего — кэш упирается в keep, а не в лимит.</summary>
+        public static int KeepCount;
+
+        /// <summary>Сколько кандидатов на выгрузку нашлось на последнем проходе.</summary>
+        public static int EvictCandidates;
+
         /// <summary>Размер кэша чанков, включая невидимые.</summary>
         public static int CachedChunks;
 
@@ -168,6 +183,8 @@ namespace Galilego.Universe
             BuildChunkMs = 0f;
             DesiredNodes = 0;
             VisibleChunks = 0;
+            ActiveChunks = 0;
+            EvictedLast = 0;
             CachedChunks = 0;
             TerrainTriangles = 0;
             QueuedBuilds = 0;
@@ -237,6 +254,8 @@ namespace Galilego.Universe
             hudBuilder.Append(CachedChunks.ToString(inv));
             hudBuilder.Append(" в кэше, узлов ");
             hudBuilder.Append(DesiredNodes.ToString(inv));
+            hudBuilder.Append(", активных ");
+            hudBuilder.Append(ActiveChunks.ToString(inv));
             hudBuilder.Append(", трис ");
             hudBuilder.Append((TerrainTriangles / 1000).ToString(inv));
             hudBuilder.Append("k");
