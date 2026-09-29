@@ -62,6 +62,19 @@ namespace Galilego.Universe
             return sinA / cosA;
         }
 
+        /// <summary>
+        /// Допуск уровня моря в АБСОЛЮТНЫХ метрах — тот же, что в
+        /// PlanetSurface.shader (SeaEpsilon). Раньше здесь стояло
+        /// amplitude*0.001: при амплитуде 9144 м это 9.14 м, и полоса СУШИ в
+        /// девять метров над водой считалась водой — CPU-палитра красила
+        /// прибрежную равнину океаном, а шейдер (у него допуск уже был
+        /// абсолютным) — сушей. Теперь обе стороны решают одинаково.
+        /// </summary>
+        internal static double SeaEpsilon(double amplitude)
+        {
+            return System.Math.Max(0.05d, amplitude * 1e-6d);
+        }
+
         internal static Color HeightColorEx(
             double height, double seaLevel, double amplitude,
             double slopeTan, double colorMask,
@@ -79,7 +92,7 @@ namespace Galilego.Universe
 
             bool maskOn = maskStrength != 0d;
             Color c = BaseColor(height, seaLevel, amplitude, colorMask, maskOn, maskStrength, latitudeRadians, beachHeightMeters);
-            bool isSea = height <= seaLevel + (amplitude * 0.001d);
+            bool isSea = height <= seaLevel + SeaEpsilon(amplitude);
             // Пляж — абсолютными метрами: моттлинг и скала его не трогают
             // (паритет шейдеру), даже если маска подняла t выше песчаной полосы.
             bool isBeach = beachHeightMeters > 0d && !isSea && (height - seaLevel) < beachHeightMeters;
@@ -151,7 +164,7 @@ namespace Galilego.Universe
             double mask, bool maskOn, double maskStrength, double latitudeRadians,
             double beachHeightMeters)
         {
-            if (height <= seaLevel + (amplitude * 0.001d))
+            if (height <= seaLevel + SeaEpsilon(amplitude))
             {
                 return Sea;
             }

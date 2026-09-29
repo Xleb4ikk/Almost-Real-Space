@@ -444,6 +444,7 @@ MonoBehaviour:
   CloudsPreset: {fileID: 0}
   GroundDecorPreset: {fileID: 0}
   TerrainSeed: 0
+  TerrainPads: []
 --- !u!4 &230795297
 Transform:
   m_ObjectHideFlags: 0
@@ -459,6 +460,37 @@ Transform:
   m_Children:
   - {fileID: 1081663216}
   - {fileID: 1982425600}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &306252428
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 306252429}
+  m_Layer: 0
+  m_Name: NoclipDirectionProbe
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &306252429
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 306252428}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &432432459
@@ -598,6 +630,7 @@ MonoBehaviour:
   CloudsPreset: {fileID: 11400000, guid: d3bc22e4e10e05047ae0493324cd61fc, type: 2}
   GroundDecorPreset: {fileID: 11400000, guid: b70dba692e6607b4985ce5eaa0a0df5e, type: 2}
   TerrainSeed: 24334543
+  TerrainPads: []
 --- !u!135 &1081663219
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -691,19 +724,36 @@ MonoBehaviour:
   Runner: {fileID: 1332194275}
   TileResolution: 65
   MaxDepth: 12
-  ResolutionHalveEveryLevels: 3
   SplitFactor: 3.5
   MergeHysteresis: 1.5
   SkirtFactor: 0.03
   WaterSkirtFactor: 0.03
   ShoreWetMeters: 3
+  ShoreWetTint: {r: 0.42, g: 0.52, b: 0.56, a: 1}
   BuildsPerFrame: 64
   DecorBuildsPerFrame: 3
   DecorBuildBudgetMs: 3
   MaxDecorBuildSessions: 4
   LogDecorAllocation: 0
   MaxNodes: 12000
-  MaxCachedChunks: 1024
+  MaxCachedChunks: 8192
+  MaxEvictionsPerFrame: 4
+  TerrainShadowDepthBand: 3
+  AsyncChunkBuild: 1
+  MaxChunkJobsInFlight: 6
+  ChunkFinalizeBudgetMs: 1.5
+  MaxChunkQueueAgeFrames: 6
+  DecorPauseSpeed: 120
+  DecorShadowMaxAltitude: 300
+  DecorSpeedSmoothSeconds: 0.25
+  DecorCollisionMaxAltitude: 150
+  DecorScanSpeedGate: 50
+  DecorScanMinInterval: 0.2
+  CullBeyondHorizon: 1
+  HorizonMargin: 1.15
+  MinTileResolution: 9
+  ResolutionHalveEveryLevels: 3
+  LogGeometryStats: 0
   BlobShadowColor: {r: 0.03, g: 0.035, b: 0.04, a: 0.35}
   BlobScaleFactor: 1
   BlobSunOffset: 0.6
@@ -785,6 +835,7 @@ GameObject:
   - component: {fileID: 1250304431}
   - component: {fileID: 1250304430}
   - component: {fileID: 1250304432}
+  - component: {fileID: 1250304433}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -806,6 +857,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlayerController
   Runner: {fileID: 1332194275}
   ShipTransform: {fileID: 1644257543}
+  CheatMenu: {fileID: 1250304433}
   WalkSpeed: 50
   RunSpeed: 2000
   JetpackThrust: 4000
@@ -813,6 +865,7 @@ MonoBehaviour:
   SwimFastSpeed: 5
   EnterDistanceMeters: 5
   ShipWalkRadius: 3
+  NoclipSpeed: 100
 --- !u!4 &1250304431
 Transform:
   m_ObjectHideFlags: 0
@@ -842,6 +895,29 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlayerView
   Runner: {fileID: 1332194275}
   Controller: {fileID: 1250304430}
+--- !u!114 &1250304433
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1250304429}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7c1a5e93b40d4f62a8c3e751d92f60ab, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.CheatMenu
+  Runner: {fileID: 1332194275}
+  Controller: {fileID: 1250304430}
+  View: {fileID: 1823688469}
+  Benchmark: {fileID: 0}
+  OpenOnStart: 0
+  RequireAlt: 1
+  ShowPerformance: 1
+  MinNoclipSpeed: 0.1
+  MaxNoclipSpeed: 1000000000
+  NoclipSpeed: 50
+  NoclipExternallyDriven: 0
 --- !u!1 &1332194273
 GameObject:
   m_ObjectHideFlags: 0
@@ -900,8 +976,8 @@ MonoBehaviour:
   SpawnBodyName: Terra
   SpawnOnSurface: 1
   SpawnByCoordinates: 1
-  SpawnLatitudeDegrees: -28
-  SpawnLongitudeDegrees: -119.5
+  SpawnLatitudeDegrees: -27.8405
+  SpawnLongitudeDegrees: -119.3773
   SpawnEpsilonMeters: 1
   Parts: []
   DebrisLifetimeSeconds: 600
@@ -944,6 +1020,63 @@ MonoBehaviour:
   SurfaceFadeMeters: 3
   EyeHeightMeters: 2
   SwimEyeHeightMeters: 0.5
+--- !u!1 &1454958306
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1454958308}
+  - component: {fileID: 1454958307}
+  m_Layer: 0
+  m_Name: SurfaceFrame
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1454958307
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1454958306}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 64aa73a5b6a8174478c9e660f4cc1479, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SurfaceFrame
+  Body: {fileID: 0}
+  BodyName: Terra
+  LatitudeDegrees: -27.8405
+  LongitudeDegrees: -119.3773
+  SnapToTerrain: 1
+  HeightOffsetMeters: 0
+  Runner: {fileID: 1332194275}
+  DrawGizmos: 1
+  ScaleRingsMeters:
+  - 10
+  - 100
+  - 1000
+  - 10000
+--- !u!4 &1454958308
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1454958306}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.62077516, y: 0.7070432, z: 0.33858272, w: 0.009482803}
+  m_LocalPosition: {x: 0, y: 0, z: -0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1644257541
 GameObject:
   m_ObjectHideFlags: 0
@@ -1241,7 +1374,7 @@ MonoBehaviour:
   LockCursor: 1
   TemporalAA: 0
   SubpixelAA: 1
-  LogCameraDiagnostics: 1
+  LogCameraDiagnostics: 0
   EyeHeightMeters: 2
   SwimEyeHeightMeters: 0.5
 --- !u!1 &1982425599
@@ -1406,3 +1539,5 @@ SceneRoots:
   - {fileID: 1332194276}
   - {fileID: 1250304431}
   - {fileID: 1644257543}
+  - {fileID: 1454958308}
+  - {fileID: 306252429}

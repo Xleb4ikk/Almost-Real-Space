@@ -64,6 +64,17 @@ namespace Galilego.Universe
         /// <summary>Скорость плавания (м/с).</summary>
         public double SwimSpeed;
 
+        /// <summary>
+        /// Направление ноуклипа (мировой астро-кадр, единичный или ноль).
+        /// Заполняется, только когда включён SimulationRunner.NoclipActive —
+        /// это единственный переключатель режима, отдельного флага в намерении
+        /// нет намеренно: два переключателя рассинхронизируются.
+        /// </summary>
+        public Vector3d NoclipDirection;
+
+        /// <summary>Скорость ноуклипа (м/с) — от ходьбы до несоразмерных величин.</summary>
+        public double NoclipSpeed;
+
         public static PlayerIntent Idle => default;
     }
 }

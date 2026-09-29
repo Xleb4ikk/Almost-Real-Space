@@ -134,6 +134,36 @@ namespace Galilego.Universe
         }
 #endif
 
+        /// <summary>
+        /// Чит-меню: F10, при requireAlt — только вместе с Alt. Alt проверяется
+        /// как «зажат», а не «нажат»: комбинацию жмут одним движением, Alt
+        /// может быть зажат сильно раньше F10.
+        /// </summary>
+        public static bool CheatMenuDown(bool requireAlt)
+        {
+#if ENABLE_INPUT_SYSTEM
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null)
+            {
+                return false;
+            }
+
+            if (!keyboard.f10Key.wasPressedThisFrame)
+            {
+                return false;
+            }
+
+            return !requireAlt || keyboard.leftAltKey.isPressed;
+#else
+            if (!Input.GetKeyDown(KeyCode.F10))
+            {
+                return false;
+            }
+
+            return !requireAlt || Input.GetKey(KeyCode.LeftAlt);
+#endif
+        }
+
         private static bool TrackDoubleTap(bool isPressed, bool wasPressedThisFrame, bool wasReleasedThisFrame)
         {
             bool doubleDown = false;

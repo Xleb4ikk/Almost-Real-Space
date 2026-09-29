@@ -185,6 +185,76 @@ namespace Galilego.Universe
         /// <summary>Намерение игрока на кадр (заполняет PlayerController).</summary>
         public PlayerIntent PlayerIntent;
 
+        /// <summary>
+        /// Ноуклип включён (переключатель чит-меню). Пока включён, режим игрока
+        /// принудительно EVA: ходьба/плавание проецировали бы игрока обратно
+        /// на рельеф, а в корабле он был бы привязан к точке корабля.
+        /// </summary>
+        public bool NoclipActive { get; private set; }
+
+        /// <summary>
+        /// Включить/выключить ноуклип. exitDirection — куда высадить игрока из
+        /// корабля при включении (направление камеры); ноль — наружу от тела.
+        /// При выключении игрок остаётся там, где летел: если он внутри рельефа
+        /// или воды — сажается на поверхность (иначе шаг режима вытолкнул бы
+        /// его из планеты), иначе просто продолжает свободный полёт EVA.
+        /// </summary>
+        public void SetNoclip(bool active, Vector3d exitDirection)
+        {
+            if (NoclipActive == active)
+            {
+                return;
+            }
+
+            NoclipActive = active;
+            if (active)
+            {
+                if (PlayerMode == PlayerMode.InShip)
+                {
+                    TryExitShip(exitDirection.SqrMagnitude > 1e-12d ? exitDirection.Normalized : OutwardFromBody(), 1d);
+                }
+
+                PlayerMode = PlayerMode.EVA;
+                playerAirborne = true;
+                JetpackActive = false;
+                return;
+            }
+
+            PlayerMode = PlayerMode.EVA;
+            playerAirborne = true;
+            JetpackActive = false;
+            OrbitingBody body = DominantBody;
+            if (body == null)
+            {
+                return;
+            }
+
+            // Внутри рельефа/воды — посадить на поверхность: следующий же шаг
+            // режима (EVA/OnSurface) иначе трактовал бы точку как контакт и
+            // вытолкнул игрока со своей стороны планеты.
+            body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out _);
+            body.SurfaceLatLonAt(PlayerPosition, TimeSeconds, out double latDeg, out double lonDeg);
+            double surfaceRadius = body.Radius + GroundHeight(body, latDeg, lonDeg);
+            if ((PlayerPosition - bodyPos).Magnitude <= surfaceRadius)
+            {
+                LandPlayer(body, TimeSeconds);
+            }
+        }
+
+        /// <summary>Направление от центра доминантного тела к игроку (зенит).</summary>
+        private Vector3d OutwardFromBody()
+        {
+            OrbitingBody body = DominantBody;
+            if (body == null)
+            {
+                return new Vector3d(0d, 0d, 1d);
+            }
+
+            body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out _);
+            Vector3d radial = PlayerPosition - bodyPos;
+            return radial.SqrMagnitude > 1e-12d ? radial.Normalized : new Vector3d(0d, 0d, 1d);
+        }
+
         /// <summary>Сырой газ 0..1 от ввода (ShipController); EffectiveThrottle капает выше ×3.</summary>
         public double RawThrottle { get; set; }
 
@@ -334,6 +404,39 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Перебросить игрока в произвольную точку поверхности без смены
+        /// режима. Нужна редакторскому инструменту мест (SurfaceSitesWindow),
+        /// чтобы телепортироваться к сохранённому месту прямо в Play.
+        ///
+        /// Корабль переносится вместе с игроком: игрок на поверхности привязан к
+        /// кораблю (механика высадки), иначе телепорт оторвал бы его от места
+        /// и «E» больше не работал бы. Режим и ориентация сохраняются, поэтому
+        /// высадка/погружение/ходьба продолжают работать как прежде.
+        /// </summary>
+        public void TeleportTo(Vector3d surfacePosition, Vector3d surfaceVelocity)
+        {
+            if (!SystemStateInitialized())
+            {
+                Debug.LogWarning("[Teleport] Система не инициализирована — некуда телепортироваться.");
+                return;
+            }
+
+            Vector3d delta = surfacePosition - PlayerPosition;
+            Ship.Position = Ship.Position + delta;
+            Ship.Velocity = surfaceVelocity;
+            PlayerPosition = surfacePosition;
+            PlayerVelocity = surfaceVelocity;
+            time.Reset(TimeSeconds);
+            FloatingOrigin.Anchor = PlayerPosition;
+            Debug.Log(string.Format("[Teleport] игрок -> lat/lon места, смещение {0:F0} м", delta.Magnitude));
+        }
+
+        private bool SystemStateInitialized()
+        {
+            return SystemState != null && Ship != null;
+        }
+
+        /// <summary>
         /// Спавн пешком: корабль ставится на рельеф в точке спавна, игрок — в
         /// нескольких метрах по касательной (чтобы камера не оказалась внутри
         /// корабля, но дистанция входа E была в пределах EnterDistance).
@@ -469,10 +572,14 @@ namespace Galilego.Universe
             return true;
         }
 
-        /// <summary>Вход в корабль: EVA/OnSurface и дистанция до корабля ≤ EnterDistance.</summary>
+        /// <summary>
+        /// Вход в корабль: EVA/OnSurface и дистанция до корабля ≤ EnterDistance.
+        /// В ноуклипе входа нет: игрок в свободном полёте, а принудительная
+        /// посадка в кресло вырвала бы камеру из-под управления игроком.
+        /// </summary>
         public bool TryEnterShip(double enterDistanceMeters)
         {
-            if (PlayerMode == PlayerMode.InShip || Ship == null)
+            if (PlayerMode == PlayerMode.InShip || Ship == null || NoclipActive)
             {
                 return false;
             }
@@ -513,6 +620,13 @@ namespace Galilego.Universe
             while (t < TimeSeconds - 1e-12)
             {
                 double dt = Math.Min(PlayerMaxStepSeconds, TimeSeconds - t);
+                if (NoclipActive)
+                {
+                    StepPlayerNoclip(t, dt);
+                    t += dt;
+                    continue;
+                }
+
                 switch (PlayerMode)
                 {
                     case PlayerMode.InShip:
@@ -579,6 +693,60 @@ namespace Galilego.Universe
             }
 
             PlayerVelocity += normal * PlayerJumpSpeed;
+        }
+
+        /// <summary>
+        /// Шаг ноуклипа за подшаг: игрок летит со СКОРОСТЬЮ ОТНОСИТЕЛЬНО
+        /// МЕСТНОГО КАДРА — как ходьба, плавание и полёт на джетпаке. Гравитации,
+        /// посадки на рельеф, воды и коллизий декора нет — это и есть «чит».
+        ///
+        /// Скорость кадра (орбитальная + собственное вращение тела) обязательна:
+        /// Terra летит вокруг звезды со ~30 км/с, и без неё позиция игрока,
+        /// стоящего на поверхности, остаётся на месте в инерциальном кадре — тело
+        /// уезжает из-под ног, и игрок «улетает в космос» на 30–50 км/с, стоя
+        /// на земле (симптом, пойманный в Play: скорость игрока при этом 0).
+        ///
+        /// Подшаг ≤ 0.5 с, направление единичное; верхняя граница скорости не
+        /// ограничена (1e9 м/с × 0.5 с = 5e8 м за шаг) — дальше кеплеровы рельсы
+        /// тела уже не имеют смысла, но мусора в double-мире не остаётся.
+        /// </summary>
+        private void StepPlayerNoclip(double t, double dt)
+        {
+            Vector3d direction = PlayerIntent.NoclipDirection;
+            double speed = PlayerIntent.NoclipSpeed;
+            PlayerVelocity = LocalFrameVelocity(t) + (direction * speed);
+            PlayerPosition += PlayerVelocity * dt;
+            playerAirborne = true;
+            JetpackActive = false;
+            playerJumpQueued = false;
+        }
+
+        /// <summary>
+        /// Скорость локальной системы отсчёта в точке игрока: орбитальная
+        /// скорость тела плюс его собственное вращение (то же, что даёт
+        /// GetSurfaceState для поверхности — оттуда берётся и скорость ходьбы).
+        /// </summary>
+        private Vector3d LocalFrameVelocity(double t)
+        {
+            OrbitingBody body = DominantBody;
+            if (body == null)
+            {
+                return Vector3d.Zero;
+            }
+
+            body.EvaluateWorldState(t, out Vector3d bodyPos, out Vector3d bodyVel);
+            Vector3d omega = body.SpinAxis * body.SpinAngularSpeed;
+            return bodyVel + Vector3d.Cross(omega, PlayerPosition - bodyPos);
+        }
+
+        /// <summary>
+        /// Скорость игрока относительно местного кадра — «спидометр». Инерциальная
+        /// скорость на бегу по поверхности равна орбитальной скорости планеты
+        /// (~30 км/с у Terra), поэтому для показаний берётся разность.
+        /// </summary>
+        public double PlayerFrameRelativeSpeed(double t)
+        {
+            return (PlayerVelocity - LocalFrameVelocity(t)).Magnitude;
         }
 
         private void StepPlayerEva(double t, double dt)
