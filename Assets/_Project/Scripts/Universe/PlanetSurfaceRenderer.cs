@@ -1050,6 +1050,12 @@ namespace Galilego.Universe
 
         private void LateUpdate()
         {
+            // [ФАЗА 0] Учёт кадра рендера поверхности. Снимаем ДО всего, и
+            // закрываем в каждой точке выхода: managed-аллокация меряется на всю
+            // длину LateUpdate, а не только на «интересную» часть.
+            SurfacePerf.BeginFrame();
+            long perfAllocBefore = System.GC.GetAllocatedBytesForCurrentThread();
+
             // Вода должна жить всегда: время анимации волн и позиция камеры
             // ставятся ДО всех early-out (нет Ship / чужой DominantBody / нет
             // MainCamera). Иначе _WaterTime замирает на последнем значении —
@@ -1064,11 +1070,13 @@ namespace Galilego.Universe
             ApplyWaterParams();
             if (body == null || terrain == null || Runner.Ship == null)
             {
+                SurfacePerf.EndFrame(perfAllocBefore);
                 return;
             }
             if (Runner.DominantBody != body)
             {
                 SetAllInvisible();
+                SurfacePerf.EndFrame(perfAllocBefore);
                 return;
             }
 
@@ -1079,6 +1087,7 @@ namespace Galilego.Universe
             Camera camera = Camera.main;
             if (camera == null)
             {
+                SurfacePerf.EndFrame(perfAllocBefore);
                 return;
             }
 
@@ -1143,10 +1152,15 @@ namespace Galilego.Universe
                         * System.Math.Max(1d, HorizonMargin);
                 }
 
-                for (int face = 0; face < CubeSphere.FaceCount; face++)
+                using (SurfacePerf.TraverseMarker.Auto())
                 {
-                    Traverse(face, 0, 0, 0, cameraPosition);
+                    for (int face = 0; face < CubeSphere.FaceCount; face++)
+                    {
+                        Traverse(face, 0, 0, 0, cameraPosition);
+                    }
                 }
+
+                SurfacePerf.DesiredNodes = desired.Count;
 
                 // Р—Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ РїРѕРґСЂР°Р·Р±РёРµРЅРёРµ РєР°РґСЂР° вЂ” Р±Р°Р·Р° РіРёСЃС‚РµСЂРµР·РёСЃР° РІ Traverse
                 // РЅР° СЃР»РµРґСѓСЋС‰РµРј РєР°РґСЂРµ, С‡С‚РѕР±С‹ СѓР·РµР» РЅРµ РґСЂРѕР±РёР»СЃСЏ/СЃР»РёРІР°Р»СЃСЏ РєР°Р¶РґС‹Р№ РєР°РґСЂ.
@@ -1160,9 +1174,17 @@ namespace Galilego.Universe
                 int budget = firstFrameGuard < 0 ? int.MaxValue : BuildsPerFrame;
                 firstFrameGuard = 0;
                 int built = 0;
+                // [ФАЗА 0] Время постройки меряем Stopwatch, а не ProfilerMarker:
+                // здесь нужен ещё и счётчик, а не только запись в профайлер.
+                // Бюджет BuildsPerFrame ограничивает ЧИСЛО чанков, а не миллисекунды
+                // — при 16 чанках по 3 мс это 48 мс кадра, то есть фриз.
+                var buildClock = System.Diagnostics.Stopwatch.StartNew();
+                int visibleNow = 0;
+                int terrainTrisNow = 0;
                 for (int i = 0; i < desired.Count; i++)
                 {
-                    long id = NodeId(desired[i]);
+                    Node wanted = desired[i];
+                    long id = NodeId(wanted);
                     if (chunks.TryGetValue(id, out Chunk cached))
                     {
                         if (!cached.Visible)
@@ -1171,6 +1193,8 @@ namespace Galilego.Universe
                             cached.Visible = true;
                         }
 
+                        visibleNow++;
+                        terrainTrisNow += ChunkTriangleCount(wanted.Depth);
                         continue;
                     }
 
@@ -1179,9 +1203,18 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    BuildChunk(desired[i]);
+                    BuildChunk(wanted);
                     built++;
+                    visibleNow++;
+                    terrainTrisNow += ChunkTriangleCount(wanted.Depth);
                 }
+
+                buildClock.Stop();
+                SurfacePerf.ChunksBuilt = built;
+                SurfacePerf.BuildChunkMs = (float)buildClock.Elapsed.TotalMilliseconds;
+                SurfacePerf.VisibleChunks = visibleNow;
+                SurfacePerf.TerrainTriangles = terrainTrisNow;
+                SurfacePerf.CachedChunks = chunks.Count;
 
                 // keep = РїРѕСЃС‚СЂРѕРµРЅРЅС‹Рµ Р¶РµР»Р°РµРјС‹Рµ Р»РёСЃС‚СЊСЏ + РїСЂРµРґРєРё С‚РµС… Р¶РµР»Р°РµРјС‹С…, С‡С‚Рѕ РЅРµ
                 // СѓСЃРїРµР»Рё РїРѕСЃС‚СЂРѕРёС‚СЊ РІ СЌС‚РѕРј РєР°РґСЂРµ (В«Р·Р°С‚С‹С‡РєР°В» РѕС‚ РґС‹СЂ РЅР° СЃРјРµРЅРµ LOD).
@@ -1230,12 +1263,16 @@ namespace Galilego.Universe
             }
 
             // РўСЂР°РЅСЃС„РѕСЂРјС‹ РІРёРґРёРјС‹С… С‡Р°РЅРєРѕРІ вЂ” РєР°Р¶РґС‹Р№ РєР°РґСЂ (floating origin + СЃРїРёРЅ).
-            foreach (KeyValuePair<long, Chunk> kv in chunks)
+            // Трансформы видимых чанков — каждый кадр по всем видимым.
+            using (SurfacePerf.ChunkTransformsMarker.Auto())
             {
-                if (kv.Value.Visible)
+                foreach (KeyValuePair<long, Chunk> kv in chunks)
                 {
-                    kv.Value.Go.transform.position = NodeRenderPosition(kv.Value.CenterAstro);
-                    kv.Value.Go.transform.rotation = currentBodyRotation;
+                    if (kv.Value.Visible)
+                    {
+                        kv.Value.Go.transform.position = NodeRenderPosition(kv.Value.CenterAstro);
+                        kv.Value.Go.transform.rotation = currentBodyRotation;
+                    }
                 }
             }
 
@@ -1264,6 +1301,12 @@ namespace Galilego.Universe
             StepDecorBuilds();
             UpdateDecorCollision();
             DrawDecor(cameraPosition);
+
+            // [ФАЗА 0] Закрываем кадр. Абсолютные счётчики — раз в 2 с и только
+            // по флагу: сам скан FindObjectsOfTypeAll<Mesh> на 1000+ мешей даёт
+            // фриз, то есть испортил бы ровно то, что мы меряем.
+            SurfacePerf.MaybeScanSlowDiagnostics(LogGeometryStats);
+            SurfacePerf.EndFrame(perfAllocBefore);
         }
 
         /// <summary>
@@ -1362,7 +1405,18 @@ namespace Galilego.Universe
         /// РёРіСЂРѕРєР°: РёРЅСЃС‚Р°РЅСЃС‹ С‚РѕР»СЊРєРѕ РёР· С‡Р°РЅРєРѕРІ РІ ~60 Рј РѕС‚ РёРіСЂРѕРєР°, РїРѕР·РёС†РёРё вЂ” РІ
         /// РёРЅРµСЂС†РёР°Р»СЊРЅС‹Р№ astro-РєР°РґСЂ (РєР°Рє PlayerPosition).
         /// </summary>
+        /// <summary>Обёртка ради маркера: на скорости этот проход — O(чанки × слои)
+        /// каждый кадр, и без отдельного счётчика не видно, в какую долю кадра он
+        /// входит.</summary>
         private void UpdateDecorCollision()
+        {
+            using (SurfacePerf.UpdateDecorCollisionMarker.Auto())
+            {
+                UpdateDecorCollisionCore();
+            }
+        }
+
+        private void UpdateDecorCollisionCore()
         {
             if (decorProfile == null || decorProfile.Layers == null || body == null || Runner == null)
             {
@@ -1571,7 +1625,34 @@ namespace Galilego.Universe
             return System.Math.Max(minRes, full >> shift);
         }
 
+        /// <summary>
+        /// Треугольников в меше чанка на этой глубине: core-сетка 2·res² плюс
+        /// четыре юбки по res квадов. Считается из той же формулы, по которой
+        /// BuildChunk собирает индексы, чтобы счётчик в HUD совпадал с тем, что
+        /// реально уходит в GPU.
+        /// </summary>
+        private int ChunkTriangleCount(int depth)
+        {
+            int res = ResolutionForDepth(depth);
+            return (2 * res * res) + (8 * res);
+        }
+
+        /// <summary>
+        /// Обёртка ради маркера профилировщика. Тело сборки живёт в
+        /// BuildChunkCore и не переименовывается целиком: файл крупный и
+        /// часть комментариев в нём в кракозябрах, а переформатировать его
+        /// нельзя. Маркер нужен, чтобы увидеть, сколько именно миллисекунд
+        /// кадра съедает постройка чанков, а не только их количество.
+        /// </summary>
         private void BuildChunk(Node node)
+        {
+            using (SurfacePerf.BuildChunkMarker.Auto())
+            {
+                BuildChunkCore(node);
+            }
+        }
+
+        private void BuildChunkCore(Node node)
         {
             int res = ResolutionForDepth(node.Depth);
             int n = res + 1;
@@ -1830,6 +1911,10 @@ namespace Galilego.Universe
                 Go = new GameObject("PlanetChunk_" + node.Face + "_" + node.Depth + "_" + node.Ix + "_" + node.Iy),
                 Mesh = new Mesh()
             };
+            // [ФАЗА 0] Счётчик живых мешей. Mesh не принадлежит GameObject:
+            // Destroy(chunk.Go) его НЕ убирает, поэтому утечка не видна ни по
+            // иерархии, ни по памяти GameObject — только по этому счётчику.
+            SurfacePerf.NoteMeshCreated();
             // Без MarkDynamic(): меш чанка строится ОДИН раз и больше не
             // меняется (только transform ездит). MarkDynamic() заставляет
             // Unity держать его в динамическом VB-пути без оптимизации
@@ -1957,6 +2042,7 @@ namespace Galilego.Universe
             }
 
             chunk.WaterMesh = new Mesh();
+            SurfacePerf.NoteMeshCreated();
             chunk.WaterMesh.vertices = waterVerts;
             chunk.WaterMesh.normals = waterNormals;
             chunk.WaterMesh.SetUVs(2, new System.Collections.Generic.List<Vector4>(waterExtra));
@@ -1979,6 +2065,7 @@ namespace Galilego.Universe
             {
                 Destroy(chunk.WaterGo);
                 Destroy(chunk.WaterMesh);
+                SurfacePerf.NoteMeshDestroyed();
                 chunk.WaterGo = null;
                 chunk.WaterMesh = null;
                 return;
@@ -2487,7 +2574,18 @@ namespace Galilego.Universe
 
         /// <summary>РЁР°Рі РІСЃРµС… Р°РєС‚РёРІРЅС‹С… СЃР±РѕСЂРѕРє РІ СЂР°РјРєР°С… Р±СЋРґР¶РµС‚Р° РєР°РґСЂР°. РЎРµСЃСЃРёРё
         /// РёРґСѓС‚ РїРѕ РєСЂСѓРіСѓ, РїРѕРєР° РµСЃС‚СЊ РїСЂРѕРіСЂРµСЃСЃ Рё РЅРµ РёСЃС‡РµСЂРїР°РЅ Р±СЋРґР¶РµС‚.</summary>
+        /// <summary>Обёртка ради маркера: у сессий есть свой бюджет
+        /// DecorBuildBudgetMs, но он общий на все сессии сразу, и сколько из
+        /// этих миллисекунд реально ушло в кадр, видно только здесь.</summary>
         private void StepDecorBuilds()
+        {
+            using (SurfacePerf.StepDecorBuildsMarker.Auto())
+            {
+                StepDecorBuildsCore();
+            }
+        }
+
+        private void StepDecorBuildsCore()
         {
             if (decorBuildSessions.Count == 0)
             {
@@ -3601,7 +3699,17 @@ namespace Galilego.Universe
         /// РєРѕРіРґР° РІРїРµСЂРІС‹Рµ РІС…РѕРґРёС‚ РІ РµРіРѕ MaxDistance+SpawnMargin. Р—Р° РїРѕСЃС‚Р°РЅРѕРІРєСѓ
         /// РѕС‚РІРµС‡Р°РµС‚ СЌС‚РѕС‚ РїРѕРёСЃРє (Р±Р»РёР¶РЅРёРµ РїРµСЂРІС‹РјРё), СЃР°РјР° СЃР±РѕСЂРєР° РёРґС‘С‚ РїРѕСЂС†РёСЏРјРё РїРѕ
         /// Р±СЋРґР¶РµС‚Сѓ РєР°РґСЂР° (TryQueueDecorBuild/StepDecorBuilds) вЂ” Р±РµР· С„СЂРёР·РѕРІ.</summary>
+        /// <summary>Обёртка ради маркера: два прохода «по всем чанкам × всем
+        /// слоям» на каждый запуск, а запускается он почти каждый кадр.</summary>
         private void EnsureVisibleDecor(Vector3 cameraPosition)
+        {
+            using (SurfacePerf.EnsureVisibleDecorMarker.Auto())
+            {
+                EnsureVisibleDecorCore(cameraPosition);
+            }
+        }
+
+        private void EnsureVisibleDecorCore(Vector3 cameraPosition)
         {
             if (decorProfile == null || decorProfile.Layers == null || decorProfile.Layers.Count == 0)
             {
@@ -3753,7 +3861,17 @@ namespace Galilego.Universe
         /// Р°СЃРёРЅС…СЂРѕРЅРЅР°СЏ: СЃС‚Р°СЂС‹Р№ СЃР»РѕР№ СЂРёСЃСѓРµС‚СЃСЏ РґРѕ РіРѕС‚РѕРІРЅРѕСЃС‚Рё РЅРѕРІРѕРіРѕ, РєР°РґСЂ РЅРµ
         /// Р±Р»РѕРєРёСЂСѓРµС‚СЃСЏ. Р‘С‹СЃС‚СЂС‹Р№ РїРѕР»С‘С‚ РЅРµ РїРµСЂРµСЃРѕР±РёСЂР°РµС‚: С‚Р°Рј С‡Р°РЅРєРё Рё С‚Р°Рє РЅРѕРІС‹Рµ.
         /// </summary>
+        /// <summary>Обёртка ради маркера: пересборка пулов декора по «устаревшим»
+        /// чанкам — на большой скорости проход запускается каждый кадр.</summary>
         private void RefreshMovingDecor(Vector3 cameraPosition)
+        {
+            using (SurfacePerf.RefreshMovingDecorMarker.Auto())
+            {
+                RefreshMovingDecorCore(cameraPosition);
+            }
+        }
+
+        private void RefreshMovingDecorCore(Vector3 cameraPosition)
         {
             if (decorProfile == null || decorProfile.Layers == null)
             {
@@ -3894,7 +4012,18 @@ namespace Galilego.Universe
         /// РїСЂРѕР№РґРµРЅРЅС‹Рµ С‡Р°РЅРєРё РєРѕРїСЏС‚ РїРѕР»РЅС‹Рµ РїСѓР»С‹ (РїРѕ РєР°РїСѓ РЅР° С‡Р°РЅРє), Р±СЋРґР¶РµС‚
         /// РёРЅСЃС‚Р°РЅСЃРѕРІ СѓС…РѕРґРёС‚ РѕС‚ РёРіСЂРѕРєР° Рё РІРёРґРёРјР°СЏ Р·РѕРЅР° РїСѓСЃС‚РµРµС‚. Р’РѕР·РІСЂР°С‚ РёРіСЂРѕРєР°
         /// РїРµСЂРµСЃРѕР±РµСЂС‘С‚ СЃР»РѕР№ Р·Р°РЅРѕРІРѕ (РјР°СЃРєР° СЃРЅРёРјР°РµС‚СЃСЏ).</summary>
+        /// <summary>Обёртка ради маркера: освобождение памяти декора должно
+        /// продолжаться и тогда, когда новые сборки уже остановлены по высоте
+        /// или скорости, поэтому этот проход глушить нельзя.</summary>
         private void TrimDistantDecor(Vector3 cameraPosition)
+        {
+            using (SurfacePerf.TrimDistantDecorMarker.Auto())
+            {
+                TrimDistantDecorCore(cameraPosition);
+            }
+        }
+
+        private void TrimDistantDecorCore(Vector3 cameraPosition)
         {
             if (decorProfile == null || decorProfile.Layers == null)
             {
@@ -4301,7 +4430,18 @@ namespace Galilego.Universe
         /// Р±РёР»Р»Р±РѕСЂРґ РґРѕ MaxDistance. РњР°С‚СЂРёС†С‹ вЂ” РјРёСЂРѕРІРѕР№ С‚СЂР°РЅСЃС„РѕСЂРј С‡Р°РЅРєР° Г—
         /// Р»РѕРєР°Р»СЊРЅС‹Р№ TRS РёРЅСЃС‚Р°РЅСЃР° (РїРµСЂРµСЃС‡С‘С‚ РєР°Р¶РґС‹Р№ РєР°РґСЂ: floating origin/СЃРїРёРЅ).
         /// </summary>
+        /// <summary>Обёртка ради маркера: для слоёв без PerInstanceDensity
+        /// (деревья/камни/кактусы) матрицы пересобираются каждый кадр, и это
+        /// самая дорогая часть декора на большой высоте и скорости.</summary>
         private void DrawDecor(Vector3 cameraPosition)
+        {
+            using (SurfacePerf.DrawDecorMarker.Auto())
+            {
+                DrawDecorCore(cameraPosition);
+            }
+        }
+
+        private void DrawDecorCore(Vector3 cameraPosition)
         {
             if (decorProfile == null)
             {
@@ -4380,6 +4520,12 @@ namespace Galilego.Universe
                     {
                         continue;
                     }
+
+                    // [ФАЗА 0] Объём декора, реально уходящий в отрисовку: без
+                    // этих чисел на большой высоте нельзя отличить «много чанков»
+                    // от «много инстансов в каждом».
+                    SurfacePerf.DecorPools++;
+                    SurfacePerf.DecorInstances += runtime.Instances.Length;
 
                     // Погасший хвост пула (трава, выпавшая из новой выборки при
                     // пересборке) убираем из массивов: с этого кадра рисуются
@@ -4990,7 +5136,17 @@ namespace Galilego.Universe
             }
         }
 
+        /// <summary>Обёртка ради маркера: выгрузка чанков идёт пачками и сама по
+        /// себе может стать источником фриза, если Destroy звать без лимита.</summary>
         private void EvictIfNeeded()
+        {
+            using (SurfacePerf.EvictMarker.Auto())
+            {
+                EvictIfNeededCore();
+            }
+        }
+
+        private void EvictIfNeededCore()
         {
             if (chunks.Count <= MaxCachedChunks)
             {

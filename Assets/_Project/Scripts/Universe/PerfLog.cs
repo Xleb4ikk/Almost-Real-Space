@@ -71,7 +71,8 @@ namespace Galilego.Universe
             header.AppendLine("# quality\t" + QualitySettings.names[QualitySettings.GetQualityLevel()]);
             header.AppendLine("# vsync\t" + QualitySettings.vSyncCount);
             header.AppendLine("# targetFps\t" + Application.targetFrameRate);
-            header.AppendLine("# columns\tsimT\tfps\tframeMs\tcpuMainMs\tgpuMs\trScaleW\trScaleH\tscreenW\tscreenH\tvramMB\treservedMB\tmonoMB\tcamFarM\tposX\tposY\tposZ");
+            header.AppendLine("# columns\tsimT\tfps\tframeMs\tcpuMainMs\tgpuMs\trScaleW\trScaleH\tscreenW\tscreenH\tvramMB\treservedMB\tmonoMB\tcamFarM\tposX\tposY\tposZ"
+                + SurfacePerf.PerfLogColumns + "\tliveMeshes\ttotalAllocMB\tmonoUsedMB");
 
             try
             {
@@ -160,7 +161,11 @@ namespace Galilego.Universe
             line.Append(camFar.ToString("F0", inv)).Append('\t');
             line.Append(camPos.x.ToString("F0", inv)).Append('\t');
             line.Append(camPos.y.ToString("F0", inv)).Append('\t');
-            line.Append(camPos.z.ToString("F0", inv));
+            line.Append(camPos.z.ToString("F0", inv)).Append('\t');
+            // Новые колонки строго В КОНЕЦ: старые номера не должны поехать, иначе
+            // уже накопленные perf_log.txt перестанут читаться тем же скриптом.
+            SurfacePerf.AppendPerfLogColumns(line);
+            SurfacePerf.AppendSlowColumns(line);
 
             try
             {
