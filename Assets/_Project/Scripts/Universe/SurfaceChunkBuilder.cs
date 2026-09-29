@@ -192,9 +192,21 @@ namespace Galilego.Universe
         public double WaterSkirtDepth;
         public double3 CenterAstro;
 
-        [WriteOnly] public NativeArray<float3> Positions;
-        [WriteOnly] public NativeArray<TerrainVertex> Vertices;
-        [WriteOnly] public NativeArray<WaterVertex> WaterVertices;
+        /// <summary>Промежуточные позиции сетки с halo. Без [WriteOnly]:
+        /// джоб пишет их первым проходом и читает вторым (нормали центральными
+        /// разностями).</summary>
+        public NativeArray<float3> Positions;
+
+        /// <summary>Готовые вершины рельефа. Тоже пишутся и потом читаются:
+        /// core-проход заполняет их, а проход юбок берёт из них крайние
+        /// вершины. Помеченный WriteOnly массив читать нельзя, и Burst роняет
+        /// джоб с InvalidOperationException вместо тихой порчи.</summary>
+        public NativeArray<TerrainVertex> Vertices;
+
+        /// <summary>Вершины воды. Читаются дважды: скан «есть ли вода» и
+        /// проход юбок. Поэтому без [WriteOnly] по той же причине, что и у
+        /// остальных двух.</summary>
+        public NativeArray<WaterVertex> WaterVertices;
         [WriteOnly] public NativeArray<int> WaterFlags;
         public NativeArray<float3> BoundsMinMax;
 
@@ -410,7 +422,30 @@ namespace Galilego.Universe
 
             int n = res + 1;
             int coreCount = n * n;
-            int indexCount = (((n - 1) * (n - 1)) + (4 * (n - 1))) * 3;
+
+            // 6 индексов НА КВАД, а не на треугольник: каждый квад пишется как
+            // два треугольника (a,c,b + b,c,d), то есть ровно 6. Здесь стояло
+            // *3 — буфер получался вдвое короче, и запись уходила за конец.
+            // Для res=65 это 13455 вместо 26910, что и выдало IndexOutOfRange
+            // в этом же методе.
+            int quadCount = ((n - 1) * (n - 1)) + (4 * (n - 1));
+            int indexCount = quadCount * 6;
+
+            // Границы проверяются ДО записи, а не после. Проверка в конце
+            // бесполезна: к моменту её выполнения буфер уже переполнен и
+            // NativeArray бросает исключение раньше, чем до неё доходит
+            // управление. Стоимость — одно сравнение, зато ошибка топологии
+            // больше не может тихо уехать в VRAM.
+            int expectedCore = (n - 1) * (n - 1) * 6;
+            int expectedSkirts = 4 * (n - 1) * 6;
+            if (indexCount != expectedCore + expectedSkirts || indexCount <= 0)
+            {
+                throw new InvalidOperationException(
+                    "SurfaceChunkPool: topology mismatch for res=" + res
+                    + " indexCount=" + indexCount
+                    + " core=" + expectedCore + " skirts=" + expectedSkirts);
+            }
+
             var indices = new NativeArray<ushort>(indexCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
 
             int t = 0;
@@ -431,7 +466,6 @@ namespace Galilego.Universe
                 }
             }
 
-            int coreIndexCount = (n - 1) * (n - 1) * 6;
             for (int edge = 0; edge < 4; edge++)
             {
                 int baseIndex = coreCount + (edge * n);
@@ -458,23 +492,27 @@ namespace Galilego.Universe
                 }
             }
 
-            if (t != indexCount || coreIndexCount + ((4 * (n - 1)) * 6) != indexCount)
+            if (t != indexCount)
             {
-                // РЎС‚СЂР°С…РѕРІРєР° РѕС‚ С‚РёС…РѕР№ РїРѕСЂС‡Рё С‚РѕРїРѕР»РѕРіРёРё: РёРЅРґРµРєСЃС‹ СѓР¶Рµ Р·Р°РїРёСЃР°РЅС‹ РІ
-                // РјРµС€, Рё РѕС€РёР±РєР° Р·РґРµСЃСЊ СЃС‚РѕРёР»Р° Р±С‹ РґС‹СЂ РІ СЂРµР»СЊРµС„Рµ РїРѕ РІСЃРµРјСѓ РєСЂСѓРіСѓ.
+                // Сюда попасть уже не должны: арифметика проверена ДО записи.
+                // Осталось убедиться, что циклы не разошлись с ней, — буфер к
+                // этому моменту цел, так что освобождать его безопасно.
                 indices.Dispose();
                 throw new InvalidOperationException(
-                    "SurfaceChunkPool: topology mismatch, t=" + t + " indexCount=" + indexCount);
+                    "SurfaceChunkPool: wrote " + t + " indices, expected " + indexCount
+                    + " for res=" + res);
             }
 
             sharedIndices[res] = indices;
             return indices;
         }
 
+        /// <summary>Индексов в меше чанка на этом res. 6 индексов на квад: два
+        /// треугольника, a,c,b + b,c,d.</summary>
         public static int IndexCountFor(int res)
         {
             int n = res + 1;
-            return (((n - 1) * (n - 1)) + (4 * (n - 1))) * 3;
+            return (((n - 1) * (n - 1)) + (4 * (n - 1))) * 6;
         }
 
         public static ChunkBuildRequest Rent()

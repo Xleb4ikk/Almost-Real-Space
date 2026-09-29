@@ -2103,6 +2103,14 @@ namespace Galilego.Universe
         /// темпе 1.5 мс — это единицы чанков. Если очередь при этом растёт
         /// (на 2 км/с она будет), чинится это не бюджетом, а тиром качества
         /// в Фазе 3: строить нужно меньше и реже, а не быстрее заливать.
+        ///
+        /// Исключение из FinalizeChunk перехватывается НАМЕРЕННО. Без этого
+        /// один сбойный чанк ронял весь LateUpdate целиком: не выполнялись
+        /// EvictIfNeeded, обновление счётчиков, декор и конец кадра — а
+        /// полузаполненный чанк оставался в кэше с пустым мешем. Итог был
+        /// виден как серые полосы в рельефе, «рывки» движения и рост памяти до
+        /// 18 ГБ, при этом в консоли — одно исключение из глубокой стека. Один
+        /// плохой узел не должен уносить с собой кадр.
         /// </summary>
         private void PumpChunkBuilds()
         {
@@ -2159,7 +2167,27 @@ namespace Galilego.Universe
                     continue;
                 }
 
-                FinalizeChunk(entry);
+                // Изолируем finalize: любой сбой здесь обязан стоить одного
+                // чанка, а не всего кадра.
+                bool finalized = false;
+                try
+                {
+                    FinalizeChunk(entry);
+                    finalized = true;
+                }
+                catch (System.Exception exception)
+                {
+                    SurfacePerf.FinalizeErrors++;
+                    Debug.LogError("[PlanetSurfaceRenderer] чанк " + entry.Id
+                        + " не удалось залить в меш: " + exception);
+                }
+
+                if (!finalized)
+                {
+                    AbandonChunk(entry.Id);
+                }
+
+                SurfaceChunkPool.Return(entry.Request);
             }
 
             // Слоты держим занятыми: пока есть свободные, джобы идут внахлёст с
@@ -2172,6 +2200,24 @@ namespace Galilego.Universe
             }
 
             JobHandle.ScheduleBatchedJobs();
+        }
+
+        /// <summary>Убирает из кэша чанк, который не удалось залить: он там
+        /// остался бы с пустым мешем и рисовался бы серой дырой. Слот в
+        /// queuedChunkIds освобождается, чтобы узел можно было построить заново
+        /// на следующем кадре.</summary>
+        private void AbandonChunk(long id)
+        {
+            queuedChunkIds.Remove(id);
+            if (!chunks.TryGetValue(id, out Chunk chunk))
+            {
+                return;
+            }
+
+            SetChunkVisible(chunk, false);
+            DestroyChunkResources(chunk);
+            chunks.Remove(id);
+            visibleChunks.Remove(chunk);
         }
 
         /// <summary>Достаёт из очереди узел с наивысшим приоритетом, а внутри
@@ -2309,10 +2355,11 @@ namespace Galilego.Universe
 
             long id = NodeId(node);
             Chunk chunk = chunks.TryGetValue(id, out Chunk existing) ? existing : CreateChunkShell(node);
-            chunks[id] = chunk;
 
-            // Меш привязан к центру чанка, а трансформ ставится в общем проходе
-            // ниже по visibleChunks. Здесь только геометрия.
+            // В кэш чанк попадает ПОСЛЕДНИМ. Регистрация до заливки означала
+            // бы, что сбой на любом шаге оставляет в кэше узел с пустым мешем:
+            // он тут же становился виден и рисовался серой дырой, а повторно не
+            // строился, потому что «уже есть в chunks».
             chunk.CenterAstro = request.CenterAstro;
             chunk.Go.transform.position = NodeRenderPosition(request.CenterAstro);
             chunk.Go.transform.rotation = currentBodyRotation;
@@ -2355,12 +2402,13 @@ namespace Galilego.Universe
                 BuildAsyncWaterMesh(chunk, request);
             }
 
+            // Чанк цел — регистрируем и показываем.
+            chunks[id] = chunk;
             if (!chunk.Visible)
             {
                 SetChunkVisible(chunk, true);
             }
 
-            SurfaceChunkPool.Return(request);
             SurfacePerf.ChunksFinalized++;
         }
 

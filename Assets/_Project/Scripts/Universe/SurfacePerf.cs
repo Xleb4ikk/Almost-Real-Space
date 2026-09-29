@@ -101,6 +101,11 @@ namespace Galilego.Universe
         /// устаревшие: узел ушёл из desired за MaxChunkQueueAgeFrames кадров.</summary>
         public static int QueueDropped;
 
+        /// <summary>Сколько чанков не удалось залить в меш (исключение в
+        /// FinalizeChunk). Ненулевое значение означает, что async-путь сыпет
+        /// ошибками: смотрите консоль, там же печатается причина.</summary>
+        public static int FinalizeErrors;
+
         // ===== Диагностика декора =====
 
         /// <summary>Высота камеры над рельефом, м. 0 = не вычислена.</summary>
