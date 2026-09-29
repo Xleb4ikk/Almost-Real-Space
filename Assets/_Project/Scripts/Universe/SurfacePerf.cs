@@ -97,6 +97,10 @@ namespace Galilego.Universe
         /// <summary>Сколько узлов поставлено в очередь на этом кадре.</summary>
         public static int ChunksEnqueued;
 
+        /// <summary>Сколько записей очереди выброшено на этом кадре как
+        /// устаревшие: узел ушёл из desired за MaxChunkQueueAgeFrames кадров.</summary>
+        public static int QueueDropped;
+
         // ===== Диагностика декора =====
 
         /// <summary>Высота камеры над рельефом, м. 0 = не вычислена.</summary>
@@ -196,6 +200,7 @@ namespace Galilego.Universe
             QueuedBuilds = 0;
             InFlightBuilds = 0;
             ChunksEnqueued = 0;
+            QueueDropped = 0;
             DecorPools = 0;
             DecorInstances = 0;
         }

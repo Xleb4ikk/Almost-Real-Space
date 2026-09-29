@@ -128,11 +128,17 @@ namespace Galilego.Universe
         public int TerrainShadowDepthBand = 3;
 
         [Header("Фаза 2: асинхронная постройка чанков")]
-        [Tooltip("Строить чанки в Burst-джобах, а не на главном потоке. Выкл — " +
-                 "старый синхронный путь: он оставлен как эталон, чтобы можно " +
-                 "было сравнить картинку и убедиться, что перенос в Burst " +
-                 "ничего не сдвинул.")]
-        public bool AsyncChunkBuild = true;
+        [Tooltip("Строить чанки в Burst-джобах, а не на главном потоке. " +
+                 "ВЫКЛ ПО УМОЛЧАНИЮ, хотя код компилируется и в Editor-замере " +
+                 "даёт 0.9-1.2 мс на кадр против 42.75 мс у синхронного пути. " +
+                 "Причина: очередь не дренируется (3400-5200 записей при 6 " +
+                 "джобах в полёте и бюджете 1.5 мс), и наблюдались кадры, где " +
+                 "видимых чанков 0 — то есть рельеф пропадал. Пока очередь не " +
+                 "закрыта (Фаза 3: тиры качества по скорости) и пустое не " +
+                 "поймано, включать только под присмотром. Старый синхронный " +
+                 "путь оставлен как эталон: с ним картинку можно сравнить " +
+                 "побитово.")]
+        public bool AsyncChunkBuild = false;
 
         [Tooltip("Сколько джоб постройки может висеть одновременно. Больше — " +
                  "ровнее сглаживание, но больше одновременной нагрузки на " +
@@ -147,6 +153,15 @@ namespace Galilego.Universe
                  "кадра: лучше отстать от LOD, чем встать.")]
         [Range(0.25f, 8f)]
         public float ChunkFinalizeBudgetMs = 1.5f;
+
+        [Tooltip("Сколько кадров запись очереди может ждать, прежде чем будет " +
+                 "признана устаревшей и выброшена. Узел, ушедший за спину " +
+                 "камере, в desired больше не попадает, но из очереди сам не " +
+                 "исчезал: на 2 км/с она копила тысячи записей, и планировщик " +
+                 "каждый кадр ходил по ним. Не ноль: узел на грани LOD бывает в " +
+                 "desired через кадр.")]
+        [Range(1, 64)]
+        public int MaxChunkQueueAgeFrames = 6;
 
         [Header("Декор: высота и скорость")]
         [Tooltip("М/с, выше которых новые сборки декора не запускаются. На " +
@@ -687,6 +702,13 @@ namespace Galilego.Universe
             public long Id;
             public float Priority;
             public float Distance;
+
+            /// <summary>Кадр постановки в очередь. По нему запись признаётся
+            /// устаревшей: узел, который игрок уже оставил позади, в desired
+            /// больше не попадает, но из очереди сам не исчезал, и на скорости
+            /// очередь разрасталась тысячами записей, из которых строилась
+            /// доля в проценты.</summary>
+            public int EnqueuedFrame;
         }
 
         private struct ChunkBuildInFlight
@@ -2031,7 +2053,8 @@ namespace Galilego.Universe
                 Node = node,
                 Id = id,
                 Priority = HasBuiltAncestor(node) ? 1f : 0f,
-                Distance = (float)ChunkDistanceFromCamera(node)
+                Distance = (float)ChunkDistanceFromCamera(node),
+                EnqueuedFrame = Time.frameCount
             });
         }
 
@@ -2089,6 +2112,29 @@ namespace Galilego.Universe
             }
 
             long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+
+            // Отсев устаревших записей. Узел, который в desired попал всего пару
+            // кадров назад и с тех пор ушёл за спину камере, строить бессмысленно:
+            // к моменту, когда дойдёт очередь, он всё равно будет вне кадра. Без
+            // этого на 2 км/с очередь копила тысячи записей, и каждый кадр
+            // планировщик сортировал в том числе по ним. Порог в несколько
+            // кадров, а не ноль: узел нужен и тогда, когда он на грани LOD и
+            // мелькает в desired через кадр.
+            int staleBefore = Time.frameCount - MaxChunkQueueAgeFrames;
+            int dropped = 0;
+            for (int i = chunkBuildQueue.Count - 1; i >= 0; i--)
+            {
+                if (chunkBuildQueue[i].EnqueuedFrame >= staleBefore)
+                {
+                    continue;
+                }
+
+                queuedChunkIds.Remove(chunkBuildQueue[i].Id);
+                chunkBuildQueue.RemoveAt(i);
+                dropped++;
+            }
+
+            SurfacePerf.QueueDropped = dropped;
 
             for (int i = chunkBuildsInFlight.Count - 1; i >= 0; i--)
             {
