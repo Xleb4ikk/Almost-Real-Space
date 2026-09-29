@@ -63,6 +63,35 @@ namespace Galilego.Universe
         /// <summary>Считать ли мелкомасштабную цветовую деталь (моттлинг земли).</summary>
         public bool ComputeDetail;
 
+        /// <summary>
+        /// Ровные площадки в точках планеты (аналог PQS-мода FlattenArea в KSP).
+        /// NativeArray — blittable, поэтому таблица проходит в эту структуру и
+        /// дальше в [BurstCompile]-джобу рендера без managed-ссылок и без
+        /// изменения подписей: джоба уже получает Params целиком.
+        ///
+        /// [ReadOnly] — НЕ косметика, а требование безопасности. Таблица
+        /// читается и никогда не пишется, но контейнерное поле джобы без этой
+        /// метки защита считает ЗАПИСЫВАЕМЫМ. А декорации строятся пачками:
+        /// StepDecorBuilds планирует несколько GroundDecorCandidateJob в одном
+        /// кадре с default(JobHandle), то есть БЕЗ зависимости друг на друга, и
+        /// все получают один и тот же TerrainNoiseParams. Запись в общий
+        /// контейнер без зависимости — исключение защиты job'ов, и оно сыпется
+        /// каждый кадр:
+        ///   «The previously scheduled job ... writes to ...Terrain.Mods. You
+        ///    are trying to schedule a new job ... To guarantee safety, you must
+        ///    include ... as a dependency».
+        /// Это случилось и с пустой общей таблицей: защита работает по
+        /// разметке поля, а не по длине массива.
+        ///
+        /// Владеет таблицей HeightfieldTerrain, а не этот метод: FromTerrain
+        /// зовётся на КАЖДЫЙ GetRawHeightMeters (тысячи раз в секунду), и
+        /// аллоцировать здесь нельзя — копируется только дескриптор.
+        /// Таблица нулевой длины = модификаторов нет, и SampleHeight идёт по
+        /// старой ветке (бит-в-бит legacy).
+        /// </summary>
+        [ReadOnly]
+        public NativeArray<TerrainModifierData> Mods;
+
         public static TerrainNoiseParams FromTerrain(HeightfieldTerrain terrain)
         {
             return new TerrainNoiseParams
@@ -102,7 +131,8 @@ namespace Galilego.Universe
                 ColorDetailOctaves = terrain.ColorDetailOctaves,
                 ColorDetailSeedOffset = terrain.ColorDetailSeedOffset,
                 ComputeMask = terrain.ColorNoiseFrequency > 0d && terrain.ColorNoiseStrength != 0d,
-                ComputeDetail = terrain.ColorDetailFrequency > 0d && terrain.ColorDetailStrength != 0d
+                ComputeDetail = terrain.ColorDetailFrequency > 0d && terrain.ColorDetailStrength != 0d,
+                Mods = terrain.Mods
             };
         }
     }
@@ -180,7 +210,101 @@ namespace Galilego.Universe
 
             h = ApplyBeachShelf(p, h, continentRaw);
 
+            // Ровные площадки — ПОСЛЕДНЕЙ операцией. Если применить их раньше,
+            // фартук площадки затянуло бы обратно шумом детали/равнин, и ровное
+            // ядро перестало бы быть ровным. Таблица модификаторов идёт по
+            // собственному направлению, поэтому в warp/маску не вмешивается.
+            if (p.Mods.IsCreated && p.Mods.Length > 0)
+            {
+                h = ApplyModifiers(p, h, direction);
+            }
+
             return h;
+        }
+
+        /// <summary>
+        /// Площадки: ровное ядро и гладкий фартук по естественной высоте.
+        ///
+        /// Всё в НОРМИРОВАННОМ пространстве (SampleHeight возвращает форму
+        /// ~[−1,1], множитель амплитуды ставит вызывающий). Деление на
+        /// амплитуду делается только для модификаторов, которые реально
+        /// задели эту точку — после раннего выхода по косинусу, поэтому в
+        /// горячем цикле оно не стоит ни одного лишнего деления.
+        ///
+        /// Пересечения: модификаторы применяются по порядку в списке, каждый
+        /// считает от результата предыдущего. Порядок детерминирован, значит
+        /// результат воспроизводим; последний в списке при пересечении выигрывает.
+        /// </summary>
+        public static double ApplyModifiers(TerrainNoiseParams p, double h, double3 direction)
+        {
+            NativeArray<TerrainModifierData> mods = p.Mods;
+            double amplitude = p.AmplitudeMeters;
+            if (!(amplitude > 0d))
+            {
+                return h;
+            }
+
+            for (int i = 0; i < mods.Length; i++)
+            {
+                TerrainModifierData m = mods[i];
+
+                // Скалярное произведение убывает с угловым расстоянием, поэтому
+                // одно сравнение отсекает всё, что вне площадки, без acos.
+                double dot = math.dot(direction, m.Direction);
+                if (dot < m.CosOuter)
+                {
+                    continue;
+                }
+
+                // Ядро: t = 1. Фартук: 0 у внешнего края → 1 у внутреннего.
+                double t = 1d;
+                if (dot < m.CosInner)
+                {
+                    double span = m.CosInner - m.CosOuter;
+                    t = span > 1e-15d ? (dot - m.CosOuter) / span : 1d;
+                    t = math.min(1d, math.max(0d, t));
+                }
+
+                // Smoothstep: нулевые производные на обоих концах фартука, иначе
+                // на границе площадки в нормалях появляется излом.
+                t = t * t * (3d - (2d * t));
+
+                double target = m.TargetHeightMeters / amplitude;
+                h += (target - h) * t;
+            }
+
+            return h;
+        }
+
+        /// <summary>
+        /// Есть ли здесь площадка, которой разрешено перебивать кламп уровня
+        /// моря. Нужно ровно для раскопок ниже моря: GetHeightMeters поднимает
+        /// всё ниже уровня моря обратно к воде, и без этой проверки сухой док
+        /// молча наполнился бы.
+        /// </summary>
+        public static bool ModsOverrideSeaLevel(TerrainNoiseParams p, double3 direction)
+        {
+            NativeArray<TerrainModifierData> mods = p.Mods;
+            if (!mods.IsCreated)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < mods.Length; i++)
+            {
+                TerrainModifierData m = mods[i];
+                if (m.OverridesSeaLevel == 0)
+                {
+                    continue;
+                }
+
+                if (math.dot(direction, m.Direction) >= m.CosOuter)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>

@@ -1,5 +1,6 @@
 using System;
 using Galilego.Core;
+using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -354,13 +355,59 @@ namespace Galilego.Universe
             return terrain;
         }
 
+        /// <summary>
+        /// Таблица ровных площадок (PQS-моды). Всегда ВАЛИДНА, даже когда
+        /// площадок нет: инициализатор ставит общую пустую таблицу
+        /// TerrainModifiers.Empty, потому что рендер гоняет через Burst-джобу
+        /// TerrainNoiseParams целиком, а планировщик Unity требует валидные
+        /// контейнеры во всех полях структуры джобы — на default(NativeArray)
+        /// рендер падал, а планета пропадала.
+        ///
+        /// Владелец здесь, а не TerrainNoiseParams.FromTerrain: тот зовётся на
+        /// каждый запрос высоты и аллоцировать в нём нельзя.
+        /// </summary>
+        public NativeArray<TerrainModifierData> Mods = TerrainModifiers.Empty;
+
         /// <summary>Угловой шаг соседей для нормали (рад): разрешает 5 октав с запасом.</summary>
         private const double NormalEpsilonRadians = 1e-4d;
 
+        /// <summary>
+        /// Пересобрать таблицу площадок. Старую освобождает: таблица
+        /// Persistent, а система пересобирается при каждой правке сцены.
+        ///
+        /// Порядок важен: сначала строится новая, потом ставят её, и только
+        /// потом освобождается старая. Рендер держит свою копию дескриптора и
+        /// обновляет её в Update(), тогда как джобы строятся в LateUpdate() —
+        /// между этими точками освобождённый массив никто не успевает
+        /// запланировать. Обратный порядок (Dispose до установки новой) оставил
+        /// бы в кэше рендера указатель на освобождённую память.
+        /// </summary>
+        public void SetModifiers(System.Collections.Generic.IList<TerrainModifier> source, double bodyRadiusMeters)
+        {
+            NativeArray<TerrainModifierData> built = TerrainModifiers.Build(source, bodyRadiusMeters);
+            NativeArray<TerrainModifierData> previous = Mods;
+            Mods = built;
+            TerrainModifiers.Release(ref previous);
+        }
+
+        /// <summary>Освободить таблицу площадок (при разборке системы).</summary>
+        public void DisposeModifiers()
+        {
+            NativeArray<TerrainModifierData> current = Mods;
+            Mods = TerrainModifiers.Empty;
+            TerrainModifiers.Release(ref current);
+        }
+
         public double GetHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians)
         {
-            double height = GetRawHeightMeters(body, latitudeRadians, longitudeRadians);
-            if (height < SeaLevelMeters)
+            // Формула считается напрямую, а не через GetRawHeightMeters: здесь
+            // нужно знать, не перебила ли площадка кламп моря. Иначе раскопка
+            // ниже уровня моря молча наполнялась бы водой.
+            Vector3d direction = LatLonToDirection(latitudeRadians, longitudeRadians);
+            var dir = new double3(direction.X, direction.Y, direction.Z);
+            TerrainNoiseParams p = TerrainNoiseParams.FromTerrain(this);
+            double height = TerrainNoise.SampleHeight(p, dir) * AmplitudeMeters;
+            if (height < SeaLevelMeters && !TerrainNoise.ModsOverrideSeaLevel(p, dir))
             {
                 height = SeaLevelMeters;
             }

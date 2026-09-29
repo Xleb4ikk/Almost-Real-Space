@@ -363,9 +363,98 @@ namespace UnityEngine
         public Rect(float x, float y, float width, float height) { this.x = x; this.y = y; this.width = width; this.height = height; }
     }
 
+    public delegate void WindowFunction(int id);
+
+    public enum FontStyle { Normal, Bold, Italic, BoldAndItalic }
+
+    public enum TextAnchor
+    {
+        UpperLeft, UpperCenter, UpperRight,
+        MiddleLeft, MiddleCenter, MiddleRight,
+        LowerLeft, LowerCenter, LowerRight
+    }
+
+    public sealed class RectOffset
+    {
+        public int left, right, top, bottom;
+        public RectOffset() { }
+        public RectOffset(int left, int right, int top, int bottom) { this.left = left; this.right = right; this.top = top; this.bottom = bottom; }
+    }
+
+    public class GUIStyleState
+    {
+        public Color textColor;
+        public Texture2D background;
+    }
+
+    public class GUIStyle
+    {
+        public int fontSize;
+        public FontStyle fontStyle;
+        public bool wordWrap;
+        public TextAnchor alignment;
+        public RectOffset padding = new RectOffset();
+        public RectOffset margin = new RectOffset();
+        public RectOffset border = new RectOffset();
+        public float fixedWidth;
+        public float fixedHeight;
+        public bool stretchWidth = true;
+        public bool stretchHeight = true;
+        public GUIStyleState normal = new GUIStyleState();
+        public GUIStyleState hover = new GUIStyleState();
+        public GUIStyleState active = new GUIStyleState();
+        public GUIStyleState onNormal = new GUIStyleState();
+        public GUIStyleState onHover = new GUIStyleState();
+        public GUIStyleState onActive = new GUIStyleState();
+        public GUIStyle() { }
+        public GUIStyle(GUIStyle other) { }
+    }
+
+    public class GUISkin : Object
+    {
+        public GUIStyle label = new GUIStyle();
+        public GUIStyle box = new GUIStyle();
+        public GUIStyle button = new GUIStyle();
+        public GUIStyle window = new GUIStyle();
+        public GUIStyle horizontalSlider = new GUIStyle();
+        public GUIStyle horizontalSliderThumb = new GUIStyle();
+    }
+
     public static class GUI
     {
+        public static GUISkin skin { get; } = new GUISkin();
         public static void Label(Rect position, string text) { }
+        public static void Label(Rect position, string text, GUIStyle style) { }
+        public static void Box(Rect position, string text) { }
+        public static void Box(Rect position, string text, GUIStyle style) { }
+        public static void DragWindow(Rect position) { }
+        public static Rect Window(int id, Rect clientRect, WindowFunction func, string text) => clientRect;
+        public static Rect Window(int id, Rect clientRect, WindowFunction func, string text, GUIStyle style) => clientRect;
+    }
+
+    public static class GUILayout
+    {
+        public static Rect Window(int id, Rect screenRect, WindowFunction func, string text) => screenRect;
+        public static Rect Window(int id, Rect screenRect, WindowFunction func, string text, GUIStyle style) => screenRect;
+        public static Vector2 BeginScrollView(Vector2 scrollPosition, params GUILayoutOption[] options) => scrollPosition;
+        public static void EndScrollView() { }
+        public static void BeginHorizontal(params GUILayoutOption[] options) { }
+        public static void EndHorizontal() { }
+        public static void Label(string text, params GUILayoutOption[] options) { }
+        public static void Label(string text, GUIStyle style, params GUILayoutOption[] options) { }
+        public static bool Toggle(bool value, string text, params GUILayoutOption[] options) => value;
+        public static bool Toggle(bool value, string text, GUIStyle style, params GUILayoutOption[] options) => value;
+        public static bool Button(string text, params GUILayoutOption[] options) => false;
+        public static bool Button(string text, GUIStyle style, params GUILayoutOption[] options) => false;
+        public static float HorizontalSlider(float value, float leftValue, float rightValue, params GUILayoutOption[] options) => value;
+        public static float HorizontalSlider(float value, float leftValue, float rightValue, GUIStyle slider, GUIStyle thumb) => value;
+        public static void Space(float pixels) { }
+        public static GUILayoutOption Width(float width) => new GUILayoutOption();
+        public static GUILayoutOption Height(float height) => new GUILayoutOption();
+    }
+
+    public sealed class GUILayoutOption
+    {
     }
 
     public struct Ray
@@ -392,7 +481,7 @@ namespace UnityEngine
 
     public enum CursorLockMode { None, Locked }
 
-    public enum KeyCode { Alpha1 = 49, Alpha2 = 50, Alpha3 = 51, Alpha4 = 52, Alpha5 = 53, Alpha6 = 54, Alpha7 = 55, Escape = 27, LeftShift = 304, LeftControl = 306, P = 112, E = 101, W = 119, A = 97, S = 115, D = 100, Space = 32 }
+    public enum KeyCode { Alpha1 = 49, Alpha2 = 50, Alpha3 = 51, Alpha4 = 52, Alpha5 = 53, Alpha6 = 54, Alpha7 = 55, Escape = 27, LeftShift = 304, LeftControl = 306, LeftAlt = 308, P = 112, E = 101, F10 = 291, W = 119, A = 97, S = 115, D = 100, Space = 32 }
 
     public static class Cursor
     {

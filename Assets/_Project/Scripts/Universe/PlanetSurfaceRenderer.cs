@@ -1357,7 +1357,14 @@ namespace Galilego.Universe
                 && a.ColorDetailOctaves == b.ColorDetailOctaves
                 && a.ColorDetailSeedOffset == b.ColorDetailSeedOffset
                 && a.ComputeMask == b.ComputeMask
-                && a.ComputeDetail == b.ComputeDetail;
+                && a.ComputeDetail == b.ComputeDetail
+                // Площадки обязаны быть в сравнении: без этого добавление или
+                // перенос базы меняло бы физику, но не трогало кэш чанков — земля
+                // в сцене осталась бы старой, и расхождение визуал/физика было бы
+                // молчаливым. Сравниваем СОДЕРЖИМОЕ таблиц, а не дескрипторы:
+                // NativeArray == сравнивает указатель, и одинаковый набор из
+                // двух сборок выглядел бы разным.
+                && TerrainModifiers.TableEqual(a.Mods, b.Mods);
         }
 
         private void LateUpdate()
@@ -6780,12 +6787,30 @@ namespace Galilego.Universe
         /// </summary>
         private void ApplyTerrainGlobals()
         {
+            ApplyTerrainGlobals(terrain, ShoreWetMeters, ShoreWetTint);
+            colorStateCache = CaptureColorState();
+        }
+
+        /// <summary>
+        /// Глобалы шейдера рельефа для произвольного HeightfieldTerrain. Вынесено
+        /// из экземплярного метода без изменения тела: редакторское превью
+        /// поверхности обязано получить РОВНО тот же свет, палитру и текстуры,
+        /// что и игра, — иначе автор ставит базу по картинке, которой в игре
+        /// нет. Единственный источник правды, дублировать нельзя.
+        /// </summary>
+        public static void ApplyTerrainGlobals(HeightfieldTerrain terrain, float shoreWetMeters, Vector4 shoreWetTint)
+        {
+            if (terrain == null)
+            {
+                return;
+            }
+
             TerrainPaletteData palette = terrain.Palette ?? new TerrainPaletteData();
             Shader.SetGlobalFloat("_TerrainAmplitude", (float)System.Math.Max(1d, terrain.AmplitudeMeters));
             Shader.SetGlobalFloat("_TerrainSeaLevel", (float)System.Math.Max(terrain.SeaLevelMeters, -1e30d));
             Shader.SetGlobalFloat("_BeachHeightMeters", (float)System.Math.Max(0d, terrain.BeachHeightMeters));
-            Shader.SetGlobalFloat("_ShoreWetMeters", ShoreWetMeters);
-            Shader.SetGlobalVector("_ShoreWetTint", ShoreWetTint);
+            Shader.SetGlobalFloat("_ShoreWetMeters", shoreWetMeters);
+            Shader.SetGlobalVector("_ShoreWetTint", shoreWetTint);
             Shader.SetGlobalFloat("_TerrainSeed", terrain.Seed);
             Shader.SetGlobalFloat("_TerrainGain", (float)TerrainNoise.EffectiveGain(terrain.Gain));
             Shader.SetGlobalFloat("_TerrainLacunarity", (float)TerrainNoise.EffectiveLacunarity(terrain.Lacunarity));
@@ -6835,8 +6860,6 @@ namespace Galilego.Universe
                 Shader.SetGlobalFloat("_SteepBlendStart", (float)terrain.SteepBlendStart);
                 Shader.SetGlobalFloat("_SteepBlendEnd", (float)terrain.SteepBlendEnd);
             }
-
-            colorStateCache = CaptureColorState();
         }
 
         private static Vector4 ToVec(Color c)

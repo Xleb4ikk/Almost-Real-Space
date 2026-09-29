@@ -145,6 +145,8 @@ internal static partial class P1bTests
             new P1bCase("Test105_WaterQuery", Test105_WaterQuery, false),
             new P1bCase("Test106_SandIsBeachBandOnly", Test106_SandIsBeachBandOnly, false),
             new P1bCase("Test107_WetnessNeverSaturates", Test107_WetnessNeverSaturates, false),
+            new P1bCase("Test108_SurfaceFrameBasis", Test108_SurfaceFrameBasis, false),
+            new P1bCase("Test109_TerrainPads", Test109_TerrainPads, false),
         };
     }
 }

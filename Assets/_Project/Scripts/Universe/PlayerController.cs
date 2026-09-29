@@ -23,6 +23,9 @@ namespace Galilego.Universe
         [Tooltip("GO корабля (с ShipView) — для ходьбы внутри.")]
         public Transform ShipTransform;
 
+        [Tooltip("Чит-меню (ноуклип). Пусто — берётся первый в сцене при старте.")]
+        public CheatMenu CheatMenu;
+
         [Tooltip("Скорость ходьбы (м/с).")]
         public float WalkSpeed = 2f;
 
@@ -47,6 +50,15 @@ namespace Galilego.Universe
         [Tooltip("Топливо джетпака. По умолчанию бесконечное (MVP); подмени на бак позже.")]
         public IJetpackFuel JetpackFuel = new InfiniteJetpackFuel();
 
+        [Tooltip("Скорость ноуклипа (м/с), пока чит-меню не задало свою. Итоговую берёт чит-меню.")]
+        public float NoclipSpeed = 100f;
+
+        /// <summary>
+        /// Ввод заблокирован (открыто чит-меню): WASD/E игнорируются, чтобы
+        /// нажатия на кнопки окна не двигали игрока. Ставит CheatMenu.
+        /// </summary>
+        public bool InputBlocked { get; set; }
+
         /// <summary>Интерактибл под прицелом (для подсказки и E).</summary>
         public Interactable Focused { get; private set; }
 
@@ -58,10 +70,26 @@ namespace Galilego.Universe
 
         public bool Seated => SeatedSeat != null;
 
+        private void Start()
+        {
+            if (CheatMenu == null)
+            {
+                CheatMenu = FindAnyObjectByType<CheatMenu>();
+            }
+        }
+
         private void Update()
         {
             if (Runner == null)
             {
+                return;
+            }
+
+            if (InputBlocked)
+            {
+                // Меню открыто: сбрасываем намерение, иначе «залипшая» прошлая
+                // команда (WASD джетпака) продолжала бы двигать игрока.
+                Runner.PlayerIntent = PlayerIntent.Idle;
                 return;
             }
 
@@ -158,6 +186,13 @@ namespace Galilego.Universe
             PlayerIntent intent = PlayerIntent.Idle;
             Camera camera = Camera.main;
 
+            if (Runner.NoclipActive)
+            {
+                UpdateNoclipIntent(ref intent, camera);
+                Runner.PlayerIntent = intent;
+                return;
+            }
+
             switch (Runner.PlayerMode)
             {
                 case PlayerMode.InShip:
@@ -231,6 +266,30 @@ namespace Galilego.Universe
             }
 
             Runner.PlayerIntent = intent;
+        }
+
+        /// <summary>
+        /// Намерение ноуклипа: полный 3D по камере (WASD + Space/Ctrl), скорость
+        /// — из CheatMenu.NoclipSpeed (fallback — поле инспектора). Направление
+        /// нормализуется, скорость — как есть: чит-меню разрешает величины от
+        /// ходьбы до 1e9 м/с, и клампы здесь означали бы, что верх диапазона
+        /// не работает.
+        /// </summary>
+        private void UpdateNoclipIntent(ref PlayerIntent intent, Camera camera)
+        {
+            intent.NoclipSpeed = CheatMenu != null ? CheatMenu.NoclipSpeed : NoclipSpeed;
+            if (camera == null)
+            {
+                return;
+            }
+
+            Vector3 move = (camera.transform.forward * ((PlayerInput.Held(GameKey.W) ? 1f : 0f) - (PlayerInput.Held(GameKey.S) ? 1f : 0f)))
+                + (camera.transform.right * ((PlayerInput.Held(GameKey.D) ? 1f : 0f) - (PlayerInput.Held(GameKey.A) ? 1f : 0f)))
+                + (camera.transform.up * ((PlayerInput.Held(GameKey.Space) ? 1f : 0f) - (PlayerInput.Held(GameKey.LeftControl) ? 1f : 0f)));
+            if (move.sqrMagnitude > 0f)
+            {
+                intent.NoclipDirection = AstroFrame.ToAstro(move.normalized);
+            }
         }
 
         private void OnGUI()
