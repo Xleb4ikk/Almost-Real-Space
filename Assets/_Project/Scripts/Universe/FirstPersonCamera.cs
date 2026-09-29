@@ -35,8 +35,12 @@ namespace Galilego.Universe
         [Tooltip("SMAA — пространственное сглаживание (без TAA-гостинга). Включается, когда TAA выключен: убирает рваный силуэт рельефа на фоне неба.")]
         public bool SubpixelAA = true;
 
-        [Tooltip("Диагностика: раз в секунду писать позицию камеры и цели.")]
-        public bool LogCameraDiagnostics = true;
+        [Tooltip("Диагностика: раз в секунду писать позицию камеры и цели. " +
+                 "Стоит не каждый кадр, а раз в секунду (таймер diagnosticTimer), " +
+                 "так что на FPS не влияет. Но в длинных прогонах забивает " +
+                 "консоль, и в ней теряются реальные ошибки — по умолчанию " +
+                 "выключено.")]
+        public bool LogCameraDiagnostics = false;
 
         private float diagnosticTimer;
 
