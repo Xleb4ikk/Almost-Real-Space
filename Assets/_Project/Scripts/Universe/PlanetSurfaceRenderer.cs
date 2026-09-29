@@ -163,6 +163,84 @@ namespace Galilego.Universe
         [Range(1, 64)]
         public int MaxChunkQueueAgeFrames = 6;
 
+        [Header("Фаза 3: тиры качества по скорости")]
+        [Tooltip("Понижать глубину LOD и плотность разбиения на большой " +
+                 "скорости. На 2 км/с строить листья по 440 м бессмысленно: " +
+                 "игрок проезжает поле быстрее, чем оно достраивается. " +
+                 "Понижение НЕ трогает ResolutionForDepth — он остаётся на " +
+                 "сериализованном MaxDepth, иначе у уже построенных узлов " +
+                 "менялась бы сетка и они перестраивались бы каждый кадр.")]
+        public bool EnableQualityTiers = true;
+
+        [Tooltip("М/с, выше которых включается тир Fast (глубина минус один).")]
+        public float TierFastSpeed = 250f;
+
+        [Tooltip("М/с, выше которых включается тир Extreme (глубина минус два).")]
+        public float TierExtremeSpeed = 1200f;
+
+        [Tooltip("С, сколько ждать перед ВНИЗ возвратом тира. Вверх переключаемся " +
+                 "сразу, вниз — с задержкой: иначе скорость шла бы около порога " +
+                 "и LOD флапал каждый кадр.")]
+        public float TierDownDelaySeconds = 1.5f;
+
+        [Tooltip("На сколько уровней глубины срезать в тире Fast.")]
+        public int TierDepthDropFast = 1;
+
+        [Tooltip("На сколько уровней глубины срезать в тире Extreme.")]
+        public int TierDepthDropExtreme = 2;
+
+        [Tooltip("Множитель SplitFactor в тире Fast. Ниже — реже делим квад, " +
+                 "то есть поднимаем порог дистанции до листьев.")]
+        public float TierSplitScaleFast = 0.9f;
+
+        [Tooltip("Множитель SplitFactor в тире Extreme.")]
+        public float TierSplitScaleExtreme = 0.8f;
+
+        [Tooltip("Поднимать тир по времени кадра, а не только по скорости. " +
+                 "Страховка для слабых машин. По умолчанию выключено: без " +
+                 "замеров в билде регулятор способен сам ухудшить картинку.")]
+        public bool TierAutoRaise;
+
+        [Tooltip("Целевое время кадра для регулятора, мс. Регулятор следит за " +
+                 "скользящим окном и держит его не выше этой цифры.")]
+        public float TierTargetFrameMs = 22f;
+
+        [Tooltip("Строить чанки ВПЕРЁД по вектору скорости, а не только там, " +
+                 "где камера уже стоит. На скорости узел нужен через долю " +
+                 "секунды, а к моменту, когда камера доедет, он уже готов.")]
+        public bool PrefetchEnabled = true;
+
+        [Tooltip("С, на сколько вперёд заглядывать. 1.5 с — примерно 3 км на " +
+                 "2 км/с.")]
+        [Range(0f, 3f)]
+        public float PrefetchSeconds = 1.5f;
+
+        [Tooltip("С, за которые сглаженная скорость догоняет настоящую. Короткое " +
+                 "окно заставляет префетч метаться на ускорениях, длинное " +
+                 "заставляет опаздывать на торможении.")]
+        [Range(0.05f, 1f)]
+        public float PrefetchVelSmoothSeconds = 0.15f;
+
+        [Tooltip("М, минимальный упрелёж. На малой скорости PrefetchSeconds даёт " +
+                 "смещение в метры, и префетчить нечего — узлы не успевают " +
+                 "понадобиться.")]
+        public float PrefetchMinLeadMeters = 400f;
+
+        [Tooltip("Потолок узлов в префетч-обходе. Он идёт поверх основного, и " +
+                 "без отдельного лимита съел бы весь MaxNodes.")]
+        [Min(16)]
+        public int MaxPrefetchNodes = 512;
+
+        [Tooltip("Сколько префетч-узлов максимум ждут в очереди на постройку.")]
+        [Min(0)]
+        public int MaxPrefetchQueued = 256;
+
+        [Tooltip("В тирах Fast/Extreme строить чанк вчетверо реже (res/2) и " +
+                 "достраивать до полного, когда очередь опустеет. Экономит " +
+                 "в четыре раза вершины на чанк, но без прогрессивного " +
+                 "уточнения видно мыло — поэтому за флагом.")]
+        public bool TierHalveResolution;
+
         [Header("Декор: высота и скорость")]
         [Tooltip("М/с, выше которых новые сборки декора не запускаются. На " +
                  "такой скорости игрок проезжает поле быстрее, чем декор успевает " +
@@ -479,6 +557,13 @@ namespace Galilego.Universe
             public int Depth;
             public Vector3d CenterAstro;
             public float BoundsRadius;
+            /// <summary>Разрешение сетки, по которому реально построен этот
+            /// меш. Нужен для прогрессивного уточнения: в быстром тире чанк
+            /// строится вчетверо реже, и когда очередь пустеет, узлы с
+            /// Res меньше ResolutionForDepth(Depth) ставятся на перестройку.
+            /// Без этого поля нечем отличить «построен полностью» от «построен
+            /// огрублённо».</summary>
+            public int Res;
             /// <summary>Время (Time.unscaledTime), когда чанк последний раз был
             /// в desired или в keep. По нему LRU-выгрузка выбирает, кого убрать
             /// первым. Именно время, а не номер кадра: при просадке до 10 fps
@@ -728,6 +813,65 @@ namespace Galilego.Universe
         private bool paramsAlive;
 
         private Vector3 lastCameraPosition;
+
+        // ===== [ФАЗА 3] Тиры качества и префетч =====
+        private enum MotionTier
+        {
+            Normal,
+            Fast,
+            Extreme,
+        }
+
+        private MotionTier motionTier;
+        private float motionTierSince;
+        private Vector3 smoothedSurfaceVelocity;
+        private Vector3 predictedCamera;
+        private float predictedLeadMeters;
+
+        /// <summary>Отдельный результат префетч-обхода. Свой список и своя
+        /// пара множеств гистерезиса: если префетч писал бы в общие, он
+        /// сдвигал бы на кадр решения основного обхода, и узлы мерцали бы на
+        /// границе LOD.</summary>
+        private readonly List<Node> prefetchDesired = new List<Node>();
+        private readonly HashSet<long> prefetchSplitNodes = new HashSet<long>();
+        private readonly HashSet<long> prefetchSplitNext = new HashSet<long>();
+        private readonly HashSet<long> prefetchKeep = new HashSet<long>();
+
+        /// <summary>Потолок глубины под текущий тир. НИКОГДА не должен уходить
+        /// в ResolutionForDepth: тот считает stepsBelowFinest от MaxDepth, и
+        /// если тир начнёт там же подменять MaxDepth, у уже построенного узла
+        /// поменяется сетка и он уйдёт в бесконечную перестройку.</summary>
+        private int EffectiveMaxDepth
+        {
+            get
+            {
+                if (!EnableQualityTiers)
+                {
+                    return MaxDepth;
+                }
+
+                int drop = motionTier == MotionTier.Extreme
+                    ? TierDepthDropExtreme
+                    : (motionTier == MotionTier.Fast ? TierDepthDropFast : 0);
+                return System.Math.Max(1, MaxDepth - drop);
+            }
+        }
+
+        private float EffectiveSplitFactor
+        {
+            get
+            {
+                if (!EnableQualityTiers)
+                {
+                    return SplitFactor;
+                }
+
+                float scale = motionTier == MotionTier.Extreme
+                    ? TierSplitScaleExtreme
+                    : (motionTier == MotionTier.Fast ? TierSplitScaleFast : 1f);
+                return SplitFactor * scale;
+            }
+        }
         private readonly List<DecorBuildSession> decorBuildSessions = new List<DecorBuildSession>();
         private readonly List<BurstDecorDraw> burstDecorDraws = new List<BurstDecorDraw>();
         private MaterialPropertyBlock decorDrawPropertyBlock;
@@ -1323,6 +1467,13 @@ namespace Galilego.Universe
 
                 SurfacePerf.DesiredNodes = desired.Count;
 
+                // [ФАЗА 3] Тир по скорости и предсказанная точка считаются ДО
+                // обхода: EffectiveMaxDepth и EffectiveSplitFactor читаются
+                // прямо в Traverse, а префетч идёт вторым проходом по
+                // предсказанной камере.
+                UpdateMotionTier(surfaceVelocityLocal.magnitude);
+                UpdatePredictedCamera(cameraPosition);
+
                 // Р—Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ РїРѕРґСЂР°Р·Р±РёРµРЅРёРµ РєР°РґСЂР° вЂ” Р±Р°Р·Р° РіРёСЃС‚РµСЂРµР·РёСЃР° РІ Traverse
                 // РЅР° СЃР»РµРґСѓСЋС‰РµРј РєР°РґСЂРµ, С‡С‚РѕР±С‹ СѓР·РµР» РЅРµ РґСЂРѕР±РёР»СЃСЏ/СЃР»РёРІР°Р»СЃСЏ РєР°Р¶РґС‹Р№ РєР°РґСЂ.
                 splitNodes.Clear();
@@ -1389,7 +1540,8 @@ namespace Galilego.Universe
                 terrainTrisNow += ChunkTriangleCount(wanted.Depth);
             }
 
-            PumpChunkBuilds();
+                PumpChunkBuilds();
+                EnqueuePrefetchChunks(cameraPosition);
 
             buildClock.Stop();
             SurfacePerf.ChunksBuilt = built;
@@ -1490,6 +1642,30 @@ namespace Galilego.Universe
                         fresh.LastKeepTime = Time.unscaledTime;
                     }
                 }
+
+                // [ФАЗА 2.5] Размер keep и «сколько узлов desired попало в
+                // keep» считаются ЗДЕСЬ, одним проходом, а не внутри
+                // EvictIfNeeded. Раньше счётчик ставился только в выгрузке, и
+                // когда она выходила раньше времени (кэш не превышал лимит),
+                // значение оставалось нулевым. Из-за этого в замерах выходило
+                // keep меньше, чем узлов в desired, и active не совпадал с
+                // visible — судить по таким цифрам было нельзя.
+                //
+                // По построению keep ⊇ desired∩chunks, поэтому DesiredInKeep
+                // обязано равняться VisibleChunks того же кадра. Если не
+                // равняется — между этими точками изменился кэш, и на экране
+                // действительно есть дыры.
+                int desiredInKeep = 0;
+                for (int i = 0; i < desired.Count; i++)
+                {
+                    if (keep.Contains(NodeId(desired[i])))
+                    {
+                        desiredInKeep++;
+                    }
+                }
+
+                SurfacePerf.KeepCount = keep.Count;
+                SurfacePerf.DesiredInKeep = desiredInKeep;
 
                 // [ФАЗА 0] Активных чанков обычно больше, чем узлов в desired:
                 // разница — предки, оставленные видимыми как затычки. Большая
@@ -1674,6 +1850,102 @@ namespace Galilego.Universe
         /// <summary>Обёртка ради маркера: на скорости этот проход — O(чанки × слои)
         /// каждый кадр, и без отдельного счётчика не видно, в какую долю кадра он
         /// входит.</summary>
+        private void UpdateMotionTier(float speed)
+        {
+            if (!EnableQualityTiers)
+            {
+                motionTier = MotionTier.Normal;
+                SurfacePerf.MotionTier = 0;
+                return;
+            }
+
+            MotionTier want = speed > TierExtremeSpeed
+                ? MotionTier.Extreme
+                : (speed > TierFastSpeed ? MotionTier.Fast : MotionTier.Normal);
+
+            // Вверх — сразу: чем быстрее летишь, тем хуже становится без этого.
+            // Вниз — только через задержку, иначе около порога скорость дрожит
+            // и LOD флапает каждый кадр.
+            if (want > motionTier)
+            {
+                motionTier = want;
+                motionTierSince = Time.unscaledTime;
+            }
+            else if (want < motionTier
+                && Time.unscaledTime - motionTierSince > TierDownDelaySeconds)
+            {
+                motionTier = want;
+                motionTierSince = Time.unscaledTime;
+            }
+
+            SurfacePerf.MotionTier = (int)motionTier;
+        }
+
+        /// <summary>
+        /// Предсказанная позиция камеры на PrefetchSeconds вперёд.
+        ///
+        /// surfaceVelocityLocal живёт в body-fixed кадре, а камера — в
+        /// рендер-кадре, поэтому скорость переводится поворотом тела. Без
+        /// этого поворота префетч смотрит в другую сторону, и на планете с
+        /// собственным вращением ошибка была бы километровой.
+        ///
+        /// Скорость сглаживается: одиночный скачок в один кадр при 2 км/с — это
+        /// 40 м пройденного пути, и решение «префетчить вот туда» по такому
+        /// выбросу металось бы.
+        /// </summary>
+        private void UpdatePredictedCamera(Vector3 cameraPosition)
+        {
+            float smooth = Mathf.Max(0.01f, PrefetchVelSmoothSeconds);
+            float blend = 1f - Mathf.Exp(-Time.deltaTime / smooth);
+            smoothedSurfaceVelocity = Vector3.Lerp(
+                smoothedSurfaceVelocity, surfaceVelocityLocal, blend);
+
+            float leadSeconds = Mathf.Clamp(PrefetchSeconds, 0f, 3f);
+            Vector3 lead = currentBodyRotation * (smoothedSurfaceVelocity * leadSeconds);
+
+            // На малой скорости префетч бесполезен: смещение в метры, а узлы
+            // не успевают понадобиться. Порог снизу не даёт префетчу жечь
+            // бюджет узлов, стоя на месте.
+            if (lead.magnitude < PrefetchMinLeadMeters)
+            {
+                lead = Vector3.zero;
+            }
+
+            predictedLeadMeters = lead.magnitude;
+            predictedCamera = cameraPosition + lead;
+        }
+
+        /// <summary>
+        /// Второй обход — префетч. Идёт по предсказанной точке, пишет в свой
+        /// список и НЕ трогает desired: то, что не видно сейчас, не должно
+        /// влиять на отрисовку.
+        /// </summary>
+        private void UpdatePrefetchPass()
+        {
+            if (!PrefetchEnabled || predictedLeadMeters <= 0f)
+            {
+                prefetchDesired.Clear();
+                return;
+            }
+
+            prefetchDesired.Clear();
+            prefetchSplitNext.Clear();
+            for (int face = 0; face < CubeSphere.FaceCount; face++)
+            {
+                TraverseInto(
+                    face, 0, 0, 0, predictedCamera,
+                    prefetchDesired, prefetchSplitNodes, prefetchSplitNext,
+                    MaxPrefetchNodes, EffectiveMaxDepth, EffectiveSplitFactor);
+            }
+
+            prefetchSplitNodes.Clear();
+            prefetchSplitNodes.UnionWith(prefetchSplitNext);
+
+            // Гистерезис коммитится ПОСЛЕ обхода — так слияние отстаёт на кадр,
+            // и без префетча так же (см. коммит splitNodes после Traverse).
+            prefetchSplitNext.Clear();
+        }
+
         private void UpdateDecorCollision()
         {
             using (SurfacePerf.UpdateDecorCollisionMarker.Auto())
@@ -1872,7 +2144,33 @@ namespace Galilego.Universe
             }
         }
 
+        /// <summary>
+        /// Обход quadtree для ОТРИСОВКИ. Тонкая обёртка над обобщённым
+        /// обходом: пишет в desired, читает гистерезис прошлого кадра и
+        /// пользуется текущим тиром качества.
+        /// </summary>
         private void Traverse(int face, int depth, int ix, int iy, Vector3 cameraPosition)
+        {
+            TraverseInto(
+                face, depth, ix, iy, cameraPosition,
+                desired, splitNodes, splitNext, MaxNodes, EffectiveMaxDepth, EffectiveSplitFactor);
+        }
+
+        /// <summary>
+        /// Обобщённый обход. Префетч-проход отличается от основного только
+        /// точкой старта, набором результатов, парой множеств гистерезиса,
+        /// потолком глубины и бюджетом узлов — поэтому он идёт через тот же
+        /// код, а не через его копию.
+        ///
+        /// Гистерезис: splitRead — ПРОШЛОГО кадра, splitWrite — текущего.
+        /// Порядок «записать, потом скоммитить» даёт слиянию отставание на кадр,
+        /// и именно этим гасится LOD-флап. Префетч обязан иметь такую же пару
+        /// множеств, иначе он дёргал бы решения основного обхода.
+        /// </summary>
+        private void TraverseInto(
+            int face, int depth, int ix, int iy, Vector3 cameraPosition,
+            List<Node> output, HashSet<long> splitRead, HashSet<long> splitWrite,
+            int nodeBudget, int maxDepth, float splitFactor)
         {
             Vector3d dir = CubeSphere.NodeCenterDirection(face, depth, ix, iy);
             Vector3 worldCenter = NodeRenderPosition(dir * body.Radius);
@@ -1908,14 +2206,14 @@ namespace Galilego.Universe
             }
 
             bool split;
-            if (depth < MaxDepth && desired.Count + 4 < MaxNodes)
+            if (depth < maxDepth && output.Count + 4 < nodeBudget)
             {
                 // Р“РёСЃС‚РµСЂРµР·РёСЃ: РґРµР»РёРј РЅР° splitDistance, Р° СЃР»РёРІР°РµРј С‚РѕР»СЊРєРѕ РєРѕРіРґР° СѓС€Р»Рё
                 // Р·Р°РјРµС‚РЅРѕ РґР°Р»СЊС€Рµ (Г—MergeHysteresis). РњРµР¶РґСѓ РїРѕСЂРѕРіР°РјРё РґРµСЂР¶РёРј РїСЂРѕС€Р»С‹Р№
                 // СѓСЂРѕРІРµРЅСЊ вЂ” РёРЅР°С‡Рµ СѓР·РµР» В«РґСЂРѕР±РёС‚СЃСЏ/СЃР»РёРІР°РµС‚СЃСЏВ» РєР°Р¶РґС‹Р№ РєР°РґСЂ (LOD-С„Р»Р°Рї,
                 // СЃРёР»СЊРЅРµРµ Р·Р°РјРµС‚РЅС‹Р№ РЅР° СЃРєРѕСЂРѕСЃС‚Рё).
-                double splitDistance = nodeSize * SplitFactor;
-                split = splitNodes.Contains(NodeId(face, depth, ix, iy))
+                double splitDistance = nodeSize * splitFactor;
+                split = splitRead.Contains(NodeId(face, depth, ix, iy))
                     ? closestDistance < splitDistance * MergeHysteresis
                     : closestDistance < splitDistance;
             }
@@ -1926,15 +2224,19 @@ namespace Galilego.Universe
 
             if (split)
             {
-                splitNext.Add(NodeId(face, depth, ix, iy));
-                Traverse(face, depth + 1, (ix * 2) + 0, (iy * 2) + 0, cameraPosition);
-                Traverse(face, depth + 1, (ix * 2) + 1, (iy * 2) + 0, cameraPosition);
-                Traverse(face, depth + 1, (ix * 2) + 0, (iy * 2) + 1, cameraPosition);
-                Traverse(face, depth + 1, (ix * 2) + 1, (iy * 2) + 1, cameraPosition);
+                splitWrite.Add(NodeId(face, depth, ix, iy));
+                TraverseInto(face, depth + 1, (ix * 2) + 0, (iy * 2) + 0, cameraPosition,
+                    output, splitRead, splitWrite, nodeBudget, maxDepth, splitFactor);
+                TraverseInto(face, depth + 1, (ix * 2) + 1, (iy * 2) + 0, cameraPosition,
+                    output, splitRead, splitWrite, nodeBudget, maxDepth, splitFactor);
+                TraverseInto(face, depth + 1, (ix * 2) + 0, (iy * 2) + 1, cameraPosition,
+                    output, splitRead, splitWrite, nodeBudget, maxDepth, splitFactor);
+                TraverseInto(face, depth + 1, (ix * 2) + 1, (iy * 2) + 1, cameraPosition,
+                    output, splitRead, splitWrite, nodeBudget, maxDepth, splitFactor);
                 return;
             }
 
-            desired.Add(new Node { Face = face, Depth = depth, Ix = ix, Iy = iy });
+            output.Add(new Node { Face = face, Depth = depth, Ix = ix, Iy = iy });
         }
 
         /// <summary>
@@ -2092,6 +2394,106 @@ namespace Galilego.Universe
             Vector3 worldCenter = NodeRenderPosition(dir * body.Radius);
             float distance = Vector3.Distance(lastCameraPosition, worldCenter);
             return System.Math.Max(0d, distance - (nodeSize * 0.70710678d));
+        }
+
+        /// <summary>
+        /// Ставит в очередь префетч-узлы. Приоритет ХУЖЕ листа и хуже дыры:
+        /// префетч — это оптимизация будущего, а не то, что видно сейчас.
+        ///
+        /// Их id добавляются в prefetchKeep, а не в keep: keep определяет
+        /// ВИДИМОСТЬ, и префетч-узлы не должны становиться видимыми. Но и
+        /// выгружать их, пока они стоят в очереди, нельзя — иначе они будут
+        /// утилизированы и построены по кругу.
+        ///
+        /// Отсев за спиной камеры (конус FOV+30°) применяется ТОЛЬКО здесь.
+        /// В desired попадать не должен ни при каких условиях: узел вне кадра
+        /// всё равно рисуется, если он в keep.
+        /// </summary>
+        private void EnqueuePrefetchChunks(Vector3 cameraPosition)
+        {
+            prefetchKeep.Clear();
+            if (!PrefetchEnabled || prefetchDesired.Count == 0)
+            {
+                SurfacePerf.PrefetchQueued = 0;
+                return;
+            }
+
+            Vector3 forward = cameraPosition - bodyRenderPosition;
+            float backConeCos = BuildBackConeCos();
+
+            int queued = 0;
+            for (int i = 0; i < prefetchDesired.Count; i++)
+            {
+                Node node = prefetchDesired[i];
+                long id = NodeId(node);
+                if (chunks.ContainsKey(id))
+                {
+                    continue;
+                }
+
+                prefetchKeep.Add(id);
+                if (queued >= MaxPrefetchQueued)
+                {
+                    continue;
+                }
+
+                if (backConeCos > -1f)
+                {
+                    Vector3d dir = CubeSphere.NodeCenterDirection(node.Face, node.Depth, node.Ix, node.Iy);
+                    Vector3 toNode = NodeRenderPosition(dir * body.Radius) - cameraPosition;
+                    if (toNode.sqrMagnitude > 1e-6f && forward.sqrMagnitude > 1e-6f
+                        && Vector3.Dot(toNode.normalized, forward.normalized) < backConeCos)
+                    {
+                        // Задний конус: камера сюда не посмотрит за время
+                        // упреждения, строить нечего.
+                        continue;
+                    }
+                }
+
+                EnqueuePrefetchChunk(node);
+                queued++;
+            }
+
+            SurfacePerf.PrefetchQueued = queued;
+            SurfacePerf.PrefetchNodes = prefetchDesired.Count;
+        }
+
+        /// <summary>Косинус угла «не строим за спиной». FOV у камеры
+        /// вертикальный, а конус трёхмерный, поэтому берём половину диагонали:
+        /// tan(diag/2) = tan(v/2)·sqrt(1 + (h/v)²), плюс запас в 30°. Если
+        /// камеры нет, отсев не применяется (косинус -1 = «никогда»).</summary>
+        private float BuildBackConeCos()
+        {
+            Camera cam = Camera.main;
+            if (cam == null)
+            {
+                return -1f;
+            }
+
+            float halfV = cam.fieldOfView * 0.5f * (Mathf.PI / 180f);
+            float aspect = cam.aspect > 0.01f ? cam.aspect : 1.7778f;
+            float halfDiag = Mathf.Atan(Mathf.Tan(halfV) * Mathf.Sqrt(1f + aspect * aspect));
+            halfDiag += 30f * (Mathf.PI / 180f);
+            return Mathf.Cos(Mathf.Clamp(halfDiag, 0f, 3.14159f));
+        }
+
+        private void EnqueuePrefetchChunk(Node node)
+        {
+            long id = NodeId(node);
+            if (chunks.ContainsKey(id) || !queuedChunkIds.Add(id))
+            {
+                return;
+            }
+
+            chunkBuildQueue.Add(new ChunkQueueItem
+            {
+                Node = node,
+                Id = id,
+                // 2 — хуже листа (1) и хуже дыры (0).
+                Priority = 2f,
+                Distance = (float)ChunkDistanceFromCamera(node),
+                EnqueuedFrame = Time.frameCount
+            });
         }
 
         /// <summary>
@@ -2361,6 +2763,9 @@ namespace Galilego.Universe
             // он тут же становился виден и рисовался серой дырой, а повторно не
             // строился, потому что «уже есть в chunks».
             chunk.CenterAstro = request.CenterAstro;
+            chunk.Node = node;
+            chunk.Depth = node.Depth;
+            chunk.Res = request.Res;
             chunk.Go.transform.position = NodeRenderPosition(request.CenterAstro);
             chunk.Go.transform.rotation = currentBodyRotation;
 
@@ -2499,6 +2904,8 @@ namespace Galilego.Universe
             chunk.Go.transform.localScale = Vector3.one;
             chunk.Node = node;
             chunk.Depth = node.Depth;
+            // Синхронный путь всегда строит по полному разрешению глубины.
+            chunk.Res = ResolutionForDepth(node.Depth);
             chunk.BoundsRadius = (float)(body.Radius * 1.5707963267948966d / (1 << node.Depth) * 0.70710678d);
             MeshFilter filter = chunk.Go.AddComponent<MeshFilter>();
             chunk.Renderer = chunk.Go.AddComponent<MeshRenderer>();
@@ -2862,10 +3269,17 @@ namespace Galilego.Universe
         /// Дешёвые флаги рендерера чанка. Ничего из этого не меняет картинку на
         /// земле, но убирает работу, которой на 1000+ чанков набегает много.
         ///
-        /// motionVectorGenerationMode: чанк каждый кадр едет трансформом
-        /// (floating origin + движение камеры), и без этого флага Unity
-        /// считает для него motion vectors, которых при сглаживании на
-        /// изображении нет и которые всё равно не используются.
+        /// motionVectorGenerationMode: чанок каждый кадр едет трансформом
+        /// (floating origin + движение камеры), и без этого флага Unity считает
+        /// для него motion vectors, которых на картинке нет.
+        ///
+        /// Уточнение, которое стоит знать: камера в проекте на TAA
+        /// (OutdoorsScene.unity antialiasing: 2), а не на SMAA, и при TAA
+        /// motion vectors ЗНАЧИМЫ — без них временное сглаживание не знает, что
+        /// сдвинулся фон. Но в активном HDRP-ассете они выключены
+        /// (supportMotionVectors: 0), то есть проход не считается вовсе, и
+        /// флаг сейчас ничего не экономит. Он поставлен, чтобы при включении
+        /// motion vectors чанки по умолчанию не попадали в лишнюю работу.
         ///
         /// probe usage off: рельеф не динамический, свет и отражения он не
         /// принимает — значения проб в нём не читаются.
@@ -6158,7 +6572,6 @@ namespace Galilego.Universe
                 }
             }
 
-            SurfacePerf.KeepCount = keep.Count;
             SurfacePerf.EvictCandidates = toEvict.Count;
             if (toEvict.Count == 0)
             {
