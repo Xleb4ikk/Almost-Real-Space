@@ -249,7 +249,7 @@ namespace Galilego.Universe
         /// номера старых колонок не поехали.</summary>
         public const string PerfLogColumns =
             "\tbuiltPerFrame\tbuildMs\tvisibleChunks\tcachedChunks\tdesiredNodes\ttris\t"
-            + "gcBytesPerFrame\tmeshBalance\tdecorAltM\tdecorSpeed";
+            + "gcBytesPerFrame\tmeshBalance\tdecorAltM\tdecorSpeed\tchunksFinalized";
 
         /// <summary>Значения тех же колонок. Порядок обязан совпадать с
         /// <see cref="PerfLogColumns"/> — это единственное место, где они связаны.</summary>
@@ -265,7 +265,13 @@ namespace Galilego.Universe
             line.Append(GcBytes.ToString(inv)).Append('\t');
             line.Append(MeshBalance.ToString(inv)).Append('\t');
             line.Append(DecorAltitude.ToString("F0", inv)).Append('\t');
-            line.Append(DecorSpeed.ToString("F0", inv));
+            line.Append(DecorSpeed.ToString("F0", inv)).Append('\t');
+
+            // Та же причина, что и в HUD: колонка builtPerFrame читает
+            // ChunksBuilt, который при AsyncChunkBuild = 1 всегда ноль.
+            // chunksFinalized — единственный честный счётчик постройки в
+            // async-режиме, и в PerfLog его тоже не было.
+            line.Append(ChunksFinalized.ToString(inv));
         }
 
         /// <summary>Абсолютные (не покадровые) числа — раз в 2 с, в конец строки.</summary>
@@ -412,6 +418,18 @@ namespace Galilego.Universe
             hudBuilder.Append('\n');
             hudBuilder.Append("за кадр: построено ");
             hudBuilder.Append(ChunksBuilt.ToString(inv));
+
+            // ChunksBuilt инкрементируется ТОЛЬКО в синхронной ветке
+            // (PlanetSurfaceRenderer.cs, условие firstFrame || !AsyncChunkBuild),
+            // а при AsyncChunkBuild = 1 он структурно равен нулю — при 1361
+            // активном узле HUD писал «построено 0», и это выглядело как
+            // поломка конвейера. Честный счётчик финализации при этом рос
+            // (ChunksFinalized, PlanetSurfaceRenderer.cs, конец FinalizeChunk),
+            // но не печатался нигде. Поэтому печатаем оба: «построено» —
+            // синхронная постройка, «финализировано» — асинхронная.
+            hudBuilder.Append(" (финализировано всего ");
+            hudBuilder.Append(ChunksFinalized.ToString(inv));
+            hudBuilder.Append(')');
             hudBuilder.Append(", ");
             hudBuilder.Append(BuildChunkMs.ToString("F2", inv));
             hudBuilder.Append(" мс, GC ");
@@ -549,6 +567,7 @@ namespace Galilego.Universe
         private int sampleCount;
         private int sampleLimit;
         private int chunksBuiltTotal;
+        private int lastChunksFinalized;
         private float buildMsTotal;
         private long gcBytesTotal;
         private long decorPoolsTotal;
@@ -641,7 +660,20 @@ namespace Galilego.Universe
                 frameSamples[sampleCount++] = Time.unscaledDeltaTime * 1000f;
             }
 
-            chunksBuiltTotal += SurfacePerf.ChunksBuilt;
+            // ChunksFinalized, а не ChunksBuilt: тот растёт только в синхронной
+            // ветке и при AsyncChunkBuild = 1 всегда ноль, из-за чего колонки
+            // chunksBuilt / chunksPerSec / buildMsPerChunk в CSV были нулями
+            // при заведомо идущей сборке. ChunksFinalized — монотонный счётчик
+            // с начала сессии, поэтому за кадр прибавляем РАЗНОСТЬ, иначе он
+            // складывался бы сам с собой (в SurfaceCaptureTool та же ошибка).
+            int finalizedNow = SurfacePerf.ChunksFinalized;
+            int finalizedDelta = finalizedNow - lastChunksFinalized;
+            if (finalizedDelta > 0)
+            {
+                chunksBuiltTotal += finalizedDelta;
+            }
+
+            lastChunksFinalized = finalizedNow;
             buildMsTotal += SurfacePerf.BuildChunkMs;
             gcBytesTotal += SurfacePerf.GcBytes;
             decorPoolsTotal += SurfacePerf.DecorPools;
@@ -806,6 +838,10 @@ namespace Galilego.Universe
             phaseTime = 0f;
             sampleCount = 0;
             chunksBuiltTotal = 0;
+
+            // Счётчик монотонный с начала сессии: без этого якоря первая же
+            // прибавка отсчитала бы всю историю сессии как builds этого замера.
+            lastChunksFinalized = SurfacePerf.ChunksFinalized;
             buildMsTotal = 0f;
             gcBytesTotal = 0;
             decorPoolsTotal = 0;

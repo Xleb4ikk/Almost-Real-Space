@@ -625,7 +625,7 @@ MonoBehaviour:
     X: 0
     Y: 0
     Z: 1
-  TerrainPreset: {fileID: 11400000, guid: 08d29115435911343a409aa5906089a2, type: 2}
+  TerrainPreset: {fileID: 11400000, guid: 3b7f1d0c9a4e42f8b6c15e7a0d2b8f46, type: 2}
   AtmospherePreset: {fileID: 11400000, guid: 04cd67a1c36ca9249926bf7a20997ff8, type: 2}
   CloudsPreset: {fileID: 11400000, guid: d3bc22e4e10e05047ae0493324cd61fc, type: 2}
   GroundDecorPreset: {fileID: 11400000, guid: b70dba692e6607b4985ce5eaa0a0df5e, type: 2}
@@ -733,6 +733,7 @@ MonoBehaviour:
   BuildsPerFrame: 64
   DecorBuildsPerFrame: 3
   DecorBuildBudgetMs: 3
+  DecorRescanCooldownSeconds: 0.2
   MaxDecorBuildSessions: 4
   LogDecorAllocation: 0
   MaxNodes: 12000
@@ -743,6 +744,23 @@ MonoBehaviour:
   MaxChunkJobsInFlight: 6
   ChunkFinalizeBudgetMs: 1.5
   MaxChunkQueueAgeFrames: 6
+  EnableQualityTiers: 1
+  TierFastSpeed: 250
+  TierExtremeSpeed: 1200
+  TierDownDelaySeconds: 1.5
+  TierDepthDropFast: 1
+  TierDepthDropExtreme: 2
+  TierSplitScaleFast: 0.9
+  TierSplitScaleExtreme: 0.8
+  TierAutoRaise: 0
+  TierTargetFrameMs: 22
+  PrefetchEnabled: 1
+  PrefetchSeconds: 1.5
+  PrefetchVelSmoothSeconds: 0.15
+  PrefetchMinLeadMeters: 400
+  MaxPrefetchNodes: 512
+  MaxPrefetchQueued: 256
+  TierHalveResolution: 0
   DecorPauseSpeed: 120
   DecorShadowMaxAltitude: 300
   DecorSpeedSmoothSeconds: 0.25
@@ -930,6 +948,7 @@ GameObject:
   - component: {fileID: 1332194275}
   - component: {fileID: 1332194274}
   - component: {fileID: 1332194277}
+  - component: {fileID: 1332194278}
   m_Layer: 0
   m_Name: Simulation
   m_TagString: Untagged
@@ -1020,6 +1039,30 @@ MonoBehaviour:
   SurfaceFadeMeters: 3
   EyeHeightMeters: 2
   SwimEyeHeightMeters: 0.5
+--- !u!114 &1332194278
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1332194273}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 07ab1a1e2ae87b24d811dda250e663be, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.UnderwaterViewFog
+  Effect: {fileID: 1332194277}
+  EffectCamera: {fileID: 0}
+  SigmaPerMeter: {x: 0.4, y: 0.12, z: 0.08}
+  WaterColor: {r: 0.02, g: 0.16, b: 0.3, a: 1}
+  Ambient: 0.55
+  SunShapeFloor: 0.35
+  DitherAmount: 1
+  SunPenetration: 1
+  DownwardDarkening: 0.6
+  TransitionMeters: 0.8
+  Enabled: 1
+  DebugMode: 0
 --- !u!1 &1454958306
 GameObject:
   m_ObjectHideFlags: 0

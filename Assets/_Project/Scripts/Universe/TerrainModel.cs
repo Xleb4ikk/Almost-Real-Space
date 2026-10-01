@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Galilego.Core;
 using Unity.Collections;
 using Unity.Mathematics;
@@ -133,6 +133,48 @@ namespace Galilego.Universe
         /// <summary>Доля ridged-шума 0..1 (горные хребты, только на континентах). 0 = выключен (legacy).</summary>
         public double RidgedMix = 0d;
 
+        /// <summary>Сборка ridged-составляющей: 0 = сумма октав (legacy), 1 = multifractal (ветвящиеся хребты).</summary>
+        public int RidgedMode = (int)TerrainRidgedMode.Legacy;
+
+        /// <summary>Заострение гребня в multifractal, квантуется в целое 1..4. 2 = классика.</summary>
+        public double RidgedSharpness = 2d;
+
+        /// <summary>Насколько сильно вес верхней октавы зависит от нижней (ridged multifractal).</summary>
+        public double RidgedWeightGain = 2d;
+
+        /// <summary>
+        /// Ремапа уровня гребня в multifractal: s^γ. 1 = без ремапы. γ &lt; 1
+        /// поднимает гребни к верху шкалы [0,1], γ &gt; 1 прижимает к низу.
+        /// На пресете подбирается по доле суши; остаток по высоте гасится
+        /// AmplitudeMeters, не этим параметром.
+        /// </summary>
+        public double RidgedGamma = 1d;
+
+        /// <summary>Сила домена по октавам 0..1 для ФОРМЫ рельефа. 0 = выключено.</summary>
+        public double SlopeDamp = 0d;
+
+        /// <summary>Источник наклона для домена: Accum (по высоте) или Gradient (по крутизне).</summary>
+        public int SlopeDampMode = (int)TerrainSlopeDampMode.Off;
+
+        /// <summary>
+        /// Базовый примитив: 0 = value noise (legacy), 1 = градиентный Перлин.
+        ///
+        /// Дефолт — legacy НЕ из лени, а потому что Unity подставляет
+        /// инициализатор поля в ассеты, где поля ещё нет, и побитовые проверки
+        /// T77a/T82a/T82b/T82h висят на дефолтных параметрах. Сменить дефолт
+        /// класса молча — значит сломать их, не заметив. Перлин включается
+        /// явно в пресете.
+        /// </summary>
+        public int NoiseStyle = (int)TerrainNoiseStyle.Value;
+
+
+        /// <summary>
+        /// Примитив для МАСОК и warp, отдельно от формы. 0 = следует NoiseStyle.
+        /// Поставка в Value срезает цену: value noise втрое быстрее градиентного,
+        /// а маска continent читается как квантиль и после нормировки по RMS
+        /// (T111) от примитива не зависит.
+        /// </summary>
+        public int MaskNoiseStyle = -1;
         /// <summary>
         /// Сила равнин 0..1: в зонах маски рельеф стягивается к низкому плато.
         /// 0 = выключено (legacy, бит-в-бит). Равнины только на континентах.
@@ -153,6 +195,27 @@ namespace Galilego.Universe
 
         /// <summary>Нормализованная высота плато равнин (доля AmplitudeMeters).</summary>
         public double PlainElevation = 0.1d;
+
+        /// <summary>
+        /// Мягкое сжатие верхнего хвоста формы, в нормированных единицах.
+        /// TailKnee <= 0 (по умолчанию) — выключено, поведение прежнее.
+        /// Нужно ridged-профилям: у них тяжёлый хвост, и калибровка по p99
+        /// задирает вершины. Режет только хвост выше TailThreshold.
+        /// </summary>
+        public double TailKnee = 0d;
+
+        /// <summary>Порог сжатия хвоста (нормированные единицы).</summary>
+        public double TailThreshold = 0d;
+
+        /// <summary>
+        /// Мягкое сжатие нижнего (океанского) хвоста, нормированные единицы.
+        /// DepthKnee <= 0 (по умолчанию) — выключено. Зеркало TailKnee: режет
+        /// глубокое ложе, не трогая берег и шельф.
+        /// </summary>
+        public double DepthKnee = 0d;
+
+        /// <summary>Порог нижнего сжатия (нормированные единицы).</summary>
+        public double DepthThreshold = 0d;
 
         /// <summary>
         /// Высота пляжа над морем (м): ниже — песок и запрет спавна.
@@ -303,12 +366,24 @@ namespace Galilego.Universe
             ContinentSharpness = profile.ContinentSharpness;
             ContinentDepth = profile.ContinentDepth;
             RidgedMix = profile.RidgedMix;
+            RidgedMode = profile.RidgedMode;
+            RidgedSharpness = profile.RidgedSharpness;
+            RidgedWeightGain = profile.RidgedWeightGain;
+            RidgedGamma = profile.RidgedGamma;
+            SlopeDamp = profile.SlopeDamp;
+            SlopeDampMode = profile.SlopeDampMode;
+            NoiseStyle = profile.NoiseStyle;
+            MaskNoiseStyle = profile.MaskNoiseStyle;
             PlainMix = profile.PlainMix;
             PlainFrequency = profile.PlainFrequency;
             PlainOctaves = profile.PlainOctaves;
             PlainThreshold = profile.PlainThreshold;
             PlainSharpness = profile.PlainSharpness;
             PlainElevation = profile.PlainElevation;
+            TailKnee = profile.TailKnee;
+            TailThreshold = profile.TailThreshold;
+            DepthKnee = profile.DepthKnee;
+            DepthThreshold = profile.DepthThreshold;
             BeachHeightMeters = profile.BeachHeightMeters;
             BeachShelfAltitudeMeters = profile.BeachShelfAltitudeMeters;
             BeachShelfWidth = profile.BeachShelfWidth;

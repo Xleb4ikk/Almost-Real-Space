@@ -20,6 +20,14 @@ MonoBehaviour:
     Lacunarity: 2
     Gain: 0.5
     RidgedMix: 0.7
+    RidgedMode: 0
+    RidgedSharpness: 2
+    RidgedWeightGain: 2
+    RidgedGamma: 1
+    SlopeDamp: 0
+    SlopeDampMode: 0
+    NoiseStyle: 0
+    MaskNoiseStyle: -1
     ContinentFrequency: 4
     ContinentOctaves: 3
     ContinentThreshold: -0.1
@@ -31,6 +39,10 @@ MonoBehaviour:
     PlainThreshold: 0.05
     PlainSharpness: 0.25
     PlainElevation: 0.1
+    TailKnee: 0
+    TailThreshold: 0
+    DepthKnee: 0
+    DepthThreshold: 0
     BeachHeightMeters: 12
     BeachShelfAltitudeMeters: 8
     BeachShelfWidth: 0.08
