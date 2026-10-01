@@ -52,6 +52,36 @@ namespace Galilego.Universe
             "иначе на мелководье у берега голова на 2-метровом росте никогда не уходит под воду.")]
         public double SwimEyeHeightMeters = 0.5d;
 
+#if UNITY_EDITOR
+        /// <summary>
+        /// Инструмент съёмки (Editor/SurfaceCaptureTool) держит кадры «до/после»
+        /// на одном ракурсе, поэтому должен задавать взгляд напрямую.
+        ///
+        /// Почему хук, а не рефлексия в приватный lookDirection: LateUpdate
+        /// БЕЗУСЛОВНО перезаписывает transform.rotation каждый кадр (строка с
+        /// LookRotation ниже), поэтому снимок «куда смотрит камера» без
+        /// перехвата управления — лотерея, а тихая поломка после
+        /// переименования поля выглядела бы как «съёмка сломалась сама».
+        ///
+        /// Только редактор: в билде хука нет и код камеры не меняется.
+        /// </summary>
+        public static bool DebugLookOverride;
+
+        /// <summary>Взгляд при включённом <see cref="DebugLookOverride"/>, мировый.</summary>
+        public static Vector3 DebugLookDirection = Vector3.up;
+
+        /// <summary>
+        /// Сбросить настройки оверрайда. Вызывать перед уходом из Play,
+        /// иначе статик переживёт перезапуск домена и следующая сессия
+        /// стартует с зафиксированным взглядом.
+        /// </summary>
+        public static void ClearDebugLook()
+        {
+            DebugLookOverride = false;
+            DebugLookDirection = Vector3.up;
+        }
+#endif
+
         private Vector3 lookDirection;
         private Vector3 lastUp;
         private Vector3 lastFlatDirection;
@@ -62,6 +92,12 @@ namespace Galilego.Universe
 
         private void Start()
         {
+#if UNITY_EDITOR
+            // Проект входит в Play с DisableDomainReload, статики переживают
+            // сессию: оверрайд взгляда от прошлой съёмки иначе остался бы
+            // включённым и следующий заход в Play смотрел бы в потолок.
+            ClearDebugLook();
+#endif
             var hdCamera = GetComponent<UnityEngine.Rendering.HighDefinition.HDAdditionalCameraData>();
             if (hdCamera != null)
             {
@@ -161,6 +197,24 @@ namespace Galilego.Universe
                     + (UnityEngine.Application.isFocused ? "окно в фокусе" : "окно не в фокусе")
                     + (cursorReleasedByUser ? ", отпущен Esc" : "") + ")");
             }
+
+#if UNITY_EDITOR
+            // Инструмент съёмки: взгляд задаётся извне, мышь его не трогает.
+            // Ставим ПОСЛЕ TransportLook/ApplyMouse — оба переписывают
+            // lookDirection, и оверрайд должен быть последним словом. Иначе
+            // кадр «после» снимется под случайным поворотом мыши.
+            if (DebugLookOverride)
+            {
+                if (DebugLookDirection.sqrMagnitude > 1e-8f)
+                {
+                    lookDirection = DebugLookDirection.normalized;
+                    lastFlatDirection = Vector3.ProjectOnPlane(lookDirection, up);
+                }
+
+                hasLook = true;
+                lastUp = up;
+            }
+#endif
 
             // Опорная вертикаль для крена — локальная вертикаль. Когда взгляд
             // ей параллелен (солнце ровно в зените при спавне «в полдень»),

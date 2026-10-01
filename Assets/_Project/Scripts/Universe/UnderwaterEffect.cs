@@ -167,15 +167,25 @@ namespace Galilego.Universe
                         LocalUp = AstroFrame.ToSimulation(outward / outwardMagnitude);
                     }
 
-                    bool submerged = WaterQuery.IsSubmergedAt(
-                        body, observer, Runner.TimeSeconds, out double depth);
+                    // Глубина КАМЕРЫ под поверхностью — единственный вопрос для
+                    // визуального состояния. Раньше здесь стоял IsSubmergedAt,
+                    // который вдобавок требует, чтобы колонка под камерой была
+                    // водой (IsWaterAt: сырое дно ниже уровня моря). У берега и
+                    // над мелководьем это условие ложно, хотя камера под водой, и
+                    // тогда потолок рисовался ВЕРХНЕЙ веткой шейдера (пена и
+                    // screen-door dither) — это и есть «ужасная поверхность из-под
+                    // воды». Формула та же, что и в глобале шейдера
+                    // (PlanetSurfaceRenderer.UpdateUnderwaterCameraDepth), поэтому
+                    // картинка и затухание всегда решают одно и то же.
+                    double depth = WaterQuery.SubmersionDepthAt(body, observer, Runner.TimeSeconds);
+                    bool submerged = !double.IsNaN(depth) && depth > 0d;
                     if (camera == null)
                     {
                         float eyeHeight = Runner.PlayerMode == PlayerMode.Swimming
                             ? SwimEyeHeightMeters
                             : EyeHeightMeters;
                         depth -= eyeHeight;
-                        submerged = submerged && depth > 0d;
+                        submerged = depth > 0d;
                     }
 
                     if (Runner.SystemState != null && Runner.SystemState.Root != null)

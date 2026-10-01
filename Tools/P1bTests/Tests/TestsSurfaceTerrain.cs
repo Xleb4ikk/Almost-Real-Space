@@ -1187,6 +1187,17 @@ internal static partial class P1bTests
         return (a - b).Magnitude < 1e-12d;
     }
 
+    /// <summary>
+    /// Фикстура «как в игре». Источник истины — Assets/_Project/Profiles/Terrain/
+    /// EarthLike.asset, а не эта копия: расхождение ловит T117.
+    ///
+    /// Раньше здесь стояли ContinentDepth 0.9, ColorDetailFrequency 1500 и
+    /// ColorDetailStrength 0.35 — ни то, ни другое не совпадало с ассетом, и
+    /// замеры шума меряли конфигурацию, которую никто не грузит. Проверено, что
+    /// отличие по цвету НЕ нужно для T89: FineRoughness считает только
+    /// SampleHeight и цветовые маски не читает, так что проверка мелкомасштабного
+    /// рельефа на DetailFrequency/DetailMix к ColorDetail отношения не имеет.
+    /// </summary>
     private static HeightfieldTerrain SceneLikeTerrain()
     {
         return new HeightfieldTerrain
@@ -1202,7 +1213,7 @@ internal static partial class P1bTests
             ContinentOctaves = 3,
             ContinentThreshold = -0.1d,
             ContinentSharpness = 0.3d,
-            ContinentDepth = 0.9d,
+            ContinentDepth = 1.2d,
             RidgedMix = 0.7d,
             PlainMix = 0.85d,
             PlainFrequency = 1.8d,
@@ -1210,6 +1221,9 @@ internal static partial class P1bTests
             PlainThreshold = 0.05d,
             PlainSharpness = 0.25d,
             PlainElevation = 0.1d,
+            BeachHeightMeters = 12d,
+            BeachShelfAltitudeMeters = 8d,
+            BeachShelfWidth = 0.08d,
             DetailMix = 0d,
             DetailFrequency = 700d,
             DetailOctaves = 5,
@@ -1218,13 +1232,14 @@ internal static partial class P1bTests
             WarpOctaves = 2,
             ColorRockSlopeTan = 0.6d,
             ColorRockSlopeWidth = 0.15d,
+            ColorRockHeightMin = 0.4d,
             ColorSnowSlopeTan = 0.5d,
             ColorNoiseFrequency = 25d,
             ColorNoiseOctaves = 4,
             ColorNoiseStrength = 0.09d,
-            ColorDetailFrequency = 1500d,
+            ColorDetailFrequency = 400d,
             ColorDetailOctaves = 3,
-            ColorDetailStrength = 0.35d
+            ColorDetailStrength = 0.15d
         };
     }
 
@@ -2564,6 +2579,14 @@ internal static partial class P1bTests
         TerrainNoiseParams terrainParams = TerrainNoiseParams.FromTerrain(terrain);
 
         TerrainProfile legacyProfile = TerrainProfile.CreateEarthLike(1143000d);
+
+        // Полку у twin выключаем ЯВНО. Раньше это получалось само собой, потому
+        // что пресет её не задавал; после выравнивания CreateEarthLike с
+        // EarthLike.asset полка прописана в обоих, и разница между «с полкой» и
+        // «без полки» исчезла — pulled схлопывался в ноль. Тест не должен
+        // зависеть от того, что пресет чего-то не упоминает.
+        legacyProfile.BeachShelfAltitudeMeters = 0d;
+        legacyProfile.BeachShelfWidth = 0d;
         HeightfieldTerrain legacyTerrain = HeightfieldTerrain.FromProfile(legacyProfile, 24334543);
         TerrainNoiseParams legacyParams = TerrainNoiseParams.FromTerrain(legacyTerrain);
 
@@ -2881,9 +2904,23 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Сухая степь с зелёным фото (T104): живая жалоба — lat −51.03, lon 257.86,
-    /// relief 2732 м, t=0.284, wet=0.245, склон 0.29. Ковёр лезвий растёт на любой
-    /// земле зелёных высот (WetMin=0), деревья избегают лишь крайней пустыни
+    /// Сухая степь с зелёным фото (T104). Изначально жалоба была живая: lat
+    /// −51.03, lon 257.86, relief 2732 м, t=0.284, wet=0.245, склон 0.29.
+    ///
+    /// Сейчас 2732 м НЕ воспроизводится, и это важно понимать: 2732 м была
+    /// измерена на пресете, который ничем не совпадал с игровым. Пресет разошёлся
+    /// с EarthLike.asset в четырёх полях (ContinentDepth 0.9 против 1.2, поля
+    /// пляжа, ColorDetail 1500/0.35 против 400/0.15), тестовая фикстура
+    /// разошлась с пресетом ещё в шести, а источником истины является ассет —
+    /// его и грузит OutdoorsScene. После выравнивания всех трёх копий точка даёт
+    /// 2321 м.
+    ///
+    /// То есть 2321 м — регрессионный пин на ВЫРАВНЕННОЙ конфигурации, а НЕ
+    /// проверка исходной жалобы пользователя: жалоба была про другой рельеф.
+    /// Если 2732 м нужно вернуть, это правка ассета, а не константы в тесте.
+    ///
+    /// Ковёр лезвий растёт на любой земле зелёных высот (WetMin=0), деревья
+    /// избегают лишь крайней пустыни
     /// (WetMin=0.2): оба обязаны приниматься, камни — тоже.
     /// </summary>
     private static int Test104_DrySteppeVegetation()
@@ -2966,8 +3003,23 @@ internal static partial class P1bTests
 
         System.Console.WriteLine("DRYSTEPPE raw=" + raw.ToString("F0")
             + " grass=" + grassOk + " trees=" + treesOk + " rocks=" + rocksOk);
-        Check(System.Math.Abs(raw - 2732d) < 1d, "T104 dry-steppe-vegetation",
-            "точка пользователя сошлась по высоте: " + raw.ToString("F0"));
+        // Исходная жалоба — «рельеф 2732 м». Значение не воспроизводится и не
+        // может: 2732 м было измерено на пресете, расходившемся с игровым
+        // (ContinentDepth 0.9 против 1.2, поля пляжа, ColorDetail 1500/0.35
+        // против 400/0.15), и на фикстуре, расходившейся с пресетом ещё в
+        // шести полях. Точное число теперь 2321 м и служит регрессионным
+        // пином.
+        //
+        // САМА ЖАЛОБА проверяется неравенством, а не числом: точка обязана
+        // остаться сушей зелёных высот с пологим склоном, где трава и деревья
+        // растут. Именно это и было исходным требованием, и именно оно должно
+        // выполняться при любой смене генератора — иначе тест просто констатирует
+        // текущую конфигурацию, а её смысл теряется.
+        Check(System.Math.Abs(raw - 2321d) < 1d, "T104 dry-steppe-vegetation",
+            "регрессионный пин высоты: " + raw.ToString("F0") + " м (было 2321)");
+        Check(raw > 0d && raw < 4000d, "T104 dry-steppe-vegetation",
+            "жалоба по существу: точка суши на зелёных высотах, рельеф "
+            + raw.ToString("F0") + " м (исходная жалоба: 2732 м)");
         Check(grassOk && treesOk && rocksOk, "T104 dry-steppe-vegetation",
             "сухая степь зеленеет: трава=" + grassOk + " деревья=" + treesOk + " камни=" + rocksOk);
         return 0;

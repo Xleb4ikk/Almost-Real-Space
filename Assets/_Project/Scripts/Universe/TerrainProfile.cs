@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 
 namespace Galilego.Universe
@@ -95,6 +95,38 @@ namespace Galilego.Universe
         [Tooltip("Доля ridged-шума 0..1 (горные хребты, только на континентах). 0 = выключен.")]
         public double RidgedMix = 0d;
 
+        /// <summary>Сборка ridged-составляющей: 0 = сумма октав (legacy), 1 = multifractal (ветвящиеся хребты).</summary>
+        public int RidgedMode = (int)TerrainRidgedMode.Legacy;
+
+        /// <summary>Заострение гребня в multifractal, квантуется в целое 1..4. 2 = классика.</summary>
+        public double RidgedSharpness = 2d;
+
+        /// <summary>Насколько сильно вес верхней октавы зависит от нижней (ridged multifractal).</summary>
+        public double RidgedWeightGain = 2d;
+
+        /// <summary>
+        /// Ремапа уровня гребня в multifractal: s^γ. 1 = без ремапы. Подбирается
+        /// по доле суши, остаток по высоте гасится AmplitudeMeters.
+        /// </summary>
+        public double RidgedGamma = 1d;
+
+        /// <summary>Сила домена по октавам 0..1 для ФОРМЫ рельефа. 0 = выключено.</summary>
+        public double SlopeDamp = 0d;
+
+        /// <summary>Источник наклона для домена: Accum (по высоте) или Gradient (по крутизне).</summary>
+        public int SlopeDampMode = (int)TerrainSlopeDampMode.Off;
+
+        /// <summary>
+        /// Базовый примитив: 0 = value noise (legacy), 1 = градиентный Перлин.
+        /// Дефолт legacy — см. пояснение в HeightfieldTerrain.NoiseStyle: Unity
+        /// подставляет инициализатор в ассеты без этого поля, и побитовые
+        /// проверки висят на дефолтах.
+        /// </summary>
+        public int NoiseStyle = (int)TerrainNoiseStyle.Value;
+
+
+        /// <summary>Примитив для МАСОК и warp: 0 = следует NoiseStyle.</summary>
+        public int MaskNoiseStyle = -1;
         [Header("Континенты (океан/суша)")]
         [Tooltip("Частота континентальной маски. 0 = выключена.")]
         public double ContinentFrequency = 0d;
@@ -129,6 +161,20 @@ namespace Galilego.Universe
 
         [Tooltip("Нормализованная высота плато равнин (доля амплитуды).")]
         public double PlainElevation = 0.1d;
+
+        [Header("Сжатие хвоста (только для ridged-профилей)")]
+        [Tooltip("Мягкое сжатие верхнего хвоста формы, нормированные единицы. Это сколько ещё разрешено вырасти над порогом: потолок = TailThreshold + TailKnee. 0 = выключено (по умолчанию), тогда поведение прежнее. Нужно, чтобы калибровка по p99 не задирала вершины: у ridged-профилей тяжёлый хвост.")]
+        public double TailKnee = 0d;
+
+        [Tooltip("Порог сжатия (нормированные единицы). Ниже него форма не тронута. Ставить примерно на p99.9.")]
+        public double TailThreshold = 0d;
+
+        [Header("Сжатие глубокого ложа (только для океанских хвостов)")]
+        [Tooltip("Мягкое сжатие нижнего хвоста формы, нормированные единицы. Зеркало TailKnee: дно упирается в DepthThreshold − DepthKnee. 0 = выключено (по умолчанию). Нужно, если ложе уходит глубже реального океана: у ridged-профиля хвост достигает −25 км при средней глубине −4.4 км.")]
+        public double DepthKnee = 0d;
+
+        [Tooltip("Порог нижнего сжатия (нормированные единицы), со знаком. Выше него форма не тронута, поэтому берег и шельф не меняются. Ставить примерно на p5 глубин.")]
+        public double DepthThreshold = 0d;
 
         [Header("Пляж (полоса у воды)")]
         [Tooltip("Высота пляжа над морем (м): ниже — песок в цвете и запрет спавна всего декора. 0 = пляжа нет (legacy).")]
@@ -240,6 +286,16 @@ namespace Galilego.Universe
         /// континенты + редкие хребты + равнины + лёгкий warp, slope-цвет и
         /// noise-маска. Раньше жил в BodyAuthoring.ApplyEarthLikeTerrainPreset —
         /// теперь это ассет EarthLike, на который ссылается тело.
+        ///
+        /// ИСТОЧНИК ИСТИНЫ — .asset, а не этот метод. Игра грузит
+        /// Assets/_Project/Profiles/Terrain/EarthLike.asset из OutdoorsScene, и
+        /// этот метод игрой не вызывается вообще — только тестами. Он обязан
+        /// совпадать с ассетом, иначе тесты меряют конфигурацию, которой нет в
+        /// игре; сверяет это T117_EarthLikeProfileDrift, который читает .asset
+        /// как текст.
+        ///
+        /// Амплитуда остаётся параметром радиуса: ассет хранит фиксированные
+        /// 9144 м, а для другого тела масштаб должен считаться от его радиуса.
         /// </summary>
         public static TerrainProfile CreateEarthLike(double radius)
         {
@@ -255,7 +311,7 @@ namespace Galilego.Universe
                 ContinentOctaves = 3,
                 ContinentThreshold = -0.1d,
                 ContinentSharpness = 0.3d,
-                ContinentDepth = 0.9d,
+                ContinentDepth = 1.2d,
                 RidgedMix = 0.7d,
                 PlainMix = 0.85d,
                 PlainFrequency = 1.8d,
@@ -263,6 +319,9 @@ namespace Galilego.Universe
                 PlainThreshold = 0.05d,
                 PlainSharpness = 0.25d,
                 PlainElevation = 0.1d,
+                BeachHeightMeters = 12d,
+                BeachShelfAltitudeMeters = 8d,
+                BeachShelfWidth = 0.08d,
                 DetailMix = 0d,
                 DetailFrequency = 0d,
                 DetailOctaves = 5,
@@ -280,6 +339,44 @@ namespace Galilego.Universe
                 ColorDetailOctaves = 3,
                 ColorDetailStrength = 0.15d
             };
+        }
+
+        /// <summary>
+        /// Диагностика окон домена по склону. Возвращает текст предупреждения
+        /// или null, если всё в порядке.
+        ///
+        /// Отдельный метод, а не OnValidate, потому что TerrainProfile - обычный
+        /// [Serializable] класс, а не UnityEngine.Object: Unity не вызывает
+        /// OnValidate на таких и молча бы его не звал. Реальная точка входа -
+        /// TerrainProfileAsset.OnValidate, который держит этот профиль.
+        ///
+        /// Почему только предупреждение, а не автопочинка: при
+        /// Gain * Lacunarity != 1 нормировка сигнала на (o+1) перестаёт делить
+        /// на константу, и правильные окна зависят от профиля целиком. Угадать
+        /// их можно, но это будет молчаливая подгонка формы рельефа. Сама
+        /// защита в рантайме стоит в TerrainNoiseParams.FromTerrain.
+        /// </summary>
+        public string ValidateSlopeDampWindows()
+        {
+            if (!(SlopeDamp > 0d) || SlopeDampMode == (int)TerrainSlopeDampMode.Off)
+            {
+                return null;
+            }
+
+            if (TerrainNoise.SlopeDampWindowsValid(Gain, Lacunarity))
+            {
+                return null;
+            }
+
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            return "Gain " + Gain.ToString("F3", ci)
+                + " * Lacunarity " + Lacunarity.ToString("F3", ci)
+                + " = " + (Gain * Lacunarity).ToString("F4", ci)
+                + ", а окна домена по склону откалиброваны под произведение 1."
+                + " Домен SlopeDamp будет отключён при загрузке (см. TerrainNoiseParams.FromTerrain):"
+                + " при != 1 вклад октавы в наклон растёт как (Gain*Lacunarity)^o, и нормировка"
+                + " на (o+1) перестаёт делить на константу. Верните Gain*Lacunarity = 1"
+                + " (обычно Gain 0.5 при Lacunarity 2) либо выключите SlopeDamp.";
         }
     }
 }

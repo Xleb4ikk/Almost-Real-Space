@@ -62,11 +62,29 @@ namespace Galilego.Universe
         [Range(0f, 0.2f)]
         public float SkirtFactor = 0.03f;
 
-        [Tooltip("Глубина юбок ВОДЫ, доля от размера узла. Водная плоскость покрывает " +
-                 "ровно core-грид; без юбок на стыках соседних LOD (где их высоты различаются) " +
-                 "возникают щели, и сквозь них видно небо/атмосферу — ровная серая полоса " +
-                 "вдоль границы узла. Держим равным SkirtFactor, как у рельефа. 0 = полоса вернётся.")]
-        [Range(0f, 0.2f)]
+        /// <summary>
+        /// Глубина юбок ВОДЫ, доля от юбки РЕЛЬЕФА. Значение МАЛЕНЬКОЕ по
+        /// необходимости, и это не перестраховка, а требование прозрачности.
+        ///
+        /// Юбка строится вертикальной стеной вниз от края чанка (см.
+        /// SurfaceChunkBuilder: Position = core - inward*WaterSkirtDepth), причём
+        /// с нормалью от core-грани — поэтому читается не как стена, а как
+        /// горизонтальный «срез» и выглядит дырой в рельефе.
+        ///
+        /// Вода прозрачна, и при Extinction 0.08 видно примерно 30 м вглубь
+        /// (e^(-0.08*30) ~ 0.09). Значит юбка длиннее этого видна: на depth 8
+        /// рельефная юбка 1173 м, и стена в километр под водой читается как
+        /// «срез уходящий под воду». Такое значение (1.0) тут и стояло, и это
+        /// ловушка: тултип раньше обещал «держим равным SkirtFactor», и равенство
+        /// параметров действительно выполнялось, а глубина получалась в 33 раза
+        /// больше нужной.
+        ///
+        /// Водная плоскость ПЛОСКАЯ, в отличие от рельефа, поэтому её юбка
+        /// прячет только щель тесселяции между разными LOD - тонкую
+        /// горизонтальную полосу. Ей хватает метров, а не сотен.
+        /// </summary>
+        [Tooltip("Глубина юбок ВОДЫ, доля от юбки РЕЛЬЕФА. Держите МАЛЕНЬКИМ (0.02-0.06): вода прозрачна, и при Extinction 0.08 видно ~30 м вглубь, поэтому юбка длиннее этого читается как вертикальный срез под водой. 1 = глубина рельефа, неверно. 0 = полоса вернётся.")]
+        [Range(0f, 0.3f)]
         public float WaterSkirtFactor = 0.03f;
 
         [Tooltip("Ширина градиента «мокрый песок → сухой песок» над уровнем моря (м). " +
@@ -1792,8 +1810,18 @@ namespace Galilego.Universe
             }
 
             Vector3d observer = FloatingOrigin.Anchor + AstroFrame.ToAstro(cameraPosition);
-            if (WaterQuery.IsSubmergedAt(
-                Runner.DominantBody, observer, Runner.TimeSeconds, out double depthMeters))
+
+            // Именно SubmersionDepthAt, а НЕ IsSubmergedAt. Разница принципиальная:
+            // IsSubmergedAt вдобавок требует, чтобы колонка под камерой была ВОДОЙ
+            // (IsWaterAt: сырое дно ниже уровня моря). Но шейдеру воды нужен
+            // вопрос «камера ниже поверхности?» — и только он. Второе условие
+            // может врать: у берега, над мелководьем или над юбкой водного меша
+            // камера визуально под водой, а колонка под ней — суша, и тогда
+            // _UnderwaterCameraDepth остаётся 0. Шейдер рисует потолок ВЕРХНЕЙ
+            // веткой: пена прибоя и screen-door dither, снятые снизу — ровно то,
+            // что «ужасная поверхность из-под воды» на скриншоте.
+            double depthMeters = WaterQuery.SubmersionDepthAt(Runner.DominantBody, observer, Runner.TimeSeconds);
+            if (!double.IsNaN(depthMeters) && depthMeters > 0d)
             {
                 Shader.SetGlobalFloat("_UnderwaterCameraDepth", (float)depthMeters);
             }
@@ -1845,6 +1873,14 @@ namespace Galilego.Universe
         /// (тело-fixed позиция игрока в double) возвращает глобал
         /// _WaterBodyAnchor — узор «прибит» к морю, а не к игроку.
         /// Квантование float на радиусе ~1.1e6 м — те же ~6 см, что у террейна.
+        ///
+        /// Узор больше НЕ передаётся абсолютным якорем в float32: якорь ~1.25e6
+        /// м даёт шаг 6-12 см, то есть каждая позиция на воде округлялась на
+        /// решётку и фаза ряби скакала на ~1 рад. Вместо этого шейдер получает
+        /// касательный базис (east/north) и накопительное смещение uvOffset,
+        /// оба в double и оба по модулю периода P = 1024 м. Шейдер берёт
+        /// uv = dot(relBody, east/north) + uvOffset, где relBody — малая
+        /// дельта от камеры, так что точность ~0.1 мм.
         /// </summary>
         private void UpdateWaterAnchor()
         {
@@ -1856,10 +1892,15 @@ namespace Galilego.Universe
             Vector3d relative = Runner.PlayerPosition - currentBodyPosition;
             Vector3d bodyAstro = currentBodyOrientation.Conjugated.Rotate(relative);
 
-            // Тот же мост astro→sim, что в UpdateTerrainTextureOrigin:
-            // sim = (x, z, −y).
+            // ВРЕМЕННО (диагностика): якорь по модулю P в double ДО приведения
+            // к float. Абсолютный якорь ~1.25e6 м даёт шаг float32 6-12 см, и
+            // узор квантуется на решётку - это и давало ступеньки в блоках.
+            // Остаток в double даёт < 1024 м, где точности float32 хватает.
+            // Узор прыгает каждые 1024 м пути: это цена проверки, не дефект.
+            const double diagP = 1024.0;
             Vector3 anchorSim = new Vector3(
-                (float)bodyAstro.X, (float)bodyAstro.Z, (float)(-bodyAstro.Y));
+                (float)(bodyAstro.X % diagP), (float)(bodyAstro.Z % diagP),
+                (float)((-bodyAstro.Y) % diagP));
 
             Shader.SetGlobalMatrix("_WaterWorldToBody", Matrix4x4.Rotate(Quaternion.Inverse(currentBodyRotation)));
             Shader.SetGlobalVector("_WaterBodyAnchor", anchorSim);

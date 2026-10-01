@@ -533,6 +533,10 @@ namespace UnityEngine
     {
         public static void Log(object m) { }
         public static void LogWarning(object m) { }
+
+        /// <summary>Перегрузка с контекстом есть в реальном Unity; без неё
+        /// продуктовый код с Debug.LogWarning(msg, this) не собирается на стенде.</summary>
+        public static void LogWarning(object m, Object context) { }
     }
 
     public sealed class HeaderAttribute : Attribute
@@ -588,6 +592,21 @@ namespace UnityEngine.Serialization
     }
 }
 
+namespace Galilego.Universe
+{
+    /// <summary>
+    /// Стаб отладочного меню. Настоящий CheatMenu — MonoBehaviour поверх IMGUI,
+    /// он тянет FlightBenchmark → SurfacePerf → ProfilerRecorder/Resources/SystemInfo,
+    /// и половина этих типов на стенде не имеет смысла. На стенде нужен ровно
+    /// один член: PlayerController читает CheatMenu.NoclipSpeed, а FindAnyObjectByType
+    /// отдаёт null, так что ветки noclip на стенде не исполняются вовсе.
+    /// </summary>
+    public sealed class CheatMenu : UnityEngine.MonoBehaviour
+    {
+        public double NoclipSpeed = 50d;
+    }
+}
+
 namespace Unity.Mathematics
 {
     public struct double3
@@ -635,6 +654,12 @@ namespace Unity.Mathematics
         public static double abs(double v) => v >= 0d ? v : -v;
         public static double sqrt(double v) => System.Math.Sqrt(v);
         public static double floor(double v) => System.Math.Floor(v);
+        public static double round(double v) => System.Math.Round(v, MidpointRounding.ToEven);
+        public static double clamp(double v, double min, double max) => v < min ? min : (v > max ? max : v);
+        public static double length(double3 v) => System.Math.Sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
+        public static double pow(double v, double e) => System.Math.Pow(v, e);
+        public static double sin(double v) => System.Math.Sin(v);
+        public static double cos(double v) => System.Math.Cos(v);
         public static double3 cross(double3 a, double3 b) => new double3(
             (a.y * b.z) - (a.z * b.y), (a.z * b.x) - (a.x * b.z), (a.x * b.y) - (a.y * b.x));
         public static double dot(double3 a, double3 b) => (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
