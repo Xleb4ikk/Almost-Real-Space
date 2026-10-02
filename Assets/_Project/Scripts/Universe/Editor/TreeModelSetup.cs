@@ -71,12 +71,12 @@ namespace Galilego.Universe.EditorTools
                 ClusterThreshold = 0d,
                 MinAltitudeMeters = 5d,
                 // Песок — только абсолютный пляж (BeachHeightMeters профиля
-                // террейна, ~12 м): выше него начинается зелень, и деревья там
+                // террейна, ~18 м): выше него начинается зелень, и деревья там
                 // и стоят. Нормированной нижней границы нет — 0.032 при амплитуде
                 // 9144 м отсекал 274 м высоты, то есть всю прибрежную равнину.
                 MinNormalizedHeight = 0d,
                 MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
-                MaxAltitudeMeters = GroundDecorSetup.TreeLineMaxAltitudeMeters,
+                MaxAltitudeMeters = GroundDecorSetup.TreeMaxAltitudeMeters,
                 MaxSlopeTan = 0.9d,
                 AvoidWater = true,
                 // Деревья избегают лишь крайней пустыни: сухая степь зарастает,

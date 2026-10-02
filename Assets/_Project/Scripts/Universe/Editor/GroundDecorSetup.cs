@@ -21,12 +21,19 @@ namespace Galilego.Universe.EditorTools
         internal const string ProfilePath = "Assets/_Project/Profiles/Decor/EarthDecor.asset";
 
         /// <summary>
-        /// Верхняя граница леса/травы: конец зелёной текстуры рельефа
-        /// (MidHighBlendEnd = 3500 м у Terra). Общая для деревьев,
-        /// травы, сухой травы и ромашек. Камни игнорируют границу и спавнятся
-        /// до максимальной высоты.
+        /// Верхние границы растительности: конец зелёной текстуры рельефа
+        /// (MidHighBlendEnd = 5500 м) и разные потолки по слоям. Потолки
+        /// РАЗНЫЕ намеренно: общий потолок даёт одну ровную линию конца
+        /// растительности поперёк склонов, а со ступенькой деревья кончаются
+        /// первыми, потом цветы, потом трава — край читается как граница леса,
+        /// а не как обрез по линейке. Камни границу не делят и спавнятся до
+        /// максимальной высоты.
         /// </summary>
-        internal const double TreeLineMaxAltitudeMeters = 3500d;
+        internal const double GrassMaxAltitudeMeters = 5000d;
+
+        internal const double DaisyMaxAltitudeMeters = 4500d;
+
+        internal const double TreeMaxAltitudeMeters = 4200d;
 
         private const string DecorModelsFolder = "Assets/_Project/Models/Decor";
         private const string DecorMaterialsFolder = "Assets/_Project/Materials/Decor";
@@ -89,7 +96,7 @@ namespace Galilego.Universe.EditorTools
                     // Нормированной нижней границы нет (песок = абсолютный пляж).
                     MinNormalizedHeight = 0d,
                     MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
-                    MaxAltitudeMeters = TreeLineMaxAltitudeMeters,
+                    MaxAltitudeMeters = DaisyMaxAltitudeMeters,
                     MaxSlopeTan = 0.8d,
                     AvoidWater = true,
                     // Ромашки — луговые цветы: влажнее степи, но мягким краем

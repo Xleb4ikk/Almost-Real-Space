@@ -33,18 +33,18 @@ MonoBehaviour:
     ContinentThreshold: -0.4
     ContinentSharpness: 0.3
     ContinentDepth: 1.2
-    PlainMix: 0.85
-    PlainFrequency: 1.8
-    PlainOctaves: 2
-    PlainThreshold: 0.05
+    PlainMix: 0.95
+    PlainFrequency: 10
+    PlainOctaves: 3
+    PlainThreshold: 0
     PlainSharpness: 0.25
     PlainElevation: 0.1
     TailKnee: 0.13
     TailThreshold: 0.5656
     DepthKnee: 0.51
     DepthThreshold: -0.3
-    BeachHeightMeters: 12
-    BeachShelfAltitudeMeters: 8
+    BeachHeightMeters: 18
+    BeachShelfAltitudeMeters: 12
     BeachShelfWidth: 0.08
     DetailMix: 0
     DetailFrequency: 0
@@ -85,7 +85,7 @@ MonoBehaviour:
     TextureScale: 0.04
     LowMidBlendStart: 30
     LowMidBlendEnd: 60
-    MidHighBlendStart: 2500
-    MidHighBlendEnd: 3500
+    MidHighBlendStart: 4500
+    MidHighBlendEnd: 5500
     SteepBlendStart: 0.7
     SteepBlendEnd: 1.4

@@ -105,7 +105,7 @@ namespace Galilego.Universe.EditorTools
                 // Верх зелени палитры: выше t=0.45 рельеф красится скалой —
                 // там только камни. Нижняя граница wet — начало Grass в палитре.
                 MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
-                MaxAltitudeMeters = GroundDecorSetup.TreeLineMaxAltitudeMeters,
+                MaxAltitudeMeters = GroundDecorSetup.GrassMaxAltitudeMeters,
                 MaxSlopeTan = 2.8d,
                 AvoidWater = true,
                 // Ковёр лезвий — на любой земле зелёных высот, включая сухую

@@ -286,6 +286,17 @@ Shader "Galilego/PlanetSurface"
                 return max(0.05, amp * 1e-6);
             }
 
+            // Вес песка по высоте над морем. Числа — зеркало TerrainPalette.
+            // SandWeight: полная полоса до 0.4·beach, ноль с 1.6·beach, ровно
+            // половина на beach. Одна функция на все три места (краска, текстуры,
+            // мокрая кромка) — иначе границы песка снова разъездуются.
+            float SandWeight(float aboveSea)
+            {
+                return _BeachHeightMeters > 0.0
+                    ? 1.0 - smoothstep(_BeachHeightMeters * 0.4, _BeachHeightMeters * 1.6, aboveSea)
+                    : 0.0;
+            }
+
             float3 TerrainAlbedo(float raw, float mask, float detail, float slopeTan, float lat01)
             {
                 float amp = _TerrainAmplitude;
@@ -306,14 +317,19 @@ Shader "Galilego/PlanetSurface"
 
                 t = max(t, 0.0);
 
+                // Песок по высоте над морем, маской не стирается: иначе на
+                // «плюсовых» берегах зелень начинается от уреза воды. НИЖЕ нет
+                // нормированной «песчаной» полосы: t<0.03 при амплитуде 13662 м —
+                // это сотни метров высоты, то есть весь прибрежный пляж/равнина.
+                // Песок = только абсолютная полка у воды (зеркалит
+                // TerrainPalette.SandWeight и фильтр BeachHeightMeters у декора).
+                //
+                // Не ступенька, а затухание: полная полоса до 0.4·beach, ноль с
+                // 1.6·beach, ровно половина на beach. Ступенчатый край константной
+                // высоты на сфере проецируется в прямую линию через весь кадр.
+                float sandW = SandWeight(aboveSea);
                 float3 c;
-                // Пляж — абсолютными метрами над морем, маской не стирается:
-                // иначе на «плюсовых» берегах зелень начинается от уреза воды.
-                // НИЖЕ нет нормированной «песчаной» полосы: t<0.03 при амплитуде
-                // 9144 м — это 274 м высоты, то есть весь прибрежный пляж/равнина.
-                // Песок = только абсолютная полка у воды (зеркалит TerrainPalette
-                // и фильтр BeachHeightMeters у декора).
-                if (_BeachHeightMeters > 0.0 && aboveSea < _BeachHeightMeters)
+                if (sandW >= 1.0)
                 {
                     c = _ColSand.rgb;
                 }
@@ -321,6 +337,7 @@ Shader "Galilego/PlanetSurface"
                 {
                     // wet01 — ОБЩАЯ кривая с декором (GroundDecorDistribution.
                     // BiomeWetness) и с CPU-палитрой. Мягкая, tanh вместо clamp:
+
                     // маска широкая (p10=−0.33, p90=+0.32), clamp(0.5+1.6·mask)
                     // насыщал 21% планеты в ровные 0/1 — отсюда были огромные
                     // мёртвые зоны без травы/деревьев и ровные тональные заливки.
@@ -350,11 +367,17 @@ Shader "Galilego/PlanetSurface"
                     {
                         c = lerp(c, _ColSnow.rgb, ice);
                     }
+
+                    // Песок — поверх биома: на затухании зелёный биом проступает
+                    // сквозь песок, а не исчезает на границе полосы.
+                    c = lerp(c, _ColSand.rgb, sandW);
                 }
 
                 // Моттлинг земли: пятна почвы / сочной зелени. Только на земле
-                // выше пляжной зоны — на песке пятен быть не должно.
-                bool isBeach = _BeachHeightMeters > 0.0 && aboveSea < _BeachHeightMeters;
+                // выше пляжной зоны — на песке пятен быть не должно. Порог берём
+                // по весу песка, а не по жёсткой высоте: иначе пятна включались бы
+                // скачком на верхней границе затухания.
+                bool isBeach = sandW > 0.0;
                 if (_ColorDetailStrength != 0.0 && !isBeach)
                 {
                     float d = clamp(detail, -1.0, 1.0);
@@ -464,12 +487,9 @@ Shader "Galilego/PlanetSurface"
 
                 // Пляж поверх текстур: низковысотная текстура — зелёное фото,
                 // без этого полоса песка стиралась бы текстурным путём.
-                // Край мягкий, чтобы не было ступеньки у верхней границы.
-                if (_BeachHeightMeters > 0.0)
-                {
-                    float beachW = 1.0 - smoothstep(_BeachHeightMeters * 0.5, _BeachHeightMeters, altitude);
-                    c = lerp(c, _ColSand.rgb, beachW);
-                }
+                // Вес тот же, что у процедурной краски, иначе текстура и палитра
+                // давали бы разные края песка.
+                c = lerp(c, _ColSand.rgb, SandWeight(altitude));
 
                 return c;
             }
@@ -559,9 +579,7 @@ Shader "Galilego/PlanetSurface"
                 // мокрым на 3 м, а не весь пляж. Геометрия, уровень моря, вода и
                 // screen-door не трогаются — это только вид суши у кромки.
                 float shoreAlt = max(raw - _TerrainSeaLevel, 0.0);
-                float beachW = _BeachHeightMeters > 0.0
-                    ? 1.0 - smoothstep(_BeachHeightMeters * 0.5, _BeachHeightMeters, shoreAlt)
-                    : 0.0;
+                float beachW = SandWeight(shoreAlt);
                 float wetBand = (1.0 - smoothstep(0.0, max(0.05, _ShoreWetMeters), shoreAlt))
                     * (1.0 - isWater) * beachW;
                 float3 landWet = land * lerp(float3(1.0, 1.0, 1.0), _ShoreWetTint.rgb, wetBand);
