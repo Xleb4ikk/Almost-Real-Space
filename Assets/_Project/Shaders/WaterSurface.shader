@@ -53,7 +53,7 @@ Shader "Galilego/WaterSurface"
         // Коэффициент именно (n−1) = 0.33, а НЕ (1−1/n) = 0.25: луч уходит
         // в воздух под asin(n·sinβ), то есть отклоняется ОТ ВЕРТИКАЛИ на
         // (n−1)·β. Проверено тестом Test139_SnellWindowReference.
-        _UnderwaterRippleSlope("Underwater Ripple Slope", Range(0.0, 0.6)) = 0.17
+        _UnderwaterRippleSlope("Underwater Ripple Slope", Range(0.0, 0.6)) = 0.10
         // Множитель яркости окна относительно физического неба. Подобран по
         // замеру: при 1.0 окно читалось в ~2 раза ярче воды после ACES, то
         // есть как слабый блик, а не как небо. 3.0 даёт ~6-8 раз в линейных
@@ -196,7 +196,8 @@ Shader "Galilego/WaterSurface"
                 {
                     // Целая часть в uv лежит в пределах +-P/размер ячейки,
                     // то есть влезает в int32 с запасом; float->int здесь
-                    // безопасен именно из-за WaterTangentUV.
+                    // безопасен именно из-за того, что целая часть uv держится в пределах
+                    // периода.
                     int2 c = (int2)floor(p);
                     uint h = whashInt((uint)(c.x * 73856093) ^ (uint)(c.y * 19349663));
                     return (h & 0x00FFFFFFu) * (1.0 / 16777216.0);
@@ -225,16 +226,16 @@ Shader "Galilego/WaterSurface"
             // Общий масштаб периода узора: 2*pi/P при P = 1024 м, и векторы ряби,
             // заданные ЦЕЛЫМИ парами. Фаза в uv+period сдвигается на
             // кратное 2*pi, поэтому узор не «прыгает» на границе периода.
-            const float kBaseUw = 0.006135923151542565;
-            const float2 kRip1 = float2(883.0, 522.0);
-            const float2 kRip2 = float2(-588.0, 1043.0);
+            static const float kBaseUw = 0.006135923151542565;
+            static const float2 kRip1 = float2(883.0, 522.0);
+            // |K| = 2556 -> 15.7 рад/м (~0.4 м). Прежние (-588, 1043) давали 7.3 рад/м, а не заявленные 15.7.
+            static const float2 kRip2 = float2(-1254.0, 2227.0);
 
             // Тело-fixed координаты узора (м): дельта от камеры в малых числах
             // + абсолютная фаза игрока. Без этого узор считается от
             // render-координат, чей ноль едет с floating origin = игроком,
             // и текстура воды ползёт по морю за игроком.
-            // ВРЕМЕННО якорь приходит уже уменьшенным по модулю 1024 м
-            // (диагностика точности float32).
+            // Якорь приходит уже уменьшенным по модулю 51 200 м (см. UpdateWaterAnchor).
             float3 WaterBodyFixed(float3 positionWS)
             {
                 float3 relBody = mul((float3x3)_WaterWorldToBody, positionWS - _PlanetCameraPos);
@@ -411,7 +412,7 @@ Shader "Galilego/WaterSurface"
                     float2 patternUw = wposUw.xz;
                     float2 gradUw;
                     float h01Uw = WaterWaveHeight01(patternUw * _WaveScale, _WaterTime, gradUw);
-                    float3 gradWUw = float3(gradUw.x, 0.0, gradUw.y) * _WaveScale;
+                    float3 gradWUw = mul(float3(gradUw.x, 0.0, gradUw.y) * _WaveScale, (float3x3)_WaterWorldToBody);
                     float3 gradTUw = gradWUw - (upW * dot(gradWUw, upW));
                     // Макро-наклон. У реального моря СКО наклона 10-15°,
                     // то есть ~0.2 рад; прежнее (WaveAmplitude*2 +
@@ -488,12 +489,17 @@ Shader "Galilego/WaterSurface"
                     float rlenUw = length(rgradUw);
                     float rcapUw = slopeUw * 1.8;
                     rgradUw *= min(1.0, rcapUw / max(rlenUw, 1e-4));
-                    float3 rgradTUw = float3(rgradUw.x, 0.0, rgradUw.y);
+                    float3 rgradTUw = mul(float3(rgradUw.x, 0.0, rgradUw.y), (float3x3)_WaterWorldToBody);
                     rgradTUw -= upW * dot(rgradTUw, upW);
 
-                    float3 nUw = normalize(upW
-                        - (gradTUw * (macroKUw * 0.7))
-                        - rgradTUw);
+                    // Макро-наклон ограничен мягко (tanh) примерно 0.25 рад (14°): у реального моря СКО
+                    // наклона 10-15°. Прежнее значение доходило до ~0.72 рад (41°), из-за чего луч вверх
+                    // почти везде попадал в полное внутреннее отражение (потолок = ровная заливка цветом толщи).
+                    const float kMacroSlopeUw = 0.25;
+                    float3 macroTiltUw = gradTUw * (macroKUw * 0.7);
+                    float macroLenUw = length(macroTiltUw);
+                    macroTiltUw *= (kMacroSlopeUw * tanh(macroLenUw / kMacroSlopeUw)) / max(macroLenUw, 1e-5);
+                    float3 nUw = normalize(upW - macroTiltUw - rgradTUw);
 
                     // Запечённые normal map в подводной ветке. Над водой они
                     // дают микрорельеф поверх шейдерных волн; из-под воды они и
@@ -581,7 +587,7 @@ Shader "Galilego/WaterSurface"
                     float band = (wfbm(bandUv) * 0.6) + (wfbm((bandUv * 2.3) + 11.0) * 0.4);
                     mirror *= 0.75 + (0.5 * band);
 
-                    color = lerp(mirror, skySeen, fresnel);
+                    color = lerp(skySeen, mirror, fresnel);
 
                     // Ободок окна — тот же Френель: там, где отражение ещё не
                     // полное, но уже сильное. Отдельного smoothstep больше нет.
@@ -616,7 +622,7 @@ Shader "Galilego/WaterSurface"
                 // иначе он стоит на месте только пока стоит игрок, а при
                 // движении ползёт по морю за ним. Тот же UV, что в вертине
                 // и в подводной ветке, поэтому геометрия, нормали и потолок
-                // согласованы (см. WaterTangentUV).
+                // согласованы (см. WaterBodyFixed).
                 // Узор в .xz тело-fixed пространства. Шаг 2 (касательные UV с базисом
                 // east/north от CPU) откачен: он дал фиолетовую заливку и
                 // плоский синий фон вместо поверхности.
@@ -945,8 +951,8 @@ float2 grad = ((0.38 * f1 * d1) * cos(p1)
                     + (0.18 * f3 * d3) * cos(p3)
                     + (0.11 * f4 * d4) * cos(p4)
                     + (0.07 * f5 * d5) * cos(p5)) * dhds;
-                // Градиент в касательных координатах (east, north); вызывающий
-                // переводит его в тело-fixed оси через _WaterEast/_WaterNorth.
+                // Градиент в тех же координатах, где посчитан (см. WaterBodyFixed);
+                // вызывающий переводит его в рендер-оси через _WaterWorldToBody.
                 gradTangent = grad;
                 return h + (qShape * h * h);
             }

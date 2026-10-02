@@ -1892,15 +1892,17 @@ namespace Galilego.Universe
             Vector3d relative = Runner.PlayerPosition - currentBodyPosition;
             Vector3d bodyAstro = currentBodyOrientation.Conjugated.Rotate(relative);
 
-            // ВРЕМЕННО (диагностика): якорь по модулю P в double ДО приведения
-            // к float. Абсолютный якорь ~1.25e6 м даёт шаг float32 6-12 см, и
-            // узор квантуется на решётку - это и давало ступеньки в блоках.
-            // Остаток в double даёт < 1024 м, где точности float32 хватает.
-            // Узор прыгает каждые 1024 м пути: это цена проверки, не дефект.
-            const double diagP = 1024.0;
+            // Период узора 51 200 м = 1024 * 50. Волны заданы ЦЕЛЫМИ векторами K с
+            // базой 2*pi/1024 м, макро-волны в p-пространстве умножаются на
+            // _WaveScale. Сдвиг на 51 200 м даёт целое число 2*pi у любой волны,
+            // пока _WaveScale кратен 0.02 (см. ApplyWaterParams). Остаток берётся
+            // в double ДО приведения к float: абсолютный якорь ~6e6 м даёт шаг
+            // float32 до 0.5 м, и узор квантуется на решётку (блоки на потолке).
+            const double patternPeriod = 51200.0;
             Vector3 anchorSim = new Vector3(
-                (float)(bodyAstro.X % diagP), (float)(bodyAstro.Z % diagP),
-                (float)((-bodyAstro.Y) % diagP));
+                (float)(bodyAstro.X % patternPeriod),
+                (float)(bodyAstro.Z % patternPeriod),
+                (float)((-bodyAstro.Y) % patternPeriod));
 
             Shader.SetGlobalMatrix("_WaterWorldToBody", Matrix4x4.Rotate(Quaternion.Inverse(currentBodyRotation)));
             Shader.SetGlobalVector("_WaterBodyAnchor", anchorSim);
@@ -3523,6 +3525,122 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Диагностика воды: какой материал реально у чанков, скомпилировался ли
+        /// его шейдер и рисуют ли его рендереры вообще. Без этого «вода не
+        /// видна» и «вода видна, но серая» выглядят одинаково.
+        /// </summary>
+        [ContextMenu("Galilego/Water probe")]
+        private void WaterProbe()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== WATER PROBE ===");
+            sb.AppendLine("UseLitWaterFallback = " + UseLitWaterFallback);
+
+            Material m = waterMaterialCache;
+            if (m == null)
+            {
+                sb.AppendLine("waterMaterialCache == null");
+                Debug.Log(sb.ToString());
+                return;
+            }
+
+            Shader sh = m.shader;
+            sb.AppendLine("material shader = " + (sh != null ? sh.name : "null")
+                + ", isSupported = " + (sh != null && sh.isSupported));
+            sb.AppendLine("renderQueue = " + m.renderQueue + ", passCount = " + m.passCount);
+            for (int i = 0; i < m.passCount; i++)
+            {
+                string pn = m.GetPassName(i);
+                sb.AppendLine("  pass " + i + " = '" + pn + "', enabled = " + m.GetShaderPassEnabled(pn));
+            }
+
+            if (m.HasProperty("_UnderwaterDebugMode"))
+            {
+                sb.AppendLine("_UnderwaterDebugMode = " + m.GetFloat("_UnderwaterDebugMode"));
+            }
+            else
+            {
+                sb.AppendLine("материал НЕ имеет _UnderwaterDebugMode (это не WaterSurface)");
+            }
+
+#if UNITY_EDITOR
+            if (sh != null)
+            {
+                var msgs = UnityEditor.ShaderUtil.GetShaderMessages(sh);
+                sb.AppendLine("shader messages = " + msgs.Length);
+                for (int i = 0; i < msgs.Length && i < 12; i++)
+                {
+                    sb.AppendLine("  [" + msgs[i].severity + "] " + msgs[i].message
+                        + " (" + msgs[i].file + ":" + msgs[i].line + ")");
+                }
+            }
+#endif
+
+            Camera cam = Camera.main != null ? Camera.main : FindObjectOfType<Camera>();
+            Vector3 camPos = cam != null ? cam.transform.position : Vector3.zero;
+            int total = 0, enabledCount = 0, containing = 0, forcedOff = 0, wrongLayer = 0, visible = 0;
+            foreach (MeshRenderer r in FindObjectsOfType<MeshRenderer>())
+            {
+                if (!ReferenceEquals(r.sharedMaterial, m))
+                {
+                    continue;
+                }
+
+                total++;
+                if (r.enabled && r.gameObject.activeInHierarchy)
+                {
+                    enabledCount++;
+                }
+
+                if (r.forceRenderingOff)
+                {
+                    forcedOff++;
+                }
+
+                if (cam != null && (cam.cullingMask & (1 << r.gameObject.layer)) == 0)
+                {
+                    wrongLayer++;
+                }
+
+                if (r.bounds.Contains(camPos))
+                {
+                    containing++;
+                }
+
+                if (r.isVisible)
+                {
+                    visible++;
+                }
+            }
+
+            sb.AppendLine("renderers с этим материалом: total=" + total + " enabled=" + enabledCount
+                + " containCamera=" + containing + " forcedOff=" + forcedOff
+                + " wrongLayer=" + wrongLayer + " isVisible=" + visible);
+
+            sb.AppendLine("_UnderwaterCameraDepth = " + Shader.GetGlobalFloat("_UnderwaterCameraDepth"));
+            sb.AppendLine("_UwCamAltitude = " + Shader.GetGlobalFloat("_UwCamAltitude"));
+            Debug.Log(sb.ToString());
+        }
+
+        [ContextMenu("Galilego/Water magenta ON")]
+        private void WaterMagentaOn()
+        {
+            if (waterMaterialCache != null)
+            {
+                waterMaterialCache.SetFloat("_UnderwaterDebugMode", 99f);
+            }
+        }
+
+        [ContextMenu("Galilego/Water magenta OFF")]
+        private void WaterMagentaOff()
+        {
+            if (waterMaterialCache != null)
+            {
+                waterMaterialCache.SetFloat("_UnderwaterDebugMode", 0f);
+            }
+        }
+
+        /// <summary>
         /// Push water tuning fields into the shared water material.
         /// Called on creation + every LateUpdate so Inspector edits apply live
         /// to the already cached material (no chunk rebuild needed).
@@ -3552,7 +3670,8 @@ namespace Galilego.Universe
             }
 
             waterMaterialCache.SetFloat("_WaveStrength", WaterWaveStrength);
-            waterMaterialCache.SetFloat("_WaveScale", WaterWaveScale);
+            // Кратность 0.02 нужна для точной периодичности узора по 51 200 м (см. UpdateWaterAnchor).
+            waterMaterialCache.SetFloat("_WaveScale", Mathf.Max(0.02f, Mathf.Round(WaterWaveScale * 50f) / 50f));
             waterMaterialCache.SetFloat("_WaveAmplitude", WaterAmplitudeMeters);
             waterMaterialCache.SetFloat("_SparkleStrength", WaterSparkleStrength);
             waterMaterialCache.SetFloat("_SparkleScale", WaterSparkleScale);

@@ -1035,7 +1035,7 @@ MonoBehaviour:
   DeepVisibilityMeters: 150
   MaxFogDistanceMeters: 64
   FullEffectDepthMeters: 50
-  MaxDarkeningEv: -1.5
+  MaxDarkeningEv: -0.3
   SurfaceFadeMeters: 3
   EyeHeightMeters: 2
   SwimEyeHeightMeters: 0.5
@@ -1060,6 +1060,8 @@ MonoBehaviour:
   DitherAmount: 1
   SunPenetration: 1
   DownwardDarkening: 0.6
+  AmbientDecay: 0.5
+  Ceiling: 0
   TransitionMeters: 0.8
   Enabled: 1
   DebugMode: 0

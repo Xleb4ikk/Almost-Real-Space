@@ -121,7 +121,7 @@ namespace Galilego.Universe
 
             colorAdjustments = profile.Add<ColorAdjustments>(false);
             colorAdjustments.postExposure.Override(0f);
-            colorAdjustments.colorFilter.Override(new Color(0.55f, 0.80f, 1f, 1f));
+            colorAdjustments.colorFilter.Override(Color.white);
 
             var volumeGo = new GameObject("UnderwaterVolume (auto)");
             volumeGo.transform.SetParent(transform, false);
