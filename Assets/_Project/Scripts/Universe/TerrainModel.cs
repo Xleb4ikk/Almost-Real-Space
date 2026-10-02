@@ -236,6 +236,18 @@ namespace Galilego.Universe
         public double BeachShelfWidth = 0d;
 
         /// <summary>
+        /// Максимальный множитель ширины полки пляжа. Ширина по берегу плавно
+        /// меняется от 1× до этого значения (шум). ≤1 = везде одинаковая (legacy).
+        /// </summary>
+        public double BeachShelfWidthMaxScale = 1d;
+
+        /// <summary>Частота шума ширины пляжа (циклов на единичный вектор). 0 = выключено.</summary>
+        public double BeachShelfWidthNoiseFrequency = 0d;
+
+        /// <summary>Октав шума ширины пляжа.</summary>
+        public int BeachShelfWidthNoiseOctaves = 4;
+
+        /// <summary>
         /// Мелкомасштабная деталь (скалы/осыпи) как доля AmplitudeMeters.
         /// Добавляется высокочастотным потоком только на суше, гаснет в равнинах.
         /// 0 = выключено (legacy).
@@ -387,6 +399,9 @@ namespace Galilego.Universe
             BeachHeightMeters = profile.BeachHeightMeters;
             BeachShelfAltitudeMeters = profile.BeachShelfAltitudeMeters;
             BeachShelfWidth = profile.BeachShelfWidth;
+            BeachShelfWidthMaxScale = profile.BeachShelfWidthMaxScale;
+            BeachShelfWidthNoiseFrequency = profile.BeachShelfWidthNoiseFrequency;
+            BeachShelfWidthNoiseOctaves = profile.BeachShelfWidthNoiseOctaves;
             DetailMix = profile.DetailMix;
             DetailFrequency = profile.DetailFrequency;
             DetailOctaves = profile.DetailOctaves;

@@ -46,6 +46,9 @@ MonoBehaviour:
     BeachHeightMeters: 18
     BeachShelfAltitudeMeters: 12
     BeachShelfWidth: 0.08
+    BeachShelfWidthMaxScale: 14
+    BeachShelfWidthNoiseFrequency: 150
+    BeachShelfWidthNoiseOctaves: 4
     DetailMix: 0
     DetailFrequency: 0
     DetailOctaves: 5

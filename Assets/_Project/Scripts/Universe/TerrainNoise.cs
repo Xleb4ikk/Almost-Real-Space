@@ -165,6 +165,15 @@ namespace Galilego.Universe
 
         /// <summary>Полуширина полки в единицах continent-маски. 0 = выключена.</summary>
         public double BeachShelfWidth;
+
+        /// <summary>Макс. множитель ширины полки (шум по берегу). ≤1 = ширина постоянна.</summary>
+        public double BeachShelfWidthMaxScale;
+
+        /// <summary>Частота шума ширины полки (циклов на единичный вектор). 0 = выключен.</summary>
+        public double BeachShelfWidthNoiseFrequency;
+
+        /// <summary>Октав шума ширины полки.</summary>
+        public int BeachShelfWidthNoiseOctaves;
         public double ColorNoiseFrequency;
         public int ColorNoiseOctaves;
         public int ColorNoiseSeedOffset;
@@ -273,6 +282,9 @@ namespace Galilego.Universe
                 AmplitudeMeters = terrain.AmplitudeMeters,
                 BeachShelfAltitudeMeters = terrain.BeachShelfAltitudeMeters,
                 BeachShelfWidth = terrain.BeachShelfWidth,
+                BeachShelfWidthMaxScale = terrain.BeachShelfWidthMaxScale,
+                BeachShelfWidthNoiseFrequency = terrain.BeachShelfWidthNoiseFrequency,
+                BeachShelfWidthNoiseOctaves = terrain.BeachShelfWidthNoiseOctaves,
                 ColorNoiseFrequency = terrain.ColorNoiseFrequency,
                 ColorNoiseOctaves = terrain.ColorNoiseOctaves,
                 ColorNoiseSeedOffset = terrain.ColorNoiseSeedOffset,
@@ -378,7 +390,7 @@ namespace Galilego.Universe
 
             h = ApplyTailCompression(p, h);
             h = ApplyDepthCompression(p, h);
-            h = ApplyBeachShelf(p, h, continentRaw);
+            h = ApplyBeachShelf(p, h, continentRaw, q);
 
             // Ровные площадки — ПОСЛЕДНЕЙ операцией. Если применить их раньше,
             // фартук площадки затянуло бы обратно шумом детали/равнин, и ровное
@@ -558,6 +570,51 @@ namespace Galilego.Universe
         /// </summary>
         public static double ApplyBeachShelf(TerrainNoiseParams p, double h, double continentRaw)
         {
+            // Старая сигнатура: ширина полки постоянна (без шума по берегу).
+            return ApplyBeachShelfCore(p, h, continentRaw, false, default(double3));
+        }
+
+        /// <summary>
+        /// Береговая полка с неравномерной шириной: <paramref name="direction"/> —
+        /// точка на сфере (после warp), по ней считается шум ширины. Если
+        /// BeachShelfWidthMaxScale ≤ 1 — бит-в-бит как ApplyBeachShelf без direction.
+        /// </summary>
+        public static double ApplyBeachShelf(TerrainNoiseParams p, double h, double continentRaw, double3 direction)
+        {
+            return ApplyBeachShelfCore(p, h, continentRaw, true, direction);
+        }
+
+        /// <summary>Контраст шума ширины пляжа: n·2.2 растягивает fBm (σ≈0.3) почти на весь диапазон 1×..Max×.</summary>
+        private const double BeachWidthContrast = 2.2d;
+
+        /// <summary>Gain шума ширины пляжа: выше обычного 0.5, чтобы мелкие октавы давали заметную локальную неровность.</summary>
+        private const double BeachWidthNoiseGain = 0.6d;
+
+        /// <summary>
+        /// Множитель ширины полки в данной точке: от 1 до BeachShelfWidthMaxScale.
+        /// Интерполяция ЛОГАРИФМИЧЕСКАЯ (Max^x), поэтому значения распределены
+        /// геометрически: на карте есть и участки «в 2–3 раза», и «в 7», и
+        /// «в 10–15 раз шире» базовой ширины. Гладкая по направлению — изломов нет.
+        /// </summary>
+        public static double BeachWidthScale(TerrainNoiseParams p, double3 direction)
+        {
+            double maxScale = p.BeachShelfWidthMaxScale;
+            if (!(maxScale > 1d) || !(p.BeachShelfWidthNoiseFrequency > 0d))
+            {
+                return 1d;
+            }
+
+            int octaves = p.BeachShelfWidthNoiseOctaves < 1 ? 1 : p.BeachShelfWidthNoiseOctaves;
+            double n = SampleFbmEx(
+                direction, p.BeachShelfWidthNoiseFrequency, octaves, p.Seed, 9,
+                BeachWidthNoiseGain, 2d, p.MaskNoiseStyle);
+            double x = Smoothstep01(0.5d + (0.5d * math.clamp(n * BeachWidthContrast, -1d, 1d)));
+            return math.exp(math.log(maxScale) * x);
+        }
+
+        private static double ApplyBeachShelfCore(
+            TerrainNoiseParams p, double h, double continentRaw, bool varyWidth, double3 direction)
+        {
             if (p.BeachShelfWidth <= 0d || p.BeachShelfAltitudeMeters <= 0d
                 || p.ContinentFrequency <= 0d || p.SeaLevelMeters <= -1e29d)
             {
@@ -571,12 +628,20 @@ namespace Galilego.Universe
                 return h;
             }
 
-            double coastDist = (continentRaw - p.ContinentThreshold) / math.max(1e-9d, p.BeachShelfWidth);
-            if (!(coastDist > 0d))
+            double above = continentRaw - p.ContinentThreshold;
+            if (!(above > 0d))
             {
                 return h;
             }
 
+            double width = math.max(1e-9d, p.BeachShelfWidth);
+            if (varyWidth)
+            {
+                // Шум считаем только на суше у/над берегом (после ранних выходов).
+                width *= BeachWidthScale(p, direction);
+            }
+
+            double coastDist = above / width;
             double t = math.min(1d, coastDist * coastDist);
             double w = (1d - t) * (1d - t);
             double shelf = seaN + (p.BeachShelfAltitudeMeters / amp);
@@ -1086,6 +1151,10 @@ namespace Galilego.Universe
                 case 8:
                     // Поток распределения декора (кластеры травы/камней).
                     return new double3(seed * 47.11d + 6100.3d, seed * 31.79d + 6400.7d, seed * 73.31d + 6700.1d);
+                case 9:
+                    // Поток ширины пляжа (неравномерный берег): свой, чтобы зоны
+                    // широкого/узкого песка не коррелировали ни с формой, ни с масками.
+                    return new double3(seed * 37.91d + 7300.7d, seed * 61.17d + 7600.3d, seed * 29.53d + 7900.9d);
                 case 100:
                     return new double3(seed * 91.7d + 1000.3d, seed * 47.31d + 700.7d, seed * 13.17d + 400.9d);
                 case 200:
