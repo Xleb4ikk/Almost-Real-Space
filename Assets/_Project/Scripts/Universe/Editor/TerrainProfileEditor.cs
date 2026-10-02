@@ -12,6 +12,9 @@ namespace Galilego.Universe.EditorTools
     {
         private static bool showShape = true;
         private static bool showContinents = true;
+        private static bool showContinentShape;
+        private static bool showOcean;
+        private static bool showOrogeny;
         private static bool showPlains;
         private static bool showBeach = true;
         private static bool showWarp;
@@ -49,13 +52,59 @@ namespace Galilego.Universe.EditorTools
                 Field("Profile.ContinentOctaves");
                 Field("Profile.ContinentThreshold");
                 Slider("Profile.ContinentSharpness", 0f, 1f);
-                Slider("Profile.ContinentDepth", 0f, 1.5f);
+Slider("Profile.ContinentDepth", 0f, 1.5f);
+                EditorGUI.indentLevel--;
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+
+            showContinentShape = EditorGUILayout.BeginFoldoutHeaderGroup(
+                showContinentShape, "Континенты: отдельный gain, warp и форма");
+            if (showContinentShape)
+            {
+                EditorGUI.indentLevel++;
+                Slider("Profile.ContinentGain", 0f, 0.8f);
+                Slider("Profile.ContinentWarpStrength", 0f, 0.6f);
+                Field("Profile.ContinentWarpFrequency");
+                Field("Profile.ContinentWarpOctaves");
+                Slider("Profile.ContinentRidgeMix", 0f, 0.4f);
+                Field("Profile.ContinentRidgeFrequency");
+                Field("Profile.ContinentRidgeOctaves");
+                Slider("Profile.ContinentLatitudeBias", 0f, 0.2f);
+                EditorGUI.indentLevel--;
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+
+            showOcean = EditorGUILayout.BeginFoldoutHeaderGroup(showOcean, "Океан и внутренность суши");
+            if (showOcean)
+            {
+                EditorGUI.indentLevel++;
+                Slider("Profile.OceanFloorDepth", 0f, 1.5f);
+                Slider("Profile.OceanShelfDepth", 0f, 0.2f);
+                Slider("Profile.InteriorFloor", 0f, 0.2f);
+                EditorGUI.indentLevel--;
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+
+            showOrogeny = EditorGUILayout.BeginFoldoutHeaderGroup(showOrogeny, "Горные пояса");
+            if (showOrogeny)
+            {
+                EditorGUI.indentLevel++;
+                Field("Profile.OrogenyFrequency");
+                Field("Profile.OrogenyOctaves");
+                Field("Profile.OrogenyThreshold");
+                Slider("Profile.OrogenySharpness", 0f, 1f);
+                Slider("Profile.OrogenyFloor", 0f, 1f);
+                Slider("Profile.OrogenyGain", 0f, 1f);
                 EditorGUI.indentLevel--;
             }
 
             EditorGUILayout.EndFoldoutHeaderGroup();
 
             showPlains = EditorGUILayout.BeginFoldoutHeaderGroup(showPlains, "Равнины");
+
             if (showPlains)
             {
                 EditorGUI.indentLevel++;

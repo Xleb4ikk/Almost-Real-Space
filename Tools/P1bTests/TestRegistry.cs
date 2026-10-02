@@ -180,6 +180,9 @@ internal static partial class P1bTests
             new P1bCase("Test138_CoastSpot", Test138_CoastSpot, false),
             new P1bCase("Test139_SnellWindowReference", Test139_SnellWindowReference, false),
             new P1bCase("Test140_UnderwaterBanding", Test140_UnderwaterBanding, false),
+            new P1bCase("Test141_ContinentsConnectivity", Test141_ContinentsConnectivity, true),
+            new P1bCase("Test142_ContinentsDiag", Test142_ContinentsDiag, true),
+            new P1bCase("Test143_PerlinAssetDrift", Test143_PerlinAssetDrift, false),
         };
     }
 }

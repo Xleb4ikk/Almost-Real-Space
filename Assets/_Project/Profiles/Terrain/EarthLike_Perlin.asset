@@ -28,24 +28,41 @@ MonoBehaviour:
     SlopeDampMode: 0
     NoiseStyle: 1
     MaskNoiseStyle: -1
-    ContinentFrequency: 4
-    ContinentOctaves: 3
-    ContinentThreshold: -0.4
-    ContinentSharpness: 0.3
+    ContinentFrequency: 1.3
+    ContinentOctaves: 5
+    ContinentThreshold: 0.14
+    ContinentSharpness: 0.08
     ContinentDepth: 1.2
-    PlainMix: 0.95
-    PlainFrequency: 10
-    PlainOctaves: 3
+    ContinentGain: 0.55
+    ContinentWarpStrength: 0.3
+    ContinentWarpFrequency: 1.5
+    ContinentWarpOctaves: 3
+    ContinentRidgeMix: 0.12
+    ContinentRidgeFrequency: 2.5
+    ContinentRidgeOctaves: 2
+    ContinentLatitudeBias: 0.08
+    OceanFloorDepth: 0.42
+    OceanShelfDepth: 0.02
+    InteriorFloor: 0.035
+    OrogenyFrequency: 1.1
+    OrogenyOctaves: 3
+    OrogenyThreshold: -0.4
+    OrogenySharpness: 0.3
+    OrogenyFloor: 0.15
+    OrogenyGain: 0.85
+    PlainMix: 0.85
+    PlainFrequency: 2
+    PlainOctaves: 2
     PlainThreshold: 0
     PlainSharpness: 0.25
     PlainElevation: 0.1
     TailKnee: 0.13
     TailThreshold: 0.5656
-    DepthKnee: 0.51
-    DepthThreshold: -0.3
+    DepthKnee: 0
+    DepthThreshold: 0
     BeachHeightMeters: 18
     BeachShelfAltitudeMeters: 12
-    BeachShelfWidth: 0.08
+    BeachShelfWidth: 0.03
     BeachShelfWidthMaxScale: 14
     BeachShelfWidthNoiseFrequency: 150
     BeachShelfWidthNoiseOctaves: 4
