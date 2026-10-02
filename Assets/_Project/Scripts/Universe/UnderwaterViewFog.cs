@@ -65,9 +65,19 @@ namespace Galilego.Universe
         [Range(0f, 3f)]
         public float SunPenetration = 1f;
 
-        [Tooltip("Насколько темнеет при взгляде вниз (меньше света от зенита).")]
+[Tooltip("Насколько темнеет при взгляде вниз (меньше света от зенита).")]
         [Range(0f, 1f)]
         public float DownwardDarkening = 0.6f;
+
+        [Header("Затемнение с глубиной")]
+        [Tooltip("С какой долей sigma гаснет РАССЕЯННЫЙ свет с глубиной камеры. 0 = не гаснет (старое поведение), 0.5 = плавно до чёрного к 100–150 м, 1 = быстро.")]
+        [Range(0f, 1f)]
+        public float AmbientDecay = 0.5f;
+
+        public enum CeilingMode { Off = 0, Auto = 1, Always = 2 }
+
+        [Tooltip("Потолок воды (окно Снелла) из туманного прохода. Auto — только если меш воды не нарисовал поверхность. Always — всегда (для проверки). Off — выключено.")]
+        public CeilingMode Ceiling = CeilingMode.Off;
 
         [Header("Переход через поверхность")]
         [Tooltip("Ширина плавного перехода по высоте камеры (м). Строго НЕ ноль: при if-ветке мигает на границе, здесь идёт smoothstep.")]
@@ -83,9 +93,11 @@ namespace Galilego.Universe
         /// 0 = выключено (обычный вид).
         /// 1 = под (плавный переход), 2 = путь в воде pathIn/50 м (красный),
         /// 3 = пропускание T, 4 = eyeDepth/1000 м, 5 = выход tExit/5000 м,
-        /// 6 = uv.x (проверка попадания в кадр), 7 = исходный цвет сцены.
+/// 6 = uv.x (проверка попадания в кадр), 7 = исходный цвет сцены,
+        /// 8 = маска потолка: R - потолок дорисовывается, G - меш воды есть
+        /// в глубине, B - под водой.
         /// </summary>
-        [Range(0, 7)]
+        [Range(0, 8)]
         public int DebugMode = 0;
 
         private CustomPassVolume volume;
@@ -103,6 +115,8 @@ namespace Galilego.Universe
         private static readonly int DitherAmountId = Shader.PropertyToID("_UwDitherAmount");
         private static readonly int TransitionId = Shader.PropertyToID("_UwTransitionMeters");
         private static readonly int DownwardId = Shader.PropertyToID("_UwDownwardDarkening");
+        private static readonly int AmbientDecayId = Shader.PropertyToID("_UwAmbientDecay");
+        private static readonly int CeilingModeId = Shader.PropertyToID("_UwCeilingMode");
         private static readonly int CamAltId = Shader.PropertyToID("_UwCamAltitude");
         private static readonly int SeaKId = Shader.PropertyToID("_UwSeaK");
         private static readonly int RadiusId = Shader.PropertyToID("_UwRadius");
@@ -195,6 +209,8 @@ namespace Galilego.Universe
             Shader.SetGlobalFloat(DitherAmountId, DitherAmount);
             Shader.SetGlobalFloat(TransitionId, TransitionMeters);
             Shader.SetGlobalFloat(DownwardId, DownwardDarkening);
+            Shader.SetGlobalFloat(AmbientDecayId, AmbientDecay);
+            Shader.SetGlobalFloat(CeilingModeId, (float)Ceiling);
             Shader.SetGlobalFloat(CamAltId, (float)camAltitude);
             Shader.SetGlobalFloat(SeaKId, (float)k);
             Shader.SetGlobalFloat(RadiusId, (float)r);
@@ -283,8 +299,15 @@ namespace Galilego.Universe
             return true;
         }
 
-        private void SetVolumeActive(bool active)
+private void SetVolumeActive(bool active)
         {
+            // При выходе из воды глобал не обновляется (ранний return) и остаётся
+            // отрицательным навсегда. Ставим заведомо «над водой».
+            if (!active)
+            {
+                Shader.SetGlobalFloat(CamAltId, 1.0e6f);
+            }
+
             if (volume != null && volume.gameObject.activeSelf != active)
             {
                 volume.gameObject.SetActive(active);
