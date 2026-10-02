@@ -51,7 +51,7 @@ namespace Galilego.Universe
         public float TerrainRadianceScale = 1f;
 
         [Tooltip("Ночная засветка террейна (звёздный свет + NightExposure глаза); 0 = кромешная тьма.")]
-        public float NightAmbient = 0.01f;
+        public float NightAmbient = 0f;
 
         [Tooltip("Дневная засветка террейна небом.")]
         public float SkyAmbient = 0.1f;
@@ -288,6 +288,8 @@ namespace Galilego.Universe
             // глобал, что ставит SunBillboard в рантайме: превью и игра должны
             // светиться с одного угла, иначе склоны читаются противоположно.
             Shader.SetGlobalVector("_TerrainSunDir", AstroFrame.ToSimulation(sunDir));
+
+            Shader.SetGlobalVector("_TerrainBodyCenterWS", FloatingOrigin.ToRender(bodyPos));
 
             // Ambient террейна — средняя яркость неба над наблюдателем
             // (полусферический интеграл single-scatter, та же физика, что у
