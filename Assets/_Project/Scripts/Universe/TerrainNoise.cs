@@ -83,6 +83,98 @@ namespace Galilego.Universe
         public double ContinentThreshold;
         public double ContinentSharpness;
         public double ContinentDepth;
+
+        /// <summary>
+        /// Затухание амплитуды маски континентов. ≤0 — следовать за общим Gain
+        /// (legacy). Отдельная ручка нужна потому, что у маски своя задача:
+        /// общий Gain = 0.5 гасит верхние октавы слишком быстро, и берег
+        /// остаётся из двух-трёх гладких пятен, а не ломается на острова.
+        /// </summary>
+        public double ContinentGain;
+
+        /// <summary>
+        /// Сила ОТДЕЛЬНОГО domain-warp континентальной маски, в единицах
+        /// направления. 0 = маска берётся на общем warp'е рельефа (legacy).
+        ///
+        /// Отдельный warp нужен, чтобы «круглость» материков не наследовала
+        /// масштаб горного warp'а: WarpStrength = 0.1 при частоте 2 — это складки
+        /// масштаба гор, и для океанических бассейнов их масштаб слишком мелкий,
+        /// из-за чего берег и получался круглым. Этот warp втрое сильнее и вдвое
+        /// ниже по частоте, то есть ломает материки на острова и заливы.
+        ///
+        /// Источник — НЕВАРПНУТЫЙ direction, иначе второй warp ложился бы поверх
+        /// первого и результат зависел бы от их произведения.
+        /// </summary>
+        public double ContinentWarpStrength;
+
+        /// <summary>Частота warp'а континентальной маски.</summary>
+        public double ContinentWarpFrequency;
+
+        /// <summary>Октав warp'а континентальной маски.</summary>
+        public int ContinentWarpOctaves;
+
+        /// <summary>
+        /// Вклад «хребтового» члена маски континентов: continentRaw +=
+        /// ContinentRidgeMix·(1 − 2·|fBm|). 0 = выключено (legacy).
+        ///
+        /// Зачем. Нулевая линия |fBm| = 0 — это изолинии, вдоль которых маска
+        /// максимальна, и они тянутся длинными цепями. То есть маска получает
+        /// ВЫТЯНУТЫЕ материки и заливы между ними, а не круглые пятна: обычный
+        /// fBm с двумя-тремя октавами даёт по сути эллипсы.
+        ///
+        /// Член не центрирован: среднее 1 − 2·E|fBm| положительно, то есть это
+        /// ещё и сдвиг в сторону суши. Сдвиг гасится ContinentThreshold, но при
+        /// подборе порога это надо держать в голове.
+        /// </summary>
+        public double ContinentRidgeMix;
+
+        /// <summary>Частота ridge-члена маски континентов.</summary>
+        public double ContinentRidgeFrequency;
+
+        /// <summary>Октав ridge-члена маски континентов.</summary>
+        public int ContinentRidgeOctaves;
+
+        /// <summary>
+        /// Экваториальный сдвиг маски, continentRaw += ContinentLatitudeBias·
+        /// (1 − 2·|sin φ|). 0 = выключено (legacy).
+        ///
+        /// Смещает материки к экватору. У распределения |sin φ| среднее ровно
+        /// 0.5, поэтому член центрирован и сам по себе долю суши не меняет —
+        /// двигает только распределение по широте. Среднее смещение пояса ±15°
+        /// по замеру: 34% → 46% суши при том же общем количестве.
+        ///
+        /// Читает НЕВАРПНУТЫЙ direction: широта не должна зависеть от шума
+        /// рельефа, иначе «экватор» сам поплыл бы вместе с mountains.
+        /// </summary>
+        public double ContinentLatitudeBias;
+
+        /// <summary>
+        /// Глубина абиссального ложа в нормированных единицах. ≤0 — старый путь
+        /// «минус (1−маска)·ContinentDepth»; &gt;0 — рельеф смешивается с дном,
+        /// глубина которого растёт по мере удаления от берега в единицах маски.
+        /// Смысл и цена переключения — в HeightfieldTerrain.OceanFloorDepth.
+        /// </summary>
+        public double OceanFloorDepth;
+
+        /// <summary>
+        /// Глубина шельфа у берега, нормированные единицы. Домножается на ocean,
+        /// поэтому на суше всегда ноль. 0 = шельфа нет.
+        /// </summary>
+        public double OceanShelfDepth;
+
+        /// <summary>
+        /// Пол внутренности, нормированные единицы. ≤0 — выключено. Суша не
+        /// опускается ниже continent·InteriorFloor: у берега пол ≈ 0 (острова и
+        /// заливы остаются), внутри материка поднимается над морем.
+        /// </summary>
+        public double InteriorFloor;
+
+        public double OrogenyFrequency;
+        public int OrogenyOctaves;
+        public double OrogenyThreshold;
+        public double OrogenySharpness;
+        public double OrogenyFloor;
+        public double OrogenyGain;
         public double RidgedMix;
         public int RidgedMode;
         public double RidgedSharpness;
@@ -250,6 +342,23 @@ namespace Galilego.Universe
                 ContinentThreshold = terrain.ContinentThreshold,
                 ContinentSharpness = terrain.ContinentSharpness,
                 ContinentDepth = terrain.ContinentDepth,
+                ContinentGain = terrain.ContinentGain,
+                ContinentWarpStrength = terrain.ContinentWarpStrength,
+                ContinentWarpFrequency = terrain.ContinentWarpFrequency,
+                ContinentWarpOctaves = terrain.ContinentWarpOctaves,
+                ContinentRidgeMix = terrain.ContinentRidgeMix,
+                ContinentRidgeFrequency = terrain.ContinentRidgeFrequency,
+                ContinentRidgeOctaves = terrain.ContinentRidgeOctaves,
+                ContinentLatitudeBias = terrain.ContinentLatitudeBias,
+                OceanFloorDepth = terrain.OceanFloorDepth,
+                OceanShelfDepth = terrain.OceanShelfDepth,
+                InteriorFloor = terrain.InteriorFloor,
+                OrogenyFrequency = terrain.OrogenyFrequency,
+                OrogenyOctaves = terrain.OrogenyOctaves,
+                OrogenyThreshold = terrain.OrogenyThreshold,
+                OrogenySharpness = terrain.OrogenySharpness,
+                OrogenyFloor = terrain.OrogenyFloor,
+                OrogenyGain = terrain.OrogenyGain,
                 RidgedMix = terrain.RidgedMix,
                 RidgedMode = terrain.RidgedMode,
                 RidgedSharpness = terrain.RidgedSharpness,
@@ -317,6 +426,40 @@ namespace Galilego.Universe
         /// <summary>Октав в шуме равнины. 4 — как замеренный поток.</summary>
         private const int PlainReliefOctaves = 4;
 
+        /// <summary>
+        /// Ширина сглаживания пола внутренности, доля от самого пола.
+        ///
+        /// Скользящая точка маски в горизонтали — это радиусы планеты, и пол
+        /// меняется медленно. 5% дают зону перехода в четверть пола, то есть
+        /// ~120 м при поле 1 км: озёра в глубине материков не появляются, а
+        /// берег остаётся резким, потому что у него пол равен нулю.
+        ///
+        /// Число, а не производная от InteriorFloor, потому что здесь нужен
+        /// масштаб СГЛАЖИВАНИЯ, а не сама величина.
+        /// </summary>
+        private const double InteriorFloorSoftness = 0.05d;
+
+        /// <summary>
+        /// Мягкий максимум с гладкой переходной зоной (Inigo Quilez, полиномиальная
+        /// форма). Возвращает a, если a ≥ b + k, и b, если b ≥ a + k, то есть
+        /// ВНЕ зоны перехода это ТОЧНЫЙ max; внутри — купол высотой не больше
+        /// k/4. Первая производная непрерывна, поэтому излома в нормалях нет.
+        ///
+        /// Обычный math.max здесь не годится: озёра появляются ровно там, где
+        /// рельеф пересекает пол, и каждый разрез — это V-образная складка в
+        /// нормалях, то есть полоса в шейдинге по берегу каждого озера.
+        /// </summary>
+        internal static double SmoothMax(double a, double b, double k)
+        {
+            if (!(k > 0d))
+            {
+                return math.max(a, b);
+            }
+
+            double t = math.clamp(0.5d + (0.5d * (a - b) / k), 0d, 1d);
+            return b + ((a - b) * t) + (k * t * (1d - t));
+        }
+
         public static double SampleHeight(TerrainNoiseParams p, double3 direction)
         {
             double gain = EffectiveGain(p.Gain);
@@ -332,7 +475,8 @@ namespace Galilego.Universe
             double3 q = direction;
             if (p.WarpStrength > 0d)
             {
-                q = ApplyWarp(p, q, gain, lacunarity);
+                q = ApplyWarp(p, direction, p.WarpStrength, p.WarpFrequency, p.WarpOctaves,
+                    p.Seed + (p.WarpSeedOffset * 7919), 100, gain, lacunarity);
             }
 
             double baseHeight = SampleShapeFbm(p, q, p.BaseFrequency, p.Octaves, 0, gain, lacunarity);
@@ -341,12 +485,82 @@ namespace Galilego.Universe
             double continentRaw = 0d;
             if (p.ContinentFrequency > 0d)
             {
-                continentRaw = SampleFbmEx(q, p.ContinentFrequency, p.ContinentOctaves, p.Seed, 1, gain, lacunarity, p.MaskNoiseStyle);
+                // Маска континентов считается на СВОЕМ домене qc, а не на общем
+                // warp'е рельефа q. Иначе масштаб берега задан масштабом горного
+                // warp'а, который втрое слабее и втрое выше по частоте, — из-за
+                // этого материки и выходили круглыми.
+                //
+                // Без отдельного warp'а домен остаётся ОБЩИМ (legacy, бит-в-бит):
+                // подставить сюда `direction` значило бы молча снять горный warp
+                // с маски континентов у всех старых пресетов, где нового поля
+                // ещё нет, и уехать с ними на другой берег.
+                //
+                // Источник отдельного warp'а — исходный direction, не q: иначе
+                // второй warp ложился бы поверх первого, и домен маски зависел бы
+                // от произведения двух искажений вместо одного.
+                double3 qc = q;
+                if (p.ContinentWarpStrength > 0d)
+                {
+                    qc = ApplyWarp(p, direction, p.ContinentWarpStrength, p.ContinentWarpFrequency,
+                        p.ContinentWarpOctaves, p.Seed, 400, gain, lacunarity);
+                }
+
+                double cg = EffectiveGain(p.ContinentGain > 0d ? p.ContinentGain : gain);
+                continentRaw = SampleFbmEx(
+                    qc, p.ContinentFrequency, p.ContinentOctaves, p.Seed, 1, cg, lacunarity, p.MaskNoiseStyle);
+
+                if (p.ContinentRidgeMix > 0d)
+                {
+                    // Вытянутость материков: максимум маски вдоль изолиний
+                    // fBm = 0, то есть вдоль длинных цепей вместо круглых пятен.
+                    double cr = SampleFbmEx(
+                        qc, p.ContinentRidgeFrequency, p.ContinentRidgeOctaves, p.Seed, 11,
+                        cg, lacunarity, p.MaskNoiseStyle);
+                    continentRaw += p.ContinentRidgeMix * (1d - (2d * math.abs(cr)));
+                }
+
+                if (p.ContinentLatitudeBias > 0d)
+                {
+                    // Тянем материки к экватору. Читает НЕВАРПНУТЫЙ direction:
+                    // широта не должна зависеть от шума рельефа.
+                    continentRaw += p.ContinentLatitudeBias * (1d - (2d * math.abs(direction.z)));
+                }
+
                 continent = Smoothstep01((continentRaw - (p.ContinentThreshold - p.ContinentSharpness))
                     / math.max(1e-9d, 2d * p.ContinentSharpness));
             }
 
             double h = baseHeight;
+
+            // Горные ПОЯСА, а не горы на всей суше.
+            //
+            // Важно, ЧТО именно масштабируется. Первый вариант домножал на
+            // маску вес ridged-бленда, и это не сработало: при малом весе форма
+            // сходит к базовому fBm, у которого размах ТОТ ЖЕ, поэтому и горы,
+            // и равнины выходили одинаково высокими (замер T142: доля суши выше
+            // 3 км — 7.4% без поясов против 6.1% с поясами, разница в пределах
+            // шума). Вес бленда управляет ХАРАКТЕРОМ шума (гребни против холмов),
+            // а высотой гор управляет размах.
+            //
+            // Поэтому пояс здесь — множитель РАЗМАХА рельефа относительно
+            // уровня низменности (применяется ниже, после пола внутренности), а
+            // сам ridged остаётся везде: вне пояса его детали прижимаются к
+            // этой полке и читаются как волнистая равнина. Маска низкочастотная
+            // (свой поток, соль 10), поэтому хребты собираются в ленты шириной в
+            // тысячи километров.
+            //
+            // OrogenyFrequency ≤ 0 — выключено, форма бит-в-бит прежняя.
+            double beltRelief = 1d;
+            bool orogeny = p.OrogenyFrequency > 0d;
+            if (orogeny)
+            {
+                double beltNoise = SampleFbmEx(
+                    q, p.OrogenyFrequency, p.OrogenyOctaves, p.Seed, 10, gain, lacunarity, p.MaskNoiseStyle);
+                double belt = Smoothstep01((beltNoise - (p.OrogenyThreshold - p.OrogenySharpness))
+                    / math.max(1e-9d, 2d * p.OrogenySharpness));
+                beltRelief = p.OrogenyFloor + (p.OrogenyGain * belt);
+            }
+
             if (p.RidgedMix > 0d)
             {
                 double ridged = (SampleRidged(p, q, gain, lacunarity) * 2d) - 1d;
@@ -354,7 +568,13 @@ namespace Galilego.Universe
                 h = baseHeight + (ridged - baseHeight) * k;
             }
 
-            h -= (1d - continent) * math.max(0d, p.ContinentDepth);
+            // Старый океан: одинаковая добавка вниз везде, где маски нет. Остаётся
+            // только при OceanFloorDepth ≤ 0, и тогда поведение бит-в-бит прежнее.
+            bool oceanModel = p.OceanFloorDepth > 0d;
+            if (!oceanModel)
+            {
+                h -= (1d - continent) * math.max(0d, p.ContinentDepth);
+            }
 
             double plainK = 0d;
             if (p.PlainMix > 0d && p.PlainFrequency > 0d)
@@ -386,6 +606,59 @@ namespace Galilego.Universe
                 double detail = SampleShapeFbm(p, q, p.DetailFrequency, p.DetailOctaves, 6, gain, lacunarity);
                 double detailLand = continent * (1d - plainK);
                 h += detail * p.DetailMix * detailLand;
+            }
+
+            // ПОЛ ВНУТРЕННОСТИ. Ни одна точка суши не опускается ниже
+            // continent·InteriorFloor — во внутренности материков не бывает
+            // внутренних озёр. Сглаживание вместо max: жёсткий max даёт излом
+            // первой производной, а излом виден полосой в нормалях на каждом
+            // озере.
+            //
+            // ПОЛОЖИТЕЛЬНО ТОЛЬКО ТАМ, ГДЕ continent = 1 — в океане маска равна
+            // нулю и пол тоже нулевой. Применять пол ПОСЛЕ океанского бленда
+            // нельзя: тогда на дне вышло бы max(−5700 м, 0) = 0, то есть весь
+            // океан поднялся бы к уровню моря и исчез.
+            if (p.InteriorFloor > 0d)
+            {
+                double floorK = p.InteriorFloor * InteriorFloorSoftness;
+                h = SmoothMax(h, continent * p.InteriorFloor, floorK);
+            }
+
+            // Размах рельефа по поясам (см. пояс выше). Опорный уровень — пол
+            // внутренности, то есть ровно та высота, ниже которой суша и так не
+            // опускается. Масштабирование ОТ неё вниз невозможно (h ≥ ref), так
+            // что новых озёр этот шаг не заводит.
+            //
+            // Требует InteriorFloor > 0: при нулевом полу опорный уровень был бы
+            // нулём, то есть уровнем моря, и вся непясная суша ушла бы под воду.
+            // Без пола этот шаг пропускается, и форма прежняя.
+            if (orogeny && p.InteriorFloor > 0d)
+            {
+                double refLevel = continent * p.InteriorFloor;
+                h = refLevel + ((h - refLevel) * beltRelief);
+            }
+
+            // НОВЫЙ ОКЕАН. Смешиваем рельеф с дном, а не вычитаем константу.
+            //
+            // Почему так. Прежний ход «минус (1−маска)·ContinentDepth» сдвигает
+            // вниз поле, но НЕ убирает из него высокочастотную составляющую, то
+            // есть на дне остаётся рельеф. Тогда океан = «все места, где шум ниже
+            // нуля», и его граница — фрактальная нулевая изолина шума с базовой
+            // октавой в сотни километров: архипелаги и внутренние моря вместо
+            // океанических впадин. Здесь океан становится величиной ПОСТРОЕНИЕМ.
+            //
+            // Форма: h·continent − ocean·(continent·шельф + глубина·ocean²).
+            // Множитель ocean² вместо ocean даёт профиль Земли — пологая шельф у
+            // берега, крутая материковая окраина, плоское ложе в середине океана.
+            // Шельф тоже домножается на ocean, иначе на continent = 1 он утянул бы
+            // сушу вниз на свою глубину. При continent = 1 всё выражение равно
+            // нулю, то есть суша не тронута ровно; при continent = 0 остаётся
+            // только константа — дно.
+            if (oceanModel)
+            {
+                double ocean = 1d - continent;
+                double shelf = math.min(math.max(0d, p.OceanShelfDepth), p.OceanFloorDepth) * continent;
+                h = (h * continent) - (ocean * (shelf + (p.OceanFloorDepth * ocean * ocean)));
             }
 
             h = ApplyTailCompression(p, h);
@@ -784,16 +1057,16 @@ namespace Galilego.Universe
             return norm > 0d ? sum / norm : 0d;
         }
 
-        private static double3 ApplyWarp(TerrainNoiseParams p, double3 direction, double gain, double lacunarity)
+        private static double3 ApplyWarp(TerrainNoiseParams p, double3 source, double strength, double frequency,
+            int octaves, int seed, int saltBase, double gain, double lacunarity)
         {
-            double frequency = p.WarpFrequency < 1e-6d ? 1e-6d : p.WarpFrequency;
-            int octaves = p.WarpOctaves < 1 ? 1 : p.WarpOctaves;
-            int seed = p.Seed + (p.WarpSeedOffset * 7919);
+            double f = frequency < 1e-6d ? 1e-6d : frequency;
+            int n = octaves < 1 ? 1 : octaves;
             double3 warp = new double3(
-                SampleFbmEx(direction, frequency, octaves, seed, 100, gain, lacunarity, p.MaskNoiseStyle),
-                SampleFbmEx(direction, frequency, octaves, seed, 200, gain, lacunarity, p.MaskNoiseStyle),
-                SampleFbmEx(direction, frequency, octaves, seed, 300, gain, lacunarity, p.MaskNoiseStyle));
-            return direction + (warp * p.WarpStrength);
+                SampleFbmEx(source, f, n, seed, saltBase, gain, lacunarity, p.MaskNoiseStyle),
+                SampleFbmEx(source, f, n, seed, saltBase + 100, gain, lacunarity, p.MaskNoiseStyle),
+                SampleFbmEx(source, f, n, seed, saltBase + 200, gain, lacunarity, p.MaskNoiseStyle));
+            return source + (warp * strength);
         }
 
         /// <summary>
@@ -1155,6 +1428,30 @@ namespace Galilego.Universe
                     // Поток ширины пляжа (неравномерный берег): свой, чтобы зоны
                     // широкого/узкого песка не коррелировали ни с формой, ни с масками.
                     return new double3(seed * 37.91d + 7300.7d, seed * 61.17d + 7600.3d, seed * 29.53d + 7900.9d);
+                case 10:
+                    // Маска горных поясов: свой поток, чтобы хребты собирались в
+                    // ленты по своей геометрии, а не там, где случайно легла маска
+                    // континентов или равнин (все три иначе получили бы один и тот
+                    // же шум на одной частоте и выглядели бы как одно и то же).
+                    return new double3(seed * 34.67d + 9100.3d, seed * 87.13d + 9400.7d, seed * 56.29d + 9700.1d);
+                case 11:
+                    // Ridge-член маски континентов: свой поток. Он лежит в ИМЯ
+                    // continentRaw, поэтому делить поток с основной маской нельзя
+                    // — иначе вытянутость материков совпала бы с их формой.
+                    return new double3(seed * 19.37d + 11200.7d, seed * 63.91d + 11500.3d, seed * 42.53d + 11800.9d);
+                case 400:
+                case 500:
+                case 600:
+                    // Warp маски континентов. Отдельные 400/500/600, а не общие
+                    // с горным warp'ом 100/200/300: если бы делили, то форма
+                    // материков и рисунок горных складок брались бы из одного шума
+                    // на одной частоте — и выглядели бы как одно и то же, только в
+                    // разных масштабах.
+                    int baseSalt = (salt / 100) * 100;
+                    return new double3(
+                        seed * 13.19d + (baseSalt * 0.7d) + 13100.3d,
+                        seed * 71.53d + (baseSalt * 1.1d) + 13400.7d,
+                        seed * 46.87d + (baseSalt * 1.9d) + 13700.1d);
                 case 100:
                     return new double3(seed * 91.7d + 1000.3d, seed * 47.31d + 700.7d, seed * 13.17d + 400.9d);
                 case 200:

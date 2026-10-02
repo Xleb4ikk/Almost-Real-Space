@@ -143,6 +143,60 @@ namespace Galilego.Universe
         [Tooltip("Глубина океанических впадин в долях амплитуды.")]
         public double ContinentDepth = 0.75d;
 
+        [Header("Континенты: отдельный gain, warp и форма")]
+        [Tooltip("Затухание амплитуды маски континентов. 0 = следовать за общим Gain. Отдельная ручка: при общем 0.5 верхние октавы маски гаснут слишком быстро и берег остаётся из двух-трёх гладких пятен.")]
+        public double ContinentGain = 0d;
+
+        [Tooltip("Сила ОТДЕЛЬНОГО warp'а континентальной маски. 0 = маска на общем warp'е рельефа. Нужен, чтобы «круглость» материков не наследовала масштаб горного warp'а.")]
+        public double ContinentWarpStrength = 0d;
+
+        [Tooltip("Частота warp'а континентальной маски. Ниже ContinentFrequency даёт крупные изгибы берега, выше — мельче.")]
+        public double ContinentWarpFrequency = 0d;
+
+        [Tooltip("Октав warp'а континентальной маски.")]
+        public int ContinentWarpOctaves = 3;
+
+        [Tooltip("Вклад вытянутого «хребтового» члена маски: continentRaw += ContinentRidgeMix·(1−2·|fBm|). 0 = выключено. Тянет материки в длинные цепи вместо круглых пятен, но сдвигает порог в сторону суши.")]
+        public double ContinentRidgeMix = 0d;
+
+        [Tooltip("Частота ridge-члена маски континентов.")]
+        public double ContinentRidgeFrequency = 0d;
+
+        [Tooltip("Октав ridge-члена маски континентов.")]
+        public int ContinentRidgeOctaves = 2;
+
+        [Tooltip("Экваториальный сдвиг маски, continentRaw += ContinentLatitudeBias·(1−2·|sin φ|). 0 = выключено. Долю суши сам по себе не меняет (член центрирован), двигает только распределение по широте.")]
+        public double ContinentLatitudeBias = 0d;
+
+        [Header("Океан и внутренность суши")]
+        [Tooltip("Глубина абиссального ложа в нормированных единицах (>0 включает НОВЫЙ путь океана, при этом ContinentDepth не используется). Океан тогда не «шум ниже нуля», а настоящее дно: глубина растёт по мере удаления от берега, поэтому окраины пологие, а ложе плоское.")]
+        public double OceanFloorDepth = 0d;
+
+        [Tooltip("Глубина шельфа у берега в нормированных единицах. На суше всегда ноль, в океане даёт пологое мелководье перед окраиной. 0 = шельфа нет.")]
+        public double OceanShelfDepth = 0d;
+
+        [Tooltip("Пол внутренности в нормированных единицах (>0 включает). Суша не может опуститься ниже continent·InteriorFloor, поэтому во внутренности материков нет внутренних озёр и морей, а у берега (continent≈0) пол равен нулю и острова/заливы сохраняются.")]
+        public double InteriorFloor = 0d;
+
+        [Header("Горные пояса (рельеф не везде одинаково горный)")]
+        [Tooltip("Частота маски горных поясов. 0 = выключена (legacy: размах рельефа везде одинаков). Низкая частота = пояса шириной в тысячи километров, как на Земле.")]
+        public double OrogenyFrequency = 0d;
+
+        [Tooltip("Число октав маски горных поясов.")]
+        public int OrogenyOctaves = 3;
+
+        [Tooltip("Порог маски поясов: выше — горы.")]
+        public double OrogenyThreshold = 0d;
+
+        [Tooltip("Полуширина smoothstep-перехода маски поясов.")]
+        public double OrogenySharpness = 0.3d;
+
+        [Tooltip("Доля размаха рельефа вне поясов (0..1). Малое значение даёт спокойные низменности вместо горной каши по всей суше. 1 = без поясов (legacy).")]
+        public double OrogenyFloor = 1d;
+
+        [Tooltip("Доля размаха, добавляемая в поясе поверх OrogenyFloor.")]
+        public double OrogenyGain = 0d;
+
         [Header("Равнины")]
         [Tooltip("Сила равнин 0..1: в зонах маски рельеф стягивается к низкому плато. 0 = выключено.")]
         public double PlainMix = 0d;
@@ -305,6 +359,11 @@ namespace Galilego.Universe
         ///
         /// Амплитуда остаётся параметром радиуса: ассет хранит фиксированные
         /// 9144 м, а для другого тела масштаб должен считаться от его радиуса.
+        ///
+        /// Океан/внутренность/горные пояса здесь ОСТАЮТСЯ НУЛЯМИ, и это не
+        /// упущение: EarthLike.asset — legacy-профиль на value noise, и его
+        /// контракт — бит-в-бит прежняя форма. Новая модель океана включена в
+        /// EarthLike_Perlin.asset, на который ссылается OutdoorsScene.
         /// </summary>
         public static TerrainProfile CreateEarthLike(double radius)
         {

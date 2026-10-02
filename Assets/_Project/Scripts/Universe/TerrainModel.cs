@@ -130,6 +130,104 @@ namespace Galilego.Universe
         /// <summary>Глубина океанических впадин в долях амплитуды (вычитается там, где маски нет).</summary>
         public double ContinentDepth = 0.75d;
 
+        /// <summary>
+        /// Затухание амплитуды маски континентов. ≤0 — следовать за общим Gain
+        /// (legacy). Отдельная ручка: общий Gain = 0.5 гасит верхние октавы
+        /// слишком быстро, и берег остаётся из двух-трёх гладких пятен.
+        /// </summary>
+        public double ContinentGain = 0d;
+
+        /// <summary>
+        /// Сила ОТДЕЛЬНОГО domain-warp континентальной маски. 0 = маска берётся
+        /// на общем warp'е рельефа (legacy).
+        ///
+        /// Отдельный warp нужен, чтобы «круглость» материков не наследовала
+        /// масштаб горного warp'а: тот втрое слабее и втрое выше по частоте,
+        /// то есть для океанических бассейнов слишком мелкий. Источник — неварпнутый
+        /// direction, иначе второй warp ложился бы поверх первого.
+        /// </summary>
+        public double ContinentWarpStrength = 0d;
+
+        /// <summary>Частота warp'а континентальной маски.</summary>
+        public double ContinentWarpFrequency = 0d;
+
+        /// <summary>Октав warp'а континентальной маски.</summary>
+        public int ContinentWarpOctaves = 3;
+
+        /// <summary>
+        /// Вклад «хребтового» члена маски: continentRaw += ContinentRidgeMix·
+        /// (1 − 2·|fBm|). 0 = выключено (legacy). Нулевая линия |fBm| = 0 — это
+        /// изолинии, вдоль которых маска максимальна; они тянутся длинными цепями,
+        /// то есть материки получаются вытянутыми, а не круглыми. Член не
+        /// центрирован — это сдвиг в сторону суши, который гасится
+        /// ContinentThreshold.
+        /// </summary>
+        public double ContinentRidgeMix = 0d;
+
+        /// <summary>Частота ridge-члена маски континентов.</summary>
+        public double ContinentRidgeFrequency = 0d;
+
+        /// <summary>Октав ridge-члена маски континентов.</summary>
+        public int ContinentRidgeOctaves = 2;
+
+        /// <summary>
+        /// Экваториальный сдвиг маски, continentRaw += ContinentLatitudeBias·
+        /// (1 − 2·|sin φ|). 0 = выключено (legacy). У |sin φ| среднее ровно
+        /// 0.5, поэтому член центрирован и долю суши сам по себе не меняет.
+        /// </summary>
+        public double ContinentLatitudeBias = 0d;
+
+        /// <summary>
+        /// Глубина абиссального ложа, нормированные единицы.
+        /// &lt;= 0 (по умолчанию) — океана как отдельной сущности нет, работает
+        /// старая строка «минус (1−маска)·ContinentDepth», и весь «океан» — это
+        /// места, где высокочастотная форма случайно ушла ниже нуля.
+        ///
+        /// &gt; 0 — новая модель: рельеф смешивается с дном, глубина которого
+        /// растёт по мере удаления от берега в единицах маски. Океан тогда
+        /// гарантированно ниже уровня моря, дно плоское, окраина пологая, и
+        /// берег перестаёт быть фрактальной нулевой изолиной шума.
+        /// ContinentDepth при этом не используется.
+        /// </summary>
+        public double OceanFloorDepth = 0d;
+
+        /// <summary>
+        /// Глубина шельфа у берега, нормированные единицы. Домножается на ocean,
+        /// поэтому на суше всегда ноль, а в океане даёт пологое мелководье
+        /// шириной в сотни километров перед материковой окраиной. 0 = нет.
+        /// </summary>
+        public double OceanShelfDepth = 0d;
+
+        /// <summary>
+        /// Пол внутренности, нормированные единицы. &lt;= 0 — выключено.
+        ///
+        /// Суша не опускается ниже continent·InteriorFloor. У берега маска ≈ 0,
+        /// пол ≈ 0, поэтому острова, заливы и пляжи сохраняются; в глубине
+        /// материка пол поднимается над морем, и внутренних озёр не бывает.
+        /// </summary>
+        public double InteriorFloor = 0d;
+
+        /// <summary>Частота маски горных поясов. ≤0 = выключена (размах рельефа везде одинаковый).</summary>
+        public double OrogenyFrequency = 0d;
+
+        /// <summary>Число октав маски горных поясов.</summary>
+        public int OrogenyOctaves = 3;
+
+        /// <summary>Порог маски поясов: выше — горы.</summary>
+        public double OrogenyThreshold = 0d;
+
+        /// <summary>Полуширина smoothstep-перехода маски поясов.</summary>
+        public double OrogenySharpness = 0.3d;
+
+        /// <summary>
+        /// Доля размаха рельефа вне поясов (0..1). 1 = без поясов (legacy).
+        /// Малое значение даёт спокойные низменности вместо горной каши.
+        /// </summary>
+        public double OrogenyFloor = 1d;
+
+        /// <summary>Доля размаха, добавляемая в поясе поверх OrogenyFloor.</summary>
+        public double OrogenyGain = 0d;
+
         /// <summary>Доля ridged-шума 0..1 (горные хребты, только на континентах). 0 = выключен (legacy).</summary>
         public double RidgedMix = 0d;
 
@@ -377,6 +475,23 @@ namespace Galilego.Universe
             ContinentThreshold = profile.ContinentThreshold;
             ContinentSharpness = profile.ContinentSharpness;
             ContinentDepth = profile.ContinentDepth;
+            ContinentGain = profile.ContinentGain;
+            ContinentWarpStrength = profile.ContinentWarpStrength;
+            ContinentWarpFrequency = profile.ContinentWarpFrequency;
+            ContinentWarpOctaves = profile.ContinentWarpOctaves;
+            ContinentRidgeMix = profile.ContinentRidgeMix;
+            ContinentRidgeFrequency = profile.ContinentRidgeFrequency;
+            ContinentRidgeOctaves = profile.ContinentRidgeOctaves;
+            ContinentLatitudeBias = profile.ContinentLatitudeBias;
+            OceanFloorDepth = profile.OceanFloorDepth;
+            OceanShelfDepth = profile.OceanShelfDepth;
+            InteriorFloor = profile.InteriorFloor;
+            OrogenyFrequency = profile.OrogenyFrequency;
+            OrogenyOctaves = profile.OrogenyOctaves;
+            OrogenyThreshold = profile.OrogenyThreshold;
+            OrogenySharpness = profile.OrogenySharpness;
+            OrogenyFloor = profile.OrogenyFloor;
+            OrogenyGain = profile.OrogenyGain;
             RidgedMix = profile.RidgedMix;
             RidgedMode = profile.RidgedMode;
             RidgedSharpness = profile.RidgedSharpness;

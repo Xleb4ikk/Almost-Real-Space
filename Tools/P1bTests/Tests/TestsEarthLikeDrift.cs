@@ -96,18 +96,24 @@ internal static partial class P1bTests
 
     private static string FindEarthLikeAsset()
     {
+        return FindProfileAsset("EarthLike.asset");
+    }
+
+    /// <summary>Ищ ассет профиля вверх по дереву от рабочего каталога стенда.</summary>
+    private static string FindProfileAsset(string fileName)
+    {
         var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
         for (int i = 0; i < 8 && dir != null; i++)
         {
             string candidate = Path.Combine(
-                dir.FullName, "Assets", "_Project", "Profiles", "Terrain", "EarthLike.asset");
+                dir.FullName, "Assets", "_Project", "Profiles", "Terrain", fileName);
             if (File.Exists(candidate))
             {
                 return candidate;
             }
 
             string nested = Path.Combine(
-                dir.FullName, "Almost Real Space", "Assets", "_Project", "Profiles", "Terrain", "EarthLike.asset");
+                dir.FullName, "Almost Real Space", "Assets", "_Project", "Profiles", "Terrain", fileName);
             if (File.Exists(nested))
             {
                 return nested;
