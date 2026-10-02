@@ -1795,6 +1795,9 @@ internal static partial class P1bTests
         profile.BeachHeightMeters = 30d;
         profile.BeachShelfAltitudeMeters = 8d;
         profile.BeachShelfWidth = 0.08d;
+        profile.BeachShelfWidthMaxScale = 6d;
+        profile.BeachShelfWidthNoiseFrequency = 120d;
+        profile.BeachShelfWidthNoiseOctaves = 3;
 
         const int seed = 24334543;
         HeightfieldTerrain t = HeightfieldTerrain.FromProfile(profile, seed);
@@ -1821,6 +1824,9 @@ internal static partial class P1bTests
             && t.BeachHeightMeters == profile.BeachHeightMeters
             && t.BeachShelfAltitudeMeters == profile.BeachShelfAltitudeMeters
             && t.BeachShelfWidth == profile.BeachShelfWidth
+            && t.BeachShelfWidthMaxScale == profile.BeachShelfWidthMaxScale
+            && t.BeachShelfWidthNoiseFrequency == profile.BeachShelfWidthNoiseFrequency
+            && t.BeachShelfWidthNoiseOctaves == profile.BeachShelfWidthNoiseOctaves
             && t.DetailMix == profile.DetailMix
             && t.DetailFrequency == profile.DetailFrequency
             && t.DetailOctaves == profile.DetailOctaves
@@ -1870,6 +1876,9 @@ internal static partial class P1bTests
             BeachHeightMeters = profile.BeachHeightMeters,
             BeachShelfAltitudeMeters = profile.BeachShelfAltitudeMeters,
             BeachShelfWidth = profile.BeachShelfWidth,
+            BeachShelfWidthMaxScale = profile.BeachShelfWidthMaxScale,
+            BeachShelfWidthNoiseFrequency = profile.BeachShelfWidthNoiseFrequency,
+            BeachShelfWidthNoiseOctaves = profile.BeachShelfWidthNoiseOctaves,
             DetailMix = profile.DetailMix,
             DetailFrequency = profile.DetailFrequency,
             DetailOctaves = profile.DetailOctaves,

@@ -49,6 +49,8 @@ internal static partial class P1bTests
             "PlainThreshold", "PlainSharpness", "PlainElevation", "DetailMix", "DetailFrequency",
             "DetailOctaves", "WarpStrength", "WarpFrequency", "WarpOctaves", "WarpSeedOffset",
             "BeachHeightMeters", "BeachShelfAltitudeMeters", "BeachShelfWidth",
+            "BeachShelfWidthMaxScale", "BeachShelfWidthNoiseFrequency",
+            "BeachShelfWidthNoiseOctaves",
         };
 
         var fieldValue = new System.Collections.Generic.Dictionary<string, double>();

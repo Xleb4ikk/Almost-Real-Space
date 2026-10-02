@@ -658,6 +658,8 @@ namespace Unity.Mathematics
         public static double clamp(double v, double min, double max) => v < min ? min : (v > max ? max : v);
         public static double length(double3 v) => System.Math.Sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
         public static double pow(double v, double e) => System.Math.Pow(v, e);
+        public static double exp(double v) => System.Math.Exp(v);
+        public static double log(double v) => System.Math.Log(v);
         public static double sin(double v) => System.Math.Sin(v);
         public static double cos(double v) => System.Math.Cos(v);
         public static double3 cross(double3 a, double3 b) => new double3(

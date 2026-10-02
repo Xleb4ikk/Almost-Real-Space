@@ -186,6 +186,15 @@ namespace Galilego.Universe
         [Tooltip("Полуширина полки в единицах continent-маски (расстояние сырого шума от берегового порога). 0 = полка выключена (legacy).")]
         public double BeachShelfWidth = 0d;
 
+        [Tooltip("Макс. множитель ширины полки пляжа (>1 включает неравномерный берег). Ширина по берегу плавно меняется от 1× до этого значения по низкочастотному шуму: где-то узкая полоса, где-то песчаная равнина в 10–15 раз шире. ≤1 = ширина везде одинаковая (legacy).")]
+        public double BeachShelfWidthMaxScale = 1d;
+
+        [Tooltip("Частота шума ширины пляжа (циклов на единичный вектор; длина волны ≈ радиус / частота). 0 = выключено. Ниже — крупные зоны, выше — частая смена ширины.")]
+        public double BeachShelfWidthNoiseFrequency = 0d;
+
+        [Tooltip("Октав шума ширины пляжа: первая задаёт крупные зоны, остальные добавляют локальную неровность.")]
+        public int BeachShelfWidthNoiseOctaves = 4;
+
         [Header("Деталь и domain warp")]
         [Tooltip("Мелкомасштабная деталь как доля амплитуды (0 = выключена).")]
         public double DetailMix = 0d;
@@ -322,6 +331,9 @@ namespace Galilego.Universe
                 BeachHeightMeters = 12d,
                 BeachShelfAltitudeMeters = 8d,
                 BeachShelfWidth = 0.08d,
+                BeachShelfWidthMaxScale = 14d,
+                BeachShelfWidthNoiseFrequency = 150d,
+                BeachShelfWidthNoiseOctaves = 4,
                 DetailMix = 0d,
                 DetailFrequency = 0d,
                 DetailOctaves = 5,

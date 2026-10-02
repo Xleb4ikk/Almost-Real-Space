@@ -77,6 +77,9 @@ namespace Galilego.Universe.EditorTools
                 Field("Profile.BeachHeightMeters");
                 Field("Profile.BeachShelfAltitudeMeters");
                 Slider("Profile.BeachShelfWidth", 0f, 0.5f);
+                Slider("Profile.BeachShelfWidthMaxScale", 1f, 20f);
+                Field("Profile.BeachShelfWidthNoiseFrequency");
+                Field("Profile.BeachShelfWidthNoiseOctaves");
                 EditorGUI.indentLevel--;
             }
 
