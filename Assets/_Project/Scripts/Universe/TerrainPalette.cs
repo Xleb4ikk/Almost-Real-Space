@@ -95,7 +95,11 @@ namespace Galilego.Universe
             bool isSea = height <= seaLevel + SeaEpsilon(amplitude);
             // Пляж — абсолютными метрами: моттлинг и скала его не трогают
             // (паритет шейдеру), даже если маска подняла t выше песчаной полосы.
-            bool isBeach = beachHeightMeters > 0d && !isSea && (height - seaLevel) < beachHeightMeters;
+            // Границы берём те же, что у BaseColor (SandWeight): жёсткий порог
+            // здесь включал бы пятна почвы/зелени ровно на 18 м, и на ровном
+            // берегу моттлинг сам рисовал бы ту же линию, ради которой он снят.
+            double beachWeight = SandWeight(height - seaLevel, beachHeightMeters);
+            bool isBeach = !isSea && beachWeight > 0d;
 
             // Нормированная высота t как в шейдере (маска сдвигает пороги):
             // используется и для отсечения пляжа от моттлинга, и для порога
@@ -171,7 +175,13 @@ namespace Galilego.Universe
 
             // Пляж — абсолютными метрами над морем, маской не стирается:
             // иначе на «плюсовых» берегах зелень начинается от уреза воды.
-            if (beachHeightMeters > 0d && (height - seaLevel) < beachHeightMeters)
+            // Не ступенька, а затухание: полная полоса песка только до 0.4·beach,
+            // к 1.6·beach от песка не остаётся ничего, и ровно на beach — половина.
+            // Ступенчатый край на сфере проецировался в прямую линию через весь
+            // кадр (серая полоса у горизонта), а на планете высоты это просто
+            // граница константного цвета. Зеркалит smoothstep в PlanetSurface.
+            double sandW = SandWeight(height - seaLevel, beachHeightMeters);
+            if (sandW >= 1d)
             {
                 return Sand;
             }
@@ -230,7 +240,29 @@ namespace Galilego.Universe
                 c = Color.Lerp(c, Snow, (float)ice);
             }
 
+            // Песок — поверх биома, а не вместо ветки: на затухании полосы
+            // зелёный биом должен проступать сквозь песок, а не исчезать.
+            if (sandW > 0d)
+            {
+                c = Color.Lerp(c, Sand, (float)sandW);
+            }
+
             return c;
+        }
+
+        /// <summary>
+        /// Вес песка по высоте над морем: 1 до 0.4·beach, 0 с 1.6·beach,
+        /// ровно 0.5 на самой границе пляжа. Нулевой beach — пляжа нет.
+        /// Единственный источник чисел: шейдер и декор берут тот же beach.
+        /// </summary>
+        internal static double SandWeight(double aboveSea, double beachHeightMeters)
+        {
+            if (beachHeightMeters <= 0d)
+            {
+                return 0d;
+            }
+
+            return 1d - Smoothstep01((aboveSea - (0.4d * beachHeightMeters)) / (1.2d * beachHeightMeters));
         }
 
         /// <summary>Цвет низменности по нормированной влажности 0..1.</summary>

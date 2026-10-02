@@ -295,6 +295,16 @@ namespace Galilego.Universe
     /// </summary>
     public static class TerrainNoise
     {
+        /// <summary>
+        /// Амплитуда собственного шума равнины, доля от PlainElevation. Без него
+        /// стягивание к константе даёт идеально ровный стол с острыми ребрами на
+        /// границе маски; 0.03 даёт уклон ~0.1°, что читается как равнина.
+        /// </summary>
+        private const double PlainRelief = 0.03d;
+
+        /// <summary>Октав в шуме равнины. 4 — как замеренный поток.</summary>
+        private const int PlainReliefOctaves = 4;
+
         public static double SampleHeight(TerrainNoiseParams p, double3 direction)
         {
             double gain = EffectiveGain(p.Gain);
@@ -344,7 +354,16 @@ namespace Galilego.Universe
                 double plainMask = Smoothstep01((plainNoise - (p.PlainThreshold - p.PlainSharpness))
                     / math.max(1e-9d, 2d * p.PlainSharpness));
                 plainK = math.min(1d, math.max(0d, p.PlainMix)) * plainMask * continent;
-                h = p.PlainElevation + ((h - p.PlainElevation) * (1d - plainK));
+                // Цель стягивания — не ровная полка, а собственные низкие холмы.
+                // Берём первые PlainReliefOctaves октав той же формы (p.BaseFrequency,
+                // соль 0): уклон выходит ~0.1° вместо идеального стола, и равнина
+                // не наследует высокие октавы гор, как было при стягивании к
+                // константе. Соль 0 общая с базовой формой намеренно: первые октавы
+                // совпадают, поэтому полки лежат в долинах рельефа, а не в отрыве
+                // от него.
+                double flat = p.PlainElevation + PlainRelief * SampleFbmEx(
+                    q, p.BaseFrequency, PlainReliefOctaves, p.Seed, 0, gain, lacunarity, p.NoiseStyle);
+                h = flat + ((h - flat) * (1d - plainK));
             }
 
             if (p.DetailMix > 0d && p.DetailFrequency > 0d)

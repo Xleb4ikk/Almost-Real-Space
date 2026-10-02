@@ -85,7 +85,7 @@ MonoBehaviour:
     TextureScale: 0.04
     LowMidBlendStart: 30
     LowMidBlendEnd: 60
-    MidHighBlendStart: 2500
-    MidHighBlendEnd: 3500
+    MidHighBlendStart: 4500
+    MidHighBlendEnd: 5500
     SteepBlendStart: 0.7
     SteepBlendEnd: 1.4

@@ -33,7 +33,7 @@ MonoBehaviour:
       MinAltitudeMeters: 2
       MinNormalizedHeight: 0
       MaxNormalizedHeight: 0.45
-      MaxAltitudeMeters: 3500
+      MaxAltitudeMeters: 5000
       MaxSlopeTan: 2.8
       AvoidWater: 1
       WetMin: 0
@@ -87,7 +87,7 @@ MonoBehaviour:
       MinAltitudeMeters: 2
       MinNormalizedHeight: 0
       MaxNormalizedHeight: 0.45
-      MaxAltitudeMeters: 3500
+      MaxAltitudeMeters: 4500
       MaxSlopeTan: 0.8
       AvoidWater: 1
       WetMin: 0.3
@@ -255,7 +255,7 @@ MonoBehaviour:
       MinAltitudeMeters: 5
       MinNormalizedHeight: 0
       MaxNormalizedHeight: 0.45
-      MaxAltitudeMeters: 3500
+      MaxAltitudeMeters: 4200
       MaxSlopeTan: 0.9
       AvoidWater: 1
       WetMin: 0.2
