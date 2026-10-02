@@ -1500,7 +1500,7 @@ MonoBehaviour:
   StarVisibilityK: 6
   TerrainSunIntensity: 1
   TerrainRadianceScale: 2.5
-  NightAmbient: 0.01
+  NightAmbient: 0
   SkyAmbient: 0.1
   ShadowStrength: 0.85
   ExposureVolume: {fileID: 432432460}

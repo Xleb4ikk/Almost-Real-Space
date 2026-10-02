@@ -73,6 +73,7 @@ Shader "Galilego/GroundDecorSolid"
             float _VertexColorTint;
             float _TwoSided;
             float4 _GroundTint;
+            float3 _TerrainBodyCenterWS;
 
             float4x4 DecorInstanceMatrix(uint instanceId)
             {
@@ -182,8 +183,10 @@ Shader "Galilego/GroundDecorSolid"
                 // в контровом свете крона тёпло светится насквозь,
                 // а не чёрным силуэтом.
                 float sun = _TerrainSun;
+                float3 radialUp = normalize(input.positionWS - _TerrainBodyCenterWS);
+                float dayLocal = smoothstep(-0.12, 0.08, dot(radialUp, l));
                 float3 light = float3(_NightAmbient, _NightAmbient, _NightAmbient)
-                    + (GalilegoSkyAmbient(n) * _TerrainRadianceScale)
+                    + (GalilegoSkyAmbient(n) * _TerrainRadianceScale * dayLocal)
                      + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale)
                      + (_SunLightColor * (sun * back * shadow * cloudShadow) * _TerrainRadianceScale);
                 float3 color = albedo.rgb * light * _GroundTint.rgb;

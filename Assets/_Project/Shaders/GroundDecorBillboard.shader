@@ -41,6 +41,7 @@ Shader "Galilego/GroundDecorBillboard"
             float _Cutoff;
             float _Translucency;
             float4 _GroundTint;
+            float3 _TerrainBodyCenterWS;
 
             struct Attributes
             {
@@ -106,8 +107,10 @@ Shader "Galilego/GroundDecorBillboard"
                  float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, n, l);
                  float cloudShadow = SampleCloudShadow(input.positionWS);
                  float sun = _TerrainSun;
+                float3 radialUp = normalize(input.positionWS - _TerrainBodyCenterWS);
+                float dayLocal = smoothstep(-0.12, 0.08, dot(radialUp, l));
                 float3 light = float3(_NightAmbient, _NightAmbient, _NightAmbient)
-                    + (GalilegoSkyAmbient(n) * _TerrainRadianceScale)
+                    + (GalilegoSkyAmbient(n) * _TerrainRadianceScale * dayLocal)
                      + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale)
                      + (_SunLightColor * (sun * back * shadow * cloudShadow) * _TerrainRadianceScale);
                 float3 color = albedo * light * _GroundTint.rgb;

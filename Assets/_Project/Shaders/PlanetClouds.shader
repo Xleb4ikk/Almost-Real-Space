@@ -426,8 +426,10 @@ Shader "Galilego/PlanetClouds"
                         debugSteps += 1.0;
 
                          float sunOpticalDepth = LightMarch(p, sunDir, lightStepBase, lod, weatherLod, earthMask);
-                         float radialSun = saturate(dot(normalize(p), sunDir));
+                         float radialSunRaw = dot(normalize(p), sunDir);
+                         float radialSun = saturate(radialSunRaw);
                          float sunFacing = smoothstep(-0.05, 0.72, radialSun);
+                         float dayW = smoothstep(-0.10, 0.12, radialSunRaw);
                          float sunTrans = exp(-sunOpticalDepth * sigmaExt * 0.08);
                          sunTrans = max(sunTrans, 0.12 + (sunFacing * 0.40));
 
@@ -437,8 +439,8 @@ Shader "Galilego/PlanetClouds"
 
                          float directLighting = lerp(0.12, 0.30, sunFacing);
                          float3 sunLit = _CldSunColor * (directLighting + (phase * sunTrans * 0.75)) * powder;
-                         float3 lit = (sunLit + ambient) * _CldScatterAlbedo * _CldIntensity;
-                         lit += neutralScatterColor * (fillScatter * density);
+                         float3 lit = ((sunLit + ambient) * _CldScatterAlbedo * _CldIntensity
+                             + neutralScatterColor * (fillScatter * density)) * dayW;
 
                         float sigmaT = sigmaExt * density;
                         float segTrans = exp(-sigmaT * ds);

@@ -60,6 +60,7 @@ Shader "Galilego/PlanetSurface"
             // HeightfieldTerrain + TerrainPalette (единственный источник правды).
             float _TerrainAmplitude;
             float _TerrainSeaLevel;
+            float3 _TerrainBodyCenterWS;
             float _TerrainSeed;
             float _TerrainGain;
             float _TerrainLacunarity;
@@ -515,8 +516,10 @@ Shader "Galilego/PlanetSurface"
                 // пересвет разруливает глобальный тонмаппинг HDRP. Затенение по
                 // нормали сохраняется (множитель ndl ниже), рельеф читается.
                 float sun = _TerrainSun;
+                float3 radialUp = normalize(input.positionWS - _TerrainBodyCenterWS);
+                float dayLocal = smoothstep(-0.12, 0.08, dot(radialUp, sunDir));
                 float3 lightTerm = float3(_NightAmbient, _NightAmbient, _NightAmbient)
-                    + (GalilegoSkyAmbient(normal) * _TerrainRadianceScale)
+                    + (GalilegoSkyAmbient(normal) * _TerrainRadianceScale * dayLocal)
                      + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale);
 
                 // --- Per-pixel альбедо -----------------------------------------

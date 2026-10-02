@@ -713,7 +713,8 @@ Shader "Galilego/WaterSurface"
                  float ndlWrap = saturate((dot(n, sunDir) + 0.6) / 1.6);
                 // HOWTO-вода светится отражением, а не ambient-пересветом:
                 // было *3.0 — мелководье выжигалось в молочно-белое.
-                float3 waterSky = GalilegoSkyAmbient(n) * waterRad * 1.15;
+                float dayLocal = smoothstep(-0.12, 0.08, dot(baseN, sunDir));
+                float3 waterSky = GalilegoSkyAmbient(n) * waterRad * 1.15 * dayLocal;
                 float3 lightTerm = float3(_NightAmbient, _NightAmbient, _NightAmbient)
                     + waterSky
                      + (_SunLightColor * (sun * (ndl * 0.35 + ndlWrap * 0.65) * cloudShadow) * waterRad);
@@ -741,7 +742,7 @@ Shader "Galilego/WaterSurface"
                 float3 halfVec = normalize(sunDir + viewDir);
                 float spec = pow(saturate(dot(nSpec, halfVec)), max(1.0, _SpecularPower)) * _SpecularIntensity;
                 float glitter = 0.5 + (0.5 * sin((sp1 * 1.7) - (t * 2.3)));
-                spec *= (0.2 + (0.7 * glitter * saturate(sparkleFade + 0.25)));
+                spec *= (0.2 + (0.7 * glitter * saturate(sparkleFade + 0.25))) * dayLocal;
 
                 color = (waterBase * lightTerm)
                      + (spec * sun * _SunLightColor * waterRad * cloudShadow);
@@ -756,19 +757,19 @@ Shader "Galilego/WaterSurface"
                 float sssThick = (1.0 - crest01) * 0.35;
                 float3 sssColor = float3(0.05, 0.38, 0.40);
                  color += sssColor * (sssThick + sssForward * 0.9)
-                     * saturate(sun * ndl + 0.25) * (1.0 - deepW) * waterRad * cloudShadow;
+                     * saturate(sun * ndl + (0.25 * dayLocal)) * (1.0 - deepW) * waterRad * cloudShadow;
 
                 // Зеркало неба по Шлику (F0 воды 0.06 для красивого моря):
                 // вдаль море светлеет к горизонту, а не остаётся тёмной заливкой.
                 // Неба подмешиваем щедро + тёплый солнечный оттенок — море
                 // зеркалит небо, как настоящий океан в ясный день.
                 float3 reflectDir = reflect(-viewDir, n);
-                 float3 skyRef = GalilegoSkyAmbient(reflectDir) * waterRad * 1.0
-                     + (_SunLightColor * waterRad * 0.06 * cloudShadow);
+                 float3 skyRef = (GalilegoSkyAmbient(reflectDir) * waterRad * 1.0
+                     + (_SunLightColor * waterRad * 0.06 * cloudShadow)) * dayLocal;
                 // Широкая солнечная дорожка на воде (шеен к солнцу поверх
                 // зеркала; сам глиттер даёт spec ниже).
                 float sunPath = pow(saturate(dot(reflectDir, sunDir)), 10.0);
-                 skyRef += _SunLightColor * (sunPath * 0.05 * waterRad * cloudShadow);
+                 skyRef += _SunLightColor * (sunPath * 0.05 * waterRad * cloudShadow) * dayLocal;
                 color = lerp(color, skyRef, saturate(fresnelF * _FresnelStrength));
                 // Дальняя дымка воды: горизонт уходит в небо.
                 // Усилена для морских просторов — океаны до горизонта.
