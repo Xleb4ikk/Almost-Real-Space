@@ -144,19 +144,6 @@ namespace Galilego.Universe
         [Tooltip("Коэффициент отскока обломков от поверхности (0 — исчезают при входе в тело).")]
         public double DebrisSurfaceRestitution = 0.2d;
 
-        /// <summary>
-        /// Сериализуемое описание детали. Offset — в системе корабля, м
-        /// (локальная геометрия: например, танк выше, двигатель ниже).
-        /// </summary>
-        [Serializable]
-        public class PartDefinition
-        {
-            public string Name = "Деталь";
-            public double MassKg = 1000d;
-            public double JointStrengthNewtons = 200000d;
-            public Vector3 Offset;
-        }
-
         /// <summary>Симулированное время системы (с от эпохи эфемерид).</summary>
         public double TimeSeconds { get; private set; }
 
