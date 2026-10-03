@@ -41,11 +41,21 @@ namespace Galilego.Universe
 
         public AtmosphereProfile Atmosphere;
 
+        public CloudProfile Clouds;
+
         /// <summary>Рельеф: null — гладкая сфера. Пресет формы/цвета/палитры; при сборке копируется в HeightfieldTerrain.</summary>
         public TerrainProfile Terrain;
 
         /// <summary>Зерно шума per-body: один профиль-пресет — разные сиды у тел.</summary>
         public int TerrainSeed;
+
+        /// <summary>
+        /// Ровные площадки в точках тела (аналог PQS-модов KSP). Едут чертёжом,
+        /// потому что система собирается и в Play, и в редакторе, и обе сборки
+        /// обязаны видеть ОДНИ И ТЕ ЖЕ площадки — иначе превью врёт.
+        /// null/пусто = рельеф не тронут (бит-в-бит legacy).
+        /// </summary>
+        public TerrainModifier[] TerrainModifiers;
 
         /// <summary>Индекс родителя в списке; -1 — корень дерева (звезда).</summary>
         public int ParentIndex = -1;
@@ -109,11 +119,21 @@ namespace Galilego.Universe
                     RotationPeriodSeconds = bp.RotationPeriodSeconds,
                     PrimeMeridianOffsetDegrees = bp.PrimeMeridianOffsetDegrees,
                     NorthPoleDirection = new Vector3d(bp.NorthPoleX, bp.NorthPoleY, bp.NorthPoleZ),
-                    Atmosphere = bp.Atmosphere
+                    Atmosphere = bp.Atmosphere,
+                    Clouds = bp.Clouds
                 };
                 if (bp.Terrain != null)
                 {
                     body.Terrain = HeightfieldTerrain.FromProfile(bp.Terrain, bp.TerrainSeed);
+                    // SetModifiers есть только у HeightfieldTerrain: у гладкой
+                    // сферы (SphericalTerrain) рельефа, который можно править,
+                    // просто нет.
+                    if (bp.TerrainModifiers != null
+                        && bp.TerrainModifiers.Length > 0
+                        && body.Terrain is HeightfieldTerrain heightfield)
+                    {
+                        heightfield.SetModifiers(bp.TerrainModifiers, body.Radius);
+                    }
                 }
 
                 created.Add(body);

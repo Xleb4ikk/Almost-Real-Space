@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using Galilego.Core;
 
@@ -47,11 +48,19 @@ namespace Galilego.Universe
         [Tooltip("Пресет атмосферы (физика+визуал). null = атмосферы нет.")]
         public AtmosphereProfileAsset AtmospherePreset;
 
+        [Tooltip("Пресет облаков (см. PlanetCloudsView). null = облаков нет.")]
+        public CloudProfileAsset CloudsPreset;
+
         [Tooltip("Пресет декора местности (трава/камни/деревья). null = декора нет.")]
         public GroundDecorProfileAsset GroundDecorPreset;
 
         [Tooltip("Зерно шума рельефа: одинаковый seed = одинаковый рельеф.")]
         public int TerrainSeed;
+
+        [Tooltip("Ровные площадки под базы (аналог PQS-модов FlattenArea в KSP). " +
+            "Каждая: ровное ядро + гладкий фартук. Список идёт в чертёж системы, " +
+            "поэтому правка одинаково видна и в превью, и в Play.")]
+        public List<TerrainModifier> TerrainPads = new List<TerrainModifier>();
 
         public BodyBlueprint ToBlueprint(int parentIndex)
         {
@@ -77,10 +86,34 @@ namespace Galilego.Universe
                 NorthPoleY = NorthPoleDirection.Y,
                 NorthPoleZ = NorthPoleDirection.Z,
                 Atmosphere = ResolveAtmosphere(),
+                Clouds = ResolveClouds(),
                 Terrain = ResolveTerrain(),
                 TerrainSeed = TerrainSeed,
+                TerrainModifiers = ResolveTerrainModifiers(),
                 ParentIndex = parentIndex
             };
+        }
+
+        /// <summary>
+        /// Ровные площадки тела в чертёж. Копируем, а не отдаём ссылкой на
+        /// список сцены: блюпринт — плоские данные, он переживает пересборку
+        /// системы, а список живёт в сериализованном виде и может быть изменён
+        /// из инспектора в любой момент.
+        /// </summary>
+        private TerrainModifier[] ResolveTerrainModifiers()
+        {
+            if (TerrainPads == null || TerrainPads.Count == 0)
+            {
+                return null;
+            }
+
+            var copy = new TerrainModifier[TerrainPads.Count];
+            for (int i = 0; i < TerrainPads.Count; i++)
+            {
+                copy[i] = TerrainPads[i];
+            }
+
+            return copy;
         }
 
         /// <summary>Runtime-профиль рельефа из ассета-пресета; null — гладкая сфера.</summary>
@@ -96,6 +129,13 @@ namespace Galilego.Universe
         {
             return AtmospherePreset != null && AtmospherePreset.Profile != null
                 ? AtmospherePreset.Profile.Clone()
+                : null;
+        }
+
+        private CloudProfile ResolveClouds()
+        {
+            return CloudsPreset != null && CloudsPreset.Profile != null
+                ? CloudsPreset.Profile.Clone()
                 : null;
         }
 

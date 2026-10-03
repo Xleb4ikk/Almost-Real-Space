@@ -58,36 +58,48 @@ namespace Galilego.Universe.EditorTools
                 NearMaterial = material,
                 FarMaterial = null,
                 SpacingMeters = 12d,
-                MaxInstancesPerChunk = 200,
+                MaxInstancesPerChunk = 400,
                 MaxCellsPerAxis = 128,
-                Density = 1.0d / 3.0d,
+                // Плотность леса: примерно одно дерево на 35-50 м вблизи.
+                // Density, а не MaxInstancesPerChunk: лимит на чанк в ближнем
+                // чанке не режет (там кандидатов ~1300), он влияет только на
+                // дальние чанки, и плотность была бы разной.
+                Density = 0.25d,
                 DistributionFrequency = 150d,
                 DistributionOctaves = 4,
                 DistributionSeedOffset = 3,
                 ClusterThreshold = 0d,
                 MinAltitudeMeters = 5d,
-                // Только зелёная земля палитры: ниже — пляж (Sand), выше —
-                // скалы (там только камни). Верхняя граница леса — общая
-                // с травой (см. TreeLineMaxAltitudeMeters).
-                MinNormalizedHeight = 0.032d,
+                // Песок — только абсолютный пляж (BeachHeightMeters профиля
+                // террейна, ~18 м): выше него начинается зелень, и деревья там
+                // и стоят. Нормированной нижней границы нет — 0.032 при амплитуде
+                // 9144 м отсекал 274 м высоты, то есть всю прибрежную равнину.
+                MinNormalizedHeight = 0d,
                 MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
-                MaxAltitudeMeters = GroundDecorSetup.TreeLineMaxAltitudeMeters,
+                MaxAltitudeMeters = GroundDecorSetup.TreeMaxAltitudeMeters,
                 MaxSlopeTan = 0.9d,
                 AvoidWater = true,
                 // Деревья избегают лишь крайней пустыни: сухая степь зарастает,
-                // иначе зелёные с фото холмы стоят без леса.
+                // иначе зелёные с фото холмы стоят без леса. WetFade — мягкий
+                // край: жёсткий порог давал видную линию «лес кончился».
                 WetMin = 0.2d,
                 WetMax = 1d,
+                WetFade = 0.2d,
                 MinScale = baseScale * 0.85f,
                 MaxScale = baseScale * 1.5f,
-                SteepPower = 3d,
+                // Склон гасит мягко (^1.5): при SteepPower=3 лес вырождался в
+                // единичные деревья там, где рельеф чуть круче 30°.
+                SteepPower = 1.5d,
                 GroundOffsetMeters = groundOffset,
                 Collides = true,
                 CollisionRadiusMeters = 1.2d,
                 CollisionHeightMeters = 16d,
-                // [ГРАФИКА] дальность деревьев (near/far) и плотность.
+                // [ГРАФИКА] дальность деревьев (near/far) и плотность. Дальность
+                // 2000 м вместо 3000: в ближнем чанке деревьев вдвое больше
+                // (400 против 200 на чанк), а на горизонте они всё равно были
+                // раз в полтораста метров.
                 NearDistanceMeters = 150f,
-                MaxDistanceMeters = 3000f
+                MaxDistanceMeters = 2000f
             };
         }
 

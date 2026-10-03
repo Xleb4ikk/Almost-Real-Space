@@ -3,12 +3,13 @@ using Galilego.Core;
 
 namespace Galilego.Universe
 {
-    /// <summary>Режим игрока: в корабле / EVA (полёт) / на поверхности.</summary>
+    /// <summary>Режим игрока: в корабле / EVA (полёт) / на поверхности / в воде.</summary>
     public enum PlayerMode
     {
         InShip,
         EVA,
-        OnSurface
+        OnSurface,
+        Swimming
     }
 
     /// <summary>
@@ -52,8 +53,27 @@ namespace Galilego.Universe
         /// <summary>Прыжок (срабатывает один раз, на земле).</summary>
         public bool Jump;
 
+        public bool JetpackToggle;
+
         /// <summary>Ускорение джетпака (м/с², только в EVA).</summary>
         public Vector3d JetpackAccel;
+
+        /// <summary>Направление плавания (мировой астро-кадр, единичный или ноль).</summary>
+        public Vector3d SwimDirection;
+
+        /// <summary>Скорость плавания (м/с).</summary>
+        public double SwimSpeed;
+
+        /// <summary>
+        /// Направление ноуклипа (мировой астро-кадр, единичный или ноль).
+        /// Заполняется, только когда включён SimulationRunner.NoclipActive —
+        /// это единственный переключатель режима, отдельного флага в намерении
+        /// нет намеренно: два переключателя рассинхронизируются.
+        /// </summary>
+        public Vector3d NoclipDirection;
+
+        /// <summary>Скорость ноуклипа (м/с) — от ходьбы до несоразмерных величин.</summary>
+        public double NoclipSpeed;
 
         public static PlayerIntent Idle => default;
     }

@@ -46,6 +46,8 @@ internal static partial class P1bTests
         string filter = null;
         bool fastOnly = false;
         bool slowOnly = false;
+        int from = int.MinValue;
+        int to = int.MaxValue;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "--list")
@@ -58,7 +60,17 @@ internal static partial class P1bTests
                 return 0;
             }
 
-            if (args[i] == "--filter" && i + 1 < args.Length)
+            if (args[i] == "--from" && i + 1 < args.Length)
+            {
+                from = int.Parse(args[i + 1], System.Globalization.CultureInfo.InvariantCulture);
+                i++;
+            }
+            else if (args[i] == "--to" && i + 1 < args.Length)
+            {
+                to = int.Parse(args[i + 1], System.Globalization.CultureInfo.InvariantCulture);
+                i++;
+            }
+            else if (args[i] == "--filter" && i + 1 < args.Length)
             {
                 filter = args[i + 1];
                 i++;
@@ -80,6 +92,20 @@ internal static partial class P1bTests
                 continue;
             }
 
+            // --from/--to нужны потому, что --filter ищет подстроку, а имена
+            // тестов нумеруются (Test9, Test90…Test99), и подстрока "Test9"
+            // накрыла бы сразу десять разных номеров. Разбиение на группы для
+            // поочерёдного прогона без одновременной нагрузки на CPU иначе
+            // не выразить.
+            if (from != int.MinValue || to != int.MaxValue)
+            {
+                int num = TestNumber(entry.Name);
+                if (num < 0 || num < from || num > to)
+                {
+                    continue;
+                }
+            }
+
             if (fastOnly && entry.Slow)
             {
                 continue;
@@ -95,5 +121,24 @@ internal static partial class P1bTests
 
         Console.WriteLine(failures == 0 ? "ALL PASS" : failures + " FAILURES");
         return failures;
+    }
+
+    /// <summary>Номер теста из имени вида "Test112b_GradientSetAnalysis" → 112.</summary>
+    private static int TestNumber(string name)
+    {
+        if (!name.StartsWith("Test", System.StringComparison.Ordinal))
+        {
+            return -1;
+        }
+
+        int i = 4;
+        int value = 0;
+        while (i < name.Length && name[i] >= '0' && name[i] <= '9')
+        {
+            value = (value * 10) + (name[i] - '0');
+            i++;
+        }
+
+        return i > 4 ? value : -1;
     }
 }

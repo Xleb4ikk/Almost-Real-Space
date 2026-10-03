@@ -21,12 +21,19 @@ namespace Galilego.Universe.EditorTools
         internal const string ProfilePath = "Assets/_Project/Profiles/Decor/EarthDecor.asset";
 
         /// <summary>
-        /// Верхняя граница леса/травы: конец зелёной текстуры рельефа
-        /// (MidHighBlendEnd = 3500 м у Terra). Общая для деревьев,
-        /// травы, сухой травы и ромашек. Камни игнорируют границу и спавнятся
-        /// до максимальной высоты.
+        /// Верхние границы растительности: конец зелёной текстуры рельефа
+        /// (MidHighBlendEnd = 5500 м) и разные потолки по слоям. Потолки
+        /// РАЗНЫЕ намеренно: общий потолок даёт одну ровную линию конца
+        /// растительности поперёк склонов, а со ступенькой деревья кончаются
+        /// первыми, потом цветы, потом трава — край читается как граница леса,
+        /// а не как обрез по линейке. Камни границу не делят и спавнятся до
+        /// максимальной высоты.
         /// </summary>
-        internal const double TreeLineMaxAltitudeMeters = 3500d;
+        internal const double GrassMaxAltitudeMeters = 5000d;
+
+        internal const double DaisyMaxAltitudeMeters = 4500d;
+
+        internal const double TreeMaxAltitudeMeters = 4200d;
 
         private const string DecorModelsFolder = "Assets/_Project/Models/Decor";
         private const string DecorMaterialsFolder = "Assets/_Project/Materials/Decor";
@@ -86,13 +93,17 @@ namespace Galilego.Universe.EditorTools
                     ClusterThreshold = 0.5d,
                     MinAltitudeMeters = 2d,
                     // Ромашки — луговые цветы: только зелёная земля палитры.
-                    MinNormalizedHeight = 0.032d,
+                    // Нормированной нижней границы нет (песок = абсолютный пляж).
+                    MinNormalizedHeight = 0d,
                     MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
-                    MaxAltitudeMeters = TreeLineMaxAltitudeMeters,
+                    MaxAltitudeMeters = DaisyMaxAltitudeMeters,
                     MaxSlopeTan = 0.8d,
                     AvoidWater = true,
-                    WetMin = GroundDecorLayer.GreenWetMin,
+                    // Ромашки — луговые цветы: влажнее степи, но мягким краем
+                    // (WetFade), иначе видно линию, где цветы кончились.
+                    WetMin = 0.3d,
                     WetMax = 1d,
+                    WetFade = 0.25d,
                     MinScale = 0.8d,
                     MaxScale = 1.2d,
                     SteepPower = 4d,
@@ -178,13 +189,15 @@ namespace Galilego.Universe.EditorTools
                     ClusterThreshold = 0.25d,
                     MinAltitudeMeters = 2d,
                     // Кактусы — сухой биом, но не пляж и не скалы.
-                    MinNormalizedHeight = 0.032d,
+                    MinNormalizedHeight = 0d,
                     MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
                     MaxAltitudeMeters = 4000d,
                     MaxSlopeTan = 0.8d,
                     AvoidWater = true,
                     WetMin = 0d,
                     WetMax = 0.32d,
+                    // мягкий спад к влажным зонам, без линии на границе
+                    WetFade = 0.2d,
                     MinScale = 2d,
                     MaxScale = 5d,
                     SteepPower = 4d,

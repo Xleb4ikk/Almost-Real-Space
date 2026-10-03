@@ -23,7 +23,7 @@ MonoBehaviour:
     Intensity: 1
     MieAnisotropy: 0.8
     AerosolScale: 1
-    StepCount: 48
+    StepCount: 24
     PlanetOcclusion: 1
     GroundColor: {r: 0.16, g: 0.18, b: 0.14, a: 1}
     HorizonFade: 0.01

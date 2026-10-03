@@ -172,6 +172,10 @@ namespace Galilego.Universe
         /// <summary>Режим игрока: в корабле / EVA / на поверхности.</summary>
         public PlayerMode PlayerMode { get; private set; }
 
+        public bool JetpackActive { get; private set; }
+
+        public bool PlayerAirborne => playerAirborne;
+
         /// <summary>Позиция игрока в double-мире (астро-кадр, инерциальный).</summary>
         public Vector3d PlayerPosition { get; private set; }
 
@@ -180,6 +184,76 @@ namespace Galilego.Universe
 
         /// <summary>Намерение игрока на кадр (заполняет PlayerController).</summary>
         public PlayerIntent PlayerIntent;
+
+        /// <summary>
+        /// Ноуклип включён (переключатель чит-меню). Пока включён, режим игрока
+        /// принудительно EVA: ходьба/плавание проецировали бы игрока обратно
+        /// на рельеф, а в корабле он был бы привязан к точке корабля.
+        /// </summary>
+        public bool NoclipActive { get; private set; }
+
+        /// <summary>
+        /// Включить/выключить ноуклип. exitDirection — куда высадить игрока из
+        /// корабля при включении (направление камеры); ноль — наружу от тела.
+        /// При выключении игрок остаётся там, где летел: если он внутри рельефа
+        /// или воды — сажается на поверхность (иначе шаг режима вытолкнул бы
+        /// его из планеты), иначе просто продолжает свободный полёт EVA.
+        /// </summary>
+        public void SetNoclip(bool active, Vector3d exitDirection)
+        {
+            if (NoclipActive == active)
+            {
+                return;
+            }
+
+            NoclipActive = active;
+            if (active)
+            {
+                if (PlayerMode == PlayerMode.InShip)
+                {
+                    TryExitShip(exitDirection.SqrMagnitude > 1e-12d ? exitDirection.Normalized : OutwardFromBody(), 1d);
+                }
+
+                PlayerMode = PlayerMode.EVA;
+                playerAirborne = true;
+                JetpackActive = false;
+                return;
+            }
+
+            PlayerMode = PlayerMode.EVA;
+            playerAirborne = true;
+            JetpackActive = false;
+            OrbitingBody body = DominantBody;
+            if (body == null)
+            {
+                return;
+            }
+
+            // Внутри рельефа/воды — посадить на поверхность: следующий же шаг
+            // режима (EVA/OnSurface) иначе трактовал бы точку как контакт и
+            // вытолкнул игрока со своей стороны планеты.
+            body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out _);
+            body.SurfaceLatLonAt(PlayerPosition, TimeSeconds, out double latDeg, out double lonDeg);
+            double surfaceRadius = body.Radius + GroundHeight(body, latDeg, lonDeg);
+            if ((PlayerPosition - bodyPos).Magnitude <= surfaceRadius)
+            {
+                LandPlayer(body, TimeSeconds);
+            }
+        }
+
+        /// <summary>Направление от центра доминантного тела к игроку (зенит).</summary>
+        private Vector3d OutwardFromBody()
+        {
+            OrbitingBody body = DominantBody;
+            if (body == null)
+            {
+                return new Vector3d(0d, 0d, 1d);
+            }
+
+            body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out _);
+            Vector3d radial = PlayerPosition - bodyPos;
+            return radial.SqrMagnitude > 1e-12d ? radial.Normalized : new Vector3d(0d, 0d, 1d);
+        }
 
         /// <summary>Сырой газ 0..1 от ввода (ShipController); EffectiveThrottle капает выше ×3.</summary>
         public double RawThrottle { get; set; }
@@ -201,9 +275,11 @@ namespace Galilego.Universe
         private IBreakupModel breakupModel;
         private DebrisUpdater debrisUpdater;
         private bool playerAirborne;
+        private bool playerJumpQueued;
+        private bool jetpackToggleQueued;
 
         /// <summary>Скорость прыжка игрока (м/с, вертикально от поверхности).</summary>
-        private const double PlayerJumpSpeed = 2.5d;
+        private const double PlayerJumpSpeed = 5d;
 
         /// <summary>Максимальный подшаг интегрирования игрока (с).</summary>
         private const double PlayerMaxStepSeconds = 0.5d;
@@ -267,6 +343,7 @@ namespace Galilego.Universe
             TimeSeconds = 0d;
             Regime = VesselRegime.Flying;
             PlayerMode = PlayerMode.InShip;
+            JetpackActive = false;
             PlayerPosition = Ship.Position;
             PlayerVelocity = Ship.Velocity;
             if (SpawnOnSurface)
@@ -327,6 +404,39 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Перебросить игрока в произвольную точку поверхности без смены
+        /// режима. Нужна редакторскому инструменту мест (SurfaceSitesWindow),
+        /// чтобы телепортироваться к сохранённому месту прямо в Play.
+        ///
+        /// Корабль переносится вместе с игроком: игрок на поверхности привязан к
+        /// кораблю (механика высадки), иначе телепорт оторвал бы его от места
+        /// и «E» больше не работал бы. Режим и ориентация сохраняются, поэтому
+        /// высадка/погружение/ходьба продолжают работать как прежде.
+        /// </summary>
+        public void TeleportTo(Vector3d surfacePosition, Vector3d surfaceVelocity)
+        {
+            if (!SystemStateInitialized())
+            {
+                Debug.LogWarning("[Teleport] Система не инициализирована — некуда телепортироваться.");
+                return;
+            }
+
+            Vector3d delta = surfacePosition - PlayerPosition;
+            Ship.Position = Ship.Position + delta;
+            Ship.Velocity = surfaceVelocity;
+            PlayerPosition = surfacePosition;
+            PlayerVelocity = surfaceVelocity;
+            time.Reset(TimeSeconds);
+            FloatingOrigin.Anchor = PlayerPosition;
+            Debug.Log(string.Format("[Teleport] игрок -> lat/lon места, смещение {0:F0} м", delta.Magnitude));
+        }
+
+        private bool SystemStateInitialized()
+        {
+            return SystemState != null && Ship != null;
+        }
+
+        /// <summary>
         /// Спавн пешком: корабль ставится на рельеф в точке спавна, игрок — в
         /// нескольких метрах по касательной (чтобы камера не оказалась внутри
         /// корабля, но дистанция входа E была в пределах EnterDistance).
@@ -367,8 +477,13 @@ namespace Galilego.Universe
 
             PlayerPosition = playPos;
             PlayerVelocity = playVel;
-            PlayerMode = PlayerMode.OnSurface;
+            // Спавн в океане — сразу вплавь (для проверки воды: спавн по
+            // координатам в океан Biome-тестов).
+            PlayerMode = WaterQuery.IsWaterAt(body, playLat, playLon)
+                ? PlayerMode.Swimming
+                : PlayerMode.OnSurface;
             playerAirborne = false;
+            JetpackActive = false;
         }
 
         private OrbitingBody FindSpawnBody()
@@ -453,13 +568,18 @@ namespace Galilego.Universe
             PlayerVelocity = Ship.Velocity + (direction * pushSpeed);
             PlayerMode = PlayerMode.EVA;
             playerAirborne = false;
+            JetpackActive = false;
             return true;
         }
 
-        /// <summary>Вход в корабль: EVA/OnSurface и дистанция до корабля ≤ EnterDistance.</summary>
+        /// <summary>
+        /// Вход в корабль: EVA/OnSurface и дистанция до корабля ≤ EnterDistance.
+        /// В ноуклипе входа нет: игрок в свободном полёте, а принудительная
+        /// посадка в кресло вырвала бы камеру из-под управления игроком.
+        /// </summary>
         public bool TryEnterShip(double enterDistanceMeters)
         {
-            if (PlayerMode == PlayerMode.InShip || Ship == null)
+            if (PlayerMode == PlayerMode.InShip || Ship == null || NoclipActive)
             {
                 return false;
             }
@@ -473,6 +593,7 @@ namespace Galilego.Universe
             PlayerPosition = Ship.Position;
             PlayerVelocity = Ship.Velocity;
             playerAirborne = false;
+            JetpackActive = false;
             return true;
         }
 
@@ -483,10 +604,29 @@ namespace Galilego.Universe
         /// </summary>
         private void StepPlayer(double fromTime)
         {
+            playerJumpQueued |= PlayerIntent.Jump;
+            jetpackToggleQueued |= PlayerIntent.JetpackToggle;
+            PlayerIntent.Jump = false;
+            PlayerIntent.JetpackToggle = false;
+
+            if (jetpackToggleQueued)
+            {
+                jetpackToggleQueued = false;
+                ToggleJetpack();
+            }
+
             double t = fromTime;
+            bool jump = playerJumpQueued;
             while (t < TimeSeconds - 1e-12)
             {
                 double dt = Math.Min(PlayerMaxStepSeconds, TimeSeconds - t);
+                if (NoclipActive)
+                {
+                    StepPlayerNoclip(t, dt);
+                    t += dt;
+                    continue;
+                }
+
                 switch (PlayerMode)
                 {
                     case PlayerMode.InShip:
@@ -497,18 +637,123 @@ namespace Galilego.Universe
                         StepPlayerEva(t, dt);
                         break;
                     case PlayerMode.OnSurface:
-                        StepPlayerSurface(t, dt);
+                        StepPlayerSurface(t, dt, jump);
+                        playerJumpQueued = false;
+                        jump = false;
+                        break;
+                    case PlayerMode.Swimming:
+                        StepPlayerSwimming(t, dt);
                         break;
                 }
 
                 t += dt;
             }
+
+            if (PlayerMode != PlayerMode.OnSurface)
+            {
+                playerJumpQueued = false;
+            }
+        }
+
+        private void ToggleJetpack()
+        {
+            if (PlayerMode != PlayerMode.EVA && PlayerMode != PlayerMode.OnSurface)
+            {
+                return;
+            }
+
+            bool launchFromGround = PlayerMode == PlayerMode.OnSurface && !playerAirborne;
+            JetpackActive = !JetpackActive;
+            if (!launchFromGround || !JetpackActive)
+            {
+                return;
+            }
+
+            playerAirborne = true;
+            Vector3d normal = new Vector3d(0d, 0d, 1d);
+            OrbitingBody body = DominantBody;
+            if (body != null)
+            {
+                body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out _);
+                Vector3d radial = PlayerPosition - bodyPos;
+                if (radial.SqrMagnitude > 1e-12d)
+                {
+                    normal = radial.Normalized;
+                }
+
+                if (body.Terrain != null)
+                {
+                    body.SurfaceLatLonAt(PlayerPosition, TimeSeconds, out double latDeg, out double lonDeg);
+                    Vector3d terrainNormal = body.Terrain.GetOutwardNormal(body, radial, TimeSeconds).Normalized;
+                    if (terrainNormal.SqrMagnitude > 1e-12d)
+                    {
+                        normal = terrainNormal;
+                    }
+                }
+            }
+
+            PlayerVelocity += normal * PlayerJumpSpeed;
+        }
+
+        /// <summary>
+        /// Шаг ноуклипа за подшаг: игрок летит со СКОРОСТЬЮ ОТНОСИТЕЛЬНО
+        /// МЕСТНОГО КАДРА — как ходьба, плавание и полёт на джетпаке. Гравитации,
+        /// посадки на рельеф, воды и коллизий декора нет — это и есть «чит».
+        ///
+        /// Скорость кадра (орбитальная + собственное вращение тела) обязательна:
+        /// Terra летит вокруг звезды со ~30 км/с, и без неё позиция игрока,
+        /// стоящего на поверхности, остаётся на месте в инерциальном кадре — тело
+        /// уезжает из-под ног, и игрок «улетает в космос» на 30–50 км/с, стоя
+        /// на земле (симптом, пойманный в Play: скорость игрока при этом 0).
+        ///
+        /// Подшаг ≤ 0.5 с, направление единичное; верхняя граница скорости не
+        /// ограничена (1e9 м/с × 0.5 с = 5e8 м за шаг) — дальше кеплеровы рельсы
+        /// тела уже не имеют смысла, но мусора в double-мире не остаётся.
+        /// </summary>
+        private void StepPlayerNoclip(double t, double dt)
+        {
+            Vector3d direction = PlayerIntent.NoclipDirection;
+            double speed = PlayerIntent.NoclipSpeed;
+            PlayerVelocity = LocalFrameVelocity(t) + (direction * speed);
+            PlayerPosition += PlayerVelocity * dt;
+            playerAirborne = true;
+            JetpackActive = false;
+            playerJumpQueued = false;
+        }
+
+        /// <summary>
+        /// Скорость локальной системы отсчёта в точке игрока: орбитальная
+        /// скорость тела плюс его собственное вращение (то же, что даёт
+        /// GetSurfaceState для поверхности — оттуда берётся и скорость ходьбы).
+        /// </summary>
+        private Vector3d LocalFrameVelocity(double t)
+        {
+            OrbitingBody body = DominantBody;
+            if (body == null)
+            {
+                return Vector3d.Zero;
+            }
+
+            body.EvaluateWorldState(t, out Vector3d bodyPos, out Vector3d bodyVel);
+            Vector3d omega = body.SpinAxis * body.SpinAngularSpeed;
+            return bodyVel + Vector3d.Cross(omega, PlayerPosition - bodyPos);
+        }
+
+        /// <summary>
+        /// Скорость игрока относительно местного кадра — «спидометр». Инерциальная
+        /// скорость на бегу по поверхности равна орбитальной скорости планеты
+        /// (~30 км/с у Terra), поэтому для показаний берётся разность.
+        /// </summary>
+        public double PlayerFrameRelativeSpeed(double t)
+        {
+            return (PlayerVelocity - LocalFrameVelocity(t)).Magnitude;
         }
 
         private void StepPlayerEva(double t, double dt)
         {
             Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
-            PlayerVelocity += (gravity + PlayerIntent.JetpackAccel) * dt;
+            Vector3d jetpackAccel = JetpackActive ? PlayerIntent.JetpackAccel : Vector3d.Zero;
+            PlayerVelocity += (gravity + jetpackAccel) * dt;
             PlayerPosition += PlayerVelocity * dt;
 
             OrbitingBody body = DominantBody;
@@ -529,14 +774,21 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Касание поверхности игроком: позиция проецируется на поверхность,
-        /// нормальная скорость съедается, тангенциальная сохраняется. Жёсткость
-        /// удара логируется (травмы/смерть — будущий этап). Спавн-эпсилон не
-        /// нужен — игрок становится ровно на поверхность.
+        /// Касание поверхности игроком: над водой — всплеск (EnterWater),
+        /// над сушей — проекция на поверхность, нормальная скорость съедается,
+        /// тангенциальная сохраняется. Жёсткость удара логируется
+        /// (травмы/смерть — будущий этап). Спавн-эпсилон не нужен — игрок
+        /// становится ровно на поверхность.
         /// </summary>
         private void LandPlayer(OrbitingBody body, double t)
         {
             body.SurfaceLatLonAt(PlayerPosition, t, out double latDeg, out double lonDeg);
+            if (WaterQuery.IsWaterAt(body, latDeg, lonDeg))
+            {
+                EnterWater(body, t);
+                return;
+            }
+
             body.GetSurfaceState(latDeg, lonDeg, GroundHeight(body, latDeg, lonDeg), t, out Vector3d surfacePos, out Vector3d surfaceVel);
             body.EvaluateWorldState(t, out Vector3d bodyPos, out _);
             Vector3d normal = body.Terrain != null
@@ -555,7 +807,209 @@ namespace Galilego.Universe
             }
         }
 
-        private void StepPlayerSurface(double t, double dt)
+        /// <summary>
+        /// Просвет над сырым дном (м): игрок в воде не проваливается сквозь дно.
+        /// </summary>
+        private const double SwimSeabedClearanceMeters = 0.3d;
+
+        /// <summary>
+        /// Скорость свободного всплытия/погружения без ввода у поверхности
+        /// (м/с): к висению в SwimSurfaceHoldMeters под поверхностью.
+        /// Глубже SwimNeutralDepthMeters — нейтральная плавучесть (висение):
+        /// нырнул, отпустил клавиши — висишь и смотришь вверх, не выталкивает.
+        /// Всплытие/погружение там — только вводом (Space/Ctrl или взгляд+W/S).
+        /// </summary>
+        private const double SwimBuoyancySpeed = 0.6d;
+
+        /// <summary>
+        /// Глубина висения ног у поверхности без ввода (м): голова (~2 м выше
+        /// ног) остаётся над водой, эффект/туман не мутнеет вплавь.
+        /// </summary>
+        private const double SwimSurfaceHoldMeters = 0.4d;
+
+        /// <summary>
+        /// Глубина ног (м), глубже которой без ввода — нейтраль (0): глаза
+        /// пловца (~0.5 м выше ног — пловец лежит, см. SwimEyeHeightMeters)
+        /// уже под водой, игрок висит и смотрит на поверхность.
+        /// Должно быть &gt; SwimEyeHeightMeters.
+        /// </summary>
+        private const double SwimNeutralDepthMeters = 1d;
+
+        /// <summary>
+        /// Высота глаз пловца над ногами (м): в воде тело лежит, голова
+        /// ~0.5 м выше ног (не 2 м как стоя). Синхронизировано с
+        /// FirstPersonCamera.SwimEyeHeightMeters и
+        /// UnderwaterEffect.SwimEyeHeightMeters: при висении на
+        /// SwimSurfaceHoldMeters голова остаётся над водой, при нейтрали —
+        /// уже под водой. Иначе на мелководье у берега (2–6 м) голова на
+        /// 2-метровом росте никогда не уходила под воду — «выталкивает».
+        /// </summary>
+        private const double SwimEyeHeightMeters = 0.5d;
+
+        /// <summary>
+        /// Вход в воду: позиция клампится между поверхностью и дном+просвет,
+        /// скорость гасится как всплеск (тангенциальная ×0.3, встречная
+        /// нормальная — максимум 3 м/с вниз). Та же идея ляжет в основу
+        /// будущего мягкого приводнения корабля (см. WaterQuery.GetSplashdownInfo).
+        /// </summary>
+        private void EnterWater(OrbitingBody body, double t)
+        {
+            body.EvaluateWorldState(t, out Vector3d bodyPos, out _);
+            body.SurfaceLatLonAt(PlayerPosition, t, out double latDeg, out double lonDeg);
+            double sea = body.Terrain.GetSeaLevelMeters();
+            double raw = WaterQuery.RawSeabedHeightAt(body, latDeg, lonDeg);
+            body.GetSurfaceState(latDeg, lonDeg, sea, t, out _, out Vector3d surfaceVel);
+
+            Vector3d radial = PlayerPosition - bodyPos;
+            double dist = radial.Magnitude;
+            Vector3d up = dist > 1e-9d ? radial / dist : new Vector3d(0d, 0d, 1d);
+            double clampedDist = Math.Min(dist, body.Radius + sea);
+            if (!double.IsNaN(raw))
+            {
+                clampedDist = Math.Max(clampedDist, body.Radius + raw + SwimSeabedClearanceMeters);
+            }
+
+            PlayerPosition = bodyPos + (up * clampedDist);
+
+            Vector3d relativeVelocity = PlayerVelocity - surfaceVel;
+            double normalSpeed = Vector3d.Dot(relativeVelocity, up);
+            Vector3d tangential = relativeVelocity - (up * normalSpeed);
+            double softNormal = normalSpeed < 0d ? Math.Max(normalSpeed * 0.2d, -3d) : 0d;
+            PlayerVelocity = surfaceVel + (tangential * 0.3d) + (up * softNormal);
+            PlayerMode = PlayerMode.Swimming;
+            playerAirborne = false;
+            JetpackActive = false;
+            if (normalSpeed < -10d)
+            {
+                Debug.Log("Всплеск: вход в воду на " + (-normalSpeed).ToString("F1") + " м/с погашен водой");
+            }
+        }
+
+        /// <summary>
+        /// Плавание за подшаг: скорость = со-вращение планеты + намерение
+        /// (вода держит — баллистики нет), без ввода — у поверхности дрейф к
+        /// SwimSurfaceHoldMeters, на глубине глубже SwimNeutralDepthMeters —
+        /// нейтральное висение (не выталкивает, можно смотреть вверх).
+        /// Упор в сырое дно, кламп у поверхности; выпрыгивание из глубокой
+        /// воды — в EVA (упадёт обратно), выход на сушу — через LandPlayer.
+        /// </summary>
+        private void StepPlayerSwimming(double t, double dt)
+        {
+            OrbitingBody body = DominantBody;
+            if (body == null || body.Terrain == null || !WaterQuery.HasOcean(body))
+            {
+                PlayerMode = PlayerMode.EVA;
+                playerAirborne = false;
+                JetpackActive = false;
+                return;
+            }
+
+            body.EvaluateWorldState(t, out Vector3d bodyPos, out _);
+            double sea = body.Terrain.GetSeaLevelMeters();
+            double seaRadius = body.Radius + sea;
+            double dist = (PlayerPosition - bodyPos).Magnitude;
+            double submersion = seaRadius - dist;
+
+            body.SurfaceLatLonAt(PlayerPosition, t, out double latDeg, out double lonDeg);
+            if (!WaterQuery.IsWaterAt(body, latDeg, lonDeg))
+            {
+                // Течение вынесло на сушу: у поверхности — встать, иначе — в воздух.
+                if (submersion > -1d)
+                {
+                    LandPlayer(body, t);
+                }
+                else
+                {
+                    PlayerMode = PlayerMode.EVA;
+                    playerAirborne = false;
+                    JetpackActive = false;
+                }
+
+                return;
+            }
+
+            Vector3d up = dist > 1e-9d ? (PlayerPosition - bodyPos) / dist : new Vector3d(0d, 0d, 1d);
+            body.GetSurfaceState(latDeg, lonDeg, sea, t, out _, out Vector3d surfaceVel);
+
+            Vector3d swimVel = PlayerIntent.SwimDirection * PlayerIntent.SwimSpeed;
+            if (swimVel.SqrMagnitude < 1e-12d)
+            {
+                // Мелководье у берега (глубина не достаёт до нейтрали +
+                // просвет над дном): висеть негде — нейтраль везде, лежим
+                // на дне/висим где оставили, к поверхности не тянем.
+                // Иначе на глубине 1–2 м дно держит ноги выше нейтрали и
+                // hold-логика вечно тащит к 0.4 м — «выталкивает».
+                double rawHere = WaterQuery.RawSeabedHeightAt(body, latDeg, lonDeg);
+                double waterDepthHere = double.IsNaN(rawHere) ? double.PositiveInfinity : sea - rawHere;
+                if (waterDepthHere < SwimNeutralDepthMeters + SwimSeabedClearanceMeters + 0.2d)
+                {
+                    swimVel = new Vector3d(0d, 0d, 0d);
+                }
+                else if (submersion > SwimNeutralDepthMeters)
+                {
+                    swimVel = new Vector3d(0d, 0d, 0d);
+                }
+                else
+                {
+                    swimVel = up * Math.Max(-SwimBuoyancySpeed, Math.Min(SwimBuoyancySpeed, submersion - SwimSurfaceHoldMeters));
+                }
+            }
+
+            PlayerVelocity = surfaceVel + swimVel;
+
+            // Кривизна орбиты: линейная адвекция со скоростью со-вращения
+            // (~5 км/с) даёт радиальную ошибку v²dt²/2R — при подшаге 0.5 с
+            // это метры, и кламп ниже ложно срабатывал выходом в EVA
+            // («выталкивает с огромной силой» на низком fps). Поэтому глубину
+            // ведём явно: tangential — адвекцией, radial — intended
+            // (минус: submersion = seaRadius − dist). Ходьбе это не нужно — она перепроецируется на
+            // поверхность, у плавания проекции нет (глубина — состояние).
+            double intendedSubmersion = submersion - Vector3d.Dot(swimVel, up) * dt;
+            double tAfter = t + dt;
+            body.EvaluateWorldState(tAfter, out Vector3d bodyPosAfter, out _);
+            Vector3d advected = PlayerPosition + PlayerVelocity * dt;
+            Vector3d radialAfter = advected - bodyPosAfter;
+            double distAfter = radialAfter.Magnitude;
+            Vector3d upAfter = distAfter > 1e-9d ? radialAfter / distAfter : up;
+            PlayerPosition = bodyPosAfter + (upAfter * (seaRadius - intendedSubmersion));
+
+            // Кламеры НА КОНЕЦ подшага (тот же принцип, что ходьба: проекция
+            // в toTime, иначе орбитальная скорость тела даёт ошибку bodyVel·dt).
+            double tEnd = t + dt;
+            body.EvaluateWorldState(tEnd, out Vector3d bodyPosEnd, out _);
+            body.SurfaceLatLonAt(PlayerPosition, tEnd, out double latEnd, out double lonEnd);
+            double rawEnd = WaterQuery.RawSeabedHeightAt(body, latEnd, lonEnd);
+            Vector3d radialEnd = PlayerPosition - bodyPosEnd;
+            double distEnd = radialEnd.Magnitude;
+            Vector3d upEnd = distEnd > 1e-9d ? radialEnd / distEnd : up;
+
+            if (!double.IsNaN(rawEnd))
+            {
+                double minDist = body.Radius + rawEnd + SwimSeabedClearanceMeters;
+                if (distEnd < minDist)
+                {
+                    PlayerPosition = bodyPosEnd + (upEnd * minDist);
+                    distEnd = minDist;
+                }
+            }
+
+            double submEnd = seaRadius - distEnd;
+            if (submEnd < -0.3d)
+            {
+                if (WaterQuery.WaterDepthAt(body, latEnd, lonEnd) > 1d)
+                {
+                    PlayerMode = PlayerMode.EVA;
+                    playerAirborne = false;
+                    JetpackActive = false;
+                }
+                else
+                {
+                    LandPlayer(body, tEnd);
+                }
+            }
+        }
+
+        private void StepPlayerSurface(double t, double dt, bool jumpRequested)
         {
             OrbitingBody body = DominantBody;
             if (body == null)
@@ -569,7 +1023,8 @@ namespace Galilego.Universe
             {
                 // Баллистика прыжка: свободное падение до контакта.
                 Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
-                PlayerVelocity += gravity * dt;
+                Vector3d jetpackAccel = JetpackActive ? PlayerIntent.JetpackAccel : Vector3d.Zero;
+                PlayerVelocity += (gravity + jetpackAccel) * dt;
                 PlayerPosition += PlayerVelocity * dt;
                 if (GroundDecorCollisionRegistry.TryResolve(body.Name, PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d airPushed))
                 {
@@ -618,12 +1073,20 @@ namespace Galilego.Universe
             // SurfaceMotion (перенос в toTime + проекция в toBodyP).
             double tEnd = t + dt;
             body.SurfaceLatLonAt(PlayerPosition, tEnd, out double newLat, out double newLon);
+            // Зашёл в воду — дальше плавание (вход через всплеск, не ходьба
+            // по плоскости моря).
+            if (WaterQuery.IsWaterAt(body, newLat, newLon))
+            {
+                EnterWater(body, tEnd);
+                return;
+            }
+
             double newGround = GroundHeight(body, newLat, newLon);
             body.EvaluateWorldState(tEnd, out Vector3d bodyPos3, out _);
             Vector3d radial = PlayerPosition - bodyPos3;
             PlayerPosition = bodyPos3 + (radial.Normalized * (body.Radius + newGround));
 
-            if (PlayerIntent.Jump)
+            if (jumpRequested)
             {
                 playerAirborne = true;
                 PlayerVelocity += normal * PlayerJumpSpeed;

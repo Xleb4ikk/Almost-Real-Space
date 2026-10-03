@@ -62,6 +62,19 @@ namespace Galilego.Universe
             return sinA / cosA;
         }
 
+        /// <summary>
+        /// Допуск уровня моря в АБСОЛЮТНЫХ метрах — тот же, что в
+        /// PlanetSurface.shader (SeaEpsilon). Раньше здесь стояло
+        /// amplitude*0.001: при амплитуде 9144 м это 9.14 м, и полоса СУШИ в
+        /// девять метров над водой считалась водой — CPU-палитра красила
+        /// прибрежную равнину океаном, а шейдер (у него допуск уже был
+        /// абсолютным) — сушей. Теперь обе стороны решают одинаково.
+        /// </summary>
+        internal static double SeaEpsilon(double amplitude)
+        {
+            return System.Math.Max(0.05d, amplitude * 1e-6d);
+        }
+
         internal static Color HeightColorEx(
             double height, double seaLevel, double amplitude,
             double slopeTan, double colorMask,
@@ -79,10 +92,14 @@ namespace Galilego.Universe
 
             bool maskOn = maskStrength != 0d;
             Color c = BaseColor(height, seaLevel, amplitude, colorMask, maskOn, maskStrength, latitudeRadians, beachHeightMeters);
-            bool isSea = height <= seaLevel + (amplitude * 0.001d);
+            bool isSea = height <= seaLevel + SeaEpsilon(amplitude);
             // Пляж — абсолютными метрами: моттлинг и скала его не трогают
             // (паритет шейдеру), даже если маска подняла t выше песчаной полосы.
-            bool isBeach = beachHeightMeters > 0d && !isSea && (height - seaLevel) < beachHeightMeters;
+            // Границы берём те же, что у BaseColor (SandWeight): жёсткий порог
+            // здесь включал бы пятна почвы/зелени ровно на 18 м, и на ровном
+            // берегу моттлинг сам рисовал бы ту же линию, ради которой он снят.
+            double beachWeight = SandWeight(height - seaLevel, beachHeightMeters);
+            bool isBeach = !isSea && beachWeight > 0d;
 
             // Нормированная высота t как в шейдере (маска сдвигает пороги):
             // используется и для отсечения пляжа от моттлинга, и для порога
@@ -101,7 +118,7 @@ namespace Galilego.Universe
             // Мелкомасштабное разнообразие земли: пятна почвы (в тёплый коричневый)
             // и более сочной/тёмной зелени. Только на земле выше пляжной зоны —
             // на песке пятен быть не должно.
-            if (!isSea && !isBeach && tMasked >= 0.03d && detailStrength != 0d)
+            if (!isSea && !isBeach && detailStrength != 0d)
             {
                 double d = Clamp(colorDetail, -1d, 1d);
                 if (d > 0d)
@@ -151,14 +168,20 @@ namespace Galilego.Universe
             double mask, bool maskOn, double maskStrength, double latitudeRadians,
             double beachHeightMeters)
         {
-            if (height <= seaLevel + (amplitude * 0.001d))
+            if (height <= seaLevel + SeaEpsilon(amplitude))
             {
                 return Sea;
             }
 
             // Пляж — абсолютными метрами над морем, маской не стирается:
             // иначе на «плюсовых» берегах зелень начинается от уреза воды.
-            if (beachHeightMeters > 0d && (height - seaLevel) < beachHeightMeters)
+            // Не ступенька, а затухание: полная полоса песка только до 0.4·beach,
+            // к 1.6·beach от песка не остаётся ничего, и ровно на beach — половина.
+            // Ступенчатый край на сфере проецировался в прямую линию через весь
+            // кадр (серая полоса у горизонта), а на планете высоты это просто
+            // граница константного цвета. Зеркалит smoothstep в PlanetSurface.
+            double sandW = SandWeight(height - seaLevel, beachHeightMeters);
+            if (sandW >= 1d)
             {
                 return Sand;
             }
@@ -174,15 +197,20 @@ namespace Galilego.Universe
                 t = 0d;
             }
 
-            if (t < 0.03d)
-            {
-                return Sand;
-            }
-
             // Биом по влажности: сухо → пустыня → сухая трава → луг → лес.
-            // Маска усиливается (×1.6): её сырое значение жмётся к нулю fBm'ом,
-            // без усиления весь континент получается одним тоном.
-            double wet = maskOn ? Clamp01(0.5d + (Clamp(mask, -1d, 1d) * 1.6d)) : 0.5d;
+            // Ниже НИКАКОЙ нормированной «песчаной» полосы: песок — это только
+            // абсолютный пляж (beachHeightMeters) выше по коду. Полоса t<0.03 при
+            // амплитуде 9144 м — это 274 м высоты, и она красила песком ВСЮ
+            // прибрежную равнину (а Grass/Tree ещё и отсекали её по MinNormalizedHeight,
+            // т.е. зелёная по рельефу земля оставалась без травы).
+            //
+            // Кривая wet01 — общая с декором (GroundDecorDistribution.BiomeWetness,
+            // зеркало в PlanetSurface.shader). Мягкая, tanh вместо clamp: маска
+            // SampleColorNoise на сфере широкая (p10=−0.33, p90=+0.32), и старая
+            // clamp(0.5+1.6·mask) САТУРИРОВАЛА 21% планеты в ровные 0/1: четверть
+            // суши получала wet ровно 0, по краям была ровная «пустыня/лес», а
+            // деревья (WetMin=0.2) не росли нигде на площади в десятки километров.
+            double wet = maskOn ? GroundDecorDistribution.BiomeWetness(mask) : 0.5d;
             Color lowland = BiomeColor(wet);
             Color c;
             if (t < 0.45d)
@@ -212,7 +240,29 @@ namespace Galilego.Universe
                 c = Color.Lerp(c, Snow, (float)ice);
             }
 
+            // Песок — поверх биома, а не вместо ветки: на затухании полосы
+            // зелёный биом должен проступать сквозь песок, а не исчезать.
+            if (sandW > 0d)
+            {
+                c = Color.Lerp(c, Sand, (float)sandW);
+            }
+
             return c;
+        }
+
+        /// <summary>
+        /// Вес песка по высоте над морем: 1 до 0.4·beach, 0 с 1.6·beach,
+        /// ровно 0.5 на самой границе пляжа. Нулевой beach — пляжа нет.
+        /// Единственный источник чисел: шейдер и декор берут тот же beach.
+        /// </summary>
+        internal static double SandWeight(double aboveSea, double beachHeightMeters)
+        {
+            if (beachHeightMeters <= 0d)
+            {
+                return 0d;
+            }
+
+            return 1d - Smoothstep01((aboveSea - (0.4d * beachHeightMeters)) / (1.2d * beachHeightMeters));
         }
 
         /// <summary>Цвет низменности по нормированной влажности 0..1.</summary>

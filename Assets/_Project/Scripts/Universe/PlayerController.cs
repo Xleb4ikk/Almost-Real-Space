@@ -8,10 +8,13 @@ namespace Galilego.Universe
     /// Режимы: InShip (ходьба внутри — заглушка вокруг точки корабля, интерьер
     /// и коллизии позже), EVA (джетпак: WASD вдоль камеры, Space вверх,
     /// LeftCtrl вниз; топливо — IJetpackFuel, сейчас бесконечное), OnSurface
-    /// (WASD ходьба по касательной, Shift бег, Space прыжок).
+    /// (WASD ходьба по касательной, Shift бег, Space прыжок), Swimming
+    /// (WASD плавание по камере — взгляд вниз + W = нырнуть, Space всплыть,
+    /// LeftCtrl погрузиться, Shift ускорение).
     /// E — универсальное действие: интеракция (луч из камеры ≤ 4 м) →
     /// сесть/встать → выйти/войти в корабль.
     /// </summary>
+    [UnityEngine.DefaultExecutionOrder(-100)]
     public sealed class PlayerController : MonoBehaviour
     {
         [Tooltip("SimulationRunner сцены.")]
@@ -20,6 +23,9 @@ namespace Galilego.Universe
         [Tooltip("GO корабля (с ShipView) — для ходьбы внутри.")]
         public Transform ShipTransform;
 
+        [Tooltip("Чит-меню (ноуклип). Пусто — берётся первый в сцене при старте.")]
+        public CheatMenu CheatMenu;
+
         [Tooltip("Скорость ходьбы (м/с).")]
         public float WalkSpeed = 2f;
 
@@ -27,7 +33,13 @@ namespace Galilego.Universe
         public float RunSpeed = 5f;
 
         [Tooltip("Ускорение джетпака (м/с²).")]
-        public float JetpackThrust = 1.5f;
+        public float JetpackThrust = 20f;
+
+        [Tooltip("Скорость плавания (м/с).")]
+        public float SwimSpeed = 2.5f;
+
+        [Tooltip("Скорость плавания с ускорением (м/с, Shift).")]
+        public float SwimFastSpeed = 5f;
 
         [Tooltip("Дистанция входа в корабль (м, в double-мире).")]
         public double EnterDistanceMeters = 5d;
@@ -37,6 +49,15 @@ namespace Galilego.Universe
 
         [Tooltip("Топливо джетпака. По умолчанию бесконечное (MVP); подмени на бак позже.")]
         public IJetpackFuel JetpackFuel = new InfiniteJetpackFuel();
+
+        [Tooltip("Скорость ноуклипа (м/с), пока чит-меню не задало свою. Итоговую берёт чит-меню.")]
+        public float NoclipSpeed = 100f;
+
+        /// <summary>
+        /// Ввод заблокирован (открыто чит-меню): WASD/E игнорируются, чтобы
+        /// нажатия на кнопки окна не двигали игрока. Ставит CheatMenu.
+        /// </summary>
+        public bool InputBlocked { get; set; }
 
         /// <summary>Интерактибл под прицелом (для подсказки и E).</summary>
         public Interactable Focused { get; private set; }
@@ -49,6 +70,14 @@ namespace Galilego.Universe
 
         public bool Seated => SeatedSeat != null;
 
+        private void Start()
+        {
+            if (CheatMenu == null)
+            {
+                CheatMenu = FindAnyObjectByType<CheatMenu>();
+            }
+        }
+
         private void Update()
         {
             if (Runner == null)
@@ -56,13 +85,22 @@ namespace Galilego.Universe
                 return;
             }
 
+            if (InputBlocked)
+            {
+                // Меню открыто: сбрасываем намерение, иначе «залипшая» прошлая
+                // команда (WASD джетпака) продолжала бы двигать игрока.
+                Runner.PlayerIntent = PlayerIntent.Idle;
+                return;
+            }
+
+            bool jetpackToggle = PlayerInput.DoubleDown(GameKey.Space);
             UpdateFocus();
             if (PlayerInput.Down(GameKey.E))
             {
                 HandleE();
             }
 
-            UpdateIntent();
+            UpdateIntent(jetpackToggle);
         }
 
         private void HandleE()
@@ -127,10 +165,33 @@ namespace Galilego.Universe
             }
         }
 
-        private void UpdateIntent()
+        private void ApplyJetpackInput(ref PlayerIntent intent, Camera camera, bool active)
+        {
+            if (!active || camera == null || JetpackFuel == null)
+            {
+                return;
+            }
+
+            Vector3 thrust = (camera.transform.forward * ((PlayerInput.Held(GameKey.W) ? 1f : 0f) - (PlayerInput.Held(GameKey.S) ? 1f : 0f)))
+                + (camera.transform.right * ((PlayerInput.Held(GameKey.D) ? 1f : 0f) - (PlayerInput.Held(GameKey.A) ? 1f : 0f)))
+                + (camera.transform.up * ((PlayerInput.Held(GameKey.Space) ? 1f : 0f) - (PlayerInput.Held(GameKey.LeftControl) ? 1f : 0f)));
+            if (thrust.sqrMagnitude > 0f && JetpackFuel.TryConsume(Time.deltaTime))
+            {
+                intent.JetpackAccel = AstroFrame.ToAstro(thrust.normalized * JetpackThrust);
+            }
+        }
+
+        private void UpdateIntent(bool jetpackToggle)
         {
             PlayerIntent intent = PlayerIntent.Idle;
             Camera camera = Camera.main;
+
+            if (Runner.NoclipActive)
+            {
+                UpdateNoclipIntent(ref intent, camera);
+                Runner.PlayerIntent = intent;
+                return;
+            }
 
             switch (Runner.PlayerMode)
             {
@@ -158,20 +219,12 @@ namespace Galilego.Universe
                     break;
 
                 case PlayerMode.EVA:
-                    if (camera != null)
-                    {
-                        Vector3 thrust = (camera.transform.forward * ((PlayerInput.Held(GameKey.W) ? 1f : 0f) - (PlayerInput.Held(GameKey.S) ? 1f : 0f)))
-                            + (camera.transform.right * ((PlayerInput.Held(GameKey.D) ? 1f : 0f) - (PlayerInput.Held(GameKey.A) ? 1f : 0f)))
-                            + (camera.transform.up * ((PlayerInput.Held(GameKey.Space) ? 1f : 0f) - (PlayerInput.Held(GameKey.LeftControl) ? 1f : 0f)));
-                        if (thrust.sqrMagnitude > 0f && JetpackFuel.TryConsume(Time.deltaTime))
-                        {
-                            intent.JetpackAccel = AstroFrame.ToAstro(thrust.normalized * JetpackThrust);
-                        }
-                    }
-
+                    intent.JetpackToggle = jetpackToggle;
+                    ApplyJetpackInput(ref intent, camera, Runner.JetpackActive || jetpackToggle);
                     break;
 
                 case PlayerMode.OnSurface:
+                    intent.JetpackToggle = jetpackToggle;
                     if (camera != null)
                     {
                         Vector3 flatForward = Vector3.ProjectOnPlane(camera.transform.forward, camera.transform.up);
@@ -186,13 +239,57 @@ namespace Galilego.Universe
                             intent.WalkSpeed = speed;
                         }
 
-                        intent.Jump = PlayerInput.Down(GameKey.Space);
+                        intent.Jump = PlayerInput.Down(GameKey.Space) && !jetpackToggle;
+                        ApplyJetpackInput(ref intent, camera, (Runner.JetpackActive && Runner.PlayerAirborne) || jetpackToggle);
+                    }
+
+                    break;
+
+                case PlayerMode.Swimming:
+                    if (camera != null)
+                    {
+                        // Полный 3D по камере: взгляд вниз + W = нырнуть,
+                        // Space/Ctrl — явные всплытие/погружение.
+                        Vector3 swim = (camera.transform.forward * ((PlayerInput.Held(GameKey.W) ? 1f : 0f) - (PlayerInput.Held(GameKey.S) ? 1f : 0f)))
+                            + (camera.transform.right * ((PlayerInput.Held(GameKey.D) ? 1f : 0f) - (PlayerInput.Held(GameKey.A) ? 1f : 0f)))
+                            + (camera.transform.up * ((PlayerInput.Held(GameKey.Space) ? 1f : 0f) - (PlayerInput.Held(GameKey.LeftControl) ? 1f : 0f)));
+                        if (swim.sqrMagnitude > 0f)
+                        {
+                            float speed = PlayerInput.Held(GameKey.LeftShift) ? SwimFastSpeed : SwimSpeed;
+                            Vector3d swimAstro = AstroFrame.ToAstro(swim.normalized);
+                            intent.SwimDirection = swimAstro.Normalized;
+                            intent.SwimSpeed = speed;
+                        }
                     }
 
                     break;
             }
 
             Runner.PlayerIntent = intent;
+        }
+
+        /// <summary>
+        /// Намерение ноуклипа: полный 3D по камере (WASD + Space/Ctrl), скорость
+        /// — из CheatMenu.NoclipSpeed (fallback — поле инспектора). Направление
+        /// нормализуется, скорость — как есть: чит-меню разрешает величины от
+        /// ходьбы до 1e9 м/с, и клампы здесь означали бы, что верх диапазона
+        /// не работает.
+        /// </summary>
+        private void UpdateNoclipIntent(ref PlayerIntent intent, Camera camera)
+        {
+            intent.NoclipSpeed = CheatMenu != null ? CheatMenu.NoclipSpeed : NoclipSpeed;
+            if (camera == null)
+            {
+                return;
+            }
+
+            Vector3 move = (camera.transform.forward * ((PlayerInput.Held(GameKey.W) ? 1f : 0f) - (PlayerInput.Held(GameKey.S) ? 1f : 0f)))
+                + (camera.transform.right * ((PlayerInput.Held(GameKey.D) ? 1f : 0f) - (PlayerInput.Held(GameKey.A) ? 1f : 0f)))
+                + (camera.transform.up * ((PlayerInput.Held(GameKey.Space) ? 1f : 0f) - (PlayerInput.Held(GameKey.LeftControl) ? 1f : 0f)));
+            if (move.sqrMagnitude > 0f)
+            {
+                intent.NoclipDirection = AstroFrame.ToAstro(move.normalized);
+            }
         }
 
         private void OnGUI()

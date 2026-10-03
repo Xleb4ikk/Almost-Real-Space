@@ -128,6 +128,8 @@ namespace Galilego.Universe
                 return;
             }
 
+            bool underwater = IsUnderwater(camera);
+
             star.EvaluateWorldState(Runner.TimeSeconds, out Vector3d starPos, out _);
             Vector3d direction = starPos - Runner.Ship.Position;
             double distanceMeters = direction.Magnitude;
@@ -204,7 +206,7 @@ namespace Galilego.Universe
             }
 
             float sphereDistance = Vector3.Distance(sphereUnityPosition, cameraPosition);
-            bool sphereVisible = RenderBodySphere && sphereDistance < (far * 0.95f);
+            bool sphereVisible = RenderBodySphere && !underwater && sphereDistance < (far * 0.95f);
 
             if (sphereVisible)
             {
@@ -229,7 +231,7 @@ namespace Galilego.Universe
                 // рисуется спиной и отсекается backface-куллингом.
                 billboard.rotation = Quaternion.LookRotation(simDirection);
                 billboard.localScale = new Vector3(size, size, 1f);
-                billboard.gameObject.SetActive(RenderDisc);
+                billboard.gameObject.SetActive(RenderDisc && !underwater);
             }
 
             if (!loggedDiag)
@@ -257,6 +259,24 @@ namespace Galilego.Universe
                 Vector3 t = Sky.Transmittance;
                 ApplyColor(sphereMaterial, new Color(starColor.r * t.x, starColor.g * t.y, starColor.b * t.z, starColor.a));
             }
+        }
+
+        private bool IsUnderwater(Camera camera)
+        {
+            if (Runner == null || Runner.DominantBody == null || camera == null)
+            {
+                return false;
+            }
+
+            OrbitingBody body = Runner.DominantBody;
+            if (!WaterQuery.HasOcean(body))
+            {
+                return false;
+            }
+
+            Vector3d observer = FloatingOrigin.Anchor + AstroFrame.ToAstro(camera.transform.position);
+            double depth = WaterQuery.SubmersionDepthAt(body, observer, Runner.TimeSeconds);
+            return !double.IsNaN(depth) && depth > 0d;
         }
 
         private void OnGUI()

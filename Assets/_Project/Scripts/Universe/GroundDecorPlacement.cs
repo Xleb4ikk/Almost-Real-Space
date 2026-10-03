@@ -190,6 +190,13 @@ namespace Galilego.Universe
         /// поштучно и плавно, а не полосой. При пересборке пула старые травинки
         /// переносятся со своим BirthTime — уже выросшие не «прорастают» заново.</summary>
         public float BirthTime;
+
+        /// <summary>Когда инстанс начал уходить под землю (Time.time + разброс),
+        /// 0 = жив. Ставится тем травинкам, что выпали из новой выборки при
+        /// пересборке пула: без этого они исчезали мгновенно, и игрок видел, как
+        /// трава пропадает у него на глазах (особенно сзади). Матричная джоба
+        /// гасит их масштабом за DecorBladeSinkSeconds — зеркально появлению.</summary>
+        public float DeathTime;
     }
 
     /// <summary>
@@ -200,6 +207,27 @@ namespace Galilego.Universe
     /// </summary>
     public static class GroundDecorDistribution
     {
+        /// <summary>
+        /// Влажность биома wet01 из цветовой маски рельефа — ЕДИНЫЙ источник
+        /// для краски (TerrainPalette) и для посадок (здесь), зеркало — в
+        /// PlanetSurface.shader (TerrainAlbedo). Любое расхождение = «зелёная по
+        /// рельефу земля без травы/деревьев».
+        ///
+        /// Кривая мягкая, tanh вместо clamp: маска SampleColorNoise на сфере
+        /// широкая (p10=−0.33, p90=+0.32, min=−0.83, max=+0.84), и старая формула
+        /// clamp(0.5+1.6·mask) САТУРИРОВАЛА 21% планеты в ровные 0 и 1. Из-за
+        /// этого четверть суши получала wet ровно 0 → деревья (WetMin=0.2) не
+        /// росли НИГДЕ на площади в десятки километров, а палитра рисовала по
+        /// краям «пустыню/лес» одной ровной тональной заливкой. tanh(1.6·mask)
+        /// держит середину линейной, но никогда не упирается в 0/1: суши без
+        /// единого дерева остаётся ~3% (только настоящие пустыни) вместо 25%.
+        /// </summary>
+        public static double BiomeWetness(double colorMask)
+        {
+            double mask = colorMask < -1d ? -1d : (colorMask > 1d ? 1d : colorMask);
+            return 0.5d + (0.5d * Math.Tanh(1.6d * mask));
+        }
+
         /// <summary>Хеш в [0,1) — джиттер ячейки/масштаб/поворот (детерминирован).</summary>
         public static double Hash01(int a, int b, int c, int d, int salt)
         {
@@ -288,7 +316,7 @@ namespace Galilego.Universe
                 }
             }
 
-            double wet = Clamp01(0.5d + (colorNoise * 1.6d));
+            double wet = BiomeWetness(colorNoise);
             if (wet < p.WetMin || wet > p.WetMax)
             {
                 return false;
@@ -424,7 +452,7 @@ namespace Galilego.Universe
                 return false;
             }
 
-            double wet = Clamp01(0.5d + (colorNoise * 1.6d));
+            double wet = BiomeWetness(colorNoise);
             if (wet < p.WetMin || wet > p.WetMax)
             {
                 return false;
