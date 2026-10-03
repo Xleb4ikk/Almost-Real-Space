@@ -74,6 +74,15 @@ namespace Galilego.Universe
                 return;
             }
 
+            if (UnderwaterEffect.CameraIsUnderwater)
+            {
+                if (shell.gameObject.activeSelf)
+                {
+                    shell.gameObject.SetActive(false);
+                }
+                return;
+            }
+
             if (!shell.gameObject.activeSelf)
             {
                 shell.gameObject.SetActive(true);

@@ -278,6 +278,16 @@ internal static partial class P1bTests
             return 0d;
         }
 
+        public double GetRawHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians)
+        {
+            return 0d;
+        }
+
+        public double GetSeaLevelMeters()
+        {
+            return double.NegativeInfinity;
+        }
+
         public Vector3d GetOutwardNormal(OrbitingBody body, Vector3d relativePosition, double timeSeconds)
         {
             return normal;
@@ -524,6 +534,8 @@ internal static partial class P1bTests
     private sealed class SphereOnlyTerrain : ITerrainModel
     {
         public double GetHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians) => 0d;
+        public double GetRawHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians) => 0d;
+        public double GetSeaLevelMeters() => double.NegativeInfinity;
         public Vector3d GetOutwardNormal(OrbitingBody body, Vector3d relativePosition, double timeSeconds) => relativePosition.Normalized;
     }
 
@@ -1175,6 +1187,17 @@ internal static partial class P1bTests
         return (a - b).Magnitude < 1e-12d;
     }
 
+    /// <summary>
+    /// Фикстура «как в игре». Источник истины — Assets/_Project/Profiles/Terrain/
+    /// EarthLike.asset, а не эта копия: расхождение ловит T117.
+    ///
+    /// Раньше здесь стояли ContinentDepth 0.9, ColorDetailFrequency 1500 и
+    /// ColorDetailStrength 0.35 — ни то, ни другое не совпадало с ассетом, и
+    /// замеры шума меряли конфигурацию, которую никто не грузит. Проверено, что
+    /// отличие по цвету НЕ нужно для T89: FineRoughness считает только
+    /// SampleHeight и цветовые маски не читает, так что проверка мелкомасштабного
+    /// рельефа на DetailFrequency/DetailMix к ColorDetail отношения не имеет.
+    /// </summary>
     private static HeightfieldTerrain SceneLikeTerrain()
     {
         return new HeightfieldTerrain
@@ -1190,7 +1213,7 @@ internal static partial class P1bTests
             ContinentOctaves = 3,
             ContinentThreshold = -0.1d,
             ContinentSharpness = 0.3d,
-            ContinentDepth = 0.9d,
+            ContinentDepth = 1.2d,
             RidgedMix = 0.7d,
             PlainMix = 0.85d,
             PlainFrequency = 1.8d,
@@ -1198,6 +1221,9 @@ internal static partial class P1bTests
             PlainThreshold = 0.05d,
             PlainSharpness = 0.25d,
             PlainElevation = 0.1d,
+            BeachHeightMeters = 12d,
+            BeachShelfAltitudeMeters = 8d,
+            BeachShelfWidth = 0.08d,
             DetailMix = 0d,
             DetailFrequency = 700d,
             DetailOctaves = 5,
@@ -1206,13 +1232,14 @@ internal static partial class P1bTests
             WarpOctaves = 2,
             ColorRockSlopeTan = 0.6d,
             ColorRockSlopeWidth = 0.15d,
+            ColorRockHeightMin = 0.4d,
             ColorSnowSlopeTan = 0.5d,
             ColorNoiseFrequency = 25d,
             ColorNoiseOctaves = 4,
             ColorNoiseStrength = 0.09d,
-            ColorDetailFrequency = 1500d,
+            ColorDetailFrequency = 400d,
             ColorDetailOctaves = 3,
-            ColorDetailStrength = 0.35d
+            ColorDetailStrength = 0.15d
         };
     }
 
@@ -1768,6 +1795,9 @@ internal static partial class P1bTests
         profile.BeachHeightMeters = 30d;
         profile.BeachShelfAltitudeMeters = 8d;
         profile.BeachShelfWidth = 0.08d;
+        profile.BeachShelfWidthMaxScale = 6d;
+        profile.BeachShelfWidthNoiseFrequency = 120d;
+        profile.BeachShelfWidthNoiseOctaves = 3;
 
         const int seed = 24334543;
         HeightfieldTerrain t = HeightfieldTerrain.FromProfile(profile, seed);
@@ -1794,6 +1824,9 @@ internal static partial class P1bTests
             && t.BeachHeightMeters == profile.BeachHeightMeters
             && t.BeachShelfAltitudeMeters == profile.BeachShelfAltitudeMeters
             && t.BeachShelfWidth == profile.BeachShelfWidth
+            && t.BeachShelfWidthMaxScale == profile.BeachShelfWidthMaxScale
+            && t.BeachShelfWidthNoiseFrequency == profile.BeachShelfWidthNoiseFrequency
+            && t.BeachShelfWidthNoiseOctaves == profile.BeachShelfWidthNoiseOctaves
             && t.DetailMix == profile.DetailMix
             && t.DetailFrequency == profile.DetailFrequency
             && t.DetailOctaves == profile.DetailOctaves
@@ -1843,6 +1876,9 @@ internal static partial class P1bTests
             BeachHeightMeters = profile.BeachHeightMeters,
             BeachShelfAltitudeMeters = profile.BeachShelfAltitudeMeters,
             BeachShelfWidth = profile.BeachShelfWidth,
+            BeachShelfWidthMaxScale = profile.BeachShelfWidthMaxScale,
+            BeachShelfWidthNoiseFrequency = profile.BeachShelfWidthNoiseFrequency,
+            BeachShelfWidthNoiseOctaves = profile.BeachShelfWidthNoiseOctaves,
             DetailMix = profile.DetailMix,
             DetailFrequency = profile.DetailFrequency,
             DetailOctaves = profile.DetailOctaves,
@@ -2306,8 +2342,9 @@ internal static partial class P1bTests
                     double mask = TerrainNoise.SampleColorNoise(terrainParams, dir);
                     mask = mask < -1d ? -1d : (mask > 1d ? 1d : mask);
                     double t = (aboveSea / Math.Max(1d, terrain.AmplitudeMeters)) + (mask * terrain.ColorNoiseStrength);
-                    double wet = 0.5d + (mask * 1.6d);
-                    wet = wet < 0d ? 0d : (wet > 1d ? 1d : wet);
+                    // Кривая влажности — ИЗ КОДА декора, иначе тест классифицирует
+                    // «сушу» по другой формуле и видит траву там, где её нет.
+                    double wet = GroundDecorDistribution.BiomeWetness(mask);
 
                     bool acceptedGrass = GroundDecorDistribution.TryEvaluate(
                         g, terrainParams, dir, zeroRandom, 0.5d, 0.5d, 0.5d, out _);
@@ -2538,8 +2575,9 @@ internal static partial class P1bTests
 
     /// <summary>
     /// Пляж у воды (T101): полка тянет береговой рельеф к +8 м (не трогая океан
-    /// и дальнюю сушу), CPU-палитра красит всё ниже 30 м в песок при любой маске,
-    /// декор (трава И камни) ниже 30 м отклоняется полностью.
+    /// и дальнюю сушу), CPU-палитра красит песком всё ниже 0.4·пляжа при любой
+    /// маске и дальше гасит песок затуханием до 1.6·пляжа, декор (трава И камни)
+    /// ниже границы пляжа отклоняется полностью.
     /// </summary>
     private static int Test101_BeachBand()
     {
@@ -2551,6 +2589,14 @@ internal static partial class P1bTests
         TerrainNoiseParams terrainParams = TerrainNoiseParams.FromTerrain(terrain);
 
         TerrainProfile legacyProfile = TerrainProfile.CreateEarthLike(1143000d);
+
+        // Полку у twin выключаем ЯВНО. Раньше это получалось само собой, потому
+        // что пресет её не задавал; после выравнивания CreateEarthLike с
+        // EarthLike.asset полка прописана в обоих, и разница между «с полкой» и
+        // «без полки» исчезла — pulled схлопывался в ноль. Тест не должен
+        // зависеть от того, что пресет чего-то не упоминает.
+        legacyProfile.BeachShelfAltitudeMeters = 0d;
+        legacyProfile.BeachShelfWidth = 0d;
         HeightfieldTerrain legacyTerrain = HeightfieldTerrain.FromProfile(legacyProfile, 24334543);
         TerrainNoiseParams legacyParams = TerrainNoiseParams.FromTerrain(legacyTerrain);
 
@@ -2600,6 +2646,8 @@ internal static partial class P1bTests
         var zeroRandom = new Unity.Mathematics.double3(0d, 0.5d, 0.5d);
         int beachTotal = 0, beachGrass = 0, beachRocks = 0, grassAbove = 0;
         int beachBand = 0, twinBeachBand = 0, shelfPulled = 0, shelfWrong = 0, sandMismatch = 0;
+        int fadePoints = 0, fadeExactSand = 0;
+        const double beachH = 200d;
         for (int face = 0; face < CubeSphere.FaceCount; face++)
         {
             for (int i = 0; i <= n; i++)
@@ -2625,7 +2673,7 @@ internal static partial class P1bTests
                         continue;
                     }
 
-                    if (aboveSea < 200d)
+                    if (aboveSea < beachH)
                     {
                         beachTotal++;
                         if (GroundDecorDistribution.TryEvaluate(
@@ -2633,16 +2681,26 @@ internal static partial class P1bTests
                         if (GroundDecorDistribution.TryEvaluate(
                             r, terrainParams, dir, zeroRandom, 0.5d, 0.5d, 0.5d, out _)) beachRocks++;
 
-                        // Цвет пляжа при любой маске (крутой склон + маска +1):
-                        // обязан быть ровно Sand, без моттлинга и скалы.
+                        // Песок при любой маске (крутой склон + маска +1): в полной
+                        // полосе (до 0.4·beach) — ровно Sand, без моттлинга и скалы.
                         double mask = TerrainNoise.SampleColorNoise(terrainParams, dir);
                         mask = mask < -1d ? -1d : (mask > 1d ? 1d : mask);
                         UnityEngine.Color sandColor = TerrainPalette.HeightColorEx(
                             raw, terrain.SeaLevelMeters, terrain.AmplitudeMeters,
-                            5d, 1d, 0.6d, 0.15d, 0.5d, 0.09d, 1d, 0.35d, 0d, 0d, 200d);
-                        if (!ColorsEqual(sandColor, TerrainPalette.Sand))
+                            5d, 1d, 0.6d, 0.15d, 0.5d, 0.09d, 1d, 0.35d, 0d, 0d, beachH);
+                        double sandW = TerrainPalette.SandWeight(aboveSea, beachH);
+                        if (sandW >= 1d && !ColorsEqual(sandColor, TerrainPalette.Sand))
                         {
                             sandMismatch++;
+                        }
+
+                        if (sandW > 0d && sandW < 1d)
+                        {
+                            fadePoints++;
+                            if (ColorsEqual(sandColor, TerrainPalette.Sand))
+                            {
+                                fadeExactSand++;
+                            }
                         }
 
                         beachBand++;
@@ -2654,7 +2712,7 @@ internal static partial class P1bTests
                     }
 
                     double twinAbove = twin - terrain.SeaLevelMeters;
-                    if (twinAbove >= 0d && twinAbove < 200d)
+                    if (twinAbove >= 0d && twinAbove < beachH)
                     {
                         twinBeachBand++;
                     }
@@ -2682,13 +2740,17 @@ internal static partial class P1bTests
         }
 
         System.Console.WriteLine("BEACH total=" + beachTotal + " grassAbove=" + grassAbove
-            + " band=" + beachBand + " twinBand=" + twinBeachBand + " pulled=" + shelfPulled);
+            + " band=" + beachBand + " twinBand=" + twinBeachBand + " pulled=" + shelfPulled
+            + " fadePoints=" + fadePoints + " fadeExactSand=" + fadeExactSand);
         Check(wiringOk, "T101 beach-band", "FromLayer читает пляж из террейна");
         Check(beachTotal > 0, "T101 beach-band", "полоса пляжа существует: " + beachTotal);
         Check(beachGrass == 0 && beachRocks == 0, "T101 beach-band",
             "на пляже ничего: трава=" + beachGrass + " камни=" + beachRocks);
         Check(grassAbove > 0, "T101 beach-band", "выше пляжа трава принимается: " + grassAbove);
         Check(sandMismatch == 0, "T101 beach-band", "песок при любой маске/склоне: mismatch=" + sandMismatch);
+        Check(fadePoints > 0 && fadeExactSand == 0, "T101 beach-band",
+            "в затухании песка (0.4…1.6·beach) цвет смешанный, чистого Sand нет: точек "
+            + fadePoints + ", чистого песка " + fadeExactSand);
         Check(shelfWrong == 0 && shelfPulled > 0, "T101 beach-band",
             "полка тянет к +8м: pulled=" + shelfPulled + " wrong=" + shelfWrong);
         Check(beachBand >= twinBeachBand, "T101 beach-band",
@@ -2868,9 +2930,23 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Сухая степь с зелёным фото (T104): живая жалоба — lat −51.03, lon 257.86,
-    /// relief 2732 м, t=0.284, wet=0.245, склон 0.29. Ковёр лезвий растёт на любой
-    /// земле зелёных высот (WetMin=0), деревья избегают лишь крайней пустыни
+    /// Сухая степь с зелёным фото (T104). Изначально жалоба была живая: lat
+    /// −51.03, lon 257.86, relief 2732 м, t=0.284, wet=0.245, склон 0.29.
+    ///
+    /// Сейчас 2732 м НЕ воспроизводится, и это важно понимать: 2732 м была
+    /// измерена на пресете, который ничем не совпадал с игровым. Пресет разошёлся
+    /// с EarthLike.asset в четырёх полях (ContinentDepth 0.9 против 1.2, поля
+    /// пляжа, ColorDetail 1500/0.35 против 400/0.15), тестовая фикстура
+    /// разошлась с пресетом ещё в шести, а источником истины является ассет —
+    /// его и грузит OutdoorsScene. После выравнивания всех трёх копий точка даёт
+    /// 2321 м.
+    ///
+    /// То есть 2321 м — регрессионный пин на ВЫРАВНЕННОЙ конфигурации, а НЕ
+    /// проверка исходной жалобы пользователя: жалоба была про другой рельеф.
+    /// Если 2732 м нужно вернуть, это правка ассета, а не константы в тесте.
+    ///
+    /// Ковёр лезвий растёт на любой земле зелёных высот (WetMin=0), деревья
+    /// избегают лишь крайней пустыни
     /// (WetMin=0.2): оба обязаны приниматься, камни — тоже.
     /// </summary>
     private static int Test104_DrySteppeVegetation()
@@ -2953,10 +3029,302 @@ internal static partial class P1bTests
 
         System.Console.WriteLine("DRYSTEPPE raw=" + raw.ToString("F0")
             + " grass=" + grassOk + " trees=" + treesOk + " rocks=" + rocksOk);
-        Check(System.Math.Abs(raw - 2732d) < 1d, "T104 dry-steppe-vegetation",
-            "точка пользователя сошлась по высоте: " + raw.ToString("F0"));
+        // Исходная жалоба — «рельеф 2732 м». Значение не воспроизводится и не
+        // может: 2732 м было измерено на пресете, расходившемся с игровым
+        // (ContinentDepth 0.9 против 1.2, поля пляжа, ColorDetail 1500/0.35
+        // против 400/0.15), и на фикстуре, расходившейся с пресетом ещё в
+        // шести полях. Точное число теперь 2321 м и служит регрессионным
+        // пином.
+        //
+        // САМА ЖАЛОБА проверяется неравенством, а не числом: точка обязана
+        // остаться сушей зелёных высот с пологим склоном, где трава и деревья
+        // растут. Именно это и было исходным требованием, и именно оно должно
+        // выполняться при любой смене генератора — иначе тест просто констатирует
+        // текущую конфигурацию, а её смысл теряется.
+        //
+        // Пин сдвинулся 2321 -> 2323 при появлении у равнин собственного шума
+        // рельефа (PlainRelief в TerrainNoise): точка попадает в переходную зону
+        // маски, и цель стягивания перестала быть константой — теперь это
+        // PlainElevation ± 0.03. Это
+        // ожидаемый эффект изменения, а не регресс — на 9144 м амплитуды это
+        // 0.09%, и обе смысловые проверки ниже проходят как проходили.
+        Check(System.Math.Abs(raw - 2323d) < 1d, "T104 dry-steppe-vegetation",
+            "регрессионный пин высоты: " + raw.ToString("F0") + " м (было 2321)");
+        Check(raw > 0d && raw < 4000d, "T104 dry-steppe-vegetation",
+            "жалоба по существу: точка суши на зелёных высотах, рельеф "
+            + raw.ToString("F0") + " м (исходная жалоба: 2732 м)");
         Check(grassOk && treesOk && rocksOk, "T104 dry-steppe-vegetation",
             "сухая степь зеленеет: трава=" + grassOk + " деревья=" + treesOk + " камни=" + rocksOk);
+        return 0;
+    }
+
+    /// <summary>
+    /// Песок = только абсолютный пляж (T106). Живая жалоба: у Terra амплитуда
+    /// 9144 м, и старая нормированная полоса «песка» t&lt;0.03 — это 274 м
+    /// высоты. Ею красилась песком ВСЯ прибрежная равнина, и там же стоял
+    /// MinNormalizedHeight декора: зелень по рельефу осталась без травы и без
+    /// деревьев, а они появлялись только после подъёма на сотни метров.
+    ///
+    /// Контракт после T106-правки (граница песка стала затуханием): (1) ниже
+    /// 0.4·пляжа палитра всегда даёт ровно Sand, выше 1.6·пляжа — никогда, а в
+    /// затухании (0.4…1.6) чистого Sand уже нет: песок смешан с биомом, иначе
+    /// край ступенькой проецировался бы в прямую линию через кадр; (2) слой с
+    /// MinNormalizedHeight = 0 сеет декор сразу над пляжем и ниже его не сеет;
+    /// (3) на нарисованном песке посадок нет (паритет краска↔декор).
+    ///
+    /// Пляж в тесте — 200 м (как в T101): реальные 18 м у Terra почти нигде не
+    /// набираются точками сетки (берег уходит сразу в обрыв), и проверять на
+    /// такой полосе нечего.
+    /// </summary>
+    private static int Test106_SandIsBeachBandOnly()
+    {
+        TerrainProfile profile = TerrainProfile.CreateEarthLike(1143000d);
+        profile.BeachHeightMeters = 200d;
+        HeightfieldTerrain terrain = HeightfieldTerrain.FromProfile(profile, 24334543);
+        TerrainNoiseParams terrainParams = TerrainNoiseParams.FromTerrain(terrain);
+        double radius = 1143000d;
+        double amp = terrain.AmplitudeMeters;
+        double sea = terrain.SeaLevelMeters;
+        double beach = terrain.BeachHeightMeters;
+        double seaEpsilon = amp * 0.001d;
+
+        // 1a. Полная полоса песка: ровно Sand при любой маске/склоне.
+        int sandAbove = 0, paintedAbove = 0, sandBelow = 0, paintedBelow = 0;
+        int fadePoints = 0, fadeExactSand = 0;
+        double[] heights = { beach + 0.5d, beach + 5d, beach + 40d, beach + 120d, beach + 300d, beach + 900d };
+        double[] masks = { -1d, -0.35d, 0d, 0.35d, 1d };
+        double[] slopes = { 0d, 0.3d, 0.8d, 2d };
+        for (int hi = 0; hi < heights.Length; hi++)
+        {
+            for (int mi = 0; mi < masks.Length; mi++)
+            {
+                for (int si = 0; si < slopes.Length; si++)
+                {
+                    UnityEngine.Color c = TerrainPalette.HeightColorEx(
+                        sea + heights[hi], sea, amp, slopes[si], masks[mi],
+                        0.6d, 0.15d, 0.5d, 0.09d, 1d, 0.35d, 0d, 0d, beach);
+                    if (ColorsEqual(c, TerrainPalette.Sand))
+                    {
+                        sandAbove++;
+                    }
+
+                    paintedAbove++;
+                }
+            }
+        }
+
+        for (int hi = 0; hi < heights.Length; hi++)
+        {
+            double aboveSea = (beach - seaEpsilon) * (hi + 1) / (double)(heights.Length + 1);
+            double h = seaEpsilon + aboveSea;
+            double sandW = TerrainPalette.SandWeight(aboveSea, beach);
+            for (int mi = 0; mi < masks.Length; mi++)
+            {
+                for (int si = 0; si < slopes.Length; si++)
+                {
+                    UnityEngine.Color c = TerrainPalette.HeightColorEx(
+                        h, sea, amp, slopes[si], masks[mi], 0.6d, 0.15d, 0.5d, 0.09d, 1d, 0.35d, 0d, 0d, beach);
+                    bool isSand = ColorsEqual(c, TerrainPalette.Sand);
+                    if (sandW >= 1d)
+                    {
+                        if (isSand)
+                        {
+                            sandBelow++;
+                        }
+
+                        paintedBelow++;
+                    }
+                    else if (sandW > 0d)
+                    {
+                        fadePoints++;
+                        if (isSand)
+                        {
+                            fadeExactSand++;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 1b. Затухание монотонно и симметрично относительно границы пляжа:
+        // ровно половина песка на BeachHeightMeters, ноль — на 1.6·пляжа.
+        double halfW = TerrainPalette.SandWeight(beach, beach);
+        double zeroW = TerrainPalette.SandWeight(1.6d * beach, beach);
+        bool fadeCurve = System.Math.Abs(halfW - 0.5d) < 1e-9d && zeroW <= 0d
+            && TerrainPalette.SandWeight(0.2d * beach, beach) >= 1d
+            && TerrainPalette.SandWeight(beach, 0d) == 0d;
+
+        // 2. Декор с MinNormalizedHeight = 0 сеет на первом же метре над пляжем.
+        var grass = new GroundDecorLayer
+        {
+            SpacingMeters = 2d,
+            Density = 1d,
+            DistributionFrequency = 5000d,
+            DistributionOctaves = 4,
+            ClusterThreshold = 0d,
+            MinAltitudeMeters = 2d,
+            MinNormalizedHeight = 0d,
+            MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
+            MaxAltitudeMeters = 1e9d,
+            MaxSlopeTan = 1e9d,
+            AvoidWater = true,
+            WetMin = 0d,
+            WetMax = 1d,
+            MinScale = 1d,
+            MaxScale = 2d,
+            SteepPower = 0d
+        };
+        GroundDecorPlacementParams g = GroundDecorPlacementParams.FromLayer(grass, terrain, radius, Vector3d.Zero);
+        var zeroRandom = new Unity.Mathematics.double3(0d, 0.5d, 0.5d);
+
+        int onBeach = 0, beachPoints = 0, justAbove = 0;
+        int greenWithGrass = 0, grassOnPaintedSand = 0;
+        const int n = 96;
+        for (int face = 0; face < CubeSphere.FaceCount; face++)
+        {
+            for (int i = 0; i <= n; i++)
+            {
+                for (int j = 0; j <= n; j++)
+                {
+                    Vector3d d = CubeSphere.Direction(face, i / (double)n, j / (double)n);
+                    var dir = new Unity.Mathematics.double3(d.X, d.Y, d.Z);
+                    double raw = TerrainNoise.SampleHeight(terrainParams, dir) * amp;
+                    if (raw <= sea + seaEpsilon)
+                    {
+                        continue;
+                    }
+
+                    double aboveSea = raw - sea;
+                    bool accepted = GroundDecorDistribution.TryEvaluate(
+                        g, terrainParams, dir, zeroRandom, 0.5d, 0.5d, 0.5d, out _);
+                    if (aboveSea < beach)
+                    {
+                        beachPoints++;
+                        if (accepted)
+                        {
+                            onBeach++;
+                        }
+                    }
+
+                    if (!accepted)
+                    {
+                        continue;
+                    }
+
+                    double mask = TerrainNoise.SampleColorNoise(terrainParams, dir);
+                    mask = mask < -1d ? -1d : (mask > 1d ? 1d : mask);
+                    double slope = GroundDecorDistribution.SlopeTan(terrainParams, g, dir, out _);
+                    UnityEngine.Color c = TerrainPalette.HeightColorEx(
+                        raw, sea, amp, slope, mask, 0.6d, 0.15d, 0.5d, 0.09d, 0.35d, 0d, 0d, beach);
+                    if (ColorsEqual(c, TerrainPalette.Sand))
+                    {
+                        grassOnPaintedSand++;
+                    }
+
+                    greenWithGrass++;
+                    if (aboveSea < beach + 60d)
+                    {
+                        justAbove++;
+                    }
+                }
+            }
+        }
+
+        System.Console.WriteLine("SANDBAND paintedAbove=" + paintedAbove + " sandAbove=" + sandAbove
+            + " paintedBelow=" + paintedBelow + " sandBelow=" + sandBelow
+            + " fadePoints=" + fadePoints + " fadeExactSand=" + fadeExactSand
+            + " halfW=" + halfW.ToString("F3") + " zeroW=" + zeroW.ToString("F3")
+            + " beachPoints=" + beachPoints + " onBeach=" + onBeach
+            + " greenWithGrass=" + greenWithGrass + " justAbove=" + justAbove
+            + " grassOnPaintedSand=" + grassOnPaintedSand);
+        Check(paintedAbove > 0 && sandAbove == 0, "T106 sand-is-beach-band",
+            "выше пляжа палитра не рисует чистый песок (" + sandAbove + " из " + paintedAbove + ")");
+        Check(paintedBelow > 0 && sandBelow == paintedBelow, "T106 sand-is-beach-band",
+            "ниже 0.4·пляжа палитра рисует песок всегда (" + sandBelow + " из " + paintedBelow + ")");
+        Check(fadeCurve, "T106 sand-is-beach-band",
+            "кривая песка: половина на границе пляжа, ноль с 1.6·пляжа (half=" + halfW.ToString("F3")
+            + ", zero=" + zeroW.ToString("F3") + ")");
+        Check(fadePoints > 0 && fadeExactSand == 0, "T106 sand-is-beach-band",
+            "в затухании песок смешан с биомом (точек " + fadePoints + ", чистого Sand " + fadeExactSand + ")");
+        Check(beachPoints > 0 && onBeach == 0, "T106 sand-is-beach-band",
+            "на пляже декор не сеет: точек " + beachPoints + ", посадок " + onBeach);
+        Check(justAbove > 0, "T106 sand-is-beach-band",
+            "трава сеется сразу над пляжем (точек в первых 60 м: " + justAbove + ")");
+        Check(greenWithGrass > 0 && grassOnPaintedSand == 0, "T106 sand-is-beach-band",
+            "паритет краска↔декор: трава на зелени (" + greenWithGrass + "), на песке "
+            + grassOnPaintedSand);
+        return 0;
+    }
+
+    /// <summary>
+    /// Кривая влажности биома не должна насыщаться (T107). Живая жалоба: «деревья
+    /// только в одной области, дальше вообще нигде». Причина была не в посадках:
+    /// wet01 = clamp(0.5 + 1.6·mask) насыщал 21% планеты в ровные 0 и 1, и
+    /// четверть суши получала wet РОВНО 0 → при WetMin=0.2 деревья не росли ни
+    /// на одной точке площадью в десятки километров. Мягкая кривая
+    /// (BiomeWetness, зеркало в PlanetSurface.shader) держит сушу без единого
+    /// дерева в пределах единиц процентов.
+    /// </summary>
+    private static int Test107_WetnessNeverSaturates()
+    {
+        TerrainProfile profile = TerrainProfile.CreateEarthLike(1143000d);
+        profile.BeachHeightMeters = 12d;
+        HeightfieldTerrain terrain = HeightfieldTerrain.FromProfile(profile, 24334543);
+        TerrainNoiseParams terrainParams = TerrainNoiseParams.FromTerrain(terrain);
+        double amp = terrain.AmplitudeMeters;
+        double sea = terrain.SeaLevelMeters;
+
+        // 1. Кривая не упирается в 0/1 ни на одном значении маски.
+        double minWet = 1d, maxWet = 0d;
+        int atZero = 0, atOne = 0;
+        for (int i = -1000; i <= 1000; i++)
+        {
+            double w = GroundDecorDistribution.BiomeWetness(i / 1000d);
+            minWet = System.Math.Min(minWet, w);
+            maxWet = System.Math.Max(maxWet, w);
+            if (w <= 0d) { atZero++; }
+            if (w >= 1d) { atOne++; }
+        }
+
+        // 2. Доля суши, где деревья (WetMin=0.2) невозможны в принципе.
+        const int n = 60000;
+        double golden = System.Math.PI * (3d - System.Math.Sqrt(5d));
+        int land = 0, treeDead = 0;
+        for (int i = 0; i < n; i++)
+        {
+            double z = 1d - (2d * ((i + 0.5d) / n));
+            double r = System.Math.Sqrt(System.Math.Max(0d, 1d - (z * z)));
+            double phi = i * golden;
+            var dir = new Unity.Mathematics.double3(System.Math.Cos(phi) * r, System.Math.Sin(phi) * r, z);
+            double raw = TerrainNoise.SampleHeight(terrainParams, dir) * amp;
+            if (raw <= sea + (amp * 0.001d))
+            {
+                continue;
+            }
+
+            double mask = TerrainNoise.SampleColorNoise(terrainParams, dir);
+            mask = mask < -1d ? -1d : (mask > 1d ? 1d : mask);
+            double t = ((raw - sea) / System.Math.Max(1d, amp)) + (mask * terrain.ColorNoiseStrength);
+            if ((raw - sea) < terrain.BeachHeightMeters || t >= GroundDecorLayer.RockBottomNormalizedHeight)
+            {
+                continue;
+            }
+
+            land++;
+            if (GroundDecorDistribution.BiomeWetness(mask) < 0.2d)
+            {
+                treeDead++;
+            }
+        }
+
+        double deadShare = land > 0 ? (double)treeDead / land : 0d;
+        System.Console.WriteLine("WETNESS min=" + minWet.ToString("F4") + " max=" + maxWet.ToString("F4")
+            + " atZero=" + atZero + " atOne=" + atOne
+            + " land=" + land + " treeDead=" + (deadShare * 100d).ToString("F1") + "%");
+        Check(atZero == 0 && atOne == 0 && minWet > 0d && maxWet < 1d, "T107 wetness-no-saturation",
+            "кривая не насыщается: min=" + minWet.ToString("F4") + " max=" + maxWet.ToString("F4"));
+        Check(land > 0 && deadShare < 0.1d, "T107 wetness-no-saturation",
+            "суши без единого дерева: " + (deadShare * 100d).ToString("F1") + "% (было ~25%)");
         return 0;
     }
 }

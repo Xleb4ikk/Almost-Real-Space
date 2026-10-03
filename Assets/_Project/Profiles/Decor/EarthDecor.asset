@@ -21,8 +21,8 @@ MonoBehaviour:
       FarBillboardMesh: {fileID: 4300000, guid: 26c15081539f9a84597106d2660c2b58, type: 2}
       NearMaterial: {fileID: 2100000, guid: 8a6f3bef5d673104381754b197da59b9, type: 2}
       FarMaterial: {fileID: 2100000, guid: 8a6f3bef5d673104381754b197da59b9, type: 2}
-      SpacingMeters: 0.45
-      MaxInstancesPerChunk: 160000
+      SpacingMeters: 0.8
+      MaxInstancesPerChunk: 26000
       Density: 1
       DistributionFrequency: 20000
       ClusterPatchMeters: 120
@@ -31,9 +31,9 @@ MonoBehaviour:
       ClusterThreshold: 0.36
       ClusterFade: 0.12
       MinAltitudeMeters: 2
-      MinNormalizedHeight: 0.032
+      MinNormalizedHeight: 0
       MaxNormalizedHeight: 0.45
-      MaxAltitudeMeters: 3500
+      MaxAltitudeMeters: 5000
       MaxSlopeTan: 2.8
       AvoidWater: 1
       WetMin: 0
@@ -59,14 +59,14 @@ MonoBehaviour:
       CollisionRadiusMeters: 0.5
       CollisionHeightMeters: 20
       SteepPower: 0.4
-      NearDistanceMeters: 100
+      NearDistanceMeters: 55
       MaxCellsPerAxis: 192
-      MaxDistanceMeters: 300
-      DensityFalloffMeters: 45
-      DensityCoreMeters: 30
+      MaxDistanceMeters: 110
+      DensityFalloffMeters: 55
+      DensityCoreMeters: 28
       PerInstanceDensity: 1
       FarDensity: 0.05
-      SpawnMarginMeters: 150
+      SpawnMarginMeters: 70
       SubInstancesPerCell: 400
     - Name: Daisy
       Enabled: 1
@@ -85,15 +85,15 @@ MonoBehaviour:
       ClusterThreshold: 0.5
       ClusterFade: 0
       MinAltitudeMeters: 2
-      MinNormalizedHeight: 0.032
+      MinNormalizedHeight: 0
       MaxNormalizedHeight: 0.45
-      MaxAltitudeMeters: 3500
+      MaxAltitudeMeters: 4500
       MaxSlopeTan: 0.8
       AvoidWater: 1
-      WetMin: 0.38
+      WetMin: 0.3
       WetMax: 1
       IgnoreLatitude: 0
-      WetFade: 0
+      WetFade: 0.25
       MinScale: 0.8
       MaxScale: 1.2
       GroundOffsetMeters: 0
@@ -197,7 +197,7 @@ MonoBehaviour:
       ClusterThreshold: 0.25
       ClusterFade: 0
       MinAltitudeMeters: 2
-      MinNormalizedHeight: 0.032
+      MinNormalizedHeight: 0
       MaxNormalizedHeight: 0.45
       MaxAltitudeMeters: 4000
       MaxSlopeTan: 0.8
@@ -205,7 +205,7 @@ MonoBehaviour:
       WetMin: 0
       WetMax: 0.32
       IgnoreLatitude: 0
-      WetFade: 0
+      WetFade: 0.2
       MinScale: 2
       MaxScale: 5
       GroundOffsetMeters: 0
@@ -244,8 +244,8 @@ MonoBehaviour:
       NearMaterial: {fileID: 2100000, guid: 0bf20071ca4cfea41b67d775f20d2f5c, type: 2}
       FarMaterial: {fileID: 0}
       SpacingMeters: 12
-      MaxInstancesPerChunk: 200
-      Density: 0.3333333333333333
+      MaxInstancesPerChunk: 400
+      Density: 0.25
       DistributionFrequency: 150
       ClusterPatchMeters: 0
       DistributionOctaves: 4
@@ -253,15 +253,15 @@ MonoBehaviour:
       ClusterThreshold: 0
       ClusterFade: 0
       MinAltitudeMeters: 5
-      MinNormalizedHeight: 0.032
+      MinNormalizedHeight: 0
       MaxNormalizedHeight: 0.45
-      MaxAltitudeMeters: 3500
+      MaxAltitudeMeters: 4200
       MaxSlopeTan: 0.9
       AvoidWater: 1
       WetMin: 0.2
       WetMax: 1
       IgnoreLatitude: 0
-      WetFade: 0
+      WetFade: 0.2
       MinScale: 1.604756585072252
       MaxScale: 2.8319233059883118
       GroundOffsetMeters: 0
@@ -280,10 +280,10 @@ MonoBehaviour:
       Collides: 1
       CollisionRadiusMeters: 1.2
       CollisionHeightMeters: 16
-      SteepPower: 3
+      SteepPower: 1.5
       NearDistanceMeters: 150
       MaxCellsPerAxis: 128
-      MaxDistanceMeters: 3000
+      MaxDistanceMeters: 2000
       DensityFalloffMeters: 0
       DensityCoreMeters: 0
       PerInstanceDensity: 0

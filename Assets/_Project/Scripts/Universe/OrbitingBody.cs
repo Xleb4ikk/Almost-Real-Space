@@ -92,6 +92,9 @@ namespace Galilego.Universe
         [Header("Атмосфера (null = нет атмосферы; см. AtmosphereProfile)")]
         public AtmosphereProfile Atmosphere;
 
+        [Header("Облака (null = нет облаков; см. CloudProfile)")]
+        public CloudProfile Clouds;
+
         /// <summary>
         /// Модель поверхности (SphericalTerrain по умолчанию). null — потребители
         /// (детектор касания, SurfaceMotion) обязаны трактовать как сферу.

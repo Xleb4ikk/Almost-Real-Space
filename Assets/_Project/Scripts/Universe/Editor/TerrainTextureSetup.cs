@@ -48,8 +48,8 @@ namespace Galilego.Universe.EditorTools
                 asset.Profile.TextureScale = 0.04d;
                 asset.Profile.LowMidBlendStart = 30d;
                 asset.Profile.LowMidBlendEnd = 60d;
-                asset.Profile.MidHighBlendStart = 2500d;
-                asset.Profile.MidHighBlendEnd = 3500d;
+                asset.Profile.MidHighBlendStart = 4500d;
+                asset.Profile.MidHighBlendEnd = 5500d;
                 asset.Profile.SteepBlendStart = 0.7d;
                 asset.Profile.SteepBlendEnd = 1.4d;
                 EditorUtility.SetDirty(asset);

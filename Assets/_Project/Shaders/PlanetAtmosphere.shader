@@ -31,7 +31,22 @@ Shader "Galilego/PlanetAtmosphere"
             Blend One Zero
             ZWrite Off
             ZTest Always
-            Cull Off
+            // Cull Back, а не Cull Off: купол центрирован на камере
+            // (PlanetAtmosphereView: shell.position = cameraPosition), то есть
+            // камера ВНУТРИ замкнутой сферы. Cull Off рисовал её дважды —
+            // ближнюю и дальнюю полусферу, — с ОДИНАКОВЫМ результатом: Vert
+            // отдаёт output.dir = positionOS, а камера в центре, так что обе
+            // половины дают один и тот же direction и одно IntegrateAtmosphere.
+            // Это была ровно вдвое посчитанная впустую растеризация
+            // fullscreen-пасса.
+            //
+            // Именно Cull Back, а НЕ Cull Front: BuildSphereMesh в
+            // PlanetAtmosphereView woundит треугольники нормалью ВНУТРЬ
+            // (проверено на данных меша: right-handed cross product смотрит к
+            // центру, тогда как у встроенной сферы Unity — наружу). Камера
+            // внутри видит такие треугольники с фронтальной стороны, поэтому
+            // Cull Front вырезал купол целиком и небо становилось чёрным.
+            Cull Back
 
             HLSLPROGRAM
             #pragma vertex Vert
@@ -100,19 +115,22 @@ Shader "Galilego/PlanetAtmosphere"
 
             bool RaySphere(float3 ro, float3 rd, float radius, out float t0, out float t1)
             {
-                float b = dot(ro, rd);
-                float c = dot(ro, ro) - (radius * radius);
+                float safeRadius = max(abs(radius), 1e-4);
+                float3 safeDirection = rd * rsqrt(max(dot(rd, rd), 1e-8));
+                float3 normalizedOrigin = ro / safeRadius;
+                float b = dot(normalizedOrigin, safeDirection);
+                float c = dot(normalizedOrigin, normalizedOrigin) - 1.0;
                 float h = (b * b) - c;
-                if (h < 0.0)
+                if (h < -1e-7)
                 {
                     t0 = 0.0;
                     t1 = 0.0;
                     return false;
                 }
 
-                h = sqrt(h);
-                t0 = -b - h;
-                t1 = -b + h;
+                h = sqrt(max(h, 0.0));
+                t0 = (-b - h) * safeRadius;
+                t1 = (-b + h) * safeRadius;
                 return true;
             }
 
@@ -166,10 +184,40 @@ Shader "Galilego/PlanetAtmosphere"
 
             // Один raymarch от tStart до tEnd. Возвращает in-scatter, в
             // outTransmittance — прозрачность к концу пути.
+            //
+            // Сэмплы — середины N равных сегментов (смещение 0.5), т.е.
+            // стратифицированная выборка. Раньше смещение бралось из per-pixel
+            // белого шума: он разбирается только временным накоплением, а TAA в
+            // проекте выключен (FirstPersonCamera.TemporalAA = false, стоит
+            // SMAA) — поэтому шум оставался прибитым к экрану и шёл за поворотом
+            // камеры (сетка точек в ореоле Солнца и по диску планеты из космоса).
+            // При 48 сегментах и Hr ≈ 8.5 км погрешность midpoint гладкая, мерцания
+            // и бандинга не даёт, поэтому разброс шага не нужен.
             float3 IntegrateAtmosphere(float3 ro, float3 rd, float3 sunDir,
-                float tStart, float tEnd, float jitter, out float3 outTransmittance)
+                float tStart, float tEnd, out float3 outTransmittance)
             {
-                int steps = clamp((int)_AtmStepCount, 2, 128);
+                int maxSteps = clamp((int)_AtmStepCount, 2, 128);
+
+                // Число шагов — ПО ДЛИНЕ ПУТИ, а не всегда максимум.
+                //
+                // Профиль плотности экспоненциальный с масштабом Hr, и он
+                // разрешается, когда шаг ds = L/N много меньше Hr. Требование
+                // ds <= Hr/16 (изменение плотности на шаг <= 6 %) даёт
+                // N = 16·L/Hr; при такой сетке ошибка midpoint по интегралу
+                // ~0.4 %, то есть ниже порога видимости.
+                //
+                // Что это даёт. Для НЕБА путь — сотни километров, так что
+                // N упирается в maxSteps и картинка неба не меняется ВООБЩЕ.
+                // Для РЕЛЬЕФА путь до ближайшего песка — единицы и десятки
+                // метров, и там 48 одинаковых шагов были чистой переплатой:
+                // один шаг длиной 5 м интегрирует экспоненту точнее, чем 48
+                // шагов по 10 см. Таких пикселей в кадре (земля в упор под
+                // ногами и близкий берег) — больше половины экрана.
+                //
+                // round, а не ceil: ступеньки числа шагов при смене L не
+                // дают видимого стыка — на границе меняется только ошибка
+                // интегрирования, и она уже ниже 0.4 %.
+                int steps = clamp((int)round((16.0 * (tEnd - tStart)) / max(1.0, _AtmHr)), 1, maxSteps);
                 float ds = (tEnd - tStart) / (float)steps;
 
                 float cosA = dot(rd, sunDir);
@@ -186,7 +234,7 @@ Shader "Galilego/PlanetAtmosphere"
                         break;
                     }
 
-                    float t = tStart + ((i + jitter) * ds);
+                    float t = tStart + ((i + 0.5) * ds);
                     float3 p = ro + (rd * t);
                     float r = length(p);
                     float height = max(0.0, r - _AtmPlanetRadius);
@@ -274,7 +322,6 @@ Shader "Galilego/PlanetAtmosphere"
                 float3 bgRaw = SAMPLE_TEXTURE2D_X_LOD(
                     _ColorPyramidTexture, s_trilinear_clamp_sampler, colorUv, 0).rgb;
 
-                float jitter = frac(sin(dot(input.positionCS.xy, float2(12.9898, 78.233))) * 43758.5453);
                 float3 radianceScale = _AtmSunColor * (_AtmIntensity * ATM_RADIANCE_SCALE);
 
                 bool hasGround = hasTerrain || planetOccludes;
@@ -299,7 +346,7 @@ Shader "Galilego/PlanetAtmosphere"
                         groundBg = _AtmGroundColor.rgb * saturate(cosSunG) * sunG;
                     }
 
-                    float3 groundScatter = IntegrateAtmosphere(ro, rd, sunDir, 0.0, tGround, jitter, groundT);
+                    float3 groundScatter = IntegrateAtmosphere(ro, rd, sunDir, 0.0, tGround, groundT);
                     groundColor = (groundBg * groundT) + (groundScatter * radianceScale);
                 }
 
@@ -312,7 +359,7 @@ Shader "Galilego/PlanetAtmosphere"
                 float3 skyColor = 0.0;
                 if (!hasTerrain && !planetOccludes)
                 {
-                    float3 skyScatter = IntegrateAtmosphere(ro, rd, sunDir, 0.0, tAtm, jitter, skyT);
+                    float3 skyScatter = IntegrateAtmosphere(ro, rd, sunDir, 0.0, tAtm, skyT);
                     skyColor = (bgRaw * skyT) + (skyScatter * radianceScale);
                 }
 
@@ -343,7 +390,7 @@ Shader "Galilego/PlanetAtmosphere"
                             }
 
                             float3 horT;
-                            float3 horScatter = IntegrateAtmosphere(ro, dirHor, sunDir, 0.0, tAtmHor, jitter, horT);
+                            float3 horScatter = IntegrateAtmosphere(ro, dirHor, sunDir, 0.0, tAtmHor, horT);
                             float3 skyHorizonColor = (bgRaw * horT) + (horScatter * radianceScale);
                             color = lerp(groundColor, skyHorizonColor, horizon);
                         }
@@ -387,7 +434,7 @@ Shader "Galilego/PlanetAtmosphere"
                     {
                         float3 dbgT;
                         float3 dbgScatter = IntegrateAtmosphere(ro, rd, sunDir, 0.0,
-                            hasGround ? tGround : tAtm, jitter, dbgT);
+                            hasGround ? tGround : tAtm, dbgT);
                         return float4(dbgScatter * radianceScale, 1.0);
                     }
 

@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using Galilego.Core;
+using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -21,8 +22,23 @@ namespace Galilego.Universe
         /// Высота поверхности над Radius (м) в тел-fixed координатах
         /// (lat/lon в радианах — те же, что выдаёт OrbitingBody.SurfaceLatLonAt).
         /// Вращение тела учтено самим фактом body-fixed координат.
+        /// Включает кламп морем: в океане возвращает уровень моря (плоская
+        /// вода для посадки кораблей и детекторов касания).
         /// </summary>
         double GetHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians);
+
+        /// <summary>
+        /// СЫРАЯ высота рельефа над Radius (м) БЕЗ клампа морем: в океане —
+        /// глубина дна (отрицательная относительно уровня моря). Единственный
+        /// путь узнать настоящее дно (для плавания, водной геометрии, глубины).
+        /// </summary>
+        double GetRawHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians);
+
+        /// <summary>
+        /// Уровень моря над Radius (м). NegativeInfinity (и любое ≤ −1e29) =
+        /// моря нет. Совпадает с порогом, по которому рендер красит воду.
+        /// </summary>
+        double GetSeaLevelMeters();
 
         /// <summary>
         /// Внешняя нормаль поверхности в точке relPos (относительно центра тела,
@@ -42,6 +58,16 @@ namespace Galilego.Universe
         public double GetHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians)
         {
             return 0d;
+        }
+
+        public double GetRawHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians)
+        {
+            return 0d;
+        }
+
+        public double GetSeaLevelMeters()
+        {
+            return double.NegativeInfinity;
         }
 
         public Vector3d GetOutwardNormal(OrbitingBody body, Vector3d relativePosition, double timeSeconds)
@@ -104,9 +130,149 @@ namespace Galilego.Universe
         /// <summary>Глубина океанических впадин в долях амплитуды (вычитается там, где маски нет).</summary>
         public double ContinentDepth = 0.75d;
 
+        /// <summary>
+        /// Затухание амплитуды маски континентов. ≤0 — следовать за общим Gain
+        /// (legacy). Отдельная ручка: общий Gain = 0.5 гасит верхние октавы
+        /// слишком быстро, и берег остаётся из двух-трёх гладких пятен.
+        /// </summary>
+        public double ContinentGain = 0d;
+
+        /// <summary>
+        /// Сила ОТДЕЛЬНОГО domain-warp континентальной маски. 0 = маска берётся
+        /// на общем warp'е рельефа (legacy).
+        ///
+        /// Отдельный warp нужен, чтобы «круглость» материков не наследовала
+        /// масштаб горного warp'а: тот втрое слабее и втрое выше по частоте,
+        /// то есть для океанических бассейнов слишком мелкий. Источник — неварпнутый
+        /// direction, иначе второй warp ложился бы поверх первого.
+        /// </summary>
+        public double ContinentWarpStrength = 0d;
+
+        /// <summary>Частота warp'а континентальной маски.</summary>
+        public double ContinentWarpFrequency = 0d;
+
+        /// <summary>Октав warp'а континентальной маски.</summary>
+        public int ContinentWarpOctaves = 3;
+
+        /// <summary>
+        /// Вклад «хребтового» члена маски: continentRaw += ContinentRidgeMix·
+        /// (1 − 2·|fBm|). 0 = выключено (legacy). Нулевая линия |fBm| = 0 — это
+        /// изолинии, вдоль которых маска максимальна; они тянутся длинными цепями,
+        /// то есть материки получаются вытянутыми, а не круглыми. Член не
+        /// центрирован — это сдвиг в сторону суши, который гасится
+        /// ContinentThreshold.
+        /// </summary>
+        public double ContinentRidgeMix = 0d;
+
+        /// <summary>Частота ridge-члена маски континентов.</summary>
+        public double ContinentRidgeFrequency = 0d;
+
+        /// <summary>Октав ridge-члена маски континентов.</summary>
+        public int ContinentRidgeOctaves = 2;
+
+        /// <summary>
+        /// Экваториальный сдвиг маски, continentRaw += ContinentLatitudeBias·
+        /// (1 − 2·|sin φ|). 0 = выключено (legacy). У |sin φ| среднее ровно
+        /// 0.5, поэтому член центрирован и долю суши сам по себе не меняет.
+        /// </summary>
+        public double ContinentLatitudeBias = 0d;
+
+        /// <summary>
+        /// Глубина абиссального ложа, нормированные единицы.
+        /// &lt;= 0 (по умолчанию) — океана как отдельной сущности нет, работает
+        /// старая строка «минус (1−маска)·ContinentDepth», и весь «океан» — это
+        /// места, где высокочастотная форма случайно ушла ниже нуля.
+        ///
+        /// &gt; 0 — новая модель: рельеф смешивается с дном, глубина которого
+        /// растёт по мере удаления от берега в единицах маски. Океан тогда
+        /// гарантированно ниже уровня моря, дно плоское, окраина пологая, и
+        /// берег перестаёт быть фрактальной нулевой изолиной шума.
+        /// ContinentDepth при этом не используется.
+        /// </summary>
+        public double OceanFloorDepth = 0d;
+
+        /// <summary>
+        /// Глубина шельфа у берега, нормированные единицы. Домножается на ocean,
+        /// поэтому на суше всегда ноль, а в океане даёт пологое мелководье
+        /// шириной в сотни километров перед материковой окраиной. 0 = нет.
+        /// </summary>
+        public double OceanShelfDepth = 0d;
+
+        /// <summary>
+        /// Пол внутренности, нормированные единицы. &lt;= 0 — выключено.
+        ///
+        /// Суша не опускается ниже continent·InteriorFloor. У берега маска ≈ 0,
+        /// пол ≈ 0, поэтому острова, заливы и пляжи сохраняются; в глубине
+        /// материка пол поднимается над морем, и внутренних озёр не бывает.
+        /// </summary>
+        public double InteriorFloor = 0d;
+
+        /// <summary>Частота маски горных поясов. ≤0 = выключена (размах рельефа везде одинаковый).</summary>
+        public double OrogenyFrequency = 0d;
+
+        /// <summary>Число октав маски горных поясов.</summary>
+        public int OrogenyOctaves = 3;
+
+        /// <summary>Порог маски поясов: выше — горы.</summary>
+        public double OrogenyThreshold = 0d;
+
+        /// <summary>Полуширина smoothstep-перехода маски поясов.</summary>
+        public double OrogenySharpness = 0.3d;
+
+        /// <summary>
+        /// Доля размаха рельефа вне поясов (0..1). 1 = без поясов (legacy).
+        /// Малое значение даёт спокойные низменности вместо горной каши.
+        /// </summary>
+        public double OrogenyFloor = 1d;
+
+        /// <summary>Доля размаха, добавляемая в поясе поверх OrogenyFloor.</summary>
+        public double OrogenyGain = 0d;
+
         /// <summary>Доля ridged-шума 0..1 (горные хребты, только на континентах). 0 = выключен (legacy).</summary>
         public double RidgedMix = 0d;
 
+        /// <summary>Сборка ridged-составляющей: 0 = сумма октав (legacy), 1 = multifractal (ветвящиеся хребты).</summary>
+        public int RidgedMode = (int)TerrainRidgedMode.Legacy;
+
+        /// <summary>Заострение гребня в multifractal, квантуется в целое 1..4. 2 = классика.</summary>
+        public double RidgedSharpness = 2d;
+
+        /// <summary>Насколько сильно вес верхней октавы зависит от нижней (ridged multifractal).</summary>
+        public double RidgedWeightGain = 2d;
+
+        /// <summary>
+        /// Ремапа уровня гребня в multifractal: s^γ. 1 = без ремапы. γ &lt; 1
+        /// поднимает гребни к верху шкалы [0,1], γ &gt; 1 прижимает к низу.
+        /// На пресете подбирается по доле суши; остаток по высоте гасится
+        /// AmplitudeMeters, не этим параметром.
+        /// </summary>
+        public double RidgedGamma = 1d;
+
+        /// <summary>Сила домена по октавам 0..1 для ФОРМЫ рельефа. 0 = выключено.</summary>
+        public double SlopeDamp = 0d;
+
+        /// <summary>Источник наклона для домена: Accum (по высоте) или Gradient (по крутизне).</summary>
+        public int SlopeDampMode = (int)TerrainSlopeDampMode.Off;
+
+        /// <summary>
+        /// Базовый примитив: 0 = value noise (legacy), 1 = градиентный Перлин.
+        ///
+        /// Дефолт — legacy НЕ из лени, а потому что Unity подставляет
+        /// инициализатор поля в ассеты, где поля ещё нет, и побитовые проверки
+        /// T77a/T82a/T82b/T82h висят на дефолтных параметрах. Сменить дефолт
+        /// класса молча — значит сломать их, не заметив. Перлин включается
+        /// явно в пресете.
+        /// </summary>
+        public int NoiseStyle = (int)TerrainNoiseStyle.Value;
+
+
+        /// <summary>
+        /// Примитив для МАСОК и warp, отдельно от формы. 0 = следует NoiseStyle.
+        /// Поставка в Value срезает цену: value noise втрое быстрее градиентного,
+        /// а маска continent читается как квантиль и после нормировки по RMS
+        /// (T111) от примитива не зависит.
+        /// </summary>
+        public int MaskNoiseStyle = -1;
         /// <summary>
         /// Сила равнин 0..1: в зонах маски рельеф стягивается к низкому плато.
         /// 0 = выключено (legacy, бит-в-бит). Равнины только на континентах.
@@ -129,6 +295,27 @@ namespace Galilego.Universe
         public double PlainElevation = 0.1d;
 
         /// <summary>
+        /// Мягкое сжатие верхнего хвоста формы, в нормированных единицах.
+        /// TailKnee <= 0 (по умолчанию) — выключено, поведение прежнее.
+        /// Нужно ridged-профилям: у них тяжёлый хвост, и калибровка по p99
+        /// задирает вершины. Режет только хвост выше TailThreshold.
+        /// </summary>
+        public double TailKnee = 0d;
+
+        /// <summary>Порог сжатия хвоста (нормированные единицы).</summary>
+        public double TailThreshold = 0d;
+
+        /// <summary>
+        /// Мягкое сжатие нижнего (океанского) хвоста, нормированные единицы.
+        /// DepthKnee <= 0 (по умолчанию) — выключено. Зеркало TailKnee: режет
+        /// глубокое ложе, не трогая берег и шельф.
+        /// </summary>
+        public double DepthKnee = 0d;
+
+        /// <summary>Порог нижнего сжатия (нормированные единицы).</summary>
+        public double DepthThreshold = 0d;
+
+        /// <summary>
         /// Высота пляжа над морем (м): ниже — песок и запрет спавна.
         /// 0 = пляжа нет (legacy).
         /// </summary>
@@ -145,6 +332,18 @@ namespace Galilego.Universe
         /// Полуширина полки в единицах continent-маски. 0 = выключена (legacy).
         /// </summary>
         public double BeachShelfWidth = 0d;
+
+        /// <summary>
+        /// Максимальный множитель ширины полки пляжа. Ширина по берегу плавно
+        /// меняется от 1× до этого значения (шум). ≤1 = везде одинаковая (legacy).
+        /// </summary>
+        public double BeachShelfWidthMaxScale = 1d;
+
+        /// <summary>Частота шума ширины пляжа (циклов на единичный вектор). 0 = выключено.</summary>
+        public double BeachShelfWidthNoiseFrequency = 0d;
+
+        /// <summary>Октав шума ширины пляжа.</summary>
+        public int BeachShelfWidthNoiseOctaves = 4;
 
         /// <summary>
         /// Мелкомасштабная деталь (скалы/осыпи) как доля AmplitudeMeters.
@@ -276,16 +475,48 @@ namespace Galilego.Universe
             ContinentThreshold = profile.ContinentThreshold;
             ContinentSharpness = profile.ContinentSharpness;
             ContinentDepth = profile.ContinentDepth;
+            ContinentGain = profile.ContinentGain;
+            ContinentWarpStrength = profile.ContinentWarpStrength;
+            ContinentWarpFrequency = profile.ContinentWarpFrequency;
+            ContinentWarpOctaves = profile.ContinentWarpOctaves;
+            ContinentRidgeMix = profile.ContinentRidgeMix;
+            ContinentRidgeFrequency = profile.ContinentRidgeFrequency;
+            ContinentRidgeOctaves = profile.ContinentRidgeOctaves;
+            ContinentLatitudeBias = profile.ContinentLatitudeBias;
+            OceanFloorDepth = profile.OceanFloorDepth;
+            OceanShelfDepth = profile.OceanShelfDepth;
+            InteriorFloor = profile.InteriorFloor;
+            OrogenyFrequency = profile.OrogenyFrequency;
+            OrogenyOctaves = profile.OrogenyOctaves;
+            OrogenyThreshold = profile.OrogenyThreshold;
+            OrogenySharpness = profile.OrogenySharpness;
+            OrogenyFloor = profile.OrogenyFloor;
+            OrogenyGain = profile.OrogenyGain;
             RidgedMix = profile.RidgedMix;
+            RidgedMode = profile.RidgedMode;
+            RidgedSharpness = profile.RidgedSharpness;
+            RidgedWeightGain = profile.RidgedWeightGain;
+            RidgedGamma = profile.RidgedGamma;
+            SlopeDamp = profile.SlopeDamp;
+            SlopeDampMode = profile.SlopeDampMode;
+            NoiseStyle = profile.NoiseStyle;
+            MaskNoiseStyle = profile.MaskNoiseStyle;
             PlainMix = profile.PlainMix;
             PlainFrequency = profile.PlainFrequency;
             PlainOctaves = profile.PlainOctaves;
             PlainThreshold = profile.PlainThreshold;
             PlainSharpness = profile.PlainSharpness;
             PlainElevation = profile.PlainElevation;
+            TailKnee = profile.TailKnee;
+            TailThreshold = profile.TailThreshold;
+            DepthKnee = profile.DepthKnee;
+            DepthThreshold = profile.DepthThreshold;
             BeachHeightMeters = profile.BeachHeightMeters;
             BeachShelfAltitudeMeters = profile.BeachShelfAltitudeMeters;
             BeachShelfWidth = profile.BeachShelfWidth;
+            BeachShelfWidthMaxScale = profile.BeachShelfWidthMaxScale;
+            BeachShelfWidthNoiseFrequency = profile.BeachShelfWidthNoiseFrequency;
+            BeachShelfWidthNoiseOctaves = profile.BeachShelfWidthNoiseOctaves;
             DetailMix = profile.DetailMix;
             DetailFrequency = profile.DetailFrequency;
             DetailOctaves = profile.DetailOctaves;
@@ -329,23 +560,80 @@ namespace Galilego.Universe
             return terrain;
         }
 
+        /// <summary>
+        /// Таблица ровных площадок (PQS-моды). Всегда ВАЛИДНА, даже когда
+        /// площадок нет: инициализатор ставит общую пустую таблицу
+        /// TerrainModifiers.Empty, потому что рендер гоняет через Burst-джобу
+        /// TerrainNoiseParams целиком, а планировщик Unity требует валидные
+        /// контейнеры во всех полях структуры джобы — на default(NativeArray)
+        /// рендер падал, а планета пропадала.
+        ///
+        /// Владелец здесь, а не TerrainNoiseParams.FromTerrain: тот зовётся на
+        /// каждый запрос высоты и аллоцировать в нём нельзя.
+        /// </summary>
+        public NativeArray<TerrainModifierData> Mods = TerrainModifiers.Empty;
+
         /// <summary>Угловой шаг соседей для нормали (рад): разрешает 5 октав с запасом.</summary>
         private const double NormalEpsilonRadians = 1e-4d;
 
+        /// <summary>
+        /// Пересобрать таблицу площадок. Старую освобождает: таблица
+        /// Persistent, а система пересобирается при каждой правке сцены.
+        ///
+        /// Порядок важен: сначала строится новая, потом ставят её, и только
+        /// потом освобождается старая. Рендер держит свою копию дескриптора и
+        /// обновляет её в Update(), тогда как джобы строятся в LateUpdate() —
+        /// между этими точками освобождённый массив никто не успевает
+        /// запланировать. Обратный порядок (Dispose до установки новой) оставил
+        /// бы в кэше рендера указатель на освобождённую память.
+        /// </summary>
+        public void SetModifiers(System.Collections.Generic.IList<TerrainModifier> source, double bodyRadiusMeters)
+        {
+            NativeArray<TerrainModifierData> built = TerrainModifiers.Build(source, bodyRadiusMeters);
+            NativeArray<TerrainModifierData> previous = Mods;
+            Mods = built;
+            TerrainModifiers.Release(ref previous);
+        }
+
+        /// <summary>Освободить таблицу площадок (при разборке системы).</summary>
+        public void DisposeModifiers()
+        {
+            NativeArray<TerrainModifierData> current = Mods;
+            Mods = TerrainModifiers.Empty;
+            TerrainModifiers.Release(ref current);
+        }
+
         public double GetHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians)
         {
-            // Форма считается ЕДИНСТВЕННОЙ реализацией — TerrainNoise (Burst):
-            // физика и рендер читают одну функцию, дублирования нет.
+            // Формула считается напрямую, а не через GetRawHeightMeters: здесь
+            // нужно знать, не перебила ли площадка кламп моря. Иначе раскопка
+            // ниже уровня моря молча наполнялась бы водой.
             Vector3d direction = LatLonToDirection(latitudeRadians, longitudeRadians);
-            double height = TerrainNoise.SampleHeight(
-                TerrainNoiseParams.FromTerrain(this),
-                new double3(direction.X, direction.Y, direction.Z)) * AmplitudeMeters;
-            if (height < SeaLevelMeters)
+            var dir = new double3(direction.X, direction.Y, direction.Z);
+            TerrainNoiseParams p = TerrainNoiseParams.FromTerrain(this);
+            double height = TerrainNoise.SampleHeight(p, dir) * AmplitudeMeters;
+            if (height < SeaLevelMeters && !TerrainNoise.ModsOverrideSeaLevel(p, dir))
             {
                 height = SeaLevelMeters;
             }
 
             return height;
+        }
+
+        public double GetRawHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians)
+        {
+            // Форма считается ЕДИНСТВЕННОЙ реализацией — TerrainNoise (Burst):
+            // физика и рендер читают одну функцию, дублирования нет.
+            // БЕЗ клампа морем: дно океана ниже уровня моря.
+            Vector3d direction = LatLonToDirection(latitudeRadians, longitudeRadians);
+            return TerrainNoise.SampleHeight(
+                TerrainNoiseParams.FromTerrain(this),
+                new double3(direction.X, direction.Y, direction.Z)) * AmplitudeMeters;
+        }
+
+        public double GetSeaLevelMeters()
+        {
+            return SeaLevelMeters;
         }
 
         public Vector3d GetOutwardNormal(OrbitingBody body, Vector3d relativePosition, double timeSeconds)

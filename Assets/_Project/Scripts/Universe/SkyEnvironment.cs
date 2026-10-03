@@ -51,7 +51,7 @@ namespace Galilego.Universe
         public float TerrainRadianceScale = 1f;
 
         [Tooltip("Ночная засветка террейна (звёздный свет + NightExposure глаза); 0 = кромешная тьма.")]
-        public float NightAmbient = 0.01f;
+        public float NightAmbient = 0f;
 
         [Tooltip("Дневная засветка террейна небом.")]
         public float SkyAmbient = 0.1f;
@@ -69,7 +69,7 @@ namespace Galilego.Universe
         public float NightExposure = 0.5f;
 
         [Tooltip("До этой дистанции тени фильтруются штатным HQ-фильтром HDRP (PCSS).")]
-        public float ShadowHighDistanceMeters = 150f;
+        public float ShadowHighDistanceMeters = 70f;
 
         [Tooltip("До этой дистанции — средний фильтр (GATHER, 4 taps); дальше самый дешёвый (1 tap).")]
         public float ShadowMediumDistanceMeters = 400f;
@@ -152,17 +152,29 @@ namespace Galilego.Universe
 
         private void Start()
         {
-            // [ГРАФИКА] Максимум разрешения теней: в сцене у солнца стоит ручной
-            // override 512 — поднимаем до 4096. Пресеты (GraphicsQualityController)
-            // позже будут задавать это сами.
+            // [ГРАФИКА] Разрешение теней солнца задаётся HDRP-ассетом
+            // (Max Directional Shadow Map Resolution), а не этим кодом: ручной
+            // override здесь перебивал бы и ассет, и пресеты
+            // (GraphicsQualityController). В сцене стоял override 512 — снимаем.
             var hdLight = SunLight != null
                 ? SunLight.GetComponent<UnityEngine.Rendering.HighDefinition.HDAdditionalLightData>()
                 : null;
             if (hdLight != null)
             {
-                hdLight.SetShadowResolutionOverride(true);
-                hdLight.SetShadowResolution(4096);
+                hdLight.SetShadowResolutionOverride(false);
             }
+        }
+
+        public static OrbitingBody RootOf(OrbitingBody body)
+        {
+            OrbitingBody current = body;
+            int guard = 0;
+            while (current != null && current.Parent != null && guard++ < 64)
+            {
+                current = current.Parent;
+            }
+
+            return current;
         }
 
         private void LateUpdate()
@@ -173,17 +185,49 @@ namespace Galilego.Universe
                 return;
             }
 
-            OrbitingBody body = Runner.DominantBody;
+            ApplyGlobalsNow(Runner.DominantBody, Runner.PlayerPosition, Runner.TimeSeconds);
+        }
+
+        /// <summary>
+        /// Пересчитать и выставить все глобалы освещения для произвольного
+        /// наблюдателя. Вынесено из LateUpdate, чтобы редакторское превью
+        /// поверхности получало РОВНО тот же свет, что и игра, не запуская Play.
+        /// Единственный источник правды: своя копия этой физики в редакторе
+        /// разошлась бы с игровой на первом же изменении коэффициентов.
+        ///
+        /// applyToLight — трогать ли Directional Light сцены. Для игры да,
+        /// для редакторского превью нет: превью нужно только заполнить глобалы
+        /// шейдеров, а запись в SunLight засоряла бы сцену и меняла свет у
+        /// автора между правками.
+        /// </summary>
+        public void ApplyGlobalsNow(OrbitingBody body, Vector3d observerPosition, double timeSeconds, bool applyToLight = true)
+        {
+            if (body == null)
+            {
+                return;
+            }
+
             AtmosphereProfile atmosphere = body.Atmosphere;
 
-            body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPos, out _);
-            Vector3d relative = Runner.PlayerPosition - bodyPos;
+            body.EvaluateWorldState(timeSeconds, out Vector3d bodyPos, out _);
+            Vector3d relative = observerPosition - bodyPos;
             double distance = relative.Magnitude;
             double altitude = System.Math.Max(0d, distance - body.Radius);
             Vector3d up = distance > 0d ? relative / distance : new Vector3d(0d, 0d, 1d);
 
-            Runner.SystemState.Root.EvaluateWorldState(Runner.TimeSeconds, out Vector3d starPos, out _);
-            Vector3d toStar = starPos - Runner.PlayerPosition;
+            // Корень дерева тел ищем по Parent, а НЕ через Runner.SystemState.
+            // Раньше здесь стояло Runner.SystemState.Root — и как только метод
+            // начали звать из редактора (превью поверхности), он падал на null
+            // 999 раз в секунду: вне Play у раннера SystemState не собран.
+            // По той же причине все ссылки на Runner внутри метода недопустимы.
+            OrbitingBody root = RootOf(body);
+            if (root == null)
+            {
+                return;
+            }
+
+            root.EvaluateWorldState(timeSeconds, out Vector3d starPos, out _);
+            Vector3d toStar = starPos - observerPosition;
             double starDistance = toStar.Magnitude;
             Vector3d sunDir = starDistance > 0d ? toStar / starDistance : up;
 
@@ -240,6 +284,13 @@ namespace Galilego.Universe
             Shader.SetGlobalVector("_SunLightColor",
                 new Vector3((float)sunLight.X, (float)sunLight.Y, (float)sunLight.Z));
 
+            // Направление на звезду для планарного шейдера рельефа. Тот же
+            // глобал, что ставит SunBillboard в рантайме: превью и игра должны
+            // светиться с одного угла, иначе склоны читаются противоположно.
+            Shader.SetGlobalVector("_TerrainSunDir", AstroFrame.ToSimulation(sunDir));
+
+            Shader.SetGlobalVector("_TerrainBodyCenterWS", FloatingOrigin.ToRender(bodyPos));
+
             // Ambient террейна — средняя яркость неба над наблюдателем
             // (полусферический интеграл single-scatter, та же физика, что у
             // GPU-неба). В отличие от тинта×skyLuminance, он НЕ гаснет на
@@ -285,12 +336,16 @@ namespace Galilego.Universe
             Shader.SetGlobalFloat("_ShadowMediumDistance", Mathf.Max(0f, ShadowMediumDistanceMeters));
             Shader.SetGlobalFloat("_ShadowBlendWidth", Mathf.Max(1f, ShadowBlendWidthMeters));
 
-            if (SunLight != null)
+            if (applyToLight && SunLight != null)
             {
                 // Directional Light в физических люксах (HDRP): яркость — по
                 // светимости прямого света, оттенок — фотосфера × T. Днём у
                 // земли ~0.9·DayLux, на горизонте — красные тысячи, ночью 0.
                 // Старое SunLightIntensity=1.6 в люксах гасило солнце в 50000 раз.
+                //
+                // applyToLight=false для редакторского превью: там свет нужен
+                // только шейдерам, а трогать SunLight сцены нельзя — превью
+                // засоряло бы сцену и меняло бы свет у автора между правками.
                 double brightness = Luminance(sunLight);
                 double peak = System.Math.Max(sunLight.X, System.Math.Max(sunLight.Y, sunLight.Z));
                 if (peak > 1e-6d && brightness > 0d)
@@ -306,9 +361,9 @@ namespace Galilego.Universe
                 }
             }
 
-            if (SunsetDiagLog && Runner.TimeSeconds >= nextDiagTime)
+            if (SunsetDiagLog && Application.isPlaying && timeSeconds >= nextDiagTime)
             {
-                nextDiagTime = Runner.TimeSeconds + 2d;
+                nextDiagTime = timeSeconds + 2d;
                 Debug.Log(string.Format(
                     "[SkyEnvironment][SUNSET] el={0:F1}° T=({1:F3},{2:F3},{3:F3}) ambient={4:F3} day={5:F2} occ={6:F2} star={7:F2} ev={8:F2}",
                     SunElevationDeg, Transmittance.x, Transmittance.y, Transmittance.z,

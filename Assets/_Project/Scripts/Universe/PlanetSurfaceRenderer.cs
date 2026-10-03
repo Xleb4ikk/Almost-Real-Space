@@ -22,8 +22,8 @@ namespace Galilego.Universe
     /// (Рё depth < MaxDepth). Р“РѕС‚РѕРІС‹Рµ РјРµС€Рё РєСЌС€РёСЂСѓСЋС‚СЃСЏ РїРѕ id СѓР·Р»Р° (СЂРµР»СЊРµС„
     /// СЃС‚Р°С‚РёС‡РµРЅ РІ С‚РµР»-fixed РєР°РґСЂРµ), РІРёРґРёРјС‹Р№ РЅР°Р±РѕСЂ вЂ” РїРѕ РєСѓР»Р»РёРЅРіСѓ Р·Р°РґРЅРµР№
     /// РїРѕР»СѓСЃС„РµСЂС‹. Р®Р±РєРё РїРѕ РєСЂР°СЏРј СЃРєСЂС‹РІР°СЋС‚ С‚СЂРµС‰РёРЅС‹ РјРµР¶РґСѓ СЂР°Р·РЅС‹РјРё LOD.
-    /// РћРєРµР°РЅ вЂ” РІРЅСѓС‚СЂРё С‡Р°РЅРєРѕРІ: Р·Р°С‚РѕРїР»РµРЅРЅС‹Рµ РІРµСЂС€РёРЅС‹ РЅРµСЃСѓС‚ water-С„Р»Р°Рі (color.a),
-    /// С€РµР№РґРµСЂ СЂРёСЃСѓРµС‚ РёРј РІРѕРґСѓ (fresnel + Р±Р»РёРє). Р’С‹Р·РѕРІ вЂ” LateUpdate РїРѕСЃР»Рµ BodyView.
+    /// Океан — два слоя: геометрия чанков идёт до СЫРОГО дна (без клампа, шейдер затемняет дно глубиной),
+    /// сверху — отдельный почти непрозрачный водный меш чанка (Galilego/WaterSurface: волны, блик, пена, подводный тинт). Физика дна/глубины — WaterQuery. Вызов — LateUpdate после BodyView.
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-70)]
     public sealed class PlanetSurfaceRenderer : MonoBehaviour
@@ -62,6 +62,44 @@ namespace Galilego.Universe
         [Range(0f, 0.2f)]
         public float SkirtFactor = 0.03f;
 
+        /// <summary>
+        /// Глубина юбок ВОДЫ, доля от юбки РЕЛЬЕФА. Значение МАЛЕНЬКОЕ по
+        /// необходимости, и это не перестраховка, а требование прозрачности.
+        ///
+        /// Юбка строится вертикальной стеной вниз от края чанка (см.
+        /// SurfaceChunkBuilder: Position = core - inward*WaterSkirtDepth), причём
+        /// с нормалью от core-грани — поэтому читается не как стена, а как
+        /// горизонтальный «срез» и выглядит дырой в рельефе.
+        ///
+        /// Вода прозрачна, и при Extinction 0.08 видно примерно 30 м вглубь
+        /// (e^(-0.08*30) ~ 0.09). Значит юбка длиннее этого видна: на depth 8
+        /// рельефная юбка 1173 м, и стена в километр под водой читается как
+        /// «срез уходящий под воду». Такое значение (1.0) тут и стояло, и это
+        /// ловушка: тултип раньше обещал «держим равным SkirtFactor», и равенство
+        /// параметров действительно выполнялось, а глубина получалась в 33 раза
+        /// больше нужной.
+        ///
+        /// Водная плоскость ПЛОСКАЯ, в отличие от рельефа, поэтому её юбка
+        /// прячет только щель тесселяции между разными LOD - тонкую
+        /// горизонтальную полосу. Ей хватает метров, а не сотен.
+        /// </summary>
+        [Tooltip("Глубина юбок ВОДЫ, доля от юбки РЕЛЬЕФА. Держите МАЛЕНЬКИМ (0.02-0.06): вода прозрачна, и при Extinction 0.08 видно ~30 м вглубь, поэтому юбка длиннее этого читается как вертикальный срез под водой. 1 = глубина рельефа, неверно. 0 = полоса вернётся.")]
+        [Range(0f, 0.3f)]
+        public float WaterSkirtFactor = 0.03f;
+
+        [Tooltip("Ширина градиента «мокрый песок → сухой песок» над уровнем моря (м). " +
+                 "У самого уреза цвет гаснет и уходит в холодный (красный первым), выше — " +
+                 "плавно к обычному. Полоса ограничена пляжной зоной (_BeachHeightMeters), " +
+                 "так что мокрым остаётся только низ берега, а не весь пляж. " +
+                 "Геометрию, уровень моря и воду не трогает — только вид суши у кромки.")]
+        [Range(0.5f, 20f)]
+        public float ShoreWetMeters = 3f;
+
+        [Tooltip("Цвет множителя мокрого песка у кромки: темнее и холоднее сухого. " +
+                 "У старого плоского затемнения 45 % был одинаковый по всем каналам — " +
+                 "получалось просто «темнее», без перехода.")]
+        public Color ShoreWetTint = new Color(0.42f, 0.52f, 0.56f, 1f);
+
         [Tooltip("РЎРєРѕР»СЊРєРѕ С‡Р°РЅРєРѕРІ СЃС‚СЂРѕРёС‚СЊ Р·Р° РєР°РґСЂ (РїРµСЂРІС‹Р№ РєР°РґСЂ вЂ” Р±РµР· Р»РёРјРёС‚Р°).")]
         [Range(1, 64)]
         public int BuildsPerFrame = 16;
@@ -74,6 +112,22 @@ namespace Galilego.Universe
                  "С‚СЏР¶С‘Р»С‹Рµ СЃР±РѕСЂРєРё РёРґСѓС‚ РїРѕСЂС†РёСЏРјРё Рё РЅРµ Р±Р»РѕРєРёСЂСѓСЋС‚ РєР°РґСЂ С†РµР»РёРєРѕРј.")]
         [Range(0.5f, 8f)]
         public float DecorBuildBudgetMs = 3f;
+
+        // [ФАЗА 4] Пауза после полного обхода, который ничего не нашёл.
+        //
+        // Обход «все чанки × все слои» стоит ~1.8 мс на 1263 чанках, и когда
+        // строить нечего (всё построено, либо всё дальше MaxDistance) эта
+        // работа повторялась КАЖДЫЙ кадр вхолостую — профиль показывал 1.8 мс
+        // при нулевом числе пулов. Обход запоминает, что ничего не нашёл, и на
+        // пару сотых секунды не повторяется.
+        //
+        // Пауза короткая намеренно: за это время камера успевает долететь до
+        // нового чанка, и появление декора глазом не задерживается.
+        [Tooltip("How long to stop re-scanning after a full scan found nothing to build.")]
+        [Range(0.02f, 2f)]
+        public float DecorRescanCooldownSeconds = 0.2f;
+
+        private float decorScanBlockedUntil;
 
         [Tooltip("РњР°РєСЃРёРјСѓРј РѕРґРЅРѕРІСЂРµРјРµРЅРЅС‹С… Р°СЃРёРЅС…СЂРѕРЅРЅС‹С… СЃР±РѕСЂРѕРє РґРµРєРѕСЂР° (РїР°РјСЏС‚СЊ/Р»Р°С‚РµРЅС‚РЅРѕСЃС‚СЊ).")]
         [Range(1, 8)]
@@ -89,7 +143,264 @@ namespace Galilego.Universe
         public int MaxNodes = 6000;
         [Tooltip("РњР°РєСЃРёРјСѓРј Р·Р°РєСЌС€РёСЂРѕРІР°РЅРЅС‹С… РјРµС€РµР№ (Р»РёС€РЅРёРµ РІС‹С‚РµСЃРЅСЏСЋС‚СЃСЏ).")]
         [Min(64)]
-        public int MaxCachedChunks = 2048;
+        public int MaxCachedChunks = 1024;
+
+        [Tooltip("Сколько чанков выгружать за кадр. Destroy пачкой — сам по себе " +
+                 "фриз: освобождение меша и GameObject синхронно, и 40 таких за " +
+                 "кадр неотличимы от постройки 40 новых. По 2-4 в кадр кэш " +
+                 "подчищается за доли секунды и не видно.")]
+        [Range(1, 64)]
+        public int MaxEvictionsPerFrame = 4;
+
+        [Tooltip("На сколько верхних уровней глубины рельеф оставляет тени. " +
+                 "3 = тени только у самых ближних чанков (MaxDepth-2…MaxDepth). " +
+                 "Дальше флаг лишь экономит отсечение в проходах теней: за " +
+                 "пределом тени в HDRP эти чанки всё равно не отбрасываются по " +
+                 "результату, а попадают в тест. 99 = тени у всех чанков, как " +
+                 "было до этого флага.")]
+        [Range(0, 99)]
+        public int TerrainShadowDepthBand = 3;
+
+        [Header("Фаза 2: асинхронная постройка чанков")]
+        [Tooltip("Строить чанки в Burst-джобах, а не на главном потоке. " +
+                 "ВЫКЛ ПО УМОЛЧАНИЮ, хотя код компилируется и в Editor-замере " +
+                 "даёт 0.9-1.2 мс на кадр против 42.75 мс у синхронного пути. " +
+                 "Причина: очередь не дренируется (3400-5200 записей при 6 " +
+                 "джобах в полёте и бюджете 1.5 мс), и наблюдались кадры, где " +
+                 "видимых чанков 0 — то есть рельеф пропадал. Пока очередь не " +
+                 "закрыта (Фаза 3: тиры качества по скорости) и пустое не " +
+                 "поймано, включать только под присмотром. Старый синхронный " +
+                 "путь оставлен как эталон: с ним картинку можно сравнить " +
+                 "побитово.")]
+        public bool AsyncChunkBuild = false;
+
+        [Tooltip("Сколько джоб постройки может висеть одновременно. Больше — " +
+                 "ровнее сглаживание, но больше одновременной нагрузки на " +
+                 "процессор и больше живой нативной памяти.")]
+        [Range(1, 16)]
+        public int MaxChunkJobsInFlight = 6;
+
+        [Tooltip("Мс на кадр, которые можно потратить на ЗАЛИВКУ готовых " +
+                 "чанков в меши. Заливка копирует память без вычислений и " +
+                 "стоит порядка сотни микросекунд на чанк, поэтому 1.5 мс — " +
+                 "это единицы чанков. Всё, что не уложилось, ждёт следующего " +
+                 "кадра: лучше отстать от LOD, чем встать.")]
+        [Range(0.25f, 8f)]
+        public float ChunkFinalizeBudgetMs = 1.5f;
+
+        [Tooltip("Сколько кадров запись очереди может ждать, прежде чем будет " +
+                 "признана устаревшей и выброшена. Узел, ушедший за спину " +
+                 "камере, в desired больше не попадает, но из очереди сам не " +
+                 "исчезал: на 2 км/с она копила тысячи записей, и планировщик " +
+                 "каждый кадр ходил по ним. Не ноль: узел на грани LOD бывает в " +
+                 "desired через кадр.")]
+        [Range(1, 64)]
+        public int MaxChunkQueueAgeFrames = 6;
+
+        [Header("Фаза 3: тиры качества по скорости")]
+        [Tooltip("Понижать глубину LOD и плотность разбиения на большой " +
+                 "скорости. На 2 км/с строить листья по 440 м бессмысленно: " +
+                 "игрок проезжает поле быстрее, чем оно достраивается. " +
+                 "Понижение НЕ трогает ResolutionForDepth — он остаётся на " +
+                 "сериализованном MaxDepth, иначе у уже построенных узлов " +
+                 "менялась бы сетка и они перестраивались бы каждый кадр.")]
+        public bool EnableQualityTiers = true;
+
+        [Tooltip("М/с, выше которых включается тир Fast (глубина минус один).")]
+        public float TierFastSpeed = 250f;
+
+        [Tooltip("М/с, выше которых включается тир Extreme (глубина минус два).")]
+        public float TierExtremeSpeed = 1200f;
+
+        [Tooltip("С, сколько ждать перед ВНИЗ возвратом тира. Вверх переключаемся " +
+                 "сразу, вниз — с задержкой: иначе скорость шла бы около порога " +
+                 "и LOD флапал каждый кадр.")]
+        public float TierDownDelaySeconds = 1.5f;
+
+        [Tooltip("На сколько уровней глубины срезать в тире Fast.")]
+        public int TierDepthDropFast = 1;
+
+        [Tooltip("На сколько уровней глубины срезать в тире Extreme.")]
+        public int TierDepthDropExtreme = 2;
+
+        [Tooltip("Множитель SplitFactor в тире Fast. Ниже — реже делим квад, " +
+                 "то есть поднимаем порог дистанции до листьев.")]
+        public float TierSplitScaleFast = 0.9f;
+
+        [Tooltip("Множитель SplitFactor в тире Extreme.")]
+        public float TierSplitScaleExtreme = 0.8f;
+
+        [Tooltip("Поднимать тир по времени кадра, а не только по скорости. " +
+                 "Страховка для слабых машин. По умолчанию выключено: без " +
+                 "замеров в билде регулятор способен сам ухудшить картинку.")]
+        public bool TierAutoRaise;
+
+        [Tooltip("Целевое время кадра для регулятора, мс. Регулятор следит за " +
+                 "скользящим окном и держит его не выше этой цифры.")]
+        public float TierTargetFrameMs = 22f;
+
+        [Tooltip("Строить чанки ВПЕРЁД по вектору скорости, а не только там, " +
+                 "где камера уже стоит. На скорости узел нужен через долю " +
+                 "секунды, а к моменту, когда камера доедет, он уже готов.")]
+        public bool PrefetchEnabled = true;
+
+        [Tooltip("С, на сколько вперёд заглядывать. 1.5 с — примерно 3 км на " +
+                 "2 км/с.")]
+        [Range(0f, 3f)]
+        public float PrefetchSeconds = 1.5f;
+
+        [Tooltip("С, за которые сглаженная скорость догоняет настоящую. Короткое " +
+                 "окно заставляет префетч метаться на ускорениях, длинное " +
+                 "заставляет опаздывать на торможении.")]
+        [Range(0.05f, 1f)]
+        public float PrefetchVelSmoothSeconds = 0.15f;
+
+        [Tooltip("М, минимальный упрелёж. На малой скорости PrefetchSeconds даёт " +
+                 "смещение в метры, и префетчить нечего — узлы не успевают " +
+                 "понадобиться.")]
+        public float PrefetchMinLeadMeters = 400f;
+
+        [Tooltip("Потолок узлов в префетч-обходе. Он идёт поверх основного, и " +
+                 "без отдельного лимита съел бы весь MaxNodes.")]
+        [Min(16)]
+        public int MaxPrefetchNodes = 512;
+
+        [Tooltip("Сколько префетч-узлов максимум ждут в очереди на постройку.")]
+        [Min(0)]
+        public int MaxPrefetchQueued = 256;
+
+        [Tooltip("В тирах Fast/Extreme строить чанк вчетверо реже (res/2) и " +
+                 "достраивать до полного, когда очередь опустеет. Экономит " +
+                 "в четыре раза вершины на чанк, но без прогрессивного " +
+                 "уточнения видно мыло — поэтому за флагом.")]
+        public bool TierHalveResolution;
+
+        [Header("Декор: высота и скорость")]
+        [Tooltip("М/с, выше которых новые сборки декора не запускаются. На " +
+                 "такой скорости игрок проезжает поле быстрее, чем декор успевает " +
+                 "вырасти, — пересборка только жрёт кадр. Уже начатые сессии " +
+                 "доживают до конца.")]
+        public float DecorPauseSpeed = 120f;
+
+        [Tooltip("М, выше которых у декора выключаются тени. На высоте тени от " +
+                 "дерева не попадают в картинку (пятно под ним — субпиксельное), " +
+                 "а стоят целого прохода отсечения.")]
+        public float DecorShadowMaxAltitude = 300f;
+
+        [Tooltip("С, за которые сглаженная скорость догоняет настоящую. Короткое " +
+                 "окно дёргает включения-выключения декора, длинное — оставляет " +
+                 "декор включённым лишние секунды после остановки.")]
+        public float DecorSpeedSmoothSeconds = 0.25f;
+
+        [Tooltip("М, выше которых коллайдеры декора не создаются и уже " +
+                 "созданные освобождаются. В ноуклипе игрок ни с чем не " +
+                 "столкается, а обход пулов — это O(чанки × слои × инстансы) " +
+                 "каждый кадр. У земли (высота ~2 м) поведение прежнее.")]
+        public float DecorCollisionMaxAltitude = 150f;
+
+        [Tooltip("М/с, выше которых между проходами декора держится минимальный " +
+                 "интервал по времени: за кадр поле смещается на десятки " +
+                 "метров, и сканировать чаще всё равно бесполезно.")]
+        public float DecorScanSpeedGate = 50f;
+
+        [Tooltip("С, минимальный интервал между проходами декора на скорости " +
+                 "выше DecorScanSpeedGate.")]
+        public float DecorScanMinInterval = 0.2f;
+
+        [Header("Бюджет геометрии: горизонт и плотность сетки")]
+        [Tooltip("Отбрасывать узлы, чья БЛИЖАЙШАЯ точка дальше предельной дальности " +
+                 "видимости (горизонт планеты при максимальном рельефе). Такой узел " +
+                 "не может закрыть ни одного пикселя, но без проверки он рисуется " +
+                 "каждый кадр: на depth 2-6 это половина всех чанков.")]
+        public bool CullBeyondHorizon = true;
+
+        [Tooltip("Запас к предельной дальности (м). 1 = без запаса, 1.15 = +15 %.")]
+        [Range(1f, 2f)]
+        public float HorizonMargin = 1.15f;
+
+        [Tooltip("Нижняя граница разрешения чанка. 9 = 8 квадов по стороне " +
+                 "(это только дальняя полоса у горизонта, до неё горизонт не доходит).")]
+        [Range(5, 65)]
+        public int MinTileResolution = 9;
+
+        [Tooltip("Через сколько уровней глубины делить разрешение сетки пополам. " +
+                 "4 = ближние 4 уровня (MaxDepth-3…MaxDepth, при SplitFactor 3.5 это " +
+                 "весь радиус 162 км вокруг игрока) на полном TileResolution без " +
+                 "изменений, дальше вдвое каждые 4 уровня. " +
+                 "99 = огрубление выключено, все чанки на полном разрешении.")]
+        [Range(1, 99)]
+        public int ResolutionHalveEveryLevels = 4;
+
+        /// <summary>
+        /// Периодический отчёт по бюджету геометрии: сколько чанков реально
+        /// видно, сколько это треугольников и как распределены глубины. Нужен,
+        /// чтобы проверять эффект отсечения по горизонту и огрубления сетки
+        /// не на глаз, а по числам (2 раза в секунду, в консоль).
+        /// </summary>
+        private void LogGeometryBudget()
+        {
+            if (!LogGeometryStats || Time.unscaledTime < nextGeometryDiagTime)
+            {
+                return;
+            }
+
+            nextGeometryDiagTime = Time.unscaledTime + 0.5f;
+
+            int visible = 0;
+            int waterMeshes = 0;
+            int perDepthTris = 0;
+            var trisByDepth = new int[MaxDepth + 1];
+            for (int i = 0; i < desired.Count; i++)
+            {
+                if (!chunks.ContainsKey(NodeId(desired[i])))
+                {
+                    continue;
+                }
+
+                visible++;
+                int res = ResolutionForDepth(desired[i].Depth);
+                trisByDepth[desired[i].Depth] += (2 * res * res) + (8 * (res - 1));
+            }
+
+            for (int d = 0; d <= MaxDepth; d++)
+            {
+                perDepthTris += trisByDepth[d];
+            }
+
+            foreach (KeyValuePair<long, Chunk> kv in chunks)
+            {
+                if (kv.Value.WaterMesh != null)
+                {
+                    waterMeshes++;
+                }
+            }
+
+            string bands = string.Empty;
+            for (int d = 0; d <= MaxDepth; d++)
+            {
+                if (trisByDepth[d] > 0)
+                {
+                    bands += " d" + d + "=" + (trisByDepth[d] / 1000) + "k";
+                }
+            }
+
+            Debug.Log(string.Format(
+                "[PlanetSurface] видно чанков: {0} (в кэше {1}, из них водных {2}), " +
+                "треугольников рельефа: {3:N1}M, горизонт: {4:N0} км |{5}",
+                visible, chunks.Count, waterMeshes, perDepthTris / 1000000f,
+                maxVisibleDistance / 1000f, bands));
+        }
+
+        /// <summary>
+        /// Предельная дальность видимости на текущий кадр (м). Считается в
+        /// LateUpdate из радиуса камеры и максимального рельефа, читает Traverse.</summary>
+        private double maxVisibleDistance;
+
+        [Tooltip("Печатать в консоль бюджет геометрии раз в 0.5 с (видно чанки, " +
+                 "треугольники, горизонт). Для замера эффекта оптимизации.")]
+        public bool LogGeometryStats = false;
+
+        private float nextGeometryDiagTime;
 
         [Header("РџСЂРѕСЃС‚Р°СЏ С‚РµРЅСЊ С‚СЂР°РІС‹ (Р±Р»РѕР±)")]
         [Tooltip("Р¦РІРµС‚ РїСЏС‚РЅР° РїСЂРѕСЃС‚РѕР№ С‚РµРЅРё (opaque alpha-test; Р°Р»СЊС„Р° РЅРµ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ).")]
@@ -102,6 +413,152 @@ namespace Galilego.Universe
         [Tooltip("РЎРјРµС‰РµРЅРёРµ РїСЏС‚РЅР° РѕС‚ СЃРѕР»РЅС†Р° (РґРѕР»СЏ СЂР°Р·РјРµСЂР°): С‚РµРЅСЊ СѓС…РѕРґРёС‚ РёР·-РїРѕРґ РєСѓСЃС‚Р° Рё СЃС‚Р°РЅРѕРІРёС‚СЃСЏ РІРёРґРЅР°, РєР°Рє РЅР°СЃС‚РѕСЏС‰РёР№ РєР°СЃС‚.")]
         [Range(0f, 2f)]
         public float BlobSunOffset = 0.6f;
+
+        [Header("Water — красивое море")]
+        [Tooltip("Normal ripple strength (0 = dead flat water). Спокойная HOWTO-вода: 0.35 — живая зыбь в упор, без молочной заливки.")]
+        [Range(0f, 1f)]
+        public float WaterWaveStrength = 0.35f;
+
+        [Tooltip("Base wave frequency (same scale as _WaveScale in shader). Красивое море: 0.18 — длинная океанская зыбь.")]
+        public float WaterWaveScale = 0.18f;
+
+        [Tooltip("Geometric wave amplitude in Vert, meters along radial normal. Visual only - physics/landing stays on flat sea level via WaterQuery.")]
+        [Range(0f, 2f)]
+        public float WaterAmplitudeMeters = 0.25f;
+
+        [Tooltip("HF sparkle octave strength (specular only, diffuse/foam untouched).")]
+        [Range(0f, 1f)]
+        public float WaterSparkleStrength = 0.35f;
+
+        [Tooltip("Sparkle frequency multiplier relative to base wave scale.")]
+        public float WaterSparkleScale = 8f;
+
+        [Tooltip("How much stronger wave crests foam (0 = as before). Лёгкие барашки на гребнях.")]
+        [Range(0f, 1f)]
+        public float WaterFoamCrest = 0.03f;
+
+        [Tooltip("Shading fade floor: macro normal/foam never fade below this (0 = old dead-flat far water).")]
+        [Range(0f, 1f)]
+        public float WaterShadingFadeFloor = 0.85f;
+
+        [Tooltip("Detail fade floor for HF sparkle/ripple. Keep 0: HF must reach true zero far away or it aliases to grain.")]
+        [Range(0f, 1f)]
+        public float WaterDetailFadeFloor = 0f;
+
+        [Tooltip("Fine chop octave strength: goes into main normal (diffuse/fresnel/skyRef), not just specular.")]
+        [Range(0f, 1f)]
+        public float WaterRippleStrength = 0.45f;
+
+        [Tooltip("Ripple frequency multiplier relative to base wave scale.")]
+        public float WaterRippleScale = 10f;
+
+        [Tooltip("Ripple animation speed (rad/s).")]
+        public float WaterRippleSpeed = 2.2f;
+
+        [Tooltip("Widens the foam band on steep underwater slopes via screen-space depth gradient (0 = fixed band). На скользящем взгляде fwidth глубины взрывается и пена заливает весь шельф — держим 0.")]
+        public float WaterFoamSlopeGain = 0f;
+
+        [Tooltip("Ширина полосы пены у уреза (м). HOWTO: пена только у берега, не по всему мелководью.")]
+        [Min(0.01f)]
+        public float WaterFoamDepthMeters = 1.5f;
+
+        [Tooltip("Depth-buffer shore softening distance in meters (Phase 2).")]
+        public float WaterShoreFadeMeters = 8f;
+
+        [Tooltip("Минимальная непрозрачность воды. Блендинга нет (AlphaTest-очередь), " +
+                 "прозрачность сделана screen-door'ом (clip(alpha - ign)), поэтому всё, " +
+                 "что меньше 1, показывает СЫРОЕ дно. На пологом шельфе это давало " +
+                 "шахматную полосу цвета пляжа с резкой прямой границей. 0.93 = у воды " +
+                 "есть только тонкая мокрая кромка, дно просвечивает лишь у самого уреза.")]
+        [Range(0.3f, 1f)]
+        public float WaterMinAlpha = 0.93f;
+
+        [Tooltip("Ширина полосы частичной прозрачности у уреза, В МЕТРАХ глубины. " +
+                 "Раньше стоялло 2 м: на пологом дне эти 2 м растягивались на сотни " +
+                 "метров, и screen-door рисовал дно шахматкой через всю мель. " +
+                 "0.35 м = дно видно только там, где по колено.")]
+        [Range(0.05f, 3f)]
+        public float WaterShallowAlphaMeters = 0.35f;
+
+        [Tooltip("Глубина бирюзового мелководья (м): экспонента Beer-Lambert для перехода shallow→deep.")]
+        [Min(0.5f)]
+        public float WaterAbsorbShallow = 4.5f;
+
+        [Tooltip("Глубина глухого цвета (м): дальше этой глубины вода полностью _WaterDeep.")]
+        [Min(1f)]
+        public float WaterAbsorbDeep = 28f;
+
+        [Tooltip("Видимость воды у самой кромки: ~0.5 — дно просвечивает сквозь screen-door (прозрачное мелководье), 1 — сплошная текстура.")]
+        [Range(0f, 1f)]
+        public float WaterShallowAlpha = 0.5f;
+
+        [Tooltip("Сила бегущих линий прибоя (0 = только статичная полоса пены). Контурные линии по глубине на скользящем взгляде дают молочную зебру — держим 0.")]
+        [Range(0f, 2f)]
+        public float WaterSurfStrength = 0f;
+
+        [Tooltip("Скорость набегания прибоя (рад/с).")]
+        [Min(0f)]
+        public float WaterSurfSpeed = 2.0f;
+
+        [Tooltip("Сила зеркала неба по Френелю-Шлику (F0 воды 0.06 для красивого моря): вдаль море зеркалит небо. 0 = без отражений.")]
+        [Range(0f, 1.2f)]
+        public float WaterFresnelStrength = 0.7f;
+
+        [Tooltip("Яркость солнечного блика (HOWTO: Reflection/refraction distort + spec). 1.0 выжигал шельф в молоко.")]
+        [Range(0f, 1.5f)]
+        public float WaterSpecularIntensity = 0.65f;
+
+        [Tooltip("Фокус солнечного блика: больше = уже и острее дорожка.")]
+        [Min(8f)]
+        public float WaterSpecularPower = 600f;
+
+        [Tooltip("Текстурная рябь HOWTO-Water (две normal map в противоход). Пусто — автозагрузка Resources/Water/water_normal_{a,b} (бейкер: Tools/Galilego/Bake water normal maps). Нет текстур — чисто процедурные нормали.")]
+        public UnityEngine.Texture2D WaterNormalA;
+
+        [Tooltip("Вторая normal map (мельче первой). Пусто — автозагрузка из Resources.")]
+        public UnityEngine.Texture2D WaterNormalB;
+
+        [Tooltip("Сила текстурной ряби (0 = только процедурные нормали).")]
+        [Range(0f, 2f)]
+        public float WaterNormalStrength = 0.7f;
+
+        [Header("Water — штатный HDRP-патч (новая вода)")]
+        [Tooltip("Автосоздавать локальный патч штатной HDRP Water у игрока (Ocean/Sea/Lake, Quad) при старте. ВЫКЛ по умолчанию: две воды (патч + чанки) дают шов, двойной берег и разный цвет вблизи — одна чанковая вода везде.")]
+        public bool UseHdrpWaterPatch = false;
+
+        [Tooltip("Размер HDRP-патча (м). 512 м: просадка края от кривизны ~3 см.")]
+        [Min(64f)]
+        public float HdrpWaterPatchSizeMeters = 512f;
+
+        private GameObject hdrpWaterPatchGo;
+
+        [Header("Water — красивое видимое море")]
+        [Tooltip("Рисовать воду штатным HDRP/Unlit в художественном аквамарине (видно всегда, без пересвета от физических 80k люкс; мелководье светится сквозь прозрачность над песком). Выкл = вернуться к Galilego/WaterSurface (новый WIP-шейдер с волнами/пеной, сейчас не даёт пикселей — чинится отдельно).")]
+        public bool UseLitWaterFallback = false;
+
+        [Tooltip("Цвет красивого моря (linear): аквамарин тропического мелководья.")]
+        public Color LitWaterColor = new Color(0.06f, 0.42f, 0.62f, 0.82f);
+
+        [Tooltip("Зарезервировано под WaterSurface (пока не используется).")]
+        [Range(0f, 1f)]
+        public float LitWaterSmoothness = 0.9f;
+
+        [Header("Water — живая зыбь (без шейдеров)")]
+        [Tooltip("ДЕРЖАТЬ 0: сдвиг считается от центра чанка — соседние чанки расходятся до ±2×амплитуды и вода РВЁТСЯ на стыках (+ступень на границе WaterBobRadius). Живое дыхание даёт вершинная волна шейдера (WaterAmplitudeMeters) — она непрерывна по мировым координатам.")]
+        [Range(0f, 1f)]
+        public float WaterBobAmplitude = 0f;
+
+        [Tooltip("Длина бегущей волны зыби (м).")]
+        [Min(1f)]
+        public float WaterBobLength = 28f;
+
+        [Tooltip("Скорость бега волны (рад/с).")]
+        [Min(0f)]
+        public float WaterBobSpeed = 1.1f;
+
+        [Tooltip("Радиус живой воды вокруг камеры (м): дальше — плоский штиль (экономия).")]
+        [Min(50f)]
+        public float WaterBobRadius = 700f;
 
         private struct Node
         {
@@ -116,6 +573,15 @@ namespace Galilego.Universe
             public GameObject Go;
             public Mesh Mesh;
             public MeshRenderer Renderer;
+            /// <summary>Прозрачная водная поверхность чанка (плоскость уровня
+            /// моря, тот же грид LOD). null — в чанке нет воды. Ребёнок Go:
+            /// видимость наследуется, эвикшн — вместе с родителем.</summary>
+            public GameObject WaterGo;
+            public Mesh WaterMesh;
+            /// <summary>Рендерер WaterGo. Кэшируем, потому что SetChunkVisible
+            /// дёргается на каждой смене видимости, а GetComponent — это поиск
+            /// по иерархии.</summary>
+            public MeshRenderer WaterRenderer;
             public bool Visible;
             public int DecorBuiltMask;
             /// <summary>Р›РѕРєР°Р»СЊРЅР°СЏ РєР°РјРµСЂР° СЃР±РѕСЂРєРё РїРѕ СЃР»РѕСЏРј (РґР°Р¶Рµ РµСЃР»Рё СЃР»РѕР№ РґР°Р»
@@ -125,6 +591,19 @@ namespace Galilego.Universe
             public int Depth;
             public Vector3d CenterAstro;
             public float BoundsRadius;
+            /// <summary>Разрешение сетки, по которому реально построен этот
+            /// меш. Нужен для прогрессивного уточнения: в быстром тире чанк
+            /// строится вчетверо реже, и когда очередь пустеет, узлы с
+            /// Res меньше ResolutionForDepth(Depth) ставятся на перестройку.
+            /// Без этого поля нечем отличить «построен полностью» от «построен
+            /// огрублённо».</summary>
+            public int Res;
+            /// <summary>Время (Time.unscaledTime), когда чанк последний раз был
+            /// в desired или в keep. По нему LRU-выгрузка выбирает, кого убрать
+            /// первым. Именно время, а не номер кадра: при просадке до 10 fps
+            /// «последние 90 кадров» — это девять секунд, а не полторы, и
+            /// выгрузка опаздывала бы ровно тогда, когда она нужнее всего.</summary>
+            public float LastKeepTime;
             public readonly List<DecorLayerRuntime> Decor = new List<DecorLayerRuntime>();
         }
 
@@ -148,6 +627,34 @@ namespace Galilego.Universe
             /// РєР°РґСЂ (РґР»СЏ СЃР»РѕС‘РІ СЃ PerInstanceDensity) вЂ” РіР»Р°РІРЅС‹Р№ РїРѕС‚РѕРє РЅРµ С‚СЂР°С‚РёС‚
             /// РІСЂРµРјСЏ РЅР° TRS РЅР° РєР°Р¶РґСѓСЋ С‚СЂР°РІРёРЅРєСѓ.</summary>
             public NativeArray<Matrix4x4> WorldMatrices;
+
+            /// <summary>Сколько инстансов в начале Instances живые. Хвост после
+            /// них — травинки, выпавшие из новой выборки при пересборке пула: они
+            /// ещё рисуются, но гаснут масштабом по своему DeathTime (уходят под
+            /// землю). 0 = хвоста нет.</summary>
+            public int AliveCount;
+
+            /// <summary>Момент (Time.time), после которого хвост Instances погас
+            /// и его можно отрезать. 0 = хвоста нет.</summary>
+            public float RetireDeadline;
+
+            /// <summary>Пул целиком уходит под землю (слои без PerInstanceDensity —
+            /// деревья/камни/кактусы/ромашки: у них нет разметки по инстансам).
+            /// Такой рантайм ещё рисуется, но гаснет масштабом; см.
+            /// RetireStart/RetireFadeSeconds. Пересборка пула и уход чанка за
+            /// радиус не удаляют его мгновенно — иначе деревья щёлкали на всём
+            /// поле при первом же движении игрока.</summary>
+            public bool Retiring;
+
+            /// <summary>Момент начала ухода пула и длительность (с).</summary>
+            public float RetireStart;
+            public float RetireFadeSeconds;
+
+            /// <summary>Длительность ухода травинок под землю для этого пула (с).
+            /// Считается по частоте кадров в момент пересборки (DecorFadeSeconds)
+            /// и хранится здесь, чтобы матричная джоба и RetireDeadline считали
+            /// переход по одной и той же формуле.</summary>
+            public float SinkFadeSeconds;
 
             /// <summary>РРЅРґРёСЂРµРєС‚-РїСѓС‚СЊ С‚СЂР°РІС‹: РјР°С‚СЂРёС†С‹ РёРЅСЃС‚Р°РЅСЃРѕРІ (С‡Р°РЅРє-С„СЂРµР№Рј) РІ
             /// Р±СѓС„РµСЂРµ + Р°СЂРіСѓРјРµРЅС‚С‹ РґСЂРѕСѓ. РЎС‡РёС‚Р°СЋС‚СЃСЏ РћР”РРќ Р РђР— РїСЂРё СЃР±РѕСЂРєРµ, РјРёСЂРѕРІР°СЏ
@@ -275,6 +782,9 @@ namespace Galilego.Universe
         private TerrainNoiseParams noiseParams;
         private Transform surfaceRoot;
         private Material materialCache;
+        private Material waterMaterialCache;
+        private int waterChunkCount;
+        private bool waterDiagLogged;
         private BodyAuthoring bodyAuthoring;
         private GroundDecorProfile decorProfile;
         private Matrix4x4[] decorBatchScratch;
@@ -292,6 +802,110 @@ namespace Galilego.Universe
         private readonly HashSet<long> splitNodes = new HashSet<long>();
         private readonly HashSet<long> splitNext = new HashSet<long>();
         private readonly List<long> toEvict = new List<long>();
+        /// <summary>Чанки, которые сейчас рисуются. Ведётся SetChunkVisible,
+        /// чтобы проход трансформов шёл поactive-списку, а не по всему
+        /// словарю: в полёте в кэше тысячи узлов, из них видны сотни.</summary>
+        private readonly List<Chunk> visibleChunks = new List<Chunk>();
+
+        // ===== [ФАЗА 2] Асинхронная постройка чанков =====
+        // Очередь узлов, ожидающих постройки; запросы, уже ушедшие в джобы;
+        // множество id для дедупликации (без него узел попадал бы в очередь
+        // каждый кадр, пока не построится, и очередь росла бы быстрее полёта).
+        private readonly List<ChunkQueueItem> chunkBuildQueue = new List<ChunkQueueItem>();
+        private readonly List<ChunkBuildInFlight> chunkBuildsInFlight = new List<ChunkBuildInFlight>();
+        private readonly HashSet<long> queuedChunkIds = new HashSet<long>();
+
+        private struct ChunkQueueItem
+        {
+            public Node Node;
+            public long Id;
+            public float Priority;
+            public float Distance;
+
+            /// <summary>Кадр постановки в очередь. По нему запись признаётся
+            /// устаревшей: узел, который игрок уже оставил позади, в desired
+            /// больше не попадает, но из очереди сам не исчезал, и на скорости
+            /// очередь разрасталась тысячами записей, из которых строилась
+            /// доля в проценты.</summary>
+            public int EnqueuedFrame;
+        }
+
+        private struct ChunkBuildInFlight
+        {
+            public long Id;
+            public ChunkBuildRequest Request;
+        }
+
+        /// <summary>Версия параметров рельефа. Инкрементится при смене шума:
+        /// результаты, посчитанные по старым параметрам, при финализации
+        /// отбрасываются — иначе в кэше смешались бы два разных рельефа.</summary>
+        private int paramsVersion;
+
+        /// <summary>Параметры живы (не идёт ClearChunkCache). Пока false,
+        /// любой результат в полёте устаревший и утилизируется, а не
+        /// заливается в меш.</summary>
+        private bool paramsAlive;
+
+        private Vector3 lastCameraPosition;
+
+        // ===== [ФАЗА 3] Тиры качества и префетч =====
+        private enum MotionTier
+        {
+            Normal,
+            Fast,
+            Extreme,
+        }
+
+        private MotionTier motionTier;
+        private float motionTierSince;
+        private Vector3 smoothedSurfaceVelocity;
+        private Vector3 predictedCamera;
+        private float predictedLeadMeters;
+
+        /// <summary>Отдельный результат префетч-обхода. Свой список и своя
+        /// пара множеств гистерезиса: если префетч писал бы в общие, он
+        /// сдвигал бы на кадр решения основного обхода, и узлы мерцали бы на
+        /// границе LOD.</summary>
+        private readonly List<Node> prefetchDesired = new List<Node>();
+        private readonly HashSet<long> prefetchSplitNodes = new HashSet<long>();
+        private readonly HashSet<long> prefetchSplitNext = new HashSet<long>();
+        private readonly HashSet<long> prefetchKeep = new HashSet<long>();
+
+        /// <summary>Потолок глубины под текущий тир. НИКОГДА не должен уходить
+        /// в ResolutionForDepth: тот считает stepsBelowFinest от MaxDepth, и
+        /// если тир начнёт там же подменять MaxDepth, у уже построенного узла
+        /// поменяется сетка и он уйдёт в бесконечную перестройку.</summary>
+        private int EffectiveMaxDepth
+        {
+            get
+            {
+                if (!EnableQualityTiers)
+                {
+                    return MaxDepth;
+                }
+
+                int drop = motionTier == MotionTier.Extreme
+                    ? TierDepthDropExtreme
+                    : (motionTier == MotionTier.Fast ? TierDepthDropFast : 0);
+                return System.Math.Max(1, MaxDepth - drop);
+            }
+        }
+
+        private float EffectiveSplitFactor
+        {
+            get
+            {
+                if (!EnableQualityTiers)
+                {
+                    return SplitFactor;
+                }
+
+                float scale = motionTier == MotionTier.Extreme
+                    ? TierSplitScaleExtreme
+                    : (motionTier == MotionTier.Fast ? TierSplitScaleFast : 1f);
+                return SplitFactor * scale;
+            }
+        }
         private readonly List<DecorBuildSession> decorBuildSessions = new List<DecorBuildSession>();
         private readonly List<BurstDecorDraw> burstDecorDraws = new List<BurstDecorDraw>();
         private MaterialPropertyBlock decorDrawPropertyBlock;
@@ -325,6 +939,35 @@ namespace Galilego.Universe
         /// <summary>Разброс момента появления по травинкам (с): новые появляются
         /// поштучно в этом окне, а не всей пачкой.</summary>
         private const float DecorBladeStaggerSeconds = 1.2f;
+        /// <summary>За сколько секунд травинка уходит ПОД землю (масштаб 1→0):
+        /// зеркало DecorBladeFadeSeconds. Травинки, выпавшие из новой выборки при
+        /// пересборке пула, не исчезают кадр в кадр, а заходят в землю.</summary>
+        private const float DecorBladeSinkSeconds = 0.9f;
+        /// <summary>Разброс начала ухода (с): затухающие травинки гаснут не
+        /// синхронно, иначе кромка поля «мигнула» бы одной волной.</summary>
+        private const float DecorBladeSinkStaggerSeconds = 1f;
+        /// <summary>За сколько секунд проп (дерево/камень/кактус/ромашка) уходит
+        /// под землю целиком: пул слоя не PerInstanceDensity, там нет разметки по
+        /// инстансам, поэтому гаснет весь пул сразу (мягко, как появляется).</summary>
+        private const float DecorPropSinkSeconds = 1.4f;
+        /// <summary>Минимум кадров, за которые должен пройти любой переход
+        /// появления/исчезновения декора. На низком FPS (сборка идёт ~1 fps)
+        /// фиксированные 0.6-0.9 с — это 0-1 кадр, то есть визуально мгновенный
+        /// щелчок; с этим полом длительность растягивается до N кадров.</summary>
+        private const int DecorFadeMinFrames = 5;
+
+        /// <summary>
+        /// Длительность перехода с учётом частоты кадров: не короче
+        /// DecorFadeMinFrames кадров, иначе базовая. Считается ОДИН раз на
+        /// пересборку пула и хранится в рантайме, чтобы все кадры перехода
+        /// считались по одной и той же формуле.
+        /// </summary>
+        private static float DecorFadeSeconds(float baseSeconds)
+        {
+            float dt = Time.deltaTime;
+            float minSeconds = dt > 0f ? DecorFadeMinFrames * dt : 0f;
+            return baseSeconds > minSeconds ? baseSeconds : minSeconds;
+        }
         /// <summary>Прорастание пропов (деревья/камни/кактусы/ромашки): длительность
         /// и разброс появления. Крупные объекты растут медленнее травинок.</summary>
         private const float DecorPropFadeSeconds = 1.0f;
@@ -336,6 +979,8 @@ namespace Galilego.Universe
         private int firstFrameGuard = -1;
         private int diagnosticChunksLogged;
         private float decorAllocLogTime;
+        private float decorAltitude;
+        private float decorSpeed;
         private bool blobDiagLogged;
         private Vector3 bodyRenderPosition;
         /// <summary>РЎРєРѕСЂРѕСЃС‚СЊ РёРіСЂРѕРєР° РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅРѕ РїРѕРІРµСЂС…РЅРѕСЃС‚Рё РІ body-fixed РѕСЃСЏС…
@@ -345,6 +990,7 @@ namespace Galilego.Universe
         private bool hasSurfaceLocalPosition;
         private Vector3 lastDecorScanCamera;
         private bool hasDecorScanCamera;
+        private float nextDecorScanTime;
         private int decorScanTick;
         private Quaternion currentBodyRotation = Quaternion.identity;
         private Vector3d currentBodyPosition;
@@ -409,24 +1055,78 @@ namespace Galilego.Universe
             // Reload Scene/Domain) РїСЂРёРІР°С‚РЅС‹Рµ РїРѕР»СЏ РєРѕРјРїРѕРЅРµРЅС‚Р° РјРѕРіСѓС‚ РїРµСЂРµР¶РёС‚СЊ
             // РїСЂРѕС€Р»С‹Р№ Р·Р°РїСѓСЃРє, Р° РёС… С‡Р°РЅРєРё СѓР¶Рµ СѓРЅРёС‡С‚РѕР¶РµРЅС‹.
             ClearChunkCache();
+            paramsAlive = true;
+            EnsureHdrpWaterPatch();
+        }
+
+        /// <summary>
+        /// Новая вода без ручных шагов: при старте создаём под surfaceRoot
+        /// объект с HDRP Water Surface + WaterPatchFollower (Ocean/Sea/Lake,
+        /// Quad у игрока). Выкл — флагом UseHdrpWaterPatch в инспекторе.
+        /// </summary>
+        private void EnsureHdrpWaterPatch()
+        {
+            if (!UseHdrpWaterPatch || body == null || !WaterQuery.HasOcean(body))
+            {
+                DestroyHdrpWaterPatch();
+                return;
+            }
+
+            if (hdrpWaterPatchGo != null)
+            {
+                return;
+            }
+
+            hdrpWaterPatchGo = new GameObject("HdrpWaterPatch (auto)");
+            hdrpWaterPatchGo.transform.SetParent(surfaceRoot, false);
+            hdrpWaterPatchGo.AddComponent<UnityEngine.Rendering.HighDefinition.WaterSurface>();
+            WaterPatchFollower follower = hdrpWaterPatchGo.AddComponent<WaterPatchFollower>();
+            follower.Runner = Runner;
+            follower.PatchSizeMeters = Mathf.Max(64f, HdrpWaterPatchSizeMeters);
+            Debug.Log("[PlanetSurface] HDRP-патч воды создан автоматически (Ocean/Sea/Lake, Quad 512 м). " +
+                "Старая чанковая вода — дальний фон. Отключить: UseHdrpWaterPatch.");
+        }
+
+        private void DestroyHdrpWaterPatch()
+        {
+            if (hdrpWaterPatchGo != null)
+            {
+                Destroy(hdrpWaterPatchGo);
+                hdrpWaterPatchGo = null;
+            }
         }
 
         private void OnDestroy()
         {
             CancelAllDecorBuilds();
+
+            // [ФАЗА 1] Чанки чистим ДО Destroy(surfaceRoot.gameObject) и тем же
+            // DestroyChunkResources, что и на выгрузке. После уничтожения корня
+            // ссылки на дочерние GameObject в проверках Unity уже «мёртвые»,
+            // и счётчик баланса мешей сошёлся бы неверно — а по нему судят об
+            // утечке.
+            foreach (KeyValuePair<long, Chunk> kv in chunks)
+            {
+                DestroyChunkResources(kv.Value);
+            }
+
+            chunks.Clear();
+
             if (surfaceRoot != null)
             {
                 Destroy(surfaceRoot.gameObject);
             }
 
-            foreach (KeyValuePair<long, Chunk> kv in chunks)
-            {
-                DisposeDecor(kv.Value);
-            }
+            DestroyHdrpWaterPatch();
 
             if (materialCache != null)
             {
                 Destroy(materialCache);
+            }
+
+            if (waterMaterialCache != null)
+            {
+                Destroy(waterMaterialCache);
             }
 
             if (blobMaterial != null)
@@ -440,8 +1140,11 @@ namespace Galilego.Universe
             }
 
             // Teardown: дренируем пул буферов декора (иначе Persistent-массивы
-            // утекут на выходе из play/при перезагрузке домена).
+            // утекут на выходе из play/при перезагрузке домена). Тот же
+            // обязательный шаг для пула чанков и общих индексных буферов.
             DecorArrayPool.ClearAll();
+            CancelAllChunkBuilds();
+            SurfaceChunkPool.ClearAll();
         }
 
         /// <summary>РЎР±СЂРѕСЃРёС‚СЊ РєСЌС€ РјРµС€РµР№ (РїРѕСЃР»Рµ live-СЃРјРµРЅС‹ РїР°СЂР°РјРµС‚СЂРѕРІ СЂРµР»СЊРµС„Р°).</summary>
@@ -449,17 +1152,30 @@ namespace Galilego.Universe
         public void ClearChunkCache()
         {
             CancelAllDecorBuilds();
+            // [ФАЗА 2] Порядок важен: сначала гасим интенты, потом paramsAlive,
+            // и только потом сбрасываем кэш. Джобы, уже висящие в полёте,
+            // дожидаются и возвращают массивы в пул; их результаты при этом
+            // уже помечены устаревшими.
+            CancelAllChunkBuilds();
+            paramsVersion++;
+            paramsAlive = false;
             foreach (KeyValuePair<long, Chunk> kv in chunks)
             {
-                DisposeDecor(kv.Value);
-                if (kv.Value.Go != null)
-                {
-                    Destroy(kv.Value.Go);
-                }
+                DestroyChunkResources(kv.Value);
             }
 
             chunks.Clear();
             splitNodes.Clear();
+            visibleChunks.Clear();
+
+            // Материал воды пересоздаём каждый Play: иначе при Enter Play Mode
+            // без Reload Domain старый материал (другой шейдер/цвета) переживёт
+            // запуск и смена UseLitWaterFallback/шейдера не подействует.
+            if (waterMaterialCache != null)
+            {
+                Destroy(waterMaterialCache);
+                waterMaterialCache = null;
+            }
         }
 
         /// <summary>РЎРЅСЏС‚СЊ РІСЃРµ РЅРµР·Р°РІРµСЂС€С‘РЅРЅС‹Рµ СЃР±РѕСЂРєРё РґРµРєРѕСЂР° (teardown): РґР¶РѕР±С‹
@@ -652,6 +1368,9 @@ namespace Galilego.Universe
                 && a.AmplitudeMeters == b.AmplitudeMeters
                 && a.BeachShelfAltitudeMeters == b.BeachShelfAltitudeMeters
                 && a.BeachShelfWidth == b.BeachShelfWidth
+                && a.BeachShelfWidthMaxScale == b.BeachShelfWidthMaxScale
+                && a.BeachShelfWidthNoiseFrequency == b.BeachShelfWidthNoiseFrequency
+                && a.BeachShelfWidthNoiseOctaves == b.BeachShelfWidthNoiseOctaves
                 && a.ColorNoiseFrequency == b.ColorNoiseFrequency
                 && a.ColorNoiseOctaves == b.ColorNoiseOctaves
                 && a.ColorNoiseSeedOffset == b.ColorNoiseSeedOffset
@@ -659,18 +1378,45 @@ namespace Galilego.Universe
                 && a.ColorDetailOctaves == b.ColorDetailOctaves
                 && a.ColorDetailSeedOffset == b.ColorDetailSeedOffset
                 && a.ComputeMask == b.ComputeMask
-                && a.ComputeDetail == b.ComputeDetail;
+                && a.ComputeDetail == b.ComputeDetail
+                // Площадки обязаны быть в сравнении: без этого добавление или
+                // перенос базы меняло бы физику, но не трогало кэш чанков — земля
+                // в сцене осталась бы старой, и расхождение визуал/физика было бы
+                // молчаливым. Сравниваем СОДЕРЖИМОЕ таблиц, а не дескрипторы:
+                // NativeArray == сравнивает указатель, и одинаковый набор из
+                // двух сборок выглядел бы разным.
+                && TerrainModifiers.TableEqual(a.Mods, b.Mods);
         }
 
         private void LateUpdate()
         {
+            // [ФАЗА 0] Учёт кадра рендера поверхности. Снимаем ДО всего, и
+            // закрываем в каждой точке выхода: managed-аллокация меряется на всю
+            // длину LateUpdate, а не только на «интересную» часть.
+            SurfacePerf.BeginFrame();
+            long perfAllocBefore = System.GC.GetAllocatedBytesForCurrentThread();
+
+            // Вода должна жить всегда: время анимации волн и позиция камеры
+            // ставятся ДО всех early-out (нет Ship / чужой DominantBody / нет
+            // MainCamera). Иначе _WaterTime замирает на последнем значении —
+            // океан статичен: ни геометрии, ни ряби, ни прибоя.
+            Shader.SetGlobalFloat("_WaterTime", Time.time);
+            Camera cameraEarly = Camera.main;
+            if (cameraEarly != null)
+            {
+                Shader.SetGlobalVector("_PlanetCameraPos", cameraEarly.transform.position);
+            }
+
+            ApplyWaterParams();
             if (body == null || terrain == null || Runner.Ship == null)
             {
+                SurfacePerf.EndFrame(perfAllocBefore);
                 return;
             }
             if (Runner.DominantBody != body)
             {
                 SetAllInvisible();
+                SurfacePerf.EndFrame(perfAllocBefore);
                 return;
             }
 
@@ -681,11 +1427,18 @@ namespace Galilego.Universe
             Camera camera = Camera.main;
             if (camera == null)
             {
+                SurfacePerf.EndFrame(perfAllocBefore);
                 return;
             }
 
             Vector3 cameraPosition = camera.transform.position;
-            Shader.SetGlobalVector("_PlanetCameraPos", cameraPosition);
+            lastCameraPosition = cameraPosition;
+            UpdateUnderwaterCameraDepth(cameraPosition);
+            if (!waterDiagLogged && Time.frameCount > 30)
+            {
+                waterDiagLogged = true;
+                Debug.Log("[PlanetSurface] чанков: " + chunks.Count + ", водных мешей построено: " + waterChunkCount);
+            }
 
             // РўСЂР°РІРµСЂСЃ Р›РћР” вЂ” РєР°Р¶РґС‹Р№ РєР°РґСЂ. Р Р°РЅСЊС€Рµ Р±С‹Р» РіРёСЃС‚РµСЂРµР·РёСЃ РїРѕ СЂРµРЅРґРµСЂ-РїРѕР·РёС†РёРё
             // РєР°РјРµСЂС‹, РЅРѕ РїРѕРґ floating origin РѕРЅР° ~0 Рё РїСЂРё РґРІРёР¶РµРЅРёРё РёРіСЂРѕРєР° РїРѕ С‚РµР»Сѓ
@@ -710,16 +1463,60 @@ namespace Galilego.Universe
             lastSurfaceLocalPosition = surfaceLocal;
             hasSurfaceLocalPosition = true;
             UpdateTerrainTextureOrigin();
+            UpdateWaterAnchor();
             ApplyTerrainGlobals();
 
             {
-                // РўРµР»-fixed РЅР°РїСЂР°РІР»РµРЅРёСЏ РґР»СЏ current-РєР°РґСЂР°.
+                // РµР»-fixed РЅР°РїСЂР°РІР»РµРЅРёРµ РґР»СЏ current-РєР°РґСЂ.
+                // [ФАЗА 2] Поднимаем флаг «параметры живы» ДО постановки в очередь:
+                // ClearChunkCache его снимает, и без этого после любой пересборки
+                // кэша (смена шума, ApplyAuthoringAndRebuild) результаты в полёте
+                // вечно считались бы устаревшими и не доливались в меши — кэш
+                // оставался бы пустым навсегда. In-flight запросы при этом уже
+                // дренированы в CancelAllChunkBuilds, так что «устаревших» здесь
+                // быть не может.
+                paramsAlive = true;
                 desired.Clear();
                 splitNext.Clear();
-                for (int face = 0; face < CubeSphere.FaceCount; face++)
+
+                // Предельная дальность видимости рельефа с этой точки.
+                //
+                // Камера на радиусе r1, рельеф высотой до h. Дальше точки
+                // касания (R+h)·r1-окружности поверхность не видно: она ушла
+                // за выпуклость планеты. Отсюда d = sqrt((R+h)² - R²).
+                // h берём как terrain.AmplitudeMeters — это верхняя граница
+                // высоты над морем (генератор не может дать больше), поэтому
+                // отсечение заведомо не съедает видимый рельеф, даже если
+                // игрок стоит на пике или летит высоко (радиус камеры входит
+                // в формулу, поэтому в атмосфере/орбите горизонт сам отодвигается).
+                maxVisibleDistance = double.MaxValue;
+                if (CullBeyondHorizon && terrain != null)
                 {
-                    Traverse(face, 0, 0, 0, cameraPosition);
+                    double camRadius = (cameraPosition - bodyRenderPosition).magnitude;
+                    double height = System.Math.Max(1d, terrain.AmplitudeMeters)
+                                    + System.Math.Max(0d, camRadius - body.Radius);
+                    double tangentRadius = body.Radius + height;
+                    maxVisibleDistance = System.Math.Sqrt(
+                        (tangentRadius * tangentRadius) - (body.Radius * body.Radius))
+                        * System.Math.Max(1d, HorizonMargin);
                 }
+
+                using (SurfacePerf.TraverseMarker.Auto())
+                {
+                    for (int face = 0; face < CubeSphere.FaceCount; face++)
+                    {
+                        Traverse(face, 0, 0, 0, cameraPosition);
+                    }
+                }
+
+                SurfacePerf.DesiredNodes = desired.Count;
+
+                // [ФАЗА 3] Тир по скорости и предсказанная точка считаются ДО
+                // обхода: EffectiveMaxDepth и EffectiveSplitFactor читаются
+                // прямо в Traverse, а префетч идёт вторым проходом по
+                // предсказанной камере.
+                UpdateMotionTier(surfaceVelocityLocal.magnitude);
+                UpdatePredictedCamera(cameraPosition);
 
                 // Р—Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ РїРѕРґСЂР°Р·Р±РёРµРЅРёРµ РєР°РґСЂР° вЂ” Р±Р°Р·Р° РіРёСЃС‚РµСЂРµР·РёСЃР° РІ Traverse
                 // РЅР° СЃР»РµРґСѓСЋС‰РµРј РєР°РґСЂРµ, С‡С‚РѕР±С‹ СѓР·РµР» РЅРµ РґСЂРѕР±РёР»СЃСЏ/СЃР»РёРІР°Р»СЃСЏ РєР°Р¶РґС‹Р№ РєР°РґСЂ.
@@ -730,31 +1527,75 @@ namespace Galilego.Universe
                 // РїРѕ С„Р°РєС‚РёС‡РµСЃРєРѕРјСѓ СЃРѕСЃС‚РѕСЏРЅРёСЋ РєР°РґСЂР°. РРЅР°С‡Рµ РЅР° РєР°РґСЂРµ РїРѕСЏРІР»РµРЅРёСЏ СЂРµР±С‘РЅРєР°
                 // keep РµС‰С‘ РІРєР»СЋС‡Р°РµС‚ СЂРѕРґРёС‚РµР»СЏ (СЂРµР±С‘РЅРѕРє Р±С‹Р» РєСЌС€-РїСЂРѕРјР°С…РѕРј) вЂ” РіСЂСѓР±С‹Р№ Рё
                 // РїРѕРґСЂРѕР±РЅС‹Р№ С‡Р°РЅРєРё РІРёРґРЅС‹ РІРјРµСЃС‚Рµ: z-fight/В«С…Р»РѕРїРѕРєВ» РЅР° РєР°Р¶РґРѕРј РїРµСЂРµС…РѕРґРµ.
-                int budget = firstFrameGuard < 0 ? int.MaxValue : BuildsPerFrame;
-                firstFrameGuard = 0;
-                int built = 0;
-                for (int i = 0; i < desired.Count; i++)
+            int budget = firstFrameGuard < 0 ? int.MaxValue : BuildsPerFrame;
+            bool firstFrame = firstFrameGuard < 0;
+            firstFrameGuard = 0;
+            int built = 0;
+            int enqueued = 0;
+            // [ФАЗА 0] Время постройки меряем Stopwatch, а не ProfilerMarker:
+            // здесь нужен ещё и счётчик, а не только запись в профайлер.
+            //
+            // [ФАЗА 2] Бюджет BuildsPerFrame ограничивал ЧИСЛО чанков, а не
+            // миллисекунды, и в сцене он стоит 64: при замеренных 3.7-4 мс на
+            // чанк это до 260 мс постройки В ОДНОМ кадре. Отсюда фризы. Теперь
+            // бюджет — ChunkFinalizeBudgetMs, то есть миллисекунды, а сама
+            // постройка уходит в джобы и на главном потоке остаётся только
+            // дешёвая заливка готового буфера.
+            var buildClock = System.Diagnostics.Stopwatch.StartNew();
+            int visibleNow = 0;
+            int terrainTrisNow = 0;
+            for (int i = 0; i < desired.Count; i++)
+            {
+                Node wanted = desired[i];
+                long id = NodeId(wanted);
+                if (chunks.TryGetValue(id, out Chunk cached))
                 {
-                    long id = NodeId(desired[i]);
-                    if (chunks.TryGetValue(id, out Chunk cached))
+                    if (!cached.Visible)
                     {
-                        if (!cached.Visible)
-                        {
-                            cached.Go.SetActive(true);
-                            cached.Visible = true;
-                        }
-
-                        continue;
+                        SetChunkVisible(cached, true);
                     }
 
+                    visibleNow++;
+                    terrainTrisNow += ChunkTriangleCount(wanted.Depth);
+                    continue;
+                }
+
+                if (firstFrame || !AsyncChunkBuild)
+                {
+                    // Первый кадр и режим «строить синхронно» остаются
+                    // синхронными: там важна не плавность, а чтобы к первому
+                    // показу кадра мир уже был готов. Асинхронный путь наполнял
+                    // бы кэш секундами, и игрок улетел бы с дырами.
                     if (built >= budget)
                     {
                         continue;
                     }
 
-                    BuildChunk(desired[i]);
+                    BuildChunk(wanted);
                     built++;
                 }
+                else
+                {
+                    EnqueueChunkBuild(wanted);
+                    enqueued++;
+                }
+
+                visibleNow++;
+                terrainTrisNow += ChunkTriangleCount(wanted.Depth);
+            }
+
+                PumpChunkBuilds();
+                EnqueuePrefetchChunks(cameraPosition);
+
+            buildClock.Stop();
+            SurfacePerf.ChunksBuilt = built;
+            SurfacePerf.BuildChunkMs = (float)buildClock.Elapsed.TotalMilliseconds;
+            SurfacePerf.VisibleChunks = visibleNow;
+            SurfacePerf.TerrainTriangles = terrainTrisNow;
+            SurfacePerf.CachedChunks = chunks.Count;
+            SurfacePerf.ChunksEnqueued = enqueued;
+            SurfacePerf.QueuedBuilds = chunkBuildQueue.Count;
+            SurfacePerf.InFlightBuilds = chunkBuildsInFlight.Count;
 
                 // keep = РїРѕСЃС‚СЂРѕРµРЅРЅС‹Рµ Р¶РµР»Р°РµРјС‹Рµ Р»РёСЃС‚СЊСЏ + РїСЂРµРґРєРё С‚РµС… Р¶РµР»Р°РµРјС‹С…, С‡С‚Рѕ РЅРµ
                 // СѓСЃРїРµР»Рё РїРѕСЃС‚СЂРѕРёС‚СЊ РІ СЌС‚РѕРј РєР°РґСЂРµ (В«Р·Р°С‚С‹С‡РєР°В» РѕС‚ РґС‹СЂ РЅР° СЃРјРµРЅРµ LOD).
@@ -766,6 +1607,8 @@ namespace Galilego.Universe
                         keep.Add(NodeId(desired[i]));
                     }
                 }
+
+                int activeNow = 0;
 
                 for (int i = 0; i < desired.Count; i++)
                 {
@@ -784,42 +1627,151 @@ namespace Galilego.Universe
                         depth--;
                         ix >>= 1;
                         iy >>= 1;
-                        keep.Add(NodeId(face, depth, ix, iy));
+
+                        // [ФАЗА 1] Предок нужен как «затычка дыры» ровно до тех
+                        // пор, пока не построен весь квад его детей. Раньше в
+                        // keep попадала ВСЯ цепочка предков и ни разу из неё не
+                        // выходила, пока существует потомок — то есть узлы, уже
+                        // заменённые собственными детьми, оставались в keep, а
+                        // значит и во Visible, и продолжали РИСОВАТЬСЯ поверх
+                        // детей. Замер: active == visible == 1551, тогда как
+                        // до правки активных чанков было заметно больше, чем
+                        // узлов в desired, и разница уходила в overdraw.
+                        //
+                        // Оговорка про кэш: заполнить его сверх MaxCachedChunks
+                        // это не позволяло — в сцене MaxCachedChunks = 8192, и
+                        // кэш честно упирался в этот лимит. Проблема была не в
+                        // размере кэша, а в том, что лишние узлы в нём
+                        // оставались видимыми.
+                        //
+                        // Условие «есть непостроенный ребёнок» достаточно и
+                        // безопасно: как только построен последний четвёртый,
+                        // все дети уже в desired и видны в этом же кадре, так
+                        // что дыры не возникает.
+                        if (!HasAllBuiltChildren(face, depth, ix, iy))
+                        {
+                            keep.Add(NodeId(face, depth, ix, iy));
+                        }
                     }
                 }
 
                 // РџСЂСЏС‡РµРј РІСЃС‘ РІРёРґРёРјРѕРµ, С‡РµРіРѕ РЅРµС‚ РІ keep.
                 foreach (KeyValuePair<long, Chunk> kv in chunks)
                 {
-                    if (kv.Value.Visible && !keep.Contains(kv.Key))
+                    if (keep.Contains(kv.Key))
                     {
-                        kv.Value.Go.SetActive(false);
-                        kv.Value.Visible = false;
+                        // Метка LRU ставится здесь же, вторым обходом не ходим:
+                        // проход по всему кэшу каждый кадр не бесплатный, а
+                        // выигрыш от слияния — заметная часть кадра при 8000
+                        // чанков.
+                        kv.Value.LastKeepTime = Time.unscaledTime;
+                        if (kv.Value.Visible)
+                        {
+                            activeNow++;
+                        }
+
+                        continue;
+                    }
+
+                    if (kv.Value.Visible)
+                    {
+                        SetChunkVisible(kv.Value, false);
                     }
                 }
 
+                for (int i = 0; i < desired.Count; i++)
+                {
+                    if (chunks.TryGetValue(NodeId(desired[i]), out Chunk fresh))
+                    {
+                        fresh.LastKeepTime = Time.unscaledTime;
+                    }
+                }
+
+                // [ФАЗА 2.5] Размер keep и «сколько узлов desired попало в
+                // keep» считаются ЗДЕСЬ, одним проходом, а не внутри
+                // EvictIfNeeded. Раньше счётчик ставился только в выгрузке, и
+                // когда она выходила раньше времени (кэш не превышал лимит),
+                // значение оставалось нулевым. Из-за этого в замерах выходило
+                // keep меньше, чем узлов в desired, и active не совпадал с
+                // visible — судить по таким цифрам было нельзя.
+                //
+                // По построению keep ⊇ desired∩chunks, поэтому DesiredInKeep
+                // обязано равняться VisibleChunks того же кадра. Если не
+                // равняется — между этими точками изменился кэш, и на экране
+                // действительно есть дыры.
+                int desiredInKeep = 0;
+                for (int i = 0; i < desired.Count; i++)
+                {
+                    if (keep.Contains(NodeId(desired[i])))
+                    {
+                        desiredInKeep++;
+                    }
+                }
+
+                SurfacePerf.KeepCount = keep.Count;
+                SurfacePerf.DesiredInKeep = desiredInKeep;
+
+                // [ФАЗА 0] Активных чанков обычно больше, чем узлов в desired:
+                // разница — предки, оставленные видимыми как затычки. Большая
+                // разница означает, что дыры закрываются слишком широко и в
+                // кадр рисуется лишнее.
+                SurfacePerf.ActiveChunks = activeNow;
+
                 EvictIfNeeded();
+                LogGeometryBudget();
             }
 
             // РўСЂР°РЅСЃС„РѕСЂРјС‹ РІРёРґРёРјС‹С… С‡Р°РЅРєРѕРІ вЂ” РєР°Р¶РґС‹Р№ РєР°РґСЂ (floating origin + СЃРїРёРЅ).
-            foreach (KeyValuePair<long, Chunk> kv in chunks)
+            // Трансформы видимых чанков — каждый кадр, но только по active-
+            // списку. Два сеттера заменены на один SetPositionAndRotation: это
+            // одна запись трансформа вместо двух, и матрица пересчитывается
+            // один раз, а не на каждый канал отдельно.
+            using (SurfacePerf.ChunkTransformsMarker.Auto())
             {
-                if (kv.Value.Visible)
+                for (int i = 0; i < visibleChunks.Count; i++)
                 {
-                    kv.Value.Go.transform.position = NodeRenderPosition(kv.Value.CenterAstro);
-                    kv.Value.Go.transform.rotation = currentBodyRotation;
+                    Chunk c = visibleChunks[i];
+                    if (c.Go == null)
+                    {
+                        continue;
+                    }
+
+                    c.Go.transform.SetPositionAndRotation(
+                        NodeRenderPosition(c.CenterAstro), currentBodyRotation);
                 }
             }
+
+            UpdateWaterBob(cameraPosition);
 
             // Р”РµРєРѕСЂ РїРѕСЃР»Рµ СЂР°СЃСЃС‚Р°РЅРѕРІРєРё С‚СЂР°РЅСЃС„РѕСЂРјРѕРІ С‡Р°РЅРєРѕРІ: РјР°С‚СЂРёС†С‹ РёРЅСЃС‚Р°РЅСЃРѕРІ
             // Р±РµСЂСѓС‚ РјРёСЂРѕРІРѕР№ С‚СЂР°РЅСЃС„РѕСЂРј С‡Р°РЅРєР° С‚РµРєСѓС‰РµРіРѕ РєР°РґСЂР°.
             Shader.SetGlobalFloat("_GroundDecorTime", Time.time);
+            UpdateDecorMotionState(cameraPosition);
             // РћР±С…РѕРґС‹ С‡Р°РЅРєРѕРІ (РїРѕРёСЃРє СѓСЃС‚Р°СЂРµРІС€РёС…/РЅРµРїРѕСЃС‚СЂРѕРµРЅРЅС‹С…, РІС‹РіСЂСѓР·РєР° РґР°Р»СЊРЅРёС…)
             // вЂ” РЅРµ РєР°Р¶РґС‹Р№ РєР°РґСЂ: РѕРЅРё O(С‡Р°РЅРєРёГ—СЃР»РѕРё). Р”РѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂРё СЃРґРІРёРіРµ
             // РєР°РјРµСЂС‹ > 0.25 Рј РёР»Рё СЂР°Р· РІ 6 РєР°РґСЂРѕРІ (РґР»СЏ В«РѕСЃРµРґР°РЅРёСЏВ» РѕР±Р»Р°РєР° СЃС‚РѕСЏ).
+            // Обходы декора запускаются по смещению камеры. Порог 0.0625 м² =
+            // 0.25 м: у земли этого правильно (поле пересобирается, когда игрок
+            // прошёл заметный кусок), но на 2 км камера за кадр уезжает
+            // километрами, порог превышается всегда, и скан идёт каждый кадр.
+            // Теперь порог пропорционален высоте: наверху поле всё равно
+            // субпиксельное, и частота скана не даёт выигрыша.
+            float decorScanThreshold = Mathf.Max(0.25f, decorAltitude * 0.02f);
+            float decorScanThresholdSq = decorScanThreshold * decorScanThreshold;
             bool decorScanDue = !hasDecorScanCamera
-                || (cameraPosition - lastDecorScanCamera).sqrMagnitude > 0.0625f
+                || (cameraPosition - lastDecorScanCamera).sqrMagnitude > decorScanThresholdSq
                 || (++decorScanTick % 6) == 0;
+            // [ФАЗА 1] Порог смещения камеры растёт с высотой: на 2 км порог
+            // 0.25 м превышается всегда, поэтому скан шёл каждый кадр, а каждый
+            // скан — это O(чанки × слои) с двумя проходами. На скорости
+            // добавляется ещё и минимальный интервал по времени: за один кадр
+            // поле смещается на десятки метров, и чаще сканировать бессмысленно.
+            if (decorScanDue && decorSpeed > DecorScanSpeedGate
+                && Time.unscaledTime < nextDecorScanTime)
+            {
+                decorScanDue = false;
+            }
+
             if (decorScanDue)
             {
                 // РџРµСЂРµСЃР±РѕСЂРєРё В«РѕР±Р»Р°РєР°В» Сѓ РёРіСЂРѕРєР° вЂ” РїРµСЂРІС‹РјРё: РёРј РіР°СЂР°РЅС‚РёСЂРѕРІР°РЅ СЃР»РѕС‚
@@ -829,11 +1781,18 @@ namespace Galilego.Universe
                 TrimDistantDecor(cameraPosition);
                 lastDecorScanCamera = cameraPosition;
                 hasDecorScanCamera = true;
+                nextDecorScanTime = Time.unscaledTime + DecorScanMinInterval;
             }
 
             StepDecorBuilds();
             UpdateDecorCollision();
             DrawDecor(cameraPosition);
+
+            // [ФАЗА 0] Закрываем кадр. Абсолютные счётчики — раз в 2 с и только
+            // по флагу: сам скан FindObjectsOfTypeAll<Mesh> на 1000+ мешей даёт
+            // фриз, то есть испортил бы ровно то, что мы меряем.
+            SurfacePerf.MaybeScanSlowDiagnostics(LogGeometryStats);
+            SurfacePerf.EndFrame(perfAllocBefore);
         }
 
         /// <summary>
@@ -845,6 +1804,32 @@ namespace Galilego.Universe
         /// РµС‘ РІ С‚РµР»Рѕ-fixed РѕСЃРё РјР°С‚СЂРёС†РµР№ _TerrainWorldToBody; С„Р°Р·Сѓ С‚РµРєСЃС‚СѓСЂС‹ (РґРѕР»Рё
         /// UV РІ double) РІРѕР·РІСЂР°С‰Р°СЋС‚ РіР»РѕР±Р°Р»С‹ С„Р°Р· вЂ” РїР°С‚С‚РµСЂРЅ В«РїСЂРёР±РёС‚В» Рє Р·РµРјР»Рµ.
         /// </summary>
+        private void UpdateUnderwaterCameraDepth(Vector3 cameraPosition)
+        {
+            Shader.SetGlobalFloat("_UnderwaterCameraDepth", 0f);
+            if (Runner == null || Runner.DominantBody == null)
+            {
+                return;
+            }
+
+            Vector3d observer = FloatingOrigin.Anchor + AstroFrame.ToAstro(cameraPosition);
+
+            // Именно SubmersionDepthAt, а НЕ IsSubmergedAt. Разница принципиальная:
+            // IsSubmergedAt вдобавок требует, чтобы колонка под камерой была ВОДОЙ
+            // (IsWaterAt: сырое дно ниже уровня моря). Но шейдеру воды нужен
+            // вопрос «камера ниже поверхности?» — и только он. Второе условие
+            // может врать: у берега, над мелководьем или над юбкой водного меша
+            // камера визуально под водой, а колонка под ней — суша, и тогда
+            // _UnderwaterCameraDepth остаётся 0. Шейдер рисует потолок ВЕРХНЕЙ
+            // веткой: пена прибоя и screen-door dither, снятые снизу — ровно то,
+            // что «ужасная поверхность из-под воды» на скриншоте.
+            double depthMeters = WaterQuery.SubmersionDepthAt(Runner.DominantBody, observer, Runner.TimeSeconds);
+            if (!double.IsNaN(depthMeters) && depthMeters > 0d)
+            {
+                Shader.SetGlobalFloat("_UnderwaterCameraDepth", (float)depthMeters);
+            }
+        }
+
         private void UpdateTerrainTextureOrigin()
         {
             if (terrain == null || !(terrain.TextureScale > 0d))
@@ -881,11 +1866,251 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Якорь узора воды в тело-fixed осях. Проблема та же, что у текстур
+        /// террейна (см. UpdateTerrainTextureOrigin): шейдер видит только
+        /// render-пространство, а его ноль — FloatingOrigin.Anchor = позиция
+        /// игрока, т.е. оно едет вместе с игроком. Узор воды, посчитанный от
+        /// positionWS напрямую, «прибит» к игроку: стоит/плывёт вместе с ним.
+        /// Шейдер считает дельту от камеры (малые точные числа) и поворачивает
+        /// её в тело-fixed оси матрицей _WaterWorldToBody; абсолютную фазу
+        /// (тело-fixed позиция игрока в double) возвращает глобал
+        /// _WaterBodyAnchor — узор «прибит» к морю, а не к игроку.
+        /// Квантование float на радиусе ~1.1e6 м — те же ~6 см, что у террейна.
+        ///
+        /// Узор больше НЕ передаётся абсолютным якорем в float32: якорь ~1.25e6
+        /// м даёт шаг 6-12 см, то есть каждая позиция на воде округлялась на
+        /// решётку и фаза ряби скакала на ~1 рад. Вместо этого шейдер получает
+        /// касательный базис (east/north) и накопительное смещение uvOffset,
+        /// оба в double и оба по модулю периода P = 1024 м. Шейдер берёт
+        /// uv = dot(relBody, east/north) + uvOffset, где relBody — малая
+        /// дельта от камеры, так что точность ~0.1 мм.
+        /// </summary>
+        private void UpdateWaterAnchor()
+        {
+            if (body == null || Runner == null)
+            {
+                return;
+            }
+
+            Vector3d relative = Runner.PlayerPosition - currentBodyPosition;
+            Vector3d bodyAstro = currentBodyOrientation.Conjugated.Rotate(relative);
+
+            // Период узора 51 200 м = 1024 * 50. Волны заданы ЦЕЛЫМИ векторами K с
+            // базой 2*pi/1024 м, макро-волны в p-пространстве умножаются на
+            // _WaveScale. Сдвиг на 51 200 м даёт целое число 2*pi у любой волны,
+            // пока _WaveScale кратен 0.02 (см. ApplyWaterParams). Остаток берётся
+            // в double ДО приведения к float: абсолютный якорь ~6e6 м даёт шаг
+            // float32 до 0.5 м, и узор квантуется на решётку (блоки на потолке).
+            const double patternPeriod = 51200.0;
+            Vector3 anchorSim = new Vector3(
+                (float)(bodyAstro.X % patternPeriod),
+                (float)(bodyAstro.Z % patternPeriod),
+                (float)((-bodyAstro.Y) % patternPeriod));
+
+            Shader.SetGlobalMatrix("_WaterWorldToBody", Matrix4x4.Rotate(Quaternion.Inverse(currentBodyRotation)));
+            Shader.SetGlobalVector("_WaterBodyAnchor", anchorSim);
+        }
+
+        /// <summary>
         /// РћР±РЅРѕРІРёС‚СЊ С†РёР»РёРЅРґСЂС‹-РєРѕР»Р»Р°Р№РґРµСЂС‹ СЃС‚РІРѕР»РѕРІ (СЃР»РѕРё СЃ Collides) РґР»СЏ С„РёР·РёРєРё
         /// РёРіСЂРѕРєР°: РёРЅСЃС‚Р°РЅСЃС‹ С‚РѕР»СЊРєРѕ РёР· С‡Р°РЅРєРѕРІ РІ ~60 Рј РѕС‚ РёРіСЂРѕРєР°, РїРѕР·РёС†РёРё вЂ” РІ
         /// РёРЅРµСЂС†РёР°Р»СЊРЅС‹Р№ astro-РєР°РґСЂ (РєР°Рє PlayerPosition).
         /// </summary>
+        /// <summary>Обёртка ради маркера: на скорости этот проход — O(чанки × слои)
+        /// каждый кадр, и без отдельного счётчика не видно, в какую долю кадра он
+        /// входит.</summary>
+        private void UpdateMotionTier(float speed)
+        {
+            if (!EnableQualityTiers)
+            {
+                motionTier = MotionTier.Normal;
+                SurfacePerf.MotionTier = 0;
+                return;
+            }
+
+            MotionTier want = speed > TierExtremeSpeed
+                ? MotionTier.Extreme
+                : (speed > TierFastSpeed ? MotionTier.Fast : MotionTier.Normal);
+
+            // Вверх — сразу: чем быстрее летишь, тем хуже становится без этого.
+            // Вниз — только через задержку, иначе около порога скорость дрожит
+            // и LOD флапает каждый кадр.
+            if (want > motionTier)
+            {
+                motionTier = want;
+                motionTierSince = Time.unscaledTime;
+            }
+            else if (want < motionTier
+                && Time.unscaledTime - motionTierSince > TierDownDelaySeconds)
+            {
+                motionTier = want;
+                motionTierSince = Time.unscaledTime;
+            }
+
+            SurfacePerf.MotionTier = (int)motionTier;
+        }
+
+        /// <summary>
+        /// Предсказанная позиция камеры на PrefetchSeconds вперёд.
+        ///
+        /// surfaceVelocityLocal живёт в body-fixed кадре, а камера — в
+        /// рендер-кадре, поэтому скорость переводится поворотом тела. Без
+        /// этого поворота префетч смотрит в другую сторону, и на планете с
+        /// собственным вращением ошибка была бы километровой.
+        ///
+        /// Скорость сглаживается: одиночный скачок в один кадр при 2 км/с — это
+        /// 40 м пройденного пути, и решение «префетчить вот туда» по такому
+        /// выбросу металось бы.
+        /// </summary>
+        private void UpdatePredictedCamera(Vector3 cameraPosition)
+        {
+            float smooth = Mathf.Max(0.01f, PrefetchVelSmoothSeconds);
+            float blend = 1f - Mathf.Exp(-Time.deltaTime / smooth);
+            smoothedSurfaceVelocity = Vector3.Lerp(
+                smoothedSurfaceVelocity, surfaceVelocityLocal, blend);
+
+            float leadSeconds = Mathf.Clamp(PrefetchSeconds, 0f, 3f);
+            Vector3 lead = currentBodyRotation * (smoothedSurfaceVelocity * leadSeconds);
+
+            // На малой скорости префетч бесполезен: смещение в метры, а узлы
+            // не успевают понадобиться. Порог снизу не даёт префетчу жечь
+            // бюджет узлов, стоя на месте.
+            if (lead.magnitude < PrefetchMinLeadMeters)
+            {
+                lead = Vector3.zero;
+            }
+
+            predictedLeadMeters = lead.magnitude;
+            predictedCamera = cameraPosition + lead;
+        }
+
+        /// <summary>
+        /// Второй обход — префетч. Идёт по предсказанной точке, пишет в свой
+        /// список и НЕ трогает desired: то, что не видно сейчас, не должно
+        /// влиять на отрисовку.
+        /// </summary>
+        private void UpdatePrefetchPass()
+        {
+            if (!PrefetchEnabled || predictedLeadMeters <= 0f)
+            {
+                prefetchDesired.Clear();
+                return;
+            }
+
+            prefetchDesired.Clear();
+            prefetchSplitNext.Clear();
+            for (int face = 0; face < CubeSphere.FaceCount; face++)
+            {
+                TraverseInto(
+                    face, 0, 0, 0, predictedCamera,
+                    prefetchDesired, prefetchSplitNodes, prefetchSplitNext,
+                    MaxPrefetchNodes, EffectiveMaxDepth, EffectiveSplitFactor);
+            }
+
+            prefetchSplitNodes.Clear();
+            prefetchSplitNodes.UnionWith(prefetchSplitNext);
+
+            // Гистерезис коммитится ПОСЛЕ обхода — так слияние отстаёт на кадр,
+            // и без префетча так же (см. коммит splitNodes после Traverse).
+            prefetchSplitNext.Clear();
+        }
+
         private void UpdateDecorCollision()
+        {
+            using (SurfacePerf.UpdateDecorCollisionMarker.Auto())
+            {
+                UpdateDecorCollisionCore();
+            }
+        }
+
+        /// <summary>
+        /// Высота камеры над рельефом и сглаженная скорость по поверхности.
+        /// Считается раз в кадр до всех решений декора, потому что от этих двух
+        /// чисел зависит, запускать ли сборки, рисовать ли тени и создавать ли
+        /// коллайдеры.
+        ///
+        /// Скорость сглаживается экспоненциально, а не усреднением по кадрам:
+        /// при 2 км/с одиночный скачок длительностью в один кадр — это 30 м
+        /// пройденного пути, и решение «декор не нужен» должно приниматься по
+        /// устойчивому признаку, а не по одному выбросу.
+        ///
+        /// Высота берётся той же формулой, что и near-плоскость камеры в
+        /// FirstPersonCamera.UpdateClipPlanes: расстояние до центра тела минус
+        /// Radius минус высота рельефа под наблюдателем. Отдельный запрос высоты
+        /// рельефа здесь означал бы вторую выборку шума в кадре.
+        /// </summary>
+        private void UpdateDecorMotionState(Vector3 cameraPosition)
+        {
+            float smooth = Mathf.Max(0.01f, DecorSpeedSmoothSeconds);
+            float blend = 1f - Mathf.Exp(-Time.deltaTime / smooth);
+            decorSpeed = Mathf.Lerp(decorSpeed, surfaceVelocityLocal.magnitude, blend);
+
+            double groundHeight = 0d;
+            if (terrain != null)
+            {
+                groundHeight = CurrentTerrainHeightMeters();
+            }
+
+            double radius = (cameraPosition - bodyRenderPosition).magnitude;
+            decorAltitude = (float)System.Math.Max(0d, radius - (body != null ? body.Radius : 0d) - groundHeight);
+
+            SurfacePerf.DecorAltitude = decorAltitude;
+            SurfacePerf.DecorSpeed = decorSpeed;
+        }
+
+        /// <summary>Высота рельефа под игроком в текущий момент, м. null, если
+        /// тела или рельефа нет.</summary>
+        private double CurrentTerrainHeightMeters()
+        {
+            if (Runner == null || body == null)
+            {
+                return 0d;
+            }
+
+            body.SurfaceLatLonAt(Runner.PlayerPosition, Runner.TimeSeconds, out double latDeg, out double lonDeg);
+            return body.Terrain != null
+                ? body.Terrain.GetHeightMeters(
+                    body, latDeg * (System.Math.PI / 180d), lonDeg * (System.Math.PI / 180d))
+                : 0d;
+        }
+
+        /// <summary>Декор не нужен: либо мы слишком быстрые, либо уже выше
+        /// радиуса самого дальнего слоя. Вызывается из EnsureVisibleDecor и
+        /// RefreshMovingDecor; TrimDistantDecor сюда НЕ ходит намеренно —
+        /// освобождать память надо и тогда, когда новые сборки запрещены.</summary>
+        private bool DecorBuildsSuspended()
+        {
+            if (decorSpeed > DecorPauseSpeed)
+            {
+                return true;
+            }
+
+            float maxLayerDistance = 0f;
+            if (decorProfile != null && decorProfile.Layers != null)
+            {
+                for (int i = 0; i < decorProfile.Layers.Count; i++)
+                {
+                    GroundDecorLayer layer = decorProfile.Layers[i];
+                    if (layer != null && layer.Enabled)
+                    {
+                        maxLayerDistance = Mathf.Max(maxLayerDistance, layer.MaxDistanceMeters);
+                    }
+                }
+            }
+
+            return maxLayerDistance > 0f && decorAltitude > maxLayerDistance;
+        }
+
+        /// <summary>Тени декора имеют смысл только у самой земли: на высоте
+        /// пятно от дерева меньше пикселя, а проход отсечения в тени реальный.</summary>
+        private ShadowCastingMode DecorShadowMode(GroundDecorLayer layer)
+        {
+            return layer != null && layer.CastShadows && decorAltitude < DecorShadowMaxAltitude
+                ? ShadowCastingMode.On
+                : ShadowCastingMode.Off;
+        }
+
+        private void UpdateDecorCollisionCore()
         {
             if (decorProfile == null || decorProfile.Layers == null || body == null || Runner == null)
             {
@@ -909,6 +2134,18 @@ namespace Galilego.Universe
                 return;
             }
 
+            // [ФАЗА 1] Выше DecorCollisionMaxAltitude коллайдеры декора не нужны:
+            // в ноуклипе игрок ни с чем не сталкивается, а обход пулов — это
+            // O(чанки × слои × инстансы) КАЖДЫЙ кадр, и на большой высоте он
+            // ничего не проверяет, потому что игрок вышел за collisionRange.
+            // Возвращаем пустой реестр — иначе в нём остались бы прошлые кадры.
+            if (decorAltitude > DecorCollisionMaxAltitude)
+            {
+                GroundDecorCollisionRegistry.Begin(body.Name);
+                return;
+            }
+
+            GroundDecorCollisionRegistry.Begin(body.Name);
             const float collisionRange = 60f;
             Vector3 playerRender = FloatingOrigin.ToRender(Runner.PlayerPosition);
             foreach (KeyValuePair<long, Chunk> kv in chunks)
@@ -933,7 +2170,9 @@ namespace Galilego.Universe
                 {
                     DecorLayerRuntime runtime = chunk.Decor[i];
                     GroundDecorLayer layer = runtime.Profile;
-                    if (layer == null || !layer.Collides || runtime.Instances.Length == 0)
+                    // Уходящий под землю пул в коллизиях не участвует.
+                    if (layer == null || !layer.Collides || runtime.Retiring
+                        || runtime.Instances.Length == 0)
                     {
                         continue;
                     }
@@ -942,6 +2181,13 @@ namespace Galilego.Universe
                     for (int k = 0; k < count; k++)
                     {
                         GroundDecorInstance instance = runtime.Instances[k];
+                        // Уходящие под землю инстансы (хвост пула травы) в
+                        // коллизии не участвуют — они уже не на поверхности.
+                        if (instance.DeathTime > 0f)
+                        {
+                            continue;
+                        }
+
                         Vector3 localPosition = new Vector3(instance.Position.x, instance.Position.y, instance.Position.z);
                         if ((chunkMatrix.MultiplyPoint3x4(localPosition) - playerRender).sqrMagnitude
                             > collisionRange * collisionRange)
@@ -967,7 +2213,33 @@ namespace Galilego.Universe
             }
         }
 
+        /// <summary>
+        /// Обход quadtree для ОТРИСОВКИ. Тонкая обёртка над обобщённым
+        /// обходом: пишет в desired, читает гистерезис прошлого кадра и
+        /// пользуется текущим тиром качества.
+        /// </summary>
         private void Traverse(int face, int depth, int ix, int iy, Vector3 cameraPosition)
+        {
+            TraverseInto(
+                face, depth, ix, iy, cameraPosition,
+                desired, splitNodes, splitNext, MaxNodes, EffectiveMaxDepth, EffectiveSplitFactor);
+        }
+
+        /// <summary>
+        /// Обобщённый обход. Префетч-проход отличается от основного только
+        /// точкой старта, набором результатов, парой множеств гистерезиса,
+        /// потолком глубины и бюджетом узлов — поэтому он идёт через тот же
+        /// код, а не через его копию.
+        ///
+        /// Гистерезис: splitRead — ПРОШЛОГО кадра, splitWrite — текущего.
+        /// Порядок «записать, потом скоммитить» даёт слиянию отставание на кадр,
+        /// и именно этим гасится LOD-флап. Префетч обязан иметь такую же пару
+        /// множеств, иначе он дёргал бы решения основного обхода.
+        /// </summary>
+        private void TraverseInto(
+            int face, int depth, int ix, int iy, Vector3 cameraPosition,
+            List<Node> output, HashSet<long> splitRead, HashSet<long> splitWrite,
+            int nodeBudget, int maxDepth, float splitFactor)
         {
             Vector3d dir = CubeSphere.NodeCenterDirection(face, depth, ix, iy);
             Vector3 worldCenter = NodeRenderPosition(dir * body.Radius);
@@ -992,15 +2264,25 @@ namespace Galilego.Universe
             // РџРѕР»СѓРґРёР°РіРѕРЅР°Р»СЊ РїР°С‚С‡Р° в‰€ nodeSizeВ·в€љ2/2.
             float closestDistance = Mathf.Max(0f, distance - (float)(nodeSize * 0.70710678d));
 
+            // Отсечение по горизонту. Проверяем ПЕРЕД раскрытием: дети лежат
+            // внутри родительской грани, поэтому если ближайшая точка родителя
+            // за горизонтом, то и все дети — тоже. Один такой тест срезает
+            // весь дальний купол планеты (на Earth-пресете depth 2-6 = ~51 %
+            // всех чанков, они дальше 549 км при пределе видимости ~341 км).
+            if (closestDistance > maxVisibleDistance)
+            {
+                return;
+            }
+
             bool split;
-            if (depth < MaxDepth && desired.Count + 4 < MaxNodes)
+            if (depth < maxDepth && output.Count + 4 < nodeBudget)
             {
                 // Р“РёСЃС‚РµСЂРµР·РёСЃ: РґРµР»РёРј РЅР° splitDistance, Р° СЃР»РёРІР°РµРј С‚РѕР»СЊРєРѕ РєРѕРіРґР° СѓС€Р»Рё
                 // Р·Р°РјРµС‚РЅРѕ РґР°Р»СЊС€Рµ (Г—MergeHysteresis). РњРµР¶РґСѓ РїРѕСЂРѕРіР°РјРё РґРµСЂР¶РёРј РїСЂРѕС€Р»С‹Р№
                 // СѓСЂРѕРІРµРЅСЊ вЂ” РёРЅР°С‡Рµ СѓР·РµР» В«РґСЂРѕР±РёС‚СЃСЏ/СЃР»РёРІР°РµС‚СЃСЏВ» РєР°Р¶РґС‹Р№ РєР°РґСЂ (LOD-С„Р»Р°Рї,
                 // СЃРёР»СЊРЅРµРµ Р·Р°РјРµС‚РЅС‹Р№ РЅР° СЃРєРѕСЂРѕСЃС‚Рё).
-                double splitDistance = nodeSize * SplitFactor;
-                split = splitNodes.Contains(NodeId(face, depth, ix, iy))
+                double splitDistance = nodeSize * splitFactor;
+                split = splitRead.Contains(NodeId(face, depth, ix, iy))
                     ? closestDistance < splitDistance * MergeHysteresis
                     : closestDistance < splitDistance;
             }
@@ -1011,15 +2293,19 @@ namespace Galilego.Universe
 
             if (split)
             {
-                splitNext.Add(NodeId(face, depth, ix, iy));
-                Traverse(face, depth + 1, (ix * 2) + 0, (iy * 2) + 0, cameraPosition);
-                Traverse(face, depth + 1, (ix * 2) + 1, (iy * 2) + 0, cameraPosition);
-                Traverse(face, depth + 1, (ix * 2) + 0, (iy * 2) + 1, cameraPosition);
-                Traverse(face, depth + 1, (ix * 2) + 1, (iy * 2) + 1, cameraPosition);
+                splitWrite.Add(NodeId(face, depth, ix, iy));
+                TraverseInto(face, depth + 1, (ix * 2) + 0, (iy * 2) + 0, cameraPosition,
+                    output, splitRead, splitWrite, nodeBudget, maxDepth, splitFactor);
+                TraverseInto(face, depth + 1, (ix * 2) + 1, (iy * 2) + 0, cameraPosition,
+                    output, splitRead, splitWrite, nodeBudget, maxDepth, splitFactor);
+                TraverseInto(face, depth + 1, (ix * 2) + 0, (iy * 2) + 1, cameraPosition,
+                    output, splitRead, splitWrite, nodeBudget, maxDepth, splitFactor);
+                TraverseInto(face, depth + 1, (ix * 2) + 1, (iy * 2) + 1, cameraPosition,
+                    output, splitRead, splitWrite, nodeBudget, maxDepth, splitFactor);
                 return;
             }
 
-            desired.Add(new Node { Face = face, Depth = depth, Ix = ix, Iy = iy });
+            output.Add(new Node { Face = face, Depth = depth, Ix = ix, Iy = iy });
         }
 
         /// <summary>
@@ -1034,9 +2320,701 @@ namespace Galilego.Universe
             return FloatingOrigin.ToRender(absolute);
         }
 
+        /// <summary>
+        /// Построены ли все четверо детей узла. Только тогда родителя можно
+        /// отпускать: до этого он закрывает дыру на месте ещё не достроенного
+        /// квада. Четыре проверки в хеше дешевле, чем лишний активный рендерер.
+        /// </summary>
+        private bool HasAllBuiltChildren(int face, int depth, int ix, int iy)
+        {
+            int cx = ix * 2;
+            int cy = iy * 2;
+            int childDepth = depth + 1;
+            return chunks.ContainsKey(NodeId(face, childDepth, cx, cy))
+                && chunks.ContainsKey(NodeId(face, childDepth, cx + 1, cy))
+                && chunks.ContainsKey(NodeId(face, childDepth, cx, cy + 1))
+                && chunks.ContainsKey(NodeId(face, childDepth, cx + 1, cy + 1));
+        }
+
+        /// <summary>
+        /// Разрешение сетки чанка для данной глубины LOD: ближние уровни
+        /// (MaxDepth-ResolutionHalveEveryLevels+1 … MaxDepth) остаются на полном
+        /// TileResolution, дальние огрубляются вдвое каждые
+        /// ResolutionHalveEveryLevels уровней до MinTileResolution.
+        ///
+        /// Почему огрубление дальних уровней не видно. У листа quadtree
+        /// ближайшая точка лежит примерно на SplitFactor·размерУзла от центра,
+        /// а сторона квада = размерУзла/(res-1). Угловой размер квада на
+        /// экране = 1/(SplitFactor·(res-1)) и НЕ зависит ни от глубины, ни от
+        /// расстояния: разрешение задаёт экранную плотность сетки, а не её
+        /// масштаб. Полная сетка (res 65, SplitFactor 3.5) даёт ~6.1 px на квад
+        /// при FOV 60° и 1440p; огрубление вдвое поднимает до ~12.7 px.
+        ///
+        /// При ResolutionHalveEveryLevels = 4 полное разрешение держат уровни
+        /// MaxDepth-3…MaxDepth — при SplitFactor 3.5 это весь радиус 162 км
+        /// вокруг игрока, то есть практически всё, что видно с поверхности
+        /// невооружённым глазом. Огрубляется только дальний конус 162-393 км,
+        /// который у горизонта схлопнут в тонкую полосу, где рельеф уже
+        /// гладкий и шаг сетки не читается.
+        /// ResolutionHalveEveryLevels = 99 отключает огрубление полностью.
+        /// </summary>
+        private int ResolutionForDepth(int depth)
+        {
+            int full = System.Math.Max(2, TileResolution);
+            if (ResolutionHalveEveryLevels >= 99)
+            {
+                return full;
+            }
+
+            int stepsBelowFinest = MaxDepth - depth;
+            if (stepsBelowFinest <= 0)
+            {
+                return full;
+            }
+
+            int shift = stepsBelowFinest / ResolutionHalveEveryLevels;
+            int minRes = System.Math.Min(full, System.Math.Max(2, MinTileResolution));
+            return System.Math.Max(minRes, full >> shift);
+        }
+
+        /// <summary>
+        /// Треугольников в меше чанка на этой глубине: core-сетка 2·res² плюс
+        /// четыре юбки по res квадов. Считается из той же формулы, по которой
+        /// BuildChunk собирает индексы, чтобы счётчик в HUD совпадал с тем, что
+        /// реально уходит в GPU.
+        /// </summary>
+        private int ChunkTriangleCount(int depth)
+        {
+            int res = ResolutionForDepth(depth);
+            return (2 * res * res) + (8 * res);
+        }
+
+        /// <summary>
+        /// Обёртка ради маркера профилировщика. Тело сборки живёт в
+        /// BuildChunkCore и не переименовывается целиком: файл крупный и
+        /// часть комментариев в нём в кракозябрах, а переформатировать его
+        /// нельзя. Маркер нужен, чтобы увидеть, сколько именно миллисекунд
+        /// кадра съедает постройка чанков, а не только их количество.
+        /// </summary>
+        /// <summary>
+        /// Ставит узел в очередь постройки. Синхронной работы здесь нет: только
+        /// план и приоритет.
+        ///
+        /// Приоритет — «дыра» важнее листа: узел, в котором сейчас пусто, виден
+        /// игроку немедленно, а тот, что через полкилометра, — нет. Внутри
+        /// группы ближе к камере.
+        ///
+        /// Дедупликация по queuedChunkIds обязательна: без неё один и тот же узел
+        /// попадал бы в очередь каждый кадр, пока не построится, и на скорости
+        /// очередь разрасталась бы быстрее, чем в полёте. Множество покрывает и
+        /// очередь, и всё, что в полёте: id убирается из него только при
+        /// финализации, поэтому вторая проверка «а не в полёте ли он» была бы
+        /// тем же поиском дважды.
+        /// </summary>
+        private void EnqueueChunkBuild(Node node)
+        {
+            long id = NodeId(node);
+            if (chunks.ContainsKey(id) || !queuedChunkIds.Add(id))
+            {
+                return;
+            }
+
+            chunkBuildQueue.Add(new ChunkQueueItem
+            {
+                Node = node,
+                Id = id,
+                Priority = HasBuiltAncestor(node) ? 1f : 0f,
+                Distance = (float)ChunkDistanceFromCamera(node),
+                EnqueuedFrame = Time.frameCount
+            });
+        }
+
+        /// <summary>Есть ли хоть один построенный предок. Нет предка — узел
+        /// зияет дырой в рельефе, и это единственное, что видно игроку прямо
+        /// сейчас.</summary>
+        private bool HasBuiltAncestor(Node node)
+        {
+            int face = node.Face;
+            int depth = node.Depth;
+            int ix = node.Ix;
+            int iy = node.Iy;
+            while (depth > 0)
+            {
+                depth--;
+                ix >>= 1;
+                iy >>= 1;
+                if (chunks.ContainsKey(NodeId(face, depth, ix, iy)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>Расстояние до БЛИЖАЙШЕЙ точки узла — та же метрика, по
+        /// которой Traverse решает, split-ить ли. Смешивать «до центра» и «до
+        /// края» нельзя: тогда близкий крупный узел окажется дальше дальнего
+        /// мелкого и порядок очереди поедет.</summary>
+        private double ChunkDistanceFromCamera(Node node)
+        {
+            Vector3d dir = CubeSphere.NodeCenterDirection(node.Face, node.Depth, node.Ix, node.Iy);
+            double nodeSize = body.Radius * 1.5707963267948966d / (1 << node.Depth);
+            Vector3 worldCenter = NodeRenderPosition(dir * body.Radius);
+            float distance = Vector3.Distance(lastCameraPosition, worldCenter);
+            return System.Math.Max(0d, distance - (nodeSize * 0.70710678d));
+        }
+
+        /// <summary>
+        /// Ставит в очередь префетч-узлы. Приоритет ХУЖЕ листа и хуже дыры:
+        /// префетч — это оптимизация будущего, а не то, что видно сейчас.
+        ///
+        /// Их id добавляются в prefetchKeep, а не в keep: keep определяет
+        /// ВИДИМОСТЬ, и префетч-узлы не должны становиться видимыми. Но и
+        /// выгружать их, пока они стоят в очереди, нельзя — иначе они будут
+        /// утилизированы и построены по кругу.
+        ///
+        /// Отсев за спиной камеры (конус FOV+30°) применяется ТОЛЬКО здесь.
+        /// В desired попадать не должен ни при каких условиях: узел вне кадра
+        /// всё равно рисуется, если он в keep.
+        /// </summary>
+        private void EnqueuePrefetchChunks(Vector3 cameraPosition)
+        {
+            prefetchKeep.Clear();
+            if (!PrefetchEnabled || prefetchDesired.Count == 0)
+            {
+                SurfacePerf.PrefetchQueued = 0;
+                return;
+            }
+
+            Vector3 forward = cameraPosition - bodyRenderPosition;
+            float backConeCos = BuildBackConeCos();
+
+            int queued = 0;
+            for (int i = 0; i < prefetchDesired.Count; i++)
+            {
+                Node node = prefetchDesired[i];
+                long id = NodeId(node);
+                if (chunks.ContainsKey(id))
+                {
+                    continue;
+                }
+
+                prefetchKeep.Add(id);
+                if (queued >= MaxPrefetchQueued)
+                {
+                    continue;
+                }
+
+                if (backConeCos > -1f)
+                {
+                    Vector3d dir = CubeSphere.NodeCenterDirection(node.Face, node.Depth, node.Ix, node.Iy);
+                    Vector3 toNode = NodeRenderPosition(dir * body.Radius) - cameraPosition;
+                    if (toNode.sqrMagnitude > 1e-6f && forward.sqrMagnitude > 1e-6f
+                        && Vector3.Dot(toNode.normalized, forward.normalized) < backConeCos)
+                    {
+                        // Задний конус: камера сюда не посмотрит за время
+                        // упреждения, строить нечего.
+                        continue;
+                    }
+                }
+
+                EnqueuePrefetchChunk(node);
+                queued++;
+            }
+
+            SurfacePerf.PrefetchQueued = queued;
+            SurfacePerf.PrefetchNodes = prefetchDesired.Count;
+        }
+
+        /// <summary>Косинус угла «не строим за спиной». FOV у камеры
+        /// вертикальный, а конус трёхмерный, поэтому берём половину диагонали:
+        /// tan(diag/2) = tan(v/2)·sqrt(1 + (h/v)²), плюс запас в 30°. Если
+        /// камеры нет, отсев не применяется (косинус -1 = «никогда»).</summary>
+        private float BuildBackConeCos()
+        {
+            Camera cam = Camera.main;
+            if (cam == null)
+            {
+                return -1f;
+            }
+
+            float halfV = cam.fieldOfView * 0.5f * (Mathf.PI / 180f);
+            float aspect = cam.aspect > 0.01f ? cam.aspect : 1.7778f;
+            float halfDiag = Mathf.Atan(Mathf.Tan(halfV) * Mathf.Sqrt(1f + aspect * aspect));
+            halfDiag += 30f * (Mathf.PI / 180f);
+            return Mathf.Cos(Mathf.Clamp(halfDiag, 0f, 3.14159f));
+        }
+
+        private void EnqueuePrefetchChunk(Node node)
+        {
+            long id = NodeId(node);
+            if (chunks.ContainsKey(id) || !queuedChunkIds.Add(id))
+            {
+                return;
+            }
+
+            chunkBuildQueue.Add(new ChunkQueueItem
+            {
+                Node = node,
+                Id = id,
+                // 2 — хуже листа (1) и хуже дыры (0).
+                Priority = 2f,
+                Distance = (float)ChunkDistanceFromCamera(node),
+                EnqueuedFrame = Time.frameCount
+            });
+        }
+
+        /// <summary>
+        /// Планировщик постройки.
+        ///
+        /// Бюджет именно в миллисекундах: работа на кадре складывается из
+        /// ожидания готовых джоб (обычно 0) и заливки вершин в меш. Заливка
+        /// стоит порядка сотни микросекунд на чанк, поэтому при нормальном
+        /// темпе 1.5 мс — это единицы чанков. Если очередь при этом растёт
+        /// (на 2 км/с она будет), чинится это не бюджетом, а тиром качества
+        /// в Фазе 3: строить нужно меньше и реже, а не быстрее заливать.
+        ///
+        /// Исключение из FinalizeChunk перехватывается НАМЕРЕННО. Без этого
+        /// один сбойный чанк ронял весь LateUpdate целиком: не выполнялись
+        /// EvictIfNeeded, обновление счётчиков, декор и конец кадра — а
+        /// полузаполненный чанк оставался в кэше с пустым мешем. Итог был
+        /// виден как серые полосы в рельефе, «рывки» движения и рост памяти до
+        /// 18 ГБ, при этом в консоли — одно исключение из глубокой стека. Один
+        /// плохой узел не должен уносить с собой кадр.
+        /// </summary>
+        private void PumpChunkBuilds()
+        {
+            if (!AsyncChunkBuild)
+            {
+                return;
+            }
+
+            long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+
+            // Отсев устаревших записей. Узел, который в desired попал всего пару
+            // кадров назад и с тех пор ушёл за спину камере, строить бессмысленно:
+            // к моменту, когда дойдёт очередь, он всё равно будет вне кадра. Без
+            // этого на 2 км/с очередь копила тысячи записей, и каждый кадр
+            // планировщик сортировал в том числе по ним. Порог в несколько
+            // кадров, а не ноль: узел нужен и тогда, когда он на грани LOD и
+            // мелькает в desired через кадр.
+            int staleBefore = Time.frameCount - MaxChunkQueueAgeFrames;
+            int dropped = 0;
+            for (int i = chunkBuildQueue.Count - 1; i >= 0; i--)
+            {
+                if (chunkBuildQueue[i].EnqueuedFrame >= staleBefore)
+                {
+                    continue;
+                }
+
+                queuedChunkIds.Remove(chunkBuildQueue[i].Id);
+                chunkBuildQueue.RemoveAt(i);
+                dropped++;
+            }
+
+            SurfacePerf.QueueDropped = dropped;
+
+            for (int i = chunkBuildsInFlight.Count - 1; i >= 0; i--)
+            {
+                ChunkBuildInFlight entry = chunkBuildsInFlight[i];
+                if (!entry.Request.Handle.IsCompleted)
+                {
+                    continue;
+                }
+
+                if (ElapsedMs(startTicks) > ChunkFinalizeBudgetMs)
+                {
+                    break;
+                }
+
+                entry.Request.Handle.Complete();
+                chunkBuildsInFlight.RemoveAt(i);
+                queuedChunkIds.Remove(entry.Id);
+
+                if (entry.Request.ParamsVersion != paramsVersion || !paramsAlive)
+                {
+                    SurfaceChunkPool.Return(entry.Request);
+                    continue;
+                }
+
+                // Изолируем finalize: любой сбой здесь обязан стоить одного
+                // чанка, а не всего кадра.
+                bool finalized = false;
+                try
+                {
+                    FinalizeChunk(entry);
+                    finalized = true;
+                }
+                catch (System.Exception exception)
+                {
+                    SurfacePerf.FinalizeErrors++;
+                    Debug.LogError("[PlanetSurfaceRenderer] чанк " + entry.Id
+                        + " не удалось залить в меш: " + exception);
+                }
+
+                if (!finalized)
+                {
+                    AbandonChunk(entry.Id);
+                }
+
+                SurfaceChunkPool.Return(entry.Request);
+            }
+
+            // Слоты держим занятыми: пока есть свободные, джобы идут внахлёст с
+            // рендером. Копятся они только при жёстком лимите, и тогда ждут
+            // процессор сами.
+            while (chunkBuildsInFlight.Count < MaxChunkJobsInFlight
+                && TryDequeueBest(out ChunkQueueItem item))
+            {
+                ScheduleChunkBuild(item);
+            }
+
+            JobHandle.ScheduleBatchedJobs();
+        }
+
+        /// <summary>Убирает из кэша чанк, который не удалось залить: он там
+        /// остался бы с пустым мешем и рисовался бы серой дырой. Слот в
+        /// queuedChunkIds освобождается, чтобы узел можно было построить заново
+        /// на следующем кадре.</summary>
+        private void AbandonChunk(long id)
+        {
+            queuedChunkIds.Remove(id);
+            if (!chunks.TryGetValue(id, out Chunk chunk))
+            {
+                return;
+            }
+
+            SetChunkVisible(chunk, false);
+            DestroyChunkResources(chunk);
+            chunks.Remove(id);
+            visibleChunks.Remove(chunk);
+        }
+
+        /// <summary>Достаёт из очереди узел с наивысшим приоритетом, а внутри
+        /// приоритета — ближайший. Линейный выбор, а не сортировка: сортировать
+        /// каждый кадр ради одного элемента дороже, чем пройти список.</summary>
+        private bool TryDequeueBest(out ChunkQueueItem best)
+        {
+            best = default;
+            int bestIndex = -1;
+            for (int i = 0; i < chunkBuildQueue.Count; i++)
+            {
+                if (bestIndex < 0)
+                {
+                    bestIndex = i;
+                    continue;
+                }
+
+                ChunkQueueItem candidate = chunkBuildQueue[i];
+                ChunkQueueItem current = chunkBuildQueue[bestIndex];
+                if (candidate.Priority < current.Priority
+                    || (candidate.Priority == current.Priority && candidate.Distance < current.Distance))
+                {
+                    bestIndex = i;
+                }
+            }
+
+            if (bestIndex < 0)
+            {
+                return false;
+            }
+
+            best = chunkBuildQueue[bestIndex];
+            chunkBuildQueue.RemoveAt(bestIndex);
+            return true;
+        }
+
+        private void ScheduleChunkBuild(ChunkQueueItem item)
+        {
+            Node node = item.Node;
+            int res = ResolutionForDepth(node.Depth);
+            int n = res + 1;
+            int grid = n + 2;
+            int totalVerts = (n * n) + (4 * n);
+
+            ChunkBuildRequest request = SurfaceChunkPool.Rent();
+            SurfaceChunkPool.Prepare(request, res, n, grid, totalVerts);
+            request.Plan = new ChunkNodePlan { Face = node.Face, Depth = node.Depth, Ix = node.Ix, Iy = node.Iy };
+            request.ParamsVersion = paramsVersion;
+            request.Priority = item.Priority;
+
+            double sizeUv = 1d / (1 << node.Depth);
+            double u0 = node.Ix * sizeUv;
+            double v0 = node.Iy * sizeUv;
+            double stepUv = sizeUv / (n - 1);
+
+            Vector3d centerAstro = CubeSphere.NodeCenterDirection(node.Face, node.Depth, node.Ix, node.Iy) * body.Radius;
+            double amplitude = System.Math.Max(1d, terrain.AmplitudeMeters);
+            double skirtDepth = body.Radius * 1.5707963267948966d / (1 << node.Depth) * SkirtFactor;
+
+            // Цепочка из трёх джоб. Зависимости через JobHandle, Complete() на
+            // главном потоке нет — он только забирает уже готовые результаты
+            // в пределах бюджета.
+            JobHandle fill = new FillDirectionsJob
+            {
+                Face = node.Face,
+                Grid = grid,
+                U0 = u0,
+                V0 = v0,
+                StepUv = stepUv,
+                Dirs = request.Dirs
+            }.Schedule(grid * grid, 64, new JobHandle());
+
+            JobHandle tile = new TerrainTileJob
+            {
+                Params = noiseParams,
+                Directions = request.Dirs,
+                Heights = request.Heights,
+                ColorMasks = request.Masks,
+                ColorDetails = request.Details
+            }.Schedule(grid * grid, 64, fill);
+
+            request.Handle = new AssembleChunkMeshJob
+            {
+                Dirs = request.Dirs,
+                Heights = request.Heights,
+                Masks = request.Masks,
+                Details = request.Details,
+                Res = res,
+                N = n,
+                Grid = grid,
+                CoreCount = n * n,
+                TotalVerts = totalVerts,
+                Amplitude = amplitude,
+                Radius = body.Radius,
+                SeaLevel = terrain.SeaLevelMeters,
+                SkirtDepth = skirtDepth,
+                WaterSkirtDepth = skirtDepth * WaterSkirtFactor,
+                CenterAstro = new double3(centerAstro.X, centerAstro.Y, centerAstro.Z),
+                Positions = request.Positions,
+                Vertices = request.Vertices,
+                WaterVertices = request.WaterVertices,
+                WaterFlags = request.WaterFlags,
+                BoundsMinMax = request.BoundsMinMax
+            }.Schedule(tile);
+
+            request.CenterAstro = centerAstro;
+            request.SkirtDepth = skirtDepth;
+            chunkBuildsInFlight.Add(new ChunkBuildInFlight { Id = item.Id, Request = request });
+        }
+
+        private static double ElapsedMs(long startTicks)
+        {
+            return (System.Diagnostics.Stopwatch.GetTimestamp() - startTicks) * 1000d
+                / System.Diagnostics.Stopwatch.Frequency;
+        }
+
+        /// <summary>
+        /// Заливка готового буфера в меш. Единственная дорогая операция на
+        /// главном потоке, и она копирует память без вычислений.
+        ///
+        /// Индексы берутся из общего кэша по res: топология одинакова для всех
+        /// чанков одной сетки, и собирать свой int[] на 51840 элементов на
+        /// каждый чанк было и аллокацией, и разбором со стороны Unity.
+        /// </summary>
+        private void FinalizeChunk(ChunkBuildInFlight entry)
+        {
+            ChunkBuildRequest request = entry.Request;
+            Node node = new Node
+            {
+                Face = request.Plan.Face,
+                Depth = request.Plan.Depth,
+                Ix = request.Plan.Ix,
+                Iy = request.Plan.Iy
+            };
+
+            long id = NodeId(node);
+            Chunk chunk = chunks.TryGetValue(id, out Chunk existing) ? existing : CreateChunkShell(node);
+
+            // В кэш чанк попадает ПОСЛЕДНИМ. Регистрация до заливки означала
+            // бы, что сбой на любом шаге оставляет в кэше узел с пустым мешем:
+            // он тут же становился виден и рисовался серой дырой, а повторно не
+            // строился, потому что «уже есть в chunks».
+            chunk.CenterAstro = request.CenterAstro;
+            chunk.Node = node;
+            chunk.Depth = node.Depth;
+            chunk.Res = request.Res;
+            chunk.Go.transform.position = NodeRenderPosition(request.CenterAstro);
+            chunk.Go.transform.rotation = currentBodyRotation;
+
+            Mesh mesh = chunk.Mesh;
+            mesh.Clear();
+            mesh.indexFormat = IndexFormat.UInt16;
+            mesh.SetVertexBufferParams(
+                request.TotalVerts,
+                new VertexAttributeDescriptor(VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
+                new VertexAttributeDescriptor(VertexAttribute.Normal, VertexAttributeFormat.Float32, 3),
+                new VertexAttributeDescriptor(VertexAttribute.TexCoord1, VertexAttributeFormat.Float32, 3),
+                new VertexAttributeDescriptor(VertexAttribute.TexCoord2, VertexAttributeFormat.Float32, 4));
+            mesh.SetVertexBufferData(
+                request.Vertices, 0, 0, request.TotalVerts, 0,
+                MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
+
+            // Общий буфер совпадает с нужной длиной один в один, поэтому
+            // заливаем его целиком с нуля. В Unity 6 у SetIndexBufferData пять
+            // параметров (никакого startIndex), отсюда и форма вызова.
+            NativeArray<ushort> indices = SurfaceChunkPool.GetSharedIndices(request.Res);
+            mesh.SetIndexBufferParams(indices.Length, IndexFormat.UInt16);
+            mesh.SetIndexBufferData(
+                indices, 0, 0, indices.Length,
+                MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
+            mesh.subMeshCount = 1;
+            mesh.SetSubMesh(
+                0, new SubMeshDescriptor(0, indices.Length),
+                MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
+
+            // Та же формула запаса, что и в синхронном пути: юбка уже внутри
+            // меша, RecalculateBounds заменён расчётом в джобе, поэтому Expand
+            // идёт от того же AABB.
+            Bounds bounds = BoundsFrom(request.BoundsMinMax[0], request.BoundsMinMax[1]);
+            bounds.Expand((float)(request.SkirtDepth * 1.5d) + (bounds.size.magnitude * 0.001f));
+            mesh.bounds = bounds;
+
+            if (request.HasWater)
+            {
+                BuildAsyncWaterMesh(chunk, request);
+            }
+
+            // Чанк цел — регистрируем и показываем.
+            chunks[id] = chunk;
+            if (!chunk.Visible)
+            {
+                SetChunkVisible(chunk, true);
+            }
+
+            SurfacePerf.ChunksFinalized++;
+        }
+
+        private static Bounds BoundsFrom(float3 min, float3 max)
+        {
+            var center = new Vector3(
+                (min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f, (min.z + max.z) * 0.5f);
+            var size = new Vector3(max.x - min.x, max.y - min.y, max.z - min.z);
+            return new Bounds(center, size);
+        }
+
+        private void BuildAsyncWaterMesh(Chunk chunk, ChunkBuildRequest request)
+        {
+            Material waterMaterial = GetWaterMaterial();
+            if (waterMaterial == null)
+            {
+                return;
+            }
+
+            if (chunk.WaterMesh == null)
+            {
+                chunk.WaterMesh = new Mesh();
+                SurfacePerf.NoteMeshCreated();
+            }
+
+            if (chunk.WaterGo == null)
+            {
+                chunk.WaterGo = new GameObject("Water");
+                chunk.WaterGo.transform.SetParent(chunk.Go.transform, false);
+                chunk.WaterGo.transform.localPosition = Vector3.zero;
+                chunk.WaterGo.transform.localRotation = Quaternion.identity;
+                chunk.WaterGo.transform.localScale = Vector3.one;
+                chunk.WaterGo.AddComponent<MeshFilter>().sharedMesh = chunk.WaterMesh;
+                MeshRenderer waterRenderer = chunk.WaterGo.AddComponent<MeshRenderer>();
+                waterRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                waterRenderer.receiveShadows = false;
+                waterRenderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
+                waterRenderer.lightProbeUsage = LightProbeUsage.Off;
+                waterRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+                waterRenderer.allowOcclusionWhenDynamic = false;
+                waterRenderer.enabled = chunk.Visible;
+                chunk.WaterRenderer = waterRenderer;
+                waterChunkCount++;
+            }
+
+            chunk.WaterRenderer.sharedMaterial = waterMaterial;
+
+            Mesh mesh = chunk.WaterMesh;
+            mesh.Clear();
+            mesh.indexFormat = IndexFormat.UInt16;
+            mesh.SetVertexBufferParams(
+                request.TotalVerts,
+                new VertexAttributeDescriptor(VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
+                new VertexAttributeDescriptor(VertexAttribute.Normal, VertexAttributeFormat.Float32, 3),
+                new VertexAttributeDescriptor(VertexAttribute.TexCoord2, VertexAttributeFormat.Float32, 4));
+            mesh.SetVertexBufferData(
+                request.WaterVertices, 0, 0, request.TotalVerts, 0,
+                MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
+
+            NativeArray<ushort> indices = SurfaceChunkPool.GetSharedIndices(request.Res);
+            mesh.SetIndexBufferParams(indices.Length, IndexFormat.UInt16);
+            mesh.SetIndexBufferData(
+                indices, 0, 0, indices.Length,
+                MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
+            mesh.subMeshCount = 1;
+            mesh.SetSubMesh(
+                0, new SubMeshDescriptor(0, indices.Length),
+                MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
+
+            Bounds bounds = BoundsFrom(request.BoundsMinMax[0], request.BoundsMinMax[1]);
+            bounds.Expand(chunk.BoundsRadius);
+            mesh.bounds = bounds;
+        }
+
+        /// <summary>Каркас чанка: объект, меш и рендерер создаются один раз на
+        /// узел и переиспользуются при перестроении. Раньше на каждый чанк были
+        /// свои new GameObject + new Mesh + два AddComponent, и на 2 км/с это
+        /// десятки созданий в секунду — плюс лишние Destroy на выгрузке.</summary>
+        private Chunk CreateChunkShell(Node node)
+        {
+            var chunk = new Chunk
+            {
+                Go = new GameObject("PlanetChunk_" + node.Face + "_" + node.Depth + "_" + node.Ix + "_" + node.Iy),
+                Mesh = new Mesh()
+            };
+            SurfacePerf.NoteMeshCreated();
+            chunk.Go.transform.SetParent(surfaceRoot, false);
+            chunk.Go.transform.localScale = Vector3.one;
+            chunk.Node = node;
+            chunk.Depth = node.Depth;
+            // Синхронный путь всегда строит по полному разрешению глубины.
+            chunk.Res = ResolutionForDepth(node.Depth);
+            chunk.BoundsRadius = (float)(body.Radius * 1.5707963267948966d / (1 << node.Depth) * 0.70710678d);
+            MeshFilter filter = chunk.Go.AddComponent<MeshFilter>();
+            chunk.Renderer = chunk.Go.AddComponent<MeshRenderer>();
+            chunk.Renderer.sharedMaterial = GetMaterial();
+            chunk.Renderer.enabled = false;
+            filter.sharedMesh = chunk.Mesh;
+            ApplyChunkRenderFlags(chunk, node.Depth);
+            chunk.Visible = false;
+            return chunk;
+        }
+
+        /// <summary>Дождаться и освободить все запросы в полёте. Обязательно
+        /// перед ClearChunkCache и OnDestroy: Persistent-массивы из рента и
+        /// общие индексные буферы иначе живут до конца домена, и Unity
+        /// напишет об утечке нативной памяти.</summary>
+        private void CancelAllChunkBuilds()
+        {
+            for (int i = chunkBuildsInFlight.Count - 1; i >= 0; i--)
+            {
+                ChunkBuildInFlight entry = chunkBuildsInFlight[i];
+                entry.Request.Handle.Complete();
+                SurfaceChunkPool.Return(entry.Request);
+            }
+
+            chunkBuildsInFlight.Clear();
+            chunkBuildQueue.Clear();
+            queuedChunkIds.Clear();
+        }
+
         private void BuildChunk(Node node)
         {
-            int res = System.Math.Max(2, TileResolution);
+            using (SurfacePerf.BuildChunkMarker.Auto())
+            {
+                BuildChunkCore(node);
+            }
+        }
+
+        private void BuildChunkCore(Node node)
+        {
+            int res = ResolutionForDepth(node.Depth);
             int n = res + 1;
             int grid = n + 2;
             int coreCount = n * n;
@@ -1058,7 +3036,13 @@ namespace Galilego.Universe
 
             double amplitude = System.Math.Max(1d, terrain.AmplitudeMeters);
             double seaLevel = terrain.SeaLevelMeters;
-            double seaEps = amplitude * 0.001d;
+            // Допуск уровня моря — тот же, что в PlanetSurface.shader (SeaEpsilon):
+            // АБСОЛЮТНЫЕ метры, почти не зависят от амплитуды. Раньше здесь стояло
+            // amp*0.001 — при амплитуде 9144 м это 9.14 м, и полоса СУШИ в 9 метров
+            // над водой считалась водой. Дальше seaEps используется только в
+            // диагностическом логе ниже, но оставляем его согласованным с шейдером,
+            // иначе лог врёт о доле суши.
+            double seaEps = System.Math.Max(0.05d, amplitude * 1e-6d);
 
             // РўР°Р№Р»С‹ СЃ РѕРІРµСЂР»Р°РїРѕРј РІ 1 РІРµСЂС€РёРЅСѓ вЂ” РЅРѕСЂРјР°Р»Рё РёР· С†РµРЅС‚СЂР°Р»СЊРЅС‹С… СЂР°Р·РЅРѕСЃС‚РµР№.
             var dirs = new NativeArray<double3>(grid * grid, Allocator.TempJob);
@@ -1101,9 +3085,13 @@ namespace Galilego.Universe
                 {
                     int vi = (gi * grid) + gj;
                     double3 d = dirs[vi];
+                    // Дно океана НЕ клампим к уровню моря: геометрия идёт до
+                    // сырого дна (физика дна — WaterQuery, визуал — затемнение
+                    // в шейдере), сверху лежит отдельный прозрачный водный меш
+                    // чанка (BuildWaterMesh). Корабли по-прежнему садятся на
+                    // клампнутую высоту (GetHeightMeters) — как на воду.
                     double rawHeight = jobHeights[vi] * amplitude;
-                    double height = rawHeight < seaLevel ? seaLevel : rawHeight;
-                    Vector3d absAstro = new Vector3d(d.x, d.y, d.z) * (body.Radius + height);
+                    Vector3d absAstro = new Vector3d(d.x, d.y, d.z) * (body.Radius + rawHeight);
                     positions[vi] = AstroFrame.ToSimulation(absAstro - centerAstro);
                 }
             }
@@ -1117,6 +3105,13 @@ namespace Galilego.Universe
             // detail — the same pattern the decor placement reads (parity paint/placement).
             var surfaceDirs = new Vector3[totalVerts];
             var surfaceExtra = new Vector4[totalVerts];
+            // Водная плоскость чанка: те же core-вершины, спроецированные на
+            // уровень моря (физика воды — плоская, волны только в нормалях
+            // шейдера). Глубина per-vertex — для цвета/пены/альфы.
+            var waterVerts = new Vector3[coreCount];
+            var waterNormals = new Vector3[coreCount];
+            var waterExtra = new Vector4[coreCount];
+            bool hasWater = seaLevel > -1e29d;
 
             for (int row = 0; row < n; row++)
             {
@@ -1144,6 +3139,30 @@ namespace Galilego.Universe
                     surfaceExtra[index] = new Vector4(
                         (float)rawHeight, Vector3.Dot(normals[index], radial),
                         jobMasks[halo], jobDetails[halo]);
+
+                    if (hasWater)
+                    {
+                        // Водный квад — целиком на чанк (кромка берега режется
+                        // самим рельефом); над сушей глубина 0 — пены там нет.
+                        Vector3d absWater = new Vector3d(d.x, d.y, d.z) * (body.Radius + seaLevel);
+                        waterVerts[index] = AstroFrame.ToSimulation(absWater - centerAstro);
+                        waterNormals[index] = (waterVerts[index] + centerUnity).normalized;
+                        waterExtra[index] = new Vector4((float)System.Math.Max(0d, seaLevel - rawHeight), 0f, 0f, 0f);
+                    }
+                }
+            }
+
+            // Чанк целиком над морем — воду не строим.
+            if (hasWater)
+            {
+                hasWater = false;
+                for (int k = 0; k < coreCount; k++)
+                {
+                    if (waterExtra[k].x > 0f)
+                    {
+                        hasWater = true;
+                        break;
+                    }
                 }
             }
 
@@ -1252,7 +3271,15 @@ namespace Galilego.Universe
                 Go = new GameObject("PlanetChunk_" + node.Face + "_" + node.Depth + "_" + node.Ix + "_" + node.Iy),
                 Mesh = new Mesh()
             };
-            chunk.Mesh.MarkDynamic();
+            // [ФАЗА 0] Счётчик живых мешей. Mesh не принадлежит GameObject:
+            // Destroy(chunk.Go) его НЕ убирает, поэтому утечка не видна ни по
+            // иерархии, ни по памяти GameObject — только по этому счётчику.
+            SurfacePerf.NoteMeshCreated();
+            // Без MarkDynamic(): меш чанка строится ОДИН раз и больше не
+            // меняется (только transform ездит). MarkDynamic() заставляет
+            // Unity держать его в динамическом VB-пути без оптимизации
+            // формата и перезаливать вместо кэширования — на 1000+ чанков
+            // это и лишняя память, и лишняя работа каждый кадр.
             chunk.Go.transform.SetParent(surfaceRoot, false);
             chunk.Go.transform.localScale = Vector3.one;
             chunk.CenterAstro = centerAstro;
@@ -1265,6 +3292,7 @@ namespace Galilego.Universe
             chunk.Renderer = chunk.Go.AddComponent<MeshRenderer>();
             chunk.Renderer.sharedMaterial = GetMaterial();
             filter.sharedMesh = chunk.Mesh;
+            ApplyChunkRenderFlags(chunk, node.Depth);
 
             chunk.Mesh.Clear();
             chunk.Mesh.vertices = vertices;
@@ -1273,16 +3301,513 @@ namespace Galilego.Universe
             chunk.Mesh.SetUVs(2, new List<Vector4>(surfaceExtra));
             chunk.Mesh.triangles = triangles;
             chunk.Mesh.RecalculateBounds();
-            // Р—Р°РїР°СЃ Рє РіСЂР°РЅРёС†Р°Рј (РїРѕР»СЂР°Р·РјРµСЂР° СѓР·Р»Р°): СЃС‚СЂР°С…РѕРІРєР° РѕС‚ Р»РѕР¶РЅРѕРіРѕ
-            // С„СЂСѓСЃС‚СѓРј-РєСѓР»Р»РёРЅРіР° С‡Р°РЅРєР° РЅР° РєСЂР°СЋ РєР°РґСЂР° вЂ” РёРЅР°С‡Рµ РїСЂРё РїРѕРІРѕСЂРѕС‚Рµ РєР°РјРµСЂС‹
-            // РґР°Р»С‘РєРёРµ С‡Р°РЅРєРё РјРёРіР°СЋС‚ (В«РїРѕСЏРІР»СЏРµС‚СЃСЏ/РїСЂРѕРїР°РґР°РµС‚В»). Р¦РµРЅР° вЂ” С‡СѓС‚СЊ РјРµРЅСЊС€Рµ
-            // РѕС‚СЃРµРєР°РµС‚СЃСЏ Р·Р° РєР°РґСЂРѕРј, С‚РѕС‡РЅРѕСЃС‚СЊ РІРёРґРёРјРѕСЃС‚Рё РЅРµ СЃС‚СЂР°РґР°РµС‚.
+            // Запас границ. RecalculateBounds уже даёт истинный AABB меша
+            // (координаты камера-относительные, юбка внутри меша). Раздувать
+            // на BoundsRadius не нужно: это РАДИУС ОПИСАННОЙ СФЕРЫ узла, а
+            // грань куба плоская (половина узла), и Bounds.Expand растёт по
+            // всем шести осям сразу. Старый запас давал +41 % лишнего по
+            // каждой оси (на depth 2 это +518 км в каждую сторону), из-за чего
+            // в frustum проходили чанки, полностью лежащие за кадром.
+            // Оставляем юбку и относительный допуск на джиттер float при
+            // смене позиции чанка (floating origin / движение камеры).
             Bounds paddedBounds = chunk.Mesh.bounds;
-            paddedBounds.Expand(chunk.BoundsRadius);
+            paddedBounds.Expand(skirtDepth * 1.5f + (paddedBounds.size.magnitude * 0.001f));
             chunk.Mesh.bounds = paddedBounds;
 
+            if (hasWater)
+
+            {
+                BuildWaterMesh(chunk, waterVerts, waterNormals, waterExtra, n, triangles, skirtDepth * WaterSkirtFactor, centerUnity);
+            }
+
             chunk.Visible = true;
+            chunk.Renderer.enabled = true;
+            visibleChunks.Add(chunk);
             chunks[id] = chunk;
+        }
+
+        /// <summary>
+        /// Водная поверхность чанка: core-грид на уровне моря + юбки вниз
+        /// (как у рельефа — закрывают трещины между соседними LOD на стыках,
+        /// иначе у берега видна "лесенка" просветов до дна/неба),
+        /// per-vertex глубина в UV2.x для цвета/пены/альфы шейдера. Ребёнок
+        /// чанка — видимость и эвикшн наследуются от родителя. Тени не пишем
+        /// и не принимаем: вода светится своим шейдером (солнце + небо).
+        /// </summary>
+        /// <summary>
+        /// Дешёвые флаги рендерера чанка. Ничего из этого не меняет картинку на
+        /// земле, но убирает работу, которой на 1000+ чанков набегает много.
+        ///
+        /// motionVectorGenerationMode: чанок каждый кадр едет трансформом
+        /// (floating origin + движение камеры), и без этого флага Unity считает
+        /// для него motion vectors, которых на картинке нет.
+        ///
+        /// Уточнение, которое стоит знать: камера в проекте на TAA
+        /// (OutdoorsScene.unity antialiasing: 2), а не на SMAA, и при TAA
+        /// motion vectors ЗНАЧИМЫ — без них временное сглаживание не знает, что
+        /// сдвинулся фон. Но в активном HDRP-ассете они выключены
+        /// (supportMotionVectors: 0), то есть проход не считается вовсе, и
+        /// флаг сейчас ничего не экономит. Он поставлен, чтобы при включении
+        /// motion vectors чанки по умолчанию не попадали в лишнюю работу.
+        ///
+        /// probe usage off: рельеф не динамический, свет и отражения он не
+        /// принимает — значения проб в нём не читаются.
+        ///
+        /// shadowCastingMode: тени рельефа нужны только вблизи наблюдателя.
+        /// Дальние уровни лежат за пределом тени в любом случае, но пока флаг
+        /// стоит On, они проходят лишний отсекающий тест в каждом проходе
+        /// теней. Глубины считаем от ТЕКУЩЕГО MaxDepth, а не от
+        /// EffectiveMaxDepth тира скорости: иначе при переходе между тирами
+        /// тени у земли моргали бы вместе с перестройкой LOD.
+        /// </summary>
+        private void ApplyChunkRenderFlags(Chunk chunk, int depth)
+        {
+            Renderer renderer = chunk.Renderer;
+            if (renderer == null)
+            {
+                return;
+            }
+
+            renderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
+            renderer.lightProbeUsage = LightProbeUsage.Off;
+            renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            renderer.allowOcclusionWhenDynamic = false;
+            renderer.shadowCastingMode = depth >= MaxDepth - TerrainShadowDepthBand
+                ? ShadowCastingMode.On
+                : ShadowCastingMode.Off;
+        }
+
+        private void BuildWaterMesh(Chunk chunk, Vector3[] coreVerts, Vector3[] coreNormals, Vector4[] coreExtra, int n, int[] coreTriangles, float skirtDepth, Vector3 centerUnity)
+        {
+            int res = n - 1;
+            int perEdge = n;
+            int coreCount = n * n;
+            int totalVerts = coreCount + (4 * perEdge);
+            int coreTriCount = res * res * 6;
+            int totalTris = coreTriCount + (4 * res * 6);
+
+            var waterVerts = new Vector3[totalVerts];
+            var waterNormals = new Vector3[totalVerts];
+            var waterExtra = new Vector4[totalVerts];
+            System.Array.Copy(coreVerts, waterVerts, coreCount);
+            System.Array.Copy(coreNormals, waterNormals, coreCount);
+            System.Array.Copy(coreExtra, waterExtra, coreCount);
+
+            // Юбки: дублируем рёбра, топим к центру планеты — как у рельефа.
+            // Глубина/нормаль — как у кромки: шейдер дорисует кромку попиксельно
+            // по depth buffer, лесенки от грубой сетки не будет.
+            for (int edge = 0; edge < 4; edge++)
+            {
+                int baseIndex = coreCount + (edge * perEdge);
+                for (int k = 0; k < perEdge; k++)
+                {
+                    int coreIndex;
+                    switch (edge)
+                    {
+                        case 0: coreIndex = k; break;                        // row 0
+                        case 1: coreIndex = (res * n) + k; break;            // row res
+                        case 2: coreIndex = k * n; break;                    // col 0
+                        default: coreIndex = (k * n) + res; break;           // col res
+                    }
+
+                    Vector3 p = waterVerts[coreIndex];
+                    Vector3 inward = (p + centerUnity).normalized;
+                    waterVerts[baseIndex + k] = p - (inward * skirtDepth);
+                    waterNormals[baseIndex + k] = waterNormals[coreIndex];
+                    waterExtra[baseIndex + k] = waterExtra[coreIndex];
+                }
+            }
+
+            var waterTris = new int[totalTris];
+            System.Array.Copy(coreTriangles, waterTris, coreTriCount);
+            int t = coreTriCount;
+            for (int edge = 0; edge < 4; edge++)
+            {
+                int baseIndex = coreCount + (edge * perEdge);
+                for (int k = 0; k < res; k++)
+                {
+                    int a;
+                    int b;
+                    switch (edge)
+                    {
+                        case 0: a = k; b = k + 1; break;
+                        case 1: a = (res * n) + k; b = a + 1; break;
+                        case 2: a = k * n; b = a + n; break;
+                        default: a = (k * n) + res; b = a + n; break;
+                    }
+
+                    int c = baseIndex + k;
+                    int d = baseIndex + k + 1;
+                    waterTris[t++] = a;
+                    waterTris[t++] = c;
+                    waterTris[t++] = b;
+                    waterTris[t++] = b;
+                    waterTris[t++] = c;
+                    waterTris[t++] = d;
+                }
+            }
+
+            chunk.WaterMesh = new Mesh();
+            SurfacePerf.NoteMeshCreated();
+            chunk.WaterMesh.vertices = waterVerts;
+            chunk.WaterMesh.normals = waterNormals;
+            chunk.WaterMesh.SetUVs(2, new System.Collections.Generic.List<Vector4>(waterExtra));
+            chunk.WaterMesh.triangles = waterTris;
+            chunk.WaterMesh.RecalculateBounds();
+            Bounds padded = chunk.WaterMesh.bounds;
+            padded.Expand(chunk.BoundsRadius);
+            chunk.WaterMesh.bounds = padded;
+
+            chunk.WaterGo = new GameObject("Water");
+            chunk.WaterGo.transform.SetParent(chunk.Go.transform, false);
+            chunk.WaterGo.transform.localPosition = Vector3.zero;
+            chunk.WaterGo.transform.localRotation = Quaternion.identity;
+            chunk.WaterGo.transform.localScale = Vector3.one;
+            MeshFilter filter = chunk.WaterGo.AddComponent<MeshFilter>();
+            filter.sharedMesh = chunk.WaterMesh;
+            MeshRenderer renderer = chunk.WaterGo.AddComponent<MeshRenderer>();
+            Material waterMaterial = GetWaterMaterial();
+            if (waterMaterial == null)
+            {
+                Destroy(chunk.WaterGo);
+                Destroy(chunk.WaterMesh);
+                SurfacePerf.NoteMeshDestroyed();
+                chunk.WaterGo = null;
+                chunk.WaterMesh = null;
+                return;
+            }
+
+            renderer.sharedMaterial = waterMaterial;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            renderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
+            // [ФАЗА 1] Пробы воде не нужны по той же причине, что и рельефу.
+            renderer.lightProbeUsage = LightProbeUsage.Off;
+            renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            renderer.allowOcclusionWhenDynamic = false;
+            chunk.WaterRenderer = renderer;
+            waterChunkCount++;
+        }
+
+        private Material GetWaterMaterial()
+        {
+            if (waterMaterialCache == null)
+            {
+                // Красивое видимое море: штатный HDRP/Unlit в аквамарине
+                // рисуется всегда (доказано тестом геометрии), не пересвечивается
+                // от физических 80k люкс (как Lit), прозрачность даёт градиент
+                // глубины над дном. Кастомный WaterSurface с волнами/пеной —
+                // новый WIP, пока не даёт пикселей (чинится отдельно).
+                if (UseLitWaterFallback)
+                {
+                    Shader unlit = Shader.Find("HDRP/Unlit");
+                    if (unlit == null)
+                    {
+                        Debug.LogError("[PlanetSurface] шейдер HDRP/Unlit не найден — водные меши нечем рисовать.");
+                        return null;
+                    }
+
+                    waterMaterialCache = new Material(unlit);
+                    waterMaterialCache.SetFloat("_SurfaceType", 1f);
+                    ApplyWaterParams();
+                    return waterMaterialCache;
+                }
+
+                Shader shader = Shader.Find("Galilego/WaterSurface");
+                if (shader == null)
+                {
+                    Debug.LogError("[PlanetSurface] шейдер Galilego/WaterSurface не найден — водные меши нечем рисовать.");
+                    return null;
+                }
+
+                waterMaterialCache = new Material(shader);
+                ApplyWaterParams();
+            }
+
+            return waterMaterialCache;
+        }
+
+        /// <summary>
+        /// Диагностика воды: какой материал реально у чанков, скомпилировался ли
+        /// его шейдер и рисуют ли его рендереры вообще. Без этого «вода не
+        /// видна» и «вода видна, но серая» выглядят одинаково.
+        /// </summary>
+        [ContextMenu("Galilego/Water probe")]
+        private void WaterProbe()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== WATER PROBE ===");
+            sb.AppendLine("UseLitWaterFallback = " + UseLitWaterFallback);
+
+            Material m = waterMaterialCache;
+            if (m == null)
+            {
+                sb.AppendLine("waterMaterialCache == null");
+                Debug.Log(sb.ToString());
+                return;
+            }
+
+            Shader sh = m.shader;
+            sb.AppendLine("material shader = " + (sh != null ? sh.name : "null")
+                + ", isSupported = " + (sh != null && sh.isSupported));
+            sb.AppendLine("renderQueue = " + m.renderQueue + ", passCount = " + m.passCount);
+            for (int i = 0; i < m.passCount; i++)
+            {
+                string pn = m.GetPassName(i);
+                sb.AppendLine("  pass " + i + " = '" + pn + "', enabled = " + m.GetShaderPassEnabled(pn));
+            }
+
+            if (m.HasProperty("_UnderwaterDebugMode"))
+            {
+                sb.AppendLine("_UnderwaterDebugMode = " + m.GetFloat("_UnderwaterDebugMode"));
+            }
+            else
+            {
+                sb.AppendLine("материал НЕ имеет _UnderwaterDebugMode (это не WaterSurface)");
+            }
+
+#if UNITY_EDITOR
+            if (sh != null)
+            {
+                var msgs = UnityEditor.ShaderUtil.GetShaderMessages(sh);
+                sb.AppendLine("shader messages = " + msgs.Length);
+                for (int i = 0; i < msgs.Length && i < 12; i++)
+                {
+                    sb.AppendLine("  [" + msgs[i].severity + "] " + msgs[i].message
+                        + " (" + msgs[i].file + ":" + msgs[i].line + ")");
+                }
+            }
+#endif
+
+            Camera cam = Camera.main != null ? Camera.main : FindObjectOfType<Camera>();
+            Vector3 camPos = cam != null ? cam.transform.position : Vector3.zero;
+            int total = 0, enabledCount = 0, containing = 0, forcedOff = 0, wrongLayer = 0, visible = 0;
+            foreach (MeshRenderer r in FindObjectsOfType<MeshRenderer>())
+            {
+                if (!ReferenceEquals(r.sharedMaterial, m))
+                {
+                    continue;
+                }
+
+                total++;
+                if (r.enabled && r.gameObject.activeInHierarchy)
+                {
+                    enabledCount++;
+                }
+
+                if (r.forceRenderingOff)
+                {
+                    forcedOff++;
+                }
+
+                if (cam != null && (cam.cullingMask & (1 << r.gameObject.layer)) == 0)
+                {
+                    wrongLayer++;
+                }
+
+                if (r.bounds.Contains(camPos))
+                {
+                    containing++;
+                }
+
+                if (r.isVisible)
+                {
+                    visible++;
+                }
+            }
+
+            sb.AppendLine("renderers с этим материалом: total=" + total + " enabled=" + enabledCount
+                + " containCamera=" + containing + " forcedOff=" + forcedOff
+                + " wrongLayer=" + wrongLayer + " isVisible=" + visible);
+
+            sb.AppendLine("_UnderwaterCameraDepth = " + Shader.GetGlobalFloat("_UnderwaterCameraDepth"));
+            sb.AppendLine("_UwCamAltitude = " + Shader.GetGlobalFloat("_UwCamAltitude"));
+            Debug.Log(sb.ToString());
+        }
+
+        [ContextMenu("Galilego/Water magenta ON")]
+        private void WaterMagentaOn()
+        {
+            if (waterMaterialCache != null)
+            {
+                waterMaterialCache.SetFloat("_UnderwaterDebugMode", 99f);
+            }
+        }
+
+        [ContextMenu("Galilego/Water magenta OFF")]
+        private void WaterMagentaOff()
+        {
+            if (waterMaterialCache != null)
+            {
+                waterMaterialCache.SetFloat("_UnderwaterDebugMode", 0f);
+            }
+        }
+
+        /// <summary>
+        /// Push water tuning fields into the shared water material.
+        /// Called on creation + every LateUpdate so Inspector edits apply live
+        /// to the already cached material (no chunk rebuild needed).
+        /// </summary>
+        private void ApplyWaterParams()
+        {
+            if (waterMaterialCache == null)
+            {
+                return;
+            }
+
+            // Единый радиальный центр воды (борется со ступенью яркости на
+            // стыках LOD). bodyRenderPosition — готовое поле, свежий когда
+            // чанки видимы; отдельный EvaluateWorldState давал нули при
+            // чужой доминанте и гасил воду в черноту. До гейта доминантности.
+            Shader.SetGlobalVector("_PlanetWaterCenter", bodyRenderPosition);
+
+            // Красивое море: аквамарин во все слоты цвета Unlit
+            // (color + _UnlitColor + _BaseColor), прозрачность для градиента
+            // глубины. Волны WaterSurface неприменимы — штиль.
+            if (UseLitWaterFallback)
+            {
+                waterMaterialCache.color = LitWaterColor;
+                waterMaterialCache.SetColor("_UnlitColor", LitWaterColor);
+                waterMaterialCache.SetColor("_BaseColor", LitWaterColor);
+                return;
+            }
+
+            waterMaterialCache.SetFloat("_WaveStrength", WaterWaveStrength);
+            // Кратность 0.02 нужна для точной периодичности узора по 51 200 м (см. UpdateWaterAnchor).
+            waterMaterialCache.SetFloat("_WaveScale", Mathf.Max(0.02f, Mathf.Round(WaterWaveScale * 50f) / 50f));
+            waterMaterialCache.SetFloat("_WaveAmplitude", WaterAmplitudeMeters);
+            waterMaterialCache.SetFloat("_SparkleStrength", WaterSparkleStrength);
+            waterMaterialCache.SetFloat("_SparkleScale", WaterSparkleScale);
+            waterMaterialCache.SetFloat("_FoamCrestStrength", WaterFoamCrest);
+            waterMaterialCache.SetFloat("_ShadingFadeFloor", WaterShadingFadeFloor);
+            waterMaterialCache.SetFloat("_DetailFadeFloor", WaterDetailFadeFloor);
+            waterMaterialCache.SetFloat("_RippleStrength", WaterRippleStrength);
+            waterMaterialCache.SetFloat("_RippleScale", WaterRippleScale);
+            waterMaterialCache.SetFloat("_RippleSpeed", WaterRippleSpeed);
+            waterMaterialCache.SetFloat("_FoamSlopeGain", WaterFoamSlopeGain);
+            waterMaterialCache.SetFloat("_FoamDepthMeters", Mathf.Max(0.5f, WaterFoamDepthMeters));
+            waterMaterialCache.SetFloat("_ShoreFadeMeters", WaterShoreFadeMeters);
+            waterMaterialCache.SetFloat("_AbsorbShallow", WaterAbsorbShallow);
+            waterMaterialCache.SetFloat("_AbsorbDeep", WaterAbsorbDeep);
+            waterMaterialCache.SetFloat("_ShallowAlpha", WaterShallowAlpha);
+            waterMaterialCache.SetFloat("_MinAlpha", WaterMinAlpha);
+            waterMaterialCache.SetFloat("_ShallowAlphaMeters", WaterShallowAlphaMeters);
+            waterMaterialCache.SetFloat("_SurfStrength", WaterSurfStrength);
+            waterMaterialCache.SetFloat("_SurfSpeed", WaterSurfSpeed);
+            waterMaterialCache.SetFloat("_FresnelStrength", WaterFresnelStrength);
+            waterMaterialCache.SetFloat("_SpecularIntensity", WaterSpecularIntensity);
+            waterMaterialCache.SetFloat("_SpecularPower", Mathf.Max(8f, WaterSpecularPower));
+            ApplyWaterNormalMaps();
+            // Чанки держат sharedMaterial, взятый в момент постройки. Если кэш
+            // пересоздался (ClearChunkCache / смена шейдера), старые чанки смотрят
+            // на мёртвый материал и live-тюнинг их не касается — отсюда «зебра»,
+            // которая не реагирует на инспектор. Лечим переназначением.
+            foreach (KeyValuePair<long, Chunk> kv in chunks)
+            {
+                Chunk chunk = kv.Value;
+                if (chunk.WaterGo == null)
+                {
+                    continue;
+                }
+
+                MeshRenderer renderer = chunk.WaterGo.GetComponent<MeshRenderer>();
+                if (renderer != null && !ReferenceEquals(renderer.sharedMaterial, waterMaterialCache))
+                {
+                    renderer.sharedMaterial = waterMaterialCache;
+                }
+            }
+        }
+
+        private static UnityEngine.Texture2D cachedWaterNormalA;
+        private static UnityEngine.Texture2D cachedWaterNormalB;
+        private static bool waterNormalsLoadAttempted;
+
+        /// <summary>
+        /// Текстурная рябь HOWTO-Water: ручное назначение в инспекторе — в
+        /// приоритете, иначе однократно грузим запечённые из Resources/Water/.
+        /// Нет обеих текстур — шейдер остаётся на процедурных нормалях.
+        /// </summary>
+        private void ApplyWaterNormalMaps()
+        {
+            // Бейкер могли запустить уже после первой попытки (кэш null) —
+            // повторяем загрузку, пока обеих текстур нет.
+            if (!waterNormalsLoadAttempted || cachedWaterNormalA == null || cachedWaterNormalB == null)
+            {
+                waterNormalsLoadAttempted = true;
+                if (cachedWaterNormalA == null)
+                {
+                    cachedWaterNormalA = UnityEngine.Resources.Load<UnityEngine.Texture2D>("Water/water_normal_a");
+                }
+
+                if (cachedWaterNormalB == null)
+                {
+                    cachedWaterNormalB = UnityEngine.Resources.Load<UnityEngine.Texture2D>("Water/water_normal_b");
+                }
+            }
+
+            UnityEngine.Texture2D normalA = WaterNormalA != null ? WaterNormalA : cachedWaterNormalA;
+            UnityEngine.Texture2D normalB = WaterNormalB != null ? WaterNormalB : cachedWaterNormalB;
+            if (normalA != null)
+            {
+                waterMaterialCache.SetTexture("_NormalMap0", normalA);
+            }
+
+            if (normalB != null)
+            {
+                waterMaterialCache.SetTexture("_NormalMap1", normalB);
+            }
+
+            bool useMaps = normalA != null && normalB != null && WaterNormalStrength > 0f;
+            waterMaterialCache.SetFloat("_UseNormalMap", useMaps ? 1f : 0f);
+            waterMaterialCache.SetFloat("_NormalStrength", WaterNormalStrength);
+        }
+
+        /// <summary>
+        /// Living sea without shaders: near water meshes ride a slow travelling
+        /// swell (rigid per-chunk offset along the local radial, sampled from a
+        /// shared world-space wave function so neighbours stay continuous).
+        /// Visible as waterline lapping on the beach + gentle breathing offshore.
+        /// Far water stays flat (perf). Runs every LateUpdate after chunk transforms.
+        /// </summary>
+        private void UpdateWaterBob(Vector3 cameraPosition)
+        {
+            if (WaterBobAmplitude <= 0f || WaterBobLength <= 0f)
+            {
+                return;
+            }
+
+            float t = Time.time * WaterBobSpeed;
+            float k = (Mathf.PI * 2f) / WaterBobLength;
+            float radiusSqr = WaterBobRadius * WaterBobRadius;
+            // Fixed diagonal swell direction (world XZ): cheap, stable, no params.
+            const float dirX = 0.8f;
+            const float dirZ = 0.6f;
+            foreach (KeyValuePair<long, Chunk> kv in chunks)
+            {
+                Chunk chunk = kv.Value;
+                if (!chunk.Visible || chunk.WaterGo == null)
+                {
+                    continue;
+                }
+
+                Vector3 center = chunk.Go.transform.position;
+                Vector3 toChunk = center - cameraPosition;
+                if (toChunk.sqrMagnitude > radiusSqr)
+                {
+                    continue;
+                }
+
+                float phase = (center.x * dirX + center.z * dirZ) * k - t;
+                Vector3 radial = center - bodyRenderPosition;
+                float radialLen = radial.magnitude;
+                if (radialLen < 1e-3f)
+                {
+                    continue;
+                }
+
+                float bob = Mathf.Sin(phase) * WaterBobAmplitude;
+                chunk.WaterGo.transform.position = center + (radial / radialLen) * bob;
+            }
         }
 
         /// <summary>
@@ -1339,7 +3864,9 @@ namespace Galilego.Universe
             DecorLayerRuntime previous = null;
             for (int i = 0; i < chunk.Decor.Count; i++)
             {
-                if (chunk.Decor[i].LayerIndex == layerIndex)
+                // Уходящий под землю пул не «предыдущий» — его нельзя переносить
+                // в новую сборку (иначе под землёй вырастет копия пула).
+                if (chunk.Decor[i].LayerIndex == layerIndex && !chunk.Decor[i].Retiring)
                 {
                     previous = chunk.Decor[i];
                     break;
@@ -1351,7 +3878,13 @@ namespace Galilego.Universe
             // РѕС‚Р»РёС‡Р°РµС‚СЃСЏ РЅР° РґРµСЃСЏС‚РєРё СЃР°РЅС‚РёРјРµС‚СЂРѕРІ, РёР·-Р·Р° С‡РµРіРѕ С‚СЂР°РІР° РІРёСЃРµР»Р° Рё
             // С‚РѕРЅСѓР»Р° РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅРѕ РІРёРґРёРјРѕР№ Р·РµРјР»Рё. Р”Р»СЏ С‚СЂР°РІС‹ (Burst-РїСѓС‚СЊ) вЂ”
             // РЅР°С‚РёРІРЅР°СЏ РєРѕРїРёСЏ Р±РµР· managed-Р°Р»Р»РѕРєР°С†РёРё.
-            int coreN = System.Math.Max(2, TileResolution) + 1;
+            // Строка сетки меша ДОЛЖНА совпадать с тем, чем реально построен
+            // чанк: BuildChunk берёт ResolutionForDepth(node.Depth), а не
+            // TileResolution. При огрублении дальних уровней (MinTileResolution
+            // / ResolutionHalveEveryLevels) здесь осталось бы старое 65+1 —
+            // тогда индексы в MeshSurfacePoint уехали бы за конец буфера и
+            // декарь села бы мимо рельефа.
+            int coreN = ResolutionForDepth(chunk.Node.Depth) + 1;
             NativeArray<Vector3> meshVerticesNative = default;
             Vector3[] meshVertices = null;
             if (layer.PerInstanceDensity)
@@ -1569,7 +4102,18 @@ namespace Galilego.Universe
 
         /// <summary>РЁР°Рі РІСЃРµС… Р°РєС‚РёРІРЅС‹С… СЃР±РѕСЂРѕРє РІ СЂР°РјРєР°С… Р±СЋРґР¶РµС‚Р° РєР°РґСЂР°. РЎРµСЃСЃРёРё
         /// РёРґСѓС‚ РїРѕ РєСЂСѓРіСѓ, РїРѕРєР° РµСЃС‚СЊ РїСЂРѕРіСЂРµСЃСЃ Рё РЅРµ РёСЃС‡РµСЂРїР°РЅ Р±СЋРґР¶РµС‚.</summary>
+        /// <summary>Обёртка ради маркера: у сессий есть свой бюджет
+        /// DecorBuildBudgetMs, но он общий на все сессии сразу, и сколько из
+        /// этих миллисекунд реально ушло в кадр, видно только здесь.</summary>
         private void StepDecorBuilds()
+        {
+            using (SurfacePerf.StepDecorBuildsMarker.Auto())
+            {
+                StepDecorBuildsCore();
+            }
+        }
+
+        private void StepDecorBuildsCore()
         {
             if (decorBuildSessions.Count == 0)
             {
@@ -2568,6 +5112,20 @@ namespace Galilego.Universe
 
             session.Stored = default;
 
+            // Травинки, выпавшие из новой выборки, не выбрасываются: их хвостом
+            // дописываем в конец нового пула с DeathTime, и матричная джоба
+            // гасит их масштабом (уходят под землю). Без этого кромка поля
+            // исчезала кадр в кадр — игрок видел, как трава пропадает, особенно
+            // сзади. Перенесённые джобой MergeKept инстансы не трогаем: они
+            // остаются и в новой выборке, и в хвосте (матрица одна и та же).
+            int aliveCount = write;
+            float retireDeadline = 0f;
+            float sinkFadeSeconds = DecorFadeSeconds(DecorBladeSinkSeconds);
+            if (layer.PerInstanceDensity && write > 0)
+            {
+                retireDeadline = AppendRetiringInstances(session, ref stored, ref write, sinkFadeSeconds);
+            }
+
             // РќР°С…РѕРґРёРј РїСЂРµР¶РЅРёР№ СЃР»РѕР№ СЌС‚РѕР№ Р»РёС‡РЅРѕСЃС‚Рё (РµСЃР»Рё СЌС‚Рѕ РїРµСЂРµСЃР±РѕСЂРєР°):
             // Р·Р°РјРµРЅСЏРµРј РіРѕС‚РѕРІС‹Рј, Р° РїСЂРё РїСѓСЃС‚РѕРј СЂРµР·СѓР»СЊС‚Р°С‚Рµ вЂ” СѓР±РёСЂР°РµРј, РёРЅР°С‡Рµ
             // СЃС‚Р°СЂС‹Р№ СЃР»РѕР№ РѕСЃС‚Р°Р»СЃСЏ Р±С‹ В«СѓСЃС‚Р°СЂРµРІС€РёРјВ» РЅР°РІСЃРµРіРґР° Рё РїРµСЂРµСЃРѕР±РёСЂР°Р»СЃСЏ
@@ -2575,7 +5133,8 @@ namespace Galilego.Universe
             int existingIndex = -1;
             for (int i = 0; i < session.Chunk.Decor.Count; i++)
             {
-                if (session.Chunk.Decor[i].LayerIndex == session.LayerIndex)
+                if (session.Chunk.Decor[i].LayerIndex == session.LayerIndex
+                    && !session.Chunk.Decor[i].Retiring)
                 {
                     existingIndex = i;
                     break;
@@ -2594,12 +5153,15 @@ namespace Galilego.Universe
                     // Трава рисуется Burst-матрицами (WorldMatrices), managed
                     // Matrices ей не нужен: раньше на каждую пересборку
                     // аллоцировался массив до 6.4 МБ в мусор.
-                    Matrices = layer.PerInstanceDensity ? null : new Matrix4x4[write]
+                    Matrices = layer.PerInstanceDensity ? null : new Matrix4x4[write],
+                    SinkFadeSeconds = sinkFadeSeconds
                 };
 
                 if (layer.PerInstanceDensity)
                 {
                     runtime.WorldMatrices = DecorArrayPool.Rent<Matrix4x4>(write);
+                    runtime.AliveCount = aliveCount;
+                    runtime.RetireDeadline = retireDeadline;
                     // Таблица раскладки пула по клеткам переходит рантайму:
                     // по ней следующая пересборка перенесёт уже выросшие травинки.
                     runtime.CellOffsets = session.WriteOffsets;
@@ -2610,8 +5172,20 @@ namespace Galilego.Universe
 
                 if (existingIndex >= 0)
                 {
-                    DisposeDecorLayerRuntime(session.Chunk.Decor[existingIndex]);
-                    session.Chunk.Decor[existingIndex] = runtime;
+                    // Старый пул не удаляем, а отдаём под землю (у слоёв без
+                    // PerInstanceDensity инстансов много и они не «помечены»
+                    // поштучно, как трава: гаснет пул целиком). Для травы хвост
+                    // уже собран в новом пуле, старый можно освободить сразу.
+                    if (layer.PerInstanceDensity)
+                    {
+                        DisposeDecorLayerRuntime(session.Chunk.Decor[existingIndex]);
+                        session.Chunk.Decor[existingIndex] = runtime;
+                    }
+                    else
+                    {
+                        RetireDecorLayerRuntime(session.Chunk.Decor[existingIndex]);
+                        session.Chunk.Decor.Add(runtime);
+                    }
                 }
                 else
                 {
@@ -2620,8 +5194,10 @@ namespace Galilego.Universe
             }
             else if (existingIndex >= 0)
             {
-                DisposeDecorLayerRuntime(session.Chunk.Decor[existingIndex]);
-                session.Chunk.Decor.RemoveAt(existingIndex);
+                // Новая сборка пуста (игрок ушёл на скалы/песок): старый пул не
+                // удаляем, а отдаём под землю — иначе деревья на краю зоны
+                // исчезали бы одним кадром. Уберёт его RetireFinishedDecor.
+                RetireDecorLayerRuntime(session.Chunk.Decor[existingIndex]);
             }
 
             session.Chunk.DecorBuiltMask |= 1 << session.LayerIndex;
@@ -2651,15 +5227,42 @@ namespace Galilego.Universe
         /// РєРѕРіРґР° РІРїРµСЂРІС‹Рµ РІС…РѕРґРёС‚ РІ РµРіРѕ MaxDistance+SpawnMargin. Р—Р° РїРѕСЃС‚Р°РЅРѕРІРєСѓ
         /// РѕС‚РІРµС‡Р°РµС‚ СЌС‚РѕС‚ РїРѕРёСЃРє (Р±Р»РёР¶РЅРёРµ РїРµСЂРІС‹РјРё), СЃР°РјР° СЃР±РѕСЂРєР° РёРґС‘С‚ РїРѕСЂС†РёСЏРјРё РїРѕ
         /// Р±СЋРґР¶РµС‚Сѓ РєР°РґСЂР° (TryQueueDecorBuild/StepDecorBuilds) вЂ” Р±РµР· С„СЂРёР·РѕРІ.</summary>
+        /// <summary>Обёртка ради маркера: два прохода «по всем чанкам × всем
+        /// слоям» на каждый запуск, а запускается он почти каждый кадр.</summary>
         private void EnsureVisibleDecor(Vector3 cameraPosition)
+        {
+            using (SurfacePerf.EnsureVisibleDecorMarker.Auto())
+            {
+                EnsureVisibleDecorCore(cameraPosition);
+            }
+        }
+
+        private void EnsureVisibleDecorCore(Vector3 cameraPosition)
         {
             if (decorProfile == null || decorProfile.Layers == null || decorProfile.Layers.Count == 0)
             {
                 return;
             }
 
+            // [ФАЗА 1] Высоко или быстро новые пулы не заводим. TrimDistantDecor
+            // при этом продолжает работать: иначе на большой высоте мы бы ещё и
+            // копили память под декор, который уже не виден.
+            if (DecorBuildsSuspended())
+            {
+                return;
+            }
+
             int budget = DecorBuildsPerFrame;
             if (budget <= 0)
+            {
+                return;
+            }
+
+            // [ФАЗА 4] Предыдущий полный обход не нашёл ничего строить. Пока
+            // не истёк пауза, повторный обход заведомо ничего не даст: набор
+            // чанков и видимость за 0.2 с не меняются настолько, чтобы это
+            // стоило ещё одного полного прохода.
+            if (Time.unscaledTime < decorScanBlockedUntil)
             {
                 return;
             }
@@ -2696,7 +5299,7 @@ namespace Galilego.Universe
                         }
 
                         long chunkId = NodeId(chunk.Node);
-                        float distance = ChunkTangentialDistance(chunk, cameraPosition, cameraUp);
+                        float distance = ChunkDecorDistance3D(chunk, cameraPosition, cameraUp);
                         for (int layerIndex = 0; layerIndex < decorProfile.Layers.Count; layerIndex++)
                         {
                             if ((chunk.DecorBuiltMask & (1 << layerIndex)) != 0)
@@ -2741,6 +5344,12 @@ namespace Galilego.Universe
 
                 if (bestChunk == null)
                 {
+                    // [ФАЗА 4] Ничего не нашли — запоминаем, чтобы не гонять
+                    // полный обход каждый кадр вхолостую. Раньше именно здесь
+                    // стоял голый return, и этот путь был самым дорогим в
+                    // кадре: 1.8 мс на пустой работе.
+                    decorScanBlockedUntil = Time.unscaledTime
+                        + Mathf.Max(0.02f, DecorRescanCooldownSeconds);
                     return;
                 }
 
@@ -2762,6 +5371,43 @@ namespace Galilego.Universe
             Vector3 toChunk = chunk.Go.transform.position - cameraPosition;
             Vector3 tangential = toChunk - (Vector3.Dot(toChunk, cameraUp) * cameraUp);
             return Mathf.Max(0f, tangential.magnitude - chunk.BoundsRadius);
+        }
+
+        /// <summary>
+        /// Дистанция до чанка с учётом высоты наблюдателя.
+        ///
+        /// Раньше дистанция считалась ТОЛЬКО по касательной: вертикальная
+        /// составляющая выбрасывалась как «не влияет на вид». Для горизонтального
+        /// обзора у земли это правильно, но на высоте 2 км тот же чанок прямо под
+        /// ногами имеет касательную дистанцию 0 и поэтому рисуется в полную
+        /// силу, хотя сверху он занимает несколько пикселей.
+        ///
+        /// Считаем по гипотенузе: sqrt(касательная² + высота²). Плавность на
+        /// границе не теряется — переход делается не этим отсечением, а
+        /// edgeFade по краю слоя (см. ChunkDecorEdgeFade).
+        /// </summary>
+        private float ChunkDecorDistance3D(Chunk chunk, Vector3 cameraPosition, Vector3 cameraUp)
+        {
+            float tangential = ChunkTangentialDistance(chunk, cameraPosition, cameraUp);
+            float height = decorAltitude;
+            return Mathf.Sqrt((tangential * tangential) + (height * height));
+        }
+
+        /// <summary>
+        /// Мягкое затухание у края радиуса слоя. Возвращает 1 внутри и 0 за
+        /// границей, с полосой шириной 20 % радиуса. Нужно, потому что переход
+        /// с жёсткого отсечения на «видно всё подряд» одним кадром читался бы
+        /// как щелчок: под набором высоты декор должен гаснуть, а не исчезать.
+        /// </summary>
+        private static float ChunkDecorEdgeFade(float distance3D, float maxDistanceMeters)
+        {
+            if (maxDistanceMeters <= 0f)
+            {
+                return 0f;
+            }
+
+            float band = 0.2f * maxDistanceMeters;
+            return Mathf.Clamp01((maxDistanceMeters - distance3D) / band);
         }
 
         /// <summary>РњРёСЂРѕРІС‹Рµ РіСЂР°РЅРёС†С‹ РґРµРєРѕСЂР° С‡Р°РЅРєР°: AABB Р Р•РќР”Р•Р -РјРµС€Р° (СЃ Р·Р°РїР°СЃРѕРј
@@ -2803,9 +5449,28 @@ namespace Galilego.Universe
         /// Р°СЃРёРЅС…СЂРѕРЅРЅР°СЏ: СЃС‚Р°СЂС‹Р№ СЃР»РѕР№ СЂРёСЃСѓРµС‚СЃСЏ РґРѕ РіРѕС‚РѕРІРЅРѕСЃС‚Рё РЅРѕРІРѕРіРѕ, РєР°РґСЂ РЅРµ
         /// Р±Р»РѕРєРёСЂСѓРµС‚СЃСЏ. Р‘С‹СЃС‚СЂС‹Р№ РїРѕР»С‘С‚ РЅРµ РїРµСЂРµСЃРѕР±РёСЂР°РµС‚: С‚Р°Рј С‡Р°РЅРєРё Рё С‚Р°Рє РЅРѕРІС‹Рµ.
         /// </summary>
+        /// <summary>Обёртка ради маркера: пересборка пулов декора по «устаревшим»
+        /// чанкам — на большой скорости проход запускается каждый кадр.</summary>
         private void RefreshMovingDecor(Vector3 cameraPosition)
         {
+            using (SurfacePerf.RefreshMovingDecorMarker.Auto())
+            {
+                RefreshMovingDecorCore(cameraPosition);
+            }
+        }
+
+        private void RefreshMovingDecorCore(Vector3 cameraPosition)
+        {
             if (decorProfile == null || decorProfile.Layers == null)
+            {
+                return;
+            }
+
+            // [ФАЗА 1] Пересборка пулов — самая дорогая операция декора. На
+            // скорости поле уезжает из-под построенного пула быстрее, чем он
+            // может быть пересобран, и каждый кадр уходил бы в полную
+            // пересборку без видимого результата.
+            if (DecorBuildsSuspended())
             {
                 return;
             }
@@ -2837,7 +5502,7 @@ namespace Galilego.Universe
                 }
 
                 long chunkId = NodeId(chunk.Node);
-                float chunkDistance = ChunkTangentialDistance(chunk, cameraPosition, cameraUp);
+                float chunkDistance = ChunkDecorDistance3D(chunk, cameraPosition, cameraUp);
                 Vector3 currentCameraLocal = Vector3.zero;
                 bool hasCameraLocal = false;
                 Vector3 localUp = Vector3.zero;
@@ -2866,7 +5531,7 @@ namespace Galilego.Universe
                     DecorLayerRuntime runtime = null;
                     for (int i = 0; i < chunk.Decor.Count; i++)
                     {
-                        if (chunk.Decor[i].LayerIndex == layerIndex)
+                        if (chunk.Decor[i].LayerIndex == layerIndex && !chunk.Decor[i].Retiring)
                         {
                             runtime = chunk.Decor[i];
                             break;
@@ -2944,7 +5609,18 @@ namespace Galilego.Universe
         /// РїСЂРѕР№РґРµРЅРЅС‹Рµ С‡Р°РЅРєРё РєРѕРїСЏС‚ РїРѕР»РЅС‹Рµ РїСѓР»С‹ (РїРѕ РєР°РїСѓ РЅР° С‡Р°РЅРє), Р±СЋРґР¶РµС‚
         /// РёРЅСЃС‚Р°РЅСЃРѕРІ СѓС…РѕРґРёС‚ РѕС‚ РёРіСЂРѕРєР° Рё РІРёРґРёРјР°СЏ Р·РѕРЅР° РїСѓСЃС‚РµРµС‚. Р’РѕР·РІСЂР°С‚ РёРіСЂРѕРєР°
         /// РїРµСЂРµСЃРѕР±РµСЂС‘С‚ СЃР»РѕР№ Р·Р°РЅРѕРІРѕ (РјР°СЃРєР° СЃРЅРёРјР°РµС‚СЃСЏ).</summary>
+        /// <summary>Обёртка ради маркера: освобождение памяти декора должно
+        /// продолжаться и тогда, когда новые сборки уже остановлены по высоте
+        /// или скорости, поэтому этот проход глушить нельзя.</summary>
         private void TrimDistantDecor(Vector3 cameraPosition)
+        {
+            using (SurfacePerf.TrimDistantDecorMarker.Auto())
+            {
+                TrimDistantDecorCore(cameraPosition);
+            }
+        }
+
+        private void TrimDistantDecorCore(Vector3 cameraPosition)
         {
             if (decorProfile == null || decorProfile.Layers == null)
             {
@@ -3000,8 +5676,19 @@ namespace Galilego.Universe
                     {
                         if (chunk.Decor[i].LayerIndex == layerIndex)
                         {
-                            DisposeDecorLayerRuntime(chunk.Decor[i]);
-                            chunk.Decor.RemoveAt(i);
+                            // Трава: пул уже весь в хвосте/за радиусом, убираем
+                            // сразу. Остальные слои (деревья и пр.) — под землю,
+                            // чтобы не было мгновенной пропажи на кромке.
+                            if (chunk.Decor[i].Retiring
+                                || decorProfile.Layers[layerIndex].PerInstanceDensity)
+                            {
+                                DisposeDecorLayerRuntime(chunk.Decor[i]);
+                                chunk.Decor.RemoveAt(i);
+                            }
+                            else
+                            {
+                                RetireDecorLayerRuntime(chunk.Decor[i]);
+                            }
                         }
                     }
 
@@ -3012,6 +5699,230 @@ namespace Galilego.Universe
 
         /// <summary>Р›РѕРєР°Р»СЊРЅР°СЏ (С‡Р°РЅРєСѓ) РјР°С‚СЂРёС†Р° РёРЅСЃС‚Р°РЅСЃР°: РїРѕР·РёС†РёСЏ/РЅРѕСЂРјР°Р»СЊ/yaw/
         /// РЅР°РєР»РѕРЅ/РјР°СЃС€С‚Р°Р±. РќРµ Р·Р°РІРёСЃРёС‚ РѕС‚ РєР°РјРµСЂС‹ вЂ” СЃС‡РёС‚Р°РµС‚СЃСЏ РѕРґРёРЅ СЂР°Р· РїСЂРё СЃР±РѕСЂРєРµ.</summary>
+        /// <summary>
+        /// Дописывает в конец нового пула те инстансы СТАРОГО пула, которых в
+        /// новой выборке уже нет, и проставляет им DeathTime: они ещё рисуются,
+        /// но гаснут масштабом и заходят под землю (см. GroundDecorMatrixJob).
+        /// Без этого выпавшие травинки исчезали мгновенно — кромка поля дёргалась
+        /// на каждой пересборке пула (каждые ~18 м пройденного пути), и игрок
+        /// видел, как трава пропадает рядом с ним, особенно сзади.
+        ///
+        /// Раскладка пула по клеткам у обоих пулов одинаковая (та же сетка и тот
+        /// же SubPerCell), поэтому «осталось в новой выборке» = первые
+        /// min(prev, new) подтуфтов клетки — ровно то, что переносит
+        /// GroundDecorMergeKeptJob. Значит выпавшие = хвост каждой клетки плюс
+        /// клетки, которым в новом бюджете не досталось ни одного слота.
+        ///
+        /// Возвращает момент, когда хвост погаснет (0 = хвоста нет).
+        /// </summary>
+        private static float AppendRetiringInstances(
+            DecorBuildSession session, ref NativeArray<GroundDecorInstance> stored, ref int write,
+            float sinkFadeSeconds)
+        {
+            DecorLayerRuntime previous = session.Previous;
+            if (previous == null || !previous.Instances.IsCreated
+                || !previous.CellOffsets.IsCreated || !previous.CellCounts.IsCreated)
+            {
+                return 0f;
+            }
+
+            NativeArray<GroundDecorInstance> prev = previous.Instances;
+            NativeArray<int> prevOffsets = previous.CellOffsets;
+            NativeArray<int> prevCounts = previous.CellCounts;
+            NativeArray<int> newCounts = session.WriteCounts;
+            if (!newCounts.IsCreated)
+            {
+                return 0f;
+            }
+
+            int cells = System.Math.Min(prevCounts.Length, newCounts.Length);
+            int dropped = 0;
+            for (int i = 0; i < cells; i++)
+            {
+                int prevCount = prevCounts[i];
+                if (prevCount <= 0)
+                {
+                    continue;
+                }
+
+                int offset = prevOffsets[i];
+                if (offset == int.MaxValue)
+                {
+                    continue;
+                }
+
+                int newCount = newCounts[i];
+                int keep = newCount < prevCount ? newCount : prevCount;
+                for (int s = keep; s < prevCount; s++)
+                {
+                    int from = offset + s;
+                    if (from >= 0 && from < prev.Length && prev[from].Scale > 0f)
+                    {
+                        dropped++;
+                    }
+                }
+            }
+
+            if (dropped <= 0)
+            {
+                return 0f;
+            }
+
+            // Уже гаснущий хвост ПРОШЛОГО пула переносим вперёд: без этого
+            // полугаснущая травинка исчезала бы скачком на следующей же
+            // пересборке (хвост просто уничтожался вместе со старым пулом).
+            // Совсем погасшие (DeathTime + длительность < now) не тащим.
+            int carried = 0;
+            int prevAlive = previous.AliveCount;
+            for (int i = prevAlive; i < prev.Length; i++)
+            {
+                GroundDecorInstance dying = prev[i];
+                if (dying.Scale > 0f && dying.DeathTime > 0f
+                    && dying.DeathTime + sinkFadeSeconds > Time.time)
+                {
+                    carried++;
+                }
+            }
+
+            // Новый буфер: живая часть + уходящий хвост (обе половины — из пула).
+            int total = write + dropped + carried;
+            NativeArray<GroundDecorInstance> grown = DecorArrayPool.Rent<GroundDecorInstance>(total);
+            if (write > 0)
+            {
+                NativeArray<GroundDecorInstance>.Copy(stored, grown, write);
+            }
+
+            DecorArrayPool.Return(ref stored);
+            stored = grown;
+
+            float now = Time.time;
+            float latest = 0f;
+            int dst = write;
+            for (int i = 0; i < cells; i++)
+            {
+                int prevCount = prevCounts[i];
+                if (prevCount <= 0)
+                {
+                    continue;
+                }
+
+                int offset = prevOffsets[i];
+                if (offset == int.MaxValue)
+                {
+                    continue;
+                }
+
+                int newCount = newCounts[i];
+                int keep = newCount < prevCount ? newCount : prevCount;
+                for (int s = keep; s < prevCount; s++)
+                {
+                    int from = offset + s;
+                    if (from < 0 || from >= prev.Length)
+                    {
+                        continue;
+                    }
+
+                    GroundDecorInstance dying = prev[from];
+                    if (dying.Scale <= 0f)
+                    {
+                        continue;
+                    }
+
+                    // Разброс по хешу слота: уходящие гаснут не одной волной.
+                    dying.DeathTime = now + (DecorBladeSinkStaggerSeconds > 0f
+                        ? (float)(GroundDecorDistribution.Hash01(from, session.LayerIndex, i, session.Node.Ix, 46)
+                            * DecorBladeSinkStaggerSeconds)
+                        : 0f);
+                    latest = System.Math.Max(latest, dying.DeathTime);
+                    stored[dst++] = dying;
+                }
+            }
+
+            // Дописываем гаснущий хвост прошлого пула с его прежним DeathTime:
+            // травинка продолжает уходить, а не начинает заново и не щёлкает.
+            for (int i = prevAlive; i < prev.Length; i++)
+            {
+                GroundDecorInstance dying = prev[i];
+                if (dying.Scale <= 0f || dying.DeathTime <= 0f
+                    || dying.DeathTime + sinkFadeSeconds <= now)
+                {
+                    continue;
+                }
+
+                latest = System.Math.Max(latest, dying.DeathTime);
+                stored[dst++] = dying;
+            }
+
+            write = dst;
+            return latest + sinkFadeSeconds;
+        }
+
+        /// <summary>
+        /// Отрезает погасший хвост пула (RetireDeadline прошёл): Instances и
+        /// WorldMatrices укорачиваются до AliveCount. Вызывается из отрисовки —
+        /// единственного потребителя этих массивов.
+        /// </summary>
+        private static void CompactRetiredDecor(DecorLayerRuntime runtime)
+        {
+            int alive = runtime.AliveCount;
+            if (alive <= 0 || alive >= runtime.Instances.Length)
+            {
+                runtime.RetireDeadline = 0f;
+                return;
+            }
+
+            NativeArray<GroundDecorInstance> instances = DecorArrayPool.Rent<GroundDecorInstance>(alive);
+            NativeArray<GroundDecorInstance>.Copy(runtime.Instances, instances, alive);
+            DecorArrayPool.Return(ref runtime.Instances);
+            runtime.Instances = instances;
+
+            if (runtime.WorldMatrices.IsCreated)
+            {
+                NativeArray<Matrix4x4> matrices = DecorArrayPool.Rent<Matrix4x4>(alive);
+                NativeArray<Matrix4x4>.Copy(runtime.WorldMatrices, matrices, alive);
+                DecorArrayPool.Return(ref runtime.WorldMatrices);
+                runtime.WorldMatrices = matrices;
+            }
+
+            runtime.AliveCount = 0;
+            runtime.RetireDeadline = 0f;
+        }
+
+        /// <summary>
+        /// Освобождает пулы, которые ушли под землю (Retiring) и догасли.
+        /// Вызывается из DrawDecor до отрисовки: там же единственный
+        /// потребитель их массивов. Идёт по всем чанкам, а не только по
+        /// видимым: ушедший пул мог остаться в невидимом чанке.
+        /// </summary>
+        private void RetireFinishedDecor()
+        {
+            foreach (KeyValuePair<long, Chunk> kv in chunks)
+            {
+                Chunk chunk = kv.Value;
+                if (chunk.Decor.Count == 0)
+                {
+                    continue;
+                }
+
+                for (int i = chunk.Decor.Count - 1; i >= 0; i--)
+                {
+                    DecorLayerRuntime runtime = chunk.Decor[i];
+                    if (!runtime.Retiring)
+                    {
+                        continue;
+                    }
+
+                    if (Time.time < runtime.RetireStart + runtime.RetireFadeSeconds)
+                    {
+                        continue;
+                    }
+
+                    DisposeDecorLayerRuntime(runtime);
+                    chunk.Decor.RemoveAt(i);
+                }
+            }
+        }
+
         /// <summary>Множитель прорастания пропа по его BirthTime: 0 сразу после
         /// появления, 1 — вырос. Ничего не делает для старых сборок (BirthTime 0).</summary>
         private static float DecorBirthFade(GroundDecorInstance instance, float fadeSeconds)
@@ -3022,6 +5933,33 @@ namespace Galilego.Universe
             }
 
             return Mathf.Clamp01((Time.time - instance.BirthTime) / fadeSeconds);
+        }
+
+        /// <summary>Множитель ухода пула под землю: 1 — ещё стоит, 0 — ушёл.
+        /// Зеркало DecorBirthFade, но для слоя целиком (деревья и прочие пробы).</summary>
+        private static float DecorRetireFade(DecorLayerRuntime runtime)
+        {
+            if (runtime == null || !runtime.Retiring || runtime.RetireFadeSeconds <= 0f)
+            {
+                return 1f;
+            }
+
+            return Mathf.Clamp01((runtime.RetireStart + runtime.RetireFadeSeconds - Time.time)
+                / runtime.RetireFadeSeconds);
+        }
+
+        /// <summary>Помечает пул уходящим под землю вместо мгновенного удаления.
+        /// Его освободит RetireFinishedDecor (см. DrawDecor).</summary>
+        private static void RetireDecorLayerRuntime(DecorLayerRuntime runtime)
+        {
+            if (runtime == null || runtime.Retiring)
+            {
+                return;
+            }
+
+            runtime.Retiring = true;
+            runtime.RetireStart = Time.time;
+            runtime.RetireFadeSeconds = DecorFadeSeconds(DecorPropSinkSeconds);
         }
 
         private static Matrix4x4 DecorLocalMatrix(GroundDecorInstance instance, GroundDecorLayer layer, Vector3 up)
@@ -3089,12 +6027,27 @@ namespace Galilego.Universe
         /// Р±РёР»Р»Р±РѕСЂРґ РґРѕ MaxDistance. РњР°С‚СЂРёС†С‹ вЂ” РјРёСЂРѕРІРѕР№ С‚СЂР°РЅСЃС„РѕСЂРј С‡Р°РЅРєР° Г—
         /// Р»РѕРєР°Р»СЊРЅС‹Р№ TRS РёРЅСЃС‚Р°РЅСЃР° (РїРµСЂРµСЃС‡С‘С‚ РєР°Р¶РґС‹Р№ РєР°РґСЂ: floating origin/СЃРїРёРЅ).
         /// </summary>
+        /// <summary>Обёртка ради маркера: для слоёв без PerInstanceDensity
+        /// (деревья/камни/кактусы) матрицы пересобираются каждый кадр, и это
+        /// самая дорогая часть декора на большой высоте и скорости.</summary>
         private void DrawDecor(Vector3 cameraPosition)
+        {
+            using (SurfacePerf.DrawDecorMarker.Auto())
+            {
+                DrawDecorCore(cameraPosition);
+            }
+        }
+
+        private void DrawDecorCore(Vector3 cameraPosition)
         {
             if (decorProfile == null)
             {
                 return;
             }
+
+            // Освобождаем пулы, догасшие после ухода под землю (деревья/камни/
+            // кактусы при пересборке и уходе чанка за радиус).
+            RetireFinishedDecor();
 
             // РЎС‚СЂР°С…РѕРІРєР°: РµСЃР»Рё РїСЂРѕС€Р»С‹Р№ РєР°РґСЂ Р·Р°РІРµСЂС€РёР»СЃСЏ РёСЃРєР»СЋС‡РµРЅРёРµРј РґРѕ Flush,
             // РґРѕРІРѕРґРёРј Р·Р°РїР»Р°РЅРёСЂРѕРІР°РЅРЅС‹Рµ РґР¶РѕР±С‹, РёРЅР°С‡Рµ РЅРѕРІС‹Рµ РїРёСЃР°Р»Рё Р±С‹ РІ С‚Рµ Р¶Рµ
@@ -3144,7 +6097,7 @@ namespace Galilego.Universe
                 }
 
                 Matrix4x4 chunkMatrix = chunk.Go.transform.localToWorldMatrix;
-                float distance = ChunkTangentialDistance(chunk, cameraPosition, cameraUp);
+                float distance = ChunkDecorDistance3D(chunk, cameraPosition, cameraUp);
                 // Р“СЂР°РЅРёС†С‹ вЂ” РїРѕ С„Р°РєС‚РёС‡РµСЃРєРѕРјСѓ СЂРµР»СЊРµС„Сѓ (|M|В·extents, Р·Р°РїР°СЃ РЅР°
                 // С‚СЂР°РІСѓ): Рё РґР»СЏ С„СЂСѓСЃС‚СѓРј-С‚РµСЃС‚Р°, Рё РґР»СЏ РєСѓР»Р»РёРЅРіР° Р±Р°С‚С‡РµР№
                 // RenderMeshInstanced (С‚Р°Рј СЂР°РЅСЊС€Рµ Р±С‹Р» Р±РѕРєСЃ РІРѕРєСЂСѓРі РїРѕР·РёС†РёРё С‡Р°РЅРєР°
@@ -3163,6 +6116,31 @@ namespace Galilego.Universe
                     if (distance > layer.MaxDistanceMeters || runtime.Instances.Length == 0)
                     {
                         continue;
+                    }
+
+                    // [ФАЗА 1] Мягкое затухание у края радиуса слоя. Без него
+                    // переход «набрал высоту — декор погас» читался бы щелчком на
+                    // всю картинку, а исходная (касательная) метрика специально
+                    // была выбрана ради мягкого набора высоты — значит и убрать
+                    // её надо мягко, а не порогом.
+                    float edgeFade = ChunkDecorEdgeFade(distance, layer.MaxDistanceMeters);
+                    if (edgeFade <= 0f)
+                    {
+                        continue;
+                    }
+
+                    // [ФАЗА 0] Объём декора, реально уходящий в отрисовку: без
+                    // этих чисел на большой высоте нельзя отличить «много чанков»
+                    // от «много инстансов в каждом».
+                    SurfacePerf.DecorPools++;
+                    SurfacePerf.DecorInstances += runtime.Instances.Length;
+
+                    // Погасший хвост пула (трава, выпавшая из новой выборки при
+                    // пересборке) убираем из массивов: с этого кадра рисуются
+                    // только живые инстансы.
+                    if (runtime.RetireDeadline > 0f && Time.time >= runtime.RetireDeadline)
+                    {
+                        CompactRetiredDecor(runtime);
                     }
 
                     if (!chunkInFrustum && !layer.CastShadows)
@@ -3207,9 +6185,14 @@ namespace Galilego.Universe
 
                         // Тень слоя в shadow map: трава — только в радиусе
                         // (ShadowCastDistanceMeters), деревья/камни/кактусы — целиком.
-                        ShadowCastingMode decorShadow = layer.CastShadows
-                            ? ShadowCastingMode.On
-                            : ShadowCastingMode.Off;
+                        // [ФАЗА 1] И только у самой земли: на высоте пятно от
+                        // дерева не читается, а проход отсечения в тени — реальный.
+                        ShadowCastingMode decorShadow = DecorShadowMode(layer);
+
+                        // Уходящий пул гаснет целиком: иначе деревья исчезали
+                        // кадр в кадр при пересборке и уходе чанка за радиус.
+                        float retireFade = DecorRetireFade(runtime);
+                        float growFade = DecorFadeSeconds(DecorPropFadeSeconds);
 
                         for (int k = 0; k < count; k++)
                         {
@@ -3230,7 +6213,12 @@ namespace Galilego.Universe
                                 up.Normalize();
                             }
 
-                            float fade = DecorBirthFade(instance, DecorPropFadeSeconds);
+                            // [ФАЗА 1] edgeFade домножаем в общий fade слоя:
+                            // так декор не исчезает на границе радиуса, а гаснет
+                            // вместе с остальными переходами (рост, уход под
+                            // землю). Для не-Burst слоёв (деревья, камни,
+                            // кактусы) это единственная мягкость, которая нужна.
+                            float fade = DecorBirthFade(instance, growFade) * retireFade * edgeFade;
                             runtime.Matrices[k] = chunkMatrix * DecorLocalMatrix(instance, layer, up, fade);
                         }
 
@@ -3261,7 +6249,7 @@ namespace Galilego.Universe
                                 // СѓР¶Рµ РЅР°СЃС‚РѕСЏС‰Р°СЏ С‚РµРЅСЊ.
                                 Vector3 groundUp = grassMatrix.rotation * Vector3.up;
                                 float blobScale = runtime.Instances[k].Scale * BlobScaleFactor
-                                    * DecorBirthFade(runtime.Instances[k], DecorPropFadeSeconds);
+                                    * DecorBirthFade(runtime.Instances[k], growFade) * retireFade;
                                 Vector3 sunTangent = sunDirWS - (groundUp * Vector3.Dot(sunDirWS, groundUp));
                                 if (sunTangent.sqrMagnitude > 1e-6f)
                                 {
@@ -3634,12 +6622,13 @@ namespace Galilego.Universe
                 BillboardFarScale = 1.9f,
                 BillboardPivotFraction = pivotFraction,
                 Now = Time.time,
-                FadeSeconds = DecorBladeFadeSeconds
+                FadeSeconds = DecorFadeSeconds(DecorBladeFadeSeconds),
+                SinkSeconds = runtime.Retiring
+                    ? 0f
+                    : (runtime.RetireDeadline > 0f ? runtime.SinkFadeSeconds : DecorFadeSeconds(DecorBladeSinkSeconds))
             };
 
-            ShadowCastingMode shadow = near && layer.CastShadows
-                ? ShadowCastingMode.On
-                : ShadowCastingMode.Off;
+            ShadowCastingMode shadow = near ? DecorShadowMode(layer) : ShadowCastingMode.Off;
 
             burstDecorDraws.Add(new BurstDecorDraw
             {
@@ -3758,7 +6747,17 @@ namespace Galilego.Universe
             }
         }
 
+        /// <summary>Обёртка ради маркера: выгрузка чанков идёт пачками и сама по
+        /// себе может стать источником фриза, если Destroy звать без лимита.</summary>
         private void EvictIfNeeded()
+        {
+            using (SurfacePerf.EvictMarker.Auto())
+            {
+                EvictIfNeededCore();
+            }
+        }
+
+        private void EvictIfNeededCore()
         {
             if (chunks.Count <= MaxCachedChunks)
             {
@@ -3774,17 +6773,95 @@ namespace Galilego.Universe
                 }
             }
 
+            SurfacePerf.EvictCandidates = toEvict.Count;
+            if (toEvict.Count == 0)
+            {
+                // Всё в keep — вычистить нечего. Раньше здесь был молчаливый
+                // выход, и о факте «кэш упёрся в keep, а не в лимит» никто не
+                // узнавал: счётчик кандидатов теперь виден в HUD.
+                return;
+            }
+
+            // LRU: чем дольше чанк не нужен, тем он первее на выгрузку. Порядок
+            // обхода словаря ничего не значит, а выгрузка пачкой Destroy в один
+            // кадр — сам по себе фриз, поэтому режем по одному.
+            toEvict.Sort(GetEvictLruComparer());
+
+            int removed = 0;
             for (int i = 0; i < toEvict.Count && chunks.Count > MaxCachedChunks; i++)
             {
-                long id = toEvict[i];
-                Chunk chunk = chunks[id];
-                DisposeDecor(chunk);
-                if (chunk.Go != null)
+                if (removed >= MaxEvictionsPerFrame)
                 {
-                    Destroy(chunk.Go);
+                    break;
                 }
 
+                long id = toEvict[i];
+                if (!chunks.TryGetValue(id, out Chunk chunk))
+                {
+                    continue;
+                }
+
+                DestroyChunkResources(chunk);
                 chunks.Remove(id);
+                // Страховка: выгружаемый чанк уже скрыт проходом выше, но если
+                // порядок изменится, в active-списке останется мёртвая ссылка и
+                // проход трансформов будет ходить по уничтоженному объекту.
+                visibleChunks.Remove(chunk);
+                removed++;
+            }
+
+            SurfacePerf.EvictedLast = removed;
+        }
+
+        /// <summary>Кэшируемое сравнение для List.Sort. Замыкание создаётся ОДИН
+        /// раз на компонент, а не на каждый вызов сортировки: иначе на каждом
+        /// кадре, где что-то выгружается, аллоцировался бы замыкающий объект —
+        /// ровно в том кадре, где бьёт по GC-бюджету. Лямбда без захвата здесь
+        /// невозможна: нужен доступ к словарю чанков.</summary>
+        private System.Comparison<long> evictLruComparer;
+
+        private System.Comparison<long> GetEvictLruComparer()
+        {
+            if (evictLruComparer == null)
+            {
+                evictLruComparer = (a, b) =>
+                {
+                    float ta = chunks.TryGetValue(a, out Chunk ca) ? ca.LastKeepTime : float.NegativeInfinity;
+                    float tb = chunks.TryGetValue(b, out Chunk cb) ? cb.LastKeepTime : float.NegativeInfinity;
+                    return ta.CompareTo(tb);
+                };
+            }
+
+            return evictLruComparer;
+        }
+
+        private static void DestroyChunkResources(Chunk chunk)
+        {
+            DisposeDecor(chunk);
+            chunk.WaterRenderer = null;
+            if (chunk.WaterMesh != null)
+            {
+                Destroy(chunk.WaterMesh);
+                SurfacePerf.NoteMeshDestroyed();
+                chunk.WaterMesh = null;
+            }
+
+            // Mesh НЕ принадлежит GameObject: Destroy(chunk.Go) его не убирает.
+            // Раньше здесь стоял только Destroy(chunk.Go), и каждый выгруженный
+            // чанк навечно оставлял после себя меш в RAM и VRAM. Замер: баланс
+            // «создано минус уничтожено» рос с 2206 до 10613 за минуту полёта,
+            // а нативная память — с 2845 до 4617 МБ.
+            if (chunk.Mesh != null)
+            {
+                Destroy(chunk.Mesh);
+                SurfacePerf.NoteMeshDestroyed();
+                chunk.Mesh = null;
+            }
+
+            if (chunk.Go != null)
+            {
+                Destroy(chunk.Go);
+                chunk.Go = null;
             }
         }
 
@@ -3794,9 +6871,60 @@ namespace Galilego.Universe
             {
                 if (kv.Value.Visible)
                 {
-                    kv.Value.Go.SetActive(false);
-                    kv.Value.Visible = false;
+                    SetChunkVisible(kv.Value, false);
                 }
+            }
+
+            visibleChunks.Clear();
+        }
+
+        /// <summary>
+        /// Показ/скрытие чанка и водного меша рядом с ним.
+        ///
+        /// Через Renderer.enabled, а не через GameObject.SetActive. SetActive
+        /// проходит по всей иерархии и триггерит OnEnable/OnDisable у всех
+        /// компонентов и у всех потомков; на 1000+ чанков, переключаемых каждый
+        /// кадр на границах LOD, это заметная работа впустую. Рендерер при этом
+        /// отсекается ровно так же, а коллайдеры и компоненты на объекте
+        /// остаются живыми — что и требуется: физика рельефа и лучи игрока не
+        /// должны зависеть от того, нарисован ли в этом кадре узел.
+        ///
+        /// Список visibleChunks ведётся здесь же: проход трансформов идёт по
+        /// нему, а не по всему словарю, где на скорости висят тысячи
+        /// невидимых узлов.
+        /// </summary>
+        private void SetChunkVisible(Chunk chunk, bool visible)
+        {
+            if (chunk == null || chunk.Go == null)
+            {
+                return;
+            }
+
+            if (chunk.Visible == visible)
+            {
+                return;
+            }
+
+            chunk.Visible = visible;
+            if (chunk.Renderer != null)
+            {
+                chunk.Renderer.enabled = visible;
+            }
+
+            // Вода — отдельный дочерний объект со своим MeshRenderer; ссылка на
+            // него закэширована при сборке.
+            if (chunk.WaterRenderer != null)
+            {
+                chunk.WaterRenderer.enabled = visible;
+            }
+
+            if (visible)
+            {
+                visibleChunks.Add(chunk);
+            }
+            else
+            {
+                visibleChunks.Remove(chunk);
             }
         }
 
@@ -3822,10 +6950,30 @@ namespace Galilego.Universe
         /// </summary>
         private void ApplyTerrainGlobals()
         {
+            ApplyTerrainGlobals(terrain, ShoreWetMeters, ShoreWetTint);
+            colorStateCache = CaptureColorState();
+        }
+
+        /// <summary>
+        /// Глобалы шейдера рельефа для произвольного HeightfieldTerrain. Вынесено
+        /// из экземплярного метода без изменения тела: редакторское превью
+        /// поверхности обязано получить РОВНО тот же свет, палитру и текстуры,
+        /// что и игра, — иначе автор ставит базу по картинке, которой в игре
+        /// нет. Единственный источник правды, дублировать нельзя.
+        /// </summary>
+        public static void ApplyTerrainGlobals(HeightfieldTerrain terrain, float shoreWetMeters, Vector4 shoreWetTint)
+        {
+            if (terrain == null)
+            {
+                return;
+            }
+
             TerrainPaletteData palette = terrain.Palette ?? new TerrainPaletteData();
             Shader.SetGlobalFloat("_TerrainAmplitude", (float)System.Math.Max(1d, terrain.AmplitudeMeters));
             Shader.SetGlobalFloat("_TerrainSeaLevel", (float)System.Math.Max(terrain.SeaLevelMeters, -1e30d));
             Shader.SetGlobalFloat("_BeachHeightMeters", (float)System.Math.Max(0d, terrain.BeachHeightMeters));
+            Shader.SetGlobalFloat("_ShoreWetMeters", shoreWetMeters);
+            Shader.SetGlobalVector("_ShoreWetTint", shoreWetTint);
             Shader.SetGlobalFloat("_TerrainSeed", terrain.Seed);
             Shader.SetGlobalFloat("_TerrainGain", (float)TerrainNoise.EffectiveGain(terrain.Gain));
             Shader.SetGlobalFloat("_TerrainLacunarity", (float)TerrainNoise.EffectiveLacunarity(terrain.Lacunarity));
@@ -3875,8 +7023,6 @@ namespace Galilego.Universe
                 Shader.SetGlobalFloat("_SteepBlendStart", (float)terrain.SteepBlendStart);
                 Shader.SetGlobalFloat("_SteepBlendEnd", (float)terrain.SteepBlendEnd);
             }
-
-            colorStateCache = CaptureColorState();
         }
 
         private static Vector4 ToVec(Color c)

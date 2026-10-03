@@ -217,14 +217,16 @@ namespace Galilego.Universe
 
         private void LateUpdate()
         {
-            if (body == null || profile == null || shell == null)
+            if (Runner == null || Runner.SystemState == null || Runner.SystemState.Root == null
+                || body == null || profile == null || shell == null)
             {
                 return;
             }
 
             bool active = profile.VisualEnabled
                 && profile.TopAltitudeMeters > 0d
-                && Runner.DominantBody == body;
+                && Runner.DominantBody == body
+                && !UnderwaterEffect.CameraIsUnderwater;
             if (shell.gameObject.activeSelf != active)
             {
                 shell.gameObject.SetActive(active);

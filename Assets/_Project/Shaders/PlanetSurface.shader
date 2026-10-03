@@ -7,6 +7,11 @@ Shader "Galilego/PlanetSurface"
         _SpecularPower("Specular Power", Float) = 120.0
         _SpecularIntensity("Specular Intensity", Float) = 0.8
         _RimColor("Water Sky Rim", Color) = (0.35, 0.55, 0.85, 1)
+        // _ShoreWetMeters/_ShoreWetTint НЕ в Properties — намеренно: свойство
+        // материала перекрывает глобал, и рантайм-материал (new Material(shader))
+        // молча взял бы свой дефолт. Значения приезжают только из
+        // PlanetSurfaceRenderer.ApplyTerrainGlobals, как _BeachHeightMeters.
+        // (Проверено: с ними в Properties A/B давал 0 изменённых пикселей.)
         // _TexLow/_TexMid/_TexHigh/_TexSteep/_TexOcclusion НЕ в Properties:
         // иначе рантайм-материал получает свои дефолтные "white" текстуры,
         // которые перекрывают глобалы PlanetSurfaceRenderer (земля белела).
@@ -31,6 +36,7 @@ Shader "Galilego/PlanetSurface"
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
             #include "GalilegoLighting.hlsl"
+            #include "GalilegoUnderwaterCaustics.hlsl"
 
             // Глобально, ставит PlanetSurfaceRenderer (мировая позиция камеры).
             float3 _PlanetCameraPos;
@@ -54,6 +60,7 @@ Shader "Galilego/PlanetSurface"
             // HeightfieldTerrain + TerrainPalette (единственный источник правды).
             float _TerrainAmplitude;
             float _TerrainSeaLevel;
+            float3 _TerrainBodyCenterWS;
             float _TerrainSeed;
             float _TerrainGain;
             float _TerrainLacunarity;
@@ -68,6 +75,8 @@ Shader "Galilego/PlanetSurface"
             float _ColorDetailOctaves;
             float _ColorDetailStrength;
             float _BeachHeightMeters;
+            float _ShoreWetMeters;
+            float4 _ShoreWetTint;
 
             float4 _ColSand;
             float4 _ColDesert;
@@ -123,7 +132,22 @@ Shader "Galilego/PlanetSurface"
                 return output;
             }
 
-            // --- Процедурный шум (порт TerrainNoise.ValueNoise/SampleFbmEx) ------
+            // --- Процедурный шум: НЕ ИСПОЛЬЗУЕТСЯ -----------------------------
+            //
+            // Блок ниже — мёртвый код. Он остался от варианта, где шейдер считал
+            // маску сам; сейчас маску и деталь интерполируют из вершин (см.
+            // фрагмент около строки 498), и Fbm/ValueNoise/StreamOffset не
+            // вызываются ниоткуда. Проверено поиском по проекту: .shadergraph в
+            // проекте нет, ни один .mat/.asset/.prefab не пишет _TerrainGain,
+            // _TerrainLacunarity или _TerrainSeed.
+            //
+            // Удалять пока нельзя вместе с заменой шума рельефа: если шейдерный
+            // путь вернёт к жизни, код ниже разойдётся с TerrainNoise.cs ещё и
+            // по набору градиентов — здесь value noise с хешем и 0xFFFF, там
+            // градиентное Перлин с 12 рёбрами куба. Сначала удаление отдельным
+            // коммитом после того, как решение о возврате шейдерного пути будет
+            // принято.
+            //
             // Сид-оффсеты C# ~1.5e9 в double; во float столько знаков нет, поэтому
             // потоки разводим МАЛЫМИ float-safe оффсетами. Паттерн отличается от
             // вершинного варианта, но остаётся детерминированным и связным.
@@ -249,11 +273,36 @@ Shader "Galilego/PlanetSurface"
                 return _ColForest.rgb;
             }
 
+            // Допуск у уровня моря — АБСОЛЮТНЫЙ, в метрах, и почти не зависит от
+            // амплитуды. Раньше здесь стояло amp*0.001 «на всякий случай», но при
+            // амплитуде рельефа 9144 м это 9.14 м: полоса СУШИ высотой 9 метров
+            // над водой классифицировалась как вода и рисовалась по ветке дна
+            // (sand * (0.30,0.38,0.36)), а на границе +9.14 м резко щёлкала на
+            // обычный цвет. Контур постоянной высоты на сфере с 2 м высоты
+            // проецируется почти в прямую горизонтальную линию через весь кадр —
+            // это и была «серая полоса на горизонте». Плюс из-за isWater=1 вся
+            // полоса мокрого песка домножалась на ноль и не рисовалась вовсе.
+            static float SeaEpsilon(float amp)
+            {
+                return max(0.05, amp * 1e-6);
+            }
+
+            // Вес песка по высоте над морем. Числа — зеркало TerrainPalette.
+            // SandWeight: полная полоса до 0.4·beach, ноль с 1.6·beach, ровно
+            // половина на beach. Одна функция на все три места (краска, текстуры,
+            // мокрая кромка) — иначе границы песка снова разъездуются.
+            float SandWeight(float aboveSea)
+            {
+                return _BeachHeightMeters > 0.0
+                    ? 1.0 - smoothstep(_BeachHeightMeters * 0.4, _BeachHeightMeters * 1.6, aboveSea)
+                    : 0.0;
+            }
+
             float3 TerrainAlbedo(float raw, float mask, float detail, float slopeTan, float lat01)
             {
                 float amp = _TerrainAmplitude;
                 float sea = _TerrainSeaLevel;
-                if (raw <= sea + (amp * 0.001))
+                if (raw <= sea + SeaEpsilon(amp))
                 {
                     return _ColSea.rgb;
                 }
@@ -269,20 +318,31 @@ Shader "Galilego/PlanetSurface"
 
                 t = max(t, 0.0);
 
+                // Песок по высоте над морем, маской не стирается: иначе на
+                // «плюсовых» берегах зелень начинается от уреза воды. НИЖЕ нет
+                // нормированной «песчаной» полосы: t<0.03 при амплитуде 13662 м —
+                // это сотни метров высоты, то есть весь прибрежный пляж/равнина.
+                // Песок = только абсолютная полка у воды (зеркалит
+                // TerrainPalette.SandWeight и фильтр BeachHeightMeters у декора).
+                //
+                // Не ступенька, а затухание: полная полоса до 0.4·beach, ноль с
+                // 1.6·beach, ровно половина на beach. Ступенчатый край константной
+                // высоты на сфере проецируется в прямую линию через весь кадр.
+                float sandW = SandWeight(aboveSea);
                 float3 c;
-                // Пляж — абсолютными метрами над морем, маской не стирается:
-                // иначе на «плюсовых» берегах зелень начинается от уреза воды.
-                if (_BeachHeightMeters > 0.0 && aboveSea < _BeachHeightMeters)
-                {
-                    c = _ColSand.rgb;
-                }
-                else if (t < 0.03)
+                if (sandW >= 1.0)
                 {
                     c = _ColSand.rgb;
                 }
                 else
                 {
-                    float wet = maskOn ? saturate(0.5 + (clamp(mask, -1.0, 1.0) * 1.6)) : 0.5;
+                    // wet01 — ОБЩАЯ кривая с декором (GroundDecorDistribution.
+                    // BiomeWetness) и с CPU-палитрой. Мягкая, tanh вместо clamp:
+
+                    // маска широкая (p10=−0.33, p90=+0.32), clamp(0.5+1.6·mask)
+                    // насыщал 21% планеты в ровные 0/1 — отсюда были огромные
+                    // мёртвые зоны без травы/деревьев и ровные тональные заливки.
+                    float wet = maskOn ? (0.5 + 0.5 * tanh(1.6 * clamp(mask, -1.0, 1.0))) : 0.5;
                     float3 lowland = BiomeColor(wet);
                     if (t < 0.45)
                     {
@@ -308,12 +368,18 @@ Shader "Galilego/PlanetSurface"
                     {
                         c = lerp(c, _ColSnow.rgb, ice);
                     }
+
+                    // Песок — поверх биома: на затухании зелёный биом проступает
+                    // сквозь песок, а не исчезает на границе полосы.
+                    c = lerp(c, _ColSand.rgb, sandW);
                 }
 
                 // Моттлинг земли: пятна почвы / сочной зелени. Только на земле
-                // выше пляжной зоны — на песке пятен быть не должно.
-                bool isBeach = _BeachHeightMeters > 0.0 && aboveSea < _BeachHeightMeters;
-                if (_ColorDetailStrength != 0.0 && t >= 0.03 && !isBeach)
+                // выше пляжной зоны — на песке пятен быть не должно. Порог берём
+                // по весу песка, а не по жёсткой высоте: иначе пятна включались бы
+                // скачком на верхней границе затухания.
+                bool isBeach = sandW > 0.0;
+                if (_ColorDetailStrength != 0.0 && !isBeach)
                 {
                     float d = clamp(detail, -1.0, 1.0);
                     if (d > 0.0)
@@ -377,25 +443,54 @@ Shader "Galilego/PlanetSurface"
                 float lowW = 1.0 - smoothstep(_LowMidBlendStart, _LowMidBlendEnd, altitude);
                 float highW = smoothstep(_MidHighBlendStart, _MidHighBlendEnd, altitude);
                 float midW = max(0.0, 1.0 - lowW - highW);
+                float steepW = smoothstep(_SteepBlendStart, _SteepBlendEnd, slopeTan);
 
-                float3 c = (Triplanar(_TexLow, uvX, uvY, uvZ, tri) * lowW)
-                    + (Triplanar(_TexMid, uvX, uvY, uvZ, tri) * midW)
-                    + (Triplanar(_TexHigh, uvX, uvY, uvZ, tri) * highW);
-                c = lerp(c, Triplanar(_TexSteep, uvX, uvY, uvZ, tri), smoothstep(_SteepBlendStart, _SteepBlendEnd, slopeTan));
+                // Каждый Triplanar — это 3 выборки из текстуры, и их тут пять
+                // (low/mid/high/steep/occlusion), то есть 15 tex2D на КАЖДЫЙ
+                // пиксель земли. Но веса высот по определению суммируются в 1,
+                // и на равнине lowW = 1, а midW = highW = 0 — три четверти
+                // выборок считались впустую и умножались на ноль. То же с
+                // steepW на ровном грунте. Ветки когерентны (высота и уклон
+                // меняются плавно, на квад 8x8 почти всегда одна ветка), так
+                // что дивергенции тут не возникает, а на типичной равнине
+                // остаётся 6 выборок вместо 15.
+                float3 c = float3(0.0, 0.0, 0.0);
+                if (lowW > 0.002)
+                {
+                    c += Triplanar(_TexLow, uvX, uvY, uvZ, tri) * lowW;
+                }
+                if (midW > 0.002)
+                {
+                    c += Triplanar(_TexMid, uvX, uvY, uvZ, tri) * midW;
+                }
+                if (highW > 0.002)
+                {
+                    c += Triplanar(_TexHigh, uvX, uvY, uvZ, tri) * highW;
+                }
+                if (steepW > 0.002)
+                {
+                    c = lerp(c, Triplanar(_TexSteep, uvX, uvY, uvZ, tri), steepW);
+                }
 
-                float occl = dot(Triplanar(_TexOcclusion, uvX, uvY, uvZ, tri), float3(0.3333, 0.3333, 0.3333));
+                // AO-текстура: на близкой дистанции полный трипланар, дальше одна
+                // проекция. Тексель AO-текстуры на сотни метрах от камеры много
+                // мельче пикселя, поэтому все три проекции попадают в ОДИН И ТОТ
+                // ЖЕ дальний мип и дают практически одинакое значение — три
+                // выборки, чтобы сложить одно и то же число. Переключение не
+                // даёт ступеньки яркости именно потому, что на этой дистанции
+                // значения и так почти совпадают.
+                float occl = distance(positionWS, GetCameraPositionWS()) < 220.0
+                    ? dot(Triplanar(_TexOcclusion, uvX, uvY, uvZ, tri), float3(0.3333, 0.3333, 0.3333))
+                    : dot(Triplanar(_TexOcclusion, uvX, uvY, uvZ, float3(0.0, 0.0, 1.0)), float3(0.0, 0.0, 1.0));
                 c *= lerp(1.0, saturate(occl * 1.3), 0.65);
 
                 c *= lerp(float3(1.0, 1.0, 1.0), saturate(biome * 1.9), 0.65);
 
                 // Пляж поверх текстур: низковысотная текстура — зелёное фото,
                 // без этого полоса песка стиралась бы текстурным путём.
-                // Край мягкий, чтобы не было ступеньки у верхней границы.
-                if (_BeachHeightMeters > 0.0)
-                {
-                    float beachW = 1.0 - smoothstep(_BeachHeightMeters * 0.5, _BeachHeightMeters, altitude);
-                    c = lerp(c, _ColSand.rgb, beachW);
-                }
+                // Вес тот же, что у процедурной краски, иначе текстура и палитра
+                // давали бы разные края песка.
+                c = lerp(c, _ColSand.rgb, SandWeight(altitude));
 
                 return c;
             }
@@ -404,12 +499,12 @@ Shader "Galilego/PlanetSurface"
             {
                 float3 normal = normalize(input.normalWS);
                 float3 sunDir = normalize(_TerrainSunDir);
-                float3 viewDir = normalize(_PlanetCameraPos - input.positionWS);
                 float ndl = saturate(dot(normal, sunDir));
 
                 // Тень HDRP (PCSS/PCF) от деревьев/камней/рельефа; гасит только
                 // солнечный член — ambient остаётся, теневые зоны не чёрные.
                 float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, normal, sunDir);
+                float cloudShadow = SampleCloudShadow(input.positionWS);
 
                 // Единый световой член, пофрагментный: ночная засветка (звёзды) +
                 // небесная засветка (средняя яркость неба: день голубая, закат
@@ -421,9 +516,11 @@ Shader "Galilego/PlanetSurface"
                 // пересвет разруливает глобальный тонмаппинг HDRP. Затенение по
                 // нормали сохраняется (множитель ndl ниже), рельеф читается.
                 float sun = _TerrainSun;
+                float3 radialUp = normalize(input.positionWS - _TerrainBodyCenterWS);
+                float dayLocal = smoothstep(-0.12, 0.08, dot(radialUp, sunDir));
                 float3 lightTerm = float3(_NightAmbient, _NightAmbient, _NightAmbient)
-                    + (GalilegoSkyAmbient(normal) * _TerrainRadianceScale)
-                    + (_SunLightColor * (sun * ndl * shadow) * _TerrainRadianceScale);
+                    + (GalilegoSkyAmbient(normal) * _TerrainRadianceScale * dayLocal)
+                     + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale);
 
                 // --- Per-pixel альбедо -----------------------------------------
                 float3 dir = normalize(input.dirOS);
@@ -452,7 +549,7 @@ Shader "Galilego/PlanetSurface"
 
                 // Текстуры рельефа вместо процедурного альбедо —
                 // только на суше: море остаётся процедурным/водным.
-                float isWater = raw <= _TerrainSeaLevel + (_TerrainAmplitude * 0.001) ? 1.0 : 0.0;
+                float isWater = raw <= _TerrainSeaLevel + SeaEpsilon(_TerrainAmplitude) ? 1.0 : 0.0;
                 if (_TerrainUseTextures > 0.5 && isWater < 0.5)
                 {
                     float3 normalObject = normalize(TransformWorldToObjectNormal(normal));
@@ -462,25 +559,36 @@ Shader "Galilego/PlanetSurface"
                 // Суша.
                 float3 land = albedo * lightTerm;
 
-                // Вода: глубина из сырой высоты (0 — мелководье, 1 — глубина),
-                // процедурная рябь ломает зеркальную нормаль, блик солнца —
-                // только на освещённой стороне.
-                float waterDepth = saturate((_TerrainSeaLevel - raw) / max(1.0, _TerrainAmplitude));
-                float3 n = normal
-                    + (float3(
-                        sin(dot(input.positionWS, float3(0.31, 0.17, 0.23))),
-                        0.0,
-                        sin(dot(input.positionWS, float3(-0.19, 0.29, 0.13)))) * 0.035);
-                n = normalize(n);
-                float fresnel = pow(1.0 - saturate(dot(n, viewDir)), 5.0);
-                float3 halfVec = normalize(sunDir + viewDir);
-                float spec = pow(saturate(dot(n, halfVec)), max(1.0, _SpecularPower)) * _SpecularIntensity;
-                float3 waterBase = lerp(_WaterShallow.rgb, _WaterDeep.rgb, waterDepth);
-                float3 water = (waterBase * lightTerm)
-                    + (_RimColor.rgb * fresnel * lightTerm)
-                    + (spec * sun * shadow * _SunLightColor * _TerrainRadianceScale);
+                // Дно океана (сырая высота ниже моря): геометрия чанков
+                // раскламплена до настоящего дна, а вода — отдельным
+                // почти непрозрачным мешем чанка (Galilego/WaterSurface: волны,
+                // блик, пена). Поглощение — в МЕТРАХ глубины. Дно гаснет БЫСТРО
+                // (к ~10 м — глухая темнота под почти непрозрачной водой):
+                // детальный рельеф дна сквозь воду не читается, "странного дна"
+                // нет — только тёмная глубина. Мокрый песок у кромки темнее.
+                float depthMeters = max(0.0, _TerrainSeaLevel - raw);
+                float absorb = sqrt(saturate(depthMeters / 10.0));
+                float3 shallowBed = _ColSand.rgb * float3(0.30, 0.38, 0.36);
+                float3 seabedBase = lerp(shallowBed, _WaterDeep.rgb, smoothstep(0.0, 0.45, absorb));
+                float3 seabed = seabedBase * lightTerm * (1.0 - (0.85 * absorb));
 
-                float3 color = lerp(land, water, isWater);
+                // Мокрая кромка. Раньше здесь было плоское затемнение на 45 % во всех
+                // каналах: урез читался, но это просто «темнее», без перехода и без
+                // привязки к пляжу — тёмная лента лежала и на траве, и на камне.
+                // Теперь это градиент МЕТРОВ над уровнем моря: у самой кромки —
+                // тёмный прохладный мокрый песок (красный гаснет первым, как у
+                // песка под водой), выше — плавно к обычному цвету. Полоса
+                // ограничена пляжной зоной (beachW), поэтому берег остаётся
+                // мокрым на 3 м, а не весь пляж. Геометрия, уровень моря, вода и
+                // screen-door не трогаются — это только вид суши у кромки.
+                float shoreAlt = max(raw - _TerrainSeaLevel, 0.0);
+                float beachW = SandWeight(shoreAlt);
+                float wetBand = (1.0 - smoothstep(0.0, max(0.05, _ShoreWetMeters), shoreAlt))
+                    * (1.0 - isWater) * beachW;
+                float3 landWet = land * lerp(float3(1.0, 1.0, 1.0), _ShoreWetTint.rgb, wetBand);
+
+                float3 color = lerp(landWet, seabed, isWater);
+                color += _UnderwaterCausticColor.rgb * UnderwaterCausticMask(input.positionWS, normal);
                 return float4(color, 1.0);
             }
             ENDHLSL
