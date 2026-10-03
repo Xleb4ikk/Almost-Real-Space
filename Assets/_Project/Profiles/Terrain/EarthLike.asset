@@ -33,6 +33,23 @@ MonoBehaviour:
     ContinentThreshold: -0.1
     ContinentSharpness: 0.3
     ContinentDepth: 1.2
+    ContinentGain: 0
+    ContinentWarpStrength: 0
+    ContinentWarpFrequency: 0
+    ContinentWarpOctaves: 3
+    ContinentRidgeMix: 0
+    ContinentRidgeFrequency: 0
+    ContinentRidgeOctaves: 2
+    ContinentLatitudeBias: 0
+    OceanFloorDepth: 0
+    OceanShelfDepth: 0
+    InteriorFloor: 0
+    OrogenyFrequency: 0
+    OrogenyOctaves: 3
+    OrogenyThreshold: 0
+    OrogenySharpness: 0.3
+    OrogenyFloor: 1
+    OrogenyGain: 0
     PlainMix: 0.85
     PlainFrequency: 1.8
     PlainOctaves: 2

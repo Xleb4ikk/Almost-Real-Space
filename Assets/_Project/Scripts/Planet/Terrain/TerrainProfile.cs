@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 
 namespace Galilego.Universe
@@ -249,6 +249,9 @@ namespace Galilego.Universe
         [Tooltip("Октав шума ширины пляжа: первая задаёт крупные зоны, остальные добавляют локальную неровность.")]
         public int BeachShelfWidthNoiseOctaves = 4;
 
+        [Tooltip("Ширина «морского плеча» полки в единицах континентальной маски: полоса ЗА порогом, где вес полки гаснет до нуля (0 = авто, 5 % от ширины полки). Раньше полка включалась по порогу скачком, и на пороге, проходящем по высокому рельефу, получался обрыв в сотни метров шириной меньше вершины сетки — на экране частокол вертикальных рёбер.")]
+        public double BeachShelfSeawardWidth = 0d;
+
         [Header("Деталь и domain warp")]
         [Tooltip("Мелкомасштабная деталь как доля амплитуды (0 = выключена).")]
         public double DetailMix = 0d;
@@ -393,6 +396,10 @@ namespace Galilego.Universe
                 BeachShelfWidthMaxScale = 14d,
                 BeachShelfWidthNoiseFrequency = 150d,
                 BeachShelfWidthNoiseOctaves = 4,
+                // Морское плечо — 5 % от ширины полки, то есть 0.004 маски
+                // (~1.5 км в метрах). Ставится явно, а не нулём-авто, чтобы у
+                // пресета значение было видно в инспекторе и в ассете.
+                BeachShelfSeawardWidth = 0.004d,
                 DetailMix = 0d,
                 DetailFrequency = 0d,
                 DetailOctaves = 5,

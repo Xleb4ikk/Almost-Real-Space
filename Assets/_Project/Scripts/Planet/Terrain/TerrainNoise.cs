@@ -1,4 +1,4 @@
-﻿using Unity.Burst;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -266,6 +266,15 @@ namespace Galilego.Universe
 
         /// <summary>Октав шума ширины полки.</summary>
         public int BeachShelfWidthNoiseOctaves;
+
+        /// <summary>
+        /// Ширина «морского плеча» полки в единицах континентальной маски: полоса
+        /// ЗА порогом маски, на которой вес полки гаснет до нуля. ≤0 — авто
+        /// (DefaultSeawardWidthFactor от ширины полки). Зачем — в
+        /// HeightfieldTerrain.BeachShelfSeawardWidth: это замена скачка на
+        /// изолинии порога, из-за которого меш рисовал обрыв частоколом.
+        /// </summary>
+        public double BeachShelfSeawardWidth;
         public double ColorNoiseFrequency;
         public int ColorNoiseOctaves;
         public int ColorNoiseSeedOffset;
@@ -394,6 +403,7 @@ namespace Galilego.Universe
                 BeachShelfWidthMaxScale = terrain.BeachShelfWidthMaxScale,
                 BeachShelfWidthNoiseFrequency = terrain.BeachShelfWidthNoiseFrequency,
                 BeachShelfWidthNoiseOctaves = terrain.BeachShelfWidthNoiseOctaves,
+                BeachShelfSeawardWidth = terrain.BeachShelfSeawardWidth,
                 ColorNoiseFrequency = terrain.ColorNoiseFrequency,
                 ColorNoiseOctaves = terrain.ColorNoiseOctaves,
                 ColorNoiseSeedOffset = terrain.ColorNoiseSeedOffset,
@@ -860,6 +870,15 @@ namespace Galilego.Universe
         /// <summary>Контраст шума ширины пляжа: n·2.2 растягивает fBm (σ≈0.3) почти на весь диапазон 1×..Max×.</summary>
         private const double BeachWidthContrast = 2.2d;
 
+        /// <summary>
+        /// Доля ширины полки, которую занимает «морское плечо», когда
+        /// BeachShelfSeawardWidth не задан (≤0). 5 % — намеренно мало: плечо
+        /// существует ровно для того, чтобы убрать разрыв, а не чтобы
+        /// перекроить берег. В метрах это 5 % от ширины полки в метрах, то есть
+        /// у EarthLike_Perlin (ширина 0.03 маски) порядка сотен метров.
+        /// </summary>
+        private const double DefaultSeawardWidthFactor = 0.05d;
+
         /// <summary>Gain шума ширины пляжа: выше обычного 0.5, чтобы мелкие октавы давали заметную локальную неровность.</summary>
         private const double BeachWidthNoiseGain = 0.6d;
 
@@ -896,28 +915,66 @@ namespace Galilego.Universe
 
             double amp = math.max(1d, p.AmplitudeMeters);
             double seaN = p.SeaLevelMeters / amp;
-            if (!(h > seaN))
+            double shelf = seaN + (p.BeachShelfAltitudeMeters / amp);
+
+            // Полка только ОПУСКАЕТ рельеф к своей высоте.
+            //
+            // Раньше здесь стоял ранний выход по «h > уровня моря», и это была
+            // вторая точка разрыва: у самой воды рельеф поднимался к полке
+            // скачком до BeachShelfAltitudeMeters. Порог по ВЫСОТЕ ПОЛКИ
+            // разрыва не даёт: на самой границе h == shelf, и обе ветки
+            // возвращают одно и то же число.
+            //
+            // Заодно полка перестала поднимать дно: мель глубже полки теперь не
+            // превращается в сушу, и вода у берега остаётся там, где её
+            // поставил океанский бленд.
+            if (!(h > shelf))
             {
                 return h;
             }
 
             double above = continentRaw - p.ContinentThreshold;
-            if (!(above > 0d))
+            double w;
+            if (above > 0d)
             {
-                return h;
+                double width = math.max(1e-9d, p.BeachShelfWidth);
+                if (varyWidth)
+                {
+                    // Шум считаем только на суше у/над берегом (после ранних выходов).
+                    width *= BeachWidthScale(p, direction);
+                }
+
+                double coastDist = above / width;
+                double t = math.min(1d, coastDist * coastDist);
+                w = (1d - t) * (1d - t);
+            }
+            else
+            {
+                // МОРСКОЕ ПЛЕЧО. Раньше при above ≤ 0 полка выключалась скачком,
+                // и на самом пороге маски получался обрыв: с суши вес w = 1 и
+                // высота стоит на полке, а за порогом возвращался природный
+                // рельеф. Там, где порог проходит по высокому рельефу (у
+                // EarthLike_Perlin — под километр), это обрыв в сотни метров
+                // шириной МЕНЬШЕ вершины сетки листа (6.85 м на MaxDepth 12), и
+                // меш рисовал его частоколом вертикальных треугольников.
+                //
+                // Теперь вес гаснет до нуля непрерывно на узком плече за
+                // порогом: на пороге w = 1 (как и с суши — стык без ступеньки),
+                // на дальнем краю плеча w = 0 с нулевой производной. Глубина
+                // плеча в единицах маски, поэтому в метрах это плечо/|∇маски| —
+                // тот же масштаб, что и у самой полки.
+                double shoulder = p.BeachShelfSeawardWidth > 0d
+                    ? p.BeachShelfSeawardWidth
+                    : DefaultSeawardWidthFactor * math.max(1e-9d, p.BeachShelfWidth);
+                double s = -above / shoulder;
+                if (s >= 1d)
+                {
+                    return h;
+                }
+
+                w = 1d - Smoothstep01(s);
             }
 
-            double width = math.max(1e-9d, p.BeachShelfWidth);
-            if (varyWidth)
-            {
-                // Шум считаем только на суше у/над берегом (после ранних выходов).
-                width *= BeachWidthScale(p, direction);
-            }
-
-            double coastDist = above / width;
-            double t = math.min(1d, coastDist * coastDist);
-            double w = (1d - t) * (1d - t);
-            double shelf = seaN + (p.BeachShelfAltitudeMeters / amp);
             return h + ((shelf - h) * w);
         }
 

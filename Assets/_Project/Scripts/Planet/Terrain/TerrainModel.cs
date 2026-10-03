@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Galilego.Core;
 using Unity.Collections;
 using Unity.Mathematics;
@@ -346,6 +346,30 @@ namespace Galilego.Universe
         public int BeachShelfWidthNoiseOctaves = 4;
 
         /// <summary>
+        /// Ширина «морского плеча» полки, единицы continent-маски: полоса ЗА
+        /// порогом маски, на которой вес полки гаснет до нуля.
+        ///
+        /// Зачем нужно. Полка включалась скачком ровно по изолинии порога маски
+        /// (above &gt; 0). Если порог проходит по рельефу, который стоит высоко
+        /// (в EarthLike_Perlin — под километр), на этой изолинии получался обрыв
+        /// в сотни метров шириной меньше вершины сетки листа (6.85 м на
+        /// MaxDepth 12), и меш рисовал его частоколом вертикальных
+        /// треугольников. Плечо заменяет скачок непрерывным спадом веса.
+        ///
+        /// Глубина плеча в единицах маски, поэтому в метрах она равна
+        /// плечо/|∇маски| — то есть масштаб тот же, что у самой полки (её
+        /// ширина в метрах считается так же). Меньше плечо — ближе к прежнему
+        /// виду (обрыв остаётся крутым, но непрерывным). ≤0 — авто:
+        /// 5 % от BeachShelfWidth.
+        ///
+        /// Побочный эффект ровно один и только там, где обрыв и был: полка
+        /// опускает к своей высоте и ту узкую полосу за порогом, которая выше
+        /// полки. Глубже уровня полки рельеф не трогается никогда — поэтому
+        /// океан и мелководье остаются как были.
+        /// </summary>
+        public double BeachShelfSeawardWidth = 0d;
+
+        /// <summary>
         /// Мелкомасштабная деталь (скалы/осыпи) как доля AmplitudeMeters.
         /// Добавляется высокочастотным потоком только на суше, гаснет в равнинах.
         /// 0 = выключено (legacy).
@@ -517,6 +541,7 @@ namespace Galilego.Universe
             BeachShelfWidthMaxScale = profile.BeachShelfWidthMaxScale;
             BeachShelfWidthNoiseFrequency = profile.BeachShelfWidthNoiseFrequency;
             BeachShelfWidthNoiseOctaves = profile.BeachShelfWidthNoiseOctaves;
+            BeachShelfSeawardWidth = profile.BeachShelfSeawardWidth;
             DetailMix = profile.DetailMix;
             DetailFrequency = profile.DetailFrequency;
             DetailOctaves = profile.DetailOctaves;

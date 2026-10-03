@@ -161,7 +161,7 @@ internal static partial class P1bTests
             new P1bCase("Test118_RidgeFoldRange", Test118_RidgeFoldRange, true),
             new P1bCase("Test119_RidgedGammaSweep", Test119_RidgedGammaSweep, true),
             new P1bCase("Test120_DampIsNotNoOp", Test120_DampIsNotNoOp, true),
-            new P1bCase("Test121_WarpSteps", Test121_WarpSteps, true),
+            new P1bCase("Test121_WarpSteps", Test121_WarpSteps, true),
             new P1bCase("Test123_RidgeLevelLevers", Test123_RidgeLevelLevers, true),
             new P1bCase("Test124_AnisotropyBisect", Test124_AnisotropyBisect, true),
             new P1bCase("Test125_HashAxisMultiplier", Test125_HashAxisMultiplier, true),
@@ -183,6 +183,10 @@ internal static partial class P1bTests
             new P1bCase("Test141_ContinentsConnectivity", Test141_ContinentsConnectivity, true),
             new P1bCase("Test142_ContinentsDiag", Test142_ContinentsDiag, true),
             new P1bCase("Test143_PerlinAssetDrift", Test143_PerlinAssetDrift, false),
+            new P1bCase("Test900_TerrainWallProbe", Test900_TerrainWallProbe, false),
+            new P1bCase("Test901_TerrainWallBisect", Test901_TerrainWallBisect, false),
+            new P1bCase("Test903_ShelfFixAb", Test903_ShelfFixAb, false),
+            new P1bCase("Test904_NoSubQuadSteps", Test904_NoSubQuadSteps, false),
         };
     }
 }

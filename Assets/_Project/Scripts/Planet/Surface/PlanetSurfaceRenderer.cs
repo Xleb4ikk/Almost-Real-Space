@@ -1371,6 +1371,7 @@ namespace Galilego.Universe
                 && a.BeachShelfWidthMaxScale == b.BeachShelfWidthMaxScale
                 && a.BeachShelfWidthNoiseFrequency == b.BeachShelfWidthNoiseFrequency
                 && a.BeachShelfWidthNoiseOctaves == b.BeachShelfWidthNoiseOctaves
+                && a.BeachShelfSeawardWidth == b.BeachShelfSeawardWidth
                 && a.ColorNoiseFrequency == b.ColorNoiseFrequency
                 && a.ColorNoiseOctaves == b.ColorNoiseOctaves
                 && a.ColorNoiseSeedOffset == b.ColorNoiseSeedOffset

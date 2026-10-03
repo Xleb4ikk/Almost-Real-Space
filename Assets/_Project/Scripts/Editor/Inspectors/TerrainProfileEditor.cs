@@ -129,6 +129,7 @@ Slider("Profile.ContinentDepth", 0f, 1.5f);
                 Slider("Profile.BeachShelfWidthMaxScale", 1f, 20f);
                 Field("Profile.BeachShelfWidthNoiseFrequency");
                 Field("Profile.BeachShelfWidthNoiseOctaves");
+                Field("Profile.BeachShelfSeawardWidth");
                 EditorGUI.indentLevel--;
             }
 
