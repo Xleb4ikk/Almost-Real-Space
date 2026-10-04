@@ -106,12 +106,12 @@ namespace Galilego.Universe
 
         [Tooltip("РЎРєРѕР»СЊРєРѕ СЃР±РѕСЂРѕРє СЃР»РѕС‘РІ РґРµРєРѕСЂР° Р·Р° РєР°РґСЂ (Р»РµРЅРёРІР°СЏ РіРµРЅРµСЂР°С†РёСЏ: Р±Р»РёР¶РЅРёРµ РїРµСЂРІС‹РјРё).")]
         [Range(1, 16)]
-        public int DecorBuildsPerFrame = 2;
+        public int DecorBuildsPerFrame = 8;
 
         [Tooltip("Р‘СЋРґР¶РµС‚ РіР»Р°РІРЅРѕРіРѕ РїРѕС‚РѕРєР° РЅР° С€Р°Рі Р°СЃРёРЅС…СЂРѕРЅРЅС‹С… СЃР±РѕСЂРѕРє РґРµРєРѕСЂР° (РјСЃ/РєР°РґСЂ): " +
                  "С‚СЏР¶С‘Р»С‹Рµ СЃР±РѕСЂРєРё РёРґСѓС‚ РїРѕСЂС†РёСЏРјРё Рё РЅРµ Р±Р»РѕРєРёСЂСѓСЋС‚ РєР°РґСЂ С†РµР»РёРєРѕРј.")]
         [Range(0.5f, 8f)]
-        public float DecorBuildBudgetMs = 3f;
+        public float DecorBuildBudgetMs = 4f;
 
         // [ФАЗА 4] Пауза после полного обхода, который ничего не нашёл.
         //
@@ -130,8 +130,8 @@ namespace Galilego.Universe
         private float decorScanBlockedUntil;
 
         [Tooltip("РњР°РєСЃРёРјСѓРј РѕРґРЅРѕРІСЂРµРјРµРЅРЅС‹С… Р°СЃРёРЅС…СЂРѕРЅРЅС‹С… СЃР±РѕСЂРѕРє РґРµРєРѕСЂР° (РїР°РјСЏС‚СЊ/Р»Р°С‚РµРЅС‚РЅРѕСЃС‚СЊ).")]
-        [Range(1, 8)]
-        public int MaxDecorBuildSessions = 4;
+        [Range(1, 32)]
+        public int MaxDecorBuildSessions = 8;
 
         [Header("Р”РёР°РіРЅРѕСЃС‚РёРєР° РґРµРєРѕСЂР°")]
         [Tooltip("Р Р°Р· РІ СЃРµРєСѓРЅРґСѓ РїРёСЃР°С‚СЊ РІ Р»РѕРі СЂР°РґРёСѓСЃ РѕР±СЂРµР·РєРё Рё С‡РёСЃР»Рѕ С‚СЂР°РІРёРЅРѕРє РїСѓР»Р° " +
@@ -163,22 +163,24 @@ namespace Galilego.Universe
 
         [Header("Фаза 2: асинхронная постройка чанков")]
         [Tooltip("Строить чанки в Burst-джобах, а не на главном потоке. " +
-                 "ВЫКЛ ПО УМОЛЧАНИЮ, хотя код компилируется и в Editor-замере " +
-                 "даёт 0.9-1.2 мс на кадр против 42.75 мс у синхронного пути. " +
-                 "Причина: очередь не дренируется (3400-5200 записей при 6 " +
-                 "джобах в полёте и бюджете 1.5 мс), и наблюдались кадры, где " +
-                 "видимых чанков 0 — то есть рельеф пропадал. Пока очередь не " +
-                 "закрыта (Фаза 3: тиры качества по скорости) и пустое не " +
-                 "поймано, включать только под присмотром. Старый синхронный " +
-                 "путь оставлен как эталон: с ним картинку можно сравнить " +
-                 "побитово.")]
-        public bool AsyncChunkBuild = false;
+                 "В Editor-замере даёт 0.9-1.2 мс на кадр против 42.75 мс у " +
+                 "синхронного пути. Изначально был выключен, потому что очередь " +
+                 "не дренировалась (3400-5200 записей при 6 джобах в полёте и " +
+                 "бюджете 1.5 мс) и наблюдались кадры, где видимых чанков 0 — " +
+                 "то есть рельеф пропадал. С тех пор добавлены Фаза 3 (тиры " +
+                 "качества по скорости), префетч вперёд по вектору скорости и " +
+                 "сброс устаревших записей; в OutdoorsScene флаг включён. " +
+                 "Следить за SurfacePerf.QueuedBuilds и VisibleChunks: очередь " +
+                 "не должна расти, а дыр в видимых чанках быть не должно. " +
+                 "Старый синхронный путь оставлен как эталон: с ним картинку " +
+                 "можно сравнить побитово.")]
+        public bool AsyncChunkBuild = true;
 
         [Tooltip("Сколько джоб постройки может висеть одновременно. Больше — " +
                  "ровнее сглаживание, но больше одновременной нагрузки на " +
                  "процессор и больше живой нативной памяти.")]
         [Range(1, 16)]
-        public int MaxChunkJobsInFlight = 6;
+        public int MaxChunkJobsInFlight = 12;
 
         [Tooltip("Мс на кадр, которые можно потратить на ЗАЛИВКУ готовых " +
                  "чанков в меши. Заливка копирует память без вычислений и " +
@@ -186,7 +188,7 @@ namespace Galilego.Universe
                  "это единицы чанков. Всё, что не уложилось, ждёт следующего " +
                  "кадра: лучше отстать от LOD, чем встать.")]
         [Range(0.25f, 8f)]
-        public float ChunkFinalizeBudgetMs = 1.5f;
+        public float ChunkFinalizeBudgetMs = 3f;
 
         [Tooltip("Сколько кадров запись очереди может ждать, прежде чем будет " +
                  "признана устаревшей и выброшена. Узел, ушедший за спину " +
@@ -206,8 +208,15 @@ namespace Galilego.Universe
                  "менялась бы сетка и они перестраивались бы каждый кадр.")]
         public bool EnableQualityTiers = true;
 
-        [Tooltip("М/с, выше которых включается тир Fast (глубина минус один).")]
-        public float TierFastSpeed = 250f;
+        [Tooltip("М/с, выше которых включается тир Fast (глубина минус один). " +
+                 "Порог намеренно высокой (1 км/с, а не 250): смена тира меняет " +
+                 "EffectiveMaxDepth, а декор привязан к узлу чанка, поэтому при " +
+                 "возврате в Normal все видимые пулы становятся «чужими» для новых " +
+                 "узлов и декор пропадает целиком, а потом вырастает заново. " +
+                 "Замер в Editor: при 250 м/с переключение Normal→Fast→Normal " +
+                 "роняло DecorPools со 214 до 76 и возвращало к 214. Ниже " +
+                 "1 км/с LOD и так успевает, поэтому тир там не нужен.")]
+        public float TierFastSpeed = 1000f;
 
         [Tooltip("М/с, выше которых включается тир Extreme (глубина минус два).")]
         public float TierExtremeSpeed = 1200f;
@@ -301,11 +310,11 @@ namespace Galilego.Universe
         [Tooltip("М/с, выше которых между проходами декора держится минимальный " +
                  "интервал по времени: за кадр поле смещается на десятки " +
                  "метров, и сканировать чаще всё равно бесполезно.")]
-        public float DecorScanSpeedGate = 50f;
+        public float DecorScanSpeedGate = 150f;
 
         [Tooltip("С, минимальный интервал между проходами декора на скорости " +
                  "выше DecorScanSpeedGate.")]
-        public float DecorScanMinInterval = 0.2f;
+        public float DecorScanMinInterval = 0.05f;
 
         [Header("Бюджет геометрии: горизонт и плотность сетки")]
         [Tooltip("Отбрасывать узлы, чья БЛИЖАЙШАЯ точка дальше предельной дальности " +
@@ -907,12 +916,12 @@ namespace Galilego.Universe
             }
         }
         private readonly List<DecorBuildSession> decorBuildSessions = new List<DecorBuildSession>();
+        private readonly List<DecorCandidate> decorCandidates = new List<DecorCandidate>(256);
         private readonly List<BurstDecorDraw> burstDecorDraws = new List<BurstDecorDraw>();
         private MaterialPropertyBlock decorDrawPropertyBlock;
         private bool decorIndirectDiagLogged;
         private static readonly int DecorChunkToWorldId = Shader.PropertyToID("_DecorChunkToWorld");
         private static readonly int DecorMatricesId = Shader.PropertyToID("_DecorMatrices");
-        private const int DecorPrepItemsPerStep = 2048;
         private const int DecorScanItemsPerStep = 4096;
         private const int DecorExpandSubsPerStep = 2048;
         /// <summary>РЎРєРѕР»СЊРєРѕ СЃР»РѕС‚РѕРІ СЃРµСЃСЃРёР№ РІСЃРµРіРґР° РґРµСЂР¶РёРј РїРѕРґ СЂР°Р±РѕС‚Сѓ Сѓ РёРіСЂРѕРєР°
@@ -987,6 +996,14 @@ namespace Galilego.Universe
         private readonly float[] decorProbeNext = new float[16];
         private float decorAltitude;
         private float decorSpeed;
+
+        /// <summary>Порог кадра, выше которого пишем [Hitch]. 40 мс = 25 fps:
+        /// ниже глаз не воспринимает, выше уже видно.</summary>
+        [SerializeField]
+        private float HitchLogThresholdMs = 0.04f;
+
+        /// <summary>Снимок managed-счётчика на входе в LateUpdate текущего кадра.</summary>
+        private long lateUpdateAllocBefore;
         private bool blobDiagLogged;
         private Vector3 bodyRenderPosition;
         /// <summary>РЎРєРѕСЂРѕСЃС‚СЊ РёРіСЂРѕРєР° РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅРѕ РїРѕРІРµСЂС…РЅРѕСЃС‚Рё РІ body-fixed РѕСЃСЏС…
@@ -1412,6 +1429,7 @@ namespace Galilego.Universe
             // длину LateUpdate, а не только на «интересную» часть.
             SurfacePerf.BeginFrame();
             long perfAllocBefore = System.GC.GetAllocatedBytesForCurrentThread();
+            lateUpdateAllocBefore = perfAllocBefore;
 
             // Вода должна жить всегда: время анимации волн и позиция камеры
             // ставятся ДО всех early-out (нет Ship / чужой DominantBody / нет
@@ -1805,11 +1823,44 @@ namespace Galilego.Universe
             UpdateDecorCollision();
             DrawDecor(cameraPosition);
 
+            LogFrameHitch();
+
             // [ФАЗА 0] Закрываем кадр. Абсолютные счётчики — раз в 2 с и только
             // по флагу: сам скан FindObjectsOfTypeAll<Mesh> на 1000+ мешей даёт
             // фриз, то есть испортил бы ровно то, что мы меряем.
+            LogFrameHitch();
             SurfacePerf.MaybeScanSlowDiagnostics(LogGeometryStats);
             SurfacePerf.EndFrame(perfAllocBefore);
+        }
+
+        /// <summary>Логгер фризов. Снимок состояния в кадре, где весь кадр
+        /// уложился хуже порога: порог меряется по полному кадру, а не только по
+        /// LateUpdate, потому что смена LOD и отрисовка декора случаются уже в
+        /// рендер-части PlayerLoop и в наш LateUpdate не видны.
+        ///
+        /// allocLU — managed-байты, набежавшие за LateUpdate. Если он
+        /// сопоставим с длиной фриза, виновата наша managed-аллокация (например,
+        /// Mesh.vertices при постановке сессии). Если мал, а фриз большой, то
+        /// либо чужой код в кадре, либо unmanaged-работа вроде финализации
+        /// чанков — она в managed-счётчик не попадает.</summary>
+        private void LogFrameHitch()
+        {
+            if (Time.unscaledDeltaTime <= HitchLogThresholdMs)
+            {
+                return;
+            }
+
+            long allocNow = System.GC.GetAllocatedBytesForCurrentThread();
+            Debug.Log($"[Hitch] frame={Time.unscaledDeltaTime * 1000f:F0}ms allocLU={allocNow - lateUpdateAllocBefore} "
+                      + $"speed={decorSpeed:F0} alt={decorAltitude:F0} tier={SurfacePerf.MotionTier} "
+                      + $"enq={SurfacePerf.ChunksEnqueued} fin={SurfacePerf.ChunksFinalized} "
+                      + $"queued={SurfacePerf.QueuedBuilds} inflight={SurfacePerf.InFlightBuilds} "
+                      + $"vis={SurfacePerf.VisibleChunks} desired={SurfacePerf.DesiredNodes} "
+                      + $"keep={SurfacePerf.KeepCount} evict={SurfacePerf.EvictedLast} "
+                      + $"cached={SurfacePerf.CachedChunks} "
+                      + $"pools={SurfacePerf.DecorPools} inst={SurfacePerf.DecorInstances} "
+                      + $"sessions={decorBuildSessions.Count} candidates={decorCandidates.Count} "
+                      + $"live={SurfacePerf.LiveMeshes} tris={SurfacePerf.TerrainTriangles}");
         }
 
         /// <summary>
@@ -2094,10 +2145,16 @@ namespace Galilego.Universe
         /// <summary>Декор не нужен: либо мы слишком быстрые, либо уже выше
         /// радиуса самого дальнего слоя. Вызывается из EnsureVisibleDecor и
         /// RefreshMovingDecor; TrimDistantDecor сюда НЕ ходит намеренно —
-        /// освобождать память надо и тогда, когда новые сборки запрещены.</summary>
-        private bool DecorBuildsSuspended()
+        /// освобождать память надо и тогда, когда новые сборки запрещены.
+        ///
+        /// includeSpeed=false снимает только паузу по скорости, проверка высоты
+        /// остаётся. Так EnsureVisibleDecor достраивает на скорости дешёвые слои
+        /// (деревья, камни, кактусы): их сессия в разы меньше травяной, и без
+        /// них на скорости выше DecorPauseSpeed декор пропадал совсем — новый
+        /// чанк пуст, а скрытый предок не рисуется.</summary>
+        private bool DecorBuildsSuspended(bool includeSpeed = true)
         {
-            if (decorSpeed > DecorPauseSpeed)
+            if (includeSpeed && decorSpeed > DecorPauseSpeed)
             {
                 return true;
             }
@@ -4681,48 +4738,40 @@ namespace Galilego.Universe
             };
         }
 
-        /// <summary>РЎС‚Р°РґРёСЏ 0: РґР¶РёС‚С‚РµСЂ-СЃРµС‚РєР° РєР°РЅРґРёРґР°С‚РѕРІ РІ UV С‡Р°РЅРєР° вЂ” РєСѓСЂСЃРѕСЂРѕРј.</summary>
+        /// <summary>Стадия 0: джиттер-сетка кандидатов и UV-заготовка — целиком в
+        /// Burst-джобе. На сессию это десятки тысяч ячеек, на каждую — семь хешей и
+        /// double-арифметика, и раньше стадия шла нарезанными по 2048 шагами на
+        /// главном потоке, забирая часть общего DecorBuildBudgetMs.</summary>
         private bool AdvanceDecorPrep(DecorBuildSession session)
         {
             Node node = session.Node;
-            int cells = session.Cells;
-            int end = System.Math.Min(session.Count, session.Cursor + DecorPrepItemsPerStep);
-            for (int index = session.Cursor; index < end; index++)
+            JobHandle prep = new GroundDecorPrepJob
             {
-                int a = index / cells;
-                int b = index % cells;
-                // Р”Р¶РёС‚С‚РµСЂ РїРѕ РЇР§Р•Р™РљР• (u Рё v Р·Р°РІРёСЃСЏС‚ Рё РѕС‚ a, Рё РѕС‚ b):
-                // РїРѕСЃС‚СЂРѕС‡РЅС‹Р№ РґР¶РёС‚С‚РµСЂ РґР°РІР°Р» СЃС‚СЂРѕРіРѕ РєРѕР»Р»РёРЅРµР°СЂРЅС‹Рµ СЂСЏРґС‹ вЂ”
-                // РґРµСЂРµРІСЊСЏ РІС‹СЃС‚СЂР°РёРІР°Р»РёСЃСЊ РІ Р»РёРЅРёРё В«СЃР°Р¶РµРЅРѕРіРѕВ» Р»РµСЃР°.
-                double uJitter = GroundDecorDistribution.Hash01(
-                    node.Face, node.Depth, node.Ix, (a * 97) + node.Iy + (b * 131), 11);
-                double vJitter = GroundDecorDistribution.Hash01(
-                    node.Face, node.Depth, node.Iy, (b * 89) + node.Ix + (a * 137), 12);
-                double u = session.U0 + (((a + uJitter) / cells) * session.SizeUv);
-                double v = session.V0 + (((b + vJitter) / cells) * session.SizeUv);
-                Vector3d direction = CubeSphere.Direction(node.Face, u, v);
-                session.Dirs[index] = new double3(direction.X, direction.Y, direction.Z);
-                session.Uvs[index] = new float2((float)u, (float)v);
-                session.Randoms[index] = new double3(
-                    GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Ix + node.Iy, (index * 31) + session.LayerIndex, 21),
-                    GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Iy, (index * 37) + session.LayerIndex, 22),
-                    GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Ix, (index * 41) + session.LayerIndex, 23));
-                session.MeshPicks[index] = GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Ix, (index * 43) + session.LayerIndex, 24);
-                session.BuryRandoms[index] = GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Ix, (index * 47) + session.LayerIndex, 25);
-                session.LeanRandoms[index] = GroundDecorDistribution.Hash01(node.Face, node.Depth, node.Ix, (index * 53) + session.LayerIndex, 26);
-            }
+                Face = node.Face,
+                Depth = node.Depth,
+                Ix = node.Ix,
+                Iy = node.Iy,
+                Cells = session.Cells,
+                LayerIndex = session.LayerIndex,
+                U0 = session.U0,
+                V0 = session.V0,
+                SizeUv = session.SizeUv,
+                Dirs = session.Dirs,
+                Uvs = session.Uvs,
+                Randoms = session.Randoms,
+                MeshPicks = session.MeshPicks,
+                BuryRandoms = session.BuryRandoms,
+                LeanRandoms = session.LeanRandoms
+            }.Schedule(session.Count, 256);
 
-            session.Cursor = end;
-            if (session.Cursor >= session.Count)
-            {
-                ScheduleDecorCandidateJob(session);
-                session.Stage = 1;
-            }
-
+            ScheduleDecorCandidateJob(session, prep);
+            JobHandle.ScheduleBatchedJobs();
+            session.Cursor = session.Count;
+            session.Stage = 1;
             return true;
         }
 
-        private void ScheduleDecorCandidateJob(DecorBuildSession session)
+        private void ScheduleDecorCandidateJob(DecorBuildSession session, JobHandle dependency = default(JobHandle))
         {
             var job = new GroundDecorCandidateJob
             {
@@ -4736,7 +4785,7 @@ namespace Galilego.Universe
                 Accepted = session.Accepted,
                 Instances = session.Instances
             };
-            session.CandidateJob = job.Schedule(session.Count, 64, default(JobHandle));
+            session.CandidateJob = job.Schedule(session.Count, 64, dependency);
             session.CandidateScheduled = true;
         }
 
@@ -5133,6 +5182,16 @@ namespace Galilego.Universe
         /// Р·Р°РјРµРЅРѕР№ СЃР»РѕСЏ С‚РѕР№ Р¶Рµ Р»РёС‡РЅРѕСЃС‚Рё; СЃС‚Р°СЂС‹Р№ СЂРёСЃСѓРµС‚СЃСЏ РґРѕ СЌС‚РѕРіРѕ РјРѕРјРµРЅС‚Р°).</summary>
         private void FinalizeDecorBuild(DecorBuildSession session)
         {
+            using (SurfacePerf.FinalizeDecorBuildMarker.Auto())
+            {
+                FinalizeDecorBuildCore(session);
+            }
+        }
+
+        /// <summary>Стадия 4: готовый слой встаёт в чанк (для пересборки — в
+        /// заменяемый слой той же ячейки; старый рисуется до отсчёта жизли).</summary>
+        private void FinalizeDecorBuildCore(DecorBuildSession session)
+        {
             GroundDecorLayer layer = session.Layer;
             int write = session.Write;
 
@@ -5287,6 +5346,29 @@ namespace Galilego.Universe
             }
         }
 
+        /// <summary>Кандидат на постановку в очередь сборки декора, собранный общим
+        /// проходом по чанкам и слоям.</summary>
+        private struct DecorCandidate
+        {
+            public Chunk Chunk;
+            public int LayerIndex;
+            public float Distance;
+            public bool Grass;
+        }
+
+        /// <summary>Трава (per-instance) первой, внутри группы — ближние к камере.</summary>
+        private static readonly System.Comparison<DecorCandidate> DecorCandidateOrder = CompareDecorCandidates;
+
+        private static int CompareDecorCandidates(DecorCandidate x, DecorCandidate y)
+        {
+            if (x.Grass != y.Grass)
+            {
+                return x.Grass ? -1 : 1;
+            }
+
+            return x.Distance.CompareTo(y.Distance);
+        }
+
         private void EnsureVisibleDecorCore(Vector3 cameraPosition)
         {
             if (decorProfile == null || decorProfile.Layers == null || decorProfile.Layers.Count == 0)
@@ -5297,7 +5379,7 @@ namespace Galilego.Universe
             // [ФАЗА 1] Высоко или быстро новые пулы не заводим. TrimDistantDecor
             // при этом продолжает работать: иначе на большой высоте мы бы ещё и
             // копили память под декор, который уже не виден.
-            if (DecorBuildsSuspended())
+            if (DecorBuildsSuspended(false))
             {
                 return;
             }
@@ -5327,89 +5409,84 @@ namespace Galilego.Universe
                 cameraUp.Normalize();
             }
 
-            // РўСЂР°РІР° (per-instance) вЂ” РІРЅРµ РѕС‡РµСЂРµРґРё Р’Рћ Р’РЎР•Р™ Р·РѕРЅРµ РґРѕСЃР±РѕСЂРєРё СЃР»РѕСЏ
-            // (MaxDistance + Р·Р°РїР°СЃ): РёРЅР°С‡Рµ РµС‘ СЃР±РѕСЂРєРё Р¶РґСѓС‚ РґР°Р»СЊРЅРёС… СЃР»РѕС‘РІ
-            // (РґРµСЂРµРІСЊСЏ/РєР°РјРЅРё РґРѕ 3 РєРј), Рё С†РµР»С‹Рµ РєРІР°РґСЂР°С‚С‹ С‚СЂР°РІС‹ РґРѕСЃС‚СЂР°РёРІР°СЋС‚СЃСЏ,
-            // РєРѕРіРґР° РёРіСЂРѕРє СѓР¶Рµ Р±Р»РёР·РєРѕ вЂ” СЌС‚Рѕ РІРёРґРЅРѕ РєР°Рє В«СЃРїР°РІРЅ РєРІР°РґСЂР°С‚Р°РјРёВ».
-            for (int built = 0; built < budget; built++)
+            // Один проход вместо N. Старый код искал лучшего кандидата заново на
+            // каждую постановку в очередь, то есть DecorBuildsPerFrame полных
+            // обходов «все чанки × все слои» за вызов, а на 1263 чанках это
+            // ~1.8 мс на постановку. Теперь проход один, а порядок задаёт
+            // сортировка: трава (per-instance) первой, внутри группы — ближе.
+            decorCandidates.Clear();
+            foreach (KeyValuePair<long, Chunk> kv in chunks)
             {
-                Chunk bestChunk = null;
-                int bestLayer = -1;
-                float bestDistance = float.MaxValue;
-
-                for (int pass = 0; pass < 2 && bestChunk == null; pass++)
+                Chunk chunk = kv.Value;
+                if (!chunk.Visible || chunk.Go == null)
                 {
-                    bool grassPass = pass == 0;
-                    foreach (KeyValuePair<long, Chunk> kv in chunks)
+                    continue;
+                }
+
+                long chunkId = NodeId(chunk.Node);
+                float distance = ChunkDecorDistance3D(chunk, cameraPosition, cameraUp);
+                for (int layerIndex = 0; layerIndex < decorProfile.Layers.Count; layerIndex++)
+                {
+                    if ((chunk.DecorBuiltMask & (1 << layerIndex)) != 0)
                     {
-                        Chunk chunk = kv.Value;
-                        if (!chunk.Visible || chunk.Go == null)
-                        {
-                            continue;
-                        }
-
-                        long chunkId = NodeId(chunk.Node);
-                        float distance = ChunkDecorDistance3D(chunk, cameraPosition, cameraUp);
-                        for (int layerIndex = 0; layerIndex < decorProfile.Layers.Count; layerIndex++)
-                        {
-                            if ((chunk.DecorBuiltMask & (1 << layerIndex)) != 0)
-                            {
-                                continue;
-                            }
-
-                            GroundDecorLayer layer = decorProfile.Layers[layerIndex];
-                            if (layer == null || !layer.Enabled || layer.NearMeshes == null || layer.NearMeshes.Length == 0)
-                            {
-                                continue;
-                            }
-
-                            bool isGrass = layer.PerInstanceDensity;
-                            if (grassPass)
-                            {
-                                if (!isGrass)
-                                {
-                                    continue;
-                                }
-                            }
-                            else if (isGrass)
-                            {
-                                // Р’СЃСЋ С‚СЂР°РІСѓ СѓР¶Рµ СЂР°Р·РѕР±СЂР°Р» РїРµСЂРІС‹Р№ РїСЂРѕС…РѕРґ.
-                                continue;
-                            }
-
-                            if (HasDecorBuildSession(chunkId, layerIndex))
-                            {
-                                continue;
-                            }
-
-                            if (distance <= layer.MaxDistanceMeters + layer.SpawnMarginMeters && distance < bestDistance)
-                            {
-                                bestDistance = distance;
-                                bestChunk = chunk;
-                                bestLayer = layerIndex;
-                            }
-                        }
+                        continue;
                     }
+
+                    GroundDecorLayer layer = decorProfile.Layers[layerIndex];
+                    if (layer == null || !layer.Enabled || layer.NearMeshes == null || layer.NearMeshes.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    if (layer.PerInstanceDensity && decorSpeed > DecorPauseSpeed)
+                    {
+                        continue;
+                    }
+
+                    if (distance > layer.MaxDistanceMeters + layer.SpawnMarginMeters)
+                    {
+                        continue;
+                    }
+
+                    if (HasDecorBuildSession(chunkId, layerIndex))
+                    {
+                        continue;
+                    }
+
+                    decorCandidates.Add(new DecorCandidate
+                    {
+                        Chunk = chunk,
+                        LayerIndex = layerIndex,
+                        Distance = distance,
+                        Grass = layer.PerInstanceDensity
+                    });
+                }
+            }
+
+            if (decorCandidates.Count == 0)
+            {
+                decorScanBlockedUntil = Time.unscaledTime
+                    + Mathf.Max(0.02f, DecorRescanCooldownSeconds);
+                return;
+            }
+
+            decorCandidates.Sort(DecorCandidateOrder);
+
+            int queued = 0;
+            for (int i = 0; i < decorCandidates.Count && queued < budget; i++)
+            {
+                DecorCandidate candidate = decorCandidates[i];
+                bool nearPlayer = candidate.Distance
+                    <= decorProfile.Layers[candidate.LayerIndex].MaxDistanceMeters;
+                if (TryQueueDecorBuild(candidate.Chunk, candidate.LayerIndex, cameraPosition, nearPlayer))
+                {
+                    queued++;
+                    continue;
                 }
 
-                if (bestChunk == null)
+                if (decorBuildSessions.Count >= MaxDecorBuildSessions)
                 {
-                    // [ФАЗА 4] Ничего не нашли — запоминаем, чтобы не гонять
-                    // полный обход каждый кадр вхолостую. Раньше именно здесь
-                    // стоял голый return, и этот путь был самым дорогим в
-                    // кадре: 1.8 мс на пустой работе.
-                    decorScanBlockedUntil = Time.unscaledTime
-                        + Mathf.Max(0.02f, DecorRescanCooldownSeconds);
-                    return;
-                }
-
-                // В«Р СЏРґРѕРјВ» вЂ” С‚Рѕ, С‡С‚Рѕ РёРіСЂРѕРє РІРёРґРёС‚ СѓР¶Рµ СЃРµР№С‡Р°СЃ (РІ РїСЂРµРґРµР»Р°С…
-                // MaxDistance). Р”Р°Р»СЊС€Рµ вЂ” Р·РѕРЅР° РѕРїРµСЂРµР¶Р°СЋС‰РµР№ СЃР±РѕСЂРєРё: РµС‘ СЃР»РѕС‚С‹
-                // РѕРіСЂР°РЅРёС‡РµРЅС‹ СЂРµР·РµСЂРІРѕРј РїРѕРґ РёРіСЂРѕРєР°.
-                bool nearPlayer = bestDistance <= decorProfile.Layers[bestLayer].MaxDistanceMeters;
-                if (!TryQueueDecorBuild(bestChunk, bestLayer, cameraPosition, nearPlayer))
-                {
-                    return;
+                    break;
                 }
             }
         }

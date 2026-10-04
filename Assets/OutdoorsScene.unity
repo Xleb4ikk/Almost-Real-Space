@@ -826,21 +826,21 @@ MonoBehaviour:
   ShoreWetMeters: 3
   ShoreWetTint: {r: 0.42, g: 0.52, b: 0.56, a: 1}
   BuildsPerFrame: 64
-  DecorBuildsPerFrame: 3
-  DecorBuildBudgetMs: 3
+  DecorBuildsPerFrame: 8
+  DecorBuildBudgetMs: 4
   DecorRescanCooldownSeconds: 0.2
-  MaxDecorBuildSessions: 4
+  MaxDecorBuildSessions: 8
   LogDecorAllocation: 0
   MaxNodes: 12000
   MaxCachedChunks: 8192
   MaxEvictionsPerFrame: 4
   TerrainShadowDepthBand: 3
   AsyncChunkBuild: 1
-  MaxChunkJobsInFlight: 6
-  ChunkFinalizeBudgetMs: 1.5
+  MaxChunkJobsInFlight: 12
+  ChunkFinalizeBudgetMs: 3
   MaxChunkQueueAgeFrames: 6
   EnableQualityTiers: 1
-  TierFastSpeed: 250
+  TierFastSpeed: 1000
   TierExtremeSpeed: 1200
   TierDownDelaySeconds: 1.5
   TierDepthDropFast: 1
@@ -860,8 +860,8 @@ MonoBehaviour:
   DecorShadowMaxAltitude: 300
   DecorSpeedSmoothSeconds: 0.25
   DecorCollisionMaxAltitude: 150
-  DecorScanSpeedGate: 50
-  DecorScanMinInterval: 0.2
+  DecorScanSpeedGate: 150
+  DecorScanMinInterval: 0.05
   CullBeyondHorizon: 1
   HorizonMargin: 1.15
   MinTileResolution: 9

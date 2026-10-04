@@ -54,6 +54,18 @@ namespace Galilego.Universe
         private static readonly Dictionary<int, Stack<NativeArray<T>>> Buckets =
             new Dictionary<int, Stack<NativeArray<T>>>();
 
+        private static readonly int ElemSize =
+            Unity.Collections.LowLevel.Unsafe.UnsafeUtility.SizeOf<T>();
+
+        /// <summary>Потолок простаивающих нативных байтов на один тип T. Без него
+        /// пул растёт без ограничения: бакеты по ТОЧНОЙ длине, а длина зависит
+        /// от cells² конкретного чанка, то есть при езде по широтам и глубинам
+        /// появляются всё новые размеры и старые буферы уже никогда не
+        /// переиспользуются.</summary>
+        private const long MaxPooledBytes = 48L << 20;
+
+        private static long pooledBytes;
+
         static DecorPool()
         {
             DecorArrayPool.Register(Clear);
@@ -63,6 +75,7 @@ namespace Galilego.Universe
         {
             if (Buckets.TryGetValue(length, out Stack<NativeArray<T>> bucket) && bucket.Count > 0)
             {
+                pooledBytes -= (long)length * ElemSize;
                 return bucket.Pop();
             }
 
@@ -82,6 +95,14 @@ namespace Galilego.Universe
                 return;
             }
 
+            long bytes = (long)array.Length * ElemSize;
+            if (pooledBytes + bytes > MaxPooledBytes)
+            {
+                // Освобождает только простаивающие буферы: занятые в сессиях в
+                // Buckets не лежат, поэтому освобождать здесь нечего.
+                Clear();
+            }
+
             if (!Buckets.TryGetValue(array.Length, out Stack<NativeArray<T>> bucket))
             {
                 bucket = new Stack<NativeArray<T>>();
@@ -89,6 +110,7 @@ namespace Galilego.Universe
             }
 
             bucket.Push(array);
+            pooledBytes += bytes;
         }
 
         private static void Clear()
@@ -102,6 +124,7 @@ namespace Galilego.Universe
             }
 
             Buckets.Clear();
+            pooledBytes = 0;
         }
     }
 }

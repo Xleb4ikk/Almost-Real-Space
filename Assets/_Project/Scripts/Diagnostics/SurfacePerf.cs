@@ -53,6 +53,7 @@ namespace Galilego.Universe
         public static readonly ProfilerMarker EnsureVisibleDecorMarker = new ProfilerMarker(PhaseCategory, "PSR.Decor.EnsureVisible");
         public static readonly ProfilerMarker TrimDistantDecorMarker = new ProfilerMarker(PhaseCategory, "PSR.Decor.TrimDistant");
         public static readonly ProfilerMarker StepDecorBuildsMarker = new ProfilerMarker(PhaseCategory, "PSR.Decor.StepBuilds");
+        public static readonly ProfilerMarker FinalizeDecorBuildMarker = new ProfilerMarker(PhaseCategory, "PSR.Decor.Finalize");
         public static readonly ProfilerMarker UpdateDecorCollisionMarker = new ProfilerMarker(PhaseCategory, "PSR.Decor.UpdateCollision");
         public static readonly ProfilerMarker DrawDecorMarker = new ProfilerMarker(PhaseCategory, "PSR.Decor.Draw");
 
@@ -298,7 +299,7 @@ namespace Galilego.Universe
         {
             "PSR.Traverse", "PSR.BuildChunk", "PSR.Evict", "PSR.ChunkTransforms",
             "PSR.Decor.RefreshMoving", "PSR.Decor.EnsureVisible", "PSR.Decor.TrimDistant",
-            "PSR.Decor.StepBuilds", "PSR.Decor.UpdateCollision", "PSR.Decor.Draw",
+            "PSR.Decor.StepBuilds", "PSR.Decor.Finalize", "PSR.Decor.UpdateCollision", "PSR.Decor.Draw",
         };
 
         /// <summary>Включить замеры фаз. Расход — по одному счётчику на
