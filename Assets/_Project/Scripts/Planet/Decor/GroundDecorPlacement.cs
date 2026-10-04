@@ -286,6 +286,12 @@ namespace Galilego.Universe
         public static bool IsSurfaceAllowed(
             GroundDecorPlacementParams p, TerrainNoiseParams terrain, double3 direction)
         {
+            // Зона постройки: под ней не растёт ничего, включая подтуфты травы.
+            if (DecorExclusionTable.IsExcluded(terrain.DecorExclusions, direction))
+            {
+                return false;
+            }
+
             double rawHeight = TerrainNoise.SampleHeight(terrain, direction) * p.AmplitudeMeters;
             if (p.AvoidWater && rawHeight <= p.SeaLevelMeters + (p.AmplitudeMeters * 0.001d))
             {
@@ -404,6 +410,13 @@ namespace Galilego.Universe
             out GroundDecorInstance instance)
         {
             instance = default;
+
+            // Зона постройки: клетка целиком внутри зоны не получает ни одного
+            // экземпляра (IsSurfaceAllowed проверяет ещё и подтуфты).
+            if (DecorExclusionTable.IsExcluded(terrain.DecorExclusions, direction))
+            {
+                return false;
+            }
 
             double rawHeight = TerrainNoise.SampleHeight(terrain, direction) * p.AmplitudeMeters;
             if (p.AvoidWater && rawHeight <= p.SeaLevelMeters + (p.AmplitudeMeters * 0.001d))

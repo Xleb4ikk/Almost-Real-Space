@@ -550,6 +550,7 @@ GameObject:
   m_Component:
   - component: {fileID: 6990330409117967615}
   - component: {fileID: 7858386164305355029}
+  - component: {fileID: 6283734720224483665}
   m_Layer: 0
   m_Name: VAB
   m_TagString: Untagged
@@ -566,13 +567,14 @@ Transform:
   m_GameObject: {fileID: 1994684734340987843}
   serializedVersion: 2
   m_LocalRotation: {x: -0.007877365, y: 0.00006109476, z: 0.007771343, w: 0.9999388}
-  m_LocalPosition: {x: 212.5, y: -9.1, z: -501.6}
+  m_LocalPosition: {x: 212.5, y: -4.671456, z: -501.6}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 7729842784095888442}
   - {fileID: 7734012612912391479}
   - {fileID: 4683067379853493710}
+  - {fileID: 3843807165387811818}
   m_Father: {fileID: 856173073382636046}
   m_LocalEulerAnglesHint: {x: -0.903, y: 0, z: 0.891}
 --- !u!205 &7858386164305355029
@@ -637,6 +639,23 @@ LODGroup:
     - renderer: {fileID: 9078488159814418772}
   m_Enabled: 1
   m_GlobalIlluminationLOD: 0
+--- !u!114 &6283734720224483665
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1994684734340987843}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1fcd50013e9499c48b9dfe6ec9798bfe, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SurfaceGrounded
+  SnapToGround: 1
+  AlignToNormal: 0
+  HeightOffsetMeters: 0
+  KeepYaw: 1
+  AutoUpdate: 1
 --- !u!1 &2508611927652185420
 GameObject:
   m_ObjectHideFlags: 0
@@ -1022,7 +1041,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3341393412415580843}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.6524989, y: 0.6585005, z: 0.27247986, w: 0.25763747}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -2360,6 +2379,52 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!1 &6081578075515884037
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3843807165387811818}
+  - component: {fileID: 166715036184714628}
+  m_Layer: 0
+  m_Name: Collider
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &3843807165387811818
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6081578075515884037}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 6990330409117967615}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &166715036184714628
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6081578075515884037}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3f868b9cb86b9c74b8a17559e1ef1726, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SiteBox
+  Center: {x: -1.6, y: 111.9, z: 7.4}
+  Size: {x: 199, y: 228.7, z: 181.2}
 --- !u!1 &6288254643137090645
 GameObject:
   m_ObjectHideFlags: 0
