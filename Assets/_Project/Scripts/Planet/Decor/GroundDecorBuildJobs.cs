@@ -7,6 +7,51 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
+    /// Стадия 0: джиттер-сетка кандидатов и UV-заготовка, целиком в Burst.
+    /// Формула джиттера (хаши по a/b и по (u,v) раздельно) и направление грани
+    /// остались прежними, поэтому расстановка декора не меняется.
+    /// </summary>
+    [BurstCompile]
+    public struct GroundDecorPrepJob : IJobParallelFor
+    {
+        public int Face;
+        public int Depth;
+        public int Ix;
+        public int Iy;
+        public int Cells;
+        public int LayerIndex;
+        public double U0;
+        public double V0;
+        public double SizeUv;
+
+        [WriteOnly] public NativeArray<double3> Dirs;
+        [WriteOnly] public NativeArray<float2> Uvs;
+        [WriteOnly] public NativeArray<double3> Randoms;
+        [WriteOnly] public NativeArray<double> MeshPicks;
+        [WriteOnly] public NativeArray<double> BuryRandoms;
+        [WriteOnly] public NativeArray<double> LeanRandoms;
+
+        public void Execute(int index)
+        {
+            int a = index / Cells;
+            int b = index % Cells;
+            double uJitter = GroundDecorDistribution.Hash01(Face, Depth, Ix, (a * 97) + Iy + (b * 131), 11);
+            double vJitter = GroundDecorDistribution.Hash01(Face, Depth, Iy, (b * 89) + Ix + (a * 137), 12);
+            double u = U0 + (((a + uJitter) / Cells) * SizeUv);
+            double v = V0 + (((b + vJitter) / Cells) * SizeUv);
+            Dirs[index] = GroundDecorDistribution.CubeFaceDirection(Face, u, v);
+            Uvs[index] = new float2((float)u, (float)v);
+            Randoms[index] = new double3(
+                GroundDecorDistribution.Hash01(Face, Depth, Ix + Iy, (index * 31) + LayerIndex, 21),
+                GroundDecorDistribution.Hash01(Face, Depth, Iy, (index * 37) + LayerIndex, 22),
+                GroundDecorDistribution.Hash01(Face, Depth, Ix, (index * 41) + LayerIndex, 23));
+            MeshPicks[index] = GroundDecorDistribution.Hash01(Face, Depth, Ix, (index * 43) + LayerIndex, 24);
+            BuryRandoms[index] = GroundDecorDistribution.Hash01(Face, Depth, Ix, (index * 47) + LayerIndex, 25);
+            LeanRandoms[index] = GroundDecorDistribution.Hash01(Face, Depth, Ix, (index * 53) + LayerIndex, 26);
+        }
+    }
+
+    /// <summary>
     /// Burst-стадия сборки травы (слои с PerInstanceDensity): вес кандидата
     /// с затуханием и ТОЧНОЕ число травинок клетки (стохастическое округление
     /// ожидания). Раньше здесь резервировались слоты «вслепую» по SubPerCell —
