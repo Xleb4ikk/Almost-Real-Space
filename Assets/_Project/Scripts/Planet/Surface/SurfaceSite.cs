@@ -94,13 +94,32 @@ namespace Galilego.Universe
 
         private void Update()
         {
-            Refresh();
+            // В Play — LateUpdate: время и якорь игрока ставит
+            // SimulationRunner.Update (порядок 0), а место объявлено с −90 и в
+            // Update читало прошлый кадр. Так же сделано в SurfacePlaced.
+            if (!Application.isPlaying)
+            {
+                Refresh();
+            }
+        }
+
+        private void LateUpdate()
+        {
+            if (Application.isPlaying)
+            {
+                Refresh();
+            }
         }
 
         /// <summary>Пересчитать позу и рассадить содержимое по рельефу.</summary>
         [ContextMenu("Refresh site")]
         public void Refresh()
         {
+            if (Runner == null && Application.isPlaying)
+            {
+                Runner = UnityEngine.Object.FindAnyObjectByType<SimulationRunner>();
+            }
+
             if (!TryResolve(out OrbitingBody body))
             {
                 BodyState = null;
@@ -130,22 +149,32 @@ namespace Galilego.Universe
         private bool TryResolve(out OrbitingBody body)
         {
             HeightfieldTerrain ignored;
-            if (Body != null)
-            {
-                BodyName = Body.gameObject.name;
-                return SurfaceSceneSystem.TryResolve(Body, out body, out ignored);
-            }
 
+            // В Play тело берём из ЖИВОЙ системы раннера (Runner подбирается в
+            // Refresh), как это делает SurfaceFrame: редакторный кэш
+            // SurfaceSceneSystem в Play собран по другой подписи и для времени
+            // 0, поэтому место уезжает из-под игрока. Ветка Body != null идёт
+            // ПОСЛЕ неё — иначе назначенное тело снова уводило бы в кэш.
             if (Application.isPlaying && Runner != null && Runner.SystemState != null)
             {
+                string wanted = Body != null ? Body.gameObject.name : BodyName;
                 foreach (OrbitingBody candidate in Runner.SystemState.AllBodies)
                 {
-                    if (candidate.Name == BodyName)
+                    if (candidate.Name == wanted)
                     {
                         body = candidate;
                         return true;
                     }
                 }
+
+                body = null;
+                return false;
+            }
+
+            if (Body != null)
+            {
+                BodyName = Body.gameObject.name;
+                return SurfaceSceneSystem.TryResolve(Body, out body, out ignored);
             }
 
             return SurfaceSceneSystem.TryResolve(BodyName, out body, out ignored);

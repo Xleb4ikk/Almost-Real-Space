@@ -44,6 +44,20 @@ namespace Galilego.Universe
             QuaternionD sim = ToSimulationFrame(astro);
             return new UnityEngine.Quaternion((float)sim.X, (float)sim.Y, (float)sim.Z, (float)sim.W);
         }
+
+        /// <summary>
+        /// Поворот, УЖЕ собранный в sim-осях: только Float-каст, никакой
+        /// перестановки и никакого сопряжения.
+        ///
+        /// Нужен там, где базис строят в sim-координатах явно (SurfaceFrameMath
+        /// .SimulationRotation: перестановка применена к КАЖДОМУ образу локальной
+        /// оси до сборки матрицы). Повторный ToSimulation(QuaternionD) поверх
+        /// такого результата переставил бы оси ещё раз — фрейм вставал боком.
+        /// </summary>
+        public static UnityEngine.Quaternion SimulationQuaternion(QuaternionD sim)
+        {
+            return new UnityEngine.Quaternion((float)sim.X, (float)sim.Y, (float)sim.Z, (float)sim.W);
+        }
 #else
         /// <summary>
         /// Вне Unity (тестовый стенд): тот же маппинг на double-тройке,

@@ -1,0 +1,57 @@
+{
+  "verts": 6577,
+  "loops": 25616,
+  "faces": 6404,
+  "tris": 12808,
+  "materials_used": {
+    "Pad_Stone": 5188,
+    "Pad_Paint_White": 1216
+  },
+  "plan_area_m2": 1600.0,
+  "surface_area_m2": 1840.1,
+  "top_area_m2": 1600.1,
+  "faces_facing_up": 6400,
+  "faces_facing_down": 0,
+  "degenerate_faces": 0,
+  "loose_verts": 0,
+  "non_quads": 0,
+  "top_z_levels": [
+    1.5,
+    1.53
+  ],
+  "bounds": {
+    "min": [
+      -20.0,
+      -20.0,
+      0.0
+    ],
+    "max": [
+      20.0,
+      20.0,
+      1.53
+    ]
+  },
+  "viewport_color_modes_before": [
+    "MATERIAL",
+    "MATERIAL",
+    "MATERIAL",
+    "MATERIAL",
+    "MATERIAL",
+    "MATERIAL",
+    "MATERIAL",
+    "MATERIAL",
+    "TEXTURE",
+    "MATERIAL"
+  ],
+  "exported": {
+    "blend": true,
+    "fbx": 171436,
+    "glb": 326096
+  },
+  "seconds": 0.16,
+  "files": {
+    "blend": "C:\\MyData\\UnityProj\\Almost Real Space\\Blender\\LaunchPad\\LaunchPad_40x40.blend",
+    "fbx": "C:\\MyData\\UnityProj\\Almost Real Space\\Blender\\LaunchPad\\LaunchPad_40x40.fbx",
+    "glb": "C:\\MyData\\UnityProj\\Almost Real Space\\Blender\\LaunchPad\\LaunchPad_40x40.glb"
+  }
+}

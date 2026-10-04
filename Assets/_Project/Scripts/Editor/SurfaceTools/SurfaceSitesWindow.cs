@@ -819,7 +819,17 @@ namespace Galilego.Universe.EditorTools
                 site.BodyName = ResolveBodyName();
             }
 
-            if (!SurfaceSceneSystem.TryResolve(site.BodyName, out OrbitingBody body, out _))
+            OrbitingBody body = null;
+            foreach (OrbitingBody candidate in runner.SystemState.AllBodies)
+            {
+                if (candidate.Name == site.BodyName)
+                {
+                    body = candidate;
+                    break;
+                }
+            }
+
+            if (body == null)
             {
                 status = "Тело \"" + site.BodyName + "\" не найдено.";
                 statusType = MessageType.Error;

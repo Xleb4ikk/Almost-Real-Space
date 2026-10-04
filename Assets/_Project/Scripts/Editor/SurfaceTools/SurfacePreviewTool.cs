@@ -327,9 +327,13 @@ namespace Galilego.Universe.EditorTools
 
         /// <summary>
         /// Показать превью в Scene view: сначала узкое (чтобы F не улетел за
-        /// горизонт на 5 км), потом кадрируем. Выделение НЕ трогаем — служебный
-        /// GO помечен DontSave и не переживает перезагрузку домена, оставленное
-        /// выделенным инспектор падает в OnEnable с MissingReference.
+        /// горизонт на 5 км), потом кадрируем. Ориентация камеры считается в
+        /// ОСЯХ ФРЕЙМА (локальный +Y — зенит точки), не в мировых: на экваторе
+        /// зенит лежит в мире горизонтально, и камера, повёрнутая в мировых осях,
+        /// смотрит на патч с тыла — а меш рисуется с Cull Back, и земли не видно.
+        /// Выделение НЕ трогаем — служебный GO помечен DontSave и не переживает
+        /// перезагрузку домена, оставленное выделенным инспектор падает в OnEnable
+        /// с MissingReference.
         /// </summary>
         public static bool FocusSceneView(SurfaceFrame frame)
         {
@@ -357,8 +361,26 @@ namespace Galilego.Universe.EditorTools
             PreviewRadiusMeters = saved;
 
             view.orthographic = false;
-            view.rotation = Quaternion.Euler(30f, 0f, 0f);
-            view.Frame(new Bounds(frame.transform.position, Vector3.one * 250f), false);
+
+            // Кадрируем МГНОВЕННО: Frame(bounds, false) анимирует переход, и
+            // доводка камеры затирает поворот, выставленный следом.
+            Bounds bounds = new Bounds(frame.transform.position, Vector3.one * 250f);
+            view.Frame(bounds, true);
+
+            // Зум берём тот, что подобрал Frame под патч: LookAt ставит size сам
+            // и без этого сбросил бы кадрирование.
+            float framedSize = view.size;
+
+            // Смотрим на патч из локального зенита фрейма: 30° над локальным
+            // горизонтом — то же, что встать на склоне и посмотреть вниз-вперёд.
+            // Мировой Euler(30, 0, 0) на экваторе даёт вид с тыла (см. комментарий
+            // к методу), поэтому поворот домножается на поворот фрейма.
+            view.LookAt(
+                bounds.center,
+                frame.transform.rotation * Quaternion.Euler(30f, 0f, 0f),
+                framedSize,
+                false,
+                true);
             view.Repaint();
             return true;
         }
