@@ -2759,12 +2759,11 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Полярный фейд декора (T102): растительность зеркалит визуальный биом
-    /// (TerrainPalette/шейдер — тундра с lat01=0.52, лёд с lat01=0.70):
-    /// на экваторе вес 1, в тундре 0..1 (прореживание, но посадки есть),
-    /// на сплошном льду — запрет для растительности, камни с IgnoreLatitude
-    /// по-прежнему принимаются. Направления-суша зафиксированы меридианным
-    /// профайлером (сид Terra 24334543): lon90/lat80 — лёд, lon90/lat65 — тундра.
+    /// Плотность растительности по широте (T102). Затухание снято: вес у всех
+    /// слоёв без IgnoreLatitude одинаков на любой широте (UniformGreenWeight),
+    /// камни с IgnoreLatitude идут без ограничения. Прежний контракт —
+    /// «экватор 1, тундра 0..1, сплошной лёд 0 для растительности» — больше не
+    /// действует, поэтому проверяется равномерность, а не монотонность.
     /// </summary>
     private static int Test102_PolarDecorLatitude()
     {
@@ -2812,28 +2811,23 @@ internal static partial class P1bTests
             IgnoreLatitude = true
         };
         GroundDecorPlacementParams r = GroundDecorPlacementParams.FromLayer(rocks, terrain, 1143000d, Vector3d.Zero);
-        GroundDecorPlacementParams rLimited = r;
-        rLimited.IgnoreLatitude = false;
 
-        // Чистая функция широты: экватор 1, полюс 0, монотонность по меридиану.
+        // Вес по широте: одинаков везде, без затухания (IgnoreLatitude = 1).
         var equator = new Unity.Mathematics.double3(1d, 0d, 0d);
         var pole = new Unity.Mathematics.double3(0d, 0d, 1d);
         double wEquator = GroundDecorDistribution.LatitudeGreenWeight(g, equator);
         double wPole = GroundDecorDistribution.LatitudeGreenWeight(g, pole);
         double wRocksPole = GroundDecorDistribution.LatitudeGreenWeight(r, pole);
-        bool monotonic = true;
-        double prev = 2d;
+        bool uniform = true;
         for (int lat = 0; lat <= 90; lat += 5)
         {
             double la = lat * System.Math.PI / 180d;
             var dir = new Unity.Mathematics.double3(System.Math.Cos(la), 0d, System.Math.Sin(la));
             double w = GroundDecorDistribution.LatitudeGreenWeight(g, dir);
-            if (w > prev + 1e-12d)
+            if (System.Math.Abs(w - GroundDecorDistribution.UniformGreenWeight) > 1e-12d)
             {
-                monotonic = false;
+                uniform = false;
             }
-
-            prev = w;
         }
 
         // Суша на льду (lon90/lat80): травы нет, камни с флагом есть.
@@ -2846,13 +2840,10 @@ internal static partial class P1bTests
         var zeroRandom = new Unity.Mathematics.double3(0d, 0.5d, 0.5d);
         bool iceGrass = GroundDecorDistribution.TryEvaluate(
             g, terrainParams, iceDir, zeroRandom, 0.5d, 0.5d, 0.5d, out _);
-        bool iceGrassAllowed = GroundDecorDistribution.IsSurfaceAllowed(g, terrainParams, iceDir);
         bool iceRocks = GroundDecorDistribution.TryEvaluate(
             r, terrainParams, iceDir, zeroRandom, 0.5d, 0.5d, 0.5d, out _);
-        bool iceRocksLimited = GroundDecorDistribution.TryEvaluate(
-            rLimited, terrainParams, iceDir, zeroRandom, 0.5d, 0.5d, 0.5d, out _);
 
-        // Суша в тундре (lon90/lat65): посадки остаются (вес > 0).
+        // Суша в тундре (lon90/lat65): вес тот же, что на экваторе.
         double tunLa = 65d * System.Math.PI / 180d;
         double tunLo = 90d * System.Math.PI / 180d;
         var tundraDir = new Unity.Mathematics.double3(
@@ -2860,20 +2851,19 @@ internal static partial class P1bTests
             System.Math.Cos(tunLa) * System.Math.Sin(tunLo),
             System.Math.Sin(tunLa));
         double wTundra = GroundDecorDistribution.LatitudeGreenWeight(g, tundraDir);
-        bool tundraGrass = GroundDecorDistribution.TryEvaluate(
-            g, terrainParams, tundraDir, zeroRandom, 0.5d, 0.5d, 0.5d, out _);
 
         System.Console.WriteLine("POLAR wEquator=" + wEquator.ToString("F3")
             + " wTundra=" + wTundra.ToString("F3") + " wPole=" + wPole.ToString("F3")
-            + " iceGrass=" + iceGrass + " iceRocks=" + iceRocks + " tundraGrass=" + tundraGrass);
-        Check(wEquator == 1d && wPole == 0d && wRocksPole == 1d && monotonic, "T102 polar-decor-latitude",
-            "вес: экватор=1 полюс=0 камни=1 монотонность=" + monotonic);
-        Check(!iceGrass && !iceGrassAllowed, "T102 polar-decor-latitude",
-            "на сплошном льду травы нет (и по IsSurfaceAllowed)");
-        Check(iceRocks && !iceRocksLimited, "T102 polar-decor-latitude",
-            "камни с IgnoreLatitude на льду есть, без флага — нет");
-        Check(wTundra > 0d && wTundra < 1d && tundraGrass, "T102 polar-decor-latitude",
-            "тундра прореживает, но не запрещает: вес=" + wTundra.ToString("F3"));
+            + " iceGrass=" + iceGrass + " iceRocks=" + iceRocks);
+        Check(wEquator == GroundDecorDistribution.UniformGreenWeight
+            && wPole == GroundDecorDistribution.UniformGreenWeight
+            && wRocksPole == 1d && uniform, "T102 polar-decor-latitude",
+            "вес одинаков на всех широтах: " + wEquator.ToString("F3")
+            + " камни без ограничения=" + wRocksPole.ToString("F3"));
+        Check(wTundra == wEquator && wTundra > 0d, "T102 polar-decor-latitude",
+            "на широте тундры вес не меньше экватора: " + wTundra.ToString("F3"));
+        Check(iceRocks, "T102 polar-decor-latitude",
+            "камни с IgnoreLatitude на льду принимаются");
         return 0;
     }
 

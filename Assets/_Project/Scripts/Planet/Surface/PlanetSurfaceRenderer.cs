@@ -976,9 +976,15 @@ namespace Galilego.Universe
         /// РёРЅР°С‡Рµ РїСЂРѕР№РґРµРЅРЅС‹Рµ С‡Р°РЅРєРё РєРѕРїСЏС‚ РїРѕР»РЅС‹Рµ РїСѓР»С‹, Р±СЋРґР¶РµС‚ СѓС…РѕРґРёС‚ РѕС‚ РёРіСЂРѕРєР°
         /// (Рё В«РѕР±Р»Р°РєРѕВ» Сѓ РЅРµРіРѕ РїСѓСЃС‚РµРµС‚).</summary>
         private const float DistantDecorTrimMargin = 80f;
+        /// <summary>Нормировка метрики ячейки декора: густота ∝ квадрату.
+        /// 1.0 = «чистые метры» (реальный шаг между растениями = SpacingMeters).
+        /// 1.3 = сохранить прежний вид умеренных широт (дороже: ~+8 мс кадра
+        /// в центрах граней, где трава прибавляется к кандидатам).</summary>
+        private const double DecorMetricNorm = 1.0d;
         private int firstFrameGuard = -1;
         private int diagnosticChunksLogged;
         private float decorAllocLogTime;
+        private readonly float[] decorProbeNext = new float[16];
         private float decorAltitude;
         private float decorSpeed;
         private bool blobDiagLogged;
@@ -3916,7 +3922,18 @@ namespace Galilego.Universe
             double u0 = chunk.Node.Ix * sizeUv;
             double v0 = chunk.Node.Iy * sizeUv;
             double stepUv = sizeUv / (coreN - 1);
-            double chunkArc = body.Radius * 1.5707963267948966d * sizeUv;
+
+            // Метрика ячейки по cube-sphere: площадь ячейки ∝ (1+a²+b²)^(-3/2),
+            // где a,b — координаты центра чанка в [-1,1] на грани. Плотность
+            // кандидатов на м² обратна этой площади, поэтому cells_axis держим
+            // пропорциональным линейному размеру = DecorMetricNorm·R·sizeUv·f.
+            // Нормировка 1.0 = «чистые метры» (реальный шаг = SpacingMeters);
+            // 1.3 — вид умеренных широт, где старая формула давала ~1.7x
+            // номинальной густоты (густота ∝ norm²).
+            double ca = ((u0 + (sizeUv * 0.5d)) * 2d) - 1d;
+            double cb = ((v0 + (sizeUv * 0.5d)) * 2d) - 1d;
+            double chunkArc = body.Radius * sizeUv * 2d * DecorMetricNorm
+                / System.Math.Pow(1d + (ca * ca) + (cb * cb), 0.75d);
 
             double spacing = System.Math.Max(0.25d, layer.SpacingMeters);
             int cells = (int)System.Math.Ceiling(chunkArc / spacing);
@@ -4076,6 +4093,21 @@ namespace Galilego.Universe
                     ? DecorArrayPool.Rent<float>(2)
                     : default
             };
+
+            if (LogDecorAllocation && nearPlayer
+                && Time.realtimeSinceStartup >= decorProbeNext[layerIndex & 15])
+            {
+                decorProbeNext[layerIndex & 15] = Time.realtimeSinceStartup + 0.5f;
+                double cx = chunk.CenterAstro.X, cy = chunk.CenterAstro.Y, cz = chunk.CenterAstro.Z;
+                double lat = System.Math.Asin(cz / System.Math.Sqrt((cx * cx) + (cy * cy) + (cz * cz))) * 57.29578d;
+                double lon = System.Math.Atan2(cy, cx) * 57.29578d;
+                Vector3 bs = chunk.Mesh.bounds.size;
+                float real = Mathf.Max(bs.x, Mathf.Max(bs.y, bs.z));
+                Debug.Log($"[Probe] {layer.Name} lat={lat:F1} lon={lon:F1} f={chunk.Node.Face} d={chunk.Node.Depth} " +
+                          $"ix={chunk.Node.Ix} iy={chunk.Node.Iy} nomArc={chunkArc:F0} realSize={real:F0} " +
+                          $"want={(int)System.Math.Ceiling(chunkArc / spacing)} cells={cells}/{layer.MaxCellsPerAxis} " +
+                          $"sub={subPerCell}/{layer.SubInstancesPerCell} realSpacing={real / cells:F2}");
+            }
 
             if (session.Selection.IsCreated)
             {
@@ -4794,6 +4826,13 @@ namespace Galilego.Universe
             }
 
             session.Take = capacity;
+
+            if (LogDecorAllocation && session.NearPlayer)
+            {
+                Debug.Log($"[Probe] {layer.Name} f={session.Node.Face} d={session.Node.Depth} ix={session.Node.Ix} iy={session.Node.Iy} " +
+                          $"accepted={session.AcceptedCount}/{session.Count} take={capacity}/{layer.MaxInstancesPerChunk} " +
+                          $"cap={session.CapScale:F3}");
+            }
 
             // Р›РёРјРёС‚ вЂ” РЅРµ В«РѕР±СЂРµР·Р°С‚СЊ С…РІРѕСЃС‚В» С‡Р°РЅРєР° (СЌС‚Рѕ РґР°РІР°Р»Рѕ РїРѕР»РѕСЃСѓ РґРµРєРѕСЂР°
             // СЃ РѕРґРЅРѕРіРѕ РєСЂР°СЏ СЃРµС‚РєРё), Р° СЂР°РІРЅРѕРјРµСЂРЅРѕ РїСЂРѕСЂРµРґРёС‚СЊ: РѕР±С…РѕРґ РїРѕ
