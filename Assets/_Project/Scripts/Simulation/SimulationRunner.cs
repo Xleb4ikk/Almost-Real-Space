@@ -1012,15 +1012,30 @@ namespace Galilego.Universe
                 Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
                 Vector3d jetpackAccel = JetpackActive ? PlayerIntent.JetpackAccel : Vector3d.Zero;
                 PlayerVelocity += (gravity + jetpackAccel) * dt;
-                PlayerPosition += PlayerVelocity * dt;
+
+                // Шг режем о бокс ДО применения, как при ходьбе. В сравнение идёт
+                // движение ОТНОСИТЕЛЬНО земли (скорость минус скорость вращающейся
+                // поверхности под игроком): в инерциальных координатах игрок за
+                // подшаг уезжает с планетой, а бокс остаётся у якоря.
+                Vector3d airStep = PlayerVelocity * dt;
+                if (dt > 1e-9d)
+                {
+                    body.SurfaceLatLonAt(PlayerPosition, t, out double boxLat, out double boxLon);
+                    double boxAlt = (PlayerPosition - bodyPos).Magnitude - body.Radius;
+                    body.GetSurfaceState(boxLat, boxLon, boxAlt, t, out _, out Vector3d coVel);
+                    Vector3d relEnd = PlayerPosition + ((PlayerVelocity - coVel) * dt);
+                    if (SiteBoxRegistry.TryResolve(relEnd, PlayerCollisionRadiusMeters, out Vector3d airSlid))
+                    {
+                        Vector3d boxPush = airSlid - relEnd;
+                        airStep += boxPush;
+                        PlayerVelocity += boxPush / dt; // гасим составляющую скорости в стену
+                    }
+                }
+
+                PlayerPosition += airStep;
                 if (GroundDecorCollisionRegistry.TryResolve(body.Name, PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d airPushed))
                 {
                     PlayerPosition = airPushed;
-                }
-
-                if (SiteBoxRegistry.TryResolve(PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d airBox))
-                {
-                    PlayerPosition = airBox;
                 }
 
                 // Позиция уже в t+dt — контакт проверяем и сажаем в t+dt, не в t.
@@ -1061,7 +1076,22 @@ namespace Galilego.Universe
 
             Vector3d walk = PlayerIntent.WalkDirection * PlayerIntent.WalkSpeed;
             Vector3d tangential = walk - (normal * Vector3d.Dot(walk, normal));
-            PlayerVelocity = surfaceVel + tangential;
+
+            // Шаг режем о стену ДО применения. Проверять позицию после шага
+            // нельзя: за подшаг игрок уезжает от якоря вместе с вращением
+            // планеты, и бокс (поза прошлого кадра) сравнивался бы с другой
+            // точкой. Поэтому в проверку идёт позиция плюс ТОЛЬКО шаг ходьбы, без
+            // движения поверхности, — она остаётся у якоря и корректна.
+            // Разрешённый шаг = (вытолкнутая позиция − текущая) / dt: это и есть
+            // скольжение вдоль стены, а отбрасывание шага целиком.
+            Vector3d walkVel = tangential;
+            if (dt > 1e-9d
+                && SiteBoxRegistry.TryResolve(PlayerPosition + (tangential * dt), PlayerCollisionRadiusMeters, out Vector3d slid))
+            {
+                walkVel = (slid - PlayerPosition) / dt;
+            }
+
+            PlayerVelocity = surfaceVel + walkVel;
             PlayerPosition += PlayerVelocity * dt;
 
             // Коллизия стволов деревьев: вытолкнуть из цилиндров декора.
