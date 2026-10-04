@@ -251,25 +251,21 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Полярный фейд растительности — зеркало визуального биома
-        /// (TerrainPalette.BaseColor и шейдер PlanetSurface): тундра с lat01=0.52
-        /// (широта ~47°), ледяная шапка с lat01=0.70 (~63°), сплошной лёд — 0.86
-        /// (~77°). Направление — тел-fixed единичное (z = sin широты).
-        /// Возвращает множитель плотности 0..1: тундра прореживает (как визуал,
-        /// до ×0.15), сплошной лёд даёт 0 (там только камни — у них IgnoreLatitude).
+        /// Одинаковая плотность растительности на всей планете (вместо полярного
+        /// затухания). Константа задаёт густоту сразу везде: 0.06 — картинка
+        /// полярной тундры, 0.15..0.3 — заметно реже экватора, 1.0 — нынешняя
+        /// экваториальная густота по всей планете.
+        /// </summary>
+        public const double UniformGreenWeight = 0.15d;
+
+        /// <summary>
+        /// Множитель плотности по широте. Слои с IgnoreLatitude (камни) идут
+        /// без ограничения, вся растительность — с UniformGreenWeight на любой
+        /// широте, включая полярную шапку.
         /// </summary>
         public static double LatitudeGreenWeight(GroundDecorPlacementParams p, double3 direction)
         {
-            if (p.IgnoreLatitude)
-            {
-                return 1d;
-            }
-
-            double z = direction.z < -1d ? -1d : (direction.z > 1d ? 1d : direction.z);
-            double lat01 = Math.Abs(Math.Asin(z)) / 1.5707963267948966d;
-            double tundra = Smoothstep01((lat01 - 0.52d) / 0.22d);
-            double ice = Smoothstep01((lat01 - 0.70d) / 0.16d);
-            return (1d - (tundra * 0.85d)) * (1d - ice);
+            return p.IgnoreLatitude ? 1d : UniformGreenWeight;
         }
 
         /// <summary>
@@ -328,7 +324,10 @@ namespace Galilego.Universe
                 return false;
             }
 
-            // Полярная шапка: на сплошном льду растительности нет (только камни).
+            // Полярная шапка: запрет снят вместе с затуханием — при
+            // UniformGreenWeight > 0 растительность на льду не режется здесь,
+            // верх зелени/высота/wet остаются ограничителями. Проверка остаётся
+            // на случай UniformGreenWeight = 0 (слой выключенный по весу).
             if (LatitudeGreenWeight(p, direction) <= 0d)
             {
                 return false;
