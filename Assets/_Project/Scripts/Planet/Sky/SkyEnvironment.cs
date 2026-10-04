@@ -35,6 +35,12 @@ namespace Galilego.Universe
         [Tooltip("Directional Light солнца (гасится/краснится по физике).")]
         public Light SunLight;
 
+        [Tooltip("Directional Light без теней: заполняющий ambient неба для обычных HDRP-материалов (здания, пропсы). Пусто — только солнце.")]
+        public Light SkyFillLight;
+
+        [Tooltip("Множитель заполняющего света. Старт 2–3, подбирать глазами.")]
+        public float FillLightScale = 2f;
+
         [Tooltip("Физический ориентир дня (люкс, HDRP physical units): ~80000 — яркий день. В intensities света НЕ участвует: сцена считает свет в искусственном масштабе (см. TerrainRadianceScale), и Directional Light питает только объекты на обычных HDRP-материалах — его ярность задаёт MaterialLightScale.")]
         public float SunLightDayLux = 80000f;
 
@@ -374,6 +380,41 @@ namespace Galilego.Universe
                 }
             }
 
+            // Заполняющий свет неба для обычных HDRP-материалов. _SkyAmbientColor
+            // читают только кастомные шейдеры рельефа и декора — здание на
+            // HDRP/Lit в стороне без прямого солнца остаётся чёрным. Этот
+            // Directional Light берёт цвет и яркость из того же ambient, что и
+            // рельеф, и светит сбоку-снизу с противоположной от солнца стороны.
+            if (applyToLight && SkyFillLight != null)
+            {
+                Vector3 sunW = AstroFrame.ToSimulation(sunDir);
+                Vector3 upW = AstroFrame.ToSimulation(up);
+                Vector3 side = Vector3.ProjectOnPlane(-sunW, upW);
+                if (side.sqrMagnitude < 1e-8f)
+                {
+                    side = Vector3.Cross(upW, Vector3.right);
+                }
+
+                if (side.sqrMagnitude > 1e-8f)
+                {
+                    Vector3 from = (side.normalized + (upW * 0.6f)).normalized;
+                    SkyFillLight.transform.rotation = Quaternion.LookRotation(-from, upW);
+                }
+
+                float peak = Mathf.Max(ambientColor.r, Mathf.Max(ambientColor.g, ambientColor.b));
+                if (peak > 1e-5f)
+                {
+                    SkyFillLight.color = new Color(
+                        ambientColor.r / peak, ambientColor.g / peak, ambientColor.b / peak, 1f);
+                    SkyFillLight.intensity =
+                        AmbientAmount * Mathf.PI * SkyAmbient * TerrainRadianceScale * FillLightScale;
+                }
+                else
+                {
+                    SkyFillLight.intensity = 0f;
+                }
+            }
+
             if (SunsetDiagLog && Application.isPlaying && timeSeconds >= nextDiagTime)
             {
                 nextDiagTime = timeSeconds + 2d;
@@ -404,6 +445,36 @@ namespace Galilego.Universe
                 && ExposureVolume.profile.TryGet<UnityEngine.Rendering.HighDefinition.Exposure>(out var exposure))
             {
                 exposure.compensation.Override((float)exposureComp);
+            }
+
+            // Настоящий ambient полусферы неба для обычных HDRP-материалов.
+            // Один Directional Light даёт только одну освещённую сторону, а
+            // небо светит со всех сторон сразу — поэтому отдаём HDRP сам
+            // Gradient Sky и подмешиваем в него цвета отсюда. HDRP сворачивает
+            // купол в SH (AmbientProbeConvolution) и без APV отдаёт его
+            // материалам через EvaluateAmbientProbe, то есть стены получают
+            // освещение по нормали без единого дополнительного источника.
+            //
+            // Масштаб — тот же, что у рельефа (albedo · ambient · SkyAmbient ·
+            // TerrainRadianceScale), иначе здание и земля разойдутся по яркости.
+            // Фон камеры при этом не меняется: StarFieldView ставит clearColor
+            // в чёрный, а небо рисует атмосфера, поэтому Gradient Sky виден
+            // только как источник ambient/отражений, а не как картинка.
+            if (ExposureVolume != null && ExposureVolume.profile != null
+                && ExposureVolume.profile.TryGet<UnityEngine.Rendering.HighDefinition.GradientSky>(out var grad))
+            {
+                float k = SkyAmbient * TerrainRadianceScale;
+                Color sky = new Color(ambientColor.r * k, ambientColor.g * k, ambientColor.b * k, 1f);
+
+                // Отражённый от земли свет: зависит от высоты солнца, поэтому
+                // гаснет вместе с прямым светом и не светит ночью.
+                float bounce = DayFactor * (float)directLum * TerrainRadianceScale * TerrainSunIntensity * 0.15f;
+                Color ground = new Color(0.20f * bounce, 0.30f * bounce, 0.12f * bounce, 1f);
+
+                grad.top.Override(sky);
+                grad.middle.Override(sky * 0.65f);
+                grad.bottom.Override(ground);
+                grad.multiplier.Override(1f);
             }
         }
     }
