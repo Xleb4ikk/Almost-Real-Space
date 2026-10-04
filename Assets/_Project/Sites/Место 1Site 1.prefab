@@ -624,7 +624,7 @@ LODGroup:
     - renderer: {fileID: 1789140366129161107}
     - renderer: {fileID: 5689253406984615678}
     - renderer: {fileID: 7107276945469505697}
-  - screenRelativeHeight: 0.05
+  - screenRelativeHeight: 0.008
     fadeTransitionWidth: 0
     renderers:
     - renderer: {fileID: 1836725369178953697}
@@ -1026,6 +1026,7 @@ GameObject:
   m_Component:
   - component: {fileID: 856173073382636046}
   - component: {fileID: 1705864115998673676}
+  - component: {fileID: 5192730461528373641}
   m_Layer: 0
   m_Name: "\u041C\u0435\u0441\u0442\u043E 1Site 1"
   m_TagString: Untagged
@@ -1074,6 +1075,23 @@ MonoBehaviour:
   - 1
   - 10
   - 100
+--- !u!114 &5192730461528373641
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3341393412415580843}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 87c0f9d1f3ea45f19f996aae17b02665, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SiteLodByDistance
+  View: {fileID: 0}
+  LevelMaxDistanceMeters:
+  - 350
+  - 1100
+  - 80000
 --- !u!1 &3841930116799856600
 GameObject:
   m_ObjectHideFlags: 0
