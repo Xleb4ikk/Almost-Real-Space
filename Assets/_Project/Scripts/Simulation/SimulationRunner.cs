@@ -1018,6 +1018,11 @@ namespace Galilego.Universe
                     PlayerPosition = airPushed;
                 }
 
+                if (SiteBoxRegistry.TryResolve(PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d airBox))
+                {
+                    PlayerPosition = airBox;
+                }
+
                 // Позиция уже в t+dt — контакт проверяем и сажаем в t+dt, не в t.
                 double airEnd = t + dt;
                 body.SurfaceLatLonAt(PlayerPosition, airEnd, out double airLat, out double airLon);
@@ -1039,6 +1044,20 @@ namespace Galilego.Universe
             Vector3d normal = body.Terrain != null
                 ? body.Terrain.GetOutwardNormal(body, contact - bodyPos2, t).Normalized
                 : (contact - bodyPos2).Normalized;
+
+            // Коллизия бокса постройки. Именно здесь, в начале подшага, и не позже:
+            // SiteBoxRegistry работает в render-пространстве, а поза площадки
+            // считается в LateUpdate уже по СЛЕДУЮЩЕМУ якорю. За подшаг игрок
+            // уезжает от якоря на сотни метров (время идёт быстрее реального, а
+            // тело несёт его с собой), поэтому проверка после интегрирования
+            // сравнивала игрока с позой прошлого кадра и промахивалась мимо
+            // бокса. В начале подшага позиция игрока — это ровно якорь, и поза
+            // бокса ему соответствует. (Выталкивание стволов такого свойства не
+            // имеет: реестр хранит абсолютные astro-координаты.)
+            if (SiteBoxRegistry.TryResolve(PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d boxPushed))
+            {
+                PlayerPosition = boxPushed;
+            }
 
             Vector3d walk = PlayerIntent.WalkDirection * PlayerIntent.WalkSpeed;
             Vector3d tangential = walk - (normal * Vector3d.Dot(walk, normal));

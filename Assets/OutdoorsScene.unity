@@ -995,8 +995,8 @@ MonoBehaviour:
   SpawnBodyName: Terra
   SpawnOnSurface: 1
   SpawnByCoordinates: 1
-  SpawnLatitudeDegrees: -27.8405
-  SpawnLongitudeDegrees: -119.3773
+  SpawnLatitudeDegrees: -1.2972825934861871
+  SpawnLongitudeDegrees: 225.96700450491107
   SpawnEpsilonMeters: 1
   Parts: []
   DebrisLifetimeSeconds: 600
@@ -1096,8 +1096,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SurfaceFrame
   Body: {fileID: 0}
   BodyName: Terra
-  LatitudeDegrees: -27.8405
-  LongitudeDegrees: -119.3773
+  LatitudeDegrees: -1.2972825934861871
+  LongitudeDegrees: 225.96700450491107
   SnapToTerrain: 1
   HeightOffsetMeters: 0
   Runner: {fileID: 1332194275}
@@ -1115,8 +1115,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1454958306}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.62077516, y: 0.7070432, z: 0.33858272, w: 0.009482803}
-  m_LocalPosition: {x: 0, y: 0, z: -0}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1167,6 +1167,71 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1001 &1769369702
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 856173073382636046, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 856173073382636046, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 856173073382636046, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 856173073382636046, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 856173073382636046, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 856173073382636046, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 856173073382636046, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 856173073382636046, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: -1.297
+      objectReference: {fileID: 0}
+    - target: {fileID: 856173073382636046, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 140.687
+      objectReference: {fileID: 0}
+    - target: {fileID: 856173073382636046, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 90
+      objectReference: {fileID: 0}
+    - target: {fileID: 1705864115998673676, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
+      propertyPath: Body
+      value: 
+      objectReference: {fileID: 1081663218}
+    - target: {fileID: 1705864115998673676, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
+      propertyPath: Runner
+      value: 
+      objectReference: {fileID: 1332194275}
+    - target: {fileID: 3341393412415580843, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
+      propertyPath: m_Name
+      value: "\u041C\u0435\u0441\u0442\u043E 1Site 1"
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
 --- !u!1 &1823688464
 GameObject:
   m_ObjectHideFlags: 0
@@ -1496,6 +1561,7 @@ MonoBehaviour:
   Runner: {fileID: 1332194275}
   SunLight: {fileID: 157207113}
   SunLightDayLux: 80000
+  MaterialLightScale: 1
   SunsetDiagLog: 0
   StarVisibilityK: 6
   TerrainSunIntensity: 1
@@ -1586,3 +1652,4 @@ SceneRoots:
   - {fileID: 1644257543}
   - {fileID: 1454958308}
   - {fileID: 306252429}
+  - {fileID: 1769369702}

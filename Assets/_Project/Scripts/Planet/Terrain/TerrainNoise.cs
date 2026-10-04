@@ -317,6 +317,14 @@ namespace Galilego.Universe
         [ReadOnly]
         public NativeArray<TerrainModifierData> Mods;
 
+        /// <summary>
+        /// Зоны, где декор не растёт (DecorExclusionTable). Тот же контракт, что
+        /// у Mods: владеет таблицей HeightfieldTerrain, FromTerrain копирует
+        /// только дескриптор, джобы читают параллельно.
+        /// </summary>
+        [ReadOnly]
+        public NativeArray<DecorExclusionData> DecorExclusions;
+
         public static TerrainNoiseParams FromTerrain(HeightfieldTerrain terrain)
         {
             // Домен по склону калиброван под Gain*Lacunarity == 1. При нарушении
@@ -412,7 +420,8 @@ namespace Galilego.Universe
                 ColorDetailSeedOffset = terrain.ColorDetailSeedOffset,
                 ComputeMask = terrain.ColorNoiseFrequency > 0d && terrain.ColorNoiseStrength != 0d,
                 ComputeDetail = terrain.ColorDetailFrequency > 0d && terrain.ColorDetailStrength != 0d,
-                Mods = terrain.Mods
+                Mods = terrain.Mods,
+                DecorExclusions = terrain.DecorExclusions
             };
         }
     }

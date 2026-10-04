@@ -598,6 +598,14 @@ namespace Galilego.Universe
         /// </summary>
         public NativeArray<TerrainModifierData> Mods = TerrainModifiers.Empty;
 
+        /// <summary>
+        /// Зоны исключения декора: под ними не растут деревья, трава и камни.
+        /// Собирает DecorExclusionTable из объектов мест, владелец таблицы —
+        /// здесь, по тому же правилу, что у Mods: пересборка каждые полсекунды
+        /// не должна аллоцировать на каждый запрос высоты.
+        /// </summary>
+        public NativeArray<DecorExclusionData> DecorExclusions = DecorExclusionTable.Empty;
+
         /// <summary>Угловой шаг соседей для нормали (рад): разрешает 5 октав с запасом.</summary>
         private const double NormalEpsilonRadians = 1e-4d;
 
@@ -626,6 +634,7 @@ namespace Galilego.Universe
             NativeArray<TerrainModifierData> current = Mods;
             Mods = TerrainModifiers.Empty;
             TerrainModifiers.Release(ref current);
+            DecorExclusionTable.Release(ref DecorExclusions);
         }
 
         public double GetHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians)

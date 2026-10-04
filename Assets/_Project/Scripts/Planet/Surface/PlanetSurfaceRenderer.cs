@@ -1256,6 +1256,12 @@ namespace Galilego.Universe
 
             bodyAuthoring.ApplyToTerrain(terrain);
 
+            // Зоны исключения декора: собираются из объектов мест (раз в 0.5 с,
+            // внутри — проверка по контенту). Стоит после ApplyToTerrain, потому
+            // что ApplyToTerrain может пересобрать таблицы рельефа, а зоны живут
+            // на том же HeightfieldTerrain.
+            DecorExclusionTable.Apply(terrain, body.Radius, body.Name);
+
             GroundDecorProfile currentDecor = bodyAuthoring.GroundDecorPreset != null
                 ? bodyAuthoring.GroundDecorPreset.Profile
                 : null;
@@ -1386,7 +1392,11 @@ namespace Galilego.Universe
                 // молчаливым. Сравниваем СОДЕРЖИМОЕ таблиц, а не дескрипторы:
                 // NativeArray == сравнивает указатель, и одинаковый набор из
                 // двух сборок выглядел бы разным.
-                && TerrainModifiers.TableEqual(a.Mods, b.Mods);
+                && TerrainModifiers.TableEqual(a.Mods, b.Mods)
+                // Зоны исключения декора — по тому же правилу: их пересборка
+                // должна пересобирать чанки декора, иначе зона молча разъезжается
+                // с содержимым таблицы.
+                && DecorExclusionTable.TableEqual(a.DecorExclusions, b.DecorExclusions);
         }
 
         private void LateUpdate()
