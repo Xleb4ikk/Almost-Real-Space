@@ -66,6 +66,7 @@ MonoBehaviour:
     BeachShelfWidthMaxScale: 14
     BeachShelfWidthNoiseFrequency: 150
     BeachShelfWidthNoiseOctaves: 4
+    BeachShelfSeawardWidth: 0
     DetailMix: 0
     DetailFrequency: 0
     DetailOctaves: 5

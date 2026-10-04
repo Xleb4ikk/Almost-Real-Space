@@ -35,8 +35,11 @@ namespace Galilego.Universe
         [Tooltip("Directional Light солнца (гасится/краснится по физике).")]
         public Light SunLight;
 
-        [Tooltip("Базовая интенсивность света днём в зените (люкс, HDRP physical units): ~80000 — яркий день.")]
+        [Tooltip("Физический ориентир дня (люкс, HDRP physical units): ~80000 — яркий день. В intensities света НЕ участвует: сцена считает свет в искусственном масштабе (см. TerrainRadianceScale), и Directional Light питает только объекты на обычных HDRP-материалах — его ярность задаёт MaterialLightScale.")]
         public float SunLightDayLux = 80000f;
+
+        [Tooltip("Множитель ярности Directional Light для обычных HDRP-материалов (здания, пропсы). 1 = свет ровно в масштабе сцены, >1 = пересвет. Небо, рельеф и декор свет считают сами (_SunLightColor/_TerrainSun/_TerrainRadianceScale) и живут в масштабе albedo·ndl·TerrainRadianceScale; у HDRP/Lit диффуз = albedo·E·ndl/π, поэтому масштаб сцены — E = π·TerrainRadianceScale·TerrainSunIntensity. При E = 80000 (сырые люксы) белая стена выходила ~21 000 и уходила в чистый белый с ореолом от bloom, пока рельеф в метре от неё оставался тёмным.")]
+        public float MaterialLightScale = 1f;
 
         [Tooltip("Диагностика заката: раз в 2 с писать высоту солнца, T, ambient, день/ночь.")]
         public bool SunsetDiagLog;
@@ -338,10 +341,19 @@ namespace Galilego.Universe
 
             if (applyToLight && SunLight != null)
             {
-                // Directional Light в физических люксах (HDRP): яркость — по
-                // светимости прямого света, оттенок — фотосфера × T. Днём у
-                // земли ~0.9·DayLux, на горизонте — красные тысячи, ночью 0.
-                // Старое SunLightIntensity=1.6 в люксах гасило солнце в 50000 раз.
+                // Directional Light — свет для объектов на обычных HDRP-материалах.
+                // Небо/рельеф/декор считают свет сами (глобалы _SunLightColor,
+                // _TerrainSun, _TerrainRadianceScale) и живут в искусственном
+                // масштабе «albedo·ndl», где полуденное солнце даёт
+                // TerrainRadianceScale. У HDRP/Lit диффузный член = albedo·E·ndl/π,
+                // поэтому тот же масштаб — это E = π·TerrainRadianceScale·
+                // TerrainSunIntensity (при 2.5 и 1 это ≈7.85). Светить сюда
+                // сырыми SunLightDayLux нельзя: 80 000 — это физические люксы,
+                // на 4 порядка больше масштаба сцены, и белый фасад уходил в
+                // чистый белый, раздувая bloom, при тёмном рельефе рядом.
+                //
+                // Цвет — по-прежнему физика: фотосфера × прозрачность атмосферы,
+                // оттенок тот же, что у неба, день/ночь — та же яркость.
                 //
                 // applyToLight=false для редакторского превью: там свет нужен
                 // только шейдерам, а трогать SunLight сцены нельзя — превью
@@ -352,7 +364,8 @@ namespace Galilego.Universe
                 {
                     SunLight.color = new Color(
                         (float)(sunLight.X / peak), (float)(sunLight.Y / peak), (float)(sunLight.Z / peak), 1f);
-                    SunLight.intensity = SunLightDayLux * (float)(brightness / 1d);
+                    SunLight.intensity = (float)(brightness
+                        * System.Math.PI * TerrainRadianceScale * TerrainSunIntensity * MaterialLightScale);
                 }
                 else
                 {

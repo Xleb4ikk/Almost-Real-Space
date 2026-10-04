@@ -67,6 +67,39 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Body-fixed направление в оси СИМУЛЯЦИИ (Y-up): та же перестановка
+        /// (x, z, −y), что у AstroFrame.ToSimulation, но на double — класс не
+        /// знает про Unity и не должен зависеть от моста.
+        /// </summary>
+        public static Vector3d ToSimulation(Vector3d bodyFixed)
+        {
+            return new Vector3d(bodyFixed.X, bodyFixed.Z, -bodyFixed.Y);
+        }
+
+        /// <summary>
+        /// Поворот локальных осей фрейма СРАЗУ в оси симуляции: q · x̂ — север,
+        /// q · ŷ — зенит, q · ẑ — восток, и все три уже в sim-кадре.
+        ///
+        /// Зачем не «body-ориентация × Rotation(lat, lon)» с последующим
+        /// AstroFrame.ToSimulation(QuaternionD): этот мост СОПРЯГАЕТ поворот
+        /// (q_sim = R·q·R⁻¹), а сопряжение правомерно только когда локальные
+        /// оси объекта — это sim-оси (.BodyView, чанки рельефа: их вершины уже
+        /// в sim, и лишний R⁻¹ справа просто сокращается). Локальные оси фрейма
+        /// заданы в body-fixed (North/Up/East), и R⁻¹ справа переставлял их
+        /// ПОСЛЕ ориентации: зенит уезжал в слот востока. Итог — фрейм, его
+        /// превью и всё содержимое площадки (база) стояли на 90° от настоящего
+        /// зенита, а в редакторе это читалось как «сцена лежит на боку».
+        /// </summary>
+        public static QuaternionD SimulationRotation(
+            QuaternionD bodyOrientation, double latitudeRadians, double longitudeRadians)
+        {
+            return FromBasis(
+                ToSimulation(bodyOrientation.Rotate(North(latitudeRadians, longitudeRadians))),
+                ToSimulation(bodyOrientation.Rotate(Up(latitudeRadians, longitudeRadians))),
+                ToSimulation(bodyOrientation.Rotate(East(latitudeRadians, longitudeRadians))));
+        }
+
+        /// <summary>
         /// Кватернион из ортонормированного ПРАВОГО базиса: колонки матрицы —
         /// образы локальных осей. Стандартная трассировочная конверсия с четырьмя
         /// ветвями (как внутри Unity Quaternion.LookRotation) — на границах ветвей

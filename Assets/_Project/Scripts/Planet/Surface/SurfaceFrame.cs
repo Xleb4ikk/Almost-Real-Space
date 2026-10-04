@@ -100,6 +100,19 @@ namespace Galilego.Universe
         public static Vector3d EditAnchorAstro { get; set; }
 
         /// <summary>
+        /// Поворот «редакторского мира»: обратный повороту активного фрейма в
+        /// астро-ориентации. В редакторе применяется ко ВСЕМУ, что стоит рядом с
+        /// фреймом (сам фрейм, SurfacePlaced), поэтому оси активного фрейма
+        /// (+X север, +Y зенит, +Z восток) совпадают с мировыми осями Unity и
+        /// земля в Scene view лежит горизонтально, как её видит игрок.
+        /// Без этого фрейм получал «честную» ориентацию планеты в пространстве
+        /// (наклон оси, долгота, широта), и в Scene view патч поверхности стоял
+        /// на боку. В Play не используется: там камера игрока и так
+        /// выровнена по локальному зениту.
+        /// </summary>
+        public static Quaternion EditRotation { get; private set; } = Quaternion.identity;
+
+        /// <summary>
         /// Фрейм, задающий ноль редактора: первый SurfaceFrame в сцене.
         /// Резолвится с кэшем на 0.5 с — иначе FindAnyObjectByType дёргался бы
         /// на каждый Update каждого SurfacePlaced в сцене.
@@ -124,6 +137,7 @@ namespace Galilego.Universe
             if (cachedFrame == null)
             {
                 EditAnchorAstro = Vector3d.Zero;
+                EditRotation = Quaternion.identity;
             }
 
             return cachedFrame;
@@ -148,7 +162,23 @@ namespace Galilego.Universe
 
         private void Update()
         {
-            Refresh();
+            // В Play поза берётся в LateUpdate: якорь игрока и время ставит
+            // SimulationRunner.Update (порядок 0), а фрейм объявлен с −90, то
+            // есть в Update он читал данные ПРОШЛОГО кадра. На малой скорости
+            // это сантиметры, при ускорении времени — десятки метров. Так же
+            // сделано в SurfacePlaced.
+            if (!Application.isPlaying)
+            {
+                Refresh();
+            }
+        }
+
+        private void LateUpdate()
+        {
+            if (Application.isPlaying)
+            {
+                Refresh();
+            }
         }
 
         /// <summary>Пересчитать позу принудительно (после правки профиля рельефа в инспекторе).</summary>
@@ -176,7 +206,11 @@ namespace Galilego.Universe
             AnchorBodyFixed = bodyFixed;
 
             QuaternionD orientation = body.GetVisualOrientation(time);
-            QuaternionD renderRotation = (orientation * SurfaceFrameMath.Rotation(lat, lon)).Normalized;
+
+            // Ориентация фрейма собирается сразу в sim-осях: перестановку astro→sim
+            // получает каждый образ локальной оси (SimulationRotation), иначе
+            // сопряжение моста AstroFrame подменяло зенит востоком.
+            QuaternionD renderRotation = SurfaceFrameMath.SimulationRotation(orientation, lat, lon);
 
             if (Application.isPlaying)
             {
@@ -187,7 +221,7 @@ namespace Galilego.Universe
                 AnchorAstro = surfacePos;
                 ApplyPose(
                     FloatingOrigin.ToRender(surfacePos),
-                    FloatingOrigin.RenderRotation(renderRotation));
+                    AstroFrame.SimulationQuaternion(renderRotation));
                 return;
             }
 
@@ -197,14 +231,22 @@ namespace Galilego.Universe
             // общие для всей сцены и ничего не «прыгает» от выделения в иерархии.
             body.EvaluateWorldState(time, out Vector3d bodyPos, out _);
             AnchorAstro = bodyPos + orientation.Rotate(bodyFixed);
+            Quaternion simRotation = AstroFrame.SimulationQuaternion(renderRotation);
             if (ReferenceEquals(ActiveEditFrame(), this))
             {
                 EditAnchorAstro = AnchorAstro;
+
+                // Активный фрейм = мировые оси сцены: позиция ноль, поворот
+                // единичный (точно, а не q⁻¹·q ≈ 1: иначе в трансформе дрожал бы
+                // шум float и сцена помечалась бы грязной).
+                EditRotation = Quaternion.Inverse(simRotation);
+                ApplyPose(Vector3.zero, Quaternion.identity);
+                return;
             }
 
             ApplyPose(
-                AstroFrame.ToSimulation(AnchorAstro - EditAnchorAstro),
-                AstroFrame.ToSimulation(renderRotation));
+                EditRotation * AstroFrame.ToSimulation(AnchorAstro - EditAnchorAstro),
+                EditRotation * simRotation);
         }
 
         /// <summary>
@@ -221,7 +263,7 @@ namespace Galilego.Universe
                 out surfaceAstro, out _);
             return Application.isPlaying
                 ? FloatingOrigin.ToRender(surfaceAstro)
-                : AstroFrame.ToSimulation(surfaceAstro - EditAnchorAstro);
+                : EditRotation * AstroFrame.ToSimulation(surfaceAstro - EditAnchorAstro);
         }
 
         /// <summary>
@@ -245,7 +287,13 @@ namespace Galilego.Universe
             body.GetSurfaceState(latitudeDegrees, longitudeDegrees, altitudeMeters, timeSeconds,
                 out Vector3d surfaceAstro, out _);
 
-            rotation = RenderRotation(body, latitudeDegrees, longitudeDegrees, timeSeconds);
+            // В редакторе место стоит в нуле и в мировых осях (+X север, +Y
+            // зенит, +Z восток): это рабочая копия одной точки, и строить базу
+            // удобно только на горизонтальной земле. В Play — честная
+            // ориентация, как у игрока.
+            rotation = Application.isPlaying
+                ? RenderRotation(body, latitudeDegrees, longitudeDegrees, timeSeconds)
+                : Quaternion.identity;
             position = Application.isPlaying
                 ? FloatingOrigin.ToRender(surfaceAstro)
                 : Vector3.zero;
@@ -255,14 +303,12 @@ namespace Galilego.Universe
         public static Quaternion RenderRotation(
             OrbitingBody body, double latitudeDegrees, double longitudeDegrees, double timeSeconds)
         {
-            QuaternionD orientation = (
-                body.GetVisualOrientation(timeSeconds)
-                * SurfaceFrameMath.Rotation(
-                    KeplerMath.DegreesToRadians(latitudeDegrees),
-                    KeplerMath.DegreesToRadians(longitudeDegrees))).Normalized;
-            return Application.isPlaying
-                ? FloatingOrigin.RenderRotation(orientation)
-                : AstroFrame.ToSimulation(orientation);
+            QuaternionD orientation = SurfaceFrameMath.SimulationRotation(
+                body.GetVisualOrientation(timeSeconds),
+                KeplerMath.DegreesToRadians(latitudeDegrees),
+                KeplerMath.DegreesToRadians(longitudeDegrees));
+            Quaternion simRotation = AstroFrame.SimulationQuaternion(orientation);
+            return Application.isPlaying ? simRotation : EditRotation * simRotation;
         }
 
         /// <summary>Body-fixed позиция точки поверхности (без орбиты и вращения) — вход для превью.</summary>
