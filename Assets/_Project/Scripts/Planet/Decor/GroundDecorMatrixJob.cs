@@ -1,5 +1,6 @@
 using Unity.Burst;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
@@ -18,8 +19,12 @@ namespace Galilego.Universe
         [ReadOnly]
         public NativeArray<GroundDecorInstance> Instances;
 
-        [WriteOnly]
-        public NativeArray<Matrix4x4> WorldMatrices;
+        /// <summary>NativeSlice, а не NativeArray: дальние деревья всех чанков
+        /// пишутся в один общий буфер, каждый — в свой отрезок. Safety-контроль
+        /// отключён, потому что отрезки пересекаются по underlying-аллокации
+        /// и джобы из разных чанков идут параллельно.</summary>
+        [WriteOnly, NativeDisableContainerSafetyRestriction]
+        public NativeSlice<Matrix4x4> WorldMatrices;
 
         public float4x4 ChunkToWorld;
         public float3 CameraWorld;
@@ -54,9 +59,15 @@ namespace Galilego.Universe
         public float BoostStart;
         public float BoostSpan;
 
+        /// <summary>Прореживание инстансов: обрабатывается каждый Stride-й.
+        /// 0 или 1 — без прореживания. На большой дистанции дерево занимает
+        /// 1-2 пикселя, поэтому рисовать его целиком — чистая трата CPU на
+        /// пересчёт матриц и GPU на инстансинг.</summary>
+        public int Stride;
+
         public void Execute(int index)
         {
-            GroundDecorInstance instance = Instances[index];
+            GroundDecorInstance instance = Instances[Stride > 1 ? index * Stride : index];
             float3 localPos = instance.Position;
             float3 localUp = instance.Normal;
             float upLength = math.length(localUp);
