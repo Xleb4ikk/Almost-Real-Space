@@ -58,7 +58,7 @@ namespace Galilego.Universe.EditorTools
                 NearMaterial = material,
                 FarMaterial = null,
                 SpacingMeters = 12d,
-                MaxInstancesPerChunk = 400,
+                MaxInstancesPerChunk = 800,
                 MaxCellsPerAxis = 128,
                 // Плотность леса: примерно одно дерево на 35-50 м вблизи.
                 // Density, а не MaxInstancesPerChunk: лимит на чанк в ближнем
@@ -94,12 +94,17 @@ namespace Galilego.Universe.EditorTools
                 Collides = true,
                 CollisionRadiusMeters = 1.2d,
                 CollisionHeightMeters = 16d,
-                // [ГРАФИКА] дальность деревьев (near/far) и плотность. Дальность
-                // 2000 м вместо 3000: в ближнем чанке деревьев вдвое больше
-                // (400 против 200 на чанк), а на горизонте они всё равно были
-                // раз в полтораста метров.
+                // [ГРАФИКА] дальность деревьев. Дальше ProxyFromMeters — дешёвый
+                // прокси (см. FarProxy), поэтому 16 км стоят дешевле, чем раньше
+                // стоили 2 км полным мешем. Реальный предел — ещё и горизонт.
                 NearDistanceMeters = 150f,
-                MaxDistanceMeters = 2000f
+                MaxDistanceMeters = 11200f,
+                FarDensity = 0.35d,
+                FarProxy = true,
+                ProxyFromMeters = 400f,
+                ProxyScaleBoost = 2.5f,
+                ProxyBoostStartMeters = 1500f,
+                HorizonObjectHeightMeters = 200f
             };
         }
 

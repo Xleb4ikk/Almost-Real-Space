@@ -50,7 +50,8 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\AtmosphereOptics.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Universe\ExampleSystemPresets.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Universe\AstroFrame.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Terrain\TerrainModel.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Terrain\ITerrainModel.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Terrain\HeightfieldTerrain.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Water\WaterQuery.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Terrain\TerrainNoise.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Terrain\TerrainModifier.cs" />
@@ -65,6 +66,14 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Decor\GroundDecorPlacement.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Decor\GroundDecorCollisionRegistry.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Terrain\TerrainPalette.cs" />
+    <!-- ВНИМАНИЕ: стенд ниже НЕ собирается на текущем HEAD и без разделения
+     TerrainModel.cs: не хватает Planet\Decor\DecorExclusion.cs (TerrainNoise.cs
+     и HeightfieldTerrain.cs ссылаются на DecorExclusionData), плюс
+     SiteBoxRegistry и HDR GradientSky. Это пробелы самого стенда, не следствие
+     разделения файла. Чтобы починить — добавить в этот список:
+       Planet\Decor\DecorExclusion.cs  + стабы Renderer/Vector2/Bounds/GameObject
+       Planet\Surface\SiteBox.cs       (SiteBoxRegistry)
+       UnityEngine.Rendering.HighDefinition.GradientSky в UnityStubs.cs -->
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Terrain\CubeSphere.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\SurfaceMotion.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Spacecraft.cs" />

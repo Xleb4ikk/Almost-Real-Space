@@ -23,7 +23,7 @@ namespace GalilegoPhysicsTests
 
         public DynamicsContribution Evaluate(Vector3d position, Vector3d velocity, double mass, double timeSeconds)
         {
-            return new DynamicsContribution(Vector3d.Zero, force, massFlow);
+            return new DynamicsContribution(Vector3d.Zero, force, massFlow, Vector3d.Zero);
         }
     }
 

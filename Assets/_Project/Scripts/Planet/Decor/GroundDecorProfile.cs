@@ -208,6 +208,27 @@ namespace Galilego.Universe
                  "≈ SpacingMeters, чтобы острова травы не рассыпались. " +
                  "1 = одна туфта на ячейку (старое поведение).")]
         public int SubInstancesPerCell = 1;
+
+        [Header("Дальний LOD (прокси деревьев)")]
+        [Tooltip("Чанк целиком дальше ProxyFromMeters рисуется дешёвым прокси (~26 треугольников, " +
+                 "Burst-матрицы, без теней, отсечение по фрустуму) вместо полного меша. " +
+                 "Позволяет поднять MaxDistanceMeters до километров без просадки FPS.")]
+        public bool FarProxy;
+
+        [Tooltip("Дистанция до ближайшего края чанка (м), с которой слой переходит на прокси.")]
+        public float ProxyFromMeters = 400f;
+
+        [Tooltip("Во сколько раз прокси вырастает к MaxDistanceMeters: компенсирует прореживание " +
+                 "леса и субпиксельный размер дерева вдали. 1 = без роста.")]
+        public float ProxyScaleBoost = 2.5f;
+
+        [Tooltip("С какой дистанции (м) прокси начинает расти.")]
+        public float ProxyBoostStartMeters = 1500f;
+
+        [Tooltip("Физический предел видимости: дальность слоя = min(MaxDistanceMeters, горизонт камеры + " +
+                 "горизонт объекта этой высоты над сферой тела, м). Высота = дерево + типичный рельеф. " +
+                 "0 = только MaxDistanceMeters.")]
+        public float HorizonObjectHeightMeters = 0f;
     }
 
     /// <summary>
