@@ -23,7 +23,7 @@ MonoBehaviour:
       FarMaterial: {fileID: 2100000, guid: 8a6f3bef5d673104381754b197da59b9, type: 2}
       SpacingMeters: 0.8
       MaxInstancesPerChunk: 26000
-      Density: 1
+      Density: 4
       DistributionFrequency: 20000
       ClusterPatchMeters: 120
       DistributionOctaves: 4
@@ -61,12 +61,12 @@ MonoBehaviour:
       SteepPower: 0.4
       NearDistanceMeters: 55
       MaxCellsPerAxis: 192
-      MaxDistanceMeters: 110
-      DensityFalloffMeters: 55
+      MaxDistanceMeters: 200
+      DensityFalloffMeters: 45
       DensityCoreMeters: 28
       PerInstanceDensity: 1
-      FarDensity: 0.05
-      SpawnMarginMeters: 70
+      FarDensity: 0.03
+      SpawnMarginMeters: 100
       SubInstancesPerCell: 400
     - Name: Daisy
       Enabled: 1
@@ -244,7 +244,7 @@ MonoBehaviour:
       NearMaterial: {fileID: 2100000, guid: 0bf20071ca4cfea41b67d775f20d2f5c, type: 2}
       FarMaterial: {fileID: 0}
       SpacingMeters: 12
-      MaxInstancesPerChunk: 400
+      MaxInstancesPerChunk: 800
       Density: 0.25
       DistributionFrequency: 150
       ClusterPatchMeters: 0
@@ -283,10 +283,15 @@ MonoBehaviour:
       SteepPower: 1.5
       NearDistanceMeters: 150
       MaxCellsPerAxis: 128
-      MaxDistanceMeters: 2000
+      MaxDistanceMeters: 11200
       DensityFalloffMeters: 0
       DensityCoreMeters: 0
       PerInstanceDensity: 0
-      FarDensity: 1
+      FarDensity: 0.35
       SpawnMarginMeters: 150
       SubInstancesPerCell: 1
+      FarProxy: 1
+      ProxyFromMeters: 400
+      ProxyScaleBoost: 2.5
+      ProxyBoostStartMeters: 1500
+      HorizonObjectHeightMeters: 200

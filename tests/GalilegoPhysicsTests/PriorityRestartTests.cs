@@ -35,9 +35,9 @@ namespace GalilegoPhysicsTests
 
             var propagator = AltitudeCrossingTests.CreatePropagator(system);
             propagator.CrossingDetectors.Add(new AltitudeCrossingDetector(
-                star, shell - star.Radius, EventDirection.Either, 0, "HighPriority"));
+                star, shell - star.Radius, EventDirection.Either, 0, "HighPriority", EventKind.AtmosphereEntry));
             propagator.CrossingDetectors.Add(new AltitudeCrossingDetector(
-                star, shell - star.Radius, EventDirection.Either, 5, "LowPriority"));
+                star, shell - star.Radius, EventDirection.Either, 5, "LowPriority", EventKind.AtmosphereEntry));
 
             var ship = new Spacecraft(pos0, vel0, TestScene.ShipMass);
             EventOccurrence? first = propagator.Propagate(ship, 0d, period);
@@ -77,9 +77,9 @@ namespace GalilegoPhysicsTests
 
             var propagator = AltitudeCrossingTests.CreatePropagator(system);
             propagator.CrossingDetectors.Add(new AltitudeCrossingDetector(
-                star, shell - star.Radius, EventDirection.Either, 0, "HighPriority"));
+                star, shell - star.Radius, EventDirection.Either, 0, "HighPriority", EventKind.AtmosphereEntry));
             propagator.CrossingDetectors.Add(new AltitudeCrossingDetector(
-                star, shell - star.Radius, EventDirection.Either, 5, "LowPriority"));
+                star, shell - star.Radius, EventDirection.Either, 5, "LowPriority", EventKind.AtmosphereEntry));
 
             var ship = new Spacecraft(pos0, vel0, TestScene.ShipMass);
             EventOccurrence? combined = propagator.Propagate(ship, 0d, period);
@@ -90,7 +90,7 @@ namespace GalilegoPhysicsTests
             lonePhysics.Sources.Add(new GravitySource(system));
             var lonePropagator = new EventDrivenPropagator(lonePhysics);
             lonePropagator.CrossingDetectors.Add(new AltitudeCrossingDetector(
-                star, shell - star.Radius, EventDirection.Either, 5, "LowPriority"));
+                star, shell - star.Radius, EventDirection.Either, 5, "LowPriority", EventKind.AtmosphereEntry));
 
             var loneShip = new Spacecraft(pos0, vel0, TestScene.ShipMass);
             EventOccurrence? lone = lonePropagator.Propagate(loneShip, 0d, period);

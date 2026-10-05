@@ -32,7 +32,7 @@ namespace GalilegoPhysicsTests
         public DynamicsContribution Evaluate(Vector3d position, Vector3d velocity, double mass, double timeSeconds)
         {
             double flow = rate * (1d + 0.9d * System.Math.Sin(2d * System.Math.PI * timeSeconds / period));
-            return new DynamicsContribution(Vector3d.Zero, Vector3d.Zero, flow);
+            return new DynamicsContribution(Vector3d.Zero, Vector3d.Zero, flow, Vector3d.Zero);
         }
     }
 

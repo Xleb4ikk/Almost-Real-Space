@@ -43,6 +43,17 @@ namespace Galilego.Universe
         /// новой выборки травинки заходят в землю, а не исчезают кадр в кадр.</summary>
         public float SinkSeconds;
 
+        /// <summary>Общий множитель размера (затухание у края радиуса, уход пула).
+        /// Действует только при ApplyGlobalScale: у остальных вызовов поля нулевые.</summary>
+        public bool ApplyGlobalScale;
+        public float GlobalScale;
+
+        /// <summary>Рост по дистанции до камеры (прокси деревьев): ScaleBoost &gt; 1 —
+        /// размер плавно растёт до ScaleBoost на дистанции BoostStart + BoostSpan.</summary>
+        public float ScaleBoost;
+        public float BoostStart;
+        public float BoostSpan;
+
         public void Execute(int index)
         {
             GroundDecorInstance instance = Instances[index];
@@ -64,6 +75,11 @@ namespace Galilego.Universe
             if (SinkSeconds > 0f && instance.DeathTime > 0f)
             {
                 scale *= math.saturate((instance.DeathTime + SinkSeconds - Now) / SinkSeconds);
+            }
+
+            if (ApplyGlobalScale)
+            {
+                scale *= GlobalScale;
             }
 
             if (Billboard)
@@ -105,6 +121,13 @@ namespace Galilego.Universe
                 float3 finalPosition = worldPos + (worldUp * (BillboardPivotFraction * size));
                 WorldMatrices[index] = ToMatrix(float4x4.TRS(finalPosition, rotation, new float3(size)));
                 return;
+            }
+
+            if (ScaleBoost > 1f)
+            {
+                float3 boostPos = math.mul(ChunkToWorld, new float4(localPos, 1f)).xyz;
+                float boostDistance = math.length(boostPos - CameraWorld);
+                scale *= math.lerp(1f, ScaleBoost, math.saturate((boostDistance - BoostStart) / math.max(1f, BoostSpan)));
             }
 
             quaternion localRotation = LocalRotation(instance, localUp);

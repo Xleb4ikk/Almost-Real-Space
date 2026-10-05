@@ -803,6 +803,7 @@ namespace Galilego.Universe
         private Matrix4x4[] decorBlobScratch;
         private Plane[] decorFrustumPlanes;
         private Mesh blobMesh;
+        private readonly Dictionary<GroundDecorLayer, Mesh> treeProxyMeshes = new Dictionary<GroundDecorLayer, Mesh>();
         private Material blobMaterial;
 
         private readonly Dictionary<long, Chunk> chunks = new Dictionary<long, Chunk>();
@@ -942,7 +943,7 @@ namespace Galilego.Universe
         /// РіСЂР°РЅРёС†С‹ РѕР±СЂРµР·РєРё: РёРЅР°С‡Рµ РєСЂР°Р№ РїСѓР»Р° РІРёРґРµРЅ СЂРѕРІРЅРѕР№ Р»РёРЅРёРµР№ РїРѕ Р·РµРјР»Рµ.</summary>
         private const float DecorCutFadeShare = 0.25f;
         /// <summary>РџРѕР»РѕСЃР° Р·Р°С‚СѓС…Р°РЅРёСЏ РїР»РѕС‚РЅРѕСЃС‚Рё РїРµСЂРµРґ СЂР°РґРёСѓСЃРѕРј РїСѓР»Р° (Рј).</summary>
-        private const float DecorPoolRadiusFadeMeters = 30f;
+        private const float DecorPoolRadiusFadeMeters = 60f;
         /// <summary>За сколько секунд травинка «прорастает» (масштаб 0→1).</summary>
         private const float DecorBladeFadeSeconds = 0.6f;
         /// <summary>Разброс момента появления по травинкам (с): новые появляются
@@ -1161,6 +1162,16 @@ namespace Galilego.Universe
             {
                 Destroy(blobMesh);
             }
+
+            foreach (KeyValuePair<GroundDecorLayer, Mesh> proxy in treeProxyMeshes)
+            {
+                if (proxy.Value != null)
+                {
+                    Destroy(proxy.Value);
+                }
+            }
+
+            treeProxyMeshes.Clear();
 
             // Teardown: дренируем пул буферов декора (иначе Persistent-массивы
             // утекут на выходе из play/при перезагрузке домена). Тот же
@@ -2167,7 +2178,11 @@ namespace Galilego.Universe
                     GroundDecorLayer layer = decorProfile.Layers[i];
                     if (layer != null && layer.Enabled)
                     {
-                        maxLayerDistance = Mathf.Max(maxLayerDistance, layer.MaxDistanceMeters);
+                        // EffectiveMaxDistance, а не сырой MaxDistanceMeters: на
+                        // небольшом теле радиус слоя упирается в горизонт камеры,
+                        // и сборки надо suspend'ить по нему — иначе на большой
+                        // высоте чанки за горизонтом строятся впустую.
+                        maxLayerDistance = Mathf.Max(maxLayerDistance, EffectiveMaxDistance(layer));
                     }
                 }
             }
@@ -5443,7 +5458,7 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    if (distance > layer.MaxDistanceMeters + layer.SpawnMarginMeters)
+                    if (distance > EffectiveMaxDistance(layer) + layer.SpawnMarginMeters)
                     {
                         continue;
                     }
@@ -6240,7 +6255,8 @@ namespace Galilego.Universe
                 {
                     DecorLayerRuntime runtime = chunk.Decor[i];
                     GroundDecorLayer layer = runtime.Profile;
-                    if (distance > layer.MaxDistanceMeters || runtime.Instances.Length == 0)
+                    float layerMaxDistance = EffectiveMaxDistance(layer);
+                    if (distance > layerMaxDistance || runtime.Instances.Length == 0)
                     {
                         continue;
                     }
@@ -6250,7 +6266,7 @@ namespace Galilego.Universe
                     // всю картинку, а исходная (касательная) метрика специально
                     // была выбрана ради мягкого набора высоты — значит и убрать
                     // её надо мягко, а не порогом.
-                    float edgeFade = ChunkDecorEdgeFade(distance, layer.MaxDistanceMeters);
+                    float edgeFade = ChunkDecorEdgeFade(distance, layerMaxDistance);
                     if (edgeFade <= 0f)
                     {
                         continue;
@@ -6268,6 +6284,16 @@ namespace Galilego.Universe
                     if (runtime.RetireDeadline > 0f && Time.time >= runtime.RetireDeadline)
                     {
                         CompactRetiredDecor(runtime);
+                    }
+
+                    // Дальний прокси (деревья): чанк целиком за ProxyFromMeters —
+                    // дешёвый меш, Burst-матрицы, фрустум-отсечение. Тени — по
+                    // общему правилу слоя (DecorShadowMode), иначе ближний лес
+                    // с ProxyFromMeters выцветал бы на фоне затенённого.
+                    if (layer.FarProxy && !layer.PerInstanceDensity && distance > layer.ProxyFromMeters)
+                    {
+                        DrawTreeProxy(chunk, runtime, layer, chunkMatrix, cameraPosition, edgeFade, chunkWorldBounds);
+                        continue;
                     }
 
                     if (!chunkInFrustum && !layer.CastShadows)
@@ -6769,7 +6795,184 @@ namespace Galilego.Universe
             });
         }
 
-        /// <summary>Р”РѕР¶РёРґР°РµС‚СЃСЏ РІСЃРµС… Р·Р°РїР»Р°РЅРёСЂРѕРІР°РЅРЅС‹С… РґР¶РѕР± Рё СЂРёСЃСѓРµС‚ СЃР»РѕРё.</summary>
+        /// <summary>Дальность слоя с учётом физического горизонта
+        /// (HorizonObjectHeightMeters): камера не видит дальше суммы своих двух
+        /// горизонтов, поэтому слой с высокими объектами (деревья) упирается в
+        /// физический предел, а не в MaxDistanceMeters.</summary>
+        private float EffectiveMaxDistance(GroundDecorLayer layer)
+        {
+            float max = layer.MaxDistanceMeters;
+            if (layer.HorizonObjectHeightMeters <= 0f || body == null)
+            {
+                return max;
+            }
+
+            double horizon = SkyPhysics.MaxSightDistance(body.Radius, decorAltitude, layer.HorizonObjectHeightMeters);
+            return Mathf.Clamp((float)horizon, layer.NearDistanceMeters + 1f, max);
+        }
+
+        /// <summary>Дальний прокси дерева: чанк целиком за ProxyFromMeters рисуется
+        /// дешёвым мешем (ствол + двойная пирамида кроны) вместо полного. Матрицы
+        /// считает Burst-джоба, один draw на чанк, тени — как у ближней ветки
+        /// (иначе лес с ProxyFromMeters теряет затенение и «выцветает»).</summary>
+        private void DrawTreeProxy(
+            Chunk chunk, DecorLayerRuntime runtime, GroundDecorLayer layer,
+            Matrix4x4 chunkMatrix, Vector3 cameraPosition, float edgeFade, Bounds chunkBounds)
+        {
+            int count = runtime.Instances.Length;
+            Mesh mesh = GetTreeProxyMesh(layer);
+            Material material = layer.NearMaterial;
+            if (count == 0 || mesh == null || material == null)
+            {
+                return;
+            }
+
+            // ChunkWorldBounds даёт запас всего 8 м, а прокси выше: расширяем на
+            // худшее дерево слоя, посчитанное от САМОГО прокси (высота меша ×
+            // MaxScale инстанса × буст размера). Фиксированный запас здесь
+            // означал бы выпадение чанка у края экрана, пока его кроны ещё видны.
+            Bounds bounds = chunkBounds;
+            float proxyReach = mesh.bounds.size.y
+                * Mathf.Max(1f, (float)layer.MaxScale)
+                * Mathf.Max(1f, layer.ProxyScaleBoost);
+            bounds.Expand(proxyReach * 2f);
+            if (decorFrustumPlanes != null && !GeometryUtility.TestPlanesAABB(decorFrustumPlanes, bounds))
+            {
+                return;
+            }
+
+            if (!runtime.WorldMatrices.IsCreated || runtime.WorldMatrices.Length != count)
+            {
+                DecorArrayPool.Return(ref runtime.WorldMatrices);
+                runtime.WorldMatrices = DecorArrayPool.Rent<Matrix4x4>(count);
+            }
+
+            var job = new GroundDecorMatrixJob
+            {
+                Instances = runtime.Instances,
+                WorldMatrices = runtime.WorldMatrices,
+                ChunkToWorld = ToFloat4x4(chunkMatrix),
+                CameraWorld = new float3(cameraPosition.x, cameraPosition.y, cameraPosition.z),
+                Billboard = false,
+                FlatOnGround = false,
+                ApplyGlobalScale = true,
+                GlobalScale = DecorRetireFade(runtime) * edgeFade,
+                ScaleBoost = layer.ProxyScaleBoost,
+                BoostStart = layer.ProxyBoostStartMeters,
+                BoostSpan = Mathf.Max(1f, layer.MaxDistanceMeters - layer.ProxyBoostStartMeters),
+                Now = Time.time,
+                FadeSeconds = DecorFadeSeconds(DecorPropFadeSeconds),
+                SinkSeconds = 0f
+            };
+
+            burstDecorDraws.Add(new BurstDecorDraw
+            {
+                Chunk = chunk,
+                Runtime = runtime,
+                Mesh = mesh,
+                Material = material,
+                Shadow = DecorShadowMode(layer),
+                WorldBounds = bounds,
+                Handle = job.Schedule(count, 256, default(JobHandle))
+            });
+        }
+
+        /// <summary>Низкополигональное дерево (ствол + двойная пирамида кроны, ~26 треугольников),
+        /// собранное по усреднённым габаритам NearMeshes слоя. Цвета — в vertex colors, как у
+        /// полных мешей (TreeModelSetup), альфа 0 — без ветра.</summary>
+        private Mesh GetTreeProxyMesh(GroundDecorLayer layer)
+        {
+            if (treeProxyMeshes.TryGetValue(layer, out Mesh cached) && cached != null)
+            {
+                return cached;
+            }
+
+            float height = 0f;
+            float radius = 0f;
+            int sources = 0;
+            for (int i = 0; layer.NearMeshes != null && i < layer.NearMeshes.Length; i++)
+            {
+                Mesh source = layer.NearMeshes[i];
+                if (source == null)
+                {
+                    continue;
+                }
+
+                Vector3 size = source.bounds.size;
+                height += size.y;
+                radius += Mathf.Max(size.x, size.z) * 0.5f;
+                sources++;
+            }
+
+            if (sources == 0)
+            {
+                return null;
+            }
+
+            height /= sources;
+            radius = Mathf.Clamp(radius / sources, height * 0.2f, height * 0.45f);
+
+            var vertices = new List<Vector3>();
+            var colors = new List<Color>();
+            var triangles = new List<int>();
+            Color trunk = new Color(0.55f, 0.18f, 0.03f, 0f);
+            Color leafDark = new Color(0.008f, 0.05f, 0.014f, 0f);
+            Color leaf = new Color(0.01034f, 0.06838f, 0.01848f, 0f);
+
+            // Кольцо вершин; возвращает индекс первой.
+            int Ring(int segments, float y, float r, Color color, float phase)
+            {
+                int first = vertices.Count;
+                for (int s = 0; s < segments; s++)
+                {
+                    float a = phase + (s * Mathf.PI * 2f / segments);
+                    vertices.Add(new Vector3(Mathf.Cos(a) * r, y, Mathf.Sin(a) * r));
+                    colors.Add(color);
+                }
+
+                return first;
+            }
+
+            // Боковая полоса между кольцами (одинаковое число сегментов), нормали наружу.
+            void Band(int lower, int upper, int segments)
+            {
+                for (int s = 0; s < segments; s++)
+                {
+                    int n = (s + 1) % segments;
+                    triangles.Add(lower + s); triangles.Add(upper + s); triangles.Add(upper + n);
+                    triangles.Add(lower + s); triangles.Add(upper + n); triangles.Add(lower + n);
+                }
+            }
+
+            int trunkBottom = Ring(4, 0f, height * 0.04f, trunk, 0f);
+            int trunkTop = Ring(4, height * 0.35f, height * 0.03f, trunk, 0f);
+            Band(trunkBottom, trunkTop, 4);
+
+            const int crownSegments = 6;
+            int crownLow = Ring(crownSegments, height * 0.22f, radius * 0.7f, leafDark, 0f);
+            int crownMid = Ring(crownSegments, height * 0.55f, radius, leaf, 0f);
+            Band(crownLow, crownMid, crownSegments);
+
+            int apex = vertices.Count;
+            vertices.Add(new Vector3(0f, height, 0f));
+            colors.Add(leaf);
+            for (int s = 0; s < crownSegments; s++)
+            {
+                int n = (s + 1) % crownSegments;
+                triangles.Add(crownMid + s); triangles.Add(apex); triangles.Add(crownMid + n);
+            }
+
+            var proxy = new Mesh { name = layer.Name + "_FarProxy", hideFlags = HideFlags.HideAndDontSave };
+            proxy.SetVertices(vertices);
+            proxy.SetColors(colors);
+            proxy.SetTriangles(triangles, 0);
+            proxy.RecalculateNormals();
+            proxy.RecalculateBounds();
+            treeProxyMeshes[layer] = proxy;
+            return proxy;
+        }
+
+        /// <summary>Вызывает все запланированные джобы и рисует слои.</summary>
         private void FlushBurstDecor()
         {
             if (burstDecorDraws.Count == 0)

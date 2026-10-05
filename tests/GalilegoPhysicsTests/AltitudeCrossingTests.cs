@@ -115,7 +115,7 @@ namespace GalilegoPhysicsTests
             var propagator = CreatePropagator(system);
             propagator.CrossingDetectors.Add(new AltitudeCrossingDetector(
                 star, ShellRadius - star.Radius, EventDirection.Either,
-                EventPriorities.Atmosphere, "TestShell"));
+                EventPriorities.Atmosphere, "TestShell", EventKind.AtmosphereEntry));
 
             var ship = new Spacecraft(pos0, vel0, TestScene.ShipMass);
             EventOccurrence? occurrence = propagator.Propagate(ship, 0d, period);

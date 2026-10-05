@@ -569,6 +569,29 @@ namespace UnityEngine
         public DefaultExecutionOrderAttribute(int order) { }
     }
 
+    [AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
+    public sealed class ExecuteAlwaysAttribute : Attribute
+    {
+    }
+
+    [AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
+    public sealed class DisallowMultipleComponentAttribute : Attribute
+    {
+    }
+
+    [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
+    public sealed class RequireComponentAttribute : Attribute
+    {
+        public RequireComponentAttribute(Type requiredComponent) { }
+    }
+
+    [AttributeUsage(AttributeTargets.Field, AllowMultiple = false)]
+    public sealed class TextAreaAttribute : Attribute
+    {
+        public TextAreaAttribute() { }
+        public TextAreaAttribute(int minLines, int maxLines) { }
+    }
+
     public static class Time
     {
         public static float deltaTime => 0.016f;
