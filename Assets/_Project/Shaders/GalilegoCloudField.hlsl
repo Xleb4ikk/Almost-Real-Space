@@ -16,6 +16,12 @@ float _CldExtinction;
 float _CldBottomFeather;
 float _CldTopFeather;
 
+// Предзапечённая EarthClusters-маска (Terra: EarthMaskBaker), чтобы не
+// считать процедурный CloudFbm на каждом сэмпле марчинга и тени.
+TEXTURE3D(_CldEarthMaskTex);
+SAMPLER(sampler_CldEarthMaskTex);
+float _CldEarthMaskReady;
+
 float CloudHash(float3 p)
 {
     p = frac((p * 0.3183099) + float3(0.13, 0.17, 0.19));
@@ -60,6 +66,11 @@ float SampleCloudEarthMask(float3 posRel)
 {
     float3 bodyPos = mul(_CldWorldToBody, float4(posRel, 1.0)).xyz;
     float3 direction = bodyPos / max(length(bodyPos), 1e-5);
+    if (_CldEarthMaskReady > 0.5)
+    {
+        return SAMPLE_TEXTURE3D_LOD(_CldEarthMaskTex, sampler_CldEarthMaskTex,
+            direction * 0.5 + 0.5, 0).r;
+    }
     float broad = CloudFbm((direction * 7.0) + float3(2.3, 7.1, 4.6));
     float detail = CloudNoise((direction * 18.0) + float3(6.2, 1.4, 8.7));
     float field = saturate(((broad * 0.90) + (detail * 0.10) - 0.28) / 0.72);

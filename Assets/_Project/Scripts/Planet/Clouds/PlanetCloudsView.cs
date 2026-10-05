@@ -50,6 +50,7 @@ namespace Galilego.Universe
         private Texture3D shapeTex;
         private Texture3D detailTex;
         private Cubemap weatherTex;
+        private Texture3D earthMaskTex;
         private bool texturesBuilt;
         private bool loggedOnce;
 
@@ -136,6 +137,11 @@ namespace Galilego.Universe
             {
                 Destroy(weatherTex);
             }
+
+            if (earthMaskTex != null)
+            {
+                Destroy(earthMaskTex);
+            }
         }
 
         private bool TexturesNeedRebuild()
@@ -158,6 +164,7 @@ namespace Galilego.Universe
             if (shapeTex != null) { Destroy(shapeTex); shapeTex = null; }
             if (detailTex != null) { Destroy(detailTex); detailTex = null; }
             if (weatherTex != null) { Destroy(weatherTex); weatherTex = null; }
+            if (earthMaskTex != null) { Destroy(earthMaskTex); earthMaskTex = null; }
 
             System.Diagnostics.Stopwatch watch = System.Diagnostics.Stopwatch.StartNew();
 
@@ -171,6 +178,8 @@ namespace Galilego.Universe
                 profile.ClearZoneSoftness,
                 body.Radius,
                 profile.NoiseSeed);
+
+            earthMaskTex = EarthMaskBaker.BuildEarthMaskTexture(128);
 
             watch.Stop();
 
@@ -351,6 +360,11 @@ namespace Galilego.Universe
             if (shapeTex != null) Shader.SetGlobalTexture("_CldShapeTex", shapeTex);
             if (detailTex != null) Shader.SetGlobalTexture("_CldDetailTex", detailTex);
             if (weatherTex != null) Shader.SetGlobalTexture("_CldWeatherTex", weatherTex);
+            if (earthMaskTex != null)
+            {
+                Shader.SetGlobalTexture("_CldEarthMaskTex", earthMaskTex);
+                Shader.SetGlobalFloat("_CldEarthMaskReady", 1f);
+            }
 
             if (!loggedOnce)
             {

@@ -68,6 +68,11 @@ MonoBehaviour:
       FarDensity: 0.03
       SpawnMarginMeters: 100
       SubInstancesPerCell: 400
+      FarProxy: 0
+      ProxyFromMeters: 400
+      ProxyScaleBoost: 2.5
+      ProxyBoostStartMeters: 1500
+      HorizonObjectHeightMeters: 0
     - Name: Daisy
       Enabled: 1
       NearMeshes:
@@ -122,6 +127,11 @@ MonoBehaviour:
       FarDensity: 1
       SpawnMarginMeters: 150
       SubInstancesPerCell: 1
+      FarProxy: 0
+      ProxyFromMeters: 400
+      ProxyScaleBoost: 2.5
+      ProxyBoostStartMeters: 1500
+      HorizonObjectHeightMeters: 0
     - Name: Rocks
       Enabled: 1
       NearMeshes:
@@ -178,6 +188,11 @@ MonoBehaviour:
       FarDensity: 1
       SpawnMarginMeters: 150
       SubInstancesPerCell: 1
+      FarProxy: 0
+      ProxyFromMeters: 400
+      ProxyScaleBoost: 2.5
+      ProxyBoostStartMeters: 1500
+      HorizonObjectHeightMeters: 0
     - Name: Cactus
       Enabled: 1
       NearMeshes:
@@ -234,6 +249,11 @@ MonoBehaviour:
       FarDensity: 1
       SpawnMarginMeters: 150
       SubInstancesPerCell: 1
+      FarProxy: 0
+      ProxyFromMeters: 400
+      ProxyScaleBoost: 2.5
+      ProxyBoostStartMeters: 1500
+      HorizonObjectHeightMeters: 0
     - Name: Trees
       Enabled: 1
       NearMeshes:

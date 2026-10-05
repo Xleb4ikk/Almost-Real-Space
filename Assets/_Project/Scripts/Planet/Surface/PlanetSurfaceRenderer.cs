@@ -804,6 +804,11 @@ namespace Galilego.Universe
         private Plane[] decorFrustumPlanes;
         private Mesh blobMesh;
         private readonly Dictionary<GroundDecorLayer, Mesh> treeProxyMeshes = new Dictionary<GroundDecorLayer, Mesh>();
+        /// <summary>Упрощённый прокси (без ствола, 4-гранная крона) для высоких
+        /// высот. Завязан на высоту, а не на дистанцию чанка, — иначе на границе
+        /// ступени разные чанки в кадре оказались бы с разными мешами и батчинг
+        /// в общий буфер рассыпался бы на отдельные draw-call'ы.</summary>
+        private readonly Dictionary<GroundDecorLayer, Mesh> treeProxyMeshesLow = new Dictionary<GroundDecorLayer, Mesh>();
         private Material blobMaterial;
 
         private readonly Dictionary<long, Chunk> chunks = new Dictionary<long, Chunk>();
@@ -919,6 +924,17 @@ namespace Galilego.Universe
         private readonly List<DecorBuildSession> decorBuildSessions = new List<DecorBuildSession>();
         private readonly List<DecorCandidate> decorCandidates = new List<DecorCandidate>(256);
         private readonly List<BurstDecorDraw> burstDecorDraws = new List<BurstDecorDraw>();
+        /// <summary>Общий буфер матриц для дальних деревьев. Один draw на сотни
+        /// чанков вместо draw на чанк: главный поток перестаёт гонять сотни
+        /// RenderMeshInstanced и копирований. Только для слоёв без теней —
+        /// у них общий меш и материал, иначе батчить нельзя.</summary>
+        private const int ProxySharedCapacity = 131072; // 8 МБ
+        private NativeArray<Matrix4x4> proxyShared;
+        private JobHandle proxySharedHandle;
+        private int proxySharedUsed;
+        private Mesh proxySharedMesh;
+        private Material proxySharedMaterial;
+        private Bounds proxySharedBounds;
         private MaterialPropertyBlock decorDrawPropertyBlock;
         private bool decorIndirectDiagLogged;
         private static readonly int DecorChunkToWorldId = Shader.PropertyToID("_DecorChunkToWorld");
@@ -1172,6 +1188,27 @@ namespace Galilego.Universe
             }
 
             treeProxyMeshes.Clear();
+
+            foreach (KeyValuePair<GroundDecorLayer, Mesh> proxy in treeProxyMeshesLow)
+            {
+                if (proxy.Value != null)
+                {
+                    Destroy(proxy.Value);
+                }
+            }
+
+            treeProxyMeshesLow.Clear();
+
+            // Persistent-буфер общих матриц декора живёт весь сеанс: дренируем
+            // его здесь, иначе он переживёт перезагрузку домена.
+            proxySharedHandle.Complete();
+            if (proxyShared.IsCreated)
+            {
+                proxyShared.Dispose();
+            }
+
+            proxySharedUsed = 0;
+            proxySharedHandle = default(JobHandle);
 
             // Teardown: дренируем пул буферов декора (иначе Persistent-массивы
             // утекут на выходе из play/при перезагрузке домена). Тот же
@@ -6194,7 +6231,7 @@ namespace Galilego.Universe
             // РЎС‚СЂР°С…РѕРІРєР°: РµСЃР»Рё РїСЂРѕС€Р»С‹Р№ РєР°РґСЂ Р·Р°РІРµСЂС€РёР»СЃСЏ РёСЃРєР»СЋС‡РµРЅРёРµРј РґРѕ Flush,
             // РґРѕРІРѕРґРёРј Р·Р°РїР»Р°РЅРёСЂРѕРІР°РЅРЅС‹Рµ РґР¶РѕР±С‹, РёРЅР°С‡Рµ РЅРѕРІС‹Рµ РїРёСЃР°Р»Рё Р±С‹ РІ С‚Рµ Р¶Рµ
             // РјР°СЃСЃРёРІС‹ РјР°С‚СЂРёС† РїР°СЂР°Р»Р»РµР»СЊРЅРѕ.
-            if (burstDecorDraws.Count != 0)
+            if (burstDecorDraws.Count != 0 || proxySharedUsed != 0)
             {
                 FlushBurstDecor();
             }
@@ -6292,7 +6329,7 @@ namespace Galilego.Universe
                     // с ProxyFromMeters выцветал бы на фоне затенённого.
                     if (layer.FarProxy && !layer.PerInstanceDensity && distance > layer.ProxyFromMeters)
                     {
-                        DrawTreeProxy(chunk, runtime, layer, chunkMatrix, cameraPosition, edgeFade, chunkWorldBounds);
+                        DrawTreeProxy(chunk, runtime, layer, chunkMatrix, cameraPosition, edgeFade, chunkWorldBounds, distance);
                         continue;
                     }
 
@@ -6736,6 +6773,10 @@ namespace Galilego.Universe
             public ShadowCastingMode Shadow;
             public Bounds WorldBounds;
             public JobHandle Handle;
+            /// <summary>Сколько инстансов реально посчитала джоба. При прореживании
+            /// (Stride) это меньше runtime.Instances.Length, и рисовать надо именно
+            /// столько — хвост буфера матриц содержит прошлый кадр.</summary>
+            public int Count;
         }
 
         /// <summary>РџР»Р°РЅРёСЂСѓРµС‚ Burst-РґР¶РѕР±Сѓ РјР°С‚СЂРёС† СЃР»РѕСЏ (Р±РµР· РѕР¶РёРґР°РЅРёСЏ).</summary>
@@ -6791,6 +6832,7 @@ namespace Galilego.Universe
                 Material = material,
                 Shadow = shadow,
                 WorldBounds = worldBounds,
+                Count = count,
                 Handle = job.Schedule(count, 256, default(JobHandle))
             });
         }
@@ -6817,10 +6859,11 @@ namespace Galilego.Universe
         /// (иначе лес с ProxyFromMeters теряет затенение и «выцветает»).</summary>
         private void DrawTreeProxy(
             Chunk chunk, DecorLayerRuntime runtime, GroundDecorLayer layer,
-            Matrix4x4 chunkMatrix, Vector3 cameraPosition, float edgeFade, Bounds chunkBounds)
+            Matrix4x4 chunkMatrix, Vector3 cameraPosition, float edgeFade, Bounds chunkBounds,
+            float distance)
         {
             int count = runtime.Instances.Length;
-            Mesh mesh = GetTreeProxyMesh(layer);
+            Mesh mesh = GetTreeProxyMesh(layer, decorAltitude > 4000f);
             Material material = layer.NearMaterial;
             if (count == 0 || mesh == null || material == null)
             {
@@ -6841,22 +6884,56 @@ namespace Galilego.Universe
                 return;
             }
 
-            if (!runtime.WorldMatrices.IsCreated || runtime.WorldMatrices.Length != count)
+            // Прореживание по дистанции. На 10 км дерево ~20 м занимает 1-2 пикселя,
+            // поэтому каждые 2-е/4-е заменяем размером: суммарный «вес» леса в
+            // кадре почти тот же, а инстансов и матриц в разы меньше.
+            int stride = distance > 6000f ? 4 : (distance > 3000f ? 2 : 1);
+            int drawCount = (count + stride - 1) / stride;
+            float strideGrow = Mathf.Pow(stride, 0.35f);
+
+            // Батчинг в общий буфер: только когда тени выключены (тогда у всех
+            // дальних чанков один меш и материал — иначе их не склеить в один
+            // draw) и хватает места. Первый чанк задаёт меш/материал, дальше
+            // обязан совпадать, иначе сбрасываем на отдельный путь.
+            ShadowCastingMode shadow = DecorShadowMode(layer);
+            bool shared = shadow == ShadowCastingMode.Off
+                && proxySharedUsed + drawCount <= ProxySharedCapacity
+                && (proxySharedUsed == 0
+                    || (proxySharedMesh == mesh && proxySharedMaterial == material));
+
+            NativeSlice<Matrix4x4> target;
+            if (shared)
             {
-                DecorArrayPool.Return(ref runtime.WorldMatrices);
-                runtime.WorldMatrices = DecorArrayPool.Rent<Matrix4x4>(count);
+                if (!proxyShared.IsCreated)
+                {
+                    proxyShared = new NativeArray<Matrix4x4>(
+                        ProxySharedCapacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+                }
+
+                target = new NativeSlice<Matrix4x4>(proxyShared, proxySharedUsed, drawCount);
+            }
+            else
+            {
+                if (!runtime.WorldMatrices.IsCreated || runtime.WorldMatrices.Length != count)
+                {
+                    DecorArrayPool.Return(ref runtime.WorldMatrices);
+                    runtime.WorldMatrices = DecorArrayPool.Rent<Matrix4x4>(count);
+                }
+
+                target = runtime.WorldMatrices;
             }
 
             var job = new GroundDecorMatrixJob
             {
                 Instances = runtime.Instances,
-                WorldMatrices = runtime.WorldMatrices,
+                WorldMatrices = target,
                 ChunkToWorld = ToFloat4x4(chunkMatrix),
                 CameraWorld = new float3(cameraPosition.x, cameraPosition.y, cameraPosition.z),
                 Billboard = false,
                 FlatOnGround = false,
                 ApplyGlobalScale = true,
-                GlobalScale = DecorRetireFade(runtime) * edgeFade,
+                GlobalScale = DecorRetireFade(runtime) * edgeFade * strideGrow,
+                Stride = stride,
                 ScaleBoost = layer.ProxyScaleBoost,
                 BoostStart = layer.ProxyBoostStartMeters,
                 BoostSpan = Mathf.Max(1f, layer.MaxDistanceMeters - layer.ProxyBoostStartMeters),
@@ -6865,24 +6942,45 @@ namespace Galilego.Universe
                 SinkSeconds = 0f
             };
 
+            if (shared)
+            {
+                JobHandle handle = job.Schedule(drawCount, 64, default(JobHandle));
+                proxySharedHandle = JobHandle.CombineDependencies(proxySharedHandle, handle);
+                if (proxySharedUsed == 0)
+                {
+                    proxySharedMesh = mesh;
+                    proxySharedMaterial = material;
+                    proxySharedBounds = bounds;
+                }
+                else
+                {
+                    proxySharedBounds.Encapsulate(bounds);
+                }
+
+                proxySharedUsed += drawCount;
+                return;
+            }
+
             burstDecorDraws.Add(new BurstDecorDraw
             {
                 Chunk = chunk,
                 Runtime = runtime,
                 Mesh = mesh,
                 Material = material,
-                Shadow = DecorShadowMode(layer),
+                Shadow = shadow,
                 WorldBounds = bounds,
-                Handle = job.Schedule(count, 256, default(JobHandle))
+                Count = drawCount,
+                Handle = job.Schedule(drawCount, 64, default(JobHandle))
             });
         }
 
         /// <summary>Низкополигональное дерево (ствол + двойная пирамида кроны, ~26 треугольников),
         /// собранное по усреднённым габаритам NearMeshes слоя. Цвета — в vertex colors, как у
         /// полных мешей (TreeModelSetup), альфа 0 — без ветра.</summary>
-        private Mesh GetTreeProxyMesh(GroundDecorLayer layer)
+        private Mesh GetTreeProxyMesh(GroundDecorLayer layer, bool low)
         {
-            if (treeProxyMeshes.TryGetValue(layer, out Mesh cached) && cached != null)
+            Dictionary<GroundDecorLayer, Mesh> cache = low ? treeProxyMeshesLow : treeProxyMeshes;
+            if (cache.TryGetValue(layer, out Mesh cached) && cached != null)
             {
                 return cached;
             }
@@ -6944,11 +7042,15 @@ namespace Galilego.Universe
                 }
             }
 
-            int trunkBottom = Ring(4, 0f, height * 0.04f, trunk, 0f);
-            int trunkTop = Ring(4, height * 0.35f, height * 0.03f, trunk, 0f);
-            Band(trunkBottom, trunkTop, 4);
+            // Ствол на 10 км — 0 пикселей, упрощённый прокси без него.
+            if (!low)
+            {
+                int trunkBottom = Ring(4, 0f, height * 0.04f, trunk, 0f);
+                int trunkTop = Ring(4, height * 0.35f, height * 0.03f, trunk, 0f);
+                Band(trunkBottom, trunkTop, 4);
+            }
 
-            const int crownSegments = 6;
+            int crownSegments = low ? 4 : 6;
             int crownLow = Ring(crownSegments, height * 0.22f, radius * 0.7f, leafDark, 0f);
             int crownMid = Ring(crownSegments, height * 0.55f, radius, leaf, 0f);
             Band(crownLow, crownMid, crownSegments);
@@ -6962,19 +7064,33 @@ namespace Galilego.Universe
                 triangles.Add(crownMid + s); triangles.Add(apex); triangles.Add(crownMid + n);
             }
 
-            var proxy = new Mesh { name = layer.Name + "_FarProxy", hideFlags = HideFlags.HideAndDontSave };
+            var proxy = new Mesh
+            {
+                name = layer.Name + (low ? "_FarProxyLow" : "_FarProxy"),
+                hideFlags = HideFlags.HideAndDontSave
+            };
             proxy.SetVertices(vertices);
             proxy.SetColors(colors);
             proxy.SetTriangles(triangles, 0);
             proxy.RecalculateNormals();
             proxy.RecalculateBounds();
-            treeProxyMeshes[layer] = proxy;
+            cache[layer] = proxy;
             return proxy;
         }
 
         /// <summary>Вызывает все запланированные джобы и рисует слои.</summary>
         private void FlushBurstDecor()
         {
+            // Общий буфер дальних деревьев — до проверки списка: он тоже
+            // требует Complete и отрисовки, даже когда burstDecorDraws пуст.
+            if (proxySharedUsed > 0)
+            {
+                proxySharedHandle.Complete();
+                DrawProxyShared();
+                proxySharedUsed = 0;
+                proxySharedHandle = default(JobHandle);
+            }
+
             if (burstDecorDraws.Count == 0)
             {
                 return;
@@ -6991,10 +7107,36 @@ namespace Galilego.Universe
                 BurstDecorDraw draw = burstDecorDraws[i];
                 DrawDecorInstanced(
                     draw.Mesh, draw.Material, draw.Runtime.WorldMatrices,
-                    draw.Runtime.Instances.Length, draw.Shadow, draw.WorldBounds);
+                    draw.Count, draw.Shadow, draw.WorldBounds);
             }
 
             burstDecorDraws.Clear();
+        }
+
+        /// <summary>Общий буфер дальних деревьев одним набором draw-call'ов.
+        /// Меш и материал у всех батченных чанков одинаковые (иначе их не
+        /// склеили бы в DrawTreeProxy), тени выключены.</summary>
+        private void DrawProxyShared()
+        {
+            if (!proxySharedMaterial.enableInstancing)
+            {
+                proxySharedMaterial.enableInstancing = true;
+            }
+
+            var renderParams = new RenderParams(proxySharedMaterial)
+            {
+                worldBounds = proxySharedBounds,
+                shadowCastingMode = ShadowCastingMode.Off,
+                receiveShadows = false,
+                layer = gameObject.layer
+            };
+
+            const int batchSize = 1023;
+            for (int start = 0; start < proxySharedUsed; start += batchSize)
+            {
+                int n = System.Math.Min(batchSize, proxySharedUsed - start);
+                Graphics.RenderMeshInstanced(renderParams, proxySharedMesh, 0, proxyShared, n, start);
+            }
         }
 
         private void DrawDecorInstanced(
