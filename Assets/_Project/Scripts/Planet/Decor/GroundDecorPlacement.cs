@@ -89,6 +89,9 @@ namespace Galilego.Universe
         /// <summary>Масштаб экспоненциального затухания (м); 0 = линейное.</summary>
         public double FalloffScaleMeters;
 
+        /// <summary>Степень затухания (0 = экспонента, 2 = закон покрытия).</summary>
+        public double DensityFalloffPower;
+
         /// <summary>Радиус плоского ядра (м): до него плотность полная.</summary>
         public double DensityCoreMeters;
 
@@ -155,6 +158,7 @@ namespace Galilego.Universe
                 FalloffFarMeters = Math.Max(layer.NearDistanceMeters + 1d, layer.MaxDistanceMeters),
                 FarDensity = Math.Max(0d, Math.Min(1d, layer.FarDensity)),
                 FalloffScaleMeters = layer.DensityFalloffMeters,
+                DensityFalloffPower = Math.Max(0d, layer.DensityFalloffPower),
                 DensityCoreMeters = Math.Max(0d, layer.DensityCoreMeters),
                 WindJitterRad = layer.WindJitterDegrees * 0.017453292519943295d,
                 WindLeanMinDegrees = layer.WindLeanMinDegrees,
@@ -652,6 +656,22 @@ namespace Galilego.Universe
             if (p.FarDensity >= 1d)
             {
                 return 1d;
+            }
+
+            // Степенной закон покрытия: density ∝ (R/(R+d))^p, где R — радиус
+            // плоского ядра (плотность на его краю ровно 1). При p = 2 и линейном
+            // росте дальнего LOD (GroundDecorMatrixJob: size ∝ d) заполнение
+            // экрана n·g² = (R/d)²·(d/R)² = const, то есть «шерсть» до края зоны
+            // не вырождается, а число инстансов растёт как ln(R), а не R².
+            // Именно этого не хватало экспоненте: exp гасил дальнюю зону в разы
+            // быстрее, чем набор размера успевал её закрыть, и за горизонтом
+            // трава просто исчезала.
+            if (p.DensityFalloffPower > 0d)
+            {
+                double r = Math.Max(1d, Math.Max(0d, p.DensityCoreMeters));
+                double k = r / (r + d);
+                double shaped = p.DensityFalloffPower == 2d ? k * k : Math.Pow(k, p.DensityFalloffPower);
+                return p.FarDensity + ((1d - p.FarDensity) * shaped);
             }
 
             if (p.FalloffScaleMeters > 0d)

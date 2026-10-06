@@ -34,6 +34,11 @@ namespace Galilego.Universe
         public float FarDistance;
         public float BillboardNearScale;
         public float BillboardFarScale;
+        /// <summary>Дистанция, с которой дальний LOD начинает расти (∝ d).
+        /// Ставится в DensityCoreMeters слоя: до края плоского ядра плотность
+        /// полная и рост размера не нужен, а начинать его раньше — значит
+        /// получить скачок силуэта на границе near→far.</summary>
+        public float DistanceCore;
         /// <summary>Доля высоты меша до пивота (0 — пивот в основании, как у
         /// клинка травы; 0.5 — центрированный квад). Биллборд поднимаем на неё,
         /// чтобы дальний LOD стоял на земле так же, как ближний.</summary>
@@ -112,7 +117,21 @@ namespace Galilego.Universe
 
                 float distance = math.length(toCamera);
                 float blend = math.saturate((distance - NearDistance) / math.max(1f, FarDistance - NearDistance));
-                float size = scale * math.lerp(BillboardNearScale, BillboardFarScale, blend);
+
+                // ЗАКОН ПОКРЫТИЯ. Раньше размер дальнего LOD рос линейно между
+                // Near/FarScale по blend, а плотность гасла экспонентой — вместе
+                // заполнение экрана n·g² падало в разы быстрее, чем его мог
+                // закрыть рост размера, и дальняя зона выглядела лысой. Теперь
+                // размер ∝ дистанции (ограничен BillboardFarScale), что в паре с
+                // плотностью ∝ (R/d)² в GroundDecorDistribution.Falloff даёт
+                // постоянное покрытие. Рост стартует не с NearDistance, а с
+                // DistanceCore: между ними дальний квад ещё не вырос, и если
+                // начать растить с NearDistance — на переходе near→far будет
+                // видимый скачок силуэта.
+                float grow = math.min(
+                    BillboardFarScale,
+                    math.max(1f, distance / math.max(1f, DistanceCore)));
+                float size = scale * grow;
 
                 // Ориентация тоже морфится: у ближней границы дальний LOD стоит
                 // так же, как 3D-клинок (yaw+наклон), к дальней — доворачивается

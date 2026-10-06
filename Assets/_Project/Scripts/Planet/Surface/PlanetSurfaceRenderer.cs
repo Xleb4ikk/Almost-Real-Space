@@ -2172,6 +2172,7 @@ namespace Galilego.Universe
 
             SurfacePerf.DecorAltitude = decorAltitude;
             SurfacePerf.DecorSpeed = decorSpeed;
+            SurfacePerf.TickDecorAccum(Time.unscaledDeltaTime);
         }
 
         /// <summary>Высота рельефа под игроком в текущий момент, м. null, если
@@ -5018,6 +5019,32 @@ namespace Galilego.Universe
 
         /// <summary>РўР°РЅРіРµРЅС†РёР°Р»СЊРЅР°СЏ РґРёСЃС‚Р°РЅС†РёСЏ РёРЅСЃС‚Р°РЅСЃР° РґРѕ С†РµРЅС‚СЂР° РѕР±Р»Р°РєР° (С‚Р° Р¶Рµ
         /// РјРµС‚СЂРёРєР°, С‡С‚Рѕ Сѓ Falloff РІ РґР¶РѕР±Р°С…).</summary>
+        private static int CountBirthsNearCameraLocal(
+            Unity.Collections.NativeArray<GroundDecorInstance> stored, int count, Vector3 cameraLocal)
+        {
+            if (!stored.IsCreated || count <= 0)
+            {
+                return 0;
+            }
+
+            int n = Mathf.Min(count, stored.Length);
+            float radiusSq = SurfacePerf.DecorBirthProbeMeters * SurfacePerf.DecorBirthProbeMeters;
+            int births = 0;
+            for (int i = 0; i < n; i++)
+            {
+                float3 p = stored[i].Position;
+                float dx = p.x - cameraLocal.x;
+                float dy = p.y - cameraLocal.y;
+                float dz = p.z - cameraLocal.z;
+                if (((dx * dx) + (dy * dy) + (dz * dz)) <= radiusSq)
+                {
+                    births++;
+                }
+            }
+
+            return births;
+        }
+
         private static float InstanceFalloffDistance(GroundDecorInstance instance, Vector3 center)
         {
             Vector3 position = new Vector3(instance.Position.x, instance.Position.y, instance.Position.z);
@@ -5317,6 +5344,19 @@ namespace Galilego.Universe
                     Matrices = layer.PerInstanceDensity ? null : new Matrix4x4[write],
                     SinkFadeSeconds = sinkFadeSeconds
                 };
+
+                // "Пустота под ногами" в числах: сколько травинок в свежей
+                // сборке родилось рядом с камерой. Пересборка при ходьбе идёт
+                // волной, и если её запустило поздно, эти инстансы окажутся в
+                // зоне, где игрок уже видит полную плотность — и дорастут
+                // прямо в кадре. Считается здесь, где инстансы уже готовы.
+                if (layer.PerInstanceDensity)
+                {
+                    SurfacePerf.DecorBirthsNearCameraThisFrame += CountBirthsNearCameraLocal(
+                        session.Stored,
+                        write,
+                        session.BuildCameraLocal);
+                }
 
                 if (layer.PerInstanceDensity)
                 {
@@ -5751,9 +5791,21 @@ namespace Galilego.Universe
                     // Р‘РѕР»СЊС€Рµ РїРѕСЂРѕРі вЂ” СЂРµР¶Рµ РїРµСЂРµСЃР±РѕСЂРєРё (РѕРЅРё РґРѕСЂРѕРіРёРµ: РїСЂРѕРіРѕРЅ
                     // РєР°РЅРґРёРґР°С‚РѕРІ + СЂР°Р·РІРѕСЂРѕС‚ РїСѓР»Р°).
                     float core = (float)System.Math.Max(0d, layer.DensityCoreMeters);
-                    float threshold = surfaceVelocityLocal.magnitude < 0.5f
-                        ? 8f
-                        : Mathf.Clamp(core * 0.6f, 16f, Mathf.Max(16f, layer.MaxDistanceMeters * 0.3f));
+                    float threshold;
+                    if (layer.DecorLookAheadMeters > 0f)
+                    {
+                        float floor = Mathf.Max(1f, layer.DecorMinRebuildMeters);
+                        threshold = Mathf.Clamp(
+                            core - layer.DecorLookAheadMeters,
+                            floor,
+                            Mathf.Max(floor, layer.MaxDistanceMeters * 0.3f));
+                    }
+                    else
+                    {
+                        threshold = surfaceVelocityLocal.magnitude < 0.5f
+                            ? 8f
+                            : Mathf.Clamp(core * 0.6f, 16f, Mathf.Max(16f, layer.MaxDistanceMeters * 0.3f));
+                    }
                     Vector3 buildDelta = currentCameraLocal - buildCameraLocal;
                     if (localUp.sqrMagnitude > 1e-6f)
                     {
@@ -5767,9 +5819,20 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    if (moved > bestStale)
+                    // Urgency: how badly this chunk needs a rebuild, scaled by proximity.
+                    // With MaxDistanceMeters = 200 there are many more distant
+                    // chunks than before, and they compete in the same queue —
+                    // a plain "most moved" could keep the chunk under the
+                    // player's feet waiting behind a far one. Only for
+                    // PerInstanceDensity layers (grass): trees/rocks keep the
+                    // old ordering, their rebuilds are rare and scheduled by
+                    // their own budget.
+                    float urgency = layer.PerInstanceDensity
+                        ? moved / (1f + (chunkDistance / Mathf.Max(1f, layer.NearDistanceMeters)))
+                        : moved;
+                    if (urgency > bestStale)
                     {
-                        bestStale = moved;
+                        bestStale = urgency;
                         bestChunk = chunk;
                         bestLayerIndex = layerIndex;
                     }
@@ -5781,7 +5844,15 @@ namespace Galilego.Universe
                 return;
             }
 
+            // Считаем цену пересборки в секунду: одна постановка = сколько-то
+            // миллисекунд главного потока. Частота (сколько раз в секунду
+            // сработало) пишется в PerfLog, чтобы по маршруту ходьбы было видно,
+            // чем платим за ровный ковёр.
+            var rebuildClock = System.Diagnostics.Stopwatch.StartNew();
             TryQueueDecorBuild(bestChunk, bestLayerIndex, cameraPosition, true);
+            rebuildClock.Stop();
+            SurfacePerf.DecorRebuildsThisFrame++;
+            SurfacePerf.DecorRebuildMsThisFrame += (float)rebuildClock.Elapsed.TotalMilliseconds;
         }
 
         /// <summary>Р’С‹РіСЂСѓР·РєР° РїСѓР»РѕРІ С‚СЂР°РІС‹ РґР°Р»РµРєРѕ Р·Р° РїСЂРµРґРµР»Р°РјРё РІРёРґРёРјРѕСЃС‚Рё: РёРЅР°С‡Рµ
@@ -6813,7 +6884,12 @@ namespace Galilego.Universe
                 NearDistance = layer.NearDistanceMeters,
                 FarDistance = Mathf.Max(layer.NearDistanceMeters + 1f, layer.MaxDistanceMeters),
                 BillboardNearScale = 1f,
-                BillboardFarScale = 1.9f,
+                // Закон покрытия: size ∝ d от края ядра, ограничен FarScale.
+                // 1.9 больше не давал нужного роста — при DensityCoreMeters = 25
+                // и MaxDistanceMeters = 200 к дальней границе требовалось ≈8x,
+                // иначе плотность ∝ (R/d)² не покрывается и зона остаётся лысой.
+                BillboardFarScale = 10f,
+                DistanceCore = Mathf.Max(1f, layer.DensityCoreMeters),
                 BillboardPivotFraction = pivotFraction,
                 Now = Time.time,
                 FadeSeconds = DecorFadeSeconds(DecorBladeFadeSeconds),
