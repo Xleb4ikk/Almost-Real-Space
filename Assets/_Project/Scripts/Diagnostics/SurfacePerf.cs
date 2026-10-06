@@ -141,6 +141,28 @@ namespace Galilego.Universe
         /// <summary>Сколько инстансов в этих пулах.</summary>
         public static int DecorInstances;
 
+        /// <summary>
+        /// Сколько раз за секунду запускалась пересборка слоёв декора
+        /// (RefreshMovingDecor). Считается в PerfLog, потому что на глаз
+        /// частоту не видно: чем чаще, тем ровнее ковёр при ходьбе, и тем
+        /// больше работы на сборку.
+        /// </summary>
+        public static int DecorRebuildsLastSample;
+
+        /// <summary>Мс главного потока на пересборку декора за секунду.</summary>
+        public static float DecorRebuildMsPerSecond;
+
+        /// <summary>
+        /// Сколько инстансов травы родилось ближе DecorBirthProbeMeters от
+        /// камеры за секунду. Это и есть «пустота под ногами»: пока игрок
+        /// идёт, трава рядом с ним не должна ни рождаться, ни дорастать.
+        /// Считает рендерер при финализации сборки, где инстансы уже есть.
+        /// </summary>
+        public static int DecorBirthsNearCamera;
+
+        /// <summary>Радиус, в котором считаются рождения (м).</summary>
+        public const float DecorBirthProbeMeters = 25f;
+
         // ===== Тир качества по скорости (Фаза 3) =====
 
         /// <summary>0 = Normal, 1 = Fast, 2 = Extreme.</summary>
@@ -233,6 +255,51 @@ namespace Galilego.Universe
             PrefetchNodes = 0;
             DecorPools = 0;
             DecorInstances = 0;
+            DecorRebuildsThisFrame = 0;
+            DecorRebuildMsThisFrame = 0f;
+            DecorBirthsNearCameraThisFrame = 0;
+        }
+
+        /// <summary>Пересборок декора в этом кадре (для накопления в секунду).</summary>
+        public static int DecorRebuildsThisFrame;
+
+        /// <summary>Мс главного потока на пересборки в этом кадре.</summary>
+        public static float DecorRebuildMsThisFrame;
+
+        /// <summary>Инстансов травы, родившихся у камеры, в этом кадре.</summary>
+        public static int DecorBirthsNearCameraThisFrame;
+
+        private static float decorAccumTimer;
+        private static int decorAccumRebuilds;
+        private static float decorAccumMs;
+        private static int decorAccumBirths;
+
+        /// <summary>
+        /// Накопление секундных счётчиков декора. Вызывается раз в секунду
+        /// из рендерера: накопленное за секунду кладётся в поля, которые
+        /// читает PerfLog.
+        /// </summary>
+        public static void TickDecorAccum(float deltaSeconds)
+        {
+            decorAccumTimer += deltaSeconds;
+            decorAccumRebuilds += DecorRebuildsThisFrame;
+            decorAccumMs += DecorRebuildMsThisFrame;
+            decorAccumBirths += DecorBirthsNearCameraThisFrame;
+            DecorRebuildsThisFrame = 0;
+            DecorRebuildMsThisFrame = 0f;
+            DecorBirthsNearCameraThisFrame = 0;
+            if (decorAccumTimer < 1f)
+            {
+                return;
+            }
+
+            DecorRebuildsLastSample = decorAccumRebuilds;
+            DecorRebuildMsPerSecond = decorAccumMs;
+            DecorBirthsNearCamera = decorAccumBirths;
+            decorAccumTimer = 0f;
+            decorAccumRebuilds = 0;
+            decorAccumMs = 0f;
+            decorAccumBirths = 0;
         }
 
         /// <summary>
@@ -250,7 +317,8 @@ namespace Galilego.Universe
         /// номера старых колонок не поехали.</summary>
         public const string PerfLogColumns =
             "\tbuiltPerFrame\tbuildMs\tvisibleChunks\tcachedChunks\tdesiredNodes\ttris\t"
-            + "gcBytesPerFrame\tmeshBalance\tdecorAltM\tdecorSpeed\tchunksFinalized";
+            + "gcBytesPerFrame\tmeshBalance\tdecorAltM\tdecorSpeed\tchunksFinalized"
+            + "\tdecorRebuildsPerSec\tdecorRebuildMsPerSec\tdecorBirthsNearCamera";
 
         /// <summary>Значения тех же колонок. Порядок обязан совпадать с
         /// <see cref="PerfLogColumns"/> — это единственное место, где они связаны.</summary>
@@ -273,6 +341,13 @@ namespace Galilego.Universe
             // chunksFinalized — единственный честный счётчик постройки в
             // async-режиме, и в PerfLog его тоже не было.
             line.Append(ChunksFinalized.ToString(inv));
+
+            // Секундные счётчики пересборки декора: частота и цена. Именно ими
+            // меряется «пустота под ногами при ходьбе» — частота пересборок
+            // против рождений у камеры.
+            line.Append(DecorRebuildsLastSample.ToString(inv)).Append('\t');
+            line.Append(DecorRebuildMsPerSecond.ToString("F2", inv)).Append('\t');
+            line.Append(DecorBirthsNearCamera.ToString(inv));
         }
 
         /// <summary>Абсолютные (не покадровые) числа — раз в 2 с, в конец строки.</summary>

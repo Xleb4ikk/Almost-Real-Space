@@ -18,9 +18,9 @@ MonoBehaviour:
       Enabled: 1
       NearMeshes:
       - {fileID: 4300000, guid: 26c15081539f9a84597106d2660c2b58, type: 2}
-      FarBillboardMesh: {fileID: 4300000, guid: 26c15081539f9a84597106d2660c2b58, type: 2}
-      NearMaterial: {fileID: 2100000, guid: 8a6f3bef5d673104381754b197da59b9, type: 2}
-      FarMaterial: {fileID: 2100000, guid: 8a6f3bef5d673104381754b197da59b9, type: 2}
+      FarBillboardMesh: {fileID: 4300000, guid: a215397a5a1a7464ca9f0d2d33280ec3, type: 2}
+      NearMaterial: {fileID: 2100000, guid: 5da4a37e60e4809429665ed9264f2770, type: 2}
+      FarMaterial: {fileID: 2100000, guid: 5da4a37e60e4809429665ed9264f2770, type: 2}
       SpacingMeters: 0.8
       MaxInstancesPerChunk: 26000
       Density: 4
@@ -40,8 +40,8 @@ MonoBehaviour:
       WetMax: 1
       IgnoreLatitude: 0
       WetFade: 0.12
-      MinScale: 0.6326915514345928
-      MaxScale: 1.3159983787134182
+      MinScale: 0.6329113752141712
+      MaxScale: 1.3164556121581703
       GroundOffsetMeters: 0
       GroundSinkFactor: 0
       WindZoneFrequency: 2.5
@@ -59,13 +59,16 @@ MonoBehaviour:
       CollisionRadiusMeters: 0.5
       CollisionHeightMeters: 20
       SteepPower: 0.4
-      NearDistanceMeters: 55
+      NearDistanceMeters: 35
       MaxCellsPerAxis: 192
       MaxDistanceMeters: 200
-      DensityFalloffMeters: 45
-      DensityCoreMeters: 28
+      DensityFalloffMeters: 25
+      DensityCoreMeters: 20
+      DecorLookAheadMeters: 25
+      DecorMinRebuildMeters: 6
+      DensityFalloffPower: 2
       PerInstanceDensity: 1
-      FarDensity: 0.03
+      FarDensity: 0
       SpawnMarginMeters: 100
       SubInstancesPerCell: 400
       FarProxy: 0
@@ -123,6 +126,9 @@ MonoBehaviour:
       MaxDistanceMeters: 400
       DensityFalloffMeters: 0
       DensityCoreMeters: 0
+      DecorLookAheadMeters: 0
+      DecorMinRebuildMeters: 6
+      DensityFalloffPower: 0
       PerInstanceDensity: 0
       FarDensity: 1
       SpawnMarginMeters: 150
@@ -184,6 +190,9 @@ MonoBehaviour:
       MaxDistanceMeters: 1200
       DensityFalloffMeters: 0
       DensityCoreMeters: 0
+      DecorLookAheadMeters: 0
+      DecorMinRebuildMeters: 6
+      DensityFalloffPower: 0
       PerInstanceDensity: 0
       FarDensity: 1
       SpawnMarginMeters: 150
@@ -245,6 +254,9 @@ MonoBehaviour:
       MaxDistanceMeters: 1200
       DensityFalloffMeters: 0
       DensityCoreMeters: 0
+      DecorLookAheadMeters: 0
+      DecorMinRebuildMeters: 6
+      DensityFalloffPower: 0
       PerInstanceDensity: 0
       FarDensity: 1
       SpawnMarginMeters: 150
@@ -306,6 +318,9 @@ MonoBehaviour:
       MaxDistanceMeters: 11200
       DensityFalloffMeters: 0
       DensityCoreMeters: 0
+      DecorLookAheadMeters: 0
+      DecorMinRebuildMeters: 6
+      DensityFalloffPower: 0
       PerInstanceDensity: 0
       FarDensity: 0.35
       SpawnMarginMeters: 150

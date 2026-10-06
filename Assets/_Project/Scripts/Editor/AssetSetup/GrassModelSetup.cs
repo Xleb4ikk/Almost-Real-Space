@@ -1,27 +1,32 @@
-﻿using UnityEditor;
+using UnityEditor;
 using UnityEngine;
 
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Сборка ближнего LOD травы: 3D-меш травинки из Models/Decor/GrassBlade.fbx
-    /// (единственный меш "GrassBlade") + материал Galilego/GroundDecorSolid.
-    /// Дальний LOD (биллборд) пробрасывается снаружи — остаётся прежним
-    /// экономичным. Используется GroundDecorSetup.
-    /// Учтено по замеру геометрии: vertex colors в FBX все белые (тинт ими
-    /// не дать — красим материалом); winding перевёрнут (разворачиваем);
-    /// лента растёт плашмя вдоль -Z (поднимаем поворотом около X).
-    /// NearMeshes — ОДИНОЧНЫЙ клинок: остров травы собирается из многих
-    /// отдельных травинок по сетке (без кустиков-«точек»).
+    /// Сборка ближнего LOD травы: процедурный низкополигональный клинок
+    /// (складчатая лента) + специализированный шейдер Galilego/GrassBlade.
+    ///
+    /// Почему больше не FBX. Замер показал: у прежнего клинка 26 треугольников
+    /// на инстанс, зеркальных пар треугольников НЕТ (все 26 односторонние) и
+    /// одна нормаль на все 46 вершин. То есть это складчатая плоскость, а 26
+    /// треугольников — просто избыточная разбивка. Стоимость травы при этом не
+    /// в геометрии, а в заполнении (ковёр под игроком + Cull Off), поэтому
+    /// геометрию ужать можно почти бесплатно: 3 складки ? 1 квад = 6
+    /// треугольников с тем же силуэтом.
+    ///
+    /// Cull Back на этом меше НЕЛЬЗЯ: односторонний винг + Cull Off = клинок
+    /// виден с обеих сторон, отсечение задних граней holes бы половину
+    /// клинков на половине ракурсов.
     /// </summary>
     public static class GrassModelSetup
     {
-        private const string GrassModelPath = "Assets/_Project/Models/Decor/GrassBlade.fbx";
         private const string DecorModelsFolder = "Assets/_Project/Models/Decor";
         private const string MaterialsFolder = "Assets/_Project/Materials";
         private const string DecorMaterialsFolder = MaterialsFolder + "/Decor";
-        private const string MaterialPath = DecorMaterialsFolder + "/GrassBladeSolid.mat";
+        private const string MaterialPath = DecorMaterialsFolder + "/GrassBlade.mat";
         private const string FixedMeshPath = DecorModelsFolder + "/GrassBladeFixed.asset";
+        private const string FarMeshPath = DecorModelsFolder + "/GrassBladeFar.asset";
 
         /// <summary>Текстура земли для автотинта травы (средний цвет пикселей).</summary>
         private const string GroundTexturePath = "Assets/_Project/Textures/Terrain/terrain_mid_clean.jpg";
@@ -29,24 +34,28 @@ namespace Galilego.Universe.EditorTools
         private const float TargetMinHeightMeters = 1.0f;
         private const float TargetMaxHeightMeters = 2.08f;
 
+        // Геометрия клинка. Ширина в основании совпадает с прежним мешем
+        // (0.34 м), глубина складок — 0.12 м, высота 1.58 м: MinScale/MaxScale
+        // в слое считаются от высоты меша, поэтому размеры те же и слой
+        // продолжает сажать клинки 1.0…2.08 м.
+        private const float BladeBaseWidth = 0.34f;
+        private const float BladeTipWidth = 0.09f;
+        private const float BladeHeight = 1.58f;
+        private const float BladeFoldDepth = 0.12f;
+        private const int BladePanels = 3;
+
         /// <summary>
-        /// Слой травы с ближним 3D-мешем. Дальний LOD — ТОТ ЖЕ клинок и ТОТ ЖЕ
-        /// материал: одинаковые полигоны на всех дистанциях, силуэт при переходе
-        /// near→far не меняется, ковёр сливается. Текстурный квад (clump) с
-        /// тёмным краем альфы убран — он давал «чёрную обводку». Биллборд-разворот
-        /// дальнего LOD делает рендерер (GroundDecorMatrixJob).
+        /// Слой травы с ближним 3D-клинком и дешёвым дальним LOD (один квад).
+        /// Дальний квад рендерер разворачивает к камере (GroundDecorMatrixJob,
+        /// Billboard = !near), поэтому одного квада достаточно: 2 треугольника
+        /// вместо 26 на всю дальнюю половину ковра.
         /// </summary>
         internal static GroundDecorLayer BuildGrassLayer(Mesh farBillboard, Material farMaterial)
         {
             Material material = CreateOrLoadMaterial();
-            Mesh source = LoadBladeMesh();
-            if (material == null || source == null)
-            {
-                return null;
-            }
-
-            Mesh blade = BuildBladeMesh(source);
-            if (blade == null)
+            Mesh blade = BuildBladeMesh();
+            Mesh bladeFar = BuildFarMesh();
+            if (material == null || blade == null || bladeFar == null)
             {
                 return null;
             }
@@ -57,7 +66,8 @@ namespace Galilego.Universe.EditorTools
             Bounds bounds = blade.bounds;
             float meshHeight = Mathf.Max(1e-4f, bounds.size.y);
             Debug.Log("[GrassModelSetup] GrassBladeFixed bounds.size=" + bounds.size
-                + " min.y=" + bounds.min.y + " (высота меша как есть: " + meshHeight + " м)");
+                + " tris=" + blade.triangles.Length / 3
+                + " (высота меша как есть: " + meshHeight + " м)");
 
             float groundOffset = 0f;
             if (Mathf.Abs(bounds.min.y) > 1e-4f)
@@ -66,7 +76,7 @@ namespace Galilego.Universe.EditorTools
                 Debug.LogWarning("[GrassModelSetup] низ меша не на y=0 — GroundOffsetMeters=" + groundOffset);
             }
 
-            // Дальний биллборд красим тем же тинтом, что ближний: иначе на
+            // Дальний LOD красим тем же тинтом, что ближний: иначе на
             // NearDistance трава «попает» из тёмной в ярко-зелёную.
             Color tint = material.GetColor("_BaseColor");
             if (farMaterial != null)
@@ -83,9 +93,12 @@ namespace Galilego.Universe.EditorTools
                 ShadowCastDistanceMeters = 0f,
                 NearMeshes = new[] { blade },
                 NearMaterial = material,
-                // Дальний LOD = тот же клинок: одинаковые полигоны everywhere,
-                // переход near→far — только разворот к камере и рост размера.
-                FarBillboardMesh = blade,
+                // Дальний LOD — ОДИН квад (2 треугольника) вместо клинка:
+                // дальше NearDistance разворачивается к камере, поэтому
+                // подробности сгибов всё равно не читаются, а геометрия идёт
+                // в два пасса. Переход near>far не должен быть виден — квад
+                // повторяет силуэт клинка (та же ширина в основании и высота).
+                FarBillboardMesh = bladeFar,
                 FarMaterial = material,
                 SpacingMeters = 0.8d,
                 MaxInstancesPerChunk = 26000,
@@ -126,11 +139,43 @@ namespace Galilego.Universe.EditorTools
                 WindJitterDegrees = 12d,
                 MinGroundSinkFactor = 0d,
                 MaxGroundSinkFactor = 0.5d,
-                NearDistanceMeters = 55f,
+                // [ГРАФИКА] ДАЛЬНОСТЬ И ЗАКОН ПОКРЫТИЯ.
+                //
+                // Дальность поднята со 120 до 200 м, но это само по себе
+                // ничего не даёт: плотность обязана падать с расстоянием, иначе
+                // инстансов больше, чем пикселей. Раньше стояла экспонента
+                // exp(-(d-20)/25): на 100 м от неё оставалось ~4%, на 200 м — уже
+                // ничего, и за горизонтом трава просто исчезала (жалоба «лысый
+                // круг»). Экспонента логична для независимых объектов, но не
+                // для сплошного ковра.
+                //
+                // Здесь работает закон покрытия: плотность ∝ (R/d)², а размер
+                // дальнего квада ∝ d (GroundDecorMatrixJob, DistanceCore +
+                // BillboardFarScale). Тогда заполнение экрана n·g² постоянно
+                // вплоть до MaxDistanceMeters, а суммарное число инстансов
+                // растёт как ln(R) вместо R² — то есть вдвое дальше по радиусу
+                // стоит заметно меньше инстансов, чем постоянная плотность.
+                // Power = 2 — точное поддержание покрытия. Больше 2 — реже
+                // (дешевле, дальняя зона бледнее), меньше 2 — дороже.
+                NearDistanceMeters = 35f,
                 MaxDistanceMeters = 200f,
-                FarDensity = 0.03d,
-                DensityFalloffMeters = 45f,
-                DensityCoreMeters = 28f,
+                // FarDensity = 0: на дальней границе травы быть не должно,
+                // иначе последние 200 м держат лишний слой инстансов.
+                FarDensity = 0d,
+                // DensityFalloffMeters при Power > 0 не участвует в профиле
+                // плотности, но остаётся ради R/keepRadius в сборке.
+                DensityFalloffMeters = 25f,
+                DensityCoreMeters = 20f,
+                DensityFalloffPower = 2f,
+                // [ПУСТОТА ПОД НОГАМИ] Порог пересборки = core − lookAhead.
+                // При core 20 и lookAhead 25 это упрётся в пол
+                // DecorMinRebuildMeters = 6 м: полная плотность гарантирована
+                // на 20 − 6 = 14 м впереди, дальше лёгкое разрежение и рост
+                // после пересборки остаются. Это осознанный размен: вариант с
+                // ядром 30 дал бы 24 м вперёд, но это (30/20)² ≈ 2.25× инстансов.
+                // Если после маршрута рождений у камеры много — поднимать ядро.
+                DecorLookAheadMeters = 25f,
+                DecorMinRebuildMeters = 6f,
                 PerInstanceDensity = true,
                 SpawnMarginMeters = 100f,
                 SubInstancesPerCell = 400,
@@ -140,9 +185,10 @@ namespace Galilego.Universe.EditorTools
 
         private static Material CreateOrLoadMaterial()
         {
-            Shader shader = Shader.Find("Galilego/GroundDecorSolid");
+            Shader shader = Shader.Find("Galilego/GrassBlade");
             if (shader == null)
             {
+                Debug.LogError("[GrassModelSetup] нет шейдера Galilego/GrassBlade — трава не будет создана.");
                 return null;
             }
 
@@ -155,22 +201,23 @@ namespace Galilego.Universe.EditorTools
 
             material.shader = shader;
             material.SetColor("_BaseColor", SampleGroundTint(GroundTexturePath));
-            material.SetTexture("_BaseColorMap", Texture2D.whiteTexture);
-            material.SetFloat("_VertexColorTint", 0f);
-            material.SetFloat("_Cutoff", 0f);
-            // Двусторонний свет: плоский клинок сбоку — иначе половина травинок
-            // уходит в чёрное и ковёр рябит «обводкой».
             material.SetFloat("_TwoSided", 1f);
+            material.SetFloat("_ShadowMul", 1f);
+            // Подмешивание к цвету земли. Границы по DensityFalloffPower: рост
+            // начинается с края ядра (20 м), плотность падает с него же, и
+            // подмешивание должно накрыть ровно ту зону, где трава стала
+            // редкой. 55…185 м при MaxDistanceMeters = 200.
+            material.SetFloat("_FarFadeStart", 55f);
+            material.SetFloat("_FarFadeEnd", 185f);
+            material.SetFloat("_FarFadeStrength", 1f);
             material.SetFloat("_WindStrength", 0.15f);
             material.SetFloat("_WindSpeed", 1.5f);
+            material.SetFloat("_Translucency", 0.35f);
+            material.SetColor("_GroundTint", new Color(0.7f, 0.7f, 0.7f, 1f));
             material.enableInstancing = true;
-            // Индирект-путь в HDRP даёт битые трансформы — держим обычный
-            // инстансинг с per-frame матрицами (проверено визуально).
-            material.DisableKeyword("_DECOR_INDIRECT_MATRICES");
             EditorUtility.SetDirty(material);
-            Debug.Log("[GrassModelSetup] material _BaseColor=" + material.GetColor("_BaseColor")
-                + " shader=" + (shader != null ? shader.name : "NULL")
-                + " enableInstancing=" + material.enableInstancing);
+            Debug.Log("[GrassModelSetup] material " + MaterialPath + " _BaseColor=" + material.GetColor("_BaseColor")
+                + " shader=" + shader.name + " enableInstancing=" + material.enableInstancing);
             return material;
         }
 
@@ -219,122 +266,121 @@ namespace Galilego.Universe.EditorTools
             return avg;
         }
 
-        private static Mesh LoadBladeMesh()
+        /// <summary>
+        /// Ближний клинок: складчатая лента из BladePanels квадов, сужающаяся
+        /// к вершине. Все нормали — вверх: у клинка одна нормаль на весь меш
+        /// (так и было у FBX-версии), и после поворота инстанса +Y смотрит
+        /// вдоль нормали поверхности, поэтому свет ложится ровно. Тот же
+        /// «односторонний винг + Cull Off», поэтому Cull Back включать нельзя.
+        /// Vertex colors белые: alpha = маска ветра (гнётся всё), RGB = 1.
+        /// </summary>
+        private static Mesh BuildBladeMesh()
         {
-            Object[] assets = AssetDatabase.LoadAllAssetsAtPath(GrassModelPath);
-            Mesh named = null;
-            Mesh best = null;
-            for (int i = 0; i < assets.Length; i++)
+            var vertices = new Vector3[(BladePanels + 1) * 2];
+            var normals = new Vector3[vertices.Length];
+            var colors = new Color[vertices.Length];
+            var uvs = new Vector2[vertices.Length];
+            var triangles = new int[BladePanels * 6];
+
+            // Раскладка по X: панели идут слева направо, складка задаётся Z.
+            // Углы складки симметричны, поэтому Z положительный/отрицательный
+            // чередуется и клинок в сечении — «зигзаг», а не плоская лента.
+            float panelWidth = BladeBaseWidth / BladePanels;
+            float tipPanelWidth = BladeTipWidth / BladePanels;
+            for (int i = 0; i <= BladePanels; i++)
             {
-                if (!(assets[i] is Mesh mesh))
-                {
-                    continue;
-                }
+                float t = (float)i / BladePanels;
+                // Складка гаснет к вершине (10% в остр��е): иначе верхний край
+                // идёт зигзагом по Z и клинок читается как рваный осколок.
+                float fold = Mathf.Lerp(1f, 0.1f, t);
+                float halfZ = ((i & 1) == 0 ? 1f : -1f) * (BladeFoldDepth * 0.5f * fold);
+                float x = -BladeBaseWidth * 0.5f + panelWidth * i;
+                float tipX = -BladeTipWidth * 0.5f + tipPanelWidth * i;
 
-                if (best == null || mesh.vertexCount > best.vertexCount)
+                int v = i * 2;
+                vertices[v + 0] = new Vector3(x, 0f, halfZ);
+                vertices[v + 1] = new Vector3(tipX, BladeHeight, halfZ);
+                for (int k = 0; k < 2; k++)
                 {
-                    best = mesh;
-                }
-
-                if (mesh.name == "GrassBlade")
-                {
-                    named = mesh;
+                    normals[v + k] = Vector3.up;
+                    colors[v + k] = Color.white;
+                    uvs[v + k] = new Vector2(t, k);
                 }
             }
 
-            Mesh blade = named != null ? named : best;
-            if (blade == null)
+            for (int i = 0; i < BladePanels; i++)
             {
-                Debug.LogWarning("[GrassModelSetup] нет меша в " + GrassModelPath);
-                return null;
+                int v = i * 2;
+                int t = i * 6;
+                triangles[t + 0] = v + 0;
+                triangles[t + 1] = v + 2;
+                triangles[t + 2] = v + 1;
+                triangles[t + 3] = v + 1;
+                triangles[t + 4] = v + 2;
+                triangles[t + 5] = v + 3;
             }
 
-            if (blade.colors == null || blade.colors.Length != blade.vertexCount)
-            {
-                Debug.LogWarning("[GrassModelSetup] у GrassBlade нет vertex colors — "
-                    + "проверь Import Settings модели (импорт Vertex Colors включён?). "
-                    + "Тинт всё равно идёт материалом, не вертексами.");
-            }
+            var mesh = new Mesh { name = "GrassBladeFixed" };
+            mesh.vertices = vertices;
+            mesh.normals = normals;
+            mesh.colors = colors;
+            mesh.uv = uvs;
+            mesh.triangles = triangles;
+            mesh.RecalculateBounds();
 
-            return blade;
+            AssetDatabase.DeleteAsset(FixedMeshPath);
+            AssetDatabase.CreateAsset(mesh, FixedMeshPath);
+            Debug.Log("[GrassModelSetup] клинок: " + FixedMeshPath
+                + " tris=" + triangles.Length / 3 + " verts=" + vertices.Length
+                + " bounds=" + mesh.bounds.size);
+            return mesh;
         }
 
         /// <summary>
-        /// Рендер-копия меша: исходный FBX-меш read-only, с перевёрнутым
-        /// winding (грани смотрели вниз — замерили кроссом треугольников)
-        /// и растущий плашмя вдоль -Z. Клонируем, разворачиваем треугольники,
-        /// поднимаем ленту поворотом около X почти вертикально. Сохраняем
-        /// ассетом (блендерный FBX не трогаем).
+        /// Дальний LOD — ОДИН квад (2 треугольника) в габаритах клинка.
+        /// GroundDecorMatrixJob разворачивает его к камере (Billboard = !near),
+        /// поэтому подробности сгибов на дальней дистанции не читаются, а
+        /// платить за них приходилось на всей площади ковра: 26 треугольников
+        /// на инстанс против 2. Ширина в основании и высота совпадают с
+        /// клинком, поэтому переход near>far не виден.
         /// </summary>
-        private static Mesh BuildBladeMesh(Mesh source)
+        private static Mesh BuildFarMesh()
         {
-            Mesh flat;
-            try
+            float halfWidth = BladeBaseWidth * 0.5f;
+            var vertices = new[]
             {
-                flat = Object.Instantiate(source);
-            }
-            catch (System.Exception exception)
+                new Vector3(-halfWidth, 0f, 0f),
+                new Vector3(halfWidth, 0f, 0f),
+                new Vector3(-halfWidth, BladeHeight, 0f),
+                new Vector3(halfWidth, BladeHeight, 0f)
+            };
+            var normals = new Vector3[4];
+            var colors = new Color[4];
+            var uvs = new[]
             {
-                Debug.LogWarning("[GrassModelSetup] не удалось клонировать GrassBlade: " + exception.Message);
-                return null;
-            }
+                new Vector2(0f, 0f), new Vector2(1f, 0f),
+                new Vector2(0f, 1f), new Vector2(1f, 1f)
+            };
 
-            try
+            for (int i = 0; i < 4; i++)
             {
-                int subMeshes = Mathf.Max(1, flat.subMeshCount);
-                for (int s = 0; s < subMeshes; s++)
-                {
-                    int[] triangles = flat.GetTriangles(s);
-                    for (int t = 0; t < triangles.Length; t += 3)
-                    {
-                        int temp = triangles[t + 1];
-                        triangles[t + 1] = triangles[t + 2];
-                        triangles[t + 2] = temp;
-                    }
-
-                    flat.SetTriangles(triangles, s);
-                }
-
-                flat.RecalculateNormals();
-                flat.RecalculateBounds();
-            }
-            catch (System.Exception exception)
-            {
-                Debug.LogWarning("[GrassModelSetup] не удалось развернуть GrassBlade: " + exception.Message);
-                Object.DestroyImmediate(flat);
-                return null;
+                normals[i] = Vector3.up;
+                colors[i] = Color.white;
             }
 
-            Quaternion upright = Quaternion.Euler(70f, 0f, 0f);
-            Vector3[] verts = flat.vertices;
-            for (int i = 0; i < verts.Length; i++)
-            {
-                verts[i] = upright * verts[i];
-            }
+            var mesh = new Mesh { name = "GrassBladeFar" };
+            mesh.vertices = vertices;
+            mesh.normals = normals;
+            mesh.colors = colors;
+            mesh.uv = uvs;
+            mesh.triangles = new[] { 0, 2, 1, 1, 2, 3 };
+            mesh.RecalculateBounds();
 
-            flat.vertices = verts;
-            flat.RecalculateNormals();
-            flat.RecalculateBounds();
-
-            // Нормали — ВСЕ вдоль локального +Y (рост клинка). Меш изогнут, и
-            // «честные» нормали давали у каждого сегмента свой тон — на ковре
-            // это читалось тёмными «полигонами». После поворота инстанса +Y
-            // смотрит вдоль нормали поверхности, поэтому свет ложится ровно.
-            var flatNormals = new Vector3[flat.vertexCount];
-            for (int i = 0; i < flatNormals.Length; i++)
-            {
-                flatNormals[i] = Vector3.up;
-            }
-
-            flat.normals = flatNormals;
-
-            Mesh result = flat;
-            AssetDatabase.DeleteAsset(FixedMeshPath);
-            AssetDatabase.CreateAsset(result, FixedMeshPath);
-            Debug.Log("[GrassModelSetup] одиночный клинок: " + FixedMeshPath
-                + " bounds=" + result.bounds.size);
-            return result;
+            AssetDatabase.DeleteAsset(FarMeshPath);
+            AssetDatabase.CreateAsset(mesh, FarMeshPath);
+            Debug.Log("[GrassModelSetup] дальний LOD: " + FarMeshPath
+                + " tris=2 bounds=" + mesh.bounds.size);
+            return mesh;
         }
-
     }
 }
