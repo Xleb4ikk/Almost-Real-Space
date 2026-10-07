@@ -21,12 +21,10 @@ namespace Galilego.Universe.EditorTools
         private const string Ev100Key = "Galilego.SceneViewExposure.EV100";
 
         /// <summary>
-        /// Подобрано под сцену: солнце 130000 лк и белая кровля здания.
-        /// Ниже ~11 EV100 кровля уходит в клип и зажигает bloom (threshold 1.2),
-        /// выше — земля уходит в черноту.
+        /// Экспозиция по умолчанию, когда инструмент включают руками.
         /// </summary>
         public const float DefaultEv100 = 11.5f;
-        public const float MinEv100 = -11f;
+        public const float MinEv100 = -13f;
         public const float MaxEv100 = 16f;
 
         // Поля internal в HDAdditionalCameraData, доступны только через рефлексию.
@@ -39,7 +37,15 @@ namespace Galilego.Universe.EditorTools
 
         public static bool Enabled
         {
-            get => EditorPrefs.GetInt(EnabledKey, 1) != 0;
+            // По умолчанию ВЫКЛЮЧЕНО. Инструмент перекрывает Volume-экспозицию
+            // камерой Scene view, а Volume (SkyandFogSettingsProfile, Exposure
+            // fixedExposure) калиброван под фактический Sun.intensity, который
+            // пишет SkyEnvironment. При включённом инструменте здания на
+            // HDRP/Lit уходили в чёрное. Включать руками, только если Volume
+            // перестал справляться (например, при каждой орбите HDRP сбрасывает
+            // историю авто-экспозиции и кадр выходит выбеленным — ради этого
+            // инструмент и писался).
+            get => EditorPrefs.GetInt(EnabledKey, 0) != 0;
             set
             {
                 EditorPrefs.SetInt(EnabledKey, value ? 1 : 0);
@@ -47,6 +53,17 @@ namespace Galilego.Universe.EditorTools
             }
         }
 
+        /// <summary>
+        /// EV100 для камеры Scene view. Ручной: значение живёт в EditorPrefs,
+        /// дефолт — DefaultEv100.
+        ///
+        /// Пересчитывать EV100 по интенсивности Sun (была такая попытка) НЕ
+        /// надо: экспозицию в сцене задаёт Volume в SkyandFogSettingsProfile
+        /// (Exposure, mode = Fixed, fixedExposure ≈ 8.58), и он уже
+        /// откалиброван под фактический Sun.intensity, который пишет
+        /// SkyEnvironment. Сдвиг EV100 от 130000 к ≈6.6 уводил кадр в
+        /// запредельные значения и делал сцену темнее, а не светлее.
+        /// </summary>
         public static float Ev100
         {
             get => Mathf.Clamp(EditorPrefs.GetFloat(Ev100Key, DefaultEv100), MinEv100, MaxEv100);
@@ -110,6 +127,9 @@ namespace Galilego.Universe.EditorTools
                 return;
             }
 
+            string sun = string.Format("инструмент {0}, его EV100 = {1:F2}",
+                Enabled ? "ВКЛ" : "выкл", Ev100);
+
             foreach (SceneView view in SceneView.sceneViews)
             {
                 Camera camera = view != null ? view.camera : null;
@@ -117,7 +137,7 @@ namespace Galilego.Universe.EditorTools
                 string state = data == null
                     ? "нет HDAdditionalCameraData"
                     : "override=" + OverrideField.GetValue(data) + ", EV100=" + ExposureField.GetValue(data);
-                Debug.Log("SceneViewExposure: \"" + (view != null ? view.name : "null") + "\": " + state);
+                Debug.Log("SceneViewExposure: \"" + (view != null ? view.name : "null") + "\": " + state + " | " + sun);
             }
         }
 
@@ -180,20 +200,34 @@ namespace Galilego.Universe.EditorTools
             bool enabled = EditorGUILayout.Toggle(
                 new GUIContent("Фиксировать экспозицию", "Эквивалент галочки Override Exposure в окне Scene View Camera."),
                 SceneViewExposure.Enabled);
-            float ev100 = EditorGUILayout.Slider(
-                new GUIContent("Scene exposure (EV100)", "Тот же EV100, что у Fixed Exposure в томе. Больше — темнее."),
-                SceneViewExposure.Ev100, SceneViewExposure.MinEv100, SceneViewExposure.MaxEv100);
+
+            if (!SceneViewExposure.Enabled)
+            {
+                EditorGUILayout.HelpBox(
+                    "Выключено — экспозицию камеры Scene view задаёт Volume (Sky and Fog Volume). "
+                    + "Это штатный режим: Volume откалиброван под фактический Sun.intensity, который пишет SkyEnvironment.",
+                    MessageType.Info);
+            }
+
+            using (new EditorGUI.DisabledScope(!SceneViewExposure.Enabled))
+            {
+                EditorGUILayout.Slider(
+                    new GUIContent("Scene exposure (EV100)", "Больше — темнее. Работает, только когда инструмент включён."),
+                    SceneViewExposure.Ev100, SceneViewExposure.MinEv100, SceneViewExposure.MaxEv100);
+            }
 
             if (EditorGUI.EndChangeCheck())
             {
-                SceneViewExposure.Ev100 = ev100;
+                SceneViewExposure.Ev100 = SceneViewExposure.Ev100;
                 SceneViewExposure.Enabled = enabled;
                 return;
             }
 
             EditorGUILayout.Space();
             EditorGUILayout.HelpBox(
-                "Меняется только камера Scene view. Если в окне Scene View Camera галочка Override Exposure выглядит снятой — это другое окно HDRP, оно не мешает; значение здесь главнее.",
+                "Инструмент перекрывает Volume-экспозицию камерой Scene view. Включайте его только если Volume перестал справляться: "
+                + "например, при каждой орбите HDRP сбрасывает историю авто-экспозиции и кадр выходит выбеленным. "
+                + "Пока инструмент выключен, здания и рельеф освещаются как в Game view.",
                 MessageType.Info);
         }
     }

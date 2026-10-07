@@ -20,6 +20,7 @@ namespace Galilego.Universe
     /// Вызов — LateUpdate; потребители (SunBillboard, StarField) читают
     /// вычисленные значения того же/предыдущего кадра.
     /// </summary>
+    [ExecuteAlways]
     public sealed class SkyEnvironment : MonoBehaviour
     {
         /// <summary>Линейный цвет фотосферы (5772 K) — единый источник для света, диска и неба.</summary>
@@ -31,6 +32,12 @@ namespace Galilego.Universe
 
         [Tooltip("SimulationRunner сцены.")]
         public SimulationRunner Runner;
+
+        [Tooltip("Время симуляции для превью освещения в Scene view (вне Play).")]
+        public double EditorTimeSeconds = 0d;
+
+        /// <summary>Направление НА солнце в координатах симуляции (то же, что _TerrainSunDir).</summary>
+        public Vector3 LastSunDirectionSim { get; private set; }
 
         [Tooltip("Directional Light солнца (гасится/краснится по физике).")]
         public Light SunLight;
@@ -186,8 +193,19 @@ namespace Galilego.Universe
             return current;
         }
 
+        private OrbitingBody editLastBody;
+        private Vector3d editLastObserver;
+        private double editLastTime = double.NaN;
+        private float editNextSyncTime;
+
         private void LateUpdate()
         {
+            if (!Application.isPlaying)
+            {
+                EditorSyncGlobals();
+                return;
+            }
+
             if (Runner == null || Runner.SystemState == null || Runner.DominantBody == null
                 || Runner.SystemState.Root == null || Runner.Ship == null)
             {
@@ -195,6 +213,52 @@ namespace Galilego.Universe
             }
 
             ApplyGlobalsNow(Runner.DominantBody, Runner.PlayerPosition, Runner.TimeSeconds);
+        }
+
+        /// <summary>
+        /// Вне Play глобалы ставит только этот метод. Вызов ApplyGlobalsNow
+        /// тяжёлый (интеграл атмосферы), поэтому не каждый кадр: только при смене
+        /// тела или точки наблюдения и не чаще раза в 0.5 с.
+        /// </summary>
+        private void EditorSyncGlobals()
+        {
+            if (Time.realtimeSinceStartup < editNextSyncTime)
+            {
+                return;
+            }
+
+            editNextSyncTime = Time.realtimeSinceStartup + 0.5f;
+
+            SurfaceFrame frame = SurfaceFrame.ActiveEditFrame() ?? FindAnyObjectByType<SurfaceFrame>();
+            if (frame == null || !frame.IsUsable)
+            {
+                return;
+            }
+
+            Vector3d observer = frame.AnchorAstro;
+            bool same = ReferenceEquals(frame.BodyState, editLastBody)
+                && (observer - editLastObserver).Magnitude < 1d
+                && editLastTime == EditorTimeSeconds;
+            if (same)
+            {
+                return;
+            }
+
+            editLastBody = frame.BodyState;
+            editLastObserver = observer;
+            editLastTime = EditorTimeSeconds;
+
+            // Свет как в Play: цвет и яркость Sun, а не только глобалы шейдеров.
+            ApplyGlobalsNow(frame.BodyState, observer, EditorTimeSeconds, applyToLight: true);
+
+            // Тень HDRP идёт от поворота Sun. В Play его ставит SunBillboard,
+            // в редакторе это делает этот код. Иначе шейдер и тень используют
+            // разное солнце, и границы каскадов видны как чёрная сфера вокруг
+            // камеры.
+            if (SunLight != null && LastSunDirectionSim.sqrMagnitude > 0.5f)
+            {
+                SunLight.transform.rotation = Quaternion.LookRotation(-LastSunDirectionSim);
+            }
         }
 
         /// <summary>
@@ -296,7 +360,8 @@ namespace Galilego.Universe
             // Направление на звезду для планарного шейдера рельефа. Тот же
             // глобал, что ставит SunBillboard в рантайме: превью и игра должны
             // светиться с одного угла, иначе склоны читаются противоположно.
-            Shader.SetGlobalVector("_TerrainSunDir", AstroFrame.ToSimulation(sunDir));
+            LastSunDirectionSim = AstroFrame.ToSimulation(sunDir);
+            Shader.SetGlobalVector("_TerrainSunDir", LastSunDirectionSim);
 
             Shader.SetGlobalVector("_TerrainBodyCenterWS", FloatingOrigin.ToRender(bodyPos));
 
