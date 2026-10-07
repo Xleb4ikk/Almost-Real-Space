@@ -75,6 +75,9 @@
        Planet\Surface\SiteBox.cs       (SiteBoxRegistry)
        UnityEngine.Rendering.HighDefinition.GradientSky в UnityStubs.cs -->
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Terrain\CubeSphere.cs" />
+    <!-- SurfaceFrame нужен стенду с коммита, где SkyEnvironment синхронизирует
+         глобалы освещения вне Play через SurfaceFrame.ActiveEditFrame(). -->
+    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Surface\SurfaceFrame.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\SurfaceMotion.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Spacecraft.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\SpacecraftPhysics.cs" />
