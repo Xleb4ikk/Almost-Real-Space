@@ -29,6 +29,7 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\CelestialBody.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElements.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\RigidAssemblySolver.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\ContactGround.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElementsData.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\Prediction\KeplerMath.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Universe\OrbitingBody.cs" />
