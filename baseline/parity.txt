@@ -2,7 +2,7 @@
 ================================================================
 
 Доказательство «поведение не изменилось»:
-каждый сценарий S1–S5 прогнан дважды —
+сценарии S1–S5 прогнаны дважды —
   1) LegacyVesselStep — временный слепок кода SimulationRunner ДО выноса
      (файл Tools/P1bTests/LegacyVesselStep.cs, после проверки удалён;
      копия кода доступна в git-истории до коммита cleanup eff735d);
@@ -12,22 +12,32 @@ CSV-файлы сравнены побайтно (SHA-256): 0 расхожден
 Хэши (legacy-копия в baseline/parity-legacy, финальная в baseline/traces):
 
 S1_drop2km.csv   5E02E4EDB33F62AD87FA25E4376BE7944C6F5DA5AED6B0A6756CB2A0ECEECCD0
-S2_descent2.csv  89941E70AA22D6FB27959DB9AED2F1E747421B07D5A2CA7EB46411A436DFD493
+S2_drop100.csv   89941E70AA22D6FB27959DB9AED2F1E747421B07D5A2CA7EB46411A436DFD493
 S3_impact50.csv  78DE0B789AC38074E8F97078692AA495861422405F3B68A5FE1084DEBBF50325
 S4_entry.csv     149DFA233C7286DB370098F61795C9646EAC710A8AE9A54D7C26A9E8FD2707BD
 S5_stand.csv     1BD21C1246B9B624DA7903E2E054B10AAD3EDFFC002E8708D87160B2022A15CD
 
-summary.txt отличается ровно одной строкой — ярлыком источника шага
-(«LegacyVesselStep (слепок SimulationRunner до 0.4)» против «VesselStep (шаг 0.4,
-вынесен из SimulationRunner)»); числовые строки сценариев и хэши повторов совпадают.
+S6_chute_soft.csv 91390878F50CC0EEC049D6FAFE26CED793B989356FC604C6A57598D1969CFCBE
+  — сценарий появился ПОСЛЕ выноса 0.4 (приёмка фазы 0), legacy-копии нет;
+    воспроизводимость подтверждена двойным прогоном инструмента.
 
-Числа сценариев (одинаковы на обоих путях):
+Примечания:
+- S2_descent2 переименован в S2_drop100 (по приёмке фазы 0): это свободное
+  падение со 100 м, а не контролируемое снижение. Содержимое CSV не изменилось,
+  legacy-копия переименована вместе с финальной.
+- summary-legacy.txt хранит старое имя S2_descent2 и не содержит S6 — это
+  слепок до переименования; числовые строки S1–S5 совпадают с финальным
+  summary.txt (кроме строки-ярлыка источника).
+- Числа сценариев (одинаковы на обоих путях):
+
   S1_drop2km  : start_alt=2000 m; touchdown_t=27.732 s; v_n=-90.977; v_t=0.097; regime_after=Destroyed; debris=10
-  S2_descent2 : start_alt=100 m;  touchdown_t=4.413 s;  v_n=-41.721; v_t=0.007; regime_after=Destroyed; debris=10
-  S3_impact50 : start_alt=25 m;   touchdown_t=0.485 s;  v_n=-53.165; v_t=0.000; regime_after=Destroyed; debris=10
+  S2_drop100  : start_alt=100 m;  touchdown_t=4.413 s;  v_n=-41.721; v_t=0.007; regime_after=Destroyed; debris=10
+  S3_impact50 : start_alt=25 m;   touchdown_t=0.485 s;  v_n=-53.165; v_t=0.002; regime_after=Destroyed; debris=10
   S4_entry    : start_alt=120000 m; entry_t=45.589 s (alt=100 км, v_n=-578.646, v_t=1518.200);
                 touchdown_t=275.389 s; v_n=-91.726; v_t=0.155; regime_after=Destroyed; debris=10
   S5_stand    : start_alt=0 m; 3600 s; regime_after=Landed; debris=0; дрейф от поверхности в пределах 1e-5 м
+  S6_chute_soft: start_alt=5000 m; купол A=4000 м²; touchdown_t=971.157 s; v_n=-4.470; v_t=0.000;
+                 regime_after=Landed; debris=0 — эталон мягкого касания.
 
 Скорости здесь — относительно со-вращающейся поверхности (кадр SurfaceMotion).
 
@@ -35,4 +45,7 @@ summary.txt отличается ровно одной строкой — ярл
 тормозит только DragSource (Cd=1, A=10, как в SimulationRunner.Awake), порога
 5 м/с касание не выдерживает ни один сценарий. S2 стартует со 100 м и −2 м/с —
 свободное падение разгоняет до −41.7 м/с к касанию. Это зафиксировано как
-эталон текущего поведения, а не как ожидаемый идеал.
+эталон текущего поведения, а не как ожидаемый идеал. Мягкое касание даёт
+только S6 (испытательный купол).
+
+Политика сравнения — baseline/README.md.
