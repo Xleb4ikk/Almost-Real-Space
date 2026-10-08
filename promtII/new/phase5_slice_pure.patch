@@ -1,0 +1,384 @@
+diff --git a/Assets/_Project/Scripts/Simulation/ContactZone/ContactZoneGate.cs b/Assets/_Project/Scripts/Simulation/ContactZone/ContactZoneGate.cs
+new file mode 100644
+index 0000000..4983196
+--- /dev/null
++++ b/Assets/_Project/Scripts/Simulation/ContactZone/ContactZoneGate.cs
+@@ -0,0 +1,61 @@
++using Galilego.Core;
++using Galilego.Universe;
++
++namespace Galilego.Simulation.ContactZone
++{
++    /// <summary>
++    /// Решение о входе корабля в зону контакта. Зона — только посадка: вход возможен лишь при
++    /// малой высоте над рельефом и малой скорости относительно поверхности. Орбитальный и
++    /// входной режимы (высокая скорость) зону не включают по построению. Гистерезис:
++    /// вход (h &lt; Enter и v &lt; EnterSpeed), выход (h &gt; Exit или v &gt; ExitSpeed).
++    /// Класс не меняет состояние корабля: Update получает позицию и скорость по значению.
++    /// </summary>
++    public sealed class ContactZoneGate
++    {
++        public double EnterAltitudeMeters { get; set; } = 300d;
++        public double ExitAltitudeMeters { get; set; } = 400d;
++        public double EnterSpeedMps { get; set; } = 60d;
++        public double ExitSpeedMps { get; set; } = 120d;
++
++        public bool Inside { get; private set; }
++
++        /// <summary>Высота над рельефом и скорость относительно поверхности (co-rotating).</summary>
++        public static void Measure(OrbitingBody body, ITerrainModel terrain, Vector3d position, Vector3d velocity,
++            double timeSeconds, out double altitudeAboveTerrain, out double relativeSpeed)
++        {
++            body.SurfaceLatLonAt(position, timeSeconds, out double latDeg, out double lonDeg);
++            double terrainHeight = terrain.GetHeightMeters(body, KeplerMath.DegreesToRadians(latDeg),
++                KeplerMath.DegreesToRadians(lonDeg));
++            body.EvaluateWorldState(timeSeconds, out Vector3d bodyPosition, out _);
++            double radial = (position - bodyPosition).Magnitude - body.Radius;
++            altitudeAboveTerrain = radial - terrainHeight;
++
++            body.GetSurfaceState(latDeg, lonDeg, radial, timeSeconds, out _, out Vector3d surfaceVelocity);
++            relativeSpeed = (velocity - surfaceVelocity).Magnitude;
++        }
++
++        /// <summary>Обновить решение на текущем кадре. Возвращает true, если зона активна.</summary>
++        public bool Update(OrbitingBody body, ITerrainModel terrain, Vector3d position, Vector3d velocity, double timeSeconds)
++        {
++            Measure(body, terrain, position, velocity, timeSeconds, out double altitude, out double speed);
++            if (!Inside)
++            {
++                if (altitude < EnterAltitudeMeters && speed < EnterSpeedMps)
++                {
++                    Inside = true;
++                }
++            }
++            else if (altitude > ExitAltitudeMeters || speed > ExitSpeedMps)
++            {
++                Inside = false;
++            }
++
++            return Inside;
++        }
++
++        public void Reset()
++        {
++            Inside = false;
++        }
++    }
++}
+diff --git a/Assets/_Project/Scripts/Simulation/ContactZone/SiteFrame.cs b/Assets/_Project/Scripts/Simulation/ContactZone/SiteFrame.cs
+new file mode 100644
+index 0000000..969b8d4
+--- /dev/null
++++ b/Assets/_Project/Scripts/Simulation/ContactZone/SiteFrame.cs
+@@ -0,0 +1,107 @@
++using System;
++using Galilego.Core;
++using Galilego.Universe;
++
++namespace Galilego.Simulation.ContactZone
++{
++    /// <summary>
++    /// Локальная касательная система места зоны контакта: восток, север, вверх в точке
++    /// рельефа под кораблём. Физика зоны работает в этих координатах (метры, около якоря),
++    /// орбитальное состояние корабля в double не меняется, пока зона не активна.
++    /// Координаты вращаются вместе с планетой (тело-фиксированы): ToLocal/ToWorld на одном
++    /// и том же моменте обратимы точно; на разных моментах — ровно соответствуют
++    /// совместному вращению места.
++    /// </summary>
++    public sealed class SiteFrame
++    {
++        public readonly double LatitudeDegrees;
++        public readonly double LongitudeDegrees;
++        public readonly double TerrainHeightMeters;
++
++        public readonly Vector3d Origin;
++        public readonly Vector3d OriginVelocity;
++        public readonly Vector3d East;
++        public readonly Vector3d North;
++        public readonly Vector3d Up;
++
++        /// <summary>Угловая скорость вращения планеты (рад/с), ось — NorthPoleDirection.</summary>
++        public readonly Vector3d AngularVelocity;
++
++        private readonly OrbitingBody body;
++
++        private SiteFrame(OrbitingBody body, double latDeg, double lonDeg, double terrainHeight,
++            Vector3d origin, Vector3d originVelocity, Vector3d east, Vector3d north, Vector3d up, Vector3d angularVelocity)
++        {
++            this.body = body;
++            AngularVelocity = angularVelocity;
++            LatitudeDegrees = latDeg;
++            LongitudeDegrees = lonDeg;
++            TerrainHeightMeters = terrainHeight;
++            Origin = origin;
++            OriginVelocity = originVelocity;
++            East = east;
++            North = north;
++            Up = up;
++        }
++
++        /// <summary>Якорь: точка рельефа под заданной мировой позицией в момент t.</summary>
++        public static SiteFrame Anchor(OrbitingBody body, ITerrainModel terrain, Vector3d worldPosition, double timeSeconds)
++        {
++            if (body == null || terrain == null)
++            {
++                throw new ArgumentNullException(body == null ? nameof(body) : nameof(terrain));
++            }
++
++            body.SurfaceLatLonAt(worldPosition, timeSeconds, out double latDeg, out double lonDeg);
++            double height = terrain.GetHeightMeters(body, KeplerMath.DegreesToRadians(latDeg),
++                KeplerMath.DegreesToRadians(lonDeg));
++            return At(body, latDeg, lonDeg, height, timeSeconds);
++        }
++
++        /// <summary>Тот же участок поверхности (широта, долгота, высота рельефа) в момент t.</summary>
++        public SiteFrame At(double timeSeconds)
++        {
++            return At(body, LatitudeDegrees, LongitudeDegrees, TerrainHeightMeters, timeSeconds);
++        }
++
++        private static SiteFrame At(OrbitingBody body, double latDeg, double lonDeg, double terrainHeight, double t)
++        {
++            body.GetSurfaceState(latDeg, lonDeg, terrainHeight, t, out Vector3d origin, out Vector3d originVel);
++            body.EvaluateWorldState(t, out Vector3d bodyPosition, out _);
++
++            Vector3d up = (origin - bodyPosition).Normalized;
++            Vector3d spin = body.NorthPoleDirection.Normalized;
++            Vector3d east = Vector3d.Cross(spin, up);
++            if (east.Magnitude < 1e-9d)
++            {
++                east = Vector3d.Cross(new Vector3d(1d, 0d, 0d), up);
++            }
++
++            east = east.Normalized;
++            Vector3d north = Vector3d.Cross(up, east);
++            double omega = body.RotationPeriodSeconds > 0d ? (2d * Math.PI) / body.RotationPeriodSeconds : 0d;
++            return new SiteFrame(body, latDeg, lonDeg, terrainHeight, origin, originVel, east, north, up, spin * omega);
++        }
++
++        /// <summary>
++        /// Мировое состояние → локальное (x=восток, y=север, z=вверх). Скорость — относительно
++        /// совместного вращения места: покоящееся на поверхности тело имеет нулевую локальную скорость.
++        /// </summary>
++        public void ToLocal(Vector3d worldPosition, Vector3d worldVelocity, out Vector3d localPosition, out Vector3d localVelocity)
++        {
++            Vector3d d = worldPosition - Origin;
++            Vector3d dv = worldVelocity - (OriginVelocity + Vector3d.Cross(AngularVelocity, d));
++            localPosition = new Vector3d(Vector3d.Dot(d, East), Vector3d.Dot(d, North), Vector3d.Dot(d, Up));
++            localVelocity = new Vector3d(Vector3d.Dot(dv, East), Vector3d.Dot(dv, North), Vector3d.Dot(dv, Up));
++        }
++
++        /// <summary>Локальное состояние → мировое в этом же кадре места (момент, для которого построен кадр).</summary>
++        public void ToWorld(Vector3d localPosition, Vector3d localVelocity, out Vector3d worldPosition, out Vector3d worldVelocity)
++        {
++            Vector3d d = (East * localPosition.X) + (North * localPosition.Y) + (Up * localPosition.Z);
++            worldPosition = Origin + d;
++            worldVelocity = OriginVelocity + Vector3d.Cross(AngularVelocity, d)
++                + (East * localVelocity.X) + (North * localVelocity.Y) + (Up * localVelocity.Z);
++        }
++    }
++}
+diff --git a/Tools/P1bTests/P1bTests.csproj b/Tools/P1bTests/P1bTests.csproj
+index 2e8903b..b5b8844 100644
+--- a/Tools/P1bTests/P1bTests.csproj
++++ b/Tools/P1bTests/P1bTests.csproj
+@@ -31,6 +31,8 @@
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Assembly\Parts.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\RigidAssemblySolver.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\ContactGround.cs" />
++    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\ContactZone\SiteFrame.cs" />
++    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\ContactZone\ContactZoneGate.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Assembly\PartDefinition.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\History\TrajectoryHistory.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\Transfers\LambertSolver.cs" />
+diff --git a/Tools/P1bTests/TestRegistry.cs b/Tools/P1bTests/TestRegistry.cs
+index c164e86..6c7a598 100644
+--- a/Tools/P1bTests/TestRegistry.cs
++++ b/Tools/P1bTests/TestRegistry.cs
+@@ -203,6 +203,12 @@ internal static partial class P1bTests
+             new P1bCase("Test221_LegDampingDecay", Test221_LegDampingDecay, false),
+             new P1bCase("Test222_TravelLimits", Test222_TravelLimits, false),
+             new P1bCase("Test223_Slope15Stable", Test223_Slope15Stable, false),
++            new P1bCase("Test300_GateIgnoresOrbit", Test300_GateIgnoresOrbit, false),
++            new P1bCase("Test301_GateIgnoresEntry", Test301_GateIgnoresEntry, false),
++            new P1bCase("Test302_GateEnablesLanding", Test302_GateEnablesLanding, false),
++            new P1bCase("Test303_GateHysteresis", Test303_GateHysteresis, false),
++            new P1bCase("Test304_HandoffRoundTrip", Test304_HandoffRoundTrip, false),
++            new P1bCase("Test305_HandoffCorotation", Test305_HandoffCorotation, false),
+             new P1bCase("Test900_TerrainWallProbe", Test900_TerrainWallProbe, false),
+             new P1bCase("Test901_TerrainWallBisect", Test901_TerrainWallBisect, false),
+             new P1bCase("Test903_ShelfFixAb", Test903_ShelfFixAb, false),
+diff --git a/Tools/P1bTests/Tests/TestsContactZone.cs b/Tools/P1bTests/Tests/TestsContactZone.cs
+new file mode 100644
+index 0000000..00a3323
+--- /dev/null
++++ b/Tools/P1bTests/Tests/TestsContactZone.cs
+@@ -0,0 +1,168 @@
++using System;
++using Galilego.Core;
++using Galilego.Simulation.ContactZone;
++using Galilego.Universe;
++
++// Зона контакта (вертикальный срез). Test300–302 — орбитальная безопасность решения о входе:
++// на орбите и на входе зона не включается, посадка включает. Test303 — гистерезис.
++// Test304–305 — точность и совместное вращение перехода координат.
++internal static partial class P1bTests
++{
++    private static OrbitingBody ZonePlanet(StarSystem sys, out ITerrainModel terrain)
++    {
++        OrbitingBody planet = sys.AllBodies[1];
++        planet.RotationPeriodSeconds = 86400d;
++        terrain = new SphericalTerrain();
++        return planet;
++    }
++
++    // Скорость неподвижного на поверхности тела на высоте alt над радиусом (совместное вращение).
++    private static Vector3d StandVelocity(OrbitingBody planet, Vector3d nearPoint, double t, double altitude)
++    {
++        planet.SurfaceLatLonAt(nearPoint, t, out double lat, out double lon);
++        planet.GetSurfaceState(lat, lon, altitude, t, out _, out Vector3d v);
++        return v;
++    }
++
++    static int Test300_GateIgnoresOrbit()
++    {
++        StarSystem sys = TestSystem();
++        OrbitingBody planet = ZonePlanet(sys, out ITerrainModel terrain);
++        double mu = planet.StandardGravitationalParameter;
++        var gate = new ContactZoneGate();
++        int insideCount = 0;
++        double minSpeed = double.MaxValue;
++        for (int i = 0; i < 200; i++)
++        {
++            double t = i * 60d;
++            planet.EvaluateWorldState(t, out Vector3d bp, out Vector3d bv);
++            double r = planet.Radius + 200000d;
++            double vCirc = Math.Sqrt(mu / r);
++            double phase = 2d * Math.PI * i / 200d;
++            Vector3d pos = bp + new Vector3d(r * Math.Cos(phase), 0d, r * Math.Sin(phase));
++            Vector3d vel = bv + new Vector3d(-vCirc * Math.Sin(phase), 0d, vCirc * Math.Cos(phase));
++            ContactZoneGate.Measure(planet, terrain, pos, vel, t, out _, out double speed);
++            minSpeed = Math.Min(minSpeed, speed);
++            if (gate.Update(planet, terrain, pos, vel, t)) insideCount++;
++        }
++
++        Check(insideCount == 0 && minSpeed > 1000d, "T300 gate-ignores-orbit",
++            string.Format(Inv, "орбита 200 км: кадров внутри зоны={0} (ожидание 0); min |v_rel|={1:F0} м/с (порог входа 60)",
++                insideCount, minSpeed));
++        return 0;
++    }
++
++    static int Test301_GateIgnoresEntry()
++    {
++        StarSystem sys = TestSystem();
++        OrbitingBody planet = ZonePlanet(sys, out ITerrainModel terrain);
++        var gate = new ContactZoneGate();
++        int insideCount = 0;
++        for (int i = 0; i < 100; i++)
++        {
++            double t = i * 0.1d;
++            planet.EvaluateWorldState(t, out Vector3d bp, out Vector3d bv);
++            Vector3d radial = new Vector3d(1d, 0d, 0d);
++            Vector3d pos = bp + (radial * (planet.Radius + 100d));
++            Vector3d vel = bv + new Vector3d(0d, -300d, 0d);
++            if (gate.Update(planet, terrain, pos, vel, t)) insideCount++;
++        }
++
++        Check(insideCount == 0, "T301 gate-ignores-entry",
++            string.Format(Inv, "вход 300 м/с на высоте 100 м: кадров внутри зоны={0} (ожидание 0)", insideCount));
++        return 0;
++    }
++
++    static int Test302_GateEnablesLanding()
++    {
++        StarSystem sys = TestSystem();
++        OrbitingBody planet = ZonePlanet(sys, out ITerrainModel terrain);
++        var gate = new ContactZoneGate();
++        planet.EvaluateWorldState(0d, out Vector3d bp, out Vector3d bv);
++        Vector3d pos = bp + (new Vector3d(1d, 0d, 0d) * (planet.Radius + 100d));
++        Vector3d vel = StandVelocity(planet, pos, 0d, 100d) + new Vector3d(0d, -5d, 0d);
++        bool entered = gate.Update(planet, terrain, pos, vel, 0d);
++        ContactZoneGate.Measure(planet, terrain, pos, vel, 0d, out double altitude, out double speed);
++
++        Check(entered && altitude > 99d && altitude < 101d && speed < 60d, "T302 gate-enables-landing",
++            string.Format(Inv, "высота {0:F2} м, v_rel {1:F2} м/с: зона={2} (ожидание true)", altitude, speed, entered));
++        return 0;
++    }
++
++    static int Test303_GateHysteresis()
++    {
++        StarSystem sys = TestSystem();
++        OrbitingBody planet = ZonePlanet(sys, out ITerrainModel terrain);
++        var gate = new ContactZoneGate();
++        planet.EvaluateWorldState(0d, out Vector3d bp, out Vector3d bv);
++        Vector3d n = new Vector3d(1d, 0d, 0d);
++        Vector3d p100 = bp + (n * (planet.Radius + 100d));
++        Vector3d p350 = bp + (n * (planet.Radius + 350d));
++        Vector3d p450 = bp + (n * (planet.Radius + 450d));
++        Vector3d p50 = bp + (n * (planet.Radius + 50d));
++        bool a = gate.Update(planet, terrain, p100, StandVelocity(planet, p100, 0d, 100d), 0d);
++        bool b = gate.Update(planet, terrain, p350, StandVelocity(planet, p350, 0d, 350d), 0d);
++        bool c = gate.Update(planet, terrain, p450, StandVelocity(planet, p450, 0d, 450d), 0d);
++        bool d = gate.Update(planet, terrain, p50, StandVelocity(planet, p50, 0d, 50d), 0d);
++        gate.Reset();
++        bool e = gate.Update(planet, terrain, p350, StandVelocity(planet, p350, 0d, 350d), 0d);
++        bool f = gate.Update(planet, terrain, p100, StandVelocity(planet, p100, 0d, 100d) + new Vector3d(130d, 0d, 0d), 0d);
++
++        Check(a && b && !c && d && !e && !f, "T303 gate-hysteresis",
++            string.Format(Inv, "вход 100 м→{0}; 350 м (в полосе)→{1}; 450 м (выход)→{2}; снова 50 м→{3}; после сброса 350 м→{4}; 100 м со скоростью 130 м/с→{5} (ожидание T,T,F,T,F,F)",
++                a, b, c, d, e, f));
++        return 0;
++    }
++
++    static int Test304_HandoffRoundTrip()
++    {
++        StarSystem sys = TestSystem();
++        OrbitingBody planet = ZonePlanet(sys, out ITerrainModel terrain);
++        double worstPos = 0d;
++        double worstVel = 0d;
++        for (int i = 0; i < 40; i++)
++        {
++            double t = 3600d * i + 123.456d;
++            planet.EvaluateWorldState(t, out Vector3d bp, out Vector3d bv);
++            double lon = 0.37d * i;
++            Vector3d dir = new Vector3d(Math.Cos(lon), 0.3d * Math.Sin(lon), Math.Sin(lon)).Normalized;
++            Vector3d pos = bp + (dir * (planet.Radius + 50d + 10d * i));
++            Vector3d vel = bv + new Vector3d(3d * Math.Sin(i), 1d * i, -2d * Math.Cos(i));
++            SiteFrame frame = SiteFrame.Anchor(planet, terrain, pos, t);
++            frame.ToLocal(pos, vel, out Vector3d lp, out Vector3d lv);
++            frame.ToWorld(lp, lv, out Vector3d back, out Vector3d backV);
++            worstPos = Math.Max(worstPos, (back - pos).Magnitude);
++            worstVel = Math.Max(worstVel, (backV - vel).Magnitude);
++        }
++
++        Check(worstPos <= 1e-6d && worstVel <= 1e-9d, "T304 handoff-round-trip",
++            string.Format(Inv, "40 состояний: max |Δr|={0:E2} м (≤1e-6), max |Δv|={1:E2} м/с (≤1e-9)", worstPos, worstVel));
++        return 0;
++    }
++
++    static int Test305_HandoffCorotation()
++    {
++        StarSystem sys = TestSystem();
++        OrbitingBody planet = ZonePlanet(sys, out ITerrainModel terrain);
++        double t0 = 1000d;
++        double t1 = t0 + 7200d;
++        planet.EvaluateWorldState(t0, out Vector3d bp0, out Vector3d bv0);
++        Vector3d pos0 = bp0 + (new Vector3d(0d, 1d, 0d) * (planet.Radius + 2d));
++        SiteFrame frame0 = SiteFrame.Anchor(planet, terrain, pos0, t0);
++        frame0.ToLocal(pos0, StandVelocity(planet, pos0, t0, 2d), out Vector3d lp, out Vector3d lv);
++
++        // Покой на высоте 2 м: локальная скорость ноль; через 2 ч мировая скорость и положение
++        // совпадают с состоянием неподвижной точки на той же высоте (совместное вращение).
++        SiteFrame frame1 = frame0.At(t1);
++        frame1.ToWorld(lp, Vector3d.Zero, out Vector3d worldP, out Vector3d worldV);
++        planet.GetSurfaceState(frame0.LatitudeDegrees, frame0.LongitudeDegrees, 2d, t1,
++            out Vector3d expectP, out Vector3d expectV);
++        double errV = (worldV - expectV).Magnitude;
++        double errP = (worldP - expectP).Magnitude;
++
++        Check(errV <= 1e-9d && errP <= 1e-6d, "T305 handoff-corotation",
++            string.Format(Inv, "покой 2 ч: |Δv| от скорости места={0:E2} м/с (≤1e-9), |Δr| от точки места={1:E2} м (≤1e-6), |v_места|={2:F2} м/с",
++                errV, errP, expectV.Magnitude));
++        return 0;
++    }
++}

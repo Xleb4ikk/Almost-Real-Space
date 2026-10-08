@@ -25,39 +25,32 @@ namespace Galilego.Universe.EditorTools
             Debug.Log(ApplyFromJson());
         }
 
-        /// <summary>Применить T1 к раннеру в активной сцене; вернуть отчёт.</summary>
-        public static string ApplyFromJson()
+        /// <summary>Загрузить T1 из JSON в PartDefinition[] (без применения к сцене). null — ошибка.</summary>
+        public static List<PartDefinition> LoadT1Parts()
         {
             string projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
             string jsonPath = Path.Combine(projectRoot, JsonRelativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(jsonPath))
             {
-                return "T1: файл не найден: " + jsonPath;
+                return null;
             }
 
             var dto = JsonUtility.FromJson<VesselDto>(File.ReadAllText(jsonPath));
             if (dto == null || dto.parts == null || dto.parts.Length == 0)
             {
-                return "T1: JSON пуст или не разобран.";
+                return null;
             }
 
-            SimulationRunner runner = FindRunner();
-            if (runner == null)
-            {
-                return "T1: SimulationRunner в открытой сцене не найден.";
-            }
-
-            var parts = new PartDefinition[dto.parts.Length];
-            double dryMass = 0d;
+            var parts = new List<PartDefinition>(dto.parts.Length);
             for (int i = 0; i < dto.parts.Length; i++)
             {
                 PartDto p = dto.parts[i];
                 if (!Enum.TryParse(p.shape, true, out PartShape shape))
                 {
-                    return "T1: неизвестная форма детали \"" + p.shape + "\" у детали \"" + p.name + "\".";
+                    return null;
                 }
 
-                parts[i] = new PartDefinition
+                parts.Add(new PartDefinition
                 {
                     Name = p.name,
                     MassKg = p.massKg,
@@ -70,11 +63,34 @@ namespace Galilego.Universe.EditorTools
                     ParentIndex = p.parentIndex,
                     JointAnchor = new Vector3(p.jointAnchor.x, p.jointAnchor.y, p.jointAnchor.z),
                     EngineOffset = new Vector3(p.engineOffset.x, p.engineOffset.y, p.engineOffset.z),
-                };
+                });
+            }
 
-                if (p.name != "Топливо")
+            return parts;
+        }
+
+        /// <summary>Применить T1 к раннеру в активной сцене; вернуть отчёт.</summary>
+        public static string ApplyFromJson()
+        {
+            List<PartDefinition> loaded = LoadT1Parts();
+            if (loaded == null)
+            {
+                return "T1: JSON не найден или не разобран";
+            }
+
+            SimulationRunner runner = FindRunner();
+            if (runner == null)
+            {
+                return "T1: SimulationRunner в открытой сцене не найден.";
+            }
+
+            PartDefinition[] parts = loaded.ToArray();
+            double dryMass = 0d;
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (parts[i].Name != "Топливо")
                 {
-                    dryMass += p.massKg;
+                    dryMass += parts[i].MassKg;
                 }
             }
 

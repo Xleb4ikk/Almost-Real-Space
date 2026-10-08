@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Galilego.Core;
 using Galilego.Debris;
 using Galilego.Events;
+using Galilego.Simulation.ContactZone;
 using Galilego.Spacecraft;
 using UnityEngine;
 using Ship = Galilego.Spacecraft.Spacecraft;
@@ -493,6 +494,13 @@ namespace Galilego.Universe
         private void Update()
         {
             if (Paused || Ship == null || Regime == VesselRegime.Destroyed)
+            {
+                return;
+            }
+
+            // Зона контакта ведёт корабль сама (вертикальный срез): пока она неактивна,
+            // строка ничего не меняет и орбитальная цепочка работает как раньше.
+            if (ContactZoneHost.Active)
             {
                 return;
             }
