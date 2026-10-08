@@ -14,9 +14,9 @@
 *.log
 
 # .NET build artifacts in tool projects (Tools/P1bTests Р С‘ Р С—РЎР‚.) + РЎРѓРЎвЂљР В°РЎР‚РЎвЂ№Р в„– РЎвЂљР ВµРЎРѓРЎвЂљР С•Р Р†РЎвЂ№Р в„– Р С—РЎР‚Р С•Р ВµР С”РЎвЂљ
+# .NET build artifacts (any level); test SOURCES stay tracked (ТЗ v2, шаг 0.1)
 bin/
 obj/
-/tests/
 
 # MemoryCaptures can get excessive in size.
 # They also could contain extremely sensitive data
@@ -92,6 +92,7 @@ crashlytics-build.properties
 # уже лежит на диске. Из-за этого правила набор файлов Compile молча
 # расходился с Assets (д0f6328 сломал сборку, и никто этого не увидел).
 !Tools/P1bTests/P1bTests.csproj
+!tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj
 
 # OpenCode/Kiro working directory - documentation and session files
 Assets/_Project/.kiro/
