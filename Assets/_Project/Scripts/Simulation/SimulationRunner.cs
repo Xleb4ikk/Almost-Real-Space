@@ -498,16 +498,19 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Зона контакта ведёт корабль сама (вертикальный срез): пока она неактивна,
-            // строка ничего не меняет и орбитальная цепочка работает как раньше.
-            if (ContactZoneHost.Active)
+            float realDt = Time.deltaTime;
+            if (!(realDt > 0f))
             {
                 return;
             }
 
-            float realDt = Time.deltaTime;
-            if (!(realDt > 0f))
+            // Зона контакта ведёт корабль сама (вертикальный срез): шаг физики не считаем,
+            // но время мира идёт по реальному dt — TimeSeconds растёт, планета движется
+            // (VesselStep.AdvanceTime, без орбитальной логики). Обломки и трассировка
+            // внутри зоны не обновляются — отложено до фазы 7. Вне зоны — как раньше.
+            if (ContactZoneHost.Active)
             {
+                step.AdvanceTime(realDt);
                 return;
             }
 

@@ -1,11 +1,17 @@
 using System;
+using System.Collections.Generic;
 using Galilego.Core;
+using Galilego.Debris;
+using Galilego.Events;
 using Galilego.Simulation.ContactZone;
+using Galilego.Spacecraft;
 using Galilego.Universe;
+using Ship = Galilego.Spacecraft.Spacecraft;
 
 // Зона контакта (вертикальный срез). Test300–302 — орбитальная безопасность решения о входе:
 // на орбите и на входе зона не включается, посадка включает. Test303 — гистерезис.
 // Test304–305 — точность и совместное вращение перехода координат.
+// Test306 — AdvanceTime (время в зоне без физики). Test307–308 — острова разрыва стыков.
 internal static partial class P1bTests
 {
     private static OrbitingBody ZonePlanet(StarSystem sys, out ITerrainModel terrain)
@@ -164,5 +170,129 @@ internal static partial class P1bTests
             string.Format(Inv, "покой 2 ч: |Δv| от скорости места={0:E2} м/с (≤1e-9), |Δr| от точки места={1:E2} м (≤1e-6), |v_места|={2:F2} м/с",
                 errV, errP, expectV.Magnitude));
         return 0;
+    }
+
+    // Test306: AdvanceTime — только время, без физики: монотонность, точная сумма,
+    // состояние корабля не трогается, StepFlying после него продолжает работать.
+    static int Test306_AdvanceTimeMonotonic()
+    {
+        StarSystem sys = TestSystem();
+        OrbitingBody planet = sys.AllBodies[1];
+        var warp = new WarpController();
+        var physics = new SpacecraftPhysics();
+        physics.Sources.Add(new CachedGravitySource(sys));
+        var propagator = new EventDrivenPropagator(physics);
+        propagator.CrossingDetectors.Add(AltitudeCrossingDetector.ForTouchdown(planet));
+        propagator.HardHorizonSeconds = sys.BakedEndSeconds();
+        var driver = new LongWarpDriver(physics, propagator);
+        var step = new VesselStep(sys, warp, propagator, driver, null, new JointedBreakup(), new DebrisPool(),
+            new PartDefinition[0], 1d, 600d);
+
+        planet.EvaluateWorldState(0d, out Vector3d bp, out Vector3d bv);
+        step.DominantBody = planet;
+        step.Ship = new Ship(bp + new Vector3d(0d, planet.Radius + 200000d, 0d),
+            bv + new Vector3d(3000d, 0d, 0d), 1000d);
+
+        // 1) Монотонность и сумма: разные dt, 100 повторов набора (700 вызовов).
+        double[] dts = { 0.016d, 0.001d, 0.5d, 0.25d, 0.033d, 1d, 0.1d };
+        double expected = 0d;
+        double previous = step.TimeSeconds;
+        bool monotonic = true;
+        for (int r = 0; r < 100; r++)
+        {
+            for (int k = 0; k < dts.Length; k++)
+            {
+                step.AdvanceTime(dts[k]);
+                expected += dts[k];
+                if (step.TimeSeconds < previous)
+                {
+                    monotonic = false;
+                }
+
+                previous = step.TimeSeconds;
+            }
+        }
+
+        double tolerance = 1e-9d * Math.Max(1d, expected);
+        bool sumOk = Math.Abs(step.TimeSeconds - expected) <= tolerance;
+
+        // 2) Состояние корабля не меняется: AdvanceTime — только время.
+        Vector3d p0 = step.Ship.Position;
+        Vector3d v0 = step.Ship.Velocity;
+        double m0 = step.Ship.Mass;
+        step.AdvanceTime(5d);
+        bool stateUntouched = (step.Ship.Position - p0).Magnitude == 0d
+            && (step.Ship.Velocity - v0).Magnitude == 0d
+            && step.Ship.Mass == m0;
+
+        // 3) StepFlying после AdvanceTime работает и продолжает время на свой dt.
+        double before = step.TimeSeconds;
+        step.StepFlying(0.5f, true);
+        double advanced = step.TimeSeconds - before;
+        bool flyingOk = advanced > 0d && advanced <= 0.5d + 1e-6d;
+
+        Check(monotonic && sumOk && stateUntouched && flyingOk, "T306 advance-time-monotonic",
+            string.Format(Inv,
+                "700 вызовов: монотонно={0}; Σdt={1:F6} с, время={2:F6} с, допуск={3:E1} с: {4}; состояние корабля не тронуто: {5}; StepFlying после: Δt={6:F6} с: {7}",
+                monotonic, expected, step.TimeSeconds, tolerance, sumOk, stateUntouched, advanced, flyingOk));
+        return 0;
+    }
+
+    // Test307: разрыв одной ноги T1 — отделяется только нога, корень цел.
+    static int Test307_IslandSplitLeg()
+    {
+        List<PartDefinition> defs = LoadVesselT1();
+        ZoneIslands.SplitResult split = ZoneIslands.Split(defs, new[] { 3 });
+        bool rootOk = SameSet(split.Root, new[] { 0, 1, 2, 4, 5, 6, 7 });
+        bool detachedOk = split.Detached.Count == 1 && SameSet(split.Detached[0], new[] { 3 });
+
+        Check(rootOk && detachedOk, "T307 island-split-leg",
+            string.Format(Inv, "разрыв ноги 3: корень={0} (ожидание 7 деталей без ноги), островов={1}, остров0={2} (ожидание [3])",
+                split.Root.Length, split.Detached.Count,
+                split.Detached.Count > 0 ? string.Join(",", split.Detached[0]) : "нет"));
+        return 0;
+    }
+
+    // Test308: разрыв ветвей дерева — двигатель, кабина, две ноги.
+    static int Test308_IslandSplitTree()
+    {
+        List<PartDefinition> defs = LoadVesselT1();
+        ZoneIslands.SplitResult engine = ZoneIslands.Split(defs, new[] { 2 });
+        ZoneIslands.SplitResult cabin = ZoneIslands.Split(defs, new[] { 7 });
+        ZoneIslands.SplitResult legs = ZoneIslands.Split(defs, new[] { 3, 4 });
+
+        bool engineOk = engine.Detached.Count == 1 && SameSet(engine.Detached[0], new[] { 2 })
+            && engine.Root.Length == 7;
+        bool cabinOk = cabin.Detached.Count == 1 && SameSet(cabin.Detached[0], new[] { 7 })
+            && cabin.Root.Length == 7;
+        bool legsOk = legs.Detached.Count == 2
+            && SameSet(legs.Detached[0], new[] { 3 }) && SameSet(legs.Detached[1], new[] { 4 })
+            && legs.Root.Length == 6;
+
+        Check(engineOk && cabinOk && legsOk, "T308 island-split-tree",
+            string.Format(Inv,
+                "двигатель: островов={0} (ожидание 1 [2]), корень={1} (7); кабина: островов={2} (1 [7]), корень={3} (7); две ноги: островов={4} (2 [3],[4]), корень={5} (6)",
+                engine.Detached.Count, engine.Root.Length, cabin.Detached.Count, cabin.Root.Length,
+                legs.Detached.Count, legs.Root.Length));
+        return 0;
+    }
+
+    private static bool SameSet(int[] actual, int[] expected)
+    {
+        if (actual.Length != expected.Length)
+        {
+            return false;
+        }
+
+        var remaining = new List<int>(expected);
+        for (int i = 0; i < actual.Length; i++)
+        {
+            if (!remaining.Remove(actual[i]))
+            {
+                return false;
+            }
+        }
+
+        return remaining.Count == 0;
     }
 }
