@@ -11,9 +11,9 @@ using Galilego.Universe;
 using Ship = Galilego.Spacecraft.Spacecraft;
 
 // Трейсы посадки (шаг 0.6 ТЗ v2). Каждый сценарий прогоняется дважды,
-// результаты сравниваются побайтно. Режим --trace-legacy идёт через слепок
-// логики SimulationRunner до выноса (шаг 0.4), режим --trace — через вынесенный
-// шаг. Совпадение двух наборов — доказательство, что вынос не изменил поведение.
+// результаты сравниваются побайтно. Шаг идёт через вынесенный VesselStep
+// (шаг 0.4); паритет с прежней логикой SimulationRunner зафиксирован в
+// baseline/parity.txt.
 internal static partial class P1bTests
 {
     private const double TraceStepSeconds = 0.5d;
@@ -48,7 +48,10 @@ internal static partial class P1bTests
         public readonly bool StartLanded;
         public readonly double MaxSeconds;
 
-        public TraceScenario(string name, double spawnAltitudeMeters, double radialSpeedMps, double eastSpeedMps, bool startLanded, double maxSeconds)
+        /// <summary>Эффективная площадь сопротивления (м²). 10 — как DragSource в SimulationRunner.Awake.</summary>
+        public readonly double DragAreaM2;
+
+        public TraceScenario(string name, double spawnAltitudeMeters, double radialSpeedMps, double eastSpeedMps, bool startLanded, double maxSeconds, double dragAreaM2)
         {
             Name = name;
             SpawnAltitudeMeters = spawnAltitudeMeters;
@@ -56,6 +59,7 @@ internal static partial class P1bTests
             EastSpeedMps = eastSpeedMps;
             StartLanded = startLanded;
             MaxSeconds = maxSeconds;
+            DragAreaM2 = dragAreaM2;
         }
     }
 
@@ -64,11 +68,12 @@ internal static partial class P1bTests
     {
         var scenarios = new[]
         {
-            new TraceScenario("S1_drop2km", 2000d, 0d, 0d, false, 900d),
-            new TraceScenario("S2_descent2", 100d, -2d, 0d, false, 300d),
-            new TraceScenario("S3_impact50", 25d, -50d, 0d, false, 120d),
-            new TraceScenario("S4_entry", 120000d, -300d, 1500d, false, 3600d),
-            new TraceScenario("S5_stand", 0d, 0d, 0d, true, 3600d),
+            new TraceScenario("S1_drop2km", 2000d, 0d, 0d, false, 900d, 10d),
+            new TraceScenario("S2_drop100", 100d, -2d, 0d, false, 300d, 10d),
+            new TraceScenario("S3_impact50", 25d, -50d, 0d, false, 120d, 10d),
+            new TraceScenario("S4_entry", 120000d, -300d, 1500d, false, 3600d, 10d),
+            new TraceScenario("S5_stand", 0d, 0d, 0d, true, 3600d, 10d),
+            new TraceScenario("S6_chute_soft", 5000d, -3d, 0d, false, 1800d, 4000d),
         };
 
         string only = Environment.GetEnvironmentVariable("P1B_TRACE_ONLY");
@@ -88,9 +93,12 @@ internal static partial class P1bTests
         var summary = new StringBuilder();
         summary.AppendLine("Landing traces, шаг 0.6");
         summary.AppendLine("Источник шага: VesselStep (шаг 0.4, вынесен из SimulationRunner)");
-        summary.AppendLine("Мир: Terra mu=1.28e13 R=1.143e6 rotation=86400 s pole=+Z;");
-        summary.AppendLine("     terrain=EarthLike_Perlin seed=24334543; atmosphere: Top=100 km rho0=1.225 H=8500 (drag Cd=1 A=10 у Terra, как в SimulationRunner.Awake);");
+        summary.AppendLine("Мир (эталонный): Terra mu=1.28e13 R=1.143e6 rotation=86400 s pole=+Z;");
+        summary.AppendLine("     terrain=EarthLike_Perlin seed=24334543; atmosphere: Top=100 km rho0=1.225 H=8500;");
         summary.AppendLine("     корабль 5000 kg, тяга в стенде не включена, старт lat=0 lon=0.");
+        summary.AppendLine("     drag Cd=1: S1-S5 — A=10 м² (как DragSource в SimulationRunner.Awake),");
+        summary.AppendLine("     S6 — испытательный купол A=4000 м², спуск с 5 км (вход с орбиты покрыт S4;");
+        summary.AppendLine("     в игре купола пока нет — S6 эталон мягкого касания для фаз 3-5).");
         summary.AppendLine("Колонки: t,alt,v_radial,v_tangential,regime,lat,lon,event; шаг 0.5 s (2 Гц), событие — отдельной строкой в точный момент.");
         summary.AppendLine("Скорости — относительно со-вращающейся поверхности (кадр SurfaceMotion): стоянка даёт 0, падение — вертикальную скорость.");
         summary.AppendLine();
@@ -140,7 +148,7 @@ internal static partial class P1bTests
             Console.WriteLine("  [dbg] world built; h(0,0)=" + terra.Terrain.GetHeightMeters(terra, 0d, 0d).ToString("F3", Inv));
         }
 
-        TraceRig rig = BuildTraceRig(sys, terra);
+        TraceRig rig = BuildTraceRig(sys, terra, scenario);
         if (dbg)
         {
             Console.WriteLine("  [dbg] rig built");
@@ -310,14 +318,15 @@ internal static partial class P1bTests
         };
     }
 
-    private static TraceRig BuildTraceRig(StarSystem sys, OrbitingBody terra)
+    private static TraceRig BuildTraceRig(StarSystem sys, OrbitingBody terra, TraceScenario scenario)
     {
         var warp = new WarpController();
         var physics = new SpacecraftPhysics();
         physics.Sources.Add(new CachedGravitySource(sys));
         if (terra.Atmosphere != null)
         {
-            physics.Sources.Add(new DragSource(terra));
+            var drag = new DragSource(terra) { ReferenceAreaM2 = scenario.DragAreaM2 };
+            physics.Sources.Add(drag);
         }
 
         var thrust = new ThrustSource(TraceThrustN, TraceDryMassKg, new ConstantIsp(TraceIspSeconds));
