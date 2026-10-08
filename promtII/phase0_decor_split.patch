@@ -1,0 +1,186 @@
+# Патч шага 0.2 и 0.3 (ТЗ v2, раздел 5).
+# Проверено сборкой Tools/P1bTests в песочнице: без ошибок, без стабов DecorExclusion.
+# Переводы строк в патче нормализованы до LF. В репозитории сохранить CRLF, как в исходных файлах.
+# Новый файл DecorExclusionCore.cs добавляется отдельно (он не входит в патч).
+# Применение: git apply --ignore-whitespace phase0_decor_split.patch (или вручную).
+--- a/Tools/P1bTests/P1bTests.csproj
++++ b/Tools/P1bTests/P1bTests.csproj
+@@ -9,6 +9,7 @@
+   </PropertyGroup>
+   <ItemGroup>
+     <Compile Include="UnityStubs.cs" />
++    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Decor\DecorExclusionCore.cs" />
+     <Compile Include="Program.cs" />
+     <Compile Include="TestSupport.cs" />
+     <Compile Include="TestRegistry.cs" />
+@@ -60,24 +61,20 @@
+     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\AtmosphereProfileAsset.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Clouds\CloudProfile.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Clouds\CloudProfileAsset.cs" />
+-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Water\UnderwaterEffect.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Decor\GroundDecorProfile.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Decor\GroundDecorProfileAsset.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Decor\GroundDecorPlacement.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Decor\GroundDecorCollisionRegistry.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Terrain\TerrainPalette.cs" />
+     <!-- ВНИМАНИЕ: стенд ниже НЕ собирается на текущем HEAD и без разделения
+-     TerrainModel.cs: не хватает Planet\Decor\DecorExclusion.cs (TerrainNoise.cs
+      и HeightfieldTerrain.cs ссылаются на DecorExclusionData), плюс
+      SiteBoxRegistry и HDR GradientSky. Это пробелы самого стенда, не следствие
+      разделения файла. Чтобы починить — добавить в этот список:
+-       Planet\Decor\DecorExclusion.cs  + стабы Renderer/Vector2/Bounds/GameObject
+        Planet\Surface\SiteBox.cs       (SiteBoxRegistry)
+        UnityEngine.Rendering.HighDefinition.GradientSky в UnityStubs.cs -->
+     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Terrain\CubeSphere.cs" />
+     <!-- SurfaceFrame нужен стенду с коммита, где SkyEnvironment синхронизирует
+          глобалы освещения вне Play через SurfaceFrame.ActiveEditFrame(). -->
+-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Surface\SurfaceFrame.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\SurfaceMotion.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Spacecraft.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\SpacecraftPhysics.cs" />
+@@ -109,30 +106,18 @@
+     <Compile Include="..\..\Assets\_Project\Scripts\Universe\BodyAuthoring.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Universe\StarSystemAuthoring.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Ephemeris\EphemerisRuntime.cs" />
+-    <Compile Include="..\..\Assets\_Project\Scripts\Player\FirstPersonCamera.cs" />
+-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\PlanetAtmosphereView.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\SkyPhysics.cs" />
+-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\SkyEnvironment.cs" />
+-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\StarFieldView.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Player\PlayerInput.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Universe\FloatingOrigin.cs" />
+-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\SunBillboard.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\StarColorUtil.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\StarSurfaceTexture.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Player\PlayerState.cs" />
+-    <Compile Include="..\..\Assets\_Project\Scripts\Player\PlayerController.cs" />
+     <!-- CheatMenu.cs сознательно НЕ подключён: это отладочный UI-MonoBehaviour,
+          который тянет FlightBenchmark → SurfacePerf → половину UnityEngine
+          (ProfilerRecorder, Resources, SystemInfo, DontDestroyOnLoad). Стенд
+          его не исполняет, а стабить всю эту поверхность незачем. Ломало сборку
+          с коммита d0f6328. Проверяется в самом редакторе, не здесь. -->
+     <Compile Include="..\..\Assets\_Project\Scripts\Diagnostics\CheatGuiSkin.cs" />
+-    <Compile Include="..\..\Assets\_Project\Scripts\Player\PlayerView.cs" />
+-    <Compile Include="..\..\Assets\_Project\Scripts\Player\Interactables.cs" />
+-    <Compile Include="..\..\Assets\_Project\Scripts\Views\BodyView.cs" />
+-    <Compile Include="..\..\Assets\_Project\Scripts\Views\ShipView.cs" />
+-    <Compile Include="..\..\Assets\_Project\Scripts\Views\DebrisView.cs" />
+-    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\SimulationRunner.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Surface\SurfaceFrameMath.cs" />
+   </ItemGroup>
+ </Project>
+
+--- a/Assets/_Project/Scripts/Planet/Decor/DecorExclusion.cs
++++ b/Assets/_Project/Scripts/Planet/Decor/DecorExclusion.cs
+@@ -6,19 +6,6 @@
+ 
+ namespace Galilego.Universe
+ {
+-    /// <summary>
+-    /// Зона, где декор (деревья, трава, камни) не растёт: повёрнутый прямоугольник
+-    /// на поверхности. Только blittable — читается из Burst-джоб.
+-    /// Центр и оси — единичные body-fixed векторы, полуразмеры — угловые (м / R).
+-    /// </summary>
+-    public struct DecorExclusionData
+-    {
+-        public double3 Center;
+-        public double3 AxisX;
+-        public double3 AxisZ;
+-        public double HalfX;
+-        public double HalfZ;
+-    }
+ 
+     /// <summary>
+     /// Таблица зон исключения. Зоны берутся из всех SurfaceGrounded под SurfaceSite
+@@ -26,14 +13,12 @@
+     /// иначе границы рендереров. К габариту добавляется MarginMeters.
+     /// Живёт в HeightfieldTerrain.DecorExclusions → TerrainNoiseParams → джобы декора.
+     /// </summary>
+-    public static class DecorExclusionTable
++    public static partial class DecorExclusionTable
+     {
+         public const float MarginMeters = 20f;
+         private const float ScanIntervalSeconds = 0.5f;
+         private const int RetireFrames = 600;
+ 
+-        public static readonly NativeArray<DecorExclusionData> Empty =
+-            new NativeArray<DecorExclusionData>(0, Allocator.Persistent);
+ 
+         private static readonly List<DecorExclusionData> scratch = new List<DecorExclusionData>();
+         private static readonly List<Renderer> renderers = new List<Renderer>();
+@@ -41,58 +26,6 @@
+             new List<KeyValuePair<NativeArray<DecorExclusionData>, int>>();
+         private static float nextScan;
+ 
+-        // ---------- проверка (Burst) ----------
+-
+-        public static bool IsExcluded(NativeArray<DecorExclusionData> zones, double3 direction)
+-        {
+-            if (!zones.IsCreated)
+-            {
+-                return false;
+-            }
+-
+-            for (int i = 0; i < zones.Length; i++)
+-            {
+-                DecorExclusionData z = zones[i];
+-                if (math.dot(direction, z.Center) < 0.5d)
+-                {
+-                    continue;
+-                }
+-
+-                double3 d = direction - z.Center;
+-                if (math.abs(math.dot(d, z.AxisX)) <= z.HalfX && math.abs(math.dot(d, z.AxisZ)) <= z.HalfZ)
+-                {
+-                    return true;
+-                }
+-            }
+-
+-            return false;
+-        }
+-
+-        public static bool TableEqual(NativeArray<DecorExclusionData> a, NativeArray<DecorExclusionData> b)
+-        {
+-            int na = a.IsCreated ? a.Length : 0;
+-            int nb = b.IsCreated ? b.Length : 0;
+-            if (na != nb)
+-            {
+-                return false;
+-            }
+-
+-            for (int i = 0; i < na; i++)
+-            {
+-                if (!Same(a[i], b[i]))
+-                {
+-                    return false;
+-                }
+-            }
+-
+-            return true;
+-        }
+-
+-        private static bool Same(DecorExclusionData x, DecorExclusionData y)
+-        {
+-            return x.Center.Equals(y.Center) && x.AxisX.Equals(y.AxisX) && x.AxisZ.Equals(y.AxisZ)
+-                && x.HalfX == y.HalfX && x.HalfZ == y.HalfZ;
+-        }
+ 
+         // ---------- сборка (main thread) ----------
+ 
+@@ -158,14 +91,9 @@
+             }
+         }
+ 
+-        public static void Release(ref NativeArray<DecorExclusionData> table)
+-        {
+-            if (table.IsCreated && table.Length > 0)
+-            {
+-                table.Dispose();
+-            }
+ 
+-            table = Empty;
++        static partial void AfterRelease()
++        {
+             FlushRetired(true);
+         }
+ 

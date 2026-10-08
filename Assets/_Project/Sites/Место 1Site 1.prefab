@@ -567,7 +567,7 @@ Transform:
   m_GameObject: {fileID: 1994684734340987843}
   serializedVersion: 2
   m_LocalRotation: {x: -0.007877365, y: 0.00006109476, z: 0.007771343, w: 0.9999388}
-  m_LocalPosition: {x: 212.5, y: -4.671456, z: -501.6}
+  m_LocalPosition: {x: 212.5, y: -9.981456, z: -501.6}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -591,7 +591,7 @@ LODGroup:
   m_AnimateCrossFading: 0
   m_LastLODIsBillboard: 0
   m_LODs:
-  - screenRelativeHeight: 0.55
+  - screenRelativeHeight: 0.15794733
     fadeTransitionWidth: 0
     renderers:
     - renderer: {fileID: 8094193552517714022}
@@ -608,7 +608,7 @@ LODGroup:
     - renderer: {fileID: 8136791099816366008}
     - renderer: {fileID: 1536202132139322578}
     - renderer: {fileID: 8412878061924463910}
-  - screenRelativeHeight: 0.18
+  - screenRelativeHeight: 0.025600698
     fadeTransitionWidth: 0
     renderers:
     - renderer: {fileID: 3681925641014991308}
@@ -653,9 +653,58 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SurfaceGrounded
   SnapToGround: 1
   AlignToNormal: 0
-  HeightOffsetMeters: 0
+  HeightOffsetMeters: -5.31
   KeepYaw: 1
   AutoUpdate: 1
+--- !u!1 &2365932471212159528
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3016515329232484740}
+  - component: {fileID: 4173211632119477305}
+  m_Layer: 0
+  m_Name: Collider
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &3016515329232484740
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2365932471212159528}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.00000031652874, y: -0.7071068, z: -0.7071068, w: 0.0000003427267}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 7878379441133541417}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4173211632119477305
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2365932471212159528}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3f868b9cb86b9c74b8a17559e1ef1726, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SiteBox
+  Center: {x: 0, y: 2.5000086, z: -13.531059}
+  Size: {x: 46.37587, y: 5.5000286, z: 73.43797}
+  UseMeshCollision: 1
+  MeshRoot: {fileID: 0}
+  SkipNameContains: []
 --- !u!1 &2508611927652185420
 GameObject:
   m_ObjectHideFlags: 0
@@ -1048,8 +1097,9 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 6990330409117967615}
+  - {fileID: 7878379441133541417}
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: -1.297, y: 140.687, z: 90}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1705864115998673676
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2127,6 +2177,96 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!1 &5410920596443207702
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6205586239467132159}
+  - component: {fileID: 1334904657311938008}
+  - component: {fileID: 3995885080342993970}
+  m_Layer: 0
+  m_Name: LOD0_Antenna
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6205586239467132159
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5410920596443207702}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0.7071068, y: 3.274181e-11, z: -0.0000000010732037, w: 0.7071068}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 100, y: 99.99998, z: 100}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 7734012612912391479}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!33 &1334904657311938008
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5410920596443207702}
+  m_Mesh: {fileID: 2366220962422221104, guid: 3a79a09c25294894dbdda7e776e922a0, type: 3}
+--- !u!23 &3995885080342993970
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5410920596443207702}
+  m_Enabled: 1
+  m_CastShadows: 1
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RayTracingAccelStructBuildFlagsOverride: 0
+  m_RayTracingAccelStructBuildFlags: 1
+  m_SmallMeshCulling: 1
+  m_ForceMeshLod: -1
+  m_MeshLodSelectionBias: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: -6019292509213490348, guid: 3a79a09c25294894dbdda7e776e922a0, type: 3}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 0
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_GlobalIlluminationMeshLod: 0
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_MaskInteraction: 0
+  m_AdditionalVertexStreams: {fileID: 0}
 --- !u!1 &5432564578965388522
 GameObject:
   m_ObjectHideFlags: 0
@@ -2443,6 +2583,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SiteBox
   Center: {x: -1.6, y: 111.9, z: 7.4}
   Size: {x: 199, y: 228.7, z: 181.2}
+  UseMeshCollision: 1
+  MeshRoot: {fileID: 0}
+  SkipNameContains: []
 --- !u!1 &6288254643137090645
 GameObject:
   m_ObjectHideFlags: 0
@@ -2845,6 +2988,7 @@ Transform:
   - {fileID: 4545860621110473135}
   - {fileID: 6815616760813118319}
   - {fileID: 5523667677139539281}
+  - {fileID: 6205586239467132159}
   m_Father: {fileID: 6990330409117967615}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &7072492332929058328
@@ -3698,3 +3842,93 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!1001 &7700901518496251842
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 856173073382636046}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 212.2
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 1.5169487
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: -83.33789
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.0000003427267
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0.00000031652874
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: -90
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 180
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+      propertyPath: m_Name
+      value: launchpad_lowpoly
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 3016515329232484740}
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2289342192450645965}
+  m_SourcePrefab: {fileID: 100100000, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+--- !u!1 &7358443019951997587 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+  m_PrefabInstance: {fileID: 7700901518496251842}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &2289342192450645965
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7358443019951997587}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1fcd50013e9499c48b9dfe6ec9798bfe, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SurfaceGrounded
+  SnapToGround: 1
+  AlignToNormal: 0
+  HeightOffsetMeters: -0.53
+  KeepYaw: 1
+  AutoUpdate: 1
+--- !u!4 &7878379441133541417 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 03814c320fbfc77428f5b98bf7f59ae3, type: 3}
+  m_PrefabInstance: {fileID: 7700901518496251842}
+  m_PrefabAsset: {fileID: 0}
