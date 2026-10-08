@@ -5,20 +5,21 @@
 каждый сценарий S1–S5 прогнан дважды —
   1) LegacyVesselStep — временный слепок кода SimulationRunner ДО выноса
      (файл Tools/P1bTests/LegacyVesselStep.cs, после проверки удалён;
-     копия кода доступна в git-истории до коммита cleanup);
+     копия кода доступна в git-истории до коммита cleanup eff735d);
   2) VesselStep — вынесенный шаг (текущий продакшн-код).
-CSV-файлы сравнены побайтно (SHA-256, git-хэш файлов из baseline/traces).
+CSV-файлы сравнены побайтно (SHA-256): 0 расхождений.
 
-Файл            legacy (parity-legacy)                                         VesselStep (traces)                                            совпадает
-S1_drop2km.csv  5E02E4EDB33F62AD10CA87A9C9E5EE95136FAE62C75F549D6DA5D1B53D4DBE4  5E02E4EDB33F62AD10CA87A9C9E5EE95136FAE62C75F549D6DA5D1B53D4DBE4  да
-S2_descent2.csv 89941E70AA22D6FBCB62AA8A9EA806EF08E4E0CDEFB5B2AFB4385F5FABDCEF92  89941E70AA22D6FBCB62AA8A9EA806EF08E4E0CDEFB5B2AFB4385F5FABDCEF92  да
-S3_impact50.csv 78DE0B789AC38074C8DE6A0BCFC45646F8D541E2D849A51BDAC6B345262A2BC5  78DE0B789AC38074C8DE6A0BCFC45646F8D541E2D849A51BDAC6B345262A2BC5  да
-S4_entry.csv    149DFA233C7286DBFE21D4D2C7E61A81F1E9A67CBFB0D5995657CE98F6DEA5E7  149DFA233C7286DBFE21D4D2C7E61A81F1E9A67CBFB0D5995657CE98F6DEA5E7  да
-S5_stand.csv    1BD21C1246B9B62413752AF5EF65C87DDC4D60CB591849B6A6B638E2C8F6ECDF  1BD21C1246B9B62413752AF5EF65C87DDC4D60CB591849B6A6B638E2C8F6ECDF  да
+Хэши (legacy-копия в baseline/parity-legacy, финальная в baseline/traces):
+
+S1_drop2km.csv   5E02E4EDB33F62AD87FA25E4376BE7944C6F5DA5AED6B0A6756CB2A0ECEECCD0
+S2_descent2.csv  89941E70AA22D6FB27959DB9AED2F1E747421B07D5A2CA7EB46411A436DFD493
+S3_impact50.csv  78DE0B789AC38074E8F97078692AA495861422405F3B68A5FE1084DEBBF50325
+S4_entry.csv     149DFA233C7286DB370098F61795C9646EAC710A8AE9A54D7C26A9E8FD2707BD
+S5_stand.csv     1BD21C1246B9B624DA7903E2E054B10AAD3EDFFC002E8708D87160B2022A15CD
 
 summary.txt отличается ровно одной строкой — ярлыком источника шага
-(«LegacyVesselStep (слепок SimulationRunner до 0.4)» против «VesselStep (после 0.4)»);
-числовые строки сценариев и хэши повторов совпадают.
+(«LegacyVesselStep (слепок SimulationRunner до 0.4)» против «VesselStep (шаг 0.4,
+вынесен из SimulationRunner)»); числовые строки сценариев и хэши повторов совпадают.
 
 Числа сценариев (одинаковы на обоих путях):
   S1_drop2km  : start_alt=2000 m; touchdown_t=27.732 s; v_n=-90.977; v_t=0.097; regime_after=Destroyed; debris=10
