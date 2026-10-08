@@ -6,19 +6,6 @@ using UnityEngine;
 
 namespace Galilego.Universe
 {
-    /// <summary>
-    /// Зона, где декор (деревья, трава, камни) не растёт: повёрнутый прямоугольник
-    /// на поверхности. Только blittable — читается из Burst-джоб.
-    /// Центр и оси — единичные body-fixed векторы, полуразмеры — угловые (м / R).
-    /// </summary>
-    public struct DecorExclusionData
-    {
-        public double3 Center;
-        public double3 AxisX;
-        public double3 AxisZ;
-        public double HalfX;
-        public double HalfZ;
-    }
 
     /// <summary>
     /// Таблица зон исключения. Зоны берутся из всех SurfaceGrounded под SurfaceSite
@@ -26,14 +13,12 @@ namespace Galilego.Universe
     /// иначе границы рендереров. К габариту добавляется MarginMeters.
     /// Живёт в HeightfieldTerrain.DecorExclusions → TerrainNoiseParams → джобы декора.
     /// </summary>
-    public static class DecorExclusionTable
+    public static partial class DecorExclusionTable
     {
         public const float MarginMeters = 20f;
         private const float ScanIntervalSeconds = 0.5f;
         private const int RetireFrames = 600;
 
-        public static readonly NativeArray<DecorExclusionData> Empty =
-            new NativeArray<DecorExclusionData>(0, Allocator.Persistent);
 
         private static readonly List<DecorExclusionData> scratch = new List<DecorExclusionData>();
         private static readonly List<Renderer> renderers = new List<Renderer>();
@@ -41,58 +26,6 @@ namespace Galilego.Universe
             new List<KeyValuePair<NativeArray<DecorExclusionData>, int>>();
         private static float nextScan;
 
-        // ---------- проверка (Burst) ----------
-
-        public static bool IsExcluded(NativeArray<DecorExclusionData> zones, double3 direction)
-        {
-            if (!zones.IsCreated)
-            {
-                return false;
-            }
-
-            for (int i = 0; i < zones.Length; i++)
-            {
-                DecorExclusionData z = zones[i];
-                if (math.dot(direction, z.Center) < 0.5d)
-                {
-                    continue;
-                }
-
-                double3 d = direction - z.Center;
-                if (math.abs(math.dot(d, z.AxisX)) <= z.HalfX && math.abs(math.dot(d, z.AxisZ)) <= z.HalfZ)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        public static bool TableEqual(NativeArray<DecorExclusionData> a, NativeArray<DecorExclusionData> b)
-        {
-            int na = a.IsCreated ? a.Length : 0;
-            int nb = b.IsCreated ? b.Length : 0;
-            if (na != nb)
-            {
-                return false;
-            }
-
-            for (int i = 0; i < na; i++)
-            {
-                if (!Same(a[i], b[i]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        private static bool Same(DecorExclusionData x, DecorExclusionData y)
-        {
-            return x.Center.Equals(y.Center) && x.AxisX.Equals(y.AxisX) && x.AxisZ.Equals(y.AxisZ)
-                && x.HalfX == y.HalfX && x.HalfZ == y.HalfZ;
-        }
 
         // ---------- сборка (main thread) ----------
 
@@ -158,14 +91,9 @@ namespace Galilego.Universe
             }
         }
 
-        public static void Release(ref NativeArray<DecorExclusionData> table)
-        {
-            if (table.IsCreated && table.Length > 0)
-            {
-                table.Dispose();
-            }
 
-            table = Empty;
+        static partial void AfterRelease()
+        {
             FlushRetired(true);
         }
 
