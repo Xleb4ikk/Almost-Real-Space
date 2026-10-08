@@ -1,5 +1,5 @@
 Landing traces, шаг 0.6
-Источник шага: VesselStep (после 0.4)
+Источник шага: VesselStep (шаг 0.4, вынесен из SimulationRunner)
 Мир: Terra mu=1.28e13 R=1.143e6 rotation=86400 s pole=+Z;
      terrain=EarthLike_Perlin seed=24334543; atmosphere: Top=100 km rho0=1.225 H=8500 (drag Cd=1 A=10 у Terra, как в SimulationRunner.Awake);
      корабль 5000 kg, тяга в стенде не включена, старт lat=0 lon=0.

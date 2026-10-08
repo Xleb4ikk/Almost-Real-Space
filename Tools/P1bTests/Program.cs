@@ -49,7 +49,6 @@ internal static partial class P1bTests
         int from = int.MinValue;
         int to = int.MaxValue;
         string traceDir = null;
-        string traceLegacyDir = null;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "--list")
@@ -90,21 +89,11 @@ internal static partial class P1bTests
                 traceDir = args[i + 1];
                 i++;
             }
-            else if (args[i] == "--trace-legacy" && i + 1 < args.Length)
-            {
-                traceLegacyDir = args[i + 1];
-                i++;
-            }
-        }
-
-        if (traceLegacyDir != null)
-        {
-            return RunLandingTraces(traceLegacyDir, legacy: true);
         }
 
         if (traceDir != null)
         {
-            return RunLandingTraces(traceDir, legacy: false);
+            return RunLandingTraces(traceDir);
         }
 
         foreach (P1bCase entry in TestRegistry())

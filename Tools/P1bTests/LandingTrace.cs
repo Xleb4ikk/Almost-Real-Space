@@ -60,7 +60,7 @@ internal static partial class P1bTests
     }
 
     /// <summary>Возвращает число расхождений повторных прогонов (0 — успех).</summary>
-    public static int RunLandingTraces(string outDir, bool legacy)
+    public static int RunLandingTraces(string outDir)
     {
         var scenarios = new[]
         {
@@ -87,7 +87,7 @@ internal static partial class P1bTests
 
         var summary = new StringBuilder();
         summary.AppendLine("Landing traces, шаг 0.6");
-        summary.AppendLine("Источник шага: " + (legacy ? "LegacyVesselStep (слепок SimulationRunner до 0.4)" : "VesselStep (после 0.4)"));
+        summary.AppendLine("Источник шага: VesselStep (шаг 0.4, вынесен из SimulationRunner)");
         summary.AppendLine("Мир: Terra mu=1.28e13 R=1.143e6 rotation=86400 s pole=+Z;");
         summary.AppendLine("     terrain=EarthLike_Perlin seed=24334543; atmosphere: Top=100 km rho0=1.225 H=8500 (drag Cd=1 A=10 у Terra, как в SimulationRunner.Awake);");
         summary.AppendLine("     корабль 5000 kg, тяга в стенде не включена, старт lat=0 lon=0.");
@@ -101,10 +101,10 @@ internal static partial class P1bTests
             string file = scenario.Name + ".csv";
             var watch = System.Diagnostics.Stopwatch.StartNew();
             Console.WriteLine("trace " + scenario.Name + ": run 1...");
-            RunScenarioOnce(outDir, file, scenario, legacy, summary);
+            RunScenarioOnce(outDir, file, scenario, summary);
             Console.WriteLine("trace " + scenario.Name + ": run 1 done in " + watch.ElapsedMilliseconds + " ms; run 2...");
             string hashA = HashFile(Path.Combine(outDir, file));
-            RunScenarioOnce(repeatDir, file, scenario, legacy, summary);
+            RunScenarioOnce(repeatDir, file, scenario, summary);
             Console.WriteLine("trace " + scenario.Name + ": run 2 done in " + watch.ElapsedMilliseconds + " ms");
             string hashB = HashFile(Path.Combine(repeatDir, file));
             bool identical = hashA == hashB;
@@ -130,7 +130,7 @@ internal static partial class P1bTests
         return mismatches;
     }
 
-    private static void RunScenarioOnce(string dir, string file, TraceScenario scenario, bool legacy, StringBuilder summary)
+    private static void RunScenarioOnce(string dir, string file, TraceScenario scenario, StringBuilder summary)
     {
         bool dbg = Environment.GetEnvironmentVariable("P1B_TRACE_DEBUG") == "1";
         Directory.CreateDirectory(dir);
@@ -140,7 +140,7 @@ internal static partial class P1bTests
             Console.WriteLine("  [dbg] world built; h(0,0)=" + terra.Terrain.GetHeightMeters(terra, 0d, 0d).ToString("F3", Inv));
         }
 
-        TraceRig rig = BuildTraceRig(sys, terra, legacy);
+        TraceRig rig = BuildTraceRig(sys, terra);
         if (dbg)
         {
             Console.WriteLine("  [dbg] rig built");
@@ -310,7 +310,7 @@ internal static partial class P1bTests
         };
     }
 
-    private static TraceRig BuildTraceRig(StarSystem sys, OrbitingBody terra, bool legacy)
+    private static TraceRig BuildTraceRig(StarSystem sys, OrbitingBody terra)
     {
         var warp = new WarpController();
         var physics = new SpacecraftPhysics();
@@ -339,37 +339,6 @@ internal static partial class P1bTests
         var driver = new LongWarpDriver(physics, propagator);
         var breakup = new JointedBreakup();
         var debris = new DebrisPool();
-
-        if (legacy)
-        {
-            var legacyStep = new LegacyVesselStep(
-                sys, warp, propagator, driver, thrust, breakup, debris,
-                new PartDefinition[0], TraceSpawnEpsilonMeters, TraceDebrisLifetimeSeconds);
-
-            TraceRig legacyRig = null;
-            legacyRig = new TraceRig
-            {
-                GetTime = () => legacyStep.TimeSeconds,
-                GetRegime = () => legacyStep.Regime,
-                StepFlying = (dt, inShip) => legacyStep.StepFlying(dt, inShip),
-                StepLanded = (dt, inShip) => legacyStep.StepLanded(dt, inShip),
-                SetShip = ship =>
-                {
-                    legacyStep.DominantBody = terra;
-                    legacyStep.Ship = ship;
-                    legacyRig.Ship = ship;
-                },
-                SetLanded = () =>
-                {
-                    legacyStep.Regime = VesselRegime.Landed;
-                    legacyStep.DominantBody = terra;
-                },
-                SetOccurrenceHook = hook => legacyStep.OccurrenceHandled = hook,
-                DebrisCount = () => debris.ActiveCount
-            };
-
-            return legacyRig;
-        }
 
         var step = new VesselStep(
             sys, warp, propagator, driver, thrust, breakup, debris,
