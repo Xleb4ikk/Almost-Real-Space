@@ -62,12 +62,6 @@ internal static partial class P1bTests
     /// <summary>Возвращает число расхождений повторных прогонов (0 — успех).</summary>
     public static int RunLandingTraces(string outDir, bool legacy)
     {
-        if (!legacy)
-        {
-            Console.WriteLine("--trace: вынесенный шаг ещё не создан (шаг 0.4 ТЗ v2) — используйте --trace-legacy");
-            return 2;
-        }
-
         var scenarios = new[]
         {
             new TraceScenario("S1_drop2km", 2000d, 0d, 0d, false, 900d),
@@ -346,12 +340,38 @@ internal static partial class P1bTests
         var breakup = new JointedBreakup();
         var debris = new DebrisPool();
 
-        if (!legacy)
+        if (legacy)
         {
-            throw new NotSupportedException("VesselStep появится на шаге 0.4; трейс-режим --trace включится после выноса.");
+            var legacyStep = new LegacyVesselStep(
+                sys, warp, propagator, driver, thrust, breakup, debris,
+                new PartDefinition[0], TraceSpawnEpsilonMeters, TraceDebrisLifetimeSeconds);
+
+            TraceRig legacyRig = null;
+            legacyRig = new TraceRig
+            {
+                GetTime = () => legacyStep.TimeSeconds,
+                GetRegime = () => legacyStep.Regime,
+                StepFlying = (dt, inShip) => legacyStep.StepFlying(dt, inShip),
+                StepLanded = (dt, inShip) => legacyStep.StepLanded(dt, inShip),
+                SetShip = ship =>
+                {
+                    legacyStep.DominantBody = terra;
+                    legacyStep.Ship = ship;
+                    legacyRig.Ship = ship;
+                },
+                SetLanded = () =>
+                {
+                    legacyStep.Regime = VesselRegime.Landed;
+                    legacyStep.DominantBody = terra;
+                },
+                SetOccurrenceHook = hook => legacyStep.OccurrenceHandled = hook,
+                DebrisCount = () => debris.ActiveCount
+            };
+
+            return legacyRig;
         }
 
-        var step = new LegacyVesselStep(
+        var step = new VesselStep(
             sys, warp, propagator, driver, thrust, breakup, debris,
             new PartDefinition[0], TraceSpawnEpsilonMeters, TraceDebrisLifetimeSeconds);
 
