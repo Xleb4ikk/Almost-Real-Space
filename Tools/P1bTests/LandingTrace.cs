@@ -20,7 +20,7 @@ internal static partial class P1bTests
     private const double TraceShipMassKg = 5000d;
     private const double TraceThrustN = 100000d;
     private const double TraceIspSeconds = 320d;
-    private const double TraceDryMassKg = 1000d;
+    private const double TraceDryMassKg = 3000d;
     private const double TraceSpawnEpsilonMeters = 1d;
     private const double TraceDebrisLifetimeSeconds = 600d;
 

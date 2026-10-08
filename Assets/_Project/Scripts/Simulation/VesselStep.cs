@@ -254,33 +254,7 @@ namespace Galilego.Universe
         /// </summary>
         private List<Part> NormalizeAssembly(double shipMass)
         {
-            if (Parts == null || Parts.Length == 0)
-            {
-                return null;
-            }
-
-            double definedMass = 0d;
-            for (int i = 0; i < Parts.Length; i++)
-            {
-                definedMass += Parts[i].MassKg;
-            }
-
-            if (definedMass <= 0d)
-            {
-                return null;
-            }
-
-            double scale = shipMass / definedMass;
-            var assembly = new List<Part>(Parts.Length);
-            for (int i = 0; i < Parts.Length; i++)
-            {
-                assembly.Add(new Part(
-                    Parts[i].MassKg * scale,
-                    new Vector3d(Parts[i].Offset.x, Parts[i].Offset.y, Parts[i].Offset.z),
-                    Parts[i].JointStrengthNewtons));
-            }
-
-            return assembly;
+            return PartAssembly.FromDefinitions(Parts, shipMass);
         }
 
         /// <summary>
