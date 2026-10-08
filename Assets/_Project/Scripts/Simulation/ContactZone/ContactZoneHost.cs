@@ -9,6 +9,7 @@
 // переводится через текущий кадр места (frame.At(t)).
 using System.Collections.Generic;
 using Galilego.Core;
+using Galilego.Events;
 using Galilego.Universe;
 using UnityEngine;
 using Ship = Galilego.Spacecraft.Spacecraft;
@@ -29,6 +30,11 @@ namespace Galilego.Simulation.ContactZone
 
         private readonly ContactZoneGate gate = new ContactZoneGate();
         private SiteFrame frame;
+
+        /// <summary>От центра масс до точки корабля вдоль локального Up (м).
+        /// В игре Ship.Position — низ корабля (точка касания), а не ЦМ: без этого
+        /// смещения корабль прыгает на высоту ЦМ при входе в зону и выходе.</summary>
+        private double anchorUp;
 
         private void LateUpdate()
         {
@@ -57,11 +63,13 @@ namespace Galilego.Simulation.ContactZone
                 return;
             }
 
-            // Внутри зоны гейту и double-миру нужны МИРОВЫЕ координаты: локальный COM
-            // переводим через текущий кадр места (frame.At(t)), а не через якорь входа.
-            Proxy.GetCenterOfMassState(frame, t, out Vector3d localPosition, out Vector3d localVelocity);
+            // Внутри зоны гейту и double-миру нужны МИРОВЫЕ координаты ТОЧКИ КОРАБЛЯ:
+            // от ЦМ отнимаем anchorUp вдоль локального Up, затем переводим через
+            // текущий кадр места (frame.At(t)), а не через якорь входа.
+            Proxy.GetCenterOfMassState(frame, t, out Vector3d com, out Vector3d comVelocity);
+            Vector3d anchor = new Vector3d(com.X, com.Y, com.Z - anchorUp);
             SiteFrame current = frame.At(t);
-            current.ToWorld(localPosition, localVelocity, out Vector3d worldPosition, out Vector3d worldVelocity);
+            current.ToWorld(anchor, comVelocity, out Vector3d worldPosition, out Vector3d worldVelocity);
             if (!gate.Update(body, terrain, worldPosition, worldVelocity, t))
             {
                 Exit(ship, t);
@@ -82,14 +90,25 @@ namespace Galilego.Simulation.ContactZone
             Patch.Build(body, terrain, frame, t);
             frame.ToLocal(ship.Position, ship.Velocity, out Vector3d lp, out Vector3d lv);
             Proxy.Build(Runner.Parts, frame, lp, lv);
+
+            // Смещение от ЦМ до точки корабля: фиксируется при входе и используется
+            // весь сеанс зоны (и при записи состояния, и при выходе).
+            Proxy.GetCenterOfMassState(frame, t, out Vector3d com, out _);
+            anchorUp = com.Z - lp.Z;
+
+            // В зоне варп запрещён: время идёт по реальному dt (AdvanceTime), а не по
+            // варп-фактору; поднятый варп на выходе увёл бы корабль рывком.
+            Runner.Warp.SetWarpFactor(WarpController.MinWarpFactor);
+
             Active = true;
             if (Log) Debug.Log("[ContactZone] вход: " + frame.LatitudeDegrees + ", " + frame.LongitudeDegrees);
         }
 
         private void Exit(Ship ship, double t)
         {
-            Proxy.GetCenterOfMassState(frame, t, out Vector3d lp, out Vector3d lv);
-            frame.At(t).ToWorld(lp, lv, out Vector3d wp, out Vector3d wv);
+            Proxy.GetCenterOfMassState(frame, t, out Vector3d com, out Vector3d comVelocity);
+            Vector3d anchor = new Vector3d(com.X, com.Y, com.Z - anchorUp);
+            frame.At(t).ToWorld(anchor, comVelocity, out Vector3d wp, out Vector3d wv);
             ship.Position = wp;
             ship.Velocity = wv;
             Proxy.Clear();

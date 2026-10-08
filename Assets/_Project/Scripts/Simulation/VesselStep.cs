@@ -99,6 +99,24 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Продвинуть время шага БЕЗ физики: зона контакта ведёт корабль сама (PhysX),
+        /// но время мира идёт (планета движется, эфемериды читаются на текущем t).
+        /// Накопитель обновляется тем же способом, что и в шагах (time.Reset).
+        /// Существующие методы шага не трогает: только TimeSeconds и аккумулятор.
+        /// </summary>
+        public void AdvanceTime(double dt)
+        {
+            if (!(dt > 0d) || !double.IsFinite(dt))
+            {
+                throw new ArgumentOutOfRangeException(nameof(dt),
+                    "AdvanceTime: dt обязан быть конечным и положительным, получено " + dt + ".");
+            }
+
+            TimeSeconds += dt;
+            time.Reset(TimeSeconds);
+        }
+
+        /// <summary>
         /// Полёт за кадр: орбитальная цепочка чанками по границе control-tick,
         /// событие обрабатывается здесь же. playerInShip=false (игрок вне
         /// корабля) запрещает дальний варп и ограничивает физический ×4 —

@@ -18,10 +18,44 @@ namespace Galilego.Simulation.ContactZone
         private readonly List<Rigidbody> bodies = new List<Rigidbody>();
         private readonly List<Joint> joints = new List<Joint>();
 
+        // Разрывы стыков: индексы ДОЧЕРНИХ деталей с разорванным стыком; маска
+        // корневого острова — какие тела ещё принадлежат кораблю (остальные —
+        // отломки, живут в сцене как физика PhysX до выхода из зоны).
+        private PartDefinition[] partDefs;
+        private readonly List<int> brokenChildren = new List<int>();
+        private bool[] rootMask;
+
+        /// <summary>Индексы деталей с разорванными стыками (по порядку разрывов).</summary>
+        public IReadOnlyList<int> BrokenChildren => brokenChildren;
+
+        public int BodyCount => bodies.Count;
+
+        public Rigidbody BodyAt(int index)
+        {
+            return index >= 0 && index < bodies.Count ? bodies[index] : null;
+        }
+
+        /// <summary>Принадлежит ли тело корневому острову (до разрывов — всем).</summary>
+        public bool IsRootBody(int index)
+        {
+            if (rootMask == null)
+            {
+                return index >= 0 && index < bodies.Count;
+            }
+
+            return index >= 0 && index < rootMask.Length && rootMask[index];
+        }
+
         public void Build(IReadOnlyList<PartDefinition> parts, SiteFrame frame, Vector3d localPosition, Vector3d localVelocity)
         {
             Clear();
             if (parts == null || parts.Count == 0) return;
+
+            partDefs = new PartDefinition[parts.Count];
+            for (int i = 0; i < parts.Count; i++)
+            {
+                partDefs[i] = parts[i];
+            }
 
             Vector3 origin = ToUnity(localPosition);
             Vector3 vel = ToUnity(localVelocity);
@@ -59,7 +93,9 @@ namespace Galilego.Simulation.ContactZone
                 bodies.Add(rb);
             }
 
-            // Стыки: каждая деталь с ParentIndex >= 0 крепится к родителю фиксированным соединением.
+            // Стыки: каждая деталь с ParentIndex >= 0 крепится к родителю фиксированным
+            // соединением. На детали висит приёмник OnJointBreak (PhysX шлёт сообщение
+            // GameObject'у стыка), он же сообщает прокси индекс разорванной детали.
             for (int i = 0; i < parts.Count; i++)
             {
                 PartDefinition d = parts[i];
@@ -70,10 +106,76 @@ namespace Galilego.Simulation.ContactZone
                 fj.breakTorque = (float)d.BreakTorqueNm;
                 fj.enableCollision = false; // соседние детали одного корабля не сталкиваются
                 joints.Add(fj);
+                bodies[i].gameObject.AddComponent<ZoneJointBreakListener>().Bind(this, i);
             }
 
             Physics.defaultSolverIterations = 20;
             Physics.defaultSolverVelocityIterations = 4;
+        }
+
+        /// <summary>
+        /// Стык разорван (OnJointBreak детали): деталь и её подграф становятся
+        /// отломками — исключаются из центра масс и скорости корневого острова,
+        /// но остаются в сцене как тела PhysX до выхода из зоны (Clear). Передача
+        /// отломков в DebrisPool — фаза 7 (отложено, см. отчёт среза).
+        /// </summary>
+        public void OnPartJointBreak(int partIndex, float breakForce)
+        {
+            if (brokenChildren.Contains(partIndex))
+            {
+                return;
+            }
+
+            brokenChildren.Add(partIndex);
+            RecomputeRootMask();
+            Debug.Log("[ContactZone] стык разорван: деталь " + partIndex
+                + " (сила " + breakForce.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + " Н),"
+                + " отломков-островов: " + (rootMask != null ? DetachedIslandCount() : 0)
+                + ", корневых деталей: " + RootCount());
+        }
+
+        private void RecomputeRootMask()
+        {
+            if (partDefs == null)
+            {
+                rootMask = null;
+                return;
+            }
+
+            ZoneIslands.SplitResult split = ZoneIslands.Split(partDefs, brokenChildren);
+            rootMask = new bool[bodies.Count];
+            for (int i = 0; i < split.Root.Length; i++)
+            {
+                int index = split.Root[i];
+                if (index >= 0 && index < rootMask.Length)
+                {
+                    rootMask[index] = true;
+                }
+            }
+        }
+
+        private int RootCount()
+        {
+            int count = 0;
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                if (IsRootBody(i))
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private int DetachedIslandCount()
+        {
+            if (partDefs == null)
+            {
+                return 0;
+            }
+
+            return ZoneIslands.Split(partDefs, brokenChildren).Detached.Count;
         }
 
         public void Clear()
@@ -85,6 +187,9 @@ namespace Galilego.Simulation.ContactZone
 
             bodies.Clear();
             joints.Clear();
+            partDefs = null;
+            brokenChildren.Clear();
+            rootMask = null;
         }
 
         public void SetFrameGravity(Vector3d localGravity)
@@ -108,10 +213,22 @@ namespace Galilego.Simulation.ContactZone
             float m = 0f;
             for (int i = 0; i < bodies.Count; i++)
             {
+                if (!IsRootBody(i))
+                {
+                    continue; // отломки в центр масс корабля не входят
+                }
+
                 float mi = bodies[i].mass;
                 c += bodies[i].worldCenterOfMass * mi;
                 v += bodies[i].linearVelocity * mi;
                 m += mi;
+            }
+
+            if (m <= 0f)
+            {
+                position = CenterOfMassLocal;
+                velocity = CenterOfMassVelocityLocal;
+                return;
             }
 
             c /= m;
