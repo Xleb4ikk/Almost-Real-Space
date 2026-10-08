@@ -1,0 +1,278 @@
+{
+  "name": "Тестовый аппарат T1 (ТЗ v2, раздел 8)",
+  "note": "Сухая масса 3000 кг (бак 1000, двигатель 500, ноги 4×50, кабина 1300), топливо 2000 кг. Центр детали — в системе корабля, м. Ось Y вверх.",
+  "parts": [
+    {
+      "name": "Бак (сухой)",
+      "massKg": 1000,
+      "jointStrengthNewtons": 2000000,
+      "breakTorqueNm": 1000000000000,
+      "offset": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "shape": "Cylinder",
+      "dimensions": {
+        "x": 1.25,
+        "y": 6,
+        "z": 0
+      },
+      "orientation": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "w": 1
+      },
+      "parentIndex": -1,
+      "jointAnchor": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "engineOffset": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "name": "Топливо",
+      "massKg": 2000,
+      "jointStrengthNewtons": 1000000000,
+      "breakTorqueNm": 1000000000000,
+      "offset": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "shape": "Cylinder",
+      "dimensions": {
+        "x": 1.25,
+        "y": 6,
+        "z": 0
+      },
+      "orientation": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "w": 1
+      },
+      "parentIndex": 0,
+      "jointAnchor": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "engineOffset": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "name": "Двигатель",
+      "massKg": 500,
+      "jointStrengthNewtons": 2000000,
+      "breakTorqueNm": 1000000000000,
+      "offset": {
+        "x": 0,
+        "y": -3.6,
+        "z": 0
+      },
+      "shape": "Cylinder",
+      "dimensions": {
+        "x": 0.6,
+        "y": 1.2,
+        "z": 0
+      },
+      "orientation": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "w": 1
+      },
+      "parentIndex": 0,
+      "jointAnchor": {
+        "x": 0,
+        "y": 0.6,
+        "z": 0
+      },
+      "engineOffset": {
+        "x": 0,
+        "y": -0.6,
+        "z": 0
+      }
+    },
+    {
+      "name": "Нога 1",
+      "massKg": 50,
+      "jointStrengthNewtons": 400000,
+      "breakTorqueNm": 1000000000000,
+      "offset": {
+        "x": 2.2,
+        "y": -4.25,
+        "z": 0
+      },
+      "shape": "Cylinder",
+      "dimensions": {
+        "x": 0.15,
+        "y": 2.5,
+        "z": 0
+      },
+      "orientation": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "w": 1
+      },
+      "parentIndex": 0,
+      "jointAnchor": {
+        "x": 0,
+        "y": 1.25,
+        "z": 0
+      },
+      "engineOffset": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "name": "Нога 2",
+      "massKg": 50,
+      "jointStrengthNewtons": 400000,
+      "breakTorqueNm": 1000000000000,
+      "offset": {
+        "x": -2.2,
+        "y": -4.25,
+        "z": 0
+      },
+      "shape": "Cylinder",
+      "dimensions": {
+        "x": 0.15,
+        "y": 2.5,
+        "z": 0
+      },
+      "orientation": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "w": 1
+      },
+      "parentIndex": 0,
+      "jointAnchor": {
+        "x": 0,
+        "y": 1.25,
+        "z": 0
+      },
+      "engineOffset": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "name": "Нога 3",
+      "massKg": 50,
+      "jointStrengthNewtons": 400000,
+      "breakTorqueNm": 1000000000000,
+      "offset": {
+        "x": 0,
+        "y": -4.25,
+        "z": 2.2
+      },
+      "shape": "Cylinder",
+      "dimensions": {
+        "x": 0.15,
+        "y": 2.5,
+        "z": 0
+      },
+      "orientation": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "w": 1
+      },
+      "parentIndex": 0,
+      "jointAnchor": {
+        "x": 0,
+        "y": 1.25,
+        "z": 0
+      },
+      "engineOffset": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "name": "Нога 4",
+      "massKg": 50,
+      "jointStrengthNewtons": 400000,
+      "breakTorqueNm": 1000000000000,
+      "offset": {
+        "x": 0,
+        "y": -4.25,
+        "z": -2.2
+      },
+      "shape": "Cylinder",
+      "dimensions": {
+        "x": 0.15,
+        "y": 2.5,
+        "z": 0
+      },
+      "orientation": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "w": 1
+      },
+      "parentIndex": 0,
+      "jointAnchor": {
+        "x": 0,
+        "y": 1.25,
+        "z": 0
+      },
+      "engineOffset": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "name": "Кабина с полезной нагрузкой",
+      "massKg": 1300,
+      "jointStrengthNewtons": 1000000,
+      "breakTorqueNm": 1000000000000,
+      "offset": {
+        "x": 0,
+        "y": 4.25,
+        "z": 0
+      },
+      "shape": "Box",
+      "dimensions": {
+        "x": 2.0,
+        "y": 2.5,
+        "z": 2.0
+      },
+      "orientation": {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "w": 1
+      },
+      "parentIndex": 0,
+      "jointAnchor": {
+        "x": 0,
+        "y": -1.25,
+        "z": 0
+      },
+      "engineOffset": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    }
+  ]
+}

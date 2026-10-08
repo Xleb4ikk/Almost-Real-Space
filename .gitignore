@@ -95,7 +95,7 @@ crashlytics-build.properties
 !tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj
 
 # Диагностический дамп Test903_ShelfFixAb (пишется в CWD при прогоне стенда)
-/shelf-fix-dump.txt
+**/shelf-fix-dump.txt
 
 # Срезы ветки для внешней песочницы (одноразовая передача, не коммитить)
 /promtII/*.zip

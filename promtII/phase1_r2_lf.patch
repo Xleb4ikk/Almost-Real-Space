@@ -1,0 +1,1029 @@
+diff --git a/Assets/OutdoorsScene.unity b/Assets/OutdoorsScene.unity
+index 5f94890..e1677cd 100644
+--- a/Assets/OutdoorsScene.unity
++++ b/Assets/OutdoorsScene.unity
+@@ -1286,7 +1286,7 @@ MonoBehaviour:
+   SpawnMassKg: 5000
+   MainThrustNewtons: 100000
+   MainIspSeconds: 320
+-  DryMassKg: 1000
++  DryMassKg: 3000
+   SpawnBodyName: Terra
+   SpawnOnSurface: 1
+   SpawnByCoordinates: 1
+diff --git a/Assets/_Project/Scripts/Simulation/SimulationRunner.cs b/Assets/_Project/Scripts/Simulation/SimulationRunner.cs
+index ab3d1ed..2af098a 100644
+--- a/Assets/_Project/Scripts/Simulation/SimulationRunner.cs
++++ b/Assets/_Project/Scripts/Simulation/SimulationRunner.cs
+@@ -86,7 +86,7 @@ namespace Galilego.Universe
+         public double MainIspSeconds = 320d;
+ 
+         [Tooltip("Сухая масса (без топлива), кг.")]
+-        public double DryMassKg = 1000d;
++        public double DryMassKg = 3000d;
+ 
+         [Tooltip("Тело спавна (имя из иерархии); пусто — самое глубокое тело под корнем.")]
+         public string SpawnBodyName;
+diff --git a/Assets/_Project/Scripts/Simulation/VesselStep.cs b/Assets/_Project/Scripts/Simulation/VesselStep.cs
+index fa14e28..1db3de1 100644
+--- a/Assets/_Project/Scripts/Simulation/VesselStep.cs
++++ b/Assets/_Project/Scripts/Simulation/VesselStep.cs
+@@ -254,33 +254,7 @@ namespace Galilego.Universe
+         /// </summary>
+         private List<Part> NormalizeAssembly(double shipMass)
+         {
+-            if (Parts == null || Parts.Length == 0)
+-            {
+-                return null;
+-            }
+-
+-            double definedMass = 0d;
+-            for (int i = 0; i < Parts.Length; i++)
+-            {
+-                definedMass += Parts[i].MassKg;
+-            }
+-
+-            if (definedMass <= 0d)
+-            {
+-                return null;
+-            }
+-
+-            double scale = shipMass / definedMass;
+-            var assembly = new List<Part>(Parts.Length);
+-            for (int i = 0; i < Parts.Length; i++)
+-            {
+-                assembly.Add(new Part(
+-                    Parts[i].MassKg * scale,
+-                    new Vector3d(Parts[i].Offset.x, Parts[i].Offset.y, Parts[i].Offset.z),
+-                    Parts[i].JointStrengthNewtons));
+-            }
+-
+-            return assembly;
++            return PartAssembly.FromDefinitions(Parts, shipMass);
+         }
+ 
+         /// <summary>
+diff --git a/Assets/_Project/Scripts/Spacecraft/Assembly/PartDefinition.cs b/Assets/_Project/Scripts/Spacecraft/Assembly/PartDefinition.cs
+index 553168b..2a1db46 100644
+--- a/Assets/_Project/Scripts/Spacecraft/Assembly/PartDefinition.cs
++++ b/Assets/_Project/Scripts/Spacecraft/Assembly/PartDefinition.cs
+@@ -4,8 +4,29 @@ using UnityEngine;
+ namespace Galilego.Spacecraft
+ {
+     /// <summary>
+-    /// Сериализуемое описание детали. Offset — в системе корабля, м
+-    /// (локальная геометрия: например, танк выше, двигатель ниже).
++    /// Форма детали для тензора инерции. Point — масса без геометрии (этап R2,
++    /// как раньше). Размеры в Dimensions, м:
++    ///   Box:      полные размеры вдоль осей детали (x, y, z);
++    ///   Cylinder: x = радиус, y = высота вдоль оси Y детали, центр в середине;
++    ///   Sphere:   x = радиус.
++    /// </summary>
++    public enum PartShape
++    {
++        Point = 0,
++        Box = 1,
++        Cylinder = 2,
++        Sphere = 3,
++    }
++
++    /// <summary>
++    /// Сериализуемое описание детали. Offset — центр детали в системе корабля, м.
++    /// Orientation — поворот системы детали относительно системы корабля
++    /// (кватернион x, y, z, w; по умолчанию тождественный). Масса — явная:
++    /// форма задаёт только инерцию, плотность не используется.
++    /// ParentIndex — индекс родительской детали в массиве, -1 для корня.
++    /// JointAnchor и EngineOffset — точки в системе детали, м.
++    /// BreakTorqueNm — предел момента стыка; JointStrengthNewtons — предел силы.
++    /// Поля стыков в этой фазе только данные: граф проверяется в фазе 2.
+     /// </summary>
+     [Serializable]
+     public class PartDefinition
+@@ -13,6 +34,13 @@ namespace Galilego.Spacecraft
+         public string Name = "Деталь";
+         public double MassKg = 1000d;
+         public double JointStrengthNewtons = 200000d;
++        public double BreakTorqueNm = 1e12d;
+         public Vector3 Offset;
++        public PartShape Shape = PartShape.Point;
++        public Vector3 Dimensions;
++        public Vector4 Orientation = new Vector4(0f, 0f, 0f, 1f);
++        public int ParentIndex = -1;
++        public Vector3 JointAnchor;
++        public Vector3 EngineOffset;
+     }
+ }
+diff --git a/Assets/_Project/Scripts/Spacecraft/Assembly/Parts.cs b/Assets/_Project/Scripts/Spacecraft/Assembly/Parts.cs
+index cdc7a66..5eb7b2d 100644
+--- a/Assets/_Project/Scripts/Spacecraft/Assembly/Parts.cs
++++ b/Assets/_Project/Scripts/Spacecraft/Assembly/Parts.cs
+@@ -5,31 +5,144 @@ using Galilego.Core;
+ namespace Galilego.Spacecraft
+ {
+     /// <summary>
+-    /// Деталь корабля как масс-точка: масса, положение в теле-фиксированной
+-    /// системе, прочность стыка. Без геометрии сознательно (этап R2): этого
+-    /// достаточно для точной массы, центра масс и тензора инерции.
++    /// Деталь корабля: масса, положение центра в системе корабля, форма, ориентация
++    /// и прочность стыка. Конструктор без формы — масса-точка (прежнее поведение,
++    /// тесты Test30 и т.п.). Форма задаёт только собственный тензор инерции детали;
++    /// масса всегда явная.
+     /// </summary>
+     public readonly struct Part
+     {
+         public readonly double MassKg;
+         public readonly Vector3d LocalPosition;
+         public readonly double JointStrengthNewtons;
++        public readonly PartShape Shape;
++        public readonly Vector3d Dimensions;
++        public readonly QuaternionD Orientation;
+ 
+         public Part(double massKg, Vector3d localPosition, double jointStrengthNewtons)
++            : this(massKg, localPosition, jointStrengthNewtons, PartShape.Point, Vector3d.Zero, QuaternionD.Identity)
++        {
++        }
++
++        public Part(
++            double massKg,
++            Vector3d localPosition,
++            double jointStrengthNewtons,
++            PartShape shape,
++            Vector3d dimensions,
++            QuaternionD orientation)
+         {
+             MassKg = massKg;
+             LocalPosition = localPosition;
+             JointStrengthNewtons = jointStrengthNewtons;
++            Shape = shape;
++            Dimensions = dimensions;
++            Orientation = orientation;
+         }
+     }
+ 
+     /// <summary>
+-    /// Сводка сборки: суммарная масса, центр масс, тензор инерции.
+-    /// Тензор считается СТРОГО от центра масс (d = r − COM):
+-    /// уравнения Эйлера в форме ω̇=I⁻¹(τ−ω×Iω) верны только для тензора
+-    /// относительно COM; счёт от начала координат (пропущенная теорема
+-    /// Гюйгенса–Штейнера) даёт неправильное свободное вращение. Ловушка R2a
+-    /// проверяет именно это на намеренно смещённой конфигурации.
++    /// Собственный тензор инерции детали относительно её центра масс, в системе
++    /// корабля, на 1 кг массы. Главные моменты в осях детали, поворот в систему
++    /// корабля: I = Σ I_k · a_k a_kᵀ, где a_k — ось k детали в системе корабля.
++    /// </summary>
++    public static class PartInertia
++    {
++        public static Matrix3x3 PerKgShipFrame(PartShape shape, Vector3d dimensions, QuaternionD orientation)
++        {
++            double ix;
++            double iy;
++            double iz;
++            switch (shape)
++            {
++                case PartShape.Point:
++                    ix = 0d;
++                    iy = 0d;
++                    iz = 0d;
++                    break;
++
++                case PartShape.Box:
++                {
++                    RequirePositive(dimensions.X, "Box: размер X");
++                    RequirePositive(dimensions.Y, "Box: размер Y");
++                    RequirePositive(dimensions.Z, "Box: размер Z");
++                    double a = dimensions.X;
++                    double b = dimensions.Y;
++                    double c = dimensions.Z;
++                    ix = ((b * b) + (c * c)) / 12d;
++                    iy = ((a * a) + (c * c)) / 12d;
++                    iz = ((a * a) + (b * b)) / 12d;
++                    break;
++                }
++
++                case PartShape.Cylinder:
++                {
++                    RequirePositive(dimensions.X, "Cylinder: радиус");
++                    RequirePositive(dimensions.Y, "Cylinder: высота");
++                    double r = dimensions.X;
++                    double h = dimensions.Y;
++                    double rr = r * r;
++                    ix = ((3d * rr) + (h * h)) / 12d;
++                    iy = rr / 2d;
++                    iz = ix;
++                    break;
++                }
++
++                case PartShape.Sphere:
++                {
++                    RequirePositive(dimensions.X, "Sphere: радиус");
++                    ix = 0.4d * dimensions.X * dimensions.X;
++                    iy = ix;
++                    iz = ix;
++                    break;
++                }
++
++                default:
++                    throw new ArgumentOutOfRangeException(nameof(shape), "Неизвестная форма детали.");
++            }
++
++            Vector3d ex = orientation.Rotate(new Vector3d(1d, 0d, 0d));
++            Vector3d ey = orientation.Rotate(new Vector3d(0d, 1d, 0d));
++            Vector3d ez = orientation.Rotate(new Vector3d(0d, 0d, 1d));
++
++            return Sum(
++                Scaled(ix, ex),
++                Scaled(iy, ey),
++                Scaled(iz, ez));
++        }
++
++        private static void RequirePositive(double value, string what)
++        {
++            if (!(value > 0d))
++            {
++                throw new ArgumentOutOfRangeException(what, "Размер обязан быть положительным: " + value);
++            }
++        }
++
++        private static Matrix3x3 Scaled(double moment, Vector3d axis)
++        {
++            return new Matrix3x3(
++                moment * axis.X * axis.X, moment * axis.X * axis.Y, moment * axis.X * axis.Z,
++                moment * axis.Y * axis.X, moment * axis.Y * axis.Y, moment * axis.Y * axis.Z,
++                moment * axis.Z * axis.X, moment * axis.Z * axis.Y, moment * axis.Z * axis.Z);
++        }
++
++        private static Matrix3x3 Sum(Matrix3x3 a, Matrix3x3 b, Matrix3x3 c)
++        {
++            return new Matrix3x3(
++                a.M11 + b.M11 + c.M11, a.M12 + b.M12 + c.M12, a.M13 + b.M13 + c.M13,
++                a.M21 + b.M21 + c.M21, a.M22 + b.M22 + c.M22, a.M23 + b.M23 + c.M23,
++                a.M31 + b.M31 + c.M31, a.M32 + b.M32 + c.M32, a.M33 + b.M33 + c.M33);
++        }
++    }
++
++    /// <summary>
++    /// Сводка сборки: суммарная масса, центр масс, тензор инерции относительно
++    /// центра масс. Для каждой детали берётся собственный тензор (форма) и
++    /// теорема Штейнера от её центра до центра масс сборки:
++    ///   I = Σ [ I_own + m (|d|² E − d dᵀ) ],  d = r − COM.
++    /// Для точечных деталей I_own = 0, результат совпадает с прежним (ловушка R2a).
++    /// Счёт от начала координат дал бы неправильное свободное вращение.
+     /// </summary>
+     public readonly struct AssemblyStats
+     {
+@@ -74,14 +187,17 @@ namespace Galilego.Spacecraft
+             double iyz = 0d;
+             for (int i = 0; i < parts.Count; i++)
+             {
+-                Vector3d d = parts[i].LocalPosition - center;
+-                double m = parts[i].MassKg;
+-                ixx += m * ((d.Y * d.Y) + (d.Z * d.Z));
+-                iyy += m * ((d.X * d.X) + (d.Z * d.Z));
+-                izz += m * ((d.X * d.X) + (d.Y * d.Y));
+-                ixy -= m * d.X * d.Y;
+-                ixz -= m * d.X * d.Z;
+-                iyz -= m * d.Y * d.Z;
++                Part p = parts[i];
++                Vector3d d = p.LocalPosition - center;
++                double m = p.MassKg;
++                Matrix3x3 own = PartInertia.PerKgShipFrame(p.Shape, p.Dimensions, p.Orientation);
++
++                ixx += (m * ((d.Y * d.Y) + (d.Z * d.Z))) + (m * own.M11);
++                iyy += (m * ((d.X * d.X) + (d.Z * d.Z))) + (m * own.M22);
++                izz += (m * ((d.X * d.X) + (d.Y * d.Y))) + (m * own.M33);
++                ixy += (-m * d.X * d.Y) + (m * own.M12);
++                ixz += (-m * d.X * d.Z) + (m * own.M13);
++                iyz += (-m * d.Y * d.Z) + (m * own.M23);
+             }
+ 
+             return new AssemblyStats(mass, center, new Matrix3x3(
+@@ -90,4 +206,49 @@ namespace Galilego.Spacecraft
+                 ixz, iyz, izz));
+         }
+     }
++
++    /// <summary>
++    /// Перевод описаний деталей (PartDefinition) в сборку для физики: массы
++    /// нормируются к фактической массе корабля (массы задают ПРОПОРЦИИ,
++    /// топливо выгорает). null, если деталей нет или их суммарная масса
++    /// не положительна: тогда работает whole-ship путь breakup-модели.
++    /// </summary>
++    public static class PartAssembly
++    {
++        public static List<Part> FromDefinitions(IReadOnlyList<PartDefinition> definitions, double shipMass)
++        {
++            if (definitions == null || definitions.Count == 0)
++            {
++                return null;
++            }
++
++            double definedMass = 0d;
++            for (int i = 0; i < definitions.Count; i++)
++            {
++                definedMass += definitions[i].MassKg;
++            }
++
++            if (definedMass <= 0d)
++            {
++                return null;
++            }
++
++            double scale = shipMass / definedMass;
++            var assembly = new List<Part>(definitions.Count);
++            for (int i = 0; i < definitions.Count; i++)
++            {
++                PartDefinition d = definitions[i];
++                var orientation = new QuaternionD(d.Orientation.x, d.Orientation.y, d.Orientation.z, d.Orientation.w);
++                assembly.Add(new Part(
++                    d.MassKg * scale,
++                    new Vector3d(d.Offset.x, d.Offset.y, d.Offset.z),
++                    d.JointStrengthNewtons,
++                    d.Shape,
++                    new Vector3d(d.Dimensions.x, d.Dimensions.y, d.Dimensions.z),
++                    orientation.Normalized));
++            }
++
++            return assembly;
++        }
++    }
+ }
+diff --git a/Tools/P1bTests/Data/test_vessel_t1.json b/Tools/P1bTests/Data/test_vessel_t1.json
+new file mode 100644
+index 0000000..0f13bd3
+--- /dev/null
++++ b/Tools/P1bTests/Data/test_vessel_t1.json
+@@ -0,0 +1,278 @@
++{
++  "name": "Тестовый аппарат T1 (ТЗ v2, раздел 8)",
++  "note": "Сухая масса 3000 кг (бак 1000, двигатель 500, ноги 4×50, кабина 1300), топливо 2000 кг. Центр детали — в системе корабля, м. Ось Y вверх.",
++  "parts": [
++    {
++      "name": "Бак (сухой)",
++      "massKg": 1000,
++      "jointStrengthNewtons": 2000000,
++      "breakTorqueNm": 1000000000000,
++      "offset": {
++        "x": 0,
++        "y": 0,
++        "z": 0
++      },
++      "shape": "Cylinder",
++      "dimensions": {
++        "x": 1.25,
++        "y": 6,
++        "z": 0
++      },
++      "orientation": {
++        "x": 0,
++        "y": 0,
++        "z": 0,
++        "w": 1
++      },
++      "parentIndex": -1,
++      "jointAnchor": {
++        "x": 0,
++        "y": 0,
++        "z": 0
++      },
++      "engineOffset": {
++        "x": 0,
++        "y": 0,
++        "z": 0
++      }
++    },
++    {
++      "name": "Топливо",
++      "massKg": 2000,
++      "jointStrengthNewtons": 1000000000,
++      "breakTorqueNm": 1000000000000,
++      "offset": {
++        "x": 0,
++        "y": 0,
++        "z": 0
++      },
++      "shape": "Cylinder",
++      "dimensions": {
++        "x": 1.25,
++        "y": 6,
++        "z": 0
++      },
++      "orientation": {
++        "x": 0,
++        "y": 0,
++        "z": 0,
++        "w": 1
++      },
++      "parentIndex": 0,
++      "jointAnchor": {
++        "x": 0,
++        "y": 0,
++        "z": 0
++      },
++      "engineOffset": {
++        "x": 0,
++        "y": 0,
++        "z": 0
++      }
++    },
++    {
++      "name": "Двигатель",
++      "massKg": 500,
++      "jointStrengthNewtons": 2000000,
++      "breakTorqueNm": 1000000000000,
++      "offset": {
++        "x": 0,
++        "y": -3.6,
++        "z": 0
++      },
++      "shape": "Cylinder",
++      "dimensions": {
++        "x": 0.6,
++        "y": 1.2,
++        "z": 0
++      },
++      "orientation": {
++        "x": 0,
++        "y": 0,
++        "z": 0,
++        "w": 1
++      },
++      "parentIndex": 0,
++      "jointAnchor": {
++        "x": 0,
++        "y": 0.6,
++        "z": 0
++      },
++      "engineOffset": {
++        "x": 0,
++        "y": -0.6,
++        "z": 0
++      }
++    },
++    {
++      "name": "Нога 1",
++      "massKg": 50,
++      "jointStrengthNewtons": 400000,
++      "breakTorqueNm": 1000000000000,
++      "offset": {
++        "x": 2.2,
++        "y": -4.25,
++        "z": 0
++      },
++      "shape": "Cylinder",
++      "dimensions": {
++        "x": 0.15,
++        "y": 2.5,
++        "z": 0
++      },
++      "orientation": {
++        "x": 0,
++        "y": 0,
++        "z": 0,
++        "w": 1
++      },
++      "parentIndex": 0,
++      "jointAnchor": {
++        "x": 0,
++        "y": 1.25,
++        "z": 0
++      },
++      "engineOffset": {
++        "x": 0,
++        "y": 0,
++        "z": 0
++      }
++    },
++    {
++      "name": "Нога 2",
++      "massKg": 50,
++      "jointStrengthNewtons": 400000,
++      "breakTorqueNm": 1000000000000,
++      "offset": {
++        "x": -2.2,
++        "y": -4.25,
++        "z": 0
++      },
++      "shape": "Cylinder",
++      "dimensions": {
++        "x": 0.15,
++        "y": 2.5,
++        "z": 0
++      },
++      "orientation": {
++        "x": 0,
++        "y": 0,
++        "z": 0,
++        "w": 1
++      },
++      "parentIndex": 0,
++      "jointAnchor": {
++        "x": 0,
++        "y": 1.25,
++        "z": 0
++      },
++      "engineOffset": {
++        "x": 0,
++        "y": 0,
++        "z": 0
++      }
++    },
++    {
++      "name": "Нога 3",
++      "massKg": 50,
++      "jointStrengthNewtons": 400000,
++      "breakTorqueNm": 1000000000000,
++      "offset": {
++        "x": 0,
++        "y": -4.25,
++        "z": 2.2
++      },
++      "shape": "Cylinder",
++      "dimensions": {
++        "x": 0.15,
++        "y": 2.5,
++        "z": 0
++      },
++      "orientation": {
++        "x": 0,
++        "y": 0,
++        "z": 0,
++        "w": 1
++      },
++      "parentIndex": 0,
++      "jointAnchor": {
++        "x": 0,
++        "y": 1.25,
++        "z": 0
++      },
++      "engineOffset": {
++        "x": 0,
++        "y": 0,
++        "z": 0
++      }
++    },
++    {
++      "name": "Нога 4",
++      "massKg": 50,
++      "jointStrengthNewtons": 400000,
++      "breakTorqueNm": 1000000000000,
++      "offset": {
++        "x": 0,
++        "y": -4.25,
++        "z": -2.2
++      },
++      "shape": "Cylinder",
++      "dimensions": {
++        "x": 0.15,
++        "y": 2.5,
++        "z": 0
++      },
++      "orientation": {
++        "x": 0,
++        "y": 0,
++        "z": 0,
++        "w": 1
++      },
++      "parentIndex": 0,
++      "jointAnchor": {
++        "x": 0,
++        "y": 1.25,
++        "z": 0
++      },
++      "engineOffset": {
++        "x": 0,
++        "y": 0,
++        "z": 0
++      }
++    },
++    {
++      "name": "Кабина с полезной нагрузкой",
++      "massKg": 1300,
++      "jointStrengthNewtons": 1000000,
++      "breakTorqueNm": 1000000000000,
++      "offset": {
++        "x": 0,
++        "y": 4.25,
++        "z": 0
++      },
++      "shape": "Box",
++      "dimensions": {
++        "x": 2.0,
++        "y": 2.5,
++        "z": 2.0
++      },
++      "orientation": {
++        "x": 0,
++        "y": 0,
++        "z": 0,
++        "w": 1
++      },
++      "parentIndex": 0,
++      "jointAnchor": {
++        "x": 0,
++        "y": -1.25,
++        "z": 0
++      },
++      "engineOffset": {
++        "x": 0,
++        "y": 0,
++        "z": 0
++      }
++    }
++  ]
++}
+diff --git a/Tools/P1bTests/LandingTrace.cs b/Tools/P1bTests/LandingTrace.cs
+index 299eb95..2819fa8 100644
+--- a/Tools/P1bTests/LandingTrace.cs
++++ b/Tools/P1bTests/LandingTrace.cs
+@@ -20,7 +20,7 @@ internal static partial class P1bTests
+     private const double TraceShipMassKg = 5000d;
+     private const double TraceThrustN = 100000d;
+     private const double TraceIspSeconds = 320d;
+-    private const double TraceDryMassKg = 1000d;
++    private const double TraceDryMassKg = 3000d;
+     private const double TraceSpawnEpsilonMeters = 1d;
+     private const double TraceDebrisLifetimeSeconds = 600d;
+ 
+diff --git a/Tools/P1bTests/P1bTests.csproj b/Tools/P1bTests/P1bTests.csproj
+index 433bde2..e066749 100644
+--- a/Tools/P1bTests/P1bTests.csproj
++++ b/Tools/P1bTests/P1bTests.csproj
+@@ -114,5 +114,10 @@
+     <Compile Include="..\..\Assets\_Project\Scripts\Diagnostics\CheatGuiSkin.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Surface\SurfaceFrameMath.cs" />
+   </ItemGroup>
++  <ItemGroup>
++    <None Include="Data\test_vessel_t1.json">
++      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
++    </None>
++  </ItemGroup>
+ </Project>
+ 
+diff --git a/Tools/P1bTests/TestRegistry.cs b/Tools/P1bTests/TestRegistry.cs
+index 52d22e1..53ba08c 100644
+--- a/Tools/P1bTests/TestRegistry.cs
++++ b/Tools/P1bTests/TestRegistry.cs
+@@ -183,6 +183,10 @@ internal static partial class P1bTests
+             new P1bCase("Test141_ContinentsConnectivity", Test141_ContinentsConnectivity, true),
+             new P1bCase("Test142_ContinentsDiag", Test142_ContinentsDiag, true),
+             new P1bCase("Test143_PerlinAssetDrift", Test143_PerlinAssetDrift, false),
++            new P1bCase("Test200_CylinderInertia", Test200_CylinderInertia, false),
++            new P1bCase("Test201_ExplicitMassAndScaling", Test201_ExplicitMassAndScaling, false),
++            new P1bCase("Test202_PointCompat", Test202_PointCompat, false),
++            new P1bCase("Test203_DiscretizedReference", Test203_DiscretizedReference, false),
+             new P1bCase("Test900_TerrainWallProbe", Test900_TerrainWallProbe, false),
+             new P1bCase("Test901_TerrainWallBisect", Test901_TerrainWallBisect, false),
+             new P1bCase("Test903_ShelfFixAb", Test903_ShelfFixAb, false),
+diff --git a/Tools/P1bTests/Tests/TestsPartGeometry.cs b/Tools/P1bTests/Tests/TestsPartGeometry.cs
+new file mode 100644
+index 0000000..72c1601
+--- /dev/null
++++ b/Tools/P1bTests/Tests/TestsPartGeometry.cs
+@@ -0,0 +1,347 @@
++using System;
++using System.Collections.Generic;
++using System.IO;
++using System.Text.Json;
++using Galilego.Core;
++using Galilego.Spacecraft;
++using UnityEngine;
++
++// Фаза 1 (ТЗ v2, разделы 3.1 и 7): геометрия и масса деталей.
++// Test200 — аналитика тензора инерции примитивов с поворотами;
++// Test201 — явная масса и линейная связь инерции с массой;
++// Test202 — точечная конфигурация через PartDefinition даёт прежний результат Test30;
++// Test203 — независимая дискретизация тестового аппарата T1 против аналитики.
++internal static partial class P1bTests
++{
++    private static bool NearRel(double actual, double expected, double relTol)
++    {
++        double scale = Math.Max(Math.Abs(expected), 1e-300);
++        return Math.Abs(actual - expected) <= relTol * scale;
++    }
++
++    private static string DiagText(Matrix3x3 m)
++    {
++        return string.Format(Inv, "Ixx={0:G9} Iyy={1:G9} Izz={2:G9} Ixy={3:G9} Ixz={4:G9} Iyz={5:G9}",
++            m.M11, m.M22, m.M33, m.M12, m.M13, m.M23);
++    }
++
++    private static Vector3 Vec3Of(JsonElement e)
++    {
++        return new Vector3(
++            (float)e.GetProperty("x").GetDouble(),
++            (float)e.GetProperty("y").GetDouble(),
++            (float)e.GetProperty("z").GetDouble());
++    }
++
++    private static Vector4 Vec4Of(JsonElement e)
++    {
++        return new Vector4(
++            (float)e.GetProperty("x").GetDouble(),
++            (float)e.GetProperty("y").GetDouble(),
++            (float)e.GetProperty("z").GetDouble(),
++            (float)e.GetProperty("w").GetDouble());
++    }
++
++    private static List<PartDefinition> LoadVesselT1()
++    {
++        string path = Path.Combine(AppContext.BaseDirectory, "Data", "test_vessel_t1.json");
++        if (!File.Exists(path))
++        {
++            path = Path.Combine(AppContext.BaseDirectory, "test_vessel_t1.json");
++        }
++
++        using (JsonDocument doc = JsonDocument.Parse(File.ReadAllText(path)))
++        {
++            var list = new List<PartDefinition>();
++            foreach (JsonElement e in doc.RootElement.GetProperty("parts").EnumerateArray())
++            {
++                var def = new PartDefinition
++                {
++                    Name = e.GetProperty("name").GetString(),
++                    MassKg = e.GetProperty("massKg").GetDouble(),
++                    JointStrengthNewtons = e.GetProperty("jointStrengthNewtons").GetDouble(),
++                    BreakTorqueNm = e.GetProperty("breakTorqueNm").GetDouble(),
++                    Offset = Vec3Of(e.GetProperty("offset")),
++                    Shape = (PartShape)Enum.Parse(typeof(PartShape), e.GetProperty("shape").GetString()),
++                    Dimensions = Vec3Of(e.GetProperty("dimensions")),
++                    Orientation = Vec4Of(e.GetProperty("orientation")),
++                    ParentIndex = e.GetProperty("parentIndex").GetInt32(),
++                    JointAnchor = Vec3Of(e.GetProperty("jointAnchor")),
++                    EngineOffset = Vec3Of(e.GetProperty("engineOffset")),
++                };
++                list.Add(def);
++            }
++
++            return list;
++        }
++    }
++
++    // Test200: аналитика главных моментов примитивов и их поворот в систему корабля.
++    static int Test200_CylinderInertia()
++    {
++        // Цилиндр r=1, h=2, m=12: Ixx=Izz=m(3r²+h²)/12=7, Iyy=m r²/2=6.
++        // Поворот на +90° вокруг Z переводит ось Y детали в −X: Ixx=6, Iyy=7, Izz=7.
++        // Поворот на +90° вокруг X переводит ось Y в Z: Ixx=7, Iyy=7, Izz=6.
++        // Сфера r=0.5, m=10: I=0.4·m·r²=1 во всех осях.
++        // Коробка 1×2×3, m=6: Ixx=m(b²+c²)/12=6.5, Iyy=m(a²+c²)/12=5, Izz=m(a²+b²)/12=2.5.
++        var cylinder = new Part(12d, Vector3d.Zero, 1e9d, PartShape.Cylinder,
++            new Vector3d(1d, 2d, 0d), QuaternionD.Identity);
++        var cylZ = new Part(12d, Vector3d.Zero, 1e9d, PartShape.Cylinder,
++            new Vector3d(1d, 2d, 0d), QuaternionD.FromAxisAngle(new Vector3d(0d, 0d, 1d), Math.PI / 2d));
++        var cylX = new Part(12d, Vector3d.Zero, 1e9d, PartShape.Cylinder,
++            new Vector3d(1d, 2d, 0d), QuaternionD.FromAxisAngle(new Vector3d(1d, 0d, 0d), Math.PI / 2d));
++        var sphere = new Part(10d, Vector3d.Zero, 1e9d, PartShape.Sphere,
++            new Vector3d(0.5d, 0d, 0d), QuaternionD.Identity);
++        var box = new Part(6d, Vector3d.Zero, 1e9d, PartShape.Box,
++            new Vector3d(1d, 2d, 3d), QuaternionD.Identity);
++
++        Matrix3x3 i0 = AssemblyStats.Compute(new List<Part> { cylinder }).Inertia;
++        Matrix3x3 iz = AssemblyStats.Compute(new List<Part> { cylZ }).Inertia;
++        Matrix3x3 ix = AssemblyStats.Compute(new List<Part> { cylX }).Inertia;
++        Matrix3x3 isph = AssemblyStats.Compute(new List<Part> { sphere }).Inertia;
++        Matrix3x3 ibox = AssemblyStats.Compute(new List<Part> { box }).Inertia;
++
++        bool cylOk = NearRel(i0.M11, 7d, 1e-12) && NearRel(i0.M22, 6d, 1e-12) && NearRel(i0.M33, 7d, 1e-12)
++            && i0.M12 == 0d && i0.M13 == 0d && i0.M23 == 0d;
++        bool cylZOk = NearRel(iz.M11, 6d, 1e-12) && NearRel(iz.M22, 7d, 1e-12) && NearRel(iz.M33, 7d, 1e-12)
++            && Math.Abs(iz.M12) < 1e-12 && Math.Abs(iz.M13) < 1e-12 && Math.Abs(iz.M23) < 1e-12;
++        bool cylXOk = NearRel(ix.M11, 7d, 1e-12) && NearRel(ix.M22, 7d, 1e-12) && NearRel(ix.M33, 6d, 1e-12)
++            && Math.Abs(ix.M12) < 1e-12 && Math.Abs(ix.M13) < 1e-12 && Math.Abs(ix.M23) < 1e-12;
++        bool sphOk = NearRel(isph.M11, 1d, 1e-12) && NearRel(isph.M22, 1d, 1e-12) && NearRel(isph.M33, 1d, 1e-12);
++        bool boxOk = NearRel(ibox.M11, 6.5d, 1e-12) && NearRel(ibox.M22, 5d, 1e-12) && NearRel(ibox.M33, 2.5d, 1e-12)
++            && Math.Abs(ibox.M12) < 1e-12;
++
++        Check(cylOk && cylZOk && cylXOk && sphOk && boxOk, "T200 cylinder-inertia",
++            string.Format(Inv,
++                "цилиндр(0°): {0} [{1}]; Z+90°: {2}; X+90°: {3}; сфера: {4}; коробка: {5}",
++                cylOk, DiagText(i0), cylZOk, cylXOk, sphOk, boxOk));
++        return 0;
++    }
++
++    // Test201: масса явная (не из формы), инерция линейна по массе, валидация размеров.
++    static int Test201_ExplicitMassAndScaling()
++    {
++        List<PartDefinition> defs = LoadVesselT1();
++        double dryMass = 0d;
++        foreach (PartDefinition d in defs)
++        {
++            if (d.Name != "Топливо")
++            {
++                dryMass += d.MassKg;
++            }
++        }
++
++        AssemblyStats full = AssemblyStats.Compute(PartAssembly.FromDefinitions(defs, 5000d));
++        AssemblyStats half = AssemblyStats.Compute(PartAssembly.FromDefinitions(defs, 2500d));
++
++        bool massOk = NearRel(full.TotalMassKg, 5000d, 1e-12) && NearRel(dryMass, 3000d, 1e-12);
++        bool halfMassOk = NearRel(half.TotalMassKg, 2500d, 1e-12);
++        bool comOk = Math.Abs(full.CenterOfMass.X - half.CenterOfMass.X) < 1e-12
++            && Math.Abs(full.CenterOfMass.Y - half.CenterOfMass.Y) < 1e-12
++            && Math.Abs(full.CenterOfMass.Z - half.CenterOfMass.Z) < 1e-12;
++
++        // Половина массы при тех же геометриях → ровно половина каждого элемента тензора.
++        bool linearOk = NearRel(half.Inertia.M11, 0.5d * full.Inertia.M11, 1e-12)
++            && NearRel(half.Inertia.M22, 0.5d * full.Inertia.M22, 1e-12)
++            && NearRel(half.Inertia.M33, 0.5d * full.Inertia.M33, 1e-12)
++            && NearRel(half.Inertia.M12, 0.5d * full.Inertia.M12, 1e-12)
++            && NearRel(half.Inertia.M23, 0.5d * full.Inertia.M23, 1e-12);
++
++        bool rejectsBadSize = false;
++        try
++        {
++            AssemblyStats.Compute(new List<Part>
++            {
++                new Part(10d, Vector3d.Zero, 1e9d, PartShape.Box, new Vector3d(1d, 0d, 1d), QuaternionD.Identity)
++            });
++        }
++        catch (ArgumentOutOfRangeException)
++        {
++            rejectsBadSize = true;
++        }
++
++        Check(massOk && halfMassOk && comOk && linearOk && rejectsBadSize, "T201 explicit-mass-scaling",
++            string.Format(Inv,
++                "масса=5000: {0} (сухая=3000: {1}); масса=2500: {2}; COM не зависит от масштаба: {3}; I∝m: {4}; нулевой размер отвергнут: {5}",
++                NearRel(full.TotalMassKg, 5000d, 1e-12), NearRel(dryMass, 3000d, 1e-12),
++                halfMassOk, comOk, linearOk, rejectsBadSize));
++        return 0;
++    }
++
++    // Test202: точечные детали через PartDefinition дают прежний результат Test30.
++    static int Test202_PointCompat()
++    {
++        var defs = new List<PartDefinition>
++        {
++            new PartDefinition { Name = "A", MassKg = 700d, Offset = new Vector3(0f, 0f, 0f) },
++            new PartDefinition { Name = "B", MassKg = 200d, Offset = new Vector3(3f, 0f, 0f) },
++            new PartDefinition { Name = "C", MassKg = 100d, Offset = new Vector3(0f, 1f, 0f) },
++        };
++        AssemblyStats viaDefs = AssemblyStats.Compute(PartAssembly.FromDefinitions(defs, 1000d));
++
++        var direct = new List<Part>
++        {
++            new Part(700d, new Vector3d(0d, 0d, 0d), 1e9d),
++            new Part(200d, new Vector3d(3d, 0d, 0d), 1e9d),
++            new Part(100d, new Vector3d(0d, 1d, 0d), 1e9d),
++        };
++        AssemblyStats viaPart = AssemblyStats.Compute(direct);
++
++        bool expectedOk = NearRel(viaDefs.TotalMassKg, 1000d, 1e-9)
++            && NearRel(viaDefs.CenterOfMass.X, 0.6d, 1e-9)
++            && NearRel(viaDefs.CenterOfMass.Y, 0.1d, 1e-9)
++            && NearRel(viaDefs.Inertia.M11, 90d, 1e-9)
++            && NearRel(viaDefs.Inertia.M22, 1440d, 1e-9)
++            && NearRel(viaDefs.Inertia.M33, 1530d, 1e-9)
++            && NearRel(viaDefs.Inertia.M12, 60d, 1e-9);
++        bool sameOk = Math.Abs(viaDefs.Inertia.M11 - viaPart.Inertia.M11) < 1e-12
++            && Math.Abs(viaDefs.Inertia.M22 - viaPart.Inertia.M22) < 1e-12
++            && Math.Abs(viaDefs.Inertia.M33 - viaPart.Inertia.M33) < 1e-12
++            && Math.Abs(viaDefs.Inertia.M12 - viaPart.Inertia.M12) < 1e-12
++            && Math.Abs(viaDefs.CenterOfMass.X - viaPart.CenterOfMass.X) < 1e-12;
++
++        Check(expectedOk && sameOk, "T202 point-compat",
++            string.Format(Inv,
++                "через PartDefinition = эталон Test30: {0}; совпадает с прямым Part: {1}; I11={2:G12} I12={3:G12}",
++                expectedOk, sameOk, viaDefs.Inertia.M11, viaDefs.Inertia.M12));
++        return 0;
++    }
++
++    // Test203: независимая дискретизация аппарата T1 против аналитики.
++    // Точки берутся по объёму каждой детали (полярная сетка для цилиндров, декартова для коробки),
++    // тензор собирается отдельным проходом по точкам, без PerKgShipFrame.
++    static int Test203_DiscretizedReference()
++    {
++        List<Part> parts = PartAssembly.FromDefinitions(LoadVesselT1(), 5000d);
++        AssemblyStats analytic = AssemblyStats.Compute(parts);
++
++        // Проход 1: масса и центр масс по точкам.
++        double mass = 0d;
++        Vector3d weighted = Vector3d.Zero;
++        foreach (Part p in parts)
++        {
++            EnumerateVolumeSamples(p, (pos, w) =>
++            {
++                mass += w;
++                weighted += pos * w;
++            });
++        }
++
++        Vector3d center = weighted / mass;
++
++        // Проход 2: тензор относительно центра масс.
++        double ixx = 0d;
++        double iyy = 0d;
++        double izz = 0d;
++        double ixy = 0d;
++        double ixz = 0d;
++        double iyz = 0d;
++        foreach (Part p in parts)
++        {
++            EnumerateVolumeSamples(p, (pos, w) =>
++            {
++                Vector3d d = pos - center;
++                ixx += w * ((d.Y * d.Y) + (d.Z * d.Z));
++                iyy += w * ((d.X * d.X) + (d.Z * d.Z));
++                izz += w * ((d.X * d.X) + (d.Y * d.Y));
++                ixy -= w * d.X * d.Y;
++                ixz -= w * d.X * d.Z;
++                iyz -= w * d.Y * d.Z;
++            });
++        }
++
++        double scale = Math.Max(Math.Max(Math.Abs(analytic.Inertia.M11), Math.Abs(analytic.Inertia.M22)),
++            Math.Abs(analytic.Inertia.M33));
++        double errDiag = Math.Max(Math.Max(
++            Math.Abs(ixx - analytic.Inertia.M11), Math.Abs(iyy - analytic.Inertia.M22)),
++            Math.Abs(izz - analytic.Inertia.M33));
++        double errOff = Math.Max(Math.Max(
++            Math.Abs(ixy - analytic.Inertia.M12), Math.Abs(ixz - analytic.Inertia.M13)),
++            Math.Abs(iyz - analytic.Inertia.M23));
++        double errCom = (center - analytic.CenterOfMass).Magnitude;
++
++        bool massOk = NearRel(mass, 5000d, 1e-9);
++        bool comOk = errCom < 1e-6;
++        bool diagOk = errDiag <= 1e-3 * scale;
++        bool offOk = errOff <= 1e-3 * scale;
++
++        Check(massOk && comOk && diagOk && offOk, "T203 discretized-reference",
++            string.Format(Inv,
++                "масса={0:F6} ({1}); |ΔCOM|={2:E2} м ({3}); max|ΔI_диаг|/I_max={4:E2} ({5}); max|ΔI_вне|/I_max={6:E2} ({7})",
++                mass, massOk, errCom, comOk, errDiag / scale, diagOk, errOff / scale, offOk));
++        return 0;
++    }
++
++    // Точки объёма детали в системе корабля с весами, сумма весов = массе детали.
++    private static void EnumerateVolumeSamples(Part p, Action<Vector3d, double> sink)
++    {
++        const int NRadial = 100;
++        const int NAngular = 64;
++        const int NAxial = 64;
++        const int NBox = 64;
++
++        switch (p.Shape)
++        {
++            case PartShape.Cylinder:
++            {
++                double radius = p.Dimensions.X;
++                double height = p.Dimensions.Y;
++                double dr = radius / NRadial;
++                double dTheta = 2d * Math.PI / NAngular;
++                double dy = height / NAxial;
++                double total = 0d;
++                for (int i = 0; i < NRadial; i++)
++                {
++                    double r = (i + 0.5d) * dr;
++                    total += r * dr * dTheta * dy * NAngular * NAxial;
++                }
++
++                for (int i = 0; i < NRadial; i++)
++                {
++                    double r = (i + 0.5d) * dr;
++                    for (int j = 0; j < NAngular; j++)
++                    {
++                        double theta = (j + 0.5d) * dTheta;
++                        double x = r * Math.Cos(theta);
++                        double z = r * Math.Sin(theta);
++                        for (int k = 0; k < NAxial; k++)
++                        {
++                            double y = -0.5d * height + ((k + 0.5d) * dy);
++                            double w = p.MassKg * (r * dr * dTheta * dy) / total;
++                            Vector3d local = new Vector3d(x, y, z);
++                            sink(p.LocalPosition + p.Orientation.Rotate(local), w);
++                        }
++                    }
++                }
++
++                break;
++            }
++
++            case PartShape.Box:
++            {
++                double a = p.Dimensions.X;
++                double b = p.Dimensions.Y;
++                double c = p.Dimensions.Z;
++                double w = p.MassKg / (NBox * NBox * NBox);
++                for (int i = 0; i < NBox; i++)
++                {
++                    double x = -0.5d * a + ((i + 0.5d) * a / NBox);
++                    for (int j = 0; j < NBox; j++)
++                    {
++                        double y = -0.5d * b + ((j + 0.5d) * b / NBox);
++                        for (int k = 0; k < NBox; k++)
++                        {
++                            double z = -0.5d * c + ((k + 0.5d) * c / NBox);
++                            sink(p.LocalPosition + p.Orientation.Rotate(new Vector3d(x, y, z)), w);
++                        }
++                    }
++                }
++
++                break;
++            }
++
++            default:
++                throw new ArgumentException("Дискретизация T203 поддерживает только Cylinder и Box.");
++        }
++    }
++}

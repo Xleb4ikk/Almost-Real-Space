@@ -114,5 +114,10 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Diagnostics\CheatGuiSkin.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Surface\SurfaceFrameMath.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Data\test_vessel_t1.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>
 

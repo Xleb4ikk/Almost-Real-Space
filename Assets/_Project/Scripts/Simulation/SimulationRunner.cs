@@ -86,7 +86,7 @@ namespace Galilego.Universe
         public double MainIspSeconds = 320d;
 
         [Tooltip("Сухая масса (без топлива), кг.")]
-        public double DryMassKg = 1000d;
+        public double DryMassKg = 3000d;
 
         [Tooltip("Тело спавна (имя из иерархии); пусто — самое глубокое тело под корнем.")]
         public string SpawnBodyName;
