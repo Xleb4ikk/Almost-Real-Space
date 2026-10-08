@@ -14,7 +14,6 @@
     <Compile Include="TestSupport.cs" />
     <Compile Include="TestRegistry.cs" />
     <Compile Include="Tests\**\*.cs" />
-    <Compile Include="LegacyVesselStep.cs" />
     <Compile Include="LandingTrace.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElements.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElementsData.cs" />
