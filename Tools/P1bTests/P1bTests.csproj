@@ -34,6 +34,8 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\ContactZone\SiteFrame.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\ContactZone\ContactZoneGate.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\ContactZone\ZoneIslands.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Player\IPlayerSupport.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Player\PlayerSurfaceController.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Assembly\PartDefinition.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\History\TrajectoryHistory.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\Transfers\LambertSolver.cs" />
