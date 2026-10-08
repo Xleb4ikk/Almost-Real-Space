@@ -1,0 +1,615 @@
+diff --git a/Assets/_Project/Scripts/Spacecraft/Solver/RigidAssemblySolver.cs b/Assets/_Project/Scripts/Spacecraft/Solver/RigidAssemblySolver.cs
+new file mode 100644
+index 0000000..e2dab1a
+--- /dev/null
++++ b/Assets/_Project/Scripts/Spacecraft/Solver/RigidAssemblySolver.cs
+@@ -0,0 +1,349 @@
++using System;
++using System.Collections.Generic;
++using Galilego.Core;
++
++namespace Galilego.Spacecraft.Solver
++{
++    /// <summary>
++    /// Твёрдое тело детали в решателе фазы 2. Масса и главные моменты (в осях тела),
++    /// состояние: центр масс в кадре решателя, скорость, ориентация тела (тело → кадр),
++    /// угловая скорость в осях тела. Внешние сила и момент задаются перед шагом и
++    /// постоянны на шаге. Контакты с землёй — фаза 3, здесь их нет.
++    /// </summary>
++    public sealed class RigidBody
++    {
++        public readonly double Mass;
++        public readonly Vector3d PrincipalInertia;
++
++        public Vector3d Position;
++        public Vector3d Velocity;
++        public QuaternionD Orientation;
++        public Vector3d AngularVelocityBody;
++
++        public Vector3d ForceWorld;
++        public Vector3d TorqueBody;
++
++        public RigidBody(double mass, Vector3d principalInertia, Vector3d position, QuaternionD orientation)
++        {
++            if (!(mass > 0d))
++            {
++                throw new ArgumentOutOfRangeException(nameof(mass), "Масса тела обязана быть положительной.");
++            }
++
++            if (!(principalInertia.X > 0d && principalInertia.Y > 0d && principalInertia.Z > 0d))
++            {
++                throw new ArgumentOutOfRangeException(nameof(principalInertia), "Главные моменты обязаны быть положительными.");
++            }
++
++            Mass = mass;
++            PrincipalInertia = principalInertia;
++            Position = position;
++            Velocity = Vector3d.Zero;
++            Orientation = orientation.Normalized;
++            AngularVelocityBody = Vector3d.Zero;
++            ForceWorld = Vector3d.Zero;
++            TorqueBody = Vector3d.Zero;
++        }
++
++        /// <summary>Обратный тензор инерции, применённый к мировому вектору: I⁻¹·v (мир).</summary>
++        public Vector3d ApplyInverseInertiaWorld(QuaternionD orientation, Vector3d worldVector)
++        {
++            Vector3d body = orientation.Conjugated.Rotate(worldVector);
++            Vector3d scaled = new Vector3d(
++                body.X / PrincipalInertia.X,
++                body.Y / PrincipalInertia.Y,
++                body.Z / PrincipalInertia.Z);
++            return orientation.Rotate(scaled);
++        }
++    }
++
++    /// <summary>
++    /// Жёсткий стык: три неколлинеарные точки совпадают на двух телах. Девять
++    /// скалярных ограничений ранга 6 фиксируют относительное положение и ориентацию.
++    /// Точки задаются в осях тел относительно их центров масс.
++    /// </summary>
++    public sealed class RigidJoint
++    {
++        public readonly int BodyA;
++        public readonly int BodyB;
++        public readonly Vector3d[] AnchorA;
++        public readonly Vector3d[] AnchorB;
++
++        public RigidJoint(int bodyA, int bodyB, Vector3d[] anchorA, Vector3d[] anchorB)
++        {
++            if (anchorA == null || anchorB == null || anchorA.Length != anchorB.Length || anchorA.Length < 1)
++            {
++                throw new ArgumentException("Стык требует одинакового числа якорных точек на обоих телах.");
++            }
++
++            BodyA = bodyA;
++            BodyB = bodyB;
++            AnchorA = anchorA;
++            AnchorB = anchorB;
++        }
++    }
++
++    /// <summary>
++    /// Решатель твёрдых тел фазы 2: фиксированный шаг dt, явное интегрирование
++    /// скоростей, RK4 для вращения тела (уравнения Эйлера в осях тела), XPBD-проекция
++    /// жёстких стыков (compliance α = 0) по скалярным ограничениям вдоль мировых осей.
++    /// Внутренние силы стыков сохраняют линейный импульс системы точно.
++    /// </summary>
++    public sealed class RigidAssemblySolver
++    {
++        private static readonly Vector3d[] WorldAxes =
++        {
++            new Vector3d(1d, 0d, 0d),
++            new Vector3d(0d, 1d, 0d),
++            new Vector3d(0d, 0d, 1d),
++        };
++
++        private readonly List<RigidBody> bodies = new List<RigidBody>();
++        private readonly List<RigidJoint> joints = new List<RigidJoint>();
++        private readonly double timeStep;
++        private readonly int iterations;
++
++        public RigidAssemblySolver(double timeStep, int iterations)
++        {
++            if (!(timeStep > 0d))
++            {
++                throw new ArgumentOutOfRangeException(nameof(timeStep), "Шаг решателя обязан быть положительным.");
++            }
++
++            if (iterations < 1)
++            {
++                throw new ArgumentOutOfRangeException(nameof(iterations), "Нужна хотя бы одна итерация.");
++            }
++
++            this.timeStep = timeStep;
++            this.iterations = iterations;
++        }
++
++        public double TimeStep => timeStep;
++        public double Time { get; private set; }
++        public IReadOnlyList<RigidBody> Bodies => bodies;
++        public IReadOnlyList<RigidJoint> Joints => joints;
++
++        public int AddBody(RigidBody body)
++        {
++            if (body == null)
++            {
++                throw new ArgumentNullException(nameof(body));
++            }
++
++            bodies.Add(body);
++            return bodies.Count - 1;
++        }
++
++        /// <summary>
++        /// Жёсткий стык в мировой точке pivot: три точки pivot, pivot + ex·L, pivot + ey·L
++        /// переводятся в оси обоих тел при текущем состоянии.
++        /// </summary>
++        public int AddRigidJoint(int bodyA, int bodyB, Vector3d pivotWorld, double spacingMeters = 1d)
++        {
++            if (bodyA == bodyB)
++            {
++                throw new ArgumentException("Стык должен соединять два разных тела.");
++            }
++
++            RigidBody a = bodies[bodyA];
++            RigidBody b = bodies[bodyB];
++            var points = new Vector3d[]
++            {
++                pivotWorld,
++                pivotWorld + (WorldAxes[0] * spacingMeters),
++                pivotWorld + (WorldAxes[1] * spacingMeters),
++            };
++
++            var anchorA = new Vector3d[points.Length];
++            var anchorB = new Vector3d[points.Length];
++            for (int k = 0; k < points.Length; k++)
++            {
++                anchorA[k] = a.Orientation.Conjugated.Rotate(points[k] - a.Position);
++                anchorB[k] = b.Orientation.Conjugated.Rotate(points[k] - b.Position);
++            }
++
++            joints.Add(new RigidJoint(bodyA, bodyB, anchorA, anchorB));
++            return joints.Count - 1;
++        }
++
++        /// <summary>Наибольшее расхождение якорных точек стыка, м (мировой кадр, текущее состояние).</summary>
++        public double JointSeparation(int jointIndex)
++        {
++            RigidJoint j = joints[jointIndex];
++            RigidBody a = bodies[j.BodyA];
++            RigidBody b = bodies[j.BodyB];
++            double worst = 0d;
++            for (int k = 0; k < j.AnchorA.Length; k++)
++            {
++                Vector3d pa = a.Position + a.Orientation.Rotate(j.AnchorA[k]);
++                Vector3d pb = b.Position + b.Orientation.Rotate(j.AnchorB[k]);
++                worst = Math.Max(worst, (pa - pb).Magnitude);
++            }
++
++            return worst;
++        }
++
++        public Vector3d LinearMomentum()
++        {
++            Vector3d p = Vector3d.Zero;
++            for (int i = 0; i < bodies.Count; i++)
++            {
++                p += bodies[i].Velocity * bodies[i].Mass;
++            }
++
++            return p;
++        }
++
++        public double KineticEnergy()
++        {
++            double e = 0d;
++            for (int i = 0; i < bodies.Count; i++)
++            {
++                RigidBody b = bodies[i];
++                double translational = 0.5d * b.Mass * b.Velocity.SqrMagnitude;
++                Vector3d w = b.AngularVelocityBody;
++                double rotational = 0.5d * ((b.PrincipalInertia.X * w.X * w.X)
++                    + (b.PrincipalInertia.Y * w.Y * w.Y)
++                    + (b.PrincipalInertia.Z * w.Z * w.Z));
++                e += translational + rotational;
++            }
++
++            return e;
++        }
++
++        /// <summary>Один шаг фиксированной длительности dt.</summary>
++        public void Step()
++        {
++            int n = bodies.Count;
++            var predictedPosition = new Vector3d[n];
++            var predictedOrientation = new QuaternionD[n];
++
++            for (int i = 0; i < n; i++)
++            {
++                RigidBody b = bodies[i];
++
++                b.Velocity += (b.ForceWorld / b.Mass) * timeStep;
++                b.AngularVelocityBody = IntegrateEulerRk4(
++                    b.AngularVelocityBody, b.TorqueBody, b.PrincipalInertia, timeStep);
++
++                predictedPosition[i] = b.Position + (b.Velocity * timeStep);
++                predictedOrientation[i] = (b.Orientation
++                    * RotationExponential(b.AngularVelocityBody * timeStep)).Normalized;
++            }
++
++            for (int it = 0; it < iterations; it++)
++            {
++                for (int j = 0; j < joints.Count; j++)
++                {
++                    RigidJoint joint = joints[j];
++                    for (int k = 0; k < joint.AnchorA.Length; k++)
++                    {
++                        for (int axis = 0; axis < 3; axis++)
++                        {
++                            ApplyPointAxisConstraint(joint, k, WorldAxes[axis],
++                                predictedPosition, predictedOrientation);
++                        }
++                    }
++                }
++            }
++
++            for (int i = 0; i < n; i++)
++            {
++                RigidBody b = bodies[i];
++                b.Position = predictedPosition[i];
++                b.Orientation = predictedOrientation[i];
++            }
++
++            Time += timeStep;
++        }
++
++        private void ApplyPointAxisConstraint(
++            RigidJoint joint,
++            int anchorIndex,
++            Vector3d axis,
++            Vector3d[] position,
++            QuaternionD[] orientation)
++        {
++            int ia = joint.BodyA;
++            int ib = joint.BodyB;
++            RigidBody a = bodies[ia];
++            RigidBody b = bodies[ib];
++
++            Vector3d ra = orientation[ia].Rotate(joint.AnchorA[anchorIndex]);
++            Vector3d rb = orientation[ib].Rotate(joint.AnchorB[anchorIndex]);
++            Vector3d pa = position[ia] + ra;
++            Vector3d pb = position[ib] + rb;
++
++            double c = Vector3d.Dot(pa - pb, axis);
++
++            Vector3d raCross = Vector3d.Cross(ra, axis);
++            Vector3d rbCross = Vector3d.Cross(rb, axis);
++            Vector3d ia_w = a.ApplyInverseInertiaWorld(orientation[ia], raCross);
++            Vector3d ib_w = b.ApplyInverseInertiaWorld(orientation[ib], rbCross);
++
++            double w = (1d / a.Mass) + (1d / b.Mass)
++                + Vector3d.Dot(raCross, ia_w) + Vector3d.Dot(rbCross, ib_w);
++            if (!(w > 0d))
++            {
++                return;
++            }
++
++            double lambda = -c / w;
++
++            Vector3d dxA = axis * (lambda / a.Mass);
++            Vector3d dThetaA = ia_w * lambda;
++            Vector3d dxB = axis * (-lambda / b.Mass);
++            Vector3d dThetaB = ib_w * (-lambda);
++
++            position[ia] = position[ia] + dxA;
++            position[ib] = position[ib] + dxB;
++
++            orientation[ia] = (RotationExponential(dThetaA) * orientation[ia]).Normalized;
++            orientation[ib] = (RotationExponential(dThetaB) * orientation[ib]).Normalized;
++
++            a.Velocity += dxA / timeStep;
++            b.Velocity += dxB / timeStep;
++            a.AngularVelocityBody += orientation[ia].Conjugated.Rotate(dThetaA) / timeStep;
++            b.AngularVelocityBody += orientation[ib].Conjugated.Rotate(dThetaB) / timeStep;
++        }
++
++        /// <summary>
++        /// Поворот на вектор rotationVector (рад, мировой или телесный — безразлично для малых
++        /// приращений здесь: вызывающий использует ту же ось): exp(θ/2) как кватернион.
++        /// </summary>
++        public static QuaternionD RotationExponential(Vector3d rotationVector)
++        {
++            double angle = rotationVector.Magnitude;
++            if (angle < 1e-12)
++            {
++                return new QuaternionD(0.5d * rotationVector.X, 0.5d * rotationVector.Y,
++                    0.5d * rotationVector.Z, 1d).Normalized;
++            }
++
++            double half = 0.5d * angle;
++            double s = Math.Sin(half) / angle;
++            return new QuaternionD(rotationVector.X * s, rotationVector.Y * s, rotationVector.Z * s, Math.Cos(half));
++        }
++
++        /// <summary>Один шаг RK4 для уравнений Эйлера (τ постоянен на шаге): ω̇ = (τ − ω×Iω)/I.</summary>
++        public static Vector3d IntegrateEulerRk4(Vector3d omega, Vector3d torqueBody, Vector3d inertia, double dt)
++        {
++            Vector3d k1 = EulerRate(omega, torqueBody, inertia);
++            Vector3d k2 = EulerRate(omega + (k1 * (0.5d * dt)), torqueBody, inertia);
++            Vector3d k3 = EulerRate(omega + (k2 * (0.5d * dt)), torqueBody, inertia);
++            Vector3d k4 = EulerRate(omega + (k3 * dt), torqueBody, inertia);
++            return omega + ((k1 + (k2 * 2d) + (k3 * 2d) + k4) * (dt / 6d));
++        }
++
++        private static Vector3d EulerRate(Vector3d w, Vector3d torque, Vector3d inertia)
++        {
++            Vector3d iw = new Vector3d(inertia.X * w.X, inertia.Y * w.Y, inertia.Z * w.Z);
++            Vector3d wxiw = Vector3d.Cross(w, iw);
++            return new Vector3d(
++                (torque.X - wxiw.X) / inertia.X,
++                (torque.Y - wxiw.Y) / inertia.Y,
++                (torque.Z - wxiw.Z) / inertia.Z);
++        }
++    }
++}
+diff --git a/Tools/P1bTests/P1bTests.csproj b/Tools/P1bTests/P1bTests.csproj
+index e066749..c4728e6 100644
+--- a/Tools/P1bTests/P1bTests.csproj
++++ b/Tools/P1bTests/P1bTests.csproj
+@@ -29,6 +29,7 @@
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Attitude\AttitudePhysics.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Attitude\ReactionControl.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Assembly\Parts.cs" />
++    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\RigidAssemblySolver.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Assembly\PartDefinition.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\History\TrajectoryHistory.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\Transfers\LambertSolver.cs" />
+diff --git a/Tools/P1bTests/TestRegistry.cs b/Tools/P1bTests/TestRegistry.cs
+index 53ba08c..cd699b5 100644
+--- a/Tools/P1bTests/TestRegistry.cs
++++ b/Tools/P1bTests/TestRegistry.cs
+@@ -187,6 +187,10 @@ internal static partial class P1bTests
+             new P1bCase("Test201_ExplicitMassAndScaling", Test201_ExplicitMassAndScaling, false),
+             new P1bCase("Test202_PointCompat", Test202_PointCompat, false),
+             new P1bCase("Test203_DiscretizedReference", Test203_DiscretizedReference, false),
++            new P1bCase("Test204_FreeFall", Test204_FreeFall, false),
++            new P1bCase("Test205_TorqueFreeEnergy", Test205_TorqueFreeEnergy, false),
++            new P1bCase("Test206_RigidJointCreep", Test206_RigidJointCreep, false),
++            new P1bCase("Test207_ImpulseConservation", Test207_ImpulseConservation, false),
+             new P1bCase("Test900_TerrainWallProbe", Test900_TerrainWallProbe, false),
+             new P1bCase("Test901_TerrainWallBisect", Test901_TerrainWallBisect, false),
+             new P1bCase("Test903_ShelfFixAb", Test903_ShelfFixAb, false),
+diff --git a/Tools/P1bTests/Tests/TestsRigidSolver.cs b/Tools/P1bTests/Tests/TestsRigidSolver.cs
+new file mode 100644
+index 0000000..c028e3b
+--- /dev/null
++++ b/Tools/P1bTests/Tests/TestsRigidSolver.cs
+@@ -0,0 +1,129 @@
++using System;
++using Galilego.Core;
++using Galilego.Spacecraft.Solver;
++using UnityEngine;
++
++// Фаза 2 (ТЗ v2, раздел 7): решатель твёрдых тел и жёсткие стыки, без контактов.
++// Test204 — свободное падение (ускорение = g); Test205 — энергия свободного вращения;
++// Test206 — ползучесть жёстких стыков под постоянной нагрузкой; Test207 — сохранение
++// линейного импульса при внутренних силах стыка.
++internal static partial class P1bTests
++{
++    private static readonly Vector3d GravityWorld = new Vector3d(0d, -9.81d, 0d);
++
++    static int Test204_FreeFall()
++    {
++        const double dt = 1e-3;
++        const int steps = 1000;
++        var solver = new RigidAssemblySolver(dt, iterations: 1);
++        var body = new RigidBody(10d, new Vector3d(1d, 2d, 3d), Vector3d.Zero, QuaternionD.Identity);
++        solver.AddBody(body);
++
++        for (int i = 0; i < steps; i++)
++        {
++            body.ForceWorld = GravityWorld * body.Mass;
++            solver.Step();
++        }
++
++        double t = solver.Time;
++        Vector3d accel = body.Velocity / t;
++        double relErr = (accel - GravityWorld).Magnitude / GravityWorld.Magnitude;
++        Check(relErr <= 1e-9, "T204 free-fall",
++            string.Format(Inv, "t={0:F3} с, a={1:G12}, |a−g|/|g|={2:E2} (≤1e-9)", t, accel.Y, relErr));
++        return 0;
++    }
++
++    static int Test205_TorqueFreeEnergy()
++    {
++        const double dt = 1e-3;
++        const int steps = 60000;
++        var solver = new RigidAssemblySolver(dt, iterations: 1);
++        var inertia = new Vector3d(1d, 2d, 3d);
++        var body = new RigidBody(5d, inertia, Vector3d.Zero, QuaternionD.Identity);
++        body.AngularVelocityBody = new Vector3d(0.1d, 1d, 0.2d);
++        solver.AddBody(body);
++
++        double e0 = solver.KineticEnergy();
++        double maxEnergyDrift = 0d;
++        double maxNormDrift = 0d;
++        for (int i = 0; i < steps; i++)
++        {
++            solver.Step();
++            double e = solver.KineticEnergy();
++            maxEnergyDrift = Math.Max(maxEnergyDrift, Math.Abs(e - e0) / e0);
++            maxNormDrift = Math.Max(maxNormDrift, Math.Abs(body.Orientation.NormSquared - 1d));
++        }
++
++        Check(maxEnergyDrift <= 1e-6 && maxNormDrift <= 1e-12, "T205 torque-free-energy",
++            string.Format(Inv, "t={0:F1} с, max|ΔT/T|={1:E2} (≤1e-6), max|1−|q|²|={2:E2} (≤1e-12)",
++                solver.Time, maxEnergyDrift, maxNormDrift));
++        return 0;
++    }
++
++    static int Test206_RigidJointCreep()
++    {
++        const double dt = 1e-3;
++        const int steps = 10000;
++        var solver = new RigidAssemblySolver(dt, iterations: 20);
++
++        var a = new RigidBody(1000d, new Vector3d(1000d, 1000d, 500d), new Vector3d(0d, 0d, 0d), QuaternionD.Identity);
++        var b = new RigidBody(200d, new Vector3d(40d, 40d, 20d), new Vector3d(1.5d, 0d, 0d), QuaternionD.Identity);
++        var c = new RigidBody(100d, new Vector3d(10d, 10d, 5d), new Vector3d(1.5d, 1.5d, 0d), QuaternionD.Identity);
++        int ia = solver.AddBody(a);
++        int ib = solver.AddBody(b);
++        int ic = solver.AddBody(c);
++        int jab = solver.AddRigidJoint(ia, ib, new Vector3d(0.75d, 0d, 0d));
++        int jbc = solver.AddRigidJoint(ib, ic, new Vector3d(1.5d, 0.75d, 0d));
++
++        // Постоянная нагрузка на первое тело: тяга вверх и момент вокруг оси Z.
++        var thrust = new Vector3d(0d, 2000d, 0d);
++        var torque = new Vector3d(0d, 0d, 50d);
++
++        double maxSeparation = 0d;
++        for (int i = 0; i < steps; i++)
++        {
++            a.ForceWorld = thrust;
++            a.TorqueBody = torque;
++            b.ForceWorld = GravityWorld * b.Mass;
++            c.ForceWorld = GravityWorld * c.Mass;
++            solver.Step();
++            maxSeparation = Math.Max(maxSeparation,
++                Math.Max(solver.JointSeparation(jab), solver.JointSeparation(jbc)));
++        }
++
++        Check(maxSeparation <= 1e-3, "T206 rigid-joint-creep",
++            string.Format(Inv, "t={0:F1} с, max расхождение якорей стыков={1:E2} м (≤1e-3)",
++                solver.Time, maxSeparation));
++        return 0;
++    }
++
++    static int Test207_ImpulseConservation()
++    {
++        const double dt = 1e-3;
++        const int steps = 2000;
++        var solver = new RigidAssemblySolver(dt, iterations: 20);
++
++        var a = new RigidBody(300d, new Vector3d(50d, 60d, 30d), new Vector3d(0d, 0d, 0d), QuaternionD.Identity);
++        var b = new RigidBody(120d, new Vector3d(20d, 25d, 10d), new Vector3d(2d, 0.5d, 0d), QuaternionD.Identity);
++        a.Velocity = new Vector3d(1d, 0d, 0.5d);
++        b.Velocity = new Vector3d(-0.5d, 2d, 0d);
++        a.AngularVelocityBody = new Vector3d(0.2d, -0.1d, 0.4d);
++        b.AngularVelocityBody = new Vector3d(-0.3d, 0.2d, 0.1d);
++        int ia = solver.AddBody(a);
++        int ib = solver.AddBody(b);
++        solver.AddRigidJoint(ia, ib, new Vector3d(1d, 0.25d, 0d));
++
++        Vector3d p0 = solver.LinearMomentum();
++        double scale = (a.Mass * a.Velocity.Magnitude) + (b.Mass * b.Velocity.Magnitude);
++        for (int i = 0; i < steps; i++)
++        {
++            solver.Step();
++        }
++
++        double drift = (solver.LinearMomentum() - p0).Magnitude / scale;
++        Check(drift <= 1e-9, "T207 impulse-conservation",
++            string.Format(Inv, "t={0:F1} с, |ΔP|/Σm|v|={1:E2} (≤1e-9), P0={2:G9}",
++                solver.Time, drift, p0.Magnitude));
++        return 0;
++    }
++}
+diff --git a/tests/GalilegoPhysicsTests/ContactSolverTests.cs b/tests/GalilegoPhysicsTests/ContactSolverTests.cs
+new file mode 100644
+index 0000000..7c92be3
+--- /dev/null
++++ b/tests/GalilegoPhysicsTests/ContactSolverTests.cs
+@@ -0,0 +1,80 @@
++using System;
++using Galilego.Core;
++using Galilego.Spacecraft.Solver;
++using Xunit;
++
++namespace GalilegoPhysicsTests
++{
++    /// <summary>
++    /// Фаза 2: чистые функции решателя твёрдых тел (ТЗ v2, раздел 7).
++    /// Полные приёмочные кейсы 204–207 — в стенде P1bTests; здесь — юнит-проверки
++    /// математики, которые должны держаться независимо от стенда.
++    /// </summary>
++    public sealed class ContactSolverTests
++    {
++        [Fact]
++        public void RotationExponential_IsUnitAndMatchesAxisAngle()
++        {
++            QuaternionD q = RigidAssemblySolver.RotationExponential(new Vector3d(0d, 0d, Math.PI / 2d));
++            Vector3d turned = q.Rotate(new Vector3d(1d, 0d, 0d));
++
++            Assert.True(Math.Abs(q.NormSquared - 1d) < 1e-14);
++            Assert.True(Math.Abs(turned.X) < 1e-12);
++            Assert.True(Math.Abs(turned.Y - 1d) < 1e-12);
++            Assert.True(Math.Abs(turned.Z) < 1e-12);
++        }
++
++        [Fact]
++        public void EulerRk4_RotationAboutPrincipalAxis_KeepsRate()
++        {
++            // ω ∥ главной оси: ω × Iω = 0, поэтому скорость постоянна.
++            Vector3d omega = new Vector3d(0d, 0d, 2d);
++            Vector3d next = RigidAssemblySolver.IntegrateEulerRk4(
++                omega, Vector3d.Zero, new Vector3d(1d, 2d, 3d), 1e-3);
++
++            Assert.True(Math.Abs(next.X) < 1e-15);
++            Assert.True(Math.Abs(next.Y) < 1e-15);
++            Assert.True(Math.Abs(next.Z - 2d) < 1e-15);
++        }
++
++        [Fact]
++        public void FreeFall_VelocityIsExactlyGravityTimesTime()
++        {
++            var solver = new RigidAssemblySolver(1e-3, iterations: 1);
++            var body = new RigidBody(4d, new Vector3d(1d, 1d, 1d), Vector3d.Zero, QuaternionD.Identity);
++            solver.AddBody(body);
++            Vector3d g = new Vector3d(0d, -9.81d, 0d);
++
++            for (int i = 0; i < 100; i++)
++            {
++                body.ForceWorld = g * body.Mass;
++                solver.Step();
++            }
++
++            Vector3d expected = g * solver.Time;
++            Assert.True((body.Velocity - expected).Magnitude < 1e-12);
++        }
++
++        [Fact]
++        public void InverseInertiaWorld_IdentityOrientation_ScalesByPrincipalMoments()
++        {
++            var body = new RigidBody(1d, new Vector3d(2d, 4d, 8d), Vector3d.Zero, QuaternionD.Identity);
++            Vector3d r = body.ApplyInverseInertiaWorld(QuaternionD.Identity, new Vector3d(1d, 1d, 1d));
++
++            Assert.True(Math.Abs(r.X - 0.5d) < 1e-15);
++            Assert.True(Math.Abs(r.Y - 0.25d) < 1e-15);
++            Assert.True(Math.Abs(r.Z - 0.125d) < 1e-15);
++        }
++
++        [Fact]
++        public void RigidJoint_SeparationIsZeroAtCreation()
++        {
++            var solver = new RigidAssemblySolver(1e-3, iterations: 4);
++            int a = solver.AddBody(new RigidBody(10d, new Vector3d(1d, 1d, 1d), new Vector3d(0d, 0d, 0d), QuaternionD.Identity));
++            int b = solver.AddBody(new RigidBody(5d, new Vector3d(1d, 1d, 1d), new Vector3d(2d, 0d, 0d), QuaternionD.Identity));
++            int j = solver.AddRigidJoint(a, b, new Vector3d(1d, 0d, 0d));
++
++            Assert.True(solver.JointSeparation(j) < 1e-12);
++        }
++    }
++}
+diff --git a/tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj b/tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj
+index 844a0cb..ba6f862 100644
+--- a/tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj
++++ b/tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj
+@@ -28,6 +28,7 @@
+     <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\PhysicsSolver.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\CelestialBody.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElements.cs" />
++    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\RigidAssemblySolver.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElementsData.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\Prediction\KeplerMath.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Universe\OrbitingBody.cs" />
