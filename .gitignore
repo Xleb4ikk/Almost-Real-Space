@@ -94,6 +94,9 @@ crashlytics-build.properties
 !Tools/P1bTests/P1bTests.csproj
 !tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj
 
+# Диагностический дамп Test903_ShelfFixAb (пишется в CWD при прогоне стенда)
+/shelf-fix-dump.txt
+
 # OpenCode/Kiro working directory - documentation and session files
 Assets/_Project/.kiro/
 
