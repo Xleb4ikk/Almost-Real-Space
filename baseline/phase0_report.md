@@ -77,16 +77,25 @@
   скорости — относительно со-вращающейся поверхности; событие — отдельной
   строкой в точный момент.
 
-SHA-256 (файлы `baseline/traces/`):
+SHA-256 (ревизия 2, файлы `baseline/traces/`, канонические LF-байты):
 
 ```
-S1_drop2km.csv   5E02E4EDB33F62AD87FA25E4376BE7944C6F5DA5AED6B0A6756CB2A0ECEECCD0
-S2_drop100.csv   89941E70AA22D6FB27959DB9AED2F1E747421B07D5A2CA7EB46411A436DFD493
-S3_impact50.csv  78DE0B789AC38074E8F97078692AA495861422405F3B68A5FE1084DEBBF50325
-S4_entry.csv     149DFA233C7286DB370098F61795C9646EAC710A8AE9A54D7C26A9E8FD2707BD
-S5_stand.csv     1BD21C1246B9B624DA7903E2E054B10AAD3EDFFC002E8708D87160B2022A15CD
-S6_chute_soft.csv 91390878F50CC0EEC049D6FAFE26CED793B989356FC604C6A57598D1969CFCBE
+S1_drop2km.csv    B87F47FBD3D91D5818A014063EBB8C7529D63D7B37A95B716258187A8221D40A
+S2_drop100.csv    A8F9780E116DF45B7DCA9A51A44AEA585B97EFE5FBF9E0F49E37B23A243B65DD
+S3_impact50.csv   19EE2BE54D16842496C12466CB39C3C4034630CC437A52F03DBBB4E8A04109E1
+S4_entry.csv      1689BFB5B665DE609C5E565BE16A86F21E0B999E96CB841D403E8EC6F3ED9DFE
+S5_stand.csv      7366EA394A24E158D26C3F1CED39E67FEDC5CD0D468092DA2CE63221B98623BA
+S6_chute_soft.csv BAB9938771E356580A6C7CCE12D75CFDAC6EAEB68DF695D9D30E814A1699132A
 ```
+
+**Ревизия 2 (2026-10-08).** В ревизии 1 писатель трейсов смешивал EOL:
+заголовок через `AppendLine` (CRLF на Windows), данные через `\n`; git с
+`* text=auto` нормализовал байты при checkout, и хэши ревизии 1 не
+воспроизводились в срезе. Исправлено: писатель пишет только `\n` (включая
+`summary.txt`), в `.gitattributes` добавлено `baseline/** -text`; эталон
+пересснят на эталонной машине (Windows). Канонические LF-байты S1–S5 побайтно
+совпали с legacy-блобами из git — паритет «до/после 0.4» подтверждён заново.
+Хэши ревизии 1 недействительны.
 
 Эталон текущего поведения: S1/S2/S3/S4 — разрушение (10 обломков, `Destroyed`),
 S5 — стоянка `Landed` 3600 с без дрейфа, S6 — мягкое касание (`v_n=-4.470`,
@@ -126,7 +135,8 @@ S5 — стоянка `Landed` 3600 с без дрейфа, S6 — мягкое 
    (10/10; 123 кейса, 293 PASS, 0 FAIL).
 3. `--slow` завершён — **да** (36/36, 0 FAIL, ни одного «не выполнено»).
 4. Трейсы S1–S6 воспроизводимы побайтно — **да** (двойные прогоны;
-   паритет «до/после 0.4» по S1–S5 — `baseline/parity.txt`).
+   паритет «до/после 0.4» по S1–S5 — `baseline/parity.txt`; канонические
+   LF-байты, `baseline/** -text`; ревизия 2 после исправления EOL).
 5. В коде физики нет изменений, кроме 0.2 (чистый перенос) и 0.4 (вынос
    без изменения поведения) — **да** (`DecorExclusion*.cs`, `SimulationRunner.cs`,
    `VesselStep.cs`).

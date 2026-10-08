@@ -126,7 +126,11 @@ internal static partial class P1bTests
             summary.AppendLine();
         }
 
-        File.WriteAllText(Path.Combine(outDir, "summary.txt"), summary.ToString(), new UTF8Encoding(false));
+        // summary тоже в LF: байтовая воспроизводимость всего каталога.
+        File.WriteAllText(
+            Path.Combine(outDir, "summary.txt"),
+            summary.ToString().Replace("\r\n", "\n"),
+            new UTF8Encoding(false));
         if (Directory.Exists(repeatDir))
         {
             Directory.Delete(repeatDir, true);
@@ -155,7 +159,10 @@ internal static partial class P1bTests
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine("t,alt,v_radial,v_tangential,regime,lat,lon,event");
+        // Только '\n': файлы трейсов не должны зависеть от платформы
+        // (AppendLine писал CRLF-заголовок и смешивал концы строк).
+        sb.Append("t,alt,v_radial,v_tangential,regime,lat,lon,event");
+        sb.Append('\n');
 
         bool sawTouchdown = false;
         double impactTime = double.NaN;
