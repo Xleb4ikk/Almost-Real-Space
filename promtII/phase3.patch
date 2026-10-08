@@ -1,0 +1,796 @@
+diff --git a/Assets/_Project/Scripts/Spacecraft/Solver/ContactGround.cs b/Assets/_Project/Scripts/Spacecraft/Solver/ContactGround.cs
+new file mode 100644
+index 0000000..8940331
+--- /dev/null
++++ b/Assets/_Project/Scripts/Spacecraft/Solver/ContactGround.cs
+@@ -0,0 +1,83 @@
++using System;
++using Galilego.Core;
++
++namespace Galilego.Spacecraft.Solver
++{
++    /// <summary>
++    /// Геометрия контакта для решателя фазы 3. Query: depth &gt; 0 — точка ниже поверхности
++    /// (м), normal — единичная внешняя нормаль поверхности в этой точке.
++    /// Чистый C#, без типов Unity: поверхность задаётся функцией, как ITerrainModel.
++    /// </summary>
++    public interface IContactGround
++    {
++        void Query(Vector3d point, out double depth, out Vector3d normal);
++    }
++
++    /// <summary>Плоскость n·p = offset, n — внешняя нормаль (единичная).</summary>
++    public sealed class PlaneGround : IContactGround
++    {
++        private readonly Vector3d normal;
++        private readonly double offset;
++
++        public PlaneGround(Vector3d normal, double offset)
++        {
++            if (!(normal.Magnitude > 0d))
++            {
++                throw new ArgumentException("Нормаль плоскости не может быть нулевой.", nameof(normal));
++            }
++
++            this.normal = normal.Normalized;
++            this.offset = offset;
++        }
++
++        public void Query(Vector3d point, out double depth, out Vector3d outwardNormal)
++        {
++            depth = offset - Vector3d.Dot(normal, point);
++            outwardNormal = normal;
++        }
++    }
++
++    /// <summary>
++    /// Поверхность y = h(x, z), y вверх. Нормаль выводится из ТОЙ ЖЕ функции h центральными
++    /// разностями с шагом Footprint (м): n = normalize(−∂h/∂x, 1, −∂h/∂z). Малый Footprint
++    /// видит мелкие неровности (камень), большой — усредняет их (контракт ITerrainModel).
++    /// </summary>
++    public sealed class HeightFieldGround : IContactGround
++    {
++        private readonly Func<double, double, double> height;
++        private readonly double footprint;
++
++        public HeightFieldGround(Func<double, double, double> height, double footprintMeters)
++        {
++            if (height == null)
++            {
++                throw new ArgumentNullException(nameof(height));
++            }
++
++            if (!(footprintMeters > 0d))
++            {
++                throw new ArgumentOutOfRangeException(nameof(footprintMeters), "Footprint обязан быть положительным.");
++            }
++
++            this.height = height;
++            footprint = footprintMeters;
++        }
++
++        public double Footprint => footprint;
++
++        public double Height(double x, double z) => height(x, z);
++
++        public Vector3d NormalAt(double x, double z)
++        {
++            double dhdx = (height(x + footprint, z) - height(x - footprint, z)) / (2d * footprint);
++            double dhdz = (height(x, z + footprint) - height(x, z - footprint)) / (2d * footprint);
++            return new Vector3d(-dhdx, 1d, -dhdz).Normalized;
++        }
++
++        public void Query(Vector3d point, out double depth, out Vector3d outwardNormal)
++        {
++            depth = height(point.X, point.Z) - point.Y;
++            outwardNormal = NormalAt(point.X, point.Z);
++        }
++    }
++}
+diff --git a/Assets/_Project/Scripts/Spacecraft/Solver/RigidAssemblySolver.cs b/Assets/_Project/Scripts/Spacecraft/Solver/RigidAssemblySolver.cs
+index e2dab1a..3223e07 100644
+--- a/Assets/_Project/Scripts/Spacecraft/Solver/RigidAssemblySolver.cs
++++ b/Assets/_Project/Scripts/Spacecraft/Solver/RigidAssemblySolver.cs
+@@ -22,6 +22,8 @@ namespace Galilego.Spacecraft.Solver
+ 
+         public Vector3d ForceWorld;
+         public Vector3d TorqueBody;
++        /// <summary>Точки контакта с поверхностью в осях тела, от центра масс (м). Пусто — тело без контакта.</summary>
++        public Vector3d[] ContactPointsBody = new Vector3d[0];
+ 
+         public RigidBody(double mass, Vector3d principalInertia, Vector3d position, QuaternionD orientation)
+         {
+@@ -100,6 +102,8 @@ namespace Galilego.Spacecraft.Solver
+ 
+         private readonly List<RigidBody> bodies = new List<RigidBody>();
+         private readonly List<RigidJoint> joints = new List<RigidJoint>();
++        private Vector3d[] contactDv = new Vector3d[0];
++        private Vector3d[] contactDw = new Vector3d[0];
+         private readonly double timeStep;
+         private readonly int iterations;
+ 
+@@ -212,26 +216,21 @@ namespace Galilego.Spacecraft.Solver
+             return e;
+         }
+ 
+-        /// <summary>Один шаг фиксированной длительности dt.</summary>
++        /// <summary>Один шаг фиксированной длительности dt (порядок sequential impulses).</summary>
+         public void Step()
+         {
+             int n = bodies.Count;
+-            var predictedPosition = new Vector3d[n];
+-            var predictedOrientation = new QuaternionD[n];
+ 
+             for (int i = 0; i < n; i++)
+             {
+                 RigidBody b = bodies[i];
+-
+-                b.Velocity += (b.ForceWorld / b.Mass) * timeStep;
++                b.Velocity = b.Velocity + ((b.ForceWorld / b.Mass) * timeStep);
+                 b.AngularVelocityBody = IntegrateEulerRk4(
+                     b.AngularVelocityBody, b.TorqueBody, b.PrincipalInertia, timeStep);
+-
+-                predictedPosition[i] = b.Position + (b.Velocity * timeStep);
+-                predictedOrientation[i] = (b.Orientation
+-                    * RotationExponential(b.AngularVelocityBody * timeStep)).Normalized;
+             }
+ 
++            // Стыки: импульсы на скорости, Baumgarte-смещение по ошибке якорей на начале шага.
++            // Внутренние импульсы парные в точках якорей, поэтому P и L сохраняются.
+             for (int it = 0; it < iterations; it++)
+             {
+                 for (int j = 0; j < joints.Count; j++)
+@@ -241,13 +240,27 @@ namespace Galilego.Spacecraft.Solver
+                     {
+                         for (int axis = 0; axis < 3; axis++)
+                         {
+-                            ApplyPointAxisConstraint(joint, k, WorldAxes[axis],
+-                                predictedPosition, predictedOrientation);
++                            ApplyJointAxisImpulse(joint, k, WorldAxes[axis]);
+                         }
+                     }
+                 }
+             }
+ 
++            var predictedPosition = new Vector3d[n];
++            var predictedOrientation = new QuaternionD[n];
++            for (int i = 0; i < n; i++)
++            {
++                RigidBody b = bodies[i];
++                predictedPosition[i] = b.Position + (b.Velocity * timeStep);
++                predictedOrientation[i] = (b.Orientation
++                    * RotationExponential(b.AngularVelocityBody * timeStep)).Normalized;
++            }
++
++            if (Ground != null)
++            {
++                DetectAndSolveContacts(predictedPosition, predictedOrientation);
++            }
++
+             for (int i = 0; i < n; i++)
+             {
+                 RigidBody b = bodies[i];
+@@ -258,54 +271,238 @@ namespace Galilego.Spacecraft.Solver
+             Time += timeStep;
+         }
+ 
+-        private void ApplyPointAxisConstraint(
+-            RigidJoint joint,
+-            int anchorIndex,
+-            Vector3d axis,
+-            Vector3d[] position,
+-            QuaternionD[] orientation)
++        /// <summary>
++        /// Импульс вдоль мировой оси e в точке якоря k стыка: обнуляет относительную скорость
++        /// точек вдоль e с Baumgarte-смещением −(β/dt)·C, C = (pA − pB)·e на начале шага.
++        /// </summary>
++        private void ApplyJointAxisImpulse(RigidJoint joint, int anchorIndex, Vector3d axis)
+         {
+             int ia = joint.BodyA;
+             int ib = joint.BodyB;
+             RigidBody a = bodies[ia];
+             RigidBody b = bodies[ib];
+ 
+-            Vector3d ra = orientation[ia].Rotate(joint.AnchorA[anchorIndex]);
+-            Vector3d rb = orientation[ib].Rotate(joint.AnchorB[anchorIndex]);
+-            Vector3d pa = position[ia] + ra;
+-            Vector3d pb = position[ib] + rb;
++            Vector3d ra = a.Orientation.Rotate(joint.AnchorA[anchorIndex]);
++            Vector3d rb = b.Orientation.Rotate(joint.AnchorB[anchorIndex]);
++            Vector3d pa = a.Position + ra;
++            Vector3d pb = b.Position + rb;
+ 
+             double c = Vector3d.Dot(pa - pb, axis);
++            double vn = Vector3d.Dot(PointVelocity(ia, a.Orientation, ra) - PointVelocity(ib, b.Orientation, rb), axis);
+ 
+-            Vector3d raCross = Vector3d.Cross(ra, axis);
+-            Vector3d rbCross = Vector3d.Cross(rb, axis);
+-            Vector3d ia_w = a.ApplyInverseInertiaWorld(orientation[ia], raCross);
+-            Vector3d ib_w = b.ApplyInverseInertiaWorld(orientation[ib], rbCross);
+-
++            Vector3d rxa = Vector3d.Cross(ra, axis);
++            Vector3d rxb = Vector3d.Cross(rb, axis);
+             double w = (1d / a.Mass) + (1d / b.Mass)
+-                + Vector3d.Dot(raCross, ia_w) + Vector3d.Dot(rbCross, ib_w);
++                + Vector3d.Dot(rxa, a.ApplyInverseInertiaWorld(a.Orientation, rxa))
++                + Vector3d.Dot(rxb, b.ApplyInverseInertiaWorld(b.Orientation, rxb));
++            if (!(w > 0d))
++            {
++                return;
++            }
++
++            double lambda = -(vn + (JointBaumgarte / timeStep) * c) / w;
++            Vector3d impulse = axis * lambda;
++            ApplyVelocityImpulse(ia, a.Orientation, ra, impulse);
++            ApplyVelocityImpulse(ib, b.Orientation, rb, -impulse);
++        }
++
++        /// <summary>Коэффициент Baumgarte для дрейфа якорей стыка (безразмерный, 0..1).</summary>
++        public double JointBaumgarte { get; set; } = 0.2d;
++
++        /// <summary>Геометрия контакта; null — контактов нет (фаза 2 без изменений).</summary>
++        public IContactGround Ground { get; set; }
++        public double StaticFriction { get; set; } = 0.7d;
++        public double KineticFriction { get; set; } = 0.5d;
++        public double Restitution { get; set; } = 0d;
++        public double ImpactThreshold { get; set; } = 0.01d;
++
++        private sealed class ContactRecord
++        {
++            public int Body;
++            public int Point;
++            public Vector3d Normal;
++            public Vector3d R;
++            public double VnPre;
++            public double LambdaN;
++            public Vector3d FrictionAcc;
++        }
++
++        /// <summary>
++        /// Сцепление без состояния: тангенциальный импульс, гасящий скольжение, допустим, пока
++        /// его величина не превышает μs·λn; иначе — кинетическое трение μk·λn против скольжения.
++        /// </summary>
++        private void DetectAndSolveContacts(Vector3d[] position, QuaternionD[] orientation)
++        {
++            var contacts = new List<ContactRecord>();
++            contactDv = new Vector3d[bodies.Count];
++            contactDw = new Vector3d[bodies.Count];
++            for (int i = 0; i < bodies.Count; i++)
++            {
++                RigidBody b = bodies[i];
++                for (int k = 0; k < b.ContactPointsBody.Length; k++)
++                {
++                    Vector3d r = orientation[i].Rotate(b.ContactPointsBody[k]);
++                    Ground.Query(position[i] + r, out double depth, out Vector3d n);
++                    if (depth <= 0d)
++                    {
++                        continue;
++                    }
++
++                    contacts.Add(new ContactRecord
++                    {
++                        Body = i,
++                        Point = k,
++                        Normal = n,
++                        R = r,
++                        VnPre = Vector3d.Dot(PointVelocity(i, orientation[i], r), n),
++                        LambdaN = 0d,
++                    });
++                }
++            }
++
++            if (contacts.Count == 0)
++            {
++                return;
++            }
++
++            for (int it = 0; it < iterations; it++)
++            {
++                for (int c = 0; c < contacts.Count; c++)
++                {
++                    SolveNormalAndFriction(contacts[c], orientation);
++                }
++            }
++
++            // Положения — из скоростей, уже очищенных от проникновения (Box2D-порядок):
++            // без этого предсказанное на шаге проникновение от гравитации уводило бы тело
++            // по нормали, а трение (покой) это не компенсирует.
++            for (int i = 0; i < bodies.Count; i++)
++            {
++                position[i] = position[i] + (contactDv[i] * timeStep);
++                orientation[i] = (RotationExponential(contactDw[i] * timeStep) * orientation[i]).Normalized;
++            }
++
++            for (int it = 0; it < iterations; it++)
++            {
++                for (int c = 0; c < contacts.Count; c++)
++                {
++                    ProjectPenetration(contacts[c], position, orientation);
++                }
++            }
++        }
++
++        private void SolveNormalAndFriction(ContactRecord c, QuaternionD[] orientation)
++        {
++            RigidBody b = bodies[c.Body];
++            QuaternionD q = orientation[c.Body];
++
++            Vector3d vp = PointVelocity(c.Body, q, c.R);
++            double vn = Vector3d.Dot(vp, c.Normal);
++            Vector3d rxn = Vector3d.Cross(c.R, c.Normal);
++            double wn = (1d / b.Mass) + Vector3d.Dot(rxn, b.ApplyInverseInertiaWorld(q, rxn));
++            if (!(wn > 0d))
++            {
++                return;
++            }
++
++            double target = c.VnPre < -ImpactThreshold ? -Restitution * c.VnPre : 0d;
++            double dl = (target - vn) / wn;
++            double newLambda = Math.Max(0d, c.LambdaN + dl);
++            dl = newLambda - c.LambdaN;
++            c.LambdaN = newLambda;
++            ApplyImpulse(c.Body, q, c.R, c.Normal * dl);
++
++            vp = PointVelocity(c.Body, q, c.R);
++            Vector3d vt = vp - (c.Normal * Vector3d.Dot(vp, c.Normal));
++            double vtMag = vt.Magnitude;
++            if (vtMag < 1e-12d)
++            {
++                return;
++            }
++
++            Vector3d t = vt / vtMag;
++            Vector3d rxt = Vector3d.Cross(c.R, t);
++            double wt = (1d / b.Mass) + Vector3d.Dot(rxt, b.ApplyInverseInertiaWorld(q, rxt));
++
++            // Накопленный за подшаг тангенциальный импульс конуса Кулона: сумма по итерациям,
++            // а не добавка каждую итерацию. Залипание — пока суммарный импульс внутри μs·λn;
++            // иначе скольжение — импульс на границе конуса μk·λn против движения.
++            Vector3d need = t * (-vtMag / wt);
++            Vector3d total = c.FrictionAcc + need;
++            double magnitude = total.Magnitude;
++            if (magnitude > StaticFriction * c.LambdaN)
++            {
++                total = magnitude > 0d ? total * (KineticFriction * c.LambdaN / magnitude) : Vector3d.Zero;
++            }
++
++            Vector3d delta = total - c.FrictionAcc;
++            c.FrictionAcc = total;
++            ApplyImpulse(c.Body, q, c.R, delta);
++        }
++
++        private void ProjectPenetration(ContactRecord c, Vector3d[] position, QuaternionD[] orientation)
++        {
++            int i = c.Body;
++            RigidBody b = bodies[i];
++            QuaternionD q = orientation[i];
++            Vector3d r = q.Rotate(b.ContactPointsBody[c.Point]);
++            Ground.Query(position[i] + r, out double depth, out Vector3d n);
++            if (depth <= 0d)
++            {
++                return;
++            }
++
++            Vector3d rxn = Vector3d.Cross(r, n);
++            double w = (1d / b.Mass) + Vector3d.Dot(rxn, b.ApplyInverseInertiaWorld(q, rxn));
+             if (!(w > 0d))
+             {
+                 return;
+             }
+ 
+-            double lambda = -c / w;
++            double lambda = depth / w;
++            position[i] = position[i] + (n * (lambda / b.Mass));
++            Vector3d dTheta = b.ApplyInverseInertiaWorld(q, rxn) * lambda;
++            orientation[i] = (RotationExponential(dTheta) * q).Normalized;
++        }
+ 
+-            Vector3d dxA = axis * (lambda / a.Mass);
+-            Vector3d dThetaA = ia_w * lambda;
+-            Vector3d dxB = axis * (-lambda / b.Mass);
+-            Vector3d dThetaB = ib_w * (-lambda);
++        private Vector3d PointVelocity(int bodyIndex, QuaternionD q, Vector3d r)
++        {
++            RigidBody b = bodies[bodyIndex];
++            return b.Velocity + Vector3d.Cross(q.Rotate(b.AngularVelocityBody), r);
++        }
++
++        private void ApplyVelocityImpulse(int bodyIndex, QuaternionD q, Vector3d r, Vector3d impulse)
++        {
++            RigidBody b = bodies[bodyIndex];
++            Vector3d dOmegaWorld = b.ApplyInverseInertiaWorld(q, Vector3d.Cross(r, impulse));
++            b.Velocity = b.Velocity + (impulse / b.Mass);
++            b.AngularVelocityBody = b.AngularVelocityBody + q.Conjugated.Rotate(dOmegaWorld);
++        }
+ 
+-            position[ia] = position[ia] + dxA;
+-            position[ib] = position[ib] + dxB;
++        /// <summary>Контактный импульс: скорость сразу и накопление для сдвига положения на шаге.</summary>
++        private void ApplyImpulse(int bodyIndex, QuaternionD q, Vector3d r, Vector3d impulse)
++        {
++            ApplyVelocityImpulse(bodyIndex, q, r, impulse);
++            RigidBody b = bodies[bodyIndex];
++            contactDv[bodyIndex] = contactDv[bodyIndex] + (impulse / b.Mass);
++            contactDw[bodyIndex] = contactDw[bodyIndex] + b.ApplyInverseInertiaWorld(q, Vector3d.Cross(r, impulse));
++        }
+ 
+-            orientation[ia] = (RotationExponential(dThetaA) * orientation[ia]).Normalized;
+-            orientation[ib] = (RotationExponential(dThetaB) * orientation[ib]).Normalized;
++        /// <summary>Суммарный момент импульса относительно начала мира: Σ(x×mv + R·I·ω_тела).</summary>
++        public Vector3d AngularMomentum()
++        {
++            Vector3d l = Vector3d.Zero;
++            for (int i = 0; i < bodies.Count; i++)
++            {
++                RigidBody b = bodies[i];
++                Vector3d spin = new Vector3d(
++                    b.PrincipalInertia.X * b.AngularVelocityBody.X,
++                    b.PrincipalInertia.Y * b.AngularVelocityBody.Y,
++                    b.PrincipalInertia.Z * b.AngularVelocityBody.Z);
++                l = l + Vector3d.Cross(b.Position, b.Velocity * b.Mass) + b.Orientation.Rotate(spin);
++            }
+ 
+-            a.Velocity += dxA / timeStep;
+-            b.Velocity += dxB / timeStep;
+-            a.AngularVelocityBody += orientation[ia].Conjugated.Rotate(dThetaA) / timeStep;
+-            b.AngularVelocityBody += orientation[ib].Conjugated.Rotate(dThetaB) / timeStep;
++            return l;
+         }
+ 
+         /// <summary>
+diff --git a/Tools/P1bTests/P1bTests.csproj b/Tools/P1bTests/P1bTests.csproj
+index c4728e6..2e8903b 100644
+--- a/Tools/P1bTests/P1bTests.csproj
++++ b/Tools/P1bTests/P1bTests.csproj
+@@ -30,6 +30,7 @@
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Attitude\ReactionControl.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Assembly\Parts.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\RigidAssemblySolver.cs" />
++    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\ContactGround.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Assembly\PartDefinition.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\History\TrajectoryHistory.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\Transfers\LambertSolver.cs" />
+diff --git a/Tools/P1bTests/TestRegistry.cs b/Tools/P1bTests/TestRegistry.cs
+index cd699b5..c4c786d 100644
+--- a/Tools/P1bTests/TestRegistry.cs
++++ b/Tools/P1bTests/TestRegistry.cs
+@@ -191,6 +191,13 @@ internal static partial class P1bTests
+             new P1bCase("Test205_TorqueFreeEnergy", Test205_TorqueFreeEnergy, false),
+             new P1bCase("Test206_RigidJointCreep", Test206_RigidJointCreep, false),
+             new P1bCase("Test207_ImpulseConservation", Test207_ImpulseConservation, false),
++            new P1bCase("Test208_AngularMomentum", Test208_AngularMomentum, false),
++            new P1bCase("Test210_FlatRest", Test210_FlatRest, false),
++            new P1bCase("Test211_ContactRestitution", Test211_ContactRestitution, false),
++            new P1bCase("Test212_StickSlopeCompat", Test212_StickSlopeCompat, false),
++            new P1bCase("Test213_RestEnergy", Test213_RestEnergy, false),
++            new P1bCase("Test214_LocalNormalFootprint", Test214_LocalNormalFootprint, false),
++            new P1bCase("Test215_ContactCostBudget", Test215_ContactCostBudget, false),
+             new P1bCase("Test900_TerrainWallProbe", Test900_TerrainWallProbe, false),
+             new P1bCase("Test901_TerrainWallBisect", Test901_TerrainWallBisect, false),
+             new P1bCase("Test903_ShelfFixAb", Test903_ShelfFixAb, false),
+diff --git a/Tools/P1bTests/Tests/TestsContact.cs b/Tools/P1bTests/Tests/TestsContact.cs
+new file mode 100644
+index 0000000..85e00e8
+--- /dev/null
++++ b/Tools/P1bTests/Tests/TestsContact.cs
+@@ -0,0 +1,274 @@
++using System;
++using System.Collections.Generic;
++using Galilego.Core;
++using Galilego.Spacecraft.Solver;
++using UnityEngine;
++
++// Фаза 3 (ТЗ v2, раздел 7): контакты с поверхностью (XPBD-проекция, кулоново трение,
++// восстановление), локальная нормаль с footprint. Test208 — момент импульса системы
++// (стык без поверхности), 210–215 — приёмка контактов.
++internal static partial class P1bTests
++{
++    private const double ContactDt = 1e-3;
++    private const int ContactIterations = 20;
++
++    private static Vector3d Gravity9_81 => new Vector3d(0d, -9.81d, 0d);
++
++    // Точечное тело: один контакт в центре масс — без крутящего момента от трения.
++    private static RigidBody PointContactBody(double mass, Vector3d position)
++    {
++        var b = new RigidBody(mass, new Vector3d(1d, 1d, 1d), position, QuaternionD.Identity);
++        b.ContactPointsBody = new[] { Vector3d.Zero };
++        return b;
++    }
++
++    // Блок 1×1×1 м: четыре нижних угла в контакте, центр на высоте 0.5 м.
++    private static RigidBody BlockContactBody(double mass, Vector3d position)
++    {
++        var b = new RigidBody(mass, new Vector3d(mass / 6d, mass / 6d, mass / 6d), position, QuaternionD.Identity);
++        b.ContactPointsBody = new[]
++        {
++            new Vector3d(-0.5d, -0.5d, -0.5d), new Vector3d(0.5d, -0.5d, -0.5d),
++            new Vector3d(-0.5d, -0.5d, 0.5d), new Vector3d(0.5d, -0.5d, 0.5d),
++        };
++        return b;
++    }
++
++    static int Test208_AngularMomentum()
++    {
++        var solver = new RigidAssemblySolver(ContactDt, iterations: 20);
++        var a = new RigidBody(300d, new Vector3d(50d, 60d, 30d), new Vector3d(0d, 0d, 0d), QuaternionD.Identity);
++        var b = new RigidBody(120d, new Vector3d(20d, 25d, 10d), new Vector3d(2d, 0.5d, 0d), QuaternionD.Identity);
++        a.Velocity = new Vector3d(1d, 0d, 0.5d);
++        b.Velocity = new Vector3d(-0.5d, 2d, 0d);
++        a.AngularVelocityBody = new Vector3d(0.2d, -0.1d, 0.4d);
++        b.AngularVelocityBody = new Vector3d(-0.3d, 0.2d, 0.1d);
++        int ia = solver.AddBody(a);
++        int ib = solver.AddBody(b);
++        solver.AddRigidJoint(ia, ib, new Vector3d(1d, 0.25d, 0d));
++
++        Vector3d l0 = solver.AngularMomentum();
++        for (int i = 0; i < 2000; i++)
++        {
++            solver.Step();
++        }
++
++        double drift = (solver.AngularMomentum() - l0).Magnitude / l0.Magnitude;
++        Check(drift <= 1e-6, "T208 angular-momentum",
++            string.Format(Inv, "t={0:F1} с, |ΔL|/|L0|={1:E2} (≤1e-6), |L0|={2:G9}", solver.Time, drift, l0.Magnitude));
++        return 0;
++    }
++
++    static int Test210_FlatRest()
++    {
++        var solver = new RigidAssemblySolver(ContactDt, ContactIterations);
++        solver.Ground = new PlaneGround(new Vector3d(0d, 1d, 0d), 0d);
++        RigidBody block = BlockContactBody(10d, new Vector3d(0d, 0.5d, 0d));
++        solver.AddBody(block);
++
++        double maxSpeed = 0d;
++        double maxPenetration = 0d;
++        for (int i = 0; i < 5000; i++)
++        {
++            block.ForceWorld = Gravity9_81 * block.Mass;
++            solver.Step();
++            if (i >= 1000)
++            {
++                maxSpeed = Math.Max(maxSpeed, block.Velocity.Magnitude);
++            }
++
++            for (int k = 0; k < block.ContactPointsBody.Length; k++)
++            {
++                Vector3d p = block.Position + block.Orientation.Rotate(block.ContactPointsBody[k]);
++                maxPenetration = Math.Max(maxPenetration, -p.Y);
++            }
++        }
++
++        Check(maxSpeed < 1e-3 && maxPenetration <= 1e-3, "T210 flat-rest",
++            string.Format(Inv, "t={0:F1} с, max|v| после 1 с={1:E2} м/с (≤1e-3), max проникновение={2:E2} м (≤1e-3)",
++                solver.Time, maxSpeed, maxPenetration));
++        return 0;
++    }
++
++    static int Test211_ContactRestitution()
++    {
++        const double e = 0.5d;
++        const double drop = 0.5d;
++        var solver = new RigidAssemblySolver(ContactDt, ContactIterations);
++        solver.Ground = new PlaneGround(new Vector3d(0d, 1d, 0d), 0d);
++        solver.Restitution = e;
++        RigidBody ball = PointContactBody(10d, new Vector3d(0d, drop, 0d));
++        solver.AddBody(ball);
++
++        double vAfter = double.NaN;
++        for (int i = 0; i < 2000 && double.IsNaN(vAfter); i++)
++        {
++            double vBefore = ball.Velocity.Y;
++            ball.ForceWorld = Gravity9_81 * ball.Mass;
++            solver.Step();
++            if (vBefore < 0d && ball.Velocity.Y > 0d)
++            {
++                vAfter = ball.Velocity.Y;
++            }
++        }
++
++        double vImpact = Math.Sqrt(2d * 9.81d * drop);
++        double ratio = vAfter / (e * vImpact);
++        Check(!double.IsNaN(vAfter) && Math.Abs(ratio - 1d) <= 0.1d, "T211 contact-restitution",
++            string.Format(Inv, "v_после={0:F4} м/с, e·v_удара={1:F4} м/с (v_удара={2:F4}); отношение={3:F4} (±10%)",
++                vAfter, e * vImpact, vImpact, ratio));
++        return 0;
++    }
++
++    static int Test212_StickSlopeCompat()
++    {
++        const double g = 9.8d;
++        const double mu = 0.7d;
++        const double muK = 0.5d;
++
++        // Залипание: после осадки (0.5 с, удар закончен) тело неподвижно.
++        // Скольжение: ускорение по участку 0.7–1.0 с, уже после удара о склон (≈0.45 с).
++        double Slope(double deg, out double slipAccel, out Vector3d displacementAfterSettle, out double speedAfterSettle)
++        {
++            double th = deg * Math.PI / 180d;
++            var normal = new Vector3d(Math.Sin(th), Math.Cos(th), 0d);
++            var solver = new RigidAssemblySolver(ContactDt, ContactIterations)
++            {
++                Ground = new PlaneGround(normal, 0d),
++                StaticFriction = mu,
++                KineticFriction = muK,
++            };
++            RigidBody ball = PointContactBody(10d, normal * 0.5d);
++            solver.AddBody(ball);
++
++            Vector3d settled = Vector3d.Zero;
++            double speedAt07 = 0d;
++            for (int i = 0; i < 1000; i++)
++            {
++                ball.ForceWorld = new Vector3d(0d, -g, 0d) * ball.Mass;
++                solver.Step();
++                if (i == 499)
++                {
++                    settled = ball.Position;
++                }
++
++                if (i == 699)
++                {
++                    speedAt07 = ball.Velocity.Magnitude;
++                }
++            }
++
++            speedAfterSettle = ball.Velocity.Magnitude;
++            displacementAfterSettle = ball.Position - settled;
++            slipAccel = (speedAfterSettle - speedAt07) / 0.3d;
++            return slipAccel;
++        }
++
++        double accelStick;
++        Vector3d disp30;
++        double speed30;
++        Slope(30d, out accelStick, out disp30, out speed30);
++        bool stick30 = speed30 < 1e-6 && disp30.Magnitude < 1e-6;
++
++        double accel60;
++        Vector3d disp60;
++        double speed60;
++        Slope(60d, out accel60, out disp60, out speed60);
++        double expected60 = g * (Math.Sin(60d * Math.PI / 180d) - muK * Math.Cos(60d * Math.PI / 180d));
++        bool slip60 = Math.Abs(accel60 - expected60) < 0.05d;
++        double speed60Val = speed60;
++
++        var flat = new RigidAssemblySolver(ContactDt, ContactIterations)
++        {
++            Ground = new PlaneGround(new Vector3d(0d, 1d, 0d), 0d),
++            StaticFriction = mu,
++            KineticFriction = muK,
++        };
++        RigidBody slider = PointContactBody(10d, new Vector3d(0d, 0.5d, 0d));
++        slider.Velocity = new Vector3d(50d, 0d, 0d);
++        flat.AddBody(slider);
++        Vector3d s0 = slider.Position;
++        int steps = 0;
++        while (steps < 60000 && slider.Velocity.Magnitude > 1e-6)
++        {
++            slider.ForceWorld = new Vector3d(0d, -g, 0d) * slider.Mass;
++            flat.Step();
++            steps++;
++        }
++
++        double stopDistance = (slider.Position - s0).Magnitude;
++        bool stop = Math.Abs(stopDistance - 255.1d) < 2d;
++
++        Check(stick30 && slip60 && stop, "T212 stick-slope-compat",
++            string.Format(Inv,
++                "стик 30°: |v|={0:E2}, путь после осадки={1:E2} м: {2}; слип 60°: a={3:F3} м/с² (≈{4:F3}): {5}; стоп 50 м/с: путь={6:F1} м (≈255.1): {7}",
++                speed30, disp30.Magnitude, stick30, accel60, expected60, slip60, stopDistance, stop));
++        return 0;
++    }
++
++    static int Test213_RestEnergy()
++    {
++        var solver = new RigidAssemblySolver(ContactDt, ContactIterations);
++        solver.Ground = new PlaneGround(new Vector3d(0d, 1d, 0d), 0d);
++        RigidBody block = BlockContactBody(10d, new Vector3d(0d, 0.5d, 0d));
++        solver.AddBody(block);
++
++        double E0 = (block.Mass * 9.81d * block.Position.Y) + solver.KineticEnergy();
++        double worst = 0d;
++        for (int i = 0; i < 10000; i++)
++        {
++            block.ForceWorld = Gravity9_81 * block.Mass;
++            solver.Step();
++            double e = (block.Mass * 9.81d * block.Position.Y) + solver.KineticEnergy();
++            worst = Math.Max(worst, Math.Abs(e - E0));
++        }
++
++        double scale = block.Mass * 9.81d * 0.5d;
++        Check(worst <= 0.01d * scale, "T213 rest-energy",
++            string.Format(Inv, "t={0:F1} с, max|ΔE|={1:E2} Дж, E0={2:F3} Дж, порог 1% от m·g·0.5 = {3:E2} Дж",
++                solver.Time, worst, E0, 0.01d * scale));
++        return 0;
++    }
++
++    static int Test214_LocalNormalFootprint()
++    {
++        // Камень: h = A·sin(k·x), λ = 4 м, A = 0.2 м. Истинный наклон в x=0: A·k.
++        const double amplitude = 0.2d;
++        double k = 2d * Math.PI / 4d;
++        var rock = new HeightFieldGround((x, z) => amplitude * Math.Sin(k * x), footprintMeters: 0.5d);
++        var averaged = new HeightFieldGround((x, z) => amplitude * Math.Sin(k * x), footprintMeters: 114d);
++
++        double truth = amplitude * k;
++        Vector3d nLocal = rock.NormalAt(0d, 0d);
++        Vector3d nAvg = averaged.NormalAt(0d, 0d);
++        double slopeLocal = -nLocal.X / nLocal.Y;
++        double slopeAvg = -nAvg.X / nAvg.Y;
++
++        double errLocal = Math.Abs(slopeLocal - truth) / truth;
++        double errAvg = Math.Abs(slopeAvg - truth) / truth;
++        Check(errLocal <= 0.12d && errAvg >= 0.9d, "T214 local-normal-footprint",
++            string.Format(Inv, "истинный наклон={0:F4}; footprint 0.5 м: {1:F4} (ошибка {2:P1}, ≤12%); footprint 114 м: {3:F5} (ошибка {4:P1}, ≥90%)",
++                truth, slopeLocal, errLocal, slopeAvg, errAvg));
++        return 0;
++    }
++
++    static int Test215_ContactCostBudget()
++    {
++        var ground = new HeightFieldGround((x, z) => 0.1d * Math.Sin(x), footprintMeters: 0.5d);
++        const int samples = 200000;
++        double acc = 0d;
++        var sw = System.Diagnostics.Stopwatch.StartNew();
++        for (int i = 0; i < samples; i++)
++        {
++            ground.Query(new Vector3d(0.001d * i, 0.05d, 0.002d * i), out double depth, out Vector3d n);
++            acc += depth + n.Y;
++        }
++
++        sw.Stop();
++        double usPerQuery = sw.Elapsed.TotalMilliseconds * 1000d / samples;
++        Check(double.IsFinite(acc), "T215 contact-cost-budget",
++            string.Format(Inv, "информативно: {0:F3} мкс на запрос поверхности (footprint 0.5 м, {1} запросов); бюджет фазы 10 — ≤1.5 мс на кадр",
++                usPerQuery, samples));
++        return 0;
++    }
++}
+diff --git a/tests/GalilegoPhysicsTests/ContactSolverTests.cs b/tests/GalilegoPhysicsTests/ContactSolverTests.cs
+index 7c92be3..7239cf6 100644
+--- a/tests/GalilegoPhysicsTests/ContactSolverTests.cs
++++ b/tests/GalilegoPhysicsTests/ContactSolverTests.cs
+@@ -76,5 +76,29 @@ namespace GalilegoPhysicsTests
+ 
+             Assert.True(solver.JointSeparation(j) < 1e-12);
+         }
++        [Fact]
++        public void PlaneGround_DepthIsPositiveBelowAndNormalIsOutward()
++        {
++            var ground = new PlaneGround(new Vector3d(0d, 2d, 0d), 0d);
++            ground.Query(new Vector3d(0d, -0.25d, 0d), out double depthBelow, out Vector3d normal);
++            ground.Query(new Vector3d(0d, 0.5d, 0d), out double depthAbove, out _);
++
++            Assert.True(Math.Abs(depthBelow - 0.25d) < 1e-15);
++            Assert.True(Math.Abs(depthAbove + 0.5d) < 1e-15);
++            Assert.True(Math.Abs(normal.Y - 1d) < 1e-15);
++        }
++
++        [Fact]
++        public void HeightFieldGround_NormalOfLinearSlopeMatchesAnalyticNormal()
++        {
++            // h = 0.1·x: наклон 0.1, внешняя нормаль ∝ (−0.1, 1, 0).
++            var ground = new HeightFieldGround((x, z) => 0.1d * x, footprintMeters: 0.5d);
++            Vector3d n = ground.NormalAt(3d, -7d);
++            double expectedLength = Math.Sqrt(1.01d);
++
++            Assert.True(Math.Abs(n.X + 0.1d / expectedLength) < 1e-12);
++            Assert.True(Math.Abs(n.Y - 1d / expectedLength) < 1e-12);
++            Assert.True(Math.Abs(n.Z) < 1e-12);
++        }
+     }
+ }
+diff --git a/tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj b/tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj
+index ba6f862..7cab345 100644
+--- a/tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj
++++ b/tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj
+@@ -29,6 +29,7 @@
+     <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\CelestialBody.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElements.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\RigidAssemblySolver.cs" />
++    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\ContactGround.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElementsData.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\Prediction\KeplerMath.cs" />
+     <Compile Include="..\..\Assets\_Project\Scripts\Universe\OrbitingBody.cs" />

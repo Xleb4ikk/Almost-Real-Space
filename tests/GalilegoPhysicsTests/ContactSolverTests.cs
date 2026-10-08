@@ -76,5 +76,29 @@ namespace GalilegoPhysicsTests
 
             Assert.True(solver.JointSeparation(j) < 1e-12);
         }
+        [Fact]
+        public void PlaneGround_DepthIsPositiveBelowAndNormalIsOutward()
+        {
+            var ground = new PlaneGround(new Vector3d(0d, 2d, 0d), 0d);
+            ground.Query(new Vector3d(0d, -0.25d, 0d), out double depthBelow, out Vector3d normal);
+            ground.Query(new Vector3d(0d, 0.5d, 0d), out double depthAbove, out _);
+
+            Assert.True(Math.Abs(depthBelow - 0.25d) < 1e-15);
+            Assert.True(Math.Abs(depthAbove + 0.5d) < 1e-15);
+            Assert.True(Math.Abs(normal.Y - 1d) < 1e-15);
+        }
+
+        [Fact]
+        public void HeightFieldGround_NormalOfLinearSlopeMatchesAnalyticNormal()
+        {
+            // h = 0.1·x: наклон 0.1, внешняя нормаль ∝ (−0.1, 1, 0).
+            var ground = new HeightFieldGround((x, z) => 0.1d * x, footprintMeters: 0.5d);
+            Vector3d n = ground.NormalAt(3d, -7d);
+            double expectedLength = Math.Sqrt(1.01d);
+
+            Assert.True(Math.Abs(n.X + 0.1d / expectedLength) < 1e-12);
+            Assert.True(Math.Abs(n.Y - 1d / expectedLength) < 1e-12);
+            Assert.True(Math.Abs(n.Z) < 1e-12);
+        }
     }
 }

@@ -22,6 +22,8 @@ namespace Galilego.Spacecraft.Solver
 
         public Vector3d ForceWorld;
         public Vector3d TorqueBody;
+        /// <summary>Точки контакта с поверхностью в осях тела, от центра масс (м). Пусто — тело без контакта.</summary>
+        public Vector3d[] ContactPointsBody = new Vector3d[0];
 
         public RigidBody(double mass, Vector3d principalInertia, Vector3d position, QuaternionD orientation)
         {
@@ -100,6 +102,8 @@ namespace Galilego.Spacecraft.Solver
 
         private readonly List<RigidBody> bodies = new List<RigidBody>();
         private readonly List<RigidJoint> joints = new List<RigidJoint>();
+        private Vector3d[] contactDv = new Vector3d[0];
+        private Vector3d[] contactDw = new Vector3d[0];
         private readonly double timeStep;
         private readonly int iterations;
 
@@ -212,26 +216,21 @@ namespace Galilego.Spacecraft.Solver
             return e;
         }
 
-        /// <summary>Один шаг фиксированной длительности dt.</summary>
+        /// <summary>Один шаг фиксированной длительности dt (порядок sequential impulses).</summary>
         public void Step()
         {
             int n = bodies.Count;
-            var predictedPosition = new Vector3d[n];
-            var predictedOrientation = new QuaternionD[n];
 
             for (int i = 0; i < n; i++)
             {
                 RigidBody b = bodies[i];
-
-                b.Velocity += (b.ForceWorld / b.Mass) * timeStep;
+                b.Velocity = b.Velocity + ((b.ForceWorld / b.Mass) * timeStep);
                 b.AngularVelocityBody = IntegrateEulerRk4(
                     b.AngularVelocityBody, b.TorqueBody, b.PrincipalInertia, timeStep);
-
-                predictedPosition[i] = b.Position + (b.Velocity * timeStep);
-                predictedOrientation[i] = (b.Orientation
-                    * RotationExponential(b.AngularVelocityBody * timeStep)).Normalized;
             }
 
+            // Стыки: импульсы на скорости, Baumgarte-смещение по ошибке якорей на начале шага.
+            // Внутренние импульсы парные в точках якорей, поэтому P и L сохраняются.
             for (int it = 0; it < iterations; it++)
             {
                 for (int j = 0; j < joints.Count; j++)
@@ -241,11 +240,25 @@ namespace Galilego.Spacecraft.Solver
                     {
                         for (int axis = 0; axis < 3; axis++)
                         {
-                            ApplyPointAxisConstraint(joint, k, WorldAxes[axis],
-                                predictedPosition, predictedOrientation);
+                            ApplyJointAxisImpulse(joint, k, WorldAxes[axis]);
                         }
                     }
                 }
+            }
+
+            var predictedPosition = new Vector3d[n];
+            var predictedOrientation = new QuaternionD[n];
+            for (int i = 0; i < n; i++)
+            {
+                RigidBody b = bodies[i];
+                predictedPosition[i] = b.Position + (b.Velocity * timeStep);
+                predictedOrientation[i] = (b.Orientation
+                    * RotationExponential(b.AngularVelocityBody * timeStep)).Normalized;
+            }
+
+            if (Ground != null)
+            {
+                DetectAndSolveContacts(predictedPosition, predictedOrientation);
             }
 
             for (int i = 0; i < n; i++)
@@ -258,54 +271,238 @@ namespace Galilego.Spacecraft.Solver
             Time += timeStep;
         }
 
-        private void ApplyPointAxisConstraint(
-            RigidJoint joint,
-            int anchorIndex,
-            Vector3d axis,
-            Vector3d[] position,
-            QuaternionD[] orientation)
+        /// <summary>
+        /// Импульс вдоль мировой оси e в точке якоря k стыка: обнуляет относительную скорость
+        /// точек вдоль e с Baumgarte-смещением −(β/dt)·C, C = (pA − pB)·e на начале шага.
+        /// </summary>
+        private void ApplyJointAxisImpulse(RigidJoint joint, int anchorIndex, Vector3d axis)
         {
             int ia = joint.BodyA;
             int ib = joint.BodyB;
             RigidBody a = bodies[ia];
             RigidBody b = bodies[ib];
 
-            Vector3d ra = orientation[ia].Rotate(joint.AnchorA[anchorIndex]);
-            Vector3d rb = orientation[ib].Rotate(joint.AnchorB[anchorIndex]);
-            Vector3d pa = position[ia] + ra;
-            Vector3d pb = position[ib] + rb;
+            Vector3d ra = a.Orientation.Rotate(joint.AnchorA[anchorIndex]);
+            Vector3d rb = b.Orientation.Rotate(joint.AnchorB[anchorIndex]);
+            Vector3d pa = a.Position + ra;
+            Vector3d pb = b.Position + rb;
 
             double c = Vector3d.Dot(pa - pb, axis);
+            double vn = Vector3d.Dot(PointVelocity(ia, a.Orientation, ra) - PointVelocity(ib, b.Orientation, rb), axis);
 
-            Vector3d raCross = Vector3d.Cross(ra, axis);
-            Vector3d rbCross = Vector3d.Cross(rb, axis);
-            Vector3d ia_w = a.ApplyInverseInertiaWorld(orientation[ia], raCross);
-            Vector3d ib_w = b.ApplyInverseInertiaWorld(orientation[ib], rbCross);
-
+            Vector3d rxa = Vector3d.Cross(ra, axis);
+            Vector3d rxb = Vector3d.Cross(rb, axis);
             double w = (1d / a.Mass) + (1d / b.Mass)
-                + Vector3d.Dot(raCross, ia_w) + Vector3d.Dot(rbCross, ib_w);
+                + Vector3d.Dot(rxa, a.ApplyInverseInertiaWorld(a.Orientation, rxa))
+                + Vector3d.Dot(rxb, b.ApplyInverseInertiaWorld(b.Orientation, rxb));
             if (!(w > 0d))
             {
                 return;
             }
 
-            double lambda = -c / w;
+            double lambda = -(vn + (JointBaumgarte / timeStep) * c) / w;
+            Vector3d impulse = axis * lambda;
+            ApplyVelocityImpulse(ia, a.Orientation, ra, impulse);
+            ApplyVelocityImpulse(ib, b.Orientation, rb, -impulse);
+        }
 
-            Vector3d dxA = axis * (lambda / a.Mass);
-            Vector3d dThetaA = ia_w * lambda;
-            Vector3d dxB = axis * (-lambda / b.Mass);
-            Vector3d dThetaB = ib_w * (-lambda);
+        /// <summary>Коэффициент Baumgarte для дрейфа якорей стыка (безразмерный, 0..1).</summary>
+        public double JointBaumgarte { get; set; } = 0.2d;
 
-            position[ia] = position[ia] + dxA;
-            position[ib] = position[ib] + dxB;
+        /// <summary>Геометрия контакта; null — контактов нет (фаза 2 без изменений).</summary>
+        public IContactGround Ground { get; set; }
+        public double StaticFriction { get; set; } = 0.7d;
+        public double KineticFriction { get; set; } = 0.5d;
+        public double Restitution { get; set; } = 0d;
+        public double ImpactThreshold { get; set; } = 0.01d;
 
-            orientation[ia] = (RotationExponential(dThetaA) * orientation[ia]).Normalized;
-            orientation[ib] = (RotationExponential(dThetaB) * orientation[ib]).Normalized;
+        private sealed class ContactRecord
+        {
+            public int Body;
+            public int Point;
+            public Vector3d Normal;
+            public Vector3d R;
+            public double VnPre;
+            public double LambdaN;
+            public Vector3d FrictionAcc;
+        }
 
-            a.Velocity += dxA / timeStep;
-            b.Velocity += dxB / timeStep;
-            a.AngularVelocityBody += orientation[ia].Conjugated.Rotate(dThetaA) / timeStep;
-            b.AngularVelocityBody += orientation[ib].Conjugated.Rotate(dThetaB) / timeStep;
+        /// <summary>
+        /// Сцепление без состояния: тангенциальный импульс, гасящий скольжение, допустим, пока
+        /// его величина не превышает μs·λn; иначе — кинетическое трение μk·λn против скольжения.
+        /// </summary>
+        private void DetectAndSolveContacts(Vector3d[] position, QuaternionD[] orientation)
+        {
+            var contacts = new List<ContactRecord>();
+            contactDv = new Vector3d[bodies.Count];
+            contactDw = new Vector3d[bodies.Count];
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                RigidBody b = bodies[i];
+                for (int k = 0; k < b.ContactPointsBody.Length; k++)
+                {
+                    Vector3d r = orientation[i].Rotate(b.ContactPointsBody[k]);
+                    Ground.Query(position[i] + r, out double depth, out Vector3d n);
+                    if (depth <= 0d)
+                    {
+                        continue;
+                    }
+
+                    contacts.Add(new ContactRecord
+                    {
+                        Body = i,
+                        Point = k,
+                        Normal = n,
+                        R = r,
+                        VnPre = Vector3d.Dot(PointVelocity(i, orientation[i], r), n),
+                        LambdaN = 0d,
+                    });
+                }
+            }
+
+            if (contacts.Count == 0)
+            {
+                return;
+            }
+
+            for (int it = 0; it < iterations; it++)
+            {
+                for (int c = 0; c < contacts.Count; c++)
+                {
+                    SolveNormalAndFriction(contacts[c], orientation);
+                }
+            }
+
+            // Положения — из скоростей, уже очищенных от проникновения (Box2D-порядок):
+            // без этого предсказанное на шаге проникновение от гравитации уводило бы тело
+            // по нормали, а трение (покой) это не компенсирует.
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                position[i] = position[i] + (contactDv[i] * timeStep);
+                orientation[i] = (RotationExponential(contactDw[i] * timeStep) * orientation[i]).Normalized;
+            }
+
+            for (int it = 0; it < iterations; it++)
+            {
+                for (int c = 0; c < contacts.Count; c++)
+                {
+                    ProjectPenetration(contacts[c], position, orientation);
+                }
+            }
+        }
+
+        private void SolveNormalAndFriction(ContactRecord c, QuaternionD[] orientation)
+        {
+            RigidBody b = bodies[c.Body];
+            QuaternionD q = orientation[c.Body];
+
+            Vector3d vp = PointVelocity(c.Body, q, c.R);
+            double vn = Vector3d.Dot(vp, c.Normal);
+            Vector3d rxn = Vector3d.Cross(c.R, c.Normal);
+            double wn = (1d / b.Mass) + Vector3d.Dot(rxn, b.ApplyInverseInertiaWorld(q, rxn));
+            if (!(wn > 0d))
+            {
+                return;
+            }
+
+            double target = c.VnPre < -ImpactThreshold ? -Restitution * c.VnPre : 0d;
+            double dl = (target - vn) / wn;
+            double newLambda = Math.Max(0d, c.LambdaN + dl);
+            dl = newLambda - c.LambdaN;
+            c.LambdaN = newLambda;
+            ApplyImpulse(c.Body, q, c.R, c.Normal * dl);
+
+            vp = PointVelocity(c.Body, q, c.R);
+            Vector3d vt = vp - (c.Normal * Vector3d.Dot(vp, c.Normal));
+            double vtMag = vt.Magnitude;
+            if (vtMag < 1e-12d)
+            {
+                return;
+            }
+
+            Vector3d t = vt / vtMag;
+            Vector3d rxt = Vector3d.Cross(c.R, t);
+            double wt = (1d / b.Mass) + Vector3d.Dot(rxt, b.ApplyInverseInertiaWorld(q, rxt));
+
+            // Накопленный за подшаг тангенциальный импульс конуса Кулона: сумма по итерациям,
+            // а не добавка каждую итерацию. Залипание — пока суммарный импульс внутри μs·λn;
+            // иначе скольжение — импульс на границе конуса μk·λn против движения.
+            Vector3d need = t * (-vtMag / wt);
+            Vector3d total = c.FrictionAcc + need;
+            double magnitude = total.Magnitude;
+            if (magnitude > StaticFriction * c.LambdaN)
+            {
+                total = magnitude > 0d ? total * (KineticFriction * c.LambdaN / magnitude) : Vector3d.Zero;
+            }
+
+            Vector3d delta = total - c.FrictionAcc;
+            c.FrictionAcc = total;
+            ApplyImpulse(c.Body, q, c.R, delta);
+        }
+
+        private void ProjectPenetration(ContactRecord c, Vector3d[] position, QuaternionD[] orientation)
+        {
+            int i = c.Body;
+            RigidBody b = bodies[i];
+            QuaternionD q = orientation[i];
+            Vector3d r = q.Rotate(b.ContactPointsBody[c.Point]);
+            Ground.Query(position[i] + r, out double depth, out Vector3d n);
+            if (depth <= 0d)
+            {
+                return;
+            }
+
+            Vector3d rxn = Vector3d.Cross(r, n);
+            double w = (1d / b.Mass) + Vector3d.Dot(rxn, b.ApplyInverseInertiaWorld(q, rxn));
+            if (!(w > 0d))
+            {
+                return;
+            }
+
+            double lambda = depth / w;
+            position[i] = position[i] + (n * (lambda / b.Mass));
+            Vector3d dTheta = b.ApplyInverseInertiaWorld(q, rxn) * lambda;
+            orientation[i] = (RotationExponential(dTheta) * q).Normalized;
+        }
+
+        private Vector3d PointVelocity(int bodyIndex, QuaternionD q, Vector3d r)
+        {
+            RigidBody b = bodies[bodyIndex];
+            return b.Velocity + Vector3d.Cross(q.Rotate(b.AngularVelocityBody), r);
+        }
+
+        private void ApplyVelocityImpulse(int bodyIndex, QuaternionD q, Vector3d r, Vector3d impulse)
+        {
+            RigidBody b = bodies[bodyIndex];
+            Vector3d dOmegaWorld = b.ApplyInverseInertiaWorld(q, Vector3d.Cross(r, impulse));
+            b.Velocity = b.Velocity + (impulse / b.Mass);
+            b.AngularVelocityBody = b.AngularVelocityBody + q.Conjugated.Rotate(dOmegaWorld);
+        }
+
+        /// <summary>Контактный импульс: скорость сразу и накопление для сдвига положения на шаге.</summary>
+        private void ApplyImpulse(int bodyIndex, QuaternionD q, Vector3d r, Vector3d impulse)
+        {
+            ApplyVelocityImpulse(bodyIndex, q, r, impulse);
+            RigidBody b = bodies[bodyIndex];
+            contactDv[bodyIndex] = contactDv[bodyIndex] + (impulse / b.Mass);
+            contactDw[bodyIndex] = contactDw[bodyIndex] + b.ApplyInverseInertiaWorld(q, Vector3d.Cross(r, impulse));
+        }
+
+        /// <summary>Суммарный момент импульса относительно начала мира: Σ(x×mv + R·I·ω_тела).</summary>
+        public Vector3d AngularMomentum()
+        {
+            Vector3d l = Vector3d.Zero;
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                RigidBody b = bodies[i];
+                Vector3d spin = new Vector3d(
+                    b.PrincipalInertia.X * b.AngularVelocityBody.X,
+                    b.PrincipalInertia.Y * b.AngularVelocityBody.Y,
+                    b.PrincipalInertia.Z * b.AngularVelocityBody.Z);
+                l = l + Vector3d.Cross(b.Position, b.Velocity * b.Mass) + b.Orientation.Rotate(spin);
+            }
+
+            return l;
         }
 
         /// <summary>
