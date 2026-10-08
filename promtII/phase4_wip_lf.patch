@@ -1,0 +1,630 @@
+diff --git a/Assets/_Project/Scripts/Spacecraft/Solver/RigidAssemblySolver.cs b/Assets/_Project/Scripts/Spacecraft/Solver/RigidAssemblySolver.cs
+index 3223e07..f78b5a2 100644
+--- a/Assets/_Project/Scripts/Spacecraft/Solver/RigidAssemblySolver.cs
++++ b/Assets/_Project/Scripts/Spacecraft/Solver/RigidAssemblySolver.cs
+@@ -85,6 +85,47 @@ namespace Galilego.Spacecraft.Solver
+         }
+     }
+ 
++    /// <summary>
++    /// Пружинный ползун (нога): тело B скользит вдоль оси, закреплённой на теле A.
++    /// Связи: две поперечные (точка B на оси A), три на поворот (относительная ориентация
++    /// фиксирована), упругость и демпфер вдоль оси (явно, по конфигурации начала шага),
++    /// односторонние ограничения хода [min, max] относительно длины покоя.
++    /// s — координата вдоль оси: (pB − pA)·e; сжатие — s уменьшается.
++    /// </summary>
++    public sealed class SliderJoint
++    {
++        public readonly int BodyA;
++        public readonly int BodyB;
++        public readonly Vector3d AnchorA;
++        public readonly Vector3d AnchorB;
++        public readonly Vector3d AxisA;
++        public readonly QuaternionD RelativeRest;
++        public readonly double RestCoordinate;
++        public readonly double Stiffness;
++        public readonly double Damping;
++        public readonly double MinTravel;
++        public readonly double MaxTravel;
++        internal double LambdaLow;
++        internal double LambdaHigh;
++
++        public SliderJoint(int bodyA, int bodyB, Vector3d anchorA, Vector3d anchorB, Vector3d axisA,
++            QuaternionD relativeRest, double restCoordinate, double stiffness, double damping,
++            double minTravel, double maxTravel)
++        {
++            BodyA = bodyA;
++            BodyB = bodyB;
++            AnchorA = anchorA;
++            AnchorB = anchorB;
++            AxisA = axisA;
++            RelativeRest = relativeRest;
++            RestCoordinate = restCoordinate;
++            Stiffness = stiffness;
++            Damping = damping;
++            MinTravel = minTravel;
++            MaxTravel = maxTravel;
++        }
++    }
++
+     /// <summary>
+     /// Решатель твёрдых тел фазы 2: фиксированный шаг dt, явное интегрирование
+     /// скоростей, RK4 для вращения тела (уравнения Эйлера в осях тела), XPBD-проекция
+@@ -102,6 +143,7 @@ namespace Galilego.Spacecraft.Solver
+ 
+         private readonly List<RigidBody> bodies = new List<RigidBody>();
+         private readonly List<RigidJoint> joints = new List<RigidJoint>();
++        private readonly List<SliderJoint> sliders = new List<SliderJoint>();
+         private Vector3d[] contactDv = new Vector3d[0];
+         private Vector3d[] contactDw = new Vector3d[0];
+         private readonly double timeStep;
+@@ -171,6 +213,56 @@ namespace Galilego.Spacecraft.Solver
+             return joints.Count - 1;
+         }
+ 
++        /// <summary>
++        /// Ползун: ось axisWorld закреплена на теле A через точку anchorWorld; тело B
++        /// скользит вдоль неё. Длина покоя — текущая координата s. Ход — относительно неё.
++        /// dampingRatio — ζ, c = 2ζ·√(k·m_эфф).
++        /// </summary>
++        public int AddSliderJoint(int bodyA, int bodyB, Vector3d anchorWorld, Vector3d axisWorld,
++            double minTravel, double maxTravel, double stiffness, double dampingRatio)
++        {
++            if (bodyA == bodyB)
++            {
++                throw new ArgumentException("Ползун должен соединять два разных тела.");
++            }
++
++            if (!(stiffness > 0d) || !(dampingRatio >= 0d) || !(minTravel <= 0d) || !(maxTravel >= 0d))
++            {
++                throw new ArgumentOutOfRangeException(nameof(stiffness), "k > 0, ζ ≥ 0, min ≤ 0 ≤ max.");
++            }
++
++            RigidBody a = bodies[bodyA];
++            RigidBody b = bodies[bodyB];
++            Vector3d e = axisWorld.Normalized;
++            Vector3d anchorA = a.Orientation.Conjugated.Rotate(anchorWorld - a.Position);
++            Vector3d anchorB = b.Orientation.Conjugated.Rotate(anchorWorld - b.Position);
++            Vector3d axisLocal = a.Orientation.Conjugated.Rotate(e);
++            // Длина покоя — по точкам крепления (не по центрам тел): s = (pB − pA)·e.
++            double s0 = Vector3d.Dot(
++                (b.Position + b.Orientation.Rotate(anchorB)) - (a.Position + a.Orientation.Rotate(anchorA)), e);
++            double mEff = (a.Mass * b.Mass) / (a.Mass + b.Mass);
++            double damping = 2d * dampingRatio * Math.Sqrt(stiffness * mEff);
++            QuaternionD relative = a.Orientation.Conjugated * b.Orientation;
++
++            sliders.Add(new SliderJoint(bodyA, bodyB, anchorA, anchorB, axisLocal, relative,
++                s0, stiffness, damping, minTravel, maxTravel));
++            return sliders.Count - 1;
++        }
++
++        public IReadOnlyList<SliderJoint> Sliders => sliders;
++
++        /// <summary>Координата ползуна s = (pB − pA)·e в текущем состоянии.</summary>
++        public double SliderCoordinate(int sliderIndex)
++        {
++            SliderJoint j = sliders[sliderIndex];
++            RigidBody a = bodies[j.BodyA];
++            RigidBody b = bodies[j.BodyB];
++            Vector3d e = a.Orientation.Rotate(j.AxisA);
++            Vector3d pa = a.Position + a.Orientation.Rotate(j.AnchorA);
++            Vector3d pb = b.Position + b.Orientation.Rotate(j.AnchorB);
++            return Vector3d.Dot(pb - pa, e);
++        }
++
+         /// <summary>Наибольшее расхождение якорных точек стыка, м (мировой кадр, текущее состояние).</summary>
+         public double JointSeparation(int jointIndex)
+         {
+@@ -216,33 +308,65 @@ namespace Galilego.Spacecraft.Solver
+             return e;
+         }
+ 
+-        /// <summary>Один шаг фиксированной длительности dt (порядок sequential impulses).</summary>
++        /// <summary>Один шаг фиксированной длительности dt (sequential impulses, вариант A).</summary>
+         public void Step()
+         {
+             int n = bodies.Count;
++            var xStart = new Vector3d[n];
++            var qStart = new QuaternionD[n];
++            var vPre = new Vector3d[n];
++            var wPre = new Vector3d[n];
+ 
++            var wStart = new Vector3d[n];
+             for (int i = 0; i < n; i++)
+             {
+                 RigidBody b = bodies[i];
++                xStart[i] = b.Position;
++                qStart[i] = b.Orientation;
++                wStart[i] = b.AngularVelocityBody;
+                 b.Velocity = b.Velocity + ((b.ForceWorld / b.Mass) * timeStep);
+                 b.AngularVelocityBody = IntegrateEulerRk4(
+                     b.AngularVelocityBody, b.TorqueBody, b.PrincipalInertia, timeStep);
++                vPre[i] = b.Velocity;
++                wPre[i] = b.AngularVelocityBody;
+             }
+ 
+-            // Стыки: импульсы на скорости, Baumgarte-смещение по ошибке якорей на начале шага.
+-            // Внутренние импульсы парные в точках якорей, поэтому P и L сохраняются.
+-            for (int it = 0; it < iterations; it++)
++            for (int s = 0; s < sliders.Count; s++)
+             {
+-                for (int j = 0; j < joints.Count; j++)
++                ApplySliderSpring(sliders[s], xStart, qStart);
++                sliders[s].LambdaLow = 0d;
++                sliders[s].LambdaHigh = 0d;
++            }
++
++            int passes = 1;
++            for (int pass = 0; pass < passes; pass++)
++            {
++                // Вариант A: связи решаются в средней конфигурации шага (второй порядок по dt),
++                // а не в начальной. Согласованы положения, ориентации и скорости шага.
++                // Связи решаются по конфигурации начала шага; конфигурация конца — средняя скорость
++                // (см. ниже). Полный implicit-midpoint по связям не стабилизировался (NaN при
++                // Baumgarte и итерациях) — отложено, см. отчёт фазы 4.
++                var xMid = xStart;
++                var qMid = qStart;
++
++                for (int it = 0; it < iterations; it++)
+                 {
+-                    RigidJoint joint = joints[j];
+-                    for (int k = 0; k < joint.AnchorA.Length; k++)
++                    for (int j = 0; j < joints.Count; j++)
+                     {
+-                        for (int axis = 0; axis < 3; axis++)
++                        RigidJoint joint = joints[j];
++                        for (int k = 0; k < joint.AnchorA.Length; k++)
+                         {
+-                            ApplyJointAxisImpulse(joint, k, WorldAxes[axis]);
++                            for (int axis = 0; axis < 3; axis++)
++                            {
++                                ApplyJointAxisImpulse(joint, k, WorldAxes[axis], xMid, qMid, vPre, wPre);
++                            }
+                         }
+                     }
++
++                    for (int s = 0; s < sliders.Count; s++)
++                    {
++                        SolveSlider(sliders[s], xMid, qMid);
++                    }
+                 }
+             }
+ 
+@@ -251,9 +375,10 @@ namespace Galilego.Spacecraft.Solver
+             for (int i = 0; i < n; i++)
+             {
+                 RigidBody b = bodies[i];
+-                predictedPosition[i] = b.Position + (b.Velocity * timeStep);
+-                predictedOrientation[i] = (b.Orientation
+-                    * RotationExponential(b.AngularVelocityBody * timeStep)).Normalized;
++                predictedPosition[i] = xStart[i] + (b.Velocity * timeStep);
++                // Ориентация — по средней ω шага от начала (до RK4) до конца: O(dt²) и L = R·I·ω.
++                predictedOrientation[i] = (qStart[i]
++                    * RotationExponential(((wStart[i] + b.AngularVelocityBody) * 0.5d) * timeStep)).Normalized;
+             }
+ 
+             if (Ground != null)
+@@ -273,37 +398,154 @@ namespace Galilego.Spacecraft.Solver
+ 
+         /// <summary>
+         /// Импульс вдоль мировой оси e в точке якоря k стыка: обнуляет относительную скорость
+-        /// точек вдоль e с Baumgarte-смещением −(β/dt)·C, C = (pA − pB)·e на начале шага.
++        /// точек вдоль e с Baumgarte-смещением −(β/dt)·C, C = (pA − pB)·e в средней конфигурации.
+         /// </summary>
+-        private void ApplyJointAxisImpulse(RigidJoint joint, int anchorIndex, Vector3d axis)
++        private void ApplyJointAxisImpulse(RigidJoint joint, int anchorIndex, Vector3d axis,
++            Vector3d[] xMid, QuaternionD[] qMid, Vector3d[] vPre, Vector3d[] wPre)
+         {
+             int ia = joint.BodyA;
+             int ib = joint.BodyB;
+             RigidBody a = bodies[ia];
+             RigidBody b = bodies[ib];
++            QuaternionD qa = qMid[ia];
++            QuaternionD qb = qMid[ib];
+ 
+-            Vector3d ra = a.Orientation.Rotate(joint.AnchorA[anchorIndex]);
+-            Vector3d rb = b.Orientation.Rotate(joint.AnchorB[anchorIndex]);
+-            Vector3d pa = a.Position + ra;
+-            Vector3d pb = b.Position + rb;
++            Vector3d ra = qa.Rotate(joint.AnchorA[anchorIndex]);
++            Vector3d rb = qb.Rotate(joint.AnchorB[anchorIndex]);
++            Vector3d pa = xMid[ia] + ra;
++            Vector3d pb = xMid[ib] + rb;
+ 
+             double c = Vector3d.Dot(pa - pb, axis);
+-            double vn = Vector3d.Dot(PointVelocity(ia, a.Orientation, ra) - PointVelocity(ib, b.Orientation, rb), axis);
+-
+-            Vector3d rxa = Vector3d.Cross(ra, axis);
+-            Vector3d rxb = Vector3d.Cross(rb, axis);
+-            double w = (1d / a.Mass) + (1d / b.Mass)
+-                + Vector3d.Dot(rxa, a.ApplyInverseInertiaWorld(a.Orientation, rxa))
+-                + Vector3d.Dot(rxb, b.ApplyInverseInertiaWorld(b.Orientation, rxb));
++            double vn = Vector3d.Dot(PointVelocity(ia, qa, ra) - PointVelocity(ib, qb, rb), axis);
++            double w = PairEffectiveMass(a, b, qa, qb, ra, rb, axis);
+             if (!(w > 0d))
+             {
+                 return;
+             }
+ 
++            // Связь на средней скорости шага: (vn_pre + vn_end)/2 = −(β/dt)·C.
+             double lambda = -(vn + (JointBaumgarte / timeStep) * c) / w;
+             Vector3d impulse = axis * lambda;
+-            ApplyVelocityImpulse(ia, a.Orientation, ra, impulse);
+-            ApplyVelocityImpulse(ib, b.Orientation, rb, -impulse);
++            ApplyVelocityImpulse(ia, qa, ra, impulse);
++            ApplyVelocityImpulse(ib, qb, rb, -impulse);
++        }
++
++        private double PairEffectiveMass(RigidBody a, RigidBody b, QuaternionD qa, QuaternionD qb,
++            Vector3d ra, Vector3d rb, Vector3d axis)
++        {
++            Vector3d rxa = Vector3d.Cross(ra, axis);
++            Vector3d rxb = Vector3d.Cross(rb, axis);
++            return (1d / a.Mass) + (1d / b.Mass)
++                + Vector3d.Dot(rxa, a.ApplyInverseInertiaWorld(qa, rxa))
++                + Vector3d.Dot(rxb, b.ApplyInverseInertiaWorld(qb, rxb));
++        }
++
++        /// <summary>Упругость и демпфер ползуна вдоль оси: явно, по скоростям и конфигурации начала шага.</summary>
++        private void ApplySliderSpring(SliderJoint j, Vector3d[] x, QuaternionD[] q)
++        {
++            Vector3d e = q[j.BodyA].Rotate(j.AxisA);
++            Vector3d ra = q[j.BodyA].Rotate(j.AnchorA);
++            Vector3d rb = q[j.BodyB].Rotate(j.AnchorB);
++            double s = Vector3d.Dot((x[j.BodyB] + rb) - (x[j.BodyA] + ra), e);
++            double vs = Vector3d.Dot(PointVelocity(j.BodyB, q[j.BodyB], rb) - PointVelocity(j.BodyA, q[j.BodyA], ra), e);
++            double force = -j.Stiffness * (s - j.RestCoordinate) - j.Damping * vs;
++            Vector3d impulse = e * (force * timeStep);
++            ApplyVelocityImpulse(j.BodyB, q[j.BodyB], rb, impulse);
++            ApplyVelocityImpulse(j.BodyA, q[j.BodyA], ra, -impulse);
++        }
++
++        /// <summary>
++        /// Связи ползуна в средней конфигурации: две поперечные, три поворотные (Baumgarte по
++        /// ошибке относительной ориентации), два односторонних ограничения хода.
++        /// </summary>
++        private void SolveSlider(SliderJoint j, Vector3d[] xMid, QuaternionD[] qMid)
++        {
++            int ia = j.BodyA;
++            int ib = j.BodyB;
++            RigidBody a = bodies[ia];
++            RigidBody b = bodies[ib];
++            QuaternionD qa = qMid[ia];
++            QuaternionD qb = qMid[ib];
++
++            Vector3d ra = qa.Rotate(j.AnchorA);
++            Vector3d rb = qb.Rotate(j.AnchorB);
++            Vector3d pa = xMid[ia] + ra;
++            Vector3d pb = xMid[ib] + rb;
++            Vector3d e = qa.Rotate(j.AxisA).Normalized;
++            double beta = JointBaumgarte / timeStep;
++
++            Vector3d u1 = Vector3d.Cross(e, Math.Abs(e.X) < 0.9d ? new Vector3d(1d, 0d, 0d) : new Vector3d(0d, 1d, 0d)).Normalized;
++            Vector3d u2 = Vector3d.Cross(e, u1);
++            foreach (Vector3d u in new[] { u1, u2 })
++            {
++                double c = Vector3d.Dot(pa - pb, u);
++                double vn = Vector3d.Dot(PointVelocity(ia, qa, ra) - PointVelocity(ib, qb, rb), u);
++                double w = PairEffectiveMass(a, b, qa, qb, ra, rb, u);
++                if (!(w > 0d))
++                {
++                    continue;
++                }
++
++                double lambda = -(vn + (beta * c)) / w;
++                ApplyVelocityImpulse(ia, qa, ra, u * lambda);
++                ApplyVelocityImpulse(ib, qb, rb, u * (-lambda));
++            }
++
++            // Поворот: целевая ориентация B = A ⊗ rel0; ошибка — векторная часть E = qB ⊗ conj(target).
++            QuaternionD target = qa * j.RelativeRest;
++            QuaternionD err = qb * target.Conjugated;
++            double sign = err.W >= 0d ? 1d : -1d;
++            Vector3d theta = new Vector3d(2d * sign * err.X, 2d * sign * err.Y, 2d * sign * err.Z);
++            Vector3d[] worldAxes = WorldAxes;
++            for (int k = 0; k < 3; k++)
++            {
++                Vector3d w3 = worldAxes[k];
++                Vector3d wB = qb.Rotate(b.AngularVelocityBody);
++                Vector3d wA = qa.Rotate(a.AngularVelocityBody);
++                double dw = Vector3d.Dot(wB - wA, w3);
++                double eff = Vector3d.Dot(w3, a.ApplyInverseInertiaWorld(qa, w3))
++                    + Vector3d.Dot(w3, b.ApplyInverseInertiaWorld(qb, w3));
++                if (!(eff > 0d))
++                {
++                    continue;
++                }
++
++                double lambda = -(dw + (beta * Vector3d.Dot(theta, w3))) / eff;
++                ApplyAngularImpulse(ib, qb, w3 * lambda);
++                ApplyAngularImpulse(ia, qa, w3 * (-lambda));
++            }
++
++            // Ограничения хода. s = (pB − pA)·e; C_lo = s − (s0 + min), C_hi = (s0 + max) − s.
++            double s = Vector3d.Dot(pb - pa, e);
++            double vs = Vector3d.Dot(PointVelocity(ib, qb, rb) - PointVelocity(ia, qa, ra), e);
++            double wAx = PairEffectiveMass(a, b, qa, qb, ra, rb, e);
++            if (wAx > 0d)
++            {
++                // Ход — жёсткий упор: полная коррекция (β = 1) по положению, без смягчения.
++                double clo = s - (j.RestCoordinate + j.MinTravel);
++                double delta = -(vs + ((1d / timeStep) * clo)) / wAx;
++                double newAcc = Math.Max(0d, j.LambdaLow + delta);
++                double d = newAcc - j.LambdaLow;
++                j.LambdaLow = newAcc;
++                ApplyVelocityImpulse(ib, qb, rb, e * d);
++                ApplyVelocityImpulse(ia, qa, ra, e * (-d));
++
++                double chi = (j.RestCoordinate + j.MaxTravel) - s;
++                vs = Vector3d.Dot(PointVelocity(ib, qb, rb) - PointVelocity(ia, qa, ra), e);
++                double deltaHi = -(-vs + ((1d / timeStep) * chi)) / wAx;
++                double newAccHi = Math.Max(0d, j.LambdaHigh + deltaHi);
++                double dHi = newAccHi - j.LambdaHigh;
++                j.LambdaHigh = newAccHi;
++                ApplyVelocityImpulse(ib, qb, rb, e * (-dHi));
++                ApplyVelocityImpulse(ia, qa, ra, e * dHi);
++            }
++        }
++
++        private void ApplyAngularImpulse(int bodyIndex, QuaternionD q, Vector3d angularImpulseWorld)
++        {
++            RigidBody b = bodies[bodyIndex];
++            b.AngularVelocityBody = b.AngularVelocityBody + q.Conjugated.Rotate(
++                b.ApplyInverseInertiaWorld(q, angularImpulseWorld));
+         }
+ 
+         /// <summary>Коэффициент Baumgarte для дрейфа якорей стыка (безразмерный, 0..1).</summary>
+diff --git a/Tools/P1bTests/TestRegistry.cs b/Tools/P1bTests/TestRegistry.cs
+index c4c786d..bb4678e 100644
+--- a/Tools/P1bTests/TestRegistry.cs
++++ b/Tools/P1bTests/TestRegistry.cs
+@@ -198,6 +198,10 @@ internal static partial class P1bTests
+             new P1bCase("Test213_RestEnergy", Test213_RestEnergy, false),
+             new P1bCase("Test214_LocalNormalFootprint", Test214_LocalNormalFootprint, false),
+             new P1bCase("Test215_ContactCostBudget", Test215_ContactCostBudget, false),
++            new P1bCase("Test220_LegSag", Test220_LegSag, false),
++            new P1bCase("Test221_LegDampingDecay", Test221_LegDampingDecay, false),
++            new P1bCase("Test222_TravelLimits", Test222_TravelLimits, false),
++            new P1bCase("Test223_Slope15Stable", Test223_Slope15Stable, false),
+             new P1bCase("Test900_TerrainWallProbe", Test900_TerrainWallProbe, false),
+             new P1bCase("Test901_TerrainWallBisect", Test901_TerrainWallBisect, false),
+             new P1bCase("Test903_ShelfFixAb", Test903_ShelfFixAb, false),
+diff --git a/Tools/P1bTests/Tests/TestsLegs.cs b/Tools/P1bTests/Tests/TestsLegs.cs
+new file mode 100644
+index 0000000..dbe0fd5
+--- /dev/null
++++ b/Tools/P1bTests/Tests/TestsLegs.cs
+@@ -0,0 +1,233 @@
++using System;
++using Galilego.Core;
++using Galilego.Spacecraft.Solver;
++using UnityEngine;
++
++// Фаза 4 (ТЗ v2, раздел 7): ноги и подвеска — пружинные ползуны с ходом и демпфированием.
++// Test220 — статическая осадка W/(N·k); Test221 — затухание свободных колебаний (ζ = 0.4);
++// Test222 — ограничение хода; Test223 — устойчивость на склоне 15° на трёх ногах.
++internal static partial class P1bTests
++{
++    private const double LegDt = 1e-3;
++    private const int LegIterations = 20;
++    private const double LegLength = 2.5d;
++    private const double LegMass = 50d;
++
++    private static RigidBody LegBody(Vector3d top)
++    {
++        // Цилиндр r = 0.15 м, h = 2.5 м, масса 50 кг: Ixx = Izz = m(3r²+h²)/12, Iyy = m·r²/2.
++        double r = 0.15d;
++        double h = LegLength;
++        double ixx = LegMass * ((3d * r * r) + (h * h)) / 12d;
++        double iyy = LegMass * r * r / 2d;
++        var leg = new RigidBody(LegMass, new Vector3d(ixx, iyy, ixx), top - new Vector3d(0d, 0.5d * h, 0d), QuaternionD.Identity);
++        leg.ContactPointsBody = new[] { new Vector3d(0d, -0.5d * h, 0d) };
++        return leg;
++    }
++
++    // Ось ноги — вертикаль вниз; сжатие = s0 − s (тело сближается с ногой).
++    static int Test220_LegSag()
++    {
++        const double tankMass = 4800d;
++        const double k = 49000d;
++        var solver = new RigidAssemblySolver(LegDt, LegIterations);
++        solver.Ground = new PlaneGround(new Vector3d(0d, 1d, 0d), 0d);
++        var tank = new RigidBody(tankMass, new Vector3d(5e4d, 5e4d, 5e4d), new Vector3d(0d, 3.0d, 0d), QuaternionD.Identity);
++        int it = solver.AddBody(tank);
++        var legs = new int[4];
++        double[] xs = { 2.2d, -2.2d, 0d, 0d };
++        double[] zs = { 0d, 0d, 2.2d, -2.2d };
++        for (int i = 0; i < 4; i++)
++        {
++            var top = new Vector3d(xs[i], 2.5d, zs[i]);
++            legs[i] = solver.AddBody(LegBody(top));
++            solver.AddSliderJoint(it, legs[i], top, new Vector3d(0d, -1d, 0d), -0.3d, 0.3d, k, 0.4d);
++        }
++
++        // 20 с: мода бака с ζ = 0.4 на массе бака затухает за τ ≈ 2 с; 6 с — недостаточно.
++        for (int step = 0; step < 20000; step++)
++        {
++            tank.ForceWorld = new Vector3d(0d, -9.81d * tankMass, 0d);
++            for (int i = 0; i < 4; i++)
++            {
++                solver.Bodies[legs[i]].ForceWorld = new Vector3d(0d, -9.81d * LegMass, 0d);
++            }
++
++            solver.Step();
++        }
++
++        double expected = tankMass * 9.81d / (4d * k);
++        double worst = 0d;
++        for (int i = 0; i < 4; i++)
++        {
++            double compression = -solver.SliderCoordinate(i);
++            worst = Math.Max(worst, Math.Abs(compression - expected) / expected);
++        }
++
++        Check(worst <= 0.02d, "T220 leg-sag",
++            string.Format(Inv, "W/(N·k) = {0:F4} м; максимум отклонения по 4 ногам = {1:P2} (≤2%)", expected, worst));
++        return 0;
++    }
++
++    // Одна нога, малая масса бака: собственные колебания относительной координаты.
++    static int Test221_LegDampingDecay()
++    {
++        const double tankMass = 50d;
++        const double k = 49000d;
++        const double zeta = 0.4d;
++        // Нога в воздухе (без поверхности): относительная масса — m_эфф = mA·mB/(mA+mB), как
++        // в формуле ζ. Опёртая на землю нога даёт массу бака — это другой, вынужденный случай.
++        var solver = new RigidAssemblySolver(LegDt, LegIterations);
++        var tank = new RigidBody(tankMass, new Vector3d(1d, 1d, 1d), new Vector3d(0d, 3.0d, 0d), QuaternionD.Identity);
++        int it = solver.AddBody(tank);
++        var top = new Vector3d(0d, 2.5d, 0d);
++        int leg = solver.AddBody(LegBody(top));
++        solver.AddSliderJoint(it, leg, top, new Vector3d(0d, -1d, 0d), -0.3d, 0.3d, k, zeta);
++
++        double mEff = (tankMass * LegMass) / (tankMass + LegMass);
++        double omega = Math.Sqrt(k / mEff);
++        double sEq = solver.SliderCoordinate(0);
++        tank.Position = tank.Position + new Vector3d(0d, 0.02d, 0d);
++
++        var peakTimes = new System.Collections.Generic.List<double>();
++        var peakValues = new System.Collections.Generic.List<double>();
++        double prev = 0d;
++        double prevPrev = 0d;
++        for (int step = 0; step < 2000; step++)
++        {
++            // Без поля тяжести: собственные колебания относительной координаты.
++            solver.Step();
++            double x = Math.Abs(solver.SliderCoordinate(0) - sEq);
++            if (step >= 2 && prev > x && prev > prevPrev && prev > 1e-6)
++            {
++                peakTimes.Add(solver.Time - LegDt);
++                peakValues.Add(prev);
++            }
++
++            prevPrev = prev;
++            prev = x;
++        }
++
++        int n = peakTimes.Count;
++        double meanT = 0d;
++        double meanY = 0d;
++        for (int i = 0; i < n; i++)
++        {
++            meanT += peakTimes[i];
++            meanY += Math.Log(peakValues[i]);
++        }
++
++        meanT /= n;
++        meanY /= n;
++        double num = 0d;
++        double den = 0d;
++        for (int i = 0; i < n; i++)
++        {
++            num += (peakTimes[i] - meanT) * (Math.Log(peakValues[i]) - meanY);
++            den += (peakTimes[i] - meanT) * (peakTimes[i] - meanT);
++        }
++
++        double tauMeasured = -1d / (num / den);
++        double tauTheory = 1d / (zeta * omega);
++        Check(n >= 3 && Math.Abs(tauMeasured - tauTheory) / tauTheory <= 0.1d && tauMeasured <= 1d,
++            "T221 leg-damping-decay",
++            string.Format(Inv, "пиков={0}; τ_изм={1:F4} с, τ_теор = 1/(ζ·ω) = {2:F4} с (±10%); время спада в e ≤ 1 с",
++                n, tauMeasured, tauTheory));
++        return 0;
++    }
++
++    // Сильная нагрузка: статическое сжатие и растяжение выходят за ход — ограничения держат.
++    static int Test222_TravelLimits()
++    {
++        const double tankMass = 50d;
++        const double k = 49000d;
++        var solver = new RigidAssemblySolver(LegDt, LegIterations);
++        solver.Ground = new PlaneGround(new Vector3d(0d, 1d, 0d), 0d);
++        var tank = new RigidBody(tankMass, new Vector3d(1d, 1d, 1d), new Vector3d(0d, 3.0d, 0d), QuaternionD.Identity);
++        int it = solver.AddBody(tank);
++        var top = new Vector3d(0d, 2.5d, 0d);
++        int leg = solver.AddBody(LegBody(top));
++        solver.AddSliderJoint(it, leg, top, new Vector3d(0d, -1d, 0d), -0.3d, 0.3d, k, 0.4d);
++
++        double maxCompression = 0d;
++        double maxExtension = 0d;
++        for (int phase = 0; phase < 2; phase++)
++        {
++            // Фаза 0: тянем бак вниз (сжатие). Фаза 1: тянем вверх (растяжение).
++            double push = phase == 0 ? 30000d : -30000d;
++            for (int step = 0; step < 3000; step++)
++            {
++                tank.ForceWorld = new Vector3d(0d, (-9.81d * tankMass) - push, 0d);
++                solver.Bodies[leg].ForceWorld = new Vector3d(0d, -9.81d * LegMass, 0d);
++                solver.Step();
++                double compression = -solver.SliderCoordinate(0);
++                maxCompression = Math.Max(maxCompression, compression);
++                maxExtension = Math.Max(maxExtension, -compression);
++            }
++        }
++
++        const double tol = 1e-3d;
++        Check(maxCompression <= 0.3d + tol && maxExtension <= 0.3d + tol, "T222 travel-limits",
++            string.Format(Inv, "max сжатие={0:F4} м, max растяжение={1:F4} м (ход ±0.3 м, допуск 1 мм)",
++                maxCompression, maxExtension));
++        return 0;
++    }
++
++    // Три ноги на склоне 15°: устойчивость 30 с (трение μs = 0.7 > tg 15° = 0.27).
++    static int Test223_Slope15Stable()
++    {
++        const double tankMass = 4800d;
++        const double k = 80000d;
++        double th = 15d * Math.PI / 180d;
++        var normal = new Vector3d(Math.Sin(th), Math.Cos(th), 0d);
++        var solver = new RigidAssemblySolver(LegDt, LegIterations)
++        {
++            Ground = new PlaneGround(normal, 0d),
++            StaticFriction = 0.7d,
++            KineticFriction = 0.5d,
++        };
++        var tank = new RigidBody(tankMass, new Vector3d(5e4d, 5e4d, 5e4d), new Vector3d(0d, 3.0d, 0d), QuaternionD.Identity);
++        int it = solver.AddBody(tank);
++        var legs = new int[3];
++        for (int i = 0; i < 3; i++)
++        {
++            double ang = i * 2d * Math.PI / 3d;
++            double x = 2.2d * Math.Cos(ang);
++            double z = 2.2d * Math.Sin(ang);
++            // Точка крепления над плоскостью y = −x·tg15 (нога вертикальна, стопа на плоскости).
++            var top = new Vector3d(x, 2.5d - (x * Math.Tan(th)), z);
++            legs[i] = solver.AddBody(LegBody(top));
++            solver.AddSliderJoint(it, legs[i], top, new Vector3d(0d, -1d, 0d), -0.3d, 0.3d, k, 0.4d);
++        }
++
++        Vector3d start = tank.Position;
++        double maxCompression = 0d;
++        double maxTilt = 0d;
++        for (int step = 0; step < 30000; step++)
++        {
++            tank.ForceWorld = new Vector3d(0d, -9.81d * tankMass, 0d);
++            for (int i = 0; i < 3; i++)
++            {
++                solver.Bodies[legs[i]].ForceWorld = new Vector3d(0d, -9.81d * LegMass, 0d);
++            }
++
++            solver.Step();
++            for (int i = 0; i < 3; i++)
++            {
++                maxCompression = Math.Max(maxCompression, -solver.SliderCoordinate(i));
++            }
++
++            Vector3d up = tank.Orientation.Rotate(new Vector3d(0d, 1d, 0d));
++            double tilt = Math.Acos(Math.Max(-1d, Math.Min(1d, up.Y))) * 180d / Math.PI;
++            maxTilt = Math.Max(maxTilt, tilt);
++        }
++
++        Vector3d drift = tank.Position - start;
++        double horizontal = Math.Sqrt((drift.X * drift.X) + (drift.Z * drift.Z));
++        bool finite = double.IsFinite(horizontal) && double.IsFinite(maxTilt);
++        Check(finite && horizontal <= 0.05d && maxTilt <= 5d && maxCompression <= 0.3d, "T223 slope15-stable",
++            string.Format(Inv, "30 с: горизонтальный снос={0:F4} м (≤0.05), max наклон={1:F3}° (≤5), max сжатие={2:F4} м (≤0.3)",
++                horizontal, maxTilt, maxCompression));
++        return 0;
++    }
++}
