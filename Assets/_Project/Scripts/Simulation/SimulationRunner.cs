@@ -145,16 +145,16 @@ namespace Galilego.Universe
         public double DebrisSurfaceRestitution = 0.2d;
 
         /// <summary>Симулированное время системы (с от эпохи эфемерид).</summary>
-        public double TimeSeconds { get; private set; }
+        public double TimeSeconds => step.TimeSeconds;
 
         public StarSystem SystemState { get; private set; }
 
-        public WarpController Warp { get; private set; }
+        public WarpController Warp => step.Warp;
 
-        public Ship Ship { get; private set; }
+        public Ship Ship => step.Ship;
 
         /// <summary>Режим корабля: летит, стоит на поверхности или разрушен.</summary>
-        public VesselRegime Regime { get; private set; }
+        public VesselRegime Regime => step.Regime;
 
         /// <summary>Режим игрока: в корабле / EVA / на поверхности.</summary>
         public PlayerMode PlayerMode { get; private set; }
@@ -249,17 +249,13 @@ namespace Galilego.Universe
         public BodyTransformRegistry SystemView { get; set; }
 
         /// <summary>Тело, относительно которого сейчас живёт корабль (floating origin, SOI).</summary>
-        public OrbitingBody DominantBody { get; private set; }
+        public OrbitingBody DominantBody => step.DominantBody;
 
         /// <summary>Пул обломков (слоты переиспользуются); DebrisView читает для рендера.</summary>
-        public DebrisPool Debris { get; private set; }
+        public DebrisPool Debris => step.Debris;
 
-        private SpacecraftPhysics physics;
-        private EventDrivenPropagator propagator;
-        private LongWarpDriver driver;
-        private ThrustSource mainThrust;
-        private KahanAccumulator time;
-        private IBreakupModel breakupModel;
+        /// <summary>Шаг корабля: полёт, посадка, события. Вся логика состояния — там.</summary>
+        private VesselStep step;
         private DebrisUpdater debrisUpdater;
         private bool playerAirborne;
         private bool playerJumpQueued;
@@ -274,11 +270,6 @@ namespace Galilego.Universe
         /// <summary>Радиус игрока для коллизий со стволами деревьев (м).</summary>
         private const double PlayerCollisionRadiusMeters = 0.45d;
 
-        /// <summary>Верхняя граница подшага на поверхности (с), согласована с зерном control-tick.</summary>
-        private const double SurfaceMaxStepSeconds = 0.5d;
-
-        private static readonly SphericalTerrain surfaceTerrain = new SphericalTerrain();
-
         private void Awake()
         {
             if (System == null)
@@ -291,17 +282,18 @@ namespace Galilego.Universe
             SystemState = System.BuildBlueprint().Build();
             bool baked = EphemerisRuntime.AttachFromStreamingAssets(SystemState);
 
-            Warp = new WarpController();
-            physics = new SpacecraftPhysics();
+            var warp = new WarpController();
+            var physics = new SpacecraftPhysics();
             physics.Sources.Add(new CachedGravitySource(SystemState));
+            ThrustSource mainThrust = null;
             if (MainThrustNewtons > 0d)
             {
                 mainThrust = new ThrustSource(MainThrustNewtons, DryMassKg, new ConstantIsp(MainIspSeconds));
-                mainThrust.ThrottleAt = t => Warp.CurrentControlSnapshot.Throttle;
+                mainThrust.ThrottleAt = t => warp.CurrentControlSnapshot.Throttle;
                 physics.Sources.Add(mainThrust);
             }
 
-            propagator = new EventDrivenPropagator(physics);
+            var propagator = new EventDrivenPropagator(physics);
             foreach (OrbitingBody body in SystemState.AllBodies)
             {
                 propagator.CrossingDetectors.Add(AltitudeCrossingDetector.ForTouchdown(body));
@@ -313,22 +305,22 @@ namespace Galilego.Universe
                 }
             }
 
-            breakupModel = new JointedBreakup();
-            Debris = new DebrisPool();
-            debrisUpdater = new DebrisUpdater(SystemState)
-            {
-                SurfaceRestitution = DebrisSurfaceRestitution
-            };
             // Контракт горизонта: дальний варп не летит за конец испечённого мира
             // (в wiring из ComputeFrame продублирован явно — без него
             // EphemerisEnd-событие не сработало бы).
             propagator.HardHorizonSeconds = SystemState.BakedEndSeconds();
-            driver = new LongWarpDriver(physics, propagator);
+            var driver = new LongWarpDriver(physics, propagator);
+            step = new VesselStep(
+                SystemState, warp, propagator, driver, mainThrust,
+                new JointedBreakup(), new DebrisPool(),
+                Parts, SpawnEpsilonMeters, DebrisLifetimeSeconds);
+
+            debrisUpdater = new DebrisUpdater(SystemState)
+            {
+                SurfaceRestitution = DebrisSurfaceRestitution
+            };
 
             SpawnShip();
-            time = new KahanAccumulator(0d);
-            TimeSeconds = 0d;
-            Regime = VesselRegime.Flying;
             PlayerMode = PlayerMode.InShip;
             JetpackActive = false;
             PlayerPosition = Ship.Position;
@@ -348,7 +340,7 @@ namespace Galilego.Universe
 
         private void SpawnShip()
         {
-            DominantBody = FindSpawnBody();
+            step.DominantBody = FindSpawnBody();
             DominantBody.EvaluateWorldState(0d, out Vector3d bodyP, out Vector3d bodyV);
             Vector3d radial = bodyP - SystemState.Root.RootPosition;
             if (radial.SqrMagnitude <= 0d)
@@ -384,7 +376,7 @@ namespace Galilego.Universe
                 velocityDirection = Vector3d.Cross(normal, positionDirection);
             }
 
-            Ship = new Ship(
+            step.Ship = new Ship(
                 bodyP + (positionDirection * (DominantBody.Radius + SpawnAltitudeMeters)),
                 bodyV + (velocityDirection * SpawnHorizontalSpeedMps),
                 SpawnMassKg);
@@ -413,7 +405,7 @@ namespace Galilego.Universe
             Ship.Velocity = surfaceVelocity;
             PlayerPosition = surfacePosition;
             PlayerVelocity = surfaceVelocity;
-            time.Reset(TimeSeconds);
+            step.ResetTimeAccumulator();
             FloatingOrigin.Anchor = PlayerPosition;
             Debug.Log(string.Format("[Teleport] игрок -> lat/lon места, смещение {0:F0} м", delta.Magnitude));
         }
@@ -448,7 +440,7 @@ namespace Galilego.Universe
 
             Ship.Position = surfacePos;
             Ship.Velocity = surfaceVel;
-            Regime = VesselRegime.Landed;
+            step.Regime = VesselRegime.Landed;
 
             Vector3d up = (surfacePos - bodyP).Normalized;
             Vector3d east = Vector3d.Cross(new Vector3d(0d, 0d, 1d), up);
@@ -511,14 +503,16 @@ namespace Galilego.Universe
                 return;
             }
 
+            step.RawThrottle = RawThrottle;
             double frameStartTime = TimeSeconds;
+            bool playerInShip = PlayerMode == PlayerMode.InShip;
             if (Regime == VesselRegime.Landed)
             {
-                StepLanded(realDt);
+                step.StepLanded(realDt, playerInShip);
             }
             else
             {
-                StepFlying(realDt);
+                step.StepFlying(realDt, playerInShip);
             }
 
             if (Debris != null)
@@ -527,7 +521,7 @@ namespace Galilego.Universe
             }
 
             StepPlayer(frameStartTime);
-            DominantBody = SystemState.FindDominantBody(Ship.Position, TimeSeconds);
+            step.DominantBody = SystemState.FindDominantBody(Ship.Position, TimeSeconds);
 
             // Якорь рендера — позиция игрока (floating origin): вьюхи в LateUpdate
             // читают свежий якорь, поэтому ставим в самом конце шага физики.
@@ -1133,219 +1127,6 @@ namespace Galilego.Universe
         private static double GroundHeight(OrbitingBody body, double latDeg, double lonDeg)
         {
             return body.Terrain?.GetHeightMeters(body, latDeg * (Math.PI / 180d), lonDeg * (Math.PI / 180d)) ?? 0d;
-        }
-
-        private void StepFlying(float realDt)
-        {
-            WarpFrameDecision decision = EphemerisRuntime.ComputeFrame(
-                SystemState, Warp, Ship.Position, TimeSeconds, realDt);
-            // Игрок вне корабля (EVA/на поверхности) — дальний варп запрещён,
-            // физический кап ×4: иначе игрока не догнать подшагами и он
-            // «потеряется» в полёте за один кадр.
-            double playerCap = PlayerMode == PlayerMode.InShip ? double.PositiveInfinity : 4d;
-            double factor = Math.Min(decision.EffectiveFactor, playerCap);
-            double frameEnd = TimeSeconds + (realDt * factor);
-
-            if (decision.UseLongWarp && playerCap == double.PositiveInfinity)
-            {
-                // Дальний варп: баллистика целиком, тяга запрещена по построению.
-                Warp.PrepareForLongWarp(TimeSeconds);
-                driver.CancelRequested = false;
-                LongWarpResult result = driver.AdvanceToTarget(Ship, TimeSeconds, frameEnd);
-                TimeSeconds = result.ReachedTimeSeconds;
-                time.Reset(TimeSeconds);
-                return;
-            }
-
-            double throttle = Warp.EffectiveThrottle(RawThrottle, factor);
-            bool thrustActive = mainThrust != null && throttle > 0d;
-            while (TimeSeconds < frameEnd - 1e-12d)
-            {
-                double chunk = Warp.GetMaxChunkSeconds(TimeSeconds, OrbitIntegrator.DefaultMaxStepSize, thrustActive);
-                chunk = Math.Min(chunk, frameEnd - TimeSeconds);
-                if (chunk <= 0d)
-                {
-                    chunk = Math.Min(OrbitIntegrator.DefaultMinStepSize, frameEnd - TimeSeconds);
-                }
-
-                Warp.SampleControl(TimeSeconds, throttle);
-                EventOccurrence? occurrence = propagator.Propagate(Ship, TimeSeconds, chunk);
-                if (occurrence.HasValue)
-                {
-                    TimeSeconds = occurrence.Value.TimeSeconds;
-                    time.Reset(TimeSeconds);
-                    HandleOccurrence(occurrence.Value);
-                    if (Regime != VesselRegime.Flying)
-                    {
-                        return;
-                    }
-                }
-                else
-                {
-                    time.Add(chunk);
-                    TimeSeconds = time.Sum;
-                }
-            }
-        }
-
-        private void StepLanded(float realDt)
-        {
-            WarpFrameDecision decision = EphemerisRuntime.ComputeFrame(
-                SystemState, Warp, Ship.Position, TimeSeconds, realDt);
-            // На поверхности дальний варп запрещён: кап физического ×3,
-            // как в атмосфере (SurfaceMotion точен на любом dt, зерно — control-tick).
-            // Игрок вне корабля добавляет свой кап ×4 (см. StepFlying).
-            double playerCap = PlayerMode == PlayerMode.InShip ? double.PositiveInfinity : 4d;
-            double factor = Math.Min(Math.Min(decision.EffectiveFactor, WarpController.AtmosphereMaxWarpFactor), playerCap);
-            double frameEnd = TimeSeconds + (realDt * factor);
-            double throttle = Warp.EffectiveThrottle(RawThrottle, factor);
-            bool thrustActive = mainThrust != null && throttle > 0d;
-
-            while (TimeSeconds < frameEnd - 1e-12d)
-            {
-                if (thrustActive)
-                {
-                    Vector3d gravity = SystemState.EvaluateShipAcceleration(Ship.Position, TimeSeconds);
-                    DynamicsContribution thrust = mainThrust.Evaluate(Ship.Position, Ship.Velocity, Ship.Mass, TimeSeconds);
-                    if (EventReactions.TryLiftoff(Ship, DominantBody, thrust.Force / Ship.Mass, gravity, TimeSeconds, out _)
-                        == VesselRegime.Flying)
-                    {
-                        Regime = VesselRegime.Flying;
-                        Warp.ResetTicks(TimeSeconds);
-                        time.Reset(TimeSeconds);
-                        return;
-                    }
-                }
-
-                double chunk = Warp.GetMaxChunkSeconds(TimeSeconds, SurfaceMaxStepSeconds, thrustActive);
-                chunk = Math.Min(chunk, frameEnd - TimeSeconds);
-                if (chunk <= 0d)
-                {
-                    chunk = Math.Min(SurfaceMaxStepSeconds, frameEnd - TimeSeconds);
-                }
-
-                Warp.SampleControl(TimeSeconds, throttle);
-                SurfaceMotionResult result = SurfaceMotion.Step(
-                    Ship.Position, Ship.Velocity, DominantBody, surfaceTerrain,
-                    (position, t) => SystemState.EvaluateShipAcceleration(position, t),
-                    TimeSeconds, chunk);
-                Ship.Position = result.Position;
-                Ship.Velocity = result.Velocity;
-                time.Add(chunk);
-                TimeSeconds = time.Sum;
-                if (result.Regime == VesselRegime.Flying)
-                {
-                    Regime = VesselRegime.Flying;
-                    Warp.ResetTicks(TimeSeconds);
-                    return;
-                }
-            }
-        }
-
-        private void HandleOccurrence(EventOccurrence occurrence)
-        {
-            switch (occurrence.Kind)
-            {
-                case EventKind.Touchdown:
-                    TouchdownOutcome outcome = EventReactions.ApplyTouchdown(
-                        Ship, occurrence, occurrence.Body, breakupModel, SpawnEpsilonMeters,
-                        NormalizeAssembly(Ship.Mass));
-                    if (outcome.IsLanding)
-                    {
-                        Regime = VesselRegime.Landed;
-                        DominantBody = occurrence.Body;
-                        Warp.ResetTicks(occurrence.TimeSeconds);
-                        LandedState landed = outcome.Landed;
-                        Debug.Log("Посадка на \"" + occurrence.Body.Name + "\" ("
-                            + landed.LatitudeDegrees.ToString("F2") + "°, "
-                            + landed.LongitudeDegrees.ToString("F2") + "°), v_t = "
-                            + landed.TangentialSpeed.ToString("F1") + " м/с");
-                    }
-                    else
-                    {
-                        ApplyBreakup(occurrence, outcome.Specs);
-                    }
-
-                    break;
-                case EventKind.PropellantDepleted:
-                    EventReactions.ApplyDepletion(Ship, occurrence);
-                    break;
-                case EventKind.EphemerisEnd:
-                    Debug.LogWarning("Конец испечённого мира — варп ограничен кеплеровыми рельсами.");
-                    break;
-            }
-        }
-
-        /// <summary>
-        /// Сборка деталей, нормированная к фактической массе корабля (массы
-        /// деталей задают ПРОПОРЦИИ: топливо выгорает, суммарная масса дрейфует).
-        /// null, если деталей не задано — whole-ship путь breakup-модели.
-        /// </summary>
-        private List<Part> NormalizeAssembly(double shipMass)
-        {
-            if (Parts == null || Parts.Length == 0)
-            {
-                return null;
-            }
-
-            double definedMass = 0d;
-            for (int i = 0; i < Parts.Length; i++)
-            {
-                definedMass += Parts[i].MassKg;
-            }
-
-            if (definedMass <= 0d)
-            {
-                return null;
-            }
-
-            double scale = shipMass / definedMass;
-            var assembly = new List<Part>(Parts.Length);
-            for (int i = 0; i < Parts.Length; i++)
-            {
-                assembly.Add(new Part(
-                    Parts[i].MassKg * scale,
-                    new Vector3d(Parts[i].Offset.x, Parts[i].Offset.y, Parts[i].Offset.z),
-                    Parts[i].JointStrengthNewtons));
-            }
-
-            return assembly;
-        }
-
-        /// <summary>
-        /// Жёсткий удар: отломанные детали → обломки, выжившая сборка остаётся
-        /// кораблём (масса = разность, посадка продолжится SurfaceMotion).
-        /// Пустой список спеков = стыки держат → посадка с повреждениями.
-        /// Ни одной целой детали → Destroyed.
-        /// </summary>
-        private void ApplyBreakup(EventOccurrence occurrence, System.Collections.Generic.IReadOnlyList<PartSeparationSpec> specs)
-        {
-            double brokenMass = 0d;
-            for (int i = 0; i < specs.Count; i++)
-            {
-                Debris.Spawn(specs[i].Position, specs[i].Velocity, specs[i].Mass,
-                    occurrence.TimeSeconds, DebrisLifetimeSeconds);
-                brokenMass += specs[i].Mass;
-            }
-
-            double survivorMass = Ship.Mass - brokenMass;
-            DominantBody = occurrence.Body;
-            if (survivorMass > 1e-9d)
-            {
-                Ship.Mass = survivorMass;
-                Regime = VesselRegime.Landed;
-                Warp.ResetTicks(occurrence.TimeSeconds);
-                Debug.Log("Удар о \"" + occurrence.Body.Name + "\": потеряно "
-                    + brokenMass.ToString("F0") + " кг, осталось "
-                    + specs.Count + " отделившихся деталей; сборка села.");
-            }
-            else
-            {
-                Regime = VesselRegime.Destroyed;
-                Warp.SetWarpFactor(WarpController.MinWarpFactor);
-                Debug.LogWarning("Удар о \"" + occurrence.Body.Name + "\": сборка разрушена полностью ("
-                    + specs.Count + " обломков).");
-            }
         }
     }
 }

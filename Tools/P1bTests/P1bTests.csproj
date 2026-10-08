@@ -93,6 +93,7 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\Maneuvers\TrajectoryValidator.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Assembly\BreakupModel.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\EventReactions.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\VesselStep.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\Detectors\DetectionGrain.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Warp\FrameBudgetScheduler.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Debris\DebrisPool.cs" />
