@@ -97,6 +97,10 @@ crashlytics-build.properties
 # Диагностический дамп Test903_ShelfFixAb (пишется в CWD при прогоне стенда)
 /shelf-fix-dump.txt
 
+# Срезы ветки для внешней песочницы (одноразовая передача, не коммитить)
+/promtII/*.zip
+/promtII/*.7z
+
 # OpenCode/Kiro working directory - documentation and session files
 Assets/_Project/.kiro/
 
