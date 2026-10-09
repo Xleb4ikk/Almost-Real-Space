@@ -57,7 +57,7 @@ namespace Galilego.Simulation.Player
 
         private static readonly Vector3d Up = new Vector3d(0d, 0d, 1d);
 
-        public void Step(IPlayerSupport support, double dt, Vector3d intentVelocity, Vector3d extraAcceleration = default)
+        public void Step(IPlayerSupport support, double dt, Vector3d intentVelocity)
         {
             if (support == null)
             {
@@ -70,12 +70,6 @@ namespace Galilego.Simulation.Player
             }
 
             Blocked = false;
-            if (extraAcceleration.SqrMagnitude > 0d)
-            {
-                // Дополнительное ускорение (джетпак): добавляется к скорости до шага.
-                Velocity += extraAcceleration * dt;
-            }
-
             Vector3d intent = new Vector3d(intentVelocity.X, intentVelocity.Y, 0d);
 
             if (Airborne)
