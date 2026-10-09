@@ -31,6 +31,8 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Assembly\Parts.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\RigidAssemblySolver.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\ContactGround.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\ConvexHull.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\SiteColliders.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\ContactZone\SiteFrame.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\ContactZone\ContactZoneGate.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\ContactZone\ZoneIslands.cs" />
@@ -123,6 +125,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Data\test_vessel_t1.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Data\site_1_colliders.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
