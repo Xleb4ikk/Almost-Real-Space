@@ -262,6 +262,13 @@ namespace Galilego.Universe
 
         // Ходьба игрока: чистый контроллер опор + локальный кадр места.
         private readonly PlayerSurfaceController playerController = new PlayerSurfaceController();
+
+        /// <summary>Стоит ли игрок на опоре (для проб/отладки).</summary>
+        public bool PlayerGrounded => !playerController.Airborne;
+
+        /// <summary>Идентификатор опоры под игроком (-1 — нет опоры; см. TerrainSupport/SiteBoxSupport).</summary>
+        public int PlayerGroundSourceId => playerController.GroundSourceId;
+
         private readonly TerrainSupport terrainSupport = new TerrainSupport();
         private readonly SiteBoxSupport siteSupport = new SiteBoxSupport();
         private readonly CompositePlayerSupport playerSupport = new CompositePlayerSupport();

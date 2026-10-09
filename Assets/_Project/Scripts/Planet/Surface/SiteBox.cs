@@ -346,9 +346,17 @@ namespace Galilego.Universe
                 hideFlags = HideFlags.HideAndDontSave,
                 layer = 2
             };
-            holder.transform.position = new Vector3(0f, -100000f, 0f);
+            // Поза части — реальная: новый путь опоры игрока (лучи/капсульные свипы
+            // SiteBoxSupport) видит коллайдеры только на их настоящих позах.
+            // Старый PushOutMesh(ComputePenetration) задаёт позу явно и не зависит
+            // от этого. Держим холдеры ДЕТЬМИ SiteBox: они едут вместе с местом,
+            // всегда активны (LOD-переключение не влияет) и находятся по
+            // GetComponentInParent<SiteBox>().
+            holder.transform.position = source.position;
+            holder.transform.rotation = source.rotation;
             Vector3 scale = source.lossyScale;
             holder.transform.localScale = new Vector3(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
+            holder.transform.SetParent(transform, true);
             colliderObjects.Add(holder);
             return holder;
         }

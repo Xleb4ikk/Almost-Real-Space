@@ -148,9 +148,13 @@ namespace Galilego.Simulation.Player
                 return false;
             }
 
-            Vector3 p1 = ToRenderPoint(from);
+            // Капсула: нижняя точка полусферы — ровно ноги (from), верх — from + высота.
+            // CapsuleCast добавляет радиус СВЕРХ концов отрезка, поэтому сегмент
+            // начинается на радиус выше ног (иначе полусфера уходит на 0.45 м под
+            // пол и свип ложно цепляет крышу/пол под ногами).
+            Vector3 p1 = ToRenderPoint(from) + (renderUp * (float)radius);
             Vector3 p2 = p1 + (renderUp * Mathf.Max(0.01f, (float)(PlayerSurfaceController.CapsuleHeight - (2d * radius))));
-            Vector3 delta = ToRenderPoint(to) - p1;
+            Vector3 delta = ToRenderPoint(to) - ToRenderPoint(from);
             float distance = delta.magnitude;
             if (distance < 1e-6f)
             {

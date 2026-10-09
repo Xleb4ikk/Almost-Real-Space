@@ -14,6 +14,8 @@ namespace Galilego.Universe.EditorTools
     public static class PlayerWalkSliceTool
     {
         private const string ScenePath = "Assets/PlayerWalkSlice.unity";
+        private const string RoofScenePath = "Assets/PlayerRoofSlice.unity";
+        private const string SitePrefabPath = "Assets/_Project/Sites/Место 1Site 1.prefab";
 
         [MenuItem("Galilego/Test Vessel/Build Player Walk Slice Scene")]
         public static void BuildMenu()
@@ -21,10 +23,60 @@ namespace Galilego.Universe.EditorTools
             Debug.Log(BuildScene());
         }
 
+        [MenuItem("Galilego/Test Vessel/Build Player Roof Slice Scene")]
+        public static void BuildRoofMenu()
+        {
+            Debug.Log(BuildRoofScene());
+        }
+
         public static string BuildScene()
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
+            SimulationRunner runner = BuildRunner(scene);
 
+            var probeGo = new GameObject("PlayerWalkProbe");
+            SceneManager.MoveGameObjectToScene(probeGo, scene);
+            var probe = probeGo.AddComponent<PlayerWalkProbe>();
+            probe.Runner = runner;
+
+            bool saved = EditorSceneManager.SaveScene(scene, ScenePath);
+            EditorSceneManager.CloseScene(scene, true);
+            return string.Format("Walk-срез: сцена \"{0}\" {1}", ScenePath, saved ? "сохранена" : "НЕ сохранена");
+        }
+
+        /// <summary>Сцена пробы крыши: тот же мир + место (SurfaceSite) в точке спавна (0,0).</summary>
+        public static string BuildRoofScene()
+        {
+            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
+            SimulationRunner runner = BuildRunner(scene);
+
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(SitePrefabPath);
+            if (prefab == null)
+            {
+                EditorSceneManager.CloseScene(scene, true);
+                return "Roof-срез: префаб места не найден: " + SitePrefabPath;
+            }
+
+            var siteGo = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
+            var site = siteGo.GetComponentInChildren<SurfaceSite>(true);
+            if (site != null)
+            {
+                site.LatitudeDegrees = 0d;
+                site.LongitudeDegrees = 0d;
+            }
+
+            var probeGo = new GameObject("PlayerRoofProbe");
+            SceneManager.MoveGameObjectToScene(probeGo, scene);
+            var probe = probeGo.AddComponent<PlayerRoofProbe>();
+            probe.Runner = runner;
+
+            bool saved = EditorSceneManager.SaveScene(scene, RoofScenePath);
+            EditorSceneManager.CloseScene(scene, true);
+            return string.Format("Roof-срез: сцена \"{0}\" {1}", RoofScenePath, saved ? "сохранена" : "НЕ сохранена");
+        }
+
+        private static SimulationRunner BuildRunner(Scene scene)
+        {
             var systemGo = new GameObject("System");
             SceneManager.MoveGameObjectToScene(systemGo, scene);
             var authoring = systemGo.AddComponent<StarSystemAuthoring>();
@@ -51,15 +103,7 @@ namespace Galilego.Universe.EditorTools
             runner.SpawnBodyName = "Terra";
             runner.SpawnOnSurface = true;
             runner.SpawnMassKg = 5000d;
-
-            var probeGo = new GameObject("PlayerWalkProbe");
-            SceneManager.MoveGameObjectToScene(probeGo, scene);
-            var probe = probeGo.AddComponent<PlayerWalkProbe>();
-            probe.Runner = runner;
-
-            bool saved = EditorSceneManager.SaveScene(scene, ScenePath);
-            EditorSceneManager.CloseScene(scene, true);
-            return string.Format("Walk-срез: сцена \"{0}\" {1}", ScenePath, saved ? "сохранена" : "НЕ сохранена");
+            return runner;
         }
     }
 }
