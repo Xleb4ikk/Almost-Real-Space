@@ -227,6 +227,14 @@ namespace Galilego.Simulation.Player
                     continue;
                 }
 
+                // Касание в старте (стоим на стыке двух коллайдеров — капсула уже
+                // соприкасается): это не стена. Иначе свип блокирует ход на швах
+                // («застреваю на стыке рампы и площадки»).
+                if (hit.distance < 0.002f)
+                {
+                    continue;
+                }
+
                 float f = hit.distance / distance;
                 if (f < bestFraction)
                 {
