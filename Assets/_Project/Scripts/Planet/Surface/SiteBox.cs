@@ -346,17 +346,16 @@ namespace Galilego.Universe
                 hideFlags = HideFlags.HideAndDontSave,
                 layer = 2
             };
-            // Поза части — реальная: новый путь опоры игрока (лучи/капсульные свипы
-            // SiteBoxSupport) видит коллайдеры только на их настоящих позах.
-            // Старый PushOutMesh(ComputePenetration) задаёт позу явно и не зависит
-            // от этого. Держим холдеры ДЕТЬМИ SiteBox: они едут вместе с местом,
-            // всегда активны (LOD-переключение не влияет) и находятся по
-            // GetComponentInParent<SiteBox>().
-            holder.transform.position = source.position;
-            holder.transform.rotation = source.rotation;
-            Vector3 scale = source.lossyScale;
-            holder.transform.localScale = new Vector3(Mathf.Abs(scale.x), Mathf.Abs(scale.y), Mathf.Abs(scale.z));
-            holder.transform.SetParent(transform, true);
+            // Поза холдера = поза исходной части: холдер — РЕБЁНОК части с нулевым
+            // локальным трансформом. Так коллайдеры точны при любом порядке
+            // обновления места (SurfaceGrounded/Refresh двигают содержимое после
+            // OnEnable — привязка к SiteBox давала «уехавший» коллайдер).
+            // SiteBox находим по SiteBoxPart.Owner (SiteBox лежит рядом, не в предках).
+            holder.transform.SetParent(source, false);
+            holder.transform.localPosition = Vector3.zero;
+            holder.transform.localRotation = Quaternion.identity;
+            holder.transform.localScale = Vector3.one;
+            holder.AddComponent<SiteBoxPart>().Owner = this;
             colliderObjects.Add(holder);
             return holder;
         }

@@ -40,6 +40,27 @@ namespace Galilego.Simulation.Player
             return id;
         }
 
+        /// <summary>
+        /// Владелец коллайдера: SiteBox в предках (авторские коллайдеры) или
+        /// SiteBoxPart.Owner (холдеры — дети частей, SiteBox лежит рядом).
+        /// </summary>
+        public static SiteBox ResolveSiteBox(Collider collider)
+        {
+            if (collider == null)
+            {
+                return null;
+            }
+
+            SiteBox box = collider.GetComponentInParent<SiteBox>();
+            if (box != null)
+            {
+                return box;
+            }
+
+            SiteBoxPart part = collider.GetComponentInParent<SiteBoxPart>();
+            return part != null ? part.Owner : null;
+        }
+
         public void SetFrame(SiteFrame siteFrame)
         {
             frame = siteFrame;
@@ -94,7 +115,7 @@ namespace Galilego.Simulation.Player
             for (int i = 0; i < hits.Length; i++)
             {
                 RaycastHit hit = hits[i];
-                SiteBox box = hit.collider != null ? hit.collider.GetComponentInParent<SiteBox>() : null;
+                SiteBox box = ResolveSiteBox(hit.collider);
                 if (box == null || hit.distance >= bestDistance)
                 {
                     continue;
@@ -125,7 +146,7 @@ namespace Galilego.Simulation.Player
             for (int i = 0; i < hits.Length; i++)
             {
                 RaycastHit hit = hits[i];
-                SiteBox box = hit.collider != null ? hit.collider.GetComponentInParent<SiteBox>() : null;
+                SiteBox box = ResolveSiteBox(hit.collider);
                 if (box == null || hit.distance >= best)
                 {
                     continue;
@@ -168,7 +189,7 @@ namespace Galilego.Simulation.Player
             for (int i = 0; i < hits.Length; i++)
             {
                 RaycastHit hit = hits[i];
-                SiteBox box = hit.collider != null ? hit.collider.GetComponentInParent<SiteBox>() : null;
+                SiteBox box = ResolveSiteBox(hit.collider);
                 if (box == null || hit.distance < 0f)
                 {
                     continue;

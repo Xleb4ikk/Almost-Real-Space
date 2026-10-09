@@ -100,9 +100,7 @@ namespace Galilego.Simulation.Player
                     string nearestName = "-";
                     for (int i = 0; i < hits.Length; i++)
                     {
-                        SiteBox box = hits[i].collider != null
-                            ? hits[i].collider.GetComponentInParent<SiteBox>()
-                            : null;
+                        SiteBox box = SiteBoxSupport.ResolveSiteBox(hits[i].collider);
                         if (box == null)
                         {
                             continue;
@@ -195,9 +193,7 @@ namespace Galilego.Simulation.Player
             int siteHits = 0;
             for (int i = 0; i < hits.Length; i++)
             {
-                SiteBox box = hits[i].collider != null
-                    ? hits[i].collider.GetComponentInParent<SiteBox>()
-                    : null;
+                SiteBox box = SiteBoxSupport.ResolveSiteBox(hits[i].collider);
                 if (box == null)
                 {
                     continue;
