@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.6.1" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+  </ItemGroup>
+
+  <!-- НАСТОЯЩИЕ файлы физики (не копии): тест ловит регрессии в реальном коде. -->
+  <ItemGroup>
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Math\KahanAccumulator.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Math\Vector3d.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Math\QuaternionD.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\DenseSegment.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\DOPRI5Coefficients.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\OrbitIntegrator.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\IntegrationResult.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftIntegrationState.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftIntegrationResult.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftOrbitIntegrator.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\PhysicsSolver.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\CelestialBody.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElements.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\RigidAssemblySolver.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\ContactGround.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElementsData.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\Prediction\KeplerMath.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Universe\OrbitingBody.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Universe\StarSystem.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Universe\AstroFrame.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Ephemeris\BakedEphemeris.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Ephemeris\EphemerisRangeException.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Terrain\ITerrainModel.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Clouds\CloudProfile.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\AtmosphereOptics.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\AtmosphereProfile.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Spacecraft.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\DynamicsContribution.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\IDynamicsSource.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\GravitySource.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\SpacecraftPhysics.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\EventDirection.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\EventDetectors.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\EventOccurrence.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\Detectors\DetectionGrain.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\Detectors\AltitudeCrossingDetector.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\Detectors\SoiChangeDetector.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\TimedEvent.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\EventDrivenPropagator.cs" />
+    <Compile Include="..\Shims\Shims.cs" />
+  </ItemGroup>
+
+</Project>

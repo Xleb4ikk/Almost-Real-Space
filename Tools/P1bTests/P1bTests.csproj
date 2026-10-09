@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
@@ -9,10 +9,12 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="UnityStubs.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Decor\DecorExclusionCore.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="TestSupport.cs" />
     <Compile Include="TestRegistry.cs" />
     <Compile Include="Tests\**\*.cs" />
+    <Compile Include="LandingTrace.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElements.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElementsData.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Math\Vector3d.cs" />
@@ -27,6 +29,15 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Attitude\AttitudePhysics.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Attitude\ReactionControl.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Assembly\Parts.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\RigidAssemblySolver.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\ContactGround.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\ConvexHull.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\SiteColliders.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\ContactZone\SiteFrame.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\ContactZone\ContactZoneGate.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\ContactZone\ZoneIslands.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Player\IPlayerSupport.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Player\PlayerSurfaceController.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Assembly\PartDefinition.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\History\TrajectoryHistory.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\Transfers\LambertSolver.cs" />
@@ -60,24 +71,12 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\AtmosphereProfileAsset.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Clouds\CloudProfile.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Clouds\CloudProfileAsset.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Water\UnderwaterEffect.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Decor\GroundDecorProfile.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Decor\GroundDecorProfileAsset.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Decor\GroundDecorPlacement.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Decor\GroundDecorCollisionRegistry.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Terrain\TerrainPalette.cs" />
-    <!-- ВНИМАНИЕ: стенд ниже НЕ собирается на текущем HEAD и без разделения
-     TerrainModel.cs: не хватает Planet\Decor\DecorExclusion.cs (TerrainNoise.cs
-     и HeightfieldTerrain.cs ссылаются на DecorExclusionData), плюс
-     SiteBoxRegistry и HDR GradientSky. Это пробелы самого стенда, не следствие
-     разделения файла. Чтобы починить — добавить в этот список:
-       Planet\Decor\DecorExclusion.cs  + стабы Renderer/Vector2/Bounds/GameObject
-       Planet\Surface\SiteBox.cs       (SiteBoxRegistry)
-       UnityEngine.Rendering.HighDefinition.GradientSky в UnityStubs.cs -->
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Terrain\CubeSphere.cs" />
-    <!-- SurfaceFrame нужен стенду с коммита, где SkyEnvironment синхронизирует
-         глобалы освещения вне Play через SurfaceFrame.ActiveEditFrame(). -->
-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Surface\SurfaceFrame.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\SurfaceMotion.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Spacecraft.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\SpacecraftPhysics.cs" />
@@ -102,6 +101,7 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\Maneuvers\TrajectoryValidator.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Assembly\BreakupModel.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\EventReactions.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\VesselStep.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\Detectors\DetectionGrain.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Warp\FrameBudgetScheduler.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Debris\DebrisPool.cs" />
@@ -109,31 +109,27 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Universe\BodyAuthoring.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Universe\StarSystemAuthoring.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Ephemeris\EphemerisRuntime.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Player\FirstPersonCamera.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\PlanetAtmosphereView.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\SkyPhysics.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\SkyEnvironment.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\StarFieldView.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Player\PlayerInput.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Universe\FloatingOrigin.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\SunBillboard.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\StarColorUtil.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\StarSurfaceTexture.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Player\PlayerState.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Player\PlayerController.cs" />
     <!-- CheatMenu.cs сознательно НЕ подключён: это отладочный UI-MonoBehaviour,
          который тянет FlightBenchmark → SurfacePerf → половину UnityEngine
          (ProfilerRecorder, Resources, SystemInfo, DontDestroyOnLoad). Стенд
          его не исполняет, а стабить всю эту поверхность незачем. Ломало сборку
          с коммита d0f6328. Проверяется в самом редакторе, не здесь. -->
     <Compile Include="..\..\Assets\_Project\Scripts\Diagnostics\CheatGuiSkin.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Player\PlayerView.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Player\Interactables.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Views\BodyView.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Views\ShipView.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Views\DebrisView.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\SimulationRunner.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Surface\SurfaceFrameMath.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Data\test_vessel_t1.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Data\site_1_colliders.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>
 

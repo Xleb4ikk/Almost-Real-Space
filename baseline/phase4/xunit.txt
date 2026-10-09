@@ -1,0 +1,36 @@
+﻿  ╨Ю╨┐╤А╨╡╨┤╨╡╨╗╨╡╨╜╨╕╨╡ ╨┐╤А╨╛╨╡╨║╤В╨╛╨▓ ╨┤╨╗╤П ╨▓╨╛╤Б╤Б╤В╨░╨╜╨╛╨▓╨╗╨╡╨╜╨╕╤П...
+  ╨Т╤Б╨╡ ╨┐╤А╨╛╨╡╨║╤В╤Л ╨╛╨▒╨╜╨╛╨▓╨╗╨╡╨╜╤Л ╨┤╨╗╤П ╨▓╨╛╤Б╤Б╤В╨░╨╜╨╛╨▓╨╗╨╡╨╜╨╕╤П.
+C:\MyData\UnityProj\Almost Real Space\tests\Shims\Shims.cs(207,25): warning CS8981: ╨Ш╨╝╤П ╤В╨╕╨┐╨░ "math" ╤Б╨╛╨┤╨╡╤А╨╢╨╕╤В ╤В╨╛╨╗╤М╨║╨╛ ╤Б╤В╤А╨╛╤З╨╜╤Л╨╡ ╤Б╨╕╨╝╨▓╨╛╨╗╤Л ASCII. ╨в╨░╨║╨╕╨╡ ╨╕╨╝╨╡╨╜╨░ ╨╝╨╛╨│╤Г╤В ╤А╨╡╨╖╨╡╤А╨▓╨╕╤А╨╛╨▓╨░╤В╤М╤Б╤П ╨┤╨╗╤П ╤П╨╖╤Л╨║╨░. [C:\MyData\UnityProj\Almost Real Space\tests\GalilegoPhysicsTests\GalilegoPhysicsTests.csproj]
+C:\MyData\UnityProj\Almost Real Space\tests\GalilegoPhysicsTests\AltitudeCrossingTests.cs(63,42): warning CS0618: "PhysicsSolver.RK4(Vector3d, Vector3d, double, double, Func<Vector3d, double, Vector3d>)" ╤П╨▓╨╗╤П╨╡╤В╤Б╤П ╤Г╤Б╤В╨░╤А╨╡╨▓╤И╨╕╨╝: 'Legacy B9 cluster: use SpacecraftPhysics (SpacecraftOrbitIntegrator). Chain: StepShip -> OrbitIntegrator -> RK4/CelestialBody.' [C:\MyData\UnityProj\Almost Real Space\tests\GalilegoPhysicsTests\GalilegoPhysicsTests.csproj]
+C:\MyData\UnityProj\Almost Real Space\tests\GalilegoPhysicsTests\RegressionTests.cs(51,47): warning CS0618: "OrbitIntegrator.StepForward(Vector3d, Vector3d, double, double, Func<Vector3d, double, Vector3d>, double, double)" ╤П╨▓╨╗╤П╨╡╤В╤Б╤П ╤Г╤Б╤В╨░╤А╨╡╨▓╤И╨╕╨╝: 'Legacy B9 cluster: use SpacecraftPhysics (SpacecraftOrbitIntegrator). Chain: StepShip -> OrbitIntegrator -> RK4/CelestialBody.' [C:\MyData\UnityProj\Almost Real Space\tests\GalilegoPhysicsTests\GalilegoPhysicsTests.csproj]
+C:\MyData\UnityProj\Almost Real Space\tests\GalilegoPhysicsTests\AltitudeCrossingTests.cs(100,42): warning CS0618: "PhysicsSolver.RK4(Vector3d, Vector3d, double, double, Func<Vector3d, double, Vector3d>)" ╤П╨▓╨╗╤П╨╡╤В╤Б╤П ╤Г╤Б╤В╨░╤А╨╡╨▓╤И╨╕╨╝: 'Legacy B9 cluster: use SpacecraftPhysics (SpacecraftOrbitIntegrator). Chain: StepShip -> OrbitIntegrator -> RK4/CelestialBody.' [C:\MyData\UnityProj\Almost Real Space\tests\GalilegoPhysicsTests\GalilegoPhysicsTests.csproj]
+  GalilegoPhysicsTests -> C:\MyData\UnityProj\Almost Real Space\tests\GalilegoPhysicsTests\bin\Debug\net8.0\GalilegoPhysicsTests.dll
+╨в╨╡╤Б╤В╨╛╨▓╤Л╨╣ ╨╖╨░╨┐╤Г╤Б╨║ ╨┤╨╗╤П C:\MyData\UnityProj\Almost Real Space\tests\GalilegoPhysicsTests\bin\Debug\net8.0\GalilegoPhysicsTests.dll (.NETCoreApp,Version=v8.0)
+╨Ю╨▒╤Й╨╡╨╡ ╨║╨╛╨╗╨╕╤З╨╡╤Б╤В╨▓╨╛ ╤В╨╡╤Б╤В╨╛╨▓╤Л╤Е ╤Д╨░╨╣╨╗╨╛╨▓ (1), ╤Б╨╛╨╛╤В╨▓╨╡╤В╤Б╤В╨▓╤Г╤О╤Й╨╕╤Е ╤Г╨║╨░╨╖╨░╨╜╨╜╨╛╨╝╤Г ╤И╨░╨▒╨╗╨╛╨╜╤Г.
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.5.3.1+6b60a9e56a (64-bit .NET 8.0.24)
+[xUnit.net 00:00:00.04]   Discovering: GalilegoPhysicsTests
+[xUnit.net 00:00:00.06]   Discovered:  GalilegoPhysicsTests
+[xUnit.net 00:00:00.06]   Starting:    GalilegoPhysicsTests
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.ContactSolverTests.InverseInertiaWorld_IdentityOrientation_ScalesByPrincipalMoments [2 ms]
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.ContactSolverTests.RotationExponential_IsUnitAndMatchesAxisAngle [< 1 ms]
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.ContactSolverTests.HeightFieldGround_NormalOfLinearSlopeMatchesAnalyticNormal [< 1 ms]
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.TsiolkovskyTests.ConstantThrust_MatchesTsiolkovsky [5 ms]
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.OrbitAnalyticTests.CircularOrbit_ReturnsToStart_AfterOnePeriod [5 ms]
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.ContactSolverTests.FreeFall_VelocityIsExactlyGravityTimesTime [1 ms]
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.ContactSolverTests.EulerRk4_RotationAboutPrincipalAxis_KeepsRate [< 1 ms]
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.ContactSolverTests.PlaneGround_DepthIsPositiveBelowAndNormalIsOutward [< 1 ms]
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.ContactSolverTests.RigidJoint_SeparationIsZeroAtCreation [< 1 ms]
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.TimedEventTests.TimedMassDrop_ExactTimeAndExactJump [7 ms]
+[xUnit.net 00:00:00.21]   Finished:    GalilegoPhysicsTests
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.PriorityRestartTests.SameRoot_PriorityWins_RestartAdvances [7 ms]
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.TimedEventTests.TimedMassDrop_BelowMinimum_Throws [< 1 ms]
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.PriorityRestartTests.LowPriorityDetectorAlone_FindsSameRoot [< 1 ms]
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.RegressionTests.NewPath_MatchesOldPath_OnPureGravity [9 ms]
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.MassToleranceTests.TightMassTolerance_IncreasesStepCount [10 ms]
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.AltitudeCrossingTests.RisingShellCrossing_MatchesIndependentReference [44 ms]
+  ╨Я╤А╨╛╨╣╨┤╨╡╨╜ GalilegoPhysicsTests.SoiChangeTests.EscapeFromSoi_ReportsTransitionInsideBracket [121 ms]
+
+╨в╨╡╤Б╤В╨╛╨▓╤Л╨╣ ╨╖╨░╨┐╤Г╤Б╨║ ╨▓╤Л╨┐╨╛╨╗╨╜╨╡╨╜.
+╨Т╤Б╨╡╨│╨╛ ╤В╨╡╤Б╤В╨╛╨▓: 17
+     ╨Я╤А╨╛╨╣╨┤╨╡╨╜╨╛: 17
+ ╨Ю╨▒╤Й╨╡╨╡ ╨▓╤А╨╡╨╝╤П: 0,5437 ╨б╨╡╨║╤Г╨╜╨┤╤Л

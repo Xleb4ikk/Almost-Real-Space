@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Profiling;
 using Galilego.Core;
 
 namespace Galilego.Universe
@@ -9,16 +10,19 @@ namespace Galilego.Universe
     /// double и Unity-физику не использует, поэтому выталкивание считается здесь,
     /// в render-пространстве рядом с якорем.
     ///
-    /// UseMeshCollision = true: столкновение идёт по геометрии здания — по
-    /// отдельному ящику на каждую часть LOD0 (все выступы, крылья, ниши). Бокс
-    /// (Center/Size) остаётся грубым фильтром: вне его мешы даже не проверяются,
-    /// поэтому он должен ЦЕЛИКОМ накрывать здание. Для каждой части на старте
-    /// создаётся скрытый коллайдер далеко от сцены (слой Ignore Raycast, не
-    /// двигается), а поза берётся из исходного трансформа — физика сцены и лучи
-    /// взаимодействия его не видят, двигать статические коллайдеры каждый кадр
-    /// не нужно.
+    /// UseMeshCollision = true: коллизия идёт по запечённым данным части.
+    /// Выпуклая часть получает ОДИН convex MeshCollider из собственного меша —
+    /// точная форма, включая скосы рампы, без лесенки из боксов. Вогнутая часть
+    /// получает набор небольших боксов (вокселизация поверхности). Авторские
+    /// коллайдеры (convex MeshCollider или BoxCollider) на части или на самом
+    /// SiteBox имеют приоритет над автозапеканием.
     ///
-    /// UseMeshCollision = false (или мешей не нашлось): старое поведение, сплошной бокс.
+    /// Center/Size остаётся грубым фильтром. Если запекания нет, используется
+    /// один старый габаритный бокс на часть.
+    ///
+    /// ВАЖНО: невыпуклые (non-convex) MeshCollider нигде не используются —
+    /// Physics.ComputePenetration, на котором держится пушаут, с ними молча
+    /// возвращает отсутствие пересечения (проверено тестом).
     /// </summary>
     public sealed class SiteBox : MonoBehaviour
     {
@@ -40,6 +44,37 @@ namespace Galilego.Universe
         [Tooltip("Части, в имени которых есть одна из этих подстрок, в коллизию не берутся (мелкий декор).")]
         public string[] SkipNameContains = new string[0];
 
+        [Tooltip("Размер ячейки запекания в метрах. Меньше = точнее, но больше боксов.")]
+        [Min(0.1f)]
+        public float BakeVoxelSizeMeters = 1f;
+
+        [System.Serializable]
+        public struct BakedBoxData
+        {
+            public Vector3 Center;
+            public Vector3 Size;
+        }
+
+        [System.Serializable]
+        public sealed class BakedPartData
+        {
+            public MeshFilter Source;
+
+            /// <summary>
+            /// true = часть выпуклая, сварится в один convex MeshCollider по
+            /// собственному мешу (Boxes пустые). false = вогнутая, коллизия по Boxes.
+            /// </summary>
+            public bool UseConvexMesh;
+
+            public List<BakedBoxData> Boxes = new List<BakedBoxData>();
+        }
+
+        [HideInInspector]
+        public List<BakedPartData> BakedParts = new List<BakedPartData>();
+
+        /// <summary>Есть ли запечённые данные (боксы или флаги convex hull).</summary>
+        public bool HasBakedParts => BakedParts != null && BakedParts.Count > 0;
+
         private sealed class Part
         {
             public Transform Source;
@@ -49,13 +84,46 @@ namespace Galilego.Universe
         }
 
         private readonly List<Part> parts = new List<Part>();
+        private readonly List<GameObject> colliderObjects = new List<GameObject>();
 
         public bool HasMesh => parts.Count > 0;
+        public int BakedBoxCount
+        {
+            get
+            {
+                int count = 0;
+                if (BakedParts != null)
+                {
+                    for (int i = 0; i < BakedParts.Count; i++)
+                    {
+                        if (BakedParts[i] != null && BakedParts[i].Boxes != null)
+                        {
+                            count += BakedParts[i].Boxes.Count;
+                        }
+                    }
+                }
+
+                return count;
+            }
+        }
 
         private void OnEnable()
         {
             SiteBoxRegistry.Register(this);
             if (Application.isPlaying && UseMeshCollision)
+            {
+                BuildParts();
+            }
+        }
+
+        /// <summary>
+        /// Собрать коллайдеры, если ещё не собраны (страховка от порядка
+        /// жизненного цикла: OnEnable мог отработать до готовности сцены).
+        /// Вызывается из опоры игрока перед запросами.
+        /// </summary>
+        public void EnsureBuilt()
+        {
+            if (Application.isPlaying && UseMeshCollision && parts.Count == 0)
             {
                 BuildParts();
             }
@@ -76,6 +144,246 @@ namespace Galilego.Universe
                 return;
             }
 
+            // Авторские коллайдеры прямо на этом объекте (Blender-воркфлоу):
+            // заменяют автозапекание целиком.
+            if (TryBuildAuthoredSiteColliders())
+            {
+                return;
+            }
+
+            if (HasBakedParts)
+            {
+                BuildBakedParts();
+                if (parts.Count > 0)
+                {
+                    return;
+                }
+            }
+
+            List<MeshFilter> filters = CollectPartFilters(root);
+            for (int i = 0; i < filters.Count; i++)
+            {
+                MeshFilter filter = filters[i];
+                if (filter == null || IsSkipped(filter.name))
+                {
+                    continue;
+                }
+
+                if (TryAuthoredPartCollider(filter, out Part authored))
+                {
+                    parts.Add(authored);
+                    continue;
+                }
+
+                Mesh mesh = filter.sharedMesh;
+                if (mesh == null)
+                {
+                    continue;
+                }
+
+                GameObject holder = CreateColliderHolder(filter.transform);
+                BoxCollider boxCollider = holder.AddComponent<BoxCollider>();
+                boxCollider.center = mesh.bounds.center;
+                boxCollider.size = SafeSize(mesh.bounds.size);
+                parts.Add(new Part
+                {
+                    Source = filter.transform,
+                    Collider = boxCollider,
+                    LocalCenter = mesh.bounds.center,
+                    LocalExtents = boxCollider.size * 0.5f
+                });
+            }
+        }
+
+        /// <summary>
+        /// Авторские MeshCollider/BoxCollider на самом SiteBox. Convex MeshCollider
+        /// поддерживается, невыпуклый — игнорируется с предупреждением (см. шапку).
+        /// </summary>
+        private bool TryBuildAuthoredSiteColliders()
+        {
+            bool found = false;
+            Collider[] authored = GetComponents<Collider>();
+            for (int i = 0; i < authored.Length; i++)
+            {
+                Collider c = authored[i];
+                if (c is MeshCollider meshCollider)
+                {
+                    if (meshCollider.sharedMesh == null)
+                    {
+                        continue;
+                    }
+
+                    if (!meshCollider.convex)
+                    {
+                        Debug.LogWarning("[SiteBox] Невыпуклый MeshCollider на '" + name +
+                            "' игнорируется: ComputePenetration не работает с non-convex мешами. " +
+                            "Сделайте его convex или уберите — автозапекание продолжит работу.", this);
+                        continue;
+                    }
+
+                    parts.Add(new Part
+                    {
+                        Source = transform,
+                        Collider = meshCollider,
+                        LocalCenter = meshCollider.sharedMesh.bounds.center,
+                        LocalExtents = meshCollider.sharedMesh.bounds.extents
+                    });
+                    found = true;
+                }
+                else if (c is BoxCollider boxCollider)
+                {
+                    parts.Add(new Part
+                    {
+                        Source = transform,
+                        Collider = boxCollider,
+                        LocalCenter = boxCollider.center,
+                        LocalExtents = boxCollider.size * 0.5f
+                    });
+                    found = true;
+                }
+            }
+
+            return found;
+        }
+
+        /// <summary>
+        /// Авторский коллайдер на самой части (повернутый бокс для скоса,
+        /// convex MeshCollider из упрощённого меша). Без холдера — коллайдер
+        /// уже лежит на нужном трансформе.
+        /// </summary>
+        private static bool TryAuthoredPartCollider(MeshFilter filter, out Part part)
+        {
+            part = null;
+            MeshCollider meshCollider = filter.GetComponent<MeshCollider>();
+            if (meshCollider != null && meshCollider.sharedMesh != null)
+            {
+                if (!meshCollider.convex)
+                {
+                    Debug.LogWarning("[SiteBox] Невыпуклый MeshCollider на части '" + filter.name +
+                        "' игнорируется (ComputePenetration требует convex).");
+                    return false;
+                }
+
+                part = new Part
+                {
+                    Source = filter.transform,
+                    Collider = meshCollider,
+                    LocalCenter = meshCollider.sharedMesh.bounds.center,
+                    LocalExtents = meshCollider.sharedMesh.bounds.extents
+                };
+                return true;
+            }
+
+            BoxCollider box = filter.GetComponent<BoxCollider>();
+            if (box != null)
+            {
+                part = new Part
+                {
+                    Source = filter.transform,
+                    Collider = box,
+                    LocalCenter = box.center,
+                    LocalExtents = box.size * 0.5f
+                };
+                return true;
+            }
+
+            return false;
+        }
+
+        private void BuildBakedParts()
+        {
+            for (int i = 0; i < BakedParts.Count; i++)
+            {
+                BakedPartData baked = BakedParts[i];
+                MeshFilter source = baked != null ? baked.Source : null;
+                if (source == null || IsSkipped(source.name))
+                {
+                    continue;
+                }
+
+                if (TryAuthoredPartCollider(source, out Part authored))
+                {
+                    parts.Add(authored);
+                    continue;
+                }
+
+                if (baked.UseConvexMesh)
+                {
+                    Mesh mesh = source.sharedMesh;
+                    if (mesh == null)
+                    {
+                        continue;
+                    }
+
+                    GameObject holder = CreateColliderHolder(source.transform);
+                    MeshCollider hull = holder.AddComponent<MeshCollider>();
+                    hull.convex = true;
+                    hull.sharedMesh = mesh;
+                    parts.Add(new Part
+                    {
+                        Source = source.transform,
+                        Collider = hull,
+                        LocalCenter = mesh.bounds.center,
+                        LocalExtents = mesh.bounds.extents
+                    });
+                    continue;
+                }
+
+                if (baked.Boxes == null)
+                {
+                    continue;
+                }
+
+                GameObject boxHolder = CreateColliderHolder(source.transform);
+                for (int j = 0; j < baked.Boxes.Count; j++)
+                {
+                    BakedBoxData data = baked.Boxes[j];
+                    BoxCollider box = boxHolder.AddComponent<BoxCollider>();
+                    box.center = data.Center;
+                    box.size = SafeSize(data.Size);
+                    parts.Add(new Part
+                    {
+                        Source = source.transform,
+                        Collider = box,
+                        LocalCenter = data.Center,
+                        LocalExtents = box.size * 0.5f
+                    });
+                }
+            }
+        }
+
+        private GameObject CreateColliderHolder(Transform source)
+        {
+            var holder = new GameObject("SitePartColliders")
+            {
+                hideFlags = HideFlags.HideAndDontSave,
+                layer = 2
+            };
+            // Поза холдера = поза исходной части: холдер — РЕБЁНОК части с нулевым
+            // локальным трансформом. Так коллайдеры точны при любом порядке
+            // обновления места (SurfaceGrounded/Refresh двигают содержимое после
+            // OnEnable — привязка к SiteBox давала «уехавший» коллайдер).
+            // SiteBox находим по SiteBoxPart.Owner (SiteBox лежит рядом, не в предках).
+            holder.transform.SetParent(source, false);
+            holder.transform.localPosition = Vector3.zero;
+            holder.transform.localRotation = Quaternion.identity;
+            holder.transform.localScale = Vector3.one;
+            holder.AddComponent<SiteBoxPart>().Owner = this;
+            colliderObjects.Add(holder);
+            return holder;
+        }
+
+        private static Vector3 SafeSize(Vector3 size)
+        {
+            return new Vector3(
+                Mathf.Max(size.x, MinSize),
+                Mathf.Max(size.y, MinSize),
+                Mathf.Max(size.z, MinSize));
+        }
+
+        /// <summary>Та же выборка частей LOD0 используется при запекании и в рантайме.</summary>
+        public static List<MeshFilter> CollectPartFilters(Transform root)
+        {
             var filters = new List<MeshFilter>();
             LODGroup lodGroup = root.GetComponentInChildren<LODGroup>(true);
             if (lodGroup != null)
@@ -99,53 +407,10 @@ namespace Galilego.Universe
                 root.GetComponentsInChildren(true, filters);
             }
 
-            for (int i = 0; i < filters.Count; i++)
-            {
-                MeshFilter f = filters[i];
-                Mesh mesh = f.sharedMesh;
-                if (mesh == null || IsSkipped(f.name))
-                {
-                    continue;
-                }
-
-#if !UNITY_EDITOR
-                if (!mesh.isReadable)
-                {
-                    Debug.LogWarning("[SiteBox] Меш '" + mesh.name + "' не читаем: включи Read/Write в импорте модели, иначе геометрия части посчитается по нулям.");
-                }
-#endif
-                var go = new GameObject("SitePartCollider") { hideFlags = HideFlags.HideAndDontSave, layer = 2 };
-                go.transform.position = new Vector3(0f, -100000f, 0f);
-                go.transform.localScale = f.transform.lossyScale;
-
-                // Коллайдер — ЯЩИК по границам меша, а не MeshCollider.
-                // Physics.ComputePenetration по невыпуклому MeshCollider, созданному
-                // в рантайме, не возвращает пересечение ВООБЩЕ (проверено на
-                // одинаковом меше: convex=true → dist 1.11, convex=false → false),
-                // а у LOD0_VAB четыре части с 288…1056 треугольниками, где convex
-                // запрещён лимитом Unity в 255. Примитив работает всегда, масштаб
-                // трансформа учитывается (габарит 1.6 × 100 = 160 м), и для
-                // box-built модели габарит части и есть её настоящая форма: каждая
-                // часть приходит с КРЫЛЬЯМИ и нишами, поэтому общая форма здания
-                // склеена из отдельных коробок, а не из одной.
-                BoxCollider boxCollider = go.AddComponent<BoxCollider>();
-                boxCollider.center = mesh.bounds.center;
-                boxCollider.size = new Vector3(
-                    Mathf.Max(mesh.bounds.size.x, MinSize),
-                    Mathf.Max(mesh.bounds.size.y, MinSize),
-                    Mathf.Max(mesh.bounds.size.z, MinSize));
-
-                parts.Add(new Part
-                {
-                    Source = f.transform,
-                    Collider = boxCollider,
-                    LocalCenter = mesh.bounds.center,
-                    LocalExtents = mesh.bounds.extents
-                });
-            }
+            return filters;
         }
 
-        private bool IsSkipped(string partName)
+        public bool IsSkipped(string partName)
         {
             if (SkipNameContains == null)
             {
@@ -165,14 +430,22 @@ namespace Galilego.Universe
 
         private void DestroyParts()
         {
-            for (int i = 0; i < parts.Count; i++)
+            for (int i = 0; i < colliderObjects.Count; i++)
             {
-                if (parts[i].Collider != null)
+                if (colliderObjects[i] != null)
                 {
-                    Destroy(parts[i].Collider.gameObject);
+                    if (Application.isPlaying)
+                    {
+                        Destroy(colliderObjects[i]);
+                    }
+                    else
+                    {
+                        DestroyImmediate(colliderObjects[i]);
+                    }
                 }
             }
 
+            colliderObjects.Clear();
             parts.Clear();
         }
 
@@ -224,39 +497,26 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    dir -= up * Vector3.Dot(dir, up);
-                    float len = dir.magnitude;
-                    if (len < 0.3f)
+                    // Только настоящее проникновение: у любой стены PhysX из-за
+                    // contact offset даёт микропроникновение касания — пушаут на нём
+                    // каждый подшаг отбрасывал тело от стены (дёрганье у стен).
+                    if (dist < 0.03f)
                     {
-                        // Ближайший выход — пол или крыша: вертикаль толкать нельзя,
-                        // высоту ведёт рельеф. Но оставлять игрока ВНУТРИ стены тоже
-                        // нельзя, а именно это происходит, когда он уже внутри: там
-                        // ближайшая поверхность — дно ящика, вертикальный вектор
-                        // обнуляется, и без этого ветки игрок просто уходит насквозь.
-                        // Поэтому выталкиваем горизонтально, к ближайшей БОКОВОЙ
-                        // грани той же части. depthY > 0 обязателен: он отсекает
-                        // случай «стоит сверху платформы/пандуса», где по горизонтали
-                        // игрок внутри следа части, но вертикали он не касается.
-                        Vector3 side = part.LocalExtents;
-                        Vector3 s = part.Source.lossyScale;
-                        Vector3 lp = part.Source.InverseTransformPoint(mid);
-                        float depthX = (side.x + (radius / s.x)) - Mathf.Abs(lp.x);
-                        float depthZ = (side.z + (radius / s.z)) - Mathf.Abs(lp.z);
-                        float depthY = (side.y + (radius / s.y)) - Mathf.Abs(lp.y);
-                        if (depthX > 0f && depthZ > 0f && depthY > 0f)
-                        {
-                            Vector3 sideLocal = depthX < depthZ
-                                ? new Vector3(Mathf.Sign(lp.x) * depthX, 0f, 0f)
-                                : new Vector3(0f, 0f, Mathf.Sign(lp.z) * depthZ);
-                            pos += part.Source.TransformVector(sideLocal);
-                            moved = true;
-                        }
-
                         continue;
                     }
 
-                    pos += (dir / len) * ((dist / len) + 0.005f);
-                    moved = true;
+                    // Минимальный выход из пересечения (3D): для тонкой стены это
+                    // горизонталь (как раньше), для больших боксов (фундаменты) —
+                    // ближайшая грань, включая верх. Шаг ограничен 1 м за подшаг,
+                    // чтобы не телепортировать игрока через полкарты (легаси-ветка
+                    // «вбок к ближайшей боковой грани» на больших боксах давала
+                    // прыжок на десятки метров и цикл дёрганья у стены).
+                    float step = Mathf.Min(dist + 0.005f, 1f);
+                    if (step > 1e-4f)
+                    {
+                        pos += dir.normalized * step;
+                        moved = true;
+                    }
                 }
 
                 if (!moved)
@@ -274,6 +534,47 @@ namespace Galilego.Universe
             Gizmos.matrix = transform.localToWorldMatrix;
             Gizmos.color = Color.green;
             Gizmos.DrawWireCube(Center, Size);
+
+            if (BakedParts == null)
+            {
+                return;
+            }
+
+            Matrix4x4 previousMatrix = Gizmos.matrix;
+            Gizmos.color = new Color(1f, 0.55f, 0.05f, 1f);
+            for (int i = 0; i < BakedParts.Count; i++)
+            {
+                BakedPartData part = BakedParts[i];
+                if (part == null || part.Source == null)
+                {
+                    continue;
+                }
+
+                if (part.UseConvexMesh)
+                {
+                    Mesh mesh = part.Source.sharedMesh;
+                    if (mesh != null)
+                    {
+                        Transform st = part.Source.transform;
+                        Gizmos.DrawWireMesh(mesh, st.position, st.rotation, st.lossyScale);
+                    }
+
+                    continue;
+                }
+
+                if (part.Boxes == null)
+                {
+                    continue;
+                }
+
+                Gizmos.matrix = part.Source.transform.localToWorldMatrix;
+                for (int j = 0; j < part.Boxes.Count; j++)
+                {
+                    Gizmos.DrawWireCube(part.Boxes[j].Center, part.Boxes[j].Size);
+                }
+            }
+
+            Gizmos.matrix = previousMatrix;
         }
     }
 
@@ -307,6 +608,18 @@ namespace Galilego.Universe
             boxes.Remove(b);
         }
 
+        /// <summary>Собрать коллайдеры всех зарегистрированных построек (страховка).</summary>
+        public static void EnsureAllBuilt()
+        {
+            for (int i = 0; i < boxes.Count; i++)
+            {
+                if (boxes[i] != null)
+                {
+                    boxes[i].EnsureBuilt();
+                }
+            }
+        }
+
         /// <summary>Капсула-зонд игрока для ComputePenetration (поза передаётся явно, сама стоит далеко).</summary>
         internal static CapsuleCollider Probe(float radius)
         {
@@ -336,62 +649,70 @@ namespace Galilego.Universe
                 return false;
             }
 
-            Vector3 p = FloatingOrigin.ToRender(position);
-            Vector3 total = Vector3.zero;
-            float r = (float)playerRadius;
-
-            for (int i = 0; i < boxes.Count; i++)
+            Profiler.BeginSample("SiteBoxRegistry.TryResolve");
+            try
             {
-                SiteBox b = boxes[i];
-                if (b == null || !b.isActiveAndEnabled)
-                {
-                    continue;
-                }
+                Vector3 p = FloatingOrigin.ToRender(position);
+                Vector3 total = Vector3.zero;
+                float r = (float)playerRadius;
 
-                Transform t = b.transform;
-                Vector3 c = t.InverseTransformPoint(p + total) - b.Center;
-                Vector3 h = b.Size * 0.5f;
-                if (c.y < -h.y - PlayerHeight || c.y > h.y)
+                for (int i = 0; i < boxes.Count; i++)
                 {
-                    continue;
-                }
-
-                if (b.HasMesh)
-                {
-                    // Бокс — грубый фильтр, точное выталкивание — по мешам.
-                    if (Mathf.Abs(c.x) > h.x + r + 1f || Mathf.Abs(c.z) > h.z + r + 1f)
+                    SiteBox b = boxes[i];
+                    if (b == null || !b.isActiveAndEnabled)
                     {
                         continue;
                     }
 
-                    if (b.PushOutMesh(p + total, t.up, r, out Vector3 meshPush))
+                    Transform t = b.transform;
+                    Vector3 c = t.InverseTransformPoint(p + total) - b.Center;
+                    Vector3 h = b.Size * 0.5f;
+                    if (c.y < -h.y - PlayerHeight || c.y > h.y)
                     {
-                        total += meshPush;
+                        continue;
                     }
 
-                    continue;
+                    if (b.HasMesh)
+                    {
+                        // Бокс — грубый фильтр, точное выталкивание — по мешам.
+                        if (Mathf.Abs(c.x) > h.x + r + 1f || Mathf.Abs(c.z) > h.z + r + 1f)
+                        {
+                            continue;
+                        }
+
+                        if (b.PushOutMesh(p + total, t.up, r, out Vector3 meshPush))
+                        {
+                            total += meshPush;
+                        }
+
+                        continue;
+                    }
+
+                    float px = (h.x + r) - Mathf.Abs(c.x);
+                    float pz = (h.z + r) - Mathf.Abs(c.z);
+                    if (px <= 0f || pz <= 0f)
+                    {
+                        continue;
+                    }
+
+                    Vector3 pushLocal = px < pz
+                        ? new Vector3(Mathf.Sign(c.x) * px, 0f, 0f)
+                        : new Vector3(0f, 0f, Mathf.Sign(c.z) * pz);
+                    total += t.TransformVector(pushLocal);
                 }
 
-                float px = (h.x + r) - Mathf.Abs(c.x);
-                float pz = (h.z + r) - Mathf.Abs(c.z);
-                if (px <= 0f || pz <= 0f)
+                if (total.sqrMagnitude <= 0f)
                 {
-                    continue;
+                    return false;
                 }
 
-                Vector3 pushLocal = px < pz
-                    ? new Vector3(Mathf.Sign(c.x) * px, 0f, 0f)
-                    : new Vector3(0f, 0f, Mathf.Sign(c.z) * pz);
-                total += t.TransformVector(pushLocal);
+                resolved = position + AstroFrame.ToAstro(total);
+                return true;
             }
-
-            if (total.sqrMagnitude <= 0f)
+            finally
             {
-                return false;
+                Profiler.EndSample();
             }
-
-            resolved = position + AstroFrame.ToAstro(total);
-            return true;
         }
     }
 }

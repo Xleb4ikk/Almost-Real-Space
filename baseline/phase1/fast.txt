@@ -1,0 +1,802 @@
+P1b tests...
+PASS T1 warp x1==x3 | tol=(1e-2,1e-5,1e-4): dPos=7,324E-003 dVel=8,380E-004 dMass=8,296E-004; tol/100: dPos=2,608E-008 dVel=6,813E-006 dMass=6,749E-006 (сжатие ~280869x/123x/123x, нужно >10x)
+[Test1_WarpIdentity] ok in 62 ms
+PASS T2 control-tick clip | maxChunk=0,5000с (лимит 0.5), границы по сетке 0.5с: True
+[Test2_ControlTickClip] ok in 0 ms
+PASS T3 can-enter | баллистика: вход разрешён
+PASS T3 stop-at-touchdown | stop=224,513с из 2592000с, событие=Touchdown:Планета А, остаток высоты g=-1,234E-004м (допуск 1м)
+[Test3_LongWarpStopsAtEvent] ok in 2 ms
+PASS T4 silent-cancel | вход при тяге запрещён: True; отмена до RHS: ReachedTarget=False, t=0,0с, корабль не сдвинут: True
+[Test4_SilentCancel] ok in 0 ms
+PASS T5 singularity | TryEvaluate внутри=false: True; Touchdown-событие: True; r=1e-9м конечен: True (0,00E+000)
+[Test5_Singularity] ok in 2 ms
+PASS T6 cache bit-identical | бит-в-бит: True; наивно world=80 local=40, кэш local=15 (=misses(5)?3 тела); кэш-вызовов hits=5+misses=5=10
+[Test6_CacheIdentical] ok in 1 ms
+PASS T7 budget+slicing | активный первым: True; кадров 1, среднее 256,0 мусора/кадр, 1-й кадр 256 шт за 3,98мс, макс кадр 3,98мс (бюджет 4мс); итого записей 257 (=256 мусор+1 active), остаток очереди 0: True
+[Test7_BudgetPriority] ok in 5 ms
+PASS T8 pool-no-new | объекты Body те же: True; аллокаций за 20 циклов: 13160 байт (порог 1МБ)
+[Test8_PoolNoAllocs] ok in 3 ms
+PASS T9 eviction-256 | active=256/256, новичок внутри: True, minSeq 1->2
+[Test9_Eviction] ok in 0 ms
+PASS T10 sleep-error | расхождение 1с-шаги vs 30с-прыжки за 3600с: 0,0м (граница 10000м для мусора)
+[Test10_SleepError] ok in 45 ms
+PASS T11 multi-crossing | subdiv=1 промах: True; subdiv=20: [AtmosphereExit:Планета А,AtmosphereEntry:Планета А] t=[26,7с, 407,3с] (окна [15,40]/[360,410])
+[Test11_MultiCrossing] ok in 1 ms
+PASS T12 depletion | событие: True t=147,10с (аналитика 147,10с, +2с); масса=900,0000кг (?900); заглох: True; coast при газе 0 разрешён: True
+[Test12_Depletion] ok in 1 ms
+PASS T13 tsiolkovsky | ?v=10,0168м/с vs Циолковский 10,0170 (?=2,11E-004, допуск 0.05); масса ?=2,73E-005кг
+[Test13_Tsiolkovsky] ok in 0 ms
+PASS T14 burn x1==x3 | x1/x3: dPos=5,188E-004м dVel=2,115E-009 dMass=2,217E-011 (пороги 0.5/1e-3/2e-3); повтор той же нарезки: dPos=0,0E+000 dVel=0,0E+000 dMass=0,0E+000 (бит-в-бит: True)
+[Test14_BurnWarpIdentity] ok in 29 ms
+PASS T15 isp-altitude | const=320: True; Isp(0)=250,0 Isp(H·ln2)=285,000 Isp(500км)=320,0000 монотонна: True; flowSL/flowVac=1,2800 (?1.28): True; без атмосферы=vac: True
+[Test15_IspAltitude] ok in 0 ms
+PASS T16 preset-parameter | burn завершён: True; масса ?=7,42E-004кг (0.05); допуски восстановлены: True
+[Test16_PresetIsParameter] ok in 4 ms
+PASS T18 dense-gate | корни legacy-vs-dense: падение ?t=0,00E+000с, нырок ?=[0,00E+000,0,00E+000] (допуск 1e-6); RHS уточнение legacy=238 vs dense=56; рестарт=null: True; трек: сегментов 410, непрерывен: True (первый рваный стык -1: gap=0,00E+000с jump=0,00E+000м), 100 сэмплов конечны: True, концы совпали: True, Step при сэмплинге: True
+[Test18_DenseGate] ok in 11 ms
+PASS T19 adaptive-grain | правило: slow=20 fast=200 nan=20 inf=20 (20/200/20/20); круговая ?=17145с subdiv=20; гипербола ?=11,6с subdiv=200; graze: [AtmosphereEntry:Планета А,AtmosphereExit:Планета А] t=[35,7,62,3]с; убегание ?=3006,8с без исключений: True
+[Test19_AdaptiveGrain] ok in 9 ms
+PASS T17 frame-bridge | roundtrip 1000+ноль бит-в-бит: True; жёсткость: ?(off·axis)=8,59E-006м ?|off|=2,62E-005м; совм. (0,0,1) бит-в-бит: True; фокус-реконструкция: True; мост sim=(x,z,?y): True
+[Test17_FrameBridge] ok in 2 ms
+PASS T17 handedness | det=+1 точно: True; cross коммутирует (худш. 0,00E+000 <1e-12): True; v_rot знак верный (1,27E-012 <1e-9): True
+[Test17_Handedness] ok in 0 ms
+PASS T20 kind | touchdown=True exit=True entry=True soi=True(Планета А) depletion=True timed=True
+[Test20_Kind] ok in 4 ms
+PASS T20 surface-inverse | roundtrip?1000: max?lat=2,27E-013° max?lon=2,99E-012° (<1e-9); полюса lon=0: True; шов: 179,9999/180,0001/neg359,9999; шов во времени линеен (шаг 99°+1e-6): True; флип: True
+[Test20_SurfaceInverse] ok in 1 ms
+PASS T20 reaction | soft: landed=True vn=-4,54м/с(?5) alt=9,31E-010м postVn=1,67E-013 vtСохранена=True; hard: N=10 ?m?=0,00E+000 ?mf?=3,65E-018 ?mv?=1,33E-016 spawn?=0,00E+000м; clamp==900: True; focus is Body: True
+[Test20_Reaction] ok in 4 ms
+PASS T20 surface-motion | стоянка относит.: True; следование 3600с ?=2,21E-004м; стик 30° v=0,00E+000: True; слип 60° v=6,037м/с (?6.037): True; стоп с 50м/с: v=0,00E+000 путь=255,1м (?255): True; отрыв без сдвига: True
+[Test20_SurfaceMotion] ok in 49 ms
+PASS T22 drag-contract | формула F=(-6e6,0,0): True; ?(H·ln2)/?0=0.5: True; со-вращение F=0: True; hover против v_rel: True |F|=2,101E+006Н; срез Top: True; стражи: True; варп внутри запрещён/снаружи можно: True/True
+[Test22_DragContract] ok in 1 ms
+PASS T22 drag-dip | оба находят [Exit,Entry]: True; ?v_выход=1,38м/с (>0.5): True
+[Test22_DragDip] ok in 2 ms
+PASS T23 decay | монотонность апо/пери/E (слаб 10м/1e-6): True; суммарно ?E/E=-1,13E-003 (<-1e-4 за 10 витков); финал апо=6,616227E+006м пери=6,611173E+006м (над R=6,371000E+006м: True)
+[Test23_Decay] ok in 32 ms
+PASS T23 retrograde | потери +X=-1,812E+004 ?X=-1,392E+004 Дж/кг (обе <0); отношение=1,302 (?1.275 ?v_rel?, допуск [1.1,1.5])
+[Test23_Retrograde] ok in 30 ms
+PASS T23 top-crossing | сила Top+10м: 0/снизу 2,92E+002Н: True; макс |?v|/1с=9,52м/с (<25); события [Entry,Touchdown]: True
+[Test23_TopCrossing] ok in 12 ms
+PASS T23 rate-baseline | dE/dt измерено=-3,0059E+000 аналитика=-3,0063E+000 Дж/кг/с (?=1,31E-004, допуск 5%)
+[Test23_RateBaseline] ok in 0 ms
+PASS T24 history | независимость бит-в-бит: True; сетка времён равна: True (события ?t?2,98E-007с, значения ??9,49E-003м); preserve 8 сэмплов/2 события/границы: True; юнит слияния 7 шт: True
+[Test24_History] ok in 4 ms
+PASS T26 circular-matrix | roundtrip худш.=1,50E-015 (e=0,0001 i=5°); E-дрейф худш.=5,98E-016; numeric T/4 худш.=1,07м (e=0,05 i=0°, <10м) [e=0,i=0°:1,06м e=0,i=5°:1,05м e=0,i=90°:0,58м e=0,i=180°:0,76м e=1E-08,i=0°:1,06м e=1E-08,i=5°:1,05м e=1E-08,i=90°:0,58м e=1E-08,i=180°:0,76м e=0,0001,i=0°:1,06м e=0,0001,i=5°:1,05м e=0,0001,i=90°:0,58м e=0,0001,i=180°:0,76м e=0,05,i=0°:1,07м e=0,05,i=5°:1,07м e=0,05,i=90°:0,58м e=0,05,i=180°:0,75м]
+[Test26_CircularMatrix] ok in 3 ms
+PASS T27 impulsive | межпланет valid=True промах=1,17E+009м (класс patched-conics); луна ok=True (rendezvous ?м / прямое попадание True); удар invalid=True touchdown=True образец цел=True; детерм=True; drag-избыток=5,42E+002м
+[Test27_Impulsive] ok in 2165 ms
+PASS T29 terminal-velocity | сэмплов в окне 20-30км: 71; средняя 141,40м/с vs аналитика 140,14 (?=8,97E-003, допуск 1.5%)
+[Test29_TerminalVelocity] ok in 7 ms
+PASS T30 parts-trap | масса=1000: True; COM=(0.6,0.1,0): True; диаг(90,1440,1530): True; Ixy=60 симм/нули: True; I·I??: True
+[Test30_PartsTrap] ok in 1 ms
+PASS T31 attitude-spin | свободное: угол 5,85E-006 ? 0,00E+000; момент: угол 1,65E-004 ? 1,24E-014
+[Test31_AttitudeSpin] ok in 4 ms
+PASS T31 attitude-tumble | 1000с кувырка: ?E/E=1,42E-005 ?|L|/|L|=6,62E-006 |q|?1=0,00E+000 ?L_world=6,64E-006
+[Test31_AttitudeTumble] ok in 58 ms
+PASS T31 attitude-pd | 120с PD: |?|=8,46E-016 (<1e-3) угол=0,00E+000рад (<0.017)
+[Test31_AttitudePD] ok in 10 ms
+PASS T31 torque-link | снимок(0,?1,0): True; legacy мировой: True; RCS ?=(0,?20,0): True; full с Torque: True; без провайдера громко: True; ? в снимке: True; сила в RHS: True; снимок крутит вращение: True
+[Test31_TorqueLink] ok in 1 ms
+PASS T33 staging-momentum | m1=800 v1=1000,4, m2=200 v2=998,4; ?mv=1000000 (эталон 1000000); relErr=0,00E+000; слот активен: True
+[Test33_StagingMomentum] ok in 0 ms
+PASS T34 golden-state | бит-в-бит эталон + CALLS=81: True; якорь Кеплер relErr=1,02E-006 (<1e-4)
+[Test34_GoldenState] ok in 0 ms
+PASS T35 kepler-edge | невязки: эллипс 4,44E-016, гипербола 5,05E-016 (<1e-9); inbound tPe=1185с r_p=10000000м (ожид 1e7); outbound NaN: True
+[Test35_KeplerEdge] ok in 0 ms
+PASS T36 helio-drift | 5 лет, 60 чанков: худш. ?E/E=9,78E-006 (<1e-4), худш. ?r/r=4,55E-005 (<1e-3); радиус в [2,50E+011,2,50E+011] при r0=2,50E+011
+[Test36_HelioDrift] ok in 44327 ms
+PASS T38 low-drag | 6 витков 200км (6 пройдено): монотонность True, без падения True, финальный перигей 6,54E+006м (>R+50км); сброс -1,63E+005 Дж/кг vs аналитика 9,56E+004 (отношение 1,70 в [0.5,4])
+[Test38_LowDrag] ok in 20 ms
+PASS T42 bake-rule | сегменты: луна=6,81д планетаА=6,81д планетаБ=64,00д; attach=True finite=True
+[Test42_BakeRule] ok in 7 ms
+PASS T43 bake-stream | файлы+манифест: True; стрим==память 1000 точек бит-в-бит: True; загрузок окон 3 (сегментов 9); эвикшен идентичен: True; прошлое громко/будущее продолжение: True; bulk: True
+[Test43_BakeStream] ok in 16 ms
+PASS T44 time-cap | за концом живём: True; до T0 громко: True; стоп на горизонте 2592000с: True; реакция: True; прозрачен внутри: True; дефолт inf: True; touchdown 224,5с: tie->Touchdown True, cap-1с->EphemerisEnd True
+[Test44_TimeCap] ok in 2517 ms
+PASS T45 porkchop-horizon | скан за горизонт 5184000с не бросил: True; клеток за горизонтом 12, все разумны (продолжение): True; валидных внутри (окно T27): 9; битый файл громко: True
+[Test45_PorkchopHorizon] ok in 9 ms
+PASS T52 centrifugal | ??R=10>g=9.8  Flying (ожидался Flying); ??R=5<g  Landed (ожидался Landed)
+[Test52_Centrifugal] ok in 1 ms
+PASS T53 lambert-halfplane | dt-вариативность: True; round-trip худший отн. err=1,26E-009 (<1e-6); v_long=?v_short: True; dt<min бросает: True
+[Test53_LambertHalfPlane] ok in 1 ms
+PASS T54 lambert-overshoot | dt=1e13 бросает: True; dt=1с бросает: True; dt=1e5 решается: True
+[Test54_LambertOvershoot] ok in 0 ms
+PASS T55 force-accept-sync | сегментов 1, span=1,000000000E-003с (target 1e-3, +1.5·MinStep): True; стыки: True; конец трека=итог: True; legacy ?pos=0,00E+000м
+[Test55_ForceAcceptSync] ok in 1 ms
+PASS T56 apsis-zero | в периапсисе: tPe=0,000000E+000с (0), tAp=4976с; в апоапсисе: tPe=4976с, tAp=0,000000E+000с (0)
+[Test56_ApsisZero] ok in 0 ms
+PASS T57 rail-validation | e=1.2 бросает: True; a=0 бросает: True; e=0.01 решается: True
+[Test57_RailValidation] ok in 0 ms
+PASS T58 grain-probe | межпланета: доминанта=Вымышленная звезда, ?=4,517E+007с, желаемое зерно=2E+006с vs база 30с  subdiv=20 (из пола); у планеты: ?=1,9E+003с  subdiv=20
+PASS T58 grain-needs | NeedsFineGrain: круиз без детекторов=False (ожидался false), круиз с детекторами=False (false - сферы недостижимы), у планеты=True (true)
+[Test58_GrainProbe] ok in 0 ms
+PASS T59 bake-files-speed | файл==память бит-в-бит: True; оценка=71361Б == факт=71361Б: True; BG2: бюджет-квант pos=3,74E-001м(<=1,0м) vel=5,31E-005м/с(<=0,0), назад=True, сжатие 21155Б/71511Б=0,30x; 8 лет за 0,25с  проекция 1024 лет ~33с; прогресс: True; отмена: True
+[Test59_BakeFilesAndSpeed] ok in 492 ms
+PASS T61 unbakeable-moon | оценщик бросает: True; бейк бросает: True; в списке луна I-1: True; каскад на планету I: True; посторонние тела не тронуты: True
+[Test61_UnbakeableMoon] ok in 1 ms
+PASS T62 compress-v2 | BG2 12 тел, 2y: pos-worst=4,57E-001м(<=1,0м) vel-worst=2,82E-004м/с(<=0,0); сжатие 248562Б/801825Б=0,31x BE1 (<=0.5); назад=True; bulk-бит-в-бит=True
+[Test62_CompressV2] ok in 1094 ms
+PASS T63 kepler-continuation | продолжение: фитт=True; стык=True (worst 2,572E-001м); за концом=True; BG3=True; BE2=True; legacy громко=True; world+1сут=True
+[Test63_KeplerContinuation] ok in 2132 ms
+PASS T64 hill-validation | 0.6 R_H бросает: True (в сообщении имя+числа: True); 0.29 R_H проходит: True; близкие сиблинги бросают: True; фикстура 1+5+6 проходит: True
+[Test64_HillValidation] ok in 0 ms
+PASS T65 system-blueprint | блюпринт==ручная сборка (бейк 1y, 200 точек бит-в-бит): True; нестабильная луна громко: True; ноль корней: True; два корня: True; битый ParentIndex: True
+[Test65_SystemBlueprint] ok in 41 ms
+PASS T66 nan-protocol | нормализация: NaN распространяется=True, ноль=Zero=True, юнит=True; forward-only: orbit=True, ship=True; NaN-источник громко=True; drain-масса громко=True; NaN-детектор громко=True; здоровый путь жив=True
+[Test66_NanProtocol] ok in 8 ms
+PASS T67 kepler-predictor-guards | e?1 конечен и точен: True (res=0,00E+000); NaN M громко: True; M=1e6 конечен: True; редукция M: True (?=5,835E-002м); околопарабола громко: True
+[Test67_KeplerPredictorGuards] ok in 0 ms
+PASS T68 structural-contracts | цикл громко=True; конфликт Parent=True; дубли имён=True; частичный attach громко=True; откат чист=True; чужое тело=True; attach-метод работает=True
+[Test68_StructuralContracts] ok in 82 ms
+PASS T69 warp-ladder | снап=True; капы атмосферы=True; планировщик=True; тяга>?3 запрещена+Prepare=True; сутки покадрово vs кусок dPos=1,190E-003м (повтор бит-в-бит=True); зерно ?0.5с=True; A1-сэмплы после ресета/Prepare: True
+[Test69_WarpLadder] ok in 109 ms
+PASS T70 tryliftoff-spin | T52 через TryLiftoff: ??R=10  Flying, ??R=5  Landed; со-вращение не удвоено (|?v|=0,00E+000): True; v=0-спавн: тяга 30>g+??R  Flying, v инерциально сохранена (|v|=0,00E+000): True
+[Test70_TryLiftoffSpin] ok in 0 ms
+PASS T71 debris-tunnel | астероид R=1e3 v=2000: детект=True за 8 hop'ов (кап 0.25·R/v=1,250E-001с); крупная система: LOD-прыжок 30с не сжат: True; v_rel=0 клампнут (√(2?/d)=6E+002м/с, hop=3,953E-001с<1с): True
+[Test71_DebrisTunnel] ok in 1 ms
+PASS T72 visual-frame | базис bodyworld совпал с GetSurfaceState (наклонная ось, вращение, 3 момента): худшая ошибка 9,25E-012 (<1e-9); звезда (0,0,1) - тождество бит-в-бит: True
+[Test72_VisualFrame] ok in 0 ms
+PASS T74 scale-bounds | a=2e13 громко: True; a=1e13 ровно проходит: True; hyper a=1e8 e=1.2 пропущен: True
+[Test74_ScaleBounds] ok in 0 ms
+PASS T73 ephemeris-thread-gate | 4 потока, перемешанная сетка (промахи окон) == эталон бит-в-бит: True; WindowLoads консистентен: True; LoadRangeToMemory параллельно с окном: True; переттач освобождает файл (перезапись сразу): True; новый инстанс жив: True
+[Test73_EphemerisThreadGate] ok in 13 ms
+PASS T75 torque-probe-guard | событие вошло в атмосферу в первом чанке (бисекция отработала, t*=23,68с<30с): True; снимок == шагу 030 без драйвера (бит-в-бит): True
+[Test75_TorqueProbeGuard] ok in 0 ms
+PASS T76 quaternion-bridge | тождество бит-в-бит: True; оси через позиционный мост, норма=1 (худш. дрейф 3,51E-016): True; север +Z  ось up +Y: True; R·(q·v) == q_sim·(R·v): True
+[Test76_QuaternionBridge] ok in 0 ms
+PASS T77 terrain-heightfield | детерминизм seed=42
+PASS T77 terrain-heightfield | море клампится (уровень ?500 м)
+PASS T77 terrain-heightfield | амплитуда |h| ? 2000 м (max 1390,7)
+PASS T77 terrain-heightfield | нормальвысота, угол 5,962E-004 рад < 0.05
+PASS T77 terrain-heightfield | спин нормали, ?=1,336E-012 < 1e-9
+PASS T77 terrain-heightfield | детектор над пиком: g<0 на +50 м, g>0 на +300 м
+PASS T77 terrain-heightfield | сфера бы пропустила пик (корабль выше R)
+[Test77_TerrainHeightfield] ok in 40 ms
+PASS T78 jointed-breakup | слабейший стык отломан, спека ровно одна
+PASS T78 jointed-breakup | тангенциальный инвариант, ?=0,00E+000
+PASS T78 jointed-breakup | отскок наружу, v_n=2,00 (= e·|v_n|)
+PASS T78 jointed-breakup | прочные стыки  пустой список спеков
+PASS T78 jointed-breakup | без деталей  whole-ship fallback (10 фрагментов)
+[Test78_JointedBreakup] ok in 1 ms
+PASS T79 tidal-lock | период = 2?√(a?/?_local) бит-в-бит (27925,3с), ручные 999с игнорированы
+PASS T79 tidal-lock | 50 витков: подкосительный дрейф 0,00E+000 рад < 1e-6
+PASS T79 tidal-lock | пересборка без правки данных: период/оффсет бит-в-бит
+PASS T79 tidal-lock | round-trip lat/lon на захваченном теле
+PASS T79 tidal-lock | либрация e=0.05: амплитуда 0,1000 рад ? (1.5e, 2.5e) = +2e
+PASS T79 tidal-lock | замок на звезде громко отвергнут
+[Test79_TidalLock] ok in 2 ms
+PASS T80 star-color | детерминизм бит-в-бит
+PASS T80 star-color | 1500K: красный доминирует
+PASS T80 star-color | 10000K: синий доминирует
+PASS T80 star-color | 5772K тёплый белый: R=1,000 G=0,879 B=0,821 (звёзды белые, желтизна - атмосферная)
+PASS T80 star-color | нормировка max=1
+[Test80_StarColor] ok in 0 ms
+PASS T81 star-granulation | детерминизм бит-в-бит
+PASS T81 star-granulation | значения в [0,1]
+PASS T81 star-granulation | контраст ячеек: min=0,39, max=1,00
+PASS T81 star-granulation | чистая функция направления (швов нет по построению)
+[Test81_StarGranulation] ok in 14 ms
+PASS T82 terrain-advanced | нули новых параметров = бит-в-бит legacy
+PASS T82 terrain-advanced | нули полей (старые сцены) = бит-в-бит legacy
+PASS T82 terrain-advanced | WarpStrength=0 игнорирует warp-параметры
+PASS T82 terrain-advanced | каждая фича меняет вывод
+PASS T82 terrain-advanced | warp-поток независим (seed offset меняет рельеф)
+PASS T82 terrain-advanced | детерминизм advanced
+PASS T82 terrain-advanced | кламп моря держится с фичами
+PASS T82 terrain-advanced | граница |h| ? A·(1+depth) (max 1546,4)
+PASS T82 terrain-advanced | паритет нормали на гребне, угол 6,632E-004 рад < 0.05
+[Test82_TerrainAdvanced] ok in 46 ms
+PASS T83 terrain-color | Ex(всё выкл) = бит-в-бит legacy (guard'ы, склоны, маска)
+PASS T83 terrain-color | rock-override: скала/бленд/порог/море
+PASS T83 terrain-color | rock-override: порог по высоте (пляж без скал, горы со скалой)
+PASS T83 terrain-color | snow-gate: пологий снег, крутой скала, guard 0
+PASS T83 terrain-color | маска сдвигает bands; strength 0 = игнор
+PASS T83 terrain-color | SlopeTan: 0/1/вертикаль/монотонность
+PASS T83 terrain-color | SampleColorNoise: детерминизм, [?1,1], seed offset
+PASS T83 terrain-color | цветовая деталь: меняет землю, strength 0 = игнор, море не трогает
+PASS T83 terrain-color | SampleColorDetailNoise: детерминизм, [?1,1], seed offset
+[Test83_TerrainColor] ok in 4 ms
+PASS T84 terrain-float-parity | job == managed бит-в-бит (худшее 0,000E+000 м)
+PASS T84 terrain-float-parity | гребни warp+ridged бит-в-бит (худшее 0,000E+000 м)
+PASS T84 terrain-float-parity | маска ? 5e-6 (худшее 2,977E-008)
+PASS T84 terrain-float-parity | нормали мелкого тайла ? 2e-3 рад (худшее 5,356E-004)
+PASS T84 terrain-float-parity | guard cos и tan под float (rel 0,000E+000)
+[Test84_TerrainFloatParity] ok in 129 ms
+PASS T85 cube-sphere | все направления единичные
+PASS T85 cube-sphere | непрерывность через рёбра граней
+PASS T85 cube-sphere | центры узлов quadtree
+[Test85_CubeSphere] ok in 1 ms
+PASS T86 nan-probe | нет не-конечных высот (worst 1,893E+000)
+[Test86_NaNProbe] ok in 121 ms
+LANDFRAC fraction=0,427 maxH=8010
+PASS T87 land-fraction | суша разумной доли: 0,427
+[Test87_LandFraction] ok in 296 ms
+PASS T88 sky-physics | космос: прозрачность = 1
+PASS T88 sky-physics | порядок каналов и красный закат
+PASS T88 sky-physics | airmass конечна у горизонта и монотонна
+PASS T88 sky-physics | окклюзия с учётом высоты наблюдателя
+PASS T88 sky-physics | видимость звёзд: полдень/ночь/космос
+PASS T88 sky-physics | дневной фактор света
+[Test88_SkyPhysics] ok in 1 ms
+PLAINS nearPlain=0,125 nearPlainOff=0,060 highFlat=0,070 highOff=0,140 landFlat=0,429 landOff=0,391 roughOff=5,895E-001 roughFlat=4,922E-001 fineOff=1,262E-003 fineDetail=2,012E-003
+PASS T89 terrain-plains | PlainFrequency без PlainMix не меняет рельеф
+PASS T89 terrain-plains | PlainMix>0 меняет рельеф
+PASS T89 terrain-plains | доля равнин заметна: 0,125
+PASS T89 terrain-plains | равнины снижают шероховатость: 4,922E-001 < 5,895E-001
+PASS T89 terrain-plains | деталь добавляет мелкомасштабный рельеф: 2,012E-003 > 1,326E-003
+PASS T89 terrain-plains | нет не-конечных высот
+PASS T89 terrain-plains | job == managed бит-в-бит с маской равнин
+PASS T89 terrain-plains | job пишет цветовую деталь (расхождение 2,974E-008)
+[Test89_TerrainPlains] ok in 549 ms
+PASS T90 atmosphere-optics | ? Рэлея: B>G>R, положительны
+PASS T90 atmosphere-optics | ? линейны по плотности
+PASS T90 atmosphere-optics | AerosolScale множит только ?_Mie
+PASS T90 atmosphere-optics | T(зенит): B<G<R, в (0,1]
+PASS T90 atmosphere-optics | ниже горизонта T=0
+PASS T90 atmosphere-optics | transmittance LUT: конечна, [0,1]
+PASS T90 atmosphere-optics | MS LUT: конечна, неотрицательна, ненулевая
+[Test90_AtmosphereOptics] ok in 11 ms
+PASS T91 terrain-profile | FromProfile копирует все поля + палитру
+PASS T91 terrain-profile | высоты из профиля == ручная сборка бит-в-бит
+PASS T91 terrain-profile | Build собирает terrain из BodyBlueprint.Terrain
+PASS T91 terrain-profile | Clone не делит палитру с оригиналом
+[Test91_TerrainProfile] ok in 4 ms
+PASS T92 terrain-palette | данные палитры == legacy-константы
+PASS T92 terrain-palette | Matches ловит копию и правку
+[Test92_TerrainPaletteData] ok in 0 ms
+PASS T93 decor-distribution | посадки есть: 1446 из 3750
+PASS T93 decor-distribution | джоба == прямая функция, бит-в-бит
+PASS T93 decor-distribution | масштаб/поворот/позиции в границах
+PASS T93 decor-distribution | MeshIndex в [0, 3)
+PASS T93 decor-distribution | фильтры нулят: density=0 altitude=0 wet=0 water=0
+PASS T93 decor-distribution | Hash01 детерминирован и в [0,1)
+[Test93_GroundDecorDistribution] ok in 255 ms
+TREEALT total=42469 maxH=7682 above2.5k=9301 above3.2k=6310 accepted2.5k=2304 accepted3.2k=0
+PASS T94 tree-high-altitude | деревья принимаются выше 2.5 км: 2304
+PASS T94 tree-high-altitude | выше 3.2 км деревьев нет: 0
+[Test94_TreeHighAltitude] ok in 1328 ms
+GREENBAND water=14588 sand=2195 high=905 dry=1882 green=5780 grassAccepted=5291 rocksAcceptedHigh=905 allowedOnly=0
+PASS T99 decor-green-band | FromLayer пробрасывает MaxNormalizedHeight
+PASS T99 decor-green-band | зелень есть и принимается: 5291 из 5780
+PASS T99 decor-green-band | трава вне зелени: bad=0 water=0 sand=0 high=0 dry=0
+PASS T99 decor-green-band | камни в горах есть (905), в воде нет (0)
+PASS T99 decor-green-band | TryEvaluate ? IsSurfaceAllowed, нарушений=0
+PASS T99 decor-green-band | CubeFaceDirection == CubeSphere.Direction
+PASS T99 decor-green-band | страж снэпа: land=True mapping=True water=True
+[Test99_DecorGreenBand] ok in 818 ms
+PASS T100 decor-stale-reset | stale Accepted после отклонения: 0 из 486
+[Test100_DecorStalePoolReset] ok in 3 ms
+BEACH total=1085 grassAbove=2911 band=1085 twinBand=231 pulled=3386 fadePoints=510 fadeExactSand=0
+PASS T101 beach-band | FromLayer читает пляж из террейна
+PASS T101 beach-band | полоса пляжа существует: 1085
+PASS T101 beach-band | на пляже ничего: трава=0 камни=0
+PASS T101 beach-band | выше пляжа трава принимается: 2911
+PASS T101 beach-band | песок при любой маске/склоне: mismatch=0
+PASS T101 beach-band | в затухании песка (0.4:1.6·beach) цвет смешанный, чистого Sand нет: точек 510, чистого песка 0
+PASS T101 beach-band | полка тянет к +8м: pulled=3386 wrong=0
+PASS T101 beach-band | полка расширяет полосу: shelf=1085 legacy=231
+[Test101_BeachBand] ok in 242 ms
+POLAR wEquator=0,150 wTundra=0,150 wPole=0,150 iceGrass=True iceRocks=True
+PASS T102 polar-decor-latitude | вес одинаков на всех широтах: 0,150 камни без ограничения=1,000
+PASS T102 polar-decor-latitude | на широте тундры вес не меньше экватора: 0,150
+PASS T102 polar-decor-latitude | камни с IgnoreLatitude на льду принимаются
+[Test102_PolarDecorLatitude] ok in 0 ms
+VERTEXMASK worst=1,314E-003
+PASS T103 vertex-mask-interp | ошибка интерполяции маски в масштабе чанков: 1,314E-003
+[Test103_VertexMaskInterp] ok in 4 ms
+DRYSTEPPE raw=2323 grass=True trees=True rocks=True
+PASS T104 dry-steppe-vegetation | регрессионный пин высоты: 2323 м (было 2321)
+PASS T104 dry-steppe-vegetation | жалоба по существу: точка суши на зелёных высотах, рельеф 2323 м (исходная жалоба: 2732 м)
+PASS T104 dry-steppe-vegetation | сухая степь зеленеет: трава=True деревья=True камни=True
+[Test104_DrySteppeVegetation] ok in 0 ms
+PASS T95 horizon | Земля h=2 м ? 5.05 км; нули и отрицательные высоты клампятся
+PASS T95 horizon | горизонт монотонен по высоте
+PASS T95 horizon | Terra: пик виден с земли на 202 км, с пика - на 400 км
+[Test95_HorizonDistance] ok in 0 ms
+T96 values: zenith=(0,938,0,862,0,751) horizon=(0,192,0,067,0,007)
+PASS T96 sun-transmittance | зенит: тёплый белый, B<G<R
+PASS T96 sun-transmittance | горизонт: R>G>B, красный доминирует
+PASS T96 sun-transmittance | ниже горизонта T = 0
+PASS T96 sun-transmittance | по высоте 0120 км: рост, [0,1], без скачков
+PASS T96 sun-transmittance | нет T > 1 ни при какой высоте Солнца
+PASS T96 sun-transmittance | выше атмосферы T = (1,1,1): свет белый
+PASS T96 sun-transmittance | CPU-свет == пиксель transmittance-LUT бит-в-бит
+[Test96_SunLightTransmittance] ok in 2 ms
+T97 values: day=(0,0082,0,0139,0,0209) sunset=(0,0063,0,0072,0,0058) nightLum=8,12E-007
+PASS T97 sky-ambient | день: конечна, неотрицательна, B>G>R
+PASS T97 sky-ambient | закат: R max, слабее дня, ярче ночи
+PASS T97 sky-ambient | ночь: < 1% от дня
+PASS T97 sky-ambient | выше атмосферы: ровно 0
+PASS T97 sky-ambient | детерминирована бит-в-бит
+[Test97_SkyAmbient] ok in 1 ms
+T98 values: T(0)=(0,192,0,067,0,007) T(-0.25)=(0,048,0,016,0,001) amb(-6)=1,40E-003 amb(-12)=1,44E-004
+PASS T98 sunset-twilight | T непрерывен через горизонт (нет ступеньки в 0)
+PASS T98 sunset-twilight | на ?2° прямой свет ровно 0
+PASS T98 sunset-twilight | на ?6° ambient тёплый, >1% дня, слабее горизонта
+PASS T98 sunset-twilight | к ?12° ambient погас (<2% дня)
+PASS T98 sunset-twilight | окклюзия/день: 1 днём, 0 ночью
+[Test98_SunsetTwilight] ok in 1 ms
+PASS T105 water-query | океан есть (море ?500 м)
+PASS T105 water-query | уровень моря ?500 м
+PASS T105 water-query | raw ? clamped, глубина = море ? дно
+PASS T105 water-query | на сетке есть и вода, и суша (вода 85,0,180,0)
+PASS T105 water-query | радиус поверхности моря = R ? 500
+PASS T105 water-query | погружение: 0/?10/+10 м  0,000/10,000/-10,000
+PASS T105 water-query | точка ниже поверхности над водой считается погружённой
+PASS T105 water-query | точка на поверхности и выше водой не считается погружённой
+PASS T105 water-query | точка ниже моря, но внутри суши не считается погружённой
+PASS T105 water-query | просвет на дне ~0 (0,00E+000)
+PASS T105 water-query | splashdown над водой: глубина 463 м
+PASS T105 water-query | splashdown над сушей: не вода
+PASS T105 water-query | тело без океана: HasOcean=false, везде NaN/0
+PASS T105 water-query | splashdown без океана: не вода
+[Test105_WaterQuery] ok in 28 ms
+SANDBAND paintedAbove=120 sandAbove=0 paintedBelow=40 sandBelow=40 fadePoints=80 fadeExactSand=0 halfW=0,500 zeroW=0,000 beachPoints=4145 onBeach=0 greenWithGrass=17885 justAbove=748 grassOnPaintedSand=0
+PASS T106 sand-is-beach-band | выше пляжа палитра не рисует чистый песок (0 из 120)
+PASS T106 sand-is-beach-band | ниже 0.4·пляжа палитра рисует песок всегда (40 из 40)
+PASS T106 sand-is-beach-band | кривая песка: половина на границе пляжа, ноль с 1.6·пляжа (half=0,500, zero=0,000)
+PASS T106 sand-is-beach-band | в затухании песок смешан с биомом (точек 80, чистого Sand 0)
+PASS T106 sand-is-beach-band | на пляже декор не сеет: точек 4145, посадок 0
+PASS T106 sand-is-beach-band | трава сеется сразу над пляжем (точек в первых 60 м: 748)
+PASS T106 sand-is-beach-band | паритет краскадекор: трава на зелени (17885), на песке 0
+[Test106_SandIsBeachBandOnly] ok in 1010 ms
+WETNESS min=0,0392 max=0,9608 atZero=0 atOne=0 land=23410 treeDead=4,3%
+PASS T107 wetness-no-saturation | кривая не насыщается: min=0,0392 max=0,9608
+PASS T107 wetness-no-saturation | суши без единого дерева: 4,3% (было ~25%)
+[Test107_WetnessNeverSaturates] ok in 312 ms
+PASS T108 surface-frame-basis | все три оси единичные на всех lat/lon, включая полюса
+PASS T108 surface-frame-basis | базис правый: север x зенит = восток
+PASS T108 surface-frame-basis | оси взаимно перпендикулярны
+PASS T108 surface-frame-basis | кватернион фрейма единичный и конечный на полюсах
+PASS T108 surface-frame-basis | q переводит локальные оси в север/зенит/восток
+PASS T108 surface-frame-basis | Up(lat,lon) совпадает с базисом рельефа (ошибка 0,00E+000)
+PASS T108 surface-frame-basis | DirectionOffset единичный на смещениях до 150 км
+PASS T108 surface-frame-basis | 10 м на восток -> 10 м по Z
+PASS T108 surface-frame-basis | 10 м на север -> 10 м по X
+PASS T108 surface-frame-basis | 10 м вверх -> 10 м по Y
+PASS T108 surface-frame-basis | ToLocal обращает перенос ENU: (север ?13, зенит 5, восток 7)
+PASS T108 surface-frame-basis | зенит перпендикулярен касательным (скалярное произведение 5,55E-017)
+[Test108_SurfaceFrameBasis] ok in 2 ms
+PASS T109 terrain-pads | у свежего рельефа таблица площадок ВАЛИДНА (иначе рендер падает на Schedule)
+PASS T109 terrain-pads | пустой список даёт валидную пустую таблицу, а не default
+PASS T109 terrain-pads | после добавления и удаления площадки таблица остаётся валидной
+PASS T109 terrain-pads | естественный рельеф неровный (иначе тесты площадок нечего проверять)
+PASS T109 terrain-pads | пустой список площадок не меняет высоту БИТ-В-БИТ
+PASS T109 terrain-pads | выключенная площадка (радиус 0) не трогает рельеф
+PASS T109 terrain-pads | в центре площадки высота РОВНО целевой (250,000000 м)
+PASS T109 terrain-pads | естественная высота в центре отличается от целевой (тест не тривиален)
+PASS T109 terrain-pads | ядро ровное во всех 20 пробах (макс. отклонение 0,00E+000 м)
+PASS T109 terrain-pads | фартук монотонен: отклонение от целевой убывает к ядру
+PASS T109 terrain-pads | на внутренней границе фартука высота приходит к целевой (250,000000 м)
+PASS T109 terrain-pads | форма фартука - smoothstep (вес на четверти 0,15625 вместо 0,15625; линейная дала бы 0,25)
+PASS T109 terrain-pads | фартук симметричен (вес на половине 0,50000)
+PASS T109 terrain-pads | за внешним радиусом рельеф не тронут БИТ-В-БИТ
+PASS T109 terrain-pads | внутри ядра высоты всех трёх соседей равны целевой  нормаль = зенит
+PASS T109 terrain-pads | площадка +15 м над морем не тонет в клампе
+PASS T109 terrain-pads | без флага раскопка -30 м поднимается клампом до уровня моря
+PASS T109 terrain-pads | с флагом раскопка -30 м остаётся сухой
+PASS T109 terrain-pads | одинаковые таблицы из разных сборок равны
+PASS T109 terrain-pads | изменение целевой высоты ловится сравнением таблиц
+PASS T109 terrain-pads | изменение радиуса ядра ловится сравнением таблиц
+PASS T109 terrain-pads | перенос площадки ловится сравнением таблиц
+PASS T109 terrain-pads | при пересечении побеждает последняя в списке, порядок детерминирован
+PASS T109 terrain-pads | точка фартука для проверки круглости не вырождена
+PASS T109 terrain-pads | площадка круглая: вес фартука одинаков по всем азимутам (разброс 1,64E-004, вес 0,6970)
+PASS T109 terrain-pads | площадка круглая и по диагонали (вес 0,6970)
+[Test109_TerrainPads] ok in 5 ms
+    узлов 226981, направлений 12; разброс диагонали 0.1718%, |внедиаг.| 1.54E-003, средний градиент 1.54E-003 (на ось), 3*сигма 1.82E-003
+PASS T112 gradient-set | ?gg? изотропна: разброс диагонали 0.1718%
+PASS T112 gradient-set | внедиагональный член выше 3 сигм: |внедиаг.| 1.54E-003 при 3*sigma = 5.45E-003
+PASS T112 gradient-set | средний градиент ~нулевой: 1.54E-003 (остаток от разброса h % 12 по 12 корзинам)
+PASS T112 gradient-set | ровно 12 различных направлений: 12
+[Test112_GradientSetSymmetry] ok in 14 ms
+PASS T117 earthlike-drift | CreateEarthLike() совпадает с EarthLike.asset
+[Test117_EarthLikeProfileDrift] ok in 5 ms
+    выборка 4000000 направлений, одна и та же для обоих профилей
+
+  legacy EarthLike (value)
+    амплитуда профиля               9,144 м
+    суша                     43.23 %   (море 56.77 %)
+    медиана                          -902 м
+    средняя высота суши             2,078 м
+    средняя глубина моря           -5,611 м
+    p99                             5,655 м
+    p99.9                           6,722 м
+    p99.99                          7,308 м
+    максимум (абс.)                 7,997 м
+    минимум                       -18,094 м
+    максимум / p99                   1.41
+    максимум от центра (Земля)  6,378,997 м
+    облака 7000..8500 м ниже вершины: ДА, выше низа
+
+  EarthLike_Perlin
+    амплитуда профиля              13,662 м
+    суша                     44.50 %   (море 55.50 %)
+    медиана                          -457 м
+    средняя высота суши             1,825 м
+    средняя глубина моря           -4,398 м
+    p99                             5,869 м
+    p99.9                           7,730 м
+    p99.99                          8,441 м
+    максимум (абс.)                 8,873 м
+    минимум                       -25,045 м
+    максимум / p99                   1.51
+    максимум от центра (Земля)  6,379,873 м
+    облака 7000..8500 м ниже вершины: ДА, выше обоих краёв
+
+PASS T129 height-tail | вершина профиля 'EarthLike_Perlin' выше потолка сжатия: 8,873 м > 9,503 м, значит сжатие хвоста не применилось
+[Test129_HeightTail] ok in 54038 ms
+    выборка 4000000 направлений. Профиль = EarthLike_Perlin.asset (Amp 13662, ridgedMix 0.7, threshold -0.4)
+
+  A. без сжатия (TailKnee=0)         p50    -457  p99   5,869  p99.9   7,730  p99.99   8,921  max  10,955  min  -25,045  суша 44.50 %  (м)
+  B. TailKnee=0.13                   p50    -457  p99   5,869  p99.9   7,730  p99.99   8,441  max   8,873  min  -25,045  суша 44.50 %  (м)
+  C. TailKnee=0.15                   p50    -457  p99   5,869  p99.9   7,730  p99.99   8,481  max   8,981  min  -25,045  суша 44.50 %  (м)
+  D. TailKnee=0.18                   p50    -457  p99   5,869  p99.9   7,730  p99.99   8,531  max   9,123  min  -25,045  суша 44.50 %  (м)
+
+    профиль вдоль меридиана через самую высокую точку (B, TailKnee=0.13):
+    вершина: сжатая 8,797 м, без сжатия 10,417 м, направление (0.628, -0.650, 0.427)
+       -0.30°  сжатая    3,281 м   без сжатия    3,281 м   разница       0 м
+       -0.25°  сжатая    3,460 м   без сжатия    3,460 м   разница       0 м
+       -0.20°  сжатая    4,073 м   без сжатия    4,073 м   разница       0 м
+       -0.15°  сжатая    5,100 м   без сжатия    5,100 м   разница       0 м
+       -0.10°  сжатая    6,371 м   без сжатия    6,371 м   разница       0 м
+       -0.05°  сжатая    8,126 м   без сжатия    8,242 м   разница     116 м
+        0.00°  сжатая    8,797 м   без сжатия   10,417 м   разница   1,620 м
+        0.05°  сжатая    8,471 м   без сжатия    9,008 м   разница     537 м
+        0.10°  сжатая    7,257 м   без сжатия    7,257 м   разница       0 м
+        0.15°  сжатая    4,927 м   без сжатия    4,927 м   разница       0 м
+        0.20°  сжатая    3,535 м   без сжатия    3,535 м   разница       0 м
+        0.25°  сжатая    2,444 м   без сжатия    2,444 м   разница       0 м
+        0.30°  сжатая    1,468 м   без сжатия    1,468 м   разница       0 м
+[Test130_TailCompression] ok in 144164 ms
+    Gain 0.50 * Lacunarity 2.00 = 1.0000  -> окна пригодны
+    Gain 0.60 * Lacunarity 2.00 = 1.2000  -> окна НЕПРИГОДНЫ
+    Gain 0.40 * Lacunarity 2.50 = 1.0000  -> окна пригодны
+PASS T132 damp-windows | legacy-профиль: Gain*Lacunarity != 1 при SlopeDamp > 0, окна домена откалиброваны под произведение 1
+PASS T132 damp-windows | Perlin-профиль: Gain*Lacunarity != 1 при SlopeDamp > 0
+PASS T132 damp-windows | предикат не ловит Gain 0.6 * Lacunarity 2 = 1.2, то есть он бесполезен
+PASS T132 damp-windows | предикат не ловит Gain 0.5 * Lacunarity 2.5 = 1.25
+    вклад октавы в накопленный наклон (амплитуда * частота):
+      Gain 0.50: октавы 0..5 = 1.0000 1.0000 1.0000 1.0000 1.0000 1.0000
+PASS T132 damp-windows | контроль соотношения сломан
+      Gain 0.60: октавы 0..5 = 1.0000 1.2000 1.4400 1.7280 2.0736 2.4883
+PASS T132 damp-windows | контроль соотношения сломан
+PASS T132 damp-windows | при Gain*Lacunarity != 1 домен не отключён при конвертации: SlopeDamp = 0.000
+PASS T132 damp-windows | при Gain*Lacunarity != 1 режим домена не сброшен в Off при конвертации
+PASS T132 damp-windows | валидный профиль потерял домен при конвертации: SlopeDamp = 0.600
+[Test132_DampWindowsValid] ok in 2 ms
+    порог сжатия = 7,727 м. Опорные точки:
+      гребень: 8,542 м при (-21.2°, 78.0°)
+      порог : 7,705 м при (-5.7°, 102.0°), расстояние до порога 22 м
+    гребень  worstNormalAngle = 5.449E-004 рад, запас до 2e-3 = 3.7?
+    порог   worstNormalAngle = 5.440E-004 рад, запас до 2e-3 = 3.7?
+PASS T133 tail-normal-parity | нормали на гребне расходятся сильнее бюджета T84: 5.45E-004 рад
+PASS T133 tail-normal-parity | нормали у порога сжатия расходятся сильнее бюджета T84: 5.44E-004 рад
+[Test133_TailNormalParity] ok in 417 ms
+    порог TailThreshold*Amplitude = 7,727 м
+    p99.8  = 7,264 м
+    p99.9  = 7,730 м
+    p99.95 = 8,143 м
+PASS T134 tail-threshold-placement | порог сжатия ниже p99.8: сжатие затронет больше 0.2% точек, это уже не хвост. 7,727 м < p99.8 7,264 м
+PASS T134 tail-threshold-placement | порог сжатия выше p99.95: сжатие почти нечего резать, вершины останутся высокими. 7,727 м > p99.95 8,143 м
+[Test134_TailThresholdPlacement] ok in 34692 ms
+  legacy EarthLike (value)
+    океан 56.77 % площади | дно: p50    5,119 м (медиана), p25   2,131 м (шельф), p5      353 м, p1       67 м, p0.1        7 м, min    18,094 м
+    глубже 6 км: 43.802 % океана | глубже 11 км: 10.867 % океана (Земля: единицы процента и меньше)
+  EarthLike_Perlin (без сжатия ложа)
+    океан 55.50 % площади | дно: p50    3,495 м (медиана), p25   1,393 м (шельф), p5      215 м, p1       41 м, p0.1        4 м, min    25,045 м
+    глубже 6 км: 28.913 % океана | глубже 11 км: 5.757 % океана (Земля: единицы процента и меньше)
+  Perlin, (a) ContinentDepth 1.2 -> 0.9
+    океан 54.54 % площади | дно: p50    3,283 м (медиана), p25   1,324 м (шельф), p5      207 м, p1       40 м, p0.1        4 м, min    20,953 м
+    глубже 6 км: 25.739 % океана | глубже 11 км: 2.732 % океана (Земля: единицы процента и меньше)
+  Perlin, (b) DepthKnee 0.40 при пороге -0.30 (пол -9,563 м)
+    океан 55.50 % площади | дно: p50    3,495 м (медиана), p25   1,393 м (шельф), p5      215 м, p1       41 м, p0.1        4 м, min     8,433 м
+    глубже 6 км: 21.974 % океана | глубже 11 км: 0.000 % океана (Земля: единицы процента и меньше)
+  Perlin, (b) DepthKnee 0.51 при пороге -0.30 (пол -11,066 м)
+    океан 55.50 % площади | дно: p50    3,495 м (медиана), p25   1,393 м (шельф), p5      215 м, p1       41 м, p0.1        4 м, min     9,327 м
+    глубже 6 км: 23.931 % океана | глубже 11 км: 0.000 % океана (Земля: единицы процента и меньше)
+  Perlin, (b) DepthKnee 0.62 при пороге -0.30 (пол -12,569 м)
+    океан 55.50 % площади | дно: p50    3,495 м (медиана), p25   1,393 м (шельф), p5      215 м, p1       41 м, p0.1        4 м, min    10,130 м
+    глубже 6 км: 25.025 % океана | глубже 11 км: 0.000 % океана (Земля: единицы процента и меньше)
+[Test135_OceanDepthHistogram] ok in 190621 ms
+    профиль через берег (по меридиану, 0.02° на шаг, 120 точек в сторону):
+  A. контроль (ContinentDepth 1.2, ложе не сжато) (берег на -0 м)
+      суша  море, шаг 0.02° (~2.2 км):
+        -0.40°  суша       899 м                 ###
+        -0.32°  суша       620 м                  ##
+        -0.24°  суша       344 м                   #
+        -0.16°  суша       202 м                   #
+        -0.08°  море       -67 м                    
+         0.00°  море        -0 м                    
+         0.08°  море       -23 м                    
+         0.16°  море       -11 м                    
+         0.24°  суша       108 м                    
+         0.32°  суша       412 м                   #
+         0.40°  суша       416 м                   #
+      --- дальний масштаб, шаг 1.5° (размах 45°) ---
+         0.0°  море        -0 м                    
+         1.5°  суша     2,210 м              ######
+         3.0°  море      -543 м                    ~~
+         4.5°  суша     2,007 м              ######
+         6.0°  суша       117 м                    
+         7.5°  море    -1,854 м                    ~~~~~
+         9.0°  море    -1,626 м                    ~~~~~
+        10.5°  суша     3,775 м         ###########
+        12.0°  море       -89 м                    
+        13.5°  море    -3,291 м                    ~~~~~~~~~~
+        15.0°  море    -1,374 м                    ~~~~
+        16.5°  море      -761 м                    ~~
+        18.0°  море      -321 м                    ~
+        19.5°  море    -2,679 м                    ~~~~~~~~
+        21.0°  море    -3,689 м                    ~~~~~~~~~~~
+        22.5°  море    -1,840 м                    ~~~~~
+        24.0°  суша     4,390 м       #############
+        25.5°  море    -7,779 м                    ~~~~~~~~~~~~~~~~~~~~~~~
+        27.0°  суша     3,140 м           #########
+        28.5°  море      -951 м                    ~~~
+        30.0°  суша     4,229 м        ############
+        31.5°  суша     3,980 м        ############
+        33.0°  море    -2,388 м                    ~~~~~~~
+        34.5°  море    -2,889 м                    ~~~~~~~~
+        36.0°  суша     4,597 м       #############
+        37.5°  суша     2,030 м              ######
+        39.0°  суша     1,099 м                 ###
+        40.5°  море      -432 м                    ~
+        42.0°  море    -1,708 м                    ~~~~~
+        43.5°  море    -2,939 м                    ~~~~~~~~~
+        45.0°  море    -3,358 м                    ~~~~~~~~~~
+
+  B. DepthKnee 0.51 при пороге -0.30 (пол -11.1 км) (берег на -0 м)
+      суша  море, шаг 0.02° (~2.2 км):
+        -0.40°  суша       899 м                 ###
+        -0.32°  суша       620 м                  ##
+        -0.24°  суша       344 м                   #
+        -0.16°  суша       202 м                   #
+        -0.08°  море       -67 м                    
+         0.00°  море        -0 м                    
+         0.08°  море       -23 м                    
+         0.16°  море       -11 м                    
+         0.24°  суша       108 м                    
+         0.32°  суша       412 м                   #
+         0.40°  суша       416 м                   #
+      --- дальний масштаб, шаг 1.5° (размах 45°) ---
+         0.0°  море        -0 м                    
+         1.5°  суша     2,210 м              ######
+         3.0°  море      -543 м                    ~~
+         4.5°  суша     2,007 м              ######
+         6.0°  суша       117 м                    
+         7.5°  море    -1,854 м                    ~~~~~
+         9.0°  море    -1,626 м                    ~~~~~
+        10.5°  суша     3,775 м         ###########
+        12.0°  море       -89 м                    
+        13.5°  море    -3,291 м                    ~~~~~~~~~~
+        15.0°  море    -1,374 м                    ~~~~
+        16.5°  море      -761 м                    ~~
+        18.0°  море      -321 м                    ~
+        19.5°  море    -2,679 м                    ~~~~~~~~
+        21.0°  море    -3,689 м                    ~~~~~~~~~~~
+        22.5°  море    -1,840 м                    ~~~~~
+        24.0°  суша     4,390 м       #############
+        25.5°  море    -6,507 м                    ~~~~~~~~~~~~~~~~~~~
+        27.0°  суша     3,140 м           #########
+        28.5°  море      -951 м                    ~~~
+        30.0°  суша     4,229 м        ############
+        31.5°  суша     3,980 м        ############
+        33.0°  море    -2,388 м                    ~~~~~~~
+        34.5°  море    -2,889 м                    ~~~~~~~~
+        36.0°  суша     4,597 м       #############
+        37.5°  суша     2,030 м              ######
+        39.0°  суша     1,099 м                 ###
+        40.5°  море      -432 м                    ~
+        42.0°  море    -1,708 м                    ~~~~~
+        43.5°  море    -2,939 м                    ~~~~~~~~~
+        45.0°  море    -3,358 м                    ~~~~~~~~~~
+[Test136_CoastProfile] ok in 3446 ms
+    A. выбранное (DepthKnee 0.51 @ -0.30, пол -11,066 м) | B. альтернатива (DepthKnee 0.26 @ -0.33, пол -8,061 м)
+
+  ДО  (сжатия ложа нет)                океан 55.50 % | min   25,045 м | p1       41 м | p5     215 м | глубже 6 км 28.91 %
+  ПОСЛЕ (выбранное 0.51 @ -0.30)       океан 55.50 % | min    9,327 м | p1       41 м | p5     215 м | глубже 6 км 23.93 %
+  АЛЬТ (0.26 @ -0.33, не включено)     океан 55.50 % | min    7,537 м | p1       41 м | p5     215 м | глубже 6 км 21.56 %
+
+    меридиан через берег, шаг 1.5° (размах 45°) - ложе:
+      угол      ДО         ПОСЛЕ      разница
+       -18.0°    -10,897 м     -7,540 м     -3,358 м
+       -15.0°     -6,809 м     -6,050 м       -759 м
+       -12.0°      2,300 м      2,300 м          0 м
+        -9.0°      3,399 м      3,399 м          0 м
+        -6.0°     -4,357 м     -4,348 м         -9 м
+        -3.0°      1,885 м      1,885 м          0 м
+         0.0°     -7,183 м     -6,236 м       -946 м
+         3.0°      2,110 м      2,110 м          0 м
+         6.0°       -529 м       -529 м          0 м
+         9.0°     -1,364 м     -1,364 м          0 м
+        12.0°     -2,202 м     -2,202 м          0 м
+        15.0°        287 м        287 м          0 м
+        18.0°      2,037 м      2,037 м          0 м
+
+    ближний масштаб через берег, шаг 0.02° - шельф и склон:
+      угол      ДО         ПОСЛЕ      разница
+       -0.40°       837 м       837 м         0 м
+       -0.30°     2,349 м     2,349 м         0 м
+       -0.20°     2,550 м     2,550 м         0 м
+       -0.10°     3,145 м     3,145 м         0 м
+        0.00°     1,885 м     1,885 м         0 м
+        0.10°     1,344 м     1,344 м         0 м
+        0.20°    -1,038 м    -1,038 м         0 м
+        0.30°    -2,249 м    -2,249 м         0 м
+        0.40°    -1,986 м    -1,986 м         0 м
+[Test137_OceanDepthDecision] ok in 103660 ms
+    БЕРЕГ ДЛЯ СЪЁМКИ: lat=-10.0000 lon=0.0000  (score 7.0)
+    ожидаемая высота рельефа: 0 м
+[Test138_CoastSpot] ok in 10947 ms
+    кривая: F(0)=0.0201, F(48)=0.394, F(крит)=1.000 - резкий фронт у 48.75°
+    критический 48.75°, F(0)=0.0201, F(крит)=1.000, отклонение при 10°=3.35°, при 40°=18.75°
+[Test139_SnellWindowReference] ok in 2 ms
+    sigma=(0.40,0.12,0.08) вода=(0.02,0.16,0.30) N·L=0.433 взгляд вниз=0.184
+    кадр 2560x1440, FOV 60° верт., aspect 1.778, 1440 строк
+
+  глубина  | tExit верх/низ, м   | T_g верх/низ | выход 8-бит R/G/B | уровней | макс. ступень
+      2.0 м |        6 / 1,492,888 | 0.485 / 0.000 |   1   9  13 ->   1  13  25 |    27 |   1 (рядов с шагом:   12)
+      8.6 м |       26 / 1,485,326 | 0.045 / 0.000 |   0   9  20 ->   0   7  17 |    12 |   1 (рядов с шагом:    4)
+     30.0 м |       90 / 1,488,854 | 0.000 / 0.000 |   0   4   9 ->   0   3   7 |     6 |   1 (рядов с шагом:    1)
+    200.0 м |      603 / 1,487,855 | 0.000 / 0.000 |   0   3   6 ->   0   2   5 |     5 |   1 (рядов с шагом:    1)
+
+  <уровней> - число различных 8-битных значений на весь кадр.
+  <макс. ступень> - насколько меняется зелёный канал между соседними строками.
+
+  сравнение моделей вуали на 8.5686 м, кадр из 1440 строк:
+    свет: старый (0.09,0.23,0.30)   новый (0.57,0.78,0.87)
+    вуаль G: старый (0.00,0.04,0.09)   новый (0.01,0.12,0.26)
+
+    глубина дна | уровней 8-бит | зелёный сверху->снизу | ступень/строка
+          8.5 м старый |           19 |      5 -> 9      | макс   1
+          8.5 м новый |           51 |     16 -> 31     | макс   1
+         20.0 м старый |           13 |      7 -> 9      | макс   1
+         20.0 м новый |           36 |     22 -> 31     | макс   1
+         60.0 м старый |            9 |      7 -> 9      | макс   1
+         60.0 м новый |           24 |     24 -> 31     | макс   1
+        200.0 м старый |            9 |      7 -> 9      | макс   1
+        200.0 м новый |           24 |     24 -> 31     | макс   1
+[Test140_UnderwaterBanding] ok in 13 ms
+PASS T143 perlin-drift | AssetPreset() совпадает с EarthLike_Perlin.asset
+PASS T143 legacy-bit-exact | дефолты новых полей = явные нули, форма бит-в-бит прежняя
+[Test143_PerlinAssetDrift] ok in 175 ms
+PASS T200 cylinder-inertia | цилиндр(0°): True [Ixx=7 Iyy=6 Izz=7 Ixy=0 Ixz=0 Iyz=0]; Z+90°: True; X+90°: True; сфера: True; коробка: True
+[Test200_CylinderInertia] ok in 0 ms
+PASS T201 explicit-mass-scaling | масса=5000: True (сухая=3000: True); масса=2500: True; COM не зависит от масштаба: True; I?m: True; нулевой размер отвергнут: True
+[Test201_ExplicitMassAndScaling] ok in 6 ms
+PASS T202 point-compat | через PartDefinition = эталон Test30: True; совпадает с прямым Part: True; I11=90 I12=60
+[Test202_PointCompat] ok in 0 ms
+PASS T203 discretized-reference | масса=5000.000000 (True); |?COM|=8.24E-013 м (True); max|?I_диаг|/I_max=5.85E-005 (True); max|?I_вне|/I_max=1.51E-016 (True)
+[Test203_DiscretizedReference] ok in 682 ms
+    h(игрок lat 5.715345 lon 142.200892) = 26.39 м (сырая), 26.39 м (с клампом моря). HUD в кадре: рельеф под игроком 26 м.
+    карта +3 км (шаг 150 м): h от -568 до 1158 м. Строки - север, столбцы - восток.
+    ~ море  s полка(<13)  . <25  : <50  + <100  * <250  # <600  % <1500  @ выше
+    **************+++::::..::::++++++*#%%%%%%
+    ####************++::::::::::+++++*##%%%%%
+    #####*******##***++:::::::::+++++*##%%%%%
+    *##############**++::::::::+++++**#%%%%%%
+    ***#############**++:::::::++++***#%%%%%%
+    ******##########***+++++:::::+++*##%%%%%%
+    ++****##########****++++:::::+++*##%%%%%%
+    ++++***######*********++:::::++**###%%%%%
+    ::++***#####****###***++::::+++**####%%%%
+    :::++**#####****###***++::::++***########
+    ..::++**####****###***+++:::+++**########
+    ...::++***#***********+++++++++***#######
+    ...:::++***************++++++++***#######
+    ...::::++***************+++++++***###**##
+    ...:::::++*******++++***++++++*********##
+    .....::::++**++++++++++++++++************
+    s......:::++++++++::+++++++++************
+    ss......:::++++++:::++++++++++***********
+    sss.......:::::::::::::::::+++++++*******
+    ssss.......::::::::::::::::::::+++++++++*
+    ssssss.............:::.......::::::++++++
+    ssssssss.........................::::::::
+    ssssssssssss........................:::::
+    **+:.sssssssssssssssssssssss.............
+    %%#####***+:.ssssssssssssssssss..........
+    %%%%%%%%%%#####***+:.ssssssssssssssssssss
+    %%%%%%%%%%%%%%%%%######***++:.sssssssssss
+    %%%#########%%%%%%%%###########****++:.ss
+    ######################################***
+    #########################################
+    #######################################**
+    ####***********######################****
+    #***********************###************++
+    *****+++++++*+++++*+************+****++:.
+    **++:::.s~~sssss~....:+++++:::.:::+++:s~~
+    ::s~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    максимальный уклон по карте 3.644 (74.7°) на клетке (16,0), вдоль севера
+    профиль с шагом сетки листа 6.85 м вдоль севера (? от точки (-600,-3000) м):
+      k=  -8  h=    825.71 м  ?=      
+      k=  -7  h=    819.98 м  ?=   -5.7
+      k=  -6  h=    811.60 м  ?=   -8.4
+      k=  -5  h=    800.63 м  ?=  -11.0
+      k=  -4  h=    788.22 м  ?=  -12.4
+      k=  -3  h=    774.37 м  ?=  -13.9
+      k=  -2  h=    758.34 м  ?=  -16.0
+      k=  -1  h=    741.02 м  ?=  -17.3
+      k=   0  h=    722.82 м  ?=  -18.2
+      k=   1  h=    703.31 м  ?=  -19.5
+      k=   2  h=    683.04 м  ?=  -20.3
+      k=   3  h=    661.65 м  ?=  -21.4
+      k=   4  h=    639.48 м  ?=  -22.2
+      k=   5  h=    616.26 м  ?=  -23.2
+      k=   6  h=    592.33 м  ?=  -23.9
+      k=   7  h=    567.69 м  ?=  -24.6
+      k=   8  h=    542.16 м  ?=  -25.5
+      k=   9  h=    515.99 м  ?=  -26.2
+      k=  10  h=    489.60 м  ?=  -26.4
+      k=  11  h=    462.66 м  ?=  -26.9
+      k=  12  h=    435.56 м  ?=  -27.1
+      k=  13  h=    408.10 м  ?=  -27.5
+      k=  14  h=    380.71 м  ?=  -27.4
+      k=  15  h=    353.25 м  ?=  -27.5
+      k=  16  h=    326.28 м  ?=  -27.0
+      k=  17  h=    299.52 м  ?=  -26.8
+      k=  18  h=    272.86 м  ?=  -26.7
+      k=  19  h=    246.96 м  ?=  -25.9
+      k=  20  h=    221.79 м  ?=  -25.2
+      k=  21  h=    197.54 м  ?=  -24.3
+      k=  22  h=    173.97 м  ?=  -23.6
+      k=  23  h=    151.52 м  ?=  -22.5
+      k=  24  h=    130.26 м  ?=  -21.3
+    пила: из 95400 шагов по 6.85 м разворот знака ? на 898 (0.94 %), из них зубец >5 м: 0, >20 м: 0
+    самый большой шаг |?h| = 25.15 м на (5482,3324) м от игрока; самый большой зубец 0.83 м на (6452,3164) м
+PASS T900 terrain-wall-probe | зонд отработал
+[Test900_TerrainWallProbe] ok in 1224 ms
+    выключение слоёв по одному (окрестность игрока +4 км):
+    базовый профиль (как в сцене)              макс. перепад на шаге сетки     30.55 м   в точке N-441 E-3552
+    BeachShelfWidth = 0 (полки нет)            макс. перепад на шаге сетки      7.30 м   в точке N5286 E-2487
+    BeachShelfWidthMaxScale = 1 (ширина постоянна) макс. перепад на шаге сетки     30.55 м   в точке N-441 E-3552
+    BeachShelfWidthNoiseFrequency = 0          макс. перепад на шаге сетки     30.55 м   в точке N-441 E-3552
+    BeachShelfAltitude = 200 м (метка полки)   макс. перепад на шаге сетки     24.49 м   в точке N-441 E-3552
+    PlainMix = 0 (равнин нет)                  макс. перепад на шаге сетки     38.32 м   в точке N-441 E-3552
+    InteriorFloor = 0                          макс. перепад на шаге сетки     50.85 м   в точке N-441 E-3552
+    RidgedMix = 0                              макс. перепад на шаге сетки     18.09 м   в точке N-434 E-3551
+    TailKnee = 0                               макс. перепад на шаге сетки     30.55 м   в точке N-441 E-3552
+    OrogenyFrequency = 0                       макс. перепад на шаге сетки     50.85 м   в точке N-441 E-3552
+    OceanFloorDepth = 0 (старый океан)         макс. перепад на шаге сетки     11.53 м   в точке N3587 E4017
+    ContinentRidgeMix = 0                      макс. перепад на шаге сетки     22.11 м   в точке N4736 E2140
+    ContinentLatitudeBias = 0                  макс. перепад на шаге сетки      3.72 м   в точке N3392 E-3307
+    оба warp = 0                               макс. перепад на шаге сетки      0.00 м   в точке N0 E0
+    ContinentFrequency = 0                     макс. перепад на шаге сетки     15.12 м   в точке N-3257 E2739
+    бисект: разрыв 30.6 м на N-441.2 E-3551.6; профиль с шагом 0.02 м поперёк линии север-юг:
+      N  -441.986  h=   431.194 м
+      N  -441.826  h=   430.718 м
+      N  -441.666  h=   430.045 м
+      N  -441.506  h=   429.273 м
+      N  -441.346  h=   428.546 м
+      N  -441.186  h=   427.738 м
+      N  -441.026  h=   426.990 м
+      N  -440.866  h=   426.323 м
+      N  -440.706  h=   425.699 м
+      N  -440.546  h=   424.974 м
+      N  -440.386  h=   424.507 м
+    суммарная длина участков с перепадом >1 м на шаге 2 см: 0.000 м (конец N0.000)
+    без полки: макс. перепад 7.30 м на N5286 E-2487 (там же, где с полкой: нет)
+PASS T901 terrain-wall-bisect | бисект отработал
+[Test901_TerrainWallBisect] ok in 15100 ms
+    точек: 70169; высота в точке кадра: 26.386960 м
+    эталон записан: C:\MyData\UnityProj\Almost Real Space\shelf-fix-dump.txt
+PASS T903 shelf-fix-ab | эталон снят
+[Test903_ShelfFixAb] ok in 940 ms
+    площадка 0: lat    5.715 lon  142.201 - макс. перепад на квад    29.16 м
+    площадка 1: lat   -6.196 lon  165.110 - макс. перепад на квад     0.00 м
+    площадка 2: lat  -52.550 lon  157.392 - макс. перепад на квад     0.39 м
+    площадка 3: lat  -64.579 lon  292.711 - макс. перепад на квад     0.00 м
+    площадка 4: lat   13.035 lon   12.923 - макс. перепад на квад     2.41 м
+    площадка 5: lat   19.717 lon  284.597 - макс. перепад на квад     0.00 м
+    площадка 6: lat  -50.272 lon   16.095 - макс. перепад на квад     0.00 м
+    худшее по 7 площадкам: 29.16 м (lat 5.691 lon 142.040), допуск 250 м
+PASS T904 no-sub-quad-steps | нет перепада больше 250 м между соседними вершинами листа
+[Test904_NoSubQuadSteps] ok in 3851 ms
+ALL PASS
