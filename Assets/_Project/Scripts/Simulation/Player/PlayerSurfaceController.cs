@@ -31,6 +31,13 @@ namespace Galilego.Simulation.Player
         public const int MaxSweepIterations = 4;
         public const double SlideSpeedMps = 1.5d;
 
+        /// <summary>
+        /// Численный допуск швов между коллайдерами (м): ступень чуть выше StepUp
+        /// на стыке двух мешей (погрешность запечки/масштаба) не должна блокировать
+        /// шаг. Это НЕ игровой порог (StepUpMeters), а эпсилон геометрии.
+        /// </summary>
+        public const double SeamToleranceMeters = 0.02d;
+
         /// <summary>Ноги капсулы в локальном кадре места.</summary>
         public Vector3d Position;
 
@@ -148,7 +155,7 @@ namespace Galilego.Simulation.Player
             Vector3d finalProbe = new Vector3d(Position.X, Position.Y, Position.Z + StepUpMeters);
             if (!support.Floor(finalProbe, StepUpMeters + SupportDropMeters,
                     out double finalHeight, out Vector3d finalNormal, out int finalId)
-                || finalHeight > Position.Z + StepUpMeters + 1e-9d
+                || finalHeight > Position.Z + StepUpMeters + SeamToleranceMeters
                 || SlopeAngleDegrees(finalNormal) > MaxSlopeDegrees)
             {
                 Airborne = true;
@@ -196,7 +203,7 @@ namespace Galilego.Simulation.Player
 
             Vector3d probeFrom = new Vector3d(candidate.X, candidate.Y, candidate.Z + StepUpMeters);
             if (support.Floor(probeFrom, maxDrop, out double h1, out Vector3d n1, out int id1)
-                && h1 <= candidate.Z + StepUpMeters + 1e-9d)
+                && h1 <= candidate.Z + StepUpMeters + SeamToleranceMeters)
             {
                 height = h1;
                 normal = n1;
@@ -216,7 +223,7 @@ namespace Galilego.Simulation.Player
                     Vector3d ahead = candidate + (direction * (CapsuleRadius * k / samples));
                     Vector3d aheadProbe = new Vector3d(ahead.X, ahead.Y, candidate.Z + StepUpMeters);
                     if (support.Floor(aheadProbe, maxDrop, out double h2, out Vector3d n2, out int id2)
-                        && h2 <= candidate.Z + StepUpMeters + 1e-9d
+                        && h2 <= candidate.Z + StepUpMeters + SeamToleranceMeters
                         && (!found || h2 > height))
                     {
                         height = h2;
