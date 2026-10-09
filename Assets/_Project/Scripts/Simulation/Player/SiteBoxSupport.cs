@@ -40,10 +40,8 @@ namespace Galilego.Simulation.Player
             return id;
         }
 
-        /// <summary>
-        /// Владелец коллайдера: SiteBox в предках (авторские коллайдеры) или
-        /// SiteBoxPart.Owner (холдеры — дети частей, SiteBox лежит рядом).
-        /// </summary>
+        /// <summary>Владелец коллайдера: SiteBox в предках (авторские коллайдеры) или
+        /// SiteBoxPart.Owner (холдеры — дети частей, SiteBox лежит рядом).</summary>
         public static SiteBox ResolveSiteBox(Collider collider)
         {
             if (collider == null)
@@ -59,6 +57,30 @@ namespace Galilego.Simulation.Player
 
             SiteBoxPart part = collider.GetComponentInParent<SiteBoxPart>();
             return part != null ? part.Owner : null;
+        }
+
+        /// <summary>
+        /// Капсула игрока (ноги feet, радиус radius, вертикаль up) уже ЗАМЕТНО
+        /// пересекает коллайдер — тело внутри. Порог 5 см отсекает касание
+        /// (PhysX contact offset даёт микропроникновение у любой стены — иначе
+        /// стены перестают блокировать снаружи). Для таких коллайдеров свип не
+        /// блокирует: основание постройки может быть утоплено в рельеф, и игрок,
+        /// стоящий на рельефе, оказывается внутри — без этого он не может выйти.
+        /// </summary>
+        private static bool CapsuleInside(Collider collider, Vector3 feet, float radius, Vector3 up)
+        {
+            if (collider == null)
+            {
+                return false;
+            }
+
+            CapsuleCollider probe = SiteBoxRegistry.Probe(radius);
+            Quaternion rotation = Quaternion.FromToRotation(Vector3.up, up);
+            return Physics.ComputePenetration(
+                    probe, feet, rotation,
+                    collider, collider.transform.position, collider.transform.rotation,
+                    out _, out float depth)
+                && depth > 0.05f;
         }
 
         public void SetFrame(SiteFrame siteFrame)
@@ -217,7 +239,8 @@ namespace Galilego.Simulation.Player
                 return false;
             }
 
-            RaycastHit[] hits = Physics.CapsuleCastAll(p1, p2, (float)radius, delta / distance, distance, ~0, QueryTriggerInteraction.Ignore);
+            Vector3 moveDir = delta / distance;
+            RaycastHit[] hits = Physics.CapsuleCastAll(p1, p2, (float)radius, moveDir, distance, ~0, QueryTriggerInteraction.Ignore);
             bool found = false;
             float bestFraction = 1f;
             Vector3 bestNormal = renderUp;
@@ -231,11 +254,25 @@ namespace Galilego.Simulation.Player
                 }
 
                 // Касание пола/склона/потолка (нормаль почти вертикальна) не блокирует
-                // горизонтальный ход: его ведёт логика опоры/шага. Блокируют только
-                // стены (нормаль вдоль хода). Фильтр по дистанции был неверен: PhysX
-                // из-за contact offset рапортует и удар о стену почти нулевой
-                // дистанцией — стены переставали блокировать («прохожу сквозь»).
+                // горизонтальный ход: его ведёт логика опоры/шага.
                 if (Mathf.Abs(Vector3.Dot(hit.normal, renderUp)) > 0.7f)
+                {
+                    continue;
+                }
+
+                // Тело УЖЕ внутри этого коллайдера (например, основание постройки
+                // утоплено в рельеф, и игрок стоит на рельефе в этом месте): движение
+                // свободно, иначе из этой зоны не выйти — свип блокировал все стороны
+                // («застреваю рядом с любой стеной»).
+                if (CapsuleInside(hit.collider, p1 - (renderUp * (float)radius), (float)radius, renderUp))
+                {
+                    continue;
+                }
+
+                // Блокирует только движение В поверхность. Касание сбоку (стоим у
+                // стены, выходим из угла) не блокирует — иначе тело застревает и
+                // не может выйти. Уход от стены свободен.
+                if (Vector3.Dot(moveDir, hit.normal) > -1e-4f)
                 {
                     continue;
                 }
