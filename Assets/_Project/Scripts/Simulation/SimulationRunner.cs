@@ -1072,15 +1072,6 @@ namespace Galilego.Universe
                 PlayerPosition = treePushed;
             }
 
-            // Выталкивание из геометрии построек (страховка от заклинивания): свип
-            // контроллера умеет только не пускать, но если тело уже врезалось в угол
-            // или между вокселями — блокирует во все стороны. Легаси-пушаут
-            // (ComputePenetration) выталкивает по горизонтали, высоту не трогает.
-            if (SiteBoxRegistry.TryResolve(PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d sitePushed))
-            {
-                PlayerPosition = sitePushed;
-            }
-
             // Вода и проекция на поверхность — на КОНЕЦ подшага (t+dt), как раньше.
             body.SurfaceLatLonAt(PlayerPosition, tEnd, out double newLat, out double newLon);
             if (WaterQuery.IsWaterAt(body, newLat, newLon))
@@ -1100,6 +1091,16 @@ namespace Galilego.Universe
                 PlayerVelocity -= rescueRadial * Vector3d.Dot(PlayerVelocity, rescueRadial);
                 playerAirborne = false;
                 playerController.SetGroundSource(TerrainSupport.SourceId);
+            }
+
+            // Выталкивание из геометрии построек — ПОСЛЕ спасения и последним:
+            // свип контроллера умеет только не пускать, а спасение из-под рельефа
+            // возвращает тело в тот же XZ — если там стена, оно снова внутри, и
+            // начинается цикл «уткнулся → провалился → подскочил → дёргается».
+            // Легаси-пушаут (ComputePenetration) выталкивает по горизонтали.
+            if (SiteBoxRegistry.TryResolve(PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d sitePushed))
+            {
+                PlayerPosition = sitePushed;
             }
 
             // Проекция на рельеф — только когда игрок стоит на рельефе (не на постройке):
