@@ -1,52 +1,52 @@
 [RoofProbe] старт: место lat=0.00000 lon=0.00000, ходьба 20 с
 [RoofProbe] постановка на крышу: высота над местом=162.53 м, коллайдер='SitePartColliders', попаданий SiteBox=5, бокс='Collider'
-[RoofProbe] оседание ts=1.503 grounded=True src=100 ручной-луч: hits=1 ближайший=0.505 'SitePartColliders' site=(-162.59, -212.50, -501.58) dsite=(-162.5908, -212.5000, -501.5823)
-[RoofProbe] оседание ts=1.754 grounded=True src=100 ручной-луч: hits=1 ближайший=0.505 'SitePartColliders' site=(-162.60, -212.50, -501.58) dsite=(-0.0091, 0.0000, 0.0030)
-[RoofProbe] оседание ts=2.005 grounded=True src=100 ручной-луч: hits=1 ближайший=0.505 'SitePartColliders' site=(-162.61, -212.50, -501.58) dsite=(-0.0092, 0.0000, 0.0030)
+[RoofProbe] оседание ts=1.502 grounded=True src=100 ручной-луч: hits=1 ближайший=0.505 'SitePartColliders' site=(-162.59, -212.50, -501.58) dsite=(-162.5906, -212.5000, -501.5823)
+[RoofProbe] оседание ts=1.753 grounded=True src=100 ручной-луч: hits=1 ближайший=0.505 'SitePartColliders' site=(-162.60, -212.50, -501.58) dsite=(-0.0091, 0.0000, 0.0030)
+[RoofProbe] оседание ts=2.004 grounded=True src=100 ручной-луч: hits=1 ближайший=0.505 'SitePartColliders' site=(-162.61, -212.50, -501.58) dsite=(-0.0092, 0.0000, 0.0030)
 [RoofProbe] оседание ts=2.255 grounded=True src=100 ручной-луч: hits=1 ближайший=0.505 'SitePartColliders' site=(-162.62, -212.50, -501.57) dsite=(-0.0092, 0.0000, 0.0030)
-[RoofProbe] оседание ts=2.507 grounded=True src=100 ручной-луч: hits=1 ближайший=0.505 'SitePartColliders' site=(-162.63, -212.50, -501.57) dsite=(-0.0091, 0.0000, 0.0030)
-[RoofProbe] оседание ts=2.758 grounded=True src=100 ручной-луч: hits=1 ближайший=0.505 'SitePartColliders' site=(-162.64, -212.50, -501.57) dsite=(-0.0092, 0.0000, 0.0030)
-[RoofProbe] оседание ts=3.008 grounded=True src=100 ручной-луч: hits=1 ближайший=0.505 'SitePartColliders' site=(-162.65, -212.50, -501.56) dsite=(-0.0092, 0.0000, 0.0030)
-[RoofProbe] оседание ts=3.258 grounded=True src=100 ручной-луч: hits=1 ближайший=0.505 'SitePartColliders' site=(-162.65, -212.50, -501.56) dsite=(-0.0091, 0.0000, 0.0030)
+[RoofProbe] оседание ts=2.505 grounded=True src=100 ручной-луч: hits=1 ближайший=0.505 'SitePartColliders' site=(-162.63, -212.50, -501.57) dsite=(-0.0092, 0.0000, 0.0030)
+[RoofProbe] оседание ts=2.756 grounded=True src=100 ручной-луч: hits=1 ближайший=0.505 'SitePartColliders' site=(-162.64, -212.50, -501.57) dsite=(-0.0091, 0.0000, 0.0030)
+[RoofProbe] оседание ts=3.006 grounded=True src=100 ручной-луч: hits=1 ближайший=0.505 'SitePartColliders' site=(-162.65, -212.50, -501.56) dsite=(-0.0092, 0.0000, 0.0030)
+[RoofProbe] оседание ts=3.266 grounded=True src=100 ручной-луч: hits=1 ближайший=0.505 'SitePartColliders' site=(-162.65, -212.50, -501.56) dsite=(-0.0094, 0.0000, 0.0031)
 [RoofProbe] ходьба: старт src=100 grounded=True
-[RoofProbe] ts=3.503 local=(0.000, 0.000, 162.666) grounded=True src=100 vz=0.000
-[RoofProbe] ts=4.003 local=(1.501, 0.000, 162.689) grounded=True src=100 vz=0.000
-[RoofProbe] ts=4.511 local=(3.025, 0.000, 162.712) grounded=True src=100 vz=0.000
-[RoofProbe] ts=5.011 local=(4.525, 0.000, 162.735) grounded=True src=100 vz=0.000
-[RoofProbe] ts=5.512 local=(6.027, 0.000, 162.758) grounded=True src=100 vz=0.000
-[RoofProbe] ts=6.012 local=(7.528, 0.000, 162.781) grounded=True src=100 vz=0.000
-[RoofProbe] ts=6.513 local=(9.032, 0.000, 162.804) grounded=True src=100 vz=0.000
-[RoofProbe] ts=7.014 local=(10.535, 0.000, 162.827) grounded=True src=100 vz=0.000
-[RoofProbe] ts=7.515 local=(12.036, 0.000, 162.850) grounded=True src=100 vz=0.000
-[RoofProbe] ts=8.016 local=(13.541, 0.000, 162.873) grounded=True src=100 vz=0.000
-[RoofProbe] ts=8.518 local=(15.044, 0.000, 162.896) grounded=True src=100 vz=0.000
-[RoofProbe] ts=9.018 local=(16.546, 0.000, 162.919) grounded=True src=100 vz=0.000
+[RoofProbe] ts=3.504 local=(0.000, 0.000, 162.666) grounded=True src=100 vz=0.000
+[RoofProbe] ts=4.004 local=(1.502, 0.000, 162.689) grounded=True src=100 vz=0.000
+[RoofProbe] ts=4.506 local=(3.006, 0.000, 162.712) grounded=True src=100 vz=0.000
+[RoofProbe] ts=5.007 local=(4.509, 0.000, 162.735) grounded=True src=100 vz=0.000
+[RoofProbe] ts=5.508 local=(6.013, 0.000, 162.758) grounded=True src=100 vz=0.000
+[RoofProbe] ts=6.009 local=(7.517, 0.000, 162.781) grounded=True src=100 vz=0.000
+[RoofProbe] ts=6.510 local=(9.018, 0.000, 162.804) grounded=True src=100 vz=0.000
+[RoofProbe] ts=7.010 local=(10.520, 0.000, 162.827) grounded=True src=100 vz=0.000
+[RoofProbe] ts=7.516 local=(12.037, 0.000, 162.850) grounded=True src=100 vz=0.000
+[RoofProbe] ts=8.017 local=(13.538, 0.000, 162.873) grounded=True src=100 vz=0.000
+[RoofProbe] ts=8.517 local=(15.039, 0.000, 162.896) grounded=True src=100 vz=0.000
+[RoofProbe] ts=9.018 local=(16.544, 0.000, 162.919) grounded=True src=100 vz=0.000
 [RoofProbe] ts=9.519 local=(18.047, 0.000, 162.942) grounded=True src=100 vz=0.000
-[RoofProbe] ts=10.020 local=(19.551, 0.000, 162.965) grounded=True src=100 vz=0.000
-[RoofProbe] ts=10.520 local=(21.053, 0.000, 162.988) grounded=True src=100 vz=0.000
-[RoofProbe] ts=11.021 local=(22.554, 0.000, 163.011) grounded=True src=100 vz=0.000
-[RoofProbe] ts=11.522 local=(24.058, 0.000, 163.034) grounded=True src=100 vz=0.000
-[RoofProbe] ts=12.023 local=(25.561, 0.000, 163.057) grounded=True src=100 vz=0.000
-[RoofProbe] ts=12.523 local=(27.062, 0.000, 163.080) grounded=True src=100 vz=0.000
-[RoofProbe] ts=13.024 local=(28.564, 0.000, 163.103) grounded=True src=100 vz=0.000
-[RoofProbe] ts=13.525 local=(30.067, 0.000, 163.126) grounded=True src=100 vz=0.000
-[RoofProbe] ts=14.026 local=(31.570, 0.000, 163.149) grounded=True src=100 vz=0.000
-[RoofProbe] ts=14.527 local=(33.071, 0.000, 163.172) grounded=True src=100 vz=0.000
-[RoofProbe] ts=15.027 local=(34.574, 0.000, 163.195) grounded=True src=100 vz=0.000
-[RoofProbe] ts=15.528 local=(36.077, 0.000, 163.218) grounded=True src=100 vz=0.000
-[RoofProbe] ts=16.029 local=(37.579, 0.000, 163.241) grounded=True src=100 vz=0.000
-[RoofProbe] ts=16.530 local=(39.082, 0.000, 163.264) grounded=True src=100 vz=0.000
-[RoofProbe] ts=17.030 local=(40.583, 0.000, 163.287) grounded=True src=100 vz=0.000
-[RoofProbe] ts=17.531 local=(42.084, 0.000, 163.310) grounded=True src=100 vz=0.000
-[RoofProbe] ts=18.031 local=(43.585, 0.000, 163.333) grounded=True src=100 vz=0.000
-[RoofProbe] ts=18.532 local=(45.086, 0.000, 163.356) grounded=True src=100 vz=0.000
-[RoofProbe] ts=19.033 local=(46.590, 0.000, 163.379) grounded=True src=100 vz=0.000
-[RoofProbe] ts=19.533 local=(48.091, 0.000, 163.402) grounded=True src=100 vz=0.000
-[RoofProbe] ts=20.034 local=(49.594, 0.000, 163.425) grounded=True src=100 vz=0.000
-[RoofProbe] ts=20.535 local=(51.097, 0.000, 163.448) grounded=True src=100 vz=0.000
-[RoofProbe] ts=21.036 local=(52.600, 0.000, 163.471) grounded=True src=100 vz=0.000
-[RoofProbe] ts=21.537 local=(54.103, 0.000, 163.494) grounded=True src=100 vz=0.000
-[RoofProbe] ts=22.038 local=(55.606, 0.000, 163.517) grounded=True src=100 vz=0.000
-[RoofProbe] ts=22.538 local=(57.107, 0.000, 163.540) grounded=True src=100 vz=0.000
-[RoofProbe] ts=23.040 local=(58.611, 0.000, 163.563) grounded=True src=100 vz=0.000
+[RoofProbe] ts=10.021 local=(19.551, 0.000, 162.965) grounded=True src=100 vz=0.000
+[RoofProbe] ts=10.521 local=(21.053, 0.000, 162.988) grounded=True src=100 vz=0.000
+[RoofProbe] ts=11.022 local=(22.554, 0.000, 163.011) grounded=True src=100 vz=0.000
+[RoofProbe] ts=11.522 local=(24.056, 0.000, 163.034) grounded=True src=100 vz=0.000
+[RoofProbe] ts=12.023 local=(25.556, 0.000, 163.057) grounded=True src=100 vz=0.000
+[RoofProbe] ts=12.523 local=(27.059, 0.000, 163.080) grounded=True src=100 vz=0.000
+[RoofProbe] ts=13.023 local=(28.559, 0.000, 163.103) grounded=True src=100 vz=0.000
+[RoofProbe] ts=13.524 local=(30.061, 0.000, 163.126) grounded=True src=100 vz=0.000
+[RoofProbe] ts=14.025 local=(31.564, 0.000, 163.149) grounded=True src=100 vz=0.000
+[RoofProbe] ts=14.526 local=(33.067, 0.000, 163.172) grounded=True src=100 vz=0.000
+[RoofProbe] ts=15.027 local=(34.570, 0.000, 163.195) grounded=True src=100 vz=0.000
+[RoofProbe] ts=15.528 local=(36.074, 0.000, 163.218) grounded=True src=100 vz=0.000
+[RoofProbe] ts=16.029 local=(37.577, 0.000, 163.241) grounded=True src=100 vz=0.000
+[RoofProbe] ts=16.529 local=(39.077, 0.000, 163.264) grounded=True src=100 vz=0.000
+[RoofProbe] ts=17.035 local=(40.592, 0.000, 163.287) grounded=True src=100 vz=0.000
+[RoofProbe] ts=17.535 local=(42.094, 0.000, 163.310) grounded=True src=100 vz=0.000
+[RoofProbe] ts=18.035 local=(43.595, 0.000, 163.333) grounded=True src=100 vz=0.000
+[RoofProbe] ts=18.536 local=(45.098, 0.000, 163.356) grounded=True src=100 vz=0.000
+[RoofProbe] ts=19.037 local=(46.601, 0.000, 163.379) grounded=True src=100 vz=0.000
+[RoofProbe] ts=19.538 local=(48.103, 0.000, 163.402) grounded=True src=100 vz=0.000
+[RoofProbe] ts=20.038 local=(49.604, 0.000, 163.425) grounded=True src=100 vz=0.000
+[RoofProbe] ts=20.539 local=(51.104, 0.000, 163.449) grounded=True src=100 vz=0.000
+[RoofProbe] ts=21.039 local=(52.606, 0.000, 163.472) grounded=True src=100 vz=0.000
+[RoofProbe] ts=21.540 local=(54.108, 0.000, 163.494) grounded=True src=100 vz=0.000
+[RoofProbe] ts=22.040 local=(55.608, 0.000, 163.517) grounded=True src=100 vz=0.000
+[RoofProbe] ts=22.541 local=(57.111, 0.000, 163.540) grounded=True src=100 vz=0.000
+[RoofProbe] ts=23.041 local=(58.612, 0.000, 163.564) grounded=True src=100 vz=0.000
 [RoofProbe] DONE
