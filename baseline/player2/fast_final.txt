@@ -1,111 +1,119 @@
-﻿P1b tests...
+C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\UnityStubs.cs(168,28): warning CS0108: "MonoBehaviour.Destroy(Component)" ╤Б╨║╤А╤Л╨▓╨░╨╡╤В ╨╜╨░╤Б╨╗╨╡╨┤╤Г╨╡╨╝╤Л╨╣ ╤З╨╗╨╡╨╜ "Object.Destroy(Component)". ╨Х╤Б╨╗╨╕ ╤Б╨║╤А╤Л╤В╨╕╨╡ ╨▒╤Л╨╗╨╛ ╨╜╨░╨╝╨╡╤А╨╡╨╜╨╜╤Л╨╝, ╨╕╤Б╨┐╨╛╨╗╤М╨╖╤Г╨╣╤В╨╡ ╨║╨╗╤О╤З╨╡╨▓╨╛╨╡ ╤Б╨╗╨╛╨▓╨╛ new. [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
+C:\MyData\UnityProj\Almost Real Space\Assets\_Project\Scripts\Simulation\Player\PlayerSurfaceController.cs(199,20): warning CS0219: ╨Я╨╡╤А╨╡╨╝╨╡╨╜╨╜╨╛╨╣ "limit" ╨┐╤А╨╕╤Б╨▓╨╛╨╡╨╜╨╛ ╨╖╨╜╨░╤З╨╡╨╜╨╕╨╡, ╨╜╨╛ ╨╛╨╜╨╛ ╨╜╨╕ ╤А╨░╨╖╤Г ╨╜╨╡ ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╨╜╨╛. [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
+C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\Tests\TestsAnisotropyBisect.cs(354,22): warning CS0219: ╨Я╨╡╤А╨╡╨╝╨╡╨╜╨╜╨╛╨╣ "eps" ╨┐╤А╨╕╤Б╨▓╨╛╨╡╨╜╨╛ ╨╖╨╜╨░╤З╨╡╨╜╨╕╨╡, ╨╜╨╛ ╨╛╨╜╨╛ ╨╜╨╕ ╤А╨░╨╖╤Г ╨╜╨╡ ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╨╜╨╛. [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
+C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\Tests\TestsNoisePrimitiveBench.cs(70,22): warning CS0219: ╨Я╨╡╤А╨╡╨╝╨╡╨╜╨╜╨╛╨╣ "theoretical" ╨┐╤А╨╕╤Б╨▓╨╛╨╡╨╜╨╛ ╨╖╨╜╨░╤З╨╡╨╜╨╕╨╡, ╨╜╨╛ ╨╛╨╜╨╛ ╨╜╨╕ ╤А╨░╨╖╤Г ╨╜╨╡ ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╨╜╨╛. [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
+C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\Tests\TestsTailNormals.cs(79,13): warning CS0219: ╨Я╨╡╤А╨╡╨╝╨╡╨╜╨╜╨╛╨╣ "count" ╨┐╤А╨╕╤Б╨▓╨╛╨╡╨╜╨╛ ╨╖╨╜╨░╤З╨╡╨╜╨╕╨╡, ╨╜╨╛ ╨╛╨╜╨╛ ╨╜╨╕ ╤А╨░╨╖╤Г ╨╜╨╡ ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╨╜╨╛. [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
+C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\Tests\TestsPlayerSupport.cs(67,36): warning CS0649: ╨Я╨╛╨╗╤О "P1bTests.BoxSupport.VelocityProvider" ╨╜╨╕╨│╨┤╨╡ ╨╜╨╡ ╨┐╤А╨╕╤Б╨▓╨░╨╕╨▓╨░╨╡╤В╤Б╤П ╨╖╨╜╨░╤З╨╡╨╜╨╕╨╡, ╨┐╨╛╤Н╤В╨╛╨╝╤Г ╨╛╨╜╨╛ ╨▓╤Б╨╡╨│╨┤╨░ ╨▒╤Г╨┤╨╡╤В ╨╕╨╝╨╡╤В╤М ╨╖╨╜╨░╤З╨╡╨╜╨╕╨╡ ╨┐╨╛ ╤Г╨╝╨╛╨╗╤З╨░╨╜╨╕╤О null. [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
+C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\Tests\TestsRidgeLevers.cs(83,47): warning CA2013: ╨Э╨╡ ╨┐╨╡╤А╨╡╨┤╨░╨▓╨░╨╣╤В╨╡ ╨░╤А╨│╤Г╨╝╨╡╨╜╤В ╤Б ╤В╨╕╨┐╨╛╨╝ ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П 'P1bTests.Summary' ╨▓ 'ReferenceEquals'. ╨Ш╨╖-╨╖╨░ ╤Г╨┐╨░╨║╨╛╨▓╨║╨╕-╨┐╤А╨╡╨╛╨▒╤А╨░╨╖╨╛╨▓╨░╨╜╨╕╤П ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╤Н╤В╨╛╤В ╨▓╤Л╨╖╨╛╨▓ 'ReferenceEquals' ╨╝╨╛╨╢╨╡╤В ╨▓╨╡╤А╨╜╤Г╤В╤М ╨╜╨╡╨┐╤А╨╡╨┤╨▓╨╕╨┤╨╡╨╜╨╜╤Л╨╣ ╤А╨╡╨╖╤Г╨╗╤М╤В╨░╤В. ╨а╨░╤Б╤Б╨╝╨╛╤В╤А╨╕╤В╨╡ ╨▓╨╛╨╖╨╝╨╛╨╢╨╜╨╛╤Б╤В╤М ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╨╜╨╕╤П 'Equals' ╨╕╨╗╨╕ ╨┐╨╡╤А╨╡╨┤╨░╨▓╨░╨╣╤В╨╡ ╨░╤А╨│╤Г╨╝╨╡╨╜╤В╤Л ╤Б╤Б╤Л╨╗╨╛╤З╨╜╨╛╨│╨╛ ╤В╨╕╨┐╨░, ╨╡╤Б╨╗╨╕ ╨┐╤А╨╡╨┤╨┐╨╛╨╗╨░╨│╨░╨╡╤В╤Б╤П ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╤В╤М 'ReferenceEquals'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2013) [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
+C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\Tests\TestsRidgeLevers.cs(83,53): warning CA2013: ╨Э╨╡ ╨┐╨╡╤А╨╡╨┤╨░╨▓╨░╨╣╤В╨╡ ╨░╤А╨│╤Г╨╝╨╡╨╜╤В ╤Б ╤В╨╕╨┐╨╛╨╝ ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П 'P1bTests.Summary' ╨▓ 'ReferenceEquals'. ╨Ш╨╖-╨╖╨░ ╤Г╨┐╨░╨║╨╛╨▓╨║╨╕-╨┐╤А╨╡╨╛╨▒╤А╨░╨╖╨╛╨▓╨░╨╜╨╕╤П ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╤Н╤В╨╛╤В ╨▓╤Л╨╖╨╛╨▓ 'ReferenceEquals' ╨╝╨╛╨╢╨╡╤В ╨▓╨╡╤А╨╜╤Г╤В╤М ╨╜╨╡╨┐╤А╨╡╨┤╨▓╨╕╨┤╨╡╨╜╨╜╤Л╨╣ ╤А╨╡╨╖╤Г╨╗╤М╤В╨░╤В. ╨а╨░╤Б╤Б╨╝╨╛╤В╤А╨╕╤В╨╡ ╨▓╨╛╨╖╨╝╨╛╨╢╨╜╨╛╤Б╤В╤М ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╨╜╨╕╤П 'Equals' ╨╕╨╗╨╕ ╨┐╨╡╤А╨╡╨┤╨░╨▓╨░╨╣╤В╨╡ ╨░╤А╨│╤Г╨╝╨╡╨╜╤В╤Л ╤Б╤Б╤Л╨╗╨╛╤З╨╜╨╛╨│╨╛ ╤В╨╕╨┐╨░, ╨╡╤Б╨╗╨╕ ╨┐╤А╨╡╨┤╨┐╨╛╨╗╨░╨│╨░╨╡╤В╤Б╤П ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╤В╤М 'ReferenceEquals'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2013) [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
+P1b tests...
 PASS T1 warp x1==x3 | tol=(1e-2,1e-5,1e-4): dPos=7,324E-003 dVel=8,380E-004 dMass=8,296E-004; tol/100: dPos=2,608E-008 dVel=6,813E-006 dMass=6,749E-006 (╤Б╨╢╨░╤В╨╕╨╡ ~280869x/123x/123x, ╨╜╤Г╨╢╨╜╨╛ >10x)
-[Test1_WarpIdentity] ok in 48 ms
+[Test1_WarpIdentity] ok in 119 ms
 PASS T2 control-tick clip | maxChunk=0,5000╤Б (╨╗╨╕╨╝╨╕╤В 0.5), ╨│╤А╨░╨╜╨╕╤Ж╤Л ╨┐╨╛ ╤Б╨╡╤В╨║╨╡ 0.5╤Б: True
 [Test2_ControlTickClip] ok in 0 ms
 PASS T3 can-enter | ╨▒╨░╨╗╨╗╨╕╤Б╤В╨╕╨║╨░: ╨▓╤Е╨╛╨┤ ╤А╨░╨╖╤А╨╡╤И╤С╨╜
 PASS T3 stop-at-touchdown | stop=224,513╤Б ╨╕╨╖ 2592000╤Б, ╤Б╨╛╨▒╤Л╤В╨╕╨╡=Touchdown:╨Я╨╗╨░╨╜╨╡╤В╨░ ╨Р, ╨╛╤Б╤В╨░╤В╨╛╨║ ╨▓╤Л╤Б╨╛╤В╤Л g=-1,234E-004╨╝ (╨┤╨╛╨┐╤Г╤Б╨║ 1╨╝)
-[Test3_LongWarpStopsAtEvent] ok in 1 ms
+[Test3_LongWarpStopsAtEvent] ok in 3 ms
 PASS T4 silent-cancel | ╨▓╤Е╨╛╨┤ ╨┐╤А╨╕ ╤В╤П╨│╨╡ ╨╖╨░╨┐╤А╨╡╤Й╤С╨╜: True; ╨╛╤В╨╝╨╡╨╜╨░ ╨┤╨╛ RHS: ReachedTarget=False, t=0,0╤Б, ╨║╨╛╤А╨░╨▒╨╗╤М ╨╜╨╡ ╤Б╨┤╨▓╨╕╨╜╤Г╤В: True
 [Test4_SilentCancel] ok in 0 ms
 PASS T5 singularity | TryEvaluate ╨▓╨╜╤Г╤В╤А╨╕=false: True; Touchdown-╤Б╨╛╨▒╤Л╤В╨╕╨╡: True; r=1e-9╨╝ ╨║╨╛╨╜╨╡╤З╨╡╨╜: True (0,00E+000)
-[Test5_Singularity] ok in 2 ms
+[Test5_Singularity] ok in 5 ms
 PASS T6 cache bit-identical | ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; ╨╜╨░╨╕╨▓╨╜╨╛ world=80 local=40, ╨║╤Н╤И local=15 (=misses(5)├Ч3 ╤В╨╡╨╗╨░); ╨║╤Н╤И-╨▓╤Л╨╖╨╛╨▓╨╛╨▓ hits=5+misses=5=10
-[Test6_CacheIdentical] ok in 0 ms
-PASS T7 budget+slicing | ╨░╨║╤В╨╕╨▓╨╜╤Л╨╣ ╨┐╨╡╤А╨▓╤Л╨╝: True; ╨║╨░╨┤╤А╨╛╨▓ 1, ╤Б╤А╨╡╨┤╨╜╨╡╨╡ 256,0 ╨╝╤Г╤Б╨╛╤А╨░/╨║╨░╨┤╤А, 1-╨╣ ╨║╨░╨┤╤А 256 ╤И╤В ╨╖╨░ 3,11╨╝╤Б, ╨╝╨░╨║╤Б ╨║╨░╨┤╤А 3,11╨╝╤Б (╨▒╤О╨┤╨╢╨╡╤В 4╨╝╤Б); ╨╕╤В╨╛╨│╨╛ ╨╖╨░╨┐╨╕╤Б╨╡╨╣ 257 (=256 ╨╝╤Г╤Б╨╛╤А+1 active), ╨╛╤Б╤В╨░╤В╨╛╨║ ╨╛╤З╨╡╤А╨╡╨┤╨╕ 0: True
-[Test7_BudgetPriority] ok in 4 ms
+[Test6_CacheIdentical] ok in 2 ms
+PASS T7 budget+slicing | ╨░╨║╤В╨╕╨▓╨╜╤Л╨╣ ╨┐╨╡╤А╨▓╤Л╨╝: True; ╨║╨░╨┤╤А╨╛╨▓ 2, ╤Б╤А╨╡╨┤╨╜╨╡╨╡ 128,0 ╨╝╤Г╤Б╨╛╤А╨░/╨║╨░╨┤╤А, 1-╨╣ ╨║╨░╨┤╤А 102 ╤И╤В ╨╖╨░ 4,02╨╝╤Б, ╨╝╨░╨║╤Б ╨║╨░╨┤╤А 4,02╨╝╤Б (╨▒╤О╨┤╨╢╨╡╤В 4╨╝╤Б); ╨╕╤В╨╛╨│╨╛ ╨╖╨░╨┐╨╕╤Б╨╡╨╣ 257 (=256 ╨╝╤Г╤Б╨╛╤А+1 active), ╨╛╤Б╤В╨░╤В╨╛╨║ ╨╛╤З╨╡╤А╨╡╨┤╨╕ 0: True
+[Test7_BudgetPriority] ok in 10 ms
 PASS T8 pool-no-new | ╨╛╨▒╤К╨╡╨║╤В╤Л Body ╤В╨╡ ╨╢╨╡: True; ╨░╨╗╨╗╨╛╨║╨░╤Ж╨╕╨╣ ╨╖╨░ 20 ╤Ж╨╕╨║╨╗╨╛╨▓: 13160 ╨▒╨░╨╣╤В (╨┐╨╛╤А╨╛╨│ 1╨Ь╨С)
-[Test8_PoolNoAllocs] ok in 2 ms
+[Test8_PoolNoAllocs] ok in 6 ms
 PASS T9 eviction-256 | active=256/256, ╨╜╨╛╨▓╨╕╤З╨╛╨║ ╨▓╨╜╤Г╤В╤А╨╕: True, minSeq 1->2
 [Test9_Eviction] ok in 0 ms
 PASS T10 sleep-error | ╤А╨░╤Б╤Е╨╛╨╢╨┤╨╡╨╜╨╕╨╡ 1╤Б-╤И╨░╨│╨╕ vs 30╤Б-╨┐╤А╤Л╨╢╨║╨╕ ╨╖╨░ 3600╤Б: 0,0╨╝ (╨│╤А╨░╨╜╨╕╤Ж╨░ 10000╨╝ ╨┤╨╗╤П ╨╝╤Г╤Б╨╛╤А╨░)
-[Test10_SleepError] ok in 33 ms
+[Test10_SleepError] ok in 80 ms
 PASS T11 multi-crossing | subdiv=1 ╨┐╤А╨╛╨╝╨░╤Е: True; subdiv=20: [AtmosphereExit:╨Я╨╗╨░╨╜╨╡╤В╨░ ╨Р,AtmosphereEntry:╨Я╨╗╨░╨╜╨╡╤В╨░ ╨Р] t=[26,7╤Б, 407,3╤Б] (╨╛╨║╨╜╨░ [15,40]/[360,410])
-[Test11_MultiCrossing] ok in 1 ms
+[Test11_MultiCrossing] ok in 3 ms
 PASS T12 depletion | ╤Б╨╛╨▒╤Л╤В╨╕╨╡: True t=147,10╤Б (╨░╨╜╨░╨╗╨╕╤В╨╕╨║╨░ 147,10╤Б, ┬▒2╤Б); ╨╝╨░╤Б╤Б╨░=900,0000╨║╨│ (тЙИ900); ╨╖╨░╨│╨╗╨╛╤Е: True; coast ╨┐╤А╨╕ ╨│╨░╨╖╨╡ 0 ╤А╨░╨╖╤А╨╡╤И╤С╨╜: True
-[Test12_Depletion] ok in 1 ms
+[Test12_Depletion] ok in 3 ms
 PASS T13 tsiolkovsky | ╬Фv=10,0168╨╝/╤Б vs ╨ж╨╕╨╛╨╗╨║╨╛╨▓╤Б╨║╨╕╨╣ 10,0170 (╬Ф=2,11E-004, ╨┤╨╛╨┐╤Г╤Б╨║ 0.05); ╨╝╨░╤Б╤Б╨░ ╬Ф=2,73E-005╨║╨│
-[Test13_Tsiolkovsky] ok in 0 ms
+[Test13_Tsiolkovsky] ok in 1 ms
 PASS T14 burn x1==x3 | x1/x3: dPos=5,188E-004╨╝ dVel=2,115E-009 dMass=2,217E-011 (╨┐╨╛╤А╨╛╨│╨╕ 0.5/1e-3/2e-3); ╨┐╨╛╨▓╤В╨╛╤А ╤В╨╛╨╣ ╨╢╨╡ ╨╜╨░╤А╨╡╨╖╨║╨╕: dPos=0,0E+000 dVel=0,0E+000 dMass=0,0E+000 (╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True)
-[Test14_BurnWarpIdentity] ok in 22 ms
+[Test14_BurnWarpIdentity] ok in 53 ms
 PASS T15 isp-altitude | const=320: True; Isp(0)=250,0 Isp(H┬╖ln2)=285,000 Isp(500╨║╨╝)=320,0000 ╨╝╨╛╨╜╨╛╤В╨╛╨╜╨╜╨░: True; flowSL/flowVac=1,2800 (тЙИ1.28): True; ╨▒╨╡╨╖ ╨░╤В╨╝╨╛╤Б╤Д╨╡╤А╤Л=vac: True
-[Test15_IspAltitude] ok in 0 ms
+[Test15_IspAltitude] ok in 1 ms
 PASS T16 preset-parameter | burn ╨╖╨░╨▓╨╡╤А╤И╤С╨╜: True; ╨╝╨░╤Б╤Б╨░ ╬Ф=7,42E-004╨║╨│ (0.05); ╨┤╨╛╨┐╤Г╤Б╨║╨╕ ╨▓╨╛╤Б╤Б╤В╨░╨╜╨╛╨▓╨╗╨╡╨╜╤Л: True
-[Test16_PresetIsParameter] ok in 3 ms
+[Test16_PresetIsParameter] ok in 9 ms
 PASS T18 dense-gate | ╨║╨╛╤А╨╜╨╕ legacy-vs-dense: ╨┐╨░╨┤╨╡╨╜╨╕╨╡ ╬Фt=0,00E+000╤Б, ╨╜╤Л╤А╨╛╨║ ╬Ф=[0,00E+000,0,00E+000] (╨┤╨╛╨┐╤Г╤Б╨║ 1e-6); RHS ╤Г╤В╨╛╤З╨╜╨╡╨╜╨╕╨╡ legacy=238 vs dense=56; ╤А╨╡╤Б╤В╨░╤А╤В=null: True; ╤В╤А╨╡╨║: ╤Б╨╡╨│╨╝╨╡╨╜╤В╨╛╨▓ 410, ╨╜╨╡╨┐╤А╨╡╤А╤Л╨▓╨╡╨╜: True (╨┐╨╡╤А╨▓╤Л╨╣ ╤А╨▓╨░╨╜╤Л╨╣ ╤Б╤В╤Л╨║ -1: gap=0,00E+000╤Б jump=0,00E+000╨╝), 100 ╤Б╤Н╨╝╨┐╨╗╨╛╨▓ ╨║╨╛╨╜╨╡╤З╨╜╤Л: True, ╨║╨╛╨╜╤Ж╤Л ╤Б╨╛╨▓╨┐╨░╨╗╨╕: True, Step ╨┐╤А╨╕ ╤Б╤Н╨╝╨┐╨╗╨╕╨╜╨│╨╡: True
-[Test18_DenseGate] ok in 8 ms
+[Test18_DenseGate] ok in 19 ms
 PASS T19 adaptive-grain | ╨┐╤А╨░╨▓╨╕╨╗╨╛: slow=20 fast=200 nan=20 inf=20 (20/200/20/20); ╨║╤А╤Г╨│╨╛╨▓╨░╤П ╧Д=17145╤Б subdiv=20; ╨│╨╕╨┐╨╡╤А╨▒╨╛╨╗╨░ ╧Д=11,6╤Б subdiv=200; graze: [AtmosphereEntry:╨Я╨╗╨░╨╜╨╡╤В╨░ ╨Р,AtmosphereExit:╨Я╨╗╨░╨╜╨╡╤В╨░ ╨Р] t=[35,7,62,3]╤Б; ╤Г╨▒╨╡╨│╨░╨╜╨╕╨╡ ╧Д=3006,8╤Б ╨▒╨╡╨╖ ╨╕╤Б╨║╨╗╤О╤З╨╡╨╜╨╕╨╣: True
-[Test19_AdaptiveGrain] ok in 7 ms
+[Test19_AdaptiveGrain] ok in 17 ms
 PASS T17 frame-bridge | roundtrip 1000+╨╜╨╛╨╗╤М ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; ╨╢╤С╤Б╤В╨║╨╛╤Б╤В╤М: ╬Ф(off┬╖axis)=8,59E-006╨╝ ╬Ф|off|=2,62E-005╨╝; ╤Б╨╛╨▓╨╝. (0,0,1) ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; ╤Д╨╛╨║╤Г╤Б-╤А╨╡╨║╨╛╨╜╤Б╤В╤А╤Г╨║╤Ж╨╕╤П: True; ╨╝╨╛╤Б╤В sim=(x,z,тИТy): True
-[Test17_FrameBridge] ok in 2 ms
+[Test17_FrameBridge] ok in 5 ms
 PASS T17 handedness | det=+1 ╤В╨╛╤З╨╜╨╛: True; cross ╨║╨╛╨╝╨╝╤Г╤В╨╕╤А╤Г╨╡╤В (╤Е╤Г╨┤╤И. 0,00E+000 <1e-12): True; v_rot ╨╖╨╜╨░╨║ ╨▓╨╡╤А╨╜╤Л╨╣ (1,27E-012 <1e-9): True
-[Test17_Handedness] ok in 0 ms
+[Test17_Handedness] ok in 1 ms
 PASS T20 kind | touchdown=True exit=True entry=True soi=True(╨Я╨╗╨░╨╜╨╡╤В╨░ ╨Р) depletion=True timed=True
-[Test20_Kind] ok in 3 ms
+[Test20_Kind] ok in 7 ms
 PASS T20 surface-inverse | roundtrip├Ч1000: max╬Фlat=2,27E-013┬░ max╬Фlon=2,99E-012┬░ (<1e-9); ╨┐╨╛╨╗╤О╤Б╨░ lon=0: True; ╤И╨╛╨▓: 179,9999/180,0001/negтЖТ359,9999; ╤И╨╛╨▓ ╨▓╨╛ ╨▓╤А╨╡╨╝╨╡╨╜╨╕ ╨╗╨╕╨╜╨╡╨╡╨╜ (╤И╨░╨│ 99┬░┬▒1e-6): True; ╤Д╨╗╨╕╨┐: True
-[Test20_SurfaceInverse] ok in 1 ms
+[Test20_SurfaceInverse] ok in 3 ms
 PASS T20 reaction | soft: landed=True vn=-4,54╨╝/╤Б(тЙд5) alt=9,31E-010╨╝ postVn=1,67E-013 vt╨б╨╛╤Е╤А╨░╨╜╨╡╨╜╨░=True; hard: N=10 ╬гm╬Ф=0,00E+000 ╬гmf╬Ф=3,65E-018 ╬гmv╬Ф=1,33E-016 spawn╬Ф=0,00E+000╨╝; clamp==900: True; focus is Body: True
-[Test20_Reaction] ok in 3 ms
+[Test20_Reaction] ok in 9 ms
 PASS T20 surface-motion | ╤Б╤В╨╛╤П╨╜╨║╨░ ╨╛╤В╨╜╨╛╤Б╨╕╤В.: True; ╤Б╨╗╨╡╨┤╨╛╨▓╨░╨╜╨╕╨╡ 3600╤Б ╬Ф=2,21E-004╨╝; ╤Б╤В╨╕╨║ 30┬░ v=0,00E+000: True; ╤Б╨╗╨╕╨┐ 60┬░ v=6,037╨╝/╤Б (тЙИ6.037): True; ╤Б╤В╨╛╨┐ ╤Б 50╨╝/╤Б: v=0,00E+000 ╨┐╤Г╤В╤М=255,1╨╝ (тЙИ255): True; ╨╛╤В╤А╤Л╨▓ ╨▒╨╡╨╖ ╤Б╨┤╨▓╨╕╨│╨░: True
-[Test20_SurfaceMotion] ok in 36 ms
+[Test20_SurfaceMotion] ok in 85 ms
 PASS T22 drag-contract | ╤Д╨╛╤А╨╝╤Г╨╗╨░ F=(-6e6,0,0): True; ╧Б(H┬╖ln2)/╧Б0=0.5: True; ╤Б╨╛-╨▓╤А╨░╤Й╨╡╨╜╨╕╨╡ F=0: True; hover ╨┐╤А╨╛╤В╨╕╨▓ v_rel: True |F|=2,101E+006╨Э; ╤Б╤А╨╡╨╖ Top: True; ╤Б╤В╤А╨░╨╢╨╕: True; ╨▓╨░╤А╨┐ ╨▓╨╜╤Г╤В╤А╨╕ ╨╖╨░╨┐╤А╨╡╤Й╤С╨╜/╤Б╨╜╨░╤А╤Г╨╢╨╕ ╨╝╨╛╨╢╨╜╨╛: True/True
-[Test22_DragContract] ok in 0 ms
+[Test22_DragContract] ok in 2 ms
 PASS T22 drag-dip | ╨╛╨▒╨░ ╨╜╨░╤Е╨╛╨┤╤П╤В [Exit,Entry]: True; ╬Фv_╨▓╤Л╤Е╨╛╨┤=1,38╨╝/╤Б (>0.5): True
-[Test22_DragDip] ok in 1 ms
+[Test22_DragDip] ok in 3 ms
 PASS T23 decay | ╨╝╨╛╨╜╨╛╤В╨╛╨╜╨╜╨╛╤Б╤В╤М ╨░╨┐╨╛/╨┐╨╡╤А╨╕/E (╤Б╨╗╨░╨▒ 10╨╝/1e-6): True; ╤Б╤Г╨╝╨╝╨░╤А╨╜╨╛ ╬ФE/E=-1,13E-003 (<-1e-4 ╨╖╨░ 10 ╨▓╨╕╤В╨║╨╛╨▓); ╤Д╨╕╨╜╨░╨╗ ╨░╨┐╨╛=6,616227E+006╨╝ ╨┐╨╡╤А╨╕=6,611173E+006╨╝ (╨╜╨░╨┤ R=6,371000E+006╨╝: True)
-[Test23_Decay] ok in 24 ms
+[Test23_Decay] ok in 58 ms
 PASS T23 retrograde | ╨┐╨╛╤В╨╡╤А╨╕ +X=-1,812E+004 тИТX=-1,392E+004 ╨Ф╨╢/╨║╨│ (╨╛╨▒╨╡ <0); ╨╛╤В╨╜╨╛╤И╨╡╨╜╨╕╨╡=1,302 (тЙИ1.275 тИЭv_rel┬▓, ╨┤╨╛╨┐╤Г╤Б╨║ [1.1,1.5])
-[Test23_Retrograde] ok in 23 ms
+[Test23_Retrograde] ok in 54 ms
 PASS T23 top-crossing | ╤Б╨╕╨╗╨░ Top┬▒10╨╝: 0/╤Б╨╜╨╕╨╖╤Г 2,92E+002╨Э: True; ╨╝╨░╨║╤Б |╬Фv|/1╤Б=9,52╨╝/╤Б (<25); ╤Б╨╛╨▒╤Л╤В╨╕╤П [Entry,Touchdown]: True
-[Test23_TopCrossing] ok in 9 ms
+[Test23_TopCrossing] ok in 22 ms
 PASS T23 rate-baseline | dE/dt ╨╕╨╖╨╝╨╡╤А╨╡╨╜╨╛=-3,0059E+000 ╨░╨╜╨░╨╗╨╕╤В╨╕╨║╨░=-3,0063E+000 ╨Ф╨╢/╨║╨│/╤Б (╬Ф=1,31E-004, ╨┤╨╛╨┐╤Г╤Б╨║ 5%)
 [Test23_RateBaseline] ok in 0 ms
 PASS T24 history | ╨╜╨╡╨╖╨░╨▓╨╕╤Б╨╕╨╝╨╛╤Б╤В╤М ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; ╤Б╨╡╤В╨║╨░ ╨▓╤А╨╡╨╝╤С╨╜ ╤А╨░╨▓╨╜╨░: True (╤Б╨╛╨▒╤Л╤В╨╕╤П ╬ФtтЙд2,98E-007╤Б, ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╬ФтЙд9,49E-003╨╝); preserve 8 ╤Б╤Н╨╝╨┐╨╗╨╛╨▓/2 ╤Б╨╛╨▒╤Л╤В╨╕╤П/╨│╤А╨░╨╜╨╕╤Ж╤Л: True; ╤О╨╜╨╕╤В ╤Б╨╗╨╕╤П╨╜╨╕╤П 7 ╤И╤В: True
-[Test24_History] ok in 3 ms
+[Test24_History] ok in 9 ms
 PASS T26 circular-matrix | roundtrip ╤Е╤Г╨┤╤И.=1,50E-015 (e=0,0001 i=5┬░); E-╨┤╤А╨╡╨╣╤Д ╤Е╤Г╨┤╤И.=5,98E-016; numeric T/4 ╤Е╤Г╨┤╤И.=1,07╨╝ (e=0,05 i=0┬░, <10╨╝) [e=0,i=0┬░:1,06╨╝ e=0,i=5┬░:1,05╨╝ e=0,i=90┬░:0,58╨╝ e=0,i=180┬░:0,76╨╝ e=1E-08,i=0┬░:1,06╨╝ e=1E-08,i=5┬░:1,05╨╝ e=1E-08,i=90┬░:0,58╨╝ e=1E-08,i=180┬░:0,76╨╝ e=0,0001,i=0┬░:1,06╨╝ e=0,0001,i=5┬░:1,05╨╝ e=0,0001,i=90┬░:0,58╨╝ e=0,0001,i=180┬░:0,76╨╝ e=0,05,i=0┬░:1,07╨╝ e=0,05,i=5┬░:1,07╨╝ e=0,05,i=90┬░:0,58╨╝ e=0,05,i=180┬░:0,75╨╝]
-[Test26_CircularMatrix] ok in 2 ms
+[Test26_CircularMatrix] ok in 6 ms
 PASS T27 impulsive | ╨╝╨╡╨╢╨┐╨╗╨░╨╜╨╡╤В valid=True ╨┐╤А╨╛╨╝╨░╤Е=1,17E+009╨╝ (╨║╨╗╨░╤Б╤Б patched-conics); ╨╗╤Г╨╜╨░ ok=True (rendezvous тИЮ╨╝ / ╨┐╤А╤П╨╝╨╛╨╡ ╨┐╨╛╨┐╨░╨┤╨░╨╜╨╕╨╡ True); ╤Г╨┤╨░╤А invalid=True touchdown=True ╨╛╨▒╤А╨░╨╖╨╡╤Ж ╤Ж╨╡╨╗=True; ╨┤╨╡╤В╨╡╤А╨╝=True; drag-╨╕╨╖╨▒╤Л╤В╨╛╨║=5,42E+002╨╝
-[Test27_Impulsive] ok in 719 ms
+[Test27_Impulsive] ok in 1536 ms
 PASS T29 descent-chain | ╤Ж╨╡╨┐╨╛╤З╨║╨░ [Entry,Touchdown]: True; ╨╝╤П╨│╨║╨╛╨╡ vn=-3,30╨╝/╤Б(тЙд5): True; ╤Б╤Г╤В╨║╨╕ landed, ╨┤╤А╨╡╨╣╤Д=1,96E-004╨╝ (<0.01): True
-[Test29_DescentChain] ok in 36 ms
+[Test29_DescentChain] ok in 83 ms
 PASS T29 terminal-velocity | ╤Б╤Н╨╝╨┐╨╗╨╛╨▓ ╨▓ ╨╛╨║╨╜╨╡ 20тАУ30╨║╨╝: 71; ╤Б╤А╨╡╨┤╨╜╤П╤П 141,40╨╝/╤Б vs ╨░╨╜╨░╨╗╨╕╤В╨╕╨║╨░ 140,14 (╬Ф=8,97E-003, ╨┤╨╛╨┐╤Г╤Б╨║ 1.5%)
-[Test29_TerminalVelocity] ok in 2 ms
+[Test29_TerminalVelocity] ok in 4 ms
 PASS T30 parts-trap | ╨╝╨░╤Б╤Б╨░=1000: True; COM=(0.6,0.1,0): True; ╨┤╨╕╨░╨│(90,1440,1530): True; Ixy=60 ╤Б╨╕╨╝╨╝/╨╜╤Г╨╗╨╕: True; I┬╖IтБ╗┬╣: True
-[Test30_PartsTrap] ok in 1 ms
+[Test30_PartsTrap] ok in 3 ms
 PASS T31 attitude-spin | ╤Б╨▓╨╛╨▒╨╛╨┤╨╜╨╛╨╡: ╤Г╨│╨╛╨╗ 5,85E-006 ╧Й 0,00E+000; ╨╝╨╛╨╝╨╡╨╜╤В: ╤Г╨│╨╛╨╗ 1,65E-004 ╧Й 1,24E-014
-[Test31_AttitudeSpin] ok in 3 ms
+[Test31_AttitudeSpin] ok in 7 ms
 PASS T31 attitude-tumble | 1000╤Б ╨║╤Г╨▓╤Л╤А╨║╨░: ╬ФE/E=1,42E-005 ╬Ф|L|/|L|=6,62E-006 |q|тИТ1=0,00E+000 ╬ФL_world=6,64E-006
-[Test31_AttitudeTumble] ok in 41 ms
+[Test31_AttitudeTumble] ok in 91 ms
 PASS T31 attitude-pd | 120╤Б PD: |╧Й|=8,46E-016 (<1e-3) ╤Г╨│╨╛╨╗=0,00E+000╤А╨░╨┤ (<0.017)
-[Test31_AttitudePD] ok in 8 ms
+[Test31_AttitudePD] ok in 20 ms
 PASS T31 torque-link | ╤Б╨╜╨╕╨╝╨╛╨║тЖТ(0,тИТ1,0): True; legacy ╨╝╨╕╤А╨╛╨▓╨╛╨╣: True; RCS ╧Д=(0,тИТ20,0): True; full ╤Б Torque: True; ╨▒╨╡╨╖ ╨┐╤А╨╛╨▓╨░╨╣╨┤╨╡╤А╨░ ╨│╤А╨╛╨╝╨║╨╛: True; ╧Д ╨▓ ╤Б╨╜╨╕╨╝╨║╨╡: True; ╤Б╨╕╨╗╨░ ╨▓ RHS: True; ╤Б╨╜╨╕╨╝╨╛╨║ ╨║╤А╤Г╤В╨╕╤В ╨▓╤А╨░╤Й╨╡╨╜╨╕╨╡: True
-[Test31_TorqueLink] ok in 1 ms
+[Test31_TorqueLink] ok in 2 ms
 PASS T33 staging-momentum | m1=800 v1=1000,4, m2=200 v2=998,4; ╬гmv=1000000 (╤Н╤В╨░╨╗╨╛╨╜ 1000000); relErr=0,00E+000; ╤Б╨╗╨╛╤В ╨░╨║╤В╨╕╨▓╨╡╨╜: True
 [Test33_StagingMomentum] ok in 0 ms
 PASS T34 golden-state | ╨▒╨╕╤В-╨▓-╨▒╨╕╤В ╤Н╤В╨░╨╗╨╛╨╜ + CALLS=81: True; ╤П╨║╨╛╤А╤М ╨Ъ╨╡╨┐╨╗╨╡╤А relErr=1,02E-006 (<1e-4)
 [Test34_GoldenState] ok in 0 ms
 PASS T35 kepler-edge | ╨╜╨╡╨▓╤П╨╖╨║╨╕: ╤Н╨╗╨╗╨╕╨┐╤Б 4,44E-016, ╨│╨╕╨┐╨╡╤А╨▒╨╛╨╗╨░ 5,05E-016 (<1e-9); inbound tPe=1185╤Б r_p=10000000╨╝ (╨╛╨╢╨╕╨┤ 1e7); outbound NaN: True
-[Test35_KeplerEdge] ok in 0 ms
+[Test35_KeplerEdge] ok in 2 ms
 PASS T36 helio-drift | 5 ╨╗╨╡╤В, 60 ╤З╨░╨╜╨║╨╛╨▓: ╤Е╤Г╨┤╤И. ╬ФE/E=9,78E-006 (<1e-4), ╤Е╤Г╨┤╤И. ╬Фr/r=4,55E-005 (<1e-3); ╤А╨░╨┤╨╕╤Г╤Б ╨▓ [2,50E+011,2,50E+011] ╨┐╤А╨╕ r0=2,50E+011
-[Test36_HelioDrift] ok in 10652 ms
+[Test36_HelioDrift] ok in 24346 ms
 PASS T38 low-drag | 6 ╨▓╨╕╤В╨║╨╛╨▓ 200╨║╨╝ (6 ╨┐╤А╨╛╨╣╨┤╨╡╨╜╨╛): ╨╝╨╛╨╜╨╛╤В╨╛╨╜╨╜╨╛╤Б╤В╤М True, ╨▒╨╡╨╖ ╨┐╨░╨┤╨╡╨╜╨╕╤П True, ╤Д╨╕╨╜╨░╨╗╤М╨╜╤Л╨╣ ╨┐╨╡╤А╨╕╨│╨╡╨╣ 6,54E+006╨╝ (>R+50╨║╨╝); ╤Б╨▒╤А╨╛╤Б -1,63E+005 ╨Ф╨╢/╨║╨│ vs ╨░╨╜╨░╨╗╨╕╤В╨╕╨║╨░ 9,56E+004 (╨╛╤В╨╜╨╛╤И╨╡╨╜╨╕╨╡ 1,70 ╨▓ [0.5,4])
-[Test38_LowDrag] ok in 6 ms
+[Test38_LowDrag] ok in 14 ms
 PASS T42 bake-rule | ╤Б╨╡╨│╨╝╨╡╨╜╤В╤Л: ╨╗╤Г╨╜╨░=6,81╨┤ ╨┐╨╗╨░╨╜╨╡╤В╨░╨Р=6,81╨┤ ╨┐╨╗╨░╨╜╨╡╤В╨░╨С=64,00╨┤; attach=True finite=True
-[Test42_BakeRule] ok in 10 ms
+[Test42_BakeRule] ok in 25 ms
 PASS T43 bake-stream | ╤Д╨░╨╣╨╗╤Л+╨╝╨░╨╜╨╕╤Д╨╡╤Б╤В: True; ╤Б╤В╤А╨╕╨╝==╨┐╨░╨╝╤П╤В╤М 1000 ╤В╨╛╤З╨╡╨║ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; ╨╖╨░╨│╤А╤Г╨╖╨╛╨║ ╨╛╨║╨╛╨╜ 3 (╤Б╨╡╨│╨╝╨╡╨╜╤В╨╛╨▓ 9); ╤Н╨▓╨╕╨║╤И╨╡╨╜ ╨╕╨┤╨╡╨╜╤В╨╕╤З╨╡╨╜: True; ╨┐╤А╨╛╤И╨╗╨╛╨╡ ╨│╤А╨╛╨╝╨║╨╛/╨▒╤Г╨┤╤Г╤Й╨╡╨╡ ╨┐╤А╨╛╨┤╨╛╨╗╨╢╨╡╨╜╨╕╨╡: True; bulk: True
-[Test43_BakeStream] ok in 15 ms
+[Test43_BakeStream] ok in 34 ms
 PASS T44 time-cap | ╨╖╨░ ╨║╨╛╨╜╤Ж╨╛╨╝ ╨╢╨╕╨▓╤С╨╝: True; ╨┤╨╛ T0 ╨│╤А╨╛╨╝╨║╨╛: True; ╤Б╤В╨╛╨┐ ╨╜╨░ ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В╨╡ 2592000╤Б: True; ╤А╨╡╨░╨║╤Ж╨╕╤П: True; ╨┐╤А╨╛╨╖╤А╨░╤З╨╡╨╜ ╨▓╨╜╤Г╤В╤А╨╕: True; ╨┤╨╡╤Д╨╛╨╗╤В inf: True; touchdown 224,5╤Б: tie->Touchdown True, cap-1╤Б->EphemerisEnd True
-[Test44_TimeCap] ok in 556 ms
+[Test44_TimeCap] ok in 1063 ms
 PASS T45 porkchop-horizon | ╤Б╨║╨░╨╜ ╨╖╨░ ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В 5184000╤Б ╨╜╨╡ ╨▒╤А╨╛╤Б╨╕╨╗: True; ╨║╨╗╨╡╤В╨╛╨║ ╨╖╨░ ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В╨╛╨╝ 12, ╨▓╤Б╨╡ ╤А╨░╨╖╤Г╨╝╨╜╤Л (╨┐╤А╨╛╨┤╨╛╨╗╨╢╨╡╨╜╨╕╨╡): True; ╨▓╨░╨╗╨╕╨┤╨╜╤Л╤Е ╨▓╨╜╤Г╤В╤А╨╕ (╨╛╨║╨╜╨╛ T27): 9; ╨▒╨╕╤В╤Л╨╣ ╤Д╨░╨╣╨╗ ╨│╤А╨╛╨╝╨║╨╛: True
-[Test45_PorkchopHorizon] ok in 8 ms
+[Test45_PorkchopHorizon] ok in 17 ms
 PASS T52 centrifugal | ╧Й┬▓R=10>g=9.8 тЖТ Flying (╨╛╨╢╨╕╨┤╨░╨╗╤Б╤П Flying); ╧Й┬▓R=5<g тЖТ Landed (╨╛╨╢╨╕╨┤╨░╨╗╤Б╤П Landed)
-[Test52_Centrifugal] ok in 1 ms
+[Test52_Centrifugal] ok in 2 ms
 PASS T53 lambert-halfplane | dt-╨▓╨░╤А╨╕╨░╤В╨╕╨▓╨╜╨╛╤Б╤В╤М: True; round-trip ╤Е╤Г╨┤╤И╨╕╨╣ ╨╛╤В╨╜. err=1,26E-009 (<1e-6); v_long=тИТv_short: True; dt<min ╨▒╤А╨╛╤Б╨░╨╡╤В: True
-[Test53_LambertHalfPlane] ok in 1 ms
+[Test53_LambertHalfPlane] ok in 3 ms
 PASS T54 lambert-overshoot | dt=1e13 ╨▒╤А╨╛╤Б╨░╨╡╤В: True; dt=1╤Б ╨▒╤А╨╛╤Б╨░╨╡╤В: True; dt=1e5 ╤А╨╡╤И╨░╨╡╤В╤Б╤П: True
 [Test54_LambertOvershoot] ok in 0 ms
 PASS T55 force-accept-sync | ╤Б╨╡╨│╨╝╨╡╨╜╤В╨╛╨▓ 1, span=1,000000000E-003╤Б (target 1e-3, ┬▒1.5┬╖MinStep): True; ╤Б╤В╤Л╨║╨╕: True; ╨║╨╛╨╜╨╡╤Ж ╤В╤А╨╡╨║╨░=╨╕╤В╨╛╨│: True; legacy ╬Фpos=0,00E+000╨╝
-[Test55_ForceAcceptSync] ok in 1 ms
+[Test55_ForceAcceptSync] ok in 3 ms
 PASS T56 apsis-zero | ╨▓ ╨┐╨╡╤А╨╕╨░╨┐╤Б╨╕╤Б╨╡: tPe=0,000000E+000╤Б (0), tAp=4976╤Б; ╨▓ ╨░╨┐╨╛╨░╨┐╤Б╨╕╤Б╨╡: tPe=4976╤Б, tAp=0,000000E+000╤Б (0)
 [Test56_ApsisZero] ok in 0 ms
 PASS T57 rail-validation | e=1.2 ╨▒╤А╨╛╤Б╨░╨╡╤В: True; a=0 ╨▒╤А╨╛╤Б╨░╨╡╤В: True; e=0.01 ╤А╨╡╤И╨░╨╡╤В╤Б╤П: True
@@ -113,36 +121,36 @@ PASS T57 rail-validation | e=1.2 ╨▒╤А╨╛╤Б╨░╨╡╤В: True; 
 PASS T58 grain-probe | ╨╝╨╡╨╢╨┐╨╗╨░╨╜╨╡╤В╨░: ╨┤╨╛╨╝╨╕╨╜╨░╨╜╤В╨░=╨Т╤Л╨╝╤Л╤И╨╗╨╡╨╜╨╜╨░╤П ╨╖╨▓╨╡╨╖╨┤╨░, ╧Д=4,517E+007╤Б, ╨╢╨╡╨╗╨░╨╡╨╝╨╛╨╡ ╨╖╨╡╤А╨╜╨╛=2E+006╤Б vs ╨▒╨░╨╖╨░ 30╤Б тЖТ subdiv=20 (╨╕╨╖ ╨┐╨╛╨╗╨░); ╤Г ╨┐╨╗╨░╨╜╨╡╤В╤Л: ╧Д=1,9E+003╤Б тЖТ subdiv=20
 PASS T58 grain-needs | NeedsFineGrain: ╨║╤А╤Г╨╕╨╖ ╨▒╨╡╨╖ ╨┤╨╡╤В╨╡╨║╤В╨╛╤А╨╛╨▓=False (╨╛╨╢╨╕╨┤╨░╨╗╤Б╤П false), ╨║╤А╤Г╨╕╨╖ ╤Б ╨┤╨╡╤В╨╡╨║╤В╨╛╤А╨░╨╝╨╕=False (false тАФ ╤Б╤Д╨╡╤А╤Л ╨╜╨╡╨┤╨╛╤Б╤В╨╕╨╢╨╕╨╝╤Л), ╤Г ╨┐╨╗╨░╨╜╨╡╤В╤Л=True (true)
 [Test58_GrainProbe] ok in 0 ms
-PASS T59 bake-files-speed | ╤Д╨░╨╣╨╗==╨┐╨░╨╝╤П╤В╤М ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; ╨╛╤Ж╨╡╨╜╨║╨░=71361╨С == ╤Д╨░╨║╤В=71361╨С: True; BG2: ╨▒╤О╨┤╨╢╨╡╤В-╨║╨▓╨░╨╜╤В pos=3,74E-001╨╝(<=1,0╨╝) vel=5,31E-005╨╝/╤Б(<=0,0), ╨╜╨░╨╖╨░╨┤=True, ╤Б╨╢╨░╤В╨╕╨╡ 21155╨С/71511╨С=0,30x; 8 ╨╗╨╡╤В ╨╖╨░ 0,18╤Б тЖТ ╨┐╤А╨╛╨╡╨║╤Ж╨╕╤П 1024 ╨╗╨╡╤В ~23╤Б; ╨┐╤А╨╛╨│╤А╨╡╤Б╤Б: True; ╨╛╤В╨╝╨╡╨╜╨░: True
-[Test59_BakeFilesAndSpeed] ok in 386 ms
+PASS T59 bake-files-speed | ╤Д╨░╨╣╨╗==╨┐╨░╨╝╤П╤В╤М ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; ╨╛╤Ж╨╡╨╜╨║╨░=71361╨С == ╤Д╨░╨║╤В=71361╨С: True; BG2: ╨▒╤О╨┤╨╢╨╡╤В-╨║╨▓╨░╨╜╤В pos=3,74E-001╨╝(<=1,0╨╝) vel=5,31E-005╨╝/╤Б(<=0,0), ╨╜╨░╨╖╨░╨┤=True, ╤Б╨╢╨░╤В╨╕╨╡ 21155╨С/71511╨С=0,30x; 8 ╨╗╨╡╤В ╨╖╨░ 0,32╤Б тЖТ ╨┐╤А╨╛╨╡╨║╤Ж╨╕╤П 1024 ╨╗╨╡╤В ~41╤Б; ╨┐╤А╨╛╨│╤А╨╡╤Б╤Б: True; ╨╛╤В╨╝╨╡╨╜╨░: True
+[Test59_BakeFilesAndSpeed] ok in 776 ms
 PASS T61 unbakeable-moon | ╨╛╤Ж╨╡╨╜╤Й╨╕╨║ ╨▒╤А╨╛╤Б╨░╨╡╤В: True; ╨▒╨╡╨╣╨║ ╨▒╤А╨╛╤Б╨░╨╡╤В: True; ╨▓ ╤Б╨┐╨╕╤Б╨║╨╡ ╨╗╤Г╨╜╨░ I-1: True; ╨║╨░╤Б╨║╨░╨┤ ╨╜╨░ ╨┐╨╗╨░╨╜╨╡╤В╤Г I: True; ╨┐╨╛╤Б╤В╨╛╤А╨╛╨╜╨╜╨╕╨╡ ╤В╨╡╨╗╨░ ╨╜╨╡ ╤В╤А╨╛╨╜╤Г╤В╤Л: True
-[Test61_UnbakeableMoon] ok in 0 ms
+[Test61_UnbakeableMoon] ok in 1 ms
 PASS T62 compress-v2 | BG2 12 ╤В╨╡╨╗, 2y: pos-worst=4,57E-001╨╝(<=1,0╨╝) vel-worst=2,82E-004╨╝/╤Б(<=0,0); ╤Б╨╢╨░╤В╨╕╨╡ 248562╨С/801825╨С=0,31x BE1 (<=0.5); ╨╜╨░╨╖╨░╨┤=True; bulk-╨▒╨╕╤В-╨▓-╨▒╨╕╤В=True
-[Test62_CompressV2] ok in 269 ms
+[Test62_CompressV2] ok in 648 ms
 PASS T63 kepler-continuation | ╨┐╤А╨╛╨┤╨╛╨╗╨╢╨╡╨╜╨╕╨╡: ╤Д╨╕╤В╤В=True; ╤Б╤В╤Л╨║=True (worst 2,572E-001╨╝); ╨╖╨░ ╨║╨╛╨╜╤Ж╨╛╨╝=True; BG3=True; BE2=True; legacy ╨│╤А╨╛╨╝╨║╨╛=True; world+1╤Б╤Г╤В=True
-[Test63_KeplerContinuation] ok in 534 ms
+[Test63_KeplerContinuation] ok in 1244 ms
 PASS T64 hill-validation | 0.6 R_H ╨▒╤А╨╛╤Б╨░╨╡╤В: True (╨▓ ╤Б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╨╕ ╨╕╨╝╤П+╤З╨╕╤Б╨╗╨░: True); 0.29 R_H ╨┐╤А╨╛╤Е╨╛╨┤╨╕╤В: True; ╨▒╨╗╨╕╨╖╨║╨╕╨╡ ╤Б╨╕╨▒╨╗╨╕╨╜╨│╨╕ ╨▒╤А╨╛╤Б╨░╤О╤В: True; ╤Д╨╕╨║╤Б╤В╤Г╤А╨░ 1+5+6 ╨┐╤А╨╛╤Е╨╛╨┤╨╕╤В: True
-[Test64_HillValidation] ok in 0 ms
+[Test64_HillValidation] ok in 1 ms
 PASS T65 system-blueprint | ╨▒╨╗╤О╨┐╤А╨╕╨╜╤В==╤А╤Г╤З╨╜╨░╤П ╤Б╨▒╨╛╤А╨║╨░ (╨▒╨╡╨╣╨║ 1y, 200 ╤В╨╛╤З╨╡╨║ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В): True; ╨╜╨╡╤Б╤В╨░╨▒╨╕╨╗╤М╨╜╨░╤П ╨╗╤Г╨╜╨░ ╨│╤А╨╛╨╝╨║╨╛: True; ╨╜╨╛╨╗╤М ╨║╨╛╤А╨╜╨╡╨╣: True; ╨┤╨▓╨░ ╨║╨╛╤А╨╜╤П: True; ╨▒╨╕╤В╤Л╨╣ ParentIndex: True
-[Test65_SystemBlueprint] ok in 16 ms
+[Test65_SystemBlueprint] ok in 39 ms
 PASS T66 nan-protocol | ╨╜╨╛╤А╨╝╨░╨╗╨╕╨╖╨░╤Ж╨╕╤П: NaN ╤А╨░╤Б╨┐╤А╨╛╤Б╤В╤А╨░╨╜╤П╨╡╤В╤Б╤П=True, ╨╜╨╛╨╗╤М=Zero=True, ╤О╨╜╨╕╤В=True; forward-only: orbit=True, ship=True; NaN-╨╕╤Б╤В╨╛╤З╨╜╨╕╨║ ╨│╤А╨╛╨╝╨║╨╛=True; drain-╨╝╨░╤Б╤Б╨░ ╨│╤А╨╛╨╝╨║╨╛=True; NaN-╨┤╨╡╤В╨╡╨║╤В╨╛╤А ╨│╤А╨╛╨╝╨║╨╛=True; ╨╖╨┤╨╛╤А╨╛╨▓╤Л╨╣ ╨┐╤Г╤В╤М ╨╢╨╕╨▓=True
-[Test66_NanProtocol] ok in 3 ms
+[Test66_NanProtocol] ok in 6 ms
 PASS T67 kepler-predictor-guards | eтЙИ1 ╨║╨╛╨╜╨╡╤З╨╡╨╜ ╨╕ ╤В╨╛╤З╨╡╨╜: True (res=0,00E+000); NaN M ╨│╤А╨╛╨╝╨║╨╛: True; M=1e6 ╨║╨╛╨╜╨╡╤З╨╡╨╜: True; ╤А╨╡╨┤╤Г╨║╤Ж╨╕╤П M: True (╬Ф=5,835E-002╨╝); ╨╛╨║╨╛╨╗╨╛╨┐╨░╤А╨░╨▒╨╛╨╗╨░ ╨│╤А╨╛╨╝╨║╨╛: True
 [Test67_KeplerPredictorGuards] ok in 0 ms
 PASS T68 structural-contracts | ╤Ж╨╕╨║╨╗ ╨│╤А╨╛╨╝╨║╨╛=True; ╨║╨╛╨╜╤Д╨╗╨╕╨║╤В Parent=True; ╨┤╤Г╨▒╨╗╨╕ ╨╕╨╝╤С╨╜=True; ╤З╨░╤Б╤В╨╕╤З╨╜╤Л╨╣ attach ╨│╤А╨╛╨╝╨║╨╛=True; ╨╛╤В╨║╨░╤В ╤З╨╕╤Б╤В=True; ╤З╤Г╨╢╨╛╨╡ ╤В╨╡╨╗╨╛=True; attach-╨╝╨╡╤В╨╛╨┤ ╤А╨░╨▒╨╛╤В╨░╨╡╤В=True
-[Test68_StructuralContracts] ok in 25 ms
+[Test68_StructuralContracts] ok in 55 ms
 PASS T69 warp-ladder | ╤Б╨╜╨░╨┐=True; ╨║╨░╨┐╤Л ╨░╤В╨╝╨╛╤Б╤Д╨╡╤А╤Л=True; ╨┐╨╗╨░╨╜╨╕╤А╨╛╨▓╤Й╨╕╨║=True; ╤В╤П╨│╨░>├Ч3 ╨╖╨░╨┐╤А╨╡╤Й╨╡╨╜╨░+Prepare=True; ╤Б╤Г╤В╨║╨╕ ╨┐╨╛╨║╨░╨┤╤А╨╛╨▓╨╛ vs ╨║╤Г╤Б╨╛╨║ dPos=1,190E-003╨╝ (╨┐╨╛╨▓╤В╨╛╤А ╨▒╨╕╤В-╨▓-╨▒╨╕╤В=True); ╨╖╨╡╤А╨╜╨╛ тЙд0.5╤Б=True; A1-╤Б╤Н╨╝╨┐╨╗╤Л ╨┐╨╛╤Б╨╗╨╡ ╤А╨╡╤Б╨╡╤В╨░/Prepare: True
-[Test69_WarpLadder] ok in 27 ms
+[Test69_WarpLadder] ok in 62 ms
 PASS T70 tryliftoff-spin | T52 ╤З╨╡╤А╨╡╨╖ TryLiftoff: ╧Й┬▓R=10 тЖТ Flying, ╧Й┬▓R=5 тЖТ Landed; ╤Б╨╛-╨▓╤А╨░╤Й╨╡╨╜╨╕╨╡ ╨╜╨╡ ╤Г╨┤╨▓╨╛╨╡╨╜╨╛ (|╬Фv|=0,00E+000): True; v=0-╤Б╨┐╨░╨▓╨╜: ╤В╤П╨│╨░ 30>g+╧Й┬▓R тЖТ Flying, v ╨╕╨╜╨╡╤А╤Ж╨╕╨░╨╗╤М╨╜╨╛ ╤Б╨╛╤Е╤А╨░╨╜╨╡╨╜╨░ (|v|=0,00E+000): True
-[Test70_TryLiftoffSpin] ok in 0 ms
+[Test70_TryLiftoffSpin] ok in 1 ms
 PASS T71 debris-tunnel | ╨░╤Б╤В╨╡╤А╨╛╨╕╨┤ R=1e3 v=2000: ╨┤╨╡╤В╨╡╨║╤В=True ╨╖╨░ 8 hop'╨╛╨▓ (╨║╨░╨┐ 0.25┬╖R/v=1,250E-001╤Б); ╨║╤А╤Г╨┐╨╜╨░╤П ╤Б╨╕╤Б╤В╨╡╨╝╨░: LOD-╨┐╤А╤Л╨╢╨╛╨║ 30╤Б ╨╜╨╡ ╤Б╨╢╨░╤В: True; v_rel=0 ╨║╨╗╨░╨╝╨┐╨╜╤Г╤В (тИЪ(2╬╝/d)=6E+002╨╝/╤Б, hop=3,953E-001╤Б<1╤Б): True
-[Test71_DebrisTunnel] ok in 0 ms
+[Test71_DebrisTunnel] ok in 1 ms
 PASS T72 visual-frame | ╨▒╨░╨╖╨╕╤Б bodyтЖТworld ╤Б╨╛╨▓╨┐╨░╨╗ ╤Б GetSurfaceState (╨╜╨░╨║╨╗╨╛╨╜╨╜╨░╤П ╨╛╤Б╤М, ╨▓╤А╨░╤Й╨╡╨╜╨╕╨╡, 3 ╨╝╨╛╨╝╨╡╨╜╤В╨░): ╤Е╤Г╨┤╤И╨░╤П ╨╛╤И╨╕╨▒╨║╨░ 9,25E-012 (<1e-9); ╨╖╨▓╨╡╨╖╨┤╨░ (0,0,1) тАФ ╤В╨╛╨╢╨┤╨╡╤Б╤В╨▓╨╛ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True
 [Test72_VisualFrame] ok in 0 ms
 PASS T74 scale-bounds | a=2e13 ╨│╤А╨╛╨╝╨║╨╛: True; a=1e13 ╤А╨╛╨▓╨╜╨╛ ╨┐╤А╨╛╤Е╨╛╨┤╨╕╤В: True; hyper a=1e8 e=1.2 ╨┐╤А╨╛╨┐╤Г╤Й╨╡╨╜: True
 [Test74_ScaleBounds] ok in 0 ms
 PASS T73 ephemeris-thread-gate | 4 ╨┐╨╛╤В╨╛╨║╨░, ╨┐╨╡╤А╨╡╨╝╨╡╤И╨░╨╜╨╜╨░╤П ╤Б╨╡╤В╨║╨░ (╨┐╤А╨╛╨╝╨░╤Е╨╕ ╨╛╨║╨╛╨╜) == ╤Н╤В╨░╨╗╨╛╨╜ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; WindowLoads ╨║╨╛╨╜╤Б╨╕╤Б╤В╨╡╨╜╤В╨╡╨╜: True; LoadRangeToMemory ╨┐╨░╤А╨░╨╗╨╗╨╡╨╗╤М╨╜╨╛ ╤Б ╨╛╨║╨╜╨╛╨╝: True; ╨┐╨╡╤А╨╡╤В╤В╨░╤З ╨╛╤Б╨▓╨╛╨▒╨╛╨╢╨┤╨░╨╡╤В ╤Д╨░╨╣╨╗ (╨┐╨╡╤А╨╡╨╖╨░╨┐╨╕╤Б╤М ╤Б╤А╨░╨╖╤Г): True; ╨╜╨╛╨▓╤Л╨╣ ╨╕╨╜╤Б╤В╨░╨╜╤Б ╨╢╨╕╨▓: True
-[Test73_EphemerisThreadGate] ok in 11 ms
+[Test73_EphemerisThreadGate] ok in 24 ms
 PASS T75 torque-probe-guard | ╤Б╨╛╨▒╤Л╤В╨╕╨╡ ╨▓╨╛╤И╨╗╨╛ ╨▓ ╨░╤В╨╝╨╛╤Б╤Д╨╡╤А╤Г ╨▓ ╨┐╨╡╤А╨▓╨╛╨╝ ╤З╨░╨╜╨║╨╡ (╨▒╨╕╤Б╨╡╨║╤Ж╨╕╤П ╨╛╤В╤А╨░╨▒╨╛╤В╨░╨╗╨░, t*=23,68╤Б<30╤Б): True; ╤Б╨╜╨╕╨╝╨╛╨║ == ╤И╨░╨│╤Г 0тЖТ30 ╨▒╨╡╨╖ ╨┤╤А╨░╨╣╨▓╨╡╤А╨░ (╨▒╨╕╤В-╨▓-╨▒╨╕╤В): True
 [Test75_TorqueProbeGuard] ok in 0 ms
 PASS T76 quaternion-bridge | ╤В╨╛╨╢╨┤╨╡╤Б╤В╨▓╨╛ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; ╨╛╤Б╨╕ ╤З╨╡╤А╨╡╨╖ ╨┐╨╛╨╖╨╕╤Ж╨╕╨╛╨╜╨╜╤Л╨╣ ╨╝╨╛╤Б╤В, ╨╜╨╛╤А╨╝╨░=1 (╤Е╤Г╨┤╤И. ╨┤╤А╨╡╨╣╤Д 3,51E-016): True; ╤Б╨╡╨▓╨╡╤А +Z тЖТ ╨╛╤Б╤М up +Y: True; R┬╖(q┬╖v) == q_sim┬╖(R┬╖v): True
@@ -154,20 +162,20 @@ PASS T77 terrain-heightfield | ╨╜╨╛╤А╨╝╨░╨╗╤МтЖФ╨
 PASS T77 terrain-heightfield | ╤Б╨┐╨╕╨╜ ╨╜╨╛╤А╨╝╨░╨╗╨╕, ╬Ф=1,336E-012 < 1e-9
 PASS T77 terrain-heightfield | ╨┤╨╡╤В╨╡╨║╤В╨╛╤А ╨╜╨░╨┤ ╨┐╨╕╨║╨╛╨╝: g<0 ╨╜╨░ +50 ╨╝, g>0 ╨╜╨░ +300 ╨╝
 PASS T77 terrain-heightfield | ╤Б╤Д╨╡╤А╨░ ╨▒╤Л ╨┐╤А╨╛╨┐╤Г╤Б╤В╨╕╨╗╨░ ╨┐╨╕╨║ (╨║╨╛╤А╨░╨▒╨╗╤М ╨▓╤Л╤И╨╡ R)
-[Test77_TerrainHeightfield] ok in 31 ms
+[Test77_TerrainHeightfield] ok in 76 ms
 PASS T78 jointed-breakup | ╤Б╨╗╨░╨▒╨╡╨╣╤И╨╕╨╣ ╤Б╤В╤Л╨║ ╨╛╤В╨╗╨╛╨╝╨░╨╜, ╤Б╨┐╨╡╨║╨░ ╤А╨╛╨▓╨╜╨╛ ╨╛╨┤╨╜╨░
 PASS T78 jointed-breakup | ╤В╨░╨╜╨│╨╡╨╜╤Ж╨╕╨░╨╗╤М╨╜╤Л╨╣ ╨╕╨╜╨▓╨░╤А╨╕╨░╨╜╤В, ╬Ф=0,00E+000
 PASS T78 jointed-breakup | ╨╛╤В╤Б╨║╨╛╨║ ╨╜╨░╤А╤Г╨╢╤Г, v_n=2,00 (= e┬╖|v_n|)
 PASS T78 jointed-breakup | ╨┐╤А╨╛╤З╨╜╤Л╨╡ ╤Б╤В╤Л╨║╨╕ тЖТ ╨┐╤Г╤Б╤В╨╛╨╣ ╤Б╨┐╨╕╤Б╨╛╨║ ╤Б╨┐╨╡╨║╨╛╨▓
 PASS T78 jointed-breakup | ╨▒╨╡╨╖ ╨┤╨╡╤В╨░╨╗╨╡╨╣ тЖТ whole-ship fallback (10 ╤Д╤А╨░╨│╨╝╨╡╨╜╤В╨╛╨▓)
-[Test78_JointedBreakup] ok in 1 ms
+[Test78_JointedBreakup] ok in 2 ms
 PASS T79 tidal-lock | ╨┐╨╡╤А╨╕╨╛╨┤ = 2╧АтИЪ(a┬│/╬╝_local) ╨▒╨╕╤В-╨▓-╨▒╨╕╤В (27925,3╤Б), ╤А╤Г╤З╨╜╤Л╨╡ 999╤Б ╨╕╨│╨╜╨╛╤А╨╕╤А╨╛╨▓╨░╨╜╤Л
 PASS T79 tidal-lock | 50 ╨▓╨╕╤В╨║╨╛╨▓: ╨┐╨╛╨┤╨║╨╛╤Б╨╕╤В╨╡╨╗╤М╨╜╤Л╨╣ ╨┤╤А╨╡╨╣╤Д 0,00E+000 ╤А╨░╨┤ < 1e-6
 PASS T79 tidal-lock | ╨┐╨╡╤А╨╡╤Б╨▒╨╛╤А╨║╨░ ╨▒╨╡╨╖ ╨┐╤А╨░╨▓╨║╨╕ ╨┤╨░╨╜╨╜╤Л╤Е: ╨┐╨╡╤А╨╕╨╛╨┤/╨╛╤Д╤Д╤Б╨╡╤В ╨▒╨╕╤В-╨▓-╨▒╨╕╤В
 PASS T79 tidal-lock | round-trip lat/lon ╨╜╨░ ╨╖╨░╤Е╨▓╨░╤З╨╡╨╜╨╜╨╛╨╝ ╤В╨╡╨╗╨╡
 PASS T79 tidal-lock | ╨╗╨╕╨▒╤А╨░╤Ж╨╕╤П e=0.05: ╨░╨╝╨┐╨╗╨╕╤В╤Г╨┤╨░ 0,1000 ╤А╨░╨┤ тИИ (1.5e, 2.5e) = ┬▒2e
 PASS T79 tidal-lock | ╨╖╨░╨╝╨╛╨║ ╨╜╨░ ╨╖╨▓╨╡╨╖╨┤╨╡ ╨│╤А╨╛╨╝╨║╨╛ ╨╛╤В╨▓╨╡╤А╨│╨╜╤Г╤В
-[Test79_TidalLock] ok in 1 ms
+[Test79_TidalLock] ok in 3 ms
 PASS T80 star-color | ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕╨╖╨╝ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В
 PASS T80 star-color | 1500K: ╨║╤А╨░╤Б╨╜╤Л╨╣ ╨┤╨╛╨╝╨╕╨╜╨╕╤А╤Г╨╡╤В
 PASS T80 star-color | 10000K: ╤Б╨╕╨╜╨╕╨╣ ╨┤╨╛╨╝╨╕╨╜╨╕╤А╤Г╨╡╤В
@@ -178,7 +186,7 @@ PASS T81 star-granulation | ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕
 PASS T81 star-granulation | ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╨▓ [0,1]
 PASS T81 star-granulation | ╨║╨╛╨╜╤В╤А╨░╤Б╤В ╤П╤З╨╡╨╡╨║: min=0,39, max=1,00
 PASS T81 star-granulation | ╤З╨╕╤Б╤В╨░╤П ╤Д╤Г╨╜╨║╤Ж╨╕╤П ╨╜╨░╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╤П (╤И╨▓╨╛╨▓ ╨╜╨╡╤В ╨┐╨╛ ╨┐╨╛╤Б╤В╤А╨╛╨╡╨╜╨╕╤О)
-[Test81_StarGranulation] ok in 7 ms
+[Test81_StarGranulation] ok in 17 ms
 PASS T82 terrain-advanced | ╨╜╤Г╨╗╨╕ ╨╜╨╛╨▓╤Л╤Е ╨┐╨░╤А╨░╨╝╨╡╤В╤А╨╛╨▓ = ╨▒╨╕╤В-╨▓-╨▒╨╕╤В legacy
 PASS T82 terrain-advanced | ╨╜╤Г╨╗╨╕ ╨┐╨╛╨╗╨╡╨╣ (╤Б╤В╨░╤А╤Л╨╡ ╤Б╤Ж╨╡╨╜╤Л) = ╨▒╨╕╤В-╨▓-╨▒╨╕╤В legacy
 PASS T82 terrain-advanced | WarpStrength=0 ╨╕╨│╨╜╨╛╤А╨╕╤А╤Г╨╡╤В warp-╨┐╨░╤А╨░╨╝╨╡╤В╤А╤Л
@@ -188,7 +196,7 @@ PASS T82 terrain-advanced | ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕
 PASS T82 terrain-advanced | ╨║╨╗╨░╨╝╨┐ ╨╝╨╛╤А╤П ╨┤╨╡╤А╨╢╨╕╤В╤Б╤П ╤Б ╤Д╨╕╤З╨░╨╝╨╕
 PASS T82 terrain-advanced | ╨│╤А╨░╨╜╨╕╤Ж╨░ |h| тЙд A┬╖(1+depth) (max 1546,4)
 PASS T82 terrain-advanced | ╨┐╨░╤А╨╕╤В╨╡╤В ╨╜╨╛╤А╨╝╨░╨╗╨╕ ╨╜╨░ ╨│╤А╨╡╨▒╨╜╨╡, ╤Г╨│╨╛╨╗ 6,632E-004 ╤А╨░╨┤ < 0.05
-[Test82_TerrainAdvanced] ok in 36 ms
+[Test82_TerrainAdvanced] ok in 85 ms
 PASS T83 terrain-color | Ex(╨▓╤Б╤С ╨▓╤Л╨║╨╗) = ╨▒╨╕╤В-╨▓-╨▒╨╕╤В legacy (guard'╤Л, ╤Б╨║╨╗╨╛╨╜╤Л, ╨╝╨░╤Б╨║╨░)
 PASS T83 terrain-color | rock-override: ╤Б╨║╨░╨╗╨░/╨▒╨╗╨╡╨╜╨┤/╨┐╨╛╤А╨╛╨│/╨╝╨╛╤А╨╡
 PASS T83 terrain-color | rock-override: ╨┐╨╛╤А╨╛╨│ ╨┐╨╛ ╨▓╤Л╤Б╨╛╤В╨╡ (╨┐╨╗╤П╨╢ ╨▒╨╡╨╖ ╤Б╨║╨░╨╗, ╨│╨╛╤А╤Л ╤Б╨╛ ╤Б╨║╨░╨╗╨╛╨╣)
@@ -198,29 +206,29 @@ PASS T83 terrain-color | SlopeTan: 0/1/╨▓╨╡╤А╤В╨╕╨║╨░�
 PASS T83 terrain-color | SampleColorNoise: ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕╨╖╨╝, [тИТ1,1], seed offset
 PASS T83 terrain-color | ╤Ж╨▓╨╡╤В╨╛╨▓╨░╤П ╨┤╨╡╤В╨░╨╗╤М: ╨╝╨╡╨╜╤П╨╡╤В ╨╖╨╡╨╝╨╗╤О, strength 0 = ╨╕╨│╨╜╨╛╤А, ╨╝╨╛╤А╨╡ ╨╜╨╡ ╤В╤А╨╛╨│╨░╨╡╤В
 PASS T83 terrain-color | SampleColorDetailNoise: ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕╨╖╨╝, [тИТ1,1], seed offset
-[Test83_TerrainColor] ok in 2 ms
+[Test83_TerrainColor] ok in 6 ms
 PASS T84 terrain-float-parity | job == managed ╨▒╨╕╤В-╨▓-╨▒╨╕╤В (╤Е╤Г╨┤╤И╨╡╨╡ 0,000E+000 ╨╝)
 PASS T84 terrain-float-parity | ╨│╤А╨╡╨▒╨╜╨╕ warp+ridged ╨▒╨╕╤В-╨▓-╨▒╨╕╤В (╤Е╤Г╨┤╤И╨╡╨╡ 0,000E+000 ╨╝)
 PASS T84 terrain-float-parity | ╨╝╨░╤Б╨║╨░ тЙд 5e-6 (╤Е╤Г╨┤╤И╨╡╨╡ 2,977E-008)
 PASS T84 terrain-float-parity | ╨╜╨╛╤А╨╝╨░╨╗╨╕ ╨╝╨╡╨╗╨║╨╛╨│╨╛ ╤В╨░╨╣╨╗╨░ тЙд 2e-3 ╤А╨░╨┤ (╤Е╤Г╨┤╤И╨╡╨╡ 5,356E-004)
 PASS T84 terrain-float-parity | guard cos ╨╕ tan ╨┐╨╛╨┤ float (rel 0,000E+000)
-[Test84_TerrainFloatParity] ok in 92 ms
+[Test84_TerrainFloatParity] ok in 214 ms
 PASS T85 cube-sphere | ╨▓╤Б╨╡ ╨╜╨░╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╤П ╨╡╨┤╨╕╨╜╨╕╤З╨╜╤Л╨╡
 PASS T85 cube-sphere | ╨╜╨╡╨┐╤А╨╡╤А╤Л╨▓╨╜╨╛╤Б╤В╤М ╤З╨╡╤А╨╡╨╖ ╤А╤С╨▒╤А╨░ ╨│╤А╨░╨╜╨╡╨╣
 PASS T85 cube-sphere | ╤Ж╨╡╨╜╤В╤А╤Л ╤Г╨╖╨╗╨╛╨▓ quadtree
 [Test85_CubeSphere] ok in 0 ms
 PASS T86 nan-probe | ╨╜╨╡╤В ╨╜╨╡-╨║╨╛╨╜╨╡╤З╨╜╤Л╤Е ╨▓╤Л╤Б╨╛╤В (worst 1,893E+000)
-[Test86_NaNProbe] ok in 88 ms
+[Test86_NaNProbe] ok in 51 ms
 LANDFRAC fraction=0,427 maxH=8010
 PASS T87 land-fraction | ╤Б╤Г╤И╨░ ╤А╨░╨╖╤Г╨╝╨╜╨╛╨╣ ╨┤╨╛╨╗╨╕: 0,427
-[Test87_LandFraction] ok in 214 ms
+[Test87_LandFraction] ok in 123 ms
 PASS T88 sky-physics | ╨║╨╛╤Б╨╝╨╛╤Б: ╨┐╤А╨╛╨╖╤А╨░╤З╨╜╨╛╤Б╤В╤М = 1
 PASS T88 sky-physics | ╨┐╨╛╤А╤П╨┤╨╛╨║ ╨║╨░╨╜╨░╨╗╨╛╨▓ ╨╕ ╨║╤А╨░╤Б╨╜╤Л╨╣ ╨╖╨░╨║╨░╤В
 PASS T88 sky-physics | airmass ╨║╨╛╨╜╨╡╤З╨╜╨░ ╤Г ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В╨░ ╨╕ ╨╝╨╛╨╜╨╛╤В╨╛╨╜╨╜╨░
 PASS T88 sky-physics | ╨╛╨║╨║╨╗╤О╨╖╨╕╤П ╤Б ╤Г╤З╤С╤В╨╛╨╝ ╨▓╤Л╤Б╨╛╤В╤Л ╨╜╨░╨▒╨╗╤О╨┤╨░╤В╨╡╨╗╤П
 PASS T88 sky-physics | ╨▓╨╕╨┤╨╕╨╝╨╛╤Б╤В╤М ╨╖╨▓╤С╨╖╨┤: ╨┐╨╛╨╗╨┤╨╡╨╜╤М/╨╜╨╛╤З╤М/╨║╨╛╤Б╨╝╨╛╤Б
 PASS T88 sky-physics | ╨┤╨╜╨╡╨▓╨╜╨╛╨╣ ╤Д╨░╨║╤В╨╛╤А ╤Б╨▓╨╡╤В╨░
-[Test88_SkyPhysics] ok in 0 ms
+[Test88_SkyPhysics] ok in 1 ms
 PLAINS nearPlain=0,125 nearPlainOff=0,060 highFlat=0,070 highOff=0,140 landFlat=0,429 landOff=0,391 roughOff=5,895E-001 roughFlat=4,922E-001 fineOff=1,262E-003 fineDetail=2,012E-003
 PASS T89 terrain-plains | PlainFrequency ╨▒╨╡╨╖ PlainMix ╨╜╨╡ ╨╝╨╡╨╜╤П╨╡╤В ╤А╨╡╨╗╤М╨╡╤Д
 PASS T89 terrain-plains | PlainMix>0 ╨╝╨╡╨╜╤П╨╡╤В ╤А╨╡╨╗╤М╨╡╤Д
@@ -230,7 +238,7 @@ PASS T89 terrain-plains | ╨┤╨╡╤В╨░╨╗╤М ╨┤╨╛╨▒�
 PASS T89 terrain-plains | ╨╜╨╡╤В ╨╜╨╡-╨║╨╛╨╜╨╡╤З╨╜╤Л╤Е ╨▓╤Л╤Б╨╛╤В
 PASS T89 terrain-plains | job == managed ╨▒╨╕╤В-╨▓-╨▒╨╕╤В ╤Б ╨╝╨░╤Б╨║╨╛╨╣ ╤А╨░╨▓╨╜╨╕╨╜
 PASS T89 terrain-plains | job ╨┐╨╕╤И╨╡╤В ╤Ж╨▓╨╡╤В╨╛╨▓╤Г╤О ╨┤╨╡╤В╨░╨╗╤М (╤А╨░╤Б╤Е╨╛╨╢╨┤╨╡╨╜╨╕╨╡ 2,974E-008)
-[Test89_TerrainPlains] ok in 89 ms
+[Test89_TerrainPlains] ok in 213 ms
 PASS T90 atmosphere-optics | ╬▓ ╨а╤Н╨╗╨╡╤П: B>G>R, ╨┐╨╛╨╗╨╛╨╢╨╕╤В╨╡╨╗╤М╨╜╤Л
 PASS T90 atmosphere-optics | ╬▓ ╨╗╨╕╨╜╨╡╨╣╨╜╤Л ╨┐╨╛ ╨┐╨╗╨╛╤В╨╜╨╛╤Б╤В╨╕
 PASS T90 atmosphere-optics | AerosolScale ╨╝╨╜╨╛╨╢╨╕╤В ╤В╨╛╨╗╤М╨║╨╛ ╬▓_Mie
@@ -238,12 +246,12 @@ PASS T90 atmosphere-optics | T(╨╖╨╡╨╜╨╕╤В): B<G<R, ╨▓ (0,
 PASS T90 atmosphere-optics | ╨╜╨╕╨╢╨╡ ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В╨░ T=0
 PASS T90 atmosphere-optics | transmittance LUT: ╨║╨╛╨╜╨╡╤З╨╜╨░, [0,1]
 PASS T90 atmosphere-optics | MS LUT: ╨║╨╛╨╜╨╡╤З╨╜╨░, ╨╜╨╡╨╛╤В╤А╨╕╤Ж╨░╤В╨╡╨╗╤М╨╜╨░, ╨╜╨╡╨╜╤Г╨╗╨╡╨▓╨░╤П
-[Test90_AtmosphereOptics] ok in 5 ms
+[Test90_AtmosphereOptics] ok in 13 ms
 PASS T91 terrain-profile | FromProfile ╨║╨╛╨┐╨╕╤А╤Г╨╡╤В ╨▓╤Б╨╡ ╨┐╨╛╨╗╤П + ╨┐╨░╨╗╨╕╤В╤А╤Г
 PASS T91 terrain-profile | ╨▓╤Л╤Б╨╛╤В╤Л ╨╕╨╖ ╨┐╤А╨╛╤Д╨╕╨╗╤П == ╤А╤Г╤З╨╜╨░╤П ╤Б╨▒╨╛╤А╨║╨░ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В
 PASS T91 terrain-profile | Build ╤Б╨╛╨▒╨╕╤А╨░╨╡╤В terrain ╨╕╨╖ BodyBlueprint.Terrain
 PASS T91 terrain-profile | Clone ╨╜╨╡ ╨┤╨╡╨╗╨╕╤В ╨┐╨░╨╗╨╕╤В╤А╤Г ╤Б ╨╛╤А╨╕╨│╨╕╨╜╨░╨╗╨╛╨╝
-[Test91_TerrainProfile] ok in 1 ms
+[Test91_TerrainProfile] ok in 3 ms
 PASS T92 terrain-palette | ╨┤╨░╨╜╨╜╤Л╨╡ ╨┐╨░╨╗╨╕╤В╤А╤Л == legacy-╨║╨╛╨╜╤Б╤В╨░╨╜╤В╤Л
 PASS T92 terrain-palette | Matches ╨╗╨╛╨▓╨╕╤В ╨║╨╛╨┐╨╕╤О ╨╕ ╨┐╤А╨░╨▓╨║╤Г
 [Test92_TerrainPaletteData] ok in 0 ms
@@ -253,11 +261,11 @@ PASS T93 decor-distribution | ╨╝╨░╤Б╤И╤В╨░╨▒/╨┐╨�
 PASS T93 decor-distribution | MeshIndex ╨▓ [0, 3)
 PASS T93 decor-distribution | ╤Д╨╕╨╗╤М╤В╤А╤Л ╨╜╤Г╨╗╤П╤В: density=0 altitude=0 wet=0 water=0
 PASS T93 decor-distribution | Hash01 ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕╤А╨╛╨▓╨░╨╜ ╨╕ ╨▓ [0,1)
-[Test93_GroundDecorDistribution] ok in 45 ms
+[Test93_GroundDecorDistribution] ok in 111 ms
 TREEALT total=42469 maxH=7682 above2.5k=9301 above3.2k=6310 accepted2.5k=2304 accepted3.2k=0
 PASS T94 tree-high-altitude | ╨┤╨╡╤А╨╡╨▓╤М╤П ╨┐╤А╨╕╨╜╨╕╨╝╨░╤О╤В╤Б╤П ╨▓╤Л╤И╨╡ 2.5 ╨║╨╝: 2304
 PASS T94 tree-high-altitude | ╨▓╤Л╤И╨╡ 3.2 ╨║╨╝ ╨┤╨╡╤А╨╡╨▓╤М╨╡╨▓ ╨╜╨╡╤В: 0
-[Test94_TreeHighAltitude] ok in 225 ms
+[Test94_TreeHighAltitude] ok in 510 ms
 GREENBAND water=14588 sand=2195 high=905 dry=1882 green=5780 grassAccepted=5291 rocksAcceptedHigh=905 allowedOnly=0
 PASS T99 decor-green-band | FromLayer ╨┐╤А╨╛╨▒╤А╨░╤Б╤Л╨▓╨░╨╡╤В MaxNormalizedHeight
 PASS T99 decor-green-band | ╨╖╨╡╨╗╨╡╨╜╤М ╨╡╤Б╤В╤М ╨╕ ╨┐╤А╨╕╨╜╨╕╨╝╨░╨╡╤В╤Б╤П: 5291 ╨╕╨╖ 5780
@@ -266,9 +274,9 @@ PASS T99 decor-green-band | ╨║╨░╨╝╨╜╨╕ ╨▓ ╨│╨╛�
 PASS T99 decor-green-band | TryEvaluate тКЖ IsSurfaceAllowed, ╨╜╨░╤А╤Г╤И╨╡╨╜╨╕╨╣=0
 PASS T99 decor-green-band | CubeFaceDirection == CubeSphere.Direction
 PASS T99 decor-green-band | ╤Б╤В╤А╨░╨╢ ╤Б╨╜╤Н╨┐╨░: land=True mapping=True water=True
-[Test99_DecorGreenBand] ok in 133 ms
+[Test99_DecorGreenBand] ok in 317 ms
 PASS T100 decor-stale-reset | stale Accepted ╨┐╨╛╤Б╨╗╨╡ ╨╛╤В╨║╨╗╨╛╨╜╨╡╨╜╨╕╤П: 0 ╨╕╨╖ 486
-[Test100_DecorStalePoolReset] ok in 0 ms
+[Test100_DecorStalePoolReset] ok in 1 ms
 BEACH total=1085 grassAbove=2911 band=1085 twinBand=231 pulled=3386 fadePoints=510 fadeExactSand=0
 PASS T101 beach-band | FromLayer ╤З╨╕╤В╨░╨╡╤В ╨┐╨╗╤П╨╢ ╨╕╨╖ ╤В╨╡╤А╤А╨╡╨╣╨╜╨░
 PASS T101 beach-band | ╨┐╨╛╨╗╨╛╤Б╨░ ╨┐╨╗╤П╨╢╨░ ╤Б╤Г╤Й╨╡╤Б╤В╨▓╤Г╨╡╤В: 1085
@@ -278,15 +286,15 @@ PASS T101 beach-band | ╨┐╨╡╤Б╨╛╨║ ╨┐╤А╨╕ ╨╗╤
 PASS T101 beach-band | ╨▓ ╨╖╨░╤В╤Г╤Е╨░╨╜╨╕╨╕ ╨┐╨╡╤Б╨║╨░ (0.4тАж1.6┬╖beach) ╤Ж╨▓╨╡╤В ╤Б╨╝╨╡╤И╨░╨╜╨╜╤Л╨╣, ╤З╨╕╤Б╤В╨╛╨│╨╛ Sand ╨╜╨╡╤В: ╤В╨╛╤З╨╡╨║ 510, ╤З╨╕╤Б╤В╨╛╨│╨╛ ╨┐╨╡╤Б╨║╨░ 0
 PASS T101 beach-band | ╨┐╨╛╨╗╨║╨░ ╤В╤П╨╜╨╡╤В ╨║ +8╨╝: pulled=3386 wrong=0
 PASS T101 beach-band | ╨┐╨╛╨╗╨║╨░ ╤А╨░╤Б╤И╨╕╤А╤П╨╡╤В ╨┐╨╛╨╗╨╛╤Б╤Г: shelf=1085 legacy=231
-[Test101_BeachBand] ok in 41 ms
+[Test101_BeachBand] ok in 94 ms
 POLAR wEquator=0,150 wTundra=0,150 wPole=0,150 iceGrass=True iceRocks=True
 PASS T102 polar-decor-latitude | ╨▓╨╡╤Б ╨╛╨┤╨╕╨╜╨░╨║╨╛╨▓ ╨╜╨░ ╨▓╤Б╨╡╤Е ╤И╨╕╤А╨╛╤В╨░╤Е: 0,150 ╨║╨░╨╝╨╜╨╕ ╨▒╨╡╨╖ ╨╛╨│╤А╨░╨╜╨╕╤З╨╡╨╜╨╕╤П=1,000
 PASS T102 polar-decor-latitude | ╨╜╨░ ╤И╨╕╤А╨╛╤В╨╡ ╤В╤Г╨╜╨┤╤А╤Л ╨▓╨╡╤Б ╨╜╨╡ ╨╝╨╡╨╜╤М╤И╨╡ ╤Н╨║╨▓╨░╤В╨╛╤А╨░: 0,150
 PASS T102 polar-decor-latitude | ╨║╨░╨╝╨╜╨╕ ╤Б IgnoreLatitude ╨╜╨░ ╨╗╤М╨┤╤Г ╨┐╤А╨╕╨╜╨╕╨╝╨░╤О╤В╤Б╤П
-[Test102_PolarDecorLatitude] ok in 0 ms
+[Test102_PolarDecorLatitude] ok in 1 ms
 VERTEXMASK worst=1,314E-003
 PASS T103 vertex-mask-interp | ╨╛╤И╨╕╨▒╨║╨░ ╨╕╨╜╤В╨╡╤А╨┐╨╛╨╗╤П╤Ж╨╕╨╕ ╨╝╨░╤Б╨║╨╕ ╨▓ ╨╝╨░╤Б╤И╤В╨░╨▒╨╡ ╤З╨░╨╜╨║╨╛╨▓: 1,314E-003
-[Test103_VertexMaskInterp] ok in 1 ms
+[Test103_VertexMaskInterp] ok in 2 ms
 DRYSTEPPE raw=2323 grass=True trees=True rocks=True
 PASS T104 dry-steppe-vegetation | ╤А╨╡╨│╤А╨╡╤Б╤Б╨╕╨╛╨╜╨╜╤Л╨╣ ╨┐╨╕╨╜ ╨▓╤Л╤Б╨╛╤В╤Л: 2323 ╨╝ (╨▒╤Л╨╗╨╛ 2321)
 PASS T104 dry-steppe-vegetation | ╨╢╨░╨╗╨╛╨▒╨░ ╨┐╨╛ ╤Б╤Г╤Й╨╡╤Б╤В╨▓╤Г: ╤В╨╛╤З╨║╨░ ╤Б╤Г╤И╨╕ ╨╜╨░ ╨╖╨╡╨╗╤С╨╜╤Л╤Е ╨▓╤Л╤Б╨╛╤В╨░╤Е, ╤А╨╡╨╗╤М╨╡╤Д 2323 ╨╝ (╨╕╤Б╤Е╨╛╨┤╨╜╨░╤П ╨╢╨░╨╗╨╛╨▒╨░: 2732 ╨╝)
@@ -304,21 +312,21 @@ PASS T96 sun-transmittance | ╨┐╨╛ ╨▓╤Л╤Б╨╛╤В╨╡ 0т�
 PASS T96 sun-transmittance | ╨╜╨╡╤В T > 1 ╨╜╨╕ ╨┐╤А╨╕ ╨║╨░╨║╨╛╨╣ ╨▓╤Л╤Б╨╛╤В╨╡ ╨б╨╛╨╗╨╜╤Ж╨░
 PASS T96 sun-transmittance | ╨▓╤Л╤И╨╡ ╨░╤В╨╝╨╛╤Б╤Д╨╡╤А╤Л T = (1,1,1): ╤Б╨▓╨╡╤В ╨▒╨╡╨╗╤Л╨╣
 PASS T96 sun-transmittance | CPU-╤Б╨▓╨╡╤В == ╨┐╨╕╨║╤Б╨╡╨╗╤М transmittance-LUT ╨▒╨╕╤В-╨▓-╨▒╨╕╤В
-[Test96_SunLightTransmittance] ok in 0 ms
+[Test96_SunLightTransmittance] ok in 2 ms
 T97 values: day=(0,0082,0,0139,0,0209) sunset=(0,0063,0,0072,0,0058) nightLum=8,12E-007
 PASS T97 sky-ambient | ╨┤╨╡╨╜╤М: ╨║╨╛╨╜╨╡╤З╨╜╨░, ╨╜╨╡╨╛╤В╤А╨╕╤Ж╨░╤В╨╡╨╗╤М╨╜╨░, B>G>R
 PASS T97 sky-ambient | ╨╖╨░╨║╨░╤В: R max, ╤Б╨╗╨░╨▒╨╡╨╡ ╨┤╨╜╤П, ╤П╤А╤З╨╡ ╨╜╨╛╤З╨╕
 PASS T97 sky-ambient | ╨╜╨╛╤З╤М: < 1% ╨╛╤В ╨┤╨╜╤П
 PASS T97 sky-ambient | ╨▓╤Л╤И╨╡ ╨░╤В╨╝╨╛╤Б╤Д╨╡╤А╤Л: ╤А╨╛╨▓╨╜╨╛ 0
 PASS T97 sky-ambient | ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕╤А╨╛╨▓╨░╨╜╨░ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В
-[Test97_SkyAmbient] ok in 0 ms
+[Test97_SkyAmbient] ok in 1 ms
 T98 values: T(0)=(0,192,0,067,0,007) T(-0.25)=(0,048,0,016,0,001) amb(-6)=1,40E-003 amb(-12)=1,44E-004
 PASS T98 sunset-twilight | T ╨╜╨╡╨┐╤А╨╡╤А╤Л╨▓╨╡╨╜ ╤З╨╡╤А╨╡╨╖ ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В (╨╜╨╡╤В ╤Б╤В╤Г╨┐╨╡╨╜╤М╨║╨╕ ╨▓ 0)
 PASS T98 sunset-twilight | ╨╜╨░ тИТ2┬░ ╨┐╤А╤П╨╝╨╛╨╣ ╤Б╨▓╨╡╤В ╤А╨╛╨▓╨╜╨╛ 0
 PASS T98 sunset-twilight | ╨╜╨░ тИТ6┬░ ambient ╤В╤С╨┐╨╗╤Л╨╣, >1% ╨┤╨╜╤П, ╤Б╨╗╨░╨▒╨╡╨╡ ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В╨░
 PASS T98 sunset-twilight | ╨║ тИТ12┬░ ambient ╨┐╨╛╨│╨░╤Б (<2% ╨┤╨╜╤П)
 PASS T98 sunset-twilight | ╨╛╨║╨║╨╗╤О╨╖╨╕╤П/╨┤╨╡╨╜╤М: 1 ╨┤╨╜╤С╨╝, 0 ╨╜╨╛╤З╤М╤О
-[Test98_SunsetTwilight] ok in 0 ms
+[Test98_SunsetTwilight] ok in 1 ms
 PASS T105 water-query | ╨╛╨║╨╡╨░╨╜ ╨╡╤Б╤В╤М (╨╝╨╛╤А╨╡ тИТ500 ╨╝)
 PASS T105 water-query | ╤Г╤А╨╛╨▓╨╡╨╜╤М ╨╝╨╛╤А╤П тИТ500 ╨╝
 PASS T105 water-query | raw тЙд clamped, ╨│╨╗╤Г╨▒╨╕╨╜╨░ = ╨╝╨╛╤А╨╡ тИТ ╨┤╨╜╨╛
@@ -333,7 +341,7 @@ PASS T105 water-query | splashdown ╨╜╨░╨┤ ╨▓╨╛╨┤╨╛�
 PASS T105 water-query | splashdown ╨╜╨░╨┤ ╤Б╤Г╤И╨╡╨╣: ╨╜╨╡ ╨▓╨╛╨┤╨░
 PASS T105 water-query | ╤В╨╡╨╗╨╛ ╨▒╨╡╨╖ ╨╛╨║╨╡╨░╨╜╨░: HasOcean=false, ╨▓╨╡╨╖╨┤╨╡ NaN/0
 PASS T105 water-query | splashdown ╨▒╨╡╨╖ ╨╛╨║╨╡╨░╨╜╨░: ╨╜╨╡ ╨▓╨╛╨┤╨░
-[Test105_WaterQuery] ok in 11 ms
+[Test105_WaterQuery] ok in 24 ms
 SANDBAND paintedAbove=120 sandAbove=0 paintedBelow=40 sandBelow=40 fadePoints=80 fadeExactSand=0 halfW=0,500 zeroW=0,000 beachPoints=4145 onBeach=0 greenWithGrass=17885 justAbove=748 grassOnPaintedSand=0
 PASS T106 sand-is-beach-band | ╨▓╤Л╤И╨╡ ╨┐╨╗╤П╨╢╨░ ╨┐╨░╨╗╨╕╤В╤А╨░ ╨╜╨╡ ╤А╨╕╤Б╤Г╨╡╤В ╤З╨╕╤Б╤В╤Л╨╣ ╨┐╨╡╤Б╨╛╨║ (0 ╨╕╨╖ 120)
 PASS T106 sand-is-beach-band | ╨╜╨╕╨╢╨╡ 0.4┬╖╨┐╨╗╤П╨╢╨░ ╨┐╨░╨╗╨╕╤В╤А╨░ ╤А╨╕╤Б╤Г╨╡╤В ╨┐╨╡╤Б╨╛╨║ ╨▓╤Б╨╡╨│╨┤╨░ (40 ╨╕╨╖ 40)
@@ -342,11 +350,11 @@ PASS T106 sand-is-beach-band | ╨▓ ╨╖╨░╤В╤Г╤Е╨░╨╜╨
 PASS T106 sand-is-beach-band | ╨╜╨░ ╨┐╨╗╤П╨╢╨╡ ╨┤╨╡╨║╨╛╤А ╨╜╨╡ ╤Б╨╡╨╡╤В: ╤В╨╛╤З╨╡╨║ 4145, ╨┐╨╛╤Б╨░╨┤╨╛╨║ 0
 PASS T106 sand-is-beach-band | ╤В╤А╨░╨▓╨░ ╤Б╨╡╨╡╤В╤Б╤П ╤Б╤А╨░╨╖╤Г ╨╜╨░╨┤ ╨┐╨╗╤П╨╢╨╡╨╝ (╤В╨╛╤З╨╡╨║ ╨▓ ╨┐╨╡╤А╨▓╤Л╤Е 60 ╨╝: 748)
 PASS T106 sand-is-beach-band | ╨┐╨░╤А╨╕╤В╨╡╤В ╨║╤А╨░╤Б╨║╨░тЖФ╨┤╨╡╨║╨╛╤А: ╤В╤А╨░╨▓╨░ ╨╜╨░ ╨╖╨╡╨╗╨╡╨╜╨╕ (17885), ╨╜╨░ ╨┐╨╡╤Б╨║╨╡ 0
-[Test106_SandIsBeachBandOnly] ok in 159 ms
+[Test106_SandIsBeachBandOnly] ok in 392 ms
 WETNESS min=0,0392 max=0,9608 atZero=0 atOne=0 land=23410 treeDead=4,3%
 PASS T107 wetness-no-saturation | ╨║╤А╨╕╨▓╨░╤П ╨╜╨╡ ╨╜╨░╤Б╤Л╤Й╨░╨╡╤В╤Б╤П: min=0,0392 max=0,9608
 PASS T107 wetness-no-saturation | ╤Б╤Г╤И╨╕ ╨▒╨╡╨╖ ╨╡╨┤╨╕╨╜╨╛╨│╨╛ ╨┤╨╡╤А╨╡╨▓╨░: 4,3% (╨▒╤Л╨╗╨╛ ~25%)
-[Test107_WetnessNeverSaturates] ok in 54 ms
+[Test107_WetnessNeverSaturates] ok in 130 ms
 PASS T108 surface-frame-basis | ╨▓╤Б╨╡ ╤В╤А╨╕ ╨╛╤Б╨╕ ╨╡╨┤╨╕╨╜╨╕╤З╨╜╤Л╨╡ ╨╜╨░ ╨▓╤Б╨╡╤Е lat/lon, ╨▓╨║╨╗╤О╤З╨░╤П ╨┐╨╛╨╗╤О╤Б╨░
 PASS T108 surface-frame-basis | ╨▒╨░╨╖╨╕╤Б ╨┐╤А╨░╨▓╤Л╨╣: ╤Б╨╡╨▓╨╡╤А x ╨╖╨╡╨╜╨╕╤В = ╨▓╨╛╤Б╤В╨╛╨║
 PASS T108 surface-frame-basis | ╨╛╤Б╨╕ ╨▓╨╖╨░╨╕╨╝╨╜╨╛ ╨┐╨╡╤А╨┐╨╡╨╜╨┤╨╕╨║╤Г╨╗╤П╤А╨╜╤Л
@@ -359,7 +367,7 @@ PASS T108 surface-frame-basis | 10 ╨╝ ╨╜╨░ ╤Б╨╡╨▓╨╡�
 PASS T108 surface-frame-basis | 10 ╨╝ ╨▓╨▓╨╡╤А╤Е -> 10 ╨╝ ╨┐╨╛ Y
 PASS T108 surface-frame-basis | ToLocal ╨╛╨▒╤А╨░╤Й╨░╨╡╤В ╨┐╨╡╤А╨╡╨╜╨╛╤Б ENU: (╤Б╨╡╨▓╨╡╤А тИТ13, ╨╖╨╡╨╜╨╕╤В 5, ╨▓╨╛╤Б╤В╨╛╨║ 7)
 PASS T108 surface-frame-basis | ╨╖╨╡╨╜╨╕╤В ╨┐╨╡╤А╨┐╨╡╨╜╨┤╨╕╨║╤Г╨╗╤П╤А╨╡╨╜ ╨║╨░╤Б╨░╤В╨╡╨╗╤М╨╜╤Л╨╝ (╤Б╨║╨░╨╗╤П╤А╨╜╨╛╨╡ ╨┐╤А╨╛╨╕╨╖╨▓╨╡╨┤╨╡╨╜╨╕╨╡ 5,55E-017)
-[Test108_SurfaceFrameBasis] ok in 1 ms
+[Test108_SurfaceFrameBasis] ok in 2 ms
 PASS T109 terrain-pads | ╤Г ╤Б╨▓╨╡╨╢╨╡╨│╨╛ ╤А╨╡╨╗╤М╨╡╤Д╨░ ╤В╨░╨▒╨╗╨╕╤Ж╨░ ╨┐╨╗╨╛╤Й╨░╨┤╨╛╨║ ╨Т╨Р╨Ы╨Ш╨Ф╨Э╨Р (╨╕╨╜╨░╤З╨╡ ╤А╨╡╨╜╨┤╨╡╤А ╨┐╨░╨┤╨░╨╡╤В ╨╜╨░ Schedule)
 PASS T109 terrain-pads | ╨┐╤Г╤Б╤В╨╛╨╣ ╤Б╨┐╨╕╤Б╨╛╨║ ╨┤╨░╤С╤В ╨▓╨░╨╗╨╕╨┤╨╜╤Г╤О ╨┐╤Г╤Б╤В╤Г╤О ╤В╨░╨▒╨╗╨╕╤Ж╤Г, ╨░ ╨╜╨╡ default
 PASS T109 terrain-pads | ╨┐╨╛╤Б╨╗╨╡ ╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╕╤П ╨╕ ╤Г╨┤╨░╨╗╨╡╨╜╨╕╤П ╨┐╨╗╨╛╤Й╨░╨┤╨║╨╕ ╤В╨░╨▒╨╗╨╕╤Ж╨░ ╨╛╤Б╤В╨░╤С╤В╤Б╤П ╨▓╨░╨╗╨╕╨┤╨╜╨╛╨╣
@@ -386,15 +394,15 @@ PASS T109 terrain-pads | ╨┐╤А╨╕ ╨┐╨╡╤А╨╡╤Б╨╡╤
 PASS T109 terrain-pads | ╤В╨╛╤З╨║╨░ ╤Д╨░╤А╤В╤Г╨║╨░ ╨┤╨╗╤П ╨┐╤А╨╛╨▓╨╡╤А╨║╨╕ ╨║╤А╤Г╨│╨╗╨╛╤Б╤В╨╕ ╨╜╨╡ ╨▓╤Л╤А╨╛╨╢╨┤╨╡╨╜╨░
 PASS T109 terrain-pads | ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ ╨║╤А╤Г╨│╨╗╨░╤П: ╨▓╨╡╤Б ╤Д╨░╤А╤В╤Г╨║╨░ ╨╛╨┤╨╕╨╜╨░╨║╨╛╨▓ ╨┐╨╛ ╨▓╤Б╨╡╨╝ ╨░╨╖╨╕╨╝╤Г╤В╨░╨╝ (╤А╨░╨╖╨▒╤А╨╛╤Б 1,64E-004, ╨▓╨╡╤Б 0,6970)
 PASS T109 terrain-pads | ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ ╨║╤А╤Г╨│╨╗╨░╤П ╨╕ ╨┐╨╛ ╨┤╨╕╨░╨│╨╛╨╜╨░╨╗╨╕ (╨▓╨╡╤Б 0,6970)
-[Test109_TerrainPads] ok in 2 ms
+[Test109_TerrainPads] ok in 5 ms
     ╤Г╨╖╨╗╨╛╨▓ 226981, ╨╜╨░╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╨╣ 12; ╤А╨░╨╖╨▒╤А╨╛╤Б ╨┤╨╕╨░╨│╨╛╨╜╨░╨╗╨╕ 0.1718%, |╨▓╨╜╨╡╨┤╨╕╨░╨│.| 1.54E-003, ╤Б╤А╨╡╨┤╨╜╨╕╨╣ ╨│╤А╨░╨┤╨╕╨╡╨╜╤В 1.54E-003 (╨╜╨░ ╨╛╤Б╤М), 3*╤Б╨╕╨│╨╝╨░ 1.82E-003
 PASS T112 gradient-set | ╬гggс╡А ╨╕╨╖╨╛╤В╤А╨╛╨┐╨╜╨░: ╤А╨░╨╖╨▒╤А╨╛╤Б ╨┤╨╕╨░╨│╨╛╨╜╨░╨╗╨╕ 0.1718%
 PASS T112 gradient-set | ╨▓╨╜╨╡╨┤╨╕╨░╨│╨╛╨╜╨░╨╗╤М╨╜╤Л╨╣ ╤З╨╗╨╡╨╜ ╨▓╤Л╤И╨╡ 3 ╤Б╨╕╨│╨╝: |╨▓╨╜╨╡╨┤╨╕╨░╨│.| 1.54E-003 ╨┐╤А╨╕ 3*sigma = 5.45E-003
 PASS T112 gradient-set | ╤Б╤А╨╡╨┤╨╜╨╕╨╣ ╨│╤А╨░╨┤╨╕╨╡╨╜╤В ~╨╜╤Г╨╗╨╡╨▓╨╛╨╣: 1.54E-003 (╨╛╤Б╤В╨░╤В╨╛╨║ ╨╛╤В ╤А╨░╨╖╨▒╤А╨╛╤Б╨░ h % 12 ╨┐╨╛ 12 ╨║╨╛╤А╨╖╨╕╨╜╨░╨╝)
 PASS T112 gradient-set | ╤А╨╛╨▓╨╜╨╛ 12 ╤А╨░╨╖╨╗╨╕╤З╨╜╤Л╤Е ╨╜╨░╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╨╣: 12
-[Test112_GradientSetSymmetry] ok in 4 ms
+[Test112_GradientSetSymmetry] ok in 11 ms
 PASS T117 earthlike-drift | CreateEarthLike() ╤Б╨╛╨▓╨┐╨░╨┤╨░╨╡╤В ╤Б EarthLike.asset
-[Test117_EarthLikeProfileDrift] ok in 5 ms
+[Test117_EarthLikeProfileDrift] ok in 13 ms
     ╨▓╤Л╨▒╨╛╤А╨║╨░ 4000000 ╨╜╨░╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╨╣, ╨╛╨┤╨╜╨░ ╨╕ ╤В╨░ ╨╢╨╡ ╨┤╨╗╤П ╨╛╨▒╨╛╨╕╤Е ╨┐╤А╨╛╤Д╨╕╨╗╨╡╨╣
 
   legacy EarthLike (value)
@@ -428,7 +436,7 @@ PASS T117 earthlike-drift | CreateEarthLike() ╤Б╨╛╨▓╨┐╨░╨�
     ╨╛╨▒╨╗╨░╨║╨░ 7000..8500 ╨╝ ╨╜╨╕╨╢╨╡ ╨▓╨╡╤А╤И╨╕╨╜╤Л: ╨Ф╨Р, ╨▓╤Л╤И╨╡ ╨╛╨▒╨╛╨╕╤Е ╨║╤А╨░╤С╨▓
 
 PASS T129 height-tail | ╨▓╨╡╤А╤И╨╕╨╜╨░ ╨┐╤А╨╛╤Д╨╕╨╗╤П 'EarthLike_Perlin' ╨▓╤Л╤И╨╡ ╨┐╨╛╤В╨╛╨╗╨║╨░ ╤Б╨╢╨░╤В╨╕╤П: 8,873 ╨╝ > 9,503 ╨╝, ╨╖╨╜╨░╤З╨╕╤В ╤Б╨╢╨░╤В╨╕╨╡ ╤Е╨▓╨╛╤Б╤В╨░ ╨╜╨╡ ╨┐╤А╨╕╨╝╨╡╨╜╨╕╨╗╨╛╤Б╤М
-[Test129_HeightTail] ok in 13442 ms
+[Test129_HeightTail] ok in 31078 ms
     ╨▓╤Л╨▒╨╛╤А╨║╨░ 4000000 ╨╜╨░╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╨╣. ╨Я╤А╨╛╤Д╨╕╨╗╤М = EarthLike_Perlin.asset (Amp 13662, ridgedMix 0.7, threshold -0.4)
 
   A. ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П (TailKnee=0)         p50    -457  p99   5,869  p99.9   7,730  p99.99   8,921  max  10,955  min  -25,045  ╤Б╤Г╤И╨░ 44.50 %  (╨╝)
@@ -451,7 +459,7 @@ PASS T129 height-tail | ╨▓╨╡╤А╤И╨╕╨╜╨░ ╨┐╤А╨�
         0.20┬░  ╤Б╨╢╨░╤В╨░╤П    3,535 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П    3,535 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░       0 ╨╝
         0.25┬░  ╤Б╨╢╨░╤В╨░╤П    2,444 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П    2,444 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░       0 ╨╝
         0.30┬░  ╤Б╨╢╨░╤В╨░╤П    1,468 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П    1,468 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░       0 ╨╝
-[Test130_TailCompression] ok in 39774 ms
+[Test130_TailCompression] ok in 92944 ms
     Gain 0.50 * Lacunarity 2.00 = 1.0000  -> ╨╛╨║╨╜╨░ ╨┐╤А╨╕╨│╨╛╨┤╨╜╤Л
     Gain 0.60 * Lacunarity 2.00 = 1.2000  -> ╨╛╨║╨╜╨░ ╨Э╨Х╨Я╨а╨Ш╨У╨Ю╨Ф╨Э╨л
     Gain 0.40 * Lacunarity 2.50 = 1.0000  -> ╨╛╨║╨╜╨░ ╨┐╤А╨╕╨│╨╛╨┤╨╜╤Л
@@ -467,7 +475,7 @@ PASS T132 damp-windows | ╨║╨╛╨╜╤В╤А╨╛╨╗╤М ╤Б╨�
 PASS T132 damp-windows | ╨┐╤А╨╕ Gain*Lacunarity != 1 ╨┤╨╛╨╝╨╡╨╜ ╨╜╨╡ ╨╛╤В╨║╨╗╤О╤З╤С╨╜ ╨┐╤А╨╕ ╨║╨╛╨╜╨▓╨╡╤А╤В╨░╤Ж╨╕╨╕: SlopeDamp = 0.000
 PASS T132 damp-windows | ╨┐╤А╨╕ Gain*Lacunarity != 1 ╤А╨╡╨╢╨╕╨╝ ╨┤╨╛╨╝╨╡╨╜╨░ ╨╜╨╡ ╤Б╨▒╤А╨╛╤И╨╡╨╜ ╨▓ Off ╨┐╤А╨╕ ╨║╨╛╨╜╨▓╨╡╤А╤В╨░╤Ж╨╕╨╕
 PASS T132 damp-windows | ╨▓╨░╨╗╨╕╨┤╨╜╤Л╨╣ ╨┐╤А╨╛╤Д╨╕╨╗╤М ╨┐╨╛╤В╨╡╤А╤П╨╗ ╨┤╨╛╨╝╨╡╨╜ ╨┐╤А╨╕ ╨║╨╛╨╜╨▓╨╡╤А╤В╨░╤Ж╨╕╨╕: SlopeDamp = 0.600
-[Test132_DampWindowsValid] ok in 0 ms
+[Test132_DampWindowsValid] ok in 1 ms
     ╨┐╨╛╤А╨╛╨│ ╤Б╨╢╨░╤В╨╕╤П = 7,727 ╨╝. ╨Ю╨┐╨╛╤А╨╜╤Л╨╡ ╤В╨╛╤З╨║╨╕:
       ╨│╤А╨╡╨▒╨╡╨╜╤М: 8,542 ╨╝ ╨┐╤А╨╕ (-21.2┬░, 78.0┬░)
       ╨┐╨╛╤А╨╛╨│ : 7,705 ╨╝ ╨┐╤А╨╕ (-5.7┬░, 102.0┬░), ╤А╨░╤Б╤Б╤В╨╛╤П╨╜╨╕╨╡ ╨┤╨╛ ╨┐╨╛╤А╨╛╨│╨░ 22 ╨╝
@@ -475,14 +483,14 @@ PASS T132 damp-windows | ╨▓╨░╨╗╨╕╨┤╨╜╤Л╨╣ ╨┐�
     ╨┐╨╛╤А╨╛╨│   worstNormalAngle = 5.440E-004 ╤А╨░╨┤, ╨╖╨░╨┐╨░╤Б ╨┤╨╛ 2e-3 = 3.7├Ч
 PASS T133 tail-normal-parity | ╨╜╨╛╤А╨╝╨░╨╗╨╕ ╨╜╨░ ╨│╤А╨╡╨▒╨╜╨╡ ╤А╨░╤Б╤Е╨╛╨┤╤П╤В╤Б╤П ╤Б╨╕╨╗╤М╨╜╨╡╨╡ ╨▒╤О╨┤╨╢╨╡╤В╨░ T84: 5.45E-004 ╤А╨░╨┤
 PASS T133 tail-normal-parity | ╨╜╨╛╤А╨╝╨░╨╗╨╕ ╤Г ╨┐╨╛╤А╨╛╨│╨░ ╤Б╨╢╨░╤В╨╕╤П ╤А╨░╤Б╤Е╨╛╨┤╤П╤В╤Б╤П ╤Б╨╕╨╗╤М╨╜╨╡╨╡ ╨▒╤О╨┤╨╢╨╡╤В╨░ T84: 5.44E-004 ╤А╨░╨┤
-[Test133_TailNormalParity] ok in 120 ms
+[Test133_TailNormalParity] ok in 269 ms
     ╨┐╨╛╤А╨╛╨│ TailThreshold*Amplitude = 7,727 ╨╝
     p99.8  = 7,264 ╨╝
     p99.9  = 7,730 ╨╝
     p99.95 = 8,143 ╨╝
 PASS T134 tail-threshold-placement | ╨┐╨╛╤А╨╛╨│ ╤Б╨╢╨░╤В╨╕╤П ╨╜╨╕╨╢╨╡ p99.8: ╤Б╨╢╨░╤В╨╕╨╡ ╨╖╨░╤В╤А╨╛╨╜╨╡╤В ╨▒╨╛╨╗╤М╤И╨╡ 0.2% ╤В╨╛╤З╨╡╨║, ╤Н╤В╨╛ ╤Г╨╢╨╡ ╨╜╨╡ ╤Е╨▓╨╛╤Б╤В. 7,727 ╨╝ < p99.8 7,264 ╨╝
 PASS T134 tail-threshold-placement | ╨┐╨╛╤А╨╛╨│ ╤Б╨╢╨░╤В╨╕╤П ╨▓╤Л╤И╨╡ p99.95: ╤Б╨╢╨░╤В╨╕╨╡ ╨┐╨╛╤З╤В╨╕ ╨╜╨╡╤З╨╡╨│╨╛ ╤А╨╡╨╖╨░╤В╤М, ╨▓╨╡╤А╤И╨╕╨╜╤Л ╨╛╤Б╤В╨░╨╜╤Г╤В╤Б╤П ╨▓╤Л╤Б╨╛╨║╨╕╨╝╨╕. 7,727 ╨╝ > p99.95 8,143 ╨╝
-[Test134_TailThresholdPlacement] ok in 9720 ms
+[Test134_TailThresholdPlacement] ok in 22541 ms
   legacy EarthLike (value)
     ╨╛╨║╨╡╨░╨╜ 56.77 % ╨┐╨╗╨╛╤Й╨░╨┤╨╕ | ╨┤╨╜╨╛: p50    5,119 ╨╝ (╨╝╨╡╨┤╨╕╨░╨╜╨░), p25   2,131 ╨╝ (╤И╨╡╨╗╤М╤Д), p5      353 ╨╝, p1       67 ╨╝, p0.1        7 ╨╝, min    18,094 ╨╝
     ╨│╨╗╤Г╨▒╨╢╨╡ 6 ╨║╨╝: 43.802 % ╨╛╨║╨╡╨░╨╜╨░ | ╨│╨╗╤Г╨▒╨╢╨╡ 11 ╨║╨╝: 10.867 % ╨╛╨║╨╡╨░╨╜╨░ (╨Ч╨╡╨╝╨╗╤П: ╨╡╨┤╨╕╨╜╨╕╤Ж╤Л ╨┐╤А╨╛╤Ж╨╡╨╜╤В╨░ ╨╕ ╨╝╨╡╨╜╤М╤И╨╡)
@@ -501,7 +509,7 @@ PASS T134 tail-threshold-placement | ╨┐╨╛╤А╨╛╨│ ╤Б╨╢�
   Perlin, (b) DepthKnee 0.62 ╨┐╤А╨╕ ╨┐╨╛╤А╨╛╨│╨╡ -0.30 (╨┐╨╛╨╗ -12,569 ╨╝)
     ╨╛╨║╨╡╨░╨╜ 55.50 % ╨┐╨╗╨╛╤Й╨░╨┤╨╕ | ╨┤╨╜╨╛: p50    3,495 ╨╝ (╨╝╨╡╨┤╨╕╨░╨╜╨░), p25   1,393 ╨╝ (╤И╨╡╨╗╤М╤Д), p5      215 ╨╝, p1       41 ╨╝, p0.1        4 ╨╝, min    10,130 ╨╝
     ╨│╨╗╤Г╨▒╨╢╨╡ 6 ╨║╨╝: 25.025 % ╨╛╨║╨╡╨░╨╜╨░ | ╨│╨╗╤Г╨▒╨╢╨╡ 11 ╨║╨╝: 0.000 % ╨╛╨║╨╡╨░╨╜╨░ (╨Ч╨╡╨╝╨╗╤П: ╨╡╨┤╨╕╨╜╨╕╤Ж╤Л ╨┐╤А╨╛╤Ж╨╡╨╜╤В╨░ ╨╕ ╨╝╨╡╨╜╤М╤И╨╡)
-[Test135_OceanDepthHistogram] ok in 51474 ms
+[Test135_OceanDepthHistogram] ok in 119423 ms
     ╨┐╤А╨╛╤Д╨╕╨╗╤М ╤З╨╡╤А╨╡╨╖ ╨▒╨╡╤А╨╡╨│ (╨┐╨╛ ╨╝╨╡╤А╨╕╨┤╨╕╨░╨╜╤Г, 0.02┬░ ╨╜╨░ ╤И╨░╨│, 120 ╤В╨╛╤З╨╡╨║ ╨▓ ╤Б╤В╨╛╤А╨╛╨╜╤Г):
   A. ╨║╨╛╨╜╤В╤А╨╛╨╗╤М (ContinentDepth 1.2, ╨╗╨╛╨╢╨╡ ╨╜╨╡ ╤Б╨╢╨░╤В╨╛) (╨▒╨╡╤А╨╡╨│ ╨╜╨░ -0 ╨╝)
       ╤Б╤Г╤И╨░ тЖТ ╨╝╨╛╤А╨╡, ╤И╨░╨│ 0.02┬░ (~2.2 ╨║╨╝):
@@ -594,7 +602,7 @@ PASS T134 tail-threshold-placement | ╨┐╨╛╤А╨╛╨│ ╤Б╨╢�
         42.0┬░  ╨╝╨╛╤А╨╡    -1,708 ╨╝                    ~~~~~
         43.5┬░  ╨╝╨╛╤А╨╡    -2,939 ╨╝                    ~~~~~~~~~
         45.0┬░  ╨╝╨╛╤А╨╡    -3,358 ╨╝                    ~~~~~~~~~~
-[Test136_CoastProfile] ok in 945 ms
+[Test136_CoastProfile] ok in 2196 ms
     A. ╨▓╤Л╨▒╤А╨░╨╜╨╜╨╛╨╡ (DepthKnee 0.51 @ -0.30, ╨┐╨╛╨╗ -11,066 ╨╝) | B. ╨░╨╗╤М╤В╨╡╤А╨╜╨░╤В╨╕╨▓╨░ (DepthKnee 0.26 @ -0.33, ╨┐╨╛╨╗ -8,061 ╨╝)
 
   ╨Ф╨Ю  (╤Б╨╢╨░╤В╨╕╤П ╨╗╨╛╨╢╨░ ╨╜╨╡╤В)                ╨╛╨║╨╡╨░╨╜ 55.50 % | min   25,045 ╨╝ | p1       41 ╨╝ | p5     215 ╨╝ | ╨│╨╗╤Г╨▒╨╢╨╡ 6 ╨║╨╝ 28.91 %
@@ -628,13 +636,13 @@ PASS T134 tail-threshold-placement | ╨┐╨╛╤А╨╛╨│ ╤Б╨╢�
         0.20┬░    -1,038 ╨╝    -1,038 ╨╝         0 ╨╝
         0.30┬░    -2,249 ╨╝    -2,249 ╨╝         0 ╨╝
         0.40┬░    -1,986 ╨╝    -1,986 ╨╝         0 ╨╝
-[Test137_OceanDepthDecision] ok in 29356 ms
+[Test137_OceanDepthDecision] ok in 67617 ms
     ╨С╨Х╨а╨Х╨У ╨Ф╨Ы╨п ╨б╨к╨Б╨Ь╨Ъ╨Ш: lat=-10.0000 lon=0.0000  (score 7.0)
     ╨╛╨╢╨╕╨┤╨░╨╡╨╝╨░╤П ╨▓╤Л╤Б╨╛╤В╨░ ╤А╨╡╨╗╤М╨╡╤Д╨░: 0 ╨╝
-[Test138_CoastSpot] ok in 3041 ms
+[Test138_CoastSpot] ok in 7116 ms
     ╨║╤А╨╕╨▓╨░╤П: F(0)=0.0201, F(48)=0.394, F(╨║╤А╨╕╤В)=1.000 тАФ ╤А╨╡╨╖╨║╨╕╨╣ ╤Д╤А╨╛╨╜╤В ╤Г 48.75┬░
     ╨║╤А╨╕╤В╨╕╤З╨╡╤Б╨║╨╕╨╣ 48.75┬░, F(0)=0.0201, F(╨║╤А╨╕╤В)=1.000, ╨╛╤В╨║╨╗╨╛╨╜╨╡╨╜╨╕╨╡ ╨┐╤А╨╕ 10┬░=3.35┬░, ╨┐╤А╨╕ 40┬░=18.75┬░
-[Test139_SnellWindowReference] ok in 1 ms
+[Test139_SnellWindowReference] ok in 3 ms
     sigma=(0.40,0.12,0.08) ╨▓╨╛╨┤╨░=(0.02,0.16,0.30) N┬╖L=0.433 ╨▓╨╖╨│╨╗╤П╨┤ ╨▓╨╜╨╕╨╖=0.184
     ╨║╨░╨┤╤А 2560x1440, FOV 60┬░ ╨▓╨╡╤А╤В., aspect 1.778, 1440 ╤Б╤В╤А╨╛╨║
 
@@ -660,50 +668,50 @@ PASS T134 tail-threshold-placement | ╨┐╨╛╤А╨╛╨│ ╤Б╨╢�
          60.0 ╨╝ ╨╜╨╛╨▓╤Л╨╣ |           24 |     24 -> 31     | ╨╝╨░╨║╤Б   1
         200.0 ╨╝ ╤Б╤В╨░╤А╤Л╨╣ |            9 |      7 -> 9      | ╨╝╨░╨║╤Б   1
         200.0 ╨╝ ╨╜╨╛╨▓╤Л╨╣ |           24 |     24 -> 31     | ╨╝╨░╨║╤Б   1
-[Test140_UnderwaterBanding] ok in 11 ms
+[Test140_UnderwaterBanding] ok in 26 ms
 PASS T143 perlin-drift | AssetPreset() ╤Б╨╛╨▓╨┐╨░╨┤╨░╨╡╤В ╤Б EarthLike_Perlin.asset
 PASS T143 legacy-bit-exact | ╨┤╨╡╤Д╨╛╨╗╤В╤Л ╨╜╨╛╨▓╤Л╤Е ╨┐╨╛╨╗╨╡╨╣ = ╤П╨▓╨╜╤Л╨╡ ╨╜╤Г╨╗╨╕, ╤Д╨╛╤А╨╝╨░ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В ╨┐╤А╨╡╨╢╨╜╤П╤П
-[Test143_PerlinAssetDrift] ok in 49 ms
+[Test143_PerlinAssetDrift] ok in 121 ms
 PASS T200 cylinder-inertia | ╤Ж╨╕╨╗╨╕╨╜╨┤╤А(0┬░): True [Ixx=7 Iyy=6 Izz=7 Ixy=0 Ixz=0 Iyz=0]; Z+90┬░: True; X+90┬░: True; ╤Б╤Д╨╡╤А╨░: True; ╨║╨╛╤А╨╛╨▒╨║╨░: True
-[Test200_CylinderInertia] ok in 0 ms
+[Test200_CylinderInertia] ok in 1 ms
 PASS T201 explicit-mass-scaling | ╨╝╨░╤Б╤Б╨░=5000: True (╤Б╤Г╤Е╨░╤П=3000: True); ╨╝╨░╤Б╤Б╨░=2500: True; COM ╨╜╨╡ ╨╖╨░╨▓╨╕╤Б╨╕╤В ╨╛╤В ╨╝╨░╤Б╤И╤В╨░╨▒╨░: True; IтИЭm: True; ╨╜╤Г╨╗╨╡╨▓╨╛╨╣ ╤А╨░╨╖╨╝╨╡╤А ╨╛╤В╨▓╨╡╤А╨│╨╜╤Г╤В: True
-[Test201_ExplicitMassAndScaling] ok in 6 ms
+[Test201_ExplicitMassAndScaling] ok in 13 ms
 PASS T202 point-compat | ╤З╨╡╤А╨╡╨╖ PartDefinition = ╤Н╤В╨░╨╗╨╛╨╜ Test30: True; ╤Б╨╛╨▓╨┐╨░╨┤╨░╨╡╤В ╤Б ╨┐╤А╤П╨╝╤Л╨╝ Part: True; I11=90 I12=60
 [Test202_PointCompat] ok in 0 ms
 PASS T203 discretized-reference | ╨╝╨░╤Б╤Б╨░=5000.000000 (True); |╬ФCOM|=8.24E-013 ╨╝ (True); max|╬ФI_╨┤╨╕╨░╨│|/I_max=5.85E-005 (True); max|╬ФI_╨▓╨╜╨╡|/I_max=1.51E-016 (True)
-[Test203_DiscretizedReference] ok in 91 ms
+[Test203_DiscretizedReference] ok in 221 ms
 PASS T204 free-fall | t=1.000 ╤Б, a=-9.81, |aтИТg|/|g|=9.96E-015 (тЙд1e-9)
-[Test204_FreeFall] ok in 1 ms
+[Test204_FreeFall] ok in 3 ms
 PASS T205 torque-free-energy | t=60.0 ╤Б, max|╬ФT/T|=1.36E-014 (тЙд1e-6), max|1тИТ|q|┬▓|=4.44E-016 (тЙд1e-12)
-[Test205_TorqueFreeEnergy] ok in 28 ms
+[Test205_TorqueFreeEnergy] ok in 67 ms
 PASS T206 rigid-joint-creep | t=10.0 ╤Б, max ╤А╨░╤Б╤Е╨╛╨╢╨┤╨╡╨╜╨╕╨╡ ╤П╨║╨╛╤А╨╡╨╣ ╤Б╤В╤Л╨║╨╛╨▓=4.57E-005 ╨╝ (тЙд1e-3)
-[Test206_RigidJointCreep] ok in 871 ms
+[Test206_RigidJointCreep] ok in 1922 ms
 PASS T207 impulse-conservation | t=2.0 ╤Б, |╬ФP|/╬гm|v|=1.20E-015 (тЙд1e-9), P0=371.079506
-[Test207_ImpulseConservation] ok in 76 ms
+[Test207_ImpulseConservation] ok in 168 ms
 PASS T208 angular-momentum | t=2.0 ╤Б, |╬ФL|/|L0|=5.65E-005 (тЙд1E-003, O(dt) ╤Б╤В╤Л╨║╨░ тАФ ╤Д╨░╨╖╨░ 4), |L0|=523.016252
-[Test208_AngularMomentum] ok in 75 ms
+[Test208_AngularMomentum] ok in 168 ms
 PASS T210 flat-rest | t=5.0 ╤Б, max|v| ╨┐╨╛╤Б╨╗╨╡ 1 ╤Б=1.50E-010 ╨╝/╤Б (тЙд1e-3), max ╨┐╤А╨╛╨╜╨╕╨║╨╜╨╛╨▓╨╡╨╜╨╕╨╡=0.00E+000 ╨╝ (тЙд1e-3)
-[Test210_FlatRest] ok in 156 ms
+[Test210_FlatRest] ok in 308 ms
 PASS T211 contact-restitution | v_╨┐╨╛╤Б╨╗╨╡=1.5647 ╨╝/╤Б, e┬╖v_╤Г╨┤╨░╤А╨░=1.5660 ╨╝/╤Б (v_╤Г╨┤╨░╤А╨░=3.1321); ╨╛╤В╨╜╨╛╤И╨╡╨╜╨╕╨╡=0.9991 (┬▒10%)
-[Test211_ContactRestitution] ok in 0 ms
+[Test211_ContactRestitution] ok in 1 ms
 PASS T212 stick-slope-compat | ╤Б╤В╨╕╨║ 30┬░: |v|=7.01E-019, ╨┐╤Г╤В╤М ╨┐╨╛╤Б╨╗╨╡ ╨╛╤Б╨░╨┤╨║╨╕=0.00E+000 ╨╝: True; ╤Б╨╗╨╕╨┐ 60┬░: a=6.037 ╨╝/╤Б┬▓ (тЙИ6.037): True; ╤Б╤В╨╛╨┐ 50 ╨╝/╤Б: ╨┐╤Г╤В╤М=255.3 ╨╝ (тЙИ255.1): True
-[Test212_StickSlopeCompat] ok in 88 ms
+[Test212_StickSlopeCompat] ok in 118 ms
 PASS T213 rest-energy | t=10.0 ╤Б, max|╬ФE|=9.07E-008 ╨Ф╨╢, E0=49.050 ╨Ф╨╢, ╨┐╨╛╤А╨╛╨│ 1% ╨╛╤В m┬╖g┬╖0.5 = 4.91E-001 ╨Ф╨╢
-[Test213_RestEnergy] ok in 236 ms
+[Test213_RestEnergy] ok in 408 ms
 PASS T214 local-normal-footprint | ╨╕╤Б╤В╨╕╨╜╨╜╤Л╨╣ ╨╜╨░╨║╨╗╨╛╨╜=0.3142; footprint 0.5 ╨╝: 0.2828 (╨╛╤И╨╕╨▒╨║╨░ 10.0 %, тЙд12%); footprint 114 ╨╝: 0.00177 (╨╛╤И╨╕╨▒╨║╨░ 99.4 %, тЙе90%)
 [Test214_LocalNormalFootprint] ok in 0 ms
-PASS T215 contact-cost-budget | ╨╕╨╜╤Д╨╛╤А╨╝╨░╤В╨╕╨▓╨╜╨╛: 0.059 ╨╝╨║╤Б ╨╜╨░ ╨╖╨░╨┐╤А╨╛╤Б ╨┐╨╛╨▓╨╡╤А╤Е╨╜╨╛╤Б╤В╨╕ (footprint 0.5 ╨╝, 200000 ╨╖╨░╨┐╤А╨╛╤Б╨╛╨▓); ╨▒╤О╨┤╨╢╨╡╤В ╤Д╨░╨╖╤Л 10 тАФ тЙд1.5 ╨╝╤Б ╨╜╨░ ╨║╨░╨┤╤А
-[Test215_ContactCostBudget] ok in 12 ms
+PASS T215 contact-cost-budget | ╨╕╨╜╤Д╨╛╤А╨╝╨░╤В╨╕╨▓╨╜╨╛: 0.132 ╨╝╨║╤Б ╨╜╨░ ╨╖╨░╨┐╤А╨╛╤Б ╨┐╨╛╨▓╨╡╤А╤Е╨╜╨╛╤Б╤В╨╕ (footprint 0.5 ╨╝, 200000 ╨╖╨░╨┐╤А╨╛╤Б╨╛╨▓); ╨▒╤О╨┤╨╢╨╡╤В ╤Д╨░╨╖╤Л 10 тАФ тЙд1.5 ╨╝╤Б ╨╜╨░ ╨║╨░╨┤╤А
+[Test215_ContactCostBudget] ok in 26 ms
 PASS T220 leg-sag | W/(N┬╖k) = 0.2402 ╨╝; ╨╝╨░╨║╤Б╨╕╨╝╤Г╨╝ ╨╛╤В╨║╨╗╨╛╨╜╨╡╨╜╨╕╤П ╨┐╨╛ 4 ╨╜╨╛╨│╨░╨╝ = 0.21 % (тЙд2%)
-[Test220_LegSag] ok in 2730 ms
+[Test220_LegSag] ok in 6355 ms
 PASS T221 leg-damping-decay | ╨┐╨╕╨║╨╛╨▓=4; ╧Д_╨╕╨╖╨╝=0.0389 ╤Б, ╧Д_╤В╨╡╨╛╤А = 2┬╖m_eff/c = 0.0399 ╤Б (┬▒10%), ╬╢_╨▓╨╛╨╖╨┤=0.566 (╬╢_╨╛╨┐╨╛╤А╨╜=0.4); ╤Б╨┐╨░╨┤ ╨▓ e тЙд 1 ╤Б
-[Test221_LegDampingDecay] ok in 58 ms
+[Test221_LegDampingDecay] ok in 139 ms
 PASS T222 travel-limits | max ╤Б╨╢╨░╤В╨╕╨╡=0.3000 ╨╝, max ╤А╨░╤Б╤В╤П╨╢╨╡╨╜╨╕╨╡=0.3000 ╨╝ (╤Е╨╛╨┤ ┬▒0.3 ╨╝, ╨┤╨╛╨┐╤Г╤Б╨║ 1 ╨╝╨╝)
-[Test222_TravelLimits] ok in 199 ms
+[Test222_TravelLimits] ok in 428 ms
 PASS T223 slope15-stable | 30 ╤Б: ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В╨░╨╗╤М╨╜╤Л╨╣ ╤Б╨╜╨╛╤Б=0.0018 ╨╝ (тЙд0.05), max ╨╜╨░╨║╨╗╨╛╨╜=0.060┬░ (тЙд5), max ╤Б╨╢╨░╤В╨╕╨╡=0.2464 ╨╝ (тЙд0.3)
-[Test223_Slope15Stable] ok in 3034 ms
+[Test223_Slope15Stable] ok in 7047 ms
 PASS T300 gate-ignores-orbit | ╨╛╤А╨▒╨╕╤В╨░ 200 ╨║╨╝: ╨║╨░╨┤╤А╨╛╨▓ ╨▓╨╜╤Г╤В╤А╨╕ ╨╖╨╛╨╜╤Л=0 (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ 0); min |v_rel|=7788 ╨╝/╤Б (╨┐╨╛╤А╨╛╨│ ╨▓╤Е╨╛╨┤╨░ 60)
-[Test300_GateIgnoresOrbit] ok in 0 ms
+[Test300_GateIgnoresOrbit] ok in 2 ms
 PASS T301 gate-ignores-entry | ╨▓╤Е╨╛╨┤ 300 ╨╝/╤Б ╨╜╨░ ╨▓╤Л╤Б╨╛╤В╨╡ 100 ╨╝: ╨║╨░╨┤╤А╨╛╨▓ ╨▓╨╜╤Г╤В╤А╨╕ ╨╖╨╛╨╜╤Л=0 (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ 0)
 [Test301_GateIgnoresEntry] ok in 0 ms
 PASS T302 gate-enables-landing | ╨▓╤Л╤Б╨╛╤В╨░ 100.00 ╨╝, v_rel 5.00 ╨╝/╤Б: ╨╖╨╛╨╜╨░=True (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ true)
@@ -711,19 +719,19 @@ PASS T302 gate-enables-landing | ╨▓╤Л╤Б╨╛╤В╨░ 100.00 ╨╝
 PASS T303 gate-hysteresis | ╨▓╤Е╨╛╨┤ 100 ╨╝тЖТTrue; 350 ╨╝ (╨▓ ╨┐╨╛╨╗╨╛╤Б╨╡)тЖТTrue; 450 ╨╝ (╨▓╤Л╤Е╨╛╨┤)тЖТFalse; ╤Б╨╜╨╛╨▓╨░ 50 ╨╝тЖТTrue; ╨┐╨╛╤Б╨╗╨╡ ╤Б╨▒╤А╨╛╤Б╨░ 350 ╨╝тЖТFalse; 100 ╨╝ ╤Б╨╛ ╤Б╨║╨╛╤А╨╛╤Б╤В╤М╤О 130 ╨╝/╤БтЖТFalse (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ T,T,F,T,F,F)
 [Test303_GateHysteresis] ok in 0 ms
 PASS T304 handoff-round-trip | 40 ╤Б╨╛╤Б╤В╨╛╤П╨╜╨╕╨╣: max |╬Фr|=0.00E+000 ╨╝ (тЙд1e-6), max |╬Фv|=3.64E-012 ╨╝/╤Б (тЙд1e-9)
-[Test304_HandoffRoundTrip] ok in 0 ms
+[Test304_HandoffRoundTrip] ok in 1 ms
 PASS T305 handoff-corotation | ╨┐╨╛╨║╨╛╨╣ 2 ╤З: |╬Фv| ╨╛╤В ╤Б╨║╨╛╤А╨╛╤Б╤В╨╕ ╨╝╨╡╤Б╤В╨░=0.00E+000 ╨╝/╤Б (тЙд1e-9), |╬Фr| ╨╛╤В ╤В╨╛╤З╨║╨╕ ╨╝╨╡╤Б╤В╨░=0.00E+000 ╨╝ (тЙд1e-6), |v_╨╝╨╡╤Б╤В╨░|=30116.02 ╨╝/╤Б
 [Test305_HandoffCorotation] ok in 0 ms
 PASS T306 advance-time-monotonic | 700 ╨▓╤Л╨╖╨╛╨▓╨╛╨▓: ╨╝╨╛╨╜╨╛╤В╨╛╨╜╨╜╨╛=True; ╬гdt=190.000000 ╤Б, ╨▓╤А╨╡╨╝╤П=195.500000 ╤Б, ╨┤╨╛╨┐╤Г╤Б╨║=1.9E-007 ╤Б: True; ╤Б╨╛╤Б╤В╨╛╤П╨╜╨╕╨╡ ╨║╨╛╤А╨░╨▒╨╗╤П ╨╜╨╡ ╤В╤А╨╛╨╜╤Г╤В╨╛: True; StepFlying ╨┐╨╛╤Б╨╗╨╡: ╬Фt=0.500000 ╤Б: True
-[Test306_AdvanceTimeMonotonic] ok in 1 ms
+[Test306_AdvanceTimeMonotonic] ok in 2 ms
 PASS T307 island-split-leg | ╤А╨░╨╖╤А╤Л╨▓ ╨╜╨╛╨│╨╕ 3: ╨║╨╛╤А╨╡╨╜╤М=7 (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ 7 ╨┤╨╡╤В╨░╨╗╨╡╨╣ ╨▒╨╡╨╖ ╨╜╨╛╨│╨╕), ╨╛╤Б╤В╤А╨╛╨▓╨╛╨▓=1, ╨╛╤Б╤В╤А╨╛╨▓0=3 (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ [3])
-[Test307_IslandSplitLeg] ok in 2 ms
+[Test307_IslandSplitLeg] ok in 4 ms
 PASS T308 island-split-tree | ╨┤╨▓╨╕╨│╨░╤В╨╡╨╗╤М: ╨╛╤Б╤В╤А╨╛╨▓╨╛╨▓=1 (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ 1 [2]), ╨║╨╛╤А╨╡╨╜╤М=7 (7); ╨║╨░╨▒╨╕╨╜╨░: ╨╛╤Б╤В╤А╨╛╨▓╨╛╨▓=1 (1 [7]), ╨║╨╛╤А╨╡╨╜╤М=7 (7); ╨┤╨▓╨╡ ╨╜╨╛╨│╨╕: ╨╛╤Б╤В╤А╨╛╨▓╨╛╨▓=2 (2 [3],[4]), ╨║╨╛╤А╨╡╨╜╤М=6 (6)
-[Test308_IslandSplitTree] ok in 0 ms
+[Test308_IslandSplitTree] ok in 1 ms
 PASS T310 step-up | ╤Б╤В╤Г╨┐╨╡╨╜╤М 0.4: ╨▓╤Л╤Б╨╛╤В╨░ ╨╜╨░ ╨▓╨╡╤А╤И╨╕╨╜╨╡=0.40000 ╨╝ (┬▒1 ╨╝╨╝): True; 0.6: x=0.5500 (╤Г╨┐╨╛╤А ╤Г 0.45), z=0.00E+000, Blocked=True: True
-[Test310_StepUp] ok in 1 ms
+[Test310_StepUp] ok in 3 ms
 PASS T311 slope-limit | 25┬░: ╤Б╨║╨╛╤А╨╛╤Б╤В╤М ╨▓╨┤╨╛╨╗╤М ╤Б╨║╨╗╨╛╨╜╨░=1.103 ╨╝/╤Б (тЙе0.9 ╨╛╤В 1): True; 35┬░: v_z=-2.747 (╨▓╨╜╨╕╨╖), z=-0.4120 (╨▒╨╡╨╖ ╨┐╨╛╨┤╤К╤С╨╝╨░): True
-[Test311_SlopeLimit] ok in 0 ms
+[Test311_SlopeLimit] ok in 1 ms
 PASS T312 ceiling-blocks | ╨┐╨╛╤В╨╛╨╗╨╛╨║ 1.5: Blocked=True, x=0.550 (тЙд0.56), z=0.00E+000: True; ╨┐╨╛╤В╨╛╨╗╨╛╨║ 2.0: x=2.000 (>1.5), Blocked=False: True
 [Test312_CeilingBlocks] ok in 0 ms
 PASS T313 roof-landing | ╨┐╨░╨┤╨╡╨╜╨╕╨╡ 3 ╨╝: ╨┐╤А╨╕╨╖╨╡╨╝╨╗╨╡╨╜╨╕╨╡ ╨╜╨░ ╤И╨░╨│╨╡ 36, z=0.00E+000 ╨╝, v_z=0.00E+000 ╨╝/╤Б: True; ╨▒╨╡╨╖ ╨╛╤В╤Б╨║╨╛╨║╨░ (╬Фz=0.00E+000): True
@@ -733,9 +741,9 @@ PASS T314 edge-fall | ╤Б╤Е╨╛╨┤ ╤Б ╨║╤А╨░╤П ╨╜
 PASS T315 inner-corner | ╨┐╨╛╨╖╨╕╤Ж╨╕╤П=(0.4500, 0.4500) (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ (0.45, 0.45) ┬▒1 ╨╝╨╝): True; ╨▒╨╡╨╖ ╨┐╤А╨╛╨╜╨╕╨║╨╜╨╛╨▓╨╡╨╜╨╕╤П: True
 [Test315_InnerCorner] ok in 0 ms
 PASS T316 stairs | 10 ╤Б╤В╤Г╨┐╨╡╨╜╨╡╨╣ 0.18 ╨╝: ╨▓╤Л╤Б╨╛╤В╨░=1.8000 ╨╝ (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ 1.80): True; ╨╝╨╕╨╜. ╤И╨░╨│ ╨▓╨┤╨╛╨╗╤М=1.00E-002 ╨╝ (тЙе0.95 ╨╛╤В 9.50E-003): True
-[Test316_Stairs] ok in 1 ms
+[Test316_Stairs] ok in 2 ms
 PASS T317 moving-platform | 10 ╤Б: max|╬Фx|=3.38E-013 ╨╝ (тЙд2 ╨╝╨╝), max|╬Фz|=0.00E+000 ╨╝ (тЙд2 ╨╝╨╝), ╨┐╨╗╨░╤В╤Д╨╛╤А╨╝╨░ x=20.00, z=0.000
-[Test317_MovingPlatform] ok in 0 ms
+[Test317_MovingPlatform] ok in 1 ms
     h(╨╕╨│╤А╨╛╨║ lat 5.715345 lon 142.200892) = 26.39 ╨╝ (╤Б╤Л╤А╨░╤П), 26.39 ╨╝ (╤Б ╨║╨╗╨░╨╝╨┐╨╛╨╝ ╨╝╨╛╤А╤П). HUD ╨▓ ╨║╨░╨┤╤А╨╡: ╤А╨╡╨╗╤М╨╡╤Д ╨┐╨╛╨┤ ╨╕╨│╤А╨╛╨║╨╛╨╝ 26 ╨╝.
     ╨║╨░╤А╤В╨░ ┬▒3 ╨║╨╝ (╤И╨░╨│ 150 ╨╝): h ╨╛╤В -568 ╨┤╨╛ 1158 ╨╝. ╨б╤В╤А╨╛╨║╨╕ тАФ ╤Б╨╡╨▓╨╡╤А, ╤Б╤В╨╛╨╗╨▒╤Ж╤Л тАФ ╨▓╨╛╤Б╤В╨╛╨║.
     ~ ╨╝╨╛╤А╨╡  s ╨┐╨╛╨╗╨║╨░(<13)  . <25  : <50  + <100  * <250  # <600  % <1500  @ ╨▓╤Л╤И╨╡
@@ -818,7 +826,7 @@ PASS T317 moving-platform | 10 ╤Б: max|╬Фx|=3.38E-013 ╨╝ (тЙд2 ╨�
     ╨┐╨╕╨╗╨░: ╨╕╨╖ 95400 ╤И╨░╨│╨╛╨▓ ╨┐╨╛ 6.85 ╨╝ ╤А╨░╨╖╨▓╨╛╤А╨╛╤В ╨╖╨╜╨░╨║╨░ ╬Ф ╨╜╨░ 898 (0.94 %), ╨╕╨╖ ╨╜╨╕╤Е ╨╖╤Г╨▒╨╡╤Ж >5 ╨╝: 0, >20 ╨╝: 0
     ╤Б╨░╨╝╤Л╨╣ ╨▒╨╛╨╗╤М╤И╨╛╨╣ ╤И╨░╨│ |╬Фh| = 25.15 ╨╝ ╨╜╨░ (5482,3324) ╨╝ ╨╛╤В ╨╕╨│╤А╨╛╨║╨░; ╤Б╨░╨╝╤Л╨╣ ╨▒╨╛╨╗╤М╤И╨╛╨╣ ╨╖╤Г╨▒╨╡╤Ж 0.83 ╨╝ ╨╜╨░ (6452,3164) ╨╝
 PASS T900 terrain-wall-probe | ╨╖╨╛╨╜╨┤ ╨╛╤В╤А╨░╨▒╨╛╤В╨░╨╗
-[Test900_TerrainWallProbe] ok in 349 ms
+[Test900_TerrainWallProbe] ok in 790 ms
     ╨▓╤Л╨║╨╗╤О╤З╨╡╨╜╨╕╨╡ ╤Б╨╗╨╛╤С╨▓ ╨┐╨╛ ╨╛╨┤╨╜╨╛╨╝╤Г (╨╛╨║╤А╨╡╤Б╤В╨╜╨╛╤Б╤В╤М ╨╕╨│╤А╨╛╨║╨░ ┬▒4 ╨║╨╝):
     ╨▒╨░╨╖╨╛╨▓╤Л╨╣ ╨┐╤А╨╛╤Д╨╕╨╗╤М (╨║╨░╨║ ╨▓ ╤Б╤Ж╨╡╨╜╨╡)              ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕     30.55 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N-441 E-3552
     BeachShelfWidth = 0 (╨┐╨╛╨╗╨║╨╕ ╨╜╨╡╤В)            ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕      7.30 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N5286 E-2487
@@ -850,7 +858,7 @@ PASS T900 terrain-wall-probe | ╨╖╨╛╨╜╨┤ ╨╛╤В╤А╨░�
     ╤Б╤Г╨╝╨╝╨░╤А╨╜╨░╤П ╨┤╨╗╨╕╨╜╨░ ╤Г╤З╨░╤Б╤В╨║╨╛╨▓ ╤Б ╨┐╨╡╤А╨╡╨┐╨░╨┤╨╛╨╝ >1 ╨╝ ╨╜╨░ ╤И╨░╨│╨╡ 2 ╤Б╨╝: 0.000 ╨╝ (╨║╨╛╨╜╨╡╤Ж N0.000)
     ╨▒╨╡╨╖ ╨┐╨╛╨╗╨║╨╕: ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ 7.30 ╨╝ ╨╜╨░ N5286 E-2487 (╤В╨░╨╝ ╨╢╨╡, ╨│╨┤╨╡ ╤Б ╨┐╨╛╨╗╨║╨╛╨╣: ╨╜╨╡╤В)
 PASS T901 terrain-wall-bisect | ╨▒╨╕╤Б╨╡╨║╤В ╨╛╤В╤А╨░╨▒╨╛╤В╨░╨╗
-[Test901_TerrainWallBisect] ok in 4169 ms
+[Test901_TerrainWallBisect] ok in 9660 ms
     ╤В╨╛╤З╨╡╨║: 70169; ╨▓╤Л╤Б╨╛╤В╨░ ╨▓ ╤В╨╛╤З╨║╨╡ ╨║╨░╨┤╤А╨░: 26.386960 ╨╝
     ╨▒╤Л╨╗╨╛/╤Б╤В╨░╨╗╨╛: ╤В╨╛╤З╨║╨░ ╨║╨░╨┤╤А╨░ 26.386960 тЖТ 26.386960 ╨╝ (╬Ф 0.000E+000)
     |╬Ф| : ╨╝╨░╨║╤Б 0.000 ╨╝, ╤Б╤А╨╡╨┤╨╜╨╡╨╡ 0.0000 ╨╝; ╤В╨╛╤З╨╡╨║ >0.01 ╨╝: 0 (0.000 %), >1 ╨╝: 0, >10 ╨╝: 0, >50 ╨╝: 0, >200 ╨╝: 0
@@ -860,7 +868,7 @@ PASS T901 terrain-wall-bisect | ╨▒╨╕╤Б╨╡╨║╤В ╨╛╤В�
 PASS T903 shelf-fix-ab | ╨▓╤Л╤Б╨╛╤В╨░ ╨▓ ╤В╨╛╤З╨║╨╡ ╨║╨░╨┤╤А╨░ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В ╨┐╤А╨╡╨╢╨╜╤П╤П
 PASS T903 shelf-fix-ab | ╨┐╤А╨░╨▓╨║╨░ ╨╜╨╕╨│╨┤╨╡ ╨╜╨╡ ╨┐╨╛╨┤╨╜╤П╨╗╨░ ╤А╨╡╨╗╤М╨╡╤Д
 PASS T903 shelf-fix-ab | ╨╕╨╖╨╝╨╡╨╜╨╕╨╗╨╛╤Б╤М ╨╝╨╡╨╜╤М╤И╨╡ 10 % ╤В╨╛╤З╨╡╨║
-[Test903_ShelfFixAb] ok in 273 ms
+[Test903_ShelfFixAb] ok in 633 ms
     ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ 0: lat    5.715 lon  142.201 тАФ ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╨║╨▓╨░╨┤    29.16 ╨╝
     ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ 1: lat   -6.196 lon  165.110 тАФ ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╨║╨▓╨░╨┤     0.00 ╨╝
     ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ 2: lat  -52.550 lon  157.392 тАФ ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╨║╨▓╨░╨┤     0.39 ╨╝
@@ -870,5 +878,5 @@ PASS T903 shelf-fix-ab | ╨╕╨╖╨╝╨╡╨╜╨╕╨╗╨╛╤Б�
     ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ 6: lat  -50.272 lon   16.095 тАФ ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╨║╨▓╨░╨┤     0.00 ╨╝
     ╤Е╤Г╨┤╤И╨╡╨╡ ╨┐╨╛ 7 ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░╨╝: 29.16 ╨╝ (lat 5.691 lon 142.040), ╨┤╨╛╨┐╤Г╤Б╨║ 250 ╨╝
 PASS T904 no-sub-quad-steps | ╨╜╨╡╤В ╨┐╨╡╤А╨╡╨┐╨░╨┤╨░ ╨▒╨╛╨╗╤М╤И╨╡ 250 ╨╝ ╨╝╨╡╨╢╨┤╤Г ╤Б╨╛╤Б╨╡╨┤╨╜╨╕╨╝╨╕ ╨▓╨╡╤А╤И╨╕╨╜╨░╨╝╨╕ ╨╗╨╕╤Б╤В╨░
-[Test904_NoSubQuadSteps] ok in 1055 ms
+[Test904_NoSubQuadSteps] ok in 2524 ms
 ALL PASS
