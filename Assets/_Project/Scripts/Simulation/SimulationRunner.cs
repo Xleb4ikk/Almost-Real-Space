@@ -1072,12 +1072,34 @@ namespace Galilego.Universe
                 PlayerPosition = treePushed;
             }
 
+            // Выталкивание из геометрии построек (страховка от заклинивания): свип
+            // контроллера умеет только не пускать, но если тело уже врезалось в угол
+            // или между вокселями — блокирует во все стороны. Легаси-пушаут
+            // (ComputePenetration) выталкивает по горизонтали, высоту не трогает.
+            if (SiteBoxRegistry.TryResolve(PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d sitePushed))
+            {
+                PlayerPosition = sitePushed;
+            }
+
             // Вода и проекция на поверхность — на КОНЕЦ подшага (t+dt), как раньше.
             body.SurfaceLatLonAt(PlayerPosition, tEnd, out double newLat, out double newLon);
             if (WaterQuery.IsWaterAt(body, newLat, newLon))
             {
                 EnterWater(body, tEnd);
                 return;
+            }
+
+            // Страховка: тело ниже рельефа (продавилось) — вернуть на поверхность,
+            // иначе запросы опоры его больше не найдут (поверхность осталась выше).
+            body.EvaluateWorldState(tEnd, out Vector3d rescueBodyPos, out _);
+            double rescueGround = GroundHeight(body, newLat, newLon);
+            if ((PlayerPosition - rescueBodyPos).Magnitude - body.Radius < rescueGround - 0.5d)
+            {
+                Vector3d rescueRadial = (PlayerPosition - rescueBodyPos).Normalized;
+                PlayerPosition = rescueBodyPos + (rescueRadial * (body.Radius + rescueGround));
+                PlayerVelocity -= rescueRadial * Vector3d.Dot(PlayerVelocity, rescueRadial);
+                playerAirborne = false;
+                playerController.SetGroundSource(TerrainSupport.SourceId);
             }
 
             // Проекция на рельеф — только когда игрок стоит на рельефе (не на постройке):
