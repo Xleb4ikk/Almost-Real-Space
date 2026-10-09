@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Эталонные артефакты (трейсы, логи, хэши) — байт-в-байт, без EOL-конверсии:
+# иначе checkout меняет байты и SHA-256 из отчёта не воспроизводится.
+baseline/** -text

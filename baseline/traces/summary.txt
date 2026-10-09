@@ -1,0 +1,35 @@
+Landing traces, шаг 0.6
+Источник шага: VesselStep (шаг 0.4, вынесен из SimulationRunner)
+Мир (эталонный): Terra mu=1.28e13 R=1.143e6 rotation=86400 s pole=+Z;
+     terrain=EarthLike_Perlin seed=24334543; atmosphere: Top=100 km rho0=1.225 H=8500;
+     корабль 5000 kg, тяга в стенде не включена, старт lat=0 lon=0.
+     drag Cd=1: S1-S5 — A=10 м² (как DragSource в SimulationRunner.Awake),
+     S6 — испытательный купол A=4000 м², спуск с 5 км (вход с орбиты покрыт S4;
+     в игре купола пока нет — S6 эталон мягкого касания для фаз 3-5).
+Колонки: t,alt,v_radial,v_tangential,regime,lat,lon,event; шаг 0.5 s (2 Гц), событие — отдельной строкой в точный момент.
+Скорости — относительно со-вращающейся поверхности (кадр SurfaceMotion): стоянка даёт 0, падение — вертикальную скорость.
+
+S1_drop2km: start_alt=2000.000 m; touchdown_t=27.732; v_n=-90.977; v_t=0.097; regime_after=Destroyed; debris=10; final_t=27.732; final_alt=-0.000
+S1_drop2km: start_alt=2000.000 m; touchdown_t=27.732; v_n=-90.977; v_t=0.097; regime_after=Destroyed; debris=10; final_t=27.732; final_alt=-0.000
+repeat S1_drop2km: B87F47FBD3D91D5818A014063EBB8C7529D63D7B37A95B716258187A8221D40A == B87F47FBD3D91D5818A014063EBB8C7529D63D7B37A95B716258187A8221D40A -> IDENTICAL
+
+S2_drop100: start_alt=100.000 m; touchdown_t=4.413; v_n=-41.721; v_t=0.007; regime_after=Destroyed; debris=10; final_t=4.413; final_alt=-0.000
+S2_drop100: start_alt=100.000 m; touchdown_t=4.413; v_n=-41.721; v_t=0.007; regime_after=Destroyed; debris=10; final_t=4.413; final_alt=-0.000
+repeat S2_drop100: A8F9780E116DF45B7DCA9A51A44AEA585B97EFE5FBF9E0F49E37B23A243B65DD == A8F9780E116DF45B7DCA9A51A44AEA585B97EFE5FBF9E0F49E37B23A243B65DD -> IDENTICAL
+
+S3_impact50: start_alt=25.000 m; touchdown_t=0.485; v_n=-53.165; v_t=0.002; regime_after=Destroyed; debris=10; final_t=0.485; final_alt=-0.000
+S3_impact50: start_alt=25.000 m; touchdown_t=0.485; v_n=-53.165; v_t=0.002; regime_after=Destroyed; debris=10; final_t=0.485; final_alt=-0.000
+repeat S3_impact50: 19EE2BE54D16842496C12466CB39C3C4034630CC437A52F03DBBB4E8A04109E1 == 19EE2BE54D16842496C12466CB39C3C4034630CC437A52F03DBBB4E8A04109E1 -> IDENTICAL
+
+S4_entry: start_alt=120000.000 m; touchdown_t=275.389; v_n=-91.726; v_t=0.155; regime_after=Destroyed; debris=10; final_t=275.389; final_alt=-0.000
+S4_entry: start_alt=120000.000 m; touchdown_t=275.389; v_n=-91.726; v_t=0.155; regime_after=Destroyed; debris=10; final_t=275.389; final_alt=-0.000
+repeat S4_entry: 1689BFB5B665DE609C5E565BE16A86F21E0B999E96CB841D403E8EC6F3ED9DFE == 1689BFB5B665DE609C5E565BE16A86F21E0B999E96CB841D403E8EC6F3ED9DFE -> IDENTICAL
+
+S5_stand: start_alt=0.000 m; touchdown_t=нет; v_n=n/a; v_t=n/a; regime_after=Landed; debris=0; final_t=3600.000; final_alt=0.000
+S5_stand: start_alt=0.000 m; touchdown_t=нет; v_n=n/a; v_t=n/a; regime_after=Landed; debris=0; final_t=3600.000; final_alt=0.000
+repeat S5_stand: 7366EA394A24E158D26C3F1CED39E67FEDC5CD0D468092DA2CE63221B98623BA == 7366EA394A24E158D26C3F1CED39E67FEDC5CD0D468092DA2CE63221B98623BA -> IDENTICAL
+
+S6_chute_soft: start_alt=5000.000 m; touchdown_t=971.157; v_n=-4.470; v_t=0.000; regime_after=Landed; debris=0; final_t=971.157; final_alt=-0.000
+S6_chute_soft: start_alt=5000.000 m; touchdown_t=971.157; v_n=-4.470; v_t=0.000; regime_after=Landed; debris=0; final_t=971.157; final_alt=-0.000
+repeat S6_chute_soft: BAB9938771E356580A6C7CCE12D75CFDAC6EAEB68DF695D9D30E814A1699132A == BAB9938771E356580A6C7CCE12D75CFDAC6EAEB68DF695D9D30E814A1699132A -> IDENTICAL
+

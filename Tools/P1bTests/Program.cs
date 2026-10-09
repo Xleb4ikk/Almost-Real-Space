@@ -48,6 +48,7 @@ internal static partial class P1bTests
         bool slowOnly = false;
         int from = int.MinValue;
         int to = int.MaxValue;
+        string traceDir = null;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "--list")
@@ -83,6 +84,16 @@ internal static partial class P1bTests
             {
                 slowOnly = true;
             }
+            else if (args[i] == "--trace" && i + 1 < args.Length)
+            {
+                traceDir = args[i + 1];
+                i++;
+            }
+        }
+
+        if (traceDir != null)
+        {
+            return RunLandingTraces(traceDir);
         }
 
         foreach (P1bCase entry in TestRegistry())
@@ -116,7 +127,10 @@ internal static partial class P1bTests
                 continue;
             }
 
+            var caseWatch = Stopwatch.StartNew();
+            int before = failures;
             entry.Run();
+            Console.WriteLine("[" + entry.Name + "] " + (failures == before ? "ok" : "FAIL") + " in " + caseWatch.ElapsedMilliseconds + " ms");
         }
 
         Console.WriteLine(failures == 0 ? "ALL PASS" : failures + " FAILURES");

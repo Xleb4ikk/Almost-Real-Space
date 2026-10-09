@@ -1,4 +1,5 @@
 using Galilego.Events;
+using Galilego.Simulation.ContactZone;
 using UnityEngine;
 
 namespace Galilego.Universe
@@ -26,11 +27,16 @@ namespace Galilego.Universe
             }
 
             // Ступени варпа: клавиши 1..7 снапятся вниз в SetWarpFactor.
-            for (int rung = 0; rung < WarpController.WarpRungs.Length; rung++)
+            // В зоне контакта варп запрещён: время зоны идёт по реальному dt
+            // (VesselStep.AdvanceTime), а поднятый варп на выходе увёл бы корабль рывком.
+            if (!ContactZoneHost.Active)
             {
-                if (PlayerInput.Down((GameKey)((int)GameKey.Digit1 + rung)))
+                for (int rung = 0; rung < WarpController.WarpRungs.Length; rung++)
                 {
-                    Runner.Warp.SetWarpFactor(WarpController.WarpRungs[rung]);
+                    if (PlayerInput.Down((GameKey)((int)GameKey.Digit1 + rung)))
+                    {
+                        Runner.Warp.SetWarpFactor(WarpController.WarpRungs[rung]);
+                    }
                 }
             }
 
