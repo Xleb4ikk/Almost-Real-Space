@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO;
 using Galilego.Core;
 using Galilego.Simulation.ContactZone;
 using Galilego.Universe;
@@ -9,8 +10,9 @@ namespace Galilego.Simulation.Player
     /// <summary>
     /// Проба ходьбы для регресса: игрок идёт на восток заданной скоростью,
     /// раз в секунду логируется его позиция в кадре места (якорь на старте).
-    /// Одинаковая проба до и после интеграции PlayerSurfaceController: допуск
-    /// расхождения 1 мм. Автовыход из Play — только в редакторе.
+    /// Выборка — при точных ts (интерполяция состояния между кадрами), чтобы
+    /// сравнение прогонов не зависело от момента кадра: допуск 1 мм.
+    /// Автовыход из Play — только в редакторе.
     /// </summary>
     public sealed class PlayerWalkProbe : MonoBehaviour
     {
@@ -23,9 +25,11 @@ namespace Galilego.Simulation.Player
 
         private SiteFrame frame;
         private Vector3d walkDirection;
-        private float elapsed;
-        private int nextLog = 1;
+        private double nextLogTs = 1d;
+        private double prevTs;
+        private Vector3d prevPos;
         private bool started;
+        private string logPath;
 
         private void Start()
         {
@@ -51,7 +55,13 @@ namespace Galilego.Simulation.Player
 
             walkDirection = east.Normalized;
             frame = SiteFrame.Anchor(body, body.Terrain, Runner.PlayerPosition, Runner.TimeSeconds);
+            prevTs = Runner.TimeSeconds;
+            prevPos = Runner.PlayerPosition;
             started = true;
+            logPath = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "baseline", "player2", "walk_probe_log.txt"));
+            Directory.CreateDirectory(Path.GetDirectoryName(logPath));
+            File.WriteAllText(logPath, "[WalkProbe] старт: " + WalkSpeed.ToString("F2", Inv) + " м/с на восток, "
+                + DurationSeconds.ToString("F0", Inv) + " с" + "\n");
             Debug.Log("[WalkProbe] старт: " + WalkSpeed.ToString("F2", Inv) + " м/с на восток, "
                 + DurationSeconds.ToString("F0", Inv) + " с");
         }
@@ -65,23 +75,36 @@ namespace Galilego.Simulation.Player
 
             Runner.PlayerIntent.WalkDirection = walkDirection;
             Runner.PlayerIntent.WalkSpeed = WalkSpeed;
-            elapsed += Time.deltaTime;
 
-            if (elapsed >= nextLog)
+            double ts = Runner.TimeSeconds;
+            double span = ts - prevTs;
+            if (span > 1e-9d)
             {
-                nextLog = Mathf.FloorToInt(elapsed) + 1;
-                SiteFrame now = frame.At(Runner.TimeSeconds);
-                now.ToLocal(Runner.PlayerPosition, Runner.PlayerVelocity, out Vector3d local, out _);
-                Debug.Log("[WalkProbe] t=" + nextLog
-                    + " ts=" + Runner.TimeSeconds.ToString("F3", Inv)
-                    + " local=(" + local.X.ToString("F6", Inv)
-                    + ", " + local.Y.ToString("F6", Inv)
-                    + ", " + local.Z.ToString("F6", Inv) + ")");
+                while (nextLogTs <= ts)
+                {
+                    double alpha = (nextLogTs - prevTs) / span;
+                    if (alpha < 0d) { alpha = 0d; }
+                    if (alpha > 1d) { alpha = 1d; }
+                    Vector3d pos = prevPos + (Runner.PlayerPosition - prevPos) * alpha;
+                    SiteFrame now = frame.At(nextLogTs);
+                    now.ToLocal(pos, Runner.PlayerVelocity, out Vector3d local, out _);
+                    string line = "[WalkProbe] ts=" + nextLogTs.ToString("F3", Inv)
+                        + " local=(" + local.X.ToString("F6", Inv)
+                        + ", " + local.Y.ToString("F6", Inv)
+                        + ", " + local.Z.ToString("F6", Inv) + ")";
+                    Debug.Log(line);
+                    File.AppendAllText(logPath, line + "\n");
+                    nextLogTs += 1d;
+                }
             }
 
-            if (elapsed >= DurationSeconds)
+            prevTs = ts;
+            prevPos = Runner.PlayerPosition;
+
+            if (ts >= DurationSeconds)
             {
                 Debug.Log("[WalkProbe] DONE");
+                File.AppendAllText(logPath, "[WalkProbe] DONE\n");
                 enabled = false;
 #if UNITY_EDITOR
                 UnityEditor.EditorApplication.isPlaying = false;

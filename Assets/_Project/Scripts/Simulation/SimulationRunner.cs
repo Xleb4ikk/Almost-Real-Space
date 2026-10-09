@@ -4,6 +4,7 @@ using Galilego.Core;
 using Galilego.Debris;
 using Galilego.Events;
 using Galilego.Simulation.ContactZone;
+using Galilego.Simulation.Player;
 using Galilego.Spacecraft;
 using UnityEngine;
 using Ship = Galilego.Spacecraft.Spacecraft;
@@ -258,6 +259,13 @@ namespace Galilego.Universe
         /// <summary>Шаг корабля: полёт, посадка, события. Вся логика состояния — там.</summary>
         private VesselStep step;
         private DebrisUpdater debrisUpdater;
+
+        // Ходьба игрока: чистый контроллер опор + локальный кадр места.
+        private readonly PlayerSurfaceController playerController = new PlayerSurfaceController();
+        private readonly TerrainSupport terrainSupport = new TerrainSupport();
+        private readonly SiteBoxSupport siteSupport = new SiteBoxSupport();
+        private readonly CompositePlayerSupport playerSupport = new CompositePlayerSupport();
+        private static readonly SphericalTerrain playerFallbackTerrain = new SphericalTerrain();
         private bool playerAirborne;
         private bool playerJumpQueued;
         private bool jetpackToggleQueued;
@@ -1001,6 +1009,8 @@ namespace Galilego.Universe
             }
         }
 
+        // Чистый контроллер ходьбы: вертикальная опора, шаг, наклон, потолок, углы.
+        // Работает в локальном кадре места (метры), орбитальное состояние — double-мир.
         private void StepPlayerSurface(double t, double dt, bool jumpRequested)
         {
             OrbitingBody body = DominantBody;
@@ -1009,127 +1019,76 @@ namespace Galilego.Universe
                 return;
             }
 
-            body.EvaluateWorldState(t, out Vector3d bodyPos, out Vector3d bodyVel);
+            body.EvaluateWorldState(t, out Vector3d bodyPos, out _);
 
-            if (playerAirborne)
-            {
-                // Баллистика прыжка: свободное падение до контакта.
-                Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
-                Vector3d jetpackAccel = JetpackActive ? PlayerIntent.JetpackAccel : Vector3d.Zero;
-                PlayerVelocity += (gravity + jetpackAccel) * dt;
+            ITerrainModel playerTerrain = body.Terrain ?? playerFallbackTerrain;
+            SiteFrame frame = SiteFrame.Anchor(body, playerTerrain, PlayerPosition, t);
+            frame.ToLocal(PlayerPosition, PlayerVelocity, out Vector3d localPosition, out Vector3d localVelocity);
 
-                // Шг режем о бокс ДО применения, как при ходьбе. В сравнение идёт
-                // движение ОТНОСИТЕЛЬНО земли (скорость минус скорость вращающейся
-                // поверхности под игроком): в инерциальных координатах игрок за
-                // подшаг уезжает с планетой, а бокс остаётся у якоря.
-                Vector3d airStep = PlayerVelocity * dt;
-                if (dt > 1e-9d)
-                {
-                    body.SurfaceLatLonAt(PlayerPosition, t, out double boxLat, out double boxLon);
-                    double boxAlt = (PlayerPosition - bodyPos).Magnitude - body.Radius;
-                    body.GetSurfaceState(boxLat, boxLon, boxAlt, t, out _, out Vector3d coVel);
-                    Vector3d relEnd = PlayerPosition + ((PlayerVelocity - coVel) * dt);
-                    if (SiteBoxRegistry.TryResolve(relEnd, PlayerCollisionRadiusMeters, out Vector3d airSlid))
-                    {
-                        Vector3d boxPush = airSlid - relEnd;
-                        airStep += boxPush;
-                        PlayerVelocity += boxPush / dt; // гасим составляющую скорости в стену
-                    }
-                }
+            playerController.Position = localPosition;
+            playerController.Velocity = localVelocity;
+            playerController.Airborne = playerAirborne;
+            Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
+            playerController.Gravity = Math.Max(0d, -Vector3d.Dot(gravity, frame.Up));
 
-                PlayerPosition += airStep;
-                if (GroundDecorCollisionRegistry.TryResolve(body.Name, PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d airPushed))
-                {
-                    PlayerPosition = airPushed;
-                }
+            terrainSupport.SetFrame(body, playerTerrain, frame, t);
+            siteSupport.SetFrame(frame);
+            playerSupport.Terrain = terrainSupport;
+            playerSupport.Sites = siteSupport;
 
-                // Позиция уже в t+dt — контакт проверяем и сажаем в t+dt, не в t.
-                double airEnd = t + dt;
-                body.SurfaceLatLonAt(PlayerPosition, airEnd, out double airLat, out double airLon);
-                body.EvaluateWorldState(airEnd, out Vector3d airBodyPos, out _);
-                double groundRadius = body.Radius + GroundHeight(body, airLat, airLon);
-                if ((PlayerPosition - airBodyPos).Magnitude <= groundRadius)
-                {
-                    LandPlayer(body, airEnd);
-                }
+            Vector3d walkWorld = PlayerIntent.WalkDirection * PlayerIntent.WalkSpeed;
+            Vector3d walkLocal = new Vector3d(
+                Vector3d.Dot(walkWorld, frame.East),
+                Vector3d.Dot(walkWorld, frame.North),
+                0d);
+            Vector3d jetpack = JetpackActive ? PlayerIntent.JetpackAccel : Vector3d.Zero;
+            Vector3d jetpackLocal = new Vector3d(
+                Vector3d.Dot(jetpack, frame.East),
+                Vector3d.Dot(jetpack, frame.North),
+                Vector3d.Dot(jetpack, frame.Up));
 
-                return;
-            }
+            playerController.Step(playerSupport, dt, walkLocal, jetpackLocal);
 
-            // Ходьба: контакт с поверхностью, скорость = поверхность + намерение.
-            body.SurfaceLatLonAt(PlayerPosition, t, out double latDeg, out double lonDeg);
-            double ground = GroundHeight(body, latDeg, lonDeg);
-            body.GetSurfaceState(latDeg, lonDeg, ground, t, out Vector3d contact, out Vector3d surfaceVel);
-            body.EvaluateWorldState(t, out Vector3d bodyPos2, out _);
-            Vector3d normal = body.Terrain != null
-                ? body.Terrain.GetOutwardNormal(body, contact - bodyPos2, t).Normalized
-                : (contact - bodyPos2).Normalized;
+            // В мир — кадром на КОНЕЦ подшага (frame.At(t+dt)): кадр на время t
+            // отстаёт от орбитального движения тела на v·dt, и проекция на
+            // поверхность в t+dt запекала бы этот лаг в позицию каждый подшаг.
+            double tEnd = t + dt;
+            frame.At(tEnd).ToWorld(playerController.Position, playerController.Velocity,
+                out Vector3d worldPosition, out Vector3d worldVelocity);
+            PlayerPosition = worldPosition;
+            PlayerVelocity = worldVelocity;
+            playerAirborne = playerController.Airborne;
 
-            // Коллизия бокса постройки. Именно здесь, в начале подшага, и не позже:
-            // SiteBoxRegistry работает в render-пространстве, а поза площадки
-            // считается в LateUpdate уже по СЛЕДУЮЩЕМУ якорю. За подшаг игрок
-            // уезжает от якоря на сотни метров (время идёт быстрее реального, а
-            // тело несёт его с собой), поэтому проверка после интегрирования
-            // сравнивала игрока с позой прошлого кадра и промахивалась мимо
-            // бокса. В начале подшага позиция игрока — это ровно якорь, и поза
-            // бокса ему соответствует. (Выталкивание стволов такого свойства не
-            // имеет: реестр хранит абсолютные astro-координаты.)
-            if (SiteBoxRegistry.TryResolve(PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d boxPushed))
-            {
-                PlayerPosition = boxPushed;
-            }
-
-            Vector3d walk = PlayerIntent.WalkDirection * PlayerIntent.WalkSpeed;
-            Vector3d tangential = walk - (normal * Vector3d.Dot(walk, normal));
-
-            // Шаг режем о стену ДО применения. Проверять позицию после шага
-            // нельзя: за подшаг игрок уезжает от якоря вместе с вращением
-            // планеты, и бокс (поза прошлого кадра) сравнивался бы с другой
-            // точкой. Поэтому в проверку идёт позиция плюс ТОЛЬКО шаг ходьбы, без
-            // движения поверхности, — она остаётся у якоря и корректна.
-            // Разрешённый шаг = (вытолкнутая позиция − текущая) / dt: это и есть
-            // скольжение вдоль стены, а отбрасывание шага целиком.
-            Vector3d walkVel = tangential;
-            if (dt > 1e-9d
-                && SiteBoxRegistry.TryResolve(PlayerPosition + (tangential * dt), PlayerCollisionRadiusMeters, out Vector3d slid))
-            {
-                walkVel = (slid - PlayerPosition) / dt;
-            }
-
-            PlayerVelocity = surfaceVel + walkVel;
-            PlayerPosition += PlayerVelocity * dt;
-
-            // Коллизия стволов деревьев: вытолкнуть из цилиндров декора.
+            // Коллизия стволов деревьев — как раньше, после шага.
             if (GroundDecorCollisionRegistry.TryResolve(body.Name, PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d treePushed))
             {
                 PlayerPosition = treePushed;
             }
 
-            // Проекция обратно на поверхность НА КОНЕЦ подшага: и lat/lon, и
-            // центр тела берём в t+dt. Иначе позиция (уже в t+dt) проецируется
-            // на сферу времени t — остаётся тангенциальная ошибка bodyVel·dt
-            // (орбитальная скорость тела ~5 км/с), игрока тянет к точке, где
-            // орбитальная скорость радиальна, и он там осциллирует: сильная
-            // дрожь на месте, адская на бегу. Тот же принцип, что CoRotate в
-            // SurfaceMotion (перенос в toTime + проекция в toBodyP).
-            double tEnd = t + dt;
+            // Вода и проекция на поверхность — на КОНЕЦ подшага (t+dt), как раньше.
             body.SurfaceLatLonAt(PlayerPosition, tEnd, out double newLat, out double newLon);
-            // Зашёл в воду — дальше плавание (вход через всплеск, не ходьба
-            // по плоскости моря).
             if (WaterQuery.IsWaterAt(body, newLat, newLon))
             {
                 EnterWater(body, tEnd);
                 return;
             }
 
-            double newGround = GroundHeight(body, newLat, newLon);
-            body.EvaluateWorldState(tEnd, out Vector3d bodyPos3, out _);
-            Vector3d radial = PlayerPosition - bodyPos3;
-            PlayerPosition = bodyPos3 + (radial.Normalized * (body.Radius + newGround));
+            // Проекция на рельеф — только когда игрок стоит на рельефе (не на постройке):
+            // крыши держат локальную высоту контроллера, проекция стянула бы его вниз.
+            if (!playerAirborne && playerController.GroundSourceId == TerrainSupport.SourceId)
+            {
+                double newGround = GroundHeight(body, newLat, newLon);
+                body.EvaluateWorldState(tEnd, out Vector3d bodyPos3, out _);
+                Vector3d radial = PlayerPosition - bodyPos3;
+                PlayerPosition = bodyPos3 + (radial.Normalized * (body.Radius + newGround));
+            }
 
             if (jumpRequested)
             {
                 playerAirborne = true;
+                Vector3d normal = body.Terrain != null
+                    ? body.Terrain.GetOutwardNormal(body, PlayerPosition - bodyPos, t).Normalized
+                    : (PlayerPosition - bodyPos).Normalized;
                 PlayerVelocity += normal * PlayerJumpSpeed;
             }
         }
