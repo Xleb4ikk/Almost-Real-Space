@@ -63,6 +63,9 @@ namespace Galilego.Simulation.Player
 
         public void SetFrame(SiteFrame siteFrame)
         {
+            // Страховка от порядка жизненного цикла: OnEnable постройки мог не
+            // собрать коллайдеры (наблюдалось «мигание» между сессиями Play).
+            SiteBoxRegistry.EnsureAllBuilt();
             frame = siteFrame;
             renderOrigin = ToRender(Vector3d.Zero);
             renderUp = Direction(new Vector3d(0d, 0d, 1d));
