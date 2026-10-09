@@ -100,9 +100,41 @@ namespace Galilego.Simulation.Player
                 return false;
             }
 
-            Vector3 origin = ToRenderPoint(from);
-            RaycastHit[] hits = Physics.RaycastAll(origin, -renderUp, (float)maxDrop, ~0, QueryTriggerInteraction.Ignore);
-            return TryPickFloor(hits, out height, out normal, out sourceId);
+            // Опора под стопой: центральный луч + четыре по краю стопы (0.3 м).
+            // Одиночный луч проскакивает узкие щели между коллайдерами и кромки —
+            // игрок «проваливался между ними». Берём САМУЮ ВЫСОКУЮ опору в следе
+            // стопы: на неё и встают ноги.
+            bool found = false;
+            double best = double.NegativeInfinity;
+            for (int k = 0; k < 5; k++)
+            {
+                Vector3d sample = from;
+                switch (k)
+                {
+                    case 1: sample = from + new Vector3d(0.3d, 0d, 0d); break;
+                    case 2: sample = from + new Vector3d(-0.3d, 0d, 0d); break;
+                    case 3: sample = from + new Vector3d(0d, 0.3d, 0d); break;
+                    case 4: sample = from + new Vector3d(0d, -0.3d, 0d); break;
+                }
+
+                Vector3 origin = ToRenderPoint(sample);
+                RaycastHit[] hits = Physics.RaycastAll(origin, -renderUp, (float)maxDrop, ~0, QueryTriggerInteraction.Ignore);
+                if (!TryPickFloor(hits, out double h, out Vector3d n, out int id))
+                {
+                    continue;
+                }
+
+                if (!found || h > best)
+                {
+                    best = h;
+                    height = h;
+                    normal = n;
+                    sourceId = id;
+                    found = true;
+                }
+            }
+
+            return found;
         }
 
         private bool TryPickFloor(RaycastHit[] hits, out double height, out Vector3d normal, out int sourceId)
