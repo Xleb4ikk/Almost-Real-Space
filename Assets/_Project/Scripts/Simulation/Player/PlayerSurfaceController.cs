@@ -116,41 +116,32 @@ namespace Galilego.Simulation.Player
             if (SlopeAngleDegrees(floorNormal) > MaxSlopeDegrees)
             {
                 // Круче предела: не поднимаемся, скользим вниз вдоль поверхности.
-                Position = new Vector3d(candidate.X, candidate.Y, Math.Min(Position.Z, floorHeight));
+                // Горизонталь режется свипом о стены (как при ходьбе): у крутого
+                // ската стена не должна пропускать игрока.
+                Vector3d slid = SweepHorizontal(support, Position, move);
+                Position = new Vector3d(slid.X, slid.Y, Position.Z);
+
+                // Опора под итоговой точкой (свип мог сдвинуть вдоль стены).
+                Vector3d slideProbe = new Vector3d(Position.X, Position.Y, Position.Z + StepUpMeters);
+                if (support.Floor(slideProbe, StepUpMeters + SupportDropMeters,
+                        out double slideHeight, out _, out int slideId))
+                {
+                    Position = new Vector3d(Position.X, Position.Y, Math.Min(Position.Z, slideHeight));
+                    GroundSourceId = slideId;
+                }
+                else
+                {
+                    GroundSourceId = floorId;
+                }
+
                 Velocity = new Vector3d(intent.X, intent.Y, -SlideSpeedMps);
-                GroundSourceId = floorId;
                 return;
             }
 
             Position = new Vector3d(Position.X, Position.Y, floorHeight);
 
             // Горизонтальный свип со скольжением вдоль стен (до 4 итераций).
-            Vector3d p = Position;
-            Vector3d remaining = move;
-            for (int iteration = 0; iteration < MaxSweepIterations; iteration++)
-            {
-                if (remaining.Magnitude < 1e-12d)
-                {
-                    break;
-                }
-
-                if (!support.Sweep(p, p + remaining, CapsuleRadius, out Vector3d wallNormal, out double fraction))
-                {
-                    p += remaining;
-                    break;
-                }
-
-                if (!(fraction > 0d) || !(fraction < 1d))
-                {
-                    fraction = fraction < 0d ? 0d : (fraction > 1d ? 1d : fraction);
-                }
-
-                p += remaining * fraction;
-                Vector3d left = remaining * (1d - fraction);
-                left -= wallNormal * Vector3d.Dot(left, wallNormal);
-                remaining = left;
-            }
-
+            Vector3d p = SweepHorizontal(support, Position, move);
             Position = new Vector3d(p.X, p.Y, Position.Z);
 
             // Точная опора под итоговой позицией (и повторная проверка уклона).
@@ -239,13 +230,14 @@ namespace Galilego.Simulation.Player
             return found;
         }
 
-        private void StepAirborne(IPlayerSupport support, double dt)
+        /// <summary>
+        /// Горизонтальный свип капсулы со скольжением вдоль стен (до MaxSweepIterations
+        /// итераций). Возвращает итоговую позицию; Z не меняется.
+        /// </summary>
+        private static Vector3d SweepHorizontal(IPlayerSupport support, Vector3d from, Vector3d move)
         {
-            Velocity = new Vector3d(Velocity.X, Velocity.Y, Velocity.Z - (Gravity * dt));
-            Vector3d step = Velocity * dt;
-
-            Vector3d p = Position;
-            Vector3d remaining = new Vector3d(step.X, step.Y, 0d);
+            Vector3d p = from;
+            Vector3d remaining = move;
             for (int iteration = 0; iteration < MaxSweepIterations; iteration++)
             {
                 if (remaining.Magnitude < 1e-12d)
@@ -270,19 +262,47 @@ namespace Galilego.Simulation.Player
                 remaining = left;
             }
 
-            p = new Vector3d(p.X, p.Y, p.Z + step.Z);
-            Position = p;
+            return p;
+        }
 
-            // Посадка: опора ниже в пределах хода падения. Отскока нет (v_z = 0).
-            double fall = Math.Max(0d, -step.Z) + 0.1d;
-            if (support.Floor(Position, fall, out double floorHeight, out Vector3d floorNormal, out int floorId)
-                && SlopeAngleDegrees(floorNormal) <= MaxSlopeDegrees)
+        private void StepAirborne(IPlayerSupport support, double dt)
+        {
+            Velocity = new Vector3d(Velocity.X, Velocity.Y, Velocity.Z - (Gravity * dt));
+            Vector3d step = Velocity * dt;
+
+            // Горизонталь — свипом вдоль стен (как было).
+            Vector3d p = SweepHorizontal(support, Position, new Vector3d(step.X, step.Y, 0d));
+
+            // Вертикаль дробим чанками: подшаг может быть до 0.5 с (метры пролёта),
+            // и тонкая плита на пути не должна проскакиваться целиком. Посадка
+            // проверяется ДО сдвига чанка, поэтому плита внутри чанка видна.
+            const double maxVerticalChunk = 0.2d;
+            double remainingZ = step.Z;
+            while (Math.Abs(remainingZ) > 1e-12d)
             {
-                Position = new Vector3d(Position.X, Position.Y, floorHeight);
-                Velocity = new Vector3d(Velocity.X, Velocity.Y, 0d);
-                Airborne = false;
-                GroundSourceId = floorId;
+                double chunk = Math.Max(-maxVerticalChunk, Math.Min(maxVerticalChunk, remainingZ));
+                if (chunk < 0d)
+                {
+                    // Посадка только на спуске: подъём (прыжок) не должен мгновенно
+                    // «приземляться» обратно на ту же опору. Отскока нет (v_z = 0).
+                    double fall = -chunk + 0.1d;
+                    if (support.Floor(p, fall, out double floorHeight, out Vector3d floorNormal, out int floorId)
+                        && floorHeight <= p.Z + 1e-9d
+                        && SlopeAngleDegrees(floorNormal) <= MaxSlopeDegrees)
+                    {
+                        Position = new Vector3d(p.X, p.Y, floorHeight);
+                        Velocity = new Vector3d(Velocity.X, Velocity.Y, 0d);
+                        Airborne = false;
+                        GroundSourceId = floorId;
+                        return;
+                    }
+                }
+
+                p = new Vector3d(p.X, p.Y, p.Z + chunk);
+                remainingZ -= chunk;
             }
+
+            Position = p;
         }
 
         public static double SlopeAngleDegrees(Vector3d normal)
