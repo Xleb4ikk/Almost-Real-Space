@@ -19,6 +19,10 @@ namespace Galilego.Universe
         public double3 AxisZ;
         public double HalfX;
         public double HalfZ;
+
+        /// <summary>Малый прямоугольник (мягкий отступ, трава): HalfX/HalfZ + узкая зона дорог.</summary>
+        public double SoftHalfX;
+        public double SoftHalfZ;
     }
 
     public static partial class DecorExclusionTable
@@ -53,6 +57,32 @@ namespace Galilego.Universe
             return false;
         }
 
+        /// <summary>Проверка по малому прямоугольнику — трава у края дороги (отступ 0.3 м).</summary>
+        public static bool IsExcludedSoft(NativeArray<DecorExclusionData> zones, double3 direction)
+        {
+            if (!zones.IsCreated)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < zones.Length; i++)
+            {
+                DecorExclusionData z = zones[i];
+                if (math.dot(direction, z.Center) < 0.5d)
+                {
+                    continue;
+                }
+
+                double3 d = direction - z.Center;
+                if (math.abs(math.dot(d, z.AxisX)) <= z.SoftHalfX && math.abs(math.dot(d, z.AxisZ)) <= z.SoftHalfZ)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public static bool TableEqual(NativeArray<DecorExclusionData> a, NativeArray<DecorExclusionData> b)
         {
             int na = a.IsCreated ? a.Length : 0;
@@ -76,7 +106,8 @@ namespace Galilego.Universe
         private static bool Same(DecorExclusionData x, DecorExclusionData y)
         {
             return x.Center.Equals(y.Center) && x.AxisX.Equals(y.AxisX) && x.AxisZ.Equals(y.AxisZ)
-                && x.HalfX == y.HalfX && x.HalfZ == y.HalfZ;
+                && x.HalfX == y.HalfX && x.HalfZ == y.HalfZ
+                && x.SoftHalfX == y.SoftHalfX && x.SoftHalfZ == y.SoftHalfZ;
         }
 
         static partial void AfterRelease();   // реализация в DecorExclusion.cs (игра), в стенде — пусто

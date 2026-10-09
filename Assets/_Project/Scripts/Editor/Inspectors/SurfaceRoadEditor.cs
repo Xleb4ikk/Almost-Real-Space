@@ -35,6 +35,23 @@ namespace Galilego.Universe.EditorTools
                     MessageType.Warning);
             }
 
+            Transform t = road.transform;
+            Vector3 scale = t.localScale;
+            bool transformed =
+                t.localPosition.sqrMagnitude > 1e-6f
+                || Quaternion.Angle(t.localRotation, Quaternion.identity) > 0.1f
+                || Mathf.Abs(scale.x - 1f) > 1e-3f
+                || Mathf.Abs(scale.y - 1f) > 1e-3f
+                || Mathf.Abs(scale.z - 1f) > 1e-3f;
+            if (transformed)
+            {
+                EditorGUILayout.HelpBox(
+                    "Трансформ дороги не нулевой: позиция/поворот/масштаб сдвигают только точки, " +
+                    "а ширина и толщина берутся из полей. Поставьте позицию 0, поворот 0, масштаб 1; " +
+                    "ширину задаёт Width, толщину — Thickness.",
+                    MessageType.Warning);
+            }
+
             EditorGUILayout.HelpBox(
                 "Scene view: Shift+клик — добавить точку в конец. Клик по жёлтой точке — выбрать и двигать стрелками.",
                 MessageType.Info);

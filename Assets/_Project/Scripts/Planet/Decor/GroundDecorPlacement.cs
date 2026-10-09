@@ -51,6 +51,10 @@ namespace Galilego.Universe
         /// <summary>Не применять полярный фейд (тундра/снег): камни лежат и на снегу.</summary>
         public bool IgnoreLatitude;
 
+        /// <summary>Мягкая зона исключения дорог: трава меряется малым прямоугольником
+        /// (0.3 м от края), деревья/камни — полным (1 м). См. GroundDecorLayer.SoftExclusion.</summary>
+        public bool SoftExclusion;
+
         public double Density;
         public double DistributionFrequency;
         public int DistributionOctaves;
@@ -139,6 +143,7 @@ namespace Galilego.Universe
                 WetMax = layer.WetMax,
                 WetFade = layer.WetFade,
                 IgnoreLatitude = layer.IgnoreLatitude,
+                SoftExclusion = layer.SoftExclusion,
                 Density = layer.Density,
                 // Пятно задано в метрах — частоту считаем от радиуса тела:
                 // один период шума ≈ R/frequency метров по поверхности.
@@ -273,6 +278,18 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Проверка зоны исключения с учётом типа слоя: трава (SoftExclusion)
+        /// меряется мягким прямоугольником (0.3 м у дорог), остальные — полным
+        /// (1 м у дорог, 20 м у построек).
+        /// </summary>
+        public static bool IsExcludedFor(GroundDecorPlacementParams p, TerrainNoiseParams terrain, double3 direction)
+        {
+            return p.SoftExclusion
+                ? DecorExclusionTable.IsExcludedSoft(terrain.DecorExclusions, direction)
+                : DecorExclusionTable.IsExcluded(terrain.DecorExclusions, direction);
+        }
+
+        /// <summary>
         /// Дешёвые жёсткие фильтры поверхности (вода/высоты/пляж/верх зелени/
         /// wet-биом/полярная шапка) — без склона, кластеров и плотности. Для перепроверки
         /// КАЖДОГО подтуфта в expand-путях: базовый кандидат проходит полный
@@ -286,8 +303,8 @@ namespace Galilego.Universe
         public static bool IsSurfaceAllowed(
             GroundDecorPlacementParams p, TerrainNoiseParams terrain, double3 direction)
         {
-            // Зона постройки: под ней не растёт ничего, включая подтуфты травы.
-            if (DecorExclusionTable.IsExcluded(terrain.DecorExclusions, direction))
+            // Зона постройки/дороги: под ней не растёт ничего, включая подтуфты травы.
+            if (IsExcludedFor(p, terrain, direction))
             {
                 return false;
             }
@@ -414,9 +431,9 @@ namespace Galilego.Universe
         {
             instance = default;
 
-            // Зона постройки: клетка целиком внутри зоны не получает ни одного
+            // Зона постройки/дороги: клетка целиком внутри зоны не получает ни одного
             // экземпляра (IsSurfaceAllowed проверяет ещё и подтуфты).
-            if (DecorExclusionTable.IsExcluded(terrain.DecorExclusions, direction))
+            if (IsExcludedFor(p, terrain, direction))
             {
                 return false;
             }

@@ -6,22 +6,43 @@ using UnityEngine;
 
 namespace Galilego.Universe
 {
+    /// <summary>
+    /// Прямоугольник пятна дороги в осях места (X — север, Y — восток), м:
+    /// центр, две единичные ортогональные оси и полуразмеры. Строит SurfaceRoad,
+    /// в зону с отступами превращает DecorExclusionTable.
+    /// </summary>
+    public struct RoadExclusionRect
+    {
+        public float CenterNorth;
+        public float CenterEast;
+        public float AxisXNorth;
+        public float AxisXEast;
+        public float AxisZNorth;
+        public float AxisZEast;
+        public float HalfX;
+        public float HalfZ;
+    }
 
     /// <summary>
     /// Таблица зон исключения. Зоны берутся из всех SurfaceGrounded под SurfaceSite
     /// (то есть из всего, что ты ставишь на место): габарит — SiteBox, если он есть,
     /// иначе границы рендереров. К габариту добавляется MarginMeters.
+    /// Плюс зоны дорог (SurfaceRoad): деревьям/камням — RoadMarginBigMeters от
+    /// края пятна, траве (слои с SoftExclusion) — RoadMarginSoftMeters.
     /// Живёт в HeightfieldTerrain.DecorExclusions → TerrainNoiseParams → джобы декора.
     /// </summary>
     public static partial class DecorExclusionTable
     {
         public const float MarginMeters = 20f;
+        public const float RoadMarginBigMeters = 1f;
+        public const float RoadMarginSoftMeters = 0.3f;
         private const float ScanIntervalSeconds = 0.5f;
         private const int RetireFrames = 600;
 
 
         private static readonly List<DecorExclusionData> scratch = new List<DecorExclusionData>();
         private static readonly List<Renderer> renderers = new List<Renderer>();
+        private static readonly List<RoadExclusionRect> roadRects = new List<RoadExclusionRect>();
         private static readonly List<KeyValuePair<NativeArray<DecorExclusionData>, int>> retired =
             new List<KeyValuePair<NativeArray<DecorExclusionData>, int>>();
         private static float nextScan;
@@ -71,6 +92,44 @@ namespace Galilego.Universe
                 if (TryBuild(g, site, bodyRadius, out DecorExclusionData zone))
                 {
                     scratch.Add(zone);
+                }
+            }
+
+            // Дороги: пятно (или коридор ленты) + отступы. Деревья/камни не ближе
+            // RoadMarginBigMeters, трава (слои с SoftExclusion) — RoadMarginSoftMeters.
+            SurfaceRoad[] roads = UnityEngine.Object.FindObjectsByType<SurfaceRoad>(FindObjectsSortMode.None);
+            for (int i = 0; i < roads.Length; i++)
+            {
+                SurfaceRoad road = roads[i];
+                if (road == null || !road.isActiveAndEnabled)
+                {
+                    continue;
+                }
+
+                SurfaceSite site = road.GetComponentInParent<SurfaceSite>();
+                if (site == null || !site.isActiveAndEnabled)
+                {
+                    continue;
+                }
+
+                string siteBody = site.Body != null ? site.Body.gameObject.name : site.BodyName;
+                if (siteBody != bodyName)
+                {
+                    continue;
+                }
+
+                roadRects.Clear();
+                road.CollectExclusionRects(roadRects);
+                for (int r = 0; r < roadRects.Count; r++)
+                {
+                    RoadExclusionRect rect = roadRects[r];
+                    scratch.Add(BuildZone(
+                        site, bodyRadius,
+                        rect.CenterNorth, rect.CenterEast,
+                        new Vector2(rect.AxisXNorth, rect.AxisXEast),
+                        new Vector2(rect.AxisZNorth, rect.AxisZEast),
+                        rect.HalfX, rect.HalfZ,
+                        RoadMarginBigMeters, RoadMarginSoftMeters));
                 }
             }
 
@@ -219,10 +278,41 @@ namespace Galilego.Universe
                 return false;
             }
 
-            double uc = Q((range.UMin + range.UMax) * 0.5d);
-            double vc = Q((range.VMin + range.VMax) * 0.5d);
-            double halfU = Q(((range.UMax - range.UMin) * 0.5d) + MarginMeters);
-            double halfV = Q(((range.VMax - range.VMin) * 0.5d) + MarginMeters);
+            double uc = (range.UMin + range.UMax) * 0.5d;
+            double vc = (range.VMin + range.VMax) * 0.5d;
+            zone = BuildZone(
+                site, radius,
+                (ax.x * uc) + (az.x * vc),
+                (ax.y * uc) + (az.y * vc),
+                ax, az,
+                (range.UMax - range.UMin) * 0.5d,
+                (range.VMax - range.VMin) * 0.5d,
+                MarginMeters, MarginMeters);
+            return true;
+        }
+
+        /// <summary>
+        /// Мировая зона из прямоугольника в осях места: центр (север, восток, м),
+        /// единичные оси ax/az и полуразмеры вдоль них. Центр/полуразмеры квантуются
+        /// (0.25 м) — дрожание float не должно пересобирать чанки каждые полсекунды.
+        /// Полуразмеры зоны: big = полуразмер + marginBig (деревья/камни),
+        /// soft = полуразмер + marginSoft (трава).
+        /// </summary>
+        private static DecorExclusionData BuildZone(
+            SurfaceSite site, double radius,
+            double centerNorth, double centerEast,
+            Vector2 ax, Vector2 az,
+            double halfXmeters, double halfYmeters,
+            double marginBig, double marginSoft)
+        {
+            double u = (centerNorth * ax.x) + (centerEast * ax.y);
+            double v = (centerNorth * az.x) + (centerEast * az.y);
+            double uc = Q(u);
+            double vc = Q(v);
+            double halfBigX = Q(halfXmeters + marginBig);
+            double halfBigY = Q(halfYmeters + marginBig);
+            double halfSoftX = Q(halfXmeters + marginSoft);
+            double halfSoftY = Q(halfYmeters + marginSoft);
 
             double lat = site.LatitudeDegrees * (Math.PI / 180d);
             double lon = site.LongitudeDegrees * (Math.PI / 180d);
@@ -239,15 +329,16 @@ namespace Galilego.Universe
             double3 gz = (north * az.x) + (east * az.y);
             gz = math.normalize(gz - (center * math.dot(gz, center)));
 
-            zone = new DecorExclusionData
+            return new DecorExclusionData
             {
                 Center = center,
                 AxisX = gx,
                 AxisZ = gz,
-                HalfX = halfU / radius,
-                HalfZ = halfV / radius
+                HalfX = halfBigX / radius,
+                HalfZ = halfBigY / radius,
+                SoftHalfX = halfSoftX / radius,
+                SoftHalfZ = halfSoftY / radius
             };
-            return true;
         }
     }
 }

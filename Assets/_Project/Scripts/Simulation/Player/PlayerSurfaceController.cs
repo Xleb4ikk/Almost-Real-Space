@@ -302,11 +302,16 @@ namespace Galilego.Simulation.Player
                 {
                     // Посадка только на спуске: подъём (прыжок) не должен мгновенно
                     // «приземляться» обратно на ту же опору. Отскока нет (v_z = 0).
-                    // Допуск +5 см: Floor поднимает начало луча над ногами (см.
-                    // SiteBoxSupport.Floor), поэтому видит опору чуть выше точки ног.
+                    // Луч начинается на StepUp выше ног, и допуск тот же StepUp:
+                    // свип игнорирует склоны крутизной до ~45° (см. SiteBoxSupport.
+                    // Sweep), поэтому падение с горизонтальным ходом может внести
+                    // ноги под скос плиты/уступ. Тогда тело не зарывается в меш, а
+                    // «шагает» на найденную поверхность — зеркало TryFindStepFloor
+                    // у земли (запись в отчёт «дорога: скос и посадка», 2026-10-09).
                     double fall = -chunk + 0.1d;
-                    if (support.Floor(p, fall, out double floorHeight, out Vector3d floorNormal, out int floorId)
-                        && floorHeight <= p.Z + 0.05d
+                    Vector3d landFrom = new Vector3d(p.X, p.Y, p.Z + StepUpMeters);
+                    if (support.Floor(landFrom, StepUpMeters + fall, out double floorHeight, out Vector3d floorNormal, out int floorId)
+                        && floorHeight <= p.Z + StepUpMeters
                         && SlopeAngleDegrees(floorNormal) <= MaxSlopeDegrees)
                     {
                         Position = new Vector3d(p.X, p.Y, floorHeight);
