@@ -39,6 +39,7 @@ MonoBehaviour:
       WetMin: 0
       WetMax: 1
       IgnoreLatitude: 0
+      SoftExclusion: 1
       WetFade: 0.12
       MinScale: 0.6329113752141712
       MaxScale: 1.3164556121581703
@@ -101,6 +102,7 @@ MonoBehaviour:
       WetMin: 0.3
       WetMax: 1
       IgnoreLatitude: 0
+      SoftExclusion: 1
       WetFade: 0.25
       MinScale: 0.8
       MaxScale: 1.2
@@ -165,6 +167,7 @@ MonoBehaviour:
       WetMin: 0
       WetMax: 1
       IgnoreLatitude: 1
+      SoftExclusion: 0
       WetFade: 0
       MinScale: 1.5
       MaxScale: 4.5
@@ -229,6 +232,7 @@ MonoBehaviour:
       WetMin: 0
       WetMax: 0.32
       IgnoreLatitude: 0
+      SoftExclusion: 0
       WetFade: 0.2
       MinScale: 2
       MaxScale: 5
@@ -293,6 +297,7 @@ MonoBehaviour:
       WetMin: 0.2
       WetMax: 1
       IgnoreLatitude: 0
+      SoftExclusion: 0
       WetFade: 0.2
       MinScale: 1.604756585072252
       MaxScale: 2.8319233059883118
