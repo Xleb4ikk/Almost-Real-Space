@@ -116,6 +116,19 @@ namespace Galilego.Universe
             }
         }
 
+        /// <summary>
+        /// Собрать коллайдеры, если ещё не собраны (страховка от порядка
+        /// жизненного цикла: OnEnable мог отработать до готовности сцены).
+        /// Вызывается из опоры игрока перед запросами.
+        /// </summary>
+        public void EnsureBuilt()
+        {
+            if (Application.isPlaying && UseMeshCollision && parts.Count == 0)
+            {
+                BuildParts();
+            }
+        }
+
         private void OnDisable()
         {
             SiteBoxRegistry.Unregister(this);
@@ -608,6 +621,18 @@ namespace Galilego.Universe
         public static void Unregister(SiteBox b)
         {
             boxes.Remove(b);
+        }
+
+        /// <summary>Собрать коллайдеры всех зарегистрированных построек (страховка).</summary>
+        public static void EnsureAllBuilt()
+        {
+            for (int i = 0; i < boxes.Count; i++)
+            {
+                if (boxes[i] != null)
+                {
+                    boxes[i].EnsureBuilt();
+                }
+            }
         }
 
         /// <summary>Капсула-зонд игрока для ComputePenetration (поза передаётся явно, сама стоит далеко).</summary>
