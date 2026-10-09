@@ -1,0 +1,1448 @@
+diff --git a/Assets/PlayerWalkSlice.unity b/Assets/PlayerWalkSlice.unity
+new file mode 100644
+index 0000000..ff302c0
+--- /dev/null
++++ b/Assets/PlayerWalkSlice.unity
+@@ -0,0 +1,429 @@
++%YAML 1.1
++%TAG !u! tag:unity3d.com,2011:
++--- !u!29 &1
++OcclusionCullingSettings:
++  m_ObjectHideFlags: 0
++  serializedVersion: 2
++  m_OcclusionBakeSettings:
++    smallestOccluder: 5
++    smallestHole: 0.25
++    backfaceThreshold: 100
++  m_SceneGUID: 00000000000000000000000000000000
++  m_OcclusionCullingData: {fileID: 0}
++--- !u!104 &2
++RenderSettings:
++  m_ObjectHideFlags: 0
++  serializedVersion: 10
++  m_Fog: 0
++  m_FogColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
++  m_FogMode: 3
++  m_FogDensity: 0.01
++  m_LinearFogStart: 0
++  m_LinearFogEnd: 300
++  m_AmbientSkyColor: {r: 0.212, g: 0.227, b: 0.259, a: 1}
++  m_AmbientEquatorColor: {r: 0.114, g: 0.125, b: 0.133, a: 1}
++  m_AmbientGroundColor: {r: 0.047, g: 0.043, b: 0.035, a: 1}
++  m_AmbientIntensity: 1
++  m_AmbientMode: 0
++  m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
++  m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
++  m_HaloStrength: 0.5
++  m_FlareStrength: 1
++  m_FlareFadeSpeed: 3
++  m_HaloTexture: {fileID: 0}
++  m_SpotCookie: {fileID: 10001, guid: 0000000000000000e000000000000000, type: 0}
++  m_DefaultReflectionMode: 0
++  m_DefaultReflectionResolution: 128
++  m_ReflectionBounces: 1
++  m_ReflectionIntensity: 1
++  m_CustomReflection: {fileID: 0}
++  m_Sun: {fileID: 0}
++  m_UseRadianceAmbientProbe: 0
++--- !u!157 &3
++LightmapSettings:
++  m_ObjectHideFlags: 0
++  serializedVersion: 13
++  m_BakeOnSceneLoad: 0
++  m_GISettings:
++    serializedVersion: 2
++    m_BounceScale: 1
++    m_IndirectOutputScale: 1
++    m_AlbedoBoost: 1
++    m_EnvironmentLightingMode: 0
++    m_EnableBakedLightmaps: 1
++    m_EnableRealtimeLightmaps: 0
++  m_LightmapEditorSettings:
++    serializedVersion: 12
++    m_Resolution: 2
++    m_BakeResolution: 40
++    m_AtlasSize: 1024
++    m_AO: 0
++    m_AOMaxDistance: 1
++    m_CompAOExponent: 1
++    m_CompAOExponentDirect: 0
++    m_ExtractAmbientOcclusion: 0
++    m_Padding: 2
++    m_LightmapParameters: {fileID: 0}
++    m_LightmapsBakeMode: 1
++    m_TextureCompression: 1
++    m_ReflectionCompression: 2
++    m_MixedBakeMode: 2
++    m_BakeBackend: 2
++    m_PVRSampling: 1
++    m_PVRDirectSampleCount: 32
++    m_PVRSampleCount: 512
++    m_PVRBounces: 2
++    m_PVREnvironmentSampleCount: 256
++    m_PVREnvironmentReferencePointCount: 2048
++    m_PVRFilteringMode: 1
++    m_PVRDenoiserTypeDirect: 2
++    m_PVRDenoiserTypeIndirect: 2
++    m_PVRDenoiserTypeAO: 2
++    m_PVRFilterTypeDirect: 0
++    m_PVRFilterTypeIndirect: 0
++    m_PVRFilterTypeAO: 0
++    m_PVREnvironmentMIS: 1
++    m_PVRCulling: 1
++    m_PVRFilteringGaussRadiusDirect: 1
++    m_PVRFilteringGaussRadiusIndirect: 1
++    m_PVRFilteringGaussRadiusAO: 1
++    m_PVRFilteringAtrousPositionSigmaDirect: 0.5
++    m_PVRFilteringAtrousPositionSigmaIndirect: 2
++    m_PVRFilteringAtrousPositionSigmaAO: 1
++    m_ExportTrainingData: 0
++    m_TrainingDataDestination: TrainingData
++    m_LightProbeSampleCountMultiplier: 4
++  m_LightingDataAsset: {fileID: 20201, guid: 0000000000000000f000000000000000, type: 0}
++  m_LightingSettings: {fileID: 0}
++--- !u!196 &4
++NavMeshSettings:
++  serializedVersion: 2
++  m_ObjectHideFlags: 0
++  m_BuildSettings:
++    serializedVersion: 3
++    agentTypeID: 0
++    agentRadius: 0.5
++    agentHeight: 2
++    agentSlope: 45
++    agentClimb: 0.4
++    ledgeDropHeight: 0
++    maxJumpAcrossDistance: 0
++    minRegionArea: 2
++    manualCellSize: 0
++    cellSize: 0.16666667
++    manualTileSize: 0
++    tileSize: 256
++    buildHeightMesh: 0
++    maxJobWorkers: 0
++    preserveTilesOutsideBounds: 0
++    debug:
++      m_Flags: 0
++  m_NavMeshData: {fileID: 0}
++--- !u!1 &20756928
++GameObject:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  serializedVersion: 6
++  m_Component:
++  - component: {fileID: 20756930}
++  - component: {fileID: 20756929}
++  m_Layer: 0
++  m_Name: PlayerWalkProbe
++  m_TagString: Untagged
++  m_Icon: {fileID: 0}
++  m_NavMeshLayer: 0
++  m_StaticEditorFlags: 0
++  m_IsActive: 1
++--- !u!114 &20756929
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 20756928}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: b171d7b3c1ce4207afa8fe787260d29d, type: 3}
++  m_Name: 
++  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Simulation.Player.PlayerWalkProbe
++  Runner: {fileID: 2058562100}
++  Active: 1
++  WalkSpeed: 3
++  DurationSeconds: 60
++--- !u!4 &20756930
++Transform:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 20756928}
++  serializedVersion: 2
++  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
++  m_LocalPosition: {x: 0, y: 0, z: 0}
++  m_LocalScale: {x: 1, y: 1, z: 1}
++  m_ConstrainProportionsScale: 0
++  m_Children: []
++  m_Father: {fileID: 0}
++  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
++--- !u!1 &381998143
++GameObject:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  serializedVersion: 6
++  m_Component:
++  - component: {fileID: 381998145}
++  - component: {fileID: 381998144}
++  m_Layer: 0
++  m_Name: System
++  m_TagString: Untagged
++  m_Icon: {fileID: 0}
++  m_NavMeshLayer: 0
++  m_StaticEditorFlags: 0
++  m_IsActive: 1
++--- !u!114 &381998144
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 381998143}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: 4bc77af65d6ffdf47952941f8a2464cc, type: 3}
++  m_Name: 
++  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.StarSystemAuthoring
++  SpanYears: 1024
++  Degree: 12
++  MaxStepSeconds: 900
++  QuantBudgetMeters: 2
++  CompressFiles: 1
++  OutputFolder: Assets/StreamingAssets/Ephemerides
++--- !u!4 &381998145
++Transform:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 381998143}
++  serializedVersion: 2
++  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
++  m_LocalPosition: {x: 0, y: 0, z: 0}
++  m_LocalScale: {x: 1, y: 1, z: 1}
++  m_ConstrainProportionsScale: 0
++  m_Children:
++  - {fileID: 855255461}
++  m_Father: {fileID: 0}
++  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
++--- !u!1 &855255460
++GameObject:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  serializedVersion: 6
++  m_Component:
++  - component: {fileID: 855255461}
++  - component: {fileID: 855255462}
++  m_Layer: 0
++  m_Name: Star
++  m_TagString: Untagged
++  m_Icon: {fileID: 0}
++  m_NavMeshLayer: 0
++  m_StaticEditorFlags: 0
++  m_IsActive: 1
++--- !u!4 &855255461
++Transform:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 855255460}
++  serializedVersion: 2
++  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
++  m_LocalPosition: {x: 0, y: 0, z: 0}
++  m_LocalScale: {x: 1, y: 1, z: 1}
++  m_ConstrainProportionsScale: 0
++  m_Children:
++  - {fileID: 1458337793}
++  m_Father: {fileID: 381998145}
++  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
++--- !u!114 &855255462
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 855255460}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: 7d79bac471c083a40bd345864d557347, type: 3}
++  m_Name: 
++  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyAuthoring
++  StandardGravitationalParameter: 1.327e+20
++  Radius: 696000000
++  CrashToleranceMps: 5
++  SurfaceStaticFrictionMu: 0.7
++  SurfaceKineticFrictionMu: 0.5
++  SemiMajorAxis: 100000000000
++  Eccentricity: 0
++  InclinationDegrees: 0
++  LongitudeOfAscendingNodeDegrees: 0
++  ArgumentOfPeriapsisDegrees: 0
++  MeanAnomalyAtEpochDegrees: 0
++  EpochTimeSeconds: 0
++  RotationPeriodSeconds: 0
++  TidallyLocked: 0
++  PrimeMeridianOffsetDegrees: 0
++  NorthPoleDirection:
++    X: 0
++    Y: 0
++    Z: 1
++  TerrainPreset: {fileID: 0}
++  AtmospherePreset: {fileID: 0}
++  CloudsPreset: {fileID: 0}
++  GroundDecorPreset: {fileID: 0}
++  TerrainSeed: 0
++  TerrainPads: []
++--- !u!1 &1458337792
++GameObject:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  serializedVersion: 6
++  m_Component:
++  - component: {fileID: 1458337793}
++  - component: {fileID: 1458337794}
++  m_Layer: 0
++  m_Name: Terra
++  m_TagString: Untagged
++  m_Icon: {fileID: 0}
++  m_NavMeshLayer: 0
++  m_StaticEditorFlags: 0
++  m_IsActive: 1
++--- !u!4 &1458337793
++Transform:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 1458337792}
++  serializedVersion: 2
++  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
++  m_LocalPosition: {x: 0, y: 0, z: 0}
++  m_LocalScale: {x: 1, y: 1, z: 1}
++  m_ConstrainProportionsScale: 0
++  m_Children: []
++  m_Father: {fileID: 855255461}
++  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
++--- !u!114 &1458337794
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 1458337792}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: 7d79bac471c083a40bd345864d557347, type: 3}
++  m_Name: 
++  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyAuthoring
++  StandardGravitationalParameter: 12800000000000
++  Radius: 1143000
++  CrashToleranceMps: 5
++  SurfaceStaticFrictionMu: 0.7
++  SurfaceKineticFrictionMu: 0.5
++  SemiMajorAxis: 150000000000
++  Eccentricity: 0.017
++  InclinationDegrees: 0
++  LongitudeOfAscendingNodeDegrees: 0
++  ArgumentOfPeriapsisDegrees: 0
++  MeanAnomalyAtEpochDegrees: 0
++  EpochTimeSeconds: 0
++  RotationPeriodSeconds: 86400
++  TidallyLocked: 0
++  PrimeMeridianOffsetDegrees: 0
++  NorthPoleDirection:
++    X: 0
++    Y: 0
++    Z: 1
++  TerrainPreset: {fileID: 0}
++  AtmospherePreset: {fileID: 0}
++  CloudsPreset: {fileID: 0}
++  GroundDecorPreset: {fileID: 0}
++  TerrainSeed: 0
++  TerrainPads: []
++--- !u!1 &2058562099
++GameObject:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  serializedVersion: 6
++  m_Component:
++  - component: {fileID: 2058562101}
++  - component: {fileID: 2058562100}
++  m_Layer: 0
++  m_Name: Runner
++  m_TagString: Untagged
++  m_Icon: {fileID: 0}
++  m_NavMeshLayer: 0
++  m_StaticEditorFlags: 0
++  m_IsActive: 1
++--- !u!114 &2058562100
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 2058562099}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: 605eb84181f343e48b36362a365a1617, type: 3}
++  m_Name: 
++  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SimulationRunner
++  System: {fileID: 381998144}
++  Paused: 0
++  SpawnAltitudeMeters: 200000
++  SpawnFacingSun: 0
++  SpawnPhaseDegrees: 0
++  SpawnHorizontalSpeedMps: 7800
++  SpawnMassKg: 5000
++  MainThrustNewtons: 0
++  MainIspSeconds: 320
++  DryMassKg: 3000
++  SpawnBodyName: Terra
++  SpawnOnSurface: 1
++  SpawnByCoordinates: 0
++  SpawnLatitudeDegrees: 0
++  SpawnLongitudeDegrees: 0
++  SpawnEpsilonMeters: 1
++  Parts: []
++  DebrisLifetimeSeconds: 600
++  DebrisSurfaceRestitution: 0.2
++--- !u!4 &2058562101
++Transform:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 2058562099}
++  serializedVersion: 2
++  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
++  m_LocalPosition: {x: 0, y: 0, z: 0}
++  m_LocalScale: {x: 1, y: 1, z: 1}
++  m_ConstrainProportionsScale: 0
++  m_Children: []
++  m_Father: {fileID: 0}
++  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
++--- !u!1660057539 &9223372036854775807
++SceneRoots:
++  m_ObjectHideFlags: 0
++  m_Roots:
++  - {fileID: 381998145}
++  - {fileID: 2058562101}
++  - {fileID: 20756930}
+diff --git a/Assets/PlayerWalkSlice.unity.meta b/Assets/PlayerWalkSlice.unity.meta
+new file mode 100644
+index 0000000..027eff5
+--- /dev/null
++++ b/Assets/PlayerWalkSlice.unity.meta
+@@ -0,0 +1,7 @@
++fileFormatVersion: 2
++guid: d75e029c565a7f1428a95df261127d83
++DefaultImporter:
++  externalObjects: {}
++  userData: 
++  assetBundleName: 
++  assetBundleVariant: 
+diff --git a/Assets/_Project/Scripts/Editor/PlayerWalkSliceTool.cs b/Assets/_Project/Scripts/Editor/PlayerWalkSliceTool.cs
+new file mode 100644
+index 0000000..fed1ccb
+--- /dev/null
++++ b/Assets/_Project/Scripts/Editor/PlayerWalkSliceTool.cs
+@@ -0,0 +1,65 @@
++using Galilego.Simulation.Player;
++using UnityEditor;
++using UnityEditor.SceneManagement;
++using UnityEngine;
++using UnityEngine.SceneManagement;
++
++namespace Galilego.Universe.EditorTools
++{
++    /// <summary>
++    /// ╨б╤Ж╨╡╨╜╨░ ╤А╨╡╨│╤А╨╡╤Б╤Б╨░ ╤Е╨╛╨┤╤М╨▒╤Л: Terra ╤Б╨╛ ╤Б╤Д╨╡╤А╨╕╤З╨╡╤Б╨║╨╕╨╝ ╤А╨╡╨╗╤М╨╡╤Д╨╛╨╝ (╨┐╨╗╨╛╤Б╨║╨░╤П ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░,
++    /// h тЙб 0), ╤А╨░╨╜╨╜╨╡╤А ╨╕ PlayerWalkProbe (60 ╤Б ╤Е╨╛╨┤╤М╨▒╤Л ╨╜╨░ ╨▓╨╛╤Б╤В╨╛╨║). ╨Ш╤Б╨┐╨╛╨╗╤М╨╖╤Г╨╡╤В╤Б╤П
++    /// ╨┤╨▓╨░╨╢╨┤╤Л: ╨┤╨╛ ╨╕ ╨┐╨╛╤Б╨╗╨╡ ╨╕╨╜╤В╨╡╨│╤А╨░╤Ж╨╕╨╕ PlayerSurfaceController, ╤Б╤А╨░╨▓╨╜╨╡╨╜╨╕╨╡ 1 ╨╝╨╝.
++    /// </summary>
++    public static class PlayerWalkSliceTool
++    {
++        private const string ScenePath = "Assets/PlayerWalkSlice.unity";
++
++        [MenuItem("Galilego/Test Vessel/Build Player Walk Slice Scene")]
++        public static void BuildMenu()
++        {
++            Debug.Log(BuildScene());
++        }
++
++        public static string BuildScene()
++        {
++            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
++
++            var systemGo = new GameObject("System");
++            SceneManager.MoveGameObjectToScene(systemGo, scene);
++            var authoring = systemGo.AddComponent<StarSystemAuthoring>();
++
++            var starGo = new GameObject("Star");
++            starGo.transform.SetParent(systemGo.transform, false);
++            var star = starGo.AddComponent<BodyAuthoring>();
++            star.StandardGravitationalParameter = 1.327e20d;
++            star.Radius = 6.96e8d;
++
++            var terraGo = new GameObject("Terra");
++            terraGo.transform.SetParent(starGo.transform, false);
++            var terra = terraGo.AddComponent<BodyAuthoring>();
++            terra.StandardGravitationalParameter = 1.28e13d;
++            terra.Radius = 1143000d;
++            terra.RotationPeriodSeconds = 86400d;
++            terra.SemiMajorAxis = 1.5e11d;
++            terra.Eccentricity = 0.017d;
++
++            var runnerGo = new GameObject("Runner");
++            SceneManager.MoveGameObjectToScene(runnerGo, scene);
++            var runner = runnerGo.AddComponent<SimulationRunner>();
++            runner.System = authoring;
++            runner.SpawnBodyName = "Terra";
++            runner.SpawnOnSurface = true;
++            runner.SpawnMassKg = 5000d;
++
++            var probeGo = new GameObject("PlayerWalkProbe");
++            SceneManager.MoveGameObjectToScene(probeGo, scene);
++            var probe = probeGo.AddComponent<PlayerWalkProbe>();
++            probe.Runner = runner;
++
++            bool saved = EditorSceneManager.SaveScene(scene, ScenePath);
++            EditorSceneManager.CloseScene(scene, true);
++            return string.Format("Walk-╤Б╤А╨╡╨╖: ╤Б╤Ж╨╡╨╜╨░ \"{0}\" {1}", ScenePath, saved ? "╤Б╨╛╤Е╤А╨░╨╜╨╡╨╜╨░" : "╨Э╨Х ╤Б╨╛╤Е╤А╨░╨╜╨╡╨╜╨░");
++        }
++    }
++}
+diff --git a/Assets/_Project/Scripts/Editor/PlayerWalkSliceTool.cs.meta b/Assets/_Project/Scripts/Editor/PlayerWalkSliceTool.cs.meta
+new file mode 100644
+index 0000000..827c452
+--- /dev/null
++++ b/Assets/_Project/Scripts/Editor/PlayerWalkSliceTool.cs.meta
+@@ -0,0 +1,2 @@
++fileFormatVersion: 2
++guid: a6291e8beb594da39cae757ac3e17ec9
+diff --git a/Assets/_Project/Scripts/Simulation/Player.meta b/Assets/_Project/Scripts/Simulation/Player.meta
+new file mode 100644
+index 0000000..85fb149
+--- /dev/null
++++ b/Assets/_Project/Scripts/Simulation/Player.meta
+@@ -0,0 +1,8 @@
++fileFormatVersion: 2
++guid: fb7462a258a0da24f9ca960fd6b64200
++folderAsset: yes
++DefaultImporter:
++  externalObjects: {}
++  userData: 
++  assetBundleName: 
++  assetBundleVariant: 
+diff --git a/Assets/_Project/Scripts/Simulation/Player/CompositePlayerSupport.cs b/Assets/_Project/Scripts/Simulation/Player/CompositePlayerSupport.cs
+new file mode 100644
+index 0000000..8c90a71
+--- /dev/null
++++ b/Assets/_Project/Scripts/Simulation/Player/CompositePlayerSupport.cs
+@@ -0,0 +1,81 @@
++using Galilego.Core;
++
++namespace Galilego.Simulation.Player
++{
++    /// <summary>
++    /// ╨Ъ╨╛╨╝╨┐╨╛╨╖╨╕╤В ╨╛╨┐╨╛╤А: ╤А╨╡╨╗╤М╨╡╤Д (╨░╨╜╨░╨╗╨╕╤В╨╕╤З╨╡╤Б╨║╨╕╨╣) ╨╕ ╨┐╨╛╤Б╤В╤А╨╛╨╣╨║╨╕ (╨╝╨╡╤И╨╡╨▓╤Л╨╡ ╨║╨╛╨╗╨╗╨░╨╣╨┤╨╡╤А╤Л).
++    /// ╨Я╨╛╨╗ тАФ ╤Б╨░╨╝╨░╤П ╨▓╤Л╤Б╨╛╨║╨░╤П ╨╕╨╖ ╨┤╨▓╤Г╤Е; ╨┐╨╛╤В╨╛╨╗╨╛╨║ ╨╕ ╤Б╤В╨╡╨╜╤Л тАФ ╤В╨╛╨╗╤М╨║╨╛ ╨┐╨╛╤Б╤В╤А╨╛╨╣╨║╨╕.
++    /// ╨Ш╨┤╨╡╨╜╤В╨╕╤Д╨╕╨║╨░╤В╨╛╤А╤Л ╨╕╤Б╤В╨╛╤З╨╜╨╕╨║╨╛╨▓: ╤А╨╡╨╗╤М╨╡╤Д тАФ TerrainSupport.SourceId, ╨┐╨╛╤Б╤В╤А╨╛╨╣╨║╨╕ тАФ
++    /// SiteBoxSupport.SourceIdBase + id ╨║╨╛╨╗╨╗╨░╨╣╨┤╨╡╤А╨░.
++    /// </summary>
++    public sealed class CompositePlayerSupport : IPlayerSupport
++    {
++        public IPlayerSupport Terrain;
++        public IPlayerSupport Sites;
++
++        public bool Floor(Vector3d from, double maxDrop, out double height, out Vector3d normal, out int sourceId)
++        {
++            double terrainHeight = 0d;
++            Vector3d terrainNormal = new Vector3d(0d, 0d, 1d);
++            int terrainId = -1;
++            bool hasTerrain = false;
++            if (Terrain != null)
++            {
++                hasTerrain = Terrain.Floor(from, maxDrop, out terrainHeight, out terrainNormal, out terrainId);
++            }
++
++            double siteHeight = 0d;
++            Vector3d siteNormal = new Vector3d(0d, 0d, 1d);
++            int siteId = -1;
++            bool hasSite = false;
++            if (Sites != null)
++            {
++                hasSite = Sites.Floor(from, maxDrop, out siteHeight, out siteNormal, out siteId);
++            }
++
++            if (hasSite && (!hasTerrain || siteHeight >= terrainHeight))
++            {
++                height = siteHeight;
++                normal = siteNormal;
++                sourceId = siteId;
++                return true;
++            }
++
++            if (hasTerrain)
++            {
++                height = terrainHeight;
++                normal = terrainNormal;
++                sourceId = terrainId;
++                return true;
++            }
++
++            height = 0d;
++            normal = new Vector3d(0d, 0d, 1d);
++            sourceId = -1;
++            return false;
++        }
++
++        public bool Ceiling(Vector3d head, double maxRise, out double height)
++        {
++            if (Sites != null)
++            {
++                return Sites.Ceiling(head, maxRise, out height);
++            }
++
++            height = 0d;
++            return false;
++        }
++
++        public bool Sweep(Vector3d from, Vector3d to, double radius, out Vector3d normal, out double fraction)
++        {
++            if (Sites != null)
++            {
++                return Sites.Sweep(from, to, radius, out normal, out fraction);
++            }
++
++            normal = new Vector3d(0d, 0d, 1d);
++            fraction = 1d;
++            return false;
++        }
++    }
++}
+diff --git a/Assets/_Project/Scripts/Simulation/Player/CompositePlayerSupport.cs.meta b/Assets/_Project/Scripts/Simulation/Player/CompositePlayerSupport.cs.meta
+new file mode 100644
+index 0000000..88e4141
+--- /dev/null
++++ b/Assets/_Project/Scripts/Simulation/Player/CompositePlayerSupport.cs.meta
+@@ -0,0 +1,2 @@
++fileFormatVersion: 2
++guid: 36465ea3fc0b44c5a7ab437f3101a269
+diff --git a/Assets/_Project/Scripts/Simulation/Player/PlayerSurfaceController.cs b/Assets/_Project/Scripts/Simulation/Player/PlayerSurfaceController.cs
+index 0d46255..ca104eb 100644
+--- a/Assets/_Project/Scripts/Simulation/Player/PlayerSurfaceController.cs
++++ b/Assets/_Project/Scripts/Simulation/Player/PlayerSurfaceController.cs
+@@ -57,7 +57,7 @@ namespace Galilego.Simulation.Player
+ 
+         private static readonly Vector3d Up = new Vector3d(0d, 0d, 1d);
+ 
+-        public void Step(IPlayerSupport support, double dt, Vector3d intentVelocity)
++        public void Step(IPlayerSupport support, double dt, Vector3d intentVelocity, Vector3d extraAcceleration = default)
+         {
+             if (support == null)
+             {
+@@ -70,6 +70,12 @@ namespace Galilego.Simulation.Player
+             }
+ 
+             Blocked = false;
++            if (extraAcceleration.SqrMagnitude > 0d)
++            {
++                // ╨Ф╨╛╨┐╨╛╨╗╨╜╨╕╤В╨╡╨╗╤М╨╜╨╛╨╡ ╤Г╤Б╨║╨╛╤А╨╡╨╜╨╕╨╡ (╨┤╨╢╨╡╤В╨┐╨░╨║): ╨┤╨╛╨▒╨░╨▓╨╗╤П╨╡╤В╤Б╤П ╨║ ╤Б╨║╨╛╤А╨╛╤Б╤В╨╕ ╨┤╨╛ ╤И╨░╨│╨░.
++                Velocity += extraAcceleration * dt;
++            }
++
+             Vector3d intent = new Vector3d(intentVelocity.X, intentVelocity.Y, 0d);
+ 
+             if (Airborne)
+diff --git a/Assets/_Project/Scripts/Simulation/Player/PlayerWalkProbe.cs b/Assets/_Project/Scripts/Simulation/Player/PlayerWalkProbe.cs
+new file mode 100644
+index 0000000..ccc8ce7
+--- /dev/null
++++ b/Assets/_Project/Scripts/Simulation/Player/PlayerWalkProbe.cs
+@@ -0,0 +1,97 @@
++using System.Globalization;
++using Galilego.Core;
++using Galilego.Simulation.ContactZone;
++using Galilego.Universe;
++using UnityEngine;
++
++namespace Galilego.Simulation.Player
++{
++    /// <summary>
++    /// ╨Я╤А╨╛╨▒╨░ ╤Е╨╛╨┤╤М╨▒╤Л ╨┤╨╗╤П ╤А╨╡╨│╤А╨╡╤Б╤Б╨░: ╨╕╨│╤А╨╛╨║ ╨╕╨┤╤С╤В ╨╜╨░ ╨▓╨╛╤Б╤В╨╛╨║ ╨╖╨░╨┤╨░╨╜╨╜╨╛╨╣ ╤Б╨║╨╛╤А╨╛╤Б╤В╤М╤О,
++    /// ╤А╨░╨╖ ╨▓ ╤Б╨╡╨║╤Г╨╜╨┤╤Г ╨╗╨╛╨│╨╕╤А╤Г╨╡╤В╤Б╤П ╨╡╨│╨╛ ╨┐╨╛╨╖╨╕╤Ж╨╕╤П ╨▓ ╨║╨░╨┤╤А╨╡ ╨╝╨╡╤Б╤В╨░ (╤П╨║╨╛╤А╤М ╨╜╨░ ╤Б╤В╨░╤А╤В╨╡).
++    /// ╨Ю╨┤╨╕╨╜╨░╨║╨╛╨▓╨░╤П ╨┐╤А╨╛╨▒╨░ ╨┤╨╛ ╨╕ ╨┐╨╛╤Б╨╗╨╡ ╨╕╨╜╤В╨╡╨│╤А╨░╤Ж╨╕╨╕ PlayerSurfaceController: ╨┤╨╛╨┐╤Г╤Б╨║
++    /// ╤А╨░╤Б╤Е╨╛╨╢╨┤╨╡╨╜╨╕╤П 1 ╨╝╨╝. ╨Р╨▓╤В╨╛╨▓╤Л╤Е╨╛╨┤ ╨╕╨╖ Play тАФ ╤В╨╛╨╗╤М╨║╨╛ ╨▓ ╤А╨╡╨┤╨░╨║╤В╨╛╤А╨╡.
++    /// </summary>
++    public sealed class PlayerWalkProbe : MonoBehaviour
++    {
++        public SimulationRunner Runner;
++        public bool Active = true;
++        public double WalkSpeed = 3d;
++        public float DurationSeconds = 60f;
++        public bool Trace = true;
++
++        private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
++
++        private SiteFrame frame;
++        private Vector3d walkDirection;
++        private float elapsed;
++        private int nextLog = 1;
++        private bool started;
++
++        private void Start()
++        {
++            if (!Active || Runner == null || Runner.DominantBody == null)
++            {
++                enabled = false;
++                return;
++            }
++
++            OrbitingBody body = Runner.DominantBody;
++            if (body.Terrain == null)
++            {
++                body.Terrain = new SphericalTerrain();
++            }
++
++            body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d center, out _);
++            Vector3d up = (Runner.PlayerPosition - center).Normalized;
++            Vector3d east = Vector3d.Cross(body.SpinAxis, up);
++            if (east.SqrMagnitude < 1e-12d)
++            {
++                east = Vector3d.Cross(new Vector3d(0d, 0d, 1d), up);
++            }
++
++            walkDirection = east.Normalized;
++            frame = SiteFrame.Anchor(body, body.Terrain, Runner.PlayerPosition, Runner.TimeSeconds);
++            SimulationRunner.WalkTrace = Trace;
++            started = true;
++            Debug.Log("[WalkProbe] ╤Б╤В╨░╤А╤В: " + WalkSpeed.ToString("F2", Inv) + " ╨╝/╤Б ╨╜╨░ ╨▓╨╛╤Б╤В╨╛╨║, "
++                + DurationSeconds.ToString("F0", Inv) + " ╤Б");
++        }
++
++        private void Update()
++        {
++            if (!started)
++            {
++                return;
++            }
++
++            Runner.PlayerIntent.WalkDirection = walkDirection;
++            Runner.PlayerIntent.WalkSpeed = WalkSpeed;
++            elapsed += Time.deltaTime;
++
++            if (elapsed >= nextLog)
++            {
++                nextLog = Mathf.FloorToInt(elapsed) + 1;
++                SiteFrame now = frame.At(Runner.TimeSeconds);
++                now.ToLocal(Runner.PlayerPosition, Runner.PlayerVelocity, out Vector3d local, out _);
++                Debug.Log("[WalkProbe] t=" + nextLog
++                    + " ts=" + Runner.TimeSeconds.ToString("F3", Inv)
++                    + " local=(" + local.X.ToString("F6", Inv)
++                    + ", " + local.Y.ToString("F6", Inv)
++                    + ", " + local.Z.ToString("F6", Inv) + ")"
++                    + " pp=" + Runner.PlayerPosition
++                    + " org=" + now.Origin
++                    + (!string.IsNullOrEmpty(Runner.LastWalkDebug) ? " | " + Runner.LastWalkDebug : " | (╨╜╨╡╤В ╤И╨░╨│╨░)"));
++            }
++
++            if (elapsed >= DurationSeconds)
++            {
++                Debug.Log("[WalkProbe] DONE");
++                enabled = false;
++#if UNITY_EDITOR
++                UnityEditor.EditorApplication.isPlaying = false;
++#endif
++            }
++        }
++    }
++}
+diff --git a/Assets/_Project/Scripts/Simulation/Player/PlayerWalkProbe.cs.meta b/Assets/_Project/Scripts/Simulation/Player/PlayerWalkProbe.cs.meta
+new file mode 100644
+index 0000000..4fb46be
+--- /dev/null
++++ b/Assets/_Project/Scripts/Simulation/Player/PlayerWalkProbe.cs.meta
+@@ -0,0 +1,2 @@
++fileFormatVersion: 2
++guid: b171d7b3c1ce4207afa8fe787260d29d
+diff --git a/Assets/_Project/Scripts/Simulation/Player/SiteBoxSupport.cs b/Assets/_Project/Scripts/Simulation/Player/SiteBoxSupport.cs
+new file mode 100644
+index 0000000..81c2eea
+--- /dev/null
++++ b/Assets/_Project/Scripts/Simulation/Player/SiteBoxSupport.cs
+@@ -0,0 +1,204 @@
++using Galilego.Core;
++using Galilego.Simulation.ContactZone;
++using Galilego.Universe;
++using UnityEngine;
++
++namespace Galilego.Simulation.Player
++{
++    /// <summary>
++    /// ╨Ю╨┐╨╛╤А╨░ тАФ ╨╝╨╡╤И╨╡╨▓╤Л╨╡ ╨║╨╛╨╗╨╗╨░╨╣╨┤╨╡╤А╤Л ╨┐╨╛╤Б╤В╤А╨╛╨╡╨║ (SiteBox) ╨▓ render-╨┐╤А╨╛╤Б╤В╤А╨░╨╜╤Б╤В╨▓╨╡:
++    /// Floor тАФ ╨╗╤Г╤З ╨▓╨╜╨╕╨╖ ╨╛╤В ╤В╨╛╤З╨║╨╕ ╨╜╨╛╨│, Ceiling тАФ ╨╗╤Г╤З ╨▓╨▓╨╡╤А╤Е ╨╛╤В ╨│╨╛╨╗╨╛╨▓╤Л,
++    /// Sweep тАФ CapsuleCast ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В╨░╨╗╤М╨╜╨╛. ╨Т ╨╛╤В╨╗╨╕╤З╨╕╨╡ ╨╛╤В ╤Б╤В╨░╤А╨╛╨│╨╛ PushOutMesh,
++    /// ╨▓╨╡╤А╤В╨╕╨║╨░╨╗╤М ╨Э╨Х ╨╛╨▒╨╜╤Г╨╗╤П╨╡╤В╤Б╤П: ╨║╤А╤Л╤И╨╕ ╨╕ ╨▓╨╡╤А╤Е╨╜╨╕╨╡ ╨│╤А╨░╨╜╨╕ тАФ ╨┐╨╛╨╗╨╜╨╛╤Ж╨╡╨╜╨╜╨░╤П ╨╛╨┐╨╛╤А╨░.
++    /// ╨Э╨░╤Е╨╛╨┤╨╕╨╝ ╤В╨╛╨╗╤М╨║╨╛ ╨║╨╛╨╗╨╗╨░╨╣╨┤╨╡╤А╤Л SiteBox (╤В╨╡╤А╤А╨╡╨╣╨╜ ╨▓╨╡╨┤╤С╤В TerrainSupport).
++    /// </summary>
++    public sealed class SiteBoxSupport : IPlayerSupport
++    {
++        /// <summary>╨С╨░╨╖╨░ ╨╕╨┤╨╡╨╜╤В╨╕╤Д╨╕╨║╨░╤В╨╛╤А╨╛╨▓ ╨╛╨┐╨╛╤А-╨┐╨╛╤Б╤В╤А╨╛╨╡╨║ ╨▓ ╨║╨╛╨╝╨┐╨╛╨╖╨╕╤В╨╡.</summary>
++        public const int SourceIdBase = 100;
++
++        private SiteFrame frame;
++        private Vector3 renderOrigin;
++        private Vector3 renderUp;
++        private Vector3 renderEast;
++        private Vector3 renderNorth;
++        private bool ready;
++
++        // ╨б╤В╨░╨▒╨╕╨╗╤М╨╜╤Л╨╡ ╨╕╨┤╨╡╨╜╤В╨╕╤Д╨╕╨║╨░╤В╨╛╤А╤Л ╨┐╨╛╤Б╤В╤А╨╛╨╡╨║ (sourceId ╨┤╨╗╤П ╨┐╨╡╤А╨╡╨╜╨╛╤Б╨░/╨░╨┤╤А╨╡╤Б╨░╤Ж╨╕╨╕).
++        private readonly System.Collections.Generic.Dictionary<SiteBox, int> siteIds
++            = new System.Collections.Generic.Dictionary<SiteBox, int>();
++        private int nextSiteId = SourceIdBase;
++
++        private int SourceIdFor(SiteBox box)
++        {
++            if (!siteIds.TryGetValue(box, out int id))
++            {
++                id = nextSiteId++;
++                siteIds.Add(box, id);
++            }
++
++            return id;
++        }
++
++        public void SetFrame(SiteFrame siteFrame)
++        {
++            frame = siteFrame;
++            renderOrigin = ToRender(Vector3d.Zero);
++            renderUp = Direction(new Vector3d(0d, 0d, 1d));
++            renderEast = Direction(new Vector3d(1d, 0d, 0d));
++            renderNorth = Direction(new Vector3d(0d, 1d, 0d));
++            ready = true;
++        }
++
++        private Vector3 ToRender(Vector3d local)
++        {
++            frame.ToWorld(local, Vector3d.Zero, out Vector3d world, out _);
++            return FloatingOrigin.ToRender(world);
++        }
++
++        private Vector3 Direction(Vector3d localDirection)
++        {
++            return (ToRender(localDirection) - ToRender(Vector3d.Zero)).normalized;
++        }
++
++        private Vector3 ToRenderPoint(Vector3d local)
++        {
++            return renderOrigin
++                + (renderEast * (float)local.X)
++                + (renderNorth * (float)local.Y)
++                + (renderUp * (float)local.Z);
++        }
++
++        public bool Floor(Vector3d from, double maxDrop, out double height, out Vector3d normal, out int sourceId)
++        {
++            height = 0d;
++            normal = new Vector3d(0d, 0d, 1d);
++            sourceId = -1;
++            if (!ready || !(maxDrop > 0d))
++            {
++                return false;
++            }
++
++            Vector3 origin = ToRenderPoint(from);
++            RaycastHit[] hits = Physics.RaycastAll(origin, -renderUp, (float)maxDrop, ~0, QueryTriggerInteraction.Ignore);
++            return TryPickFloor(hits, out height, out normal, out sourceId);
++        }
++
++        private bool TryPickFloor(RaycastHit[] hits, out double height, out Vector3d normal, out int sourceId)
++        {
++            height = 0d;
++            normal = new Vector3d(0d, 0d, 1d);
++            sourceId = -1;
++            bool found = false;
++            float bestDistance = float.PositiveInfinity;
++            for (int i = 0; i < hits.Length; i++)
++            {
++                RaycastHit hit = hits[i];
++                SiteBox box = hit.collider != null ? hit.collider.GetComponentInParent<SiteBox>() : null;
++                if (box == null || hit.distance >= bestDistance)
++                {
++                    continue;
++                }
++
++                bestDistance = hit.distance;
++                height = LocalHeight(hit.point);
++                normal = LocalDirection(hit.normal);
++                sourceId = SourceIdFor(box);
++                found = true;
++            }
++
++            return found;
++        }
++
++        public bool Ceiling(Vector3d head, double maxRise, out double height)
++        {
++            height = 0d;
++            if (!ready || !(maxRise > 0d))
++            {
++                return false;
++            }
++
++            Vector3 origin = ToRenderPoint(head);
++            RaycastHit[] hits = Physics.RaycastAll(origin, renderUp, (float)maxRise, ~0, QueryTriggerInteraction.Ignore);
++            bool found = false;
++            float best = float.PositiveInfinity;
++            for (int i = 0; i < hits.Length; i++)
++            {
++                RaycastHit hit = hits[i];
++                SiteBox box = hit.collider != null ? hit.collider.GetComponentInParent<SiteBox>() : null;
++                if (box == null || hit.distance >= best)
++                {
++                    continue;
++                }
++
++                best = hit.distance;
++                height = LocalHeight(hit.point);
++                found = true;
++            }
++
++            return found;
++        }
++
++        public bool Sweep(Vector3d from, Vector3d to, double radius, out Vector3d normal, out double fraction)
++        {
++            normal = new Vector3d(0d, 0d, 1d);
++            fraction = 1d;
++            if (!ready)
++            {
++                return false;
++            }
++
++            Vector3 p1 = ToRenderPoint(from);
++            Vector3 p2 = p1 + (renderUp * Mathf.Max(0.01f, (float)(PlayerSurfaceController.CapsuleHeight - (2d * radius))));
++            Vector3 delta = ToRenderPoint(to) - p1;
++            float distance = delta.magnitude;
++            if (distance < 1e-6f)
++            {
++                return false;
++            }
++
++            RaycastHit[] hits = Physics.CapsuleCastAll(p1, p2, (float)radius, delta / distance, distance, ~0, QueryTriggerInteraction.Ignore);
++            bool found = false;
++            float bestFraction = 1f;
++            Vector3 bestNormal = renderUp;
++            for (int i = 0; i < hits.Length; i++)
++            {
++                RaycastHit hit = hits[i];
++                SiteBox box = hit.collider != null ? hit.collider.GetComponentInParent<SiteBox>() : null;
++                if (box == null || hit.distance < 0f)
++                {
++                    continue;
++                }
++
++                float f = hit.distance / distance;
++                if (f < bestFraction)
++                {
++                    bestFraction = f;
++                    bestNormal = hit.normal;
++                    found = true;
++                }
++            }
++
++            if (found)
++            {
++                fraction = bestFraction;
++                normal = LocalDirection(bestNormal);
++            }
++
++            return found;
++        }
++
++        private double LocalHeight(Vector3 point)
++        {
++            return Vector3.Dot(point - renderOrigin, renderUp);
++        }
++
++        private Vector3d LocalDirection(Vector3 renderDirection)
++        {
++            return new Vector3d(
++                Vector3.Dot(renderDirection, renderEast),
++                Vector3.Dot(renderDirection, renderNorth),
++                Vector3.Dot(renderDirection, renderUp));
++        }
++    }
++}
+diff --git a/Assets/_Project/Scripts/Simulation/Player/SiteBoxSupport.cs.meta b/Assets/_Project/Scripts/Simulation/Player/SiteBoxSupport.cs.meta
+new file mode 100644
+index 0000000..93b3456
+--- /dev/null
++++ b/Assets/_Project/Scripts/Simulation/Player/SiteBoxSupport.cs.meta
+@@ -0,0 +1,2 @@
++fileFormatVersion: 2
++guid: d7cd807d9b5d4ada84916a747cab51b6
+diff --git a/Assets/_Project/Scripts/Simulation/Player/TerrainSupport.cs b/Assets/_Project/Scripts/Simulation/Player/TerrainSupport.cs
+new file mode 100644
+index 0000000..ecbb13b
+--- /dev/null
++++ b/Assets/_Project/Scripts/Simulation/Player/TerrainSupport.cs
+@@ -0,0 +1,76 @@
++using Galilego.Core;
++using Galilego.Simulation.ContactZone;
++using Galilego.Universe;
++
++namespace Galilego.Simulation.Player
++{
++    /// <summary>
++    /// ╨Ю╨┐╨╛╤А╨░ тАФ ╨░╨╜╨░╨╗╨╕╤В╨╕╤З╨╡╤Б╨║╨╕╨╣ ╤А╨╡╨╗╤М╨╡╤Д (ITerrainModel) ╨▓ ╨╗╨╛╨║╨░╨╗╤М╨╜╨╛╨╝ ╨║╨░╨┤╤А╨╡ ╨╝╨╡╤Б╤В╨░:
++    /// ╨▓╤Л╤Б╨╛╤В╨░ ╨╕ ╨╜╨╛╤А╨╝╨░╨╗╤М ╨╕╨╖ ╨Ю╨Ф╨Э╨Ю╨Щ ╤Д╤Г╨╜╨║╤Ж╨╕╨╕ ╤Д╨╛╤А╨╝╤Л (╨║╨╛╨╜╤В╤А╨░╨║╤В ITerrainModel).
++    /// ╨а╨╡╨│╤А╨╡╤Б╤Б ╨╜╨░ ╤А╨╛╨▓╨╜╨╛╨╝ ╨╝╨╡╤Б╤В╨╡ ╨╛╨▒╤П╨╖╨░╨╜ ╤Б╨╛╨▓╨┐╨░╤Б╤В╤М ╤Б╨╛ ╤Б╤В╨░╤А╤Л╨╝ GroundHeight/GetOutwardNormal.
++    /// </summary>
++    public sealed class TerrainSupport : IPlayerSupport
++    {
++        /// <summary>╨Ш╨┤╨╡╨╜╤В╨╕╤Д╨╕╨║╨░╤В╨╛╤А ╨╛╨┐╨╛╤А╤Л-╤А╨╡╨╗╤М╨╡╤Д╨░ ╨▓ ╨║╨╛╨╝╨┐╨╛╨╖╨╕╤В╨╡.</summary>
++        public const int SourceId = 0;
++
++        private OrbitingBody body;
++        private ITerrainModel terrain;
++        private SiteFrame frame;
++        private double time;
++
++        public void SetFrame(OrbitingBody body, ITerrainModel terrain, SiteFrame frame, double time)
++        {
++            this.body = body;
++            this.terrain = terrain;
++            this.frame = frame;
++            this.time = time;
++        }
++
++        public bool Floor(Vector3d from, double maxDrop, out double height, out Vector3d normal, out int sourceId)
++        {
++            height = 0d;
++            normal = new Vector3d(0d, 0d, 1d);
++            sourceId = SourceId;
++            if (body == null || terrain == null || frame == null)
++            {
++                return false;
++            }
++
++            // ╨Ы╨░╤В╨╡╤А╨░╨╗╤М╨╜╨░╤П ╤В╨╛╤З╨║╨░ ╨║╨░╨┤╤А╨░ тЖТ ╨╝╨╕╤А тЖТ lat/lon тЖТ ╨▓╤Л╤Б╨╛╤В╨░ ╤В╨╛╨╣ ╨╢╨╡ ╤Д╤Г╨╜╨║╤Ж╨╕╨╕, ╤З╤В╨╛ ╤Г ╤Д╨╕╨╖╨╕╨║╨╕.
++            Vector3d lateral = frame.Origin + (frame.East * from.X) + (frame.North * from.Y);
++            body.EvaluateWorldState(time, out Vector3d center, out _);
++            Vector3d radial = (lateral - center).Normalized;
++            Vector3d sample = center + (radial * body.Radius);
++            body.SurfaceLatLonAt(sample, time, out double latDeg, out double lonDeg);
++            double h = terrain.GetHeightMeters(body, latDeg * (System.Math.PI / 180d), lonDeg * (System.Math.PI / 180d));
++            Vector3d surface = center + (radial * (body.Radius + h));
++            double localHeight = Vector3d.Dot(surface - frame.Origin, frame.Up);
++            if (localHeight > from.Z + 1e-9d || localHeight < from.Z - maxDrop)
++            {
++                return false;
++            }
++
++            height = localHeight;
++            Vector3d n = terrain.GetOutwardNormal(body, surface - center, time).Normalized;
++            normal = new Vector3d(
++                Vector3d.Dot(n, frame.East),
++                Vector3d.Dot(n, frame.North),
++                Vector3d.Dot(n, frame.Up));
++            return true;
++        }
++
++        public bool Ceiling(Vector3d head, double maxRise, out double height)
++        {
++            height = 0d;
++            return false;
++        }
++
++        public bool Sweep(Vector3d from, Vector3d to, double radius, out Vector3d normal, out double fraction)
++        {
++            normal = new Vector3d(0d, 0d, 1d);
++            fraction = 1d;
++            return false;
++        }
++    }
++}
+diff --git a/Assets/_Project/Scripts/Simulation/Player/TerrainSupport.cs.meta b/Assets/_Project/Scripts/Simulation/Player/TerrainSupport.cs.meta
+new file mode 100644
+index 0000000..d1eb9f7
+--- /dev/null
++++ b/Assets/_Project/Scripts/Simulation/Player/TerrainSupport.cs.meta
+@@ -0,0 +1,2 @@
++fileFormatVersion: 2
++guid: 2c481ed76572481599ebe89b84729133
+diff --git a/Assets/_Project/Scripts/Simulation/SimulationRunner.cs b/Assets/_Project/Scripts/Simulation/SimulationRunner.cs
+index 6c8a8a3..9602ccd 100644
+--- a/Assets/_Project/Scripts/Simulation/SimulationRunner.cs
++++ b/Assets/_Project/Scripts/Simulation/SimulationRunner.cs
+@@ -4,6 +4,7 @@ using Galilego.Core;
+ using Galilego.Debris;
+ using Galilego.Events;
+ using Galilego.Simulation.ContactZone;
++using Galilego.Simulation.Player;
+ using Galilego.Spacecraft;
+ using UnityEngine;
+ using Ship = Galilego.Spacecraft.Spacecraft;
+@@ -258,6 +259,19 @@ namespace Galilego.Universe
+         /// <summary>╨и╨░╨│ ╨║╨╛╤А╨░╨▒╨╗╤П: ╨┐╨╛╨╗╤С╤В, ╨┐╨╛╤Б╨░╨┤╨║╨░, ╤Б╨╛╨▒╤Л╤В╨╕╤П. ╨Т╤Б╤П ╨╗╨╛╨│╨╕╨║╨░ ╤Б╨╛╤Б╤В╨╛╤П╨╜╨╕╤П тАФ ╤В╨░╨╝.</summary>
+         private VesselStep step;
+         private DebrisUpdater debrisUpdater;
++
++        /// <summary>╨Ю╤В╨╗╨░╨┤╨║╨░ ╤Е╨╛╨┤╤М╨▒╤Л: ╤Б╨╡╨║╤Г╨╜╨┤╨╜╤Л╨╡ ╨╗╨╛╨│╨╕ ╤И╨░╨│╨░ ╨╕╨│╤А╨╛╨║╨░ (╨▓╨║╨╗╤О╤З╨░╨╡╤В╤Б╤П ╨╕╨╖╨▓╨╜╨╡).</summary>
++        public static bool WalkTrace;
++
++        /// <summary>╨б╨╜╨╕╨╝╨╛╨║ ╨┐╨╛╤Б╨╗╨╡╨┤╨╜╨╡╨│╨╛ ╤И╨░╨│╨░ ╤Е╨╛╨┤╤М╨▒╤Л (╤В╨╛╨╗╤М╨║╨╛ ╨┐╤А╨╕ WalkTrace).</summary>
++        public string LastWalkDebug;
++
++        // ╨е╨╛╨┤╤М╨▒╨░ ╨╕╨│╤А╨╛╨║╨░: ╤З╨╕╤Б╤В╤Л╨╣ ╨║╨╛╨╜╤В╤А╨╛╨╗╨╗╨╡╤А ╨╛╨┐╨╛╤А + ╨╗╨╛╨║╨░╨╗╤М╨╜╤Л╨╣ ╨║╨░╨┤╤А ╨╝╨╡╤Б╤В╨░.
++        private readonly PlayerSurfaceController playerController = new PlayerSurfaceController();
++        private readonly TerrainSupport terrainSupport = new TerrainSupport();
++        private readonly SiteBoxSupport siteSupport = new SiteBoxSupport();
++        private readonly CompositePlayerSupport playerSupport = new CompositePlayerSupport();
++        private static readonly SphericalTerrain playerFallbackTerrain = new SphericalTerrain();
+         private bool playerAirborne;
+         private bool playerJumpQueued;
+         private bool jetpackToggleQueued;
+@@ -1001,6 +1015,8 @@ namespace Galilego.Universe
+             }
+         }
+ 
++        // ╨з╨╕╤Б╤В╤Л╨╣ ╨║╨╛╨╜╤В╤А╨╛╨╗╨╗╨╡╤А ╤Е╨╛╨┤╤М╨▒╤Л: ╨▓╨╡╤А╤В╨╕╨║╨░╨╗╤М╨╜╨░╤П ╨╛╨┐╨╛╤А╨░, ╤И╨░╨│, ╨╜╨░╨║╨╗╨╛╨╜, ╨┐╨╛╤В╨╛╨╗╨╛╨║, ╤Г╨│╨╗╤Л.
++        // ╨а╨░╨▒╨╛╤В╨░╨╡╤В ╨▓ ╨╗╨╛╨║╨░╨╗╤М╨╜╨╛╨╝ ╨║╨░╨┤╤А╨╡ ╨╝╨╡╤Б╤В╨░ (╨╝╨╡╤В╤А╤Л), ╨╛╤А╨▒╨╕╤В╨░╨╗╤М╨╜╨╛╨╡ ╤Б╨╛╤Б╤В╨╛╤П╨╜╨╕╨╡ тАФ double-╨╝╨╕╤А.
+         private void StepPlayerSurface(double t, double dt, bool jumpRequested)
+         {
+             OrbitingBody body = DominantBody;
+@@ -1009,6 +1025,100 @@ namespace Galilego.Universe
+                 return;
+             }
+ 
++            body.EvaluateWorldState(t, out Vector3d bodyPos, out _);
++
++            Vector3d beforeWorld = PlayerPosition;
++            ITerrainModel playerTerrain = body.Terrain ?? playerFallbackTerrain;
++            SiteFrame frame = SiteFrame.Anchor(body, playerTerrain, PlayerPosition, t);
++            frame.ToLocal(PlayerPosition, PlayerVelocity, out Vector3d localPosition, out Vector3d localVelocity);
++            if (Time.frameCount % 120 == 0)
++            {
++                Debug.Log("[WS] t=" + t.ToString("F3") + " before=" + beforeWorld
++                    + " local=" + localPosition + " origin=" + frame.Origin);
++            }
++
++            playerController.Position = localPosition;
++            playerController.Velocity = localVelocity;
++            playerController.Airborne = playerAirborne;
++            Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
++            playerController.Gravity = Math.Max(0d, -Vector3d.Dot(gravity, frame.Up));
++
++            terrainSupport.SetFrame(body, playerTerrain, frame, t);
++            siteSupport.SetFrame(frame);
++            playerSupport.Terrain = terrainSupport;
++            playerSupport.Sites = siteSupport;
++
++            Vector3d walkWorld = PlayerIntent.WalkDirection * PlayerIntent.WalkSpeed;
++            Vector3d walkLocal = new Vector3d(
++                Vector3d.Dot(walkWorld, frame.East),
++                Vector3d.Dot(walkWorld, frame.North),
++                0d);
++            Vector3d jetpack = JetpackActive ? PlayerIntent.JetpackAccel : Vector3d.Zero;
++            Vector3d jetpackLocal = new Vector3d(
++                Vector3d.Dot(jetpack, frame.East),
++                Vector3d.Dot(jetpack, frame.North),
++                Vector3d.Dot(jetpack, frame.Up));
++
++            playerController.Step(playerSupport, dt, walkLocal, jetpackLocal);
++
++            // ╨Т ╨╝╨╕╤А тАФ ╨║╨░╨┤╤А╨╛╨╝ ╨╜╨░ ╨Ъ╨Ю╨Э╨Х╨ж ╨┐╨╛╨┤╤И╨░╨│╨░ (frame.At(t+dt)): ╨║╨░╨┤╤А ╨╜╨░ ╨▓╤А╨╡╨╝╤П t
++            // ╨╛╤В╤Б╤В╨░╤С╤В ╨╛╤В ╨╛╤А╨▒╨╕╤В╨░╨╗╤М╨╜╨╛╨│╨╛ ╨┤╨▓╨╕╨╢╨╡╨╜╨╕╤П ╤В╨╡╨╗╨░ ╨╜╨░ v┬╖dt, ╨╕ ╨┐╤А╨╛╨╡╨║╤Ж╨╕╤П ╨╜╨░
++            // ╨┐╨╛╨▓╨╡╤А╤Е╨╜╨╛╤Б╤В╤М ╨▓ t+dt ╨╖╨░╨┐╨╡╨║╨░╨╗╨░ ╨▒╤Л ╤Н╤В╨╛╤В ╨╗╨░╨│ ╨▓ ╨┐╨╛╨╖╨╕╤Ж╨╕╤О ╨║╨░╨╢╨┤╤Л╨╣ ╨┐╨╛╨┤╤И╨░╨│.
++            double tEnd = t + dt;
++            frame.At(tEnd).ToWorld(playerController.Position, playerController.Velocity,
++                out Vector3d worldPosition, out Vector3d worldVelocity);
++            PlayerPosition = worldPosition;
++            PlayerVelocity = worldVelocity;
++            playerAirborne = playerController.Airborne;
++
++            LastWalkDebug = "t=" + t.ToString("F3") + " ts=" + TimeSeconds.ToString("F3")
++                + " lp=" + localPosition + " lv=" + localVelocity
++                + " air=" + playerAirborne + " gs=" + playerController.GroundSourceId
++                + " wp=" + PlayerPosition;
++
++            // ╨Ъ╨╛╨╗╨╗╨╕╨╖╨╕╤П ╤Б╤В╨▓╨╛╨╗╨╛╨▓ ╨┤╨╡╤А╨╡╨▓╤М╨╡╨▓ тАФ ╨║╨░╨║ ╤А╨░╨╜╤М╤И╨╡, ╨┐╨╛╤Б╨╗╨╡ ╤И╨░╨│╨░.
++            if (GroundDecorCollisionRegistry.TryResolve(body.Name, PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d treePushed))
++            {
++                PlayerPosition = treePushed;
++            }
++
++            // ╨Т╨╛╨┤╨░ ╨╕ ╨┐╤А╨╛╨╡╨║╤Ж╨╕╤П ╨╜╨░ ╨┐╨╛╨▓╨╡╤А╤Е╨╜╨╛╤Б╤В╤М тАФ ╨╜╨░ ╨Ъ╨Ю╨Э╨Х╨ж ╨┐╨╛╨┤╤И╨░╨│╨░ (t+dt), ╨║╨░╨║ ╤А╨░╨╜╤М╤И╨╡.
++            body.SurfaceLatLonAt(PlayerPosition, tEnd, out double newLat, out double newLon);
++            if (WaterQuery.IsWaterAt(body, newLat, newLon))
++            {
++                EnterWater(body, tEnd);
++                return;
++            }
++
++            // ╨Я╤А╨╛╨╡╨║╤Ж╨╕╤П ╨╜╨░ ╤А╨╡╨╗╤М╨╡╤Д тАФ ╤В╨╛╨╗╤М╨║╨╛ ╨║╨╛╨│╨┤╨░ ╨╕╨│╤А╨╛╨║ ╤Б╤В╨╛╨╕╤В ╨╜╨░ ╤А╨╡╨╗╤М╨╡╤Д╨╡ (╨╜╨╡ ╨╜╨░ ╨┐╨╛╤Б╤В╤А╨╛╨╣╨║╨╡):
++            // ╨║╤А╤Л╤И╨╕ ╨┤╨╡╤А╨╢╨░╤В ╨╗╨╛╨║╨░╨╗╤М╨╜╤Г╤О ╨▓╤Л╤Б╨╛╤В╤Г ╨║╨╛╨╜╤В╤А╨╛╨╗╨╗╨╡╤А╨░, ╨┐╤А╨╛╨╡╨║╤Ж╨╕╤П ╤Б╤В╤П╨╜╤Г╨╗╨░ ╨▒╤Л ╨╡╨│╨╛ ╨▓╨╜╨╕╨╖.
++            if (!playerAirborne && playerController.GroundSourceId == TerrainSupport.SourceId)
++            {
++                double newGround = GroundHeight(body, newLat, newLon);
++                body.EvaluateWorldState(tEnd, out Vector3d bodyPos3, out _);
++                Vector3d radial = PlayerPosition - bodyPos3;
++                PlayerPosition = bodyPos3 + (radial.Normalized * (body.Radius + newGround));
++            }
++
++            if (jumpRequested)
++            {
++                playerAirborne = true;
++                Vector3d normal = body.Terrain != null
++                    ? body.Terrain.GetOutwardNormal(body, PlayerPosition - bodyPos, t).Normalized
++                    : (PlayerPosition - bodyPos).Normalized;
++                PlayerVelocity += normal * PlayerJumpSpeed;
++            }
++        }
++
++        // ╨Ы╨Х╨У╨Р╨б╨Ш (╨▓╤А╨╡╨╝╨╡╨╜╨╜╤Л╨╣, ╨┤╨╗╤П ╤Б╨▓╨╡╤А╨║╨╕ ╤А╨╡╨│╤А╨╡╤Б╤Б╨░): ╤Б╤В╨░╤А╤Л╨╣ ╤И╨░╨│ ╤Е╨╛╨┤╤М╨▒╤Л ╨┐╨╛ ╤А╨╡╨╗╤М╨╡╤Д╤Г.
++        private void StepPlayerSurfaceLegacy(double t, double dt, bool jumpRequested)
++        {
++            OrbitingBody body = DominantBody;
++            if (body == null)
++            {
++                return;
++            }
++
+             body.EvaluateWorldState(t, out Vector3d bodyPos, out Vector3d bodyVel);
+ 
+             if (playerAirborne)
+diff --git a/baseline/player2/walk_after.txt b/baseline/player2/walk_after.txt
+new file mode 100644
+index 0000000..51fe91b
+--- /dev/null
++++ b/baseline/player2/walk_after.txt
+@@ -0,0 +1,33 @@
++[WalkProbe] t=30 ts=29.000 local=(86.999893, 0.000000, -0.003291) pp=(147451142994,696, 879848,467179954, 0) org=(147451142994,883, 879761,4674879, 0) | t=28,999 ts=29,000 lp=(7,79980788385907E-09, 0, 1,70698120316866E-11) lv=(2,99999283958949, 0, 6,85455772610893E-09) air=False gs=0 wp=(147451142994,696, 879848,467179987, 0)
++[WalkProbe] t=31 ts=30.000 local=(89.999242, 0.000000, -0.003565) pp=(147451142994,324, 910181,434148141, 0) org=(147451142994,525, 910091,435128688, 0) | t=29,999 ts=30,000 lp=(-1,80443286462394E-08, 0, -4,08488807496182E-11) lv=(2,99999233767049, 0, 8,81878179509465E-09) air=False gs=0 wp=(147451142994,324, 910181,434148182, 0)
++[WalkProbe] t=32 ts=31.000 local=(92.999895, 0.000000, -0.003793) pp=(147451142993,94, 940527,595928694, 0) org=(147451142994,154, 940434,596279255, 0) | t=30,999 ts=31,000 lp=(5,00584514327586E-09, 0, 1,17095308503156E-11) lv=(2,99999181798811, 0, 7,59201219859701E-09) air=False gs=0 wp=(147451142993,94, 940527,5959287, 0)
++[WalkProbe] t=33 ts=32.000 local=(95.999605, 0.000000, -0.004016) pp=(147451142993,543, 970864,231075611, 0) org=(147451142993,771, 970768,231740727, 0) | t=31,999 ts=32,000 lp=(-1,53667776881417E-08, 0, -3,71032420695268E-11) lv=(2,99999128165546, 0, 7,91107836271149E-09) air=False gs=0 wp=(147451142993,543, 970864,231075623, 0)
++[WalkProbe] t=34 ts=32.999 local=(98.996562, 0.000000, -0.004275) pp=(147451142993,134, 1001173,02059717, 0) org=(147451142993,376, 1001074,02433143, 0) | t=32,998 ts=32,999 lp=(1,42026252424483E-08, 0, 3,53611863315345E-11) lv=(2,99999072889172, 0, 7,96004665220423E-09) air=False gs=0 wp=(147451142993,134, 1001173,02059713, 0)
++[WalkProbe] t=35 ts=33.999 local=(101.997103, 0.000000, -0.004537) pp=(147451142992,712, 1031518,08716374, 0) org=(147451142992,969, 1031416,09038508, 0) | t=33,998 ts=33,999 lp=(-1,10594191880158E-08, 0, -2,83691252920602E-11) lv=(2,99999015586758, 0, 8,01025381875348E-09) air=False gs=0 wp=(147451142992,712, 1031518,08716378, 0)
++[WalkProbe] t=36 ts=35.000 local=(104.998847, 0.000000, -0.004815) pp=(147451142992,277, 1061875,30136812, 0) org=(147451142992,549, 1061770,30287466, 0) | t=34,999 ts=35,000 lp=(-2,44471323549989E-08, 0, -6,45538519326674E-11) lv=(2,99998957026706, 0, 8,44717311203336E-09) air=False gs=0 wp=(147451142992,277, 1061875,30136814, 0)
++[WalkProbe] t=37 ts=36.000 local=(107.999629, 0.000000, -0.005089) pp=(147451142991,829, 1092222,79488811, 0) org=(147451142992,117, 1092114,79564383, 0) | t=35,999 ts=36,000 lp=(-1,18743190330147E-08, 0, -3,22495569682925E-11) lv=(2,99998896328762, 0, 7,7316387805948E-09) air=False gs=0 wp=(147451142991,829, 1092222,79488814, 0)
++[WalkProbe] t=38 ts=36.999 local=(110.997978, 0.000000, -0.005396) pp=(147451142991,37, 1122545,69221403, 0) org=(147451142991,674, 1122434,69465325, 0) | t=36,998 ts=36,999 lp=(-3,51572902404683E-08, 0, -9,81309817120128E-11) lv=(2,99998834455994, 0, 8,85580096234018E-09) air=False gs=0 wp=(147451142991,37, 1122545,69221402, 0)
++[WalkProbe] t=39 ts=37.999 local=(113.997793, 0.000000, -0.005687) pp=(147451142990,897, 1152883,41660438, 0) org=(147451142991,218, 1152769,41926307, 0) | t=37,998 ts=37,999 lp=(7,45054998560693E-09, 0, 2,13575099295844E-11) lv=(2,99998770541286, 0, 6,68519358967834E-09) air=False gs=0 wp=(147451142990,897, 1152883,41660437, 0)
++[WalkProbe] t=40 ts=38.999 local=(116.996915, 0.000000, -0.005973) pp=(147451142990,412, 1183214,14746777, 0) org=(147451142990,75, 1183097,15104166, 0) | t=38,998 ts=38,999 lp=(3,07335119690938E-08, 0, 9,04141301928482E-11) lv=(2,99998704820328, 0, 8,48159569660778E-09) air=False gs=0 wp=(147451142990,412, 1183214,14746772, 0)
++[WalkProbe] t=41 ts=39.999 local=(119.997090, 0.000000, -0.006305) pp=(147451142989,914, 1213555,52753271, 0) org=(147451142990,27, 1213435,53097019, 0) | t=39,998 ts=39,999 lp=(1,09429904406744E-08, 0, 3,30176669763953E-11) lv=(2,9999863772818, 0, 6,86456800950974E-09) air=False gs=0 wp=(147451142989,914, 1213555,52753275, 0)
++[WalkProbe] t=42 ts=40.999 local=(122.998105, 0.000000, -0.006623) pp=(147451142989,404, 1243905,41168521, 0) org=(147451142989,778, 1243782,41414752, 0) | t=40,998 ts=40,999 lp=(4,40047812148583E-08, 0, 1,36089677003168E-10) lv=(2,99998568558999, 0, 9,29584197291444E-09) air=False gs=0 wp=(147451142989,404, 1243905,41168518, 0)
++[WalkProbe] t=43 ts=41.999 local=(125.996792, 0.000000, -0.006945) pp=(147451142988,881, 1274231,75541437, 0) org=(147451142989,273, 1274105,75923275, 0) | t=41,998 ts=41,999 lp=(1,16414737677133E-08, 0, 3,68792127339351E-11) lv=(2,99998498116784, 0, 7,58369602706088E-09) air=False gs=0 wp=(147451142988,881, 1274231,75541444, 0)
++[WalkProbe] t=44 ts=42.999 local=(128.997297, 0.000000, -0.007279) pp=(147451142988,346, 1304576,50015681, 0) org=(147451142988,757, 1304447,50351509, 0) | t=42,998 ts=42,999 lp=(4,88941780100839E-09, 0, 1,5857821023888E-11) lv=(2,99998425472881, 0, 6,71731481723115E-09) air=False gs=0 wp=(147451142988,346, 1304576,50015688, 0)
++[WalkProbe] t=45 ts=44.000 local=(131.999914, 0.000000, -0.007619) pp=(147451142987,797, 1334942,63711327, 0) org=(147451142988,228, 1334810,63790043, 0) | t=43,999 ts=44,000 lp=(-2,3050106788057E-08, 0, -7,64963116239022E-11) lv=(2,99998351556948, 0, 6,57907246216782E-09) air=False gs=0 wp=(147451142987,797, 1334942,63711327, 0)
++[WalkProbe] t=46 ts=45.000 local=(134.998769, 0.000000, -0.007975) pp=(147451142987,237, 1365270,69195124, 0) org=(147451142987,687, 1365135,69393324, 0) | t=44,999 ts=45,000 lp=(-2,00233200263128E-08, 0, -6,7959613014058E-11) lv=(2,99998275804386, 0, 7,15970523319787E-09) air=False gs=0 wp=(147451142987,237, 1365270,69195128, 0)
++[WalkProbe] t=47 ts=46.000 local=(137.998454, 0.000000, -0.008347) pp=(147451142986,664, 1395607,17821583, 0) org=(147451142987,134, 1395469,18056346, 0) | t=45,998 ts=46,000 lp=(1,46682422742119E-08, 0, 5,08892402372993E-11) lv=(2,9999819834575, 0, 7,44055808285515E-09) air=False gs=0 wp=(147451142986,664, 1395607,17821582, 0)
++[WalkProbe] t=48 ts=47.000 local=(140.998874, 0.000000, -0.008674) pp=(147451142986,078, 1425951,10355932, 0) org=(147451142986,569, 1425810,10554012, 0) | t=46,999 ts=47,000 lp=(-5,30850532485901E-08, 0, -1,88170982567073E-10) lv=(2,99998119146533, 0, 7,58065027244015E-09) air=False gs=0 wp=(147451142986,078, 1425951,10355936, 0)
++[WalkProbe] t=49 ts=48.000 local=(143.998475, 0.000000, -0.009089) pp=(147451142985,479, 1456286,73715585, 0) org=(147451142985,991, 1456142,73959187, 0) | t=47,999 ts=48,000 lp=(1,62980382643664E-08, 0, 5,89999338626221E-11) lv=(2,99998038007259, 0, 6,873618105252E-09) air=False gs=0 wp=(147451142985,479, 1456286,73715583, 0)
++[WalkProbe] t=50 ts=48.999 local=(146.996854, 0.000000, -0.009474) pp=(147451142984,869, 1486610,02249937, 0) org=(147451142985,402, 1486463,02661381, 0) | t=48,998 ts=48,999 lp=(3,23632384966007E-08, 0, 1,19594070768601E-10) lv=(2,99997955681548, 0, 6,90711716121173E-09) air=False gs=0 wp=(147451142984,869, 1486610,02249932, 0)
++[WalkProbe] t=51 ts=49.999 local=(149.996723, 0.000000, -0.009839) pp=(147451142984,245, 1516948,38359007, 0) org=(147451142984,801, 1516798,38789641, 0) | t=49,998 ts=49,999 lp=(-5,19208644277138E-08, 0, -1,95777566498255E-10) lv=(2,99997871429614, 0, 7,87497484930344E-09) air=False gs=0 wp=(147451142984,245, 1516948,38359007, 0)
++[WalkProbe] t=52 ts=51.000 local=(152.998540, 0.000000, -0.010242) pp=(147451142983,608, 1547306,45932047, 0) org=(147451142984,187, 1547153,4618725, 0) | t=50,998 ts=51,000 lp=(9,31315686565535E-10, 0, 3,58189131183031E-12) lv=(2,99997785186239, 0, 7,77161871315379E-09) air=False gs=0 wp=(147451142983,608, 1547306,45932037, 0)
++[WalkProbe] t=53 ts=51.999 local=(155.997851, 0.000000, -0.010654) pp=(147451142982,96, 1577639,16807671, 0) org=(147451142983,561, 1577483,17138348, 0) | t=51,998 ts=51,999 lp=(1,90919659866283E-08, 0, 7,48675834702102E-11) lv=(2,9999769775767, 0, 1,1041495134867E-08) air=False gs=0 wp=(147451142982,96, 1577639,1680767, 0)
++[WalkProbe] t=54 ts=52.999 local=(158.997608, 0.000000, -0.011053) pp=(147451142982,298, 1607976,42772442, 0) org=(147451142982,923, 1607817,43134249, 0) | t=52,998 ts=52,999 lp=(-5,54132506036297E-08, 0, -2,21473368095346E-10) lv=(2,99997608300166, 0, 8,37132403848362E-09) air=False gs=0 wp=(147451142982,298, 1607976,42772453, 0)
++[WalkProbe] t=55 ts=53.999 local=(161.996942, 0.000000, -0.011478) pp=(147451142981,624, 1638309,43074708, 0) org=(147451142982,273, 1638147,43510148, 0) | t=53,998 ts=53,999 lp=(-5,28521179118205E-08, 0, -2,15219737253733E-10) lv=(2,99997517155765, 0, 7,21090477780184E-09) air=False gs=0 wp=(147451142981,624, 1638309,43074719, 0)
++[WalkProbe] t=56 ts=54.999 local=(164.996677, 0.000000, -0.011921) pp=(147451142980,938, 1668646,47796923, 0) org=(147451142981,61, 1668481,48266163, 0) | t=54,998 ts=54,999 lp=(1,35040611879878E-08, 0, 5,60075275488096E-11) lv=(2,99997424106488, 0, 6,57768149323057E-09) air=False gs=0 wp=(147451142980,938, 1668646,47796921, 0)
++[WalkProbe] t=57 ts=56.000 local=(167.999117, 0.000000, -0.012333) pp=(147451142980,238, 1699010,90352205, 0) org=(147451142980,935, 1698842,90585078, 0) | t=55,999 ts=56,000 lp=(4,21419707522771E-08, 0, 1,77959978938639E-10) lv=(2,99997329512507, 0, 6,67634364112657E-09) air=False gs=0 wp=(147451142980,238, 1699010,90352196, 0)
++[WalkProbe] t=58 ts=57.000 local=(170.998340, 0.000000, -0.012792) pp=(147451142979,527, 1729342,80804699, 0) org=(147451142980,249, 1729171,81123158, 0) | t=56,999 ts=57,000 lp=(2,09545643679657E-08, 0, 9,00666720287081E-11) lv=(2,99997233432622, 0, 1,11085551642714E-08) air=False gs=0 wp=(147451142979,527, 1729342,80804695, 0)
++[WalkProbe] t=59 ts=57.999 local=(173.997466, 0.000000, -0.013243) pp=(147451142978,802, 1759673,74792165, 0) org=(147451142979,55, 1759499,7520618, 0) | t=57,999 ts=57,999 lp=(-2,02560722726507E-08, 0, -8,8590418737956E-11) lv=(2,99997135636284, 0, 6,58402665547342E-09) air=False gs=0 wp=(147451142978,802, 1759673,74792168, 0)
++[WalkProbe] t=60 ts=59.000 local=(176.998850, 0.000000, -0.013727) pp=(147451142978,065, 1790027,53351029, 0) org=(147451142978,839, 1789850,53635137, 0) | t=58,999 ts=59,000 lp=(-1,39697003703718E-09, 0, -6,21498948017239E-12) lv=(2,99997035842766, 0, 1,06596535418002E-08) air=False gs=0 wp=(147451142978,065, 1790027,53351038, 0)
++[WalkProbe] t=61 ts=60.000 local=(179.998946, 0.000000, -0.014182) pp=(147451142977,316, 1820368,29103961, 0) org=(147451142978,116, 1820188,29387161, 0) | t=59,999 ts=60,000 lp=(5,21535304241054E-08, 0, 2,35954727751526E-10) lv=(2,99996934658063, 0, 1,51978291132449E-08) air=False gs=0 wp=(147451142977,316, 1820368,29103954, 0)
++[WalkProbe] DONE
+diff --git a/baseline/player2/walk_before.txt b/baseline/player2/walk_before.txt
+new file mode 100644
+index 0000000..193f21f
+--- /dev/null
++++ b/baseline/player2/walk_before.txt
+@@ -0,0 +1,62 @@
++[WalkProbe] тХд╨СтХд╨ТтХитЦСтХд╨РтХд╨Т: 3.00 тХитХЭ/тХд╨С тХитХЬтХитЦС тХитЦУтХитХЫтХд╨СтХд╨ТтХитХЫтХитХС, 60 тХд╨С
++[WalkProbe] t=2 local=(2.998218, 0.000000, 0.000015)
++[WalkProbe] t=3 local=(5.998153, 0.000000, -0.000022)
++[WalkProbe] t=4 local=(8.999977, 0.000000, -0.000050)
++[WalkProbe] t=5 local=(11.997414, 0.000000, -0.000070)
++[WalkProbe] t=6 local=(14.999480, 0.000000, -0.000078)
++[WalkProbe] t=7 local=(17.997620, 0.000000, -0.000142)
++[WalkProbe] t=8 local=(20.998640, 0.000000, -0.000194)
++[WalkProbe] t=9 local=(23.997667, 0.000000, -0.000238)
++[WalkProbe] t=10 local=(26.995262, 0.000000, -0.000337)
++[WalkProbe] t=11 local=(29.997544, 0.000000, -0.000390)
++[WalkProbe] t=12 local=(32.999053, 0.000000, -0.000465)
++[WalkProbe] t=13 local=(35.998172, 0.000000, -0.000566)
++[WalkProbe] t=14 local=(38.998542, 0.000000, -0.000685)
++[WalkProbe] t=15 local=(41.998235, 0.000000, -0.000767)
++[WalkProbe] t=16 local=(44.998060, 0.000000, -0.000869)
++[WalkProbe] t=17 local=(47.997905, 0.000000, -0.001024)
++[WalkProbe] t=18 local=(50.997829, 0.000000, -0.001138)
++[WalkProbe] t=19 local=(53.997924, 0.000000, -0.001274)
++[WalkProbe] t=20 local=(56.997913, 0.000000, -0.001432)
++[WalkProbe] t=21 local=(60.000109, 0.000000, -0.001574)
++[WalkProbe] t=22 local=(62.998265, 0.000000, -0.001749)
++[WalkProbe] t=23 local=(65.997221, 0.000000, -0.001913)
++[WalkProbe] t=24 local=(68.999000, 0.000000, -0.002058)
++[WalkProbe] t=25 local=(72.000330, 0.000000, -0.002257)
++[WalkProbe] t=26 local=(74.999513, 0.000000, -0.002454)
++[WalkProbe] t=27 local=(78.000287, 0.000000, -0.002667)
++[WalkProbe] t=28 local=(80.996710, 0.000000, -0.002857)
++[WalkProbe] t=29 local=(83.999712, 0.000000, -0.003073)
++[WalkProbe] t=30 local=(86.998234, 0.000000, -0.003298)
++[WalkProbe] t=31 local=(89.998461, 0.000000, -0.003538)
++[WalkProbe] t=32 local=(92.999304, 0.000000, -0.003796)
++[WalkProbe] t=33 local=(95.998361, 0.000000, -0.004022)
++[WalkProbe] t=34 local=(98.998809, 0.000000, -0.004294)
++[WalkProbe] t=35 local=(102.000008, 0.000000, -0.004523)
++[WalkProbe] t=36 local=(104.999237, 0.000000, -0.004813)
++[WalkProbe] t=37 local=(107.998003, 0.000000, -0.005097)
++[WalkProbe] t=38 local=(110.997596, 0.000000, -0.005398)
++[WalkProbe] t=39 local=(113.998138, 0.000000, -0.005685)
++[WalkProbe] t=40 local=(116.998747, 0.000000, -0.005963)
++[WalkProbe] t=41 local=(120.000292, 0.000000, -0.006317)
++[WalkProbe] t=42 local=(122.999097, 0.000000, -0.006617)
++[WalkProbe] t=43 local=(125.998948, 0.000000, -0.006932)
++[WalkProbe] t=44 local=(128.999415, 0.000000, -0.007265)
++[WalkProbe] t=45 local=(131.999910, 0.000000, -0.007619)
++[WalkProbe] t=46 local=(134.999121, 0.000000, -0.007973)
++[WalkProbe] t=47 local=(137.999755, 0.000000, -0.008338)
++[WalkProbe] t=48 local=(140.999890, 0.000000, -0.008698)
++[WalkProbe] t=49 local=(143.998351, 0.000000, -0.009060)
++[WalkProbe] t=50 local=(146.999690, 0.000000, -0.009454)
++[WalkProbe] t=51 local=(149.998438, 0.000000, -0.009827)
++[WalkProbe] t=52 local=(152.999339, 0.000000, -0.010236)
++[WalkProbe] t=53 local=(155.999755, 0.000000, -0.010639)
++[WalkProbe] t=54 local=(158.998694, 0.000000, -0.011076)
++[WalkProbe] t=55 local=(161.998183, 0.000000, -0.011499)
++[WalkProbe] t=56 local=(164.999189, 0.000000, -0.011931)
++[WalkProbe] t=57 local=(167.999902, 0.000000, -0.012326)
++[WalkProbe] t=58 local=(170.998178, 0.000000, -0.012793)
++[WalkProbe] t=59 local=(173.997967, 0.000000, -0.013239)
++[WalkProbe] t=60 local=(176.997886, 0.000000, -0.013705)
++[WalkProbe] t=61 local=(179.998641, 0.000000, -0.014155)
++[WalkProbe] DONE
+diff --git a/baseline/player2/walk_legacy_ts.txt b/baseline/player2/walk_legacy_ts.txt
+new file mode 100644
+index 0000000..c167c32
+--- /dev/null
++++ b/baseline/player2/walk_legacy_ts.txt
+@@ -0,0 +1,62 @@
++[WalkProbe] тХд╨СтХд╨ТтХитЦСтХд╨РтХд╨Т: 3.00 тХитХЭ/тХд╨С тХитХЬтХитЦС тХитЦУтХитХЫтХд╨СтХд╨ТтХитХЫтХитХС, 60 тХд╨С
++[WalkProbe] t=2 ts=0.999 local=(2.997444, 0.000000, 0.000015) pp=(147451142999,993, 30317,6344773271, 0) org=(147451142999,994, 30314,6370330583, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=3 ts=1.999 local=(5.997597, 0.000000, -0.000023) pp=(147451142999,974, 60658,6508868904, 0) org=(147451142999,975, 60652,653290019, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=4 ts=2.999 local=(8.997228, 0.000000, -0.000020) pp=(147451142999,942, 90994,3942570472, 0) org=(147451142999,944, 90985,3970295546, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=5 ts=4.000 local=(11.999412, 0.000000, -0.000069) pp=(147451142999,898, 121355,971776163, 0) org=(147451142999,902, 121343,97236436, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=6 ts=5.000 local=(14.998548, 0.000000, -0.000110) pp=(147451142999,841, 151686,697072447, 0) org=(147451142999,847, 151671,698525614, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=7 ts=6.000 local=(17.998505, 0.000000, -0.000141) pp=(147451142999,772, 182025,747433898, 0) org=(147451142999,78, 182007,748931078, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=8 ts=6.999 local=(20.998235, 0.000000, -0.000194) pp=(147451142999,689, 212362,51031986, 0) org=(147451142999,7, 212341,51208727, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=9 ts=8.000 local=(23.999279, 0.000000, -0.000267) pp=(147451142999,595, 242712,534431229, 0) org=(147451142999,609, 242688,535156354, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=10 ts=9.000 local=(26.999589, 0.000000, -0.000301) pp=(147451142999,487, 273055,149760444, 0) org=(147451142999,505, 273028,150177626, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=11 ts=9.999 local=(29.998032, 0.000000, -0.000390) pp=(147451142999,367, 303378,893838146, 0) org=(147451142999,39, 303348,89581479, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=12 ts=10.999 local=(32.997749, 0.000000, -0.000468) pp=(147451142999,235, 333715,504904459, 0) org=(147451142999,262, 333682,507166416, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=13 ts=12.000 local=(35.999442, 0.000000, -0.000564) pp=(147451142999,09, 364072,124866156, 0) org=(147451142999,122, 364036,125438652, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=14 ts=13.000 local=(38.999989, 0.000000, -0.000683) pp=(147451142998,932, 394417,146151746, 0) org=(147451142998,97, 394378,146181204, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=15 ts=14.000 local=(41.999904, 0.000000, -0.000763) pp=(147451142998,762, 424755,780862374, 0) org=(147451142998,805, 424713,780980692, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=16 ts=15.000 local=(44.999806, 0.000000, -0.000896) pp=(147451142998,579, 455094,272827777, 0) org=(147451142998,629, 455049,27305019, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=17 ts=15.999 local=(47.997440, 0.000000, -0.000994) pp=(147451142998,383, 485409,849610555, 0) org=(147451142998,44, 485361,852204561, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=18 ts=17.000 local=(51.000018, 0.000000, -0.001133) pp=(147451142998,175, 515775,407545042, 0) org=(147451142998,24, 515724,407567922, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=19 ts=17.999 local=(53.998183, 0.000000, -0.001274) pp=(147451142997,955, 546096,360295764, 0) org=(147451142998,027, 546042,362160669, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=20 ts=18.999 local=(56.998321, 0.000000, -0.001400) pp=(147451142997,721, 576437,255180878, 0) org=(147451142997,802, 576380,25691603, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=21 ts=20.000 local=(59.998966, 0.000000, -0.001577) pp=(147451142997,476, 606783,253294096, 0) org=(147451142997,565, 606723,254394581, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=22 ts=21.000 local=(62.998989, 0.000000, -0.001746) pp=(147451142997,217, 637123,013430728, 0) org=(147451142997,315, 637060,014518595, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=23 ts=21.999 local=(65.997663, 0.000000, -0.001881) pp=(147451142996,946, 667449,12404658, 0) org=(147451142997,054, 667383,126471065, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=24 ts=23.000 local=(68.999101, 0.000000, -0.002088) pp=(147451142996,662, 697803,186165504, 0) org=(147451142996,78, 697734,187164766, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=25 ts=24.000 local=(71.999229, 0.000000, -0.002261) pp=(147451142996,366, 728144,017396456, 0) org=(147451142996,494, 728072,018281418, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=26 ts=24.999 local=(74.998157, 0.000000, -0.002459) pp=(147451142996,057, 758472,731045235, 0) org=(147451142996,197, 758397,733017125, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=27 ts=26.000 local=(77.998749, 0.000000, -0.002673) pp=(147451142995,736, 788818,261680171, 0) org=(147451142995,886, 788740,26307589, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=28 ts=27.000 local=(80.999286, 0.000000, -0.002847) pp=(147451142995,402, 819163,225199098, 0) org=(147451142995,564, 819082,226075689, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=29 ts=27.999 local=(83.997605, 0.000000, -0.003081) pp=(147451142995,056, 849485,779694008, 0) org=(147451142995,23, 849401,782269641, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=30 ts=28.999 local=(86.997787, 0.000000, -0.003300) pp=(147451142994,696, 879827,150846107, 0) org=(147451142994,883, 879740,153260498, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=31 ts=29.999 local=(89.998333, 0.000000, -0.003569) pp=(147451142994,325, 910172,220293408, 0) org=(147451142994,525, 910082,222182722, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=32 ts=30.999 local=(92.998105, 0.000000, -0.003771) pp=(147451142993,94, 940509,459339989, 0) org=(147451142994,154, 940416,461480236, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=33 ts=32.000 local=(95.999281, 0.000000, -0.004018) pp=(147451142993,543, 970860,930329706, 0) org=(147451142993,771, 970764,931318691, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=34 ts=33.000 local=(98.998889, 0.000000, -0.004294) pp=(147451142993,134, 1001196,53087328, 0) org=(147451142993,376, 1001097,53228073, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=35 ts=33.999 local=(101.997417, 0.000000, -0.004536) pp=(147451142992,712, 1031521,23355203, 0) org=(147451142992,969, 1031419,23645895, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=36 ts=35.000 local=(104.999545, 0.000000, -0.004812) pp=(147451142992,277, 1061882,30099627, 0) org=(147451142992,549, 1061777,30180415, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=37 ts=35.999 local=(107.996322, 0.000000, -0.005106) pp=(147451142991,83, 1092189,2821421, 0) org=(147451142992,118, 1092081,28620433, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=38 ts=36.999 local=(110.997119, 0.000000, -0.005401) pp=(147451142991,37, 1122536,912206, 0) org=(147451142991,674, 1122425,91550459, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=39 ts=37.999 local=(113.998210, 0.000000, -0.005685) pp=(147451142990,897, 1152887,5245956, 0) org=(147451142991,218, 1152773,52683755, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=40 ts=39.000 local=(116.999639, 0.000000, -0.005988) pp=(147451142990,412, 1183241,58973972, 0) org=(147451142990,75, 1183124,59058951, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=41 ts=39.999 local=(119.997905, 0.000000, -0.006300) pp=(147451142989,914, 1213563,67690058, 0) org=(147451142990,27, 1213443,67952319, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=42 ts=41.000 local=(122.998488, 0.000000, -0.006621) pp=(147451142989,404, 1243909,19527985, 0) org=(147451142989,778, 1243786,19735937, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=43 ts=42.000 local=(125.998334, 0.000000, -0.006936) pp=(147451142988,881, 1274247,2652409, 0) org=(147451142989,273, 1274121,2675172, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=44 ts=43.000 local=(128.999097, 0.000000, -0.007267) pp=(147451142988,345, 1304594,58561113, 0) org=(147451142988,757, 1304465,58716891, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=45 ts=44.000 local=(131.998404, 0.000000, -0.007599) pp=(147451142987,797, 1334927,19458748, 0) org=(147451142988,228, 1334795,19688473, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=46 ts=44.999 local=(134.996877, 0.000000, -0.007957) pp=(147451142987,237, 1365251,38407324, 0) org=(147451142987,687, 1365116,38794669, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=47 ts=46.000 local=(137.999043, 0.000000, -0.008343) pp=(147451142986,663, 1395612,96103976, 0) org=(147451142987,134, 1395474,96279841, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=48 ts=46.999 local=(140.997670, 0.000000, -0.008682) pp=(147451142986,078, 1425938,74036903, 0) org=(147451142986,569, 1425797,74355383, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=49 ts=47.999 local=(143.996748, 0.000000, -0.009071) pp=(147451142985,48, 1456269,07077486, 0) org=(147451142985,992, 1456125,07493785, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=50 ts=49.000 local=(146.998600, 0.000000, -0.009462) pp=(147451142984,868, 1486627,54683221, 0) org=(147451142985,402, 1486480,5492009, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=51 ts=49.999 local=(149.997490, 0.000000, -0.009864) pp=(147451142984,245, 1516956,01427936, 0) org=(147451142984,801, 1516806,01781877, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=52 ts=50.999 local=(152.996896, 0.000000, -0.010223) pp=(147451142983,609, 1547289,65442253, 0) org=(147451142984,187, 1547136,65861858, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=53 ts=51.999 local=(155.996489, 0.000000, -0.010664) pp=(147451142982,96, 1577625,26658717, 0) org=(147451142983,561, 1577469,27125547, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=54 ts=53.000 local=(158.998251, 0.000000, -0.011049) pp=(147451142982,298, 1607982,79621241, 0) org=(147451142982,923, 1607823,79918713, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=55 ts=53.999 local=(161.997326, 0.000000, -0.011475) pp=(147451142981,624, 1638313,18686174, 0) org=(147451142982,273, 1638151,19083191, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=56 ts=54.999 local=(164.995362, 0.000000, -0.011931) pp=(147451142980,938, 1668633,07713846, 0) org=(147451142981,611, 1668468,08314585, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=57 ts=55.999 local=(167.996905, 0.000000, -0.012320) pp=(147451142980,239, 1698988,43114194, 0) org=(147451142980,936, 1698820,43568213, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=58 ts=56.999 local=(170.996359, 0.000000, -0.012808) pp=(147451142979,527, 1729322,65073802, 0) org=(147451142980,249, 1729151,6559039, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=59 ts=57.999 local=(173.995774, 0.000000, -0.013227) pp=(147451142978,803, 1759656,48200306, 0) org=(147451142979,551, 1759482,48783481, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=60 ts=58.999 local=(176.997294, 0.000000, -0.013710) pp=(147451142978,066, 1790011,63580346, 0) org=(147451142978,839, 1789834,64020046, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] t=61 ts=59.999 local=(179.996485, 0.000000, -0.014173) pp=(147451142977,316, 1820343,25813512, 0) org=(147451142978,116, 1820163,26342788, 0) | (тХитХЬтХитХбтХд╨Т тХд╨ШтХитЦСтХитФВтХитЦС)
++[WalkProbe] DONE
+diff --git a/baseline/player2/walk_new_ts.txt b/baseline/player2/walk_new_ts.txt
+new file mode 100644
+index 0000000..8e3f411
+--- /dev/null
++++ b/baseline/player2/walk_new_ts.txt
+@@ -0,0 +1,44 @@
++[WalkProbe] t=19 ts=17.999 local=(53.998361, 0.000000, -0.001273) pp=(147451142997,955, 546098,180570083, 0) org=(147451142998,027, 546044,182257267, 0) | t=17,999 ts=17,999 lp=(-1,99070016323734E-08, 0, -2,70662020249497E-11) lv=(2,99999724191533, 0, 7,23906225848919E-09) air=False gs=0 wp=(147451142997,955, 546098,180570083, 0)
++[WalkProbe] t=20 ts=19.000 local=(56.998616, 0.000000, -0.001430) pp=(147451142997,721, 576440,273844124, 0) org=(147451142997,802, 576383,275284383, 0) | t=18,999 ts=19,000 lp=(9,31321615731851E-09, 0, 1,33643519023334E-11) lv=(2,99999692684574, 0, 7,15709697236833E-09) air=False gs=0 wp=(147451142997,721, 576440,273844114, 0)
++[WalkProbe] t=21 ts=19.999 local=(59.998427, 0.000000, -0.001578) pp=(147451142997,476, 606777,864936258, 0) org=(147451142997,565, 606717,866575624, 0) | t=19,998 ts=19,999 lp=(7,79981766647687E-09, 0, 1,17802083230135E-11) lv=(2,99999659295657, 0, 1,08512992489165E-08) air=False gs=0 wp=(147451142997,476, 606777,864936284, 0)
++[WalkProbe] t=22 ts=20.999 local=(62.997436, 0.000000, -0.001751) pp=(147451142997,217, 637107,361182034, 0) org=(147451142997,315, 637044,363822743, 0) | t=20,998 ts=20,999 lp=(-1,62981245667365E-08, 0, -2,58431052380201E-11) lv=(2,99999624366561, 0, 7,51834910994731E-09) air=False gs=0 wp=(147451142997,217, 637107,361182023, 0)
++[WalkProbe] t=23 ts=21.999 local=(65.996288, 0.000000, -0.001885) pp=(147451142996,946, 667435,255773438, 0) org=(147451142997,054, 667369,259573711, 0) | t=21,998 ts=21,999 lp=(-4,6566064497225E-10, 0, -7,7344756052E-13) lv=(2,99999587985834, 0, 7,00523802334152E-09) air=False gs=0 wp=(147451142996,946, 667435,255773449, 0)
++[WalkProbe] t=24 ts=23.000 local=(68.999561, 0.000000, -0.002056) pp=(147451142996,662, 697807,879606129, 0) org=(147451142996,78, 697738,880145943, 0) | t=22,999 ts=23,000 lp=(-6,28641790165662E-09, 0, -1,09157147178354E-11) lv=(2,99999549636115, 0, 7,6491553724703E-09) air=False gs=0 wp=(147451142996,662, 697807,879606148, 0)
++[WalkProbe] t=25 ts=23.999 local=(71.997689, 0.000000, -0.002266) pp=(147451142996,366, 728128,477363729, 0) org=(147451142996,495, 728056,479789025, 0) | t=23,998 ts=23,999 lp=(6,170001931115E-09, 0, 1,11781677592632E-11) lv=(2,99999509647851, 0, 8,12462774054529E-09) air=False gs=0 wp=(147451142996,366, 728128,477363721, 0)
++[WalkProbe] t=26 ts=24.999 local=(74.997833, 0.000000, -0.002460) pp=(147451142996,058, 758469,46638537, 0) org=(147451142996,197, 758394,468681284, 0) | t=24,998 ts=24,999 lp=(2,82888728363042E-08, 0, 5,33824888494777E-11) lv=(2,99999467694918, 0, 7,45599578778899E-09) air=False gs=0 wp=(147451142996,057, 758469,466385328, 0)
++[WalkProbe] t=27 ts=25.999 local=(77.997073, 0.000000, -0.002679) pp=(147451142995,736, 788801,320209682, 0) org=(147451142995,887, 788723,323281829, 0) | t=25,998 ts=25,999 lp=(2,94530197125536E-08, 0, 5,77974457468324E-11) lv=(2,99999424508766, 0, 7,02281491033602E-09) air=False gs=0 wp=(147451142995,736, 788801,320209662, 0)
++[WalkProbe] t=28 ts=26.999 local=(80.997230, 0.000000, -0.002855) pp=(147451142995,402, 819142,442439271, 0) org=(147451142995,564, 819061,445371743, 0) | t=26,998 ts=26,999 lp=(-1,26892437342943E-08, 0, -2,58571639277647E-11) lv=(2,99999379389868, 0, 8,52863805186205E-09) air=False gs=0 wp=(147451142995,402, 819142,442439292, 0)
++[WalkProbe] t=29 ts=28.000 local=(83.999167, 0.000000, -0.003075) pp=(147451142995,055, 849501,571438228, 0) org=(147451142995,23, 849417,572452512, 0) | t=27,999 ts=28,000 lp=(-2,59605588069091E-08, 0, -5,48577903132454E-11) lv=(2,99999332304467, 0, 8,32908749696243E-09) air=False gs=0 wp=(147451142995,055, 849501,571438242, 0)
++[WalkProbe] t=30 ts=29.000 local=(86.999443, 0.000000, -0.003323) pp=(147451142994,696, 879843,910255171, 0) org=(147451142994,883, 879756,911013095, 0) | t=28,999 ts=29,000 lp=(2,20024431361154E-08, 0, 4,81516764066077E-11) lv=(2,99999283806854, 0, 1,13604577134385E-08) air=False gs=0 wp=(147451142994,696, 879843,910255142, 0)
++[WalkProbe] t=31 ts=29.999 local=(89.996642, 0.000000, -0.003545) pp=(147451142994,325, 910155,124037962, 0) org=(147451142994,525, 910065,127618498, 0) | t=29,998 ts=29,999 lp=(1,03609370951934E-08, 0, 2,34544807245464E-11) lv=(2,99999233786384, 0, 6,86147109876106E-09) air=False gs=0 wp=(147451142994,325, 910155,124037966, 0)
++[WalkProbe] t=32 ts=31.000 local=(92.999370, 0.000000, -0.003795) pp=(147451142993,94, 940522,283710858, 0) org=(147451142994,154, 940429,284586388, 0) | t=30,998 ts=31,000 lp=(1,40862154042523E-08, 0, 3,29496131845894E-11) lv=(2,99999181836295, 0, 8,67971358588931E-09) air=False gs=0 wp=(147451142993,94, 940522,283710781, 0)
++[WalkProbe] t=33 ts=31.999 local=(95.997427, 0.000000, -0.004027) pp=(147451142993,543, 970842,201768446, 0) org=(147451142993,771, 970746,204611288, 0) | t=31,998 ts=31,999 lp=(-2,02562069547501E-08, 0, -4,89079080912244E-11) lv=(2,99999128202023, 0, 8,19428116853593E-09) air=False gs=0 wp=(147451142993,543, 970842,201768462, 0)
++[WalkProbe] t=34 ts=32.999 local=(98.997750, 0.000000, -0.004269) pp=(147451142993,134, 1001185,02605052, 0) org=(147451142993,376, 1001086,02859717, 0) | t=32,998 ts=32,999 lp=(1,32713055526517E-08, 0, 3,30431297899597E-11) lv=(2,99999072637185, 0, 8,63045116795969E-09) air=False gs=0 wp=(147451142993,134, 1001185,02605053, 0)
++[WalkProbe] t=35 ts=33.999 local=(101.997117, 0.000000, -0.004537) pp=(147451142992,712, 1031518,20557391, 0) org=(147451142992,969, 1031416,20878123, 0) | t=33,998 ts=33,999 lp=(-3,80676849959045E-08, 0, -9,76489829336181E-11) lv=(2,99999015820451, 0, 8,06956573871226E-09) air=False gs=0 wp=(147451142992,712, 1031518,20557394, 0)
++[WalkProbe] t=36 ts=35.000 local=(104.999581, 0.000000, -0.004812) pp=(147451142992,277, 1061882,69824809, 0) org=(147451142992,549, 1061777,6990208, 0) | t=34,999 ts=35,000 lp=(1,69965777318355E-08, 0, 4,48805574448433E-11) lv=(2,9999895677539, 0, 7,30086158196031E-09) air=False gs=0 wp=(147451142992,277, 1061882,69824809, 0)
++[WalkProbe] t=37 ts=35.999 local=(107.997313, 0.000000, -0.005101) pp=(147451142991,83, 1092199,37316683, 0) org=(147451142992,118, 1092091,37623785, 0) | t=35,998 ts=35,999 lp=(3,53901273192139E-08, 0, 9,61144374415767E-11) lv=(2,99998896581269, 0, 6,87883312811E-09) air=False gs=0 wp=(147451142991,83, 1092199,37316679, 0)
++[WalkProbe] t=38 ts=37.000 local=(110.998521, 0.000000, -0.005363) pp=(147451142991,37, 1122551,1869647, 0) org=(147451142991,674, 1122440,18886078, 0) | t=36,999 ts=37,000 lp=(-2,8638057610743E-08, 0, -7,99353515461259E-11) lv=(2,99998834462642, 0, 1,08139804871205E-08) air=False gs=0 wp=(147451142991,37, 1122551,18696473, 0)
++[WalkProbe] t=39 ts=37.999 local=(113.998177, 0.000000, -0.005685) pp=(147451142990,897, 1152887,3032138, 0) org=(147451142991,218, 1152773,30548906, 0) | t=37,999 ts=37,999 lp=(4,353915147791E-08, 0, 1,24808116268707E-10) lv=(2,99998770548414, 0, 7,32815306353496E-09) air=False gs=0 wp=(147451142990,897, 1152887,3032137, 0)
++[WalkProbe] t=40 ts=39.000 local=(116.999171, 0.000000, -0.005991) pp=(147451142990,412, 1183236,96595753, 0) org=(147451142990,75, 1183119,96727508, 0) | t=38,999 ts=39,000 lp=(1,37369485287757E-08, 0, 4,04133501387683E-11) lv=(2,99998704738796, 0, 7,34484052397621E-09) air=False gs=0 wp=(147451142990,412, 1183236,96595759, 0)
++[WalkProbe] t=41 ts=40.000 local=(119.999929, 0.000000, -0.006319) pp=(147451142989,914, 1213584,23801222, 0) org=(147451142990,27, 1213464,2386101, 0) | t=39,999 ts=40,000 lp=(-3,0733505061234E-08, 0, -9,27325211285358E-11) lv=(2,99998637707874, 0, 9,22306056007349E-09) air=False gs=0 wp=(147451142989,914, 1213584,23801227, 0)
++[WalkProbe] t=42 ts=41.000 local=(122.999505, 0.000000, -0.006614) pp=(147451142989,404, 1243919,55914129, 0) org=(147451142989,777, 1243796,56020428, 0) | t=40,999 ts=41,000 lp=(-6,98488590627611E-10, 0, -2,16018090244939E-12) lv=(2,99998568724038, 0, 8,14228955786644E-09) air=False gs=0 wp=(147451142989,404, 1243919,55914127, 0)
++[WalkProbe] t=43 ts=42.000 local=(125.999597, 0.000000, -0.006928) pp=(147451142988,881, 1274260,11400832, 0) org=(147451142989,273, 1274134,11502155, 0) | t=41,999 ts=42,000 lp=(-7,21771373409242E-09, 0, -2,28657084323838E-11) lv=(2,99998497833413, 0, 8,53591504423878E-09) air=False gs=0 wp=(147451142988,881, 1274260,11400832, 0)
++[WalkProbe] t=44 ts=42.999 local=(128.997035, 0.000000, -0.007280) pp=(147451142988,346, 1304573,82143358, 0) org=(147451142988,757, 1304444,82505388, 0) | t=42,997 ts=42,999 lp=(3,32946069375322E-08, 0, 1,07982095900019E-10) lv=(2,99998425598421, 0, 1,02098352133817E-08) air=False gs=0 wp=(147451142988,346, 1304573,82143358, 0)
++[WalkProbe] t=45 ts=43.996 local=(131.988375, 0.000000, -0.007632) pp=(147451142987,799, 1334825,8850437, 0) org=(147451142988,23, 1334693,89736975, 0) | t=43,992 ts=43,996 lp=(2,44470830004571E-08, 0, 8,11193651185648E-11) lv=(2,999983524743, 0, 3,90100138823735E-08) air=False gs=0 wp=(147451142987,799, 1334825,8850436, 0)
++[WalkProbe] t=46 ts=45.000 local=(134.999570, 0.000000, -0.007970) pp=(147451142987,237, 1365278,73824256, 0) org=(147451142987,687, 1365143,73942263, 0) | t=44,999 ts=45,000 lp=(-5,14552758806122E-08, 0, -1,74640683432843E-10) lv=(2,99998275799773, 0, 7,2120001134296E-09) air=False gs=0 wp=(147451142987,237, 1365278,73824255, 0)
++[WalkProbe] t=47 ts=46.000 local=(137.998842, 0.000000, -0.008314) pp=(147451142986,663, 1395611,01025883, 0) org=(147451142987,134, 1395473,01221868, 0) | t=45,999 ts=46,000 lp=(-4,37718975773283E-08, 0, -1,51860779225963E-10) lv=(2,99998198319268, 0, 7,08928959286537E-09) air=False gs=0 wp=(147451142986,663, 1395611,01025884, 0)
++[WalkProbe] t=48 ts=47.000 local=(140.998866, 0.000000, -0.008674) pp=(147451142986,078, 1425950,93074891, 0) org=(147451142986,569, 1425809,93273743, 0) | t=46,998 ts=47,000 lp=(-4,93597863565424E-08, 0, -1,74965270599186E-10) lv=(2,99998118947663, 0, 7,96178441925255E-09) air=False gs=0 wp=(147451142986,078, 1425950,93074894, 0)
++[WalkProbe] t=49 ts=48.000 local=(143.999712, 0.000000, -0.009081) pp=(147451142985,479, 1456299,12797011, 0) org=(147451142985,991, 1456155,12916902, 0) | t=47,999 ts=48,000 lp=(4,00466083075685E-08, 0, 1,44971034169915E-10) lv=(2,99998038264213, 0, 8,28942619754414E-09) air=False gs=0 wp=(147451142985,479, 1456299,12797, 0)
++[WalkProbe] t=50 ts=49.000 local=(146.998333, 0.000000, -0.009463) pp=(147451142984,868, 1486624,85257208, 0) org=(147451142985,402, 1486477,85520759, 0) | t=48,998 ts=49,000 lp=(-5,09895628067522E-08, 0, -1,88426391823364E-10) lv=(2,99997955680653, 0, 8,13410607619636E-09) air=False gs=0 wp=(147451142984,868, 1486624,85257215, 0)
++[WalkProbe] t=51 ts=50.000 local=(149.999079, 0.000000, -0.009822) pp=(147451142984,244, 1516972,06977748, 0) org=(147451142984,8, 1516822,07172774, 0) | t=49,999 ts=50,000 lp=(-5,14552064370407E-08, 0, -1,94025358528206E-10) lv=(2,99997871366468, 0, 8,66271763523552E-09) air=False gs=0 wp=(147451142984,244, 1516972,06977752, 0)
++[WalkProbe] t=52 ts=50.997 local=(152.990126, 0.000000, -0.010243) pp=(147451142983,61, 1547221,19941509, 0) org=(147451142984,188, 1547068,2103815, 0) | t=50,996 ts=50,997 lp=(-1,72293402125738E-08, 0, -6,62621001720941E-11) lv=(2,9999778558568, 0, 7,04039418257529E-09) air=False gs=0 wp=(147451142983,61, 1547221,19941517, 0)
++[WalkProbe] t=53 ts=52.000 local=(155.999075, 0.000000, -0.010645) pp=(147451142982,959, 1577651,42234329, 0) org=(147451142983,561, 1577495,42442598, 0) | t=51,999 ts=52,000 lp=(3,14318952167667E-08, 0, 1,2325891291869E-10) lv=(2,99997697648281, 0, 8,29846802559431E-09) air=False gs=0 wp=(147451142982,959, 1577651,42234321, 0)
++[WalkProbe] t=54 ts=52.999 local=(158.997111, 0.000000, -0.011057) pp=(147451142982,298, 1607971,28237637, 0) org=(147451142982,923, 1607812,28649099, 0) | t=52,998 ts=52,999 lp=(-6,98486352176474E-09, 0, -2,79167363410119E-11) lv=(2,99997608319949, 0, 8,68437127418686E-09) air=False gs=0 wp=(147451142982,298, 1607971,28237637, 0)
++[WalkProbe] t=55 ts=54.000 local=(161.999787, 0.000000, -0.011486) pp=(147451142981,624, 1638338,08965245, 0) org=(147451142982,272, 1638176,09116166, 0) | t=53,999 ts=54,000 lp=(-5,65773773105578E-08, 0, -2,30392737740983E-10) lv=(2,99997516856986, 0, 6,99229432514492E-09) air=False gs=0 wp=(147451142981,624, 1638338,08965254, 0)
++[WalkProbe] t=56 ts=55.000 local=(165.000224, 0.000000, -0.011923) pp=(147451142980,937, 1668682,23328587, 0) org=(147451142981,61, 1668517,23443199, 0) | t=54,999 ts=55,000 lp=(-3,46914675229691E-08, 0, -1,43884225375425E-10) lv=(2,99997424049624, 0, 8,47148419295951E-09) air=False gs=0 wp=(147451142980,937, 1668682,23328596, 0)
++[WalkProbe] t=57 ts=56.000 local=(167.999111, 0.000000, -0.012333) pp=(147451142980,238, 1699010,72167095, 0) org=(147451142980,935, 1698842,72400534, 0) | t=55,999 ts=56,000 lp=(-4,42374278634776E-08, 0, -1,8680835087265E-10) lv=(2,9999732953106, 0, 6,89895247006633E-09) air=False gs=0 wp=(147451142980,238, 1699010,72167098, 0)
++[WalkProbe] t=58 ts=57.000 local=(170.998613, 0.000000, -0.012790) pp=(147451142979,527, 1729345,42366558, 0) org=(147451142980,249, 1729174,42657723, 0) | t=56,999 ts=57,000 lp=(-1,95575934097405E-08, 0, -8,40623111896023E-11) lv=(2,99997233557647, 0, 7,34661970321071E-09) air=False gs=0 wp=(147451142979,527, 1729345,42366568, 0)
++[WalkProbe] t=59 ts=57.997 local=(173.991542, 0.000000, -0.013263) pp=(147451142978,804, 1759613,67611674, 0) org=(147451142979,552, 1759439,68618079, 0) | t=57,996 ts=57,997 lp=(8,61465143200022E-09, 0, 3,76750815429641E-11) lv=(2,99997135620975, 0, 6,92650734684941E-09) air=False gs=0 wp=(147451142978,804, 1759613,67611684, 0)
++[WalkProbe] t=60 ts=59.000 local=(176.998217, 0.000000, -0.013702) pp=(147451142978,065, 1790020,965123, 0) org=(147451142978,839, 1789843,96859703, 0) | t=58,999 ts=59,000 lp=(2,81722290830953E-08, 0, 1,25334981606707E-10) lv=(2,99997035995761, 0, 6,70826210899533E-09) air=False gs=0 wp=(147451142978,065, 1790020,96512286, 0)
++[WalkProbe] t=61 ts=60.000 local=(179.998409, 0.000000, -0.014157) pp=(147451142977,316, 1820362,69052498, 0) org=(147451142978,116, 1820182,69389359, 0) | t=59,999 ts=60,000 lp=(5,2619186944341E-08, 0, 2,38061777648543E-10) lv=(2,99996934433457, 0, 6,71631741888667E-09) air=False gs=0 wp=(147451142977,316, 1820362,69052487, 0)
++[WalkProbe] DONE
