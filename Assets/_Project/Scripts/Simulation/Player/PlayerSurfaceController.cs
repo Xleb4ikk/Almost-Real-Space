@@ -265,8 +265,18 @@ namespace Galilego.Simulation.Player
 
                 p += remaining * fraction;
                 Vector3d left = remaining * (1d - fraction);
-                left -= wallNormal * Vector3d.Dot(left, wallNormal);
-                remaining = left;
+                // Скользим по ПЛОСКОЙ стене: у наклонной поверхности нормаль имеет
+                // Z-составляющую, и её проекция «съедала» бы часть хода, а
+                // оставшееся движение уводила бы по вертикали (Z «плыл» между
+                // итерациями). Нормаль свипа — только по горизонтали.
+                Vector3d wallFlat = new Vector3d(wallNormal.X, wallNormal.Y, 0d);
+                if (wallFlat.SqrMagnitude > 1e-12d)
+                {
+                    wallFlat = wallFlat.Normalized;
+                    left -= wallFlat * Vector3d.Dot(left, wallFlat);
+                }
+
+                remaining = new Vector3d(left.X, left.Y, 0d);
             }
 
             return p;
@@ -292,9 +302,11 @@ namespace Galilego.Simulation.Player
                 {
                     // Посадка только на спуске: подъём (прыжок) не должен мгновенно
                     // «приземляться» обратно на ту же опору. Отскока нет (v_z = 0).
+                    // Допуск +5 см: Floor поднимает начало луча над ногами (см.
+                    // SiteBoxSupport.Floor), поэтому видит опору чуть выше точки ног.
                     double fall = -chunk + 0.1d;
                     if (support.Floor(p, fall, out double floorHeight, out Vector3d floorNormal, out int floorId)
-                        && floorHeight <= p.Z + 1e-9d
+                        && floorHeight <= p.Z + 0.05d
                         && SlopeAngleDegrees(floorNormal) <= MaxSlopeDegrees)
                     {
                         Position = new Vector3d(p.X, p.Y, floorHeight);
