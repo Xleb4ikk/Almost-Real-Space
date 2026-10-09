@@ -185,6 +185,10 @@ namespace Galilego.Universe
             if (Application.isPlaying)
             {
                 transform.SetPositionAndRotation(position, rotation);
+                // Коллайдеры-части едут с местом каждый кадр, а Physics.autoSyncTransforms
+                // выключен: без синхронизации запросы опоры игрока (лучи/капсулы
+                // SiteBoxSupport в Update) видели бы позы прошлых кадров.
+                Physics.SyncTransforms();
                 poseValid = true;
                 return;
             }
