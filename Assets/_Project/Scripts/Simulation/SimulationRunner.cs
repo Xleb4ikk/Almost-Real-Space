@@ -4,7 +4,6 @@ using Galilego.Core;
 using Galilego.Debris;
 using Galilego.Events;
 using Galilego.Simulation.ContactZone;
-using Galilego.Simulation.Player;
 using Galilego.Spacecraft;
 using UnityEngine;
 using Ship = Galilego.Spacecraft.Spacecraft;
@@ -259,19 +258,6 @@ namespace Galilego.Universe
         /// <summary>Шаг корабля: полёт, посадка, события. Вся логика состояния — там.</summary>
         private VesselStep step;
         private DebrisUpdater debrisUpdater;
-
-        /// <summary>Отладка ходьбы: секундные логи шага игрока (включается извне).</summary>
-        public static bool WalkTrace;
-
-        /// <summary>Снимок последнего шага ходьбы (только при WalkTrace).</summary>
-        public string LastWalkDebug;
-
-        // Ходьба игрока: чистый контроллер опор + локальный кадр места.
-        private readonly PlayerSurfaceController playerController = new PlayerSurfaceController();
-        private readonly TerrainSupport terrainSupport = new TerrainSupport();
-        private readonly SiteBoxSupport siteSupport = new SiteBoxSupport();
-        private readonly CompositePlayerSupport playerSupport = new CompositePlayerSupport();
-        private static readonly SphericalTerrain playerFallbackTerrain = new SphericalTerrain();
         private bool playerAirborne;
         private bool playerJumpQueued;
         private bool jetpackToggleQueued;
@@ -1015,103 +1001,7 @@ namespace Galilego.Universe
             }
         }
 
-        // Чистый контроллер ходьбы: вертикальная опора, шаг, наклон, потолок, углы.
-        // Работает в локальном кадре места (метры), орбитальное состояние — double-мир.
         private void StepPlayerSurface(double t, double dt, bool jumpRequested)
-        {
-            OrbitingBody body = DominantBody;
-            if (body == null)
-            {
-                return;
-            }
-
-            body.EvaluateWorldState(t, out Vector3d bodyPos, out _);
-
-            Vector3d beforeWorld = PlayerPosition;
-            ITerrainModel playerTerrain = body.Terrain ?? playerFallbackTerrain;
-            SiteFrame frame = SiteFrame.Anchor(body, playerTerrain, PlayerPosition, t);
-            frame.ToLocal(PlayerPosition, PlayerVelocity, out Vector3d localPosition, out Vector3d localVelocity);
-            if (Time.frameCount % 120 == 0)
-            {
-                Debug.Log("[WS] t=" + t.ToString("F3") + " before=" + beforeWorld
-                    + " local=" + localPosition + " origin=" + frame.Origin);
-            }
-
-            playerController.Position = localPosition;
-            playerController.Velocity = localVelocity;
-            playerController.Airborne = playerAirborne;
-            Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
-            playerController.Gravity = Math.Max(0d, -Vector3d.Dot(gravity, frame.Up));
-
-            terrainSupport.SetFrame(body, playerTerrain, frame, t);
-            siteSupport.SetFrame(frame);
-            playerSupport.Terrain = terrainSupport;
-            playerSupport.Sites = siteSupport;
-
-            Vector3d walkWorld = PlayerIntent.WalkDirection * PlayerIntent.WalkSpeed;
-            Vector3d walkLocal = new Vector3d(
-                Vector3d.Dot(walkWorld, frame.East),
-                Vector3d.Dot(walkWorld, frame.North),
-                0d);
-            Vector3d jetpack = JetpackActive ? PlayerIntent.JetpackAccel : Vector3d.Zero;
-            Vector3d jetpackLocal = new Vector3d(
-                Vector3d.Dot(jetpack, frame.East),
-                Vector3d.Dot(jetpack, frame.North),
-                Vector3d.Dot(jetpack, frame.Up));
-
-            playerController.Step(playerSupport, dt, walkLocal, jetpackLocal);
-
-            // В мир — кадром на КОНЕЦ подшага (frame.At(t+dt)): кадр на время t
-            // отстаёт от орбитального движения тела на v·dt, и проекция на
-            // поверхность в t+dt запекала бы этот лаг в позицию каждый подшаг.
-            double tEnd = t + dt;
-            frame.At(tEnd).ToWorld(playerController.Position, playerController.Velocity,
-                out Vector3d worldPosition, out Vector3d worldVelocity);
-            PlayerPosition = worldPosition;
-            PlayerVelocity = worldVelocity;
-            playerAirborne = playerController.Airborne;
-
-            LastWalkDebug = "t=" + t.ToString("F3") + " ts=" + TimeSeconds.ToString("F3")
-                + " lp=" + localPosition + " lv=" + localVelocity
-                + " air=" + playerAirborne + " gs=" + playerController.GroundSourceId
-                + " wp=" + PlayerPosition;
-
-            // Коллизия стволов деревьев — как раньше, после шага.
-            if (GroundDecorCollisionRegistry.TryResolve(body.Name, PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d treePushed))
-            {
-                PlayerPosition = treePushed;
-            }
-
-            // Вода и проекция на поверхность — на КОНЕЦ подшага (t+dt), как раньше.
-            body.SurfaceLatLonAt(PlayerPosition, tEnd, out double newLat, out double newLon);
-            if (WaterQuery.IsWaterAt(body, newLat, newLon))
-            {
-                EnterWater(body, tEnd);
-                return;
-            }
-
-            // Проекция на рельеф — только когда игрок стоит на рельефе (не на постройке):
-            // крыши держат локальную высоту контроллера, проекция стянула бы его вниз.
-            if (!playerAirborne && playerController.GroundSourceId == TerrainSupport.SourceId)
-            {
-                double newGround = GroundHeight(body, newLat, newLon);
-                body.EvaluateWorldState(tEnd, out Vector3d bodyPos3, out _);
-                Vector3d radial = PlayerPosition - bodyPos3;
-                PlayerPosition = bodyPos3 + (radial.Normalized * (body.Radius + newGround));
-            }
-
-            if (jumpRequested)
-            {
-                playerAirborne = true;
-                Vector3d normal = body.Terrain != null
-                    ? body.Terrain.GetOutwardNormal(body, PlayerPosition - bodyPos, t).Normalized
-                    : (PlayerPosition - bodyPos).Normalized;
-                PlayerVelocity += normal * PlayerJumpSpeed;
-            }
-        }
-
-        // ЛЕГАСИ (временный, для сверки регресса): старый шаг ходьбы по рельефу.
-        private void StepPlayerSurfaceLegacy(double t, double dt, bool jumpRequested)
         {
             OrbitingBody body = DominantBody;
             if (body == null)

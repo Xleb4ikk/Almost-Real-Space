@@ -18,7 +18,6 @@ namespace Galilego.Simulation.Player
         public bool Active = true;
         public double WalkSpeed = 3d;
         public float DurationSeconds = 60f;
-        public bool Trace = true;
 
         private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
@@ -52,7 +51,6 @@ namespace Galilego.Simulation.Player
 
             walkDirection = east.Normalized;
             frame = SiteFrame.Anchor(body, body.Terrain, Runner.PlayerPosition, Runner.TimeSeconds);
-            SimulationRunner.WalkTrace = Trace;
             started = true;
             Debug.Log("[WalkProbe] старт: " + WalkSpeed.ToString("F2", Inv) + " м/с на восток, "
                 + DurationSeconds.ToString("F0", Inv) + " с");
@@ -78,10 +76,7 @@ namespace Galilego.Simulation.Player
                     + " ts=" + Runner.TimeSeconds.ToString("F3", Inv)
                     + " local=(" + local.X.ToString("F6", Inv)
                     + ", " + local.Y.ToString("F6", Inv)
-                    + ", " + local.Z.ToString("F6", Inv) + ")"
-                    + " pp=" + Runner.PlayerPosition
-                    + " org=" + now.Origin
-                    + (!string.IsNullOrEmpty(Runner.LastWalkDebug) ? " | " + Runner.LastWalkDebug : " | (нет шага)"));
+                    + ", " + local.Z.ToString("F6", Inv) + ")");
             }
 
             if (elapsed >= DurationSeconds)
