@@ -60,27 +60,35 @@ namespace Galilego.Simulation.Player
         }
 
         /// <summary>
-        /// Капсула игрока (ноги feet, радиус radius, вертикаль up) уже ЗАМЕТНО
-        /// пересекает коллайдер — тело внутри. Порог 5 см отсекает касание
-        /// (PhysX contact offset даёт микропроникновение у любой стены — иначе
-        /// стены перестают блокировать снаружи). Для таких коллайдеров свип не
-        /// блокирует: основание постройки может быть утоплено в рельеф, и игрок,
-        /// стоящий на рельефе, оказывается внутри — без этого он не может выйти.
+        /// Капсула пересекает коллайдер — направление выталкивания (нормаль стены)
+        /// для свипа. Нормаль CapsuleCast при старте в проникновении недостоверна
+        /// (обычно -moveDir), поэтому для таких попаданий берём нормаль из
+        /// Physics.ComputePenetration. Касание пола/потолка даёт вертикальное
+        /// выталкивание — проекция на плоскость вырождается, метод возвращает
+        /// false (это не стена, горизонталь ведёт логика опоры/шага).
         /// </summary>
-        private static bool CapsuleInside(Collider collider, Vector3 feet, float radius, Vector3 up)
+        private bool TryPushOut(Collider collider, Vector3 feet, float radius, out Vector3 direction)
         {
+            direction = Vector3.zero;
             if (collider == null)
             {
                 return false;
             }
 
             CapsuleCollider probe = SiteBoxRegistry.Probe(radius);
-            Quaternion rotation = Quaternion.FromToRotation(Vector3.up, up);
-            return Physics.ComputePenetration(
-                    probe, feet, rotation,
-                    collider, collider.transform.position, collider.transform.rotation,
-                    out _, out float depth)
-                && depth > 0.05f;
+            Quaternion rotation = Quaternion.FromToRotation(Vector3.up, renderUp);
+            bool overlap = Physics.ComputePenetration(
+                probe, feet, rotation,
+                collider, collider.transform.position, collider.transform.rotation,
+                out direction, out _);
+            direction = Vector3.ProjectOnPlane(direction, renderUp);
+            if (!overlap || direction.sqrMagnitude < 1e-8f)
+            {
+                return false;
+            }
+
+            direction.Normalize();
+            return true;
         }
 
         public void SetFrame(SiteFrame siteFrame)
@@ -88,6 +96,12 @@ namespace Galilego.Simulation.Player
             // Страховка от порядка жизненного цикла: OnEnable постройки мог не
             // собрать коллайдеры (наблюдалось «мигание» между сессиями Play).
             SiteBoxRegistry.EnsureAllBuilt();
+            // Коллайдеры двигаются в LateUpdate вместе с floating origin, а
+            // Physics.autoSyncTransforms выключен: без синхронизации запросы опоры
+            // (лучи/капсулы в Update) видели бы позы прошлых кадров — ошибка равна
+            // смещению игрока с момента последней синхронизации (единицы см,
+            // зависит от FPS — отсюда нестабильность багов «застрял/прошёл сквозь»).
+            Physics.SyncTransforms();
             frame = siteFrame;
             renderOrigin = ToRender(Vector3d.Zero);
             renderUp = Direction(new Vector3d(0d, 0d, 1d));
@@ -142,8 +156,13 @@ namespace Galilego.Simulation.Player
                     case 4: sample = from + new Vector3d(0d, -0.3d, 0d); break;
                 }
 
-                Vector3 origin = ToRenderPoint(sample);
-                RaycastHit[] hits = Physics.RaycastAll(origin, -renderUp, (float)maxDrop, ~0, QueryTriggerInteraction.Ignore);
+                // Луч стартует на 5 см выше точки ног: при микропроникновении ноги
+                // оказываются внутри выпуклого коллайдера и луч из точки старта не
+                // находит поверхность — опоры «нет», и тело падает сквозь пол.
+                // Длина увеличена на тот же подъём, поэтому глубина опоры не меняется.
+                const float Lift = 0.05f;
+                Vector3 origin = ToRenderPoint(sample) + (renderUp * Lift);
+                RaycastHit[] hits = Physics.RaycastAll(origin, -renderUp, (float)maxDrop + Lift, ~0, QueryTriggerInteraction.Ignore);
                 if (!TryPickFloor(hits, out double h, out Vector3d n, out int id))
                 {
                     continue;
@@ -244,6 +263,11 @@ namespace Galilego.Simulation.Player
             bool found = false;
             float bestFraction = 1f;
             Vector3 bestNormal = renderUp;
+
+            // Зазор у стены: останавливаемся не в точке касания (иначе следующий
+            // подшаг начинается уже внутри контактного допуска PhysX), а за Skin
+            // до неё.
+            const float Skin = 0.015f;
             for (int i = 0; i < hits.Length; i++)
             {
                 RaycastHit hit = hits[i];
@@ -253,35 +277,47 @@ namespace Galilego.Simulation.Player
                     continue;
                 }
 
-                // Касание пола/склона/потолка (нормаль почти вертикальна) не блокирует
-                // горизонтальный ход: его ведёт логика опоры/шага.
-                if (Mathf.Abs(Vector3.Dot(hit.normal, renderUp)) > 0.7f)
+                Vector3 wallN = hit.normal;
+                float f;
+                if (hit.distance <= 0f)
+                {
+                    // Старт в проникновении: нормаль CapsuleCast недостоверна — берём
+                    // направление выталкивания. Уход от стены свободен, вход глубже
+                    // блокируется (см. проверку направления ниже). Касание пола или
+                    // потолка стеной не считается (вертикальное выталкивание).
+                    if (!TryPushOut(hit.collider, p1 - (renderUp * (float)radius), (float)radius, out wallN))
+                    {
+                        continue;
+                    }
+
+                    f = 0f;
+                }
+                else
+                {
+                    // Касание пола/склона/потолка (нормаль почти вертикальна) не
+                    // блокирует горизонтальный ход: его ведёт логика опоры/шага.
+                    if (Mathf.Abs(Vector3.Dot(hit.normal, renderUp)) > 0.7f)
+                    {
+                        continue;
+                    }
+
+                    f = Mathf.Max(0f, (hit.distance - Skin) / distance);
+                }
+
+                // Блокирует только движение В поверхность: уход от стены и движение
+                // вдоль касания свободны, вход глубже — блок. Нормаль выталкивания
+                // достоверна и у старта в проникновении (было: CapsuleInside
+                // игнорировал коллайдер целиком — 0–5 см давали залипание,
+                // глубже 5 см — свободный проход сквозь стену).
+                if (Vector3.Dot(moveDir, wallN) > -1e-4f)
                 {
                     continue;
                 }
 
-                // Тело УЖЕ внутри этого коллайдера (например, основание постройки
-                // утоплено в рельеф, и игрок стоит на рельефе в этом месте): движение
-                // свободно, иначе из этой зоны не выйти — свип блокировал все стороны
-                // («застреваю рядом с любой стеной»).
-                if (CapsuleInside(hit.collider, p1 - (renderUp * (float)radius), (float)radius, renderUp))
-                {
-                    continue;
-                }
-
-                // Блокирует только движение В поверхность. Касание сбоку (стоим у
-                // стены, выходим из угла) не блокирует — иначе тело застревает и
-                // не может выйти. Уход от стены свободен.
-                if (Vector3.Dot(moveDir, hit.normal) > -1e-4f)
-                {
-                    continue;
-                }
-
-                float f = hit.distance / distance;
                 if (f < bestFraction)
                 {
                     bestFraction = f;
-                    bestNormal = hit.normal;
+                    bestNormal = wallN;
                     found = true;
                 }
             }
