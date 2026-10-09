@@ -1082,6 +1082,8 @@ namespace Galilego.Universe
 
             // Страховка: тело ниже рельефа (продавилось) — вернуть на поверхность,
             // иначе запросы опоры его больше не найдут (поверхность осталась выше).
+            // Из возможного «внутри стены» тело выходит само: свип блокирует только
+            // движение В поверхность, а не касание (см. SiteBoxSupport.Sweep).
             body.EvaluateWorldState(tEnd, out Vector3d rescueBodyPos, out _);
             double rescueGround = GroundHeight(body, newLat, newLon);
             if ((PlayerPosition - rescueBodyPos).Magnitude - body.Radius < rescueGround - 0.5d)
@@ -1091,16 +1093,6 @@ namespace Galilego.Universe
                 PlayerVelocity -= rescueRadial * Vector3d.Dot(PlayerVelocity, rescueRadial);
                 playerAirborne = false;
                 playerController.SetGroundSource(TerrainSupport.SourceId);
-            }
-
-            // Выталкивание из геометрии построек — ПОСЛЕ спасения и последним:
-            // свип контроллера умеет только не пускать, а спасение из-под рельефа
-            // возвращает тело в тот же XZ — если там стена, оно снова внутри, и
-            // начинается цикл «уткнулся → провалился → подскочил → дёргается».
-            // Легаси-пушаут (ComputePenetration) выталкивает по горизонтали.
-            if (SiteBoxRegistry.TryResolve(PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d sitePushed))
-            {
-                PlayerPosition = sitePushed;
             }
 
             // Проекция на рельеф — только когда игрок стоит на рельефе (не на постройке):
