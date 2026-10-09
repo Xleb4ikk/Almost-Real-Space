@@ -635,7 +635,7 @@ index 0000000..88e4141
 +fileFormatVersion: 2
 +guid: 36465ea3fc0b44c5a7ab437f3101a269
 diff --git a/Assets/_Project/Scripts/Simulation/Player/PlayerSurfaceController.cs b/Assets/_Project/Scripts/Simulation/Player/PlayerSurfaceController.cs
-index 0d46255..ca104eb 100644
+index 0d46255..8a6d5df 100644
 --- a/Assets/_Project/Scripts/Simulation/Player/PlayerSurfaceController.cs
 +++ b/Assets/_Project/Scripts/Simulation/Player/PlayerSurfaceController.cs
 @@ -57,7 +57,7 @@ namespace Galilego.Simulation.Player
@@ -660,6 +660,146 @@ index 0d46255..ca104eb 100644
              Vector3d intent = new Vector3d(intentVelocity.X, intentVelocity.Y, 0d);
  
              if (Airborne)
+@@ -110,41 +116,32 @@ namespace Galilego.Simulation.Player
+             if (SlopeAngleDegrees(floorNormal) > MaxSlopeDegrees)
+             {
+                 // Круче предела: не поднимаемся, скользим вниз вдоль поверхности.
+-                Position = new Vector3d(candidate.X, candidate.Y, Math.Min(Position.Z, floorHeight));
+-                Velocity = new Vector3d(intent.X, intent.Y, -SlideSpeedMps);
+-                GroundSourceId = floorId;
+-                return;
+-            }
+-
+-            Position = new Vector3d(Position.X, Position.Y, floorHeight);
+-
+-            // Горизонтальный свип со скольжением вдоль стен (до 4 итераций).
+-            Vector3d p = Position;
+-            Vector3d remaining = move;
+-            for (int iteration = 0; iteration < MaxSweepIterations; iteration++)
+-            {
+-                if (remaining.Magnitude < 1e-12d)
++                // Горизонталь режется свипом о стены (как при ходьбе): у крутого
++                // ската стена не должна пропускать игрока.
++                Vector3d slid = SweepHorizontal(support, Position, move);
++                Position = new Vector3d(slid.X, slid.Y, Position.Z);
++
++                // Опора под итоговой точкой (свип мог сдвинуть вдоль стены).
++                Vector3d slideProbe = new Vector3d(Position.X, Position.Y, Position.Z + StepUpMeters);
++                if (support.Floor(slideProbe, StepUpMeters + SupportDropMeters,
++                        out double slideHeight, out _, out int slideId))
+                 {
+-                    break;
+-                }
+-
+-                if (!support.Sweep(p, p + remaining, CapsuleRadius, out Vector3d wallNormal, out double fraction))
+-                {
+-                    p += remaining;
+-                    break;
++                    Position = new Vector3d(Position.X, Position.Y, Math.Min(Position.Z, slideHeight));
++                    GroundSourceId = slideId;
+                 }
+-
+-                if (!(fraction > 0d) || !(fraction < 1d))
++                else
+                 {
+-                    fraction = fraction < 0d ? 0d : (fraction > 1d ? 1d : fraction);
++                    GroundSourceId = floorId;
+                 }
+ 
+-                p += remaining * fraction;
+-                Vector3d left = remaining * (1d - fraction);
+-                left -= wallNormal * Vector3d.Dot(left, wallNormal);
+-                remaining = left;
++                Velocity = new Vector3d(intent.X, intent.Y, -SlideSpeedMps);
++                return;
+             }
+ 
++            Position = new Vector3d(Position.X, Position.Y, floorHeight);
++
++            // Горизонтальный свип со скольжением вдоль стен (до 4 итераций).
++            Vector3d p = SweepHorizontal(support, Position, move);
+             Position = new Vector3d(p.X, p.Y, Position.Z);
+ 
+             // Точная опора под итоговой позицией (и повторная проверка уклона).
+@@ -233,13 +230,14 @@ namespace Galilego.Simulation.Player
+             return found;
+         }
+ 
+-        private void StepAirborne(IPlayerSupport support, double dt)
++        /// <summary>
++        /// Горизонтальный свип капсулы со скольжением вдоль стен (до MaxSweepIterations
++        /// итераций). Возвращает итоговую позицию; Z не меняется.
++        /// </summary>
++        private static Vector3d SweepHorizontal(IPlayerSupport support, Vector3d from, Vector3d move)
+         {
+-            Velocity = new Vector3d(Velocity.X, Velocity.Y, Velocity.Z - (Gravity * dt));
+-            Vector3d step = Velocity * dt;
+-
+-            Vector3d p = Position;
+-            Vector3d remaining = new Vector3d(step.X, step.Y, 0d);
++            Vector3d p = from;
++            Vector3d remaining = move;
+             for (int iteration = 0; iteration < MaxSweepIterations; iteration++)
+             {
+                 if (remaining.Magnitude < 1e-12d)
+@@ -264,19 +262,47 @@ namespace Galilego.Simulation.Player
+                 remaining = left;
+             }
+ 
+-            p = new Vector3d(p.X, p.Y, p.Z + step.Z);
+-            Position = p;
++            return p;
++        }
+ 
+-            // Посадка: опора ниже в пределах хода падения. Отскока нет (v_z = 0).
+-            double fall = Math.Max(0d, -step.Z) + 0.1d;
+-            if (support.Floor(Position, fall, out double floorHeight, out Vector3d floorNormal, out int floorId)
+-                && SlopeAngleDegrees(floorNormal) <= MaxSlopeDegrees)
++        private void StepAirborne(IPlayerSupport support, double dt)
++        {
++            Velocity = new Vector3d(Velocity.X, Velocity.Y, Velocity.Z - (Gravity * dt));
++            Vector3d step = Velocity * dt;
++
++            // Горизонталь — свипом вдоль стен (как было).
++            Vector3d p = SweepHorizontal(support, Position, new Vector3d(step.X, step.Y, 0d));
++
++            // Вертикаль дробим чанками: подшаг может быть до 0.5 с (метры пролёта),
++            // и тонкая плита на пути не должна проскакиваться целиком. Посадка
++            // проверяется ДО сдвига чанка, поэтому плита внутри чанка видна.
++            const double maxVerticalChunk = 0.2d;
++            double remainingZ = step.Z;
++            while (Math.Abs(remainingZ) > 1e-12d)
+             {
+-                Position = new Vector3d(Position.X, Position.Y, floorHeight);
+-                Velocity = new Vector3d(Velocity.X, Velocity.Y, 0d);
+-                Airborne = false;
+-                GroundSourceId = floorId;
++                double chunk = Math.Max(-maxVerticalChunk, Math.Min(maxVerticalChunk, remainingZ));
++                if (chunk < 0d)
++                {
++                    // Посадка только на спуске: подъём (прыжок) не должен мгновенно
++                    // «приземляться» обратно на ту же опору. Отскока нет (v_z = 0).
++                    double fall = -chunk + 0.1d;
++                    if (support.Floor(p, fall, out double floorHeight, out Vector3d floorNormal, out int floorId)
++                        && floorHeight <= p.Z + 1e-9d
++                        && SlopeAngleDegrees(floorNormal) <= MaxSlopeDegrees)
++                    {
++                        Position = new Vector3d(p.X, p.Y, floorHeight);
++                        Velocity = new Vector3d(Velocity.X, Velocity.Y, 0d);
++                        Airborne = false;
++                        GroundSourceId = floorId;
++                        return;
++                    }
++                }
++
++                p = new Vector3d(p.X, p.Y, p.Z + chunk);
++                remainingZ -= chunk;
+             }
++
++            Position = p;
+         }
+ 
+         public static double SlopeAngleDegrees(Vector3d normal)
 diff --git a/Assets/_Project/Scripts/Simulation/Player/PlayerWalkProbe.cs b/Assets/_Project/Scripts/Simulation/Player/PlayerWalkProbe.cs
 new file mode 100644
 index 0000000..947c328
@@ -1311,761 +1451,863 @@ index 6c8a8a3..71befe7 100644
                  PlayerVelocity += normal * PlayerJumpSpeed;
              }
          }
+diff --git a/Tools/P1bTests/TestRegistry.cs b/Tools/P1bTests/TestRegistry.cs
+index a8c7d11..b8f8ec6 100644
+--- a/Tools/P1bTests/TestRegistry.cs
++++ b/Tools/P1bTests/TestRegistry.cs
+@@ -220,6 +220,9 @@ internal static partial class P1bTests
+             new P1bCase("Test315_InnerCorner", Test315_InnerCorner, false),
+             new P1bCase("Test316_Stairs", Test316_Stairs, false),
+             new P1bCase("Test317_MovingPlatform", Test317_MovingPlatform, false),
++            new P1bCase("Test318_FallNoTunneling", Test318_FallNoTunneling, false),
++            new P1bCase("Test319_SteepSlopeWall", Test319_SteepSlopeWall, false),
++            new P1bCase("Test320_JumpNotCancelled", Test320_JumpNotCancelled, false),
+             new P1bCase("Test900_TerrainWallProbe", Test900_TerrainWallProbe, false),
+             new P1bCase("Test901_TerrainWallBisect", Test901_TerrainWallBisect, false),
+             new P1bCase("Test903_ShelfFixAb", Test903_ShelfFixAb, false),
+diff --git a/Tools/P1bTests/Tests/TestsPlayerSupport.cs b/Tools/P1bTests/Tests/TestsPlayerSupport.cs
+index db2f8e0..ff9fd51 100644
+--- a/Tools/P1bTests/Tests/TestsPlayerSupport.cs
++++ b/Tools/P1bTests/Tests/TestsPlayerSupport.cs
+@@ -608,4 +608,85 @@ internal static partial class P1bTests
+                 worstX, worstZ, platform.CenterX, platform.CenterZ));
+         return 0;
+     }
++
++    static int Test318_FallNoTunneling()
++    {
++        // Тонкая плита на пути падения: подшаг 0.5 с (пролёт метры) не должен
++        // её проскочить — вертикаль дробится, посадка проверяется до сдвига.
++        var support = new BoxSupport();
++        support.Floors.Add(Box.Floor(-5d, 5d, -5d, 5d, 0d));
++        support.Floors.Add(Box.Floor(-50d, 50d, -50d, 50d, -50d));
++        var c = new PlayerSurfaceController { Position = new Vector3d(0d, 0d, 10d), Airborne = true };
++        int landedAt = -1;
++        for (int i = 0; i < 20 && landedAt < 0; i++)
++        {
++            c.Step(support, 0.5d, Vector3d.Zero);
++            if (!c.Airborne)
++            {
++                landedAt = i;
++            }
++        }
++
++        bool ok = landedAt >= 0 && Math.Abs(c.Position.Z) <= 1e-3d;
++        Check(ok, "T318 fall-tunneling",
++            string.Format(Inv, "падение 10 м подшагами 0.5 с: приземление на шаге {0}, z={1:F4} м (плита 0, не −50): {2}",
++                landedAt, c.Position.Z, ok));
++        return 0;
++    }
++
++    static int Test319_SteepSlopeWall()
++    {
++        // Крутой скат у стены: ветка скольжения обязана резать горизонталь
++        // свипом о стену, а не проходить сквозь неё.
++        var support = new BoxSupport();
++        Box steepFloor = Box.Floor(-10d, 10d, -10d, 10d, 0d);
++        double radians = 35d * (Math.PI / 180d);
++        steepFloor.Normal = new Vector3d(-Math.Sin(radians), 0d, Math.Cos(radians));
++        support.Floors.Add(steepFloor);
++        support.Blockers.Add(Box.Wall(1d, 2d, -2d, 2d, 0d, 2d));
++        var c = new PlayerSurfaceController { Position = new Vector3d(0d, 0d, 0d) };
++        for (int i = 0; i < 100; i++)
++        {
++            c.Step(support, 0.02d, new Vector3d(1d, 0d, 0d));
++        }
++
++        double limit = 1d - PlayerSurfaceController.CapsuleRadius;
++        bool ok = c.Position.X <= limit + 1e-3d && c.Position.X >= limit - 1e-2d;
++        Check(ok, "T319 steep-slope-wall",
++            string.Format(Inv, "скат 35° у стены x=1: позиция x={0:F4} (упор у {1:F2}): {2}",
++                c.Position.X, limit, ok));
++        return 0;
++    }
++
++    static int Test320_JumpNotCancelled()
++    {
++        // Прыжок не должен отменяться на первом же подшаге: посадка в воздухе
++        // проверяется только на спуске.
++        var support = new BoxSupport();
++        support.Floors.Add(Box.Floor(-10d, 10d, -10d, 10d, 0d));
++        var c = new PlayerSurfaceController
++        {
++            Position = new Vector3d(0d, 0d, 0d),
++            Airborne = true,
++            Velocity = new Vector3d(0d, 0d, 4.5d)
++        };
++        double maxZ = 0d;
++        int landedAt = -1;
++        for (int i = 0; i < 500 && landedAt < 0; i++)
++        {
++            c.Step(support, 0.01d, Vector3d.Zero);
++            maxZ = Math.Max(maxZ, c.Position.Z);
++            if (!c.Airborne)
++            {
++                landedAt = i;
++            }
++        }
++
++        double apex = 4.5d * 4.5d / (2d * 9.81d);
++        bool ok = landedAt >= 0 && maxZ >= 0.5d && maxZ <= apex + 1e-2d && Math.Abs(c.Position.Z) <= 1e-3d;
++        Check(ok, "T320 jump-not-cancelled",
++            string.Format(Inv, "прыжок 4.5 м/с: апогей {0:F3} м (теория {1:F3}), посадка z={2:F3} м (шаг {3}): {4}",
++                maxZ, apex, c.Position.Z, landedAt, ok));
++        return 0;
++    }
+ }
 diff --git a/baseline/player2/fast_final.txt b/baseline/player2/fast_final.txt
 new file mode 100644
-index 0000000..7c7dbc2
+index 0000000..1258062
 --- /dev/null
 +++ b/baseline/player2/fast_final.txt
-@@ -0,0 +1,882 @@
-+C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\UnityStubs.cs(168,28): warning CS0108: "MonoBehaviour.Destroy(Component)" ╤Б╨║╤А╤Л╨▓╨░╨╡╤В ╨╜╨░╤Б╨╗╨╡╨┤╤Г╨╡╨╝╤Л╨╣ ╤З╨╗╨╡╨╜ "Object.Destroy(Component)". ╨Х╤Б╨╗╨╕ ╤Б╨║╤А╤Л╤В╨╕╨╡ ╨▒╤Л╨╗╨╛ ╨╜╨░╨╝╨╡╤А╨╡╨╜╨╜╤Л╨╝, ╨╕╤Б╨┐╨╛╨╗╤М╨╖╤Г╨╣╤В╨╡ ╨║╨╗╤О╤З╨╡╨▓╨╛╨╡ ╤Б╨╗╨╛╨▓╨╛ new. [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
-+C:\MyData\UnityProj\Almost Real Space\Assets\_Project\Scripts\Simulation\Player\PlayerSurfaceController.cs(199,20): warning CS0219: ╨Я╨╡╤А╨╡╨╝╨╡╨╜╨╜╨╛╨╣ "limit" ╨┐╤А╨╕╤Б╨▓╨╛╨╡╨╜╨╛ ╨╖╨╜╨░╤З╨╡╨╜╨╕╨╡, ╨╜╨╛ ╨╛╨╜╨╛ ╨╜╨╕ ╤А╨░╨╖╤Г ╨╜╨╡ ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╨╜╨╛. [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
-+C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\Tests\TestsAnisotropyBisect.cs(354,22): warning CS0219: ╨Я╨╡╤А╨╡╨╝╨╡╨╜╨╜╨╛╨╣ "eps" ╨┐╤А╨╕╤Б╨▓╨╛╨╡╨╜╨╛ ╨╖╨╜╨░╤З╨╡╨╜╨╕╨╡, ╨╜╨╛ ╨╛╨╜╨╛ ╨╜╨╕ ╤А╨░╨╖╤Г ╨╜╨╡ ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╨╜╨╛. [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
-+C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\Tests\TestsNoisePrimitiveBench.cs(70,22): warning CS0219: ╨Я╨╡╤А╨╡╨╝╨╡╨╜╨╜╨╛╨╣ "theoretical" ╨┐╤А╨╕╤Б╨▓╨╛╨╡╨╜╨╛ ╨╖╨╜╨░╤З╨╡╨╜╨╕╨╡, ╨╜╨╛ ╨╛╨╜╨╛ ╨╜╨╕ ╤А╨░╨╖╤Г ╨╜╨╡ ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╨╜╨╛. [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
-+C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\Tests\TestsTailNormals.cs(79,13): warning CS0219: ╨Я╨╡╤А╨╡╨╝╨╡╨╜╨╜╨╛╨╣ "count" ╨┐╤А╨╕╤Б╨▓╨╛╨╡╨╜╨╛ ╨╖╨╜╨░╤З╨╡╨╜╨╕╨╡, ╨╜╨╛ ╨╛╨╜╨╛ ╨╜╨╕ ╤А╨░╨╖╤Г ╨╜╨╡ ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╨╜╨╛. [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
-+C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\Tests\TestsPlayerSupport.cs(67,36): warning CS0649: ╨Я╨╛╨╗╤О "P1bTests.BoxSupport.VelocityProvider" ╨╜╨╕╨│╨┤╨╡ ╨╜╨╡ ╨┐╤А╨╕╤Б╨▓╨░╨╕╨▓╨░╨╡╤В╤Б╤П ╨╖╨╜╨░╤З╨╡╨╜╨╕╨╡, ╨┐╨╛╤Н╤В╨╛╨╝╤Г ╨╛╨╜╨╛ ╨▓╤Б╨╡╨│╨┤╨░ ╨▒╤Г╨┤╨╡╤В ╨╕╨╝╨╡╤В╤М ╨╖╨╜╨░╤З╨╡╨╜╨╕╨╡ ╨┐╨╛ ╤Г╨╝╨╛╨╗╤З╨░╨╜╨╕╤О null. [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
-+C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\Tests\TestsRidgeLevers.cs(83,47): warning CA2013: ╨Э╨╡ ╨┐╨╡╤А╨╡╨┤╨░╨▓╨░╨╣╤В╨╡ ╨░╤А╨│╤Г╨╝╨╡╨╜╤В ╤Б ╤В╨╕╨┐╨╛╨╝ ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П 'P1bTests.Summary' ╨▓ 'ReferenceEquals'. ╨Ш╨╖-╨╖╨░ ╤Г╨┐╨░╨║╨╛╨▓╨║╨╕-╨┐╤А╨╡╨╛╨▒╤А╨░╨╖╨╛╨▓╨░╨╜╨╕╤П ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╤Н╤В╨╛╤В ╨▓╤Л╨╖╨╛╨▓ 'ReferenceEquals' ╨╝╨╛╨╢╨╡╤В ╨▓╨╡╤А╨╜╤Г╤В╤М ╨╜╨╡╨┐╤А╨╡╨┤╨▓╨╕╨┤╨╡╨╜╨╜╤Л╨╣ ╤А╨╡╨╖╤Г╨╗╤М╤В╨░╤В. ╨а╨░╤Б╤Б╨╝╨╛╤В╤А╨╕╤В╨╡ ╨▓╨╛╨╖╨╝╨╛╨╢╨╜╨╛╤Б╤В╤М ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╨╜╨╕╤П 'Equals' ╨╕╨╗╨╕ ╨┐╨╡╤А╨╡╨┤╨░╨▓╨░╨╣╤В╨╡ ╨░╤А╨│╤Г╨╝╨╡╨╜╤В╤Л ╤Б╤Б╤Л╨╗╨╛╤З╨╜╨╛╨│╨╛ ╤В╨╕╨┐╨░, ╨╡╤Б╨╗╨╕ ╨┐╤А╨╡╨┤╨┐╨╛╨╗╨░╨│╨░╨╡╤В╤Б╤П ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╤В╤М 'ReferenceEquals'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2013) [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
-+C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\Tests\TestsRidgeLevers.cs(83,53): warning CA2013: ╨Э╨╡ ╨┐╨╡╤А╨╡╨┤╨░╨▓╨░╨╣╤В╨╡ ╨░╤А╨│╤Г╨╝╨╡╨╜╤В ╤Б ╤В╨╕╨┐╨╛╨╝ ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П 'P1bTests.Summary' ╨▓ 'ReferenceEquals'. ╨Ш╨╖-╨╖╨░ ╤Г╨┐╨░╨║╨╛╨▓╨║╨╕-╨┐╤А╨╡╨╛╨▒╤А╨░╨╖╨╛╨▓╨░╨╜╨╕╤П ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╤Н╤В╨╛╤В ╨▓╤Л╨╖╨╛╨▓ 'ReferenceEquals' ╨╝╨╛╨╢╨╡╤В ╨▓╨╡╤А╨╜╤Г╤В╤М ╨╜╨╡╨┐╤А╨╡╨┤╨▓╨╕╨┤╨╡╨╜╨╜╤Л╨╣ ╤А╨╡╨╖╤Г╨╗╤М╤В╨░╤В. ╨а╨░╤Б╤Б╨╝╨╛╤В╤А╨╕╤В╨╡ ╨▓╨╛╨╖╨╝╨╛╨╢╨╜╨╛╤Б╤В╤М ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╨╜╨╕╤П 'Equals' ╨╕╨╗╨╕ ╨┐╨╡╤А╨╡╨┤╨░╨▓╨░╨╣╤В╨╡ ╨░╤А╨│╤Г╨╝╨╡╨╜╤В╤Л ╤Б╤Б╤Л╨╗╨╛╤З╨╜╨╛╨│╨╛ ╤В╨╕╨┐╨░, ╨╡╤Б╨╗╨╕ ╨┐╤А╨╡╨┤╨┐╨╛╨╗╨░╨│╨░╨╡╤В╤Б╤П ╨╕╤Б╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╤В╤М 'ReferenceEquals'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca2013) [C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\P1bTests.csproj]
+@@ -0,0 +1,880 @@
 +P1b tests...
-+PASS T1 warp x1==x3 | tol=(1e-2,1e-5,1e-4): dPos=7,324E-003 dVel=8,380E-004 dMass=8,296E-004; tol/100: dPos=2,608E-008 dVel=6,813E-006 dMass=6,749E-006 (╤Б╨╢╨░╤В╨╕╨╡ ~280869x/123x/123x, ╨╜╤Г╨╢╨╜╨╛ >10x)
-+[Test1_WarpIdentity] ok in 119 ms
-+PASS T2 control-tick clip | maxChunk=0,5000╤Б (╨╗╨╕╨╝╨╕╤В 0.5), ╨│╤А╨░╨╜╨╕╤Ж╤Л ╨┐╨╛ ╤Б╨╡╤В╨║╨╡ 0.5╤Б: True
++PASS T1 warp x1==x3 | tol=(1e-2,1e-5,1e-4): dPos=7,324E-003 dVel=8,380E-004 dMass=8,296E-004; tol/100: dPos=2,608E-008 dVel=6,813E-006 dMass=6,749E-006 (сжатие ~280869x/123x/123x, нужно >10x)
++[Test1_WarpIdentity] ok in 117 ms
++PASS T2 control-tick clip | maxChunk=0,5000с (лимит 0.5), границы по сетке 0.5с: True
 +[Test2_ControlTickClip] ok in 0 ms
-+PASS T3 can-enter | ╨▒╨░╨╗╨╗╨╕╤Б╤В╨╕╨║╨░: ╨▓╤Е╨╛╨┤ ╤А╨░╨╖╤А╨╡╤И╤С╨╜
-+PASS T3 stop-at-touchdown | stop=224,513╤Б ╨╕╨╖ 2592000╤Б, ╤Б╨╛╨▒╤Л╤В╨╕╨╡=Touchdown:╨Я╨╗╨░╨╜╨╡╤В╨░ ╨Р, ╨╛╤Б╤В╨░╤В╨╛╨║ ╨▓╤Л╤Б╨╛╤В╤Л g=-1,234E-004╨╝ (╨┤╨╛╨┐╤Г╤Б╨║ 1╨╝)
++PASS T3 can-enter | баллистика: вход разрешён
++PASS T3 stop-at-touchdown | stop=224,513с из 2592000с, событие=Touchdown:Планета А, остаток высоты g=-1,234E-004м (допуск 1м)
 +[Test3_LongWarpStopsAtEvent] ok in 3 ms
-+PASS T4 silent-cancel | ╨▓╤Е╨╛╨┤ ╨┐╤А╨╕ ╤В╤П╨│╨╡ ╨╖╨░╨┐╤А╨╡╤Й╤С╨╜: True; ╨╛╤В╨╝╨╡╨╜╨░ ╨┤╨╛ RHS: ReachedTarget=False, t=0,0╤Б, ╨║╨╛╤А╨░╨▒╨╗╤М ╨╜╨╡ ╤Б╨┤╨▓╨╕╨╜╤Г╤В: True
++PASS T4 silent-cancel | вход при тяге запрещён: True; отмена до RHS: ReachedTarget=False, t=0,0с, корабль не сдвинут: True
 +[Test4_SilentCancel] ok in 0 ms
-+PASS T5 singularity | TryEvaluate ╨▓╨╜╤Г╤В╤А╨╕=false: True; Touchdown-╤Б╨╛╨▒╤Л╤В╨╕╨╡: True; r=1e-9╨╝ ╨║╨╛╨╜╨╡╤З╨╡╨╜: True (0,00E+000)
-+[Test5_Singularity] ok in 5 ms
-+PASS T6 cache bit-identical | ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; ╨╜╨░╨╕╨▓╨╜╨╛ world=80 local=40, ╨║╤Н╤И local=15 (=misses(5)├Ч3 ╤В╨╡╨╗╨░); ╨║╤Н╤И-╨▓╤Л╨╖╨╛╨▓╨╛╨▓ hits=5+misses=5=10
++PASS T5 singularity | TryEvaluate внутри=false: True; Touchdown-событие: True; r=1e-9м конечен: True (0,00E+000)
++[Test5_Singularity] ok in 4 ms
++PASS T6 cache bit-identical | бит-в-бит: True; наивно world=80 local=40, кэш local=15 (=misses(5)×3 тела); кэш-вызовов hits=5+misses=5=10
 +[Test6_CacheIdentical] ok in 2 ms
-+PASS T7 budget+slicing | ╨░╨║╤В╨╕╨▓╨╜╤Л╨╣ ╨┐╨╡╤А╨▓╤Л╨╝: True; ╨║╨░╨┤╤А╨╛╨▓ 2, ╤Б╤А╨╡╨┤╨╜╨╡╨╡ 128,0 ╨╝╤Г╤Б╨╛╤А╨░/╨║╨░╨┤╤А, 1-╨╣ ╨║╨░╨┤╤А 102 ╤И╤В ╨╖╨░ 4,02╨╝╤Б, ╨╝╨░╨║╤Б ╨║╨░╨┤╤А 4,02╨╝╤Б (╨▒╤О╨┤╨╢╨╡╤В 4╨╝╤Б); ╨╕╤В╨╛╨│╨╛ ╨╖╨░╨┐╨╕╤Б╨╡╨╣ 257 (=256 ╨╝╤Г╤Б╨╛╤А+1 active), ╨╛╤Б╤В╨░╤В╨╛╨║ ╨╛╤З╨╡╤А╨╡╨┤╨╕ 0: True
-+[Test7_BudgetPriority] ok in 10 ms
-+PASS T8 pool-no-new | ╨╛╨▒╤К╨╡╨║╤В╤Л Body ╤В╨╡ ╨╢╨╡: True; ╨░╨╗╨╗╨╛╨║╨░╤Ж╨╕╨╣ ╨╖╨░ 20 ╤Ж╨╕╨║╨╗╨╛╨▓: 13160 ╨▒╨░╨╣╤В (╨┐╨╛╤А╨╛╨│ 1╨Ь╨С)
-+[Test8_PoolNoAllocs] ok in 6 ms
-+PASS T9 eviction-256 | active=256/256, ╨╜╨╛╨▓╨╕╤З╨╛╨║ ╨▓╨╜╤Г╤В╤А╨╕: True, minSeq 1->2
++PASS T7 budget+slicing | активный первым: True; кадров 2, среднее 128,0 мусора/кадр, 1-й кадр 125 шт за 4,01мс, макс кадр 4,01мс (бюджет 4мс); итого записей 257 (=256 мусор+1 active), остаток очереди 0: True
++[Test7_BudgetPriority] ok in 9 ms
++PASS T8 pool-no-new | объекты Body те же: True; аллокаций за 20 циклов: 13160 байт (порог 1МБ)
++[Test8_PoolNoAllocs] ok in 5 ms
++PASS T9 eviction-256 | active=256/256, новичок внутри: True, minSeq 1->2
 +[Test9_Eviction] ok in 0 ms
-+PASS T10 sleep-error | ╤А╨░╤Б╤Е╨╛╨╢╨┤╨╡╨╜╨╕╨╡ 1╤Б-╤И╨░╨│╨╕ vs 30╤Б-╨┐╤А╤Л╨╢╨║╨╕ ╨╖╨░ 3600╤Б: 0,0╨╝ (╨│╤А╨░╨╜╨╕╤Ж╨░ 10000╨╝ ╨┤╨╗╤П ╨╝╤Г╤Б╨╛╤А╨░)
-+[Test10_SleepError] ok in 80 ms
-+PASS T11 multi-crossing | subdiv=1 ╨┐╤А╨╛╨╝╨░╤Е: True; subdiv=20: [AtmosphereExit:╨Я╨╗╨░╨╜╨╡╤В╨░ ╨Р,AtmosphereEntry:╨Я╨╗╨░╨╜╨╡╤В╨░ ╨Р] t=[26,7╤Б, 407,3╤Б] (╨╛╨║╨╜╨░ [15,40]/[360,410])
-+[Test11_MultiCrossing] ok in 3 ms
-+PASS T12 depletion | ╤Б╨╛╨▒╤Л╤В╨╕╨╡: True t=147,10╤Б (╨░╨╜╨░╨╗╨╕╤В╨╕╨║╨░ 147,10╤Б, ┬▒2╤Б); ╨╝╨░╤Б╤Б╨░=900,0000╨║╨│ (тЙИ900); ╨╖╨░╨│╨╗╨╛╤Е: True; coast ╨┐╤А╨╕ ╨│╨░╨╖╨╡ 0 ╤А╨░╨╖╤А╨╡╤И╤С╨╜: True
-+[Test12_Depletion] ok in 3 ms
-+PASS T13 tsiolkovsky | ╬Фv=10,0168╨╝/╤Б vs ╨ж╨╕╨╛╨╗╨║╨╛╨▓╤Б╨║╨╕╨╣ 10,0170 (╬Ф=2,11E-004, ╨┤╨╛╨┐╤Г╤Б╨║ 0.05); ╨╝╨░╤Б╤Б╨░ ╬Ф=2,73E-005╨║╨│
++PASS T10 sleep-error | расхождение 1с-шаги vs 30с-прыжки за 3600с: 0,0м (граница 10000м для мусора)
++[Test10_SleepError] ok in 79 ms
++PASS T11 multi-crossing | subdiv=1 промах: True; subdiv=20: [AtmosphereExit:Планета А,AtmosphereEntry:Планета А] t=[26,7с, 407,3с] (окна [15,40]/[360,410])
++[Test11_MultiCrossing] ok in 2 ms
++PASS T12 depletion | событие: True t=147,10с (аналитика 147,10с, ±2с); масса=900,0000кг (≈900); заглох: True; coast при газе 0 разрешён: True
++[Test12_Depletion] ok in 2 ms
++PASS T13 tsiolkovsky | Δv=10,0168м/с vs Циолковский 10,0170 (Δ=2,11E-004, допуск 0.05); масса Δ=2,73E-005кг
 +[Test13_Tsiolkovsky] ok in 1 ms
-+PASS T14 burn x1==x3 | x1/x3: dPos=5,188E-004╨╝ dVel=2,115E-009 dMass=2,217E-011 (╨┐╨╛╤А╨╛╨│╨╕ 0.5/1e-3/2e-3); ╨┐╨╛╨▓╤В╨╛╤А ╤В╨╛╨╣ ╨╢╨╡ ╨╜╨░╤А╨╡╨╖╨║╨╕: dPos=0,0E+000 dVel=0,0E+000 dMass=0,0E+000 (╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True)
-+[Test14_BurnWarpIdentity] ok in 53 ms
-+PASS T15 isp-altitude | const=320: True; Isp(0)=250,0 Isp(H┬╖ln2)=285,000 Isp(500╨║╨╝)=320,0000 ╨╝╨╛╨╜╨╛╤В╨╛╨╜╨╜╨░: True; flowSL/flowVac=1,2800 (тЙИ1.28): True; ╨▒╨╡╨╖ ╨░╤В╨╝╨╛╤Б╤Д╨╡╤А╤Л=vac: True
++PASS T14 burn x1==x3 | x1/x3: dPos=5,188E-004м dVel=2,115E-009 dMass=2,217E-011 (пороги 0.5/1e-3/2e-3); повтор той же нарезки: dPos=0,0E+000 dVel=0,0E+000 dMass=0,0E+000 (бит-в-бит: True)
++[Test14_BurnWarpIdentity] ok in 50 ms
++PASS T15 isp-altitude | const=320: True; Isp(0)=250,0 Isp(H·ln2)=285,000 Isp(500км)=320,0000 монотонна: True; flowSL/flowVac=1,2800 (≈1.28): True; без атмосферы=vac: True
 +[Test15_IspAltitude] ok in 1 ms
-+PASS T16 preset-parameter | burn ╨╖╨░╨▓╨╡╤А╤И╤С╨╜: True; ╨╝╨░╤Б╤Б╨░ ╬Ф=7,42E-004╨║╨│ (0.05); ╨┤╨╛╨┐╤Г╤Б╨║╨╕ ╨▓╨╛╤Б╤Б╤В╨░╨╜╨╛╨▓╨╗╨╡╨╜╤Л: True
-+[Test16_PresetIsParameter] ok in 9 ms
-+PASS T18 dense-gate | ╨║╨╛╤А╨╜╨╕ legacy-vs-dense: ╨┐╨░╨┤╨╡╨╜╨╕╨╡ ╬Фt=0,00E+000╤Б, ╨╜╤Л╤А╨╛╨║ ╬Ф=[0,00E+000,0,00E+000] (╨┤╨╛╨┐╤Г╤Б╨║ 1e-6); RHS ╤Г╤В╨╛╤З╨╜╨╡╨╜╨╕╨╡ legacy=238 vs dense=56; ╤А╨╡╤Б╤В╨░╤А╤В=null: True; ╤В╤А╨╡╨║: ╤Б╨╡╨│╨╝╨╡╨╜╤В╨╛╨▓ 410, ╨╜╨╡╨┐╤А╨╡╤А╤Л╨▓╨╡╨╜: True (╨┐╨╡╤А╨▓╤Л╨╣ ╤А╨▓╨░╨╜╤Л╨╣ ╤Б╤В╤Л╨║ -1: gap=0,00E+000╤Б jump=0,00E+000╨╝), 100 ╤Б╤Н╨╝╨┐╨╗╨╛╨▓ ╨║╨╛╨╜╨╡╤З╨╜╤Л: True, ╨║╨╛╨╜╤Ж╤Л ╤Б╨╛╨▓╨┐╨░╨╗╨╕: True, Step ╨┐╤А╨╕ ╤Б╤Н╨╝╨┐╨╗╨╕╨╜╨│╨╡: True
++PASS T16 preset-parameter | burn завершён: True; масса Δ=7,42E-004кг (0.05); допуски восстановлены: True
++[Test16_PresetIsParameter] ok in 7 ms
++PASS T18 dense-gate | корни legacy-vs-dense: падение Δt=0,00E+000с, нырок Δ=[0,00E+000,0,00E+000] (допуск 1e-6); RHS уточнение legacy=238 vs dense=56; рестарт=null: True; трек: сегментов 410, непрерывен: True (первый рваный стык -1: gap=0,00E+000с jump=0,00E+000м), 100 сэмплов конечны: True, концы совпали: True, Step при сэмплинге: True
 +[Test18_DenseGate] ok in 19 ms
-+PASS T19 adaptive-grain | ╨┐╤А╨░╨▓╨╕╨╗╨╛: slow=20 fast=200 nan=20 inf=20 (20/200/20/20); ╨║╤А╤Г╨│╨╛╨▓╨░╤П ╧Д=17145╤Б subdiv=20; ╨│╨╕╨┐╨╡╤А╨▒╨╛╨╗╨░ ╧Д=11,6╤Б subdiv=200; graze: [AtmosphereEntry:╨Я╨╗╨░╨╜╨╡╤В╨░ ╨Р,AtmosphereExit:╨Я╨╗╨░╨╜╨╡╤В╨░ ╨Р] t=[35,7,62,3]╤Б; ╤Г╨▒╨╡╨│╨░╨╜╨╕╨╡ ╧Д=3006,8╤Б ╨▒╨╡╨╖ ╨╕╤Б╨║╨╗╤О╤З╨╡╨╜╨╕╨╣: True
++PASS T19 adaptive-grain | правило: slow=20 fast=200 nan=20 inf=20 (20/200/20/20); круговая τ=17145с subdiv=20; гипербола τ=11,6с subdiv=200; graze: [AtmosphereEntry:Планета А,AtmosphereExit:Планета А] t=[35,7,62,3]с; убегание τ=3006,8с без исключений: True
 +[Test19_AdaptiveGrain] ok in 17 ms
-+PASS T17 frame-bridge | roundtrip 1000+╨╜╨╛╨╗╤М ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; ╨╢╤С╤Б╤В╨║╨╛╤Б╤В╤М: ╬Ф(off┬╖axis)=8,59E-006╨╝ ╬Ф|off|=2,62E-005╨╝; ╤Б╨╛╨▓╨╝. (0,0,1) ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; ╤Д╨╛╨║╤Г╤Б-╤А╨╡╨║╨╛╨╜╤Б╤В╤А╤Г╨║╤Ж╨╕╤П: True; ╨╝╨╛╤Б╤В sim=(x,z,тИТy): True
-+[Test17_FrameBridge] ok in 5 ms
-+PASS T17 handedness | det=+1 ╤В╨╛╤З╨╜╨╛: True; cross ╨║╨╛╨╝╨╝╤Г╤В╨╕╤А╤Г╨╡╤В (╤Е╤Г╨┤╤И. 0,00E+000 <1e-12): True; v_rot ╨╖╨╜╨░╨║ ╨▓╨╡╤А╨╜╤Л╨╣ (1,27E-012 <1e-9): True
++PASS T17 frame-bridge | roundtrip 1000+ноль бит-в-бит: True; жёсткость: Δ(off·axis)=8,59E-006м Δ|off|=2,62E-005м; совм. (0,0,1) бит-в-бит: True; фокус-реконструкция: True; мост sim=(x,z,−y): True
++[Test17_FrameBridge] ok in 6 ms
++PASS T17 handedness | det=+1 точно: True; cross коммутирует (худш. 0,00E+000 <1e-12): True; v_rot знак верный (1,27E-012 <1e-9): True
 +[Test17_Handedness] ok in 1 ms
-+PASS T20 kind | touchdown=True exit=True entry=True soi=True(╨Я╨╗╨░╨╜╨╡╤В╨░ ╨Р) depletion=True timed=True
-+[Test20_Kind] ok in 7 ms
-+PASS T20 surface-inverse | roundtrip├Ч1000: max╬Фlat=2,27E-013┬░ max╬Фlon=2,99E-012┬░ (<1e-9); ╨┐╨╛╨╗╤О╤Б╨░ lon=0: True; ╤И╨╛╨▓: 179,9999/180,0001/negтЖТ359,9999; ╤И╨╛╨▓ ╨▓╨╛ ╨▓╤А╨╡╨╝╨╡╨╜╨╕ ╨╗╨╕╨╜╨╡╨╡╨╜ (╤И╨░╨│ 99┬░┬▒1e-6): True; ╤Д╨╗╨╕╨┐: True
-+[Test20_SurfaceInverse] ok in 3 ms
-+PASS T20 reaction | soft: landed=True vn=-4,54╨╝/╤Б(тЙд5) alt=9,31E-010╨╝ postVn=1,67E-013 vt╨б╨╛╤Е╤А╨░╨╜╨╡╨╜╨░=True; hard: N=10 ╬гm╬Ф=0,00E+000 ╬гmf╬Ф=3,65E-018 ╬гmv╬Ф=1,33E-016 spawn╬Ф=0,00E+000╨╝; clamp==900: True; focus is Body: True
-+[Test20_Reaction] ok in 9 ms
-+PASS T20 surface-motion | ╤Б╤В╨╛╤П╨╜╨║╨░ ╨╛╤В╨╜╨╛╤Б╨╕╤В.: True; ╤Б╨╗╨╡╨┤╨╛╨▓╨░╨╜╨╕╨╡ 3600╤Б ╬Ф=2,21E-004╨╝; ╤Б╤В╨╕╨║ 30┬░ v=0,00E+000: True; ╤Б╨╗╨╕╨┐ 60┬░ v=6,037╨╝/╤Б (тЙИ6.037): True; ╤Б╤В╨╛╨┐ ╤Б 50╨╝/╤Б: v=0,00E+000 ╨┐╤Г╤В╤М=255,1╨╝ (тЙИ255): True; ╨╛╤В╤А╤Л╨▓ ╨▒╨╡╨╖ ╤Б╨┤╨▓╨╕╨│╨░: True
++PASS T20 kind | touchdown=True exit=True entry=True soi=True(Планета А) depletion=True timed=True
++[Test20_Kind] ok in 6 ms
++PASS T20 surface-inverse | roundtrip×1000: maxΔlat=2,27E-013° maxΔlon=2,99E-012° (<1e-9); полюса lon=0: True; шов: 179,9999/180,0001/neg→359,9999; шов во времени линеен (шаг 99°±1e-6): True; флип: True
++[Test20_SurfaceInverse] ok in 2 ms
++PASS T20 reaction | soft: landed=True vn=-4,54м/с(≤5) alt=9,31E-010м postVn=1,67E-013 vtСохранена=True; hard: N=10 ΣmΔ=0,00E+000 ΣmfΔ=3,65E-018 ΣmvΔ=1,33E-016 spawnΔ=0,00E+000м; clamp==900: True; focus is Body: True
++[Test20_Reaction] ok in 8 ms
++PASS T20 surface-motion | стоянка относит.: True; следование 3600с Δ=2,21E-004м; стик 30° v=0,00E+000: True; слип 60° v=6,037м/с (≈6.037): True; стоп с 50м/с: v=0,00E+000 путь=255,1м (≈255): True; отрыв без сдвига: True
 +[Test20_SurfaceMotion] ok in 85 ms
-+PASS T22 drag-contract | ╤Д╨╛╤А╨╝╤Г╨╗╨░ F=(-6e6,0,0): True; ╧Б(H┬╖ln2)/╧Б0=0.5: True; ╤Б╨╛-╨▓╤А╨░╤Й╨╡╨╜╨╕╨╡ F=0: True; hover ╨┐╤А╨╛╤В╨╕╨▓ v_rel: True |F|=2,101E+006╨Э; ╤Б╤А╨╡╨╖ Top: True; ╤Б╤В╤А╨░╨╢╨╕: True; ╨▓╨░╤А╨┐ ╨▓╨╜╤Г╤В╤А╨╕ ╨╖╨░╨┐╤А╨╡╤Й╤С╨╜/╤Б╨╜╨░╤А╤Г╨╢╨╕ ╨╝╨╛╨╢╨╜╨╛: True/True
++PASS T22 drag-contract | формула F=(-6e6,0,0): True; ρ(H·ln2)/ρ0=0.5: True; со-вращение F=0: True; hover против v_rel: True |F|=2,101E+006Н; срез Top: True; стражи: True; варп внутри запрещён/снаружи можно: True/True
 +[Test22_DragContract] ok in 2 ms
-+PASS T22 drag-dip | ╨╛╨▒╨░ ╨╜╨░╤Е╨╛╨┤╤П╤В [Exit,Entry]: True; ╬Фv_╨▓╤Л╤Е╨╛╨┤=1,38╨╝/╤Б (>0.5): True
++PASS T22 drag-dip | оба находят [Exit,Entry]: True; Δv_выход=1,38м/с (>0.5): True
 +[Test22_DragDip] ok in 3 ms
-+PASS T23 decay | ╨╝╨╛╨╜╨╛╤В╨╛╨╜╨╜╨╛╤Б╤В╤М ╨░╨┐╨╛/╨┐╨╡╤А╨╕/E (╤Б╨╗╨░╨▒ 10╨╝/1e-6): True; ╤Б╤Г╨╝╨╝╨░╤А╨╜╨╛ ╬ФE/E=-1,13E-003 (<-1e-4 ╨╖╨░ 10 ╨▓╨╕╤В╨║╨╛╨▓); ╤Д╨╕╨╜╨░╨╗ ╨░╨┐╨╛=6,616227E+006╨╝ ╨┐╨╡╤А╨╕=6,611173E+006╨╝ (╨╜╨░╨┤ R=6,371000E+006╨╝: True)
-+[Test23_Decay] ok in 58 ms
-+PASS T23 retrograde | ╨┐╨╛╤В╨╡╤А╨╕ +X=-1,812E+004 тИТX=-1,392E+004 ╨Ф╨╢/╨║╨│ (╨╛╨▒╨╡ <0); ╨╛╤В╨╜╨╛╤И╨╡╨╜╨╕╨╡=1,302 (тЙИ1.275 тИЭv_rel┬▓, ╨┤╨╛╨┐╤Г╤Б╨║ [1.1,1.5])
-+[Test23_Retrograde] ok in 54 ms
-+PASS T23 top-crossing | ╤Б╨╕╨╗╨░ Top┬▒10╨╝: 0/╤Б╨╜╨╕╨╖╤Г 2,92E+002╨Э: True; ╨╝╨░╨║╤Б |╬Фv|/1╤Б=9,52╨╝/╤Б (<25); ╤Б╨╛╨▒╤Л╤В╨╕╤П [Entry,Touchdown]: True
-+[Test23_TopCrossing] ok in 22 ms
-+PASS T23 rate-baseline | dE/dt ╨╕╨╖╨╝╨╡╤А╨╡╨╜╨╛=-3,0059E+000 ╨░╨╜╨░╨╗╨╕╤В╨╕╨║╨░=-3,0063E+000 ╨Ф╨╢/╨║╨│/╤Б (╬Ф=1,31E-004, ╨┤╨╛╨┐╤Г╤Б╨║ 5%)
++PASS T23 decay | монотонность апо/пери/E (слаб 10м/1e-6): True; суммарно ΔE/E=-1,13E-003 (<-1e-4 за 10 витков); финал апо=6,616227E+006м пери=6,611173E+006м (над R=6,371000E+006м: True)
++[Test23_Decay] ok in 54 ms
++PASS T23 retrograde | потери +X=-1,812E+004 −X=-1,392E+004 Дж/кг (обе <0); отношение=1,302 (≈1.275 ∝v_rel², допуск [1.1,1.5])
++[Test23_Retrograde] ok in 53 ms
++PASS T23 top-crossing | сила Top±10м: 0/снизу 2,92E+002Н: True; макс |Δv|/1с=9,52м/с (<25); события [Entry,Touchdown]: True
++[Test23_TopCrossing] ok in 21 ms
++PASS T23 rate-baseline | dE/dt измерено=-3,0059E+000 аналитика=-3,0063E+000 Дж/кг/с (Δ=1,31E-004, допуск 5%)
 +[Test23_RateBaseline] ok in 0 ms
-+PASS T24 history | ╨╜╨╡╨╖╨░╨▓╨╕╤Б╨╕╨╝╨╛╤Б╤В╤М ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; ╤Б╨╡╤В╨║╨░ ╨▓╤А╨╡╨╝╤С╨╜ ╤А╨░╨▓╨╜╨░: True (╤Б╨╛╨▒╤Л╤В╨╕╤П ╬ФtтЙд2,98E-007╤Б, ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╬ФтЙд9,49E-003╨╝); preserve 8 ╤Б╤Н╨╝╨┐╨╗╨╛╨▓/2 ╤Б╨╛╨▒╤Л╤В╨╕╤П/╨│╤А╨░╨╜╨╕╤Ж╤Л: True; ╤О╨╜╨╕╤В ╤Б╨╗╨╕╤П╨╜╨╕╤П 7 ╤И╤В: True
++PASS T24 history | независимость бит-в-бит: True; сетка времён равна: True (события Δt≤2,98E-007с, значения Δ≤9,49E-003м); preserve 8 сэмплов/2 события/границы: True; юнит слияния 7 шт: True
 +[Test24_History] ok in 9 ms
-+PASS T26 circular-matrix | roundtrip ╤Е╤Г╨┤╤И.=1,50E-015 (e=0,0001 i=5┬░); E-╨┤╤А╨╡╨╣╤Д ╤Е╤Г╨┤╤И.=5,98E-016; numeric T/4 ╤Е╤Г╨┤╤И.=1,07╨╝ (e=0,05 i=0┬░, <10╨╝) [e=0,i=0┬░:1,06╨╝ e=0,i=5┬░:1,05╨╝ e=0,i=90┬░:0,58╨╝ e=0,i=180┬░:0,76╨╝ e=1E-08,i=0┬░:1,06╨╝ e=1E-08,i=5┬░:1,05╨╝ e=1E-08,i=90┬░:0,58╨╝ e=1E-08,i=180┬░:0,76╨╝ e=0,0001,i=0┬░:1,06╨╝ e=0,0001,i=5┬░:1,05╨╝ e=0,0001,i=90┬░:0,58╨╝ e=0,0001,i=180┬░:0,76╨╝ e=0,05,i=0┬░:1,07╨╝ e=0,05,i=5┬░:1,07╨╝ e=0,05,i=90┬░:0,58╨╝ e=0,05,i=180┬░:0,75╨╝]
-+[Test26_CircularMatrix] ok in 6 ms
-+PASS T27 impulsive | ╨╝╨╡╨╢╨┐╨╗╨░╨╜╨╡╤В valid=True ╨┐╤А╨╛╨╝╨░╤Е=1,17E+009╨╝ (╨║╨╗╨░╤Б╤Б patched-conics); ╨╗╤Г╨╜╨░ ok=True (rendezvous тИЮ╨╝ / ╨┐╤А╤П╨╝╨╛╨╡ ╨┐╨╛╨┐╨░╨┤╨░╨╜╨╕╨╡ True); ╤Г╨┤╨░╤А invalid=True touchdown=True ╨╛╨▒╤А╨░╨╖╨╡╤Ж ╤Ж╨╡╨╗=True; ╨┤╨╡╤В╨╡╤А╨╝=True; drag-╨╕╨╖╨▒╤Л╤В╨╛╨║=5,42E+002╨╝
-+[Test27_Impulsive] ok in 1536 ms
-+PASS T29 descent-chain | ╤Ж╨╡╨┐╨╛╤З╨║╨░ [Entry,Touchdown]: True; ╨╝╤П╨│╨║╨╛╨╡ vn=-3,30╨╝/╤Б(тЙд5): True; ╤Б╤Г╤В╨║╨╕ landed, ╨┤╤А╨╡╨╣╤Д=1,96E-004╨╝ (<0.01): True
++PASS T26 circular-matrix | roundtrip худш.=1,50E-015 (e=0,0001 i=5°); E-дрейф худш.=5,98E-016; numeric T/4 худш.=1,07м (e=0,05 i=0°, <10м) [e=0,i=0°:1,06м e=0,i=5°:1,05м e=0,i=90°:0,58м e=0,i=180°:0,76м e=1E-08,i=0°:1,06м e=1E-08,i=5°:1,05м e=1E-08,i=90°:0,58м e=1E-08,i=180°:0,76м e=0,0001,i=0°:1,06м e=0,0001,i=5°:1,05м e=0,0001,i=90°:0,58м e=0,0001,i=180°:0,76м e=0,05,i=0°:1,07м e=0,05,i=5°:1,07м e=0,05,i=90°:0,58м e=0,05,i=180°:0,75м]
++[Test26_CircularMatrix] ok in 5 ms
++PASS T27 impulsive | межпланет valid=True промах=1,17E+009м (класс patched-conics); луна ok=True (rendezvous ∞м / прямое попадание True); удар invalid=True touchdown=True образец цел=True; детерм=True; drag-избыток=5,42E+002м
++[Test27_Impulsive] ok in 1527 ms
++PASS T29 descent-chain | цепочка [Entry,Touchdown]: True; мягкое vn=-3,30м/с(≤5): True; сутки landed, дрейф=1,96E-004м (<0.01): True
 +[Test29_DescentChain] ok in 83 ms
-+PASS T29 terminal-velocity | ╤Б╤Н╨╝╨┐╨╗╨╛╨▓ ╨▓ ╨╛╨║╨╜╨╡ 20тАУ30╨║╨╝: 71; ╤Б╤А╨╡╨┤╨╜╤П╤П 141,40╨╝/╤Б vs ╨░╨╜╨░╨╗╨╕╤В╨╕╨║╨░ 140,14 (╬Ф=8,97E-003, ╨┤╨╛╨┐╤Г╤Б╨║ 1.5%)
++PASS T29 terminal-velocity | сэмплов в окне 20–30км: 71; средняя 141,40м/с vs аналитика 140,14 (Δ=8,97E-003, допуск 1.5%)
 +[Test29_TerminalVelocity] ok in 4 ms
-+PASS T30 parts-trap | ╨╝╨░╤Б╤Б╨░=1000: True; COM=(0.6,0.1,0): True; ╨┤╨╕╨░╨│(90,1440,1530): True; Ixy=60 ╤Б╨╕╨╝╨╝/╨╜╤Г╨╗╨╕: True; I┬╖IтБ╗┬╣: True
++PASS T30 parts-trap | масса=1000: True; COM=(0.6,0.1,0): True; диаг(90,1440,1530): True; Ixy=60 симм/нули: True; I·I⁻¹: True
 +[Test30_PartsTrap] ok in 3 ms
-+PASS T31 attitude-spin | ╤Б╨▓╨╛╨▒╨╛╨┤╨╜╨╛╨╡: ╤Г╨│╨╛╨╗ 5,85E-006 ╧Й 0,00E+000; ╨╝╨╛╨╝╨╡╨╜╤В: ╤Г╨│╨╛╨╗ 1,65E-004 ╧Й 1,24E-014
++PASS T31 attitude-spin | свободное: угол 5,85E-006 ω 0,00E+000; момент: угол 1,65E-004 ω 1,24E-014
 +[Test31_AttitudeSpin] ok in 7 ms
-+PASS T31 attitude-tumble | 1000╤Б ╨║╤Г╨▓╤Л╤А╨║╨░: ╬ФE/E=1,42E-005 ╬Ф|L|/|L|=6,62E-006 |q|тИТ1=0,00E+000 ╬ФL_world=6,64E-006
-+[Test31_AttitudeTumble] ok in 91 ms
-+PASS T31 attitude-pd | 120╤Б PD: |╧Й|=8,46E-016 (<1e-3) ╤Г╨│╨╛╨╗=0,00E+000╤А╨░╨┤ (<0.017)
-+[Test31_AttitudePD] ok in 20 ms
-+PASS T31 torque-link | ╤Б╨╜╨╕╨╝╨╛╨║тЖТ(0,тИТ1,0): True; legacy ╨╝╨╕╤А╨╛╨▓╨╛╨╣: True; RCS ╧Д=(0,тИТ20,0): True; full ╤Б Torque: True; ╨▒╨╡╨╖ ╨┐╤А╨╛╨▓╨░╨╣╨┤╨╡╤А╨░ ╨│╤А╨╛╨╝╨║╨╛: True; ╧Д ╨▓ ╤Б╨╜╨╕╨╝╨║╨╡: True; ╤Б╨╕╨╗╨░ ╨▓ RHS: True; ╤Б╨╜╨╕╨╝╨╛╨║ ╨║╤А╤Г╤В╨╕╤В ╨▓╤А╨░╤Й╨╡╨╜╨╕╨╡: True
++PASS T31 attitude-tumble | 1000с кувырка: ΔE/E=1,42E-005 Δ|L|/|L|=6,62E-006 |q|−1=0,00E+000 ΔL_world=6,64E-006
++[Test31_AttitudeTumble] ok in 94 ms
++PASS T31 attitude-pd | 120с PD: |ω|=8,46E-016 (<1e-3) угол=0,00E+000рад (<0.017)
++[Test31_AttitudePD] ok in 18 ms
++PASS T31 torque-link | снимок→(0,−1,0): True; legacy мировой: True; RCS τ=(0,−20,0): True; full с Torque: True; без провайдера громко: True; τ в снимке: True; сила в RHS: True; снимок крутит вращение: True
 +[Test31_TorqueLink] ok in 2 ms
-+PASS T33 staging-momentum | m1=800 v1=1000,4, m2=200 v2=998,4; ╬гmv=1000000 (╤Н╤В╨░╨╗╨╛╨╜ 1000000); relErr=0,00E+000; ╤Б╨╗╨╛╤В ╨░╨║╤В╨╕╨▓╨╡╨╜: True
++PASS T33 staging-momentum | m1=800 v1=1000,4, m2=200 v2=998,4; Σmv=1000000 (эталон 1000000); relErr=0,00E+000; слот активен: True
 +[Test33_StagingMomentum] ok in 0 ms
-+PASS T34 golden-state | ╨▒╨╕╤В-╨▓-╨▒╨╕╤В ╤Н╤В╨░╨╗╨╛╨╜ + CALLS=81: True; ╤П╨║╨╛╤А╤М ╨Ъ╨╡╨┐╨╗╨╡╤А relErr=1,02E-006 (<1e-4)
++PASS T34 golden-state | бит-в-бит эталон + CALLS=81: True; якорь Кеплер relErr=1,02E-006 (<1e-4)
 +[Test34_GoldenState] ok in 0 ms
-+PASS T35 kepler-edge | ╨╜╨╡╨▓╤П╨╖╨║╨╕: ╤Н╨╗╨╗╨╕╨┐╤Б 4,44E-016, ╨│╨╕╨┐╨╡╤А╨▒╨╛╨╗╨░ 5,05E-016 (<1e-9); inbound tPe=1185╤Б r_p=10000000╨╝ (╨╛╨╢╨╕╨┤ 1e7); outbound NaN: True
-+[Test35_KeplerEdge] ok in 2 ms
-+PASS T36 helio-drift | 5 ╨╗╨╡╤В, 60 ╤З╨░╨╜╨║╨╛╨▓: ╤Е╤Г╨┤╤И. ╬ФE/E=9,78E-006 (<1e-4), ╤Е╤Г╨┤╤И. ╬Фr/r=4,55E-005 (<1e-3); ╤А╨░╨┤╨╕╤Г╤Б ╨▓ [2,50E+011,2,50E+011] ╨┐╤А╨╕ r0=2,50E+011
-+[Test36_HelioDrift] ok in 24346 ms
-+PASS T38 low-drag | 6 ╨▓╨╕╤В╨║╨╛╨▓ 200╨║╨╝ (6 ╨┐╤А╨╛╨╣╨┤╨╡╨╜╨╛): ╨╝╨╛╨╜╨╛╤В╨╛╨╜╨╜╨╛╤Б╤В╤М True, ╨▒╨╡╨╖ ╨┐╨░╨┤╨╡╨╜╨╕╤П True, ╤Д╨╕╨╜╨░╨╗╤М╨╜╤Л╨╣ ╨┐╨╡╤А╨╕╨│╨╡╨╣ 6,54E+006╨╝ (>R+50╨║╨╝); ╤Б╨▒╤А╨╛╤Б -1,63E+005 ╨Ф╨╢/╨║╨│ vs ╨░╨╜╨░╨╗╨╕╤В╨╕╨║╨░ 9,56E+004 (╨╛╤В╨╜╨╛╤И╨╡╨╜╨╕╨╡ 1,70 ╨▓ [0.5,4])
-+[Test38_LowDrag] ok in 14 ms
-+PASS T42 bake-rule | ╤Б╨╡╨│╨╝╨╡╨╜╤В╤Л: ╨╗╤Г╨╜╨░=6,81╨┤ ╨┐╨╗╨░╨╜╨╡╤В╨░╨Р=6,81╨┤ ╨┐╨╗╨░╨╜╨╡╤В╨░╨С=64,00╨┤; attach=True finite=True
-+[Test42_BakeRule] ok in 25 ms
-+PASS T43 bake-stream | ╤Д╨░╨╣╨╗╤Л+╨╝╨░╨╜╨╕╤Д╨╡╤Б╤В: True; ╤Б╤В╤А╨╕╨╝==╨┐╨░╨╝╤П╤В╤М 1000 ╤В╨╛╤З╨╡╨║ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; ╨╖╨░╨│╤А╤Г╨╖╨╛╨║ ╨╛╨║╨╛╨╜ 3 (╤Б╨╡╨│╨╝╨╡╨╜╤В╨╛╨▓ 9); ╤Н╨▓╨╕╨║╤И╨╡╨╜ ╨╕╨┤╨╡╨╜╤В╨╕╤З╨╡╨╜: True; ╨┐╤А╨╛╤И╨╗╨╛╨╡ ╨│╤А╨╛╨╝╨║╨╛/╨▒╤Г╨┤╤Г╤Й╨╡╨╡ ╨┐╤А╨╛╨┤╨╛╨╗╨╢╨╡╨╜╨╕╨╡: True; bulk: True
-+[Test43_BakeStream] ok in 34 ms
-+PASS T44 time-cap | ╨╖╨░ ╨║╨╛╨╜╤Ж╨╛╨╝ ╨╢╨╕╨▓╤С╨╝: True; ╨┤╨╛ T0 ╨│╤А╨╛╨╝╨║╨╛: True; ╤Б╤В╨╛╨┐ ╨╜╨░ ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В╨╡ 2592000╤Б: True; ╤А╨╡╨░╨║╤Ж╨╕╤П: True; ╨┐╤А╨╛╨╖╤А╨░╤З╨╡╨╜ ╨▓╨╜╤Г╤В╤А╨╕: True; ╨┤╨╡╤Д╨╛╨╗╤В inf: True; touchdown 224,5╤Б: tie->Touchdown True, cap-1╤Б->EphemerisEnd True
-+[Test44_TimeCap] ok in 1063 ms
-+PASS T45 porkchop-horizon | ╤Б╨║╨░╨╜ ╨╖╨░ ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В 5184000╤Б ╨╜╨╡ ╨▒╤А╨╛╤Б╨╕╨╗: True; ╨║╨╗╨╡╤В╨╛╨║ ╨╖╨░ ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В╨╛╨╝ 12, ╨▓╤Б╨╡ ╤А╨░╨╖╤Г╨╝╨╜╤Л (╨┐╤А╨╛╨┤╨╛╨╗╨╢╨╡╨╜╨╕╨╡): True; ╨▓╨░╨╗╨╕╨┤╨╜╤Л╤Е ╨▓╨╜╤Г╤В╤А╨╕ (╨╛╨║╨╜╨╛ T27): 9; ╨▒╨╕╤В╤Л╨╣ ╤Д╨░╨╣╨╗ ╨│╤А╨╛╨╝╨║╨╛: True
-+[Test45_PorkchopHorizon] ok in 17 ms
-+PASS T52 centrifugal | ╧Й┬▓R=10>g=9.8 тЖТ Flying (╨╛╨╢╨╕╨┤╨░╨╗╤Б╤П Flying); ╧Й┬▓R=5<g тЖТ Landed (╨╛╨╢╨╕╨┤╨░╨╗╤Б╤П Landed)
++PASS T35 kepler-edge | невязки: эллипс 4,44E-016, гипербола 5,05E-016 (<1e-9); inbound tPe=1185с r_p=10000000м (ожид 1e7); outbound NaN: True
++[Test35_KeplerEdge] ok in 1 ms
++PASS T36 helio-drift | 5 лет, 60 чанков: худш. ΔE/E=9,78E-006 (<1e-4), худш. Δr/r=4,55E-005 (<1e-3); радиус в [2,50E+011,2,50E+011] при r0=2,50E+011
++[Test36_HelioDrift] ok in 22538 ms
++PASS T38 low-drag | 6 витков 200км (6 пройдено): монотонность True, без падения True, финальный перигей 6,54E+006м (>R+50км); сброс -1,63E+005 Дж/кг vs аналитика 9,56E+004 (отношение 1,70 в [0.5,4])
++[Test38_LowDrag] ok in 11 ms
++PASS T42 bake-rule | сегменты: луна=6,81д планетаА=6,81д планетаБ=64,00д; attach=True finite=True
++[Test42_BakeRule] ok in 55 ms
++PASS T43 bake-stream | файлы+манифест: True; стрим==память 1000 точек бит-в-бит: True; загрузок окон 3 (сегментов 9); эвикшен идентичен: True; прошлое громко/будущее продолжение: True; bulk: True
++[Test43_BakeStream] ok in 48 ms
++PASS T44 time-cap | за концом живём: True; до T0 громко: True; стоп на горизонте 2592000с: True; реакция: True; прозрачен внутри: True; дефолт inf: True; touchdown 224,5с: tie->Touchdown True, cap-1с->EphemerisEnd True
++[Test44_TimeCap] ok in 999 ms
++PASS T45 porkchop-horizon | скан за горизонт 5184000с не бросил: True; клеток за горизонтом 12, все разумны (продолжение): True; валидных внутри (окно T27): 9; битый файл громко: True
++[Test45_PorkchopHorizon] ok in 38 ms
++PASS T52 centrifugal | ω²R=10>g=9.8 → Flying (ожидался Flying); ω²R=5<g → Landed (ожидался Landed)
 +[Test52_Centrifugal] ok in 2 ms
-+PASS T53 lambert-halfplane | dt-╨▓╨░╤А╨╕╨░╤В╨╕╨▓╨╜╨╛╤Б╤В╤М: True; round-trip ╤Е╤Г╨┤╤И╨╕╨╣ ╨╛╤В╨╜. err=1,26E-009 (<1e-6); v_long=тИТv_short: True; dt<min ╨▒╤А╨╛╤Б╨░╨╡╤В: True
-+[Test53_LambertHalfPlane] ok in 3 ms
-+PASS T54 lambert-overshoot | dt=1e13 ╨▒╤А╨╛╤Б╨░╨╡╤В: True; dt=1╤Б ╨▒╤А╨╛╤Б╨░╨╡╤В: True; dt=1e5 ╤А╨╡╤И╨░╨╡╤В╤Б╤П: True
++PASS T53 lambert-halfplane | dt-вариативность: True; round-trip худший отн. err=1,26E-009 (<1e-6); v_long=−v_short: True; dt<min бросает: True
++[Test53_LambertHalfPlane] ok in 2 ms
++PASS T54 lambert-overshoot | dt=1e13 бросает: True; dt=1с бросает: True; dt=1e5 решается: True
 +[Test54_LambertOvershoot] ok in 0 ms
-+PASS T55 force-accept-sync | ╤Б╨╡╨│╨╝╨╡╨╜╤В╨╛╨▓ 1, span=1,000000000E-003╤Б (target 1e-3, ┬▒1.5┬╖MinStep): True; ╤Б╤В╤Л╨║╨╕: True; ╨║╨╛╨╜╨╡╤Ж ╤В╤А╨╡╨║╨░=╨╕╤В╨╛╨│: True; legacy ╬Фpos=0,00E+000╨╝
-+[Test55_ForceAcceptSync] ok in 3 ms
-+PASS T56 apsis-zero | ╨▓ ╨┐╨╡╤А╨╕╨░╨┐╤Б╨╕╤Б╨╡: tPe=0,000000E+000╤Б (0), tAp=4976╤Б; ╨▓ ╨░╨┐╨╛╨░╨┐╤Б╨╕╤Б╨╡: tPe=4976╤Б, tAp=0,000000E+000╤Б (0)
++PASS T55 force-accept-sync | сегментов 1, span=1,000000000E-003с (target 1e-3, ±1.5·MinStep): True; стыки: True; конец трека=итог: True; legacy Δpos=0,00E+000м
++[Test55_ForceAcceptSync] ok in 2 ms
++PASS T56 apsis-zero | в периапсисе: tPe=0,000000E+000с (0), tAp=4976с; в апоапсисе: tPe=4976с, tAp=0,000000E+000с (0)
 +[Test56_ApsisZero] ok in 0 ms
-+PASS T57 rail-validation | e=1.2 ╨▒╤А╨╛╤Б╨░╨╡╤В: True; a=0 ╨▒╤А╨╛╤Б╨░╨╡╤В: True; e=0.01 ╤А╨╡╤И╨░╨╡╤В╤Б╤П: True
++PASS T57 rail-validation | e=1.2 бросает: True; a=0 бросает: True; e=0.01 решается: True
 +[Test57_RailValidation] ok in 0 ms
-+PASS T58 grain-probe | ╨╝╨╡╨╢╨┐╨╗╨░╨╜╨╡╤В╨░: ╨┤╨╛╨╝╨╕╨╜╨░╨╜╤В╨░=╨Т╤Л╨╝╤Л╤И╨╗╨╡╨╜╨╜╨░╤П ╨╖╨▓╨╡╨╖╨┤╨░, ╧Д=4,517E+007╤Б, ╨╢╨╡╨╗╨░╨╡╨╝╨╛╨╡ ╨╖╨╡╤А╨╜╨╛=2E+006╤Б vs ╨▒╨░╨╖╨░ 30╤Б тЖТ subdiv=20 (╨╕╨╖ ╨┐╨╛╨╗╨░); ╤Г ╨┐╨╗╨░╨╜╨╡╤В╤Л: ╧Д=1,9E+003╤Б тЖТ subdiv=20
-+PASS T58 grain-needs | NeedsFineGrain: ╨║╤А╤Г╨╕╨╖ ╨▒╨╡╨╖ ╨┤╨╡╤В╨╡╨║╤В╨╛╤А╨╛╨▓=False (╨╛╨╢╨╕╨┤╨░╨╗╤Б╤П false), ╨║╤А╤Г╨╕╨╖ ╤Б ╨┤╨╡╤В╨╡╨║╤В╨╛╤А╨░╨╝╨╕=False (false тАФ ╤Б╤Д╨╡╤А╤Л ╨╜╨╡╨┤╨╛╤Б╤В╨╕╨╢╨╕╨╝╤Л), ╤Г ╨┐╨╗╨░╨╜╨╡╤В╤Л=True (true)
++PASS T58 grain-probe | межпланета: доминанта=Вымышленная звезда, τ=4,517E+007с, желаемое зерно=2E+006с vs база 30с → subdiv=20 (из пола); у планеты: τ=1,9E+003с → subdiv=20
++PASS T58 grain-needs | NeedsFineGrain: круиз без детекторов=False (ожидался false), круиз с детекторами=False (false — сферы недостижимы), у планеты=True (true)
 +[Test58_GrainProbe] ok in 0 ms
-+PASS T59 bake-files-speed | ╤Д╨░╨╣╨╗==╨┐╨░╨╝╤П╤В╤М ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; ╨╛╤Ж╨╡╨╜╨║╨░=71361╨С == ╤Д╨░╨║╤В=71361╨С: True; BG2: ╨▒╤О╨┤╨╢╨╡╤В-╨║╨▓╨░╨╜╤В pos=3,74E-001╨╝(<=1,0╨╝) vel=5,31E-005╨╝/╤Б(<=0,0), ╨╜╨░╨╖╨░╨┤=True, ╤Б╨╢╨░╤В╨╕╨╡ 21155╨С/71511╨С=0,30x; 8 ╨╗╨╡╤В ╨╖╨░ 0,32╤Б тЖТ ╨┐╤А╨╛╨╡╨║╤Ж╨╕╤П 1024 ╨╗╨╡╤В ~41╤Б; ╨┐╤А╨╛╨│╤А╨╡╤Б╤Б: True; ╨╛╤В╨╝╨╡╨╜╨░: True
-+[Test59_BakeFilesAndSpeed] ok in 776 ms
-+PASS T61 unbakeable-moon | ╨╛╤Ж╨╡╨╜╤Й╨╕╨║ ╨▒╤А╨╛╤Б╨░╨╡╤В: True; ╨▒╨╡╨╣╨║ ╨▒╤А╨╛╤Б╨░╨╡╤В: True; ╨▓ ╤Б╨┐╨╕╤Б╨║╨╡ ╨╗╤Г╨╜╨░ I-1: True; ╨║╨░╤Б╨║╨░╨┤ ╨╜╨░ ╨┐╨╗╨░╨╜╨╡╤В╤Г I: True; ╨┐╨╛╤Б╤В╨╛╤А╨╛╨╜╨╜╨╕╨╡ ╤В╨╡╨╗╨░ ╨╜╨╡ ╤В╤А╨╛╨╜╤Г╤В╤Л: True
++PASS T59 bake-files-speed | файл==память бит-в-бит: True; оценка=71361Б == факт=71361Б: True; BG2: бюджет-квант pos=3,74E-001м(<=1,0м) vel=5,31E-005м/с(<=0,0), назад=True, сжатие 21155Б/71511Б=0,30x; 8 лет за 0,33с → проекция 1024 лет ~42с; прогресс: True; отмена: True
++[Test59_BakeFilesAndSpeed] ok in 829 ms
++PASS T61 unbakeable-moon | оценщик бросает: True; бейк бросает: True; в списке луна I-1: True; каскад на планету I: True; посторонние тела не тронуты: True
 +[Test61_UnbakeableMoon] ok in 1 ms
-+PASS T62 compress-v2 | BG2 12 ╤В╨╡╨╗, 2y: pos-worst=4,57E-001╨╝(<=1,0╨╝) vel-worst=2,82E-004╨╝/╤Б(<=0,0); ╤Б╨╢╨░╤В╨╕╨╡ 248562╨С/801825╨С=0,31x BE1 (<=0.5); ╨╜╨░╨╖╨░╨┤=True; bulk-╨▒╨╕╤В-╨▓-╨▒╨╕╤В=True
-+[Test62_CompressV2] ok in 648 ms
-+PASS T63 kepler-continuation | ╨┐╤А╨╛╨┤╨╛╨╗╨╢╨╡╨╜╨╕╨╡: ╤Д╨╕╤В╤В=True; ╤Б╤В╤Л╨║=True (worst 2,572E-001╨╝); ╨╖╨░ ╨║╨╛╨╜╤Ж╨╛╨╝=True; BG3=True; BE2=True; legacy ╨│╤А╨╛╨╝╨║╨╛=True; world+1╤Б╤Г╤В=True
-+[Test63_KeplerContinuation] ok in 1244 ms
-+PASS T64 hill-validation | 0.6 R_H ╨▒╤А╨╛╤Б╨░╨╡╤В: True (╨▓ ╤Б╨╛╨╛╨▒╤Й╨╡╨╜╨╕╨╕ ╨╕╨╝╤П+╤З╨╕╤Б╨╗╨░: True); 0.29 R_H ╨┐╤А╨╛╤Е╨╛╨┤╨╕╤В: True; ╨▒╨╗╨╕╨╖╨║╨╕╨╡ ╤Б╨╕╨▒╨╗╨╕╨╜╨│╨╕ ╨▒╤А╨╛╤Б╨░╤О╤В: True; ╤Д╨╕╨║╤Б╤В╤Г╤А╨░ 1+5+6 ╨┐╤А╨╛╤Е╨╛╨┤╨╕╤В: True
++PASS T62 compress-v2 | BG2 12 тел, 2y: pos-worst=4,57E-001м(<=1,0м) vel-worst=2,82E-004м/с(<=0,0); сжатие 248562Б/801825Б=0,31x BE1 (<=0.5); назад=True; bulk-бит-в-бит=True
++[Test62_CompressV2] ok in 586 ms
++PASS T63 kepler-continuation | продолжение: фитт=True; стык=True (worst 2,572E-001м); за концом=True; BG3=True; BE2=True; legacy громко=True; world+1сут=True
++[Test63_KeplerContinuation] ok in 1194 ms
++PASS T64 hill-validation | 0.6 R_H бросает: True (в сообщении имя+числа: True); 0.29 R_H проходит: True; близкие сиблинги бросают: True; фикстура 1+5+6 проходит: True
 +[Test64_HillValidation] ok in 1 ms
-+PASS T65 system-blueprint | ╨▒╨╗╤О╨┐╤А╨╕╨╜╤В==╤А╤Г╤З╨╜╨░╤П ╤Б╨▒╨╛╤А╨║╨░ (╨▒╨╡╨╣╨║ 1y, 200 ╤В╨╛╤З╨╡╨║ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В): True; ╨╜╨╡╤Б╤В╨░╨▒╨╕╨╗╤М╨╜╨░╤П ╨╗╤Г╨╜╨░ ╨│╤А╨╛╨╝╨║╨╛: True; ╨╜╨╛╨╗╤М ╨║╨╛╤А╨╜╨╡╨╣: True; ╨┤╨▓╨░ ╨║╨╛╤А╨╜╤П: True; ╨▒╨╕╤В╤Л╨╣ ParentIndex: True
-+[Test65_SystemBlueprint] ok in 39 ms
-+PASS T66 nan-protocol | ╨╜╨╛╤А╨╝╨░╨╗╨╕╨╖╨░╤Ж╨╕╤П: NaN ╤А╨░╤Б╨┐╤А╨╛╤Б╤В╤А╨░╨╜╤П╨╡╤В╤Б╤П=True, ╨╜╨╛╨╗╤М=Zero=True, ╤О╨╜╨╕╤В=True; forward-only: orbit=True, ship=True; NaN-╨╕╤Б╤В╨╛╤З╨╜╨╕╨║ ╨│╤А╨╛╨╝╨║╨╛=True; drain-╨╝╨░╤Б╤Б╨░ ╨│╤А╨╛╨╝╨║╨╛=True; NaN-╨┤╨╡╤В╨╡╨║╤В╨╛╤А ╨│╤А╨╛╨╝╨║╨╛=True; ╨╖╨┤╨╛╤А╨╛╨▓╤Л╨╣ ╨┐╤Г╤В╤М ╨╢╨╕╨▓=True
-+[Test66_NanProtocol] ok in 6 ms
-+PASS T67 kepler-predictor-guards | eтЙИ1 ╨║╨╛╨╜╨╡╤З╨╡╨╜ ╨╕ ╤В╨╛╤З╨╡╨╜: True (res=0,00E+000); NaN M ╨│╤А╨╛╨╝╨║╨╛: True; M=1e6 ╨║╨╛╨╜╨╡╤З╨╡╨╜: True; ╤А╨╡╨┤╤Г╨║╤Ж╨╕╤П M: True (╬Ф=5,835E-002╨╝); ╨╛╨║╨╛╨╗╨╛╨┐╨░╤А╨░╨▒╨╛╨╗╨░ ╨│╤А╨╛╨╝╨║╨╛: True
++PASS T65 system-blueprint | блюпринт==ручная сборка (бейк 1y, 200 точек бит-в-бит): True; нестабильная луна громко: True; ноль корней: True; два корня: True; битый ParentIndex: True
++[Test65_SystemBlueprint] ok in 38 ms
++PASS T66 nan-protocol | нормализация: NaN распространяется=True, ноль=Zero=True, юнит=True; forward-only: orbit=True, ship=True; NaN-источник громко=True; drain-масса громко=True; NaN-детектор громко=True; здоровый путь жив=True
++[Test66_NanProtocol] ok in 5 ms
++PASS T67 kepler-predictor-guards | e≈1 конечен и точен: True (res=0,00E+000); NaN M громко: True; M=1e6 конечен: True; редукция M: True (Δ=5,835E-002м); околопарабола громко: True
 +[Test67_KeplerPredictorGuards] ok in 0 ms
-+PASS T68 structural-contracts | ╤Ж╨╕╨║╨╗ ╨│╤А╨╛╨╝╨║╨╛=True; ╨║╨╛╨╜╤Д╨╗╨╕╨║╤В Parent=True; ╨┤╤Г╨▒╨╗╨╕ ╨╕╨╝╤С╨╜=True; ╤З╨░╤Б╤В╨╕╤З╨╜╤Л╨╣ attach ╨│╤А╨╛╨╝╨║╨╛=True; ╨╛╤В╨║╨░╤В ╤З╨╕╤Б╤В=True; ╤З╤Г╨╢╨╛╨╡ ╤В╨╡╨╗╨╛=True; attach-╨╝╨╡╤В╨╛╨┤ ╤А╨░╨▒╨╛╤В╨░╨╡╤В=True
-+[Test68_StructuralContracts] ok in 55 ms
-+PASS T69 warp-ladder | ╤Б╨╜╨░╨┐=True; ╨║╨░╨┐╤Л ╨░╤В╨╝╨╛╤Б╤Д╨╡╤А╤Л=True; ╨┐╨╗╨░╨╜╨╕╤А╨╛╨▓╤Й╨╕╨║=True; ╤В╤П╨│╨░>├Ч3 ╨╖╨░╨┐╤А╨╡╤Й╨╡╨╜╨░+Prepare=True; ╤Б╤Г╤В╨║╨╕ ╨┐╨╛╨║╨░╨┤╤А╨╛╨▓╨╛ vs ╨║╤Г╤Б╨╛╨║ dPos=1,190E-003╨╝ (╨┐╨╛╨▓╤В╨╛╤А ╨▒╨╕╤В-╨▓-╨▒╨╕╤В=True); ╨╖╨╡╤А╨╜╨╛ тЙд0.5╤Б=True; A1-╤Б╤Н╨╝╨┐╨╗╤Л ╨┐╨╛╤Б╨╗╨╡ ╤А╨╡╤Б╨╡╤В╨░/Prepare: True
-+[Test69_WarpLadder] ok in 62 ms
-+PASS T70 tryliftoff-spin | T52 ╤З╨╡╤А╨╡╨╖ TryLiftoff: ╧Й┬▓R=10 тЖТ Flying, ╧Й┬▓R=5 тЖТ Landed; ╤Б╨╛-╨▓╤А╨░╤Й╨╡╨╜╨╕╨╡ ╨╜╨╡ ╤Г╨┤╨▓╨╛╨╡╨╜╨╛ (|╬Фv|=0,00E+000): True; v=0-╤Б╨┐╨░╨▓╨╜: ╤В╤П╨│╨░ 30>g+╧Й┬▓R тЖТ Flying, v ╨╕╨╜╨╡╤А╤Ж╨╕╨░╨╗╤М╨╜╨╛ ╤Б╨╛╤Е╤А╨░╨╜╨╡╨╜╨░ (|v|=0,00E+000): True
++PASS T68 structural-contracts | цикл громко=True; конфликт Parent=True; дубли имён=True; частичный attach громко=True; откат чист=True; чужое тело=True; attach-метод работает=True
++[Test68_StructuralContracts] ok in 98 ms
++PASS T69 warp-ladder | снап=True; капы атмосферы=True; планировщик=True; тяга>×3 запрещена+Prepare=True; сутки покадрово vs кусок dPos=1,190E-003м (повтор бит-в-бит=True); зерно ≤0.5с=True; A1-сэмплы после ресета/Prepare: True
++[Test69_WarpLadder] ok in 56 ms
++PASS T70 tryliftoff-spin | T52 через TryLiftoff: ω²R=10 → Flying, ω²R=5 → Landed; со-вращение не удвоено (|Δv|=0,00E+000): True; v=0-спавн: тяга 30>g+ω²R → Flying, v инерциально сохранена (|v|=0,00E+000): True
 +[Test70_TryLiftoffSpin] ok in 1 ms
-+PASS T71 debris-tunnel | ╨░╤Б╤В╨╡╤А╨╛╨╕╨┤ R=1e3 v=2000: ╨┤╨╡╤В╨╡╨║╤В=True ╨╖╨░ 8 hop'╨╛╨▓ (╨║╨░╨┐ 0.25┬╖R/v=1,250E-001╤Б); ╨║╤А╤Г╨┐╨╜╨░╤П ╤Б╨╕╤Б╤В╨╡╨╝╨░: LOD-╨┐╤А╤Л╨╢╨╛╨║ 30╤Б ╨╜╨╡ ╤Б╨╢╨░╤В: True; v_rel=0 ╨║╨╗╨░╨╝╨┐╨╜╤Г╤В (тИЪ(2╬╝/d)=6E+002╨╝/╤Б, hop=3,953E-001╤Б<1╤Б): True
-+[Test71_DebrisTunnel] ok in 1 ms
-+PASS T72 visual-frame | ╨▒╨░╨╖╨╕╤Б bodyтЖТworld ╤Б╨╛╨▓╨┐╨░╨╗ ╤Б GetSurfaceState (╨╜╨░╨║╨╗╨╛╨╜╨╜╨░╤П ╨╛╤Б╤М, ╨▓╤А╨░╤Й╨╡╨╜╨╕╨╡, 3 ╨╝╨╛╨╝╨╡╨╜╤В╨░): ╤Е╤Г╨┤╤И╨░╤П ╨╛╤И╨╕╨▒╨║╨░ 9,25E-012 (<1e-9); ╨╖╨▓╨╡╨╖╨┤╨░ (0,0,1) тАФ ╤В╨╛╨╢╨┤╨╡╤Б╤В╨▓╨╛ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True
++PASS T71 debris-tunnel | астероид R=1e3 v=2000: детект=True за 8 hop'ов (кап 0.25·R/v=1,250E-001с); крупная система: LOD-прыжок 30с не сжат: True; v_rel=0 клампнут (√(2μ/d)=6E+002м/с, hop=3,953E-001с<1с): True
++[Test71_DebrisTunnel] ok in 0 ms
++PASS T72 visual-frame | базис body→world совпал с GetSurfaceState (наклонная ось, вращение, 3 момента): худшая ошибка 9,25E-012 (<1e-9); звезда (0,0,1) — тождество бит-в-бит: True
 +[Test72_VisualFrame] ok in 0 ms
-+PASS T74 scale-bounds | a=2e13 ╨│╤А╨╛╨╝╨║╨╛: True; a=1e13 ╤А╨╛╨▓╨╜╨╛ ╨┐╤А╨╛╤Е╨╛╨┤╨╕╤В: True; hyper a=1e8 e=1.2 ╨┐╤А╨╛╨┐╤Г╤Й╨╡╨╜: True
++PASS T74 scale-bounds | a=2e13 громко: True; a=1e13 ровно проходит: True; hyper a=1e8 e=1.2 пропущен: True
 +[Test74_ScaleBounds] ok in 0 ms
-+PASS T73 ephemeris-thread-gate | 4 ╨┐╨╛╤В╨╛╨║╨░, ╨┐╨╡╤А╨╡╨╝╨╡╤И╨░╨╜╨╜╨░╤П ╤Б╨╡╤В╨║╨░ (╨┐╤А╨╛╨╝╨░╤Е╨╕ ╨╛╨║╨╛╨╜) == ╤Н╤В╨░╨╗╨╛╨╜ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; WindowLoads ╨║╨╛╨╜╤Б╨╕╤Б╤В╨╡╨╜╤В╨╡╨╜: True; LoadRangeToMemory ╨┐╨░╤А╨░╨╗╨╗╨╡╨╗╤М╨╜╨╛ ╤Б ╨╛╨║╨╜╨╛╨╝: True; ╨┐╨╡╤А╨╡╤В╤В╨░╤З ╨╛╤Б╨▓╨╛╨▒╨╛╨╢╨┤╨░╨╡╤В ╤Д╨░╨╣╨╗ (╨┐╨╡╤А╨╡╨╖╨░╨┐╨╕╤Б╤М ╤Б╤А╨░╨╖╤Г): True; ╨╜╨╛╨▓╤Л╨╣ ╨╕╨╜╤Б╤В╨░╨╜╤Б ╨╢╨╕╨▓: True
-+[Test73_EphemerisThreadGate] ok in 24 ms
-+PASS T75 torque-probe-guard | ╤Б╨╛╨▒╤Л╤В╨╕╨╡ ╨▓╨╛╤И╨╗╨╛ ╨▓ ╨░╤В╨╝╨╛╤Б╤Д╨╡╤А╤Г ╨▓ ╨┐╨╡╤А╨▓╨╛╨╝ ╤З╨░╨╜╨║╨╡ (╨▒╨╕╤Б╨╡╨║╤Ж╨╕╤П ╨╛╤В╤А╨░╨▒╨╛╤В╨░╨╗╨░, t*=23,68╤Б<30╤Б): True; ╤Б╨╜╨╕╨╝╨╛╨║ == ╤И╨░╨│╤Г 0тЖТ30 ╨▒╨╡╨╖ ╨┤╤А╨░╨╣╨▓╨╡╤А╨░ (╨▒╨╕╤В-╨▓-╨▒╨╕╤В): True
++PASS T73 ephemeris-thread-gate | 4 потока, перемешанная сетка (промахи окон) == эталон бит-в-бит: True; WindowLoads консистентен: True; LoadRangeToMemory параллельно с окном: True; переттач освобождает файл (перезапись сразу): True; новый инстанс жив: True
++[Test73_EphemerisThreadGate] ok in 44 ms
++PASS T75 torque-probe-guard | событие вошло в атмосферу в первом чанке (бисекция отработала, t*=23,68с<30с): True; снимок == шагу 0→30 без драйвера (бит-в-бит): True
 +[Test75_TorqueProbeGuard] ok in 0 ms
-+PASS T76 quaternion-bridge | ╤В╨╛╨╢╨┤╨╡╤Б╤В╨▓╨╛ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В: True; ╨╛╤Б╨╕ ╤З╨╡╤А╨╡╨╖ ╨┐╨╛╨╖╨╕╤Ж╨╕╨╛╨╜╨╜╤Л╨╣ ╨╝╨╛╤Б╤В, ╨╜╨╛╤А╨╝╨░=1 (╤Е╤Г╨┤╤И. ╨┤╤А╨╡╨╣╤Д 3,51E-016): True; ╤Б╨╡╨▓╨╡╤А +Z тЖТ ╨╛╤Б╤М up +Y: True; R┬╖(q┬╖v) == q_sim┬╖(R┬╖v): True
++PASS T76 quaternion-bridge | тождество бит-в-бит: True; оси через позиционный мост, норма=1 (худш. дрейф 3,51E-016): True; север +Z → ось up +Y: True; R·(q·v) == q_sim·(R·v): True
 +[Test76_QuaternionBridge] ok in 0 ms
-+PASS T77 terrain-heightfield | ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕╨╖╨╝ seed=42
-+PASS T77 terrain-heightfield | ╨╝╨╛╤А╨╡ ╨║╨╗╨░╨╝╨┐╨╕╤В╤Б╤П (╤Г╤А╨╛╨▓╨╡╨╜╤М тИТ500 ╨╝)
-+PASS T77 terrain-heightfield | ╨░╨╝╨┐╨╗╨╕╤В╤Г╨┤╨░ |h| тЙд 2000 ╨╝ (max 1390,7)
-+PASS T77 terrain-heightfield | ╨╜╨╛╤А╨╝╨░╨╗╤МтЖФ╨▓╤Л╤Б╨╛╤В╨░, ╤Г╨│╨╛╨╗ 5,962E-004 ╤А╨░╨┤ < 0.05
-+PASS T77 terrain-heightfield | ╤Б╨┐╨╕╨╜ ╨╜╨╛╤А╨╝╨░╨╗╨╕, ╬Ф=1,336E-012 < 1e-9
-+PASS T77 terrain-heightfield | ╨┤╨╡╤В╨╡╨║╤В╨╛╤А ╨╜╨░╨┤ ╨┐╨╕╨║╨╛╨╝: g<0 ╨╜╨░ +50 ╨╝, g>0 ╨╜╨░ +300 ╨╝
-+PASS T77 terrain-heightfield | ╤Б╤Д╨╡╤А╨░ ╨▒╤Л ╨┐╤А╨╛╨┐╤Г╤Б╤В╨╕╨╗╨░ ╨┐╨╕╨║ (╨║╨╛╤А╨░╨▒╨╗╤М ╨▓╤Л╤И╨╡ R)
-+[Test77_TerrainHeightfield] ok in 76 ms
-+PASS T78 jointed-breakup | ╤Б╨╗╨░╨▒╨╡╨╣╤И╨╕╨╣ ╤Б╤В╤Л╨║ ╨╛╤В╨╗╨╛╨╝╨░╨╜, ╤Б╨┐╨╡╨║╨░ ╤А╨╛╨▓╨╜╨╛ ╨╛╨┤╨╜╨░
-+PASS T78 jointed-breakup | ╤В╨░╨╜╨│╨╡╨╜╤Ж╨╕╨░╨╗╤М╨╜╤Л╨╣ ╨╕╨╜╨▓╨░╤А╨╕╨░╨╜╤В, ╬Ф=0,00E+000
-+PASS T78 jointed-breakup | ╨╛╤В╤Б╨║╨╛╨║ ╨╜╨░╤А╤Г╨╢╤Г, v_n=2,00 (= e┬╖|v_n|)
-+PASS T78 jointed-breakup | ╨┐╤А╨╛╤З╨╜╤Л╨╡ ╤Б╤В╤Л╨║╨╕ тЖТ ╨┐╤Г╤Б╤В╨╛╨╣ ╤Б╨┐╨╕╤Б╨╛╨║ ╤Б╨┐╨╡╨║╨╛╨▓
-+PASS T78 jointed-breakup | ╨▒╨╡╨╖ ╨┤╨╡╤В╨░╨╗╨╡╨╣ тЖТ whole-ship fallback (10 ╤Д╤А╨░╨│╨╝╨╡╨╜╤В╨╛╨▓)
++PASS T77 terrain-heightfield | детерминизм seed=42
++PASS T77 terrain-heightfield | море клампится (уровень −500 м)
++PASS T77 terrain-heightfield | амплитуда |h| ≤ 2000 м (max 1390,7)
++PASS T77 terrain-heightfield | нормаль↔высота, угол 5,962E-004 рад < 0.05
++PASS T77 terrain-heightfield | спин нормали, Δ=1,336E-012 < 1e-9
++PASS T77 terrain-heightfield | детектор над пиком: g<0 на +50 м, g>0 на +300 м
++PASS T77 terrain-heightfield | сфера бы пропустила пик (корабль выше R)
++[Test77_TerrainHeightfield] ok in 59 ms
++PASS T78 jointed-breakup | слабейший стык отломан, спека ровно одна
++PASS T78 jointed-breakup | тангенциальный инвариант, Δ=0,00E+000
++PASS T78 jointed-breakup | отскок наружу, v_n=2,00 (= e·|v_n|)
++PASS T78 jointed-breakup | прочные стыки → пустой список спеков
++PASS T78 jointed-breakup | без деталей → whole-ship fallback (10 фрагментов)
 +[Test78_JointedBreakup] ok in 2 ms
-+PASS T79 tidal-lock | ╨┐╨╡╤А╨╕╨╛╨┤ = 2╧АтИЪ(a┬│/╬╝_local) ╨▒╨╕╤В-╨▓-╨▒╨╕╤В (27925,3╤Б), ╤А╤Г╤З╨╜╤Л╨╡ 999╤Б ╨╕╨│╨╜╨╛╤А╨╕╤А╨╛╨▓╨░╨╜╤Л
-+PASS T79 tidal-lock | 50 ╨▓╨╕╤В╨║╨╛╨▓: ╨┐╨╛╨┤╨║╨╛╤Б╨╕╤В╨╡╨╗╤М╨╜╤Л╨╣ ╨┤╤А╨╡╨╣╤Д 0,00E+000 ╤А╨░╨┤ < 1e-6
-+PASS T79 tidal-lock | ╨┐╨╡╤А╨╡╤Б╨▒╨╛╤А╨║╨░ ╨▒╨╡╨╖ ╨┐╤А╨░╨▓╨║╨╕ ╨┤╨░╨╜╨╜╤Л╤Е: ╨┐╨╡╤А╨╕╨╛╨┤/╨╛╤Д╤Д╤Б╨╡╤В ╨▒╨╕╤В-╨▓-╨▒╨╕╤В
-+PASS T79 tidal-lock | round-trip lat/lon ╨╜╨░ ╨╖╨░╤Е╨▓╨░╤З╨╡╨╜╨╜╨╛╨╝ ╤В╨╡╨╗╨╡
-+PASS T79 tidal-lock | ╨╗╨╕╨▒╤А╨░╤Ж╨╕╤П e=0.05: ╨░╨╝╨┐╨╗╨╕╤В╤Г╨┤╨░ 0,1000 ╤А╨░╨┤ тИИ (1.5e, 2.5e) = ┬▒2e
-+PASS T79 tidal-lock | ╨╖╨░╨╝╨╛╨║ ╨╜╨░ ╨╖╨▓╨╡╨╖╨┤╨╡ ╨│╤А╨╛╨╝╨║╨╛ ╨╛╤В╨▓╨╡╤А╨│╨╜╤Г╤В
-+[Test79_TidalLock] ok in 3 ms
-+PASS T80 star-color | ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕╨╖╨╝ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В
-+PASS T80 star-color | 1500K: ╨║╤А╨░╤Б╨╜╤Л╨╣ ╨┤╨╛╨╝╨╕╨╜╨╕╤А╤Г╨╡╤В
-+PASS T80 star-color | 10000K: ╤Б╨╕╨╜╨╕╨╣ ╨┤╨╛╨╝╨╕╨╜╨╕╤А╤Г╨╡╤В
-+PASS T80 star-color | 5772K ╤В╤С╨┐╨╗╤Л╨╣ ╨▒╨╡╨╗╤Л╨╣: R=1,000 G=0,879 B=0,821 (╨╖╨▓╤С╨╖╨┤╤Л ╨▒╨╡╨╗╤Л╨╡, ╨╢╨╡╨╗╤В╨╕╨╖╨╜╨░ тАФ ╨░╤В╨╝╨╛╤Б╤Д╨╡╤А╨╜╨░╤П)
-+PASS T80 star-color | ╨╜╨╛╤А╨╝╨╕╤А╨╛╨▓╨║╨░ max=1
-+[Test80_StarColor] ok in 0 ms
-+PASS T81 star-granulation | ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕╨╖╨╝ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В
-+PASS T81 star-granulation | ╨╖╨╜╨░╤З╨╡╨╜╨╕╤П ╨▓ [0,1]
-+PASS T81 star-granulation | ╨║╨╛╨╜╤В╤А╨░╤Б╤В ╤П╤З╨╡╨╡╨║: min=0,39, max=1,00
-+PASS T81 star-granulation | ╤З╨╕╤Б╤В╨░╤П ╤Д╤Г╨╜╨║╤Ж╨╕╤П ╨╜╨░╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╤П (╤И╨▓╨╛╨▓ ╨╜╨╡╤В ╨┐╨╛ ╨┐╨╛╤Б╤В╤А╨╛╨╡╨╜╨╕╤О)
-+[Test81_StarGranulation] ok in 17 ms
-+PASS T82 terrain-advanced | ╨╜╤Г╨╗╨╕ ╨╜╨╛╨▓╤Л╤Е ╨┐╨░╤А╨░╨╝╨╡╤В╤А╨╛╨▓ = ╨▒╨╕╤В-╨▓-╨▒╨╕╤В legacy
-+PASS T82 terrain-advanced | ╨╜╤Г╨╗╨╕ ╨┐╨╛╨╗╨╡╨╣ (╤Б╤В╨░╤А╤Л╨╡ ╤Б╤Ж╨╡╨╜╤Л) = ╨▒╨╕╤В-╨▓-╨▒╨╕╤В legacy
-+PASS T82 terrain-advanced | WarpStrength=0 ╨╕╨│╨╜╨╛╤А╨╕╤А╤Г╨╡╤В warp-╨┐╨░╤А╨░╨╝╨╡╤В╤А╤Л
-+PASS T82 terrain-advanced | ╨║╨░╨╢╨┤╨░╤П ╤Д╨╕╤З╨░ ╨╝╨╡╨╜╤П╨╡╤В ╨▓╤Л╨▓╨╛╨┤
-+PASS T82 terrain-advanced | warp-╨┐╨╛╤В╨╛╨║ ╨╜╨╡╨╖╨░╨▓╨╕╤Б╨╕╨╝ (seed offset ╨╝╨╡╨╜╤П╨╡╤В ╤А╨╡╨╗╤М╨╡╤Д)
-+PASS T82 terrain-advanced | ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕╨╖╨╝ advanced
-+PASS T82 terrain-advanced | ╨║╨╗╨░╨╝╨┐ ╨╝╨╛╤А╤П ╨┤╨╡╤А╨╢╨╕╤В╤Б╤П ╤Б ╤Д╨╕╤З╨░╨╝╨╕
-+PASS T82 terrain-advanced | ╨│╤А╨░╨╜╨╕╤Ж╨░ |h| тЙд A┬╖(1+depth) (max 1546,4)
-+PASS T82 terrain-advanced | ╨┐╨░╤А╨╕╤В╨╡╤В ╨╜╨╛╤А╨╝╨░╨╗╨╕ ╨╜╨░ ╨│╤А╨╡╨▒╨╜╨╡, ╤Г╨│╨╛╨╗ 6,632E-004 ╤А╨░╨┤ < 0.05
-+[Test82_TerrainAdvanced] ok in 85 ms
-+PASS T83 terrain-color | Ex(╨▓╤Б╤С ╨▓╤Л╨║╨╗) = ╨▒╨╕╤В-╨▓-╨▒╨╕╤В legacy (guard'╤Л, ╤Б╨║╨╗╨╛╨╜╤Л, ╨╝╨░╤Б╨║╨░)
-+PASS T83 terrain-color | rock-override: ╤Б╨║╨░╨╗╨░/╨▒╨╗╨╡╨╜╨┤/╨┐╨╛╤А╨╛╨│/╨╝╨╛╤А╨╡
-+PASS T83 terrain-color | rock-override: ╨┐╨╛╤А╨╛╨│ ╨┐╨╛ ╨▓╤Л╤Б╨╛╤В╨╡ (╨┐╨╗╤П╨╢ ╨▒╨╡╨╖ ╤Б╨║╨░╨╗, ╨│╨╛╤А╤Л ╤Б╨╛ ╤Б╨║╨░╨╗╨╛╨╣)
-+PASS T83 terrain-color | snow-gate: ╨┐╨╛╨╗╨╛╨│╨╕╨╣ ╤Б╨╜╨╡╨│, ╨║╤А╤Г╤В╨╛╨╣ ╤Б╨║╨░╨╗╨░, guard 0
-+PASS T83 terrain-color | ╨╝╨░╤Б╨║╨░ ╤Б╨┤╨▓╨╕╨│╨░╨╡╤В bands; strength 0 = ╨╕╨│╨╜╨╛╤А
-+PASS T83 terrain-color | SlopeTan: 0/1/╨▓╨╡╤А╤В╨╕╨║╨░╨╗╤М/╨╝╨╛╨╜╨╛╤В╨╛╨╜╨╜╨╛╤Б╤В╤М
-+PASS T83 terrain-color | SampleColorNoise: ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕╨╖╨╝, [тИТ1,1], seed offset
-+PASS T83 terrain-color | ╤Ж╨▓╨╡╤В╨╛╨▓╨░╤П ╨┤╨╡╤В╨░╨╗╤М: ╨╝╨╡╨╜╤П╨╡╤В ╨╖╨╡╨╝╨╗╤О, strength 0 = ╨╕╨│╨╜╨╛╤А, ╨╝╨╛╤А╨╡ ╨╜╨╡ ╤В╤А╨╛╨│╨░╨╡╤В
-+PASS T83 terrain-color | SampleColorDetailNoise: ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕╨╖╨╝, [тИТ1,1], seed offset
-+[Test83_TerrainColor] ok in 6 ms
-+PASS T84 terrain-float-parity | job == managed ╨▒╨╕╤В-╨▓-╨▒╨╕╤В (╤Е╤Г╨┤╤И╨╡╨╡ 0,000E+000 ╨╝)
-+PASS T84 terrain-float-parity | ╨│╤А╨╡╨▒╨╜╨╕ warp+ridged ╨▒╨╕╤В-╨▓-╨▒╨╕╤В (╤Е╤Г╨┤╤И╨╡╨╡ 0,000E+000 ╨╝)
-+PASS T84 terrain-float-parity | ╨╝╨░╤Б╨║╨░ тЙд 5e-6 (╤Е╤Г╨┤╤И╨╡╨╡ 2,977E-008)
-+PASS T84 terrain-float-parity | ╨╜╨╛╤А╨╝╨░╨╗╨╕ ╨╝╨╡╨╗╨║╨╛╨│╨╛ ╤В╨░╨╣╨╗╨░ тЙд 2e-3 ╤А╨░╨┤ (╤Е╤Г╨┤╤И╨╡╨╡ 5,356E-004)
-+PASS T84 terrain-float-parity | guard cos ╨╕ tan ╨┐╨╛╨┤ float (rel 0,000E+000)
-+[Test84_TerrainFloatParity] ok in 214 ms
-+PASS T85 cube-sphere | ╨▓╤Б╨╡ ╨╜╨░╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╤П ╨╡╨┤╨╕╨╜╨╕╤З╨╜╤Л╨╡
-+PASS T85 cube-sphere | ╨╜╨╡╨┐╤А╨╡╤А╤Л╨▓╨╜╨╛╤Б╤В╤М ╤З╨╡╤А╨╡╨╖ ╤А╤С╨▒╤А╨░ ╨│╤А╨░╨╜╨╡╨╣
-+PASS T85 cube-sphere | ╤Ж╨╡╨╜╤В╤А╤Л ╤Г╨╖╨╗╨╛╨▓ quadtree
++PASS T79 tidal-lock | период = 2π√(a³/μ_local) бит-в-бит (27925,3с), ручные 999с игнорированы
++PASS T79 tidal-lock | 50 витков: подкосительный дрейф 0,00E+000 рад < 1e-6
++PASS T79 tidal-lock | пересборка без правки данных: период/оффсет бит-в-бит
++PASS T79 tidal-lock | round-trip lat/lon на захваченном теле
++PASS T79 tidal-lock | либрация e=0.05: амплитуда 0,1000 рад ∈ (1.5e, 2.5e) = ±2e
++PASS T79 tidal-lock | замок на звезде громко отвергнут
++[Test79_TidalLock] ok in 2 ms
++PASS T80 star-color | детерминизм бит-в-бит
++PASS T80 star-color | 1500K: красный доминирует
++PASS T80 star-color | 10000K: синий доминирует
++PASS T80 star-color | 5772K тёплый белый: R=1,000 G=0,879 B=0,821 (звёзды белые, желтизна — атмосферная)
++PASS T80 star-color | нормировка max=1
++[Test80_StarColor] ok in 1 ms
++PASS T81 star-granulation | детерминизм бит-в-бит
++PASS T81 star-granulation | значения в [0,1]
++PASS T81 star-granulation | контраст ячеек: min=0,39, max=1,00
++PASS T81 star-granulation | чистая функция направления (швов нет по построению)
++[Test81_StarGranulation] ok in 15 ms
++PASS T82 terrain-advanced | нули новых параметров = бит-в-бит legacy
++PASS T82 terrain-advanced | нули полей (старые сцены) = бит-в-бит legacy
++PASS T82 terrain-advanced | WarpStrength=0 игнорирует warp-параметры
++PASS T82 terrain-advanced | каждая фича меняет вывод
++PASS T82 terrain-advanced | warp-поток независим (seed offset меняет рельеф)
++PASS T82 terrain-advanced | детерминизм advanced
++PASS T82 terrain-advanced | кламп моря держится с фичами
++PASS T82 terrain-advanced | граница |h| ≤ A·(1+depth) (max 1546,4)
++PASS T82 terrain-advanced | паритет нормали на гребне, угол 6,632E-004 рад < 0.05
++[Test82_TerrainAdvanced] ok in 77 ms
++PASS T83 terrain-color | Ex(всё выкл) = бит-в-бит legacy (guard'ы, склоны, маска)
++PASS T83 terrain-color | rock-override: скала/бленд/порог/море
++PASS T83 terrain-color | rock-override: порог по высоте (пляж без скал, горы со скалой)
++PASS T83 terrain-color | snow-gate: пологий снег, крутой скала, guard 0
++PASS T83 terrain-color | маска сдвигает bands; strength 0 = игнор
++PASS T83 terrain-color | SlopeTan: 0/1/вертикаль/монотонность
++PASS T83 terrain-color | SampleColorNoise: детерминизм, [−1,1], seed offset
++PASS T83 terrain-color | цветовая деталь: меняет землю, strength 0 = игнор, море не трогает
++PASS T83 terrain-color | SampleColorDetailNoise: детерминизм, [−1,1], seed offset
++[Test83_TerrainColor] ok in 5 ms
++PASS T84 terrain-float-parity | job == managed бит-в-бит (худшее 0,000E+000 м)
++PASS T84 terrain-float-parity | гребни warp+ridged бит-в-бит (худшее 0,000E+000 м)
++PASS T84 terrain-float-parity | маска ≤ 5e-6 (худшее 2,977E-008)
++PASS T84 terrain-float-parity | нормали мелкого тайла ≤ 2e-3 рад (худшее 5,356E-004)
++PASS T84 terrain-float-parity | guard cos и tan под float (rel 0,000E+000)
++[Test84_TerrainFloatParity] ok in 234 ms
++PASS T85 cube-sphere | все направления единичные
++PASS T85 cube-sphere | непрерывность через рёбра граней
++PASS T85 cube-sphere | центры узлов quadtree
 +[Test85_CubeSphere] ok in 0 ms
-+PASS T86 nan-probe | ╨╜╨╡╤В ╨╜╨╡-╨║╨╛╨╜╨╡╤З╨╜╤Л╤Е ╨▓╤Л╤Б╨╛╤В (worst 1,893E+000)
-+[Test86_NaNProbe] ok in 51 ms
++PASS T86 nan-probe | нет не-конечных высот (worst 1,893E+000)
++[Test86_NaNProbe] ok in 111 ms
 +LANDFRAC fraction=0,427 maxH=8010
-+PASS T87 land-fraction | ╤Б╤Г╤И╨░ ╤А╨░╨╖╤Г╨╝╨╜╨╛╨╣ ╨┤╨╛╨╗╨╕: 0,427
-+[Test87_LandFraction] ok in 123 ms
-+PASS T88 sky-physics | ╨║╨╛╤Б╨╝╨╛╤Б: ╨┐╤А╨╛╨╖╤А╨░╤З╨╜╨╛╤Б╤В╤М = 1
-+PASS T88 sky-physics | ╨┐╨╛╤А╤П╨┤╨╛╨║ ╨║╨░╨╜╨░╨╗╨╛╨▓ ╨╕ ╨║╤А╨░╤Б╨╜╤Л╨╣ ╨╖╨░╨║╨░╤В
-+PASS T88 sky-physics | airmass ╨║╨╛╨╜╨╡╤З╨╜╨░ ╤Г ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В╨░ ╨╕ ╨╝╨╛╨╜╨╛╤В╨╛╨╜╨╜╨░
-+PASS T88 sky-physics | ╨╛╨║╨║╨╗╤О╨╖╨╕╤П ╤Б ╤Г╤З╤С╤В╨╛╨╝ ╨▓╤Л╤Б╨╛╤В╤Л ╨╜╨░╨▒╨╗╤О╨┤╨░╤В╨╡╨╗╤П
-+PASS T88 sky-physics | ╨▓╨╕╨┤╨╕╨╝╨╛╤Б╤В╤М ╨╖╨▓╤С╨╖╨┤: ╨┐╨╛╨╗╨┤╨╡╨╜╤М/╨╜╨╛╤З╤М/╨║╨╛╤Б╨╝╨╛╤Б
-+PASS T88 sky-physics | ╨┤╨╜╨╡╨▓╨╜╨╛╨╣ ╤Д╨░╨║╤В╨╛╤А ╤Б╨▓╨╡╤В╨░
++PASS T87 land-fraction | суша разумной доли: 0,427
++[Test87_LandFraction] ok in 246 ms
++PASS T88 sky-physics | космос: прозрачность = 1
++PASS T88 sky-physics | порядок каналов и красный закат
++PASS T88 sky-physics | airmass конечна у горизонта и монотонна
++PASS T88 sky-physics | окклюзия с учётом высоты наблюдателя
++PASS T88 sky-physics | видимость звёзд: полдень/ночь/космос
++PASS T88 sky-physics | дневной фактор света
 +[Test88_SkyPhysics] ok in 1 ms
 +PLAINS nearPlain=0,125 nearPlainOff=0,060 highFlat=0,070 highOff=0,140 landFlat=0,429 landOff=0,391 roughOff=5,895E-001 roughFlat=4,922E-001 fineOff=1,262E-003 fineDetail=2,012E-003
-+PASS T89 terrain-plains | PlainFrequency ╨▒╨╡╨╖ PlainMix ╨╜╨╡ ╨╝╨╡╨╜╤П╨╡╤В ╤А╨╡╨╗╤М╨╡╤Д
-+PASS T89 terrain-plains | PlainMix>0 ╨╝╨╡╨╜╤П╨╡╤В ╤А╨╡╨╗╤М╨╡╤Д
-+PASS T89 terrain-plains | ╨┤╨╛╨╗╤П ╤А╨░╨▓╨╜╨╕╨╜ ╨╖╨░╨╝╨╡╤В╨╜╨░: 0,125
-+PASS T89 terrain-plains | ╤А╨░╨▓╨╜╨╕╨╜╤Л ╤Б╨╜╨╕╨╢╨░╤О╤В ╤И╨╡╤А╨╛╤Е╨╛╨▓╨░╤В╨╛╤Б╤В╤М: 4,922E-001 < 5,895E-001
-+PASS T89 terrain-plains | ╨┤╨╡╤В╨░╨╗╤М ╨┤╨╛╨▒╨░╨▓╨╗╤П╨╡╤В ╨╝╨╡╨╗╨║╨╛╨╝╨░╤Б╤И╤В╨░╨▒╨╜╤Л╨╣ ╤А╨╡╨╗╤М╨╡╤Д: 2,012E-003 > 1,326E-003
-+PASS T89 terrain-plains | ╨╜╨╡╤В ╨╜╨╡-╨║╨╛╨╜╨╡╤З╨╜╤Л╤Е ╨▓╤Л╤Б╨╛╤В
-+PASS T89 terrain-plains | job == managed ╨▒╨╕╤В-╨▓-╨▒╨╕╤В ╤Б ╨╝╨░╤Б╨║╨╛╨╣ ╤А╨░╨▓╨╜╨╕╨╜
-+PASS T89 terrain-plains | job ╨┐╨╕╤И╨╡╤В ╤Ж╨▓╨╡╤В╨╛╨▓╤Г╤О ╨┤╨╡╤В╨░╨╗╤М (╤А╨░╤Б╤Е╨╛╨╢╨┤╨╡╨╜╨╕╨╡ 2,974E-008)
-+[Test89_TerrainPlains] ok in 213 ms
-+PASS T90 atmosphere-optics | ╬▓ ╨а╤Н╨╗╨╡╤П: B>G>R, ╨┐╨╛╨╗╨╛╨╢╨╕╤В╨╡╨╗╤М╨╜╤Л
-+PASS T90 atmosphere-optics | ╬▓ ╨╗╨╕╨╜╨╡╨╣╨╜╤Л ╨┐╨╛ ╨┐╨╗╨╛╤В╨╜╨╛╤Б╤В╨╕
-+PASS T90 atmosphere-optics | AerosolScale ╨╝╨╜╨╛╨╢╨╕╤В ╤В╨╛╨╗╤М╨║╨╛ ╬▓_Mie
-+PASS T90 atmosphere-optics | T(╨╖╨╡╨╜╨╕╤В): B<G<R, ╨▓ (0,1]
-+PASS T90 atmosphere-optics | ╨╜╨╕╨╢╨╡ ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В╨░ T=0
-+PASS T90 atmosphere-optics | transmittance LUT: ╨║╨╛╨╜╨╡╤З╨╜╨░, [0,1]
-+PASS T90 atmosphere-optics | MS LUT: ╨║╨╛╨╜╨╡╤З╨╜╨░, ╨╜╨╡╨╛╤В╤А╨╕╤Ж╨░╤В╨╡╨╗╤М╨╜╨░, ╨╜╨╡╨╜╤Г╨╗╨╡╨▓╨░╤П
-+[Test90_AtmosphereOptics] ok in 13 ms
-+PASS T91 terrain-profile | FromProfile ╨║╨╛╨┐╨╕╤А╤Г╨╡╤В ╨▓╤Б╨╡ ╨┐╨╛╨╗╤П + ╨┐╨░╨╗╨╕╤В╤А╤Г
-+PASS T91 terrain-profile | ╨▓╤Л╤Б╨╛╤В╤Л ╨╕╨╖ ╨┐╤А╨╛╤Д╨╕╨╗╤П == ╤А╤Г╤З╨╜╨░╤П ╤Б╨▒╨╛╤А╨║╨░ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В
-+PASS T91 terrain-profile | Build ╤Б╨╛╨▒╨╕╤А╨░╨╡╤В terrain ╨╕╨╖ BodyBlueprint.Terrain
-+PASS T91 terrain-profile | Clone ╨╜╨╡ ╨┤╨╡╨╗╨╕╤В ╨┐╨░╨╗╨╕╤В╤А╤Г ╤Б ╨╛╤А╨╕╨│╨╕╨╜╨░╨╗╨╛╨╝
++PASS T89 terrain-plains | PlainFrequency без PlainMix не меняет рельеф
++PASS T89 terrain-plains | PlainMix>0 меняет рельеф
++PASS T89 terrain-plains | доля равнин заметна: 0,125
++PASS T89 terrain-plains | равнины снижают шероховатость: 4,922E-001 < 5,895E-001
++PASS T89 terrain-plains | деталь добавляет мелкомасштабный рельеф: 2,012E-003 > 1,326E-003
++PASS T89 terrain-plains | нет не-конечных высот
++PASS T89 terrain-plains | job == managed бит-в-бит с маской равнин
++PASS T89 terrain-plains | job пишет цветовую деталь (расхождение 2,974E-008)
++[Test89_TerrainPlains] ok in 194 ms
++PASS T90 atmosphere-optics | β Рэлея: B>G>R, положительны
++PASS T90 atmosphere-optics | β линейны по плотности
++PASS T90 atmosphere-optics | AerosolScale множит только β_Mie
++PASS T90 atmosphere-optics | T(зенит): B<G<R, в (0,1]
++PASS T90 atmosphere-optics | ниже горизонта T=0
++PASS T90 atmosphere-optics | transmittance LUT: конечна, [0,1]
++PASS T90 atmosphere-optics | MS LUT: конечна, неотрицательна, ненулевая
++[Test90_AtmosphereOptics] ok in 12 ms
++PASS T91 terrain-profile | FromProfile копирует все поля + палитру
++PASS T91 terrain-profile | высоты из профиля == ручная сборка бит-в-бит
++PASS T91 terrain-profile | Build собирает terrain из BodyBlueprint.Terrain
++PASS T91 terrain-profile | Clone не делит палитру с оригиналом
 +[Test91_TerrainProfile] ok in 3 ms
-+PASS T92 terrain-palette | ╨┤╨░╨╜╨╜╤Л╨╡ ╨┐╨░╨╗╨╕╤В╤А╤Л == legacy-╨║╨╛╨╜╤Б╤В╨░╨╜╤В╤Л
-+PASS T92 terrain-palette | Matches ╨╗╨╛╨▓╨╕╤В ╨║╨╛╨┐╨╕╤О ╨╕ ╨┐╤А╨░╨▓╨║╤Г
-+[Test92_TerrainPaletteData] ok in 0 ms
-+PASS T93 decor-distribution | ╨┐╨╛╤Б╨░╨┤╨║╨╕ ╨╡╤Б╤В╤М: 1446 ╨╕╨╖ 3750
-+PASS T93 decor-distribution | ╨┤╨╢╨╛╨▒╨░ == ╨┐╤А╤П╨╝╨░╤П ╤Д╤Г╨╜╨║╤Ж╨╕╤П, ╨▒╨╕╤В-╨▓-╨▒╨╕╤В
-+PASS T93 decor-distribution | ╨╝╨░╤Б╤И╤В╨░╨▒/╨┐╨╛╨▓╨╛╤А╨╛╤В/╨┐╨╛╨╖╨╕╤Ж╨╕╨╕ ╨▓ ╨│╤А╨░╨╜╨╕╤Ж╨░╤Е
-+PASS T93 decor-distribution | MeshIndex ╨▓ [0, 3)
-+PASS T93 decor-distribution | ╤Д╨╕╨╗╤М╤В╤А╤Л ╨╜╤Г╨╗╤П╤В: density=0 altitude=0 wet=0 water=0
-+PASS T93 decor-distribution | Hash01 ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕╤А╨╛╨▓╨░╨╜ ╨╕ ╨▓ [0,1)
-+[Test93_GroundDecorDistribution] ok in 111 ms
++PASS T92 terrain-palette | данные палитры == legacy-константы
++PASS T92 terrain-palette | Matches ловит копию и правку
++[Test92_TerrainPaletteData] ok in 1 ms
++PASS T93 decor-distribution | посадки есть: 1446 из 3750
++PASS T93 decor-distribution | джоба == прямая функция, бит-в-бит
++PASS T93 decor-distribution | масштаб/поворот/позиции в границах
++PASS T93 decor-distribution | MeshIndex в [0, 3)
++PASS T93 decor-distribution | фильтры нулят: density=0 altitude=0 wet=0 water=0
++PASS T93 decor-distribution | Hash01 детерминирован и в [0,1)
++[Test93_GroundDecorDistribution] ok in 104 ms
 +TREEALT total=42469 maxH=7682 above2.5k=9301 above3.2k=6310 accepted2.5k=2304 accepted3.2k=0
-+PASS T94 tree-high-altitude | ╨┤╨╡╤А╨╡╨▓╤М╤П ╨┐╤А╨╕╨╜╨╕╨╝╨░╤О╤В╤Б╤П ╨▓╤Л╤И╨╡ 2.5 ╨║╨╝: 2304
-+PASS T94 tree-high-altitude | ╨▓╤Л╤И╨╡ 3.2 ╨║╨╝ ╨┤╨╡╤А╨╡╨▓╤М╨╡╨▓ ╨╜╨╡╤В: 0
-+[Test94_TreeHighAltitude] ok in 510 ms
++PASS T94 tree-high-altitude | деревья принимаются выше 2.5 км: 2304
++PASS T94 tree-high-altitude | выше 3.2 км деревьев нет: 0
++[Test94_TreeHighAltitude] ok in 460 ms
 +GREENBAND water=14588 sand=2195 high=905 dry=1882 green=5780 grassAccepted=5291 rocksAcceptedHigh=905 allowedOnly=0
-+PASS T99 decor-green-band | FromLayer ╨┐╤А╨╛╨▒╤А╨░╤Б╤Л╨▓╨░╨╡╤В MaxNormalizedHeight
-+PASS T99 decor-green-band | ╨╖╨╡╨╗╨╡╨╜╤М ╨╡╤Б╤В╤М ╨╕ ╨┐╤А╨╕╨╜╨╕╨╝╨░╨╡╤В╤Б╤П: 5291 ╨╕╨╖ 5780
-+PASS T99 decor-green-band | ╤В╤А╨░╨▓╨░ ╨▓╨╜╨╡ ╨╖╨╡╨╗╨╡╨╜╨╕: bad=0 water=0 sand=0 high=0 dry=0
-+PASS T99 decor-green-band | ╨║╨░╨╝╨╜╨╕ ╨▓ ╨│╨╛╤А╨░╤Е ╨╡╤Б╤В╤М (905), ╨▓ ╨▓╨╛╨┤╨╡ ╨╜╨╡╤В (0)
-+PASS T99 decor-green-band | TryEvaluate тКЖ IsSurfaceAllowed, ╨╜╨░╤А╤Г╤И╨╡╨╜╨╕╨╣=0
++PASS T99 decor-green-band | FromLayer пробрасывает MaxNormalizedHeight
++PASS T99 decor-green-band | зелень есть и принимается: 5291 из 5780
++PASS T99 decor-green-band | трава вне зелени: bad=0 water=0 sand=0 high=0 dry=0
++PASS T99 decor-green-band | камни в горах есть (905), в воде нет (0)
++PASS T99 decor-green-band | TryEvaluate ⊆ IsSurfaceAllowed, нарушений=0
 +PASS T99 decor-green-band | CubeFaceDirection == CubeSphere.Direction
-+PASS T99 decor-green-band | ╤Б╤В╤А╨░╨╢ ╤Б╨╜╤Н╨┐╨░: land=True mapping=True water=True
-+[Test99_DecorGreenBand] ok in 317 ms
-+PASS T100 decor-stale-reset | stale Accepted ╨┐╨╛╤Б╨╗╨╡ ╨╛╤В╨║╨╗╨╛╨╜╨╡╨╜╨╕╤П: 0 ╨╕╨╖ 486
++PASS T99 decor-green-band | страж снэпа: land=True mapping=True water=True
++[Test99_DecorGreenBand] ok in 282 ms
++PASS T100 decor-stale-reset | stale Accepted после отклонения: 0 из 486
 +[Test100_DecorStalePoolReset] ok in 1 ms
 +BEACH total=1085 grassAbove=2911 band=1085 twinBand=231 pulled=3386 fadePoints=510 fadeExactSand=0
-+PASS T101 beach-band | FromLayer ╤З╨╕╤В╨░╨╡╤В ╨┐╨╗╤П╨╢ ╨╕╨╖ ╤В╨╡╤А╤А╨╡╨╣╨╜╨░
-+PASS T101 beach-band | ╨┐╨╛╨╗╨╛╤Б╨░ ╨┐╨╗╤П╨╢╨░ ╤Б╤Г╤Й╨╡╤Б╤В╨▓╤Г╨╡╤В: 1085
-+PASS T101 beach-band | ╨╜╨░ ╨┐╨╗╤П╨╢╨╡ ╨╜╨╕╤З╨╡╨│╨╛: ╤В╤А╨░╨▓╨░=0 ╨║╨░╨╝╨╜╨╕=0
-+PASS T101 beach-band | ╨▓╤Л╤И╨╡ ╨┐╨╗╤П╨╢╨░ ╤В╤А╨░╨▓╨░ ╨┐╤А╨╕╨╜╨╕╨╝╨░╨╡╤В╤Б╤П: 2911
-+PASS T101 beach-band | ╨┐╨╡╤Б╨╛╨║ ╨┐╤А╨╕ ╨╗╤О╨▒╨╛╨╣ ╨╝╨░╤Б╨║╨╡/╤Б╨║╨╗╨╛╨╜╨╡: mismatch=0
-+PASS T101 beach-band | ╨▓ ╨╖╨░╤В╤Г╤Е╨░╨╜╨╕╨╕ ╨┐╨╡╤Б╨║╨░ (0.4тАж1.6┬╖beach) ╤Ж╨▓╨╡╤В ╤Б╨╝╨╡╤И╨░╨╜╨╜╤Л╨╣, ╤З╨╕╤Б╤В╨╛╨│╨╛ Sand ╨╜╨╡╤В: ╤В╨╛╤З╨╡╨║ 510, ╤З╨╕╤Б╤В╨╛╨│╨╛ ╨┐╨╡╤Б╨║╨░ 0
-+PASS T101 beach-band | ╨┐╨╛╨╗╨║╨░ ╤В╤П╨╜╨╡╤В ╨║ +8╨╝: pulled=3386 wrong=0
-+PASS T101 beach-band | ╨┐╨╛╨╗╨║╨░ ╤А╨░╤Б╤И╨╕╤А╤П╨╡╤В ╨┐╨╛╨╗╨╛╤Б╤Г: shelf=1085 legacy=231
-+[Test101_BeachBand] ok in 94 ms
++PASS T101 beach-band | FromLayer читает пляж из террейна
++PASS T101 beach-band | полоса пляжа существует: 1085
++PASS T101 beach-band | на пляже ничего: трава=0 камни=0
++PASS T101 beach-band | выше пляжа трава принимается: 2911
++PASS T101 beach-band | песок при любой маске/склоне: mismatch=0
++PASS T101 beach-band | в затухании песка (0.4…1.6·beach) цвет смешанный, чистого Sand нет: точек 510, чистого песка 0
++PASS T101 beach-band | полка тянет к +8м: pulled=3386 wrong=0
++PASS T101 beach-band | полка расширяет полосу: shelf=1085 legacy=231
++[Test101_BeachBand] ok in 86 ms
 +POLAR wEquator=0,150 wTundra=0,150 wPole=0,150 iceGrass=True iceRocks=True
-+PASS T102 polar-decor-latitude | ╨▓╨╡╤Б ╨╛╨┤╨╕╨╜╨░╨║╨╛╨▓ ╨╜╨░ ╨▓╤Б╨╡╤Е ╤И╨╕╤А╨╛╤В╨░╤Е: 0,150 ╨║╨░╨╝╨╜╨╕ ╨▒╨╡╨╖ ╨╛╨│╤А╨░╨╜╨╕╤З╨╡╨╜╨╕╤П=1,000
-+PASS T102 polar-decor-latitude | ╨╜╨░ ╤И╨╕╤А╨╛╤В╨╡ ╤В╤Г╨╜╨┤╤А╤Л ╨▓╨╡╤Б ╨╜╨╡ ╨╝╨╡╨╜╤М╤И╨╡ ╤Н╨║╨▓╨░╤В╨╛╤А╨░: 0,150
-+PASS T102 polar-decor-latitude | ╨║╨░╨╝╨╜╨╕ ╤Б IgnoreLatitude ╨╜╨░ ╨╗╤М╨┤╤Г ╨┐╤А╨╕╨╜╨╕╨╝╨░╤О╤В╤Б╤П
-+[Test102_PolarDecorLatitude] ok in 1 ms
++PASS T102 polar-decor-latitude | вес одинаков на всех широтах: 0,150 камни без ограничения=1,000
++PASS T102 polar-decor-latitude | на широте тундры вес не меньше экватора: 0,150
++PASS T102 polar-decor-latitude | камни с IgnoreLatitude на льду принимаются
++[Test102_PolarDecorLatitude] ok in 0 ms
 +VERTEXMASK worst=1,314E-003
-+PASS T103 vertex-mask-interp | ╨╛╤И╨╕╨▒╨║╨░ ╨╕╨╜╤В╨╡╤А╨┐╨╛╨╗╤П╤Ж╨╕╨╕ ╨╝╨░╤Б╨║╨╕ ╨▓ ╨╝╨░╤Б╤И╤В╨░╨▒╨╡ ╤З╨░╨╜╨║╨╛╨▓: 1,314E-003
++PASS T103 vertex-mask-interp | ошибка интерполяции маски в масштабе чанков: 1,314E-003
 +[Test103_VertexMaskInterp] ok in 2 ms
 +DRYSTEPPE raw=2323 grass=True trees=True rocks=True
-+PASS T104 dry-steppe-vegetation | ╤А╨╡╨│╤А╨╡╤Б╤Б╨╕╨╛╨╜╨╜╤Л╨╣ ╨┐╨╕╨╜ ╨▓╤Л╤Б╨╛╤В╤Л: 2323 ╨╝ (╨▒╤Л╨╗╨╛ 2321)
-+PASS T104 dry-steppe-vegetation | ╨╢╨░╨╗╨╛╨▒╨░ ╨┐╨╛ ╤Б╤Г╤Й╨╡╤Б╤В╨▓╤Г: ╤В╨╛╤З╨║╨░ ╤Б╤Г╤И╨╕ ╨╜╨░ ╨╖╨╡╨╗╤С╨╜╤Л╤Е ╨▓╤Л╤Б╨╛╤В╨░╤Е, ╤А╨╡╨╗╤М╨╡╤Д 2323 ╨╝ (╨╕╤Б╤Е╨╛╨┤╨╜╨░╤П ╨╢╨░╨╗╨╛╨▒╨░: 2732 ╨╝)
-+PASS T104 dry-steppe-vegetation | ╤Б╤Г╤Е╨░╤П ╤Б╤В╨╡╨┐╤М ╨╖╨╡╨╗╨╡╨╜╨╡╨╡╤В: ╤В╤А╨░╨▓╨░=True ╨┤╨╡╤А╨╡╨▓╤М╤П=True ╨║╨░╨╝╨╜╨╕=True
++PASS T104 dry-steppe-vegetation | регрессионный пин высоты: 2323 м (было 2321)
++PASS T104 dry-steppe-vegetation | жалоба по существу: точка суши на зелёных высотах, рельеф 2323 м (исходная жалоба: 2732 м)
++PASS T104 dry-steppe-vegetation | сухая степь зеленеет: трава=True деревья=True камни=True
 +[Test104_DrySteppeVegetation] ok in 0 ms
-+PASS T95 horizon | ╨Ч╨╡╨╝╨╗╤П h=2 ╨╝ тЙИ 5.05 ╨║╨╝; ╨╜╤Г╨╗╨╕ ╨╕ ╨╛╤В╤А╨╕╤Ж╨░╤В╨╡╨╗╤М╨╜╤Л╨╡ ╨▓╤Л╤Б╨╛╤В╤Л ╨║╨╗╨░╨╝╨┐╤П╤В╤Б╤П
-+PASS T95 horizon | ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В ╨╝╨╛╨╜╨╛╤В╨╛╨╜╨╡╨╜ ╨┐╨╛ ╨▓╤Л╤Б╨╛╤В╨╡
-+PASS T95 horizon | Terra: ╨┐╨╕╨║ ╨▓╨╕╨┤╨╡╨╜ ╤Б ╨╖╨╡╨╝╨╗╨╕ ╨╜╨░ 202 ╨║╨╝, ╤Б ╨┐╨╕╨║╨░ тАФ ╨╜╨░ 400 ╨║╨╝
++PASS T95 horizon | Земля h=2 м ≈ 5.05 км; нули и отрицательные высоты клампятся
++PASS T95 horizon | горизонт монотонен по высоте
++PASS T95 horizon | Terra: пик виден с земли на 202 км, с пика — на 400 км
 +[Test95_HorizonDistance] ok in 0 ms
 +T96 values: zenith=(0,938,0,862,0,751) horizon=(0,192,0,067,0,007)
-+PASS T96 sun-transmittance | ╨╖╨╡╨╜╨╕╤В: ╤В╤С╨┐╨╗╤Л╨╣ ╨▒╨╡╨╗╤Л╨╣, B<G<R
-+PASS T96 sun-transmittance | ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В: R>G>B, ╨║╤А╨░╤Б╨╜╤Л╨╣ ╨┤╨╛╨╝╨╕╨╜╨╕╤А╤Г╨╡╤В
-+PASS T96 sun-transmittance | ╨╜╨╕╨╢╨╡ ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В╨░ T = 0
-+PASS T96 sun-transmittance | ╨┐╨╛ ╨▓╤Л╤Б╨╛╤В╨╡ 0тЖТ120 ╨║╨╝: ╤А╨╛╤Б╤В, [0,1], ╨▒╨╡╨╖ ╤Б╨║╨░╤З╨║╨╛╨▓
-+PASS T96 sun-transmittance | ╨╜╨╡╤В T > 1 ╨╜╨╕ ╨┐╤А╨╕ ╨║╨░╨║╨╛╨╣ ╨▓╤Л╤Б╨╛╤В╨╡ ╨б╨╛╨╗╨╜╤Ж╨░
-+PASS T96 sun-transmittance | ╨▓╤Л╤И╨╡ ╨░╤В╨╝╨╛╤Б╤Д╨╡╤А╤Л T = (1,1,1): ╤Б╨▓╨╡╤В ╨▒╨╡╨╗╤Л╨╣
-+PASS T96 sun-transmittance | CPU-╤Б╨▓╨╡╤В == ╨┐╨╕╨║╤Б╨╡╨╗╤М transmittance-LUT ╨▒╨╕╤В-╨▓-╨▒╨╕╤В
-+[Test96_SunLightTransmittance] ok in 2 ms
++PASS T96 sun-transmittance | зенит: тёплый белый, B<G<R
++PASS T96 sun-transmittance | горизонт: R>G>B, красный доминирует
++PASS T96 sun-transmittance | ниже горизонта T = 0
++PASS T96 sun-transmittance | по высоте 0→120 км: рост, [0,1], без скачков
++PASS T96 sun-transmittance | нет T > 1 ни при какой высоте Солнца
++PASS T96 sun-transmittance | выше атмосферы T = (1,1,1): свет белый
++PASS T96 sun-transmittance | CPU-свет == пиксель transmittance-LUT бит-в-бит
++[Test96_SunLightTransmittance] ok in 1 ms
 +T97 values: day=(0,0082,0,0139,0,0209) sunset=(0,0063,0,0072,0,0058) nightLum=8,12E-007
-+PASS T97 sky-ambient | ╨┤╨╡╨╜╤М: ╨║╨╛╨╜╨╡╤З╨╜╨░, ╨╜╨╡╨╛╤В╤А╨╕╤Ж╨░╤В╨╡╨╗╤М╨╜╨░, B>G>R
-+PASS T97 sky-ambient | ╨╖╨░╨║╨░╤В: R max, ╤Б╨╗╨░╨▒╨╡╨╡ ╨┤╨╜╤П, ╤П╤А╤З╨╡ ╨╜╨╛╤З╨╕
-+PASS T97 sky-ambient | ╨╜╨╛╤З╤М: < 1% ╨╛╤В ╨┤╨╜╤П
-+PASS T97 sky-ambient | ╨▓╤Л╤И╨╡ ╨░╤В╨╝╨╛╤Б╤Д╨╡╤А╤Л: ╤А╨╛╨▓╨╜╨╛ 0
-+PASS T97 sky-ambient | ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕╤А╨╛╨▓╨░╨╜╨░ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В
++PASS T97 sky-ambient | день: конечна, неотрицательна, B>G>R
++PASS T97 sky-ambient | закат: R max, слабее дня, ярче ночи
++PASS T97 sky-ambient | ночь: < 1% от дня
++PASS T97 sky-ambient | выше атмосферы: ровно 0
++PASS T97 sky-ambient | детерминирована бит-в-бит
 +[Test97_SkyAmbient] ok in 1 ms
 +T98 values: T(0)=(0,192,0,067,0,007) T(-0.25)=(0,048,0,016,0,001) amb(-6)=1,40E-003 amb(-12)=1,44E-004
-+PASS T98 sunset-twilight | T ╨╜╨╡╨┐╤А╨╡╤А╤Л╨▓╨╡╨╜ ╤З╨╡╤А╨╡╨╖ ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В (╨╜╨╡╤В ╤Б╤В╤Г╨┐╨╡╨╜╤М╨║╨╕ ╨▓ 0)
-+PASS T98 sunset-twilight | ╨╜╨░ тИТ2┬░ ╨┐╤А╤П╨╝╨╛╨╣ ╤Б╨▓╨╡╤В ╤А╨╛╨▓╨╜╨╛ 0
-+PASS T98 sunset-twilight | ╨╜╨░ тИТ6┬░ ambient ╤В╤С╨┐╨╗╤Л╨╣, >1% ╨┤╨╜╤П, ╤Б╨╗╨░╨▒╨╡╨╡ ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В╨░
-+PASS T98 sunset-twilight | ╨║ тИТ12┬░ ambient ╨┐╨╛╨│╨░╤Б (<2% ╨┤╨╜╤П)
-+PASS T98 sunset-twilight | ╨╛╨║╨║╨╗╤О╨╖╨╕╤П/╨┤╨╡╨╜╤М: 1 ╨┤╨╜╤С╨╝, 0 ╨╜╨╛╤З╤М╤О
++PASS T98 sunset-twilight | T непрерывен через горизонт (нет ступеньки в 0)
++PASS T98 sunset-twilight | на −2° прямой свет ровно 0
++PASS T98 sunset-twilight | на −6° ambient тёплый, >1% дня, слабее горизонта
++PASS T98 sunset-twilight | к −12° ambient погас (<2% дня)
++PASS T98 sunset-twilight | окклюзия/день: 1 днём, 0 ночью
 +[Test98_SunsetTwilight] ok in 1 ms
-+PASS T105 water-query | ╨╛╨║╨╡╨░╨╜ ╨╡╤Б╤В╤М (╨╝╨╛╤А╨╡ тИТ500 ╨╝)
-+PASS T105 water-query | ╤Г╤А╨╛╨▓╨╡╨╜╤М ╨╝╨╛╤А╤П тИТ500 ╨╝
-+PASS T105 water-query | raw тЙд clamped, ╨│╨╗╤Г╨▒╨╕╨╜╨░ = ╨╝╨╛╤А╨╡ тИТ ╨┤╨╜╨╛
-+PASS T105 water-query | ╨╜╨░ ╤Б╨╡╤В╨║╨╡ ╨╡╤Б╤В╤М ╨╕ ╨▓╨╛╨┤╨░, ╨╕ ╤Б╤Г╤И╨░ (╨▓╨╛╨┤╨░ 85,0,180,0)
-+PASS T105 water-query | ╤А╨░╨┤╨╕╤Г╤Б ╨┐╨╛╨▓╨╡╤А╤Е╨╜╨╛╤Б╤В╨╕ ╨╝╨╛╤А╤П = R тИТ 500
-+PASS T105 water-query | ╨┐╨╛╨│╤А╤Г╨╢╨╡╨╜╨╕╨╡: 0/тИТ10/+10 ╨╝ тЖТ 0,000/10,000/-10,000
-+PASS T105 water-query | ╤В╨╛╤З╨║╨░ ╨╜╨╕╨╢╨╡ ╨┐╨╛╨▓╨╡╤А╤Е╨╜╨╛╤Б╤В╨╕ ╨╜╨░╨┤ ╨▓╨╛╨┤╨╛╨╣ ╤Б╤З╨╕╤В╨░╨╡╤В╤Б╤П ╨┐╨╛╨│╤А╤Г╨╢╤С╨╜╨╜╨╛╨╣
-+PASS T105 water-query | ╤В╨╛╤З╨║╨░ ╨╜╨░ ╨┐╨╛╨▓╨╡╤А╤Е╨╜╨╛╤Б╤В╨╕ ╨╕ ╨▓╤Л╤И╨╡ ╨▓╨╛╨┤╨╛╨╣ ╨╜╨╡ ╤Б╤З╨╕╤В╨░╨╡╤В╤Б╤П ╨┐╨╛╨│╤А╤Г╨╢╤С╨╜╨╜╨╛╨╣
-+PASS T105 water-query | ╤В╨╛╤З╨║╨░ ╨╜╨╕╨╢╨╡ ╨╝╨╛╤А╤П, ╨╜╨╛ ╨▓╨╜╤Г╤В╤А╨╕ ╤Б╤Г╤И╨╕ ╨╜╨╡ ╤Б╤З╨╕╤В╨░╨╡╤В╤Б╤П ╨┐╨╛╨│╤А╤Г╨╢╤С╨╜╨╜╨╛╨╣
-+PASS T105 water-query | ╨┐╤А╨╛╤Б╨▓╨╡╤В ╨╜╨░ ╨┤╨╜╨╡ ~0 (0,00E+000)
-+PASS T105 water-query | splashdown ╨╜╨░╨┤ ╨▓╨╛╨┤╨╛╨╣: ╨│╨╗╤Г╨▒╨╕╨╜╨░ 463 ╨╝
-+PASS T105 water-query | splashdown ╨╜╨░╨┤ ╤Б╤Г╤И╨╡╨╣: ╨╜╨╡ ╨▓╨╛╨┤╨░
-+PASS T105 water-query | ╤В╨╡╨╗╨╛ ╨▒╨╡╨╖ ╨╛╨║╨╡╨░╨╜╨░: HasOcean=false, ╨▓╨╡╨╖╨┤╨╡ NaN/0
-+PASS T105 water-query | splashdown ╨▒╨╡╨╖ ╨╛╨║╨╡╨░╨╜╨░: ╨╜╨╡ ╨▓╨╛╨┤╨░
-+[Test105_WaterQuery] ok in 24 ms
++PASS T105 water-query | океан есть (море −500 м)
++PASS T105 water-query | уровень моря −500 м
++PASS T105 water-query | raw ≤ clamped, глубина = море − дно
++PASS T105 water-query | на сетке есть и вода, и суша (вода 85,0,180,0)
++PASS T105 water-query | радиус поверхности моря = R − 500
++PASS T105 water-query | погружение: 0/−10/+10 м → 0,000/10,000/-10,000
++PASS T105 water-query | точка ниже поверхности над водой считается погружённой
++PASS T105 water-query | точка на поверхности и выше водой не считается погружённой
++PASS T105 water-query | точка ниже моря, но внутри суши не считается погружённой
++PASS T105 water-query | просвет на дне ~0 (0,00E+000)
++PASS T105 water-query | splashdown над водой: глубина 463 м
++PASS T105 water-query | splashdown над сушей: не вода
++PASS T105 water-query | тело без океана: HasOcean=false, везде NaN/0
++PASS T105 water-query | splashdown без океана: не вода
++[Test105_WaterQuery] ok in 25 ms
 +SANDBAND paintedAbove=120 sandAbove=0 paintedBelow=40 sandBelow=40 fadePoints=80 fadeExactSand=0 halfW=0,500 zeroW=0,000 beachPoints=4145 onBeach=0 greenWithGrass=17885 justAbove=748 grassOnPaintedSand=0
-+PASS T106 sand-is-beach-band | ╨▓╤Л╤И╨╡ ╨┐╨╗╤П╨╢╨░ ╨┐╨░╨╗╨╕╤В╤А╨░ ╨╜╨╡ ╤А╨╕╤Б╤Г╨╡╤В ╤З╨╕╤Б╤В╤Л╨╣ ╨┐╨╡╤Б╨╛╨║ (0 ╨╕╨╖ 120)
-+PASS T106 sand-is-beach-band | ╨╜╨╕╨╢╨╡ 0.4┬╖╨┐╨╗╤П╨╢╨░ ╨┐╨░╨╗╨╕╤В╤А╨░ ╤А╨╕╤Б╤Г╨╡╤В ╨┐╨╡╤Б╨╛╨║ ╨▓╤Б╨╡╨│╨┤╨░ (40 ╨╕╨╖ 40)
-+PASS T106 sand-is-beach-band | ╨║╤А╨╕╨▓╨░╤П ╨┐╨╡╤Б╨║╨░: ╨┐╨╛╨╗╨╛╨▓╨╕╨╜╨░ ╨╜╨░ ╨│╤А╨░╨╜╨╕╤Ж╨╡ ╨┐╨╗╤П╨╢╨░, ╨╜╨╛╨╗╤М ╤Б 1.6┬╖╨┐╨╗╤П╨╢╨░ (half=0,500, zero=0,000)
-+PASS T106 sand-is-beach-band | ╨▓ ╨╖╨░╤В╤Г╤Е╨░╨╜╨╕╨╕ ╨┐╨╡╤Б╨╛╨║ ╤Б╨╝╨╡╤И╨░╨╜ ╤Б ╨▒╨╕╨╛╨╝╨╛╨╝ (╤В╨╛╤З╨╡╨║ 80, ╤З╨╕╤Б╤В╨╛╨│╨╛ Sand 0)
-+PASS T106 sand-is-beach-band | ╨╜╨░ ╨┐╨╗╤П╨╢╨╡ ╨┤╨╡╨║╨╛╤А ╨╜╨╡ ╤Б╨╡╨╡╤В: ╤В╨╛╤З╨╡╨║ 4145, ╨┐╨╛╤Б╨░╨┤╨╛╨║ 0
-+PASS T106 sand-is-beach-band | ╤В╤А╨░╨▓╨░ ╤Б╨╡╨╡╤В╤Б╤П ╤Б╤А╨░╨╖╤Г ╨╜╨░╨┤ ╨┐╨╗╤П╨╢╨╡╨╝ (╤В╨╛╤З╨╡╨║ ╨▓ ╨┐╨╡╤А╨▓╤Л╤Е 60 ╨╝: 748)
-+PASS T106 sand-is-beach-band | ╨┐╨░╤А╨╕╤В╨╡╤В ╨║╤А╨░╤Б╨║╨░тЖФ╨┤╨╡╨║╨╛╤А: ╤В╤А╨░╨▓╨░ ╨╜╨░ ╨╖╨╡╨╗╨╡╨╜╨╕ (17885), ╨╜╨░ ╨┐╨╡╤Б╨║╨╡ 0
-+[Test106_SandIsBeachBandOnly] ok in 392 ms
++PASS T106 sand-is-beach-band | выше пляжа палитра не рисует чистый песок (0 из 120)
++PASS T106 sand-is-beach-band | ниже 0.4·пляжа палитра рисует песок всегда (40 из 40)
++PASS T106 sand-is-beach-band | кривая песка: половина на границе пляжа, ноль с 1.6·пляжа (half=0,500, zero=0,000)
++PASS T106 sand-is-beach-band | в затухании песок смешан с биомом (точек 80, чистого Sand 0)
++PASS T106 sand-is-beach-band | на пляже декор не сеет: точек 4145, посадок 0
++PASS T106 sand-is-beach-band | трава сеется сразу над пляжем (точек в первых 60 м: 748)
++PASS T106 sand-is-beach-band | паритет краска↔декор: трава на зелени (17885), на песке 0
++[Test106_SandIsBeachBandOnly] ok in 344 ms
 +WETNESS min=0,0392 max=0,9608 atZero=0 atOne=0 land=23410 treeDead=4,3%
-+PASS T107 wetness-no-saturation | ╨║╤А╨╕╨▓╨░╤П ╨╜╨╡ ╨╜╨░╤Б╤Л╤Й╨░╨╡╤В╤Б╤П: min=0,0392 max=0,9608
-+PASS T107 wetness-no-saturation | ╤Б╤Г╤И╨╕ ╨▒╨╡╨╖ ╨╡╨┤╨╕╨╜╨╛╨│╨╛ ╨┤╨╡╤А╨╡╨▓╨░: 4,3% (╨▒╤Л╨╗╨╛ ~25%)
-+[Test107_WetnessNeverSaturates] ok in 130 ms
-+PASS T108 surface-frame-basis | ╨▓╤Б╨╡ ╤В╤А╨╕ ╨╛╤Б╨╕ ╨╡╨┤╨╕╨╜╨╕╤З╨╜╤Л╨╡ ╨╜╨░ ╨▓╤Б╨╡╤Е lat/lon, ╨▓╨║╨╗╤О╤З╨░╤П ╨┐╨╛╨╗╤О╤Б╨░
-+PASS T108 surface-frame-basis | ╨▒╨░╨╖╨╕╤Б ╨┐╤А╨░╨▓╤Л╨╣: ╤Б╨╡╨▓╨╡╤А x ╨╖╨╡╨╜╨╕╤В = ╨▓╨╛╤Б╤В╨╛╨║
-+PASS T108 surface-frame-basis | ╨╛╤Б╨╕ ╨▓╨╖╨░╨╕╨╝╨╜╨╛ ╨┐╨╡╤А╨┐╨╡╨╜╨┤╨╕╨║╤Г╨╗╤П╤А╨╜╤Л
-+PASS T108 surface-frame-basis | ╨║╨▓╨░╤В╨╡╤А╨╜╨╕╨╛╨╜ ╤Д╤А╨╡╨╣╨╝╨░ ╨╡╨┤╨╕╨╜╨╕╤З╨╜╤Л╨╣ ╨╕ ╨║╨╛╨╜╨╡╤З╨╜╤Л╨╣ ╨╜╨░ ╨┐╨╛╨╗╤О╤Б╨░╤Е
-+PASS T108 surface-frame-basis | q ╨┐╨╡╤А╨╡╨▓╨╛╨┤╨╕╤В ╨╗╨╛╨║╨░╨╗╤М╨╜╤Л╨╡ ╨╛╤Б╨╕ ╨▓ ╤Б╨╡╨▓╨╡╤А/╨╖╨╡╨╜╨╕╤В/╨▓╨╛╤Б╤В╨╛╨║
-+PASS T108 surface-frame-basis | Up(lat,lon) ╤Б╨╛╨▓╨┐╨░╨┤╨░╨╡╤В ╤Б ╨▒╨░╨╖╨╕╤Б╨╛╨╝ ╤А╨╡╨╗╤М╨╡╤Д╨░ (╨╛╤И╨╕╨▒╨║╨░ 0,00E+000)
-+PASS T108 surface-frame-basis | DirectionOffset ╨╡╨┤╨╕╨╜╨╕╤З╨╜╤Л╨╣ ╨╜╨░ ╤Б╨╝╨╡╤Й╨╡╨╜╨╕╤П╤Е ╨┤╨╛ 150 ╨║╨╝
-+PASS T108 surface-frame-basis | 10 ╨╝ ╨╜╨░ ╨▓╨╛╤Б╤В╨╛╨║ -> 10 ╨╝ ╨┐╨╛ Z
-+PASS T108 surface-frame-basis | 10 ╨╝ ╨╜╨░ ╤Б╨╡╨▓╨╡╤А -> 10 ╨╝ ╨┐╨╛ X
-+PASS T108 surface-frame-basis | 10 ╨╝ ╨▓╨▓╨╡╤А╤Е -> 10 ╨╝ ╨┐╨╛ Y
-+PASS T108 surface-frame-basis | ToLocal ╨╛╨▒╤А╨░╤Й╨░╨╡╤В ╨┐╨╡╤А╨╡╨╜╨╛╤Б ENU: (╤Б╨╡╨▓╨╡╤А тИТ13, ╨╖╨╡╨╜╨╕╤В 5, ╨▓╨╛╤Б╤В╨╛╨║ 7)
-+PASS T108 surface-frame-basis | ╨╖╨╡╨╜╨╕╤В ╨┐╨╡╤А╨┐╨╡╨╜╨┤╨╕╨║╤Г╨╗╤П╤А╨╡╨╜ ╨║╨░╤Б╨░╤В╨╡╨╗╤М╨╜╤Л╨╝ (╤Б╨║╨░╨╗╤П╤А╨╜╨╛╨╡ ╨┐╤А╨╛╨╕╨╖╨▓╨╡╨┤╨╡╨╜╨╕╨╡ 5,55E-017)
++PASS T107 wetness-no-saturation | кривая не насыщается: min=0,0392 max=0,9608
++PASS T107 wetness-no-saturation | суши без единого дерева: 4,3% (было ~25%)
++[Test107_WetnessNeverSaturates] ok in 118 ms
++PASS T108 surface-frame-basis | все три оси единичные на всех lat/lon, включая полюса
++PASS T108 surface-frame-basis | базис правый: север x зенит = восток
++PASS T108 surface-frame-basis | оси взаимно перпендикулярны
++PASS T108 surface-frame-basis | кватернион фрейма единичный и конечный на полюсах
++PASS T108 surface-frame-basis | q переводит локальные оси в север/зенит/восток
++PASS T108 surface-frame-basis | Up(lat,lon) совпадает с базисом рельефа (ошибка 0,00E+000)
++PASS T108 surface-frame-basis | DirectionOffset единичный на смещениях до 150 км
++PASS T108 surface-frame-basis | 10 м на восток -> 10 м по Z
++PASS T108 surface-frame-basis | 10 м на север -> 10 м по X
++PASS T108 surface-frame-basis | 10 м вверх -> 10 м по Y
++PASS T108 surface-frame-basis | ToLocal обращает перенос ENU: (север −13, зенит 5, восток 7)
++PASS T108 surface-frame-basis | зенит перпендикулярен касательным (скалярное произведение 5,55E-017)
 +[Test108_SurfaceFrameBasis] ok in 2 ms
-+PASS T109 terrain-pads | ╤Г ╤Б╨▓╨╡╨╢╨╡╨│╨╛ ╤А╨╡╨╗╤М╨╡╤Д╨░ ╤В╨░╨▒╨╗╨╕╤Ж╨░ ╨┐╨╗╨╛╤Й╨░╨┤╨╛╨║ ╨Т╨Р╨Ы╨Ш╨Ф╨Э╨Р (╨╕╨╜╨░╤З╨╡ ╤А╨╡╨╜╨┤╨╡╤А ╨┐╨░╨┤╨░╨╡╤В ╨╜╨░ Schedule)
-+PASS T109 terrain-pads | ╨┐╤Г╤Б╤В╨╛╨╣ ╤Б╨┐╨╕╤Б╨╛╨║ ╨┤╨░╤С╤В ╨▓╨░╨╗╨╕╨┤╨╜╤Г╤О ╨┐╤Г╤Б╤В╤Г╤О ╤В╨░╨▒╨╗╨╕╤Ж╤Г, ╨░ ╨╜╨╡ default
-+PASS T109 terrain-pads | ╨┐╨╛╤Б╨╗╨╡ ╨┤╨╛╨▒╨░╨▓╨╗╨╡╨╜╨╕╤П ╨╕ ╤Г╨┤╨░╨╗╨╡╨╜╨╕╤П ╨┐╨╗╨╛╤Й╨░╨┤╨║╨╕ ╤В╨░╨▒╨╗╨╕╤Ж╨░ ╨╛╤Б╤В╨░╤С╤В╤Б╤П ╨▓╨░╨╗╨╕╨┤╨╜╨╛╨╣
-+PASS T109 terrain-pads | ╨╡╤Б╤В╨╡╤Б╤В╨▓╨╡╨╜╨╜╤Л╨╣ ╤А╨╡╨╗╤М╨╡╤Д ╨╜╨╡╤А╨╛╨▓╨╜╤Л╨╣ (╨╕╨╜╨░╤З╨╡ ╤В╨╡╤Б╤В╤Л ╨┐╨╗╨╛╤Й╨░╨┤╨╛╨║ ╨╜╨╡╤З╨╡╨│╨╛ ╨┐╤А╨╛╨▓╨╡╤А╤П╤В╤М)
-+PASS T109 terrain-pads | ╨┐╤Г╤Б╤В╨╛╨╣ ╤Б╨┐╨╕╤Б╨╛╨║ ╨┐╨╗╨╛╤Й╨░╨┤╨╛╨║ ╨╜╨╡ ╨╝╨╡╨╜╤П╨╡╤В ╨▓╤Л╤Б╨╛╤В╤Г ╨С╨Ш╨в-╨Т-╨С╨Ш╨в
-+PASS T109 terrain-pads | ╨▓╤Л╨║╨╗╤О╤З╨╡╨╜╨╜╨░╤П ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ (╤А╨░╨┤╨╕╤Г╤Б 0) ╨╜╨╡ ╤В╤А╨╛╨│╨░╨╡╤В ╤А╨╡╨╗╤М╨╡╤Д
-+PASS T109 terrain-pads | ╨▓ ╤Ж╨╡╨╜╤В╤А╨╡ ╨┐╨╗╨╛╤Й╨░╨┤╨║╨╕ ╨▓╤Л╤Б╨╛╤В╨░ ╨а╨Ю╨Т╨Э╨Ю ╤Ж╨╡╨╗╨╡╨▓╨╛╨╣ (250,000000 ╨╝)
-+PASS T109 terrain-pads | ╨╡╤Б╤В╨╡╤Б╤В╨▓╨╡╨╜╨╜╨░╤П ╨▓╤Л╤Б╨╛╤В╨░ ╨▓ ╤Ж╨╡╨╜╤В╤А╨╡ ╨╛╤В╨╗╨╕╤З╨░╨╡╤В╤Б╤П ╨╛╤В ╤Ж╨╡╨╗╨╡╨▓╨╛╨╣ (╤В╨╡╤Б╤В ╨╜╨╡ ╤В╤А╨╕╨▓╨╕╨░╨╗╨╡╨╜)
-+PASS T109 terrain-pads | ╤П╨┤╤А╨╛ ╤А╨╛╨▓╨╜╨╛╨╡ ╨▓╨╛ ╨▓╤Б╨╡╤Е 20 ╨┐╤А╨╛╨▒╨░╤Е (╨╝╨░╨║╤Б. ╨╛╤В╨║╨╗╨╛╨╜╨╡╨╜╨╕╨╡ 0,00E+000 ╨╝)
-+PASS T109 terrain-pads | ╤Д╨░╤А╤В╤Г╨║ ╨╝╨╛╨╜╨╛╤В╨╛╨╜╨╡╨╜: ╨╛╤В╨║╨╗╨╛╨╜╨╡╨╜╨╕╨╡ ╨╛╤В ╤Ж╨╡╨╗╨╡╨▓╨╛╨╣ ╤Г╨▒╤Л╨▓╨░╨╡╤В ╨║ ╤П╨┤╤А╤Г
-+PASS T109 terrain-pads | ╨╜╨░ ╨▓╨╜╤Г╤В╤А╨╡╨╜╨╜╨╡╨╣ ╨│╤А╨░╨╜╨╕╤Ж╨╡ ╤Д╨░╤А╤В╤Г╨║╨░ ╨▓╤Л╤Б╨╛╤В╨░ ╨┐╤А╨╕╤Е╨╛╨┤╨╕╤В ╨║ ╤Ж╨╡╨╗╨╡╨▓╨╛╨╣ (250,000000 ╨╝)
-+PASS T109 terrain-pads | ╤Д╨╛╤А╨╝╨░ ╤Д╨░╤А╤В╤Г╨║╨░ тАФ smoothstep (╨▓╨╡╤Б ╨╜╨░ ╤З╨╡╤В╨▓╨╡╤А╤В╨╕ 0,15625 ╨▓╨╝╨╡╤Б╤В╨╛ 0,15625; ╨╗╨╕╨╜╨╡╨╣╨╜╨░╤П ╨┤╨░╨╗╨░ ╨▒╤Л 0,25)
-+PASS T109 terrain-pads | ╤Д╨░╤А╤В╤Г╨║ ╤Б╨╕╨╝╨╝╨╡╤В╤А╨╕╤З╨╡╨╜ (╨▓╨╡╤Б ╨╜╨░ ╨┐╨╛╨╗╨╛╨▓╨╕╨╜╨╡ 0,50000)
-+PASS T109 terrain-pads | ╨╖╨░ ╨▓╨╜╨╡╤И╨╜╨╕╨╝ ╤А╨░╨┤╨╕╤Г╤Б╨╛╨╝ ╤А╨╡╨╗╤М╨╡╤Д ╨╜╨╡ ╤В╤А╨╛╨╜╤Г╤В ╨С╨Ш╨в-╨Т-╨С╨Ш╨в
-+PASS T109 terrain-pads | ╨▓╨╜╤Г╤В╤А╨╕ ╤П╨┤╤А╨░ ╨▓╤Л╤Б╨╛╤В╤Л ╨▓╤Б╨╡╤Е ╤В╤А╤С╤Е ╤Б╨╛╤Б╨╡╨┤╨╡╨╣ ╤А╨░╨▓╨╜╤Л ╤Ж╨╡╨╗╨╡╨▓╨╛╨╣ тЖТ ╨╜╨╛╤А╨╝╨░╨╗╤М = ╨╖╨╡╨╜╨╕╤В
-+PASS T109 terrain-pads | ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ +15 ╨╝ ╨╜╨░╨┤ ╨╝╨╛╤А╨╡╨╝ ╨╜╨╡ ╤В╨╛╨╜╨╡╤В ╨▓ ╨║╨╗╨░╨╝╨┐╨╡
-+PASS T109 terrain-pads | ╨▒╨╡╨╖ ╤Д╨╗╨░╨│╨░ ╤А╨░╤Б╨║╨╛╨┐╨║╨░ -30 ╨╝ ╨┐╨╛╨┤╨╜╨╕╨╝╨░╨╡╤В╤Б╤П ╨║╨╗╨░╨╝╨┐╨╛╨╝ ╨┤╨╛ ╤Г╤А╨╛╨▓╨╜╤П ╨╝╨╛╤А╤П
-+PASS T109 terrain-pads | ╤Б ╤Д╨╗╨░╨│╨╛╨╝ ╤А╨░╤Б╨║╨╛╨┐╨║╨░ -30 ╨╝ ╨╛╤Б╤В╨░╤С╤В╤Б╤П ╤Б╤Г╤Е╨╛╨╣
-+PASS T109 terrain-pads | ╨╛╨┤╨╕╨╜╨░╨║╨╛╨▓╤Л╨╡ ╤В╨░╨▒╨╗╨╕╤Ж╤Л ╨╕╨╖ ╤А╨░╨╖╨╜╤Л╤Е ╤Б╨▒╨╛╤А╨╛╨║ ╤А╨░╨▓╨╜╤Л
-+PASS T109 terrain-pads | ╨╕╨╖╨╝╨╡╨╜╨╡╨╜╨╕╨╡ ╤Ж╨╡╨╗╨╡╨▓╨╛╨╣ ╨▓╤Л╤Б╨╛╤В╤Л ╨╗╨╛╨▓╨╕╤В╤Б╤П ╤Б╤А╨░╨▓╨╜╨╡╨╜╨╕╨╡╨╝ ╤В╨░╨▒╨╗╨╕╤Ж
-+PASS T109 terrain-pads | ╨╕╨╖╨╝╨╡╨╜╨╡╨╜╨╕╨╡ ╤А╨░╨┤╨╕╤Г╤Б╨░ ╤П╨┤╤А╨░ ╨╗╨╛╨▓╨╕╤В╤Б╤П ╤Б╤А╨░╨▓╨╜╨╡╨╜╨╕╨╡╨╝ ╤В╨░╨▒╨╗╨╕╤Ж
-+PASS T109 terrain-pads | ╨┐╨╡╤А╨╡╨╜╨╛╤Б ╨┐╨╗╨╛╤Й╨░╨┤╨║╨╕ ╨╗╨╛╨▓╨╕╤В╤Б╤П ╤Б╤А╨░╨▓╨╜╨╡╨╜╨╕╨╡╨╝ ╤В╨░╨▒╨╗╨╕╤Ж
-+PASS T109 terrain-pads | ╨┐╤А╨╕ ╨┐╨╡╤А╨╡╤Б╨╡╤З╨╡╨╜╨╕╨╕ ╨┐╨╛╨▒╨╡╨╢╨┤╨░╨╡╤В ╨┐╨╛╤Б╨╗╨╡╨┤╨╜╤П╤П ╨▓ ╤Б╨┐╨╕╤Б╨║╨╡, ╨┐╨╛╤А╤П╨┤╨╛╨║ ╨┤╨╡╤В╨╡╤А╨╝╨╕╨╜╨╕╤А╨╛╨▓╨░╨╜
-+PASS T109 terrain-pads | ╤В╨╛╤З╨║╨░ ╤Д╨░╤А╤В╤Г╨║╨░ ╨┤╨╗╤П ╨┐╤А╨╛╨▓╨╡╤А╨║╨╕ ╨║╤А╤Г╨│╨╗╨╛╤Б╤В╨╕ ╨╜╨╡ ╨▓╤Л╤А╨╛╨╢╨┤╨╡╨╜╨░
-+PASS T109 terrain-pads | ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ ╨║╤А╤Г╨│╨╗╨░╤П: ╨▓╨╡╤Б ╤Д╨░╤А╤В╤Г╨║╨░ ╨╛╨┤╨╕╨╜╨░╨║╨╛╨▓ ╨┐╨╛ ╨▓╤Б╨╡╨╝ ╨░╨╖╨╕╨╝╤Г╤В╨░╨╝ (╤А╨░╨╖╨▒╤А╨╛╤Б 1,64E-004, ╨▓╨╡╤Б 0,6970)
-+PASS T109 terrain-pads | ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ ╨║╤А╤Г╨│╨╗╨░╤П ╨╕ ╨┐╨╛ ╨┤╨╕╨░╨│╨╛╨╜╨░╨╗╨╕ (╨▓╨╡╤Б 0,6970)
-+[Test109_TerrainPads] ok in 5 ms
-+    ╤Г╨╖╨╗╨╛╨▓ 226981, ╨╜╨░╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╨╣ 12; ╤А╨░╨╖╨▒╤А╨╛╤Б ╨┤╨╕╨░╨│╨╛╨╜╨░╨╗╨╕ 0.1718%, |╨▓╨╜╨╡╨┤╨╕╨░╨│.| 1.54E-003, ╤Б╤А╨╡╨┤╨╜╨╕╨╣ ╨│╤А╨░╨┤╨╕╨╡╨╜╤В 1.54E-003 (╨╜╨░ ╨╛╤Б╤М), 3*╤Б╨╕╨│╨╝╨░ 1.82E-003
-+PASS T112 gradient-set | ╬гggс╡А ╨╕╨╖╨╛╤В╤А╨╛╨┐╨╜╨░: ╤А╨░╨╖╨▒╤А╨╛╤Б ╨┤╨╕╨░╨│╨╛╨╜╨░╨╗╨╕ 0.1718%
-+PASS T112 gradient-set | ╨▓╨╜╨╡╨┤╨╕╨░╨│╨╛╨╜╨░╨╗╤М╨╜╤Л╨╣ ╤З╨╗╨╡╨╜ ╨▓╤Л╤И╨╡ 3 ╤Б╨╕╨│╨╝: |╨▓╨╜╨╡╨┤╨╕╨░╨│.| 1.54E-003 ╨┐╤А╨╕ 3*sigma = 5.45E-003
-+PASS T112 gradient-set | ╤Б╤А╨╡╨┤╨╜╨╕╨╣ ╨│╤А╨░╨┤╨╕╨╡╨╜╤В ~╨╜╤Г╨╗╨╡╨▓╨╛╨╣: 1.54E-003 (╨╛╤Б╤В╨░╤В╨╛╨║ ╨╛╤В ╤А╨░╨╖╨▒╤А╨╛╤Б╨░ h % 12 ╨┐╨╛ 12 ╨║╨╛╤А╨╖╨╕╨╜╨░╨╝)
-+PASS T112 gradient-set | ╤А╨╛╨▓╨╜╨╛ 12 ╤А╨░╨╖╨╗╨╕╤З╨╜╤Л╤Е ╨╜╨░╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╨╣: 12
-+[Test112_GradientSetSymmetry] ok in 11 ms
-+PASS T117 earthlike-drift | CreateEarthLike() ╤Б╨╛╨▓╨┐╨░╨┤╨░╨╡╤В ╤Б EarthLike.asset
-+[Test117_EarthLikeProfileDrift] ok in 13 ms
-+    ╨▓╤Л╨▒╨╛╤А╨║╨░ 4000000 ╨╜╨░╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╨╣, ╨╛╨┤╨╜╨░ ╨╕ ╤В╨░ ╨╢╨╡ ╨┤╨╗╤П ╨╛╨▒╨╛╨╕╤Е ╨┐╤А╨╛╤Д╨╕╨╗╨╡╨╣
++PASS T109 terrain-pads | у свежего рельефа таблица площадок ВАЛИДНА (иначе рендер падает на Schedule)
++PASS T109 terrain-pads | пустой список даёт валидную пустую таблицу, а не default
++PASS T109 terrain-pads | после добавления и удаления площадки таблица остаётся валидной
++PASS T109 terrain-pads | естественный рельеф неровный (иначе тесты площадок нечего проверять)
++PASS T109 terrain-pads | пустой список площадок не меняет высоту БИТ-В-БИТ
++PASS T109 terrain-pads | выключенная площадка (радиус 0) не трогает рельеф
++PASS T109 terrain-pads | в центре площадки высота РОВНО целевой (250,000000 м)
++PASS T109 terrain-pads | естественная высота в центре отличается от целевой (тест не тривиален)
++PASS T109 terrain-pads | ядро ровное во всех 20 пробах (макс. отклонение 0,00E+000 м)
++PASS T109 terrain-pads | фартук монотонен: отклонение от целевой убывает к ядру
++PASS T109 terrain-pads | на внутренней границе фартука высота приходит к целевой (250,000000 м)
++PASS T109 terrain-pads | форма фартука — smoothstep (вес на четверти 0,15625 вместо 0,15625; линейная дала бы 0,25)
++PASS T109 terrain-pads | фартук симметричен (вес на половине 0,50000)
++PASS T109 terrain-pads | за внешним радиусом рельеф не тронут БИТ-В-БИТ
++PASS T109 terrain-pads | внутри ядра высоты всех трёх соседей равны целевой → нормаль = зенит
++PASS T109 terrain-pads | площадка +15 м над морем не тонет в клампе
++PASS T109 terrain-pads | без флага раскопка -30 м поднимается клампом до уровня моря
++PASS T109 terrain-pads | с флагом раскопка -30 м остаётся сухой
++PASS T109 terrain-pads | одинаковые таблицы из разных сборок равны
++PASS T109 terrain-pads | изменение целевой высоты ловится сравнением таблиц
++PASS T109 terrain-pads | изменение радиуса ядра ловится сравнением таблиц
++PASS T109 terrain-pads | перенос площадки ловится сравнением таблиц
++PASS T109 terrain-pads | при пересечении побеждает последняя в списке, порядок детерминирован
++PASS T109 terrain-pads | точка фартука для проверки круглости не вырождена
++PASS T109 terrain-pads | площадка круглая: вес фартука одинаков по всем азимутам (разброс 1,64E-004, вес 0,6970)
++PASS T109 terrain-pads | площадка круглая и по диагонали (вес 0,6970)
++[Test109_TerrainPads] ok in 4 ms
++    узлов 226981, направлений 12; разброс диагонали 0.1718%, |внедиаг.| 1.54E-003, средний градиент 1.54E-003 (на ось), 3*сигма 1.82E-003
++PASS T112 gradient-set | Σggᵀ изотропна: разброс диагонали 0.1718%
++PASS T112 gradient-set | внедиагональный член выше 3 сигм: |внедиаг.| 1.54E-003 при 3*sigma = 5.45E-003
++PASS T112 gradient-set | средний градиент ~нулевой: 1.54E-003 (остаток от разброса h % 12 по 12 корзинам)
++PASS T112 gradient-set | ровно 12 различных направлений: 12
++[Test112_GradientSetSymmetry] ok in 35 ms
++PASS T117 earthlike-drift | CreateEarthLike() совпадает с EarthLike.asset
++[Test117_EarthLikeProfileDrift] ok in 20 ms
++    выборка 4000000 направлений, одна и та же для обоих профилей
 +
 +  legacy EarthLike (value)
-+    ╨░╨╝╨┐╨╗╨╕╤В╤Г╨┤╨░ ╨┐╤А╨╛╤Д╨╕╨╗╤П               9,144 ╨╝
-+    ╤Б╤Г╤И╨░                     43.23 %   (╨╝╨╛╤А╨╡ 56.77 %)
-+    ╨╝╨╡╨┤╨╕╨░╨╜╨░                          -902 ╨╝
-+    ╤Б╤А╨╡╨┤╨╜╤П╤П ╨▓╤Л╤Б╨╛╤В╨░ ╤Б╤Г╤И╨╕             2,078 ╨╝
-+    ╤Б╤А╨╡╨┤╨╜╤П╤П ╨│╨╗╤Г╨▒╨╕╨╜╨░ ╨╝╨╛╤А╤П           -5,611 ╨╝
-+    p99                             5,655 ╨╝
-+    p99.9                           6,722 ╨╝
-+    p99.99                          7,308 ╨╝
-+    ╨╝╨░╨║╤Б╨╕╨╝╤Г╨╝ (╨░╨▒╤Б.)                 7,997 ╨╝
-+    ╨╝╨╕╨╜╨╕╨╝╤Г╨╝                       -18,094 ╨╝
-+    ╨╝╨░╨║╤Б╨╕╨╝╤Г╨╝ / p99                   1.41
-+    ╨╝╨░╨║╤Б╨╕╨╝╤Г╨╝ ╨╛╤В ╤Ж╨╡╨╜╤В╤А╨░ (╨Ч╨╡╨╝╨╗╤П)  6,378,997 ╨╝
-+    ╨╛╨▒╨╗╨░╨║╨░ 7000..8500 ╨╝ ╨╜╨╕╨╢╨╡ ╨▓╨╡╤А╤И╨╕╨╜╤Л: ╨Ф╨Р, ╨▓╤Л╤И╨╡ ╨╜╨╕╨╖╨░
++    амплитуда профиля               9,144 м
++    суша                     43.23 %   (море 56.77 %)
++    медиана                          -902 м
++    средняя высота суши             2,078 м
++    средняя глубина моря           -5,611 м
++    p99                             5,655 м
++    p99.9                           6,722 м
++    p99.99                          7,308 м
++    максимум (абс.)                 7,997 м
++    минимум                       -18,094 м
++    максимум / p99                   1.41
++    максимум от центра (Земля)  6,378,997 м
++    облака 7000..8500 м ниже вершины: ДА, выше низа
 +
 +  EarthLike_Perlin
-+    ╨░╨╝╨┐╨╗╨╕╤В╤Г╨┤╨░ ╨┐╤А╨╛╤Д╨╕╨╗╤П              13,662 ╨╝
-+    ╤Б╤Г╤И╨░                     44.50 %   (╨╝╨╛╤А╨╡ 55.50 %)
-+    ╨╝╨╡╨┤╨╕╨░╨╜╨░                          -457 ╨╝
-+    ╤Б╤А╨╡╨┤╨╜╤П╤П ╨▓╤Л╤Б╨╛╤В╨░ ╤Б╤Г╤И╨╕             1,825 ╨╝
-+    ╤Б╤А╨╡╨┤╨╜╤П╤П ╨│╨╗╤Г╨▒╨╕╨╜╨░ ╨╝╨╛╤А╤П           -4,398 ╨╝
-+    p99                             5,869 ╨╝
-+    p99.9                           7,730 ╨╝
-+    p99.99                          8,441 ╨╝
-+    ╨╝╨░╨║╤Б╨╕╨╝╤Г╨╝ (╨░╨▒╤Б.)                 8,873 ╨╝
-+    ╨╝╨╕╨╜╨╕╨╝╤Г╨╝                       -25,045 ╨╝
-+    ╨╝╨░╨║╤Б╨╕╨╝╤Г╨╝ / p99                   1.51
-+    ╨╝╨░╨║╤Б╨╕╨╝╤Г╨╝ ╨╛╤В ╤Ж╨╡╨╜╤В╤А╨░ (╨Ч╨╡╨╝╨╗╤П)  6,379,873 ╨╝
-+    ╨╛╨▒╨╗╨░╨║╨░ 7000..8500 ╨╝ ╨╜╨╕╨╢╨╡ ╨▓╨╡╤А╤И╨╕╨╜╤Л: ╨Ф╨Р, ╨▓╤Л╤И╨╡ ╨╛╨▒╨╛╨╕╤Е ╨║╤А╨░╤С╨▓
++    амплитуда профиля              13,662 м
++    суша                     44.50 %   (море 55.50 %)
++    медиана                          -457 м
++    средняя высота суши             1,825 м
++    средняя глубина моря           -4,398 м
++    p99                             5,869 м
++    p99.9                           7,730 м
++    p99.99                          8,441 м
++    максимум (абс.)                 8,873 м
++    минимум                       -25,045 м
++    максимум / p99                   1.51
++    максимум от центра (Земля)  6,379,873 м
++    облака 7000..8500 м ниже вершины: ДА, выше обоих краёв
 +
-+PASS T129 height-tail | ╨▓╨╡╤А╤И╨╕╨╜╨░ ╨┐╤А╨╛╤Д╨╕╨╗╤П 'EarthLike_Perlin' ╨▓╤Л╤И╨╡ ╨┐╨╛╤В╨╛╨╗╨║╨░ ╤Б╨╢╨░╤В╨╕╤П: 8,873 ╨╝ > 9,503 ╨╝, ╨╖╨╜╨░╤З╨╕╤В ╤Б╨╢╨░╤В╨╕╨╡ ╤Е╨▓╨╛╤Б╤В╨░ ╨╜╨╡ ╨┐╤А╨╕╨╝╨╡╨╜╨╕╨╗╨╛╤Б╤М
-+[Test129_HeightTail] ok in 31078 ms
-+    ╨▓╤Л╨▒╨╛╤А╨║╨░ 4000000 ╨╜╨░╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╨╣. ╨Я╤А╨╛╤Д╨╕╨╗╤М = EarthLike_Perlin.asset (Amp 13662, ridgedMix 0.7, threshold -0.4)
++PASS T129 height-tail | вершина профиля 'EarthLike_Perlin' выше потолка сжатия: 8,873 м > 9,503 м, значит сжатие хвоста не применилось
++[Test129_HeightTail] ok in 28665 ms
++    выборка 4000000 направлений. Профиль = EarthLike_Perlin.asset (Amp 13662, ridgedMix 0.7, threshold -0.4)
 +
-+  A. ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П (TailKnee=0)         p50    -457  p99   5,869  p99.9   7,730  p99.99   8,921  max  10,955  min  -25,045  ╤Б╤Г╤И╨░ 44.50 %  (╨╝)
-+  B. TailKnee=0.13                   p50    -457  p99   5,869  p99.9   7,730  p99.99   8,441  max   8,873  min  -25,045  ╤Б╤Г╤И╨░ 44.50 %  (╨╝)
-+  C. TailKnee=0.15                   p50    -457  p99   5,869  p99.9   7,730  p99.99   8,481  max   8,981  min  -25,045  ╤Б╤Г╤И╨░ 44.50 %  (╨╝)
-+  D. TailKnee=0.18                   p50    -457  p99   5,869  p99.9   7,730  p99.99   8,531  max   9,123  min  -25,045  ╤Б╤Г╤И╨░ 44.50 %  (╨╝)
++  A. без сжатия (TailKnee=0)         p50    -457  p99   5,869  p99.9   7,730  p99.99   8,921  max  10,955  min  -25,045  суша 44.50 %  (м)
++  B. TailKnee=0.13                   p50    -457  p99   5,869  p99.9   7,730  p99.99   8,441  max   8,873  min  -25,045  суша 44.50 %  (м)
++  C. TailKnee=0.15                   p50    -457  p99   5,869  p99.9   7,730  p99.99   8,481  max   8,981  min  -25,045  суша 44.50 %  (м)
++  D. TailKnee=0.18                   p50    -457  p99   5,869  p99.9   7,730  p99.99   8,531  max   9,123  min  -25,045  суша 44.50 %  (м)
 +
-+    ╨┐╤А╨╛╤Д╨╕╨╗╤М ╨▓╨┤╨╛╨╗╤М ╨╝╨╡╤А╨╕╨┤╨╕╨░╨╜╨░ ╤З╨╡╤А╨╡╨╖ ╤Б╨░╨╝╤Г╤О ╨▓╤Л╤Б╨╛╨║╤Г╤О ╤В╨╛╤З╨║╤Г (B, TailKnee=0.13):
-+    ╨▓╨╡╤А╤И╨╕╨╜╨░: ╤Б╨╢╨░╤В╨░╤П 8,797 ╨╝, ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П 10,417 ╨╝, ╨╜╨░╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╨╡ (0.628, -0.650, 0.427)
-+       -0.30┬░  ╤Б╨╢╨░╤В╨░╤П    3,281 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П    3,281 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░       0 ╨╝
-+       -0.25┬░  ╤Б╨╢╨░╤В╨░╤П    3,460 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П    3,460 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░       0 ╨╝
-+       -0.20┬░  ╤Б╨╢╨░╤В╨░╤П    4,073 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П    4,073 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░       0 ╨╝
-+       -0.15┬░  ╤Б╨╢╨░╤В╨░╤П    5,100 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П    5,100 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░       0 ╨╝
-+       -0.10┬░  ╤Б╨╢╨░╤В╨░╤П    6,371 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П    6,371 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░       0 ╨╝
-+       -0.05┬░  ╤Б╨╢╨░╤В╨░╤П    8,126 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П    8,242 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░     116 ╨╝
-+        0.00┬░  ╤Б╨╢╨░╤В╨░╤П    8,797 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П   10,417 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░   1,620 ╨╝
-+        0.05┬░  ╤Б╨╢╨░╤В╨░╤П    8,471 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П    9,008 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░     537 ╨╝
-+        0.10┬░  ╤Б╨╢╨░╤В╨░╤П    7,257 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П    7,257 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░       0 ╨╝
-+        0.15┬░  ╤Б╨╢╨░╤В╨░╤П    4,927 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П    4,927 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░       0 ╨╝
-+        0.20┬░  ╤Б╨╢╨░╤В╨░╤П    3,535 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П    3,535 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░       0 ╨╝
-+        0.25┬░  ╤Б╨╢╨░╤В╨░╤П    2,444 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П    2,444 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░       0 ╨╝
-+        0.30┬░  ╤Б╨╢╨░╤В╨░╤П    1,468 ╨╝   ╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П    1,468 ╨╝   ╤А╨░╨╖╨╜╨╕╤Ж╨░       0 ╨╝
-+[Test130_TailCompression] ok in 92944 ms
-+    Gain 0.50 * Lacunarity 2.00 = 1.0000  -> ╨╛╨║╨╜╨░ ╨┐╤А╨╕╨│╨╛╨┤╨╜╤Л
-+    Gain 0.60 * Lacunarity 2.00 = 1.2000  -> ╨╛╨║╨╜╨░ ╨Э╨Х╨Я╨а╨Ш╨У╨Ю╨Ф╨Э╨л
-+    Gain 0.40 * Lacunarity 2.50 = 1.0000  -> ╨╛╨║╨╜╨░ ╨┐╤А╨╕╨│╨╛╨┤╨╜╤Л
-+PASS T132 damp-windows | legacy-╨┐╤А╨╛╤Д╨╕╨╗╤М: Gain*Lacunarity != 1 ╨┐╤А╨╕ SlopeDamp > 0, ╨╛╨║╨╜╨░ ╨┤╨╛╨╝╨╡╨╜╨░ ╨╛╤В╨║╨░╨╗╨╕╨▒╤А╨╛╨▓╨░╨╜╤Л ╨┐╨╛╨┤ ╨┐╤А╨╛╨╕╨╖╨▓╨╡╨┤╨╡╨╜╨╕╨╡ 1
-+PASS T132 damp-windows | Perlin-╨┐╤А╨╛╤Д╨╕╨╗╤М: Gain*Lacunarity != 1 ╨┐╤А╨╕ SlopeDamp > 0
-+PASS T132 damp-windows | ╨┐╤А╨╡╨┤╨╕╨║╨░╤В ╨╜╨╡ ╨╗╨╛╨▓╨╕╤В Gain 0.6 * Lacunarity 2 = 1.2, ╤В╨╛ ╨╡╤Б╤В╤М ╨╛╨╜ ╨▒╨╡╤Б╨┐╨╛╨╗╨╡╨╖╨╡╨╜
-+PASS T132 damp-windows | ╨┐╤А╨╡╨┤╨╕╨║╨░╤В ╨╜╨╡ ╨╗╨╛╨▓╨╕╤В Gain 0.5 * Lacunarity 2.5 = 1.25
-+    ╨▓╨║╨╗╨░╨┤ ╨╛╨║╤В╨░╨▓╤Л ╨▓ ╨╜╨░╨║╨╛╨┐╨╗╨╡╨╜╨╜╤Л╨╣ ╨╜╨░╨║╨╗╨╛╨╜ (╨░╨╝╨┐╨╗╨╕╤В╤Г╨┤╨░ * ╤З╨░╤Б╤В╨╛╤В╨░):
-+      Gain 0.50: ╨╛╨║╤В╨░╨▓╤Л 0..5 = 1.0000 1.0000 1.0000 1.0000 1.0000 1.0000
-+PASS T132 damp-windows | ╨║╨╛╨╜╤В╤А╨╛╨╗╤М ╤Б╨╛╨╛╤В╨╜╨╛╤И╨╡╨╜╨╕╤П ╤Б╨╗╨╛╨╝╨░╨╜
-+      Gain 0.60: ╨╛╨║╤В╨░╨▓╤Л 0..5 = 1.0000 1.2000 1.4400 1.7280 2.0736 2.4883
-+PASS T132 damp-windows | ╨║╨╛╨╜╤В╤А╨╛╨╗╤М ╤Б╨╛╨╛╤В╨╜╨╛╤И╨╡╨╜╨╕╤П ╤Б╨╗╨╛╨╝╨░╨╜
-+PASS T132 damp-windows | ╨┐╤А╨╕ Gain*Lacunarity != 1 ╨┤╨╛╨╝╨╡╨╜ ╨╜╨╡ ╨╛╤В╨║╨╗╤О╤З╤С╨╜ ╨┐╤А╨╕ ╨║╨╛╨╜╨▓╨╡╤А╤В╨░╤Ж╨╕╨╕: SlopeDamp = 0.000
-+PASS T132 damp-windows | ╨┐╤А╨╕ Gain*Lacunarity != 1 ╤А╨╡╨╢╨╕╨╝ ╨┤╨╛╨╝╨╡╨╜╨░ ╨╜╨╡ ╤Б╨▒╤А╨╛╤И╨╡╨╜ ╨▓ Off ╨┐╤А╨╕ ╨║╨╛╨╜╨▓╨╡╤А╤В╨░╤Ж╨╕╨╕
-+PASS T132 damp-windows | ╨▓╨░╨╗╨╕╨┤╨╜╤Л╨╣ ╨┐╤А╨╛╤Д╨╕╨╗╤М ╨┐╨╛╤В╨╡╤А╤П╨╗ ╨┤╨╛╨╝╨╡╨╜ ╨┐╤А╨╕ ╨║╨╛╨╜╨▓╨╡╤А╤В╨░╤Ж╨╕╨╕: SlopeDamp = 0.600
++    профиль вдоль меридиана через самую высокую точку (B, TailKnee=0.13):
++    вершина: сжатая 8,797 м, без сжатия 10,417 м, направление (0.628, -0.650, 0.427)
++       -0.30°  сжатая    3,281 м   без сжатия    3,281 м   разница       0 м
++       -0.25°  сжатая    3,460 м   без сжатия    3,460 м   разница       0 м
++       -0.20°  сжатая    4,073 м   без сжатия    4,073 м   разница       0 м
++       -0.15°  сжатая    5,100 м   без сжатия    5,100 м   разница       0 м
++       -0.10°  сжатая    6,371 м   без сжатия    6,371 м   разница       0 м
++       -0.05°  сжатая    8,126 м   без сжатия    8,242 м   разница     116 м
++        0.00°  сжатая    8,797 м   без сжатия   10,417 м   разница   1,620 м
++        0.05°  сжатая    8,471 м   без сжатия    9,008 м   разница     537 м
++        0.10°  сжатая    7,257 м   без сжатия    7,257 м   разница       0 м
++        0.15°  сжатая    4,927 м   без сжатия    4,927 м   разница       0 м
++        0.20°  сжатая    3,535 м   без сжатия    3,535 м   разница       0 м
++        0.25°  сжатая    2,444 м   без сжатия    2,444 м   разница       0 м
++        0.30°  сжатая    1,468 м   без сжатия    1,468 м   разница       0 м
++[Test130_TailCompression] ok in 85408 ms
++    Gain 0.50 * Lacunarity 2.00 = 1.0000  -> окна пригодны
++    Gain 0.60 * Lacunarity 2.00 = 1.2000  -> окна НЕПРИГОДНЫ
++    Gain 0.40 * Lacunarity 2.50 = 1.0000  -> окна пригодны
++PASS T132 damp-windows | legacy-профиль: Gain*Lacunarity != 1 при SlopeDamp > 0, окна домена откалиброваны под произведение 1
++PASS T132 damp-windows | Perlin-профиль: Gain*Lacunarity != 1 при SlopeDamp > 0
++PASS T132 damp-windows | предикат не ловит Gain 0.6 * Lacunarity 2 = 1.2, то есть он бесполезен
++PASS T132 damp-windows | предикат не ловит Gain 0.5 * Lacunarity 2.5 = 1.25
++    вклад октавы в накопленный наклон (амплитуда * частота):
++      Gain 0.50: октавы 0..5 = 1.0000 1.0000 1.0000 1.0000 1.0000 1.0000
++PASS T132 damp-windows | контроль соотношения сломан
++      Gain 0.60: октавы 0..5 = 1.0000 1.2000 1.4400 1.7280 2.0736 2.4883
++PASS T132 damp-windows | контроль соотношения сломан
++PASS T132 damp-windows | при Gain*Lacunarity != 1 домен не отключён при конвертации: SlopeDamp = 0.000
++PASS T132 damp-windows | при Gain*Lacunarity != 1 режим домена не сброшен в Off при конвертации
++PASS T132 damp-windows | валидный профиль потерял домен при конвертации: SlopeDamp = 0.600
 +[Test132_DampWindowsValid] ok in 1 ms
-+    ╨┐╨╛╤А╨╛╨│ ╤Б╨╢╨░╤В╨╕╤П = 7,727 ╨╝. ╨Ю╨┐╨╛╤А╨╜╤Л╨╡ ╤В╨╛╤З╨║╨╕:
-+      ╨│╤А╨╡╨▒╨╡╨╜╤М: 8,542 ╨╝ ╨┐╤А╨╕ (-21.2┬░, 78.0┬░)
-+      ╨┐╨╛╤А╨╛╨│ : 7,705 ╨╝ ╨┐╤А╨╕ (-5.7┬░, 102.0┬░), ╤А╨░╤Б╤Б╤В╨╛╤П╨╜╨╕╨╡ ╨┤╨╛ ╨┐╨╛╤А╨╛╨│╨░ 22 ╨╝
-+    ╨│╤А╨╡╨▒╨╡╨╜╤М  worstNormalAngle = 5.449E-004 ╤А╨░╨┤, ╨╖╨░╨┐╨░╤Б ╨┤╨╛ 2e-3 = 3.7├Ч
-+    ╨┐╨╛╤А╨╛╨│   worstNormalAngle = 5.440E-004 ╤А╨░╨┤, ╨╖╨░╨┐╨░╤Б ╨┤╨╛ 2e-3 = 3.7├Ч
-+PASS T133 tail-normal-parity | ╨╜╨╛╤А╨╝╨░╨╗╨╕ ╨╜╨░ ╨│╤А╨╡╨▒╨╜╨╡ ╤А╨░╤Б╤Е╨╛╨┤╤П╤В╤Б╤П ╤Б╨╕╨╗╤М╨╜╨╡╨╡ ╨▒╤О╨┤╨╢╨╡╤В╨░ T84: 5.45E-004 ╤А╨░╨┤
-+PASS T133 tail-normal-parity | ╨╜╨╛╤А╨╝╨░╨╗╨╕ ╤Г ╨┐╨╛╤А╨╛╨│╨░ ╤Б╨╢╨░╤В╨╕╤П ╤А╨░╤Б╤Е╨╛╨┤╤П╤В╤Б╤П ╤Б╨╕╨╗╤М╨╜╨╡╨╡ ╨▒╤О╨┤╨╢╨╡╤В╨░ T84: 5.44E-004 ╤А╨░╨┤
-+[Test133_TailNormalParity] ok in 269 ms
-+    ╨┐╨╛╤А╨╛╨│ TailThreshold*Amplitude = 7,727 ╨╝
-+    p99.8  = 7,264 ╨╝
-+    p99.9  = 7,730 ╨╝
-+    p99.95 = 8,143 ╨╝
-+PASS T134 tail-threshold-placement | ╨┐╨╛╤А╨╛╨│ ╤Б╨╢╨░╤В╨╕╤П ╨╜╨╕╨╢╨╡ p99.8: ╤Б╨╢╨░╤В╨╕╨╡ ╨╖╨░╤В╤А╨╛╨╜╨╡╤В ╨▒╨╛╨╗╤М╤И╨╡ 0.2% ╤В╨╛╤З╨╡╨║, ╤Н╤В╨╛ ╤Г╨╢╨╡ ╨╜╨╡ ╤Е╨▓╨╛╤Б╤В. 7,727 ╨╝ < p99.8 7,264 ╨╝
-+PASS T134 tail-threshold-placement | ╨┐╨╛╤А╨╛╨│ ╤Б╨╢╨░╤В╨╕╤П ╨▓╤Л╤И╨╡ p99.95: ╤Б╨╢╨░╤В╨╕╨╡ ╨┐╨╛╤З╤В╨╕ ╨╜╨╡╤З╨╡╨│╨╛ ╤А╨╡╨╖╨░╤В╤М, ╨▓╨╡╤А╤И╨╕╨╜╤Л ╨╛╤Б╤В╨░╨╜╤Г╤В╤Б╤П ╨▓╤Л╤Б╨╛╨║╨╕╨╝╨╕. 7,727 ╨╝ > p99.95 8,143 ╨╝
-+[Test134_TailThresholdPlacement] ok in 22541 ms
++    порог сжатия = 7,727 м. Опорные точки:
++      гребень: 8,542 м при (-21.2°, 78.0°)
++      порог : 7,705 м при (-5.7°, 102.0°), расстояние до порога 22 м
++    гребень  worstNormalAngle = 5.449E-004 рад, запас до 2e-3 = 3.7×
++    порог   worstNormalAngle = 5.440E-004 рад, запас до 2e-3 = 3.7×
++PASS T133 tail-normal-parity | нормали на гребне расходятся сильнее бюджета T84: 5.45E-004 рад
++PASS T133 tail-normal-parity | нормали у порога сжатия расходятся сильнее бюджета T84: 5.44E-004 рад
++[Test133_TailNormalParity] ok in 261 ms
++    порог TailThreshold*Amplitude = 7,727 м
++    p99.8  = 7,264 м
++    p99.9  = 7,730 м
++    p99.95 = 8,143 м
++PASS T134 tail-threshold-placement | порог сжатия ниже p99.8: сжатие затронет больше 0.2% точек, это уже не хвост. 7,727 м < p99.8 7,264 м
++PASS T134 tail-threshold-placement | порог сжатия выше p99.95: сжатие почти нечего резать, вершины останутся высокими. 7,727 м > p99.95 8,143 м
++[Test134_TailThresholdPlacement] ok in 20652 ms
 +  legacy EarthLike (value)
-+    ╨╛╨║╨╡╨░╨╜ 56.77 % ╨┐╨╗╨╛╤Й╨░╨┤╨╕ | ╨┤╨╜╨╛: p50    5,119 ╨╝ (╨╝╨╡╨┤╨╕╨░╨╜╨░), p25   2,131 ╨╝ (╤И╨╡╨╗╤М╤Д), p5      353 ╨╝, p1       67 ╨╝, p0.1        7 ╨╝, min    18,094 ╨╝
-+    ╨│╨╗╤Г╨▒╨╢╨╡ 6 ╨║╨╝: 43.802 % ╨╛╨║╨╡╨░╨╜╨░ | ╨│╨╗╤Г╨▒╨╢╨╡ 11 ╨║╨╝: 10.867 % ╨╛╨║╨╡╨░╨╜╨░ (╨Ч╨╡╨╝╨╗╤П: ╨╡╨┤╨╕╨╜╨╕╤Ж╤Л ╨┐╤А╨╛╤Ж╨╡╨╜╤В╨░ ╨╕ ╨╝╨╡╨╜╤М╤И╨╡)
-+  EarthLike_Perlin (╨▒╨╡╨╖ ╤Б╨╢╨░╤В╨╕╤П ╨╗╨╛╨╢╨░)
-+    ╨╛╨║╨╡╨░╨╜ 55.50 % ╨┐╨╗╨╛╤Й╨░╨┤╨╕ | ╨┤╨╜╨╛: p50    3,495 ╨╝ (╨╝╨╡╨┤╨╕╨░╨╜╨░), p25   1,393 ╨╝ (╤И╨╡╨╗╤М╤Д), p5      215 ╨╝, p1       41 ╨╝, p0.1        4 ╨╝, min    25,045 ╨╝
-+    ╨│╨╗╤Г╨▒╨╢╨╡ 6 ╨║╨╝: 28.913 % ╨╛╨║╨╡╨░╨╜╨░ | ╨│╨╗╤Г╨▒╨╢╨╡ 11 ╨║╨╝: 5.757 % ╨╛╨║╨╡╨░╨╜╨░ (╨Ч╨╡╨╝╨╗╤П: ╨╡╨┤╨╕╨╜╨╕╤Ж╤Л ╨┐╤А╨╛╤Ж╨╡╨╜╤В╨░ ╨╕ ╨╝╨╡╨╜╤М╤И╨╡)
++    океан 56.77 % площади | дно: p50    5,119 м (медиана), p25   2,131 м (шельф), p5      353 м, p1       67 м, p0.1        7 м, min    18,094 м
++    глубже 6 км: 43.802 % океана | глубже 11 км: 10.867 % океана (Земля: единицы процента и меньше)
++  EarthLike_Perlin (без сжатия ложа)
++    океан 55.50 % площади | дно: p50    3,495 м (медиана), p25   1,393 м (шельф), p5      215 м, p1       41 м, p0.1        4 м, min    25,045 м
++    глубже 6 км: 28.913 % океана | глубже 11 км: 5.757 % океана (Земля: единицы процента и меньше)
 +  Perlin, (a) ContinentDepth 1.2 -> 0.9
-+    ╨╛╨║╨╡╨░╨╜ 54.54 % ╨┐╨╗╨╛╤Й╨░╨┤╨╕ | ╨┤╨╜╨╛: p50    3,283 ╨╝ (╨╝╨╡╨┤╨╕╨░╨╜╨░), p25   1,324 ╨╝ (╤И╨╡╨╗╤М╤Д), p5      207 ╨╝, p1       40 ╨╝, p0.1        4 ╨╝, min    20,953 ╨╝
-+    ╨│╨╗╤Г╨▒╨╢╨╡ 6 ╨║╨╝: 25.739 % ╨╛╨║╨╡╨░╨╜╨░ | ╨│╨╗╤Г╨▒╨╢╨╡ 11 ╨║╨╝: 2.732 % ╨╛╨║╨╡╨░╨╜╨░ (╨Ч╨╡╨╝╨╗╤П: ╨╡╨┤╨╕╨╜╨╕╤Ж╤Л ╨┐╤А╨╛╤Ж╨╡╨╜╤В╨░ ╨╕ ╨╝╨╡╨╜╤М╤И╨╡)
-+  Perlin, (b) DepthKnee 0.40 ╨┐╤А╨╕ ╨┐╨╛╤А╨╛╨│╨╡ -0.30 (╨┐╨╛╨╗ -9,563 ╨╝)
-+    ╨╛╨║╨╡╨░╨╜ 55.50 % ╨┐╨╗╨╛╤Й╨░╨┤╨╕ | ╨┤╨╜╨╛: p50    3,495 ╨╝ (╨╝╨╡╨┤╨╕╨░╨╜╨░), p25   1,393 ╨╝ (╤И╨╡╨╗╤М╤Д), p5      215 ╨╝, p1       41 ╨╝, p0.1        4 ╨╝, min     8,433 ╨╝
-+    ╨│╨╗╤Г╨▒╨╢╨╡ 6 ╨║╨╝: 21.974 % ╨╛╨║╨╡╨░╨╜╨░ | ╨│╨╗╤Г╨▒╨╢╨╡ 11 ╨║╨╝: 0.000 % ╨╛╨║╨╡╨░╨╜╨░ (╨Ч╨╡╨╝╨╗╤П: ╨╡╨┤╨╕╨╜╨╕╤Ж╤Л ╨┐╤А╨╛╤Ж╨╡╨╜╤В╨░ ╨╕ ╨╝╨╡╨╜╤М╤И╨╡)
-+  Perlin, (b) DepthKnee 0.51 ╨┐╤А╨╕ ╨┐╨╛╤А╨╛╨│╨╡ -0.30 (╨┐╨╛╨╗ -11,066 ╨╝)
-+    ╨╛╨║╨╡╨░╨╜ 55.50 % ╨┐╨╗╨╛╤Й╨░╨┤╨╕ | ╨┤╨╜╨╛: p50    3,495 ╨╝ (╨╝╨╡╨┤╨╕╨░╨╜╨░), p25   1,393 ╨╝ (╤И╨╡╨╗╤М╤Д), p5      215 ╨╝, p1       41 ╨╝, p0.1        4 ╨╝, min     9,327 ╨╝
-+    ╨│╨╗╤Г╨▒╨╢╨╡ 6 ╨║╨╝: 23.931 % ╨╛╨║╨╡╨░╨╜╨░ | ╨│╨╗╤Г╨▒╨╢╨╡ 11 ╨║╨╝: 0.000 % ╨╛╨║╨╡╨░╨╜╨░ (╨Ч╨╡╨╝╨╗╤П: ╨╡╨┤╨╕╨╜╨╕╤Ж╤Л ╨┐╤А╨╛╤Ж╨╡╨╜╤В╨░ ╨╕ ╨╝╨╡╨╜╤М╤И╨╡)
-+  Perlin, (b) DepthKnee 0.62 ╨┐╤А╨╕ ╨┐╨╛╤А╨╛╨│╨╡ -0.30 (╨┐╨╛╨╗ -12,569 ╨╝)
-+    ╨╛╨║╨╡╨░╨╜ 55.50 % ╨┐╨╗╨╛╤Й╨░╨┤╨╕ | ╨┤╨╜╨╛: p50    3,495 ╨╝ (╨╝╨╡╨┤╨╕╨░╨╜╨░), p25   1,393 ╨╝ (╤И╨╡╨╗╤М╤Д), p5      215 ╨╝, p1       41 ╨╝, p0.1        4 ╨╝, min    10,130 ╨╝
-+    ╨│╨╗╤Г╨▒╨╢╨╡ 6 ╨║╨╝: 25.025 % ╨╛╨║╨╡╨░╨╜╨░ | ╨│╨╗╤Г╨▒╨╢╨╡ 11 ╨║╨╝: 0.000 % ╨╛╨║╨╡╨░╨╜╨░ (╨Ч╨╡╨╝╨╗╤П: ╨╡╨┤╨╕╨╜╨╕╤Ж╤Л ╨┐╤А╨╛╤Ж╨╡╨╜╤В╨░ ╨╕ ╨╝╨╡╨╜╤М╤И╨╡)
-+[Test135_OceanDepthHistogram] ok in 119423 ms
-+    ╨┐╤А╨╛╤Д╨╕╨╗╤М ╤З╨╡╤А╨╡╨╖ ╨▒╨╡╤А╨╡╨│ (╨┐╨╛ ╨╝╨╡╤А╨╕╨┤╨╕╨░╨╜╤Г, 0.02┬░ ╨╜╨░ ╤И╨░╨│, 120 ╤В╨╛╤З╨╡╨║ ╨▓ ╤Б╤В╨╛╤А╨╛╨╜╤Г):
-+  A. ╨║╨╛╨╜╤В╤А╨╛╨╗╤М (ContinentDepth 1.2, ╨╗╨╛╨╢╨╡ ╨╜╨╡ ╤Б╨╢╨░╤В╨╛) (╨▒╨╡╤А╨╡╨│ ╨╜╨░ -0 ╨╝)
-+      ╤Б╤Г╤И╨░ тЖТ ╨╝╨╛╤А╨╡, ╤И╨░╨│ 0.02┬░ (~2.2 ╨║╨╝):
-+        -0.40┬░  ╤Б╤Г╤И╨░       899 ╨╝                 ###
-+        -0.32┬░  ╤Б╤Г╤И╨░       620 ╨╝                  ##
-+        -0.24┬░  ╤Б╤Г╤И╨░       344 ╨╝                   #
-+        -0.16┬░  ╤Б╤Г╤И╨░       202 ╨╝                   #
-+        -0.08┬░  ╨╝╨╛╤А╨╡       -67 ╨╝                    
-+         0.00┬░  ╨╝╨╛╤А╨╡        -0 ╨╝                    
-+         0.08┬░  ╨╝╨╛╤А╨╡       -23 ╨╝                    
-+         0.16┬░  ╨╝╨╛╤А╨╡       -11 ╨╝                    
-+         0.24┬░  ╤Б╤Г╤И╨░       108 ╨╝                    
-+         0.32┬░  ╤Б╤Г╤И╨░       412 ╨╝                   #
-+         0.40┬░  ╤Б╤Г╤И╨░       416 ╨╝                   #
-+      --- ╨┤╨░╨╗╤М╨╜╨╕╨╣ ╨╝╨░╤Б╤И╤В╨░╨▒, ╤И╨░╨│ 1.5┬░ (╤А╨░╨╖╨╝╨░╤Е 45┬░) ---
-+         0.0┬░  ╨╝╨╛╤А╨╡        -0 ╨╝                    
-+         1.5┬░  ╤Б╤Г╤И╨░     2,210 ╨╝              ######
-+         3.0┬░  ╨╝╨╛╤А╨╡      -543 ╨╝                    ~~
-+         4.5┬░  ╤Б╤Г╤И╨░     2,007 ╨╝              ######
-+         6.0┬░  ╤Б╤Г╤И╨░       117 ╨╝                    
-+         7.5┬░  ╨╝╨╛╤А╨╡    -1,854 ╨╝                    ~~~~~
-+         9.0┬░  ╨╝╨╛╤А╨╡    -1,626 ╨╝                    ~~~~~
-+        10.5┬░  ╤Б╤Г╤И╨░     3,775 ╨╝         ###########
-+        12.0┬░  ╨╝╨╛╤А╨╡       -89 ╨╝                    
-+        13.5┬░  ╨╝╨╛╤А╨╡    -3,291 ╨╝                    ~~~~~~~~~~
-+        15.0┬░  ╨╝╨╛╤А╨╡    -1,374 ╨╝                    ~~~~
-+        16.5┬░  ╨╝╨╛╤А╨╡      -761 ╨╝                    ~~
-+        18.0┬░  ╨╝╨╛╤А╨╡      -321 ╨╝                    ~
-+        19.5┬░  ╨╝╨╛╤А╨╡    -2,679 ╨╝                    ~~~~~~~~
-+        21.0┬░  ╨╝╨╛╤А╨╡    -3,689 ╨╝                    ~~~~~~~~~~~
-+        22.5┬░  ╨╝╨╛╤А╨╡    -1,840 ╨╝                    ~~~~~
-+        24.0┬░  ╤Б╤Г╤И╨░     4,390 ╨╝       #############
-+        25.5┬░  ╨╝╨╛╤А╨╡    -7,779 ╨╝                    ~~~~~~~~~~~~~~~~~~~~~~~
-+        27.0┬░  ╤Б╤Г╤И╨░     3,140 ╨╝           #########
-+        28.5┬░  ╨╝╨╛╤А╨╡      -951 ╨╝                    ~~~
-+        30.0┬░  ╤Б╤Г╤И╨░     4,229 ╨╝        ############
-+        31.5┬░  ╤Б╤Г╤И╨░     3,980 ╨╝        ############
-+        33.0┬░  ╨╝╨╛╤А╨╡    -2,388 ╨╝                    ~~~~~~~
-+        34.5┬░  ╨╝╨╛╤А╨╡    -2,889 ╨╝                    ~~~~~~~~
-+        36.0┬░  ╤Б╤Г╤И╨░     4,597 ╨╝       #############
-+        37.5┬░  ╤Б╤Г╤И╨░     2,030 ╨╝              ######
-+        39.0┬░  ╤Б╤Г╤И╨░     1,099 ╨╝                 ###
-+        40.5┬░  ╨╝╨╛╤А╨╡      -432 ╨╝                    ~
-+        42.0┬░  ╨╝╨╛╤А╨╡    -1,708 ╨╝                    ~~~~~
-+        43.5┬░  ╨╝╨╛╤А╨╡    -2,939 ╨╝                    ~~~~~~~~~
-+        45.0┬░  ╨╝╨╛╤А╨╡    -3,358 ╨╝                    ~~~~~~~~~~
++    океан 54.54 % площади | дно: p50    3,283 м (медиана), p25   1,324 м (шельф), p5      207 м, p1       40 м, p0.1        4 м, min    20,953 м
++    глубже 6 км: 25.739 % океана | глубже 11 км: 2.732 % океана (Земля: единицы процента и меньше)
++  Perlin, (b) DepthKnee 0.40 при пороге -0.30 (пол -9,563 м)
++    океан 55.50 % площади | дно: p50    3,495 м (медиана), p25   1,393 м (шельф), p5      215 м, p1       41 м, p0.1        4 м, min     8,433 м
++    глубже 6 км: 21.974 % океана | глубже 11 км: 0.000 % океана (Земля: единицы процента и меньше)
++  Perlin, (b) DepthKnee 0.51 при пороге -0.30 (пол -11,066 м)
++    океан 55.50 % площади | дно: p50    3,495 м (медиана), p25   1,393 м (шельф), p5      215 м, p1       41 м, p0.1        4 м, min     9,327 м
++    глубже 6 км: 23.931 % океана | глубже 11 км: 0.000 % океана (Земля: единицы процента и меньше)
++  Perlin, (b) DepthKnee 0.62 при пороге -0.30 (пол -12,569 м)
++    океан 55.50 % площади | дно: p50    3,495 м (медиана), p25   1,393 м (шельф), p5      215 м, p1       41 м, p0.1        4 м, min    10,130 м
++    глубже 6 км: 25.025 % океана | глубже 11 км: 0.000 % океана (Земля: единицы процента и меньше)
++[Test135_OceanDepthHistogram] ok in 109835 ms
++    профиль через берег (по меридиану, 0.02° на шаг, 120 точек в сторону):
++  A. контроль (ContinentDepth 1.2, ложе не сжато) (берег на -0 м)
++      суша → море, шаг 0.02° (~2.2 км):
++        -0.40°  суша       899 м                 ###
++        -0.32°  суша       620 м                  ##
++        -0.24°  суша       344 м                   #
++        -0.16°  суша       202 м                   #
++        -0.08°  море       -67 м                    
++         0.00°  море        -0 м                    
++         0.08°  море       -23 м                    
++         0.16°  море       -11 м                    
++         0.24°  суша       108 м                    
++         0.32°  суша       412 м                   #
++         0.40°  суша       416 м                   #
++      --- дальний масштаб, шаг 1.5° (размах 45°) ---
++         0.0°  море        -0 м                    
++         1.5°  суша     2,210 м              ######
++         3.0°  море      -543 м                    ~~
++         4.5°  суша     2,007 м              ######
++         6.0°  суша       117 м                    
++         7.5°  море    -1,854 м                    ~~~~~
++         9.0°  море    -1,626 м                    ~~~~~
++        10.5°  суша     3,775 м         ###########
++        12.0°  море       -89 м                    
++        13.5°  море    -3,291 м                    ~~~~~~~~~~
++        15.0°  море    -1,374 м                    ~~~~
++        16.5°  море      -761 м                    ~~
++        18.0°  море      -321 м                    ~
++        19.5°  море    -2,679 м                    ~~~~~~~~
++        21.0°  море    -3,689 м                    ~~~~~~~~~~~
++        22.5°  море    -1,840 м                    ~~~~~
++        24.0°  суша     4,390 м       #############
++        25.5°  море    -7,779 м                    ~~~~~~~~~~~~~~~~~~~~~~~
++        27.0°  суша     3,140 м           #########
++        28.5°  море      -951 м                    ~~~
++        30.0°  суша     4,229 м        ############
++        31.5°  суша     3,980 м        ############
++        33.0°  море    -2,388 м                    ~~~~~~~
++        34.5°  море    -2,889 м                    ~~~~~~~~
++        36.0°  суша     4,597 м       #############
++        37.5°  суша     2,030 м              ######
++        39.0°  суша     1,099 м                 ###
++        40.5°  море      -432 м                    ~
++        42.0°  море    -1,708 м                    ~~~~~
++        43.5°  море    -2,939 м                    ~~~~~~~~~
++        45.0°  море    -3,358 м                    ~~~~~~~~~~
 +
-+  B. DepthKnee 0.51 ╨┐╤А╨╕ ╨┐╨╛╤А╨╛╨│╨╡ -0.30 (╨┐╨╛╨╗ -11.1 ╨║╨╝) (╨▒╨╡╤А╨╡╨│ ╨╜╨░ -0 ╨╝)
-+      ╤Б╤Г╤И╨░ тЖТ ╨╝╨╛╤А╨╡, ╤И╨░╨│ 0.02┬░ (~2.2 ╨║╨╝):
-+        -0.40┬░  ╤Б╤Г╤И╨░       899 ╨╝                 ###
-+        -0.32┬░  ╤Б╤Г╤И╨░       620 ╨╝                  ##
-+        -0.24┬░  ╤Б╤Г╤И╨░       344 ╨╝                   #
-+        -0.16┬░  ╤Б╤Г╤И╨░       202 ╨╝                   #
-+        -0.08┬░  ╨╝╨╛╤А╨╡       -67 ╨╝                    
-+         0.00┬░  ╨╝╨╛╤А╨╡        -0 ╨╝                    
-+         0.08┬░  ╨╝╨╛╤А╨╡       -23 ╨╝                    
-+         0.16┬░  ╨╝╨╛╤А╨╡       -11 ╨╝                    
-+         0.24┬░  ╤Б╤Г╤И╨░       108 ╨╝                    
-+         0.32┬░  ╤Б╤Г╤И╨░       412 ╨╝                   #
-+         0.40┬░  ╤Б╤Г╤И╨░       416 ╨╝                   #
-+      --- ╨┤╨░╨╗╤М╨╜╨╕╨╣ ╨╝╨░╤Б╤И╤В╨░╨▒, ╤И╨░╨│ 1.5┬░ (╤А╨░╨╖╨╝╨░╤Е 45┬░) ---
-+         0.0┬░  ╨╝╨╛╤А╨╡        -0 ╨╝                    
-+         1.5┬░  ╤Б╤Г╤И╨░     2,210 ╨╝              ######
-+         3.0┬░  ╨╝╨╛╤А╨╡      -543 ╨╝                    ~~
-+         4.5┬░  ╤Б╤Г╤И╨░     2,007 ╨╝              ######
-+         6.0┬░  ╤Б╤Г╤И╨░       117 ╨╝                    
-+         7.5┬░  ╨╝╨╛╤А╨╡    -1,854 ╨╝                    ~~~~~
-+         9.0┬░  ╨╝╨╛╤А╨╡    -1,626 ╨╝                    ~~~~~
-+        10.5┬░  ╤Б╤Г╤И╨░     3,775 ╨╝         ###########
-+        12.0┬░  ╨╝╨╛╤А╨╡       -89 ╨╝                    
-+        13.5┬░  ╨╝╨╛╤А╨╡    -3,291 ╨╝                    ~~~~~~~~~~
-+        15.0┬░  ╨╝╨╛╤А╨╡    -1,374 ╨╝                    ~~~~
-+        16.5┬░  ╨╝╨╛╤А╨╡      -761 ╨╝                    ~~
-+        18.0┬░  ╨╝╨╛╤А╨╡      -321 ╨╝                    ~
-+        19.5┬░  ╨╝╨╛╤А╨╡    -2,679 ╨╝                    ~~~~~~~~
-+        21.0┬░  ╨╝╨╛╤А╨╡    -3,689 ╨╝                    ~~~~~~~~~~~
-+        22.5┬░  ╨╝╨╛╤А╨╡    -1,840 ╨╝                    ~~~~~
-+        24.0┬░  ╤Б╤Г╤И╨░     4,390 ╨╝       #############
-+        25.5┬░  ╨╝╨╛╤А╨╡    -6,507 ╨╝                    ~~~~~~~~~~~~~~~~~~~
-+        27.0┬░  ╤Б╤Г╤И╨░     3,140 ╨╝           #########
-+        28.5┬░  ╨╝╨╛╤А╨╡      -951 ╨╝                    ~~~
-+        30.0┬░  ╤Б╤Г╤И╨░     4,229 ╨╝        ############
-+        31.5┬░  ╤Б╤Г╤И╨░     3,980 ╨╝        ############
-+        33.0┬░  ╨╝╨╛╤А╨╡    -2,388 ╨╝                    ~~~~~~~
-+        34.5┬░  ╨╝╨╛╤А╨╡    -2,889 ╨╝                    ~~~~~~~~
-+        36.0┬░  ╤Б╤Г╤И╨░     4,597 ╨╝       #############
-+        37.5┬░  ╤Б╤Г╤И╨░     2,030 ╨╝              ######
-+        39.0┬░  ╤Б╤Г╤И╨░     1,099 ╨╝                 ###
-+        40.5┬░  ╨╝╨╛╤А╨╡      -432 ╨╝                    ~
-+        42.0┬░  ╨╝╨╛╤А╨╡    -1,708 ╨╝                    ~~~~~
-+        43.5┬░  ╨╝╨╛╤А╨╡    -2,939 ╨╝                    ~~~~~~~~~
-+        45.0┬░  ╨╝╨╛╤А╨╡    -3,358 ╨╝                    ~~~~~~~~~~
-+[Test136_CoastProfile] ok in 2196 ms
-+    A. ╨▓╤Л╨▒╤А╨░╨╜╨╜╨╛╨╡ (DepthKnee 0.51 @ -0.30, ╨┐╨╛╨╗ -11,066 ╨╝) | B. ╨░╨╗╤М╤В╨╡╤А╨╜╨░╤В╨╕╨▓╨░ (DepthKnee 0.26 @ -0.33, ╨┐╨╛╨╗ -8,061 ╨╝)
++  B. DepthKnee 0.51 при пороге -0.30 (пол -11.1 км) (берег на -0 м)
++      суша → море, шаг 0.02° (~2.2 км):
++        -0.40°  суша       899 м                 ###
++        -0.32°  суша       620 м                  ##
++        -0.24°  суша       344 м                   #
++        -0.16°  суша       202 м                   #
++        -0.08°  море       -67 м                    
++         0.00°  море        -0 м                    
++         0.08°  море       -23 м                    
++         0.16°  море       -11 м                    
++         0.24°  суша       108 м                    
++         0.32°  суша       412 м                   #
++         0.40°  суша       416 м                   #
++      --- дальний масштаб, шаг 1.5° (размах 45°) ---
++         0.0°  море        -0 м                    
++         1.5°  суша     2,210 м              ######
++         3.0°  море      -543 м                    ~~
++         4.5°  суша     2,007 м              ######
++         6.0°  суша       117 м                    
++         7.5°  море    -1,854 м                    ~~~~~
++         9.0°  море    -1,626 м                    ~~~~~
++        10.5°  суша     3,775 м         ###########
++        12.0°  море       -89 м                    
++        13.5°  море    -3,291 м                    ~~~~~~~~~~
++        15.0°  море    -1,374 м                    ~~~~
++        16.5°  море      -761 м                    ~~
++        18.0°  море      -321 м                    ~
++        19.5°  море    -2,679 м                    ~~~~~~~~
++        21.0°  море    -3,689 м                    ~~~~~~~~~~~
++        22.5°  море    -1,840 м                    ~~~~~
++        24.0°  суша     4,390 м       #############
++        25.5°  море    -6,507 м                    ~~~~~~~~~~~~~~~~~~~
++        27.0°  суша     3,140 м           #########
++        28.5°  море      -951 м                    ~~~
++        30.0°  суша     4,229 м        ############
++        31.5°  суша     3,980 м        ############
++        33.0°  море    -2,388 м                    ~~~~~~~
++        34.5°  море    -2,889 м                    ~~~~~~~~
++        36.0°  суша     4,597 м       #############
++        37.5°  суша     2,030 м              ######
++        39.0°  суша     1,099 м                 ###
++        40.5°  море      -432 м                    ~
++        42.0°  море    -1,708 м                    ~~~~~
++        43.5°  море    -2,939 м                    ~~~~~~~~~
++        45.0°  море    -3,358 м                    ~~~~~~~~~~
++[Test136_CoastProfile] ok in 2046 ms
++    A. выбранное (DepthKnee 0.51 @ -0.30, пол -11,066 м) | B. альтернатива (DepthKnee 0.26 @ -0.33, пол -8,061 м)
 +
-+  ╨Ф╨Ю  (╤Б╨╢╨░╤В╨╕╤П ╨╗╨╛╨╢╨░ ╨╜╨╡╤В)                ╨╛╨║╨╡╨░╨╜ 55.50 % | min   25,045 ╨╝ | p1       41 ╨╝ | p5     215 ╨╝ | ╨│╨╗╤Г╨▒╨╢╨╡ 6 ╨║╨╝ 28.91 %
-+  ╨Я╨Ю╨б╨Ы╨Х (╨▓╤Л╨▒╤А╨░╨╜╨╜╨╛╨╡ 0.51 @ -0.30)       ╨╛╨║╨╡╨░╨╜ 55.50 % | min    9,327 ╨╝ | p1       41 ╨╝ | p5     215 ╨╝ | ╨│╨╗╤Г╨▒╨╢╨╡ 6 ╨║╨╝ 23.93 %
-+  ╨Р╨Ы╨м╨в (0.26 @ -0.33, ╨╜╨╡ ╨▓╨║╨╗╤О╤З╨╡╨╜╨╛)     ╨╛╨║╨╡╨░╨╜ 55.50 % | min    7,537 ╨╝ | p1       41 ╨╝ | p5     215 ╨╝ | ╨│╨╗╤Г╨▒╨╢╨╡ 6 ╨║╨╝ 21.56 %
++  ДО  (сжатия ложа нет)                океан 55.50 % | min   25,045 м | p1       41 м | p5     215 м | глубже 6 км 28.91 %
++  ПОСЛЕ (выбранное 0.51 @ -0.30)       океан 55.50 % | min    9,327 м | p1       41 м | p5     215 м | глубже 6 км 23.93 %
++  АЛЬТ (0.26 @ -0.33, не включено)     океан 55.50 % | min    7,537 м | p1       41 м | p5     215 м | глубже 6 км 21.56 %
 +
-+    ╨╝╨╡╤А╨╕╨┤╨╕╨░╨╜ ╤З╨╡╤А╨╡╨╖ ╨▒╨╡╤А╨╡╨│, ╤И╨░╨│ 1.5┬░ (╤А╨░╨╖╨╝╨░╤Е 45┬░) тАФ ╨╗╨╛╨╢╨╡:
-+      ╤Г╨│╨╛╨╗      ╨Ф╨Ю         ╨Я╨Ю╨б╨Ы╨Х      ╤А╨░╨╖╨╜╨╕╤Ж╨░
-+       -18.0┬░    -10,897 ╨╝     -7,540 ╨╝     -3,358 ╨╝
-+       -15.0┬░     -6,809 ╨╝     -6,050 ╨╝       -759 ╨╝
-+       -12.0┬░      2,300 ╨╝      2,300 ╨╝          0 ╨╝
-+        -9.0┬░      3,399 ╨╝      3,399 ╨╝          0 ╨╝
-+        -6.0┬░     -4,357 ╨╝     -4,348 ╨╝         -9 ╨╝
-+        -3.0┬░      1,885 ╨╝      1,885 ╨╝          0 ╨╝
-+         0.0┬░     -7,183 ╨╝     -6,236 ╨╝       -946 ╨╝
-+         3.0┬░      2,110 ╨╝      2,110 ╨╝          0 ╨╝
-+         6.0┬░       -529 ╨╝       -529 ╨╝          0 ╨╝
-+         9.0┬░     -1,364 ╨╝     -1,364 ╨╝          0 ╨╝
-+        12.0┬░     -2,202 ╨╝     -2,202 ╨╝          0 ╨╝
-+        15.0┬░        287 ╨╝        287 ╨╝          0 ╨╝
-+        18.0┬░      2,037 ╨╝      2,037 ╨╝          0 ╨╝
++    меридиан через берег, шаг 1.5° (размах 45°) — ложе:
++      угол      ДО         ПОСЛЕ      разница
++       -18.0°    -10,897 м     -7,540 м     -3,358 м
++       -15.0°     -6,809 м     -6,050 м       -759 м
++       -12.0°      2,300 м      2,300 м          0 м
++        -9.0°      3,399 м      3,399 м          0 м
++        -6.0°     -4,357 м     -4,348 м         -9 м
++        -3.0°      1,885 м      1,885 м          0 м
++         0.0°     -7,183 м     -6,236 м       -946 м
++         3.0°      2,110 м      2,110 м          0 м
++         6.0°       -529 м       -529 м          0 м
++         9.0°     -1,364 м     -1,364 м          0 м
++        12.0°     -2,202 м     -2,202 м          0 м
++        15.0°        287 м        287 м          0 м
++        18.0°      2,037 м      2,037 м          0 м
 +
-+    ╨▒╨╗╨╕╨╢╨╜╨╕╨╣ ╨╝╨░╤Б╤И╤В╨░╨▒ ╤З╨╡╤А╨╡╨╖ ╨▒╨╡╤А╨╡╨│, ╤И╨░╨│ 0.02┬░ тАФ ╤И╨╡╨╗╤М╤Д ╨╕ ╤Б╨║╨╗╨╛╨╜:
-+      ╤Г╨│╨╛╨╗      ╨Ф╨Ю         ╨Я╨Ю╨б╨Ы╨Х      ╤А╨░╨╖╨╜╨╕╤Ж╨░
-+       -0.40┬░       837 ╨╝       837 ╨╝         0 ╨╝
-+       -0.30┬░     2,349 ╨╝     2,349 ╨╝         0 ╨╝
-+       -0.20┬░     2,550 ╨╝     2,550 ╨╝         0 ╨╝
-+       -0.10┬░     3,145 ╨╝     3,145 ╨╝         0 ╨╝
-+        0.00┬░     1,885 ╨╝     1,885 ╨╝         0 ╨╝
-+        0.10┬░     1,344 ╨╝     1,344 ╨╝         0 ╨╝
-+        0.20┬░    -1,038 ╨╝    -1,038 ╨╝         0 ╨╝
-+        0.30┬░    -2,249 ╨╝    -2,249 ╨╝         0 ╨╝
-+        0.40┬░    -1,986 ╨╝    -1,986 ╨╝         0 ╨╝
-+[Test137_OceanDepthDecision] ok in 67617 ms
-+    ╨С╨Х╨а╨Х╨У ╨Ф╨Ы╨п ╨б╨к╨Б╨Ь╨Ъ╨Ш: lat=-10.0000 lon=0.0000  (score 7.0)
-+    ╨╛╨╢╨╕╨┤╨░╨╡╨╝╨░╤П ╨▓╤Л╤Б╨╛╤В╨░ ╤А╨╡╨╗╤М╨╡╤Д╨░: 0 ╨╝
-+[Test138_CoastSpot] ok in 7116 ms
-+    ╨║╤А╨╕╨▓╨░╤П: F(0)=0.0201, F(48)=0.394, F(╨║╤А╨╕╤В)=1.000 тАФ ╤А╨╡╨╖╨║╨╕╨╣ ╤Д╤А╨╛╨╜╤В ╤Г 48.75┬░
-+    ╨║╤А╨╕╤В╨╕╤З╨╡╤Б╨║╨╕╨╣ 48.75┬░, F(0)=0.0201, F(╨║╤А╨╕╤В)=1.000, ╨╛╤В╨║╨╗╨╛╨╜╨╡╨╜╨╕╨╡ ╨┐╤А╨╕ 10┬░=3.35┬░, ╨┐╤А╨╕ 40┬░=18.75┬░
++    ближний масштаб через берег, шаг 0.02° — шельф и склон:
++      угол      ДО         ПОСЛЕ      разница
++       -0.40°       837 м       837 м         0 м
++       -0.30°     2,349 м     2,349 м         0 м
++       -0.20°     2,550 м     2,550 м         0 м
++       -0.10°     3,145 м     3,145 м         0 м
++        0.00°     1,885 м     1,885 м         0 м
++        0.10°     1,344 м     1,344 м         0 м
++        0.20°    -1,038 м    -1,038 м         0 м
++        0.30°    -2,249 м    -2,249 м         0 м
++        0.40°    -1,986 м    -1,986 м         0 м
++[Test137_OceanDepthDecision] ok in 62124 ms
++    БЕРЕГ ДЛЯ СЪЁМКИ: lat=-10.0000 lon=0.0000  (score 7.0)
++    ожидаемая высота рельефа: 0 м
++[Test138_CoastSpot] ok in 6598 ms
++    кривая: F(0)=0.0201, F(48)=0.394, F(крит)=1.000 — резкий фронт у 48.75°
++    критический 48.75°, F(0)=0.0201, F(крит)=1.000, отклонение при 10°=3.35°, при 40°=18.75°
 +[Test139_SnellWindowReference] ok in 3 ms
-+    sigma=(0.40,0.12,0.08) ╨▓╨╛╨┤╨░=(0.02,0.16,0.30) N┬╖L=0.433 ╨▓╨╖╨│╨╗╤П╨┤ ╨▓╨╜╨╕╨╖=0.184
-+    ╨║╨░╨┤╤А 2560x1440, FOV 60┬░ ╨▓╨╡╤А╤В., aspect 1.778, 1440 ╤Б╤В╤А╨╛╨║
++    sigma=(0.40,0.12,0.08) вода=(0.02,0.16,0.30) N·L=0.433 взгляд вниз=0.184
++    кадр 2560x1440, FOV 60° верт., aspect 1.778, 1440 строк
 +
-+  ╨│╨╗╤Г╨▒╨╕╨╜╨░  | tExit ╨▓╨╡╤А╤Е/╨╜╨╕╨╖, ╨╝   | T_g ╨▓╨╡╤А╤Е/╨╜╨╕╨╖ | ╨▓╤Л╤Е╨╛╨┤ 8-╨▒╨╕╤В R/G/B | ╤Г╤А╨╛╨▓╨╜╨╡╨╣ | ╨╝╨░╨║╤Б. ╤Б╤В╤Г╨┐╨╡╨╜╤М
-+      2.0 ╨╝ |        6 / 1,492,888 | 0.485 / 0.000 |   1   9  13 ->   1  13  25 |    27 |   1 (╤А╤П╨┤╨╛╨▓ ╤Б ╤И╨░╨│╨╛╨╝:   12)
-+      8.6 ╨╝ |       26 / 1,485,326 | 0.045 / 0.000 |   0   9  20 ->   0   7  17 |    12 |   1 (╤А╤П╨┤╨╛╨▓ ╤Б ╤И╨░╨│╨╛╨╝:    4)
-+     30.0 ╨╝ |       90 / 1,488,854 | 0.000 / 0.000 |   0   4   9 ->   0   3   7 |     6 |   1 (╤А╤П╨┤╨╛╨▓ ╤Б ╤И╨░╨│╨╛╨╝:    1)
-+    200.0 ╨╝ |      603 / 1,487,855 | 0.000 / 0.000 |   0   3   6 ->   0   2   5 |     5 |   1 (╤А╤П╨┤╨╛╨▓ ╤Б ╤И╨░╨│╨╛╨╝:    1)
++  глубина  | tExit верх/низ, м   | T_g верх/низ | выход 8-бит R/G/B | уровней | макс. ступень
++      2.0 м |        6 / 1,492,888 | 0.485 / 0.000 |   1   9  13 ->   1  13  25 |    27 |   1 (рядов с шагом:   12)
++      8.6 м |       26 / 1,485,326 | 0.045 / 0.000 |   0   9  20 ->   0   7  17 |    12 |   1 (рядов с шагом:    4)
++     30.0 м |       90 / 1,488,854 | 0.000 / 0.000 |   0   4   9 ->   0   3   7 |     6 |   1 (рядов с шагом:    1)
++    200.0 м |      603 / 1,487,855 | 0.000 / 0.000 |   0   3   6 ->   0   2   5 |     5 |   1 (рядов с шагом:    1)
 +
-+  ┬л╤Г╤А╨╛╨▓╨╜╨╡╨╣┬╗ - ╤З╨╕╤Б╨╗╨╛ ╤А╨░╨╖╨╗╨╕╤З╨╜╤Л╤Е 8-╨▒╨╕╤В╨╜╤Л╤Е ╨╖╨╜╨░╤З╨╡╨╜╨╕╨╣ ╨╜╨░ ╨▓╨╡╤Б╤М ╨║╨░╨┤╤А.
-+  ┬л╨╝╨░╨║╤Б. ╤Б╤В╤Г╨┐╨╡╨╜╤М┬╗ - ╨╜╨░╤Б╨║╨╛╨╗╤М╨║╨╛ ╨╝╨╡╨╜╤П╨╡╤В╤Б╤П ╨╖╨╡╨╗╤С╨╜╤Л╨╣ ╨║╨░╨╜╨░╨╗ ╨╝╨╡╨╢╨┤╤Г ╤Б╨╛╤Б╨╡╨┤╨╜╨╕╨╝╨╕ ╤Б╤В╤А╨╛╨║╨░╨╝╨╕.
++  «уровней» - число различных 8-битных значений на весь кадр.
++  «макс. ступень» - насколько меняется зелёный канал между соседними строками.
 +
-+  ╤Б╤А╨░╨▓╨╜╨╡╨╜╨╕╨╡ ╨╝╨╛╨┤╨╡╨╗╨╡╨╣ ╨▓╤Г╨░╨╗╨╕ ╨╜╨░ 8.5686 ╨╝, ╨║╨░╨┤╤А ╨╕╨╖ 1440 ╤Б╤В╤А╨╛╨║:
-+    ╤Б╨▓╨╡╤В: ╤Б╤В╨░╤А╤Л╨╣ (0.09,0.23,0.30)   ╨╜╨╛╨▓╤Л╨╣ (0.57,0.78,0.87)
-+    ╨▓╤Г╨░╨╗╤М G: ╤Б╤В╨░╤А╤Л╨╣ (0.00,0.04,0.09)   ╨╜╨╛╨▓╤Л╨╣ (0.01,0.12,0.26)
++  сравнение моделей вуали на 8.5686 м, кадр из 1440 строк:
++    свет: старый (0.09,0.23,0.30)   новый (0.57,0.78,0.87)
++    вуаль G: старый (0.00,0.04,0.09)   новый (0.01,0.12,0.26)
 +
-+    ╨│╨╗╤Г╨▒╨╕╨╜╨░ ╨┤╨╜╨░ | ╤Г╤А╨╛╨▓╨╜╨╡╨╣ 8-╨▒╨╕╤В | ╨╖╨╡╨╗╤С╨╜╤Л╨╣ ╤Б╨▓╨╡╤А╤Е╤Г->╤Б╨╜╨╕╨╖╤Г | ╤Б╤В╤Г╨┐╨╡╨╜╤М/╤Б╤В╤А╨╛╨║╨░
-+          8.5 ╨╝ ╤Б╤В╨░╤А╤Л╨╣ |           19 |      5 -> 9      | ╨╝╨░╨║╤Б   1
-+          8.5 ╨╝ ╨╜╨╛╨▓╤Л╨╣ |           51 |     16 -> 31     | ╨╝╨░╨║╤Б   1
-+         20.0 ╨╝ ╤Б╤В╨░╤А╤Л╨╣ |           13 |      7 -> 9      | ╨╝╨░╨║╤Б   1
-+         20.0 ╨╝ ╨╜╨╛╨▓╤Л╨╣ |           36 |     22 -> 31     | ╨╝╨░╨║╤Б   1
-+         60.0 ╨╝ ╤Б╤В╨░╤А╤Л╨╣ |            9 |      7 -> 9      | ╨╝╨░╨║╤Б   1
-+         60.0 ╨╝ ╨╜╨╛╨▓╤Л╨╣ |           24 |     24 -> 31     | ╨╝╨░╨║╤Б   1
-+        200.0 ╨╝ ╤Б╤В╨░╤А╤Л╨╣ |            9 |      7 -> 9      | ╨╝╨░╨║╤Б   1
-+        200.0 ╨╝ ╨╜╨╛╨▓╤Л╨╣ |           24 |     24 -> 31     | ╨╝╨░╨║╤Б   1
-+[Test140_UnderwaterBanding] ok in 26 ms
-+PASS T143 perlin-drift | AssetPreset() ╤Б╨╛╨▓╨┐╨░╨┤╨░╨╡╤В ╤Б EarthLike_Perlin.asset
-+PASS T143 legacy-bit-exact | ╨┤╨╡╤Д╨╛╨╗╤В╤Л ╨╜╨╛╨▓╤Л╤Е ╨┐╨╛╨╗╨╡╨╣ = ╤П╨▓╨╜╤Л╨╡ ╨╜╤Г╨╗╨╕, ╤Д╨╛╤А╨╝╨░ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В ╨┐╤А╨╡╨╢╨╜╤П╤П
-+[Test143_PerlinAssetDrift] ok in 121 ms
-+PASS T200 cylinder-inertia | ╤Ж╨╕╨╗╨╕╨╜╨┤╤А(0┬░): True [Ixx=7 Iyy=6 Izz=7 Ixy=0 Ixz=0 Iyz=0]; Z+90┬░: True; X+90┬░: True; ╤Б╤Д╨╡╤А╨░: True; ╨║╨╛╤А╨╛╨▒╨║╨░: True
++    глубина дна | уровней 8-бит | зелёный сверху->снизу | ступень/строка
++          8.5 м старый |           19 |      5 -> 9      | макс   1
++          8.5 м новый |           51 |     16 -> 31     | макс   1
++         20.0 м старый |           13 |      7 -> 9      | макс   1
++         20.0 м новый |           36 |     22 -> 31     | макс   1
++         60.0 м старый |            9 |      7 -> 9      | макс   1
++         60.0 м новый |           24 |     24 -> 31     | макс   1
++        200.0 м старый |            9 |      7 -> 9      | макс   1
++        200.0 м новый |           24 |     24 -> 31     | макс   1
++[Test140_UnderwaterBanding] ok in 72 ms
++PASS T143 perlin-drift | AssetPreset() совпадает с EarthLike_Perlin.asset
++PASS T143 legacy-bit-exact | дефолты новых полей = явные нули, форма бит-в-бит прежняя
++[Test143_PerlinAssetDrift] ok in 108 ms
++PASS T200 cylinder-inertia | цилиндр(0°): True [Ixx=7 Iyy=6 Izz=7 Ixy=0 Ixz=0 Iyz=0]; Z+90°: True; X+90°: True; сфера: True; коробка: True
 +[Test200_CylinderInertia] ok in 1 ms
-+PASS T201 explicit-mass-scaling | ╨╝╨░╤Б╤Б╨░=5000: True (╤Б╤Г╤Е╨░╤П=3000: True); ╨╝╨░╤Б╤Б╨░=2500: True; COM ╨╜╨╡ ╨╖╨░╨▓╨╕╤Б╨╕╤В ╨╛╤В ╨╝╨░╤Б╤И╤В╨░╨▒╨░: True; IтИЭm: True; ╨╜╤Г╨╗╨╡╨▓╨╛╨╣ ╤А╨░╨╖╨╝╨╡╤А ╨╛╤В╨▓╨╡╤А╨│╨╜╤Г╤В: True
-+[Test201_ExplicitMassAndScaling] ok in 13 ms
-+PASS T202 point-compat | ╤З╨╡╤А╨╡╨╖ PartDefinition = ╤Н╤В╨░╨╗╨╛╨╜ Test30: True; ╤Б╨╛╨▓╨┐╨░╨┤╨░╨╡╤В ╤Б ╨┐╤А╤П╨╝╤Л╨╝ Part: True; I11=90 I12=60
++PASS T201 explicit-mass-scaling | масса=5000: True (сухая=3000: True); масса=2500: True; COM не зависит от масштаба: True; I∝m: True; нулевой размер отвергнут: True
++[Test201_ExplicitMassAndScaling] ok in 23 ms
++PASS T202 point-compat | через PartDefinition = эталон Test30: True; совпадает с прямым Part: True; I11=90 I12=60
 +[Test202_PointCompat] ok in 0 ms
-+PASS T203 discretized-reference | ╨╝╨░╤Б╤Б╨░=5000.000000 (True); |╬ФCOM|=8.24E-013 ╨╝ (True); max|╬ФI_╨┤╨╕╨░╨│|/I_max=5.85E-005 (True); max|╬ФI_╨▓╨╜╨╡|/I_max=1.51E-016 (True)
-+[Test203_DiscretizedReference] ok in 221 ms
-+PASS T204 free-fall | t=1.000 ╤Б, a=-9.81, |aтИТg|/|g|=9.96E-015 (тЙд1e-9)
-+[Test204_FreeFall] ok in 3 ms
-+PASS T205 torque-free-energy | t=60.0 ╤Б, max|╬ФT/T|=1.36E-014 (тЙд1e-6), max|1тИТ|q|┬▓|=4.44E-016 (тЙд1e-12)
-+[Test205_TorqueFreeEnergy] ok in 67 ms
-+PASS T206 rigid-joint-creep | t=10.0 ╤Б, max ╤А╨░╤Б╤Е╨╛╨╢╨┤╨╡╨╜╨╕╨╡ ╤П╨║╨╛╤А╨╡╨╣ ╤Б╤В╤Л╨║╨╛╨▓=4.57E-005 ╨╝ (тЙд1e-3)
-+[Test206_RigidJointCreep] ok in 1922 ms
-+PASS T207 impulse-conservation | t=2.0 ╤Б, |╬ФP|/╬гm|v|=1.20E-015 (тЙд1e-9), P0=371.079506
-+[Test207_ImpulseConservation] ok in 168 ms
-+PASS T208 angular-momentum | t=2.0 ╤Б, |╬ФL|/|L0|=5.65E-005 (тЙд1E-003, O(dt) ╤Б╤В╤Л╨║╨░ тАФ ╤Д╨░╨╖╨░ 4), |L0|=523.016252
-+[Test208_AngularMomentum] ok in 168 ms
-+PASS T210 flat-rest | t=5.0 ╤Б, max|v| ╨┐╨╛╤Б╨╗╨╡ 1 ╤Б=1.50E-010 ╨╝/╤Б (тЙд1e-3), max ╨┐╤А╨╛╨╜╨╕╨║╨╜╨╛╨▓╨╡╨╜╨╕╨╡=0.00E+000 ╨╝ (тЙд1e-3)
-+[Test210_FlatRest] ok in 308 ms
-+PASS T211 contact-restitution | v_╨┐╨╛╤Б╨╗╨╡=1.5647 ╨╝/╤Б, e┬╖v_╤Г╨┤╨░╤А╨░=1.5660 ╨╝/╤Б (v_╤Г╨┤╨░╤А╨░=3.1321); ╨╛╤В╨╜╨╛╤И╨╡╨╜╨╕╨╡=0.9991 (┬▒10%)
-+[Test211_ContactRestitution] ok in 1 ms
-+PASS T212 stick-slope-compat | ╤Б╤В╨╕╨║ 30┬░: |v|=7.01E-019, ╨┐╤Г╤В╤М ╨┐╨╛╤Б╨╗╨╡ ╨╛╤Б╨░╨┤╨║╨╕=0.00E+000 ╨╝: True; ╤Б╨╗╨╕╨┐ 60┬░: a=6.037 ╨╝/╤Б┬▓ (тЙИ6.037): True; ╤Б╤В╨╛╨┐ 50 ╨╝/╤Б: ╨┐╤Г╤В╤М=255.3 ╨╝ (тЙИ255.1): True
-+[Test212_StickSlopeCompat] ok in 118 ms
-+PASS T213 rest-energy | t=10.0 ╤Б, max|╬ФE|=9.07E-008 ╨Ф╨╢, E0=49.050 ╨Ф╨╢, ╨┐╨╛╤А╨╛╨│ 1% ╨╛╤В m┬╖g┬╖0.5 = 4.91E-001 ╨Ф╨╢
-+[Test213_RestEnergy] ok in 408 ms
-+PASS T214 local-normal-footprint | ╨╕╤Б╤В╨╕╨╜╨╜╤Л╨╣ ╨╜╨░╨║╨╗╨╛╨╜=0.3142; footprint 0.5 ╨╝: 0.2828 (╨╛╤И╨╕╨▒╨║╨░ 10.0 %, тЙд12%); footprint 114 ╨╝: 0.00177 (╨╛╤И╨╕╨▒╨║╨░ 99.4 %, тЙе90%)
++PASS T203 discretized-reference | масса=5000.000000 (True); |ΔCOM|=8.24E-013 м (True); max|ΔI_диаг|/I_max=5.85E-005 (True); max|ΔI_вне|/I_max=1.51E-016 (True)
++[Test203_DiscretizedReference] ok in 191 ms
++PASS T204 free-fall | t=1.000 с, a=-9.81, |a−g|/|g|=9.96E-015 (≤1e-9)
++[Test204_FreeFall] ok in 4 ms
++PASS T205 torque-free-energy | t=60.0 с, max|ΔT/T|=1.36E-014 (≤1e-6), max|1−|q|²|=4.44E-016 (≤1e-12)
++[Test205_TorqueFreeEnergy] ok in 65 ms
++PASS T206 rigid-joint-creep | t=10.0 с, max расхождение якорей стыков=4.57E-005 м (≤1e-3)
++[Test206_RigidJointCreep] ok in 1833 ms
++PASS T207 impulse-conservation | t=2.0 с, |ΔP|/Σm|v|=1.20E-015 (≤1e-9), P0=371.079506
++[Test207_ImpulseConservation] ok in 164 ms
++PASS T208 angular-momentum | t=2.0 с, |ΔL|/|L0|=5.65E-005 (≤1E-003, O(dt) стыка — фаза 4), |L0|=523.016252
++[Test208_AngularMomentum] ok in 163 ms
++PASS T210 flat-rest | t=5.0 с, max|v| после 1 с=1.50E-010 м/с (≤1e-3), max проникновение=0.00E+000 м (≤1e-3)
++[Test210_FlatRest] ok in 297 ms
++PASS T211 contact-restitution | v_после=1.5647 м/с, e·v_удара=1.5660 м/с (v_удара=3.1321); отношение=0.9991 (±10%)
++[Test211_ContactRestitution] ok in 0 ms
++PASS T212 stick-slope-compat | стик 30°: |v|=7.01E-019, путь после осадки=0.00E+000 м: True; слип 60°: a=6.037 м/с² (≈6.037): True; стоп 50 м/с: путь=255.3 м (≈255.1): True
++[Test212_StickSlopeCompat] ok in 116 ms
++PASS T213 rest-energy | t=10.0 с, max|ΔE|=9.07E-008 Дж, E0=49.050 Дж, порог 1% от m·g·0.5 = 4.91E-001 Дж
++[Test213_RestEnergy] ok in 388 ms
++PASS T214 local-normal-footprint | истинный наклон=0.3142; footprint 0.5 м: 0.2828 (ошибка 10.0 %, ≤12%); footprint 114 м: 0.00177 (ошибка 99.4 %, ≥90%)
 +[Test214_LocalNormalFootprint] ok in 0 ms
-+PASS T215 contact-cost-budget | ╨╕╨╜╤Д╨╛╤А╨╝╨░╤В╨╕╨▓╨╜╨╛: 0.132 ╨╝╨║╤Б ╨╜╨░ ╨╖╨░╨┐╤А╨╛╤Б ╨┐╨╛╨▓╨╡╤А╤Е╨╜╨╛╤Б╤В╨╕ (footprint 0.5 ╨╝, 200000 ╨╖╨░╨┐╤А╨╛╤Б╨╛╨▓); ╨▒╤О╨┤╨╢╨╡╤В ╤Д╨░╨╖╤Л 10 тАФ тЙд1.5 ╨╝╤Б ╨╜╨░ ╨║╨░╨┤╤А
-+[Test215_ContactCostBudget] ok in 26 ms
-+PASS T220 leg-sag | W/(N┬╖k) = 0.2402 ╨╝; ╨╝╨░╨║╤Б╨╕╨╝╤Г╨╝ ╨╛╤В╨║╨╗╨╛╨╜╨╡╨╜╨╕╤П ╨┐╨╛ 4 ╨╜╨╛╨│╨░╨╝ = 0.21 % (тЙд2%)
-+[Test220_LegSag] ok in 6355 ms
-+PASS T221 leg-damping-decay | ╨┐╨╕╨║╨╛╨▓=4; ╧Д_╨╕╨╖╨╝=0.0389 ╤Б, ╧Д_╤В╨╡╨╛╤А = 2┬╖m_eff/c = 0.0399 ╤Б (┬▒10%), ╬╢_╨▓╨╛╨╖╨┤=0.566 (╬╢_╨╛╨┐╨╛╤А╨╜=0.4); ╤Б╨┐╨░╨┤ ╨▓ e тЙд 1 ╤Б
-+[Test221_LegDampingDecay] ok in 139 ms
-+PASS T222 travel-limits | max ╤Б╨╢╨░╤В╨╕╨╡=0.3000 ╨╝, max ╤А╨░╤Б╤В╤П╨╢╨╡╨╜╨╕╨╡=0.3000 ╨╝ (╤Е╨╛╨┤ ┬▒0.3 ╨╝, ╨┤╨╛╨┐╤Г╤Б╨║ 1 ╨╝╨╝)
-+[Test222_TravelLimits] ok in 428 ms
-+PASS T223 slope15-stable | 30 ╤Б: ╨│╨╛╤А╨╕╨╖╨╛╨╜╤В╨░╨╗╤М╨╜╤Л╨╣ ╤Б╨╜╨╛╤Б=0.0018 ╨╝ (тЙд0.05), max ╨╜╨░╨║╨╗╨╛╨╜=0.060┬░ (тЙд5), max ╤Б╨╢╨░╤В╨╕╨╡=0.2464 ╨╝ (тЙд0.3)
-+[Test223_Slope15Stable] ok in 7047 ms
-+PASS T300 gate-ignores-orbit | ╨╛╤А╨▒╨╕╤В╨░ 200 ╨║╨╝: ╨║╨░╨┤╤А╨╛╨▓ ╨▓╨╜╤Г╤В╤А╨╕ ╨╖╨╛╨╜╤Л=0 (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ 0); min |v_rel|=7788 ╨╝/╤Б (╨┐╨╛╤А╨╛╨│ ╨▓╤Е╨╛╨┤╨░ 60)
++PASS T215 contact-cost-budget | информативно: 0.120 мкс на запрос поверхности (footprint 0.5 м, 200000 запросов); бюджет фазы 10 — ≤1.5 мс на кадр
++[Test215_ContactCostBudget] ok in 24 ms
++PASS T220 leg-sag | W/(N·k) = 0.2402 м; максимум отклонения по 4 ногам = 0.21 % (≤2%)
++[Test220_LegSag] ok in 5829 ms
++PASS T221 leg-damping-decay | пиков=4; τ_изм=0.0389 с, τ_теор = 2·m_eff/c = 0.0399 с (±10%), ζ_возд=0.566 (ζ_опорн=0.4); спад в e ≤ 1 с
++[Test221_LegDampingDecay] ok in 126 ms
++PASS T222 travel-limits | max сжатие=0.3000 м, max растяжение=0.3000 м (ход ±0.3 м, допуск 1 мм)
++[Test222_TravelLimits] ok in 398 ms
++PASS T223 slope15-stable | 30 с: горизонтальный снос=0.0018 м (≤0.05), max наклон=0.060° (≤5), max сжатие=0.2464 м (≤0.3)
++[Test223_Slope15Stable] ok in 6468 ms
++PASS T300 gate-ignores-orbit | орбита 200 км: кадров внутри зоны=0 (ожидание 0); min |v_rel|=7788 м/с (порог входа 60)
 +[Test300_GateIgnoresOrbit] ok in 2 ms
-+PASS T301 gate-ignores-entry | ╨▓╤Е╨╛╨┤ 300 ╨╝/╤Б ╨╜╨░ ╨▓╤Л╤Б╨╛╤В╨╡ 100 ╨╝: ╨║╨░╨┤╤А╨╛╨▓ ╨▓╨╜╤Г╤В╤А╨╕ ╨╖╨╛╨╜╤Л=0 (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ 0)
++PASS T301 gate-ignores-entry | вход 300 м/с на высоте 100 м: кадров внутри зоны=0 (ожидание 0)
 +[Test301_GateIgnoresEntry] ok in 0 ms
-+PASS T302 gate-enables-landing | ╨▓╤Л╤Б╨╛╤В╨░ 100.00 ╨╝, v_rel 5.00 ╨╝/╤Б: ╨╖╨╛╨╜╨░=True (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ true)
++PASS T302 gate-enables-landing | высота 100.00 м, v_rel 5.00 м/с: зона=True (ожидание true)
 +[Test302_GateEnablesLanding] ok in 0 ms
-+PASS T303 gate-hysteresis | ╨▓╤Е╨╛╨┤ 100 ╨╝тЖТTrue; 350 ╨╝ (╨▓ ╨┐╨╛╨╗╨╛╤Б╨╡)тЖТTrue; 450 ╨╝ (╨▓╤Л╤Е╨╛╨┤)тЖТFalse; ╤Б╨╜╨╛╨▓╨░ 50 ╨╝тЖТTrue; ╨┐╨╛╤Б╨╗╨╡ ╤Б╨▒╤А╨╛╤Б╨░ 350 ╨╝тЖТFalse; 100 ╨╝ ╤Б╨╛ ╤Б╨║╨╛╤А╨╛╤Б╤В╤М╤О 130 ╨╝/╤БтЖТFalse (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ T,T,F,T,F,F)
-+[Test303_GateHysteresis] ok in 0 ms
-+PASS T304 handoff-round-trip | 40 ╤Б╨╛╤Б╤В╨╛╤П╨╜╨╕╨╣: max |╬Фr|=0.00E+000 ╨╝ (тЙд1e-6), max |╬Фv|=3.64E-012 ╨╝/╤Б (тЙд1e-9)
++PASS T303 gate-hysteresis | вход 100 м→True; 350 м (в полосе)→True; 450 м (выход)→False; снова 50 м→True; после сброса 350 м→False; 100 м со скоростью 130 м/с→False (ожидание T,T,F,T,F,F)
++[Test303_GateHysteresis] ok in 1 ms
++PASS T304 handoff-round-trip | 40 состояний: max |Δr|=0.00E+000 м (≤1e-6), max |Δv|=3.64E-012 м/с (≤1e-9)
 +[Test304_HandoffRoundTrip] ok in 1 ms
-+PASS T305 handoff-corotation | ╨┐╨╛╨║╨╛╨╣ 2 ╤З: |╬Фv| ╨╛╤В ╤Б╨║╨╛╤А╨╛╤Б╤В╨╕ ╨╝╨╡╤Б╤В╨░=0.00E+000 ╨╝/╤Б (тЙд1e-9), |╬Фr| ╨╛╤В ╤В╨╛╤З╨║╨╕ ╨╝╨╡╤Б╤В╨░=0.00E+000 ╨╝ (тЙд1e-6), |v_╨╝╨╡╤Б╤В╨░|=30116.02 ╨╝/╤Б
++PASS T305 handoff-corotation | покой 2 ч: |Δv| от скорости места=0.00E+000 м/с (≤1e-9), |Δr| от точки места=0.00E+000 м (≤1e-6), |v_места|=30116.02 м/с
 +[Test305_HandoffCorotation] ok in 0 ms
-+PASS T306 advance-time-monotonic | 700 ╨▓╤Л╨╖╨╛╨▓╨╛╨▓: ╨╝╨╛╨╜╨╛╤В╨╛╨╜╨╜╨╛=True; ╬гdt=190.000000 ╤Б, ╨▓╤А╨╡╨╝╤П=195.500000 ╤Б, ╨┤╨╛╨┐╤Г╤Б╨║=1.9E-007 ╤Б: True; ╤Б╨╛╤Б╤В╨╛╤П╨╜╨╕╨╡ ╨║╨╛╤А╨░╨▒╨╗╤П ╨╜╨╡ ╤В╤А╨╛╨╜╤Г╤В╨╛: True; StepFlying ╨┐╨╛╤Б╨╗╨╡: ╬Фt=0.500000 ╤Б: True
++PASS T306 advance-time-monotonic | 700 вызовов: монотонно=True; Σdt=190.000000 с, время=195.500000 с, допуск=1.9E-007 с: True; состояние корабля не тронуто: True; StepFlying после: Δt=0.500000 с: True
 +[Test306_AdvanceTimeMonotonic] ok in 2 ms
-+PASS T307 island-split-leg | ╤А╨░╨╖╤А╤Л╨▓ ╨╜╨╛╨│╨╕ 3: ╨║╨╛╤А╨╡╨╜╤М=7 (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ 7 ╨┤╨╡╤В╨░╨╗╨╡╨╣ ╨▒╨╡╨╖ ╨╜╨╛╨│╨╕), ╨╛╤Б╤В╤А╨╛╨▓╨╛╨▓=1, ╨╛╤Б╤В╤А╨╛╨▓0=3 (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ [3])
-+[Test307_IslandSplitLeg] ok in 4 ms
-+PASS T308 island-split-tree | ╨┤╨▓╨╕╨│╨░╤В╨╡╨╗╤М: ╨╛╤Б╤В╤А╨╛╨▓╨╛╨▓=1 (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ 1 [2]), ╨║╨╛╤А╨╡╨╜╤М=7 (7); ╨║╨░╨▒╨╕╨╜╨░: ╨╛╤Б╤В╤А╨╛╨▓╨╛╨▓=1 (1 [7]), ╨║╨╛╤А╨╡╨╜╤М=7 (7); ╨┤╨▓╨╡ ╨╜╨╛╨│╨╕: ╨╛╤Б╤В╤А╨╛╨▓╨╛╨▓=2 (2 [3],[4]), ╨║╨╛╤А╨╡╨╜╤М=6 (6)
-+[Test308_IslandSplitTree] ok in 1 ms
-+PASS T310 step-up | ╤Б╤В╤Г╨┐╨╡╨╜╤М 0.4: ╨▓╤Л╤Б╨╛╤В╨░ ╨╜╨░ ╨▓╨╡╤А╤И╨╕╨╜╨╡=0.40000 ╨╝ (┬▒1 ╨╝╨╝): True; 0.6: x=0.5500 (╤Г╨┐╨╛╤А ╤Г 0.45), z=0.00E+000, Blocked=True: True
++PASS T307 island-split-leg | разрыв ноги 3: корень=7 (ожидание 7 деталей без ноги), островов=1, остров0=3 (ожидание [3])
++[Test307_IslandSplitLeg] ok in 28 ms
++PASS T308 island-split-tree | двигатель: островов=1 (ожидание 1 [2]), корень=7 (7); кабина: островов=1 (1 [7]), корень=7 (7); две ноги: островов=2 (2 [3],[4]), корень=6 (6)
++[Test308_IslandSplitTree] ok in 0 ms
++PASS T310 step-up | ступень 0.4: высота на вершине=0.40000 м (±1 мм): True; 0.6: x=0.5500 (упор у 0.45), z=0.00E+000, Blocked=True: True
 +[Test310_StepUp] ok in 3 ms
-+PASS T311 slope-limit | 25┬░: ╤Б╨║╨╛╤А╨╛╤Б╤В╤М ╨▓╨┤╨╛╨╗╤М ╤Б╨║╨╗╨╛╨╜╨░=1.103 ╨╝/╤Б (тЙе0.9 ╨╛╤В 1): True; 35┬░: v_z=-2.747 (╨▓╨╜╨╕╨╖), z=-0.4120 (╨▒╨╡╨╖ ╨┐╨╛╨┤╤К╤С╨╝╨░): True
++PASS T311 slope-limit | 25°: скорость вдоль склона=1.103 м/с (≥0.9 от 1): True; 35°: v_z=-2.747 (вниз), z=-0.4120 (без подъёма): True
 +[Test311_SlopeLimit] ok in 1 ms
-+PASS T312 ceiling-blocks | ╨┐╨╛╤В╨╛╨╗╨╛╨║ 1.5: Blocked=True, x=0.550 (тЙд0.56), z=0.00E+000: True; ╨┐╨╛╤В╨╛╨╗╨╛╨║ 2.0: x=2.000 (>1.5), Blocked=False: True
++PASS T312 ceiling-blocks | потолок 1.5: Blocked=True, x=0.550 (≤0.56), z=0.00E+000: True; потолок 2.0: x=2.000 (>1.5), Blocked=False: True
 +[Test312_CeilingBlocks] ok in 0 ms
-+PASS T313 roof-landing | ╨┐╨░╨┤╨╡╨╜╨╕╨╡ 3 ╨╝: ╨┐╤А╨╕╨╖╨╡╨╝╨╗╨╡╨╜╨╕╨╡ ╨╜╨░ ╤И╨░╨│╨╡ 36, z=0.00E+000 ╨╝, v_z=0.00E+000 ╨╝/╤Б: True; ╨▒╨╡╨╖ ╨╛╤В╤Б╨║╨╛╨║╨░ (╬Фz=0.00E+000): True
++PASS T313 roof-landing | падение 3 м: приземление на шаге 37, z=0.00E+000 м, v_z=0.00E+000 м/с: True; без отскока (Δz=0.00E+000): True
 +[Test313_RoofLanding] ok in 0 ms
-+PASS T314 edge-fall | ╤Б╤Е╨╛╨┤ ╤Б ╨║╤А╨░╤П ╨╜╨░ ╤И╨░╨│╨╡ 100 (x=2.740), ╨┐╨░╨┤╨╡╨╜╨╕╨╡ ╨┤╨╛ z=-3.000 (╤А╨╡╨╗╤М╨╡╤Д тИТ3): True
++PASS T314 edge-fall | сход с края на шаге 100 (x=2.760), падение до z=-3.000 (рельеф −3): True
 +[Test314_EdgeFall] ok in 0 ms
-+PASS T315 inner-corner | ╨┐╨╛╨╖╨╕╤Ж╨╕╤П=(0.4500, 0.4500) (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ (0.45, 0.45) ┬▒1 ╨╝╨╝): True; ╨▒╨╡╨╖ ╨┐╤А╨╛╨╜╨╕╨║╨╜╨╛╨▓╨╡╨╜╨╕╤П: True
++PASS T315 inner-corner | позиция=(0.4500, 0.4500) (ожидание (0.45, 0.45) ±1 мм): True; без проникновения: True
 +[Test315_InnerCorner] ok in 0 ms
-+PASS T316 stairs | 10 ╤Б╤В╤Г╨┐╨╡╨╜╨╡╨╣ 0.18 ╨╝: ╨▓╤Л╤Б╨╛╤В╨░=1.8000 ╨╝ (╨╛╨╢╨╕╨┤╨░╨╜╨╕╨╡ 1.80): True; ╨╝╨╕╨╜. ╤И╨░╨│ ╨▓╨┤╨╛╨╗╤М=1.00E-002 ╨╝ (тЙе0.95 ╨╛╤В 9.50E-003): True
++PASS T316 stairs | 10 ступеней 0.18 м: высота=1.8000 м (ожидание 1.80): True; мин. шаг вдоль=1.00E-002 м (≥0.95 от 9.50E-003): True
 +[Test316_Stairs] ok in 2 ms
-+PASS T317 moving-platform | 10 ╤Б: max|╬Фx|=3.38E-013 ╨╝ (тЙд2 ╨╝╨╝), max|╬Фz|=0.00E+000 ╨╝ (тЙд2 ╨╝╨╝), ╨┐╨╗╨░╤В╤Д╨╛╤А╨╝╨░ x=20.00, z=0.000
++PASS T317 moving-platform | 10 с: max|Δx|=3.38E-013 м (≤2 мм), max|Δz|=0.00E+000 м (≤2 мм), платформа x=20.00, z=0.000
 +[Test317_MovingPlatform] ok in 1 ms
-+    h(╨╕╨│╤А╨╛╨║ lat 5.715345 lon 142.200892) = 26.39 ╨╝ (╤Б╤Л╤А╨░╤П), 26.39 ╨╝ (╤Б ╨║╨╗╨░╨╝╨┐╨╛╨╝ ╨╝╨╛╤А╤П). HUD ╨▓ ╨║╨░╨┤╤А╨╡: ╤А╨╡╨╗╤М╨╡╤Д ╨┐╨╛╨┤ ╨╕╨│╤А╨╛╨║╨╛╨╝ 26 ╨╝.
-+    ╨║╨░╤А╤В╨░ ┬▒3 ╨║╨╝ (╤И╨░╨│ 150 ╨╝): h ╨╛╤В -568 ╨┤╨╛ 1158 ╨╝. ╨б╤В╤А╨╛╨║╨╕ тАФ ╤Б╨╡╨▓╨╡╤А, ╤Б╤В╨╛╨╗╨▒╤Ж╤Л тАФ ╨▓╨╛╤Б╤В╨╛╨║.
-+    ~ ╨╝╨╛╤А╨╡  s ╨┐╨╛╨╗╨║╨░(<13)  . <25  : <50  + <100  * <250  # <600  % <1500  @ ╨▓╤Л╤И╨╡
++PASS T318 fall-tunneling | падение 10 м подшагами 0.5 с: приземление на шаге 2, z=0.0000 м (плита 0, не −50): True
++[Test318_FallNoTunneling] ok in 0 ms
++PASS T319 steep-slope-wall | скат 35° у стены x=1: позиция x=0.5500 (упор у 0.55): True
++[Test319_SteepSlopeWall] ok in 0 ms
++PASS T320 jump-not-cancelled | прыжок 4.5 м/с: апогей 1.010 м (теория 1.032), посадка z=0.000 м (шаг 88): True
++[Test320_JumpNotCancelled] ok in 0 ms
++    h(игрок lat 5.715345 lon 142.200892) = 26.39 м (сырая), 26.39 м (с клампом моря). HUD в кадре: рельеф под игроком 26 м.
++    карта ±3 км (шаг 150 м): h от -568 до 1158 м. Строки — север, столбцы — восток.
++    ~ море  s полка(<13)  . <25  : <50  + <100  * <250  # <600  % <1500  @ выше
 +    **************+++::::..::::++++++*#%%%%%%
 +    ####************++::::::::::+++++*##%%%%%
 +    #####*******##***++:::::::::+++++*##%%%%%
@@ -2107,97 +2349,97 @@ index 0000000..7c7dbc2
 +    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 +    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 +    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-+    ╨╝╨░╨║╤Б╨╕╨╝╨░╨╗╤М╨╜╤Л╨╣ ╤Г╨║╨╗╨╛╨╜ ╨┐╨╛ ╨║╨░╤А╤В╨╡ 3.644 (74.7┬░) ╨╜╨░ ╨║╨╗╨╡╤В╨║╨╡ (16,0), ╨▓╨┤╨╛╨╗╤М ╤Б╨╡╨▓╨╡╤А╨░
-+    ╨┐╤А╨╛╤Д╨╕╨╗╤М ╤Б ╤И╨░╨│╨╛╨╝ ╤Б╨╡╤В╨║╨╕ ╨╗╨╕╤Б╤В╨░ 6.85 ╨╝ ╨▓╨┤╨╛╨╗╤М ╤Б╨╡╨▓╨╡╤А╨░ (╬Ф ╨╛╤В ╤В╨╛╤З╨║╨╕ (-600,-3000) ╨╝):
-+      k=  -8  h=    825.71 ╨╝  ╬Ф=      
-+      k=  -7  h=    819.98 ╨╝  ╬Ф=   -5.7
-+      k=  -6  h=    811.60 ╨╝  ╬Ф=   -8.4
-+      k=  -5  h=    800.63 ╨╝  ╬Ф=  -11.0
-+      k=  -4  h=    788.22 ╨╝  ╬Ф=  -12.4
-+      k=  -3  h=    774.37 ╨╝  ╬Ф=  -13.9
-+      k=  -2  h=    758.34 ╨╝  ╬Ф=  -16.0
-+      k=  -1  h=    741.02 ╨╝  ╬Ф=  -17.3
-+      k=   0  h=    722.82 ╨╝  ╬Ф=  -18.2
-+      k=   1  h=    703.31 ╨╝  ╬Ф=  -19.5
-+      k=   2  h=    683.04 ╨╝  ╬Ф=  -20.3
-+      k=   3  h=    661.65 ╨╝  ╬Ф=  -21.4
-+      k=   4  h=    639.48 ╨╝  ╬Ф=  -22.2
-+      k=   5  h=    616.26 ╨╝  ╬Ф=  -23.2
-+      k=   6  h=    592.33 ╨╝  ╬Ф=  -23.9
-+      k=   7  h=    567.69 ╨╝  ╬Ф=  -24.6
-+      k=   8  h=    542.16 ╨╝  ╬Ф=  -25.5
-+      k=   9  h=    515.99 ╨╝  ╬Ф=  -26.2
-+      k=  10  h=    489.60 ╨╝  ╬Ф=  -26.4
-+      k=  11  h=    462.66 ╨╝  ╬Ф=  -26.9
-+      k=  12  h=    435.56 ╨╝  ╬Ф=  -27.1
-+      k=  13  h=    408.10 ╨╝  ╬Ф=  -27.5
-+      k=  14  h=    380.71 ╨╝  ╬Ф=  -27.4
-+      k=  15  h=    353.25 ╨╝  ╬Ф=  -27.5
-+      k=  16  h=    326.28 ╨╝  ╬Ф=  -27.0
-+      k=  17  h=    299.52 ╨╝  ╬Ф=  -26.8
-+      k=  18  h=    272.86 ╨╝  ╬Ф=  -26.7
-+      k=  19  h=    246.96 ╨╝  ╬Ф=  -25.9
-+      k=  20  h=    221.79 ╨╝  ╬Ф=  -25.2
-+      k=  21  h=    197.54 ╨╝  ╬Ф=  -24.3
-+      k=  22  h=    173.97 ╨╝  ╬Ф=  -23.6
-+      k=  23  h=    151.52 ╨╝  ╬Ф=  -22.5
-+      k=  24  h=    130.26 ╨╝  ╬Ф=  -21.3
-+    ╨┐╨╕╨╗╨░: ╨╕╨╖ 95400 ╤И╨░╨│╨╛╨▓ ╨┐╨╛ 6.85 ╨╝ ╤А╨░╨╖╨▓╨╛╤А╨╛╤В ╨╖╨╜╨░╨║╨░ ╬Ф ╨╜╨░ 898 (0.94 %), ╨╕╨╖ ╨╜╨╕╤Е ╨╖╤Г╨▒╨╡╤Ж >5 ╨╝: 0, >20 ╨╝: 0
-+    ╤Б╨░╨╝╤Л╨╣ ╨▒╨╛╨╗╤М╤И╨╛╨╣ ╤И╨░╨│ |╬Фh| = 25.15 ╨╝ ╨╜╨░ (5482,3324) ╨╝ ╨╛╤В ╨╕╨│╤А╨╛╨║╨░; ╤Б╨░╨╝╤Л╨╣ ╨▒╨╛╨╗╤М╤И╨╛╨╣ ╨╖╤Г╨▒╨╡╤Ж 0.83 ╨╝ ╨╜╨░ (6452,3164) ╨╝
-+PASS T900 terrain-wall-probe | ╨╖╨╛╨╜╨┤ ╨╛╤В╤А╨░╨▒╨╛╤В╨░╨╗
-+[Test900_TerrainWallProbe] ok in 790 ms
-+    ╨▓╤Л╨║╨╗╤О╤З╨╡╨╜╨╕╨╡ ╤Б╨╗╨╛╤С╨▓ ╨┐╨╛ ╨╛╨┤╨╜╨╛╨╝╤Г (╨╛╨║╤А╨╡╤Б╤В╨╜╨╛╤Б╤В╤М ╨╕╨│╤А╨╛╨║╨░ ┬▒4 ╨║╨╝):
-+    ╨▒╨░╨╖╨╛╨▓╤Л╨╣ ╨┐╤А╨╛╤Д╨╕╨╗╤М (╨║╨░╨║ ╨▓ ╤Б╤Ж╨╡╨╜╨╡)              ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕     30.55 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N-441 E-3552
-+    BeachShelfWidth = 0 (╨┐╨╛╨╗╨║╨╕ ╨╜╨╡╤В)            ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕      7.30 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N5286 E-2487
-+    BeachShelfWidthMaxScale = 1 (╤И╨╕╤А╨╕╨╜╨░ ╨┐╨╛╤Б╤В╨╛╤П╨╜╨╜╨░) ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕     30.55 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N-441 E-3552
-+    BeachShelfWidthNoiseFrequency = 0          ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕     30.55 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N-441 E-3552
-+    BeachShelfAltitude = 200 ╨╝ (╨╝╨╡╤В╨║╨░ ╨┐╨╛╨╗╨║╨╕)   ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕     24.49 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N-441 E-3552
-+    PlainMix = 0 (╤А╨░╨▓╨╜╨╕╨╜ ╨╜╨╡╤В)                  ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕     38.32 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N-441 E-3552
-+    InteriorFloor = 0                          ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕     50.85 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N-441 E-3552
-+    RidgedMix = 0                              ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕     18.09 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N-434 E-3551
-+    TailKnee = 0                               ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕     30.55 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N-441 E-3552
-+    OrogenyFrequency = 0                       ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕     50.85 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N-441 E-3552
-+    OceanFloorDepth = 0 (╤Б╤В╨░╤А╤Л╨╣ ╨╛╨║╨╡╨░╨╜)         ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕     11.53 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N3587 E4017
-+    ContinentRidgeMix = 0                      ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕     22.11 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N4736 E2140
-+    ContinentLatitudeBias = 0                  ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕      3.72 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N3392 E-3307
-+    ╨╛╨▒╨░ warp = 0                               ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕      0.00 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N0 E0
-+    ContinentFrequency = 0                     ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╤И╨░╨│╨╡ ╤Б╨╡╤В╨║╨╕     15.12 ╨╝   ╨▓ ╤В╨╛╤З╨║╨╡ N-3257 E2739
-+    ╨▒╨╕╤Б╨╡╨║╤В: ╤А╨░╨╖╤А╤Л╨▓ 30.6 ╨╝ ╨╜╨░ N-441.2 E-3551.6; ╨┐╤А╨╛╤Д╨╕╨╗╤М ╤Б ╤И╨░╨│╨╛╨╝ 0.02 ╨╝ ╨┐╨╛╨┐╨╡╤А╤С╨║ ╨╗╨╕╨╜╨╕╨╕ ╤Б╨╡╨▓╨╡╤А-╤О╨│:
-+      N  -441.986  h=   431.194 ╨╝
-+      N  -441.826  h=   430.718 ╨╝
-+      N  -441.666  h=   430.045 ╨╝
-+      N  -441.506  h=   429.273 ╨╝
-+      N  -441.346  h=   428.546 ╨╝
-+      N  -441.186  h=   427.738 ╨╝
-+      N  -441.026  h=   426.990 ╨╝
-+      N  -440.866  h=   426.323 ╨╝
-+      N  -440.706  h=   425.699 ╨╝
-+      N  -440.546  h=   424.974 ╨╝
-+      N  -440.386  h=   424.507 ╨╝
-+    ╤Б╤Г╨╝╨╝╨░╤А╨╜╨░╤П ╨┤╨╗╨╕╨╜╨░ ╤Г╤З╨░╤Б╤В╨║╨╛╨▓ ╤Б ╨┐╨╡╤А╨╡╨┐╨░╨┤╨╛╨╝ >1 ╨╝ ╨╜╨░ ╤И╨░╨│╨╡ 2 ╤Б╨╝: 0.000 ╨╝ (╨║╨╛╨╜╨╡╤Ж N0.000)
-+    ╨▒╨╡╨╖ ╨┐╨╛╨╗╨║╨╕: ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ 7.30 ╨╝ ╨╜╨░ N5286 E-2487 (╤В╨░╨╝ ╨╢╨╡, ╨│╨┤╨╡ ╤Б ╨┐╨╛╨╗╨║╨╛╨╣: ╨╜╨╡╤В)
-+PASS T901 terrain-wall-bisect | ╨▒╨╕╤Б╨╡╨║╤В ╨╛╤В╤А╨░╨▒╨╛╤В╨░╨╗
-+[Test901_TerrainWallBisect] ok in 9660 ms
-+    ╤В╨╛╤З╨╡╨║: 70169; ╨▓╤Л╤Б╨╛╤В╨░ ╨▓ ╤В╨╛╤З╨║╨╡ ╨║╨░╨┤╤А╨░: 26.386960 ╨╝
-+    ╨▒╤Л╨╗╨╛/╤Б╤В╨░╨╗╨╛: ╤В╨╛╤З╨║╨░ ╨║╨░╨┤╤А╨░ 26.386960 тЖТ 26.386960 ╨╝ (╬Ф 0.000E+000)
-+    |╬Ф| : ╨╝╨░╨║╤Б 0.000 ╨╝, ╤Б╤А╨╡╨┤╨╜╨╡╨╡ 0.0000 ╨╝; ╤В╨╛╤З╨╡╨║ >0.01 ╨╝: 0 (0.000 %), >1 ╨╝: 0, >10 ╨╝: 0, >50 ╨╝: 0, >200 ╨╝: 0
-+    ╨┐╨╛╨┤╤К╤С╨╝╨╛╨▓ ╤А╨╡╨╗╤М╨╡╤Д╨░ ╨┐╤А╨░╨▓╨║╨╛╨╣: ╨╜╨╡╤В (╨╝╨░╨║╤Б +0.0000 ╨╝) тАФ ╨┐╨╛╨╗╨║╨░ ╤В╨╡╨┐╨╡╤А╤М ╤В╨╛╨╗╤М╨║╨╛ ╨╛╨┐╤Г╤Б╨║╨░╨╡╤В
-+    ╨╛╨║╤А╨╡╤Б╤В╨╜╨╛╤Б╤В╤М ╨║╨░╨┤╤А╨░ ┬▒3 ╨║╨╝: ╨╕╨╖╨╝╨╡╨╜╨╕╨╗╨╛╤Б╤М 0 ╤В╨╛╤З╨╡╨║ ╨╕╨╖ 40401 (0.00 %)
-+    ╨╝╨░╨║╤Б╨╕╨╝╤Г╨╝ ╬Ф ╨╜╨░ lat 5.564962 lon 142.049758
-+PASS T903 shelf-fix-ab | ╨▓╤Л╤Б╨╛╤В╨░ ╨▓ ╤В╨╛╤З╨║╨╡ ╨║╨░╨┤╤А╨░ ╨▒╨╕╤В-╨▓-╨▒╨╕╤В ╨┐╤А╨╡╨╢╨╜╤П╤П
-+PASS T903 shelf-fix-ab | ╨┐╤А╨░╨▓╨║╨░ ╨╜╨╕╨│╨┤╨╡ ╨╜╨╡ ╨┐╨╛╨┤╨╜╤П╨╗╨░ ╤А╨╡╨╗╤М╨╡╤Д
-+PASS T903 shelf-fix-ab | ╨╕╨╖╨╝╨╡╨╜╨╕╨╗╨╛╤Б╤М ╨╝╨╡╨╜╤М╤И╨╡ 10 % ╤В╨╛╤З╨╡╨║
-+[Test903_ShelfFixAb] ok in 633 ms
-+    ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ 0: lat    5.715 lon  142.201 тАФ ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╨║╨▓╨░╨┤    29.16 ╨╝
-+    ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ 1: lat   -6.196 lon  165.110 тАФ ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╨║╨▓╨░╨┤     0.00 ╨╝
-+    ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ 2: lat  -52.550 lon  157.392 тАФ ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╨║╨▓╨░╨┤     0.39 ╨╝
-+    ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ 3: lat  -64.579 lon  292.711 тАФ ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╨║╨▓╨░╨┤     0.00 ╨╝
-+    ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ 4: lat   13.035 lon   12.923 тАФ ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╨║╨▓╨░╨┤     2.41 ╨╝
-+    ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ 5: lat   19.717 lon  284.597 тАФ ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╨║╨▓╨░╨┤     0.00 ╨╝
-+    ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░ 6: lat  -50.272 lon   16.095 тАФ ╨╝╨░╨║╤Б. ╨┐╨╡╤А╨╡╨┐╨░╨┤ ╨╜╨░ ╨║╨▓╨░╨┤     0.00 ╨╝
-+    ╤Е╤Г╨┤╤И╨╡╨╡ ╨┐╨╛ 7 ╨┐╨╗╨╛╤Й╨░╨┤╨║╨░╨╝: 29.16 ╨╝ (lat 5.691 lon 142.040), ╨┤╨╛╨┐╤Г╤Б╨║ 250 ╨╝
-+PASS T904 no-sub-quad-steps | ╨╜╨╡╤В ╨┐╨╡╤А╨╡╨┐╨░╨┤╨░ ╨▒╨╛╨╗╤М╤И╨╡ 250 ╨╝ ╨╝╨╡╨╢╨┤╤Г ╤Б╨╛╤Б╨╡╨┤╨╜╨╕╨╝╨╕ ╨▓╨╡╤А╤И╨╕╨╜╨░╨╝╨╕ ╨╗╨╕╤Б╤В╨░
-+[Test904_NoSubQuadSteps] ok in 2524 ms
++    максимальный уклон по карте 3.644 (74.7°) на клетке (16,0), вдоль севера
++    профиль с шагом сетки листа 6.85 м вдоль севера (Δ от точки (-600,-3000) м):
++      k=  -8  h=    825.71 м  Δ=      
++      k=  -7  h=    819.98 м  Δ=   -5.7
++      k=  -6  h=    811.60 м  Δ=   -8.4
++      k=  -5  h=    800.63 м  Δ=  -11.0
++      k=  -4  h=    788.22 м  Δ=  -12.4
++      k=  -3  h=    774.37 м  Δ=  -13.9
++      k=  -2  h=    758.34 м  Δ=  -16.0
++      k=  -1  h=    741.02 м  Δ=  -17.3
++      k=   0  h=    722.82 м  Δ=  -18.2
++      k=   1  h=    703.31 м  Δ=  -19.5
++      k=   2  h=    683.04 м  Δ=  -20.3
++      k=   3  h=    661.65 м  Δ=  -21.4
++      k=   4  h=    639.48 м  Δ=  -22.2
++      k=   5  h=    616.26 м  Δ=  -23.2
++      k=   6  h=    592.33 м  Δ=  -23.9
++      k=   7  h=    567.69 м  Δ=  -24.6
++      k=   8  h=    542.16 м  Δ=  -25.5
++      k=   9  h=    515.99 м  Δ=  -26.2
++      k=  10  h=    489.60 м  Δ=  -26.4
++      k=  11  h=    462.66 м  Δ=  -26.9
++      k=  12  h=    435.56 м  Δ=  -27.1
++      k=  13  h=    408.10 м  Δ=  -27.5
++      k=  14  h=    380.71 м  Δ=  -27.4
++      k=  15  h=    353.25 м  Δ=  -27.5
++      k=  16  h=    326.28 м  Δ=  -27.0
++      k=  17  h=    299.52 м  Δ=  -26.8
++      k=  18  h=    272.86 м  Δ=  -26.7
++      k=  19  h=    246.96 м  Δ=  -25.9
++      k=  20  h=    221.79 м  Δ=  -25.2
++      k=  21  h=    197.54 м  Δ=  -24.3
++      k=  22  h=    173.97 м  Δ=  -23.6
++      k=  23  h=    151.52 м  Δ=  -22.5
++      k=  24  h=    130.26 м  Δ=  -21.3
++    пила: из 95400 шагов по 6.85 м разворот знака Δ на 898 (0.94 %), из них зубец >5 м: 0, >20 м: 0
++    самый большой шаг |Δh| = 25.15 м на (5482,3324) м от игрока; самый большой зубец 0.83 м на (6452,3164) м
++PASS T900 terrain-wall-probe | зонд отработал
++[Test900_TerrainWallProbe] ok in 751 ms
++    выключение слоёв по одному (окрестность игрока ±4 км):
++    базовый профиль (как в сцене)              макс. перепад на шаге сетки     30.55 м   в точке N-441 E-3552
++    BeachShelfWidth = 0 (полки нет)            макс. перепад на шаге сетки      7.30 м   в точке N5286 E-2487
++    BeachShelfWidthMaxScale = 1 (ширина постоянна) макс. перепад на шаге сетки     30.55 м   в точке N-441 E-3552
++    BeachShelfWidthNoiseFrequency = 0          макс. перепад на шаге сетки     30.55 м   в точке N-441 E-3552
++    BeachShelfAltitude = 200 м (метка полки)   макс. перепад на шаге сетки     24.49 м   в точке N-441 E-3552
++    PlainMix = 0 (равнин нет)                  макс. перепад на шаге сетки     38.32 м   в точке N-441 E-3552
++    InteriorFloor = 0                          макс. перепад на шаге сетки     50.85 м   в точке N-441 E-3552
++    RidgedMix = 0                              макс. перепад на шаге сетки     18.09 м   в точке N-434 E-3551
++    TailKnee = 0                               макс. перепад на шаге сетки     30.55 м   в точке N-441 E-3552
++    OrogenyFrequency = 0                       макс. перепад на шаге сетки     50.85 м   в точке N-441 E-3552
++    OceanFloorDepth = 0 (старый океан)         макс. перепад на шаге сетки     11.53 м   в точке N3587 E4017
++    ContinentRidgeMix = 0                      макс. перепад на шаге сетки     22.11 м   в точке N4736 E2140
++    ContinentLatitudeBias = 0                  макс. перепад на шаге сетки      3.72 м   в точке N3392 E-3307
++    оба warp = 0                               макс. перепад на шаге сетки      0.00 м   в точке N0 E0
++    ContinentFrequency = 0                     макс. перепад на шаге сетки     15.12 м   в точке N-3257 E2739
++    бисект: разрыв 30.6 м на N-441.2 E-3551.6; профиль с шагом 0.02 м поперёк линии север-юг:
++      N  -441.986  h=   431.194 м
++      N  -441.826  h=   430.718 м
++      N  -441.666  h=   430.045 м
++      N  -441.506  h=   429.273 м
++      N  -441.346  h=   428.546 м
++      N  -441.186  h=   427.738 м
++      N  -441.026  h=   426.990 м
++      N  -440.866  h=   426.323 м
++      N  -440.706  h=   425.699 м
++      N  -440.546  h=   424.974 м
++      N  -440.386  h=   424.507 м
++    суммарная длина участков с перепадом >1 м на шаге 2 см: 0.000 м (конец N0.000)
++    без полки: макс. перепад 7.30 м на N5286 E-2487 (там же, где с полкой: нет)
++PASS T901 terrain-wall-bisect | бисект отработал
++[Test901_TerrainWallBisect] ok in 8856 ms
++    точек: 70169; высота в точке кадра: 26.386960 м
++    было/стало: точка кадра 26.386960 → 26.386960 м (Δ 0.000E+000)
++    |Δ| : макс 0.000 м, среднее 0.0000 м; точек >0.01 м: 0 (0.000 %), >1 м: 0, >10 м: 0, >50 м: 0, >200 м: 0
++    подъёмов рельефа правкой: нет (макс +0.0000 м) — полка теперь только опускает
++    окрестность кадра ±3 км: изменилось 0 точек из 40401 (0.00 %)
++    максимум Δ на lat 5.564962 lon 142.049758
++PASS T903 shelf-fix-ab | высота в точке кадра бит-в-бит прежняя
++PASS T903 shelf-fix-ab | правка нигде не подняла рельеф
++PASS T903 shelf-fix-ab | изменилось меньше 10 % точек
++[Test903_ShelfFixAb] ok in 584 ms
++    площадка 0: lat    5.715 lon  142.201 — макс. перепад на квад    29.16 м
++    площадка 1: lat   -6.196 lon  165.110 — макс. перепад на квад     0.00 м
++    площадка 2: lat  -52.550 lon  157.392 — макс. перепад на квад     0.39 м
++    площадка 3: lat  -64.579 lon  292.711 — макс. перепад на квад     0.00 м
++    площадка 4: lat   13.035 lon   12.923 — макс. перепад на квад     2.41 м
++    площадка 5: lat   19.717 lon  284.597 — макс. перепад на квад     0.00 м
++    площадка 6: lat  -50.272 lon   16.095 — макс. перепад на квад     0.00 м
++    худшее по 7 площадкам: 29.16 м (lat 5.691 lon 142.040), допуск 250 м
++PASS T904 no-sub-quad-steps | нет перепада больше 250 м между соседними вершинами листа
++[Test904_NoSubQuadSteps] ok in 2291 ms
 +ALL PASS
 diff --git a/baseline/player2/ref_final.txt b/baseline/player2/ref_final.txt
 new file mode 100644
