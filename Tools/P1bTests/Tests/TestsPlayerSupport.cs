@@ -608,4 +608,85 @@ internal static partial class P1bTests
                 worstX, worstZ, platform.CenterX, platform.CenterZ));
         return 0;
     }
+
+    static int Test318_FallNoTunneling()
+    {
+        // Тонкая плита на пути падения: подшаг 0.5 с (пролёт метры) не должен
+        // её проскочить — вертикаль дробится, посадка проверяется до сдвига.
+        var support = new BoxSupport();
+        support.Floors.Add(Box.Floor(-5d, 5d, -5d, 5d, 0d));
+        support.Floors.Add(Box.Floor(-50d, 50d, -50d, 50d, -50d));
+        var c = new PlayerSurfaceController { Position = new Vector3d(0d, 0d, 10d), Airborne = true };
+        int landedAt = -1;
+        for (int i = 0; i < 20 && landedAt < 0; i++)
+        {
+            c.Step(support, 0.5d, Vector3d.Zero);
+            if (!c.Airborne)
+            {
+                landedAt = i;
+            }
+        }
+
+        bool ok = landedAt >= 0 && Math.Abs(c.Position.Z) <= 1e-3d;
+        Check(ok, "T318 fall-tunneling",
+            string.Format(Inv, "падение 10 м подшагами 0.5 с: приземление на шаге {0}, z={1:F4} м (плита 0, не −50): {2}",
+                landedAt, c.Position.Z, ok));
+        return 0;
+    }
+
+    static int Test319_SteepSlopeWall()
+    {
+        // Крутой скат у стены: ветка скольжения обязана резать горизонталь
+        // свипом о стену, а не проходить сквозь неё.
+        var support = new BoxSupport();
+        Box steepFloor = Box.Floor(-10d, 10d, -10d, 10d, 0d);
+        double radians = 35d * (Math.PI / 180d);
+        steepFloor.Normal = new Vector3d(-Math.Sin(radians), 0d, Math.Cos(radians));
+        support.Floors.Add(steepFloor);
+        support.Blockers.Add(Box.Wall(1d, 2d, -2d, 2d, 0d, 2d));
+        var c = new PlayerSurfaceController { Position = new Vector3d(0d, 0d, 0d) };
+        for (int i = 0; i < 100; i++)
+        {
+            c.Step(support, 0.02d, new Vector3d(1d, 0d, 0d));
+        }
+
+        double limit = 1d - PlayerSurfaceController.CapsuleRadius;
+        bool ok = c.Position.X <= limit + 1e-3d && c.Position.X >= limit - 1e-2d;
+        Check(ok, "T319 steep-slope-wall",
+            string.Format(Inv, "скат 35° у стены x=1: позиция x={0:F4} (упор у {1:F2}): {2}",
+                c.Position.X, limit, ok));
+        return 0;
+    }
+
+    static int Test320_JumpNotCancelled()
+    {
+        // Прыжок не должен отменяться на первом же подшаге: посадка в воздухе
+        // проверяется только на спуске.
+        var support = new BoxSupport();
+        support.Floors.Add(Box.Floor(-10d, 10d, -10d, 10d, 0d));
+        var c = new PlayerSurfaceController
+        {
+            Position = new Vector3d(0d, 0d, 0d),
+            Airborne = true,
+            Velocity = new Vector3d(0d, 0d, 4.5d)
+        };
+        double maxZ = 0d;
+        int landedAt = -1;
+        for (int i = 0; i < 500 && landedAt < 0; i++)
+        {
+            c.Step(support, 0.01d, Vector3d.Zero);
+            maxZ = Math.Max(maxZ, c.Position.Z);
+            if (!c.Airborne)
+            {
+                landedAt = i;
+            }
+        }
+
+        double apex = 4.5d * 4.5d / (2d * 9.81d);
+        bool ok = landedAt >= 0 && maxZ >= 0.5d && maxZ <= apex + 1e-2d && Math.Abs(c.Position.Z) <= 1e-3d;
+        Check(ok, "T320 jump-not-cancelled",
+            string.Format(Inv, "прыжок 4.5 м/с: апогей {0:F3} м (теория {1:F3}), посадка z={2:F3} м (шаг {3}): {4}",
+                maxZ, apex, c.Position.Z, landedAt, ok));
+        return 0;
+    }
 }
