@@ -497,41 +497,18 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    dir -= up * Vector3.Dot(dir, up);
-                    float len = dir.magnitude;
-                    if (len < 0.3f)
+                    // Минимальный выход из пересечения (3D): для тонкой стены это
+                    // горизонталь (как раньше), для больших боксов (фундаменты) —
+                    // ближайшая грань, включая верх. Шаг ограничен 1 м за подшаг,
+                    // чтобы не телепортировать игрока через полкарты (легаси-ветка
+                    // «вбок к ближайшей боковой грани» на больших боксах давала
+                    // прыжок на десятки метров и цикл дёрганья у стены).
+                    float step = Mathf.Min(dist + 0.005f, 1f);
+                    if (step > 1e-4f)
                     {
-                        // Ближайший выход — пол или крыша: вертикаль толкать нельзя,
-                        // высоту ведёт рельеф. Но оставлять игрока ВНУТРИ стены тоже
-                        // нельзя, а именно это происходит, когда он уже внутри: там
-                        // ближайшая поверхность — дно ящика, вертикальный вектор
-                        // обнуляется, и без этого ветки игрок просто уходит насквозь.
-                        // Поэтому выталкиваем горизонтально, к ближайшей БОКОВОЙ
-                        // грани той же части. depthY > 0 обязателен: он отсекает
-                        // случай «стоит сверху платформы/пандуса», где по горизонтали
-                        // игрок внутри следа части, но вертикали он не касается.
-                        Vector3 side = part.LocalExtents;
-                        Vector3 scale = part.Source.lossyScale;
-                        scale = new Vector3(Mathf.Max(Mathf.Abs(scale.x), 0.0001f),
-                            Mathf.Max(Mathf.Abs(scale.y), 0.0001f), Mathf.Max(Mathf.Abs(scale.z), 0.0001f));
-                        Vector3 lp = part.Source.InverseTransformPoint(mid) - part.LocalCenter;
-                        float depthX = (side.x + (radius / scale.x)) - Mathf.Abs(lp.x);
-                        float depthZ = (side.z + (radius / scale.z)) - Mathf.Abs(lp.z);
-                        float depthY = (side.y + (radius / scale.y)) - Mathf.Abs(lp.y);
-                        if (depthX > 0f && depthZ > 0f && depthY > 0f)
-                        {
-                            Vector3 sideLocal = depthX < depthZ
-                                ? new Vector3(Mathf.Sign(lp.x) * depthX, 0f, 0f)
-                                : new Vector3(0f, 0f, Mathf.Sign(lp.z) * depthZ);
-                            pos += part.Source.TransformVector(sideLocal);
-                            moved = true;
-                        }
-
-                        continue;
+                        pos += dir.normalized * step;
+                        moved = true;
                     }
-
-                    pos += (dir / len) * ((dist / len) + 0.005f);
-                    moved = true;
                 }
 
                 if (!moved)
