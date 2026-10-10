@@ -13,8 +13,8 @@ namespace Galilego.Universe.EditorTools
     /// </summary>
     public static class PlayerWalkSliceTool
     {
-        private const string ScenePath = "Assets/PlayerWalkSlice.unity";
-        private const string RoofScenePath = "Assets/PlayerRoofSlice.unity";
+        private const string ScenePath = "Assets/_Project/Scenes/PlayerWalkSlice.unity";
+        private const string RoofScenePath = "Assets/_Project/Scenes/PlayerRoofSlice.unity";
         private const string SitePrefabPath = "Assets/_Project/Sites/Место 1Site 1.prefab";
 
         [MenuItem("Galilego/Test Vessel/Build Player Walk Slice Scene")]

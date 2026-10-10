@@ -23,7 +23,7 @@ namespace Galilego.Universe.EditorTools
     /// </summary>
     public static class SurfaceCaptureTool
     {
-        private const string OutDir = "Assets/Screenshots/dampmodes";
+        private const string OutDir = "Assets/_Project/Screenshots/dampmodes";
         private const string LogPath = "Logs/surface-capture.log";
         private const double QueueTimeoutSeconds = 60d;
 

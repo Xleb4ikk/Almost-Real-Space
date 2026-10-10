@@ -15,7 +15,7 @@ namespace Galilego.Universe.EditorTools
     /// </summary>
     public static class ContactZoneSliceTool
     {
-        private const string ScenePath = "Assets/ContactZoneSlice.unity";
+        private const string ScenePath = "Assets/_Project/Scenes/ContactZoneSlice.unity";
 
         [MenuItem("Galilego/Test Vessel/Build Contact Zone Slice Scene")]
         public static void BuildMenu()

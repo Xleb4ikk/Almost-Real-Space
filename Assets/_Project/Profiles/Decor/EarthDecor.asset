@@ -39,7 +39,7 @@ MonoBehaviour:
       WetMin: 0
       WetMax: 1
       IgnoreLatitude: 0
-      SoftExclusion: 1
+      SoftExclusion: 0
       WetFade: 0.12
       MinScale: 0.6329113752141712
       MaxScale: 1.3164556121581703
@@ -102,7 +102,7 @@ MonoBehaviour:
       WetMin: 0.3
       WetMax: 1
       IgnoreLatitude: 0
-      SoftExclusion: 1
+      SoftExclusion: 0
       WetFade: 0.25
       MinScale: 0.8
       MaxScale: 1.2
