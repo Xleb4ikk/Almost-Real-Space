@@ -103,6 +103,13 @@ namespace Galilego.Universe
             return mouse != null ? mouse.scroll.ReadValue().y * 0.01f : 0f;
         }
 
+        /// <summary>Зажат любой Alt (удаление по прицелу в режиме строительства).</summary>
+        public static bool AltHeld()
+        {
+            Keyboard keyboard = Keyboard.current;
+            return keyboard != null && (keyboard.leftAltKey.isPressed || keyboard.rightAltKey.isPressed);
+        }
+
         private static Key ToKey(GameKey key)
         {
             switch (key)
@@ -147,6 +154,9 @@ namespace Galilego.Universe
         public static bool MouseRightHeld() => Input.GetMouseButton(1);
 
         public static float MouseScroll() => Input.mouseScrollDelta.y;
+
+        /// <summary>Зажат любой Alt (удаление по прицелу в режиме строительства).</summary>
+        public static bool AltHeld() => Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
 
         private static KeyCode ToKeyCode(GameKey key)
         {

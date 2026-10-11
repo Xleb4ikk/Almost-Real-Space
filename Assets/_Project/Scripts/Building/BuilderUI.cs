@@ -280,8 +280,8 @@ namespace Galilego.Building
 
         private void DrawHints(float width, float height)
         {
-            GUI.Label(new Rect(12f, height - 122f, 620f, 22f),
-                "E — инвентарь    ЛКМ (в окне) — перетащить в панель    ПКМ — поставить    Ctrl+Z — убрать последнюю", CheatGuiSkin.Label);
+            GUI.Label(new Rect(12f, height - 122f, 700f, 22f),
+                "E — инвентарь   ЛКМ (в окне) — перетащить   ПКМ — поставить   Alt+ПКМ — удалить по прицелу   Ctrl+Z — убрать последнюю", CheatGuiSkin.Label);
 
             PartKind? kind = hotbarIndex >= 0 ? hotbar[hotbarIndex] : null;
             if (kind.HasValue)
