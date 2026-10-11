@@ -1560,6 +1560,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1558714145}
   - component: {fileID: 1558714144}
+  - component: {fileID: 1558714146}
   m_Layer: 0
   m_Name: Building
   m_TagString: Untagged
@@ -1591,6 +1592,12 @@ MonoBehaviour:
   TankRadius: 1.5
   TankHeight: 6
   SeparatorRadius: 1.5
+  DebugUpdateCount: 0
+  DebugLastPinLocal: {x: 0, y: 0, z: 0}
+  DebugLastPinAstro:
+    X: 0
+    Y: 0
+    Z: 0
 --- !u!4 &1558714145
 Transform:
   m_ObjectHideFlags: 0
@@ -1606,6 +1613,21 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1558714146
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1558714143}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 936673dec75988d47aa5fb15c714ae6d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Building.BuilderUI
+  Builder: {fileID: 1558714144}
+  Camera: {fileID: 1823688469}
+  Controller: {fileID: 1250304430}
 --- !u!1 &1644257541
 GameObject:
   m_ObjectHideFlags: 0

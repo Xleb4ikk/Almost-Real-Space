@@ -745,16 +745,18 @@ namespace Galilego.Building
                 basePoint.x, tankPivot.y + tankMetrics.Height - separatorMetrics.Bottom, basePoint.z);
             AddPart(PartKind.Separator, separatorMetrics, separatorPivot, 1, true);
 
-            HasSelection = true;
-            SelectedKind = PartKind.FuelTank;
             Debug.Log("[Build] отладочный стек: двигатель + бак + отделитель");
         }
 
         // ─── Материалы ───────────────────────────────────────────────────────
 
         /// <summary>
-        /// Полупрозрачный одноцветный материал для призрака (HDRP/Lit transparent;
-        /// эмиссия — чтобы «полностью синий» читался и в тени).
+        /// Материал призрака: ПЛОТНЫЙ одноцветный с подсветкой. Полупрозрачный
+        /// HDRP-материал в рантайме в этом проекте не отдаёт цвет (ни через
+        /// свойства, ни через HDMaterial.SetSurfaceType — при видимой тени
+        /// объект не рисуется), поэтому призрак — плотная «проекция»: силуэт
+        /// детали читается и по нему видно место постановки. Вернуть
+        /// полупрозрачность — отдельной задачей с материалом-эталоном.
         /// </summary>
         private static Material CreateOverlayMaterial(Color color, string name)
         {
@@ -771,20 +773,8 @@ namespace Galilego.Building
             }
 
             var material = new Material(shader) { name = name };
-            material.SetFloat("_SurfaceType", 1f);
-            material.SetFloat("_BlendMode", 0f);
-            material.SetFloat("_ZWrite", 0f);
-            material.SetFloat("_AlphaCutoffEnable", 0f);
-            material.SetFloat("_SrcBlend", 1f);
-            material.SetFloat("_DstBlend", 10f);
-            material.SetFloat("_DoubleSidedEnable", 1f);
-            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            material.EnableKeyword("_BLENDMODE_ALPHA");
-            material.EnableKeyword("_DOUBLESIDED_ON");
-            material.DisableKeyword("_ALPHATEST_ON");
-            material.SetColor("_BaseColor", color);
-            material.SetColor("_EmissiveColor", new Color(color.r * 1.5f, color.g * 1.5f, color.b * 1.5f));
-            material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            material.SetColor("_BaseColor", new Color(color.r, color.g, color.b, 1f));
+            material.SetColor("_EmissiveColor", new Color(color.r * 0.45f, color.g * 0.45f, color.b * 0.55f));
             return material;
         }
     }

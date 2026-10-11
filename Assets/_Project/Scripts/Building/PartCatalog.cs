@@ -199,8 +199,10 @@ namespace Galilego.Building
                 default:
                 {
                     GameObject model = UnityEngine.Object.Instantiate(engine.Prefab, root.transform);
+                    // Поворот модели НЕ трогаем: у корня FBX стоит разворот на 270°
+                    // по X (данные меша в осях Blender) — обнуление укладывало
+                    // двигатель на бок.
                     model.transform.localPosition = engine.ModelOffset;
-                    model.transform.localRotation = Quaternion.identity;
                     break;
                 }
             }
