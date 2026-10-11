@@ -242,7 +242,7 @@ namespace Galilego.Building
                 float dx = pivot.x - p.Pivot.x;
                 float dz = pivot.z - p.Pivot.z;
                 float lateral = (dx * dx) + (dz * dz);
-                float reach = Mathf.Max(0.05f, Mathf.Min(ghost.Radius, p.Metrics.Radius) * 0.6f);
+                float reach = Mathf.Max(0.05f, Mathf.Min(ghost.Radius, p.Metrics.Radius) * 0.85f);
                 if (lateral > reach * reach)
                 {
                     continue;
@@ -252,7 +252,7 @@ namespace Galilego.Building
                 {
                     float node = p.Pivot.y + p.Metrics.Top;
                     float gap = ghostBottom - node;
-                    if (gap >= -0.2f && gap <= 1.0f && Mathf.Abs(gap) < Mathf.Abs(bestGap))
+                    if (gap >= -0.25f && gap <= 1.5f && Mathf.Abs(gap) < Mathf.Abs(bestGap))
                     {
                         bestGap = gap;
                         hit = new SnapHit(i, true, new Vector3(p.Pivot.x, node - ghost.Bottom, p.Pivot.z));
@@ -264,7 +264,7 @@ namespace Galilego.Building
                 {
                     float node = p.Pivot.y + p.Metrics.Bottom;
                     float gap = node - ghostTop;
-                    if (gap >= -0.2f && gap <= 1.0f && Mathf.Abs(gap) < Mathf.Abs(bestGap))
+                    if (gap >= -0.25f && gap <= 1.5f && Mathf.Abs(gap) < Mathf.Abs(bestGap))
                     {
                         bestGap = gap;
                         hit = new SnapHit(i, false, new Vector3(p.Pivot.x, node - ghost.Top, p.Pivot.z));
