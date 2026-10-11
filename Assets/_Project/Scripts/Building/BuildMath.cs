@@ -220,6 +220,62 @@ namespace Galilego.Building
             return true;
         }
 
+        /// <summary>
+        /// Второй проход снапа: призрак уже стоит в свободной точке (парит над
+        /// стеком или рядом) — если его низ прошёл ровно над свободным ВЕРХОМ
+        /// детали (или верх под её низом) и центры почти совпадают по XZ,
+        /// прилипаем край-к-краю. Это гарантия «не нужно ловить миллиметры»:
+        /// бак, поставленный с зазором над двигателем, всё равно сядет на него.
+        /// </summary>
+        public static bool TryFindProximitySnap(
+            IReadOnlyList<PlacedPart> parts, PartMetrics ghost, Vector3 pivot, out SnapHit hit)
+        {
+            hit = default;
+            bool found = false;
+            float bestGap = float.MaxValue;
+            float ghostBottom = pivot.y + ghost.Bottom;
+            float ghostTop = pivot.y + ghost.Top;
+
+            for (int i = 0; i < parts.Count; i++)
+            {
+                PlacedPart p = parts[i];
+                float dx = pivot.x - p.Pivot.x;
+                float dz = pivot.z - p.Pivot.z;
+                float lateral = (dx * dx) + (dz * dz);
+                float reach = Mathf.Max(0.05f, Mathf.Min(ghost.Radius, p.Metrics.Radius) * 0.6f);
+                if (lateral > reach * reach)
+                {
+                    continue;
+                }
+
+                if (!p.TopOccupied)
+                {
+                    float node = p.Pivot.y + p.Metrics.Top;
+                    float gap = ghostBottom - node;
+                    if (gap >= -0.2f && gap <= 1.0f && Mathf.Abs(gap) < Mathf.Abs(bestGap))
+                    {
+                        bestGap = gap;
+                        hit = new SnapHit(i, true, new Vector3(p.Pivot.x, node - ghost.Bottom, p.Pivot.z));
+                        found = true;
+                    }
+                }
+
+                if (!p.BottomOccupied)
+                {
+                    float node = p.Pivot.y + p.Metrics.Bottom;
+                    float gap = node - ghostTop;
+                    if (gap >= -0.2f && gap <= 1.0f && Mathf.Abs(gap) < Mathf.Abs(bestGap))
+                    {
+                        bestGap = gap;
+                        hit = new SnapHit(i, false, new Vector3(p.Pivot.x, node - ghost.Top, p.Pivot.z));
+                        found = true;
+                    }
+                }
+            }
+
+            return found;
+        }
+
         // ─── Попадание луча в деталь (удаление по прицелу) ──────────────────
 
         /// <summary>

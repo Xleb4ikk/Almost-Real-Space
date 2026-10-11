@@ -36,12 +36,15 @@ namespace Galilego.Building
         private const double EngineMassKg = 3500d;
 
         // Прочности стыков, Н: запас на переходные усилия PhysX (первый шаг
-        // стыка держит вес мгновенно — пик в десятки раз выше веса; с 2 МН
-        // стык бака 42 т рвался сразу, «ракета» разлеталась). Отделитель
-        // остаётся самым слабым — он и должен рваться первым (ступени позже).
-        private const double EngineJointNewtons = 3.5e7d;
-        private const double TankJointNewtons = 3.0e7d;
-        private const double SeparatorJointNewtons = 5.0e6d;
+        // стыка держит вес мгновенно — пик в десятки раз выше веса) и на удар
+        // при падении: 42-тонный бак при посадочном ударе даёт импульс
+        // m·v/dt ~ десятки МН за шаг солвера, поэтому пределы высокие —
+        // «ракета» не должна разваливаться от обычного падения с нескольких
+        // метров. Отделитель слабее прочих (он и должен рваться первым —
+        // ступени позже), но тоже переживает падение.
+        private const double EngineJointNewtons = 1.5e8d;
+        private const double TankJointNewtons = 1.5e8d;
+        private const double SeparatorJointNewtons = 3.0e7d;
 
         /// <summary>Какой это вид детали (для UI/иконок/подсказок).</summary>
         public static string DisplayName(PartKind kind)
