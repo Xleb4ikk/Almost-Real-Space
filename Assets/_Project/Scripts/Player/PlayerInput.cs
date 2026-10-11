@@ -9,7 +9,8 @@ namespace Galilego.Universe
     internal enum GameKey
     {
         W, A, S, D, Space, LeftShift, LeftControl, E, P, Escape,
-        Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7
+        Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7,
+        Digit8, Digit9, R, Z, C
     }
 
     /// <summary>
@@ -77,6 +78,31 @@ namespace Galilego.Universe
             return mouse != null && mouse.leftButton.wasPressedThisFrame;
         }
 
+        public static bool MouseLeftHeld()
+        {
+            Mouse mouse = Mouse.current;
+            return mouse != null && mouse.leftButton.isPressed;
+        }
+
+        public static bool MouseRightDown()
+        {
+            Mouse mouse = Mouse.current;
+            return mouse != null && mouse.rightButton.wasPressedThisFrame;
+        }
+
+        public static bool MouseRightHeld()
+        {
+            Mouse mouse = Mouse.current;
+            return mouse != null && mouse.rightButton.isPressed;
+        }
+
+        /// <summary>Прокрутка колеса за кадр (положительное — от себя).</summary>
+        public static float MouseScroll()
+        {
+            Mouse mouse = Mouse.current;
+            return mouse != null ? mouse.scroll.ReadValue().y * 0.01f : 0f;
+        }
+
         private static Key ToKey(GameKey key)
         {
             switch (key)
@@ -97,7 +123,12 @@ namespace Galilego.Universe
                 case GameKey.Digit4: return Key.Digit4;
                 case GameKey.Digit5: return Key.Digit5;
                 case GameKey.Digit6: return Key.Digit6;
-                default: return Key.Digit7;
+                case GameKey.Digit7: return Key.Digit7;
+                case GameKey.Digit8: return Key.Digit8;
+                case GameKey.Digit9: return Key.Digit9;
+                case GameKey.R: return Key.R;
+                case GameKey.Z: return Key.Z;
+                default: return Key.C;
             }
         }
 #else
@@ -108,6 +139,14 @@ namespace Galilego.Universe
         public static Vector2 MouseDelta() => new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
 
         public static bool MouseLeftDown() => Input.GetMouseButtonDown(0);
+
+        public static bool MouseLeftHeld() => Input.GetMouseButton(0);
+
+        public static bool MouseRightDown() => Input.GetMouseButtonDown(1);
+
+        public static bool MouseRightHeld() => Input.GetMouseButton(1);
+
+        public static float MouseScroll() => Input.mouseScrollDelta.y;
 
         private static KeyCode ToKeyCode(GameKey key)
         {
@@ -129,7 +168,12 @@ namespace Galilego.Universe
                 case GameKey.Digit4: return KeyCode.Alpha4;
                 case GameKey.Digit5: return KeyCode.Alpha5;
                 case GameKey.Digit6: return KeyCode.Alpha6;
-                default: return KeyCode.Alpha7;
+                case GameKey.Digit7: return KeyCode.Alpha7;
+                case GameKey.Digit8: return KeyCode.Alpha8;
+                case GameKey.Digit9: return KeyCode.Alpha9;
+                case GameKey.R: return KeyCode.R;
+                case GameKey.Z: return KeyCode.Z;
+                default: return KeyCode.C;
             }
         }
 #endif

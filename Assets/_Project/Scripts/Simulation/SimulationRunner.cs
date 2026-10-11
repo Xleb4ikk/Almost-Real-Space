@@ -519,13 +519,40 @@ namespace Galilego.Universe
                 return;
             }
 
+            // Режим строительства: аппарат статичен (позицию держит режим стройки,
+            // порядок исполнения -110 — до этого Update), шаг корабля не считаем.
+            // Время мира идёт (планета движется, место едет за ней — пиннинг
+            // аппарата это учитывает), игрок живёт обычной жизнью: ходьба, вода,
+            // якорь рендера.
+            if (BuildMode)
+            {
+                double buildFrameStart = TimeSeconds;
+                step.AdvanceTime(realDt);
+                StepPlayer(buildFrameStart);
+                // Пины и передачу аппарата в физику делает режим строительства —
+                // ИМЕННО ЗДЕСЬ и ИМЕННО на этом времени: если считать раньше
+                // (до AdvanceTime), аппарат отстаёт от плиты на скорость
+                // поверхности × dt (планета вращается быстро).
+                BuildModeFrameHook?.Invoke(TimeSeconds);
+                step.DominantBody = SystemState.FindDominantBody(Ship.Position, TimeSeconds);
+                FloatingOrigin.Anchor = PlayerPosition;
+                LogSurfacePosition();
+                return;
+            }
+
             // Зона контакта ведёт корабль сама (вертикальный срез): шаг физики не считаем,
             // но время мира идёт по реальному dt — TimeSeconds растёт, планета движется
-            // (VesselStep.AdvanceTime, без орбитальной логики). Обломки и трассировка
+            // (VesselStep.AdvanceTime, без орбитальной логики). Игрок тоже шагается:
+            // он ходит рядом с аппаратом по площадке. Обломки и трассировка
             // внутри зоны не обновляются — отложено до фазы 7. Вне зоны — как раньше.
             if (ContactZoneHost.Active)
             {
+                double zoneFrameStart = TimeSeconds;
                 step.AdvanceTime(realDt);
+                StepPlayer(zoneFrameStart);
+                step.DominantBody = SystemState.FindDominantBody(Ship.Position, TimeSeconds);
+                FloatingOrigin.Anchor = PlayerPosition;
+                LogSurfacePosition();
                 return;
             }
 
@@ -554,6 +581,59 @@ namespace Galilego.Universe
             FloatingOrigin.Anchor = PlayerPosition;
 
             LogSurfacePosition();
+        }
+
+        /// <summary>
+        /// Режим строительства: аппарат статичен, физика корабля не шагается.
+        /// Ставит SpacecraftBuilder на входе в стройку и снимает на запуске полёта.
+        /// </summary>
+        public bool BuildMode { get; set; }
+
+        /// <summary>
+        /// Хук режима строительства: вызывается каждый кадр ПОСЛЕ шага времени и
+        /// игрока, на актуальном времени кадра. Внутри — пиннинг аппарата к плите
+        /// и передача его в физику (ставит SpacecraftBuilder). Вызов с главного
+        /// потока, из Update раннера.
+        /// </summary>
+        public System.Action<double> BuildModeFrameHook;
+
+        /// <summary>
+        /// Поставить сборку корабля снаружи: и публичное поле Parts (его читает
+        /// зона контакта), и копию в шаге (разрушение/посадка). Режим
+        /// строительства зовёт при передаче аппарата в физику.
+        /// </summary>
+        public void SetVesselParts(PartDefinition[] parts)
+        {
+            Parts = parts;
+            step.Parts = parts;
+        }
+
+        /// <summary>
+        /// Поставить состояние корабля снаружи (режим строительства: передача
+        /// аппарата в физику и откат к стройке). Сбрасывает аккумулятор времени,
+        /// как телепорт: накопленная компенсация к новой точке не относится.
+        /// </summary>
+        public void SetShipState(Vector3d position, Vector3d velocity, VesselRegime regime)
+        {
+            Ship.Position = position;
+            Ship.Velocity = velocity;
+            step.Regime = regime;
+            step.ResetTimeAccumulator();
+            FloatingOrigin.Anchor = PlayerPosition;
+        }
+
+        /// <summary>
+        /// Поставить игрока пешком на поверхность (режим строительства: перенос
+        /// спавна на стартовую площадку). Скорость — скорость поверхности.
+        /// </summary>
+        public void SetPlayerOnSurface(Vector3d position, Vector3d velocity)
+        {
+            PlayerPosition = position;
+            PlayerVelocity = velocity;
+            PlayerMode = PlayerMode.OnSurface;
+            playerAirborne = false;
+            JetpackActive = false;
+            FloatingOrigin.Anchor = PlayerPosition;
         }
 
         // ─── Игрок ───────────────────────────────────────────────────────────

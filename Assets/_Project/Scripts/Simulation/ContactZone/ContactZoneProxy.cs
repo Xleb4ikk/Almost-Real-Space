@@ -194,11 +194,17 @@ namespace Galilego.Simulation.ContactZone
 
         public void SetFrameGravity(Vector3d localGravity)
         {
-            // Гравитация кадра в осях Unity: (север, вверх, восток).
-            Physics.gravity = ToUnity(localGravity);
+            // Гравитация кадра в осях Unity: (север, вверх, восток), затем —
+            // в МИР через поворот корня зоны: Physics.gravity мировая, а корень
+            // повёрнут осями места (в тестовой сцене он стоял без поворота,
+            // поэтому ошибка не проявлялась до подключения зоны в главной сцене).
+            Physics.gravity = transform.rotation * ToUnity(localGravity);
         }
 
         // Центр масс и его скорость по текущим телам (координаты места).
+        // ВАЖНО: worldCenterOfMass и linearVelocity — МИРОВЫЕ; переводим в оси
+        // корня зоны (поворот корня произвольный — в тестовой сцене он был
+        // единичным, и прямое чтение «как локальных» тихо работало).
         public void GetCenterOfMassState(SiteFrame frame, double t, out Vector3d position, out Vector3d velocity)
         {
             if (bodies.Count == 0)
@@ -219,8 +225,8 @@ namespace Galilego.Simulation.ContactZone
                 }
 
                 float mi = bodies[i].mass;
-                c += bodies[i].worldCenterOfMass * mi;
-                v += bodies[i].linearVelocity * mi;
+                c += transform.InverseTransformPoint(bodies[i].worldCenterOfMass) * mi;
+                v += transform.InverseTransformDirection(bodies[i].linearVelocity) * mi;
                 m += mi;
             }
 
