@@ -287,11 +287,13 @@ namespace Galilego.Building
         /// <summary>
         /// Зеркалирование визуала на тела зоны контакта: в полёте позы деталей
         /// берём прямо у PhysX-тел прокси (позиция+поворот — видно падение и
-        /// опрокидывание). Вызов — после ContactZoneHost (-50).
+        /// опрокидывание). Вызывается VesselMirror'ом в самом конце кадра
+        /// (порядок 900) — ПОСЛЕ того, как зона подвинула корень кадра; иначе
+        /// визуал отстаёт от тел на сдвиг якоря и «кидает туда-сюда».
         /// </summary>
-        private void LateUpdate()
+        public void MirrorVisualsToBodies()
         {
-            if (Runner == null || PhysicsOn == false || ZoneHost == null || !ContactZoneHost.Active)
+            if (Runner == null || !PhysicsOn || ZoneHost == null || !ContactZoneHost.Active)
             {
                 return;
             }
@@ -300,7 +302,7 @@ namespace Galilego.Building
             for (int i = 0; i < parts.Count; i++)
             {
                 PlacedPart part = parts[i];
-                if (part.Visual.Root == null)
+                if (part.Visual == null || part.Visual.Root == null)
                 {
                     continue;
                 }
