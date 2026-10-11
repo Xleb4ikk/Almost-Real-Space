@@ -47,6 +47,18 @@ namespace Galilego.Simulation.Player
         /// <summary>Свободное падение (нет опоры под ногами).</summary>
         public bool Airborne;
 
+        /// <summary>
+        /// Висение в воздухе: гравитации нет, скорость едет к HoverVelocity
+        /// (ноль — замирание). Ставит SimulationRunner при hover-режиме.
+        /// </summary>
+        public bool Hovering;
+
+        /// <summary>Желаемая скорость висения в локальном кадре (м/с).</summary>
+        public Vector3d HoverVelocity;
+
+        /// <summary>Отклик скорости в висении (1/с).</summary>
+        public double HoverResponse = 6d;
+
         /// <summary>Вход в подшаге заблокирован (стена/потолок): позиция не изменилась.</summary>
         public bool Blocked;
 
@@ -284,7 +296,18 @@ namespace Galilego.Simulation.Player
 
         private void StepAirborne(IPlayerSupport support, double dt)
         {
-            Velocity = new Vector3d(Velocity.X, Velocity.Y, Velocity.Z - (Gravity * dt));
+            if (Hovering)
+            {
+                // Висение: гравитации нет, скорость едет к желаемой (ввод);
+                // без ввода — к нулю: игрок замирает в воздухе.
+                double blend = Math.Min(1d, dt * HoverResponse);
+                Velocity += (HoverVelocity - Velocity) * blend;
+            }
+            else
+            {
+                Velocity = new Vector3d(Velocity.X, Velocity.Y, Velocity.Z - (Gravity * dt));
+            }
+
             Vector3d step = Velocity * dt;
 
             // Горизонталь — свипом вдоль стен (как было).
