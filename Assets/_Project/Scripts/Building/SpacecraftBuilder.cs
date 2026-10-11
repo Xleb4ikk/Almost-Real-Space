@@ -593,6 +593,9 @@ namespace Galilego.Building
 
         // ─── Детали ──────────────────────────────────────────────────────────
 
+        /// <summary>Шаблон двигателя (префаб и габариты) — для 3D-превью в интерфейсе.</summary>
+        public PartCatalog.EngineTemplate Engine => engine;
+
         /// <summary>Метрики выбранного вида детали под текущие размеры игрока.</summary>
         public PartMetrics MetricsFor(PartKind kind)
         {

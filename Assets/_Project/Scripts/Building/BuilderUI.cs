@@ -1,23 +1,23 @@
-using Galilego.Universe;
+﻿using Galilego.Universe;
 using UnityEngine;
 
 namespace Galilego.Building
 {
     /// <summary>
-    /// ИНТЕРФЕЙС СТРОИТЕЛЬСТВА (IMGUI поверх BuilderSkin).
+    /// ИНТЕРФЕЙС СТРОИТЕЛЬСТВА (IMGUI поверх BuilderSkin, светлая серая тема).
     ///
-    /// Хотбар: 9 слотов снизу по центру на тёмной подложке. Предметы
+    /// Хотбар: 9 слотов снизу по центру на светлой подложке. Предметы
     /// перетаскиваются сюда из инвентаря (ЛКМ, с порогом сдвига — простой клик
     /// только выбирает деталь). Двойной клик по карточке — в свободный слот,
     /// ПКМ по слоту — очистить. Выбор слота — колесо или цифры 1..9; выбранный
     /// слот приподнят, обведён ярким квадратом со свечением, над панелью —
     /// плашка с названием и размерами.
     ///
-    /// Инвентарь (E, только в стройке): одно окно — слева характеристики
-    /// выбранной детали и редакторы размеров, справа сетка карточек
-    /// (рисунок + название). Размеры меняются кнопками-стрелками: большие
+    /// Инвентарь (E, только в стройке): окно ~70% экрана — слева 3D-превью
+    /// выбранной детали (крутится, размеры учитываются) и характеристики,
+    /// справа сетка карточек. Размеры меняются кнопками-стрелками: большие
     /// «двойные» — на 1 м, одиночные — на 0.1 м (удержание повторяет шаг).
-    /// Размеры сразу меняют призрак и записываются в поставленную деталь.
+    /// Размеры сразу меняют призрак и поставленную деталь, а также превью.
     ///
     /// Пока окно открыто, курсор отпускается и ввод игроку блокируется
     /// (PlayerController.InputBlocked) — как в чит-меню. Масштаб под DPI/4K:
@@ -44,16 +44,17 @@ namespace Galilego.Building
         private const float SlotSize = 58f;
         private const float SlotGap = 8f;
         private const float PlatePad = 10f;
-        private const float WinW = 900f;
-        private const float WinH = 520f;
-        private const float StatsW = 330f;
         private const float DragThreshold = 5f;
+
+        /// <summary>Окно инвентаря занимает ~70% экрана (по ширине и высоте).</summary>
+        private const float WindowFraction = 0.70f;
 
         // Шаги кнопок-стрелок, м.
         private const float StepBig = 1f;
         private const float StepSmall = 0.1f;
 
         private readonly PartKind?[] hotbar = new PartKind?[9];
+        private readonly BuilderPreview preview = new BuilderPreview();
         private int hotbarIndex = -1;
         private bool open;
         private float openAnim;
@@ -72,6 +73,9 @@ namespace Galilego.Building
         private float uiHeight = 1080f;
         private float uiAlpha = 1f;
 
+        /// <summary>Панель подсказок по клавишам скрыта (H или крестик на панели).</summary>
+        private static bool hintsHidden;
+
         private void Start()
         {
             // Стартовая палитра в панели: строить можно сразу, но перетаскивание
@@ -81,6 +85,14 @@ namespace Galilego.Building
             hotbar[2] = PartKind.Separator;
             hotbarIndex = 0;
             ApplySelection();
+
+            // Иконки деталей — 3D-рендеры под углом (тот же студийный свет, что
+            // у превью): без этого в слотах и карточках были плоские проекции.
+            if (Builder != null)
+            {
+                preview.PrepareIcons(Builder.Engine, Builder.TankSideMaterial,
+                    Builder.TankCapMaterial, Builder.SeparatorMaterial);
+            }
         }
 
         private void Update()
@@ -109,10 +121,17 @@ namespace Galilego.Building
             }
 
             openAnim = Mathf.MoveTowards(openAnim, open ? 1f : 0f, Time.unscaledDeltaTime * 9f);
+            TickPreview();
 
             if (PlayerInput.Down(GameKey.E))
             {
                 SetOpen(!open);
+            }
+
+            // H — скрыть/вернуть подсказки по клавишам (панель слева внизу).
+            if (PlayerInput.Down(GameKey.H))
+            {
+                hintsHidden = !hintsHidden;
             }
 
             // Колесо/цифры работают и при открытом окне (удобно наводить порядок).
@@ -196,10 +215,42 @@ namespace Galilego.Building
 
         private void OnDisable()
         {
+            preview.Release();
             if (open)
             {
                 SetOpen(false);
             }
+        }
+
+        private void OnDestroy()
+        {
+            preview.Release();
+        }
+
+        // ─── 3D-предпросмотр ─────────────────────────────────────────────────
+
+        /// <summary>
+        /// Раз в кадр: показать в превью выбранную деталь с текущими размерами.
+        /// Визуал пересобирается при смене детали или размера, камера кадрирует
+        /// по габаритам, кадр рендерится не чаще 30 Гц (внутри Ensure).
+        /// </summary>
+        private void TickPreview()
+        {
+            if (openAnim <= 0.001f || Builder == null)
+            {
+                return;
+            }
+
+            int index = statsIndex;
+            if (index < 0 || index >= Catalog.Length)
+            {
+                PartKind? current = hotbarIndex >= 0 ? hotbar[hotbarIndex] : null;
+                index = current.HasValue ? System.Array.IndexOf(Catalog, current.Value) : 0;
+            }
+
+            PartKind kind = Catalog[index];
+            preview.Ensure(kind, Builder.MetricsFor(kind), Builder.Engine,
+                Builder.TankSideMaterial, Builder.TankCapMaterial, Builder.SeparatorMaterial);
         }
 
         // ─── Отрисовка ───────────────────────────────────────────────────────
@@ -283,8 +334,8 @@ namespace Galilego.Building
             Event current = Event.current;
             Vector2 mouse = current.mousePosition;
 
-            SetColor(new Color(0f, 0f, 0f, 0.45f));
-            GUI.Box(Expand(plate, 20f), GUIContent.none, BuilderSkin.Glow);
+            SetColor(BuilderSkin.Shadow);
+            GUI.Box(Expand(plate, 22f), GUIContent.none, BuilderSkin.Glow);
             SetColor(Color.white);
             GUI.Box(plate, GUIContent.none, BuilderSkin.Plate);
 
@@ -301,7 +352,7 @@ namespace Galilego.Building
                 if (selected)
                 {
                     rect.y -= 5f;                    // выбранный слот приподнят
-                    SetColor(new Color(0.45f, 0.80f, 1f, 0.55f));
+                    SetColor(new Color(0.30f, 0.55f, 0.85f, 0.55f));
                     GUI.Box(Expand(rect, 20f), GUIContent.none, BuilderSkin.Glow);
                     SetColor(Color.white);
                 }
@@ -366,17 +417,20 @@ namespace Galilego.Building
             string dims = string.Empty;
             if (kind.Value == PartKind.FuelTank)
             {
-                dims = "   <color=#8AA0BC>L " + m.Height.ToString("F1") + " м  ·  R " + m.Radius.ToString("F2") + " м</color>";
+                dims = "   <color=#9AA0A8>L " + m.Height.ToString("F1") + " м  ·  R " + m.Radius.ToString("F2") + " м</color>";
             }
             else if (kind.Value == PartKind.Separator)
             {
-                dims = "   <color=#8AA0BC>R " + m.Radius.ToString("F2") + " м</color>";
+                dims = "   <color=#9AA0A8>R " + m.Radius.ToString("F2") + " м</color>";
             }
 
             string text = "<b>" + PartCatalog.DisplayName(kind.Value) + "</b>" + dims;
             Vector2 size = BuilderSkin.PillText.CalcSize(new GUIContent(text));
             float w = size.x + 32f;
             var rect = new Rect(plate.center.x - (w * 0.5f), plate.y - 42f, w, 30f);
+            SetColor(BuilderSkin.Shadow);
+            GUI.Box(Expand(rect, 10f), GUIContent.none, BuilderSkin.Glow);
+            SetColor(Color.white);
             GUI.Box(rect, GUIContent.none, BuilderSkin.Pill);
             GUI.Label(rect, text, BuilderSkin.PillText);
         }
@@ -385,6 +439,12 @@ namespace Galilego.Building
 
         private void DrawHints()
         {
+            if (hintsHidden)
+            {
+                DrawHintsRestore();
+                return;
+            }
+
             string[][] keys =
             {
                 new[] { "E" },
@@ -392,7 +452,8 @@ namespace Galilego.Building
                 new[] { "Alt", "ПКМ" },
                 new[] { "Ctrl", "Z" },
                 new[] { "Колесо" },
-                new[] { "R" }
+                new[] { "R" },
+                new[] { "H" }
             };
             string[] labels =
             {
@@ -401,16 +462,27 @@ namespace Galilego.Building
                 "Удалить по прицелу",
                 "Убрать последнюю",
                 "Выбор слота",
-                "Физика (удерж. 1 с)"
+                "Физика (удерж. 1 с)",
+                "Скрыть подсказки"
             };
 
             const float rowH = 26f;
             const float col = 92f;
             float h = (rowH * labels.Length) + 20f;
             var panel = new Rect(16f, uiHeight - h - 16f, 268f, h);
-            SetColor(new Color(1f, 1f, 1f, 0.92f));
+            SetColor(BuilderSkin.Shadow);
+            GUI.Box(Expand(panel, 14f), GUIContent.none, BuilderSkin.Glow);
+            SetColor(new Color(1f, 1f, 1f, 0.98f));
             GUI.Box(panel, GUIContent.none, BuilderSkin.Plate);
             SetColor(Color.white);
+
+            // Крестик в углу панели — скрыть подсказки (клик работает при
+            // свободном курсоре: окно инвентаря открыто или курсор отпущен).
+            var hide = new Rect(panel.xMax - 30f, panel.y + 5f, 22f, 22f);
+            if (HintButton(hide, BuilderSkin.Cross, 12f))
+            {
+                hintsHidden = true;
+            }
 
             for (int i = 0; i < labels.Length; i++)
             {
@@ -425,8 +497,58 @@ namespace Galilego.Building
                     x += kw + 4f;
                 }
 
-                GUI.Label(new Rect(panel.x + 14f + col, y, panel.width - col - 24f, rowH), labels[i], BuilderSkin.Muted);
+                GUI.Label(new Rect(panel.x + 14f + col, y, panel.width - col - 34f, rowH), labels[i], BuilderSkin.Muted);
             }
+        }
+
+        /// <summary>Свёрнутая плашка «Подсказки» на месте скрытой панели.</summary>
+        private void DrawHintsRestore()
+        {
+            const string text = "Подсказки (H)";
+            Vector2 size = BuilderSkin.PillText.CalcSize(new GUIContent(text));
+            float w = size.x + 52f;
+            var rect = new Rect(16f, uiHeight - 46f, w, 30f);
+
+            bool interactive = Cursor.lockState != CursorLockMode.Locked;
+            bool hover = interactive && rect.Contains(Event.current.mousePosition);
+
+            SetColor(BuilderSkin.Shadow);
+            GUI.Box(Expand(rect, 10f), GUIContent.none, BuilderSkin.Glow);
+            SetColor(Color.white);
+            GUI.Box(rect, GUIContent.none, hover ? BuilderSkin.SlotHover : BuilderSkin.Pill);
+
+            var mark = new Rect(rect.x + 8f, rect.y + 5f, 20f, 20f);
+            GUI.Box(mark, GUIContent.none, BuilderSkin.Key);
+            GUI.Label(mark, "?", BuilderSkin.KeyText);
+            GUI.Label(new Rect(rect.x + 34f, rect.y, rect.width - 40f, rect.height), text, BuilderSkin.PillText);
+
+            Event e = Event.current;
+            if (interactive && e.type == EventType.MouseDown && e.button == 0 && rect.Contains(e.mousePosition))
+            {
+                hintsHidden = false;
+                e.Use();
+            }
+        }
+
+        /// <summary>Маленькая кнопка-иконка подсказок (крестик): клик при свободном курсоре.</summary>
+        private bool HintButton(Rect rect, Texture2D icon, float iconSize)
+        {
+            Event e = Event.current;
+            bool interactive = Cursor.lockState != CursorLockMode.Locked;
+            bool hover = interactive && rect.Contains(e.mousePosition);
+
+            GUI.Box(rect, GUIContent.none, hover ? BuilderSkin.StepHover : BuilderSkin.Step);
+            SetColor(new Color(0.85f, 0.87f, 0.89f, 0.95f));
+            GUI.DrawTexture(new Rect(rect.center.x - (iconSize * 0.5f), rect.center.y - (iconSize * 0.5f), iconSize, iconSize), icon);
+            SetColor(Color.white);
+
+            if (interactive && e.type == EventType.MouseDown && e.button == 0 && rect.Contains(e.mousePosition))
+            {
+                e.Use();
+                return true;
+            }
+
+            return false;
         }
 
         // Верхняя плашка: сколько деталей, масса и высота стека.
@@ -454,6 +576,9 @@ namespace Galilego.Building
             Vector2 size = BuilderSkin.PillText.CalcSize(new GUIContent(text));
             float w = size.x + 40f;
             var rect = new Rect((uiWidth - w) * 0.5f, 18f, w, 34f);
+            SetColor(BuilderSkin.Shadow);
+            GUI.Box(Expand(rect, 10f), GUIContent.none, BuilderSkin.Glow);
+            SetColor(Color.white);
             GUI.Box(rect, GUIContent.none, BuilderSkin.Pill);
             GUI.Label(rect, text, BuilderSkin.PillText);
         }
@@ -468,7 +593,7 @@ namespace Galilego.Building
 
             Rect plate = PlateRect();
             var bar = new Rect(plate.center.x - 130f, plate.y - 96f, 260f, 14f);
-            GUI.Label(new Rect(bar.x, bar.y - 24f, bar.width, 20f), caption, BuilderSkin.NameText);
+            GUI.Label(new Rect(bar.x, bar.y - 24f, bar.width, 20f), caption, BuilderSkin.NameTextCenter);
             GUI.Box(bar, GUIContent.none, BuilderSkin.Track);
 
             // Заливка: полная плашка, обрезанная группой до нужной ширины.
@@ -486,6 +611,9 @@ namespace Galilego.Building
             Vector2 size = BuilderSkin.PillText.CalcSize(new GUIContent(text));
             float w = size.x + 64f;
             var rect = new Rect((uiWidth - w) * 0.5f, uiHeight - 62f, w, 38f);
+            SetColor(BuilderSkin.Shadow);
+            GUI.Box(Expand(rect, 12f), GUIContent.none, BuilderSkin.Glow);
+            SetColor(Color.white);
             GUI.Box(rect, GUIContent.none, BuilderSkin.Pill);
 
             float pulse = 0.55f + (0.45f * Mathf.Sin(Time.unscaledTime * 4f));
@@ -502,35 +630,38 @@ namespace Galilego.Building
             float eased = 1f - ((1f - openAnim) * (1f - openAnim));
             uiAlpha = eased;
 
-            float slide = (1f - eased) * 16f;
-            var win = new Rect((uiWidth - WinW) * 0.5f, ((uiHeight - WinH) * 0.5f) - 40f + slide, WinW, WinH);
+            float winW = Mathf.Max(760f, uiWidth * WindowFraction);
+            float winH = Mathf.Max(540f, uiHeight * WindowFraction);
+            float slide = (1f - eased) * 18f;
+            var win = new Rect((uiWidth - winW) * 0.5f, ((uiHeight - winH) * 0.5f) - 24f + slide, winW, winH);
 
-            SetColor(new Color(0f, 0f, 0f, 0.6f));
-            GUI.Box(Expand(win, 20f), GUIContent.none, BuilderSkin.Glow);
+            SetColor(BuilderSkin.Shadow);
+            GUI.Box(Expand(win, 26f), GUIContent.none, BuilderSkin.Glow);
             SetColor(Color.white);
             GUI.Box(win, GUIContent.none, BuilderSkin.Window);
 
             // Шапка.
-            GUI.Label(new Rect(win.x + 24f, win.y + 12f, 400f, 30f), "Инвентарь деталей", BuilderSkin.TitleText);
-            GUI.Label(new Rect(win.x + 24f, win.y + 38f, 500f, 18f), "Режим строительства", BuilderSkin.Tiny);
+            GUI.Label(new Rect(win.x + 26f, win.y + 14f, 500f, 30f), "Инвентарь деталей", BuilderSkin.TitleText);
+            GUI.Label(new Rect(win.x + 26f, win.y + 40f, 500f, 18f), "Режим строительства", BuilderSkin.Tiny);
 
-            var close = new Rect(win.xMax - 52f, win.y + 14f, 34f, 34f);
+            var close = new Rect(win.xMax - 56f, win.y + 16f, 36f, 36f);
             if (DrawIconButton(close, BuilderSkin.Cross, 22f))
             {
                 SetOpen(false);
             }
 
-            var keyRect = new Rect(close.x - 36f, win.y + 20f, 28f, 22f);
+            var keyRect = new Rect(close.x - 38f, win.y + 23f, 28f, 22f);
             GUI.Box(keyRect, GUIContent.none, BuilderSkin.Key);
             GUI.Label(keyRect, "E", BuilderSkin.KeyText);
-            GUI.Label(new Rect(keyRect.x - 78f, win.y + 18f, 72f, 26f), "закрыть", BuilderSkin.MutedRight);
+            GUI.Label(new Rect(keyRect.x - 78f, win.y + 21f, 72f, 26f), "закрыть", BuilderSkin.MutedRight);
 
-            DrawSolid(new Rect(win.x + 16f, win.y + 64f, win.width - 32f, 1f), BuilderSkin.Line);
+            DrawSolid(new Rect(win.x + 18f, win.y + 68f, win.width - 36f, 1f), BuilderSkin.Line);
 
-            float bodyY = win.y + 76f;
-            float bodyH = win.height - 76f - 16f;
-            var stats = new Rect(win.x + 16f, bodyY, StatsW, bodyH);
-            var grid = new Rect(stats.xMax + 14f, bodyY, win.xMax - 16f - (stats.xMax + 14f), bodyH);
+            float bodyY = win.y + 80f;
+            float bodyH = win.height - 80f - 18f;
+            float statsW = Mathf.Clamp(win.width * 0.30f, 350f, 520f);
+            var stats = new Rect(win.x + 18f, bodyY, statsW, bodyH);
+            var grid = new Rect(stats.xMax + 14f, bodyY, win.xMax - 18f - (stats.xMax + 14f), bodyH);
 
             GUI.Box(stats, GUIContent.none, BuilderSkin.PanelInner);
             GUI.Box(grid, GUIContent.none, BuilderSkin.PanelInner);
@@ -543,11 +674,11 @@ namespace Galilego.Building
 
         private void DrawStats(Rect r)
         {
-            float x = r.x + 16f;
-            float w = r.width - 32f;
-            float y = r.y + 14f;
+            float x = r.x + 20f;
+            float w = r.width - 40f;
+            float y = r.y + 16f;
 
-            GUI.Label(new Rect(x, y, w, 16f), "ХАРАКТЕРИСТИКИ", BuilderSkin.Heading);
+            DrawHeading(new Rect(x, y, w, 16f), "ХАРАКТЕРИСТИКИ");
             y += 28f;
 
             if (statsIndex < 0)
@@ -559,16 +690,39 @@ namespace Galilego.Building
             PartKind kind = Catalog[statsIndex];
             PartMetrics m = Builder.MetricsFor(kind);
 
-            // Шапка детали: рисунок + название + тип.
-            var iconBox = new Rect(x, y, 64f, 64f);
-            GUI.Box(iconBox, GUIContent.none, BuilderSkin.Slot);
-            GUI.DrawTexture(new Rect(iconBox.x + 6f, iconBox.y + 6f, 52f, 52f), PartIcons.Get(kind), ScaleMode.ScaleToFit);
-            GUI.Label(new Rect(x + 76f, y + 6f, w - 76f, 26f), PartCatalog.DisplayName(kind), BuilderSkin.NameText);
-            GUI.Label(new Rect(x + 76f, y + 34f, w - 76f, 20f), KindLabel(kind), BuilderSkin.Muted);
-            y += 78f;
+            // 3D-окно предпросмотра: кадр 4:3, высота — что осталось от панели
+            // после строк и редакторов размеров (минимум 110 px).
+            int rows = kind == PartKind.Engine ? 4 : 3;
+            int editors = kind == PartKind.Engine ? 0 : (kind == PartKind.FuelTank ? 2 : 1);
+            float rest = 44f + 14f + 50f + 8f + (rows * 26f)
+                + (editors > 0 ? 10f + 26f + (editors * 62f) : 0f) + 16f;
+            float budget = Mathf.Max(96f, r.height - rest - 16f);
+            float previewH = Mathf.Min(w * 0.75f, budget, 320f);
+            float previewW = previewH / 0.75f;
+            var viewport = new Rect(r.center.x - (previewW * 0.5f), y, previewW, previewH);
+
+            SetColor(new Color(0f, 0f, 0f, 0.45f));
+            GUI.Box(Expand(viewport, 9f), GUIContent.none, BuilderSkin.Glow);
+            SetColor(Color.white);
+            GUI.Box(viewport, GUIContent.none, BuilderSkin.Viewport);
+
+            Texture frame = preview.Texture;
+            if (frame != null)
+            {
+                var inner = new Rect(viewport.x + 2f, viewport.y + 2f, viewport.width - 4f, viewport.height - 4f);
+                GUI.DrawTexture(inner, frame, ScaleMode.StretchToFill);
+                GUI.DrawTexture(inner, BuilderSkin.Vignette, ScaleMode.StretchToFill);
+            }
+
+            y = viewport.yMax + 14f;
+
+            GUI.Label(new Rect(x, y, w, 24f), PartCatalog.DisplayName(kind), BuilderSkin.NameTextCenter);
+            y += 26f;
+            GUI.Label(new Rect(x, y, w, 18f), KindLabel(kind), BuilderSkin.MutedCenter);
+            y += 24f;
 
             DrawSolid(new Rect(x, y, w, 1f), BuilderSkin.Line);
-            y += 6f;
+            y += 8f;
 
             AddRow(x, ref y, w, "Масса", FormatMass(m.MassKg));
             switch (kind)
@@ -593,9 +747,9 @@ namespace Galilego.Building
                 return;
             }
 
-            y += 12f;
-            GUI.Label(new Rect(x, y, w, 16f), "РАЗМЕРЫ", BuilderSkin.Heading);
-            y += 24f;
+            y += 10f;
+            DrawHeading(new Rect(x, y, w, 16f), "РАЗМЕРЫ");
+            y += 26f;
 
             if (kind == PartKind.FuelTank)
             {
@@ -609,6 +763,12 @@ namespace Galilego.Building
                 DrawEditor(x, ref y, w, "Радиус отделителя", ref Builder.SeparatorRadius,
                     PartCatalog.SeparatorMinRadius, PartCatalog.SeparatorMaxRadius, 30, "F2");
             }
+        }
+
+        private void DrawHeading(Rect rect, string text)
+        {
+            DrawSolid(new Rect(rect.x, rect.y + 2f, 3f, rect.height - 4f), BuilderSkin.Accent);
+            GUI.Label(new Rect(rect.x + 10f, rect.y, rect.width - 10f, rect.height), text, BuilderSkin.Heading);
         }
 
         private static void AddRow(float x, ref float y, float w, string left, string right)
@@ -700,9 +860,9 @@ namespace Galilego.Building
                 : hover ? BuilderSkin.StepHover : BuilderSkin.Step;
             GUI.Box(rect, GUIContent.none, style);
 
-            Color tint = !enabled ? new Color(1f, 1f, 1f, 0.22f)
-                : pressed ? Color.white
-                : new Color(0.86f, 0.92f, 1f, 0.95f);
+            Color tint = !enabled ? new Color(0.55f, 0.56f, 0.58f, 0.30f)
+                : pressed ? new Color(1f, 1f, 1f, 1f)
+                : new Color(0.82f, 0.84f, 0.86f, 0.95f);
             SetColor(tint);
             GUI.DrawTexture(new Rect(rect.center.x - 13f, rect.center.y - 13f, 26f, 26f), icon);
             SetColor(Color.white);
@@ -734,7 +894,7 @@ namespace Galilego.Building
             Event e = Event.current;
             bool inside = rect.Contains(e.mousePosition);
             GUI.Box(rect, GUIContent.none, (open && inside) ? BuilderSkin.StepHover : BuilderSkin.Step);
-            SetColor(new Color(0.9f, 0.95f, 1f, 0.95f));
+            SetColor(new Color(0.85f, 0.87f, 0.89f, 0.95f));
             GUI.DrawTexture(new Rect(rect.center.x - (iconSize * 0.5f), rect.center.y - (iconSize * 0.5f), iconSize, iconSize), icon);
             SetColor(Color.white);
 
@@ -751,18 +911,18 @@ namespace Galilego.Building
 
         private void DrawGrid(Rect r)
         {
-            float x = r.x + 16f;
-            float w = r.width - 32f;
-            float y = r.y + 14f;
+            float x = r.x + 20f;
+            float w = r.width - 40f;
+            float y = r.y + 16f;
 
-            GUI.Label(new Rect(x, y, w, 16f), "ДЕТАЛИ", BuilderSkin.Heading);
+            DrawHeading(new Rect(x, y, w, 16f), "ДЕТАЛИ");
             GUI.Label(new Rect(x, y, w, 16f), "Поставлено: " + Builder.Parts.Count, BuilderSkin.TinyRight);
-            y += 28f;
+            y += 30f;
 
             const int columns = 3;
-            const float gap = 12f;
+            const float gap = 14f;
             float cardW = (w - (gap * (columns - 1))) / columns;
-            const float cardH = 172f;
+            float cardH = Mathf.Clamp(r.height - 30f - 96f, 200f, 380f);
             Event e = Event.current;
 
             for (int i = 0; i < Catalog.Length; i++)
@@ -774,16 +934,16 @@ namespace Galilego.Building
 
                 if (selected)
                 {
-                    SetColor(new Color(0.45f, 0.80f, 1f, 0.35f));
-                    GUI.Box(Expand(card, 20f), GUIContent.none, BuilderSkin.Glow);
+                    SetColor(new Color(0.30f, 0.55f, 0.85f, 0.45f));
+                    GUI.Box(Expand(card, 16f), GUIContent.none, BuilderSkin.Glow);
                     SetColor(Color.white);
                 }
 
                 GUI.Box(card, GUIContent.none, selected ? BuilderSkin.CardSelected : hover ? BuilderSkin.CardHover : BuilderSkin.Card);
 
-                var iconBox = new Rect(card.x + 8f, card.y + 8f, card.width - 16f, 104f);
+                var iconBox = new Rect(card.x + 10f, card.y + 10f, card.width - 20f, card.height - 78f);
                 GUI.Box(iconBox, GUIContent.none, BuilderSkin.Slot);
-                float iconSize = 88f;
+                float iconSize = Mathf.Min(iconBox.width, iconBox.height) * 0.88f;
                 GUI.DrawTexture(new Rect(iconBox.center.x - (iconSize * 0.5f), iconBox.center.y - (iconSize * 0.5f), iconSize, iconSize),
                     PartIcons.Get(kind), ScaleMode.ScaleToFit);
 
@@ -791,13 +951,13 @@ namespace Galilego.Building
                 int slot = FindInHotbar(kind);
                 if (slot >= 0)
                 {
-                    var badge = new Rect(iconBox.xMax - 26f, iconBox.y + 6f, 20f, 20f);
+                    var badge = new Rect(iconBox.xMax - 28f, iconBox.y + 8f, 20f, 20f);
                     GUI.Box(badge, GUIContent.none, BuilderSkin.Key);
                     GUI.Label(badge, (slot + 1).ToString(), BuilderSkin.KeyText);
                 }
 
-                GUI.Label(new Rect(card.x + 6f, card.y + 116f, card.width - 12f, 24f), PartCatalog.DisplayName(kind), BuilderSkin.CardName);
-                GUI.Label(new Rect(card.x + 6f, card.y + 140f, card.width - 12f, 20f), KindLabel(kind), BuilderSkin.CardKind);
+                GUI.Label(new Rect(card.x + 6f, card.yMax - 62f, card.width - 12f, 24f), PartCatalog.DisplayName(kind), BuilderSkin.CardName);
+                GUI.Label(new Rect(card.x + 6f, card.yMax - 36f, card.width - 12f, 20f), KindLabel(kind), BuilderSkin.CardKind);
 
                 if (open && e.type == EventType.MouseDown && e.button == 0 && dragKind < 0 && card.Contains(e.mousePosition))
                 {
@@ -822,7 +982,7 @@ namespace Galilego.Building
             GUI.Label(new Rect(x, r.yMax - 76f, w, 20f), "Перетащите деталь в нижнюю панель.", BuilderSkin.Muted);
             GUI.Label(new Rect(x, r.yMax - 56f, w, 20f), "Двойной клик — в свободный слот.", BuilderSkin.Tiny);
 
-            var clear = new Rect(r.xMax - 16f - 186f, r.yMax - 16f - 36f, 186f, 36f);
+            var clear = new Rect(r.xMax - 20f - 186f, r.yMax - 16f - 36f, 186f, 36f);
             if (DrawTextButton(clear, "Очистить площадку", BuilderSkin.Danger, BuilderSkin.DangerHover))
             {
                 Builder.ClearAll();
@@ -834,7 +994,7 @@ namespace Galilego.Building
             Event e = Event.current;
             bool inside = rect.Contains(e.mousePosition);
             GUI.Box(rect, GUIContent.none, (open && inside) ? hover : normal);
-            GUI.Label(rect, text, BuilderSkin.ButtonText);
+            GUI.Label(rect, text, BuilderSkin.DangerButtonText);
 
             if (open && e.type == EventType.MouseDown && e.button == 0 && inside && dragKind < 0)
             {
@@ -957,7 +1117,7 @@ namespace Galilego.Building
 
             Vector2 mouse = Event.current.mousePosition;
             var rect = new Rect(mouse.x - 30f, mouse.y - 30f, 60f, 60f);
-            SetColor(new Color(0.45f, 0.80f, 1f, 0.5f));
+            SetColor(new Color(0.30f, 0.55f, 0.85f, 0.50f));
             GUI.Box(Expand(rect, 20f), GUIContent.none, BuilderSkin.Glow);
             SetColor(new Color(1f, 1f, 1f, 0.95f));
             GUI.DrawTexture(rect, PartIcons.Get((PartKind)dragKind), ScaleMode.ScaleToFit);
