@@ -769,7 +769,50 @@ namespace Galilego.Building
                 return false;
             }
 
+            if (OverlapsSiteStructure(pivot, metrics))
+            {
+                return false;
+            }
+
             return !BuildMath.OverlapsAny(parts, pivot, metrics, ignoreIndex);
+        }
+
+        /// <summary>
+        /// Пересекается ли пробная деталь с ПОСТРОЙКАМИ места (стол, фермы,
+        /// парапеты). Без этой проверки деталь можно было поставить внутрь
+        /// коллайдеров стола: при включении физики она застревала в них и
+        /// «висела», а соседи отваливались. Капсула чуть уже детали и на 6 см
+        /// ужата от торцов, чтобы опора/пол не ловились как пересечение.
+        /// </summary>
+        private bool OverlapsSiteStructure(Vector3 pivot, PartMetrics metrics)
+        {
+            if (metrics.Height < 0.5f || metrics.Radius <= 0.01f)
+            {
+                return false; // тонкие детали (отделитель) не проверяем
+            }
+
+            float radius = (metrics.Radius * 0.92f) - 0.05f;
+            if (radius <= 0.02f)
+            {
+                return false;
+            }
+
+            Vector3 centerLocal = pivot + new Vector3(0f, metrics.Center, 0f);
+            float inner = Mathf.Max(0f, (metrics.Height * 0.5f) - metrics.Radius);
+            Vector3 lower = Zone.SiteToRender(centerLocal - new Vector3(0f, inner - 0.06f, 0f));
+            Vector3 upper = Zone.SiteToRender(centerLocal + new Vector3(0f, inner - 0.06f, 0f));
+
+            Collider[] hits = Physics.OverlapCapsule(
+                lower, upper, radius, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                if (LaunchPadZone.IsSiteCollider(hits[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
