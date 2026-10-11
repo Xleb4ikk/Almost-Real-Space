@@ -3,10 +3,10 @@ using UnityEngine;
 namespace Galilego.Building
 {
     /// <summary>
-    /// Скин интерфейса строительства. Всё рисуется кодом, без ассетов:
-    /// скруглённые прямоугольники по SDF (9-slice), мягкая тень/свечение,
-    /// шевроны-стрелки и крестик. Не зависит от CheatGuiSkin, поэтому чит-меню
-    /// и стройка оформляются независимо.
+    /// Скин интерфейса строительства — СВЕТЛАЯ СЕРАЯ тема. Всё рисуется кодом,
+    /// без ассетов: скруглённые прямоугольники по SDF (9-slice), мягкая тень,
+    /// шевроны-стрелки, крестик и виньетка окна предпросмотра. Не зависит от
+    /// CheatGuiSkin, поэтому чит-меню и стройка оформляются независимо.
     ///
     /// Текстуры лежат в статических полях (иначе сборщик мусора съест нативные
     /// объекты, а GUIStyle останется с висячим указателем), а Build() заново
@@ -14,18 +14,23 @@ namespace Galilego.Building
     /// </summary>
     internal static class BuilderSkin
     {
-        // ─── Палитра ─────────────────────────────────────────────────────────
-        public static readonly Color Accent = new Color(0.45f, 0.80f, 1f, 1f);
-        public static readonly Color AccentDim = new Color(0.45f, 0.80f, 1f, 0.35f);
-        public static readonly Color TextMain = new Color(0.90f, 0.93f, 0.97f, 1f);
-        public static readonly Color TextMuted = new Color(0.55f, 0.63f, 0.75f, 1f);
-        public static readonly Color Line = new Color(0.55f, 0.68f, 0.86f, 0.14f);
-        public static readonly Color Good = new Color(0.38f, 0.92f, 0.62f, 1f);
+        // ─── Палитра (тёмно-серая, как интерфейс редактора Unity, чуть светлее) ─
+        public static readonly Color Accent = new Color(0.30f, 0.55f, 0.85f, 1f);
+        public static readonly Color AccentDim = new Color(0.30f, 0.55f, 0.85f, 0.30f);
+        public static readonly Color TextMain = new Color(0.86f, 0.87f, 0.88f, 1f);
+        public static readonly Color TextMuted = new Color(0.60f, 0.61f, 0.63f, 1f);
+        public static readonly Color Line = new Color(1f, 1f, 1f, 0.10f);
+        public static readonly Color Good = new Color(0.35f, 0.78f, 0.50f, 1f);
+        public static readonly Color DangerText = new Color(0.92f, 0.62f, 0.62f, 1f);
+
+        /// <summary>Тень вокруг окон и панелей (тонирует Glow).</summary>
+        public static readonly Color Shadow = new Color(0f, 0f, 0f, 0.45f);
 
         // ─── Стили рамок (GUI.Box) ───────────────────────────────────────────
         public static GUIStyle Window { get; private set; }
         public static GUIStyle PanelInner { get; private set; }
         public static GUIStyle Plate { get; private set; }
+        public static GUIStyle Viewport { get; private set; }
         public static GUIStyle Slot { get; private set; }
         public static GUIStyle SlotHover { get; private set; }
         public static GUIStyle SlotSelected { get; private set; }
@@ -47,11 +52,13 @@ namespace Galilego.Building
         // ─── Текстовые стили ─────────────────────────────────────────────────
         public static GUIStyle TitleText { get; private set; }
         public static GUIStyle NameText { get; private set; }
+        public static GUIStyle NameTextCenter { get; private set; }
         public static GUIStyle Heading { get; private set; }
         public static GUIStyle Body { get; private set; }
         public static GUIStyle BodyRight { get; private set; }
         public static GUIStyle Muted { get; private set; }
         public static GUIStyle MutedRight { get; private set; }
+        public static GUIStyle MutedCenter { get; private set; }
         public static GUIStyle Tiny { get; private set; }
         public static GUIStyle TinyRight { get; private set; }
         public static GUIStyle TinyCenter { get; private set; }
@@ -61,6 +68,7 @@ namespace Galilego.Building
         public static GUIStyle KeyText { get; private set; }
         public static GUIStyle PillText { get; private set; }
         public static GUIStyle ButtonText { get; private set; }
+        public static GUIStyle DangerButtonText { get; private set; }
 
         // ─── Значки ──────────────────────────────────────────────────────────
         public static Texture2D ChevronLeft { get; private set; }
@@ -69,6 +77,7 @@ namespace Galilego.Building
         public static Texture2D DoubleRight { get; private set; }
         public static Texture2D Cross { get; private set; }
         public static Texture2D Dot { get; private set; }
+        public static Texture2D Vignette { get; private set; }
 
         private static bool built;
         private static Texture2D guard;     // по ней узнаём, что текстуры уничтожены
@@ -88,49 +97,53 @@ namespace Galilego.Building
             Keep.Clear();
 
             // Окна и панели.
-            Window = Box(Rounded(48, 16f, C(0.043f, 0.056f, 0.082f, 0.97f), C(0.21f, 0.28f, 0.40f, 1f), 1.5f), 20);
-            PanelInner = Box(Rounded(32, 10f, C(0.072f, 0.091f, 0.129f, 1f), C(0.13f, 0.18f, 0.26f, 1f), 1.2f), 12);
-            Plate = Box(Rounded(40, 14f, C(0.03f, 0.04f, 0.06f, 0.80f), C(0.17f, 0.23f, 0.33f, 0.95f), 1.2f), 16);
-            Pill = Box(Rounded(40, 14f, C(0.03f, 0.04f, 0.06f, 0.90f), C(0.25f, 0.34f, 0.48f, 0.95f), 1.2f), 16);
+            Window = Box(Rounded(48, 16f, C(0.290f, 0.290f, 0.295f, 0.985f), C(0.175f, 0.175f, 0.180f, 1f), 1.5f), 20);
+            PanelInner = Box(Rounded(32, 10f, C(0.330f, 0.330f, 0.335f, 1f), C(0.215f, 0.215f, 0.220f, 1f), 1.2f), 12);
+            Plate = Box(Rounded(40, 14f, C(0.255f, 0.255f, 0.260f, 0.97f), C(0.170f, 0.170f, 0.175f, 1f), 1.2f), 16);
+            Pill = Box(Rounded(40, 14f, C(0.300f, 0.300f, 0.305f, 0.97f), C(0.190f, 0.190f, 0.195f, 1f), 1.2f), 16);
+            Viewport = Box(Rounded(48, 14f, C(0.224f, 0.224f, 0.228f, 1f), C(0.160f, 0.160f, 0.165f, 1f), 1.5f), 16);
 
             // Слоты хотбара и карточки.
-            Slot = Box(Rounded(32, 9f, C(0.040f, 0.052f, 0.075f, 1f), C(0.16f, 0.21f, 0.30f, 1f), 1.2f), 11);
-            SlotHover = Box(Rounded(32, 9f, C(0.07f, 0.095f, 0.14f, 1f), C(0.30f, 0.42f, 0.60f, 1f), 1.5f), 11);
-            SlotSelected = Box(Rounded(32, 9f, C(0.07f, 0.11f, 0.17f, 1f), C(0.45f, 0.80f, 1f, 1f), 2.6f), 11);
-            Card = Box(Rounded(32, 10f, C(0.098f, 0.122f, 0.172f, 1f), C(0.17f, 0.22f, 0.31f, 1f), 1.2f), 12);
-            CardHover = Box(Rounded(32, 10f, C(0.125f, 0.157f, 0.218f, 1f), C(0.28f, 0.38f, 0.54f, 1f), 1.4f), 12);
-            CardSelected = Box(Rounded(32, 10f, C(0.105f, 0.165f, 0.245f, 1f), C(0.45f, 0.80f, 1f, 1f), 2.2f), 12);
+            Slot = Box(Rounded(32, 9f, C(0.275f, 0.275f, 0.280f, 1f), C(0.195f, 0.195f, 0.200f, 1f), 1.2f), 11);
+            SlotHover = Box(Rounded(32, 9f, C(0.330f, 0.330f, 0.338f, 1f), C(0.470f, 0.470f, 0.490f, 1f), 1.6f), 11);
+            SlotSelected = Box(Rounded(32, 9f, C(0.285f, 0.315f, 0.360f, 1f), C(0.30f, 0.55f, 0.85f, 1f), 2.6f), 11);
+            Card = Box(Rounded(32, 10f, C(0.310f, 0.310f, 0.315f, 1f), C(0.210f, 0.210f, 0.215f, 1f), 1.2f), 12);
+            CardHover = Box(Rounded(32, 10f, C(0.355f, 0.355f, 0.362f, 1f), C(0.470f, 0.470f, 0.490f, 1f), 1.6f), 12);
+            CardSelected = Box(Rounded(32, 10f, C(0.290f, 0.330f, 0.390f, 1f), C(0.30f, 0.55f, 0.85f, 1f), 2.2f), 12);
 
             // Кнопки-стрелки.
-            Step = Box(Rounded(32, 9f, C(0.15f, 0.19f, 0.27f, 1f), C(0.26f, 0.34f, 0.47f, 1f), 1.2f), 11);
-            StepHover = Box(Rounded(32, 9f, C(0.22f, 0.30f, 0.43f, 1f), C(0.40f, 0.55f, 0.75f, 1f), 1.4f), 11);
-            StepActive = Box(Rounded(32, 9f, C(0.28f, 0.52f, 0.82f, 1f), C(0.55f, 0.80f, 1f, 1f), 1.4f), 11);
-            StepDisabled = Box(Rounded(32, 9f, C(0.075f, 0.095f, 0.135f, 1f), C(0.12f, 0.15f, 0.21f, 1f), 1.2f), 11);
-            ValueBox = Box(Rounded(32, 9f, C(0.036f, 0.048f, 0.070f, 1f), C(0.17f, 0.24f, 0.35f, 1f), 1.2f), 11);
-            Key = Box(Rounded(24, 6f, C(0.13f, 0.16f, 0.22f, 1f), C(0.30f, 0.38f, 0.50f, 1f), 1.2f), 8);
-            Danger = Box(Rounded(32, 9f, C(0.24f, 0.09f, 0.10f, 1f), C(0.50f, 0.20f, 0.22f, 1f), 1.2f), 11);
-            DangerHover = Box(Rounded(32, 9f, C(0.38f, 0.12f, 0.13f, 1f), C(0.82f, 0.31f, 0.33f, 1f), 1.4f), 11);
-            Track = Box(Rounded(16, 5f, C(0.05f, 0.07f, 0.10f, 1f), C(0.13f, 0.18f, 0.26f, 1f), 1f), 6);
+            Step = Box(Rounded(32, 9f, C(0.295f, 0.295f, 0.300f, 1f), C(0.205f, 0.205f, 0.210f, 1f), 1.2f), 11);
+            StepHover = Box(Rounded(32, 9f, C(0.350f, 0.350f, 0.358f, 1f), C(0.480f, 0.480f, 0.500f, 1f), 1.6f), 11);
+            StepActive = Box(Rounded(32, 9f, C(0.240f, 0.400f, 0.600f, 1f), C(0.40f, 0.65f, 0.92f, 1f), 1.6f), 11);
+            StepDisabled = Box(Rounded(32, 9f, C(0.270f, 0.270f, 0.275f, 1f), C(0.225f, 0.225f, 0.230f, 1f), 1.2f), 11);
+            ValueBox = Box(Rounded(32, 9f, C(0.205f, 0.205f, 0.210f, 1f), C(0.150f, 0.150f, 0.155f, 1f), 1.2f), 11);
+            Key = Box(Rounded(24, 6f, C(0.245f, 0.245f, 0.250f, 1f), C(0.175f, 0.175f, 0.180f, 1f), 1.2f), 8);
+            Danger = Box(Rounded(32, 9f, C(0.420f, 0.230f, 0.230f, 1f), C(0.540f, 0.290f, 0.290f, 1f), 1.2f), 11);
+            DangerHover = Box(Rounded(32, 9f, C(0.500f, 0.265f, 0.265f, 1f), C(0.740f, 0.360f, 0.360f, 1f), 1.5f), 11);
+            Track = Box(Rounded(16, 5f, C(0.215f, 0.215f, 0.220f, 1f), C(0.160f, 0.160f, 0.165f, 1f), 1f), 6);
             Glow = Box(MakeGlow(64, 20f, 12f), 30);
 
             // Текст.
             TitleText = Text(20, TextMain, TextAnchor.MiddleLeft, FontStyle.Bold);
             NameText = Text(17, TextMain, TextAnchor.MiddleLeft, FontStyle.Bold);
+            NameTextCenter = Text(17, TextMain, TextAnchor.MiddleCenter, FontStyle.Bold);
             Heading = Text(12, Accent, TextAnchor.MiddleLeft, FontStyle.Bold);
             Body = Text(14, TextMain, TextAnchor.MiddleLeft, FontStyle.Normal);
             BodyRight = Text(14, TextMain, TextAnchor.MiddleRight, FontStyle.Bold);
             Muted = Text(14, TextMuted, TextAnchor.MiddleLeft, FontStyle.Normal);
             MutedRight = Text(14, TextMuted, TextAnchor.MiddleRight, FontStyle.Normal);
+            MutedCenter = Text(14, TextMuted, TextAnchor.MiddleCenter, FontStyle.Normal);
             Tiny = Text(11, TextMuted, TextAnchor.MiddleLeft, FontStyle.Normal);
             TinyRight = Text(11, TextMuted, TextAnchor.MiddleRight, FontStyle.Normal);
             TinyCenter = Text(11, TextMuted, TextAnchor.MiddleCenter, FontStyle.Normal);
             CardName = Text(15, TextMain, TextAnchor.MiddleCenter, FontStyle.Bold);
             CardKind = Text(12, TextMuted, TextAnchor.MiddleCenter, FontStyle.Normal);
             ValueText = Text(18, TextMain, TextAnchor.MiddleCenter, FontStyle.Bold);
-            KeyText = Text(12, new Color(0.86f, 0.91f, 0.97f, 1f), TextAnchor.MiddleCenter, FontStyle.Bold);
+            KeyText = Text(12, new Color(0.82f, 0.84f, 0.86f, 1f), TextAnchor.MiddleCenter, FontStyle.Bold);
             PillText = Text(14, TextMain, TextAnchor.MiddleCenter, FontStyle.Normal);
             PillText.richText = true;
             ButtonText = Text(14, TextMain, TextAnchor.MiddleCenter, FontStyle.Bold);
+            DangerButtonText = Text(14, DangerText, TextAnchor.MiddleCenter, FontStyle.Bold);
 
             // Значки.
             ChevronLeft = Chevron(false, false);
@@ -139,6 +152,7 @@ namespace Galilego.Building
             DoubleRight = Chevron(true, true);
             Cross = MakeCross();
             Dot = MakeDot();
+            Vignette = MakeVignette();
 
             guard = Dot;
             built = true;
@@ -246,6 +260,28 @@ namespace Galilego.Building
                     float a = d <= 0f ? 1f : Mathf.Exp(-d / falloff * 1.6f);
                     a = Mathf.Clamp01((a - 0.015f) / 0.985f);
                     pixels[(y * size) + x] = new Color(1f, 1f, 1f, a);
+                }
+            }
+
+            return Make(size, pixels);
+        }
+
+        /// <summary>Виньетка для окна предпросмотра: мягкое затемнение к краям.</summary>
+        private static Texture2D MakeVignette()
+        {
+            const int size = 128;
+            float half = size * 0.5f;
+            var pixels = new Color[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = (x + 0.5f - half) / half;
+                    float dy = (y + 0.5f - half) / half;
+                    float d = Mathf.Sqrt((dx * dx) + (dy * dy));
+                    float a = Mathf.Clamp01((d - 0.62f) / 0.38f);
+                    a = a * a * 0.22f;
+                    pixels[(y * size) + x] = new Color(0.06f, 0.06f, 0.07f, a);
                 }
             }
 

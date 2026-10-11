@@ -3,11 +3,12 @@ using UnityEngine;
 namespace Galilego.Building
 {
     /// <summary>
-    /// Рисунки деталей для инвентаря: маленькие «фотографии» рисуются кодом
-    /// (фронтальный вид бака, кольцо отделителя сверху, сопло RS-25), поэтому
-    /// не тянут ассеты и выглядят одинаково в любой теме. Текстуры кэшируются:
-    /// статическая ссылка обязательна — иначе сборщик мусора съест нативную
-    /// текстуру, а GUIStyle оставит висячий указатель (см. CheatGuiSkin).
+    /// Рисунки деталей для инвентаря. Основные иконки — 3D-рендеры деталей под
+    /// углом (их кладёт BuilderPreview через Set: тот же студийный свет и
+    /// прозрачный фон). Если рендера нет (нет превью/двигателя), работает
+    /// запасная процедурная отрисовка (плоские «фотографии» кодом).
+    /// Текстуры кэшируются: статическая ссылка обязательна — иначе сборщик
+    /// мусора съест нативную текстуру, а GUIStyle оставит висячий указатель.
     /// </summary>
     public static class PartIcons
     {
@@ -17,9 +18,26 @@ namespace Galilego.Building
         private static Texture2D tank;
         private static Texture2D separator;
 
+        private static readonly System.Collections.Generic.Dictionary<PartKind, Texture2D> overrides =
+            new System.Collections.Generic.Dictionary<PartKind, Texture2D>();
+
+        /// <summary>Положить готовую иконку (3D-рендер) вместо процедурной.</summary>
+        public static void Set(PartKind kind, Texture2D texture)
+        {
+            if (texture != null)
+            {
+                overrides[kind] = texture;
+            }
+        }
+
         /// <summary>Рисунок детали (создаётся при первом обращении).</summary>
         public static Texture2D Get(PartKind kind)
         {
+            if (overrides.TryGetValue(kind, out Texture2D rendered) && rendered != null)
+            {
+                return rendered;
+            }
+
             switch (kind)
             {
                 case PartKind.Engine:
