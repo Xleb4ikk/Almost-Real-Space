@@ -310,8 +310,18 @@ namespace Galilego.Building
                 Rigidbody body = proxy != null ? proxy.BodyAt(i) : null;
                 if (body != null)
                 {
+                    // Тело прокси — ЦЕНТР формы детали (цилиндр-призма центрирован
+                    // на теле), а визуал построен от ПИВОТА детали (низ бака и
+                    // двигателя, центр отделителя). Опускаем корень визуала на
+                    // Metrics.Center вдоль локального «вверх» тела: иначе каждая
+                    // деталь висит выше своего коллайдера на половину высоты —
+                    // ракета «парит» над площадкой, а между баком и двигателем
+                    // появляется фальшивый зазор.
+                    Transform bodyTransform = body.transform;
+                    Vector3 pivot = bodyTransform.position
+                        - (bodyTransform.up * (float)part.Metrics.Center);
                     part.Visual.Root.transform.SetPositionAndRotation(
-                        body.transform.position, body.transform.rotation);
+                        pivot, bodyTransform.rotation);
                 }
             }
         }
