@@ -52,12 +52,29 @@ namespace Galilego.Building.EditorTools
             ContactZoneHost host = EnsureContactZone(runner);
             SpacecraftBuilder builder = EnsureBuilder(runner, shipView.transform, host);
             builder.DebugSpikeStack = true;
+            EnsureUi(builder);
 
             EditorUtility.SetDirty(builder);
             EditorSceneManager.MarkSceneDirty(scene);
             bool saved = EditorSceneManager.SaveScene(scene);
             Selection.activeGameObject = builder.gameObject;
             Debug.Log("[BuildSetup] Готово: " + (saved ? "сцена сохранена." : "сцена НЕ сохранена."));
+        }
+
+        /// <summary>BuilderUI на том же объекте: ссылки на билдер, камеру и игрока.</summary>
+        private static void EnsureUi(SpacecraftBuilder builder)
+        {
+            BuilderUI ui = builder.GetComponent<BuilderUI>();
+            if (ui == null)
+            {
+                ui = builder.gameObject.AddComponent<BuilderUI>();
+            }
+
+            ui.Builder = builder;
+            ui.Camera = Object.FindObjectsByType<FirstPersonCamera>(FindObjectsInactive.Include)
+                .FirstOrDefault();
+            ui.Controller = Object.FindObjectsByType<PlayerController>(FindObjectsInactive.Include)
+                .FirstOrDefault();
         }
 
         /// <summary>LaunchPadZone — в префаб места (на объект «Площадка стартовая»).</summary>
