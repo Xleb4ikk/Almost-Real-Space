@@ -26,30 +26,57 @@ namespace Galilego.Universe
         private const float DoubleTapWindowSeconds = 0.3f;
         private static bool spaceIsDown;
         private static float lastSpacePressTime = float.NegativeInfinity;
+        private static bool shiftIsDown;
+        private static float lastShiftPressTime = float.NegativeInfinity;
 
+        /// <summary>
+        /// Двойной тап по клавише: Space — джетпак, LeftShift — висение (hover).
+        /// </summary>
         public static bool DoubleDown(GameKey key)
         {
-            if (key != GameKey.Space)
+            if (key == GameKey.Space)
             {
-                return false;
-            }
-
 #if ENABLE_INPUT_SYSTEM
-            Keyboard keyboard = Keyboard.current;
-            if (keyboard == null)
-            {
-                spaceIsDown = false;
-                return false;
+                Keyboard keyboard = Keyboard.current;
+                if (keyboard == null)
+                {
+                    spaceIsDown = false;
+                    return false;
+                }
+
+                var space = keyboard[Key.Space];
+                return TrackDoubleTap(ref spaceIsDown, ref lastSpacePressTime,
+                    space.isPressed, space.wasPressedThisFrame, space.wasReleasedThisFrame);
+#else
+                return TrackDoubleTap(ref spaceIsDown, ref lastSpacePressTime,
+                    Input.GetKey(KeyCode.Space),
+                    Input.GetKeyDown(KeyCode.Space),
+                    Input.GetKeyUp(KeyCode.Space));
+#endif
             }
 
-            var space = keyboard[Key.Space];
-            return TrackDoubleTap(space.isPressed, space.wasPressedThisFrame, space.wasReleasedThisFrame);
+            if (key == GameKey.LeftShift)
+            {
+#if ENABLE_INPUT_SYSTEM
+                Keyboard keyboard = Keyboard.current;
+                if (keyboard == null)
+                {
+                    shiftIsDown = false;
+                    return false;
+                }
+
+                var shift = keyboard.leftShiftKey;
+                return TrackDoubleTap(ref shiftIsDown, ref lastShiftPressTime,
+                    shift.isPressed, shift.wasPressedThisFrame, shift.wasReleasedThisFrame);
 #else
-            return TrackDoubleTap(
-                Input.GetKey(KeyCode.Space),
-                Input.GetKeyDown(KeyCode.Space),
-                Input.GetKeyUp(KeyCode.Space));
+                return TrackDoubleTap(ref shiftIsDown, ref lastShiftPressTime,
+                    Input.GetKey(KeyCode.LeftShift),
+                    Input.GetKeyDown(KeyCode.LeftShift),
+                    Input.GetKeyUp(KeyCode.LeftShift));
 #endif
+            }
+
+            return false;
         }
 
 #if ENABLE_INPUT_SYSTEM
@@ -220,19 +247,20 @@ namespace Galilego.Universe
 #endif
         }
 
-        private static bool TrackDoubleTap(bool isPressed, bool wasPressedThisFrame, bool wasReleasedThisFrame)
+        private static bool TrackDoubleTap(ref bool isDown, ref float lastPressTime,
+            bool isPressed, bool wasPressedThisFrame, bool wasReleasedThisFrame)
         {
             bool doubleDown = false;
-            if (wasPressedThisFrame && !spaceIsDown)
+            if (wasPressedThisFrame && !isDown)
             {
-                doubleDown = Time.unscaledTime - lastSpacePressTime <= DoubleTapWindowSeconds;
-                lastSpacePressTime = Time.unscaledTime;
-                spaceIsDown = true;
+                doubleDown = Time.unscaledTime - lastPressTime <= DoubleTapWindowSeconds;
+                lastPressTime = Time.unscaledTime;
+                isDown = true;
             }
 
-            if (wasReleasedThisFrame || (!isPressed && spaceIsDown))
+            if (wasReleasedThisFrame || (!isPressed && isDown))
             {
-                spaceIsDown = false;
+                isDown = false;
             }
 
             return doubleDown;

@@ -35,6 +35,12 @@ namespace Galilego.Universe
         [Tooltip("Ускорение джетпака (м/с²).")]
         public float JetpackThrust = 20f;
 
+        [Tooltip("Скорость перемещения в висении (м/с, WASD).")]
+        public float HoverSpeed = 6f;
+
+        [Tooltip("Вертикальная скорость в висении (м/с, Space вверх / Shift вниз).")]
+        public float HoverVerticalSpeed = 3f;
+
         [Tooltip("Скорость плавания (м/с).")]
         public float SwimSpeed = 2.5f;
 
@@ -94,6 +100,7 @@ namespace Galilego.Universe
             }
 
             bool jetpackToggle = PlayerInput.DoubleDown(GameKey.Space);
+            bool hoverToggle = PlayerInput.DoubleDown(GameKey.LeftShift);
             UpdateFocus();
             // В режиме строительства E — инвентарь (обрабатывает BuildUI), а не
             // интеракции: вход в (невидимый) корабль тут только мешал бы.
@@ -102,7 +109,7 @@ namespace Galilego.Universe
                 HandleE();
             }
 
-            UpdateIntent(jetpackToggle);
+            UpdateIntent(jetpackToggle, hoverToggle);
         }
 
         private void HandleE()
@@ -183,7 +190,62 @@ namespace Galilego.Universe
             }
         }
 
-        private void UpdateIntent(bool jetpackToggle)
+        /// <summary>
+        /// Ввод висения (hover): WASD — перемещение в ГОРИЗОНТАЛЬНОЙ плоскости
+        /// (проекция взгляда на плоскость местной вертикали — наклон камеры не
+        /// уводит вверх/вниз), Space — вверх, Shift — вниз. Скорость — желаемая
+        /// скорость относительно местного кадра; без ввода ноль — игрок замирает.
+        /// Висение тоже тратит топливо джетпака.
+        /// </summary>
+        private void ApplyHoverInput(ref PlayerIntent intent, Camera camera)
+        {
+            if (camera == null)
+            {
+                return;
+            }
+
+            // Местная вертикаль (астро): направление от центра тела.
+            Vector3d up = new Vector3d(0d, 0d, 1d);
+            OrbitingBody body = Runner != null ? Runner.DominantBody : null;
+            if (body != null && Runner != null)
+            {
+                body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPos, out _);
+                Vector3d radial = Runner.PlayerPosition - bodyPos;
+                if (radial.SqrMagnitude > 1e-12d)
+                {
+                    up = radial.Normalized;
+                }
+            }
+
+            Vector3d look = AstroFrame.ToAstro(camera.transform.forward);
+            Vector3d flatForward = look - (up * Vector3d.Dot(look, up));
+            flatForward = flatForward.SqrMagnitude > 1e-12d ? flatForward.Normalized : Vector3d.Zero;
+
+            Vector3d right = AstroFrame.ToAstro(camera.transform.right);
+            right -= up * Vector3d.Dot(right, up);
+            right = right.SqrMagnitude > 1e-12d ? right.Normalized : Vector3d.Zero;
+
+            double forward = (PlayerInput.Held(GameKey.W) ? 1d : 0d) - (PlayerInput.Held(GameKey.S) ? 1d : 0d);
+            double strafe = (PlayerInput.Held(GameKey.D) ? 1d : 0d) - (PlayerInput.Held(GameKey.A) ? 1d : 0d);
+            double vertical = (PlayerInput.Held(GameKey.Space) ? 1d : 0d) - (PlayerInput.Held(GameKey.LeftShift) ? 1d : 0d);
+
+            Vector3d horizontal = (flatForward * forward) + (right * strafe);
+            Vector3d velocity = horizontal.SqrMagnitude > 1e-12d
+                ? horizontal.Normalized * HoverSpeed
+                : Vector3d.Zero;
+            if (System.Math.Abs(vertical) > 0.01d)
+            {
+                velocity += up * (vertical * HoverVerticalSpeed);
+            }
+
+            intent.HoverVelocity = velocity;
+            if (JetpackFuel != null)
+            {
+                JetpackFuel.TryConsume(Time.deltaTime);
+            }
+        }
+
+        private void UpdateIntent(bool jetpackToggle, bool hoverToggle)
         {
             PlayerIntent intent = PlayerIntent.Idle;
             Camera camera = Camera.main;
@@ -222,11 +284,21 @@ namespace Galilego.Universe
 
                 case PlayerMode.EVA:
                     intent.JetpackToggle = jetpackToggle;
-                    ApplyJetpackInput(ref intent, camera, Runner.JetpackActive || jetpackToggle);
+                    intent.HoverToggle = hoverToggle;
+                    if (Runner.PlayerHoverActive || hoverToggle)
+                    {
+                        ApplyHoverInput(ref intent, camera);
+                    }
+                    else
+                    {
+                        ApplyJetpackInput(ref intent, camera, Runner.JetpackActive || jetpackToggle);
+                    }
+
                     break;
 
                 case PlayerMode.OnSurface:
                     intent.JetpackToggle = jetpackToggle;
+                    intent.HoverToggle = hoverToggle;
                     if (camera != null)
                     {
                         Vector3 flatForward = Vector3.ProjectOnPlane(camera.transform.forward, camera.transform.up);
@@ -241,8 +313,17 @@ namespace Galilego.Universe
                             intent.WalkSpeed = speed;
                         }
 
-                        intent.Jump = PlayerInput.Down(GameKey.Space) && !jetpackToggle;
-                        ApplyJetpackInput(ref intent, camera, (Runner.JetpackActive && Runner.PlayerAirborne) || jetpackToggle);
+                        // Пока висим, Space/Shift — вертикаль висения, а не прыжок.
+                        bool hovering = Runner.PlayerHoverActive;
+                        intent.Jump = PlayerInput.Down(GameKey.Space) && !jetpackToggle && !hovering;
+                        if (hovering || (hoverToggle && Runner.PlayerAirborne))
+                        {
+                            ApplyHoverInput(ref intent, camera);
+                        }
+                        else
+                        {
+                            ApplyJetpackInput(ref intent, camera, (Runner.JetpackActive && Runner.PlayerAirborne) || jetpackToggle);
+                        }
                     }
 
                     break;

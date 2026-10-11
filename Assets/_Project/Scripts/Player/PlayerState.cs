@@ -58,6 +58,15 @@ namespace Galilego.Universe
         /// <summary>Ускорение джетпака (м/с², только в EVA).</summary>
         public Vector3d JetpackAccel;
 
+        /// <summary>Переключение висения (двойной тап Shift в полёте).</summary>
+        public bool HoverToggle;
+
+        /// <summary>
+        /// Желаемая скорость висения относительно местного кадра (астро, м/с):
+        /// WASD — горизонталь, Space/Shift — вверх/вниз. Ноль — замирание.
+        /// </summary>
+        public Vector3d HoverVelocity;
+
         /// <summary>Направление плавания (мировой астро-кадр, единичный или ноль).</summary>
         public Vector3d SwimDirection;
 

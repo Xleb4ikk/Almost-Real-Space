@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Galilego.Core;
 using Galilego.Debris;
@@ -163,6 +163,13 @@ namespace Galilego.Universe
 
         public bool JetpackActive { get; private set; }
 
+        /// <summary>
+        /// Висение (hover): гравитация снята, скорость ведёт ввод (WASD по
+        /// горизонтали, Space/Shift — вверх/вниз). Переключается двойным тапом
+        /// Shift в полёте; посадка/вода/корабль сбрасывают режим.
+        /// </summary>
+        public bool PlayerHoverActive { get; private set; }
+
         public bool PlayerAirborne => playerAirborne;
 
         /// <summary>Позиция игрока в double-мире (астро-кадр, инерциальный).</summary>
@@ -206,12 +213,14 @@ namespace Galilego.Universe
                 PlayerMode = PlayerMode.EVA;
                 playerAirborne = true;
                 JetpackActive = false;
+                PlayerHoverActive = false;
                 return;
             }
 
             PlayerMode = PlayerMode.EVA;
             playerAirborne = true;
             JetpackActive = false;
+            PlayerHoverActive = false;
             OrbitingBody body = DominantBody;
             if (body == null)
             {
@@ -276,9 +285,13 @@ namespace Galilego.Universe
         private bool playerAirborne;
         private bool playerJumpQueued;
         private bool jetpackToggleQueued;
+        private bool hoverToggleQueued;
 
         /// <summary>Скорость прыжка игрока (м/с, вертикально от поверхности).</summary>
         private const double PlayerJumpSpeed = 5d;
+
+        /// <summary>Отклик скорости в висении (1/с): замирание и разгон в воздухе.</summary>
+        private const double PlayerHoverResponse = 6d;
 
         /// <summary>Максимальный подшаг интегрирования игрока (с).</summary>
         private const double PlayerMaxStepSeconds = 0.5d;
@@ -339,6 +352,7 @@ namespace Galilego.Universe
             SpawnShip();
             PlayerMode = PlayerMode.InShip;
             JetpackActive = false;
+            PlayerHoverActive = false;
             PlayerPosition = Ship.Position;
             PlayerVelocity = Ship.Velocity;
             if (SpawnOnSurface)
@@ -479,6 +493,7 @@ namespace Galilego.Universe
                 : PlayerMode.OnSurface;
             playerAirborne = false;
             JetpackActive = false;
+            PlayerHoverActive = false;
         }
 
         private OrbitingBody FindSpawnBody()
@@ -633,6 +648,7 @@ namespace Galilego.Universe
             PlayerMode = PlayerMode.OnSurface;
             playerAirborne = false;
             JetpackActive = false;
+            PlayerHoverActive = false;
             FloatingOrigin.Anchor = PlayerPosition;
         }
 
@@ -656,6 +672,7 @@ namespace Galilego.Universe
             PlayerMode = PlayerMode.EVA;
             playerAirborne = false;
             JetpackActive = false;
+            PlayerHoverActive = false;
             return true;
         }
 
@@ -681,6 +698,7 @@ namespace Galilego.Universe
             PlayerVelocity = Ship.Velocity;
             playerAirborne = false;
             JetpackActive = false;
+            PlayerHoverActive = false;
             return true;
         }
 
@@ -693,13 +711,21 @@ namespace Galilego.Universe
         {
             playerJumpQueued |= PlayerIntent.Jump;
             jetpackToggleQueued |= PlayerIntent.JetpackToggle;
+            hoverToggleQueued |= PlayerIntent.HoverToggle;
             PlayerIntent.Jump = false;
             PlayerIntent.JetpackToggle = false;
+            PlayerIntent.HoverToggle = false;
 
             if (jetpackToggleQueued)
             {
                 jetpackToggleQueued = false;
                 ToggleJetpack();
+            }
+
+            if (hoverToggleQueued)
+            {
+                hoverToggleQueued = false;
+                ToggleHover();
             }
 
             double t = fromTime;
@@ -751,6 +777,11 @@ namespace Galilego.Universe
 
             bool launchFromGround = PlayerMode == PlayerMode.OnSurface && !playerAirborne;
             JetpackActive = !JetpackActive;
+            if (JetpackActive)
+            {
+                PlayerHoverActive = false;      // режимы полёта взаимоисключающие
+            }
+
             if (!launchFromGround || !JetpackActive)
             {
                 return;
@@ -783,6 +814,41 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Переключить висение (двойной тап Shift в полёте). Висеть можно в EVA
+        /// и в воздухе над поверхностью; на земле/в воде/в корабле переключение
+        /// игнорируется. Висение и джетпак взаимоисключающие.
+        /// </summary>
+        private void ToggleHover()
+        {
+            bool canHover = PlayerMode == PlayerMode.EVA
+                || (PlayerMode == PlayerMode.OnSurface && playerAirborne);
+            if (!canHover)
+            {
+                return;
+            }
+
+            PlayerHoverActive = !PlayerHoverActive;
+            if (PlayerHoverActive)
+            {
+                JetpackActive = false;      // режимы полёта взаимоисключающие
+            }
+        }
+
+        /// <summary>
+        /// Шаг висения в EVA: гравитации нет, скорость относительно местного
+        /// кадра едет к желаемой (ввод), без ввода — к нулю (замирание в воздухе).
+        /// </summary>
+        private void StepPlayerHoverEva(double t, double dt)
+        {
+            Vector3d frameVelocity = LocalFrameVelocity(t);
+            Vector3d relative = PlayerVelocity - frameVelocity;
+            double blend = Math.Min(1d, dt * PlayerHoverResponse);
+            relative += (PlayerIntent.HoverVelocity - relative) * blend;
+            PlayerVelocity = frameVelocity + relative;
+            PlayerPosition += PlayerVelocity * dt;
+        }
+
+        /// <summary>
         /// Шаг ноуклипа за подшаг: игрок летит со СКОРОСТЬЮ ОТНОСИТЕЛЬНО
         /// МЕСТНОГО КАДРА — как ходьба, плавание и полёт на джетпаке. Гравитации,
         /// посадки на рельеф, воды и коллизий декора нет — это и есть «чит».
@@ -805,6 +871,7 @@ namespace Galilego.Universe
             PlayerPosition += PlayerVelocity * dt;
             playerAirborne = true;
             JetpackActive = false;
+            PlayerHoverActive = false;
             playerJumpQueued = false;
         }
 
@@ -838,10 +905,17 @@ namespace Galilego.Universe
 
         private void StepPlayerEva(double t, double dt)
         {
-            Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
-            Vector3d jetpackAccel = JetpackActive ? PlayerIntent.JetpackAccel : Vector3d.Zero;
-            PlayerVelocity += (gravity + jetpackAccel) * dt;
-            PlayerPosition += PlayerVelocity * dt;
+            if (PlayerHoverActive)
+            {
+                StepPlayerHoverEva(t, dt);
+            }
+            else
+            {
+                Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
+                Vector3d jetpackAccel = JetpackActive ? PlayerIntent.JetpackAccel : Vector3d.Zero;
+                PlayerVelocity += (gravity + jetpackAccel) * dt;
+                PlayerPosition += PlayerVelocity * dt;
+            }
 
             OrbitingBody body = DominantBody;
             if (body == null)
@@ -966,6 +1040,7 @@ namespace Galilego.Universe
             PlayerMode = PlayerMode.Swimming;
             playerAirborne = false;
             JetpackActive = false;
+            PlayerHoverActive = false;
             if (normalSpeed < -10d)
             {
                 Debug.Log("Всплеск: вход в воду на " + (-normalSpeed).ToString("F1") + " м/с погашен водой");
@@ -988,6 +1063,7 @@ namespace Galilego.Universe
                 PlayerMode = PlayerMode.EVA;
                 playerAirborne = false;
                 JetpackActive = false;
+                PlayerHoverActive = false;
                 return;
             }
 
@@ -1010,6 +1086,7 @@ namespace Galilego.Universe
                     PlayerMode = PlayerMode.EVA;
                     playerAirborne = false;
                     JetpackActive = false;
+                    PlayerHoverActive = false;
                 }
 
                 return;
@@ -1088,6 +1165,7 @@ namespace Galilego.Universe
                     PlayerMode = PlayerMode.EVA;
                     playerAirborne = false;
                     JetpackActive = false;
+                    PlayerHoverActive = false;
                 }
                 else
                 {
@@ -1134,6 +1212,14 @@ namespace Galilego.Universe
                 Vector3d.Dot(jetpack, frame.North),
                 Vector3d.Dot(jetpack, frame.Up));
 
+            Vector3d hover = PlayerHoverActive ? PlayerIntent.HoverVelocity : Vector3d.Zero;
+            Vector3d hoverLocal = new Vector3d(
+                Vector3d.Dot(hover, frame.East),
+                Vector3d.Dot(hover, frame.North),
+                Vector3d.Dot(hover, frame.Up));
+
+            playerController.Hovering = PlayerHoverActive;
+            playerController.HoverVelocity = hoverLocal;
             playerController.Step(playerSupport, dt, walkLocal, jetpackLocal);
 
             // В мир — кадром на КОНЕЦ подшага (frame.At(t+dt)): кадр на время t
@@ -1145,6 +1231,12 @@ namespace Galilego.Universe
             PlayerPosition = worldPosition;
             PlayerVelocity = worldVelocity;
             playerAirborne = playerController.Airborne;
+
+            // Коснулись опоры — висение выключается (режим только для воздуха).
+            if (!playerAirborne && PlayerHoverActive)
+            {
+                PlayerHoverActive = false;
+            }
 
             // Коллизия стволов деревьев — как раньше, после шага.
             if (GroundDecorCollisionRegistry.TryResolve(body.Name, PlayerPosition, PlayerCollisionRadiusMeters, out Vector3d treePushed))
