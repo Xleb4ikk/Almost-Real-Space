@@ -707,6 +707,16 @@ namespace Galilego.Building
             {
                 pivot = new Vector3(hitPoint.x, hitPoint.y - metrics.Bottom, hitPoint.z);
                 valid = onPad && CheckPlacement(pivot, metrics, -1);
+
+                // Второй проход: точка в свободном месте, но, может, она в паре
+                // сантиметров над узлом детали — доводим край-к-краю.
+                if (onPad && BuildMath.TryFindProximitySnap(parts, metrics, pivot, out BuildMath.SnapHit near))
+                {
+                    snap = near;
+                    hasSnap = true;
+                    pivot = near.Pivot;
+                    valid = CheckPlacement(pivot, metrics, near.PartIndex);
+                }
             }
             else
             {
@@ -717,6 +727,14 @@ namespace Galilego.Building
                 bool above = (pivot.y + metrics.Bottom) >= (padTop - 0.05f);
                 bool notTooHigh = (pivot.y + metrics.Bottom) - padTop <= MaxBuildHeight;
                 valid = above && notTooHigh && CheckPlacement(pivot, metrics, -1);
+
+                if (valid && BuildMath.TryFindProximitySnap(parts, metrics, pivot, out BuildMath.SnapHit near))
+                {
+                    snap = near;
+                    hasSnap = true;
+                    pivot = near.Pivot;
+                    valid = CheckPlacement(pivot, metrics, near.PartIndex);
+                }
             }
 
             lastPivot = pivot;
