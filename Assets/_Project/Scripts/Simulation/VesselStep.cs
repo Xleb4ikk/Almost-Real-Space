@@ -32,7 +32,12 @@ namespace Galilego.Universe
         public readonly ThrustSource MainThrust;
         public readonly IBreakupModel BreakupModel;
         public readonly DebrisPool Debris;
-        public readonly PartDefinition[] Parts;
+
+        /// <summary>
+        /// Детали сборки. Не readonly: режим строительства подменяет список на
+        /// лету (передача аппарата в физику и откат к стройке).
+        /// </summary>
+        public PartDefinition[] Parts;
         public readonly double SpawnEpsilonMeters;
         public readonly double DebrisLifetimeSeconds;
 

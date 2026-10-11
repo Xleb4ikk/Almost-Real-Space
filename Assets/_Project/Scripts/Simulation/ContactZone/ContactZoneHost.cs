@@ -26,6 +26,10 @@ namespace Galilego.Simulation.ContactZone
         [Tooltip("Отладка: логировать входы и выходы.")]
         public bool Log = true;
 
+        [Tooltip("Включена ли зона. Включением/выключением управляет режим строительства " +
+            "(физика аппарата по R); в тестовой сцене стоит включённой всегда.")]
+        public bool Enabled = true;
+
         public static bool Active { get; private set; }
 
         private readonly ContactZoneGate gate = new ContactZoneGate();
@@ -36,10 +40,56 @@ namespace Galilego.Simulation.ContactZone
         /// смещения корабль прыгает на высоту ЦМ при входе в зону и выходе.</summary>
         private double anchorUp;
 
+        /// <summary>
+        /// Принудительный выход из зоны без записи состояния корабля обратно
+        /// (пишущий Exit оставляет корабль там, где он был в PhysX — при откате
+        /// к стройке это неверно: состояние восстанавливает режим строительства).
+        /// Тела прокси уничтожаются — обломки разорванных стыков не остаются.
+        /// </summary>
+        public void ForceExit()
+        {
+            if (!Active)
+            {
+                gate.Reset();
+                return;
+            }
+
+            Proxy.Clear();
+            Patch.Clear();
+            Active = false;
+            Physics.gravity = new Vector3(0f, -9.81f, 0f);
+            gate.Reset();
+            if (Log) Debug.Log("[ContactZone] принудительный выход");
+        }
+
         private void LateUpdate()
         {
             if (Runner == null || Runner.Ship == null || Runner.DominantBody == null)
             {
+                return;
+            }
+
+            // Выключенная зона корабль не трогает вовсе (стройка: аппарат статичен,
+            // шаг физики в SimulationRunner пропускается по режиму).
+            if (!Enabled)
+            {
+                if (Active)
+                {
+                    ForceExit();
+                }
+
+                return;
+            }
+
+            // Пустая сборка: тел не будет, а SimulationRunner по Active пропустит
+            // шаг — корабль завис бы без физики. Зона в этом случае не входит.
+            if (Runner.Parts == null || Runner.Parts.Length == 0)
+            {
+                if (Active)
+                {
+                    ForceExit();
+                }
+
                 return;
             }
 
@@ -76,6 +126,11 @@ namespace Galilego.Simulation.ContactZone
                 return;
             }
 
+            // Поза зоны: прокси и патч живут в осях кадра места — каждый кадр
+            // прижимаем корень зоны к кадру (планета вращается, floating origin
+            // едет за игроком — без этого контакт с плитой разъедется).
+            ApplyPose(current, t);
+
             // Эффективная гравитация кадра места (в его локальных осях) — см. SLICE_PLAN.md.
             Proxy.SetFrameGravity(EffectiveLocalGravity(body, current, t));
 
@@ -84,12 +139,28 @@ namespace Galilego.Simulation.ContactZone
             ship.Velocity = worldVelocity;
         }
 
+        /// <summary>Поза корня зоны = поза кадра места в render-пространстве.</summary>
+        private void ApplyPose(SiteFrame frameAtTime, double t)
+        {
+            Vector3 position = FloatingOrigin.ToRender(frameAtTime.Origin);
+            Quaternion rotation = SurfaceFrame.RenderRotation(
+                Runner.DominantBody, frameAtTime.LatitudeDegrees, frameAtTime.LongitudeDegrees, t);
+            transform.SetPositionAndRotation(position, rotation);
+            Physics.SyncTransforms();
+        }
+
         private void Enter(OrbitingBody body, ITerrainModel terrain, Ship ship, double t)
         {
             frame = SiteFrame.Anchor(body, terrain, ship.Position, t);
             Patch.Build(body, terrain, frame, t);
+            ApplyPose(frame, t);
             frame.ToLocal(ship.Position, ship.Velocity, out Vector3d lp, out Vector3d lv);
             Proxy.Build(Runner.Parts, frame, lp, lv);
+
+            // Гравитация кадра — сразу, не со следующего кадра: до этого стояла
+            // мировая (0,−9.81,0), а корень повёрнут осями места — тела получали
+            // почти боковое ускорение и «улетали» с площадки.
+            Proxy.SetFrameGravity(EffectiveLocalGravity(body, frame, t));
 
             // Смещение от ЦМ до точки корабля: фиксируется при входе и используется
             // весь сеанс зоны (и при записи состояния, и при выходе).

@@ -95,7 +95,9 @@ namespace Galilego.Universe
 
             bool jetpackToggle = PlayerInput.DoubleDown(GameKey.Space);
             UpdateFocus();
-            if (PlayerInput.Down(GameKey.E))
+            // В режиме строительства E — инвентарь (обрабатывает BuildUI), а не
+            // интеракции: вход в (невидимый) корабль тут только мешал бы.
+            if (PlayerInput.Down(GameKey.E) && (Runner == null || !Runner.BuildMode))
             {
                 HandleE();
             }

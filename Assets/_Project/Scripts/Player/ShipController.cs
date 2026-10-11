@@ -29,7 +29,8 @@ namespace Galilego.Universe
             // Ступени варпа: клавиши 1..7 снапятся вниз в SetWarpFactor.
             // В зоне контакта варп запрещён: время зоны идёт по реальному dt
             // (VesselStep.AdvanceTime), а поднятый варп на выходе увёл бы корабль рывком.
-            if (!ContactZoneHost.Active)
+            // В режиме строительства цифры заняты хотбаром (и варп тут ни к чему).
+            if (!ContactZoneHost.Active && !Runner.BuildMode)
             {
                 for (int rung = 0; rung < WarpController.WarpRungs.Length; rung++)
                 {
