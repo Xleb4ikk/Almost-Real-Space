@@ -61,7 +61,7 @@ namespace Galilego.Building.EditorTools
             Debug.Log("[BuildSetup] Готово: " + (saved ? "сцена сохранена." : "сцена НЕ сохранена."));
         }
 
-        /// <summary>BuilderUI на том же объекте: ссылки на билдер, камеру и игрока.</summary>
+        /// <summary>BuilderUI и VesselMirror на том же объекте: ссылки на билдер.</summary>
         private static void EnsureUi(SpacecraftBuilder builder)
         {
             BuilderUI ui = builder.GetComponent<BuilderUI>();
@@ -75,6 +75,14 @@ namespace Galilego.Building.EditorTools
                 .FirstOrDefault();
             ui.Controller = Object.FindObjectsByType<PlayerController>(FindObjectsInactive.Include)
                 .FirstOrDefault();
+
+            VesselMirror mirror = builder.GetComponent<VesselMirror>();
+            if (mirror == null)
+            {
+                mirror = builder.gameObject.AddComponent<VesselMirror>();
+            }
+
+            mirror.Builder = builder;
         }
 
         /// <summary>LaunchPadZone — в префаб места (на объект «Площадка стартовая»).</summary>

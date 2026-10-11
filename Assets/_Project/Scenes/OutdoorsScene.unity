@@ -1561,6 +1561,7 @@ GameObject:
   - component: {fileID: 1558714145}
   - component: {fileID: 1558714144}
   - component: {fileID: 1558714146}
+  - component: {fileID: 1558714147}
   m_Layer: 0
   m_Name: Building
   m_TagString: Untagged
@@ -1628,6 +1629,19 @@ MonoBehaviour:
   Builder: {fileID: 1558714144}
   Camera: {fileID: 1823688469}
   Controller: {fileID: 1250304430}
+--- !u!114 &1558714147
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1558714143}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: af07fb7c65e1293408b9bc75f96175b6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Building.VesselMirror
+  Builder: {fileID: 1558714144}
 --- !u!1 &1644257541
 GameObject:
   m_ObjectHideFlags: 0
