@@ -220,6 +220,114 @@ namespace Galilego.Building
             return true;
         }
 
+        // ─── Попадание луча в деталь (удаление по прицелу) ──────────────────
+
+        /// <summary>
+        /// Ближайшая деталь под лучом: пересечение с вертикальными цилиндрами
+        /// (детали не вращаются, поэтому цилиндр всегда стоит по Y). Чистая
+        /// математика — коллайдеры визуалам не нужны, и луч постановки они не
+        /// засоряют.
+        /// </summary>
+        public static bool TryRaycastParts(
+            IReadOnlyList<PlacedPart> parts, Vector3 rayOrigin, Vector3 rayDirection,
+            float maxDistance, out int index, out float distance)
+        {
+            index = -1;
+            distance = maxDistance;
+            for (int i = 0; i < parts.Count; i++)
+            {
+                PlacedPart p = parts[i];
+                Vector3 baseCenter = p.Pivot + new Vector3(0f, p.Metrics.Bottom, 0f);
+                if (RayCylinder(rayOrigin, rayDirection, baseCenter, p.Metrics.Radius, p.Metrics.Height, out float t)
+                    && t < distance)
+                {
+                    distance = t;
+                    index = i;
+                }
+            }
+
+            return index >= 0;
+        }
+
+        /// <summary>Пересечение луча с вертикальным цилиндром (бок + торцы).</summary>
+        public static bool RayCylinder(
+            Vector3 rayOrigin, Vector3 rayDirection,
+            Vector3 baseCenter, float radius, float height,
+            out float distance)
+        {
+            distance = 0f;
+            float ox = rayOrigin.x - baseCenter.x;
+            float oz = rayOrigin.z - baseCenter.z;
+            float dx = rayDirection.x;
+            float dz = rayDirection.z;
+            float a = (dx * dx) + (dz * dz);
+            float b = 2f * ((ox * dx) + (oz * dz));
+            float c = (ox * ox) + (oz * oz) - (radius * radius);
+
+            float best = -1f;
+
+            // Бок: квадратное уравнение по XZ.
+            if (a > 1e-8f)
+            {
+                float disc = (b * b) - (4f * a * c);
+                if (disc >= 0f)
+                {
+                    float sq = Mathf.Sqrt(disc);
+                    float t0 = (-b - sq) / (2f * a);
+                    float t1 = (-b + sq) / (2f * a);
+                    for (int k = 0; k < 2; k++)
+                    {
+                        float t = k == 0 ? t0 : t1;
+                        if (t < 0f)
+                        {
+                            continue;
+                        }
+
+                        float y = (rayOrigin.y + (rayDirection.y * t)) - baseCenter.y;
+                        if (y >= 0f && y <= height)
+                        {
+                            best = t;
+                            break;
+                        }
+                    }
+                }
+            }
+            else if (c <= 0f)
+            {
+                // Луч вдоль оси внутри радиуса: считаем от основания.
+                best = 0f;
+            }
+
+            // Торцы (крышки): нужны, чтобы смотреть на деталь сверху/снизу.
+            if (Mathf.Abs(rayDirection.y) > 1e-6f)
+            {
+                for (int cap = 0; cap < 2; cap++)
+                {
+                    float capY = baseCenter.y + (cap == 0 ? 0f : height);
+                    float t = (capY - rayOrigin.y) / rayDirection.y;
+                    if (t < 0f)
+                    {
+                        continue;
+                    }
+
+                    float x = rayOrigin.x + (rayDirection.x * t) - baseCenter.x;
+                    float z = rayOrigin.z + (rayDirection.z * t) - baseCenter.z;
+                    if ((x * x) + (z * z) <= radius * radius && (best < 0f || t < best))
+                    {
+                        best = t;
+                    }
+                }
+            }
+
+            if (best < 0f)
+            {
+                return false;
+            }
+
+            distance = best;
+            return true;
+        }
+
         // ─── Сборка для физики ───────────────────────────────────────────────
 
         /// <summary>Самая низкая точка сборки (низ самой нижней детали), оси места.</summary>

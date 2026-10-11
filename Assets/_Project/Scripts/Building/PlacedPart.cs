@@ -67,13 +67,17 @@ namespace Galilego.Building
         public Vector3 Pivot;
         public int ParentIndex = -1;
 
+        /// <summary>Как деталь пристыкована: true — низом на ВЕРХ родителя.</summary>
+        public bool ParentOnTop;
+
         /// <summary>На верхний узел уже что-то посажено.</summary>
         public bool TopOccupied;
 
         /// <summary>На нижний узел уже что-то посажено.</summary>
         public bool BottomOccupied;
 
-        /// <summary>Визуальный объект детали (живёт под трансформом корабля).</summary>
-        public GameObject Visual;
+        /// <summary>Визуал детали: живёт под трансформом корабля, умеет краснеть
+        /// (удаление по прицелу) и возвращать родные материалы.</summary>
+        public PartCatalog.PartVisual Visual;
     }
 }

@@ -95,10 +95,13 @@ namespace Galilego.Building
         private PartCatalog.EngineTemplate engine;
         private Material ghostMaterial;
         private Material invalidMaterial;
+        private Material deleteMaterial;
         private PartCatalog.PartVisual ghost;
         private PartKind ghostKind;
         private float ghostRadius;
         private float ghostHeight;
+        private int deleteTarget = -1;
+        private PartCatalog.PartVisual deleteHighlighted;
 
         private bool spawned;
         private bool spikeDone;
@@ -141,6 +144,7 @@ namespace Galilego.Building
             engine = PartCatalog.EngineTemplate.Measure(EnginePrefab);
             ghostMaterial = CreateOverlayMaterial(new Color(0.25f, 0.55f, 1f, 0.38f), "GhostBlue");
             invalidMaterial = CreateOverlayMaterial(new Color(1f, 0.25f, 0.2f, 0.38f), "GhostRed");
+            deleteMaterial = CreateOverlayMaterial(new Color(1f, 0.15f, 0.12f, 1f), "DeleteRed");
 
             if (Zone != null && Runner != null)
             {
@@ -197,11 +201,29 @@ namespace Galilego.Building
                 return;
             }
 
-            UpdatePlacement();
+            // Alt: режим удаления — цель под прицелом краснеет, ПКМ удаляет;
+            // призрак постановки при этом спрятан.
+            if (!UiOpen && PlayerInput.AltHeld())
+            {
+                HideGhost();
+                UpdateDeleteAim();
+            }
+            else
+            {
+                ClearDeleteHighlight();
+                UpdatePlacement();
+            }
 
             if (!UiOpen)
             {
-                if (ghostVisible && ghostValid && PlayerInput.MouseRightDown())
+                if (PlayerInput.AltHeld())
+                {
+                    if (deleteTarget >= 0 && PlayerInput.MouseRightDown())
+                    {
+                        RemoveAt(deleteTarget);
+                    }
+                }
+                else if (ghostVisible && ghostValid && PlayerInput.MouseRightDown())
                 {
                     PlaceGhostedPart();
                 }
@@ -211,6 +233,55 @@ namespace Galilego.Building
                     RemoveLast();
                 }
             }
+        }
+
+        // ─── Удаление по прицелу (Alt) ───────────────────────────────────────
+
+        /// <summary>
+        /// Подсветить красным деталь под прицелом (Alt зажат). Цель ищется
+        /// лучом по цилиндрам деталей — коллайдеры визуалам не нужны.
+        /// </summary>
+        private void UpdateDeleteAim()
+        {
+            Camera camera = Camera.main;
+            if (camera == null)
+            {
+                ClearDeleteHighlight();
+                return;
+            }
+
+            Vector3 rayOrigin = Zone.RenderToSite(camera.transform.position);
+            Vector3 rayDirection = Zone.transform.InverseTransformDirection(camera.transform.forward);
+            int found = -1;
+            if (BuildMath.TryRaycastParts(parts, rayOrigin, rayDirection, BuildMath.SnapReach, out int index, out _))
+            {
+                found = index;
+            }
+
+            if (found == deleteTarget)
+            {
+                return;
+            }
+
+            ClearDeleteHighlight();
+            if (found >= 0 && parts[found].Visual != null)
+            {
+                deleteTarget = found;
+                deleteHighlighted = parts[found].Visual;
+                deleteHighlighted.SetMaterial(deleteMaterial);
+            }
+        }
+
+        /// <summary>Снять красную подсветку цели удаления.</summary>
+        private void ClearDeleteHighlight()
+        {
+            if (deleteHighlighted != null)
+            {
+                deleteHighlighted.RestoreNatural();
+            }
+
+            deleteHighlighted = null;
+            deleteTarget = -1;
         }
 
         /// <summary>
@@ -229,7 +300,7 @@ namespace Galilego.Building
             for (int i = 0; i < parts.Count; i++)
             {
                 PlacedPart part = parts[i];
-                if (part.Visual == null)
+                if (part.Visual.Root == null)
                 {
                     continue;
                 }
@@ -237,7 +308,7 @@ namespace Galilego.Building
                 Rigidbody body = proxy != null ? proxy.BodyAt(i) : null;
                 if (body != null)
                 {
-                    part.Visual.transform.SetPositionAndRotation(
+                    part.Visual.Root.transform.SetPositionAndRotation(
                         body.transform.position, body.transform.rotation);
                 }
             }
@@ -440,11 +511,12 @@ namespace Galilego.Building
                 Metrics = metrics,
                 Pivot = pivot,
                 ParentIndex = parentIndex,
+                ParentOnTop = parentOnTop,
             };
 
             part.Visual = PartCatalog.CreateVisual(
                 kind, metrics, engine, TankSideMaterial, TankCapMaterial, SeparatorMaterial,
-                ShipTransform).Root;
+                ShipTransform);
 
             parts.Add(part);
 
@@ -475,13 +547,48 @@ namespace Galilego.Building
                 return;
             }
 
-            PlacedPart part = parts[parts.Count - 1];
-            parts.RemoveAt(parts.Count - 1);
+            RemoveAt(parts.Count - 1);
+        }
+
+        /// <summary>
+        /// Убрать деталь по индексу (Alt+ПКМ по прицелу). Дети удалённой детали
+        /// остаются на своих местах и становятся корнями (снап к удалённому
+        /// родителю теряется — в стройке это просто отдельно стоящая деталь),
+        /// индексы родителей сдвигаются.
+        /// </summary>
+        public void RemoveAt(int index)
+        {
+            if (index < 0 || index >= parts.Count)
+            {
+                return;
+            }
+
+            PlacedPart part = parts[index];
+            for (int i = 0; i < parts.Count; i++)
+            {
+                if (i == index || parts[i].ParentIndex != index)
+                {
+                    continue;
+                }
+
+                // Ребёнок удаляемого: отвязываем его узел от родителя.
+                PlacedPart child = parts[i];
+                if (child.ParentOnTop)
+                {
+                    child.BottomOccupied = false;
+                }
+                else
+                {
+                    child.TopOccupied = false;
+                }
+
+                child.ParentIndex = -1;
+                child.ParentOnTop = false;
+                parts[i] = child;
+            }
 
             if (part.ParentIndex >= 0 && part.ParentIndex < parts.Count)
             {
-                // Дети всегда правее родителя: к моменту удаления все дети убраны,
-                // и флаги детали описывают только стык с родителем.
                 PlacedPart parent = parts[part.ParentIndex];
                 if (part.BottomOccupied)
                 {
@@ -496,20 +603,31 @@ namespace Galilego.Building
 
             if (part.Visual != null)
             {
-                Destroy(part.Visual);
+                Destroy(part.Visual.Root);
             }
 
+            parts.RemoveAt(index);
+            for (int i = 0; i < parts.Count; i++)
+            {
+                if (parts[i].ParentIndex > index)
+                {
+                    parts[i].ParentIndex--;
+                }
+            }
+
+            ClearDeleteHighlight();
             RefreshVisualLocals();
         }
 
         /// <summary>Убрать все детали черновика (кнопка разработчика в инвентаре).</summary>
         public void ClearAll()
         {
+            ClearDeleteHighlight();
             for (int i = 0; i < parts.Count; i++)
             {
                 if (parts[i].Visual != null)
                 {
-                    Destroy(parts[i].Visual);
+                    Destroy(parts[i].Visual.Root);
                 }
             }
 
@@ -545,8 +663,8 @@ namespace Galilego.Building
                 PlacedPart part = parts[i];
                 if (part.Visual != null)
                 {
-                    part.Visual.transform.localPosition = part.Pivot - bottom;
-                    part.Visual.transform.localRotation = Quaternion.identity;
+                    part.Visual.Root.transform.localPosition = part.Pivot - bottom;
+                    part.Visual.Root.transform.localRotation = Quaternion.identity;
                 }
             }
         }
