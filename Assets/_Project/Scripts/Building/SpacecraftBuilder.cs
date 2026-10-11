@@ -440,6 +440,12 @@ namespace Galilego.Building
                 return;
             }
 
+            // Перед передачей в физику — «сварка» свободно стоящих деталей:
+            // деталь, висящая в пределах 2 м над чьим-то узлом и по центру,
+            // притягивается вплотную и жёстко связывается. Иначе ракета,
+            // собранная с зазорами, при запуске разваливалась на куски.
+            WeldLoosePartsAtLaunch();
+
             PartDefinition[] defs = BuildMath.ToPartDefinitions(parts);
             Runner.SetVesselParts(defs);
             Runner.Ship.Mass = BuildMath.TotalMass(parts);
@@ -458,6 +464,100 @@ namespace Galilego.Building
             HideGhost();
             Debug.Log(string.Format(
                 "[Build] физика включена: деталей {0}, масса {1:F0} кг", defs.Length, Runner.Ship.Mass));
+        }
+
+        /// <summary>
+        /// Сварка перед запуском: свободные детали (ParentIndex −1), висящие в
+        /// пределах 2 м над свободным верхом другой детали с почти совпадающим
+        /// центром, притягиваются вплотную и связываются. Так собранная с
+        /// зазорами ракета становится одним целым: падает и садится вместе,
+        /// а не разваливается на отдельные куски при включении физики.
+        /// </summary>
+        private void WeldLoosePartsAtLaunch()
+        {
+            bool welded = false;
+            for (int i = 0; i < parts.Count; i++)
+            {
+                PlacedPart p = parts[i];
+                if (p.ParentIndex >= 0)
+                {
+                    continue;
+                }
+
+                int best = -1;
+                float bestGap = float.MaxValue;
+                bool bestOnTop = true;
+                for (int j = 0; j < parts.Count; j++)
+                {
+                    if (j == i)
+                    {
+                        continue;
+                    }
+
+                    PlacedPart q = parts[j];
+                    float dx = p.Pivot.x - q.Pivot.x;
+                    float dz = p.Pivot.z - q.Pivot.z;
+                    float reach = Mathf.Max(0.1f, Mathf.Min(p.Metrics.Radius, q.Metrics.Radius));
+                    if ((dx * dx) + (dz * dz) > reach * reach)
+                    {
+                        continue;
+                    }
+
+                    if (!q.TopOccupied)
+                    {
+                        float gap = (p.Pivot.y + p.Metrics.Bottom) - (q.Pivot.y + q.Metrics.Top);
+                        if (gap >= -0.25f && gap <= 2f && gap < bestGap)
+                        {
+                            bestGap = gap;
+                            best = j;
+                            bestOnTop = true;
+                        }
+                    }
+
+                    if (!q.BottomOccupied)
+                    {
+                        float gap = (q.Pivot.y + q.Metrics.Bottom) - (p.Pivot.y + p.Metrics.Top);
+                        if (gap >= -0.25f && gap <= 2f && gap < bestGap)
+                        {
+                            bestGap = gap;
+                            best = j;
+                            bestOnTop = false;
+                        }
+                    }
+                }
+
+                if (best < 0)
+                {
+                    continue;
+                }
+
+                PlacedPart parent = parts[best];
+                p.Pivot = bestOnTop
+                    ? new Vector3(parent.Pivot.x, parent.Pivot.y + parent.Metrics.Top - p.Metrics.Bottom, parent.Pivot.z)
+                    : new Vector3(parent.Pivot.x, parent.Pivot.y + parent.Metrics.Bottom - p.Metrics.Top, parent.Pivot.z);
+                p.ParentIndex = best;
+                p.ParentOnTop = bestOnTop;
+                if (bestOnTop)
+                {
+                    p.BottomOccupied = true;
+                    parent.TopOccupied = true;
+                }
+                else
+                {
+                    p.TopOccupied = true;
+                    parent.BottomOccupied = true;
+                }
+
+                parts[i] = p;
+                parts[best] = parent;
+                welded = true;
+            }
+
+            if (welded)
+            {
+                RefreshVisualLocals();
+                Debug.Log("[Build] детали с зазорами притянуты и связаны перед полётом");
+            }
         }
 
         private void ReturnToBuild()
