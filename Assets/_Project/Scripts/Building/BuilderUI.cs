@@ -1,4 +1,5 @@
-﻿using Galilego.Spacecraft;
+﻿using System.Collections.Generic;
+using Galilego.Spacecraft;
 using Galilego.Universe;
 using UnityEngine;
 
@@ -513,6 +514,7 @@ namespace Galilego.Building
         {
             return a.Kind == b.Kind
                 && a.Form == b.Form
+                && a.Load == b.Load
                 && Mathf.Abs(a.Radius - b.Radius) < 1e-4f
                 && Mathf.Abs(a.TopRadius - b.TopRadius) < 1e-4f
                 && Mathf.Abs(a.Height - b.Height) < 1e-4f;
@@ -567,7 +569,7 @@ namespace Galilego.Building
             bool hasSize = kind != PartKind.Engine;
             int editors = tank ? (slot.Preset.Form == TankForm.Cone ? 3 : 2) : 1;
             float bodyH = hasSize
-                ? (tank ? ShapeRowHeight : 0f) + (editors * EditorHeight)
+                ? (tank ? ShapeRowHeight + LoadRowHeight : 0f) + (editors * EditorHeight)
                 : 3f * 26f;
             float menuH = 46f + bodyH + 16f;
 
@@ -605,6 +607,7 @@ namespace Galilego.Building
             if (tank)
             {
                 DrawShapeRow(px, ref py, pw, ref preset, slot, card);
+                DrawLoadRow(px, ref py, pw, ref preset, slot, card);
                 bool cone = preset.Form == TankForm.Cone;
                 DrawEditor(px, ref py, pw, "Длина бака", ref preset.Height,
                     PartCatalog.TankMinHeight, PartCatalog.TankMaxHeight, SlotMenuIdBase, "F1");
@@ -821,6 +824,11 @@ namespace Galilego.Building
             if (preset.Kind == PartKind.FuelTank && IsCone(m))
             {
                 name += " · конус";
+            }
+
+            if (preset.Kind == PartKind.FuelTank)
+            {
+                name += " · " + (preset.Load ?? PropellantLoads.Default).Id;
             }
 
             string text = "<b>" + name + "</b>" + dims;
@@ -1134,14 +1142,15 @@ namespace Galilego.Building
             PartMetrics m = Builder.MetricsFor(preset);
 
             bool tank = kind == PartKind.FuelTank;
-            int rows = kind == PartKind.Engine ? 4 : 3;
+            int rows = kind == PartKind.Engine ? 6 : (kind == PartKind.FuelTank ? 7 : 3);
             int editors = kind == PartKind.Engine ? 0 : (tank ? (IsCone(m) ? 3 : 2) : 1);
 
             // Всё, кроме кадра: шапка, подписи, строки, форма и редакторы.
             // Редактор размера занимает подпись + ряд кнопок (EditorHeight) —
             // без подписи высота контента занижалась и низ не долистывался.
+            // Бак добавляет две строки: форму бака и наполнение.
             float rest = 16f + 28f + 14f + 26f + 24f + 8f + (rows * 26f)
-                + (editors > 0 ? 10f + 26f + (tank ? ShapeRowHeight : 0f) + (editors * EditorHeight) : 0f)
+                + (editors > 0 ? 10f + 26f + (tank ? ShapeRowHeight + LoadRowHeight : 0f) + (editors * EditorHeight) : 0f)
                 + 16f;
             float w = width - 40f;
             // Кадр превью — ОДИНАКОВЫЙ для всех деталей и не зависит от числа
@@ -1208,12 +1217,23 @@ namespace Galilego.Building
             switch (kind)
             {
                 case PartKind.Engine:
+                    AddRow(x, ref y, w, "Топливо",
+                        BipropellantMix.Rs25.Oxidizer.Id + " + " + BipropellantMix.Rs25.Fuel.Id);
                     AddRow(x, ref y, w, "Тяга (вак.)", "2279 кН");
                     AddRow(x, ref y, w, "Удельный импульс", "452 с");
+                    AddRow(x, ref y, w, "Расход",
+                        BipropellantMix.Rs25.MassFlowKgS.ToString("F0") + " кг/с · O/F "
+                        + BipropellantMix.Rs25.OxidizerToFuelMassRatio.ToString("F2"));
                     break;
                 case PartKind.FuelTank:
-                    double volume = ProceduralFuelTank.Volume(m.Radius, m.TopRadius, m.Height);
-                    AddRow(x, ref y, w, "Объём", volume.ToString("F1") + " м³");
+                    AddRow(x, ref y, w, "Топливо", m.Load != null ? m.Load.DisplayName : "—");
+                    AddRow(x, ref y, w, "Объём",
+                        m.VolumeM3.ToString("F1") + " м³ (" + (m.VolumeM3 * 1000d).ToString("F0") + " л)");
+                    double tankUsable = UsableVolumeM3(m);
+                    AddRow(x, ref y, w, "Залито",
+                        tankUsable.ToString("F1") + " м³ (" + (tankUsable * 1000d).ToString("F0") + " л)");
+                    AddRow(x, ref y, w, "Топливо в баке", FormatMass(m.PropellantMassKg));
+                    AddRow(x, ref y, w, "Сухая масса", FormatMass(m.DryMassKg));
                     break;
                 case PartKind.Separator:
                     AddRow(x, ref y, w, "Толщина", "40 мм");
@@ -1238,6 +1258,7 @@ namespace Galilego.Building
                 // одним разом — иначе каждый шаг стрелки дёргал бы иконку.
                 PartPreset before = preset;
                 DrawShapeRow(x, ref y, w, ref preset, layout.Owner, layout.Card);
+                DrawLoadRow(x, ref y, w, ref preset, layout.Owner, layout.Card);
                 bool cone = preset.Form == TankForm.Cone;
                 DrawEditor(x, ref y, w, "Длина бака", ref preset.Height,
                     PartCatalog.TankMinHeight, PartCatalog.TankMaxHeight, 10, "F1");
@@ -1327,6 +1348,9 @@ namespace Galilego.Building
         /// <summary>Высота строки выбора формы бака (для расчёта кадра превью).</summary>
         private const float ShapeRowHeight = 66f;
 
+        /// <summary>Высота строки наполнения: подписи состава и масс (36) + ряд кнопок (44).</summary>
+        private const float LoadRowHeight = 80f;
+
         /// <summary>Высота редактора размера: подпись (22) + ряд кнопок (62).</summary>
         private const float EditorHeight = 84f;
 
@@ -1354,6 +1378,98 @@ namespace Galilego.Building
             }
 
             y += 44f;
+        }
+
+        /// <summary>
+        /// Строка «Наполнение»: кнопки по реестру PropellantLoads (новое
+        /// наполнение появляется в UI само). Выбор тут же меняет призрак,
+        /// поставленную деталь и превью — масса бака считается от наполнения.
+        /// </summary>
+        private void DrawLoadRow(float x, ref float y, float w, ref PartPreset preset, HotSlot owner, int card)
+        {
+            GUI.Label(new Rect(x, y, w * 0.4f, 18f), "Наполнение", BuilderSkin.Body);
+            GUI.Label(new Rect(x + (w * 0.3f), y, w * 0.7f, 18f),
+                LoadComposition(preset.Load ?? PropellantLoads.Default), BuilderSkin.TinyRight);
+
+            // Полная заправка: процент (сверху, по объёму) и масса каждого
+            // компонента при текущих размерах бака, в кг.
+            PartMetrics m = Builder.MetricsFor(preset);
+            GUI.Label(new Rect(x, y + 18f, w, 14f),
+                LoadComponentMasses(m, preset.Load ?? PropellantLoads.Default), BuilderSkin.TinyRight);
+            y += 36f;
+
+            IReadOnlyList<PropellantLoad> all = PropellantLoads.All;
+            const float gap = 4f;
+            float bw = (w - (gap * (all.Count - 1))) / all.Count;
+            PropellantLoad current = preset.Load ?? PropellantLoads.Default;
+            for (int i = 0; i < all.Count; i++)
+            {
+                var rect = new Rect(x + (i * (bw + gap)), y, bw, 34f);
+                if (ShapeButton(rect, all[i].DisplayName, all[i] == current) && all[i] != current)
+                {
+                    preset.Load = all[i];
+                    ApplyPresetEdit(owner, card, preset);
+                }
+            }
+
+            y += 44f;
+        }
+
+        /// <summary>Состав наполнения долями объёма: «LOX 27% · LH2 73% по объёму».</summary>
+        private static string LoadComposition(PropellantLoad load)
+        {
+            string text = string.Empty;
+            for (int i = 0; i < load.Count; i++)
+            {
+                if (i > 0)
+                {
+                    text += " · ";
+                }
+
+                text += load.Component(i).Id + " " + (load.VolumeFraction(i) * 100d).ToString("F0") + "%";
+            }
+
+            return text + " по объёму";
+        }
+
+        /// <summary>Массы компонентов при полной заправке: «LOX 30610 кг · LH2 5076 кг».</summary>
+        private static string LoadComponentMasses(PartMetrics metrics, PropellantLoad load)
+        {
+            if (load == null || metrics.VolumeM3 <= 0d)
+            {
+                return string.Empty;
+            }
+
+            string text = string.Empty;
+            for (int i = 0; i < load.Count; i++)
+            {
+                if (i > 0)
+                {
+                    text += " · ";
+                }
+
+                text += load.Component(i).Id + " "
+                    + load.ComponentMassKg(i, metrics.VolumeM3, 1d).ToString("F0") + " кг";
+            }
+
+            return text;
+        }
+
+        /// <summary>Заливаемый объём (без газовой подушки), м³ — литры сходятся с заправкой.</summary>
+        private static double UsableVolumeM3(PartMetrics metrics)
+        {
+            if (metrics.Load == null || metrics.VolumeM3 <= 0d)
+            {
+                return 0d;
+            }
+
+            double usable = 0d;
+            for (int i = 0; i < metrics.Load.Count; i++)
+            {
+                usable += metrics.Load.UsableVolumeM3(i, metrics.VolumeM3);
+            }
+
+            return usable;
         }
 
         private bool ShapeButton(Rect rect, string text, bool selected)

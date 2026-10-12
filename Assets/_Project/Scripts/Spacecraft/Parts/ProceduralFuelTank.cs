@@ -42,12 +42,9 @@ namespace Galilego.Spacecraft
         [Tooltip("Метров поверхности на один тайл текстуры боковины (для UV).")]
         [Min(0.01f)] public float TextureMetersPerTile = 2f;
 
-        [Header("Физика (не подключено, данные для расчётов)")]
-        [Tooltip("Погонная плотность обечайки, кг/м² (сталь ~15, алюминий ~8).")]
-        [Min(0f)] public float ShellArealDensityKgM2 = 15f;
-
-        [Tooltip("Плотность топлива, кг/м³ (LOX ~1140, LH2 ~71, RP-1 ~810).")]
-        [Min(0f)] public float PropellantDensityKgM3 = 1000f;
+        [Header("Физика")]
+        [Tooltip("Наполнение бака: Id из реестра PropellantLoads (RS25, ...).")]
+        public string LoadId = "RS25";
 
         [Tooltip("Заполнение бака топливом, 0..1.")]
         [Range(0f, 1f)] public float Fill = 1f;
@@ -85,19 +82,32 @@ namespace Galilego.Spacecraft
             return (Mathf.PI * height * ((bottomRadius * bottomRadius) + (bottomRadius * topRadius) + (topRadius * topRadius))) / 3f;
         }
 
+        /// <summary>Наполнение бака (по Id из реестра PropellantLoads).</summary>
+        public PropellantLoad Load
+        {
+            get { return PropellantLoads.Get(LoadId); }
+            set { LoadId = value != null ? value.Id : "RS25"; }
+        }
+
+        /// <summary>Расчёт бака: объём, металл, изоляция и топливо (TankMassModel).</summary>
+        public TankMassInfo Mass
+        {
+            get { return TankMassModel.Compute(Radius, TopRadius > 0.01f ? TopRadius : Radius, Height, Load, Fill); }
+        }
+
         public double DryMassKg
         {
-            get { return ShellAreaM2 * ShellArealDensityKgM2; }
+            get { return Mass.DryMassKg; }
         }
 
         public double FuelMassKg
         {
-            get { return VolumeM3 * PropellantDensityKgM3 * Fill; }
+            get { return Mass.PropellantMassKg; }
         }
 
         public double TotalMassKg
         {
-            get { return DryMassKg + FuelMassKg; }
+            get { return Mass.TotalMassKg; }
         }
 
         /// <summary>

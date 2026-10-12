@@ -103,6 +103,9 @@ namespace Galilego.Building
 
         public float SeparatorRadius = PartCatalog.SeparatorDefaultRadius;
 
+        /// <summary>Стартовое наполнение бака для новых слотов (Id из PropellantLoads).</summary>
+        public PropellantLoad TankLoad = PropellantLoads.Default;
+
         private PartCatalog.EngineTemplate engine;
         private Material ghostMaterial;
         private Material invalidMaterial;
@@ -471,6 +474,7 @@ namespace Galilego.Building
             PartDefinition[] defs = BuildMath.ToPartDefinitions(parts);
             Runner.SetVesselParts(defs);
             Runner.Ship.Mass = BuildMath.TotalMass(parts);
+            Runner.SetDryMass(BuildMath.EffectiveDryMass(parts, BipropellantMix.Rs25));
 
             // В полёте аппарат живёт телами прокси: визуальные коллайдеры деталей
             // гасим, иначе PhysX-тела сталкивались бы со своими же визуалами.
@@ -632,6 +636,7 @@ namespace Galilego.Building
                         Radius = TankRadius,
                         TopRadius = TankTopRadius,
                         Height = TankHeight,
+                        Load = TankLoad,
                     };
                 case PartKind.Separator:
                     return new PartPreset { Kind = kind, Radius = SeparatorRadius };
@@ -646,7 +651,8 @@ namespace Galilego.Building
             if (preset.Kind == PartKind.FuelTank)
             {
                 return PartCatalog.Measure(
-                    preset.Kind, preset.Form, preset.Radius, preset.TopRadius, preset.Height, engine);
+                    preset.Kind, preset.Form, preset.Radius, preset.TopRadius, preset.Height,
+                    preset.Load, engine);
             }
 
             float a = preset.Kind == PartKind.Separator ? preset.Radius : 0f;

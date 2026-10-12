@@ -625,6 +625,20 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Сухая масса корабля (без сгораемого топлива) для тяги: ThrustSource
+        /// без неё держит дефолт 3000 кг и «съедает» бак. Режим строительства
+        /// зовёт при запуске полёта (BuildMath.EffectiveDryMass).
+        /// </summary>
+        public void SetDryMass(double dryMassKg)
+        {
+            DryMassKg = dryMassKg;
+            if (step != null && step.MainThrust != null)
+            {
+                step.MainThrust.DryMassKg = dryMassKg;
+            }
+        }
+
+        /// <summary>
         /// Поставить состояние корабля снаружи (режим строительства: передача
         /// аппарата в физику и откат к стройке). Сбрасывает аккумулятор времени,
         /// как телепорт: накопленная компенсация к новой точке не относится.

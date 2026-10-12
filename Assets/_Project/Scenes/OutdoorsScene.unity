@@ -1216,7 +1216,7 @@ MonoBehaviour:
   Runner: {fileID: 1332194275}
   ShipTransform: {fileID: 1644257543}
   CheatMenu: {fileID: 1250304433}
-  WalkSpeed: 30
+  WalkSpeed: 20
   RunSpeed: 100
   JetpackThrust: 20
   HoverSpeed: 6
@@ -1593,7 +1593,9 @@ MonoBehaviour:
   SeparatorMaterial: {fileID: 2100000, guid: 63fe4e5c98995884dbc72fbfca5c07db, type: 2}
   DebugSpikeStack: 1
   TankRadius: 1.5
+  TankTopRadius: 1.5
   TankHeight: 6
+  TankForm: 0
   SeparatorRadius: 1.5
   DebugUpdateCount: 0
   DebugLastPinLocal: {x: 0, y: 0, z: 0}

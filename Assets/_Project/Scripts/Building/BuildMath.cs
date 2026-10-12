@@ -451,6 +451,46 @@ namespace Galilego.Building
         }
 
         /// <summary>
+        /// Сухая масса сборки для ThrustSource: из общей массы вычитается только
+        /// то топливо, что сгорит в пропорции двигателя O/F (BipropellantMix).
+        /// Топливо сгорает парой (окислитель + горючее), поэтому избыток одного
+        /// компонента без пары другого — мёртвый груз: он остаётся в массе и
+        /// после выработки, вычитать его нельзя. Если баки собраны с разными
+        /// наполнениями, избыток тоже не вычитается.
+        /// </summary>
+        public static double EffectiveDryMass(IReadOnlyList<PlacedPart> parts, BipropellantMix mix)
+        {
+            double total = 0d;
+            double oxidizer = 0d;
+            double fuel = 0d;
+            for (int i = 0; i < parts.Count; i++)
+            {
+                PartMetrics m = parts[i].Metrics;
+                total += m.MassKg;
+                if (m.Load == null)
+                {
+                    continue;
+                }
+
+                for (int c = 0; c < m.Load.Count; c++)
+                {
+                    Propellant p = m.Load.Component(c);
+                    double kg = m.Load.ComponentMassKg(c, m.VolumeM3, 1d);
+                    if (p == mix.Oxidizer)
+                    {
+                        oxidizer += kg;
+                    }
+                    else if (p == mix.Fuel)
+                    {
+                        fuel += kg;
+                    }
+                }
+            }
+
+            return total - mix.BurnableMassKg(oxidizer, fuel);
+        }
+
+        /// <summary>
         /// Черновик → PartDefinition[] для VesselStep/зоны контакта: Offset —
         /// центр детали от НИЗА сборки (система корабля: y — вверх места),
         /// ParentIndex — по снапу. Форма — тело вращения: цилиндр, а у бака-

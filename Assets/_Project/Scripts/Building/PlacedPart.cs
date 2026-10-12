@@ -1,3 +1,4 @@
+using Galilego.Spacecraft;
 using UnityEngine;
 
 namespace Galilego.Building
@@ -42,6 +43,9 @@ namespace Galilego.Building
 
         /// <summary>Длина бака, м.</summary>
         public float Height;
+
+        /// <summary>Наполнение бака: компоненты и их доли объёма (у прочих деталей null).</summary>
+        public PropellantLoad Load;
     }
 
     /// <summary>
@@ -79,8 +83,28 @@ namespace Galilego.Building
         public readonly double JointStrengthNewtons;
         public readonly double BreakTorqueNm;
 
+        /// <summary>Сухая масса (металл + изоляция) без топлива, кг.</summary>
+        public readonly double DryMassKg;
+
+        /// <summary>Масса топлива в баке, кг (0 у прочих деталей).</summary>
+        public readonly double PropellantMassKg;
+
+        /// <summary>Внутренний объём формы, м³ (0 у прочих деталей).</summary>
+        public readonly double VolumeM3;
+
+        /// <summary>Наполнение бака (компоненты и их доли объёма; null у прочих деталей).</summary>
+        public readonly PropellantLoad Load;
+
         public PartMetrics(float radius, float topRadius, float height, float center, float bottom, float top,
             double massKg, double jointStrengthNewtons, double breakTorqueNm)
+            : this(radius, topRadius, height, center, bottom, top, massKg, jointStrengthNewtons, breakTorqueNm,
+                massKg, 0d, 0d, null)
+        {
+        }
+
+        public PartMetrics(float radius, float topRadius, float height, float center, float bottom, float top,
+            double massKg, double jointStrengthNewtons, double breakTorqueNm,
+            double dryMassKg, double propellantMassKg, double volumeM3, PropellantLoad load)
         {
             Radius = radius;
             TopRadius = topRadius > 0.01f ? topRadius : radius;
@@ -91,6 +115,10 @@ namespace Galilego.Building
             MassKg = massKg;
             JointStrengthNewtons = jointStrengthNewtons;
             BreakTorqueNm = breakTorqueNm;
+            DryMassKg = dryMassKg;
+            PropellantMassKg = propellantMassKg;
+            VolumeM3 = volumeM3;
+            Load = load;
         }
     }
 
