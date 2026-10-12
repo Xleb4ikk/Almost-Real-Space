@@ -90,6 +90,9 @@ namespace Galilego.Simulation.ContactZone
                 rb.mass = (float)d.MassKg;
                 rb.linearVelocity = vel;
                 AddShapeCollider(go, d);
+                // Маркер детали аппарата: опора игрока (VesselSupport) не пускает
+                // его сквозь тела прокси, пока идёт полёт.
+                go.AddComponent<Galilego.Building.VesselPartCollider>();
                 bodies.Add(rb);
             }
 

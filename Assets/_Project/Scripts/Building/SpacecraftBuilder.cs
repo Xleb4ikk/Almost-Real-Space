@@ -460,6 +460,12 @@ namespace Galilego.Building
             Runner.SetVesselParts(defs);
             Runner.Ship.Mass = BuildMath.TotalMass(parts);
 
+            // В полёте аппарат живёт телами прокси: визуальные коллайдеры деталей
+            // гасим, иначе PhysX-тела сталкивались бы со своими же визуалами.
+            // Игрок при этом не проходит сквозь аппарат — опора берёт коллайдеры
+            // тел прокси (у них тот же маркер VesselPartCollider).
+            SetPartColliders(false);
+
             Vector3 bottom = BuildMath.VesselBottom(parts);
             Zone.SiteToAstroAt(bottom, t, out Galilego.Core.Vector3d pos, out Galilego.Core.Vector3d vel);
             Runner.SetShipState(pos, vel, Galilego.Events.VesselRegime.Flying);
@@ -586,6 +592,8 @@ namespace Galilego.Building
             {
                 Runner.Debris.Clear();
             }
+
+            SetPartColliders(true);
 
             RefreshVisualLocals();
             Debug.Log("[Build] возврат к стройке: состояние восстановлено");
@@ -762,6 +770,29 @@ namespace Galilego.Building
             }
 
             RefreshVisualLocals();
+        }
+
+        /// <summary>
+        /// Включить/выключить визуальные коллайдеры деталей. В полёте они
+        /// гасятся: тела прокси занимают их место (иначе PhysX-тела сталкивались
+        /// бы со своими же визуалами), а опора игрока переключается на тела прокси.
+        /// </summary>
+        private void SetPartColliders(bool enabled)
+        {
+            for (int i = 0; i < parts.Count; i++)
+            {
+                PlacedPart part = parts[i];
+                if (part.Visual == null || part.Visual.Root == null)
+                {
+                    continue;
+                }
+
+                Collider collider = part.Visual.Root.GetComponent<Collider>();
+                if (collider != null)
+                {
+                    collider.enabled = enabled;
+                }
+            }
         }
 
         /// <summary>Локальные позы визуалов: пивот минус низ сборки (оси места).</summary>
@@ -951,11 +982,24 @@ namespace Galilego.Building
             float bestDistance = float.MaxValue;
             for (int i = 0; i < hits.Length; i++)
             {
+                // Коллайдеры деталей аппарата луч постановки не заслоняют: снап
+                // по узлам и так аналитический, а цель луча — плита/стол места.
+                if (hits[i].collider.GetComponentInParent<VesselPartCollider>() != null)
+                {
+                    continue;
+                }
+
                 if (hits[i].distance < bestDistance)
                 {
                     bestDistance = hits[i].distance;
                     best = i;
                 }
+            }
+
+            if (best < 0)
+            {
+                // Все попадания — коллайдеры деталей аппарата: поверхности места нет.
+                return false;
             }
 
             RaycastHit hit = hits[best];
@@ -999,7 +1043,8 @@ namespace Galilego.Building
 
             ghost = PartCatalog.CreateVisual(
                 kind, metrics, engine,
-                TankSideMaterial, TankCapMaterial, SeparatorMaterial, Zone.transform);
+                TankSideMaterial, TankCapMaterial, SeparatorMaterial, Zone.transform,
+                withCollider: false);
             ghostKind = kind;
             ghostRadius = metrics.Radius;
             ghostHeight = metrics.Height;

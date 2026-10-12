@@ -1216,9 +1216,11 @@ MonoBehaviour:
   Runner: {fileID: 1332194275}
   ShipTransform: {fileID: 1644257543}
   CheatMenu: {fileID: 1250304433}
-  WalkSpeed: 50
-  RunSpeed: 2000
+  WalkSpeed: 30
+  RunSpeed: 100
   JetpackThrust: 20
+  HoverSpeed: 6
+  HoverVerticalSpeed: 3
   SwimSpeed: 2.5
   SwimFastSpeed: 5
   EnterDistanceMeters: 5

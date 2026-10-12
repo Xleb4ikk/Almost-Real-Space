@@ -280,6 +280,7 @@ namespace Galilego.Universe
 
         private readonly TerrainSupport terrainSupport = new TerrainSupport();
         private readonly SiteBoxSupport siteSupport = new SiteBoxSupport();
+        private readonly VesselSupport vesselSupport = new VesselSupport();
         private readonly CompositePlayerSupport playerSupport = new CompositePlayerSupport();
         private static readonly SphericalTerrain playerFallbackTerrain = new SphericalTerrain();
         private bool playerAirborne;
@@ -1198,8 +1199,10 @@ namespace Galilego.Universe
 
             terrainSupport.SetFrame(body, playerTerrain, frame, t);
             siteSupport.SetFrame(frame);
+            vesselSupport.SetFrame(frame);
             playerSupport.Terrain = terrainSupport;
             playerSupport.Sites = siteSupport;
+            playerSupport.Vessel = vesselSupport;
 
             Vector3d walkWorld = PlayerIntent.WalkDirection * PlayerIntent.WalkSpeed;
             Vector3d walkLocal = new Vector3d(
