@@ -18,22 +18,25 @@ namespace Galilego.Building
         private static Texture2D tank;
         private static Texture2D separator;
 
-        private static readonly System.Collections.Generic.Dictionary<PartKind, Texture2D> overrides =
-            new System.Collections.Generic.Dictionary<PartKind, Texture2D>();
+        private static readonly System.Collections.Generic.Dictionary<string, Texture2D> overrides =
+            new System.Collections.Generic.Dictionary<string, Texture2D>();
 
-        /// <summary>Положить готовую иконку (3D-рендер) вместо процедурной.</summary>
-        public static void Set(PartKind kind, Texture2D texture)
+        /// <summary>
+        /// Положить готовую иконку (3D-рендер) вместо процедурной. Ключ — вид
+        /// и (у двигателя) Id модели: у каждого двигателя своя иконка карточки.
+        /// </summary>
+        public static void Set(PartKind kind, string engineId, Texture2D texture)
         {
             if (texture != null)
             {
-                overrides[kind] = texture;
+                overrides[Key(kind, engineId)] = texture;
             }
         }
 
         /// <summary>Рисунок детали (создаётся при первом обращении).</summary>
-        public static Texture2D Get(PartKind kind)
+        public static Texture2D Get(PartKind kind, string engineId)
         {
-            if (overrides.TryGetValue(kind, out Texture2D rendered) && rendered != null)
+            if (overrides.TryGetValue(Key(kind, engineId), out Texture2D rendered) && rendered != null)
             {
                 return rendered;
             }
@@ -62,6 +65,11 @@ namespace Galilego.Building
 
                     return tank;
             }
+        }
+
+        private static string Key(PartKind kind, string engineId)
+        {
+            return kind + "|" + (engineId ?? string.Empty);
         }
 
         // ─── Бак: цилиндр, вид спереди ───────────────────────────────────────

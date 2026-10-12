@@ -46,6 +46,9 @@ namespace Galilego.Building
 
         /// <summary>Наполнение бака: компоненты и их доли объёма (у прочих деталей null).</summary>
         public PropellantLoad Load;
+
+        /// <summary>Двигатель (Id из EngineSpecs; у прочих деталей не значим, null — по умолчанию).</summary>
+        public string EngineId;
     }
 
     /// <summary>
@@ -137,6 +140,12 @@ namespace Galilego.Building
 
         public float SizeA;
         public float SizeB;
+
+        /// <summary>
+        /// Паспорт двигателя на момент постановки (у прочих деталей null):
+        /// имя детали для физики, топливная пара и характеристики.
+        /// </summary>
+        public EngineSpec EngineSpec;
 
         /// <summary>Верхний радиус бака на момент постановки (равен SizeA — цилиндр).</summary>
         public float SizeTop;

@@ -52,10 +52,39 @@ namespace Galilego.Building
         [Tooltip("Контроллер игрока (блокировка ввода, пока окно открыто).")]
         public PlayerController Controller;
 
-        private static readonly PartKind[] Catalog =
+        /// <summary>
+        /// Запись каталога: вид детали и (у двигателя) его Id из EngineSpecs.
+        /// У каждого двигателя — СВОЯ карточка в сетке (двигатели идут рядом,
+        /// порядок — как в реестре EngineSpecs). Новый двигатель в реестре
+        /// сам добавляет карточку.
+        /// </summary>
+        private readonly struct CatalogEntry
         {
-            PartKind.Engine, PartKind.FuelTank, PartKind.Separator
-        };
+            public readonly PartKind Kind;
+            public readonly string EngineId;
+
+            public CatalogEntry(PartKind kind, string engineId)
+            {
+                Kind = kind;
+                EngineId = engineId;
+            }
+        }
+
+        private static CatalogEntry[] BuildCatalog()
+        {
+            var entries = new System.Collections.Generic.List<CatalogEntry>();
+            IReadOnlyList<EngineSpec> engines = EngineSpecs.All;
+            for (int i = 0; i < engines.Count; i++)
+            {
+                entries.Add(new CatalogEntry(PartKind.Engine, engines[i].Id));
+            }
+
+            entries.Add(new CatalogEntry(PartKind.FuelTank, null));
+            entries.Add(new CatalogEntry(PartKind.Separator, null));
+            return entries.ToArray();
+        }
+
+        private static readonly CatalogEntry[] Catalog = BuildCatalog();
 
         // Геометрия (в «виртуальных» пикселях при высоте экрана 1080).
         private const float SlotSize = 58f;
@@ -129,6 +158,11 @@ namespace Galilego.Building
         /// <summary>Курсор над столбцом характеристик (ставит OnGUI): колесо листает его, а не слоты.</summary>
         private bool statsHovered;
 
+        // Прокрутка сетки карточек: видно 6×3, остальное листается колесом.
+        private const float GridScrollStep = 46f;
+        private float gridScroll;
+        private bool gridHovered;
+
         // Мини-меню слота (ПКМ по слоту): быстрые размеры у панели.
         private const float SlotMenuWidth = 320f;
         private const int SlotMenuIdBase = 100;      // не пересекается с id окна (10..43)
@@ -165,12 +199,12 @@ namespace Galilego.Building
             // у превью): без этого в слотах и карточках были плоские проекции.
             if (Builder != null)
             {
-                preview.PrepareIcons(Builder.Engine, Builder.TankSideMaterial,
+                preview.PrepareIcons(Builder.Engines, Builder.TankSideMaterial,
                     Builder.TankCapMaterial, Builder.SeparatorMaterial);
 
                 for (int i = 0; i < Catalog.Length; i++)
                 {
-                    drafts[i] = Builder.DefaultPreset(Catalog[i]);
+                    drafts[i] = DraftFor(Catalog[i]);
                 }
             }
 
@@ -178,7 +212,7 @@ namespace Galilego.Building
             // из инвентаря работает как обычно (слоты можно менять местами).
             if (Builder != null)
             {
-                AssignPreset(0, Builder.DefaultPreset(PartKind.Engine));
+                AssignPreset(0, DraftFor(Catalog[0]));
                 AssignPreset(1, Builder.DefaultPreset(PartKind.FuelTank));
                 AssignPreset(2, Builder.DefaultPreset(PartKind.Separator));
             }
@@ -238,8 +272,9 @@ namespace Galilego.Building
 
             // Колесо над столбцом характеристик листает его (OnGUI), а не слоты:
             // иначе прокрутка размеров заодно переключала бы выбранный слот.
+            // Так же и над сеткой карточек — её прокрутка слотов не касается.
             float scroll = PlayerInput.MouseScroll();
-            if (Mathf.Abs(scroll) > 0.05f && !statsHovered)
+            if (Mathf.Abs(scroll) > 0.05f && !statsHovered && !gridHovered)
             {
                 int step = scroll > 0f ? -1 : 1;
                 SetHotbarIndex(((hotbarIndex + step) % hotbar.Length + hotbar.Length) % hotbar.Length);
@@ -293,7 +328,7 @@ namespace Galilego.Building
                 {
                     HotSlot current = hotbarIndex >= 0 ? hotbar[hotbarIndex] : null;
                     statsIndex = current != null && current.Occupied
-                        ? System.Array.IndexOf(Catalog, current.Preset.Kind)
+                        ? Mathf.Max(0, CardIndexFor(current.Preset))
                         : 0;
                 }
 
@@ -375,7 +410,7 @@ namespace Galilego.Building
             }
 
             PartPreset preset = StatsPreset();
-            preview.Ensure(preset.Kind, Builder.MetricsFor(preset), Builder.Engine,
+            preview.Ensure(preset.Kind, Builder.MetricsFor(preset), Builder.EngineFor(preset),
                 Builder.TankSideMaterial, Builder.TankCapMaterial, Builder.SeparatorMaterial);
         }
 
@@ -383,7 +418,7 @@ namespace Galilego.Building
         private bool CaptureSlotIcon(HotSlot slot)
         {
             Texture2D texture = preview.CaptureIcon(slot.Preset.Kind, Builder.MetricsFor(slot.Preset),
-                Builder.Engine, Builder.TankSideMaterial, Builder.TankCapMaterial, Builder.SeparatorMaterial);
+                Builder.EngineFor(slot.Preset), Builder.TankSideMaterial, Builder.TankCapMaterial, Builder.SeparatorMaterial);
             if (texture != null)
             {
                 SetIcon(slot, texture, owned: true);
@@ -397,8 +432,8 @@ namespace Galilego.Building
 
         /// <summary>
         /// Заготовка, которую показывает и правит окно: заготовка явно
-        /// выбранного слота этого вида, иначе — черновик вида (заготовка
-        /// на следующую постановку).
+        /// выбранного слота этой карточки, иначе — черновик карточки
+        /// (заготовка на следующую постановку).
         /// </summary>
         private PartPreset StatsPreset()
         {
@@ -417,7 +452,7 @@ namespace Galilego.Building
 
             if (hotbarIndex >= 0 && hotbar[hotbarIndex].Occupied)
             {
-                int found = System.Array.IndexOf(Catalog, hotbar[hotbarIndex].Preset.Kind);
+                int found = CardIndexFor(hotbar[hotbarIndex].Preset);
                 if (found >= 0)
                 {
                     return found;
@@ -428,13 +463,63 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Слот, который правит окно: ТОЛЬКО явно выбранный слот этого вида.
-        /// Иначе — null (правится черновик): правка не должна менять соседние
-        /// слоты, которые игрок не выбирал.
+        /// Слот, который правит окно: ТОЛЬКО явно выбранный слот этой карточки
+        /// (у двигателя — той же модели). Иначе — null (правится черновик):
+        /// правка не должна менять соседние слоты, которые игрок не выбирал.
         /// </summary>
-        private HotSlot EditSlotFor(PartKind kind)
+        private HotSlot EditSlotFor(CatalogEntry entry)
         {
-            return editSlot != null && editSlot.Occupied && editSlot.Preset.Kind == kind ? editSlot : null;
+            return editSlot != null && editSlot.Occupied && MatchesEntry(entry, editSlot.Preset)
+                ? editSlot
+                : null;
+        }
+
+        /// <summary>Карточка, которой соответствует заготовка (вид + двигатель), или −1.</summary>
+        private static int CardIndexFor(PartPreset preset)
+        {
+            for (int i = 0; i < Catalog.Length; i++)
+            {
+                if (MatchesEntry(Catalog[i], preset))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        /// <summary>
+        /// Подходит ли карточка заготовке: вид совпадает, а у двигателя — ещё и
+        /// модель (пустой EngineId заготовки — двигатель по умолчанию).
+        /// </summary>
+        private static bool MatchesEntry(CatalogEntry entry, PartPreset preset)
+        {
+            if (entry.Kind != preset.Kind)
+            {
+                return false;
+            }
+
+            if (entry.Kind != PartKind.Engine)
+            {
+                return true;
+            }
+
+            string presetEngine = string.IsNullOrEmpty(preset.EngineId)
+                ? EngineSpecs.Default.Id
+                : preset.EngineId;
+            return entry.EngineId == presetEngine;
+        }
+
+        /// <summary>Черновик карточки: стартовая заготовка её вида и двигателя.</summary>
+        private PartPreset DraftFor(CatalogEntry entry)
+        {
+            PartPreset preset = Builder.DefaultPreset(entry.Kind);
+            if (entry.Kind == PartKind.Engine)
+            {
+                preset.EngineId = entry.EngineId;
+            }
+
+            return preset;
         }
 
         // ─── Слоты ───────────────────────────────────────────────────────────
@@ -452,7 +537,7 @@ namespace Galilego.Building
         private void AssignPreset(int index, PartPreset preset)
         {
             HotSlot slot = hotbar[index];
-            SetIcon(slot, PartIcons.Get(preset.Kind), owned: false);
+            SetIcon(slot, PartIcons.Get(preset.Kind, preset.EngineId), owned: false);
             slot.Preset = preset;
             slot.Occupied = true;
             slot.IconDirty = true;
@@ -515,6 +600,7 @@ namespace Galilego.Building
             return a.Kind == b.Kind
                 && a.Form == b.Form
                 && a.Load == b.Load
+                && a.EngineId == b.EngineId
                 && Mathf.Abs(a.Radius - b.Radius) < 1e-4f
                 && Mathf.Abs(a.TopRadius - b.TopRadius) < 1e-4f
                 && Mathf.Abs(a.Height - b.Height) < 1e-4f;
@@ -557,7 +643,7 @@ namespace Galilego.Building
                 return;
             }
 
-            int card = System.Array.IndexOf(Catalog, slot.Preset.Kind);
+            int card = CardIndexFor(slot.Preset);
             if (card < 0)
             {
                 slotMenuIndex = -1;
@@ -569,7 +655,7 @@ namespace Galilego.Building
             bool hasSize = kind != PartKind.Engine;
             int editors = tank ? (slot.Preset.Form == TankForm.Cone ? 3 : 2) : 1;
             float bodyH = hasSize
-                ? (tank ? ShapeRowHeight + LoadRowHeight : 0f) + (editors * EditorHeight)
+                ? (tank ? ShapeRowHeight + LoadRowHeight(PropellantLoads.All.Count) : 0f) + (editors * EditorHeight)
                 : 3f * 26f;
             float menuH = 46f + bodyH + 16f;
 
@@ -597,7 +683,8 @@ namespace Galilego.Building
             float pw = menu.width - 32f;
             float py = menu.y + 12f;
 
-            GUI.Label(new Rect(px, py, pw, 22f), PartCatalog.DisplayName(kind), BuilderSkin.NameText);
+            GUI.Label(new Rect(px, py, pw, 22f),
+                PartCatalog.DisplayName(kind, EngineSpecFor(slot.Preset)), BuilderSkin.NameText);
             py += 26f;
             DrawSolid(new Rect(px, py, pw, 1f), BuilderSkin.Line);
             py += 8f;
@@ -627,9 +714,10 @@ namespace Galilego.Building
             else
             {
                 PartMetrics m = Builder.MetricsFor(preset);
+                EngineSpec spec = EngineSpecFor(preset);
                 AddRow(px, ref py, pw, "Масса", FormatMass(m.MassKg));
-                AddRow(px, ref py, pw, "Тяга (вак.)", "2279 кН");
-                AddRow(px, ref py, pw, "Удельный импульс", "452 с");
+                AddRow(px, ref py, pw, "Тяга (вак.)", FormatThrust(spec));
+                AddRow(px, ref py, pw, "Удельный импульс", FormatIsp(spec));
             }
 
             if (!SamePreset(before, preset))
@@ -760,7 +848,7 @@ namespace Galilego.Building
                     var icon = new Rect(rect.x + inset, rect.y + inset, rect.width - (inset * 2f), rect.height - (inset * 2f));
                     bool lifted = dragMoved && dragFromHotbar == i;
                     SetColor(new Color(1f, 1f, 1f, lifted ? 0.3f : 1f));
-                    Texture2D picture = slot.Icon != null ? slot.Icon : PartIcons.Get(slot.Preset.Kind);
+                    Texture2D picture = slot.Icon != null ? slot.Icon : PartIcons.Get(slot.Preset.Kind, slot.Preset.EngineId);
                     GUI.DrawTexture(icon, picture, ScaleMode.ScaleToFit);
                     SetColor(Color.white);
                 }
@@ -780,7 +868,7 @@ namespace Galilego.Building
                         SetHotbarIndex(i);
                         if (slot.Occupied)
                         {
-                            statsIndex = System.Array.IndexOf(Catalog, slot.Preset.Kind);
+                            statsIndex = Mathf.Max(0, CardIndexFor(slot.Preset));
                             dragPreset = slot.Preset;
                             dragIcon = slot.Icon;
                             dragFromHotbar = i;
@@ -820,7 +908,7 @@ namespace Galilego.Building
                 dims = "   <color=#9AA0A8>R " + m.Radius.ToString("F1") + " м</color>";
             }
 
-            string name = PartCatalog.DisplayName(preset.Kind);
+            string name = PartCatalog.DisplayName(preset.Kind, EngineSpecFor(preset));
             if (preset.Kind == PartKind.FuelTank && IsCone(m))
             {
                 name += " · конус";
@@ -1136,22 +1224,28 @@ namespace Galilego.Building
         private StatsLayout ComputeStatsLayout(float width, float viewHeight)
         {
             int card = StatsCardIndex();
-            PartKind kind = Catalog[card];
-            HotSlot owner = EditSlotFor(kind);
+            CatalogEntry entry = Catalog[card];
+            PartKind kind = entry.Kind;
+            HotSlot owner = EditSlotFor(entry);
             PartPreset preset = owner != null ? owner.Preset : drafts[card];
             PartMetrics m = Builder.MetricsFor(preset);
 
             bool tank = kind == PartKind.FuelTank;
-            int rows = kind == PartKind.Engine ? 6 : (kind == PartKind.FuelTank ? 7 : 3);
-            int editors = kind == PartKind.Engine ? 0 : (tank ? (IsCone(m) ? 3 : 2) : 1);
+            bool engine = kind == PartKind.Engine;
+
+            // Строки характеристик: у двигателя — масса, топливо, тяга, импульс,
+            // расход, степень расширения, прочность стыка.
+            int rows = engine ? 7 : (kind == PartKind.FuelTank ? 7 : 3);
+            int editors = engine ? 0 : (tank ? (IsCone(m) ? 3 : 2) : 1);
 
             // Всё, кроме кадра: шапка, подписи, строки, форма и редакторы.
             // Редактор размера занимает подпись + ряд кнопок (EditorHeight) —
             // без подписи высота контента занижалась и низ не долистывался.
             // Бак добавляет две строки: форму бака и наполнение.
-            float rest = 16f + 28f + 14f + 26f + 24f + 8f + (rows * 26f)
-                + (editors > 0 ? 10f + 26f + (tank ? ShapeRowHeight + LoadRowHeight : 0f) + (editors * EditorHeight) : 0f)
-                + 16f;
+            float extras = editors > 0
+                ? 10f + 26f + (tank ? ShapeRowHeight + LoadRowHeight(PropellantLoads.All.Count) : 0f) + (editors * EditorHeight)
+                : 0f;
+            float rest = 16f + 28f + 14f + 26f + 24f + 8f + (rows * 26f) + extras + 16f;
             float w = width - 40f;
             // Кадр превью — ОДИНАКОВЫЙ для всех деталей и не зависит от числа
             // строк: у бака строк и редакторов больше, и подгонка кадра делала
@@ -1205,9 +1299,9 @@ namespace Galilego.Building
 
             y = viewport.yMax + 14f;
 
-            GUI.Label(new Rect(x, y, w, 24f), PartCatalog.DisplayName(kind), BuilderSkin.NameTextCenter);
+            GUI.Label(new Rect(x, y, w, 24f), PartCatalog.DisplayName(kind, EngineSpecFor(layout.Preset)), BuilderSkin.NameTextCenter);
             y += 26f;
-            GUI.Label(new Rect(x, y, w, 18f), KindLabel(kind), BuilderSkin.MutedCenter);
+            GUI.Label(new Rect(x, y, w, 18f), KindLabel(kind, EngineSpecFor(layout.Preset)), BuilderSkin.MutedCenter);
             y += 24f;
 
             DrawSolid(new Rect(x, y, w, 1f), BuilderSkin.Line);
@@ -1217,14 +1311,19 @@ namespace Galilego.Building
             switch (kind)
             {
                 case PartKind.Engine:
-                    AddRow(x, ref y, w, "Топливо",
-                        BipropellantMix.Rs25.Oxidizer.Id + " + " + BipropellantMix.Rs25.Fuel.Id);
-                    AddRow(x, ref y, w, "Тяга (вак.)", "2279 кН");
-                    AddRow(x, ref y, w, "Удельный импульс", "452 с");
+                {
+                    EngineSpec spec = EngineSpecFor(layout.Preset);
+                    BipropellantMix mix = spec != null ? spec.Mix : PropellantPairs.Default.Mix;
+                    AddRow(x, ref y, w, "Топливо", mix.Oxidizer.Id + " + " + mix.Fuel.Id);
+                    AddRow(x, ref y, w, "Тяга (вак.)", FormatThrust(spec));
+                    AddRow(x, ref y, w, "Удельный импульс", FormatIsp(spec));
                     AddRow(x, ref y, w, "Расход",
-                        BipropellantMix.Rs25.MassFlowKgS.ToString("F0") + " кг/с · O/F "
-                        + BipropellantMix.Rs25.OxidizerToFuelMassRatio.ToString("F2"));
+                        mix.MassFlowKgS.ToString("0.#") + " кг/с · O/F "
+                        + mix.OxidizerToFuelMassRatio.ToString("0.##"));
+                    AddRow(x, ref y, w, "Степень расширения",
+                        spec != null ? spec.ExpansionRatio.ToString("0.#") + ":1" : "—");
                     break;
+                }
                 case PartKind.FuelTank:
                     AddRow(x, ref y, w, "Топливо", m.Load != null ? m.Load.DisplayName : "—");
                     AddRow(x, ref y, w, "Объём",
@@ -1244,6 +1343,8 @@ namespace Galilego.Building
 
             if (kind == PartKind.Engine)
             {
+                // У двигателя размеров нет: модель выбирается карточкой
+                // в инвентаре (у каждого двигателя — своя карточка).
                 return;
             }
 
@@ -1305,6 +1406,22 @@ namespace Galilego.Building
             }
         }
 
+        /// <summary>Колесо над сеткой карточек листает её (деталей больше 6×3).</summary>
+        private void HandleGridScroll(Rect r, float maxScroll)
+        {
+            if (maxScroll <= 0f)
+            {
+                return;
+            }
+
+            Event e = Event.current;
+            if (e.type == EventType.ScrollWheel && r.Contains(e.mousePosition))
+            {
+                gridScroll = Mathf.Clamp(gridScroll + (e.delta.y * GridScrollStep), 0f, maxScroll);
+                e.Use();
+            }
+        }
+
         // Бегунок у правого края панели: полоска в поле панели и перетаскивание.
         private void DrawStatsScrollbar(Rect r, float contentHeight, float maxScroll)
         {
@@ -1348,8 +1465,14 @@ namespace Galilego.Building
         /// <summary>Высота строки выбора формы бака (для расчёта кадра превью).</summary>
         private const float ShapeRowHeight = 66f;
 
-        /// <summary>Высота строки наполнения: подписи состава и масс (36) + ряд кнопок (44).</summary>
-        private const float LoadRowHeight = 80f;
+        /// <summary>
+        /// Высота строки наполнения: подписи состава и масс (36) + по кнопке
+        /// на каждое наполнение реестра (34) с зазором 4 между ними.
+        /// </summary>
+        private static float LoadRowHeight(int loads)
+        {
+            return 46f + (loads * 34f) + ((loads - 1) * 4f);
+        }
 
         /// <summary>Высота редактора размера: подпись (22) + ряд кнопок (62).</summary>
         private const float EditorHeight = 84f;
@@ -1398,13 +1521,14 @@ namespace Galilego.Building
                 LoadComponentMasses(m, preset.Load ?? PropellantLoads.Default), BuilderSkin.TinyRight);
             y += 36f;
 
+            // Кнопка на каждое наполнение реестра — столбиком во всю ширину:
+            // названия пар длинные («AJ10-118K · N2O4/Аэрозин-50»), в ряд они
+            // не влезали и обрезались.
             IReadOnlyList<PropellantLoad> all = PropellantLoads.All;
-            const float gap = 4f;
-            float bw = (w - (gap * (all.Count - 1))) / all.Count;
             PropellantLoad current = preset.Load ?? PropellantLoads.Default;
             for (int i = 0; i < all.Count; i++)
             {
-                var rect = new Rect(x + (i * (bw + gap)), y, bw, 34f);
+                var rect = new Rect(x, y + (i * 38f), w, 34f);
                 if (ShapeButton(rect, all[i].DisplayName, all[i] == current) && all[i] != current)
                 {
                     preset.Load = all[i];
@@ -1412,7 +1536,7 @@ namespace Galilego.Building
                 }
             }
 
-            y += 44f;
+            y += (all.Count * 34f) + ((all.Count - 1) * 4f);
         }
 
         /// <summary>Состав наполнения долями объёма: «LOX 27% · LH2 73% по объёму».</summary>
@@ -1669,18 +1793,47 @@ namespace Galilego.Building
             GUI.Label(new Rect(x, y, w, 16f), "Поставлено: " + Builder.Parts.Count, BuilderSkin.TinyRight);
             y += 30f;
 
-            const int columns = 3;
+            // Сетка 6×3: карточки мелкие, видно 18 сразу; когда деталей станет
+            // больше, сетка листается колесом (как столбец характеристик).
+            const int columns = 6;
+            const int visibleRows = 3;
             const float gap = 14f;
+            int totalRows = Mathf.CeilToInt(Catalog.Length / (float)columns);
             float cardW = (w - (gap * (columns - 1))) / columns;
-            float cardH = Mathf.Clamp(r.height - 30f - 96f, 200f, 380f);
+            float viewH = Mathf.Max(80f, r.height - 126f);
+            float cardH = Mathf.Clamp((viewH - (gap * (visibleRows - 1))) / visibleRows, 120f, 380f);
+
+            float contentH = (totalRows * cardH) + ((totalRows - 1) * gap);
+            float maxScroll = Mathf.Max(0f, contentH - viewH);
+            gridScroll = Mathf.Clamp(gridScroll, 0f, maxScroll);
+            gridHovered = r.Contains(Event.current.mousePosition);
+            HandleGridScroll(r, maxScroll);
+
+            var view = new Rect(x, y, w, viewH);
+            // Мышь в общих координатах (до группы): попадание по карточкам
+            // считаем в них же, а рисуем — в локальных (группа переводит).
+            Vector2 mouseTop = Event.current.mousePosition;
+            bool mouseInView = view.Contains(mouseTop);
+            GUI.BeginGroup(view);
             Event e = Event.current;
 
             for (int i = 0; i < Catalog.Length; i++)
             {
-                var card = new Rect(x + ((i % columns) * (cardW + gap)), y + ((i / columns) * (cardH + gap)), cardW, cardH);
-                PartKind kind = Catalog[i];
+                var card = new Rect(
+                    (i % columns) * (cardW + gap),
+                    ((i / columns) * (cardH + gap)) - gridScroll,
+                    cardW, cardH);
+                if (card.yMax < 0f || card.y > viewH)
+                {
+                    continue;                            // ряд целиком за кадром
+                }
+
+                var cardTop = new Rect(view.x + card.x, view.y + card.y, cardW, cardH);
+                CatalogEntry entry = Catalog[i];
+                PartKind kind = entry.Kind;
+                EngineSpec spec = EngineSpecFor(entry);
                 bool selected = statsIndex == i;
-                bool hover = controlsActive && !Dragging && card.Contains(e.mousePosition);
+                bool hover = controlsActive && !Dragging && mouseInView && cardTop.Contains(mouseTop);
 
                 if (selected)
                 {
@@ -1691,41 +1844,49 @@ namespace Galilego.Building
 
                 GUI.Box(card, GUIContent.none, selected ? BuilderSkin.CardSelected : hover ? BuilderSkin.CardHover : BuilderSkin.Card);
 
-                var iconBox = new Rect(card.x + 10f, card.y + 10f, card.width - 20f, card.height - 78f);
+                var iconBox = new Rect(card.x + 8f, card.y + 8f, card.width - 16f, card.height - 64f);
                 GUI.Box(iconBox, GUIContent.none, BuilderSkin.Slot);
                 float iconSize = Mathf.Min(iconBox.width, iconBox.height) * 0.88f;
 
-                // Карточка показывает картинку заготовки: если вид уже в панели —
-                // иконку слота (она под его форму/размеры), иначе дефолтную.
-                Texture2D picture = SlotIconFor(kind);
+                // Карточка показывает картинку заготовки: если эта карточка
+                // уже в панели — иконку слота (она под форму/размеры), иначе
+                // дефолтную отрисовку вида (у двигателя — свою, по модели).
+                Texture2D picture = SlotIconFor(entry);
                 if (picture == null)
                 {
-                    picture = PartIcons.Get(kind);
+                    picture = PartIcons.Get(kind, entry.EngineId);
                 }
 
                 GUI.DrawTexture(new Rect(iconBox.center.x - (iconSize * 0.5f), iconBox.center.y - (iconSize * 0.5f), iconSize, iconSize),
                     picture, ScaleMode.ScaleToFit);
 
                 // Бейдж «в панели»: номер слота.
-                int slot = FindInHotbar(kind);
+                int slot = FindInHotbar(entry);
                 if (slot >= 0)
                 {
-                    var badge = new Rect(iconBox.xMax - 28f, iconBox.y + 8f, 20f, 20f);
+                    var badge = new Rect(iconBox.xMax - 26f, iconBox.y + 6f, 20f, 20f);
                     GUI.Box(badge, GUIContent.none, BuilderSkin.Key);
                     GUI.Label(badge, (slot + 1).ToString(), BuilderSkin.KeyText);
                 }
 
-                GUI.Label(new Rect(card.x + 6f, card.yMax - 62f, card.width - 12f, 24f), PartCatalog.DisplayName(kind), BuilderSkin.CardName);
-                GUI.Label(new Rect(card.x + 6f, card.yMax - 36f, card.width - 12f, 20f), KindLabel(kind), BuilderSkin.CardKind);
+                // У двигателя на карточке — имя модели («RS-25», «AJ10-118K»):
+                // с шестью карточками в ряд полное «Двигатель …» не влезает.
+                string cardName = kind == PartKind.Engine && spec != null
+                    ? spec.DisplayName
+                    : PartCatalog.DisplayName(kind, spec);
+                GUI.Label(new Rect(card.x + 4f, card.yMax - 54f, card.width - 8f, 20f), cardName, BuilderSkin.CardName);
+                GUI.Label(new Rect(card.x + 4f, card.yMax - 34f, card.width - 8f, 30f),
+                    KindLabel(kind, spec), BuilderSkin.CardKind);
 
-                if (controlsActive && e.type == EventType.MouseDown && e.button == 0 && !Dragging && card.Contains(e.mousePosition))
+                if (controlsActive && e.type == EventType.MouseDown && e.button == 0 && !Dragging
+                    && mouseInView && cardTop.Contains(mouseTop))
                 {
                     statsIndex = i;
 
                     // Карточка — черновик «на следующую постановку»: правка
                     // размеров дальше не трогает слоты, которые игрок не выбирал.
                     // Стартовая точка черновика — как выглядит выбранный слот.
-                    if (editSlot != null && editSlot.Occupied && editSlot.Preset.Kind == kind)
+                    if (editSlot != null && editSlot.Occupied && MatchesEntry(entry, editSlot.Preset))
                     {
                         drafts[i] = editSlot.Preset;
                     }
@@ -1734,20 +1895,22 @@ namespace Galilego.Building
 
                     if (e.clickCount >= 2)
                     {
-                        AssignToHotbar(kind);        // двойной клик — в свободный слот
+                        AssignToHotbar(entry);       // двойной клик — в свободный слот
                     }
                     else
                     {
                         dragPreset = StatsPreset();  // тащится то, что показывает окно
                         dragIcon = picture;
                         dragFromHotbar = -1;
-                        dragOrigin = e.mousePosition;
+                        dragOrigin = mouseTop;
                         dragMoved = false;
                     }
 
                     e.Use();
                 }
             }
+
+            GUI.EndGroup();
 
             // Низ панели: подсказка и «Очистить».
             GUI.Label(new Rect(x, r.yMax - 76f, w, 20f), "Перетащите деталь в нижнюю панель.", BuilderSkin.Muted);
@@ -1776,11 +1939,11 @@ namespace Galilego.Building
             return false;
         }
 
-        private int FindInHotbar(PartKind kind)
+        private int FindInHotbar(CatalogEntry entry)
         {
             for (int i = 0; i < hotbar.Length; i++)
             {
-                if (hotbar[i].Occupied && hotbar[i].Preset.Kind == kind)
+                if (hotbar[i].Occupied && MatchesEntry(entry, hotbar[i].Preset))
                 {
                     return i;
                 }
@@ -1789,12 +1952,12 @@ namespace Galilego.Building
             return -1;
         }
 
-        /// <summary>Иконка первого слота с этим видом (иначе null — общая дефолтная).</summary>
-        private Texture2D SlotIconFor(PartKind kind)
+        /// <summary>Иконка первого слота этой карточки (иначе null — дефолтная вида).</summary>
+        private Texture2D SlotIconFor(CatalogEntry entry)
         {
             for (int i = 0; i < hotbar.Length; i++)
             {
-                if (hotbar[i].Occupied && hotbar[i].Preset.Kind == kind && hotbar[i].Icon != null)
+                if (hotbar[i].Occupied && MatchesEntry(entry, hotbar[i].Preset) && hotbar[i].Icon != null)
                 {
                     return hotbar[i].Icon;
                 }
@@ -1805,9 +1968,10 @@ namespace Galilego.Building
 
         /// <summary>
         /// Двойной клик по карточке: копия показанной заготовки в свободный слот.
-        /// Копия — чтобы из одного вида легко наделать слотов с разными размерами.
+        /// Копия — чтобы из одной карточки легко наделать слотов с разными
+        /// размерами (у двигателя размеров нет — копия той же модели).
         /// </summary>
-        private void AssignToHotbar(PartKind kind)
+        private void AssignToHotbar(CatalogEntry entry)
         {
             int target = -1;
             for (int i = 0; i < hotbar.Length; i++)
@@ -1821,7 +1985,7 @@ namespace Galilego.Building
 
             if (target < 0)
             {
-                int existing = FindInHotbar(kind);
+                int existing = FindInHotbar(entry);
                 SetHotbarIndex(existing >= 0 ? existing : (hotbarIndex >= 0 ? hotbarIndex : 0));
                 return;
             }
@@ -1907,12 +2071,38 @@ namespace Galilego.Building
             SetColor(new Color(0.30f, 0.55f, 0.85f, 0.50f));
             GUI.Box(Expand(rect, 20f), GUIContent.none, BuilderSkin.Glow);
             SetColor(new Color(1f, 1f, 1f, 0.95f));
-            Texture2D picture = dragIcon != null ? dragIcon : PartIcons.Get(dragPreset.Value.Kind);
+            Texture2D picture = dragIcon != null ? dragIcon : PartIcons.Get(dragPreset.Value.Kind, dragPreset.Value.EngineId);
             GUI.DrawTexture(rect, picture, ScaleMode.ScaleToFit);
             SetColor(Color.white);
         }
 
         // ─── Мелочи ──────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Паспорт двигателя заготовки (по EngineId из реестра EngineSpecs;
+        /// пустой Id — двигатель по умолчанию). Характеристики не зависят
+        /// от того, загружена ли модель.
+        /// </summary>
+        private static EngineSpec EngineSpecFor(PartPreset preset)
+        {
+            return EngineSpecs.Get(preset.EngineId);
+        }
+
+        /// <summary>Паспорт двигателя карточки (для не-двигателей null).</summary>
+        private static EngineSpec EngineSpecFor(CatalogEntry entry)
+        {
+            return entry.Kind == PartKind.Engine ? EngineSpecs.Get(entry.EngineId) : null;
+        }
+
+        private static string FormatThrust(EngineSpec spec)
+        {
+            return spec == null ? "—" : (spec.ThrustVacuumNewtons / 1000d).ToString("0.#") + " кН";
+        }
+
+        private static string FormatIsp(EngineSpec spec)
+        {
+            return spec == null ? "—" : spec.IspVacuumSeconds.ToString("0.#") + " с";
+        }
 
         private static string KindLabel(PartKind kind)
         {
@@ -1922,6 +2112,16 @@ namespace Galilego.Building
                 case PartKind.FuelTank: return "Ёмкость · настраиваемая";
                 default: return "Разделение ступеней";
             }
+        }
+
+        /// <summary>
+        /// Подпись вида с паспортом двигателя: у вакуумного двигателя верхней
+        /// ступени добавляется пометка.
+        /// </summary>
+        private static string KindLabel(PartKind kind, EngineSpec engine)
+        {
+            string label = KindLabel(kind);
+            return engine != null && engine.VacuumOnly ? label + " · вакуумный" : label;
         }
 
         /// <summary>Конусный ли бак: верхний радиус задан и отличается от нижнего.</summary>
