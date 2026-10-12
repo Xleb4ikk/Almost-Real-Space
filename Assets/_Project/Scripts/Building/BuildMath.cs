@@ -514,7 +514,7 @@ namespace Galilego.Building
                     && Mathf.Abs(p.Metrics.TopRadius - p.Metrics.Radius) > 1e-3f;
                 defs[i] = new PartDefinition
                 {
-                    Name = PartCatalog.DisplayName(p.Kind),
+                    Name = PartCatalog.DisplayName(p.Kind, p.EngineSpec),
                     MassKg = p.Metrics.MassKg,
                     JointStrengthNewtons = p.Metrics.JointStrengthNewtons,
                     BreakTorqueNm = p.Metrics.BreakTorqueNm,

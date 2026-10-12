@@ -59,12 +59,14 @@ namespace Galilego.Spacecraft
     }
 
     /// <summary>
-    /// Реестр компонентов топлива. ДОБАВИТЬ НОВЫЙ ВИД — одна строка Register(...)
-    /// ниже, затем наполнение в PropellantLoads (кнопка в UI появится сама):
+    /// Реестр КОМПОНЕНТОВ топлива (окислитель или горючее по отдельности) —
+    /// точные данные: плотность при температуре хранения, стенка и изоляция
+    /// бака, газовая подушка. НОВЫЙ КОМПОНЕНТ — одна строка Register(...):
     ///   public static readonly Propellant Rp1 = Register(new Propellant(
     ///       "RP1", "Керосин RP-1", 810d, 10.7d, 0d, 0.02d));
     /// Стенку бака для нового топлива можно взять как у LOX (оба хранятся
-    /// при умеренном давлении).
+    /// при умеренном давлении). ВИД ТОПЛИВА ЦЕЛИКОМ (пара компонентов, O/F,
+    /// расход и наполнение бака) — одной строкой в PropellantPairs ниже.
     /// </summary>
     public static class Propellants
     {
@@ -82,6 +84,17 @@ namespace Galilego.Spacecraft
 
         public static readonly Propellant Lh2 = Register(new Propellant(
             "LH2", "Жидкий водород", 70.8d, 14.8d, 1.5d, 0.02d));
+
+        // Долгохранимая (стеллажная) пара AJ10-118K: N2O4/Аэрозин-50. Оба
+        // компонента живут при обычной температуре в баках под давлением
+        // наддува — стенку и изоляцию берём как у LOX (изоляция не нужна).
+        // Плотности: N2O4 — 1.44246 г/см³ при 21 °C (Wikipedia/NIST ≈ 1443
+        // кг/м³ при 20 °C); Аэрозин-50 — Astronautix 0.903 г/см³.
+        public static readonly Propellant N2o4 = Register(new Propellant(
+            "N2O4", "Азотный тетраоксид", 1443d, 10.7d, 0d, 0.02d));
+
+        public static readonly Propellant Aerozine50 = Register(new Propellant(
+            "AZ50", "Аэрозин-50", 903d, 10.7d, 0d, 0.02d));
 
         public static IReadOnlyList<Propellant> All
         {
@@ -120,6 +133,8 @@ namespace Galilego.Spacecraft
     /// (O/F). Отсюда — во сколько раз бак горючего должен быть больше бака
     /// окислителя по объёму и сколько топлива реально сгорит, если баки
     /// заправлены не в пропорцию (остаток — мёртвый груз).
+    /// Экземпляры создаёт реестр видов топлива PropellantPairs (там же точные
+    /// O/F и расход двигателей).
     /// </summary>
     public sealed class BipropellantMix
     {
@@ -140,14 +155,6 @@ namespace Galilego.Spacecraft
             OxidizerToFuelMassRatio = oxidizerToFuelMassRatio;
             MassFlowKgS = massFlowKgS;
         }
-
-        /// <summary>
-        /// RS-25: LOX/LH2, O/F = 6.03, расход 514.49 кг/с (при 2279 кН в вакууме):
-        /// LOX ≈ 441 кг/с, LH2 ≈ 73 кг/с. Сверка: магистрали Shuttle ET при 104 %
-        /// несут 2787 и 465 фунтов/с, то есть 5.99.
-        /// </summary>
-        public static readonly BipropellantMix Rs25 =
-            new BipropellantMix(Propellants.Lox, Propellants.Lh2, 6.03d, 514.49d);
 
         public double OxidizerFlowKgS { get { return MassFlowKgS * OxidizerMassFraction; } }
         public double FuelFlowKgS { get { return MassFlowKgS - OxidizerFlowKgS; } }
@@ -275,24 +282,69 @@ namespace Galilego.Spacecraft
     }
 
     /// <summary>
-    /// Реестр наполнений бака. Кнопки в панели строятся по All. Новое наполнение —
-    /// одна строка Register(...), например бак керосина:
-    ///   Register(PropellantLoad.Single("RP1", "Керосин RP-1", Propellants.Rp1))
-    /// или пара под новый двигатель: PropellantLoad.ForMix("X", "...", mix).
+    /// ВИД ТОПЛИВА ЦЕЛИКОМ — пара компонентов под группу двигателей: точные
+    /// характеристики (O/F и расход) и наполнение бака, которое строится по
+    /// ним само. Двигатель ссылается на пару в своём паспорте (EngineSpecs):
+    /// PropellantPairs.X.Mix — карточка бака и кнопка наполнения появятся сами.
     /// </summary>
-    public static class PropellantLoads
+    public sealed class PropellantPair
     {
-        private static readonly List<PropellantLoad> all = new List<PropellantLoad>();
+        public readonly string Id;
+        public readonly string DisplayName;
 
-        public static readonly PropellantLoad Rs25 = Register(
-            PropellantLoad.ForMix("RS25", "RS-25 · LOX/LH2", BipropellantMix.Rs25));
+        /// <summary>Смесь двигателя: компоненты, O/F, расход.</summary>
+        public readonly BipropellantMix Mix;
 
-        public static IReadOnlyList<PropellantLoad> All { get { return all; } }
+        /// <summary>Наполнение бака под пару (пропорция — по O/F).</summary>
+        public readonly PropellantLoad Load;
 
-        public static PropellantLoad Default { get { return Rs25; } }
+        public PropellantPair(
+            string id, string displayName, Propellant oxidizer, Propellant fuel,
+            double oxidizerToFuelMassRatio, double massFlowKgS)
+        {
+            Id = id;
+            DisplayName = displayName ?? id;
+            Mix = new BipropellantMix(oxidizer, fuel, oxidizerToFuelMassRatio, massFlowKgS);
+            Load = PropellantLoad.ForMix(id, displayName, Mix);
+        }
+    }
+
+    /// <summary>
+    /// Реестр видов топлива (пар) — ЕДИНОЕ место добавления: одна строка
+    /// Register(...) с компонентами, точными O/F и расходом; наполнение бака
+    /// и кнопка в панели создаются сами, а двигатель ссылается на пару в своём
+    /// паспорте (EngineSpecs):
+    ///   public static readonly PropellantPair X = Register(new PropellantPair(
+    ///       "X", "AJ10-118K · N2O4/Аэрозин-50",
+    ///       Propellants.N2o4, Propellants.Aerozine50, 1.9d, 13.8d));
+    /// Компонентов, которых ещё нет, сначала добавь в Propellants выше.
+    /// </summary>
+    public static class PropellantPairs
+    {
+        // Список объявлен ПЕРВЫМ: статические поля инициализируются по порядку.
+        private static readonly List<PropellantPair> all = new List<PropellantPair>();
+
+        // RS-25: LOX/LH2, O/F = 6.03, расход 514.49 кг/с (при 2279 кН в вакууме):
+        // LOX ≈ 441 кг/с, LH2 ≈ 73 кг/с. Сверка: магистрали Shuttle ET при 104 %
+        // несут 2787 и 465 фунтов/с, то есть 5.99.
+        public static readonly PropellantPair Rs25 = Register(new PropellantPair(
+            "RS25", "RS-25 · LOX/LH2", Propellants.Lox, Propellants.Lh2, 6.03d, 514.49d));
+
+        // AJ10-118K (2-я ступень Delta II): N2O4/Аэрозин-50, O/F = 1.9,
+        // расход 13.8 кг/с при 43.4 кН в вакууме и Isp 320.5 с
+        // (43400 / (320.5 · 9.80665) = 13.81 кг/с). Сверка компонентов:
+        // N2O4 ≈ 9.05 кг/с, Аэрозин-50 ≈ 4.76 кг/с (данные ULA/Astronautix).
+        public static readonly PropellantPair Aj10 = Register(new PropellantPair(
+            "AJ10", "AJ10-118K · N2O4/Аэрозин-50",
+            Propellants.N2o4, Propellants.Aerozine50, 1.9d, 13.8d));
+
+        public static IReadOnlyList<PropellantPair> All { get { return all; } }
+
+        /// <summary>Вид топлива по умолчанию (первая запись реестра).</summary>
+        public static PropellantPair Default { get { return Rs25; } }
 
         /// <summary>Найти по Id; неизвестный Id — Default.</summary>
-        public static PropellantLoad Get(string id)
+        public static PropellantPair Get(string id)
         {
             for (int i = 0; i < all.Count; i++)
             {
@@ -305,7 +357,66 @@ namespace Galilego.Spacecraft
             return Default;
         }
 
-        private static PropellantLoad Register(PropellantLoad load)
+        /// <summary>
+        /// Дотронуться до реестра, чтобы его статическая инициализация успела
+        /// зарегистрировать наполнения в PropellantLoads: порядок статической
+        /// инициализации классов не гарантирован, а PropellantLoads читает
+        /// список, который наполняют пары.
+        /// </summary>
+        public static void EnsureRegistered()
+        {
+        }
+
+        private static PropellantPair Register(PropellantPair pair)
+        {
+            all.Add(pair);
+            PropellantLoads.Register(pair.Load);   // кнопка в панели бака — сама
+            return pair;
+        }
+    }
+
+    /// <summary>
+    /// Реестр наполнений бака: кнопки в панели строятся по All. Наполнения
+    /// топливных пар регистрирует реестр PropellantPairs — отдельная запись
+    /// нужна только однокомпонентным бакам (керосин и т.п.):
+    ///   Register(PropellantLoad.Single("RP1", "Керосин RP-1", Propellants.Rp1))
+    /// </summary>
+    public static class PropellantLoads
+    {
+        private static readonly List<PropellantLoad> all = new List<PropellantLoad>();
+
+        public static IReadOnlyList<PropellantLoad> All
+        {
+            get
+            {
+                PropellantPairs.EnsureRegistered();
+                return all;
+            }
+        }
+
+        /// <summary>Наполнение по умолчанию — вид топлива по умолчанию.</summary>
+        public static PropellantLoad Default
+        {
+            get { return PropellantPairs.Default.Load; }
+        }
+
+        /// <summary>Найти по Id; неизвестный Id — Default.</summary>
+        public static PropellantLoad Get(string id)
+        {
+            PropellantPairs.EnsureRegistered();
+            for (int i = 0; i < all.Count; i++)
+            {
+                if (all[i].Id == id)
+                {
+                    return all[i];
+                }
+            }
+
+            return Default;
+        }
+
+        /// <summary>Зарегистрировать наполнение (зовёт PropellantPairs.Register).</summary>
+        public static PropellantLoad Register(PropellantLoad load)
         {
             all.Add(load);
             return load;

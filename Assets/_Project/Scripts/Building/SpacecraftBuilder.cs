@@ -43,8 +43,8 @@ namespace Galilego.Building
         public ContactZoneHost ZoneHost;
 
         [Header("Детали")]
-        [Tooltip("Модель двигателя (RS-25 FBX).")]
-        public GameObject EnginePrefab;
+        [Tooltip("Модели двигателей — заполняется из реестра EngineSpecs (автосинхронизация или Galilego → Building → Setup Scene). Порядок = порядок записей реестра.")]
+        public GameObject[] EnginePrefabs;
 
         [Tooltip("Материал боковины бака.")]
         public Material TankSideMaterial;
@@ -106,7 +106,9 @@ namespace Galilego.Building
         /// <summary>Стартовое наполнение бака для новых слотов (Id из PropellantLoads).</summary>
         public PropellantLoad TankLoad = PropellantLoads.Default;
 
-        private PartCatalog.EngineTemplate engine;
+        private readonly System.Collections.Generic.List<PartCatalog.EngineTemplate> engines
+            = new System.Collections.Generic.List<PartCatalog.EngineTemplate>();
+
         private Material ghostMaterial;
         private Material invalidMaterial;
         private Material deleteMaterial;
@@ -115,6 +117,7 @@ namespace Galilego.Building
         private float ghostRadius;
         private float ghostTopRadius;
         private float ghostHeight;
+        private string ghostEngineId;
         private int deleteTarget = -1;
         private PartCatalog.PartVisual deleteHighlighted;
 
@@ -156,7 +159,23 @@ namespace Galilego.Building
                 ZoneHost = FindAnyObjectByType<ContactZoneHost>();
             }
 
-            engine = PartCatalog.EngineTemplate.Measure(EnginePrefab);
+            if (EnginePrefabs != null)
+            {
+                for (int i = 0; i < EnginePrefabs.Length; i++)
+                {
+                    PartCatalog.EngineTemplate template = PartCatalog.EngineTemplate.Measure(EnginePrefabs[i]);
+                    if (template != null)
+                    {
+                        engines.Add(template);
+                    }
+                }
+            }
+
+            if (engines.Count == 0)
+            {
+                Debug.LogError("[Build] ни одной модели двигателя: задай EnginePrefabs (Galilego → Building → Setup Scene).");
+            }
+
             ghostMaterial = CreateOverlayMaterial(new Color(0.25f, 0.55f, 1f, 0.38f), "GhostBlue");
             invalidMaterial = CreateOverlayMaterial(new Color(1f, 0.25f, 0.2f, 0.38f), "GhostRed");
             deleteMaterial = CreateOverlayMaterial(new Color(1f, 0.15f, 0.12f, 1f), "DeleteRed");
@@ -474,7 +493,7 @@ namespace Galilego.Building
             PartDefinition[] defs = BuildMath.ToPartDefinitions(parts);
             Runner.SetVesselParts(defs);
             Runner.Ship.Mass = BuildMath.TotalMass(parts);
-            Runner.SetDryMass(BuildMath.EffectiveDryMass(parts, BipropellantMix.Rs25));
+            Runner.SetDryMass(BuildMath.EffectiveDryMass(parts, PropellantPairs.Default.Mix));
 
             // В полёте аппарат живёт телами прокси: визуальные коллайдеры деталей
             // гасим, иначе PhysX-тела сталкивались бы со своими же визуалами.
@@ -617,8 +636,39 @@ namespace Galilego.Building
 
         // ─── Детали ──────────────────────────────────────────────────────────
 
-        /// <summary>Шаблон двигателя (префаб и габариты) — для 3D-превью в интерфейсе.</summary>
-        public PartCatalog.EngineTemplate Engine => engine;
+        /// <summary>Шаблоны двигателей (префабы, габариты, паспорта) в порядке EnginePrefabs.</summary>
+        public System.Collections.Generic.IReadOnlyList<PartCatalog.EngineTemplate> Engines => engines;
+
+        /// <summary>Двигатель по умолчанию (первая модель; для новых слотов).</summary>
+        public PartCatalog.EngineTemplate DefaultEngine => engines.Count > 0 ? engines[0] : null;
+
+        /// <summary>Шаблон двигателя заготовки (EngineId; неизвестный — двигатель по умолчанию).</summary>
+        public PartCatalog.EngineTemplate EngineFor(PartPreset preset)
+        {
+            return EngineFor(preset.EngineId);
+        }
+
+        /// <summary>Шаблон двигателя по Id из EngineSpecs (null — по умолчанию).</summary>
+        public PartCatalog.EngineTemplate EngineFor(string engineId)
+        {
+            if (engines.Count == 0)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrEmpty(engineId))
+            {
+                for (int i = 0; i < engines.Count; i++)
+                {
+                    if (engines[i].Spec != null && engines[i].Spec.Id == engineId)
+                    {
+                        return engines[i];
+                    }
+                }
+            }
+
+            return engines[0];
+        }
 
         /// <summary>
         /// Стартовая заготовка вида детали (панель создаёт из неё заготовки
@@ -641,7 +691,12 @@ namespace Galilego.Building
                 case PartKind.Separator:
                     return new PartPreset { Kind = kind, Radius = SeparatorRadius };
                 default:
-                    return new PartPreset { Kind = kind };
+                    PartCatalog.EngineTemplate engine = DefaultEngine;
+                    return new PartPreset
+                    {
+                        Kind = kind,
+                        EngineId = engine != null && engine.Spec != null ? engine.Spec.Id : null,
+                    };
             }
         }
 
@@ -652,11 +707,15 @@ namespace Galilego.Building
             {
                 return PartCatalog.Measure(
                     preset.Kind, preset.Form, preset.Radius, preset.TopRadius, preset.Height,
-                    preset.Load, engine);
+                    preset.Load, EngineFor(preset));
             }
 
-            float a = preset.Kind == PartKind.Separator ? preset.Radius : 0f;
-            return PartCatalog.Measure(preset.Kind, a, 0f, engine);
+            if (preset.Kind == PartKind.Engine)
+            {
+                return PartCatalog.Measure(preset.Kind, 0f, 0f, EngineFor(preset));
+            }
+
+            return PartCatalog.Measure(preset.Kind, preset.Radius, 0f, DefaultEngine);
         }
 
         /// <summary>Метрики вида детали со стартовыми размерами (отладочный стек).</summary>
@@ -665,9 +724,18 @@ namespace Galilego.Building
             return MetricsFor(DefaultPreset(kind));
         }
 
-        /// <summary>Поставить деталь в черновик (визуал + запись). parentIndex −1 — корень.</summary>
-        public PlacedPart AddPart(PartKind kind, PartMetrics metrics, Vector3 pivot, int parentIndex, bool parentOnTop)
+        /// <summary>
+        /// Поставить деталь в черновик (визуал + запись). parentIndex −1 — корень.
+        /// engineTemplate — модель двигателя детали (для вида Engine; null — по умолчанию).
+        /// </summary>
+        public PlacedPart AddPart(
+            PartKind kind, PartMetrics metrics, Vector3 pivot, int parentIndex, bool parentOnTop,
+            PartCatalog.EngineTemplate engineTemplate = null)
         {
+            PartCatalog.EngineTemplate visualEngine = kind == PartKind.Engine
+                ? (engineTemplate != null ? engineTemplate : DefaultEngine)
+                : null;
+
             var part = new PlacedPart
             {
                 Kind = kind,
@@ -679,10 +747,11 @@ namespace Galilego.Building
                 Pivot = pivot,
                 ParentIndex = parentIndex,
                 ParentOnTop = parentOnTop,
+                EngineSpec = visualEngine != null ? visualEngine.Spec : null,
             };
 
             part.Visual = PartCatalog.CreateVisual(
-                kind, metrics, engine, TankSideMaterial, TankCapMaterial, SeparatorMaterial,
+                kind, metrics, visualEngine, TankSideMaterial, TankCapMaterial, SeparatorMaterial,
                 ShipTransform);
 
             parts.Add(part);
@@ -870,7 +939,10 @@ namespace Galilego.Building
             }
 
             PartMetrics metrics = MetricsFor(SelectedPreset);
-            EnsureGhost(SelectedPreset.Kind, metrics);
+            PartCatalog.EngineTemplate selectedEngine = SelectedPreset.Kind == PartKind.Engine
+                ? EngineFor(SelectedPreset)
+                : null;
+            EnsureGhost(SelectedPreset.Kind, metrics, selectedEngine);
 
             Camera camera = Camera.main;
             if (camera == null || ghost == null)
@@ -1057,22 +1129,31 @@ namespace Galilego.Building
 
         private void PlaceGhostedPart()
         {
+            PartCatalog.EngineTemplate selectedEngine = SelectedPreset.Kind == PartKind.Engine
+                ? EngineFor(SelectedPreset)
+                : null;
             PlacedPart part = AddPart(
                 SelectedPreset.Kind,
                 MetricsFor(SelectedPreset),
                 lastPivot,
                 lastSnapFound ? lastSnap.PartIndex : -1,
-                lastSnapFound && lastSnap.OnTop);
+                lastSnapFound && lastSnap.OnTop,
+                selectedEngine);
             if (part != null)
             {
                 Debug.Log("[Build] поставлена деталь " + part.Kind + ", всего " + parts.Count);
             }
         }
 
-        private void EnsureGhost(PartKind kind, PartMetrics metrics)
+        private void EnsureGhost(
+            PartKind kind, PartMetrics metrics, PartCatalog.EngineTemplate engineTemplate)
         {
+            string engineId = engineTemplate != null && engineTemplate.Spec != null
+                ? engineTemplate.Spec.Id
+                : null;
             bool same = ghost != null
                 && ghostKind == kind
+                && ghostEngineId == engineId
                 && Mathf.Abs(ghostRadius - metrics.Radius) < 1e-4f
                 && Mathf.Abs(ghostTopRadius - metrics.TopRadius) < 1e-4f
                 && Mathf.Abs(ghostHeight - metrics.Height) < 1e-4f;
@@ -1087,10 +1168,11 @@ namespace Galilego.Building
             }
 
             ghost = PartCatalog.CreateVisual(
-                kind, metrics, engine,
+                kind, metrics, engineTemplate,
                 TankSideMaterial, TankCapMaterial, SeparatorMaterial, Zone.transform,
                 withCollider: false);
             ghostKind = kind;
+            ghostEngineId = engineId;
             ghostRadius = metrics.Radius;
             ghostTopRadius = metrics.TopRadius;
             ghostHeight = metrics.Height;
@@ -1117,9 +1199,10 @@ namespace Galilego.Building
         /// <summary>Спайк: три жёстко заданные детали на площадке (проверка зоны контакта).</summary>
         private void BuildSpikeStack()
         {
-            PartMetrics engineMetrics = MetricsFor(PartKind.Engine);
+            PartPreset enginePreset = DefaultPreset(PartKind.Engine);
+            PartMetrics engineMetrics = MetricsFor(enginePreset);
             Vector3 basePoint = Zone.VesselSpawnLocal;
-            AddPart(PartKind.Engine, engineMetrics, basePoint, -1, false);
+            AddPart(PartKind.Engine, engineMetrics, basePoint, -1, false, EngineFor(enginePreset));
 
             PartMetrics tankMetrics = MetricsFor(PartKind.FuelTank);
             Vector3 tankPivot = new Vector3(basePoint.x, basePoint.y + engineMetrics.Top, basePoint.z);

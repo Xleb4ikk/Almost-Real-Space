@@ -49,6 +49,7 @@ namespace Galilego.Building
         private RenderTexture target;
         private PartCatalog.PartVisual visual;
         private PartKind kind = (PartKind)(-1);
+        private string engineId;
         private float radius = -1f;
         private float topRadius = -1f;
         private float height = -1f;
@@ -73,7 +74,9 @@ namespace Galilego.Building
                 return;
             }
 
+            string nextEngineId = engine != null && engine.Spec != null ? engine.Spec.Id : null;
             if (nextKind != kind
+                || nextEngineId != engineId
                 || !Mathf.Approximately(radius, metrics.Radius)
                 || !Mathf.Approximately(topRadius, metrics.TopRadius)
                 || !Mathf.Approximately(height, metrics.Height))
@@ -95,9 +98,10 @@ namespace Galilego.Building
         /// Один раз отрисовать «портреты» видов деталей: те же студийный свет и
         /// ракурс «три четверти», что у превью, но с ПРОЗРАЧНЫМ фоном — иконки
         /// лягут на любой слот. Размеры — базовые; слоты панели со своими
-        /// размерами дорисовывают себя сами (CaptureIcon). Вызывается при старте.
+        /// размерами дорисовывают себя сами (CaptureIcon). У каждого двигателя
+        /// иконка своя (по Id модели). Вызывается при старте.
         /// </summary>
-        public void PrepareIcons(PartCatalog.EngineTemplate engine,
+        public void PrepareIcons(System.Collections.Generic.IReadOnlyList<PartCatalog.EngineTemplate> engines,
             Material tankSide, Material tankCap, Material separator)
         {
             if (iconsReady)
@@ -113,14 +117,23 @@ namespace Galilego.Building
 
             iconsReady = true;
 
-            StoreIcon(PartKind.Engine,
-                engine != null ? engine.Metrics : default, engine, tankSide, tankCap, separator);
-            StoreIcon(PartKind.FuelTank,
-                PartCatalog.Measure(PartKind.FuelTank, PartCatalog.TankDefaultRadius, PartCatalog.TankDefaultHeight, engine),
-                engine, tankSide, tankCap, separator);
-            StoreIcon(PartKind.Separator,
-                PartCatalog.Measure(PartKind.Separator, PartCatalog.SeparatorDefaultRadius, 0f, engine),
-                engine, tankSide, tankCap, separator);
+            PartCatalog.EngineTemplate firstEngine = engines != null && engines.Count > 0 ? engines[0] : null;
+            if (engines != null)
+            {
+                for (int i = 0; i < engines.Count; i++)
+                {
+                    PartCatalog.EngineTemplate engine = engines[i];
+                    StoreIcon(PartKind.Engine, engine.Spec != null ? engine.Spec.Id : null,
+                        engine.Metrics, engine, tankSide, tankCap, separator);
+                }
+            }
+
+            StoreIcon(PartKind.FuelTank, null,
+                PartCatalog.Measure(PartKind.FuelTank, PartCatalog.TankDefaultRadius, PartCatalog.TankDefaultHeight, firstEngine),
+                firstEngine, tankSide, tankCap, separator);
+            StoreIcon(PartKind.Separator, null,
+                PartCatalog.Measure(PartKind.Separator, PartCatalog.SeparatorDefaultRadius, 0f, firstEngine),
+                firstEngine, tankSide, tankCap, separator);
         }
 
         /// <summary>
@@ -187,13 +200,13 @@ namespace Galilego.Building
             return texture;
         }
 
-        private void StoreIcon(PartKind kind, PartMetrics metrics, PartCatalog.EngineTemplate engine,
+        private void StoreIcon(PartKind kind, string engineId, PartMetrics metrics, PartCatalog.EngineTemplate engine,
             Material tankSide, Material tankCap, Material separator)
         {
             Texture2D texture = CaptureIcon(kind, metrics, engine, tankSide, tankCap, separator);
             if (texture != null)
             {
-                PartIcons.Set(kind, texture);
+                PartIcons.Set(kind, engineId, texture);
             }
         }
 
@@ -266,6 +279,7 @@ namespace Galilego.Building
             visual = null;
             previewProfile = null;
             kind = (PartKind)(-1);
+            engineId = null;
             radius = -1f;
             topRadius = -1f;
             height = -1f;
@@ -493,6 +507,7 @@ namespace Galilego.Building
             Material tankSide, Material tankCap, Material separator)
         {
             kind = nextKind;
+            engineId = engine != null && engine.Spec != null ? engine.Spec.Id : null;
             radius = metrics.Radius;
             topRadius = metrics.TopRadius;
             height = metrics.Height;

@@ -33,7 +33,6 @@ namespace Galilego.Building
 
         // Плейсхолдеры физики
         private const double SeparatorSteelDensity = 7850d;
-        private const double EngineMassKg = 3500d;
 
         // Прочности стыков, Н: запас на переходные усилия PhysX (первый шаг
         // стыка держит вес мгновенно — пик в десятки раз выше веса) и на удар
@@ -51,10 +50,24 @@ namespace Galilego.Building
         {
             switch (kind)
             {
-                case PartKind.Engine: return "Двигатель RS-25";
+                case PartKind.Engine: return "Двигатель";
                 case PartKind.FuelTank: return "Топливный бак";
                 default: return "Отделитель";
             }
+        }
+
+        /// <summary>
+        /// Название детали с паспортом двигателя: у двигателя добавляется
+        /// модель («Двигатель AJ10-118K»), у прочих паспорт не значим.
+        /// </summary>
+        public static string DisplayName(PartKind kind, EngineSpec engine)
+        {
+            if (kind != PartKind.Engine || engine == null)
+            {
+                return DisplayName(kind);
+            }
+
+            return "Двигатель " + engine.DisplayName;
         }
 
         /// <summary>Зажать размеры в допустимые пределы (иначе меш/физика ломаются).</summary>
@@ -209,7 +222,7 @@ namespace Galilego.Building
             Material tankSide, Material tankCap, Material separatorMaterial, Transform parent,
             bool withCollider = true)
         {
-            var root = new GameObject(DisplayName(kind));
+            var root = new GameObject(DisplayName(kind, engine != null ? engine.Spec : null));
             root.transform.SetParent(parent, false);
 
             switch (kind)
@@ -237,6 +250,11 @@ namespace Galilego.Building
 
                 default:
                 {
+                    if (engine == null || engine.Prefab == null)
+                    {
+                        break;                           // нет модели — только корень детали
+                    }
+
                     GameObject model = UnityEngine.Object.Instantiate(engine.Prefab, root.transform);
                     // Поворот модели НЕ трогаем: у корня FBX стоит разворот на 270°
                     // по X (данные меша в осях Blender) — обнуление укладывало
@@ -288,10 +306,13 @@ namespace Galilego.Building
 
         /// <summary>
         /// Шаблон двигателя: модель-префаб и её габариты, посчитанные по мешам
-        /// (пивот — низ по центру оси). Меряется один раз при старте.
+        /// (пивот — низ по центру оси), плюс паспорт (EngineSpec) — топливная
+        /// пара, тяга, импульс, масса. Меряется один раз при старте; паспорт
+        /// находится по имени модели (EngineSpecs.MatchPrefab).
         /// </summary>
         public sealed class EngineTemplate
         {
+            public EngineSpec Spec;
             public GameObject Prefab;
             public PartMetrics Metrics;
             public Vector3 ModelOffset;
@@ -300,6 +321,14 @@ namespace Galilego.Building
             {
                 if (prefab == null)
                 {
+                    return null;
+                }
+
+                EngineSpec spec = EngineSpecs.MatchPrefab(prefab.name);
+                if (spec == null)
+                {
+                    Debug.LogError("[Build] нет паспорта двигателя для модели «" + prefab.name
+                        + "» — добавь запись в EngineSpecs.");
                     return null;
                 }
 
@@ -325,8 +354,9 @@ namespace Galilego.Building
 
                 return new EngineTemplate
                 {
+                    Spec = spec,
                     Prefab = prefab,
-                    Metrics = new PartMetrics(radius, radius, height, height * 0.5f, 0f, height, EngineMassKg, EngineJointNewtons, 1e12d),
+                    Metrics = new PartMetrics(radius, radius, height, height * 0.5f, 0f, height, spec.MassKg, EngineJointNewtons, 1e12d),
                     ModelOffset = new Vector3(-center.x, -bounds.min.y, -center.z),
                 };
             }

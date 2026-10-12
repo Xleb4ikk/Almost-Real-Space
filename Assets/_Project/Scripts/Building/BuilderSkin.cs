@@ -137,7 +137,11 @@ namespace Galilego.Building
             TinyRight = Text(11, TextMuted, TextAnchor.MiddleRight, FontStyle.Normal);
             TinyCenter = Text(11, TextMuted, TextAnchor.MiddleCenter, FontStyle.Normal);
             CardName = Text(15, TextMain, TextAnchor.MiddleCenter, FontStyle.Bold);
-            CardKind = Text(12, TextMuted, TextAnchor.MiddleCenter, FontStyle.Normal);
+            // Подпись под названием — БЕЛАЯ (серая на серой карточке не
+            // читалась) и с переносом: «Двигатель · вакуумный» не влезает
+            // в узкую карточку одной строкой.
+            CardKind = Text(12, TextMain, TextAnchor.MiddleCenter, FontStyle.Normal);
+            CardKind.wordWrap = true;
             ValueText = Text(18, TextMain, TextAnchor.MiddleCenter, FontStyle.Bold);
             KeyText = Text(12, new Color(0.82f, 0.84f, 0.86f, 1f), TextAnchor.MiddleCenter, FontStyle.Bold);
             PillText = Text(14, TextMain, TextAnchor.MiddleCenter, FontStyle.Normal);

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Galilego.Building;
 using Galilego.Simulation.ContactZone;
@@ -16,17 +17,43 @@ namespace Galilego.Building.EditorTools
     ///      (источник истины о зоне строительства — там же, где геометрия плиты).
     ///   2. Создаёт в сцене «ContactZone» (Host + Proxy + Patch + MeshCollider).
     ///   3. Создаёт «Building» (SpacecraftBuilder) и назначает все ссылки:
-    ///      Runner, Ship, зона, зона контакта, модель RS-25, материалы деталей.
+    ///      Runner, Ship, зона, зона контакта, модели двигателей из реестра
+    ///      EngineSpecs, материалы деталей.
     ///   4. Сохраняет сцену.
     /// Инструмент идемпотентен: повторный запуск обновляет поля, не плодит объекты.
+    /// Массив моделей двигателей синхронизируется с реестром и сам (EnginePrefabSync).
     /// </summary>
     public static class BuildSceneSetupTool
     {
-        private const string EnginePath = "Assets/_Project/Models/Parts/Engines/RS-25/RS25_Engine.fbx";
         private const string TankSidePath = "Assets/_Project/Materials/Parts/FuelTank_Metal.mat";
         private const string TankCapPath = "Assets/_Project/Materials/Parts/FuelTank_Cap.mat";
         private const string SeparatorPath = "Assets/_Project/Materials/Parts/Separator_Metal.mat";
         private const string PadObjectName = "Площадка стартовая";
+
+        /// <summary>
+        /// Модели двигателей из реестра EngineSpecs (путь к FBX — в паспорте):
+        /// порядок = порядок записей в реестре. Отсутствующий файл — warning,
+        /// двигатель пропускается.
+        /// </summary>
+        public static GameObject[] LoadEnginePrefabs()
+        {
+            var prefabs = new List<GameObject>();
+            IReadOnlyList<EngineSpec> specs = EngineSpecs.All;
+            for (int i = 0; i < specs.Count; i++)
+            {
+                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(specs[i].ModelPath);
+                if (prefab == null)
+                {
+                    Debug.LogWarning("[BuildSetup] модель двигателя " + specs[i].Id
+                        + " не найдена: " + specs[i].ModelPath);
+                    continue;
+                }
+
+                prefabs.Add(prefab);
+            }
+
+            return prefabs.ToArray();
+        }
 
         [MenuItem("Galilego/Building/Setup Scene")]
         public static void SetupScene()
@@ -181,7 +208,7 @@ namespace Galilego.Building.EditorTools
             builder.ShipTransform = ship;
             builder.Zone = Object.FindObjectsByType<LaunchPadZone>(FindObjectsInactive.Include).FirstOrDefault();
             builder.ZoneHost = host;
-            builder.EnginePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(EnginePath);
+            builder.EnginePrefabs = LoadEnginePrefabs();
             builder.TankSideMaterial = AssetDatabase.LoadAssetAtPath<Material>(TankSidePath);
             builder.TankCapMaterial = AssetDatabase.LoadAssetAtPath<Material>(TankCapPath);
             builder.SeparatorMaterial = AssetDatabase.LoadAssetAtPath<Material>(SeparatorPath);
@@ -192,7 +219,7 @@ namespace Galilego.Building.EditorTools
                     + "переимпортировал префаб места. Запусти Setup Scene ещё раз.");
             }
 
-            if (builder.EnginePrefab == null || builder.TankSideMaterial == null
+            if (builder.EnginePrefabs.Length != EngineSpecs.All.Count || builder.TankSideMaterial == null
                 || builder.TankCapMaterial == null || builder.SeparatorMaterial == null)
             {
                 Debug.LogWarning("[BuildSetup] Часть ссылок на ассеты не нашлась — проверь пути.");
