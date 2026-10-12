@@ -1,0 +1,50 @@
+using Galilego.Building;
+using Galilego.Core;
+using UnityEngine;
+
+namespace Galilego.Simulation.Player
+{
+    /// <summary>
+    /// Опора — детали аппарата: капсульные коллайдеры визуалов в стройке и
+    /// коллайдеры тел прокси зоны контакта в полёте (оба помечены
+    /// VesselPartCollider). Без этого игрок свободно проходил сквозь ракету —
+    /// детали были только картинкой. Механика Floor/Ceiling/Sweep — в
+    /// MeshSupportBase, здесь только опознание деталей и их sourceId.
+    /// </summary>
+    public sealed class VesselSupport : MeshSupportBase
+    {
+        /// <summary>База идентификаторов деталей аппарата в композите.</summary>
+        public const int SourceIdBase = 1000;
+
+        private readonly System.Collections.Generic.Dictionary<VesselPartCollider, int> partIds
+            = new System.Collections.Generic.Dictionary<VesselPartCollider, int>();
+        private int nextPartId = SourceIdBase;
+
+        public static VesselPartCollider ResolvePart(Collider collider)
+        {
+            return collider != null ? collider.GetComponentInParent<VesselPartCollider>() : null;
+        }
+
+        protected override bool IsSupportCollider(Collider collider)
+        {
+            return ResolvePart(collider) != null;
+        }
+
+        protected override int SourceIdFor(Collider collider)
+        {
+            VesselPartCollider part = ResolvePart(collider);
+            if (part == null)
+            {
+                return -1;
+            }
+
+            if (!partIds.TryGetValue(part, out int id))
+            {
+                id = nextPartId++;
+                partIds.Add(part, id);
+            }
+
+            return id;
+        }
+    }
+}

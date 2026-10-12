@@ -3,79 +3,98 @@ using Galilego.Core;
 namespace Galilego.Simulation.Player
 {
     /// <summary>
-    /// Композит опор: рельеф (аналитический) и постройки (мешевые коллайдеры).
-    /// Пол — самая высокая из двух; потолок и стены — только постройки.
-    /// Идентификаторы источников: рельеф — TerrainSupport.SourceId, постройки —
-    /// SiteBoxSupport.SourceIdBase + id коллайдера.
+    /// Композит опор: рельеф (аналитический), постройки (мешевые коллайдеры)
+    /// и детали аппарата (визуалы в стройке / тела прокси в полёте).
+    /// Пол — самая высокая из трёх; потолок — самый низкий из найденных;
+    /// стены — первая по пути. Идентификаторы источников: рельеф —
+    /// TerrainSupport.SourceId, постройки — SiteBoxSupport.SourceIdBase + id,
+    /// детали — VesselSupport.SourceIdBase + id.
     /// </summary>
     public sealed class CompositePlayerSupport : IPlayerSupport
     {
         public IPlayerSupport Terrain;
         public IPlayerSupport Sites;
+        public IPlayerSupport Vessel;
 
         public bool Floor(Vector3d from, double maxDrop, out double height, out Vector3d normal, out int sourceId)
         {
-            double terrainHeight = 0d;
-            Vector3d terrainNormal = new Vector3d(0d, 0d, 1d);
-            int terrainId = -1;
-            bool hasTerrain = false;
-            if (Terrain != null)
-            {
-                hasTerrain = Terrain.Floor(from, maxDrop, out terrainHeight, out terrainNormal, out terrainId);
-            }
-
-            double siteHeight = 0d;
-            Vector3d siteNormal = new Vector3d(0d, 0d, 1d);
-            int siteId = -1;
-            bool hasSite = false;
-            if (Sites != null)
-            {
-                hasSite = Sites.Floor(from, maxDrop, out siteHeight, out siteNormal, out siteId);
-            }
-
-            if (hasSite && (!hasTerrain || siteHeight >= terrainHeight))
-            {
-                height = siteHeight;
-                normal = siteNormal;
-                sourceId = siteId;
-                return true;
-            }
-
-            if (hasTerrain)
-            {
-                height = terrainHeight;
-                normal = terrainNormal;
-                sourceId = terrainId;
-                return true;
-            }
-
             height = 0d;
             normal = new Vector3d(0d, 0d, 1d);
             sourceId = -1;
-            return false;
+            bool found = false;
+            TryFloor(Terrain, from, maxDrop, ref found, ref height, ref normal, ref sourceId);
+            TryFloor(Sites, from, maxDrop, ref found, ref height, ref normal, ref sourceId);
+            TryFloor(Vessel, from, maxDrop, ref found, ref height, ref normal, ref sourceId);
+            return found;
+        }
+
+        private static void TryFloor(IPlayerSupport source, Vector3d from, double maxDrop,
+            ref bool found, ref double height, ref Vector3d normal, ref int sourceId)
+        {
+            if (source == null
+                || !source.Floor(from, maxDrop, out double h, out Vector3d n, out int id))
+            {
+                return;
+            }
+
+            if (found && h <= height)
+            {
+                return;
+            }
+
+            found = true;
+            height = h;
+            normal = n;
+            sourceId = id;
         }
 
         public bool Ceiling(Vector3d head, double maxRise, out double height)
         {
-            if (Sites != null)
+            height = double.PositiveInfinity;
+            bool found = false;
+            found |= TryCeiling(Sites, head, maxRise, ref height);
+            found |= TryCeiling(Vessel, head, maxRise, ref height);
+            return found;
+        }
+
+        private static bool TryCeiling(IPlayerSupport source, Vector3d head, double maxRise, ref double height)
+        {
+            if (source == null || !source.Ceiling(head, maxRise, out double h))
             {
-                return Sites.Ceiling(head, maxRise, out height);
+                return false;
             }
 
-            height = 0d;
-            return false;
+            if (h < height)
+            {
+                height = h;
+            }
+
+            return true;
         }
 
         public bool Sweep(Vector3d from, Vector3d to, double radius, out Vector3d normal, out double fraction)
         {
-            if (Sites != null)
-            {
-                return Sites.Sweep(from, to, radius, out normal, out fraction);
-            }
-
             normal = new Vector3d(0d, 0d, 1d);
             fraction = 1d;
-            return false;
+            bool found = false;
+            found |= TrySweep(Sites, from, to, radius, ref normal, ref fraction);
+            found |= TrySweep(Vessel, from, to, radius, ref normal, ref fraction);
+            return found;
+        }
+
+        private static bool TrySweep(IPlayerSupport source, Vector3d from, Vector3d to, double radius,
+            ref Vector3d normal, ref double fraction)
+        {
+            if (source == null
+                || !source.Sweep(from, to, radius, out Vector3d n, out double f)
+                || f >= fraction)
+            {
+                return false;
+            }
+
+            normal = n;
+            fraction = f;
+            return true;
         }
     }
 }

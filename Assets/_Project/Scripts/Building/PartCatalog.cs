@@ -169,10 +169,14 @@ namespace Galilego.Building
         /// <summary>
         /// Собрать визуал детали под готовые метрики. Родные материалы
         /// запоминаются; призрак поверх красится отдельно (SetMaterial).
+        /// withCollider: у поставленных деталей — капсульный коллайдер с
+        /// маркером VesselPartCollider (игрок не проходит сквозь аппарат);
+        /// призрак постановки и превью — без коллайдера.
         /// </summary>
         public static PartVisual CreateVisual(
             PartKind kind, PartMetrics metrics, EngineTemplate engine,
-            Material tankSide, Material tankCap, Material separatorMaterial, Transform parent)
+            Material tankSide, Material tankCap, Material separatorMaterial, Transform parent,
+            bool withCollider = true)
         {
             var root = new GameObject(DisplayName(kind));
             root.transform.SetParent(parent, false);
@@ -216,6 +220,20 @@ namespace Galilego.Building
                 Renderers = root.GetComponentsInChildren<Renderer>(true)
             };
             visual.CaptureNatural();
+
+            if (withCollider && metrics.Radius > 0.01f)
+            {
+                // Коллайдер детали для игрока: капсула по габаритам (ось — локальный
+                // Y; у отделителя высота меньше диаметра, PhysX клампит её до
+                // сферы — плоское кольцо всё равно перекрывает проход).
+                var capsule = root.AddComponent<CapsuleCollider>();
+                capsule.direction = 1;
+                capsule.radius = metrics.Radius;
+                capsule.height = Mathf.Max(metrics.Height, metrics.Radius * 2f);
+                capsule.center = new Vector3(0f, metrics.Center, 0f);
+                root.AddComponent<VesselPartCollider>();
+            }
+
             return visual;
         }
 

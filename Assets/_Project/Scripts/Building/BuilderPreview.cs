@@ -148,7 +148,7 @@ namespace Galilego.Building
             }
 
             PartCatalog.PartVisual visual = PartCatalog.CreateVisual(
-                kind, metrics, engine, tankSide, tankCap, separator, spinner);
+                kind, metrics, engine, tankSide, tankCap, separator, spinner, withCollider: false);
             if (visual == null || visual.Root == null)
             {
                 return;
@@ -446,7 +446,7 @@ namespace Galilego.Building
                 Object.Destroy(visual.Root);
             }
 
-            visual = PartCatalog.CreateVisual(kind, metrics, engine, tankSide, tankCap, separator, spinner);
+            visual = PartCatalog.CreateVisual(kind, metrics, engine, tankSide, tankCap, separator, spinner, withCollider: false);
             if (visual == null || visual.Root == null)
             {
                 return;
