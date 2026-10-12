@@ -32,8 +32,6 @@ namespace Galilego.Building
         public const float SeparatorMaxRadius = 5f;
 
         // Плейсхолдеры физики
-        private const double TankShellArealDensity = 15d;
-        private const double TankPropellantDensity = 1000d;
         private const double SeparatorSteelDensity = 7850d;
         private const double EngineMassKg = 3500d;
 
@@ -82,7 +80,7 @@ namespace Galilego.Building
         /// <summary>Метрики детали под данные размеры (двигатель — из шаблона модели).</summary>
         public static PartMetrics Measure(PartKind kind, float sizeA, float sizeB, EngineTemplate engine)
         {
-            return Measure(kind, TankForm.Cylinder, sizeA, sizeA, sizeB, engine);
+            return Measure(kind, TankForm.Cylinder, sizeA, sizeA, sizeB, null, engine);
         }
 
         /// <summary>
@@ -94,6 +92,18 @@ namespace Galilego.Building
             PartKind kind, TankForm form, float bottomRadius, float topRadius, float height,
             EngineTemplate engine)
         {
+            return Measure(kind, form, bottomRadius, topRadius, height, null, engine);
+        }
+
+        /// <summary>
+        /// То же, что Measure выше, но с наполнением бака (load):
+        /// масса бака считается от наполнения (TankMassModel). null —
+        /// наполнение по умолчанию из реестра PropellantLoads.
+        /// </summary>
+        public static PartMetrics Measure(
+            PartKind kind, TankForm form, float bottomRadius, float topRadius, float height,
+            PropellantLoad load, EngineTemplate engine)
+        {
             switch (kind)
             {
                 case PartKind.FuelTank:
@@ -103,13 +113,13 @@ namespace Galilego.Building
                     float top = Mathf.Clamp(cone ? topRadius : radius, TankMinRadius, TankMaxRadius);
                     height = Mathf.Clamp(height, TankMinHeight, TankMaxHeight);
 
-                    // Оболочка и объём тела вращения: равные радиусы дают
-                    // цилиндр, разные — обрезанный конус. Формулы — из
-                    // ProceduralFuelTank (единый источник правды).
-                    double shellArea = ProceduralFuelTank.ShellArea(radius, top, height);
-                    double volume = ProceduralFuelTank.Volume(radius, top, height);
-                    double mass = (shellArea * TankShellArealDensity) + (volume * TankPropellantDensity);
-                    return new PartMetrics(radius, top, height, height * 0.5f, 0f, height, mass, TankJointNewtons, 1e12d);
+                    // Масса бака от формы, размера и наполнения: объём,
+                    // металл стенки (с перегородкой), изоляция и топливо —
+                    // в TankMassModel (объём/площадь — из ProceduralFuelTank).
+                    TankMassInfo info = TankMassModel.Compute(radius, top, height, load, 1d);
+                    return new PartMetrics(radius, top, height, height * 0.5f, 0f, height,
+                        info.TotalMassKg, TankJointNewtons, 1e12d,
+                        info.DryMassKg, info.PropellantMassKg, info.VolumeM3, info.Load);
                 }
 
                 case PartKind.Separator:
