@@ -56,6 +56,19 @@ namespace Galilego.Spacecraft
         /// </summary>
         public static Mesh BuildRing(float radius, float ringWidth, float thickness, int segments, float metersPerTile)
         {
+            var mesh = new Mesh();
+            FillRing(mesh, radius, ringWidth, thickness, segments, metersPerTile);
+            return mesh;
+        }
+
+        /// <summary>
+        /// Заполнить СУЩЕСТВУЮЩИЙ меш кольцом. Меш переиспользуется, а не
+        /// пересоздаётся: AddComponent сразу зовёт OnEnable (сборка с размерами
+        /// по умолчанию), затем UI задаёт радиус и просит Rebuild — уничтожение
+        /// меша на глазах GPU Resident Drawer (HDRP) даёт «invalid Batch/Mesh ID».
+        /// </summary>
+        public static void FillRing(Mesh mesh, float radius, float ringWidth, float thickness, int segments, float metersPerTile)
+        {
             segments = Mathf.Max(8, segments);
             float tile = Mathf.Max(0.05f, metersPerTile);
             ringWidth = Mathf.Clamp(ringWidth, 0.005f, radius * 0.8f);
@@ -131,14 +144,13 @@ namespace Galilego.Spacecraft
                 triangles[t++] = bi + i; triangles[t++] = bo + j; triangles[t++] = bi + j;
             }
 
-            var mesh = new Mesh();
+            mesh.Clear();
             mesh.name = "Separator_" + radius.ToString("F2");
             mesh.vertices = vertices;
             mesh.normals = normals;
             mesh.uv = uvs;
             mesh.triangles = triangles;
             mesh.RecalculateBounds();
-            return mesh;
         }
 
         private void OnEnable()
@@ -176,7 +188,10 @@ namespace Galilego.Spacecraft
 
         /// <summary>
         /// Перестроить сетку под текущие параметры. Вызывать после изменения
-        /// Radius из UI (VAB), чтобы не ждать OnValidate.
+        /// Radius из UI (VAB), чтобы не ждать OnValidate. Меш переиспользуется
+        /// (FillRing): уничтожение меша под GPU Resident Drawer (HDRP) даёт
+        /// «invalid Batch/Mesh ID» — AddComponent успевает собрать кольцо до
+        /// того, как UI задаст радиус.
         /// </summary>
         public void Rebuild()
         {
@@ -186,20 +201,12 @@ namespace Galilego.Spacecraft
             }
 
             MeshFilter filter = GetComponent<MeshFilter>();
-            if (mesh != null)
+            if (mesh == null)
             {
-                if (Application.isPlaying)
-                {
-                    Destroy(mesh);
-                }
-                else
-                {
-                    DestroyImmediate(mesh);
-                }
+                mesh = new Mesh { hideFlags = HideFlags.DontSave };
             }
 
-            mesh = BuildRing(Radius, RingWidthM, Thickness, Segments, TextureMetersPerTile);
-            mesh.hideFlags = HideFlags.DontSave;
+            FillRing(mesh, Radius, RingWidthM, Thickness, Segments, TextureMetersPerTile);
             filter.sharedMesh = mesh;
 
             MeshRenderer renderer = GetComponent<MeshRenderer>();
