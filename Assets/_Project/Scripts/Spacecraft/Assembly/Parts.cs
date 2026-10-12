@@ -88,6 +88,22 @@ namespace Galilego.Spacecraft
                     break;
                 }
 
+                case PartShape.Frustum:
+                {
+                    RequirePositive(dimensions.X, "Frustum: нижний радиус");
+                    RequirePositive(dimensions.Y, "Frustum: высота");
+                    RequirePositive(dimensions.Z, "Frustum: верхний радиус");
+                    // Обрезанный конус приближаем цилиндром эквивалентного
+                    // (среднеквадратичного) радиуса: разница с точной формулой
+                    // мала и влияет лишь на свободное вращение детали.
+                    double h = dimensions.Y;
+                    double rr = ((dimensions.X * dimensions.X) + (dimensions.Z * dimensions.Z)) * 0.5d;
+                    ix = ((3d * rr) + (h * h)) / 12d;
+                    iy = rr / 2d;
+                    iz = ix;
+                    break;
+                }
+
                 case PartShape.Sphere:
                 {
                     RequirePositive(dimensions.X, "Sphere: радиус");

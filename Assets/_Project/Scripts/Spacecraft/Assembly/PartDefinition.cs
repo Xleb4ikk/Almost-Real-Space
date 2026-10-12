@@ -8,7 +8,9 @@ namespace Galilego.Spacecraft
     /// как раньше). Размеры в Dimensions, м:
     ///   Box:      полные размеры вдоль осей детали (x, y, z);
     ///   Cylinder: x = радиус, y = высота вдоль оси Y детали, центр в середине;
-    ///   Sphere:   x = радиус.
+    ///   Sphere:   x = радиус;
+    ///   Frustum:  x = нижний радиус, y = высота, z = верхний радиус
+    ///             (обрезанный конус-переходник, ось Y, центр в середине).
     /// </summary>
     public enum PartShape
     {
@@ -16,6 +18,7 @@ namespace Galilego.Spacecraft
         Box = 1,
         Cylinder = 2,
         Sphere = 3,
+        Frustum = 4,
     }
 
     /// <summary>

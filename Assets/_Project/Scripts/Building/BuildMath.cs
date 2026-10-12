@@ -82,27 +82,42 @@ namespace Galilego.Building
         // ─── Пересечения ─────────────────────────────────────────────────────
 
         /// <summary>
-        /// Пересекаются ли цилиндры (интервалы по Y и круги в плане).
+        /// Пересекаются ли тела вращения (цилиндры/усечённые конусы): интервалы
+        /// по Y и круги в плане. Радиус детали на высоте линейно меняется между
+        /// нижним и верхним, поэтому сумма радиусов тоже линейна и её максимум
+        /// на интервале перекрытия — на одном из его концов: проверяем оба.
         /// Касание узлов (интервалы соприкасаются) пересечением не считается.
         /// </summary>
         public static bool CylindersOverlap(
             Vector3 centerA, PartMetrics a,
             Vector3 centerB, PartMetrics b)
         {
-            float aMin = centerA.y + a.Bottom;
-            float aMax = centerA.y + a.Top;
-            float bMin = centerB.y + b.Bottom;
-            float bMax = centerB.y + b.Top;
-            float yOverlap = Mathf.Min(aMax, bMax) - Mathf.Max(aMin, bMin);
-            if (yOverlap <= ContactSkin)
+            float lo = Mathf.Max(centerA.y + a.Bottom, centerB.y + b.Bottom);
+            float hi = Mathf.Min(centerA.y + a.Top, centerB.y + b.Top);
+            if (hi - lo <= ContactSkin)
             {
                 return false;
             }
 
+            float sumAtLo = RadiusAtHeight(centerA, a, lo) + RadiusAtHeight(centerB, b, lo);
+            float sumAtHi = RadiusAtHeight(centerA, a, hi) + RadiusAtHeight(centerB, b, hi);
             float dx = centerA.x - centerB.x;
             float dz = centerA.z - centerB.z;
-            float radiusSum = a.Radius + b.Radius;
-            return ((dx * dx) + (dz * dz)) < ((radiusSum - ContactSkin) * (radiusSum - ContactSkin));
+            float maxSum = Mathf.Max(sumAtLo, sumAtHi) - ContactSkin;
+            return ((dx * dx) + (dz * dz)) < (maxSum * maxSum);
+        }
+
+        /// <summary>Радиус детали на высоте y (оси места): линейно между торцами.</summary>
+        public static float RadiusAtHeight(Vector3 center, PartMetrics m, float y)
+        {
+            float span = m.Top - m.Bottom;
+            if (span <= 1e-4f)
+            {
+                return m.Radius;
+            }
+
+            float t = Mathf.Clamp01((y - (center.y + m.Bottom)) / span);
+            return Mathf.Lerp(m.Radius, m.TopRadius, t);
         }
 
         /// <summary>Пересекается ли пробная деталь с уже поставленными.</summary>
@@ -242,17 +257,16 @@ namespace Galilego.Building
                 float dx = pivot.x - p.Pivot.x;
                 float dz = pivot.z - p.Pivot.z;
                 float lateral = (dx * dx) + (dz * dz);
-                float reach = Mathf.Max(0.05f, Mathf.Min(ghost.Radius, p.Metrics.Radius) * 0.85f);
-                if (lateral > reach * reach)
-                {
-                    continue;
-                }
 
+                // Допуск по XZ — по СОПРИКАСАЮЩИМСЯ торцам (у конуса радиусы
+                // разные): низ призрака к верху партнёра и верх к низу.
                 if (!p.TopOccupied)
                 {
+                    float reach = Mathf.Max(0.05f, Mathf.Min(ghost.Radius, p.Metrics.TopRadius) * 0.85f);
                     float node = p.Pivot.y + p.Metrics.Top;
                     float gap = ghostBottom - node;
-                    if (gap >= -0.25f && gap <= 1.5f && Mathf.Abs(gap) < Mathf.Abs(bestGap))
+                    if (lateral <= reach * reach
+                        && gap >= -0.25f && gap <= 1.5f && Mathf.Abs(gap) < Mathf.Abs(bestGap))
                     {
                         bestGap = gap;
                         hit = new SnapHit(i, true, new Vector3(p.Pivot.x, node - ghost.Bottom, p.Pivot.z));
@@ -262,9 +276,11 @@ namespace Galilego.Building
 
                 if (!p.BottomOccupied)
                 {
+                    float reach = Mathf.Max(0.05f, Mathf.Min(ghost.TopRadius, p.Metrics.Radius) * 0.85f);
                     float node = p.Pivot.y + p.Metrics.Bottom;
                     float gap = node - ghostTop;
-                    if (gap >= -0.25f && gap <= 1.5f && Mathf.Abs(gap) < Mathf.Abs(bestGap))
+                    if (lateral <= reach * reach
+                        && gap >= -0.25f && gap <= 1.5f && Mathf.Abs(gap) < Mathf.Abs(bestGap))
                     {
                         bestGap = gap;
                         hit = new SnapHit(i, false, new Vector3(p.Pivot.x, node - ghost.Top, p.Pivot.z));
@@ -279,8 +295,8 @@ namespace Galilego.Building
         // ─── Попадание луча в деталь (удаление по прицелу) ──────────────────
 
         /// <summary>
-        /// Ближайшая деталь под лучом: пересечение с вертикальными цилиндрами
-        /// (детали не вращаются, поэтому цилиндр всегда стоит по Y). Чистая
+        /// Ближайшая деталь под лучом: пересечение с вертикальными телами
+        /// вращения (детали не вращаются, поэтому ось всегда по Y). Чистая
         /// математика — коллайдеры визуалам не нужны, и луч постановки они не
         /// засоряют.
         /// </summary>
@@ -294,7 +310,8 @@ namespace Galilego.Building
             {
                 PlacedPart p = parts[i];
                 Vector3 baseCenter = p.Pivot + new Vector3(0f, p.Metrics.Bottom, 0f);
-                if (RayCylinder(rayOrigin, rayDirection, baseCenter, p.Metrics.Radius, p.Metrics.Height, out float t)
+                if (RayFrustum(rayOrigin, rayDirection, baseCenter,
+                        p.Metrics.Radius, p.Metrics.TopRadius, p.Metrics.Height, out float t)
                     && t < distance)
                 {
                     distance = t;
@@ -305,25 +322,37 @@ namespace Galilego.Building
             return index >= 0;
         }
 
-        /// <summary>Пересечение луча с вертикальным цилиндром (бок + торцы).</summary>
-        public static bool RayCylinder(
+        /// <summary>
+        /// Пересечение луча с вертикальным телом вращения: бок (усечённый конус;
+        /// равные радиусы — цилиндр) + плоские торцы. Квадратное уравнение
+        /// получается подстановкой образующей r(y) = r0 + k·y в x² + z² = r(y)².
+        /// </summary>
+        public static bool RayFrustum(
             Vector3 rayOrigin, Vector3 rayDirection,
-            Vector3 baseCenter, float radius, float height,
+            Vector3 baseCenter, float bottomRadius, float topRadius, float height,
             out float distance)
         {
             distance = 0f;
+            float safeHeight = Mathf.Max(height, 1e-6f);
+            float k = (topRadius - bottomRadius) / safeHeight;
             float ox = rayOrigin.x - baseCenter.x;
             float oz = rayOrigin.z - baseCenter.z;
+            float oy = rayOrigin.y - baseCenter.y;
+            float m = bottomRadius + (k * oy);          // радиус на высоте начала луча
             float dx = rayDirection.x;
+            float dy = rayDirection.y;
             float dz = rayDirection.z;
-            float a = (dx * dx) + (dz * dz);
-            float b = 2f * ((ox * dx) + (oz * dz));
-            float c = (ox * ox) + (oz * oz) - (radius * radius);
+
+            float a = (dx * dx) + (dz * dz) - (k * k * dy * dy);
+            float b = 2f * (((ox * dx) + (oz * dz)) - (m * k * dy));
+            float c = (ox * ox) + (oz * oz) - (m * m);
 
             float best = -1f;
+            const float eps = 1e-8f;
 
-            // Бок: квадратное уравнение по XZ.
-            if (a > 1e-8f)
+            // Бок: квадратное уравнение (вырождается в линейное, когда луч
+            // параллелен образующей конуса).
+            if (Mathf.Abs(a) > eps)
             {
                 float disc = (b * b) - (4f * a * c);
                 if (disc >= 0f)
@@ -331,43 +360,47 @@ namespace Galilego.Building
                     float sq = Mathf.Sqrt(disc);
                     float t0 = (-b - sq) / (2f * a);
                     float t1 = (-b + sq) / (2f * a);
-                    for (int k = 0; k < 2; k++)
+                    for (int i = 0; i < 2; i++)
                     {
-                        float t = k == 0 ? t0 : t1;
+                        float t = i == 0 ? t0 : t1;
                         if (t < 0f)
                         {
                             continue;
                         }
 
-                        float y = (rayOrigin.y + (rayDirection.y * t)) - baseCenter.y;
-                        if (y >= 0f && y <= height)
+                        float y = oy + (dy * t);
+                        if (y >= 0f && y <= height && (best < 0f || t < best))
                         {
                             best = t;
-                            break;
                         }
                     }
                 }
             }
-            else if (c <= 0f)
+            else if (Mathf.Abs(b) > eps)
             {
-                // Луч вдоль оси внутри радиуса: считаем от основания.
-                best = 0f;
+                float t = -c / b;
+                float y = oy + (dy * t);
+                if (t >= 0f && y >= 0f && y <= height)
+                {
+                    best = t;
+                }
             }
 
             // Торцы (крышки): нужны, чтобы смотреть на деталь сверху/снизу.
-            if (Mathf.Abs(rayDirection.y) > 1e-6f)
+            if (Mathf.Abs(dy) > 1e-6f)
             {
                 for (int cap = 0; cap < 2; cap++)
                 {
                     float capY = baseCenter.y + (cap == 0 ? 0f : height);
-                    float t = (capY - rayOrigin.y) / rayDirection.y;
+                    float t = (capY - rayOrigin.y) / dy;
                     if (t < 0f)
                     {
                         continue;
                     }
 
-                    float x = rayOrigin.x + (rayDirection.x * t) - baseCenter.x;
-                    float z = rayOrigin.z + (rayDirection.z * t) - baseCenter.z;
+                    float x = rayOrigin.x + (dx * t) - baseCenter.x;
+                    float z = rayOrigin.z + (dz * t) - baseCenter.z;
+                    float radius = cap == 0 ? bottomRadius : topRadius;
                     if ((x * x) + (z * z) <= radius * radius && (best < 0f || t < best))
                     {
                         best = t;
@@ -420,7 +453,8 @@ namespace Galilego.Building
         /// <summary>
         /// Черновик → PartDefinition[] для VesselStep/зоны контакта: Offset —
         /// центр детали от НИЗА сборки (система корабля: y — вверх места),
-        /// ParentIndex — по снапу. Форма — цилиндр (оболочка).
+        /// ParentIndex — по снапу. Форма — тело вращения: цилиндр, а у бака-
+        /// переходника усечённый конус (Dimensions.z — верхний радиус).
         /// </summary>
         public static PartDefinition[] ToPartDefinitions(IReadOnlyList<PlacedPart> parts)
         {
@@ -436,6 +470,8 @@ namespace Galilego.Building
                 PlacedPart p = parts[i];
                 float centerY = p.Pivot.y + p.Metrics.Center - bottom.y;
                 float bottomY = p.Pivot.y + p.Metrics.Bottom - bottom.y;
+                bool frustum = p.Metrics.TopRadius > 0.01f
+                    && Mathf.Abs(p.Metrics.TopRadius - p.Metrics.Radius) > 1e-3f;
                 defs[i] = new PartDefinition
                 {
                     Name = PartCatalog.DisplayName(p.Kind),
@@ -443,8 +479,10 @@ namespace Galilego.Building
                     JointStrengthNewtons = p.Metrics.JointStrengthNewtons,
                     BreakTorqueNm = p.Metrics.BreakTorqueNm,
                     Offset = new Vector3(p.Pivot.x - bottom.x, centerY, p.Pivot.z - bottom.z),
-                    Shape = PartShape.Cylinder,
-                    Dimensions = new Vector3(p.Metrics.Radius, p.Metrics.Height, 0f),
+                    Shape = frustum ? PartShape.Frustum : PartShape.Cylinder,
+                    Dimensions = frustum
+                        ? new Vector3(p.Metrics.Radius, p.Metrics.Height, p.Metrics.TopRadius)
+                        : new Vector3(p.Metrics.Radius, p.Metrics.Height, 0f),
                     Orientation = new Vector4(0f, 0f, 0f, 1f),
                     ParentIndex = p.ParentIndex,
                     JointAnchor = new Vector3(0f, bottomY - centerY, 0f),
