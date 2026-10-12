@@ -41,6 +41,7 @@ namespace Galilego.Building
         private PartCatalog.PartVisual visual;
         private PartKind kind = (PartKind)(-1);
         private float radius = -1f;
+        private float topRadius = -1f;
         private float height = -1f;
         private float spin;
         private float nextRender;
@@ -65,6 +66,7 @@ namespace Galilego.Building
 
             if (nextKind != kind
                 || !Mathf.Approximately(radius, metrics.Radius)
+                || !Mathf.Approximately(topRadius, metrics.TopRadius)
                 || !Mathf.Approximately(height, metrics.Height))
             {
                 Rebuild(nextKind, metrics, engine, tankSide, tankCap, separator);
@@ -81,10 +83,10 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Один раз отрисовать иконки деталей: те же студийный свет и ракурс
-        /// «три четверти», что у превью, но с ПРОЗРАЧНЫМ фоном — иконки лягут
-        /// на любой слот. Размеры — базовые (иконка — это «портрет» детали,
-        /// размеры показывает превью). Вызывается при старте интерфейса.
+        /// Один раз отрисовать «портреты» видов деталей: те же студийный свет и
+        /// ракурс «три четверти», что у превью, но с ПРОЗРАЧНЫМ фоном — иконки
+        /// лягут на любой слот. Размеры — базовые; слоты панели со своими
+        /// размерами дорисовывают себя сами (CaptureIcon). Вызывается при старте.
         /// </summary>
         public void PrepareIcons(PartCatalog.EngineTemplate engine,
             Material tankSide, Material tankCap, Material separator)
@@ -102,8 +104,37 @@ namespace Galilego.Building
 
             iconsReady = true;
 
+            StoreIcon(PartKind.Engine,
+                engine != null ? engine.Metrics : default, engine, tankSide, tankCap, separator);
+            StoreIcon(PartKind.FuelTank,
+                PartCatalog.Measure(PartKind.FuelTank, PartCatalog.TankDefaultRadius, PartCatalog.TankDefaultHeight, engine),
+                engine, tankSide, tankCap, separator);
+            StoreIcon(PartKind.Separator,
+                PartCatalog.Measure(PartKind.Separator, PartCatalog.SeparatorDefaultRadius, 0f, engine),
+                engine, tankSide, tankCap, separator);
+        }
+
+        /// <summary>
+        /// Отрисовать иконку детали под ПРОИЗВОЛЬНЫЕ размеры (слот панели со
+        /// своими размерами): та же студия и ракурс, что у дефолтных иконок.
+        /// Текстура принадлежит вызывающему — он её и уничтожает. null, если
+        /// риг/геометрия недоступны.
+        /// </summary>
+        public Texture2D CaptureIcon(PartKind kind, PartMetrics metrics, PartCatalog.EngineTemplate engine,
+            Material tankSide, Material tankCap, Material separator)
+        {
+            EnsureRig();
+            if (rig == null || metrics.Radius <= 0f)
+            {
+                return null;
+            }
+
+            // Прозрачный фон и временный маленький таргет: иконка ляжет на слот
+            // любого цвета, а кадр превью не пострадает. Камеру и спинеер
+            // возвращаем как были: кадрирование иконки — СВОЁ (иконный запас
+            // кадра), а превью перекадрируется только при смене детали.
             var hd = camera.GetComponent<HDAdditionalCameraData>();
-            Color opaque = Background;
+            Color previousBackground = hd.backgroundColorHDR;
             Color transparent = new Color(Background.r, Background.g, Background.b, 0f);
             hd.backgroundColorHDR = transparent;
             camera.backgroundColor = transparent;
@@ -121,37 +152,59 @@ namespace Galilego.Building
 
             float previousSpin = spin;
             spinner.localRotation = Quaternion.Euler(0f, IconSpinDegrees, 0f);
+            Transform cameraTransform = camera.transform;
+            Vector3 cameraPosition = cameraTransform.position;
+            Quaternion cameraRotation = cameraTransform.rotation;
+            float cameraNear = camera.nearClipPlane;
+            float cameraFar = camera.farClipPlane;
 
-            RenderIcon(PartKind.Engine,
-                engine != null ? engine.Metrics : default, engine, tankSide, tankCap, separator);
-            RenderIcon(PartKind.FuelTank,
-                PartCatalog.Measure(PartKind.FuelTank, PartCatalog.TankDefaultRadius, PartCatalog.TankDefaultHeight, engine),
-                engine, tankSide, tankCap, separator);
-            RenderIcon(PartKind.Separator,
-                PartCatalog.Measure(PartKind.Separator, PartCatalog.SeparatorDefaultRadius, 0f, engine),
-                engine, tankSide, tankCap, separator);
-
-            spinner.localRotation = Quaternion.Euler(0f, previousSpin, 0f);
-            camera.targetTexture = previousTarget;
-            hd.backgroundColorHDR = opaque;
-            camera.backgroundColor = opaque;
-            iconTarget.Release();
-            Object.Destroy(iconTarget);
-        }
-
-        private void RenderIcon(PartKind kind, PartMetrics metrics, PartCatalog.EngineTemplate engine,
-            Material tankSide, Material tankCap, Material separator)
-        {
-            if (metrics.Radius <= 0f)
+            // Крупный визуал превью прячем: камера иконки снимает ВЕСЬ риг, и
+            // без этого в кадр попадала деталь превью — иконка отделителя
+            // выглядела «аркой» поверх бака, а слоты будто меняли размер
+            // вслед за правкой соседнего.
+            bool previewWasActive = visual != null && visual.Root != null && visual.Root.activeSelf;
+            if (previewWasActive)
             {
-                return;
+                visual.Root.SetActive(false);
             }
 
+            Texture2D texture = CaptureIconPixels(kind, metrics, engine, tankSide, tankCap, separator);
+
+            if (previewWasActive)
+            {
+                visual.Root.SetActive(true);
+            }
+
+            cameraTransform.SetPositionAndRotation(cameraPosition, cameraRotation);
+            camera.nearClipPlane = cameraNear;
+            camera.farClipPlane = cameraFar;
+            spinner.localRotation = Quaternion.Euler(0f, previousSpin, 0f);
+            camera.targetTexture = previousTarget;
+            hd.backgroundColorHDR = previousBackground;
+            camera.backgroundColor = previousBackground;
+            iconTarget.Release();
+            Object.Destroy(iconTarget);
+            return texture;
+        }
+
+        private void StoreIcon(PartKind kind, PartMetrics metrics, PartCatalog.EngineTemplate engine,
+            Material tankSide, Material tankCap, Material separator)
+        {
+            Texture2D texture = CaptureIcon(kind, metrics, engine, tankSide, tankCap, separator);
+            if (texture != null)
+            {
+                PartIcons.Set(kind, texture);
+            }
+        }
+
+        private Texture2D CaptureIconPixels(PartKind kind, PartMetrics metrics, PartCatalog.EngineTemplate engine,
+            Material tankSide, Material tankCap, Material separator)
+        {
             PartCatalog.PartVisual visual = PartCatalog.CreateVisual(
                 kind, metrics, engine, tankSide, tankCap, separator, spinner, withCollider: false);
             if (visual == null || visual.Root == null)
             {
-                return;
+                return null;
             }
 
             SetLayerRecursive(visual.Root, Layer);
@@ -180,12 +233,11 @@ namespace Galilego.Building
             texture.Apply();
             RenderTexture.active = previous;
 
-            PartIcons.Set(kind, texture);
-
             // Destroy отложен до конца кадра: гасим сразу, иначе следующая
             // иконка рендерится вместе с предыдущей (обе под спинеером).
             visual.Root.SetActive(false);
             Object.Destroy(visual.Root);
+            return texture;
         }
 
         /// <summary>Снести риг и текстуру (окно закрылось / компонент выключен).</summary>
@@ -215,6 +267,7 @@ namespace Galilego.Building
             previewProfile = null;
             kind = (PartKind)(-1);
             radius = -1f;
+            topRadius = -1f;
             height = -1f;
         }
 
@@ -438,6 +491,7 @@ namespace Galilego.Building
         {
             kind = nextKind;
             radius = metrics.Radius;
+            topRadius = metrics.TopRadius;
             height = metrics.Height;
 
             if (visual != null && visual.Root != null)

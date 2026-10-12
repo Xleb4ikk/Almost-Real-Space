@@ -85,11 +85,22 @@ namespace Galilego.Building
         /// <summary>Есть выбранная деталь для постановки (слот хотбара, ставит BuildUI).</summary>
         public bool HasSelection { get; set; }
 
-        public PartKind SelectedKind { get; set; } = PartKind.FuelTank;
+        /// <summary>
+        /// Заготовка выбранного слота панели (ставит BuildUI): вид детали и её
+        /// размеры. Размеры у каждого слота свои — см. PartPreset.
+        /// </summary>
+        public PartPreset SelectedPreset { get; set; }
 
-        // Размеры деталей, задаваемые игроком (UI правит, ставит через PartCatalog.ClampSizes)
+        // Стартовые размеры деталей: из них панель строительства создаёт заготовки
+        // слотов (PartPreset), а игрок дальше правит размеры у каждого слота свои.
+        // Бак: нижний радиус, верхний радиус и длина; форма — цилиндр или конус.
         public float TankRadius = PartCatalog.TankDefaultRadius;
+        public float TankTopRadius = PartCatalog.TankDefaultRadius;
         public float TankHeight = PartCatalog.TankDefaultHeight;
+
+        /// <summary>Стартовая форма бака для новых слотов: цилиндр (0) или конус.</summary>
+        public TankForm TankForm;
+
         public float SeparatorRadius = PartCatalog.SeparatorDefaultRadius;
 
         private PartCatalog.EngineTemplate engine;
@@ -99,6 +110,7 @@ namespace Galilego.Building
         private PartCatalog.PartVisual ghost;
         private PartKind ghostKind;
         private float ghostRadius;
+        private float ghostTopRadius;
         private float ghostHeight;
         private int deleteTarget = -1;
         private PartCatalog.PartVisual deleteHighlighted;
@@ -604,23 +616,47 @@ namespace Galilego.Building
         /// <summary>Шаблон двигателя (префаб и габариты) — для 3D-превью в интерфейсе.</summary>
         public PartCatalog.EngineTemplate Engine => engine;
 
-        /// <summary>Метрики выбранного вида детали под текущие размеры игрока.</summary>
-        public PartMetrics MetricsFor(PartKind kind)
+        /// <summary>
+        /// Стартовая заготовка вида детали (панель создаёт из неё заготовки
+        /// слотов; отладочный стек строит из неё напрямую).
+        /// </summary>
+        public PartPreset DefaultPreset(PartKind kind)
         {
-            float a = 0f;
-            float b = 0f;
             switch (kind)
             {
                 case PartKind.FuelTank:
-                    a = TankRadius;
-                    b = TankHeight;
-                    break;
+                    return new PartPreset
+                    {
+                        Kind = kind,
+                        Form = TankForm,
+                        Radius = TankRadius,
+                        TopRadius = TankTopRadius,
+                        Height = TankHeight,
+                    };
                 case PartKind.Separator:
-                    a = SeparatorRadius;
-                    break;
+                    return new PartPreset { Kind = kind, Radius = SeparatorRadius };
+                default:
+                    return new PartPreset { Kind = kind };
+            }
+        }
+
+        /// <summary>Метрики заготовки слота: форма и размеры именно этого слота.</summary>
+        public PartMetrics MetricsFor(PartPreset preset)
+        {
+            if (preset.Kind == PartKind.FuelTank)
+            {
+                return PartCatalog.Measure(
+                    preset.Kind, preset.Form, preset.Radius, preset.TopRadius, preset.Height, engine);
             }
 
-            return PartCatalog.Measure(kind, a, b, engine);
+            float a = preset.Kind == PartKind.Separator ? preset.Radius : 0f;
+            return PartCatalog.Measure(preset.Kind, a, 0f, engine);
+        }
+
+        /// <summary>Метрики вида детали со стартовыми размерами (отладочный стек).</summary>
+        public PartMetrics MetricsFor(PartKind kind)
+        {
+            return MetricsFor(DefaultPreset(kind));
         }
 
         /// <summary>Поставить деталь в черновик (визуал + запись). parentIndex −1 — корень.</summary>
@@ -629,8 +665,10 @@ namespace Galilego.Building
             var part = new PlacedPart
             {
                 Kind = kind,
+                Form = kind == PartKind.FuelTank ? TankForm : TankForm.Cylinder,
                 SizeA = metrics.Radius,
                 SizeB = metrics.Height,
+                SizeTop = metrics.TopRadius,
                 Metrics = metrics,
                 Pivot = pivot,
                 ParentIndex = parentIndex,
@@ -825,8 +863,8 @@ namespace Galilego.Building
                 return;
             }
 
-            PartMetrics metrics = MetricsFor(SelectedKind);
-            EnsureGhost(SelectedKind, metrics);
+            PartMetrics metrics = MetricsFor(SelectedPreset);
+            EnsureGhost(SelectedPreset.Kind, metrics);
 
             Camera camera = Camera.main;
             if (camera == null || ghost == null)
@@ -1014,8 +1052,8 @@ namespace Galilego.Building
         private void PlaceGhostedPart()
         {
             PlacedPart part = AddPart(
-                SelectedKind,
-                MetricsFor(SelectedKind),
+                SelectedPreset.Kind,
+                MetricsFor(SelectedPreset),
                 lastPivot,
                 lastSnapFound ? lastSnap.PartIndex : -1,
                 lastSnapFound && lastSnap.OnTop);
@@ -1030,6 +1068,7 @@ namespace Galilego.Building
             bool same = ghost != null
                 && ghostKind == kind
                 && Mathf.Abs(ghostRadius - metrics.Radius) < 1e-4f
+                && Mathf.Abs(ghostTopRadius - metrics.TopRadius) < 1e-4f
                 && Mathf.Abs(ghostHeight - metrics.Height) < 1e-4f;
             if (same)
             {
@@ -1047,6 +1086,7 @@ namespace Galilego.Building
                 withCollider: false);
             ghostKind = kind;
             ghostRadius = metrics.Radius;
+            ghostTopRadius = metrics.TopRadius;
             ghostHeight = metrics.Height;
             for (int i = 0; i < ghost.Renderers.Length; i++)
             {

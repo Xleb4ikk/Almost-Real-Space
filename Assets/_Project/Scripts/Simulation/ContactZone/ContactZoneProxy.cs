@@ -2,7 +2,7 @@
 // Строит тела Unity (PhysX) по PartDefinition. Координаты Unity: x = север, y = вверх, z = восток
 // (поворот от (восток, север, вверх), без зеркалирования). Ось Y корабля совпадает с Up места.
 // Сборка смещается вверх так, чтобы низ формы совпал с точкой корабля (точка в игре — низ аппарата).
-// Цилиндр — замкнутая 12-гранная призма: MeshCollider convex требует треугольники, не облако вершин.
+// Цилиндр и усечённый конус — замкнутые призмы: MeshCollider convex требует треугольники, не облако вершин.
 using System.Collections.Generic;
 using Galilego.Core;
 using Galilego.Spacecraft;
@@ -249,13 +249,15 @@ namespace Galilego.Simulation.ContactZone
         }
 
         // Полувысота формы вдоль оси Y корабля (вверх): используется для посадки низа сборки
-        // на точку корабля. Цилиндр/коробка — Dimensions.y/2, сфера — радиус, точка — 0.
+        // на точку корабля. Цилиндр/коробка/усечённый конус — Dimensions.y/2, сфера — радиус,
+        // точка — 0.
         private static float PartHalfHeight(PartDefinition d)
         {
             switch (d.Shape)
             {
                 case PartShape.Box:
                 case PartShape.Cylinder:
+                case PartShape.Frustum:
                     return 0.5f * d.Dimensions.y;
                 case PartShape.Sphere:
                     return d.Dimensions.x;
@@ -280,7 +282,13 @@ namespace Galilego.Simulation.ContactZone
                     // Выпуклый меш-призма (12 граней): цилиндр PhysX не поддерживает напрямую.
                     var mc = go.AddComponent<MeshCollider>();
                     mc.convex = true;
-                    mc.sharedMesh = CylinderPrism(d.Dimensions.x, d.Dimensions.y, 12);
+                    mc.sharedMesh = Prism(d.Dimensions.x, d.Dimensions.x, d.Dimensions.y, 12);
+                    break;
+                case PartShape.Frustum:
+                    // Бак-переходник: та же призма, но радиусы торцов разные.
+                    var fmc = go.AddComponent<MeshCollider>();
+                    fmc.convex = true;
+                    fmc.sharedMesh = Prism(d.Dimensions.x, d.Dimensions.z, d.Dimensions.y, 16);
                     break;
                 default:
                     // Point: масса без геометрии — маленький коллайдер, чтобы тело стояло.
@@ -290,19 +298,20 @@ namespace Galilego.Simulation.ContactZone
             }
         }
 
-        private static Mesh CylinderPrism(float radius, float height, int sides)
+        // ЗАМКНУТАЯ призма: боковые грани + крышки, радиусы торцов могут
+        // отличаться (усечённый конус). MeshCollider (convex) требует
+        // треугольники — облако вершин не готовится PhysX-кукером.
+        private static Mesh Prism(float bottomRadius, float topRadius, float height, int sides)
         {
-            // ЗАМКНУТАЯ призма: боковые грани + крышки. MeshCollider (convex) требует
-            // треугольники — облако вершин не готовится PhysX-кукером.
             var mesh = new Mesh();
             var verts = new Vector3[(2 * sides) + 2];
             for (int i = 0; i < sides; i++)
             {
                 float a = 2f * Mathf.PI * i / sides;
-                float x = radius * Mathf.Cos(a);
-                float z = radius * Mathf.Sin(a);
-                verts[i] = new Vector3(x, -0.5f * height, z);
-                verts[sides + i] = new Vector3(x, 0.5f * height, z);
+                float cs = Mathf.Cos(a);
+                float sn = Mathf.Sin(a);
+                verts[i] = new Vector3(bottomRadius * cs, -0.5f * height, bottomRadius * sn);
+                verts[sides + i] = new Vector3(topRadius * cs, 0.5f * height, topRadius * sn);
             }
 
             verts[2 * sides] = new Vector3(0f, -0.5f * height, 0f);

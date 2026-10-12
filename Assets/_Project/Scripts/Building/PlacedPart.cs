@@ -11,7 +11,41 @@ namespace Galilego.Building
     }
 
     /// <summary>
-    /// Размеры и физика детали для данного экземпляра (радиус/высота задаются
+    /// Форма топливного бака: прямой цилиндр или обрезанный конус (бак-
+    /// переходник между ступенями разных диаметров: снизу один радиус,
+    /// сверху другой, образующая — прямая).
+    /// </summary>
+    public enum TankForm
+    {
+        Cylinder = 0,
+        Cone = 1
+    }
+
+    /// <summary>
+    /// Заготовка детали для слота панели: вид и его размеры. Размеры хранятся
+    /// В СЛОТЕ, а не глобально по виду: в панели можно заранее подготовить баки
+    /// разных форм и диаметров (например, цилиндр 2.5 м и конус 5→2.5 м) и
+    /// ставить их по очереди, не перенастраивая размеры заново.
+    /// </summary>
+    public struct PartPreset
+    {
+        public PartKind Kind;
+
+        /// <summary>Форма бака (у прочих деталей не значима).</summary>
+        public TankForm Form;
+
+        /// <summary>Бак — нижний радиус; отделитель — радиус; двигатель — не значим.</summary>
+        public float Radius;
+
+        /// <summary>Верхний радиус бака (равен Radius — цилиндр).</summary>
+        public float TopRadius;
+
+        /// <summary>Длина бака, м.</summary>
+        public float Height;
+    }
+
+    /// <summary>
+    /// Размеры и физика детали для данного экземпляра (радиусы/высота задаются
     /// игроком для бака и отделителя, у двигателя — из габаритов модели).
     /// Все высоты — относительно ПИВОТА детали вдоль оси Y места (зенит).
     /// Пивот бака — дно, отделителя — середина кольца, двигателя — низ
@@ -19,8 +53,15 @@ namespace Galilego.Building
     /// </summary>
     public readonly struct PartMetrics
     {
-        /// <summary>Радиус цилиндра оболочки, м.</summary>
+        /// <summary>Нижний радиус тела вращения, м (бак: радиус дна).</summary>
         public readonly float Radius;
+
+        /// <summary>
+        /// Верхний радиус тела вращения, м. Равен Radius — деталь цилиндрическая;
+        /// отличается — обрезанный конус (у отделителя и двигателя всегда равен
+        /// нижнему: их форма не конусная).
+        /// </summary>
+        public readonly float TopRadius;
 
         /// <summary>Полная высота формы вдоль оси, м.</summary>
         public readonly float Height;
@@ -38,10 +79,11 @@ namespace Galilego.Building
         public readonly double JointStrengthNewtons;
         public readonly double BreakTorqueNm;
 
-        public PartMetrics(float radius, float height, float center, float bottom, float top,
+        public PartMetrics(float radius, float topRadius, float height, float center, float bottom, float top,
             double massKg, double jointStrengthNewtons, double breakTorqueNm)
         {
             Radius = radius;
+            TopRadius = topRadius > 0.01f ? topRadius : radius;
             Height = height;
             Center = center;
             Bottom = bottom;
@@ -61,8 +103,16 @@ namespace Galilego.Building
     public sealed class PlacedPart
     {
         public PartKind Kind;
+
+        /// <summary>Форма бака на момент постановки (у прочих деталей не значима).</summary>
+        public TankForm Form;
+
         public float SizeA;
         public float SizeB;
+
+        /// <summary>Верхний радиус бака на момент постановки (равен SizeA — цилиндр).</summary>
+        public float SizeTop;
+
         public PartMetrics Metrics;
         public Vector3 Pivot;
         public int ParentIndex = -1;

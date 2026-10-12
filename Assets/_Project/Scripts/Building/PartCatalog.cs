@@ -7,8 +7,10 @@ namespace Galilego.Building
 {
     /// <summary>
     /// Каталог деталей: имя, пределы размеров, метрики (масса/форма/узлы) и
-    /// сборка визуала. Бака и отделитель — процедурные (радиус/высота задаёт
-    /// игрок), двигатель — модель RS-25 (габариты мерятся по мешам).
+    /// сборка визуала. Бака и отделитель — процедурные (радиусы/высота задаёт
+    /// игрок), двигатель — модель RS-25 (габариты мерятся по мешам). Бак может
+    /// быть цилиндром или обрезанным конусом-переходником: тогда нижний и
+    /// верхний радиусы разные, а форма — тело вращения с наклонной образующей.
     /// Массы: бак — оболочка + топливо (формулы ProceduralFuelTank), отделитель —
     /// объём кольца из стали, двигатель — плейсхолдер до реальных расчётов.
     /// Прочности стыков — параметры (плейсхолдеры); отделитель слабее всех:
@@ -20,14 +22,14 @@ namespace Galilego.Building
         public const float TankDefaultRadius = 1.5f;
         public const float TankDefaultHeight = 6f;
         public const float TankMinRadius = 0.25f;
-        public const float TankMaxRadius = 4f;
+        public const float TankMaxRadius = 5f;
         public const float TankMinHeight = 1f;
         public const float TankMaxHeight = 15f;
 
         // Отделитель
         public const float SeparatorDefaultRadius = 1.5f;
         public const float SeparatorMinRadius = 0.25f;
-        public const float SeparatorMaxRadius = 4f;
+        public const float SeparatorMaxRadius = 5f;
 
         // Плейсхолдеры физики
         private const double TankShellArealDensity = 15d;
@@ -80,27 +82,45 @@ namespace Galilego.Building
         /// <summary>Метрики детали под данные размеры (двигатель — из шаблона модели).</summary>
         public static PartMetrics Measure(PartKind kind, float sizeA, float sizeB, EngineTemplate engine)
         {
+            return Measure(kind, TankForm.Cylinder, sizeA, sizeA, sizeB, engine);
+        }
+
+        /// <summary>
+        /// Метрики детали под данные размеры (двигатель — из шаблона модели).
+        /// Для бака: form — цилиндр или конус, bottomRadius/topRadius — радиусы
+        /// торцов (у цилиндра верхний игнорируется), height — длина.
+        /// </summary>
+        public static PartMetrics Measure(
+            PartKind kind, TankForm form, float bottomRadius, float topRadius, float height,
+            EngineTemplate engine)
+        {
             switch (kind)
             {
                 case PartKind.FuelTank:
                 {
-                    float radius = Mathf.Clamp(sizeA, TankMinRadius, TankMaxRadius);
-                    float height = Mathf.Clamp(sizeB, TankMinHeight, TankMaxHeight);
-                    double shellArea = (2d * Math.PI * radius * height) + (2d * Math.PI * radius * radius);
-                    double volume = Math.PI * radius * radius * height;
+                    float radius = Mathf.Clamp(bottomRadius, TankMinRadius, TankMaxRadius);
+                    bool cone = form == TankForm.Cone;
+                    float top = Mathf.Clamp(cone ? topRadius : radius, TankMinRadius, TankMaxRadius);
+                    height = Mathf.Clamp(height, TankMinHeight, TankMaxHeight);
+
+                    // Оболочка и объём тела вращения: равные радиусы дают
+                    // цилиндр, разные — обрезанный конус. Формулы — из
+                    // ProceduralFuelTank (единый источник правды).
+                    double shellArea = ProceduralFuelTank.ShellArea(radius, top, height);
+                    double volume = ProceduralFuelTank.Volume(radius, top, height);
                     double mass = (shellArea * TankShellArealDensity) + (volume * TankPropellantDensity);
-                    return new PartMetrics(radius, height, height * 0.5f, 0f, height, mass, TankJointNewtons, 1e12d);
+                    return new PartMetrics(radius, top, height, height * 0.5f, 0f, height, mass, TankJointNewtons, 1e12d);
                 }
 
                 case PartKind.Separator:
                 {
-                    float radius = Mathf.Clamp(sizeA, SeparatorMinRadius, SeparatorMaxRadius);
+                    float radius = Mathf.Clamp(bottomRadius, SeparatorMinRadius, SeparatorMaxRadius);
                     float width = ProceduralSeparator.RingWidthFraction * radius;
                     float thickness = ProceduralSeparator.Thickness;
                     float midRadius = radius - (width * 0.5f);
                     double volume = 2d * Math.PI * midRadius * width * thickness;
                     double mass = volume * SeparatorSteelDensity;
-                    return new PartMetrics(radius, thickness, 0f, -thickness * 0.5f, thickness * 0.5f, mass, SeparatorJointNewtons, 1e12d);
+                    return new PartMetrics(radius, radius, thickness, 0f, -thickness * 0.5f, thickness * 0.5f, mass, SeparatorJointNewtons, 1e12d);
                 }
 
                 default:
@@ -169,9 +189,10 @@ namespace Galilego.Building
         /// <summary>
         /// Собрать визуал детали под готовые метрики. Родные материалы
         /// запоминаются; призрак поверх красится отдельно (SetMaterial).
-        /// withCollider: у поставленных деталей — капсульный коллайдер с
-        /// маркером VesselPartCollider (игрок не проходит сквозь аппарат);
-        /// призрак постановки и превью — без коллайдера.
+        /// withCollider: у поставленных деталей — коллайдер с маркером
+        /// VesselPartCollider (игрок не проходит сквозь аппарат): капсула по
+        /// габаритам, а у конусного бака — выпуклый меш боковины; призрак
+        /// постановки и превью — без коллайдера.
         /// </summary>
         public static PartVisual CreateVisual(
             PartKind kind, PartMetrics metrics, EngineTemplate engine,
@@ -187,6 +208,7 @@ namespace Galilego.Building
                 {
                     var tank = root.AddComponent<ProceduralFuelTank>();
                     tank.Radius = metrics.Radius;
+                    tank.TopRadius = metrics.TopRadius > 0.01f ? metrics.TopRadius : metrics.Radius;
                     tank.Height = metrics.Height;
                     tank.Material = tankSide;
                     tank.CapMaterial = tankCap != null ? tankCap : tankSide;
@@ -223,14 +245,31 @@ namespace Galilego.Building
 
             if (withCollider && metrics.Radius > 0.01f)
             {
-                // Коллайдер детали для игрока: капсула по габаритам (ось — локальный
-                // Y; у отделителя высота меньше диаметра, PhysX клампит её до
-                // сферы — плоское кольцо всё равно перекрывает проход).
-                var capsule = root.AddComponent<CapsuleCollider>();
-                capsule.direction = 1;
-                capsule.radius = metrics.Radius;
-                capsule.height = Mathf.Max(metrics.Height, metrics.Radius * 2f);
-                capsule.center = new Vector3(0f, metrics.Center, 0f);
+                bool conical = kind == PartKind.FuelTank
+                    && metrics.TopRadius > 0.01f
+                    && Mathf.Abs(metrics.TopRadius - metrics.Radius) > 1e-3f;
+                if (conical)
+                {
+                    // Конус капсулой не описать: выпуклый меш боковины повторяет
+                    // сужение, игрок не упирается в невидимый цилиндр нижнего
+                    // радиуса. Меш уже собран выше (Rebuild бака).
+                    var hull = root.AddComponent<MeshCollider>();
+                    hull.convex = true;
+                    MeshFilter filter = root.GetComponent<MeshFilter>();
+                    hull.sharedMesh = filter != null ? filter.sharedMesh : null;
+                }
+                else
+                {
+                    // Коллайдер детали для игрока: капсула по габаритам (ось — локальный
+                    // Y; у отделителя высота меньше диаметра, PhysX клампит её до
+                    // сферы — плоское кольцо всё равно перекрывает проход).
+                    var capsule = root.AddComponent<CapsuleCollider>();
+                    capsule.direction = 1;
+                    capsule.radius = metrics.Radius;
+                    capsule.height = Mathf.Max(metrics.Height, metrics.Radius * 2f);
+                    capsule.center = new Vector3(0f, metrics.Center, 0f);
+                }
+
                 root.AddComponent<VesselPartCollider>();
             }
 
@@ -277,7 +316,7 @@ namespace Galilego.Building
                 return new EngineTemplate
                 {
                     Prefab = prefab,
-                    Metrics = new PartMetrics(radius, height, height * 0.5f, 0f, height, EngineMassKg, EngineJointNewtons, 1e12d),
+                    Metrics = new PartMetrics(radius, radius, height, height * 0.5f, 0f, height, EngineMassKg, EngineJointNewtons, 1e12d),
                     ModelOffset = new Vector3(-center.x, -bounds.min.y, -center.z),
                 };
             }
