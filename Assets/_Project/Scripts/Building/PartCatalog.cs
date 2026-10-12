@@ -21,14 +21,14 @@ namespace Galilego.Building
         // Бак
         public const float TankDefaultRadius = 1.5f;
         public const float TankDefaultHeight = 6f;
-        public const float TankMinRadius = 0.25f;
+        public const float TankMinRadius = 0.3f;
         public const float TankMaxRadius = 5f;
         public const float TankMinHeight = 1f;
         public const float TankMaxHeight = 15f;
 
         // Отделитель
         public const float SeparatorDefaultRadius = 1.5f;
-        public const float SeparatorMinRadius = 0.25f;
+        public const float SeparatorMinRadius = 0.3f;
         public const float SeparatorMaxRadius = 5f;
 
         // Плейсхолдеры физики

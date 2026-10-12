@@ -18,6 +18,15 @@ namespace Galilego.Building
     internal sealed class BuilderPreview
     {
         private const int Layer = 31;
+
+        /// <summary>
+        /// Слой визуала ИКОНКИ (отдельный от слоя превью): камера снимает
+        /// иконку маской только по этому слою. Так в кадр иконки не попадает
+        /// визуал превью — выключение объекта (SetActive) не спасало: HDRP
+        /// GPU Resident Drawer дорисовывал его из батча прошлого кадра
+        /// (двигатель «просвечивал» сквозь иконку отделителя).
+        /// </summary>
+        private const int IconLayer = 30;
         private const int Width = 512;
         private const int Height = 384;
         private const int IconSize = 256;
@@ -158,23 +167,14 @@ namespace Galilego.Building
             float cameraNear = camera.nearClipPlane;
             float cameraFar = camera.farClipPlane;
 
-            // Крупный визуал превью прячем: камера иконки снимает ВЕСЬ риг, и
-            // без этого в кадр попадала деталь превью — иконка отделителя
-            // выглядела «аркой» поверх бака, а слоты будто меняли размер
-            // вслед за правкой соседнего.
-            bool previewWasActive = visual != null && visual.Root != null && visual.Root.activeSelf;
-            if (previewWasActive)
-            {
-                visual.Root.SetActive(false);
-            }
+            // Иконка снимается маской ТОЛЬКО по своему слою: визуал превью
+            // (слой Layer) в кадр не попадает вовсе.
+            int previousMask = camera.cullingMask;
+            camera.cullingMask = 1 << IconLayer;
 
             Texture2D texture = CaptureIconPixels(kind, metrics, engine, tankSide, tankCap, separator);
 
-            if (previewWasActive)
-            {
-                visual.Root.SetActive(true);
-            }
-
+            camera.cullingMask = previousMask;
             cameraTransform.SetPositionAndRotation(cameraPosition, cameraRotation);
             camera.nearClipPlane = cameraNear;
             camera.farClipPlane = cameraFar;
@@ -207,7 +207,7 @@ namespace Galilego.Building
                 return null;
             }
 
-            SetLayerRecursive(visual.Root, Layer);
+            SetLayerRecursive(visual.Root, IconLayer);
 
             // Кольцо отделителя плоское: чуть приподнимаем камеру, иначе в
             // кадре — тонкая полоска вместо кольца (свет остаётся солнечный).
@@ -476,14 +476,17 @@ namespace Galilego.Building
             return (toLight + (side * 0.55f) + (Vector3.up * 0.30f)).normalized;
         }
 
-        /// <summary>Слой превью не должен рисоваться главной камерой.</summary>
+        /// <summary>Слои превью и иконок не должны рисоваться главной камерой.</summary>
         private void KeepHidden()
         {
             Camera main = Camera.main;
-            if (main != null && (main.cullingMask & (1 << Layer)) != 0)
+            if (main == null)
             {
-                main.cullingMask &= ~(1 << Layer);
+                return;
             }
+
+            main.cullingMask &= ~(1 << Layer);
+            main.cullingMask &= ~(1 << IconLayer);
         }
 
         private void Rebuild(PartKind nextKind, PartMetrics metrics, PartCatalog.EngineTemplate engine,

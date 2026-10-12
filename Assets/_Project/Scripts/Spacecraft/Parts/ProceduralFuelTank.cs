@@ -120,6 +120,19 @@ namespace Galilego.Spacecraft
         /// </summary>
         public static Mesh BuildBody(float bottomRadius, float topRadius, float height, int segments, float metersPerTile)
         {
+            var mesh = new Mesh();
+            FillBody(mesh, bottomRadius, topRadius, height, segments, metersPerTile);
+            return mesh;
+        }
+
+        /// <summary>
+        /// Заполнить СУЩЕСТВУЮЩИЙ меш телом вращения. Меш переиспользуется, а не
+        /// пересоздаётся: GPU Resident Drawer (HDRP) ругается на уничтожение
+        /// меша, на который ещё смотрят батчи («invalid Batch/Mesh ID»), а
+        /// превью пересобирается на каждом шаге размера.
+        /// </summary>
+        public static void FillBody(Mesh mesh, float bottomRadius, float topRadius, float height, int segments, float metersPerTile)
+        {
             segments = Mathf.Max(3, segments);
             float tile = Mathf.Max(0.01f, metersPerTile);
             bottomRadius = Mathf.Max(0.01f, bottomRadius);
@@ -206,7 +219,7 @@ namespace Galilego.Spacecraft
                 capTriangles[c++] = capTopRing + i;
             }
 
-            var mesh = new Mesh();
+            mesh.Clear();
             mesh.name = "FuelTank_" + bottomRadius.ToString("F2") + "x" + topRadius.ToString("F2") + "x" + height.ToString("F2");
             mesh.vertices = vertices;
             mesh.normals = normals;
@@ -215,7 +228,6 @@ namespace Galilego.Spacecraft
             mesh.SetTriangles(sideTriangles, 0);
             mesh.SetTriangles(capTriangles, 1);
             mesh.RecalculateBounds();
-            return mesh;
         }
 
         private void OnEnable()
@@ -254,6 +266,8 @@ namespace Galilego.Spacecraft
         /// <summary>
         /// Перестроить сетку под текущие Radius/TopRadius/Height. Вызывать после
         /// изменения параметров из UI (VAB), чтобы не ждать OnValidate.
+        /// Меш переиспользуется (FillBody): GPU Resident Drawer (HDRP) ругается
+        /// на уничтожение меша, на который ещё смотрят батчи.
         /// </summary>
         public void Rebuild()
         {
@@ -263,20 +277,12 @@ namespace Galilego.Spacecraft
             }
 
             MeshFilter filter = GetComponent<MeshFilter>();
-            if (mesh != null)
+            if (mesh == null)
             {
-                if (Application.isPlaying)
-                {
-                    Destroy(mesh);
-                }
-                else
-                {
-                    DestroyImmediate(mesh);
-                }
+                mesh = new Mesh { hideFlags = HideFlags.DontSave };
             }
 
-            mesh = BuildBody(Radius, TopRadius > 0.01f ? TopRadius : Radius, Height, Segments, TextureMetersPerTile);
-            mesh.hideFlags = HideFlags.DontSave;
+            FillBody(mesh, Radius, TopRadius > 0.01f ? TopRadius : Radius, Height, Segments, TextureMetersPerTile);
             filter.sharedMesh = mesh;
 
             MeshRenderer renderer = GetComponent<MeshRenderer>();
