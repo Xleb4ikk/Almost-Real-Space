@@ -135,6 +135,7 @@ namespace Galilego.Building
         private HotSlot editSlot;
 
         private readonly BuilderPreview preview = new BuilderPreview();
+        private readonly DeltaVPanel deltaVPanel = new DeltaVPanel();
         private int hotbarIndex = -1;
         private bool open;
         private float openAnim;
@@ -246,6 +247,10 @@ namespace Galilego.Building
                 openAnim = 0f;
                 return;
             }
+
+            // Ctrl — «подсмотреть»: камера отпускает курсор, а постановка и
+            // удаление на время удержания глушатся (как при открытом окне).
+            Builder.UiOpen = open || PlayerInput.Held(GameKey.LeftControl);
 
             openAnim = Mathf.MoveTowards(openAnim, open ? 1f : 0f, Time.unscaledDeltaTime * 9f);
             TickPreview();
@@ -765,6 +770,13 @@ namespace Galilego.Building
 
             if (buildActive)
             {
+                EventType et = Event.current.type;
+                if ((et == EventType.MouseDown || et == EventType.ScrollWheel)
+                    && deltaVPanel.Captures(Event.current.mousePosition))
+                {
+                    Event.current.Use();
+                }
+
                 DrawSummary();
                 DrawHints();
                 DrawHotbar();
@@ -774,6 +786,7 @@ namespace Galilego.Building
                     DrawWindow();
                 }
 
+                deltaVPanel.Draw(Builder, uiWidth, uiHeight, uiAlpha);
                 DrawSlotMenu();
                 DrawDragIcon();
                 HandleDragRelease();
@@ -949,6 +962,7 @@ namespace Galilego.Building
                 new[] { "Ctrl", "Z" },
                 new[] { "Колесо" },
                 new[] { "R" },
+                new[] { "Ctrl" },
                 new[] { "H" }
             };
             string[] labels =
@@ -960,6 +974,7 @@ namespace Galilego.Building
                 "Убрать последнюю",
                 "Выбор слота",
                 "Физика (удерж. 1 с)",
+                "Курсор (удерж.)",
                 "Скрыть подсказки"
             };
 
