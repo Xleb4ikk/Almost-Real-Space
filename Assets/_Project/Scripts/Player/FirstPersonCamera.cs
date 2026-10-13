@@ -26,7 +26,7 @@ namespace Galilego.Universe
         [Tooltip("Кламп наклона взгляда (градусы).")]
         public float PitchClamp = 85f;
 
-        [Tooltip("Захват курсора (Esc — отпустить, ЛКМ — вернуть).")]
+        [Tooltip("Захват курсора (Esc — отпустить, ЛКМ — вернуть, Ctrl в стройке — подсмотреть).")]
         public bool LockCursor = true;
 
         [Tooltip("TAA на камере. Выключено: TAA покадрово дробит проекцию и «плывёт» яркой звездой/деталями.")]
@@ -129,13 +129,17 @@ namespace Galilego.Universe
                 return;
             }
 
+            // Ctrl в стройке — «подсмотреть»: пока клавиша зажата, курсор
+            // отпущен (панель ΔV, подсказки). Отпустили — захват вернётся сам.
+            bool peek = Runner != null && Runner.BuildMode && PlayerInput.Held(GameKey.LeftControl);
+
             if (PlayerInput.Down(GameKey.Escape))
             {
                 cursorReleasedByUser = true;
                 SetCursorLocked(false);
             }
 
-            if (PlayerInput.MouseLeftDown() && Cursor.lockState != CursorLockMode.Locked)
+            if (PlayerInput.MouseLeftDown() && Cursor.lockState != CursorLockMode.Locked && !peek)
             {
                 cursorReleasedByUser = false;
                 SetCursorLocked(true);
@@ -152,10 +156,15 @@ namespace Galilego.Universe
                 SetCursorLocked(false);
             }
 
-            if (UnityEngine.Application.isFocused && !cursorReleasedByUser
+            if (UnityEngine.Application.isFocused && !cursorReleasedByUser && !peek
                 && Cursor.lockState != CursorLockMode.Locked)
             {
                 SetCursorLocked(true);
+            }
+
+            if (peek)
+            {
+                SetCursorLocked(false);
             }
         }
 
