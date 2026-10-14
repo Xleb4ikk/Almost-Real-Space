@@ -99,6 +99,19 @@ namespace Galilego.Building
             return false;
         }
 
+        /// <summary>
+        /// Пересчитать план/остаток БЕЗ отрисовки. Нужно, когда панель не
+        /// рисуется, а её данные читает кто-то другой (планшет): иначе Live/Plan
+        /// замерли бы на кадре последней отрисовки.
+        /// </summary>
+        public void Tick(SpacecraftBuilder builder)
+        {
+            if (builder != null)
+            {
+                Refresh(builder);
+            }
+        }
+
         public void Draw(SpacecraftBuilder builder, float uiWidth, float uiHeight, float uiAlpha)
         {
             hitRects.Clear();
