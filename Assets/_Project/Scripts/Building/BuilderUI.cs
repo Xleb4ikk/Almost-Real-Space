@@ -718,18 +718,26 @@ namespace Galilego.Building
                 bool cone = preset.Form == TankForm.Cone;
                 DrawEditor(px, ref py, pw, "Длина бака", ref preset.Height,
                     PartCatalog.TankMinHeight, PartCatalog.TankMaxHeight, SlotMenuIdBase, "F1");
-                DrawEditor(px, ref py, pw, cone ? "Нижний радиус" : "Радиус бака", ref preset.Radius,
-                    PartCatalog.TankMinRadius, PartCatalog.TankMaxRadius, SlotMenuIdBase + 10, "F1");
+                // Правки — в ДИАМЕТРЕ (игроку понятнее и совпадает с подписью
+                // капсулы «Ø»); в заготовке хранится радиус.
+                float diameter = preset.Radius * 2f;
+                DrawEditor(px, ref py, pw, cone ? "Диаметр низа" : "Диаметр бака", ref diameter,
+                    PartCatalog.TankMinRadius * 2f, PartCatalog.TankMaxRadius * 2f, SlotMenuIdBase + 10, "F1");
+                preset.Radius = diameter * 0.5f;
                 if (cone)
                 {
-                    DrawEditor(px, ref py, pw, "Верхний радиус", ref preset.TopRadius,
-                        PartCatalog.TankMinRadius, PartCatalog.TankMaxRadius, SlotMenuIdBase + 20, "F1");
+                    float topDiameter = preset.TopRadius * 2f;
+                    DrawEditor(px, ref py, pw, "Диаметр верха", ref topDiameter,
+                        PartCatalog.TankMinRadius * 2f, PartCatalog.TankMaxRadius * 2f, SlotMenuIdBase + 20, "F1");
+                    preset.TopRadius = topDiameter * 0.5f;
                 }
             }
             else if (hasSize)
             {
-                DrawEditor(px, ref py, pw, "Радиус отделителя", ref preset.Radius,
-                    PartCatalog.SeparatorMinRadius, PartCatalog.SeparatorMaxRadius, SlotMenuIdBase, "F1");
+                float diameter = preset.Radius * 2f;
+                DrawEditor(px, ref py, pw, "Диаметр отделителя", ref diameter,
+                    PartCatalog.SeparatorMinRadius * 2f, PartCatalog.SeparatorMaxRadius * 2f, SlotMenuIdBase, "F1");
+                preset.Radius = diameter * 0.5f;
             }
             else
             {
@@ -934,16 +942,18 @@ namespace Galilego.Building
             string dims = string.Empty;
             if (preset.Kind == PartKind.FuelTank)
             {
-                dims = "   <color=#9AA0A8>L " + m.Height.ToString("F1") + " м  ·  R " + m.Radius.ToString("F1") + " м</color>";
+                // Везде диаметры (Ø): у капсулы подпись тоже Ø — сравнивать
+                // размеры деталей по радиусу было неудобно.
+                dims = "   <color=#9AA0A8>L " + m.Height.ToString("F1") + " м  ·  Ø " + (m.Radius * 2f).ToString("F1") + " м</color>";
                 if (IsCone(m))
                 {
-                    dims = "   <color=#9AA0A8>L " + m.Height.ToString("F1") + " м  ·  Rниз "
-                        + m.Radius.ToString("F1") + " м  ·  Rверх " + m.TopRadius.ToString("F1") + " м</color>";
+                    dims = "   <color=#9AA0A8>L " + m.Height.ToString("F1") + " м  ·  Øниз "
+                        + (m.Radius * 2f).ToString("F1") + " м  ·  Øверх " + (m.TopRadius * 2f).ToString("F1") + " м</color>";
                 }
             }
             else if (preset.Kind == PartKind.Separator)
             {
-                dims = "   <color=#9AA0A8>R " + m.Radius.ToString("F1") + " м</color>";
+                dims = "   <color=#9AA0A8>Ø " + (m.Radius * 2f).ToString("F1") + " м</color>";
             }
             else if (preset.Kind == PartKind.Capsule)
             {
@@ -1415,12 +1425,17 @@ namespace Galilego.Building
                 bool cone = preset.Form == TankForm.Cone;
                 DrawEditor(x, ref y, w, "Длина бака", ref preset.Height,
                     PartCatalog.TankMinHeight, PartCatalog.TankMaxHeight, 10, "F1");
-                DrawEditor(x, ref y, w, cone ? "Нижний радиус" : "Радиус бака", ref preset.Radius,
-                    PartCatalog.TankMinRadius, PartCatalog.TankMaxRadius, 20, "F1");
+                // Правки — в ДИАМЕТРЕ (в заготовке хранится радиус).
+                float diameter = preset.Radius * 2f;
+                DrawEditor(x, ref y, w, cone ? "Диаметр низа" : "Диаметр бака", ref diameter,
+                    PartCatalog.TankMinRadius * 2f, PartCatalog.TankMaxRadius * 2f, 20, "F1");
+                preset.Radius = diameter * 0.5f;
                 if (cone)
                 {
-                    DrawEditor(x, ref y, w, "Верхний радиус", ref preset.TopRadius,
-                        PartCatalog.TankMinRadius, PartCatalog.TankMaxRadius, 30, "F1");
+                    float topDiameter = preset.TopRadius * 2f;
+                    DrawEditor(x, ref y, w, "Диаметр верха", ref topDiameter,
+                        PartCatalog.TankMinRadius * 2f, PartCatalog.TankMaxRadius * 2f, 30, "F1");
+                    preset.TopRadius = topDiameter * 0.5f;
                 }
 
                 if (!SamePreset(before, preset))
@@ -1431,8 +1446,10 @@ namespace Galilego.Building
             else
             {
                 PartPreset before = preset;
-                DrawEditor(x, ref y, w, "Радиус отделителя", ref preset.Radius,
-                    PartCatalog.SeparatorMinRadius, PartCatalog.SeparatorMaxRadius, 40, "F1");
+                float diameter = preset.Radius * 2f;
+                DrawEditor(x, ref y, w, "Диаметр отделителя", ref diameter,
+                    PartCatalog.SeparatorMinRadius * 2f, PartCatalog.SeparatorMaxRadius * 2f, 40, "F1");
+                preset.Radius = diameter * 0.5f;
                 if (!SamePreset(before, preset))
                 {
                     ApplyPresetEdit(layout.Owner, layout.Card, preset);
