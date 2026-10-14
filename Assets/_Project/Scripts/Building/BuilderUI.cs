@@ -768,15 +768,15 @@ namespace Galilego.Building
                 holdId = -1;                         // отпустили кнопку-стрелку
             }
 
+            EventType et = Event.current.type;
+            if ((et == EventType.MouseDown || et == EventType.ScrollWheel)
+                && deltaVPanel.Captures(Event.current.mousePosition))
+            {
+                Event.current.Use();
+            }
+
             if (buildActive)
             {
-                EventType et = Event.current.type;
-                if ((et == EventType.MouseDown || et == EventType.ScrollWheel)
-                    && deltaVPanel.Captures(Event.current.mousePosition))
-                {
-                    Event.current.Use();
-                }
-
                 DrawSummary();
                 DrawHints();
                 DrawHotbar();
@@ -795,6 +795,7 @@ namespace Galilego.Building
             {
                 DrawRHold("Возврат к стройке…");
                 DrawPhysicsBanner();
+                deltaVPanel.Draw(Builder, uiWidth, uiHeight, uiAlpha);
             }
 
             GUI.color = Color.white;

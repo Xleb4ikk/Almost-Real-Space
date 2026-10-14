@@ -265,9 +265,19 @@ namespace Galilego.Universe
         /// <summary>Пул обломков (слоты переиспользуются); DebrisView читает для рендера.</summary>
         public DebrisPool Debris => step.Debris;
 
+        /// <summary>
+        /// Ступенчатая модель тяги (null — legacy: одна тяга из инспектора).
+        /// Читает панель ΔV; ставит SpacecraftBuilder при запуске полёта.
+        /// </summary>
+        public StagePropulsion Propulsion => step != null ? step.Propulsion : null;
+
         /// <summary>Шаг корабля: полёт, посадка, события. Вся логика состояния — там.</summary>
         private VesselStep step;
         private DebrisUpdater debrisUpdater;
+        private SpacecraftPhysics physics;
+        private ThrustSource mainThrustSource;
+        private StageThrustSource stageThrustSource;
+        private StageDepletionDetector stageDetector;
 
         // Ходьба игрока: чистый контроллер опор + локальный кадр места.
         private readonly PlayerSurfaceController playerController = new PlayerSurfaceController();
@@ -313,14 +323,14 @@ namespace Galilego.Universe
             bool baked = EphemerisRuntime.AttachFromStreamingAssets(SystemState);
 
             var warp = new WarpController();
-            var physics = new SpacecraftPhysics();
+            physics = new SpacecraftPhysics();
             physics.Sources.Add(new CachedGravitySource(SystemState));
-            ThrustSource mainThrust = null;
+            mainThrustSource = null;
             if (MainThrustNewtons > 0d)
             {
-                mainThrust = new ThrustSource(MainThrustNewtons, DryMassKg, new ConstantIsp(MainIspSeconds));
-                mainThrust.ThrottleAt = t => warp.CurrentControlSnapshot.Throttle;
-                physics.Sources.Add(mainThrust);
+                mainThrustSource = new ThrustSource(MainThrustNewtons, DryMassKg, new ConstantIsp(MainIspSeconds));
+                mainThrustSource.ThrottleAt = t => warp.CurrentControlSnapshot.Throttle;
+                physics.Sources.Add(mainThrustSource);
             }
 
             var propagator = new EventDrivenPropagator(physics);
@@ -341,7 +351,7 @@ namespace Galilego.Universe
             propagator.HardHorizonSeconds = SystemState.BakedEndSeconds();
             var driver = new LongWarpDriver(physics, propagator);
             step = new VesselStep(
-                SystemState, warp, propagator, driver, mainThrust,
+                SystemState, warp, propagator, driver, mainThrustSource,
                 new JointedBreakup(), new DebrisPool(),
                 Parts, SpawnEpsilonMeters, DebrisLifetimeSeconds);
 
@@ -622,6 +632,96 @@ namespace Galilego.Universe
         {
             Parts = parts;
             step.Parts = parts;
+        }
+
+        /// <summary>
+        /// Поставить ступенчатую модель тяги (режим строительства при запуске
+        /// полёта): legacy-источник снимается с физики, включается ступенчатый
+        /// (тяга/расход активной ступени), детектор исчерпания участка
+        /// регистрируется в пропагаторе. null — вернуть legacy-путь.
+        /// </summary>
+        public void SetVesselPropulsion(StagePropulsion propulsion)
+        {
+            if (step == null)
+            {
+                return;
+            }
+
+            if (propulsion == null)
+            {
+                if (stageThrustSource != null)
+                {
+                    physics.Sources.Remove(stageThrustSource);
+                }
+
+                // Legacy-источник возвращаем на исходное место (гравитация,
+                // тяга, затем сопротивление): от порядка зависит порядок
+                // суммирования вкладов, то есть побайтность трейсов.
+                if (mainThrustSource != null && !physics.Sources.Contains(mainThrustSource))
+                {
+                    physics.Sources.Insert(Math.Min(1, physics.Sources.Count), mainThrustSource);
+                }
+
+                if (stageDetector != null)
+                {
+                    step.Propagator.CrossingDetectors.Remove(stageDetector);
+                }
+
+                step.Propulsion = null;
+                step.DepletionDetector = null;
+                step.Thrust = step.MainThrust;
+                return;
+            }
+
+            if (stageThrustSource == null)
+            {
+                stageThrustSource = new StageThrustSource
+                {
+                    ThrottleAt = t => step.Warp.CurrentControlSnapshot.Throttle
+                };
+                stageDetector = new StageDepletionDetector();
+            }
+
+            stageThrustSource.Model = propulsion;
+            if (mainThrustSource != null)
+            {
+                physics.Sources.Remove(mainThrustSource);
+            }
+
+            if (!physics.Sources.Contains(stageThrustSource))
+            {
+                physics.Sources.Add(stageThrustSource);
+            }
+
+            if (!step.Propagator.CrossingDetectors.Contains(stageDetector))
+            {
+                step.Propagator.CrossingDetectors.Add(stageDetector);
+            }
+
+            step.Propulsion = propulsion;
+            step.DepletionDetector = stageDetector;
+            step.Thrust = stageThrustSource;
+
+            double expected = propulsion.AttachedTotalKg() + propulsion.DetachedMassKg;
+            double relative = Math.Abs(expected - Ship.Mass) / Math.Max(1d, Ship.Mass);
+            if (relative > 1e-6d)
+            {
+                Debug.LogWarning(string.Format(
+                    "[Prop] модель не сходится с массой корабля: ядра {0:F1} кг + вне сборки {1:F1} кг, Ship.Mass {2:F1} кг (отн. {3:E2})",
+                    propulsion.AttachedTotalKg(), propulsion.DetachedMassKg, Ship.Mass, relative));
+            }
+            else
+            {
+                Debug.Log(string.Format(
+                    "[Prop] ступенчатая тяга: ступеней {0}, масса по модели {1:F0} кг, автозажигание {2}",
+                    propulsion.StageCount, expected, propulsion.AutoIgnite ? "вкл" : "выкл"));
+            }
+        }
+
+        /// <summary>Снять ступенчатую модель (возврат к стройке) — обратно legacy-путь.</summary>
+        public void ClearVesselPropulsion()
+        {
+            SetVesselPropulsion(null);
         }
 
         /// <summary>

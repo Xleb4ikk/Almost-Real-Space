@@ -1594,6 +1594,7 @@ MonoBehaviour:
   TankCapMaterial: {fileID: 2100000, guid: 54f3158f6d8c6bb4d9852bde15cca48f, type: 2}
   SeparatorMaterial: {fileID: 2100000, guid: 63fe4e5c98995884dbc72fbfca5c07db, type: 2}
   DebugSpikeStack: 1
+  DebugAutoIgniteStages: 0
   TankRadius: 1.5
   TankTopRadius: 1.5
   TankHeight: 6

@@ -30,6 +30,22 @@ namespace Galilego.Universe
         public readonly EventDrivenPropagator Propagator;
         public readonly LongWarpDriver Driver;
         public readonly ThrustSource MainThrust;
+
+        /// <summary>
+        /// Действующий источник тяги: legacy MainThrust или ступенчатый
+        /// StageThrustSource (ставит SimulationRunner.SetVesselPropulsion).
+        /// </summary>
+        public IDynamicsSource Thrust;
+
+        /// <summary>
+        /// Ступенчатая модель двигательной установки. null — legacy-сцены без
+        /// построителя: топливо не учитывается, порог по сухой массе в ThrustSource.
+        /// </summary>
+        public StagePropulsion Propulsion;
+
+        /// <summary>Детектор исчерпания участка выработки (взводится перед чанком).</summary>
+        public StageDepletionDetector DepletionDetector;
+
         public readonly IBreakupModel BreakupModel;
         public readonly DebrisPool Debris;
 
@@ -64,6 +80,9 @@ namespace Galilego.Universe
         private KahanAccumulator time = new KahanAccumulator(0d);
         private static readonly SphericalTerrain surfaceTerrain = new SphericalTerrain();
 
+        /// <summary>Инвариант массы нарушен (лог по фронту, а не каждый чанк).</summary>
+        private bool massInvariantBroken;
+
         /// <summary>Верхняя граница подшага на поверхности (с), согласована с зерном control-tick.</summary>
         private const double SurfaceMaxStepSeconds = 0.5d;
 
@@ -84,6 +103,7 @@ namespace Galilego.Universe
             Propagator = propagator ?? throw new ArgumentNullException(nameof(propagator));
             Driver = driver ?? throw new ArgumentNullException(nameof(driver));
             MainThrust = mainThrust;
+            Thrust = mainThrust;
             BreakupModel = breakupModel ?? throw new ArgumentNullException(nameof(breakupModel));
             Debris = debris ?? throw new ArgumentNullException(nameof(debris));
             Parts = parts;
@@ -147,7 +167,8 @@ namespace Galilego.Universe
             }
 
             double throttle = Warp.EffectiveThrottle(RawThrottle, factor);
-            bool thrustActive = MainThrust != null && throttle > 0d;
+            bool thrustActive = Thrust != null && throttle > 0d
+                && (Propulsion == null || Propulsion.MassFlowKgS > 0d);
             while (TimeSeconds < frameEnd - 1e-12d)
             {
                 double chunk = Warp.GetMaxChunkSeconds(TimeSeconds, OrbitIntegrator.DefaultMaxStepSize, thrustActive);
@@ -158,7 +179,10 @@ namespace Galilego.Universe
                 }
 
                 Warp.SampleControl(TimeSeconds, throttle);
+                RearmDepletion();
+                double massBefore = Ship.Mass;
                 EventOccurrence? occurrence = Propagator.Propagate(Ship, TimeSeconds, chunk);
+                CommitBurn(massBefore - Ship.Mass);
                 if (occurrence.HasValue)
                 {
                     TimeSeconds = occurrence.Value.TimeSeconds;
@@ -190,14 +214,15 @@ namespace Galilego.Universe
             double factor = Math.Min(Math.Min(decision.EffectiveFactor, WarpController.AtmosphereMaxWarpFactor), playerCap);
             double frameEnd = TimeSeconds + (realDt * factor);
             double throttle = Warp.EffectiveThrottle(RawThrottle, factor);
-            bool thrustActive = MainThrust != null && throttle > 0d;
+            bool thrustActive = Thrust != null && throttle > 0d
+                && (Propulsion == null || Propulsion.MassFlowKgS > 0d);
 
             while (TimeSeconds < frameEnd - 1e-12d)
             {
                 if (thrustActive)
                 {
                     Vector3d gravity = SystemState.EvaluateShipAcceleration(Ship.Position, TimeSeconds);
-                    DynamicsContribution thrust = MainThrust.Evaluate(Ship.Position, Ship.Velocity, Ship.Mass, TimeSeconds);
+                    DynamicsContribution thrust = Thrust.Evaluate(Ship.Position, Ship.Velocity, Ship.Mass, TimeSeconds);
                     if (EventReactions.TryLiftoff(Ship, DominantBody, thrust.Force / Ship.Mass, gravity, TimeSeconds, out _)
                         == VesselRegime.Flying)
                     {
@@ -262,11 +287,94 @@ namespace Galilego.Universe
 
                     break;
                 case EventKind.PropellantDepleted:
-                    EventReactions.ApplyDepletion(Ship, occurrence);
+                    if (Propulsion != null)
+                    {
+                        HandleStageDepletion();
+                    }
+                    else
+                    {
+                        EventReactions.ApplyDepletion(Ship, occurrence);
+                    }
+
                     break;
                 case EventKind.EphemerisEnd:
                     Debug.LogWarning("Конец испечённого мира — варп ограничен кеплеровыми рельсами.");
                     break;
+            }
+        }
+
+        /// <summary>
+        /// Корень события исчерпания участка ступенчатой установки: масса уже
+        /// списана CommitBurn'ом (факт из шага), пул исчерпан ровно на границе.
+        /// Автозажигание (отладка этапа 1) подхватывает следующую ступень,
+        /// когда текущая полностью заглохла; отделение — отдельная команда.
+        /// </summary>
+        private void HandleStageDepletion()
+        {
+            double flow = Propulsion.MassFlowKgS;
+            if (flow > 0d)
+            {
+                Debug.Log(string.Format(
+                    "[Prop] ступень {0}: группа заглохла по пулу, расход {1:F1} кг/с",
+                    Propulsion.ActiveStageIndex + 1, flow));
+                return;
+            }
+
+            Debug.Log(string.Format("[Prop] ступень {0}: топливо кончилось",
+                Propulsion.ActiveStageIndex + 1));
+            if (Propulsion.AutoIgnite && Propulsion.IgniteNextAttached())
+            {
+                Debug.Log(string.Format("[Prop] автозажигание (отладка): ступень {0}",
+                    Propulsion.ActiveStageIndex + 1));
+            }
+        }
+
+        /// <summary>
+        /// Списать фактически сгоревшую за шаг массу с модели ступеней (источник
+        /// истины — масса: Ship.Mass уже убыл по massFlow интегратора) и сверить
+        /// инвариант «сухие + пулы присоединённых + масса вне сборки == Ship.Mass».
+        /// </summary>
+        private void CommitBurn(double burnedKg)
+        {
+            if (Propulsion == null || !(burnedKg > 0d))
+            {
+                return;
+            }
+
+            Propulsion.CommitBurn(burnedKg);
+            CheckMassInvariant();
+        }
+
+        /// <summary>Взвести детектор исчерпания на текущий участок и массу (перед чанком).</summary>
+        private void RearmDepletion()
+        {
+            if (DepletionDetector != null)
+            {
+                DepletionDetector.Arm(Propulsion, Ship.Mass);
+            }
+        }
+
+        /// <summary>
+        /// Инвариант массы: модель обязана объяснять Ship.Mass целиком. Расхождение
+        /// больше 1e-6 относительных — двойной учёт/недоучёт (лог по фронту, не спамим).
+        /// </summary>
+        private void CheckMassInvariant()
+        {
+            double expected = Propulsion.AttachedTotalKg() + Propulsion.DetachedMassKg;
+            double relative = Math.Abs(expected - Ship.Mass) / Math.Max(1d, Ship.Mass);
+            if (relative > 1e-6d)
+            {
+                if (!massInvariantBroken)
+                {
+                    massInvariantBroken = true;
+                    Debug.LogError(string.Format(
+                        "[Prop] инвариант массы нарушен: модель {0:F3} кг (вне сборки {1:F3}), Ship.Mass {2:F3} кг, отн. {3:E2}",
+                        expected, Propulsion.DetachedMassKg, Ship.Mass, relative));
+                }
+            }
+            else if (massInvariantBroken)
+            {
+                massInvariantBroken = false;
             }
         }
 
@@ -298,6 +406,12 @@ namespace Galilego.Universe
 
             double survivorMass = Ship.Mass - brokenMass;
             DominantBody = occurrence.Body;
+
+            // Разрушение рвёт сборку: ступенчатая модель (ядра/пулы) перестаёт
+            // соответствовать кораблю — выключаем её (панель уйдёт в legacy-ветку).
+            Propulsion = null;
+            DepletionDetector = null;
+            Thrust = MainThrust;
             if (survivorMass > 1e-9d)
             {
                 Ship.Mass = survivorMass;

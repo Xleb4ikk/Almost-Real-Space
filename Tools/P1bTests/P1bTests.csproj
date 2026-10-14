@@ -85,6 +85,13 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\GravitySource.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\CachedGravitySource.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\ThrustSource.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\StageThrustSource.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Propulsion\StageBurnCore.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Propulsion\StagePropulsion.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Propellants\Propellants.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Building\DeltaVModel.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Building\EngineSpecs.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\Detectors\StageDepletionDetector.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\DragSource.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\EventDirection.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\EventDetectors.cs" />
