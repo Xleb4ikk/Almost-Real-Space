@@ -34,6 +34,16 @@ namespace Galilego.Building
         // Плейсхолдеры физики
         private const double SeparatorSteelDensity = 7850d;
 
+        /// <summary>Масса капсулы Orion (плейсхолдер, как у двигателей), кг.</summary>
+        private const double CapsuleMassKg = 10400d;
+
+        /// <summary>
+        /// Верхний радиус физического тела капсулы (доля нижнего): капсула —
+        /// конус от теплозащиты Ø5 м к носу. Для пересечений/лучей этого
+        /// достаточно, точный силуэт даёт визуал.
+        /// </summary>
+        private const float CapsuleTopRadiusFraction = 0.38f;
+
         // Прочности стыков, Н: запас на переходные усилия PhysX (первый шаг
         // стыка держит вес мгновенно — пик в десятки раз выше веса) и на удар
         // при падении: 42-тонный бак при посадочном ударе даёт импульс
@@ -52,6 +62,7 @@ namespace Galilego.Building
             {
                 case PartKind.Engine: return "Двигатель";
                 case PartKind.FuelTank: return "Топливный бак";
+                case PartKind.Capsule: return "Капсула Orion";
                 default: return "Отделитель";
             }
         }
@@ -82,6 +93,9 @@ namespace Galilego.Building
                 case PartKind.Separator:
                     radius = Mathf.Clamp(radius, SeparatorMinRadius, SeparatorMaxRadius);
                     height = ProceduralSeparator.Thickness;
+                    break;
+                case PartKind.Capsule:
+                    // Размеры капсулы фиксированы моделью — не трогаем.
                     break;
                 default:
                     radius = 1f;
@@ -146,12 +160,76 @@ namespace Galilego.Building
                     return new PartMetrics(radius, radius, thickness, 0f, -thickness * 0.5f, thickness * 0.5f, mass, SeparatorJointNewtons, 1e12d);
                 }
 
+                case PartKind.Capsule:
+                    // Размеры — из модели (CapsuleTemplate), входные числа не значимы.
+                    return Capsule != null ? Capsule.Metrics : default;
+
                 default:
                     return engine != null ? engine.Metrics : default;
             }
         }
 
         // ─── Визуал ──────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Шаблон капсулы (Orion): префаб и габариты, посчитанные по мешам
+        /// (пивот — низ по центру оси, как у двигателя). Регистрируется
+        /// строителем на старте (RegisterCapsule): капсула одна на каталог, и
+        /// таскать её через все вызовы CreateVisual/Measure не нужно.
+        /// </summary>
+        public sealed class CapsuleTemplate
+        {
+            public GameObject Prefab;
+            public PartMetrics Metrics;
+            public Vector3 ModelOffset;
+        }
+
+        /// <summary>Шаблон капсулы; null — не зарегистрирован (нет префаба в сцене).</summary>
+        public static CapsuleTemplate Capsule { get; private set; }
+
+        /// <summary>
+        /// Замерить капсулу по префабу (один раз, старт строителя). Габариты —
+        /// мировые, как у двигателей; физическое тело — конус от теплозащиты
+        /// (нижний радиус) к носу (верхний — доля CapsuleTopRadiusFraction).
+        /// </summary>
+        public static void RegisterCapsule(GameObject prefab)
+        {
+            if (prefab == null)
+            {
+                Capsule = null;
+                return;
+            }
+
+            GameObject probe = UnityEngine.Object.Instantiate(prefab);
+            probe.hideFlags = HideFlags.HideAndDontSave;
+            probe.transform.position = Vector3.zero;
+            Bounds bounds = EngineTemplate.MeasureWorldBounds(probe);
+            if (Application.isPlaying)
+            {
+                UnityEngine.Object.Destroy(probe);
+            }
+            else
+            {
+                UnityEngine.Object.DestroyImmediate(probe);
+            }
+
+            var center = new Vector3(
+                (bounds.min.x + bounds.max.x) * 0.5f,
+                0f,
+                (bounds.min.z + bounds.max.z) * 0.5f);
+            float height = Mathf.Max(0.05f, bounds.size.y);
+            float radius = Mathf.Max(0.05f, Mathf.Max(bounds.size.x, bounds.size.z) * 0.5f);
+            float topRadius = radius * CapsuleTopRadiusFraction;
+
+            Capsule = new CapsuleTemplate
+            {
+                Prefab = prefab,
+                Metrics = new PartMetrics(
+                    radius, topRadius, height, height * 0.5f, 0f, height,
+                    CapsuleMassKg, TankJointNewtons, 1e12d),
+                ModelOffset = new Vector3(-center.x, -bounds.min.y, -center.z),
+            };
+        }
 
         /// <summary>Собранный визуал детали: корень-пивот и его рендереры.</summary>
         public sealed class PartVisual
@@ -245,6 +323,20 @@ namespace Galilego.Building
                     separator.Radius = metrics.Radius;
                     separator.Material = separatorMaterial;
                     separator.Rebuild();
+                    break;
+                }
+
+                case PartKind.Capsule:
+                {
+                    if (Capsule == null || Capsule.Prefab == null)
+                    {
+                        break;                           // капсула не зарегистрирована — только корень
+                    }
+
+                    GameObject model = UnityEngine.Object.Instantiate(Capsule.Prefab, root.transform);
+                    // Поворот модели НЕ трогаем: у корня префаба стоит разворот
+                    // осей Blender, как у двигателей — обнуление кладёт капсулу на бок.
+                    model.transform.localPosition = Capsule.ModelOffset;
                     break;
                 }
 
@@ -367,7 +459,7 @@ namespace Galilego.Building
             /// посчитанные «в локальных осях корня», теряют этот масштаб —
             /// двигатель получался 5 см и проваливался сквозь землю.
             /// </summary>
-            private static Bounds MeasureWorldBounds(GameObject root)
+            internal static Bounds MeasureWorldBounds(GameObject root)
             {
                 Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
                 var bounds = new Bounds(Vector3.zero, Vector3.zero);

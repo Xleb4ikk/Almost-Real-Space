@@ -134,6 +134,13 @@ namespace Galilego.Building
             StoreIcon(PartKind.Separator, null,
                 PartCatalog.Measure(PartKind.Separator, PartCatalog.SeparatorDefaultRadius, 0f, firstEngine),
                 firstEngine, tankSide, tankCap, separator);
+
+            // Капсула: габариты из шаблона (RegisterCapsule), иконка с рендером
+            // модели. Если префаб не задан, Measure вернёт пустые метрики и
+            // иконка останется процедурной (запас бака).
+            StoreIcon(PartKind.Capsule, null,
+                PartCatalog.Measure(PartKind.Capsule, 0f, 0f, firstEngine),
+                null, tankSide, tankCap, separator);
         }
 
         /// <summary>
