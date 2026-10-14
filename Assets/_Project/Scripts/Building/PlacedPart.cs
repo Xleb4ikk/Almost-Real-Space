@@ -8,7 +8,8 @@ namespace Galilego.Building
     {
         Engine = 0,
         FuelTank = 1,
-        Separator = 2
+        Separator = 2,
+        Capsule = 3
     }
 
     /// <summary>

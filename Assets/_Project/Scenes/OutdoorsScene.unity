@@ -1799,6 +1799,7 @@ MonoBehaviour:
   EnginePrefabs:
   - {fileID: 919132149155446097, guid: 64016cd4657434f46a18a3ad0364055b, type: 3}
   - {fileID: 919132149155446097, guid: 24af0d25f1db4c71b6d2f43dcb052f05, type: 3}
+  CapsulePrefab: {fileID: 3713472894082027778, guid: 2bcb9522f8a899844aed24a4d8eaa4fc, type: 3}
   TankSideMaterial: {fileID: 2100000, guid: f632233555ed823419687451fa984472, type: 2}
   TankCapMaterial: {fileID: 2100000, guid: 54f3158f6d8c6bb4d9852bde15cca48f, type: 2}
   SeparatorMaterial: {fileID: 2100000, guid: 63fe4e5c98995884dbc72fbfca5c07db, type: 2}

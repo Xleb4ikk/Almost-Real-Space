@@ -1,5 +1,6 @@
 using Galilego.Simulation.ContactZone;
 using Galilego.Spacecraft;
+using Galilego.Tablet;
 using Galilego.Universe;
 using UnityEngine;
 
@@ -45,6 +46,9 @@ namespace Galilego.Building
         [Header("Детали")]
         [Tooltip("Модели двигателей — заполняется из реестра EngineSpecs (автосинхронизация или Galilego → Building → Setup Scene). Порядок = порядок записей реестра.")]
         public GameObject[] EnginePrefabs;
+
+        [Tooltip("Префаб капсулы Orion (Models/Parts/Capsules/Orion/Orion_CrewModule.prefab) — экипажный модуль как деталь. Габариты и масса мерятся по нему.")]
+        public GameObject CapsulePrefab;
 
         [Tooltip("Материал боковины бака.")]
         public Material TankSideMaterial;
@@ -178,6 +182,13 @@ namespace Galilego.Building
             {
                 Debug.LogError("[Build] ни одной модели двигателя: задай EnginePrefabs (Galilego → Building → Setup Scene).");
             }
+
+            if (CapsulePrefab == null)
+            {
+                Debug.LogError("[Build] не задан CapsulePrefab (капсула Orion) — карточки капсулы в инвентаре не будет.");
+            }
+
+            PartCatalog.RegisterCapsule(CapsulePrefab);
 
             ghostMaterial = CreateOverlayMaterial(new Color(0.25f, 0.55f, 1f, 0.38f), "GhostBlue");
             invalidMaterial = CreateOverlayMaterial(new Color(1f, 0.25f, 0.2f, 0.38f), "GhostRed");
@@ -695,6 +706,7 @@ namespace Galilego.Building
         {
             if (Runner == null || Runner.Paused
                 || Runner.PlayerMode != PlayerMode.InShip
+                || ShipTablet.AnyExpanded
                 || !PlayerInput.Down(GameKey.Space))
             {
                 return;
@@ -871,6 +883,9 @@ namespace Galilego.Building
                     };
                 case PartKind.Separator:
                     return new PartPreset { Kind = kind, Radius = SeparatorRadius };
+                case PartKind.Capsule:
+                    // Размеры капсулы фиксированы моделью — заготовке ничего не нужно.
+                    return new PartPreset { Kind = kind };
                 default:
                     PartCatalog.EngineTemplate engine = DefaultEngine;
                     return new PartPreset
@@ -891,8 +906,9 @@ namespace Galilego.Building
                     preset.Load, EngineFor(preset));
             }
 
-            if (preset.Kind == PartKind.Engine)
+            if (preset.Kind == PartKind.Engine || preset.Kind == PartKind.Capsule)
             {
+                // Размеры берутся из шаблона модели, поля пресета не значимы.
                 return PartCatalog.Measure(preset.Kind, 0f, 0f, EngineFor(preset));
             }
 

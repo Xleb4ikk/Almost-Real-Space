@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using Galilego.Spacecraft;
+using Galilego.Tablet;
 using Galilego.Universe;
 using UnityEngine;
 
@@ -53,6 +54,13 @@ namespace Galilego.Building
         public PlayerController Controller;
 
         /// <summary>
+        /// Панель ΔV (план/остаток в полёте). Читают внешние потребители того же
+        /// расчёта (планшет): panel.Live ?? panel.Plan — единый источник, ничего
+        /// не пересчитывается.
+        /// </summary>
+        public DeltaVPanel DeltaV { get { return deltaVPanel; } }
+
+        /// <summary>
         /// Запись каталога: вид детали и (у двигателя) его Id из EngineSpecs.
         /// У каждого двигателя — СВОЯ карточка в сетке (двигатели идут рядом,
         /// порядок — как в реестре EngineSpecs). Новый двигатель в реестре
@@ -81,6 +89,7 @@ namespace Galilego.Building
 
             entries.Add(new CatalogEntry(PartKind.FuelTank, null));
             entries.Add(new CatalogEntry(PartKind.Separator, null));
+            entries.Add(new CatalogEntry(PartKind.Capsule, null));
             return entries.ToArray();
         }
 
@@ -216,6 +225,7 @@ namespace Galilego.Building
                 AssignPreset(0, DraftFor(Catalog[0]));
                 AssignPreset(1, Builder.DefaultPreset(PartKind.FuelTank));
                 AssignPreset(2, Builder.DefaultPreset(PartKind.Separator));
+                AssignPreset(3, Builder.DefaultPreset(PartKind.Capsule));
             }
 
             hotbarIndex = 0;
@@ -250,12 +260,17 @@ namespace Galilego.Building
 
             // Ctrl — «подсмотреть»: камера отпускает курсор, а постановка и
             // удаление на время удержания глушатся (как при открытом окне).
-            Builder.UiOpen = open || PlayerInput.Held(GameKey.LeftControl);
+            // Развёрнутый планшет — тем же флагом: клики по его кнопкам не
+            // должны ставить/удалять детали за ним.
+            Builder.UiOpen = open || PlayerInput.Held(GameKey.LeftControl) || ShipTablet.AnyExpanded;
 
             openAnim = Mathf.MoveTowards(openAnim, open ? 1f : 0f, Time.unscaledDeltaTime * 9f);
             TickPreview();
 
-            if (PlayerInput.Down(GameKey.E))
+            // Планшет, развёрнутый на весь экран, владеет E (закрытие): окно
+            // инвентаря по этому нажатию не открываем, иначе на одном E
+            // сработали бы оба интерфейса и курсор остался бы у планшета.
+            if (PlayerInput.Down(GameKey.E) && !ShipTablet.AnyExpanded)
             {
                 SetOpen(!open);
             }
@@ -755,6 +770,15 @@ namespace Galilego.Building
                 return;
             }
 
+            // Планшет, развёрнутый на весь экран, рисуется поверх и владеет
+            // экраном: интерфейс строителя не рисуем. Расчёт ΔV при этом обязан
+            // жить — планшет читает те же Live/Plan (panel.Tick без отрисовки).
+            if (ShipTablet.AnyExpanded)
+            {
+                deltaVPanel.Tick(Builder);
+                return;
+            }
+
             float scale = Mathf.Clamp(Screen.height / 1080f, 1f, 2f);
             Matrix4x4 previous = GUI.matrix;
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(scale, scale, 1f));
@@ -920,6 +944,11 @@ namespace Galilego.Building
             else if (preset.Kind == PartKind.Separator)
             {
                 dims = "   <color=#9AA0A8>R " + m.Radius.ToString("F1") + " м</color>";
+            }
+            else if (preset.Kind == PartKind.Capsule)
+            {
+                dims = "   <color=#9AA0A8>Ø " + (m.Radius * 2f).ToString("F1") + " м  ·  H "
+                    + m.Height.ToString("F1") + " м</color>";
             }
 
             string name = PartCatalog.DisplayName(preset.Kind, EngineSpecFor(preset));
@@ -1248,11 +1277,13 @@ namespace Galilego.Building
 
             bool tank = kind == PartKind.FuelTank;
             bool engine = kind == PartKind.Engine;
+            bool capsule = kind == PartKind.Capsule;
 
             // Строки характеристик: у двигателя — масса, топливо, тяга, импульс,
-            // расход, степень расширения, прочность стыка.
-            int rows = engine ? 7 : (kind == PartKind.FuelTank ? 7 : 3);
-            int editors = engine ? 0 : (tank ? (IsCone(m) ? 3 : 2) : 1);
+            // расход, степень расширения, прочность стыка. У капсулы — масса,
+            // диаметр, высота и прочность стыка; размеров у неё нет.
+            int rows = engine ? 7 : (kind == PartKind.FuelTank ? 7 : (capsule ? 4 : 3));
+            int editors = engine || capsule ? 0 : (tank ? (IsCone(m) ? 3 : 2) : 1);
 
             // Всё, кроме кадра: шапка, подписи, строки, форма и редакторы.
             // Редактор размера занимает подпись + ряд кнопок (EditorHeight) —
@@ -1353,14 +1384,19 @@ namespace Galilego.Building
                 case PartKind.Separator:
                     AddRow(x, ref y, w, "Толщина", "40 мм");
                     break;
+                case PartKind.Capsule:
+                    AddRow(x, ref y, w, "Диаметр", (m.Radius * 2f).ToString("F1") + " м");
+                    AddRow(x, ref y, w, "Высота", m.Height.ToString("F1") + " м");
+                    break;
             }
 
             AddRow(x, ref y, w, "Прочность стыка", (m.JointStrengthNewtons / 1e6).ToString("F1") + " МН");
 
-            if (kind == PartKind.Engine)
+            if (kind == PartKind.Engine || kind == PartKind.Capsule)
             {
                 // У двигателя размеров нет: модель выбирается карточкой
                 // в инвентаре (у каждого двигателя — своя карточка).
+                // У капсулы размеры фиксированы моделью Orion.
                 return;
             }
 
@@ -2126,6 +2162,7 @@ namespace Galilego.Building
             {
                 case PartKind.Engine: return "Двигатель";
                 case PartKind.FuelTank: return "Ёмкость · настраиваемая";
+                case PartKind.Capsule: return "Модуль экипажа · фиксированный";
                 default: return "Разделение ступеней";
             }
         }
