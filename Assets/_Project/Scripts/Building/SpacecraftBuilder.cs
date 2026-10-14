@@ -1238,8 +1238,13 @@ namespace Galilego.Building
         /// Пересекается ли пробная деталь с ПОСТРОЙКАМИ места (стол, фермы,
         /// парапеты). Без этой проверки деталь можно было поставить внутрь
         /// коллайдеров стола: при включении физики она застревала в них и
-        /// «висела», а соседи отваливались. Капсула чуть уже детали и на 6 см
-        /// ужата от торцов, чтобы опора/пол не ловились как пересечение.
+        /// «висела», а соседи отваливались. Проверочная сфера чуть уже детали
+        /// и ужата от торцов, чтобы опора/пол не ловились как пересечение.
+        ///
+        /// Радиус сферы дополнительно ограничен половиной высоты детали: у
+        /// широкой и невысокой детали (капсула Ø5 м, широкий бак) сфера
+        /// радиуса нижнего радиуса вылезала НИЖЕ её дна и «находила» плиту
+        /// под деталью — постановка на площадку была вечно красной.
         /// </summary>
         private bool OverlapsSiteStructure(Vector3 pivot, PartMetrics metrics)
         {
@@ -1249,13 +1254,14 @@ namespace Galilego.Building
             }
 
             float radius = (metrics.Radius * 0.92f) - 0.05f;
+            radius = Mathf.Min(radius, (metrics.Height * 0.5f) - 0.10f);
             if (radius <= 0.02f)
             {
                 return false;
             }
 
             Vector3 centerLocal = pivot + new Vector3(0f, metrics.Center, 0f);
-            float inner = Mathf.Max(0f, (metrics.Height * 0.5f) - metrics.Radius);
+            float inner = Mathf.Max(0f, (metrics.Height * 0.5f) - radius);
             Vector3 lower = Zone.SiteToRender(centerLocal - new Vector3(0f, inner - 0.06f, 0f));
             Vector3 upper = Zone.SiteToRender(centerLocal + new Vector3(0f, inner - 0.06f, 0f));
 
