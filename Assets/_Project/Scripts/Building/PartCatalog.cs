@@ -392,6 +392,21 @@ namespace Galilego.Building
 
                 root.AddComponent<VesselPartCollider>();
             }
+            else
+            {
+                // Призрак постановки и превью: коллайдеры САМОЙ МОДЕЛИ
+                // (например, корпусов мониторов в капсуле Orion) обязаны
+                // молчать. Призрак живёт под «Площадкой стартовой» — её
+                // SurfaceSite делает такие коллайдеры «постройками места»,
+                // и призрак ловил собственный объём в проверке постановки:
+                // капсулу было нельзя поставить нигде. Заодно собственные
+                // коллайдеры перестают заслонять луч постановки.
+                Collider[] ownColliders = root.GetComponentsInChildren<Collider>(true);
+                for (int i = 0; i < ownColliders.Length; i++)
+                {
+                    ownColliders[i].enabled = false;
+                }
+            }
 
             return visual;
         }
