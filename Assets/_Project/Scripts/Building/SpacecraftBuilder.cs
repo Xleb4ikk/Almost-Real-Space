@@ -59,6 +59,9 @@ namespace Galilego.Building
         [Tooltip("Собрать на старте отладочный стек двигатель+бак+отделитель (спайк).")]
         public bool DebugSpikeStack;
 
+        [Tooltip("Отладка ступенчатой тяги: зажигать ступени автоматически, без Space (проверка расхода/выработки этапа 1).")]
+        public bool DebugAutoIgniteStages;
+
         /// <summary>Длительность удержания R для переключения физики, с.</summary>
         public const float PhysicsHoldSeconds = 1f;
 
@@ -232,6 +235,7 @@ namespace Galilego.Building
 
             if (PhysicsOn)
             {
+                UpdateStaging();
                 return;
             }
 
@@ -495,6 +499,13 @@ namespace Galilego.Building
             Runner.Ship.Mass = BuildMath.TotalMass(parts);
             Runner.SetDryMass(BuildMath.EffectiveDryMass(parts, PropellantPairs.Default.Mix));
 
+            // Ступенчатая тяга: ядра из черновика (та же группировка «отделитель
+            // заканчивает ступень», что у панели ΔV) + масса деталей вне основной
+            // сборки — в Ship.Mass они есть, в ядрах их нет, инвариант сходится.
+            var cores = DeltaV.BuildStageAssembly(parts);
+            Runner.SetVesselPropulsion(new StagePropulsion(
+                cores, DetachedMassKg(parts, cores), DebugAutoIgniteStages));
+
             // В полёте аппарат живёт телами прокси: визуальные коллайдеры деталей
             // гасим, иначе PhysX-тела сталкивались бы со своими же визуалами.
             // Игрок при этом не проходит сквозь аппарат — опора берёт коллайдеры
@@ -515,6 +526,41 @@ namespace Galilego.Building
             HideGhost();
             Debug.Log(string.Format(
                 "[Build] физика включена: деталей {0}, масса {1:F0} кг", defs.Length, Runner.Ship.Mass));
+        }
+
+        /// <summary>
+        /// Масса деталей вне основной сборки (не вошла ни в одно ядро ступени):
+        /// в Ship.Mass она есть, в модели ступеней её нет — так инвариант
+        /// «ядра + вне сборки == Ship.Mass» сходится и при «сиротах».
+        /// </summary>
+        private static double DetachedMassKg(
+            System.Collections.Generic.List<PlacedPart> parts,
+            System.Collections.Generic.List<StageCore> cores)
+        {
+            double sum = 0d;
+            for (int i = 0; i < parts.Count; i++)
+            {
+                bool inCore = false;
+                for (int c = 0; c < cores.Count && !inCore; c++)
+                {
+                    System.Collections.Generic.List<int> indices = cores[c].PartIndices;
+                    for (int k = 0; k < indices.Count; k++)
+                    {
+                        if (indices[k] == i)
+                        {
+                            inCore = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!inCore)
+                {
+                    sum += parts[i].Metrics.MassKg;
+                }
+            }
+
+            return sum;
         }
 
         /// <summary>
@@ -628,10 +674,145 @@ namespace Galilego.Building
                 Runner.Debris.Clear();
             }
 
+            // Ступенчатая тяга снимается: в стройке живёт legacy-путь.
+            Runner.ClearVesselPropulsion();
+
             SetPartColliders(true);
 
             RefreshVisualLocals();
             Debug.Log("[Build] возврат к стройке: состояние восстановлено");
+        }
+
+        // ─── Ступени в полёте ────────────────────────────────────────────────
+
+        /// <summary>
+        /// Space в корабле (KSP-стиль): зажигание ступени, затем отделение
+        /// нижней присоединённой и зажигание следующей. Только когда игрок в
+        /// корабле — на пеших режимах Space занят прыжком и джетпаком. На земле
+        /// (зона контакта) отделение — этап 3, здесь команда глушится.
+        /// </summary>
+        private void UpdateStaging()
+        {
+            if (Runner == null || Runner.Paused
+                || Runner.PlayerMode != PlayerMode.InShip
+                || !PlayerInput.Down(GameKey.Space))
+            {
+                return;
+            }
+
+            StageJettison();
+        }
+
+        /// <summary>
+        /// Одна команда «ступень»: зажигание или отделение+зажигание. Возвращает
+        /// true, если что-то произошло. Масса сброшенной ступени берётся ДО
+        /// Stage() (после — уже не вычесть корректно); Ship.Mass и импульс
+        /// меняет сама StageSeparation — всё в одном месте, чтобы инвариант
+        /// массы не ругнулся на кадр рассинхрона.
+        /// </summary>
+        public bool StageJettison()
+        {
+            StagePropulsion propulsion = Runner != null ? Runner.Propulsion : null;
+            if (propulsion == null || ContactZoneHost.Active)
+            {
+                return false;
+            }
+
+            int first = propulsion.FirstAttached;
+            if (propulsion.ActiveStageIndex < 0)
+            {
+                if (propulsion.Stage() == StagingResult.Ignited)
+                {
+                    Debug.Log(string.Format("[Stage] зажигание ступени {0}", first + 1));
+                    return true;
+                }
+
+                return false;
+            }
+
+            // Последнюю ступень отделять нечем (над ней нет отделителя).
+            if (first + 1 >= propulsion.StageCount)
+            {
+                return false;
+            }
+
+            double stageMass = propulsion.StageTotalKg(first);
+            if (propulsion.Stage() != StagingResult.JettisonedAndIgnited)
+            {
+                return false;
+            }
+
+            // Импульс разделения — 2 м/с назад по движению (ступень тормозится
+            // относительно корабля). StageSeparation делит импульс пары и
+            // вычитает массу ступени из Ship.Mass.
+            Galilego.Core.Vector3d prograde = Runner.Ship.Velocity.SqrMagnitude > 1e-6d
+                ? Runner.Ship.Velocity.Normalized
+                : new Galilego.Core.Vector3d(0d, 0d, 1d);
+            Galilego.Events.ManeuverEvaluator.StageSeparation(
+                Runner.Ship, stageMass, prograde * 2d, Runner.Debris,
+                Runner.TimeSeconds, propulsion.Cores[first + 1].DryMassKg,
+                Runner.DebrisLifetimeSeconds);
+
+            // PartDefinition остатка — для посадки (нормировка разрушения) и
+            // зоны контакта: детали сброшенных ступеней по PartIndices ядер.
+            Runner.SetVesselParts(RemainingDefs(parts, propulsion));
+
+            Debug.Log(string.Format(
+                "[Stage] ступень {0} отделена: {1:F0} кг; зажжена ступень {2}",
+                first + 1, stageMass, propulsion.ActiveStageIndex + 1));
+            return true;
+        }
+
+        /// <summary>
+        /// PartDefinition[] без сброшенных ступеней: какие детали уходят — из
+        /// PartIndices ядер (индексы черновика), ParentIndex пересчитывается на
+        /// новую нумерацию; родитель из сброшенной ступени становится корнем.
+        /// </summary>
+        private static PartDefinition[] RemainingDefs(
+            System.Collections.Generic.List<PlacedPart> parts, StagePropulsion propulsion)
+        {
+            var dropped = new System.Collections.Generic.HashSet<int>();
+            for (int k = 0; k < propulsion.StageCount; k++)
+            {
+                if (!propulsion.IsJettisoned(k))
+                {
+                    continue;
+                }
+
+                System.Collections.Generic.List<int> indices = propulsion.Cores[k].PartIndices;
+                for (int i = 0; i < indices.Count; i++)
+                {
+                    dropped.Add(indices[i]);
+                }
+            }
+
+            var map = new int[parts.Count];
+            var remaining = new System.Collections.Generic.List<PlacedPart>(parts.Count);
+            for (int i = 0; i < parts.Count; i++)
+            {
+                if (dropped.Contains(i))
+                {
+                    map[i] = -1;
+                    continue;
+                }
+
+                map[i] = remaining.Count;
+                remaining.Add(parts[i]);
+            }
+
+            PartDefinition[] defs = BuildMath.ToPartDefinitions(remaining);
+            if (defs == null)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < defs.Length; i++)
+            {
+                int parent = defs[i].ParentIndex;
+                defs[i].ParentIndex = parent >= 0 && parent < map.Length ? map[parent] : -1;
+            }
+
+            return defs;
         }
 
         // ─── Детали ──────────────────────────────────────────────────────────

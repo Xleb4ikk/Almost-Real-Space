@@ -355,6 +355,7 @@ namespace UnityEngine
         public static bool GetKey(KeyCode key) => false;
         public static float GetAxis(string axis) => 0f;
         public static float GetAxisRaw(string axis) => 0f;
+        public static Vector2 mouseScrollDelta => new Vector2(0f, 0f);
     }
 
     public struct Rect
@@ -481,7 +482,7 @@ namespace UnityEngine
 
     public enum CursorLockMode { None, Locked }
 
-    public enum KeyCode { Alpha1 = 49, Alpha2 = 50, Alpha3 = 51, Alpha4 = 52, Alpha5 = 53, Alpha6 = 54, Alpha7 = 55, Escape = 27, LeftShift = 304, LeftControl = 306, LeftAlt = 308, P = 112, E = 101, F10 = 291, W = 119, A = 97, S = 115, D = 100, Space = 32 }
+    public enum KeyCode { Alpha1 = 49, Alpha2 = 50, Alpha3 = 51, Alpha4 = 52, Alpha5 = 53, Alpha6 = 54, Alpha7 = 55, Alpha8 = 56, Alpha9 = 57, Escape = 27, LeftShift = 304, LeftControl = 306, LeftAlt = 308, RightAlt = 309, P = 112, E = 101, F10 = 291, W = 119, A = 97, S = 115, D = 100, H = 104, R = 114, Z = 122, C = 99, Space = 32 }
 
     public static class Cursor
     {
@@ -533,9 +534,10 @@ namespace UnityEngine
     {
         public static void Log(object m) { }
         public static void LogWarning(object m) { }
+        public static void LogError(object m) { }
 
-        /// <summary>Перегрузка с контекстом есть в реальном Unity; без неё
-        /// продуктовый код с Debug.LogWarning(msg, this) не собирается на стенде.</summary>
+        /// <summary>Совместимость со старым способом: сообщения с контекстом в юнит-тестах Unity; в стенде
+        /// достаточно сигнатуры, как у Debug.LogWarning(msg, this) ниже (проверяется по аргументам).</summary>
         public static void LogWarning(object m, Object context) { }
     }
 

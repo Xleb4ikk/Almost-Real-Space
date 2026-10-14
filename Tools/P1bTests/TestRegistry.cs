@@ -230,6 +230,8 @@ internal static partial class P1bTests
             new P1bCase("Test901_TerrainWallBisect", Test901_TerrainWallBisect, false),
             new P1bCase("Test903_ShelfFixAb", Test903_ShelfFixAb, false),
             new P1bCase("Test904_NoSubQuadSteps", Test904_NoSubQuadSteps, false),
+            new P1bCase("Test400_StageCoreConformance", Test400_StageCoreConformance, false),
+            new P1bCase("Test401_StagePropulsionFlight", Test401_StagePropulsionFlight, false),
         };
     }
 }
