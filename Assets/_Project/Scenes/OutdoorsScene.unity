@@ -2350,6 +2350,7 @@ MonoBehaviour:
   LogCameraDiagnostics: 0
   EyeHeightMeters: 1.6
   SwimEyeHeightMeters: 0.5
+  CrouchEyeMeters: 0.95
 --- !u!1 &1982425599
 GameObject:
   m_ObjectHideFlags: 0

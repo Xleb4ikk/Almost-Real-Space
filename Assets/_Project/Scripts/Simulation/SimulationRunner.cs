@@ -285,6 +285,12 @@ namespace Galilego.Universe
         /// <summary>Стоит ли игрок на опоре (для проб/отладки).</summary>
         public bool PlayerGrounded => !playerController.Airborne;
 
+        /// <summary>
+        /// Пригнулся ли игрок (автоматически, чтобы пройти низкий проём).
+        /// Камера берёт отсюда высоту глаз (FirstPersonCamera).
+        /// </summary>
+        public bool PlayerCrouched => playerController.Crouched;
+
         /// <summary>Идентификатор опоры под игроком (-1 — нет опоры; см. TerrainSupport/SiteBoxSupport).</summary>
         public int PlayerGroundSourceId => playerController.GroundSourceId;
 

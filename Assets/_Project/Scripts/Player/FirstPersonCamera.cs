@@ -54,6 +54,10 @@ namespace Galilego.Universe
             "иначе на мелководье у берега голова на полном росте никогда не уходит под воду.")]
         public double SwimEyeHeightMeters = 0.5d;
 
+        [Tooltip("Высота глаз в приседе (м): игрок автоматически пригибается, " +
+            "чтобы пройти низкий проём (люк капсулы Orion ~1.2 м).")]
+        public double CrouchEyeMeters = 0.95d;
+
 #if UNITY_EDITOR
         /// <summary>
         /// Инструмент съёмки (Editor/SurfaceCaptureTool) держит кадры «до/после»
@@ -91,6 +95,9 @@ namespace Galilego.Universe
         private Vector3 eyeOffset;
         private bool cursorReleasedByUser;
         private string mouseIgnoredReason;
+
+        /// <summary>Плавный переход «рост ↔ присед» (0..1) для высоты глаз.</summary>
+        private float crouchBlend;
 
         private void Start()
         {
@@ -193,6 +200,10 @@ namespace Galilego.Universe
                 NoteMouseIgnored("Target == null (корабль уничтожена)");
                 return;
             }
+
+            // Присед: плавно (не рывком) — высота глаз едет к CrouchEyeMeters.
+            bool crouched = Runner != null && Runner.PlayerCrouched;
+            crouchBlend = Mathf.MoveTowards(crouchBlend, crouched ? 1f : 0f, Time.deltaTime * 5f);
 
             ComputeEyeOffset();
             Vector3 up = ComputeLocalUp();
@@ -433,7 +444,16 @@ namespace Galilego.Universe
                 return;
             }
 
-            double eye = Runner.PlayerMode == PlayerMode.Swimming ? SwimEyeHeightMeters : EyeHeightMeters;
+            double eye;
+            if (Runner.PlayerMode == PlayerMode.Swimming)
+            {
+                eye = SwimEyeHeightMeters;
+            }
+            else
+            {
+                eye = EyeHeightMeters + ((CrouchEyeMeters - EyeHeightMeters) * crouchBlend);
+            }
+
             eyeOffset = ComputeLocalUp() * (float)eye;
         }
 

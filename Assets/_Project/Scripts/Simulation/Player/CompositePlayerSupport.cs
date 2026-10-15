@@ -72,21 +72,21 @@ namespace Galilego.Simulation.Player
             return true;
         }
 
-        public bool Sweep(Vector3d from, Vector3d to, double radius, out Vector3d normal, out double fraction)
+        public bool Sweep(Vector3d from, Vector3d to, double radius, double height, out Vector3d normal, out double fraction)
         {
             normal = new Vector3d(0d, 0d, 1d);
             fraction = 1d;
             bool found = false;
-            found |= TrySweep(Sites, from, to, radius, ref normal, ref fraction);
-            found |= TrySweep(Vessel, from, to, radius, ref normal, ref fraction);
+            found |= TrySweep(Sites, from, to, radius, height, ref normal, ref fraction);
+            found |= TrySweep(Vessel, from, to, radius, height, ref normal, ref fraction);
             return found;
         }
 
-        private static bool TrySweep(IPlayerSupport source, Vector3d from, Vector3d to, double radius,
+        private static bool TrySweep(IPlayerSupport source, Vector3d from, Vector3d to, double radius, double height,
             ref Vector3d normal, ref double fraction)
         {
             if (source == null
-                || !source.Sweep(from, to, radius, out Vector3d n, out double f)
+                || !source.Sweep(from, to, radius, height, out Vector3d n, out double f)
                 || f >= fraction)
             {
                 return false;

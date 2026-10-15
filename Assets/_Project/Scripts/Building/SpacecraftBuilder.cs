@@ -1097,10 +1097,14 @@ namespace Galilego.Building
                     continue;
                 }
 
-                Collider collider = part.Visual.Root.GetComponent<Collider>();
-                if (collider != null)
+                // Все коллайдеры детали, включая коллайдеры САМОЙ МОДЕЛИ (у капсулы
+                // Orion их десятки: оболочка, пол кабины, открытая дверь). Раньше
+                // гасился только корневой — в полёте меши капсулы продолжали
+                // сталкиваться, хотя их место занимают тела прокси зоны контакта.
+                Collider[] colliders = part.Visual.Root.GetComponentsInChildren<Collider>(true);
+                for (int c = 0; c < colliders.Length; c++)
                 {
-                    collider.enabled = enabled;
+                    colliders[c].enabled = enabled;
                 }
             }
         }
