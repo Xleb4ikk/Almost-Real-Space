@@ -59,9 +59,9 @@ namespace Galilego.Universe
         public float SurfaceFadeMeters = 3f;
 
         [Header("Привязка к глазам")]
-        [Tooltip("Высота глаз камеры над позицией игрока (м). Глубина считается от позиции игрока, а глаза выше — вычитаем, иначе экран мутнеет уже вплавь на поверхности. Должно совпадать с EyeHeightMeters на FirstPersonCamera (рост игрока 1.70 м — глаза 1.60 м).")]
+        [Tooltip("Высота глаз камеры над позицией игрока (м). Глубина считается от позиции игрока, а глаза выше — вычитаем, иначе экран мутнеет уже вплавь на поверхности. Должно совпадать с EyeHeightMeters на FirstPersonCamera (рост игрока 1.40 м — глаза 1.30 м).")]
         [Min(0f)]
-        public float EyeHeightMeters = 1.6f;
+        public float EyeHeightMeters = 1.3f;
 
         [Tooltip("Высота глаз вплавь (м): пловец лежит. Должно совпадать с SwimEyeHeightMeters на FirstPersonCamera и SimulationRunner — иначе эффект и физика разойдутся.")]
         [Min(0f)]
