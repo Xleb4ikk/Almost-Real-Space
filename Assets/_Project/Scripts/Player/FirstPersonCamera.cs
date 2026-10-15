@@ -44,9 +44,10 @@ namespace Galilego.Universe
 
         private float diagnosticTimer;
 
-        [Tooltip("Высота глаз над точкой игрока (м; вдоль нормали поверхности) — рост игрока. " +
-            "1.7 м: человек влезает в кабину Orion (~1.8 м) и масштаб капсулы читается верно.")]
-        public double EyeHeightMeters = 1.7d;
+        [Tooltip("Высота глаз над точкой игрока (м; вдоль нормали поверхности). " +
+            "Рост игрока 1.70 м — глаза 1.60 м (глаза не на макушке): человек " +
+            "влезает в кабину Orion (~1.79 м) и проходит в люк.")]
+        public double EyeHeightMeters = 1.6d;
 
         [Tooltip("Высота глаз вплавь (м): пловец лежит, голова ~0.5 м над ногами. " +
             "Синхронизировано с SimulationRunner.SwimEyeHeightMeters/UnderwaterEffect: " +
