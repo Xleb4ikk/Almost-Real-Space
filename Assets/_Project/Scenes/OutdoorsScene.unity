@@ -1676,7 +1676,7 @@ MonoBehaviour:
   FullEffectDepthMeters: 50
   MaxDarkeningEv: -0.3
   SurfaceFadeMeters: 3
-  EyeHeightMeters: 2
+  EyeHeightMeters: 1.6
   SwimEyeHeightMeters: 0.5
 --- !u!114 &1332194278
 MonoBehaviour:
@@ -2348,7 +2348,7 @@ MonoBehaviour:
   TemporalAA: 0
   SubpixelAA: 1
   LogCameraDiagnostics: 0
-  EyeHeightMeters: 1.7
+  EyeHeightMeters: 1.6
   SwimEyeHeightMeters: 0.5
 --- !u!1 &1982425599
 GameObject:
