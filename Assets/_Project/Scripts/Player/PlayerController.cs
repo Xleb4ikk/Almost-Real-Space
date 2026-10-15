@@ -1,4 +1,5 @@
 using Galilego.Core;
+using Galilego.Simulation.Player;
 using UnityEngine;
 
 namespace Galilego.Universe
@@ -31,6 +32,12 @@ namespace Galilego.Universe
 
         [Tooltip("Скорость бега (м/с, Shift).")]
         public float RunSpeed = 5f;
+
+        [Tooltip("Скорость ходьбы ПО АППАРАТУ (м/с): внутри капсулы/на деталях тесно — медленнее.")]
+        public float VesselWalkSpeed = 1f;
+
+        [Tooltip("Скорость бега по аппарату (м/с, Shift).")]
+        public float VesselRunSpeed = 1.8f;
 
         [Tooltip("Ускорение джетпака (м/с²).")]
         public float JetpackThrust = 20f;
@@ -310,7 +317,12 @@ namespace Galilego.Universe
                             + (camera.transform.right * ((PlayerInput.Held(GameKey.D) ? 1f : 0f) - (PlayerInput.Held(GameKey.A) ? 1f : 0f)));
                         if (move.sqrMagnitude > 0f)
                         {
-                            float speed = PlayerInput.Held(GameKey.LeftShift) ? RunSpeed : WalkSpeed;
+                            // Опора — деталь аппарата (sourceId из VesselSupport):
+                            // тесные интерьеры ходят отдельной, медленной скоростью.
+                            bool onVessel = Runner.PlayerGroundSourceId >= VesselSupport.SourceIdBase;
+                            float speed = PlayerInput.Held(GameKey.LeftShift)
+                                ? (onVessel ? VesselRunSpeed : RunSpeed)
+                                : (onVessel ? VesselWalkSpeed : WalkSpeed);
                             Vector3d walkAstro = AstroFrame.ToAstro(move.normalized);
                             intent.WalkDirection = walkAstro.Normalized;
                             intent.WalkSpeed = speed;
