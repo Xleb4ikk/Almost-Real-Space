@@ -21,10 +21,12 @@ namespace Galilego.Simulation.Player
         bool Ceiling(Vector3d head, double maxRise, out double height);
 
         /// <summary>
-        /// Горизонтальная блокировка капсулой (радиус radius, высота 1.8 м от from):
-        /// доля пути до первого касания и нормаль стены.
+        /// Горизонтальная блокировка капсулой (радиус radius, высота height от from):
+        /// доля пути до первого касания и нормаль стены. Высота — параметр, а не
+        /// константа: пригнувшийся игрок (рост капсулы меньше) проходит под
+        /// низкие проёмы — люк капсулы Orion.
         /// </summary>
-        bool Sweep(Vector3d from, Vector3d to, double radius, out Vector3d normal, out double fraction);
+        bool Sweep(Vector3d from, Vector3d to, double radius, double height, out Vector3d normal, out double fraction);
     }
 
     /// <summary>

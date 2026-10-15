@@ -365,29 +365,53 @@ namespace Galilego.Building
 
             if (withCollider && metrics.Radius > 0.01f)
             {
-                bool conical = kind == PartKind.FuelTank
-                    && metrics.TopRadius > 0.01f
-                    && Mathf.Abs(metrics.TopRadius - metrics.Radius) > 1e-3f;
-                if (conical)
+                if (kind == PartKind.Capsule)
                 {
-                    // Конус капсулой не описать: выпуклый меш боковины повторяет
-                    // сужение, игрок не упирается в невидимый цилиндр нижнего
-                    // радиуса. Меш уже собран выше (Rebuild бака).
-                    var hull = root.AddComponent<MeshCollider>();
-                    hull.convex = true;
-                    MeshFilter filter = root.GetComponent<MeshFilter>();
-                    hull.sharedMesh = filter != null ? filter.sharedMesh : null;
+                    // Капсула: коллайдеры — из САМИХ МЕШЕЙ модели (внешняя
+                    // оболочка, пол и стены кабины, открытая дверь люка). Общая
+                    // блоб-капсула для неё не годится: шире и выше детали, а люк
+                    // был бы наглухо запечатан — игрок не мог войти внутрь.
+                    // Меши с уже готовым коллайдером (корпуса мониторов) не трогаем.
+                    MeshFilter[] modelMeshes = root.GetComponentsInChildren<MeshFilter>(true);
+                    for (int i = 0; i < modelMeshes.Length; i++)
+                    {
+                        MeshFilter filter = modelMeshes[i];
+                        if (filter.sharedMesh == null || filter.GetComponent<Collider>() != null)
+                        {
+                            continue;
+                        }
+
+                        var hull = filter.gameObject.AddComponent<MeshCollider>();
+                        hull.sharedMesh = filter.sharedMesh;
+                        hull.convex = false;
+                    }
                 }
                 else
                 {
-                    // Коллайдер детали для игрока: капсула по габаритам (ось — локальный
-                    // Y; у отделителя высота меньше диаметра, PhysX клампит её до
-                    // сферы — плоское кольцо всё равно перекрывает проход).
-                    var capsule = root.AddComponent<CapsuleCollider>();
-                    capsule.direction = 1;
-                    capsule.radius = metrics.Radius;
-                    capsule.height = Mathf.Max(metrics.Height, metrics.Radius * 2f);
-                    capsule.center = new Vector3(0f, metrics.Center, 0f);
+                    bool conical = kind == PartKind.FuelTank
+                        && metrics.TopRadius > 0.01f
+                        && Mathf.Abs(metrics.TopRadius - metrics.Radius) > 1e-3f;
+                    if (conical)
+                    {
+                        // Конус капсулой не описать: выпуклый меш боковины повторяет
+                        // сужение, игрок не упирается в невидимый цилиндр нижнего
+                        // радиуса. Меш уже собран выше (Rebuild бака).
+                        var hull = root.AddComponent<MeshCollider>();
+                        hull.convex = true;
+                        MeshFilter filter = root.GetComponent<MeshFilter>();
+                        hull.sharedMesh = filter != null ? filter.sharedMesh : null;
+                    }
+                    else
+                    {
+                        // Коллайдер детали для игрока: капсула по габаритам (ось — локальный
+                        // Y; у отделителя высота меньше диаметра, PhysX клампит её до
+                        // сферы — плоское кольцо всё равно перекрывает проход).
+                        var capsule = root.AddComponent<CapsuleCollider>();
+                        capsule.direction = 1;
+                        capsule.radius = metrics.Radius;
+                        capsule.height = Mathf.Max(metrics.Height, metrics.Radius * 2f);
+                        capsule.center = new Vector3(0f, metrics.Center, 0f);
+                    }
                 }
 
                 root.AddComponent<VesselPartCollider>();

@@ -66,7 +66,7 @@ namespace Galilego.Simulation.Player
             return false;
         }
 
-        public bool Sweep(Vector3d from, Vector3d to, double radius, out Vector3d normal, out double fraction)
+        public bool Sweep(Vector3d from, Vector3d to, double radius, double height, out Vector3d normal, out double fraction)
         {
             normal = new Vector3d(0d, 0d, 1d);
             fraction = 1d;

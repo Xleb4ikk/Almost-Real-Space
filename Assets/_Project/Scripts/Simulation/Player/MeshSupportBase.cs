@@ -199,7 +199,7 @@ namespace Galilego.Simulation.Player
             return found;
         }
 
-        public bool Sweep(Vector3d from, Vector3d to, double radius, out Vector3d normal, out double fraction)
+        public bool Sweep(Vector3d from, Vector3d to, double radius, double height, out Vector3d normal, out double fraction)
         {
             normal = new Vector3d(0d, 0d, 1d);
             fraction = 1d;
@@ -208,12 +208,12 @@ namespace Galilego.Simulation.Player
                 return false;
             }
 
-            // Капсула: нижняя точка полусферы — ровно ноги (from), верх — from + высота.
+            // Капсула: нижняя точка полусферы — ровно ноги (from), верх — from + height.
             // CapsuleCast добавляет радиус СВЕРХ концов отрезка, поэтому сегмент
             // начинается на радиус выше ног (иначе полусфера уходит на 0.45 м под
             // пол и свип ложно цепляет крышу/пол под ногами).
             Vector3 p1 = ToRenderPoint(from) + (renderUp * (float)radius);
-            Vector3 p2 = p1 + (renderUp * Mathf.Max(0.01f, (float)(PlayerSurfaceController.CapsuleHeight - (2d * radius))));
+            Vector3 p2 = p1 + (renderUp * Mathf.Max(0.01f, (float)(height - (2d * radius))));
             Vector3 delta = ToRenderPoint(to) - ToRenderPoint(from);
             float distance = delta.magnitude;
             if (distance < 1e-6f)
