@@ -30,11 +30,13 @@ namespace Galilego.Simulation.Player
         public const double CapsuleHeight = 1.45d;
 
         /// <summary>
-        /// Высота капсулы в приседе (м). Проём люка Orion (~1.2 м) ниже полного
-        /// роста: пригнувшись игрок проходит, стоя — нет. Пригибание
-        /// автоматическое (см. StepGrounded), кнопок нет.
+        /// Высота капсулы в приседе (м). Проём люка Orion (~1.2 м визуально,
+        /// ~1.0 м по физике) ниже полного роста: пригнувшись игрок проходит,
+        /// стоя — нет. Пригибание автоматическое и работает и на земле
+        /// (StepGrounded), и в полёте (StepAirborne), кнопок нет. Ниже 0.7 м
+        /// опускать нельзя — это диаметр капсулы.
         /// </summary>
-        public const double CapsuleHeightCrouched = 0.9d;
+        public const double CapsuleHeightCrouched = 0.8d;
 
         public const double StepUpMeters = 0.5d;
         public const double SupportDropMeters = 0.5d;
@@ -228,15 +230,7 @@ namespace Galilego.Simulation.Player
             Velocity = intent;
 
             // Встать, когда над головой снова есть полный рост (вышли из проёма).
-            if (Crouched)
-            {
-                bool ceilingAbove = support.Ceiling(
-                    new Vector3d(Position.X, Position.Y, Position.Z + CapsuleHeight), StepUpMeters, out _);
-                if (!ceilingAbove)
-                {
-                    Crouched = false;
-                }
-            }
+            TryStandUp(support);
 
             // Полностью зажатый вход (все итерации свипа съедены) — «вход блокирован».
             if (move.Magnitude > 1e-9d && (Position - saved).Magnitude < 1e-3d * move.Magnitude)
@@ -358,8 +352,22 @@ namespace Galilego.Simulation.Player
 
             Vector3d step = Velocity * dt;
 
-            // Горизонталь — свипом вдоль стен (как было).
-            Vector3d p = SweepHorizontal(support, Position, new Vector3d(step.X, step.Y, 0d), CurrentHeight);
+            // Горизонталь — свипом вдоль стен; в полёте пригибание тоже работает:
+            // в полный рост свип режется (люк капсулы), пробуем присед и, если он
+            // продвигает дальше, пригибаемся (раньше присед был только на земле —
+            // висящий у люка игрок упирался головой и застревал).
+            Vector3d flatStep = new Vector3d(step.X, step.Y, 0d);
+            Vector3d p = SweepHorizontal(support, Position, flatStep, CurrentHeight);
+            if (!Crouched && flatStep.Magnitude > 1e-9d
+                && (p - Position).Magnitude < flatStep.Magnitude - 1e-3d)
+            {
+                Vector3d pCrouched = SweepHorizontal(support, Position, flatStep, CapsuleHeightCrouched);
+                if ((pCrouched - Position).Magnitude > (p - Position).Magnitude + 0.02d)
+                {
+                    Crouched = true;
+                    p = pCrouched;
+                }
+            }
 
             // Вертикаль дробим чанками: подшаг может быть до 0.5 с (метры пролёта),
             // и тонкая плита на пути не должна проскакиваться целиком. Посадка
@@ -389,8 +397,16 @@ namespace Galilego.Simulation.Player
                         Velocity = new Vector3d(Velocity.X, Velocity.Y, 0d);
                         Airborne = false;
                         GroundSourceId = floorId;
+                        TryStandUp(support);
                         return;
                     }
+                }
+
+                if (chunk > 0d && TryCeilingStop(support, p, chunk, out double allowedRise))
+                {
+                    p = new Vector3d(p.X, p.Y, p.Z + allowedRise);
+                    Velocity = new Vector3d(Velocity.X, Velocity.Y, 0d);
+                    break;
                 }
 
                 p = new Vector3d(p.X, p.Y, p.Z + chunk);
@@ -398,6 +414,46 @@ namespace Galilego.Simulation.Player
             }
 
             Position = p;
+            TryStandUp(support);
+        }
+
+        /// <summary>
+        /// Попытка встать из приседа: потолок ищется в зазоре от макушки приседа
+        /// до полного роста — если он есть, остаёмся пригнутыми. Раньше «встать»
+        /// проверяло потолок только ВЫШЕ полного роста и не видело свод на высоте
+        /// 0.8–1.45 м: игрок вставал прямо в проёме, свип снова резал ход, и он
+        /// дёргано залипал. Работает и на земле, и в воздухе.
+        /// </summary>
+        private void TryStandUp(IPlayerSupport support)
+        {
+            if (!Crouched)
+            {
+                return;
+            }
+
+            bool blocked = support.Ceiling(
+                new Vector3d(Position.X, Position.Y, Position.Z + CapsuleHeightCrouched),
+                CapsuleHeight - CapsuleHeightCrouched + 0.05d, out _);
+            if (!blocked)
+            {
+                Crouched = false;
+            }
+        }
+
+        /// <summary>
+        /// Проверка потолка при подъёме в воздухе (прыжок, джетпак): без неё
+        /// игрок вылетал сквозь крышу кабины и носовое стекло. Возвращает true,
+        /// если подъём урезан (rise — желаемый, allowed — до потолка).
+        /// </summary>
+        private bool TryCeilingStop(IPlayerSupport support, Vector3d p, double rise, out double allowed)
+        {
+            double headZ = p.Z + CurrentHeight;
+            allowed = rise;
+            if (!support.Ceiling(new Vector3d(p.X, p.Y, headZ), rise + 0.02d, out double ceilingZ)) return false;
+            double room = ceilingZ - headZ - 0.01d;
+            if (room >= rise) return false;
+            allowed = Math.Max(0d, room);
+            return true;
         }
 
         public static double SlopeAngleDegrees(Vector3d normal)

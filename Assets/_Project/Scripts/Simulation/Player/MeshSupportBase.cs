@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Galilego.Core;
 using Galilego.Simulation.ContactZone;
 using Galilego.Universe;
@@ -7,9 +8,9 @@ namespace Galilego.Simulation.Player
 {
     /// <summary>
     /// Общая механика опоры игрока по PhysX-коллайдерам в render-пространстве:
-    /// Floor — лучи вниз от точки ног (5 проб по следу стопы), Ceiling — луч
-    /// вверх от головы, Sweep — горизонтальный CapsuleCast со скольжением вдоль
-    /// стен. Наследники решают, какие коллайдеры считать опорой (постройки,
+    /// Floor — лучи вниз от точки ног (5 проб по следу стопы), Ceiling — 5 проб
+    /// по следу головы вверх, Sweep — горизонтальный CapsuleCast со скольжением
+    /// вдоль стен. Наследники решают, какие коллайдеры считать опорой (постройки,
     /// детали корабля) и как выдавать стабильные sourceId.
     /// </summary>
     public abstract class MeshSupportBase : IPlayerSupport
@@ -20,6 +21,9 @@ namespace Galilego.Simulation.Player
         protected Vector3 renderEast;
         protected Vector3 renderNorth;
         protected bool ready;
+
+        /// <summary>О невыпуклых коллайдерах предупреждаем один раз на коллайдер.</summary>
+        private readonly HashSet<Collider> warnedNonConvex = new HashSet<Collider>();
 
         /// <summary>Коллайдер принадлежит опоре этого источника.</summary>
         protected abstract bool IsSupportCollider(Collider collider);
@@ -76,6 +80,12 @@ namespace Galilego.Simulation.Player
             if (collider == null)
             {
                 return false;
+            }
+
+            if (collider is MeshCollider mc && !mc.convex && warnedNonConvex.Add(mc))
+            {
+                Debug.LogWarning("[Support] невыпуклый MeshCollider на '" + collider.name
+                    + "' — ComputePenetration не работает", collider);
             }
 
             CapsuleCollider probe = SiteBoxRegistry.Probe(radius);
@@ -179,21 +189,34 @@ namespace Galilego.Simulation.Player
                 return false;
             }
 
-            Vector3 origin = ToRenderPoint(head);
-            RaycastHit[] hits = Physics.RaycastAll(origin, renderUp, (float)maxRise, ~0, QueryTriggerInteraction.Ignore);
+            // Потолок ищем по следу головы (центр + четыре смещения 0.25 м):
+            // одиночный луч проскакивает зазоры между коллайдерами и кромки,
+            // и прыжок/джетпак «пробивал» крышу. Берём САМЫЙ НИЗКИЙ потолок следа.
             bool found = false;
             float best = float.PositiveInfinity;
-            for (int i = 0; i < hits.Length; i++)
+            for (int k = 0; k < 5; k++)
             {
-                RaycastHit hit = hits[i];
-                if (!IsSupportCollider(hit.collider) || hit.distance >= best)
+                Vector3d sample = head;
+                switch (k)
                 {
-                    continue;
+                    case 1: sample = head + new Vector3d(0.25d, 0d, 0d); break;
+                    case 2: sample = head + new Vector3d(-0.25d, 0d, 0d); break;
+                    case 3: sample = head + new Vector3d(0d, 0.25d, 0d); break;
+                    case 4: sample = head + new Vector3d(0d, -0.25d, 0d); break;
                 }
 
-                best = hit.distance;
-                height = LocalHeight(hit.point);
-                found = true;
+                RaycastHit[] hits = Physics.RaycastAll(ToRenderPoint(sample), renderUp, (float)maxRise, ~0, QueryTriggerInteraction.Ignore);
+                for (int i = 0; i < hits.Length; i++)
+                {
+                    if (!IsSupportCollider(hits[i].collider) || hits[i].distance >= best)
+                    {
+                        continue;
+                    }
+
+                    best = hits[i].distance;
+                    height = LocalHeight(hits[i].point);
+                    found = true;
+                }
             }
 
             return found;

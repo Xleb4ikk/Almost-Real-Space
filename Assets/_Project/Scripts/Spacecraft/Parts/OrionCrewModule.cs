@@ -9,11 +9,11 @@ namespace Galilego.Spacecraft
     /// Состояния аниматора держат конечную позу, поэтому методы можно
     /// вызывать в любом порядке — механизмы не мешают друг другу.
     ///
-    /// Поза открытой створки: клип открытия крутит дверь вокруг её ЦЕНТРА
-    /// (шарнир модели — центр двери, не кромка) и в конечной позе створка
-    /// висит ровно над проёмом, запирая вход внутрь. Поэтому в состоянии
-    /// Hatch_Open створка плавно поднимается вдоль вертикали капсулы
-    /// (OpenLiftMeters) — проём полностью свободен, игрок входит пригнувшись.
+    /// Поза открытой створки: клип открытия крутит дверь только на 100° и в
+    /// конечной позе она перекрывает половину проёма. Поэтому в состоянии
+    /// Hatch_Opening/Hatch_Open створка доворачивается вокруг боковой кромки
+    /// (ось Y двери) на openAngleDegrees и прижимается к борту сбоку от
+    /// проёма; в закрытых состояниях возвращается в закрытую позу.
     /// </summary>
     [RequireComponent(typeof(Animator))]
     public sealed class OrionCrewModule : MonoBehaviour
@@ -23,24 +23,19 @@ namespace Galilego.Spacecraft
         private static readonly int ArmDeployId = Animator.StringToHash("DeployTabletArm");
         private static readonly int ArmRetractId = Animator.StringToHash("RetractTabletArm");
 
-        /// <summary>Состояние аниматора «люк открыт» (держит конечную позу клипа).</summary>
-        private const string HatchOpenState = "Hatch_Open";
-
         [Tooltip("Аниматор модели (по умолчанию — на этом же объекте).")]
         [SerializeField] private Animator animator;
 
-        [Tooltip("Подъём открытой створки над проёмом (м): клип оставляет её «в проёме», " +
-            "запирая вход; поднимаем — проход свободен.")]
-        [SerializeField] private float openLiftMeters = 1.3f;
+        [Tooltip("Угол открытия створки на шарнире (град.). ~160° прижимает её к борту сбоку от проёма.")]
+        [SerializeField] private float openAngleDegrees = 160f;
 
-        [Tooltip("Скорость подъёма створки (м/с).")]
-        [SerializeField] private float openLiftSpeed = 1.2f;
+        [SerializeField] private float openSeconds = 1.7f;
 
         private Transform door;
-        private Vector3 openBaseLocal;
-        private Vector3 liftLocal;
-        private float liftLocalSpeed;
-        private bool openPoseActive;
+        private Quaternion closedRotation;
+        private Vector3 closedPosition;
+        private float swingSign = 1f;
+        private float swingAngle;
 
         private void Reset()
         {
@@ -63,39 +58,58 @@ namespace Galilego.Spacecraft
                     door = all[i];
                 }
             }
+
+            if (door != null)
+            {
+                closedPosition = door.localPosition;
+                closedRotation = door.localRotation;
+                swingSign = ResolveOutwardSign();
+            }
         }
 
-        private void Update()
+        private void LateUpdate()
         {
             if (animator == null || door == null)
             {
                 return;
             }
 
-            AnimatorStateInfo state = animator.GetCurrentAnimatorStateInfo(0);
-            bool open = state.IsName(HatchOpenState);
-            if (open && !openPoseActive)
+            AnimatorStateInfo s = animator.GetCurrentAnimatorStateInfo(0);
+            bool wantOpen = s.IsName("Hatch_Opening") || s.IsName("Hatch_Open");
+            swingAngle = Mathf.MoveTowards(swingAngle, wantOpen ? openAngleDegrees : 0f,
+                openAngleDegrees / Mathf.Max(0.1f, openSeconds) * Time.deltaTime);
+            float eased = openAngleDegrees * Mathf.SmoothStep(0f, 1f, swingAngle / openAngleDegrees);
+            door.localPosition = closedPosition;
+            door.localRotation = closedRotation * Quaternion.AngleAxis(swingSign * eased, Vector3.up);
+        }
+
+        /// <summary>Шарнир — локальная ось Y двери (так крутит клип). Знак берём по факту: наружу = дальше от оси капсулы.</summary>
+        private float ResolveOutwardSign()
+        {
+            Renderer nose = null, heat = null;
+            foreach (Renderer r in GetComponentsInChildren<Renderer>(true))
             {
-                openPoseActive = true;
-                openBaseLocal = door.localPosition;
-                // Смещение — в локальных единицах РОДИТЕЛЯ, но задано МЕТРАМИ:
-                // InverseTransformVector учитывает масштаб (у модели Orion на
-                // внутренних узлах он стократный — «1.3 м» в лоб давало 130 м).
-                liftLocal = door.parent.InverseTransformVector(transform.root.up * openLiftMeters);
-                liftLocalSpeed = liftLocal.magnitude * Mathf.Max(0.01f, openLiftSpeed / Mathf.Max(0.01f, openLiftMeters));
-            }
-            else if (!open)
-            {
-                openPoseActive = false;
+                if (r.name == "Nose_Glass") nose = r;
+                else if (r.name == "HeatShield") heat = r;
             }
 
-            if (openPoseActive)
+            if (nose == null || heat == null) return 1f;
+
+            Vector3 c0 = heat.bounds.center;
+            Vector3 up = (nose.bounds.center - c0).normalized;
+            MeshFilter mf = door.GetComponent<MeshFilter>();
+            Vector3 local = mf != null && mf.sharedMesh != null ? mf.sharedMesh.bounds.center : Vector3.zero;
+
+            float Dist(float sign)
             {
-                // Состояние без клипа: аниматор позу больше не пишет — поднимаем сами.
-                Vector3 targetLocal = openBaseLocal + liftLocal;
-                door.localPosition = Vector3.MoveTowards(
-                    door.localPosition, targetLocal, liftLocalSpeed * Time.deltaTime);
+                door.localRotation = closedRotation * Quaternion.AngleAxis(sign * 90f, Vector3.up);
+                Vector3 d = door.TransformPoint(local) - c0;
+                return (d - Vector3.Dot(d, up) * up).magnitude;
             }
+
+            float plus = Dist(1f), minus = Dist(-1f);
+            door.localRotation = closedRotation;
+            return plus >= minus ? 1f : -1f;
         }
 
         /// <summary>Открыть люк (шлюз наружу).</summary>
