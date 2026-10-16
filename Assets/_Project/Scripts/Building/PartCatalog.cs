@@ -367,23 +367,29 @@ namespace Galilego.Building
             {
                 if (kind == PartKind.Capsule)
                 {
-                    // Капсула: коллайдеры — из САМИХ МЕШЕЙ модели (внешняя
-                    // оболочка, пол и стены кабины, открытая дверь люка). Общая
-                    // блоб-капсула для неё не годится: шире и выше детали, а люк
-                    // был бы наглухо запечатан — игрок не мог войти внутрь.
-                    // Меши с уже готовым коллайдером (корпуса мониторов) не трогаем.
-                    MeshFilter[] modelMeshes = root.GetComponentsInChildren<MeshFilter>(true);
-                    for (int i = 0; i < modelMeshes.Length; i++)
+                    // Капсула: коллайдеры — по мешам модели (OrionCollisionBuilder):
+                    // выпуклые клинья оболочки, мелкая сетка у люка (проём остаётся
+                    // проёмом), дверь-бокс. Невыпуклые MeshCollider тут не годятся:
+                    // Physics.ComputePenetration с ними не работает — стены молча
+                    // игнорировались, игрок цеплялся за мелочь и вылетал сквозь стекло.
+                    if (!OrionCollisionBuilder.Build(root.transform))
                     {
-                        MeshFilter filter = modelMeshes[i];
-                        if (filter.sharedMesh == null || filter.GetComponent<Collider>() != null)
+                        // Запасной вариант (нет нужных мешей модели): старые
+                        // невыпуклые коллайдеры по каждому мешу. Меши с уже
+                        // готовым коллайдером (корпуса мониторов) не трогаем.
+                        MeshFilter[] modelMeshes = root.GetComponentsInChildren<MeshFilter>(true);
+                        for (int i = 0; i < modelMeshes.Length; i++)
                         {
-                            continue;
-                        }
+                            MeshFilter filter = modelMeshes[i];
+                            if (filter.sharedMesh == null || filter.GetComponent<Collider>() != null)
+                            {
+                                continue;
+                            }
 
-                        var hull = filter.gameObject.AddComponent<MeshCollider>();
-                        hull.sharedMesh = filter.sharedMesh;
-                        hull.convex = false;
+                            var hull = filter.gameObject.AddComponent<MeshCollider>();
+                            hull.sharedMesh = filter.sharedMesh;
+                            hull.convex = false;
+                        }
                     }
                 }
                 else
