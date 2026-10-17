@@ -492,6 +492,9 @@ namespace Galilego.Building
             }
         }
 
+        /// <summary>Параметры САС/РСУ (заглушки до появления моделей) — правятся в инспекторе.</summary>
+        public Galilego.Flight.FlightSystemsConfig FlightSystems = new Galilego.Flight.FlightSystemsConfig();
+
         private void EnterFlightAt(double t)
         {
             if (parts.Count == 0)
@@ -506,16 +509,28 @@ namespace Galilego.Building
             WeldLoosePartsAtLaunch();
 
             PartDefinition[] defs = BuildMath.ToPartDefinitions(parts);
-            Runner.SetVesselParts(defs);
-            Runner.Ship.Mass = BuildMath.TotalMass(parts);
-            Runner.SetDryMass(BuildMath.EffectiveDryMass(parts, PropellantPairs.Default.Mix));
 
             // Ступенчатая тяга: ядра из черновика (та же группировка «отделитель
             // заканчивает ступень», что у панели ΔV) + масса деталей вне основной
             // сборки — в Ship.Mass они есть, в ядрах их нет, инвариант сходится.
             var cores = DeltaV.BuildStageAssembly(parts);
+
+            // Модель полёта 6-DOF: реальные двигатели/сопла, САС, РСУ. Дописывает деталь-башню САС
+            // в defs и аппаратуру (РСУ/САС) в массу — она «вне ядер» и входит в DetachedMassKg.
+            Galilego.Flight.VesselFlightModel flight = Galilego.Flight.FlightModelFactory.Build(
+                parts, defs, cores, FlightSystems);
+            Runner.SetVesselParts(flight.Defs);
+            double hardwareKg = flight.HardwareMassKg();
+            Runner.Ship.Mass = BuildMath.TotalMass(parts) + hardwareKg;
+            Runner.SetDryMass(BuildMath.EffectiveDryMass(parts, PropellantPairs.Default.Mix));
+
             Runner.SetVesselPropulsion(new StagePropulsion(
-                cores, DetachedMassKg(parts, cores), DebugAutoIgniteStages));
+                cores, DetachedMassKg(parts, cores) + hardwareKg, DebugAutoIgniteStages));
+            Runner.SetVesselFlight(flight);
+            Runner.Ship.Attitude = Galilego.Core.QuaternionD.Identity;
+            Runner.Ship.AngularVelocity = Galilego.Core.Vector3d.Zero;
+            Runner.Ship.PositionIsCom = false;
+            Galilego.Flight.FlightRuntime.Begin(Runner, ZoneHost, flight);
 
             // В полёте аппарат живёт телами прокси: визуальные коллайдеры деталей
             // гасим, иначе PhysX-тела сталкивались бы со своими же визуалами.
@@ -686,7 +701,11 @@ namespace Galilego.Building
             }
 
             // Ступенчатая тяга снимается: в стройке живёт legacy-путь.
+            Galilego.Flight.FlightRuntime.End();
             Runner.ClearVesselPropulsion();
+            Runner.Ship.Attitude = Galilego.Core.QuaternionD.Identity;
+            Runner.Ship.AngularVelocity = Galilego.Core.Vector3d.Zero;
+            Runner.Ship.PositionIsCom = false;
 
             SetPartColliders(true);
 
@@ -725,11 +744,12 @@ namespace Galilego.Building
         public bool StageJettison()
         {
             StagePropulsion propulsion = Runner != null ? Runner.Propulsion : null;
-            if (propulsion == null || ContactZoneHost.Active)
+            if (propulsion == null)
             {
                 return false;
             }
 
+            bool inZone = ContactZoneHost.Active;
             int first = propulsion.FirstAttached;
             if (propulsion.ActiveStageIndex < 0)
             {
@@ -754,6 +774,17 @@ namespace Galilego.Building
                 return false;
             }
 
+            if (inZone)
+            {
+                // Зона контакта: стыки режутся в PhysX (тела отделённой ступени остаются обломками),
+                // массу и инерцию дальше ведёт модель полёта по оставшимся деталям.
+                Galilego.Flight.FlightRuntime.Instance.OnStaged();
+                Debug.Log(string.Format(
+                    "[Stage] ступень {0} отделена на земле: {1:F0} кг; зажжена ступень {2}",
+                    first + 1, stageMass, propulsion.ActiveStageIndex + 1));
+                return true;
+            }
+
             // Импульс разделения — 2 м/с назад по движению (ступень тормозится
             // относительно корабля). StageSeparation делит импульс пары и
             // вычитает массу ступени из Ship.Mass.
@@ -767,7 +798,14 @@ namespace Galilego.Building
 
             // PartDefinition остатка — для посадки (нормировка разрушения) и
             // зоны контакта: детали сброшенных ступеней по PartIndices ядер.
-            Runner.SetVesselParts(RemainingDefs(parts, propulsion));
+            if (Galilego.Flight.FlightRuntime.Instance != null && Runner.Flight != null)
+            {
+                Galilego.Flight.FlightRuntime.Instance.OnStaged(); // RemainingDefs из модели (с САС/РСУ и текущими массами)
+            }
+            else
+            {
+                Runner.SetVesselParts(RemainingDefs(parts, propulsion));
+            }
 
             Debug.Log(string.Format(
                 "[Stage] ступень {0} отделена: {1:F0} кг; зажжена ступень {2}",

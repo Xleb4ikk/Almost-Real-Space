@@ -39,7 +39,23 @@ namespace Galilego.Spacecraft
         private int ignited = -1;
 
         /// <summary>Масса деталей вне основной сборки: в Ship.Mass они есть, в ядрах — нет.</summary>
-        public readonly double DetachedMassKg;
+        public double DetachedMassKg { get; private set; }
+
+        /// <summary>Списать массу аппаратуры вне ядер (расход РСУ/САС, отстрел).</summary>
+        public void ReleaseDetached(double kg)
+        {
+            DetachedMassKg = System.Math.Max(0d, DetachedMassKg - kg);
+            Revision++;
+        }
+
+        /// <summary>Все ступени отделены (аварийный увод): остаток корабля — масса вне ядер.</summary>
+        public void DetachAllStages(double remainingMassKg)
+        {
+            firstAttached = cores.Count;
+            ignited = -1;
+            DetachedMassKg = remainingMassKg;
+            Revision++;
+        }
 
         /// <summary>Отладка: зажигать ступени автоматически, без отделения (проверка этапа 1).</summary>
         public bool AutoIgnite;

@@ -655,6 +655,7 @@ namespace Galilego.Universe
 
             if (propulsion == null)
             {
+                SetVesselFlight(null);
                 if (stageThrustSource != null)
                 {
                     physics.Sources.Remove(stageThrustSource);
@@ -722,6 +723,81 @@ namespace Galilego.Universe
                     "[Prop] ступенчатая тяга: ступеней {0}, масса по модели {1:F0} кг, автозажигание {2}",
                     propulsion.StageCount, expected, propulsion.AutoIgnite ? "вкл" : "выкл"));
             }
+        }
+
+        private Galilego.Flight.FlightThrustSource flightSource;
+
+        /// <summary>6-DOF модель полёта текущего аппарата (null — нет).</summary>
+        public Galilego.Flight.VesselFlightModel Flight => step != null ? step.Flight : null;
+
+        /// <summary>
+        /// Подключить модель полёта (после SetVesselPropulsion): силы/моменты двигателей в реальных
+        /// точках вместо тяги из центра. null — снять (возврат к стройке).
+        /// </summary>
+        public void SetVesselFlight(Galilego.Flight.VesselFlightModel model)
+        {
+            if (step == null)
+            {
+                return;
+            }
+
+            if (model == null)
+            {
+                if (flightSource != null)
+                {
+                    physics.Sources.Remove(flightSource);
+                }
+
+                step.Flight = null;
+                step.FlightSource = null;
+                return;
+            }
+
+            if (flightSource == null)
+            {
+                flightSource = new Galilego.Flight.FlightThrustSource();
+            }
+
+            model.Propulsion = step.Propulsion;
+            flightSource.Model = model;
+            if (stageThrustSource != null)
+            {
+                physics.Sources.Remove(stageThrustSource);
+            }
+
+            if (!physics.Sources.Contains(flightSource))
+            {
+                physics.Sources.Add(flightSource);
+            }
+
+            step.Flight = model;
+            step.FlightSource = flightSource;
+            step.PressureAt = AmbientPressurePa;
+            step.Thrust = flightSource;
+        }
+
+        /// <summary>
+        /// Статическое давление среды в точке, Па: p = ρ0·g·H·exp(−h/H) (изотермическая атмосфера,
+        /// согласована с плотностью и высотой шкалы профиля тела). Вакуум — 0.
+        /// </summary>
+        public double AmbientPressurePa(Galilego.Core.Vector3d position, double timeSeconds)
+        {
+            OrbitingBody body = DominantBody;
+            AtmosphereProfile atm = body != null ? body.Atmosphere : null;
+            if (atm == null || atm.ScaleHeightMeters <= 0d || atm.SeaLevelDensityKgPerCubicMeter <= 0d || body.Radius <= 0d)
+            {
+                return 0d;
+            }
+
+            body.EvaluateWorldState(timeSeconds, out Galilego.Core.Vector3d bodyPosition, out _);
+            double h = (position - bodyPosition).Magnitude - body.Radius;
+            if (h >= atm.TopAltitudeMeters)
+            {
+                return 0d;
+            }
+
+            double g = body.StandardGravitationalParameter / (body.Radius * body.Radius);
+            return atm.SeaLevelDensityKgPerCubicMeter * g * atm.ScaleHeightMeters * Math.Exp(-Math.Max(0d, h) / atm.ScaleHeightMeters);
         }
 
         /// <summary>Снять ступенчатую модель (возврат к стройке) — обратно legacy-путь.</summary>
