@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using Galilego.Building;
+using Galilego.Universe;
 using UnityEngine;
 
 namespace Galilego.Spacecraft
@@ -53,6 +55,12 @@ namespace Galilego.Spacecraft
 
         /// <summary>Направлений для упрощения крупных выпуклых тел (хулл ≤ 2n-4 = 236 граней &lt; 255).</summary>
         private const int ExtremeDirections = 120;
+
+        /// <summary>Шаг ячеек разреза мебели (м): меньше — точнее вогнутости, но больше коллайдеров.</summary>
+        private const float FurnitureCell = 0.20f;
+
+        /// <summary>Полутолщина плитки поверхности (м): выпуклому телу из плоского куска нужен объём.</summary>
+        private const float FurnitureHalfThickness = 0.02f;
 
         private struct Tri
         {
@@ -238,10 +246,10 @@ namespace Galilego.Spacecraft
             // Стекло носа (колпак над кольцом оболочки).
             AddReducedHull(hostGo, nosePts, owner, toHost);
 
-            // Мебель: кресло пилота, кресло и стол оператора — по одному выпуклому телу.
-            AddFurniture(partRoot, "Pilot_Seat", hostGo, owner, toHost);
-            AddFurniture(partRoot, "Operator_Chair", hostGo, owner, toHost);
-            AddFurniture(partRoot, "Operator_Desk", hostGo, owner, toHost);
+            // Мебель: кресло пилота, кресло и стол оператора — ячейковыми плитками.
+            AddFurniture(partRoot, "Pilot_Seat", hostGo, owner, toHost, f);
+            AddFurniture(partRoot, "Operator_Chair", hostGo, owner, toHost, f);
+            AddFurniture(partRoot, "Operator_Desk", hostGo, owner, toHost, f);
 
             // Створка: бокс в локальных осях двери — едет вместе с ней при открытии.
             AddDoorBox(door);
@@ -257,6 +265,25 @@ namespace Galilego.Spacecraft
                 }
 
                 existing[i].convex = true;
+                MarkObstacleOnly(existing[i].gameObject);
+            }
+
+            // Мониторы (корпус и BoxCollider интеракции) — препятствие, не опора:
+            // на монитор нельзя встать, и его рёбра не считаются ступеньками.
+            foreach (ProceduralMonitor monitor in partRoot.GetComponentsInChildren<ProceduralMonitor>(true))
+            {
+                MarkObstacleOnly(monitor.gameObject);
+            }
+
+            // Кресло-интеракция (бокс Seat_Operator под E) — только цель луча:
+            // триггер (опора игрока триггеры игнорирует), а физической мебелью
+            // кресла служат ячейковые тела Col_*.
+            foreach (CockpitSeat seat in partRoot.GetComponentsInChildren<CockpitSeat>(true))
+            {
+                foreach (Collider c in seat.GetComponents<Collider>())
+                {
+                    c.isTrigger = true;
+                }
             }
 
             return true;
@@ -489,8 +516,17 @@ namespace Galilego.Spacecraft
             AttachHull(host, vertices, indices, owner);
         }
 
+        /// <summary>
+        /// Мебель — препятствие, не опора, и БЕЗ фантомных вогнутостей: режем меш
+        /// на мелкие треугольники, складываем в ячейки сетки (оси капсулы) и на
+        /// каждую ячейку делаем своё выпуклое тело. Одна оболочка на предмет
+        /// заполняла вогнутости (лунка сиденья, скругление консоли) сплошным
+        /// объёмом — игрок тёрся о пустое место и «цеплялся».
+        /// Плитки при этом тонкие (± FurnitureHalfThickness): капсуле игрока
+        /// хватает самой поверхности.
+        /// </summary>
         private static void AddFurniture(Transform partRoot, string meshName, GameObject host,
-            OrionCollisionMeshes owner, Matrix4x4 toHost)
+            OrionCollisionMeshes owner, Matrix4x4 toHost, CapsuleFrame f)
         {
             MeshFilter filter = Find(partRoot, meshName);
             if (filter == null || !filter.sharedMesh.isReadable)
@@ -498,7 +534,111 @@ namespace Galilego.Spacecraft
                 return;
             }
 
-            AddReducedHull(host, Points(filter), owner, toHost);
+            var go = new GameObject("Col_" + meshName);
+            go.transform.SetParent(host.transform, false); // нулевая локальная поза: оси те же, что у host
+            go.AddComponent<PlayerObstacleOnly>();
+
+            Vector3[] vertices = filter.sharedMesh.vertices;
+            int[] indices = filter.sharedMesh.triangles;
+            Matrix4x4 m = filter.transform.localToWorldMatrix;
+            var cells = new Dictionary<long, List<Vector3>>();
+            var stack = new Stack<Tri>();
+
+            for (int i = 0; i + 2 < indices.Length; i += 3)
+            {
+                stack.Push(new Tri
+                {
+                    A = m.MultiplyPoint3x4(vertices[indices[i]]),
+                    B = m.MultiplyPoint3x4(vertices[indices[i + 1]]),
+                    C = m.MultiplyPoint3x4(vertices[indices[i + 2]])
+                });
+
+                while (stack.Count > 0)
+                {
+                    Tri t = stack.Pop();
+                    if (TrySplit(t, stack))
+                    {
+                        continue;
+                    }
+
+                    AddToFurnitureCell(t, f, cells);
+                }
+            }
+
+            foreach (KeyValuePair<long, List<Vector3>> cell in cells)
+            {
+                AddReducedHull(go, cell.Value, owner, toHost);
+            }
+        }
+
+        /// <summary>Делит самое длинное ребро пополам, пока оно длиннее MaxEdge. false — треугольник готов.</summary>
+        private static bool TrySplit(Tri t, Stack<Tri> stack)
+        {
+            float ab = (t.B - t.A).sqrMagnitude;
+            float bc = (t.C - t.B).sqrMagnitude;
+            float ca = (t.A - t.C).sqrMagnitude;
+            if (Mathf.Max(ab, Mathf.Max(bc, ca)) <= MaxEdge * MaxEdge)
+            {
+                return false;
+            }
+
+            if (ab >= bc && ab >= ca)
+            {
+                Vector3 mid = (t.A + t.B) * 0.5f;
+                stack.Push(new Tri { A = t.A, B = mid, C = t.C });
+                stack.Push(new Tri { A = mid, B = t.B, C = t.C });
+            }
+            else if (bc >= ca)
+            {
+                Vector3 mid = (t.B + t.C) * 0.5f;
+                stack.Push(new Tri { A = t.A, B = t.B, C = mid });
+                stack.Push(new Tri { A = t.A, B = mid, C = t.C });
+            }
+            else
+            {
+                Vector3 mid = (t.C + t.A) * 0.5f;
+                stack.Push(new Tri { A = t.A, B = t.B, C = mid });
+                stack.Push(new Tri { A = mid, B = t.B, C = t.C });
+            }
+
+            return true;
+        }
+
+        /// <summary>Треугольник — в ячейку сетки (оси капсулы) по центроиду; точки раздуваются в плитку.</summary>
+        private static void AddToFurnitureCell(Tri t, CapsuleFrame f, Dictionary<long, List<Vector3>> cells)
+        {
+            Vector3 normal = Vector3.Cross(t.B - t.A, t.C - t.A);
+            if (normal.sqrMagnitude < 1e-12f)
+            {
+                return;
+            }
+
+            Vector3 offset = normal.normalized * FurnitureHalfThickness;
+            f.ToUvw((t.A + t.B + t.C) / 3f, out float u, out float v, out float w);
+            long key = ((long)(Mathf.FloorToInt(u / FurnitureCell) & 0x1FFFFF) << 42)
+                | ((long)(Mathf.FloorToInt(v / FurnitureCell) & 0x1FFFFF) << 21)
+                | (long)(Mathf.FloorToInt(w / FurnitureCell) & 0x1FFFFF);
+
+            if (!cells.TryGetValue(key, out List<Vector3> list))
+            {
+                list = new List<Vector3>(48);
+                cells.Add(key, list);
+            }
+
+            list.Add(t.A + offset);
+            list.Add(t.B + offset);
+            list.Add(t.C + offset);
+            list.Add(t.A - offset);
+            list.Add(t.B - offset);
+            list.Add(t.C - offset);
+        }
+
+        private static void MarkObstacleOnly(GameObject go)
+        {
+            if (go.GetComponent<PlayerObstacleOnly>() == null)
+            {
+                go.AddComponent<PlayerObstacleOnly>();
+            }
         }
 
         /// <summary>Створка: один бокс по габаритам её меша (локальные оси двери).</summary>

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Galilego.Building;
 using Galilego.Core;
 using Galilego.Simulation.ContactZone;
 using Galilego.Universe;
@@ -15,6 +16,12 @@ namespace Galilego.Simulation.Player
     /// </summary>
     public abstract class MeshSupportBase : IPlayerSupport
     {
+        /// <summary>Диагностика ходьбы: включена галочкой Debug Overlay на PlayerController.</summary>
+        public static bool DebugEnabled;
+
+        /// <summary>Последний заблокировавший свип коллайдер (для оверлея диагностики).</summary>
+        public static string DebugBlocker = "-";
+
         protected SiteFrame frame;
         protected Vector3 renderOrigin;
         protected Vector3 renderUp;
@@ -24,6 +31,21 @@ namespace Galilego.Simulation.Player
 
         /// <summary>О невыпуклых коллайдерах предупреждаем один раз на коллайдер.</summary>
         private readonly HashSet<Collider> warnedNonConvex = new HashSet<Collider>();
+
+        /// <summary>Кэш «коллайдер — только препятствие» (мебель, мониторы): не пол и не ступенька.</summary>
+        private readonly Dictionary<Collider, bool> obstacleOnly = new Dictionary<Collider, bool>();
+
+        private bool IsObstacleOnly(Collider collider)
+        {
+            if (collider == null) return false;
+            if (!obstacleOnly.TryGetValue(collider, out bool value))
+            {
+                if (obstacleOnly.Count > 512) obstacleOnly.Clear();
+                value = collider.GetComponent<PlayerObstacleOnly>() != null;
+                obstacleOnly[collider] = value;
+            }
+            return value;
+        }
 
         /// <summary>Коллайдер принадлежит опоре этого источника.</summary>
         protected abstract bool IsSupportCollider(Collider collider);
@@ -114,10 +136,10 @@ namespace Galilego.Simulation.Player
                 return false;
             }
 
-            // Опора под стопой: центральный луч + четыре по краю стопы (0.3 м).
-            // Одиночный луч проскакивает узкие щели между коллайдерами и кромки —
-            // игрок «проваливался между ними». Берём САМУЮ ВЫСОКУЮ опору в следе
-            // стопы: на неё и встают ноги.
+            // Опора под стопой: центральный луч + четыре по краю стопы (0.28 м,
+            // по радиусу капсулы). Одиночный луч проскакивает узкие щели между
+            // коллайдерами и кромки — игрок «проваливался между ними». Берём
+            // САМУЮ ВЫСОКУЮ опору в следе стопы: на неё и встают ноги.
             bool found = false;
             double best = double.NegativeInfinity;
             for (int k = 0; k < 5; k++)
@@ -125,10 +147,10 @@ namespace Galilego.Simulation.Player
                 Vector3d sample = from;
                 switch (k)
                 {
-                    case 1: sample = from + new Vector3d(0.3d, 0d, 0d); break;
-                    case 2: sample = from + new Vector3d(-0.3d, 0d, 0d); break;
-                    case 3: sample = from + new Vector3d(0d, 0.3d, 0d); break;
-                    case 4: sample = from + new Vector3d(0d, -0.3d, 0d); break;
+                    case 1: sample = from + new Vector3d(0.28d, 0d, 0d); break;
+                    case 2: sample = from + new Vector3d(-0.28d, 0d, 0d); break;
+                    case 3: sample = from + new Vector3d(0d, 0.28d, 0d); break;
+                    case 4: sample = from + new Vector3d(0d, -0.28d, 0d); break;
                 }
 
                 // Луч стартует на 5 см выше точки ног: при микропроникновении ноги
@@ -166,7 +188,7 @@ namespace Galilego.Simulation.Player
             for (int i = 0; i < hits.Length; i++)
             {
                 RaycastHit hit = hits[i];
-                if (!IsSupportCollider(hit.collider) || hit.distance >= bestDistance)
+                if (!IsSupportCollider(hit.collider) || IsObstacleOnly(hit.collider) || hit.distance >= bestDistance)
                 {
                     continue;
                 }
@@ -281,7 +303,11 @@ namespace Galilego.Simulation.Player
                 {
                     // Касание пола/склона/потолка (нормаль почти вертикальна) не
                     // блокирует горизонтальный ход: его ведёт логика опоры/шага.
-                    if (Mathf.Abs(Vector3.Dot(hit.normal, renderUp)) > 0.7f)
+                    // Для мебели/мониторов (PlayerObstacleOnly) полом считается
+                    // лишь почти горизонтальная грань: фаски и скосы 30–45°
+                    // (|n·up| ~ 0.7–0.9) теперь блокируют как стена.
+                    float verticalLimit = IsObstacleOnly(hit.collider) ? 0.95f : 0.7f;
+                    if (Mathf.Abs(Vector3.Dot(hit.normal, renderUp)) > verticalLimit)
                     {
                         continue;
                     }
@@ -304,6 +330,14 @@ namespace Galilego.Simulation.Player
                     bestFraction = f;
                     bestNormal = wallN;
                     found = true;
+
+                    if (DebugEnabled)
+                    {
+                        DebugBlocker = hit.collider.name + " | родитель: " + hit.collider.transform.parent?.name
+                            + " | obstacle=" + IsObstacleOnly(hit.collider)
+                            + " | |n·up|=" + Mathf.Abs(Vector3.Dot(wallN, renderUp)).ToString("F2")
+                            + " | f=" + f.ToString("F2");
+                    }
                 }
             }
 

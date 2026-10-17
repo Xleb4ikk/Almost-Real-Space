@@ -67,6 +67,9 @@ namespace Galilego.Universe
         [Tooltip("Скорость ноуклипа (м/с), пока чит-меню не задало свою. Итоговую берёт чит-меню.")]
         public float NoclipSpeed = 100f;
 
+        [Tooltip("Диагностика ходьбы: что блокирует и поднимает игрока (оверлей в углу экрана).")]
+        public bool DebugOverlay;
+
         /// <summary>
         /// Ввод заблокирован (открыто чит-меню): WASD/E игнорируются, чтобы
         /// нажатия на кнопки окна не двигали игрока. Ставит CheatMenu.
@@ -466,6 +469,21 @@ namespace Galilego.Universe
 
         private void OnGUI()
         {
+            MeshSupportBase.DebugEnabled = DebugOverlay;
+            if (DebugOverlay && Runner != null)
+            {
+                GUI.Label(new Rect(20f, 20f, 1100f, 90f),
+                    "blocker: " + MeshSupportBase.DebugBlocker
+                    + "\nblocked=" + Runner.PlayerBlocked + "  crouched=" + Runner.PlayerCrouched
+                    + "  airborne=" + Runner.PlayerAirborne
+                    + "  lift=" + Runner.PlayerDebugLift.ToString("F3")
+                    + "  ground=" + Runner.PlayerGroundSourceId);
+                if (Event.current.type == EventType.Repaint)
+                {
+                    MeshSupportBase.DebugBlocker = "-";
+                }
+            }
+
             if (Focused != null)
             {
                 GUI.Label(new Rect(Screen.width * 0.5f - 150f, Screen.height * 0.5f + 30f, 300f, 30f), Focused.Prompt);

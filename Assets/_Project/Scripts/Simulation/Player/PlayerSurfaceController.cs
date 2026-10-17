@@ -24,7 +24,7 @@ namespace Galilego.Simulation.Player
     public sealed class PlayerSurfaceController
     {
         /// <summary>Радиус капсулы игрока (м): рост 1.40 м — плечи ~0.7 м.</summary>
-        public const double CapsuleRadius = 0.35d;
+        public const double CapsuleRadius = 0.28d;
 
         /// <summary>Высота капсулы (м): рост игрока 1.40 м + запас на макушку.</summary>
         public const double CapsuleHeight = 1.45d;
@@ -90,6 +90,9 @@ namespace Galilego.Simulation.Player
 
         /// <summary>Вход в подшаге заблокирован (стена/потолок): позиция не изменилась.</summary>
         public bool Blocked;
+
+        /// <summary>Диагностика: на сколько подняли ноги за последний подшаг (м).</summary>
+        public double DebugLift;
 
         /// <summary>Ускорение свободного падения вдоль локальной вертикали (м/с²).</summary>
         public double Gravity = 9.81d;
@@ -241,6 +244,7 @@ namespace Galilego.Simulation.Player
                 return;
             }
 
+            DebugLift = finalHeight - saved.Z;
             Position = new Vector3d(Position.X, Position.Y, finalHeight);
             GroundSourceId = finalId;
             Velocity = intent;

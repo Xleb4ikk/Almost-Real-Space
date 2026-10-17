@@ -310,6 +310,12 @@ namespace Galilego.Universe
         /// </summary>
         public bool PlayerCrouched => playerController.Crouched;
 
+        /// <summary>Диагностика ходьбы: вход игрока заблокирован в этом подшаге.</summary>
+        public bool PlayerBlocked => playerController.Blocked;
+
+        /// <summary>Диагностика ходьбы: подъём ног на ступеньку за последний подшаг (м).</summary>
+        public double PlayerDebugLift => playerController.DebugLift;
+
         /// <summary>Идентификатор опоры под игроком (-1 — нет опоры; см. TerrainSupport/SiteBoxSupport).</summary>
         public int PlayerGroundSourceId => playerController.GroundSourceId;
 

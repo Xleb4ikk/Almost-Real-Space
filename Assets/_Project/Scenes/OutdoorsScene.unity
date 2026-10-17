@@ -1228,6 +1228,7 @@ MonoBehaviour:
   EnterDistanceMeters: 5
   ShipWalkRadius: 3
   NoclipSpeed: 100
+  DebugOverlay: 0
 --- !u!4 &1250304431
 Transform:
   m_ObjectHideFlags: 0

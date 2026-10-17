@@ -36,6 +36,8 @@ namespace Galilego.Spacecraft
         private Vector3 closedPosition;
         private float swingSign = 1f;
         private float swingAngle;
+        private Collider doorCollider;
+        private bool doorColliderDisabledByUs;
 
         private void Reset()
         {
@@ -81,6 +83,27 @@ namespace Galilego.Spacecraft
             float eased = openAngleDegrees * Mathf.SmoothStep(0f, 1f, swingAngle / openAngleDegrees);
             door.localPosition = closedPosition;
             door.localRotation = closedRotation * Quaternion.AngleAxis(swingSign * eased, Vector3.up);
+
+            // Бокс створки строит OrionCollisionBuilder уже после Awake, поэтому ищем лениво.
+            if (doorCollider == null)
+            {
+                doorCollider = door.GetComponent<BoxCollider>();
+            }
+
+            if (doorCollider != null)
+            {
+                bool open = swingAngle > 5f;
+                if (open && doorCollider.enabled)
+                {
+                    doorCollider.enabled = false; // открытая створка лежит сбоку и не мешает проходу
+                    doorColliderDisabledByUs = true;
+                }
+                else if (!open && doorColliderDisabledByUs)
+                {
+                    doorCollider.enabled = true; // закрытая — снова стена
+                    doorColliderDisabledByUs = false;
+                }
+            }
         }
 
         /// <summary>Шарнир — локальная ось Y двери (так крутит клип). Знак берём по факту: наружу = дальше от оси капсулы.</summary>
