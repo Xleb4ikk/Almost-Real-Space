@@ -29,6 +29,9 @@ namespace Galilego.Tablet
         [Range(1f, 60f)]
         public float CompactRefreshHz = 15f;
 
+        [Tooltip("С какого расстояния лучом можно жать кнопки прямо на экране (м).")]
+        public float WorldTouchMeters = 1.6f;
+
         [Tooltip("Яркость экрана на мешe (для HDRP/Unlit — множитель цвета).")]
         [Range(0.2f, 4f)]
         public float ScreenBrightness = 1f;
@@ -45,6 +48,16 @@ namespace Galilego.Tablet
         private float nextRefresh;
         private bool prevCursorVisible;
         private CursorLockMode prevCursorLock;
+
+        /// <summary>Коллайдер меша экрана (мировой указатель: луч → UV → пиксель панели).</summary>
+        private Collider screenCollider;
+
+        /// <summary>В этом кадре луч смотрит на экран (жатие кнопок прямо на мониторе).</summary>
+        private bool worldPointerHit;
+
+        private Galilego.Universe.SimulationRunner runner;
+        private bool runnerSearched;
+        private readonly RaycastHit[] worldHits = new RaycastHit[8];
 
         /// <summary>
         /// Кадр, в котором планшет открыли: клавиша открытия (E) в этом же кадре
@@ -110,6 +123,12 @@ namespace Galilego.Tablet
                 return;
             }
 
+            screenCollider = ScreenRenderer.GetComponent<Collider>();
+            if (screenCollider == null)
+            {
+                screenCollider = ScreenRenderer.GetComponentInChildren<Collider>();
+            }
+
             screenMaterial = ScreenRenderer.material; // собственный экземпляр
             for (int i = 0; i < TextureProperties.Length; i++)
             {
@@ -145,17 +164,94 @@ namespace Galilego.Tablet
                 return;
             }
 
-            // Свёрнут — CompactRefreshHz; развёрнут — 30 Гц (клик ждёт кадра не дольше 33 мс).
+            UpdateWorldPointer();
+
+            // Свёрнут — CompactRefreshHz; развёрнут или под прицелом (мировой
+            // клик по монитору) — 30 Гц: клик ждёт кадра не дольше 33 мс.
             if (!Expanded && Time.unscaledTime < nextRefresh)
             {
                 return;
             }
 
-            nextRefresh = Time.unscaledTime + (1f / Mathf.Max(1f, Expanded ? 30f : CompactRefreshHz));
+            bool fast = Expanded || worldPointerHit;
+            nextRefresh = Time.unscaledTime + (1f / (fast ? 30f : Mathf.Max(1f, CompactRefreshHz)));
             Link.Fill(telemetry);
-            screen.Render(telemetry, Link, Expanded);
+            // Под прицелом панель тоже «интерактивна»: работают наведение и клик.
+            screen.Render(telemetry, Link, Expanded || worldPointerHit);
             texture.SetPixels32(screen.Canvas.Pixels);
             texture.Apply(false);
+        }
+
+        /// <summary>
+        /// Мировой указатель: луч камеры (прицел) в меш экрана — точка попадания
+        /// по UV переводится в пиксели панели; ЛКМ и протяжка жмут кнопки прямо
+        /// на мониторе, стрелка-курсор рисуется на самом экране. Работает, когда
+        /// планшет не развёрнут, курсор захвачен и не идёт стройка (там ЛКМ/ПКМ
+        /// заняты постановкой деталей).
+        /// </summary>
+        private void UpdateWorldPointer()
+        {
+            worldPointerHit = false;
+            if (Expanded || ScreenRenderer == null || screenCollider == null
+                || Cursor.lockState != CursorLockMode.Locked)
+            {
+                screen.SetWorldPointer(false, 0, 0);
+                return;
+            }
+
+            if (runner == null && !runnerSearched)
+            {
+                runnerSearched = true;
+                runner = FindAnyObjectByType<Galilego.Universe.SimulationRunner>();
+            }
+
+            if (runner != null && runner.BuildMode)
+            {
+                screen.SetWorldPointer(false, 0, 0);
+                return;
+            }
+
+            Camera cam = Camera.main;
+            if (cam == null)
+            {
+                return;
+            }
+
+            Ray ray = new Ray(cam.transform.position, cam.transform.forward);
+            int count = Physics.RaycastNonAlloc(ray, worldHits, WorldTouchMeters, ~0, QueryTriggerInteraction.Ignore);
+            int best = -1;
+            for (int i = 0; i < count; i++)
+            {
+                // Нас интересует только сам экран (меш-коллайдер с UV): рамка и
+                // корпус монитора снаружи в счёт не идут.
+                if (worldHits[i].collider == screenCollider
+                    && (best < 0 || worldHits[i].distance < worldHits[best].distance))
+                {
+                    best = i;
+                }
+            }
+
+            if (best < 0)
+            {
+                screen.SetWorldPointer(false, 0, 0);
+                return;
+            }
+
+            Vector2 uv = worldHits[best].textureCoord;
+            int px = Mathf.Clamp((int)(uv.x * TabletScreen.W), 0, TabletScreen.W - 1);
+            int py = Mathf.Clamp((int)((1f - uv.y) * TabletScreen.H), 0, TabletScreen.H - 1);
+            screen.SetWorldPointer(true, px, py);
+            worldPointerHit = true;
+
+            if (Galilego.Universe.PlayerInput.MouseLeftDown())
+            {
+                screen.Click();
+            }
+
+            if (Galilego.Universe.PlayerInput.MouseLeftHeld())
+            {
+                screen.Drag();
+            }
         }
 
         /// <summary>Развернуть планшет на весь экран (кнопки начинают работать).</summary>

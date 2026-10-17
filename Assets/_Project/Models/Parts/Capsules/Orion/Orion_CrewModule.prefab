@@ -169,7 +169,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.CockpitSeat
   Anchor: {fileID: 7912870988464318829}
-  Tablet: {fileID: 251589146258248832}
   EyeHeightMeters: 0.85
   StandOffsetMeters: {x: 1.3, y: 0, z: 0}
 --- !u!65 &6258053013974898453
@@ -1397,6 +1396,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 7955653861447820193, guid: b88981ec63b119c4f90623e91dda8b73, type: 3}
       insertIndex: -1
       addedObject: {fileID: 3489973426640974999}
+    - targetCorrespondingSourceObject: {fileID: 7679606574551410257, guid: b88981ec63b119c4f90623e91dda8b73, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7600053596612806685}
     - targetCorrespondingSourceObject: {fileID: 8004302884683297815, guid: b88981ec63b119c4f90623e91dda8b73, type: 3}
       insertIndex: -1
       addedObject: {fileID: 7325070314690908299}
@@ -1459,6 +1461,7 @@ MonoBehaviour:
   AutoDemo: 0
   ScreenRenderer: {fileID: 6610247386772766419}
   CompactRefreshHz: 15
+  WorldTouchMeters: 1.6
   ScreenBrightness: 1.5
 --- !u!114 &2016830790528454561
 MonoBehaviour:
@@ -1561,6 +1564,33 @@ MeshCollider:
   m_Convex: 0
   m_CookingOptions: 30
   m_Mesh: {fileID: 616508973784201787, guid: b88981ec63b119c4f90623e91dda8b73, type: 3}
+--- !u!1 &6186537689431673346 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 7679606574551410257, guid: b88981ec63b119c4f90623e91dda8b73, type: 3}
+  m_PrefabInstance: {fileID: 4560332494540385363}
+  m_PrefabAsset: {fileID: 0}
+--- !u!64 &7600053596612806685
+MeshCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6186537689431673346}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 5
+  m_Convex: 1
+  m_CookingOptions: 30
+  m_Mesh: {fileID: 7730605594505552179, guid: b88981ec63b119c4f90623e91dda8b73, type: 3}
 --- !u!4 &6451934099215630561 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -1819364240444986190, guid: b88981ec63b119c4f90623e91dda8b73, type: 3}

@@ -61,6 +61,20 @@ namespace Galilego.Universe
             "Якорь кресла CockpitSeat — это глаза; столько же откладывается вниз до ног.")]
         public double SeatedEyeMeters = 0.85d;
 
+        [Tooltip("ПКМ — приблизиться «в упор» к тому, на что смотришь: максимум, м " +
+            "(дальше — по поверхности, но не ближе зазора). 0 — выключено.")]
+        public float LeanMaxMeters = 0.75f;
+
+        [Tooltip("Минимальный зазор до поверхности при приближении, м (не влезаем в монитор).")]
+        public float LeanMinClearance = 0.22f;
+
+        [Tooltip("FOV при приближении (сужение для чтения мелкого). 0 — не менять.")]
+        public float LeanFieldOfView = 45f;
+
+        [Tooltip("Множитель чувствительности мыши в приближении (точнее целиться).")]
+        [Range(0.1f, 1f)]
+        public float LeanSensitivityScale = 0.4f;
+
 #if UNITY_EDITOR
         /// <summary>
         /// Инструмент съёмки (Editor/SurfaceCaptureTool) держит кадры «до/после»
@@ -105,6 +119,11 @@ namespace Galilego.Universe
         /// <summary>Плавный переход «стоя ↔ сидя» (0..1) для высоты глаз.</summary>
         private float seatedBlend;
 
+        /// <summary>Плавный переход «норма ↔ в упор» (0..1) для ПКМ-приближения.</summary>
+        private float leanBlend;
+
+        private float baseFieldOfView = 60f;
+
         private void Start()
         {
 #if UNITY_EDITOR
@@ -126,6 +145,12 @@ namespace Galilego.Universe
             if (LockCursor)
             {
                 SetCursorLocked(true);
+            }
+
+            Camera camComponent = GetComponent<Camera>();
+            if (camComponent != null)
+            {
+                baseFieldOfView = camComponent.fieldOfView;
             }
         }
 
@@ -214,6 +239,12 @@ namespace Galilego.Universe
             bool seated = Runner != null && Runner.PlayerSeated;
             seatedBlend = Mathf.MoveTowards(seatedBlend, seated ? 1f : 0f, Time.deltaTime * 5f);
 
+            // ПКМ — приблизиться «в упор» (кнопки монитора читаются и жмутся
+            // точно). В стройке ПКМ занят постановкой/меню слотов — не мешаем.
+            bool lean = LeanMaxMeters > 0f && PlayerInput.MouseRightHeld()
+                && (Runner == null || !Runner.BuildMode);
+            leanBlend = Mathf.MoveTowards(leanBlend, lean ? 1f : 0f, Time.deltaTime * 6f);
+
             ComputeEyeOffset();
             Vector3 up = ComputeLocalUp();
             TransportLook(up);
@@ -262,7 +293,34 @@ namespace Galilego.Universe
             }
 
             transform.rotation = Quaternion.LookRotation(lookDirection, rotationUp);
-            transform.position = Target.position + eyeOffset;
+
+            // Приближение: камера едет вперёд по взгляду к точке под прицелом,
+            // не ближе зазора (в монитор не влезаем). Пусто — на всю дистанцию.
+            Vector3 eye = Target.position + eyeOffset;
+            if (leanBlend > 0.0001f)
+            {
+                float travel = LeanMaxMeters;
+                if (Physics.Raycast(new Ray(eye, lookDirection), out RaycastHit hit,
+                        LeanMaxMeters + LeanMinClearance, ~0, QueryTriggerInteraction.Ignore))
+                {
+                    travel = Mathf.Max(0f, hit.distance - LeanMinClearance);
+                }
+
+                eye += lookDirection * (travel * leanBlend);
+            }
+
+            transform.position = eye;
+
+            Camera cam = GetComponent<Camera>();
+            if (cam != null && LeanFieldOfView > 0f && leanBlend > 0.0001f)
+            {
+                cam.fieldOfView = Mathf.Lerp(baseFieldOfView, LeanFieldOfView, leanBlend);
+            }
+            else if (cam != null)
+            {
+                cam.fieldOfView = baseFieldOfView;
+            }
+
             UpdateClipPlanes();
         }
 
@@ -332,8 +390,11 @@ namespace Galilego.Universe
         private void ApplyMouse(Vector3 up)
         {
             Vector2 md = PlayerInput.MouseDelta();
-            float yaw = md.x * MouseSensitivity;
-            float pitch = md.y * MouseSensitivity;
+            // В приближении мышь точнее — иначе на дистанции вытянутой руки
+            // прицел проскакивает мелкие кнопки монитора.
+            float sensitivity = MouseSensitivity * Mathf.Lerp(1f, LeanSensitivityScale, leanBlend);
+            float yaw = md.x * sensitivity;
+            float pitch = md.y * sensitivity;
 
             // Мёртвая зона: при захваченном курсоре в редакторе новый Input System
             // может отдавать микро-шум дельты каждый кадр → камера непрерывно

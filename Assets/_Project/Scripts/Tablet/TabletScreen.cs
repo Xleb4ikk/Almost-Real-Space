@@ -28,6 +28,9 @@ namespace Galilego.Tablet
         private bool clickPending;
         private bool dragPending;
 
+        /// <summary>Указатель пришёл лучом по монитору — панель рисует стрелку-курсор.</summary>
+        private bool worldPointer;
+
         private PixelCanvas c;
         private bool interactive;
         private ITabletCommands cmd;
@@ -52,6 +55,18 @@ namespace Galilego.Tablet
             dragPending = true;
         }
 
+        /// <summary>
+        /// Указатель-луч (игрок целится в монитор из мира): те же пиксели панели,
+        /// но панель сама рисует на себе стрелку-курсор — ею и жмут кнопки.
+        /// </summary>
+        public void SetWorldPointer(bool valid, int x, int y)
+        {
+            pointerValid = valid;
+            px = x;
+            py = y;
+            worldPointer = valid;
+        }
+
         public void Render(TabletTelemetry t, ITabletCommands commands, bool isInteractive)
         {
             c = Canvas;
@@ -71,8 +86,36 @@ namespace Galilego.Tablet
             DrawOrbit(t, 4, 194, 164, 122);
             DrawControl(t, 172, 194, 168, 122);
             DrawDeltaV(t, 344, 4, 164, 312);
+            if (interactive && worldPointer)
+            {
+                DrawPointer(px, py);
+            }
+
+            worldPointer = false;
             clickPending = false;
             dragPending = false;
+        }
+
+        /// <summary>Стрелка-курсор панели (мировой клик): куда наводишь — там и рисуется.</summary>
+        private static readonly string[] PointerShape =
+        {
+            "#....",
+            "##...",
+            "###..",
+            "####.",
+            "#####",
+            "####.",
+            "###..",
+        };
+
+        private void DrawPointer(int x, int y)
+        {
+            // Тёмная обводка — стрелку видно и на цифрах, и на ярких кнопках.
+            c.Bitmap(x - 1, y, PointerShape, TabletTheme.Bg);
+            c.Bitmap(x + 1, y, PointerShape, TabletTheme.Bg);
+            c.Bitmap(x, y - 1, PointerShape, TabletTheme.Bg);
+            c.Bitmap(x, y + 1, PointerShape, TabletTheme.Bg);
+            c.Bitmap(x, y, PointerShape, TabletTheme.Bright);
         }
 
         // ── Примитивы раскладки ──────────────────────────────────────────
