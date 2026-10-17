@@ -111,3 +111,4 @@ Assets/.codex_tmp/
 # Кадры диагностики вида. Инструменты (SurfaceCaptureTool, GameViewProbe)
 # пишут их пачками, и каждый набор - это десятки мегабайт в истории.
 Assets/Screenshots/
+Assets/Screenshots.meta
