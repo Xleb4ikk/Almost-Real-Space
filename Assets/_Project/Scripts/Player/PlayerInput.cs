@@ -8,7 +8,7 @@ namespace Galilego.Universe
     /// <summary>Абстракция клавиш ввода (не зависит от системы ввода).</summary>
     internal enum GameKey
     {
-        W, A, S, D, Space, LeftShift, LeftControl, E, P, H, Escape,
+        W, A, S, D, Space, LeftShift, LeftControl, E, I, P, H, Escape,
         Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7,
         Digit8, Digit9, R, Z, C
     }
@@ -149,6 +149,7 @@ namespace Galilego.Universe
                 case GameKey.LeftShift: return Key.LeftShift;
                 case GameKey.LeftControl: return Key.LeftCtrl;
                 case GameKey.E: return Key.E;
+                case GameKey.I: return Key.I;
                 case GameKey.P: return Key.P;
                 case GameKey.H: return Key.H;
                 case GameKey.Escape: return Key.Escape;
@@ -198,6 +199,7 @@ namespace Galilego.Universe
                 case GameKey.LeftShift: return KeyCode.LeftShift;
                 case GameKey.LeftControl: return KeyCode.LeftControl;
                 case GameKey.E: return KeyCode.E;
+                case GameKey.I: return KeyCode.I;
                 case GameKey.P: return KeyCode.P;
                 case GameKey.H: return KeyCode.H;
                 case GameKey.Escape: return KeyCode.Escape;

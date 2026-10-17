@@ -13,7 +13,8 @@ namespace Galilego.Universe
     /// (WASD плавание по камере — взгляд вниз + W = нырнуть, Space всплыть,
     /// LeftCtrl погрузиться, Shift ускорение).
     /// E — универсальное действие: интеракция (луч из камеры ≤ 4 м) →
-    /// сесть/встать → выйти/войти в корабль.
+    /// сесть/встать → вне стройки — выйти/войти в корабль. Инвентарь стройки —
+    /// на I (BuilderUI).
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-100)]
     public sealed class PlayerController : MonoBehaviour
@@ -123,7 +124,7 @@ namespace Galilego.Universe
                 // этим занимается сам планшет, ввод заблокирован выше).
                 Focused = null;
                 Runner.PlayerIntent = PlayerIntent.Idle;
-                if (PlayerInput.Down(GameKey.E) && !Runner.BuildMode)
+                if (PlayerInput.Down(GameKey.E))
                 {
                     StandUp();
                 }
@@ -134,9 +135,10 @@ namespace Galilego.Universe
             bool jetpackToggle = PlayerInput.DoubleDown(GameKey.Space);
             bool hoverToggle = PlayerInput.DoubleDown(GameKey.LeftShift);
             UpdateFocus();
-            // В режиме строительства E — инвентарь (обрабатывает BuildUI), а не
-            // интеракции: вход в (невидимый) корабль тут только мешал бы.
-            if (PlayerInput.Down(GameKey.E) && (Runner == null || !Runner.BuildMode))
+            // E — взаимодействие мира (кресло, планшет и т.п.) в ЛЮБОМ режиме;
+            // в стройке инвентарь переехал на I, так что E здесь больше не
+            // конфликтует. Вход/выход из корабля остаются вне стройки (HandleE).
+            if (PlayerInput.Down(GameKey.E))
             {
                 HandleE();
             }
@@ -149,6 +151,13 @@ namespace Galilego.Universe
             if (Focused != null)
             {
                 Focused.Interact(this);
+                return;
+            }
+
+            // Вход в (невидимый призрак) корабль и выход из него — только вне
+            // стройки: при сборке ракеты это только мешало бы.
+            if (Runner == null || Runner.BuildMode)
+            {
                 return;
             }
 
