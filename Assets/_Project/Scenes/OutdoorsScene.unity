@@ -1609,6 +1609,26 @@ MonoBehaviour:
     X: 0
     Y: 0
     Z: 0
+  FlightSystems:
+    EnableLes: 1
+    LesDryKg: 2400
+    LesHeight: 7
+    LesRadius: 0.55
+    AbortNozzles: 5
+    AbortThrustN: 1780000
+    AbortIspS: 255
+    AbortPropellantKg: 3000
+    AbortCantDeg: 20
+    JettisonNozzles: 4
+    JettisonThrustN: 178000
+    JettisonIspS: 240
+    JettisonPropellantKg: 140
+    EnableRcs: 1
+    RcsBlocks: 4
+    RcsThrustN: 450
+    RcsIspS: 290
+    RcsDryKgPerBlock: 15
+    RcsPropellantKgPerNozzle: 12
 --- !u!4 &1558714145
 Transform:
   m_ObjectHideFlags: 0
