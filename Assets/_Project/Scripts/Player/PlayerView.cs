@@ -7,8 +7,8 @@ namespace Galilego.Universe
     /// Рендер игрока (floating origin, как ShipView). GO игрока — цель камеры
     /// (FirstPersonCamera.Target): в EVA/OnSurface — позиция из double-мира
     /// относительно доминантного тела; в корабле — точка корабля + локальный
-    /// оффсет (ходьба) или якорь кресла (сидя). Вызов — LateUpdate ПОСЛЕ
-    /// ShipView (ShipTransform должен быть свежим).
+    /// оффсет (ходьба); сидя — НОГИ у нарисованного якоря кресла (render-мир).
+    /// Вызов — LateUpdate ПОСЛЕ ShipView (ShipTransform должен быть свежим).
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-80)]
     public sealed class PlayerView : MonoBehaviour
@@ -26,6 +26,27 @@ namespace Galilego.Universe
                 return;
             }
 
+            // Сидя (в ЛЮБОМ режиме): точку игрока ставим у нарисованного якоря
+            // кресла. Камера обязана стоять там же, где нарисовано кресло, а не
+            // в отдельной точке double-мира: в зоне контакта та едет за физикой
+            // (дрожь, лаг сглаживания в десятки метров) — игрок «улетал» вбок
+            // и трясся. Render-позиция якоря согласована с кораблём по построению.
+            if (Controller != null && Controller.Seated && Controller.SeatedSeat != null
+                && Controller.SeatedSeat.Anchor != null)
+            {
+                CockpitSeat seat = Controller.SeatedSeat;
+                Vector3 seatUp = seat.Anchor.TransformDirection(Vector3.forward);
+
+                // Якорь — ГЛАЗА сидящего; точка игрока (как и при ходьбе) — ноги:
+                // высоту глаз до якоря доводит камера (FirstPersonCamera).
+                transform.position = seat.Anchor.position - (seatUp * seat.EyeHeightMeters);
+
+                // «Вверх» кресла для камеры обновляем каждый кадр: при наклоне
+                // корабля статичный снимок уводил смещение глаз в сторону.
+                Runner.PlayerSeatedUpRender = seatUp;
+                return;
+            }
+
             switch (Runner.PlayerMode)
             {
                 case PlayerMode.InShip:
@@ -39,12 +60,6 @@ namespace Galilego.Universe
 
         private void PlaceInShip()
         {
-            if (Controller != null && Controller.Seated && Controller.SeatedSeat.Anchor != null)
-            {
-                transform.position = Controller.SeatedSeat.Anchor.position;
-                return;
-            }
-
             if (Controller != null && Controller.ShipTransform != null)
             {
                 transform.position = Controller.ShipTransform.position + Controller.ShipLocalOffset;

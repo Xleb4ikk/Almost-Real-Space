@@ -1878,7 +1878,7 @@ Camera:
     height: 1
   near clip plane: 0.3
   far clip plane: 1000
-  field of view: 60
+  field of view: 75
   orthographic: 0
   orthographic size: 5
   m_Depth: -1
@@ -2073,6 +2073,11 @@ MonoBehaviour:
   EyeHeightMeters: 1.3
   SwimEyeHeightMeters: 0.5
   CrouchEyeMeters: 0.8
+  SeatedEyeMeters: 0.85
+  LeanMaxMeters: 0.75
+  LeanMinClearance: 0.22
+  LeanFieldOfView: 45
+  LeanSensitivityScale: 0.4
 --- !u!1 &1982425599
 GameObject:
   m_ObjectHideFlags: 0

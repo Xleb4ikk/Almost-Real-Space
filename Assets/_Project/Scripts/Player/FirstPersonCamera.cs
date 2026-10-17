@@ -57,8 +57,9 @@ namespace Galilego.Universe
             "чтобы пройти низкий проём (люк капсулы Orion ~1.2 м).")]
         public double CrouchEyeMeters = 0.8d;
 
-        [Tooltip("Высота глаз сидящего (м от точки опоры, ноги на палубе). " +
-            "Якорь кресла CockpitSeat — это глаза; столько же откладывается вниз до ног.")]
+        [Tooltip("Высота глаз сидящего над НОГАМИ (м). Ноги PlayerView берёт у якоря " +
+            "кресла минус EyeHeightMeters кресла, поэтому больше этого значения = " +
+            "камера выше якоря (взгляд поверх консоли).")]
         public double SeatedEyeMeters = 0.85d;
 
         [Tooltip("ПКМ — приблизиться «в упор» к тому, на что смотришь: максимум, м " +
@@ -529,10 +530,12 @@ namespace Galilego.Universe
             {
                 // Сидя: смещение — вдоль «вверх» кресла (корабль может быть
                 // наклонён), высота — SeatedEyeMeters; оба едут плавно.
-                Vector3 seatUp = Runner.PlayerSeatedUp.SqrMagnitude > 1e-9d
-                    ? AstroFrame.ToSimulation(Runner.PlayerSeatedUp)
+                // Направление берётся прямо в render-осях: astro-версия через
+                // плоский мост в зоне контакта указывает мимо (кадр места).
+                Vector3 seatUp = Runner.PlayerSeatedUpRender.sqrMagnitude > 1e-8f
+                    ? Runner.PlayerSeatedUpRender.normalized
                     : up;
-                up = Vector3.Slerp(up, seatUp.normalized, seatedBlend);
+                up = Vector3.Slerp(up, seatUp, seatedBlend);
                 eye += (SeatedEyeMeters - eye) * seatedBlend;
             }
 

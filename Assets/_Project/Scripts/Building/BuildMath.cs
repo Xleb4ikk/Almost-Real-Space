@@ -18,9 +18,6 @@ namespace Galilego.Building
         /// <summary>Контакт по узлу не считаем пересечением: пропуск по нормали, м.</summary>
         public const float ContactSkin = 0.02f;
 
-        /// <summary>Расстояние от узла до луча камеры, при котором он «ловится», м.</summary>
-        public const float SnapNodeRadius = 1.2f;
-
         /// <summary>Максимальная дистанция по лучу для снапа и постановки, м.</summary>
         public const float SnapReach = 25f;
 
@@ -162,19 +159,22 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Ближайший к лучу камеры свободный узел, к которому может прилипнуть
-        /// призрак: перпендикулярное расстояние узла до луча ≤ nodeRadius,
-        /// расстояние вдоль луча ≤ reach. Так высокий стек не требует подходить
-        /// вплотную — достаточно посмотреть на нужный узел. Кандидаты:
-        /// низ призрака на верх партнёра и верх призрака под низ партнёра.
+        /// Свободный узел под РУКОЙ прицела, к которому может прилипнуть
+        /// призрак: кандидат — узел в конусе кольца (перпендикулярное
+        /// расстояние ≤ along × coneTangent, дальность ≤ SnapReach), а
+        /// побеждает узел, ближайший ПО УГЛУ к центру кольца (дистанция —
+        /// только при почти равном угле): «навёл кольцо на узел» — это узел
+        /// под центром, а не любой, кого задел край. Кандидаты: низ призрака
+        /// на верх партнёра и верх призрака под низ партнёра.
         /// </summary>
         public static bool TryFindSnap(
             IReadOnlyList<PlacedPart> parts, PartMetrics ghost,
-            Vector3 rayOrigin, Vector3 rayDirection,
+            Vector3 rayOrigin, Vector3 rayDirection, float coneTangent,
             out SnapHit hit)
         {
             hit = default;
             bool found = false;
+            float bestOffset = float.MaxValue;
             float bestT = float.MaxValue;
 
             for (int i = 0; i < parts.Count; i++)
@@ -184,30 +184,26 @@ namespace Galilego.Building
                 if (!p.TopOccupied)
                 {
                     Vector3 node = p.Pivot + new Vector3(0f, p.Metrics.Top, 0f);
-                    if (RayHitsNode(rayOrigin, rayDirection, node, out float t))
+                    if (RayHitsNode(rayOrigin, rayDirection, node, coneTangent, out float t, out float offset)
+                        && IsCloserToCenter(offset, t, found, bestOffset, bestT))
                     {
-                        Vector3 pivot = node - new Vector3(0f, ghost.Bottom, 0f);
-                        if (t < bestT)
-                        {
-                            bestT = t;
-                            hit = new SnapHit(i, true, pivot);
-                            found = true;
-                        }
+                        bestOffset = offset;
+                        bestT = t;
+                        hit = new SnapHit(i, true, node - new Vector3(0f, ghost.Bottom, 0f));
+                        found = true;
                     }
                 }
 
                 if (!p.BottomOccupied)
                 {
                     Vector3 node = p.Pivot + new Vector3(0f, p.Metrics.Bottom, 0f);
-                    if (RayHitsNode(rayOrigin, rayDirection, node, out float t))
+                    if (RayHitsNode(rayOrigin, rayDirection, node, coneTangent, out float t, out float offset)
+                        && IsCloserToCenter(offset, t, found, bestOffset, bestT))
                     {
-                        Vector3 pivot = node - new Vector3(0f, ghost.Top, 0f);
-                        if (t < bestT)
-                        {
-                            bestT = t;
-                            hit = new SnapHit(i, false, pivot);
-                            found = true;
-                        }
+                        bestOffset = offset;
+                        bestT = t;
+                        hit = new SnapHit(i, false, node - new Vector3(0f, ghost.Top, 0f));
+                        found = true;
                     }
                 }
             }
@@ -215,9 +211,32 @@ namespace Galilego.Building
             return found;
         }
 
-        private static bool RayHitsNode(Vector3 rayOrigin, Vector3 rayDirection, Vector3 node, out float t)
+        /// <summary>
+        /// Кто из двух пойманных узлов ближе к центру кольца: меньший угловой
+        /// отступ важнее дистанции; при почти равном отступе — ближний по лучу.
+        /// </summary>
+        private static bool IsCloserToCenter(
+            float offset, float t, bool found, float bestOffset, float bestT)
+        {
+            return !found
+                || offset < bestOffset - 1e-6f
+                || (offset < bestOffset + 1e-6f && t < bestT);
+        }
+
+        /// <summary>
+        /// Узел в конусе прицела: перпендикулярное расстояние до луча не
+        /// больше along × coneTangent — то же условие, что «пиксель узла
+        /// внутри кольца» на экране (одно и то же отношение сторон у
+        /// перспективной проекции); offset — угловой отступ узла от центра
+        /// кольца (lateral/along). Ближе 0.2 м узел не ловим: точка за
+        /// камерой/в упор даёт мусорные срабатывания.
+        /// </summary>
+        private static bool RayHitsNode(
+            Vector3 rayOrigin, Vector3 rayDirection, Vector3 node,
+            float coneTangent, out float t, out float offset)
         {
             t = 0f;
+            offset = 0f;
             Vector3 d = node - rayOrigin;
             float along = Vector3.Dot(d, rayDirection);
             if (along < 0.2f || along > SnapReach)
@@ -226,12 +245,14 @@ namespace Galilego.Building
             }
 
             Vector3 lateral = d - (rayDirection * along);
-            if (lateral.sqrMagnitude > SnapNodeRadius * SnapNodeRadius)
+            float lateralLength = lateral.magnitude;
+            if (lateralLength > along * coneTangent)
             {
                 return false;
             }
 
             t = along;
+            offset = lateralLength / along;
             return true;
         }
 
@@ -295,31 +316,140 @@ namespace Galilego.Building
         // ─── Попадание луча в деталь (удаление по прицелу) ──────────────────
 
         /// <summary>
-        /// Ближайшая деталь под лучом: пересечение с вертикальными телами
-        /// вращения (детали не вращаются, поэтому ось всегда по Y). Чистая
-        /// математика — коллайдеры визуалам не нужны, и луч постановки они не
-        /// засоряют.
+        /// Сначала проверяется центральный луч: если он попадает в деталь,
+        /// выбирается ближайшая именно по центру прицела. Это не даёт пробам
+        /// по окружности перетянуть выбор на соседнюю деталь (например, двигатель
+        /// под баком), даже если несколько периферийных лучей задевают её край.
+        /// Только когда центральный луч не попал ни в одну деталь, выбираем по
+        /// большинству голосов проб по кольцу. votes — буфер вызывающего
+        /// (индексы по parts; длина ≥ parts.Count): без аллокаций в кадре.
+        /// Чистая математика — коллайдеры визуалам не нужны, и луч постановки
+        /// они не засоряют.
         /// </summary>
         public static bool TryRaycastParts(
-            IReadOnlyList<PlacedPart> parts, Vector3 rayOrigin, Vector3 rayDirection,
+            IReadOnlyList<PlacedPart> parts, Vector3 rayOrigin,
+            IReadOnlyList<Vector3> rayDirections, int[] votes,
             float maxDistance, out int index, out float distance)
         {
             index = -1;
             distance = maxDistance;
             for (int i = 0; i < parts.Count; i++)
             {
-                PlacedPart p = parts[i];
-                Vector3 baseCenter = p.Pivot + new Vector3(0f, p.Metrics.Bottom, 0f);
-                if (RayFrustum(rayOrigin, rayDirection, baseCenter,
-                        p.Metrics.Radius, p.Metrics.TopRadius, p.Metrics.Height, out float t)
-                    && t < distance)
+                votes[i] = 0;
+            }
+
+            // Центральный луч имеет приоритет над периферией кольца. Иначе при
+            // наведении на нижний край бака несколько лучей кольца могут попасть
+            // в двигатель снизу и выиграть голосование, хотя сам прицел смотрит
+            // на бак.
+            if (rayDirections.Count > 0)
+            {
+                int centerNearest = -1;
+                float centerDistance = maxDistance;
+                for (int i = 0; i < parts.Count; i++)
                 {
-                    distance = t;
-                    index = i;
+                    PlacedPart p = parts[i];
+                    Vector3 baseCenter = p.Pivot + new Vector3(0f, p.Metrics.Bottom, 0f);
+                    if (RayFrustum(rayOrigin, rayDirections[0], baseCenter,
+                            p.Metrics.Radius, p.Metrics.TopRadius, p.Metrics.Height, out float t)
+                        && t < centerDistance)
+                    {
+                        centerDistance = t;
+                        centerNearest = i;
+                    }
+                }
+
+                if (centerNearest >= 0)
+                {
+                    index = centerNearest;
+                    distance = centerDistance;
+                    votes[index] = 1;
+                    return true;
                 }
             }
 
+            // Центральный луч пуст — разрешаем выбор по кольцу прицела.
+            for (int s = 1; s < rayDirections.Count; s++)
+            {
+                int nearest = -1;
+                float nearestT = maxDistance;
+                for (int i = 0; i < parts.Count; i++)
+                {
+                    PlacedPart p = parts[i];
+                    Vector3 baseCenter = p.Pivot + new Vector3(0f, p.Metrics.Bottom, 0f);
+                    if (RayFrustum(rayOrigin, rayDirections[s], baseCenter,
+                            p.Metrics.Radius, p.Metrics.TopRadius, p.Metrics.Height, out float t)
+                        && t < nearestT)
+                    {
+                        nearestT = t;
+                        nearest = i;
+                    }
+                }
+
+                if (nearest >= 0)
+                {
+                    votes[nearest]++;
+                }
+            }
+
+            int bestVotes = 0;
+            for (int i = 0; i < parts.Count; i++)
+            {
+                int v = votes[i];
+                if (v == 0)
+                {
+                    continue;
+                }
+
+                bool better;
+                if (index < 0 || v > bestVotes)
+                {
+                    better = true;
+                }
+                else if (v < bestVotes)
+                {
+                    better = false;
+                }
+                else
+                {
+                    better = MinHitDistance(parts, rayOrigin, rayDirections, i, maxDistance)
+                        < MinHitDistance(parts, rayOrigin, rayDirections, index, maxDistance);
+                }
+
+                if (better)
+                {
+                    index = i;
+                    bestVotes = v;
+                }
+            }
+
+            if (index >= 0)
+            {
+                distance = MinHitDistance(parts, rayOrigin, rayDirections, index, maxDistance);
+            }
+
             return index >= 0;
+        }
+
+        /// <summary>Минимальная дистанция попадания детали по пробам (или maxDistance).</summary>
+        private static float MinHitDistance(
+            IReadOnlyList<PlacedPart> parts, Vector3 rayOrigin,
+            IReadOnlyList<Vector3> rayDirections, int partIndex, float maxDistance)
+        {
+            PlacedPart p = parts[partIndex];
+            Vector3 baseCenter = p.Pivot + new Vector3(0f, p.Metrics.Bottom, 0f);
+            float best = maxDistance;
+            for (int s = 0; s < rayDirections.Count; s++)
+            {
+                if (RayFrustum(rayOrigin, rayDirections[s], baseCenter,
+                        p.Metrics.Radius, p.Metrics.TopRadius, p.Metrics.Height, out float t)
+                    && t < best)
+                {
+                    best = t;
+                }
+            }
+
+            return best;
         }
 
         /// <summary>

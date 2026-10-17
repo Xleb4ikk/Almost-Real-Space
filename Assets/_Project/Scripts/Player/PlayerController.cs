@@ -12,7 +12,7 @@ namespace Galilego.Universe
     /// (WASD ходьба по касательной, Shift бег, Space прыжок), Swimming
     /// (WASD плавание по камере — взгляд вниз + W = нырнуть, Space всплыть,
     /// LeftCtrl погрузиться, Shift ускорение).
-    /// E — универсальное действие: интеракция (луч из камеры ≤ 4 м) →
+    /// E — универсальное действие: интеракция (область прицела ≤ 4 м) →
     /// сесть/встать → вне стройки — выйти/войти в корабль. Инвентарь стройки —
     /// на I (BuilderUI).
     /// </summary>
@@ -84,6 +84,9 @@ namespace Galilego.Universe
 
         public bool Seated => SeatedSeat != null;
 
+        /// <summary>Пробы конуса прицела (AimCone) — буфер, чтобы не аллоцировать в кадре.</summary>
+        private readonly Vector3[] focusDirections = new Vector3[AimCone.Samples];
+
         private void Start()
         {
             if (CheatMenu == null)
@@ -97,13 +100,6 @@ namespace Galilego.Universe
             if (Runner == null)
             {
                 return;
-            }
-
-            // Сидя: каждый кадр пересчитываем точку опоры у якоря кресла —
-            // корабль движется, и игрок обязан ехать вместе с ним.
-            if (Seated)
-            {
-                RefreshSeatedPose();
             }
 
             if (InputBlocked)
@@ -181,7 +177,8 @@ namespace Galilego.Universe
 
         /// <summary>
         /// Сесть в кресло: поза игрока фиксируется у якоря (шаг физики замирает,
-        /// корабль продолжает движение). false — якоря/раннера нет.
+        /// корабль продолжает движение). Пересчёт render → double-мир делает
+        /// SimulationRunner кадром места (как ходьба). false — якоря/раннера нет.
         /// </summary>
         public bool EnterSeat(CockpitSeat seat)
         {
@@ -191,7 +188,7 @@ namespace Galilego.Universe
             }
 
             SeatedSeat = seat;
-            Runner.SeatPlayer(FeetPoint(seat), AstroFrame.ToAstro(SeatUpRender(seat)));
+            Runner.SeatPlayerAtRender(seat.Anchor.position, SeatUpRender(seat), seat.EyeHeightMeters);
             return true;
         }
 
@@ -210,19 +207,15 @@ namespace Galilego.Universe
                 return;
             }
 
-            Vector3d feet = Runner.PlayerSeatedPosition;
-            if (seat.Anchor != null)
+            Vector3 up = SeatUpRender(seat);
+            Vector3 renderFeet = seat.Anchor.position - (up * seat.EyeHeightMeters)
+                + seat.Anchor.TransformDirection(seat.StandOffsetMeters);
+            if (Runner.PlayerMode == PlayerMode.InShip && ShipTransform != null)
             {
-                Vector3 renderFeet = SeatedFeetRender(seat)
-                    + seat.Anchor.TransformDirection(seat.StandOffsetMeters);
-                feet = FloatingOrigin.Anchor + AstroFrame.ToAstro(renderFeet);
-                if (Runner.PlayerMode == PlayerMode.InShip && ShipTransform != null)
-                {
-                    ShipLocalOffset = ShipTransform.InverseTransformPoint(renderFeet);
-                }
+                ShipLocalOffset = ShipTransform.InverseTransformPoint(renderFeet);
             }
 
-            Runner.UnseatPlayer(feet);
+            Runner.UnseatPlayerAtRender(renderFeet);
         }
 
         /// <summary>«Вверх» кресла в render-мире: местная +Z якоря (локальный поворот — нулевой).</summary>
@@ -231,30 +224,12 @@ namespace Galilego.Universe
             return seat.Anchor.TransformDirection(Vector3.forward);
         }
 
-        /// <summary>Ноги сидящего в render-мире: якорь (глаза) минус «вверх» кресла.</summary>
-        private static Vector3 SeatedFeetRender(CockpitSeat seat)
-        {
-            return seat.Anchor.position - (SeatUpRender(seat) * seat.EyeHeightMeters);
-        }
-
-        /// <summary>Точка опоры сидящего (ноги), astro-координаты.</summary>
-        private static Vector3d FeetPoint(CockpitSeat seat)
-        {
-            return FloatingOrigin.Anchor + AstroFrame.ToAstro(SeatedFeetRender(seat));
-        }
-
-        /// <summary>Пересчёт позы сидящего каждый кадр (корабль движется — якорь едет).</summary>
-        private void RefreshSeatedPose()
-        {
-            if (SeatedSeat == null || SeatedSeat.Anchor == null || Runner == null)
-            {
-                return;
-            }
-
-            Runner.PlayerSeatedPosition = FeetPoint(SeatedSeat);
-            Runner.PlayerSeatedUp = AstroFrame.ToAstro(SeatUpRender(SeatedSeat));
-        }
-
+        /// <summary>
+        /// Цель E — ближайший коллайдер В ОБЛАСТИ ПРИЦЕЛА: пробы конуса AimCone
+        /// (центр + кольцо). Раньше был один центральный луч — подсказка висела
+        /// по точке в центре, а область кольца ничего не значила. Ближайшее
+        /// попадание по ЛЮБОЙ пробе: стена перед креслом так же заслоняет его.
+        /// </summary>
         private void UpdateFocus()
         {
             Focused = null;
@@ -264,13 +239,23 @@ namespace Galilego.Universe
                 return;
             }
 
-            if (Physics.Raycast(
-                    new Ray(camera.transform.position, camera.transform.forward),
-                    out RaycastHit hit,
-                    4f))
+            AimCone.FillDirections(camera.transform.forward, AimCone.Tangent(camera), focusDirections);
+            float bestDistance = float.MaxValue;
+            Interactable best = null;
+            for (int i = 0; i < AimCone.Samples; i++)
             {
-                Focused = hit.collider.GetComponent<Interactable>();
+                if (Physics.Raycast(
+                        new Ray(camera.transform.position, focusDirections[i]),
+                        out RaycastHit hit,
+                        4f)
+                    && hit.distance < bestDistance)
+                {
+                    bestDistance = hit.distance;
+                    best = hit.collider.GetComponent<Interactable>();
+                }
             }
+
+            Focused = best;
         }
 
         private void ApplyJetpackInput(ref PlayerIntent intent, Camera camera, bool active)

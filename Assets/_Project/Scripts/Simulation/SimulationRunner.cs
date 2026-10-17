@@ -181,11 +181,21 @@ namespace Galilego.Universe
         /// <summary>Игрок сидит в кресле: шаг физики заморожен на PlayerSeatedPosition.</summary>
         public bool PlayerSeated { get; private set; }
 
-        /// <summary>Точка опоры сидящего (ноги у кресла), double-мир; обновляет PlayerController.</summary>
+        /// <summary>
+        /// Точка опоры сидящего (ноги у кресла), double-мир; ведёт StepPlayer.
+        /// Это ЯКОРЬ РЕНДЕРА (FloatingOrigin.Anchor), а не поза видимой камеры:
+        /// камера сидит у нарисованного якоря кресла (PlayerView), поэтому
+        /// лаг/дрожь этой точки на картинку не влияют.
+        /// </summary>
         public Vector3d PlayerSeatedPosition { get; set; }
 
-        /// <summary>«Вверх» кресла (astro): камера сидящего кладёт высоту глаз вдоль него.</summary>
-        public Vector3d PlayerSeatedUp { get; set; }
+        /// <summary>
+        /// «Вверх» кресла в render-мире: камера сидящего кладёт высоту глаз
+        /// вдоль него (в тех же осях, в каких нарисован корабль — astro-версия
+        /// через плоский мост тут врёт в зоне контакта). Пока игрок сидит,
+        /// PlayerView обновляет его каждый кадр — живой «вверх» кресла.
+        /// </summary>
+        public Vector3 PlayerSeatedUpRender { get; set; }
 
         /// <summary>Намерение игрока на кадр (заполняет PlayerController).</summary>
         public PlayerIntent PlayerIntent;
@@ -269,7 +279,7 @@ namespace Galilego.Universe
         public BodyTransformRegistry SystemView { get; set; }
 
         /// <summary>Тело, относительно которого сейчас живёт корабль (floating origin, SOI).</summary>
-        public OrbitingBody DominantBody => step.DominantBody;
+        public OrbitingBody DominantBody => step != null ? step.DominantBody : null;
 
         /// <summary>Пул обломков (слоты переиспользуются); DebrisView читает для рендера.</summary>
         public DebrisPool Debris => step.Debris;
@@ -549,7 +559,9 @@ namespace Galilego.Universe
 
         private void Update()
         {
-            if (Paused || Ship == null || Regime == VesselRegime.Destroyed)
+            // step == null — инициализация не состоялась (ранняя ошибка/отключение):
+            // молчим, как отключённый раннер, а не сыпем NRE каждый кадр.
+            if (step == null || Paused || Ship == null || Regime == VesselRegime.Destroyed)
             {
                 return;
             }
@@ -883,28 +895,119 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Сесть в кресло: поза игрока жёстко фиксируется на точке опоры
-        /// (double-мир) до UnseatPlayer. Кресло может быть в любом режиме —
-        /// посадка главнее шага режима (ходьба/падение/плавание замирают).
+        /// Сесть в кресло: якорь (ГЛАЗА сидящего) и «вверх» кресла приходят в
+        /// render-мире (трансформ якоря), здесь разово переводятся в double-мир
+        /// кадром места — ровно тем же базисом, каким ходят опоры игрока
+        /// (MeshSupportBase.ToRenderPoint). Дальше поза едет ЗА ТОЧКОЙ КОРАБЛЯ
+        /// (StepPlayer), а НЕ пересчитывается из render-позиции кресла: та
+        /// дрожит физикой контактной зоны, и мгновенная привязка к ней якоря
+        /// раскачивала зону (игрок «улетал» и трясся). Кресло может быть в
+        /// любом режиме — посадка главнее шага режима (ходьба/падение замирают).
         /// </summary>
-        public void SeatPlayer(Vector3d feetPosition, Vector3d seatUp)
+        public void SeatPlayerAtRender(Vector3 seatEyeRender, Vector3 seatUpRender, double eyeHeight)
         {
-            PlayerSeated = true;
-            PlayerSeatedPosition = feetPosition;
-            PlayerSeatedUp = seatUp;
-            PlayerVelocity = Ship != null ? Ship.Velocity : PlayerVelocity;
-            playerAirborne = false;
-            JetpackActive = false;
-            PlayerHoverActive = false;
+            Vector3 upRender = seatUpRender.sqrMagnitude > 1e-8f ? seatUpRender.normalized : Vector3.up;
+            Vector3 feetRender = seatEyeRender - (upRender * (float)eyeHeight);
+
+            RenderToAstro(feetRender, out Vector3d feet);
+
+            if (!PlayerSeated)
+            {
+                PlayerSeated = true;
+                PlayerVelocity = Ship != null ? Ship.Velocity : PlayerVelocity;
+                playerAirborne = false;
+                JetpackActive = false;
+                PlayerHoverActive = false;
+            }
+
+            PlayerSeatedPosition = feet;
+            PlayerSeatedUpRender = upRender;
+            seatedShipAnchor = Ship != null ? Ship.Position : Vector3d.Zero;
+            smoothedShipPosition = seatedShipAnchor;
         }
 
-        /// <summary>Встать: игрок возвращается к обычному шагу режима из точки опоры.</summary>
-        public void UnseatPlayer(Vector3d feetPosition)
+        /// <summary>Встать: точка опоры рядом с креслом (render-мир) → double-мир.</summary>
+        public void UnseatPlayerAtRender(Vector3 feetRender)
         {
+            RenderToAstro(feetRender, out Vector3d feet);
             PlayerSeated = false;
-            PlayerPosition = feetPosition;
+            PlayerPosition = feet;
             PlayerVelocity = Ship != null ? Ship.Velocity : PlayerVelocity;
             playerAirborne = false;
+        }
+
+        /// <summary>Точка корабля в момент посадки: с ней сверяются дельты «сидя едем за кораблём».</summary>
+        private Vector3d seatedShipAnchor;
+
+        /// <summary>Сглаженная точка корабля для сидящего: точку пишет зона из физики, и без сглаживания её дрожь уезжает прямо в якорь.</summary>
+        private Vector3d smoothedShipPosition;
+
+        /// <summary>
+        /// Точка render-мира → double-мир. В зоне контакта сборка и рельеф
+        /// нарисованы в ОСЯХ КАДРА МЕСТА (корень зоны повёрнут кадром), поэтому
+        /// перевод идёт через тот же кадр и базис, что у опор игрока: «плоский»
+        /// мост FloatingOrigin тут ошибается тем сильнее, чем дальше точка от
+        /// начала кадра (у кресла это ~40 м до низа ракеты — улёт на десятки
+        /// метров). Вне зоны (n-body полёт) — плоский мост.
+        /// </summary>
+        private void RenderToAstro(Vector3 renderPoint, out Vector3d astroPoint)
+        {
+            if (TryPlayerFrame(out SiteFrame frame, out Vector3 renderOrigin, out Vector3 east, out Vector3 north, out Vector3 up))
+            {
+                Vector3 rel = renderPoint - renderOrigin;
+                var local = new Vector3d(
+                    Vector3.Dot(rel, east),
+                    Vector3.Dot(rel, north),
+                    Vector3.Dot(rel, up));
+                frame.ToWorld(local, Vector3d.Zero, out astroPoint, out _);
+                return;
+            }
+
+            astroPoint = FloatingOrigin.Anchor + AstroFrame.ToAstro(renderPoint);
+        }
+
+        /// <summary>
+        /// Кадр места и его render-базис — в точности как их собирает ходьба
+        /// игрока (StepPlayerSurface + MeshSupportBase.SetFrame). false — кадра
+        /// нет (нет тела/зоны): мир рисуется «плоским» мостом.
+        /// </summary>
+        private bool TryPlayerFrame(out SiteFrame frame, out Vector3 renderOrigin,
+            out Vector3 east, out Vector3 north, out Vector3 up)
+        {
+            frame = default;
+            renderOrigin = Vector3.zero;
+            east = Vector3.right;
+            north = Vector3.forward;
+            up = Vector3.up;
+
+            OrbitingBody body = DominantBody;
+            if (!ContactZoneHost.Active || body == null)
+            {
+                return false;
+            }
+
+            ITerrainModel terrain = body.Terrain ?? playerFallbackTerrain;
+            frame = SiteFrame.Anchor(body, terrain, PlayerPosition, TimeSeconds);
+            renderOrigin = FloatingOrigin.ToRender(FrameToWorld(frame, Vector3d.Zero));
+            east = FrameRenderDirection(frame, new Vector3d(1d, 0d, 0d));
+            north = FrameRenderDirection(frame, new Vector3d(0d, 1d, 0d));
+            up = FrameRenderDirection(frame, new Vector3d(0d, 0d, 1d));
+            return true;
+        }
+
+        /// <summary>Локальная точка кадра в осях тела.</summary>
+        private static Vector3d FrameToWorld(SiteFrame frame, Vector3d local)
+        {
+            frame.ToWorld(local, Vector3d.Zero, out Vector3d world, out _);
+            return world;
+        }
+
+        /// <summary>Локальное направление кадра (север/зенит/восток — метры) в render-мире.</summary>
+        private static Vector3 FrameRenderDirection(SiteFrame frame, Vector3d localDirection)
+        {
+            Vector3 origin = FloatingOrigin.ToRender(FrameToWorld(frame, Vector3d.Zero));
+            Vector3 tip = FloatingOrigin.ToRender(FrameToWorld(frame, localDirection));
+            return (tip - origin).normalized;
         }
 
         /// <summary>
@@ -973,8 +1076,16 @@ namespace Galilego.Universe
 
                 if (PlayerSeated)
                 {
-                    // Сидим: ни гравитации, ни ходьбы — игрок жёстко у якоря
-                    // кресла (позу каждый кадр обновляет PlayerController).
+                    // Сидим: ни гравитации, ни ходьбы. Едем за ОФИЦИАЛЬНОЙ
+                    // точкой корабля — но СГЛАЖЕННО: её пишет зона контакта из
+                    // физики, и по кадрам она может дрожать. Это только якорь
+                    // рендера; видимая камера от этой точки НЕ зависит —
+                    // PlayerView ставит её у нарисованного якоря кресла, так
+                    // что лаг/дрожь здесь картинку не шатают.
+                    // (Точка опоры разово переведена из render-мира при посадке.)
+                    smoothedShipPosition += (Ship.Position - smoothedShipPosition) * 0.2d;
+                    PlayerSeatedPosition += smoothedShipPosition - seatedShipAnchor;
+                    seatedShipAnchor = smoothedShipPosition;
                     PlayerPosition = PlayerSeatedPosition;
                     PlayerVelocity = Ship.Velocity;
                 }

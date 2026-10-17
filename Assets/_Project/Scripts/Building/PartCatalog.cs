@@ -334,6 +334,7 @@ namespace Galilego.Building
                     }
 
                     GameObject model = UnityEngine.Object.Instantiate(Capsule.Prefab, root.transform);
+                    OperatorMonitorLayout.Apply(model);
                     // Поворот модели НЕ трогаем: у корня префаба стоит разворот
                     // осей Blender, как у двигателей — обнуление кладёт капсулу на бок.
                     model.transform.localPosition = Capsule.ModelOffset;
@@ -489,13 +490,73 @@ namespace Galilego.Building
                 float height = Mathf.Max(0.05f, bounds.size.y);
                 float radius = Mathf.Max(0.05f, Mathf.Max(bounds.size.x, bounds.size.z) * 0.5f);
 
+                // Верхний радиус — по вершинам ВЕРХНЕЙ четверти модели: у
+                // сопловых двигателей низ — широкий раструб, верх — узкая
+                // связка агрегатов. Цилиндр радиусом раструба на ВСЮ высоту
+                // давал фантомный объём у стыка с баком: луч, визуально
+                // бьющий в бак НАД двигателем, математически попадал в
+                // двигатель — наведение и удаление «выбирали движок» при
+                // наведении на бак. Вершины доступны при Read/Write у модели;
+                // нет доступа — остаётся цилиндр (как раньше).
+                // Радиусы считаются относительно оси, которую затем совмещаем
+                // с пивотом через ModelOffset. Использование мирового нуля здесь
+                // смещало верхний радиус у FBX с нецентрированным исходным мешем.
+                float topRadius = MeasureTopRadius(probe, bounds, radius);
+
                 return new EngineTemplate
                 {
                     Spec = spec,
                     Prefab = prefab,
-                    Metrics = new PartMetrics(radius, radius, height, height * 0.5f, 0f, height, spec.MassKg, EngineJointNewtons, 1e12d),
+                    Metrics = new PartMetrics(radius, topRadius, height, height * 0.5f, 0f, height, spec.MassKg, EngineJointNewtons, 1e12d),
                     ModelOffset = new Vector3(-center.x, -bounds.min.y, -center.z),
                 };
+            }
+
+            /// <summary>
+            /// Радиус верхней четверти габаритов по вершинам мешей — оценка
+            /// сужения тела вращения кверху (двигатель: раструб → связка).
+            /// Мировые координаты пробы (она стоит в нуле): габариты мерены
+            /// тоже в мировых, разномасштабные FBX-узлы учтены.
+            /// </summary>
+            private static float MeasureTopRadius(GameObject probe, Bounds bounds, float radius)
+            {
+                float from = bounds.min.y + (bounds.size.y * 0.75f);
+                bool any = false;
+                float maxRadial = 0f;
+                MeshFilter[] meshes = probe.GetComponentsInChildren<MeshFilter>(true);
+                for (int i = 0; i < meshes.Length; i++)
+                {
+                    Mesh mesh = meshes[i].sharedMesh;
+                    if (mesh == null || !mesh.isReadable)
+                    {
+                        continue;
+                    }
+
+                    Vector3[] vertices = mesh.vertices;
+                    Transform node = meshes[i].transform;
+                    for (int v = 0; v < vertices.Length; v++)
+                    {
+                        Vector3 world = node.TransformPoint(vertices[v]);
+                        if (world.y < from)
+                        {
+                            continue;
+                        }
+
+                        any = true;
+                        // Visual.ModelOffset центрирует модель по центру её
+                        // мировых bounds, поэтому математическая ось двигателя
+                        // здесь должна быть той же, а не (0, 0, 0).
+                        float dx = world.x - bounds.center.x;
+                        float dz = world.z - bounds.center.z;
+                        float radial = Mathf.Sqrt((dx * dx) + (dz * dz));
+                        if (radial > maxRadial)
+                        {
+                            maxRadial = radial;
+                        }
+                    }
+                }
+
+                return any ? Mathf.Clamp(maxRadial, 0.05f, radius) : radius;
             }
 
             /// <summary>

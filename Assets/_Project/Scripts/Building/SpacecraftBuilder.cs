@@ -128,6 +128,12 @@ namespace Galilego.Building
         private int deleteTarget = -1;
         private PartCatalog.PartVisual deleteHighlighted;
 
+        /// <summary>Пробы конуса прицела (AimCone) — буфер, чтобы не аллоцировать в кадре.</summary>
+        private readonly Vector3[] aimDirections = new Vector3[AimCone.Samples];
+
+        /// <summary>Голоса проб за детали (площадь накрытия кольца) — буфер без аллокаций.</summary>
+        private int[] aimVotes = System.Array.Empty<int>();
+
         private bool spawned;
         private bool spikeDone;
         private float rHold;
@@ -139,6 +145,16 @@ namespace Galilego.Building
         private Vector3 lastPivot;
         private bool pendingPhysics;
         private System.Action<double> frameHook;
+
+        /// <summary>Каталог двигателей собран (повторных сборок не делаем).</summary>
+        private bool catalogSynced;
+
+        /// <summary>Про двигатели/капсулу уже предупреждали — в лог один раз, не каждый кадр.</summary>
+        private bool enginesWarned;
+        private bool capsuleWarned;
+
+        /// <summary>Ближайший момент повторной попытки собрать каталог (сек).</summary>
+        private float catalogRetryAt;
 
         private void Awake()
         {
@@ -166,29 +182,7 @@ namespace Galilego.Building
                 ZoneHost = FindAnyObjectByType<ContactZoneHost>();
             }
 
-            if (EnginePrefabs != null)
-            {
-                for (int i = 0; i < EnginePrefabs.Length; i++)
-                {
-                    PartCatalog.EngineTemplate template = PartCatalog.EngineTemplate.Measure(EnginePrefabs[i]);
-                    if (template != null)
-                    {
-                        engines.Add(template);
-                    }
-                }
-            }
-
-            if (engines.Count == 0)
-            {
-                Debug.LogError("[Build] ни одной модели двигателя: задай EnginePrefabs (Galilego → Building → Setup Scene).");
-            }
-
-            if (CapsulePrefab == null)
-            {
-                Debug.LogError("[Build] не задан CapsulePrefab (капсула Orion) — карточки капсулы в инвентаре не будет.");
-            }
-
-            PartCatalog.RegisterCapsule(CapsulePrefab);
+            SyncCatalog();
 
             ghostMaterial = CreateOverlayMaterial(new Color(0.25f, 0.55f, 1f, 0.38f), "GhostBlue");
             invalidMaterial = CreateOverlayMaterial(new Color(1f, 0.25f, 0.2f, 0.38f), "GhostRed");
@@ -211,6 +205,56 @@ namespace Galilego.Building
             }
         }
 
+        /// <summary>
+        /// Собрать каталог двигателей из EnginePrefabs и зарегистрировать капсулу.
+        /// Awake вызывает один раз, но при «Enter Play Mode Options = Disable
+        /// Scene/Domain Reload» объекты сцены переживают сеансы Play и Awake
+        /// повторно НЕ вызывается: на следующих сессиях каталог оставался
+        /// пустым — двигатель мерился нулевым (призрак нулевого размера,
+        /// постановка без модели), сборка ломалась. Поэтому Update дозаливает
+        /// каталог лениво, пока он пуст (приём — как LaunchPadZone.Refresh,
+        /// который сам добирает готовность); между попытками пауза, чтобы
+        /// сбойная конфигурация не инстанцировала пробные модели каждый кадр.
+        /// </summary>
+        private void SyncCatalog()
+        {
+            if (catalogSynced || Time.unscaledTime < catalogRetryAt)
+            {
+                return;
+            }
+
+            catalogRetryAt = Time.unscaledTime + 2f;
+            if (EnginePrefabs != null && EnginePrefabs.Length > 0)
+            {
+                for (int i = 0; i < EnginePrefabs.Length; i++)
+                {
+                    PartCatalog.EngineTemplate template = PartCatalog.EngineTemplate.Measure(EnginePrefabs[i]);
+                    if (template != null)
+                    {
+                        engines.Add(template);
+                    }
+                }
+            }
+
+            if (CapsulePrefab != null)
+            {
+                PartCatalog.RegisterCapsule(CapsulePrefab);
+            }
+
+            catalogSynced = engines.Count > 0;
+            if (!enginesWarned && engines.Count == 0)
+            {
+                enginesWarned = true;
+                Debug.LogError("[Build] ни одной модели двигателя: задай EnginePrefabs (Galilego → Building → Setup Scene).");
+            }
+
+            if (!capsuleWarned && CapsulePrefab == null)
+            {
+                capsuleWarned = true;
+                Debug.LogError("[Build] не задан CapsulePrefab (капсула Orion) — карточки капсулы в интерфейсе не будет.");
+            }
+        }
+
         private void OnDisable()
         {
             if (Runner != null && ReferenceEquals(Runner.BuildModeFrameHook, frameHook))
@@ -221,6 +265,8 @@ namespace Galilego.Building
 
         private void Update()
         {
+            SyncCatalog();
+
             if (Runner == null || Zone == null)
             {
                 return;
@@ -287,8 +333,9 @@ namespace Galilego.Building
         // ─── Удаление по прицелу (Alt) ───────────────────────────────────────
 
         /// <summary>
-        /// Подсветить красным деталь под прицелом (Alt зажат). Цель ищется
-        /// лучом по цилиндрам деталей — коллайдеры визуалам не нужны.
+        /// Подсветить красным деталь под прицелом (Alt зажат). Если центральный
+        /// луч попадает в деталь, он имеет приоритет; кольцо используется как
+        /// запасная область выбора только при промахе центрального луча.
         /// </summary>
         private void UpdateDeleteAim()
         {
@@ -301,8 +348,14 @@ namespace Galilego.Building
 
             Vector3 rayOrigin = Zone.RenderToSite(camera.transform.position);
             Vector3 rayDirection = Zone.transform.InverseTransformDirection(camera.transform.forward);
+            AimCone.FillDirections(rayDirection, AimCone.Tangent(camera), aimDirections);
+            if (aimVotes.Length < parts.Count)
+            {
+                aimVotes = new int[Mathf.Max(16, parts.Count)];
+            }
+
             int found = -1;
-            if (BuildMath.TryRaycastParts(parts, rayOrigin, rayDirection, BuildMath.SnapReach, out int index, out _))
+            if (BuildMath.TryRaycastParts(parts, rayOrigin, aimDirections, aimVotes, BuildMath.SnapReach, out int index, out _))
             {
                 found = index;
             }
@@ -1191,11 +1244,14 @@ namespace Galilego.Building
             }
 
             // Луч камеры: в осях места — для снапа по узлам, в render — для лучей
-            // физики (коллайдеры живут в render-пространстве).
+            // физики (коллайдеры живут в render-пространстве). Конус прицела —
+            // от того же FOV камеры, что рисует кольцо: узел ловится ровно под
+            // кольцом, а не «где-то рядом с лучом».
             Vector3 rayOrigin = Zone.RenderToSite(camera.transform.position);
             Vector3 rayDirection = Zone.transform.InverseTransformDirection(camera.transform.forward);
+            float coneTangent = AimCone.Tangent(camera);
 
-            bool hasSnap = BuildMath.TryFindSnap(parts, metrics, rayOrigin, rayDirection, out BuildMath.SnapHit snap);
+            bool hasSnap = BuildMath.TryFindSnap(parts, metrics, rayOrigin, rayDirection, coneTangent, out BuildMath.SnapHit snap);
             Vector3 pivot;
             bool valid;
 
