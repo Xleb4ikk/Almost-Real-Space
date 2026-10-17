@@ -15,20 +15,27 @@ namespace Galilego.Tablet
         private bool rcsEnabled;
         private SpeedFrame frame = SpeedFrame.Surface;
         private int bodyIndex;
+        private double throttle01 = 0.62d;
+        private bool engineOn = true;
+        private int stagesFired;   // нажатий «ступень» (после двух — нечего)
 
         public override void SetSasEnabled(bool on) { sasEnabled = on; }
         public override void SetSasMode(SasMode mode) { sasMode = mode; }
         public override void SetRcsEnabled(bool on) { rcsEnabled = on; }
         public override void SetSpeedFrame(SpeedFrame f) { frame = f; }
         public override void SetReferenceBody(int index) { bodyIndex = index; }
+        public override void SetThrottle(double f) { throttle01 = Mathf.Clamp01((float)f); }
+        public override void SetEnginesEnabled(bool on) { engineOn = on; }
+        public override void RequestStage() { if (stagesFired < 2) { stagesFired++; } }
 
         public override void Fill(TabletTelemetry t)
         {
-            Sample(t, Time.time, sasEnabled, sasMode, rcsEnabled, frame, bodyIndex);
+            Sample(t, Time.time, sasEnabled, sasMode, rcsEnabled, frame, bodyIndex, throttle01, engineOn, stagesFired);
         }
 
         /// <summary>Детерминированный кадр «в момент time» (используется и тестовым стендом).</summary>
-        public static void Sample(TabletTelemetry t, float time, bool sas, SasMode mode, bool rcs, SpeedFrame frame, int body)
+        public static void Sample(TabletTelemetry t, float time, bool sas, SasMode mode, bool rcs, SpeedFrame frame, int body,
+            double throttle01 = 0.62d, bool engineOn = true, int stagesFired = 0)
         {
             t.ReferenceBodies = new[] { "ЗЕМЛЯ", "ЛУНА" };
             t.ReferenceBodyIndex = body;
@@ -77,9 +84,15 @@ namespace Galilego.Tablet
                 InclinationDeg = 28.52d,
             };
 
+            t.Throttle01 = throttle01;
+            t.EngineOn = engineOn;
+            t.EngineAvailable = true;
+            t.CanStage = stagesFired < 2;
+            t.StageIgnited = stagesFired > 0;
+
             t.CurrentMassKg = 184650d;
-            t.ThrustN = 2279000d;
-            t.Twr = 1.26d;
+            t.ThrustN = engineOn ? 2279000d : 0d;
+            t.Twr = engineOn ? 1.26d : 0d;
             t.InFlight = true;
             t.TotalDeltaVMs = 9015d;
             t.PlanDeltaVMs = 10300d;
@@ -93,7 +106,8 @@ namespace Galilego.Tablet
                     DryMassKg = 21000d, PropellantMassKg = 98000d, PropellantRemainingKg = 41000d,
                     StartMassKg = 184650d, EndMassKg = 108400d, ThrustN = 6837000d, IspS = 452.3,
                     BurnTimeS = 301d, PlanBurnTimeS = 480d, DeltaVMs = 2510d, PlanDeltaVMs = 4200d,
-                    TwrStart = 3.78d, TwrEnd = 6.43d, IsActive = true,
+                    TwrStart = 3.78d, TwrEnd = 6.43d,
+                    IsActive = stagesFired == 0, IsSpent = stagesFired > 0, IsJettisoned = stagesFired > 0,
                 },
                 new TabletStage
                 {
@@ -102,6 +116,7 @@ namespace Galilego.Tablet
                     StartMassKg = 71000d, EndMassKg = 19800d, ThrustN = 2279000d, IspS = 452.3,
                     BurnTimeS = 228d, PlanBurnTimeS = 228d, DeltaVMs = 4060d, PlanDeltaVMs = 4060d,
                     TwrStart = 3.27d, TwrEnd = 11.7d,
+                    IsActive = stagesFired == 1, IsSpent = stagesFired > 1, IsJettisoned = stagesFired > 1,
                 },
                 new TabletStage
                 {
@@ -109,7 +124,7 @@ namespace Galilego.Tablet
                     DryMassKg = 2200d, PropellantMassKg = 6000d, PropellantRemainingKg = 6000d,
                     StartMassKg = 9800d, EndMassKg = 3800d, ThrustN = 43400d, IspS = 319d,
                     BurnTimeS = 134d, PlanBurnTimeS = 134d, DeltaVMs = 2445d, PlanDeltaVMs = 2040d,
-                    TwrStart = 0.45d, TwrEnd = 1.16d,
+                    TwrStart = 0.45d, TwrEnd = 1.16d, IsActive = stagesFired == 2,
                     Warnings = new[] { "TWR меньше 1: старт с земли невозможен" },
                 },
             };

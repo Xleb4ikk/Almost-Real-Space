@@ -251,6 +251,11 @@ namespace Galilego.Tablet
                 screen.Click();
                 e.Use();
             }
+            else if (e.type == EventType.MouseDrag && e.button == 0 && inside)
+            {
+                screen.Drag();
+                e.Use();
+            }
         }
     }
 }

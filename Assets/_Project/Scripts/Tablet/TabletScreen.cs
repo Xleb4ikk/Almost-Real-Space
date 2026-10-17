@@ -26,6 +26,7 @@ namespace Galilego.Tablet
         private int px;
         private int py;
         private bool clickPending;
+        private bool dragPending;
 
         private PixelCanvas c;
         private bool interactive;
@@ -45,6 +46,12 @@ namespace Galilego.Tablet
             clickPending = true;
         }
 
+        /// <summary>Протяжка с зажатой кнопкой (ползунок газа); будет обработана в ближайшем Render.</summary>
+        public void Drag()
+        {
+            dragPending = true;
+        }
+
         public void Render(TabletTelemetry t, ITabletCommands commands, bool isInteractive)
         {
             c = Canvas;
@@ -53,6 +60,7 @@ namespace Galilego.Tablet
             if (!interactive)
             {
                 clickPending = false;
+                dragPending = false;
             }
 
             c.Clear(TabletTheme.Bg);
@@ -60,9 +68,11 @@ namespace Galilego.Tablet
             DrawAltitude(t, 4, 108, 164, 44);
             DrawPressure(t, 4, 156, 164, 34);
             DrawNav(t, 172, 4, 168, 186);
-            DrawOrbit(t, 4, 194, 336, 122);
+            DrawOrbit(t, 4, 194, 164, 122);
+            DrawControl(t, 172, 194, 168, 122);
             DrawDeltaV(t, 344, 4, 164, 312);
             clickPending = false;
+            dragPending = false;
         }
 
         // ── Примитивы раскладки ──────────────────────────────────────────
@@ -309,18 +319,18 @@ namespace Galilego.Tablet
             }
         }
 
-        private bool ToggleButton(int x, int y, int w, int h, string label, bool on)
+        private bool ToggleButton(int x, int y, int w, int h, string label, bool on, bool enabled = true)
         {
-            bool hover = Over(x, y, w, h);
+            bool hover = enabled && Over(x, y, w, h);
             Color32 bg = on ? TabletTheme.ButtonOn : (hover ? TabletTheme.ButtonHover : TabletTheme.PanelBg);
-            Color32 border = on ? TabletTheme.Main : (hover ? TabletTheme.LineHi : TabletTheme.Line);
+            Color32 border = !enabled ? TabletTheme.Line : (on ? TabletTheme.Main : (hover ? TabletTheme.LineHi : TabletTheme.Line));
             c.Fill(x, y, w, h, bg);
             c.Frame(x, y, w, h, border);
             int ly = y + ((h - 7) / 2);
-            c.Fill(x + 5, y + ((h - 5) / 2), 5, 5, on ? TabletTheme.Bright : TabletTheme.Line);
-            c.Text(x + 14, ly, label, on || hover ? TabletTheme.Bright : TabletTheme.Main);
-            c.TextRight(x + w - 5, ly, on ? "ВКЛ" : "ВЫКЛ", on ? TabletTheme.Main : TabletTheme.Dim);
-            return Clicked(x, y, w, h);
+            c.Fill(x + 5, y + ((h - 5) / 2), 5, 5, !enabled ? TabletTheme.Line : (on ? TabletTheme.Bright : TabletTheme.Line));
+            c.Text(x + 14, ly, label, !enabled ? TabletTheme.Line : (on || hover ? TabletTheme.Bright : TabletTheme.Main));
+            c.TextRight(x + w - 5, ly, on ? "ВКЛ" : "ВЫКЛ", !enabled ? TabletTheme.Line : (on ? TabletTheme.Main : TabletTheme.Dim));
+            return enabled && Clicked(x, y, w, h);
         }
 
         private static string SasName(SasMode m)
@@ -337,39 +347,109 @@ namespace Galilego.Tablet
             }
         }
 
-        // ── Орбита ───────────────────────────────────────────────────────
+        // ── Орбита (узкая колонка слева) ─────────────────────────────────
 
         private void DrawOrbit(TabletTelemetry t, int x, int y, int w, int h)
         {
             Panel(x, y, w, h, "ОРБИТА");
             TabletOrbit o = t.Orbit;
-            int half = (w - 16 - 16) / 2;
-            DrawApsis(x + 8, y + 10, half, "АПОЦЕНТР", o.Valid && o.HasApoapsis,
-                o.ApAltitudeM, o.ApTimeS, o.ApSpeedMs, "ДО АП");
-            DrawApsis(x + 8 + half + 16, y + 10, half, "ПЕРИЦЕНТР", o.Valid,
-                o.PeAltitudeM, o.PeTimeS, o.PeSpeedMs, "ДО ПР");
-            c.VLine(x + 8 + half + 7, y + 10, 50, TabletTheme.Line);
+            int ix = x + 8;
+            int iw = w - 16;
+            bool ap = o.Valid && o.HasApoapsis;
 
-            int sy = y + 66;
-            Separator(x + 8, sy - 4, w - 16);
-            int cw = (w - 16) / 3;
-            Stat(x + 8, sy + 2, cw, "ПЕРИОД", o.Valid && o.HasApoapsis ? TabletFormat.Time(o.PeriodS) : TabletFormat.Dash);
-            Stat(x + 8 + cw, sy + 2, cw, "ЭКСЦЕНТРИСИТЕТ", o.Valid ? TabletFormat.Num(o.Eccentricity, 4) : TabletFormat.Dash);
-            Stat(x + 8 + (2 * cw), sy + 2, cw, "НАКЛОНЕНИЕ", o.Valid ? TabletFormat.Num(o.InclinationDeg, 2) + "\u00B0" : TabletFormat.Dash);
+            DrawApsisRow(ix, y + 8, iw, "АПОЦЕНТР", ap, o.ApAltitudeM);
+            Row(ix, y + 25, iw, "ДО АП", ap ? TabletFormat.Time(o.ApTimeS) : TabletFormat.Dash);
+            Row(ix, y + 35, iw, "СКОРОСТЬ", ap ? TabletFormat.Num(o.ApSpeedMs, 1) + " М/С" : TabletFormat.Dash);
+            Separator(ix, y + 46, iw);
+
+            DrawApsisRow(ix, y + 50, iw, "ПЕРИЦЕНТР", o.Valid, o.PeAltitudeM);
+            Row(ix, y + 67, iw, "ДО ПР", o.Valid ? TabletFormat.Time(o.PeTimeS) : TabletFormat.Dash);
+            Row(ix, y + 77, iw, "СКОРОСТЬ", o.Valid ? TabletFormat.Num(o.PeSpeedMs, 1) + " М/С" : TabletFormat.Dash);
+            Separator(ix, y + 88, iw);
+
+            Row(ix, y + 92, iw, "ПЕРИОД", ap ? TabletFormat.Time(o.PeriodS) : TabletFormat.Dash);
+            Row(ix, y + 102, iw, "ЭКСЦЕНТРИСИТЕТ", o.Valid ? TabletFormat.Num(o.Eccentricity, 4) : TabletFormat.Dash);
+            Row(ix, y + 112, iw, "НАКЛОНЕНИЕ", o.Valid ? TabletFormat.Num(o.InclinationDeg, 2) + "\u00B0" : TabletFormat.Dash);
         }
 
-        private void DrawApsis(int x, int y, int w, string caption, bool valid, double alt, double time, double speed, string tag)
+        /// <summary>Строка апсиды: подпись и крупное значение на одной линии (как «скорость/м/с»).</summary>
+        private void DrawApsisRow(int x, int y, int w, string caption, bool valid, double alt)
         {
-            c.Text(x, y, caption, TabletTheme.Dim);
-            c.TextRight(x + w, y + 11, valid ? TabletFormat.Dist(alt) : TabletFormat.Dash, TabletTheme.Bright, 2);
-            Row(x, y + 31, w, tag, valid ? TabletFormat.Time(time) : TabletFormat.Dash);
-            Row(x, y + 41, w, "СКОРОСТЬ", valid ? TabletFormat.Num(speed, 1) + " М/С" : TabletFormat.Dash);
+            c.Text(x, y + 4, caption, TabletTheme.Dim);
+            c.TextRight(x + w, y, valid ? TabletFormat.Dist(alt) : TabletFormat.Dash, TabletTheme.Bright, 2);
         }
 
-        private void Stat(int x, int y, int w, string label, string value)
+        // ── Управление (под ориентацией) ─────────────────────────────────
+
+        private void DrawControl(TabletTelemetry t, int x, int y, int w, int h)
         {
-            c.Text(x, y, label, TabletTheme.Dim);
-            c.Text(x, y + 12, value, TabletTheme.Main, 2);
+            Panel(x, y, w, h, "УПРАВЛЕНИЕ");
+            int ix = x + 8;
+            int iw = w - 16;
+
+            DrawThrottle(t, ix, y + 9, iw);
+
+            Separator(ix, y + 62, iw);
+
+            if (ToggleButton(ix, y + 68, iw, 18, "ДВИГАТЕЛЬ", t.EngineOn, t.EngineAvailable))
+            {
+                cmd.SetEnginesEnabled(!t.EngineOn);
+            }
+
+            string stage = t.StageIgnited ? "ОТДЕЛИТЬ СТУПЕНЬ" : "ЗАЖЕЧЬ СТУПЕНЬ";
+            if (Button(ix, y + 92, iw, 18, stage, false, t.CanStage))
+            {
+                cmd.RequestStage();
+            }
+        }
+
+        /// <summary>
+        /// Газ 0-100 %: крупное значение и полоса-шкала. Клик или протяжка по полосе
+        /// ставят газ прямо в точку под курсором; четвертные засечки — для прицела.
+        /// </summary>
+        private void DrawThrottle(TabletTelemetry t, int x, int y, int w)
+        {
+            float frac = Mathf.Clamp01((float)t.Throttle01);
+
+            c.Text(x, y + 4, "ТЯГА", TabletTheme.Dim);
+            int unitW = PixelCanvas.TextWidth("%");
+            c.TextRight(x + w, y + 4, "%", TabletTheme.Dim);
+            c.TextRight(x + w - unitW - 4, y, TabletFormat.Num(frac * 100f, 0), TabletTheme.Bright, 2);
+
+            int by = y + 21;
+            int bh = 16;
+            bool hover = Over(x, by, w, bh);
+
+            c.Fill(x, by, w, bh, TabletTheme.Bg);
+            for (int i = 1; i < 4; i++)
+            {
+                c.VLine(x + 1 + (((w - 2) * i) / 4), by + 1, bh - 2, TabletTheme.Line);
+            }
+
+            int fill = Mathf.RoundToInt(frac * (w - 2));
+            if (fill > 0)
+            {
+                c.Fill(x + 1, by + 1, fill, bh - 2, TabletTheme.ButtonOn);
+                c.HLine(x + 1, by + 1, fill, TabletTheme.LineHi);
+            }
+
+            if (hover && pointerValid)
+            {
+                c.VLine(Mathf.Clamp(px, x + 1, x + w - 2), by + 1, bh - 2, TabletTheme.LineHi);
+            }
+
+            c.Frame(x, by, w, bh, hover ? TabletTheme.LineHi : TabletTheme.Line);
+            c.VLine(Mathf.Min(x + 1 + fill, x + w - 2), by + 1, bh - 2, TabletTheme.Bright);
+
+            int sy = by + bh + 3;
+            c.Text(x, sy, "0", TabletTheme.Line);
+            c.TextCenter(x + (w / 2), sy, "50", TabletTheme.Line);
+            c.TextRight(x + w, sy, "100", TabletTheme.Line);
+
+            if (Clicked(x, by, w, bh) || (dragPending && hover))
+            {
+                cmd.SetThrottle(Mathf.Clamp01((px - (x + 1)) / (float)(w - 2)));
+            }
         }
 
         // ── ΔV ───────────────────────────────────────────────────────────

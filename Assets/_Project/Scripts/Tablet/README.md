@@ -8,10 +8,16 @@
 3. Чтобы открывать по E: коллайдер на планшете + `TabletInteractable` (поле `Tablet`).
    Esc / E — свернуть. Пока открыт — `PlayerController.InputBlocked` и камера не крадёт курсор.
 
+## Панель «УПРАВЛЕНИЕ» (под ориентацией)
+Тяга 0-100 % — клик или протяжка по полосе ставят газ прямо в точку под курсором (как Z/X).
+«ДВИГАТЕЛЬ» — мастер-выключатель маршевых (как F9/F10); неактивна, пока нет модели полёта.
+Кнопка ступени — тот же путь, что Space: «ЗАЖЕЧЬ», затем «ОТДЕЛИТЬ» (SpacecraftBuilder.StageJettison).
+
 ## Как подключить к игре (потом)
 Один класс-наследник `TabletLink`:
 - `Fill(TabletTelemetry t)` — положить в `t` данные симуляции (все поля подписаны, единицы СИ).
 - `SetSasEnabled / SetSasMode / SetRcsEnabled / SetSpeedFrame / SetReferenceBody` — исполнить команду игрока.
+- `SetThrottle / SetEnginesEnabled / RequestStage` — управление кораблём (панель «УПРАВЛЕНИЕ»).
 - ΔV: `DvTabletAdapter.Apply(panel.Live ?? panel.Plan, t)` — копирует DvResult как есть.
 Навбол: `Attitude` — поворот корабля относительно горизонта (X=восток, Y=вверх, Z=север),
 `ProgradeDir / NormalDir / RadialOutDir` — в той же системе; обратные три считает планшет.

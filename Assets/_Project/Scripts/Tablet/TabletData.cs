@@ -102,6 +102,22 @@ namespace Galilego.Tablet
         public SasMode SasMode;
         public bool RcsEnabled;
 
+        // ── Управление кораблём (панель «УПРАВЛЕНИЕ») ────────────────────
+        /// <summary>Газ (тяга) командой игрока, 0..1.</summary>
+        public double Throttle01;
+
+        /// <summary>Мастер-выключатель маршевых двигателей: хоть один включён.</summary>
+        public bool EngineOn;
+
+        /// <summary>Есть чем управлять (модель полёта существует) — кнопка двигателя активна.</summary>
+        public bool EngineAvailable;
+
+        /// <summary>«Ступень» сейчас что-то сделает: есть что зажигать или отделять.</summary>
+        public bool CanStage;
+
+        /// <summary>Текущая ступень уже зажжена (кнопка «отделить», иначе «зажечь»).</summary>
+        public bool StageIgnited;
+
         // ── Масса / тяга / ΔV ────────────────────────────────────────────
         public double CurrentMassKg;
         public double ThrustN;
@@ -137,6 +153,15 @@ namespace Galilego.Tablet
         void SetRcsEnabled(bool on);
         void SetSpeedFrame(SpeedFrame frame);
         void SetReferenceBody(int index);
+
+        /// <summary>Газ 0..1 (как Z/X на клавиатуре).</summary>
+        void SetThrottle(double throttle01);
+
+        /// <summary>Мастер-выключатель маршевых двигателей (как F9/F10).</summary>
+        void SetEnginesEnabled(bool on);
+
+        /// <summary>Ступень: зажигание/отделение (как Space).</summary>
+        void RequestStage();
     }
 
     /// <summary>
@@ -153,5 +178,8 @@ namespace Galilego.Tablet
         public virtual void SetRcsEnabled(bool on) { }
         public virtual void SetSpeedFrame(SpeedFrame frame) { }
         public virtual void SetReferenceBody(int index) { }
+        public virtual void SetThrottle(double throttle01) { }
+        public virtual void SetEnginesEnabled(bool on) { }
+        public virtual void RequestStage() { }
     }
 }

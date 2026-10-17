@@ -14,10 +14,11 @@ namespace Galilego.Tablet
     /// существует в игре:
     ///  • система отсчёта скорости (поверхность/орбита) и опорное тело — реально
     ///    меняют показания (тело по умолчанию — доминантное, из SOI);
-    ///  • САС/РСУ — принимаются и показываются, но исполнителя у них в игре пока
-    ///    нет (у корабля нет модели вращения: AttitudePhysics/RcsBlock не
-    ///    подключены к шагу полёта) — при включении на экран добавляется
-    ///    примечание, чтобы состояние не выглядело рабочим.
+    ///  • САС/РСУ — включение/выключение идёт в автопилот модели полёта
+    ///    (VesselFlightModel.Controls); направленные режимы САС (по скорости,
+    ///    нормаль и т.д.) пока не исполняются — об этом честное примечание;
+    ///  • управление кораблём — газ (RawThrottle), мастер-выключатель
+    ///    двигателей (SetAllEngines) и ступень (SpacecraftBuilder.StageJettison).
     ///
     /// ΔV не пересчитывается: берётся та же панель, что рисует BuilderUI
     /// (DeltaVPanel.Live ?? Plan) и копируется DvTabletAdapter — как и задумано
@@ -36,6 +37,9 @@ namespace Galilego.Tablet
 
         [Tooltip("BuilderUI (источник панели ΔV). Пусто — найдётся автоматически.")]
         public BuilderUI BuilderUi;
+
+        [Tooltip("SpacecraftBuilder (исполнитель команд ступени). Пусто — найдётся автоматически.")]
+        public SpacecraftBuilder Builder;
 
         private static readonly double G0 = DvEnvironment.G0;
 
@@ -58,6 +62,15 @@ namespace Galilego.Tablet
         public override void SetSasEnabled(bool on)
         {
             sasEnabled = on;
+            Galilego.Flight.VesselFlightModel flight = Runner != null ? Runner.Flight : null;
+            if (flight != null)
+            {
+                flight.Controls.SasOn = on;
+                if (on)
+                {
+                    flight.HoldCurrentAttitude();
+                }
+            }
         }
 
         public override void SetSasMode(SasMode mode)
@@ -68,6 +81,11 @@ namespace Galilego.Tablet
         public override void SetRcsEnabled(bool on)
         {
             rcsEnabled = on;
+            Galilego.Flight.VesselFlightModel flight = Runner != null ? Runner.Flight : null;
+            if (flight != null)
+            {
+                flight.Controls.RcsOn = on;
+            }
         }
 
         public override void SetSpeedFrame(SpeedFrame f)
@@ -78,6 +96,36 @@ namespace Galilego.Tablet
         public override void SetReferenceBody(int index)
         {
             referenceBodyIndex = index;
+        }
+
+        public override void SetThrottle(double throttle01)
+        {
+            if (Runner != null)
+            {
+                Runner.RawThrottle = System.Math.Max(0d, System.Math.Min(1d, throttle01));
+            }
+        }
+
+        public override void SetEnginesEnabled(bool on)
+        {
+            Galilego.Flight.VesselFlightModel flight = Runner != null ? Runner.Flight : null;
+            if (flight != null)
+            {
+                flight.SetAllEngines(on);
+            }
+        }
+
+        public override void RequestStage()
+        {
+            if (Builder == null)
+            {
+                Builder = FindAnyObjectByType<SpacecraftBuilder>();
+            }
+
+            if (Builder != null)
+            {
+                Builder.StageJettison();
+            }
         }
 
         public override void Fill(TabletTelemetry t)
@@ -92,9 +140,41 @@ namespace Galilego.Tablet
 
             t.ReferenceBodies = bodyNames;
             t.Frame = frame;
-            t.SasEnabled = sasEnabled;
             t.SasMode = sasMode;
+
+            // Системы и управление: у живой модели полёта состояние — её (клавиши
+            // T/G и кнопки планшета работают с одним и тем же Controls).
+            Galilego.Flight.VesselFlightModel flight = Runner != null ? Runner.Flight : null;
+            if (flight != null)
+            {
+                sasEnabled = flight.Controls.SasOn;
+                rcsEnabled = flight.Controls.RcsOn;
+            }
+
+            t.SasEnabled = sasEnabled;
             t.RcsEnabled = rcsEnabled;
+
+            t.Throttle01 = Runner != null ? Runner.RawThrottle : 0d;
+            t.EngineAvailable = flight != null;
+            t.EngineOn = false;
+            if (flight != null)
+            {
+                for (int i = 0; i < flight.MainEngineCount; i++)
+                {
+                    Galilego.Flight.Thruster engine = flight.MainEngine(i);
+                    if (engine != null && engine.Enabled)
+                    {
+                        t.EngineOn = true;
+                        break;
+                    }
+                }
+            }
+
+            Galilego.Spacecraft.StagePropulsion propulsion = Runner != null ? Runner.Propulsion : null;
+            int activeStage = propulsion != null ? propulsion.ActiveStageIndex : -1;
+            t.StageIgnited = activeStage >= 0;
+            t.CanStage = propulsion != null
+                && (activeStage < 0 ? propulsion.StageCount > 0 : propulsion.FirstAttached + 1 < propulsion.StageCount);
 
             OrbitingBody body = ResolveBody(t);
             if (ship == null || body == null)
@@ -181,6 +261,11 @@ namespace Galilego.Tablet
             if (BuilderUi == null)
             {
                 BuilderUi = FindAnyObjectByType<BuilderUI>();
+            }
+
+            if (Builder == null)
+            {
+                Builder = FindAnyObjectByType<SpacecraftBuilder>();
             }
         }
 
@@ -461,18 +546,19 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
-        /// Пока САС/РСУ в игре нечему исполнять, включённое состояние обязано
-        /// объясняться на экране — иначе это молчаливая ложь интерфейса.
+        /// САС/РСУ исполняются моделью полёта, но направленные режимы САС (по
+        /// скорости, нормаль…) у автопилота пока отсутствуют — выбранный режим
+        /// обязан объясняться на экране, иначе это молчаливая ложь интерфейса.
         /// </summary>
         private void AppendCommandNote(TabletTelemetry t)
         {
-            if (!sasEnabled && !rcsEnabled)
+            if (sasMode == SasMode.Stability)
             {
                 return;
             }
 
             var notes = new List<string>(t.Notes ?? new string[0]);
-            notes.Add("САС/РСУ ещё не подключены к кораблю: у него нет модели вращения, переключатели пока только показывают состояние");
+            notes.Add("Направленные режимы САС (по скорости, нормаль и т.д.) ещё не исполняются: автопилот держит текущую ориентацию");
             t.Notes = notes.ToArray();
         }
     }
