@@ -125,9 +125,11 @@ namespace Galilego.Tablet
                 screenMaterial.SetColor("_UnlitColor", tint);
             }
 
-            if (screenMaterial.HasProperty("_EmissiveColor") && screenMaterial.HasProperty("_EmissiveColorMap"))
+            if (screenMaterial.HasProperty("_EmissiveColor"))
             {
-                screenMaterial.SetColor("_EmissiveColor", tint);
+                // HDRP/Unlit без ключа _EMISSIVE_COLOR_MAP светит _EmissiveColor
+                // ровно по всему экрану (UnlitData.hlsl) — белый вымывает картинку.
+                screenMaterial.SetColor("_EmissiveColor", Color.black);
             }
         }
 
