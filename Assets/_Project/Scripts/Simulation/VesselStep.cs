@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Galilego.Core;
 using Galilego.Debris;
 using Galilego.Events;
+using Galilego.Flight;
 using Galilego.Spacecraft;
 using UnityEngine;
 using Ship = Galilego.Spacecraft.Spacecraft;
@@ -42,6 +43,21 @@ namespace Galilego.Universe
         /// построителя: топливо не учитывается, порог по сухой массе в ThrustSource.
         /// </summary>
         public StagePropulsion Propulsion;
+
+        /// <summary>
+        /// 6-DOF модель полёта (двигатели в реальных точках, ЦМ/инерция по текущим массам,
+        /// подвес, РСУ, САС). null — прежний путь: точечная масса без ориентации.
+        /// </summary>
+        public VesselFlightModel Flight;
+
+        /// <summary>Источник тяги модели полёта (ему передаётся снимок ориентации на чанк).</summary>
+        public FlightThrustSource FlightSource;
+
+        /// <summary>Давление среды (Па) в точке и момент; ставит SimulationRunner.</summary>
+        public Func<Vector3d, double, double> PressureAt;
+
+        /// <summary>Шаг управления полётом: подвес/РСУ/автопилот обновляются на нём (до ×3 варпа).</summary>
+        public const double FlightChunkSeconds = 0.05d;
 
         /// <summary>Детектор исчерпания участка выработки (взводится перед чанком).</summary>
         public StageDepletionDetector DepletionDetector;
@@ -158,6 +174,11 @@ namespace Galilego.Universe
             if (decision.UseLongWarp && playerCap == double.PositiveInfinity)
             {
                 // Дальний варп: баллистика целиком, тяга запрещена по построению.
+                if (Flight != null)
+                {
+                    Flight.Silence();
+                }
+
                 Warp.PrepareForLongWarp(TimeSeconds);
                 Driver.CancelRequested = false;
                 LongWarpResult result = Driver.AdvanceToTarget(Ship, TimeSeconds, frameEnd);
@@ -169,20 +190,49 @@ namespace Galilego.Universe
             double throttle = Warp.EffectiveThrottle(RawThrottle, factor);
             bool thrustActive = Thrust != null && throttle > 0d
                 && (Propulsion == null || Propulsion.MassFlowKgS > 0d);
+            bool flightOn = Flight != null;
+            bool flightAllowed = flightOn && factor <= WarpController.ThrustMaxWarpFactor;
+            if (flightAllowed)
+            {
+                thrustActive = true;
+            }
+
             while (TimeSeconds < frameEnd - 1e-12d)
             {
                 double chunk = Warp.GetMaxChunkSeconds(TimeSeconds, OrbitIntegrator.DefaultMaxStepSize, thrustActive);
+                if (flightAllowed)
+                {
+                    chunk = Math.Min(chunk, FlightChunkSeconds);
+                }
+
                 chunk = Math.Min(chunk, frameEnd - TimeSeconds);
                 if (chunk <= 0d)
                 {
                     chunk = Math.Min(OrbitIntegrator.DefaultMinStepSize, frameEnd - TimeSeconds);
                 }
 
+                if (flightOn)
+                {
+                    double pressure = PressureAt != null ? PressureAt(Ship.Position, TimeSeconds) : 0d;
+                    Flight.Prepare(chunk, Ship.Attitude, Ship.AngularVelocity, throttle, pressure, flightAllowed);
+                    FlightSource.Attitude = Ship.Attitude;
+                    chunk = Math.Max(Math.Min(chunk, Flight.MaxChunkSeconds()), 1e-4d);
+                }
+
                 Warp.SampleControl(TimeSeconds, throttle);
                 RearmDepletion();
                 double massBefore = Ship.Mass;
+                double chunkStart = TimeSeconds;
                 EventOccurrence? occurrence = Propagator.Propagate(Ship, TimeSeconds, chunk);
-                CommitBurn(massBefore - Ship.Mass);
+                double auxBurn = 0d;
+                if (flightOn)
+                {
+                    double done = occurrence.HasValue ? Math.Max(0d, occurrence.Value.TimeSeconds - chunkStart) : chunk;
+                    auxBurn = Flight.Finish(done);
+                    StepAttitude(done, chunkStart);
+                }
+
+                CommitBurn(massBefore - Ship.Mass - auxBurn);
                 if (occurrence.HasValue)
                 {
                     TimeSeconds = occurrence.Value.TimeSeconds;
@@ -199,6 +249,24 @@ namespace Galilego.Universe
                     TimeSeconds = time.Sum;
                 }
             }
+        }
+
+        /// <summary>
+        /// Вращение за чанк: уравнения Эйлера + кватернион (RK4) от момента модели полёта,
+        /// посчитанного на ЭТОМ чанке (тот же снимок, что и сила в орбитальном интеграторе).
+        /// </summary>
+        private void StepAttitude(double dt, double timeSeconds)
+        {
+            if (!(dt > 0d) || !(Flight.MassKg > 0d))
+            {
+                return;
+            }
+
+            AttitudeState next = AttitudePhysics.Step(
+                new AttitudeState(Ship.Attitude, Ship.AngularVelocity), Flight.Inertia,
+                Flight.TorqueBody, timeSeconds, dt);
+            Ship.Attitude = next.Attitude;
+            Ship.AngularVelocity = next.AngularVelocity;
         }
 
         /// <summary>

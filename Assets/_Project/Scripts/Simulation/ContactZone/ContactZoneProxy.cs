@@ -46,7 +46,7 @@ namespace Galilego.Simulation.ContactZone
             return index >= 0 && index < rootMask.Length && rootMask[index];
         }
 
-        public void Build(IReadOnlyList<PartDefinition> parts, SiteFrame frame, Vector3d localPosition, Vector3d localVelocity)
+        public void Build(IReadOnlyList<PartDefinition> parts, SiteFrame frame, Vector3d localPosition, Vector3d localVelocity, bool positionIsCom = false)
         {
             Clear();
             if (parts == null || parts.Count == 0) return;
@@ -76,6 +76,19 @@ namespace Galilego.Simulation.ContactZone
             }
 
             Vector3 lift = new Vector3(0f, hasLowest ? -lowest : 0f, 0f);
+            if (positionIsCom)
+            {
+                // Входящая точка — ЦЕНТР МАСС (свободный полёт 6-DOF): сборку кладём центром масс в точку.
+                Vector3 weighted = Vector3.zero;
+                float total = 0f;
+                for (int i = 0; i < parts.Count; i++)
+                {
+                    weighted += parts[i].Offset * (float)parts[i].MassKg;
+                    total += (float)parts[i].MassKg;
+                }
+
+                lift = total > 0f ? -(weighted / total) : lift;
+            }
 
             for (int i = 0; i < parts.Count; i++)
             {
@@ -114,6 +127,81 @@ namespace Galilego.Simulation.ContactZone
 
             Physics.defaultSolverIterations = 20;
             Physics.defaultSolverVelocityIterations = 4;
+        }
+
+        /// <summary>Индекс тела корневого острова (для ориентации корабля); −1 — нет.</summary>
+        public int RootBodyIndex()
+        {
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                if (IsRootBody(i) && bodies[i] != null) return i;
+            }
+
+            return -1;
+        }
+
+        /// <summary>
+        /// Вход в зону с произвольной ориентацией (повторный вход из полёта): поворачивает всю
+        /// собранную сборку вокруг центра масс на qLocal (локальные оси прокси) и задаёт угловую
+        /// скорость omegaLocal (рад/с, локальные оси). Скорость каждого тела = v_цм + ω×r.
+        /// </summary>
+        public void ApplyRigidState(Quaternion qLocal, Vector3 omegaLocal)
+        {
+            if (bodies.Count == 0) return;
+            Vector3 c = Vector3.zero; float m = 0f; Vector3 v = Vector3.zero;
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                float mi = bodies[i].mass;
+                c += bodies[i].transform.localPosition * mi;
+                v += transform.InverseTransformDirection(bodies[i].linearVelocity) * mi;
+                m += mi;
+            }
+
+            c /= m; v /= m;
+            Vector3 omegaWorld = transform.TransformDirection(omegaLocal);
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                Transform t = bodies[i].transform;
+                Vector3 r = qLocal * (t.localPosition - c);
+                t.localPosition = c + r;
+                t.localRotation = qLocal * t.localRotation;
+                bodies[i].linearVelocity = transform.TransformDirection(v) + Vector3.Cross(omegaWorld, transform.TransformDirection(r));
+                bodies[i].angularVelocity = omegaWorld;
+            }
+
+            Physics.SyncTransforms();
+        }
+
+        /// <summary>
+        /// Ступенчатое/аварийное отделение в зоне: рвёт все стыки между телами keep[i]==true и
+        /// остальными, оставшиеся — корневой остров (отделённые — отломки PhysX до выхода из зоны).
+        /// kickMetersPerSecond — относительная скорость разделения вдоль kickDirLocal (локальные оси).
+        /// </summary>
+        public void SeverForStaging(bool[] keep, Vector3 kickDirLocal, float kickMetersPerSecond)
+        {
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                bool inKeep = i < keep.Length && keep[i];
+                var fj = bodies[i] != null ? bodies[i].GetComponent<FixedJoint>() : null;
+                if (fj == null || fj.connectedBody == null) continue;
+                int parent = bodies.IndexOf(fj.connectedBody);
+                bool parentKeep = parent >= 0 && parent < keep.Length && keep[parent];
+                if (inKeep != parentKeep)
+                {
+                    Destroy(fj);
+                }
+            }
+
+            // Стыки, которые могли соединять отделяемое с остающимся «снизу» (родитель — отделяемое).
+            rootMask = new bool[bodies.Count];
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                rootMask[i] = i < keep.Length && keep[i];
+                if (!rootMask[i] && bodies[i] != null && kickMetersPerSecond != 0f)
+                {
+                    bodies[i].linearVelocity += transform.TransformDirection(kickDirLocal) * kickMetersPerSecond;
+                }
+            }
         }
 
         /// <summary>

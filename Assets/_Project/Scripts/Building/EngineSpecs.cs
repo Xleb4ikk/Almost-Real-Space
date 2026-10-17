@@ -46,6 +46,26 @@ namespace Galilego.Building
         /// <summary>Топливная пара двигателя (окислитель, горючее, O/F, расход).</summary>
         public readonly BipropellantMix Mix;
 
+        // ─── Лётные параметры (модель полёта Galilego.Flight) ───
+
+        /// <summary>Isp у земли (101 325 Па), с; ≤0 — как в вакууме.</summary>
+        public double IspSeaLevelSeconds;
+
+        /// <summary>Нижний предел дросселя, доля от номинала (RS-25: 67 %/109 % ≈ 0.61; 1.0 — не дросселируется).</summary>
+        public double MinThrottle = 0.1d;
+
+        /// <summary>Максимальный угол подвеса (качания) сопла, градусы.</summary>
+        public double GimbalDegrees;
+
+        /// <summary>Скорость подвеса, градусы/с.</summary>
+        public double GimbalRateDegPerS = 20d;
+
+        /// <summary>Скорость выхода на режим по газу, доля/с.</summary>
+        public double ThrottleRatePerS = 2d;
+
+        /// <summary>Давление окружающей среды, выше которого запуск/работа невозможны (срыв потока в сопле), Па.</summary>
+        public double MaxOperatingPressurePa = double.PositiveInfinity;
+
         public EngineSpec(
             string id, string displayName, string modelKey, string modelPath, double massKg,
             double expansionRatio,
@@ -90,7 +110,11 @@ namespace Galilego.Building
             "RS25", "RS-25", "RS25",
             "Assets/_Project/Models/Parts/Engines/RS-25/RS25_Engine.fbx",
             3500d, 69d, 2279000d, 452d, false,
-            PropellantPairs.Rs25.Mix));
+            PropellantPairs.Rs25.Mix)
+        {
+            IspSeaLevelSeconds = 366d, MinThrottle = 0.61d, GimbalDegrees = 10.5d,
+            GimbalRateDegPerS = 20d, ThrottleRatePerS = 1.5d,
+        });
 
         // AJ10-118K (2-я ступень Delta II): 43.4 кН в вакууме, Isp 320.5 с,
         // степень расширения 65:1, масса 98 кг. Сопло 65:1 — вакуумный
@@ -100,7 +124,12 @@ namespace Galilego.Building
             "AJ10", "AJ10-118K", "AJ10",
             "Assets/_Project/Models/Parts/Engines/AJ10-118K/AJ10-118K_Engine.fbx",
             98d, 65d, 43400d, 320.5d, true,
-            PropellantPairs.Aj10.Mix));
+            PropellantPairs.Aj10.Mix)
+        {
+            // Не дросселируется (фикс. тяга), подвес ±4°; сопло 65:1 у земли не работает (срыв).
+            IspSeaLevelSeconds = 0d, MinThrottle = 1d, GimbalDegrees = 4d,
+            GimbalRateDegPerS = 10d, ThrottleRatePerS = 10d, MaxOperatingPressurePa = 5000d,
+        });
 
         public static IReadOnlyList<EngineSpec> All
         {

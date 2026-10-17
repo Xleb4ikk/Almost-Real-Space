@@ -155,7 +155,13 @@ namespace Galilego.Simulation.ContactZone
             Patch.Build(body, terrain, frame, t);
             ApplyPose(frame, t);
             frame.ToLocal(ship.Position, ship.Velocity, out Vector3d lp, out Vector3d lv);
-            Proxy.Build(Runner.Parts, frame, lp, lv);
+            bool centerOfMass = Runner.Flight != null && ship.PositionIsCom;
+            Proxy.Build(Runner.Parts, frame, lp, lv, centerOfMass);
+            if (centerOfMass)
+            {
+                // Повторный вход из полёта: сборка ложится ЦМ в точку и разворачивается как корабль.
+                Galilego.Flight.FlightRuntime.HandoffIn(Runner, Proxy, frame);
+            }
 
             // Гравитация кадра — сразу, не со следующего кадра: до этого стояла
             // мировая (0,−9.81,0), а корень повёрнут осями места — тела получали
@@ -178,10 +184,18 @@ namespace Galilego.Simulation.ContactZone
         private void Exit(Ship ship, double t)
         {
             Proxy.GetCenterOfMassState(frame, t, out Vector3d com, out Vector3d comVelocity);
-            Vector3d anchor = new Vector3d(com.X, com.Y, com.Z - anchorUp);
+            // Модель полёта 6-DOF: за пределами зоны Position корабля — ЦЕНТР МАСС (а не низ),
+            // и вместе с ним уходят ориентация и угловая скорость тел PhysX.
+            bool flight = Runner.Flight != null;
+            Vector3d anchor = flight ? com : new Vector3d(com.X, com.Y, com.Z - anchorUp);
             frame.At(t).ToWorld(anchor, comVelocity, out Vector3d wp, out Vector3d wv);
             ship.Position = wp;
             ship.Velocity = wv;
+            if (flight)
+            {
+                Galilego.Flight.FlightRuntime.HandoffOut(Runner, Proxy, frame.At(t));
+            }
+
             Proxy.Clear();
             Patch.Clear();
             Active = false;
