@@ -131,7 +131,9 @@ namespace Galilego.Spacecraft
             var f = new CapsuleFrame();
             Vector3 deckCentre = Mean(deckPts);
             f.Axis = (Mean(nosePts) - Mean(heatPts)).normalized;
-            Vector3 toHatch = Mean(framePts) - deckCentre;
+            // Ось люка — по центру СТВОРКИ: у рамы петли с одной стороны, её
+            // центр перекошен (~11°), и вырез проёма в таких осях выходил косым.
+            Vector3 toHatch = Mean(doorPts) - deckCentre;
             toHatch -= f.Axis * Vector3.Dot(toHatch, f.Axis);
             f.Hatch = toHatch.normalized;
             f.Side = Vector3.Cross(f.Axis, f.Hatch);
@@ -167,11 +169,27 @@ namespace Galilego.Spacecraft
             float clipVMax = doorMaxV - DoorInset;
             float zoneVMin = clipVMin - 0.30f;      // мелкая сетка вокруг люка
             float zoneVMax = clipVMax + 0.30f;
-            // Вертикаль проёма. Запас по 4 см от кромок створки: физический просвет
-            // получается ~1.0 м (выпуклые тела съедают ещё ~0.06 с каждой стороны) —
-            // капсула игрока в приседе (0.9 м) проходит, в полный рост (1.45 м) нет.
-            // Было +0.35/-0.15 — просвет ~0.66 м, игрок не проходил даже пригнувшись.
-            float clipWMin = frameMinW + 0.14f;
+            // Вертикаль проёма. Порог люка — плоская плита до sillTop (вместо
+            // срезанного скоса): вырез начинается на 12 см ниже её верха, поэтому
+            // верх порога остаётся целым. Раньше вырез шёл от frameMinW+0.14 и
+            // оставлял от порога скос ~31–33° — круче MaxSlopeDegrees (30°), и
+            // выходящий игрок скользил по нему вниз и проваливался.
+            float sillTop = frameMinW + 0.15f;   // верх порога над палубой
+            float sillUIn = float.PositiveInfinity, sillUOut = float.NegativeInfinity;
+            for (int i = 0; i < framePts.Count; i++)
+            {
+                f.ToUvw(framePts[i], out float fu, out _, out float fw);
+                if (fw < frameMinW + 0.25f)
+                {
+                    sillUIn = Mathf.Min(sillUIn, fu);
+                    sillUOut = Mathf.Max(sillUOut, fu);
+                }
+            }
+
+            // Верхний запас по 4 см от кромки створки: физический просвет ~1.0 м
+            // (выпуклые тела съедают ещё ~0.06 с каждой стороны) — капсула игрока
+            // в приседе (0.8 м) проходит, в полный рост (1.45 м) нет.
+            float clipWMin = sillTop - 0.12f;   // ниже вырез не доходит: остатки ячеек ниже плиты
             float clipWMax = frameMaxW - 0.04f;
 
             // Оболочка: клинья + сетка у люка.
@@ -183,6 +201,22 @@ namespace Galilego.Spacecraft
             {
                 AddTriangleHull(hostGo, cell.Value, owner, toHost);
             }
+
+            // Порог люка — сплошная плита по всей глубине рамы: фрагменты ячеек
+            // оболочки под вырезом тонкие и «полом» служить не должны.
+            var sillPts = new List<Vector3>(8);
+            foreach (float uu in new[] { sillUIn, sillUOut })
+            {
+                foreach (float vv in new[] { clipVMin, clipVMax })
+                {
+                    foreach (float ww in new[] { -0.02f, sillTop })
+                    {
+                        sillPts.Add(f.Origin + f.Hatch * uu + f.Side * vv + f.Axis * (ww + f.DeckTop));
+                    }
+                }
+            }
+
+            AddPointsHull(hostGo, sillPts, owner, toHost);
 
             // Днище и палуба: колпак теплозащиты, верх срезан по палубе.
             var heatClamped = new List<Vector3>(heatPts.Count);
@@ -305,7 +339,11 @@ namespace Galilego.Spacecraft
             if (zone)
             {
                 int iv = Mathf.FloorToInt((v - zoneVMin) / CellV);
-                int iw = Mathf.FloorToInt(w / CellW);
+                // Стойки проёма (v в поясе люка, но вне выреза) в поясе высоты
+                // выреза сливаем в один бакет: получится цельное выпуклое тело без
+                // стыков ячеек по высоте (на стыках боковой луч Floor находил
+                // «пол» в пределах шага вверх и подбрасывал игрока).
+                int iw = (w >= clipWMin && w <= clipWMax) ? -100 : Mathf.FloorToInt(w / CellW);
                 key = Key(1, iv, iw);
             }
             else
@@ -413,6 +451,33 @@ namespace Galilego.Spacecraft
             }
 
             // Топология не важна: PhysX считает выпуклую оболочку по вершинам; индексы нужны меш-у.
+            var indices = new List<int>();
+            for (int i = 1; i + 1 < vertices.Count; i++)
+            {
+                indices.Add(0);
+                indices.Add(i);
+                indices.Add(i + 1);
+            }
+
+            AttachHull(host, vertices, indices, owner);
+        }
+
+        /// <summary>Выпуклое тело по готовому набору точек (плита порога — её 8 углов).</summary>
+        private static void AddPointsHull(GameObject host, List<Vector3> points, OrionCollisionMeshes owner,
+            Matrix4x4 toHost)
+        {
+            if (points.Count < 4)
+            {
+                return;
+            }
+
+            var vertices = new List<Vector3>(points.Count);
+            for (int i = 0; i < points.Count; i++)
+            {
+                vertices.Add(toHost.MultiplyPoint3x4(points[i]));
+            }
+
+            // Топология не важна: PhysX считает выпуклую оболочку по вершинам.
             var indices = new List<int>();
             for (int i = 1; i + 1 < vertices.Count; i++)
             {
