@@ -41,8 +41,24 @@ namespace Galilego.Simulation.Player
         public const double StepUpMeters = 0.5d;
         public const double SupportDropMeters = 0.5d;
         public const double MaxSlopeDegrees = 30d;
+
+        /// <summary>
+        /// Максимальный уклон, на который разрешена посадка из полёта/падения
+        /// (град). Согласован с порогом игнора свипа (|n·up| &gt; 0.7 ≈ 45.6°):
+        /// склоны между MaxSlopeDegrees и этим порогом свип не считает стеной,
+        /// и раньше игрок проваливался сквозь них (скос порога люка ~31–33°).
+        /// Круче MaxSlopeDegrees на земле уже обрабатывает скольжение.
+        /// </summary>
+        public const double LandingMaxSlopeDegrees = 46d;
+
         public const int MaxSweepIterations = 4;
         public const double SlideSpeedMps = 1.5d;
+
+        /// <summary>
+        /// Скорость плавного опускания, когда в висении проход срезан почти
+        /// полностью (притолока люка), а чуть ниже путь свободнее (м/с).
+        /// </summary>
+        public const double HoverSinkSpeed = 1d;
 
         /// <summary>
         /// Численный допуск швов между коллайдерами (м): ступень чуть выше StepUp
@@ -369,6 +385,36 @@ namespace Galilego.Simulation.Player
                 }
             }
 
+            // Помощь при зависании: ход срезан почти полностью (голова в притолоке
+            // люка). Если чуть ниже свип продвигает заметно дальше — плавно
+            // опускаемся, пока не откроется проход. Обычную стену так не «топит»:
+            // срабатывает только когда пониже ход реально свободнее.
+            if (Hovering && flatStep.Magnitude > 1e-9d
+                && (p - Position).Magnitude < 0.5d * flatStep.Magnitude)
+            {
+                double progress = (p - Position).Magnitude;
+                double lowest = support.Floor(new Vector3d(p.X, p.Y, p.Z + StepUpMeters), 3d,
+                    out double underFloor, out _, out _) ? underFloor : double.NegativeInfinity;
+                for (int k = 1; k <= 2; k++)
+                {
+                    double targetZ = Math.Max(lowest, p.Z - (0.15d * k));
+                    if (targetZ >= p.Z - 1e-6d)
+                    {
+                        continue;
+                    }
+
+                    Vector3d lowered = SweepHorizontal(support,
+                        new Vector3d(Position.X, Position.Y, targetZ), flatStep, CapsuleHeightCrouched);
+                    double loweredProgress =
+                        new Vector3d(lowered.X - Position.X, lowered.Y - Position.Y, 0d).Magnitude;
+                    if (loweredProgress > progress + 0.03d)
+                    {
+                        step = new Vector3d(step.X, step.Y, -Math.Min(HoverSinkSpeed * dt, p.Z - targetZ));
+                        break;
+                    }
+                }
+            }
+
             // Вертикаль дробим чанками: подшаг может быть до 0.5 с (метры пролёта),
             // и тонкая плита на пути не должна проскакиваться целиком. Посадка
             // проверяется ДО сдвига чанка, поэтому плита внутри чанка видна.
@@ -391,7 +437,7 @@ namespace Galilego.Simulation.Player
                     Vector3d landFrom = new Vector3d(p.X, p.Y, p.Z + StepUpMeters);
                     if (support.Floor(landFrom, StepUpMeters + fall, out double floorHeight, out Vector3d floorNormal, out int floorId)
                         && floorHeight <= p.Z + StepUpMeters
-                        && SlopeAngleDegrees(floorNormal) <= MaxSlopeDegrees)
+                        && SlopeAngleDegrees(floorNormal) <= LandingMaxSlopeDegrees)
                     {
                         Position = new Vector3d(p.X, p.Y, floorHeight);
                         Velocity = new Vector3d(Velocity.X, Velocity.Y, 0d);
