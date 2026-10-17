@@ -98,6 +98,13 @@ namespace Galilego.Universe
                 return;
             }
 
+            // Сидя: каждый кадр пересчитываем точку опоры у якоря кресла —
+            // корабль движется, и игрок обязан ехать вместе с ним.
+            if (Seated)
+            {
+                RefreshSeatedPose();
+            }
+
             if (InputBlocked)
             {
                 // Меню открыто: сбрасываем намерение, иначе «залипшая» прошлая
@@ -106,6 +113,21 @@ namespace Galilego.Universe
                 // иначе висела бы поверх открытого планшета/меню.
                 Focused = null;
                 Runner.PlayerIntent = PlayerIntent.Idle;
+                return;
+            }
+
+            if (Seated)
+            {
+                // Сидим: шаг ходьбы и прыжки не бегут, взгляд свободен;
+                // E — встать (или закрыть монитор, если он открыт — тогда
+                // этим занимается сам планшет, ввод заблокирован выше).
+                Focused = null;
+                Runner.PlayerIntent = PlayerIntent.Idle;
+                if (PlayerInput.Down(GameKey.E) && !Runner.BuildMode)
+                {
+                    StandUp();
+                }
+
                 return;
             }
 
@@ -130,19 +152,6 @@ namespace Galilego.Universe
                 return;
             }
 
-            if (Seated)
-            {
-                // Встать с кресла: оффсет — у кресла, чтобы не телепортироваться.
-                if (SeatedSeat.Anchor != null && ShipTransform != null)
-                {
-                    ShipLocalOffset = ShipTransform.InverseTransformPoint(SeatedSeat.Anchor.position)
-                        + new Vector3(0f, 0f, -1.2f);
-                }
-
-                SeatedSeat = null;
-                return;
-            }
-
             if (Runner.PlayerMode == PlayerMode.InShip)
             {
                 Camera camera = Camera.main;
@@ -161,9 +170,80 @@ namespace Galilego.Universe
             }
         }
 
-        public void EnterSeat(CockpitSeat seat)
+        /// <summary>
+        /// Сесть в кресло: поза игрока фиксируется у якоря (шаг физики замирает,
+        /// корабль продолжает движение). false — якоря/раннера нет.
+        /// </summary>
+        public bool EnterSeat(CockpitSeat seat)
         {
+            if (seat == null || seat.Anchor == null || Runner == null)
+            {
+                return false;
+            }
+
             SeatedSeat = seat;
+            Runner.SeatPlayer(FeetPoint(seat), AstroFrame.ToAstro(SeatUpRender(seat)));
+            return true;
+        }
+
+        /// <summary>Встать: игрок ставится на ноги рядом с креслом, ходьба возвращается.</summary>
+        public void StandUp()
+        {
+            if (SeatedSeat == null)
+            {
+                return;
+            }
+
+            CockpitSeat seat = SeatedSeat;
+            SeatedSeat = null;
+            if (Runner == null)
+            {
+                return;
+            }
+
+            Vector3d feet = Runner.PlayerSeatedPosition;
+            if (seat.Anchor != null)
+            {
+                Vector3 renderFeet = SeatedFeetRender(seat)
+                    + seat.Anchor.TransformDirection(seat.StandOffsetMeters);
+                feet = FloatingOrigin.Anchor + AstroFrame.ToAstro(renderFeet);
+                if (Runner.PlayerMode == PlayerMode.InShip && ShipTransform != null)
+                {
+                    ShipLocalOffset = ShipTransform.InverseTransformPoint(renderFeet);
+                }
+            }
+
+            Runner.UnseatPlayer(feet);
+        }
+
+        /// <summary>«Вверх» кресла в render-мире: местная +Z якоря (локальный поворот — нулевой).</summary>
+        private static Vector3 SeatUpRender(CockpitSeat seat)
+        {
+            return seat.Anchor.TransformDirection(Vector3.forward);
+        }
+
+        /// <summary>Ноги сидящего в render-мире: якорь (глаза) минус «вверх» кресла.</summary>
+        private static Vector3 SeatedFeetRender(CockpitSeat seat)
+        {
+            return seat.Anchor.position - (SeatUpRender(seat) * seat.EyeHeightMeters);
+        }
+
+        /// <summary>Точка опоры сидящего (ноги), astro-координаты.</summary>
+        private static Vector3d FeetPoint(CockpitSeat seat)
+        {
+            return FloatingOrigin.Anchor + AstroFrame.ToAstro(SeatedFeetRender(seat));
+        }
+
+        /// <summary>Пересчёт позы сидящего каждый кадр (корабль движется — якорь едет).</summary>
+        private void RefreshSeatedPose()
+        {
+            if (SeatedSeat == null || SeatedSeat.Anchor == null || Runner == null)
+            {
+                return;
+            }
+
+            Runner.PlayerSeatedPosition = FeetPoint(SeatedSeat);
+            Runner.PlayerSeatedUp = AstroFrame.ToAstro(SeatUpRender(SeatedSeat));
         }
 
         private void UpdateFocus()

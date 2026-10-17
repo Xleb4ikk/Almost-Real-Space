@@ -178,6 +178,15 @@ namespace Galilego.Universe
         /// <summary>Скорость игрока в double-мире.</summary>
         public Vector3d PlayerVelocity { get; private set; }
 
+        /// <summary>Игрок сидит в кресле: шаг физики заморожен на PlayerSeatedPosition.</summary>
+        public bool PlayerSeated { get; private set; }
+
+        /// <summary>Точка опоры сидящего (ноги у кресла), double-мир; обновляет PlayerController.</summary>
+        public Vector3d PlayerSeatedPosition { get; set; }
+
+        /// <summary>«Вверх» кресла (astro): камера сидящего кладёт высоту глаз вдоль него.</summary>
+        public Vector3d PlayerSeatedUp { get; set; }
+
         /// <summary>Намерение игрока на кадр (заполняет PlayerController).</summary>
         public PlayerIntent PlayerIntent;
 
@@ -874,6 +883,31 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Сесть в кресло: поза игрока жёстко фиксируется на точке опоры
+        /// (double-мир) до UnseatPlayer. Кресло может быть в любом режиме —
+        /// посадка главнее шага режима (ходьба/падение/плавание замирают).
+        /// </summary>
+        public void SeatPlayer(Vector3d feetPosition, Vector3d seatUp)
+        {
+            PlayerSeated = true;
+            PlayerSeatedPosition = feetPosition;
+            PlayerSeatedUp = seatUp;
+            PlayerVelocity = Ship != null ? Ship.Velocity : PlayerVelocity;
+            playerAirborne = false;
+            JetpackActive = false;
+            PlayerHoverActive = false;
+        }
+
+        /// <summary>Встать: игрок возвращается к обычному шагу режима из точки опоры.</summary>
+        public void UnseatPlayer(Vector3d feetPosition)
+        {
+            PlayerSeated = false;
+            PlayerPosition = feetPosition;
+            PlayerVelocity = Ship != null ? Ship.Velocity : PlayerVelocity;
+            playerAirborne = false;
+        }
+
+        /// <summary>
         /// Вход в корабль: EVA/OnSurface и дистанция до корабля ≤ EnterDistance.
         /// В ноуклипе входа нет: игрок в свободном полёте, а принудительная
         /// посадка в кресло вырвала бы камеру из-под управления игроком.
@@ -937,23 +971,33 @@ namespace Galilego.Universe
                     continue;
                 }
 
-                switch (PlayerMode)
+                if (PlayerSeated)
                 {
-                    case PlayerMode.InShip:
-                        PlayerPosition = Ship.Position;
-                        PlayerVelocity = Ship.Velocity;
-                        break;
-                    case PlayerMode.EVA:
-                        StepPlayerEva(t, dt);
-                        break;
-                    case PlayerMode.OnSurface:
-                        StepPlayerSurface(t, dt, jump);
-                        playerJumpQueued = false;
-                        jump = false;
-                        break;
-                    case PlayerMode.Swimming:
-                        StepPlayerSwimming(t, dt);
-                        break;
+                    // Сидим: ни гравитации, ни ходьбы — игрок жёстко у якоря
+                    // кресла (позу каждый кадр обновляет PlayerController).
+                    PlayerPosition = PlayerSeatedPosition;
+                    PlayerVelocity = Ship.Velocity;
+                }
+                else
+                {
+                    switch (PlayerMode)
+                    {
+                        case PlayerMode.InShip:
+                            PlayerPosition = Ship.Position;
+                            PlayerVelocity = Ship.Velocity;
+                            break;
+                        case PlayerMode.EVA:
+                            StepPlayerEva(t, dt);
+                            break;
+                        case PlayerMode.OnSurface:
+                            StepPlayerSurface(t, dt, jump);
+                            playerJumpQueued = false;
+                            jump = false;
+                            break;
+                        case PlayerMode.Swimming:
+                            StepPlayerSwimming(t, dt);
+                            break;
+                    }
                 }
 
                 t += dt;

@@ -17,26 +17,6 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Кресло пилота: садимся (камера приколачивается к якорю), встаём по E.
-    /// Якорь — пустой дочерний GO кресла на высоте глаз сидящего.
-    /// </summary>
-    public sealed class CockpitSeat : Interactable
-    {
-        [Tooltip("Пустой дочерний GO — позиция глаз сидящего.")]
-        public Transform Anchor;
-
-        public override string Prompt => "Сесть в кресло (E)";
-
-        public override void Interact(PlayerController player)
-        {
-            if (player != null)
-            {
-                player.EnterSeat(this);
-            }
-        }
-    }
-
-    /// <summary>
     /// Демо-рычаг газа: E — дать полный газ / убрать в ноль. Показывает паттерн
     /// «рычаг → раннер»: настоящая панель наберётся из таких интерактиблов.
     /// </summary>

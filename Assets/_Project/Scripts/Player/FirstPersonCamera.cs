@@ -57,6 +57,10 @@ namespace Galilego.Universe
             "чтобы пройти низкий проём (люк капсулы Orion ~1.2 м).")]
         public double CrouchEyeMeters = 0.8d;
 
+        [Tooltip("Высота глаз сидящего (м от точки опоры, ноги на палубе). " +
+            "Якорь кресла CockpitSeat — это глаза; столько же откладывается вниз до ног.")]
+        public double SeatedEyeMeters = 0.85d;
+
 #if UNITY_EDITOR
         /// <summary>
         /// Инструмент съёмки (Editor/SurfaceCaptureTool) держит кадры «до/после»
@@ -97,6 +101,9 @@ namespace Galilego.Universe
 
         /// <summary>Плавный переход «рост ↔ присед» (0..1) для высоты глаз.</summary>
         private float crouchBlend;
+
+        /// <summary>Плавный переход «стоя ↔ сидя» (0..1) для высоты глаз.</summary>
+        private float seatedBlend;
 
         private void Start()
         {
@@ -200,9 +207,12 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Присед: плавно (не рывком) — высота глаз едет к CrouchEyeMeters.
+            // Присед и посадка в кресло: плавно (не рывком) — высота глаз едет
+            // к CrouchEyeMeters / SeatedEyeMeters.
             bool crouched = Runner != null && Runner.PlayerCrouched;
             crouchBlend = Mathf.MoveTowards(crouchBlend, crouched ? 1f : 0f, Time.deltaTime * 5f);
+            bool seated = Runner != null && Runner.PlayerSeated;
+            seatedBlend = Mathf.MoveTowards(seatedBlend, seated ? 1f : 0f, Time.deltaTime * 5f);
 
             ComputeEyeOffset();
             Vector3 up = ComputeLocalUp();
@@ -438,7 +448,7 @@ namespace Galilego.Universe
         private void ComputeEyeOffset()
         {
             eyeOffset = Vector3.zero;
-            if (Runner == null || Runner.Ship == null || Runner.DominantBody == null)
+            if (Runner == null || Runner.Ship == null)
             {
                 return;
             }
@@ -453,7 +463,19 @@ namespace Galilego.Universe
                 eye = EyeHeightMeters + ((CrouchEyeMeters - EyeHeightMeters) * crouchBlend);
             }
 
-            eyeOffset = ComputeLocalUp() * (float)eye;
+            Vector3 up = ComputeLocalUp();
+            if (seatedBlend > 0f)
+            {
+                // Сидя: смещение — вдоль «вверх» кресла (корабль может быть
+                // наклонён), высота — SeatedEyeMeters; оба едут плавно.
+                Vector3 seatUp = Runner.PlayerSeatedUp.SqrMagnitude > 1e-9d
+                    ? AstroFrame.ToSimulation(Runner.PlayerSeatedUp)
+                    : up;
+                up = Vector3.Slerp(up, seatUp.normalized, seatedBlend);
+                eye += (SeatedEyeMeters - eye) * seatedBlend;
+            }
+
+            eyeOffset = up * (float)eye;
         }
 
         private void UpdateClipPlanes()
