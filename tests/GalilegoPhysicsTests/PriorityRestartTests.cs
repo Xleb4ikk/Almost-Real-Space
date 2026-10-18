@@ -7,11 +7,11 @@ using Xunit.Abstractions;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Тест G — приоритет + защита от zero-time loop. Два детектора на одной
-    /// оболочке с разными приоритетами: первый вызов обязан вернуть высшего
-    /// по приоритету; рестарт из возвращённого корня обязан гарантированно
-    /// продвинуться (g = 0 в точке рестарта — не событие) и найти следующее
-    /// пересечение строго позже, а не зациклиться на той же точке.
+    /// Test G — priority plus zero-time-loop protection. Two detectors on the
+    /// same shell with different priorities: the first call must return the
+    /// higher-priority one; restarting from the returned root must always advance
+    /// (g = 0 at the restart point is not an event) and find the next crossing
+    /// strictly later rather than looping on the same point.
     /// </summary>
     public sealed class PriorityRestartTests
     {
@@ -45,7 +45,7 @@ namespace GalilegoPhysicsTests
             Assert.Equal("HighPriority", first.Value.DetectorName);
             double t1 = first.Value.TimeSeconds;
 
-            // Рестарт из корня: тот же корень переоткрыт быть не должен.
+            // Restart from the root: the same root must not be re-detected.
             EventOccurrence? second = propagator.Propagate(ship, t1, period - t1);
             Assert.True(second.HasValue, "Второе пересечение не найдено.");
             double t2 = second.Value.TimeSeconds;
@@ -63,10 +63,10 @@ namespace GalilegoPhysicsTests
         [Fact]
         public void LowPriorityDetectorAlone_FindsSameRoot()
         {
-            // Контроль к coincident-кейсу выше: доказывает, что LowPriority
-            // реально фаерит на том же корне (а не молчит, оставляя победу
-            // HighPriority по умолчанию). Тот же чанкинг, та же бисекция —
-            // корень обязан совпасть вплотную.
+            // Control for the coincident case above: proves LowPriority really
+            // fires on the same root (rather than staying silent and letting
+            // HighPriority win by default). Same chunking, same bisection — the
+            // roots must coincide tightly.
             StarSystem system = AltitudeCrossingTests.CreateSystem(out OrbitingBody star);
             TestScene.EllipticalOrbit(
                 AltitudeCrossingTests.Periapsis, AltitudeCrossingTests.Apoapsis, TestScene.Mu,

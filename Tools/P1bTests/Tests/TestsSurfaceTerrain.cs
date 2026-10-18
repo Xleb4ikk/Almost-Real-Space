@@ -12,8 +12,8 @@ internal static partial class P1bTests
 {
     private static int Test20_Kind()
     {
-        // A4.1: каждое событие несёт типизированный Kind + детектор-источник.
-        // Ни одного парсинга DetectorName: kind идёт из детектора напрямую.
+        // A4.1: every event carries a typed Kind + detector source.
+        // No DetectorName parsing: Kind comes directly from the detector.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.Atmosphere = new AtmosphereProfile
@@ -75,8 +75,8 @@ internal static partial class P1bTests
 
     private static int Test20_SurfaceInverse()
     {
-        // A4.2: инверс тем же Родригесом. 1000 случайных lat/lon×ось×время,
-        // полюса, шов ±π в обе стороны, шов во времени (2π — представление).
+        // A4.2: inverse with the same Rodrigues. 1000 random lat/lon x axis x time,
+        // poles, +/-pi seam both ways, time seam (2pi - representation).
         StarSystem sys = TestSystem();
         OrbitingBody star = sys.Root;
         star.Radius = 6371000d;
@@ -108,7 +108,7 @@ internal static partial class P1bTests
 
         bool roundtrip = worstLat < 1e-9d && worstLon < 1e-9d;
 
-        // Полюса: lon детерминированно 0.
+        // Poles: lon is deterministically 0.
         star.NorthPoleDirection = new Vector3d(0.3d, 0d, 0.95d);
         star.RotationPeriodSeconds = 86400d;
         star.GetSurfaceState(90d, 123d, 0d, 1000d, out Vector3d wpN, out _);
@@ -117,7 +117,7 @@ internal static partial class P1bTests
         star.SurfaceLatLonAt(wpS, 2000d, out double latS, out double lonS);
         bool poles = Math.Abs(latN - 90d) < 1e-9d && lonN == 0d && Math.Abs(latS + 90d) < 1e-9d && lonS == 0d;
 
-        // Шов в обе стороны: 179.9999° и 180.0001° рядом, не через 360°.
+        // Seam both ways: 179.9999 deg and 180.0001 deg adjacent, not via 360 deg.
         star.NorthPoleDirection = new Vector3d(0d, 0d, 1d);
         star.RotationPeriodSeconds = 0d;
         star.GetSurfaceState(0d, 179.9999d, 0d, 0d, out Vector3d wpA, out _);
@@ -132,8 +132,8 @@ internal static partial class P1bTests
             && WrapLonError(lonC, 359.9999d) < 1e-9d
             && lonA >= 0d && lonA < 360d && lonB >= 0d && lonB < 360d && lonC >= 0d && lonC < 360d;
 
-        // Шов во времени: фиксированная мировая точка, тело проворачивается под ней.
-        // Сырая долгота пилит через 0/360, развёрнутая — прямая с наклоном −ω.
+        // Time seam: fixed world point, the body rotates underneath.
+        // Raw longitude sawtooths through 0/360, unwrapped is a line with slope -omega.
         star.RotationPeriodSeconds = 3600d;
         var fixedPoint = new Vector3d(star.Radius + 1000d, 0d, 0d);
         double prevUnwrapped = 0d;
@@ -159,7 +159,7 @@ internal static partial class P1bTests
             first = false;
         }
 
-        // Ретроградный флип оси: roundtrip жив и там.
+        // Retrograde axis flip: roundtrip still holds.
         star.NorthPoleDirection = new Vector3d(0d, 0d, -1d);
         star.GetSurfaceState(30d, 200d, 100d, 500d, out Vector3d wpF, out _);
         star.SurfaceLatLonAt(wpF, 500d, out double latF, out double lonF);
@@ -173,13 +173,13 @@ internal static partial class P1bTests
 
     private static int Test20_Reaction()
     {
-        // A4.3: touchdown по v_n, инварианты breakup, кламп == dry, фокус без пересчёта.
+        // A4.3: touchdown by v_n, breakup invariants, clamp == dry, focus without recompute.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
         var breakup = new SingleThresholdBreakup();
 
-        // Мягкое: 1м над поверхностью, (5,-1,0) м/с — v_n≈4.5 < 5, v_t=5 живёт.
+        // Soft: 1 m above the surface, (5,-1,0) m/s - v_n~4.5 < 5, v_t=5 survives.
         var physS = new SpacecraftPhysics();
         physS.Sources.Add(new CachedGravitySource(sys));
         var propS = new EventDrivenPropagator(physS);
@@ -194,7 +194,7 @@ internal static partial class P1bTests
         double postVn = Vector3d.Dot(shipS.Velocity - surfVS, nS);
         double postVt = (shipS.Velocity - surfVS - (nS * postVn)).Magnitude;
 
-        // Жёсткое: 50км, -2000 м/с radial — разрушение, 10 спеков.
+        // Hard: 50 km, -2000 m/s radial - breakup, 10 specs.
         var physH = new SpacecraftPhysics();
         physH.Sources.Add(new CachedGravitySource(sys));
         var propH = new EventDrivenPropagator(physH);
@@ -228,7 +228,7 @@ internal static partial class P1bTests
         double worldMomErr = (sumMV - expectMV).Magnitude / Math.Max(1d, expectMV.Magnitude);
         double massErr = Math.Abs(sumM - shipHMass) / shipHMass;
 
-        // Кламп: масса == dry точно.
+        // Clamp: mass == dry exactly.
         var thrust = new ThrustSource(2000d, 900d, new ConstantIsp(300d));
         thrust.ThrottleAt = (time) => 1d;
         var physD = new SpacecraftPhysics();
@@ -240,7 +240,7 @@ internal static partial class P1bTests
         EventOccurrence? evD = propD.Propagate(shipD, 0d, 600d);
         double clamped = EventReactions.ApplyDepletion(shipD, evD.Value);
 
-        // Фокус: тело из события, без пересчёта.
+        // Focus: body from the event, no recompute.
         OrbitingBody moon = sys.AllBodies[2];
         moon.EvaluateWorldState(0d, out Vector3d mp0, out Vector3d mv0);
         var propF = new EventDrivenPropagator(physS);
@@ -296,8 +296,8 @@ internal static partial class P1bTests
 
     private static int Test20_SurfaceMotion()
     {
-        // A4.4: стоянка бит-в-бит, следование за вращением, стик 30° / слип 60°,
-        // slip→stick за t_stop, отрыв при outward-g. Сфера: a_t≡0 → всегда стик.
+        // A4.4: standing bit-for-bit, rotation following, stick 30 deg / slip 60 deg,
+        // slip->stick after t_stop, liftoff under outward-g. Sphere: a_t==0 -> always stick.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.RotationPeriodSeconds = 0d;
@@ -305,8 +305,8 @@ internal static partial class P1bTests
         SurfaceMotion.GravityProvider realG = (pos, t) => sys.EvaluateShipAcceleration(pos, t);
         var sphere = new SphericalTerrain();
 
-        // Стоянка: тело движется по орбите, поэтому абсолютного побитового покоя
-        // быть не может — проверяется относительный оффсет (стоит на R ±мм).
+        // Standing: the body orbits, so absolute bit-exact rest is impossible -
+        // the relative offset is checked (stays at R +/-mm).
         Vector3d standP = bp0 + new Vector3d(0d, planet.Radius, 0d);
         Vector3d standV = bv0;
         Vector3d p = standP;
@@ -324,13 +324,13 @@ internal static partial class P1bTests
             if (drift > standDrift) standDrift = drift;
         }
 
-        // Скорость обязана равняться скорости поверхности в конце (тело уехало
-        // по орбите — абсолютного покоя нет, есть совместное движение).
+        // Velocity must equal the surface velocity at the end (the body moved
+        // along its orbit - no absolute rest, only co-motion).
         planet.EvaluateWorldState(5d, out _, out Vector3d bv5);
         bool standstill = standDrift < 1e-3d && standRegime && (v - bv5).SqrMagnitude == 0d;
 
-        // Следование: период 86400 (центробежка 0.034 ≪ 9.8 — контакт держится;
-        // период 3600 на земном радиусе физически срывает всё в Liftoff).
+        // Following: period 86400 (centrifugal 0.034 << 9.8 - contact holds;
+        // period 3600 at Earth radius physically breaks everything into Liftoff).
         planet.RotationPeriodSeconds = 86400d;
         planet.SurfaceLatLonAt(standP, 0d, out double lat0, out double lon0);
         planet.GetSurfaceState(lat0, lon0, 0d, 0d, out _, out Vector3d surfV0);
@@ -393,9 +393,9 @@ internal static partial class P1bTests
 
     private static int Test29_DescentChain()
     {
-        // V10: сквозная цепочка — вход, торможение парашютом (A=1500),
-        // мягкое касание, реакция, сутки стояния со следованием за вращением.
-        // Каждая фаза — своим допуском из существующих тестов, не одним общим.
+        // V10: end-to-end chain - entry, parachute braking (A=1500),
+        // soft touchdown, reaction, a day of standing with rotation following.
+        // Each phase uses its own tolerance from the existing tests, not one shared.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.Atmosphere = new AtmosphereProfile
@@ -467,9 +467,8 @@ internal static partial class P1bTests
 
     private static int Test29_TerminalVelocity()
     {
-        // V11: терминальная скорость против аналитики v=√(2mg/ρCdA) на плоском
-        // профиле (H=1e6м — плотность почти const на участке замера).
-        // Независимый эталон drag-динамики (был только rate-baseline на орбите).
+        // V11: terminal velocity against the analytic v=sqrt(2mg/rho*Cd*A) on a flat
+        // profile (H=1e6 m - density nearly const over the measured range).
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.Atmosphere = new AtmosphereProfile
@@ -514,9 +513,9 @@ internal static partial class P1bTests
             }
         }
 
-        // 0.9% измеренного — понятный состав: градиенты g/ρ по окну ~0.5% +
-        // остаточный переходный (ещё догоняет терминал сверху). Систематика,
-        // не шум: граница 1.5% держит с запасом, но ловит регресс модели.
+        // The measured 0.9% has a clear make-up: g/rho gradients over the window
+        // (~0.5%) plus residual transient (still catching up to terminal from above).
+        // Systematic, not noise: the 1.5% bound keeps margin but catches model regressions.
         double meanDown = count > 0 ? sumDown / count : double.NaN;
         double relErr = Math.Abs(meanDown / analytic - 1d);
         Check(count > 50 && relErr < 0.015d, "T29 terminal-velocity",
@@ -525,11 +524,6 @@ internal static partial class P1bTests
         return 0;
     }
 
-    // ════════════════════════════════════════════════════════════════════
-    // Регресс-тесты по найденным багам (ревью 2026-09): центробежный знак,
-    // Ламберт 180° (dt/longWay), кап z=39, force-accept рассинхрон,
-    // timeToPeriapsis при M=0, валидация кеплеровой рельсы.
-    // ════════════════════════════════════════════════════════════════════
 
     private sealed class SphereOnlyTerrain : ITerrainModel
     {
@@ -541,11 +535,9 @@ internal static partial class P1bTests
 
     private static int Test70_TryLiftoffSpin()
     {
-        // Фаза 1.1: TryLiftoff при ω≠0. Баг был двойной: критерий отрыва без
-        // центробежной (−ω×(ω×r)) расходился с SurfaceMotion (T52), а нормальная
-        // составляющая относительной скорости при отрыве не вычищалась.
-        // 1) Синхронизация с T52: СО-ВРАЩАЮЩИЙСЯ корабль (v_t=0), нулевая тяга:
-        // ω²R=10>g → Flying (центробежная отрывает), ω²R=5<g → Landed.
+        // Phase 1.1: TryLiftoff with omega != 0.
+        // 1) Sync with T52: CO-ROTATING ship (v_t=0), zero thrust:
+        // omega^2*R=10>g -> Flying (centrifugal lifts off), omega^2*R=5<g -> Landed.
         OrbitingBody fastBody = SpinPlanet(omega2R: 10d, g0: 9.8d);
         OrbitingBody slowBody = SpinPlanet(omega2R: 5d, g0: 9.8d);
         double radius = 1e6d;
@@ -560,18 +552,18 @@ internal static partial class P1bTests
         VesselRegime slow = EventReactions.TryLiftoff(coRotSlow, slowBody, Vector3d.Zero, gIn, 0d, out _);
         bool t52Sync = fast == VesselRegime.Flying && slow == VesselRegime.Landed;
 
-        // 2) Со-вращающийся корабль с тягой: скорость не удваивается —
-        // v_new == v_поверхности бит-в-близко (тангенциальная относительная нулевая).
+        // 2) Co-rotating ship with thrust: velocity is not doubled -
+        // v_new == surface velocity to within a hair (tangential relative is zero).
         var landedShip = new Spacecraft(new Vector3d(radius, 0d, 0d), surfaceV, 1000d);
         VesselRegime lift = EventReactions.TryLiftoff(landedShip, fastBody,
             new Vector3d(16d, 0d, 0d), gIn, 0d, out _);
         bool noDoubleCount = lift == VesselRegime.Flying
             && (landedShip.Velocity - surfaceV).Magnitude < 1e-9d;
 
-        // 3) Корабль с посторонней относительной скоростью (v=0-спавн,
-        // v_t_rel = −ωR): отрыв требует тяги > g+ω²R (Кориолис прижимает),
-        // после отрыва относительная тангенциальная СОХРАНЕНА — инерциальная
-        // скорость нулевая, а не удвоенная поверхность.
+        // 3) Ship with an unrelated relative velocity (v=0 spawn,
+        // v_t_rel = -omega*R): liftoff needs thrust > g+omega^2*R (Coriolis presses down);
+        // after liftoff the relative tangential is PRESERVED - inertial
+        // velocity is zero, not a doubled surface velocity.
         var spawnShip = new Spacecraft(new Vector3d(radius, 0d, 0d), Vector3d.Zero, 1000d);
         VesselRegime spawnLift = EventReactions.TryLiftoff(spawnShip, fastBody,
             new Vector3d(30d, 0d, 0d), gIn, 0d, out _);
@@ -614,7 +606,7 @@ internal static partial class P1bTests
         HeightfieldTerrain terrainB = MakeTerrain(42);
         body.Terrain = terrainA;
 
-        // Детерминизм: одинаковый seed — бит-в-бит одинаковые высоты.
+        // Determinism: same seed - bit-for-bit identical heights.
         bool deterministic = true;
         for (int i = 0; i <= 20; i++)
         {
@@ -629,7 +621,7 @@ internal static partial class P1bTests
             }
         }
 
-        // Кламп моря + диапазон амплитуды.
+        // Sea clamp + amplitude range.
         double worst = 0d;
         bool seaClamp = true;
         for (int i = 0; i <= 40; i++)
@@ -650,8 +642,8 @@ internal static partial class P1bTests
 
         bool amplitudeOk = worst <= terrainA.AmplitudeMeters + 1e-9d;
 
-        // Нормаль согласована с высотной функцией: независимая конечная разность
-        // (крупнее eps нормали, 1e-3 рад) через GetSurfaceState совпадает по направлению.
+        // Normal is consistent with the height function: an independent finite
+        // difference (coarser than the normal's eps, 1e-3 rad) via GetSurfaceState agrees in direction.
         body.EvaluateWorldState(0d, out Vector3d bodyP, out _);
         double lat0 = 0.37d;
         double lon0 = 1.11d;
@@ -672,10 +664,10 @@ internal static partial class P1bTests
         double normalAngle = Math.Acos(Math.Min(1d, Math.Max(-1d, Vector3d.Dot(normalManual, normalT))));
         bool normalConsistent = normalAngle < 0.05d;
 
-        // Спин: нормаль одного тел-fixed пункта (lat0/lon0) в момент t = quarter
-        // периода равна повороту Родригеса нормали t=0 вокруг оси спина.
-        // Позицию пункта в каждый момент даёт GetSurfaceState — он же учитывает
-        // RotationAngleAtTime(t), поэтому WorldLatLonOf даёт тот же lat/lon.
+        // Spin: the normal of one body-fixed point (lat0/lon0) at t = quarter
+        // period equals the Rodrigues rotation of the t=0 normal about the spin
+        // axis. GetSurfaceState gives the point's position at each time and also
+        // accounts for RotationAngleAtTime(t), so WorldLatLonOf yields the same lat/lon.
         double tQuarter = 900d;
         body.EvaluateWorldState(0d, out Vector3d bodyP0, out _);
         body.EvaluateWorldState(tQuarter, out Vector3d bodyPQ, out _);
@@ -692,7 +684,7 @@ internal static partial class P1bTests
         double spinError = (rotated.Normalized - normalQ).Magnitude;
         bool spinOk = spinError < 1e-9d;
 
-        // Детектор касания с рельефом: над пиком g<0 раньше сферы, выше — g>0.
+        // Terrain-contact detector: above the peak g<0 earlier than the sphere, higher up g>0.
         var detector = AltitudeCrossingDetector.ForTouchdown(body);
         double peakHeight = double.NegativeInfinity;
         double peakLat = 0d;
@@ -717,8 +709,8 @@ internal static partial class P1bTests
         body.GetSurfaceState(peakLat * (180d / Math.PI), peakLon * (180d / Math.PI), peakHeight, 0d, out Vector3d peakPos, out _);
         Vector3d radial = (peakPos - bodyPos).Normalized;
 
-        // g детектора — ВЫСОТА над рельефом: −50 м (ниже поверхности) → пересечение,
-        // +300 м (выше) → ещё нет. Момент события — точная поверхность.
+        // The detector's g is HEIGHT above terrain: -50 m (below the surface) -> a
+        // crossing, +300 m (above) -> not yet. The event time is the exact surface.
         var stateLow = new SpacecraftIntegrationState { Position = peakPos - (radial * 50d), Velocity = Vector3d.Zero, Mass = 1000d };
         var stateHigh = new SpacecraftIntegrationState { Position = peakPos + (radial * 300d), Velocity = Vector3d.Zero, Mass = 1000d };
         bool detectorLow = detector.Evaluate(stateLow, 0d) < 0d;
@@ -765,7 +757,7 @@ internal static partial class P1bTests
         HeightfieldTerrain legacy = MakeTerrain(42);
         body.Terrain = legacy;
 
-        // Нулевые новые параметры = бит-в-бит legacy-ветка SampleFbm.
+        // Zero new parameters = bit-for-bit legacy SampleFbm branch.
         HeightfieldTerrain legacyB = MakeTerrain(42);
         bool legacyExact = true;
         for (int i = 0; i <= 20; i++)
@@ -781,7 +773,7 @@ internal static partial class P1bTests
             }
         }
 
-        // WarpStrength = 0 игнорирует WarpSeedOffset (ранний выход в legacy).
+        // WarpStrength = 0 ignores WarpSeedOffset (early exit into legacy).
         HeightfieldTerrain warpOff = MakeTerrain(42);
         warpOff.WarpSeedOffset = 7;
         warpOff.WarpFrequency = 5d;
@@ -800,7 +792,7 @@ internal static partial class P1bTests
             }
         }
 
-        // Каждая фича по отдельности меняет вывод (проводка параметров жива).
+        // Each feature on its own changes the output (parameter wiring is live).
         HeightfieldTerrain ridged = MakeTerrain(42);
         ridged.RidgedMix = 0.6d;
         HeightfieldTerrain warped = MakeTerrain(42);
@@ -850,7 +842,7 @@ internal static partial class P1bTests
             }
         }
 
-        // Warp-поток независим: другой WarpSeedOffset — другой рельеф.
+        // The warp stream is independent: a different WarpSeedOffset gives different terrain.
         HeightfieldTerrain warpedB = MakeTerrain(42);
         warpedB.WarpStrength = 0.15d;
         warpedB.WarpSeedOffset = 8;
@@ -868,7 +860,7 @@ internal static partial class P1bTests
             }
         }
 
-        // Полный advanced: детерминизм, кламп моря, граница амплитуды.
+        // Full advanced: determinism, sea clamp, amplitude bound.
         HeightfieldTerrain advA = MakeTerrainAdvanced(42);
         HeightfieldTerrain advB = MakeTerrainAdvanced(42);
         body.Terrain = advA;
@@ -898,8 +890,8 @@ internal static partial class P1bTests
 
         bool advBoundOk = advWorst <= advA.AmplitudeMeters * (1d + advA.ContinentDepth) + 1e-6d;
 
-        // Паритет нормали на гребне (экстремум advanced-рельефа — задел под
-        // фазу 3: там расхождение double/float максимально из-за warp).
+        // Normal parity at the crest (the advanced-terrain extremum - the
+        // hardest case, where the double/float divergence is maximal due to warp).
         double peakH = double.NegativeInfinity;
         double peakLat = 0d;
         double peakLon = 0d;
@@ -937,8 +929,8 @@ internal static partial class P1bTests
         double advAngle = Math.Acos(Math.Min(1d, Math.Max(-1d, Vector3d.Dot(advManual, advNormal))));
         bool advNormalOk = advAngle < 0.05d;
 
-        // Нули вместо инициализаторов (старые сцены без новых полей в
-        // сериализации) — тоже бит-в-бит legacy через Effective*-нормализацию.
+        // Zeros instead of initializers (old scenes without the new serialized
+        // fields) - also bit-for-bit legacy via Effective* normalization.
         HeightfieldTerrain zeroed = MakeTerrain(42);
         zeroed.Lacunarity = 0d;
         zeroed.Gain = 0d;
@@ -991,8 +983,8 @@ internal static partial class P1bTests
         double[] slopes = { 0d, 0.1d, 0.5d, 1d, 5d };
         double[] masks = { -1d, 0d, 0.7d };
 
-        // Все фичи выкл = бит-в-бит legacy (включая крутые склоны и ненулевую
-        // маску: guard'ы, а не буквальные сравнения — ловушка «≥ 0»/«≤ 0»).
+        // All features off = bit-for-bit legacy (including steep slopes and a
+        // non-zero mask: guards, not literal ">= 0"/"<= 0" comparisons).
         bool legacyExact = true;
         foreach (double h in heights)
         {
@@ -1010,63 +1002,63 @@ internal static partial class P1bTests
             }
         }
 
-        // Rock-override: пляж (t = 0.01) + крутой склон → ровно скала.
+        // Rock-override: beach (t = 0.01) + steep slope -> exactly rock.
         UnityEngine.Color rock = TerrainPalette.Rock;
         bool rockFull = ColorsEqual(
             TerrainPalette.HeightColorEx(1000d, sea, amp, 1d, 0d, 0.5d, 0.1d, 0d, 0d), rock);
 
-        // Частичный бленд: середина перехода — ни база, ни скала.
+        // Partial blend: mid-transition is neither base nor rock.
         UnityEngine.Color rockBase = TerrainPalette.HeightColorLegacy(1000d, sea, amp);
         UnityEngine.Color rockMid = TerrainPalette.HeightColorEx(1000d, sea, amp, 0.55d, 0d, 0.5d, 0.1d, 0d, 0d);
         bool rockBlend = !ColorsEqual(rockMid, rockBase) && !ColorsEqual(rockMid, rock);
 
-        // Ниже порога — база без изменений.
+        // Below the threshold - base unchanged.
         bool rockBelow = ColorsEqual(
             TerrainPalette.HeightColorEx(1000d, sea, amp, 0.4d, 0d, 0.5d, 0.1d, 0d, 0d), rockBase);
 
-        // Rock не трогает море даже на крутизне.
+        // Rock leaves the sea alone even on steep ground.
         UnityEngine.Color seaColor = TerrainPalette.HeightColorLegacy(-1000d, sea, amp);
         bool rockSkipsSea = ColorsEqual(
             TerrainPalette.HeightColorEx(-1000d, sea, amp, 5d, 0d, 0.5d, 0.1d, 0d, 0d), seaColor);
 
-        // Порог скалы по высоте: на пляже (h=1000, t=0.02) скала подавлена,
-        // на горе (h=30000, t=0.6) срабатывает — камни только на крупных горах.
+        // Rock height gate: on the beach (h=1000, t=0.02) rock is suppressed,
+        // on a mountain (h=30000, t=0.6) it triggers - rocks only on large mountains.
         bool rockHeightGate = ColorsEqual(
             TerrainPalette.HeightColorEx(1000d, sea, amp, 1d, 0d, 0.5d, 0.1d, 0d, 0d, 0d, 0d, 0d, 0.4d), rockBase)
             && ColorsEqual(
                 TerrainPalette.HeightColorEx(30000d, sea, amp, 1d, 0d, 0.5d, 0.1d, 0d, 0d, 0d, 0d, 0d, 0.4d), rock);
 
-        // Snow-gate: t = 0.85 (h = 85000). Пологий — снег legacy, крутой — скала.
+        // Snow-gate: t = 0.85 (h = 85000). Gentle - legacy snow, steep - rock.
         UnityEngine.Color snowLeg = TerrainPalette.HeightColorLegacy(85000d, sea, amp);
         bool snowGentle = ColorsEqual(
             TerrainPalette.HeightColorEx(85000d, sea, amp, 0.1d, 0d, 0.5d, 0.1d, 0.5d, 0d), snowLeg);
         bool snowSteep = ColorsEqual(
             TerrainPalette.HeightColorEx(85000d, sea, amp, 1d, 0d, 0.5d, 0.1d, 0.5d, 0d), rock);
 
-        // Snow-guard: snowTan = 0 + крутой → legacy-снег (без ограничения).
-        // Rock при этом выключен — изоляция snow-guard от rock-override.
+        // Snow-guard: snowTan = 0 + steep -> legacy snow (no restriction).
+        // Rock is off here - isolating snow-guard from rock-override.
         bool snowGuard = ColorsEqual(
             TerrainPalette.HeightColorEx(85000d, sea, amp, 1d, 0d, 0d, 0.1d, 0d, 0d), snowLeg);
 
-        // Маска сдвигает bands: t = 0.24 (h = 24000) + strength 0.05.
+        // Mask shifts bands: t = 0.24 (h = 24000) with strength 0.05.
         UnityEngine.Color bandBase = TerrainPalette.HeightColorLegacy(24000d, sea, amp);
         bool maskShifts = !ColorsEqual(
             TerrainPalette.HeightColorEx(24000d, sea, amp, 0d, 1d, 0d, 0.1d, 0d, 0.05d), bandBase)
             && !ColorsEqual(
                 TerrainPalette.HeightColorEx(24000d, sea, amp, 0d, -1d, 0d, 0.1d, 0d, 0.05d), bandBase);
 
-        // Маска strength = 0 игнорируется (даже ненулевая маска).
+        // Mask strength = 0 is ignored (even a non-zero mask).
         bool maskOff = ColorsEqual(
             TerrainPalette.HeightColorEx(24000d, sea, amp, 0d, 1d, 0d, 0.1d, 0d, 0d), bandBase);
 
-        // SlopeTan: безразмерность и гарды.
+        // SlopeTan: scale-invariance and guards.
         bool slopeZero = TerrainPalette.SlopeTan(1d) == 0d;
         bool slopeOne = Math.Abs(TerrainPalette.SlopeTan(Math.Sqrt(0.5d)) - 1d) < 1e-6d;
         bool slopeHuge = TerrainPalette.SlopeTan(0d) >= 1e6d && TerrainPalette.SlopeTan(-0.5d) >= 1e6d;
         bool slopeMono = TerrainPalette.SlopeTan(0.9d) < TerrainPalette.SlopeTan(0.5d)
             && TerrainPalette.SlopeTan(0.5d) < TerrainPalette.SlopeTan(0.1d);
 
-        // SampleColorNoise: детерминизм, диапазон, независимость seed offset.
+        // SampleColorNoise: determinism, range, seed-offset independence.
         HeightfieldTerrain colorT = MakeTerrain(42);
         colorT.ColorNoiseFrequency = 2d;
         colorT.ColorNoiseOctaves = 3;
@@ -1110,8 +1102,8 @@ internal static partial class P1bTests
             }
         }
 
-        // Цветовая деталь (моттлинг): меняет цвет земли, strength 0 = игнор,
-        // на море не влияет (изоляция от water-ветки).
+        // Color detail (mottling): changes land color, strength 0 = ignored,
+        // does not affect the sea (isolated from the water branch).
         bool detailChanges = !ColorsEqual(
             TerrainPalette.HeightColorEx(24000d, sea, amp, 0d, 0d, 0d, 0.1d, 0d, 0d, 1d, 0.35d), bandBase)
             && !ColorsEqual(
@@ -1121,7 +1113,7 @@ internal static partial class P1bTests
         bool detailSkipsSea = ColorsEqual(
             TerrainPalette.HeightColorEx(-1000d, sea, amp, 0d, 0d, 0d, 0.1d, 0d, 0d, 1d, 0.35d), seaColor);
 
-        // SampleColorDetailNoise: детерминизм, диапазон, независимость seed offset.
+        // SampleColorDetailNoise: determinism, range, seed-offset independence.
         HeightfieldTerrain detailT = MakeTerrain(42);
         detailT.ColorDetailFrequency = 50d;
         detailT.ColorDetailOctaves = 3;
@@ -1188,15 +1180,9 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Фикстура «как в игре». Источник истины — Assets/_Project/Profiles/Terrain/
-    /// EarthLike.asset, а не эта копия: расхождение ловит T117.
+    /// Fixture "as in game". The source of truth is Assets/_Project/Profiles/Terrain/
+    /// EarthLike.asset, not this copy: T117 catches divergence.
     ///
-    /// Раньше здесь стояли ContinentDepth 0.9, ColorDetailFrequency 1500 и
-    /// ColorDetailStrength 0.35 — ни то, ни другое не совпадало с ассетом, и
-    /// замеры шума меряли конфигурацию, которую никто не грузит. Проверено, что
-    /// отличие по цвету НЕ нужно для T89: FineRoughness считает только
-    /// SampleHeight и цветовые маски не читает, так что проверка мелкомасштабного
-    /// рельефа на DetailFrequency/DetailMix к ColorDetail отношения не имеет.
     /// </summary>
     private static HeightfieldTerrain SceneLikeTerrain()
     {
@@ -1319,8 +1305,8 @@ internal static partial class P1bTests
         OrbitingBody body = MakeTerrainBody();
         body.EvaluateWorldState(0d, out Vector3d bodyPos, out _);
 
-        // Худший случай для float: warp + ridged + continent одновременно
-        // (ошибка сдвига входа умножается на чувствительность у гребней).
+        // Worst case for float: warp + ridged + continent at once
+        // (input-shift error is amplified by crest sensitivity).
         HeightfieldTerrain adv = MakeTerrainAdvanced(42);
         adv.WarpStrength = 0.15d;
         adv.RidgedMix = 0.6d;
@@ -1332,7 +1318,7 @@ internal static partial class P1bTests
         double amp = adv.AmplitudeMeters;
         double sea = adv.SeaLevelMeters;
 
-        // Сетка направлений + прогон настоящего кода job'а.
+        // Direction grid + running the real job code.
         int n = 120;
         int count = (n + 1) * (n + 1);
         double[] lats = new double[count];
@@ -1364,9 +1350,9 @@ internal static partial class P1bTests
             job.Execute(k);
         }
 
-        // Сценарий 0/1: job (та же реализация, что физика) обязан совпадать
-        // с GetHeightMeters бит-в-бит — включая связку warp+ridged на гребнях
-        // (топ-5% высот). Расхождение означало бы дрейф дубликатов формулы.
+        // Scenario 0/1: the job (same implementation as the physics) must match
+        // GetHeightMeters bit-for-bit - including warp+ridged on crests
+        // (top-5% heights). A mismatch would mean the formula duplicates drifted.
         double[] hDouble = new double[count];
         double maxH = double.NegativeInfinity;
         for (int k = 0; k < count; k++)
@@ -1417,7 +1403,7 @@ internal static partial class P1bTests
             }
         }
 
-        // Маска: parity float vs double.
+        // Mask: float vs double parity.
         double worstMask = 0d;
         for (int k = 0; k < count; k++)
         {
@@ -1433,8 +1419,8 @@ internal static partial class P1bTests
         hs.Dispose();
         ms.Dispose();
 
-        // Сценарий 2: самый мелкий тайл фазы 4 (0.5°, 65 вершин) вокруг пика:
-        // нормали double vs float end-to-end (позиции + центральные разности).
+        // Scenario 2: the finest phase-4 tile (0.5 deg, 65 vertices) around the peak:
+        // double vs float normals end-to-end (positions + central differences).
         double peakLat = 0d;
         double peakLon = 0d;
         for (int k = 0; k < count; k++)
@@ -1488,8 +1474,8 @@ internal static partial class P1bTests
             }
         }
 
-        // Сценарий 3: guard cos ≤ 1e-6 под float — срабатывание идентично,
-        // значения tan согласуются там, где склон конечен.
+        // Scenario 3: the cos <= 1e-6 guard under float - same triggering,
+        // tan values agree wherever the slope is finite.
         double worstNormalAngle = 0d;
         bool guardAgrees = true;
         double worstTanRel = 0d;
@@ -1553,8 +1539,8 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Средняя вторая разность высот вдоль экватора — изолирует мелкомасштабную
-    /// шероховатость (крупный наклон/низкие частоты первой разностью не ловятся).
+    /// Mean second difference of heights along the equator - isolates fine-scale
+    /// roughness (large slope / low frequencies are not caught by a first difference).
     /// </summary>
     private static double FineRoughness(TerrainNoiseParams p, int samples, double stepRad)
     {
@@ -1575,10 +1561,10 @@ internal static partial class P1bTests
 
     private static int Test89_TerrainPlains()
     {
-        // Маска равнин должна идти на СОБСТВЕННОМ потоке (salt 5), а не в
-        // default (там база salt 0 и warp-Z salt 300). Косвенно проверяем:
-        // смена PlainFrequency при PlainMix=0 не должна менять вывод, а
-        // включённый PlainMix — сплющивать рельеф только по маске.
+        // The plains mask must use its OWN stream (salt 5), not the default
+        // (base salt 0 and warp-Z salt 300 there). Verified indirectly: changing
+        // PlainFrequency with PlainMix=0 must not change the output, while
+        // enabling PlainMix flattens terrain by the mask only.
         HeightfieldTerrain freqOnly = SceneLikeTerrain();
         freqOnly.PlainMix = 0d;
         freqOnly.PlainFrequency = 1.8d;
@@ -1590,10 +1576,10 @@ internal static partial class P1bTests
         off.DetailMix = 0d;
         off.DetailFrequency = 0d;
 
-        // flat — ровно сценическая конфигурация (валидируем реальные значения).
+        // flat - exactly the scene configuration (validating the real values).
         HeightfieldTerrain flat = SceneLikeTerrain();
 
-        // detailOn — та же форма, но без равнин: изолируем вклад детали.
+        // detailOn - same shape but without plains: isolating the detail contribution.
         HeightfieldTerrain detailOn = SceneLikeTerrain();
         detailOn.PlainMix = 0d;
         detailOn.DetailMix = 0.06d;
@@ -1711,8 +1697,8 @@ internal static partial class P1bTests
             + " roughOff=" + meanOff.ToString("E3") + " roughFlat=" + meanFlat.ToString("E3")
             + " fineOff=" + fineOff.ToString("E3") + " fineDetail=" + fineDetail.ToString("E3"));
 
-        // Job (та же реализация, что физика/рендер) обязан совпасть с
-        // HeightfieldTerrain бит-в-бит и с включённой маской равнин.
+        // The job (same implementation as physics/render) must match
+        // HeightfieldTerrain bit-for-bit with the plains mask enabled.
         int m = 40;
         int count = (m + 1) * (m + 1);
         Unity.Collections.NativeArray<Unity.Mathematics.double3> dirs =
@@ -1781,10 +1767,10 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Профиль рельефа — единственная точка копирования (T91): FromProfile
-    /// обязан перенести ВСЕ поля в HeightfieldTerrain, Build — собрать terrain
-    /// из BodyBlueprint.Terrain, Clone — не делить палитру с оригиналом.
-    /// Забытое при копировании поле ловится здесь, а не глазами в четырёх местах.
+    /// Terrain profile is the single copy point (T91): FromProfile must carry
+    /// ALL fields into HeightfieldTerrain, Build must assemble terrain from
+    /// BodyBlueprint.Terrain, and Clone must not share the palette with the
+    /// original. A field forgotten when copying is caught here, not by eye in four places.
     /// </summary>
     private static int Test91_TerrainProfile()
     {
@@ -1850,8 +1836,7 @@ internal static partial class P1bTests
             && !ReferenceEquals(t.Palette, profile.Palette)
             && t.Palette.Matches(profile.Palette);
 
-        // Эталонная ручная сборка (как было в SystemBlueprint.Build): форма
-        // должна совпасть бит-в-бит.
+        // Reference manual build: the shape must match bit-for-bit.
         var manual = new HeightfieldTerrain
         {
             Seed = seed,
@@ -1917,8 +1902,8 @@ internal static partial class P1bTests
             }
         }
 
-        // Build: BodyBlueprint.Terrain -> OrbitingBody.Terrain; профиль
-        // защелкивается на момент сборки (правка после Build не влияет).
+        // Build: BodyBlueprint.Terrain -> OrbitingBody.Terrain; the profile is
+        // latched at build time (editing it after Build has no effect).
         var blueprint = new SystemBlueprint();
         blueprint.Bodies.Add(new BodyBlueprint
         {
@@ -1952,8 +1937,8 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Палитра из ассета (sRGB→Linear) обязана бит-в-бит совпадать со старыми
-    /// константами TerrainPalette — иначе миграция незаметно поменяет картинку.
+    /// The palette from the asset (sRGB->Linear) must match the legacy
+    /// TerrainPalette constants bit-for-bit - otherwise a migration would silently change the picture.
     /// </summary>
     private static int Test92_TerrainPaletteData()
     {
@@ -1981,9 +1966,9 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Размещение декора: детерминизм (та же точка — тот же инстанс),
-    /// паритет Burst-джобы и прямой функции, диапазоны масштаба/поворота и
-    /// фильтры (плотность, высота, вода, биом).
+    /// Decor placement: determinism (same point - same instance), parity of the
+    /// Burst job and the direct function, scale/rotation ranges, and filters
+    /// (density, height, water, biome).
     /// </summary>
     private static int Test93_GroundDecorDistribution()
     {
@@ -2137,7 +2122,7 @@ internal static partial class P1bTests
         jobAccepted.Dispose();
         jobInstances.Dispose();
 
-        // Фильтры обязаны занулять посадки.
+        // The filters must zero out placements.
         GroundDecorPlacementParams noDensity = p;
         noDensity.Density = 0d;
         GroundDecorPlacementParams tooHigh = p;
@@ -2175,9 +2160,9 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Проверка «верхней границы леса»: сэмплируем рельеф Terra и считаем, что
-    /// фильтр слоя Trees (MinAltitude 5, MaxAltitude 3200, slope 0.9,
-    /// wet 0.1..1) принимает деревья в высокогорье, но не выше 3.2 км.
+    /// "Tree line" check: sample Terra terrain and verify that the Trees layer
+    /// filter (MinAltitude 5, MaxAltitude 3200, slope 0.9, wet 0.1..1) accepts
+    /// trees at high altitude but not above 3.2 km.
     /// </summary>
     private static int Test94_TreeHighAltitude()
     {
@@ -2261,11 +2246,11 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Зелёная полоса декора: трава/деревья принимаются только на зелёной земле
-    /// палитры — вода, пляж (t&lt;0.03), скалы (t&gt;=0.45) и сушь (wet&lt;0.38)
-    /// обязаны давать ноль посадок; камни выше зелени принимаются, в воде — нет.
-    /// Плюс паритет CubeFaceDirection с CubeSphere.Direction, необходимое условие
-    /// IsSurfaceAllowed для TryEvaluate и страж снэпа IsMeshPointAboveWater.
+    /// Decor green band: grass/trees are accepted only on green palette land -
+    /// water, beach (t&lt;0.03), rock (t&gt;=0.45) and dry (wet&lt;0.38) must
+    /// give zero placements; rocks above the green band are accepted, in water not.
+    /// Plus CubeFaceDirection parity with CubeSphere.Direction, the required
+    /// IsSurfaceAllowed condition for TryEvaluate, and the snap guard IsMeshPointAboveWater.
     /// </summary>
     private static int Test99_DecorGreenBand()
     {
@@ -2342,8 +2327,8 @@ internal static partial class P1bTests
                     double mask = TerrainNoise.SampleColorNoise(terrainParams, dir);
                     mask = mask < -1d ? -1d : (mask > 1d ? 1d : mask);
                     double t = (aboveSea / Math.Max(1d, terrain.AmplitudeMeters)) + (mask * terrain.ColorNoiseStrength);
-                    // Кривая влажности — ИЗ КОДА декора, иначе тест классифицирует
-                    // «сушу» по другой формуле и видит траву там, где её нет.
+                    // Wetness curve comes FROM the decor code, otherwise the test
+                    // would classify "dry" by a different formula and see grass where there is none.
                     double wet = GroundDecorDistribution.BiomeWetness(mask);
 
                     bool acceptedGrass = GroundDecorDistribution.TryEvaluate(
@@ -2403,7 +2388,7 @@ internal static partial class P1bTests
             }
         }
 
-        // Паритет направлений: Burst-двойник обязан смотреть туда же, что CubeSphere.
+        // Direction parity: the Burst twin must point the same way as CubeSphere.
         bool dirParity = true;
         int[] faces = { 0, 1, 2, 3, 4, 5 };
         double[] uvs = { 0d, 0.13d, 0.5d, 0.87d, 1d, -0.05d, 1.05d };
@@ -2427,18 +2412,18 @@ internal static partial class P1bTests
             }
         }
 
-        // Страж снэпа: sim=(x,z,−y) от astro-rel; центр чанка (R+100,0,0).
+        // Snap guard: sim=(x,z,-y) from astro-rel; chunk centre (R+100,0,0).
         double radius = 1143000d;
         var chunkCenter = new Vector3d(radius + 100d, 0d, 0d);
         GroundDecorPlacementParams meshP = GroundDecorPlacementParams.FromLayer(grass, terrain, radius, chunkCenter);
-        // NB: FromLayer берёт Amplitude/SeaLevel из terrain-профиля EarthLike;
-        // для точечной проверки подменяем уровень моря на 0 и амплитуду профиля.
+        // NB: FromLayer takes Amplitude/SeaLevel from the EarthLike terrain
+        // profile; for a point check we substitute sea level 0 and the profile amplitude.
         double sea = meshP.SeaLevelMeters;
         double tol = meshP.AmplitudeMeters * 0.001d;
         bool meshLand = GroundDecorDistribution.IsMeshPointAboveWater(
             meshP, new Unity.Mathematics.float3(0f, 0f, 0f));
-        // sim=(x,z,−y) от astro-rel: при центре (R+100,0,0) радиаль — ось X,
-        // Y/Z тангенциальны (сдвиг 10 м по ним почти не меняет высоту).
+        // sim=(x,z,-y) from astro-rel: with centre (R+100,0,0) the radial is the X
+        // axis, Y/Z are tangential (a 10 m shift along them barely changes the height).
         bool meshMapping = Math.Abs(GroundDecorDistribution.MeshPointHeightAboveRadius(
                 meshP, new Unity.Mathematics.float3(10f, 0f, 0f)) - 110d) < 1e-3d
             && Math.Abs(GroundDecorDistribution.MeshPointHeightAboveRadius(
@@ -2470,9 +2455,9 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Сброс stale-флагов пула (T100): массивы кандидатов — из DecorArrayPool с
-    /// чужими данными. Джоба обязана явно гасить Accepted у отклонённых, иначе
-    /// stale Accepted=1 со stale позицией рисует декор чужого чанка в небе.
+    /// Pool stale-flag reset (T100): candidate arrays come from DecorArrayPool with
+    /// foreign data. The job must explicitly clear Accepted on rejected entries,
+    /// otherwise a stale Accepted=1 with a stale position draws another chunk's decor in the sky.
     /// </summary>
     private static int Test100_DecorStalePoolReset()
     {
@@ -2498,7 +2483,7 @@ internal static partial class P1bTests
             SteepPower = 0d
         };
         GroundDecorPlacementParams p = GroundDecorPlacementParams.FromLayer(layer, terrain, 1143000d, Vector3d.Zero);
-        // Всё под водой: любой кандидат обязан быть отклонён.
+        // Everything under water: every candidate must be rejected.
         p.SeaLevelMeters = 1e9d;
 
         const int n = 8;
@@ -2523,7 +2508,7 @@ internal static partial class P1bTests
                     meshPicks[index] = 0.5d;
                     bury[index] = 0.5d;
                     lean[index] = 0.5d;
-                    // «Чужие данные» из пула: флаг + инстанс с неба.
+                    // "Foreign data" from the pool: flag plus an instance from the sky.
                     accepted[index] = 1;
                     instances[index] = new GroundDecorInstance
                     {
@@ -2574,10 +2559,10 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Пляж у воды (T101): полка тянет береговой рельеф к +8 м (не трогая океан
-    /// и дальнюю сушу), CPU-палитра красит песком всё ниже 0.4·пляжа при любой
-    /// маске и дальше гасит песок затуханием до 1.6·пляжа, декор (трава И камни)
-    /// ниже границы пляжа отклоняется полностью.
+    /// Beach by the water (T101): the shelf pulls coastal terrain toward +8 m
+    /// (without touching the ocean or far land), the CPU palette paints everything
+    /// below 0.4*beach as sand for any mask and then fades sand out to 1.6*beach,
+    /// and decor (grass AND rocks) below the beach line is rejected entirely.
     /// </summary>
     private static int Test101_BeachBand()
     {
@@ -2590,11 +2575,8 @@ internal static partial class P1bTests
 
         TerrainProfile legacyProfile = TerrainProfile.CreateEarthLike(1143000d);
 
-        // Полку у twin выключаем ЯВНО. Раньше это получалось само собой, потому
-        // что пресет её не задавал; после выравнивания CreateEarthLike с
-        // EarthLike.asset полка прописана в обоих, и разница между «с полкой» и
-        // «без полки» исчезла — pulled схлопывался в ноль. Тест не должен
-        // зависеть от того, что пресет чего-то не упоминает.
+        // Disable the shelf on the twin EXPLICITLY: the test must not depend on
+        // the preset omitting a field.
         legacyProfile.BeachShelfAltitudeMeters = 0d;
         legacyProfile.BeachShelfWidth = 0d;
         HeightfieldTerrain legacyTerrain = HeightfieldTerrain.FromProfile(legacyProfile, 24334543);
@@ -2662,9 +2644,9 @@ internal static partial class P1bTests
                     bool isWater = raw <= terrain.SeaLevelMeters + (terrain.AmplitudeMeters * 0.001d);
                     if (isWater)
                     {
-                        // Полка не трогает океан: строго ниже моря высоты
-                        // бит-в-бит. (Полоса 0..amp*0.001 — суша для полки и
-                        // «вода» для рендера: её полка legitimately тянет к +8.)
+                        // The shelf leaves the ocean alone: strictly below sea
+                        // level heights are bit-for-bit. (The 0..amp*0.001 band is
+                        // land for the shelf but "water" for rendering: there the shelf legitimately pulls to +8.)
                         if (twin <= terrain.SeaLevelMeters && twin != raw)
                         {
                             shelfWrong++;
@@ -2681,8 +2663,8 @@ internal static partial class P1bTests
                         if (GroundDecorDistribution.TryEvaluate(
                             r, terrainParams, dir, zeroRandom, 0.5d, 0.5d, 0.5d, out _)) beachRocks++;
 
-                        // Песок при любой маске (крутой склон + маска +1): в полной
-                        // полосе (до 0.4·beach) — ровно Sand, без моттлинга и скалы.
+                        // Sand for any mask (steep slope + mask +1): in the full
+                        // band (up to 0.4*beach) - exactly Sand, no mottling or rock.
                         double mask = TerrainNoise.SampleColorNoise(terrainParams, dir);
                         mask = mask < -1d ? -1d : (mask > 1d ? 1d : mask);
                         UnityEngine.Color sandColor = TerrainPalette.HeightColorEx(
@@ -2717,8 +2699,8 @@ internal static partial class P1bTests
                         twinBeachBand++;
                     }
 
-                    // Полка тянет к +8 м и никогда не отталкивает: для суши
-                    // расстояние до полки не растёт (океан уже отсеян выше).
+                    // The shelf pulls toward +8 m and never pushes away: for land
+                    // the distance to the shelf does not grow (ocean already filtered above).
                     double toShelfNow = Math.Abs(aboveSea - 8d);
                     double toShelfTwin = Math.Abs(twinAbove - 8d);
                     if (twinAbove >= 0d)
@@ -2759,11 +2741,10 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Плотность растительности по широте (T102). Затухание снято: вес у всех
-    /// слоёв без IgnoreLatitude одинаков на любой широте (UniformGreenWeight),
-    /// камни с IgnoreLatitude идут без ограничения. Прежний контракт —
-    /// «экватор 1, тундра 0..1, сплошной лёд 0 для растительности» — больше не
-    /// действует, поэтому проверяется равномерность, а не монотонность.
+    /// Vegetation density by latitude (T102). Fade removed: every layer without
+    /// IgnoreLatitude has the same weight at any latitude (UniformGreenWeight),
+    /// and rocks with IgnoreLatitude are unconstrained. Uniformity is checked,
+    /// not monotonicity.
     /// </summary>
     private static int Test102_PolarDecorLatitude()
     {
@@ -2812,7 +2793,7 @@ internal static partial class P1bTests
         };
         GroundDecorPlacementParams r = GroundDecorPlacementParams.FromLayer(rocks, terrain, 1143000d, Vector3d.Zero);
 
-        // Вес по широте: одинаков везде, без затухания (IgnoreLatitude = 1).
+        // Latitude weight: the same everywhere, no fade (IgnoreLatitude = 1).
         var equator = new Unity.Mathematics.double3(1d, 0d, 0d);
         var pole = new Unity.Mathematics.double3(0d, 0d, 1d);
         double wEquator = GroundDecorDistribution.LatitudeGreenWeight(g, equator);
@@ -2830,7 +2811,7 @@ internal static partial class P1bTests
             }
         }
 
-        // Суша на льду (lon90/lat80): травы нет, камни с флагом есть.
+        // Land on ice (lon90/lat80): no grass, flagged rocks present.
         double iceLa = 80d * System.Math.PI / 180d;
         double iceLo = 90d * System.Math.PI / 180d;
         var iceDir = new Unity.Mathematics.double3(
@@ -2843,7 +2824,7 @@ internal static partial class P1bTests
         bool iceRocks = GroundDecorDistribution.TryEvaluate(
             r, terrainParams, iceDir, zeroRandom, 0.5d, 0.5d, 0.5d, out _);
 
-        // Суша в тундре (lon90/lat65): вес тот же, что на экваторе.
+        // Land in tundra (lon90/lat65): same weight as the equator.
         double tunLa = 65d * System.Math.PI / 180d;
         double tunLo = 90d * System.Math.PI / 180d;
         var tundraDir = new Unity.Mathematics.double3(
@@ -2868,11 +2849,11 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Вершинная маска (T103): шейдер интерполирует CPU-маску из вершин
-    /// (паритет paint/placement, вариант A) вместо собственного Fbm.
-    /// Ошибка билинейной интерполяции в реальном масштабе чанков обязана быть
-    /// ничтожной: иначе край биома на картинке и в декоре разъедется.
-    /// Замер стенда (сид Terra): depth 6 — maxMaskErr ~1.3e-3, depth 10 — ~4e-6.
+    /// Vertex mask (T103): the shader interpolates the CPU mask from vertices
+    /// (paint/placement parity, variant A) instead of its own Fbm. The bilinear
+    /// interpolation error at real chunk scale must be negligible: otherwise the
+    /// biome edge would diverge between the picture and the decor.
+    /// Harness measurement (Terra seed): depth 6 - maxMaskErr ~1.3e-3, depth 10 - ~4e-6.
     /// </summary>
     private static int Test103_VertexMaskInterp()
     {
@@ -2920,24 +2901,9 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Сухая степь с зелёным фото (T104). Изначально жалоба была живая: lat
-    /// −51.03, lon 257.86, relief 2732 м, t=0.284, wet=0.245, склон 0.29.
-    ///
-    /// Сейчас 2732 м НЕ воспроизводится, и это важно понимать: 2732 м была
-    /// измерена на пресете, который ничем не совпадал с игровым. Пресет разошёлся
-    /// с EarthLike.asset в четырёх полях (ContinentDepth 0.9 против 1.2, поля
-    /// пляжа, ColorDetail 1500/0.35 против 400/0.15), тестовая фикстура
-    /// разошлась с пресетом ещё в шести, а источником истины является ассет —
-    /// его и грузит OutdoorsScene. После выравнивания всех трёх копий точка даёт
-    /// 2321 м.
-    ///
-    /// То есть 2321 м — регрессионный пин на ВЫРАВНЕННОЙ конфигурации, а НЕ
-    /// проверка исходной жалобы пользователя: жалоба была про другой рельеф.
-    /// Если 2732 м нужно вернуть, это правка ассета, а не константы в тесте.
-    ///
-    /// Ковёр лезвий растёт на любой земле зелёных высот (WetMin=0), деревья
-    /// избегают лишь крайней пустыни
-    /// (WetMin=0.2): оба обязаны приниматься, камни — тоже.
+    /// Dry steppe with green ground (T104). The point must remain green-height
+    /// land with a gentle slope where the blade mat (WetMin=0) and trees
+    /// (WetMin=0.2) both grow, and rocks too.
     /// </summary>
     private static int Test104_DrySteppeVegetation()
     {
@@ -3019,25 +2985,8 @@ internal static partial class P1bTests
 
         System.Console.WriteLine("DRYSTEPPE raw=" + raw.ToString("F0")
             + " grass=" + grassOk + " trees=" + treesOk + " rocks=" + rocksOk);
-        // Исходная жалоба — «рельеф 2732 м». Значение не воспроизводится и не
-        // может: 2732 м было измерено на пресете, расходившемся с игровым
-        // (ContinentDepth 0.9 против 1.2, поля пляжа, ColorDetail 1500/0.35
-        // против 400/0.15), и на фикстуре, расходившейся с пресетом ещё в
-        // шести полях. Точное число теперь 2321 м и служит регрессионным
-        // пином.
-        //
-        // САМА ЖАЛОБА проверяется неравенством, а не числом: точка обязана
-        // остаться сушей зелёных высот с пологим склоном, где трава и деревья
-        // растут. Именно это и было исходным требованием, и именно оно должно
-        // выполняться при любой смене генератора — иначе тест просто констатирует
-        // текущую конфигурацию, а её смысл теряется.
-        //
-        // Пин сдвинулся 2321 -> 2323 при появлении у равнин собственного шума
-        // рельефа (PlainRelief в TerrainNoise): точка попадает в переходную зону
-        // маски, и цель стягивания перестала быть константой — теперь это
-        // PlainElevation ± 0.03. Это
-        // ожидаемый эффект изменения, а не регресс — на 9144 м амплитуды это
-        // 0.09%, и обе смысловые проверки ниже проходят как проходили.
+        // The original complaint ("2732 m relief") was measured on a preset that
+        // diverged from the game; the complaint itself is checked by inequality, not a number.
         Check(System.Math.Abs(raw - 2323d) < 1d, "T104 dry-steppe-vegetation",
             "регрессионный пин высоты: " + raw.ToString("F0") + " м (было 2321)");
         Check(raw > 0d && raw < 4000d, "T104 dry-steppe-vegetation",
@@ -3049,22 +2998,10 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Песок = только абсолютный пляж (T106). Живая жалоба: у Terra амплитуда
-    /// 9144 м, и старая нормированная полоса «песка» t&lt;0.03 — это 274 м
-    /// высоты. Ею красилась песком ВСЯ прибрежная равнина, и там же стоял
-    /// MinNormalizedHeight декора: зелень по рельефу осталась без травы и без
-    /// деревьев, а они появлялись только после подъёма на сотни метров.
-    ///
-    /// Контракт после T106-правки (граница песка стала затуханием): (1) ниже
-    /// 0.4·пляжа палитра всегда даёт ровно Sand, выше 1.6·пляжа — никогда, а в
-    /// затухании (0.4…1.6) чистого Sand уже нет: песок смешан с биомом, иначе
-    /// край ступенькой проецировался бы в прямую линию через кадр; (2) слой с
-    /// MinNormalizedHeight = 0 сеет декор сразу над пляжем и ниже его не сеет;
-    /// (3) на нарисованном песке посадок нет (паритет краска↔декор).
-    ///
-    /// Пляж в тесте — 200 м (как в T101): реальные 18 м у Terra почти нигде не
-    /// набираются точками сетки (берег уходит сразу в обрыв), и проверять на
-    /// такой полосе нечего.
+    /// Sand is the absolute beach only (T106): below 0.4*beach the palette always
+    /// gives exactly Sand, above 1.6*beach never, and in the 0.4..1.6 fade sand is
+    /// mixed with the biome. Decor with MinNormalizedHeight = 0 seeds from the first
+    /// metre above the beach and never on painted sand (paint<->decor parity).
     /// </summary>
     private static int Test106_SandIsBeachBandOnly()
     {
@@ -3078,7 +3015,7 @@ internal static partial class P1bTests
         double beach = terrain.BeachHeightMeters;
         double seaEpsilon = amp * 0.001d;
 
-        // 1a. Полная полоса песка: ровно Sand при любой маске/склоне.
+        // 1a. Full sand band: exactly Sand for any mask/slope.
         int sandAbove = 0, paintedAbove = 0, sandBelow = 0, paintedBelow = 0;
         int fadePoints = 0, fadeExactSand = 0;
         double[] heights = { beach + 0.5d, beach + 5d, beach + 40d, beach + 120d, beach + 300d, beach + 900d };
@@ -3136,15 +3073,15 @@ internal static partial class P1bTests
             }
         }
 
-        // 1b. Затухание монотонно и симметрично относительно границы пляжа:
-        // ровно половина песка на BeachHeightMeters, ноль — на 1.6·пляжа.
+        // 1b. The fade is monotonic and symmetric about the beach line: exactly
+        // half sand at BeachHeightMeters, zero at 1.6*beach.
         double halfW = TerrainPalette.SandWeight(beach, beach);
         double zeroW = TerrainPalette.SandWeight(1.6d * beach, beach);
         bool fadeCurve = System.Math.Abs(halfW - 0.5d) < 1e-9d && zeroW <= 0d
             && TerrainPalette.SandWeight(0.2d * beach, beach) >= 1d
             && TerrainPalette.SandWeight(beach, 0d) == 0d;
 
-        // 2. Декор с MinNormalizedHeight = 0 сеет на первом же метре над пляжем.
+        // 2. Decor with MinNormalizedHeight = 0 seeds from the first metre above the beach.
         var grass = new GroundDecorLayer
         {
             SpacingMeters = 2d,
@@ -3247,13 +3184,9 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Кривая влажности биома не должна насыщаться (T107). Живая жалоба: «деревья
-    /// только в одной области, дальше вообще нигде». Причина была не в посадках:
-    /// wet01 = clamp(0.5 + 1.6·mask) насыщал 21% планеты в ровные 0 и 1, и
-    /// четверть суши получала wet РОВНО 0 → при WetMin=0.2 деревья не росли ни
-    /// на одной точке площадью в десятки километров. Мягкая кривая
-    /// (BiomeWetness, зеркало в PlanetSurface.shader) держит сушу без единого
-    /// дерева в пределах единиц процентов.
+    /// The biome wetness curve must not saturate (T107). A soft curve
+    /// (BiomeWetness, mirrored in PlanetSurface.shader) keeps the share of land
+    /// with no possible trees within a few percent.
     /// </summary>
     private static int Test107_WetnessNeverSaturates()
     {
@@ -3264,7 +3197,7 @@ internal static partial class P1bTests
         double amp = terrain.AmplitudeMeters;
         double sea = terrain.SeaLevelMeters;
 
-        // 1. Кривая не упирается в 0/1 ни на одном значении маски.
+        // 1. The curve never hits 0/1 at any mask value.
         double minWet = 1d, maxWet = 0d;
         int atZero = 0, atOne = 0;
         for (int i = -1000; i <= 1000; i++)
@@ -3276,7 +3209,7 @@ internal static partial class P1bTests
             if (w >= 1d) { atOne++; }
         }
 
-        // 2. Доля суши, где деревья (WetMin=0.2) невозможны в принципе.
+        // 2. Share of land where trees (WetMin=0.2) are impossible at all.
         const int n = 60000;
         double golden = System.Math.PI * (3d - System.Math.Sqrt(5d));
         int land = 0, treeDead = 0;

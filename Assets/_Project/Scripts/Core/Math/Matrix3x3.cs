@@ -3,10 +3,10 @@ using System;
 namespace Galilego.Core
 {
     /// <summary>
-    /// Матрица 3×3, double. Нужна ровно для одного: тензор инерции сборки
-    /// (I·ω и I⁻¹·τ в уравнениях Эйлера). Обратная — аналитически через
-    /// присоединённую (вырожденная → исключение, не NaN). Больше ничего
-    /// не умеет сознательно: не transport-библиотека.
+    /// 3×3 double matrix. Exists for exactly one purpose: the assembly inertia tensor
+    /// (I·ω and I⁻¹·τ in Euler's equations). Inverse is analytical via the adjugate
+    /// (singular → exception, not NaN). Intentionally nothing more: not a linear
+    /// algebra library.
     /// </summary>
     public readonly struct Matrix3x3
     {

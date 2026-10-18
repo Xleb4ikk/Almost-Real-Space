@@ -4,12 +4,12 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Камера от первого лица: позиция — точка корабля (GO с ShipView),
-    /// взгляд — мышь (yaw/pitch, курсор захвачен, Esc — отпустить).
-    /// near/far — динамические, от высоты над рельефом доминантного тела:
-    /// на масштабах 1e6+ фиксированный far даёт z-войну, а статичный near
-    /// на земле «ест» глубину. Горизонт: far = 1.5·√(2R·alt + alt²) + маржа.
-    /// Вызов — LateUpdate ПОСЛЕ ShipView (иначе кадр отстаёт на лаг).
+    /// First-person camera: position is the ship point (GO with ShipView),
+    /// look direction is the mouse (yaw/pitch, cursor locked, Esc releases).
+    /// near/far are dynamic, based on altitude above the dominant body's terrain:
+    /// at 1e6+ scales a fixed far causes z-fighting, while a static near
+    /// on the ground "eats" depth. Horizon: far = 1.5·√(2R·alt + alt²) + margin.
+    /// Called from LateUpdate AFTER ShipView (otherwise the frame lags by one).
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-40)]
     public sealed class FirstPersonCamera : MonoBehaviour
@@ -84,26 +84,20 @@ namespace Galilego.Universe
 
 #if UNITY_EDITOR
         /// <summary>
-        /// Инструмент съёмки (Editor/SurfaceCaptureTool) держит кадры «до/после»
-        /// на одном ракурсе, поэтому должен задавать взгляд напрямую.
-        ///
-        /// Почему хук, а не рефлексия в приватный lookDirection: LateUpdate
-        /// БЕЗУСЛОВНО перезаписывает transform.rotation каждый кадр (строка с
-        /// LookRotation ниже), поэтому снимок «куда смотрит камера» без
-        /// перехвата управления — лотерея, а тихая поломка после
-        /// переименования поля выглядела бы как «съёмка сломалась сама».
-        ///
-        /// Только редактор: в билде хука нет и код камеры не меняется.
+        /// Capture tool (Editor/SurfaceCaptureTool) keeps its before/after frames
+        /// on one viewpoint, so it must set the look direction directly.
+        /// LateUpdate unconditionally overwrites transform.rotation every frame,
+        /// so the override is applied last.
+        /// Editor only: no hook in builds and no camera code changes.
         /// </summary>
         public static bool DebugLookOverride;
 
-        /// <summary>Взгляд при включённом <see cref="DebugLookOverride"/>, мировый.</summary>
+        /// <summary>Look direction when <see cref="DebugLookOverride"/> is on, in world space.</summary>
         public static Vector3 DebugLookDirection = Vector3.up;
 
         /// <summary>
-        /// Сбросить настройки оверрайда. Вызывать перед уходом из Play,
-        /// иначе статик переживёт перезапуск домена и следующая сессия
-        /// стартует с зафиксированным взглядом.
+        /// Reset the override. Call before leaving Play: the static survives the
+        /// domain restart and the next session would start with a locked look.
         /// </summary>
         public static void ClearDebugLook()
         {
@@ -120,18 +114,18 @@ namespace Galilego.Universe
         private bool cursorReleasedByUser;
         private string mouseIgnoredReason;
 
-        /// <summary>Плавный переход «рост ↔ присед» (0..1) для высоты глаз.</summary>
+        /// <summary>Smooth stand ↔ crouch blend (0..1) for eye height.</summary>
         private float crouchBlend;
 
-        /// <summary>Плавный переход «стоя ↔ сидя» (0..1) для высоты глаз.</summary>
+        /// <summary>Smooth standing ↔ seated blend (0..1) for eye height.</summary>
         private float seatedBlend;
 
-        /// <summary>Был ли игрок сидящим в прошлом кадре (разовое наведение взгляда при посадке).</summary>
+        /// <summary>Whether the player was seated last frame (one-shot aim when sitting down).</summary>
         private bool wasSeated;
 
         private PlayerController playerController;
 
-        /// <summary>Плавный переход «норма ↔ в упор» (0..1) для ПКМ-приближения.</summary>
+        /// <summary>Smooth normal ↔ lean blend (0..1) for the RMB lean-in.</summary>
         private float leanBlend;
 
         private float baseFieldOfView = 60f;
@@ -139,9 +133,9 @@ namespace Galilego.Universe
         private void Start()
         {
 #if UNITY_EDITOR
-            // Проект входит в Play с DisableDomainReload, статики переживают
-            // сессию: оверрайд взгляда от прошлой съёмки иначе остался бы
-            // включённым и следующий заход в Play смотрел бы в потолок.
+            // The project enters Play with DisableDomainReload, so statics survive
+            // the session: a look override from a previous capture would otherwise
+            // stay on and the next Play would stare at the ceiling.
             ClearDebugLook();
 #endif
             var hdCamera = GetComponent<UnityEngine.Rendering.HighDefinition.HDAdditionalCameraData>();
@@ -166,8 +160,8 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Захват/освобождение курсора вместе с видимостью (меньше
-        /// editor-warning «Screen position out of view frustum»).</summary>
+        /// <summary>Lock/release the cursor together with its visibility (fewer
+        /// "Screen position out of view frustum" editor warnings).</summary>
         private static void SetCursorLocked(bool locked)
         {
             Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
@@ -181,8 +175,8 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Ctrl в стройке — «подсмотреть»: пока клавиша зажата, курсор
-            // отпущен (панель ΔV, подсказки). Отпустили — захват вернётся сам.
+            // Ctrl in build mode peeks: while the key is held the cursor is
+            // released (ΔV panel, hints). Release it and the lock returns on its own.
             bool peek = Runner != null && Runner.BuildMode && PlayerInput.Held(GameKey.LeftControl);
 
             if (PlayerInput.Down(GameKey.Escape))
@@ -197,12 +191,12 @@ namespace Galilego.Universe
                 SetCursorLocked(true);
             }
 
-            // Потеря фокуса окна (alt-tab, клик по таскбару, второй монитор) тоже
-            // отпускает захват: в фоне захваченный курсор сыпет «Screen position
-            // out of view frustum». Отпускаем, НЕ помечая как пользовательский —
-            // тогда возврат фокуса сам вернёт захват, и мышь не «замолкает»
-            // до клика, о котором игрок не знает. Пользовательский Esc не
-            // переопределяем.
+            // Losing window focus (alt-tab, taskbar click, second monitor) also
+            // releases the lock: a locked cursor in the background spams "Screen
+            // position out of view frustum". Release it WITHOUT marking it as user
+            // release, so regaining focus restores the lock automatically and the
+            // mouse does not go silent until a click the player knows nothing about.
+            // A user Esc release is not overridden.
             if (!UnityEngine.Application.isFocused && Cursor.lockState == CursorLockMode.Locked)
             {
                 SetCursorLocked(false);
@@ -222,7 +216,7 @@ namespace Galilego.Universe
 
         private void LateUpdate()
         {
-            // Временная диагностика — ДО early-return, чтобы логировать всегда.
+            // Diagnostic logging sits BEFORE the early return so it always runs.
             diagnosticTimer += Time.deltaTime;
             if (diagnosticTimer >= 1f)
             {
@@ -244,15 +238,14 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Пригиб и посадка в кресло: плавно (не рывком). Пригиб теперь ступенчатый
-            // (капсула подстраивается под скос стены кабины), поэтому глаза едут
-            // за долей пригиба 0..1, а не за флагом «присел».
+            // Crouch and seating are blended, not snapped. The eyes follow the
+            // 0..1 crouch fraction rather than a "crouched" flag.
             float stoop = Runner != null ? Runner.PlayerStoopFraction : 0f;
             crouchBlend = Mathf.MoveTowards(crouchBlend, stoop, Time.deltaTime * 3f);
             bool seated = Runner != null && Runner.PlayerSeated;
             seatedBlend = Mathf.MoveTowards(seatedBlend, seated ? 1f : 0f, Time.deltaTime * 5f);
 
-            // Посадка: один раз наводим взгляд туда, куда кресло просит (пара мониторов).
+            // Seating: one-shot aim toward the direction the seat requests (a couple of monitors).
             if (seated && !wasSeated)
             {
                 AimAtSeatLook();
@@ -260,8 +253,8 @@ namespace Galilego.Universe
 
             wasSeated = seated;
 
-            // ПКМ — приблизиться «в упор» (кнопки монитора читаются и жмутся
-            // точно). В стройке ПКМ занят постановкой/меню слотов — не мешаем.
+            // RMB leans in close (monitor buttons are readable and clickable
+            // precisely). In build mode RMB is taken by placement/slot menu — leave it.
             bool lean = LeanMaxMeters > 0f && PlayerInput.MouseRightHeld()
                 && (Runner == null || !Runner.BuildMode);
             leanBlend = Mathf.MoveTowards(leanBlend, lean ? 1f : 0f, Time.deltaTime * 6f);
@@ -282,10 +275,9 @@ namespace Galilego.Universe
             }
 
 #if UNITY_EDITOR
-            // Инструмент съёмки: взгляд задаётся извне, мышь его не трогает.
-            // Ставим ПОСЛЕ TransportLook/ApplyMouse — оба переписывают
-            // lookDirection, и оверрайд должен быть последним словом. Иначе
-            // кадр «после» снимется под случайным поворотом мыши.
+            // Capture tool: the look comes from outside and the mouse does not
+            // touch it. Applied AFTER TransportLook/ApplyMouse — both rewrite
+            // lookDirection, and the override must have the last word.
             if (DebugLookOverride)
             {
                 if (DebugLookDirection.sqrMagnitude > 1e-8f)
@@ -299,11 +291,11 @@ namespace Galilego.Universe
             }
 #endif
 
-            // Опорная вертикаль для крена — локальная вертикаль. Когда взгляд
-            // ей параллелен (солнце ровно в зените при спавне «в полдень»),
-            // LookRotation вырождается (произвольный крен + рывок при выходе
-            // из зенита): тогда берём крен с ПРЕДЫДУЩЕГО кадра камеры — он
-            // непрерывен. Самый первый кадр — любая непараллельная ось.
+            // Reference up for roll is the local up. When the look is parallel to
+            // it (sun exactly at zenith on a noon spawn), LookRotation degenerates
+            // (arbitrary roll plus a snap when leaving the zenith): take the roll
+            // from the PREVIOUS camera frame, which is continuous. On the very
+            // first frame use any non-parallel axis.
             Vector3 rotationUp = up;
             if (Mathf.Abs(Vector3.Dot(lookDirection, up)) > 0.999f)
             {
@@ -315,8 +307,9 @@ namespace Galilego.Universe
 
             transform.rotation = Quaternion.LookRotation(lookDirection, rotationUp);
 
-            // Приближение: камера едет вперёд по взгляду к точке под прицелом,
-            // не ближе зазора (в монитор не влезаем). Пусто — на всю дистанцию.
+            // Lean: the camera moves forward along the look toward the point under
+            // the crosshair, no closer than the clearance (don't clip the monitor).
+            // No hit — travel the full distance.
             Vector3 eye = Target.position + eyeOffset;
             if (leanBlend > 0.0001f)
             {
@@ -346,16 +339,16 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Взгляд хранится ВЕКТОРОМ (не yaw-числом): когда рамка локальной
-        /// вертикали поворачивается (орбита, вращение планеты), вектор тянется
-        /// вместе с ней — картинка крутится физично, а не «уплывает» мимо мыши.
+        /// The look is stored as a VECTOR (not a yaw number): when the local-up
+        /// frame rotates (orbit, planet spin) the vector follows it, so the view
+        /// turns physically instead of drifting away from the mouse.
         /// </summary>
         private void TransportLook(Vector3 up)
         {
             if (!hasLook)
             {
-                // Начальный взгляд — на солнце (по данным симуляции): игрок
-                // сразу видит звезду при спавне. Если звезды нет — fallback.
+                // Initial look aims at the sun (from simulation data): the player
+                // sees the star right at spawn. No star — fall back.
                 Vector3 initial = Vector3.zero;
                 bool aimed = false;
                 if (Runner != null && Runner.Ship != null
@@ -397,29 +390,22 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Мышь: вправо/влево — азимут вокруг локальной вертикали, вверх/вниз —
-        /// угол возвышения (как в обычных FPS, но на «низ» планеты).
-        ///
-        /// Взгляд НЕ поворачивается вектором вокруг «right»: при взгляде вниз
-        /// (PitchClamp = 85°, то есть в 5° от полюса) один кадр накапливает весь
-        /// взмах мыши (Mouse.delta — движение за кадр, а кадр у нас ≈ 1 с), и
-        /// взгляд пролетал через полюс: −85° − 40° = −125°, то есть +55° ВВЕРХ.
-        /// ClampPitch такое пропускал (наклон легальный), управление
-        /// переворачивалось — «мышь перестала работать». Здесь наклон
-        /// ограничивается ДО поворота, поэтому полюс недостижим в принципе.
+        /// Mouse: left/right is the azimuth around the local up, up/down is the
+        /// elevation angle (like a normal FPS, but against the planet's "down").
+        /// Pitch is clamped BEFORE the rotation, so the pole is unreachable by construction.
         /// </summary>
         private void ApplyMouse(Vector3 up)
         {
             Vector2 md = PlayerInput.MouseDelta();
-            // В приближении мышь точнее — иначе на дистанции вытянутой руки
-            // прицел проскакивает мелкие кнопки монитора.
+            // Finer mouse in the lean — otherwise at arm's length the crosshair
+            // skips over small monitor buttons.
             float sensitivity = MouseSensitivity * Mathf.Lerp(1f, LeanSensitivityScale, leanBlend);
             float yaw = md.x * sensitivity;
             float pitch = md.y * sensitivity;
 
-            // Мёртвая зона: при захваченном курсоре в редакторе новый Input System
-            // может отдавать микро-шум дельты каждый кадр → камера непрерывно
-            // чуть поворачивается («тряска» взгляда). Гасим мелкие значения.
+            // Dead zone: with a locked cursor in the editor the new Input System
+            // can feed micro delta noise every frame, continuously nudging the
+            // camera (view jitter). Kill small values.
             const float deadzone = 0.02f;
             if (Mathf.Abs(yaw) < deadzone)
             {
@@ -431,8 +417,8 @@ namespace Galilego.Universe
                 pitch = 0f;
             }
 
-            // Азимут: горизонтальная составляющая взгляда. Ровно на полюсе она
-            // вырождена — берём азимут ПРОШЛОГО кадра, он непрерывен.
+            // Azimuth: the horizontal component of the look. Exactly at the pole
+            // it degenerates — use the PREVIOUS frame's azimuth, which is continuous.
             Vector3 flat = Vector3.ProjectOnPlane(lookDirection, up);
             bool degenerate = false;
             if (flat.sqrMagnitude < 1e-8f)
@@ -443,9 +429,9 @@ namespace Galilego.Universe
 
             if (flat.sqrMagnitude < 1e-8f)
             {
-                // Полюс в первый же кадр (взгляд строго по вертикали — такое
-                // бывает при спавне с солнцем в зените): берём любой
-                // фиксированный азимут, чтобы кадр не дёргался.
+                // Pole on the very first frame (look straight along the vertical —
+                // happens on a spawn with the sun at zenith): use any fixed
+                // azimuth so the frame does not jerk.
                 flat = Vector3.ProjectOnPlane(Vector3.forward, up);
                 if (flat.sqrMagnitude < 1e-6f)
                 {
@@ -455,15 +441,15 @@ namespace Galilego.Universe
                 degenerate = true;
             }
 
-            // Модуль горизонтали нужен ДО нормализации: после нормализации он
-            // всегда 1, atan2 превращается в asin(dot) и снова теряет знак за
-            // полюсом — ровно тот баг, который чиним.
+            // The horizontal magnitude is needed BEFORE normalization: after it
+            // the magnitude is always 1 and atan2 degenerates to asin(dot),
+            // losing the sign past the pole.
             float flatMagnitude = flat.magnitude;
             flat.Normalize();
             lastFlatDirection = flat;
 
-            // Возвышение из горизонтали: однозначно, пока известен азимут.
-            // На вырожденном (ровно полюс) наклон берём по знаку — ±PitchClamp.
+            // Elevation from the horizontal: unambiguous while the azimuth is
+            // known. When degenerate (exactly at the pole) take the tilt by sign — ±PitchClamp.
             float elevation = degenerate
                 ? (Vector3.Dot(lookDirection, up) >= 0f ? PitchClamp : -PitchClamp)
                 : Mathf.Atan2(Vector3.Dot(lookDirection, up), flatMagnitude) * Mathf.Rad2Deg;
@@ -474,7 +460,7 @@ namespace Galilego.Universe
                 lastFlatDirection = flat;
             }
 
-            // Мышь вверх — взгляд вверх. Клампим ДО поворота: полюс недостижим.
+            // Mouse up means look up. Clamp BEFORE the rotation: the pole is unreachable.
             elevation = Mathf.Clamp(elevation + pitch, -PitchClamp, PitchClamp);
 
             float e = elevation * Mathf.Deg2Rad;
@@ -482,9 +468,7 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Мышь игнорируется — пишем ПРИЧИНУ один раз на каждое изменение
-        /// состояния. Раньше «мышь перестала работать» было нечем диагностировать:
-        /// симптом одинаков и при отпущенном курсоре, и при потерянной цели.
+        /// The mouse is ignored — log the REASON once per state change.
         /// </summary>
         private void NoteMouseIgnored(string reason)
         {
@@ -500,7 +484,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Локальная вертикаль (из double-мира, через мост).</summary>
+        /// <summary>Local up (from the double world, via the bridge).</summary>
         private Vector3 ComputeLocalUp()
         {
             if (Runner == null || Runner.Ship == null || Runner.DominantBody == null)
@@ -521,11 +505,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Оффсет глаз: вдоль нормали поверхности доминантного тела (на земле
-        /// корабль лежит на рельефе — без оффсета камера «в земле»; в полёте
-        /// оффсет вдоль радиуса визуально нейтрален). Вплавь — низкий
-        /// SwimEyeHeightMeters (пловец лежит), иначе голова не уходит под
-        /// воду на мелководье.
+        /// Eye offset along the dominant body's surface normal (on the ground the
+        /// ship lies on the terrain, so without the offset the camera is
+        /// underground; in flight the radial offset is visually neutral). When
+        /// swimming use the low SwimEyeHeightMeters (a swimmer lies flat),
+        /// otherwise the head never goes underwater in shallow water.
         /// </summary>
         private void ComputeEyeOffset()
         {
@@ -542,8 +526,8 @@ namespace Galilego.Universe
             }
             else
             {
-                // Глаза не выше макушки самой низкой капсулы (0.8 м) минус 10 см: иначе
-                // у скошенной стены камера оказывается в самой стене.
+                // Eyes no higher than the top of the lowest capsule (0.8 m) minus
+                // 10 cm, otherwise the camera ends up inside a sloped wall.
                 double crouchEye = System.Math.Min(CrouchEyeMeters, 0.7d);
                 eye = EyeHeightMeters + ((crouchEye - EyeHeightMeters) * crouchBlend);
             }
@@ -551,10 +535,10 @@ namespace Galilego.Universe
             Vector3 up = ComputeLocalUp();
             if (seatedBlend > 0f)
             {
-                // Сидя: смещение — вдоль «вверх» кресла (корабль может быть
-                // наклонён), высота — SeatedEyeMeters; оба едут плавно.
-                // Направление берётся прямо в render-осях: astro-версия через
-                // плоский мост в зоне контакта указывает мимо (кадр места).
+                // Seated: the offset is along the seat's up (the ship may be
+                // tilted), the height is SeatedEyeMeters; both blend smoothly.
+                // The direction is taken directly in render axes: the astro
+                // version through the flat bridge points wrong in the contact zone.
                 Vector3 seatUp = Runner.PlayerSeatedUpRender.sqrMagnitude > 1e-8f
                     ? Runner.PlayerSeatedUpRender.normalized
                     : up;
@@ -565,7 +549,7 @@ namespace Galilego.Universe
             eyeOffset = up * (float)eye;
         }
 
-        /// <summary>Разово после посадки: взгляд туда, куда просит кресло (CockpitSeat.LocalLookDirection).</summary>
+        /// <summary>One-shot after sitting down: aim where the seat asks (CockpitSeat.LocalLookDirection).</summary>
         private void AimAtSeatLook()
         {
             if (playerController == null)
@@ -602,21 +586,18 @@ namespace Galilego.Universe
                 groundHeight = body.Terrain.GetHeightMeters(body, latDeg * (System.Math.PI / 180d), lonDeg * (System.Math.PI / 180d));
             }
 
-            // near — от высоты над ЛОКАЛЬНЫМ рельефом (камера у земли).
+            // near comes from the altitude above LOCAL terrain (camera at ground level).
             double altitude = System.Math.Max(0.5d, relative.Magnitude - (radius + groundHeight));
             double near = System.Math.Max(0.1d, altitude * 0.001d);
 
-            // Сидя в кабине: ближняя плоскость не зависит от высоты (см. SeatedNearClipMeters).
+            // Seated in the cockpit: the near plane does not depend on altitude (see SeatedNearClipMeters).
             if (Runner.PlayerSeated)
             {
                 near = SeatedNearClipMeters;
             }
 
-            // far — до физического горизонта с запасом на дальние ВЕРШИНЫ:
-            // высота камеры и пиков считается от СРЕДНЕГО радиуса. Раньше высота
-            // бралась над рельефом под наблюдателем: стоя на холме, «горизонт»
-            // выходил ~1 км, far падал к минимуму 20 км, и всё, что дальше,
-            // резалось фрустумом (видимая «стена»/обрыв и фолбэк атмосферы).
+            // far reaches the physical horizon with margin for distant PEAKS:
+            // camera and peak heights are measured from the MEAN radius.
             double cameraHeight = System.Math.Max(0.5d, relative.Magnitude - radius);
             double peakHeight = 0d;
             if (body.Terrain is HeightfieldTerrain heightfield)
@@ -628,9 +609,9 @@ namespace Galilego.Universe
             double horizon = SkyPhysics.MaxSightDistance(radius, cameraHeight, peakHeight);
             double far = System.Math.Max((horizon * 1.1d) + 1e3d, 20000d);
 
-            // far НЕ растягиваем под атмосферу: она рисуется камера-центрированным
-            // куполом и всегда влезает во фрустум. Иначе near/far ~1e8 → z-fighting
-            // (мерцание рельефа/диска даже без движения).
+            // far is NOT stretched for the atmosphere: it is drawn as a
+            // camera-centered dome and always fits the frustum. Otherwise
+            // near/far ~1e8 causes z-fighting (terrain/disc shimmer without motion).
             camera.nearClipPlane = (float)near;
             camera.farClipPlane = (float)far;
         }

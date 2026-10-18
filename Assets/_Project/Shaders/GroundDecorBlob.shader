@@ -28,8 +28,8 @@ Shader "Galilego/GroundDecorBlob"
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
 
-            // Ставит SkyEnvironment: видимость звёзд (1 ночью, 0 днём). Ночью
-            // блоб гаснет полностью (mask → 0 и весь квад clip'ается).
+            // Set by SkyEnvironment: star visibility (1 by night, 0 by day). At night
+            // the blob fades out entirely (mask → 0 and the whole quad is clipped).
             float _StarVisibility;
 
             float4 _Color;
@@ -65,14 +65,14 @@ Shader "Galilego/GroundDecorBlob"
             {
                 UNITY_SETUP_INSTANCE_ID(input);
 
-                // Радиальное затухание по UV квада: форма пятна без текстуры.
+                // Radial falloff over the quad UV: blob shape without a texture.
                 float2 centered = (input.uv * 2.0) - 1.0;
                 float radial = saturate(1.0 - length(centered));
                 float mask = pow(radial, _Falloff) * saturate(1.0 - _StarVisibility);
 
-                // Opaque alpha-test (не blend): рендерится тем же проходом, что
-                // и сама трава, — надёжно в HDRP. Край «смягчаем» дизером порога;
-                // паттерн в UV квада (в мире), а не в экране — не «плавает».
+                // Opaque alpha-test (not blend): rendered in the same pass as the grass,
+                // reliably under HDRP. The edge is softened by dithering the threshold in
+                // quad UV (world space), not screen space, so it doesn't swim.
                 float dither = InterleavedGradientNoise(input.uv * 256.0, 0);
                 float threshold = lerp(_Cutoff, dither, _Softness);
                 clip(mask - threshold);

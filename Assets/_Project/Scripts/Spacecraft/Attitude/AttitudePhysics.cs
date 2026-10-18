@@ -4,7 +4,7 @@ using Galilego.Core;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Состояние вращения: ориентация (body→world) + угловая скорость в body-frame.
+    /// Rotation state: attitude (body→world) + angular velocity in the body frame.
     /// </summary>
     public readonly struct AttitudeState
     {
@@ -19,25 +19,21 @@ namespace Galilego.Spacecraft
     }
 
     /// <summary>
-    /// Источник момента для степпера вращения. Чистая функция (многократные
-    /// вызовы на шаг): состояние читается параметрами, мутаций нет.
+    /// Torque source for the rotation stepper. Pure function (called multiple
+    /// times per step): state is read via parameters, no mutation.
     /// </summary>
-    /// <param name="attitude">Ориентация body→world.</param>
-    /// <param name="angularVelocityBody">Угловая скорость в body-frame.</param>
+    /// <param name="attitude">Attitude body→world.</param>
+    /// <param name="angularVelocityBody">Angular velocity in the body frame.</param>
     public delegate Vector3d TorqueFunction(QuaternionD attitude, Vector3d angularVelocityBody, double timeSeconds);
 
     /// <summary>
-    /// Вращение твёрдого тела: уравнения Эйлера ω̇=I⁻¹(τ−ω×Iω) + кинематика
-    /// q̇=½q⊗ω, классический RK4 с фиксированным шагом (дефолт 0.02с) и
-    /// нормализацией кватерниона каждый шаг.
+    /// Rigid-body rotation: Euler's equations ω̇=I⁻¹(τ−ω×Iω) plus kinematics
+    /// q̇=½q⊗ω, classic fixed-step RK4 (default 0.02 s) with quaternion
+    /// normalisation every step.
     ///
-    /// Отдельный степпер (не SpacecraftOrbitIntegrator) — осознанно, а не
-    /// срезание угла: сила и момент несвязаны (нет зависимости ускорения от
-    /// ориентации внутри RK-подстадий, в отличие от массы, которая обязана была
-    /// войти в тот же вектор состояния). Плотная синхронизация подшагов
-    /// орбиты и вращения не нужна: вращение сэмплирует медленную орбитальную
-    /// динамику, орбита от вращения не зависит вовсе (пока нет аэродинамики
-    /// с моментом — тогда пересмотреть, TODO-узел зафиксирован).
+    /// A separate stepper (not SpacecraftOrbitIntegrator): rotation samples the slow
+    /// orbital dynamics, while the orbit does not depend on rotation. TODO: revisit
+    /// once there is aerodynamic torque.
     /// </summary>
     public static class AttitudePhysics
     {
@@ -54,11 +50,9 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
-        /// Шаг вращения от ПОСТОЯННОГО за шаг момента — того же снимка, что
-        /// throttle-управление: SpacecraftPhysics.TotalTorqueBody после
-        /// phys.Step. Сила+момент из одного источника: снимок τ вычислен в
-        /// EvaluateDerivative орбитального пути на зерне шага. τ держится
-        /// константой все подстадии — та же семантика зерна, что у тяги (T2).
+        /// Rotation step from a torque CONSTANT over the step — the same snapshot
+        /// as throttle control: SpacecraftPhysics.TotalTorqueBody after phys.Step.
+        /// τ is held constant over all sub-steps, the same seed semantics as thrust.
         /// </summary>
         public static AttitudeState Step(AttitudeState state, Matrix3x3 inertia, Vector3d constantTorqueBody, double timeSeconds, double dt)
         {

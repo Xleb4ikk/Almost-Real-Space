@@ -10,10 +10,10 @@ using Galilego.Spacecraft;
 using Galilego.Universe;
 using Ship = Galilego.Spacecraft.Spacecraft;
 
-// Трейсы посадки (шаг 0.6 ТЗ v2). Каждый сценарий прогоняется дважды,
-// результаты сравниваются побайтно. Шаг идёт через вынесенный VesselStep
-// (шаг 0.4); паритет с прежней логикой SimulationRunner зафиксирован в
-// baseline/parity.txt.
+// Landing traces (step 0.6 of spec v2). Each scenario runs twice and the
+// results are compared byte-for-byte. Stepping goes through the extracted
+// VesselStep (step 0.4); parity with the old SimulationRunner logic is recorded
+// in baseline/parity.txt.
 internal static partial class P1bTests
 {
     private const double TraceStepSeconds = 0.5d;
@@ -48,7 +48,7 @@ internal static partial class P1bTests
         public readonly bool StartLanded;
         public readonly double MaxSeconds;
 
-        /// <summary>Эффективная площадь сопротивления (м²). 10 — как DragSource в SimulationRunner.Awake.</summary>
+        /// <summary>Effective drag area (m²). 10 — as DragSource in SimulationRunner.Awake.</summary>
         public readonly double DragAreaM2;
 
         public TraceScenario(string name, double spawnAltitudeMeters, double radialSpeedMps, double eastSpeedMps, bool startLanded, double maxSeconds, double dragAreaM2)
@@ -63,7 +63,7 @@ internal static partial class P1bTests
         }
     }
 
-    /// <summary>Возвращает число расхождений повторных прогонов (0 — успех).</summary>
+    /// <summary>Returns the number of repeat-run mismatches (0 — success).</summary>
     public static int RunLandingTraces(string outDir)
     {
         var scenarios = new[]
@@ -126,7 +126,7 @@ internal static partial class P1bTests
             summary.AppendLine();
         }
 
-        // summary тоже в LF: байтовая воспроизводимость всего каталога.
+        // summary in LF too: byte reproducibility of the whole directory.
         File.WriteAllText(
             Path.Combine(outDir, "summary.txt"),
             summary.ToString().Replace("\r\n", "\n"),
@@ -159,8 +159,8 @@ internal static partial class P1bTests
         }
 
         var sb = new StringBuilder();
-        // Только '\n': файлы трейсов не должны зависеть от платформы
-        // (AppendLine писал CRLF-заголовок и смешивал концы строк).
+        // '\n' only: trace files must not depend on the platform
+        // (AppendLine wrote a CRLF header and mixed line endings).
         sb.Append("t,alt,v_radial,v_tangential,regime,lat,lon,event");
         sb.Append('\n');
 
@@ -171,7 +171,7 @@ internal static partial class P1bTests
         double startAltitude = double.NaN;
         rig.SetOccurrenceHook(occurrence =>
         {
-            // Хук вызывается ДО реакции: состояние — момент события.
+            // The hook fires BEFORE the reaction: state is at the event moment.
             AppendTraceRow(sb, terra, rig.Ship, occurrence.TimeSeconds, rig.GetRegime(), occurrence.Kind.ToString());
             if (occurrence.Kind == EventKind.Touchdown && !sawTouchdown)
             {
@@ -257,8 +257,8 @@ internal static partial class P1bTests
 
     private static TerrainProfile TerraProfile()
     {
-        // Снимок профиля EarthLike_Perlin (Assets/_Project/Profiles/Terrain) —
-        // физически значимые поля; цвета/текстуры на контакт не влияют.
+        // Snapshot of the EarthLike_Perlin profile (Assets/_Project/Profiles/Terrain) —
+        // physically significant fields; colors/textures don't affect contact.
         return new TerrainProfile
         {
             AmplitudeMeters = 13662d,
@@ -439,8 +439,8 @@ internal static partial class P1bTests
         double height = body.Terrain.GetHeightMeters(body, latDeg * (Math.PI / 180d), lonDeg * (Math.PI / 180d));
         altitude = distance - (body.Radius + height);
         Vector3d radial = distance > 1e-9d ? relative / distance : new Vector3d(0d, 0d, 1d);
-        // Скорости — в кадре со-вращающейся поверхности (как SurfaceMotion):
-        // стоящий аппарат даёт ноль, падение — честную вертикальную скорость.
+        // Velocities are in the co-rotating surface frame (like SurfaceMotion):
+        // a standing craft reads zero, a fall reads true vertical speed.
         Vector3d surfaceVelocity = bodyVelocity + Vector3d.Cross(body.SpinAxis * body.SpinAngularSpeed, relative);
         Vector3d relativeVelocity = ship.Velocity - surfaceVelocity;
         radialSpeed = Vector3d.Dot(relativeVelocity, radial);

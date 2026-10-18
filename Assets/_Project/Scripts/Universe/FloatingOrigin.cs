@@ -4,12 +4,12 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Единый якорь рендера (floating origin, double). Абсолютная astro-позиция,
-    /// отображаемая в Unity-ноль. Все объекты ставятся как ToSimulation(abs − Anchor):
-    /// рядом с игроком координаты малы (доли мм), а не ~радиус планеты, где
-    /// float-ulp ≈ 0.1 м давал дрожание рельефа, смаз TAA и «сумасшедшее» солнце.
-    /// Anchor выставляет SimulationRunner = PlayerPosition каждый кадр после физики
-    /// (вьюхи — в LateUpdate, значит читают свежий якорь).
+    /// Single render anchor (floating origin, double). Absolute astro position mapped
+    /// to Unity zero. All objects are placed as ToSimulation(abs − Anchor): near the
+    /// player the coordinates are small (fractions of a mm) instead of ~planet radius,
+    /// where float ulp ≈ 0.1 m causes terrain jitter, TAA smearing and "crazy" sun
+    /// direction. SimulationRunner sets Anchor = PlayerPosition every frame after
+    /// physics (views run in LateUpdate, so they read the fresh anchor).
     /// </summary>
     public static class FloatingOrigin
     {

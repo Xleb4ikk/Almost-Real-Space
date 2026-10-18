@@ -5,27 +5,27 @@ using Galilego.Spacecraft;
 namespace Galilego.Building
 {
     /// <summary>
-    /// Условия, в которых считается ΔV: тело (для TWR — g на поверхности) и
-    /// характеристики двигателей в этих условиях. СЕЙЧАС — только вакуум:
-    /// тяга и Isp берутся вакуумные. Когда появится выбор планеты и высоты,
-    /// менять нужно ТОЛЬКО этот класс: ThrustN / IspS начнут учитывать
-    /// давление на высоте (F = F_вак − p·A_сопла при постоянном расходе,
-    /// Isp = F / (ṁ·g0)), а сам расчёт ступеней трогать не придётся.
+    /// Conditions under which ΔV is computed: the body (surface g for TWR) and
+    /// engine characteristics in those conditions. Currently vacuum only:
+    /// vacuum thrust and Isp. Planet/altitude selection is meant to change ONLY
+    /// this class: ThrustN / IspS would then account for ambient pressure
+    /// (F = F_vac − p·A_nozzle at constant flow, Isp = F / (ṁ·g0)), leaving the
+    /// stage math untouched.
     /// </summary>
     public sealed class DvEnvironment
     {
-        /// <summary>Стандартное ускорение свободного падения для Isp, м/с².</summary>
+        /// <summary>Standard gravity for Isp, m/s².</summary>
         public const double G0 = 9.80665d;
 
-        /// <summary>Вакуум без тела: g = g0 (только для TWR).</summary>
+        /// <summary>Vacuum with no body: g = g0 (for TWR only).</summary>
         public static readonly DvEnvironment Default = new DvEnvironment(null, G0);
 
         public readonly string BodyName;
 
-        /// <summary>g на поверхности тела, м/с² (для TWR).</summary>
+        /// <summary>Surface gravity of the body, m/s² (for TWR).</summary>
         public readonly double SurfaceGravity;
 
-        /// <summary>Высота над поверхностью, м (в вакууме не влияет).</summary>
+        /// <summary>Altitude above the surface, m (has no effect in vacuum).</summary>
         public readonly double AltitudeMeters;
 
         public DvEnvironment(string bodyName, double surfaceGravity, double altitudeMeters = 0d)
@@ -35,168 +35,168 @@ namespace Galilego.Building
             AltitudeMeters = altitudeMeters;
         }
 
-        /// <summary>Подпись условий для интерфейса.</summary>
+        /// <summary>Conditions label for the UI.</summary>
         public string Label { get { return "вакуум"; } }
 
-        /// <summary>Тяга двигателя в этих условиях, Н.</summary>
+        /// <summary>Engine thrust in these conditions, N.</summary>
         public double ThrustN(EngineSpec engine)
         {
             return engine.ThrustVacuumNewtons;
         }
 
-        /// <summary>Удельный импульс двигателя в этих условиях, с.</summary>
+        /// <summary>Engine specific impulse in these conditions, s.</summary>
         public double IspS(EngineSpec engine)
         {
             return engine.IspVacuumSeconds;
         }
 
-        /// <summary>Массовый расход двигателя, кг/с (постоянен: F_вак / (Isp_вак·g0)).</summary>
+        /// <summary>Engine mass flow, kg/s (constant: F_vac / (Isp_vac·g0)).</summary>
         public double MassFlowKgS(EngineSpec engine)
         {
             return engine.ThrustVacuumNewtons / (engine.IspVacuumSeconds * G0);
         }
     }
 
-    /// <summary>Итог по одной ступени (0 — нижняя, горит первой).</summary>
+    /// <summary>Summary for one stage (0 — bottom, burns first).</summary>
     public sealed class DvStage
     {
         public int Index;
 
-        /// <summary>Индексы деталей черновика, входящих в ступень (снизу вверх).</summary>
+        /// <summary>Draft part indices belonging to the stage (bottom-up).</summary>
         public readonly List<int> PartIndices = new List<int>();
 
-        /// <summary>Двигатели ступени: «RS-25 ×2». Пусто, если двигателя нет.</summary>
+        /// <summary>Stage engines: "RS-25 ×2". Empty if there is no engine.</summary>
         public string EngineLabel = string.Empty;
 
-        /// <summary>Топливо двигателей ступени: «LOX/LH2». Пусто, если двигателя нет.</summary>
+        /// <summary>Stage engine propellant: "LOX/LH2". Empty if there is no engine.</summary>
         public string PropellantLabel = string.Empty;
 
         public int EngineCount;
 
-        /// <summary>Сухая масса ступени (металл, двигатели, отделитель), кг.</summary>
+        /// <summary>Stage dry mass (metal, engines, separator), kg.</summary>
         public double DryMassKg;
 
-        /// <summary>Топливо, залитое в баки ступени при запуске, кг.</summary>
+        /// <summary>Propellant loaded in the stage tanks at ignition, kg.</summary>
         public double PropellantMassKg;
 
-        /// <summary>Топливо в баках ступени СЕЙЧАС, кг (до полёта равно залитому; у сброшенной — 0).</summary>
+        /// <summary>Propellant in the stage tanks NOW, kg (equals loaded before flight; 0 for a jettisoned stage).</summary>
         public double PropellantRemainingKg;
 
-        /// <summary>Топливо, которое ещё сгорит в этой ступени, кг.</summary>
+        /// <summary>Propellant that will still burn in this stage, kg.</summary>
         public double BurnedMassKg;
 
-        /// <summary>Масса аппарата в момент (запуска) ступени, с верхними ступенями, кг.</summary>
+        /// <summary>Vessel mass at stage (ignition), including upper stages, kg.</summary>
         public double StartMassKg;
 
-        /// <summary>Масса аппарата в момент выгорания ступени (до отделения), кг.</summary>
+        /// <summary>Vessel mass at stage burnout (before separation), kg.</summary>
         public double EndMassKg;
 
-        /// <summary>Тяга при запуске, Н.</summary>
+        /// <summary>Thrust at ignition, N.</summary>
         public double ThrustN;
 
-        /// <summary>Расход при запуске, кг/с.</summary>
+        /// <summary>Mass flow at ignition, kg/s.</summary>
         public double MassFlowKgS;
 
-        /// <summary>Эффективный Isp ступени (по всей оставшейся выработке), с.</summary>
+        /// <summary>Effective stage Isp (over all remaining burn), s.</summary>
         public double IspS;
 
-        /// <summary>Время работы (в полёте — оставшееся), с.</summary>
+        /// <summary>Burn time (remaining in flight), s.</summary>
         public double BurnTimeS;
 
-        /// <summary>ΔV ступени (в полёте — оставшаяся), м/с.</summary>
+        /// <summary>Stage ΔV (remaining in flight), m/s.</summary>
         public double DeltaVMs;
 
-        /// <summary>ΔV ступени по плану (полный бак), м/с. До полёта равна DeltaVMs.</summary>
+        /// <summary>Planned stage ΔV (full tanks), m/s. Equals DeltaVMs before flight.</summary>
         public double PlanDeltaVMs;
 
-        /// <summary>Время работы по плану (полный бак), с.</summary>
+        /// <summary>Planned burn time (full tanks), s.</summary>
         public double PlanBurnTimeS;
 
-        /// <summary>TWR в момент (запуска) ступени и при выгорании (к g поверхности тела).</summary>
+        /// <summary>TWR at stage (ignition) and at burnout (relative to the body's surface g).</summary>
         public double TwrStart;
         public double TwrEnd;
 
-        /// <summary>В полёте: по плану у ступени был ΔV, а теперь его не осталось (ступень ещё может быть на борту).</summary>
+        /// <summary>In flight: the stage had planned ΔV, but none remains (the stage may still be on board).</summary>
         public bool IsSpent;
 
-        /// <summary>В полёте: ступень отделена и больше не часть корабля (из состояния модели).</summary>
+        /// <summary>In flight: the stage is jettisoned and no longer part of the vessel (from the model state).</summary>
         public bool IsJettisoned;
 
-        /// <summary>В полёте: ступень, которая будет/работает (первая, где ещё есть ΔV).</summary>
+        /// <summary>In flight: the stage that will run/is running (the first one with ΔV left).</summary>
         public bool IsActive;
 
         public bool HasEngine { get { return EngineCount > 0; } }
 
-        /// <summary>Полная масса самой ступени (без верхних) при запуске, кг.</summary>
+        /// <summary>Total mass of the stage itself (without upper stages) at ignition, kg.</summary>
         public double OwnMassKg { get { return DryMassKg + PropellantMassKg; } }
 
         public readonly List<string> Warnings = new List<string>();
     }
 
-    /// <summary>Результат расчёта всего аппарата.</summary>
+    /// <summary>Computation result for the whole vessel.</summary>
     public sealed class DvResult
     {
         public readonly List<DvStage> Stages = new List<DvStage>();
         public double TotalDeltaVMs;
         public double TotalBurnTimeS;
 
-        /// <summary>Полная масса основной сборки при запуске, кг.</summary>
+        /// <summary>Total main-assembly mass at launch, kg.</summary>
         public double TotalMassKg;
 
-        /// <summary>Деталей, не соединённых с основной сборкой (в расчёт не входят).</summary>
+        /// <summary>Parts not connected to the main assembly (excluded from the computation).</summary>
         public int DetachedParts;
 
         public DvEnvironment Environment;
 
-        /// <summary>Результат построен для полёта (по остатку топлива).</summary>
+        /// <summary>The result is built for flight (from remaining propellant).</summary>
         public bool InFlight;
 
         /// <summary>
-        /// Текущая масса корабля, кг. По массе (legacy) — переданное значение;
-        /// по состоянию модели — Σ (сухая + топливо) не сброшенных ступеней.
+        /// Current vessel mass, kg. By mass (legacy) — the passed-in value;
+        /// by model state — Σ (dry + propellant) of non-jettisoned stages.
         /// </summary>
         public double CurrentMassKg;
 
-        /// <summary>Индекс активной ступени, −1 — ΔV не осталось (только в полёте).</summary>
+        /// <summary>Active stage index, −1 if no ΔV remains (flight only).</summary>
         public int ActiveStageIndex = -1;
 
         /// <summary>
-        /// Масса выработанных, но ещё не отделённых ступеней под активной, кг.
-        /// ΔV посчитана в предположении, что они отделены.
+        /// Mass of spent but not yet jettisoned stages below the active one, kg.
+        /// ΔV is computed assuming they are jettisoned.
         /// </summary>
         public double AttachedSpentMassKg;
 
         /// <summary>
-        /// (legacy, по массе) На сколько корабль стал легче, чем может объяснить
-        /// выгорание топлива сборки, кг (0 — всё объясняется).
+        /// (legacy, by mass) How much lighter the vessel got beyond what the
+        /// assembly's propellant burn can explain, kg (0 — all explained).
         /// </summary>
         public double UnexplainedMassLossKg;
 
-        /// <summary>Пояснения расчёта для интерфейса (в полёте).</summary>
+        /// <summary>Computation notes for the UI (in flight).</summary>
         public readonly List<string> Notes = new List<string>();
 
         public bool IsEmpty { get { return Stages.Count == 0; } }
     }
 
     /// <summary>
-    /// Чистый (без Unity) расчёт ΔV по ядрам ступеней. Вход — StageCore (из
-    /// DeltaV.BuildStageAssembly или собранные вручную, например в стенде),
-    /// никакой PlacedPart. Ядра НЕ меняются: расчёт идёт на копиях.
+    /// Pure (no Unity) ΔV computation over stage cores. Input is StageCore
+    /// (from DeltaV.BuildStageAssembly or built by hand, e.g. in a test rig),
+    /// never a PlacedPart. Cores are NOT modified: the computation works on clones.
     ///
-    /// ΔV ступени — формула Циолковского по участкам постоянной тяги (см.
-    /// StageCore.Burn), масса на участке убывает на выгоревшее:
-    ///   ΔV = Σ (F / ṁ) · ln(m_нач / m_кон).
-    /// Масса при (запуске) ступени k = Σ по несброшенным j ≥ k (сухая_j +
-    /// топливо_j): выработанные ступени ниже активной считаются отделёнными
-    /// (то, что получится при штатном разделении); их ещё не сброшенная масса
-    /// возвращается в AttachedSpentMassKg и пояснением в Notes.
+    /// Stage ΔV is the Tsiolkovsky formula over constant-thrust segments (see
+    /// StageCore.Burn); mass decreases by the burned amount on each segment:
+    ///   ΔV = Σ (F / ṁ) · ln(m_start / m_end).
+    /// Mass at stage k's (ignition) = Σ over non-jettisoned j ≥ k (dry_j +
+    /// propellant_j): spent stages below the active one are treated as
+    /// jettisoned (as in a nominal separation); their not-yet-jettisoned mass is
+    /// reported back in AttachedSpentMassKg and a note in Notes.
     /// </summary>
     public static class StageDeltaV
     {
         /// <summary>
-        /// ΔV по текущему состоянию ядер. inFlight=false — план (топливо
-        /// считается залитым полностью, jettisoned игнорируется).
-        /// jettisoned[k]=true — ступень k сброшена: массы не даёт, ΔV 0.
+        /// ΔV from the cores' current state. inFlight=false — plan (propellant
+        /// is treated as fully loaded, jettisoned ignored).
+        /// jettisoned[k]=true — stage k is jettisoned: contributes no mass, ΔV 0.
         /// </summary>
         public static DvResult Evaluate(
             DvEnvironment env,
@@ -211,7 +211,7 @@ namespace Galilego.Building
                 return result;
             }
 
-            // План — те же ядра с полными баками и без сброса.
+            // Plan — the same cores with full tanks and no jettison.
             DvResult plan = null;
             if (inFlight)
             {
@@ -244,7 +244,7 @@ namespace Galilego.Building
 
             result.TotalMassKg = launch;
 
-            // Масса «ступень + все верхние» по несброшенным ступеням.
+            // "Stage + all upper stages" mass over non-jettisoned stages.
             var above = new double[n + 1];
             for (int k = n - 1; k >= 0; k--)
             {
@@ -283,8 +283,8 @@ namespace Galilego.Building
 
                 stage.StartMassKg = above[k];
 
-                // Для предупреждений остаток — это «залито» (иначе выработанная
-                // ступень ругалась бы на отсутствие топлива).
+                // For warnings the remainder is the LOADED amount (otherwise a
+                // spent stage would complain about missing propellant).
                 var basis = new double[core.Pools.Count];
                 for (int i = 0; i < basis.Length; i++)
                 {
@@ -350,10 +350,10 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// ΔV по состоянию, сообщённому физикой: остатки по пулам и флаги
-        /// сброшенных ступеней. Состояния применяются к копиям ядер; пул без
-        /// записи остаётся залитым. Записи, которым нет пула в ступени,
-        /// считаются и выводятся в Notes (состояние не от этой сборки).
+        /// ΔV from the state reported by physics: pool remainders and jettisoned
+        /// stage flags. States are applied to clones of the cores; a pool without
+        /// a record stays loaded. Records with no matching pool in a stage are
+        /// counted and reported in Notes (the state is not from this assembly).
         /// </summary>
         public static DvResult EvaluateFromState(
             DvEnvironment env,
@@ -403,9 +403,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// (legacy) Остаток по текущей массе корабля: сгоревшее = масса при
-        /// запуске − currentMassKg, распределяется по ступеням в порядке плана
-        /// (нижняя горит первой). Нужен, пока физика не отдаёт состояние модели.
+        /// (legacy) Remaining ΔV by the vessel's current mass: burned = launch
+        /// mass − currentMassKg, distributed over the stages in plan order
+        /// (bottom burns first). Needed while physics doesn't report model state.
         /// </summary>
         public static DvResult EvaluateByMass(
             DvEnvironment env, IReadOnlyList<StageCore> freshCores, double currentMassKg, int detachedParts)
@@ -430,8 +430,8 @@ namespace Galilego.Building
             DvResult result = Evaluate(env, cores, null, detachedParts, true);
             result.CurrentMassKg = currentMassKg;
 
-            // Бюджет остался: корабль легче, чем сборка может объяснить выгоранием
-            // (топливо кончилось, а масса всё падает) — данные полёта и сборка расходятся.
+            // Budget left: the vessel is lighter than the assembly's burn can
+            // explain (propellant is gone, yet mass keeps dropping) — flight data and assembly disagree.
             if (budget > Math.Max(0.5d, consumed * 1e-4d))
             {
                 result.UnexplainedMassLossKg = budget;
@@ -454,7 +454,7 @@ namespace Galilego.Building
                 }
             }
 
-            // Выработанные ступени под активной — ещё на корабле (не сброшены).
+            // Spent stages below the active one are still on the vessel (not jettisoned).
             int active = result.ActiveStageIndex >= 0 ? result.ActiveStageIndex : result.Stages.Count;
             double attached = 0d;
             for (int k = 0; k < active && k < cores.Count; k++)
@@ -473,7 +473,7 @@ namespace Galilego.Building
             }
         }
 
-        // ─── Подписи и предупреждения ────────────────────────────────────────
+        // ─── Labels and warnings ────────────────────────────────────────
 
         private static void FillLabels(DvStage stage, StageCore core)
         {
@@ -496,7 +496,7 @@ namespace Galilego.Building
             stage.EngineLabel = string.Join(", ", names);
             stage.PropellantLabel = string.Join(", ", fuels);
 
-            // Ступень без двигателя: показываем, чем залиты баки (если залиты).
+            // Stage without an engine: show what the tanks are loaded with (if anything).
             if (core.EngineCount == 0 && core.Pools.Count > 0)
             {
                 var ids = new List<string>();
@@ -510,8 +510,8 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// core — ядро ПОСЛЕ выработки (Kg = то, что не сгорит); basis[i] — сколько
-        /// в пуле i было на начало расчёта (залито/остаток); basisSum — сумма.
+        /// core is the core AFTER the burn (Kg = what won't burn); basis[i] is the
+        /// amount pool i held at the start (loaded/remainder); basisSum is the sum.
         /// </summary>
         private static void FillWarnings(DvStage stage, StageCore core, double[] basis, double basisSum, bool burned)
         {
@@ -523,7 +523,7 @@ namespace Galilego.Building
                 return;
             }
 
-            // Чего двигателю не хватает с самого начала.
+            // What the engine lacks from the very start.
             for (int e = 0; e < core.Engines.Count; e++)
             {
                 StageEngineGroup eg = core.Engines[e];
@@ -552,7 +552,7 @@ namespace Galilego.Building
                 }
             }
 
-            // Топливо, которое не подходит ни одному двигателю ступени.
+            // Propellant that fits none of the stage's engines.
             var foreign = new List<string>();
             for (int i = 0; i < core.Pools.Count; i++)
             {
@@ -582,7 +582,7 @@ namespace Galilego.Building
                 stage.Warnings.Add("Топливо " + string.Join(", ", foreign) + " не подходит двигателю");
             }
 
-            // Остаток после выработки: заправлено не в пропорцию двигателя.
+            // Remainder after the burn: loaded off the engine's ratio.
             double left = core.PropellantKg;
             if (burned && foreign.Count == 0 && left > Math.Max(1d, basisSum * 0.005d))
             {

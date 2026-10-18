@@ -5,15 +5,14 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Запекает 2 тайлящиеся normal map воды (HOWTO-Water: «Normalmap», две карты,
-    /// вторая мельче первой, скролл в разные стороны). Замена скачанным CC0:
-    /// внешняя сеть в этой среде недоступна, поэтому карты генерятся детерминированно
-    /// в репозиторий — никаких проприетарных битов, можно позже заменить скачанными
-    /// CC0 один в один без правок кода (имена/слоты сохранятся).
+    /// Bakes two tiling water normal maps (HOWTO-Water: "Normalmap", two maps, the
+    /// second finer than the first, scrolling in opposite directions). Generated
+    /// deterministically into the repository — no proprietary bits; CC0 maps can be
+    /// dropped in one-to-one without code changes (names/slots stay).
     ///
-    /// Использование в обоих планах:
-    ///   - План А (HDRP Water): слоты normal/ripples Water Surface;
-    ///   - План Б (Galilego/WaterSurface): _NormalMap0/1 со скроллом в противоход.
+    /// Used by both plans:
+    ///   - Plan A (HDRP Water): Water Surface normal/ripples slots;
+    ///   - Plan B (Galilego/WaterSurface): _NormalMap0/1 scrolling in opposite directions.
     /// </summary>
     public static class WaterNormalBaker
     {
@@ -114,7 +113,7 @@ namespace Galilego.Universe.EditorTools
 
         private static float Hash(int x, int y, int seed)
         {
-            // Детерминированный хэш решётки (без таблиц перестановок).
+            // Deterministic lattice hash (no permutation tables).
             unchecked
             {
                 uint h = (uint)(x * 374761393 + y * 668265263 + seed * 974634211);

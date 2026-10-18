@@ -6,24 +6,18 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// РОВНАЯ ПЛОЩАДКА В ТОЧКЕ ПЛАНЕТЫ — аналог PQS-мода FlattenArea из KSP,
-    /// где под каждую площадку движок принудительно сглаживает шум.
+    /// FLAT PAD AT A POINT ON THE PLANET — analogous to KSP's PQS FlattenArea mod,
+    /// where the engine forcibly smooths the noise under each pad.
     ///
-    /// Зачем это нужно именно здесь: амплитуда рельефа Terra 9144 м с
-    /// ridged-горным членом, и случайно выбранная точка чаще всего лежит на
-    /// склоне 10-30°. Поставить там базу можно, ходить по ней — нет.
-    /// Площадка решает это в корне: не «здание подстроилось под склон», а
-    /// склон убран.
+    /// The edit is applied to the SINGLE relief shape function
+    /// (TerrainNoise.SampleHeight), so it automatically reaches the render mesh,
+    /// ship and player physics, normals, decor, water depth and the editor preview.
+    /// Visual/physics parity is not "maintained" but cannot drift: there is nowhere
+    /// for a mismatch to arise.
     ///
-    /// ГЛАВНОЕ ПРЕИМУЩЕСТВО перед подгонкой объектов: правка вносится в
-    /// ЕДИНСТВЕННУЮ функцию формы рельефа (TerrainNoise.SampleHeight), а значит
-    /// автоматически достаётся рендер-мешу, физике корабля и игрока, нормалям,
-    /// декорациям, глубине воды и редакторскому превью. Паритет визуал/физика
-    /// не «поддерживается», а не может разойтись: расхождению негде взяться.
-    ///
-    /// Форма: ровное ядро радиусом InnerRadius и гладкий фартук
-    /// InnerRadius→OuterRadius. Фартук обязателен — жёсткий диск дал бы у края
-    /// видимую стену и излом в нормалях.
+    /// Shape: a flat core of radius InnerRadius and a smooth apron
+    /// InnerRadius→OuterRadius. The apron is mandatory — a hard disc would give a
+    /// visible wall at the edge and a kink in the normals.
     /// </summary>
     [Serializable]
     public struct TerrainModifier
@@ -52,66 +46,58 @@ namespace Galilego.Universe
             "Обычная площадка над водой работает и без этого флага.")]
         public bool OverridesSeaLevel;
 
-        /// <summary>Модификатор выключен — им нельзя «случайно» испортить рельеф.</summary>
+        /// <summary>The modifier is off — it cannot "accidentally" spoil the relief.</summary>
         public bool IsActive =>
             OuterRadiusMeters > 0d && !double.IsNaN(TargetHeightMeters) && !double.IsInfinity(TargetHeightMeters);
     }
 
     /// <summary>
-    /// Пересчитанная форма модификатора для горячего цикла: направление вместо
-    /// lat/lon и косинусы угловых радиусов вместо метров. Всё, что можно было
-    /// посчитать один раз при сборке, посчитано — в SampleHeight остаётся одно
-    /// скалярное произведение и одно сравнение на модификатор.
+    /// The modifier's precomputed form for the hot loop: direction instead of lat/lon
+    /// and cosines of angular radii instead of metres. Everything computable once at
+    /// build time is precomputed — SampleHeight is left with one dot product and one
+    /// comparison per modifier.
     ///
-    /// Blittable по построению (double3 + double'ы + два byte), поэтому
-    /// лежит в NativeArray и проходит через Burst-джобу рендера без
-    /// managed-ссылок.
+    /// Blittable by construction (double3 + doubles + a byte), so it lives in a
+    /// NativeArray and passes through the renderer's Burst job with no managed
+    /// references.
     /// </summary>
     public struct TerrainModifierData
     {
-        /// <summary>Единичное тело-fixed направление центра площадки.</summary>
+        /// <summary>Unit body-fixed direction of the pad centre.</summary>
         public double3 Direction;
 
-        /// <summary>cos(OuterRadius / Radius) — за этой границей модификатор не действует.</summary>
+        /// <summary>cos(OuterRadius / Radius) — beyond this boundary the modifier has no effect.</summary>
         public double CosOuter;
 
-        /// <summary>cos(InnerRadius / Radius) — внутри этого значения влияние полное.</summary>
+        /// <summary>cos(InnerRadius / Radius) — inside this value the influence is full.</summary>
         public double CosInner;
 
-        /// <summary>Целевая высота, м. Делится на амплитуду только для затронутых вершин.</summary>
+        /// <summary>Target height, m. Divided by the amplitude only for affected vertices.</summary>
         public double TargetHeightMeters;
 
-        /// <summary>См. TerrainModifier.OverridesSeaLevel.</summary>
+        /// <summary>See TerrainModifier.OverridesSeaLevel.</summary>
         public byte OverridesSeaLevel;
     }
 
-    /// <summary>Сборка таблицы модификаторов и её сравнение — общая логика для кэшей.</summary>
+    /// <summary>Modifier table building and comparison — shared logic for caches.</summary>
     public static class TerrainModifiers
     {
         /// <summary>
-        /// ПУСТАЯ, НО ВАЛИДНАЯ таблица. Общая на все тела и никогда не
-        /// освобождается.
+        /// An EMPTY BUT VALID table. Shared across all bodies and never released.
         ///
-        /// Зачем она нужна, хотя «нет модификаторов» вроде бы означает «ничего не
-        /// хранить»: планировщик job'ов Unity требует, чтобы ВСЕ контейнерные
-        /// поля структуры джобы были валидны в момент Schedule — независимо от
-        /// того, читает ли их код. На default(NativeArray) рендер падал целиком:
-        /// «The UNKNOWN_OBJECT_TYPE TerrainTileJob.Params.Mods has not been
-        /// assigned or constructed», планета пропадала. Проверка IsCreated внутри
-        /// SampleHeight не спасает — до неё управление не доходит.
+        /// It is needed because Unity's job scheduler requires EVERY container field of
+        /// a job struct to be valid at Schedule time, regardless of whether the code reads
+        /// it — a default(NativeArray) fails the renderer outright.
         ///
-        /// Таблица нулевой длины, поэтому шарить её безопасно: памяти за ней
-        /// нет, а защита job'ов для пустых контейнеров — no-op. Правило
-        /// освобождения: таблица длины 0 всегда ЭТОТ объект, и Dispose её не
-        /// трогает (см. Release).
+        /// Zero length, so sharing it is safe: there is no memory behind it, and job
+        /// safety for empty containers is a no-op. Release rule: a zero-length table is
+        /// always THIS object, and Dispose does not touch it (see Release).
         /// </summary>
         public static readonly NativeArray<TerrainModifierData> Empty =
             new NativeArray<TerrainModifierData>(0, Allocator.Persistent);
 
-        /// <summary>
-        /// Освободить таблицу. Нулевую не трогаем — это общий Empty, и его
-        /// Dispose сломал бы все тела сразу.
-        /// </summary>
+        /// <summary>Release the table. A zero-length one is left alone — it is the shared
+        /// Empty, and disposing it would break every body at once.</summary>
         public static void Release(ref NativeArray<TerrainModifierData> table)
         {
             if (table.IsCreated && table.Length > 0)
@@ -122,12 +108,10 @@ namespace Galilego.Universe
             table = Empty;
         }
 
-        /// <summary>
-        /// Пересобрать таблицу под тело. Возвращает <see cref="Empty"/>, если
-        /// активных модификаторов нет: SampleHeight тогда работает ровно как
-        /// раньше (контракт «пустые параметры дают бит-в-бит legacy-fBm», на
-        /// нём стоят все тесты рельефа).
-        /// </summary>
+        /// <summary>Rebuild the table for a body. Returns <see cref="Empty"/> when there
+        /// are no active modifiers: SampleHeight then behaves exactly as before (the
+        /// contract "empty parameters give bit-for-bit legacy fBm", on which all relief
+        /// tests rest).</summary>
         public static NativeArray<TerrainModifierData> Build(
             System.Collections.Generic.IList<TerrainModifier> source, double bodyRadiusMeters)
         {
@@ -162,11 +146,11 @@ namespace Galilego.Universe
                 double lon = m.LongitudeDegrees * (Math.PI / 180d);
                 double cosLat = Math.Cos(lat);
 
-                // Угловой радиус не может превышать четверть окружности: за cos
-                // начинает расти обратно, и «площадка радиуса 2R» превратилась бы
-                // в кольцо на другой стороне планеты. Косинусы считаем от
-                // дуговой длины, потому что и радиус площадки, и расстояние
-                // между точками здесь — метры поверхности.
+                // The angular radius cannot exceed a quarter circumference: beyond that
+                // cos starts growing again, and a "pad of radius 2R" would become a ring
+                // on the far side of the planet. Cosines are computed from arc length,
+                // because both the pad radius and the distance between points here are
+                // surface metres.
                 double inner = Math.Min(Math.Max(m.InnerRadiusMeters / bodyRadiusMeters, 0d), Math.PI * 0.5d);
                 double outer = Math.Min(Math.Max(m.OuterRadiusMeters / bodyRadiusMeters, inner), Math.PI * 0.5d);
 
@@ -183,12 +167,10 @@ namespace Galilego.Universe
             return table;
         }
 
-        /// <summary>
-        /// Содержательное равенство таблиц. NativeArray == сравнивает указатель,
-        /// а не данные, поэтому одинаковый по смыслу набор из разных сборок
-        /// признавался бы разным и кэш рендера пересобирался бы впустую (а
-        /// хуже — наоборот, реальное изменение модов могло бы не заметиться).
-        /// </summary>
+        /// <summary>Semantic equality of tables. NativeArray == compares the pointer, not
+        /// the data, so a semantically identical set from a different build would be seen
+        /// as different and the render cache would rebuild needlessly (worse, the reverse:
+        /// a real modifier change could go unnoticed).</summary>
         public static bool TableEqual(NativeArray<TerrainModifierData> a, NativeArray<TerrainModifierData> b)
         {
             if (!a.IsCreated || !b.IsCreated)
@@ -218,7 +200,7 @@ namespace Galilego.Universe
             return true;
         }
 
-        /// <summary>Подпись таблицы для хеша системы — чтобы правка мода пересобирала кэш.</summary>
+        /// <summary>Table signature for the system hash — so a modifier edit rebuilds the cache.</summary>
         public static void MixInto(ref long hash, NativeArray<TerrainModifierData> table)
         {
             hash = (hash * 31L) + table.Length;

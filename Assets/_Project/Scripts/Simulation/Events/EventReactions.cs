@@ -8,9 +8,9 @@ using Ship = Galilego.Spacecraft.Spacecraft;
 namespace Galilego.Events
 {
     /// <summary>
-    /// Состояние посадки: позиция спроецирована на поверхность, нормальная
-    /// скорость съедена, тангенциальная сохранена. NormalSpeed/TangentialSpeed —
-    /// замер в миг касания (до съедения), для проверки перехода T20, не итога.
+    /// Landing state: position projected onto the surface, normal speed removed,
+    /// tangential speed kept. NormalSpeed/TangentialSpeed are measured at the
+    /// instant of contact (before removal), not the result.
     /// </summary>
     public readonly struct LandedState
     {
@@ -32,7 +32,7 @@ namespace Galilego.Events
         }
     }
 
-    /// <summary>Итог touchdown: либо посадка, либо спеки разрушения (не спавн).</summary>
+    /// <summary>Touchdown outcome: either a landing or breakup specs (not spawn).</summary>
     public readonly struct TouchdownOutcome
     {
         public readonly bool IsLanding;
@@ -65,9 +65,9 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Новое доминантное тело берётся из события как есть: драйвер уже положил
-    /// туда ключ перехода (key1). Реакция НЕ пересчитывает SOI — запрет
-    /// дублирования физической логики в реакционном слое.
+    /// The new dominant body is taken from the event as-is: the driver already put
+    /// the transition key (key1) there. The reaction does NOT recompute SOI —
+    /// physical logic must not be duplicated in the reaction layer.
     /// </summary>
     public readonly struct FocusResult
     {
@@ -80,21 +80,21 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Реакции на события. Драйвер остаётся detect-only (P1a-инвариант):
-    /// сюда приходит уже зафиксированное EventOccurrence, назад в propagator
-    /// ничего не возвращается. Propagator не импортируется принципиально:
-    /// всё нужное (вид, тело, детектор-источник, состояние) уже лежит в событии.
-    /// Режим судна (Flying/Landed/Destroyed) хранит игровой цикл; Spacecraft
-    /// здесь мутирует только проекцией посадки и клампом массы.
+    /// Reactions to events. The driver stays detect-only (P1a invariant): a
+    /// recorded EventOccurrence arrives here, and nothing goes back to the
+    /// propagator. The Propagator is deliberately not imported: everything needed
+    /// (kind, body, source detector, state) is already in the event. The game loop
+    /// holds the vessel mode (Flying/Landed/Destroyed); Spacecraft is mutated here
+    /// only by the landing projection and the mass clamp.
     /// </summary>
     public static class EventReactions
     {
         /// <summary>
-        /// Касание. Критерий — НОРМАЛЬНАЯ составляющая удара v_n = v_impact·n:
-        /// большая тангенциальная при малой нормальной — жёсткая посадка со
-        /// скольжением (уходит в SurfaceMotion с начальным v_t), а не ложно
-        /// мягкая. Граница детерминирована: |v_n| ≤ допуск → посадка.
-        /// Нормаль здесь радиальная; ITerrainNormal обобщит её в A4.4.
+        /// Contact. The criterion is the NORMAL component of the impact v_n = v_impact·n:
+        /// a large tangential with a small normal is a hard sliding landing (goes to
+        /// SurfaceMotion with initial v_t), not a falsely soft one. The boundary is
+        /// deterministic: |v_n| <= tolerance → landing.
+        /// The normal here is radial; ITerrainNormal will generalize it later.
         /// </summary>
         public static TouchdownOutcome ApplyTouchdown(Ship ship, EventOccurrence occurrence, OrbitingBody body, IBreakupModel breakup, double spawnEpsilonMeters, System.Collections.Generic.IReadOnlyList<Part> parts = null)
         {
@@ -109,11 +109,10 @@ namespace Galilego.Events
 
             double t = occurrence.TimeSeconds;
             body.SurfaceLatLonAt(ship.Position, t, out double latDeg, out double lonDeg);
-            // Хук мягкого приводнения (этап «корабль садится на воду»):
-            // посадка ПОКА идёт по клампнутой высоте (плоскость моря) без
-            // изменения поведения. Будущее правило: splash.IsWater и глубина
-            // больше посадочной осадки и |v_n| в допуске приводнения →
-            // посадка вместо разрушения (вода смягчает удар).
+            // Soft splashdown hook (stage "ship lands on water"): landing for now
+            // goes by the clamped altitude (sea plane) with no behavior change.
+            // Future rule: splash.IsWater, depth greater than landing draft, and
+            // |v_n| within the splashdown tolerance → landing instead of breakup.
             WaterQuery.SplashdownInfo splash = WaterQuery.GetSplashdownInfo(body, latDeg, lonDeg);
             double groundAltitude = GroundAltitude(body, latDeg, lonDeg);
             body.GetSurfaceState(latDeg, lonDeg, groundAltitude, t, out Vector3d surfacePosition, out Vector3d surfaceVelocity);
@@ -140,25 +139,22 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Переход Landed → Flying (LiftoffHook из автомата режимов). Критерий
-        /// отрыва синхронизирован с SurfaceMotion: свободное ускорение в
-        /// системе поверхности a = тяга + гравитация − ω×(ω×r) − 2ω×v_t;
-        /// контакт держится ⟺ a·n ≤ ContactEpsilon. Центробежный член обязателен:
-        /// при быстром спине (ω²R &gt; |g|) контакт не держится даже с нулевой
-        /// тягой (T52/T70 — оба пути отрыва дают один вердикт). ω = 0 → формула
-        /// вырождается в старый критерий (тяга+гравитация)·n &gt; 0.
-        /// При отрыве корабль получает скорость поверхности + сохранённую
-        /// тангенциальную (тот же путь, что LandShip): со-вращающийся корабль
-        /// не меняет скорость (нет двойного учёта), а поставленный с v=0 на
-        /// вращающуюся планету корректно увлекается её вращением.
-        /// Иначе — остаётся: проекция на поверхность + съеденная нормальная
-        /// скорость (общий путь LandShip, не вторая реализация).
-        /// Детерминированная граница: |a·n| ≤ eps → контакт держится.
-        /// Нормаль здесь радиальная; ITerrainNormal обобщит её в A4.4.
-        /// Контракт параметров: thrustAccelWorld и gravityAccelWorld — ускорения
-        /// В ТОЧКЕ КОРАБЛЯ на timeSeconds (gravityAccelWorld =
-        /// starSystem.EvaluateShipAcceleration(ship.Position, timeSeconds));
-        /// гравитация в чужой точке/времени рассинхронит критерий.
+        /// Landed → Flying transition (the mode machine's LiftoffHook). The liftoff
+        /// criterion is synchronized with SurfaceMotion: free acceleration in the
+        /// surface frame a = thrust + gravity − ω×(ω×r) − 2ω×v_t; contact holds iff
+        /// a·n <= ContactEpsilon. The centrifugal term matters: at high spin
+        /// (ω²R &gt; |g|) contact does not hold even with zero thrust. ω = 0 reduces
+        /// the formula to (thrust+gravity)·n &gt; 0. On liftoff the ship gets the
+        /// surface velocity plus the kept tangential velocity (the same path as
+        /// LandShip): a co-rotating ship keeps its speed (no double counting), and one
+        /// placed with v=0 on a rotating planet is correctly carried by its rotation.
+        /// Otherwise it stays: projection onto the surface plus removed normal speed
+        /// (the same LandShip path, not a second implementation). Deterministic
+        /// boundary: |a·n| <= eps → contact holds. The normal here is radial;
+        /// ITerrainNormal will generalize it later. Parameters: thrustAccelWorld and
+        /// gravityAccelWorld are accelerations AT THE SHIP's point at timeSeconds
+        /// (gravityAccelWorld = starSystem.EvaluateShipAcceleration(ship.Position,
+        /// timeSeconds)); gravity at another point/time desynchronizes the criterion.
         /// </summary>
         public static VesselRegime TryLiftoff(Ship ship, OrbitingBody body, Vector3d thrustAccelWorld, Vector3d gravityAccelWorld, double timeSeconds, out LandedState landedState)
         {
@@ -200,16 +196,16 @@ namespace Galilego.Events
             return new LandedState(latDeg, lonDeg, surfacePosition, ship.Velocity, normalSpeed, tangentialSpeed);
         }
 
-        /// <summary>Высота поверхности в точке (lat/lon, градусы) по модели тела; сфера при null.</summary>
+        /// <summary>Surface height at a point (lat/lon, degrees) for the body model; sphere when null.</summary>
         private static double GroundAltitude(OrbitingBody body, double latDeg, double lonDeg)
         {
             return body.Terrain?.GetHeightMeters(body, latDeg * (Math.PI / 180d), lonDeg * (Math.PI / 180d)) ?? 0d;
         }
 
         /// <summary>
-        /// Выработка топлива: mass = max(mass, dry) — именно кламп с точным
-        /// равенством mass == dry после реакции, а не «не меньше dry».
-        /// Сухая масса берётся из детектора-источника события.
+        /// Propellant depletion: mass = max(mass, dry) — a clamp with exact
+        /// equality mass == dry after the reaction, not "not less than dry".
+        /// Dry mass comes from the event's source detector.
         /// </summary>
         public static double ApplyDepletion(Ship ship, EventOccurrence occurrence)
         {

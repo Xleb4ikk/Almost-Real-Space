@@ -1,26 +1,17 @@
-// Подводное затухание по закону Бера — Ламберта, спектральное, полноэкранный
-// проход HDRP. ПОЛНАЯ ЗАМЕНА файла Shaders/UnderwaterViewFog.shader.
+// Underwater attenuation following Beer-Lambert, spectral, a full-screen
+// HDRP pass.
 //
-// Что изменено относительно прежней версии:
+// Scattered light (veil) attenuates with CAMERA depth, and the light path is
+// measured as DISTANCE ALONG THE RAY (eyeDepth / cos to the camera axis) so
+// the screen edges are not under-attenuated at wide FOV.
 //
-//  1) Рассеянный свет (вуаль) теперь гаснет с глубиной КАМЕРЫ. Раньше
-//     гасла только солнечная часть, а _UwAmbient * skyAmbient оставался
-//     константой - поэтому на любой глубине экран был одного и того же
-//     голубого и никакого затемнения не было.
+// The water ceiling (Snell's window) is drawn analytically when the water mesh
+// did not leave surface depth above the camera (Auto mode), or always (Always
+// mode, for checking). If the water mesh renders normally, Auto does nothing.
 //
-//  2) Путь луча считается как РАССТОЯНИЕ ВДОЛЬ ЛУЧА (eyeDepth / cos к оси
-//     камеры), а не как eyeDepth. LinearEyeDepth - это z в пространстве
-//     камеры; на краю экрана при FOV 90 градусов настоящий путь на 40 %
-//     длиннее, и затухание там занижалось.
-//
-//  3) Потолок воды (окно Снелла) рисуется здесь аналитически, если меш
-//     воды не оставил в буфере глубины поверхности над камерой (режим Auto)
-//     или всегда (режим Always, для проверки). Если меш воды рисуется
-//     нормально, Auto ничего не трогает.
-//
-// Точность (см. прежние комментарии): высота камеры и k = sea^2 - |C|^2
-// считаются на CPU в double; выход луча через поверхность берётся в форме
-// t = k / (sqrt(b^2 + k) + b), без вычитания больших чисел.
+// Accuracy: camera altitude and k = sea^2 - |C|^2 are computed on the CPU in
+// double; the ray exit through the surface uses t = k / (sqrt(b^2 + k) + b),
+// without subtracting large numbers.
 
 Shader "Galilego/UnderwaterViewFog"
 {
@@ -28,7 +19,7 @@ Shader "Galilego/UnderwaterViewFog"
     {
         Tags { "RenderPipeline" = "HDRenderPipeline" }
 
-        // Проход 1: считаем затухание, пишем в собственный буфер.
+        // Pass 1: compute attenuation and write it to a dedicated buffer.
         Pass
         {
             Name "UnderwaterViewFog"
@@ -43,44 +34,44 @@ Shader "Galilego/UnderwaterViewFog"
 
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/RenderPipeline/RenderPass/CustomPass/CustomPassCommon.hlsl"
 
-            // --- параметры профиля воды -------------------------------------------
-            float3 _UwSigma;             // поглощение, 1/м, по каналам R,G,B
-            float3 _UwWaterColor;        // цвет рассеянного света (вуали), linear
-            float  _UwAmbient;           // постоянная составляющая вуали
-            float  _UwAmbientDecay;      // доля sigma, с которой гаснет рассеянный свет с глубиной
-            float  _UwSunShapeFloor;     // нижняя доля солнечного света при N·L = 0
-            float  _UwSunPenetration;    // насколько солнце гаснет с глубиной
-            float  _UwTransitionMeters;  // ширина плавного перехода через поверхность
-            float  _UwDownwardDarkening; // насколько темнеет при взгляде вниз
-            int    _UwCeilingMode;       // 0 выкл, 1 авто (только если меш не нарисован), 2 всегда
+            // --- water profile parameters ------------------------------------------
+            float3 _UwSigma;             // absorption, 1/m, per R,G,B channel
+            float3 _UwWaterColor;        // scattered light colour (veil), linear
+            float  _UwAmbient;           // constant veil term
+            float  _UwAmbientDecay;      // fraction of sigma by which scattered light fades with depth
+            float  _UwSunShapeFloor;     // lower fraction of sunlight at N·L = 0
+            float  _UwSunPenetration;    // how much the sun fades with depth
+            float  _UwTransitionMeters;  // width of the smooth transition through the surface
+            float  _UwDownwardDarkening; // how much it darkens when looking down
+            int    _UwCeilingMode;       // 0 off, 1 auto (only if the mesh is not drawn), 2 always
 
-            // --- геометрия, посчитанная на CPU в double --------------------------
-            float  _UwCamAltitude;       // высота камеры над уровнем моря, м (<0 - под водой)
-            float  _UwSeaK;              // k = sea^2 - |C|^2, м^2
-            float  _UwRadius;            // |C|, м
-            float3 _UwUp;                // локальная вверх, simulation-пространство
-            float3 _UwSunDir;            // направление НА солнце
+            // --- geometry computed on the CPU in double ---------------------------
+            float  _UwCamAltitude;       // camera altitude above sea level, m (<0 - underwater)
+            float  _UwSeaK;              // k = sea^2 - |C|^2, m^2
+            float  _UwRadius;            // |C|, m
+            float3 _UwUp;                // local up, simulation space
+            float3 _UwSunDir;            // direction TO the sun
 
-            // Глобалы SkyEnvironment (те же, что читает WaterSurface.shader).
+            // SkyEnvironment globals (the same ones WaterSurface.shader reads).
             float3 _SkyAmbientColor;
             float3 _SunLightColor;
             float  _SkyAmbient;
             float  _TerrainRadianceScale;
 
-            // Глобалы воды (ставит PlanetSurfaceRenderer): узор потолка берётся
-            // в тех же тело-fixed координатах, что и у меша воды.
+            // Water globals (set by PlanetSurfaceRenderer): the ceiling pattern uses
+            // the same body-fixed coordinates as the water mesh.
             float  _WaterTime;
             float4x4 _WaterWorldToBody;
             float3 _WaterBodyAnchor;
 
-            // --- базис камеры для восстановления направления луча ----------------
+            // --- camera basis for reconstructing the ray direction -----------------
             float3 _UwCamRight;
             float3 _UwCamUp;
             float3 _UwCamFwd;
             float  _UwTanHalfFovX;
             float  _UwTanHalfFovY;
 
-            // Отладка, см. UnderwaterViewFog.DebugMode.
+            // Debug, see UnderwaterViewFog.DebugMode.
             int    _UwDebugMode;
 
             float ExitDistance(float3 D)
@@ -91,17 +82,16 @@ Shader "Galilego/UnderwaterViewFog"
 
             float3 ViewDirection(float2 uv)
             {
-                // Канонический способ HDRP: две точки одного и того же луча
-                // (на ближней и на дальней плоскости) через обратную VP-матрицу.
-                // Разность не зависит ни от camera-relative режима, ни от знака
-                // Y на платформе, ни от FOV и lens shift.
+                // Canonical HDRP method: two points of the same ray (near and far
+                // plane) through the inverse VP matrix. The difference is independent of
+                // camera-relative mode, platform Y sign, FOV and lens shift.
                 float3 nearWS = ComputeWorldSpacePosition(uv, 1.0, UNITY_MATRIX_I_VP);
                 float3 farWS = ComputeWorldSpacePosition(uv, 0.0, UNITY_MATRIX_I_VP);
                 return normalize(farWS - nearWS);
             }
 
-            // Небо в направлении dir (луч НАРУЖУ из воды). Те же формулы и
-            // константы, что в GalilegoSkyRadiance.hlsl, но без облаков и звёзд.
+            // Sky in direction dir (a ray OUT of the water). Same formulas and
+            // constants as GalilegoSkyRadiance.hlsl, but without clouds and stars.
             float3 WindowSky(float3 dir)
             {
                 float upness = saturate(dot(dir, _UwUp));
@@ -122,10 +112,10 @@ Shader "Galilego/UnderwaterViewFog"
                 return max(sky, 0.0);
             }
 
-            // Наклон волны на потолке: две бегущие ряби ~1 м и ~0.4 м плюс
-            // длинная зыбь. P - вектор от камеры до точки на поверхности
-            // (мировые оси). Узор берётся в тело-fixed координатах: он стоит
-            // на месте относительно моря, а не едет за камерой.
+            // Wave slope on the ceiling: two travelling ripples ~1 m and ~0.4 m plus
+            // a long swell. P is the vector from the camera to a surface point (world
+            // axes). The pattern uses body-fixed coordinates so it stays fixed relative
+            // to the sea, not to the camera.
             float3 CeilingNormal(float3 P, float pathLen)
             {
                 const float kBase = 0.006135923151542565; // 2*pi/1024
@@ -148,7 +138,7 @@ Shader "Galilego/UnderwaterViewFog"
                     + (d2 * (0.53 * slope * cos(ph2)))
                     + (d3 * (0.30 * slope * cos(ph3)));
 
-                // Далеко рябь меньше пикселя - гасим, иначе мерцание.
+                // Far away the ripple is smaller than a pixel - attenuate to avoid flicker.
                 g *= rcp(1.0 + (pathLen * 0.03));
                 g *= min(1.0, (slope * 1.8) / max(length(g), 1e-4));
 
@@ -157,8 +147,8 @@ Shader "Galilego/UnderwaterViewFog"
                 return normalize(_UwUp - g3);
             }
 
-            // Потолок воды снизу: окно Снелла (Френель вода -> воздух) и за
-            // критическим углом - зеркало толщи (veilMirror).
+            // Water ceiling from below: Snell's window (Fresnel water -> air) and,
+            // beyond the critical angle, the depth mirror (veilMirror).
             float3 CeilingColor(float3 D, float tExit, float3 veilMirror)
             {
                 float waterRad = min(_TerrainRadianceScale, 1.0);
@@ -182,7 +172,7 @@ Shader "Galilego/UnderwaterViewFog"
                 }
 
                 float3 color = lerp(skySeen, veilMirror, fresnel);
-                // Светлый ободок у границы окна - тот же Френель.
+                // Bright rim at the window edge - the same Fresnel term.
                 color += skySeen * (0.5 * fresnel * (1.0 - fresnel) * 2.0);
                 return color;
             }
@@ -194,7 +184,7 @@ Shader "Galilego/UnderwaterViewFog"
                 float2 uv = input.positionCS.xy * _ScreenSize.zw;
                 uint2 pixel = uint2(input.positionCS.xy);
 
-                // Плавный переход, НЕ if - иначе мигает при качке.
+                // Smooth transition, NOT if - otherwise it flickers while rocking.
                 float halfT = max(0.01, _UwTransitionMeters * 0.5);
                 float under = 1.0 - smoothstep(-halfT, halfT, _UwCamAltitude);
 
@@ -204,9 +194,8 @@ Shader "Galilego/UnderwaterViewFog"
                 if (_UwDebugMode == 6) { return float4(uv.x.xxx, 1.0); }
                 if (_UwDebugMode == 7) { return float4(scene, 1.0); }
 
-                // Расстояние до непрозрачного пикселя ВДОЛЬ ЛУЧА. Обратный Z:
-                // небо и дальняя плоскость дают огромное значение - это и есть
-                // «бесконечный» путь.
+                // Distance to the opaque pixel ALONG THE RAY. Reversed Z: sky and the
+                // far plane give a huge value - that is the "infinite" path.
                 float rawDepth = CustomPassLoadCameraDepth(pixel);
                 float eyeDepth = LinearEyeDepth(rawDepth, _ZBufferParams);
                 float3 D = ViewDirection(uv);
@@ -217,8 +206,8 @@ Shader "Galilego/UnderwaterViewFog"
                 float tExit = inWater ? ExitDistance(D) : -1.0;
                 bool lookingUp = (dot(D, _UwUp) > 0.0);
 
-                // Освещение: свет гаснет с глубиной КАМЕРЫ, и солнечный, и
-                // рассеянный (рассеянный чуть медленнее - он диффузный).
+                // Lighting: both sun and scattered light attenuate with CAMERA depth
+                // (scattered slightly slower because it is diffuse).
                 float depthBelow = max(-_UwCamAltitude, 0.0);
                 float3 sunT = exp(-_UwSigma * (depthBelow * _UwSunPenetration));
                 float3 ambT = exp(-_UwSigma * (depthBelow * _UwAmbientDecay));
@@ -227,11 +216,11 @@ Shader "Galilego/UnderwaterViewFog"
                 float skyAmbient = saturate(dot(_SkyAmbientColor, float3(0.2126, 0.7152, 0.0722)));
                 float3 veil = _UwWaterColor * ((sunT * shape) + (_UwAmbient * skyAmbient * ambT));
 
-                // Взгляд вниз темнее: меньше света от зенита.
+                // Looking down is darker: less light from the zenith.
                 float downK = lerp(1.0, _UwDownwardDarkening, saturate(-dot(D, _UwUp)));
                 float3 scatter = veil * downK;
 
-                // Нужно ли дорисовать потолок.
+                // Whether the ceiling must be drawn.
                 bool ceilingHere = false;
                 bool surfaceInDepth = false;
                 if (inWater && lookingUp && tExit > 0.0 && _UwCeilingMode > 0)
@@ -240,19 +229,19 @@ Shader "Galilego/UnderwaterViewFog"
                     surfaceInDepth = (sceneDist < (tExit + tol));
                     if (_UwCeilingMode >= 2)
                     {
-                        // Всегда: потолок там, где перед поверхностью ничего нет.
+                        // Always: ceiling where nothing is in front of the surface.
                         ceilingHere = (sceneDist > (tExit - tol));
                     }
                     else
                     {
-                        // Авто: только если меш воды не оставил глубины на поверхности.
+                        // Auto: only if the water mesh left no surface depth.
                         ceilingHere = !surfaceInDepth;
                     }
                 }
 
                 if (_UwDebugMode == 8)
                 {
-                    // R - дорисовываем потолок, G - поверхность есть в глубине, B - под водой.
+                    // R - draw ceiling, G - surface present in depth, B - underwater.
                     return float4(ceilingHere ? 1.0 : 0.0, surfaceInDepth ? 1.0 : 0.0, under, 1.0);
                 }
 
@@ -261,8 +250,8 @@ Shader "Galilego/UnderwaterViewFog"
                     scene = CeilingColor(D, tExit, veil * _UwDownwardDarkening);
                 }
 
-                // Путь в воде: пиксель под водой - до него; пиксель над водой -
-                // до выхода луча через поверхность.
+                // Path in water: for an underwater pixel, to it; for a pixel above
+                // water, to the ray's exit through the surface.
                 float pathIn = sceneDist;
                 if (inWater && tExit > 0.0)
                 {
@@ -291,7 +280,7 @@ Shader "Galilego/UnderwaterViewFog"
             ENDHLSL
         }
 
-        // Проход 2: перенос результата в кадр. Не менялся.
+        // Pass 2: blit the result into the frame.
         Pass
         {
             Name "UnderwaterViewFogComposite"

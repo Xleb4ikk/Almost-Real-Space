@@ -4,9 +4,9 @@ using Galilego.Spacecraft;
 namespace Galilego.Flight
 {
     /// <summary>
-    /// Источник динамики 6-DOF: берёт силу, момент и расход, посчитанные моделью на чанк
-    /// (Prepare), поворачивает силу снимком ориентации. Pure: только читает.
-    /// Заменяет StageThrustSource, когда у корабля есть модель полёта.
+    /// 6-DOF dynamics source: takes the force, torque and flow computed by the model per chunk
+    /// (Prepare), rotates the force by the attitude snapshot. Pure: reads only.
+    /// Replaces StageThrustSource when the ship has a flight model.
     /// </summary>
     public sealed class FlightThrustSource : IDynamicsSource
     {

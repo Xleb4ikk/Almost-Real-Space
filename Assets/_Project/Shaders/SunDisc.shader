@@ -8,8 +8,8 @@ Shader "Galilego/SunDisc"
     }
     SubShader
     {
-        // Transparent+2: рисуется после атмосферы (её ручной композит заменяет
-        // фон), чтобы диск солнца не затирался.
+        // Transparent+2: drawn after the atmosphere (its manual composite replaces
+        // the background) so the sun disc is not overwritten.
         Tags { "RenderPipeline" = "HDRenderPipeline" "RenderType" = "Transparent" "Queue" = "Transparent+2" }
 
         Pass
@@ -33,7 +33,7 @@ Shader "Galilego/SunDisc"
             float4 _SunColor;
             float _CoreRadius;
             float _GlowFalloff;
-            // Ставит SkyEnvironment: прозрачность к солнцу (космос → 1, закат → красный).
+            // Set by SkyEnvironment: transmittance to the sun (space → 1, sunset → red).
             float3 _SunTransmittance;
 
             struct Attributes
@@ -62,8 +62,8 @@ Shader "Galilego/SunDisc"
 
             float4 Frag(Varyings input) : SV_Target
             {
-                // Радиальное затухание: ядро + мягкая корона; за пределами
-                // круга — прозрачно (квад больше не выглядит квадратом).
+                // Radial falloff: core + soft corona; outside the circle it is
+                // transparent (the quad no longer looks like a square).
                 float2 centered = (input.uv * 2.0) - 1.0;
                 float radius = length(centered);
                 float core = 1.0 - smoothstep(_CoreRadius - 0.08, _CoreRadius, radius);
@@ -74,8 +74,8 @@ Shader "Galilego/SunDisc"
                     discard;
                 }
 
-                // Солнце за планетой прячем по глубине (а не по ZTest диска,
-                // который на большой дистанции оказывается ближе планеты).
+                // Hide the sun behind the planet by depth (not by the disc ZTest,
+                // which at large distances ends up in front of the planet).
                 if (!IsSky(uint2(input.positionCS.xy)))
                 {
                     discard;

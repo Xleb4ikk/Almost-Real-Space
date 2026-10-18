@@ -5,15 +5,17 @@ using UnityEngine.Rendering.HighDefinition;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Звёздное небо: сфера вокруг камеры (радиус 0.5·far), МИРОВАЯ ориентация —
-    /// звёзды инерциальны (не вращаются с планетой). Additive, ZTest LEqual:
-    /// планета перекрывает звёзды по глубине, атмосфера ложится сверху, яркость
-    /// умножается на глобал _StarVisibility (ставит SkyEnvironment) — день/ночь,
-    /// высота наблюдателя. Тот же floating-origin принцип, что у планет, но для
-    /// неба: центр — камера, ориентация — мир.
+    /// Star field: a sphere around the camera (radius 0.5·far), WORLD orientation —
+    /// stars are inertial (they do not rotate with the planet). Additive, ZTest
+    /// LEqual: the planet occludes stars by depth, the atmosphere layers on top,
+    /// and brightness is multiplied by the _StarVisibility global (set by
+    /// SkyEnvironment) — day/night, observer altitude. The same floating-origin
+    /// principle as the planets, but for the sky: center = camera, orientation =
+    /// world.
     ///
-    /// Плюс (Sky Type = None): гасим синий HDRP-фон камеры в чёрный, иначе он не
-    /// темнеет ночью и небо всегда синее. Небо тогда = атмосфера + звёзды.
+    /// Also (Sky Type = None): the blue HDRP camera background is forced to black,
+    /// otherwise it does not darken at night and the sky always looks blue. The
+    /// sky is then atmosphere + stars.
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-34)]
     public sealed class StarFieldView : MonoBehaviour
@@ -88,7 +90,7 @@ namespace Galilego.Universe
                 shell.gameObject.SetActive(true);
             }
 
-            // Держим сферу внутри far, центрируя на камере; ориентация мировая.
+            // Keep the sphere inside far, centered on the camera; world orientation.
             float radius = Mathf.Max(1f, camera.farClipPlane * 0.5f);
             shell.position = camera.transform.position;
             shell.rotation = Quaternion.identity;

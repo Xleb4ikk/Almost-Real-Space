@@ -4,9 +4,9 @@ using Galilego.Core;
 using Galilego.Spacecraft.Solver;
 using UnityEngine;
 
-// Фаза 3 (ТЗ v2, раздел 7): контакты с поверхностью (XPBD-проекция, кулоново трение,
-// восстановление), локальная нормаль с footprint. Test208 — момент импульса системы
-// (стык без поверхности), 210–215 — приёмка контактов.
+// Phase 3 (spec v2, section 7): surface contacts (XPBD projection, Coulomb friction,
+// restitution), local normal with footprint. Test208 — system angular momentum
+// (joint without surface), 210–215 — contact acceptance.
 internal static partial class P1bTests
 {
     private const double ContactDt = 1e-3;
@@ -14,7 +14,7 @@ internal static partial class P1bTests
 
     private static Vector3d Gravity9_81 => new Vector3d(0d, -9.81d, 0d);
 
-    // Точечное тело: один контакт в центре масс — без крутящего момента от трения.
+    // Point body: a single contact at the centre of mass — no friction torque.
     private static RigidBody PointContactBody(double mass, Vector3d position)
     {
         var b = new RigidBody(mass, new Vector3d(1d, 1d, 1d), position, QuaternionD.Identity);
@@ -22,7 +22,7 @@ internal static partial class P1bTests
         return b;
     }
 
-    // Блок 1×1×1 м: четыре нижних угла в контакте, центр на высоте 0.5 м.
+    // 1×1×1 m block: four bottom corners in contact, centre at height 0.5 m.
     private static RigidBody BlockContactBody(double mass, Vector3d position)
     {
         var b = new RigidBody(mass, new Vector3d(mass / 6d, mass / 6d, mass / 6d), position, QuaternionD.Identity);
@@ -53,10 +53,7 @@ internal static partial class P1bTests
             solver.Step();
         }
 
-        // Порог не из ТЗ: выставлен по замеру фазы 3. Дрейф O(dt) от несогласованной
-        // ориентации стыка (4e-5 при dt=1 мс, ~1.4e-5 при dt=0.25 мс). 1e-3 ловит
-        // грубые нарушения: старая позиционная XPBD-схема стыков давала 1.5e-3.
-        // Ужесточение — в фазе 4 вместе с упругими стыками (вариант A).
+        // Empirical threshold; drift is O(dt) from the inconsistent joint orientation.
         const double tolerance = 1e-3d;
         double drift = (solver.AngularMomentum() - l0).Magnitude / l0.Magnitude;
         Check(drift <= tolerance, "T208 angular-momentum",
@@ -132,8 +129,8 @@ internal static partial class P1bTests
         const double mu = 0.7d;
         const double muK = 0.5d;
 
-        // Залипание: после осадки (0.5 с, удар закончен) тело неподвижно.
-        // Скольжение: ускорение по участку 0.7–1.0 с, уже после удара о склон (≈0.45 с).
+        // Sticking: after settling (0.5 s, impact finished) the body is at rest.
+        // Sliding: acceleration over 0.7–1.0 s, after the impact on the slope (≈0.45 s).
         double Slope(double deg, out double slipAccel, out Vector3d displacementAfterSettle, out double speedAfterSettle)
         {
             double th = deg * Math.PI / 180d;
@@ -238,9 +235,8 @@ internal static partial class P1bTests
 
     static int Test214_LocalNormalFootprint()
     {
-        // Камень: h = A·sin(k·x), λ = 4 м, A = 0.2 м. Истинный наклон в x=0: A·k.
-        // Усреднённый footprint 113 м (а не 114): при кратной λ/2 разности sin(57π)=0
-        // обращаются в ноль, и кейс вырождается по значению.
+        // Rock: h = A·sin(k·x), λ = 4 m, A = 0.2 m; true slope at x=0 is A·k.
+        // Averaged footprint 113 m (not 114) degenerates: at a λ/2 multiple the difference is zero.
         const double amplitude = 0.2d;
         double k = 2d * Math.PI / 4d;
         var rock = new HeightFieldGround((x, z) => amplitude * Math.Sin(k * x), footprintMeters: 0.5d);

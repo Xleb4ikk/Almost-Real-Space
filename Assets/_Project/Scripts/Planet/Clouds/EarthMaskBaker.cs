@@ -3,17 +3,17 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Предзапекание процедурной маски облаков (EarthClusters) в 3D-текстуру.
+    /// Pre-bakes the procedural cloud mask (EarthClusters) into a 3D texture.
     ///
-    /// На GPU SampleCloudEarthMask() вызывается из марчинга облаков (до ~48
-    /// шагов × (1 + _CldLightSteps) сэмплов) и заново для каждого пикселя
-    /// земли/воды/декора в SampleCloudShadow. Каждый вызов — CloudFbm на 3
-    /// октавы плюс одна CloudNoise, то есть 4 × 8 = 32 тяжёлых хеш-вычисления
-    /// 3D value-noise. Поле зависит ТОЛЬКО от направления (bodyPos/|bodyPos|),
-    /// поэтому его достаточно посчитать один раз и хранить в объёме.
+    /// On the GPU SampleCloudEarthMask() is called from the cloud raymarch (up to ~48
+    /// steps × (1 + _CldLightSteps) samples) and again for every land/water/decor
+    /// pixel in SampleCloudShadow. Each call is a 3-octave CloudFbm plus
+    /// one CloudNoise, i.e. 4 × 8 = 32 heavy 3D value-noise hash
+    /// evaluations. The field depends ONLY on the direction (bodyPos/|bodyPos|),
+    /// so it is enough to compute it once and store it in a volume.
     ///
-    /// Математика — точная копия GLSL-варианта из GalilegoCloudField.hlsl,
-    /// чтобы картинка после подмены не изменилась (с точностью до фильтрации).
+    /// The math is an exact copy of the GLSL variant in GalilegoCloudField.hlsl so
+    /// that the image does not change after the swap (up to filtering).
     /// </summary>
     internal static class EarthMaskBaker
     {

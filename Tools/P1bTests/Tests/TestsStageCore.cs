@@ -9,12 +9,11 @@ internal static partial class P1bTests
 {
     private static int Test400_StageCoreConformance()
     {
-        // Конформанс чистой ступенчатой модели (этап 1, без Unity и PlacedPart):
-        // ядра собираются вручную, все ожидания — формулы вручную.
-        // Проверяется: тяга/расход == паспорту, отсечка == сжигаемому,
-        // участки при смешанных двигателях, накопление Commit, семантика
-        // StagePropulsion (зажигание/сброс/автозажигание), детектор участка,
-        // StageDeltaV == Циолковскому.
+        // Conformance of the pure staging model (stage 1, no Unity and PlacedPart):
+        // cores are assembled by hand, all expectations are hand formulas.
+        // Checks: thrust/flow == nameplate, cutoff == burnable, segments with mixed
+        // engines, Commit accumulation, StagePropulsion semantics (ignite/jettison/
+        // auto-ignite), segment detector, StageDeltaV == Tsiolkovsky.
         const double g0 = 9.80665d;
         EngineSpec rs25 = EngineSpecs.Rs25;
         EngineSpec aj10 = EngineSpecs.Aj10;
@@ -41,7 +40,7 @@ internal static partial class P1bTests
             return core;
         }
 
-        // 1) Паспорт двигателя: F / (mdot·g0) == Isp; отсечка == сжигаемое.
+        // 1) Engine nameplate: F / (mdot·g0) == Isp; cutoff == burnable.
         StageCore single = MakeCore(0, rs25, 500d, Propellants.Lox, 3000d, Propellants.Lh2, 500d);
         double rsFlow = env.MassFlowKgS(rs25);
         double burnable = rs25.Mix.BurnableMassKg(3000d, 500d);
@@ -50,7 +49,7 @@ internal static partial class P1bTests
         Check(Rel(single.CutoffBurnKg(), burnable) < 1e-9d,
             "T400 cutoff == burnable", string.Format("отсечка {0:F3} кг, сжигаемое {1:F3} кг", single.CutoffBurnKg(), burnable));
 
-        // 2) Накопление: много мелких Commit == один большой (состояние пулов).
+        // 2) Accumulation: many small Commits == one large (pool state).
         StageCore one = MakeCore(0, rs25, 500d, Propellants.Lox, 3000d, Propellants.Lh2, 500d);
         StageCore many = MakeCore(0, rs25, 500d, Propellants.Lox, 3000d, Propellants.Lh2, 500d);
         const double consume = 1234.5d;
@@ -74,7 +73,7 @@ internal static partial class P1bTests
         Check(Rel(got, consume) < 1e-9d && poolsSame,
             "T400 commit accumulation", string.Format("Commit={0:F6} (запрос {1:F6}); пулы совпали: {2}", got, consume, poolsSame));
 
-        // 3) Смешанные двигатели: граница участка — глохнет RS-25 (LH2 кончился), AJ10 продолжает.
+        // 3) Mixed engines: segment boundary — RS-25 cuts out (LH2 gone), AJ10 continues.
         var mixed = new StageCore { Index = 0, DryMassKg = rs25.MassKg + aj10.MassKg };
         mixed.GetOrAddPool(Propellants.Lox).StartKg = 3000d;
         mixed.GetOrAddPool(Propellants.Lh2).StartKg = 400d;
@@ -89,12 +88,12 @@ internal static partial class P1bTests
         double ajFlow = env.MassFlowKgS(aj10);
         double ajOx = ajFlow * aj10.Mix.OxidizerMassFraction;
         double ajFuel = ajFlow - ajOx;
-        double tSeg = 400d / rsFuel;                        // LH2 кончится здесь, RS-25 глохнет
+        double tSeg = 400d / rsFuel;                        // LH2 runs out here, RS-25 cuts out
         double seg = (rsFlow + ajFlow) * tSeg;
-        // AJ10 жёг и во время первого участка — к границе его пулы меньше:
+        // AJ10 also burned during the first segment, so its pools are smaller at the boundary:
         double n2o4Left = 1000d - (ajOx * tSeg);
         double az50Left = 600d - (ajFuel * tSeg);
-        double ajBurn = aj10.Mix.BurnableMassKg(n2o4Left, az50Left);   // ограничит N2O4
+        double ajBurn = aj10.Mix.BurnableMassKg(n2o4Left, az50Left);   // limited by N2O4
         double tAj = ajBurn / ajFlow;
         double loxLeft = 3000d - (rsOx * tSeg);
         double az50Final = az50Left - (ajFuel * tAj);
@@ -114,7 +113,7 @@ internal static partial class P1bTests
             "T400 full stop", string.Format("досписано {0:F3}; остаток пулов {1:F3} кг (непарные LOX {2:F3} + AZ50 {3:F3})",
                 rest, mixed.PropellantKg, loxLeft, az50Final));
 
-        // 4) StagePropulsion: зажигание → сброс+зажигание → последнюю не сбросить.
+        // 4) StagePropulsion: ignite → jettison+ignite → the last stage can't be jettisoned.
         var model = new StagePropulsion(new List<StageCore>
         {
             MakeCore(0, rs25, 500d, Propellants.Lox, 3000d, Propellants.Lh2, 500d),
@@ -134,7 +133,7 @@ internal static partial class P1bTests
                 model.AttachedTotalKg(), upperRef.TotalMassKg));
         Check(model.Stage() == StagingResult.Nothing, "T400 last stage stays", "последнюю ступень отделять нечем");
 
-        // 5) Автозажигание (отладка): следующая зажигается сама, без отделения.
+        // 5) Auto-ignite (debug): the next stage ignites on its own, without jettison.
         var auto = new StagePropulsion(new List<StageCore>
         {
             MakeCore(0, rs25, 500d, Propellants.Lox, 3000d, Propellants.Lh2, 500d),
@@ -145,7 +144,7 @@ internal static partial class P1bTests
             && auto.IgniteNextAttached() && auto.ActiveStageIndex == 1 && auto.FirstAttached == 0,
             "T400 auto-ignite", "нижняя выгорела — верхняя зажглась без отделения");
 
-        // 6) Детектор участка: падающее пересечение ровно на SegmentBurnKg.
+        // 6) Segment detector: falling crossing exactly at SegmentBurnKg.
         var detModel = new StagePropulsion(new List<StageCore>
         {
             MakeCore(0, rs25, 500d, Propellants.Lox, 3000d, Propellants.Lh2, 500d),
@@ -167,7 +166,7 @@ internal static partial class P1bTests
         detector.Arm(idleModel, 10000d);
         Check(detector.Evaluate(State(10000d), 0d) == 0d, "T400 detector idle zero", "без огня — ровно ноль, не ложное падение");
 
-        // 7) StageDeltaV == Циолковскому вручную (одна ступень, полный бак).
+        // 7) StageDeltaV == hand Tsiolkovsky (one stage, full tank).
         var planCores = new List<StageCore>
         {
             MakeCore(0, rs25, 0d, Propellants.Lox, 3000d, Propellants.Lh2, 500d),
@@ -183,9 +182,9 @@ internal static partial class P1bTests
 
     private static int Test401_StagePropulsionFlight()
     {
-        // Кросс-проверки рантайм-модели и панельного расчёта (перенос из
-        // ConformanceReference): зажигание/отделение, инвариант массы с
-        // перелётом на корне события, панель по состоянию, чужая масса.
+        // Cross-checks of the runtime model and the panel computation (ported from
+        // ConformanceReference): ignite/jettison, mass invariant with a crossing at
+        // the event root, panel from state, detached mass.
         const double g0 = 9.80665d;
         EngineSpec rs25 = EngineSpecs.Rs25;
         EngineSpec aj10 = EngineSpecs.Aj10;
@@ -206,7 +205,7 @@ internal static partial class P1bTests
             return core;
         }
 
-        // Трёхступенчатая стопка: RS-25 | отделитель | AJ10 | отделитель | AJ10.
+        // Three-stage stack: RS-25 | separator | AJ10 | separator | AJ10.
         var cores = new List<StageCore>
         {
             Make(0, rs25, Propellants.Lox, 3000d, Propellants.Lh2, 500d),
@@ -236,8 +235,8 @@ internal static partial class P1bTests
         Check(Math.Abs((prop.ThrustN / (prop.MassFlowKgS * g0)) - 452d) < 1e-6d,
             "T401 flow isp", string.Format("F/(mdot·g0)={0:R}", prop.ThrustN / (prop.MassFlowKgS * g0)));
 
-        // Выработка «как физика»: сегмент + перелёт на корне события
-        // (≤ flow·1e-6 с), Commit обрезает по пулу; инвариант держится.
+        // Burn "as physics would": segment + crossing at the event root
+        // (≤ flow·1e-6 s), Commit clamps by pool; the invariant holds.
         int events = 0;
         double massBefore = shipMass;
         for (int g = 0; g < 20 && prop.MassFlowKgS > 0d; g++)
@@ -263,8 +262,8 @@ internal static partial class P1bTests
             "T401 used+remaining == plan", string.Format("сожжено {0:F3}, план ступени {1:F3}",
                 burnedDv, plan.Stages[0].DeltaVMs));
 
-        // Отделение ступени 1: масса — ДО Stage(); Ship.Mass вычитается в одном
-        // месте с вызовом (как в игре), инвариант держится.
+        // Jettison stage 1: mass is taken BEFORE Stage(); Ship.Mass is subtracted in
+        // the same place as the call (as in game), so the invariant holds.
         double stageMass = prop.StageTotalKg(0);
         Check(prop.Stage() == StagingResult.JettisonedAndIgnited && prop.FirstAttached == 1 && prop.ActiveStageIndex == 1,
             "T401 jettison+ignite", "второе нажатие отделяет нижнюю и зажигает верхнюю");
@@ -279,7 +278,7 @@ internal static partial class P1bTests
         Check(Math.Abs(afterJet.CurrentMassKg - prop.AttachedTotalKg()) < 1e-6d,
             "T401 panel mass", "масса панели == массе модели");
 
-        // Половина ступени 2, затем сброс НЕпустой ступени 2.
+        // Half of stage 2, then jettison of the NON-empty stage 2.
         double half = 0.5d * cores[1].StartPropellantKg;
         shipMass -= prop.CommitBurn(half);
         DvResult halfPanel = Panel();
@@ -299,7 +298,7 @@ internal static partial class P1bTests
         prop.CommitBurn(10d);
         Check(prop.Revision == rev + 1, "T401 revision", "Revision растёт на списании");
 
-        // Смешанная ступень (RS-25 + AJ10 в одной): с перелётом ровно 2 события.
+        // Mixed stage (RS-25 + AJ10 in one): with the crossing exactly 2 events.
         var mixed = new StageCore { Index = 0, DryMassKg = rs25.MassKg + aj10.MassKg };
         mixed.GetOrAddPool(Propellants.Lox).StartKg = 3000d;
         mixed.GetOrAddPool(Propellants.Lh2).StartKg = 400d;
@@ -326,7 +325,7 @@ internal static partial class P1bTests
             "T401 mixed two events", string.Format("событий {0} (граница состава + останов), группа глохла: {1}",
                 mixEvents, groupCut));
 
-        // Деталь вне основной сборки: модель + DetachedMassKg == полная масса.
+        // A part outside the main assembly: model + DetachedMassKg == total mass.
         var orphanCores = new List<StageCore>
         {
             Make(0, rs25, Propellants.Lox, 3000d, Propellants.Lh2, 500d),

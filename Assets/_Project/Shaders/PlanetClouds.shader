@@ -1,27 +1,23 @@
 Shader "Galilego/PlanetClouds"
 {
-    // Объёмные облака планеты: камера-центрированный купол (PlanetCloudsView),
-    // аналитическое пересечение луча с ДВУМЯ сферами облачного слоя
-    // (BottomRadius/TopRadius), raymarch плотности из 3D Perlin-Worley
-    // (форма) + Worley (эрозия краёв) + весь домен шума в МИРОВЫХ декартовых
-    // координатах относительно центра планеты — без lat-long/UV (см.
-    // PlanetCloudsView.cs, почему: развёртка сферы на радиусе ~1000+ км даёт
-    // анизотропию у полюсов и полосы вдоль параллелей).
+    // Planet volumetric clouds: camera-centred dome (PlanetCloudsView),
+    // analytic ray intersection with TWO cloud-layer spheres
+    // (BottomRadius/TopRadius), density raymarch from 3D Perlin-Worley
+    // (shape) + Worley (edge erosion) + the whole noise domain in WORLD
+    // Cartesian coordinates relative to the planet centre — no lat-long/UV
+    // (see PlanetCloudsView.cs: a sphere unwrap at radius ~1000+ km becomes
+    // anisotropic at the poles and banded along parallels).
     //
-    // Свет: Beer-Lambert экстинкция по основному лучу + короткий (4–6 шагов)
-    // марш к солнцу для самозатенения, фаза Henyey-Greenstein (форвард-
-    // рассеяние, ореол вокруг солнца), эффект пудры (тёмные края к солнцу
-    // в глубине облака).
+    // Lighting: Beer-Lambert extinction along the primary ray + a short
+    // (4–6 step) march towards the sun for self-shadowing, Henyey-Greenstein
+    // phase (forward scattering, glow around the sun), powder effect (darker
+    // edges towards the sun deep inside the cloud).
     //
-    // Композит: ОБЫЧНЫЙ premultiplied alpha-бленд (Blend One OneMinusSrcAlpha)
-    // поверх уже нарисованного кадра — ЭТО ОТЛИЧАЕТСЯ от PlanetAtmosphere,
-    // который сам себя компонует через _ColorPyramidTexture (Blend One Zero).
-    // Если бы облака делали то же самое ПОСЛЕ атмосферы, они читали бы
-    // ДОСЕЙ-transparent снимок пирамиды (атмосфера ещё не успела туда
-    // попасть) и стирали бы небо под собой. Обычный альфа-бленд корректно
-    // ложится поверх чего угодно уже в буфере (терраформ, атмосфера, вода) —
-    // поэтому Queue выставлен ВЫШЕ атмосферы (см. ниже), чтобы рисоваться
-    // после неё.
+    // Composite: ordinary premultiplied alpha blend (Blend One OneMinusSrcAlpha)
+    // over the already drawn frame — this DIFFERS from PlanetAtmosphere, which
+    // composites itself through _ColorPyramidTexture (Blend One Zero). Ordinary
+    // alpha blending correctly covers anything already in the buffer (terrain,
+    // atmosphere, water), so Queue is set ABOVE the atmosphere (see below).
     SubShader
     {
         Tags { "RenderPipeline" = "HDRenderPipeline" "RenderType" = "Transparent" "Queue" = "Transparent+50" }
@@ -34,17 +30,13 @@ Shader "Galilego/PlanetClouds"
             Blend One OneMinusSrcAlpha
             ZWrite Off
             ZTest Always
-            // Cull Back, а не Cull Off: купол центрирован на камере
-            // (PlanetCloudsView: shell.position = cameraPosition), камера ВНУТРИ
-            // сферы. Cull Off платил за 128-шаговый raymarch дважды на каждый
-            // пиксель неба: Vert отдаёт output.dir = positionOS, поэтому обе
-            // полусферы дают один и тот же direction и один и тот же march.
-            //
-            // Именно Cull Back, а НЕ Cull Front: BuildSphereMesh woundит
-            // треугольники нормалью ВНУТРЬ (проверено на данных меша), камера
-            // внутри видит их с фронтальной стороны, и Cull Front вырезал бы
-            // купол целиком — чёрное небо. У StarField, где используется
-            // встроенная сфера Unity с нормалью наружу, наоборот Cull Front.
+            // Cull Back, not Cull Off: the dome is centred on the camera
+            // (shell.position = cameraPosition), so the camera is inside the
+            // sphere; Cull Off would run the 128-step raymarch twice per sky
+            // pixel. Not Cull Front: BuildSphereMesh winds triangles with the
+            // normal pointing inward, making the inside the front face, so
+            // Cull Front would remove the dome entirely. StarField, which uses
+            // Unity's built-in outward-facing sphere, uses Cull Front instead.
             Cull Back
 
             HLSLPROGRAM
@@ -60,7 +52,7 @@ Shader "Galilego/PlanetClouds"
             float3 _CldCameraForwardWS;
             float3 _CldSunColor;
 
-            // --- Domain шума (мировые координаты относительно центра тела) ---
+            // --- Noise domain (world coordinates relative to body centre) ---
             float3 _CldWindOffset;
             float3 _CldSmallWindOffset;
             float3 _CldLargeWindOffset;
@@ -74,10 +66,10 @@ Shader "Galilego/PlanetClouds"
              float _CldSizeVariation;
              float _CldShapeWarp;
 
-            // --- Форма/покрытие ---
+            // --- Shape/coverage ---
             float _CldDetailErosion;
 
-            // --- Оптика ---
+            // --- Optics ---
             float _CldScatterAlbedo;
              float _CldPhaseG;
              float _CldPowderStrength;
@@ -115,12 +107,12 @@ Shader "Galilego/PlanetClouds"
             {
                 Varyings output;
                 output.positionCS = TransformObjectToHClip(input.positionOS);
-                output.dir = input.positionOS; // купол единичного радиуса, центр = камера
+                output.dir = input.positionOS; // unit-radius dome, centre = camera
                 return output;
             }
 
-            // c + (x-a)*(d-c)/(b-a), без внутреннего saturate — вызывающий код
-            // сатурейтит результат там, где это физически осмысленно.
+            // c + (x-a)*(d-c)/(b-a), no internal saturate — callers
+            // saturate the result where physically meaningful.
             float CloudRemap(float x, float a, float b, float c, float d)
             {
                 return c + (((x - a) / max(1e-5, b - a)) * (d - c));
@@ -239,8 +231,8 @@ Shader "Galilego/PlanetClouds"
                  return saturate(CloudRemap(density, legacyErodeWeight * detailFbm, 1.0, 0.0, 1.0)) * clearFactor;
             }
 
-            // Короткий марш к солнцу (самозатенение). Растущий шаг —
-            // дешёвая замена honest cone sampling.
+            // Short march towards the sun (self-shadowing). Growing step —
+            // a cheap substitute for honest cone sampling.
             float LightMarch(float3 posRel, float3 sunDir, float baseStep, float lod, float weatherLod, float earthMask)
             {
                 float totalDensity = 0.0;
@@ -287,19 +279,19 @@ Shader "Galilego/PlanetClouds"
                 float marchEnd;
                 if (r0 > _CldTopRadius)
                 {
-                    // Камера над слоем (космос/орбита): входим сверху.
+                    // Camera above the layer (space/orbit): enter from the top.
                     marchStart = max(top0, 0.0);
                     marchEnd = (hitBot && bot0 > marchStart) ? bot0 : top1;
                 }
                 else if (r0 >= _CldBottomRadius)
                 {
-                    // Камера внутри слоя (полёт сквозь облака).
+                    // Camera inside the layer (flying through clouds).
                     marchStart = 0.0;
                     marchEnd = (hitBot && bot0 > 0.0) ? bot0 : top1;
                 }
                 else
                 {
-                    // Камера под слоем (земля/низкий полёт под облачностью).
+                    // Camera below the layer (ground/low flight under clouds).
                     marchStart = hitBot ? max(bot1, 0.0) : max(top0, 0.0);
                     marchEnd = top1;
                 }
@@ -309,7 +301,7 @@ Shader "Galilego/PlanetClouds"
                     discard;
                 }
 
-                // Глубина сцены/планета-окклюдер — тот же приём, что у
+                // Scene depth/planet occluder — the same trick as in
                 // PlanetAtmosphere (LoadCameraDepth/IsSky, HDRP depth-atlas).
                 uint2 pixel = uint2(input.positionCS.xy);
                 float cosFwd = dot(rd, _CldCameraForwardWS);
@@ -337,44 +329,36 @@ Shader "Galilego/PlanetClouds"
 
                 int maxSteps = clamp((int)_CldStepCount, 8, 128);
 
-                // Число шагов ограничено РАЗРЕШЕНИЕМ ПОЛЯ ПЛОТНОСТИ, а не
-                // всегда берётся по потолку (128).
+                // Step count is limited by the DENSITY FIELD RESOLUTION, not
+                // always taken at the ceiling (128).
                 //
-                // Плотность читается из 3D-текстуры, и её предельная деталь —
-                // один тексель, то есть _CldShapeTexelWorldSize по миру. Шаг
-                // march'а мельче этого текселя не добавляет информации: он
-                // лишь дробит один и тот же интерполированный сэмпл на
-                // интервалы, которые все лежат внутри одного текселя. Плюс
-                // сам шейдер уже понижает детализацию по footprint'у пикселя
-                // (lod/weatherLod до 6-го мипа), так что при удалении шаги
-                // там всё равно крупнее текселя.
+                // Density comes from a 3D texture whose finest detail is one
+                // texel (_CldShapeTexelWorldSize in world units). A march step
+                // finer than a texel adds no information. The shader also
+                // lowers detail by the pixel footprint (lod up to mip 6), so
+                // distant steps are larger than a texel anyway.
                 //
-                // Earth-пресет: слой 7000-8500 м (всего 1.5 км). Луч из-под
-                // слоя почти вертикально проходит 1.5 км, и 128 шагов давали
-                // сегмент по ~12 м — это в 150 раз мельче текселя формы.
-                // Получалось 128 итераций × 4 сэмпла 3D-текстуры (мелкая,
-                // средняя, крупная форма + погода) на КАЖДЫЙ пиксель неба,
-                // и на пустом небе эта работа давала ноль. Теперь там 8
-                // шагов — то же поле, те же цвета, в 16 раз меньше сэмплов.
+                // Earth preset: layer 7000-8500 m (1.5 km total). A near-
+                // vertical ray crosses it in 1.5 km, where 128 steps gave ~12 m
+                // segments — 150× finer than the shape texel, costing 128
+                // iterations × 4 3D samples per sky pixel. Now it uses 8 steps.
                 //
-                // У горизонта луч идёт сквозь слой по касательной на сотни
-                // километров — там длина пути сама выводит steps в потолок
-                // 128, и вид облаков у горизонта не меняется.
+                // Near the horizon the ray runs tangentially through the layer
+                // for hundreds of km, so path length pushes steps to the 128
+                // ceiling and the horizon look is unchanged.
                 float dsTarget = max(1.0, _CldShapeTexelWorldSize * 0.5);
 
-                // Минимум 3, а не 8. dsTarget = половина текселя формы
-                // (Earth-пресет: слой 7000-8500 м, текстуль 64³ → тексель
-                // ~281 м, dsTarget ~9 км). Луч, поднятый с поверхности
-                // вертикально, проходит слой за ~1.5 км, то есть
-                // ceil(1500/9000) = 1 — и раньше он всё равно упирался в
-                // нижнюю границу 8 и платил 8 итераций × 4 сэмпла 3D-текстуры
-                // там, где поле меняется раз на 281 м. Трёх шагов хватает с
-                // запасом; на пустом небе это самая частая ситуация, и она
-                // стоила 32 выборки на пиксель впустую.
+                // Minimum 3, not 8. dsTarget is half a shape texel (Earth
+                // preset: layer 7000-8500 m, 64³ texture → texel ~281 m,
+                // dsTarget ~9 km). A vertical ray from the surface crosses the
+                // layer in ~1.5 km, so ceil(1500/9000) = 1; the old floor of 8
+                // still paid 8 iterations × 4 3D samples where the field changes
+                // once per 281 m. Three steps are ample, and this is the most
+                // common case on an empty sky.
                 //
-                // Ступеньки в числе шагов не видно: результат марча зависит от
-                // него слабо (интеграл по гладкому полю), а по краю картинки
-                // стоит per-pixel dither из последнего коммита.
+                // Step-count steps are invisible: the march result depends on
+                // it weakly (smooth-field integral), and per-pixel dither sits
+                // on the image edge.
                 int steps = clamp((int)ceil((marchEnd - marchStart) / dsTarget), 3, maxSteps);
                 float ds = (marchEnd - marchStart) / (float)steps;
                 float pixelWorldSize = max(length(fwidth(rd)) * max(marchStart + ds, 1.0), ds);
@@ -410,13 +394,10 @@ Shader "Galilego/PlanetClouds"
                         break;
                     }
 
-                    // Смещение 0.5 — сэмпл в середине сегмента (стратифицированная
-                    // выборка). Раньше здесь был per-pixel белый шум: он разбирается
-                    // только временным накоплением, а TAA выключен (FirstPersonCamera.
-                    // TemporalAA = false, стоит SMAA) — из-за него шум висел сеткой
-                    // точек, прибитой к экрану. Сегмент ~12 м, а плотность сэмплится
-                    // по LOD от размера пикселя, так что на масштабе сегмента поле
-                    // гладкое: midpoint не даёт ни мерцания, ни бандинга.
+                    // Offset 0.5 samples the middle of the segment (stratified
+                    // sampling). The field is smooth at segment scale and
+                    // density LOD comes from pixel size, so midpoint sampling
+                    // produces neither flicker nor banding.
                     float t = marchStart + ((i + 0.5) * ds);
                     float3 p = ro + (rd * t);
 
@@ -434,7 +415,7 @@ Shader "Galilego/PlanetClouds"
                          sunTrans = max(sunTrans, 0.12 + (sunFacing * 0.40));
 
                          float powderRaw = 1.0 - exp(-density * sigmaExt * 2.0 * _CldPowderStrength);
-                         // Пудра заметнее на "тёмной" от камеры стороне облака.
+                         // Powder is stronger on the side of the cloud facing away from the camera.
                          float powder = lerp(1.0, powderRaw, saturate((cosSunView * 0.5) + 0.5));
 
                          float directLighting = lerp(0.12, 0.30, sunFacing);

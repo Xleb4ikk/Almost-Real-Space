@@ -6,10 +6,10 @@ using Galilego.Universe;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Бисект разрыва высоты, найденного T900: между двумя сэмплами сетки
-    /// (6.85 м) высота падает с ~977 м до ровно 12.00 м (высота береговой полки).
-    /// Здесь: (1) ширина перехода с шагом 2 см; (2) какой слой шума за него
-    /// отвечает — проверяется выключением слоёв по одному.
+    /// Bisects the height discontinuity found by T900: between two grid samples
+    /// (6.85 m) the height drops from ~977 m to exactly 12.00 m (the beach-shelf
+    /// height). Here: (1) the transition width with a 2 cm step; (2) which noise
+    /// layer is responsible — checked by disabling layers one at a time.
     /// </summary>
     private static void JumpLatLon(double latDeg, double lonDeg, double northM, double eastM,
         out double latOut, out double lonOut)
@@ -19,7 +19,7 @@ internal static partial class P1bTests
         lonOut = (lonDeg * (Math.PI / 180d)) + (eastM / (ProbeRadius * Math.Cos(lat)));
     }
 
-    /// <summary>Максимальный перепад между соседними сэмплами сетки листа вдоль случайных линий.</summary>
+    /// <summary>Maximum height step between adjacent leaf-grid samples along random lines.</summary>
     private static double MaxGridJump(HeightfieldTerrain terrain, OrbitingBody body, double extentM, int lines, out double atNorth, out double atEast)
     {
         var rng = new Random(4242);
@@ -132,7 +132,7 @@ internal static partial class P1bTests
         noContinent.ContinentFrequency = 0d;
         ReportVariant("ContinentFrequency = 0", noContinent, body, Extent);
 
-        // ===== Ширина перехода: шаг 2 см через найденный разрыв =====
+        // ===== Transition width: 2 cm step across the found discontinuity =====
         double jumpNs = 0d;
         double jumpEe = 0d;
         double baseJump = MaxGridJump(baseline, body, Extent, 250, out jumpNs, out jumpEe);
@@ -164,7 +164,7 @@ internal static partial class P1bTests
         Console.WriteLine(string.Format(inv,
             "    суммарная длина участков с перепадом >1 м на шаге 2 см: {0:F3} м (конец N{1:F3})", width, northPrev));
 
-        // ===== Тот же разрыв, но без полки: есть ли он в чистом рельефе =====
+        // ===== Same discontinuity without the shelf: does it exist in the raw terrain =====
         double ns2 = 0d;
         double ee2 = 0d;
         double noShelfJump = MaxGridJump(noShelf, body, Extent, 250, out ns2, out ee2);

@@ -8,38 +8,38 @@ using Unity.Mathematics;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Плоские параметры размещения декора для Burst-джобы: только blittable,
-    /// без ссылок. Собираются из GroundDecorLayer + HeightfieldTerrain
-    /// (форма рельефа и уровень моря — те же, что у физики/рендера).
+    /// Flat decor placement parameters for the Burst job: blittable only,
+    /// no references. Built from GroundDecorLayer + HeightfieldTerrain
+    /// (terrain shape and sea level are the same as in physics/rendering).
     /// </summary>
     public struct GroundDecorPlacementParams
     {
-        /// <summary>Амплитуда рельефа (м) — из HeightfieldTerrain.</summary>
+        /// <summary>Terrain amplitude (m) — from HeightfieldTerrain.</summary>
         public double AmplitudeMeters;
 
-        /// <summary>Уровень моря (м) — из HeightfieldTerrain.</summary>
+        /// <summary>Sea level (m) — from HeightfieldTerrain.</summary>
         public double SeaLevelMeters;
 
-        /// <summary>Радиус тела (м): перевод углового шага склона в метры.</summary>
+        /// <summary>Body radius (m): converts the slope's angular step into meters.</summary>
         public double RadiusMeters;
 
-        /// <summary>База конечных разностей для склона (м).</summary>
+        /// <summary>Finite-difference base for the slope (m).</summary>
         public double SampleStepMeters;
 
         public double MinAltitudeMeters;
         public double MaxAltitudeMeters;
 
-        /// <summary>Мин. нормированная высота палитры (песчаная полоса пляжа).</summary>
+        /// <summary>Min. normalized palette height (sandy beach band).</summary>
         public double MinNormalizedHeight;
 
-        /// <summary>Макс. нормированная высота палитры (скалы/снег). &lt;=0 = выключен.</summary>
+        /// <summary>Max. normalized palette height (rocks/snow). &lt;=0 = disabled.</summary>
         public double MaxNormalizedHeight;
 
-        /// <summary>Высота пляжа над морем (м) — из HeightfieldTerrain: ниже
-        /// не сажаем НИЧЕГО (ни траву, ни камни). 0 = пляжа нет.</summary>
+        /// <summary>Beach height above sea (m) — from HeightfieldTerrain: below it
+        /// NOTHING is placed (neither grass nor rocks). 0 = no beach.</summary>
         public double BeachHeightMeters;
 
-        /// <summary>Сила цветовой маски рельефа (та же, что в шейдере палитры).</summary>
+        /// <summary>Terrain color-mask strength (same as in the palette shader).</summary>
         public double ColorNoiseStrength;
 
         public double MaxSlopeTan;
@@ -48,11 +48,11 @@ namespace Galilego.Universe
         public double WetMax;
         public double WetFade;
 
-        /// <summary>Не применять полярный фейд (тундра/снег): камни лежат и на снегу.</summary>
+        /// <summary>Do not apply polar fade (tundra/snow): rocks lie on snow too.</summary>
         public bool IgnoreLatitude;
 
-        /// <summary>Мягкая зона исключения дорог: трава меряется малым прямоугольником
-        /// (0.3 м от края), деревья/камни — полным (1 м). См. GroundDecorLayer.SoftExclusion.</summary>
+        /// <summary>Soft road exclusion zone: grass is measured with a small rectangle
+        /// (0.3 m from the edge), trees/rocks with the full one (1 m). See GroundDecorLayer.SoftExclusion.</summary>
         public bool SoftExclusion;
 
         public double Density;
@@ -65,47 +65,46 @@ namespace Galilego.Universe
         public double MaxScale;
         public double SteepPower;
 
-        /// <summary>Осевой офсет (м) вдоль радиали: пивот модели не в основании.</summary>
+        /// <summary>Axial offset (m) along the radial: the model pivot is not at the base.</summary>
         public double GroundOffsetMeters;
 
-        /// <summary>Погружение в землю: доля масштаба инстанса.</summary>
+        /// <summary>Sink into the ground: fraction of the instance scale.</summary>
         public double GroundSinkFactor;
 
-        /// <summary>Затухание плотности по дистанции до КАМЕРЫ (внутри чанка):
-        /// включено рендерером. Позволяет держать острова плотными вблизи и
-        /// редко — вдали, а не размазывать весь чанк лимитом инстансов.</summary>
+        /// <summary>Density falloff by distance to the CAMERA (within the chunk):
+        /// enabled by the renderer. Keeps islands dense up close and sparse in
+        /// the distance instead of smearing the whole chunk by the instance limit.</summary>
         public bool UseCameraFalloff;
 
-        /// <summary>Камера в локальных координатах чанка (sim, м).</summary>
+        /// <summary>Camera in chunk-local coordinates (sim, m).</summary>
         public double CameraLocalX;
         public double CameraLocalY;
         public double CameraLocalZ;
 
-        /// <summary>Дистанция (м), с которой начинается прореживание.</summary>
+        /// <summary>Distance (m) from which thinning begins.</summary>
         public double FalloffNearMeters;
 
-        /// <summary>Дистанция (м) полного прореживания (FarDensity).</summary>
+        /// <summary>Distance (m) of full thinning (FarDensity).</summary>
         public double FalloffFarMeters;
 
-        /// <summary>Плотность на дальней границе (0..1).</summary>
+        /// <summary>Density at the far boundary (0..1).</summary>
         public double FarDensity;
 
-        /// <summary>Масштаб экспоненциального затухания (м); 0 = линейное.</summary>
+        /// <summary>Exponential falloff scale (m); 0 = linear.</summary>
         public double FalloffScaleMeters;
 
-        /// <summary>Степень затухания (0 = экспонента, 2 = закон покрытия).</summary>
+        /// <summary>Falloff power (0 = exponential, 2 = coverage law).</summary>
         public double DensityFalloffPower;
 
-        /// <summary>Радиус плоского ядра (м): до него плотность полная.</summary>
+        /// <summary>Radius of the flat core (m): within it the density is full.</summary>
         public double DensityCoreMeters;
 
-        /// <summary>Считать плотность НА ИНСТАНС (подтуфту), а не на клетку:
-        /// клетка лишь отбирает кандидатов, а затухание/плотность/рандом
-        /// применяются в рендерере к каждому подтуфту — иначе на крупной
-        /// клетке появлялся резкий «блок» травы вместо плавного края острова.</summary>
+        /// <summary>Compute density PER INSTANCE (sub-tuft), not per cell:
+        /// the cell only selects candidates, while falloff/density/random are
+        /// applied in the renderer to each sub-tuft.</summary>
         public bool PerInstanceDensity;
 
-        /// <summary>Направление ветра зоны (рад): ставится вызывающим кодом после FromLayer.</summary>
+        /// <summary>Zone wind direction (rad): set by the caller after FromLayer.</summary>
         public double WindAzimuthRad;
         public double WindJitterRad;
         public double WindLeanMinDegrees;
@@ -113,10 +112,10 @@ namespace Galilego.Universe
         public double ResolvedMinSink;
         public double ResolvedMaxSink;
 
-        /// <summary>Сколько мешей ближнего LOD у слоя (для случайного выбора варианта).</summary>
+        /// <summary>Number of near-LOD meshes in the layer (for random variant selection).</summary>
         public int NearMeshCount;
 
-        /// <summary>Центр чанка (тел-fixed, м): позиции инстансов локальны ему (float-точность).</summary>
+        /// <summary>Chunk center (body-fixed, m): instance positions are local to it (float precision).</summary>
         public double ChunkCenterX;
         public double ChunkCenterY;
         public double ChunkCenterZ;
@@ -145,8 +144,8 @@ namespace Galilego.Universe
                 IgnoreLatitude = layer.IgnoreLatitude,
                 SoftExclusion = layer.SoftExclusion,
                 Density = layer.Density,
-                // Пятно задано в метрах — частоту считаем от радиуса тела:
-                // один период шума ≈ R/frequency метров по поверхности.
+                // The patch is given in meters — the frequency is derived from the body
+                // radius: one noise period ≈ R/frequency meters along the surface.
                 DistributionFrequency = layer.ClusterPatchMeters > 0d
                     ? radiusMeters / layer.ClusterPatchMeters
                     : layer.DistributionFrequency,
@@ -177,7 +176,7 @@ namespace Galilego.Universe
         }
     }
 
-    /// <summary>Один инстанс декора: позиция/нормаль — sim-кадр (Y-up) локально чанку.</summary>
+    /// <summary>One decor instance: position/normal is in the sim frame (Y-up), chunk-local.</summary>
     public struct GroundDecorInstance
     {
         public float3 Position;
@@ -187,49 +186,40 @@ namespace Galilego.Universe
         public float SinkFactor;
         public float LeanDegrees;
 
-        /// <summary>Вес поверхности (кластер×биом×склон) 0..1 — для режима
-        /// PerInstanceDensity: рендерер разыгрывает приём на каждый подтуфт.</summary>
+        /// <summary>Surface weight (cluster×biome×slope) 0..1 — for PerInstanceDensity
+        /// mode: the renderer rolls acceptance per sub-tuft.</summary>
         public float DensityWeight;
 
-        /// <summary>Индекс варианта меша ближнего LOD (для разнообразия видов).</summary>
+        /// <summary>Mesh variant index of the near LOD (for species variety).</summary>
         public int MeshIndex;
 
-        /// <summary>Когда травинка появилась (Time.time + разброс). Матричная
-        /// джоба растит её масштабом за DecorBladeFadeSeconds: новое появляется
-        /// поштучно и плавно, а не полосой. При пересборке пула старые травинки
-        /// переносятся со своим BirthTime — уже выросшие не «прорастают» заново.</summary>
+        /// <summary>When the blade appeared (Time.time + jitter). The matrix
+        /// job grows it via scale over DecorBladeFadeSeconds: new blades appear
+        /// one by one and smoothly, not as a band. When the pool is rebuilt old blades
+        /// are carried over with their BirthTime — already grown ones do not «sprout» again.</summary>
         public float BirthTime;
 
-        /// <summary>Когда инстанс начал уходить под землю (Time.time + разброс),
-        /// 0 = жив. Ставится тем травинкам, что выпали из новой выборки при
-        /// пересборке пула: без этого они исчезали мгновенно, и игрок видел, как
-        /// трава пропадает у него на глазах (особенно сзади). Матричная джоба
-        /// гасит их масштабом за DecorBladeSinkSeconds — зеркально появлению.</summary>
+        /// <summary>When the instance started to sink under the ground (Time.time + jitter),
+        /// 0 = alive. Set on blades dropped from the new selection when the pool is
+        /// rebuilt. The matrix job fades them out via scale over DecorBladeSinkSeconds —
+        /// mirroring the appearance.</summary>
         public float DeathTime;
     }
 
     /// <summary>
-    /// Детерминированное размещение: чистая функция направления. Высоту/склон
-    /// считает ТА ЖЕ TerrainNoise, что физика и рендер рельефа (паритет по
-    /// построению); биом — та же wet-маска SampleColorNoise, что красит
-    /// поверхность. Никакого runtime-RNG: зерно + хеш направления.
+    /// Deterministic placement: a pure function of direction. Height/slope are
+    /// computed by the SAME TerrainNoise as terrain physics and rendering (parity
+    /// by construction); the biome uses the same wet mask SampleColorNoise that colors
+    /// the surface. No runtime RNG: seed + direction hash.
     /// </summary>
     public static class GroundDecorDistribution
     {
         /// <summary>
-        /// Влажность биома wet01 из цветовой маски рельефа — ЕДИНЫЙ источник
-        /// для краски (TerrainPalette) и для посадок (здесь), зеркало — в
-        /// PlanetSurface.shader (TerrainAlbedo). Любое расхождение = «зелёная по
-        /// рельефу земля без травы/деревьев».
-        ///
-        /// Кривая мягкая, tanh вместо clamp: маска SampleColorNoise на сфере
-        /// широкая (p10=−0.33, p90=+0.32, min=−0.83, max=+0.84), и старая формула
-        /// clamp(0.5+1.6·mask) САТУРИРОВАЛА 21% планеты в ровные 0 и 1. Из-за
-        /// этого четверть суши получала wet ровно 0 → деревья (WetMin=0.2) не
-        /// росли НИГДЕ на площади в десятки километров, а палитра рисовала по
-        /// краям «пустыню/лес» одной ровной тональной заливкой. tanh(1.6·mask)
-        /// держит середину линейной, но никогда не упирается в 0/1: суши без
-        /// единого дерева остаётся ~3% (только настоящие пустыни) вместо 25%.
+        /// Biome wetness wet01 from the terrain color mask — the SINGLE source
+        /// for painting (TerrainPalette) and placement (here), mirrored in
+        /// PlanetSurface.shader (TerrainAlbedo). Any divergence = «green terrain
+        /// with no grass/trees». tanh keeps the middle linear without saturating
+        /// to 0/1, unlike a clamp.
         /// </summary>
         public static double BiomeWetness(double colorMask)
         {
@@ -237,7 +227,7 @@ namespace Galilego.Universe
             return 0.5d + (0.5d * Math.Tanh(1.6d * mask));
         }
 
-        /// <summary>Хеш в [0,1) — джиттер ячейки/масштаб/поворот (детерминирован).</summary>
+        /// <summary>Hash in [0,1) — cell jitter/scale/rotation (deterministic).</summary>
         public static double Hash01(int a, int b, int c, int d, int salt)
         {
             unchecked
@@ -250,8 +240,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Нормированная высота палитры: t = h/amp + mask·strength. Та же
-        /// величина, что красит рельеф (TerrainPalette) и тот же сдвиг маской.
+        /// Normalized palette height: t = h/amp + mask·strength. The same
+        /// quantity that colors the terrain (TerrainPalette) with the same mask shift.
         /// </summary>
         public static double NormalizedHeight(GroundDecorPlacementParams p, double aboveSeaMeters, double colorNoise)
         {
@@ -260,17 +250,17 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Одинаковая плотность растительности на всей планете (вместо полярного
-        /// затухания). Константа задаёт густоту сразу везде: 0.06 — картинка
-        /// полярной тундры, 0.15..0.3 — заметно реже экватора, 1.0 — нынешняя
-        /// экваториальная густота по всей планете.
+        /// Uniform vegetation density across the whole planet (instead of polar
+        /// falloff). The constant sets the density everywhere: 0.06 — polar tundra
+        /// look, 0.15..0.3 — noticeably sparser than the equator, 1.0 — current
+        /// equatorial density planet-wide.
         /// </summary>
         public const double UniformGreenWeight = 0.15d;
 
         /// <summary>
-        /// Множитель плотности по широте. Слои с IgnoreLatitude (камни) идут
-        /// без ограничения, вся растительность — с UniformGreenWeight на любой
-        /// широте, включая полярную шапку.
+        /// Density multiplier by latitude. Layers with IgnoreLatitude (rocks) are
+        /// unlimited, all vegetation gets UniformGreenWeight at any
+        /// latitude, including the polar cap.
         /// </summary>
         public static double LatitudeGreenWeight(GroundDecorPlacementParams p, double3 direction)
         {
@@ -278,9 +268,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Проверка зоны исключения с учётом типа слоя: трава (SoftExclusion)
-        /// меряется мягким прямоугольником (0.3 м у дорог), остальные — полным
-        /// (1 м у дорог, 20 м у построек).
+        /// Exclusion-zone check taking the layer type into account: grass (SoftExclusion)
+        /// is measured with the soft rectangle (0.3 m at roads), the rest with the full one
+        /// (1 m at roads, 20 m at buildings).
         /// </summary>
         public static bool IsExcludedFor(GroundDecorPlacementParams p, TerrainNoiseParams terrain, double3 direction)
         {
@@ -290,20 +280,20 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Дешёвые жёсткие фильтры поверхности (вода/высоты/пляж/верх зелени/
-        /// wet-биом/полярная шапка) — без склона, кластеров и плотности. Для перепроверки
-        /// КАЖДОГО подтуфта в expand-путях: базовый кандидат проходит полный
-        /// TryEvaluate в центре клетки, а подтуфты разбросаны по всей клетке и
-        /// на грубом LOD уходят в воду, на песок и в горы. Любой accepted
-        /// TryEvaluate обязан проходить и здесь (необходимое условие).
-        /// Склон осознанно остаётся на уровне клетки: SlopeTan — 3 сэмпла
-        /// высоты на точку, на подтуфт это слишком дорого, а границы биомов
-        /// (вода/песок/скалы) — именно то, что видно глазом.
+        /// Cheap hard surface filters (water/heights/beach/green top/wet biome/
+        /// polar cap) — without slope, clusters or density. For re-checking
+        /// EVERY sub-tuft on expand paths: the base candidate passes the full
+        /// TryEvaluate at the cell center, while sub-tufts are scattered across the cell and
+        /// on coarse LOD fall into water, sand and mountains. Any accepted
+        /// TryEvaluate must also pass here (a necessary condition).
+        /// Slope deliberately stays at cell level: SlopeTan costs 3 height
+        /// samples per point, too expensive per sub-tuft, while biome boundaries
+        /// (water/sand/rocks) are exactly what the eye sees.
         /// </summary>
         public static bool IsSurfaceAllowed(
             GroundDecorPlacementParams p, TerrainNoiseParams terrain, double3 direction)
         {
-            // Зона постройки/дороги: под ней не растёт ничего, включая подтуфты травы.
+            // Building/road zone: nothing grows under it, including grass sub-tufts.
             if (IsExcludedFor(p, terrain, direction))
             {
                 return false;
@@ -321,8 +311,8 @@ namespace Galilego.Universe
                 return false;
             }
 
-            // Пляж: ниже его верхней границы не сажаем НИЧЕГО — ни траву,
-            // ни деревья, ни камни (единый источник — профиль террейна).
+            // Beach: below its upper boundary NOTHING is placed — neither grass,
+            // nor trees, nor rocks (single source — the terrain profile).
             if (p.BeachHeightMeters > 0d && aboveSea < p.BeachHeightMeters)
             {
                 return false;
@@ -345,10 +335,9 @@ namespace Galilego.Universe
                 return false;
             }
 
-            // Полярная шапка: запрет снят вместе с затуханием — при
-            // UniformGreenWeight > 0 растительность на льду не режется здесь,
-            // верх зелени/высота/wet остаются ограничителями. Проверка остаётся
-            // на случай UniformGreenWeight = 0 (слой выключенный по весу).
+            // Polar cap: with UniformGreenWeight > 0 vegetation is not cut here;
+            // the green top/height/wet filters remain the limiters. The check stays
+            // for the case UniformGreenWeight = 0 (a layer disabled by weight).
             if (LatitudeGreenWeight(p, direction) <= 0d)
             {
                 return false;
@@ -358,10 +347,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Направление грани cube-sphere по (u,v) на double3 — Burst-совместимый
-        /// двойник CubeSphere.Direction (тот использует Vector3d и живёт только
-        /// на main thread). Формула граней обязана зеркалить CubeSphere:
-        /// при рассинхроне перепроверка подтуфтов будет смотреть не туда.
+        /// Cube-sphere face direction from (u,v) to double3 — a Burst-compatible
+        /// twin of CubeSphere.Direction (which uses Vector3d and lives only on the
+        /// main thread). The face formula must mirror CubeSphere:
+        /// if they diverge, sub-tuft re-checking looks in the wrong place.
         /// </summary>
         public static double3 CubeFaceDirection(int face, double u, double v)
         {
@@ -384,12 +373,12 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Радиальная высота точки рендер-меша (chunk-local sim-координаты)
-        /// над радиусом тела. Обратный мост sim→astro (sim = (x, z, −y) от
-        /// astro-rel, см. AstroFrame): без зависимости от UnityEngine,
-        /// работает и в Burst. Нужна, потому что фильтр считается по
-        /// аналитической высоте, а позиция снэпится к грубому мешу чанка:
-        /// на крупном LOD меш ныряет ниже моря там, где аналитика видит сушу.
+        /// Radial height of a render-mesh point (chunk-local sim coordinates)
+        /// above the body radius. Reverse sim→astro bridge (sim = (x, z, −y) from
+        /// astro-rel, see AstroFrame): no UnityEngine dependency,
+        /// works in Burst too. Needed because the filter uses the
+        /// analytic height while the position snaps to the coarse chunk mesh:
+        /// at coarse LOD the mesh dips below the sea where the analytic height sees land.
         /// </summary>
         public static double MeshPointHeightAboveRadius(GroundDecorPlacementParams p, float3 simPoint)
         {
@@ -400,11 +389,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Дешёвый страж снэпа к мешу (без сэмплов шума): точка рендер-меша
-        /// обязана быть над водой и в диапазоне высот слоя. Ловит деревья и
-        /// камни, «утонувшие» из-за отклонения грубого меша от аналитической
-        /// высоты. Биом/песок/скалы здесь не проверяются — их ловит
-        /// IsSurfaceAllowed по направлению.
+        /// Cheap guard for mesh snapping (no noise samples): a render-mesh point
+        /// must be above water and within the layer altitude range. Catches trees and
+        /// rocks «drowned» because the coarse mesh deviates from the analytic
+        /// height. Biome/sand/rocks are not checked here — IsSurfaceAllowed
+        /// catches them by direction.
         /// </summary>
         public static bool IsMeshPointAboveWater(GroundDecorPlacementParams p, float3 simPoint)
         {
@@ -419,10 +408,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Попытка посадить инстанс. random.x — доля отбора, random.y — масштаб,
-        /// random.z — поворот, meshPick — выбор варианта меша [0,1). Фильтры:
-        /// вода, высота, склон, wet-биом, полярная широта, кластерный шум; плотность дополнительно
-        /// гасится склоном (SteepPower).
+        /// Attempt to place an instance. random.x — acceptance roll, random.y — scale,
+        /// random.z — rotation, meshPick — mesh variant selection [0,1). Filters:
+        /// water, altitude, slope, wet biome, polar latitude, cluster noise; density is
+        /// additionally damped by slope (SteepPower).
         /// </summary>
         public static bool TryEvaluate(
             GroundDecorPlacementParams p, TerrainNoiseParams terrain, double3 direction, double3 random, double meshPick,
@@ -431,8 +420,8 @@ namespace Galilego.Universe
         {
             instance = default;
 
-            // Зона постройки/дороги: клетка целиком внутри зоны не получает ни одного
-            // экземпляра (IsSurfaceAllowed проверяет ещё и подтуфты).
+            // Building/road zone: a cell entirely inside the zone gets no
+            // instance at all (IsSurfaceAllowed also checks sub-tufts).
             if (IsExcludedFor(p, terrain, direction))
             {
                 return false;
@@ -450,8 +439,8 @@ namespace Galilego.Universe
                 return false;
             }
 
-            // Пляж: ниже его верхней границы не сажаем НИЧЕГО — ни траву,
-            // ни деревья, ни камни (единый источник — профиль террейна).
+            // Beach: below its upper boundary NOTHING is placed — neither grass,
+            // nor trees, nor rocks (single source — the terrain profile).
             if (p.BeachHeightMeters > 0d && aboveSea < p.BeachHeightMeters)
             {
                 return false;
@@ -459,9 +448,9 @@ namespace Galilego.Universe
 
             double colorNoise = Clamp(TerrainNoise.SampleColorNoise(terrain, direction), -1d, 1d);
 
-            // Та же нормированная высота, что у палитры рельефа:
-            // t = h/amp + mask·strength. Нижняя граница отсекает пляжную
-            // полосу (её красит Sand), верхняя — скалы/снег (там только камни).
+            // Same normalized height as the terrain palette:
+            // t = h/amp + mask·strength. The lower bound cuts off the beach
+            // band (colored Sand), the upper one rocks/snow (rocks only there).
             if (p.MinNormalizedHeight > 0d || p.MaxNormalizedHeight > 0d)
             {
                 double normalized = NormalizedHeight(p, aboveSea, colorNoise);
@@ -491,8 +480,8 @@ namespace Galilego.Universe
                 return false;
             }
 
-            // Мягкие края: у островов (ClusterFade) и у биома (WetFade).
-            // 0 = жёсткий порог, как было раньше.
+            // Soft edges: for islands (ClusterFade) and for the biome (WetFade).
+            // 0 = hard threshold.
             double clusterWeight;
             if (p.ClusterFade > 1e-9d)
             {
@@ -510,9 +499,9 @@ namespace Galilego.Universe
             double wetWeight = 1d;
             if (p.WetFade > 1e-9d)
             {
-                // Край рампы — только у границ ВНУТРИ диапазона: wet выше 1 и
-                // ниже 0 не бывает, а fade у WetMax=1 занулял бы самый влажный
-                // биом (там wet=1 ровно) — трава пропадала в лесах.
+                // The ramp edge is only at boundaries INSIDE the range: wet never
+                // goes above 1 or below 0, and a fade at WetMax=1 would zero out the
+                // wettest biome (where wet is exactly 1).
                 if (p.WetMin > 0d)
                 {
                     wetWeight *= Smoothstep01((wet - p.WetMin) / p.WetFade);
@@ -529,8 +518,8 @@ namespace Galilego.Universe
                 }
             }
 
-            // Полярный фейд: тундра прореживает плотность, сплошной лёд
-            // запрещает (камни идут с IgnoreLatitude и его не видят).
+            // Polar fade: tundra thins the density, solid ice forbids it
+            // (rocks use IgnoreLatitude and don't see it).
             double latWeight = LatitudeGreenWeight(p, direction);
             if (latWeight <= 0d)
             {
@@ -551,16 +540,15 @@ namespace Galilego.Universe
                 + (new double3(surfaceNormal.x, -surfaceNormal.z, surfaceNormal.y) * offset);
             double3 rel = astro - new double3(p.ChunkCenterX, p.ChunkCenterY, p.ChunkCenterZ);
 
-            // sim = (x, z, −y) — тот же мост, что AstroFrame (без ссылки на UnityEngine).
+            // sim = (x, z, −y) — the same bridge as AstroFrame (without referencing UnityEngine).
             float3 simPosition = new float3((float)rel.x, (float)rel.z, (float)-rel.y);
 
             double accept = p.Density * clusterWeight * wetWeight * slopeWeight * latWeight;
             if (!p.PerInstanceDensity)
             {
-                // Затухание по ТАНГЕНЦИАЛЬНОЙ дистанции до камеры ВНУТРИ чанка:
-                // высота полёта не гасит траву под собой, а пешие переходы
-                // по-прежнему плавно редеют к границе. Без этого крупный чанк
-                // размазывался лимитом инстансов в равномерно редкие точки.
+                // Falloff by TANGENTIAL distance to the camera WITHIN the chunk:
+                // flight altitude does not thin the grass beneath, while walking
+                // still thins smoothly toward the boundary.
                 if (p.UseCameraFalloff && p.FarDensity < 1d)
                 {
                     double ddx = simPosition.x - p.CameraLocalX;
@@ -582,16 +570,16 @@ namespace Galilego.Universe
 
             instance.Position = simPosition;
 
-            // Режим PerInstanceDensity: форма острова — клеточный вес, а
-            // затухание по дистанции до камеры считает РЕНДЕРЕР (там обе точки
-            // гарантированно в одной системе координат — меш-фрейме чанка).
+            // PerInstanceDensity mode: the island shape is the cell weight, while
+            // the camera-distance falloff is computed by the RENDERER (where both points
+            // are guaranteed to be in one coordinate system — the chunk mesh frame).
             instance.DensityWeight = (float)(clusterWeight * wetWeight * slopeWeight * latWeight);
             instance.Normal = surfaceNormal;
             instance.Scale = (float)radius;
             instance.SinkFactor = (float)sinkFactor;
             double jitter = (random.z - 0.5d) * 2d * p.WindJitterRad;
-            // Азимут ветра ± джиттер может уйти в минус: матрицы это терпят,
-            // но контракт инстанса — Yaw в [0, 2π), на него опираются тесты.
+            // Wind azimuth ± jitter can go negative: matrices tolerate it, but the
+            // instance contract is Yaw in [0, 2π), which the tests rely on.
             double turn = Math.PI * 2d;
             double yaw = p.WindAzimuthRad + jitter;
             yaw -= Math.Floor(yaw / turn) * turn;
@@ -604,10 +592,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Тангенс склона по центральным разностям высоты в касательной плоскости
-        /// + нормаль поверхности из тех же трёх точек (тел-fixed формула
-        /// p = dir·(R+h), кросс разностей) — карточки/деревья ставятся по склону,
-        /// а не по радиали (иначе на склонах трава «лежит»).
+        /// Slope tangent via central height differences in the tangent plane
+        /// + the surface normal from the same three points (body-fixed formula
+        /// p = dir·(R+h), cross of the differences) — cards/trees are placed along the slope
+        /// rather than the radial (otherwise grass «lies flat» on slopes).
         /// </summary>
         public static double SlopeTan(
             TerrainNoiseParams terrain, GroundDecorPlacementParams p, double3 direction, out float3 surfaceNormal)
@@ -654,9 +642,9 @@ namespace Galilego.Universe
             return t * t * (3d - (2d * t));
         }
 
-        /// <summary>Затухание плотности по дистанции (общее для клетки и подтуфт).
-        /// До плоского ядра (DensityCoreMeters) плотность полная — край острова
-        /// не «дышит» при пересборках и у игрока не редеет.</summary>
+        /// <summary>Density falloff by distance (shared by cell and sub-tufts).
+        /// Up to the flat core (DensityCoreMeters) the density is full — the island edge
+        /// does not «breathe» on rebuilds and does not thin near the player.</summary>
         public static double Falloff(GroundDecorPlacementParams p, double distance)
         {
             if (p.FarDensity >= 1d && p.DensityCoreMeters <= 0d)
@@ -675,14 +663,11 @@ namespace Galilego.Universe
                 return 1d;
             }
 
-            // Степенной закон покрытия: density ∝ (R/(R+d))^p, где R — радиус
-            // плоского ядра (плотность на его краю ровно 1). При p = 2 и линейном
-            // росте дальнего LOD (GroundDecorMatrixJob: size ∝ d) заполнение
-            // экрана n·g² = (R/d)²·(d/R)² = const, то есть «шерсть» до края зоны
-            // не вырождается, а число инстансов растёт как ln(R), а не R².
-            // Именно этого не хватало экспоненте: exp гасил дальнюю зону в разы
-            // быстрее, чем набор размера успевал её закрыть, и за горизонтом
-            // трава просто исчезала.
+            // Coverage power law: density ∝ (R/(R+d))^p, where R is the
+            // flat-core radius (density at its edge is exactly 1). With p = 2 and linear
+            // far LOD growth (GroundDecorMatrixJob: size ∝ d) screen coverage
+            // n·g² = (R/d)²·(d/R)² = const, so the far zone does not thin out
+            // and the instance count grows as ln(R) rather than R².
             if (p.DensityFalloffPower > 0d)
             {
                 double r = Math.Max(1d, Math.Max(0d, p.DensityCoreMeters));
@@ -704,10 +689,10 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Burst-обход кандидатов чанка: направления готовит main thread (джиттер
-    /// ячеек), здесь — фильтры и выход инстансов. Компактификация — на main
-    /// thread по Accepted (параллельная запись в очередь не нужна: кандидатов
-    /// на чанк ограниченное число).
+    /// Burst pass over the chunk candidates: directions are prepared by the main
+    /// thread (cell jitter), here — filters and instance output. Compaction happens on the
+    /// main thread using Accepted (parallel queue writes are unnecessary: the number of
+    /// candidates per chunk is bounded).
     /// </summary>
     [BurstCompile]
     public struct GroundDecorCandidateJob : IJobParallelFor
@@ -718,7 +703,7 @@ namespace Galilego.Universe
         [ReadOnly]
         public NativeArray<double3> Randoms;
 
-        /// <summary>Выбор варианта меша [0,1) на кандидата (детерминированный хеш).</summary>
+        /// <summary>Mesh variant selection [0,1) per candidate (deterministic hash).</summary>
         [ReadOnly]
         public NativeArray<double> MeshPicks;
 
@@ -746,9 +731,9 @@ namespace Galilego.Universe
             }
             else
             {
-                // Массивы — из пула (DecorArrayPool) с чужими данными: без
-                // явного сброса stale Accepted=1 рисовал бы декор чужого чанка
-                // (трава в небе). Instances при Accepted=0 никто не читает.
+                // The arrays come from a pool (DecorArrayPool) with stale data:
+                // without an explicit reset a stale Accepted=1 would draw another chunk's
+                // decor (grass in the sky). Instances with Accepted=0 are never read.
                 Accepted[index] = 0;
             }
         }

@@ -6,25 +6,23 @@ using UnityEngine.Rendering.HighDefinition;
 namespace Galilego.Building
 {
     /// <summary>
-    /// 3D-предпросмотр детали для окна инвентаря: отдельная камера рисует
-    /// деталь в RenderTexture, объект медленно вращается, размеры берутся из
-    /// метрик (при смене размера визуал пересобирается). Риг живёт на слое 31
-    /// далеко от мира — главная камера его не видит (и слой вычищается из её
-    /// маски), рендер идёт вручную и не чаще 30 кадров в секунду.
+    /// 3D part preview for the inventory window: a dedicated camera renders the
+    /// part into a RenderTexture, the object slowly spins, and sizes come from
+    /// metrics (the visual is rebuilt when the size changes). The rig lives on
+    /// layer 31 far from the world — the main camera never sees it (and the
+    /// layer is cleared from its mask); rendering is manual, at most 30 fps.
     ///
-    /// Камера выключена (enabled = false): с targetTexture она иначе рисовала
-    /// бы кадр каждый тик — здесь кадр запрашивается только из Ensure().
+    /// The camera is disabled (enabled = false): with a targetTexture it would
+    /// otherwise draw a frame every tick — frames are requested only from Ensure().
     /// </summary>
     internal sealed class BuilderPreview
     {
         private const int Layer = 31;
 
         /// <summary>
-        /// Слой визуала ИКОНКИ (отдельный от слоя превью): камера снимает
-        /// иконку маской только по этому слою. Так в кадр иконки не попадает
-        /// визуал превью — выключение объекта (SetActive) не спасало: HDRP
-        /// GPU Resident Drawer дорисовывал его из батча прошлого кадра
-        /// (двигатель «просвечивал» сквозь иконку отделителя).
+        /// Layer of the ICON visual (separate from the preview layer): the icon
+        /// camera masks only this layer, so the preview visual never appears in
+        /// the icon frame.
         /// </summary>
         private const int IconLayer = 30;
         private const int Width = 512;
@@ -37,10 +35,10 @@ namespace Galilego.Building
         private const float IconSpinDegrees = 25f;
         private const float RenderInterval = 1f / 30f;
 
-        /// <summary>Фиксированная экспозиция кадра превью (EV100).</summary>
+        /// <summary>Fixed exposure of the preview frame (EV100).</summary>
         private const float FixedExposureEv = -3f;
 
-        /// <summary>Фон кадра — под цвет рамки Viewport, чтобы не было швов.</summary>
+        /// <summary>Frame background — matches the Viewport frame color to avoid seams.</summary>
         private static readonly Color Background = new Color(0.038f, 0.038f, 0.040f, 1f);
 
         private GameObject rig;
@@ -62,8 +60,8 @@ namespace Galilego.Building
         public Texture Texture => target;
 
         /// <summary>
-        /// Обновить предпросмотр: собрать риг, пересобрать визуал при смене
-        /// детали/размера, прокрутить и (не чаще 30 Гц) отрисовать кадр.
+        /// Update the preview: set up the rig, rebuild the visual when the
+        /// part/size changes, spin it and (at most 30 Hz) render a frame.
         /// </summary>
         public void Ensure(PartKind nextKind, PartMetrics metrics, PartCatalog.EngineTemplate engine,
             Material tankSide, Material tankCap, Material separator)
@@ -95,11 +93,11 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Один раз отрисовать «портреты» видов деталей: те же студийный свет и
-        /// ракурс «три четверти», что у превью, но с ПРОЗРАЧНЫМ фоном — иконки
-        /// лягут на любой слот. Размеры — базовые; слоты панели со своими
-        /// размерами дорисовывают себя сами (CaptureIcon). У каждого двигателя
-        /// иконка своя (по Id модели). Вызывается при старте.
+        /// Render the part-kind "portraits" once: the same studio light and
+        /// three-quarter angle as the preview, but on a TRANSPARENT background,
+        /// so icons fit on any slot. Sizes are the defaults; hotbar slots with
+        /// their own sizes re-render themselves (CaptureIcon). Each engine gets
+        /// its own icon (by model Id). Called at startup.
         /// </summary>
         public void PrepareIcons(System.Collections.Generic.IReadOnlyList<PartCatalog.EngineTemplate> engines,
             Material tankSide, Material tankCap, Material separator)
@@ -135,19 +133,19 @@ namespace Galilego.Building
                 PartCatalog.Measure(PartKind.Separator, PartCatalog.SeparatorDefaultRadius, 0f, firstEngine),
                 firstEngine, tankSide, tankCap, separator);
 
-            // Капсула: габариты из шаблона (RegisterCapsule), иконка с рендером
-            // модели. Если префаб не задан, Measure вернёт пустые метрики и
-            // иконка останется процедурной (запас бака).
+            // Capsule: dimensions from the template (RegisterCapsule), icon from
+            // the model render. Without a prefab, Measure returns empty metrics
+            // and the icon stays procedural (tank default).
             StoreIcon(PartKind.Capsule, null,
                 PartCatalog.Measure(PartKind.Capsule, 0f, 0f, firstEngine),
                 null, tankSide, tankCap, separator);
         }
 
         /// <summary>
-        /// Отрисовать иконку детали под ПРОИЗВОЛЬНЫЕ размеры (слот панели со
-        /// своими размерами): та же студия и ракурс, что у дефолтных иконок.
-        /// Текстура принадлежит вызывающему — он её и уничтожает. null, если
-        /// риг/геометрия недоступны.
+        /// Render a part icon for ARBITRARY sizes (a hotbar slot with its own
+        /// sizes): same studio and angle as the default icons. The texture
+        /// belongs to the caller, which destroys it. null if the rig/geometry
+        /// is unavailable.
         /// </summary>
         public Texture2D CaptureIcon(PartKind kind, PartMetrics metrics, PartCatalog.EngineTemplate engine,
             Material tankSide, Material tankCap, Material separator)
@@ -158,10 +156,10 @@ namespace Galilego.Building
                 return null;
             }
 
-            // Прозрачный фон и временный маленький таргет: иконка ляжет на слот
-            // любого цвета, а кадр превью не пострадает. Камеру и спинеер
-            // возвращаем как были: кадрирование иконки — СВОЁ (иконный запас
-            // кадра), а превью перекадрируется только при смене детали.
+            // Transparent background and a temporary small target: the icon fits
+            // a slot of any color, and the preview frame is unaffected. Camera
+            // and spinner are restored afterwards: icon framing is its OWN (the
+            // icon frame margin), while the preview re-frames only on part change.
             var hd = camera.GetComponent<HDAdditionalCameraData>();
             Color previousBackground = hd.backgroundColorHDR;
             Color transparent = new Color(Background.r, Background.g, Background.b, 0f);
@@ -187,8 +185,8 @@ namespace Galilego.Building
             float cameraNear = camera.nearClipPlane;
             float cameraFar = camera.farClipPlane;
 
-            // Иконка снимается маской ТОЛЬКО по своему слою: визуал превью
-            // (слой Layer) в кадр не попадает вовсе.
+            // The icon is captured with the mask on its layer ONLY: the preview
+            // visual (layer Layer) never enters the frame.
             int previousMask = camera.cullingMask;
             camera.cullingMask = 1 << IconLayer;
 
@@ -229,8 +227,8 @@ namespace Galilego.Building
 
             SetLayerRecursive(visual.Root, IconLayer);
 
-            // Кольцо отделителя плоское: чуть приподнимаем камеру, иначе в
-            // кадре — тонкая полоска вместо кольца (свет остаётся солнечный).
+            // The separator ring is flat: raise the camera slightly, otherwise
+            // the frame shows a thin stripe instead of a ring (light stays sun-based).
             Vector3 direction = ViewDirection();
             if (kind == PartKind.Separator)
             {
@@ -253,14 +251,14 @@ namespace Galilego.Building
             texture.Apply();
             RenderTexture.active = previous;
 
-            // Destroy отложен до конца кадра: гасим сразу, иначе следующая
-            // иконка рендерится вместе с предыдущей (обе под спинеером).
+            // Destroy is deferred to the end of the frame, so deactivate now:
+            // otherwise the next icon renders together with the previous one.
             visual.Root.SetActive(false);
             Object.Destroy(visual.Root);
             return texture;
         }
 
-        /// <summary>Снести риг и текстуру (окно закрылось / компонент выключен).</summary>
+        /// <summary>Tear down the rig and texture (window closed / component disabled).</summary>
         public void Release()
         {
             if (rig != null)
@@ -305,8 +303,8 @@ namespace Galilego.Building
                 hideFlags = HideFlags.HideAndDontSave,
                 layer = Layer
             };
-            // Далеко от мира: даже если маска камеры не вычистится, объект
-            // никогда не попадёт в кадр.
+            // Far from the world: even if the camera mask is not cleared, the
+            // object never enters the frame.
             rig.transform.position = new Vector3(0f, -10000f, 0f);
 
             var spinnerGo = new GameObject("Spinner") { layer = Layer };
@@ -340,20 +338,20 @@ namespace Galilego.Building
             target.Create();
             camera.targetTexture = target;
 
-            // Своя экспозиция для кадра превью: авто-экспозиция сцены считает
-            // кадр от яркого фона и топит деталь в темноту. Фиксированная EV
-            // даёт стабильный «студийный» вид в любое время суток.
+            // Own exposure for the preview frame: scene auto-exposure would sink
+            // the part into darkness against the bright background. Fixed EV
+            // gives a stable "studio" look at any time of day.
             BuildExposureVolume(cameraGo);
 
-            // Металлу нужна среда для отражений: без неё бак — чёрный силуэт.
-            // Кубическая «студия» (градиент сверху-вниз) + Custom-проба.
+            // Metal needs an environment for reflections, otherwise the tank is a
+            // black silhouette: a cubic "studio" (top-to-bottom gradient) + Custom probe.
             BuildReflectionProbe();
 
             keyLight = FindKeyLight();
             KeepHidden();
         }
 
-        /// <summary>Reflection Probe со «студийной» кубической текстурой.</summary>
+        /// <summary>Reflection Probe with a "studio" cubemap.</summary>
         private void BuildReflectionProbe()
         {
             var probeGo = new GameObject("PreviewReflection") { layer = Layer };
@@ -369,14 +367,14 @@ namespace Galilego.Building
             probe.nearClipPlane = 0.1f;
             probe.farClipPlane = 500f;
 
-            // HDRP берёт кастомную кубическую текстуру из своих данных
-            // (hd.customTexture), а не из ReflectionProbe.customBakedTexture.
+            // HDRP takes the custom cubemap from its own data (hd.customTexture),
+            // not from ReflectionProbe.customBakedTexture.
             var hd = probeGo.AddComponent<HDAdditionalReflectionData>();
             hd.mode = ProbeSettings.Mode.Custom;
             hd.customTexture = cubemap;
         }
 
-        /// <summary>Кубическая текстура «студии»: светлое небо, тёмный низ.</summary>
+        /// <summary>"Studio" cubemap: bright sky, dark bottom.</summary>
         private static Cubemap BuildStudioCubemap()
         {
             const int size = 32;
@@ -396,8 +394,8 @@ namespace Galilego.Building
                         float u = ((x + 0.5f) / size) * 2f - 1f;
                         float v = ((y + 0.5f) / size) * 2f - 1f;
                         Vector3 dir = CubemapDirection((CubemapFace)face, u, v);
-                        float h = dir.y * 0.5f + 0.5f;              // 0 низ, 1 верх
-                        float top = Mathf.Lerp(0.30f, 1.05f, h * h); // мягкий нейтральный градиент
+                        float h = dir.y * 0.5f + 0.5f;              // 0 bottom, 1 top
+                        float top = Mathf.Lerp(0.30f, 1.05f, h * h); // soft neutral gradient
                         pixels[(y * size) + x] = new Color(top, top, top, 1f);
                     }
                 }
@@ -409,7 +407,7 @@ namespace Galilego.Building
             return cubemap;
         }
 
-        /// <summary>Направление пикселя грани кубической текстуры (Unity-порядок).</summary>
+        /// <summary>Cubemap face pixel direction (Unity order).</summary>
         private static Vector3 CubemapDirection(CubemapFace face, float u, float v)
         {
             switch (face)
@@ -424,9 +422,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Volume у камеры превью: только Fixed Exposure. Коллайдер-короб
-        /// нужен, чтобы Volume считался не-глобальным и влиял только на эту
-        /// камеру (главная камера в 10 км — вне короба).
+        /// Volume on the preview camera: Fixed Exposure only. The collider box
+        /// makes the Volume non-global so it affects only this camera (the main
+        /// camera is 10 km away, outside the box).
         /// </summary>
         private void BuildExposureVolume(GameObject cameraGo)
         {
@@ -453,7 +451,7 @@ namespace Galilego.Building
             box.size = new Vector3(4000f, 4000f, 4000f);
         }
 
-        /// <summary>Самый яркий включённый направленный свет — по нему ставим камеру.</summary>
+        /// <summary>Brightest enabled directional light — the camera is positioned by it.</summary>
         private static Light FindKeyLight()
         {
             Light best = null;
@@ -476,8 +474,8 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Направление камеры превью: со СТОРОНЫ СОЛНЦА, иначе деталь — тёмный
-        /// силуэт (камера на теневой стороне). Чуть сверху и под 3/4.
+        /// Preview camera direction: from the SUN side, otherwise the part is a
+        /// dark silhouette (camera on the shadowed side). Slightly above, 3/4 view.
         /// </summary>
         private Vector3 ViewDirection()
         {
@@ -497,7 +495,7 @@ namespace Galilego.Building
             return (toLight + (side * 0.55f) + (Vector3.up * 0.30f)).normalized;
         }
 
-        /// <summary>Слои превью и иконок не должны рисоваться главной камерой.</summary>
+        /// <summary>Preview and icon layers must not be rendered by the main camera.</summary>
         private void KeepHidden()
         {
             Camera main = Camera.main;
@@ -535,13 +533,13 @@ namespace Galilego.Building
             Frame(metrics);
         }
 
-        /// <summary>Кадрировать камеру по габаритам детали (высота и диаметр).</summary>
+        /// <summary>Frame the camera on the part's dimensions (height and diameter).</summary>
         private void Frame(PartMetrics metrics)
         {
             Frame(metrics, ViewDirection(), FrameMargin);
         }
 
-        /// <summary>Кадрирование под заданное направление камеры и запас кадра.</summary>
+        /// <summary>Framing for a given camera direction and frame margin.</summary>
         private void Frame(PartMetrics metrics, Vector3 direction, float margin)
         {
             float biggest = Mathf.Max(metrics.Height, metrics.Radius * 2f);

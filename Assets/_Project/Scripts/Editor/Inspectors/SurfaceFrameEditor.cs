@@ -6,13 +6,12 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Инспектор SurfaceFrame: широта/долгота (единственный источник истины о
-    /// положении), привязка к точке спавна раннера, рамка камеры SceneView на
-    /// фрейм, тумблеры превью и диагностика высоты.
+    /// SurfaceFrame inspector: latitude/longitude (the single source of truth for
+    /// position), binding to the runner's spawn point, SceneView camera framing,
+    /// preview toggles and height diagnostics.
     ///
-    /// Кнопки «взять у раннера» и «показать здесь» — то, ради чего фрейм и
-    /// нужен: без них точка спавна задаётся в инспекторе раннера, а увидеть её
-    /// в сцене нечем.
+    /// The "take from runner" and "show here" buttons are what the frame is for:
+    /// otherwise the spawn point lives in the runner inspector with no way to see it.
     /// </summary>
     [CustomEditor(typeof(SurfaceFrame))]
     public sealed class SurfaceFrameEditor : UnityEditor.Editor

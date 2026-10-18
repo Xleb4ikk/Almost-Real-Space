@@ -2,8 +2,8 @@ Shader "Galilego/StarField"
 {
     SubShader
     {
-        // Transparent+1: рисуется ПОСЛЕ атмосферы (она делает ручной композит
-        // с заменой фона), иначе звёзды затёрлись бы её выводом.
+        // Transparent+1: drawn AFTER the atmosphere (it does a manual composite
+        // replacing the background), otherwise the stars would be overwritten.
         Tags { "RenderPipeline" = "HDRenderPipeline" "RenderType" = "Transparent" "Queue" = "Transparent+1" }
 
         Pass
@@ -24,7 +24,7 @@ Shader "Galilego/StarField"
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
 
-            // Ставит SkyEnvironment: видимость звёзд (космос/ночь 1 → день 0).
+            // Set by SkyEnvironment: star visibility (space/night 1 → day 0).
             float _StarVisibility;
 
             struct Attributes
@@ -53,8 +53,8 @@ Shader "Galilego/StarField"
                 return frac((p.x + p.y) * p.z);
             }
 
-            // Один слой звёзд: по ячейкам направления случайная звезда со своим
-            // положением/яркостью/температурой. Возвращает (яркость, temp).
+            // One star layer: per direction cell, a random star with its own
+            // position/brightness/temperature. Returns (brightness, temp).
             float2 StarLayer(float3 dir, float density, float keepThreshold, float size, float seed)
             {
                 float3 p = dir * density;
@@ -75,10 +75,10 @@ Shader "Galilego/StarField"
                     discard;
                 }
 
-                // Окклюзия по глубине, а не по радиусу купола: если в пикселе
-                // есть непрозрачная геометрия (планета/рельеф) — звёзды не
-                // рисуем. Иначе на дистанции больше купола (0.5·far) звёзды
-                // оказывались бы ПЕРЕД далёкой планетой.
+                // Occlusion by depth, not by dome radius: if the pixel contains
+                // opaque geometry (planet/terrain), skip the stars. Otherwise at
+                // distances beyond the dome (0.5·far) stars would appear IN FRONT
+                // of a distant planet.
                 if (!IsSky(uint2(input.positionCS.xy)))
                 {
                     discard;
@@ -87,11 +87,11 @@ Shader "Galilego/StarField"
                 float3 rd = normalize(input.dir);
                 float3 col = 0.0;
 
-                // Яркие редкие.
+                // Bright and sparse.
                 float2 s1 = StarLayer(rd, 160.0, 0.93, 0.10, 0.0);
                 col += lerp(float3(1.0, 0.78, 0.58), float3(0.74, 0.84, 1.0), s1.y) * s1.x * 4.0;
 
-                // Тусклые частые.
+                // Dim and dense.
                 float2 s2 = StarLayer(rd, 420.0, 0.86, 0.08, 3.3);
                 col += lerp(float3(1.0, 0.78, 0.58), float3(0.74, 0.84, 1.0), s2.y) * s2.x * 0.9;
 

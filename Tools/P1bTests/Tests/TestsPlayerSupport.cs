@@ -3,14 +3,14 @@ using System.Collections.Generic;
 using Galilego.Core;
 using Galilego.Simulation.Player;
 
-// Ходьба игрока по опорам (вертикальная опора, шаг, наклон, потолок, углы,
-// падение, движущаяся платформа). Все тесты — на чистом PlayerSurfaceController
-// с синтетическими IPlayerSupport, без Unity.
+// Player walking on supports (vertical support, step, slope, ceiling, corners,
+// falling, moving platform). All tests use a pure PlayerSurfaceController with
+// synthetic IPlayerSupport, no Unity.
 internal static partial class P1bTests
 {
     private static readonly Vector3d LocalUp = new Vector3d(0d, 0d, 1d);
 
-    // ─── синтетические опоры ────────────────────────────────────────────────
+    // ─── synthetic supports ────────────────────────────────────────────────
 
     private sealed class Box
     {
@@ -311,8 +311,8 @@ internal static partial class P1bTests
         }
     }
 
-    // Заглушка детали корабля: площадка 2×2 м, горизонталь 2 м/с, вертикаль
-    // 0.5·sin(2π·t/4). Поза — на КОНЕЦ подшага (тест выставляет Time = t + dt).
+    // Ship-part stub: a 2×2 m platform, horizontal 2 m/s, vertical
+    // 0.5·sin(2π·t/4). Pose is at the END of the substep (the test sets Time = t + dt).
     private sealed class StubPlatformSupport : IPlayerSupport, IMovingSupport
     {
         public double Time;
@@ -349,7 +349,7 @@ internal static partial class P1bTests
         }
     }
 
-    // ─── тесты ──────────────────────────────────────────────────────────────
+    // ─── tests ──────────────────────────────────────────────────────────────
 
     static int Test310_StepUp()
     {
@@ -381,7 +381,7 @@ internal static partial class P1bTests
         }
 
         bool stepOk = Math.Abs(onStep - 0.4d) <= 1e-3d;
-        // 0.6 — блокировка: высота не меняется (X упирается в стену уступа на радиусе капсулы).
+        // 0.6 — blocked: height does not change (X stops at the step wall at capsule radius).
         bool blockOk = Math.Abs(cHigh.Position.Z) <= 1e-3d && cHigh.Blocked
             && cHigh.Position.X <= 1d - PlayerSurfaceController.CapsuleRadius + 1e-3d;
         Check(stepOk && blockOk, "T310 step-up",
@@ -548,7 +548,7 @@ internal static partial class P1bTests
             support.Blockers.Add(step);
         }
 
-        // Верхняя площадка: без неё игрок, пройдя лестницу, сходит с края и падает.
+        // Top platform: without it the player, after the stairs, walks off the edge and falls.
         support.Floors.Add(Box.Floor(count * run, count * run + 6d, -2d, 2d, count * rise));
 
         var c = new PlayerSurfaceController { Position = new Vector3d(-0.5d, 0d, 0d) };
@@ -589,7 +589,7 @@ internal static partial class P1bTests
     {
         var platform = new StubPlatformSupport();
         var c = new PlayerSurfaceController { Position = new Vector3d(0d, 0d, 0d) };
-        c.SetGroundSource(0); // уже стоим на платформе (sourceId 0)
+        c.SetGroundSource(0); // already standing on the platform (sourceId 0)
         double dt = 0.01d;
         double worstX = 0d;
         double worstZ = 0d;
@@ -611,8 +611,8 @@ internal static partial class P1bTests
 
     static int Test318_FallNoTunneling()
     {
-        // Тонкая плита на пути падения: подшаг 0.5 с (пролёт метры) не должен
-        // её проскочить — вертикаль дробится, посадка проверяется до сдвига.
+        // Thin plate in the fall path: a 0.5 s substep (metres of travel) must not
+        // tunnel through it — the vertical is subdivided, landing is checked before the move.
         var support = new BoxSupport();
         support.Floors.Add(Box.Floor(-5d, 5d, -5d, 5d, 0d));
         support.Floors.Add(Box.Floor(-50d, 50d, -50d, 50d, -50d));
@@ -636,8 +636,8 @@ internal static partial class P1bTests
 
     static int Test319_SteepSlopeWall()
     {
-        // Крутой скат у стены: ветка скольжения обязана резать горизонталь
-        // свипом о стену, а не проходить сквозь неё.
+        // Steep slope next to a wall: the sliding branch must clip the horizontal
+        // motion with a sweep against the wall, not pass through it.
         var support = new BoxSupport();
         Box steepFloor = Box.Floor(-10d, 10d, -10d, 10d, 0d);
         double radians = 35d * (Math.PI / 180d);
@@ -660,8 +660,8 @@ internal static partial class P1bTests
 
     static int Test320_JumpNotCancelled()
     {
-        // Прыжок не должен отменяться на первом же подшаге: посадка в воздухе
-        // проверяется только на спуске.
+        // A jump must not be cancelled on the very first substep: airborne landing
+        // is only checked on descent.
         var support = new BoxSupport();
         support.Floors.Add(Box.Floor(-10d, 10d, -10d, 10d, 0d));
         var c = new PlayerSurfaceController

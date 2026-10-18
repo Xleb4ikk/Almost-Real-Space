@@ -3,33 +3,31 @@ using System;
 namespace Galilego.Core
 {
     /// <summary>
-    /// DOPRI5-степпер для полного состояния корабля (позиция, скорость, масса).
-    /// Использует ТЕ ЖЕ коэффициенты DOPRI5Coefficients, что и OrbitIntegrator, —
-    /// это не альтернативный интегратор, а тот же метод Dormand-Prince 5(4),
-    /// применённый к более широкому вектору состояния. OrbitIntegrator.cs при
-    /// этом не изменён и не должен изменяться этим файлом.
+    /// DOPRI5 stepper for the full spacecraft state (position, velocity, mass).
+    /// Uses the SAME DOPRI5Coefficients as OrbitIntegrator: not an alternative
+    /// integrator, but the same Dormand-Prince 5(4) method applied to a wider
+    /// state vector. OrbitIntegrator.cs is left untouched by this file.
     ///
-    /// Логика управления шагом (адаптивное удвоение/половинение, FSAL, формулы
-    /// пересчёта шага) зеркалит OrbitIntegrator.StepForward. ЕДИНСТВЕННОЕ
-    /// смысловое отличие — норма ошибки считается раздельно по Position /
-    /// Velocity / Mass, каждая со своим абсолютным допуском: мерить ошибку
-    /// одним числом для метров, м/с и килограммов физически бессмысленно,
-    /// это разные величины с разными масштабами.
+    /// Step control (adaptive scaling, FSAL, step-update formulas) mirrors
+    /// OrbitIntegrator.StepForward. The ONLY semantic difference: the error norm is
+    /// computed separately for Position / Velocity / Mass, each with its own
+    /// absolute tolerance — metres, m/s and kilograms have different scales, so a
+    /// single error number for them is physically meaningless.
     /// </summary>
     public static class SpacecraftOrbitIntegrator
     {
         /// <summary>
-        /// Правая часть ОДУ корабля: по состоянию на подшаге и времени возвращает
-        /// производную (dPosition/dt = velocity, dVelocity/dt = acceleration,
-        /// dMass/dt = -массовый расход). Обязана быть pure (без побочных эффектов):
-        /// вызывается много раз на одном шаге, включая отклонённые шаги, поэтому
-        /// внутри нельзя списывать топливо, менять состояние корабля или источников.
+        /// Right-hand side of the spacecraft ODE: given the substage state and time,
+        /// returns the derivative (dPosition/dt = velocity, dVelocity/dt = acceleration,
+        /// dMass/dt = -mass flow). Must be pure (no side effects): it is called many
+        /// times per step, including rejected ones, so it must not consume fuel or
+        /// modify the spacecraft or its sources.
         /// </summary>
         public delegate SpacecraftIntegrationState DerivativeFunction(
             SpacecraftIntegrationState state, double timeSeconds);
 
-        // Коэффициенты таблицы Бутчера — тот же единый источник правды, что и
-        // у OrbitIntegrator. Ни одно число здесь не продублировано буквально.
+        // Butcher tableau coefficients — the same single source of truth as
+        // OrbitIntegrator. No number is duplicated literally here.
         private const double a21 = DOPRI5Coefficients.a21;
         private const double a31 = DOPRI5Coefficients.a31;
         private const double a32 = DOPRI5Coefficients.a32;
@@ -71,20 +69,19 @@ namespace Galilego.Core
         private const double d6 = DOPRI5Coefficients.d6;
         private const double d7 = DOPRI5Coefficients.d7;
 
-        // Границы шага — те же, что у OrbitIntegrator, чтобы поведение
-        // управления шагом совпадало, а не разъезжалось двумя наборами чисел.
+        // Step bounds match OrbitIntegrator's so step control behaves identically
+        // instead of drifting apart through two sets of numbers.
         private const double MaxStepSize = OrbitIntegrator.DefaultMaxStepSize;
         private const double MinStepSize = OrbitIntegrator.DefaultMinStepSize;
 
         /// <summary>
-        /// Интегрирует полное состояние вперёд на целевой шаг по времени
-        /// адаптивным DOPRI5. Управление шагом — как в OrbitIntegrator.StepForward.
+        /// Integrates the full state forward by a target time step with adaptive
+        /// DOPRI5. Step control matches OrbitIntegrator.StepForward.
         ///
-        /// Опциональный коллектор dense output: на каждый принятый внутренний шаг
-        /// добавляется DenseSegment с коэффициентами Shampine (считаются из уже
-        /// готовых стадий, k7 — FSAL-оценка: 0 новых RHS-оценок). «0-diff»
-        /// означает поведение: segments == null даёт бит-в-бит тот же результат,
-        /// что и раньше — сигнатура при этом расширена.
+        /// Optional dense-output collector: every accepted internal step appends a
+        /// DenseSegment with Shampine coefficients (built from stages already
+        /// computed; k7 is the FSAL estimate, so 0 extra RHS evaluations).
+        /// segments == null leaves the result bit-identical to the no-collector path.
         /// </summary>
         public static SpacecraftIntegrationResult StepForward(
             SpacecraftIntegrationState initialState,
@@ -100,9 +97,9 @@ namespace Galilego.Core
             if (derivativeProvider == null)
                 throw new ArgumentNullException(nameof(derivativeProvider));
 
-            // Forward-only контракт: при targetDt<0 стадии RHS идут вперёд, а
-            // часы назад — траектория молча мусор (аудит S1/A1). Все вызывающие
-            // идут вперёд; обратный ход — громкий отказ, а не тихая порча.
+            // Forward-only contract: with targetDt < 0 the RHS stages run forward while
+            // the clock runs backward — silent garbage (audit S1/A1). All callers go
+            // forward; backward motion fails loudly instead of corrupting silently.
             if (targetDt < 0d)
                 throw new ArgumentOutOfRangeException(nameof(targetDt),
                     "Интегратор forward-only: targetDt=" + targetDt + " < 0. Обратный ход времени не поддержан.");
@@ -114,9 +111,9 @@ namespace Galilego.Core
                 throw new InvalidOperationException(
                     "Начальное состояние корабля не-конечно: " + initialState + " — дальнейшая интеграция бессмысленна.");
 
-            // Инициализация FSAL (First Same As Last): k7 принятого шага = k1 следующего.
-            // Здесь кэшируется ПОЛНАЯ производная (включая dMass/dt), а не только
-            // ускорение — иначе переиспользование k1 для массы было бы неверным.
+            // FSAL (First Same As Last) init: k7 of an accepted step = k1 of the next.
+            // The FULL derivative (including dMass/dt) is cached here, not just the
+            // acceleration — otherwise reusing k1 for mass would be wrong.
             SpacecraftIntegrationState fsalDerivative = derivativeProvider(initialState, currentTimeSeconds);
             bool fsalValid = true;
 
@@ -148,8 +145,8 @@ namespace Galilego.Core
                     out double errorMass,
                     out ShampineCoeffs denseStep);
 
-                // Раздельная нормировка ошибки: у каждой физической величины
-                // свой абсолютный допуск, относительный — общий.
+                // Separate error scaling: each physical quantity has its own
+                // absolute tolerance; the relative tolerance is shared.
                 double scalePos = positionAbsoluteTolerance + relativeTolerance * Math.Max(current.Position.Magnitude, fifth.Position.Magnitude);
                 double scaleVel = velocityAbsoluteTolerance + relativeTolerance * Math.Max(current.Velocity.Magnitude, fifth.Velocity.Magnitude);
                 double scaleMass = massAbsoluteTolerance + relativeTolerance * Math.Max(Math.Abs(current.Mass), Math.Abs(fifth.Mass));
@@ -186,10 +183,9 @@ namespace Galilego.Core
                     double rejectScale = Math.Min(Math.Max(
                         0.9 * Math.Pow(1.0 / Math.Max(normalizedError, 1e-10), 0.2),
                         0.1), 0.5);
-                    // Force-accept при клампе к MinStepSize: шаг пересчитывается
-                    // с УМЕНЬШЕННЫМ dt (см. тот же фикс в OrbitIntegrator.StepForward),
-                    // иначе пятый порядок принят, а dense-сегмент описывал бы чужой
-                    // (старый, крупный) шаг.
+                    // Force-accept at MinStepSize: the step is recomputed with the REDUCED
+                    // dt (as in OrbitIntegrator.StepForward); otherwise the 5th-order result
+                    // would be accepted while the dense segment described the old large step.
                     double candidateDt = Math.Max(dt * rejectScale, MinStepSize);
                     if (candidateDt <= MinStepSize)
                     {
@@ -235,7 +231,7 @@ namespace Galilego.Core
             return new SpacecraftIntegrationResult(current);
         }
 
-        /// <summary>Интегрирует полное состояние к точному целевому времени.</summary>
+        /// <summary>Integrates the full state to an exact target time.</summary>
         public static SpacecraftIntegrationResult StepToTime(
             SpacecraftIntegrationState initialState,
             double currentTimeSeconds,
@@ -255,9 +251,9 @@ namespace Galilego.Core
         }
 
         /// <summary>
-        /// Один шаг DOPRI5 над полным состоянием. Стадии и веса — те же, что в
-        /// OrbitIntegrator.DoPri5Step, только состояние широкое: каждая стадия k
-        /// хранит сразу (dPosition/dt, dVelocity/dt, dMass/dt).
+        /// One DOPRI5 step over the full state. Stages and weights match
+        /// OrbitIntegrator.DoPri5Step, but the state is wider: each stage k carries
+        /// (dPosition/dt, dVelocity/dt, dMass/dt) at once.
         /// </summary>
         private static void DoPri5Step(
             SpacecraftIntegrationState state,
@@ -272,42 +268,42 @@ namespace Galilego.Core
             out double errMass,
             out ShampineCoeffs dense)
         {
-            // Стадия 1 (FSAL)
+            // Stage 1 (FSAL)
             SpacecraftIntegrationState k1 = fsalDerivative;
 
-            // Стадия 2
+            // Stage 2
             SpacecraftIntegrationState k2 = derivativeProvider(
                 state + k1 * (dt * a21), time + dt * DOPRI5Coefficients.c2);
 
-            // Стадия 3
+            // Stage 3
             SpacecraftIntegrationState k3 = derivativeProvider(
                 state + k1 * (dt * a31) + k2 * (dt * a32), time + dt * DOPRI5Coefficients.c3);
 
-            // Стадия 4
+            // Stage 4
             SpacecraftIntegrationState k4 = derivativeProvider(
                 state + k1 * (dt * a41) + k2 * (dt * a42) + k3 * (dt * a43),
                 time + dt * DOPRI5Coefficients.c4);
 
-            // Стадия 5
+            // Stage 5
             SpacecraftIntegrationState k5 = derivativeProvider(
                 state + k1 * (dt * a51) + k2 * (dt * a52) + k3 * (dt * a53) + k4 * (dt * a54),
                 time + dt * DOPRI5Coefficients.c5);
 
-            // Стадия 6
+            // Stage 6
             SpacecraftIntegrationState k6 = derivativeProvider(
                 state + k1 * (dt * a61) + k2 * (dt * a62) + k3 * (dt * a63) + k4 * (dt * a64) + k5 * (dt * a65),
                 time + dt * DOPRI5Coefficients.c6);
 
-            // Стадия 7 (FSAL-кандидат: вычисляется в точке t+dt)
+            // Stage 7 (FSAL candidate: evaluated at t+dt)
             SpacecraftIntegrationState s7 =
                 state + k1 * (dt * a71) + k3 * (dt * a73) + k4 * (dt * a74) + k5 * (dt * a75) + k6 * (dt * a76);
             SpacecraftIntegrationState k7 = derivativeProvider(s7, time + dt * DOPRI5Coefficients.c7);
 
-            // Решение 5-го порядка
+            // 5th-order solution
             fifth = state
                 + k1 * (dt * b1) + k3 * (dt * b3) + k4 * (dt * b4) + k5 * (dt * b5) + k6 * (dt * b6);
 
-            // Решение 4-го порядка (для оценки ошибки)
+            // 4th-order solution (for error estimation)
             SpacecraftIntegrationState fourth = state
                 + k1 * (dt * bStar1) + k3 * (dt * bStar3) + k4 * (dt * bStar4)
                 + k5 * (dt * bStar5) + k6 * (dt * bStar6) + k7 * (dt * bStar7);
@@ -316,10 +312,10 @@ namespace Galilego.Core
             errVel = (fifth.Velocity - fourth.Velocity).Magnitude;
             errMass = Math.Abs(fifth.Mass - fourth.Mass);
 
-            // Shampine dense output (Hairer dopri5.f CONTD5): k7 здесь — это
-            // f(t0+h, y1), т.е. ровно тот K2, что использует формула C3/C4.
-            // Считается всегда (несколько векторных операций), в сегмент идёт
-            // только для принятых шагов — коллектор решает вызывающий.
+            // Shampine dense output (Hairer dopri5.f CONTD5): k7 here is f(t0+h, y1) —
+            // exactly the K2 used by the C3/C4 formulas. Always computed (a few vector
+            // ops); entries go to a segment only for accepted steps — the caller owns
+            // the collector.
             SpacecraftIntegrationState dc1 = fifth - state;
             SpacecraftIntegrationState dc2 = (k1 * dt) - dc1;
             SpacecraftIntegrationState dc3 = dc1 - dc2 - (k7 * dt);
@@ -327,7 +323,7 @@ namespace Galilego.Core
                 ((k1 * d1) + (k3 * d3) + (k4 * d4) + (k5 * d5) + (k6 * d6) + (k7 * d7)) * dt;
             dense = new ShampineCoeffs(dc1, dc2, dc3, dc4);
 
-            // FSAL: k7 этого шага = k1 следующего (если шаг принят)
+            // FSAL: k7 of this step = k1 of the next (if the step is accepted)
             lastDerivative = k7;
         }
     }

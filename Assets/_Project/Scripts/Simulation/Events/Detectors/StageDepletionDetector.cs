@@ -4,23 +4,23 @@ using Galilego.Spacecraft;
 namespace Galilego.Events
 {
     /// <summary>
-    /// Исчерпание участка выработки активной ступени. Функция события:
-    /// запас участка − сгоревшее с момента взведения. Взводится ПЕРЕД каждым
-    /// чанком (Arm) на текущий SegmentBurnKg: пересечение нуля — смена состава
-    /// работающих двигателей (группа заглохла по пулу), а не обязательно полный
-    /// останов ступени. Ставить событие на SegmentBurnKg (а не CutoffBurnKg)
-    /// обязательно: иначе физика проскочит смену тяги/расхода.
+    /// Depletion of the active stage's burn segment. The event function is:
+    /// segment reserve − burned since arming. Armed BEFORE each chunk (Arm) with the
+    /// current SegmentBurnKg: crossing zero marks a change in the set of firing engines
+    /// (a group cut out on the pool), not necessarily a full stage cutoff. Placing the
+    /// event on SegmentBurnKg (not CutoffBurnKg) is mandatory, otherwise physics would
+    /// skip the thrust/mass-flow change.
     ///
-    /// Владелец (VesselStep) после корня события списывает фактическую массу
-    /// через StagePropulsion.CommitBurn и взводит детектор заново на следующий
-    /// участок. Pure: Evaluate только читает переданное состояние.
+    /// After the event root the owner (VesselStep) commits the actual mass via
+    /// StagePropulsion.CommitBurn and re-arms the detector for the next segment.
+    /// Pure: Evaluate only reads the passed state.
     /// </summary>
     public sealed class StageDepletionDetector : ICrossingDetector
     {
         private double armedMassKg;
         private double armedBurnKg;
 
-        /// <summary>Взвести перед чанком: масса корабля и запас участка сейчас.</summary>
+        /// <summary>Arm before a chunk: ship mass and segment reserve right now.</summary>
         public void Arm(StagePropulsion propulsion, double shipMassKg)
         {
             armedMassKg = shipMassKg;

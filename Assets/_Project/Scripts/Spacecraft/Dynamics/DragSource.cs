@@ -5,34 +5,34 @@ using Galilego.Universe;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Физический контракт сопротивления (B1), зафиксирован до реализации:
-    ///   ρ(h)   = ρ0·exp(−h/H) из AtmosphereProfile тела; h&lt;0 → ρ0 (тотальная
-    ///            функция: пробные RK-подстадии и середины бисекции бывают где
-    ///            угодно, исключений нет); h ≥ Top → 0 ЖЁСТКИМ срезом — та же
-    ///            граница, что у Entry/Exit-детекторов (режим и сила согласованы;
-    ///            разрыв плотности на Top осознанный, модель с резким обрывом, не баг).
-    ///   v_atm  = bodyV + ω×r — жёсткое со-вращение атмосферы с телом (ветра нет,
-    ///            нагрева нет: B1 — только сила).
-    ///   v_rel  = v_ship − v_atm. Ключевая дисциплина (аналогия A4 со скоростью
-    ///            относительно поверхности): мировая скорость корабля в формулу
-    ///            НЕ входит. Со-вращающийся с атмосферой корабль (v_rel=0) не
-    ///            чувствует drag при любой орбитальной скорости.
-    ///   F      = −½·ρ·Cd·A·|v_rel|·v_rel — возвращается как Force (от массы не
-    ///            зависит; деление — один раз в SpacecraftPhysics). MassFlow = 0.
-    ///   Cd, A  — конфигурация аппарата (поля источника), не тела.
-    /// События Entry/Exit не трогаем: они — флаги режима, drag — непрерывная
-    /// сила. Исключение дальнего варпа внутри атмосферы — автоматически через
-    /// проверку вкладов CanEnterLongWarp (ненулевой Force запрещает вход).
-    /// Pure, как остальные источники.
+    /// Physical drag contract (B1):
+    ///   ρ(h)   = ρ0·exp(−h/H) from the body's AtmosphereProfile; h&lt;0 → ρ0 (total
+    ///            function: trial RK sub-steps and bisection midpoints can be anywhere,
+    ///            no exceptions); h ≥ Top → 0 by a HARD cut — the same boundary as the
+    ///            Entry/Exit detectors (regime and force agree; the density discontinuity
+    ///            at Top is deliberate, a sharp-cutoff model, not a bug).
+    ///   v_atm  = bodyV + ω×r — atmosphere rigidly co-rotating with the body (no wind,
+    ///            no heating: B1 is force only).
+    ///   v_rel  = v_ship − v_atm. Key discipline (analogy to A4 with surface-relative
+    ///            velocity): the ship's world velocity does NOT enter the formula.
+    ///            A ship co-rotating with the atmosphere (v_rel=0) feels no drag
+    ///            at any orbital velocity.
+    ///   F      = −½·ρ·Cd·A·|v_rel|·v_rel — returned as Force (independent of mass;
+    ///            division happens once in SpacecraftPhysics). MassFlow = 0.
+    ///   Cd, A  — craft configuration (source fields), not body properties.
+    /// Entry/Exit events are untouched: they are regime flags, drag is a continuous
+    /// force. Blocking long warp inside the atmosphere follows automatically from the
+    /// CanEnterLongWarp contribution check (a non-zero Force forbids entry).
+    /// Pure, like the other sources.
     /// </summary>
     public sealed class DragSource : IDynamicsSource
     {
         private readonly OrbitingBody body;
 
-        /// <summary>Коэффициент сопротивления (безразмерный).</summary>
+        /// <summary>Drag coefficient (dimensionless).</summary>
         public double DragCoefficient = 1d;
 
-        /// <summary>Характерная площадь (м²).</summary>
+        /// <summary>Reference area (m²).</summary>
         public double ReferenceAreaM2 = 10d;
 
         public DragSource(OrbitingBody body)

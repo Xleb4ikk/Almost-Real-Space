@@ -1,7 +1,7 @@
-// Зона контакта (вертикальный срез). Проверено в редакторе Unity 6000.6.0f1 (см. ContactZoneHost.cs).
-// Сетка высот над местом: дискретизация функции рельефа ITerrainModel в локальной квадратной
-// области ±HalfSize вокруг якоря. Нормаль и высота — из той же функции (контракт ITerrainModel).
-// Намотка треугольников — нормали вверх; обратная намотка вдавливала тела в рельеф.
+// Contact zone (vertical slice).
+// Height grid over the site: samples the ITerrainModel terrain function on a local
+// square area ±HalfSize around the anchor. Normal and height come from the same
+// function (ITerrainModel contract). Triangle winding gives upward normals.
 using Galilego.Core;
 using Galilego.Universe;
 using UnityEngine;
@@ -33,13 +33,13 @@ namespace Galilego.Simulation.ContactZone
                     double east = -HalfSize + (2d * HalfSize * i / (n - 1));
                     double north = -HalfSize + (2d * HalfSize * j / (n - 1));
                     double up = HeightAt(body, terrain, frame, east, north, t);
-                    // Локальные (восток, север, вверх) → Unity (север, вверх, восток).
+                    // Local (east, north, up) → Unity (north, up, east).
                     verts[(j * n) + i] = new Vector3((float)north, (float)up, (float)east);
                 }
             }
 
-            // Намотка — нормаль ВВЕРХ (up-ось Unity +Y): обратный порядок давал нормали вниз,
-            // и PhysX-контакт вдавливал тела в рельеф вместо опоры.
+            // Winding gives the normal UP (Unity up axis +Y): the reverse order would give
+            // downward normals and the contact would push bodies into the terrain instead of supporting them.
             int k = 0;
             for (int j = 0; j < n - 1; j++)
             {
@@ -67,8 +67,8 @@ namespace Galilego.Simulation.ContactZone
             mesh = null;
         }
 
-        // Высота поверхности над касательной плоскостью якоря в точке (east, north).
-        // Направление — радиальное от центра тела; высота рельефа — из ITerrainModel.
+        // Surface height above the anchor tangent plane at point (east, north). The direction
+        // is radial from the body center; the terrain height comes from ITerrainModel.
         private static double HeightAt(OrbitingBody body, ITerrainModel terrain, SiteFrame frame, double east, double north, double t)
         {
             Vector3d lateral = frame.Origin + (frame.East * east) + (frame.North * north);

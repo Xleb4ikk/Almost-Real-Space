@@ -6,17 +6,17 @@ using UnityEngine;
 namespace Galilego.Simulation.ContactZone
 {
     /// <summary>
-    /// Проба вертикального среза (тестовая сцена). Сценарии:
-    ///   stand    — плоский рельеф (SphericalTerrain, h ≡ 0), старт на DropHeightMeters,
-    ///              логирование точки корабля (Runner.Ship.Position) и TimeSeconds раз
-    ///              в секунду; DONE — max |ΔPosition| между соседними секундами после 2 с.
-    ///   breakLeg — после осадки подъём сборки на 2 м (без контакта), латеральная сила
-    ///              2×JointStrength на ногу 3 до разрыва; затем окно 0.5 с без внешних
-    ///              сил, кроме гравитации: импульс корневого острова сверяется с
-    ///              M·g·Δt (внутренние импульсы стыка импульс не меняют).
-    ///   drop100  — 100 посадок на 2 м/с на ровную площадку (timeScale ×3), счёт ложных
-    ///              разрывов стыков.
-    /// Автовыход из Play — только в редакторе.
+    /// Vertical-slice probe (test scene). Scenarios:
+    ///   stand    — flat terrain (SphericalTerrain, h ≡ 0), starts at DropHeightMeters,
+    ///              logs the ship point (Runner.Ship.Position) and TimeSeconds once
+    ///              per second; DONE — max |ΔPosition| between adjacent seconds after 2 s.
+    ///   breakLeg — after settling, lifts the assembly by 2 m (no contact), lateral force
+    ///              2×JointStrength on leg 3 until it breaks; then a 0.5 s window with no
+    ///              external forces except gravity: the root island's momentum is checked
+    ///              against M·g·Δt (internal joint impulses do not change momentum).
+    ///   drop100  — 100 landings at 2 m/s onto a flat pad (timeScale ×3), counts false
+    ///              joint breaks.
+    /// Auto-exit from Play only in the editor.
     /// </summary>
     public sealed class ContactZoneSliceProbe : MonoBehaviour
     {
@@ -111,8 +111,8 @@ namespace Galilego.Simulation.ContactZone
                 UpdateBreakLeg();
             }
 
-            // stand: выборка — в LateUpdate, ПОСЛЕ ContactZoneHost (порядок −50),
-            // чтобы Ship.Position и TimeSeconds были из одного момента.
+            // stand: sampling happens in LateUpdate, AFTER ContactZoneHost (order −50),
+            // so Ship.Position and TimeSeconds come from the same instant.
         }
 
         private void LateUpdate()
@@ -132,9 +132,9 @@ namespace Galilego.Simulation.ContactZone
             if (ContactZoneHost.Active && !captured && elapsed >= 2f)
             {
                 captured = true;
-                // Якорь кадра места на момент осадки: дрейф меряем ОТНОСИТЕЛЬНО поверхности.
-                // Абсолютная Ship.Position движется с планетой (~30 км/с) и для стоянки
-                // неинформативна.
+                // Site-frame anchor at settle time: drift is measured RELATIVE to the
+                // surface. Absolute Ship.Position moves with the planet (~30 km/s) and
+                // is meaningless for parking.
                 standFrame = SiteFrame.Anchor(Runner.DominantBody, Runner.DominantBody.Terrain,
                     Runner.Ship.Position, Runner.TimeSeconds);
                 Debug.Log("[CZProbe] зона активна: деталей=" + (Runner.Parts != null ? Runner.Parts.Length : 0)
@@ -170,9 +170,9 @@ namespace Galilego.Simulation.ContactZone
 
             if (elapsed >= DurationSeconds && !exitTestStarted)
             {
-                // Критерий задачи 1: выход из зоны на высоте 400 м без разрыва позиции.
-                // Физически поднимаем сборку вверх (импульс скорости, не телепорт):
-                // гейт выходит по высоте, Exit пишет точку корабля через тот же якорь.
+                // Task-1 criterion: leaving the zone at 400 m altitude without a position
+                // jump. Physically push the assembly up (a velocity impulse, not a teleport):
+                // the gate exits by altitude and Exit writes the ship point through the same anchor.
                 exitTestStarted = true;
                 exitTestTimer = 0f;
                 localBeforeExit = previousLocalPosition;
@@ -191,8 +191,8 @@ namespace Galilego.Simulation.ContactZone
 
             if (exitTestStarted && ContactZoneHost.Active)
             {
-                // Непрерывность перехода: держим последнюю внутризонную точку кадра
-                // (кадр-в-кадр), чтобы сравнить её с первым состоянием после выхода.
+                // Transition continuity: keep the last in-zone frame point (frame by
+                // frame) to compare it with the first state after exit.
                 standFrame.At(Runner.TimeSeconds).ToLocal(Runner.Ship.Position, Runner.Ship.Velocity,
                     out localBeforeExit, out _);
                 exitTestTimer += Time.deltaTime;
@@ -233,8 +233,8 @@ namespace Galilego.Simulation.ContactZone
                     return;
                 }
 
-                // Подъём сборки на 5 м и обнуление скоростей: разрыв и окно импульса
-                // должны идти без контакта (только гравитация), с запасом на падение.
+                // Lift the assembly by 5 m and zero velocities: the break and the momentum
+                // window must run without contact (gravity only), with margin for the fall.
                 for (int i = 0; i < Proxy.BodyCount; i++)
                 {
                     Rigidbody b = Proxy.BodyAt(i);
@@ -260,9 +260,9 @@ namespace Galilego.Simulation.ContactZone
                 Rigidbody leg = Proxy.BodyAt(3);
                 if (leg != null && Proxy.BrokenChildren.Count == 0)
                 {
-                    // Плавный разгон силы за 0.2 с: мгновенная сила давала транзиентные
-                    // разрывы соседних стыков (см. отчёт). Амплитуда — чуть выше
-                    // предела стыка ноги T1 (400 кН).
+                    // Ramp the force over 0.2 s to avoid transient breaks of
+                    // neighbouring joints. The amplitude is slightly above leg T1's
+                    // joint limit (400 kN).
                     float ramp = Mathf.Min(1f, (float)(phaseTimer / 0.2d));
                     leg.AddForce(new Vector3(BreakForceNewtons * ramp, 0f, 0f), ForceMode.Force);
                 }
@@ -413,7 +413,7 @@ namespace Galilego.Simulation.ContactZone
                 return;
             }
 
-            // Итог итерации: подъём +0.2 м от домашней позы, обнуление скоростей.
+            // End of iteration: lift +0.2 m from the home pose, zero velocities.
             if (Proxy.BrokenChildren.Count > 0)
             {
                 falseBreaks++;
@@ -439,7 +439,7 @@ namespace Galilego.Simulation.ContactZone
             dropIterationStartFixed = Time.fixedTime;
         }
 
-        // ─── общее ───────────────────────────────────────────────────────────
+        // ─── common ──────────────────────────────────────────────────────────
 
         private void Finish()
         {

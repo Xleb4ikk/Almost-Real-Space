@@ -3,25 +3,24 @@ using Galilego.Core;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Вклад одного источника в правую часть ОДУ корабля. Разделение
-    /// SpecificAcceleration/Force — чтобы не путать единицы: гравитация не
-    /// зависит от массы корабля и возвращает готовое ускорение (м/с²), а
-    /// тяга/сопротивление зависят от массы и возвращают силу (Н) —
-    /// деление на массу происходит один раз, в одном месте (SpacecraftPhysics),
-    /// а не размазано по каждой реализации источника.
-    /// Torque (Н·м, body-frame) — суммируется рядом с силой в
-    /// SpacecraftPhysics.EvaluateDerivative и отдаётся снимком TotalTorqueBody
-    /// (управление вращением с зерном шага); в производную вращения сам по
-    /// себе не интегрируется — вращение степпером AttitudePhysics (см. его doc).
-    /// Канал оживлён (аудит S3): RCS идёт полным Evaluate (сила+момент),
-    /// будущий аэродинамический момент ляжет сюда же.
+    /// One source's contribution to the ship's ODE right-hand side. The
+    /// SpecificAcceleration/Force split keeps units clear: gravity does not
+    /// depend on ship mass and returns a ready acceleration (m/s²), while
+    /// thrust/drag depend on mass and return a force (N) — division by mass
+    /// happens once, in one place (SpacecraftPhysics), not scattered across
+    /// every source.
+    /// Torque (N·m, body frame) is summed alongside force in
+    /// SpacecraftPhysics.EvaluateDerivative and exposed via the TotalTorqueBody
+    /// snapshot (rotation control with step seeding); it is not integrated into
+    /// the rotation derivative itself — rotation is handled by the AttitudePhysics
+    /// stepper (see its doc). RCS uses the full Evaluate (force+torque).
     /// </summary>
     public readonly struct DynamicsContribution
     {
-        public readonly Vector3d SpecificAcceleration; // м/с²
-        public readonly Vector3d Force; // Н
-        public readonly double MassFlow; // кг/с, положительное значение = расход
-        public readonly Vector3d Torque; // Н·м, body-frame
+        public readonly Vector3d SpecificAcceleration; // m/s²
+        public readonly Vector3d Force; // N
+        public readonly double MassFlow; // kg/s, positive value = consumption
+        public readonly Vector3d Torque; // N·m, body frame
 
         public DynamicsContribution(Vector3d specificAcceleration, Vector3d force, double massFlow, Vector3d torque)
         {

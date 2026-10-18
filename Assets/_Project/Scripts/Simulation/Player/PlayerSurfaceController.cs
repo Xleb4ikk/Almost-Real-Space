@@ -4,48 +4,48 @@ using Galilego.Core;
 namespace Galilego.Simulation.Player
 {
     /// <summary>
-    /// Чистая логика ходьбы игрока по опорам (без UnityEngine): вертикальная опора,
-    /// шаг вверх, наклон, потолок, углы, падение, перенос движущейся платформой.
-    /// Работает в локальных метрах касательной системы места (x = восток, y = север,
-    /// z = вверх). Состояние — ноги капсулы (Position), скорость (Velocity),
-    /// Airborne. Шаг фиксированный, вызывается на каждом подшаге игрока.
+    /// Pure player-walking logic over supports (no UnityEngine): vertical support,
+    /// step up, slope, ceiling, corners, falling, moving-platform carry.
+    /// Runs in local meters of the site's tangent frame (x = east, y = north,
+    /// z = up). State — the capsule's feet (Position), velocity (Velocity),
+    /// Airborne. Fixed step, called on every player substep.
     ///
-    /// Порядок в подшаге (как в старом StepPlayerSurface): блокировка проверяется
-    /// В НАЧАЛЕ подшага — до применения движения. Render/astro-рассинхрон не
-    /// переносится: источник опоры обязан работать на той же позе, что и запрос.
+    /// Order within a substep: blocking is checked at the START of the substep,
+    /// before movement is applied. Render/astro desync is not tolerated: the
+    /// support source must work on the same pose as the query.
     ///
-    /// Правила (значения по умолчанию, менять только с записью в отчёт):
-    ///  - шаг вверх ≤ StepUpMeters поднимает без прыжка, выше — блокировка;
-    ///  - уклон ≤ MaxSlopeDegrees ходимый, круче — скольжение без подъёма;
-    ///  - потолок ниже CapsuleHeight блокирует вход (физически — свипом капсулы);
-    ///  - нет опоры в пределах SupportDropMeters — свободное падение;
-    ///  - угол: скольжение вдоль стены, до MaxSweepIterations за подшаг.
+    /// Rules (defaults):
+    ///  - step up <= StepUpMeters raises without a jump, higher — blocked;
+    ///  - slope <= MaxSlopeDegrees is walkable, steeper — slide without rise;
+    ///  - ceiling below CapsuleHeight blocks entry (physically, via capsule sweep);
+    ///  - no support within SupportDropMeters — free fall;
+    ///  - corner: slide along the wall, up to MaxSweepIterations per substep.
     /// </summary>
     public sealed class PlayerSurfaceController
     {
-        /// <summary>Радиус капсулы игрока (м): плечи ~0.5 м (в тесной кабине Orion шире не пролезть).</summary>
+        /// <summary>Player capsule radius (m): shoulders ~0.5 m (no wider fits the cramped Orion cabin).</summary>
         public const double CapsuleRadius = 0.25d;
 
-        /// <summary>Высота капсулы (м): рост игрока 1.40 м + запас на макушку.</summary>
+        /// <summary>Capsule height (m): player height 1.40 m plus headroom.</summary>
         public const double CapsuleHeight = 1.45d;
 
         /// <summary>
-        /// Высота капсулы в приседе (м). Проём люка Orion (~1.2 м визуально,
-        /// ~1.0 м по физике) ниже полного роста: пригнувшись игрок проходит,
-        /// стоя — нет. Пригибание автоматическое и работает и на земле
-        /// (StepGrounded), и в полёте (StepAirborne), кнопок нет. Ниже 0.7 м
-        /// опускать нельзя — это диаметр капсулы.
+        /// Crouched capsule height (m). The Orion hatch opening (~1.2 m visually,
+        /// ~1.0 m physically) is below full height: crouched the player passes,
+        /// standing not. Crouching is automatic and works on the ground
+        /// (StepGrounded) and in flight (StepAirborne); there are no buttons. It
+        /// must not go below 0.7 m — that is the capsule diameter.
         /// </summary>
         public const double CapsuleHeightCrouched = 0.8d;
 
-        /// <summary>Ступени пригибания сверху вниз: от полного роста до минимума.</summary>
+        /// <summary>Crouch levels from full height down to the minimum.</summary>
         private static readonly double[] StoopLevels =
             { CapsuleHeight, 1.25d, 1.05d, 0.92d, CapsuleHeightCrouched };
 
-        /// <summary>После пригибания не вставать столько секунд (чтобы высота не дрожала у стены).</summary>
+        /// <summary>Do not stand up for this many seconds after crouching (so height does not jitter at a wall).</summary>
         private const double StoopHoldSeconds = 0.25d;
 
-        /// <summary>Запас (м) вокруг капсулы при вставании: встаём, только если вокруг есть свободный зазор, иначе высота дрожит у стены.</summary>
+        /// <summary>Clearance (m) around the capsule when standing: stand only if there is free room, otherwise height jitters at a wall.</summary>
         private const double GrowClearanceMeters = 0.04d;
 
         public const double StepUpMeters = 0.5d;
@@ -53,11 +53,11 @@ namespace Galilego.Simulation.Player
         public const double MaxSlopeDegrees = 30d;
 
         /// <summary>
-        /// Максимальный уклон, на который разрешена посадка из полёта/падения
-        /// (град). Согласован с порогом игнора свипа (|n·up| &gt; 0.7 ≈ 45.6°):
-        /// склоны между MaxSlopeDegrees и этим порогом свип не считает стеной,
-        /// и раньше игрок проваливался сквозь них (скос порога люка ~31–33°).
-        /// Круче MaxSlopeDegrees на земле уже обрабатывает скольжение.
+        /// Maximum slope on which a landing from flight/fall is allowed (degrees).
+        /// Matches the sweep's ignore threshold (|n·up| &gt; 0.7 ≈ 45.6°): slopes
+        /// between MaxSlopeDegrees and this threshold are not seen as walls by the
+        /// sweep. Steeper than MaxSlopeDegrees on the ground is already handled by
+        /// sliding.
         /// </summary>
         public const double LandingMaxSlopeDegrees = 46d;
 
@@ -65,59 +65,59 @@ namespace Galilego.Simulation.Player
         public const double SlideSpeedMps = 1.5d;
 
         /// <summary>
-        /// Скорость плавного опускания, когда в висении проход срезан почти
-        /// полностью (притолока люка), а чуть ниже путь свободнее (м/с).
+        /// Sink speed when, while hovering, the passage is almost fully cut off (a
+        /// hatch lintel) and slightly below the path is freer (m/s).
         /// </summary>
         public const double HoverSinkSpeed = 1d;
 
         /// <summary>
-        /// Численный допуск швов между коллайдерами (м): ступень чуть выше StepUp
-        /// на стыке двух мешей (погрешность запечки/масштаба) не должна блокировать
-        /// шаг. Это НЕ игровой порог (StepUpMeters), а эпсилон геометрии.
+        /// Numerical tolerance for seams between colliders (m): a step slightly above
+        /// StepUp at the joint of two meshes (bake/scale error) must not block the
+        /// step. This is NOT a gameplay threshold (StepUpMeters) but a geometry epsilon.
         /// </summary>
         public const double SeamToleranceMeters = 0.02d;
 
-        /// <summary>Ноги капсулы в локальном кадре места.</summary>
+        /// <summary>Capsule feet in the local site frame.</summary>
         public Vector3d Position;
 
-        /// <summary>Скорость относительно места (м/с).</summary>
+        /// <summary>Velocity relative to the site (m/s).</summary>
         public Vector3d Velocity;
 
-        /// <summary>Свободное падение (нет опоры под ногами).</summary>
+        /// <summary>Free fall (no support under the feet).</summary>
         public bool Airborne;
 
         /// <summary>
-        /// Висение в воздухе: гравитации нет, скорость едет к HoverVelocity
-        /// (ноль — замирание). Ставит SimulationRunner при hover-режиме.
+        /// Hovering in the air: no gravity, velocity eases to HoverVelocity
+        /// (zero — freeze). Set by SimulationRunner in hover mode.
         /// </summary>
         public bool Hovering;
 
-        /// <summary>Желаемая скорость висения в локальном кадре (м/с).</summary>
+        /// <summary>Desired hover velocity in the local frame (m/s).</summary>
         public Vector3d HoverVelocity;
 
-        /// <summary>Отклик скорости в висении (1/с).</summary>
+        /// <summary>Hover velocity response (1/s).</summary>
         public double HoverResponse = 6d;
 
-        /// <summary>Вход в подшаге заблокирован (стена/потолок): позиция не изменилась.</summary>
+        /// <summary>Input in the substep was blocked (wall/ceiling): position unchanged.</summary>
         public bool Blocked;
 
-        /// <summary>Диагностика: на сколько подняли ноги за последний подшаг (м).</summary>
+        /// <summary>Diagnostics: how much the feet were raised in the last substep (m).</summary>
         public double DebugLift;
 
-        /// <summary>Ускорение свободного падения вдоль локальной вертикали (м/с²).</summary>
+        /// <summary>Gravity along the local vertical (m/s²).</summary>
         public double Gravity = 9.81d;
 
-        /// <summary>Пригнулся ли игрок (высота капсулы ниже полного роста).</summary>
+        /// <summary>Whether the player is crouched (capsule height below full).</summary>
         public bool Crouched
         {
             get { return height < CapsuleHeight - 1e-6d; }
         }
 
         /// <summary>
-        /// Текущая высота капсулы (м), от CapsuleHeightCrouched до CapsuleHeight.
-        /// Игрок пригибается ступенчато (StoopLevels) ровно настолько, чтобы идти
-        /// под скошенной стеной/сводом/притолокой, и встаёт, как только над
-        /// головой есть место. Камера следит за этой высотой (FirstPersonCamera).
+        /// Current capsule height (m), from CapsuleHeightCrouched to CapsuleHeight.
+        /// The player crouches in steps (StoopLevels) just enough to pass under a
+        /// sloped wall/vault/lintel, and stands as soon as there is room above the
+        /// head. The camera follows this height (FirstPersonCamera).
         /// </summary>
         public double CurrentHeightMeters
         {
@@ -126,7 +126,7 @@ namespace Galilego.Simulation.Player
 
         private double height = CapsuleHeight;
 
-        /// <summary>Сколько ещё секунд нельзя вставать после пригибания (гистерезис).</summary>
+        /// <summary>Seconds left during which the player cannot stand after crouching (hysteresis).</summary>
         private double growHold;
 
         private double CurrentHeight
@@ -134,10 +134,10 @@ namespace Galilego.Simulation.Player
             get { return height; }
         }
 
-        /// <summary>Опора под ногами (sourceId последнего Floor); -1 — нет.</summary>
+        /// <summary>Support under the feet (sourceId of the last Floor); -1 — none.</summary>
         public int GroundSourceId { get; private set; } = -1;
 
-        /// <summary>Задать текущую опору (после телепорта/спавна на платформе).</summary>
+        /// <summary>Set the current support (after a teleport/spawn on a platform).</summary>
         public void SetGroundSource(int sourceId)
         {
             GroundSourceId = sourceId;
@@ -165,7 +165,7 @@ namespace Galilego.Simulation.Player
 
             if (extraAcceleration.SqrMagnitude > 0d)
             {
-                // Дополнительное ускорение (джетпак): добавляется к скорости до шага.
+                // Extra acceleration (jetpack): added to velocity before the step.
                 Velocity += extraAcceleration * dt;
             }
 
@@ -186,20 +186,21 @@ namespace Galilego.Simulation.Player
             Vector3d saved = Position;
             Vector3d move = intent * dt;
 
-            // Перенос движущейся опорой (платформа, деталь корабля).
+            // Carry by a moving support (platform, ship part).
             if (GroundSourceId >= 0 && support is IMovingSupport moving
                 && moving.TryGetSupportVelocity(GroundSourceId, out Vector3d supportVelocity))
             {
                 move += new Vector3d(supportVelocity.X, supportVelocity.Y, 0d) * dt;
             }
 
-            // Шаг вверх: опора под кандидатом и на радиусе вперёд (капсула уже
-            // касается уступа, когда его кромка ещё впереди точки ног) в пределах
-            // StepUp поднимает ноги, чтобы низкий уступ не считался стеной при свипе.
+            // Step up: a support under the candidate and at one radius ahead (the
+            // capsule already touches the ledge while its edge is still ahead of the
+            // foot point) within StepUp raises the feet, so a low ledge is not seen
+            // as a wall by the sweep.
             Vector3d candidate = Position + move;
             if (!TryFindStepFloor(support, candidate, move, out double floorHeight, out Vector3d floorNormal, out int floorId))
             {
-                // Опоры нет — сход с края: падение в этом же подшаге.
+                // No support — walked off an edge: fall within this same substep.
                 Airborne = true;
                 GroundSourceId = -1;
                 Velocity = intent;
@@ -208,13 +209,13 @@ namespace Galilego.Simulation.Player
 
             if (SlopeAngleDegrees(floorNormal) > MaxSlopeDegrees)
             {
-                // Круче предела: не поднимаемся, скользим вниз вдоль поверхности.
-                // Горизонталь режется свипом о стены (как при ходьбе): у крутого
-                // ската стена не должна пропускать игрока.
+                // Steeper than the limit: do not rise, slide down along the surface.
+                // Horizontal is cut by the wall sweep (as when walking): a wall must
+                // not let the player through on a steep slope.
                 Vector3d slid = SweepHorizontal(support, Position, move, CurrentHeight);
                 Position = new Vector3d(slid.X, slid.Y, Position.Z);
 
-                // Опора под итоговой точкой (свип мог сдвинуть вдоль стены).
+                // Support under the resulting point (the sweep may have moved along the wall).
                 Vector3d slideProbe = new Vector3d(Position.X, Position.Y, Position.Z + StepUpMeters);
                 if (support.Floor(slideProbe, StepUpMeters + SupportDropMeters,
                         out double slideHeight, out _, out int slideId))
@@ -233,15 +234,15 @@ namespace Galilego.Simulation.Player
 
             Position = new Vector3d(Position.X, Position.Y, floorHeight);
 
-            // Горизонтальный свип со скольжением вдоль стен (до 4 итераций).
-            // Высота капсулы подбирается по ступеням: если пригибание даёт
-            // заметно больший ход (скошенная стена кабины, люк), пригибаемся
-            // ровно настолько, чтобы получить этот ход.
+            // Horizontal sweep with sliding along walls (up to 4 iterations).
+            // The capsule height is chosen across levels: if crouching gives a
+            // noticeably longer travel (sloped cabin wall, hatch), crouch just enough
+            // to get that travel.
             Vector3d p = SweepStoop(support, Position, move);
 
             Position = new Vector3d(p.X, p.Y, Position.Z);
 
-            // Точная опора под итоговой позицией (и повторная проверка уклона).
+            // Exact support under the final position (and a second slope check).
             Vector3d finalProbe = new Vector3d(Position.X, Position.Y, Position.Z + StepUpMeters);
             if (!support.Floor(finalProbe, StepUpMeters + SupportDropMeters,
                     out double finalHeight, out Vector3d finalNormal, out int finalId)
@@ -254,8 +255,8 @@ namespace Galilego.Simulation.Player
                 return;
             }
 
-            // Потолок: вход под низкий свод физически блокируется свипом; здесь —
-            // контроль запаса над головой (высота — текущая: присед учитывается).
+            // Ceiling: entering under a low vault is physically blocked by the sweep;
+            // here — the headroom check (height is current: crouch is accounted for).
             if (support.Ceiling(new Vector3d(Position.X, Position.Y, finalHeight + CurrentHeight), StepUpMeters,
                     out double ceilingHeight)
                 && ceilingHeight - finalHeight < CurrentHeight)
@@ -270,10 +271,10 @@ namespace Galilego.Simulation.Player
             GroundSourceId = finalId;
             Velocity = intent;
 
-            // Встать, когда над головой снова есть полный рост (вышли из проёма).
+            // Stand up when there is full height above the head again (out of the opening).
             TryGrow(support);
 
-            // Полностью зажатый вход (все итерации свипа съедены) — «вход блокирован».
+            // Fully blocked entry (all sweep iterations consumed) — "entry blocked".
             if (move.Magnitude > 1e-9d && (Position - saved).Magnitude < 1e-3d * move.Magnitude)
             {
                 Position = saved;
@@ -282,8 +283,9 @@ namespace Galilego.Simulation.Player
         }
 
         /// <summary>
-        /// Самая высокая опора в пределах шага вверх: под кандидатом и на радиусе
-        /// капсулы вперёд по движению. Уступ выше StepUp не поднимает (свип заблокирует).
+        /// The highest support within a step up: under the candidate and at the capsule
+        /// radius ahead along the motion. A ledge above StepUp is not raised (the sweep
+        /// blocks it).
         /// </summary>
         private static bool TryFindStepFloor(IPlayerSupport support, Vector3d candidate, Vector3d move,
             out double height, out Vector3d normal, out int sourceId)
@@ -308,8 +310,9 @@ namespace Galilego.Simulation.Player
             double moveLength = move.Magnitude;
             if (moveLength > 1e-12d)
             {
-                // Несколько сэмплов по радиусу вперёд: одиночный зонд на полный радиус
-                // перелетает узкие ступени (ширина меньше радиуса) и не видит уступ.
+                // Several samples along the radius ahead: a single probe over the full
+                // radius overshoots narrow steps (narrower than the radius) and misses
+                // the ledge.
                 const int samples = 4;
                 Vector3d direction = move * (1d / moveLength);
                 for (int k = 1; k <= samples; k++)
@@ -332,9 +335,9 @@ namespace Galilego.Simulation.Player
         }
 
         /// <summary>
-        /// Горизонтальный свип капсулы со скольжением вдоль стен (до MaxSweepIterations
-        /// итераций). height — высота капсулы (полный рост/присед). Возвращает
-        /// итоговую позицию; Z не меняется.
+        /// Horizontal capsule sweep with sliding along walls (up to MaxSweepIterations
+        /// iterations). height — capsule height (full/crouched). Returns the resulting
+        /// position; Z is unchanged.
         /// </summary>
         private static Vector3d SweepHorizontal(IPlayerSupport support, Vector3d from, Vector3d move, double height)
         {
@@ -360,10 +363,10 @@ namespace Galilego.Simulation.Player
 
                 p += remaining * fraction;
                 Vector3d left = remaining * (1d - fraction);
-                // Скользим по ПЛОСКОЙ стене: у наклонной поверхности нормаль имеет
-                // Z-составляющую, и её проекция «съедала» бы часть хода, а
-                // оставшееся движение уводила бы по вертикали (Z «плыл» между
-                // итерациями). Нормаль свипа — только по горизонтали.
+                // Slide along a FLAT wall: on a sloped surface the normal has a
+                // Z-component, and its projection would eat part of the travel and send
+                // the remainder vertically (Z drifted between iterations). The sweep
+                // normal is horizontal only.
                 Vector3d wallFlat = new Vector3d(wallNormal.X, wallNormal.Y, 0d);
                 if (wallFlat.SqrMagnitude > 1e-12d)
                 {
@@ -381,8 +384,8 @@ namespace Galilego.Simulation.Player
         {
             if (Hovering)
             {
-                // Висение: гравитации нет, скорость едет к желаемой (ввод);
-                // без ввода — к нулю: игрок замирает в воздухе.
+                // Hovering: no gravity, velocity eases to the desired one (input);
+                // with no input — to zero: the player freezes in the air.
                 double blend = Math.Min(1d, dt * HoverResponse);
                 Velocity += (HoverVelocity - Velocity) * blend;
             }
@@ -393,17 +396,16 @@ namespace Galilego.Simulation.Player
 
             Vector3d step = Velocity * dt;
 
-            // Горизонталь — свипом вдоль стен; в полёте пригибание тоже работает:
-            // в полный рост свип режется (люк капсулы), пробуем присед и, если он
-            // продвигает дальше, пригибаемся (раньше присед был только на земле —
-            // висящий у люка игрок упирался головой и застревал).
+            // Horizontal — sweep along walls; in flight crouching works too: at full
+            // height the sweep is cut (capsule hatch), so we try crouched and, if it
+            // advances further, crouch.
             Vector3d flatStep = new Vector3d(step.X, step.Y, 0d);
             Vector3d p = SweepStoop(support, Position, flatStep);
 
-            // Помощь при зависании: ход срезан почти полностью (голова в притолоке
-            // люка). Если чуть ниже свип продвигает заметно дальше — плавно
-            // опускаемся, пока не откроется проход. Обычную стену так не «топит»:
-            // срабатывает только когда пониже ход реально свободнее.
+            // Stuck-help: travel is almost fully cut (head in the hatch lintel). If
+            // slightly lower the sweep advances noticeably further — sink smoothly
+            // until the passage opens. An ordinary wall is not "sunken" this way: it
+            // triggers only when lower down the path is really freer.
             if (Hovering && flatStep.Magnitude > 1e-9d
                 && (p - Position).Magnitude < 0.5d * flatStep.Magnitude)
             {
@@ -430,9 +432,9 @@ namespace Galilego.Simulation.Player
                 }
             }
 
-            // Вертикаль дробим чанками: подшаг может быть до 0.5 с (метры пролёта),
-            // и тонкая плита на пути не должна проскакиваться целиком. Посадка
-            // проверяется ДО сдвига чанка, поэтому плита внутри чанка видна.
+            // Vertical is split into chunks: a substep can be up to 0.5 s (meters of
+            // travel), and a thin plate on the path must not be skipped whole. Landing
+            // is checked BEFORE moving the chunk, so a plate inside the chunk is seen.
             const double maxVerticalChunk = 0.2d;
             double remainingZ = step.Z;
             while (Math.Abs(remainingZ) > 1e-12d)
@@ -440,14 +442,14 @@ namespace Galilego.Simulation.Player
                 double chunk = Math.Max(-maxVerticalChunk, Math.Min(maxVerticalChunk, remainingZ));
                 if (chunk < 0d)
                 {
-                    // Посадка только на спуске: подъём (прыжок) не должен мгновенно
-                    // «приземляться» обратно на ту же опору. Отскока нет (v_z = 0).
-                    // Луч начинается на StepUp выше ног, и допуск тот же StepUp:
-                    // свип игнорирует склоны крутизной до ~45° (см. SiteBoxSupport.
-                    // Sweep), поэтому падение с горизонтальным ходом может внести
-                    // ноги под скос плиты/уступ. Тогда тело не зарывается в меш, а
-                    // «шагает» на найденную поверхность — зеркало TryFindStepFloor
-                    // у земли (запись в отчёт «дорога: скос и посадка», 2026-10-09).
+                    // Landing only while descending: a rise (jump) must not instantly
+                    // "land" back on the same support. No bounce (v_z = 0). The ray
+                    // starts at StepUp above the feet, with the same StepUp tolerance:
+                    // the sweep ignores slopes up to ~45° (see SiteBoxSupport.Sweep), so
+                    // a fall with horizontal motion can put the feet under a plate bevel
+                    // or ledge. The body then steps onto the found surface instead of
+                    // sinking into the mesh — the mirror of TryFindStepFloor on the
+                    // ground.
                     double fall = -chunk + 0.1d;
                     Vector3d landFrom = new Vector3d(p.X, p.Y, p.Z + StepUpMeters);
                     if (support.Floor(landFrom, StepUpMeters + fall, out double floorHeight, out Vector3d floorNormal, out int floorId)
@@ -479,13 +481,12 @@ namespace Galilego.Simulation.Player
         }
 
         /// <summary>
-        /// Свип с подбором высоты капсулы. Если ход при текущей высоте урезан, а
-        /// самая низкая ступень проходит заметно дальше — значит мешает голова
-        /// (скос стены, притолока): берём САМУЮ ВЫСОКУЮ ступень, дающую почти
-        /// тот же ход, что и минимум. Если и минимум не лучше — это настоящая
-        /// стена, высоту не трогаем. Порог выигрыша относительный (доля шага):
-        /// прежний абсолютный порог 2 см при шаге кадра ~1.7 см (60 fps)
-        /// никогда не срабатывал, и игрок не пригибался вовсе.
+        /// Sweep with capsule-height selection. If travel at the current height is cut
+        /// but the lowest level passes noticeably further — the head is in the way
+        /// (sloped wall, lintel): take the HIGHEST level that gives almost the same
+        /// travel as the minimum. If even the minimum is no better — it is a real
+        /// wall, height is untouched. The gain threshold is relative (a fraction of
+        /// the step).
         /// </summary>
         private Vector3d SweepStoop(IPlayerSupport support, Vector3d from, Vector3d move)
         {
@@ -533,10 +534,10 @@ namespace Galilego.Simulation.Player
         }
 
         /// <summary>
-        /// Встать повыше: самая высокая ступень (выше текущей), в которую капсула
-        /// ВЛЕЗАЕТ на этом месте. Проверка — по объёму капсулы (IOverlapSupport),
-        /// а не по лучам вверх: скошенная стена и притолока бокового луча не
-        /// видны, и игрок вставал прямо в стену. Работает на земле и в воздухе.
+        /// Stand taller: the highest level (above the current one) the capsule FITS
+        /// into at this spot. The check is by capsule volume (IOverlapSupport), not by
+        /// upward rays: a sloped wall and lintel are invisible to a sideways ray.
+        /// Works on the ground and in the air.
         /// </summary>
         private void TryGrow(IPlayerSupport support)
         {
@@ -569,16 +570,15 @@ namespace Galilego.Simulation.Player
                 return !overlap.Overlaps(Position, CapsuleRadius + GrowClearanceMeters, level);
             }
 
-            // Опора без объёмной проверки (рельеф): как раньше — потолок над головой.
+            // Support without a volume check (terrain): ceiling above the head.
             return !support.Ceiling(
                 new Vector3d(Position.X, Position.Y, Position.Z + height),
                 level - height + 0.05d, out _);
         }
 
         /// <summary>
-        /// Проверка потолка при подъёме в воздухе (прыжок, джетпак): без неё
-        /// игрок вылетал сквозь крышу кабины и носовое стекло. Возвращает true,
-        /// если подъём урезан (rise — желаемый, allowed — до потолка).
+        /// Ceiling check during a rise in the air (jump, jetpack). Returns true if the
+        /// rise is cut (rise — desired, allowed — up to the ceiling).
         /// </summary>
         private bool TryCeilingStop(IPlayerSupport support, Vector3d p, double rise, out double allowed)
         {

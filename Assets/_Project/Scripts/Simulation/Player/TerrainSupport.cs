@@ -5,13 +5,12 @@ using Galilego.Universe;
 namespace Galilego.Simulation.Player
 {
     /// <summary>
-    /// Опора — аналитический рельеф (ITerrainModel) в локальном кадре места:
-    /// высота и нормаль из ОДНОЙ функции формы (контракт ITerrainModel).
-    /// Регресс на ровном месте обязан совпасть со старым GroundHeight/GetOutwardNormal.
+    /// Support — analytic terrain (ITerrainModel) in the local site frame: height and
+    /// normal from the SAME shape function (ITerrainModel contract).
     /// </summary>
     public sealed class TerrainSupport : IPlayerSupport
     {
-        /// <summary>Идентификатор опоры-рельефа в композите.</summary>
+        /// <summary>Terrain support id in the composite.</summary>
         public const int SourceId = 0;
 
         private OrbitingBody body;
@@ -37,7 +36,7 @@ namespace Galilego.Simulation.Player
                 return false;
             }
 
-            // Латеральная точка кадра → мир → lat/lon → высота той же функции, что у физики.
+            // Frame-lateral point → world → lat/lon → height from the same function as physics.
             Vector3d lateral = frame.Origin + (frame.East * from.X) + (frame.North * from.Y);
             body.EvaluateWorldState(time, out Vector3d center, out _);
             Vector3d radial = (lateral - center).Normalized;

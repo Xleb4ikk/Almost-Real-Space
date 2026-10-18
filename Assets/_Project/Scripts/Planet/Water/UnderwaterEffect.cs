@@ -6,19 +6,18 @@ using UnityEngine.Rendering.HighDefinition;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Базовый эффект погружения под воду: пока камера ниже уровня моря,
-    /// подмешивает СОБСТВЕННЫЙ локальный Volume (Fog + ColorAdjustments) —
-    /// общий ExposureVolume дня/ночи (SkyEnvironment) не трогаем, чтобы не
-    /// гоняться с ним за одним и тем же полем в разных LateUpdate.
+    /// Base underwater effect: while the camera is below sea level, blends in its
+    /// OWN local Volume (Fog + ColorAdjustments) — the shared day/night
+    /// ExposureVolume (SkyEnvironment) is left alone so the two don't fight over
+    /// the same field from different LateUpdate calls.
     ///
-    /// Источник подводного состояния и глубины — WaterQuery.IsSubmergedAt по
-    /// абсолютной позиции камеры (при наличии Camera), иначе по Runner.PlayerPosition.
+    /// The underwater state and depth come from WaterQuery by the camera's absolute
+    /// position (when a Camera exists), otherwise from Runner.PlayerPosition.
     ///
-    /// Сила эффекта растёт с глубиной: у самой поверхности почти не видна
-    /// (мягкий SurfaceFadeMeters), к FullEffectDepthMeters выходит на
-    /// потолок — дальняя видимость падает (meanFreePath) и картинка темнеет
-    /// (ColorAdjustments.postExposure, EV). Это "базовый вариант" —
-    /// без цветовой аберрации у кромки, без капель на линзе и т.п.
+    /// Effect strength grows with depth: barely visible at the surface (soft
+    /// SurfaceFadeMeters), saturating at FullEffectDepthMeters — distance visibility
+    /// drops (meanFreePath) and the image darkens (ColorAdjustments.postExposure, EV).
+    /// This is the "base variant": no edge chromatic aberration, no lens droplets, etc.
     /// </summary>
     [DefaultExecutionOrder(-39)]
     public sealed class UnderwaterEffect : MonoBehaviour
@@ -167,16 +166,10 @@ namespace Galilego.Universe
                         LocalUp = AstroFrame.ToSimulation(outward / outwardMagnitude);
                     }
 
-                    // Глубина КАМЕРЫ под поверхностью — единственный вопрос для
-                    // визуального состояния. Раньше здесь стоял IsSubmergedAt,
-                    // который вдобавок требует, чтобы колонка под камерой была
-                    // водой (IsWaterAt: сырое дно ниже уровня моря). У берега и
-                    // над мелководьем это условие ложно, хотя камера под водой, и
-                    // тогда потолок рисовался ВЕРХНЕЙ веткой шейдера (пена и
-                    // screen-door dither) — это и есть «ужасная поверхность из-под
-                    // воды». Формула та же, что и в глобале шейдера
-                    // (PlanetSurfaceRenderer.UpdateUnderwaterCameraDepth), поэтому
-                    // картинка и затухание всегда решают одно и то же.
+                    // CAMERA depth below the surface is the only question for the
+                    // visual state. The formula is the same as the shader global
+                    // (PlanetSurfaceRenderer.UpdateUnderwaterCameraDepth), so the image
+                    // and the fade always decide the same thing.
                     double depth = WaterQuery.SubmersionDepthAt(body, observer, Runner.TimeSeconds);
                     bool submerged = !double.IsNaN(depth) && depth > 0d;
                     if (camera == null)
@@ -260,9 +253,9 @@ namespace Galilego.Universe
             {
                 camera.clearFlags = CameraClearFlags.SolidColor;
                 camera.backgroundColor = WaterFogColor;
-                // HDRP чистит кадр по СВОИМ полям HDAdditionalCameraData, а не по
-                // Camera.backgroundColor: без этого небо/пустота остаются звёздно-
-                // чёрными даже при clearFlags=SolidColor. Поэтому дублируем и сюда.
+                // HDRP clears the frame using ITS OWN HDAdditionalCameraData fields,
+                // not Camera.backgroundColor: without this the sky/void stays star-black
+                // even with clearFlags=SolidColor. So duplicate it here too.
                 if (capturedHdCamera != null)
                 {
                     capturedHdCamera.clearColorMode = HDAdditionalCameraData.ClearColorMode.Color;

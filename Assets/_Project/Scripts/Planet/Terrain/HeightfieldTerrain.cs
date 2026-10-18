@@ -7,390 +7,323 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Процедурный рельеф: fBm value-noise на ТЕЛЕ-FIXED единичном направлении
-    /// (не lat/lon-текстура — без швов и вырождений на полюсах). Детерминирован
-    /// seed'ом: физика и рендер читают одну и ту же функцию.
-    ///   H(lat,lon) = shape(dir(lat,lon))·Amplitude, кламп снизу уровнем моря.
-    /// Море — жёсткий кламп: море физически плоское, посадка на воду = посадка.
-    /// Фаза 1 (продвинутый heightfield): continent-маска (низкочастотный fBm →
-    /// smoothstep океан/суша + глубина впадин), ridged-член (горные хребты,
-    /// только на континентах) и domain-warp на НЕЗАВИСИМОМ шуме (свой поток
-    /// сида — иначе складки коррелируют с маской континентов). Все новые
-    /// параметры в нуле/дефолте дают бит-в-бит legacy-fBm (ветка SampleFbm
-    /// ниже не тронута): старые сцены и тесты не меняются.
-    /// Нормаль — из той же функции H через соседние точки, но мировые позиции
-    /// соседей берутся body.GetSurfaceState (прямой маппинг lat/lon→world:
-    /// tilt+spin учтены ЯДРОМ, не дубликатом математики): паритет по построению.
+    /// Procedural relief: fBm value-noise on a BODY-FIXED unit direction
+    /// (not a lat/lon texture — no seams or pole degeneracies). Deterministic by
+    /// seed: physics and rendering read the same function.
+    ///   H(lat,lon) = shape(dir(lat,lon))·Amplitude, clamped below at sea level.
+    /// The sea is a hard clamp: water is physically flat, landing on water = landing.
+    /// Continent mask (low-frequency fBm → smoothstep ocean/land + basin depth),
+    /// ridged term (mountain ridges, land only) and domain-warp on INDEPENDENT
+    /// noise (its own seed stream — otherwise folds would correlate with the
+    /// continent mask). All new parameters at zero/default give bit-for-bit legacy
+    /// fBm.
+    /// The normal comes from the same H function via neighbouring points, but the
+    /// neighbours' world positions come from body.GetSurfaceState (direct lat/lon→
+    /// world mapping: tilt+spin handled by the CORE, not a duplicate of the math):
+    /// parity by construction.
     /// </summary>
     public sealed class HeightfieldTerrain : ITerrainModel
     {
-        /// <summary>Зерно шума: одинаковый seed = одинаковый рельеф.</summary>
+        /// <summary>Noise seed: same seed = same relief.</summary>
         public int Seed;
 
-        /// <summary>Амплитуда рельефа над/под Radius (м). Номинальная: с включённой
-        /// глубиной континентов max |H| ≤ Amplitude·(1 + ContinentDepth).</summary>
+        /// <summary>Relief amplitude above/below Radius (m). Nominal: with continent
+        /// depth enabled max |H| <= Amplitude·(1 + ContinentDepth).</summary>
         public double AmplitudeMeters = 1000d;
 
-        /// <summary>Базовая частота (циклов на единичный вектор направления).</summary>
+        /// <summary>Base frequency (cycles per unit direction vector).</summary>
         public double BaseFrequency = 3d;
 
-        /// <summary>Число октав (каждая ×Lacunarity частота, ×Gain амплитуда).</summary>
+        /// <summary>Octave count (each ×Lacunarity frequency, ×Gain amplitude).</summary>
         public int Octaves = 5;
 
-        /// <summary>Уровень моря над Radius (м). −∞ = моря нет.</summary>
+        /// <summary>Sea level above Radius (m). −∞ = no sea.</summary>
         public double SeaLevelMeters = double.NegativeInfinity;
 
-        /// <summary>Лакунарность fBm (множитель частоты на октаву). 2 = legacy; вне [1, 8] = legacy.</summary>
+        /// <summary>fBm lacunarity (frequency multiplier per octave). 2 = legacy; outside [1, 8] = legacy.</summary>
         public double Lacunarity = 2d;
 
-        /// <summary>Затухание амплитуды на октаву. 0.5 = legacy; ≤0 или &gt;1 = legacy.</summary>
+        /// <summary>Amplitude falloff per octave. 0.5 = legacy; <=0 or &gt;1 = legacy.</summary>
         public double Gain = 0.5d;
-        /// <summary>Частота континентальной маски. ≤0 = выключена (маска ≡ 1, legacy).</summary>
+        /// <summary>Continent mask frequency. <=0 = off (mask ≡ 1, legacy).</summary>
         public double ContinentFrequency = 0d;
 
-        /// <summary>Число октав маски континентов.</summary>
+        /// <summary>Continent mask octave count.</summary>
         public int ContinentOctaves = 3;
 
-        /// <summary>Порог маски: выше — суша, ниже — океан.</summary>
+        /// <summary>Mask threshold: above — land, below — ocean.</summary>
         public double ContinentThreshold = 0d;
 
-        /// <summary>Полуширина smoothstep-перехода маски.</summary>
+        /// <summary>Half-width of the mask smoothstep transition.</summary>
         public double ContinentSharpness = 0.25d;
 
-        /// <summary>Глубина океанических впадин в долях амплитуды (вычитается там, где маски нет).</summary>
+        /// <summary>Ocean basin depth as a fraction of amplitude (subtracted where the mask is absent).</summary>
         public double ContinentDepth = 0.75d;
 
-        /// <summary>
-        /// Затухание амплитуды маски континентов. ≤0 — следовать за общим Gain
-        /// (legacy). Отдельная ручка: общий Gain = 0.5 гасит верхние октавы
-        /// слишком быстро, и берег остаётся из двух-трёх гладких пятен.
-        /// </summary>
+        /// <summary>Continent mask amplitude falloff. <=0 — follow the global Gain (legacy).</summary>
         public double ContinentGain = 0d;
 
         /// <summary>
-        /// Сила ОТДЕЛЬНОГО domain-warp континентальной маски. 0 = маска берётся
-        /// на общем warp'е рельефа (legacy).
-        ///
-        /// Отдельный warp нужен, чтобы «круглость» материков не наследовала
-        /// масштаб горного warp'а: тот втрое слабее и втрое выше по частоте,
-        /// то есть для океанических бассейнов слишком мелкий. Источник — неварпнутый
-        /// direction, иначе второй warp ложился бы поверх первого.
+        /// Strength of a SEPARATE domain-warp of the continent mask. 0 = the mask uses
+        /// the relief's global warp (legacy). The separate warp keeps continents from
+        /// inheriting the mountain warp's scale (weaker and higher-frequency, too fine
+        /// for ocean basins). Source is the unwarped direction, so the second warp does
+        /// not stack over the first.
         /// </summary>
         public double ContinentWarpStrength = 0d;
 
-        /// <summary>Частота warp'а континентальной маски.</summary>
+        /// <summary>Continent mask warp frequency.</summary>
         public double ContinentWarpFrequency = 0d;
 
-        /// <summary>Октав warp'а континентальной маски.</summary>
+        /// <summary>Continent mask warp octave count.</summary>
         public int ContinentWarpOctaves = 3;
 
         /// <summary>
-        /// Вклад «хребтового» члена маски: continentRaw += ContinentRidgeMix·
-        /// (1 − 2·|fBm|). 0 = выключено (legacy). Нулевая линия |fBm| = 0 — это
-        /// изолинии, вдоль которых маска максимальна; они тянутся длинными цепями,
-        /// то есть материки получаются вытянутыми, а не круглыми. Член не
-        /// центрирован — это сдвиг в сторону суши, который гасится
+        /// Contribution of the mask's "ridge" term: continentRaw += ContinentRidgeMix·
+        /// (1 − 2·|fBm|). 0 = off (legacy). The zero line |fBm| = 0 is the isoline where
+        /// the mask is maximal; it runs in long chains, so continents come out elongated
+        /// rather than round. The term is not centred — a bias toward land, cancelled by
         /// ContinentThreshold.
         /// </summary>
         public double ContinentRidgeMix = 0d;
 
-        /// <summary>Частота ridge-члена маски континентов.</summary>
+        /// <summary>Continent mask ridge term frequency.</summary>
         public double ContinentRidgeFrequency = 0d;
 
-        /// <summary>Октав ridge-члена маски континентов.</summary>
+        /// <summary>Continent mask ridge term octave count.</summary>
         public int ContinentRidgeOctaves = 2;
 
         /// <summary>
-        /// Экваториальный сдвиг маски, continentRaw += ContinentLatitudeBias·
-        /// (1 − 2·|sin φ|). 0 = выключено (legacy). У |sin φ| среднее ровно
-        /// 0.5, поэтому член центрирован и долю суши сам по себе не меняет.
+        /// Equatorial mask bias: continentRaw += ContinentLatitudeBias·
+        /// (1 − 2·|sin φ|). 0 = off (legacy). The mean of |sin φ| is exactly 0.5,
+        /// so the term is centred and does not change the land fraction by itself.
         /// </summary>
         public double ContinentLatitudeBias = 0d;
 
         /// <summary>
-        /// Глубина абиссального ложа, нормированные единицы.
-        /// &lt;= 0 (по умолчанию) — океана как отдельной сущности нет, работает
-        /// старая строка «минус (1−маска)·ContinentDepth», и весь «океан» — это
-        /// места, где высокочастотная форма случайно ушла ниже нуля.
+        /// Abyssal floor depth, normalized units.
+        /// &lt;= 0 (default) — no distinct ocean: only the
+        /// "minus (1−mask)·ContinentDepth" term applies, so the "ocean" is wherever
+        /// the high-frequency shape happens to fall below zero.
         ///
-        /// &gt; 0 — новая модель: рельеф смешивается с дном, глубина которого
-        /// растёт по мере удаления от берега в единицах маски. Океан тогда
-        /// гарантированно ниже уровня моря, дно плоское, окраина пологая, и
-        /// берег перестаёт быть фрактальной нулевой изолиной шума.
-        /// ContinentDepth при этом не используется.
+        /// &gt; 0 — the relief is blended with a floor whose depth grows with distance
+        /// from shore in mask units. The ocean is then guaranteed below sea level, the
+        /// floor flat and the margin gentle. ContinentDepth is unused in this mode.
         /// </summary>
         public double OceanFloorDepth = 0d;
 
         /// <summary>
-        /// Глубина шельфа у берега, нормированные единицы. Домножается на ocean,
-        /// поэтому на суше всегда ноль, а в океане даёт пологое мелководье
-        /// шириной в сотни километров перед материковой окраиной. 0 = нет.
+        /// Shelf depth at the shore, normalized units. Multiplied by ocean, so it is
+        /// always zero on land and in the ocean gives a gentle shallow shelf hundreds
+        /// of kilometres wide in front of the continental margin. 0 = none.
         /// </summary>
         public double OceanShelfDepth = 0d;
 
         /// <summary>
-        /// Пол внутренности, нормированные единицы. &lt;= 0 — выключено.
+        /// Interior floor, normalized units. &lt;= 0 — off.
         ///
-        /// Суша не опускается ниже continent·InteriorFloor. У берега маска ≈ 0,
-        /// пол ≈ 0, поэтому острова, заливы и пляжи сохраняются; в глубине
-        /// материка пол поднимается над морем, и внутренних озёр не бывает.
+        /// Land does not drop below continent·InteriorFloor. Near the shore the mask
+        /// is ≈ 0 and so is the floor, preserving islands, bays and beaches; inland
+        /// the floor rises above the sea, so there are no inland lakes.
         /// </summary>
         public double InteriorFloor = 0d;
 
-        /// <summary>Частота маски горных поясов. ≤0 = выключена (размах рельефа везде одинаковый).</summary>
+        /// <summary>Mountain belt mask frequency. <=0 = off (relief range is uniform everywhere).</summary>
         public double OrogenyFrequency = 0d;
 
-        /// <summary>Число октав маски горных поясов.</summary>
+        /// <summary>Mountain belt mask octave count.</summary>
         public int OrogenyOctaves = 3;
 
-        /// <summary>Порог маски поясов: выше — горы.</summary>
+        /// <summary>Belt mask threshold: above — mountains.</summary>
         public double OrogenyThreshold = 0d;
 
-        /// <summary>Полуширина smoothstep-перехода маски поясов.</summary>
+        /// <summary>Half-width of the belt mask smoothstep transition.</summary>
         public double OrogenySharpness = 0.3d;
 
-        /// <summary>
-        /// Доля размаха рельефа вне поясов (0..1). 1 = без поясов (legacy).
-        /// Малое значение даёт спокойные низменности вместо горной каши.
-        /// </summary>
+        /// <summary>Relief range fraction outside belts (0..1). 1 = no belts (legacy).</summary>
         public double OrogenyFloor = 1d;
 
-        /// <summary>Доля размаха, добавляемая в поясе поверх OrogenyFloor.</summary>
+        /// <summary>Range fraction added inside a belt on top of OrogenyFloor.</summary>
         public double OrogenyGain = 0d;
 
-        /// <summary>Доля ridged-шума 0..1 (горные хребты, только на континентах). 0 = выключен (legacy).</summary>
+        /// <summary>Ridged noise fraction 0..1 (mountain ridges, land only). 0 = off (legacy).</summary>
         public double RidgedMix = 0d;
 
-        /// <summary>Сборка ridged-составляющей: 0 = сумма октав (legacy), 1 = multifractal (ветвящиеся хребты).</summary>
+        /// <summary>Ridged term assembly: 0 = sum of octaves (legacy), 1 = multifractal (branching ridges).</summary>
         public int RidgedMode = (int)TerrainRidgedMode.Legacy;
 
-        /// <summary>Заострение гребня в multifractal, квантуется в целое 1..4. 2 = классика.</summary>
+        /// <summary>Ridge sharpening in multifractal, quantized to an integer 1..4. 2 = classic.</summary>
         public double RidgedSharpness = 2d;
 
-        /// <summary>Насколько сильно вес верхней октавы зависит от нижней (ridged multifractal).</summary>
+        /// <summary>How strongly the upper octave weight depends on the lower one (ridged multifractal).</summary>
         public double RidgedWeightGain = 2d;
 
-        /// <summary>
-        /// Ремапа уровня гребня в multifractal: s^γ. 1 = без ремапы. γ &lt; 1
-        /// поднимает гребни к верху шкалы [0,1], γ &gt; 1 прижимает к низу.
-        /// На пресете подбирается по доле суши; остаток по высоте гасится
-        /// AmplitudeMeters, не этим параметром.
-        /// </summary>
+        /// <summary>Ridge level remap in multifractal: s^γ. 1 = no remap. γ &lt; 1 lifts
+        /// ridges toward the top of [0,1], γ &gt; 1 presses them down.</summary>
         public double RidgedGamma = 1d;
 
-        /// <summary>Сила домена по октавам 0..1 для ФОРМЫ рельефа. 0 = выключено.</summary>
+        /// <summary>Per-octave domain strength 0..1 for the relief SHAPE. 0 = off.</summary>
         public double SlopeDamp = 0d;
 
-        /// <summary>Источник наклона для домена: Accum (по высоте) или Gradient (по крутизне).</summary>
+        /// <summary>Slope source for the domain: Accum (by height) or Gradient (by steepness).</summary>
         public int SlopeDampMode = (int)TerrainSlopeDampMode.Off;
 
-        /// <summary>
-        /// Базовый примитив: 0 = value noise (legacy), 1 = градиентный Перлин.
-        ///
-        /// Дефолт — legacy НЕ из лени, а потому что Unity подставляет
-        /// инициализатор поля в ассеты, где поля ещё нет, и побитовые проверки
-        /// T77a/T82a/T82b/T82h висят на дефолтных параметрах. Сменить дефолт
-        /// класса молча — значит сломать их, не заметив. Перлин включается
-        /// явно в пресете.
-        /// </summary>
+        /// <summary>Base primitive: 0 = value noise (legacy), 1 = gradient Perlin.
+        /// The default is legacy; Perlin is enabled explicitly in the preset.</summary>
         public int NoiseStyle = (int)TerrainNoiseStyle.Value;
 
 
-        /// <summary>
-        /// Примитив для МАСОК и warp, отдельно от формы. 0 = следует NoiseStyle.
-        /// Поставка в Value срезает цену: value noise втрое быстрее градиентного,
-        /// а маска continent читается как квантиль и после нормировки по RMS
-        /// (T111) от примитива не зависит.
-        /// </summary>
+        /// <summary>Primitive for MASKS and warp, separate from the shape. 0 = follows
+        /// NoiseStyle. Value is cheaper: value noise is about three times faster than
+        /// gradient noise, and the continent mask is read as a quantile, so after RMS
+        /// normalization it does not depend on the primitive.</summary>
         public int MaskNoiseStyle = -1;
-        /// <summary>
-        /// Сила равнин 0..1: в зонах маски рельеф стягивается к низкому плато.
-        /// 0 = выключено (legacy, бит-в-бит). Равнины только на континентах.
-        /// </summary>
+        /// <summary>Plain strength 0..1: in mask zones the relief is pulled toward a
+        /// low plateau. 0 = off (legacy, bit-for-bit). Plains only on land.</summary>
         public double PlainMix = 0d;
 
-        /// <summary>Частота низкочастотной маски равнин. ≤0 = выключена (legacy).</summary>
+        /// <summary>Low-frequency plain mask frequency. ≤0 = off (legacy).</summary>
         public double PlainFrequency = 0d;
 
-        /// <summary>Число октав маски равнин.</summary>
+        /// <summary>Plain mask octave count.</summary>
         public int PlainOctaves = 2;
 
-        /// <summary>Порог маски равнин: выше — равнина.</summary>
+        /// <summary>Plain mask threshold: above — plain.</summary>
         public double PlainThreshold = 0d;
 
-        /// <summary>Полуширина smoothstep-перехода маски равнин.</summary>
+        /// <summary>Half-width of the plain mask smoothstep transition.</summary>
         public double PlainSharpness = 0.3d;
 
-        /// <summary>Нормализованная высота плато равнин (доля AmplitudeMeters).</summary>
+        /// <summary>Normalized height of the plain plateau (fraction of AmplitudeMeters).</summary>
         public double PlainElevation = 0.1d;
 
-        /// <summary>
-        /// Мягкое сжатие верхнего хвоста формы, в нормированных единицах.
-        /// TailKnee <= 0 (по умолчанию) — выключено, поведение прежнее.
-        /// Нужно ridged-профилям: у них тяжёлый хвост, и калибровка по p99
-        /// задирает вершины. Режет только хвост выше TailThreshold.
-        /// </summary>
+        /// <summary>Soft compression of the upper tail of the shape, normalized units.
+        /// TailKnee <= 0 (default) — off. Cuts only the tail above TailThreshold.</summary>
         public double TailKnee = 0d;
 
-        /// <summary>Порог сжатия хвоста (нормированные единицы).</summary>
+        /// <summary>Upper tail compression threshold (normalized units).</summary>
         public double TailThreshold = 0d;
 
-        /// <summary>
-        /// Мягкое сжатие нижнего (океанского) хвоста, нормированные единицы.
-        /// DepthKnee <= 0 (по умолчанию) — выключено. Зеркало TailKnee: режет
-        /// глубокое ложе, не трогая берег и шельф.
-        /// </summary>
+        /// <summary>Soft compression of the lower (ocean) tail, normalized units.
+        /// DepthKnee <= 0 (default) — off. Mirror of TailKnee: cuts the deep floor
+        /// without touching shore or shelf.</summary>
         public double DepthKnee = 0d;
 
-        /// <summary>Порог нижнего сжатия (нормированные единицы).</summary>
+        /// <summary>Lower compression threshold (normalized units).</summary>
         public double DepthThreshold = 0d;
 
-        /// <summary>
-        /// Высота пляжа над морем (м): ниже — песок и запрет спавна.
-        /// 0 = пляжа нет (legacy).
-        /// </summary>
+        /// <summary>Beach height above the sea (m): below it is sand and no spawning.
+        /// 0 = no beach (legacy).</summary>
         public double BeachHeightMeters = 0d;
 
-        /// <summary>
-        /// Высота полки пляжа над морем (м): береговой рельеф стягивается
-        /// к ней у уреза воды (только суша, океан не трогаем).
-        /// 0 = полка выключена (legacy).
-        /// </summary>
+        /// <summary>Beach shelf altitude above the sea (m): coastal relief is pulled
+        /// toward it at the water line (land only, ocean untouched).
+        /// 0 = shelf off (legacy).</summary>
         public double BeachShelfAltitudeMeters = 0d;
 
-        /// <summary>
-        /// Полуширина полки в единицах continent-маски. 0 = выключена (legacy).
-        /// </summary>
+        /// <summary>Shelf half-width in continent-mask units. 0 = off (legacy).</summary>
         public double BeachShelfWidth = 0d;
 
-        /// <summary>
-        /// Максимальный множитель ширины полки пляжа. Ширина по берегу плавно
-        /// меняется от 1× до этого значения (шум). ≤1 = везде одинаковая (legacy).
-        /// </summary>
+        /// <summary>Maximum beach shelf width multiplier. The width varies smoothly
+        /// along the shore from 1× up to this value (noise). ≤1 = uniform everywhere (legacy).</summary>
         public double BeachShelfWidthMaxScale = 1d;
 
-        /// <summary>Частота шума ширины пляжа (циклов на единичный вектор). 0 = выключено.</summary>
+        /// <summary>Beach width noise frequency (cycles per unit vector). 0 = off.</summary>
         public double BeachShelfWidthNoiseFrequency = 0d;
 
-        /// <summary>Октав шума ширины пляжа.</summary>
+        /// <summary>Beach width noise octave count.</summary>
         public int BeachShelfWidthNoiseOctaves = 4;
 
         /// <summary>
-        /// Ширина «морского плеча» полки, единицы continent-маски: полоса ЗА
-        /// порогом маски, на которой вес полки гаснет до нуля.
-        ///
-        /// Зачем нужно. Полка включалась скачком ровно по изолинии порога маски
-        /// (above &gt; 0). Если порог проходит по рельефу, который стоит высоко
-        /// (в EarthLike_Perlin — под километр), на этой изолинии получался обрыв
-        /// в сотни метров шириной меньше вершины сетки листа (6.85 м на
-        /// MaxDepth 12), и меш рисовал его частоколом вертикальных
-        /// треугольников. Плечо заменяет скачок непрерывным спадом веса.
-        ///
-        /// Глубина плеча в единицах маски, поэтому в метрах она равна
-        /// плечо/|∇маски| — то есть масштаб тот же, что у самой полки (её
-        /// ширина в метрах считается так же). Меньше плечо — ближе к прежнему
-        /// виду (обрыв остаётся крутым, но непрерывным). ≤0 — авто:
-        /// 5 % от BeachShelfWidth.
-        ///
-        /// Побочный эффект ровно один и только там, где обрыв и был: полка
-        /// опускает к своей высоте и ту узкую полосу за порогом, которая выше
-        /// полки. Глубже уровня полки рельеф не трогается никогда — поэтому
-        /// океан и мелководье остаются как были.
+        /// Width of the shelf's "seaward shoulder", continent-mask units: a band BEYOND
+        /// the mask threshold over which the shelf weight fades to zero, replacing a
+        /// step on the threshold isoline (which would render as a picket fence of
+        /// vertical triangles) with a continuous falloff. In metres it equals
+        /// shoulder/|∇mask|, the same scale as the shelf. ≤0 — auto:
+        /// 5 % of BeachShelfWidth.
         /// </summary>
         public double BeachShelfSeawardWidth = 0d;
 
-        /// <summary>
-        /// Мелкомасштабная деталь (скалы/осыпи) как доля AmplitudeMeters.
-        /// Добавляется высокочастотным потоком только на суше, гаснет в равнинах.
-        /// 0 = выключено (legacy).
-        /// </summary>
+        /// <summary>Small-scale detail (rocks/scree) as a fraction of AmplitudeMeters.
+        /// Added by a high-frequency stream on land only, fades out on plains.
+        /// 0 = off (legacy).</summary>
         public double DetailMix = 0d;
 
-        /// <summary>Базовая частота детали (циклов на единичный вектор). ≤0 = выключена.</summary>
+        /// <summary>Detail base frequency (cycles per unit vector). ≤0 = off.</summary>
         public double DetailFrequency = 0d;
 
-        /// <summary>Число октав детали.</summary>
+        /// <summary>Detail octave count.</summary>
         public int DetailOctaves = 5;
 
-        /// <summary>Сила domain-warp в единицах направления (типично 0.05..0.3). 0 = выключен (legacy).</summary>
+        /// <summary>Domain-warp strength in direction units (typically 0.05..0.3). 0 = off (legacy).</summary>
         public double WarpStrength = 0d;
 
-        /// <summary>Базовая частота warp-шума.</summary>
+        /// <summary>Warp noise base frequency.</summary>
         public double WarpFrequency = 1d;
 
-        /// <summary>Число октав warp-шума.</summary>
+        /// <summary>Warp noise octave count.</summary>
         public int WarpOctaves = 2;
 
-        /// <summary>Сдвиг warp-потока (целый). Warp всегда на независимом шуме:
-        /// другие константы сида + этот оффсет — корреляции с базовым fBm нет по построению.</summary>
+        /// <summary>Warp stream offset (integer). Warp always uses independent noise:
+        /// other seed constants plus this offset — no correlation with the base fBm by construction.</summary>
         public int WarpSeedOffset = 0;
 
         /// <summary>
-        /// Порог rock-override в тангенсе угла склона: круче — скала на любой
-        /// высоте суши (включая пляж). ≤0 = выключен (legacy: скала только по
-        /// высоте). ВАЖНО: это guard, а не буквальное сравнение — при 0 любой
-        /// ненулевой наклон проходил бы порог «≥ 0» почти везде.
+        /// Rock-override threshold in slope-angle tangent: steeper — rock at any land
+        /// height (beach included). ≤0 = off (legacy: rock by height only). It is a
+        /// guard, not a literal comparison — at 0 any non-zero slope would pass the
+        /// "≥ 0" threshold almost everywhere.
         /// </summary>
         public double ColorRockSlopeTan = 0d;
 
-        /// <summary>Полуширина smoothstep-бленда в скалу (в единицах tan).</summary>
+        /// <summary>Half-width of the smoothstep blend into rock (in tan units).</summary>
         public double ColorRockSlopeWidth = 0.1d;
 
         /// <summary>
-        /// Минимальная нормированная высота t=(h−sea)/amp для rock-override:
-        /// скала только на крупных горах, пляж и низменности остаются зелёными.
-        /// ≤0 = без порога по высоте (legacy: скала по одному склону).
+        /// Minimum normalized height t=(h−sea)/amp for rock-override: rock only on major
+        /// mountains, beach and lowlands stay green. ≤0 = no height threshold
+        /// (legacy: rock by slope alone).
         /// </summary>
         public double ColorRockHeightMin = 0d;
 
-        /// <summary>
-        /// Макс. склон для снега (tan): круче — скала вместо снега. ≤0 =
-        /// выключен (legacy: снег чисто по высоте). Guard симметричен rock:
-        /// при 0 условие «slope ≤ 0» не проходило бы почти нигде.
-        /// </summary>
+        /// <summary>Max slope for snow (tan): steeper — rock instead of snow. ≤0 = off
+        /// (legacy: snow by height only). Guard symmetric with rock: at 0 the
+        /// "slope ≤ 0" condition would pass almost nowhere.</summary>
         public double ColorSnowSlopeTan = 0d;
 
-        /// <summary>
-        /// Частота шума цветовой маски (разбивка полос). ≤0 = выключена.
-        /// Независимый поток сида (salt 4) — разрывы цвета не коррелируют
-        /// ни с хребтами, ни с warp.
-        /// </summary>
+        /// <summary>Color mask noise frequency (band break-up). ≤0 = off. Independent
+        /// seed stream (salt 4) — color breaks correlate with neither ridges nor warp.</summary>
         public double ColorNoiseFrequency = 0d;
 
-        /// <summary>Число октав шума маски.</summary>
+        /// <summary>Mask noise octave count.</summary>
         public int ColorNoiseOctaves = 3;
 
-        /// <summary>
-        /// Сила маски: сдвиг нормализованной высоты t перед bands. 0 = выкл.
-        /// Маска вычисляется ДО слоёв (сдвигает пороги, а не красит поверх).
-        /// </summary>
+        /// <summary>Mask strength: shifts the normalized height t before the bands.
+        /// 0 = off. The mask is evaluated BEFORE the layers (it shifts thresholds
+        /// rather than painting over).</summary>
         public double ColorNoiseStrength = 0d;
 
-        /// <summary>Сдвиг потока маски (целый).</summary>
+        /// <summary>Mask stream offset (integer).</summary>
         public int ColorNoiseSeedOffset = 0;
 
-        /// <summary>
-        /// Частота мелкомасштабной цветовой детали (моттлинг земли). ≤0 = выкл.
-        /// Отдельный поток (salt 7): пятна почвы на земле.
-        /// </summary>
+        /// <summary>Small-scale color detail frequency (ground mottling). ≤0 = off.
+        /// Separate stream (salt 7): soil patches on the ground.</summary>
         public double ColorDetailFrequency = 0d;
 
-        /// <summary>Число октав цветовой детали.</summary>
+        /// <summary>Color detail octave count.</summary>
         public int ColorDetailOctaves = 3;
 
-        /// <summary>Сила моттлинга 0..1 (0 = выкл).</summary>
+        /// <summary>Mottling strength 0..1 (0 = off).</summary>
         public double ColorDetailStrength = 0d;
 
-        /// <summary>Сдвиг потока цветовой детали (целый).</summary>
+        /// <summary>Color detail stream offset (integer).</summary>
         public int ColorDetailSeedOffset = 0;
 
-        /// <summary>
-        /// Палитра поверхности (sRGB). Рендер переводит её в Linear на лету;
-        /// пресет живёт в TerrainProfile. Дефолт = старые константы TerrainPalette.
-        /// </summary>
+        /// <summary>Surface palette (sRGB). The renderer converts it to Linear on the
+        /// fly; the preset lives in TerrainProfile.</summary>
         public TerrainPaletteData Palette = new TerrainPaletteData();
 
-        /// <summary>Текстуры рельефа из профиля (null = процедурная палитра).</summary>
+        /// <summary>Relief textures from the profile (null = procedural palette).</summary>
         public Texture2D TextureLow;
         public Texture2D TextureMid;
         public Texture2D TextureHigh;
@@ -404,12 +337,8 @@ namespace Galilego.Universe
         public double SteepBlendStart = 0.7d;
         public double SteepBlendEnd = 1.4d;
 
-        /// <summary>
-        /// Скопировать профиль в живое runtime-представление. ЕДИНСТВЕННОЕ место
-        /// копирования (T91): раньше ~39 полей дублировались в BodyAuthoring,
-        /// BodyBlueprint, SystemBlueprint.Build и ApplyToTerrain.
-        /// Seed — параметр: он per-body, профиль — пресет.
-        /// </summary>
+        /// <summary>Copy the profile into the live runtime representation. The SINGLE
+        /// copy site. Seed is a parameter: it is per-body, the profile is a preset.</summary>
         public void ApplyProfile(TerrainProfile profile, int seed)
         {
             if (profile == null)
@@ -506,7 +435,7 @@ namespace Galilego.Universe
             SteepBlendEnd = profile.SteepBlendEnd;
         }
 
-        /// <summary>Собрать runtime-рельеф из профиля (копия палитры — ассет не мутируем).</summary>
+        /// <summary>Build a runtime relief from the profile (the palette is cloned — the asset is not mutated).</summary>
         public static HeightfieldTerrain FromProfile(TerrainProfile profile, int seed)
         {
             var terrain = new HeightfieldTerrain();
@@ -516,39 +445,35 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Таблица ровных площадок (PQS-моды). Всегда ВАЛИДНА, даже когда
-        /// площадок нет: инициализатор ставит общую пустую таблицу
-        /// TerrainModifiers.Empty, потому что рендер гоняет через Burst-джобу
-        /// TerrainNoiseParams целиком, а планировщик Unity требует валидные
-        /// контейнеры во всех полях структуры джобы — на default(NativeArray)
-        /// рендер падал, а планета пропадала.
+        /// Table of flat pads (PQS mods). Always VALID, even when there are no pads: the
+        /// initializer sets the shared empty table TerrainModifiers.Empty, because the
+        /// renderer passes the whole TerrainNoiseParams through a Burst job, and the Unity
+        /// scheduler requires valid containers in every field of the job struct.
         ///
-        /// Владелец здесь, а не TerrainNoiseParams.FromTerrain: тот зовётся на
-        /// каждый запрос высоты и аллоцировать в нём нельзя.
+        /// Owned here, not in TerrainNoiseParams.FromTerrain: the latter is called on
+        /// every height query and must not allocate.
         /// </summary>
         public NativeArray<TerrainModifierData> Mods = TerrainModifiers.Empty;
 
         /// <summary>
-        /// Зоны исключения декора: под ними не растут деревья, трава и камни.
-        /// Собирает DecorExclusionTable из объектов мест, владелец таблицы —
-        /// здесь, по тому же правилу, что у Mods: пересборка каждые полсекунды
-        /// не должна аллоцировать на каждый запрос высоты.
+        /// Decor exclusion zones: no trees, grass or rocks grow under them. Built by
+        /// DecorExclusionTable from site objects; the table is owned here, by the same
+        /// rule as Mods: a rebuild every half second must not allocate on every height query.
         /// </summary>
         public NativeArray<DecorExclusionData> DecorExclusions = DecorExclusionTable.Empty;
 
-        /// <summary>Угловой шаг соседей для нормали (рад): разрешает 5 октав с запасом.</summary>
+        /// <summary>Angular neighbour step for the normal (rad): resolves 5 octaves with margin.</summary>
         private const double NormalEpsilonRadians = 1e-4d;
 
         /// <summary>
-        /// Пересобрать таблицу площадок. Старую освобождает: таблица
-        /// Persistent, а система пересобирается при каждой правке сцены.
+        /// Rebuild the pad table. The old one is released: the table is Persistent and
+        /// the system is rebuilt on every scene edit.
         ///
-        /// Порядок важен: сначала строится новая, потом ставят её, и только
-        /// потом освобождается старая. Рендер держит свою копию дескриптора и
-        /// обновляет её в Update(), тогда как джобы строятся в LateUpdate() —
-        /// между этими точками освобождённый массив никто не успевает
-        /// запланировать. Обратный порядок (Dispose до установки новой) оставил
-        /// бы в кэше рендера указатель на освобождённую память.
+        /// Order matters: build the new table, install it, and only then release the old
+        /// one. The renderer keeps its own copy of the descriptor and updates it in
+        /// Update(), while jobs are built in LateUpdate() — between those points nobody
+        /// can schedule the freed array. Releasing before installing would leave a
+        /// pointer to freed memory in the renderer's cache.
         /// </summary>
         public void SetModifiers(System.Collections.Generic.IList<TerrainModifier> source, double bodyRadiusMeters)
         {
@@ -558,7 +483,7 @@ namespace Galilego.Universe
             TerrainModifiers.Release(ref previous);
         }
 
-        /// <summary>Освободить таблицу площадок (при разборке системы).</summary>
+        /// <summary>Release the pad table (on system teardown).</summary>
         public void DisposeModifiers()
         {
             NativeArray<TerrainModifierData> current = Mods;
@@ -569,9 +494,9 @@ namespace Galilego.Universe
 
         public double GetHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians)
         {
-            // Формула считается напрямую, а не через GetRawHeightMeters: здесь
-            // нужно знать, не перебила ли площадка кламп моря. Иначе раскопка
-            // ниже уровня моря молча наполнялась бы водой.
+            // The formula is evaluated directly, not via GetRawHeightMeters: here we
+            // need to know whether a pad overrode the sea clamp. Otherwise an excavation
+            // below sea level would silently fill with water.
             Vector3d direction = LatLonToDirection(latitudeRadians, longitudeRadians);
             var dir = new double3(direction.X, direction.Y, direction.Z);
             TerrainNoiseParams p = TerrainNoiseParams.FromTerrain(this);
@@ -586,9 +511,9 @@ namespace Galilego.Universe
 
         public double GetRawHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians)
         {
-            // Форма считается ЕДИНСТВЕННОЙ реализацией — TerrainNoise (Burst):
-            // физика и рендер читают одну функцию, дублирования нет.
-            // БЕЗ клампа морем: дно океана ниже уровня моря.
+            // The shape is evaluated by the SINGLE implementation — TerrainNoise (Burst):
+            // physics and rendering read one function, no duplication.
+            // NO sea clamp: the ocean floor lies below sea level.
             Vector3d direction = LatLonToDirection(latitudeRadians, longitudeRadians);
             return TerrainNoise.SampleHeight(
                 TerrainNoiseParams.FromTerrain(this),
@@ -626,9 +551,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Шум цветовой маски в ~[−1, 1] по lat/lon (радианы): сдвигает границы
-        /// высотных bands, разбивая ровные полосы. Чистая функция направления —
-        /// детерминирована seed'ом, вызывается рендером на вершину (не физикой).
+        /// Color mask noise in ~[−1, 1] over lat/lon (radians): shifts the height band
+        /// boundaries, breaking up uniform stripes. A pure function of direction —
+        /// deterministic by seed, called by the renderer per vertex (not physics).
         /// </summary>
         public double SampleColorNoise(double latitudeRadians, double longitudeRadians)
         {
@@ -638,7 +563,7 @@ namespace Galilego.Universe
                 new double3(direction.X, direction.Y, direction.Z));
         }
 
-        /// <summary>Мелкомасштабная цветовая деталь (моттлинг) в ~[−1, 1] по lat/lon.</summary>
+        /// <summary>Small-scale color detail (mottling) in ~[−1, 1] over lat/lon.</summary>
         public double SampleColorDetailNoise(double latitudeRadians, double longitudeRadians)
         {
             Vector3d direction = LatLonToDirection(latitudeRadians, longitudeRadians);
@@ -647,7 +572,7 @@ namespace Galilego.Universe
                 new double3(direction.X, direction.Y, direction.Z));
         }
 
-        /// <summary>Тел-fixed направление из lat/lon (радианы) — тот же базис, что в GetSurfaceState.</summary>
+        /// <summary>Body-fixed direction from lat/lon (radians) — the same basis as in GetSurfaceState.</summary>
         private static Vector3d LatLonToDirection(double lat, double lon)
         {
             double cosLat = Math.Cos(lat);

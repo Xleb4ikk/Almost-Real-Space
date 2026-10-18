@@ -6,9 +6,9 @@ using Xunit;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Фаза 2: чистые функции решателя твёрдых тел (ТЗ v2, раздел 7).
-    /// Полные приёмочные кейсы 204–207 — в стенде P1bTests; здесь — юнит-проверки
-    /// математики, которые должны держаться независимо от стенда.
+    /// Phase 2: pure functions of the rigid-body solver (spec v2, section 7).
+    /// Full acceptance cases 204–207 live in the P1bTests harness; here are unit
+    /// checks of the math that must hold independently of the harness.
     /// </summary>
     public sealed class ContactSolverTests
     {
@@ -27,7 +27,7 @@ namespace GalilegoPhysicsTests
         [Fact]
         public void EulerRk4_RotationAboutPrincipalAxis_KeepsRate()
         {
-            // ω ∥ главной оси: ω × Iω = 0, поэтому скорость постоянна.
+            // ω ∥ principal axis: ω × Iω = 0, so the rate stays constant.
             Vector3d omega = new Vector3d(0d, 0d, 2d);
             Vector3d next = RigidAssemblySolver.IntegrateEulerRk4(
                 omega, Vector3d.Zero, new Vector3d(1d, 2d, 3d), 1e-3);
@@ -91,7 +91,7 @@ namespace GalilegoPhysicsTests
         [Fact]
         public void HeightFieldGround_NormalOfLinearSlopeMatchesAnalyticNormal()
         {
-            // h = 0.1·x: наклон 0.1, внешняя нормаль ∝ (−0.1, 1, 0).
+            // h = 0.1·x: slope 0.1, outward normal ∝ (−0.1, 1, 0).
             var ground = new HeightFieldGround((x, z) => 0.1d * x, footprintMeters: 0.5d);
             Vector3d n = ground.NormalAt(3d, -7d);
             double expectedLength = Math.Sqrt(1.01d);

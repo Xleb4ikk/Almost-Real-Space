@@ -64,7 +64,7 @@ internal static partial class P1bTests
             new P1bCase("Test26_CircularMatrix", Test26_CircularMatrix, false),
             new P1bCase("Test27_Impulsive", Test27_Impulsive, false),
             new P1bCase("Test28_FiniteBurn", Test28_FiniteBurn, true),
-            // Жёсткий инвариант посадки (по запросу приёмки фазы 4): всегда в быстром наборе.
+            // Hard landing invariant (requested by phase-4 acceptance): always in the fast set.
             new P1bCase("Test29_DescentChain", Test29_DescentChain, false),
             new P1bCase("Test29_TerminalVelocity", Test29_TerminalVelocity, false),
             new P1bCase("Test30_YearDrift", Test30_YearDrift, true),

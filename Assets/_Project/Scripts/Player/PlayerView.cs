@@ -4,11 +4,11 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Рендер игрока (floating origin, как ShipView). GO игрока — цель камеры
-    /// (FirstPersonCamera.Target): в EVA/OnSurface — позиция из double-мира
-    /// относительно доминантного тела; в корабле — точка корабля + локальный
-    /// оффсет (ходьба); сидя — НОГИ у нарисованного якоря кресла (render-мир).
-    /// Вызов — LateUpdate ПОСЛЕ ShipView (ShipTransform должен быть свежим).
+    /// Player rendering (floating origin, like ShipView). The player GO is the
+    /// camera target (FirstPersonCamera.Target): in EVA/OnSurface a position from
+    /// the double world relative to the dominant body; in the ship the ship point
+    /// plus a local offset (walking); seated: the FEET at the drawn seat anchor
+    /// (render world). Called from LateUpdate AFTER ShipView (ShipTransform must be fresh).
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-80)]
     public sealed class PlayerView : MonoBehaviour
@@ -26,23 +26,23 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Сидя (в ЛЮБОМ режиме): точку игрока ставим у нарисованного якоря
-            // кресла. Камера обязана стоять там же, где нарисовано кресло, а не
-            // в отдельной точке double-мира: в зоне контакта та едет за физикой
-            // (дрожь, лаг сглаживания в десятки метров) — игрок «улетал» вбок
-            // и трясся. Render-позиция якоря согласована с кораблём по построению.
+            // Seated (in ANY mode): the player point is placed at the drawn seat
+            // anchor. The camera must sit where the seat is drawn, not at a separate
+            // double-world point, which in the contact zone moves with physics. The
+            // anchor's render position is consistent with the ship by construction.
             if (Controller != null && Controller.Seated && Controller.SeatedSeat != null
                 && Controller.SeatedSeat.Anchor != null)
             {
                 CockpitSeat seat = Controller.SeatedSeat;
                 Vector3 seatUp = seat.Anchor.TransformDirection(Vector3.forward);
 
-                // Якорь — ГЛАЗА сидящего; точка игрока (как и при ходьбе) — ноги:
-                // высоту глаз до якоря доводит камера (FirstPersonCamera).
+                // The anchor is the seated player's EYES; the player point (as when
+                // walking) is the feet: the camera brings the eye height up to the
+                // anchor (FirstPersonCamera).
                 transform.position = seat.Anchor.position - (seatUp * seat.EyeHeightMeters);
 
-                // «Вверх» кресла для камеры обновляем каждый кадр: при наклоне
-                // корабля статичный снимок уводил смещение глаз в сторону.
+                // The seat's "up" for the camera is refreshed every frame: with a
+                // ship tilt a static snapshot would push the eye offset sideways.
                 Runner.PlayerSeatedUpRender = seatUp;
                 return;
             }
@@ -66,7 +66,7 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Фолбэк: точка корабля через floating origin.
+            // Fallback: the ship point through the floating origin.
             PlaceFree(Runner.Ship.Position);
         }
 
@@ -77,7 +77,7 @@ namespace Galilego.Universe
 
         private void PlaceFree(Vector3d astroPosition)
         {
-            // Floating origin: и игрок, и тела используют один якорь (FloatingOrigin.Anchor).
+            // Floating origin: both the player and the bodies use one anchor (FloatingOrigin.Anchor).
             transform.position = FloatingOrigin.ToRender(astroPosition);
         }
     }

@@ -12,16 +12,16 @@ using UnityEngine.InputSystem;
 namespace Galilego.Flight
 {
     /// <summary>
-    /// Рантайм полёта: ввод игрока → команды модели; в ЗОНЕ КОНТАКТА (PhysX) прикладывает силы
-    /// двигателей/сопел в их реальных точках (AddForceAtPosition), обновляет массы тел по выгоранию
-    /// и режет стыки при отделении ступени/аварийном уводе; вне зоны силы/момент идёт через
-    /// VesselStep (n-body, 6-DOF). Стыковка двух режимов — HandoffOut/HandoffIn: ориентация и
-    /// угловая скорость переезжают без разрыва.
+    /// Flight runtime: player input → model commands; inside the CONTACT ZONE (PhysX) it applies
+    /// engine/nozzle forces at their real points (AddForceAtPosition), updates body masses as
+    /// propellant burns and cuts joints on staging/abort; outside the zone force/torque go through
+    /// VesselStep (n-body, 6-DOF). The two modes are joined by HandoffOut/HandoffIn: attitude and
+    /// angular velocity move across without a seam.
     ///
-    /// Клавиши (в корабле): газ — LeftShift/LeftCtrl (как раньше), Z — 100 %, X — 0 %;
-    /// W/S — тангаж, A/D — рыскание, Q/E — крен; I/K, J/L, U/O — РСУ-перемещение; T — удержание
-    /// ориентации (SAS), G — РСУ вкл/выкл; F1…F8 — вкл/выкл двигатель №n, F9/F10 — все вкл/выкл;
-    /// Space — ступень (зажигание/отделение); Backspace — АВАРИЙНЫЙ УВОД САС; Delete — отстрел САС.
+    /// Keys (in the ship): throttle — LeftShift/LeftCtrl, Z — 100 %, X — 0 %;
+    /// W/S — pitch, A/D — yaw, Q/E — roll; I/K, J/L, U/O — RCS translation; T — attitude
+    /// hold (SAS), G — RCS on/off; F1…F8 — engine #n on/off, F9/F10 — all on/off;
+    /// Space — stage (ignition/separation); Backspace — LES ABORT; Delete — LES jettison.
     /// </summary>
     [DefaultExecutionOrder(-90)]
     public sealed class FlightRuntime : MonoBehaviour
@@ -57,7 +57,7 @@ namespace Galilego.Flight
             Instance.model = null;
         }
 
-        // ─── Ввод ────────────────────────────────────────────────────────────
+        // ─── Input ────────────────────────────────────────────────────────────
 
         private void Update()
         {
@@ -93,7 +93,7 @@ namespace Galilego.Flight
             if (Down(FKey.Delete) && model.RequestJettison()) Debug.Log("[САС] отстрел башни");
         }
 
-        // ─── Отделение / САС ─────────────────────────────────────────────────
+        // ─── Separation / LES ─────────────────────────────────────────────────
 
         private void ExecuteRequests()
         {
@@ -114,7 +114,7 @@ namespace Galilego.Flight
             }
         }
 
-        /// <summary>Ступенчатое отделение (зовёт SpacecraftBuilder после Propulsion.Stage()).</summary>
+        /// <summary>Staging separation (called by SpacecraftBuilder after Propulsion.Stage()).</summary>
         public void OnStaged()
         {
             if (model == null) return;
@@ -126,7 +126,7 @@ namespace Galilego.Flight
             }
             else
             {
-                // Свободный полёт: ЦМ остатка сдвинулся — Position (это ЦМ) переезжает вместе с ним.
+                // Free flight: the remaining COM shifts — Position (which is the COM) moves with it.
                 Vector3d oldCom = model.Com;
                 model.RefreshMassProps();
                 Runner.Ship.Position += Runner.Ship.Attitude.Rotate(model.Com - oldCom);
@@ -153,17 +153,17 @@ namespace Galilego.Flight
 
             if (ContactZoneHost.Active)
             {
-                // Зона: стыки рвутся, остальное доделывает PhysX (увод/отстрел — реальными силами сопел).
+                // Zone: joints are severed, PhysX does the rest (abort/jettison via real nozzle forces).
                 Zone.Proxy.SeverForStaging(model.BodyKeepMask(), Vector3.up, 0f);
                 return;
             }
 
-            // Свободный полёт: отделённое — обломок на той же скорости, ЦМ остатка сдвигается.
+            // Free flight: what separated becomes debris at the same velocity; the remaining COM shifts.
             Vector3d up = q.Rotate(new Vector3d(0d, 1d, 0d));
             Vector3d debrisVelocity = ship.Velocity;
             if (jettison && removed > 0d)
             {
-                // Двигатель отстрела: импульс J разводит башню (+Y) и капсулу (−Y) по закону сохранения импульса.
+                // Jettison motor: impulse J separates the tower (+Y) and the capsule (−Y) by conservation of momentum.
                 debrisVelocity += up * (kickImpulse / removed);
                 ship.Velocity -= up * (kickImpulse / Math.Max(1d, ship.Mass));
                 foreach (var t in model.Thrusters)
@@ -178,7 +178,7 @@ namespace Galilego.Flight
             Runner.SetVesselParts(model.RemainingDefs());
         }
 
-        // ─── Физика зоны контакта (PhysX) ────────────────────────────────────
+        // ─── Contact zone physics (PhysX) ────────────────────────────────────
 
         private void FixedUpdate()
         {
@@ -190,13 +190,13 @@ namespace Galilego.Flight
             float dt = Time.fixedDeltaTime;
             Rigidbody root = proxy.BodyAt(rootBody);
             Transform zt = proxy.transform;
-            Quaternion qz = Quaternion.Inverse(zt.rotation) * root.rotation;      // корабль → оси зоны
+            Quaternion qz = Quaternion.Inverse(zt.rotation) * root.rotation;      // ship → zone axes
             Vector3 wBody = Quaternion.Inverse(root.rotation) * root.angularVelocity;
             double pressure = Runner.AmbientPressurePa(Runner.Ship.Position, Runner.TimeSeconds);
             model.Prepare(dt, new QuaternionD(qz.x, qz.y, qz.z, qz.w), new Vector3d(wBody.x, wBody.y, wBody.z),
                 Runner.RawThrottle, pressure, true);
 
-            // Силы в реальных точках: точка приложения и ось — в системе детали-хозяина.
+            // Forces at real points: application point and axis are in the host-part frame.
             foreach (Thruster t in model.Thrusters)
             {
                 if (t.Level <= 0d) continue;
@@ -212,7 +212,7 @@ namespace Galilego.Flight
                 rb.AddForceAtPosition(worldDir * (float)t.ThrustAt(pressure), rb.transform.TransformPoint(local), ForceMode.Force);
             }
 
-            // Расход и масса: пулы ступени и аппаратура → массы тел (ЦМ/инерцию пересчитает PhysX).
+            // Flow and mass: stage pools and hardware → body masses (PhysX recomputes COM/inertia).
             double main = model.MainBurnKg(dt);
             model.Finish(dt);
             if (Runner.Propulsion != null)
@@ -230,9 +230,9 @@ namespace Galilego.Flight
             }
         }
 
-        // ─── Переход зона ⇄ n-body ───────────────────────────────────────────
+        // ─── Zone ⇄ n-body handoff ───────────────────────────────────────────
 
-        /// <summary>Выход из зоны: ориентация и угловая скорость корабля из тел PhysX (до Proxy.Clear).</summary>
+        /// <summary>Leaving the zone: ship attitude and angular velocity from the PhysX bodies (before Proxy.Clear).</summary>
         public static void HandoffOut(SimulationRunner runner, ContactZoneProxy proxy, SiteFrame frame)
         {
             int rootBody = proxy.RootBodyIndex();
@@ -246,7 +246,7 @@ namespace Galilego.Flight
             Vector3d by = ToAstro(frame, qLocal * Vector3.up);
             Vector3d bz = ToAstro(frame, qLocal * Vector3.forward);
             QuaternionD att = AttitudeMath.FromAxes(bx, by, bz);
-            Vector3d wAstro = ToAstro(frame, wLocal) + frame.AngularVelocity;   // + вращение планеты
+            Vector3d wAstro = ToAstro(frame, wLocal) + frame.AngularVelocity;   // + planet rotation
             Spacecraft.Spacecraft ship = runner.Ship;
             ship.Attitude = att;
             ship.AngularVelocity = att.Conjugated.Rotate(wAstro);
@@ -258,7 +258,7 @@ namespace Galilego.Flight
             }
         }
 
-        /// <summary>Вход в зону из полёта: сборка (уже построена Proxy.Build по центру масс) поворачивается и раскручивается.</summary>
+        /// <summary>Entering the zone from flight: the assembly (already built by Proxy.Build around the COM) is oriented and spun up.</summary>
         public static void HandoffIn(SimulationRunner runner, ContactZoneProxy proxy, SiteFrame frame)
         {
             Spacecraft.Spacecraft ship = runner.Ship;
@@ -270,7 +270,7 @@ namespace Galilego.Flight
             if (runner.Flight != null) runner.Flight.HoldCurrentAttitude();
         }
 
-        // Оси зоны (Unity): x — север, y — вверх, z — восток.
+        // Zone axes (Unity): x — north, y — up, z — east.
         private static Vector3d ToAstro(SiteFrame f, Vector3 v)
         {
             return (f.North * v.x) + (f.Up * v.y) + (f.East * v.z);
@@ -281,7 +281,7 @@ namespace Galilego.Flight
             return new Vector3((float)Vector3d.Dot(a, f.North), (float)Vector3d.Dot(a, f.Up), (float)Vector3d.Dot(a, f.East));
         }
 
-        // ─── Визуал САС (заглушка: пока нет модели) ──────────────────────────
+        // ─── LES visual (placeholder: no model yet) ──────────────────────────
 
         private void BuildLesVisual()
         {
@@ -303,7 +303,7 @@ namespace Galilego.Flight
             if (rb != null) lesVisual.transform.SetPositionAndRotation(rb.position, rb.rotation);
         }
 
-        // ─── Диагностика ─────────────────────────────────────────────────────
+        // ─── Diagnostics ─────────────────────────────────────────────────────
 
         private void OnGUI()
         {
@@ -326,7 +326,7 @@ namespace Galilego.Flight
             GUI.Label(new Rect(12, 12, 520, 260), s);
         }
 
-        // ─── Клавиши ─────────────────────────────────────────────────────────
+        // ─── Keys ─────────────────────────────────────────────────────────
 
         private enum FKey { W, A, S, D, Q, E, I, J, K, L, U, O, T, G, Z, X, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, Backspace, Delete }
 

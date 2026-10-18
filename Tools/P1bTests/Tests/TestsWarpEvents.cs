@@ -10,8 +10,8 @@ using Galilego.Universe;
 
 internal static partial class P1bTests
 {
-    // Прогон [0,T) покадрово: frameSim секунд симуляции за итерацию,
-    // внутри кадра режем по границе control-tick пока тяга активна.
+    // Frame-by-frame run over [0,T): frameSim seconds of simulation per iteration,
+    // clipping within a frame at the control-tick boundary while thrust is active.
     private static double RunFramed(SpacecraftPhysics phys, EventDrivenPropagator prop, WarpController warp, Spacecraft ship, double t0, double t1, double frameSim, Func<double, bool> thrustActive)
     {
         double t = t0;
@@ -76,13 +76,8 @@ internal static partial class P1bTests
 
     private static int Test1_WarpIdentity()
     {
-        // Использованные допуски — дефолты SpacecraftPhysics из P0, явно:
-        // posTol=1e-2м, velTol=1e-5м/с, massTol=1e-4кг, rtol=1e-10.
-        // Честная формулировка критерия: расхождение ×1/×3 — это глобальная
-        // ошибка интегратора (накопление локальных atol за ~20с разной нарезки
-        // чанков), а не артефакт варпа. Доказательство — скейлинг: ужесточение
-        // допусков ×100 обязано сжать расхождение на порядок и более. Если бы
-        // варп вносил собственную ошибку, она бы от допусков не зависела.
+        // Tolerances are the P0 defaults (posTol=1e-2m, velTol=1e-5m/s,
+        // massTol=1e-4kg, rtol=1e-10); tightening ×100 must shrink divergence by ≥10×.
         WarpPair(1e-2d, 1e-5d, 1e-4d, 1e-10d, out double dPos0, out double dVel0, out double dMass0);
         WarpPair(1e-4d, 1e-7d, 1e-6d, 1e-12d, out double dPos1, out double dVel1, out double dMass1);
 
@@ -245,7 +240,7 @@ internal static partial class P1bTests
         for (int i = 0; i < times.Length; i++)
         {
             cached.Add(sys.EvaluateShipAccelerationCached(shipPos, times[i]));
-            // повтор в то же время — обязан попасть в мемоизацию (FSAL-кейс)
+            // repeat at the same time must hit memoization (FSAL case)
             cachedOff.Add(sys.EvaluateShipAccelerationCached(shipPos + off, times[i]));
         }
 
@@ -264,16 +259,8 @@ internal static partial class P1bTests
             }
         }
 
-        // Наивный путь: на каждое тело рекурсивный EvaluateWorldState (каждый
-        // тянет родителей) => world-вызовов 2×N×глубина; кэш: 1 local на
-        // некорневое тело за distinct-время + мемоизация повторов.
-        // Определения счётчиков, чтобы строка читалась однозначно:
-        // world/local — вызовы OrbitingBody.EvaluateWorldState / локального оффсета;
-        // hits/misses — вызовы StarSystem.EnsureCachedPositions (их 10 = 5 времён ×
-        // 2 точки; каждый miss вычисляет по 1 local на каждое из 3 некорневых тел,
-        // отсюда local=15 при misses=5; каждый hit — 0 вычислений).
-        // Наивно (10 вызовов × 4 тела): world=80 (рекурсия тянет родителей:
-        // корень 1 + планета 2 + луна 3 + планета 2 = 8 за вызов), local=40.
+        // Counters: world/local are EvaluateWorldState / local-offset calls; hits/misses are
+        // StarSystem.EnsureCachedPositions calls (1 local per non-root body per distinct time).
         bool fewer = cachedLocal < naiveLocal;
         Check(identical && fewer && sys.CacheHits == times.Length, "T6 cache bit-identical",
             string.Format("бит-в-бит: {0}; наивно world={1} local={2}, кэш local={3} (=misses({4})×3 тела); кэш-вызовов hits={5}+misses={4}=10",
@@ -283,10 +270,8 @@ internal static partial class P1bTests
 
     private static int Test7_BudgetPriority()
     {
-        // Очередь — 256 настоящих Tier1-продвижений (без слипов): каждый Action
-        // делает DebrisUpdater.AdvanceSlot (физика + предикат). Плюс 1 действие
-        // активного корабля = 257 действий в логе (не путать с T9: там 257-й
-        // объект, здесь 256 объектов + активный).
+        // Queue of 256 real Tier1 advances (no sleeps), each running DebrisUpdater.AdvanceSlot,
+        // plus 1 active-ship action = 257 logged actions (256 objects + active).
         StarSystem sys = TestSystem();
         sys.EvaluateBodyState(sys.AllBodies[1], 0d, out Vector3d pp, out Vector3d pv);
         var pool = new DebrisPool();
@@ -327,8 +312,8 @@ internal static partial class P1bTests
             frames++;
         }
 
-        // 256 debris-действий + 1 active = 257 записей лога; все 256 слотов
-        // обработаны (остаток очереди 0), кадры ~4мс каждый.
+        // 256 debris actions + 1 active = 257 log entries; all 256 slots processed,
+        // queue empty.
         bool allDone = sched.PendingCount == 0 && order.Count == 257;
         double avgPerFrame = (double)(order.Count - 1) / Math.Max(1, frames);
         Check(activeFirst && allDone && frames <= 32 && maxMs < 10d, "T7 budget+slicing",
@@ -455,10 +440,8 @@ internal static partial class P1bTests
 
     private static int Test11_MultiCrossing()
     {
-        // Долг P1b: нырок туда-обратно внутри одного 600с чанка. Старт на 50км
-        // (внутри 100км оболочки) вверх 2000м/с: выход ~27с, апогей ~204км,
-        // возврат ~381с. На границах чанка g0<0 и g1<0 — старое поведение
-        // (DetectionSubdivisions=1) обязано промахнуться, новое — найти оба.
+        // Dip up and back within a single 600s chunk. Start at 50km (inside the 100km
+        // shell) moving up at 2000m/s: exit ~27s, apogee ~204km, return ~381s.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.Atmosphere = new AtmosphereProfile
@@ -516,8 +499,8 @@ internal static partial class P1bTests
 
     private static int Test12_Depletion()
     {
-        // T=2000Н, Isp=300с: mdot=0.6796кг/с, 100кг топлива = 147.14с работы.
-        // Газ постоянно открыт — отсечка только по событию, не по времени.
+        // T=2000N, Isp=300s: mdot=0.6796kg/s, 100kg propellant = 147.14s of burn.
+        // Throttle stays open — cutoff is by event only, not by time.
         StarSystem sys = TestSystem();
         sys.EvaluateBodyState(sys.AllBodies[1], 0d, out Vector3d pp, out Vector3d pv);
         var thrust = new ThrustSource(2000d, 900d, new ConstantIsp(300d));
@@ -552,8 +535,8 @@ internal static partial class P1bTests
 
     private static int Test13_Tsiolkovsky()
     {
-        // Контрольный прогон B (баллистика) вычитает гравитацию: разность A−B —
-        // чистый эффект тяги, сверяется с Δv=Isp·g0·ln(m0/m1). Плюс точная масса.
+        // Control run B (ballistic) cancels gravity: A−B is the pure thrust effect,
+        // checked against Δv=Isp·g0·ln(m0/m1), plus exact mass.
         StarSystem sys = TestSystem();
         sys.EvaluateBodyState(sys.AllBodies[1], 0d, out Vector3d pp, out Vector3d pv);
         Vector3d p0 = pp + new Vector3d(0d, 8e6d, 0d);
@@ -586,15 +569,8 @@ internal static partial class P1bTests
 
     private static int Test14_BurnWarpIdentity()
     {
-        // Почти круговая высокая орбита + гладкий 10с прожиг: ошибка усечения
-        // ниже округлений double, поэтому ужесточение допусков НЕ сжимает
-        // расхождение (проверено отладкой: chemical vs tight бит-в-бит, а coast
-        // детерминирован бит-в-бит). Здесь другой режим, чем в T1: там динамика
-        // с эксцентриситетом, доминирует усечение и скейлинг работает; здесь
-        // доминирует path-dependence округлений (~17 ulp при |pos|~1.5e11 —
-        // неустранимо в double при разной нарезке чанков 619 vs 219).
-        // Поэтому критерий честный другой: ограниченность + детерминизм
-        // (та же нарезка дважды = бит-в-бит ноль).
+        // Near-circular high orbit + smooth 10s burn: truncation error is below double
+        // rounding, so here the criterion is boundedness + determinism (same slicing twice = 0).
         EvaluatorPair(BurnTolerancePreset.Chemical, out double dPos0, out double dVel0, out double dMass0);
         EvaluatorRun(BurnTolerancePreset.Chemical, 1d / 60d, out Vector3d pA, out Vector3d vA, out double mA);
         EvaluatorRun(BurnTolerancePreset.Chemical, 1d / 60d, out Vector3d pB, out Vector3d vB, out double mB);
@@ -657,8 +633,8 @@ internal static partial class P1bTests
 
     private static int Test16_PresetIsParameter()
     {
-        // Кастомный грубый пресет доводит прожиг до конца, а допуски физики
-        // после вызова равны тем, что были до, — пресет параметр, не архитектура.
+        // A custom coarse preset completes the burn while physics tolerances after the
+        // call equal those before — the preset is a parameter, not architecture.
         StarSystem sys = TestSystem();
         sys.EvaluateBodyState(sys.AllBodies[1], 0d, out Vector3d pp, out Vector3d pv);
         var thrust = new ThrustSource(1000d, 500d, new ConstantIsp(300d));
@@ -712,8 +688,8 @@ internal static partial class P1bTests
 
     private static int Test18_DenseGate()
     {
-        // Gate A1: dense-бисекция vs legacy-перепогон на тех же сценариях.
-        // ppb-сценарий T3 (touchdown) и двухкорневой T11 (exit+entry).
+        // Gate A1: dense bisection vs legacy re-run on the same scenarios:
+        // the ppb T3 case (touchdown) and the two-root T11 case (exit+entry).
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.Atmosphere = new AtmosphereProfile
@@ -724,13 +700,13 @@ internal static partial class P1bTests
         };
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
 
-        // Сценарий 1: падение на поверхность (один корень).
+        // Scenario 1: fall to the surface (one root).
         Vector3d fallP = bp0 + new Vector3d(0d, planet.Radius + 200000d, 0d);
         Vector3d fallV = bv0 + new Vector3d(-3000d, 0d, 0d);
         EventOccurrence? legacyFall = RunLegacy(sys, planet, fallP, fallV, 1000d, 30d * 86400d, false);
         EventOccurrence? denseFall = RunDense(sys, planet, fallP, fallV, 1000d, 30d * 86400d, false, out long legacyCallsF, out long denseCallsF);
 
-        // Сценарий 2: нырок туда-обратно (два корня).
+        // Scenario 2: dip up and back (two roots).
         Vector3d dipP = bp0 + new Vector3d(0d, planet.Radius + 50000d, 0d);
         Vector3d dipV = bv0 + new Vector3d(500d, 2000d, 0d);
         var legacyDip = CollectAll(sys, planet, dipP, dipV, false);
@@ -742,7 +718,7 @@ internal static partial class P1bTests
             && Math.Abs(legacyDip[0].TimeSeconds - denseDip[0].TimeSeconds) <= 1e-6d
             && Math.Abs(legacyDip[1].TimeSeconds - denseDip[1].TimeSeconds) <= 1e-6d;
 
-        // Рестарт из dense-корня: переоткрытия нет (инвариант b доказан T18, не словами).
+        // Restart from the dense root: no re-opening (invariant b).
         var physR = new SpacecraftPhysics();
         physR.Sources.Add(new CachedGravitySource(sys));
         var propR = new EventDrivenPropagator(physR);
@@ -750,7 +726,7 @@ internal static partial class P1bTests
         var shipR = new Spacecraft(denseFall.Value.State.Position, denseFall.Value.State.Velocity, denseFall.Value.State.Mass);
         EventOccurrence? reopen = propR.Propagate(shipR, denseFall.Value.TimeSeconds, 600d);
 
-        // Рендер: coast-дуга 3600с без событий, 100 сэмплов без единого Step.
+        // Render: a 3600s event-free coast arc, 100 samples without a single Step.
         var physW = new SpacecraftPhysics();
         var countW = new CountingSource(new CachedGravitySource(sys));
         physW.Sources.Add(countW);
@@ -760,12 +736,9 @@ internal static partial class P1bTests
         var render = new List<DenseSegment>();
         LongWarpResult wr = driverW.AdvanceToTargetWithSegments(shipW, 0d, 3600d, render);
         long callsAfterWarp = countW.Calls;
-        // Честная непрерывность. Два известных эффекта, оба не разрывы:
-        // (1) StepForward оставляет неинтегрированный остаток ≤ MinStepSize
-        // в конце чанка (старое поведение): gap вперёд до 1e-6с, скачок в v·gap.
-        // (2) Время конца чанка драйвер считает одним сложением, интегратор —
-        // суммой внутренних dt: стык может перекрываться на fp-шум (~1e-13с)
-        // при нулевом скачке состояния. Допуск назад — 1e-9с.
+        // Continuity. Known non-discontinuity effects: StepForward leaves a residual ≤
+        // MinStepSize at the chunk end (gap up to 1e-6s, jump v·gap), and chunk-end time
+        // differs by fp noise (~1e-13s); backward tolerance is 1e-9s.
         bool trackOk = render.Count > 0;
         bool continuous = true;
         int badJoint = -1;
@@ -819,8 +792,8 @@ internal static partial class P1bTests
 
     private static int Test19_AdaptiveGrain()
     {
-        // Правило «только мельче»: медленная круговая обязана остаться на базе 20
-        // (регрессия запрещена), быстрый гиперболический graze — дробиться до капа.
+        // "Finer only" rule: a slow circular orbit must stay at base 20 (no regression),
+        // a fast hyperbolic graze subdivides up to the cap.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.Atmosphere = new AtmosphereProfile
@@ -838,7 +811,7 @@ internal static partial class P1bTests
         int nanRule = DetectionGrain.Subdivisions(600d, 20, double.NaN);
         int infRule = DetectionGrain.Subdivisions(600d, 20, double.PositiveInfinity);
 
-        // Высокая круговая: r = R+8e6, T = 2π√(r³/μ) ≈ 17145с → зерно 30с, subdiv 20.
+        // High circular: r = R+8e6, T = 2π√(r³/μ) ≈ 17145s → grain 30s, subdiv 20.
         double circR = earthR + 8e6d;
         double circV = Math.Sqrt(mu / circR);
         var circState = new SpacecraftIntegrationState
@@ -850,10 +823,10 @@ internal static partial class P1bTests
         double tauCirc = DetectionGrain.CharacteristicTimeSeconds(sys, circState, 0d);
         int subCirc = DetectionGrain.Subdivisions(600d, 20, tauCirc);
 
-        // Гипербола v_inf=60км/с, r_p=R+50км (внутри 100км оболочки):
-        // |a|=μ/v²=110722м, τ=2π√(|a|³/μ)≈11.6с → зерно 0.58с → кап 200 (3с).
-        // Состояние на ν=-25° до перицентра (экваториальная плоскость, перицентр +X):
-        // r=7.073e6м, v=(430, 60926, 0)м/с. Нырок ~26с: вход ~34с, выход ~60с.
+        // Hyperbola v_inf=60km/s, r_p=R+50km (inside the 100km shell):
+        // |a|=μ/v²=110722m, τ=2π√(|a|³/μ)≈11.6s → grain 0.58s → cap 200 (3s).
+        // State at ν=-25° before periapsis (equatorial plane, periapsis on +X):
+        // r=7.073e6m, v=(430, 60926, 0)m/s. Dip ~26s: entry ~34s, exit ~60s.
         var flyState = new SpacecraftIntegrationState
         {
             Position = bp0 + new Vector3d(6.410e6d, -2.989e6d, 0d),
@@ -890,7 +863,7 @@ internal static partial class P1bTests
             && flyEvents[0].TimeSeconds > 20d && flyEvents[0].TimeSeconds < 50d
             && flyEvents[1].TimeSeconds > 45d && flyEvents[1].TimeSeconds < 80d;
 
-        // Убегание без детекторов: фолбэк жив, исключений нет.
+        // Escape without detectors: fallback is alive, no exceptions.
         var escState = new SpacecraftIntegrationState
         {
             Position = bp0 + new Vector3d(0d, circR, 0d),
@@ -940,16 +913,15 @@ internal static partial class P1bTests
 
     private static int Test52_Centrifugal()
     {
-        // Быстрый спин (ω²R > g) обязан ОТРЫВАТЬ покоящийся со-вращающийся
-        // корабль: центробежная −ω×(ω×r) направлена наружу. Баг был в знаке
-        // (+ω×(ω×r) — внутрь): отрыв не наступал никогда.
+        // A fast spin (ω²R > g) must lift a resting co-rotating ship off: the centrifugal
+        // term −ω×(ω×r) points outward.
         SurfaceMotionResult fast = SpinCase(omega2R: 10d, g0: 9.8d);
         SurfaceMotionResult slow = SpinCase(omega2R: 5d, g0: 9.8d);
         bool fastOk = fast.Regime == VesselRegime.Flying;
         bool slowOk = slow.Regime == VesselRegime.Landed && slow.IsStuck;
 
-        // Контакт держится ⟺ a_free·n < 0: у медленного спина прижатие
-        // гравитацией минус центробежная должно быть положительным по модулю.
+        // Contact holds ⟺ a_free·n < 0: for a slow spin the gravity-minus-centrifugal
+        // press must be positive in magnitude.
         Check(fastOk && slowOk, "T52 centrifugal",
             string.Format("ω²R=10>g=9.8 → {0} (ожидался Flying); ω²R=5<g → {1} (ожидался Landed)",
                 fast.Regime, slow.Regime));
@@ -970,9 +942,9 @@ internal static partial class P1bTests
             NorthPoleDirection = new Vector3d(0d, 0d, 1d)
         };
         body.SyncMassFromGravitationalParameter();
-        // Корень в нуле, статичен — гравитация чисто центральная от origin.
+        // Root at origin and static — gravity is purely central about the origin.
         Vector3d pos = new Vector3d(radius, 0d, 0d);
-        Vector3d vel = new Vector3d(0d, omega * radius, 0d); // со-вращение
+        Vector3d vel = new Vector3d(0d, omega * radius, 0d); // co-rotation
         SurfaceMotion.GravityProvider grav = (p, t) =>
             PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(p, Vector3d.Zero, mu);
         return SurfaceMotion.Step(pos, vel, body, new SphereOnlyTerrain(), grav, 0d, 0.5d);
@@ -980,8 +952,7 @@ internal static partial class P1bTests
 
     private static int Test53_LambertHalfPlane()
     {
-        // 180°-геометрия: dt обязан влиять на решение, longWay обязан зеркалить.
-        // Баг: форс a=(r1+r2)/2 — любой dt возвращал один и тот же Hohmann.
+        // 180° geometry: dt must affect the solution, longWay must mirror it.
         Vector3d r1 = new Vector3d(1e8, 0, 0);
         Vector3d r2 = new Vector3d(-2e8, 0, 0);
         double mu = 3.986e14;
@@ -1005,9 +976,9 @@ internal static partial class P1bTests
             }
         }
 
-        // Round-trip: Advance(r1, v1, μ, dt) обязан попасть в r2.
-        // Возле точного 180° коника вырождена по плоскости — допуски щедрые,
-        // но многократно жёстче «любой dt — один ответ».
+        // Round-trip: Advance(r1, v1, μ, dt) must land on r2.
+        // Near an exact 180° the conic is plane-degenerate — tolerances are generous
+        // but far tighter than "any dt gives one answer".
         bool roundTrip = true;
         double worst = 0d;
         for (int i = 0; i < dts.Length; i++)
@@ -1018,7 +989,7 @@ internal static partial class P1bTests
             if (err > 1e-6d) roundTrip = false;
         }
 
-        // longWay — та же коника в обратную сторону: v_long = −v_short точно.
+        // longWay is the same conic reversed: v_long = −v_short exactly.
         bool mirror = true;
         foreach (double dt in dts)
         {
@@ -1029,7 +1000,7 @@ internal static partial class P1bTests
             }
         }
 
-        // dt меньше полупериода min-energy эллипса — решений нет: исключение.
+        // dt below half the period of the min-energy ellipse — no solution: exception.
         double tofMin = Math.PI * Math.Sqrt(Math.Pow(1.5e8, 3) / mu);
         bool throwLow = ThrowsArgumentOutOfRange(() => LambertSolver.Solve(r1, r2, tofMin * 0.5d, mu, false));
 
@@ -1041,8 +1012,8 @@ internal static partial class P1bTests
 
     private static int Test54_LambertOvershoot()
     {
-        // Кап z=39 — граница single-rev семейства: dt за ней обязан громко
-        // бросать, а не молча возвращать скорость для чужого tof.
+        // Cap z=39 is the single-rev family boundary: beyond it dt must throw loudly,
+        // not silently return a velocity for a foreign tof.
         Vector3d q1 = new Vector3d(1e8, 0, 0);
         Vector3d q2 = new Vector3d(0, 1.5e8, 0);
         double mu = 3.986e14;
@@ -1079,9 +1050,9 @@ internal static partial class P1bTests
 
     private static int Test55_ForceAcceptSync()
     {
-        // Зажатые допуски → постоянные rejects → кламп к MinStep → force-accept.
-        // Инвариант после фикса: сумма длительностей dense-сегментов = целевой dt
-        // (±MinStep), конец трека — принятое состояние, стыки непрерывны.
+        // Tight tolerances → constant rejects → clamp to MinStep → force-accept.
+        // Invariant: the sum of dense-segment durations equals the target dt (±MinStep),
+        // the track end is the accepted state, and joints are continuous.
         double mu = 3.986e14;
         Vector3d pos = new Vector3d(7e6, 0, 0);
         Vector3d vel = new Vector3d(0, Math.Sqrt(mu / 7e6), 0);
@@ -1114,9 +1085,9 @@ internal static partial class P1bTests
         bool endsMatch = track.Count > 0
             && (track[track.Count - 1].Y1.Position - res.State.Position).Magnitude == 0d;
 
-        // Legacy-степпер (без dense) обязан дать тот же результат в допуске
-        // форс-акцепта: та же математика, другой порядок суммирования стадий.
-#pragma warning disable 0618 // намеренно: кросс-чек с legacy-степпером
+        // The legacy stepper (no dense) must give the same result within the force-accept
+        // tolerance: same math, different stage summation order.
+#pragma warning disable 0618 // intentional: cross-check with the legacy stepper
         IntegrationResult legacy = OrbitIntegrator.StepForward(
             pos, vel, 0d, targetDt,
             (p, t) => PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(p, Vector3d.Zero, mu),
@@ -1132,8 +1103,7 @@ internal static partial class P1bTests
 
     private static int Test56_ApsisZero()
     {
-        // В периапсисе timeToPeriapsis == 0 (раньше возвращался полный период),
-        // в апоапсисе timeToApoapsis == 0.
+        // At periapsis timeToPeriapsis == 0, at apoapsis timeToApoapsis == 0.
         double mu = 3.986e14;
         double rp = 7e6;
         double ecc = 0.3d;
@@ -1157,8 +1127,7 @@ internal static partial class P1bTests
 
     private static int Test57_RailValidation()
     {
-        // Молчаливые клампы рельсы (a≥1м, e≤0.999) заменены громкой валидацией:
-        // гиперболическая «рельса» — баг данных, а не валидный случай.
+        // A hyperbolic rail is a data bug, not a valid case: it must fail loudly.
         var star = new OrbitingBody { Name = "S", StandardGravitationalParameter = 1e15 };
         var hyper = new OrbitingBody { Name = "Hyper", SemiMajorAxis = 1e8, Eccentricity = 1.2d };
         hyper.Parent = star;
@@ -1195,16 +1164,13 @@ internal static partial class P1bTests
     }
 
     private static int Test58_GrainProbe()
-    {        // A0-зонд: что реально происходит с зерном детекта в чистом межпланетном
-        // сценарии. Гипотеза ревью: если ×20 вдали от тел, то либо FindDominantBody
-        // не переключается на звезду, либо есть скрытый кламп. Ожидание по коду:
-        // доминанта — звезда, τ ~ годы, желаемое зерно ~месяцы > базы 30с —
-        // возврат baseDivisions=20 из документированного ПОЛА («только мельче»).
+    {        // A0 probe: grain in a pure interplanetary scenario. Expected: star dominant,
+        // τ ~ years, desired grain > base 30s → subdiv 20 from the documented "finer only" floor.
         StarSystem sys = TestSystem();
         sys.EvaluateBodyState(sys.AllBodies[1], 0d, out Vector3d starRef, out Vector3d starRefV);
         double muStar = sys.Root.ResolveStandardGravitationalParameter();
 
-        // Межпланетный круиз: 1.9e11 от звезды (вне обеих SOI), круговая ~26.4 км/с.
+        // Interplanetary cruise: 1.9e11 from the star (outside both SOIs), circular ~26.4 km/s.
         sys.Root.EvaluateWorldState(0d, out Vector3d rootP, out Vector3d rootV);
         Vector3d cruisePos = rootP + new Vector3d(1.9e11, 0, 0);
         Vector3d cruiseVel = rootV + new Vector3d(0, Math.Sqrt(muStar / 1.9e11), 0);
@@ -1216,7 +1182,7 @@ internal static partial class P1bTests
         double desiredGrain = tau / DetectionGrain.GrainDivisor;
         double baseGrain = 600d / 20;
 
-        // Возле планеты: атмосфера достижима внутри чанка — зерно обязано мельчать.
+        // Near the planet: the atmosphere is reachable within the chunk — grain must refine.
         sys.EvaluateBodyState(sys.AllBodies[1], 0d, out Vector3d paP, out Vector3d paV);
         var nearState = new SpacecraftIntegrationState
         {
@@ -1232,9 +1198,8 @@ internal static partial class P1bTests
             string.Format("межпланета: доминанта={0}, τ={1:E3}с, желаемое зерно={2:E0}с vs база {3:F0}с → subdiv={4} (из пола); у планеты: τ={5:E1}с → subdiv={6}",
                 dominant.Name, tau, desiredGrain, baseGrain, subdiv, tauNear, subdivNear));
 
-        // A0-фикс: условный пол. Вдали от тел ни одна пороговая сфера
-        // (атмосферы/поверхности/SOI) недостижима за чанк → подчанкование
-        // не нужно; возле планеты — нужно. Гейт: T11/T18/T19/T44.
+        // Conditional floor: far from bodies no threshold sphere (atmosphere/surface/SOI)
+        // is reachable within a chunk, so no sub-chunking; near a planet it is needed.
         var detList = new System.Collections.Generic.List<ICrossingDetector>();
         bool deepSpaceFine = DetectionGrain.NeedsFineGrain(sys, detList, cruiseState, 0d, 600d);
         bool deepSpaceFineWithDets = DetectionGrain.NeedsFineGrain(sys,
@@ -1259,18 +1224,11 @@ internal static partial class P1bTests
 
     private static int Test69_WarpLadder()
     {
-        // P4: лестница [1,5,10,100,500,1000,3000] с капом атмосферы ×3 и
-        // запретом тяги выше ×3. Проверки:
-        // 1) снап к ступеням (запрос 7 → ×5, 2999 → ×1000, 99999 → ×3000, 0.5 → ×1);
-        // 2) EffectiveWarpFactor: в атмосфере любая ступень ≥5 → ×3, в космосе — ступень;
-        // 3) планировщик кадра: effective × realDt, useLongWarp при >×3, кэп горизонтом;
-        // 4) EffectiveThrottle: >×3 → 0; PrepareForLongWarp обнуляет снимок газа →
-        //    CanEnterLongWarp пропускает баллистику с живым ThrustSource;
-        // 5) дальний варп ×3000 покадрово == одним куском (бит-в-бит);
-        // 6) физический варп ×1 == ×3 c атмосферой и тягой (класс T1 с drag).
+        // Warp ladder [1,5,10,100,500,1000,3000] with an atmosphere cap of ×3 and thrust
+        // banned above ×3: snapping, caps, frame planner, throttle, chunked vs one-shot warp.
         var warp = new WarpController();
 
-        // 1) Снап.
+        // 1) Snapping.
         bool snapping = true;
         warp.SetWarpFactor(7d);
         snapping &= warp.WarpFactor == 5d;
@@ -1283,26 +1241,26 @@ internal static partial class P1bTests
         warp.SetWarpFactor(3000d);
         snapping &= warp.WarpFactor == 3000d;
 
-        // 2) Капы.
+        // 2) Caps.
         bool capsOk = warp.EffectiveWarpFactor(true) == 3d && warp.EffectiveWarpFactor(false) == 3000d;
         warp.SetWarpFactor(1d);
         capsOk &= warp.EffectiveWarpFactor(true) == 1d && warp.EffectiveWarpFactor(false) == 1d;
         warp.SetWarpFactor(5d);
         capsOk &= warp.EffectiveWarpFactor(true) == 3d && warp.EffectiveWarpFactor(false) == 5d;
 
-        // 3) Планировщик кадра: 60 fps при ×3000 → 50 с/кадр, long-warp.
+        // 3) Frame planner: 60 fps at ×3000 → 50 s/frame, long-warp.
         warp.SetWarpFactor(3000d);
         WarpFrameDecision d = WarpPlanner.ComputeFrame(warp, false, 1d / 60d, double.PositiveInfinity);
         bool plannerOk = d.EffectiveFactor == 3000d && d.UseLongWarp
             && Math.Abs(d.SimSeconds - 50d) < 1e-9d;
         d = WarpPlanner.ComputeFrame(warp, true, 1d / 60d, double.PositiveInfinity);
         plannerOk &= d.EffectiveFactor == 3d && !d.UseLongWarp && Math.Abs(d.SimSeconds - (3d / 60d)) < 1e-12d;
-        // Кэп горизонтом: осталось 20 с — кадр не летит за конец мира.
+        // Horizon cap: 20 s left — a frame must not fly past world's end.
         d = WarpPlanner.ComputeFrame(warp, false, 1d / 60d, 20d);
         plannerOk &= d.SimSeconds == 20d;
 
-        // 4) Тяга: >×3 → 0; PrepareForLongWarp делает CanEnterLongWarp=true
-        // с живым ThrustSource (снимок газа обнулён).
+        // 4) Thrust: >×3 → 0; PrepareForLongWarp makes CanEnterLongWarp=true with a live
+        // ThrustSource (throttle snapshot zeroed).
         bool thrustCut = warp.EffectiveThrottle(0.8d, 5d) == 0d && warp.EffectiveThrottle(0.8d, 3d) == 0.8d;
 
         StarSystem sys = ManualStarPlanetMoon();
@@ -1329,9 +1287,8 @@ internal static partial class P1bTests
         bool passAfterPrepare = driver.CanEnterLongWarp(ship, 0d);
         bool thrustMechanicsOk = thrustCut && blockedWithThrottle && passAfterPrepare;
 
-        // 5) Дальний варп ×3000: покадрово (50 с/кадр) против одного куска.
-        // Контракт T1: одна и та же нарезка — бит-в-бит, разная нарезка — в
-        // допуске интегратора (для суток разгона — 2 м по позиции).
+        // 5) Far warp ×3000: frame-by-frame (50 s/frame) vs one chunk. Same slicing is
+        // bit-identical, different slicing is within the integrator tolerance (~2 m over a day).
         StarSystem sysA = ManualStarPlanetMoon();
         var physA = new SpacecraftPhysics();
         physA.Sources.Add(new CachedGravitySource(sysA));
@@ -1365,8 +1322,8 @@ internal static partial class P1bTests
             && dSlice.Magnitude < 2d
             && (shipFrame.Velocity - shipOnce.Velocity).Magnitude < 1e-3d;
 
-        // 6) Физический варп ×1 == ×3 с атмосферой и тягой: покрыто T1 (границы
-        // допусков), здесь — дымовой контроль управляющего зерна: чанки ≤0.5с.
+        // 6) Physical warp ×1 == ×3 with atmosphere and thrust: covered by T1; here a
+        // smoke check of the control grain: chunks ≤0.5s.
         warpCtl.SetWarpFactor(3000d);
         warpCtl.ResetTicks(0d);
         double maxChunkSeen = 0d;
@@ -1384,16 +1341,15 @@ internal static partial class P1bTests
 
         bool grainOk = maxChunkSeen <= WarpController.ControlTickSeconds + 1e-12d;
 
-        // 7) Регресс A1 (аудит pre-Unity/9.1): сэмпл ПОСЛЕ ресета на ненулевом
-        // t не теряется (старый sentinel «TickTime == 0» был проверкой эпохи),
-        // а PrepareForLongWarp обнуляет газ безусловно.
+        // 7) A sample AFTER a reset at non-zero t is not lost, and PrepareForLongWarp
+        // zeroes throttle unconditionally.
         var warpCtlA1 = new WarpController();
         warpCtlA1.ResetTicks(5d);
         warpCtlA1.SampleControl(5d, 0.8d);
         bool sampleAfterReset = warpCtlA1.CurrentControlSnapshot.Throttle == 0.8d
             && warpCtlA1.CurrentControlSnapshot.TickTimeSeconds == 5d;
         warpCtlA1.SampleControl(5.2d, 0.9d);
-        bool inTickKept = warpCtlA1.CurrentControlSnapshot.Throttle == 0.8d; // до границы тика сэмпл не проходит
+        bool inTickKept = warpCtlA1.CurrentControlSnapshot.Throttle == 0.8d; // sample is not applied before the tick boundary
         warpCtlA1.SampleControl(5.5d, 0.9d);
         bool tickGridOk = warpCtlA1.CurrentControlSnapshot.Throttle == 0.9d;
         warpCtlA1.PrepareForLongWarp(5d);
@@ -1426,10 +1382,8 @@ internal static partial class P1bTests
 
     private static int Test73_EphemerisThreadGate()
     {
-        // Фаза 4: thread-контракт BakedEphemeris. Оконный курсор (gzip forward-
-        // only + переиспользуемое окно) под гейтом: конкурентные TryEvaluate с
-        // нескольких потоков обязаны давать результаты, БИТ-В-БИТ равные
-        // однопоточному прогону, с консистентным счётчиком WindowLoads.
+        // BakedEphemeris thread contract: concurrent TryEvaluate from several threads must
+        // produce results bit-identical to a single-threaded run, with consistent WindowLoads.
         StarSystem sys = ManualStarPlanetMoon();
         var cfg = new BakeConfig { Degree = 11, MaxStepSeconds = 600d };
         string outDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "t73-bake");
@@ -1437,7 +1391,7 @@ internal static partial class P1bTests
         EphemerisBaker.AttachFiles(sys, outDir);
         BakedEphemeris bakedRef = sys.AllBodies[1].Baked;
 
-        // Однопоточный эталон: 2000 запросов по спану.
+        // Single-threaded reference: 2000 requests across the span.
         double span = bakedRef.EndSeconds;
         var reference = new List<Vector3d>(2000);
         for (int i = 0; i < 2000; i++)
@@ -1446,9 +1400,9 @@ internal static partial class P1bTests
             reference.Add(p);
         }
 
-        // Конкурентный прогон: 4 потока по ПЕРЕМЕШАННОЙ сетке (j = 7919·i mod 2000 —
-        // перестановка тех же времён): гарантированные промахи окна, перескоки
-        // курсора и contention, но бит-в-бит сравнимо с эталоном.
+        // Concurrent run: 4 threads over a SHUFFLED grid (j = 7919·i mod 2000 — a permutation
+        // of the same times): guaranteed window misses, cursor jumps and contention, yet
+        // bit-identical to the reference.
         var concurrent = new Vector3d[2000];
         long windowLoadsBefore = bakedRef.WindowLoads;
         System.Threading.Tasks.Parallel.For(0, 2000, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = 4 }, i =>
@@ -1458,7 +1412,7 @@ internal static partial class P1bTests
             concurrent[j] = p;
         });
 
-        // Сверка бит-в-бит с эталоном (обратный порядок запросов → та же сетка времён).
+        // Bit-exact comparison with the reference (reverse request order → same time grid).
         bool bitExact = true;
         for (int i = 0; i < 2000; i++)
         {
@@ -1471,9 +1425,8 @@ internal static partial class P1bTests
 
         bool loadsCounted = bakedRef.WindowLoads >= windowLoadsBefore;
 
-        // Snapshot-контракт: LoadRangeToMemory из другого потока параллельно с
-        // оконным чтением — без гейта не пересекается (свои стримы), результат
-        // валиден.
+        // Snapshot contract: LoadRangeToMemory from another thread in parallel with windowed
+        // reads — separate streams, no gate, result stays valid.
         bool snapshotOk = false;
         object snapshotLock = new object();
         System.Threading.Tasks.Parallel.Invoke(
@@ -1487,9 +1440,8 @@ internal static partial class P1bTests
                 }
             });
 
-        // Регресс A3: переттач того же набора — старые файловые инстансы
-        // Dispose'ятся, файл сразу доступен для перезаписи (раньше FileStream
-        // жил до GC-финализатора и блокировал файл).
+        // Re-attaching the same set disposes old file instances, so the file is immediately
+        // available for overwrite.
         EphemerisBaker.AttachFiles(sys, outDir);
         string overwriteTarget = System.IO.Path.Combine(outDir, System.IO.Directory.GetFiles(outDir)[0]);
         byte[] keep = System.IO.File.ReadAllBytes(overwriteTarget);
@@ -1514,10 +1466,8 @@ internal static partial class P1bTests
 
     private static int Test75_TorqueProbeGuard()
     {
-        // A4 (аудит pre-Unity/3.1): probe-шаги драйвера (бисекция события) идут
-        // через тот же physics-экземпляр и без save/restore оставляли бы в
-        // TotalTorqueBody след probe-состояния. Контракт: снимок после Propagate
-        // с детектором == снимок того же интегрирования без драйвера (шаг 0→600).
+        // Driver probe steps (event bisection) share the physics instance: the snapshot after
+        // Propagate with a detector must equal the same integration without the driver.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.Atmosphere = new AtmosphereProfile
@@ -1527,8 +1477,8 @@ internal static partial class P1bTests
             ScaleHeightMeters = 8500d
         };
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
-        // Старт ВЫШЕ атмосферы со сходящей траекторией — вход (~25 с) внутри
-        // первого чанка 600 с: бисекция гарантированно отрабатывает.
+        // Start ABOVE the atmosphere on a descending trajectory — entry (~25 s) is inside
+        // the first 600 s chunk, so bisection is guaranteed to run.
         Vector3d p0 = bp0 + new Vector3d(0d, planet.Radius + 150000d, 0d);
         Vector3d v0 = bv0 + new Vector3d(500d, -2000d, 0d);
 
@@ -1545,10 +1495,9 @@ internal static partial class P1bTests
         physManual.Sources.Add(new CachedGravitySource(sys));
         physManual.Sources.Add(new StateTorqueSource());
         var clone = new Spacecraft(p0, v0, 1000d);
-        // Эталон — то же ЕДИНСТВЕННОЕ интегрирование 0→30с (драйвер режет
-        // чанки по MaxChunk/DetectionSubdivisions = 30с; событие внутри первого
-        // чанка, поэтому ship-bound путь — ровно один шаг 0→30). Dense-сборка
-        // сегментов бит-в-бит не меняет интегрирование (контракт StepWithSegments).
+        // Reference is the same SINGLE 0→30s integration (the driver splits chunks at
+        // MaxChunk/DetectionSubdivisions = 30s; the event is inside the first chunk, so the
+        // ship-bound path is exactly one 0→30 step). Dense segment assembly is bit-identical.
         physManual.Step(clone, 0d, 30d);
         Vector3d expected = physManual.TotalTorqueBody;
         bool singleChunk = ev.HasValue && ev.Value.TimeSeconds < 30d;
@@ -1601,7 +1550,7 @@ internal static partial class P1bTests
         return bp;
     }
 
-    /// <summary>Угол между радиусом к точке lon=0 и направлением на родителя (рад).</summary>
+    /// <summary>Angle between the radius to lon=0 and the direction to the parent (rad).</summary>
     private static double TidalDeviation(OrbitingBody moon, OrbitingBody parent, double t)
     {
         moon.GetSurfaceState(0d, 0d, 0d, t, out Vector3d meridian, out _);

@@ -9,54 +9,55 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Редакторное превью рельефа: clipmap-патч вокруг точки фрейма, тем же
-    /// шумом и той же Burst-задачей, что и рантайм (TerrainTileJob +
-    /// TerrainNoise + HeightfieldTerrain). «Упрощённой» высоты здесь нет
-    /// намеренно: если превью считает не ту функцию, автор ставит базу не туда.
+    /// Editor terrain preview: a clipmap patch around the frame point, using the
+    /// same noise and the same Burst job as the runtime (TerrainTileJob +
+    /// TerrainNoise + HeightfieldTerrain). There is deliberately no "simplified"
+    /// height here: if the preview computes a different function, the author
+    /// places the base in the wrong spot.
     ///
-    /// Геометрия — радиальная сетка (кольца) в касательной плоскости ENU:
-    /// кольцо i имеет радиус по геометрической прогрессии и число сегментов,
-    /// удваивающееся каждые SegmentsGrowEvery колец. Одна сетка покрывает и
-    /// сантиметры под ногами, и десятки километров по горизонту, при линейном
-    /// росте числа треугольников. Радиусы задаёт вызывающий (обычно —
-    /// дистанция камеры SceneView): это и есть «переменный размер, зум».
+    /// Geometry is a radial grid (rings) in the ENU tangent plane: ring i has a
+    /// geometrically progressing radius and a segment count that doubles every
+    /// SegmentsGrowEvery rings. One grid covers both centimetres underfoot and
+    /// tens of kilometres to the horizon while the triangle count grows linearly.
+    /// The caller sets the radii (usually the SceneView camera distance): this is
+    /// the "variable size, zoom".
     ///
-    /// Вершины локальны относительно ОПОРНОЙ ТОЧКИ ФРЕЙМА (x=север,
-    /// y=зенит, z=восток), а не центра планеты: координаты километровые, float
-    /// не теряет сантиметры. null Terrain — гладкая сфера, высоты нулевые.
+    /// Vertices are local to the FRAME ANCHOR POINT (x = north, y = zenith,
+    /// z = east), not to the planet centre: coordinates are in kilometres, so
+    /// float keeps centimetres. null Terrain = smooth sphere, zero heights.
     /// </summary>
     public static class SurfacePreviewBuilder
     {
-        /// <summary>Радиальная сетка: сколько колец, сегментов и какого радиуса.</summary>
+        /// <summary>Radial grid: how many rings, segments and of what radius.</summary>
         public struct GridSettings
         {
-            /// <summary>Число колец (радиальных уровней детализации).</summary>
+            /// <summary>Number of rings (radial LOD levels).</summary>
             public int Rings;
 
-            /// <summary>Сегментов в первом кольце; дальше удваивается каждые SegmentsGrowEvery.</summary>
+            /// <summary>Segments in the first ring; doubles every SegmentsGrowEvery rings after that.</summary>
             public int BaseSegments;
 
-            /// <summary>Через сколько колец число сегментов удваивается.</summary>
+            /// <summary>How many rings between segment count doublings.</summary>
             public int SegmentsGrowEvery;
 
-            /// <summary>Радиус самого внутреннего кольца, м.</summary>
+            /// <summary>Radius of the innermost ring, m.</summary>
             public double InnerRadiusMeters;
 
-            /// <summary>Радиус самого внешнего кольца, м.</summary>
+            /// <summary>Radius of the outermost ring, m.</summary>
             public double OuterRadiusMeters;
         }
 
         /// <summary>
-        /// Сетка под окно камеры. visibleRadiusMeters — половина видимой высоты
-        /// кадра (для SceneView это её size). Кольца идут строго степенной
-        /// прогрессией с шагом 2 (иначе кольцо не содержит предыдущее и LOD
-        /// рассыпается), поэтому весь доступный масштаб — 2^(Rings−1), а
-        /// Inner/Outer подбираются под камеру: снаружи вчетверо больше видимого
-        /// (запас за горизонт), внутри — 2^(Rings−1) раз мельче.
+        /// Grid for a camera window. visibleRadiusMeters is half the visible frame
+        /// height (for the SceneView, its size). Rings follow a strict power-of-two
+        /// progression (otherwise a ring would not contain the previous one and the
+        /// LOD falls apart), so the total available scale is 2^(Rings-1), and
+        /// Inner/Outer are fitted to the camera: outside is 4x the visible radius
+        /// (margin beyond the horizon), inside is 2^(Rings-1) times finer.
         ///
-        /// Число вершин/треугольников от зума НЕ зависит: меняются только
-        /// радиусы. Это и делает зум дешёвым — перестроение стоит как один
-        /// кадр, а не как пересборка всей планеты.
+        /// The vertex/triangle count does NOT depend on zoom: only radii change.
+        /// That is what makes zoom cheap — a rebuild costs like one frame, not like
+        /// rebuilding the whole planet.
         /// </summary>
         public static GridSettings GridForVisibleRadius(double visibleRadiusMeters, int rings)
         {
@@ -66,8 +67,8 @@ namespace Galilego.Universe
             double inner = outer / span;
             if (inner < 1e-3d)
             {
-                // Слишком близко: не даём внутреннему кольцу уйти в микроны —
-                // там всё равно ничего не видно, а точность вершин падает.
+                // Too close: don't let the inner ring shrink to microns — nothing
+                // is visible there anyway, and vertex precision drops.
                 inner = 1e-3d;
                 outer = inner * span;
             }
@@ -82,7 +83,7 @@ namespace Galilego.Universe
             };
         }
 
-        /// <summary>Топология сетки: с какого индекса начинается кольцо и сколько в нём сегментов.</summary>
+        /// <summary>Grid topology: the start index of each ring and its segment count.</summary>
         private struct Layout
         {
             public int[] Starts;
@@ -114,10 +115,10 @@ namespace Galilego.Universe
             return layout;
         }
 
-        /// <summary>Число вершин сетки: центр плюс сумма сегментов по кольцам.</summary>
+        /// <summary>Vertex count: the centre plus the sum of segments across rings.</summary>
         public static int VertexCount(in GridSettings grid) => MakeLayout(grid).VertexCount;
 
-        /// <summary>Сегментов в кольце i (0 — самое внутреннее).</summary>
+        /// <summary>Segments in ring i (0 = innermost).</summary>
         public static int SegmentsForRing(in GridSettings grid, int ringIndex)
         {
             int growth = Math.Max(1, grid.SegmentsGrowEvery);
@@ -135,11 +136,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Собрать меш превью. anchorBodyFixed — body-fixed позиция ОПОРНОЙ ТОЧКИ
-        /// ФРЕЙМА (SurfaceFrame.AnchorBodyFixed), lat/lon — её координаты,
-        /// frameAltitudeMeters — её высота над радиусом (нужна, чтобы правильно
-        /// положить уровень моря в локальные оси). Меш садится локально
-        /// относительно фрейма.
+        /// Build the preview mesh. anchorBodyFixed is the body-fixed position of the
+        /// FRAME ANCHOR POINT (SurfaceFrame.AnchorBodyFixed), lat/lon are its
+        /// coordinates, frameAltitudeMeters is its altitude above the radius (needed
+        /// to place the sea level correctly in local axes). The mesh sits locally
+        /// relative to the frame.
         /// </summary>
         public static Mesh Build(
             OrbitingBody body, HeightfieldTerrain terrain,
@@ -179,7 +180,7 @@ namespace Galilego.Universe
                 int start = layout.Start(ring);
                 for (int s = 0; s < segments; s++)
                 {
-                    // Угол отсчитываем от севера: cos → север, sin → восток.
+                    // Angle is measured from north: cos → north, sin → east.
                     double a = (s / (double)segments) * Math.PI * 2d;
                     double n = Math.Cos(a) * r;
                     double e = Math.Sin(a) * r;
@@ -189,10 +190,10 @@ namespace Galilego.Universe
                 }
             }
 
-            // Сырое направление нужно и для позиции, и для uv1 игрового
-            // шейдера (он смотрит в body-fixed направление и строит по нему
-            // текстурные координаты). В локальные оси фрейма его переводим сразу,
-            // пока NativeArray ещё жив.
+            // The raw direction is needed both for the position and for uv1 of the
+            // game shader (it looks at the body-fixed direction and builds texture
+            // coordinates from it). Convert to local frame axes right away, while
+            // the NativeArray is still alive.
             for (int v = 0; v < count; v++)
             {
                 rawDirs[v] = directions[v];
@@ -251,9 +252,9 @@ namespace Galilego.Universe
 
             directions.Dispose();
 
-            // Уровень моря в локальных осях фрейма: опорная точка на море —
-            // это anchor с радиусом (R + seaLevel), её проекция на зенит минус
-            // проекция anchor. Разность радиусов — ровно seaLevel − frameAltitude.
+            // Sea level in local frame axes: the sea-level anchor has radius
+            // (R + seaLevel), so the zenith projection difference is exactly
+            // seaLevel − frameAltitude.
             double seaLocalY = seaLevel + TerrainPalette.SeaEpsilon(amplitude) - frameAltitudeMeters;
             if (hasSea && tintUnderwater)
             {
@@ -262,11 +263,10 @@ namespace Galilego.Universe
 
             RecomputeNormals(positions, normals, layout, grid);
 
-            // Раскладка вершин — РОВНО та, что ждёт игровой
-            // Galileo/PlanetSurface (его struct Attributes): uv2 = (сырая высота,
-            // косинус уклона к зениту, маска цвета CPU, деталь CPU). Собственный
-            // шейдер превью эти каналы не использовал; игровой использует все,
-            // и именно по ним считает текстуры, пляж и воду.
+            // Vertex layout is EXACTLY what the game's Galileo/PlanetSurface
+            // expects (its struct Attributes): uv2 = (raw height, slope cosine to
+            // zenith, CPU colour mask, CPU detail). The game shader uses all of
+            // them: textures, beach and water are computed from these channels.
             for (int v = 0; v < count; v++)
             {
                 extra[v] = new Vector4(
@@ -303,9 +303,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Запасной упрощённый материал на случай, если игровой шейдер рельефа
-        /// недоступен. Плоский цвет по вершинам + сетка масштаба: не похоже на
-        /// игру, но превью остаётся пригодным, а не чёрным.
+        /// Fallback simplified material for when the game terrain shader is
+        /// unavailable. Flat vertex colour + a scale grid: it doesn't look like
+        /// the game, but the preview stays usable instead of black.
         /// </summary>
         public static Material CreateFallbackMaterial()
         {
@@ -329,9 +329,9 @@ namespace Galilego.Universe
                 detail, terrain.ColorDetailStrength, latitudeRadians,
                 terrain.ColorRockHeightMin, terrain.BeachHeightMeters);
 
-            // Под водой дно чуть синее: иначе океан неотличим от суши, а превью
-            // показывает ~70% «суши» из подводного дна и вводит в заблуждение.
-            // Порог — тот же SeaEpsilon, что у палитры и у шейдера.
+            // Underwater ground is tinted blue, otherwise the ocean is
+            // indistinguishable from land. The threshold is the same SeaEpsilon
+            // used by the palette and the shader.
             return tintUnderwater && rawHeight < seaLevel + TerrainPalette.SeaEpsilon(amplitude)
                 ? Color.Lerp(c, TerrainPalette.Sea, 0.55f)
                 : c;
@@ -350,9 +350,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Нормали центральными разностями по готовой позиции: дёшево, и меш
-        /// сам себе опорный (вторая выборка шума не нужна). Соседи берутся из
-        /// той же топологии, что и треугольники, — индексы не расходятся.
+        /// Normals by central differences over the built positions: cheap, and the
+        /// mesh is its own reference (no second noise sample needed). Neighbours are
+        /// taken from the same topology as the triangles, so indices never diverge.
         /// </summary>
         private static void RecomputeNormals(
             Vector3[] positions, Vector3[] normals, in Layout layout, in GridSettings grid)
@@ -388,7 +388,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Индекс сегмента в кольце countSeg, ближайший по доле к s/segments.</summary>
+        /// <summary>Segment index in a ring of countSeg, nearest by fraction to s/segments.</summary>
         private static int Nearest(int countSeg, int segments, int s)
         {
             int index = (int)((long)s * countSeg / segments);
@@ -400,8 +400,8 @@ namespace Galilego.Universe
             int first = layout.Seg(0);
             int rings = layout.Segments.Length;
 
-            // Верхняя граница: два треугольника на каждый шаг. Фактически
-            // вырожденные пропускаем, поэтому массив ужимается в конце.
+            // Upper bound: two triangles per step. Degenerate ones are actually
+            // skipped, so the array is shrunk at the end.
             int capacity = first;
             for (int ring = 1; ring < rings; ring++)
             {
@@ -411,7 +411,7 @@ namespace Galilego.Universe
             var triangles = new int[capacity * 3];
             int t = 0;
 
-            // Веер центра в первое кольцо.
+            // Centre fan into the first ring.
             for (int s = 0; s < first; s++)
             {
                 triangles[t++] = 0;
@@ -419,10 +419,9 @@ namespace Galilego.Universe
                 triangles[t++] = layout.Start(0) + s;
             }
 
-            // Квады между соседними кольцами. Обход против часовой стрелки
-            // (сверху, +Y): cross(v1−v0, v2−v0) смотрит на наблюдателя, значит
-            // грань лицевая — иначе превью не видно с Cull Back (проверено на
-            // геометрических нормалях всех 24256 треугольников).
+            // Quads between neighbouring rings. Counter-clockwise winding (viewed
+            // from above, +Y): cross(v1−v0, v2−v0) faces the viewer, so the face is
+            // front-facing — otherwise the preview is invisible with Cull Back.
             for (int ring = 1; ring < rings; ring++)
             {
                 int innerSeg = layout.Seg(ring - 1);
@@ -433,9 +432,9 @@ namespace Galilego.Universe
 
                 for (int s = 0; s < steps; s++)
                 {
-                    // (s + 1) по модулю steps: иначе на последнем шаге индекс
-                    // уезжает на начало СЛЕДУЮЩЕГО кольца (на 1..Seg(ring)
-                    // вне диапазона) — Unity молча отбрасывает весь меш.
+                    // (s + 1) modulo steps: otherwise on the last step the index runs
+                    // into the start of the NEXT ring (1..Seg(ring) out of range) and
+                    // Unity silently drops the whole mesh.
                     int s1 = (s + 1) % steps;
                     int a0 = innerStart + ((int)((long)s * innerSeg / steps));
                     int a1 = innerStart + ((int)((long)s1 * innerSeg / steps));
@@ -444,8 +443,8 @@ namespace Galilego.Universe
 
                     if (a0 == a1)
                     {
-                        // Внутреннее ребро схлопнулось (сегментов снаружи вдвое
-                        // больше): квад вырожден в один треугольник.
+                        // Inner edge collapsed (twice as many segments outside): the
+                        // quad degenerated into a single triangle.
                         triangles[t++] = a0;
                         triangles[t++] = b1;
                         triangles[t++] = b0;

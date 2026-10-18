@@ -5,10 +5,10 @@ using Galilego.Core;
 namespace Galilego.Spacecraft.Solver
 {
     /// <summary>
-    /// Твёрдое тело детали в решателе фазы 2. Масса и главные моменты (в осях тела),
-    /// состояние: центр масс в кадре решателя, скорость, ориентация тела (тело → кадр),
-    /// угловая скорость в осях тела. Внешние сила и момент задаются перед шагом и
-    /// постоянны на шаге. Контакты с землёй — фаза 3, здесь их нет.
+    /// Rigid body of a part in the solver. Mass and principal moments (in body axes),
+    /// state: center of mass in the solver frame, velocity, body orientation (body → frame),
+    /// angular velocity in body axes. External force and torque are set before the step and
+    /// constant over it. Ground contacts are handled elsewhere, not here.
     /// </summary>
     public sealed class RigidBody
     {
@@ -22,7 +22,7 @@ namespace Galilego.Spacecraft.Solver
 
         public Vector3d ForceWorld;
         public Vector3d TorqueBody;
-        /// <summary>Точки контакта с поверхностью в осях тела, от центра масс (м). Пусто — тело без контакта.</summary>
+        /// <summary>Surface contact points in body axes from the center of mass (m). Empty — body has no contact.</summary>
         public Vector3d[] ContactPointsBody = new Vector3d[0];
 
         public RigidBody(double mass, Vector3d principalInertia, Vector3d position, QuaternionD orientation)
@@ -47,7 +47,7 @@ namespace Galilego.Spacecraft.Solver
             TorqueBody = Vector3d.Zero;
         }
 
-        /// <summary>Обратный тензор инерции, применённый к мировому вектору: I⁻¹·v (мир).</summary>
+        /// <summary>Inverse inertia tensor applied to a world vector: I⁻¹·v (world).</summary>
         public Vector3d ApplyInverseInertiaWorld(QuaternionD orientation, Vector3d worldVector)
         {
             Vector3d body = orientation.Conjugated.Rotate(worldVector);
@@ -60,9 +60,9 @@ namespace Galilego.Spacecraft.Solver
     }
 
     /// <summary>
-    /// Жёсткий стык: три неколлинеарные точки совпадают на двух телах. Девять
-    /// скалярных ограничений ранга 6 фиксируют относительное положение и ориентацию.
-    /// Точки задаются в осях тел относительно их центров масс.
+    /// Rigid joint: three non-collinear points coincide on both bodies. Nine
+    /// scalar constraints of rank 6 fix relative position and orientation.
+    /// Points are given in body axes relative to the centers of mass.
     /// </summary>
     public sealed class RigidJoint
     {
@@ -86,11 +86,11 @@ namespace Galilego.Spacecraft.Solver
     }
 
     /// <summary>
-    /// Пружинный ползун (нога): тело B скользит вдоль оси, закреплённой на теле A.
-    /// Связи: две поперечные (точка B на оси A), три на поворот (относительная ориентация
-    /// фиксирована), упругость и демпфер вдоль оси (явно, по конфигурации начала шага),
-    /// односторонние ограничения хода [min, max] относительно длины покоя.
-    /// s — координата вдоль оси: (pB − pA)·e; сжатие — s уменьшается.
+    /// Spring slider (leg): body B slides along an axis fixed on body A.
+    /// Constraints: two lateral (point B on axis A), three rotational (relative orientation
+    /// fixed), stiffness and damper along the axis (explicit, from the step-start configuration),
+    /// one-sided travel limits [min, max] relative to the rest length.
+    /// s is the coordinate along the axis: (pB − pA)·e; compression decreases s.
     /// </summary>
     public sealed class SliderJoint
     {
@@ -127,10 +127,10 @@ namespace Galilego.Spacecraft.Solver
     }
 
     /// <summary>
-    /// Решатель твёрдых тел фазы 2: фиксированный шаг dt, явное интегрирование
-    /// скоростей, RK4 для вращения тела (уравнения Эйлера в осях тела), XPBD-проекция
-    /// жёстких стыков (compliance α = 0) по скалярным ограничениям вдоль мировых осей.
-    /// Внутренние силы стыков сохраняют линейный импульс системы точно.
+    /// Rigid body solver: fixed step dt, explicit velocity integration,
+    /// RK4 for body rotation (Euler equations in body axes), XPBD projection
+    /// of rigid joints (compliance α = 0) over scalar constraints along world axes.
+    /// Joint internal forces conserve the system's linear momentum exactly.
     /// </summary>
     public sealed class RigidAssemblySolver
     {
@@ -181,8 +181,8 @@ namespace Galilego.Spacecraft.Solver
         }
 
         /// <summary>
-        /// Жёсткий стык в мировой точке pivot: три точки pivot, pivot + ex·L, pivot + ey·L
-        /// переводятся в оси обоих тел при текущем состоянии.
+        /// Rigid joint at the world point pivot: three points pivot, pivot + ex·L, pivot + ey·L
+        /// are converted into both bodies' axes at the current state.
         /// </summary>
         public int AddRigidJoint(int bodyA, int bodyB, Vector3d pivotWorld, double spacingMeters = 1d)
         {
@@ -213,9 +213,9 @@ namespace Galilego.Spacecraft.Solver
         }
 
         /// <summary>
-        /// Ползун: ось axisWorld закреплена на теле A через точку anchorWorld; тело B
-        /// скользит вдоль неё. Длина покоя — текущая координата s. Ход — относительно неё.
-        /// dampingRatio — ζ, c = 2ζ·√(k·m_эфф).
+        /// Slider: axis axisWorld is fixed on body A through point anchorWorld; body B
+        /// slides along it. Rest length is the current coordinate s. Travel is relative to it.
+        /// dampingRatio is ζ, c = 2ζ·√(k·m_eff).
         /// </summary>
         public int AddSliderJoint(int bodyA, int bodyB, Vector3d anchorWorld, Vector3d axisWorld,
             double minTravel, double maxTravel, double stiffness, double dampingRatio,
@@ -237,12 +237,12 @@ namespace Galilego.Spacecraft.Solver
             Vector3d anchorA = a.Orientation.Conjugated.Rotate(anchorWorld - a.Position);
             Vector3d anchorB = b.Orientation.Conjugated.Rotate(anchorWorld - b.Position);
             Vector3d axisLocal = a.Orientation.Conjugated.Rotate(e);
-            // Длина покоя — по точкам крепления (не по центрам тел): s = (pB − pA)·e.
+            // Rest length is measured between the attachment points (not body centers): s = (pB − pA)·e.
             double s0 = Vector3d.Dot(
                 (b.Position + b.Orientation.Rotate(anchorB)) - (a.Position + a.Orientation.Rotate(anchorA)), e);
             double mEff = (a.Mass * b.Mass) / (a.Mass + b.Mass);
-            // ζ задаётся по ОПОРНОМУ режиму (как садятся ноги): колеблется масса
-            // аппарата на ногу, а не приведённая масса воздушного режима (ТЗ 6.7).
+            // ζ is given for the REFERENCE mode (landing): it oscillates the craft
+            // mass per leg, not the air-mode reduced mass.
             double referenceMass = damperReferenceMass > 0d ? damperReferenceMass : mEff;
             double damping = 2d * dampingRatio * Math.Sqrt(stiffness * referenceMass);
             QuaternionD relative = a.Orientation.Conjugated * b.Orientation;
@@ -254,7 +254,7 @@ namespace Galilego.Spacecraft.Solver
 
         public IReadOnlyList<SliderJoint> Sliders => sliders;
 
-        /// <summary>Координата ползуна s = (pB − pA)·e в текущем состоянии.</summary>
+        /// <summary>Slider coordinate s = (pB − pA)·e at the current state.</summary>
         public double SliderCoordinate(int sliderIndex)
         {
             SliderJoint j = sliders[sliderIndex];
@@ -266,7 +266,7 @@ namespace Galilego.Spacecraft.Solver
             return Vector3d.Dot(pb - pa, e);
         }
 
-        /// <summary>Наибольшее расхождение якорных точек стыка, м (мировой кадр, текущее состояние).</summary>
+        /// <summary>Largest anchor point separation of the joint, m (world frame, current state).</summary>
         public double JointSeparation(int jointIndex)
         {
             RigidJoint j = joints[jointIndex];
@@ -311,7 +311,7 @@ namespace Galilego.Spacecraft.Solver
             return e;
         }
 
-        /// <summary>Один шаг фиксированной длительности dt (sequential impulses, вариант A).</summary>
+        /// <summary>One fixed-length step dt (sequential impulses).</summary>
         public void Step()
         {
             int n = bodies.Count;
@@ -337,8 +337,8 @@ namespace Galilego.Spacecraft.Solver
                 sliders[s].LambdaHigh = 0d;
             }
 
-            // Контакты генерируются по предсказанной конфигурации (x* от текущих скоростей),
-            // чтобы поймать касание внутри шага.
+            // Contacts are generated from the predicted configuration (x* from current velocities),
+            // to catch touch within the step.
             var predictedPosition = new Vector3d[n];
             var predictedOrientation = new QuaternionD[n];
             for (int i = 0; i < n; i++)
@@ -361,10 +361,8 @@ namespace Galilego.Spacecraft.Solver
                 LastFrictionImpulseSum = 0d;
             }
 
-            // Единый Gauss–Seidel: стыки, ползуны и контакты в ОДНОЙ петле, чтобы импульс
-            // ходил по цепочке контакт→нога→ползун→бак ВНУТРИ шага. Раздельные петли
-            // (сначала связи, потом контакты) давали систематическое сползание: трение на
-            // лёгкой ноге насыщалось по её массе, а бак получал реакцию лишь следующим шагом.
+            // Single Gauss–Seidel: joints, sliders and contacts in ONE loop so impulse
+            // travels the contact→leg→slider→tank chain WITHIN the step.
             for (int it = 0; it < iterations; it++)
             {
                 for (int j = 0; j < joints.Count; j++)
@@ -407,8 +405,8 @@ namespace Galilego.Spacecraft.Solver
                 LastFrictionImpulseSum = frictionSum;
             }
 
-            // Позиции — по ИТОГОВЫМ скоростям шага; ориентация — по средней ω (O(dt²)),
-            // чтобы импульсы связей и контактов были согласованы с перемещением.
+            // Positions from the step's FINAL velocities; orientation from the mean ω (O(dt²)),
+            // so constraint and contact impulses are consistent with the displacement.
             for (int i = 0; i < n; i++)
             {
                 RigidBody b = bodies[i];
@@ -417,7 +415,7 @@ namespace Galilego.Spacecraft.Solver
                     * RotationExponential(((wStart[i] + b.AngularVelocityBody) * 0.5d) * timeStep)).Normalized;
             }
 
-            // Проекции по положению: проникновение контактов и жёсткие упоры хода.
+            // Position projections: contact penetration and hard travel stops.
             if (contacts != null)
             {
                 for (int it = 0; it < iterations; it++)
@@ -448,8 +446,8 @@ namespace Galilego.Spacecraft.Solver
         }
 
         /// <summary>
-        /// Проекция нарушения хода ползуна по положению (односторонняя). C_lo = s − (s0+min) ≥ 0,
-        /// C_hi = (s0+max) − s ≥ 0. Наружу упора — вдоль оси e со знаком, увеличивающим s.
+        /// Position projection of a slider travel violation (one-sided). C_lo = s − (s0+min) ≥ 0,
+        /// C_hi = (s0+max) − s ≥ 0. Outward from the stop is along axis e with the sign that increases s.
         /// </summary>
         private void ProjectSliderLimits(SliderJoint j, Vector3d[] position, QuaternionD[] orientation)
         {
@@ -504,8 +502,8 @@ namespace Galilego.Spacecraft.Solver
         }
 
         /// <summary>
-        /// Импульс вдоль мировой оси e в точке якоря k стыка: обнуляет относительную скорость
-        /// точек вдоль e с Baumgarte-смещением −(β/dt)·C, C = (pA − pB)·e в средней конфигурации.
+        /// Impulse along world axis e at joint anchor point k: zeroes the relative velocity
+        /// of the points along e with Baumgarte bias −(β/dt)·C, C = (pA − pB)·e at the mid configuration.
         /// </summary>
         private void ApplyJointAxisImpulse(RigidJoint joint, int anchorIndex, Vector3d axis,
             Vector3d[] xMid, QuaternionD[] qMid)
@@ -530,7 +528,7 @@ namespace Galilego.Spacecraft.Solver
                 return;
             }
 
-            // Связь на средней скорости шага: (vn_pre + vn_end)/2 = −(β/dt)·C.
+            // Constraint on the step's mean velocity: (vn_pre + vn_end)/2 = −(β/dt)·C.
             double lambda = -(vn + (JointBaumgarte / timeStep) * c) / w;
             Vector3d impulse = axis * lambda;
             ApplyVelocityImpulse(ia, qa, ra, impulse);
@@ -547,7 +545,7 @@ namespace Galilego.Spacecraft.Solver
                 + Vector3d.Dot(rxb, b.ApplyInverseInertiaWorld(qb, rxb));
         }
 
-        /// <summary>Упругость и демпфер ползуна вдоль оси: явно, по скоростям и конфигурации начала шага.</summary>
+        /// <summary>Slider stiffness and damper along the axis: explicit, from the velocities and configuration at step start.</summary>
         private void ApplySliderSpring(SliderJoint j, Vector3d[] x, QuaternionD[] q)
         {
             Vector3d e = q[j.BodyA].Rotate(j.AxisA);
@@ -562,8 +560,8 @@ namespace Galilego.Spacecraft.Solver
         }
 
         /// <summary>
-        /// Связи ползуна в средней конфигурации: две поперечные, три поворотные (Baumgarte по
-        /// ошибке относительной ориентации), два односторонних ограничения хода.
+        /// Slider constraints at the mid configuration: two lateral, three rotational (Baumgarte on
+        /// the relative orientation error), two one-sided travel limits.
         /// </summary>
         private void SolveSlider(SliderJoint j, Vector3d[] xMid, QuaternionD[] qMid)
         {
@@ -598,7 +596,7 @@ namespace Galilego.Spacecraft.Solver
                 ApplyVelocityImpulse(ib, qb, rb, u * (-lambda));
             }
 
-            // Поворот: целевая ориентация B = A ⊗ rel0; ошибка — векторная часть E = qB ⊗ conj(target).
+            // Rotation: target orientation B = A ⊗ rel0; error is the vector part E = qB ⊗ conj(target).
             QuaternionD target = qa * j.RelativeRest;
             QuaternionD err = qb * target.Conjugated;
             double sign = err.W >= 0d ? 1d : -1d;
@@ -622,13 +620,13 @@ namespace Galilego.Spacecraft.Solver
                 ApplyAngularImpulse(ia, qa, w3 * (-lambda));
             }
 
-            // Ограничения хода. s = (pB − pA)·e; C_lo = s − (s0 + min), C_hi = (s0 + max) − s.
+            // Travel limits. s = (pB − pA)·e; C_lo = s − (s0 + min), C_hi = (s0 + max) − s.
             double s = Vector3d.Dot(pb - pa, e);
             double vs = Vector3d.Dot(PointVelocity(ib, qb, rb) - PointVelocity(ia, qa, ra), e);
             double wAx = PairEffectiveMass(a, b, qa, qb, ra, rb, e);
             if (wAx > 0d)
             {
-                // Ход — жёсткий упор: полная коррекция (β = 1) по положению, без смягчения.
+                // Travel is a hard stop: full correction (β = 1) by position, no softening.
                 double clo = s - (j.RestCoordinate + j.MinTravel);
                 double delta = -(vs + ((1d / timeStep) * clo)) / wAx;
                 double newAcc = Math.Max(0d, j.LambdaLow + delta);
@@ -655,17 +653,17 @@ namespace Galilego.Spacecraft.Solver
                 b.ApplyInverseInertiaWorld(q, angularImpulseWorld));
         }
 
-        /// <summary>Коэффициент Baumgarte для дрейфа якорей стыка (безразмерный, 0..1).</summary>
+        /// <summary>Baumgarte coefficient for joint anchor drift (dimensionless, 0..1).</summary>
         public double JointBaumgarte { get; set; } = 0.2d;
 
-        /// <summary>Геометрия контакта; null — контактов нет (фаза 2 без изменений).</summary>
+        /// <summary>Contact geometry; null — no contacts.</summary>
         public IContactGround Ground { get; set; }
         public double StaticFriction { get; set; } = 0.7d;
         public double KineticFriction { get; set; } = 0.5d;
         public double Restitution { get; set; } = 0d;
         public double ImpactThreshold { get; set; } = 0.01d;
 
-        /// <summary>Телеметрия последнего шага: число контактов и суммы импульсов (Н·с) — для отладки.</summary>
+        /// <summary>Last-step telemetry: contact count and impulse sums (N·s) — for debugging.</summary>
         public int LastContactCount { get; private set; }
         public double LastNormalImpulseSum { get; private set; }
         public double LastFrictionImpulseSum { get; private set; }
@@ -682,8 +680,8 @@ namespace Galilego.Spacecraft.Solver
         }
 
         /// <summary>
-        /// Генерация контактов по конфигурации: точки тела ниже поверхности.
-        /// Решение импульсов — в общей петле Step (стыки, ползуны, контакты вместе).
+        /// Generates contacts from a configuration: body points below the surface.
+        /// Impulses are solved in the common Step loop (joints, sliders, contacts together).
         /// </summary>
         private List<ContactRecord> DetectContacts(Vector3d[] position, QuaternionD[] orientation)
         {
@@ -755,9 +753,9 @@ namespace Galilego.Spacecraft.Solver
             Vector3d rxt = Vector3d.Cross(c.R, t);
             double wt = (1d / b.Mass) + Vector3d.Dot(rxt, b.ApplyInverseInertiaWorld(q, rxt));
 
-            // Накопленный за подшаг тангенциальный импульс конуса Кулона: сумма по итерациям,
-            // а не добавка каждую итерацию. Залипание — пока суммарный импульс внутри μs·λn;
-            // иначе скольжение — импульс на границе конуса μk·λn против движения.
+            // Accumulated tangential impulse of the Coulomb cone: summed over iterations,
+            // not a per-iteration increment. Sticking while the total impulse is inside μs·λn;
+            // otherwise sliding — impulse on the cone boundary μk·λn against motion.
             Vector3d need = t * (-vtMag / wt);
             Vector3d total = c.FrictionAcc + need;
             double magnitude = total.Magnitude;
@@ -810,7 +808,7 @@ namespace Galilego.Spacecraft.Solver
             b.AngularVelocityBody = b.AngularVelocityBody + q.Conjugated.Rotate(dOmegaWorld);
         }
 
-        /// <summary>Суммарный момент импульса относительно начала мира: Σ(x×mv + R·I·ω_тела).</summary>
+        /// <summary>Total angular momentum about the world origin: Σ(x×mv + R·I·ω_body).</summary>
         public Vector3d AngularMomentum()
         {
             Vector3d l = Vector3d.Zero;
@@ -828,8 +826,8 @@ namespace Galilego.Spacecraft.Solver
         }
 
         /// <summary>
-        /// Поворот на вектор rotationVector (рад, мировой или телесный — безразлично для малых
-        /// приращений здесь: вызывающий использует ту же ось): exp(θ/2) как кватернион.
+        /// Rotation by vector rotationVector (rad, world or body — irrelevant for the small
+        /// increments here since the caller uses the same axis): exp(θ/2) as a quaternion.
         /// </summary>
         public static QuaternionD RotationExponential(Vector3d rotationVector)
         {
@@ -845,7 +843,7 @@ namespace Galilego.Spacecraft.Solver
             return new QuaternionD(rotationVector.X * s, rotationVector.Y * s, rotationVector.Z * s, Math.Cos(half));
         }
 
-        /// <summary>Один шаг RK4 для уравнений Эйлера (τ постоянен на шаге): ω̇ = (τ − ω×Iω)/I.</summary>
+        /// <summary>One RK4 step for the Euler equations (τ constant over the step): ω̇ = (τ − ω×Iω)/I.</summary>
         public static Vector3d IntegrateEulerRk4(Vector3d omega, Vector3d torqueBody, Vector3d inertia, double dt)
         {
             Vector3d k1 = EulerRate(omega, torqueBody, inertia);

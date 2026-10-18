@@ -4,12 +4,12 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Редактор дороги: точки видны в Scene view, их можно двигать, добавлять
-    /// Shift+кликом и удалять кнопкой в инспекторе.
+    /// Road editor: points are visible in the Scene view; they can be moved, added
+    /// with Shift+click and removed with the inspector button.
     ///
-    /// Shift+клик ставит точку на горизонтальную плоскость места (Y = 0 места).
-    /// На ровной площадке это и есть земля. Если стоите на склоне — поставьте
-    /// точку, потом подправьте её хендлом: высота всё равно берётся с рельефа.
+    /// Shift+click places a point on the horizontal plane of the site (site Y = 0).
+    /// On a flat pad that is the ground. On a slope, place the point and adjust it
+    /// with the handle: the height is taken from the terrain anyway.
     /// </summary>
     [CustomEditor(typeof(SurfaceRoad))]
     public sealed class SurfaceRoadEditor : UnityEditor.Editor
@@ -140,7 +140,7 @@ namespace Galilego.Universe.EditorTools
                 }
             }
 
-            // Клики по пустому месту не должны снимать выделение с дороги.
+            // Clicks on empty space must not deselect the road.
             if (e.type == EventType.Layout)
             {
                 HandleUtility.AddDefaultControl(controlId);

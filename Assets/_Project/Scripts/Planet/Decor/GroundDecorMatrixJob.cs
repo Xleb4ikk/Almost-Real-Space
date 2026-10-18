@@ -8,10 +8,10 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Матрицы инстансов декора на GPU-инстансинг: считается в Burst параллельно
-    /// (главный поток больше не композирует TRS на каждую травинку каждый кадр).
-    /// Near — локальный TRS × трансформ чанка; Far (billboard) — доворот к камере
-    /// вокруг нормали поверхности + кривая размера по дистанции.
+    /// Decor instance matrices for GPU instancing, computed in Burst in parallel
+    /// (the main thread no longer composes a TRS for every blade each frame).
+    /// Near — local TRS × chunk transform; Far (billboard) — turns toward the camera
+    /// around the surface normal + a size curve by distance.
     /// </summary>
     [BurstCompile]
     public struct GroundDecorMatrixJob : IJobParallelFor
@@ -19,10 +19,10 @@ namespace Galilego.Universe
         [ReadOnly]
         public NativeArray<GroundDecorInstance> Instances;
 
-        /// <summary>NativeSlice, а не NativeArray: дальние деревья всех чанков
-        /// пишутся в один общий буфер, каждый — в свой отрезок. Safety-контроль
-        /// отключён, потому что отрезки пересекаются по underlying-аллокации
-        /// и джобы из разных чанков идут параллельно.</summary>
+        /// <summary>NativeSlice, not NativeArray: the far trees of all chunks
+        /// are written into one shared buffer, each into its own segment. The safety
+        /// check is disabled because the segments overlap in the underlying allocation
+        /// and jobs from different chunks run in parallel.</summary>
         [WriteOnly, NativeDisableContainerSafetyRestriction]
         public NativeSlice<Matrix4x4> WorldMatrices;
 
@@ -34,40 +34,40 @@ namespace Galilego.Universe
         public float FarDistance;
         public float BillboardNearScale;
         public float BillboardFarScale;
-        /// <summary>Дистанция, с которой дальний LOD начинает расти (∝ d).
-        /// Ставится в DensityCoreMeters слоя: до края плоского ядра плотность
-        /// полная и рост размера не нужен, а начинать его раньше — значит
-        /// получить скачок силуэта на границе near→far.</summary>
+        /// <summary>Distance at which the far LOD starts to grow (∝ d).
+        /// Set to the layer's DensityCoreMeters: up to the edge of the flat core the
+        /// density is full and size growth is not needed, and starting it earlier would
+        /// cause a silhouette jump at the near→far boundary.</summary>
         public float DistanceCore;
-        /// <summary>Доля высоты меша до пивота (0 — пивот в основании, как у
-        /// клинка травы; 0.5 — центрированный квад). Биллборд поднимаем на неё,
-        /// чтобы дальний LOD стоял на земле так же, как ближний.</summary>
+        /// <summary>Mesh height fraction up to the pivot (0 — pivot at the base, as on a
+        /// grass blade; 0.5 — centered quad). The billboard is raised by it
+        /// so the far LOD stands on the ground the same way as the near one.</summary>
         public float BillboardPivotFraction;
-        /// <summary>Текущее время (Time.time) и длительность прорастания травинки.
-        /// Масштаб растёт от 0 к 1 за FadeSeconds от её BirthTime — новое
-        /// появляется поштучно и плавно, без полос и «пачек».</summary>
+        /// <summary>Current time (Time.time) and blade sprout duration.
+        /// Scale grows from 0 to 1 over FadeSeconds from its BirthTime — new blades
+        /// appear one by one and smoothly, without bands or «batches».</summary>
         public float Now;
         public float FadeSeconds;
-        /// <summary>Длительность ухода под землю (с). Инстансы с DeathTime &gt; 0
-        /// гаснут масштабом 1→0 за это время от своего DeathTime: выпавшие из
-        /// новой выборки травинки заходят в землю, а не исчезают кадр в кадр.</summary>
+        /// <summary>Duration of the sink under the ground (s). Instances with DeathTime &gt; 0
+        /// fade out with scale 1→0 over this time from their DeathTime: blades dropped from
+        /// the new selection sink into the ground instead of disappearing frame by frame.</summary>
         public float SinkSeconds;
 
-        /// <summary>Общий множитель размера (затухание у края радиуса, уход пула).
-        /// Действует только при ApplyGlobalScale: у остальных вызовов поля нулевые.</summary>
+        /// <summary>Global size multiplier (fade at the radius edge, pool retirement).
+        /// Only applied when ApplyGlobalScale; other callers leave the fields zero.</summary>
         public bool ApplyGlobalScale;
         public float GlobalScale;
 
-        /// <summary>Рост по дистанции до камеры (прокси деревьев): ScaleBoost &gt; 1 —
-        /// размер плавно растёт до ScaleBoost на дистанции BoostStart + BoostSpan.</summary>
+        /// <summary>Growth by distance to the camera (tree proxies): ScaleBoost &gt; 1 —
+        /// size grows smoothly up to ScaleBoost at the distance BoostStart + BoostSpan.</summary>
         public float ScaleBoost;
         public float BoostStart;
         public float BoostSpan;
 
-        /// <summary>Прореживание инстансов: обрабатывается каждый Stride-й.
-        /// 0 или 1 — без прореживания. На большой дистанции дерево занимает
-        /// 1-2 пикселя, поэтому рисовать его целиком — чистая трата CPU на
-        /// пересчёт матриц и GPU на инстансинг.</summary>
+        /// <summary>Instance decimation: every Stride-th is processed.
+        /// 0 or 1 — no decimation. At long distance a tree occupies
+        /// 1-2 pixels, so drawing it whole is a pure waste of CPU on
+        /// matrix recalculation and GPU on instancing.</summary>
         public int Stride;
 
         public void Execute(int index)
@@ -78,16 +78,16 @@ namespace Galilego.Universe
             float upLength = math.length(localUp);
             localUp = upLength > 1e-6f ? localUp / upLength : new float3(0f, 1f, 0f);
             float scale = math.max(1e-4f, instance.Scale);
-            // Прорастание: от BirthTime масштаб растёт 0 → 1 за FadeSeconds.
+            // Sprouting: from BirthTime the scale grows 0 → 1 over FadeSeconds.
             if (FadeSeconds > 0f && instance.BirthTime > 0f)
             {
                 scale *= math.saturate((Now - instance.BirthTime) / FadeSeconds);
             }
 
-            // Уход под землю: от DeathTime масштаб падает 1 → 0 за SinkSeconds
-            // (пивот у травинки в основании, так что это визуально «заходит в
-            // землю» тем же движением, каким появляется). Мёртвые инстансы
-            // схлопываются в точку — их матрица вырожденная, GPU их не видит.
+            // Sinking: from DeathTime the scale falls 1 → 0 over SinkSeconds
+            // (a blade's pivot is at the base, so visually it «sinks into the
+            // ground» with the same motion it appears with). Dead instances
+            // collapse to a point — their matrix is degenerate and the GPU does not draw them.
             if (SinkSeconds > 0f && instance.DeathTime > 0f)
             {
                 scale *= math.saturate((instance.DeathTime + SinkSeconds - Now) / SinkSeconds);
@@ -118,25 +118,15 @@ namespace Galilego.Universe
                 float distance = math.length(toCamera);
                 float blend = math.saturate((distance - NearDistance) / math.max(1f, FarDistance - NearDistance));
 
-                // ЗАКОН ПОКРЫТИЯ. Раньше размер дальнего LOD рос линейно между
-                // Near/FarScale по blend, а плотность гасла экспонентой — вместе
-                // заполнение экрана n·g² падало в разы быстрее, чем его мог
-                // закрыть рост размера, и дальняя зона выглядела лысой. Теперь
-                // размер ∝ дистанции (ограничен BillboardFarScale), что в паре с
-                // плотностью ∝ (R/d)² в GroundDecorDistribution.Falloff даёт
-                // постоянное покрытие. Рост стартует не с NearDistance, а с
-                // DistanceCore: между ними дальний квад ещё не вырос, и если
-                // начать растить с NearDistance — на переходе near→far будет
-                // видимый скачок силуэта.
+                // Size ∝ distance (capped by BillboardFarScale) pairs with density
+                // ∝ (R/d)² for constant coverage; growth starts at DistanceCore.
                 float grow = math.min(
                     BillboardFarScale,
                     math.max(1f, distance / math.max(1f, DistanceCore)));
                 float size = scale * grow;
 
-                // Ориентация тоже морфится: у ближней границы дальний LOD стоит
-                // так же, как 3D-клинок (yaw+наклон), к дальней — доворачивается
-                // к камере. Мгновенный разворот на границе near→far давал щелчок
-                // силуэта; теперь переход невидим.
+                // Orientation morphs too: at the near edge the far LOD stands like a
+                // 3D blade, toward the far edge it turns to face the camera.
                 quaternion rotation = billboardRotation;
                 if (blend < 1f)
                 {

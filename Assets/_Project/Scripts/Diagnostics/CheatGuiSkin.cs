@@ -3,21 +3,16 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Скин чит-меню: панели, кнопки, тумблер и слайдер рисуются текстурами,
-    /// которые генерируются кодом (скруглённый прямоугольник по SDF, 9-slice).
-    ///
-    /// Зачем свой, а не GUI.skin: дефолтный скин редактора тянет за собой
-    /// оформление темы (и почти прозрачные кнопки в тёмной сцене), а
-    /// GUI.Window рисует фон ИМЕННО тем стилем, который передан третьим
-    /// параметром — стиль-лейбл даёт окно без фона. Свои стили делают вид
-    /// одинаковым в любой теме/сборке и не тянут ассетов.
+    /// Cheat menu skin: panels, buttons, toggles and sliders are drawn with textures
+    /// generated in code (SDF rounded rectangle, 9-slice). Custom styles instead of
+    /// GUI.skin keep the look identical in any theme/build, pull no assets, and avoid
+    /// the editor default theme's near-transparent buttons in a dark scene.
+    /// GUI.Window draws its background with exactly the style passed as the third
+    /// parameter, so a label style gives a backgroundless window.
     /// </summary>
     internal static class CheatGuiSkin
     {
-        // Размер текстуры и кромки подобраны под высоту кнопки (30 px): при
-        // бордере 14 px внутренняя заливка оставалась 2-мя пикселями, и весь
-        // контрол рисовался цветом кромки — кнопки выглядели серыми. Теперь
-        // бордер 6 px, и заливка занимает большую часть высоты.
+        // Texture size and border are sized to the button height (30 px).
         private const int TextureSize = 24;
         private const int TextureBorder = 6;
         private const float CornerRadius = 6f;
@@ -40,10 +35,10 @@ namespace Galilego.Universe
 
         private static bool built;
 
-        // Текстуры держим в статических полях: созданный в рантайме Texture2D
-        // живёт только пока на него есть управляемая ссылка, а GUIStyle хранит
-        // нативный указатель. Собранный стиль без такой ссылки — источник
-        // «мигающего» фона после сборки мусора, поэтому ссылки обязательны.
+        // Textures live in static fields: a runtime-created Texture2D survives only
+        // while a managed reference exists, but GUIStyle holds a native pointer.
+        // Styles without such references make backgrounds flicker after GC, so the
+        // references are mandatory.
         private static Texture2D panelTexture;
         private static Texture2D buttonTexture;
         private static Texture2D buttonHoverTexture;
@@ -55,7 +50,7 @@ namespace Galilego.Universe
 
         public static GUIStyle Panel { get; private set; }
 
-        /// <summary>Стиль заголовка окна: несёт фон панели и рисует заголовок.</summary>
+        /// <summary>Window title style: carries the panel background and draws the title.</summary>
         public static GUIStyle WindowTitle { get; private set; }
 
         public static GUIStyle Label { get; private set; }
@@ -75,12 +70,11 @@ namespace Galilego.Universe
         public static GUIStyle SliderThumb { get; private set; }
 
         /// <summary>
-        /// Собирает стили один раз. Флаг built ставится В КОНЦЕ: у проекта
-        /// отключён domain reload (Enter Play Mode Options = Disable Domain
-        /// Reload), статики переживают сеансы Play. Если сборка бросит
-        /// посередине, стиль с null-фоном залип бы навсегда и окно осталось бы
-        /// без фона до перезапуска редактора. Так один сбойный вызов
-        /// self-heal'ится следующим кадром.
+        /// Builds the styles once. The built flag is set LAST: domain reload is
+        /// disabled for this project (Enter Play Mode Options = Disable Domain
+        /// Reload), so statics survive Play sessions. If the build threw halfway,
+        /// styles with null backgrounds would stick for good; setting the flag last
+        /// lets a failed call self-heal on the next frame.
         /// </summary>
         public static void Build()
         {
@@ -102,9 +96,9 @@ namespace Galilego.Universe
             Panel.padding = new RectOffset(14, 14, 10, 10);
             Panel.wordWrap = false;
 
-            // Заголовок окна: GUI.Window рисует его стилем окна, и при
-            // MiddleLeft текст встаёт по центру высоты окна и налезает на
-            // контент. UpperLeft прижимает его к верхней кромке.
+            // Window title: GUI.Window draws it with the window style; with MiddleLeft
+            // the text centers over the window height and overlaps the content, so
+            // UpperLeft pins it to the top edge.
             WindowTitle = Filled(GUI.skin.window, panelTexture, TextAnchor.UpperLeft, TextAccent, 16, FontStyle.Bold);
             WindowTitle.padding = new RectOffset(14, 14, 8, 8);
 
@@ -207,8 +201,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Скруглённый прямоугольник с кромкой, готовый к 9-slice. Знак
-        /// расстояния (SDF) сглаживается по 1 px — иначе кромка «ступенчатая».
+        /// Rounded rectangle with an edge, ready for 9-slice. The SDF sign is
+        /// antialiased over 1 px — otherwise the edge looks stair-stepped.
         /// </summary>
         private static Texture2D RoundedRect(Color fill, Color edge)
         {
@@ -248,8 +242,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Цвет пикселя по знаку расстояния: снаружи прозрачно, кромка edge,
-        /// внутри fill.
+        /// Pixel color from the signed distance: transparent outside, edge color on
+        /// the border, fill inside.
         /// </summary>
         private static Color Shade(float distance, Color fill, Color edge)
         {

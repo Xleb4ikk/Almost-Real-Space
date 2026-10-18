@@ -2,7 +2,7 @@ using System;
 
 namespace Galilego.Core
 {
-    /// <summary>Legacy-кластер B9: вытеснено Spacecraft + SpacecraftOrbitIntegrator.</summary>
+    /// <summary>Legacy B9 cluster: superseded by Spacecraft + SpacecraftOrbitIntegrator.</summary>
     [Obsolete("Use Spacecraft with SpacecraftOrbitIntegrator instead. Legacy dependency chain: StepShip -> OrbitIntegrator -> RK4/CelestialBody.")]
     public sealed class CelestialBody
     {

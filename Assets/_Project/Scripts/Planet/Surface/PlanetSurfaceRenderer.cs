@@ -9,35 +9,35 @@ using UnityEngine.Rendering;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// РџР»Р°РЅРµС‚Р°СЂРЅС‹Р№ СЂРµРЅРґРµСЂ: cube-sphere СЃ quadtree LOD. Р—Р°РјРµРЅСЏРµС‚ СЃС‚Р°СЂС‹Р№ С‚Р°Р№Р»РѕРІС‹Р№
-    /// BodyTerrainView Рё РїСЂРёРјРёС‚РёРІ-СЃС„РµСЂСѓ.
+    /// Planetary surface renderer: cube-sphere with quadtree LOD.
     ///
-    /// Р“РµРѕРјРµС‚СЂРёСЏ: 6 РіСЂР°РЅРµР№ РєСѓР±Р° в†’ РµРґРёРЅРёС‡РЅС‹Рµ РЅР°РїСЂР°РІР»РµРЅРёСЏ (CubeSphere) в†’
-    /// РІС‹СЃРѕС‚Р°/РјР°СЃРєР° РёР· Р•Р”РРќРћР™ TerrainNoise (С‚РѕС‚ Р¶Рµ Burst-job, С‡С‚Рѕ С„РёР·РёРєР°) в†’
-    /// С‚РµР»Рѕ-fixed РїРѕР·РёС†РёРё (Radius + h). Р§Р°РЅРєРё вЂ” РґРµС‚Рё РѕР±С‰РµРіРѕ РєРѕСЂРЅСЏ, РєРѕС‚РѕСЂС‹Р№
-    /// РЅР°СЃР»РµРґСѓРµС‚ С‚СЂР°РЅСЃС„РѕСЂРј С‚РµР»Р° (BodyView), РЅРѕ РёРјРµРµС‚ РєРѕРјРїРµРЅСЃРёСЂРѕРІР°РЅРЅС‹Р№ СЃРєРµР№Р»,
-    /// РїРѕСЌС‚РѕРјСѓ РІРµСЂС€РёРЅС‹ Р¶РёРІСѓС‚ РІ РјРµС‚СЂР°С… РѕС‚ С†РµРЅС‚СЂР°.
+    /// Geometry: 6 cube faces → unit directions (CubeSphere) → height/mask from a
+    /// SINGLE TerrainNoise (same Burst job as physics) → body-fixed positions
+    /// (Radius + h). Chunks are children of a common root that inherits the body
+    /// transform (BodyView) but has a compensated scale, so vertices live in
+    /// metres from the centre.
     ///
-    /// LOD: СѓР·РµР» РґРµР»РёС‚СЃСЏ, РїРѕРєР° РґРёСЃС‚Р°РЅС†РёСЏ РєР°РјРµСЂС‹ < СЂР°Р·РјРµСЂР° СѓР·Р»Р° Г— SplitFactor
-    /// (Рё depth < MaxDepth). Р“РѕС‚РѕРІС‹Рµ РјРµС€Рё РєСЌС€РёСЂСѓСЋС‚СЃСЏ РїРѕ id СѓР·Р»Р° (СЂРµР»СЊРµС„
-    /// СЃС‚Р°С‚РёС‡РµРЅ РІ С‚РµР»-fixed РєР°РґСЂРµ), РІРёРґРёРјС‹Р№ РЅР°Р±РѕСЂ вЂ” РїРѕ РєСѓР»Р»РёРЅРіСѓ Р·Р°РґРЅРµР№
-    /// РїРѕР»СѓСЃС„РµСЂС‹. Р®Р±РєРё РїРѕ РєСЂР°СЏРј СЃРєСЂС‹РІР°СЋС‚ С‚СЂРµС‰РёРЅС‹ РјРµР¶РґСѓ СЂР°Р·РЅС‹РјРё LOD.
-    /// Океан — два слоя: геометрия чанков идёт до СЫРОГО дна (без клампа, шейдер затемняет дно глубиной),
-    /// сверху — отдельный почти непрозрачный водный меш чанка (Galilego/WaterSurface: волны, блик, пена, подводный тинт). Физика дна/глубины — WaterQuery. Вызов — LateUpdate после BodyView.
+    /// LOD: a node splits while camera distance < node size × SplitFactor
+    /// (and depth < MaxDepth). Built meshes are cached by node id (terrain is
+    /// static in the body-fixed frame); the visible set comes from back-face
+    /// culling. Skirts along the edges hide cracks between different LODs.
+    /// Ocean is two layers: chunk geometry goes down to the RAW seabed (no clamping; the
+    /// shader darkens it by depth), and a separate near-opaque water mesh sits on top
+    /// (Galilego/WaterSurface: waves, sun glint, foam, underwater tint). Seabed/depth
+    /// physics: WaterQuery. LateUpdate runs after BodyView.
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-70)]
     public sealed class PlanetSurfaceRenderer : MonoBehaviour
     {
-        // ===== [Р“Р РђР¤РРљРђ] РљР°С‡РµСЃС‚РІРѕ Рё РґР°Р»СЊРЅРѕСЃС‚СЊ СЂРµР»СЊРµС„Р° =====
+        // ===== [GRAPHICS] Terrain quality and draw distance =====
         // TileResolution / MaxDepth / SplitFactor / BuildsPerFrame / MaxNodes /
-        // MaxCachedChunks вЂ” РєР°РЅРґРёРґР°С‚С‹ РІ Р±СѓРґСѓС‰РёРµ РїСЂРµСЃРµС‚С‹ РЅР°СЃС‚СЂРѕРµРє РіСЂР°С„РёРєРё (РѕС‚
-        // РјРёРЅРёРјР°Р»СЊРЅРѕРіРѕ РґРѕ РјР°РєСЃРёРјР°Р»СЊРЅРѕРіРѕ РєР°С‡РµСЃС‚РІР°).
-        // Р”Р°Р»СЊРЅРѕСЃС‚СЊ РІРёРґРёРјРѕСЃС‚Рё Р·Р°РґР°С‘С‚СЃСЏ РєР°РјРµСЂРѕР№ (FirstPersonCamera.UpdateClipPlanes,
-        // С„РёР·РёС‡РµСЃРєРёР№ РіРѕСЂРёР·РѕРЅС‚ СЃ Р·Р°РїР°СЃРѕРј РЅР° РІРµСЂС€РёРЅС‹) вЂ” Р·РґРµСЃСЊ СЂРµР»СЊРµС„ СЃС‚СЂРѕРёС‚СЃСЏ РЅР°
-        // РІСЃСЋ РІРёРґРёРјСѓСЋ РїРѕР»СѓСЃС„РµСЂСѓ Р±РµР· РІС‹СЃРѕС‚РЅРѕРіРѕ РїРѕСЂРѕРіР°.
-        // РЎРіР»Р°Р¶РёРІР°РЅРёРµ РєР°РґСЂР° (SMAA/TAA) Р·Р°РґР°С‘С‚СЃСЏ РЅР° Main Camera РІ СЃС†РµРЅРµ
+        // MaxCachedChunks is a candidate for future graphics presets (min to max quality).
+        // Draw distance is set by the camera (FirstPersonCamera.UpdateClipPlanes, physical
+        // horizon with margin for peaks); terrain here is built over the whole visible
+        // hemisphere with no altitude threshold. Frame antialiasing (SMAA/TAA) is set on the
+        // Main Camera in the scene.
         // OutdoorsScene: HDAdditionalCameraData (antialiasing / SMAAQuality / TAA*).
-        // РџРѕРёСЃРє РїРѕ С‚РµРіСѓ: [Р“Р РђР¤РРљРђ].
+        // Search by tag: [GRAPHICS].
 
         [Tooltip("SimulationRunner СЃС†РµРЅС‹.")]
         public SimulationRunner Runner;
@@ -63,25 +63,19 @@ namespace Galilego.Universe
         public float SkirtFactor = 0.03f;
 
         /// <summary>
-        /// Глубина юбок ВОДЫ, доля от юбки РЕЛЬЕФА. Значение МАЛЕНЬКОЕ по
-        /// необходимости, и это не перестраховка, а требование прозрачности.
+        /// Water skirt depth as a fraction of the TERRAIN skirt. Must be SMALL:
+        /// this is required by transparency, not just caution.
         ///
-        /// Юбка строится вертикальной стеной вниз от края чанка (см.
-        /// SurfaceChunkBuilder: Position = core - inward*WaterSkirtDepth), причём
-        /// с нормалью от core-грани — поэтому читается не как стена, а как
-        /// горизонтальный «срез» и выглядит дырой в рельефе.
+        /// The skirt is a vertical wall down from the chunk edge (see
+        /// SurfaceChunkBuilder: Position = core - inward*WaterSkirtDepth) with the
+        /// normal taken from the core boundary, so it reads not as a wall but as a
+        /// horizontal cut that looks like a hole in the terrain.
         ///
-        /// Вода прозрачна, и при Extinction 0.08 видно примерно 30 м вглубь
-        /// (e^(-0.08*30) ~ 0.09). Значит юбка длиннее этого видна: на depth 8
-        /// рельефная юбка 1173 м, и стена в километр под водой читается как
-        /// «срез уходящий под воду». Такое значение (1.0) тут и стояло, и это
-        /// ловушка: тултип раньше обещал «держим равным SkirtFactor», и равенство
-        /// параметров действительно выполнялось, а глубина получалась в 33 раза
-        /// больше нужной.
+        /// Water is transparent: at Extinction 0.08 about 30 m is visible
+        /// (e^(-0.08*30) ≈ 0.09), so a longer skirt reads as a cut going underwater.
         ///
-        /// Водная плоскость ПЛОСКАЯ, в отличие от рельефа, поэтому её юбка
-        /// прячет только щель тесселяции между разными LOD - тонкую
-        /// горизонтальную полосу. Ей хватает метров, а не сотен.
+        /// The water plane is FLAT, unlike terrain, so its skirt only hides the
+        /// tessellation gap between LODs — a thin horizontal strip. Metres are enough.
         /// </summary>
         [Tooltip("Глубина юбок ВОДЫ, доля от юбки РЕЛЬЕФА. Держите МАЛЕНЬКИМ (0.02-0.06): вода прозрачна, и при Extinction 0.08 видно ~30 м вглубь, поэтому юбка длиннее этого читается как вертикальный срез под водой. 1 = глубина рельефа, неверно. 0 = полоса вернётся.")]
         [Range(0f, 0.3f)]
@@ -113,16 +107,11 @@ namespace Galilego.Universe
         [Range(0.5f, 8f)]
         public float DecorBuildBudgetMs = 4f;
 
-        // [ФАЗА 4] Пауза после полного обхода, который ничего не нашёл.
+        // [PHASE 4] Pause after a full scan that found nothing.
         //
-        // Обход «все чанки × все слои» стоит ~1.8 мс на 1263 чанках, и когда
-        // строить нечего (всё построено, либо всё дальше MaxDistance) эта
-        // работа повторялась КАЖДЫЙ кадр вхолостую — профиль показывал 1.8 мс
-        // при нулевом числе пулов. Обход запоминает, что ничего не нашёл, и на
-        // пару сотых секунды не повторяется.
         //
-        // Пауза короткая намеренно: за это время камера успевает долететь до
-        // нового чанка, и появление декора глазом не задерживается.
+        // The pause is deliberately short: within it the camera can reach a new chunk,
+        // so decor still appears without visible delay.
         [Tooltip("How long to stop re-scanning after a full scan found nothing to build.")]
         [Range(0.02f, 2f)]
         public float DecorRescanCooldownSeconds = 0.2f;
@@ -341,10 +330,8 @@ namespace Galilego.Universe
         public int ResolutionHalveEveryLevels = 4;
 
         /// <summary>
-        /// Периодический отчёт по бюджету геометрии: сколько чанков реально
-        /// видно, сколько это треугольников и как распределены глубины. Нужен,
-        /// чтобы проверять эффект отсечения по горизонту и огрубления сетки
-        /// не на глаз, а по числам (2 раза в секунду, в консоль).
+        /// Periodic geometry budget report: chunks actually visible, their triangle
+        /// count and depth distribution (twice a second, to the console).
         /// </summary>
         private void LogGeometryBudget()
         {
@@ -401,8 +388,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Предельная дальность видимости на текущий кадр (м). Считается в
-        /// LateUpdate из радиуса камеры и максимального рельефа, читает Traverse.</summary>
+        /// Far limit of visibility for the current frame (m). Computed in
+        /// LateUpdate from the camera radius and the max terrain height; read by Traverse.</summary>
         private double maxVisibleDistance;
 
         [Tooltip("Печатать в консоль бюджет геометрии раз в 0.5 с (видно чанки, " +
@@ -582,105 +569,101 @@ namespace Galilego.Universe
             public GameObject Go;
             public Mesh Mesh;
             public MeshRenderer Renderer;
-            /// <summary>Прозрачная водная поверхность чанка (плоскость уровня
-            /// моря, тот же грид LOD). null — в чанке нет воды. Ребёнок Go:
-            /// видимость наследуется, эвикшн — вместе с родителем.</summary>
+            /// <summary>Transparent water surface of the chunk (sea-level plane,
+            /// same LOD grid). null — the chunk has no water. Child of the chunk
+            /// Go: visibility and eviction follow the parent.</summary>
             public GameObject WaterGo;
             public Mesh WaterMesh;
-            /// <summary>Рендерер WaterGo. Кэшируем, потому что SetChunkVisible
-            /// дёргается на каждой смене видимости, а GetComponent — это поиск
-            /// по иерархии.</summary>
+            /// <summary>Renderer of WaterGo. Cached because SetChunkVisible runs on
+            /// every visibility change and GetComponent walks the hierarchy.</summary>
             public MeshRenderer WaterRenderer;
             public bool Visible;
             public int DecorBuiltMask;
-            /// <summary>Р›РѕРєР°Р»СЊРЅР°СЏ РєР°РјРµСЂР° СЃР±РѕСЂРєРё РїРѕ СЃР»РѕСЏРј (РґР°Р¶Рµ РµСЃР»Рё СЃР»РѕР№ РґР°Р»
-            /// 0 РёРЅСЃС‚Р°РЅСЃРѕРІ): РїРѕ РЅРµР№ СЂРµС€Р°РµС‚СЃСЏ РїРµСЂРµСЃР±РѕСЂРєР° В«РѕР±Р»Р°РєР°В» РїСЂРё РїРѕРґС…РѕРґРµ.</summary>
+            /// <summary>Build-time camera local to the chunk per layer (even when a layer
+            /// produced 0 instances): it decides whether the density cloud is rebuilt on
+            /// approach.</summary>
             public Vector3[] DecorBuildCameraLocal;
             public Node Node;
             public int Depth;
             public Vector3d CenterAstro;
             public float BoundsRadius;
-            /// <summary>Разрешение сетки, по которому реально построен этот
-            /// меш. Нужен для прогрессивного уточнения: в быстром тире чанк
-            /// строится вчетверо реже, и когда очередь пустеет, узлы с
-            /// Res меньше ResolutionForDepth(Depth) ставятся на перестройку.
-            /// Без этого поля нечем отличить «построен полностью» от «построен
-            /// огрублённо».</summary>
+            /// <summary>Grid resolution the mesh was actually built with. Needed for
+            /// progressive refinement: in the fast tier a chunk is built at a quarter
+            /// resolution, and when the queue drains, nodes with Res below
+            /// ResolutionForDepth(Depth) are scheduled for rebuild. Without it there
+            /// is no way to tell a fully built chunk from a coarsely built one.</summary>
             public int Res;
-            /// <summary>Время (Time.unscaledTime), когда чанк последний раз был
-            /// в desired или в keep. По нему LRU-выгрузка выбирает, кого убрать
-            /// первым. Именно время, а не номер кадра: при просадке до 10 fps
-            /// «последние 90 кадров» — это девять секунд, а не полторы, и
-            /// выгрузка опаздывала бы ровно тогда, когда она нужнее всего.</summary>
+            /// <summary>Time (Time.unscaledTime) the chunk was last in desired or
+            /// keep. LRU eviction uses it to pick the first to remove. Time, not a
+            /// frame number: at 10 fps the last 90 frames span nine seconds, not
+            /// 1.5, so eviction would lag exactly when it is needed most.</summary>
             public float LastKeepTime;
             public readonly List<DecorLayerRuntime> Decor = new List<DecorLayerRuntime>();
         }
 
-        /// <summary>Р“РѕС‚РѕРІС‹Рµ РёРЅСЃС‚Р°РЅСЃС‹ РѕРґРЅРѕРіРѕ СЃР»РѕСЏ РґРµРєРѕСЂР° РІ С‡Р°РЅРєРµ (Р»РѕРєР°Р»СЊРЅРѕ С‡Р°РЅРєСѓ).</summary>
+        /// <summary>Built instances of one decor layer in a chunk (chunk-local).</summary>
         private sealed class DecorLayerRuntime
         {
             public GroundDecorLayer Profile;
             public int LayerIndex;
-            /// <summary>РџРѕР·РёС†РёСЏ РєР°РјРµСЂС‹ РЅР° РјРѕРјРµРЅС‚ СЃР±РѕСЂРєРё: Сѓ СЃР»РѕС‘РІ СЃ Р·Р°С‚СѓС…Р°РЅРёРµРј
-            /// РѕР±Р»Р°РєРѕ РїР»РѕС‚РЅРѕСЃС‚Рё РїСЂРёРІСЏР·Р°РЅРѕ Рє РЅРµР№ Рё РґРѕР»Р¶РЅРѕ РµС…Р°С‚СЊ Р·Р° РёРіСЂРѕРєРѕРј.</summary>
+            /// <summary>Camera position at build time: for layers with density falloff
+            /// the density cloud is anchored to it and must follow the player.</summary>
             public Vector3 BuildCameraRenderPos;
             public Vector3 BuildCameraLocalPosition;
             public NativeArray<GroundDecorInstance> Instances;
             public Matrix4x4[] Matrices;
-            /// <summary>Таблица раскладки пула по клеткам (та же, что у
-            /// аллокатора): нужна следующей пересборке, чтобы перенести уже
-            /// выросшие травинки (GroundDecorMergeKeptJob) с их BirthTime.</summary>
+            /// <summary>Cell layout table of the pool (the same one the allocator
+            /// uses): the next rebuild needs it to carry over already grown blades
+            /// (GroundDecorMergeKeptJob) with their BirthTime.</summary>
             public NativeArray<int> CellOffsets;
             public NativeArray<int> CellCounts;
-            /// <summary>РњРёСЂРѕРІС‹Рµ РјР°С‚СЂРёС†С‹ РёРЅСЃС‚Р°РЅСЃРѕРІ, СЃС‡РёС‚Р°СЋС‚СЃСЏ Burst-РґР¶РѕР±РѕР№ РєР°Р¶РґС‹Р№
-            /// РєР°РґСЂ (РґР»СЏ СЃР»РѕС‘РІ СЃ PerInstanceDensity) вЂ” РіР»Р°РІРЅС‹Р№ РїРѕС‚РѕРє РЅРµ С‚СЂР°С‚РёС‚
-            /// РІСЂРµРјСЏ РЅР° TRS РЅР° РєР°Р¶РґСѓСЋ С‚СЂР°РІРёРЅРєСѓ.</summary>
+            /// <summary>World instance matrices, computed by a Burst job every frame
+            /// (for layers with PerInstanceDensity) — the main thread spends no time
+            /// on per-blade TRS.</summary>
             public NativeArray<Matrix4x4> WorldMatrices;
 
-            /// <summary>Сколько инстансов в начале Instances живые. Хвост после
-            /// них — травинки, выпавшие из новой выборки при пересборке пула: они
-            /// ещё рисуются, но гаснут масштабом по своему DeathTime (уходят под
-            /// землю). 0 = хвоста нет.</summary>
+            /// <summary>How many instances at the start of Instances are alive. The
+            /// tail after them holds blades dropped from the new selection during a
+            /// pool rebuild: they still draw but shrink by scale at their DeathTime
+            /// (sink under ground). 0 = no tail.</summary>
             public int AliveCount;
 
-            /// <summary>Момент (Time.time), после которого хвост Instances погас
-            /// и его можно отрезать. 0 = хвоста нет.</summary>
+            /// <summary>Time (Time.time) after which the Instances tail has faded
+            /// out and can be truncated. 0 = no tail.</summary>
             public float RetireDeadline;
 
-            /// <summary>Пул целиком уходит под землю (слои без PerInstanceDensity —
-            /// деревья/камни/кактусы/ромашки: у них нет разметки по инстансам).
-            /// Такой рантайм ещё рисуется, но гаснет масштабом; см.
-            /// RetireStart/RetireFadeSeconds. Пересборка пула и уход чанка за
-            /// радиус не удаляют его мгновенно — иначе деревья щёлкали на всём
-            /// поле при первом же движении игрока.</summary>
+            /// <summary>The whole pool sinks under ground (layers without
+            /// PerInstanceDensity — trees/rocks/cacti/daisies: they have no per-instance
+            /// markings). Such a runtime still draws but shrinks by scale; see
+            /// RetireStart/RetireFadeSeconds. Pool rebuilds and chunks leaving the
+            /// radius never remove it instantly, so trees do not pop across the field
+            /// on the first movement.</summary>
             public bool Retiring;
 
-            /// <summary>Момент начала ухода пула и длительность (с).</summary>
+            /// <summary>Start time and duration of the pool fade-out (s).</summary>
             public float RetireStart;
             public float RetireFadeSeconds;
 
-            /// <summary>Длительность ухода травинок под землю для этого пула (с).
-            /// Считается по частоте кадров в момент пересборки (DecorFadeSeconds)
-            /// и хранится здесь, чтобы матричная джоба и RetireDeadline считали
-            /// переход по одной и той же формуле.</summary>
+            /// <summary>Blade sink-under-ground duration for this pool (s). Derived
+            /// from the frame rate at rebuild time (DecorFadeSeconds) and stored here
+            /// so the matrix job and RetireDeadline share one transition formula.</summary>
             public float SinkFadeSeconds;
 
-            /// <summary>РРЅРґРёСЂРµРєС‚-РїСѓС‚СЊ С‚СЂР°РІС‹: РјР°С‚СЂРёС†С‹ РёРЅСЃС‚Р°РЅСЃРѕРІ (С‡Р°РЅРє-С„СЂРµР№Рј) РІ
-            /// Р±СѓС„РµСЂРµ + Р°СЂРіСѓРјРµРЅС‚С‹ РґСЂРѕСѓ. РЎС‡РёС‚Р°СЋС‚СЃСЏ РћР”РРќ Р РђР— РїСЂРё СЃР±РѕСЂРєРµ, РјРёСЂРѕРІР°СЏ
-            /// С‡Р°СЃС‚СЊ вЂ” С‡РµСЂРµР· _DecorChunkToWorld. РћРґРёРЅ РґСЂРѕСѓ РЅР° СЃР°Р±РјРµС€ РІРјРµСЃС‚Рѕ
-            /// count/1023 Р±Р°С‚С‡РµР№.</summary>
+            /// <summary>Grass indirect path: instance matrices (chunk frame) in a
+            /// buffer + draw arguments. Computed ONCE at build time; the world part
+            /// goes through _DecorChunkToWorld. One draw per submesh instead of
+            /// count/1023 batches.</summary>
             public GraphicsBuffer MatrixBuffer;
             public GraphicsBuffer ArgsBuffer;
             public Mesh DrawMesh;
         }
 
         /// <summary>
-        /// РђСЃРёРЅС…СЂРѕРЅРЅР°СЏ СЃР±РѕСЂРєР° СЃР»РѕСЏ РґРµРєРѕСЂР° РІ С‡Р°РЅРєРµ: РїСЂРµР¶РЅСЏСЏ СЃР±РѕСЂРєР° Р±Р»РѕРєРёСЂРѕРІР°Р»Р°
-        /// РєР°РґСЂ С†РµР»РёРєРѕРј (РґРѕ СЃРѕС‚РµРЅ РјСЃ РЅР° РєСЂСѓРїРЅРѕРј LOD) Рё РЅР° С…РѕРґСЊР±Рµ РґР°РІР°Р»Р° С„СЂРёР·С‹.
-        /// РўРµРїРµСЂСЊ СЃС‚Р°РґРёРё РёРґСѓС‚ РїРѕСЂС†РёСЏРјРё РїРѕ Р±СЋРґР¶РµС‚Сѓ РєР°РґСЂР°: РґР¶РёС‚С‚РµСЂ-С…РµС€Рё вЂ” РєСѓСЂСЃРѕСЂРѕРј,
-        /// Burst-С„РёР»СЊС‚СЂ РєР°РЅРґРёРґР°С‚РѕРІ вЂ” РІ С„РѕРЅРµ (РѕРїСЂРѕСЃ IsCompleted), СЂР°Р·РІРѕСЂРѕС‚
-        /// РїРѕРґС‚СѓС„С‚РѕРІ вЂ” РєСѓСЂСЃРѕСЂРѕРј, С„РёРЅР°Р»РёР·Р°С†РёСЏ вЂ” Р·Р°РјРµРЅРѕР№ РіРѕС‚РѕРІРѕРіРѕ СЃР»РѕСЏ.
-        /// РњР°С‚РµРјР°С‚РёРєР° Рё РїРѕСЂСЏРґРѕРє С…РµС€РµР№ РЅРµ РјРµРЅСЏСЋС‚СЃСЏ РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅРѕ СЃС‚Р°СЂРѕР№ СЃР±РѕСЂРєРё.
+        /// Asynchronous build of a decor layer in a chunk. Stages run in slices sized
+        /// by the frame budget: jitter hashes by cursor, the Burst candidate filter in
+        /// the background (polled via IsCompleted), tuft expansion by cursor,
+        /// finalization by swapping in the finished layer. The math and hash order are
+        /// the same as the synchronous path.
         /// </summary>
         private sealed class DecorBuildSession
         {
@@ -691,22 +674,21 @@ namespace Galilego.Universe
             public Node Node;
 
             public Vector3 CameraPosition;
-            /// <summary>Р¦РµРЅС‚СЂ Р·Р°РїРµРєР°РЅРёСЏ РѕР±Р»Р°РєР° (РєР°РјРµСЂР° + РѕРїРµСЂРµР¶РµРЅРёРµ РїРѕ СЃРєРѕСЂРѕСЃС‚Рё).</summary>
+            /// <summary>Anchor centre of the density cloud (camera + speed lead).</summary>
             public Vector3 CameraLocal;
-            /// <summary>РЎС‹СЂР°СЏ Р»РѕРєР°Р»СЊРЅР°СЏ РєР°РјРµСЂР° вЂ” РґР»СЏ РїСЂРѕРІРµСЂРєРё СѓСЃС‚Р°СЂРµРІР°РЅРёСЏ СЃР»РѕСЏ
-            /// (РѕРїРµСЂРµР¶РµРЅРёРµ С‚СѓРґР° РЅРµ РІС…РѕРґРёС‚, РёРЅР°С‡Рµ РїРѕРІРѕСЂРѕС‚С‹/СЂС‹РІРєРё СЃС‚Р°СЂРёР»Рё Р±С‹ СЃР»РѕР№).</summary>
+            /// <summary>Raw local camera — used to check layer staleness (the speed lead is
+            /// excluded, otherwise turns/jerks would age the layer).</summary>
             public Vector3 BuildCameraLocal;
-            /// <summary>РЎР±РѕСЂРєР° В«Сѓ РёРіСЂРѕРєР°В» (РїРµСЂРµСЃР±РѕСЂРєР°/РІРёРґРёРјР°СЏ Р·РѕРЅР°) вЂ” С‚Р°РєРёРµ СЃРµСЃСЃРёРё
-            /// РЅРµ РѕРіСЂР°РЅРёС‡РµРЅС‹ СЂРµР·РµСЂРІРѕРј СЃР»РѕС‚РѕРІ РїРѕРґ РґР°Р»СЊРЅРёРµ РїРµСЂРІС‹Рµ СЃР±РѕСЂРєРё.</summary>
+            /// <summary>A build at the player (rebuild/visible zone) — such sessions are not
+            /// limited by the slot reserve for distant first builds.</summary>
             public bool NearPlayer;
-            /// <summary>РџСЂРµР¶РЅРёР№ СЃР»РѕР№ СЌС‚РѕРіРѕ Р¶Рµ С‡Р°РЅРєР°: РµРіРѕ С‚СЂР°РІРёРЅРєРё РІРґР°Р»Рё РѕС‚ РЅРѕРІРѕРіРѕ
-            /// СЏРґСЂР° СЃРѕС…СЂР°РЅСЏСЋС‚СЃСЏ (РЅР°РєРѕРїР»РµРЅРёРµ РІРјРµСЃС‚Рѕ РїРѕР»РЅРѕР№ Р·Р°РјРµРЅС‹) вЂ” С‚СЂР°РІР° РЅРµ
-            /// В«РїРѕСЏРІР»СЏРµС‚СЃСЏ Р·Р°РЅРѕРІРѕВ» РЅР° СѓР¶Рµ РїСЂРѕР№РґРµРЅРЅРѕРј РјРµСЃС‚Рµ.</summary>
+            /// <summary>Previous layer of the same chunk: its blades away from the new
+            /// core are preserved (accumulation instead of full replacement), so grass
+            /// does not appear anew on already crossed ground.</summary>
             public DecorLayerRuntime Previous;
             public NativeArray<GroundDecorInstance> KeptOld;
             public int KeptOldCount;
-            /// <summary>РЎРєРѕР»СЊРєРѕ Р·Р°РїРёСЃРµР№ РјРѕР¶РµС‚ РґРѕР±Р°РІРёС‚СЊ РЅРѕРІР°СЏ СЃР±РѕСЂРєР° (Р·Р° РІС‹С‡РµС‚РѕРј
-            /// СЃРѕС…СЂР°РЅС‘РЅРЅС‹С… СЃС‚Р°СЂС‹С…).</summary>
+            /// <summary>How many records the new build may add (minus the kept old ones).</summary>
             public int ExpandTake;
             public GroundDecorPlacementParams Placement;
             public Vector3[] MeshVertices;
@@ -734,25 +716,25 @@ namespace Galilego.Universe
             public NativeArray<GroundDecorInstance> Instances;
             public NativeArray<GroundDecorInstance> Stored;
 
-            /// <summary>Burst-РїСѓС‚СЊ (СЃР»РѕРё СЃ PerInstanceDensity): РІРµСЂС€РёРЅС‹ РјРµС€Р°
-            /// РІ РЅР°С‚РёРІРЅРѕР№ РїР°РјСЏС‚Рё, СЃС‡С‘С‚С‡РёРєРё С‚СЂР°РІРёРЅРѕРє, СЃР»РѕС‚С‹ Р·Р°РїРёСЃРё.</summary>
+            /// <summary>Burst path (layers with PerInstanceDensity): mesh vertices in
+            /// native memory, blade counters, write slots.</summary>
             public NativeArray<Vector3> MeshVerticesNative;
-            /// <summary>Р§РёСЃР»Рѕ С‚СЂР°РІРёРЅРѕРє РєР»РµС‚РєРё РѕС‚ Burst-РІРµСЃР° (РІС…РѕРґ Р°Р»Р»РѕРєР°С‚РѕСЂР°).</summary>
+            /// <summary>Blade count of the cell from the Burst weight (allocator input).</summary>
             public NativeArray<int> SubsFor;
-            /// <summary>РЎРєРѕР»СЊРєРѕ С‚СЂР°РІРёРЅРѕРє РєР»РµС‚РєР° СЂРµР°Р»СЊРЅРѕ РїРёС€РµС‚ РїРѕСЃР»Рµ РѕР±СЂРµР·РєРё РєР°РїР°.</summary>
+            /// <summary>How many blades the cell actually writes after cap clamping.</summary>
             public NativeArray<int> WriteCounts;
             public NativeArray<float> Distances;
-            /// <summary>[0] вЂ” СЂР°РґРёСѓСЃ РІС‹Р±РѕСЂРєРё, [1] вЂ” РґРѕР»СЏ РіСЂР°РЅРёС‡РЅРѕР№ РїРѕР»РѕСЃС‹, [2] вЂ” С€РёСЂРёРЅР°.</summary>
+            /// <summary>[0] — selection radius, [1] — edge band share, [2] — width.</summary>
             public NativeArray<float> Selection;
 
-            /// <summary>РџРѕСЂСЏРґРѕРє РєР»РµС‚РѕРє РїРѕ Р±Р°РєРµС‚Р°Рј РґРёСЃС‚Р°РЅС†РёРё (СЃРєСЂРµС‚С‡ Р°Р»Р»РѕРєР°С‚РѕСЂР°).</summary>
+            /// <summary>Cell order by distance buckets (allocator scratch).</summary>
             public NativeArray<int> AllocCellOrder;
 
-            /// <summary>Р”РёР°РіРЅРѕСЃС‚РёРєР° Р·Р°РґРµСЂР¶РєРё СЃР±РѕСЂРєРё: РІСЂРµРјСЏ Рё РґРёСЃС‚Р°РЅС†РёСЏ РїРѕСЃС‚Р°РЅРѕРІРєРё.</summary>
+            /// <summary>Build lag diagnostics: queue time and placement distance.</summary>
             public float QueueTimeSeconds;
             public float QueueTangentialDistance;
             public NativeArray<int> WriteOffsets;
-            /// <summary>[0] вЂ” Р·Р°РїРёСЃР°РЅРѕ С‚СЂР°РІРёРЅРѕРє, [1] вЂ” СЂР°РґРёСѓСЃ РѕР±СЂРµР·РєРё (Рј).</summary>
+            /// <summary>[0] — blades written, [1] — clip radius (m).</summary>
             public NativeArray<float> WriteTotal;
 
             public JobHandle CandidateJob;
@@ -760,14 +742,14 @@ namespace Galilego.Universe
             public bool CancelRequested;
             public bool Finished;
 
-            /// <summary>0 вЂ” РїСЂРµРї РєР°РЅРґРёРґР°С‚РѕРІ, 1 вЂ” РѕР¶РёРґР°РЅРёРµ Burst-РґР¶РѕР±С‹,
-            /// 2 вЂ” РїСЂРѕС…РѕРґ accepted/РІРµСЃР°, 3 вЂ” СЂР°Р·РІРѕСЂРѕС‚ РїРѕРґС‚СѓС„С‚РѕРІ, 4 вЂ” С„РёРЅР°Р»РёР·Р°С†РёСЏ.</summary>
+            /// <summary>0 — candidate prep, 1 — waiting for the Burst job,
+            /// 2 — accepted/weight pass, 3 — tuft expansion, 4 — finalization.</summary>
             public int Stage;
             public int Cursor;
             public int AcceptedCount;
             public double WeightSum;
-            /// <summary>ОЈ РІРµСЃГ—СЌС„С„РµРєС‚РёРІРЅС‹Рµ РїРѕРґС‚СѓС„С‚С‹ вЂ” РѕР¶РёРґР°РµРјРѕРµ С‡РёСЃР»Рѕ РёРЅСЃС‚Р°РЅСЃРѕРІ
-            /// (РІРµСЃ СѓР¶Рµ СЃ Р·Р°С‚СѓС…Р°РЅРёРµРј, РїРѕРґС‚СѓС„С‚С‹ РІРґР°Р»Рё СѓСЂРµР·Р°РЅС‹ РґРѕ РѕРґРЅРѕРіРѕ).</summary>
+            /// <summary>Σ weight×effective tufts — expected instance count (weight already
+            /// includes falloff; distant tufts are clamped to one).</summary>
             public double ExpectedWeight;
             public double CapScale = 1d;
             public int SubPerCell = 1;
@@ -777,8 +759,8 @@ namespace Galilego.Universe
 
             public int K;
             public int SubIndex;
-            /// <summary>Р§РёСЃР»Рѕ РїРѕРґС‚СѓС„С‚ РґР»СЏ РўР•РљРЈР©Р•Р™ РєР»РµС‚РєРё: РІР±Р»РёР·Рё вЂ” РїРѕР»РЅРѕРµ,
-            /// РІРґР°Р»Рё вЂ” 1 (С‚Р°Рј РїР»РѕС‚РЅРѕСЃС‚СЊ РєРѕРїРµРµС‡РЅР°СЏ).</summary>
+            /// <summary>Tuft count for the CURRENT cell: full nearby, 1 far away
+            /// (density there is negligible).</summary>
             public int CurrentSubs = 1;
             public GroundDecorInstance BaseInstance;
             public double CellU0;
@@ -804,10 +786,10 @@ namespace Galilego.Universe
         private Plane[] decorFrustumPlanes;
         private Mesh blobMesh;
         private readonly Dictionary<GroundDecorLayer, Mesh> treeProxyMeshes = new Dictionary<GroundDecorLayer, Mesh>();
-        /// <summary>Упрощённый прокси (без ствола, 4-гранная крона) для высоких
-        /// высот. Завязан на высоту, а не на дистанцию чанка, — иначе на границе
-        /// ступени разные чанки в кадре оказались бы с разными мешами и батчинг
-        /// в общий буфер рассыпался бы на отдельные draw-call'ы.</summary>
+        /// <summary>Simplified proxy (no trunk, 4-sided crown) for high altitudes.
+        /// Keyed on altitude, not chunk distance, so that at the step boundary all
+        /// chunks in frame share the same mesh and can batch into one buffer instead
+        /// of scattering into individual draw calls.</summary>
         private readonly Dictionary<GroundDecorLayer, Mesh> treeProxyMeshesLow = new Dictionary<GroundDecorLayer, Mesh>();
         private Material blobMaterial;
 
@@ -817,15 +799,15 @@ namespace Galilego.Universe
         private readonly HashSet<long> splitNodes = new HashSet<long>();
         private readonly HashSet<long> splitNext = new HashSet<long>();
         private readonly List<long> toEvict = new List<long>();
-        /// <summary>Чанки, которые сейчас рисуются. Ведётся SetChunkVisible,
-        /// чтобы проход трансформов шёл поactive-списку, а не по всему
-        /// словарю: в полёте в кэше тысячи узлов, из них видны сотни.</summary>
+        /// <summary>Chunks currently drawn. Maintained by SetChunkVisible so the
+        /// transform pass walks the active list instead of the whole dictionary:
+        /// in flight the cache holds thousands of nodes, of which hundreds show.</summary>
         private readonly List<Chunk> visibleChunks = new List<Chunk>();
 
-        // ===== [ФАЗА 2] Асинхронная постройка чанков =====
-        // Очередь узлов, ожидающих постройки; запросы, уже ушедшие в джобы;
-        // множество id для дедупликации (без него узел попадал бы в очередь
-        // каждый кадр, пока не построится, и очередь росла бы быстрее полёта).
+        // ===== [PHASE 2] Asynchronous chunk building =====
+        // Queue of nodes awaiting build; requests already sent to jobs; a set of
+        // ids for deduplication (without it a node would be queued every frame
+        // until built, growing the queue faster than flight).
         private readonly List<ChunkQueueItem> chunkBuildQueue = new List<ChunkQueueItem>();
         private readonly List<ChunkBuildInFlight> chunkBuildsInFlight = new List<ChunkBuildInFlight>();
         private readonly HashSet<long> queuedChunkIds = new HashSet<long>();
@@ -837,11 +819,9 @@ namespace Galilego.Universe
             public float Priority;
             public float Distance;
 
-            /// <summary>Кадр постановки в очередь. По нему запись признаётся
-            /// устаревшей: узел, который игрок уже оставил позади, в desired
-            /// больше не попадает, но из очереди сам не исчезал, и на скорости
-            /// очередь разрасталась тысячами записей, из которых строилась
-            /// доля в проценты.</summary>
+            /// <summary>Frame the entry was queued. Used to drop stale entries: a node
+            /// the player has left behind no longer enters desired and would otherwise
+            /// linger in the queue.</summary>
             public int EnqueuedFrame;
         }
 
@@ -851,19 +831,18 @@ namespace Galilego.Universe
             public ChunkBuildRequest Request;
         }
 
-        /// <summary>Версия параметров рельефа. Инкрементится при смене шума:
-        /// результаты, посчитанные по старым параметрам, при финализации
-        /// отбрасываются — иначе в кэше смешались бы два разных рельефа.</summary>
+        /// <summary>Terrain parameter version. Incremented when noise changes: results
+        /// computed from old parameters are discarded at finalization, otherwise two
+        /// different terrains would mix in the cache.</summary>
         private int paramsVersion;
 
-        /// <summary>Параметры живы (не идёт ClearChunkCache). Пока false,
-        /// любой результат в полёте устаревший и утилизируется, а не
-        /// заливается в меш.</summary>
+        /// <summary>Parameters are alive (ClearChunkCache is not running). While false,
+        /// any in-flight result is stale and is disposed instead of uploaded to a mesh.</summary>
         private bool paramsAlive;
 
         private Vector3 lastCameraPosition;
 
-        // ===== [ФАЗА 3] Тиры качества и префетч =====
+        // ===== [PHASE 3] Quality tiers and prefetch =====
         private enum MotionTier
         {
             Normal,
@@ -877,19 +856,18 @@ namespace Galilego.Universe
         private Vector3 predictedCamera;
         private float predictedLeadMeters;
 
-        /// <summary>Отдельный результат префетч-обхода. Свой список и своя
-        /// пара множеств гистерезиса: если префетч писал бы в общие, он
-        /// сдвигал бы на кадр решения основного обхода, и узлы мерцали бы на
-        /// границе LOD.</summary>
+        /// <summary>Separate result of the prefetch traversal. Own list and own pair of
+        /// hysteresis sets: writing into the shared ones would shift the main traversal's
+        /// decisions by a frame and make nodes flicker at the LOD boundary.</summary>
         private readonly List<Node> prefetchDesired = new List<Node>();
         private readonly HashSet<long> prefetchSplitNodes = new HashSet<long>();
         private readonly HashSet<long> prefetchSplitNext = new HashSet<long>();
         private readonly HashSet<long> prefetchKeep = new HashSet<long>();
 
-        /// <summary>Потолок глубины под текущий тир. НИКОГДА не должен уходить
-        /// в ResolutionForDepth: тот считает stepsBelowFinest от MaxDepth, и
-        /// если тир начнёт там же подменять MaxDepth, у уже построенного узла
-        /// поменяется сетка и он уйдёт в бесконечную перестройку.</summary>
+        /// <summary>Depth ceiling for the current tier. Must NEVER be passed into
+        /// ResolutionForDepth: that computes stepsBelowFinest from MaxDepth, and if the
+        /// tier substituted MaxDepth there, a built node's grid would change and it
+        /// would rebuild endlessly.</summary>
         private int EffectiveMaxDepth
         {
             get
@@ -924,11 +902,11 @@ namespace Galilego.Universe
         private readonly List<DecorBuildSession> decorBuildSessions = new List<DecorBuildSession>();
         private readonly List<DecorCandidate> decorCandidates = new List<DecorCandidate>(256);
         private readonly List<BurstDecorDraw> burstDecorDraws = new List<BurstDecorDraw>();
-        /// <summary>Общий буфер матриц для дальних деревьев. Один draw на сотни
-        /// чанков вместо draw на чанк: главный поток перестаёт гонять сотни
-        /// RenderMeshInstanced и копирований. Только для слоёв без теней —
-        /// у них общий меш и материал, иначе батчить нельзя.</summary>
-        private const int ProxySharedCapacity = 131072; // 8 МБ
+        /// <summary>Shared matrix buffer for distant trees. One draw for hundreds of
+        /// chunks instead of one per chunk: the main thread stops issuing hundreds of
+        /// RenderMeshInstanced calls and copies. Only for shadowless layers — they
+        /// share one mesh and material, so they can batch.</summary>
+        private const int ProxySharedCapacity = 131072; // 8 MB
         private NativeArray<Matrix4x4> proxyShared;
         private JobHandle proxySharedHandle;
         private int proxySharedUsed;
@@ -941,52 +919,50 @@ namespace Galilego.Universe
         private static readonly int DecorMatricesId = Shader.PropertyToID("_DecorMatrices");
         private const int DecorScanItemsPerStep = 4096;
         private const int DecorExpandSubsPerStep = 2048;
-        /// <summary>РЎРєРѕР»СЊРєРѕ СЃР»РѕС‚РѕРІ СЃРµСЃСЃРёР№ РІСЃРµРіРґР° РґРµСЂР¶РёРј РїРѕРґ СЂР°Р±РѕС‚Сѓ Сѓ РёРіСЂРѕРєР°
-        /// (РїРµСЂРµСЃР±РѕСЂРєРё РѕР±Р»Р°РєР° Рё РІРёРґРёРјС‹Рµ РїРµСЂРІС‹Рµ СЃР±РѕСЂРєРё).</summary>
+        /// <summary>How many session slots are always reserved for work at the player
+        /// (cloud rebuilds and visible first builds).</summary>
         private const int PlayerReservedSessions = 2;
-        /// <summary>РќРёР¶Рµ СЌС‚РѕРіРѕ Р·Р°С‚СѓС…Р°РЅРёСЏ РїРѕРґС‚СѓС„С‚С‹ РєР»РµС‚РєРё РЅРµ СЂР°Р·РІРѕСЂР°С‡РёРІР°СЋС‚СЃСЏ
-        /// (РєР»РµС‚РєР° РґР°С‘С‚ РѕРґРёРЅ РёРЅСЃС‚Р°РЅСЃ): РїР»РѕС‚РЅРѕСЃС‚СЊ РЅР° С‚Р°РєРѕР№ РґРёСЃС‚Р°РЅС†РёРё РІСЃС‘ СЂР°РІРЅРѕ
-        /// РєРѕРїРµРµС‡РЅР°СЏ, Р° СЃР±РѕСЂРєР° РґРµС€РµРІРµРµС‚ РІ СЂР°Р·С‹ (в‰€100 Рј РѕС‚ РёРіСЂРѕРєР° РїСЂРё 45 Рј).</summary>
-        /// <summary>РћРїРµСЂРµР¶РµРЅРёРµ РѕР±Р»Р°РєР° С‚СЂР°РІС‹ РїРѕ СЃРєРѕСЂРѕСЃС‚Рё РёРіСЂРѕРєР°: РґРѕР»СЏ СЃРµРєСѓРЅРґС‹ С…РѕРґР°,
-        /// С‡С‚РѕР±С‹ РїР»РѕС‚РЅР°СЏ Р·РѕРЅР° РіРѕС‚РѕРІРёР»Р°СЃСЊ Р’РџР•Р Р•Р”Р (С‚СЂР°РІР° РІСЃС‚СЂРµС‡Р°РµС‚ РёРіСЂРѕРєР°, Р° РЅРµ
-        /// РґРѕРіРѕРЅСЏРµС‚СЃСЏ РёРј). РЎРІРµСЂС…Сѓ РѕРіСЂР°РЅРёС‡РµРЅРѕ РґРѕР»РµР№ РїР»РѕСЃРєРѕРіРѕ СЏРґСЂР° вЂ” РёРЅР°С‡Рµ РёРіСЂРѕРє
-        /// СЃР°Рј РѕРєР°Р·С‹РІР°РµС‚СЃСЏ РІ Р·РѕРЅРµ Р·Р°С‚СѓС…Р°РЅРёСЏ, Рё РІРїРµСЂРµРґРё РІРёРґРЅР° В«СЃС‚СѓРїРµРЅСЊРєР°В»
-        /// РїР»РѕС‚РЅРѕСЃС‚Рё (С‚СЂР°РІР° РіСѓС‰Рµ РІ N РјРµС‚СЂР°С… РїРµСЂРµРґ РёРіСЂРѕРєРѕРј).</summary>
+        /// <summary>Below this falloff the cell's tufts are not expanded (one instance
+        /// per cell): density that far out is negligible and the build gets several
+        /// times cheaper.</summary>
+        /// <summary>Grass cloud lead by player speed: a fraction of a second of travel
+        /// so the dense zone is prepared AHEAD of the player (grass meets the player
+        /// rather than chasing them). Capped by the flat core share, otherwise the
+        /// player ends up inside the falloff zone and a density step shows ahead.</summary>
         private const float GrassLeadSeconds = 0.5f;
         private const float GrassLeadMaxMeters = 60f;
         private const float GrassLeadCoreShare = 0.5f;
-        /// <summary>Р”РѕР»СЏ Р±СЋРґР¶РµС‚Р° РїСѓР»Р° С‚СЂР°РІС‹, РѕС‚РґР°РЅРЅР°СЏ РїР»Р°РІРЅРѕРјСѓ Р·Р°С‚СѓС…Р°РЅРёСЋ Сѓ
-        /// РіСЂР°РЅРёС†С‹ РѕР±СЂРµР·РєРё: РёРЅР°С‡Рµ РєСЂР°Р№ РїСѓР»Р° РІРёРґРµРЅ СЂРѕРІРЅРѕР№ Р»РёРЅРёРµР№ РїРѕ Р·РµРјР»Рµ.</summary>
+        /// <summary>Share of the grass pool budget given to soft falloff at the clip
+        /// edge: otherwise the pool edge shows as a straight line on the ground.</summary>
         private const float DecorCutFadeShare = 0.25f;
-        /// <summary>РџРѕР»РѕСЃР° Р·Р°С‚СѓС…Р°РЅРёСЏ РїР»РѕС‚РЅРѕСЃС‚Рё РїРµСЂРµРґ СЂР°РґРёСѓСЃРѕРј РїСѓР»Р° (Рј).</summary>
+        /// <summary>Density falloff band before the pool radius (m).</summary>
         private const float DecorPoolRadiusFadeMeters = 60f;
-        /// <summary>За сколько секунд травинка «прорастает» (масштаб 0→1).</summary>
+        /// <summary>Seconds for a blade to sprout (scale 0→1).</summary>
         private const float DecorBladeFadeSeconds = 0.6f;
-        /// <summary>Разброс момента появления по травинкам (с): новые появляются
-        /// поштучно в этом окне, а не всей пачкой.</summary>
+        /// <summary>Spawn-time spread across blades (s): new ones appear one by one
+        /// within this window, not as one batch.</summary>
         private const float DecorBladeStaggerSeconds = 1.2f;
-        /// <summary>За сколько секунд травинка уходит ПОД землю (масштаб 1→0):
-        /// зеркало DecorBladeFadeSeconds. Травинки, выпавшие из новой выборки при
-        /// пересборке пула, не исчезают кадр в кадр, а заходят в землю.</summary>
+        /// <summary>Seconds for a blade to sink UNDER ground (scale 1→0): the mirror
+        /// of DecorBladeFadeSeconds. Blades dropped from a new pool selection do not
+        /// vanish instantly but sink into the ground.</summary>
         private const float DecorBladeSinkSeconds = 0.9f;
-        /// <summary>Разброс начала ухода (с): затухающие травинки гаснут не
-        /// синхронно, иначе кромка поля «мигнула» бы одной волной.</summary>
+        /// <summary>Fade-start spread (s): dying blades fade out of sync, otherwise
+        /// the field edge would blink in one wave.</summary>
         private const float DecorBladeSinkStaggerSeconds = 1f;
-        /// <summary>За сколько секунд проп (дерево/камень/кактус/ромашка) уходит
-        /// под землю целиком: пул слоя не PerInstanceDensity, там нет разметки по
-        /// инстансам, поэтому гаснет весь пул сразу (мягко, как появляется).</summary>
+        /// <summary>Seconds for a prop (tree/rock/cactus/daisy) to sink under ground
+        /// entirely: the layer pool is not PerInstanceDensity and has no per-instance
+        /// markings, so the whole pool fades at once (as softly as it appears).</summary>
         private const float DecorPropSinkSeconds = 1.4f;
-        /// <summary>Минимум кадров, за которые должен пройти любой переход
-        /// появления/исчезновения декора. На низком FPS (сборка идёт ~1 fps)
-        /// фиксированные 0.6-0.9 с — это 0-1 кадр, то есть визуально мгновенный
-        /// щелчок; с этим полом длительность растягивается до N кадров.</summary>
+        /// <summary>Minimum number of frames any decor appear/disappear transition
+        /// must span. At low FPS a fixed 0.6-0.9 s is 0-1 frames — a visually instant
+        /// pop; this floor stretches the duration to N frames.</summary>
         private const int DecorFadeMinFrames = 5;
 
         /// <summary>
-        /// Длительность перехода с учётом частоты кадров: не короче
-        /// DecorFadeMinFrames кадров, иначе базовая. Считается ОДИН раз на
-        /// пересборку пула и хранится в рантайме, чтобы все кадры перехода
-        /// считались по одной и той же формуле.
+        /// Transition duration adjusted for frame rate: no shorter than
+        /// DecorFadeMinFrames frames, otherwise the base value. Computed ONCE per pool
+        /// rebuild and stored in the runtime so every transition frame uses the same
+        /// formula.
         /// </summary>
         private static float DecorFadeSeconds(float baseSeconds)
         {
@@ -994,18 +970,18 @@ namespace Galilego.Universe
             float minSeconds = dt > 0f ? DecorFadeMinFrames * dt : 0f;
             return baseSeconds > minSeconds ? baseSeconds : minSeconds;
         }
-        /// <summary>Прорастание пропов (деревья/камни/кактусы/ромашки): длительность
-        /// и разброс появления. Крупные объекты растут медленнее травинок.</summary>
+        /// <summary>Prop sprouting (trees/rocks/cacti/daisies): appear duration and
+        /// spread. Large objects grow slower than blades.</summary>
         private const float DecorPropFadeSeconds = 1.0f;
         private const float DecorPropStaggerSeconds = 2.0f;
-        /// <summary>РџСѓР» С‚СЂР°РІС‹ С‡Р°РЅРєР° РґР°Р»СЊС€Рµ MaxDistance+СЌС‚РѕС‚ Р·Р°РїР°СЃ РІС‹РіСЂСѓР¶Р°РµС‚СЃСЏ:
-        /// РёРЅР°С‡Рµ РїСЂРѕР№РґРµРЅРЅС‹Рµ С‡Р°РЅРєРё РєРѕРїСЏС‚ РїРѕР»РЅС‹Рµ РїСѓР»С‹, Р±СЋРґР¶РµС‚ СѓС…РѕРґРёС‚ РѕС‚ РёРіСЂРѕРєР°
-        /// (Рё В«РѕР±Р»Р°РєРѕВ» Сѓ РЅРµРіРѕ РїСѓСЃС‚РµРµС‚).</summary>
+        /// <summary>A chunk's grass pool is released beyond MaxDistance + this margin:
+        /// otherwise passed chunks pile up full pools, the budget drifts away from the
+        /// player (and the cloud near them thins out).</summary>
         private const float DistantDecorTrimMargin = 80f;
-        /// <summary>Нормировка метрики ячейки декора: густота ∝ квадрату.
-        /// 1.0 = «чистые метры» (реальный шаг между растениями = SpacingMeters).
-        /// 1.3 = сохранить прежний вид умеренных широт (дороже: ~+8 мс кадра
-        /// в центрах граней, где трава прибавляется к кандидатам).</summary>
+        /// <summary>Normalization of the decor cell metric: density ∝ square.
+        /// 1.0 = pure metres (real spacing between plants = SpacingMeters).
+        /// 1.3 = keep the temperate-latitude look (costlier in frame time where
+        /// grass is added to the candidates at face centres).</summary>
         private const double DecorMetricNorm = 1.0d;
         private int firstFrameGuard = -1;
         private int diagnosticChunksLogged;
@@ -1014,17 +990,16 @@ namespace Galilego.Universe
         private float decorAltitude;
         private float decorSpeed;
 
-        /// <summary>Порог кадра, выше которого пишем [Hitch]. 40 мс = 25 fps:
-        /// ниже глаз не воспринимает, выше уже видно.</summary>
+        /// <summary>Frame threshold above which [Hitch] is logged. 40 ms = 25 fps.</summary>
         [SerializeField]
         private float HitchLogThresholdMs = 0.04f;
 
-        /// <summary>Снимок managed-счётчика на входе в LateUpdate текущего кадра.</summary>
+        /// <summary>Managed counter snapshot taken at the start of this frame's LateUpdate.</summary>
         private long lateUpdateAllocBefore;
         private bool blobDiagLogged;
         private Vector3 bodyRenderPosition;
-        /// <summary>РЎРєРѕСЂРѕСЃС‚СЊ РёРіСЂРѕРєР° РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅРѕ РїРѕРІРµСЂС…РЅРѕСЃС‚Рё РІ body-fixed РѕСЃСЏС…
-        /// (СЃРѕРІРїР°РґР°СЋС‚ СЃ Р»РѕРєР°Р»СЊРЅС‹РјРё РѕСЃСЏРјРё С‡Р°РЅРєРѕРІ): РІСЂР°С‰РµРЅРёРµ РїР»Р°РЅРµС‚С‹ РёСЃРєР»СЋС‡РµРЅРѕ.</summary>
+        /// <summary>Player speed relative to the surface in body-fixed axes (same as the
+        /// chunk local axes): planet rotation excluded.</summary>
         private Vector3 surfaceVelocityLocal;
         private Vector3 lastSurfaceLocalPosition;
         private bool hasSurfaceLocalPosition;
@@ -1056,17 +1031,17 @@ namespace Galilego.Universe
             terrain = body?.Terrain as HeightfieldTerrain;
             if (body == null || terrain == null)
             {
-                // Р“Р»Р°РґРєР°СЏ СЃС„РµСЂР° РёР»Рё С‚РµР»Рѕ РЅРµ РЅР°Р№РґРµРЅРѕ вЂ” СЃС‚Р°СЂС‹Р№ РІРёР·СѓР°Р» РЅРµ С‚СЂРѕРіР°РµРј.
+                // Smooth sphere or body not found — leave the old visual untouched.
                 enabled = false;
                 return;
             }
 
             noiseParams = TerrainNoiseParams.FromTerrain(terrain);
-            // РџСЂРёРјРёС‚РёРІ-СЃС„РµСЂР° С‚РµР»Р° вЂ” С‚РѕР»СЊРєРѕ Р·Р°РіР»СѓС€РєР° РЅР° РІСЂРµРјСЏ, РїРѕРєР° РЅРµ Р±С‹Р»
-            // cube-sphere. Р•С‘ СЂР°РґРёСѓСЃ СЂР°РІРµРЅ СЃСЂРµРґРЅРµРјСѓ (СѓСЂРѕРІРЅСЋ РјРѕСЂСЏ): СЃ РІРєР»СЋС‡С‘РЅРЅС‹РјРё
-            // С‡Р°РЅРєР°РјРё РѕРЅР° РєРѕРїР»Р°РЅР°СЂРЅР° РѕРєРµР°РЅСѓ Рё РјРµСЂС†Р°РµС‚, РїРѕСЌС‚РѕРјСѓ РіР°СЃРёРј РЅР°РІСЃРµРіРґР°.
-            // РќРµРїСЂРѕР·СЂР°С‡РЅРѕСЃС‚СЊ РїР»Р°РЅРµС‚С‹ РЅР° Р»СЋР±РѕР№ РґРёСЃС‚Р°РЅС†РёРё С‚РµРїРµСЂСЊ РґР°С‘С‚ СЃР°Рј СЂРµР»СЊРµС„
-            // (cube-sphere СЂРµРЅРґРµСЂРёС‚СЃСЏ Рё РІ РєРѕСЃРјРѕСЃРµ, Р±РµР· РІС‹СЃРѕС‚РЅРѕРіРѕ РїРѕСЂРѕРіР°).
+            // The body's primitive sphere is only a placeholder: its radius equals the
+            // mean (sea) level, so with chunks on it is coplanar with the ocean and
+            // flickers — hence it is disabled permanently. Planet opacity at any
+            // distance is provided by the terrain itself (cube-sphere renders in space
+            // too, with no altitude threshold).
             MeshRenderer sphereRenderer = GetComponent<MeshRenderer>();
             if (sphereRenderer != null)
             {
@@ -1079,9 +1054,9 @@ namespace Galilego.Universe
                 Runner.SystemView = new BodyTransformRegistry();
             }
 
-            // Identity-РєРѕСЂРµРЅСЊ РґР»СЏ С‡Р°РЅРєРѕРІ: С‡Р°РЅРєРё РќР• РїРѕРґ С‚СЂР°РЅСЃС„РѕСЂРјРѕРј С‚РµР»Р° (РёРЅР°С‡Рµ
-            // РёС… РєРѕРѕСЂРґРёРЅР°С‚С‹ ~СЂР°РґРёСѓСЃ РїР»Р°РЅРµС‚С‹ Рё float-РґСЂРѕР¶СЊ). РџРѕР·РёС†РёСЋ/РїРѕРІРѕСЂРѕС‚
-            // РєР°Р¶РґРѕРіРѕ С‡Р°РЅРєР° СЃС‚Р°РІРёРј РєР°Р¶РґС‹Р№ РєР°РґСЂ С‡РµСЂРµР· FloatingOrigin.
+            // Identity root for chunks: they are NOT under the body transform (otherwise
+            // their coordinates would be ~planet radius and float-jitter). Each chunk's
+            // position/rotation is set every frame via FloatingOrigin.
             surfaceRoot = new GameObject("PlanetSurfaceChunks").transform;
             surfaceRoot.position = Vector3.zero;
             surfaceRoot.rotation = Quaternion.identity;
@@ -1091,18 +1066,18 @@ namespace Galilego.Universe
             decorProfile = bodyAuthoring != null && bodyAuthoring.GroundDecorPreset != null
                 ? bodyAuthoring.GroundDecorPreset.Profile
                 : null;
-            // Р§РёСЃС‚РѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ РЅР° РєР°Р¶РґС‹Р№ Play: СЃ Enter Play Mode Options (Р±РµР·
-            // Reload Scene/Domain) РїСЂРёРІР°С‚РЅС‹Рµ РїРѕР»СЏ РєРѕРјРїРѕРЅРµРЅС‚Р° РјРѕРіСѓС‚ РїРµСЂРµР¶РёС‚СЊ
-            // РїСЂРѕС€Р»С‹Р№ Р·Р°РїСѓСЃРє, Р° РёС… С‡Р°РЅРєРё СѓР¶Рµ СѓРЅРёС‡С‚РѕР¶РµРЅС‹.
+            // Clean state on every Play: with Enter Play Mode Options (no Reload
+            // Scene/Domain) private component fields can survive the previous run while
+            // their chunks are already destroyed.
             ClearChunkCache();
             paramsAlive = true;
             EnsureHdrpWaterPatch();
         }
 
         /// <summary>
-        /// Новая вода без ручных шагов: при старте создаём под surfaceRoot
-        /// объект с HDRP Water Surface + WaterPatchFollower (Ocean/Sea/Lake,
-        /// Quad у игрока). Выкл — флагом UseHdrpWaterPatch в инспекторе.
+        /// New water with no manual steps: on start an object with HDRP Water Surface +
+        /// WaterPatchFollower is created under surfaceRoot (Ocean/Sea/Lake, Quad at the
+        /// player). Disabled via the UseHdrpWaterPatch flag in the inspector.
         /// </summary>
         private void EnsureHdrpWaterPatch()
         {
@@ -1140,11 +1115,10 @@ namespace Galilego.Universe
         {
             CancelAllDecorBuilds();
 
-            // [ФАЗА 1] Чанки чистим ДО Destroy(surfaceRoot.gameObject) и тем же
-            // DestroyChunkResources, что и на выгрузке. После уничтожения корня
-            // ссылки на дочерние GameObject в проверках Unity уже «мёртвые»,
-            // и счётчик баланса мешей сошёлся бы неверно — а по нему судят об
-            // утечке.
+            // [PHASE 1] Chunks are cleared BEFORE Destroy(surfaceRoot.gameObject) and
+            // with the same DestroyChunkResources used for eviction: after the root is
+            // destroyed, child GameObject references are already dead to Unity checks,
+            // and the mesh balance counter would come out wrong.
             foreach (KeyValuePair<long, Chunk> kv in chunks)
             {
                 DestroyChunkResources(kv.Value);
@@ -1199,8 +1173,8 @@ namespace Galilego.Universe
 
             treeProxyMeshesLow.Clear();
 
-            // Persistent-буфер общих матриц декора живёт весь сеанс: дренируем
-            // его здесь, иначе он переживёт перезагрузку домена.
+            // The Persistent shared decor matrix buffer lives for the whole session:
+            // drain it here, otherwise it survives a domain reload.
             proxySharedHandle.Complete();
             if (proxyShared.IsCreated)
             {
@@ -1210,23 +1184,22 @@ namespace Galilego.Universe
             proxySharedUsed = 0;
             proxySharedHandle = default(JobHandle);
 
-            // Teardown: дренируем пул буферов декора (иначе Persistent-массивы
-            // утекут на выходе из play/при перезагрузке домена). Тот же
-            // обязательный шаг для пула чанков и общих индексных буферов.
+            // Teardown: drain the decor buffer pool (otherwise the Persistent arrays
+            // leak on exiting play or on domain reload). The same required step applies
+            // to the chunk pool and the shared index buffers.
             DecorArrayPool.ClearAll();
             CancelAllChunkBuilds();
             SurfaceChunkPool.ClearAll();
         }
 
-        /// <summary>РЎР±СЂРѕСЃРёС‚СЊ РєСЌС€ РјРµС€РµР№ (РїРѕСЃР»Рµ live-СЃРјРµРЅС‹ РїР°СЂР°РјРµС‚СЂРѕРІ СЂРµР»СЊРµС„Р°).</summary>
+        /// <summary>Reset the mesh cache (after a live change of terrain parameters).</summary>
         [ContextMenu("Clear chunk cache")]
         public void ClearChunkCache()
         {
             CancelAllDecorBuilds();
-            // [ФАЗА 2] Порядок важен: сначала гасим интенты, потом paramsAlive,
-            // и только потом сбрасываем кэш. Джобы, уже висящие в полёте,
-            // дожидаются и возвращают массивы в пул; их результаты при этом
-            // уже помечены устаревшими.
+            // [PHASE 2] Order matters: first clear the intents, then paramsAlive, and
+            // only then reset the cache. Jobs already in flight are awaited and return
+            // their arrays to the pool; their results are already marked stale.
             CancelAllChunkBuilds();
             paramsVersion++;
             paramsAlive = false;
@@ -1239,9 +1212,9 @@ namespace Galilego.Universe
             splitNodes.Clear();
             visibleChunks.Clear();
 
-            // Материал воды пересоздаём каждый Play: иначе при Enter Play Mode
-            // без Reload Domain старый материал (другой шейдер/цвета) переживёт
-            // запуск и смена UseLitWaterFallback/шейдера не подействует.
+            // The water material is recreated on every Play: with Enter Play Mode without
+            // Reload Domain the old material (different shader/colours) would survive the
+            // run and switching UseLitWaterFallback/shader would have no effect.
             if (waterMaterialCache != null)
             {
                 Destroy(waterMaterialCache);
@@ -1249,8 +1222,8 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>РЎРЅСЏС‚СЊ РІСЃРµ РЅРµР·Р°РІРµСЂС€С‘РЅРЅС‹Рµ СЃР±РѕСЂРєРё РґРµРєРѕСЂР° (teardown): РґР¶РѕР±С‹
-        /// РґРѕСЃС‡РёС‚С‹РІР°РµРј Рё РѕСЃРІРѕР±РѕР¶РґР°РµРј Persistent-РјР°СЃСЃРёРІС‹, РёРЅР°С‡Рµ СѓС‚РµС‡РєР°.</summary>
+        /// <summary>Tear down all unfinished decor builds: finish the jobs and free the
+        /// Persistent arrays, otherwise they leak.</summary>
         private void CancelAllDecorBuilds()
         {
             for (int i = 0; i < decorBuildSessions.Count; i++)
@@ -1282,9 +1255,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Live-С‚СЋРЅРёРЅРі РІ Play: РїРµСЂРµРЅРµСЃС‚Рё РїР°СЂР°РјРµС‚СЂС‹ СЂРµР»СЊРµС„Р° РёР· СЃРѕСЃРµРґРЅРµРіРѕ
-        /// BodyAuthoring РІ Р¶РёРІРѕР№ HeightfieldTerrain, РѕР±РЅРѕРІРёС‚СЊ СЃРЅРёРјРѕРє С€СѓРјР° Рё
-        /// РїРµСЂРµСЃС‚СЂРѕРёС‚СЊ РІСЃРµ С‡Р°РЅРєРё. Р’РЅРµ Play РјРµРЅСЏРµС‚ С‚РѕР»СЊРєРѕ СЃРµСЂРёР°Р»РёР·РѕРІР°РЅРЅС‹Рµ РїРѕР»СЏ.
+        /// Live tuning in Play: copy terrain parameters from the neighbouring
+        /// BodyAuthoring into the live HeightfieldTerrain, refresh the noise snapshot
+        /// and rebuild all chunks. Outside Play it only changes serialized fields.
         /// </summary>
         [ContextMenu("Apply authoring params + rebuild")]
         public void ApplyAuthoringAndRebuild()
@@ -1309,9 +1282,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Live-С‚СЋРЅРёРЅРі: РµСЃР»Рё РїРѕР»СЏ СЂРµР»СЊРµС„Р° РІ BodyAuthoring РёР·РјРµРЅРёР»Рё РІ Play,
-        /// РїРµСЂРµРЅРѕСЃРёРј РёС… РІ Р¶РёРІРѕР№ terrain Рё РїРµСЂРµСЃС‚СЂР°РёРІР°РµРј С‡Р°РЅРєРё Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё вЂ”
-        /// РёРЅР°С‡Рµ РїСЂР°РІРєРё РІ Inspector РЅРµ РІР»РёСЏСЋС‚ РЅР° СѓР¶Рµ РїРѕСЃС‚СЂРѕРµРЅРЅСѓСЋ РіРµРѕРјРµС‚СЂРёСЋ.
+        /// Live tuning: when terrain fields in BodyAuthoring change in Play, they are
+        /// copied into the live terrain and all chunks rebuild automatically — otherwise
+        /// Inspector edits would not affect already built geometry.
         /// </summary>
         private void Update()
         {
@@ -1327,10 +1300,9 @@ namespace Galilego.Universe
 
             bodyAuthoring.ApplyToTerrain(terrain);
 
-            // Зоны исключения декора: собираются из объектов мест (раз в 0.5 с,
-            // внутри — проверка по контенту). Стоит после ApplyToTerrain, потому
-            // что ApplyToTerrain может пересобрать таблицы рельефа, а зоны живут
-            // на том же HeightfieldTerrain.
+            // Decor exclusion zones: collected from site objects (every 0.5 s, with a
+            // content check inside). Runs after ApplyToTerrain because ApplyToTerrain can
+            // rebuild the terrain tables, and the zones live on the same HeightfieldTerrain.
             DecorExclusionTable.Apply(terrain, body.Radius, body.Name);
 
             GroundDecorProfile currentDecor = bodyAuthoring.GroundDecorPreset != null
@@ -1353,14 +1325,14 @@ namespace Galilego.Universe
             }
             else if (!ColorStateEquals(CaptureColorState(), colorStateCache))
             {
-                // РџСЂР°РІРєРё РўРћР›Р¬РљРћ С†РІРµС‚Р° (СЃРёР»Р°/С‡Р°СЃС‚РѕС‚Р° РјРѕС‚С‚Р»РёРЅРіР°, РїРѕСЂРѕРіРё СЃРєР°Р»С‹/СЃРЅРµРіР°)
-                // РЅРµ РјРµРЅСЏСЋС‚ РіРµРѕРјРµС‚СЂРёСЋ вЂ” РїРµСЂРµСЃС‚СЂР°РёРІР°С‚СЊ С‡Р°РЅРєРё РЅРµ РЅСѓР¶РЅРѕ, РґРѕСЃС‚Р°С‚РѕС‡РЅРѕ
-                // РїРµСЂРµР»РёС‚СЊ СѓРЅРёС„РѕСЂРјС‹ РІ РіР»РѕР±Р°Р»С‹.
+                // COLOUR-ONLY changes (mottling strength/frequency, rock/snow thresholds)
+                // do not alter geometry — no need to rebuild chunks, just re-upload the
+                // uniforms to the globals.
                 ApplyTerrainGlobals();
             }
         }
 
-        /// <summary>РЎРЅРёРјРѕРє С†РІРµС‚РѕРІС‹С… СѓРЅРёС„РѕСЂРј (Р±РµР· РіРµРѕРјРµС‚СЂРёРё) РґР»СЏ live-С‚СЋРЅРёРЅРіР°.</summary>
+        /// <summary>Snapshot of colour uniforms (no geometry) for live tuning.</summary>
         private struct TerrainColorState
         {
             public double BeachHeightMeters;
@@ -1457,32 +1429,29 @@ namespace Galilego.Universe
                 && a.ColorDetailSeedOffset == b.ColorDetailSeedOffset
                 && a.ComputeMask == b.ComputeMask
                 && a.ComputeDetail == b.ComputeDetail
-                // Площадки обязаны быть в сравнении: без этого добавление или
-                // перенос базы меняло бы физику, но не трогало кэш чанков — земля
-                // в сцене осталась бы старой, и расхождение визуал/физика было бы
-                // молчаливым. Сравниваем СОДЕРЖИМОЕ таблиц, а не дескрипторы:
-                // NativeArray == сравнивает указатель, и одинаковый набор из
-                // двух сборок выглядел бы разным.
+                // Sites must participate in the comparison: otherwise adding or moving a
+                // base changes physics but not the chunk cache, silently leaving visual vs
+                // physics out of sync. Compare table CONTENTS, not descriptors:
+                // NativeArray == compares pointers, so an identical set from two builds
+                // would look different.
                 && TerrainModifiers.TableEqual(a.Mods, b.Mods)
-                // Зоны исключения декора — по тому же правилу: их пересборка
-                // должна пересобирать чанки декора, иначе зона молча разъезжается
-                // с содержимым таблицы.
+                // Decor exclusion zones follow the same rule: rebuilding them must rebuild
+                // decor chunks, otherwise a zone silently drifts from the table contents.
                 && DecorExclusionTable.TableEqual(a.DecorExclusions, b.DecorExclusions);
         }
 
         private void LateUpdate()
         {
-            // [ФАЗА 0] Учёт кадра рендера поверхности. Снимаем ДО всего, и
-            // закрываем в каждой точке выхода: managed-аллокация меряется на всю
-            // длину LateUpdate, а не только на «интересную» часть.
+            // [PHASE 0] Surface render frame accounting. Opened BEFORE everything and
+            // closed at every exit point: managed allocation is measured across the whole
+            // LateUpdate, not just its interesting part.
             SurfacePerf.BeginFrame();
             long perfAllocBefore = System.GC.GetAllocatedBytesForCurrentThread();
             lateUpdateAllocBefore = perfAllocBefore;
 
-            // Вода должна жить всегда: время анимации волн и позиция камеры
-            // ставятся ДО всех early-out (нет Ship / чужой DominantBody / нет
-            // MainCamera). Иначе _WaterTime замирает на последнем значении —
-            // океан статичен: ни геометрии, ни ряби, ни прибоя.
+            // Water must always stay alive: wave time and camera position are set BEFORE
+            // all early-outs (no Ship / foreign DominantBody / no MainCamera). Otherwise
+            // _WaterTime freezes and the ocean goes static: no waves, no ripples, no surf.
             Shader.SetGlobalFloat("_WaterTime", Time.time);
             Camera cameraEarly = Camera.main;
             if (cameraEarly != null)
@@ -1505,8 +1474,8 @@ namespace Galilego.Universe
 
             body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPosition, out _);
 
-            // [Р“Р РђР¤РРљРђ] РЎРіР»Р°Р¶РёРІР°РЅРёРµ (SMAA/TAA) Р¶РёРІС‘С‚ РЅР° СЌС‚РѕРј Р¶Рµ Main Camera:
-            // HDAdditionalCameraData РІ СЃС†РµРЅРµ (antialiasing / SMAAQuality / TAA*).
+            // [GRAPHICS] Antialiasing (SMAA/TAA) lives on the same Main Camera:
+            // HDAdditionalCameraData in the scene (antialiasing / SMAAQuality / TAA*).
             Camera camera = Camera.main;
             if (camera == null)
             {
@@ -1523,19 +1492,18 @@ namespace Galilego.Universe
                 Debug.Log("[PlanetSurface] чанков: " + chunks.Count + ", водных мешей построено: " + waterChunkCount);
             }
 
-            // РўСЂР°РІРµСЂСЃ Р›РћР” вЂ” РєР°Р¶РґС‹Р№ РєР°РґСЂ. Р Р°РЅСЊС€Рµ Р±С‹Р» РіРёСЃС‚РµСЂРµР·РёСЃ РїРѕ СЂРµРЅРґРµСЂ-РїРѕР·РёС†РёРё
-            // РєР°РјРµСЂС‹, РЅРѕ РїРѕРґ floating origin РѕРЅР° ~0 Рё РїСЂРё РґРІРёР¶РµРЅРёРё РёРіСЂРѕРєР° РїРѕ С‚РµР»Сѓ
-            // РїРѕС‡С‚Рё РЅРµ РјРµРЅСЏРµС‚СЃСЏ в†’ РЅР°Р±РѕСЂ СѓР·Р»РѕРІ В«Р·Р°РјРёСЂР°Р»В» РЅР° СЃРїР°РІРЅРµ Рё РґР°Р»СЊРЅРёРµ С‡Р°РЅРєРё
-            // СѓСЃС‚Р°СЂРµРІР°Р»Рё/РєРѕСЃРѕР±РѕС‡РёР»РёСЃСЊ. РўСЂР°РІРµСЂСЃ РґС‘С€РµРІ (РјРµС€Рё РєСЌС€РёСЂРѕРІР°РЅС‹).
+            // LOD traversal — every frame. It is cheap (meshes are cached), and under the
+            // floating origin the render-space camera position stays ~0: hysteresis on it
+            // would freeze the node set at spawn and let distant chunks go stale.
             bodyRenderPosition = FloatingOrigin.ToRender(bodyPosition);
             currentBodyPosition = bodyPosition;
             currentBodyOrientation = body.GetVisualOrientation(Runner.TimeSeconds);
             currentBodyRotation = FloatingOrigin.RenderRotation(currentBodyOrientation);
 
-            // РЎРєРѕСЂРѕСЃС‚СЊ РёРіСЂРѕРєР° РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅРѕ РџРћР’Р•Р РҐРќРћРЎРўР (body-fixed, РѕСЃРё С‡Р°РЅРєР°):
-            // РІСЂР°С‰РµРЅРёРµ РїР»Р°РЅРµС‚С‹ РІС‹С‡РёС‚Р°РµРј, РёРЅР°С‡Рµ В«РѕРїРµСЂРµР¶РµРЅРёРµВ» РѕР±Р»Р°РєР° С‚СЂР°РІС‹ СѓРµР·Р¶Р°Р»Рѕ
-            // Р±С‹ РґР°Р¶Рµ РєРѕРіРґР° РёРіСЂРѕРє СЃС‚РѕРёС‚. РЎС‡РёС‚Р°РµРј РІ double РѕС‚ astro-РїРѕР·РёС†РёР№:
-            // float-СЂР°Р·РЅРѕСЃС‚Рё РЅР° РґРёСЃС‚Р°РЅС†РёРё ~1e6 Рј С€СѓРјСЏС‚ РЅР° РјРµС‚СЂС‹ РІ СЃРµРєСѓРЅРґСѓ.
+            // Player speed relative to the SURFACE (body-fixed, chunk axes): planet rotation
+            // is subtracted, otherwise the grass cloud lead would drift even when the player
+            // stands still. Computed in double from astro positions: float differences at
+            // ~1e6 m are noisy at metres per second.
             Vector3 surfaceLocal = AstroFrame.ToSimulation(
                 currentBodyOrientation.Conjugated.Rotate(Runner.PlayerPosition - currentBodyPosition));
             if (hasSurfaceLocalPosition)
@@ -1550,28 +1518,25 @@ namespace Galilego.Universe
             ApplyTerrainGlobals();
 
             {
-                // РµР»-fixed РЅР°РїСЂР°РІР»РµРЅРёРµ РґР»СЏ current-РєР°РґСЂ.
-                // [ФАЗА 2] Поднимаем флаг «параметры живы» ДО постановки в очередь:
-                // ClearChunkCache его снимает, и без этого после любой пересборки
-                // кэша (смена шума, ApplyAuthoringAndRebuild) результаты в полёте
-                // вечно считались бы устаревшими и не доливались в меши — кэш
-                // оставался бы пустым навсегда. In-flight запросы при этом уже
-                // дренированы в CancelAllChunkBuilds, так что «устаревших» здесь
-                // быть не может.
+                // Body-fixed direction for the current frame.
+                // [PHASE 2] The “params alive” flag is raised BEFORE enqueueing:
+                // ClearChunkCache lowers it, and without this, after any cache rebuild
+                // (noise change, ApplyAuthoringAndRebuild) in-flight results would forever
+                // look stale and never be merged into meshes — the cache would stay empty
+                // for good. In-flight requests are already drained in CancelAllChunkBuilds,
+                // so nothing stale can be here.
                 paramsAlive = true;
                 desired.Clear();
                 splitNext.Clear();
 
-                // Предельная дальность видимости рельефа с этой точки.
+                // Far limit of terrain visibility from this point.
                 //
-                // Камера на радиусе r1, рельеф высотой до h. Дальше точки
-                // касания (R+h)·r1-окружности поверхность не видно: она ушла
-                // за выпуклость планеты. Отсюда d = sqrt((R+h)² - R²).
-                // h берём как terrain.AmplitudeMeters — это верхняя граница
-                // высоты над морем (генератор не может дать больше), поэтому
-                // отсечение заведомо не съедает видимый рельеф, даже если
-                // игрок стоит на пике или летит высоко (радиус камеры входит
-                // в формулу, поэтому в атмосфере/орбите горизонт сам отодвигается).
+                // Camera at radius r1, terrain up to height h. Beyond the tangent point of
+                // the (R+h)·r1 circle the surface is hidden behind the planet's curvature:
+                // d = sqrt((R+h)² - R²). h is terrain.AmplitudeMeters, the upper bound of
+                // height above sea level, so the cull never eats visible terrain even on a
+                // peak or at high altitude (the camera radius is in the formula, so the
+                // horizon moves out in atmosphere/orbit).
                 maxVisibleDistance = double.MaxValue;
                 if (CullBeyondHorizon && terrain != null)
                 {
@@ -1594,36 +1559,32 @@ namespace Galilego.Universe
 
                 SurfacePerf.DesiredNodes = desired.Count;
 
-                // [ФАЗА 3] Тир по скорости и предсказанная точка считаются ДО
-                // обхода: EffectiveMaxDepth и EffectiveSplitFactor читаются
-                // прямо в Traverse, а префетч идёт вторым проходом по
-                // предсказанной камере.
+                // [PHASE 3] The speed tier and the predicted point are computed BEFORE the
+                // traversal: EffectiveMaxDepth and EffectiveSplitFactor are read directly in
+                // Traverse, and prefetch runs as a second pass over the predicted camera.
                 UpdateMotionTier(surfaceVelocityLocal.magnitude);
                 UpdatePredictedCamera(cameraPosition);
 
-                // Р—Р°С„РёРєСЃРёСЂРѕРІР°С‚СЊ РїРѕРґСЂР°Р·Р±РёРµРЅРёРµ РєР°РґСЂР° вЂ” Р±Р°Р·Р° РіРёСЃС‚РµСЂРµР·РёСЃР° РІ Traverse
-                // РЅР° СЃР»РµРґСѓСЋС‰РµРј РєР°РґСЂРµ, С‡С‚РѕР±С‹ СѓР·РµР» РЅРµ РґСЂРѕР±РёР»СЃСЏ/СЃР»РёРІР°Р»СЃСЏ РєР°Р¶РґС‹Р№ РєР°РґСЂ.
+                // Freeze this frame's subdivision — next frame it is the hysteresis base in
+                // Traverse, so a node does not split/merge every frame.
                 splitNodes.Clear();
                 splitNodes.UnionWith(splitNext);
 
-                // РЎРЅР°С‡Р°Р»Р° РЎРўР РћРРњ/РџРћРљРђР—Р«Р’РђР•Рњ Р¶РµР»Р°РµРјС‹Рµ Рё С‚РѕР»СЊРєРѕ РїРѕС‚РѕРј СЃС‡РёС‚Р°РµРј keep
-                // РїРѕ С„Р°РєС‚РёС‡РµСЃРєРѕРјСѓ СЃРѕСЃС‚РѕСЏРЅРёСЋ РєР°РґСЂР°. РРЅР°С‡Рµ РЅР° РєР°РґСЂРµ РїРѕСЏРІР»РµРЅРёСЏ СЂРµР±С‘РЅРєР°
-                // keep РµС‰С‘ РІРєР»СЋС‡Р°РµС‚ СЂРѕРґРёС‚РµР»СЏ (СЂРµР±С‘РЅРѕРє Р±С‹Р» РєСЌС€-РїСЂРѕРјР°С…РѕРј) вЂ” РіСЂСѓР±С‹Р№ Рё
-                // РїРѕРґСЂРѕР±РЅС‹Р№ С‡Р°РЅРєРё РІРёРґРЅС‹ РІРјРµСЃС‚Рµ: z-fight/В«С…Р»РѕРїРѕРєВ» РЅР° РєР°Р¶РґРѕРј РїРµСЂРµС…РѕРґРµ.
+                // First BUILD/SHOW the desired nodes and only then compute keep from the
+                // actual frame state. Otherwise, on the frame a child appears, keep would
+                // still include the parent (the child was a cache miss) — coarse and detailed
+                // chunks show together: z-fighting/pop on every transition.
             int budget = firstFrameGuard < 0 ? int.MaxValue : BuildsPerFrame;
             bool firstFrame = firstFrameGuard < 0;
             firstFrameGuard = 0;
             int built = 0;
             int enqueued = 0;
-            // [ФАЗА 0] Время постройки меряем Stopwatch, а не ProfilerMarker:
-            // здесь нужен ещё и счётчик, а не только запись в профайлер.
+            // [PHASE 0] Build time is measured with Stopwatch, not ProfilerMarker: a counter
+            // is needed here, not just a profiler entry.
             //
-            // [ФАЗА 2] Бюджет BuildsPerFrame ограничивал ЧИСЛО чанков, а не
-            // миллисекунды, и в сцене он стоит 64: при замеренных 3.7-4 мс на
-            // чанк это до 260 мс постройки В ОДНОМ кадре. Отсюда фризы. Теперь
-            // бюджет — ChunkFinalizeBudgetMs, то есть миллисекунды, а сама
-            // постройка уходит в джобы и на главном потоке остаётся только
-            // дешёвая заливка готового буфера.
+            // [PHASE 2] The budget is ChunkFinalizeBudgetMs (milliseconds, not a chunk
+            // count): the build itself runs in jobs, and on the main thread only the cheap
+            // upload of the finished buffer remains.
             var buildClock = System.Diagnostics.Stopwatch.StartNew();
             int visibleNow = 0;
             int terrainTrisNow = 0;
@@ -1645,10 +1606,10 @@ namespace Galilego.Universe
 
                 if (firstFrame || !AsyncChunkBuild)
                 {
-                    // Первый кадр и режим «строить синхронно» остаются
-                    // синхронными: там важна не плавность, а чтобы к первому
-                    // показу кадра мир уже был готов. Асинхронный путь наполнял
-                    // бы кэш секундами, и игрок улетел бы с дырами.
+                    // The first frame and the build-synchronously mode stay synchronous:
+                    // smoothness does not matter there, but the world must be ready by the
+                    // first shown frame. The async path would fill the cache over seconds and
+                    // the player would fly off into holes.
                     if (built >= budget)
                     {
                         continue;
@@ -1680,8 +1641,8 @@ namespace Galilego.Universe
             SurfacePerf.QueuedBuilds = chunkBuildQueue.Count;
             SurfacePerf.InFlightBuilds = chunkBuildsInFlight.Count;
 
-                // keep = РїРѕСЃС‚СЂРѕРµРЅРЅС‹Рµ Р¶РµР»Р°РµРјС‹Рµ Р»РёСЃС‚СЊСЏ + РїСЂРµРґРєРё С‚РµС… Р¶РµР»Р°РµРјС‹С…, С‡С‚Рѕ РЅРµ
-                // СѓСЃРїРµР»Рё РїРѕСЃС‚СЂРѕРёС‚СЊ РІ СЌС‚РѕРј РєР°РґСЂРµ (В«Р·Р°С‚С‹С‡РєР°В» РѕС‚ РґС‹СЂ РЅР° СЃРјРµРЅРµ LOD).
+                // keep = built desired leaves + parents of desired nodes not yet built in
+                // this frame (hole plugs at LOD switches).
                 keep.Clear();
                 for (int i = 0; i < desired.Count; i++)
                 {
@@ -1711,26 +1672,14 @@ namespace Galilego.Universe
                         ix >>= 1;
                         iy >>= 1;
 
-                        // [ФАЗА 1] Предок нужен как «затычка дыры» ровно до тех
-                        // пор, пока не построен весь квад его детей. Раньше в
-                        // keep попадала ВСЯ цепочка предков и ни разу из неё не
-                        // выходила, пока существует потомок — то есть узлы, уже
-                        // заменённые собственными детьми, оставались в keep, а
-                        // значит и во Visible, и продолжали РИСОВАТЬСЯ поверх
-                        // детей. Замер: active == visible == 1551, тогда как
-                        // до правки активных чанков было заметно больше, чем
-                        // узлов в desired, и разница уходила в overdraw.
+                        // [PHASE 1] A parent is needed as a hole plug exactly until all four
+                        // of its children are built: once a node is replaced by its children
+                        // it must leave keep, otherwise it keeps being drawn on top of them.
                         //
-                        // Оговорка про кэш: заполнить его сверх MaxCachedChunks
-                        // это не позволяло — в сцене MaxCachedChunks = 8192, и
-                        // кэш честно упирался в этот лимит. Проблема была не в
-                        // размере кэша, а в том, что лишние узлы в нём
-                        // оставались видимыми.
                         //
-                        // Условие «есть непостроенный ребёнок» достаточно и
-                        // безопасно: как только построен последний четвёртый,
-                        // все дети уже в desired и видны в этом же кадре, так
-                        // что дыры не возникает.
+                        // The “has an unbuilt child” condition is sufficient and safe: when
+                        // the last fourth child is built, all children are already in desired
+                        // and visible in the same frame, so no hole appears.
                         if (!HasAllBuiltChildren(face, depth, ix, iy))
                         {
                             keep.Add(NodeId(face, depth, ix, iy));
@@ -1738,15 +1687,13 @@ namespace Galilego.Universe
                     }
                 }
 
-                // РџСЂСЏС‡РµРј РІСЃС‘ РІРёРґРёРјРѕРµ, С‡РµРіРѕ РЅРµС‚ РІ keep.
+                // Hide everything visible that is not in keep.
                 foreach (KeyValuePair<long, Chunk> kv in chunks)
                 {
                     if (keep.Contains(kv.Key))
                     {
-                        // Метка LRU ставится здесь же, вторым обходом не ходим:
-                        // проход по всему кэшу каждый кадр не бесплатный, а
-                        // выигрыш от слияния — заметная часть кадра при 8000
-                        // чанков.
+                        // The LRU stamp is set right here, avoiding a second pass: walking
+                        // the whole cache every frame is not free.
                         kv.Value.LastKeepTime = Time.unscaledTime;
                         if (kv.Value.Visible)
                         {
@@ -1770,18 +1717,13 @@ namespace Galilego.Universe
                     }
                 }
 
-                // [ФАЗА 2.5] Размер keep и «сколько узлов desired попало в
-                // keep» считаются ЗДЕСЬ, одним проходом, а не внутри
-                // EvictIfNeeded. Раньше счётчик ставился только в выгрузке, и
-                // когда она выходила раньше времени (кэш не превышал лимит),
-                // значение оставалось нулевым. Из-за этого в замерах выходило
-                // keep меньше, чем узлов в desired, и active не совпадал с
-                // visible — судить по таким цифрам было нельзя.
+                // [PHASE 2.5] keep size and DesiredInKeep are computed HERE in one pass, not
+                // inside EvictIfNeeded: when eviction exits early (cache under the limit) the
+                // counters would stay zero.
                 //
-                // По построению keep ⊇ desired∩chunks, поэтому DesiredInKeep
-                // обязано равняться VisibleChunks того же кадра. Если не
-                // равняется — между этими точками изменился кэш, и на экране
-                // действительно есть дыры.
+                // By construction keep ⊇ desired∩chunks, so DesiredInKeep must equal
+                // VisibleChunks for the same frame. If it does not, the cache changed between
+                // these points and the screen really has holes.
                 int desiredInKeep = 0;
                 for (int i = 0; i < desired.Count; i++)
                 {
@@ -1794,21 +1736,18 @@ namespace Galilego.Universe
                 SurfacePerf.KeepCount = keep.Count;
                 SurfacePerf.DesiredInKeep = desiredInKeep;
 
-                // [ФАЗА 0] Активных чанков обычно больше, чем узлов в desired:
-                // разница — предки, оставленные видимыми как затычки. Большая
-                // разница означает, что дыры закрываются слишком широко и в
-                // кадр рисуется лишнее.
+                // [PHASE 0] Active chunks usually outnumber desired nodes: the difference is
+                // parents left visible as hole plugs. A large difference means holes are
+                // covered too broadly and extra geometry is drawn.
                 SurfacePerf.ActiveChunks = activeNow;
 
                 EvictIfNeeded();
                 LogGeometryBudget();
             }
 
-            // РўСЂР°РЅСЃС„РѕСЂРјС‹ РІРёРґРёРјС‹С… С‡Р°РЅРєРѕРІ вЂ” РєР°Р¶РґС‹Р№ РєР°РґСЂ (floating origin + СЃРїРёРЅ).
-            // Трансформы видимых чанков — каждый кадр, но только по active-
-            // списку. Два сеттера заменены на один SetPositionAndRotation: это
-            // одна запись трансформа вместо двух, и матрица пересчитывается
-            // один раз, а не на каждый канал отдельно.
+            // Transforms of visible chunks — every frame, but only over the active list. One
+            // SetPositionAndRotation call replaces two setters: one transform write instead of
+            // two, and the matrix recomputes once instead of once per channel.
             using (SurfacePerf.ChunkTransformsMarker.Auto())
             {
                 for (int i = 0; i < visibleChunks.Count; i++)
@@ -1826,29 +1765,25 @@ namespace Galilego.Universe
 
             UpdateWaterBob(cameraPosition);
 
-            // Р”РµРєРѕСЂ РїРѕСЃР»Рµ СЂР°СЃСЃС‚Р°РЅРѕРІРєРё С‚СЂР°РЅСЃС„РѕСЂРјРѕРІ С‡Р°РЅРєРѕРІ: РјР°С‚СЂРёС†С‹ РёРЅСЃС‚Р°РЅСЃРѕРІ
-            // Р±РµСЂСѓС‚ РјРёСЂРѕРІРѕР№ С‚СЂР°РЅСЃС„РѕСЂРј С‡Р°РЅРєР° С‚РµРєСѓС‰РµРіРѕ РєР°РґСЂР°.
+            // Decor after the chunk transforms are placed: instance matrices take the chunk
+            // world transform of the current frame.
             Shader.SetGlobalFloat("_GroundDecorTime", Time.time);
             UpdateDecorMotionState(cameraPosition);
-            // РћР±С…РѕРґС‹ С‡Р°РЅРєРѕРІ (РїРѕРёСЃРє СѓСЃС‚Р°СЂРµРІС€РёС…/РЅРµРїРѕСЃС‚СЂРѕРµРЅРЅС‹С…, РІС‹РіСЂСѓР·РєР° РґР°Р»СЊРЅРёС…)
-            // вЂ” РЅРµ РєР°Р¶РґС‹Р№ РєР°РґСЂ: РѕРЅРё O(С‡Р°РЅРєРёГ—СЃР»РѕРё). Р”РѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂРё СЃРґРІРёРіРµ
-            // РєР°РјРµСЂС‹ > 0.25 Рј РёР»Рё СЂР°Р· РІ 6 РєР°РґСЂРѕРІ (РґР»СЏ В«РѕСЃРµРґР°РЅРёСЏВ» РѕР±Р»Р°РєР° СЃС‚РѕСЏ).
-            // Обходы декора запускаются по смещению камеры. Порог 0.0625 м² =
-            // 0.25 м: у земли этого правильно (поле пересобирается, когда игрок
-            // прошёл заметный кусок), но на 2 км камера за кадр уезжает
-            // километрами, порог превышается всегда, и скан идёт каждый кадр.
-            // Теперь порог пропорционален высоте: наверху поле всё равно
-            // субпиксельное, и частота скана не даёт выигрыша.
+            // Chunk passes (stale/unbuilt search, distant eviction) run not every frame: they
+            // are O(chunks×layers). Enough on camera displacement > 0.25 m or once per
+            // 6 frames (keeps the cloud seated when standing).
+            // Decor scans trigger on camera displacement; the threshold is proportional to
+            // altitude, because up high the field is subpixel and a frequent scan gives no
+            // gain.
             float decorScanThreshold = Mathf.Max(0.25f, decorAltitude * 0.02f);
             float decorScanThresholdSq = decorScanThreshold * decorScanThreshold;
             bool decorScanDue = !hasDecorScanCamera
                 || (cameraPosition - lastDecorScanCamera).sqrMagnitude > decorScanThresholdSq
                 || (++decorScanTick % 6) == 0;
-            // [ФАЗА 1] Порог смещения камеры растёт с высотой: на 2 км порог
-            // 0.25 м превышается всегда, поэтому скан шёл каждый кадр, а каждый
-            // скан — это O(чанки × слои) с двумя проходами. На скорости
-            // добавляется ещё и минимальный интервал по времени: за один кадр
-            // поле смещается на десятки метров, и чаще сканировать бессмысленно.
+            // [PHASE 1] The camera displacement threshold grows with altitude (a fixed
+            // 0.25 m would be exceeded every frame at 2 km). At speed a minimum time interval
+            // is also added: the field moves tens of metres per frame, so scanning more often
+            // is pointless.
             if (decorScanDue && decorSpeed > DecorScanSpeedGate
                 && Time.unscaledTime < nextDecorScanTime)
             {
@@ -1857,8 +1792,8 @@ namespace Galilego.Universe
 
             if (decorScanDue)
             {
-                // РџРµСЂРµСЃР±РѕСЂРєРё В«РѕР±Р»Р°РєР°В» Сѓ РёРіСЂРѕРєР° вЂ” РїРµСЂРІС‹РјРё: РёРј РіР°СЂР°РЅС‚РёСЂРѕРІР°РЅ СЃР»РѕС‚
-                // СЃРµСЃСЃРёРё, РёРЅР°С‡Рµ РѕС‡РµСЂРµРґСЊ Р·Р°РЅРёРјР°СЋС‚ РґР°Р»СЊРЅРёРµ РїРµСЂРІС‹Рµ СЃР±РѕСЂРєРё.
+                // Cloud rebuilds at the player come first: they have a guaranteed session
+                // slot, otherwise distant first builds would occupy the queue.
                 RefreshMovingDecor(cameraPosition);
                 EnsureVisibleDecor(cameraPosition);
                 TrimDistantDecor(cameraPosition);
@@ -1873,24 +1808,24 @@ namespace Galilego.Universe
 
             LogFrameHitch();
 
-            // [ФАЗА 0] Закрываем кадр. Абсолютные счётчики — раз в 2 с и только
-            // по флагу: сам скан FindObjectsOfTypeAll<Mesh> на 1000+ мешей даёт
-            // фриз, то есть испортил бы ровно то, что мы меряем.
+            // [PHASE 0] Close the frame. Absolute counters run once per 2 s and only behind a
+            // flag: FindObjectsOfTypeAll<Mesh> over 1000+ meshes causes a hitch and would
+            // spoil exactly what is being measured.
             LogFrameHitch();
             SurfacePerf.MaybeScanSlowDiagnostics(LogGeometryStats);
             SurfacePerf.EndFrame(perfAllocBefore);
         }
 
-        /// <summary>Логгер фризов. Снимок состояния в кадре, где весь кадр
-        /// уложился хуже порога: порог меряется по полному кадру, а не только по
-        /// LateUpdate, потому что смена LOD и отрисовка декора случаются уже в
-        /// рендер-части PlayerLoop и в наш LateUpdate не видны.
+        /// <summary>Hitch logger. State snapshot of the frames where the whole frame
+        /// missed the threshold: the threshold is measured over the full frame, not only
+        /// LateUpdate, because LOD switches and decor drawing happen in the render part
+        /// of the PlayerLoop and are invisible to our LateUpdate.
         ///
-        /// allocLU — managed-байты, набежавшие за LateUpdate. Если он
-        /// сопоставим с длиной фриза, виновата наша managed-аллокация (например,
-        /// Mesh.vertices при постановке сессии). Если мал, а фриз большой, то
-        /// либо чужой код в кадре, либо unmanaged-работа вроде финализации
-        /// чанков — она в managed-счётчик не попадает.</summary>
+        /// allocLU is managed bytes accrued during LateUpdate. If it is comparable to the
+        /// hitch length, our managed allocation is to blame (e.g. Mesh.vertices when
+        /// placing a session). If it is small while the hitch is big, it is foreign code
+        /// in the frame or unmanaged work such as chunk finalization — that never shows
+        /// up in the managed counter.</summary>
         private void LogFrameHitch()
         {
             if (Time.unscaledDeltaTime <= HitchLogThresholdMs)
@@ -1912,13 +1847,13 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// РўСЂРёРїР»Р°РЅР°СЂРЅС‹Рµ UV С‚РµРєСЃС‚СѓСЂ СЂРµР»СЊРµС„Р° вЂ” camera-relative. РђР±СЃРѕР»СЋС‚РЅС‹Рµ РєРѕРѕСЂРґРёРЅР°С‚С‹
-        /// РѕС‚ С†РµРЅС‚СЂР° РїР»Р°РЅРµС‚С‹ (~1.14e6 Рј) РІРѕ float РєРІР°РЅС‚СѓСЋС‚СЃСЏ С€Р°РіРѕРј ~6 СЃРј (~2.5
-        /// С‚РµРєСЃРµР»СЏ РїСЂРё TextureScale 0.04) вЂ” РёР· СЌС‚РѕРіРѕ РєРІР°РЅС‚РѕРІР°РЅРёСЏ СЂРѕР¶РґР°Р»СЃСЏ РјСѓР°СЂ
-        /// (В«РїРѕР»РѕСЃС‹В», В«РґРІРёРіР°Р»РёСЃСЊВ» РІРјРµСЃС‚Рµ СЃ origin). РЁРµР№РґРµСЂ СЃС‡РёС‚Р°РµС‚ РґРµР»СЊС‚Сѓ РїРѕР·РёС†РёРё
-        /// РѕС‚ РєР°РјРµСЂС‹ (РјР°Р»С‹Рµ С‚РѕС‡РЅС‹Рµ С‡РёСЃР»Р° РІ СЃС†РµРЅРµ СЃ floating origin) Рё РїРѕРІРѕСЂР°С‡РёРІР°РµС‚
-        /// РµС‘ РІ С‚РµР»Рѕ-fixed РѕСЃРё РјР°С‚СЂРёС†РµР№ _TerrainWorldToBody; С„Р°Р·Сѓ С‚РµРєСЃС‚СѓСЂС‹ (РґРѕР»Рё
-        /// UV РІ double) РІРѕР·РІСЂР°С‰Р°СЋС‚ РіР»РѕР±Р°Р»С‹ С„Р°Р· вЂ” РїР°С‚С‚РµСЂРЅ В«РїСЂРёР±РёС‚В» Рє Р·РµРјР»Рµ.
+        /// Triplanar terrain texture UVs — camera-relative. Absolute coordinates from the
+        /// planet centre (~1.14e6 m) quantize in float with ~6 cm steps (~2.5 texels at
+        /// TextureScale 0.04), which produced moiré (stripes moving together with the
+        /// origin). The shader uses the position delta from the camera (small exact numbers
+        /// under the floating origin) rotated into body-fixed axes by _TerrainWorldToBody;
+        /// the texture phase (UV fractions in double) comes from globals — the pattern
+        /// sticks to the ground.
         /// </summary>
         private void UpdateUnderwaterCameraDepth(Vector3 cameraPosition)
         {
@@ -1930,15 +1865,13 @@ namespace Galilego.Universe
 
             Vector3d observer = FloatingOrigin.Anchor + AstroFrame.ToAstro(cameraPosition);
 
-            // Именно SubmersionDepthAt, а НЕ IsSubmergedAt. Разница принципиальная:
-            // IsSubmergedAt вдобавок требует, чтобы колонка под камерой была ВОДОЙ
-            // (IsWaterAt: сырое дно ниже уровня моря). Но шейдеру воды нужен
-            // вопрос «камера ниже поверхности?» — и только он. Второе условие
-            // может врать: у берега, над мелководьем или над юбкой водного меша
-            // камера визуально под водой, а колонка под ней — суша, и тогда
-            // _UnderwaterCameraDepth остаётся 0. Шейдер рисует потолок ВЕРХНЕЙ
-            // веткой: пена прибоя и screen-door dither, снятые снизу — ровно то,
-            // что «ужасная поверхность из-под воды» на скриншоте.
+            // SubmersionDepthAt, NOT IsSubmergedAt. IsSubmergedAt additionally requires the
+            // column under the camera to be WATER (IsWaterAt: raw seabed below sea level).
+            // The water shader needs only “is the camera below the surface?”, and the extra
+            // condition can lie: near the shore, over shallows or over the water mesh skirt
+            // the camera is visually underwater while the column below is land, leaving
+            // _UnderwaterCameraDepth at 0. The shader then draws the ceiling with its upper
+            // branch: surf foam and screen-door dither seen from below.
             double depthMeters = WaterQuery.SubmersionDepthAt(Runner.DominantBody, observer, Runner.TimeSeconds);
             if (!double.IsNaN(depthMeters) && depthMeters > 0d)
             {
@@ -1957,15 +1890,15 @@ namespace Galilego.Universe
             Vector3d relative = Runner.PlayerPosition - currentBodyPosition;
             Vector3d bodyAstro = currentBodyOrientation.Conjugated.Rotate(relative);
 
-            // Р¤Р°Р·С‹ вЂ” РІ sim-РѕСЃСЏС… С€РµР№РґРµСЂР° (positionWS): _TerrainWorldToBody РґР°С‘С‚
-            // РґРµР»СЊС‚Сѓ РІ sim-С‚РµР»Рѕ-РѕСЃСЏС…, Р° astro-РІРµРєС‚РѕСЂ Р·РґРµСЃСЊ РІ Z-up. РњРѕСЃС‚ С‚РѕС‚ Р¶Рµ,
-            // С‡С‚Рѕ AstroFrame.ToSimulation: sim = (x, z, в€’y). Р‘РµР· РєРѕРЅРІРµСЂСЃРёРё С„Р°Р·Р°
-            // Рё РґРµР»СЊС‚Р° Р¶РёРІСѓС‚ РІ СЂР°Р·РЅС‹С… РєР°РґСЂР°С… вЂ” С‚РµРєСЃС‚СѓСЂР° В«РїРѕР»Р·С‘С‚В» РїСЂРё РґРІРёР¶РµРЅРёРё.
+            // Phases are in the shader's sim axes (positionWS): _TerrainWorldToBody gives the
+            // delta in sim body axes, while the astro vector here is Z-up. Same bridge as
+            // AstroFrame.ToSimulation: sim = (x, z, −y). Without the conversion the phase and
+            // the delta live in different frames and the texture slides when moving.
             double sx = bodyAstro.X;
             double sy = bodyAstro.Z;
             double sz = -bodyAstro.Y;
 
-            // РњРёСЂ в†’ С‚РµР»Рѕ-fixed (РѕР±СЉРµРєС‚РЅС‹Рµ РѕСЃРё РјРµС€РµР№): РѕР±СЂР°С‚РЅС‹Р№ РїРѕРІРѕСЂРѕС‚ С‡Р°РЅРєР°.
+            // World → body-fixed (mesh object axes): inverse of the chunk rotation.
             Shader.SetGlobalMatrix("_TerrainWorldToBody", Matrix4x4.Rotate(Quaternion.Inverse(currentBodyRotation)));
 
             // uvX = pos.zy, uvY = pos.xz, uvZ = pos.xy.
@@ -1982,24 +1915,22 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Якорь узора воды в тело-fixed осях. Проблема та же, что у текстур
-        /// террейна (см. UpdateTerrainTextureOrigin): шейдер видит только
-        /// render-пространство, а его ноль — FloatingOrigin.Anchor = позиция
-        /// игрока, т.е. оно едет вместе с игроком. Узор воды, посчитанный от
-        /// positionWS напрямую, «прибит» к игроку: стоит/плывёт вместе с ним.
-        /// Шейдер считает дельту от камеры (малые точные числа) и поворачивает
-        /// её в тело-fixed оси матрицей _WaterWorldToBody; абсолютную фазу
-        /// (тело-fixed позиция игрока в double) возвращает глобал
-        /// _WaterBodyAnchor — узор «прибит» к морю, а не к игроку.
-        /// Квантование float на радиусе ~1.1e6 м — те же ~6 см, что у террейна.
+        /// Water pattern anchor in body-fixed axes. Same issue as terrain textures
+        /// (see UpdateTerrainTextureOrigin): the shader only sees render space, whose
+        /// zero is FloatingOrigin.Anchor = the player position, so it rides along with
+        /// the player. The shader takes the delta from the camera (small exact numbers)
+        /// and rotates it into body-fixed axes with _WaterWorldToBody; the absolute
+        /// phase (the player's body-fixed position in double) comes as the
+        /// _WaterBodyAnchor global — the pattern is glued to the sea, not to the
+        /// player. Float quantization at ~1.1e6 m radius is the same ~6 cm as terrain.
         ///
-        /// Узор больше НЕ передаётся абсолютным якорем в float32: якорь ~1.25e6
-        /// м даёт шаг 6-12 см, то есть каждая позиция на воде округлялась на
-        /// решётку и фаза ряби скакала на ~1 рад. Вместо этого шейдер получает
-        /// касательный базис (east/north) и накопительное смещение uvOffset,
-        /// оба в double и оба по модулю периода P = 1024 м. Шейдер берёт
-        /// uv = dot(relBody, east/north) + uvOffset, где relBody — малая
-        /// дельта от камеры, так что точность ~0.1 мм.
+        /// The pattern is NOT passed as an absolute float32 anchor: an anchor of
+        /// ~1.25e6 m gives 6-12 cm steps — every water position snapped to a grid and
+        /// the ripple phase jumped by ~1 rad. Instead the shader receives a tangent
+        /// basis (east/north) and a cumulative uvOffset, both in double and both modulo
+        /// the period P = 1024 m. The shader takes uv = dot(relBody, east/north) +
+        /// uvOffset, where relBody is the small delta from the camera, giving ~0.1 mm
+        /// precision.
         /// </summary>
         private void UpdateWaterAnchor()
         {
@@ -2011,12 +1942,12 @@ namespace Galilego.Universe
             Vector3d relative = Runner.PlayerPosition - currentBodyPosition;
             Vector3d bodyAstro = currentBodyOrientation.Conjugated.Rotate(relative);
 
-            // Период узора 51 200 м = 1024 * 50. Волны заданы ЦЕЛЫМИ векторами K с
-            // базой 2*pi/1024 м, макро-волны в p-пространстве умножаются на
-            // _WaveScale. Сдвиг на 51 200 м даёт целое число 2*pi у любой волны,
-            // пока _WaveScale кратен 0.02 (см. ApplyWaterParams). Остаток берётся
-            // в double ДО приведения к float: абсолютный якорь ~6e6 м даёт шаг
-            // float32 до 0.5 м, и узор квантуется на решётку (блоки на потолке).
+            // Pattern period 51 200 m = 1024 * 50. Waves use INTEGER vectors K with the
+            // base 2*pi/1024 m; macro waves in p-space are scaled by _WaveScale. A
+            // 51 200 m shift adds an integer number of 2*pi to any wave while _WaveScale
+            // is a multiple of 0.02 (see ApplyWaterParams). The remainder is taken in
+            // double BEFORE the cast to float: an absolute ~6e6 m anchor gives float32
+            // steps up to 0.5 m and snaps the pattern onto a grid (blocks on the ceiling).
             const double patternPeriod = 51200.0;
             Vector3 anchorSim = new Vector3(
                 (float)(bodyAstro.X % patternPeriod),
@@ -2028,13 +1959,12 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// РћР±РЅРѕРІРёС‚СЊ С†РёР»РёРЅРґСЂС‹-РєРѕР»Р»Р°Р№РґРµСЂС‹ СЃС‚РІРѕР»РѕРІ (СЃР»РѕРё СЃ Collides) РґР»СЏ С„РёР·РёРєРё
-        /// РёРіСЂРѕРєР°: РёРЅСЃС‚Р°РЅСЃС‹ С‚РѕР»СЊРєРѕ РёР· С‡Р°РЅРєРѕРІ РІ ~60 Рј РѕС‚ РёРіСЂРѕРєР°, РїРѕР·РёС†РёРё вЂ” РІ
-        /// РёРЅРµСЂС†РёР°Р»СЊРЅС‹Р№ astro-РєР°РґСЂ (РєР°Рє PlayerPosition).
+        /// Refresh trunk cylinder colliders (layers with Collides) for player physics:
+        /// instances only from chunks within ~60 m of the player, positions in the inertial
+        /// astro frame (like PlayerPosition).
         /// </summary>
-        /// <summary>Обёртка ради маркера: на скорости этот проход — O(чанки × слои)
-        /// каждый кадр, и без отдельного счётчика не видно, в какую долю кадра он
-        /// входит.</summary>
+        /// <summary>Wrapper for profiling: at speed this pass is O(chunks × layers)
+        /// every frame, and without its own counter its share of the frame is invisible.</summary>
         private void UpdateMotionTier(float speed)
         {
             if (!EnableQualityTiers)
@@ -2048,9 +1978,9 @@ namespace Galilego.Universe
                 ? MotionTier.Extreme
                 : (speed > TierFastSpeed ? MotionTier.Fast : MotionTier.Normal);
 
-            // Вверх — сразу: чем быстрее летишь, тем хуже становится без этого.
-            // Вниз — только через задержку, иначе около порога скорость дрожит
-            // и LOD флапает каждый кадр.
+            // Up — immediately: the faster you fly, the worse it gets without this.
+            // Down — only after a delay, otherwise speed jitters around the threshold and
+            // the LOD flaps every frame.
             if (want > motionTier)
             {
                 motionTier = want;
@@ -2067,16 +1997,14 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Предсказанная позиция камеры на PrefetchSeconds вперёд.
+        /// Predicted camera position PrefetchSeconds ahead.
         ///
-        /// surfaceVelocityLocal живёт в body-fixed кадре, а камера — в
-        /// рендер-кадре, поэтому скорость переводится поворотом тела. Без
-        /// этого поворота префетч смотрит в другую сторону, и на планете с
-        /// собственным вращением ошибка была бы километровой.
+        /// surfaceVelocityLocal lives in the body-fixed frame while the camera is in the
+        /// render frame, so the velocity is rotated by the body rotation. Without it the
+        /// prefetch would look the wrong way — kilometres off on a self-rotating planet.
         ///
-        /// Скорость сглаживается: одиночный скачок в один кадр при 2 км/с — это
-        /// 40 м пройденного пути, и решение «префетчить вот туда» по такому
-        /// выбросу металось бы.
+        /// The speed is smoothed: a single one-frame spike at 2 km/s is 40 m of travel,
+        /// and the “prefetch over there” decision would thrash on such an outlier.
         /// </summary>
         private void UpdatePredictedCamera(Vector3 cameraPosition)
         {
@@ -2088,9 +2016,9 @@ namespace Galilego.Universe
             float leadSeconds = Mathf.Clamp(PrefetchSeconds, 0f, 3f);
             Vector3 lead = currentBodyRotation * (smoothedSurfaceVelocity * leadSeconds);
 
-            // На малой скорости префетч бесполезен: смещение в метры, а узлы
-            // не успевают понадобиться. Порог снизу не даёт префетчу жечь
-            // бюджет узлов, стоя на месте.
+            // At low speed prefetch is useless: the offset is metres and the nodes are not
+            // needed in time. The floor keeps prefetch from burning the node budget while
+            // standing still.
             if (lead.magnitude < PrefetchMinLeadMeters)
             {
                 lead = Vector3.zero;
@@ -2101,9 +2029,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Второй обход — префетч. Идёт по предсказанной точке, пишет в свой
-        /// список и НЕ трогает desired: то, что не видно сейчас, не должно
-        /// влиять на отрисовку.
+        /// Second traversal — prefetch. Walks from the predicted point, writes to its own
+        /// list and does NOT touch desired: what is not visible now must not affect
+        /// rendering.
         /// </summary>
         private void UpdatePrefetchPass()
         {
@@ -2126,8 +2054,8 @@ namespace Galilego.Universe
             prefetchSplitNodes.Clear();
             prefetchSplitNodes.UnionWith(prefetchSplitNext);
 
-            // Гистерезис коммитится ПОСЛЕ обхода — так слияние отстаёт на кадр,
-            // и без префетча так же (см. коммит splitNodes после Traverse).
+            // Hysteresis is committed AFTER the traversal — merges lag by one frame, with
+            // or without prefetch (see the splitNodes commit after Traverse).
             prefetchSplitNext.Clear();
         }
 
@@ -2140,20 +2068,18 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Высота камеры над рельефом и сглаженная скорость по поверхности.
-        /// Считается раз в кадр до всех решений декора, потому что от этих двух
-        /// чисел зависит, запускать ли сборки, рисовать ли тени и создавать ли
-        /// коллайдеры.
+        /// Camera height above terrain and smoothed surface speed. Computed once per frame
+        /// before all decor decisions, because builds, shadows and colliders all depend on
+        /// these two numbers.
         ///
-        /// Скорость сглаживается экспоненциально, а не усреднением по кадрам:
-        /// при 2 км/с одиночный скачок длительностью в один кадр — это 30 м
-        /// пройденного пути, и решение «декор не нужен» должно приниматься по
-        /// устойчивому признаку, а не по одному выбросу.
+        /// Speed is smoothed exponentially, not averaged per frame: at 2 km/s a one-frame
+        /// spike is 30 m of travel, so the “no decor needed” decision must rest on a stable
+        /// signal, not a single outlier.
         ///
-        /// Высота берётся той же формулой, что и near-плоскость камеры в
-        /// FirstPersonCamera.UpdateClipPlanes: расстояние до центра тела минус
-        /// Radius минус высота рельефа под наблюдателем. Отдельный запрос высоты
-        /// рельефа здесь означал бы вторую выборку шума в кадре.
+        /// Height uses the same formula as the camera near plane in
+        /// FirstPersonCamera.UpdateClipPlanes: distance to the body centre minus Radius
+        /// minus terrain height under the observer. A separate height query here would mean
+        /// a second noise sample per frame.
         /// </summary>
         private void UpdateDecorMotionState(Vector3 cameraPosition)
         {
@@ -2175,8 +2101,8 @@ namespace Galilego.Universe
             SurfacePerf.TickDecorAccum(Time.unscaledDeltaTime);
         }
 
-        /// <summary>Высота рельефа под игроком в текущий момент, м. null, если
-        /// тела или рельефа нет.</summary>
+        /// <summary>Current terrain height under the player, m. Null if there is no body
+        /// or terrain.</summary>
         private double CurrentTerrainHeightMeters()
         {
             if (Runner == null || body == null)
@@ -2191,16 +2117,16 @@ namespace Galilego.Universe
                 : 0d;
         }
 
-        /// <summary>Декор не нужен: либо мы слишком быстрые, либо уже выше
-        /// радиуса самого дальнего слоя. Вызывается из EnsureVisibleDecor и
-        /// RefreshMovingDecor; TrimDistantDecor сюда НЕ ходит намеренно —
-        /// освобождать память надо и тогда, когда новые сборки запрещены.
+        /// <summary>Decor not needed: either too fast or already above the radius of the
+        /// farthest layer. Called from EnsureVisibleDecor and RefreshMovingDecor;
+        /// TrimDistantDecor deliberately does NOT call it — memory must be freed even when
+        /// new builds are paused.
         ///
-        /// includeSpeed=false снимает только паузу по скорости, проверка высоты
-        /// остаётся. Так EnsureVisibleDecor достраивает на скорости дешёвые слои
-        /// (деревья, камни, кактусы): их сессия в разы меньше травяной, и без
-        /// них на скорости выше DecorPauseSpeed декор пропадал совсем — новый
-        /// чанк пуст, а скрытый предок не рисуется.</summary>
+        /// includeSpeed=false lifts only the speed pause; the height check remains. This
+        /// lets EnsureVisibleDecor finish cheap layers (trees, rocks, cacti) at speed:
+        /// their session is far smaller than grass, and without them decor vanished
+        /// entirely above DecorPauseSpeed — the new chunk was empty and the hidden parent
+        /// was not drawn.</summary>
         private bool DecorBuildsSuspended(bool includeSpeed = true)
         {
             if (includeSpeed && decorSpeed > DecorPauseSpeed)
@@ -2216,10 +2142,10 @@ namespace Galilego.Universe
                     GroundDecorLayer layer = decorProfile.Layers[i];
                     if (layer != null && layer.Enabled)
                     {
-                        // EffectiveMaxDistance, а не сырой MaxDistanceMeters: на
-                        // небольшом теле радиус слоя упирается в горизонт камеры,
-                        // и сборки надо suspend'ить по нему — иначе на большой
-                        // высоте чанки за горизонтом строятся впустую.
+                        // EffectiveMaxDistance, not the raw MaxDistanceMeters: on a small
+                        // body the layer radius hits the camera horizon, and builds must be
+                        // suspended by it — otherwise at high altitude chunks beyond the
+                        // horizon build for nothing.
                         maxLayerDistance = Mathf.Max(maxLayerDistance, EffectiveMaxDistance(layer));
                     }
                 }
@@ -2228,8 +2154,8 @@ namespace Galilego.Universe
             return maxLayerDistance > 0f && decorAltitude > maxLayerDistance;
         }
 
-        /// <summary>Тени декора имеют смысл только у самой земли: на высоте
-        /// пятно от дерева меньше пикселя, а проход отсечения в тени реальный.</summary>
+        /// <summary>Decor shadows make sense only close to the ground: at altitude a tree's
+        /// shadow spot is subpixel while the shadow culling pass is real cost.</summary>
         private ShadowCastingMode DecorShadowMode(GroundDecorLayer layer)
         {
             return layer != null && layer.CastShadows && decorAltitude < DecorShadowMaxAltitude
@@ -2261,11 +2187,11 @@ namespace Galilego.Universe
                 return;
             }
 
-            // [ФАЗА 1] Выше DecorCollisionMaxAltitude коллайдеры декора не нужны:
-            // в ноуклипе игрок ни с чем не сталкивается, а обход пулов — это
-            // O(чанки × слои × инстансы) КАЖДЫЙ кадр, и на большой высоте он
-            // ничего не проверяет, потому что игрок вышел за collisionRange.
-            // Возвращаем пустой реестр — иначе в нём остались бы прошлые кадры.
+            // [PHASE 1] Above DecorCollisionMaxAltitude decor colliders are not needed:
+            // nothing collides in noclip, and the pool walk is O(chunks × layers ×
+            // instances) EVERY frame; at altitude it checks nothing since the player is
+            // outside collisionRange. Return an empty registry, otherwise it would keep
+            // earlier frames' entries.
             if (decorAltitude > DecorCollisionMaxAltitude)
             {
                 GroundDecorCollisionRegistry.Begin(body.Name);
@@ -2285,8 +2211,8 @@ namespace Galilego.Universe
 
                 float chunkDistance = Mathf.Max(
                     0f, Vector3.Distance(playerRender, chunk.Go.transform.position) - chunk.BoundsRadius);
-                // РљРѕР»Р»Р°Р№РґРµСЂС‹ РЅСѓР¶РЅС‹ РЅРµР·Р°РІРёСЃРёРјРѕ РѕС‚ РІРёРґРёРјРѕСЃС‚Рё: РІРѕ РІСЂРµРјСЏ LOD-РїРµСЂРµС…РѕРґР°
-                // Р±Р»РёР¶РЅРёР№ С‡Р°РЅРє РјРѕР¶РµС‚ Р±С‹С‚СЊ СЃРєСЂС‹С‚, РЅРѕ СЃС‚РІРѕР»С‹ С„РёР·РёС‡РµСЃРєРё РЅР° РјРµСЃС‚Рµ.
+                // Colliders are needed regardless of visibility: during an LOD transition a
+                // nearby chunk may be hidden while its trunks are physically there.
                 if (chunkDistance > collisionRange)
                 {
                     continue;
@@ -2297,7 +2223,7 @@ namespace Galilego.Universe
                 {
                     DecorLayerRuntime runtime = chunk.Decor[i];
                     GroundDecorLayer layer = runtime.Profile;
-                    // Уходящий под землю пул в коллизиях не участвует.
+                    // A pool sinking under ground does not take part in collisions.
                     if (layer == null || !layer.Collides || runtime.Retiring
                         || runtime.Instances.Length == 0)
                     {
@@ -2308,8 +2234,8 @@ namespace Galilego.Universe
                     for (int k = 0; k < count; k++)
                     {
                         GroundDecorInstance instance = runtime.Instances[k];
-                        // Уходящие под землю инстансы (хвост пула травы) в
-                        // коллизии не участвуют — они уже не на поверхности.
+                        // Sinking instances (the grass pool tail) do not take part in
+                        // collisions — they are no longer on the surface.
                         if (instance.DeathTime > 0f)
                         {
                             continue;
@@ -2341,9 +2267,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Обход quadtree для ОТРИСОВКИ. Тонкая обёртка над обобщённым
-        /// обходом: пишет в desired, читает гистерезис прошлого кадра и
-        /// пользуется текущим тиром качества.
+        /// Quadtree traversal for DRAWING. A thin wrapper over the generic traversal:
+        /// writes into desired, reads last frame's hysteresis and uses the current
+        /// quality tier.
         /// </summary>
         private void Traverse(int face, int depth, int ix, int iy, Vector3 cameraPosition)
         {
@@ -2353,15 +2279,14 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Обобщённый обход. Префетч-проход отличается от основного только
-        /// точкой старта, набором результатов, парой множеств гистерезиса,
-        /// потолком глубины и бюджетом узлов — поэтому он идёт через тот же
-        /// код, а не через его копию.
+        /// Generic traversal. The prefetch pass differs from the main one only in start
+        /// point, result set, hysteresis set pair, depth ceiling and node budget — hence it
+        /// runs through the same code, not a copy of it.
         ///
-        /// Гистерезис: splitRead — ПРОШЛОГО кадра, splitWrite — текущего.
-        /// Порядок «записать, потом скоммитить» даёт слиянию отставание на кадр,
-        /// и именно этим гасится LOD-флап. Префетч обязан иметь такую же пару
-        /// множеств, иначе он дёргал бы решения основного обхода.
+        /// Hysteresis: splitRead is LAST frame's, splitWrite the current one. The
+        /// “write, then commit” order delays merges by one frame, which is what damps LOD
+        /// flapping. Prefetch must keep its own pair of sets, otherwise it would disturb
+        /// the main traversal's decisions.
         /// </summary>
         private void TraverseInto(
             int face, int depth, int ix, int iy, Vector3 cameraPosition,
@@ -2375,7 +2300,7 @@ namespace Galilego.Universe
             Vector3 bodyToNode = worldCenter - bodyRenderPosition;
             if (bodyToNode.sqrMagnitude > 1e-6f && bodyToCam.sqrMagnitude > 1e-6f)
             {
-                // Р—Р°РґРЅСЏСЏ РїРѕР»СѓСЃС„РµСЂР° РЅРµ СЃС‚СЂРѕРёС‚СЃСЏ.
+                // The back hemisphere is not built.
                 if (Vector3.Dot(bodyToNode.normalized, bodyToCam.normalized) < -0.15f)
                 {
                     return;
@@ -2384,18 +2309,17 @@ namespace Galilego.Universe
 
             double nodeSize = body.Radius * 1.5707963267948966d / (1 << depth);
             float distance = Vector3.Distance(cameraPosition, worldCenter);
-            // Р”РёСЃС‚Р°РЅС†РёСЏ РґРѕ Р‘Р›РР–РђР™РЁР•Р™ С‚РѕС‡РєРё СѓР·Р»Р°, Р° РЅРµ РґРѕ С†РµРЅС‚СЂР°: Сѓ РєСЂСѓРїРЅРѕРіРѕ
-            // СѓР·Р»Р° С†РµРЅС‚СЂ РјРѕР¶РµС‚ Р±С‹С‚СЊ РґР°Р»РµРєРѕ Р·Р° РїРѕСЂРѕРіРѕРј, С…РѕС‚СЏ РµРіРѕ РєСЂР°Р№ РІРёРґРµРЅ
-            // РІРїР»РѕС‚РЅСѓСЋ. РЎ С†РµРЅС‚СЂРѕРј С‚Р°РєРѕР№ СѓР·РµР» РЅРµ РґСЂРѕР±РёР»СЃСЏ, Р° РїСЂРё РїРѕРІРѕСЂРѕС‚Рµ РєР°РјРµСЂС‹
-            // РєСЂР°Р№ В«РІРЅРµР·Р°РїРЅРѕВ» С‚СЂРµР±РѕРІР°Р» РґРµС‚Р°Р»РёР·Р°С†РёРё вЂ” LOD-СЃРєР°С‡РѕРє/РјРёРіР°РЅРёРµ.
-            // РџРѕР»СѓРґРёР°РіРѕРЅР°Р»СЊ РїР°С‚С‡Р° в‰€ nodeSizeВ·в€љ2/2.
+            // Distance to the CLOSEST point of the node, not to its centre: for a large
+            // node the centre can sit far beyond the threshold while its edge is visible
+            // right next to the camera. With centre-based distance such a node never split,
+            // and when the camera turned, its edge "suddenly" needed detail — LOD pop/flicker.
+            // Patch half-diagonal ≈ nodeSize·√2/2.
             float closestDistance = Mathf.Max(0f, distance - (float)(nodeSize * 0.70710678d));
 
-            // Отсечение по горизонту. Проверяем ПЕРЕД раскрытием: дети лежат
-            // внутри родительской грани, поэтому если ближайшая точка родителя
-            // за горизонтом, то и все дети — тоже. Один такой тест срезает
-            // весь дальний купол планеты (на Earth-пресете depth 2-6 = ~51 %
-            // всех чанков, они дальше 549 км при пределе видимости ~341 км).
+            // Horizon culling. Checked BEFORE expanding: children lie inside the parent
+            // face, so if the parent's closest point is behind the horizon, so are all
+            // children. One such test cuts the whole far dome of the planet (Earth preset:
+            // depth 2-6 is ~51 % of chunks, beyond 549 km at a ~341 km visibility limit).
             if (closestDistance > maxVisibleDistance)
             {
                 return;
@@ -2404,10 +2328,10 @@ namespace Galilego.Universe
             bool split;
             if (depth < maxDepth && output.Count + 4 < nodeBudget)
             {
-                // Р“РёСЃС‚РµСЂРµР·РёСЃ: РґРµР»РёРј РЅР° splitDistance, Р° СЃР»РёРІР°РµРј С‚РѕР»СЊРєРѕ РєРѕРіРґР° СѓС€Р»Рё
-                // Р·Р°РјРµС‚РЅРѕ РґР°Р»СЊС€Рµ (Г—MergeHysteresis). РњРµР¶РґСѓ РїРѕСЂРѕРіР°РјРё РґРµСЂР¶РёРј РїСЂРѕС€Р»С‹Р№
-                // СѓСЂРѕРІРµРЅСЊ вЂ” РёРЅР°С‡Рµ СѓР·РµР» В«РґСЂРѕР±РёС‚СЃСЏ/СЃР»РёРІР°РµС‚СЃСЏВ» РєР°Р¶РґС‹Р№ РєР°РґСЂ (LOD-С„Р»Р°Рї,
-                // СЃРёР»СЊРЅРµРµ Р·Р°РјРµС‚РЅС‹Р№ РЅР° СЃРєРѕСЂРѕСЃС‚Рё).
+                // Hysteresis: split at splitDistance, merge only once the node went
+                // noticeably farther (×MergeHysteresis). Between the thresholds the
+                // previous level is kept — otherwise the node "splits/merges" every
+                // frame (LOD flapping, more noticeable when moving fast).
                 double splitDistance = nodeSize * splitFactor;
                 split = splitRead.Contains(NodeId(face, depth, ix, iy))
                     ? closestDistance < splitDistance * MergeHysteresis
@@ -2436,10 +2360,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Р РµРЅРґРµСЂ-РїРѕР·РёС†РёСЏ С‚РѕС‡РєРё, Р·Р°РґР°РЅРЅРѕР№ С‚РµР»-fixed РІРµРєС‚РѕСЂРѕРј РѕС‚ С†РµРЅС‚СЂР° С‚РµР»Р°.
-        /// РЎС‡РёС‚Р°РµРј Р’ DOUBLE (bodyPos + orientationВ·local в€’ anchor), РїРѕС‚РѕРј float:
-        /// РёРЅР°С‡Рµ СЃСѓРјРјР° РґРІСѓС… Р±РѕР»СЊС€РёС… float-С‡РёСЃРµР» (~СЂР°РґРёСѓСЃ) С‚РµСЂСЏРµС‚ С‚РѕС‡РЅРѕСЃС‚СЊ Рё
-        /// С‡Р°РЅРє/РєР°РјРµСЂР° РґСЂРѕР¶Р°С‚ РЅР° РґРµСЃСЏС‚РєРё СЃР°РЅС‚РёРјРµС‚СЂРѕРІ.
+        /// Render position of a point given by a body-fixed vector from the body centre.
+        /// Computed in DOUBLE (bodyPos + orientation·local − anchor), then cast to float:
+        /// otherwise the sum of two large float values (~radius) loses precision and
+        /// the chunk/camera jitters by tens of centimetres.
         /// </summary>
         private Vector3 NodeRenderPosition(Vector3d centerBodyFixed)
         {
@@ -2448,9 +2372,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Построены ли все четверо детей узла. Только тогда родителя можно
-        /// отпускать: до этого он закрывает дыру на месте ещё не достроенного
-        /// квада. Четыре проверки в хеше дешевле, чем лишний активный рендерер.
+        /// Whether all four children of the node are built. Only then can the parent be
+        /// released: until that it plugs the hole of an unfinished quad. Four hash checks
+        /// are cheaper than one extra active renderer.
         /// </summary>
         private bool HasAllBuiltChildren(int face, int depth, int ix, int iy)
         {
@@ -2464,26 +2388,23 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Разрешение сетки чанка для данной глубины LOD: ближние уровни
-        /// (MaxDepth-ResolutionHalveEveryLevels+1 … MaxDepth) остаются на полном
-        /// TileResolution, дальние огрубляются вдвое каждые
-        /// ResolutionHalveEveryLevels уровней до MinTileResolution.
+        /// Chunk grid resolution for a given LOD depth: near levels
+        /// (MaxDepth-ResolutionHalveEveryLevels+1 … MaxDepth) keep the full TileResolution,
+        /// far ones halve every ResolutionHalveEveryLevels levels down to MinTileResolution.
         ///
-        /// Почему огрубление дальних уровней не видно. У листа quadtree
-        /// ближайшая точка лежит примерно на SplitFactor·размерУзла от центра,
-        /// а сторона квада = размерУзла/(res-1). Угловой размер квада на
-        /// экране = 1/(SplitFactor·(res-1)) и НЕ зависит ни от глубины, ни от
-        /// расстояния: разрешение задаёт экранную плотность сетки, а не её
-        /// масштаб. Полная сетка (res 65, SplitFactor 3.5) даёт ~6.1 px на квад
-        /// при FOV 60° и 1440p; огрубление вдвое поднимает до ~12.7 px.
+        /// Why far-level halving is invisible. A quadtree leaf's closest point lies about
+        /// SplitFactor·nodeSize from the centre, and the quad side = nodeSize/(res-1). The
+        /// quad's angular size on screen = 1/(SplitFactor·(res-1)) and does NOT depend on
+        /// depth or distance: resolution sets screen-space grid density, not scale. The
+        /// full grid (res 65, SplitFactor 3.5) gives ~6.1 px per quad at FOV 60° and 1440p;
+        /// halving raises it to ~12.7 px.
         ///
-        /// При ResolutionHalveEveryLevels = 4 полное разрешение держат уровни
-        /// MaxDepth-3…MaxDepth — при SplitFactor 3.5 это весь радиус 162 км
-        /// вокруг игрока, то есть практически всё, что видно с поверхности
-        /// невооружённым глазом. Огрубляется только дальний конус 162-393 км,
-        /// который у горизонта схлопнут в тонкую полосу, где рельеф уже
-        /// гладкий и шаг сетки не читается.
-        /// ResolutionHalveEveryLevels = 99 отключает огрубление полностью.
+        /// With ResolutionHalveEveryLevels = 4 the full resolution holds for levels
+        /// MaxDepth-3…MaxDepth — at SplitFactor 3.5 the whole 162 km radius around the
+        /// player, i.e. almost everything visible from the surface with the naked eye.
+        /// Only the far cone 162-393 km is roughened, collapsed at the horizon into a thin
+        /// band where terrain is smooth and the grid step is unreadable.
+        /// ResolutionHalveEveryLevels = 99 disables halving entirely.
         /// </summary>
         private int ResolutionForDepth(int depth)
         {
@@ -2505,10 +2426,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Треугольников в меше чанка на этой глубине: core-сетка 2·res² плюс
-        /// четыре юбки по res квадов. Считается из той же формулы, по которой
-        /// BuildChunk собирает индексы, чтобы счётчик в HUD совпадал с тем, что
-        /// реально уходит в GPU.
+        /// Triangles in a chunk mesh at this depth: core grid 2·res² plus four skirts of
+        /// res quads. Computed with the same formula BuildChunk uses for indices, so the
+        /// HUD counter matches what actually goes to the GPU.
         /// </summary>
         private int ChunkTriangleCount(int depth)
         {
@@ -2517,26 +2437,21 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Обёртка ради маркера профилировщика. Тело сборки живёт в
-        /// BuildChunkCore и не переименовывается целиком: файл крупный и
-        /// часть комментариев в нём в кракозябрах, а переформатировать его
-        /// нельзя. Маркер нужен, чтобы увидеть, сколько именно миллисекунд
-        /// кадра съедает постройка чанков, а не только их количество.
+        /// Marker-only wrapper: the build body lives in BuildChunkCore. The marker shows
+        /// how many milliseconds per frame chunk building costs, not just the count.
         /// </summary>
         /// <summary>
-        /// Ставит узел в очередь постройки. Синхронной работы здесь нет: только
-        /// план и приоритет.
+        /// Enqueues a node for building. No synchronous work here: only planning and
+        /// priority.
         ///
-        /// Приоритет — «дыра» важнее листа: узел, в котором сейчас пусто, виден
-        /// игроку немедленно, а тот, что через полкилометра, — нет. Внутри
-        /// группы ближе к камере.
+        /// Priority — a “hole” outranks a leaf: an empty node is visible to the player
+        /// immediately, while one half a kilometre away is not. Within a group, closer to
+        /// the camera first.
         ///
-        /// Дедупликация по queuedChunkIds обязательна: без неё один и тот же узел
-        /// попадал бы в очередь каждый кадр, пока не построится, и на скорости
-        /// очередь разрасталась бы быстрее, чем в полёте. Множество покрывает и
-        /// очередь, и всё, что в полёте: id убирается из него только при
-        /// финализации, поэтому вторая проверка «а не в полёте ли он» была бы
-        /// тем же поиском дважды.
+        /// Dedup via queuedChunkIds is mandatory: otherwise the same node would be
+        /// enqueued every frame until built, and at speed the queue would grow faster than
+        /// flight. The set covers both queued and in-flight nodes: an id is removed only on
+        /// finalization, so a separate “is it in flight” check would be the same search twice.
         /// </summary>
         private void EnqueueChunkBuild(Node node)
         {
@@ -2556,9 +2471,9 @@ namespace Galilego.Universe
             });
         }
 
-        /// <summary>Есть ли хоть один построенный предок. Нет предка — узел
-        /// зияет дырой в рельефе, и это единственное, что видно игроку прямо
-        /// сейчас.</summary>
+        /// <summary>Whether at least one built parent exists. Without a parent the node
+        /// gapes as a hole in the terrain, and that is the only thing the player sees right
+        /// now.</summary>
         private bool HasBuiltAncestor(Node node)
         {
             int face = node.Face;
@@ -2579,10 +2494,10 @@ namespace Galilego.Universe
             return false;
         }
 
-        /// <summary>Расстояние до БЛИЖАЙШЕЙ точки узла — та же метрика, по
-        /// которой Traverse решает, split-ить ли. Смешивать «до центра» и «до
-        /// края» нельзя: тогда близкий крупный узел окажется дальше дальнего
-        /// мелкого и порядок очереди поедет.</summary>
+        /// <summary>Distance to the CLOSEST point of the node — the same metric Traverse
+        /// uses to decide splitting. Mixing “to centre” and “to edge” is not allowed: then
+        /// a near large node would rank farther than a far small one and the queue order
+        /// would break.</summary>
         private double ChunkDistanceFromCamera(Node node)
         {
             Vector3d dir = CubeSphere.NodeCenterDirection(node.Face, node.Depth, node.Ix, node.Iy);
@@ -2593,17 +2508,15 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Ставит в очередь префетч-узлы. Приоритет ХУЖЕ листа и хуже дыры:
-        /// префетч — это оптимизация будущего, а не то, что видно сейчас.
+        /// Queues prefetch nodes. Priority is WORSE than the leaf and worse than the hole:
+        /// prefetch is an optimization for the future, not what is visible now.
         ///
-        /// Их id добавляются в prefetchKeep, а не в keep: keep определяет
-        /// ВИДИМОСТЬ, и префетч-узлы не должны становиться видимыми. Но и
-        /// выгружать их, пока они стоят в очереди, нельзя — иначе они будут
-        /// утилизированы и построены по кругу.
+        /// Their ids go into prefetchKeep, not keep: keep defines VISIBILITY, so
+        /// prefetch nodes must not become visible. Nor can they be unloaded while
+        /// queued — otherwise they are recycled and rebuilt in a loop.
         ///
-        /// Отсев за спиной камеры (конус FOV+30°) применяется ТОЛЬКО здесь.
-        /// В desired попадать не должен ни при каких условиях: узел вне кадра
-        /// всё равно рисуется, если он в keep.
+        /// Back-of-camera culling (FOV+30° cone) applies ONLY here. A node must not enter
+        /// desired under any condition: an off-screen node still draws if it is in keep.
         /// </summary>
         private void EnqueuePrefetchChunks(Vector3 cameraPosition)
         {
@@ -2640,8 +2553,8 @@ namespace Galilego.Universe
                     if (toNode.sqrMagnitude > 1e-6f && forward.sqrMagnitude > 1e-6f
                         && Vector3.Dot(toNode.normalized, forward.normalized) < backConeCos)
                     {
-                        // Задний конус: камера сюда не посмотрит за время
-                        // упреждения, строить нечего.
+                        // Back cone: the camera will not look there within the lead time,
+                        // nothing to build.
                         continue;
                     }
                 }
@@ -2654,10 +2567,10 @@ namespace Galilego.Universe
             SurfacePerf.PrefetchNodes = prefetchDesired.Count;
         }
 
-        /// <summary>Косинус угла «не строим за спиной». FOV у камеры
-        /// вертикальный, а конус трёхмерный, поэтому берём половину диагонали:
-        /// tan(diag/2) = tan(v/2)·sqrt(1 + (h/v)²), плюс запас в 30°. Если
-        /// камеры нет, отсев не применяется (косинус -1 = «никогда»).</summary>
+        /// <summary>Cosine of the “no building behind the back” angle. The camera FOV is
+        /// vertical while the cone is 3D, so half the diagonal is used:
+        /// tan(diag/2) = tan(v/2)·sqrt(1 + (h/v)²), plus a 30° margin. No camera — no cull
+        /// (cosine -1 = “never”).</summary>
         private float BuildBackConeCos()
         {
             Camera cam = Camera.main;
@@ -2685,7 +2598,7 @@ namespace Galilego.Universe
             {
                 Node = node,
                 Id = id,
-                // 2 — хуже листа (1) и хуже дыры (0).
+                // 2 — worse than a leaf (1) and worse than a hole (0).
                 Priority = 2f,
                 Distance = (float)ChunkDistanceFromCamera(node),
                 EnqueuedFrame = Time.frameCount
@@ -2693,22 +2606,18 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Планировщик постройки.
+        /// Build scheduler.
         ///
-        /// Бюджет именно в миллисекундах: работа на кадре складывается из
-        /// ожидания готовых джоб (обычно 0) и заливки вершин в меш. Заливка
-        /// стоит порядка сотни микросекунд на чанк, поэтому при нормальном
-        /// темпе 1.5 мс — это единицы чанков. Если очередь при этом растёт
-        /// (на 2 км/с она будет), чинится это не бюджетом, а тиром качества
-        /// в Фазе 3: строить нужно меньше и реже, а не быстрее заливать.
+        /// The budget is in milliseconds: per-frame work is waiting for finished jobs
+        /// (usually 0) plus uploading vertices to the mesh. Upload costs on the order of a
+        /// hundred microseconds per chunk, so at the normal 1.5 ms pace that is a few chunks
+        /// per frame. If the queue still grows (it will at 2 km/s), the fix is not the budget
+        /// but the quality tier in PHASE 3: build less and more rarely, not upload faster.
         ///
-        /// Исключение из FinalizeChunk перехватывается НАМЕРЕННО. Без этого
-        /// один сбойный чанк ронял весь LateUpdate целиком: не выполнялись
-        /// EvictIfNeeded, обновление счётчиков, декор и конец кадра — а
-        /// полузаполненный чанк оставался в кэше с пустым мешем. Итог был
-        /// виден как серые полосы в рельефе, «рывки» движения и рост памяти до
-        /// 18 ГБ, при этом в консоли — одно исключение из глубокой стека. Один
-        /// плохой узел не должен уносить с собой кадр.
+        /// The exception from FinalizeChunk is caught DELIBERATELY: one bad chunk must not
+        /// take down the whole LateUpdate (EvictIfNeeded, counters, decor and frame end
+        /// would be skipped and a half-filled chunk left in the cache with an empty mesh).
+        /// One bad node must not take the frame with it.
         /// </summary>
         private void PumpChunkBuilds()
         {
@@ -2719,13 +2628,11 @@ namespace Galilego.Universe
 
             long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
 
-            // Отсев устаревших записей. Узел, который в desired попал всего пару
-            // кадров назад и с тех пор ушёл за спину камере, строить бессмысленно:
-            // к моменту, когда дойдёт очередь, он всё равно будет вне кадра. Без
-            // этого на 2 км/с очередь копила тысячи записей, и каждый кадр
-            // планировщик сортировал в том числе по ним. Порог в несколько
-            // кадров, а не ноль: узел нужен и тогда, когда он на грани LOD и
-            // мелькает в desired через кадр.
+            // Stale entry filtering. A node that entered desired a couple of frames ago and
+            // has since moved behind the camera is pointless to build: by the time its turn
+            // comes it will be off-screen anyway. The threshold is a few frames rather than
+            // zero: a node is still needed while it flickers in desired across frames at an
+            // LOD boundary.
             int staleBefore = Time.frameCount - MaxChunkQueueAgeFrames;
             int dropped = 0;
             for (int i = chunkBuildQueue.Count - 1; i >= 0; i--)
@@ -2765,8 +2672,8 @@ namespace Galilego.Universe
                     continue;
                 }
 
-                // Изолируем finalize: любой сбой здесь обязан стоить одного
-                // чанка, а не всего кадра.
+                // Isolate finalize: any failure here must cost one chunk, not the whole
+                // frame.
                 bool finalized = false;
                 try
                 {
@@ -2788,9 +2695,9 @@ namespace Galilego.Universe
                 SurfaceChunkPool.Return(entry.Request);
             }
 
-            // Слоты держим занятыми: пока есть свободные, джобы идут внахлёст с
-            // рендером. Копятся они только при жёстком лимите, и тогда ждут
-            // процессор сами.
+            // Keep slots occupied: while free ones exist, jobs run overlapped with
+            // rendering. They pile up only under a hard limit, and then they wait for the
+            // CPU by themselves.
             while (chunkBuildsInFlight.Count < MaxChunkJobsInFlight
                 && TryDequeueBest(out ChunkQueueItem item))
             {
@@ -2800,10 +2707,9 @@ namespace Galilego.Universe
             JobHandle.ScheduleBatchedJobs();
         }
 
-        /// <summary>Убирает из кэша чанк, который не удалось залить: он там
-        /// остался бы с пустым мешем и рисовался бы серой дырой. Слот в
-        /// queuedChunkIds освобождается, чтобы узел можно было построить заново
-        /// на следующем кадре.</summary>
+        /// <summary>Removes from the cache a chunk that failed to upload: it would stay
+        /// there with an empty mesh and draw as a grey hole. The slot in queuedChunkIds is
+        /// freed so the node can be rebuilt on the next frame.</summary>
         private void AbandonChunk(long id)
         {
             queuedChunkIds.Remove(id);
@@ -2818,9 +2724,9 @@ namespace Galilego.Universe
             visibleChunks.Remove(chunk);
         }
 
-        /// <summary>Достаёт из очереди узел с наивысшим приоритетом, а внутри
-        /// приоритета — ближайший. Линейный выбор, а не сортировка: сортировать
-        /// каждый кадр ради одного элемента дороже, чем пройти список.</summary>
+        /// <summary>Pops the highest-priority node, closest first within a priority.
+        /// Linear selection, not sorting: sorting every frame for one element costs more
+        /// than walking the list.</summary>
         private bool TryDequeueBest(out ChunkQueueItem best)
         {
             best = default;
@@ -2875,9 +2781,8 @@ namespace Galilego.Universe
             double amplitude = System.Math.Max(1d, terrain.AmplitudeMeters);
             double skirtDepth = body.Radius * 1.5707963267948966d / (1 << node.Depth) * SkirtFactor;
 
-            // Цепочка из трёх джоб. Зависимости через JobHandle, Complete() на
-            // главном потоке нет — он только забирает уже готовые результаты
-            // в пределах бюджета.
+            // Chain of three jobs. Dependencies via JobHandle; no Complete() on the main
+            // thread — it only collects finished results within the budget.
             JobHandle fill = new FillDirectionsJob
             {
                 Face = node.Face,
@@ -2933,12 +2838,12 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Заливка готового буфера в меш. Единственная дорогая операция на
-        /// главном потоке, и она копирует память без вычислений.
+        /// Upload of the finished buffer into the mesh. The only expensive operation on the
+        /// main thread, and it copies memory without computing.
         ///
-        /// Индексы берутся из общего кэша по res: топология одинакова для всех
-        /// чанков одной сетки, и собирать свой int[] на 51840 элементов на
-        /// каждый чанк было и аллокацией, и разбором со стороны Unity.
+        /// Indices come from a shared cache by res: the topology is identical for all
+        /// chunks of the same grid, so building a 51840-element int[] per chunk meant both
+        /// an allocation and extra work for Unity.
         /// </summary>
         private void FinalizeChunk(ChunkBuildInFlight entry)
         {
@@ -2954,10 +2859,9 @@ namespace Galilego.Universe
             long id = NodeId(node);
             Chunk chunk = chunks.TryGetValue(id, out Chunk existing) ? existing : CreateChunkShell(node);
 
-            // В кэш чанк попадает ПОСЛЕДНИМ. Регистрация до заливки означала
-            // бы, что сбой на любом шаге оставляет в кэше узел с пустым мешем:
-            // он тут же становился виден и рисовался серой дырой, а повторно не
-            // строился, потому что «уже есть в chunks».
+            // The chunk enters the cache LAST. Registering before upload would leave a node
+            // with an empty mesh in the cache on any failure: it would become visible at
+            // once and draw as a grey hole, and would not be rebuilt since “it is in chunks”.
             chunk.CenterAstro = request.CenterAstro;
             chunk.Node = node;
             chunk.Depth = node.Depth;
@@ -2978,9 +2882,9 @@ namespace Galilego.Universe
                 request.Vertices, 0, 0, request.TotalVerts, 0,
                 MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
 
-            // Общий буфер совпадает с нужной длиной один в один, поэтому
-            // заливаем его целиком с нуля. В Unity 6 у SetIndexBufferData пять
-            // параметров (никакого startIndex), отсюда и форма вызова.
+            // The shared buffer matches the required length exactly, so it is uploaded whole
+            // from scratch. In Unity 6 SetIndexBufferData has five parameters (no
+            // startIndex), hence the call shape.
             NativeArray<ushort> indices = SurfaceChunkPool.GetSharedIndices(request.Res);
             mesh.SetIndexBufferParams(indices.Length, IndexFormat.UInt16);
             mesh.SetIndexBufferData(
@@ -2991,9 +2895,9 @@ namespace Galilego.Universe
                 0, new SubMeshDescriptor(0, indices.Length),
                 MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
 
-            // Та же формула запаса, что и в синхронном пути: юбка уже внутри
-            // меша, RecalculateBounds заменён расчётом в джобе, поэтому Expand
-            // идёт от того же AABB.
+            // Same bounds slack as in the synchronous path: the skirt is inside the mesh
+            // already, RecalculateBounds is replaced by a job-side compute, so Expand starts
+            // from the same AABB.
             Bounds bounds = BoundsFrom(request.BoundsMinMax[0], request.BoundsMinMax[1]);
             bounds.Expand((float)(request.SkirtDepth * 1.5d) + (bounds.size.magnitude * 0.001f));
             mesh.bounds = bounds;
@@ -3003,7 +2907,7 @@ namespace Galilego.Universe
                 BuildAsyncWaterMesh(chunk, request);
             }
 
-            // Чанк цел — регистрируем и показываем.
+            // The chunk is intact — register and show it.
             chunks[id] = chunk;
             if (!chunk.Visible)
             {
@@ -3084,10 +2988,8 @@ namespace Galilego.Universe
             mesh.bounds = bounds;
         }
 
-        /// <summary>Каркас чанка: объект, меш и рендерер создаются один раз на
-        /// узел и переиспользуются при перестроении. Раньше на каждый чанк были
-        /// свои new GameObject + new Mesh + два AddComponent, и на 2 км/с это
-        /// десятки созданий в секунду — плюс лишние Destroy на выгрузке.</summary>
+        /// <summary>Chunk skeleton: the object, mesh and renderer are created once per node
+        /// and reused on rebuild.</summary>
         private Chunk CreateChunkShell(Node node)
         {
             var chunk = new Chunk
@@ -3100,7 +3002,7 @@ namespace Galilego.Universe
             chunk.Go.transform.localScale = Vector3.one;
             chunk.Node = node;
             chunk.Depth = node.Depth;
-            // Синхронный путь всегда строит по полному разрешению глубины.
+            // The synchronous path always builds at the full resolution for the depth.
             chunk.Res = ResolutionForDepth(node.Depth);
             chunk.BoundsRadius = (float)(body.Radius * 1.5707963267948966d / (1 << node.Depth) * 0.70710678d);
             MeshFilter filter = chunk.Go.AddComponent<MeshFilter>();
@@ -3113,10 +3015,10 @@ namespace Galilego.Universe
             return chunk;
         }
 
-        /// <summary>Дождаться и освободить все запросы в полёте. Обязательно
-        /// перед ClearChunkCache и OnDestroy: Persistent-массивы из рента и
-        /// общие индексные буферы иначе живут до конца домена, и Unity
-        /// напишет об утечке нативной памяти.</summary>
+        /// <summary>Wait for and release all in-flight requests. Required before
+        /// ClearChunkCache and OnDestroy: persistent rent arrays and shared index buffers
+        /// would otherwise live until domain reload and Unity would report a native memory
+        /// leak.</summary>
         private void CancelAllChunkBuilds()
         {
             for (int i = chunkBuildsInFlight.Count - 1; i >= 0; i--)
@@ -3154,24 +3056,22 @@ namespace Galilego.Universe
             double v0 = node.Iy * sizeUv;
             double stepUv = sizeUv / (n - 1);
 
-            // Р¦РµРЅС‚СЂ СѓР·Р»Р° (С‚РµР»-fixed, double): РІРµСЂС€РёРЅС‹ РјРµС€Р° С…СЂР°РЅРёРј Р›РћРљРђР›Р¬РќРћ
-            // РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅРѕ РЅРµРіРѕ. РРЅР°С‡Рµ float РЅР° СЂР°РґРёСѓСЃРµ РїР»Р°РЅРµС‚С‹ (~1.1e6 Рј) РґР°С‘С‚
-            // ulp ~0.06 Рј в†’ РєР°РјРµСЂР°/СЂРµР»СЊРµС„ РґСЂРѕР¶Р°С‚; РѕРіСЂРѕРјРЅС‹Рµ РІРµСЂС€РёРЅС‹ Р»РѕРјР°СЋС‚ Рё
-            // camera-relative СЂРµРЅРґРµСЂ (С‚СЂР°РЅСЃС„РѕСЂРј С‚РµР»Р° РІ СЏРєРѕСЂРµ ~0).
+            // Node centre (body-fixed, double): mesh vertices are stored LOCALLY relative to
+            // it. Otherwise float at planet radius (~1.1e6 m) gives ulp ~0.06 m → camera and
+            // terrain jitter; huge vertices also break camera-relative rendering (body
+            // transform at anchor ~0).
             Vector3d centerAstro = CubeSphere.NodeCenterDirection(node.Face, node.Depth, node.Ix, node.Iy) * body.Radius;
             Vector3 centerUnity = AstroFrame.ToSimulation(centerAstro);
 
             double amplitude = System.Math.Max(1d, terrain.AmplitudeMeters);
             double seaLevel = terrain.SeaLevelMeters;
-            // Допуск уровня моря — тот же, что в PlanetSurface.shader (SeaEpsilon):
-            // АБСОЛЮТНЫЕ метры, почти не зависят от амплитуды. Раньше здесь стояло
-            // amp*0.001 — при амплитуде 9144 м это 9.14 м, и полоса СУШИ в 9 метров
-            // над водой считалась водой. Дальше seaEps используется только в
-            // диагностическом логе ниже, но оставляем его согласованным с шейдером,
-            // иначе лог врёт о доле суши.
+            // Sea-level tolerance — the same as in PlanetSurface.shader (SeaEpsilon):
+            // ABSOLUTE metres, almost independent of amplitude. Kept consistent with the
+            // shader because seaEps is used in the diagnostic log below, and otherwise the
+            // log would lie about the land fraction.
             double seaEps = System.Math.Max(0.05d, amplitude * 1e-6d);
 
-            // РўР°Р№Р»С‹ СЃ РѕРІРµСЂР»Р°РїРѕРј РІ 1 РІРµСЂС€РёРЅСѓ вЂ” РЅРѕСЂРјР°Р»Рё РёР· С†РµРЅС‚СЂР°Р»СЊРЅС‹С… СЂР°Р·РЅРѕСЃС‚РµР№.
+            // Tiles with a 1-vertex overlap — normals from central differences.
             var dirs = new NativeArray<double3>(grid * grid, Allocator.TempJob);
             var jobHeights = new NativeArray<double>(grid * grid, Allocator.TempJob);
             var jobMasks = new NativeArray<float>(grid * grid, Allocator.TempJob);
@@ -3188,9 +3088,9 @@ namespace Galilego.Universe
                 }
             }
 
-            // Р¦РІРµС‚ РјР°СЃРєРё/РґРµС‚Р°Р»Рё С‚РµРїРµСЂСЊ СЃС‡РёС‚Р°РµС‚СЃСЏ РЅР° РїРёРєСЃРµР»СЊ РІ С€РµР№РґРµСЂРµ вЂ” РІ
-            // tile-job'Рµ СЌС‚Рё РїРѕС‚РѕРєРё РЅРµ РЅСѓР¶РЅС‹. РџСЂР°РІРєСѓ РґРµР»Р°РµРј РІ Р›РћРљРђР›Р¬РќРћР™ РєРѕРїРёРё,
-            // С‡С‚РѕР±С‹ РЅРµ СЃР»РѕРјР°С‚СЊ ParamsEqual РїРѕ РєСЌС€РёСЂРѕРІР°РЅРЅРѕРјСѓ noiseParams.
+            // Mask/detail colour is now computed per pixel in the shader — the tile job no
+            // longer needs those streams. The edit is made on a LOCAL copy so ParamsEqual
+            // against the cached noiseParams is not broken.
             // Color mask + detail come from the SAME CPU noise the decor
             // placement reads (parity paint/placement): the shader interpolates
             // per-vertex values and runs no Fbm of its own. noiseParams is used
@@ -3212,18 +3112,17 @@ namespace Galilego.Universe
                 {
                     int vi = (gi * grid) + gj;
                     double3 d = dirs[vi];
-                    // Дно океана НЕ клампим к уровню моря: геометрия идёт до
-                    // сырого дна (физика дна — WaterQuery, визуал — затемнение
-                    // в шейдере), сверху лежит отдельный прозрачный водный меш
-                    // чанка (BuildWaterMesh). Корабли по-прежнему садятся на
-                    // клампнутую высоту (GetHeightMeters) — как на воду.
+                    // The ocean floor is NOT clamped to sea level: geometry goes to the raw
+                    // floor (floor physics — WaterQuery, visuals — darkening in the shader),
+                    // with a separate transparent water mesh on top (BuildWaterMesh). Ships
+                    // still land on the clamped height (GetHeightMeters) — as on water.
                     double rawHeight = jobHeights[vi] * amplitude;
                     Vector3d absAstro = new Vector3d(d.x, d.y, d.z) * (body.Radius + rawHeight);
                     positions[vi] = AstroFrame.ToSimulation(absAstro - centerAstro);
                 }
             }
 
-            // dirs/jobHeights РµС‰С‘ РЅСѓР¶РЅС‹ РґР»СЏ per-pixel Р°С‚СЂРёР±СѓС‚РѕРІ РЅРёР¶Рµ.
+            // dirs/jobHeights are still needed for the per-pixel attributes below.
             var vertices = new Vector3[totalVerts];
             var normals = new Vector3[totalVerts];
             // Albedo: fragment shader interpolates per-vertex data (vertex color on coarse LOD
@@ -3232,9 +3131,9 @@ namespace Galilego.Universe
             // detail — the same pattern the decor placement reads (parity paint/placement).
             var surfaceDirs = new Vector3[totalVerts];
             var surfaceExtra = new Vector4[totalVerts];
-            // Водная плоскость чанка: те же core-вершины, спроецированные на
-            // уровень моря (физика воды — плоская, волны только в нормалях
-            // шейдера). Глубина per-vertex — для цвета/пены/альфы.
+            // Chunk water plane: the same core vertices projected onto sea level (water
+            // physics is flat; waves only in shader normals). Per-vertex depth drives
+            // colour/foam/alpha.
             var waterVerts = new Vector3[coreCount];
             var waterNormals = new Vector3[coreCount];
             var waterExtra = new Vector4[coreCount];
@@ -3269,8 +3168,8 @@ namespace Galilego.Universe
 
                     if (hasWater)
                     {
-                        // Водный квад — целиком на чанк (кромка берега режется
-                        // самим рельефом); над сушей глубина 0 — пены там нет.
+                        // One water quad per chunk (the shoreline is cut by the
+                        // terrain itself); over land depth is 0 — no foam there.
                         Vector3d absWater = new Vector3d(d.x, d.y, d.z) * (body.Radius + seaLevel);
                         waterVerts[index] = AstroFrame.ToSimulation(absWater - centerAstro);
                         waterNormals[index] = (waterVerts[index] + centerUnity).normalized;
@@ -3279,7 +3178,7 @@ namespace Galilego.Universe
                 }
             }
 
-            // Чанк целиком над морем — воду не строим.
+            // The whole chunk is over the sea — no water is built.
             if (hasWater)
             {
                 hasWater = false;
@@ -3321,8 +3220,8 @@ namespace Galilego.Universe
                     node.Face, node.Depth, (double)landCore / coreCount, minH, maxH));
             }
 
-            // Р®Р±РєРё: РґСѓР±Р»РёСЂСѓРµРј СЂС‘Р±СЂР°, СѓС‚РѕРїР»РµРЅРЅС‹Рµ Рє С†РµРЅС‚СЂСѓ РїР»Р°РЅРµС‚С‹ вЂ” РїРµСЂРµРєСЂС‹РІР°СЋС‚
-            // С‚СЂРµС‰РёРЅС‹ РјРµР¶РґСѓ СЃРѕСЃРµРґРЅРёРјРё LOD-СѓСЂРѕРІРЅСЏРјРё.
+            // Skirts: duplicate edges sunk toward the planet centre — they cover the
+            // cracks between adjacent LOD levels.
             float skirtDepth = (float)(body.Radius * 1.5707963267948966d / (1 << node.Depth) * SkirtFactor);
             for (int edge = 0; edge < 4; edge++)
             {
@@ -3398,15 +3297,14 @@ namespace Galilego.Universe
                 Go = new GameObject("PlanetChunk_" + node.Face + "_" + node.Depth + "_" + node.Ix + "_" + node.Iy),
                 Mesh = new Mesh()
             };
-            // [ФАЗА 0] Счётчик живых мешей. Mesh не принадлежит GameObject:
-            // Destroy(chunk.Go) его НЕ убирает, поэтому утечка не видна ни по
-            // иерархии, ни по памяти GameObject — только по этому счётчику.
+            // [PHASE 0] Live-mesh counter. A Mesh does not belong to a GameObject:
+            // Destroy(chunk.Go) does NOT remove it, so the leak is invisible in the
+            // hierarchy and in GameObject memory — only in this counter.
             SurfacePerf.NoteMeshCreated();
-            // Без MarkDynamic(): меш чанка строится ОДИН раз и больше не
-            // меняется (только transform ездит). MarkDynamic() заставляет
-            // Unity держать его в динамическом VB-пути без оптимизации
-            // формата и перезаливать вместо кэширования — на 1000+ чанков
-            // это и лишняя память, и лишняя работа каждый кадр.
+            // No MarkDynamic(): a chunk mesh is built ONCE and never changes
+            // (only its transform moves). MarkDynamic() keeps it on the dynamic VB
+            // path without format optimization and re-uploads it instead of caching —
+            // on 1000+ chunks that is extra memory and extra work every frame.
             chunk.Go.transform.SetParent(surfaceRoot, false);
             chunk.Go.transform.localScale = Vector3.one;
             chunk.CenterAstro = centerAstro;
@@ -3428,15 +3326,12 @@ namespace Galilego.Universe
             chunk.Mesh.SetUVs(2, new List<Vector4>(surfaceExtra));
             chunk.Mesh.triangles = triangles;
             chunk.Mesh.RecalculateBounds();
-            // Запас границ. RecalculateBounds уже даёт истинный AABB меша
-            // (координаты камера-относительные, юбка внутри меша). Раздувать
-            // на BoundsRadius не нужно: это РАДИУС ОПИСАННОЙ СФЕРЫ узла, а
-            // грань куба плоская (половина узла), и Bounds.Expand растёт по
-            // всем шести осям сразу. Старый запас давал +41 % лишнего по
-            // каждой оси (на depth 2 это +518 км в каждую сторону), из-за чего
-            // в frustum проходили чанки, полностью лежащие за кадром.
-            // Оставляем юбку и относительный допуск на джиттер float при
-            // смене позиции чанка (floating origin / движение камеры).
+            // Bounds margin. RecalculateBounds already gives the true mesh AABB
+            // (camera-relative coordinates, skirt inside the mesh). Do not inflate
+            // by BoundsRadius: that is the node's BOUNDING-SPHERE RADIUS, while the
+            // cube face is flat (half a node) and Bounds.Expand grows along all six
+            // axes. Keep the skirt plus a relative tolerance for float jitter when
+            // the chunk position changes (floating origin / camera movement).
             Bounds paddedBounds = chunk.Mesh.bounds;
             paddedBounds.Expand(skirtDepth * 1.5f + (paddedBounds.size.magnitude * 0.001f));
             chunk.Mesh.bounds = paddedBounds;
@@ -3454,38 +3349,32 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Водная поверхность чанка: core-грид на уровне моря + юбки вниз
-        /// (как у рельефа — закрывают трещины между соседними LOD на стыках,
-        /// иначе у берега видна "лесенка" просветов до дна/неба),
-        /// per-vertex глубина в UV2.x для цвета/пены/альфы шейдера. Ребёнок
-        /// чанка — видимость и эвикшн наследуются от родителя. Тени не пишем
-        /// и не принимаем: вода светится своим шейдером (солнце + небо).
+        /// Chunk water surface: core grid at sea level + skirts down
+        /// (like terrain, they hide cracks between neighbouring LODs at seams,
+        /// otherwise a "staircase" of gaps down to the seabed/sky shows at the shore),
+        /// per-vertex depth in UV2.x for the shader's color/foam/alpha. Child of
+        /// the chunk — visibility and eviction inherit from the parent. No shadow
+        /// casting or receiving: water is lit by its own shader (sun + sky).
         /// </summary>
         /// <summary>
-        /// Дешёвые флаги рендерера чанка. Ничего из этого не меняет картинку на
-        /// земле, но убирает работу, которой на 1000+ чанков набегает много.
+        /// Cheap chunk renderer flags. None of them change the on-screen
+        /// image, but they remove work that adds up across 1000+ chunks.
         ///
-        /// motionVectorGenerationMode: чанок каждый кадр едет трансформом
-        /// (floating origin + движение камеры), и без этого флага Unity считает
-        /// для него motion vectors, которых на картинке нет.
+        /// motionVectorGenerationMode: a chunk moves by transform every frame
+        /// (floating origin + camera movement), so without this flag Unity computes
+        /// motion vectors for it that never reach the image.
         ///
-        /// Уточнение, которое стоит знать: камера в проекте на TAA
-        /// (OutdoorsScene.unity antialiasing: 2), а не на SMAA, и при TAA
-        /// motion vectors ЗНАЧИМЫ — без них временное сглаживание не знает, что
-        /// сдвинулся фон. Но в активном HDRP-ассете они выключены
-        /// (supportMotionVectors: 0), то есть проход не считается вовсе, и
-        /// флаг сейчас ничего не экономит. Он поставлен, чтобы при включении
-        /// motion vectors чанки по умолчанию не попадали в лишнюю работу.
+        /// Motion vectors are disabled in the active HDRP asset (supportMotionVectors: 0),
+        /// so this flag currently saves nothing; it guards against future enablement.
         ///
-        /// probe usage off: рельеф не динамический, свет и отражения он не
-        /// принимает — значения проб в нём не читаются.
+        /// probe usage off: terrain is not dynamic and receives no light or
+        /// reflections — probe values are not read from it.
         ///
-        /// shadowCastingMode: тени рельефа нужны только вблизи наблюдателя.
-        /// Дальние уровни лежат за пределом тени в любом случае, но пока флаг
-        /// стоит On, они проходят лишний отсекающий тест в каждом проходе
-        /// теней. Глубины считаем от ТЕКУЩЕГО MaxDepth, а не от
-        /// EffectiveMaxDepth тира скорости: иначе при переходе между тирами
-        /// тени у земли моргали бы вместе с перестройкой LOD.
+        /// shadowCastingMode: terrain shadows are only needed near the observer.
+        /// Far levels lie beyond the shadow range anyway, but with the flag On
+        /// they still run a culling test in every shadow pass. Depths are counted
+        /// from the CURRENT MaxDepth, not the speed tier's EffectiveMaxDepth:
+        /// otherwise ground shadows would flicker along with LOD rebuilds.
         /// </summary>
         private void ApplyChunkRenderFlags(Chunk chunk, int depth)
         {
@@ -3520,9 +3409,9 @@ namespace Galilego.Universe
             System.Array.Copy(coreNormals, waterNormals, coreCount);
             System.Array.Copy(coreExtra, waterExtra, coreCount);
 
-            // Юбки: дублируем рёбра, топим к центру планеты — как у рельефа.
-            // Глубина/нормаль — как у кромки: шейдер дорисует кромку попиксельно
-            // по depth buffer, лесенки от грубой сетки не будет.
+            // Skirts: duplicate the edges and sink them toward the planet centre — as for terrain.
+            // Depth/normal as at the edge: the shader draws the edge per-pixel
+            // from the depth buffer, so no staircase from the coarse grid.
             for (int edge = 0; edge < 4; edge++)
             {
                 int baseIndex = coreCount + (edge * perEdge);
@@ -3608,7 +3497,7 @@ namespace Galilego.Universe
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
             renderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
-            // [ФАЗА 1] Пробы воде не нужны по той же причине, что и рельефу.
+            // [PHASE 1] Water needs no probes for the same reason as terrain.
             renderer.lightProbeUsage = LightProbeUsage.Off;
             renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
             renderer.allowOcclusionWhenDynamic = false;
@@ -3620,11 +3509,11 @@ namespace Galilego.Universe
         {
             if (waterMaterialCache == null)
             {
-                // Красивое видимое море: штатный HDRP/Unlit в аквамарине
-                // рисуется всегда (доказано тестом геометрии), не пересвечивается
-                // от физических 80k люкс (как Lit), прозрачность даёт градиент
-                // глубины над дном. Кастомный WaterSurface с волнами/пеной —
-                // новый WIP, пока не даёт пикселей (чинится отдельно).
+                // Visible stylised sea: built-in HDRP/Unlit aquamarine
+                // is always drawn and does not blow out
+                // from the physical 80k lux (unlike Lit); transparency gives a depth
+                // gradient over the seabed. The custom WaterSurface with waves/foam is
+                // WIP and currently emits no pixels (fixed separately).
                 if (UseLitWaterFallback)
                 {
                     Shader unlit = Shader.Find("HDRP/Unlit");
@@ -3655,9 +3544,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Диагностика воды: какой материал реально у чанков, скомпилировался ли
-        /// его шейдер и рисуют ли его рендереры вообще. Без этого «вода не
-        /// видна» и «вода видна, но серая» выглядят одинаково.
+        /// Water diagnostics: which material the chunks actually use, whether its
+        /// shader compiled and whether the renderers draw it at all. Without this,
+        /// "water invisible" and "water visible but grey" look the same.
         /// </summary>
         [ContextMenu("Galilego/Water probe")]
         private void WaterProbe()
@@ -3782,15 +3671,13 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Единый радиальный центр воды (борется со ступенью яркости на
-            // стыках LOD). bodyRenderPosition — готовое поле, свежий когда
-            // чанки видимы; отдельный EvaluateWorldState давал нули при
-            // чужой доминанте и гасил воду в черноту. До гейта доминантности.
+            // Single radial water centre (prevents a brightness step at LOD seams).
+            // Use bodyRenderPosition: fresh while chunks are visible, before the dominance gate.
             Shader.SetGlobalVector("_PlanetWaterCenter", bodyRenderPosition);
 
-            // Красивое море: аквамарин во все слоты цвета Unlit
-            // (color + _UnlitColor + _BaseColor), прозрачность для градиента
-            // глубины. Волны WaterSurface неприменимы — штиль.
+            // Stylised sea: aquamarine in every Unlit color slot
+            // (color + _UnlitColor + _BaseColor), transparency for the depth
+            // gradient. WaterSurface waves do not apply — calm water.
             if (UseLitWaterFallback)
             {
                 waterMaterialCache.color = LitWaterColor;
@@ -3800,7 +3687,7 @@ namespace Galilego.Universe
             }
 
             waterMaterialCache.SetFloat("_WaveStrength", WaterWaveStrength);
-            // Кратность 0.02 нужна для точной периодичности узора по 51 200 м (см. UpdateWaterAnchor).
+            // Multiple of 0.02 for exact pattern periodicity over 51 200 m (see UpdateWaterAnchor).
             waterMaterialCache.SetFloat("_WaveScale", Mathf.Max(0.02f, Mathf.Round(WaterWaveScale * 50f) / 50f));
             waterMaterialCache.SetFloat("_WaveAmplitude", WaterAmplitudeMeters);
             waterMaterialCache.SetFloat("_SparkleStrength", WaterSparkleStrength);
@@ -3825,10 +3712,9 @@ namespace Galilego.Universe
             waterMaterialCache.SetFloat("_SpecularIntensity", WaterSpecularIntensity);
             waterMaterialCache.SetFloat("_SpecularPower", Mathf.Max(8f, WaterSpecularPower));
             ApplyWaterNormalMaps();
-            // Чанки держат sharedMaterial, взятый в момент постройки. Если кэш
-            // пересоздался (ClearChunkCache / смена шейдера), старые чанки смотрят
-            // на мёртвый материал и live-тюнинг их не касается — отсюда «зебра»,
-            // которая не реагирует на инспектор. Лечим переназначением.
+            // Chunks hold the sharedMaterial captured at build time. If the cache is
+            // recreated (ClearChunkCache / shader change), old chunks point at a dead
+            // material and live tuning misses them. Reassigning fixes it.
             foreach (KeyValuePair<long, Chunk> kv in chunks)
             {
                 Chunk chunk = kv.Value;
@@ -3850,14 +3736,14 @@ namespace Galilego.Universe
         private static bool waterNormalsLoadAttempted;
 
         /// <summary>
-        /// Текстурная рябь HOWTO-Water: ручное назначение в инспекторе — в
-        /// приоритете, иначе однократно грузим запечённые из Resources/Water/.
-        /// Нет обеих текстур — шейдер остаётся на процедурных нормалях.
+        /// HOWTO-Water texture ripple: an inspector assignment takes priority,
+        /// otherwise the baked textures under Resources/Water/ are loaded once.
+        /// With neither texture the shader stays on procedural normals.
         /// </summary>
         private void ApplyWaterNormalMaps()
         {
-            // Бейкер могли запустить уже после первой попытки (кэш null) —
-            // повторяем загрузку, пока обеих текстур нет.
+            // The baker may have run after the first attempt (cached null) —
+            // retry loading until both textures exist.
             if (!waterNormalsLoadAttempted || cachedWaterNormalA == null || cachedWaterNormalB == null)
             {
                 waterNormalsLoadAttempted = true;
@@ -3938,10 +3824,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// РџРѕСЃС‚Р°РЅРѕРІРєР° Р°СЃРёРЅС…СЂРѕРЅРЅРѕР№ СЃР±РѕСЂРєРё СЃР»РѕСЏ РґРµРєРѕСЂР° РІ С‡Р°РЅРєРµ. РўСЏР¶С‘Р»Р°СЏ СЂР°Р±РѕС‚Р°
-        /// РёРґС‘С‚ РїРѕСЂС†РёСЏРјРё РїРѕ Р±СЋРґР¶РµС‚Сѓ РєР°РґСЂР° (StepDecorBuilds), СЂРµР·СѓР»СЊС‚Р°С‚
-        /// РїРѕСЏРІР»СЏРµС‚СЃСЏ С‡РµСЂРµР· РЅРµСЃРєРѕР»СЊРєРѕ РєР°РґСЂРѕРІ. Р’РѕР·РІСЂР°С‰Р°РµС‚ false, РµСЃР»Рё СЃР±РѕСЂРєР°
-        /// СѓР¶Рµ РёРґС‘С‚ РёР»Рё РёСЃС‡РµСЂРїР°РЅ Р»РёРјРёС‚ РѕРґРЅРѕРІСЂРµРјРµРЅРЅС‹С… СЃР±РѕСЂРѕРє.
+        /// Queues an asynchronous decor layer build for a chunk. Heavy work runs
+        /// in per-frame budget slices (StepDecorBuilds); the result appears after
+        /// a few frames. Returns false if a build is already running or the
+        /// concurrent-build limit is exhausted.
         /// </summary>
         private bool TryQueueDecorBuild(Chunk chunk, int layerIndex, Vector3 cameraPosition, bool nearPlayer)
         {
@@ -3965,8 +3851,8 @@ namespace Galilego.Universe
 
             if (!nearPlayer)
             {
-                // Р РµР·РµСЂРІ СЃР»РѕС‚РѕРІ РїРѕРґ РёРіСЂРѕРєР°: РґР°Р»СЊРЅРёРµ РїРµСЂРІС‹Рµ СЃР±РѕСЂРєРё (РґРµСЂРµРІСЊСЏ/РєР°РјРЅРё
-                // Р·Р° СЃРїРёРЅРѕР№) РЅРµ РґРѕР»Р¶РЅС‹ Р·Р°РЅРёРјР°С‚СЊ РѕС‡РµСЂРµРґСЊ, РїРѕРєР° СЂСЏРґРѕРј РЅСѓР¶РЅР° С‚СЂР°РІР°.
+                // Reserve slots for the player: far-away first builds (trees/rocks
+                // behind the player) must not occupy the queue while grass is needed nearby.
                 int farSessions = 0;
                 for (int i = 0; i < decorBuildSessions.Count; i++)
                 {
@@ -3991,8 +3877,8 @@ namespace Galilego.Universe
             DecorLayerRuntime previous = null;
             for (int i = 0; i < chunk.Decor.Count; i++)
             {
-                // Уходящий под землю пул не «предыдущий» — его нельзя переносить
-                // в новую сборку (иначе под землёй вырастет копия пула).
+                // A pool that is sinking underground is not the "previous" one — it must not
+                // be carried into a new build (otherwise a copy of the pool grows underground).
                 if (chunk.Decor[i].LayerIndex == layerIndex && !chunk.Decor[i].Retiring)
                 {
                     previous = chunk.Decor[i];
@@ -4000,17 +3886,13 @@ namespace Galilego.Universe
                 }
             }
 
-            // РЎРЅРёРјРѕРє Р Р•РќР”Р•Р -РјРµС€Р° С‡Р°РЅРєР°: Р±Р°Р·С‹ РґРµРєРѕСЂР° СЃР°Р¶Р°РµРј РЅР° РЅРµРіРѕ, Р° РЅРµ РЅР°
-            // Р°РЅР°Р»РёС‚РёС‡РµСЃРєСѓСЋ РІС‹СЃРѕС‚Сѓ вЂ” РЅР° РіСЂСѓР±РѕРј LOD (С€Р°Рі РІРµСЂС€РёРЅС‹ ~7 Рј) РјРµС€
-            // РѕС‚Р»РёС‡Р°РµС‚СЃСЏ РЅР° РґРµСЃСЏС‚РєРё СЃР°РЅС‚РёРјРµС‚СЂРѕРІ, РёР·-Р·Р° С‡РµРіРѕ С‚СЂР°РІР° РІРёСЃРµР»Р° Рё
-            // С‚РѕРЅСѓР»Р° РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅРѕ РІРёРґРёРјРѕР№ Р·РµРјР»Рё. Р”Р»СЏ С‚СЂР°РІС‹ (Burst-РїСѓС‚СЊ) вЂ”
-            // РЅР°С‚РёРІРЅР°СЏ РєРѕРїРёСЏ Р±РµР· managed-Р°Р»Р»РѕРєР°С†РёРё.
-            // Строка сетки меша ДОЛЖНА совпадать с тем, чем реально построен
-            // чанк: BuildChunk берёт ResolutionForDepth(node.Depth), а не
-            // TileResolution. При огрублении дальних уровней (MinTileResolution
-            // / ResolutionHalveEveryLevels) здесь осталось бы старое 65+1 —
-            // тогда индексы в MeshSurfacePoint уехали бы за конец буфера и
-            // декарь села бы мимо рельефа.
+            // Snapshot of the chunk's RENDER mesh: decor bases are seated on it, not on
+            // the analytic height — at coarse LOD (vertex step ~7 m) the mesh differs
+            // by tens of centimetres, so grass would hang and sink relative to the
+            // visible ground. For grass (Burst path) — a native copy without managed allocation.
+            // The mesh grid row MUST match what the chunk was actually built with:
+            // BuildChunk uses ResolutionForDepth(node.Depth), not TileResolution;
+            // MeshSurfacePoint indexes assume that exact resolution.
             int coreN = ResolutionForDepth(chunk.Node.Depth) + 1;
             NativeArray<Vector3> meshVerticesNative = default;
             Vector3[] meshVertices = null;
@@ -4033,13 +3915,11 @@ namespace Galilego.Universe
             double v0 = chunk.Node.Iy * sizeUv;
             double stepUv = sizeUv / (coreN - 1);
 
-            // Метрика ячейки по cube-sphere: площадь ячейки ∝ (1+a²+b²)^(-3/2),
-            // где a,b — координаты центра чанка в [-1,1] на грани. Плотность
-            // кандидатов на м² обратна этой площади, поэтому cells_axis держим
-            // пропорциональным линейному размеру = DecorMetricNorm·R·sizeUv·f.
-            // Нормировка 1.0 = «чистые метры» (реальный шаг = SpacingMeters);
-            // 1.3 — вид умеренных широт, где старая формула давала ~1.7x
-            // номинальной густоты (густота ∝ norm²).
+            // Cell metric on the cube-sphere: cell area ∝ (1+a²+b²)^(-3/2),
+            // where a,b are the chunk centre coordinates in [-1,1] on the face.
+            // Candidate density per m² is inverse to that area, so cells_axis is kept
+            // proportional to the linear size = DecorMetricNorm·R·sizeUv·f.
+            // 1.0 = "pure metres" (actual step = SpacingMeters).
             double ca = ((u0 + (sizeUv * 0.5d)) * 2d) - 1d;
             double cb = ((v0 + (sizeUv * 0.5d)) * 2d) - 1d;
             double chunkArc = body.Radius * sizeUv * 2d * DecorMetricNorm
@@ -4052,9 +3932,9 @@ namespace Galilego.Universe
 
             if (layer.PerInstanceDensity)
             {
-                // Р“СЂСѓР±С‹Рµ LOD (РѕРіСЂРѕРјРЅС‹Рµ РїР°С‚С‡Рё) С‚СЂР°РІСѓ РЅРµ РїСЂРµРґСЃС‚Р°РІР»СЏСЋС‚: СЃРµС‚РєР° РЅР°
-                // РЅРёС… РЅРµ СЂР°Р·СЂРµС€Р°РµС‚ С€Р°Рі, Р° В«РґРёСЃС‚Р°РЅС†РёСЏ 0В» РґРµСЂР¶Р°Р»Р° РёС… РІ РѕС‡РµСЂРµРґРё
-                // РІРµС‡РЅРѕ Рё РІС‹С‚РµСЃРЅСЏР»Р° СЃР±РѕСЂРєРё Сѓ РёРіСЂРѕРєР°. РџРѕРјРµС‡Р°РµРј РєР°Рє СЃРґРµР»Р°РЅРЅС‹Рµ.
+                // Coarse LODs (huge patches) cannot represent grass: their grid is too
+                // coarse, and "distance 0" kept them in the queue forever and starved
+                // builds near the player. Mark them as done.
                 double maxArc = spacing * layer.MaxCellsPerAxis * 8d;
                 if (maxArc > 0d && chunkArc > maxArc)
                 {
@@ -4069,8 +3949,8 @@ namespace Galilego.Universe
             {
                 double3 chunkDir = math.normalize(new double3(
                     chunk.CenterAstro.X, chunk.CenterAstro.Y, chunk.CenterAstro.Z));
-                // РћРґРёРЅ РєР°РЅР°Р» (РЅРµ atan2 РґРІСѓС…): СѓРіРѕР» вЂ” РїР»Р°РІРЅРѕРµ РїРѕР»Рµ, Р±РµР·
-                // В«Р·Р°РєСЂСѓС‚РєРёВ» РЅР°РїСЂР°РІР»РµРЅРёСЏ РІ С‚РѕС‡РєР°С…, РіРґРµ РѕР±Р° РєР°РЅР°Р»Р° РѕРєРѕР»Рѕ РЅСѓР»СЏ.
+                // One channel (not atan2 of two): the angle is a smooth field, without
+                // direction "swirl" at points where both channels are near zero.
                 windAzimuthRad = TerrainNoise.SampleDecorNoise(
                     noiseParams, layer.WindZoneSeedOffset, layer.WindZoneFrequency,
                     layer.WindZoneOctaves, chunkDir) * System.Math.PI;
@@ -4092,13 +3972,13 @@ namespace Galilego.Universe
             placement.PerInstanceDensity = layer.PerInstanceDensity;
             Vector3 cameraLocal = chunk.Go.transform.InverseTransformPoint(cameraPosition);
 
-            // РћРїРµСЂРµР¶РµРЅРёРµ РѕР±Р»Р°РєР° РІРґРѕР»СЊ СЃРєРѕСЂРѕСЃС‚Рё РёРіСЂРѕРєР° РћРўРќРћРЎРРўР•Р›Р¬РќРћ РџРћР’Р•Р РҐРќРћРЎРўР:
-            // РїСЂРё Р±РµРіРµ РїР»РѕС‚РЅР°СЏ Р·РѕРЅР° РіРѕС‚РѕРІРёС‚СЃСЏ Р’РџР•Р Р•Р”Р, Рё С‚СЂР°РІР° РІСЃС‚СЂРµС‡Р°РµС‚
-            // РёРіСЂРѕРєР°, Р° РЅРµ РґРѕРіРѕРЅСЏРµС‚СЃСЏ РёРј. РЎРєРѕСЂРѕСЃС‚СЊ РІСЂР°С‰РµРЅРёСЏ РїР»Р°РЅРµС‚С‹ СЃСЋРґР° РЅРµ
-            // РІС…РѕРґРёС‚ (СЃС‚РѕСЏ РёРіСЂРѕРє В«РЅРµ РґРІРёР¶РµС‚СЃСЏВ»), РїРѕСЌС‚РѕРјСѓ СЃС‚РѕСЏ РѕР±Р»Р°РєРѕ РЅРµ СѓРµР·Р¶Р°РµС‚.
-            // surfaceVelocityLocal вЂ” СѓР¶Рµ РІ body-fixed РѕСЃСЏС…, СЃРѕРІРїР°РґР°СЋС‰РёС… СЃ
-            // Р»РѕРєР°Р»СЊРЅС‹РјРё РѕСЃСЏРјРё С‡Р°РЅРєР°, РїРѕСЌС‚РѕРјСѓ РґРѕСЃС‚Р°С‚РѕС‡РЅРѕ СѓР±СЂР°С‚СЊ РЅРѕСЂРјР°Р»СЊРЅСѓСЋ
-            // СЃРѕСЃС‚Р°РІР»СЏСЋС‰СѓСЋ (РїРѕРґСЉС‘Рј/СЃРїСѓСЃРє Р·РѕРЅСѓ РЅРµ СЃРґРІРёРіР°РµС‚).
+            // Cloud lead along the player's velocity RELATIVE TO THE SURFACE:
+            // while running, the dense zone is prepared AHEAD and grass meets
+            // the player instead of being chased by them. Planet spin is not
+            // included here (standing still the player "does not move"), so the cloud
+            // does not drift while standing.
+            // surfaceVelocityLocal is already in body-fixed axes matching the
+            // chunk's local axes, so removing the normal component is enough.
             Vector3 cloudLocal = cameraLocal;
             if (layer.PerInstanceDensity)
             {
@@ -4132,8 +4012,8 @@ namespace Galilego.Universe
             if ((layer.PerInstanceDensity || chunkDistance <= layer.NearDistanceMeters + 20f)
                 && cellArc > spacing * 1.01d)
             {
-                // РЎРµС‚РєР° РїРѕРґС‚СѓС„С‚ СЂРѕРІРЅРѕ РїРѕ С€Р°РіСѓ СЃР»РѕСЏ (gridNГ—gridN), Р° РЅРµ В«СЃРєРѕР»СЊРєРѕ
-                // РІР»РµР·РµС‚В»: Р±РµР· СЌС‚РѕРіРѕ РѕСЃС‚Р°РІР°Р»РёСЃСЊ С‰РµР»Рё РјРµР¶РґСѓ РїРѕРґС‚СѓС„С‚Р°РјРё.
+                // The subtuft grid is exactly the layer step (gridN×gridN), not "as many
+                // as fit": otherwise gaps remained between subtufts.
                 int gridN = (int)System.Math.Ceiling(cellArc / spacing);
                 long wantedSubs = (long)gridN * gridN;
                 int maxSubs = System.Math.Max(1, layer.SubInstancesPerCell);
@@ -4169,9 +4049,9 @@ namespace Galilego.Universe
                 MaxSink = layer.MaxGroundSinkFactor >= 0d ? layer.MaxGroundSinkFactor : layer.GroundSinkFactor,
                 MeshCount = layer.NearMeshes.Length,
                 SubPerCell = subPerCell,
-                // Р’СЃРµ Р±СѓС„РµСЂС‹ вЂ” РёР· РїСѓР»Р° (DecorArrayPool): РїРµСЂРµСЃР±РѕСЂРєР° С‚СЂР°РІС‹ РЅРµ
-                // РґРѕР»Р¶РЅР° Р°Р»Р»РѕС†РёСЂРѕРІР°С‚СЊ РґРµСЃСЏС‚РєРё РњР‘ РЅР°С‚РёРІРЅС‹С… РјР°СЃСЃРёРІРѕРІ Рё С‚СѓС‚ Р¶Рµ РёС…
-                // РѕСЃРІРѕР±РѕР¶РґР°С‚СЊ, РёРЅР°С‡Рµ С„РёРЅР°Р»РёР·Р°С†РёСЏ РґР°С‘С‚ РїСЂРѕР»Р°Рі.
+                // All buffers come from the pool (DecorArrayPool): a grass rebuild must not
+                // allocate tens of MB of native arrays and free them immediately, or
+                // finalization causes a hitch.
                 Dirs = DecorArrayPool.Rent<double3>(count),
                 Uvs = DecorArrayPool.Rent<float2>(count),
                 Randoms = DecorArrayPool.Rent<double3>(count),
@@ -4221,9 +4101,9 @@ namespace Galilego.Universe
 
             if (session.Selection.IsCreated)
             {
-                // Р Р°РґРёСѓСЃ РІС‹Р±РѕСЂРєРё вЂ” РІСЃСЏ Р·РѕРЅР° РІРёРґРёРјРѕСЃС‚Рё СЃР»РѕСЏ; РєР°Рї СЂРµР¶РµС‚СЃСЏ
-                // Р°Р»Р»РѕРєР°С‚РѕСЂРѕРј В«Р±Р»РёР¶РЅРёРµ РїРµСЂРІС‹РјРёВ» СЃ РїР»Р°РІРЅС‹Рј РєСЂР°РµРј, РїРѕСЌС‚РѕРјСѓ
-                // РіСЂР°РЅРёС†Р° РѕР±СЂРµР·РєРё СЃР°РјР° СѓС…РѕРґРёС‚ Р·Р° РїСЂРµРґРµР»С‹ РїР»РѕС‚РЅРѕР№ Р·РѕРЅС‹.
+                // The sampling radius is the layer's whole visibility zone; the cap is cut by
+                // the "nearest first" allocator with a smooth edge, so the cut boundary
+                // itself lies beyond the dense zone.
                 session.Selection[0] = layer.MaxDistanceMeters;
                 session.Selection[1] = 1f;
                 session.Selection[2] = 0f;
@@ -4253,11 +4133,10 @@ namespace Galilego.Universe
             return false;
         }
 
-        /// <summary>РЁР°Рі РІСЃРµС… Р°РєС‚РёРІРЅС‹С… СЃР±РѕСЂРѕРє РІ СЂР°РјРєР°С… Р±СЋРґР¶РµС‚Р° РєР°РґСЂР°. РЎРµСЃСЃРёРё
-        /// РёРґСѓС‚ РїРѕ РєСЂСѓРіСѓ, РїРѕРєР° РµСЃС‚СЊ РїСЂРѕРіСЂРµСЃСЃ Рё РЅРµ РёСЃС‡РµСЂРїР°РЅ Р±СЋРґР¶РµС‚.</summary>
-        /// <summary>Обёртка ради маркера: у сессий есть свой бюджет
-        /// DecorBuildBudgetMs, но он общий на все сессии сразу, и сколько из
-        /// этих миллисекунд реально ушло в кадр, видно только здесь.</summary>
+        /// <summary>Advances all active builds within the frame budget. Sessions
+        /// go round-robin while there is progress and budget remains.</summary>
+        /// <summary>Marker-only wrapper: the sessions share DecorBuildBudgetMs,
+        /// so this is the only place that shows how much of it reached the frame.</summary>
         private void StepDecorBuilds()
         {
             using (SurfacePerf.StepDecorBuildsMarker.Auto())
@@ -4284,7 +4163,7 @@ namespace Galilego.Universe
                     DecorBuildSession session = decorBuildSessions[i];
                     if (!SessionChunkAlive(session))
                     {
-                        // Р§Р°РЅРє РІС‹С‚РµСЃРЅРµРЅ/СЃРјРµРЅРёР»СЃСЏ LOD вЂ” СЃР±РѕСЂРєСѓ РѕС‚РјРµРЅСЏРµРј.
+                        // Chunk evicted / LOD changed — cancel the build.
                         session.CancelRequested = true;
                     }
 
@@ -4298,8 +4177,8 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    // РСЃРєР»СЋС‡РµРЅРёРµ РІ РѕРґРЅРѕР№ СЃР±РѕСЂРєРµ РЅРµ РґРѕР»Р¶РЅРѕ СЂРѕРЅСЏС‚СЊ РІРµСЃСЊ LateUpdate
-                    // (РёРЅР°С‡Рµ DrawDecor РЅРµ РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ Рё РјРёСЂ РїСЂРѕРїР°РґР°РµС‚).
+                    // An exception in one build must not bring down the whole LateUpdate
+                    // (otherwise DrawDecor does not run and the world disappears).
                     try
                     {
                         if (AdvanceDecorBuild(session))
@@ -4343,8 +4222,8 @@ namespace Galilego.Universe
                 && chunks.TryGetValue(session.ChunkId, out Chunk current) && current == session.Chunk;
         }
 
-        /// <summary>РћС‚РјРµРЅР° СЃР±РѕСЂРєРё: РґР¶РѕР±Р° РјРѕРіР»Р° РµС‰С‘ СЃС‡РёС‚Р°С‚СЊСЃСЏ РЅР° РІРѕСЂРєРµСЂР°С… вЂ”
-        /// С‚РѕРіРґР° РјР°СЃСЃРёРІС‹ РѕСЃРІРѕР±РѕР¶РґР°РµРј РІ СЃР»РµРґСѓСЋС‰РµРј С€Р°РіРµ, РёРЅР°С‡Рµ РїРѕСЂС‡Р° РїР°РјСЏС‚Рё.</summary>
+        /// <summary>Build cancellation: the job may still be running on workers —
+        /// then the arrays are freed on the next step, otherwise memory corruption.</summary>
         private bool CancelDecorBuild(DecorBuildSession session)
         {
             if (session.CandidateScheduled && !session.CandidateJob.IsCompleted)
@@ -4390,9 +4269,9 @@ namespace Galilego.Universe
             DisposeIfCreated(ref session.WriteTotal);
         }
 
-        /// <summary>Р’РµСЂРЅСѓС‚СЊ РјР°СЃСЃРёРІ РІ РїСѓР» Рё РѕР±РЅСѓР»РёС‚СЊ СЃСЃС‹Р»РєСѓ Сѓ Р’Р›РђР”Р•Р›Р¬Р¦Рђ (ref):
-        /// РёРЅР°С‡Рµ РєРѕРїРёСЏ-РїР°СЂР°РјРµС‚СЂ РѕР±РЅСѓР»СЏРµС‚СЃСЏ, РїРѕР»Рµ РѕСЃС‚Р°С‘С‚СЃСЏ В«СЃРѕР·РґР°РЅРЅС‹РјВ», Рё
-        /// РїРѕРІС‚РѕСЂРЅС‹Р№ РІРѕР·РІСЂР°С‚ РѕС‚РґР°С‘С‚ РІ РїСѓР» РѕРґРёРЅ Р±СѓС„РµСЂ РґРІР°Р¶РґС‹.</summary>
+        /// <summary>Return the array to the pool and null the OWNER's reference (ref):
+        /// otherwise the parameter copy is nulled, the field stays "created", and a
+        /// repeated return hands the same buffer to the pool twice.</summary>
         private static void DisposeIfCreated<T>(ref NativeArray<T> array) where T : struct
         {
             DecorArrayPool.Return(ref array);
@@ -4423,10 +4302,10 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>РЎС‡РёС‚Р°РµС‚ Р»РѕРєР°Р»СЊРЅС‹Рµ (С‡Р°РЅРє-С„СЂРµР№Рј) РјР°С‚СЂРёС†С‹ С‚СЂР°РІС‹ РћР”РРќ СЂР°Р· Рё
-        /// РїР°РєСѓРµС‚ РёС… РІ ComputeBuffer + Р°СЂРіСѓРјРµРЅС‚С‹ РёРЅРґРёСЂРµРєС‚-РґСЂРѕСѓ. РњРёСЂРѕРІР°СЏ С‡Р°СЃС‚СЊ
-        /// РїРѕРґСЃС‚Р°РІР»СЏРµС‚СЃСЏ РЅР° РѕС‚СЂРёСЃРѕРІРєРµ С‡РµСЂРµР· _DecorChunkToWorld (MPB), РїРѕСЌС‚РѕРјСѓ
-        /// per-frame РґР¶РѕР±С‹ РјР°С‚СЂРёС† Р±РѕР»СЊС€Рµ РЅРµ РЅСѓР¶РЅС‹.</summary>
+        /// <summary>Computes grass matrices in the chunk frame ONCE and packs
+        /// them into a ComputeBuffer + indirect-draw args. The world part is
+        /// supplied at draw time via _DecorChunkToWorld (MPB), so per-frame
+        /// matrix jobs are no longer needed.</summary>
         private bool BuildDecorIndirectBuffers(
             GroundDecorLayer layer, NativeArray<GroundDecorInstance> instances, DecorLayerRuntime runtime)
         {
@@ -4499,8 +4378,8 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>РћРґРёРЅ РёРЅРґРёСЂРµРєС‚-РґСЂРѕСѓ РЅР° СЃР°Р±РјРµС€: РјР°С‚СЂРёС†С‹ вЂ” РёР· Р±СѓС„РµСЂР°, РјРёСЂРѕРІР°СЏ
-        /// С‡Р°СЃС‚СЊ вЂ” _DecorChunkToWorld.</summary>
+        /// <summary>One indirect draw per submesh: matrices come from the buffer,
+        /// the world part from _DecorChunkToWorld.</summary>
         private void DrawDecorIndirect(
             DecorLayerRuntime runtime, Matrix4x4 chunkMatrix, Bounds worldBounds, ShadowCastingMode shadowMode)
         {
@@ -4543,8 +4422,8 @@ namespace Galilego.Universe
             int subMeshes = Mathf.Max(1, mesh.subMeshCount);
             for (int sub = 0; sub < subMeshes; sub++)
             {
-                // SRP-РїСѓС‚СЊ: РѕРґРёРЅ РёРЅРґРёСЂРµРєС‚-РґСЂРѕСѓ РЅР° СЃР°Р±РјРµС€ (РІ РѕС‚Р»РёС‡РёРµ РѕС‚ legacy
-                // DrawMeshInstancedIndirect, РєРѕС‚РѕСЂС‹Р№ HDRP РёРіРЅРѕСЂРёСЂСѓРµС‚).
+                // SRP path: one indirect draw per submesh (unlike legacy
+                // DrawMeshInstancedIndirect, which HDRP ignores).
                 Graphics.RenderMeshIndirect(renderParams, mesh, runtime.ArgsBuffer, 1, sub);
             }
         }
@@ -4566,7 +4445,7 @@ namespace Galilego.Universe
                     session.CandidateScheduled = false;
                     if (session.Layer.PerInstanceDensity && session.MeshVerticesNative.IsCreated)
                     {
-                        // РўСЂР°РІР°: РІРµСЃР°/РїРѕРґС‚СѓС„С‚С‹ СЃС‡РёС‚Р°РµС‚ Burst, Р° РЅРµ РіР»Р°РІРЅС‹Р№ РїРѕС‚РѕРє.
+                        // Grass: weights/subtufts are computed by Burst, not the main thread.
                         ScheduleDecorWeightChain(session);
                         session.Stage = 5;
                         return true;
@@ -4590,8 +4469,8 @@ namespace Galilego.Universe
 
                     session.CandidateJob.Complete();
                     session.CandidateScheduled = false;
-                    // Р§РёСЃР»Рѕ С‚СЂР°РІРёРЅРѕРє С‚РµРїРµСЂСЊ Р·Р°РґР°С‘С‚ РџР РћР¤РР›Р¬ РїР»РѕС‚РЅРѕСЃС‚Рё (РїР»РѕСЃРєРѕРµ
-                    // СЏРґСЂРѕ + Р·Р°С‚СѓС…Р°РЅРёРµ), Р° РєР°Рї СЂРµР¶РµС‚СЃСЏ Р°Р»Р»РѕРєР°С‚РѕСЂРѕРј РїРѕ РґРёСЃС‚Р°РЅС†РёРё.
+                    // The grass count is now set by the DENSITY PROFILE (flat
+                    // core + falloff), and the cap is cut by the allocator by distance.
                     session.ExpectedWeight = 0d;
                     session.AcceptedCount = session.Count;
                     FinishDecorScan(session);
@@ -4638,9 +4517,9 @@ namespace Galilego.Universe
                             + " Р·Р°РґРµСЂР¶РєР°РЎР±РѕСЂРєРё=" + (Time.realtimeSinceStartup - session.QueueTimeSeconds).ToString("F2") + " СЃ");
                     }
 
-                    // РЎРѕС…СЂР°РЅС‘РЅРЅС‹Рµ СЃС‚Р°СЂС‹Рµ С‚СЂР°РІРёРЅРєРё (РІРґР°Р»Рё РѕС‚ РЅРѕРІРѕРіРѕ СЏРґСЂР°) вЂ” РІ
-                    // С…РІРѕСЃС‚ РїСѓР»Р°: РїР»РѕС‚РЅРѕСЃС‚СЊ Сѓ РёРіСЂРѕРєР° РЅРµ СЃС‚СЂР°РґР°РµС‚, Р° РјРёСЂ РЅРµ
-                    // В«РїРѕСЏРІР»СЏРµС‚СЃСЏ Р·Р°РЅРѕРІРѕВ» РЅР° СѓР¶Рµ РїСЂРѕР№РґРµРЅРЅС‹С… РјРµСЃС‚Р°С….
+                    // Preserved old blades (far from the new core) go into the
+                    // pool tail: density near the player is unaffected, and the world does not
+                    // "appear anew" in places already visited.
                     if (session.KeptOldCount > 0 && session.Stored.IsCreated)
                     {
                         int copy = System.Math.Min(session.KeptOldCount, session.Stored.Length - session.Write);
@@ -4662,7 +4541,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>РЎС‚Р°РґРёСЏ 5: Burst-С†РµРїРѕС‡РєР° В«РІРµСЃ СЃ Р·Р°С‚СѓС…Р°РЅРёРµРј в†’ СЃС‡С‘С‚С‡РёРєРё С‚СЂР°РІРёРЅРѕРєВ».</summary>
+        /// <summary>Stage 5: Burst chain "falloff weight → grass counters".</summary>
         private void ScheduleDecorWeightChain(DecorBuildSession session)
         {
             var weightJob = new GroundDecorWeightJob
@@ -4693,12 +4572,12 @@ namespace Galilego.Universe
             session.CandidateScheduled = true;
         }
 
-        /// <summary>РЎС‚Р°РґРёСЏ 6: СЃР»РѕС‚С‹ Р·Р°РїРёСЃРё (Р±Р»РёР¶РЅРёРµ РїРµСЂРІС‹РјРё, СЃ РїР»Р°РІРЅС‹Рј РєСЂР°РµРј)
-        /// + Burst-СЂР°Р·РІРѕСЂРѕС‚ СЂРѕРІРЅРѕ Р·Р°РїР»Р°РЅРёСЂРѕРІР°РЅРЅРѕРіРѕ С‡РёСЃР»Р° С‚СЂР°РІРёРЅРѕРє.</summary>
+        /// <summary>Stage 6: write slots (nearest first, smooth edge)
+        /// + Burst expansion of exactly the planned number of blades.</summary>
         private void ScheduleDecorOffsetAndExpand(DecorBuildSession session)
         {
-            // Р‘Р°РєРµС‚С‹ РїРѕ РґРёСЃС‚Р°РЅС†РёРё: С€РёСЂРёРЅР° ~2 Рј (СЂР°Р·СЂРµС€РµРЅРёРµ СЂР°РґРёСѓСЃР° РѕР±СЂРµР·РєРё),
-            // С‡С‚РѕР±С‹ РіСЂР°РЅРёС†Р° РєР°РїР° Р±С‹Р»Р° РєРѕР»СЊС†РѕРј РІРѕРєСЂСѓРі РёРіСЂРѕРєР°, Р° РЅРµ СЃС‚СЂРѕРєРѕР№ СЃРµС‚РєРё.
+            // Distance buckets: ~2 m wide (the cut radius resolution),
+            // so the cap boundary is a ring around the player, not a grid row.
             float maxDistance = Mathf.Max(1f, session.Layer.MaxDistanceMeters);
             int buckets = Mathf.Clamp(Mathf.CeilToInt(maxDistance / 2f), 16, 512);
             var allocJob = new GroundDecorAllocateJob
@@ -4721,9 +4600,9 @@ namespace Galilego.Universe
             JobHandle allocHandle = allocJob.Schedule(default(JobHandle));
             JobHandle expandHandle = expandJob.Schedule(session.Count, 64, allocHandle);
 
-            // Инкрементальность: переносим из прежнего пула травинки, оставшиеся
-            // в новой выборке, вместе с их BirthTime — уже выросшие не прорастают
-            // заново. Новыми (со свежим BirthTime) остаются только добавленные.
+            // Incremental: blades from the previous pool that remain
+            // in the new selection are carried over with their BirthTime — already grown
+            // ones do not sprout again. Only additions get a fresh BirthTime.
             DecorLayerRuntime previous = session.Previous;
             if (previous != null && previous.Instances.IsCreated
                 && previous.CellOffsets.IsCreated && previous.CellCounts.IsCreated)
@@ -4770,8 +4649,8 @@ namespace Galilego.Universe
                 Terrain = noiseParams,
                 Placement = session.Placement,
                 SubPerCell = session.SubPerCell,
-                // 13 РІР·Р°РёРјРЅРѕ РїСЂРѕСЃС‚Рѕ СЃ 36: СЂР°Р·СЂРµР¶РµРЅРЅС‹Р№ РїРѕСЂСЏРґРѕРє РїРѕРєСЂС‹РІР°РµС‚ СЃРµС‚РєСѓ 6Г—6
-                // С†РµР»РёРєРѕРј, РїРµСЂРІС‹Рµ k РїРѕРґС‚СѓС„С‚РѕРІ СЂР°СЃСЃС‹РїР°РЅС‹ РїРѕ РІСЃРµР№ РєР»РµС‚РєРµ.
+                // 13 is coprime with 36: the sparse order covers the 6×6 grid
+                // entirely, and the first k subtufts are scattered over the whole cell.
                 SpreadStride = 13,
                 MinScale = layer.MinScale,
                 MaxScale = layer.MaxScale,
@@ -4791,10 +4670,8 @@ namespace Galilego.Universe
             };
         }
 
-        /// <summary>Стадия 0: джиттер-сетка кандидатов и UV-заготовка — целиком в
-        /// Burst-джобе. На сессию это десятки тысяч ячеек, на каждую — семь хешей и
-        /// double-арифметика, и раньше стадия шла нарезанными по 2048 шагами на
-        /// главном потоке, забирая часть общего DecorBuildBudgetMs.</summary>
+        /// <summary>Stage 0: jitter candidate grid and UV scratch — entirely in
+        /// a Burst job; tens of thousands of cells, each with seven hashes and double math.</summary>
         private bool AdvanceDecorPrep(DecorBuildSession session)
         {
             Node node = session.Node;
@@ -4842,7 +4719,7 @@ namespace Galilego.Universe
             session.CandidateScheduled = true;
         }
 
-        /// <summary>РЎС‚Р°РґРёСЏ 2: РїРѕРґСЃС‡С‘С‚ РїСЂРёРЅСЏС‚С‹С… Рё СЃСѓРјРјР°СЂРЅРѕРіРѕ РІРµСЃР° вЂ” РєСѓСЂСЃРѕСЂРѕРј.</summary>
+        /// <summary>Stage 2: count accepted candidates and total weight — with a cursor.</summary>
         private bool AdvanceDecorScan(DecorBuildSession session)
         {
             GroundDecorLayer layer = session.Layer;
@@ -4895,8 +4772,8 @@ namespace Galilego.Universe
             return true;
         }
 
-        /// <summary>РС‚РѕРі СЃС‚Р°РґРёРё 2: РїРѕРґС‚СѓС„С‚С‹, РєР°Рї Рё СЂР°Р·РІРѕСЂРѕС‚ вЂ” РєР°Рє РІ РїСЂРµР¶РЅРµР№
-        /// СЃРёРЅС…СЂРѕРЅРЅРѕР№ СЃР±РѕСЂРєРµ, РїРѕСЂСЏРґРѕРє Рё С…РµС€Рё РЅРµ РјРµРЅСЏСЋС‚СЃСЏ.</summary>
+        /// <summary>Stage 2 result: subtufts, cap and expansion — same order and
+        /// hashes as the synchronous build.</summary>
         private void FinishDecorScan(DecorBuildSession session)
         {
             GroundDecorLayer layer = session.Layer;
@@ -4906,9 +4783,8 @@ namespace Galilego.Universe
                 double expected = session.ExpectedWeight * layer.Density;
                 if (expected > layer.MaxInstancesPerChunk)
                 {
-                    // РћСЃС‚Р°РІР»СЏРµРј Р·Р°РїР°СЃ РЅР° РґРёСЃРїРµСЂСЃРёСЋ СЃР»СѓС‡Р°Р№РЅРѕРіРѕ РѕС‚Р±РѕСЂР°, С‡С‚РѕР±С‹
-                    // РЅРµ СЃСЂР°Р±Р°С‚С‹РІР°С‚СЊ РЅР° Р¶С‘СЃС‚РєРѕРј С…РІРѕСЃС‚РѕРІРѕРј Р»РёРјРёС‚Рµ Рё РЅРµ РїРѕР»СѓС‡Р°С‚СЊ
-                    // РїРѕРІС‚РѕСЂСЏСЋС‰РёРµСЃСЏ РїРѕР»РѕСЃС‹ РѕС‚ РїРѕСЂСЏРґРєР° РѕР±С…РѕРґР° РєР»РµС‚РѕРє.
+                    // Keep headroom for random-selection variance so the hard
+                    // tail limit is not hit and no repeating stripes appear from the cell traversal order.
                     session.CapScale = (layer.MaxInstancesPerChunk * 0.9d) / expected;
                 }
             }
@@ -4916,10 +4792,9 @@ namespace Galilego.Universe
             int capacity = session.AcceptedCount * session.SubPerCell;
             if (layer.PerInstanceDensity)
             {
-                // РџСѓР» С‚СЂР°РІС‹ вЂ” В«N Р±Р»РёР¶Р°Р№С€РёС… РїРѕ РїСЂРѕС„РёР»СЋ РїР»РѕС‚РЅРѕСЃС‚РёВ»: РєР°Рї вЂ” РїР°СЃРїРѕСЂС‚РЅС‹Р№
-                // Р»РёРјРёС‚ СЃР»РѕСЏ, Р° РіСЂР°РЅРёС†Сѓ СЂРµР¶РµС‚ Р°Р»Р»РѕРєР°С‚РѕСЂ РїРѕ РґРёСЃС‚Р°РЅС†РёРё (Р±Р»РёР¶РЅРёРµ
-                // РїРµСЂРІС‹РјРё) СЃ РїР»Р°РІРЅС‹Рј Р·Р°С‚СѓС…Р°РЅРёРµРј Сѓ РєСЂР°СЏ. Р—Р°РїР°СЃ +2048/+4096 Р±С‹Р»
-                // РЅСѓР¶РµРЅ В«СЃР»РµРїРѕРјСѓВ» СЂРµР·РµСЂРІРёСЂРѕРІР°РЅРёСЋ СЃР»РѕС‚РѕРІ вЂ” С‚РµРїРµСЂСЊ СЃС‡С‘С‚С‡РёРєРё С‚РѕС‡РЅС‹Рµ.
+                // Grass pool — "N nearest by density profile": the cap is the layer's
+                // nominal limit, and the boundary is cut by the distance allocator (nearest
+                // first) with smooth falloff at the edge.
                 capacity = System.Math.Max(0, layer.MaxInstancesPerChunk);
             }
             else
@@ -4936,10 +4811,10 @@ namespace Galilego.Universe
                           $"cap={session.CapScale:F3}");
             }
 
-            // Р›РёРјРёС‚ вЂ” РЅРµ В«РѕР±СЂРµР·Р°С‚СЊ С…РІРѕСЃС‚В» С‡Р°РЅРєР° (СЌС‚Рѕ РґР°РІР°Р»Рѕ РїРѕР»РѕСЃСѓ РґРµРєРѕСЂР°
-            // СЃ РѕРґРЅРѕРіРѕ РєСЂР°СЏ СЃРµС‚РєРё), Р° СЂР°РІРЅРѕРјРµСЂРЅРѕ РїСЂРѕСЂРµРґРёС‚СЊ: РѕР±С…РѕРґ РїРѕ
-            // РїРµСЂРµСЃС‚Р°РЅРѕРІРєРµ i = (kВ·stride) mod count СЃРѕ stride Р·РѕР»РѕС‚РѕРіРѕ
-            // СЃРµС‡РµРЅРёСЏ, РІР·Р°РёРјРЅРѕ РїСЂРѕСЃС‚С‹Рј СЃ count. Р›СЋР±РѕР№ РїСЂРµС„РёРєСЃ СЂР°РІРЅРѕРјРµСЂРµРЅ.
+            // The limit does not "cut the chunk's tail" (that produced a decor stripe
+            // on one edge of the grid); it thins uniformly: traverse by the permutation
+            // i = (k·stride) mod count with the golden-ratio stride, coprime with
+            // count. Any prefix is uniform.
             if (!layer.PerInstanceDensity && session.AcceptedCount * session.SubPerCell > session.Take
                 && session.Count > 1)
             {
@@ -4972,7 +4847,7 @@ namespace Galilego.Universe
                 session.Stored = DecorArrayPool.Rent<GroundDecorInstance>(session.Take);
             }
 
-            // РљР°РЅРґРёРґР°С‚РЅС‹Рµ РјР°СЃСЃРёРІС‹ Р±РѕР»СЊС€Рµ РЅРµ РЅСѓР¶РЅС‹ вЂ” РѕСЃРІРѕР±РѕР¶РґР°РµРј СЃСЂР°Р·Сѓ.
+            // Candidate arrays are no longer needed — freed immediately.
             DisposeIfCreated(ref session.Dirs);
             DisposeIfCreated(ref session.Randoms);
             DisposeIfCreated(ref session.MeshPicks);
@@ -4980,9 +4855,9 @@ namespace Galilego.Universe
             DisposeIfCreated(ref session.LeanRandoms);
         }
 
-        /// <summary>РЎРѕС…СЂР°РЅСЏРµС‚ РёР· РїСЂРµР¶РЅРµРіРѕ РїСѓР»Р° С‚СЂР°РІРёРЅРєРё Р’Р”РђР›Р РѕС‚ РЅРѕРІРѕРіРѕ СЏРґСЂР°
-        /// (РЅР°РєРѕРїР»РµРЅРёРµ): РѕРЅРё РѕСЃС‚Р°СЋС‚СЃСЏ РЅР° РјРµСЃС‚Рµ, РЅРѕРІР°СЏ СЃР±РѕСЂРєР° РґРѕР±Р°РІР»СЏРµС‚ РїР»РѕС‚РЅРѕРµ
-        /// СЏРґСЂРѕ Сѓ РёРіСЂРѕРєР° РІ РѕСЃС‚Р°С‚РѕРє Р±СЋРґР¶РµС‚Р°.</summary>
+        /// <summary>Carries blades FAR from the new core over from the previous
+        /// pool (accumulation): they stay in place, and the new build adds a dense
+        /// core near the player within the remaining budget.</summary>
         private static void CollectKeptOldInstances(DecorBuildSession session)
         {
             session.KeptOldCount = 0;
@@ -5017,8 +4892,8 @@ namespace Galilego.Universe
             session.ExpandTake = System.Math.Max(1, session.Take - session.KeptOldCount);
         }
 
-        /// <summary>РўР°РЅРіРµРЅС†РёР°Р»СЊРЅР°СЏ РґРёСЃС‚Р°РЅС†РёСЏ РёРЅСЃС‚Р°РЅСЃР° РґРѕ С†РµРЅС‚СЂР° РѕР±Р»Р°РєР° (С‚Р° Р¶Рµ
-        /// РјРµС‚СЂРёРєР°, С‡С‚Рѕ Сѓ Falloff РІ РґР¶РѕР±Р°С…).</summary>
+        /// <summary>Tangential distance from the instance to the cloud centre (the same
+        /// metric as Falloff in the jobs).</summary>
         private static int CountBirthsNearCameraLocal(
             Unity.Collections.NativeArray<GroundDecorInstance> stored, int count, Vector3 cameraLocal)
         {
@@ -5063,8 +4938,8 @@ namespace Galilego.Universe
             return (toCamera - (normal * along)).magnitude;
         }
 
-        /// <summary>РЎС‚Р°РґРёСЏ 3: СЂР°Р·РІРѕСЂРѕС‚ РїРѕРґС‚СѓС„С‚РѕРІ РІ persistent-РјР°СЃСЃРёРІ вЂ”
-        /// РєСѓСЂСЃРѕСЂРѕРј РїРѕ РєР»РµС‚РєР°Рј/РїРѕРґС‚СѓС„С‚Р°Рј, СЂРµР·СѓР»СЊС‚Р°С‚ РґРµС‚РµСЂРјРёРЅРёСЂРѕРІР°РЅ.</summary>
+        /// <summary>Stage 3: expand subtufts into a persistent array —
+        /// with a cursor over cells/subtufts; the result is deterministic.</summary>
         private bool AdvanceDecorExpand(DecorBuildSession session)
         {
             GroundDecorLayer layer = session.Layer;
@@ -5100,9 +4975,9 @@ namespace Galilego.Universe
                     session.SubIndex++;
                     work++;
                     GroundDecorInstance sub = session.BaseInstance;
-                    // Прорастание из-под земли: у каждого пропа (дерево/камень/
-                    // кактус/ромашка) своё время появления со сдвигом по хешу —
-                    // растут поштучно, а не пачкой. Трава идёт Burst-путём.
+                    // Sprouting from underground: each prop (tree/rock/
+                    // cactus/daisy) has its own appearance time offset by hash —
+                    // they grow one by one, not in a batch. Grass uses the Burst path.
                     sub.BirthTime = DecorPropStaggerSeconds > 0f
                         ? Time.time + (float)(GroundDecorDistribution.Hash01(
                             subIndex, session.Node.Face, i + session.Node.Ix + 1997,
@@ -5113,15 +4988,15 @@ namespace Galilego.Universe
                     double finalV;
                     if (session.CurrentSubs == 1)
                     {
-                        // РљР°РЅРґРёРґР°С‚ СѓР¶Рµ РґР¶РёС‚С‚РµСЂРёС‚СЃСЏ РїРѕ СЃРµС‚РєРµ вЂ” Р±РµСЂС‘Рј РµРіРѕ UV.
+                        // The candidate is already jittered on the grid — take its UV.
                         finalU = session.Uvs[i].x;
                         finalV = session.Uvs[i].y;
                     }
                     else
                     {
-                        // РџРѕРґС‚СѓС„С‚С‹ РІРЅСѓС‚СЂРё СЏС‡РµР№РєРё: РїРѕР·РёС†РёРё СЃ С…РµС€-РґР¶РёС‚С‚РµСЂРѕРј
-                        // (С„РёРєСЃ-СЃРµС‚РєР° 3Г—3 РґР°РІР°Р»Р° РїРѕРІС‚РѕСЂСЏСЋС‰РёР№СЃСЏ СѓР·РѕСЂ),
-                        // РѕСЃС‚Р°Р»СЊРЅС‹Рµ РїР°СЂР°РјРµС‚СЂС‹ вЂ” СЃРІРѕРё РЅР° РєР°Р¶РґСѓСЋ С‚СЂР°РІРёРЅРєСѓ.
+                        // Subtufts inside the cell: hash-jittered positions
+                        // (a fixed 3×3 grid produced a repeating pattern),
+                        // other parameters are per blade.
                         int subGridN = (int)System.Math.Ceiling(System.Math.Sqrt((double)session.CurrentSubs));
                         int subRow = subIndex / subGridN;
                         int subCol = subIndex % subGridN;
@@ -5170,10 +5045,10 @@ namespace Galilego.Universe
 
                     if (session.CurrentSubs > 1)
                     {
-                        // Подтуфт ушёл от проверенного TryEvaluate центра клетки:
-                        // перепроверяем жёсткие фильтры (вода/песок/горы/биом) по
-                        // его собственному направлению. Без этого край клетки на
-                        // грубом LOD сажал декор в воду и на пляж.
+                        // The subtuft moved away from the verified cell-centre TryEvaluate:
+                        // the hard filters (water/sand/mountains/biome) are rechecked at
+                        // its own direction. Without this, the cell edge at coarse LOD
+                        // planted decor in water and on the beach.
                         Vector3d subDirection = CubeSphere.Direction(session.Node.Face, finalU, finalV);
                         if (!GroundDecorDistribution.IsSurfaceAllowed(
                             session.Placement, noiseParams,
@@ -5188,9 +5063,9 @@ namespace Galilego.Universe
                         (finalU - session.U0) / session.StepUv,
                         (finalV - session.V0) / session.StepUv);
 
-                    // Страж снэпа: грубый меш чанка отклоняется от аналитической
-                    // высоты на метры — точка обязана сама быть над водой,
-                    // иначе деревья/камни «тонут» там, где аналитика видит сушу.
+                    // Snap guard: the coarse chunk mesh deviates from the analytic height
+                    // by metres — the point itself must be above water, otherwise trees/rocks
+                    // "sink" where the analytic height sees land.
                     if (!GroundDecorDistribution.IsMeshPointAboveWater(
                         session.Placement, new float3(meshPoint.x, meshPoint.y, meshPoint.z)))
                     {
@@ -5199,10 +5074,9 @@ namespace Galilego.Universe
 
                     if (layer.PerInstanceDensity)
                     {
-                        // РџСЂРёС‘Рј РЅР° РљРђР–Р”РЈР® С‚СЂР°РІРёРЅРєСѓ. Р—Р°С‚СѓС…Р°РЅРёРµ вЂ” РїРѕ
-                        // С‚Р°РЅРіРµРЅС†РёР°Р»СЊРЅРѕР№ РґРёСЃС‚Р°РЅС†РёРё РґРѕ РєР°РјРµСЂС‹ Р’ РњР•РЁ-Р¤Р Р•Р™РњР•
-                        // С‡Р°РЅРєР°: meshPoint Рё cameraLocal РІ РѕРґРЅРѕР№ СЃРёСЃС‚РµРјРµ,
-                        // РїРѕСЌС‚РѕРјСѓ РѕР±Р»Р°РєРѕ СЂРµР°Р»СЊРЅРѕ СЃР»РµРґСѓРµС‚ Р·Р° РёРіСЂРѕРєРѕРј.
+                        // Per-blade gain. Falloff is by tangential distance to the camera
+                        // IN THE CHUNK'S MESH FRAME: meshPoint and cameraLocal share one space,
+                        // so the cloud really follows the player.
                         Vector3 toCamera = meshPoint - session.CameraLocal;
                         float alongNormal = Vector3.Dot(toCamera, normal);
                         Vector3 tangential = toCamera - (normal * alongNormal);
@@ -5210,10 +5084,9 @@ namespace Galilego.Universe
                             * GroundDecorDistribution.Falloff(session.Placement, tangential.magnitude);
                         if (session.CurrentSubs == 1 && subPerCell > 1)
                         {
-                            // Р”Р°Р»РµРєРѕ РїРѕРґС‚СѓС„С‚ РѕРґРёРЅ РІРјРµСЃС‚Рѕ СЃРµС‚РєРё вЂ” РІРµСЂРѕСЏС‚РЅРѕСЃС‚СЊ
-                            // РїРѕРґРЅРёРјР°РµРј РІРѕ СЃС‚РѕР»СЊРєРѕ Р¶Рµ СЂР°Р·: РѕР¶РёРґР°РµРјРѕРµ С‡РёСЃР»Рѕ
-                            // С‚СЂР°РІРёРЅРѕРє РЅР° РєР»РµС‚РєСѓ РЅРµ РїР°РґР°РµС‚, В«С…РІРѕСЃС‚В» С‚СЂР°РІС‹
-                            // РґРѕ MaxDistance РѕСЃС‚Р°С‘С‚СЃСЏ.
+                            // Far away one subtuft stands in for the grid — the probability is
+                            // raised by the same factor: the expected blade count per cell
+                            // does not drop, and the grass "tail" out to MaxDistance remains.
                             accept *= subPerCell;
                         }
 
@@ -5257,8 +5130,8 @@ namespace Galilego.Universe
             return work > 0;
         }
 
-        /// <summary>РЎС‚Р°РґРёСЏ 4: РіРѕС‚РѕРІС‹Р№ СЃР»РѕР№ РІСЃС‚Р°С‘С‚ РІ С‡Р°РЅРє (РґР»СЏ РїРµСЂРµСЃР±РѕСЂРєРё вЂ”
-        /// Р·Р°РјРµРЅРѕР№ СЃР»РѕСЏ С‚РѕР№ Р¶Рµ Р»РёС‡РЅРѕСЃС‚Рё; СЃС‚Р°СЂС‹Р№ СЂРёСЃСѓРµС‚СЃСЏ РґРѕ СЌС‚РѕРіРѕ РјРѕРјРµРЅС‚Р°).</summary>
+        /// <summary>Stage 4: the finished layer is installed into the chunk (for a
+        /// rebuild — replacing the layer with the same identity; the old one draws until then).</summary>
         private void FinalizeDecorBuild(DecorBuildSession session)
         {
             using (SurfacePerf.FinalizeDecorBuildMarker.Auto())
@@ -5267,8 +5140,8 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Стадия 4: готовый слой встаёт в чанк (для пересборки — в
-        /// заменяемый слой той же ячейки; старый рисуется до отсчёта жизли).</summary>
+        /// <summary>Stage 4: the finished layer is installed into the chunk (for a
+        /// rebuild — into the replaceable layer of the same cell; the old one draws until the clock runs out).</summary>
         private void FinalizeDecorBuildCore(DecorBuildSession session)
         {
             GroundDecorLayer layer = session.Layer;
@@ -5279,8 +5152,8 @@ namespace Galilego.Universe
             {
                 if (write > 0)
                 {
-                    // Точный размер — из пула (обычно там уже есть буфер такой
-                    // длины): остаётся только копия, без alloc/free на кадр.
+                    // Exact size comes from the pool (it usually holds a buffer of that
+                    // length): only a copy remains, no alloc/free per frame.
                     NativeArray<GroundDecorInstance> shrunk =
                         DecorArrayPool.Rent<GroundDecorInstance>(write);
                     NativeArray<GroundDecorInstance>.Copy(stored, shrunk, write);
@@ -5300,12 +5173,10 @@ namespace Galilego.Universe
 
             session.Stored = default;
 
-            // Травинки, выпавшие из новой выборки, не выбрасываются: их хвостом
-            // дописываем в конец нового пула с DeathTime, и матричная джоба
-            // гасит их масштабом (уходят под землю). Без этого кромка поля
-            // исчезала кадр в кадр — игрок видел, как трава пропадает, особенно
-            // сзади. Перенесённые джобой MergeKept инстансы не трогаем: они
-            // остаются и в новой выборке, и в хвосте (матрица одна и та же).
+            // Blades that dropped out of the new selection are not discarded: they are
+            // appended to the new pool tail with DeathTime, and the matrix job
+            // fades their scale (they sink underground). Instances carried by
+            // MergeKept stay in both the new selection and the tail (same matrix).
             int aliveCount = write;
             float retireDeadline = 0f;
             float sinkFadeSeconds = DecorFadeSeconds(DecorBladeSinkSeconds);
@@ -5314,10 +5185,9 @@ namespace Galilego.Universe
                 retireDeadline = AppendRetiringInstances(session, ref stored, ref write, sinkFadeSeconds);
             }
 
-            // РќР°С…РѕРґРёРј РїСЂРµР¶РЅРёР№ СЃР»РѕР№ СЌС‚РѕР№ Р»РёС‡РЅРѕСЃС‚Рё (РµСЃР»Рё СЌС‚Рѕ РїРµСЂРµСЃР±РѕСЂРєР°):
-            // Р·Р°РјРµРЅСЏРµРј РіРѕС‚РѕРІС‹Рј, Р° РїСЂРё РїСѓСЃС‚РѕРј СЂРµР·СѓР»СЊС‚Р°С‚Рµ вЂ” СѓР±РёСЂР°РµРј, РёРЅР°С‡Рµ
-            // СЃС‚Р°СЂС‹Р№ СЃР»РѕР№ РѕСЃС‚Р°Р»СЃСЏ Р±С‹ В«СѓСЃС‚Р°СЂРµРІС€РёРјВ» РЅР°РІСЃРµРіРґР° Рё РїРµСЂРµСЃРѕР±РёСЂР°Р»СЃСЏ
-            // Р±С‹ Р±РµСЃРєРѕРЅРµС‡РЅРѕ.
+            // Find the previous layer of this identity (if this is a rebuild):
+            // replace it with the finished one, or remove it if the result is empty;
+            // otherwise the old layer would stay "stale" forever and rebuild endlessly.
             int existingIndex = -1;
             for (int i = 0; i < session.Chunk.Decor.Count; i++)
             {
@@ -5338,18 +5208,17 @@ namespace Galilego.Universe
                     BuildCameraRenderPos = session.CameraPosition,
                     BuildCameraLocalPosition = session.BuildCameraLocal,
                     Instances = stored,
-                    // Трава рисуется Burst-матрицами (WorldMatrices), managed
-                    // Matrices ей не нужен: раньше на каждую пересборку
-                    // аллоцировался массив до 6.4 МБ в мусор.
+                    // Grass is drawn with Burst matrices (WorldMatrices); managed
+                    // Matrices is not needed for it.
                     Matrices = layer.PerInstanceDensity ? null : new Matrix4x4[write],
                     SinkFadeSeconds = sinkFadeSeconds
                 };
 
-                // "Пустота под ногами" в числах: сколько травинок в свежей
-                // сборке родилось рядом с камерой. Пересборка при ходьбе идёт
-                // волной, и если её запустило поздно, эти инстансы окажутся в
-                // зоне, где игрок уже видит полную плотность — и дорастут
-                // прямо в кадре. Считается здесь, где инстансы уже готовы.
+                // "Hole underfoot" in numbers: how many blades in the fresh
+                // build were born near the camera. Walking rebuilds run in
+                // waves; launched too late, those instances would appear in a
+                // zone where the player already sees full density and grow
+                // in-frame. Counted here, where the instances are already prepared.
                 if (layer.PerInstanceDensity)
                 {
                     SurfacePerf.DecorBirthsNearCameraThisFrame += CountBirthsNearCameraLocal(
@@ -5363,8 +5232,8 @@ namespace Galilego.Universe
                     runtime.WorldMatrices = DecorArrayPool.Rent<Matrix4x4>(write);
                     runtime.AliveCount = aliveCount;
                     runtime.RetireDeadline = retireDeadline;
-                    // Таблица раскладки пула по клеткам переходит рантайму:
-                    // по ней следующая пересборка перенесёт уже выросшие травинки.
+                    // The pool's cell layout table goes to the runtime:
+                    // the next rebuild uses it to carry over already grown blades.
                     runtime.CellOffsets = session.WriteOffsets;
                     runtime.CellCounts = session.WriteCounts;
                     session.WriteOffsets = default;
@@ -5373,10 +5242,10 @@ namespace Galilego.Universe
 
                 if (existingIndex >= 0)
                 {
-                    // Старый пул не удаляем, а отдаём под землю (у слоёв без
-                    // PerInstanceDensity инстансов много и они не «помечены»
-                    // поштучно, как трава: гаснет пул целиком). Для травы хвост
-                    // уже собран в новом пуле, старый можно освободить сразу.
+                    // The old pool is not deleted but sent underground (for layers without
+                    // PerInstanceDensity there are many instances and they are not individually
+                    // marked like grass: the whole pool fades). For grass the tail is
+                    // already collected in the new pool, so the old one can be freed at once.
                     if (layer.PerInstanceDensity)
                     {
                         DisposeDecorLayerRuntime(session.Chunk.Decor[existingIndex]);
@@ -5395,18 +5264,18 @@ namespace Galilego.Universe
             }
             else if (existingIndex >= 0)
             {
-                // Новая сборка пуста (игрок ушёл на скалы/песок): старый пул не
-                // удаляем, а отдаём под землю — иначе деревья на краю зоны
-                // исчезали бы одним кадром. Уберёт его RetireFinishedDecor.
+                // The new build is empty (the player moved onto rock/sand): the old pool is
+                // sent underground instead of deleted — otherwise trees at the zone edge
+                // would vanish in one frame. RetireFinishedDecor removes it.
                 RetireDecorLayerRuntime(session.Chunk.Decor[existingIndex]);
             }
 
             session.Chunk.DecorBuiltMask |= 1 << session.LayerIndex;
             if (layer.DensityFalloffMeters > 0f)
             {
-                // Р—Р°РїРѕРјРёРЅР°РµРј РїРѕР·РёС†РёСЋ СЃР±РѕСЂРєРё РґР°Р¶Рµ РґР»СЏ РїСѓСЃС‚РѕРіРѕ СЂРµР·СѓР»СЊС‚Р°С‚Р°: РїРѕ РЅРµР№
-                // СЃР»РѕР№ РїРµСЂРµСЃРѕР±РёСЂР°РµС‚СЃСЏ, РєРѕРіРґР° РёРіСЂРѕРє РїРѕРґРѕР№РґС‘С‚ Р±Р»РёР¶Рµ (РёРЅР°С‡Рµ С‡Р°РЅРє,
-                // РїРѕСЃС‚СЂРѕРµРЅРЅС‹Р№ РёР·РґР°Р»РµРєР° РїСѓСЃС‚С‹Рј, РЅР°РІСЃРµРіРґР° РѕСЃС‚Р°Р»СЃСЏ Р±С‹ Р±РµР· С‚СЂР°РІС‹).
+                // Record the build position even for an empty result: the layer rebuilds
+                // there when the player comes closer (otherwise a chunk built empty
+                // from afar would stay without grass forever).
                 if (session.Chunk.DecorBuildCameraLocal == null)
                 {
                     int layerCount = decorProfile != null && decorProfile.Layers != null
@@ -5424,12 +5293,12 @@ namespace Galilego.Universe
             DisposeDecorBuildSession(session);
         }
 
-        /// <summary>Р›РµРЅРёРІР°СЏ СЃР±РѕСЂРєР° СЃР»РѕС‘РІ РґРµРєРѕСЂР°: С‡Р°РЅРє РґРµРєРѕСЂРёСЂСѓРµС‚СЃСЏ РїРѕ СЃР»РѕСЋ,
-        /// РєРѕРіРґР° РІРїРµСЂРІС‹Рµ РІС…РѕРґРёС‚ РІ РµРіРѕ MaxDistance+SpawnMargin. Р—Р° РїРѕСЃС‚Р°РЅРѕРІРєСѓ
-        /// РѕС‚РІРµС‡Р°РµС‚ СЌС‚РѕС‚ РїРѕРёСЃРє (Р±Р»РёР¶РЅРёРµ РїРµСЂРІС‹РјРё), СЃР°РјР° СЃР±РѕСЂРєР° РёРґС‘С‚ РїРѕСЂС†РёСЏРјРё РїРѕ
-        /// Р±СЋРґР¶РµС‚Сѓ РєР°РґСЂР° (TryQueueDecorBuild/StepDecorBuilds) вЂ” Р±РµР· С„СЂРёР·РѕРІ.</summary>
-        /// <summary>Обёртка ради маркера: два прохода «по всем чанкам × всем
-        /// слоям» на каждый запуск, а запускается он почти каждый кадр.</summary>
+        /// <summary>Lazy decor layer build: a chunk is decorated per layer when it
+        /// first enters the layer's MaxDistance+SpawnMargin. This search queues it
+        /// (nearest first); the build itself runs in frame-budget slices
+        /// (TryQueueDecorBuild/StepDecorBuilds) without hitches.</summary>
+        /// <summary>Marker-only wrapper: two passes "all chunks × all
+        /// layers" per run, and it runs almost every frame.</summary>
         private void EnsureVisibleDecor(Vector3 cameraPosition)
         {
             using (SurfacePerf.EnsureVisibleDecorMarker.Auto())
@@ -5438,8 +5307,8 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Кандидат на постановку в очередь сборки декора, собранный общим
-        /// проходом по чанкам и слоям.</summary>
+        /// <summary>A candidate for the decor build queue, collected by a single
+        /// pass over chunks and layers.</summary>
         private struct DecorCandidate
         {
             public Chunk Chunk;
@@ -5448,7 +5317,7 @@ namespace Galilego.Universe
             public bool Grass;
         }
 
-        /// <summary>Трава (per-instance) первой, внутри группы — ближние к камере.</summary>
+        /// <summary>Grass (per-instance) first; within a group, nearest to the camera.</summary>
         private static readonly System.Comparison<DecorCandidate> DecorCandidateOrder = CompareDecorCandidates;
 
         private static int CompareDecorCandidates(DecorCandidate x, DecorCandidate y)
@@ -5468,9 +5337,9 @@ namespace Galilego.Universe
                 return;
             }
 
-            // [ФАЗА 1] Высоко или быстро новые пулы не заводим. TrimDistantDecor
-            // при этом продолжает работать: иначе на большой высоте мы бы ещё и
-            // копили память под декор, который уже не виден.
+            // [PHASE 1] No new pools high up or at speed. TrimDistantDecor
+            // keeps running: otherwise at high altitude we would also
+            // accumulate memory for decor that is no longer visible.
             if (DecorBuildsSuspended(false))
             {
                 return;
@@ -5482,10 +5351,10 @@ namespace Galilego.Universe
                 return;
             }
 
-            // [ФАЗА 4] Предыдущий полный обход не нашёл ничего строить. Пока
-            // не истёк пауза, повторный обход заведомо ничего не даст: набор
-            // чанков и видимость за 0.2 с не меняются настолько, чтобы это
-            // стоило ещё одного полного прохода.
+            // [PHASE 4] The previous full scan found nothing to build. Until the
+            // pause expires, another scan is guaranteed to find nothing: the chunk
+            // set and visibility do not change enough in 0.2 s to justify
+            // another full pass.
             if (Time.unscaledTime < decorScanBlockedUntil)
             {
                 return;
@@ -5501,11 +5370,10 @@ namespace Galilego.Universe
                 cameraUp.Normalize();
             }
 
-            // Один проход вместо N. Старый код искал лучшего кандидата заново на
-            // каждую постановку в очередь, то есть DecorBuildsPerFrame полных
-            // обходов «все чанки × все слои» за вызов, а на 1263 чанках это
-            // ~1.8 мс на постановку. Теперь проход один, а порядок задаёт
-            // сортировка: трава (per-instance) первой, внутри группы — ближе.
+            // One pass instead of N: the order is set by sorting —
+            // grass (per-instance) first, within a group the nearer one — so
+            // queueing DecorBuildsPerFrame candidates does not require
+            // DecorBuildsPerFrame full "all chunks × all layers" passes.
             decorCandidates.Clear();
             foreach (KeyValuePair<long, Chunk> kv in chunks)
             {
@@ -5583,8 +5451,8 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>РўР°РЅРіРµРЅС†РёР°Р»СЊРЅР°СЏ РґРёСЃС‚Р°РЅС†РёСЏ РґРѕ С‡Р°РЅРєР° (РєР°Рє РІ DrawDecor): РІС‹СЃРѕС‚Р°
-        /// РїРѕР»С‘С‚Р° РЅРµ РІС‹РєР»СЋС‡Р°РµС‚ РґРµРєРѕСЂ СЂР°Р·РѕРј.</summary>
+        /// <summary>Tangential distance to a chunk (as in DrawDecor): flight
+        /// altitude does not switch decor off all at once.</summary>
         private static float ChunkTangentialDistance(Chunk chunk, Vector3 cameraPosition, Vector3 cameraUp)
         {
             Vector3 toChunk = chunk.Go.transform.position - cameraPosition;
@@ -5593,17 +5461,12 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Дистанция до чанка с учётом высоты наблюдателя.
+        /// Distance to a chunk including the observer's altitude.
         ///
-        /// Раньше дистанция считалась ТОЛЬКО по касательной: вертикальная
-        /// составляющая выбрасывалась как «не влияет на вид». Для горизонтального
-        /// обзора у земли это правильно, но на высоте 2 км тот же чанок прямо под
-        /// ногами имеет касательную дистанцию 0 и поэтому рисуется в полную
-        /// силу, хотя сверху он занимает несколько пикселей.
+        /// Distance is the hypotenuse: sqrt(tangential² + altitude²). The smooth
+        /// transition at the boundary comes from edgeFade at the layer edge
+        /// (see ChunkDecorEdgeFade), not from this cull.
         ///
-        /// Считаем по гипотенузе: sqrt(касательная² + высота²). Плавность на
-        /// границе не теряется — переход делается не этим отсечением, а
-        /// edgeFade по краю слоя (см. ChunkDecorEdgeFade).
         /// </summary>
         private float ChunkDecorDistance3D(Chunk chunk, Vector3 cameraPosition, Vector3 cameraUp)
         {
@@ -5613,10 +5476,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Мягкое затухание у края радиуса слоя. Возвращает 1 внутри и 0 за
-        /// границей, с полосой шириной 20 % радиуса. Нужно, потому что переход
-        /// с жёсткого отсечения на «видно всё подряд» одним кадром читался бы
-        /// как щелчок: под набором высоты декор должен гаснуть, а не исчезать.
+        /// Smooth falloff at the layer radius edge. Returns 1 inside and 0 beyond
+        /// the boundary, with a band 20 % of the radius wide: without it, the
+        /// transition under altitude gain would read as a click instead of a fade.
         /// </summary>
         private static float ChunkDecorEdgeFade(float distance3D, float maxDistanceMeters)
         {
@@ -5629,15 +5491,13 @@ namespace Galilego.Universe
             return Mathf.Clamp01((maxDistanceMeters - distance3D) / band);
         }
 
-        /// <summary>РњРёСЂРѕРІС‹Рµ РіСЂР°РЅРёС†С‹ РґРµРєРѕСЂР° С‡Р°РЅРєР°: AABB Р Р•РќР”Р•Р -РјРµС€Р° (СЃ Р·Р°РїР°СЃРѕРј
-        /// BoundsRadius) СЃ РєРѕСЂСЂРµРєС‚РЅС‹Рј РїРѕРІРѕСЂРѕС‚РѕРј (|M|В·extents) + Р·Р°РїР°СЃ РїРѕ РІС‹СЃРѕС‚Рµ
-        /// РЅР° С‚СЂР°РІРёРЅРєРё/Р±РёР»Р»Р±РѕСЂРґС‹. Р’Р°Р¶РЅРѕ: РїРѕР·РёС†РёСЏ С‡Р°РЅРєР° вЂ” РЅР° СѓСЂРѕРІРЅРµ РјРѕСЂСЏ
-        /// (radius), Р° С‚СЂР°РІР° Р»РµР¶РёС‚ РЅР° СЂРµР»СЊРµС„Рµ, РїРѕСЌС‚РѕРјСѓ СЃС‚Р°СЂС‹Р№ Р±РѕРєСЃ РІРѕРєСЂСѓРі
-        /// РїРѕР·РёС†РёРё С‡Р°РЅРєР° РЅРµ СЃРѕРґРµСЂР¶Р°Р» РёРЅСЃС‚Р°РЅСЃС‹ РЅР° РІРѕР·РІС‹С€РµРЅРЅРѕСЃС‚СЏС…, Рё Unity
-        /// РєСѓР»Р»РёР»Р° Р±Р°С‚С‡ С†РµР»РёРєРѕРј В«РїРѕ СѓРіР»Сѓ РєР°РјРµСЂС‹В».</summary>
+        /// <summary>World bounds of a chunk's decor: the RENDER mesh AABB (with
+        /// BoundsRadius margin) correctly rotated (|M|·extents) plus height
+        /// margin for blades/billboards. The chunk position is at sea level while
+        /// grass lies on the terrain, so the bounds must follow the terrain, not the chunk origin.</summary>
         private static Bounds ChunkWorldBounds(Chunk chunk)
         {
-            // Р‘РµР·РѕРїР°СЃРЅС‹Р№ Р·Р°РїР°СЃ РЅР° С‚СЂР°РІСѓ (РґРѕ ~2.6 Рј), Р±РёР»Р»Р±РѕСЂРґС‹ Рё РІРµС‚РµСЂ.
+            // Safe margin for grass (up to ~2.6 m), billboards and wind.
             const float DecorMargin = 8f;
             if (chunk == null || chunk.Mesh == null)
             {
@@ -5661,15 +5521,15 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// РћР±Р»Р°РєРѕ РїР»РѕС‚РЅРѕСЃС‚Рё СЃР»РѕС‘РІ СЃ DensityFalloffMeters Р·Р°РїРµРєР°РµС‚СЃСЏ РїРѕ РїРѕР·РёС†РёРё
-        /// РєР°РјРµСЂС‹ РїСЂРё СЃР±РѕСЂРєРµ. РРіСЂРѕРє РѕС‚РѕС€С‘Р» вЂ” РѕР±Р»Р°РєРѕ РѕСЃС‚Р°Р»РѕСЃСЊ РїРѕР·Р°РґРё, РІРїРµСЂРµРґРё
-        /// В«РїСѓСЃС‚РѕВ». РџСЂРё РўРђРќР“Р•РќР¦РРђР›Р¬РќРћРњ СЃРјРµС‰РµРЅРёРё Р±РѕР»СЊС€Рµ РїРѕСЂРѕРіР° (РґРѕР»СЏ РјР°СЃС€С‚Р°Р±Р°
-        /// Р·Р°С‚СѓС…Р°РЅРёСЏ) СЃС‚Р°РІРёРј РїРµСЂРµСЃР±РѕСЂРєСѓ Р±Р»РёР¶Р°Р№С€РµРіРѕ СѓСЃС‚Р°СЂРµРІС€РµРіРѕ СЃР»РѕСЏ. РЎР±РѕСЂРєР°
-        /// Р°СЃРёРЅС…СЂРѕРЅРЅР°СЏ: СЃС‚Р°СЂС‹Р№ СЃР»РѕР№ СЂРёСЃСѓРµС‚СЃСЏ РґРѕ РіРѕС‚РѕРІРЅРѕСЃС‚Рё РЅРѕРІРѕРіРѕ, РєР°РґСЂ РЅРµ
-        /// Р±Р»РѕРєРёСЂСѓРµС‚СЃСЏ. Р‘С‹СЃС‚СЂС‹Р№ РїРѕР»С‘С‚ РЅРµ РїРµСЂРµСЃРѕР±РёСЂР°РµС‚: С‚Р°Рј С‡Р°РЅРєРё Рё С‚Р°Рє РЅРѕРІС‹Рµ.
+        /// The density cloud of layers with DensityFalloffMeters is baked at the
+        /// camera position during the build. As the player moves away it stays
+        /// behind. When tangential displacement exceeds a threshold (a fraction of
+        /// the falloff scale), the nearest stale layer is queued for rebuild. The
+        /// build is asynchronous: the old layer draws until the new one is ready.
+        /// Fast flight does not rebuild — chunks there are new anyway.
         /// </summary>
-        /// <summary>Обёртка ради маркера: пересборка пулов декора по «устаревшим»
-        /// чанкам — на большой скорости проход запускается каждый кадр.</summary>
+        /// <summary>Marker-only wrapper: rebuilds decor pools for "stale"
+        /// chunks — at high speed it runs every frame.</summary>
         private void RefreshMovingDecor(Vector3 cameraPosition)
         {
             using (SurfacePerf.RefreshMovingDecorMarker.Auto())
@@ -5685,10 +5545,9 @@ namespace Galilego.Universe
                 return;
             }
 
-            // [ФАЗА 1] Пересборка пулов — самая дорогая операция декора. На
-            // скорости поле уезжает из-под построенного пула быстрее, чем он
-            // может быть пересобран, и каждый кадр уходил бы в полную
-            // пересборку без видимого результата.
+            // [PHASE 1] Pool rebuild is the most expensive decor operation. At speed
+            // the field moves out from under the built pool faster than it can be
+            // rebuilt, and every frame would go into a full rebuild with no visible result.
             if (DecorBuildsSuspended())
             {
                 return;
@@ -5706,11 +5565,10 @@ namespace Galilego.Universe
 
             Chunk bestChunk = null;
             int bestLayerIndex = -1;
-            // Р‘РµСЂС‘Рј РЎРђРњР«Р™ РЈРЎРўРђР Р•Р’РЁРР™ СЃР»РѕР№: РїСЂРё СЂР°РІРЅС‹С… РґРёСЃС‚Р°РЅС†РёСЏС… (РєСЂСѓРїРЅС‹Рµ С‡Р°РЅРєРё
-            // РїРµСЂРµРєСЂС‹РІР°СЋС‚ РёРіСЂРѕРєР°) РІС‹Р±РѕСЂ В«РїРѕ Р±Р»РёР·РѕСЃС‚РёВ» РІСЃРµРіРґР° СѓРєР°Р·С‹РІР°Р» РЅР° РѕРґРёРЅ Рё
-            // С‚РѕС‚ Р¶Рµ С‡Р°РЅРє, Р° СЃРѕСЃРµРґРЅРёРµ РєРѕРїРёР»Рё РѕС‚СЃС‚Р°РІР°РЅРёРµ РѕР±Р»Р°РєР° вЂ” С‚Р°Рј С‚СЂР°РІР°
-            // РїСЂРѕРїР°РґР°Р»Р°. РџРµСЂРµСЃР±РѕСЂРєР° РѕР±РЅСѓР»СЏРµС‚ В«СѓСЃС‚Р°СЂРµРІР°РЅРёРµВ», РїРѕСЌС‚РѕРјСѓ РѕС‡РµСЂРµРґСЊ
-            // СЃР°РјР° РїРµСЂРµР±РёСЂР°РµС‚ С‡Р°РЅРєРё РїРѕ РєСЂСѓРіСѓ.
+            // Take the OLDEST layer: with equal distances (large chunks
+            // overlap the player) the "nearest" choice always pointed at the same
+            // chunk while neighbours accumulated cloud lag and grass disappeared there.
+            // A rebuild resets staleness, so the queue cycles through chunks by itself.
             float bestStale = -1f;
             foreach (KeyValuePair<long, Chunk> kv in chunks)
             {
@@ -5744,9 +5602,9 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    // РџРѕР·РёС†РёСЏ СЃР±РѕСЂРєРё: Сѓ РЅРµРїСѓСЃС‚РѕРіРѕ СЃР»РѕСЏ вЂ” РёР· СЂР°РЅС‚Р°Р№РјР°, Сѓ РїСѓСЃС‚РѕРіРѕ вЂ”
-                    // РёР· Р·Р°РїРёСЃР°РЅРЅРѕР№ РїСЂРё С„РёРЅР°Р»РёР·Р°С†РёРё (РёРЅР°С‡Рµ СЃР»РѕР№, СЃРѕР±СЂР°РЅРЅС‹Р№
-                    // РёР·РґР°Р»РµРєР° РїСѓСЃС‚С‹Рј, РЅРёРєРѕРіРґР° Р±С‹ РЅРµ РїРµСЂРµСЃРѕР±СЂР°Р»СЃСЏ Р±Р»РёР¶Рµ).
+                    // Build position: from the runtime for a non-empty layer, from the value
+                    // recorded at finalization for an empty one (otherwise a layer built empty
+                    // from afar would never rebuild closer).
                     DecorLayerRuntime runtime = null;
                     for (int i = 0; i < chunk.Decor.Count; i++)
                     {
@@ -5784,12 +5642,11 @@ namespace Galilego.Universe
                         hasCameraLocal = true;
                     }
 
-                    // РџРѕСЂРѕРі СѓСЃС‚Р°СЂРµРІР°РЅРёСЏ: РїР»РѕС‚РЅРѕСЃС‚СЊ РІРЅСѓС‚СЂРё РїР»РѕСЃРєРѕРіРѕ СЏРґСЂР°
-                    // (DensityCoreMeters) РѕС‚ СЃРјРµС‰РµРЅРёСЏ С†РµРЅС‚СЂР° РЅРµ РјРµРЅСЏРµС‚СЃСЏ,
-                    // РїРѕСЌС‚РѕРјСѓ РёРіСЂРѕРє РґРѕР»Р¶РµРЅ РѕСЃС‚Р°РІР°С‚СЊСЃСЏ Р’РќРЈРўР Р СЏРґСЂР° вЂ” С‚РѕРіРґР°
-                    // РїРµСЂРµСЃР±РѕСЂРєР° Р»РёС€СЊ СѓС‚РѕС‡РЅСЏРµС‚ РґР°Р»СЊРЅРёР№ РєСЂР°Р№ Рё С‚СЂР°РІР° РЅРµ В«РґС‹С€РёС‚В».
-                    // Р‘РѕР»СЊС€Рµ РїРѕСЂРѕРі вЂ” СЂРµР¶Рµ РїРµСЂРµСЃР±РѕСЂРєРё (РѕРЅРё РґРѕСЂРѕРіРёРµ: РїСЂРѕРіРѕРЅ
-                    // РєР°РЅРґРёРґР°С‚РѕРІ + СЂР°Р·РІРѕСЂРѕС‚ РїСѓР»Р°).
+                    // Staleness threshold: density inside the flat core (DensityCoreMeters)
+                    // does not change with centre displacement, so the player must stay
+                    // INSIDE the core — then a rebuild only refines the far edge and the grass
+                    // does not "breathe". A larger threshold means rarer rebuilds (they are
+                    // expensive: candidate pass + pool expansion).
                     float core = (float)System.Math.Max(0d, layer.DensityCoreMeters);
                     float threshold;
                     if (layer.DecorLookAheadMeters > 0f)
@@ -5809,7 +5666,7 @@ namespace Galilego.Universe
                     Vector3 buildDelta = currentCameraLocal - buildCameraLocal;
                     if (localUp.sqrMagnitude > 1e-6f)
                     {
-                        // РўРѕР»СЊРєРѕ С‚Р°РЅРіРµРЅС†РёР°Р»СЊРЅРѕРµ СЃРјРµС‰РµРЅРёРµ: РїРѕРґСЉС‘Рј/СЃРїСѓСЃРє РѕР±Р»Р°РєРѕ РЅРµ СЃС‚Р°СЂРёС‚.
+                        // Tangential displacement only: rising/descending does not age the cloud.
                         buildDelta -= localUp * Vector3.Dot(buildDelta, localUp);
                     }
 
@@ -5844,10 +5701,9 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Считаем цену пересборки в секунду: одна постановка = сколько-то
-            // миллисекунд главного потока. Частота (сколько раз в секунду
-            // сработало) пишется в PerfLog, чтобы по маршруту ходьбы было видно,
-            // чем платим за ровный ковёр.
+            // Rebuild cost per second: one queueing costs some milliseconds of the main
+            // thread. The frequency (times per second) is written to PerfLog so a
+            // walking route shows what the even carpet costs.
             var rebuildClock = System.Diagnostics.Stopwatch.StartNew();
             TryQueueDecorBuild(bestChunk, bestLayerIndex, cameraPosition, true);
             rebuildClock.Stop();
@@ -5855,13 +5711,13 @@ namespace Galilego.Universe
             SurfacePerf.DecorRebuildMsThisFrame += (float)rebuildClock.Elapsed.TotalMilliseconds;
         }
 
-        /// <summary>Р’С‹РіСЂСѓР·РєР° РїСѓР»РѕРІ С‚СЂР°РІС‹ РґР°Р»РµРєРѕ Р·Р° РїСЂРµРґРµР»Р°РјРё РІРёРґРёРјРѕСЃС‚Рё: РёРЅР°С‡Рµ
-        /// РїСЂРѕР№РґРµРЅРЅС‹Рµ С‡Р°РЅРєРё РєРѕРїСЏС‚ РїРѕР»РЅС‹Рµ РїСѓР»С‹ (РїРѕ РєР°РїСѓ РЅР° С‡Р°РЅРє), Р±СЋРґР¶РµС‚
-        /// РёРЅСЃС‚Р°РЅСЃРѕРІ СѓС…РѕРґРёС‚ РѕС‚ РёРіСЂРѕРєР° Рё РІРёРґРёРјР°СЏ Р·РѕРЅР° РїСѓСЃС‚РµРµС‚. Р’РѕР·РІСЂР°С‚ РёРіСЂРѕРєР°
-        /// РїРµСЂРµСЃРѕР±РµСЂС‘С‚ СЃР»РѕР№ Р·Р°РЅРѕРІРѕ (РјР°СЃРєР° СЃРЅРёРјР°РµС‚СЃСЏ).</summary>
-        /// <summary>Обёртка ради маркера: освобождение памяти декора должно
-        /// продолжаться и тогда, когда новые сборки уже остановлены по высоте
-        /// или скорости, поэтому этот проход глушить нельзя.</summary>
+        /// <summary>Unloads grass pools far beyond visibility: otherwise visited
+        /// chunks accumulate full pools (cap per chunk), the instance budget
+        /// drifts away from the player and the visible zone empties. When the player
+        /// returns, the layer rebuilds (the mask is cleared).</summary>
+        /// <summary>Marker-only wrapper: decor memory release must continue even
+        /// when new builds are stopped by altitude or speed, so this pass must not be
+        /// suppressed.</summary>
         private void TrimDistantDecor(Vector3 cameraPosition)
         {
             using (SurfacePerf.TrimDistantDecorMarker.Auto())
@@ -5909,9 +5765,9 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    // РўРѕР»СЊРєРѕ Р·Р° РїСЂРµРґРµР»Р°РјРё Р—РћРќР« Р”РћРЎР‘РћР РљР (MaxDistance + Р·Р°РїР°СЃ
-                    // СЃРїР°РІРЅР°): РёРЅР°С‡Рµ РІС‹РіСЂСѓР¶РµРЅРЅС‹Р№ С‡Р°РЅРє С‚СѓС‚ Р¶Рµ СЃС‚Р°РІРёС‚СЃСЏ РІ РѕС‡РµСЂРµРґСЊ
-                    // Р·Р°РЅРѕРІРѕ Рё Р·Р°Р±РёРІР°РµС‚ СЃРµСЃСЃРёРё, Р° С‚СЂР°РІР° Сѓ РёРіСЂРѕРєР° РЅРµ РїРµСЂРµСЃРѕР±РёСЂР°РµС‚СЃСЏ.
+                    // Only beyond the REFILL ZONE (MaxDistance + spawn margin):
+                    // otherwise an unloaded chunk is queued again immediately and clogs
+                    // sessions, while grass near the player is not rebuilt.
                     if (distance <= layer.MaxDistanceMeters + layer.SpawnMarginMeters + 20f)
                     {
                         continue;
@@ -5926,9 +5782,9 @@ namespace Galilego.Universe
                     {
                         if (chunk.Decor[i].LayerIndex == layerIndex)
                         {
-                            // Трава: пул уже весь в хвосте/за радиусом, убираем
-                            // сразу. Остальные слои (деревья и пр.) — под землю,
-                            // чтобы не было мгновенной пропажи на кромке.
+                            // Grass: the pool is already all tail/beyond the radius, remove it
+                            // at once. Other layers (trees etc.) go underground,
+                            // so nothing vanishes instantly at the edge.
                             if (chunk.Decor[i].Retiring
                                 || decorProfile.Layers[layerIndex].PerInstanceDensity)
                             {
@@ -5947,23 +5803,19 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Р›РѕРєР°Р»СЊРЅР°СЏ (С‡Р°РЅРєСѓ) РјР°С‚СЂРёС†Р° РёРЅСЃС‚Р°РЅСЃР°: РїРѕР·РёС†РёСЏ/РЅРѕСЂРјР°Р»СЊ/yaw/
-        /// РЅР°РєР»РѕРЅ/РјР°СЃС€С‚Р°Р±. РќРµ Р·Р°РІРёСЃРёС‚ РѕС‚ РєР°РјРµСЂС‹ вЂ” СЃС‡РёС‚Р°РµС‚СЃСЏ РѕРґРёРЅ СЂР°Р· РїСЂРё СЃР±РѕСЂРєРµ.</summary>
+        /// <summary>Instance matrix local to the chunk: position/normal/yaw/
+        /// tilt/scale. Camera-independent — computed once at build time.</summary>
         /// <summary>
-        /// Дописывает в конец нового пула те инстансы СТАРОГО пула, которых в
-        /// новой выборке уже нет, и проставляет им DeathTime: они ещё рисуются,
-        /// но гаснут масштабом и заходят под землю (см. GroundDecorMatrixJob).
-        /// Без этого выпавшие травинки исчезали мгновенно — кромка поля дёргалась
-        /// на каждой пересборке пула (каждые ~18 м пройденного пути), и игрок
-        /// видел, как трава пропадает рядом с ним, особенно сзади.
+        /// Appends to the end of the new pool those instances from the OLD pool that
+        /// are no longer in the new selection and sets their DeathTime: they still
+        /// draw, shrinking and sinking underground (see GroundDecorMatrixJob).
         ///
-        /// Раскладка пула по клеткам у обоих пулов одинаковая (та же сетка и тот
-        /// же SubPerCell), поэтому «осталось в новой выборке» = первые
-        /// min(prev, new) подтуфтов клетки — ровно то, что переносит
-        /// GroundDecorMergeKeptJob. Значит выпавшие = хвост каждой клетки плюс
-        /// клетки, которым в новом бюджете не досталось ни одного слота.
+        /// Both pools share the same cell layout (same grid and SubPerCell), so
+        /// "kept in the new selection" = the first min(prev, new) subtufts of a
+        /// cell — exactly what GroundDecorMergeKeptJob carries over. Dropped ones
+        /// are the tail of each cell plus cells that got no slot in the new budget.
         ///
-        /// Возвращает момент, когда хвост погаснет (0 = хвоста нет).
+        /// Returns the moment when the tail is fully faded (0 = no tail).
         /// </summary>
         private static float AppendRetiringInstances(
             DecorBuildSession session, ref NativeArray<GroundDecorInstance> stored, ref int write,
@@ -6018,10 +5870,9 @@ namespace Galilego.Universe
                 return 0f;
             }
 
-            // Уже гаснущий хвост ПРОШЛОГО пула переносим вперёд: без этого
-            // полугаснущая травинка исчезала бы скачком на следующей же
-            // пересборке (хвост просто уничтожался вместе со старым пулом).
-            // Совсем погасшие (DeathTime + длительность < now) не тащим.
+            // The already fading tail of the PREVIOUS pool is carried forward: otherwise
+            // a half-faded blade would vanish abruptly on the next rebuild.
+            // Fully faded ones (DeathTime + duration < now) are not carried.
             int carried = 0;
             int prevAlive = previous.AliveCount;
             for (int i = prevAlive; i < prev.Length; i++)
@@ -6034,7 +5885,7 @@ namespace Galilego.Universe
                 }
             }
 
-            // Новый буфер: живая часть + уходящий хвост (обе половины — из пула).
+            // New buffer: live part + departing tail (both halves from the pool).
             int total = write + dropped + carried;
             NativeArray<GroundDecorInstance> grown = DecorArrayPool.Rent<GroundDecorInstance>(total);
             if (write > 0)
@@ -6078,7 +5929,7 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    // Разброс по хешу слота: уходящие гаснут не одной волной.
+                    // Spread by slot hash: departing blades do not fade in one wave.
                     dying.DeathTime = now + (DecorBladeSinkStaggerSeconds > 0f
                         ? (float)(GroundDecorDistribution.Hash01(from, session.LayerIndex, i, session.Node.Ix, 46)
                             * DecorBladeSinkStaggerSeconds)
@@ -6088,8 +5939,8 @@ namespace Galilego.Universe
                 }
             }
 
-            // Дописываем гаснущий хвост прошлого пула с его прежним DeathTime:
-            // травинка продолжает уходить, а не начинает заново и не щёлкает.
+            // Append the previous pool's fading tail with its original DeathTime:
+            // the blade keeps leaving instead of restarting or snapping.
             for (int i = prevAlive; i < prev.Length; i++)
             {
                 GroundDecorInstance dying = prev[i];
@@ -6108,9 +5959,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Отрезает погасший хвост пула (RetireDeadline прошёл): Instances и
-        /// WorldMatrices укорачиваются до AliveCount. Вызывается из отрисовки —
-        /// единственного потребителя этих массивов.
+        /// Cuts off a faded pool tail (RetireDeadline passed): Instances and
+        /// WorldMatrices are shortened to AliveCount. Called from drawing —
+        /// the only consumer of these arrays.
         /// </summary>
         private static void CompactRetiredDecor(DecorLayerRuntime runtime)
         {
@@ -6139,10 +5990,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Освобождает пулы, которые ушли под землю (Retiring) и догасли.
-        /// Вызывается из DrawDecor до отрисовки: там же единственный
-        /// потребитель их массивов. Идёт по всем чанкам, а не только по
-        /// видимым: ушедший пул мог остаться в невидимом чанке.
+        /// Frees pools that have sunk underground (Retiring) and faded out.
+        /// Called from DrawDecor before drawing: the only consumer of their arrays.
+        /// Iterates all chunks, not just visible ones: a retired pool may remain in
+        /// an invisible chunk.
         /// </summary>
         private void RetireFinishedDecor()
         {
@@ -6173,8 +6024,8 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Множитель прорастания пропа по его BirthTime: 0 сразу после
-        /// появления, 1 — вырос. Ничего не делает для старых сборок (BirthTime 0).</summary>
+        /// <summary>Prop sprout multiplier from its BirthTime: 0 right after
+        /// appearance, 1 when grown. No effect for old builds (BirthTime 0).</summary>
         private static float DecorBirthFade(GroundDecorInstance instance, float fadeSeconds)
         {
             if (fadeSeconds <= 0f || instance.BirthTime <= 0f)
@@ -6185,8 +6036,8 @@ namespace Galilego.Universe
             return Mathf.Clamp01((Time.time - instance.BirthTime) / fadeSeconds);
         }
 
-        /// <summary>Множитель ухода пула под землю: 1 — ещё стоит, 0 — ушёл.
-        /// Зеркало DecorBirthFade, но для слоя целиком (деревья и прочие пробы).</summary>
+        /// <summary>Pool sink multiplier: 1 — still standing, 0 — gone.
+        /// Mirror of DecorBirthFade, but for the whole layer (trees and other props).</summary>
         private static float DecorRetireFade(DecorLayerRuntime runtime)
         {
             if (runtime == null || !runtime.Retiring || runtime.RetireFadeSeconds <= 0f)
@@ -6198,8 +6049,8 @@ namespace Galilego.Universe
                 / runtime.RetireFadeSeconds);
         }
 
-        /// <summary>Помечает пул уходящим под землю вместо мгновенного удаления.
-        /// Его освободит RetireFinishedDecor (см. DrawDecor).</summary>
+        /// <summary>Marks the pool as sinking underground instead of deleting it.
+        /// RetireFinishedDecor frees it (see DrawDecor).</summary>
         private static void RetireDecorLayerRuntime(DecorLayerRuntime runtime)
         {
             if (runtime == null || runtime.Retiring)
@@ -6217,8 +6068,8 @@ namespace Galilego.Universe
             return DecorLocalMatrix(instance, layer, up, 1f);
         }
 
-        /// <summary>С множителем прорастания: fade 0..1 — проп вылезает из-под
-        /// земли, а не появляется мгновенно (BirthTime ставит сборка).</summary>
+        /// <summary>Multiplied by sprout fade: fade 0..1 — the prop rises out of
+        /// the ground instead of appearing instantly (BirthTime is set by the build).</summary>
         private static Matrix4x4 DecorLocalMatrix(
             GroundDecorInstance instance, GroundDecorLayer layer, Vector3 up, float fade)
         {
@@ -6228,8 +6079,8 @@ namespace Galilego.Universe
             Quaternion rotation;
             if (layer.FlatOnGround)
             {
-                // РџР»Р°С€РјСЏ, Р±РµР· СЃР»СѓС‡Р°Р№РЅРѕРіРѕ РїРѕРІРѕСЂРѕС‚Р°: В«РїСЏС‚Р°С‡РѕРєВ» Р»РµР¶РёС‚
-                // СЂРѕРІРЅРѕ (Р»РѕРєР°Р»СЊРЅС‹Р№ Z РјРµС€Р° = РЅРѕСЂРјР°Р»СЊ РїРѕРІРµСЂС…РЅРѕСЃС‚Рё).
+                // Flat, with no random rotation: the "patch" lies
+                // flat (mesh local Z = surface normal).
                 rotation = Quaternion.LookRotation(up, tangent);
             }
             else
@@ -6251,8 +6102,8 @@ namespace Galilego.Universe
             return Matrix4x4.TRS(position, rotation, new Vector3(instance.Scale, instance.Scale, instance.Scale) * Mathf.Clamp01(fade));
         }
 
-        /// <summary>РњРёСЂРѕРІРѕРµ РЅР°РїСЂР°РІР»РµРЅРёРµ РІРµС‚СЂР° РёРЅСЃС‚Р°РЅСЃР°: С‚РѕС‚ Р¶Рµ yaw-Р±Р°Р·РёСЃ, С‡С‚Рѕ Сѓ
-        /// Р±Р»РёР¶РЅРµРіРѕ LOD (yaw РІРѕРєСЂСѓРі РЅРѕСЂРјР°Р»Рё РѕС‚ РѕСЃРё В«СЃРµРІРµСЂВ»), РїРѕРІС‘СЂРЅСѓС‚С‹Р№ С‡Р°РЅРєРѕРј.</summary>
+        /// <summary>World wind direction of the instance: the same yaw basis as
+        /// the near LOD (yaw around the normal from "north"), rotated by the chunk.</summary>
         private static Vector3 WindLeanDirection(GroundDecorInstance instance, Matrix4x4 chunkMatrix)
         {
             Vector3 up = new Vector3(instance.Normal.x, instance.Normal.y, instance.Normal.z);
@@ -6273,13 +6124,13 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// РќР°СЂРёСЃРѕРІР°С‚СЊ РґРµРєРѕСЂ РІРёРґРёРјС‹С… С‡Р°РЅРєРѕРІ: near вЂ” solid-РјРµС€, РґР°Р»СЊС€Рµ вЂ”
-        /// Р±РёР»Р»Р±РѕСЂРґ РґРѕ MaxDistance. РњР°С‚СЂРёС†С‹ вЂ” РјРёСЂРѕРІРѕР№ С‚СЂР°РЅСЃС„РѕСЂРј С‡Р°РЅРєР° Г—
-        /// Р»РѕРєР°Р»СЊРЅС‹Р№ TRS РёРЅСЃС‚Р°РЅСЃР° (РїРµСЂРµСЃС‡С‘С‚ РєР°Р¶РґС‹Р№ РєР°РґСЂ: floating origin/СЃРїРёРЅ).
+        /// Draw decor of visible chunks: near — solid mesh, farther —
+        /// billboard up to MaxDistance. Matrices are the chunk's world transform ×
+        /// the instance's local TRS (recomputed every frame: floating origin/spin).
         /// </summary>
-        /// <summary>Обёртка ради маркера: для слоёв без PerInstanceDensity
-        /// (деревья/камни/кактусы) матрицы пересобираются каждый кадр, и это
-        /// самая дорогая часть декора на большой высоте и скорости.</summary>
+        /// <summary>Marker-only wrapper: for layers without PerInstanceDensity
+        /// (trees/rocks/cacti) matrices are rebuilt every frame, the most
+        /// expensive part of decor at high altitude and speed.</summary>
         private void DrawDecor(Vector3 cameraPosition)
         {
             using (SurfacePerf.DrawDecorMarker.Auto())
@@ -6295,21 +6146,21 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Освобождаем пулы, догасшие после ухода под землю (деревья/камни/
-            // кактусы при пересборке и уходе чанка за радиус).
+            // Free pools that faded out after sinking underground (trees/rocks/
+            // cacti on rebuild and when a chunk leaves the radius).
             RetireFinishedDecor();
 
-            // РЎС‚СЂР°С…РѕРІРєР°: РµСЃР»Рё РїСЂРѕС€Р»С‹Р№ РєР°РґСЂ Р·Р°РІРµСЂС€РёР»СЃСЏ РёСЃРєР»СЋС‡РµРЅРёРµРј РґРѕ Flush,
-            // РґРѕРІРѕРґРёРј Р·Р°РїР»Р°РЅРёСЂРѕРІР°РЅРЅС‹Рµ РґР¶РѕР±С‹, РёРЅР°С‡Рµ РЅРѕРІС‹Рµ РїРёСЃР°Р»Рё Р±С‹ РІ С‚Рµ Р¶Рµ
-            // РјР°СЃСЃРёРІС‹ РјР°С‚СЂРёС† РїР°СЂР°Р»Р»РµР»СЊРЅРѕ.
+            // Safety: if the previous frame ended with an exception before Flush,
+            // complete the scheduled jobs, otherwise new ones would write to the same
+            // matrix arrays in parallel.
             if (burstDecorDraws.Count != 0 || proxySharedUsed != 0)
             {
                 FlushBurstDecor();
             }
 
-            // Р”РёСЃС‚Р°РЅС†РёСЏ РґРµРєРѕСЂР° вЂ” С‚Р°РЅРіРµРЅС†РёР°Р»СЊРЅР°СЏ (РїРѕ РєР°СЃР°С‚РµР»СЊРЅРѕР№ Рє РїРѕРІРµСЂС…РЅРѕСЃС‚Рё):
-            // РІС‹СЃРѕС‚Р° РїРѕР»С‘С‚Р° РќР• РІС‹РєР»СЋС‡Р°РµС‚ РІРµСЃСЊ РґРµРєРѕСЂ СЂР°Р·РѕРј. РРЅР°С‡Рµ РЅР° РЅР°Р±РѕСЂРµ
-            // РІС‹СЃРѕС‚С‹ ~MaxDistance РІСЃС‘ РёСЃС‡РµР·Р°Р»Рѕ РѕРґРЅРѕР№ РіСЂР°РЅРёС†РµР№ (РґРµСЂРµРІСЊСЏ ~3 РєРј).
+            // Decor distance is tangential (along the surface): flight
+            // altitude does NOT switch all decor off at once. Otherwise at altitude
+            // ~MaxDistance everything would disappear at one boundary (trees ~3 km).
             Vector3 cameraUp = cameraPosition - bodyRenderPosition;
             if (cameraUp.sqrMagnitude < 1e-6f)
             {
@@ -6320,9 +6171,9 @@ namespace Galilego.Universe
                 cameraUp.Normalize();
             }
 
-            // Р¤СЂСѓСЃС‚СѓРј-РєСѓР»Р»РёРЅРі РґРµРєРѕСЂР°: Сѓ С‚СЂР°РІС‹ РґРµСЃСЏС‚РєРё С‚С‹СЃСЏС‡ РёРЅСЃС‚Р°РЅСЃРѕРІ, Рё
-            // СЃС‡РёС‚Р°С‚СЊ РјР°С‚СЂРёС†С‹ С‡Р°РЅРєР°Рј Р·Р° СЃРїРёРЅРѕР№ РЅРµР·Р°С‡РµРј. РЎР»РѕРё СЃ С‚РµРЅСЏРјРё (РґРµСЂРµРІСЊСЏ)
-            // РЅРµ СЂРµР¶РµРј вЂ” РёС… С‚РµРЅСЊ РјРѕР¶РµС‚ РїРѕРїР°РґР°С‚СЊ РІ РєР°РґСЂ РёР·-Р·Р° СЃРїРёРЅС‹.
+            // Decor frustum culling: grass has tens of thousands of instances, and
+            // computing matrices for chunks behind the player is wasted. Shadow-casting
+            // layers (trees) are not culled — their shadow can reach the frame from behind.
             Camera decorCamera = Camera.main;
             if (decorCamera != null)
             {
@@ -6348,10 +6199,9 @@ namespace Galilego.Universe
 
                 Matrix4x4 chunkMatrix = chunk.Go.transform.localToWorldMatrix;
                 float distance = ChunkDecorDistance3D(chunk, cameraPosition, cameraUp);
-                // Р“СЂР°РЅРёС†С‹ вЂ” РїРѕ С„Р°РєС‚РёС‡РµСЃРєРѕРјСѓ СЂРµР»СЊРµС„Сѓ (|M|В·extents, Р·Р°РїР°СЃ РЅР°
-                // С‚СЂР°РІСѓ): Рё РґР»СЏ С„СЂСѓСЃС‚СѓРј-С‚РµСЃС‚Р°, Рё РґР»СЏ РєСѓР»Р»РёРЅРіР° Р±Р°С‚С‡РµР№
-                // RenderMeshInstanced (С‚Р°Рј СЂР°РЅСЊС€Рµ Р±С‹Р» Р±РѕРєСЃ РІРѕРєСЂСѓРі РїРѕР·РёС†РёРё С‡Р°РЅРєР°
-                // РЅР° СѓСЂРѕРІРЅРµ РјРѕСЂСЏ вЂ” С‚СЂР°РІР° РІРЅРµ РЅРµРіРѕ РїСЂРѕРїР°РґР°Р»Р° В«РїРѕ СѓРіР»Сѓ РєР°РјРµСЂС‹В»).
+                // Bounds follow the actual terrain (|M|·extents, grass margin): both for the
+                // frustum test and for RenderMeshInstanced batch culling (a sea-level box
+                // around the chunk origin dropped grass outside it "by camera angle").
                 Bounds chunkWorldBounds = ChunkWorldBounds(chunk);
                 bool chunkInFrustum = true;
                 if (decorFrustumPlanes != null)
@@ -6369,35 +6219,33 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    // [ФАЗА 1] Мягкое затухание у края радиуса слоя. Без него
-                    // переход «набрал высоту — декор погас» читался бы щелчком на
-                    // всю картинку, а исходная (касательная) метрика специально
-                    // была выбрана ради мягкого набора высоты — значит и убрать
-                    // её надо мягко, а не порогом.
+                    // [PHASE 1] Smooth falloff at the layer radius edge. Without it the
+                    // "gained altitude — decor faded" transition would read as a click across
+                    // the whole image; the tangential metric was chosen for smooth altitude
+                    // gain, so it must be removed smoothly, not with a threshold.
                     float edgeFade = ChunkDecorEdgeFade(distance, layerMaxDistance);
                     if (edgeFade <= 0f)
                     {
                         continue;
                     }
 
-                    // [ФАЗА 0] Объём декора, реально уходящий в отрисовку: без
-                    // этих чисел на большой высоте нельзя отличить «много чанков»
-                    // от «много инстансов в каждом».
+                    // [PHASE 0] Amount of decor actually reaching the draw: without these
+                    // numbers one cannot tell "many chunks" from "many instances in each"
+                    // at high altitude.
                     SurfacePerf.DecorPools++;
                     SurfacePerf.DecorInstances += runtime.Instances.Length;
 
-                    // Погасший хвост пула (трава, выпавшая из новой выборки при
-                    // пересборке) убираем из массивов: с этого кадра рисуются
-                    // только живые инстансы.
+                    // Faded pool tail (grass dropped from the new selection on rebuild) is
+                    // removed from the arrays: from this frame only live instances are drawn.
                     if (runtime.RetireDeadline > 0f && Time.time >= runtime.RetireDeadline)
                     {
                         CompactRetiredDecor(runtime);
                     }
 
-                    // Дальний прокси (деревья): чанк целиком за ProxyFromMeters —
-                    // дешёвый меш, Burst-матрицы, фрустум-отсечение. Тени — по
-                    // общему правилу слоя (DecorShadowMode), иначе ближний лес
-                    // с ProxyFromMeters выцветал бы на фоне затенённого.
+                    // Distant proxy (trees): the whole chunk is beyond ProxyFromMeters —
+                    // cheap mesh, Burst matrices, frustum culling. Shadows follow the layer's
+                    // rule (DecorShadowMode); otherwise near forest would look washed out
+                    // against the shaded one.
                     if (layer.FarProxy && !layer.PerInstanceDensity && distance > layer.ProxyFromMeters)
                     {
                         DrawTreeProxy(chunk, runtime, layer, chunkMatrix, cameraPosition, edgeFade, chunkWorldBounds, distance);
@@ -6409,8 +6257,8 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    // РЎР»РѕР№ Р±РµР· billboard-РјРµС€Р° (РґРµСЂРµРІСЊСЏ) РІСЃРµРіРґР° РёРґС‘С‚ 3D-РїСѓС‚С‘Рј:                    // РёРЅР°С‡Рµ РµРіРѕ СЂРёСЃРѕРІР°Р»Рѕ Р±С‹ РєР°РјРµСЂРѕ-РѕСЂРёРµРЅС‚РёСЂРѕРІР°РЅРЅС‹Рј Рё РѕРЅ РєСЂСѓС‚РёР»СЃСЏ
-                    // Р±С‹ Р·Р° РёРіСЂРѕРєРѕРј.
+                    // A layer without a billboard mesh (trees) always uses the 3D path:
+                    // otherwise it would be drawn camera-facing and spin with the player.
                     bool near = distance <= layer.NearDistanceMeters || layer.FarBillboardMesh == null;
                     Material material = near ? layer.NearMaterial : layer.FarMaterial;
                     if (material == null)
@@ -6427,8 +6275,8 @@ namespace Galilego.Universe
                     if (layer.PerInstanceDensity && runtime.WorldMatrices.IsCreated
                         && runtime.WorldMatrices.Length == count)
                     {
-                        // РњР°С‚СЂРёС†С‹ вЂ” Burst-РґР¶РѕР±С‹: РїР»Р°РЅРёСЂСѓРµРј РІСЃРµ С‡Р°РЅРєРё СЂР°Р·РѕРј Рё
-                        // СЃС‡РёС‚Р°РµРј РёС… РџРђР РђР›Р›Р•Р›Р¬РќРћ, РѕР¶РёРґР°РЅРёРµ вЂ” РѕРґРЅРёРј РїСЂРѕС…РѕРґРѕРј.
+                        // Matrices via Burst jobs: schedule all chunks at once and compute them
+                        // IN PARALLEL, waiting in one pass.
                         ScheduleBurstDecor(
                             chunk, runtime, layer, chunkMatrix, cameraPosition, near, material, chunkWorldBounds);
                         continue;
@@ -6436,22 +6284,22 @@ namespace Galilego.Universe
 
                     if (near)
                     {
-                        // Managed-матрицы у травы не аллоцируются (идёт Burst-путь);
-                        // сюда попадаем только у слоёв без PerInstanceDensity, но
-                        // подстрахуемся, чтобы не поймать null при смене режима.
+                        // Managed matrices are not allocated for grass (it uses the Burst path);
+                        // this path only runs for layers without PerInstanceDensity, but guard
+                        // against null when the mode changes.
                         if (runtime.Matrices == null || runtime.Matrices.Length != count)
                         {
                             runtime.Matrices = new Matrix4x4[count];
                         }
 
-                        // Тень слоя в shadow map: трава — только в радиусе
-                        // (ShadowCastDistanceMeters), деревья/камни/кактусы — целиком.
-                        // [ФАЗА 1] И только у самой земли: на высоте пятно от
-                        // дерева не читается, а проход отсечения в тени — реальный.
+                        // Layer shadow in the shadow map: grass only within the radius
+                        // (ShadowCastDistanceMeters), trees/rocks/cacti entirely.
+                        // [PHASE 1] And only near the ground: at altitude a tree's
+                        // shadow patch is unreadable while the shadow culling pass is real.
                         ShadowCastingMode decorShadow = DecorShadowMode(layer);
 
-                        // Уходящий пул гаснет целиком: иначе деревья исчезали
-                        // кадр в кадр при пересборке и уходе чанка за радиус.
+                        // The departing pool fades as a whole: otherwise trees vanished
+                        // frame by frame on rebuild and when a chunk left the radius.
                         float retireFade = DecorRetireFade(runtime);
                         float growFade = DecorFadeSeconds(DecorPropFadeSeconds);
 
@@ -6460,10 +6308,10 @@ namespace Galilego.Universe
                             GroundDecorInstance instance = runtime.Instances[k];
                             Vector3 position = new Vector3(instance.Position.x, instance.Position.y, instance.Position.z);
 
-                            // РћСЂРёРµРЅС‚Р°С†РёСЏ РїРѕ РќРћР РњРђР›Р РїРѕРІРµСЂС…РЅРѕСЃС‚Рё: Р»РѕРєР°Р»СЊРЅС‹Р№ +Y РјРµС€Р°
-                            // (РІРµСЂС… РєР°СЂС‚РѕС‡РєРё/РґРµСЂРµРІР°) СЃРјРѕС‚СЂРёС‚ РІРґРѕР»СЊ СЂР°РґРёР°Р»Рё, yaw вЂ”
-                            // РїРѕРІРѕСЂРѕС‚ РІРѕРєСЂСѓРі РЅРµС‘. Р Р°РЅСЊС€Рµ Р±С‹Р» yaw РІРѕРєСЂСѓРі РјРёСЂРѕРІРѕР№ Y:
-                            // РЅР° С€РёСЂРѕС‚Р°С… РєР°СЂС‚РѕС‡РєРё Р»РѕР¶РёР»РёСЃСЊ РїР»Р°С€РјСЏ Рё С‚РѕРЅСѓР»Рё РІ Р·РµРјР»Рµ.
+                            // Orientation by the surface NORMAL: the mesh's local +Y
+                            // (top of the card/tree) points along the radial, yaw is
+                            // rotation around it. A yaw around world Y would lay cards flat
+                            // at non-equatorial latitudes and sink them into the ground.
                             Vector3 up = new Vector3(instance.Normal.x, instance.Normal.y, instance.Normal.z);
                             if (up.sqrMagnitude < 1e-6f)
                             {
@@ -6474,11 +6322,11 @@ namespace Galilego.Universe
                                 up.Normalize();
                             }
 
-                            // [ФАЗА 1] edgeFade домножаем в общий fade слоя:
-                            // так декор не исчезает на границе радиуса, а гаснет
-                            // вместе с остальными переходами (рост, уход под
-                            // землю). Для не-Burst слоёв (деревья, камни,
-                            // кактусы) это единственная мягкость, которая нужна.
+                            // [PHASE 1] edgeFade is multiplied into the layer's shared fade:
+                            // decor does not disappear at the radius boundary but fades
+                            // together with the other transitions (growth, sinking
+                            // underground). For non-Burst layers (trees, rocks,
+                            // cacti) this is the only softness needed.
                             float fade = DecorBirthFade(instance, growFade) * retireFade * edgeFade;
                             runtime.Matrices[k] = chunkMatrix * DecorLocalMatrix(instance, layer, up, fade);
                         }
@@ -6486,8 +6334,8 @@ namespace Galilego.Universe
                         if (layer.CastShadows && layer.ShadowCastDistanceMeters > 0f
                             && layer.NearMeshes.Length == 1 && layer.NearMeshes[0] != null)
                         {
-                            // Р›РёРјРёС‚ РєР°СЃС‚Р° РїРѕ СЂР°РґРёСѓСЃСѓ (С‚СЂР°РІР°): РёРЅСЃС‚Р°РЅСЃС‹ РІ СЂР°РґРёСѓСЃРµ
-                            // РёРґСѓС‚ РІ shadow map, РѕСЃС‚Р°Р»СЊРЅС‹Рµ вЂ” С‚РѕР»СЊРєРѕ С„РѕСЂРІР°СЂРґ.
+                            // Shadow-cast radius limit (grass): instances within the radius
+                            // go into the shadow map, the rest only forward.
                             EnsureDecorShadowScratch(count);
                             EnsureDecorBlobScratch(count);
                             Vector3 sunDirWS = GetSunDirectionWS();
@@ -6504,10 +6352,9 @@ namespace Galilego.Universe
                                     continue;
                                 }
 
-                                // Р”Р°Р»СЊС€Рµ СЂР°РґРёСѓСЃР° РЅР°СЃС‚РѕСЏС‰РµРіРѕ РєР°СЃС‚Р° вЂ” РїСЂРѕСЃС‚Р°СЏ С‚РµРЅСЊ:
-                                // РїСЏС‚РЅРѕ, СЃРјРµС‰С‘РЅРЅРѕРµ РћРў СЃРѕР»РЅС†Р° (РёРЅР°С‡Рµ СЃРїСЂСЏС‚Р°РЅРѕ РїРѕРґ
-                                // СЃР°РјРёРј РєСѓСЃС‚РѕРј). Р’РЅСѓС‚СЂРё СЂР°РґРёСѓСЃР° РїСЏС‚РЅР° РЅРµС‚ вЂ” С‚Р°Рј
-                                // СѓР¶Рµ РЅР°СЃС‚РѕСЏС‰Р°СЏ С‚РµРЅСЊ.
+                                // Beyond the real cast radius — a simple shadow:
+                                // a patch offset AWAY from the sun (otherwise hidden under
+                                // the bush itself). Inside the radius there is no patch — real shadow there.
                                 Vector3 groundUp = grassMatrix.rotation * Vector3.up;
                                 float blobScale = runtime.Instances[k].Scale * BlobScaleFactor
                                     * DecorBirthFade(runtime.Instances[k], growFade) * retireFade;
@@ -6598,9 +6445,9 @@ namespace Galilego.Universe
                             continue;
                         }
 
-                        // Р‘РёР»Р»Р±РѕСЂРґ РІ РњРР РћР’Р«РҐ РєРѕРѕСЂРґРёРЅР°С‚Р°С…: Р»РѕРєР°Р»СЊРЅС‹Р№ +Y РёРЅСЃС‚Р°РЅСЃР° =
-                        // РЅРѕСЂРјР°Р»СЊ РїРѕРІРµСЂС…РЅРѕСЃС‚Рё, +Z = РІР·РіР»СЏРґ РєР°РјРµСЂС‹ РІ РєР°СЃР°С‚РµР»СЊРЅРѕР№
-                        // РїР»РѕСЃРєРѕСЃС‚Рё. Р’СЃСЏ РѕСЂРёРµРЅС‚Р°С†РёСЏ Р·РґРµСЃСЊ, С€РµР№РґРµСЂ вЂ” passthrough.
+                        // Billboard in WORLD coordinates: the instance's local +Y =
+                        // surface normal, +Z = camera view in the tangent
+                        // plane. All orientation is here; the shader is passthrough.
                         EnsureDecorBlobScratch(count);
                         Vector3 sunDirWS = GetSunDirectionWS();
                         for (int k = 0; k < count; k++)
@@ -6630,9 +6477,9 @@ namespace Galilego.Universe
                                 }
                             }
 
-                            // Р”Р°Р»СЊРЅРёРµ Р±РёР»Р»Р±РѕСЂРґС‹ С‡СѓС‚СЊ РєСЂСѓРїРЅРµРµ: РїСЂРё С‚РѕР№ Р¶Рµ
-                            // РїР»РѕС‚РЅРѕСЃС‚Рё РёРЅСЃС‚Р°РЅСЃРѕРІ РѕСЃС‚СЂРѕРІР° С‡РёС‚Р°СЋС‚СЃСЏ РїР»РѕС‚РЅРµРµ Рё
-                            // РЅРµ В«РєСЂРѕС€Р°С‚СЃСЏВ» РІ С‚РѕС‡РєРё РЅР° РіРѕСЂРёР·РѕРЅС‚Рµ.
+                            // Distant billboards are slightly larger: at the same instance
+                            // density islands read denser and do not "crumble" into dots
+                            // on the horizon.
                             float farBlend = Mathf.Clamp01(
                                 (distance - layer.NearDistanceMeters)
                                 / Mathf.Max(1f, layer.MaxDistanceMeters - layer.NearDistanceMeters));
@@ -6640,10 +6487,9 @@ namespace Galilego.Universe
                                 * DecorBirthFade(instance, DecorPropFadeSeconds);
                             Vector3 billboardUp = worldUp;
 
-                            // РќР°РєР»РѕРЅ РїРѕ РІРµС‚СЂСѓ Сѓ РґР°Р»СЊРЅРµРіРѕ LOD: Р±РёР»Р»Р±РѕСЂРґ РЅРµ РјРѕР¶РµС‚
-                            // РЅР°РєР»РѕРЅРёС‚СЊСЃСЏ В«РІ РіР»СѓР±РёРЅСѓВ», РЅРѕ РІ СЃРІРѕРµР№ РїР»РѕСЃРєРѕСЃС‚Рё
-                            // РЅР°РєР»РѕРЅСЏРµС‚СЃСЏ Рє РїСЂРѕРµРєС†РёРё РЅР°РїСЂР°РІР»РµРЅРёСЏ РІРµС‚СЂР° вЂ” РёРЅР°С‡Рµ
-                            // Р·РѕРЅС‹ РІРµС‚СЂР° С‡РёС‚Р°Р»РёСЃСЊ Р±С‹ С‚РѕР»СЊРєРѕ РІР±Р»РёР·Рё.
+                            // Wind tilt at the far LOD: a billboard cannot tilt "in depth",
+                            // but in its own plane it tilts toward the wind direction projection —
+                            // otherwise wind zones would only read up close.
                             if (instance.LeanDegrees > 0.001f && layer.WindZoneFrequency > 0d)
                             {
                                 Vector3 leanDir = WindLeanDirection(instance, chunkMatrix);
@@ -6660,8 +6506,8 @@ namespace Galilego.Universe
                             Quaternion groundRotation = Quaternion.LookRotation(facing.normalized, worldUp);
                             Quaternion rotation = Quaternion.LookRotation(facing.normalized, billboardUp);
 
-                            // РџСЂРѕСЃС‚Р°СЏ С‚РµРЅСЊ: С‚Рѕ Р¶Рµ СЃРјРµС‰С‘РЅРЅРѕРµ РѕС‚ СЃРѕР»РЅС†Р° РїСЏС‚РЅРѕ, С‡С‚Рѕ
-                            // Рё Сѓ Р±Р»РёР¶РЅРµРіРѕ LOD, вЂ” С‚РµРЅСЊ С‚СЂР°РІС‹ Р¶РёРІС‘С‚ РґРѕ MaxDistance.
+                            // Simple shadow: the same sun-offset patch as at the near LOD —
+                            // grass shadow lives out to MaxDistance.
                             Vector3 sunTangent = sunDirWS - (worldUp * Vector3.Dot(sunDirWS, worldUp));
                             if (sunTangent.sqrMagnitude > 1e-6f)
                             {
@@ -6679,8 +6525,8 @@ namespace Galilego.Universe
                                 groundRotation,
                                 new Vector3(blobSize, 1f, blobSize));
 
-                            // РљРІР°Рґ С†РµРЅС‚СЂРёСЂРѕРІР°РЅ РїРѕ РІС‹СЃРѕС‚Рµ: РїРѕРґРЅРёРјР°РµРј, С‡С‚РѕР±С‹ РѕСЃРЅРѕРІР°РЅРёРµ
-                            // СЃС‚РѕСЏР»Рѕ РЅР° Р·РµРјР»Рµ.
+                            // The quad is centred by height: lift it so its base
+                            // stands on the ground.
                             worldPosition += worldUp * (0.5f * size);
                             runtime.Matrices[k] = Matrix4x4.TRS(
                                 worldPosition, rotation, new Vector3(size, size, size));
@@ -6731,7 +6577,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>РќР°РїСЂР°РІР»РµРЅРёРµ РќРђ СЃРѕР»РЅС†Рµ РёР· РіР»РѕР±Р°Р»РѕРІ (SunBillboard/SkyEnvironment).</summary>
+        /// <summary>Direction TO the sun from globals (SunBillboard/SkyEnvironment).</summary>
         private static Vector3 GetSunDirectionWS()
         {
             Vector3 sun = Shader.GetGlobalVector("_TerrainSunDir");
@@ -6743,8 +6589,8 @@ namespace Galilego.Universe
             return sun;
         }
 
-        /// <summary>РўРѕС‡РєР° РЅР° Р Р•РќР”Р•Р -РјРµС€Рµ С‡Р°РЅРєР° РїРѕРґ (u,v) РєР°РЅРґРёРґР°С‚Р°: РёРЅС‚РµСЂРїРѕР»СЏС†РёСЏ
-        /// РїРѕР·РёС†РёР№ РІРµСЂС€РёРЅ СЂРѕРІРЅРѕ РїРѕ С‚СЂРµСѓРіРѕР»СЊРЅРёРєР°Рј BuildChunk (a,c,b / b,c,d).</summary>
+        /// <summary>Point on the chunk's RENDER mesh under the candidate's (u,v):
+        /// vertex position interpolation exactly over BuildChunk triangles (a,c,b / b,c,d).</summary>
         private static Vector3 MeshSurfacePoint(Vector3[] meshVertices, int coreN, double gridU, double gridV)
         {
             gridU = System.Math.Max(0d, System.Math.Min(gridU, coreN - 1d));
@@ -6767,7 +6613,7 @@ namespace Galilego.Universe
             return p11 + ((1f - fu) * (p01 - p11)) + ((1f - fv) * (p10 - p11));
         }
 
-        /// <summary>РќРћР”: stride РґР»СЏ РѕР±С…РѕРґР°-РїРµСЂРµСЃС‚Р°РЅРѕРІРєРё РѕР±СЏР·Р°РЅ Р±С‹С‚СЊ РІР·Р°РёРјРЅРѕ РїСЂРѕСЃС‚ СЃ count.</summary>
+        /// <summary>GCD: the traversal permutation stride must be coprime with count.</summary>
         private static int Gcd(int a, int b)
         {
             while (b != 0)
@@ -6780,8 +6626,8 @@ namespace Galilego.Universe
             return a < 0 ? -a : a;
         }
 
-        /// <summary>РљРІР°Рґ РІ XZ-РїР»РѕСЃРєРѕСЃС‚Рё (С†РµРЅС‚СЂ РІ РЅР°С‡Р°Р»Рµ): РёРЅСЃС‚Р°РЅСЃ-РјР°С‚СЂРёС†Р° РєР»Р°РґС‘С‚
-        /// РµРіРѕ РїР»Р°С€РјСЏ РЅР° РїРѕРІРµСЂС…РЅРѕСЃС‚СЊ вЂ” Р»РѕРєР°Р»СЊРЅС‹Р№ +Y РјРµС€Р° = РЅРѕСЂРјР°Р»СЊ.</summary>
+        /// <summary>Quad in the XZ plane (centred at origin): the instance matrix lays
+        /// it flat on the surface — mesh local +Y = normal.</summary>
         private Mesh GetBlobMesh()
         {
             if (blobMesh == null)
@@ -6832,9 +6678,9 @@ namespace Galilego.Universe
             return blobMaterial;
         }
 
-        /// <summary>РћРґРЅР° РѕС‚Р»РѕР¶РµРЅРЅР°СЏ РѕС‚СЂРёСЃРѕРІРєР° СЃР»РѕСЏ СЃ PerInstanceDensity: РґР¶РѕР±Р°
-        /// РјР°С‚СЂРёС† РїР»Р°РЅРёСЂСѓРµС‚СЃСЏ СЃСЂР°Р·Сѓ, РѕР¶РёРґР°РЅРёРµ Рё RenderMeshInstanced вЂ” РѕР±С‰РёРј
-        /// РїСЂРѕС…РѕРґРѕРј, РїРѕСЌС‚РѕРјСѓ С‡Р°РЅРєРё СЃС‡РёС‚Р°СЋС‚СЃСЏ РїР°СЂР°Р»Р»РµР»СЊРЅРѕ РЅР° РІСЃРµС… РІРѕСЂРєРµСЂР°С….</summary>
+        /// <summary>One deferred draw of a layer with PerInstanceDensity: the matrix
+        /// job is scheduled immediately; waiting and RenderMeshInstanced share one
+        /// pass, so chunks are computed in parallel on all workers.</summary>
         private struct BurstDecorDraw
         {
             public Chunk Chunk;
@@ -6844,13 +6690,13 @@ namespace Galilego.Universe
             public ShadowCastingMode Shadow;
             public Bounds WorldBounds;
             public JobHandle Handle;
-            /// <summary>Сколько инстансов реально посчитала джоба. При прореживании
-            /// (Stride) это меньше runtime.Instances.Length, и рисовать надо именно
-            /// столько — хвост буфера матриц содержит прошлый кадр.</summary>
+            /// <summary>How many instances the job actually computed. With thinning
+            /// (Stride) this is less than runtime.Instances.Length, and exactly that many
+            /// must be drawn — the matrix buffer tail holds the previous frame.</summary>
             public int Count;
         }
 
-        /// <summary>РџР»Р°РЅРёСЂСѓРµС‚ Burst-РґР¶РѕР±Сѓ РјР°С‚СЂРёС† СЃР»РѕСЏ (Р±РµР· РѕР¶РёРґР°РЅРёСЏ).</summary>
+        /// <summary>Schedules the layer's Burst matrix job (without waiting).</summary>
         private void ScheduleBurstDecor(
             Chunk chunk, DecorLayerRuntime runtime, GroundDecorLayer layer,
             Matrix4x4 chunkMatrix, Vector3 cameraPosition, bool near, Material material,
@@ -6866,9 +6712,9 @@ namespace Galilego.Universe
                 return;
             }
 
-            // РџРёРІРѕС‚ РјРµС€Р°: Сѓ РєР»РёРЅРєР° С‚СЂР°РІС‹ РѕРЅ РІ РѕСЃРЅРѕРІР°РЅРёРё (0), Сѓ С†РµРЅС‚СЂРёСЂРѕРІР°РЅРЅРѕРіРѕ
-            // РєРІР°РґР° вЂ” 0.5. Р‘РёР»Р»Р±РѕСЂРґ РїРѕРґРЅРёРјР°РµРј РЅР° СЌС‚Сѓ РґРѕР»СЋ РІС‹СЃРѕС‚С‹, РёРЅР°С‡Рµ РґР°Р»СЊРЅРёР№
-            // LOD СЃ РїРёРІРѕС‚РѕРј РІ РѕСЃРЅРѕРІР°РЅРёРё РІРёСЃРµР» Р±С‹ РЅР°Рґ Р·РµРјР»С‘Р№.
+            // Mesh pivot: 0 at the base for a grass blade, 0.5 for a centred
+            // quad. The billboard is lifted by that fraction of its height; otherwise
+            // a far LOD with a base pivot would hang above the ground.
             Bounds meshBounds = mesh.bounds;
             float meshHeight = Mathf.Max(1e-4f, meshBounds.size.y);
             float pivotFraction = Mathf.Clamp01(-meshBounds.min.y / meshHeight);
@@ -6884,10 +6730,9 @@ namespace Galilego.Universe
                 NearDistance = layer.NearDistanceMeters,
                 FarDistance = Mathf.Max(layer.NearDistanceMeters + 1f, layer.MaxDistanceMeters),
                 BillboardNearScale = 1f,
-                // Закон покрытия: size ∝ d от края ядра, ограничен FarScale.
-                // 1.9 больше не давал нужного роста — при DensityCoreMeters = 25
-                // и MaxDistanceMeters = 200 к дальней границе требовалось ≈8x,
-                // иначе плотность ∝ (R/d)² не покрывается и зона остаётся лысой.
+                // Coverage law: size ∝ d from the core edge, clamped to FarScale.
+                // At DensityCoreMeters = 25 and MaxDistanceMeters = 200 the far boundary
+                // needs ≈8x, otherwise density ∝ (R/d)² is not covered and the zone stays bald.
                 BillboardFarScale = 10f,
                 DistanceCore = Mathf.Max(1f, layer.DensityCoreMeters),
                 BillboardPivotFraction = pivotFraction,
@@ -6913,10 +6758,10 @@ namespace Galilego.Universe
             });
         }
 
-        /// <summary>Дальность слоя с учётом физического горизонта
-        /// (HorizonObjectHeightMeters): камера не видит дальше суммы своих двух
-        /// горизонтов, поэтому слой с высокими объектами (деревья) упирается в
-        /// физический предел, а не в MaxDistanceMeters.</summary>
+        /// <summary>Layer range including the physical horizon
+        /// (HorizonObjectHeightMeters): the camera cannot see past the sum of its two
+        /// horizons, so a layer with tall objects (trees) stops at the
+        /// physical limit rather than MaxDistanceMeters.</summary>
         private float EffectiveMaxDistance(GroundDecorLayer layer)
         {
             float max = layer.MaxDistanceMeters;
@@ -6929,10 +6774,10 @@ namespace Galilego.Universe
             return Mathf.Clamp((float)horizon, layer.NearDistanceMeters + 1f, max);
         }
 
-        /// <summary>Дальний прокси дерева: чанк целиком за ProxyFromMeters рисуется
-        /// дешёвым мешем (ствол + двойная пирамида кроны) вместо полного. Матрицы
-        /// считает Burst-джоба, один draw на чанк, тени — как у ближней ветки
-        /// (иначе лес с ProxyFromMeters теряет затенение и «выцветает»).</summary>
+        /// <summary>Distant tree proxy: a chunk entirely beyond ProxyFromMeters draws
+        /// a cheap mesh (trunk + double crown pyramid) instead of the full one. A Burst job
+        /// computes matrices, one draw per chunk, shadows as at the near branch
+        /// (otherwise forest beyond ProxyFromMeters loses shading and looks washed out).</summary>
         private void DrawTreeProxy(
             Chunk chunk, DecorLayerRuntime runtime, GroundDecorLayer layer,
             Matrix4x4 chunkMatrix, Vector3 cameraPosition, float edgeFade, Bounds chunkBounds,
@@ -6946,10 +6791,10 @@ namespace Galilego.Universe
                 return;
             }
 
-            // ChunkWorldBounds даёт запас всего 8 м, а прокси выше: расширяем на
-            // худшее дерево слоя, посчитанное от САМОГО прокси (высота меша ×
-            // MaxScale инстанса × буст размера). Фиксированный запас здесь
-            // означал бы выпадение чанка у края экрана, пока его кроны ещё видны.
+            // ChunkWorldBounds leaves only 8 m of margin, but the proxy is taller: widen
+            // by the layer's worst tree computed from the PROXY itself (mesh height ×
+            // instance MaxScale × size boost). A fixed margin here would
+            // drop a chunk at the screen edge while its crowns are still visible.
             Bounds bounds = chunkBounds;
             float proxyReach = mesh.bounds.size.y
                 * Mathf.Max(1f, (float)layer.MaxScale)
@@ -6960,17 +6805,17 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Прореживание по дистанции. На 10 км дерево ~20 м занимает 1-2 пикселя,
-            // поэтому каждые 2-е/4-е заменяем размером: суммарный «вес» леса в
-            // кадре почти тот же, а инстансов и матриц в разы меньше.
+            // Distance thinning. At 10 km a 20 m tree covers 1-2 pixels,
+            // so every 2nd/4th is replaced by size: the forest's total visual "weight"
+            // stays almost the same while instances and matrices drop severalfold.
             int stride = distance > 6000f ? 4 : (distance > 3000f ? 2 : 1);
             int drawCount = (count + stride - 1) / stride;
             float strideGrow = Mathf.Pow(stride, 0.35f);
 
-            // Батчинг в общий буфер: только когда тени выключены (тогда у всех
-            // дальних чанков один меш и материал — иначе их не склеить в один
-            // draw) и хватает места. Первый чанк задаёт меш/материал, дальше
-            // обязан совпадать, иначе сбрасываем на отдельный путь.
+            // Batching into a shared buffer: only when shadows are off (then all
+            // distant chunks share one mesh and material — otherwise they cannot be
+            // combined into one draw) and there is room. The first chunk sets mesh/material;
+            // later ones must match, otherwise fall back to the separate path.
             ShadowCastingMode shadow = DecorShadowMode(layer);
             bool shared = shadow == ShadowCastingMode.Off
                 && proxySharedUsed + drawCount <= ProxySharedCapacity
@@ -7050,9 +6895,9 @@ namespace Galilego.Universe
             });
         }
 
-        /// <summary>Низкополигональное дерево (ствол + двойная пирамида кроны, ~26 треугольников),
-        /// собранное по усреднённым габаритам NearMeshes слоя. Цвета — в vertex colors, как у
-        /// полных мешей (TreeModelSetup), альфа 0 — без ветра.</summary>
+        /// <summary>Low-poly tree (trunk + double crown pyramid, ~26 triangles) built
+        /// from the layer's averaged NearMeshes dimensions. Colors in vertex colors, as in
+        /// full meshes (TreeModelSetup), alpha 0 — no wind.</summary>
         private Mesh GetTreeProxyMesh(GroundDecorLayer layer, bool low)
         {
             Dictionary<GroundDecorLayer, Mesh> cache = low ? treeProxyMeshesLow : treeProxyMeshes;
@@ -7093,7 +6938,7 @@ namespace Galilego.Universe
             Color leafDark = new Color(0.008f, 0.05f, 0.014f, 0f);
             Color leaf = new Color(0.01034f, 0.06838f, 0.01848f, 0f);
 
-            // Кольцо вершин; возвращает индекс первой.
+            // Vertex ring; returns the index of the first.
             int Ring(int segments, float y, float r, Color color, float phase)
             {
                 int first = vertices.Count;
@@ -7107,7 +6952,7 @@ namespace Galilego.Universe
                 return first;
             }
 
-            // Боковая полоса между кольцами (одинаковое число сегментов), нормали наружу.
+            // Side strip between rings (same segment count), normals facing out.
             void Band(int lower, int upper, int segments)
             {
                 for (int s = 0; s < segments; s++)
@@ -7118,7 +6963,7 @@ namespace Galilego.Universe
                 }
             }
 
-            // Ствол на 10 км — 0 пикселей, упрощённый прокси без него.
+            // A trunk at 10 km is 0 pixels; the simplified proxy omits it.
             if (!low)
             {
                 int trunkBottom = Ring(4, 0f, height * 0.04f, trunk, 0f);
@@ -7154,11 +6999,11 @@ namespace Galilego.Universe
             return proxy;
         }
 
-        /// <summary>Вызывает все запланированные джобы и рисует слои.</summary>
+        /// <summary>Calls all scheduled jobs and draws the layers.</summary>
         private void FlushBurstDecor()
         {
-            // Общий буфер дальних деревьев — до проверки списка: он тоже
-            // требует Complete и отрисовки, даже когда burstDecorDraws пуст.
+            // Shared distant-tree buffer — before the list check: it also
+            // needs Complete and drawing even when burstDecorDraws is empty.
             if (proxySharedUsed > 0)
             {
                 proxySharedHandle.Complete();
@@ -7189,9 +7034,9 @@ namespace Galilego.Universe
             burstDecorDraws.Clear();
         }
 
-        /// <summary>Общий буфер дальних деревьев одним набором draw-call'ов.
-        /// Меш и материал у всех батченных чанков одинаковые (иначе их не
-        /// склеили бы в DrawTreeProxy), тени выключены.</summary>
+        /// <summary>Shared distant-tree buffer in one set of draw calls.
+        /// Mesh and material are the same for all batched chunks (otherwise they
+        /// would not combine in DrawTreeProxy), shadows off.</summary>
         private void DrawProxyShared()
         {
             if (!proxySharedMaterial.enableInstancing)
@@ -7225,9 +7070,9 @@ namespace Galilego.Universe
             }
 
             const int batchSize = 1023;
-            // Р“СЂР°РЅРёС†С‹ вЂ” С„Р°РєС‚РёС‡РµСЃРєРёРµ (СЂРµР»СЊРµС„ + Р·Р°РїР°СЃ): Unity РєСѓР»Р»РёС‚ Р±Р°С‚С‡ РїРѕ РЅРёРј,
-            // Рё Р±РѕРєСЃ РІРѕРєСЂСѓРі РїРѕР·РёС†РёРё С‡Р°РЅРєР° РЅР° СѓСЂРѕРІРЅРµ РјРѕСЂСЏ СЂРѕРЅСЏР» С‚СЂР°РІСѓ С†РµР»РёРєРѕРј
-            // РЅР° РІРѕР·РІС‹С€РµРЅРЅРѕСЃС‚СЏС… РїСЂРё РѕРїСЂРµРґРµР»С‘РЅРЅРѕРј СѓРіР»Рµ РєР°РјРµСЂС‹.
+            // Bounds are actual (terrain + margin): Unity culls the batch by them;
+            // a sea-level box around the chunk origin dropped grass entirely
+            // on elevations at certain camera angles.
             RenderParams renderParams = new RenderParams(material)
             {
                 worldBounds = worldBounds,
@@ -7262,7 +7107,7 @@ namespace Galilego.Universe
             const int batchSize = 1023;
             if (!material.enableInstancing)
             {
-                // DrawMeshInstanced С‚СЂРµР±СѓРµС‚ РІРєР»СЋС‡С‘РЅРЅРѕРіРѕ РёРЅСЃС‚Р°РЅСЃРёРЅРіР° Сѓ РјР°С‚РµСЂРёР°Р»Р°.
+                // DrawMeshInstanced requires instancing enabled on the material.
                 material.enableInstancing = true;
             }
 
@@ -7282,8 +7127,8 @@ namespace Galilego.Universe
                     batch = decorBatchScratch;
                 }
 
-                // Р’СЃРµ СЃР°Р±РјРµС€Рё: Сѓ FBX СЃС‚РІРѕР» Рё Р»РёСЃС‚РІР° РјРѕРіСѓС‚ Р±С‹С‚СЊ РѕРґРЅРёРј РјРµС€РµРј
-                // СЃ РґРІСѓРјСЏ РјР°С‚РµСЂРёР°Р»Р°РјРё, РёРЅР°С‡Рµ РґРµСЂРµРІРѕ СЂРёСЃСѓРµС‚СЃСЏ Р±РµР· РєСЂРѕРЅС‹.
+                // All submeshes: in an FBX the trunk and foliage may be one mesh
+                // with two materials; otherwise the tree draws without its crown.
                 for (int sub = 0; sub < mesh.subMeshCount; sub++)
                 {
                     Graphics.DrawMeshInstanced(
@@ -7295,8 +7140,8 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Обёртка ради маркера: выгрузка чанков идёт пачками и сама по
-        /// себе может стать источником фриза, если Destroy звать без лимита.</summary>
+        /// <summary>Marker-only wrapper: chunk unloading runs in batches and can
+        /// itself cause a hitch if Destroy is called without a limit.</summary>
         private void EvictIfNeeded()
         {
             using (SurfacePerf.EvictMarker.Auto())
@@ -7324,15 +7169,14 @@ namespace Galilego.Universe
             SurfacePerf.EvictCandidates = toEvict.Count;
             if (toEvict.Count == 0)
             {
-                // Всё в keep — вычистить нечего. Раньше здесь был молчаливый
-                // выход, и о факте «кэш упёрся в keep, а не в лимит» никто не
-                // узнавал: счётчик кандидатов теперь виден в HUD.
+                // Everything is in keep, nothing to clean up. The candidate counter
+                // is exposed in the HUD so this state is visible.
                 return;
             }
 
-            // LRU: чем дольше чанк не нужен, тем он первее на выгрузку. Порядок
-            // обхода словаря ничего не значит, а выгрузка пачкой Destroy в один
-            // кадр — сам по себе фриз, поэтому режем по одному.
+            // LRU: the longer a chunk has been unneeded, the sooner it unloads. Dictionary
+            // traversal order means nothing, and batch Destroy in one
+            // frame is itself a hitch, so cut one at a time.
             toEvict.Sort(GetEvictLruComparer());
 
             int removed = 0;
@@ -7351,9 +7195,9 @@ namespace Galilego.Universe
 
                 DestroyChunkResources(chunk);
                 chunks.Remove(id);
-                // Страховка: выгружаемый чанк уже скрыт проходом выше, но если
-                // порядок изменится, в active-списке останется мёртвая ссылка и
-                // проход трансформов будет ходить по уничтоженному объекту.
+                // Safety: the chunk being unloaded is already hidden by the pass above, but
+                // if the order changes, a dead reference would remain in the active list and
+                // the transform pass would walk a destroyed object.
                 visibleChunks.Remove(chunk);
                 removed++;
             }
@@ -7361,11 +7205,10 @@ namespace Galilego.Universe
             SurfacePerf.EvictedLast = removed;
         }
 
-        /// <summary>Кэшируемое сравнение для List.Sort. Замыкание создаётся ОДИН
-        /// раз на компонент, а не на каждый вызов сортировки: иначе на каждом
-        /// кадре, где что-то выгружается, аллоцировался бы замыкающий объект —
-        /// ровно в том кадре, где бьёт по GC-бюджету. Лямбда без захвата здесь
-        /// невозможна: нужен доступ к словарю чанков.</summary>
+        /// <summary>Cached comparison for List.Sort. The closure is created ONCE
+        /// per component, not per sort call: otherwise every frame with an eviction
+        /// would allocate a closure object — exactly the frame that hits the GC
+        /// budget. A captureless lambda is impossible here: it needs the chunk dictionary.</summary>
         private System.Comparison<long> evictLruComparer;
 
         private System.Comparison<long> GetEvictLruComparer()
@@ -7394,11 +7237,7 @@ namespace Galilego.Universe
                 chunk.WaterMesh = null;
             }
 
-            // Mesh НЕ принадлежит GameObject: Destroy(chunk.Go) его не убирает.
-            // Раньше здесь стоял только Destroy(chunk.Go), и каждый выгруженный
-            // чанк навечно оставлял после себя меш в RAM и VRAM. Замер: баланс
-            // «создано минус уничтожено» рос с 2206 до 10613 за минуту полёта,
-            // а нативная память — с 2845 до 4617 МБ.
+            // Mesh does NOT belong to the GameObject: Destroy(chunk.Go) does not remove it.
             if (chunk.Mesh != null)
             {
                 Destroy(chunk.Mesh);
@@ -7427,19 +7266,19 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Показ/скрытие чанка и водного меша рядом с ним.
+        /// Shows/hides a chunk and its water mesh next to it.
         ///
-        /// Через Renderer.enabled, а не через GameObject.SetActive. SetActive
-        /// проходит по всей иерархии и триггерит OnEnable/OnDisable у всех
-        /// компонентов и у всех потомков; на 1000+ чанков, переключаемых каждый
-        /// кадр на границах LOD, это заметная работа впустую. Рендерер при этом
-        /// отсекается ровно так же, а коллайдеры и компоненты на объекте
-        /// остаются живыми — что и требуется: физика рельефа и лучи игрока не
-        /// должны зависеть от того, нарисован ли в этом кадре узел.
+        /// Via Renderer.enabled, not GameObject.SetActive. SetActive
+        /// walks the whole hierarchy and triggers OnEnable/OnDisable on all
+        /// components and children; with 1000+ chunks toggled every
+        /// frame at LOD boundaries that is noticeable wasted work. The renderer is
+        /// culled exactly the same way, while colliders and components on the object
+        /// stay alive — which is required: terrain physics and player rays must not
+        /// depend on whether the node was drawn this frame.
         ///
-        /// Список visibleChunks ведётся здесь же: проход трансформов идёт по
-        /// нему, а не по всему словарю, где на скорости висят тысячи
-        /// невидимых узлов.
+        /// visibleChunks is maintained here too: the transform pass iterates
+        /// it instead of the whole dictionary, where thousands of
+        /// invisible nodes sit at speed.
         /// </summary>
         private void SetChunkVisible(Chunk chunk, bool visible)
         {
@@ -7459,8 +7298,8 @@ namespace Galilego.Universe
                 chunk.Renderer.enabled = visible;
             }
 
-            // Вода — отдельный дочерний объект со своим MeshRenderer; ссылка на
-            // него закэширована при сборке.
+            // Water is a separate child object with its own MeshRenderer; the reference
+            // is cached at build time.
             if (chunk.WaterRenderer != null)
             {
                 chunk.WaterRenderer.enabled = visible;
@@ -7489,12 +7328,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// РџР°СЂР°РјРµС‚СЂС‹ per-pixel РїР°Р»РёС‚СЂС‹/С€СѓРјР°/С‚РµРєСЃС‚СѓСЂ СЂРµР»СЊРµС„Р° вЂ” РІ Р“Р›РћР‘РђР›Р« С€РµР№РґРµСЂР°,
-        /// Р° РЅРµ РІ РјР°С‚РµСЂРёР°Р»: РїРµСЂ-РјР°С‚РµСЂРёР°Р»СЊРЅС‹Рµ Р·РЅР°С‡РµРЅРёСЏ, РЅРµ РѕР±СЉСЏРІР»РµРЅРЅС‹Рµ РІ Properties,
-        /// РЅРµ РґРѕРµР·Р¶Р°Р»Рё РґРѕ РјР°С‚РµСЂРёР°Р»Р° (РІ СЃРІРµР¶РёС… СЃРµСЃСЃРёСЏС… РјР°С‚РµСЂРёР°Р» РѕРєР°Р·С‹РІР°Р»СЃСЏ СЃ РЅСѓР»СЏРјРё,
-        /// `_SteepBlendStart == _SteepBlendEnd == 0` в†’ rock-С‚РµРєСЃС‚СѓСЂР° РЅР° РІСЃРµР№ Р·РµРјР»Рµ,
-        /// СЂРµР»СЊРµС„ С‡С‘СЂРЅС‹Р№). Р“Р»РѕР±Р°Р»С‹ СЃС‚Р°РІРёС‚ РґРѕРјРёРЅР°РЅС‚РЅРѕРµ С‚РµР»Рѕ РєР°Р¶РґС‹Р№ РєР°РґСЂ, СЃРѕСЃС‚РѕСЏРЅРёРµ
-        /// РјР°С‚РµСЂРёР°Р»Р° СЂРѕР»Рё РЅРµ РёРіСЂР°РµС‚. Р¦РІРµС‚Р° вЂ” float4: РѕРЅРё СѓР¶Рµ Р»РёРЅРµР№РЅС‹Рµ.
+        /// Terrain per-pixel palette/noise/texture parameters live in shader
+        /// GLOBALS, not in the material: per-material values not declared in
+        /// Properties do not reach the material. The dominant body sets the globals
+        /// every frame; the material state does not matter. Colors are float4: already linear.
         /// </summary>
         private void ApplyTerrainGlobals()
         {
@@ -7503,11 +7340,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Глобалы шейдера рельефа для произвольного HeightfieldTerrain. Вынесено
-        /// из экземплярного метода без изменения тела: редакторское превью
-        /// поверхности обязано получить РОВНО тот же свет, палитру и текстуры,
-        /// что и игра, — иначе автор ставит базу по картинке, которой в игре
-        /// нет. Единственный источник правды, дублировать нельзя.
+        /// Terrain shader globals for any HeightfieldTerrain. Kept out of
+        /// instance methods unchanged: the editor surface preview must get EXACTLY
+        /// the same light, palette and textures as the game, otherwise authors
+        /// tune the base against an image the game does not show. Single source of truth, do not duplicate.
         /// </summary>
         public static void ApplyTerrainGlobals(HeightfieldTerrain terrain, float shoreWetMeters, Vector4 shoreWetTint)
         {
@@ -7548,8 +7384,8 @@ namespace Galilego.Universe
             Shader.SetGlobalVector("_ColSoil", ToVec(palette.SoilLinear));
             Shader.SetGlobalVector("_ColLush", ToVec(palette.LushLinear));
 
-            // РўРµРєСЃС‚СѓСЂС‹ СЂРµР»СЊРµС„Р°: С‚СЂРёРїР»Р°РЅР°СЂРЅС‹Р№ Р±Р»РµРЅРґРёРЅРі РїРѕ РІС‹СЃРѕС‚Рµ
-            // Рё СЃРєР»РѕРЅСѓ. Р’СЃРµ С‡РµС‚С‹СЂРµ Р°Р»СЊР±РµРґРѕ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹, РёРЅР°С‡Рµ вЂ” РїСЂРѕС†РµРґСѓСЂРЅР°СЏ РїР°Р»РёС‚СЂР°.
+            // Terrain textures: triplanar blending by height
+            // and slope. All four albedos are required, otherwise — procedural palette.
             Texture2D texLow = terrain.TextureLow;
             Texture2D texMid = terrain.TextureMid;
             Texture2D texHigh = terrain.TextureHigh;

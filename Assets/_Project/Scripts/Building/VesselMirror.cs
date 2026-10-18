@@ -3,14 +3,11 @@ using UnityEngine;
 namespace Galilego.Building
 {
     /// <summary>
-    /// Зеркалирование визуала аппарата на тела зоны контакта — В САМОМ КОНЦЕ
-    /// кадра (порядок 900, после ContactZoneHost с его −50). Почему отдельным
-    /// компонентом: у SpacecraftBuilder порядок −110 (его Update обязан идти до
-    /// шага раннера), а LateUpdate с тем же порядком выполнялся РАНЬШЕ
-    /// ContactZoneHost — тела читались до того, как зона подвинет корень кадра.
-    /// Из-за этого визуал каждый кадр отставал от тел на сдвиг якоря
-    /// (поверхность планеты летит ~83 м/с — на низком FPS это метры за кадр),
-    /// и ракету «кидало туда-сюда» при включённой физике.
+    /// Mirrors the vessel visuals onto the contact zone bodies — at the VERY END
+    /// of the frame (order 900, after ContactZoneHost at −50). A separate
+    /// component is required because SpacecraftBuilder runs at order −110 (its
+    /// Update must precede the runner step), and the bodies must be read only
+    /// after the zone has moved the frame root.
     /// </summary>
     [DefaultExecutionOrder(900)]
     public sealed class VesselMirror : MonoBehaviour

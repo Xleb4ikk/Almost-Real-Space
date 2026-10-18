@@ -1,39 +1,22 @@
 Shader "Galilego/GrassBlade"
 {
-    // Специализированный шейдер травы. Отделён от GroundDecorSolid, потому
-    // что оптимизации здесь неприменимы к деревьям/камням/кактусам.
+    // Specialised grass shader, kept separate from GroundDecorSolid because its
+    // optimisations do not apply to trees/rocks/cacti.
     //
-    // Что и почему сделано (все три пункта — измерением, не догадкой):
+    // Lighting is computed in the VERTEX shader; the fragment outputs the ready colour.
+    // Grass cost is fill rate, and a blade mesh has a single normal (uniqueNormals = 1),
+    // so per-vertex lighting is exact here.
     //
-    // 1. СВЕТ СЧИТАЕТСЯ В ВЕРШИНЕ, фрагмент отдаёт готовый цвет.
-    //    Стоимость травы — не геометрия, а заполнение: игрок стоит на ковре
-    //    из тысяч клинков, и каждый экранный пиксель земли перекрывается
-    //    десятками клинков. У GroundDecorSolid на каждый фрагмент шли
-    //    GalilegoSunShadow (до PCSS), SampleCloudShadow, GalilegoSkyAmbient и
-    //    UnderwaterCausticMask. Перенос этого в вершину срезает самую дорогую
-    //    часть целиком, потому что у клинка нормаль одна на весь меш
-    //    (uniqueNormals = 1) — освещение по вершинам тут физически точное.
+    // Only shadow tiers that don't need positionSS are used (GalilegoShadowMedium /
+    // GalilegoShadowCheap); GalilegoSunShadow needs SV_Position, unavailable in a vertex
+    // shader. Trade-off: no soft PCSS shadow up close, invisible on a carpet of thin blades.
     //
-    // 2. ТОЛЬКО ТИРЫ ТЕНЕЙ, КОТОРЫМ НЕ НУЖЕН positionSS.
-    //    GalilegoSunShadow() берёт SV_Position в пикселях: для дизеринга
-    //    InterleavedGradientNoise и для высокого тира PCSS. В вершинном
-    //    шейдере этого нет, поэтому берём GalilegoShadowMedium /
-    //    GalilegoShadowCheap — они считают только по positionWS/normalWS
-    //    (GATHER_TEXTURE2D, без градиентов — вершинный texture fetch законен).
-    //    Плата: у травы вблизи нет мягкой PCSS-тени. Для ковра из тонких
-    //    клинков это незаметно.
+    // No clip() and no DepthForwardOnly pass: discard was dead but disabled Early-Z, and
+    // the depth pass duplicated all geometry. Grass is opaque with ZWrite On, so the depth
+    // buffer is already correct.
     //
-    // 3. НЕТ clip() И НЕТ DepthForwardOnly.
-    //    У травы не было ни текстуры, ни вырезки (_Cutoff = 0), так что
-    //    discard был мёртвым, но держал шейдер в режиме «может отбросить
-    //    фрагмент» и ломал Early-Z. Пасс DepthForwardOnly отдавал ещё одну
-    //    копию всей геометрии (ровно ×2 к треугольникам кадра): трава
-    //    непрозрачна, ZWrite On, и после forward-паса глубина в буфере и так
-    //    верна — атмосфера и звёзды её увидят.
-    //
-    // Cull Off остаётся намеренно: клинок — сложенная плоскость с
-    // односторонним вингом (зеркальных пар треугольников в меше нет), и без
-    // Cull Off половина клинков просто исчезала бы на обороте.
+    // Cull Off is intentional: a blade is a folded plane with a one-sided wing, so without
+    // it half the blades would vanish on the back side.
 
     Properties
     {
@@ -43,11 +26,9 @@ Shader "Galilego/GrassBlade"
         _Translucency("Translucency", Range(0.0, 1.0)) = 0.35
         _TwoSided("Two Sided Lighting", Range(0.0, 1.0)) = 1.0
         _ShadowMul("Shadow Multiplier", Range(0.0, 1.0)) = 1.0
-        // Подмешивание к цвету земли на большой дистанции. Плотность травы
-        // обязана падать с расстоянием (иначе инстансов больше, чем пикселей),
-        // и без этого граница зоны читается как лысый круг. Подмешивание
-        // делает редкую дальнюю траву того же тона, что и земля под ней, —
-        // дальняя зона выглядит ровным полем, а не концом травы.
+        // Blend to the ground colour at distance. Grass density must fall with distance,
+        // otherwise the zone edge reads as a bald circle. The blend tints sparse far
+        // grass like the ground beneath it, so the far zone looks like a smooth field.
         _FarFadeStart("Far Fade Start (m)", Float) = 60.0
         _FarFadeEnd("Far Fade End (m)", Float) = 200.0
         _FarFadeColor("Far Fade Color", Color) = (0.146, 0.371, 0.201, 1)
@@ -82,7 +63,7 @@ Shader "Galilego/GrassBlade"
             #include "GalilegoLighting.hlsl"
             #include "GalilegoUnderwaterCaustics.hlsl"
 
-            // Время — ставит PlanetSurfaceRenderer.
+            // Time — set by PlanetSurfaceRenderer.
             float _GroundDecorTime;
 
             float4 _BaseColor;
@@ -97,7 +78,7 @@ Shader "Galilego/GrassBlade"
             float _FarFadeStrength;
             float4 _GroundTint;
             float3 _TerrainBodyCenterWS;
-            // Палитра рельефа (ставит PlanetSurfaceRenderer.ApplyTerrainGlobals).
+            // Terrain palette (set by PlanetSurfaceRenderer.ApplyTerrainGlobals).
             float4 _ColGrass;
 
             struct Attributes
@@ -121,10 +102,8 @@ Shader "Galilego/GrassBlade"
                 UNITY_SETUP_INSTANCE_ID(input);
                 UNITY_TRANSFER_INSTANCE_ID(input, output);
 
-                // Ветер: гнём верх клинка (локальный Y) в локальных осях XZ.
-                // Мировые XZ на планете не горизонтальны — из-за этого трава
-                // «летала» вверх-вниз и уходила под землю на склонах.
-                // color.a — маска ветра: 1 листва, 0 ствол (деревья).
+                // Wind: bend the blade top (local Y) in the local XZ axes — world XZ is
+                // not horizontal on a planet. color.a is the wind mask: 1 foliage, 0 trunk.
                 float3 positionOS = input.positionOS;
                 float phase = (_GroundDecorTime * _WindSpeed) + (positionOS.x * 2.1) + (positionOS.y * 1.7);
                 float bend = saturate(positionOS.y) * _WindStrength * input.color.a;
@@ -134,7 +113,7 @@ Shader "Galilego/GrassBlade"
                 float3 positionWS = TransformObjectToWorld(positionOS);
                 float3 normalWS = TransformObjectToWorldNormal(input.normalOS);
 
-                // ---- Всё освещение здесь, в вершине ----
+                // ---- All lighting here, in the vertex shader ----
                 float3 n = normalize(normalWS);
                 float3 l = normalize(_TerrainSunDir);
                 float oneSided = saturate(dot(n, l));
@@ -142,8 +121,8 @@ Shader "Galilego/GrassBlade"
                 float ndl = lerp(oneSided, twoSided, saturate(_TwoSided));
                 float back = saturate(dot(-n, l)) * _Translucency * lerp(1.0, 0.25, saturate(_TwoSided));
 
-                // Тень солнца: только world-space тиры, positionSS тут недоступен.
-                // tierMedium сразу даёт 0 там, где трава стоит в тени рельефа.
+                // Sun shadow: only world-space tiers, positionSS is unavailable here;
+                // the medium tier gives 0 where grass stands in terrain shadow.
                 float shadow = (distance(positionWS, GetCameraPositionWS()) <= _ShadowMediumDistance)
                     ? GalilegoShadowMedium(positionWS, n, l)
                     : GalilegoShadowCheap(positionWS, n, l);
@@ -159,11 +138,9 @@ Shader "Galilego/GrassBlade"
                     + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale)
                     + (_SunLightColor * (sun * back * shadow * cloudShadow) * _TerrainRadianceScale);
 
-                // Подмешивание к цвету земли: дальняя трава обязана становиться
-                // реже, поэтому на границе зоны без этого шага виден лысый круг.
-                // Тон берём у палитры рельефа (_ColGrass ставит рендерер) и
-                // гоним его через тот же _GroundTint, что и у ближней травы, —
-                // иначе на закате подмешивание даёт чужой оттенок.
+                // Blend to the ground colour: the tone comes from the terrain palette
+                // (_ColGrass, set by the renderer) and goes through the same _GroundTint
+                // as close grass, otherwise the blend gives a wrong hue at sunset.
                 float3 albedo = _BaseColor.rgb;
                 float farT = saturate((distance(positionWS, GetCameraPositionWS()) - _FarFadeStart)
                     / max(1e-3f, _FarFadeEnd - _FarFadeStart));

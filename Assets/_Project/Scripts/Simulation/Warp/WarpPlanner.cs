@@ -2,17 +2,17 @@ using System;
 
 namespace Galilego.Events
 {
-    /// <summary>Решение кадра: сколько симулированного времени пройти и каким слоем.</summary>
+    /// <summary>Frame decision: how much simulated time to advance and by which layer.</summary>
     public readonly struct WarpFrameDecision
     {
-        /// <summary>Effective-фактор после атмосферного капа.</summary>
+        /// <summary>Effective factor after the atmosphere cap.</summary>
         public double EffectiveFactor { get; }
 
-        /// <summary>Симулированных секунд за этот кадр (effective × realDt).</summary>
+        /// <summary>Simulated seconds for this frame (effective × realDt).</summary>
         public double SimSeconds { get; }
 
-        /// <summary>true — дальний варп (LongWarpDriver, баллистика, тяга запрещена);
-        /// false — физическая цепочка (Propagate/SpacecraftPhysics, тяга разрешена).</summary>
+        /// <summary>true — long warp (LongWarpDriver, ballistics, thrust forbidden);
+        /// false — physical chain (Propagate/SpacecraftPhysics, thrust allowed).</summary>
         public bool UseLongWarp { get; }
 
         public WarpFrameDecision(double effectiveFactor, double simSeconds, bool useLongWarp)
@@ -24,12 +24,12 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Чистый планировщик кадра ускоренного времени: effective-фактор (кап
-    /// атмосферы живёт в WarpController) → симулированные секунды → слой
-    /// исполнения. Тяга разрешена только при effective ≤ ThrustMaxWarpFactor;
-    /// ступени выше — баллистика (LongWarpDriver), где CanEnterLongWarp сам
-    /// громко охраняет от забытой тяги. horizonSeconds — кэп по концу мира
-    /// (BakedEndSeconds − t): выше конца кадр просто не летит.
+    /// Pure accelerated-time frame planner: effective factor (the atmosphere cap
+    /// lives in WarpController) → simulated seconds → execution layer. Thrust is
+    /// allowed only at effective ≤ ThrustMaxWarpFactor; higher rungs are ballistics
+    /// (LongWarpDriver), where CanEnterLongWarp loudly guards against forgotten
+    /// thrust. horizonSeconds caps at the end of the world
+    /// (BakedEndSeconds − t): past the end a frame simply does not fly.
     /// </summary>
     public static class WarpPlanner
     {

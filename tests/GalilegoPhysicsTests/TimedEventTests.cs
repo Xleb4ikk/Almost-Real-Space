@@ -7,11 +7,11 @@ using Xunit.Abstractions;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Тест F — плановое событие. Дрейф по круговой орбите + TimedEvent в
-    /// середине интервала: время события обязано быть ровно TimeSeconds,
-    /// скачок массы — точным Δm (разрыв применяется на границе принятого шага,
-    /// бит-в-бит), продолжение после события не должно срабатывать повторно
-    /// (событие потреблено). Нарушение MinimumMassKg — громкое исключение, не тихий clamp.
+    /// Test F — timed event. Circular-orbit drift plus a TimedEvent in the middle
+    /// of the interval: the event time must be exactly TimeSeconds, the mass jump
+    /// exactly Δm (the discontinuity is applied at the accepted step boundary,
+    /// bit-for-bit), and continuing past the event must not fire it again
+    /// (the event is consumed). Violating MinimumMassKg throws loudly, not a silent clamp.
     /// </summary>
     public sealed class TimedEventTests
     {
@@ -46,7 +46,7 @@ namespace GalilegoPhysicsTests
             Assert.Equal(800.0, first.Value.State.Mass);
             Assert.Equal(800.0, ship.Mass);
 
-            // Рестарт из корня: событие потреблено, дальше — чистый дрейф до конца.
+            // Restart from the root: the event is consumed, pure drift to the end after that.
             EventOccurrence? second = propagator.Propagate(ship, first.Value.TimeSeconds, 1000d);
             Assert.False(second.HasValue, "Потреблённое событие сработало повторно.");
             Assert.Equal(800.0, ship.Mass);

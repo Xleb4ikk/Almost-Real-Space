@@ -4,10 +4,10 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Мелкие помощники кастомных инспекторов: рисование поля по пути и слайдер
-    /// для double-полей (RangeAttribute с double не работает — Unity рисует
-    /// слайдер только для float/int). Отсутствующее поле не роняет инспектор,
-    /// а показывает предупреждение — при переименовании данных видно сразу.
+    /// Small helpers for custom inspectors: drawing a field by path and a slider for
+    /// double fields (RangeAttribute does not work with double — Unity draws sliders
+    /// for float/int only). A missing field does not break the inspector but shows a
+    /// warning, so renames are visible immediately.
     /// </summary>
     internal static class InspectorFields
     {
@@ -23,7 +23,7 @@ namespace Galilego.Universe.EditorTools
             EditorGUILayout.PropertyField(property, true);
         }
 
-        /// <summary>Слайдер для double/float/int-поля. Label берётся из самого поля (имя + тултип).</summary>
+        /// <summary>Slider for a double/float/int field. The label comes from the field itself (name + tooltip).</summary>
         public static void Slider(SerializedObject serializedObject, string path, float min, float max)
         {
             SerializedProperty property = serializedObject.FindProperty(path);

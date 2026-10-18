@@ -26,16 +26,16 @@ namespace Galilego.Core
         }
 
         /// <summary>
-        /// Чисто численный пол против деления на ноль в пробных RK-подстадиях.
-        /// Без физического смысла: событие касания обязано остановить корабль
-        /// раньше, этот пол — последняя страховка от Inf/NaN, а не модель.
+        /// Purely numerical floor against division by zero in trial RK substages.
+        /// No physical meaning: the touch-down event must stop the ship earlier;
+        /// this floor is the last safeguard against Inf/NaN, not a model.
         /// </summary>
         public const double NumericalFloorSqrDistance = 1e-6d;
 
         /// <summary>
-        /// Геометрический предикат «внутри тела»: sqrDistance &lt; radius².
-        /// Отдельно от численного пола выше — не подменяет ускорение нулём,
-        /// а заводит AltitudeCrossingDetector (Falling/Touchdown).
+        /// Geometric "inside body" predicate: sqrDistance &lt; radius².
+        /// Separate from the numerical floor above — it does not replace acceleration
+        /// with zero, it arms AltitudeCrossingDetector (Falling/Touchdown).
         /// </summary>
         public static bool IsInsideBodySqr(double sqrDistance, double bodyRadius)
         {
@@ -48,12 +48,12 @@ namespace Galilego.Core
         }
 
         /// <summary>
-        /// Вычисляет гравитационное ускорение от одного тела.
+        /// Computes gravitational acceleration from a single body.
         ///
-        /// NOTE: Математика должна быть идентична AccelerationEvaluator.BodyGravity
-        /// (double3 версия для Burst, отсутствует в этом репо — паритет автоматически
-        /// не проверяется, см. T34). Формула, которую обязаны разделять обе стороны:
-        /// - NumericalFloorSqrDistance = 1e-6 м² (только защита от r=0)
+        /// NOTE: The math must match AccelerationEvaluator.BodyGravity (Burst double3
+        /// version, not present in this repo — parity is not verified automatically,
+        /// see T34). The formula both sides must share:
+        /// - NumericalFloorSqrDistance = 1e-6 m² (only guards r=0)
         /// - a = (bodyPos - shipPos) * (μ / r³)
         /// </summary>
         public static Vector3d CalculateAccelerationFromStandardGravitationalParameter(
@@ -82,10 +82,10 @@ namespace Galilego.Core
         }
 
         /// <summary>
-        /// Вариант для планировщика/превью (Lambert/porkchop), где корабля нет
-        /// и событию неоткуда сработать. false = точка внутри тела (по radius),
-        /// кандидат трассы помечается invalid, а не тихо зануляется.
-        /// Конечность гарантируется: ниже численного пола тоже false.
+        /// Variant for the planner/preview (Lambert/porkchop), where there is no ship
+        /// and no event can fire. false = point inside the body (by radius); the
+        /// trajectory candidate is marked invalid instead of silently zeroed.
+        /// Finiteness is guaranteed: below the numerical floor it is also false.
         /// </summary>
         public static bool TryCalculateAccelerationFromStandardGravitationalParameter(
             Vector3d currentPos,

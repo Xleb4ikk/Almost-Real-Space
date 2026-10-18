@@ -66,9 +66,9 @@ internal static partial class P1bTests
     private static double RunProgradeBurn(StarSystem sys, OrbitingBody planet, BurnRig rig, Vector3d parkP0, Vector3d parkV0, BurnTolerancePreset preset,
         out Vector3d idealEndPosition, out Vector3d idealEndVelocity, out SpacecraftIntegrationState endState, out double fuelUsed)
     {
-        // Идеал = мгновенный Δv в зажигании + coast аналитикой Kepler
-        // (независимый от DOPRI механизм — иначе общий баг спрятался бы).
-        // Направление — инерциальный прогонный вектор в зажигании (без steering).
+        // Ideal = instantaneous Δv at ignition + coast via analytic Kepler
+        // (a mechanism independent of DOPRI, otherwise a shared bug could hide).
+        // Direction — the inertial prograde vector at ignition (no steering).
         double cutTime = 100d + rig.BurnSeconds;
         var preShip = new Spacecraft(parkP0, parkV0, rig.Mass0);
         var coastOnly = new LongWarpDriver(rig.Phys, new EventDrivenPropagator(rig.Phys));
@@ -95,8 +95,8 @@ internal static partial class P1bTests
 
     private static int Test30_YearDrift()
     {
-        // V5/V6: годовые дрейфы bound-орбит. Границы после замера (дисциплина):
-        // первичный прогон печатает числа, границы фиксируем по ним с запасом.
+        // V5/V6: annual drifts of bound orbits; bounds are set from a measurement
+        // run with margin.
         StarSystem sys = TwoBodySystem();
         OrbitingBody planet = sys.AllBodies[1];
         double mu = planet.ResolveStandardGravitationalParameter();
@@ -109,8 +109,8 @@ internal static partial class P1bTests
         string[] names = new string[] { "круг", "поляр", "ретро", "e=0.05" };
         Vector3d[] pp = new Vector3d[4];
         Vector3d[] vv = new Vector3d[4];
-        // В точке +Y прямое движение — это −X (против часовой с +Z):
-        // h=(0,R,0)×(−v,0,0)=(0,0,+Rv), i=0. Знак +X даёт i=180° (ретро).
+        // At +Y prograde motion is −X (counter-clockwise about +Z):
+        // h=(0,R,0)×(−v,0,0)=(0,0,+Rv), i=0. The +X sign gives i=180° (retrograde).
         pp[0] = new Vector3d(0d, r, 0d);
         vv[0] = new Vector3d(-circV, 0d, 0d);
         pp[1] = new Vector3d(r, 0d, 0d);
@@ -139,8 +139,8 @@ internal static partial class P1bTests
             double de;
             double da;
             YearDriftAngles ang;
-            // Граница ω — только e=0.05 (реальный эксцентриситет): у круговых
-            // ω не определён физически, замер дал блуждание 1.4–2.8 рад.
+            // The ω bound applies only to e=0.05 (real eccentricity): for circular
+            // orbits ω is physically undefined.
             results.Add(YearDriftCase(sys, planet, pp[i], vv[i], trueApo[i], names[i], i == 3, out de, out da, out ang));
             deCase[i] = de;
             if (de > wE) wE = de;
@@ -153,14 +153,14 @@ internal static partial class P1bTests
             invalidTotal += ang.InvalidMonths;
         }
 
-        // Ретро-сплит: та же физика и поле, дрейф обязан совпадать почти точно
-        // (замер: 0.99). Коридор [0.5, 2.0] — расхождение в 2 раза уже аномалия.
-        // Индивидуальные границы энергии ловят регресс одного кейса, который
-        // общий worst скрыл бы.
+        // Retrograde split: same physics and field, so the drift must match almost
+        // exactly; corridor [0.5, 2.0] — a 2x mismatch is already anomalous.
+        // Per-case energy bounds catch a single-case regression that a combined
+        // worst value would hide.
         double retroRatio = deCase[0] > 0d ? deCase[2] / deCase[0] : double.NaN;
-        // ΔΩ e=0.05 (6.3e-3) — реальная солнечная регрессия узла (оценка:
-        // 0.75·n·(M★/M)·(a/R)³·T ≈ 6e-3), не численник. Граница 0.05 с запасом,
-        // но на порядки ниже уровня «что-то сломалось».
+        // ΔΩ for e=0.05 (6.3e-3) is real solar node regression (estimate:
+        // 0.75·n·(M★/M)·(a/R)³·T ≈ 6e-3), not numerical noise. The 0.05 bound has
+        // margin but is orders of magnitude below "something broke".
         Check(wE < 5e-5d && wA < 1e-3d
             && deCase[0] < 5e-5d && deCase[1] < 5e-5d && deCase[2] < 5e-5d && deCase[3] < 5e-5d
             && retroRatio > 0.5d && retroRatio < 2.0d
@@ -173,12 +173,13 @@ internal static partial class P1bTests
 
     private static int Test31_Flyby()
     {
-        // V1: гиперболический пролёт планеты (v∞=60км/с, r_p=R+50км).
-        // (i) Обратный ход Kepler: −2000с/+2000с возврат (валидирует и ICs крыльев).
-        // (ii) |v∞| вход/выход на r=5e7: vis-viva симметрично, допуск 1e-3
-        // (третьи тела дают ~1e-9 — запас 6 порядков).
-        // (iii) Угол разворота vs 2·arcsin(1/e), e из перицентра: допуск 0.1°,
-        // бюджет: конечность крыльев ~0.015°×2 + N-body ~1e-6°.
+        // V1: hyperbolic planet flyby (v∞=60 km/s, r_p=R+50 km).
+        // (i) Kepler reverse step: −2000s/+2000s round trip (also validates the
+        // wing ICs).
+        // (ii) |v∞| in/out at r=5e7: vis-viva symmetric, tolerance 1e-3
+        // (third bodies give ~1e-9 — 6 orders of margin).
+        // (iii) Turn angle vs 2·arcsin(1/e), e from periapsis: tolerance 0.1°,
+        // budget: wing finiteness ~0.015°×2 + N-body ~1e-6°.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         double mu = planet.ResolveStandardGravitationalParameter();
@@ -192,10 +193,10 @@ internal static partial class P1bTests
         KeplerPredictor.Advance(periP - bp0, periV - bv0, mu, -2000d, out Vector3d backP, out Vector3d backV);
         KeplerPredictor.Advance(backP, backV, mu, 2000d, out Vector3d fwdP, out Vector3d fwdV);
         double rtBack = Math.Max((fwdP - (periP - bp0)).Magnitude / rp, (fwdV - (periV - bv0)).Magnitude / vp);
-        // Состояние назад — относительно планеты, а планета движется: в мир
-        // корабль ставится через положение/скорость НА МОМЕНТ СТАРТА (−2000с),
-        // не через bp0/bv0 (t=0). Иначе старт в 6e7м от расчётной ветки —
-        // поймано: e=50 вместо 59 и нырок под поверхность при «честной» физике.
+        // The backward state is planet-relative and the planet moves, so the ship
+        // is placed in the world using position/velocity AT THE START TIME
+        // (−2000s), not bp0/bv0 (t=0); otherwise it starts 6e7 m off the computed
+        // branch.
         planet.EvaluateWorldState(-2000d, out Vector3d bpBack, out Vector3d bvBack);
 
         var phys = new SpacecraftPhysics();
@@ -206,10 +207,10 @@ internal static partial class P1bTests
         EventOccurrence? ev = prop.PropagateWithSegments(ship, -2000d, 20000d, track);
         bool clean = !ev.HasValue;
 
-        // Двухпроходный скан трека (без хрупких порогов вроде rp+1000):
-        // проход 1 — время перицентра (минимум радиуса), проход 2 — пересечения
-        // крыла до/после него с линейной интерполяцией времени и состоянием
-        // через dense-трек (ошибка ~ v·δt, δt — доли секунды).
+        // Two-pass track scan (no brittle thresholds like rp+1000): pass 1 finds
+        // the periapsis time (radius minimum), pass 2 finds the wing crossings
+        // before/after it with linear time interpolation and the state from the
+        // dense track (error ~ v·δt, δt a fraction of a second).
         double wingR = 5e7d;
         double minR = double.MaxValue;
         double tPeri = track[0].T0;
@@ -301,15 +302,14 @@ internal static partial class P1bTests
 
     private static int Test30_PartsTrap()
     {
-        // R2a-ловушка: намеренно смещённая конфигурация (COM ≠ origin).
-        // Раскладка: 700 @ (0,0,0), 200 @ (3,0,0), 100 @ (0,1,0).
-        // Эталон посчитан вручную независимо (см. разбор):
+        // R2a trap: deliberately offset configuration (COM ≠ origin).
+        // Layout: 700 @ (0,0,0), 200 @ (3,0,0), 100 @ (0,1,0).
+        // Reference computed independently by hand (see analysis):
         // COM=(0.6,0.1,0), Ixx=90, Iyy=1440, Izz=1530, Ixy=60, Ixz=Iyz=0.
-        // Код «от origin» даёт 100/1800/1900/0 — другая структура тензора
-        // (главные оси случайно совпадают с координатными), ловушка ловит
-        // не шум, а неверную физику. Допуск 1e-9 относительный: расхождение
-        // неверного кода — десятки процентов, запас 7+ порядков.
-        // Проверено красным прогоном на d=r вместо d=r−COM (см. отчёт).
+        // An "from origin" implementation gives 100/1800/1900/0 — a different
+        // tensor structure — so the trap catches wrong physics, not noise.
+        // Relative tolerance 1e-9: a wrong implementation is off by tens of
+        // percent, 7+ orders of margin.
         var parts = new List<Part>();
         parts.Add(new Part(700d, new Vector3d(0d, 0d, 0d), 1e9d));
         parts.Add(new Part(200d, new Vector3d(3d, 0d, 0d), 1e9d));
@@ -347,8 +347,8 @@ internal static partial class P1bTests
 
     private static int Test31_AttitudeSpin()
     {
-        // R1a: свободное вращение вокруг главной оси — ω константа, угол ровно ωt.
-        // R1b: постоянный момент вокруг главной оси из покоя — ω линейна, угол квадратичен.
+        // R1a: free rotation about a principal axis — ω constant, angle exactly ωt.
+        // R1b: constant torque about a principal axis from rest — ω linear, angle quadratic.
         var inertiaA = new Matrix3x3(2d, 0d, 0d, 0d, 2d, 0d, 0d, 0d, 4d);
         var stateA = new AttitudeState(QuaternionD.Identity, new Vector3d(0d, 0d, 5d));
         for (int i = 0; i < 3000; i++)
@@ -373,9 +373,9 @@ internal static partial class P1bTests
         double angleErrB = (turnedB - expectB).Magnitude;
         double omegaErrB = (stateB.AngularVelocity - new Vector3d(0d, 0d, 20d)).Magnitude / 20d;
 
-        // Границы по замеру: fixed RK4 dt=0.02 даёт фазу ~6e-6/1.6e-4 за 300/100 рад
-        // (детерминировано, тригонометрии в степпере нет — только +−*/sqrt),
-        // ω при этом держится на 1e-12..1e-14.
+        // Measured bounds: fixed RK4 dt=0.02 gives phase ~6e-6/1.6e-4 over 300/100 rad
+        // (deterministic; the stepper has no trigonometry, only +−*/sqrt), while ω
+        // holds at 1e-12..1e-14.
         Check(angleErrA < 1e-5d && omegaErrA < 1e-12d && angleErrB < 1e-3d && omegaErrB < 1e-9d, "T31 attitude-spin",
             string.Format("свободное: угол {0:E2} ω {1:E2}; момент: угол {2:E2} ω {3:E2}",
                 angleErrA, omegaErrA, angleErrB, omegaErrB));
@@ -384,9 +384,9 @@ internal static partial class P1bTests
 
     private static int Test31_AttitudeTumble()
     {
-        // R1c: свободный кувырок несимметричного тела (тензор R2a!) 1000с:
-        // энергия и |L| дрейфуют в границе после замера. Диагональ бы это
-        // пропустила — прецессии/кувырка несимметричного тела там нет.
+        // R1c: free tumble of an asymmetric body (R2a tensor!) for 1000 s: energy
+        // and |L| drift within measured bounds. A diagonal tensor would miss this —
+        // an asymmetric body's precession/tumble doesn't occur there.
         var inertia = new Matrix3x3(90d, 60d, 0d, 60d, 1440d, 0d, 0d, 0d, 1530d);
         var w0 = new Vector3d(1d, 2d, 3d);
         double e0 = 0.5d * Vector3d.Dot(w0, inertia * w0);
@@ -401,14 +401,13 @@ internal static partial class P1bTests
         double e1 = 0.5d * Vector3d.Dot(state.AngularVelocity, inertia * state.AngularVelocity);
         double l1 = (inertia * state.AngularVelocity).Magnitude;
         double qNorm = Math.Abs(state.Attitude.NormSquared - 1d);
-        // Мировая L обязана сохраняться (момента нет): E и |L| от конвенции q̇
-        // не зависят и перевёрнутый порядок q̇ НЕ ловят (доказано красным
-        // прогоном — одноосевые вращения коммутируют, подалгебра ≅ ℂ).
-        // Зеркальная кинематика разворачивает L_world на O(1) за секунды.
+        // World L must be conserved (no torque): E and |L| don't depend on the q̇
+        // convention and do NOT catch a reversed q̇ order (single-axis rotations
+        // commute). Mirrored kinematics flips L_world by O(1) within seconds.
         Vector3d worldL1 = state.Attitude.Rotate(inertia * state.AngularVelocity);
         double worldDrift = (worldL1 - worldL0).Magnitude / worldL0.Magnitude;
-        // Дрейф ~1e-5/1000с (линейный порядок, не экспонента): для постоянно
-        // идущей симуляции темп ~1e-8/с, задокументирован, не скрыт.
+        // Drift ~1e-5/1000 s (linear order, not exponential): for a continuously
+        // running simulation that is ~1e-8/s.
         Check(Math.Abs((e1 - e0) / e0) < 1e-4d && Math.Abs((l1 - l0) / l0) < 1e-4d && qNorm < 1e-12d && worldDrift < 1e-3d, "T31 attitude-tumble",
             string.Format("1000с кувырка: ΔE/E={0:E2} Δ|L|/|L|={1:E2} |q|−1={2:E2} ΔL_world={3:E2}",
                 Math.Abs((e1 - e0) / e0), Math.Abs((l1 - l0) / l0), qNorm, worldDrift));
@@ -417,15 +416,16 @@ internal static partial class P1bTests
 
     private static int Test31_AttitudePD()
     {
-        // R1d: PD гасит кувырок и держит цель. Контроллер test-local (как
-        // CountingSource): продакшн-автопилот переиспользует эту логику
-        // (TODO-узел), не дублирует. τ = −kp·err − kd·ω, err = 2·vec(qt⁻¹·q).
+        // R1d: PD damps the tumble and holds the target. The controller is
+        // test-local (like CountingSource): the production autopilot reuses this
+        // logic (TODO node), it doesn't duplicate it. τ = −kp·err − kd·ω,
+        // err = 2·vec(qt⁻¹·q).
         var inertia = new Matrix3x3(100d, 0d, 0d, 0d, 120d, 0d, 0d, 0d, 150d);
         var state = new AttitudeState(
             QuaternionD.FromAxisAngle(new Vector3d(0d, 0d, 1d), 0.5d),
             new Vector3d(0.5d, 0.3d, 0.2d));
-        // Замыкание захватывает только константы (без аллокаций в тике):
-        // ошибка считается внутри производной из переданного ей состояния.
+        // The closure captures only constants (no allocations per tick): the error
+        // is computed inside the derivative from the state passed to it.
         for (int i = 0; i < 6000; i++)
         {
             state = AttitudePhysics.Step(state, inertia,
@@ -445,8 +445,8 @@ internal static partial class P1bTests
 
     private static int Test31_TorqueLink()
     {
-        // Связка тяги с ориентацией + поле Torque. Снимок поворачивает телесное
-        // направление; без снимка — legacy мировой путь (старые тесты им идут).
+        // Thrust-orientation link + Torque field. The snapshot rotates the body
+        // direction; without it the legacy world path applies (older tests use it).
         var thrust = new ThrustSource(1000d, 500d, new ConstantIsp(300d));
         thrust.ThrottleAt = (time) => 1d;
         thrust.BodyThrustDirection = new Vector3d(0d, 0d, 1d);
@@ -473,10 +473,10 @@ internal static partial class P1bTests
         DynamicsContribution full = block.EvaluateFull(QuaternionD.Identity, Vector3d.Zero, 0d);
         bool fullOk = full.Force.SqrMagnitude == 0d && full.Torque.Y == -20d;
 
-        // Оживлённый канал (фаза 2.2): RcsBlock полным Evaluate идёт в
-        // SpacecraftPhysics — сила в RHS, момент в снимок TotalTorqueBody;
-        // снимок кормит AttitudePhysics.Step постоянным моментом и вращение
-        // реально раскручивается.
+        // Live channel (phase 2.2): RcsBlock with full Evaluate goes into
+        // SpacecraftPhysics — force into the RHS, torque into the TotalTorqueBody
+        // snapshot; the snapshot feeds AttitudePhysics.Step a constant torque and
+        // the rotation actually spins up.
         var phys = new SpacecraftPhysics();
         phys.Sources.Add(block);
         bool noProviderLoud = false;
@@ -496,8 +496,8 @@ internal static partial class P1bTests
         bool snapshotOk = phys.TotalTorqueBody.X == 0d && phys.TotalTorqueBody.Y == -20d && phys.TotalTorqueBody.Z == 0d;
         Vector3d torqueSnapshot = phys.TotalTorqueBody;
 
-        // Сила того же источника реально в орбитальной RHS: один дюз (0,0,1)·10Н
-        // при q90 даёт мировую силу (0,−10,0) → Δv = −10/900 ≈ −0.011 м/с по y.
+        // The same source's force really lands in the orbital RHS: one thruster
+        // (0,0,1)·10 N at q90 gives world force (0,−10,0) → Δv = −10/900 ≈ −0.011 m/s on y.
         block.Thrusters[1].Active = false;
         var shipForce = new Spacecraft(Vector3d.Zero, Vector3d.Zero, 900d);
         phys.Step(shipForce, 0d, 1d);
@@ -521,18 +521,18 @@ internal static partial class P1bTests
 
     private static int Test33_Ascent()
     {
-        // R3: взлёт со связкой ориентация→тяга. Снимок ориентации и расписание
-        // газа идут на одной тиковой сетке 0.5с (игровой цикл обязан держать
-        // обе на одних часах — здесь это инвариант цикла теста, не кода).
-        // Отрицательный контроль: фиксированный мировой вектор тяги даёт
-        // другую (вертикальную) траекторию — изгиб именно от связки.
+        // R3: ascent with an orientation→thrust link. The orientation snapshot and
+        // the throttle schedule run on the same 0.5 s tick grid — a test-loop
+        // invariant here, not a code one.
+        // Negative control: a fixed world thrust vector gives a different
+        // (vertical) trajectory — the bend comes precisely from the link.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.RotationPeriodSeconds = 0d;
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
-        // Площадка lon=90°: оффсет (0,R,0), нормаль +Y — туда же смотрят нос
-        // (q0), вертикальный контроль (0,1,0) и векторы liftoff-теста.
-        // lat=0,lon=0 дал бы нормаль +X и ракета летела бы боком (поймано).
+        // Pad at lon=90°: offset (0,R,0), normal +Y — where the nose (q0), the
+        // vertical control (0,1,0) and the liftoff-test vectors all point.
+        // lat=0,lon=0 would give a +X normal and the rocket would fly sideways.
         planet.GetSurfaceState(0d, 90d, 0d, 0d, out Vector3d padP, out Vector3d padV);
         var inertia = new Matrix3x3(15000d, 0d, 0d, 0d, 15000d, 0d, 0d, 0d, 8000d);
         QuaternionD vertical = QuaternionD.FromAxisAngle(new Vector3d(1d, 0d, 0d), -Math.PI / 2d);
@@ -607,9 +607,9 @@ internal static partial class P1bTests
     private static int Test33_StagingMomentum()
     {
         // T33a: m1=800, m2=200, v0=(1000,0,0), Δv_rel=(2,0,0).
-        // Эталон посчитан вручную: v1=(1000.4,0,0), v2=(998.4,0,0),
-        // 800·1000.4+200·998.4=1,000,000=M·v0 ровно. Допуск — fp-шум (~1e-12),
-        // не «близко»: формула обязана держать тождество, а не приближение.
+        // Reference computed by hand: v1=(1000.4,0,0), v2=(998.4,0,0),
+        // 800·1000.4+200·998.4=1,000,000=M·v0 exactly. The tolerance is fp noise
+        // (~1e-12), not "close": the formula must hold an identity, not an approximation.
         var pool = new DebrisPool();
         var ship = new Spacecraft(new Vector3d(1e7d, 0d, 0d), new Vector3d(1000d, 0d, 0d), 1000d);
         int slot = ManeuverEvaluator.StageSeparation(ship, 200d, new Vector3d(2d, 0d, 0d), pool, 0d, 100d);
@@ -637,7 +637,7 @@ internal static partial class P1bTests
     {
         public DynamicsContribution Evaluate(Vector3d position, Vector3d velocity, double mass, double timeSeconds)
         {
-            return new DynamicsContribution(Vector3d.Zero, Vector3d.Zero, 1d, Vector3d.Zero); // кг/с: сводит массу в ноль
+            return new DynamicsContribution(Vector3d.Zero, Vector3d.Zero, 1d, Vector3d.Zero); // kg/s: drives mass to zero
         }
     }
 
@@ -656,17 +656,17 @@ internal static partial class P1bTests
 
     private static int Test66_NanProtocol()
     {
-        // S1: NaN-протокол. Порча состояния обязана быть громкой на каждом
-        // рубеже: нормализация, RHS, интегратор, детекторы. Молчаливые события
-        // «нет пересечения» при NaN-g — прямой антагонист детекторного слоя.
-        bool normalNaN = double.IsNaN(Vector3d.Zero.Normalized.X) == false; // ноль остаётся Zero
+        // S1: NaN protocol. State corruption must be loud at every boundary:
+        // normalization, RHS, integrator, detectors. Silent "no crossing" events
+        // under a NaN g are the direct antagonist of the detector layer.
+        bool normalNaN = double.IsNaN(Vector3d.Zero.Normalized.X) == false; // zero stays Zero
         var nanVec = new Vector3d(double.NaN, 1d, 0d);
         bool nanPropagates = double.IsNaN(nanVec.Normalized.X) && double.IsNaN(nanVec.Normalized.Y);
         bool zeroStaysZero = Vector3d.Zero.Normalized.X == 0d && Vector3d.Zero.Normalized.Y == 0d;
         var unit = new Vector3d(3d, 0d, 0d).Normalized;
         bool normalWorks = unit.X == 1d;
 
-        // Интеграторы forward-only.
+        // Integrators are forward-only.
         bool forwardOnly = false;
         try
         {
@@ -693,7 +693,7 @@ internal static partial class P1bTests
             shipForwardOnly = true;
         }
 
-        // Не-конечный вклад источника — громко в RHS.
+        // A non-finite source contribution is loud in the RHS.
         bool nanSourceThrows = false;
         var phys = new SpacecraftPhysics();
         phys.Sources.Add(new NanSource());
@@ -707,7 +707,7 @@ internal static partial class P1bTests
             nanSourceThrows = true;
         }
 
-        // Источник, сводящий массу в ноль — громко на первом шаге после исчерпания.
+        // A source driving mass to zero is loud on the first step after depletion.
         bool drainThrows = false;
         var phys2 = new SpacecraftPhysics();
         phys2.Sources.Add(new DrainSource());
@@ -721,7 +721,7 @@ internal static partial class P1bTests
             drainThrows = true;
         }
 
-        // Детектор с NaN-g — громко, а не молчаливый пропуск события.
+        // A detector with NaN g is loud, not a silent skipped event.
         bool nanDetectorThrows = false;
         StarSystem sys = ManualStarPlanetMoon();
         var gravity = new CachedGravitySource(sys);
@@ -739,7 +739,7 @@ internal static partial class P1bTests
             nanDetectorThrows = ex.Message.Contains("NanDetector");
         }
 
-        // Здоровый путь не пострадал: без NaN-детектора propagation работает.
+        // The healthy path is unaffected: without the NaN detector propagation works.
         var prop2 = new EventDrivenPropagator(physics);
         var shipOk = new Spacecraft(new Vector3d(0d, 8e6d, 0d), new Vector3d(5000d, 0d, 0d), 1000d);
         EventOccurrence? none = prop2.Propagate(shipOk, 0d, 10d);
@@ -754,9 +754,9 @@ internal static partial class P1bTests
 
     private static int Test68_StructuralContracts()
     {
-        // S2/S3: структурная прочность ядра — «программист рядом» не может
-        // молча потерять тела, зациклить иерархию, дублировать имена,
-        // частично прицепить эфемериды или отравить кэш.
+        // S2/S3: core structural robustness — a nearby developer can't silently
+        // lose bodies, cycle the hierarchy, duplicate names, partially attach
+        // ephemerides or poison the cache.
         bool cycleThrows = false;
         try
         {
@@ -782,7 +782,7 @@ internal static partial class P1bTests
             x.Parent = root;
             root.Children.Add(x);
             y.Parent = root;
-            // Конфликт: y числится ребёнком root, но Parent указывает на x.
+            // Conflict: y is listed as a child of root, but Parent points to x.
             root.Children.Add(y);
             y.Parent = x;
             new StarSystem(root);
@@ -809,7 +809,7 @@ internal static partial class P1bTests
             duplicateNamesThrow = true;
         }
 
-        // Частичный attach: манифест без одной луны — громко + откат.
+        // Partial attach: manifest missing one moon — loud + rollback.
         bool partialAttachThrows = false;
         bool rollbackClean = false;
         string dir = System.IO.Path.Combine(Path.GetTempPath(), "t68_" + Guid.NewGuid().ToString("N"));
@@ -817,7 +817,7 @@ internal static partial class P1bTests
         {
             StarSystem full = ManualStarPlanetMoon();
             EphemerisBaker.BakeToFiles(full, dir, 2d, new BakeConfig { Degree = 12, MaxStepSeconds = 900d });
-            // Убираем луну из манифеста (оригинал сохраняем для проверки отката).
+            // Remove the moon from the manifest (keep the original for the rollback check).
             string manifestPath = System.IO.Path.Combine(dir, "manifest.txt");
             string[] lines = System.IO.File.ReadAllLines(manifestPath);
             System.IO.File.WriteAllLines(manifestPath, System.Linq.Enumerable.Where(lines, l => !l.StartsWith("Луна\t")));
@@ -832,7 +832,7 @@ internal static partial class P1bTests
             rollbackClean = true;
             try
             {
-                // Откат: восстановленный манифест — attach проходит целиком.
+                // Rollback: with the restored manifest attach completes fully.
                 string manifestPath2 = System.IO.Path.Combine(dir, "manifest.txt");
                 System.IO.File.WriteAllLines(manifestPath2, new[]
                 {
@@ -848,7 +848,7 @@ internal static partial class P1bTests
             }
         }
 
-        // AttachEphemeris: чужое тело громко; валидный attach сбрасывает кэш.
+        // AttachEphemeris: a foreign body is loud; a valid attach resets the cache.
         bool foreignBodyThrows = false;
         StarSystem owner = ManualStarPlanetMoon();
         var memoryEph = EphemerisBaker.Bake(owner, 1d, new BakeConfig { Degree = 12, MaxStepSeconds = 900d });
@@ -865,7 +865,7 @@ internal static partial class P1bTests
         bool attachViaMethodWorks = false;
         StarSystem owner2 = ManualStarPlanetMoon();
         var eph2 = EphemerisBaker.Bake(owner2, 1d, new BakeConfig { Degree = 12, MaxStepSeconds = 900d });
-        owner2.EvaluateBodyState(owner2.AllBodies[1], 100d, out _, out _); // прогрев кэша (кеплеровы позиции)
+        owner2.EvaluateBodyState(owner2.AllBodies[1], 100d, out _, out _); // warm the cache (Kepler positions)
         foreach (var kv in eph2)
         {
             owner2.AttachEphemeris(kv.Key, kv.Value);
@@ -873,7 +873,7 @@ internal static partial class P1bTests
 
         owner2.EvaluateBodyState(owner2.AllBodies[1], 100d, out Vector3d pAfter, out Vector3d vAfter);
         eph2[owner2.AllBodies[1]].TryEvaluate(100d, out Vector3d pRail, out Vector3d vRail);
-        // Кэш сброшен: позиция после attach == рельсе (звезда в нуле).
+        // Cache reset: position after attach == rails (star at origin).
         attachViaMethodWorks = (pAfter - pRail).Magnitude < 1e-6d && vAfter.IsFinite;
 
         Check(cycleThrows && parentConflictThrows && duplicateNamesThrow && partialAttachThrows && rollbackClean
@@ -885,16 +885,13 @@ internal static partial class P1bTests
 
     private static int Test71_DebrisTunnel()
     {
-        // Фаза 1.2: антитуннельный кап прыжка debris. Баг: IsInsideAnyBody
-        // проверяется только на КОНЦЕ hop'а — при FarHop=30с обломок со скоростью
-        // v мог войти и выйти из тела радиусом < v·hop/2 (кастомный астероид),
-        // детект не срабатывал никогда. Фикс: hop ≤ 0.25·R_min/v с полом 0.25с.
+        // Phase 1.2: anti-tunneling hop cap for debris: hop ≤ 0.25·R_min/v with a
+        // 0.25 s floor, so a crossing can't be missed between checks.
         StarSystem sys = TunnelSystem();
         var updater = new DebrisUpdater(sys);
 
-        // Обломок на подлёте к статичному астероиду R=1e3, скорость 2000: хорда
-        // 2R/v=1с — старый FarHop=30с давал чистое туннелирование. Фокус далеко
-        // (FarHop-режим).
+        // Debris approaching a static asteroid R=1e3 at 2000 m/s: chord 2R/v=1 s,
+        // so the cap must trigger. Focus far away (FarHop mode).
         var pool = new DebrisPool();
         Vector3d startPos = new Vector3d(5000d, 0d, 0d);
         pool.Spawn(startPos, new Vector3d(-2000d, 0d, 0d), 100d, 0d, 1e7d);
@@ -915,7 +912,7 @@ internal static partial class P1bTests
             t = pool.SlotAt(0).NextCheckTimeSeconds;
         }
 
-        // Крупное тело: кап не должен ломать LOD-экономию (R/v-кап больше FarHop).
+        // Large body: the cap must not break LOD economy (R/v cap larger than FarHop).
         StarSystem big = ManualStarPlanetMoon();
         var bigUpdater = new DebrisUpdater(big);
         var poolBig = new DebrisPool();
@@ -926,12 +923,12 @@ internal static partial class P1bTests
         bool capWorks = detected && hops > 5;
         bool lodIntact = bigHop == DebrisUpdater.FarHopSeconds;
 
-        // 3) Регресс A2: v_rel = 0 (со-движущийся обломок) не отключает кап
-        // тихо — знаменатель клампится параболической скоростью у тела.
+        // 3) v_rel = 0 (co-moving debris) must not silently disable the cap: the
+        // denominator is clamped to the parabolic speed at the body.
         var poolStill = new DebrisPool();
         poolStill.Spawn(new Vector3d(5000d, 0d, 0d), Vector3d.Zero, 100d, 0d, 1e7d);
         double stillHop = updater.HopForSlot(poolStill.SlotAt(0), new Vector3d(2e11, 0d, 0d), 0d);
-        // Пол = √(2μ/d) = √(2e9/5000) ≈ 447 м/с → кап = 0.25·1000/447 ≈ 0.56с < NearHop=1с.
+        // Floor = √(2μ/d) = √(2e9/5000) ≈ 447 m/s → cap = 0.25·1000/447 ≈ 0.56 s < NearHop=1 s.
         double expectedFloorSpeed = Math.Sqrt(2d * 1e9d / 5000d);
         bool zeroRelClamped = stillHop < DebrisUpdater.NearHopSeconds
             && stillHop >= DebrisUpdater.MinHopSeconds - 1e-12d;
@@ -945,9 +942,10 @@ internal static partial class P1bTests
 
     private sealed class StateTorqueSource : IDynamicsSource
     {
-        // Задел на gravity-gradient: момент ЗАВИСИТ от состояния — probe-шаг
-        // бисекции в другой точке обязан оставлять другой след в снимке, и
-        // только save/restore держит снимок согласованным с принятой траекторией.
+        // Groundwork for gravity-gradient: the torque DEPENDS on state, so a
+        // bisection probe step at another point must leave a different trace in
+        // the snapshot; only save/restore keeps the snapshot consistent with the
+        // accepted trajectory.
         public DynamicsContribution Evaluate(Vector3d position, Vector3d velocity, double mass, double timeSeconds)
         {
             return new DynamicsContribution(Vector3d.Zero, Vector3d.Zero, 0d, position * 1e-9d);
@@ -969,11 +967,11 @@ internal static partial class P1bTests
             new Vector3d(0d, 0d, 6.371e6d), normal, 1d, parts);
         IReadOnlyList<PartSeparationSpec> specs = model.PlanBreakup(input);
 
-        // Перегрузка: load/кг = 10/0.05 = 200 → деталь 3000кг: 600000 > 500000 (ломается),
-        // 2000кг: 400000 < 600000 (выживает). Спека ровно одна.
+        // Overload: load/kg = 10/0.05 = 200 → part 3000 kg: 600000 > 500000 (breaks),
+        // 2000 kg: 400000 < 600000 (survives). Exactly one spec.
         bool oneBroken = specs.Count == 1 && specs[0].PartIndex == 0;
 
-        // Тангенциальный инвариант: Σ m_i·f_i^t (broken) + m_surv·f_surv^t = m_ship·v_t.
+        // Tangential invariant: Σ m_i·f_i^t (broken) + m_surv·f_surv^t = m_ship·v_t.
         double survivorMass = 2000d;
         Vector3d fSurv = new Vector3d(30d, 0d, 0d) * (1d - 0.5d);
         Vector3d fragmentTangent = specs[0].FragmentVelocity - (normal * Vector3d.Dot(specs[0].FragmentVelocity, normal));
@@ -982,11 +980,11 @@ internal static partial class P1bTests
         double momentumError = (momentum - expect).Magnitude;
         bool momentumOk = momentumError < 1e-6d * expect.Magnitude;
 
-        // Отскок: нормальная компонента наружу, ровно −e·v_n = +2 м/с (не сильно).
+        // Bounce: normal component outward, exactly −e·v_n = +2 m/s.
         double normalOut = Vector3d.Dot(specs[0].FragmentVelocity, normal);
         bool bounceOk = Math.Abs(normalOut - 2d) < 1e-9d;
 
-        // Стыки держат → пустой список (посадка с повреждениями).
+        // Joints hold → empty list (landing with damage).
         var strong = new List<Part>
         {
             new Part(3000d, new Vector3d(0d, 0d, 2d), 1e12d),
@@ -995,7 +993,7 @@ internal static partial class P1bTests
         var strongInput = new BreakupInput(5000d, impact, Vector3d.Zero, new Vector3d(0d, 0d, 6.371e6d), normal, 1d, strong);
         bool holdsOk = model.PlanBreakup(strongInput).Count == 0;
 
-        // Без деталей → whole-ship fallback (10 фрагментов, инвариант Σm).
+        // No parts → whole-ship fallback (10 fragments, Σm invariant).
         var fallbackInput = new BreakupInput(5000d, impact, Vector3d.Zero, new Vector3d(0d, 0d, 6.371e6d), normal, 1d);
         IReadOnlyList<PartSeparationSpec> fallback = model.PlanBreakup(fallbackInput);
         double fallbackMass = 0d;

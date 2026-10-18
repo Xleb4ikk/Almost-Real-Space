@@ -4,8 +4,8 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Инспектор ассета-профиля рельефа: сворачиваемые секции вместо плоской
-    /// стены из ~40 полей. Пути свойств — от самого ассета (Profile.*).
+    /// Terrain profile asset inspector: collapsible sections instead of a flat wall
+    /// of ~40 fields. Property paths are relative to the asset itself (Profile.*).
     /// </summary>
     [CustomEditor(typeof(TerrainProfileAsset))]
     public sealed class TerrainProfileEditor : Editor

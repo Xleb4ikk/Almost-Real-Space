@@ -6,10 +6,10 @@ using Galilego.Universe;
 namespace Galilego.Debris
 {
     /// <summary>
-    /// Один слот мусора. Тело предсоздано в конструкторе пула и никогда не
-    /// пересоздаётся через new в цикле обновления — Spawn только перезаписывает
-    /// поля Position/Velocity/Mass. Слияние обломков здесь — НЕ физика: если
-    /// понадобится визуальное укрупнение, это TODO слоя рендера, не этого файла.
+    /// One debris slot. The body is pre-created in the pool constructor and never
+    /// re-created with new in the update loop — Spawn only overwrites the
+    /// Position/Velocity/Mass fields. Debris merging here is NOT physics: visual
+    /// coarsening is a TODO for the render layer, not this file.
     /// </summary>
     public sealed class DebrisSlot
     {
@@ -30,8 +30,8 @@ namespace Galilego.Debris
     }
 
     /// <summary>
-    /// Фиксированный пул на N=256 без аллокаций в горячем пути. Новый обломок
-    /// занимает свободный слот или вытесняет самый старый при заполнении.
+    /// Fixed pool of N=256 with no allocations in the hot path. A new debris
+    /// takes a free slot or evicts the oldest one when full.
     /// </summary>
     public sealed class DebrisPool
     {
@@ -71,9 +71,9 @@ namespace Galilego.Debris
         }
 
         /// <summary>
-        /// Занять слот без единого new: переиспользует предсозданное Body.
-        /// При заполнении вытесняет самый старый (минимальный Sequence).
-        /// Возвращает индекс занятого слота.
+        /// Takes a slot without a single new: reuses the pre-created Body.
+        /// When full, evicts the oldest (smallest Sequence).
+        /// Returns the index of the taken slot.
         /// </summary>
         public int Spawn(Vector3d position, Vector3d velocity, double mass, double nowSeconds, double lifetimeSeconds)
         {
@@ -129,24 +129,17 @@ namespace Galilego.Debris
     }
 
     /// <summary>
-    /// Tier1-обновление мусора: только баллистика (единственный GravitySource,
-    /// масса константна), грубые допуски ×50 от активного корабля, без полной
-    /// событийной машины с бисекцией на каждый кадр. Вместо неё — периодическая
-    /// проверка IsInsideAnyBody как чистого предиката. Сон по дистанции: далеко
-    /// от фокуса — редкие крупные прыжки 10–60с, рядом — мелкие. Точность
-    /// сознательно ниже Tier0: у мусора нет геймплейных последствий.
+    /// Tier1 debris update: ballistics only (single GravitySource, constant mass),
+    /// coarse tolerances ×50 of the active ship, periodic IsInsideAnyBody predicate
+    /// instead of the full event machine. Distance-based sleep: large hops (10-60 s)
+    /// far from the focus, small ones nearby; accuracy is intentionally below Tier0.
     ///
-    /// Антитуннельный кап: проверка IsInsideAnyBody стоит только на КОНЦЕ прыжка,
-    /// поэтому за один hop обломок обязан не успевать пересечь тело целиком.
-    /// Гарантия: если обломок проходит через хорду длины L со скоростью v, то
-    /// интервал времени L/v содержит конец hop'а ⟺ L/v ≥ hop. Кап
-    /// hop ≤ k·R_min/v (k=0.25) покрывает все хорды с L ≥ 0.25·R_min, т.е. все
-    /// входы с прицельным параметром ≤ 0.99·R — не детектится только
-    /// касательный ободок глубиной ~0.8% радиуса (задокументированный остаток).
-    /// Для крупных тел (R/v > FarHop/k) кап не работает — LOD-прыжки экономят
-    /// как раньше. Пол R_min/v·k ≥ MinHopSeconds иначе: тела мельче
-    /// MinHopSeconds·v/k детектятся не гарантированно — граница возможностей
-    /// Tier1, валидация масштаба системы отвергает такие тела громко (S2).
+    /// Anti-tunneling cap: IsInsideAnyBody is checked only at the END of a hop, so
+    /// hop ≤ k·R_min/v (k=0.25) guarantees no chord with L ≥ 0.25·R_min is missed
+    /// (only a grazing rim ~0.8% of the radius deep can escape — documented
+    /// residual); for R/v > FarHop/k the LOD hop is already below the cap. Bodies
+    /// smaller than MinHopSeconds·v/k are not detected reliably — the Tier1 limit,
+    /// rejected loudly by system-scale validation (S2).
     /// </summary>
     public sealed class DebrisUpdater
     {
@@ -155,29 +148,29 @@ namespace Galilego.Debris
         public const double FarHopSeconds = 30d;
         public const double CoarseFactor = 50d;
 
-        /// <summary>Доля радиуса в антитуннельном капе: hop ≤ 0.25·R/v.</summary>
+        /// <summary>Radius fraction for the anti-tunneling cap: hop ≤ 0.25·R/v.</summary>
         public const double TunnelSafetyFactor = 0.25d;
 
         /// <summary>
-        /// Зона досягаемости тела: кап применяется только к телам ближе
-        /// ReachabilityRadii·R (иначе далёкие быстрые тела давили бы hop'ы
-        /// по всей системе). Из 100·R обломок, летящий с любой разумной
-        /// скоростью, добирается за часы — кап успевает включиться заранее.
+        /// Body reach zone: the cap applies only to bodies closer than
+        /// ReachabilityRadii·R, otherwise distant fast bodies would flatten hops
+        /// across the whole system. From 100·R a debris needs hours to arrive at
+        /// any reasonable speed, so the cap engages well in advance.
         /// </summary>
         public const double ReachabilityRadii = 100d;
 
-        /// <summary>Пол прыжка: кап для тел мельче ~MinHop·v/k перестаёт работать.</summary>
+        /// <summary>Hop floor: the cap stops working for bodies smaller than ~MinHop·v/k.</summary>
         public const double MinHopSeconds = 0.25d;
 
         /// <summary>
-        /// Коэффициент отскока от поверхности (0 = старое поведение: обломок
-        /// исчезает при входе в тело). > 0 — упрощённый игровой отскок: позиция
-        /// проецируется на радиус тела, нормальная скорость отражается с этим
-        /// коэффициентом, тангенциальная гасится TangentialDampFactor раз.
+        /// Surface bounce coefficient (0 = debris is removed on entering a body).
+        /// > 0 — simplified arcade bounce: the position is projected onto the body
+        /// radius, the normal velocity is reflected with this coefficient, and the
+        /// tangential one is damped by TangentialDampFactor.
         /// </summary>
         public double SurfaceRestitution;
 
-        /// <summary>Во сколько раз гасится тангенциальная скорость при отскоке.</summary>
+        /// <summary>Factor by which tangential velocity is damped on a bounce.</summary>
         public double TangentialDampFactor = 0.5d;
 
         private readonly StarSystem starSystem;
@@ -196,25 +189,21 @@ namespace Galilego.Debris
             physics.Sources.Add(new CachedGravitySource(starSystem));
         }
 
-        /// <summary>Шаг прыжка по LOD-дистанции до фокуса (активный корабль/камера).</summary>
+        /// <summary>Hop length by LOD distance to the focus (active ship/camera).</summary>
         public double HopForDistance(double distanceMeters)
         {
             return distanceMeters < NearDistanceMeters ? NearHopSeconds : FarHopSeconds;
         }
 
         /// <summary>
-        /// Полный hop слота: LOD-прыжок по дистанции до фокуса, сжатый
-        /// антитуннельным капом 0.25·R/v по телам в зоне досягаемости
-        /// (дистанция &lt; 100·R) с ОТНОСИТЕЛЬНОЙ скоростью к телу (не
-        /// инерциальной — обломок рядом с планетой имеет относительные 5 км/с
-        /// при инерциальных 30), с полом MinHopSeconds. Знаменатель клампится
-        /// снизу параболической скоростью у тела: v_rel → 0 (со-движущийся
-        /// обломок) иначе дал бы cap → ∞ и ТИХО отключал кап — а свободное
-        /// падение за hop способно разогнать такой обломок как раз до
-        /// параболической скорости.
-        /// Состояния тел берутся из локального кэша по времени (одно
-        /// заполнение на уникальный t вместо per-slot×body вызовов —
-        /// AdvanceAll по 256 слотам стоит 12 решений, а не 3072).
+        /// Full hop for a slot: LOD hop by distance to the focus, squeezed by the
+        /// anti-tunneling cap 0.25·R/v over bodies in the reach zone (&lt; 100·R) using
+        /// the RELATIVE velocity to the body (a debris near a planet has 5 km/s
+        /// relative while inertial is 30), with a MinHopSeconds floor. The divisor is
+        /// clamped from below at the body's parabolic speed: v_rel → 0 (a co-moving
+        /// piece) would otherwise give cap → ∞ and silently disable the cap, while one
+        /// hop of free fall can accelerate such a piece to parabolic speed.
+        /// Body states come from a local per-time cache (one fill per unique t).
         /// </summary>
         public double HopForSlot(DebrisSlot slot, Vector3d focusPosition, double nowSeconds)
         {
@@ -254,8 +243,8 @@ namespace Galilego.Debris
         private double bodyStateTime = double.NaN;
 
         /// <summary>
-        /// Локальный кэш состояний тел на момент nowSeconds. Только главный
-        /// поток (владелец пула): mutable-состояние без синхронизации.
+        /// Local body-state cache for nowSeconds. Main thread only (pool owner):
+        /// mutable state without synchronization.
         /// </summary>
         private void RefreshBodyStates(double nowSeconds)
         {
@@ -281,9 +270,9 @@ namespace Galilego.Debris
         }
 
         /// <summary>
-        /// Продвинуть один слот к targetTime одним прыжком LOD-размера.
-        /// Без аллокаций: только Step + предикат. Возвращает false если слот
-        /// освобождён (вошёл в тело или истёк lifetime).
+        /// Advances one slot by a single LOD-sized hop. No allocations: just Step
+        /// plus the predicate. Returns false if the slot was released (entered a
+        /// body or its lifetime expired).
         /// </summary>
         public bool AdvanceSlot(DebrisPool pool, int index, double nowSeconds, Vector3d focusPosition)
         {
@@ -324,10 +313,10 @@ namespace Galilego.Debris
         }
 
         /// <summary>
-        /// Упрощённый отскок от поверхности: проекция на радиус тела (сферическая
-        /// модель, ITerrainModel рельеф добавит высоту позже), отражение нормали
-        /// с restitution, гашение тангенциальной. false — отскок невозможен
-        /// (реституция выключена или вырожденная геометрия) → слот освобождается.
+        /// Simplified surface bounce: projection onto the body radius (spherical
+        /// model; ITerrainModel terrain is not applied here), normal reflection with
+        /// restitution, tangential damping. false — bounce impossible (restitution
+        /// off or degenerate geometry), so the slot is released.
         /// </summary>
         private bool BounceOffSurface(DebrisSlot slot, OrbitingBody body, double timeSeconds)
         {
@@ -364,8 +353,8 @@ namespace Galilego.Debris
         }
 
         /// <summary>
-        /// Продвинуть все активные слоты (вызывать по частям через планировщик
-        /// при большом N — этот метод для тестов/малых N).
+        /// Advances all active slots (for large N, call in parts via the scheduler —
+        /// this method is for tests/small N).
         /// </summary>
         public void AdvanceAll(DebrisPool pool, double nowSeconds, Vector3d focusPosition)
         {

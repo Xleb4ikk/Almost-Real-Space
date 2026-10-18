@@ -5,15 +5,15 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Компонент системы: вешается на корневой GameObject (звезду). Дети этой
-    /// иерархии с BodyAuthoring образуют систему. Здесь же параметры выпечки:
-    /// сколько лет печём, качество, куда класть файлы.
+    /// System component: attach to the root GameObject (the star). Children in this
+    /// hierarchy with a BodyAuthoring form the system. Baking parameters live here:
+    /// how many years to bake, quality, where to put the files.
     ///
-    /// Сценарий работы:
-    /// 1. В редакторе: настроить иерархию тел, нажать «Сгенерировать эфемериды»
-    ///    в инспекторе (StarSystemAuthoringEditor, фоновой поток с прогрессом).
-    /// 2. В рантайме: BuildBlueprint().Build() → EphemerisRuntime.AttachFromStreamingAssets(sys)
-    ///    → тела получают рельсы; файлов нет — тела остаются на кеплеровых рельсах.
+    /// Workflow:
+    /// 1. In the editor: set up the body hierarchy and press "Generate ephemerides"
+    ///    in the inspector (StarSystemAuthoringEditor, background thread with progress).
+    /// 2. At runtime: BuildBlueprint().Build() → EphemerisRuntime.AttachFromStreamingAssets(sys)
+    ///    → bodies get rails; with no files the bodies stay on Keplerian rails.
     /// </summary>
     public sealed class StarSystemAuthoring : MonoBehaviour
     {
@@ -37,9 +37,9 @@ namespace Galilego.Universe
         public string OutputFolder = "Assets/StreamingAssets/Ephemerides";
 
         /// <summary>
-        /// Собирает чертёж системы из иерархии GameObject'ов: каждый
-        /// BodyAuthoring в этой иерархии становится телом; родитель в иерархии
-        /// трансформов = орбитальный родитель.
+        /// Builds the system blueprint from the GameObject hierarchy: each
+        /// BodyAuthoring in this hierarchy becomes a body; the transform parent
+        /// is the orbital parent.
         /// </summary>
         public SystemBlueprint BuildBlueprint()
         {
@@ -80,9 +80,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Полный рантайм-путь: сборка системы из иерархии + попытка прицепить
-        /// испечённые эфемериды из StreamingAssets. Возвращает true, если рельсы
-        /// прицеплены; false — тел нет или файлов нет (кеплеровы рельсы, не ошибка).
+        /// Full runtime path: builds the system from the hierarchy and tries to attach
+        /// baked ephemerides from StreamingAssets. Returns true if rails were attached;
+        /// false means no bodies or no files (Keplerian rails, not an error).
         /// </summary>
         public bool BuildAndAttach()
         {

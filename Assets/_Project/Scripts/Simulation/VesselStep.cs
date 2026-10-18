@@ -11,18 +11,15 @@ using Ship = Galilego.Spacecraft.Spacecraft;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Шаг корабля за кадр: полёт (орбитальная цепочка с событиями), посадка
-    /// (стеснённая динамика поверхности), реакции на события. Вынесен из
-    /// SimulationRunner, чтобы игра осталась тонкой MonoBehaviour-обёрткой,
-    /// а шаг можно было прогонять без Unity (тестовый стенд, трейсы посадки).
+    /// Per-frame ship step: flight (orbital chain with events), landing
+    /// (constrained surface dynamics), event reactions. Extracted from
+    /// SimulationRunner so the game stays a thin MonoBehaviour wrapper and the
+    /// step can run without Unity (test bench, landing traces).
     ///
-    /// Владение состоянием: корабль, его режим (Flying/Landed/Destroyed),
-    /// доминантное тело и время с Кахен-аккумулятором живут здесь. Игровой
-    /// цикл (SimulationRunner) читает их и отвечает только за ввод, игрока,
-    /// рендер-якорь и обновление обломков.
-    ///
-    /// Логика перенесена из SimulationRunner без изменения поведения; трейсы
-    /// S1–S5 до и после выноса совпадают побайтно (шаг 0.4 ТЗ v2).
+    /// State ownership: the ship, its regime (Flying/Landed/Destroyed), the
+    /// dominant body and time with the Kahan accumulator live here. The game
+    /// loop (SimulationRunner) reads them and is responsible only for input,
+    /// the player, the render anchor and debris updates.
     /// </summary>
     public sealed class VesselStep
     {
@@ -33,73 +30,73 @@ namespace Galilego.Universe
         public readonly ThrustSource MainThrust;
 
         /// <summary>
-        /// Действующий источник тяги: legacy MainThrust или ступенчатый
-        /// StageThrustSource (ставит SimulationRunner.SetVesselPropulsion).
+        /// Active thrust source: legacy MainThrust or the staged
+        /// StageThrustSource (set by SimulationRunner.SetVesselPropulsion).
         /// </summary>
         public IDynamicsSource Thrust;
 
         /// <summary>
-        /// Ступенчатая модель двигательной установки. null — legacy-сцены без
-        /// построителя: топливо не учитывается, порог по сухой массе в ThrustSource.
+        /// Staged propulsion model. null — legacy scenes without a builder: fuel is
+        /// not tracked, the dry-mass threshold lives in ThrustSource.
         /// </summary>
         public StagePropulsion Propulsion;
 
         /// <summary>
-        /// 6-DOF модель полёта (двигатели в реальных точках, ЦМ/инерция по текущим массам,
-        /// подвес, РСУ, САС). null — прежний путь: точечная масса без ориентации.
+        /// 6-DOF flight model (engines at their real points, CoM/inertia from current
+        /// masses, gimbal, RCS, SAS). null — the previous path: point mass without orientation.
         /// </summary>
         public VesselFlightModel Flight;
 
-        /// <summary>Источник тяги модели полёта (ему передаётся снимок ориентации на чанк).</summary>
+        /// <summary>Thrust source of the flight model (given the per-chunk attitude snapshot).</summary>
         public FlightThrustSource FlightSource;
 
-        /// <summary>Давление среды (Па) в точке и момент; ставит SimulationRunner.</summary>
+        /// <summary>Ambient pressure (Pa) at a point and time; set by SimulationRunner.</summary>
         public Func<Vector3d, double, double> PressureAt;
 
-        /// <summary>Шаг управления полётом: подвес/РСУ/автопилот обновляются на нём (до ×3 варпа).</summary>
+        /// <summary>Flight control step: gimbal/RCS/autopilot update on it (before ×3 warp).</summary>
         public const double FlightChunkSeconds = 0.05d;
 
-        /// <summary>Детектор исчерпания участка выработки (взводится перед чанком).</summary>
+        /// <summary>Burn-section depletion detector (armed before a chunk).</summary>
         public StageDepletionDetector DepletionDetector;
 
         public readonly IBreakupModel BreakupModel;
         public readonly DebrisPool Debris;
 
         /// <summary>
-        /// Детали сборки. Не readonly: режим строительства подменяет список на
-        /// лету (передача аппарата в физику и откат к стройке).
+        /// Assembly parts. Not readonly: build mode swaps the list on the fly
+        /// (handing the craft to physics and reverting back to building).
         /// </summary>
         public PartDefinition[] Parts;
         public readonly double SpawnEpsilonMeters;
         public readonly double DebrisLifetimeSeconds;
 
-        /// <summary>Корабль. Игровой цикл ставит его при спавне и больше не подменяет.</summary>
+        /// <summary>Ship. The game loop sets it at spawn and never replaces it afterwards.</summary>
         public Ship Ship;
 
-        /// <summary>Режим корабля: летит, стоит на поверхности или разрушен.</summary>
+        /// <summary>Ship regime: flying, resting on the surface or destroyed.</summary>
         public VesselRegime Regime;
 
-        /// <summary>Тело, относительно которого сейчас живёт корабль (floating origin, SOI).</summary>
+        /// <summary>Body the ship currently lives relative to (floating origin, SOI).</summary>
         public OrbitingBody DominantBody;
 
-        /// <summary>Симулированное время шага (с).</summary>
+        /// <summary>Simulated step time (s).</summary>
         public double TimeSeconds { get; private set; }
 
-        /// <summary>Сырой газ 0..1 от ввода; читается в шаге при активной тяге.</summary>
+        /// <summary>Raw throttle 0..1 from input; read in the step when thrust is active.</summary>
         public double RawThrottle;
 
-        /// <summary>Наблюдаемость: вызывается перед обработкой события, состояние — момент удара.</summary>
+        /// <summary>Observability: called before event handling, state is the moment of impact.</summary>
         public Action<EventOccurrence> OccurrenceHandled;
 
-        // Не readonly: KahanAccumulator — структура, мутирующие методы на
-        // readonly-поле работали бы с копией.
+        // Not readonly: KahanAccumulator is a struct, so mutating methods on a
+        // readonly field would operate on a copy.
         private KahanAccumulator time = new KahanAccumulator(0d);
         private static readonly SphericalTerrain surfaceTerrain = new SphericalTerrain();
 
-        /// <summary>Инвариант массы нарушен (лог по фронту, а не каждый чанк).</summary>
+        /// <summary>Mass invariant violated (logged on the edge, not every chunk).</summary>
         private bool massInvariantBroken;
 
-        /// <summary>Верхняя граница подшага на поверхности (с), согласована с зерном control-tick.</summary>
+        /// <summary>Upper bound on a surface substep (s), consistent with the control-tick grain.</summary>
         private const double SurfaceMaxStepSeconds = 0.5d;
 
         public VesselStep(
@@ -130,9 +127,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Сбросить Кахен-аккумулятор на текущее время: после внешних
-        /// перемещений корабля (телепорт) накопленная компенсация не относится
-        /// к новой траектории.
+        /// Resets the Kahan accumulator to the current time: after external ship
+        /// moves (teleport) the accumulated compensation does not apply to the
+        /// new trajectory.
         /// </summary>
         public void ResetTimeAccumulator()
         {
@@ -140,10 +137,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Продвинуть время шага БЕЗ физики: зона контакта ведёт корабль сама (PhysX),
-        /// но время мира идёт (планета движется, эфемериды читаются на текущем t).
-        /// Накопитель обновляется тем же способом, что и в шагах (time.Reset).
-        /// Существующие методы шага не трогает: только TimeSeconds и аккумулятор.
+        /// Advances step time WITHOUT physics: the contact zone drives the ship itself (PhysX),
+        /// but world time flows (the planet moves, ephemerides are read at the current t).
+        /// The accumulator is updated the same way as in the steps (time.Reset).
+        /// Touches no existing step methods: only TimeSeconds and the accumulator.
         /// </summary>
         public void AdvanceTime(double dt)
         {
@@ -158,10 +155,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Полёт за кадр: орбитальная цепочка чанками по границе control-tick,
-        /// событие обрабатывается здесь же. playerInShip=false (игрок вне
-        /// корабля) запрещает дальний варп и ограничивает физический ×4 —
-        /// иначе игрока не догнать подшагами.
+        /// Flight for a frame: orbital chain in chunks by the control-tick boundary,
+        /// the event is handled here too. playerInShip=false (player outside the
+        /// ship) forbids long warp and caps physical ×4 — otherwise the player could
+        /// not be caught up by substeps.
         /// </summary>
         public void StepFlying(float realDt, bool playerInShip)
         {
@@ -173,7 +170,7 @@ namespace Galilego.Universe
 
             if (decision.UseLongWarp && playerCap == double.PositiveInfinity)
             {
-                // Дальний варп: баллистика целиком, тяга запрещена по построению.
+                // Long warp: ballistics entirely, thrust forbidden by construction.
                 if (Flight != null)
                 {
                     Flight.Silence();
@@ -252,8 +249,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Вращение за чанк: уравнения Эйлера + кватернион (RK4) от момента модели полёта,
-        /// посчитанного на ЭТОМ чанке (тот же снимок, что и сила в орбитальном интеграторе).
+        /// Rotation over a chunk: Euler equations + quaternion (RK4) from the flight
+        /// model torque computed on THIS chunk (the same snapshot as the force in the orbital integrator).
         /// </summary>
         private void StepAttitude(double dt, double timeSeconds)
         {
@@ -270,9 +267,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Посадка за кадр: стеснённая динамика поверхности чанками. Дальний
-        /// варп запрещён, физический кап ×3 (как в атмосфере). Тяга выше
-        /// прижатия отрывает корабль (TryLiftoff) — возврат в Flying здесь же.
+        /// Landing for a frame: constrained surface dynamics in chunks. Long warp is
+        /// forbidden, physical factor capped at ×3 (as in the atmosphere). Thrust above
+        /// the press-down lifts the ship off (TryLiftoff) — returning to Flying here too.
         /// </summary>
         public void StepLanded(float realDt, bool playerInShip)
         {
@@ -328,8 +325,8 @@ namespace Galilego.Universe
 
         private void HandleOccurrence(EventOccurrence occurrence)
         {
-            // Хук наблюдаемости — до реакций: стенд видит состояние удара,
-            // а не результат проекции/разрушения.
+            // Observability hook — before reactions: the bench sees the moment of
+            // impact, not the result of projection/breakup.
             OccurrenceHandled?.Invoke(occurrence);
             switch (occurrence.Kind)
             {
@@ -372,10 +369,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Корень события исчерпания участка ступенчатой установки: масса уже
-        /// списана CommitBurn'ом (факт из шага), пул исчерпан ровно на границе.
-        /// Автозажигание (отладка этапа 1) подхватывает следующую ступень,
-        /// когда текущая полностью заглохла; отделение — отдельная команда.
+        /// Root of a staged-propulsion burn-section depletion event: the mass has
+        /// already been charged off by CommitBurn (fact of the step), the pool is
+        /// exhausted exactly at the boundary. Auto-ignite (stage-1 debug) picks up the
+        /// next stage once the current one has fully flamed out; separation is a separate command.
         /// </summary>
         private void HandleStageDepletion()
         {
@@ -398,9 +395,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Списать фактически сгоревшую за шаг массу с модели ступеней (источник
-        /// истины — масса: Ship.Mass уже убыл по massFlow интегратора) и сверить
-        /// инвариант «сухие + пулы присоединённых + масса вне сборки == Ship.Mass».
+        /// Charges the mass actually burned over the step off the staged model (the
+        /// source of truth is mass: Ship.Mass has already decreased by the integrator massFlow)
+        /// and checks the invariant "dry + attached pools + mass outside the assembly == Ship.Mass".
         /// </summary>
         private void CommitBurn(double burnedKg)
         {
@@ -413,7 +410,7 @@ namespace Galilego.Universe
             CheckMassInvariant();
         }
 
-        /// <summary>Взвести детектор исчерпания на текущий участок и массу (перед чанком).</summary>
+        /// <summary>Arms the depletion detector for the current section and mass (before a chunk).</summary>
         private void RearmDepletion()
         {
             if (DepletionDetector != null)
@@ -423,8 +420,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Инвариант массы: модель обязана объяснять Ship.Mass целиком. Расхождение
-        /// больше 1e-6 относительных — двойной учёт/недоучёт (лог по фронту, не спамим).
+        /// Mass invariant: the model must account for Ship.Mass entirely. A discrepancy
+        /// above 1e-6 relative means double/missing accounting (logged on the edge, no spam).
         /// </summary>
         private void CheckMassInvariant()
         {
@@ -447,9 +444,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Сборка деталей, нормированная к фактической массе корабля (массы
-        /// деталей задают ПРОПОРЦИИ: топливо выгорает, суммарная масса дрейфует).
-        /// null, если деталей не задано — whole-ship путь breakup-модели.
+        /// Part assembly normalised to the actual ship mass (part masses define
+        /// PROPORTIONS: fuel burns off, the total mass drifts).
+        /// null if no parts are set — the breakup model's whole-ship path.
         /// </summary>
         private List<Part> NormalizeAssembly(double shipMass)
         {
@@ -457,10 +454,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Жёсткий удар: отломанные детали → обломки, выжившая сборка остаётся
-        /// кораблём (масса = разность, посадка продолжится SurfaceMotion).
-        /// Пустой список спеков = стыки держат → посадка с повреждениями.
-        /// Ни одной целой детали → Destroyed.
+        /// Hard impact: broken-off parts → debris, the surviving assembly stays the
+        /// ship (mass = remainder, landing continues via SurfaceMotion).
+        /// Empty spec list = joints hold → landing with damage.
+        /// No intact part left → Destroyed.
         /// </summary>
         private void ApplyBreakup(EventOccurrence occurrence, System.Collections.Generic.IReadOnlyList<PartSeparationSpec> specs)
         {
@@ -475,8 +472,8 @@ namespace Galilego.Universe
             double survivorMass = Ship.Mass - brokenMass;
             DominantBody = occurrence.Body;
 
-            // Разрушение рвёт сборку: ступенчатая модель (ядра/пулы) перестаёт
-            // соответствовать кораблю — выключаем её (панель уйдёт в legacy-ветку).
+            // Breakup tears the assembly apart: the staged model (cores/pools) no longer
+            // matches the ship — disable it (the panel falls back to the legacy branch).
             Propulsion = null;
             DepletionDetector = null;
             Thrust = MainThrust;

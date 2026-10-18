@@ -10,24 +10,22 @@ using UnityEngine.SceneManagement;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Сборка декора местности: генерирует меши-карточки (крест из квадов для
-    /// ближнего LOD, квад-биллборд для дальнего), материалы на шейдерах
-    /// Galilego/GroundDecor*, профиль EarthDecor со слоями (трава, сухая трава,
-    /// ромашки + деревья из Models/Tree) и назначает его на Terra.
-    /// Запускается один раз автоматически (по маркеру) или из меню.
+    /// Ground decor assembly: generates card meshes (quad cross for the near LOD,
+    /// quad billboard for the far LOD), Galilego/GroundDecor* materials, and the
+    /// EarthDecor profile with its layers (grass, dry grass, daisies + trees from
+    /// Models/Tree), then assigns it to Terra. Runs once automatically (marker)
+    /// or from the menu.
     /// </summary>
     public static class GroundDecorSetup
     {
         internal const string ProfilePath = "Assets/_Project/Profiles/Decor/EarthDecor.asset";
 
         /// <summary>
-        /// Верхние границы растительности: конец зелёной текстуры рельефа
-        /// (MidHighBlendEnd = 5500 м) и разные потолки по слоям. Потолки
-        /// РАЗНЫЕ намеренно: общий потолок даёт одну ровную линию конца
-        /// растительности поперёк склонов, а со ступенькой деревья кончаются
-        /// первыми, потом цветы, потом трава — край читается как граница леса,
-        /// а не как обрез по линейке. Камни границу не делят и спавнятся до
-        /// максимальной высоты.
+        /// Vegetation altitude ceilings: the end of the green terrain texture
+        /// (MidHighBlendEnd = 5500 m) and different per-layer caps. The caps are
+        /// DELIBERATELY different so trees end first, then flowers, then grass,
+        /// reading as a treeline rather than a ruler cut. Rocks ignore this and
+        /// spawn to the maximum altitude.
         /// </summary>
         internal const double GrassMaxAltitudeMeters = 5000d;
 
@@ -46,7 +44,7 @@ namespace Galilego.Universe.EditorTools
             EnsureFolder(DecorMaterialsFolder);
             ReimportTextures();
 
-            // Куст травы (RGB+alpha) — текстура дальнего биллборда травы.
+            // Grass clump (RGB+alpha) — the grass far-billboard texture.
             Texture2D grass = LoadTexture("grass_clump");
             Texture2D daisy = LoadTexture("daisy");
             if (grass == null)
@@ -59,10 +57,10 @@ namespace Galilego.Universe.EditorTools
 
             Material grassFar = CreateOrLoadMaterial("GrassBillboard", "Galilego/GroundDecorBillboard", grass, 0.35f, 0.35f);
 
-            // ===== [ГРАФИКА] Дистанции и плотность декора =====
-            // NearDistanceMeters / MaxDistanceMeters слоёв ниже — кандидаты в
-            // будущие настройки графики (пресеты «минимально…максимально»):
-            // трава, ромашки, камни, деревья. Поиск по тегу [ГРАФИКА].
+            // ===== [GRAPHICS] Decor distances and density =====
+            // NearDistanceMeters / MaxDistanceMeters of the layers below are
+            // candidates for future graphics settings (min...max presets):
+            // grass, daisies, rocks, trees. Search by the [GRAPHICS] tag.
             var layers = new List<GroundDecorLayer>();
             GroundDecorLayer grassLayer = GrassModelSetup.BuildGrassLayer(billboard, grassFar);
             if (grassLayer != null)
@@ -72,13 +70,12 @@ namespace Galilego.Universe.EditorTools
 
             if (daisy != null)
             {
-                // Ромашки — «пятачок» на земле: одиночный квад плашмя (крест из
-                // трёх квадов после поворота давал веер наклонных плоскостей).
+                // Daisies are a patch on the ground: a single quad lying flat.
                 layers.Add(new GroundDecorLayer
                 {
                     Name = "Daisy",
                     Enabled = true,
-                    // Ромашки тоже не кастуют: лежат на земле, теней не видно.
+                    // Daisies cast no shadows either: they lie on the ground.
                     CastShadows = false,
                     NearMeshes = new[] { billboard },
                     NearMaterial = CreateOrLoadMaterial("DaisySolid", "Galilego/GroundDecorSolid", daisy, 0.4f, 0f),
@@ -92,15 +89,15 @@ namespace Galilego.Universe.EditorTools
                     DistributionSeedOffset = 5,
                     ClusterThreshold = 0.5d,
                     MinAltitudeMeters = 2d,
-                    // Ромашки — луговые цветы: только зелёная земля палитры.
-                    // Нормированной нижней границы нет (песок = абсолютный пляж).
+                    // Daisies are meadow flowers: palette green ground only.
+                    // No normalized lower bound (sand is the absolute beach).
                     MinNormalizedHeight = 0d,
                     MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
                     MaxAltitudeMeters = DaisyMaxAltitudeMeters,
                     MaxSlopeTan = 0.8d,
                     AvoidWater = true,
-                    // Ромашки — луговые цветы: влажнее степи, но мягким краем
-                    // (WetFade), иначе видно линию, где цветы кончились.
+                    // Daisies are meadow flowers: wetter than steppe, with a
+                    // soft edge (WetFade) so the flower line is not visible.
                     WetMin = 0.3d,
                     WetMax = 1d,
                     WetFade = 0.25d,
@@ -109,14 +106,14 @@ namespace Galilego.Universe.EditorTools
                     SteepPower = 4d,
                     GroundOffsetMeters = 0d,
                     FlatOnGround = true,
-                    // [ГРАФИКА] дальность ромашек (near/far).
+                    // [GRAPHICS] daisy range (near/far).
                     NearDistanceMeters = 45f,
                     MaxDistanceMeters = 400f
                 });
             }
 
-            // Камни: процедурные меши + процедурная текстура породы. Крупные —
-            // с коллизией, стоят на земле.
+            // Rocks: procedural meshes + procedural rock texture. Large ones
+            // have collision and stand on the ground.
             Texture2D rockNoise = RockModelSetup.CreateOrLoadRockNoise();
             Mesh[] rocks = RockModelSetup.CreateOrLoadRocks();
             if (rockNoise != null && rocks != null && rocks.Length > 0)
@@ -140,16 +137,15 @@ namespace Galilego.Universe.EditorTools
                     DistributionSeedOffset = 6,
                     ClusterThreshold = 0.05d,
                     MinAltitudeMeters = 2d,
-                    // Камни — единственный слой до максимальной высоты (пики,
-                    // выше границы леса) и без нормированных границ палитры:
-                    // в горах и на пляже только камни. 8100 покрывает высшую
-                    // точку Terra.
+                    // Rocks are the only layer up to the maximum altitude (peaks
+                    // above the treeline) and ignore palette bounds: 8100 covers
+                    // the highest point of Terra.
                     MaxAltitudeMeters = 8100d,
                     MaxSlopeTan = 3d,
                     AvoidWater = true,
                     WetMin = 0d,
                     WetMax = 1d,
-                    // Камни лежат и на полярной шапке: широтный фейд не применяем.
+                    // Rocks also lie on the polar cap: no latitude fade.
                     IgnoreLatitude = true,
                     MinScale = 1.5d,
                     MaxScale = 4.5d,
@@ -158,13 +154,13 @@ namespace Galilego.Universe.EditorTools
                     Collides = true,
                     CollisionRadiusMeters = 1.8d,
                     CollisionHeightMeters = 6d,
-                    // [ГРАФИКА] дальность камней (near/far) и плотность.
+                    // [GRAPHICS] rock range (near/far) and density.
                     NearDistanceMeters = 120f,
                     MaxDistanceMeters = 1200f
                 });
             }
 
-            // Кактусы: процедурные меши + бесшовная кожа кактуса; сухие биомы.
+            // Cacti: procedural meshes + seamless cactus skin; dry biomes.
             Texture2D cactus = LoadTexture("cactus");
             Mesh[] cacti = CactusModelSetup.CreateOrLoadCacti();
             if (cactus != null && cacti != null && cacti.Length > 0)
@@ -188,7 +184,7 @@ namespace Galilego.Universe.EditorTools
                     DistributionSeedOffset = 9,
                     ClusterThreshold = 0.25d,
                     MinAltitudeMeters = 2d,
-                    // Кактусы — сухой биом, но не пляж и не скалы.
+                    // Cacti are a dry biome, but not beach and not rock.
                     MinNormalizedHeight = 0d,
                     MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
                     MaxAltitudeMeters = 4000d,
@@ -196,7 +192,7 @@ namespace Galilego.Universe.EditorTools
                     AvoidWater = true,
                     WetMin = 0d,
                     WetMax = 0.32d,
-                    // мягкий спад к влажным зонам, без линии на границе
+                    // soft falloff towards wet zones, no line at the boundary
                     WetFade = 0.2d,
                     MinScale = 2d,
                     MaxScale = 5d,
@@ -204,7 +200,7 @@ namespace Galilego.Universe.EditorTools
                     Collides = true,
                     CollisionRadiusMeters = 0.8d,
                     CollisionHeightMeters = 4d,
-                    // [ГРАФИКА] дальность кактусов (near/far) и плотность.
+                    // [GRAPHICS] cactus range (near/far) and density.
                     NearDistanceMeters = 120f,
                     MaxDistanceMeters = 1200f
                 });
@@ -233,9 +229,9 @@ namespace Galilego.Universe.EditorTools
         private const string TerrainProfilePath = "Assets/_Project/Profiles/Terrain/EarthLike.asset";
 
         /// <summary>
-        /// Диагностика покрытия травой: гоняет ту же TryEvaluate по сфере
-        /// (фибоначчиева выборка) и печатает долю принятых клеток от суши и от
-        /// зелёного биома. Нужна для калибровки Density/ClusterThreshold.
+        /// Grass coverage diagnostics: runs the same TryEvaluate over a sphere
+        /// (Fibonacci sampling) and prints the accepted fraction of land and of
+        /// the green biome. Used to calibrate Density/ClusterThreshold.
         /// </summary>
         [MenuItem("Tools/Galilego/Diagnose grass coverage")]
         public static void DiagnoseGrassCoverage()
@@ -297,7 +293,7 @@ namespace Galilego.Universe.EditorTools
                 double wet = System.Math.Max(0d, System.Math.Min(1d, 0.5d + (mask * 1.6d)));
                 double tMasked = ((rawHeight - p.SeaLevelMeters) / System.Math.Max(1d, p.AmplitudeMeters))
                     + (mask * p.ColorNoiseStrength);
-                // Та же полярная шапка, что в декоре: сплошной лёд — не зелень.
+                // Same polar cap as in decor: solid ice is not green.
                 double zc = dir.z < -1d ? -1d : (dir.z > 1d ? 1d : dir.z);
                 double lat01 = System.Math.Abs(System.Math.Asin(zc)) / (System.Math.PI * 0.5d);
                 double iceT = (lat01 - 0.70d) / 0.16d;
@@ -402,8 +398,8 @@ namespace Galilego.Universe.EditorTools
                 return existing;
             }
 
-            // Крест из трёх квадов (0/60/120°) с основанием в y=0 — классическая
-            // карточка травы для инстансинга. Нормали вверх: мягкий свет сверху.
+            // Cross of three quads (0/60/120°) with the base at y=0: the classic
+            // instanced grass card. Normals point up for soft light from above.
             const int quadCount = 3;
             var vertices = new Vector3[quadCount * 4];
             var normals = new Vector3[quadCount * 4];
@@ -448,8 +444,8 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Маска ветра в vertex color: alpha 1 = гнётся (трава/листва), 0 = нет.
-        /// Нужна шейдеру GroundDecorSolid, чтобы стволы деревьев не качались.
+        /// Wind mask in vertex color: alpha 1 = bends (grass/leaves), 0 = rigid.
+        /// The GroundDecorSolid shader needs it so tree trunks do not sway.
         /// </summary>
         private static void EnsureWindMask(Mesh mesh)
         {
@@ -477,8 +473,8 @@ namespace Galilego.Universe.EditorTools
                 return existing;
             }
 
-            // Квад центрирован по XY (шейдер GroundDecorBillboard сам разворачивает
-            // его к камере и поднимает на 0.5): x,y ∈ [-0.5, 0.5], uv 0..1.
+            // Quad centred on XY (the GroundDecorBillboard shader turns it towards
+            // the camera and lifts it by 0.5): x,y ∈ [-0.5, 0.5], uv 0..1.
             var mesh = new Mesh { name = "BillboardQuad" };
             mesh.vertices = new[]
             {
@@ -568,8 +564,8 @@ namespace Galilego.Universe.EditorTools
     }
 
     /// <summary>
-    /// Первичный/версионный автозапуск сборки декора: по маркеру версии.
-    /// Дальше не трогает — правки пользователя не затираются.
+    /// First-run/versioned auto-run of the decor assembly, keyed by a version
+    /// marker. Does not touch the result afterwards, so user edits survive.
     /// </summary>
     [InitializeOnLoad]
     internal static class GroundDecorSetupAuto
@@ -585,7 +581,7 @@ namespace Galilego.Universe.EditorTools
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode || Application.isPlaying)
             {
-                // Не пропускаем сборку навсегда: ждём выхода из Play.
+                // Do not skip the assembly forever: wait until Play mode ends.
                 EditorApplication.delayCall += Run;
                 return;
             }

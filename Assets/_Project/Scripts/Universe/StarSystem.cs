@@ -5,17 +5,15 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Физическое ядро звёздной системы: дерево тел (звезда → планеты → спутники)
-    /// + интегрирование корабля. Это НЕ замена всего старого UniverseManager —
-    /// сознательно без камеры, IMGUI-телеметрии и рендера орбит, это отдельные
-    /// ответственности, которые стоит развести по своим классам.
+    /// Physics core of the star system: the body tree (star → planets → moons)
+    /// plus ship integration. Deliberately without camera, IMGUI telemetry and
+    /// orbit rendering — those are separate responsibilities.
     ///
-    /// Модель движения — гибрид:
-    /// - Все небесные тела двигаются по кеплеровым рельсам (OrbitingBody), не
-    ///   возмущая друг друга — как раньше EvaluateMoonState, но на любую глубину.
-    /// - Корабль летает по полному n-body: на каждом шаге интегратора получает
-    ///   гравитацию ОТ ВСЕХ тел системы одновременно (раньше — только от Юпитера
-    ///   и его лун, теперь — от звезды, всех планет и всех их спутников разом).
+    /// Motion model is a hybrid:
+    /// - All celestial bodies follow Keplerian rails (OrbitingBody), without
+    ///   perturbing each other, at any depth.
+    /// - The ship flies full n-body: each integrator step receives gravity
+    ///   from ALL bodies of the system at once.
     /// </summary>
     public sealed class StarSystem
     {
@@ -32,7 +30,7 @@ namespace Galilego.Universe
         private bool cacheValid;
         private long cachedStamp;
 
-        /// <summary>Инструментация кэша для теста 6: попадания/промахи по времени подстадии.</summary>
+        /// <summary>Cache instrumentation (test 6): hits/misses per substep time.</summary>
         public long CacheHits;
         public long CacheMisses;
 
@@ -63,10 +61,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>
-        /// Дубликаты имён молча ломают attach по манифесту: обоим телам
-        /// подставляется эфемерида первого (аудит S2/2.1). Громко при загрузке.
-        /// </summary>
+        /// <summary>Duplicate names silently break manifest attach. Fail loudly at load.</summary>
         private void ValidateNamesUnique()
         {
             var names = new HashSet<string>(allBodies.Count, StringComparer.Ordinal);
@@ -81,13 +76,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Неположительный или не-конечный радиус — контентный баг, который
-        /// молча даёт абсурдную физику (деление на ноль в детекторах высоты,
-        /// мгновенный «удар» при первом же IsInsideAnyBody). Громко при загрузке.
-        /// Нижний пол радиуса НЕ валидируется сознательно: малые тела
-        /// (астероиды) — легитимный контент, а гарантии детекта столкновений
-        /// мусора против суб-километровых тел —Capability Tier1 (DebrisUpdater,
-        /// MinHopSeconds), не инвариант системы.
+        /// Non-positive or non-finite radius is a content bug that silently gives
+        /// absurd physics (division by zero in altitude detectors). Fail loudly at load.
+        /// Small bodies (asteroids) are legitimate content, so no lower floor is enforced.
         /// </summary>
         private void ValidateRadii()
         {
@@ -102,16 +93,13 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Верхняя граница масштаба — fp-бюджет double. Позиции — абсолютные
-        /// векторы от корня; локальные дельты (высота над поверхностью,
-        /// посадочные контакты) вычисляются вычитанием абсолютов, и их точность
-        /// = ulp масштаба. Таблица: ulp(4.5e11)=6.1e-5 м, ulp(1e13)≈2e-3 м —
-        /// сантиметровый рельеф ещё различим; выше рельеф/высоты «плывут» и
-        ///SurfaceMotion-пороги перестают быть осмысленными. Орбита дальше
-        /// MaxOrbitRadiusMeters громко отвергается при загрузке, а не даёт
-        /// тихую деградацию точности. Граница действует на КАЖДУЮ рельсу
-        /// (пер-тельную полуось); суммарный вынос глубоких цепочек не
-        /// проверяется — дизайн-запас в 20× от дальнего тела пресета (4.5e11).
+        /// Upper scale bound — the double fp budget. Positions are absolute vectors
+        /// from the root; local deltas (altitude, landing contacts) are computed by
+        /// subtracting absolutes, so their precision equals the ulp of the scale.
+        /// Table: ulp(4.5e11)=6.1e-5 m, ulp(1e13)≈2e-3 m — centimetre relief is still
+        /// distinguishable. Orbits beyond MaxOrbitRadiusMeters fail loudly at load
+        /// instead of silently degrading. The bound applies to EACH rail (per-body
+        /// semi-major axis).
         /// </summary>
         public const double MaxOrbitRadiusMeters = 1e13d;
 
@@ -138,10 +126,9 @@ namespace Galilego.Universe
         private double minimumBodyRadius;
 
         /// <summary>
-        /// Минимальный радиус по всем телам — консервативная оценка для LOD-слоёв
-        /// (например, кап прыжков debris от туннелирования: hop ≤ k·R/v). Снимок
-        /// на момент конструктора/Revalidate: Radius тел публично мутируем, после
-        /// правки радиусов зовите Revalidate (там же громкая валидация).
+        /// Minimum radius over all bodies — conservative estimate for LOD layers
+        /// (e.g. debris hop cap against tunnelling: hop ≤ k·R/v). Snapshot taken at
+        /// construction/Revalidate; radii are publicly mutable, so call Revalidate after edits.
         /// </summary>
         public double MinimumBodyRadiusMeters => minimumBodyRadius;
 
@@ -160,17 +147,12 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Громкая валидация долгосрочной стабильности спутников (правило дизайна):
-        /// a ≤ 0.3 радиуса Хилла планеты и разнос соседних лун ≥ 3 взаимных R_H.
-        /// Предел проградной устойчивости ~0.4-0.5 R_H (Hamilton & Burns и далее);
-        /// 0.3 — дизайн-запас. Луна за пределом НЕ взрывается мгновенно — она
-        /// хаотична с ляпуновским временем ДО ГОДА (измерено T60/probechaos:
-        /// I-2 на 0.54 R_H разбегался на 6.7e10 м за 8 лет), т.е. любая
-        /// долговременная эфемерида физически несверяема, а игровой мир
-        /// недетерминирован между прогонами. Ловим при загрузке системы, а не
-        /// при выпечке: контентный баг — контент и чинит, до пекаря дело
-        /// не доходит. Неконические орбиты (a≤0, e≥1) пропускаются — их громко
-        /// отвергает кеплерова рельса на оценке состояния.
+        /// Loud validation of long-term moon stability (design rule): a ≤ 0.3 of the
+        /// planet's Hill radius and sibling moons separated by ≥ 3 mutual R_H.
+        /// The prograde stability limit is ~0.4-0.5 R_H; 0.3 is the design margin.
+        /// A moon beyond it is not instantaneously unstable but chaotic with a Lyapunov
+        /// time under a year, making any long ephemeris physically uncheckable.
+        /// Non-conic orbits (a≤0, e≥1) are skipped — the Keplerian rail rejects them loudly.
         /// </summary>
         private void ValidateHillStability()
         {
@@ -181,7 +163,7 @@ namespace Galilego.Universe
                 OrbitingBody parent = body.Parent;
                 if (parent == null || parent.Parent == null)
                 {
-                    continue; // корень и планеты (прямые дети звезды) не проверяются
+                    continue; // root and planets (direct children of the star) are not checked
                 }
 
                 if (!(body.SemiMajorAxis > 0d) || !(body.Eccentricity >= 0d) || !(body.Eccentricity < 1d))
@@ -211,7 +193,7 @@ namespace Galilego.Universe
                 }
             }
 
-            // Разнос сиблингов-лун: Δa ≥ 3 взаимных R_H.
+            // Sibling moons separation: Δa ≥ 3 mutual R_H.
             for (int i = 0; i < allBodies.Count; i++)
             {
                 OrbitingBody parent = allBodies[i];
@@ -271,10 +253,10 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Дизайн-порог проградной устойчивости спутников (доля R_H).</summary>
+        /// <summary>Design threshold for moon prograde stability (fraction of R_H).</summary>
         private const double HillStabilityFraction = 0.3d;
 
-        /// <summary>Минимальный разнос соседних лун во взаимных радиусах Хилла.</summary>
+        /// <summary>Minimum separation of sibling moons in mutual Hill radii.</summary>
         private const double MutualSeparationFactor = 3d;
 
         public void InvalidatePositionCache()
@@ -284,12 +266,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Единственная рекомендуемая точка attach эфемериды: подмена Baked и
-        /// инъвалидация кэша атомарно. Прямая запись body.Baked = ... валидна
-        /// только ДО первого запроса состояний; после — кэш отдавал бы
-        /// закэшированные кеплеровы позиции молча (аудит S3/1.2).
-        /// Заменённая файловая эфемерида получает Dispose: держатель FileStream
-        /// иначе жил до GC-финализатора и блокировал перезапись файла.
+        /// Recommended way to attach an ephemeris: swaps Baked and invalidates the
+        /// cache atomically. Direct body.Baked = ... is valid only before the first
+        /// state query; afterwards the cache would silently return stale Keplerian positions.
+        /// A replaced file ephemeris is disposed (its FileStream would otherwise block rewrites).
         /// </summary>
         public void AttachEphemeris(OrbitingBody body, BakedEphemeris ephemeris)
         {
@@ -315,15 +295,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Повтор полного цикла валидации после мутаций конфигурации (μ,
-        /// элементы): SyncMass → Hill → Scale → Radii → InfluenceRadii → кэш.
-        /// Вне конструктора этот порядок существовал только в чьей-то голове —
-        /// правка μ после создания системы оставляла SOI и Hill-вердикты
-        /// устаревшими молча (аудит S2/2.3).
-        /// СОСТАВ ТЕЛ НЕ ОБНОВЛЯЕТСЯ: FlattenTree/allBodies/bodyIndex строятся
-        /// только в конструкторе. Тело, добавленное в дерево после ctor,
-        /// не попадёт в гравитацию/детекты/debris молча — новые тела требуют
-        /// пересоздания системы.
+        /// Re-runs the full validation cycle after config mutations (μ, elements):
+        /// SyncMass → Hill → Scale → Radii → InfluenceRadii → cache.
+        /// BODY SET IS NOT REFRESHED: FlattenTree/allBodies/bodyIndex are built only
+        /// in the constructor; adding bodies after the ctor requires recreating the system.
         /// </summary>
         public void Revalidate()
         {
@@ -350,8 +325,7 @@ namespace Galilego.Universe
         {
             if (!visitSet.Add(body))
             {
-                // Цикл в иерархии (A.Parent=B, B.Parent=A) — FlattenTree без
-                // защиты падает StackOverflow всего процесса (аудит S2/1.1).
+                // A cycle in the hierarchy (A.Parent=B, B.Parent=A) would otherwise overflow the stack.
                 throw new InvalidOperationException(
                     "Цикл в иерархии тел: " + body.Name + " посещён второй раз.");
             }
@@ -359,9 +333,9 @@ namespace Galilego.Universe
             allBodies.Add(body);
             foreach (OrbitingBody child in body.Children)
             {
-                // Односторонняя починка «задали только Children» оставляем, но
-                // КОНФЛИКТ (child.Parent указывает на чужое тело) — громко, а не
-                // молчаливая перезапись иерархии.
+                // One-sided repair ("only Children was set") is allowed, but a
+                // CONFLICT (child.Parent points to another body) fails loudly instead
+                // of silently overwriting the hierarchy.
                 if (child.Parent != null && !ReferenceEquals(child.Parent, body))
                 {
                     throw new InvalidOperationException(
@@ -377,10 +351,9 @@ namespace Galilego.Universe
         private readonly HashSet<OrbitingBody> visitSet = new HashSet<OrbitingBody>();
 
         /// <summary>
-        /// Гравитационное ускорение в точке shipPosition в момент времени t от ВСЕХ тел
-        /// системы сразу. Это ровно та функция, которую передают в OrbitIntegrator.StepForward
-        /// как accelerationProvider — один в один как раньше EvaluateShipAcceleration,
-        /// только суммирование идёт по всему дереву, а не по "Юпитер + 4 захардкоженные луны".
+        /// Gravitational acceleration at shipPosition at time t from ALL bodies of the
+        /// system at once. This is the function passed to OrbitIntegrator.StepForward
+        /// as accelerationProvider.
         /// </summary>
         public Vector3d EvaluateShipAcceleration(Vector3d shipPosition, double timeSeconds)
         {
@@ -401,22 +374,17 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Мировые позиции всех тел на момент t за один проход родители-вперёд.
-        /// Гранулярность — конкретное время подстадии DOPRI (t, t+c₂h, …), НЕ весь
-        /// шаг: стадии видят позиции в своём собственном времени, иначе RK5 тихо
-        /// теряет порядок. Экономия — внутри одного RHS-вызова позиция планеты
-        /// считается один раз, а не по разу на каждого её спутника (наивный путь
-        /// пересчитывает родителя рекурсией для каждого потомка). Результат
-        /// бит-в-бит совпадает с наивным: те же сложения в том же порядке.
-        /// Плюс мемоизация последнего t: повторный RHS в то же время (FSAL)
-        /// переиспользует массив без пересчёта.
+        /// World positions of all bodies at time t in one parents-first pass.
+        /// Granularity is the specific DOPRI substage time (t, t+c₂h, …), NOT the whole
+        /// step: stages must see positions at their own time or RK5 silently loses order.
+        /// A parent is computed once per RHS call instead of once per descendant.
+        /// Memoizes the last t: a repeated RHS at the same time (FSAL) reuses the array.
         /// </summary>
         public void EnsureCachedPositions(double timeSeconds)
         {
-            // Штамп набора эфемерид: прямая запись body.Baked = ... после
-            // запросов состояний не зовёт InvalidatePositionCache — без штампа
-            // кэш отдавал бы закэшированные кеплеровы позиции молча
-            // (аудит S3/1.2). O(n) по телам — на 12 телах это дешевле кэш-промаха.
+            // Ephemeris-set stamp: direct body.Baked = ... after state queries does
+            // not call InvalidatePositionCache, so the stamp detects the change and
+            // avoids silently returning stale Keplerian positions.
             long stamp = 0L;
             for (int i = 0; i < allBodies.Count; i++)
             {
@@ -455,10 +423,7 @@ namespace Galilego.Universe
             cacheValid = true;
         }
 
-        /// <summary>
-        /// Та же сумма μ/r³, что и EvaluateShipAcceleration, но позиции тел берутся
-        /// из кэша подстадии. Используется внутри горячего RHS-цикла.
-        /// </summary>
+        /// <summary>Same μ/r³ sum as EvaluateShipAcceleration, but body positions come from the substage cache. Used in the hot RHS loop.</summary>
         public Vector3d EvaluateShipAccelerationCached(Vector3d shipPosition, double timeSeconds)
         {
             EnsureCachedPositions(timeSeconds);
@@ -476,10 +441,7 @@ namespace Galilego.Universe
             return total;
         }
 
-        /// <summary>
-        /// Проверка для планировщика: false = точка внутри любого тела,
-        /// кандидат трассы invalid. Корабля нет, событию сработать неоткуда.
-        /// </summary>
+        /// <summary>Planner check: false = the point is inside any body, so the candidate trajectory is invalid.</summary>
         public bool TryEvaluateAcceleration(Vector3d shipPosition, double timeSeconds, out Vector3d acceleration)
         {
             EnsureCachedPositions(timeSeconds);
@@ -510,7 +472,7 @@ namespace Galilego.Universe
             return acceleration.IsFinite;
         }
 
-        /// <summary>Чистый предикат «внутри тела» — переиспользуется Tier1 без полного драйвера.</summary>
+        /// <summary>Pure "inside body" predicate — reused by Tier1 without the full driver.</summary>
         public bool IsInsideBody(Vector3d shipPosition, OrbitingBody body, double timeSeconds)
         {
             if (body == null)
@@ -523,7 +485,7 @@ namespace Galilego.Universe
             return PhysicsSolver.IsInsideBodySqr(sqr, body.Radius);
         }
 
-        /// <summary>Внутри любого тела системы (для периодической проверки мусора).</summary>
+        /// <summary>Inside any body of the system (for periodic debris checks).</summary>
         public bool IsInsideAnyBody(Vector3d shipPosition, double timeSeconds, out OrbitingBody hitBody)
         {
             EnsureCachedPositions(timeSeconds);
@@ -543,10 +505,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Корабль внутри атмосферы любого тела: порог — TopAltitudeMeters, тот
-        /// же, что у среза DragSource и AltitudeCrossingDetector (один источник
-        /// истины). Граница — срезом (alt &lt; top), как везде. Источник правила
-        /// «в атмосфере warp не выше ×3» для кадра игры.
+        /// Ship inside any body's atmosphere: threshold is TopAltitudeMeters (shared
+        /// with DragSource and AltitudeCrossingDetector), boundary is alt &lt; top.
+        /// Source of the "no warp above ×3 in atmosphere" rule for the game frame.
         /// </summary>
         public bool IsInsideAtmosphere(Vector3d shipPosition, double timeSeconds)
         {
@@ -570,11 +531,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Один шаг интегрирования корабля через DOPRI5 — как в старом StepSimulation,
-        /// только accelerationProvider теперь EvaluateShipAcceleration этого класса.
-        /// Небесные тела отдельно "продвигать" не нужно: OrbitingBody.EvaluateWorldState
-        /// сам вычисляет их состояние по времени на лету, хранимого state нет.
-        /// Legacy B9 cluster: живые вызовы идут через SpacecraftPhysics.
+        /// One ship integration step via DOPRI5, with this class's
+        /// EvaluateShipAcceleration as the accelerationProvider. Bodies need no
+        /// separate advance: OrbitingBody.EvaluateWorldState is evaluated on the fly.
         /// </summary>
         [Obsolete("Legacy B9 cluster: use SpacecraftPhysics (SpacecraftOrbitIntegrator). Chain: StepShip -> OrbitIntegrator -> RK4/CelestialBody.")]
 #pragma warning disable 0618 // Legacy B9 cluster: internal delegation within obsolete surface.
@@ -606,19 +565,18 @@ namespace Galilego.Universe
             return end;
         }
 
-        /// <summary>Положение/скорость произвольного тела в момент t — для рендера, камеры, UI.</summary>
+        /// <summary>Position/velocity of an arbitrary body at time t — for render, camera, UI.</summary>
         public void EvaluateBodyState(OrbitingBody body, double timeSeconds, out Vector3d position, out Vector3d velocity)
         {
             body.EvaluateWorldState(timeSeconds, out position, out velocity);
         }
 
         /// <summary>
-        /// Готовый визуальный кадр тела на момент t: позиция (EvaluateWorldState —
-        /// рельс/эфемерида), скорость и ориентация body→world (GetVisualOrientation:
-        /// собственное вращение + наклон оси одним кватернионом). Рендер-слой
-        /// конвертирует в Unity-трансформ через AstroFrame и НЕ лезет во
-        /// внутренности представления вращения (SpinAxis/углы/tilt). Конвенция
-        /// body-frame зафиксирована в GetVisualOrientation.
+        /// Ready visual frame of a body at time t: position (EvaluateWorldState —
+        /// rail/ephemeris), velocity and body-to-world orientation (GetVisualOrientation).
+        /// The render layer converts it to a Unity transform via AstroFrame and does not
+        /// touch the internals of the rotation representation. The body-frame convention
+        /// is fixed in GetVisualOrientation.
         /// </summary>
         public void GetVisualFrame(OrbitingBody body, double timeSeconds, out Vector3d position, out Vector3d velocity, out QuaternionD orientation)
         {
@@ -632,9 +590,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Тело, в чьей сфере влияния сейчас находится корабль — самое глубокое (внутреннее)
-        /// совпадение: если корабль внутри SOI планеты И внутри SOI её спутника одновременно,
-        /// вернётся спутник. Обобщение auto-SOI логики UniverseManager на дерево любой глубины.
+        /// Body whose sphere of influence currently contains the ship — the deepest
+        /// (innermost) match: if the ship is inside both a planet's SOI and its moon's
+        /// SOI, the moon is returned.
         /// </summary>
         public OrbitingBody FindDominantBody(Vector3d shipPosition, double timeSeconds)
         {

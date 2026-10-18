@@ -103,11 +103,11 @@ internal static partial class P1bTests
                 continue;
             }
 
-            // --from/--to нужны потому, что --filter ищет подстроку, а имена
-            // тестов нумеруются (Test9, Test90…Test99), и подстрока "Test9"
-            // накрыла бы сразу десять разных номеров. Разбиение на группы для
-            // поочерёдного прогона без одновременной нагрузки на CPU иначе
-            // не выразить.
+            // --from/--to are needed because --filter matches a substring and
+            // test names are numbered (Test9, Test90…Test99), so "Test9" would
+            // cover ten different numbers at once. Splitting into groups for
+            // sequential runs without loading the CPU all at once is otherwise
+            // impossible.
             if (from != int.MinValue || to != int.MaxValue)
             {
                 int num = TestNumber(entry.Name);
@@ -137,7 +137,7 @@ internal static partial class P1bTests
         return failures;
     }
 
-    /// <summary>Номер теста из имени вида "Test112b_GradientSetAnalysis" → 112.</summary>
+    /// <summary>Test number from a name like "Test112b_GradientSetAnalysis" → 112.</summary>
     private static int TestNumber(string name)
     {
         if (!name.StartsWith("Test", System.StringComparison.Ordinal))

@@ -4,8 +4,8 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Инспектор визуальной атмосферы: параметры купола и отладочный режим.
-    /// Физика/оптика живут в AtmosphereProfile тела — здесь только визуал.
+    /// Inspector for the visual atmosphere: dome parameters and debug mode.
+    /// Physics/optics live in the body's AtmosphereProfile — this is visual only.
     /// </summary>
     [CustomEditor(typeof(PlanetAtmosphereView))]
     public sealed class PlanetAtmosphereViewEditor : Editor

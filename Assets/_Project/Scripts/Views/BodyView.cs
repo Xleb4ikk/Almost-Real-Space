@@ -4,22 +4,12 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Рендер небесного тела (B2). Вешается на тот же GameObject, что
-    /// BodyAuthoring. ЯКОРЬ РЕНДЕРА — доминантное тело корабля (не орбитальный
-    /// родитель): позиция тела рисуется дельтой bodyPos − dominantPos,
-    /// вычисленной в double и сконвертированной один раз на выходе. У корня
-    /// сцены (звезда, astro-ноль) якорь всегда мал, поэтому Unity-координаты
-    /// НЕ улетают за 1e9 — на 2.6e10 ulp float это километры, сцена
-    /// «рассыпается» и камера слепнет (поймано в юнити-тесте сцены).
-    /// Далёкие тела (звезда при полёте у планеты) получают большие дельты —
-    /// их трансформы неточны, но они и не рендерятся: их визуал заменяет
-    /// billboard (SunBillboard). В рантайме все BodyView переезжают под общий
-    /// корень в origin (плоская иерархия): родитель-цепочка авторинга тащила бы
-    /// huge-координаты якоря в детей. Раз в кадр: StarSystem.GetVisualFrame →
-    /// позиция/скорость + ориентация body→world → мост AstroFrame →
-    /// transform.localPosition/localRotation. Исполнение в LateUpdate ПОСЛЕ
-    /// SimulationRunner.Update (порядок скриптов или гарантия: runner
-    /// обновляется в Update, views — в LateUpdate).
+    /// Celestial body render (B2). Attach to the same GameObject as BodyAuthoring.
+    /// Positions are rendered relative to the floating origin (FloatingOrigin.Anchor),
+    /// computed in double and converted once on output, so Unity coordinates stay small.
+    /// Once per frame: StarSystem.GetVisualFrame → position/velocity + body-to-world
+    /// orientation → AstroFrame bridge → transform.localPosition/localRotation.
+    /// Runs in LateUpdate AFTER SimulationRunner.Update.
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-100)]
     public sealed class BodyView : MonoBehaviour
@@ -27,17 +17,13 @@ namespace Galilego.Universe
         [Tooltip("SimulationRunner сцены.")]
         public SimulationRunner Runner;
 
-        /// <summary>Индекс тела в системе (заполняется при старте по имени).</summary>
+        /// <summary>Body index in the system (resolved at start by name).</summary>
         public OrbitingBody Body { get; private set; }
 
         /// <summary>
-        /// Общий корень плоской иерархии тел (в origin сцены). Статическая
-        /// иерархия (Terra — ребёнок Sol) нужна только для АВТОРИНГА блюпринта;
-        /// в рантайме якорь рендера динамический (доминантное тело), и
-        /// родитель-цепочка тащила бы huge-координаты якоря в детей
-        /// (Sol в −2.6e10 → Terra наследует ±2048 м float-джиттер). Поэтому
-        /// при старте все BodyView переезжают под этот корень: parent в
-        /// origin → localPosition == worldPosition.
+        /// Common root of the flat body hierarchy (at the scene origin). The static
+        /// hierarchy is only for AUTHORING the blueprint; at runtime all BodyViews
+        /// move under this root so localPosition == worldPosition.
         /// </summary>
         private static Transform flatRoot;
 
@@ -49,7 +35,7 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Тело определяется по имени GameObject'а — совпадает с именем в блюпринте.
+            // The body is resolved by GameObject name, matching the blueprint name.
             foreach (OrbitingBody body in Runner.SystemState.AllBodies)
             {
                 if (body.Name == gameObject.name)
@@ -73,8 +59,7 @@ namespace Galilego.Universe
 
             transform.SetParent(flatRoot, true);
 
-            // Регистрация в реестре вида системы: ShipView находит доминантное
-            // тело по имени без перебора иерархии каждый кадр.
+            // Register in the view registry so ShipView finds the dominant body by name.
             if (Runner.SystemView == null)
             {
                 Runner.SystemView = new BodyTransformRegistry();
@@ -94,9 +79,7 @@ namespace Galilego.Universe
                 Body, Runner.TimeSeconds,
                 out Vector3d position, out Vector3d velocity, out QuaternionD orientation);
 
-            // Floating origin: единственный якорь — позиция игрока (FloatingOrigin.Anchor),
-            // а не центр доминантного тела. Тогда у поверхности координаты малы
-            // (центр тела давал ~радиус планеты → float-дрожь).
+            // Floating origin: the single anchor is the player position (FloatingOrigin.Anchor).
             transform.localPosition = FloatingOrigin.ToRender(position);
             transform.localRotation = FloatingOrigin.RenderRotation(orientation);
         }

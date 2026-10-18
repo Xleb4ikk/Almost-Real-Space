@@ -4,16 +4,16 @@ using Galilego.Core;
 namespace Galilego.Spacecraft.Solver
 {
     /// <summary>
-    /// Геометрия контакта для решателя фазы 3. Query: depth &gt; 0 — точка ниже поверхности
-    /// (м), normal — единичная внешняя нормаль поверхности в этой точке.
-    /// Чистый C#, без типов Unity: поверхность задаётся функцией, как ITerrainModel.
+    /// Contact geometry for the solver. Query: depth &gt; 0 means the point is below the
+    /// surface (m), normal is the unit outward surface normal at that point.
+    /// Pure C#, no Unity types: the surface is a function, like ITerrainModel.
     /// </summary>
     public interface IContactGround
     {
         void Query(Vector3d point, out double depth, out Vector3d normal);
     }
 
-    /// <summary>Плоскость n·p = offset, n — внешняя нормаль (единичная).</summary>
+    /// <summary>Plane n·p = offset, n is the outward normal (unit).</summary>
     public sealed class PlaneGround : IContactGround
     {
         private readonly Vector3d normal;
@@ -38,9 +38,9 @@ namespace Galilego.Spacecraft.Solver
     }
 
     /// <summary>
-    /// Поверхность y = h(x, z), y вверх. Нормаль выводится из ТОЙ ЖЕ функции h центральными
-    /// разностями с шагом Footprint (м): n = normalize(−∂h/∂x, 1, −∂h/∂z). Малый Footprint
-    /// видит мелкие неровности (камень), большой — усредняет их (контракт ITerrainModel).
+    /// Surface y = h(x, z), y up. The normal derives from the SAME function h by central
+    /// differences with step Footprint (m): n = normalize(−∂h/∂x, 1, −∂h/∂z). A small Footprint
+    /// sees fine bumps (a rock), a large one averages them out (ITerrainModel contract).
     /// </summary>
     public sealed class HeightFieldGround : IContactGround
     {

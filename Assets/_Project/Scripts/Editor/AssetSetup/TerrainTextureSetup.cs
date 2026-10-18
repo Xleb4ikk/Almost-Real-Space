@@ -5,9 +5,9 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Назначает текстуры рельефа (low/mid/high/steep + occlusion) во
-    /// все TerrainProfileAsset и сохраняет. Автозапуск один раз по маркеру в
-    /// Temp (правки пользователя потом не затираются) или из меню.
+    /// Assigns the terrain textures (low/mid/high/steep + occlusion) to every
+    /// TerrainProfileAsset and saves. Auto-runs once by a Temp marker (user
+    /// edits are not overwritten afterwards) or from the menu.
     /// </summary>
     public static class TerrainTextureSetup
     {
@@ -62,8 +62,8 @@ namespace Galilego.Universe.EditorTools
 
         private static Texture2D Load(string name)
         {
-            // Приоритет — «чистые» текстуры без направленного паттерна
-            // (TerrainTextureDeband): старые фото-тайлы давали газонные полосы.
+            // Prefer the "clean" textures without the directional pattern
+            // (TerrainTextureDeband).
             Texture2D clean = AssetDatabase.LoadAssetAtPath<Texture2D>(Folder + "/" + name + "_clean.jpg");
             if (clean != null)
             {
@@ -74,7 +74,7 @@ namespace Galilego.Universe.EditorTools
         }
     }
 
-    /// <summary>Первичный автозапуск: пока маркера нет и текстуры на месте.</summary>
+    /// <summary>First-run auto-start: while the marker is absent and the textures exist.</summary>
     [InitializeOnLoad]
     internal static class TerrainTextureSetupAuto
     {

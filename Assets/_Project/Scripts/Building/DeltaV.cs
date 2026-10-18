@@ -5,18 +5,18 @@ using Galilego.Spacecraft;
 namespace Galilego.Building
 {
     /// <summary>
-    /// Мост «черновик сборки → ядра ступеней»: единственное место, где
-    /// применяется правило «отделитель заканчивает ступень» и находится
-    /// основная сборка. Весь расчёт — в чистых StageBurnCore / StageDeltaV.
+    /// Bridge "assembly draft → stage cores": the single place that applies the
+    /// "a separator ends a stage" rule and finds the main assembly. All the math
+    /// lives in the pure StageBurnCore / StageDeltaV.
     ///
-    /// Ступени. Основная сборка — связная по снапу группа деталей с наибольшей
-    /// массой. Детали упорядочиваются снизу вверх по высоте пивота; ОТДЕЛИТЕЛЬ
-    /// делит стопку: всё ниже него — одна ступень, и сам отделитель уходит
-    /// вместе с ней. Нижняя ступень горит первой.
+    /// Stages. The main assembly is the snap-connected group of parts with the
+    /// greatest mass. Parts are ordered bottom-up by pivot height; a SEPARATOR
+    /// divides the stack: everything below it is one stage, and the separator
+    /// itself goes with it. The bottom stage burns first.
     /// </summary>
     public static class DeltaV
     {
-        /// <summary>План: все баки полные.</summary>
+        /// <summary>Plan: all tanks full.</summary>
         public static DvResult Compute(IReadOnlyList<PlacedPart> parts, DvEnvironment env)
         {
             List<StageCore> cores = BuildStageAssembly(parts, env, out int detached);
@@ -24,9 +24,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// (legacy) Остаток по текущей массе корабля currentMassKg (Ship.Mass):
-        /// сгоревшее распределяется по ступеням в порядке плана. Точнее и
-        /// предпочтительнее — ComputeFromState от модели физики.
+        /// (legacy) Remaining ΔV by the vessel's current mass currentMassKg
+        /// (Ship.Mass): the burned amount is distributed over the stages in plan
+        /// order. ComputeFromState from the physics model is more accurate and preferred.
         /// </summary>
         public static DvResult ComputeInFlight(
             IReadOnlyList<PlacedPart> parts, DvEnvironment env, double currentMassKg)
@@ -36,10 +36,10 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Остаток по состоянию модели физики: остатки по пулам и флаги сброшенных
-        /// ступеней (индексация — StageCore.Index из BuildStageAssembly той же
-        /// сборки). Пул без записи считается полным; jettisoned может быть
-        /// короче числа ступеней (недостающие — не сброшены).
+        /// Remaining ΔV by the physics model state: pool remainders and jettisoned
+        /// stage flags (indexed by StageCore.Index from BuildStageAssembly of the
+        /// same assembly). A pool without a record is treated as full; jettisoned
+        /// may be shorter than the stage count (missing entries are not jettisoned).
         /// </summary>
         public static DvResult ComputeFromState(
             IReadOnlyList<PlacedPart> parts,
@@ -56,9 +56,9 @@ namespace Galilego.Building
             return StageDeltaV.FormatKg(kg);
         }
 
-        // ─── Ядра ступеней из черновика ──────────────────────────────────────
+        // ─── Stage cores from the draft ──────────────────────────────────────
 
-        /// <summary>Ядра ступеней сборки в вакууме без тела (тяга/расход вакуумные).</summary>
+        /// <summary>Stage cores of the assembly in vacuum without a body (vacuum thrust/flow).</summary>
         public static List<StageCore> BuildStageAssembly(IReadOnlyList<PlacedPart> parts)
         {
             return BuildStageAssembly(parts, DvEnvironment.Default, out _);
@@ -70,10 +70,10 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Ядра ступеней основной сборки, снизу вверх; Index — порядковый номер
-        /// (0 — нижняя) и стабилен для одной и той же сборки; PartIndices —
-        /// индексы деталей в parts (маппинг сброса). Пулы залиты полностью.
-        /// detachedParts — деталей вне основной сборки (в ядра не входят).
+        /// Stage cores of the main assembly, bottom-up; Index is the ordinal
+        /// number (0 — bottom) and is stable for the same assembly; PartIndices
+        /// are indices into parts (jettison mapping). Pools are filled completely.
+        /// detachedParts is the number of parts outside the main assembly (not in cores).
         /// </summary>
         public static List<StageCore> BuildStageAssembly(
             IReadOnlyList<PlacedPart> parts, DvEnvironment env, out int detachedParts)
@@ -91,14 +91,14 @@ namespace Galilego.Building
                 return cores;
             }
 
-            // Снизу вверх по высоте пивота (стабильно по индексу).
+            // Bottom-up by pivot height (stable by index).
             main.Sort((a, b) =>
             {
                 int c = parts[a].Pivot.y.CompareTo(parts[b].Pivot.y);
                 return c != 0 ? c : a.CompareTo(b);
             });
 
-            // Делим по отделителям: отделитель входит в ступень НИЖЕ себя.
+            // Split at separators: a separator belongs to the stage BELOW itself.
             var groups = new List<List<int>>();
             var current = new List<int>();
             for (int i = 0; i < main.Count; i++)
@@ -155,9 +155,9 @@ namespace Galilego.Building
             return core;
         }
 
-        // ─── Основная сборка ─────────────────────────────────────────────────
+        // ─── Main assembly ───────────────────────────────────────────────────
 
-        /// <summary>Связная (по ParentIndex) группа с наибольшей массой.</summary>
+        /// <summary>Connected group (by ParentIndex) with the greatest mass.</summary>
         private static List<int> MainAssembly(IReadOnlyList<PlacedPart> parts, out int detached)
         {
             int n = parts.Count;

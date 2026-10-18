@@ -4,19 +4,16 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Чистая математика перевода кеплеровых элементов в положение/скорость.
-    /// Вынесено из старого UniverseManager (там это были private/static методы
-    /// god-класса) — сама математика не менялась ни на йоту, просто теперь это
-    /// независимая переиспользуемая утилита без привязки к "Юпитеру".
+    /// Pure math for converting Keplerian elements to position/velocity. An independent
+    /// reusable utility with no dependency on a particular system.
     /// </summary>
     public static class KeplerMath
     {
         /// <summary>
-        /// Решает уравнение Кеплера M = E - e·sin(E) методом Ньютона (8 итераций)
-        /// с проверкой невязки и фолбэком на бисекцию. Брекет [M-e, M+e] валиден
-        /// при любом M: f строго растёт при e&lt;1 (f'=1-e·cosE ≥ 1-e &gt; 0), так что
-        /// f(M-e) ≤ 0 ≤ f(M+e) всегда. При e∉[0,1) — только Ньютон, как раньше
-        /// (невалидный вход, поведение не меняем).
+        /// Solves Kepler's equation M = E - e·sin(E) by Newton's method (8 iterations)
+        /// with a residual check and a bisection fallback. The bracket [M-e, M+e] is valid
+        /// for any M: f grows strictly for e&lt;1 (f'=1-e·cosE ≥ 1-e &gt; 0), so
+        /// f(M-e) ≤ 0 ≤ f(M+e) always. For e∉[0,1) only Newton runs.
         /// </summary>
         public static double SolveEccentricAnomaly(double meanAnomaly, double eccentricity)
         {
@@ -63,11 +60,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Поворот из перифокальной плоскости орбиты в инерциальную систему координат
-        /// через R3(-Ω)·R1(-i)·R3(-ω). Результат — в астродинамической системе (Z = север
-        /// опорной плоскости). Перевод в систему координат Unity (Y-up/Z-up) делается
-        /// отдельно, на уровне рендера — здесь эта забота сознательно не смешивается
-        /// с физикой (в отличие от старого EvaluateMoonState, где было и то, и другое сразу).
+        /// Rotates from the orbit's perifocal plane into the inertial frame via
+        /// R3(-Ω)·R1(-i)·R3(-ω). The result is in the astrodynamics frame (Z = north of
+        /// the reference plane). Conversion to Unity coordinates (Y-up) is done separately
+        /// at the render layer — that concern is deliberately not mixed into physics here.
         /// </summary>
         public static Vector3d RotateOrbitalToWorld(Vector3d vector, double ascendingNode, double inclination, double periapsis)
         {

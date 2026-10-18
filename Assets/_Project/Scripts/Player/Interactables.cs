@@ -3,22 +3,22 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// База интерактивных объектов (кнопки, рычаги, экраны, кресла). Попадает
-    /// под прицел-луч PlayerController (≤ 4 м) → подсказка Prompt → E →
-    /// Interact. Наследники вешаются на GO с коллайдером внутри корабля.
+    /// Base class for interactable objects (buttons, levers, screens, seats).
+    /// Caught by the PlayerController aim cone (≤ 4 m) → Prompt hint → E →
+    /// Interact. Subclasses are attached to a GO with a collider inside the ship.
     /// </summary>
     public abstract class Interactable : MonoBehaviour
     {
-        /// <summary>Подсказка для игрока (например, «Дать полный газ (E)»).</summary>
+        /// <summary>Prompt for the player (e.g. "Full throttle (E)").</summary>
         public abstract string Prompt { get; }
 
-        /// <summary>Действие по нажатию E.</summary>
+        /// <summary>Action performed on pressing E.</summary>
         public abstract void Interact(PlayerController player);
     }
 
     /// <summary>
-    /// Демо-рычаг газа: E — дать полный газ / убрать в ноль. Показывает паттерн
-    /// «рычаг → раннер»: настоящая панель наберётся из таких интерактиблов.
+    /// Demo throttle lever: E — full throttle / back to zero. Shows the
+    /// "lever → runner" pattern: the real panel will be built from such interactables.
     /// </summary>
     public sealed class ThrottleLever : Interactable
     {

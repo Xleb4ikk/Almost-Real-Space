@@ -3,11 +3,11 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Ассет-профиль рельефа: один источник правды для пресета формы/цвета/палитры.
-    /// Тело ссылается на ассет (BodyAuthoring.TerrainPreset), поэтому правка
-    /// профиля обновляет все использующие его тела, а сам профиль можно
-    /// переиспользовать между сценами. Данные — чистый TerrainProfile (не
-    /// ScriptableObject) ради тестируемости ядра.
+    /// Terrain profile asset: the single source of truth for the shape/color/palette
+    /// preset. A body references the asset (BodyAuthoring.TerrainPreset), so editing
+    /// the profile updates every body that uses it, and the profile can be reused
+    /// across scenes. The data is a plain TerrainProfile (not a ScriptableObject)
+    /// for core testability.
     /// </summary>
     [CreateAssetMenu(menuName = "Galilego/Terrain Profile", fileName = "TerrainProfile")]
     public sealed class TerrainProfileAsset : ScriptableObject
@@ -15,10 +15,10 @@ namespace Galilego.Universe
         public TerrainProfile Profile = new TerrainProfile();
 
         /// <summary>
-        /// Точка входа проверки окон домена. Именно здесь, а не в самом
-        /// TerrainProfile: данные лежат в plain [Serializable] классе, а
-        /// OnValidate Unity вызывает только на UnityEngine.Object. Данные при
-        /// этом НЕ меняются - автор должен увидеть проблему и решить сам.
+        /// Entry point for the slope-domain window check. Here rather than in
+        /// TerrainProfile itself: the data lives in a plain [Serializable] class and
+        /// Unity only calls OnValidate on UnityEngine.Object. The data is NOT modified
+        /// here — the author must see the problem and decide.
         /// </summary>
         private void OnValidate()
         {

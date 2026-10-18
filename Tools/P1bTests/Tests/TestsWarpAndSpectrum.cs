@@ -7,22 +7,19 @@ using Unity.Mathematics;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Плитка 0.5°/65 вершин вокруг ПИКА рельефа, нормали double vs float
-    /// end-to-end — тот же замер, что T84 сценарий 2.
+    /// A 0.5°/65-vertex tile around the terrain PEAK, double vs float normals
+    /// end-to-end — the same measurement as T84 scenario 2.
     ///
-    /// Две вещи обязательны, и обе были сделаны неправильно в первой версии:
+    /// Two things are required:
     ///
-    ///  1) Плитка центрируется на пике, а не на произвольной точке. Иначе
-    ///     замер попадает в равнину и показывает запас, которого нет: первая
-    ///     версия брала lat 0.31 / lon 1.77 и выдала 3e-7 рад.
-    ///  2) Сетка float должна быть НАСТОЯЩИМ float32 (UnityEngine.Vector3).
-    ///     Хранить её в Vector3d — значит квантования не происходит, обе сетки
-    ///     совпадают, и угол получается нулевым по построению. Первая версия
-    ///     делала именно это, приводила к float только высоту, и поэтому
-    ///     «запас 4000×» был не подтверждён ничем.
+    ///  1) The tile is centered on the peak, not on an arbitrary point; otherwise
+    ///     the measurement lands on a plain and reports headroom that isn't there.
+    ///  2) The float grid must be genuine float32 (UnityEngine.Vector3). Storing it
+    ///     in Vector3d means no quantization occurs, both grids match, and the angle
+    ///     is zero by construction.
     ///
-    /// Контроль: legacy-конфигурация T84 обязана дать ≈5.4e-4. Если не даёт —
-    /// тест сломан, а не рельеф изменился.
+    /// Control: the legacy T84 configuration must give ≈5.4e-4. If it does not, the
+    /// test is broken, not the terrain.
     /// </summary>
     private static double WorstNormalAngleAtPeak(OrbitingBody body, HeightfieldTerrain t)
     {
@@ -32,7 +29,7 @@ internal static partial class P1bTests
         double step = tileSpanDeg / (res - 1);
         body.EvaluateWorldState(0d, out Vector3d bodyPos, out _);
 
-        // Пик: та же грубая решётка, что и в T84, только по lat/lon.
+        // Peak: same coarse lattice as in T84, but over lat/lon.
         double peakLat = 0d;
         double peakLon = 0d;
         double maxH = double.MinValue;
@@ -81,8 +78,8 @@ internal static partial class P1bTests
                 Vector3d relD = worldD - bodyPos;
                 posD[row, col] = relD;
 
-                // Настоящий float32: высота и мировые координаты приводятся к
-                // float, как при записи в вершинный буфер.
+                // Genuine float32: height and world coordinates are cast to float,
+                // as when writing to the vertex buffer.
                 float hf = (float)hd;
                 body.GetSurfaceState(latDeg, lonDeg, hf, 0d, out Vector3d worldF, out _);
                 Vector3d relF = worldF - bodyPos;
@@ -117,18 +114,18 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Фаза D: warp по ступеням на плитке у пика. Warp сдвигает точку выборки и
-    /// повышает константу Липшица поля, поэтому поднимать его сразу — значит
-    /// гадать, что съело запас: ridged, домен или сам warp. Меряем и угол, и
-    /// долю суши (воронка T87/T101).
+    /// Phase D: warp in steps on the tile at the peak. Warp shifts the sample point
+    /// and raises the field's Lipschitz constant, so raising it at once means
+    /// guessing what ate the headroom: ridged, domain or warp itself. Measure both
+    /// the angle and the land fraction (funnel T87/T101).
     /// </summary>
     private static int Test121_WarpSteps()
     {
         OrbitingBody body = MakeTerrainBody();
         const double angleLimit = 2e-3;
 
-        // Контроль: та же конфигурация, что в T84. Если она не даёт ≈5.4e-4,
-        // замер сломан и новые числа читать нельзя.
+        // Control: the same configuration as in T84. If it does not give ≈5.4e-4,
+        // the measurement is broken and the new numbers cannot be trusted.
         HeightfieldTerrain control = MakeTerrainAdvanced(42);
         double controlAngle = WorstNormalAngleAtPeak(body, control);
         Console.WriteLine(string.Format(
@@ -186,7 +183,7 @@ internal static partial class P1bTests
         return 0;
     }
 
-    /// <summary>Конфигурация EarthLike_Perlin без гамма-сдвига (γ=1).</summary>
+    /// <summary>EarthLike_Perlin configuration without gamma shift (γ=1).</summary>
     private static HeightfieldTerrain PerlinPreset()
     {
         HeightfieldTerrain t = SceneLikeTerrain();

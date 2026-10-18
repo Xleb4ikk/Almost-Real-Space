@@ -6,33 +6,26 @@ using Galilego.Universe;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Стенд и игра смотрят на РАЗНЫЕ копии пресета EarthLike, и они уже разошлись.
+    /// The bench and the game read DIFFERENT copies of the EarthLike preset, and
+    /// they can drift apart.
     ///
-    /// Три источника:
-    ///   1. TerrainProfile.CreateEarthLike() — C#-конструктор. Игрой не
-    ///      вызывается вообще, только тестами.
-    ///   2. Assets/_Project/Profiles/Terrain/EarthLike.asset — то, что реально
-    ///      грузит сцена OutdoorsScene.
-    ///   3. SceneLikeTerrain() — третья копия, отдельная от первых двух, и именно
-    ///      по ней меряется статистика шума.
+    /// Three sources:
+    ///   1. TerrainProfile.CreateEarthLike() — C# constructor, used only by tests.
+    ///   2. Assets/_Project/Profiles/Terrain/EarthLike.asset — what OutdoorsScene
+    ///      actually loads.
+    ///   3. SceneLikeTerrain() — a third copy, separate from the first two, and the
+    ///      one the noise statistics are measured on.
     ///
-    /// Расхождение между (1) и (2) уже есть: ContinentDepth 0.9 против 1.2, плюс
-    /// в ассете есть поля пляжа, которых в коде нет. Расхождение между (3) и (1):
-    /// ColorDetailFrequency 1500 против 400, ColorDetailStrength 0.35 против 0.15.
-    ///
-    /// Ничего это не ловило: CreateEarthLike() нигде не сверяется с ассетом, и
-    /// тесты меряют ту копию, которую никто не грузит. Тест читает .asset как
-    /// текст и сверяет ключевые поля — YAML разбирать целиком незачем, формат
-    /// стабильный и плоский.
+    /// The test reads the .asset as text and compares key fields — a full YAML
+    /// parse is unnecessary, the format is stable and flat.
     /// </summary>
     private static int Test117_EarthLikeProfileDrift()
     {
         string path = FindEarthLikeAsset();
         if (path == null)
         {
-            // Стенд запускают не из репозитория (например, из CI-контейнера с
-            // только исходниками). Молча пропускаем: отсутствие файла — не
-            // расхождение значений.
+            // The bench may run outside the repo (e.g. a CI container with sources
+            // only). Skip quietly: a missing file is not a value divergence.
             Console.WriteLine("    EarthLike.asset не найден рядом со стендом — проверка пропущена");
             Check(true, "T117 earthlike-drift", "ассет не найден, проверка пропущена");
             return 0;
@@ -99,7 +92,7 @@ internal static partial class P1bTests
         return FindProfileAsset("EarthLike.asset");
     }
 
-    /// <summary>Ищ ассет профиля вверх по дереву от рабочего каталога стенда.</summary>
+    /// <summary>Searches for a profile asset upward from the bench working directory.</summary>
     private static string FindProfileAsset(string fileName)
     {
         var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
@@ -126,9 +119,9 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Скалярные поля блока Profile из YAML ассета. Плоский формат вида
-    /// «  Имя: число», вложенность в разбор не входит: для этой задачи достаточно
-    /// собрать все числовые пары верхнего уровня блока.
+    /// Scalar fields of the Profile block from the asset YAML. A flat format like
+    /// "  Name: number"; nesting is not parsed: for this task it is enough to
+    /// collect every numeric top-level pair of the block.
     /// </summary>
     private static System.Collections.Generic.Dictionary<string, double> ReadScalarFields(string path)
     {
@@ -148,7 +141,7 @@ internal static partial class P1bTests
                 continue;
             }
 
-            // Вышли из блока Profile: следующая строка уровнем выше.
+            // Left the Profile block: the next line is one level up.
             if (line.Length > 0 && !line.StartsWith("    ", StringComparison.Ordinal))
             {
                 break;

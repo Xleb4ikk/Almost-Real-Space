@@ -4,9 +4,9 @@ using System.Collections.Generic;
 namespace Galilego.Core
 {
     /// <summary>
-    /// Вид сэмпла истории. Обычные прореживаются шагом, событийные и граничные —
-    /// никогда: touchdown/entry/SOI обязаны сохраняться, даже если событие легло
-    /// между обычными сэмплами или почти ровно на границу интервала.
+    /// History sample kind. Regular samples are thinned by step; event and boundary
+    /// samples never are: touchdown/entry/SOI must be kept even if the event falls
+    /// between regular samples or almost exactly on an interval boundary.
     /// </summary>
     public enum HistorySampleKind
     {
@@ -30,9 +30,9 @@ namespace Galilego.Core
     }
 
     /// <summary>
-    /// История как представление траектории (не состояние физики). Инвариант 1:
-    /// построение истории не меняет State/time/события propagator — builder
-    /// только ЧИТАЕТ dense-трек, ни одного Step внутри.
+    /// History as a trajectory representation (not physics state). Invariant 1:
+    /// building history does not change the propagator's State/time/events — the
+    /// builder only READS the dense track, never Steps.
     /// </summary>
     public sealed class TrajectoryHistory
     {
@@ -52,13 +52,13 @@ namespace Galilego.Core
     }
 
     /// <summary>
-    /// Построение истории из dense-трека. Инвариант 2: сетка времён детерминирована
-    /// шагом stride от абсолютного нуля (k·stride), а не от размера physics-чанков:
-    /// один и тот же прогон с разной нарезкой даёт то же множество времён
-    /// (значения — в пределах шума интегратора, времена — точно).
-    /// Слияние в пределах MergeEpsilon (1e-9с): событие почти на сетке/границе не
-    /// дублируется; приоритет вида Event &gt; Boundary &gt; Regular — событие
-    /// важнее совпавшей границы, граница важнее регулярного.
+    /// Builds history from the dense track. Invariant 2: the time grid is determined
+    /// by the stride step from absolute zero (k·stride), not by physics chunk size:
+    /// the same run cut differently yields the same set of times (values within
+    /// integrator noise, times exactly).
+    /// Merging within MergeEpsilon (1e-9 s): an event almost on the grid/boundary is
+    /// not duplicated; kind priority Event &gt; Boundary &gt; Regular — an event wins
+    /// over a coinciding boundary, a boundary over a regular sample.
     /// </summary>
     public static class HistoryBuilder
     {

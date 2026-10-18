@@ -5,10 +5,10 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Ввод игрока (B3): варп-лестница и газ. Пишет ТОЛЬКО в SimulationRunner
-    /// (Warp.SetWarpFactor / RawThrottle) — физика исполняется в его Update.
-    /// Клавиши: 1..7 — ступени лестницы [1, 5, 10, 100, 500, 1000, 3000],
-    /// LeftShift — газ вверх, LeftControl — вниз, P — пауза.
+    /// Player input (B3): warp ladder and throttle. Writes ONLY to SimulationRunner
+    /// (Warp.SetWarpFactor / RawThrottle) — physics runs in its Update.
+    /// Keys: 1..7 are the ladder rungs [1, 5, 10, 100, 500, 1000, 3000],
+    /// LeftShift throttle up, LeftControl down, P pause.
     /// </summary>
     public sealed class ShipController : MonoBehaviour
     {
@@ -26,10 +26,10 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Ступени варпа: клавиши 1..7 снапятся вниз в SetWarpFactor.
-            // В зоне контакта варп запрещён: время зоны идёт по реальному dt
-            // (VesselStep.AdvanceTime), а поднятый варп на выходе увёл бы корабль рывком.
-            // В режиме строительства цифры заняты хотбаром (и варп тут ни к чему).
+            // Warp rungs: keys 1..7 snap down in SetWarpFactor.
+            // Warp is forbidden in the contact zone: zone time runs on real dt
+            // (VesselStep.AdvanceTime), and raised warp would jerk the ship on exit.
+            // In build mode the digits are taken by the hotbar.
             if (!ContactZoneHost.Active && !Runner.BuildMode)
             {
                 for (int rung = 0; rung < WarpController.WarpRungs.Length; rung++)

@@ -3,42 +3,14 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// LOD постройки по МЕТРАМ, а не по экранному размеру.
+    /// Building LOD by METRES, not by screen size: switches levels by horizontal
+    /// distance in the site axes (X north, Y zenith, Z east). Works only in Play;
+    /// in the editor the LODGroup stays enabled so the author can still drag level
+    /// boundaries in the Scene view.
     ///
-    /// Почему не штатный LODGroup: у него после последнего уровня всегда есть
-    /// состояние «выключено». Как только «considered screen height» падает ниже
-    /// порога последнего уровня, Unity гасит ВСЕ рендереры группы, и здание
-    /// просто исчезает. Держать что-то «навсегда» экранно-относительный LOD не
-    /// умеет в принципе, а на планете R = 1143 км это ровно тот случай: постройка
-    /// должна читаться как ориентир за горизонтом, а не пустота в кадре.
-    ///
-    /// Поэтому компонент забирает LODGroup себе (выключает его — и тогда
-    /// рендерерами управляем мы, а не Unity) и переключает уровни по
-    /// горизонтальной дистанции в осях места (X — север, Y — зенит, Z — восток).
-    /// Именно горизонталь: здание высотой 228 м, игрок на 2 м — вертикаль съела бы
-    /// сотни метров у самой постройки и передвинула бы все границы.
-    ///
-    /// Работает только в Play. В редакторе LODGroup остаётся включённым, чтобы
-    /// автор по-прежнему мог тянуть границы уровней мышкой в Scene view.
-    ///
-    /// Про «с огромного расстояния». Настоящая граница видимости здесь не
-    /// настройка LOD, а горизонт планеты: насколько далеко видна вершина
-    /// высоты H при наблюдателе на высоте h — это √(2·R·(h + H)). Для Terra
-    /// (R = 1143 км) и базы высотой 228 м это ~23 км с земли (глаз 2 м),
-    /// ~35 км с 300 м и ~53 км с километра. Дальше вершина базы уходит под
-    /// горизонт, и никакой LOD её не вернёт — это геометрия сферы.
-    ///
-    /// Но игра и так моделирует «видно за горизонт»: амплитуда рельефа 9144 м
-    /// (с континентальной глубиной пик ~20 км), из-за чего горизонт камеры
-    /// (SkyPhysics.MaxSightDistance) уходит за 200 км, чанки рельефа режутся
-    /// по maxVisibleDistance около 166 км (PlanetSurfaceRenderer), far камеры —
-    /// ~238 км (FirstPersonCamera.UpdateClipPlanes). Ни одна из этих границ не
-    /// мешает 40 км.
-    ///
-    /// Про 80 км в последнем уровне: это осознанная граница, а не «на всякий
-    /// случай». Дальше 80 км база — меньше пикселя (≈3.5 px на 1440p при FOV
-    /// 60°) и всё равно не читается, но рендереры продолжают попадать в кадр.
-    /// 0 = не гасить никогда — если понадобится именно такое поведение.
+    /// The real visibility limit is the planet horizon, not the LOD setting.
+    /// 0 in LevelMaxDistanceMeters = never cull; otherwise the building is culled
+    /// entirely beyond the last number.
     /// </summary>
     public sealed class SiteLodByDistance : MonoBehaviour
     {
@@ -51,17 +23,17 @@ namespace Galilego.Universe
             "режет только горизонт планеты и far камеры.")]
         public float[] LevelMaxDistanceMeters = { 350f, 1100f, 80000f };
 
-        /// <summary>Индекс видимого уровня, −1 если не видно ничего.</summary>
+        /// <summary>Index of the visible level, −1 if nothing is visible.</summary>
         public int CurrentLevel { get; private set; } = -1;
 
-        /// <summary>Горизонтальная дистанция до постройки, м — для отладки.</summary>
+        /// <summary>Horizontal distance to the building, m — for debugging.</summary>
         public float DistanceMeters { get; private set; }
 
         private LODGroup lodGroup;
         private Renderer[][] levels;
         private bool disabledLodGroup;
 
-        /// <summary>Уровней в группе не нашлось — компонент молчит.</summary>
+        /// <summary>No levels found in the group — the component stays silent.</summary>
         public bool HasLevels => levels != null && levels.Length > 0;
 
         private void OnEnable()
@@ -87,7 +59,7 @@ namespace Galilego.Universe
             Release();
         }
 
-        /// <summary>Перечитать уровни из LODGroup — после правки префаба в редакторе.</summary>
+        /// <summary>Re-read levels from the LODGroup — after editing the prefab in the editor.</summary>
         [ContextMenu("Пересобрать уровни")]
         public void Recache()
         {
@@ -139,9 +111,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Забираем LODGroup: выключенная группа не гасит рендереры сама, и
-        /// переключением уровней целиком владеем мы. Флаг — чтобы в OnDisable
-        /// не включить обратно группу, которую выключил кто-то ещё.
+        /// Take over the LODGroup: a disabled group does not switch renderers
+        /// itself, and we own level switching entirely. The flag avoids re-enabling
+        /// in OnDisable a group someone else disabled.
         /// </summary>
         private void TakeOver()
         {
@@ -161,7 +133,7 @@ namespace Galilego.Universe
 
             disabledLodGroup = false;
 
-            // Авторское состояние: LOD0 включён, дальние уровни выключены.
+            // Authoring state: LOD0 on, far levels off.
             ShowLevel(0);
             CurrentLevel = -1;
         }
@@ -179,9 +151,9 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Оси места: X — север, Y — зенит, Z — восток. Горизонтальная
-            // дистанция в этой плоскости — то, что игрок реально проходит мимо
-            // здания; вертикаль (наш собственный зенит) в границах не участвует.
+            // Site axes: X north, Y zenith, Z east. Horizontal distance in this
+            // plane is what the player actually covers past the building; the
+            // vertical (our own zenith) plays no part in the bounds.
             Vector3 local = transform.InverseTransformPoint(view.transform.position);
             DistanceMeters = Mathf.Sqrt((local.x * local.x) + (local.z * local.z));
 
@@ -194,7 +166,7 @@ namespace Galilego.Universe
             ShowLevel(wanted);
         }
 
-        /// <summary>Индекс уровня для дистанции: первое число, которого хватило.</summary>
+        /// <summary>Level index for a distance: the first number that was enough.</summary>
         private int PickLevel(float distanceMeters)
         {
             int count = levels.Length;
@@ -205,8 +177,8 @@ namespace Galilego.Universe
 
             if (LevelMaxDistanceMeters == null || LevelMaxDistanceMeters.Length == 0)
             {
-                // Настроек нет — показываем самый дешёвый уровень и не гасим:
-                // исчезать постройке не от чего, а переключать нечем.
+                // No settings — show the cheapest level and never cull: there is
+                // nothing to make the building disappear and nothing to switch by.
                 return count - 1;
             }
 
@@ -216,8 +188,8 @@ namespace Galilego.Universe
                 float limit = LevelMaxDistanceMeters[slot];
                 if (limit <= 0f)
                 {
-                    // Границы нет: самый дешёвый уровень и не гасим. Дальше
-                    // постройку отрезает только горизонт планеты и far камеры.
+                    // No limit: the cheapest level and never cull. Beyond that the
+                    // building is cut only by the planet horizon and the camera far plane.
                     return count - 1;
                 }
 

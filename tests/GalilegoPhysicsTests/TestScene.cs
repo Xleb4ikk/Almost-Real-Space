@@ -4,8 +4,8 @@ using Galilego.Universe;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Общая сцена для тестов: одно центральное тело с известным μ в начале
-    /// координат, корабль на круговой орбите радиуса a в плоскости XY.
+    /// Shared test scene: a single central body with a known μ at the origin,
+    /// and a ship on a circular orbit of radius a in the XY plane.
     /// </summary>
     internal static class TestScene
     {
@@ -36,7 +36,7 @@ namespace GalilegoPhysicsTests
         }
 
         /// <summary>
-        /// Эллиптическая орбита: старт в перицентре (rp, 0, 0) со скоростью вверх.
+        /// Elliptical orbit: start at periapsis (rp, 0, 0) with velocity upward.
         /// </summary>
         public static void EllipticalOrbit(double periapsis, double apoapsis, double mu,
             out Vector3d position, out Vector3d velocity)

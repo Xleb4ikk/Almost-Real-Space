@@ -7,33 +7,30 @@ namespace Galilego.Universe
     [Serializable]
     public sealed class BakedEphemeris : IDisposable
     {
-        /// <summary>Магия обычного BE1-файла (legacy, без продолжения).</summary>
+        /// <summary>Magic of a plain BE1 file (legacy, no continuation).</summary>
         private static readonly byte[] MagicPlain = { (byte)66, (byte)69, (byte)49 };
 
         /// <summary>
-        /// Магия BE2-файла: [BE2][заголовок 27Б][сегменты float64][продолжение 48Б в хвосте].
-        /// Продолжение в хвосте (вне потока сегментов): FileSink стримит сегменты
-        /// в gzip последовательно и дописывает продолжение в Dispose, а OpenFile
-        /// читает хвост seek'ом, не распаковывая файл целиком.
+        /// BE2 file magic: [BE2][27-byte header][float64 segments][48-byte tail continuation].
+        /// The continuation lives in the tail, outside the segment stream: FileSink
+        /// streams gzip segments and OpenFile seeks to the tail without full unpacking.
         /// </summary>
         private static readonly byte[] MagicPlain2 = { (byte)66, (byte)69, (byte)50 };
 
-        /// <summary>Магия сжатого BG1-контейнера: [BG1][gzip(данные BE1)]. Legacy.</summary>
+        /// <summary>Magic of the gzip BG1 container: [BG1][gzip(BE1 data)]. Legacy.</summary>
         private static readonly byte[] MagicGzip = { (byte)66, (byte)71, (byte)49 };
 
         /// <summary>
-        /// Магия квантованного BG2-контейнера (legacy, без продолжения):
-        /// [BG2][gzip([заголовок BE1 27Б][сегменты: 6Б (E_x,E_y,E_z,bits_x,bits_y,bits_z) + zigzag-varint кварант])].
-        /// На сегмент/ось: экспонента E (масштаб 2^E по max|a| сегмента) и битность
-        /// bits = E + K (K из бюджета ошибки) — файл самодостаточен посегментно,
-        /// оконное чтение не требует знания амплитуд заранее. Ошибка позиции
-        /// гарантированно ≤ budget/2 (Σ|T_j| ≤ 13, шаг ≤ budget/13).
+        /// Magic of the quantized BG2 container (legacy, no continuation):
+        /// [BG2][gzip([27-byte BE1 header][segments: 6B (E_x,E_y,E_z,bits_x,bits_y,bits_z) + zigzag-varint quanta])].
+        /// Each segment carries its own E/bits, so window reads need no prior amplitudes.
+        /// Position error is guaranteed &lt;= budget/2 (Σ|T_j| &lt;= 13, step &lt;= budget/13).
         /// </summary>
         private static readonly byte[] MagicGz2 = { (byte)66, (byte)71, (byte)50 };
 
         /// <summary>
-        /// Магия BG3: как BG2 + блок кеплерова продолжения в хвосте файла
-        /// (вне gzip): [BG3][gzip([заголовок 27Б][varint-сегменты])][продолжение 48Б].
+        /// BG3 magic: like BG2 plus a Keplerian continuation block in the file tail
+        /// (outside gzip): [BG3][gzip([27-byte header][varint segments])][48-byte continuation].
         /// </summary>
         private static readonly byte[] MagicGz3 = { (byte)66, (byte)71, (byte)51 };
 
@@ -45,13 +42,13 @@ namespace Galilego.Universe
         public string FilePath;
         public int WindowSegments = 4;
 
-        /// <summary>Файл в контейнере BG1 (gzip): чтение окон — последовательная распаковка.</summary>
+        /// <summary>File in a BG1 container (gzip): window reads decompress sequentially.</summary>
         public bool Compressed;
 
-        /// <summary>Файл в формате BG2 (квантованные varint-сегменты внутри gzip).</summary>
+        /// <summary>File in BG2 format (quantized varint segments inside gzip).</summary>
         public bool Quantized;
 
-        /// <summary>В payload файла есть блок продолжения (BE2/BG3): шапка 75 Б вместо 27.</summary>
+        /// <summary>The payload has a continuation block (BE2/BG3): 75-byte header instead of 27.</summary>
         public bool HasContinuationBlock;
 
         private double[] window;
@@ -65,9 +62,8 @@ namespace Galilego.Universe
         public long WindowLoads;
 
         /// <summary>
-        /// Буферизованный читатель varint-потока BG2 поверх gzip. Байт за байтом
-        /// из GZipStream — десятки миллионов вызовов Read при скимме; буфер 4 КБ
-        /// сводит это к чтению чанков.
+        /// Buffered reader for the BG2 varint stream on top of gzip (a 4 KB buffer
+        /// turns per-byte reads during skimming into chunk reads).
         /// </summary>
         private sealed class V2Reader
         {
@@ -123,9 +119,8 @@ namespace Galilego.Universe
                     }
                 }
 
-                // Зигзаг-декод: v = (z>>1) XOR −(z&1) — XOR со всеми единицами для
-                // нечётных, НЕ арифметическое отрицание (−(z>>1) давало бы значение
-                // на шаг меньше — поймано T62: коэф-разница 1.5 шага вместо ≤0.5).
+                // Zigzag decode: v = (z>>1) XOR −(z&1) — XOR with all ones for
+                // odd values, NOT arithmetic negation.
                 value = (long)(z >> 1);
                 if ((z & 1UL) != 0UL)
                 {
@@ -135,7 +130,7 @@ namespace Galilego.Universe
                 return true;
             }
 
-            /// <summary>Декодирует один сегмент BG2 в dest начиная с destOff.</summary>
+            /// <summary>Decodes one BG2 segment into dest starting at destOff.</summary>
             internal bool DecodeSegment(int stride, double[] dest, int destOff)
             {
                 int perAxis = stride / 3;
@@ -169,7 +164,7 @@ namespace Galilego.Universe
                 return true;
             }
 
-            /// <summary>Пропускает один сегмент (скимм вперёд без декодирования коэффициентов).</summary>
+            /// <summary>Skips one segment (skimming forward without decoding coefficients).</summary>
             internal bool SkipSegment(int stride)
             {
                 for (int i = 0; i < 6; i++)
@@ -193,8 +188,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// K квантования из бюджета ошибки: шаг кванта 2^(E−bits) = 2^−K ≤ budget/13
-        /// гарантирует ошибку позиции ≤ budget/2 (худший случай Σ|T_j(x)| ≤ 13).
+        /// Quantization K from the error budget: quantum step 2^(E−bits) = 2^−K &lt;= budget/13
+        /// guarantees a position error &lt;= budget/2 (worst case Σ|T_j(x)| &lt;= 13).
         /// </summary>
         internal static int KFromBudget(double budget)
         {
@@ -208,9 +203,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Кодирует один сегмент в формат BG2: 6 байт (E и bits по осям) +
-        /// zigzag-varint квантованные коэффициенты. Возвращает число записанных
-        /// байт. Громкое исключение при амплитуде вне диапазона формата.
+        /// Encodes one segment in BG2 format: 6 bytes (E and bits per axis) +
+        /// zigzag-varint quantized coefficients. Returns the number of bytes
+        /// written. Throws loudly when the amplitude is outside the format range.
         /// </summary>
         internal static int EncodeSegmentV2(double[] coeffs, int stride, double budget, byte[] dest)
         {
@@ -279,33 +274,31 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Кеплерово продолжение за концом рельсы: [a, e, inc°, Ω°, ω°, M0°]
-        /// относительно родителя, снятые с рельсы в EndSeconds (эпоха продолжения).
-        /// null = нет продолжения (старые форматы BE1/BG1/BG2 или невалидный фиттинг).
+        /// Keplerian continuation past the end of the rail: [a, e, inc°, Ω°, ω°, M0°]
+        /// relative to the parent, captured from the rail at EndSeconds (the continuation epoch).
+        /// null = no continuation (legacy BE1/BG1/BG2 formats or invalid fitting).
         /// </summary>
         public double[] Continuation;
 
-        /// <summary>Размер блока продолжения в файле (6 doubles).</summary>
+        /// <summary>Size of the continuation block in the file (6 doubles).</summary>
         internal const int ContinuationBytes = 48;
 
-        /// <summary>Причина отказа TryEvaluate — для диагностики вместо лжи «вне интервала».</summary>
+        /// <summary>Why TryEvaluate failed — for diagnostics instead of a false "out of range".</summary>
         public enum FailReason
         {
-            /// <summary>TryEvaluate должен был succeed — причин нет.</summary>
+            /// <summary>TryEvaluate should have succeeded — no reason for failure.</summary>
             None,
-            /// <summary>Время вне испечённого интервала.</summary>
+            /// <summary>Time is outside the baked span.</summary>
             OutOfRange,
-            /// <summary>Данные отсутствуют (не заполнены Coeffs/структура).</summary>
+            /// <summary>No data (Coeffs/structure not populated).</summary>
             NoData,
-            /// <summary>Структура повреждена (Degree/сегменты вне диапазонов).</summary>
+            /// <summary>Structure is corrupt (Degree/segments out of range).</summary>
             Corrupt
         }
 
         /// <summary>
-        /// Причина, по которой TryEvaluate вернула/вернула бы false для
-        /// timeSeconds. Дешёвая (окна не читаются). Нужна, чтобы
-        /// EphemerisRangeException не лгал «вне интервала» при битых данных
-        /// внутри спана (аудит S2/4.3).
+        /// Reason TryEvaluate returned (or would return) false for timeSeconds.
+        /// Cheap (no window reads).
         /// </summary>
         public FailReason GetFailReason(double timeSeconds)
         {
@@ -330,12 +323,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Кеплерово продолжение для timeSeconds ЗА концом рельсы (спрос вызывается
-        /// только после того, как TryEvaluate вернул false). Бесшовность: элементы
-        /// сняты с интегрированного состояния в EndSeconds, поэтому на стыке позиция
-        /// непрерывна по построению. mu — тот же μ_local, что у кеплеровой рельсы
-        /// (μ родителя + μ поддерева тела). Формула и порядок операций — один в один
-        /// с кеплеровой рельсой EvaluateLocalOffset.
+        /// Keplerian continuation for timeSeconds BEYOND the end of the rail (only the
+        /// past-end fallback calls it). Elements are captured at EndSeconds, so the seam
+        /// is position-continuous by construction. mu is the same μ_local as the Keplerian
+        /// rail (parent μ + body subtree μ); the formula matches EvaluateLocalOffset exactly.
         /// </summary>
         public bool TryEvaluateContinuation(double timeSeconds, double mu, out Vector3d position, out Vector3d velocity)
         {
@@ -349,8 +340,8 @@ namespace Galilego.Universe
             double boundaryTol = 1e-6d + Math.Abs(EndSeconds) * 1e-12d;
             if (timeSeconds <= EndSeconds + boundaryTol)
             {
-                // Внутри рельсы TryEvaluate обязан был ответить; сюда попадаем
-                // только из фолбэка за концом.
+                // Inside the rail TryEvaluate must have answered; only the
+                // past-end fallback lands here.
                 return false;
             }
 
@@ -358,7 +349,7 @@ namespace Galilego.Universe
             double e = Continuation[1];
             if (!(a > 0d) || !(e >= 0d) || !(e < 1d))
             {
-                // Невалидный фиттинг (гипербола/убегание/мусор) — громко.
+                // Invalid fitting (hyperbola/escape/garbage) — fail loudly.
                 return false;
             }
 
@@ -391,27 +382,19 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Гейт оконного курсора. TryEvaluate мутирует общее состояние (окно,
-        /// gzip-курсор, v2-ридер), поэтому без гейта два читателя разъедают окно
-        /// и стрим: gzip forward-only — вторая рука на нём даёт мусор или IOException,
-        /// а ResetCompressedStream может Dispose стрим, из которого другой поток
-        /// ещё читает. Секция покрывает ВЕСЬ TryEvaluate (Clenshaw вкл.): окно
-        /// переиспользуемый буфер, ссылку наружу не отдаём. Контракт:
-        /// — TryEvaluate потокобезопасен между инстансами и с гейтом внутри
-        ///   одного (критическая секция редкая — раз в WindowSegments сегментов);
-        /// — TryEvaluateContinuation чистая математика, безопасна всегда;
-        /// — LoadRangeToMemory открывает СВОИ стримы и возвращает новый инстанс —
-        ///   immutable-snapshot контракт для параллельных планировщиков
-        ///   (porkchop, Lambert, предикторы) с их ограниченными окнами;
-        /// — attach (body.Baked = ...) и мутации публичных полей — только до
-        ///   входа системы в работу, с главного потока.
+        /// Window cursor gate: TryEvaluate mutates shared state (window, gzip cursor,
+        /// v2 reader), so the whole call runs under lock (a gzip stream must not be
+        /// read by two hands at once). TryEvaluateContinuation is pure math;
+        /// LoadRangeToMemory opens its own streams and returns a new instance.
+        /// Attach and public-field mutations only happen before the system runs,
+        /// from the main thread.
         /// </summary>
         public bool TryEvaluate(double timeSeconds, out Vector3d position, out Vector3d velocity)
         {
             if (FilePath == null)
             {
-                // Инстанс «всё в памяти»: состояния нет, гонка невозможна —
-                // гейт не нужен (горячий путь бейка/тестов без lock-накладки).
+                // In-memory instance: no shared state, no race — no gate needed
+                // (hot path for baking/tests without lock overhead).
                 return TryEvaluateCore(timeSeconds, out position, out velocity);
             }
 
@@ -433,11 +416,9 @@ namespace Galilego.Universe
             }
 
             double dt = timeSeconds - T0Seconds;
-            // Допуск на границе — ОТНОСИТЕЛЬНЫЙ: EndSeconds пересчитывается с
-            // fp-округлением и на спанах ~3e10 с расходится со спаном на
-            // единицы ulp (ulp(3.2e10)≈3.7мкс) — запрос ровно в конец спана
-            // не должен падать (поймано T60). Вне нескольких ulp — по-прежнему
-            // громкий отказ.
+            // Boundary tolerance is RELATIVE: EndSeconds is recomputed with fp rounding
+            // and differs from the span by a few ulps on ~3e10 s spans, so a query exactly
+            // at the end must not fail; beyond a few ulps it still fails loudly.
             double boundaryTol = 1e-6d + Math.Abs(T0Seconds + SegmentCount * SegmentLengthSeconds) * 1e-12d;
             if (dt < -boundaryTol || dt > SegmentCount * SegmentLengthSeconds + boundaryTol)
             {
@@ -548,11 +529,10 @@ namespace Galilego.Universe
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is InvalidDataException)
             {
-                // Файл отсутствует/повреждён/недоступен — это ошибка окружения,
-                // а не «вне диапазона»: молча вернуть false значило бы выдать
-                // мусорную позицию за легитимный вердикт TryEvaluate (поймано
-                // T45 «битый файл громко»). InvalidDataException — битый gzip,
-                // тоже окружение, тоже громко и с именем файла.
+                // Missing/corrupt/inaccessible file is an environment error, not
+                // "out of range": silently returning false would pass garbage off
+                // as a legitimate TryEvaluate verdict. InvalidDataException means
+                // a broken gzip — also environment, also loud, with the file name.
                 throw new InvalidOperationException("Не удалось прочитать файл эфемериды: " + FilePath, ex);
             }
 
@@ -563,8 +543,8 @@ namespace Galilego.Universe
 
         private void ReadWindowPlain(int seg, int count, int stride)
         {
-            // Шапка = 27 Б (включая магию) для всех форматов: продолжение лежит
-            // в хвосте файла, вне потока сегментов.
+            // Header = 27 B (including magic) for all formats; the continuation
+            // lives in the file tail, outside the segment stream.
             using (FileStream fs = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
                 fs.Seek(27L + ((long)seg * stride * 8L), SeekOrigin.Begin);
@@ -582,10 +562,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Оконное чтение BG1: gzip не умеет seek, но время движется вперёд —
-        /// читаем последовательно, лишнее распакованное выбрасываем чанками.
-        /// Прыжок назад (варп в прошлое) — переоткрытие файла. Скимминг в
-        /// worst-case — десятки мс на десятки МБ, в прямом времени — ноль.
+        /// BG1 window read: gzip cannot seek, but time moves forward — read
+        /// sequentially and discard the extra decompressed bytes in chunks.
+        /// A jump backwards reopens the file. Worst-case skimming costs tens of
+        /// ms; forward time is free.
         /// </summary>
         private void ReadWindowCompressed(int seg, int count, int stride)
         {
@@ -594,7 +574,7 @@ namespace Galilego.Universe
             {
                 ResetCompressedStream();
                 gzFile = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                gzFile.Seek(3, SeekOrigin.Begin); // магия BG1
+                gzFile.Seek(3, SeekOrigin.Begin); // BG1 magic
                 gzStream = new System.IO.Compression.GZipStream(gzFile, System.IO.Compression.CompressionMode.Decompress);
                 gzPos = 0;
             }
@@ -629,10 +609,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Оконное чтение BG2: поток varint-сегментов декодируется последовательно;
-        /// прыжок назад — переоткрытие файла (как у BG1). Каждый сегмент
-        /// самодостаточен (E/bits внутри), поэтому скимм — дешёвое чтение varint
-        /// без декодирования коэффициентов.
+        /// BG2 window read: the varint segment stream is decoded sequentially;
+        /// a jump backwards reopens the file (like BG1). Each segment is
+        /// self-contained (E/bits inside), so skimming is a cheap varint read
+        /// without decoding coefficients.
         /// </summary>
         private void ReadWindowV2(int seg, int count, int stride)
         {
@@ -640,13 +620,13 @@ namespace Galilego.Universe
             {
                 ResetCompressedStream();
                 gzFile = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                gzFile.Seek(3, SeekOrigin.Begin); // магия BG2
+                gzFile.Seek(3, SeekOrigin.Begin); // BG2 magic
                 gzStream = new System.IO.Compression.GZipStream(gzFile, System.IO.Compression.CompressionMode.Decompress);
                 gzPos = 0;
                 v2Segs = 0;
                 v2Reader = new V2Reader(gzStream);
-                // Шапка payload = 27 Б для BG2/BG3: продолжение лежит в хвосте
-                // файла, вне gzip-потока.
+                // Payload header = 27 B for BG2/BG3: the continuation lies in the
+                // file tail, outside the gzip stream.
                 for (int i = 0; i < 27; i++)
                 {
                     if (v2Reader.ReadByte() < 0)
@@ -697,14 +677,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Явное освобождение файлового дескриптора. Без Dispose держатель
-        /// FileStream жил до GC-финализатора: переттач эфемериды (attach нового
-        /// инстанса на то же тело) блокировал перезапись/удаление файла на
-        /// некоторых платформах и капал хэндлами при частых переттачах.
-        /// Гейт обязателен: ResetCompressedStream мутует то же состояние, что
-        /// TryEvaluateCore. После Dispose TryEvaluate честно вернёт false
-        /// (EnsureWindow не сможет прочитать окно) — переоткрытия не делаем:
-        /// dispose-после-use — ошибка вызывающего кода.
+        /// Explicitly releases the file descriptor (otherwise the FileStream lives
+        /// until the GC finalizer and can block file rewrite/deletion). The gate is
+        /// required: ResetCompressedStream mutates the same state as TryEvaluateCore.
+        /// After Dispose, TryEvaluate honestly returns false.
         /// </summary>
         public void Dispose()
         {
@@ -738,7 +714,7 @@ namespace Galilego.Universe
             return true;
         }
 
-        /// <summary>Полная распаковка BG1 в память (для LoadRangeToMemory).</summary>
+        /// <summary>Full BG1 decompression into memory (for LoadRangeToMemory).</summary>
         private byte[] DecompressWhole()
         {
             using (FileStream fs = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -754,9 +730,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Обычный BE2-файл: [BE2][заголовок 27Б][сегменты float64][продолжение 48Б].
-        /// Блок продолжения присутствует всегда; при отсутствии фиттинга — NaN
-        /// (читатель трактует как «нет продолжения» — громко за концом).
+        /// Plain BE2 file: [BE2][27-byte header][float64 segments][48-byte continuation].
+        /// The continuation block is always present; without a fitting it holds NaN
+        /// (readers treat it as "no continuation" — loud past the end).
         /// </summary>
         public void WriteToFile(string path)
         {
@@ -764,10 +740,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Сжатый BG3-файл: [BG3][gzip([заголовок 27Б][сегменты varint])][продолжение 48Б].
-        /// Квантование с бюджетом ошибки позиции: гарантия ≤ budget/2 на сегмент
-        /// (см. KFromBudget). Продолжение в хвосте, вне gzip — стриминг сегментов
-        /// сохраняется, OpenFile читает хвост seek'ом.
+        /// Compressed BG3 file: [BG3][gzip([27-byte header][varint segments])][48-byte continuation].
+        /// Quantization with a position-error budget: guarantee &lt;= budget/2 per segment
+        /// (see KFromBudget). The continuation sits in the tail, outside gzip, so segment
+        /// streaming is preserved and OpenFile can seek to it.
         /// </summary>
         public void WriteToFileCompressed(string path, double quantBudgetMeters = 2d)
         {
@@ -800,7 +776,7 @@ namespace Galilego.Universe
                     }
                 }
 
-                // Продолжение — в хвост, после закрытия gzip (хвост должен быть дописан).
+                // The continuation goes to the tail, after gzip is closed (it must be appended last).
                 byte[] tail = new byte[ContinuationBytes];
                 for (int i = 0; i < 6; i++)
                 {
@@ -873,8 +849,8 @@ namespace Galilego.Universe
                 return null;
             }
 
-            // BE2/BG3: продолжение — 48 Б в хвосте файла, вне сжатия: OpenFile
-            // читает его seek'ом, не распаковывая сегменты.
+            // BE2/BG3: the continuation is 48 B in the file tail, outside compression:
+            // OpenFile reads it by seek, without unpacking the segments.
             int payloadHeader = 27;
             byte[] head = new byte[payloadHeader];
             using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -937,7 +913,7 @@ namespace Galilego.Universe
 
                 if (double.IsNaN(continuation[0]))
                 {
-                    continuation = null; // фиттинг не удался — громкий фолбэк за концом
+                    continuation = null; // fitting failed — loud fallback past the end
                 }
             }
 
@@ -957,9 +933,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Загрузка диапазона в память (планировочные окна). Жёсткий кап числа
-        /// сегментов: вызов с гигантским диапазоном — громкое исключение, а не
-        /// молчаливое съедание ОЗУ (C-план).
+        /// Loads a range into memory (planning windows). Hard cap on the number of
+        /// segments: an oversized call throws loudly instead of silently eating RAM.
         /// </summary>
         public BakedEphemeris LoadRangeToMemory(double fromSeconds, double toSeconds, int maxSegments = 1000000)
         {
@@ -1044,11 +1019,9 @@ namespace Galilego.Universe
             }
             else
             {
-                // Тот же fail-loudly контракт, что и EnsureWindow (урок T45):
-                // IOException/UnauthorizedAccess — ошибка окружения, а не
-                // «вне диапазона»; молча вернуть null — выдать мусорный вердикт
-                // (аудит S2/4.1: внутри одного класса были два противоположных
-                // контракта на одну ошибку).
+                // Same fail-loudly contract as EnsureWindow: IOException and
+                // UnauthorizedAccess are environment errors, not "out of range";
+                // silently returning null would produce a garbage verdict.
                 try
                 {
                     using (FileStream fs = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -1078,8 +1051,8 @@ namespace Galilego.Universe
             e.Degree = Degree;
             e.SegmentCount = segB - segA + 1;
             e.Coeffs = slice;
-            // Слайс не делит массив продолжения с родителем: поля публично
-            // мутируемы — мутация одного не должна менять другой (аудит S2).
+            // The slice does not share the continuation array with the parent:
+            // the fields are publicly mutable, so mutating one must not affect the other.
             e.Continuation = Continuation != null ? (double[])Continuation.Clone() : null;
             return e;
         }

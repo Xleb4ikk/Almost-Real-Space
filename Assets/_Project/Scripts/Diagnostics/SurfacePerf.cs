@@ -12,36 +12,29 @@ using UnityEngine.Profiling;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Диагностика рендера планетной поверхности: маркеры профилировщика и
-    /// счётчики за кадр.
+    /// Planet surface render profiling: profiler markers and per-frame counters.
     ///
-    /// Живёт отдельным файлом намеренно. PlanetSurfaceRenderer — на 5000+
-    /// строк, в нём часть старых комментариев в кракозябрах (двойная
-    /// перекодировка), и любая правка его целиком рискует их затереть. Здесь
-    /// файл чистый, и в главный класс добавляются только вызовы.
-    ///
-    /// Два независимых счётчика мешей, потому что утечка чанковых Mesh
-    /// (BuildChunk создаёт new Mesh(), а Destroy(chunk.Go) меш не убирает)
-    /// проверяется двумя разными способами, и нужны оба:
-    ///   * MeshesCreated / MeshesDestroyed — бесплатные и точные. Их ведёт сам
-    ///     рендерер в точках создания и уничтожения. Ненулевой растущий баланс
-    ///     = утечка, и видно это на любом кадре, без сканов.
-    ///   * LiveMeshes — скан Resources.FindObjectsOfTypeAll&lt;Mesh&gt;(). Он
-    ///     абсолютный (ловит и чужую утечку), но сам по себе даёт скачок кадра
-    ///     на 1000+ объектах, поэтому включается флагом и идёт раз в 2 с.
-    ///     Мерить фризы им самим нельзя.
+    /// Two independent mesh counters, both needed: leak of chunk Meshes is
+    /// checked two ways (BuildChunk creates new Mesh(), while Destroy(chunk.Go)
+    /// does not remove the Mesh):
+    ///   * MeshesCreated / MeshesDestroyed — free and exact. Fed by the renderer
+    ///     at creation and destruction points. A non-zero growing balance means
+    ///     a leak, visible on any frame, without scans.
+    ///   * LiveMeshes — a Resources.FindObjectsOfTypeAll&lt;Mesh&gt;() scan. It is
+    ///     absolute (catches foreign leaks too) but spikes the frame at 1000+
+    ///     objects, so it is flag-gated and runs once per 2 s. Do not use it to
+    ///     measure hitches.
     /// </summary>
     public static class SurfacePerf
     {
-        // ===== Маркеры профилировщика =====
-        // Префикс PSR. — чтобы находить в Profiler одним фильтром.
-        // В сборке без Development Build маркеры компилируются в ничто.
+        // ===== Profiler markers =====
+        // PSR. prefix, so one filter finds them all in the Profiler.
+        // Without a Development Build, markers compile to nothing.
         //
-        // Категория задана ЯВНО. У одноаргументного конструктора она своя
-        // внутренняя, и ProfilerRecorder, стартованный на ProfilerCategory.
-        // Scripts, такой маркер не увидит — рекордер вернёт пустоту, и выглядит
-        // это как «фаза ничего не стоит», а не как «я ищу не там». Явная
-        // категория заодно кладёт маркеры в раздел Scripts.
+        // The category is passed EXPLICITLY: the single-argument constructor uses
+        // its own internal category, and a ProfilerRecorder started on
+        // ProfilerCategory.Scripts does not see such markers. The explicit
+        // category also puts the markers in the Scripts section.
 
         private static readonly ProfilerCategory PhaseCategory = ProfilerCategory.Scripts;
 
@@ -57,127 +50,126 @@ namespace Galilego.Universe
         public static readonly ProfilerMarker UpdateDecorCollisionMarker = new ProfilerMarker(PhaseCategory, "PSR.Decor.UpdateCollision");
         public static readonly ProfilerMarker DrawDecorMarker = new ProfilerMarker(PhaseCategory, "PSR.Decor.Draw");
 
-        // ===== Счётчики за кадр (обнуляются в BeginFrame) =====
+        // ===== Per-frame counters (reset in BeginFrame) =====
 
-        /// <summary>Чанков построено в этом кадре (синхронно или финализацией).</summary>
+        /// <summary>Chunks built this frame (synchronously or by finalization).</summary>
         public static int ChunksBuilt;
 
-        /// <summary>Мс на постройку чанков в этом кадре, суммарно по всем.</summary>
+        /// <summary>Milliseconds spent building chunks this frame, summed over all.</summary>
         public static float BuildChunkMs;
 
-        /// <summary>Сколько узлов quadtree хочет видеть Traverse на этом кадре.</summary>
+        /// <summary>How many quadtree nodes Traverse wants to see this frame.</summary>
         public static int DesiredNodes;
 
-        /// <summary>Сколько узлов построено и видимо.</summary>
+        /// <summary>How many nodes are built and visible.</summary>
         public static int VisibleChunks;
 
-        /// <summary>Сколько чанков реально активны (Visible == true). Больше
-        /// VisibleChunks — значит в кадр рисуются предки, оставленные
-        /// видимыми как затычки дыр; это лишний overdraw.</summary>
+        /// <summary>Chunks actually active (Visible == true). More than
+        /// VisibleChunks means ancestor chunks left visible as hole plugs are
+        /// drawn too: extra overdraw.</summary>
         public static int ActiveChunks;
 
-        /// <summary>Сколько чанков выгружено на последнем проходе выгрузки.</summary>
+        /// <summary>Chunks evicted on the last eviction pass.</summary>
         public static int EvictedLast;
 
-        /// <summary>Размер множества keep на последнем кадре. Если он близок к
-        /// размеру кэша, вычистить нечего — кэш упирается в keep, а не в лимит.</summary>
+        /// <summary>Size of the keep set on the last frame. Close to the cache
+        /// size means nothing can be evicted: keep, not the limit, binds.</summary>
         public static int KeepCount;
 
-        /// <summary>Сколько узлов из desired попало в keep. По построению равно
-        /// VisibleChunks того же кадра. Расхождение означает, что кэш изменился
-        /// между постановкой в visible и сборкой keep, и на экране есть дыры.</summary>
+        /// <summary>Nodes from desired that reached keep. Equals VisibleChunks of
+        /// the same frame by construction; a mismatch means the cache changed
+        /// between marking visible and building keep — holes on screen.</summary>
         public static int DesiredInKeep;
 
-        /// <summary>Сколько кандидатов на выгрузку нашлось на последнем проходе.</summary>
+        /// <summary>Eviction candidates found on the last pass.</summary>
         public static int EvictCandidates;
 
-        /// <summary>Размер кэша чанков, включая невидимые.</summary>
+        /// <summary>Chunk cache size, including invisible chunks.</summary>
         public static int CachedChunks;
 
-        /// <summary>Треугольников рельефа в видимых чанках.</summary>
+        /// <summary>Terrain triangles in visible chunks.</summary>
         public static int TerrainTriangles;
 
-        /// <summary>Managed-аллокаций байт за кадр на главном потоке.</summary>
+        /// <summary>Managed bytes allocated this frame on the main thread.</summary>
         public static long GcBytes;
 
-        /// <summary>Запросов на постройку в очереди (Фаза 2+; 0 до неё).</summary>
+        /// <summary>Queued build requests (Phase 2+; 0 before that).</summary>
         public static int QueuedBuilds;
 
-        /// <summary>Построек в полёте, не дождавшихся финализации.</summary>
+        /// <summary>Builds in flight, not yet finalized.</summary>
         public static int InFlightBuilds;
 
-        /// <summary>Чанков, перелитых в меш с начала сессии.</summary>
+        /// <summary>Chunks uploaded into a mesh since session start.</summary>
         public static int ChunksFinalized;
 
-        /// <summary>Сколько узлов поставлено в очередь на этом кадре.</summary>
+        /// <summary>Nodes enqueued this frame.</summary>
         public static int ChunksEnqueued;
 
-        /// <summary>Сколько записей очереди выброшено на этом кадре как
-        /// устаревшие: узел ушёл из desired за MaxChunkQueueAgeFrames кадров.</summary>
+        /// <summary>Queue entries dropped as stale this frame: the node left
+        /// desired within MaxChunkQueueAgeFrames frames.</summary>
         public static int QueueDropped;
 
-        /// <summary>Сколько чанков не удалось залить в меш (исключение в
-        /// FinalizeChunk). Ненулевое значение означает, что async-путь сыпет
-        /// ошибками: смотрите консоль, там же печатается причина.</summary>
+        /// <summary>Chunks that failed to upload into a mesh (exception in
+        /// FinalizeChunk). Non-zero means the async path is erroring: see the
+        /// console, the reason is printed there.</summary>
         public static int FinalizeErrors;
 
-        /// <summary>Сколько префетч-узлов попало в очередь на постройку.</summary>
+        /// <summary>Prefetch nodes that entered the build queue.</summary>
         public static int PrefetchQueued;
 
-        /// <summary>Сколько узлов выдал префетч-обход.</summary>
+        /// <summary>Nodes emitted by the prefetch traversal.</summary>
         public static int PrefetchNodes;
 
-        // ===== Диагностика декора =====
+        // ===== Decor diagnostics =====
 
-        /// <summary>Высота камеры над рельефом, м. 0 = не вычислена.</summary>
+        /// <summary>Camera height above terrain, m. 0 = not computed.</summary>
         public static float DecorAltitude;
 
-        /// <summary>Скорость по поверхности, сглаженная, м/с.</summary>
+        /// <summary>Smoothed surface speed, m/s.</summary>
         public static float DecorSpeed;
 
-        /// <summary>Сколько пулов декора сейчас рисуется.</summary>
+        /// <summary>Decor pools currently drawn.</summary>
         public static int DecorPools;
 
-        /// <summary>Сколько инстансов в этих пулах.</summary>
+        /// <summary>Instances in those pools.</summary>
         public static int DecorInstances;
 
         /// <summary>
-        /// Сколько раз за секунду запускалась пересборка слоёв декора
-        /// (RefreshMovingDecor). Считается в PerfLog, потому что на глаз
-        /// частоту не видно: чем чаще, тем ровнее ковёр при ходьбе, и тем
-        /// больше работы на сборку.
+        /// Decor layer rebuilds per second (RefreshMovingDecor). Counted in
+        /// PerfLog because the rate is invisible to the eye: the higher it is,
+        /// the smoother the carpet while walking and the more build work.
         /// </summary>
         public static int DecorRebuildsLastSample;
 
-        /// <summary>Мс главного потока на пересборку декора за секунду.</summary>
+        /// <summary>Main-thread milliseconds per second spent rebuilding decor.</summary>
         public static float DecorRebuildMsPerSecond;
 
         /// <summary>
-        /// Сколько инстансов травы родилось ближе DecorBirthProbeMeters от
-        /// камеры за секунду. Это и есть «пустота под ногами»: пока игрок
-        /// идёт, трава рядом с ним не должна ни рождаться, ни дорастать.
-        /// Считает рендерер при финализации сборки, где инстансы уже есть.
+        /// Grass instances born within DecorBirthProbeMeters of the camera per
+        /// second: the "bare ground underfoot" metric. While the player walks,
+        /// grass near him must neither be born nor grow. Counted by the renderer
+        /// at build finalization, where instances already exist.
         /// </summary>
         public static int DecorBirthsNearCamera;
 
-        /// <summary>Радиус, в котором считаются рождения (м).</summary>
+        /// <summary>Radius within which births are counted (m).</summary>
         public const float DecorBirthProbeMeters = 25f;
 
-        // ===== Тир качества по скорости (Фаза 3) =====
+        // ===== Speed-based quality tier (Phase 3) =====
 
         /// <summary>0 = Normal, 1 = Fast, 2 = Extreme.</summary>
         public static int MotionTier;
 
-        /// <summary>True, если тир поднят по времени кадра, а не по скорости.</summary>
+        /// <summary>True if the tier was raised by frame time rather than by speed.</summary>
         public static bool TierAutoRaised;
 
-        // ===== Счётчики мешей =====
+        // ===== Mesh counters =====
 
         public static int MeshesCreated;
         public static int MeshesDestroyed;
 
-        /// <summary>Сколько мешей создано и ещё не уничтожено. Ненулевое и
-        /// растущее = утечка.</summary>
+        /// <summary>Meshes created and not yet destroyed. Non-zero and
+        /// growing = leak.</summary>
         public static int MeshBalance => MeshesCreated - MeshesDestroyed;
 
         public static void NoteMeshCreated()
@@ -196,29 +188,29 @@ namespace Galilego.Universe
             MeshesDestroyed = 0;
         }
 
-        // ===== Медленная диагностика (раз в 2 с, по флагу) =====
+        // ===== Slow diagnostics (once per 2 s, behind a flag) =====
 
-        /// <summary>Абсолютное число живых Mesh по последнему скану.</summary>
+        /// <summary>Absolute live Mesh count from the last scan.</summary>
         public static int LiveMeshes;
 
-        /// <summary>Profiler.GetTotalAllocatedMemoryLong на момент последнего скана.</summary>
+        /// <summary>Profiler.GetTotalAllocatedMemoryLong at the moment of the last scan.</summary>
         public static long TotalAllocated;
 
-        /// <summary>mono used size в байтах.</summary>
+        /// <summary>Mono used size in bytes.</summary>
         public static long MonoUsedBytes;
 
         private static float nextSlowScanTime;
 
         /// <summary>
-        /// Включать ли дорогой скан живых мешей. Ставится бенчмарком на время
-        /// прогона; вручную — флагом LogGeometryStats у рендерера. По умолчанию
-        /// выключено: FindObjectsOfTypeAll обходит все загруженные объекты и на
-        /// 1000+ мешей сам даёт фриз, то есть испортил бы ровно то, что мы меряем.
+        /// Whether to run the expensive live-mesh scan. Set by the benchmark for
+        /// the duration of a run; manually via the renderer's LogGeometryStats
+        /// flag. Off by default: FindObjectsOfTypeAll walks all loaded objects
+        /// and freezes on 1000+ meshes, spoiling exactly what we measure.
         /// </summary>
         public static bool ScanLiveMeshes;
 
         /// <summary>
-        /// Скан абсолютных чисел. Идёт раз в 2 с и только когда скан разрешён.
+        /// Absolute-number scan. Runs once per 2 s, and only when scanning is allowed.
         /// </summary>
         public static void MaybeScanSlowDiagnostics(bool scanLiveMeshes)
         {
@@ -233,7 +225,7 @@ namespace Galilego.Universe
             MonoUsedBytes = Profiler.GetMonoUsedSizeLong();
         }
 
-        // ===== Кадр =====
+        // ===== Frame =====
 
         public static void BeginFrame()
         {
@@ -260,13 +252,13 @@ namespace Galilego.Universe
             DecorBirthsNearCameraThisFrame = 0;
         }
 
-        /// <summary>Пересборок декора в этом кадре (для накопления в секунду).</summary>
+        /// <summary>Decor rebuilds this frame (accumulated per second).</summary>
         public static int DecorRebuildsThisFrame;
 
-        /// <summary>Мс главного потока на пересборки в этом кадре.</summary>
+        /// <summary>Main-thread milliseconds spent on rebuilds this frame.</summary>
         public static float DecorRebuildMsThisFrame;
 
-        /// <summary>Инстансов травы, родившихся у камеры, в этом кадре.</summary>
+        /// <summary>Grass instances born near the camera this frame.</summary>
         public static int DecorBirthsNearCameraThisFrame;
 
         private static float decorAccumTimer;
@@ -275,9 +267,8 @@ namespace Galilego.Universe
         private static int decorAccumBirths;
 
         /// <summary>
-        /// Накопление секундных счётчиков декора. Вызывается раз в секунду
-        /// из рендерера: накопленное за секунду кладётся в поля, которые
-        /// читает PerfLog.
+        /// Accumulates the decor per-second counters. Called from the renderer:
+        /// once a second the accumulated values go into the fields PerfLog reads.
         /// </summary>
         public static void TickDecorAccum(float deltaSeconds)
         {
@@ -303,25 +294,25 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Закрывает кадр. allocBefore — значение
-        /// GC.GetAllocatedBytesForCurrentThread() в начале LateUpdate рендерера.
+        /// Closes the frame. allocBefore is
+        /// GC.GetAllocatedBytesForCurrentThread() at the start of the renderer's LateUpdate.
         /// </summary>
         public static void EndFrame(long allocBefore)
         {
             GcBytes = GC.GetAllocatedBytesForCurrentThread() - allocBefore;
         }
 
-        // ===== Вывод =====
+        // ===== Output =====
 
-        /// <summary>Заголовок новых колонок PerfLog. Дописывается В КОНЕЦ, чтобы
-        /// номера старых колонок не поехали.</summary>
+        /// <summary>Header of the new PerfLog columns. Appended at the END so
+        /// old column numbers do not shift.</summary>
         public const string PerfLogColumns =
             "\tbuiltPerFrame\tbuildMs\tvisibleChunks\tcachedChunks\tdesiredNodes\ttris\t"
             + "gcBytesPerFrame\tmeshBalance\tdecorAltM\tdecorSpeed\tchunksFinalized"
             + "\tdecorRebuildsPerSec\tdecorRebuildMsPerSec\tdecorBirthsNearCamera";
 
-        /// <summary>Значения тех же колонок. Порядок обязан совпадать с
-        /// <see cref="PerfLogColumns"/> — это единственное место, где они связаны.</summary>
+        /// <summary>Values of those columns. Order must match
+        /// <see cref="PerfLogColumns"/> — the only place the two are linked.</summary>
         public static void AppendPerfLogColumns(StringBuilder line)
         {
             var inv = CultureInfo.InvariantCulture;
@@ -336,21 +327,19 @@ namespace Galilego.Universe
             line.Append(DecorAltitude.ToString("F0", inv)).Append('\t');
             line.Append(DecorSpeed.ToString("F0", inv)).Append('\t');
 
-            // Та же причина, что и в HUD: колонка builtPerFrame читает
-            // ChunksBuilt, который при AsyncChunkBuild = 1 всегда ноль.
-            // chunksFinalized — единственный честный счётчик постройки в
-            // async-режиме, и в PerfLog его тоже не было.
+            // builtPerFrame reads ChunksBuilt, which is always zero when
+            // AsyncChunkBuild = 1. chunksFinalized is the only honest build
+            // counter in async mode.
             line.Append(ChunksFinalized.ToString(inv));
 
-            // Секундные счётчики пересборки декора: частота и цена. Именно ими
-            // меряется «пустота под ногами при ходьбе» — частота пересборок
-            // против рождений у камеры.
+            // Decor rebuild per-second counters: rate and cost. Together with
+            // DecorBirthsNearCamera they measure bare ground underfoot while walking.
             line.Append(DecorRebuildsLastSample.ToString(inv)).Append('\t');
             line.Append(DecorRebuildMsPerSecond.ToString("F2", inv)).Append('\t');
             line.Append(DecorBirthsNearCamera.ToString(inv));
         }
 
-        /// <summary>Абсолютные (не покадровые) числа — раз в 2 с, в конец строки.</summary>
+        /// <summary>Absolute (not per-frame) numbers — once per 2 s, appended at the end of the line.</summary>
         public static void AppendSlowColumns(StringBuilder line)
         {
             var inv = CultureInfo.InvariantCulture;
@@ -361,12 +350,11 @@ namespace Galilego.Universe
 
         private static readonly StringBuilder hudBuilder = new StringBuilder(256);
 
-        // ===== Замеры самих маркеров (Фаза 4: решать по профилю) =====
+        // ===== Marker timing (Phase 4: decide by profile) =====
         //
-        // ProfilerRecorder умеет читать пользовательский ProfilerMarker по
-        // имени, поэтому фазы рендера меряются из кода, без Profiler и без
-        // ручного разбора. Работает и в сборке. Выключено по умолчанию:
-        // набор рекордеров сам стоит денег на каждом кадре.
+        // ProfilerRecorder reads a custom ProfilerMarker by name, so render
+        // phases are timed from code, without the Profiler window. Works in
+        // a build. Off by default: the recorder set itself costs every frame.
         private static ProfilerRecorder[] markerRecorders;
         private static string[] markerNames;
 
@@ -377,8 +365,8 @@ namespace Galilego.Universe
             "PSR.Decor.StepBuilds", "PSR.Decor.Finalize", "PSR.Decor.UpdateCollision", "PSR.Decor.Draw",
         };
 
-        /// <summary>Включить замеры фаз. Расход — по одному счётчику на
-        /// маркер, это не то же самое, что открытый Profiler.</summary>
+        /// <summary>Enable phase timing. Cost is one counter per marker, far
+        /// less than an open Profiler window.</summary>
         public static bool MarkerTimersEnabled;
 
         private static void EnsureMarkerRecorders()
@@ -416,8 +404,8 @@ namespace Galilego.Universe
             markerNames = null;
         }
 
-        /// <summary>Разбор фаз за окно в миллисекундах. Пусто, если замеры
-        /// выключены.</summary>
+        /// <summary>Phase breakdown over the window, in milliseconds. Empty when
+        /// timing is disabled.</summary>
         public static string MarkerTimings()
         {
             EnsureMarkerRecorders();
@@ -435,8 +423,8 @@ namespace Galilego.Universe
                     continue;
                 }
 
-                // LastValue в наносекундах; усредняем по накопленному окну,
-                // иначе на экране мелькают одиночные кадры.
+                // Values are in nanoseconds; average over the accumulated window,
+                // otherwise single frames flicker on screen.
                 long sum = 0;
                 int count = 0;
                 for (int s = 0; s < markerRecorders[i].Capacity && s < 64; s++)
@@ -460,18 +448,17 @@ namespace Galilego.Universe
             return sb.ToString();
         }
 
-        /// <summary>Однократный разбор в консоль — для профиля, который
-        /// снимают раз в полчаса, а не постоянно.</summary>
+        /// <summary>One-shot breakdown to the console — for profiling every now
+        /// and then rather than continuously.</summary>
         public static void LogMarkerTimings()
         {
             Debug.Log("[SurfacePerf] разбор фаз (мс на кадр):\n" + MarkerTimings());
         }
 
         /// <summary>
-        /// Компактные счётчики для HUD читов. Строка собирается в кэшированный
-        /// StringBuilder и переиспользуется. Сам HUD в IMGUI и так аллоцирует,
-        /// лишнюю копию в кадр добавлять незачем; когда HUD выключен, строка
-        /// вообще не собирается.
+        /// Compact counters for the cheat HUD. The string is built in a cached
+        /// StringBuilder and reused; the HUD allocates in IMGUI anyway, so an
+        /// extra copy per frame is pointless.
         /// </summary>
         public static string HudLine()
         {
@@ -495,14 +482,10 @@ namespace Galilego.Universe
             hudBuilder.Append("за кадр: построено ");
             hudBuilder.Append(ChunksBuilt.ToString(inv));
 
-            // ChunksBuilt инкрементируется ТОЛЬКО в синхронной ветке
-            // (PlanetSurfaceRenderer.cs, условие firstFrame || !AsyncChunkBuild),
-            // а при AsyncChunkBuild = 1 он структурно равен нулю — при 1361
-            // активном узле HUD писал «построено 0», и это выглядело как
-            // поломка конвейера. Честный счётчик финализации при этом рос
-            // (ChunksFinalized, PlanetSurfaceRenderer.cs, конец FinalizeChunk),
-            // но не печатался нигде. Поэтому печатаем оба: «построено» —
-            // синхронная постройка, «финализировано» — асинхронная.
+            // ChunksBuilt is incremented ONLY in the synchronous branch
+            // (PlanetSurfaceRenderer.cs, firstFrame || !AsyncChunkBuild), so it is
+            // structurally zero when AsyncChunkBuild = 1. Print both: "built" for
+            // synchronous builds and "finalized" (ChunksFinalized) for async ones.
             hudBuilder.Append(" (финализировано всего ");
             hudBuilder.Append(ChunksFinalized.ToString(inv));
             hudBuilder.Append(')');
@@ -551,29 +534,24 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Бенчмарк-полёт: гоняет игрока по большому кругу на заданной высоте с
-    /// заданной скоростью и пишёт разбор времени кадра в benchmark.csv.
+    /// Benchmark flight: drives the player in a large circle at a given altitude
+    /// and speed, and writes a frame-time breakdown to benchmark.csv.
     ///
-    /// Управление — штатным ноуклипом (PlayerIntent.NoclipDirection/NoclipSpeed),
-    /// как в CheatMenu: отдельная физика для замеров давала бы числа не той
-    /// системы, которую мы чиним.
+    /// Steering uses the stock noclip (PlayerIntent.NoclipDirection/NoclipSpeed),
+    /// as in CheatMenu, so the numbers describe the same system the player flies.
     ///
-    /// ПОРЯДОК ВЫПОЛНЕНИЯ ЗДЕСЬ НЕ КОСМЕТИКА, а условие работоспособности.
-    /// PlayerController (порядок -100) каждый кадр собирает намерение с нуля:
-    /// <c>PlayerIntent intent = PlayerIntent.Idle;</c> и потом
-    /// <c>Runner.PlayerIntent = intent;</c>. То есть НЕ ТОЛЬКО пишет своё, но и
-    /// затирает всё, что поставили до него, а NoclipDirection оставляет нулём,
-    /// если клавиши движения не зажаты. SimulationRunner (порядок 0) читает
-    /// интент уже после этого. Значит записать направление можно только в окне
-    /// между -100 и 0 — отсюда -50. Записать позже (например в Update порядка
-    /// 100, «после всего») можно, и ничего не сломается, но игрок за этот кадр
-    /// уже ничего не услышит: он шагается по интенту прошлого кадра.
+    /// EXECUTION ORDER MATTERS here. PlayerController (order -100) rebuilds the
+    /// intent from scratch every frame (<c>PlayerIntent intent =
+    /// PlayerIntent.Idle;</c> then <c>Runner.PlayerIntent = intent;</c>), wiping
+    /// anything written before it and leaving NoclipDirection at zero unless
+    /// movement keys are held. SimulationRunner (order 0) reads the intent after
+    /// that, so the direction can only be written in the window between -100
+    /// and 0 — hence -50.
     ///
-    /// Высота держится подруливанием: направление = касательная + подъём по
-    /// ошибке высоты, горизонт упреждения — 2 с полёта. Телепортировать игрока
-    /// без правок раннера нельзя (PlayerPosition — read-only), а фактическая
-    /// достигнутая высота пишется в CSV отдельной колонкой, так что результат
-    /// сам себя описывает.
+    /// Altitude is held by steering: direction = tangent + climb by altitude
+    /// error, with a 2 s lookahead. Teleporting the player is impossible
+    /// (PlayerPosition is read-only), so the achieved altitude is written to the
+    /// CSV as its own column.
     /// </summary>
     [DefaultExecutionOrder(-50)]
     public sealed class FlightBenchmark : MonoBehaviour
@@ -729,19 +707,17 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Счётчики кадра от рендерера к этому моменту уже итоговые:
-            // PlanetSurfaceRenderer.LateUpdate имеет порядок -70, наш — 100.
+            // Renderer frame counters are final by now:
+            // PlanetSurfaceRenderer.LateUpdate runs at -70, this one at 100.
             if (sampleCount < sampleLimit)
             {
                 frameSamples[sampleCount++] = Time.unscaledDeltaTime * 1000f;
             }
 
-            // ChunksFinalized, а не ChunksBuilt: тот растёт только в синхронной
-            // ветке и при AsyncChunkBuild = 1 всегда ноль, из-за чего колонки
-            // chunksBuilt / chunksPerSec / buildMsPerChunk в CSV были нулями
-            // при заведомо идущей сборке. ChunksFinalized — монотонный счётчик
-            // с начала сессии, поэтому за кадр прибавляем РАЗНОСТЬ, иначе он
-            // складывался бы сам с собой (в SurfaceCaptureTool та же ошибка).
+            // ChunksFinalized, not ChunksBuilt: the latter only grows in the
+            // synchronous branch and is always zero when AsyncChunkBuild = 1.
+            // ChunksFinalized is monotonic since session start, so accumulate the
+            // per-frame DELTA, never the value itself.
             int finalizedNow = SurfacePerf.ChunksFinalized;
             int finalizedDelta = finalizedNow - lastChunksFinalized;
             if (finalizedDelta > 0)
@@ -766,7 +742,7 @@ namespace Galilego.Universe
             }
         }
 
-        // ===== Управление прогоном =====
+        // ===== Run control =====
 
         public void StartBenchmark()
         {
@@ -806,9 +782,9 @@ namespace Galilego.Universe
             if (Menu != null)
             {
                 previousNoclipSpeed = Menu.NoclipSpeed;
-                // Меню держит свою копию намерения и каждый кадр сверяет её с
-                // Runner.NoclipActive: без этой флажка оно выключит ноуклик на
-                // следующем же кадре, а ползунок в окне затрёт нашу скорость.
+                // The menu keeps its own copy of the intent and compares it with
+                // Runner.NoclipActive every frame: without this flag it disables
+                // noclip on the next frame and its slider overrides our speed.
                 Menu.NoclipExternallyDriven = true;
             }
 
@@ -822,10 +798,8 @@ namespace Galilego.Universe
             BeginClimb();
         }
 
-        /// <summary>Почему последний StartBenchmark не начал прогон. Пусто —
-        /// начал. Раньше причины ранних выходов были только в консоли, и из
-        /// командной строки (eval, автоматический запуск) было видно лишь
-        /// «Бенчмарк не запущен» без причины.</summary>
+        /// <summary>Why the last StartBenchmark did not start a run. Empty means
+        /// it started. Exposes early-exit reasons that used to be console-only.</summary>
         public string LastStartError { get; private set; } = string.Empty;
 
         public void StopBenchmark()
@@ -856,10 +830,9 @@ namespace Galilego.Universe
                 return;
             }
 
-            // 10 и 100 км на 200 м/с: на большой высоте горизонт планеты уезжает
-            // за сотни километров, и площадь, которую надо держать в LOD, растёт
-            // квадратично. Это отдельная от скорости причина просадки, и без её
-            // замера её легко спутать со скоростной.
+            // 10 and 100 km at 200 m/s: at high altitude the planet horizon moves
+            // out to hundreds of kilometres and the area kept in LOD grows
+            // quadratically — a slowdown cause distinct from speed.
             runTable.Add(new RunSpec { Altitude = 10000d, Speed = 200d });
             runTable.Add(new RunSpec { Altitude = 100000d, Speed = 200d });
         }
@@ -880,8 +853,8 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Единая точка включения ноуклипа: через меню, если оно есть,
-        /// иначе напрямую. Иначе меню на следующем кадре откатит состояние.</summary>
+        /// <summary>Single entry point for toggling noclip: through the menu when
+        /// present, otherwise directly. Bypassing the menu gets rolled back next frame.</summary>
         private void RequestNoclip(bool active)
         {
             if (Menu != null)
@@ -893,7 +866,7 @@ namespace Galilego.Universe
             Runner.SetNoclip(active, Vector3d.Zero);
         }
 
-        // ===== Фазы =====
+        // ===== Phases =====
 
         private void BeginClimb()
         {
@@ -915,8 +888,8 @@ namespace Galilego.Universe
             sampleCount = 0;
             chunksBuiltTotal = 0;
 
-            // Счётчик монотонный с начала сессии: без этого якоря первая же
-            // прибавка отсчитала бы всю историю сессии как builds этого замера.
+            // The counter is monotonic since session start: without this anchor
+            // the first increment would count the whole session as this run's builds.
             lastChunksFinalized = SurfacePerf.ChunksFinalized;
             buildMsTotal = 0f;
             gcBytesTotal = 0;
@@ -927,9 +900,9 @@ namespace Galilego.Universe
             totalAllocStart = SurfacePerf.TotalAllocated;
             if (ScanLiveMeshes)
             {
-                // Один скан на старте замера, а не «последний»: двухсекундный
-                // скан мог прийтись на разогрев, и тогда start был бы с других
-                // условий, чем end.
+                // Scan once at run start, not the "last" one: the 2-second scan
+                // may have landed during settle, making start and end conditions
+                // differ.
                 liveMeshesStart = Resources.FindObjectsOfTypeAll<Mesh>().Length;
                 SurfacePerf.LiveMeshes = liveMeshesStart;
             }
@@ -947,10 +920,10 @@ namespace Galilego.Universe
                 direction = direction.Normalized;
             }
 
-            // Порядок -50: PlayerController (его -100) уже отработал и затирает
-            // интент, SimulationRunner (0) ещё не читал. Пишем скорость и в
-            // CheatMenu (оттуда её возьмёт контроллер в следующем кадре) и в сам
-            // PlayerIntent (чтобы раннер увидел её уже в этом).
+            // Order -50: PlayerController (-100) has already wiped the intent,
+            // SimulationRunner (0) has not read it yet. Write the speed both into
+            // CheatMenu (the controller takes it from there next frame) and into
+            // PlayerIntent (so the runner sees it this frame).
             SetNoclipSpeed(phase == Phase.Climb ? ClimbSpeed : CurrentSpeed);
             Runner.PlayerIntent.NoclipSpeed = phase == Phase.Climb ? ClimbSpeed : CurrentSpeed;
             Runner.PlayerIntent.NoclipDirection = direction;
@@ -1027,13 +1000,13 @@ namespace Galilego.Universe
             Runner.PlayerIntent.NoclipSpeed = speed;
         }
 
-        // ===== Удержание высоты и направление =====
+        // ===== Altitude hold and heading =====
 
         /// <summary>
-        /// Касательная к сфере (высоту сохраняет сама по себе) плюс подъём по
-        /// ошибке высоты. Горизонт упреждения ограничен: на 2000 м/с коррекция
-        /// в 100 м без ограничения даёт наклон, который за два секунды уводит
-        /// на километр.
+        /// Tangent to the sphere (which preserves altitude by itself) plus climb
+        /// by altitude error. The lookahead horizon is clamped: at 2000 m/s an
+        /// unclamped 100 m correction gives a slope that drifts a kilometre in
+        /// two seconds.
         /// </summary>
         private Vector3d Steer()
         {
@@ -1050,9 +1023,9 @@ namespace Galilego.Universe
             Vector3d up = relative / radius;
             currentAltitude = AltitudeAboveTerrain(body, t, bodyPos);
 
-            // «Восток» — касательная в сторону собственного вращения тела.
-            // Если ось вращения случайно параллельна направлению на игрока,
-            // берём любую другую касательную, чтобы не делить на ноль.
+            // "East" is the tangent along the body's own spin direction. If the
+            // spin axis is parallel to the direction to the player, fall back to
+            // another tangent to avoid dividing by zero.
             Vector3d east = Vector3d.Cross(body.SpinAxis, up);
             if (east.Magnitude < 1e-9d)
             {
@@ -1091,10 +1064,9 @@ namespace Galilego.Universe
         {
             var inv = CultureInfo.InvariantCulture;
             var header = new StringBuilder(1024);
-            // Файл дописываем, а не перезаписываем: сравнение «до/после» — это
-            // два запуска подряд в одном файле. Полную шапку печатаем только в
-            // пустой файл, иначе перед каждым запуском шла бы ещё и шапка, и
-            // разбирать CSV пришлось бы вручную.
+            // Append to the file rather than overwrite: a before/after comparison
+            // is two back-to-back runs in one file. The full header goes only into
+            // an empty file.
             bool fresh = !File.Exists(csvPath) || new FileInfo(csvPath).Length == 0L;
             if (fresh)
             {
@@ -1128,7 +1100,7 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Сортируем КОПИЮ: исходный буфер остаётся целым до конца прогона.
+            // Sort a COPY: the original buffer stays intact until the run ends.
             var sorted = new float[sampleCount];
             Array.Copy(frameSamples, sorted, sampleCount);
             Array.Sort(sorted);
@@ -1180,8 +1152,8 @@ namespace Galilego.Universe
         {
             try
             {
-                // Пишем построчно: если прогон прервут (закрыли игру, упал кадр),
-                // уже записанные строки останутся на диске.
+                // Write line by line: if the run is interrupted, the rows already
+                // written stay on disk.
                 File.AppendAllText(csvPath, text, new UTF8Encoding(false));
             }
             catch (Exception e)
@@ -1203,10 +1175,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Поднимаемся сами, как PerfLog. Бенчмарк нужен на любой сцене с
-        /// SimulationRunner, и класть его в сцену вручную — лишний шаг, который
-        /// придётся повторять в каждой тестовой сцене. Сам он ничего не делает
-        /// до нажатия кнопки: Update/LateUpdate выходят сразу, пока фаза Idle.
+        /// Self-bootstraps, like PerfLog: any scene with a SimulationRunner can
+        /// run it without manual setup. Does nothing until started:
+        /// Update/LateUpdate exit immediately while the phase is Idle.
         /// </summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()

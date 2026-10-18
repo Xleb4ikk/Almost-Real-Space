@@ -8,10 +8,10 @@ using Xunit.Abstractions;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Тест E — пересечение высотной оболочки. Эллиптическая орбита (rp = 7e6,
-    /// ra = 9e6) пересекает оболочку 7.5e6 дважды за виток; первое пересечение
-    /// (восходящее) сверяется с независимым референсом — фиксированным RK4
-    /// малым шагом (другой метод, не тот же код) с собственной бисекцией.
+    /// Test E — altitude-shell crossing. An elliptical orbit (rp = 7e6,
+    /// ra = 9e6) crosses the 7.5e6 shell twice per revolution; the first
+    /// (rising) crossing is checked against an independent reference — fixed-step
+    /// RK4 (a different method, not the same code) with its own bisection.
     /// </summary>
     public sealed class AltitudeCrossingTests
     {
@@ -44,8 +44,8 @@ namespace GalilegoPhysicsTests
         }
 
         /// <summary>
-        /// Независимый референс: фиксированный RK4 с шагом 1 с до брекета,
-        /// затем 40 итераций бисекции перепогоном RK4 от старта.
+        /// Independent reference: fixed-step RK4 with a 1 s step up to the bracket,
+        /// then 40 bisection iterations re-running RK4 from the start.
         /// </summary>
         internal static double ReferenceCrossingTime(
             StarSystem system, Vector3d pos0, Vector3d vel0, double shellRadius, double scanLimit)

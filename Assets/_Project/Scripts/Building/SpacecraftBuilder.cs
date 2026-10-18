@@ -7,25 +7,24 @@ using UnityEngine;
 namespace Galilego.Building
 {
     /// <summary>
-    /// РЕЖИМ СТРОИТЕЛЬСТВА аппарата (ветка «система строительства»).
+    /// VESSEL BUILD MODE (the "building system" branch).
     ///
-    /// Два состояния:
-    ///   Стройка (по умолчанию): аппарат статичен — стоит там, где его собрали,
-    ///     физика корабля не шагается (SimulationRunner.BuildMode), позиция
-    ///     каждый кадр пинится к осям стартовой площадки (планета вращается —
-    ///     аппарат едет вместе с плитой).
-    ///   Полёт: на удержании R (1 с) черновик превращается в PartDefinition[],
-    ///     массы/позиция/скорость передаются в симуляцию, включается зона
-    ///     контакта (точная PhysX-физика у земли). Ещё удержание R — аппарат
-    ///     и мир возвращаются ровно к состоянию стройки (снимок = сам черновик;
-    ///     тела зоны и обломки чистятся).
+    /// Two states:
+    ///   Build (default): the vessel is static — it stands where it was assembled,
+    ///     the ship physics is not stepped (SimulationRunner.BuildMode), and the
+    ///     position is pinned to the launch pad axes every frame (the planet
+    ///     rotates — the vessel rides together with the slab).
+    ///   Flight: holding R (1 s) turns the draft into PartDefinition[],
+    ///     mass/position/velocity are handed to the simulation, and the contact
+    ///     zone turns on (exact PhysX physics near the ground). Holding R again
+    ///     returns the vessel and the world exactly to the build state (the
+    ///     snapshot is the draft itself; zone bodies and debris are cleaned up).
     ///
-    /// Размещение: призрак детали ходит по лучу камеры, магнитится к свободным
-    /// узлам поставленных деталей (одна деталь на узел), проверки — пятно
-    /// целиком на площадке, без пересечений с другими деталями; за пределами
-    /// площадки постановка запрещена. Призрак всегда синий (полупрозрачный),
-    /// невалидный — красный; естественный раскрас появляется у поставленной
-    /// детали.
+    /// Placement: the part ghost follows the camera ray and snaps to free nodes
+    /// of placed parts (one part per node); checks require the footprint to be
+    /// fully on the pad, without intersections with other parts; placement
+    /// outside the pad is forbidden. The ghost is always blue (semi-transparent),
+    /// invalid — red; the natural paint appears on the placed part.
     /// </summary>
     [DefaultExecutionOrder(-110)]
     public sealed class SpacecraftBuilder : MonoBehaviour
@@ -66,51 +65,51 @@ namespace Galilego.Building
         [Tooltip("Отладка ступенчатой тяги: зажигать ступени автоматически, без Space (проверка расхода/выработки этапа 1).")]
         public bool DebugAutoIgniteStages;
 
-        /// <summary>Длительность удержания R для переключения физики, с.</summary>
+        /// <summary>How long R must be held to toggle the physics, s.</summary>
         public const float PhysicsHoldSeconds = 1f;
 
-        /// <summary>Максимальная высота постановки над плитой (полёт в воздухе), м.</summary>
+        /// <summary>Maximum placement height above the slab (in-air placement), m.</summary>
         public const float MaxBuildHeight = 30f;
 
-        // ─── Черновик ────────────────────────────────────────────────────────
+        // ─── Draft ────────────────────────────────────────────────────────
 
         private readonly System.Collections.Generic.List<PlacedPart> parts
             = new System.Collections.Generic.List<PlacedPart>();
 
-        /// <summary>Детали черновика (для UI и отладки).</summary>
+        /// <summary>Draft parts (for UI and debugging).</summary>
         public System.Collections.Generic.IReadOnlyList<PlacedPart> Parts => parts;
 
-        /// <summary>Физика включена (полёт) — R переключил режим.</summary>
+        /// <summary>Physics on (flight) — R toggled the mode.</summary>
         public bool PhysicsOn { get; private set; }
 
-        /// <summary>Прогресс удержания R (0..1) — для индикатора.</summary>
+        /// <summary>R hold progress (0..1) — for the indicator.</summary>
         public float RHoldProgress { get; private set; }
 
-        /// <summary>Окно инвентаря открыто: размещение и R не работают (ставит BuildUI).</summary>
+        /// <summary>Inventory window open: placement and R are disabled (set by BuildUI).</summary>
         public bool UiOpen { get; set; }
 
-        /// <summary>Есть выбранная деталь для постановки (слот хотбара, ставит BuildUI).</summary>
+        /// <summary>A part is selected for placement (hotbar slot, set by BuildUI).</summary>
         public bool HasSelection { get; set; }
 
         /// <summary>
-        /// Заготовка выбранного слота панели (ставит BuildUI): вид детали и её
-        /// размеры. Размеры у каждого слота свои — см. PartPreset.
+        /// Preset of the selected panel slot (set by BuildUI): part kind and its
+        /// sizes. Each slot has its own sizes — see PartPreset.
         /// </summary>
         public PartPreset SelectedPreset { get; set; }
 
-        // Стартовые размеры деталей: из них панель строительства создаёт заготовки
-        // слотов (PartPreset), а игрок дальше правит размеры у каждого слота свои.
-        // Бак: нижний радиус, верхний радиус и длина; форма — цилиндр или конус.
+        // Initial part sizes: the build panel creates slot presets (PartPreset)
+        // from them; the player then edits sizes per slot.
+        // Tank: bottom radius, top radius and length; form — cylinder or cone.
         public float TankRadius = PartCatalog.TankDefaultRadius;
         public float TankTopRadius = PartCatalog.TankDefaultRadius;
         public float TankHeight = PartCatalog.TankDefaultHeight;
 
-        /// <summary>Стартовая форма бака для новых слотов: цилиндр (0) или конус.</summary>
+        /// <summary>Initial tank form for new slots: cylinder (0) or cone.</summary>
         public TankForm TankForm;
 
         public float SeparatorRadius = PartCatalog.SeparatorDefaultRadius;
 
-        /// <summary>Стартовое наполнение бака для новых слотов (Id из PropellantLoads).</summary>
+        /// <summary>Initial tank load for new slots (Id from PropellantLoads).</summary>
         public PropellantLoad TankLoad = PropellantLoads.Default;
 
         private readonly System.Collections.Generic.List<PartCatalog.EngineTemplate> engines
@@ -128,10 +127,10 @@ namespace Galilego.Building
         private int deleteTarget = -1;
         private PartCatalog.PartVisual deleteHighlighted;
 
-        /// <summary>Пробы конуса прицела (AimCone) — буфер, чтобы не аллоцировать в кадре.</summary>
+        /// <summary>Aim cone samples (AimCone) — buffer to avoid per-frame allocations.</summary>
         private readonly Vector3[] aimDirections = new Vector3[AimCone.Samples];
 
-        /// <summary>Голоса проб за детали (площадь накрытия кольца) — буфер без аллокаций.</summary>
+        /// <summary>Per-part sample votes (ring coverage area) — allocation-free buffer.</summary>
         private int[] aimVotes = System.Array.Empty<int>();
 
         private bool spawned;
@@ -146,14 +145,14 @@ namespace Galilego.Building
         private bool pendingPhysics;
         private System.Action<double> frameHook;
 
-        /// <summary>Каталог двигателей собран (повторных сборок не делаем).</summary>
+        /// <summary>Engine catalog is built (no repeated builds).</summary>
         private bool catalogSynced;
 
-        /// <summary>Про двигатели/капсулу уже предупреждали — в лог один раз, не каждый кадр.</summary>
+        /// <summary>Engines/capsule already warned about — logged once, not every frame.</summary>
         private bool enginesWarned;
         private bool capsuleWarned;
 
-        /// <summary>Ближайший момент повторной попытки собрать каталог (сек).</summary>
+        /// <summary>Earliest time to retry building the catalog (seconds).</summary>
         private float catalogRetryAt;
 
         private void Awake()
@@ -190,31 +189,26 @@ namespace Galilego.Building
 
             if (Zone != null && Runner != null)
             {
-                // Стройка — состояние по умолчанию: шаг физики корабля не считается,
-                // пока игрок не запустит полёт (R). В сцене без зоны режим не включаем.
+                // Build is the default state: the ship physics step is not run
+                // until the player starts flight (R). Without a zone in the scene the mode stays off.
                 Runner.BuildMode = true;
                 if (ZoneHost != null)
                 {
                     ZoneHost.Enabled = false;
                 }
 
-                // Пиннинг и запуск полёта живут в кадре раннера: только там время
-                // кадра уже продвинуто и совпадает с временем игрока/якоря.
+                // Pinning and flight start live in the runner frame: only there is
+                // the frame time advanced and consistent with player/anchor time.
                 frameHook = OnBuildModeFrame;
                 Runner.BuildModeFrameHook = frameHook;
             }
         }
 
         /// <summary>
-        /// Собрать каталог двигателей из EnginePrefabs и зарегистрировать капсулу.
-        /// Awake вызывает один раз, но при «Enter Play Mode Options = Disable
-        /// Scene/Domain Reload» объекты сцены переживают сеансы Play и Awake
-        /// повторно НЕ вызывается: на следующих сессиях каталог оставался
-        /// пустым — двигатель мерился нулевым (призрак нулевого размера,
-        /// постановка без модели), сборка ломалась. Поэтому Update дозаливает
-        /// каталог лениво, пока он пуст (приём — как LaunchPadZone.Refresh,
-        /// который сам добирает готовность); между попытками пауза, чтобы
-        /// сбойная конфигурация не инстанцировала пробные модели каждый кадр.
+        /// Build the engine catalog from EnginePrefabs and register the capsule.
+        /// Update calls it lazily while the catalog is empty (scene objects can
+        /// survive Play sessions when Scene/Domain Reload is disabled), with a
+        /// retry pause between attempts.
         /// </summary>
         private void SyncCatalog()
         {
@@ -296,8 +290,8 @@ namespace Galilego.Building
                 return;
             }
 
-            // Alt: режим удаления — цель под прицелом краснеет, ПКМ удаляет;
-            // призрак постановки при этом спрятан.
+            // Alt: delete mode — the aim target turns red, RMB deletes it;
+            // the placement ghost is hidden.
             if (!UiOpen && PlayerInput.AltHeld())
             {
                 HideGhost();
@@ -330,12 +324,12 @@ namespace Galilego.Building
             }
         }
 
-        // ─── Удаление по прицелу (Alt) ───────────────────────────────────────
+        // ─── Aimed deletion (Alt) ───────────────────────────────────────
 
         /// <summary>
-        /// Подсветить красным деталь под прицелом (Alt зажат). Если центральный
-        /// луч попадает в деталь, он имеет приоритет; кольцо используется как
-        /// запасная область выбора только при промахе центрального луча.
+        /// Highlight the part under the aim in red (Alt held). The center ray has
+        /// priority; the ring is used as a fallback selection area only when the
+        /// center ray misses.
         /// </summary>
         private void UpdateDeleteAim()
         {
@@ -374,7 +368,7 @@ namespace Galilego.Building
             }
         }
 
-        /// <summary>Снять красную подсветку цели удаления.</summary>
+        /// <summary>Clear the red highlight of the delete target.</summary>
         private void ClearDeleteHighlight()
         {
             if (deleteHighlighted != null)
@@ -387,11 +381,10 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Зеркалирование визуала на тела зоны контакта: в полёте позы деталей
-        /// берём прямо у PhysX-тел прокси (позиция+поворот — видно падение и
-        /// опрокидывание). Вызывается VesselMirror'ом в самом конце кадра
-        /// (порядок 900) — ПОСЛЕ того, как зона подвинула корень кадра; иначе
-        /// визуал отстаёт от тел на сдвиг якоря и «кидает туда-сюда».
+        /// Mirror the visuals onto the contact zone bodies: in flight part poses
+        /// come straight from the PhysX proxy bodies (position+rotation — falling
+        /// and tipping are visible). Called by VesselMirror at the very end of the
+        /// frame (order 900), after the zone has moved the frame root.
         /// </summary>
         public void MirrorVisualsToBodies()
         {
@@ -412,13 +405,10 @@ namespace Galilego.Building
                 Rigidbody body = proxy != null ? proxy.BodyAt(i) : null;
                 if (body != null)
                 {
-                    // Тело прокси — ЦЕНТР формы детали (цилиндр-призма центрирован
-                    // на теле), а визуал построен от ПИВОТА детали (низ бака и
-                    // двигателя, центр отделителя). Опускаем корень визуала на
-                    // Metrics.Center вдоль локального «вверх» тела: иначе каждая
-                    // деталь висит выше своего коллайдера на половину высоты —
-                    // ракета «парит» над площадкой, а между баком и двигателем
-                    // появляется фальшивый зазор.
+                    // The proxy body sits at the CENTER of the part shape, while the
+                    // visual is built from the part PIVOT (tank/engine bottom,
+                    // separator center). Lower the visual root by Metrics.Center
+                    // along the body's local up.
                     Transform bodyTransform = body.transform;
                     Vector3 pivot = bodyTransform.position
                         - (bodyTransform.up * (float)part.Metrics.Center);
@@ -428,12 +418,12 @@ namespace Galilego.Building
             }
         }
 
-        // ─── Спавн и пиннинг ─────────────────────────────────────────────────
+        // ─── Spawn and pinning ─────────────────────────────────────────────────
 
         /// <summary>
-        /// Перенести корабль и игрока на стартовую площадку (один раз).
-        /// Перед переносом — защита от «мусорной» точки: локальные координаты
-        /// площадки не могут быть в километрах от её начала.
+        /// Move the ship and the player to the launch pad (once).
+        /// Before the move, sanity check: pad local coordinates must not be
+        /// kilometres away from its origin.
         /// </summary>
         private bool SpawnOnPad()
         {
@@ -459,9 +449,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Кадр раннера в режиме стройки: пиннинг аппарата (или запрошенный
-        /// запуск полёта) на АКТУАЛЬНОМ времени кадра. Позже раннер поставит
-        /// якорь рендера — всё согласовано в одном кадре, без отставания.
+        /// Runner frame in build mode: pins the vessel (or starts the requested
+        /// flight) at the CURRENT frame time. The runner sets the render anchor
+        /// later — everything is consistent within the same frame, without lag.
         /// </summary>
         private void OnBuildModeFrame(double t)
         {
@@ -475,7 +465,7 @@ namespace Galilego.Building
             PinShipAt(t);
         }
 
-        /// <summary>Держать точку корабля у низа сборки (или у места спавна пустого черновика).</summary>
+        /// <summary>Keep the ship point at the bottom of the assembly (or at the spawn point of an empty draft).</summary>
         private void PinShipAt(double t)
         {
             DebugUpdateCount++;
@@ -490,12 +480,12 @@ namespace Galilego.Building
             }
         }
 
-        // ВРЕМЕННАЯ отладка дрейфа (убрать после разбора).
+        // TEMPORARY drift debugging (remove after investigation).
         public long DebugUpdateCount;
         public Vector3 DebugLastPinLocal;
         public Galilego.Core.Vector3d DebugLastPinAstro;
 
-        // ─── R: физика/стройка ───────────────────────────────────────────────
+        // ─── R: physics/build ───────────────────────────────────────────────
 
         private void UpdateRHold()
         {
@@ -523,9 +513,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Переключить режим: true — физика (полёт), false — стройка.
-        /// Включение физики откладывается до кадра раннера (EnterFlightAt):
-        /// только там время кадра продвинуто и позиция ляжет ровно на плиту.
+        /// Toggle the mode: true — physics (flight), false — build.
+        /// Turning physics on is deferred to the runner frame (EnterFlightAt):
+        /// only there is the frame time advanced and the position lands exactly on the slab.
         /// </summary>
         public void SetPhysics(bool on)
         {
@@ -545,7 +535,7 @@ namespace Galilego.Building
             }
         }
 
-        /// <summary>Параметры САС/РСУ (заглушки до появления моделей) — правятся в инспекторе.</summary>
+        /// <summary>LAS/RCS parameters (placeholders until models appear) — edited in the inspector.</summary>
         public Galilego.Flight.FlightSystemsConfig FlightSystems = new Galilego.Flight.FlightSystemsConfig();
 
         private void EnterFlightAt(double t)
@@ -555,21 +545,21 @@ namespace Galilego.Building
                 return;
             }
 
-            // Перед передачей в физику — «сварка» свободно стоящих деталей:
-            // деталь, висящая в пределах 2 м над чьим-то узлом и по центру,
-            // притягивается вплотную и жёстко связывается. Иначе ракета,
-            // собранная с зазорами, при запуске разваливалась на куски.
+            // Before handing over to physics — "weld" free-standing parts:
+            // a part hanging within 2 m above someone's node and centered
+            // is pulled flush and rigidly attached.
             WeldLoosePartsAtLaunch();
 
             PartDefinition[] defs = BuildMath.ToPartDefinitions(parts);
 
-            // Ступенчатая тяга: ядра из черновика (та же группировка «отделитель
-            // заканчивает ступень», что у панели ΔV) + масса деталей вне основной
-            // сборки — в Ship.Mass они есть, в ядрах их нет, инвариант сходится.
+            // Staged propulsion: cores from the draft (same "separator ends the
+            // stage" grouping as the ΔV panel) + mass of parts outside the main
+            // assembly — present in Ship.Mass, absent from cores, so the invariant holds.
             var cores = DeltaV.BuildStageAssembly(parts);
 
-            // Модель полёта 6-DOF: реальные двигатели/сопла, САС, РСУ. Дописывает деталь-башню САС
-            // в defs и аппаратуру (РСУ/САС) в массу — она «вне ядер» и входит в DetachedMassKg.
+            // 6-DOF flight model: real engines/nozzles, LAS, RCS. Appends the LAS
+            // tower part to defs and the hardware (RCS/LAS) to the mass — it is
+            // "outside the cores" and lands in DetachedMassKg.
             Galilego.Flight.VesselFlightModel flight = Galilego.Flight.FlightModelFactory.Build(
                 parts, defs, cores, FlightSystems);
             Runner.SetVesselParts(flight.Defs);
@@ -585,10 +575,10 @@ namespace Galilego.Building
             Runner.Ship.PositionIsCom = false;
             Galilego.Flight.FlightRuntime.Begin(Runner, ZoneHost, flight);
 
-            // В полёте аппарат живёт телами прокси: визуальные коллайдеры деталей
-            // гасим, иначе PhysX-тела сталкивались бы со своими же визуалами.
-            // Игрок при этом не проходит сквозь аппарат — опора берёт коллайдеры
-            // тел прокси (у них тот же маркер VesselPartCollider).
+            // In flight the vessel lives as proxy bodies: the visual colliders of
+            // the parts are turned off, otherwise PhysX bodies would collide with
+            // their own visuals. The player still cannot walk through the vessel —
+            // the support uses the proxy body colliders (same VesselPartCollider marker).
             SetPartColliders(false);
 
             Vector3 bottom = BuildMath.VesselBottom(parts);
@@ -608,9 +598,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Масса деталей вне основной сборки (не вошла ни в одно ядро ступени):
-        /// в Ship.Mass она есть, в модели ступеней её нет — так инвариант
-        /// «ядра + вне сборки == Ship.Mass» сходится и при «сиротах».
+        /// Mass of parts outside the main assembly (not part of any stage core):
+        /// present in Ship.Mass, absent from the stage model, so the invariant
+        /// "cores + detached == Ship.Mass" holds even with orphans.
         /// </summary>
         private static double DetachedMassKg(
             System.Collections.Generic.List<PlacedPart> parts,
@@ -643,11 +633,10 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Сварка перед запуском: свободные детали (ParentIndex −1), висящие в
-        /// пределах 2 м над свободным верхом другой детали с почти совпадающим
-        /// центром, притягиваются вплотную и связываются. Так собранная с
-        /// зазорами ракета становится одним целым: падает и садится вместе,
-        /// а не разваливается на отдельные куски при включении физики.
+        /// Welding before launch: free parts (ParentIndex −1) hanging within
+        /// 2 m above a free top of another part with an almost matching center
+        /// are pulled flush and linked, so a rocket built with gaps becomes
+        /// a single body.
         /// </summary>
         private void WeldLoosePartsAtLaunch()
         {
@@ -746,14 +735,14 @@ namespace Galilego.Building
                 ZoneHost.Enabled = false;
             }
 
-            // Обломки, если успели появиться (жёсткая посадка аналитики), убираем:
-            // откат обязан вернуть мир ровно к моменту запуска полёта.
+            // Remove debris if any appeared (hard landing of the analytic physics):
+            // the rollback must return the world exactly to the moment flight started.
             if (Runner.Debris != null)
             {
                 Runner.Debris.Clear();
             }
 
-            // Ступенчатая тяга снимается: в стройке живёт legacy-путь.
+            // Staged propulsion is removed: build mode uses the legacy path.
             Galilego.Flight.FlightRuntime.End();
             Runner.ClearVesselPropulsion();
             Runner.Ship.Attitude = Galilego.Core.QuaternionD.Identity;
@@ -766,13 +755,12 @@ namespace Galilego.Building
             Debug.Log("[Build] возврат к стройке: состояние восстановлено");
         }
 
-        // ─── Ступени в полёте ────────────────────────────────────────────────
+        // ─── Stages in flight ────────────────────────────────────────────────
 
         /// <summary>
-        /// Space в корабле (KSP-стиль): зажигание ступени, затем отделение
-        /// нижней присоединённой и зажигание следующей. Только когда игрок в
-        /// корабле — на пеших режимах Space занят прыжком и джетпаком. На земле
-        /// (зона контакта) отделение — этап 3, здесь команда глушится.
+        /// Space in the ship (KSP-style): ignite the stage, then jettison the
+        /// lower attached stage and ignite the next one. Only when the player is
+        /// in the ship — on foot, Space is jump and jetpack.
         /// </summary>
         private void UpdateStaging()
         {
@@ -788,11 +776,10 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Одна команда «ступень»: зажигание или отделение+зажигание. Возвращает
-        /// true, если что-то произошло. Масса сброшенной ступени берётся ДО
-        /// Stage() (после — уже не вычесть корректно); Ship.Mass и импульс
-        /// меняет сама StageSeparation — всё в одном месте, чтобы инвариант
-        /// массы не ругнулся на кадр рассинхрона.
+        /// One "stage" command: ignite or jettison+ignite. Returns true if
+        /// anything happened. The jettisoned stage mass is captured BEFORE
+        /// Stage() (afterwards it can no longer be subtracted correctly);
+        /// StageSeparation itself changes Ship.Mass and impulse.
         /// </summary>
         public bool StageJettison()
         {
@@ -815,7 +802,7 @@ namespace Galilego.Building
                 return false;
             }
 
-            // Последнюю ступень отделять нечем (над ней нет отделителя).
+            // The last stage cannot be jettisoned (no separator above it).
             if (first + 1 >= propulsion.StageCount)
             {
                 return false;
@@ -829,8 +816,8 @@ namespace Galilego.Building
 
             if (inZone)
             {
-                // Зона контакта: стыки режутся в PhysX (тела отделённой ступени остаются обломками),
-                // массу и инерцию дальше ведёт модель полёта по оставшимся деталям.
+                // Contact zone: joints are cut in PhysX (the jettisoned stage bodies become debris),
+                // the flight model then tracks mass and inertia from the remaining parts.
                 Galilego.Flight.FlightRuntime.Instance.OnStaged();
                 Debug.Log(string.Format(
                     "[Stage] ступень {0} отделена на земле: {1:F0} кг; зажжена ступень {2}",
@@ -838,9 +825,9 @@ namespace Galilego.Building
                 return true;
             }
 
-            // Импульс разделения — 2 м/с назад по движению (ступень тормозится
-            // относительно корабля). StageSeparation делит импульс пары и
-            // вычитает массу ступени из Ship.Mass.
+            // Separation impulse — 2 m/s backward along the motion (the stage
+            // decelerates relative to the ship). StageSeparation splits the pair
+            // impulse and subtracts the stage mass from Ship.Mass.
             Galilego.Core.Vector3d prograde = Runner.Ship.Velocity.SqrMagnitude > 1e-6d
                 ? Runner.Ship.Velocity.Normalized
                 : new Galilego.Core.Vector3d(0d, 0d, 1d);
@@ -849,11 +836,11 @@ namespace Galilego.Building
                 Runner.TimeSeconds, propulsion.Cores[first + 1].DryMassKg,
                 Runner.DebrisLifetimeSeconds);
 
-            // PartDefinition остатка — для посадки (нормировка разрушения) и
-            // зоны контакта: детали сброшенных ступеней по PartIndices ядер.
+            // PartDefinition of the remainder — for landing (damage normalization)
+            // and the contact zone: dropped stage parts by the cores' PartIndices.
             if (Galilego.Flight.FlightRuntime.Instance != null && Runner.Flight != null)
             {
-                Galilego.Flight.FlightRuntime.Instance.OnStaged(); // RemainingDefs из модели (с САС/РСУ и текущими массами)
+                Galilego.Flight.FlightRuntime.Instance.OnStaged(); // RemainingDefs from the model (with LAS/RCS and current masses)
             }
             else
             {
@@ -867,9 +854,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// PartDefinition[] без сброшенных ступеней: какие детали уходят — из
-        /// PartIndices ядер (индексы черновика), ParentIndex пересчитывается на
-        /// новую нумерацию; родитель из сброшенной ступени становится корнем.
+        /// PartDefinition[] without the jettisoned stages: which parts leave comes
+        /// from the cores' PartIndices (draft indices), ParentIndex is remapped to
+        /// the new numbering; a parent from a dropped stage becomes a root.
         /// </summary>
         private static PartDefinition[] RemainingDefs(
             System.Collections.Generic.List<PlacedPart> parts, StagePropulsion propulsion)
@@ -918,21 +905,21 @@ namespace Galilego.Building
             return defs;
         }
 
-        // ─── Детали ──────────────────────────────────────────────────────────
+        // ─── Parts ──────────────────────────────────────────────────────────
 
-        /// <summary>Шаблоны двигателей (префабы, габариты, паспорта) в порядке EnginePrefabs.</summary>
+        /// <summary>Engine templates (prefabs, bounds, specs) in EnginePrefabs order.</summary>
         public System.Collections.Generic.IReadOnlyList<PartCatalog.EngineTemplate> Engines => engines;
 
-        /// <summary>Двигатель по умолчанию (первая модель; для новых слотов).</summary>
+        /// <summary>Default engine (the first model; for new slots).</summary>
         public PartCatalog.EngineTemplate DefaultEngine => engines.Count > 0 ? engines[0] : null;
 
-        /// <summary>Шаблон двигателя заготовки (EngineId; неизвестный — двигатель по умолчанию).</summary>
+        /// <summary>Engine template of a preset (by EngineId; unknown — default engine).</summary>
         public PartCatalog.EngineTemplate EngineFor(PartPreset preset)
         {
             return EngineFor(preset.EngineId);
         }
 
-        /// <summary>Шаблон двигателя по Id из EngineSpecs (null — по умолчанию).</summary>
+        /// <summary>Engine template by Id from EngineSpecs (null — default).</summary>
         public PartCatalog.EngineTemplate EngineFor(string engineId)
         {
             if (engines.Count == 0)
@@ -955,8 +942,8 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Стартовая заготовка вида детали (панель создаёт из неё заготовки
-        /// слотов; отладочный стек строит из неё напрямую).
+        /// Initial preset for a part kind (the panel builds slot presets from it;
+        /// the debug stack builds from it directly).
         /// </summary>
         public PartPreset DefaultPreset(PartKind kind)
         {
@@ -975,7 +962,7 @@ namespace Galilego.Building
                 case PartKind.Separator:
                     return new PartPreset { Kind = kind, Radius = SeparatorRadius };
                 case PartKind.Capsule:
-                    // Размеры капсулы фиксированы моделью — заготовке ничего не нужно.
+                    // Capsule sizes are fixed by the model — the preset needs nothing.
                     return new PartPreset { Kind = kind };
                 default:
                     PartCatalog.EngineTemplate engine = DefaultEngine;
@@ -987,7 +974,7 @@ namespace Galilego.Building
             }
         }
 
-        /// <summary>Метрики заготовки слота: форма и размеры именно этого слота.</summary>
+        /// <summary>Slot preset metrics: the form and sizes of this very slot.</summary>
         public PartMetrics MetricsFor(PartPreset preset)
         {
             if (preset.Kind == PartKind.FuelTank)
@@ -999,22 +986,22 @@ namespace Galilego.Building
 
             if (preset.Kind == PartKind.Engine || preset.Kind == PartKind.Capsule)
             {
-                // Размеры берутся из шаблона модели, поля пресета не значимы.
+                // Sizes come from the model template; preset fields are irrelevant.
                 return PartCatalog.Measure(preset.Kind, 0f, 0f, EngineFor(preset));
             }
 
             return PartCatalog.Measure(preset.Kind, preset.Radius, 0f, DefaultEngine);
         }
 
-        /// <summary>Метрики вида детали со стартовыми размерами (отладочный стек).</summary>
+        /// <summary>Metrics of a part kind with initial sizes (debug stack).</summary>
         public PartMetrics MetricsFor(PartKind kind)
         {
             return MetricsFor(DefaultPreset(kind));
         }
 
         /// <summary>
-        /// Поставить деталь в черновик (визуал + запись). parentIndex −1 — корень.
-        /// engineTemplate — модель двигателя детали (для вида Engine; null — по умолчанию).
+        /// Place a part into the draft (visual + record). parentIndex −1 — root.
+        /// engineTemplate — the part's engine model (for PartKind.Engine; null — default).
         /// </summary>
         public PlacedPart AddPart(
             PartKind kind, PartMetrics metrics, Vector3 pivot, int parentIndex, bool parentOnTop,
@@ -1063,7 +1050,7 @@ namespace Galilego.Building
             return part;
         }
 
-        /// <summary>Убрать последнюю поставленную деталь (Ctrl+Z).</summary>
+        /// <summary>Remove the last placed part (Ctrl+Z).</summary>
         public void RemoveLast()
         {
             if (parts.Count == 0)
@@ -1075,10 +1062,10 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Убрать деталь по индексу (Alt+ПКМ по прицелу). Дети удалённой детали
-        /// остаются на своих местах и становятся корнями (снап к удалённому
-        /// родителю теряется — в стройке это просто отдельно стоящая деталь),
-        /// индексы родителей сдвигаются.
+        /// Remove a part by index (Alt+RMB on the aim). Children of the removed
+        /// part stay in place and become roots (the snap to the removed parent is
+        /// lost — in build mode it is simply a free-standing part); parent indices
+        /// are shifted.
         /// </summary>
         public void RemoveAt(int index)
         {
@@ -1095,7 +1082,7 @@ namespace Galilego.Building
                     continue;
                 }
 
-                // Ребёнок удаляемого: отвязываем его узел от родителя.
+                // Child of the removed part: unbind its node from the parent.
                 PlacedPart child = parts[i];
                 if (child.ParentOnTop)
                 {
@@ -1143,7 +1130,7 @@ namespace Galilego.Building
             RefreshVisualLocals();
         }
 
-        /// <summary>Убрать все детали черновика (кнопка разработчика в инвентаре).</summary>
+        /// <summary>Remove all draft parts (developer button in the inventory).</summary>
         public void ClearAll()
         {
             ClearDeleteHighlight();
@@ -1159,8 +1146,8 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Поднять/опустить весь черновик по зениту места (м) — отладочный подъём
-        /// для проверки падения физикой. Игрок это делает постановкой в воздухе.
+        /// Raise/lower the whole draft along the site zenith (m) — a debug lift
+        /// for testing physics fall. The player does this by placing parts in the air.
         /// </summary>
         public void ShiftVessel(float upMeters)
         {
@@ -1174,9 +1161,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Включить/выключить визуальные коллайдеры деталей. В полёте они
-        /// гасятся: тела прокси занимают их место (иначе PhysX-тела сталкивались
-        /// бы со своими же визуалами), а опора игрока переключается на тела прокси.
+        /// Enable/disable the visual colliders of the parts. In flight they are
+        /// turned off: proxy bodies take their place (otherwise PhysX bodies would
+        /// collide with their own visuals), and the player support switches to proxy bodies.
         /// </summary>
         private void SetPartColliders(bool enabled)
         {
@@ -1188,10 +1175,9 @@ namespace Galilego.Building
                     continue;
                 }
 
-                // Все коллайдеры детали, включая коллайдеры САМОЙ МОДЕЛИ (у капсулы
-                // Orion их десятки: оболочка, пол кабины, открытая дверь). Раньше
-                // гасился только корневой — в полёте меши капсулы продолжали
-                // сталкиваться, хотя их место занимают тела прокси зоны контакта.
+                // All part colliders, including the MODEL's own ones (the Orion
+                // capsule has dozens: shell, cabin floor, open door) — proxy bodies
+                // take their place in flight.
                 Collider[] colliders = part.Visual.Root.GetComponentsInChildren<Collider>(true);
                 for (int c = 0; c < colliders.Length; c++)
                 {
@@ -1200,7 +1186,7 @@ namespace Galilego.Building
             }
         }
 
-        /// <summary>Локальные позы визуалов: пивот минус низ сборки (оси места).</summary>
+        /// <summary>Local visual poses: pivot minus the assembly bottom (site axes).</summary>
         private void RefreshVisualLocals()
         {
             if (ShipTransform == null)
@@ -1220,7 +1206,7 @@ namespace Galilego.Building
             }
         }
 
-        // ─── Призрак и постановка ────────────────────────────────────────────
+        // ─── Ghost and placement ────────────────────────────────────────────
 
         private void UpdatePlacement()
         {
@@ -1243,10 +1229,10 @@ namespace Galilego.Building
                 return;
             }
 
-            // Луч камеры: в осях места — для снапа по узлам, в render — для лучей
-            // физики (коллайдеры живут в render-пространстве). Конус прицела —
-            // от того же FOV камеры, что рисует кольцо: узел ловится ровно под
-            // кольцом, а не «где-то рядом с лучом».
+            // Camera ray: in site axes — for node snapping, in render space — for
+            // physics rays (colliders live in render space). The aim cone uses the
+            // same camera FOV that draws the ring: nodes are caught exactly under
+            // the ring, not "somewhere near the ray".
             Vector3 rayOrigin = Zone.RenderToSite(camera.transform.position);
             Vector3 rayDirection = Zone.transform.InverseTransformDirection(camera.transform.forward);
             float coneTangent = AimCone.Tangent(camera);
@@ -1265,8 +1251,8 @@ namespace Galilego.Building
                 pivot = new Vector3(hitPoint.x, hitPoint.y - metrics.Bottom, hitPoint.z);
                 valid = onPad && CheckPlacement(pivot, metrics, -1);
 
-                // Второй проход: точка в свободном месте, но, может, она в паре
-                // сантиметров над узлом детали — доводим край-к-краю.
+                // Second pass: the point is in free space but maybe a couple of
+                // centimetres above a part node — snap edge to edge.
                 if (onPad && BuildMath.TryFindProximitySnap(parts, metrics, pivot, out BuildMath.SnapHit near))
                 {
                     snap = near;
@@ -1277,7 +1263,7 @@ namespace Galilego.Building
             }
             else
             {
-                // Луч никуда не попал: запасная точка в воздухе перед игроком.
+                // The ray hit nothing: fallback point in the air in front of the player.
                 Vector3 air = rayOrigin + (rayDirection * BuildMath.AirFallbackDistance);
                 pivot = new Vector3(air.x, air.y - metrics.Bottom, air.z);
                 float padTop = Zone.PadTopYAt(new Vector2(pivot.x, pivot.z));
@@ -1307,8 +1293,8 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Валидность места: пятно целиком на площадке, без пересечений, в зоне
-        /// досягаемости (пивот не выше потолка над плитой).
+        /// Placement validity: the footprint fully on the pad, no intersections,
+        /// within reach (pivot not above the ceiling over the slab).
         /// </summary>
         private bool CheckPlacement(Vector3 pivot, PartMetrics metrics, int ignoreIndex)
         {
@@ -1333,22 +1319,16 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Пересекается ли пробная деталь с ПОСТРОЙКАМИ места (стол, фермы,
-        /// парапеты). Без этой проверки деталь можно было поставить внутрь
-        /// коллайдеров стола: при включении физики она застревала в них и
-        /// «висела», а соседи отваливались. Проверочная сфера чуть уже детали
-        /// и ужата от торцов, чтобы опора/пол не ловились как пересечение.
-        ///
-        /// Радиус сферы дополнительно ограничен половиной высоты детали: у
-        /// широкой и невысокой детали (капсула Ø5 м, широкий бак) сфера
-        /// радиуса нижнего радиуса вылезала НИЖЕ её дна и «находила» плиту
-        /// под деталью — постановка на площадку была вечно красной.
+        /// Whether the trial part intersects SITE STRUCTURES (desk, trusses,
+        /// parapets). The test sphere is slightly narrower than the part, pinched
+        /// away from its ends and capped at half its height (so wide flat parts
+        /// cannot reach below their own bottom).
         /// </summary>
         private bool OverlapsSiteStructure(Vector3 pivot, PartMetrics metrics)
         {
             if (metrics.Height < 0.5f || metrics.Radius <= 0.01f)
             {
-                return false; // тонкие детали (отделитель) не проверяем
+                return false; // thin parts (separator) are not checked
             }
 
             float radius = (metrics.Radius * 0.92f) - 0.05f;
@@ -1377,9 +1357,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Луч камеры в коллайдеры: ближайшее попадание. onPad — попал ли в
-        /// ВЕРХНЮЮ грань коллайдера МЕСТА (плита или стартовый стол — только по
-        /// ним и можно ставить).
+        /// Camera ray against colliders: the closest hit. onPad — whether it hit
+        /// the TOP face of a SITE collider (slab or launch desk — only those allow
+        /// placement).
         /// </summary>
         private bool TryRayToSurface(Camera camera, out Vector3 hitPoint, out bool onPad)
         {
@@ -1399,8 +1379,8 @@ namespace Galilego.Building
             float bestDistance = float.MaxValue;
             for (int i = 0; i < hits.Length; i++)
             {
-                // Коллайдеры деталей аппарата луч постановки не заслоняют: снап
-                // по узлам и так аналитический, а цель луча — плита/стол места.
+                // Vessel part colliders do not block the placement ray: node snapping
+                // is analytic anyway, and the ray targets the site slab/desk.
                 if (hits[i].collider.GetComponentInParent<VesselPartCollider>() != null)
                 {
                     continue;
@@ -1415,14 +1395,14 @@ namespace Galilego.Building
 
             if (best < 0)
             {
-                // Все попадания — коллайдеры деталей аппарата: поверхности места нет.
+                // All hits are vessel part colliders: no site surface.
                 return false;
             }
 
             RaycastHit hit = hits[best];
             hitPoint = Zone.RenderToSite(hit.point);
 
-            // Только верхняя грань поверхности места: бок/низ — не поверхность постановки.
+            // Only the top face of a site surface: sides/bottom do not accept placement.
             Vector3 normalLocal = Zone.transform.InverseTransformDirection(hit.normal);
             onPad = LaunchPadZone.IsSiteCollider(hit.collider) && normalLocal.y > 0.7f;
             return true;
@@ -1495,9 +1475,9 @@ namespace Galilego.Building
             }
         }
 
-        // ─── Отладочный стек ─────────────────────────────────────────────────
+        // ─── Debug stack ─────────────────────────────────────────────────
 
-        /// <summary>Спайк: три жёстко заданные детали на площадке (проверка зоны контакта).</summary>
+        /// <summary>Spike: three hard-coded parts on the pad (contact zone test).</summary>
         private void BuildSpikeStack()
         {
             PartPreset enginePreset = DefaultPreset(PartKind.Engine);
@@ -1517,15 +1497,13 @@ namespace Galilego.Building
             Debug.Log("[Build] отладочный стек: двигатель + бак + отделитель");
         }
 
-        // ─── Материалы ───────────────────────────────────────────────────────
+        // ─── Materials ───────────────────────────────────────────────────────
 
         /// <summary>
-        /// Материал призрака: ПЛОТНЫЙ одноцветный с подсветкой. Полупрозрачный
-        /// HDRP-материал в рантайме в этом проекте не отдаёт цвет (ни через
-        /// свойства, ни через HDMaterial.SetSurfaceType — при видимой тени
-        /// объект не рисуется), поэтому призрак — плотная «проекция»: силуэт
-        /// детали читается и по нему видно место постановки. Вернуть
-        /// полупрозрачность — отдельной задачей с материалом-эталоном.
+        /// Ghost material: OPAQUE single-color with emissive. Runtime
+        /// semi-transparent HDRP materials do not render their color in this
+        /// project, so the ghost is a solid "projection" whose silhouette shows
+        /// the placement spot.
         /// </summary>
         private static Material CreateOverlayMaterial(Color color, string name)
         {

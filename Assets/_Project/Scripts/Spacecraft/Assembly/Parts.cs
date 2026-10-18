@@ -5,10 +5,9 @@ using Galilego.Core;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Деталь корабля: масса, положение центра в системе корабля, форма, ориентация
-    /// и прочность стыка. Конструктор без формы — масса-точка (прежнее поведение,
-    /// тесты Test30 и т.п.). Форма задаёт только собственный тензор инерции детали;
-    /// масса всегда явная.
+    /// Ship part: mass, centre position in the ship frame, shape, orientation
+    /// and joint strength. Constructor without a shape — point mass. A shape sets
+    /// only the part's own inertia tensor; mass is always explicit.
     /// </summary>
     public readonly struct Part
     {
@@ -42,9 +41,9 @@ namespace Galilego.Spacecraft
     }
 
     /// <summary>
-    /// Собственный тензор инерции детали относительно её центра масс, в системе
-    /// корабля, на 1 кг массы. Главные моменты в осях детали, поворот в систему
-    /// корабля: I = Σ I_k · a_k a_kᵀ, где a_k — ось k детали в системе корабля.
+    /// A part's own inertia tensor about its centre of mass, in the ship frame,
+    /// per 1 kg of mass. Principal moments in the part's axes, rotated into the
+    /// ship frame: I = Σ I_k · a_k a_kᵀ, where a_k is the part's k-th axis in the ship frame.
     /// </summary>
     public static class PartInertia
     {
@@ -93,9 +92,8 @@ namespace Galilego.Spacecraft
                     RequirePositive(dimensions.X, "Frustum: нижний радиус");
                     RequirePositive(dimensions.Y, "Frustum: высота");
                     RequirePositive(dimensions.Z, "Frustum: верхний радиус");
-                    // Обрезанный конус приближаем цилиндром эквивалентного
-                    // (среднеквадратичного) радиуса: разница с точной формулой
-                    // мала и влияет лишь на свободное вращение детали.
+                    // A frustum is approximated by a cylinder of equivalent (RMS) radius:
+                    // the difference from the exact formula is small.
                     double h = dimensions.Y;
                     double rr = ((dimensions.X * dimensions.X) + (dimensions.Z * dimensions.Z)) * 0.5d;
                     ix = ((3d * rr) + (h * h)) / 12d;
@@ -153,12 +151,11 @@ namespace Galilego.Spacecraft
     }
 
     /// <summary>
-    /// Сводка сборки: суммарная масса, центр масс, тензор инерции относительно
-    /// центра масс. Для каждой детали берётся собственный тензор (форма) и
-    /// теорема Штейнера от её центра до центра масс сборки:
+    /// Assembly summary: total mass, centre of mass, inertia tensor about the
+    /// centre of mass. Each part contributes its own tensor (shape) and the
+    /// parallel-axis theorem from its centre to the assembly centre of mass:
     ///   I = Σ [ I_own + m (|d|² E − d dᵀ) ],  d = r − COM.
-    /// Для точечных деталей I_own = 0, результат совпадает с прежним (ловушка R2a).
-    /// Счёт от начала координат дал бы неправильное свободное вращение.
+    /// For point parts I_own = 0. Summing from the origin would give wrong free rotation.
     /// </summary>
     public readonly struct AssemblyStats
     {
@@ -224,10 +221,10 @@ namespace Galilego.Spacecraft
     }
 
     /// <summary>
-    /// Перевод описаний деталей (PartDefinition) в сборку для физики: массы
-    /// нормируются к фактической массе корабля (массы задают ПРОПОРЦИИ,
-    /// топливо выгорает). null, если деталей нет или их суммарная масса
-    /// не положительна: тогда работает whole-ship путь breakup-модели.
+    /// Converts part descriptions (PartDefinition) into an assembly for physics:
+    /// masses are normalised to the ship's actual mass (masses set PROPORTIONS,
+    /// fuel burns off). null if there are no parts or their total mass is not
+    /// positive: then the breakup model's whole-ship path is used.
     /// </summary>
     public static class PartAssembly
     {

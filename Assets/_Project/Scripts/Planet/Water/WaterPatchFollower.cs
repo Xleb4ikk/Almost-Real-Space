@@ -5,34 +5,29 @@ using UnityEngine.Rendering.HighDefinition;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// СПАЙК Этапа 0: локальный плоский патч штатной HDRP Water у игрока.
+    /// Local flat HDRP Water patch at the player.
     ///
-    /// Вопрос спайка (exit-критерий): умеет ли Water Surface типа Ocean/Sea/Lake
-    /// корректно работать при повёрнутом трансформе. Симуляция HDRP считается в
-    /// локальном пространстве воды (waterToWorld/worldToWater строятся из
-    /// transform.position + transform.rotation, UpVector() = transform.up,
-    /// underwater-объём для infinite проверяется проекцией на upDirection),
-    /// поэтому поворот ДОЛЖЕН работать. Если на Play волны/пена едут боком,
-    /// рвутся или патч лежит не по горизонту — спайк ПРОВАЛЕН: сразу План Б
-    /// (текстуры в Galilego/WaterSurface), не форсить геометрией/трюками.
+    /// HDRP water simulation runs in the water's local space (waterToWorld/worldToWater
+    /// are built from transform.position + transform.rotation, UpVector() = transform.up),
+    /// so a rotated transform works.
     ///
-    /// Ориентация: тот же «локальный верх», что FirstPersonCamera.ComputeLocalUp():
+    /// Orientation: the same "local up" as FirstPersonCamera.ComputeLocalUp():
     /// outward = PlayerPosition − bodyPos, up = ToSimulation(outward/|outward|).
-    /// Позиция — через FloatingOrigin.ToRender (якорь = PlayerPosition), иначе
-    /// float-дрожание на радиусе ~1.1e6 м.
+    /// Position via FloatingOrigin.ToRender (anchor = PlayerPosition) to avoid float
+    /// jitter at a radius of ~1.1e6 m.
     ///
-    /// Кривизна Terra (R = 1143000 м, h ≈ d²/2R): патч 512 м → просадка края
-    /// ~3 см (волна 0.9 м) — глазом не видно. Не расширять патч за ~700 м
-    /// (край −21 см) без переоценки шва с дальними чанками.
+    /// Curvature of Terra (R = 1143000 m, h ≈ d²/2R): a 512 m patch droops ~3 cm at the
+    /// edge (wave 0.9 m) — invisible. Do not enlarge the patch beyond ~700 m
+    /// (edge −21 cm) without re-evaluating the seam with the distant chunks.
     ///
-    /// Создание: автоматически PlanetSurfaceRenderer.EnsureHdrpWaterPatch()
-    /// при старте (флаг UseHdrpWaterPatch) — руками в сцену ничего добавлять
-    /// не нужно. Ручной вариант тоже работает: пустой GameObject + Water
-    /// Surface (Ocean, Sea or Lake) + этот скрипт, Play у моря.
-    /// Подводность: штатный underwater-объём HDRP НЕ включаем (underWater=false) —
-    /// он конечен (repetitionSize): из-под воды его граница видна как тёмный
-    /// квадрат под игроком. Под воду ведёт глобальный UnderwaterEffect (fog на
-    /// весь экран, без границ), этот скрипт его никогда не гасит.
+    /// Created automatically by PlanetSurfaceRenderer.EnsureHdrpWaterPatch() at start
+    /// (flag UseHdrpWaterPatch) — nothing needs to be added to the scene by hand. The
+    /// manual setup also works: an empty GameObject + Water Surface (Ocean, Sea or Lake)
+    /// + this script, Play near the sea.
+    /// Underwater: the HDRP underwater volume is NOT enabled (underWater=false) — it is
+    /// finite (repetitionSize), and its edge is visible as a dark square under the
+    /// player from below. The global UnderwaterEffect (full-screen fog, no bounds)
+    /// handles underwater, and this script never mutes it.
     /// </summary>
     [DefaultExecutionOrder(50)]
     public sealed class WaterPatchFollower : MonoBehaviour
@@ -93,8 +88,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Ставит патч на уровень моря под игроком, разворачивает +Y по
-        /// локальной вертикали. false — патч невалиден (нет моря/тела).
+        /// Places the patch at sea level under the player and orients +Y along the
+        /// local vertical. false — the patch is invalid (no sea/body).
         /// </summary>
         private bool TryPlacePatch()
         {
@@ -193,9 +188,9 @@ namespace Galilego.Universe
             waterSurface.geometryType = WaterGeometryType.Quad;
             waterSurface.repetitionSize = Mathf.Max(64f, PatchSizeMeters);
             waterSurface.timeMultiplier = 1f;
-            // НЕ включать штатный underwater-объём: он ограничен экстентом квада
-            // (repetitionSize) и из-под воды читается как тёмный квадрат 512 м
-            // под игроком. Подводный fog — глобальный UnderwaterEffect.
+            // Do NOT enable the built-in underwater volume: it is bounded by the quad
+            // extent (repetitionSize) and reads from below as a dark 512 m square
+            // under the player. Underwater fog is the global UnderwaterEffect.
             waterSurface.underWater = false;
         }
 
@@ -213,11 +208,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Вердикт по подводности: подводный fog всегда ведёт глобальный
-        /// UnderwaterEffect (на весь экран, без границ). Штатный underwater-объём
-        /// HDRP не включаем (см. ConfigureSurface): он конечен и из-под воды
-        /// виден квадратом. Гашение оставлено только как ручной оверрайд флагом
-        /// MuteUnderwaterEffectWhileActive (по умолчанию выкл).
+        /// Underwater verdict: underwater fog is always driven by the global
+        /// UnderwaterEffect (full screen, unbounded). The built-in HDRP underwater
+        /// volume is not enabled (see ConfigureSurface): it is finite and visible as a
+        /// square from below. The mute is kept only as a manual override via
+        /// MuteUnderwaterEffectWhileActive (off by default).
         /// </summary>
         private void ApplyUnderwaterDiscipline(bool patchActive)
         {

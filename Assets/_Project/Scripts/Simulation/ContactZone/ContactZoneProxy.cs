@@ -1,8 +1,8 @@
-// Зона контакта (вертикальный срез). Проверено в редакторе Unity 6000.6.0f1 (см. ContactZoneHost.cs).
-// Строит тела Unity (PhysX) по PartDefinition. Координаты Unity: x = север, y = вверх, z = восток
-// (поворот от (восток, север, вверх), без зеркалирования). Ось Y корабля совпадает с Up места.
-// Сборка смещается вверх так, чтобы низ формы совпал с точкой корабля (точка в игре — низ аппарата).
-// Цилиндр и усечённый конус — замкнутые призмы: MeshCollider convex требует треугольники, не облако вершин.
+// Contact zone (vertical slice).
+// Builds Unity (PhysX) bodies from PartDefinition. Unity coordinates: x = north, y = up, z = east
+// (rotation from (east, north, up), without mirroring). The ship's Y axis matches the site Up.
+// The assembly is shifted up so the bottom of the shape matches the ship point (in game that is the vessel bottom).
+// Cylinder and frustum are closed prisms: a convex MeshCollider needs triangles, not a vertex cloud.
 using System.Collections.Generic;
 using Galilego.Core;
 using Galilego.Spacecraft;
@@ -18,14 +18,14 @@ namespace Galilego.Simulation.ContactZone
         private readonly List<Rigidbody> bodies = new List<Rigidbody>();
         private readonly List<Joint> joints = new List<Joint>();
 
-        // Разрывы стыков: индексы ДОЧЕРНИХ деталей с разорванным стыком; маска
-        // корневого острова — какие тела ещё принадлежат кораблю (остальные —
-        // отломки, живут в сцене как физика PhysX до выхода из зоны).
+        // Joint breaks: indices of CHILD parts with a broken joint; the root-island
+        // mask marks which bodies still belong to the ship (the rest are debris,
+        // living in the scene as PhysX physics until zone exit).
         private PartDefinition[] partDefs;
         private readonly List<int> brokenChildren = new List<int>();
         private bool[] rootMask;
 
-        /// <summary>Индексы деталей с разорванными стыками (по порядку разрывов).</summary>
+        /// <summary>Indices of parts with broken joints (in break order).</summary>
         public IReadOnlyList<int> BrokenChildren => brokenChildren;
 
         public int BodyCount => bodies.Count;
@@ -35,7 +35,7 @@ namespace Galilego.Simulation.ContactZone
             return index >= 0 && index < bodies.Count ? bodies[index] : null;
         }
 
-        /// <summary>Принадлежит ли тело корневому острову (до разрывов — всем).</summary>
+        /// <summary>Whether the body belongs to the root island (all bodies before any break).</summary>
         public bool IsRootBody(int index)
         {
             if (rootMask == null)
@@ -60,9 +60,9 @@ namespace Galilego.Simulation.ContactZone
             Vector3 origin = ToUnity(localPosition);
             Vector3 vel = ToUnity(localVelocity);
 
-            // Точка корабля в игре — низ аппарата (касание детектится ею), а Offset деталей
-            // задан от внутреннего начала сборки: T1 свисает на 5.5 м ниже. Смещаем всю
-            // сборку так, чтобы самая низкая точка формы легла на точку корабля (локальный up=0).
+            // In game the ship point is the vessel bottom (touch is detected by it), while
+            // part Offset is measured from the assembly's internal origin, so T1 hangs 5.5 m
+            // below. Shift the assembly so the lowest point of the shape lands on the ship point.
             float lowest = 0f;
             bool hasLowest = false;
             for (int i = 0; i < parts.Count; i++)
@@ -78,7 +78,7 @@ namespace Galilego.Simulation.ContactZone
             Vector3 lift = new Vector3(0f, hasLowest ? -lowest : 0f, 0f);
             if (positionIsCom)
             {
-                // Входящая точка — ЦЕНТР МАСС (свободный полёт 6-DOF): сборку кладём центром масс в точку.
+                // The incoming point is the CENTER OF MASS (free 6-DOF flight): place the assembly with its COM at the point.
                 Vector3 weighted = Vector3.zero;
                 float total = 0f;
                 for (int i = 0; i < parts.Count; i++)
@@ -95,7 +95,7 @@ namespace Galilego.Simulation.ContactZone
                 PartDefinition d = parts[i];
                 var go = new GameObject("Part_" + i + "_" + d.Name);
                 go.transform.SetParent(transform, false);
-                // Положение детали относительно точки корабля (ось Y корабля = вверх места).
+                // Part position relative to the ship point (the ship's Y axis is the site up).
                 go.transform.localPosition = origin + d.Offset + lift;
                 go.transform.localRotation = new Quaternion(d.Orientation.x, d.Orientation.y, d.Orientation.z, d.Orientation.w);
 
@@ -103,15 +103,15 @@ namespace Galilego.Simulation.ContactZone
                 rb.mass = (float)d.MassKg;
                 rb.linearVelocity = vel;
                 AddShapeCollider(go, d);
-                // Маркер детали аппарата: опора игрока (VesselSupport) не пускает
-                // его сквозь тела прокси, пока идёт полёт.
+                // Vessel part marker: the player support (VesselSupport) does not let
+                // the player through the proxy bodies while in flight.
                 go.AddComponent<Galilego.Building.VesselPartCollider>();
                 bodies.Add(rb);
             }
 
-            // Стыки: каждая деталь с ParentIndex >= 0 крепится к родителю фиксированным
-            // соединением. На детали висит приёмник OnJointBreak (PhysX шлёт сообщение
-            // GameObject'у стыка), он же сообщает прокси индекс разорванной детали.
+            // Joints: every part with ParentIndex >= 0 is attached to its parent by a
+            // fixed joint. The part carries an OnJointBreak receiver (PhysX messages
+            // the GameObject holding the joint), which reports the broken part index to the proxy.
             for (int i = 0; i < parts.Count; i++)
             {
                 PartDefinition d = parts[i];
@@ -120,7 +120,7 @@ namespace Galilego.Simulation.ContactZone
                 fj.connectedBody = bodies[d.ParentIndex];
                 fj.breakForce = (float)d.JointStrengthNewtons;
                 fj.breakTorque = (float)d.BreakTorqueNm;
-                fj.enableCollision = false; // соседние детали одного корабля не сталкиваются
+                fj.enableCollision = false; // adjacent parts of the same ship do not collide
                 joints.Add(fj);
                 bodies[i].gameObject.AddComponent<ZoneJointBreakListener>().Bind(this, i);
             }
@@ -129,7 +129,7 @@ namespace Galilego.Simulation.ContactZone
             Physics.defaultSolverVelocityIterations = 4;
         }
 
-        /// <summary>Индекс тела корневого острова (для ориентации корабля); −1 — нет.</summary>
+        /// <summary>Index of the root-island body (for ship orientation); −1 — none.</summary>
         public int RootBodyIndex()
         {
             for (int i = 0; i < bodies.Count; i++)
@@ -141,9 +141,9 @@ namespace Galilego.Simulation.ContactZone
         }
 
         /// <summary>
-        /// Вход в зону с произвольной ориентацией (повторный вход из полёта): поворачивает всю
-        /// собранную сборку вокруг центра масс на qLocal (локальные оси прокси) и задаёт угловую
-        /// скорость omegaLocal (рад/с, локальные оси). Скорость каждого тела = v_цм + ω×r.
+        /// Zone entry with arbitrary orientation (re-entry from flight): rotates the whole
+        /// assembly around its center of mass by qLocal (proxy local axes) and sets the
+        /// angular velocity omegaLocal (rad/s, local axes). Each body's velocity = v_com + ω×r.
         /// </summary>
         public void ApplyRigidState(Quaternion qLocal, Vector3 omegaLocal)
         {
@@ -173,9 +173,10 @@ namespace Galilego.Simulation.ContactZone
         }
 
         /// <summary>
-        /// Ступенчатое/аварийное отделение в зоне: рвёт все стыки между телами keep[i]==true и
-        /// остальными, оставшиеся — корневой остров (отделённые — отломки PhysX до выхода из зоны).
-        /// kickMetersPerSecond — относительная скорость разделения вдоль kickDirLocal (локальные оси).
+        /// Staged/emergency separation in the zone: breaks all joints between bodies with
+        /// keep[i]==true and the rest; the remaining ones form the root island (the separated
+        /// ones are PhysX debris until zone exit). kickMetersPerSecond is the relative
+        /// separation speed along kickDirLocal (local axes).
         /// </summary>
         public void SeverForStaging(bool[] keep, Vector3 kickDirLocal, float kickMetersPerSecond)
         {
@@ -192,7 +193,7 @@ namespace Galilego.Simulation.ContactZone
                 }
             }
 
-            // Стыки, которые могли соединять отделяемое с остающимся «снизу» (родитель — отделяемое).
+            // Joints that could connect the jettisoned part to a remaining one "below" (parent is jettisoned).
             rootMask = new bool[bodies.Count];
             for (int i = 0; i < bodies.Count; i++)
             {
@@ -205,10 +206,10 @@ namespace Galilego.Simulation.ContactZone
         }
 
         /// <summary>
-        /// Стык разорван (OnJointBreak детали): деталь и её подграф становятся
-        /// отломками — исключаются из центра масс и скорости корневого острова,
-        /// но остаются в сцене как тела PhysX до выхода из зоны (Clear). Передача
-        /// отломков в DebrisPool — фаза 7 (отложено, см. отчёт среза).
+        /// A joint broke (part's OnJointBreak): the part and its subtree become
+        /// debris — excluded from the root island's center of mass and velocity, but
+        /// they stay in the scene as PhysX bodies until zone exit (Clear). Handing
+        /// debris to DebrisPool is phase 7 (deferred, see the slice report).
         /// </summary>
         public void OnPartJointBreak(int partIndex, float breakForce)
         {
@@ -285,17 +286,15 @@ namespace Galilego.Simulation.ContactZone
 
         public void SetFrameGravity(Vector3d localGravity)
         {
-            // Гравитация кадра в осях Unity: (север, вверх, восток), затем —
-            // в МИР через поворот корня зоны: Physics.gravity мировая, а корень
-            // повёрнут осями места (в тестовой сцене он стоял без поворота,
-            // поэтому ошибка не проявлялась до подключения зоны в главной сцене).
+            // Frame gravity in Unity axes (north, up, east), then into WORLD through
+            // the zone root rotation: Physics.gravity is world, while the root is
+            // rotated by site axes.
             Physics.gravity = transform.rotation * ToUnity(localGravity);
         }
 
-        // Центр масс и его скорость по текущим телам (координаты места).
-        // ВАЖНО: worldCenterOfMass и linearVelocity — МИРОВЫЕ; переводим в оси
-        // корня зоны (поворот корня произвольный — в тестовой сцене он был
-        // единичным, и прямое чтение «как локальных» тихо работало).
+        // Center of mass and its velocity from the current bodies (site coordinates).
+        // IMPORTANT: worldCenterOfMass and linearVelocity are WORLD; convert them into
+        // the zone root axes (the root rotation is arbitrary).
         public void GetCenterOfMassState(SiteFrame frame, double t, out Vector3d position, out Vector3d velocity)
         {
             if (bodies.Count == 0)
@@ -312,7 +311,7 @@ namespace Galilego.Simulation.ContactZone
             {
                 if (!IsRootBody(i))
                 {
-                    continue; // отломки в центр масс корабля не входят
+                    continue; // debris is not part of the ship's center of mass
                 }
 
                 float mi = bodies[i].mass;
@@ -336,9 +335,9 @@ namespace Galilego.Simulation.ContactZone
             velocity = CenterOfMassVelocityLocal;
         }
 
-        // Полувысота формы вдоль оси Y корабля (вверх): используется для посадки низа сборки
-        // на точку корабля. Цилиндр/коробка/усечённый конус — Dimensions.y/2, сфера — радиус,
-        // точка — 0.
+        // Half-height of the shape along the ship's Y axis (up): used to seat the bottom
+        // of the assembly on the ship point. Cylinder/box/frustum — Dimensions.y/2,
+        // sphere — radius, point — 0.
         private static float PartHalfHeight(PartDefinition d)
         {
             switch (d.Shape)
@@ -367,28 +366,28 @@ namespace Galilego.Simulation.ContactZone
                     sphere.radius = d.Dimensions.x;
                     break;
                 case PartShape.Cylinder:
-                    // Выпуклый меш-призма (12 граней): цилиндр PhysX не поддерживает напрямую.
+                    // Convex mesh prism (12 faces): PhysX has no direct cylinder.
                     var mc = go.AddComponent<MeshCollider>();
                     mc.convex = true;
                     mc.sharedMesh = Prism(d.Dimensions.x, d.Dimensions.x, d.Dimensions.y, 12);
                     break;
                 case PartShape.Frustum:
-                    // Бак-переходник: та же призма, но радиусы торцов разные.
+                    // Tank adapter: the same prism but with different end radii.
                     var fmc = go.AddComponent<MeshCollider>();
                     fmc.convex = true;
                     fmc.sharedMesh = Prism(d.Dimensions.x, d.Dimensions.z, d.Dimensions.y, 16);
                     break;
                 default:
-                    // Point: масса без геометрии — маленький коллайдер, чтобы тело стояло.
+                    // Point: mass without geometry — a tiny collider so the body stays put.
                     var tiny = go.AddComponent<SphereCollider>();
                     tiny.radius = 0.05f;
                     break;
             }
         }
 
-        // ЗАМКНУТАЯ призма: боковые грани + крышки, радиусы торцов могут
-        // отличаться (усечённый конус). MeshCollider (convex) требует
-        // треугольники — облако вершин не готовится PhysX-кукером.
+        // CLOSED prism: side faces + caps, the end radii may differ (frustum).
+        // A convex MeshCollider needs triangles — PhysX cooking does not accept
+        // a vertex cloud.
         private static Mesh Prism(float bottomRadius, float topRadius, float height, int sides)
         {
             var mesh = new Mesh();
@@ -415,7 +414,7 @@ namespace Galilego.Simulation.ContactZone
                 int t0 = sides + i;
                 int t1 = sides + i2;
 
-                // Боковая грань (два треугольника, внешняя ориентация).
+                // Side face (two triangles, outward orientation).
                 tris[k++] = b0; tris[k++] = b1; tris[k++] = t1;
                 tris[k++] = b0; tris[k++] = t1; tris[k++] = t0;
 
@@ -431,7 +430,7 @@ namespace Galilego.Simulation.ContactZone
             return mesh;
         }
 
-        // Локальные оси места (восток, север, вверх) → Unity (север, вверх, восток).
+        // Site local axes (east, north, up) → Unity (north, up, east).
         private static Vector3 ToUnity(Vector3d v) => new Vector3((float)v.Y, (float)v.Z, (float)v.X);
         private static Vector3d FromUnity(Vector3 v) => new Vector3d(v.z, v.x, v.y);
     }

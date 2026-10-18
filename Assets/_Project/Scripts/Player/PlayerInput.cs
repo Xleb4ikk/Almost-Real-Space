@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 
 namespace Galilego.Universe
 {
-    /// <summary>Абстракция клавиш ввода (не зависит от системы ввода).</summary>
+    /// <summary>Input key abstraction (independent of the input system).</summary>
     internal enum GameKey
     {
         W, A, S, D, Space, LeftShift, LeftControl, E, I, P, H, Escape,
@@ -14,12 +14,10 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Ввод через новый Input System, когда он активен (ENABLE_INPUT_SYSTEM), с
-    /// legacy-запаской для тестового стенда. Нужно, потому что при Active Input
-    /// Handling = Both старый mouse-модуль сыпет «Screen position out of view
-    /// frustum» при захваченном курсоре (это и было причиной спама в консоли).
-    /// Проект переводится на «Input System Package (New)» — legacy-модуль
-    /// выключается, предупреждение исчезает.
+    /// Input through the new Input System when active (ENABLE_INPUT_SYSTEM), with
+    /// a legacy fallback for the test bench. Needed because with Active Input
+    /// Handling = Both the old mouse module spams "Screen position out of view
+    /// frustum" while the cursor is locked.
     /// </summary>
     internal static class PlayerInput
     {
@@ -30,7 +28,7 @@ namespace Galilego.Universe
         private static float lastShiftPressTime = float.NegativeInfinity;
 
         /// <summary>
-        /// Двойной тап по клавише: Space — джетпак, LeftShift — висение (hover).
+        /// Double tap on a key: Space — jetpack, LeftShift — hover.
         /// </summary>
         public static bool DoubleDown(GameKey key)
         {
@@ -92,7 +90,7 @@ namespace Galilego.Universe
             return keyboard != null && keyboard[ToKey(key)].wasPressedThisFrame;
         }
 
-        /// <summary>Смещение мыши за кадр в «осевых» единицах (как старый Mouse X/Y).</summary>
+        /// <summary>Mouse delta for this frame in axis units (like the old Mouse X/Y).</summary>
         public static Vector2 MouseDelta()
         {
             Mouse mouse = Mouse.current;
@@ -123,14 +121,14 @@ namespace Galilego.Universe
             return mouse != null && mouse.rightButton.isPressed;
         }
 
-        /// <summary>Прокрутка колеса за кадр (положительное — от себя).</summary>
+        /// <summary>Wheel scroll for this frame (positive is away from the user).</summary>
         public static float MouseScroll()
         {
             Mouse mouse = Mouse.current;
             return mouse != null ? mouse.scroll.ReadValue().y * 0.01f : 0f;
         }
 
-        /// <summary>Зажат любой Alt (удаление по прицелу в режиме строительства).</summary>
+        /// <summary>Any Alt held (aim-based delete in build mode).</summary>
         public static bool AltHeld()
         {
             Keyboard keyboard = Keyboard.current;
@@ -184,7 +182,7 @@ namespace Galilego.Universe
 
         public static float MouseScroll() => Input.mouseScrollDelta.y;
 
-        /// <summary>Зажат любой Alt (удаление по прицелу в режиме строительства).</summary>
+        /// <summary>Any Alt held (aim-based delete in build mode).</summary>
         public static bool AltHeld() => Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
 
         private static KeyCode ToKeyCode(GameKey key)
@@ -220,9 +218,9 @@ namespace Galilego.Universe
 #endif
 
         /// <summary>
-        /// Чит-меню: F10, при requireAlt — только вместе с Alt. Alt проверяется
-        /// как «зажат», а не «нажат»: комбинацию жмут одним движением, Alt
-        /// может быть зажат сильно раньше F10.
+        /// Cheat menu: F10, and with requireAlt only together with Alt. Alt is
+        /// checked as held rather than pressed: the combo is pressed in one
+        /// motion, so Alt may be held well before F10.
         /// </summary>
         public static bool CheatMenuDown(bool requireAlt)
         {

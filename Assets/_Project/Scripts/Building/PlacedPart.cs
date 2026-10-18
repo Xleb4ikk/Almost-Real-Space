@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Galilego.Building
 {
-    /// <summary>Вид детали в каталоге строительства.</summary>
+    /// <summary>Part kind in the build catalog.</summary>
     public enum PartKind
     {
         Engine = 0,
@@ -13,9 +13,9 @@ namespace Galilego.Building
     }
 
     /// <summary>
-    /// Форма топливного бака: прямой цилиндр или обрезанный конус (бак-
-    /// переходник между ступенями разных диаметров: снизу один радиус,
-    /// сверху другой, образующая — прямая).
+    /// Fuel tank form: a straight cylinder or a truncated cone (an adapter tank
+    /// between stages of different diameters: one radius at the bottom, another
+    /// at the top, straight generatrix).
     /// </summary>
     public enum TankForm
     {
@@ -24,79 +24,79 @@ namespace Galilego.Building
     }
 
     /// <summary>
-    /// Заготовка детали для слота панели: вид и его размеры. Размеры хранятся
-    /// В СЛОТЕ, а не глобально по виду: в панели можно заранее подготовить баки
-    /// разных форм и диаметров (например, цилиндр 2.5 м и конус 5→2.5 м) и
-    /// ставить их по очереди, не перенастраивая размеры заново.
+    /// Part preset for a panel slot: kind and sizes. Sizes are stored PER SLOT,
+    /// not globally per kind: the panel can hold tanks of different forms and
+    /// diameters (e.g. a 2.5 m cylinder and a 5→2.5 m cone) and place them in
+    /// turn without reconfiguring sizes.
     /// </summary>
     public struct PartPreset
     {
         public PartKind Kind;
 
-        /// <summary>Форма бака (у прочих деталей не значима).</summary>
+        /// <summary>Tank form (irrelevant for other parts).</summary>
         public TankForm Form;
 
-        /// <summary>Бак — нижний радиус; отделитель — радиус; двигатель — не значим.</summary>
+        /// <summary>Tank — bottom radius; separator — radius; irrelevant for the engine.</summary>
         public float Radius;
 
-        /// <summary>Верхний радиус бака (равен Radius — цилиндр).</summary>
+        /// <summary>Tank top radius (equal to Radius — cylinder).</summary>
         public float TopRadius;
 
-        /// <summary>Длина бака, м.</summary>
+        /// <summary>Tank length, m.</summary>
         public float Height;
 
-        /// <summary>Наполнение бака: компоненты и их доли объёма (у прочих деталей null).</summary>
+        /// <summary>Tank load: components and their volume fractions (null for other parts).</summary>
         public PropellantLoad Load;
 
-        /// <summary>Двигатель (Id из EngineSpecs; у прочих деталей не значим, null — по умолчанию).</summary>
+        /// <summary>Engine (Id from EngineSpecs; irrelevant for other parts, null — default).</summary>
         public string EngineId;
     }
 
     /// <summary>
-    /// Размеры и физика детали для данного экземпляра (радиусы/высота задаются
-    /// игроком для бака и отделителя, у двигателя — из габаритов модели).
-    /// Все высоты — относительно ПИВОТА детали вдоль оси Y места (зенит).
-    /// Пивот бака — дно, отделителя — середина кольца, двигателя — низ
-    /// габаритов по центру оси.
+    /// Part sizes and physics for this instance (radii/height are set by the
+    /// player for the tank and separator; for the engine they come from the model
+    /// bounds). All heights are relative to the part PIVOT along the site Y axis
+    /// (zenith). Tank pivot — bottom, separator — ring middle, engine — bottom of
+    /// the bounds on the axis center.
     /// </summary>
     public readonly struct PartMetrics
     {
-        /// <summary>Нижний радиус тела вращения, м (бак: радиус дна).</summary>
+        /// <summary>Bottom radius of the body of revolution, m (tank: bottom radius).</summary>
         public readonly float Radius;
 
         /// <summary>
-        /// Верхний радиус тела вращения, м. Равен Radius — деталь цилиндрическая;
-        /// отличается — обрезанный конус (у отделителя и двигателя всегда равен
-        /// нижнему: их форма не конусная).
+        /// Top radius of the body of revolution, m. Equal to Radius — cylindrical
+        /// part; different — truncated cone (for the separator and engine always
+        /// equal to the bottom one: their shape is not conical).
         /// </summary>
         public readonly float TopRadius;
 
-        /// <summary>Полная высота формы вдоль оси, м.</summary>
+        /// <summary>Full height of the shape along the axis, m.</summary>
         public readonly float Height;
 
-        /// <summary>Центр формы относительно пивота, м.</summary>
+        /// <summary>Center of the shape relative to the pivot, m.</summary>
         public readonly float Center;
 
-        /// <summary>Низ формы относительно пивота, м.</summary>
+        /// <summary>Bottom of the shape relative to the pivot, m.</summary>
         public readonly float Bottom;
 
-        /// <summary>Верх формы относительно пивота, м.</summary>
+        /// <summary>Top of the shape relative to the pivot, m.</summary>
         public readonly float Top;
 
         public readonly double MassKg;
         public readonly double JointStrengthNewtons;
         public readonly double BreakTorqueNm;
 
-        /// <summary>Сухая масса (металл + изоляция) без топлива, кг.</summary>
+        /// <summary>Dry mass (metal + insulation) without propellant, kg.</summary>
         public readonly double DryMassKg;
 
-        /// <summary>Масса топлива в баке, кг (0 у прочих деталей).</summary>
+        /// <summary>Propellant mass in the tank, kg (0 for other parts).</summary>
         public readonly double PropellantMassKg;
 
-        /// <summary>Внутренний объём формы, м³ (0 у прочих деталей).</summary>
+        /// <summary>Internal volume of the shape, m³ (0 for other parts).</summary>
         public readonly double VolumeM3;
 
-        /// <summary>Наполнение бака (компоненты и их доли объёма; null у прочих деталей).</summary>
+        /// <summary>Tank load (components and their volume fractions; null for other parts).</summary>
         public readonly PropellantLoad Load;
 
         public PartMetrics(float radius, float topRadius, float height, float center, float bottom, float top,
@@ -127,45 +127,45 @@ namespace Galilego.Building
     }
 
     /// <summary>
-    /// Деталь, поставленная игроком: вид, размеры, положение пивота в ОСЯХ МЕСТА
-    /// (x — север, y — зенит, z — восток), родитель по снапу и занятость узлов
-    /// (на узел можно посадить только одну деталь). Метрики кэшируются при
-    /// постановке: параметры размера фиксируются на момент постановки.
+    /// A part placed by the player: kind, sizes, pivot position in SITE AXES
+    /// (x — north, y — zenith, z — east), snap parent and node occupancy
+    /// (only one part may sit on a node). Metrics are cached on placement:
+    /// size parameters are frozen at placement time.
     /// </summary>
     public sealed class PlacedPart
     {
         public PartKind Kind;
 
-        /// <summary>Форма бака на момент постановки (у прочих деталей не значима).</summary>
+        /// <summary>Tank form at placement time (irrelevant for other parts).</summary>
         public TankForm Form;
 
         public float SizeA;
         public float SizeB;
 
         /// <summary>
-        /// Паспорт двигателя на момент постановки (у прочих деталей null):
-        /// имя детали для физики, топливная пара и характеристики.
+        /// Engine spec at placement time (null for other parts):
+        /// part name for physics, propellant pair and characteristics.
         /// </summary>
         public EngineSpec EngineSpec;
 
-        /// <summary>Верхний радиус бака на момент постановки (равен SizeA — цилиндр).</summary>
+        /// <summary>Tank top radius at placement time (equal to SizeA — cylinder).</summary>
         public float SizeTop;
 
         public PartMetrics Metrics;
         public Vector3 Pivot;
         public int ParentIndex = -1;
 
-        /// <summary>Как деталь пристыкована: true — низом на ВЕРХ родителя.</summary>
+        /// <summary>How the part is docked: true — by its bottom onto the parent's TOP.</summary>
         public bool ParentOnTop;
 
-        /// <summary>На верхний узел уже что-то посажено.</summary>
+        /// <summary>Something already sits on the top node.</summary>
         public bool TopOccupied;
 
-        /// <summary>На нижний узел уже что-то посажено.</summary>
+        /// <summary>Something already sits on the bottom node.</summary>
         public bool BottomOccupied;
 
-        /// <summary>Визуал детали: живёт под трансформом корабля, умеет краснеть
-        /// (удаление по прицелу) и возвращать родные материалы.</summary>
+        /// <summary>Part visual: lives under the ship transform, can turn red
+        /// (aimed deletion) and restore its original materials.</summary>
         public PartCatalog.PartVisual Visual;
     }
 }

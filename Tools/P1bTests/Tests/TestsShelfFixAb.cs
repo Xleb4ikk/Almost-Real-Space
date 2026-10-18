@@ -8,10 +8,10 @@ using Galilego.Universe;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// A/B правки береговой полки: один и тот же детерминированный набор точек
-    /// считается ДО правки (файл-эталон) и ПОСЛЕ неё (сравнение). Отвечает на
-    /// вопрос «рельеф остался тем же?» числами: сколько точек изменилось и на
-    /// сколько, и где именно.
+    /// A/B of the coastal-shelf change: the same deterministic set of points is
+    /// computed BEFORE the change (reference file) and AFTER it (comparison).
+    /// Answers "did the terrain stay the same?" with numbers: how many points
+    /// changed, by how much, and where.
     /// </summary>
     private static void AbLatLon(double latDeg, double lonDeg, double northM, double eastM,
         out double latOut, out double lonOut)
@@ -26,7 +26,7 @@ internal static partial class P1bTests
         var pts = new List<double[]>(52000);
         var rng = new Random(31337);
 
-        // 1) Окрестность кадра: ±3 км шагом 30 м (индекс 100*201+100 — точка кадра).
+        // 1) Frame neighbourhood: ±3 km in 30 m steps (index 100*201+100 is the frame point).
         for (int i = 0; i < 201; i++)
         {
             for (int j = 0; j < 201; j++)
@@ -36,7 +36,7 @@ internal static partial class P1bTests
             }
         }
 
-        // 2) Восемь площадок ±6 км шагом 200 м в случайных местах планеты.
+        // 2) Eight patches ±6 km in 200 m steps at random spots on the planet.
         for (int s = 0; s < 8; s++)
         {
             double lat0 = (rng.NextDouble() * 120d) - 60d;

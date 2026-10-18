@@ -4,9 +4,9 @@ using UnityEditor;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Кладётся в папку Editor. Включает Read/Write у модели капсулы: коллайдеры
-    /// строятся по её мешам в рантайме (OrionCollisionBuilder), а нечитаемый меш
-    /// отдаёт вершины только с ошибкой. После добавления файла FBX переимпортируется сам.
+    /// Lives in the Editor folder. Enables Read/Write on the capsule model: colliders
+    /// are built from its meshes at runtime (OrionCollisionBuilder), and a non-readable
+    /// mesh returns vertices only with an error. Reimports the FBX when the file is added.
     /// </summary>
     public sealed class OrionModelImport : AssetPostprocessor
     {

@@ -4,7 +4,7 @@ using System.Text;
 
 namespace Galilego.Tablet
 {
-    /// <summary>Форматирование чисел для экрана (инвариантная культура, пробел — разделитель тысяч).</summary>
+    /// <summary>Screen number formatting (invariant culture, space as thousands separator).</summary>
     public static class TabletFormat
     {
         public const string Dash = "---";
@@ -41,7 +41,7 @@ namespace Galilego.Tablet
             return v >= 0d && s != Dash ? "+" + s : s;
         }
 
-        /// <summary>Расстояние с авто-единицей: М → КМ (с точностью до метра) → КМ без дроби.</summary>
+        /// <summary>Distance with an auto unit: m → km (to the metre) → km without fraction.</summary>
         public static string Dist(double m)
         {
             if (double.IsNaN(m) || double.IsInfinity(m))
@@ -128,7 +128,7 @@ namespace Galilego.Tablet
             return Num(pa / 101325d, 3);
         }
 
-        /// <summary>Режет текст по ширине в пикселях, добавляя «…».</summary>
+        /// <summary>Clips text to a pixel width, appending "…".</summary>
         public static string Clip(string s, int widthPx)
         {
             if (string.IsNullOrEmpty(s) || PixelCanvas.TextWidth(s) <= widthPx)

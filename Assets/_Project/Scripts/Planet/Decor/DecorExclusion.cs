@@ -7,9 +7,9 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Прямоугольник пятна дороги в осях места (X — север, Y — восток), м:
-    /// центр, две единичные ортогональные оси и полуразмеры. Строит SurfaceRoad,
-    /// в зону с отступами превращает DecorExclusionTable.
+    /// Road patch rectangle in site axes (X — north, Y — east), m:
+    /// centre, two unit orthogonal axes and half-sizes. Built by SurfaceRoad,
+    /// turned into a zone with margins by DecorExclusionTable.
     /// </summary>
     public struct RoadExclusionRect
     {
@@ -24,12 +24,12 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Таблица зон исключения. Зоны берутся из всех SurfaceGrounded под SurfaceSite
-    /// (то есть из всего, что ты ставишь на место): габарит — SiteBox, если он есть,
-    /// иначе границы рендереров. К габариту добавляется MarginMeters.
-    /// Плюс зоны дорог (SurfaceRoad): деревьям/камням — RoadMarginBigMeters от
-    /// края пятна, траве (слои с SoftExclusion) — RoadMarginSoftMeters.
-    /// Живёт в HeightfieldTerrain.DecorExclusions → TerrainNoiseParams → джобы декора.
+    /// Exclusion zone table. Zones come from every SurfaceGrounded under a SurfaceSite
+    /// (i.e. everything placed on the site): bounds are the SiteBox if present,
+    /// otherwise the renderers' bounds. MarginMeters is added to the bounds.
+    /// Plus road zones (SurfaceRoad): trees/rocks get RoadMarginBigMeters from the
+    /// patch edge, grass (layers with SoftExclusion) gets RoadMarginSoftMeters.
+    /// Lives in HeightfieldTerrain.DecorExclusions → TerrainNoiseParams → decor jobs.
     /// </summary>
     public static partial class DecorExclusionTable
     {
@@ -48,9 +48,9 @@ namespace Galilego.Universe
         private static float nextScan;
 
 
-        // ---------- сборка (main thread) ----------
+        // ---------- assembly (main thread) ----------
 
-        /// <summary>Зовётся из PlanetSurfaceRenderer.Update. Дёшево: скан раз в 0.5 с.</summary>
+        /// <summary>Called from PlanetSurfaceRenderer.Update. Cheap: scanned once per 0.5 s.</summary>
         public static void Apply(HeightfieldTerrain terrain, double bodyRadius, string bodyName)
         {
             FlushRetired(false);
@@ -95,8 +95,8 @@ namespace Galilego.Universe
                 }
             }
 
-            // Дороги: пятно (или коридор ленты) + отступы. Деревья/камни не ближе
-            // RoadMarginBigMeters, трава (слои с SoftExclusion) — RoadMarginSoftMeters.
+            // Roads: patch (or ribbon corridor) + margins. Trees/rocks no closer than
+            // RoadMarginBigMeters, grass (layers with SoftExclusion) — RoadMarginSoftMeters.
             SurfaceRoad[] roads = UnityEngine.Object.FindObjectsByType<SurfaceRoad>(FindObjectsSortMode.None);
             for (int i = 0; i < roads.Length; i++)
             {
@@ -139,7 +139,7 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Старую не освобождаем сразу: на неё могут ссылаться джобы в полёте.
+            // Do not dispose the old one immediately: in-flight jobs may still reference it.
             NativeArray<DecorExclusionData> built = scratch.Count == 0
                 ? Empty
                 : new NativeArray<DecorExclusionData>(scratch.ToArray(), Allocator.Persistent);
@@ -195,7 +195,7 @@ namespace Galilego.Universe
 
         private static void Grow(ref Range r, Vector3 sitePoint, Vector2 ax, Vector2 az)
         {
-            // Оси места: x — север, z — восток.
+            // Site axes: x — north, z — east.
             float u = (sitePoint.x * ax.x) + (sitePoint.z * ax.y);
             float v = (sitePoint.x * az.x) + (sitePoint.z * az.y);
             if (!r.Any)
@@ -227,7 +227,7 @@ namespace Galilego.Universe
 
         private static double Q(double v)
         {
-            // Квантование 0.25 м: дрожание float не должно пересобирать чанки каждые полсекунды.
+            // 0.25 m quantization: float jitter must not rebuild chunks every half second.
             return Math.Round(v * 4d) / 4d;
         }
 
@@ -242,7 +242,7 @@ namespace Galilego.Universe
             Transform gt = g.transform;
             Transform st = site.transform;
 
-            // Горизонтальные оси объекта в осях места (n, e). Угол квантуем до 0.1°.
+            // Object horizontal axes in site axes (n, e). Angle is quantized to 0.1°.
             Vector3 right = st.InverseTransformDirection(gt.right);
             Vector2 axRaw = new Vector2(right.x, right.z);
             double yaw = axRaw.sqrMagnitude < 1e-6f ? 0d : Math.Atan2(axRaw.y, axRaw.x);
@@ -258,7 +258,7 @@ namespace Galilego.Universe
             }
             else
             {
-                // enabled у рендерера НЕ проверяем: LODGroup гасит рендереры, и зона мигала бы.
+                // Renderer enabled flag is NOT checked: LODGroup disables renderers and the zone would flicker.
                 g.GetComponentsInChildren(false, renderers);
                 for (int i = 0; i < renderers.Count; i++)
                 {
@@ -292,11 +292,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Мировая зона из прямоугольника в осях места: центр (север, восток, м),
-        /// единичные оси ax/az и полуразмеры вдоль них. Центр/полуразмеры квантуются
-        /// (0.25 м) — дрожание float не должно пересобирать чанки каждые полсекунды.
-        /// Полуразмеры зоны: big = полуразмер + marginBig (деревья/камни),
-        /// soft = полуразмер + marginSoft (трава).
+        /// World zone from a rectangle in site axes: centre (north, east, m),
+        /// unit axes ax/az and half-sizes along them. Centre/half-sizes are quantized
+        /// (0.25 m) so float jitter does not rebuild chunks every half second.
+        /// Zone half-sizes: big = half-size + marginBig (trees/rocks),
+        /// soft = half-size + marginSoft (grass).
         /// </summary>
         private static DecorExclusionData BuildZone(
             SurfaceSite site, double radius,

@@ -4,28 +4,21 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Математика локального поверхностного фрейма (ENU) — чистые double, без
-    /// UnityEngine. Основа авторинга на планете: без неё сцену не на чем строить.
+    /// Local surface frame (ENU) math — pure double, no UnityEngine. The basis of
+    /// planet authoring: without it there is nothing to build the scene on.
     ///
-    /// Зачем фрейм. Абсолютные координаты тела лежат на полуоси 2.6e10 м, где
-    /// float32 даёт ulp ~2048 м: ни показать в сцене точку поверхности, ни
-    /// поставить туда объект с точностью метра невозможно. Рантайм это обходит
-    /// floating origin (FloatingOrigin.Anchor = позиция игрока, вершины чанков
-    /// пересобираются в render-пространстве). Здесь то же самое для редактора:
-    /// фрейм ставится в НОЛЬ сцены, и внутри него координаты — километры.
+    /// Frame basis: +X north, +Y zenith, +Z east. Right-handed: N × U = E. Matches
+    /// the Unity convention (forward=X, up=Y, right=Z): "facing north" means right
+    /// points east.
     ///
-    /// Базис фрейма: +X — север, +Y — зенит, +Z — восток. Правый: N × U = E
-    /// (проверено T108). Совпадает с привычкой Unity (forward=X, up=Y, right=Z):
-    /// «лицом на север» — right смотрит на восток.
-    ///
-    /// Все направления — body-fixed (долгота отсчитывается от нулевого меридиана
-    /// тела), ровно как в OrbitingBody.GetSurfaceState / SurfaceLatLonAt и в
-    /// HeightfieldTerrain.GetRawHeightMeters. Смешивать с инерциальными
-    /// долготами нельзя: промах на угол собственного вращения.
+    /// All directions are body-fixed (longitude is measured from the body's prime
+    /// meridian), exactly as in OrbitingBody.GetSurfaceState / SurfaceLatLonAt and
+    /// HeightfieldTerrain.GetRawHeightMeters. Never mix with inertial longitudes:
+    /// that misses by the body's rotation angle.
     /// </summary>
     public static class SurfaceFrameMath
     {
-        /// <summary>Зенит (body-fixed направление на опорную точку), радианы.</summary>
+        /// <summary>Zenith (body-fixed direction to the reference point), radians.</summary>
         public static Vector3d Up(double latitudeRadians, double longitudeRadians)
         {
             double cosLat = Math.Cos(latitudeRadians);
@@ -35,7 +28,7 @@ namespace Galilego.Universe
                 Math.Sin(latitudeRadians));
         }
 
-        /// <summary>Касательная на север в опорной точке, единичная.</summary>
+        /// <summary>North tangent at the reference point, unit length.</summary>
         public static Vector3d North(double latitudeRadians, double longitudeRadians)
         {
             double sinLat = Math.Sin(latitudeRadians);
@@ -46,17 +39,17 @@ namespace Galilego.Universe
                 cosLat);
         }
 
-        /// <summary>Касательная на восток в опорной точке, единичная.</summary>
+        /// <summary>East tangent at the reference point, unit length.</summary>
         public static Vector3d East(double latitudeRadians, double longitudeRadians)
         {
             return new Vector3d(-Math.Sin(longitudeRadians), Math.Cos(longitudeRadians), 0d);
         }
 
         /// <summary>
-        /// Поворот локальных осей фрейма в оси тела: q · x̂ = север, q · ŷ = зенит,
-        /// q · ẑ = восток. Собирается из аналитического базиса матрицей (не
-        /// композицией из axis-angle: на полюсах и в меридиане распадки нет,
-        /// одна формула на весь шар).
+        /// Rotation of the frame's local axes into body axes: q · x̂ = north,
+        /// q · ŷ = zenith, q · ẑ = east. Built from the analytic basis as a matrix
+        /// (not from axis-angle composition: no breakdown at the poles or meridian,
+        /// one formula for the whole sphere).
         /// </summary>
         public static QuaternionD Rotation(double latitudeRadians, double longitudeRadians)
         {
@@ -67,9 +60,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Body-fixed направление в оси СИМУЛЯЦИИ (Y-up): та же перестановка
-        /// (x, z, −y), что у AstroFrame.ToSimulation, но на double — класс не
-        /// знает про Unity и не должен зависеть от моста.
+        /// Body-fixed direction in SIMULATION axes (Y-up): the same permutation
+        /// (x, z, −y) as AstroFrame.ToSimulation, but in double — the class knows
+        /// nothing of Unity and must not depend on the bridge.
         /// </summary>
         public static Vector3d ToSimulation(Vector3d bodyFixed)
         {
@@ -77,18 +70,13 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Поворот локальных осей фрейма СРАЗУ в оси симуляции: q · x̂ — север,
-        /// q · ŷ — зенит, q · ẑ — восток, и все три уже в sim-кадре.
+        /// Rotation of the frame's local axes DIRECTLY into simulation axes:
+        /// q · x̂ north, q · ŷ zenith, q · ẑ east, all three already in the sim frame.
         ///
-        /// Зачем не «body-ориентация × Rotation(lat, lon)» с последующим
-        /// AstroFrame.ToSimulation(QuaternionD): этот мост СОПРЯГАЕТ поворот
-        /// (q_sim = R·q·R⁻¹), а сопряжение правомерно только когда локальные
-        /// оси объекта — это sim-оси (.BodyView, чанки рельефа: их вершины уже
-        /// в sim, и лишний R⁻¹ справа просто сокращается). Локальные оси фрейма
-        /// заданы в body-fixed (North/Up/East), и R⁻¹ справа переставлял их
-        /// ПОСЛЕ ориентации: зенит уезжал в слот востока. Итог — фрейм, его
-        /// превью и всё содержимое площадки (база) стояли на 90° от настоящего
-        /// зенита, а в редакторе это читалось как «сцена лежит на боку».
+        /// The AstroFrame.ToSimulation(QuaternionD) bridge CONJUGATES a rotation
+        /// (q_sim = R·q·R⁻¹), which is valid only when the object's local axes are
+        /// the sim axes. The frame's local axes are given in body-fixed (North/Up/
+        /// East), so this composes the images directly instead.
         /// </summary>
         public static QuaternionD SimulationRotation(
             QuaternionD bodyOrientation, double latitudeRadians, double longitudeRadians)
@@ -100,10 +88,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Кватернион из ортонормированного ПРАВОГО базиса: колонки матрицы —
-        /// образы локальных осей. Стандартная трассировочная конверсия с четырьмя
-        /// ветвями (как внутри Unity Quaternion.LookRotation) — на границах ветвей
-        /// (trace ≈ 0) матрица вырождается, и однозначная формула даёт NaN.
+        /// Quaternion from an orthonormal RIGHT basis: the matrix columns are the
+        /// images of the local axes. Standard trace-based conversion with four
+        /// branches (as inside Unity Quaternion.LookRotation) — at branch boundaries
+        /// (trace ≈ 0) the matrix degenerates and a single formula gives NaN.
         /// </summary>
         public static QuaternionD FromBasis(Vector3d xAxis, Vector3d yAxis, Vector3d zAxis)
         {
@@ -150,12 +138,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Body-fixed направление точки, смещённой от опорной на (east, north)
-        /// МЕТРОВ по касательной. Смещение кладётся на сферу радиуса R: реальная
-        /// поверхность лежит на R + h, но h неизвестна до выборки направления, а
-        /// ошибка от подмены радиуса — второго порядка по h/R (на 50 км и h=9 км
-        /// это сантиметры, для превью авторинга неразличимо).
-        /// Возвращает нормализованное направление в осях тела.
+        /// Body-fixed direction of a point offset from the reference by (east, north)
+        /// METRES along the tangent. The offset is placed on a sphere of radius R:
+        /// the real surface lies at R + h, but h is unknown until the direction is
+        /// sampled, and the error from substituting the radius is second order in
+        /// h/R. Returns a normalized direction in body axes.
         /// </summary>
         public static Vector3d DirectionOffset(
             double latitudeRadians, double longitudeRadians, double radiusMeters,
@@ -169,15 +156,15 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// ENU-смещение (восток, север, вверх — метры) в локальные оси фрейма
-        /// (x=север, y=зенит, z=восток). Тригонометрии here нет и не должно
-        /// быть: оси фрейма УЖЕ переставлены, всё, что нужно — переставить
-        /// компоненты.
+        /// ENU offset (east, north, up — metres) into the frame's local axes
+        /// (x=north, y=zenith, z=east). There is no trigonometry here and there
+        /// should be none: the frame axes are ALREADY permuted, all that is needed
+        /// is to permute the components.
         ///
-        /// Отдельно от DirectionOffset: то тащит смещение в осях ТЕЛА (для
-        /// выборки высоты рельефа), это — в осях фрейма (для локальных
-        /// трансформов объектов). Путаница между ними даёт повёрнутый на угол
-        /// фрейма объект — ровно то, что поймал T108.
+        /// Separate from DirectionOffset: that carries an offset in BODY axes (for
+        /// terrain height sampling), this one in frame axes (for local object
+        /// transforms). Confusing the two gives an object rotated by the frame
+        /// angle.
         /// </summary>
         public static Vector3d EnuToFrameLocal(double eastMeters, double northMeters, double upMeters)
         {
@@ -185,16 +172,14 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Обратная к DirectionOffset задача: смещение ОТ одной точки поверхности
-        /// К ДРУГОЙ, разложенное по осям фрейма (x=север, y=зенит, z=восток).
+        /// Inverse of DirectionOffset: the offset FROM one surface point TO another,
+        /// resolved along the frame axes (x=north, y=zenith, z=east).
         ///
-        /// Нужна всем, кто рисует или ставит объект в соседней точке планеты:
-        /// гизмо площадки, кольцо-рулетка, «показать, где это место относительно
-        /// меня». Считается по ХОРДЕ между точками поверхности, а не по дуге:
-        /// редакторская касательная плоскость и так прямолинейна, и на дистанциях
-        /// в километры разница между хордой и дугой — миллиметры. Зато хорда не
-        /// требует обратной задачи сферической тригонометрии, которая сама по
-        /// себе склонна к провалу точности на lat/lon.
+        /// Used by anything that draws or places an object at a neighbouring point:
+        /// site gizmos, the tape-measure ring, "show where this place is relative to
+        /// me". Computed from the CHORD between surface points, not the arc: the
+        /// editor tangent plane is straight anyway, and over kilometres the chord
+        /// and arc differ by millimetres.
         /// </summary>
         public static Vector3d SurfaceOffsetBetween(
             double fromLatRadians, double fromLonRadians, double fromAltitudeMeters,
@@ -205,15 +190,15 @@ namespace Galilego.Universe
             Vector3d to = Up(toLatRadians, toLonRadians) * (radiusMeters + toAltitudeMeters);
             Vector3d delta = to - from;
 
-            // Раскладываем по базису ИСХОДНОЙ точки: ровно та касательная
-            // плоскость, в которой автор и видит сцену.
+            // Resolve along the FROM point's basis: exactly the tangent plane in
+            // which the author sees the scene.
             return EnuToFrameLocal(
                 Vector3d.Dot(delta, East(fromLatRadians, fromLonRadians)),
                 Vector3d.Dot(delta, North(fromLatRadians, fromLonRadians)),
                 Vector3d.Dot(delta, Up(fromLatRadians, fromLonRadians)));
         }
 
-        /// <summary>Проекция body-fixed вектора на локальные оси фрейма (x=север, y=зенит, z=восток).</summary>
+        /// <summary>Projection of a body-fixed vector onto the frame's local axes (x=north, y=zenith, z=east).</summary>
         public static Vector3d ToLocal(double latitudeRadians, double longitudeRadians, Vector3d bodyFixed)
         {
             return new Vector3d(

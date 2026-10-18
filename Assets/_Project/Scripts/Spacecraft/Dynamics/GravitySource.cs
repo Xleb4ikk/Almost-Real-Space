@@ -4,10 +4,10 @@ using Galilego.Universe;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Гравитация от всех тел StarSystem (звезда + все планеты + все спутники
-    /// разом). Чистая функция позиции/времени: скорость и масса подшага
-    /// игнорируются, потому что гравитация от них не зависит. Возвращает
-    /// готовое ускорение (м/с²) — делить на массу здесь нечего.
+    /// Gravity from all StarSystem bodies (star + all planets + all moons at once).
+    /// A pure function of position/time: sub-step velocity and mass are ignored
+    /// because gravity does not depend on them. Returns a ready acceleration
+    /// (m/s²) — there is nothing to divide by mass here.
     /// </summary>
     public sealed class GravitySource : IDynamicsSource
     {

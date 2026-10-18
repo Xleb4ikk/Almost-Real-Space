@@ -4,12 +4,11 @@ using Galilego.Universe;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Гравитация через кэш позиций подстадии StarSystem (по паре
-    /// тело×время-подстадии внутри одного RHS-вызова). Математика бит-в-бит
-    /// совпадает с GravitySource: та же сумма μ/r³, тот же численный пол.
-    /// Разница только в числе вызовов EvaluateWorldState: наивный путь
-    /// пересчитывает родителя рекурсией для каждого потомка, кэш — один раз.
-    /// Pure, как требует IDynamicsSource.
+    /// Gravity via StarSystem's sub-step position cache (keyed by body × sub-step
+    /// time within one RHS call). The maths is bit-for-bit identical to GravitySource:
+    /// the same μ/r³ sum, the same numerical floor. The only difference is the number
+    /// of EvaluateWorldState calls: the naive path recomputes the parent recursively
+    /// for every child, the cache does it once. Pure, as IDynamicsSource requires.
     /// </summary>
     public sealed class CachedGravitySource : IDynamicsSource
     {

@@ -6,23 +6,23 @@ using UnityEngine;
 namespace Galilego.Simulation.Player
 {
     /// <summary>
-    /// Опора — мешевые коллайдеры построек (SiteBox) в render-пространстве.
-    /// В отличие от старого PushOutMesh, вертикаль НЕ обнуляется: крыши и
-    /// верхние грани — полноценная опора. Общая механика (Floor/Ceiling/Sweep)
-    /// в MeshSupportBase; здесь — только опознание построек и их sourceId.
+    /// Support — building mesh colliders (SiteBox) in render space. Unlike the old
+    /// PushOutMesh, the vertical is NOT zeroed: roofs and top faces are full support.
+    /// Shared mechanics (Floor/Ceiling/Sweep) are in MeshSupportBase; here only
+    /// building recognition and their sourceId.
     /// </summary>
     public sealed class SiteBoxSupport : MeshSupportBase
     {
-        /// <summary>База идентификаторов опор-построек в композите.</summary>
+        /// <summary>Base id for building supports in the composite.</summary>
         public const int SourceIdBase = 100;
 
-        // Стабильные идентификаторы построек (sourceId для переноса/адресации).
+        // Stable building ids (sourceId for transfer/addressing).
         private readonly System.Collections.Generic.Dictionary<SiteBox, int> siteIds
             = new System.Collections.Generic.Dictionary<SiteBox, int>();
         private int nextSiteId = SourceIdBase;
 
-        /// <summary>Владелец коллайдера: SiteBox в предках (авторские коллайдеры) или
-        /// SiteBoxPart.Owner (холдеры — дети частей, SiteBox лежит рядом).</summary>
+        /// <summary>Collider owner: a SiteBox in the ancestors (authored colliders) or
+        /// SiteBoxPart.Owner (holders are children of parts, the SiteBox sits nearby).</summary>
         public static SiteBox ResolveSiteBox(Collider collider)
         {
             if (collider == null)
@@ -64,8 +64,8 @@ namespace Galilego.Simulation.Player
 
         public override void SetFrame(SiteFrame siteFrame)
         {
-            // Страховка от порядка жизненного цикла: OnEnable постройки мог не
-            // собрать коллайдеры (наблюдалось «мигание» между сессиями Play).
+            // Lifecycle-order safeguard: a building's OnEnable may not have built its
+            // colliders yet.
             SiteBoxRegistry.EnsureAllBuilt();
             base.SetFrame(siteFrame);
         }

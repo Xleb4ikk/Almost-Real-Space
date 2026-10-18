@@ -7,42 +7,40 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Конфигурация выпечки эфемерид. Числа по умолчанию — из практики T40/T46:
-    /// сегмент = минимальный период поддерева / 4 (кламп [2; 64] сут), степень 12,
-    /// подшаг RK4 из бюджета фазовой ошибки быстрейшей орбиты.
+    /// Ephemeris bake configuration. Defaults: segment = smallest subtree period / 4
+    /// (clamped to [2; 64] days), degree 12, RK4 substep from the phase-error budget
+    /// of the fastest orbit.
     /// </summary>
     public sealed class BakeConfig
     {
-        /// <summary>Степень чебышёвского интерполянта на сегмент (узлов degree+1).</summary>
+        /// <summary>Chebyshev interpolant degree per segment (degree+1 nodes).</summary>
         public int Degree = 12;
 
         /// <summary>
-        /// Бюджет фазовой ошибки на подшаг RK4: n·h ≤ PhasePerStep, где n — среднее
-        /// движение быстрейшей орбиты системы. Локальная ошибка RK4 ~ (n·h)⁵/120:
-        /// при 0.02 это ~2.7e-9 рад/шаг — за 1024 года накопление остаётся в
-        /// метрах. Меньше значение — точнее и дольше.
+        /// Phase-error budget per RK4 substep: n·h &lt;= PhasePerStep, where n is the mean
+        /// motion of the system's fastest orbit. Local RK4 error ~ (n·h)⁵/120; smaller
+        /// value — more accurate and slower.
         /// </summary>
         public double PhasePerStep = 0.02d;
 
-        /// <summary>Абсолютный кап подшага RK4 (с): старый параметр stepSeconds.</summary>
+        /// <summary>Absolute RK4 substep cap (s); the former stepSeconds parameter.</summary>
         public double MaxStepSeconds = 900d;
 
         /// <summary>
-        /// Бюджет ошибки позиции квантования BG2 (м) на сегмент: шаг кванта
-        /// подбирается так, чтобы худший случай Σ|T_j|·(шаг/2) ≤ budget/2.
-        /// 2 м — на 25 раз меньше гейта стыков луны (50 м) и в 25 раз меньше
-        /// интерполяционной погрешности T40. Меньше — точнее и тяжелее файл.
+        /// BG2 quantization position-error budget (m) per segment: the quantum step
+        /// is chosen so the worst case Σ|T_j|·(step/2) &lt;= budget/2. Smaller — more
+        /// accurate and a heavier file.
         /// </summary>
         public double QuantBudgetMeters = 2d;
 
-        /// <summary>Сегмент = минимальный период поддерева / SegmentPeriodDivisor.</summary>
+        /// <summary>Segment = smallest subtree period / SegmentPeriodDivisor.</summary>
         public double SegmentPeriodDivisor = 4d;
 
         public double MinSegmentSeconds = 2d * 86400d;
 
         public double MaxSegmentSeconds = 64d * 86400d;
 
-        /// <summary>Валидация диапазонов; громкое исключение при мусоре.</summary>
+        /// <summary>Validates the ranges; throws loudly on garbage.</summary>
         public void Validate()
         {
             if (Degree < 1 || Degree > 32)
@@ -103,12 +101,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Прицепляет испечённые эфемериды из папки (по manifest.txt). Громкий
-        /// контракт (аудит S2/2.1): КАЖДОЕ не-корневое тело обязано получить
-        /// эфемериду — тело вне манифеста или с нечитаемым файлом оставалось бы
-        /// на кеплеровых рельсах/старом Baked молча, давая гетерогенный мир.
-        /// Полярность громкости: ValidateBakeable запрещает частичную выпечку,
-        /// поэтому полный набор — единственная легитимная конфигурация.
+        /// Attaches baked ephemerides from a directory (via manifest.txt). Loud contract:
+        /// EVERY non-root body must receive an ephemeris — a body missing from the
+        /// manifest or with an unreadable file would silently stay on its Keplerian rail.
         /// </summary>
         public static void AttachFiles(StarSystem sys, string directory)
         {
@@ -141,7 +136,7 @@ namespace Galilego.Universe
             {
                 if (body.Parent == null)
                 {
-                    continue; // звезда не выпекается и не прицепляется
+                    continue; // the star is neither baked nor attached
                 }
 
                 if (!table.TryGetValue(body.Name, out string file))
@@ -169,9 +164,8 @@ namespace Galilego.Universe
 
             if (failures.Count > 0)
             {
-                // Откат частичного attach: уже прицепленные снимаем (файловые —
-                // с Dispose) — система остаётся консистентно «не прицепленной»,
-                // а не наполовину.
+                // Roll back a partial attach: detach what was already attached
+                // (disposing file-backed ones) so the system stays consistently unattached.
                 foreach (OrbitingBody body in attached)
                 {
                     BakedEphemeris e = body.Baked;
@@ -225,13 +219,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Длина сегмента тела. Правило: минимальный орбитальный период ПОДДЕРЕВА
-        /// (своего и всех потомков), делённый на 4, кламп [2; 64] сут.
-        /// Поддерево — не артефакт формулы: у планеты с луной гелиоцентрическая
-        /// орбита несёт «рябь» от луны — смещение планеты от барицентра
-        /// a_луны·μ_луны/(μ_луны+μ_планеты). Для пресета это 3.84e8·4.9e12/4.035e14
-        /// ≈ 4700 км с периодом луны (4.34 сут) — сегмент обязан быть короче
-        /// периода ряби, иначе чебышёвская аппроксимация её теряет.
+        /// Body segment length. Rule: the minimum orbital period of the SUBTREE
+        /// (own and all descendants) divided by 4, clamped to [2; 64] days.
+        /// The subtree matters because a moon wiggles the planet's heliocentric
+        /// orbit with the moon's period (planet offset from the barycentre), so the
+        /// segment must be shorter than that ripple period.
         /// </summary>
         public static double DefaultSegmentLengthSeconds(OrbitingBody body)
         {
@@ -317,7 +309,7 @@ namespace Galilego.Universe
             sys.InvalidatePositionCache();
         }
 
-        /// <summary>Legacy-сигнатура: шаг и степень через BakeConfig.</summary>
+        /// <summary>Legacy signature: step and degree via BakeConfig.</summary>
         public static Dictionary<OrbitingBody, BakedEphemeris> Bake(
             StarSystem sys,
             double spanYears,
@@ -330,9 +322,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Выпечка в память (все коэффициенты в ОЗУ — для тестов и малых спанов).
-        /// Для 1024-летних спанов использовать BakeToFiles: тот же движок, но
-        /// сегменты пишутся в файл потоком, пик ОЗУ O(1) на тело.
+        /// Bake into memory (all coefficients in RAM — for tests and small spans).
+        /// For 1024-year spans use BakeToFiles: same engine, but segments are
+        /// streamed to file and peak RAM is O(1) per body.
         /// </summary>
         public static Dictionary<OrbitingBody, BakedEphemeris> Bake(
             StarSystem sys,
@@ -353,14 +345,14 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// B1: потоковая выпечка в файлы (по телу — файл + manifest).
-        /// Сегмент пишется в FileStream сразу по готовности — в ОЗУ только буфер
-        /// узлов текущего сегмента. Возвращённые BakedEphemeris ссылаются на
-        /// файлы (FilePath) без Coeffs — рантайм читает окнами, ОЗУ ограничено
-        /// WindowSegments независимо от длины спана.
-        /// compress=true — файлы в контейнере BG2: квантование коэффициентов с
-        /// бюджетом ошибки config.QuantBudgetMeters (гарантия ≤ budget/2 на
-        /// позицию), затем zigzag-varint + gzip. Типичное сжатие 2-4× к BE1.
+        /// B1: streaming bake to files (one file per body + manifest).
+        /// A segment is written to the FileStream as soon as it is ready — only the
+        /// current segment's node buffer is in RAM. Returned BakedEphemeris instances
+        /// reference files (FilePath) without Coeffs; RAM is bounded by
+        /// WindowSegments regardless of span length.
+        /// compress=true — files in BG2 containers: coefficient quantization with the
+        /// config.QuantBudgetMeters error budget (position guarantee &lt;= budget/2),
+        /// then zigzag-varint + gzip. Typical compression 2-4× vs BE1.
         /// </summary>
         public static Dictionary<OrbitingBody, BakedEphemeris> BakeToFiles(
             StarSystem sys,
@@ -386,13 +378,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// B4: оценка размера файлов выпечки без интегрирования (мгновенно).
-        /// Ключ — тело, значение — байты его файла (заголовок + сегменты).
-        /// Для несжатых BE1-файлов оценка точна (формат детерминирован).
-        /// Для BG2 (compress=true в BakeToFiles) это верхняя граница по BE1 —
-        /// фактический размер меньше примерно в 2.5-4× (квантование+varint+gzip,
-        /// измерено 3.18× на 12-тельной системе, T62/probecmp2), т.к. длина
-        /// varint-сегментов зависит от данных и до выпечки неизвестна.
+        /// B4: estimates bake file sizes without integration (instant).
+        /// Key = body, value = its file bytes (header + segments).
+        /// Exact for plain BE1 files. For BG2 this is an upper bound:
+        /// the actual size is ~2.5-4× smaller (quantization+varint+gzip),
+        /// since varint segment length is data-dependent.
         /// </summary>
         public static Dictionary<OrbitingBody, long> EstimateBakeBytes(
             StarSystem sys,
@@ -428,15 +418,12 @@ namespace Galilego.Universe
 
         private const double YearSeconds = 365d * 86400d;
 
-        /// <summary>Хвост BE2/BG3: 6 doubles кеплерова продолжения.</summary>
+        /// <summary>BE2/BG3 tail: 6 doubles of the Keplerian continuation.</summary>
         private const long ContinuationBytesTotal = 48L;
 
         // ════════════════════════════════════════════════════════════════════
-        // Ядро: глобальный n-body RK4, сэмплы в чебышёвских узлах Лобатто
-        // каждого сегмента, коэффициенты прямым преобразованием (DCT-III).
-        // LSQ через Грам-матрицы удалён: у степени 12 узлы Лобатто дают тот же
-        // полином, что и LSQ на сотнях равномерных сэмплов, но без решателя и
-        // без буферов сэмплов (JPL DE-style).
+        // Core: global n-body RK4, samples at the Chebyshev-Lobatto nodes of
+        // each segment, coefficients by direct transform (DCT-III), JPL DE-style.
         // ════════════════════════════════════════════════════════════════════
 
         private interface ISegmentSink
@@ -445,7 +432,7 @@ namespace Galilego.Universe
 
             void WriteSegment(int bodyIndex, int segIndex, double[] coeffs);
 
-            /// <summary>Кеплерово продолжение тела: [a, e, i°, Ω°, ω°, M0°] — углы в ГРАДУСАХ (как у OrbitalElements), не радианах.</summary>
+            /// <summary>Body Keplerian continuation: [a, e, i°, Ω°, ω°, M0°] — angles in DEGREES (as in OrbitalElements), not radians.</summary>
             void WriteContinuation(int bodyIndex, double[] elements);
         }
 
@@ -534,26 +521,26 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    // Имя файла стабильно: тот же Sanitize, что и ExportFiles —
-                    // испечённые файлы читаются AttachFiles без перенастройки.
-                    // Формат: BE2 (plain) / BG3 (gzip+квантование); продолжение —
-                    // 48 Б в хвосте, дописывается в Dispose после закрытия gzip.
+                    // File name matches ExportFiles (same Sanitize) so AttachFiles
+                    // can read the baked files without reconfiguration. Format:
+                    // BE2 (plain) / BG3 (gzip+quantized); the 48 B continuation
+                    // goes to the tail in Dispose, after gzip is closed.
                     string file = Sanitize(body.Name, used) + ".bin";
                     string path = Path.Combine(directory, file);
                     FileStream fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
                     Stream stream = fs;
                     if (compress)
                     {
-                        // BG3: магия вне gzip, payload — [заголовок 27Б][varint-сегменты].
-                        // leaveOpen: gzip при Dispose закрывает подлежащий FileStream —
-                        // а хвост (продолжение) дописывается в Dispose ПОСЛЕ него.
+                        // BG3: magic outside gzip, payload = [27-byte header][varint segments].
+                        // leaveOpen: gzip Dispose would close the underlying FileStream,
+                        // but the continuation tail is appended after that.
                         fs.WriteByte(66);
                         fs.WriteByte(71);
                         fs.WriteByte(51);
                         stream = new System.IO.Compression.GZipStream(fs, System.IO.Compression.CompressionLevel.Optimal, true);
                     }
-                    // Plain (BE2): внешней магии нет — магия внутри 27-байтового
-                    // заголовка (RegisterLayout пишет "BE2"), как у WritePayload.
+                    // Plain (BE2): no outer magic — the magic sits inside the 27-byte
+                    // header (RegisterLayout writes "BE2"), as in WritePayload.
 
                     files.Add(fs);
                     streams.Add(stream);
@@ -576,8 +563,8 @@ namespace Galilego.Universe
                 continuations = new double[bakedBodies.Count][];
                 byte[] head = new byte[27];
                 head[0] = (byte)66;
-                // Внутренняя магия заголовка: BG3/BG2 несут "BE1"-заголовок payload'а
-                // (легаси-конвенция BG1), plain BE2 — "BE2" (внешней магии нет).
+                // Inner header magic: BG3/BG2 carry a "BE1" payload header
+                // (legacy BG1 convention), plain BE2 carries "BE2" (no outer magic).
                 head[1] = (byte)69;
                 head[2] = compress ? (byte)49 : (byte)50;
                 BakedEphemeris.WriteInt32(head, 3, degree);
@@ -602,8 +589,8 @@ namespace Galilego.Universe
             public void WriteContinuation(int bodyIndex, double[] elements)
             {
                 continuations[bodyIndex] = (double[])elements.Clone();
-                // Возвращённые BakedEphemeris ссылаются на файл: продолжение уже
-                // записано в хвост, и в памяти оно тоже нужно (пока файл не открыт).
+                // Returned BakedEphemeris instances reference the file: the continuation
+                // is already written to the tail, and is needed in memory too (until the file is opened).
                 result[bakedBodies[bodyIndex]].Continuation = continuations[bodyIndex];
             }
 
@@ -611,7 +598,7 @@ namespace Galilego.Universe
             {
                 if (compress)
                 {
-                    // BG2: квантование с бюджетом ошибки + zigzag-varint.
+                    // BG2: error-budget quantization + zigzag-varint.
                     int n = BakedEphemeris.EncodeSegmentV2(coeffs, v2Stride, quantBudget, writeBuf);
                     streams[bodyIndex].Write(writeBuf, 0, n);
                     return;
@@ -634,12 +621,12 @@ namespace Galilego.Universe
                     Stream s = streams[i];
                     if (s is System.IO.Compression.GZipStream)
                     {
-                        s.Dispose(); // gzip обязан закрыться, чтобы дописать хвост
+                        s.Dispose(); // gzip must close before the tail can be appended
                     }
                 }
 
-                // Блок продолжения — в хвост каждого файла (вне сжатия): OpenFile
-                // читает его seek'ом от конца, не распаковывая сегменты.
+                // The continuation block goes to the tail of each file (outside compression):
+                // OpenFile seeks to it from the end without unpacking the segments.
                 for (int i = 0; i < files.Count; i++)
                 {
                     byte[] tail = new byte[BakedEphemeris.ContinuationBytes];
@@ -665,17 +652,12 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Валидация bakeable-ности: доставленный сегмент обязан быть короче
-        /// периода самой быстрой орбиты поддерева тела. Иначе кривая наматывается
-        /// на орбиту многократно и чебышёвский интерполянт по 13 узлам алиасирует
-        /// (5.4-часовая луна на 2-сут сегментах — 9 витков на сегмент) — ТИХИЙ
-        /// мусор. Дроби орбиты на сегмент валидны: T40 работает с 0.29 орбиты
-        /// (8-сут сегменты при 27.25-сут луне, 0.577 м) — граница именно «не
-        /// более одного витка». Каскад вверх: рябь луны сидит в рельсе планеты
-        /// (смещение планеты от барицентра подсистемы), поэтому предки
-        /// unbakeable-тела тоже unbakeable. Громкое исключение со списком —
-        /// решение (раздвинуть луну, поднять разрешение, оставить тело на
-        /// кеплеровых рельсах) принимает вызывающий, не пекарь.
+        /// Bakeability validation: the delivered segment must be shorter than the
+        /// fastest orbit period in the body's subtree. Otherwise the curve wraps the
+        /// orbit many times and the 13-node Chebyshev interpolant aliases into SILENT
+        /// garbage. The restriction cascades upward: a moon's ripple sits in the
+        /// planet's rail, so ancestors of an unbakeable body are unbakeable too.
+        /// Throws loudly with the list of offenders.
         /// </summary>
         private static void ValidateBakeable(
             StarSystem sys,
@@ -693,7 +675,7 @@ namespace Galilego.Universe
 
             bool[] unbakeable = new bool[n];
             var names = new List<string>();
-            for (int i = n - 1; i >= 0; i--) // дети-вперёд: каскад вверх
+            for (int i = n - 1; i >= 0; i--) // children first: cascade upward
             {
                 OrbitingBody body = bodies[i];
                 if (body.Parent == null)
@@ -732,7 +714,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Минимальный орбитальный период тела и всех потомков (сек).</summary>
+        /// <summary>Minimum orbital period of the body and all descendants (s).</summary>
         private static double SubtreeMinPeriodSeconds(OrbitingBody body)
         {
             double best = double.PositiveInfinity;
@@ -746,10 +728,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Движок выпечки. Тела интегрируются общим n-body RK4; подшаг капится
-        /// бюджетом фазовой ошибки быстрейшей орбиты; посадка ровно в чебышёвские
-        /// узлы Лобатто каждого сегмента каждого тела; по заполнению узлов —
-        /// DCT в коэффициенты и запись в sink. Аллокаций в горячем цикле нет.
+        /// Bake engine. Bodies are integrated with a global n-body RK4; the substep is
+        /// capped by the phase-error budget of the fastest orbit; samples land exactly
+        /// on the Chebyshev-Lobatto nodes of each segment; when the nodes are full, the
+        /// DCT produces coefficients and the sink writes them. No allocations in the hot loop.
         /// </summary>
         private static void RunBake(
             StarSystem sys,
@@ -793,9 +775,9 @@ namespace Galilego.Universe
                 v[3 * i + 2] = bv.Z;
             }
 
-            // Барицентрическая коррекция иерархии (лист-первым): позиция/скорость
-            // родителя сдвигаются против суммарного момента детей — иначе рельсы
-            // детей считались бы вокруг неподвижного родителя.
+            // Hierarchy barycentric correction (leaf-first): parent position/velocity
+            // shift against the total child momentum — otherwise child rails would be
+            // computed around a stationary parent.
             for (int i = n - 1; i >= 0; i--)
             {
                 var b = bodies[i];
@@ -845,8 +827,8 @@ namespace Galilego.Universe
                 }
             }
 
-            // A1: кап подшага из быстрейшего периода (n·h ≤ PhasePerStep),
-            // не из жёсткой константы: системы без быстрых лун пекутся кратно быстрее.
+            // Substep cap from the fastest period (n·h &lt;= PhasePerStep), not a hard
+            // constant: systems without fast moons bake proportionally faster.
             double dtMax = config.MaxStepSeconds;
             for (int i = 0; i < n; i++)
             {
@@ -879,9 +861,9 @@ namespace Galilego.Universe
                 }
             }
 
-            // Сегменты/узлы на тело.
+            // Segments/nodes per body.
             int bakedCount = 0;
-            int[] bodySlot = new int[n]; // индекс в массивах пекаря (без корня)
+            int[] bodySlot = new int[n]; // index into the baker's arrays (root excluded)
             var bakedBodies = new List<OrbitingBody>();
             var segLen = new List<double>();
             var segCount = new List<int>();
@@ -934,7 +916,7 @@ namespace Galilego.Universe
                 }
             }
 
-            // Таблица косинусов DCT (один раз на степень).
+            // DCT cosine table (built once per degree).
             int degreeN = config.Degree;
             var cosTable = new double[degreeN + 1, degreeN + 1];
             for (int j = 0; j <= degreeN; j++)
@@ -945,7 +927,7 @@ namespace Galilego.Universe
                 }
             }
 
-        // RK4-массивы (одна аллокация на всю выпечку).
+        // RK4 arrays (one allocation for the whole bake).
         var kp1 = new double[3 * n];
         var kv1 = new double[3 * n];
         var kp2 = new double[3 * n];
@@ -958,10 +940,9 @@ namespace Galilego.Universe
         var ta = new double[3 * n];
         var coeffs = new double[BakedEphemeris.AxisStride(degreeN)];
 
-        // Параллельный Accel окупается только при большом n: при 12 телах это
-        // 66 пар на вызов — накладные расходы планировщика дороже самой работы,
-        // поэтому порог 64 (небольшие системы идут строго последовательно, тот
-        // же порядок суммирования, что и раньше). Буферы — одна аллокация.
+        // Parallel Accel pays off only for large n: scheduler overhead exceeds the
+        // work for small systems, hence the threshold of 64 (small systems stay
+        // strictly sequential, with the same summation order). Buffers — one allocation.
         double[][] accelPartials = null;
         if (n >= ParallelAccelBodies)
         {
@@ -982,7 +963,7 @@ namespace Galilego.Universe
                     throw new OperationCanceledException("Выпечка эфемерид отменена.");
                 }
 
-                // Ближайший узел среди всех тел.
+                // Nearest node across all bodies.
                 double nextT = double.PositiveInfinity;
                 for (int i = 0; i < n; i++)
                 {
@@ -1002,22 +983,17 @@ namespace Galilego.Universe
                     }
                 }
 
-                // Завершение — ВСЕ ТЕЛА ЗАКОНЧИЛИСЬ, а не «t дошло до maxEnd»:
-                // последний узел из-за округлений может лежать на пару ulp ниже
-                // maxEnd−1e-9 (ulp(5e8)≈6e-8 ≫ 1e-9), и тогда внутренний цикл
-                // с nextT=+Inf марширует вечно (T46 проходил только по удаче
-                // округления — поймано T60 на 16 годах).
+                // Termination is ALL BODIES DONE, not "t reached maxEnd": the last
+                // node can sit a couple of ulps below maxEnd−1e-9 due to rounding,
+                // and the inner loop would then march forever with nextT=+Inf.
                 if (nextT == double.PositiveInfinity)
                 {
                     break;
                 }
 
-                // Подшаги до узла: последний садится точно в nextT (без дрейфа).
-                // Интегратор — RK4: на возмущаемых орбитах лун его константа
-                // ошибки в ~17 раз лучше Yoshida-4 при том же числе вызовов
-                // Accel (5e6 против 2.7e5 на 16 лет для луны III-1, поймано
-                // T60/probechaos2); секулярный дрейф энергии RK4 при h=900
-                // ~1e-6 относительных за 1024 года — несущественен.
+                // Substeps up to the node: the last one lands exactly on nextT (no drift).
+                // Integrator — RK4: its secular energy drift at h=900 is negligible
+                // relative to the required accuracy over the baked span.
                 while (t < nextT - 1e-9d)
                 {
                     double h = Math.Min(dtMax, nextT - t);
@@ -1061,9 +1037,9 @@ namespace Galilego.Universe
                     t += h;
                 }
 
-                t = nextT; // точная посадка: сэмплы считаются на узлах, а не «почти на узлах»
+                t = nextT; // exact landing: samples are taken at the nodes, not "almost at" them
 
-                // Сэмплируем все тела, чей узел наступил.
+                // Sample all bodies whose node is due.
                 for (int i = 0; i < n; i++)
                 {
                     if (parentIdx[i] < 0)
@@ -1106,10 +1082,10 @@ namespace Galilego.Universe
                 }
             }
 
-            // Кеплерово продолжение: финальные состояния интегрирования (все тела
-            // дошли до своих EndSeconds в рамках fp) снимаются как элементы
-            // относительно родителя — та же рамка, что у рельсок. За концом рельсы
-            // тело летит по этой кеплеровой орбите; стык бесшовный по построению.
+            // Keplerian continuation: final integration states (each body reached its
+            // EndSeconds within fp) are captured as elements relative to the parent —
+            // the same frame as the rails. Past the rail's end the body flies this
+            // Keplerian orbit; the seam is seamless by construction.
             var finalRel = new double[6];
             for (int i = 0; i < n; i++)
             {
@@ -1142,12 +1118,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Прямое чебышёвское преобразование узлов Лобатто в коэффициенты.
-        /// Узлы сэмплировались как t_k = T0 + L·(1−cos(kπ/N))/2, т.е. x_k =
-        /// −cos(kπ/N) — порядок, ОБРАТНЫЙ стандартному, что даёт множитель
-        /// (−1)^j в коэффициентах: a_j = (−1)^j·(2/(N·c_j))·Σ_k (1/c_k)·y_k·cos(jkπ/N),
-        /// c_0 = c_N = 2. Проверено на f=t (a_0=1/2, a_1=1/2) и константе.
-        /// Скорость ридер получает как dP/dx·(2/L) — формат BE1 не меняется.
+        /// Direct Chebyshev transform of Lobatto nodes into coefficients.
+        /// Nodes were sampled as t_k = T0 + L·(1−cos(kπ/N))/2, i.e. x_k =
+        /// −cos(kπ/N) — the REVERSE of the standard order, which yields the factor
+        /// (−1)^j: a_j = (−1)^j·(2/(N·c_j))·Σ_k (1/c_k)·y_k·cos(jkπ/N), c_0 = c_N = 2.
+        /// The reader derives velocity as dP/dx·(2/L).
         /// </summary>
         private static void FitSegmentChebyshev(double[] samples, int degree, double[,] cosTable, double[] dest)
         {
@@ -1205,9 +1180,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Порог тел для параллельного Accel: ниже — последовательный путь
-        /// (при n=12 это 66 пар, планировщик потоков дороже работы; порядок
-        /// суммирования маленьких систем не меняется).
+        /// Body-count threshold for parallel Accel: below it the sequential path runs
+        /// (scheduler overhead exceeds the work for small systems; summation order is kept).
         /// </summary>
         private const int ParallelAccelBodies = 64;
 
@@ -1247,11 +1221,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Параллельные полные строки: каждый работник считает свои тела i по
-        /// ВСЕМ j≠i (пары считаются дважды — цена векторизуемой декомпозиции),
-        /// в свой буфер без блокировок; слияние после барьера. Работники
-        /// закреплены стридом (i = w, w+W, …) — буферы предвыделены, ноль
-        /// аллокаций на шаг.
+        /// Parallel full rows: each worker computes its bodies i against ALL j≠i
+        /// (pairs are computed twice — the cost of a vectorizable decomposition)
+        /// into its own lock-free buffer; merge after the barrier. Workers are
+        /// strided (i = w, w+W, …); buffers are preallocated, zero allocations per step.
         /// </summary>
         private static void AccelParallel(double[] p, double[] a, double[] m, double g, int n, double[][] partials)
         {

@@ -3,10 +3,8 @@ using Galilego.Core;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Состояние корабля. В отличие от Core.CelestialBody (у него масса задаётся
-    /// один раз в конструкторе и не меняется — разумно для звёзд и планет), масса
-    /// корабля будет меняться по мере расхода топлива, поэтому это отдельный,
-    /// лёгкий класс с изменяемым состоянием, а не переиспользование CelestialBody.
+    /// Ship state. Unlike Core.CelestialBody, the ship mass changes as fuel is burned,
+    /// so this is a separate lightweight class with mutable state.
     /// </summary>
     public sealed class Spacecraft
     {
@@ -14,11 +12,11 @@ namespace Galilego.Spacecraft
         public Vector3d Velocity;
         public double Mass;
 
-        /// <summary>Ориентация body→мир и угловая скорость в осях корабля (6-DOF полёт).</summary>
+        /// <summary>body→world orientation and angular velocity in ship axes (6-DOF flight).</summary>
         public QuaternionD Attitude = QuaternionD.Identity;
         public Vector3d AngularVelocity;
 
-        /// <summary>true — Position это центр масс (после выхода из зоны контакта), false — низ аппарата.</summary>
+        /// <summary>true — Position is the center of mass (after leaving the contact zone), false — the bottom of the craft.</summary>
         public bool PositionIsCom;
 
         public Spacecraft(Vector3d position, Vector3d velocity, double mass)

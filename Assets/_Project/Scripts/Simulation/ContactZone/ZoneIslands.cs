@@ -4,21 +4,21 @@ using Galilego.Spacecraft;
 namespace Galilego.Simulation.ContactZone
 {
     /// <summary>
-    /// Разбиение сборки на острова по разорванным стыкам (чистый C#, без Unity).
-    /// Ребро «деталь → родитель» (ParentIndex) цело, пока стык не разорван; разрыв
-    /// помечается индексом ДОЧЕРНЕЙ детали. Остров корня — детали, связанные с
-    /// любой деталью без родителя (ParentIndex &lt; 0); остальные компоненты
-    /// связности — отделившиеся острова (отломки). Потомки разорванной детали
-    /// уезжают вместе с ней: связность считается по графу, а не по глубине.
+    /// Splits the assembly into islands by broken joints (pure C#, no Unity). The
+    /// "part → parent" edge (ParentIndex) is intact until the joint breaks; a break is
+    /// marked by the index of the CHILD part. The root island is the parts connected
+    /// to any part without a parent (ParentIndex &lt; 0); the remaining connected
+    /// components are detached islands (debris). The descendants of a broken part
+    /// leave with it: connectivity is computed over the graph, not by depth.
     /// </summary>
     public static class ZoneIslands
     {
         public sealed class SplitResult
         {
-            /// <summary>Индексы деталей, оставшихся связанными с корнем сборки.</summary>
+            /// <summary>Indices of parts still connected to the assembly root.</summary>
             public readonly int[] Root;
 
-            /// <summary>Отделившиеся острова: каждый — индексы своих деталей.</summary>
+            /// <summary>Detached islands: each holds the indices of its parts.</summary>
             public readonly IReadOnlyList<int[]> Detached;
 
             public SplitResult(int[] root, IReadOnlyList<int[]> detached)

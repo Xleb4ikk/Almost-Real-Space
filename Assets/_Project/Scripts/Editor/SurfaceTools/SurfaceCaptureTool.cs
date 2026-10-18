@@ -12,14 +12,14 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Съёмка и замеры поверхности. Отдельный Editor-скрипт, а не eval, потому
-    /// что в Play главный поток насыщен сборкой чанков и любой однострочный
-    /// eval упирается в лимит 5 с на стороне пайплайна. Корутина ждёт очередь
-    /// по кадрам, поэтому ограничения на время одной операции не касается.
+    /// Surface capture and measurements. A separate Editor script rather than an
+    /// eval call: in Play the main thread is busy building chunks, and any
+    /// one-line eval hits the pipeline's 5-second limit. A coroutine waits frame
+    /// by frame, so that per-operation limit does not apply.
     ///
-    /// Порядок работы всех трёх пунктов меню одинаков: дождаться опустошения
-    /// очереди чанков, снять кадр, записать PNG. Очередь пуста, когда
-    /// SurfacePerf.QueuedBuilds == 0 и InFlightBuilds == 0.
+    /// All menu items work the same way: wait for the chunk queue to drain, take
+    /// a frame, write a PNG. The queue is empty when SurfacePerf.QueuedBuilds == 0
+    /// and InFlightBuilds == 0.
     /// </summary>
     public static class SurfaceCaptureTool
     {
@@ -28,15 +28,14 @@ namespace Galilego.Universe.EditorTools
         private const double QueueTimeoutSeconds = 60d;
 
         /// <summary>
-        /// Позиции съёмки. Фиксированы в коде, как и требовалось: сравнение
-        /// режимов имеет смысл только на одинаковых кадрах.
-        /// Высоты: орбита, 30 км, 2 км, 200 м.
+        /// Capture positions. Fixed in code so that mode comparisons use identical
+        /// frames. Altitudes: orbit, 30 km, 2 km, 200 m.
         /// </summary>
         private static readonly double[] AltitudesMeters = { 400000d, 30000d, 2000d, 200d };
 
         private static readonly StringBuilder Log = new StringBuilder();
 
-        // ---------------------------------------------------------------- ссылки
+        // ---------------------------------------------------------------- refs
 
         [MenuItem("Galilego/Capture/1. Water Skirt (0.03 / 0.3 / 1.0)")]
         public static void CaptureWaterSkirt() => Start(RunWaterSkirt);
@@ -71,20 +70,16 @@ namespace Galilego.Universe.EditorTools
             EditorSettings.enterPlayModeOptions = EnterPlayModeOptions.DisableDomainReload;
             SessionState.SetBool("SurfaceCapture.DomainReloadDisabled", true);
 
-            // Проект входит в Play с runInBackground = 0
-            // (ProjectSettings.asset:90). При потере фокуса редактора игровой
-            // цикл ОСТАНАВЛИВАЕТСЯ: не тикают LateUpdate, не качаются джобы
-            // сборки чанков, не перерисовывается HUD. Для съёмки это значит
-            // «зависшую» очередь и пустые PNG, причём выглядит оно как поломка
-            // конвейера, а не как потеря фокуса. Поэтому на время съёмки
-            // требуем работу в фоне и по возвращении из Play возвращаем
-            // былое значение.
+            // The project enters Play with runInBackground = 0: losing editor
+            // focus stops the game loop, which would leave the chunk queue stuck
+            // and produce empty PNGs, so background running is forced for the
+            // capture and restored on exit from Play.
             _savedRunInBackground = Application.runInBackground;
             Application.runInBackground = true;
             if (!Application.runInBackground)
             {
-                // Не подействовало — падаем на настройку проекта, её тоже
-                // восстановим при выходе из Play.
+                // Did not take effect: fall back to the project setting, which
+                // is also restored on exit from Play.
                 _savedPlayerRunInBackground = PlayerSettings.runInBackground;
                 PlayerSettings.runInBackground = true;
             }
@@ -120,11 +115,8 @@ namespace Galilego.Universe.EditorTools
 
 
         /// <summary>
-        /// Вход в Play по умолчанию перезагружает домен, и тогда все static'ы
-        /// этого класса обнуляются: корутина теряется молча, ничего не
-        /// снимается, лог остаётся пустым. Поэтому на время съёмки доменная
-        /// перезагрузка выключается, а исходная настройка возвращается при
-        /// выходе из Play и, страховочно, при следующей загрузке редактора.
+        /// Resets the play-mode settings forced by Start if the editor was
+        /// reloaded before they could be restored on exit from Play.
         /// </summary>
         [InitializeOnLoadMethod]
         private static void RestoreReloadSettingOnEditorLoad()
@@ -139,9 +131,8 @@ namespace Galilego.Universe.EditorTools
 
             if (SessionState.GetBool("SurfaceCapture.DomainReloadDisabled", false))
             {
-                // Значение не восстанавливаем: после перезагрузки редактора его уже
-                // негде взять, поэтому сбрасываем флаг и пишем в лог, чтобы автор
-                // проверил настройку сам.
+                // The original value is gone after the editor reload, so the flag
+                // is just reset and a warning logged for manual checking.
                 EditorSettings.enterPlayModeOptionsEnabled = false;
                 Debug.LogWarning("[SurfaceCapture] аварийно сброшены enterPlayModeOptions: DisableDomainReload был включён инструментом и снят при перезагрузке редактора. Проверьте Project Settings > Editor > Enter Play Mode Settings.");
                 SessionState.EraseBool("SurfaceCapture.DomainReloadDisabled");
@@ -152,8 +143,8 @@ namespace Galilego.Universe.EditorTools
         {
             if (change == PlayModeStateChange.EnteredPlayMode)
             {
-                // Переподключаем обработчики: даже с выключенной доменной
-                // перезагрузкой Unity может пересоздать делегаты.
+                // Re-subscribe: Unity may recreate the delegates even with
+                // domain reload disabled.
                 EditorApplication.update -= Pump;
                 EditorApplication.update += Pump;
                 if (_routine != null && !_routine.MoveNext())
@@ -169,10 +160,9 @@ namespace Galilego.Universe.EditorTools
                 EditorSettings.enterPlayModeOptionsEnabled = _savedReloadSetting;
                 if (_savedReloadSetting)
                 {
-                    // Восстанавливаем ТОЧНОЕ значение, а не EnterPlayModeOptions.None:
-                    // в проекте стояло 3 (DisableDomainReload | DisableSceneReload),
-                    // и обнуление молча убирало DisableSceneReload, меняя поведение
-                    // Play-режима во всём редакторе.
+                    // Restore the EXACT saved value, not EnterPlayModeOptions.None:
+                    // zeroing would silently drop other flags such as
+                    // DisableSceneReload and change Play behavior editor-wide.
                     EditorSettings.enterPlayModeOptions = _savedPlayModeOptions;
                 }
 
@@ -199,7 +189,7 @@ namespace Galilego.Universe.EditorTools
             }
         }
 
-        // ------------------------------------------------------- водная юбка
+        // ------------------------------------------------------- water skirt
 
         private static IEnumerator RunWaterSkirt()
         {
@@ -236,9 +226,9 @@ namespace Galilego.Universe.EditorTools
                 + " depthKnee=" + terrain.DepthKnee
                 + " amp=" + terrain.AmplitudeMeters);
 
-            // Ищем берег, но не одним кадром: GetHeightMeters в Editor дорогой,
-            // и весь поиск в один кадр упирается в кадровый бюджет. Поэтому
-            // сетка обходится порциями.
+            // The coast search spans frames: GetHeightMeters is expensive in the
+            // editor, and scanning the whole grid in one frame blows the frame
+            // budget, so the grid is walked in portions.
             double lat = 0d, lon = 0d;
             bool found = false;
             for (int i = 0; i < 90 && !found; i++)
@@ -315,19 +305,18 @@ namespace Galilego.Universe.EditorTools
                     double actual = PlaceAt(runner, body, terrain, lat, lon, alt);
                     yield return null;
 
-                    // Ожидание развёрнуто здесь, а не вынесено в отдельную
-                    // корутину: yield return IEnumerator НЕ ждёт её в
-                    // драйвере, который шагает только по внешней корутине, -
-                    // внешняя ускакивает вперёд и снимок делается на
-                    // недогруженной планете.
+                    // The wait is inlined rather than a nested coroutine: the
+                    // driver steps only the outer coroutine, so a nested
+                    // yield return IEnumerator would be skipped and the shot
+                    // taken on an unloaded planet.
                     float drained = 0f;
                     bool ok = false;
                     int finalized = 0;
                     while (true)
                     {
-                        // ChunksFinalized - счётчик ЗА КАДР. Без требования
-                        // finalized > 0 проверка проходит тривиально: сразу
-                        // после телепорта очередь ещё пуста.
+                        // ChunksFinalized is a per-frame counter. Without requiring
+                        // finalized > 0 the check passes trivially right after a
+                        // teleport, when the queue is still empty.
                         finalized += SurfacePerf.ChunksFinalized;
                         if (finalized > 0 && SurfacePerf.QueuedBuilds == 0 && SurfacePerf.InFlightBuilds == 0)
                         {
@@ -350,9 +339,9 @@ namespace Galilego.Universe.EditorTools
                         yield return null;
                     }
 
-                    // Повторная установка перед самым снимком: пока ждали
-                    // очередь, планета повернулась, и игрок уехал из-под
-                    // нужной точки. Ставим по текущему времени ещё раз.
+                    // Re-place right before the shot: the planet has rotated while
+                    // the queue was draining, so the player left the target point;
+                    // place again using the current time.
                     double finalAlt = PlaceAt(runner, body, terrain, lat, lon, alt);
                     yield return null;
 
@@ -387,7 +376,7 @@ namespace Galilego.Universe.EditorTools
             LogLine("water skirt capture done");
         }
 
-        // -------------------------------------------------- режимы домена
+        // -------------------------------------------------- damp modes
 
         private static IEnumerator RunDampModes()
         {
@@ -407,9 +396,8 @@ namespace Galilego.Universe.EditorTools
                 yield break;
             }
 
-            // Три режима, но менять поле у уже построенного terrain-модели
-            // недостаточно: HeightfieldTerrain копируется из профиля при
-            // инициализации, поэтому меняем профиль в ассете И модель в рантайме.
+            // HeightfieldTerrain is copied from the profile at initialization, so
+            // both the asset profile AND the runtime terrain model must be changed.
             var asset = AssetDatabase.LoadAssetAtPath<TerrainProfileAsset>(
                 "Assets/_Project/Profiles/Terrain/EarthLike_Perlin.asset");
             double savedDamp = terrain.SlopeDamp;
@@ -436,8 +424,8 @@ namespace Galilego.Universe.EditorTools
                         PlaceAt(runner, body, terrain, 12.0 * seed - 12.0, 30.0 * seed, alt);
                         yield return null;
 
-                        // См. пояснение в RunWaterSkirt: ожидание развёрнуто
-                        // инлайн, yield return вложенной корутины не ждёт её.
+                        // See RunWaterSkirt: the wait is inlined, a nested coroutine
+                        // would not be stepped.
                         float drained = 0f;
                         bool ok = false;
                         int finalized = 0;
@@ -502,7 +490,7 @@ namespace Galilego.Universe.EditorTools
             return m == 0 ? "Off" : (m == 1 ? "Accum" : "Gradient");
         }
 
-        // ------------------------------------------------------------- пролёт
+        // ------------------------------------------------------------- flight
 
         private static IEnumerator RunFlightBenchmark()
         {
@@ -547,7 +535,7 @@ namespace Galilego.Universe.EditorTools
 
                 for (int run = 0; run < 3; run++)
                 {
-                    // Телепорт: сюда и приходит вся пиковая очередь.
+                    // Teleport: this is where the peak queue lands.
                     double lat = -12.0 + (7.0 * run);
                     double lon = 20.0 + (23.0 * run);
                     PlaceAt(runner, body, terrain, lat, lon, 200d);
@@ -563,9 +551,9 @@ namespace Galilego.Universe.EditorTools
                     bool drained = false;
                     float since = 0f;
 
-                    // ChunksFinalized/ChunksBuilt - счётчики ЗА КАДР, их сбрасывает
-                    // SurfacePerf.BeginFrame, поэтому накапливаем вручную.
-                    // QueuedBuilds/InFlightBuilds - датчики, их смотрим как есть.
+                    // ChunksFinalized/ChunksBuilt are per-frame counters reset by
+                    // SurfacePerf.BeginFrame, so accumulate them manually.
+                    // QueuedBuilds/InFlightBuilds are gauges, read as-is.
                     while (frames < 3600)
                     {
                         frames++;
@@ -640,49 +628,31 @@ namespace Galilego.Universe.EditorTools
             to.DepthThreshold = from.DepthThreshold;
         }
 
-        // ------------------------------------------------- подводный потолок
+        // ------------------------------------------------- underwater ceiling
 
         /// <summary>
-        /// Съёмка потолка воды снизу: окно Снелла, рябь, зеркало толщи.
+        /// Shoots the water ceiling from below: Snell window, ripples, thickness.
         ///
-        /// Отличия от RunWaterSkirt, и каждая — на устранённой ошибке:
+        /// Depth is reached in a closed loop on EyeDepthMeters, not by guessing
+        /// EyeHeightMeters: PlaceAt puts the player at max(0, terrain height) plus
+        /// altitude, while the camera sits 2 m above the target and
+        /// UnderwaterEffect measures depth at the camera.
         ///
-        ///  1. ГЛУБИНА. PlaceAt берёт Math.Max(0, высота рельефа) + altitude,
-        ///     и при altitude &lt; 0 это точка НИЖЕ уровня моря, то есть под
-        ///     водой — это уже умелось. Но камера стоит на
-        ///     Target.position + eyeOffset (2 м вверх), а UnderwaterEffect меряет
-        ///     глубину по камере: «-3 м» для игрока даёт -1 м для камеры. Отсюда
-        ///     замкнутая петля по EyeDepthMeters вместо угадывания EyeHeightMeters.
+        /// Time of day is chosen by longitude (local solar time), not by warping time.
         ///
-        ///  2. ВРЕМЯ СУТОК задаётся выбором точки, а не перемоткой времени:
-        ///     время симвремена приватно и живёт в эфемеридах, а долгота
-        ///     однозначно задаёт местное солнце. Ищем океан по долготе, пока
-        ///     высота солнца не попала в нужное окно.
+        /// Planet readiness is gated on cache coverage rather than ChunksFinalized
+        /// (that counter only grows in the async branch): CachedChunks &gt; 0, empty
+        /// queue and in-flight counters, DesiredInKeep == VisibleChunks, held for
+        /// several frames.
         ///
-        ///  3. ГОТОВНОСТЬ ПЛАНЕТЫ. Прежний гейт требовал ChunksFinalized &gt; 0,
-        ///     а он растёт ТОЛЬКО в async-ветке, тогда как первый кадр строит
-        ///     все desired узлы СИНХРОННО (firstFrameGuard,
-        ///     PlanetSurfaceRenderer.cs:1527). На полностью загруженной планете
-        ///     ChunksFinalized структурно 0 — и инструмент 60 с ждал кадр на
-        ///     «незагруженной планете», которой не было (см. surface-capture.log).
-        ///     Теперь гейт по покрытию кэша: CachedChunks &gt; 0, очередь и полёт
-        ///     пусты, DesiredInKeep == VisibleChunks, и так несколько кадров
-        ///     подряд.
-        ///
-        ///  4. ДИАГНОСТИКА ЗАВИСАНИЯ. Каждую секунду пишем реальные счётчики и
-        ///     Application.isFocused. Прошлый прогон упёрся в runInBackground=0:
-        ///     при потере фокуса редактора игровой цикл останавливается, и ВСЕ
-        ///     счётчики замирают на последних значениях — «очередь 305, в полёте
-        ///     6, ничего не финализируется» выглядит как зависание, хотя никто не
-        ///     завис. isFocused в логе отличает это от настоящего зависания.
+        /// While waiting, the real counters and Application.isFocused are logged
+        /// once per second.
         /// </summary>
         private static IEnumerator RunUnderwaterCeiling(bool fullMatrix)
         {
-            // Ожидание раннера — ВПЛЕТЕНО, а не yield return WaitForRunner():
-            // Pump делает ровно один MoveNext за тик, поэтому вложенная
-            // корутина не выполняется НИ РАЗУ, и первый же тик после входа в
-            // Play видел пустую сцену (Runner() == null), корутина завершалась,
-            // и инструмент выходил из Play через секунду после старта.
+            // The runner wait is inlined: Pump does exactly one MoveNext per
+            // tick, so a nested coroutine (yield return WaitForRunner()) would
+            // never run.
             float runnerWait = 0f;
             while (runnerWait < 30f && Runner() == null)
             {
@@ -720,17 +690,15 @@ namespace Galilego.Universe.EditorTools
             var viewFog = UnityEngine.Object.FindAnyObjectByType<UnderwaterViewFog>();
             var renderer = FindRenderer();
 
-            // Облака у Terra в сцене выключены (body.Clouds == null, поэтому
-            // PlanetCloudsView каждый кадр ставит _CldCloudActive = 0), и окно
-            // Снелла осталось бы без облаков — а именно они делают преломление
-            // читаемым: без них в окне только градиент. Включаем профиль на
-            // время съёмки и возвращаем былое значение, потому что это
-            // состояние тела, а не настройка инструмента.
+            // Terra's clouds are off in the scene (body.Clouds == null), and the
+            // clouds are what make the Snell window refraction readable: without
+            // them the window shows only a gradient. A profile is enabled for the
+            // capture and restored afterwards, because it is body state, not a
+            // tool setting.
             //
-            // CloudProfile — обычный класс, а не ScriptableObject, поэтому
-            // AssetDatabase.LoadAssetAtPath его не грузит (первая версия
-            // инструмента так и не скомпилировалась на этом). Берём
-            // конструктор с проектными умолчаниями и поднимаем покрытие.
+            // CloudProfile is a plain class, not a ScriptableObject, so it cannot
+            // be loaded via AssetDatabase: construct one with project defaults and
+            // raise the coverage.
             CloudProfile savedClouds = body.Clouds;
             var cloudProfile = new CloudProfile();
             cloudProfile.Coverage = 0.6f;
@@ -777,13 +745,11 @@ namespace Galilego.Universe.EditorTools
 
             foreach (SolarWindow window in SolarWindows)
             {
-                // --- точка океана с нужной высотой солнца --------------------
-                // Ищем по СЕТКЕ широт и долгот, а не по одной широте: рельеф
-                // Земли не океан на всех параллелях, и поиск только по долготе
-                // намертво застревал там, где океана нет (первая версия
-                // инструмента так и не нашла точку ни для одного из трёх
-                // состояний). Всё, что отсеивается, считаем и пишем в лог —
-                // иначе «НЕ НАЙДЕН» ничего не говорит о причине.
+                // --- ocean point with the needed sun elevation --------------------
+                // Search a latitude/longitude GRID, not a single latitude: the
+                // planet is not all ocean, and a longitude-only scan stalls where
+                // there is no ocean. Rejected samples are counted and logged so
+                // that a "NOT FOUND" states its reason.
                 bool found = false;
                 double spotLat = 0d, spotLon = 0d, spotSun = 0d, spotFloor = 0d;
                 Vector3 spotUp = Vector3.up, spotNorth = Vector3.forward, spotSunDir = Vector3.up;
@@ -795,14 +761,10 @@ namespace Galilego.Universe.EditorTools
                 double requiredFloor = -Math.Max(deepestDepth, 5d);
                 for (int latIndex = 1; latIndex < LatitudeSteps - 1 && !found; latIndex++)
                 {
-                    // Широты ±75°, а не полный разброс до полюсов: у полюса
-                    // касательная «на север» вырождена (TryLocalFrame её
-                    // отбрасывает), да и композиция под полюсом бессмысленна.
-                    // Старт со знаком МИНУС: разброс должен идти от -75° в
-                    // сторону +75°. Со знаком плюс первая же проба давала
-                    // +75+12.5 = 87.5°, а в сумме до 150°, то есть точку
-                    // за пределами планеты — GetRawHeightMeters там не океан,
-                    // и кадры «1 м» выходили пустыми.
+                    // Latitudes ±75°, not the full range to the poles: near a pole
+                    // the "north" tangent is degenerate (TryLocalFrame rejects it)
+                    // and a composition under the pole is meaningless. The minus
+                    // sign matters: the sweep must run from -75° towards +75°.
                     double latRad = -SearchLatitudeRangeRad
                         + ((2.0 * SearchLatitudeRangeRad * latIndex) / (LatitudeSteps - 1));
 
@@ -810,13 +772,9 @@ namespace Galilego.Universe.EditorTools
                     {
                         double lonRad = -Math.PI + ((2.0 * Math.PI * i) / LongitudeSteps);
 
-                        // ГЛУБИНА — из GetRawHeightMeters, а не GetHeightMeters:
-                        // последняя зажимает океан до уровня моря
-                        // (TerrainModel.cs:485-488, «иначе раскопка ниже уровня
-                        // моря молча наполнялась бы водой»), то есть по ней
-                        // весь океан имеет высоту ровно 0 м и «глубокого океана»
-                        // не существует. Первая версия поиска так и не нашла
-                        // точку ни для одного состояния.
+                        // DEPTH comes from GetRawHeightMeters, not GetHeightMeters:
+                        // the latter clamps the ocean to sea level (TerrainModel.cs),
+                        // so every ocean point would read as exactly 0 m.
                         double raw = terrain.GetRawHeightMeters(body, latRad, lonRad);
                         sampled++;
                         if (raw < deepest)
@@ -824,9 +782,9 @@ namespace Galilego.Universe.EditorTools
                             deepest = raw;
                         }
 
-                        // Нужен океан глубже самой глубокой точки съёмки плюс
-                        // запас: иначе камера окажется на дне и кадр будет про
-                        // дно, а не про потолок.
+                        // Need ocean deeper than the deepest shot depth: otherwise
+                        // the camera sits on the seabed and the shot is about the
+                        // floor, not the ceiling.
                         if (raw > requiredFloor)
                         {
                             tooShallow++;
@@ -904,10 +862,9 @@ namespace Galilego.Universe.EditorTools
                 {
                     foreach (double elevDeg in UnderwaterElevationsDeg)
                     {
-                        // Глубина замкнутой петлёй. Итерации ВПЛЕТЕНЫ в корутину:
-                        // yield return IEnumerator здесь не ждёт (Pump двигает
-                        // только внешнюю корутину по одному MoveNext), поэтому
-                        // отдельная корутина на постановку молча проскочила бы.
+                        // Depth via a closed loop. Iterations are inlined because
+                        // Pump steps only the outer coroutine, so a nested
+                        // yield return IEnumerator would silently be skipped.
                         double altitudeOffset = -depth;
                         for (int attempt = 0; attempt < 5; attempt++)
                         {
@@ -915,13 +872,9 @@ namespace Galilego.Universe.EditorTools
                             yield return null;
                             yield return null;
 
-                            // Диагностика постановки: без неё «глубина не
-                            // сходится» выглядит одинаково при трёх разных
-                            // причинах — PlaceAt пишет не в то поле, камера
-                            // следует не за игроком, или глубину меряет не тот
-                            // код. Печатаем радиус игрока над морем, радиус
-                            // камеры (её и считает UnderwaterEffect) и уровень
-                            // моря из модели рельефа.
+                            // Placement diagnostics: logs the player radius above
+                            // sea, the camera radius (what UnderwaterEffect measures)
+                            // and the sea level from the terrain model.
                             body.EvaluateWorldState(runner.TimeSeconds, out Vector3d bodyPosDbg, out _);
                             double playerRadius = (runner.PlayerPosition - bodyPosDbg).Magnitude - body.Radius;
                             var cam = Camera.main;
@@ -950,12 +903,9 @@ namespace Galilego.Universe.EditorTools
                                 break;
                             }
 
-                            // ПРАВКА ЗНАКА: глубина = -(offset) + EyeHeight, то
-                            // есть чем глубже offset, тем мельче камера. Поэтому
-                            // «слишком глубоко» (ошибка > 0) требует offset В
-                            // БОЛЬШУЮ сторону. Со знаком минус камера на каждой
-                            // итерации ныряла всё глубже: 5 → 7 → 11 → 19 → 35 м
-                            // вместо 3.
+                            // depth = -offset + EyeHeight, so a larger offset means a
+                            // shallower camera: a positive error (too deep) requires
+                            // increasing the offset.
                             altitudeOffset += depthError;
                         }
 
@@ -996,13 +946,10 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Что видно над камерой в плане ВОДЫ: сколько водных мешей рядом,
-        /// включены ли они и где их границы.
-        ///
-        /// Нужно потому, что на 1 м глубины кадр «строго вверх» выходил
-        /// ПУСТЫМ (ни потолка, ни неба — ровный цвет вуали), и гипотез было
-        /// две: меша рядом нет (не построен / выключен / отсечён) или он есть,
-        /// но находится не там. Этот замер отличает их за один кадр.
+        /// What is above the camera in the water plane: how many water meshes are
+        /// nearby, whether they are enabled, and where their bounds are.
+        /// Distinguishes "no mesh nearby" (not built / disabled / culled) from
+        /// "mesh exists but is elsewhere".
         /// </summary>
         private static void LogWaterNearCamera(SimulationRunner runner, OrbitingBody body, double targetDepth)
         {
@@ -1037,9 +984,9 @@ namespace Galilego.Universe.EditorTools
 
                 enabled++;
 
-                // Ближайшая точка границы меша к камере — в астрономических
-                // координатах, иначе на радиусе 6.4e6 разница теряется в
-                // float32 вычитании.
+                // Nearest mesh bound point to the camera, in astronomical
+                // coordinates: at radius 6.4e6 the difference is lost in
+                // float32 subtraction.
                 Vector3d center = FloatingOrigin.Anchor + AstroFrame.ToAstro(meshRenderer.bounds.center);
                 double distance = (center - camAstro).Magnitude;
                 double radiusSpan = meshRenderer.bounds.extents.magnitude;
@@ -1064,7 +1011,7 @@ namespace Galilego.Universe.EditorTools
                 closestRadiusAboveSea - (double)seaLevel, seaLevel));
         }
 
-        /// <summary>Окно высоты солнца для съёмки: имя + диапазон в градусах.</summary>
+        /// <summary>Sun elevation window for a capture: name plus range in degrees.</summary>
         private struct SolarWindow
         {
             public string Name;
@@ -1079,13 +1026,12 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Три состояния для сравнения «до/после».
+        /// Three states for before/after comparison.
         ///
-        /// День — солнце ВЫШЕ 55°, а не выше 25°: окно Снелла имеет
-        /// полуугол 48.6°, и при солнце на 25° оно лежит вне окна, то есть
-        /// кадр «строго вверх» показывает пустое небо и ничего не проверяет.
-        /// Солнце ночью ниже −10°: ниже этого StarVisibility ещё не поднят и
-        /// звёзд в кадре нет.
+        /// Day requires the sun above 55°: the Snell window half-angle is 48.6°,
+        /// so at 25° it lies outside the window and a straight-up shot shows
+        /// empty sky. Night requires the sun below −10°: below that StarVisibility
+        /// is not raised yet and there are no stars in the frame.
         /// </summary>
         private static readonly SolarWindow[] SolarWindows =
         {
@@ -1094,12 +1040,12 @@ namespace Galilego.Universe.EditorTools
             new SolarWindow { Name = "night", MinElevDeg = -90d, MaxElevDeg = -10d },
         };
 
-        /// <summary>Глубины камеры, м. Полная матрица — 1/3/10 м.</summary>
+        /// <summary>Camera depths, m. Full matrix is 1/3/10 m.</summary>
         private static readonly double[] UnderwaterDepthsMeters = { 1d, 3d, 10d };
 
         /// <summary>
-        /// Углы возвышения взгляда, градусы над местным горизонтом: 90° — строго
-        /// вверх (центр окна Снелла), 60° — «30° к поверхности», 0° — горизонт.
+        /// Look elevation angles, degrees above the local horizon: 90° is straight
+        /// up (centre of the Snell window), 60° is 30° to the surface, 0° is the horizon.
         /// </summary>
         private static readonly double[] UnderwaterElevationsDeg = { 90d, 60d, 0d };
 
@@ -1110,20 +1056,17 @@ namespace Galilego.Universe.EditorTools
         private const int StableFramesForShot = 4;
 
         /// <summary>
-        /// Готовность планеты к снимку — пошаговая проверка, а не корутина:
-        /// движок инструмента делает ровно один MoveNext за тик редактора,
-        /// поэтому вложенная корутина (yield return IEnumerator) там просто
-        /// проскочила бы, не выполнившись.
+        /// Planet readiness as a step-wise check, not a coroutine: the tool's
+        /// driver does exactly one MoveNext per editor tick, so a nested
+        /// coroutine (yield return IEnumerator) would be skipped entirely.
         ///
-        /// Считаем по покрытию кэша, а не по ChunksFinalized: тот растёт
-        /// ТОЛЬКО в async-ветке, а первый кадр строит все desired узлы
-        /// СИНХРОННО (firstFrameGuard, PlanetSurfaceRenderer.cs:1527), поэтому на
-        /// готовой планете ChunksFinalized структурно 0. Прежний гейт на
-        /// нём ждал 60 с и объявлял «незагруженную планету» на полностью
-        /// загруженной (см. surface-capture.log, все кадры TIMEOUT).
+        /// Measured by cache coverage, not ChunksFinalized: that counter only
+        /// grows in the async branch, while the first frame builds every desired
+        /// node synchronously (firstFrameGuard), so on a loaded planet it is
+        /// structurally 0.
         ///
-        /// Требуем несколько кадров подряд, иначе ловим переходный кадр между
-        /// телепортом и первой постройкой.
+        /// Several consecutive frames are required, otherwise the transient frame
+        /// between teleport and first build would pass.
         /// </summary>
         private struct PlanetWait
         {
@@ -1133,7 +1076,7 @@ namespace Galilego.Universe.EditorTools
 
             public float Elapsed => elapsed;
 
-            /// <summary>Один кадр ожидания. true — снимать можно.</summary>
+            /// <summary>One frame of waiting. true means a shot may be taken.</summary>
             public bool Step(out bool timedOut)
             {
                 timedOut = false;
@@ -1179,15 +1122,14 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Направление взгляда по азимуту и углу возвышения. Азимут берём на
-        /// СОЛНЦЕ, когда оно над горизонтом: только так закатное окно состоит из
-        /// солнца и ореола, а не из пустого градиента, и только так кадр
-        /// показывает, что окно искажает именно источник. Ночью солнца нет —
-        /// берём север, иначе направление было бы вырожденным.
+        /// Look direction from azimuth and elevation. The azimuth points at the
+        /// SUN when it is above the horizon: that is what makes the sunset window
+        /// show the sun and its halo rather than an empty gradient, so the shot
+        /// proves the window distorts the source. At night the azimuth is north,
+        /// otherwise it would be degenerate.
         ///
-        /// Направление на солнце приходит извне (TryLocalFrame), а не
-        /// восстанавливается из высоты солнца: той для «есть ли солнце в кадре»
-        /// хватает, а азимут должен быть задан явно, иначе кадр неповторим.
+        /// The sun direction comes from outside (TryLocalFrame) so the azimuth is
+        /// explicit and the shot is repeatable.
         /// </summary>
         private static Vector3 AimDirection(Vector3 up, Vector3 north, Vector3 sunDir,
             double elevationDeg, out string note)
@@ -1212,9 +1154,9 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Локальная рамка точки на поверхности в мировых (simulation) векторах:
-        /// локальная вверх, касательная на север и направление на солнце. Высота
-        /// солнца считается здесь же — из направления на звезду и локальной вверх.
+        /// Local frame of a surface point in world (simulation) vectors: local up,
+        /// north tangent and the direction to the sun. The sun elevation is computed
+        /// here from the star direction and local up.
         /// </summary>
         private static bool TryLocalFrame(SimulationRunner runner, OrbitingBody body,
             double latRad, double lonRad, double altitudeMeters,
@@ -1269,7 +1211,7 @@ namespace Galilego.Universe.EditorTools
             return true;
         }
 
-        // ------------------------------------------------------------ утилиты
+        // ------------------------------------------------------------ utils
 
 
         private static SimulationRunner Runner()
@@ -1301,14 +1243,12 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Включает ноклип через чит-меню и замораживает намерение.
+        /// Enables noclip via the cheat menu and freezes the intent.
         ///
-        /// Ноклип здесь обязателен, а не удобством: сцена работает в режиме
-        /// только-игрока, корабля (SimulationRunner.Ship) нет, поэтому
-        /// TeleportTo и SpawnPlayerOnSurface непригодны - обе требуют Ship.
-        /// Без ноклипа игрок сразу разгоняется гравитацией (замер показал
-        /// 5304 м/с) и улетает с цели, а очередь чанков не опустошается
-        /// никогда, потому что камера всё время в движении.
+        /// Noclip is required, not a convenience: the scene runs player-only with
+        /// no ship (SimulationRunner.Ship), so TeleportTo and SpawnPlayerOnSurface
+        /// are unusable. Without noclip gravity accelerates the player away from
+        /// the target and the chunk queue would never drain.
         /// </summary>
         private static bool EnableNoclip(SimulationRunner runner)
         {
@@ -1336,19 +1276,18 @@ namespace Galilego.Universe.EditorTools
         private static System.Reflection.FieldInfo _velField;
 
         /// <summary>
-        /// Ставит ИГРОКА в точку lat/lon на заданной высоте над морем.
+        /// Places the PLAYER at a lat/lon point at the given altitude above sea.
         ///
-        /// Время берётся ТЕКУЩЕЕ симуляционное, а не 0: планета поворачивается,
-        /// и при t=0 игрок оказывался не там, где считает симуляция, - из-за
-        /// этого часть кадров уезжала под рельеф (высота 0 м, чёрный низ).
+        /// The CURRENT simulation time is used, not 0: the planet rotates, so at
+        /// t=0 the player would not land where the simulation expects.
         ///
-        /// Позиция ставится рефлексией по backing-полям автосвойств
-        /// PlayerPosition/PlayerVelocity: сеттеры приватные, а все публичные
-        /// способы переноса завязаны на Ship, которого в сцене нет. Рефлексия -
-        /// осознанный компромисс ИНСТРУМЕНТА, в продуктовый код не попадает.
+        /// Position is set by reflection on the PlayerPosition/PlayerVelocity
+        /// auto-property backing fields: the setters are private and every public
+        /// transfer path requires a ship, which the scene has none of. This
+        /// reflection is a deliberate tool-only compromise.
         ///
-        /// Возвращает реальную высоту игрока над рельефом, чтобы вызывающий
-        /// мог отбросить кадр, если игрок ушёл под землю.
+        /// Returns the actual player altitude above the terrain so the caller can
+        /// discard a frame if the player ended up underground.
         /// </summary>
         private static double PlaceAt(SimulationRunner runner, OrbitingBody body, HeightfieldTerrain terrain,
             double latRad, double lonRad, double altitudeMeters)
@@ -1385,22 +1324,19 @@ namespace Galilego.Universe.EditorTools
             _velField.SetValue(runner, vel);
             FloatingOrigin.Anchor = world;
 
-            // Реальная высота над рельефом в той же точке, что и камера.
+            // Actual altitude above the terrain at the same point as the camera.
             body.EvaluateWorldState(t, out Vector3d bodyPos, out _);
             Vector3d up = (world - bodyPos).Normalized;
             double actual = (world - bodyPos).Magnitude - body.Radius;
             return actual;
         }
 
-        /// <summary>Допуск высоты: цель и факт должны совпадать, иначе кадр брак.</summary>
+        /// <summary>Altitude tolerance: target and actual must match or the frame is discarded.</summary>
         private const double AltitudeToleranceMeters = 0.75;
 
 
         /// <summary>
-        /// Ждёт опустошения очереди чанков. Возвращает true, если очередь
-        /// действительно опустела, и время в секундах — иначе false и 60 с.
-        /// Таймаут пишется в лог, а не молча пропускается: иначе снимок
-        /// делается на недогруженной планете и выглядит как ошибка шума.
+        /// Waits up to 30 s for a SimulationRunner to appear in the scene.
         /// </summary>
         private static IEnumerator WaitForRunner()
         {
@@ -1433,7 +1369,7 @@ namespace Galilego.Universe.EditorTools
             }
             catch (IOException)
             {
-                // лог недоступен — не роняем съёмку из-за файла
+                // Log unavailable: do not fail the capture over the file.
             }
         }
     }

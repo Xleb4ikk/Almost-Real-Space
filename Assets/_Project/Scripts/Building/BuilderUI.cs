@@ -7,39 +7,17 @@ using UnityEngine;
 namespace Galilego.Building
 {
     /// <summary>
-    /// ИНТЕРФЕЙС СТРОИТЕЛЬСТВА (IMGUI поверх BuilderSkin, светлая серая тема).
+    /// BUILDING INTERFACE (IMGUI over BuilderSkin, light gray theme).
     ///
-    /// Хотбар: 9 слотов снизу по центру на светлой подложке. Предметы
-    /// перетаскиваются сюда из инвентаря (ЛКМ, с порогом сдвига — простой клик
-    /// только выбирает деталь). Двойной клик по карточке — в свободный слот.
-    /// ПКМ по слоту — МИНИ-МЕНЮ слота (в том же стиле, что инвентарь): быстрые
-    /// размеры детали прямо у панели, а если размер менять нельзя (двигатель) —
-    /// краткие характеристики. Убрать деталь из панели — вытащить её из слота
-    /// и отпустить мимо панели. Выбор слота — колесо или цифры 1..9; выбранный
-    /// слот приподнят, обведён ярким квадратом со свечением, над панелью —
-    /// плашка с названием и размерами.
-    ///
-    /// РАЗМЕРЫ ХРАНЯТСЯ В СЛОТЕ (PartPreset): у каждого слота своя заготовка
-    /// детали — форма бака и его радиусы/длина. В панели удобно заранее
-    /// подготовить баки разных диаметров (например, цилиндр 2.5 м и конус
-    /// 5→2.5 м) и ставить их по очереди, не перенастраивая размеры заново.
-    /// Иконка слота — отрисовка ИМЕННО его заготовки (форма и пропорции).
-    ///
-    /// ПРАВКИ РАЗМЕРОВ идут только в ЯВНО выбранный слот (клик по слоту) либо
-    /// в ЧЕРНОВИК вида (клик по карточке — «заготовка на следующую постановку»):
-    /// перетаскивание копирует заготовку в слот и не меняет соседние.
-    ///
-    /// Инвентарь (I, только в стройке): окно ~70% экрана — слева 3D-превью
-    /// выбранной детали (крутится, размеры учитываются) и характеристики,
-    /// справа сетка карточек. Размеры меняются кнопками-стрелками: большие
-    /// «двойные» — на 1 м, одиночные — на 0.1 м (удержание повторяет шаг).
-    /// Размеры сразу меняют призрак и поставленную деталь, а также превью.
-    /// Столбец характеристик ПРОКРУЧИВАЕТСЯ (колесо/бегунок): у конусного
-    /// бака строк больше, чем влезает, а окно ради этого не раздувается.
-    ///
-    /// Пока окно открыто, курсор отпускается и ввод игроку блокируется
-    /// (PlayerController.InputBlocked) — как в чит-меню. Масштаб под DPI/4K:
-    /// GUI.matrix растягивается по высоте экрана.
+    /// Hotbar: 9 bottom-center slots filled by dragging from the inventory
+    /// (a plain click only selects); right-click opens a slot mini-menu with
+    /// quick size editors or engine stats. Sizes are stored per slot
+    /// (PartPreset); edits go to the explicitly selected slot or to the card
+    /// draft. The inventory window (I, build mode only) shows the 3D preview
+    /// and stats column on the left and a scrolling card grid on the right.
+    /// While the window is open the cursor is released and player input is
+    /// blocked (PlayerController.InputBlocked), like in the cheat menu; the UI
+    /// scales to DPI/4K via GUI.matrix by screen height.
     /// </summary>
     [DefaultExecutionOrder(-105)]
     public sealed class BuilderUI : MonoBehaviour
@@ -54,17 +32,16 @@ namespace Galilego.Building
         public PlayerController Controller;
 
         /// <summary>
-        /// Панель ΔV (план/остаток в полёте). Читают внешние потребители того же
-        /// расчёта (планшет): panel.Live ?? panel.Plan — единый источник, ничего
-        /// не пересчитывается.
+        /// ΔV panel (plan/remaining in flight). External consumers of the same
+        /// calculation (the tablet) read it: panel.Live ?? panel.Plan — a single
+        /// source, nothing is recomputed.
         /// </summary>
         public DeltaVPanel DeltaV { get { return deltaVPanel; } }
 
         /// <summary>
-        /// Запись каталога: вид детали и (у двигателя) его Id из EngineSpecs.
-        /// У каждого двигателя — СВОЯ карточка в сетке (двигатели идут рядом,
-        /// порядок — как в реестре EngineSpecs). Новый двигатель в реестре
-        /// сам добавляет карточку.
+        /// Catalog entry: part kind and (for an engine) its Id from EngineSpecs.
+        /// Each engine gets its OWN card in the grid (engines go together, in
+        /// registry order). A new engine in the registry adds its card itself.
         /// </summary>
         private readonly struct CatalogEntry
         {
@@ -95,51 +72,51 @@ namespace Galilego.Building
 
         private static readonly CatalogEntry[] Catalog = BuildCatalog();
 
-        // Геометрия (в «виртуальных» пикселях при высоте экрана 1080).
+        // Geometry (in "virtual" pixels at a screen height of 1080).
         private const float SlotSize = 58f;
         private const float SlotGap = 8f;
         private const float PlatePad = 10f;
         private const float DragThreshold = 5f;
 
-        /// <summary>Окно инвентаря занимает ~70% экрана (по ширине и высоте).</summary>
+        /// <summary>The inventory window takes ~70% of the screen (width and height).</summary>
         private const float WindowFraction = 0.70f;
 
-        /// <summary>Минимальная высота окна инвентаря.</summary>
+        /// <summary>Minimum inventory window height.</summary>
         private const float WindowMinHeight = 540f;
 
-        /// <summary>Шаг прокрутки колесом в столбце характеристик, px на щелчок.</summary>
+        /// <summary>Wheel scroll step in the stats column, px per notch.</summary>
         private const float StatsScrollStep = 42f;
 
-        // Шаги кнопок-стрелок, м.
+        // Arrow button steps, m.
         private const float StepBig = 1f;
         private const float StepSmall = 0.1f;
 
         /// <summary>
-        /// Слот панели: своя заготовка детали и иконка ИМЕННО этой заготовки
-        /// (форма/пропорции). Иконка перерисовывается, когда размеры изменились.
+        /// Hotbar slot: its own part preset and an icon of THAT preset (shape/
+        /// proportions). The icon is re-rendered when the sizes change.
         /// </summary>
         private sealed class HotSlot
         {
             public bool Occupied;
             public PartPreset Preset;
             public Texture2D Icon;
-            public bool IconOwned;      // своя отрисовка — уничтожается при замене
-            public bool IconDirty;      // размеры изменились: перерисовать
+            public bool IconOwned;      // own render — destroyed on replace
+            public bool IconDirty;      // sizes changed: re-render
         }
 
         private readonly HotSlot[] hotbar = CreateHotbar();
 
         /// <summary>
-        /// Черновики видов («заготовка на следующую постановку»): их правит окно,
-        /// когда выбранный слот — не этот вид. Правка черновика не трогает
-        /// уже поставленные в панель детали.
+        /// Kind drafts ("preset for the next placement"): the window edits them
+        /// when the selected slot is not of this kind. Editing a draft does not
+        /// touch parts already placed in the hotbar.
         /// </summary>
         private readonly PartPreset[] drafts = new PartPreset[Catalog.Length];
 
         /// <summary>
-        /// Слот, который правит окно (выбран в панели). null — правится черновик:
-        /// клик по карточке в инвентаре переключает на черновик, клик по слоту —
-        /// на слот.
+        /// The slot the window edits (selected in the hotbar). null — a draft is
+        /// edited: clicking a card in the inventory switches to the draft,
+        /// clicking a slot to the slot.
         /// </summary>
         private HotSlot editSlot;
 
@@ -159,28 +136,28 @@ namespace Galilego.Building
         private int holdId = -1;
         private float holdNextTime;
 
-        // Прокрутка столбца характеристик (конусному баку не хватает высоты).
+        // Stats column scroll (a cone tank does not fit the height).
         private float statsScroll;
         private bool statsScrollDrag;
         private float statsScrollDragOrigin;
         private float statsScrollDragStart;
 
-        /// <summary>Курсор над столбцом характеристик (ставит OnGUI): колесо листает его, а не слоты.</summary>
+        /// <summary>Cursor over the stats column (set by OnGUI): the wheel scrolls it, not the slots.</summary>
         private bool statsHovered;
 
-        // Прокрутка сетки карточек: видно 6×3, остальное листается колесом.
+        // Card grid scroll: 6×3 visible, the rest is scrolled with the wheel.
         private const float GridScrollStep = 46f;
         private float gridScroll;
         private bool gridHovered;
 
-        // Мини-меню слота (ПКМ по слоту): быстрые размеры у панели.
+        // Slot mini-menu (RMB on a slot): quick sizes at the panel.
         private const float SlotMenuWidth = 320f;
-        private const int SlotMenuIdBase = 100;      // не пересекается с id окна (10..43)
+        private const int SlotMenuIdBase = 100;      // does not overlap window ids (10..43)
         private int slotMenuIndex = -1;
 
         /// <summary>
-        /// Активны ли элементы управления ТОЙ панели, что рисуется сейчас:
-        /// окно инвентаря инертно, пока открыто мини-меню слота (и наоборот).
+        /// Whether the controls of the panel drawn right now are active: the
+        /// inventory window is inert while the slot mini-menu is open (and vice versa).
         /// </summary>
         private bool controlsActive;
 
@@ -189,7 +166,7 @@ namespace Galilego.Building
         private float uiHeight = 1080f;
         private float uiAlpha = 1f;
 
-        /// <summary>Панель подсказок по клавишам скрыта (H или крестик на панели).</summary>
+        /// <summary>Key hints panel is hidden (H or the cross on the panel).</summary>
         private static bool hintsHidden;
 
         private static HotSlot[] CreateHotbar()
@@ -205,8 +182,7 @@ namespace Galilego.Building
 
         private void Start()
         {
-            // Иконки видов — 3D-рендеры под углом (тот же студийный свет, что
-            // у превью): без этого в слотах и карточках были плоские проекции.
+            // Kind icons are angled 3D renders (same studio light as the preview).
             if (Builder != null)
             {
                 preview.PrepareIcons(Builder.Engines, Builder.TankSideMaterial,
@@ -218,8 +194,8 @@ namespace Galilego.Building
                 }
             }
 
-            // Стартовая палитра в панели: строить можно сразу, но перетаскивание
-            // из инвентаря работает как обычно (слоты можно менять местами).
+            // Starting hotbar palette: you can build right away, and dragging
+            // from the inventory works as usual (slots can be swapped).
             if (Builder != null)
             {
                 AssignPreset(0, DraftFor(Catalog[0]));
@@ -258,14 +234,14 @@ namespace Galilego.Building
                 return;
             }
 
-            // Ctrl — «подсмотреть»: камера отпускает курсор, а постановка и
-            // удаление на время удержания глушатся (как при открытом окне).
-            // Развёрнутый планшет — тем же флагом: клики по его кнопкам не
-            // должны ставить/удалять детали за ним.
+            // Ctrl — "peek": the camera releases the cursor and placement/
+            // deletion are muted while held (as with the window open). An
+            // expanded tablet uses the same flag: clicks on its buttons must not
+            // place/delete parts behind it.
             Builder.UiOpen = open || PlayerInput.Held(GameKey.LeftControl) || ShipTablet.AnyExpanded;
 
-            // Планшет станции перехватил экран (сели в кресло) — инвентарь
-            // убираем: два полноэкранных окна друг поверх друга не нужны.
+            // The station tablet took over the screen (sat in a chair) — close
+            // the inventory: two fullscreen windows on top of each other are not needed.
             if (ShipTablet.AnyExpanded && open)
             {
                 SetOpen(false);
@@ -274,21 +250,21 @@ namespace Galilego.Building
             openAnim = Mathf.MoveTowards(openAnim, open ? 1f : 0f, Time.unscaledDeltaTime * 9f);
             TickPreview();
 
-            // Инвентарь — на I (E занят взаимодействиями мира: кресла, планшет).
-            // Развёрнутый планшет блокирует и I: два полноэкранных интерфейса
-            // поверх друг друга — каша, а курсор у планшета один.
+            // Inventory is on I (E is taken by world interactions: chairs, tablet).
+            // An expanded tablet also blocks I: two fullscreen interfaces on top
+            // of each other are a mess, and there is one cursor.
             if (PlayerInput.Down(GameKey.I) && !ShipTablet.AnyExpanded)
             {
                 SetOpen(!open);
             }
 
-            // H — скрыть/вернуть подсказки по клавишам (панель слева внизу).
+            // H — hide/restore key hints (panel at the bottom left).
             if (PlayerInput.Down(GameKey.H))
             {
                 hintsHidden = !hintsHidden;
             }
 
-            // Колесо/цифры работают и при открытом окне (удобно наводить порядок).
+            // Wheel/digits work with the window open too (handy for tidying up).
             for (int i = 0; i < hotbar.Length; i++)
             {
                 if (PlayerInput.Down((GameKey)((int)GameKey.Digit1 + i)))
@@ -297,9 +273,9 @@ namespace Galilego.Building
                 }
             }
 
-            // Колесо над столбцом характеристик листает его (OnGUI), а не слоты:
-            // иначе прокрутка размеров заодно переключала бы выбранный слот.
-            // Так же и над сеткой карточек — её прокрутка слотов не касается.
+            // The wheel over the stats column scrolls it (OnGUI), not the slots:
+            // otherwise scrolling sizes would also switch the selected slot.
+            // Same over the card grid — its scroll does not touch the slots.
             float scroll = PlayerInput.MouseScroll();
             if (Mathf.Abs(scroll) > 0.05f && !statsHovered && !gridHovered)
             {
@@ -312,7 +288,7 @@ namespace Galilego.Building
         {
             hotbarIndex = index;
             ApplySelection();
-            // Выбрали слот — окно правит ЕГО; иначе правится черновик вида.
+            // A slot was selected — the window edits IT; otherwise the kind draft.
             editSlot = index >= 0 && hotbar[index].Occupied ? hotbar[index] : null;
         }
 
@@ -333,8 +309,8 @@ namespace Galilego.Building
             holdId = -1;
             if (!value)
             {
-                // Окно и мини-меню слота живут вместе: закрылось окно — закрыт и
-                // он (курсор и ввод возвращает окно).
+                // The window and the slot mini-menu live together: window closed
+                // means the menu is closed (the window restores cursor and input).
                 slotMenuIndex = -1;
             }
 
@@ -350,7 +326,7 @@ namespace Galilego.Building
 
             if (value)
             {
-                // Чтобы панель характеристик не была пустой: показываем выбранную деталь.
+                // So the stats panel is not empty: show the selected part.
                 if (statsIndex < 0)
                 {
                     HotSlot current = hotbarIndex >= 0 ? hotbar[hotbarIndex] : null;
@@ -403,13 +379,13 @@ namespace Galilego.Building
             }
         }
 
-        // ─── 3D-предпросмотр ─────────────────────────────────────────────────
+        // ─── 3D preview ─────────────────────────────────────────────────
 
         /// <summary>
-        /// Раз в кадр: показать в превью выбранную деталь с текущими размерами
-        /// и дорисовать «поздние» иконки слотов. Визуал пересобирается при смене
-        /// детали или размера, камера кадрирует по габаритам, кадр рендерится
-        /// не чаще 30 Гц (внутри Ensure).
+        /// Once per frame: show the selected part with its current sizes in the
+        /// preview and finish "late" slot icons. The visual is rebuilt when the
+        /// part or size changes, the camera frames by dimensions, and the frame
+        /// is rendered at most 30 Hz (inside Ensure).
         /// </summary>
         private void TickPreview()
         {
@@ -418,10 +394,10 @@ namespace Galilego.Building
                 return;
             }
 
-            // Иконки слотов с изменёнными размерами: не больше одной отрисовки
-            // за кадр (размеры правятся удержанием стрелок — рендер не копится).
-            // Работает и при ЗАКРЫТОМ окне: слот могли получить перетаскиванием,
-            // а окно сразу закрыть — иконка всё равно должна стать точной.
+            // Slot icons with changed sizes: at most one render per frame (sizes
+            // are edited by holding arrows, so renders don't pile up). Works with
+            // the window CLOSED too: a slot can be filled by dragging and the
+            // window closed right away — the icon must still become exact.
             for (int i = 0; i < hotbar.Length; i++)
             {
                 HotSlot slot = hotbar[i];
@@ -441,7 +417,7 @@ namespace Galilego.Building
                 Builder.TankSideMaterial, Builder.TankCapMaterial, Builder.SeparatorMaterial);
         }
 
-        /// <summary>Перерисовать иконку слота под его текущие размеры.</summary>
+        /// <summary>Re-render the slot icon for its current sizes.</summary>
         private bool CaptureSlotIcon(HotSlot slot)
         {
             Texture2D texture = preview.CaptureIcon(slot.Preset.Kind, Builder.MetricsFor(slot.Preset),
@@ -451,16 +427,16 @@ namespace Galilego.Building
                 SetIcon(slot, texture, owned: true);
             }
 
-            // Рендер не удался (нет рига/геометрии) — не зацикливаемся, остаётся
-            // прежняя картинка (дефолтная отрисовка вида).
+            // Render failed (no rig/geometry) — don't loop: the previous picture
+            // stays (the default kind render).
             slot.IconDirty = false;
             return true;
         }
 
         /// <summary>
-        /// Заготовка, которую показывает и правит окно: заготовка явно
-        /// выбранного слота этой карточки, иначе — черновик карточки
-        /// (заготовка на следующую постановку).
+        /// The preset shown and edited by the window: the preset of the card's
+        /// explicitly selected slot, otherwise the card's draft (preset for the
+        /// next placement).
         /// </summary>
         private PartPreset StatsPreset()
         {
@@ -469,7 +445,7 @@ namespace Galilego.Building
             return owner != null ? owner.Preset : drafts[card];
         }
 
-        /// <summary>Индекс карточки характеристик (всегда валидный).</summary>
+        /// <summary>Stats card index (always valid).</summary>
         private int StatsCardIndex()
         {
             if (statsIndex >= 0 && statsIndex < Catalog.Length)
@@ -490,9 +466,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Слот, который правит окно: ТОЛЬКО явно выбранный слот этой карточки
-        /// (у двигателя — той же модели). Иначе — null (правится черновик):
-        /// правка не должна менять соседние слоты, которые игрок не выбирал.
+        /// The slot the window edits: ONLY the explicitly selected slot of this
+        /// card (same model for an engine). Otherwise null (a draft is edited):
+        /// an edit must not touch neighbouring slots the player did not select.
         /// </summary>
         private HotSlot EditSlotFor(CatalogEntry entry)
         {
@@ -501,7 +477,7 @@ namespace Galilego.Building
                 : null;
         }
 
-        /// <summary>Карточка, которой соответствует заготовка (вид + двигатель), или −1.</summary>
+        /// <summary>Card matching the preset (kind + engine), or −1.</summary>
         private static int CardIndexFor(PartPreset preset)
         {
             for (int i = 0; i < Catalog.Length; i++)
@@ -516,8 +492,8 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Подходит ли карточка заготовке: вид совпадает, а у двигателя — ещё и
-        /// модель (пустой EngineId заготовки — двигатель по умолчанию).
+        /// Whether the card matches the preset: the kind matches and, for an
+        /// engine, the model too (an empty preset EngineId means the default engine).
         /// </summary>
         private static bool MatchesEntry(CatalogEntry entry, PartPreset preset)
         {
@@ -537,7 +513,7 @@ namespace Galilego.Building
             return entry.EngineId == presetEngine;
         }
 
-        /// <summary>Черновик карточки: стартовая заготовка её вида и двигателя.</summary>
+        /// <summary>Card draft: the starting preset of its kind and engine.</summary>
         private PartPreset DraftFor(CatalogEntry entry)
         {
             PartPreset preset = Builder.DefaultPreset(entry.Kind);
@@ -549,17 +525,17 @@ namespace Galilego.Building
             return preset;
         }
 
-        // ─── Слоты ───────────────────────────────────────────────────────────
+        // ─── Slots ───────────────────────────────────────────────────────────
 
-        /// <summary>Идёт перетаскивание детали (мышь занята).</summary>
+        /// <summary>A part drag is in progress (the mouse is busy).</summary>
         private bool Dragging => dragPreset.HasValue;
 
-        /// <summary>Интерфейс активен: открыто окно инвентаря или мини-меню слота.</summary>
+        /// <summary>Interface is active: the inventory window or the slot mini-menu is open.</summary>
         private bool Interactive => open || slotMenuIndex >= 0;
 
         /// <summary>
-        /// Положить заготовку в слот. Иконка сразу — дефолтная отрисовка вида,
-        /// точная (под размеры заготовки) дорисуется в TickPreview.
+        /// Put a preset into a slot. The icon is the default kind render at
+        /// first; the exact one (for the preset's sizes) is drawn in TickPreview.
         /// </summary>
         private void AssignPreset(int index, PartPreset preset)
         {
@@ -570,13 +546,13 @@ namespace Galilego.Building
             slot.IconDirty = true;
         }
 
-        /// <summary>Очистить слот (ПКМ по слоту / бросили мимо панели).</summary>
+        /// <summary>Clear the slot (RMB on the slot / dropped outside the panel).</summary>
         private void ClearSlot(int index)
         {
             HotSlot slot = hotbar[index];
             if (editSlot == slot)
             {
-                editSlot = null;                      // окно переходит на черновик
+                editSlot = null;                      // window switches to the draft
             }
 
             SetIcon(slot, null, owned: false);
@@ -585,7 +561,7 @@ namespace Galilego.Building
             slot.IconDirty = false;
         }
 
-        /// <summary>Поменять два слота местами (перенос = обмен).</summary>
+        /// <summary>Swap two slots (moving = swapping).</summary>
         private void SwapSlots(int a, int b)
         {
             HotSlot first = hotbar[a];
@@ -604,7 +580,7 @@ namespace Galilego.Building
             slot.IconOwned = owned;
         }
 
-        /// <summary>Записать правку заготовки: в слот-владелец или в черновик вида.</summary>
+        /// <summary>Write a preset edit: to the owning slot or to the kind draft.</summary>
         private void ApplyPresetEdit(HotSlot owner, int card, PartPreset preset)
         {
             if (owner != null)
@@ -613,7 +589,7 @@ namespace Galilego.Building
                 owner.IconDirty = true;
                 if (hotbarIndex >= 0 && hotbar[hotbarIndex] == owner)
                 {
-                    Builder.SelectedPreset = preset;   // призрак и постановка — сразу
+                    Builder.SelectedPreset = preset;   // ghost and placement update immediately
                 }
             }
             else
@@ -633,9 +609,9 @@ namespace Galilego.Building
                 && Mathf.Abs(a.Height - b.Height) < 1e-4f;
         }
 
-        // ─── Мини-меню слота (ПКМ) ───────────────────────────────────────────
+        // ─── Slot mini-menu (RMB) ───────────────────────────────────────────
 
-        /// <summary>ПКМ по слоту: открыть мини-меню размеров (или закрыть его).</summary>
+        /// <summary>RMB on a slot: open the size mini-menu (or close it).</summary>
         private void ToggleSlotMenu(int index)
         {
             if (slotMenuIndex == index)
@@ -650,11 +626,11 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Мини-меню слота: быстрые размеры детали прямо у панели (те же
-        /// редакторы, что в инвентаре), а у двигателя — краткие характеристики.
-        /// Живёт, пока открыто окно инвентаря: курсор и ввод общие, а элементы
-        /// окна под меню становятся инертными (controlsActive), поэтому клики
-        /// достаются меню.
+        /// Slot mini-menu: quick part sizes right at the panel (the same editors
+        /// as in the inventory), or brief stats for an engine. It lives while
+        /// the inventory window is open: cursor and input are shared, and window
+        /// controls under the menu become inert (controlsActive), so clicks go
+        /// to the menu.
         /// </summary>
         private void DrawSlotMenu()
         {
@@ -691,7 +667,7 @@ namespace Galilego.Building
             float y = Mathf.Max(12f, PlateRect().y - menuH - 50f);
             var menu = new Rect(x, y, SlotMenuWidth, menuH);
 
-            // Клик ЛКМ мимо меню закрывает его (кнопки меню событие не съедают).
+            // An LMB click outside the menu closes it (menu buttons don't consume the event).
             Event e = Event.current;
             if (e.type == EventType.MouseDown && e.button == 0 && !menu.Contains(e.mousePosition))
             {
@@ -705,7 +681,7 @@ namespace Galilego.Building
             SetColor(Color.white);
             GUI.Box(menu, GUIContent.none, BuilderSkin.Window);
 
-            controlsActive = true;                    // меню в фокусе: окно инертно
+            controlsActive = true;                    // menu focused: window inert
             float px = menu.x + 16f;
             float pw = menu.width - 32f;
             float py = menu.y + 12f;
@@ -725,8 +701,8 @@ namespace Galilego.Building
                 bool cone = preset.Form == TankForm.Cone;
                 DrawEditor(px, ref py, pw, "Длина бака", ref preset.Height,
                     PartCatalog.TankMinHeight, PartCatalog.TankMaxHeight, SlotMenuIdBase, "F1");
-                // Правки — в ДИАМЕТРЕ (игроку понятнее и совпадает с подписью
-                // капсулы «Ø»); в заготовке хранится радиус.
+                // Edits are in DIAMETER (clearer for the player and matches the
+                // capsule's "Ø" label); the preset stores the radius.
                 float diameter = preset.Radius * 2f;
                 DrawEditor(px, ref py, pw, cone ? "Диаметр низа" : "Диаметр бака", ref diameter,
                     PartCatalog.TankMinRadius * 2f, PartCatalog.TankMaxRadius * 2f, SlotMenuIdBase + 10, "F1");
@@ -763,7 +739,7 @@ namespace Galilego.Building
             controlsActive = open;
         }
 
-        // ─── Отрисовка ───────────────────────────────────────────────────────
+        // ─── Drawing ───────────────────────────────────────────────────────
 
         private void OnGUI()
         {
@@ -785,9 +761,9 @@ namespace Galilego.Building
                 return;
             }
 
-            // Планшет, развёрнутый на весь экран, рисуется поверх и владеет
-            // экраном: интерфейс строителя не рисуем. Расчёт ΔV при этом обязан
-            // жить — планшет читает те же Live/Plan (panel.Tick без отрисовки).
+            // A fullscreen expanded tablet draws on top and owns the screen: the
+            // builder UI is not drawn. The ΔV calculation must stay alive though —
+            // the tablet reads the same Live/Plan (panel.Tick without drawing).
             if (ShipTablet.AnyExpanded)
             {
                 deltaVPanel.Tick(Builder);
@@ -804,7 +780,7 @@ namespace Galilego.Building
 
             if (Event.current.type == EventType.MouseUp)
             {
-                holdId = -1;                         // отпустили кнопку-стрелку
+                holdId = -1;                         // arrow button released
             }
 
             EventType et = Event.current.type;
@@ -841,7 +817,7 @@ namespace Galilego.Building
             GUI.matrix = previous;
         }
 
-        // ─── Хотбар ──────────────────────────────────────────────────────────
+        // ─── Hotbar ──────────────────────────────────────────────────────────
 
         private Rect PlateRect()
         {
@@ -880,7 +856,7 @@ namespace Galilego.Building
 
                 if (selected)
                 {
-                    rect.y -= 5f;                    // выбранный слот приподнят
+                    rect.y -= 5f;                    // selected slot is lifted
                     SetColor(new Color(0.30f, 0.55f, 0.85f, 0.55f));
                     GUI.Box(Expand(rect, 20f), GUIContent.none, BuilderSkin.Glow);
                     SetColor(Color.white);
@@ -913,7 +889,7 @@ namespace Galilego.Building
                 {
                     if (current.button == 1)
                     {
-                        // ПКМ по слоту — мини-меню размеров (повторный ПКМ закрывает).
+                        // RMB on a slot — the size mini-menu (a second RMB closes it).
                         ToggleSlotMenu(i);
                     }
                     else if (current.button == 0)
@@ -935,7 +911,7 @@ namespace Galilego.Building
             }
         }
 
-        // Плашка над хотбаром: название выбранной детали и её размеры.
+        // Plate above the hotbar: name and sizes of the selected part.
         private void DrawNamePlate(Rect plate)
         {
             HotSlot slot = hotbarIndex >= 0 ? hotbar[hotbarIndex] : null;
@@ -949,8 +925,7 @@ namespace Galilego.Building
             string dims = string.Empty;
             if (preset.Kind == PartKind.FuelTank)
             {
-                // Везде диаметры (Ø): у капсулы подпись тоже Ø — сравнивать
-                // размеры деталей по радиусу было неудобно.
+                // Diameters (Ø) everywhere — the capsule label is Ø too.
                 dims = "   <color=#9AA0A8>L " + m.Height.ToString("F1") + " м  ·  Ø " + (m.Radius * 2f).ToString("F1") + " м</color>";
                 if (IsCone(m))
                 {
@@ -990,7 +965,7 @@ namespace Galilego.Building
             GUI.Label(rect, text, BuilderSkin.PillText);
         }
 
-        // ─── Подсказки и сводка ──────────────────────────────────────────────
+        // ─── Hints and summary ──────────────────────────────────────────────
 
         private void DrawHints()
         {
@@ -1035,8 +1010,8 @@ namespace Galilego.Building
             GUI.Box(panel, GUIContent.none, BuilderSkin.Plate);
             SetColor(Color.white);
 
-            // Крестик в углу панели — скрыть подсказки (клик работает при
-            // свободном курсоре: окно инвентаря открыто или курсор отпущен).
+            // Cross in the panel corner — hide the hints (the click works with a
+            // free cursor: inventory window open or cursor released).
             var hide = new Rect(panel.xMax - 30f, panel.y + 5f, 22f, 22f);
             if (HintButton(hide, BuilderSkin.Cross, 12f))
             {
@@ -1060,7 +1035,7 @@ namespace Galilego.Building
             }
         }
 
-        /// <summary>Свёрнутая плашка «Подсказки» на месте скрытой панели.</summary>
+        /// <summary>Collapsed "Hints" plate in place of the hidden panel.</summary>
         private void DrawHintsRestore()
         {
             const string text = "Подсказки (H)";
@@ -1089,7 +1064,7 @@ namespace Galilego.Building
             }
         }
 
-        /// <summary>Маленькая кнопка-иконка подсказок (крестик): клик при свободном курсоре.</summary>
+        /// <summary>Small hints icon button (cross): clicks with a free cursor.</summary>
         private bool HintButton(Rect rect, Texture2D icon, float iconSize)
         {
             Event e = Event.current;
@@ -1110,7 +1085,7 @@ namespace Galilego.Building
             return false;
         }
 
-        // Верхняя плашка: сколько деталей, масса и высота стека.
+        // Top plate: part count, mass and stack height.
         private void DrawSummary()
         {
             var parts = Builder.Parts;
@@ -1155,7 +1130,7 @@ namespace Galilego.Building
             GUI.Label(new Rect(bar.x, bar.y - 24f, bar.width, 20f), caption, BuilderSkin.NameTextCenter);
             GUI.Box(bar, GUIContent.none, BuilderSkin.Track);
 
-            // Заливка: полная плашка, обрезанная группой до нужной ширины.
+            // Fill: full plate clipped by a group to the required width.
             float fillW = Mathf.Max(14f, bar.width * Mathf.Clamp01(progress));
             GUI.BeginGroup(new Rect(bar.x, bar.y, fillW, bar.height));
             SetColor(BuilderSkin.Accent);
@@ -1182,20 +1157,19 @@ namespace Galilego.Building
             GUI.Label(new Rect(rect.x + 24f, rect.y, rect.width - 24f, rect.height), text, BuilderSkin.PillText);
         }
 
-        // ─── Окно инвентаря ──────────────────────────────────────────────────
+        // ─── Inventory window ──────────────────────────────────────────────────
 
         private void DrawWindow()
         {
             float eased = 1f - ((1f - openAnim) * (1f - openAnim));
             uiAlpha = eased;
 
-            // Пока открыто мини-меню слота, элементы окна инертны: клики под
-            // меню должны доставаться меню, а не карточкам/редакторам окна.
+            // While the slot mini-menu is open, the window controls are inert:
+            // clicks under the menu must reach the menu, not the window cards/editors.
             controlsActive = open && slotMenuIndex < 0;
 
-            // Окно не выходит за экран (зажимается по вьюпорту) и не раздувается
-            // под содержимое: чего не влезло — листается прокруткой столбца
-            // характеристик.
+            // The window never leaves the screen (clamped to the viewport) and
+            // never grows to fit the content: overflow scrolls in the stats column.
             float winW = Mathf.Min(uiWidth - 16f, Mathf.Max(760f, uiWidth * WindowFraction));
             float winH = Mathf.Min(uiHeight - 24f, Mathf.Max(WindowMinHeight, uiHeight * WindowFraction));
             float slide = (1f - eased) * 18f;
@@ -1206,7 +1180,7 @@ namespace Galilego.Building
             SetColor(Color.white);
             GUI.Box(win, GUIContent.none, BuilderSkin.Window);
 
-            // Шапка.
+            // Header.
             GUI.Label(new Rect(win.x + 26f, win.y + 14f, 500f, 30f), "Инвентарь деталей", BuilderSkin.TitleText);
             GUI.Label(new Rect(win.x + 26f, win.y + 40f, 500f, 18f), "Режим строительства", BuilderSkin.Tiny);
 
@@ -1226,7 +1200,7 @@ namespace Galilego.Building
             float bodyY = win.y + 80f;
             float bodyH = win.height - 80f - 18f;
             float statsW = Mathf.Clamp(win.width * 0.30f, 350f, 520f);
-            // Узкий экран: характеристики ужимаются, но сетке остаётся место.
+            // Narrow screen: stats shrink, but the grid keeps its space.
             statsW = Mathf.Min(statsW, win.width - 160f);
             var stats = new Rect(win.x + 18f, bodyY, statsW, bodyH);
             var grid = new Rect(stats.xMax + 14f, bodyY, win.xMax - 18f - (stats.xMax + 14f), bodyH);
@@ -1241,9 +1215,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Панель характеристик с ПРОКРУТКОЙ: у конусного бака строк и редакторов
-        /// больше, чем влезает в окно, — окно не раздуваем, контент листается
-        /// колесом или бегунком у правого края.
+        /// Stats panel with SCROLLING: a cone tank has more rows and editors than
+        /// fit the window, so the window does not grow — the content is scrolled
+        /// with the wheel or the thumb at the right edge.
         /// </summary>
         private void DrawStats(Rect r)
         {
@@ -1268,7 +1242,7 @@ namespace Galilego.Building
             }
         }
 
-        /// <summary>Раскладка столбца характеристик: что рисуем и сколько это займёт.</summary>
+        /// <summary>Stats column layout: what we draw and how much space it takes.</summary>
         private struct StatsLayout
         {
             public int Card;
@@ -1296,25 +1270,23 @@ namespace Galilego.Building
             bool engine = kind == PartKind.Engine;
             bool capsule = kind == PartKind.Capsule;
 
-            // Строки характеристик: у двигателя — масса, топливо, тяга, импульс,
-            // расход, степень расширения, прочность стыка. У капсулы — масса,
-            // диаметр, высота и прочность стыка; размеров у неё нет.
+            // Stats rows: an engine has mass, propellant, thrust, Isp, flow,
+            // expansion ratio, joint strength. A capsule has mass, diameter,
+            // height and joint strength; it has no sizes.
             int rows = engine ? 7 : (kind == PartKind.FuelTank ? 7 : (capsule ? 4 : 3));
             int editors = engine || capsule ? 0 : (tank ? (IsCone(m) ? 3 : 2) : 1);
 
-            // Всё, кроме кадра: шапка, подписи, строки, форма и редакторы.
-            // Редактор размера занимает подпись + ряд кнопок (EditorHeight) —
-            // без подписи высота контента занижалась и низ не долистывался.
-            // Бак добавляет две строки: форму бака и наполнение.
+            // Everything except the frame: header, labels, rows, shape and
+            // editors. A size editor takes a label + a button row (EditorHeight).
+            // A tank adds two rows: tank shape and load.
             float extras = editors > 0
                 ? 10f + 26f + (tank ? ShapeRowHeight + LoadRowHeight(PropellantLoads.All.Count) : 0f) + (editors * EditorHeight)
                 : 0f;
             float rest = 16f + 28f + 14f + 26f + 24f + 8f + (rows * 26f) + extras + 16f;
             float w = width - 40f;
-            // Кадр превью — ОДИНАКОВЫЙ для всех деталей и не зависит от числа
-            // строк: у бака строк и редакторов больше, и подгонка кадра делала
-            // его «иконку» заметно мельче, чем у двигателя/отделителя. Если
-            // контент не влез — столбец листается прокруткой.
+            // The preview frame is the SAME for all parts and independent of the
+            // row count (a tank has more rows and editors). If the content does
+            // not fit, the column scrolls.
             float previewH = Mathf.Clamp(w * 0.75f, 120f, 260f);
 
             return new StatsLayout
@@ -1332,8 +1304,8 @@ namespace Galilego.Building
             };
         }
 
-        // Контент рисуется в ЛОКАЛЬНЫХ координатах группы панели; scroll —
-        // сколько пикселей контента уже уехало вверх.
+        // Content is drawn in the panel group's LOCAL coordinates; scroll is how
+        // many content pixels have moved up.
         private void DrawStatsContent(float width, StatsLayout layout, float scroll)
         {
             float x = 20f;
@@ -1411,9 +1383,9 @@ namespace Galilego.Building
 
             if (kind == PartKind.Engine || kind == PartKind.Capsule)
             {
-                // У двигателя размеров нет: модель выбирается карточкой
-                // в инвентаре (у каждого двигателя — своя карточка).
-                // У капсулы размеры фиксированы моделью Orion.
+                // An engine has no sizes: the model is chosen by the inventory
+                // card (each engine has its own card). Capsule sizes are fixed
+                // by the Orion model.
                 return;
             }
 
@@ -1424,15 +1396,15 @@ namespace Galilego.Building
             PartPreset preset = layout.Preset;
             if (kind == PartKind.FuelTank)
             {
-                // Правки копятся в заготовке и пишутся в слот-владелец/черновик
-                // одним разом — иначе каждый шаг стрелки дёргал бы иконку.
+                // Edits accumulate in the preset and are written to the owning
+                // slot/draft in one go — otherwise every arrow step would dirty the icon.
                 PartPreset before = preset;
                 DrawShapeRow(x, ref y, w, ref preset, layout.Owner, layout.Card);
                 DrawLoadRow(x, ref y, w, ref preset, layout.Owner, layout.Card);
                 bool cone = preset.Form == TankForm.Cone;
                 DrawEditor(x, ref y, w, "Длина бака", ref preset.Height,
                     PartCatalog.TankMinHeight, PartCatalog.TankMaxHeight, 10, "F1");
-                // Правки — в ДИАМЕТРЕ (в заготовке хранится радиус).
+                // Edits are in DIAMETER (the preset stores the radius).
                 float diameter = preset.Radius * 2f;
                 DrawEditor(x, ref y, w, cone ? "Диаметр низа" : "Диаметр бака", ref diameter,
                     PartCatalog.TankMinRadius * 2f, PartCatalog.TankMaxRadius * 2f, 20, "F1");
@@ -1464,7 +1436,7 @@ namespace Galilego.Building
             }
         }
 
-        /// <summary>Колесо над панелью характеристик листает столбец.</summary>
+        /// <summary>The wheel over the stats panel scrolls the column.</summary>
         private void HandleStatsScroll(Rect r, float maxScroll)
         {
             if (maxScroll <= 0f)
@@ -1475,14 +1447,14 @@ namespace Galilego.Building
             Event e = Event.current;
             if (e.type == EventType.ScrollWheel && r.Contains(e.mousePosition))
             {
-                // Знак: колесо «от себя» (delta.y > 0) листает вниз, к нижним
-                // строкам — как в окнах Unity.
+                // Sign: wheel away from the viewer (delta.y > 0) scrolls down,
+                // towards the lower rows — as in Unity windows.
                 statsScroll = Mathf.Clamp(statsScroll + (e.delta.y * StatsScrollStep), 0f, maxScroll);
                 e.Use();
             }
         }
 
-        /// <summary>Колесо над сеткой карточек листает её (деталей больше 6×3).</summary>
+        /// <summary>The wheel over the card grid scrolls it (more parts than 6×3).</summary>
         private void HandleGridScroll(Rect r, float maxScroll)
         {
             if (maxScroll <= 0f)
@@ -1498,7 +1470,7 @@ namespace Galilego.Building
             }
         }
 
-        // Бегунок у правого края панели: полоска в поле панели и перетаскивание.
+        // Thumb at the panel's right edge: a strip in the panel field plus dragging.
         private void DrawStatsScrollbar(Rect r, float contentHeight, float maxScroll)
         {
             var track = new Rect(r.xMax - 11f, r.y + 6f, 5f, r.height - 12f);
@@ -1538,23 +1510,23 @@ namespace Galilego.Building
             DrawSolid(thumb, hover || statsScrollDrag ? BuilderSkin.Accent : new Color(1f, 1f, 1f, 0.28f));
         }
 
-        /// <summary>Высота строки выбора формы бака (для расчёта кадра превью).</summary>
+        /// <summary>Height of the tank shape row (for the preview frame calculation).</summary>
         private const float ShapeRowHeight = 66f;
 
         /// <summary>
-        /// Высота строки наполнения: подписи состава и масс (36) + по кнопке
-        /// на каждое наполнение реестра (34) с зазором 4 между ними.
+        /// Load row height: composition and mass labels (36) + one button per
+        /// registry load (34) with a 4 gap between them.
         /// </summary>
         private static float LoadRowHeight(int loads)
         {
             return 46f + (loads * 34f) + ((loads - 1) * 4f);
         }
 
-        /// <summary>Высота редактора размера: подпись (22) + ряд кнопок (62).</summary>
+        /// <summary>Size editor height: label (22) + button row (62).</summary>
         private const float EditorHeight = 84f;
 
-        // Строка «Форма бака»: две кнопки-сегмента — цилиндр и конус-переходник.
-        // Выбор тут же меняет призрак, поставленную деталь и превью.
+        // "Tank shape" row: two segment buttons — cylinder and cone adapter.
+        // The choice immediately updates the ghost, the placed part and the preview.
         private void DrawShapeRow(float x, ref float y, float w, ref PartPreset preset, HotSlot owner, int card)
         {
             GUI.Label(new Rect(x, y, w * 0.6f, 18f), "Форма бака", BuilderSkin.Body);
@@ -1580,9 +1552,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Строка «Наполнение»: кнопки по реестру PropellantLoads (новое
-        /// наполнение появляется в UI само). Выбор тут же меняет призрак,
-        /// поставленную деталь и превью — масса бака считается от наполнения.
+        /// "Load" row: buttons per the PropellantLoads registry (a new load
+        /// appears in the UI automatically). The choice immediately updates the
+        /// ghost, the placed part and the preview — tank mass is derived from the load.
         /// </summary>
         private void DrawLoadRow(float x, ref float y, float w, ref PartPreset preset, HotSlot owner, int card)
         {
@@ -1590,16 +1562,15 @@ namespace Galilego.Building
             GUI.Label(new Rect(x + (w * 0.3f), y, w * 0.7f, 18f),
                 LoadComposition(preset.Load ?? PropellantLoads.Default), BuilderSkin.TinyRight);
 
-            // Полная заправка: процент (сверху, по объёму) и масса каждого
-            // компонента при текущих размерах бака, в кг.
+            // Full load: percentage (above, by volume) and the mass of each
+            // component at the current tank sizes, in kg.
             PartMetrics m = Builder.MetricsFor(preset);
             GUI.Label(new Rect(x, y + 18f, w, 14f),
                 LoadComponentMasses(m, preset.Load ?? PropellantLoads.Default), BuilderSkin.TinyRight);
             y += 36f;
 
-            // Кнопка на каждое наполнение реестра — столбиком во всю ширину:
-            // названия пар длинные («AJ10-118K · N2O4/Аэрозин-50»), в ряд они
-            // не влезали и обрезались.
+            // One button per registry load, stacked full width: the long pair
+            // names get clipped when put in a row.
             IReadOnlyList<PropellantLoad> all = PropellantLoads.All;
             PropellantLoad current = preset.Load ?? PropellantLoads.Default;
             for (int i = 0; i < all.Count; i++)
@@ -1615,7 +1586,7 @@ namespace Galilego.Building
             y += (all.Count * 34f) + ((all.Count - 1) * 4f);
         }
 
-        /// <summary>Состав наполнения долями объёма: «LOX 27% · LH2 73% по объёму».</summary>
+        /// <summary>Load composition by volume fraction: "LOX 27% · LH2 73% by volume".</summary>
         private static string LoadComposition(PropellantLoad load)
         {
             string text = string.Empty;
@@ -1632,7 +1603,7 @@ namespace Galilego.Building
             return text + " по объёму";
         }
 
-        /// <summary>Массы компонентов при полной заправке: «LOX 30610 кг · LH2 5076 кг».</summary>
+        /// <summary>Component masses at full load: "LOX 30610 kg · LH2 5076 kg".</summary>
         private static string LoadComponentMasses(PartMetrics metrics, PropellantLoad load)
         {
             if (load == null || metrics.VolumeM3 <= 0d)
@@ -1655,7 +1626,7 @@ namespace Galilego.Building
             return text;
         }
 
-        /// <summary>Заливаемый объём (без газовой подушки), м³ — литры сходятся с заправкой.</summary>
+        /// <summary>Fillable volume (no ullage), m³ — litres match the fuelling.</summary>
         private static double UsableVolumeM3(PartMetrics metrics)
         {
             if (metrics.Load == null || metrics.VolumeM3 <= 0d)
@@ -1689,10 +1660,10 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Переключить форму заготовки. При первом переходе в конус, если верхний
-        /// радиус ещё равен нижнему (бак выглядел бы цилиндром), задаём ступень
-        /// вдвое — заготовка переходника, которую игрок дальше правит сам.
-        /// Ступень округляется до 0.1 м, чтобы дальше шаги давали «круглые» числа.
+        /// Switch the preset's shape. On the first switch to a cone, if the top
+        /// radius still equals the bottom one (the tank would look like a
+        /// cylinder), the step is set to half — an adapter preset the player then
+        /// edits themselves; the step is rounded to 0.1 m so steps give "round" numbers.
         /// </summary>
         private void SetTankForm(ref PartPreset preset, HotSlot owner, int card, TankForm form)
         {
@@ -1725,8 +1696,8 @@ namespace Galilego.Building
             y += 26f;
         }
 
-        // Редактор размера: [««][‹]  значение  [›][»»]. Большие стрелки — 1 м,
-        // малые — 0.1 м, удержание повторяет шаг.
+        // Size editor: [««][‹]  value  [›][»»]. Big arrows — 1 m, small ones —
+        // 0.1 m; holding repeats the step.
         private void DrawEditor(float x, ref float y, float w, string label, ref float value,
             float min, float max, int idBase, string format)
         {
@@ -1770,7 +1741,7 @@ namespace Galilego.Building
                 value = Nudge(value, StepBig, min, max);
             }
 
-            // Значение + полоска положения в диапазоне.
+            // Value + position bar within the range.
             GUI.Box(box, GUIContent.none, BuilderSkin.ValueBox);
             GUI.Label(new Rect(box.x, box.y - 2f, box.width, box.height - 4f),
                 value.ToString(format) + " м", BuilderSkin.ValueText);
@@ -1779,7 +1750,7 @@ namespace Galilego.Building
             DrawSolid(track, new Color(1f, 1f, 1f, 0.08f));
             DrawSolid(new Rect(track.x, track.y, Mathf.Max(3f, track.width * t), track.height), BuilderSkin.Accent);
 
-            // Подписи шага под кнопками.
+            // Step labels under the buttons.
             GUI.Label(new Rect(bigDown.x, y + 36f, btn, 14f), "1 м", BuilderSkin.TinyCenter);
             GUI.Label(new Rect(smallDown.x, y + 36f, btn, 14f), "0.1 м", BuilderSkin.TinyCenter);
             GUI.Label(new Rect(smallUp.x, y + 36f, btn, 14f), "0.1 м", BuilderSkin.TinyCenter);
@@ -1790,14 +1761,14 @@ namespace Galilego.Building
 
         private static float Nudge(float value, float delta, float min, float max)
         {
-            // Шаг по сетке 0.1 м: значение всегда «круглое» (0.5, а не 0.65) —
-            // иначе размер под соседний бак не подобрать. Заодно округление
-            // убирает накопление float-ошибки (0.1 + 0.1 + ...).
+            // 0.1 m grid step: the value is always "round" (0.5, not 0.65), so
+            // the size can be matched to a neighbouring tank. Rounding also
+            // removes accumulated float error (0.1 + 0.1 + ...).
             float stepped = Mathf.Round((value + delta) * 10f) / 10f;
             return Mathf.Clamp(stepped, min, max);
         }
 
-        // Кнопка со стрелкой: срабатывает по нажатию, при удержании повторяется.
+        // Arrow button: fires on press, repeats while held.
         private bool StepButton(Rect rect, Texture2D icon, bool enabled, int id, float repeat)
         {
             Event e = Event.current;
@@ -1857,7 +1828,7 @@ namespace Galilego.Building
             return false;
         }
 
-        // ─── Сетка деталей ───────────────────────────────────────────────────
+        // ─── Part grid ───────────────────────────────────────────────────
 
         private void DrawGrid(Rect r)
         {
@@ -1869,8 +1840,8 @@ namespace Galilego.Building
             GUI.Label(new Rect(x, y, w, 16f), "Поставлено: " + Builder.Parts.Count, BuilderSkin.TinyRight);
             y += 30f;
 
-            // Сетка 6×3: карточки мелкие, видно 18 сразу; когда деталей станет
-            // больше, сетка листается колесом (как столбец характеристик).
+            // 6×3 grid: cards are small, 18 visible at once; when there are more
+            // parts, the grid scrolls with the wheel (like the stats column).
             const int columns = 6;
             const int visibleRows = 3;
             const float gap = 14f;
@@ -1886,8 +1857,8 @@ namespace Galilego.Building
             HandleGridScroll(r, maxScroll);
 
             var view = new Rect(x, y, w, viewH);
-            // Мышь в общих координатах (до группы): попадание по карточкам
-            // считаем в них же, а рисуем — в локальных (группа переводит).
+            // The mouse is in global coordinates (before the group): card hits
+            // are tested in those, while drawing is local (the group translates).
             Vector2 mouseTop = Event.current.mousePosition;
             bool mouseInView = view.Contains(mouseTop);
             GUI.BeginGroup(view);
@@ -1901,7 +1872,7 @@ namespace Galilego.Building
                     cardW, cardH);
                 if (card.yMax < 0f || card.y > viewH)
                 {
-                    continue;                            // ряд целиком за кадром
+                    continue;                            // whole row off-screen
                 }
 
                 var cardTop = new Rect(view.x + card.x, view.y + card.y, cardW, cardH);
@@ -1924,9 +1895,9 @@ namespace Galilego.Building
                 GUI.Box(iconBox, GUIContent.none, BuilderSkin.Slot);
                 float iconSize = Mathf.Min(iconBox.width, iconBox.height) * 0.88f;
 
-                // Карточка показывает картинку заготовки: если эта карточка
-                // уже в панели — иконку слота (она под форму/размеры), иначе
-                // дефолтную отрисовку вида (у двигателя — свою, по модели).
+                // The card shows the preset's picture: if this card is already in
+                // the hotbar — the slot icon (matched to shape/sizes), otherwise
+                // the default kind render (per-model for an engine).
                 Texture2D picture = SlotIconFor(entry);
                 if (picture == null)
                 {
@@ -1936,7 +1907,7 @@ namespace Galilego.Building
                 GUI.DrawTexture(new Rect(iconBox.center.x - (iconSize * 0.5f), iconBox.center.y - (iconSize * 0.5f), iconSize, iconSize),
                     picture, ScaleMode.ScaleToFit);
 
-                // Бейдж «в панели»: номер слота.
+                // "In hotbar" badge: slot number.
                 int slot = FindInHotbar(entry);
                 if (slot >= 0)
                 {
@@ -1945,8 +1916,8 @@ namespace Galilego.Building
                     GUI.Label(badge, (slot + 1).ToString(), BuilderSkin.KeyText);
                 }
 
-                // У двигателя на карточке — имя модели («RS-25», «AJ10-118K»):
-                // с шестью карточками в ряд полное «Двигатель …» не влезает.
+                // An engine card shows the model name ("RS-25", "AJ10-118K"):
+                // with six cards in a row the full "Engine ..." label does not fit.
                 string cardName = kind == PartKind.Engine && spec != null
                     ? spec.DisplayName
                     : PartCatalog.DisplayName(kind, spec);
@@ -1959,9 +1930,9 @@ namespace Galilego.Building
                 {
                     statsIndex = i;
 
-                    // Карточка — черновик «на следующую постановку»: правка
-                    // размеров дальше не трогает слоты, которые игрок не выбирал.
-                    // Стартовая точка черновика — как выглядит выбранный слот.
+                    // The card is a "next placement" draft: further size edits do
+                    // not touch slots the player did not select. The draft starts
+                    // as the selected slot looks.
                     if (editSlot != null && editSlot.Occupied && MatchesEntry(entry, editSlot.Preset))
                     {
                         drafts[i] = editSlot.Preset;
@@ -1971,11 +1942,11 @@ namespace Galilego.Building
 
                     if (e.clickCount >= 2)
                     {
-                        AssignToHotbar(entry);       // двойной клик — в свободный слот
+                        AssignToHotbar(entry);       // double click — into a free slot
                     }
                     else
                     {
-                        dragPreset = StatsPreset();  // тащится то, что показывает окно
+                        dragPreset = StatsPreset();  // what the window shows is dragged
                         dragIcon = picture;
                         dragFromHotbar = -1;
                         dragOrigin = mouseTop;
@@ -1988,7 +1959,7 @@ namespace Galilego.Building
 
             GUI.EndGroup();
 
-            // Низ панели: подсказка и «Очистить».
+            // Panel bottom: hint and "Clear".
             GUI.Label(new Rect(x, r.yMax - 76f, w, 20f), "Перетащите деталь в нижнюю панель.", BuilderSkin.Muted);
             GUI.Label(new Rect(x, r.yMax - 56f, w, 20f), "Двойной клик — в свободный слот.", BuilderSkin.Tiny);
 
@@ -2028,7 +1999,7 @@ namespace Galilego.Building
             return -1;
         }
 
-        /// <summary>Иконка первого слота этой карточки (иначе null — дефолтная вида).</summary>
+        /// <summary>Icon of this card's first slot (otherwise null — use the kind default).</summary>
         private Texture2D SlotIconFor(CatalogEntry entry)
         {
             for (int i = 0; i < hotbar.Length; i++)
@@ -2043,9 +2014,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Двойной клик по карточке: копия показанной заготовки в свободный слот.
-        /// Копия — чтобы из одной карточки легко наделать слотов с разными
-        /// размерами (у двигателя размеров нет — копия той же модели).
+        /// Double click on a card: a copy of the shown preset into a free slot.
+        /// A copy, so one card can easily produce slots with different sizes (an
+        /// engine has no sizes — a copy of the same model).
         /// </summary>
         private void AssignToHotbar(CatalogEntry entry)
         {
@@ -2070,14 +2041,14 @@ namespace Galilego.Building
             SetHotbarIndex(target);
         }
 
-        // ─── Перетаскивание ──────────────────────────────────────────────────
+        // ─── Drag and drop ──────────────────────────────────────────────────
 
         private void HandleDragRelease()
         {
             Event current = Event.current;
             if (Dragging && !dragMoved && (current.mousePosition - dragOrigin).sqrMagnitude > DragThreshold * DragThreshold)
             {
-                dragMoved = true;                    // сдвинули — это уже перетаскивание, не клик
+                dragMoved = true;                    // moved — this is already a drag, not a click
             }
 
             if (current.type != EventType.MouseUp || !Dragging)
@@ -2104,11 +2075,11 @@ namespace Galilego.Building
 
                     if (dragFromHotbar >= 0 && dragFromHotbar != i)
                     {
-                        SwapSlots(dragFromHotbar, i);    // перенос = обмен местами
+                        SwapSlots(dragFromHotbar, i);    // moving = swapping
                     }
                     else
                     {
-                        AssignPreset(i, dragged);        // из инвентаря — копия заготовки
+                        AssignPreset(i, dragged);        // from the inventory — a copy of the preset
                     }
 
                     SetHotbarIndex(i);
@@ -2118,7 +2089,7 @@ namespace Galilego.Building
 
                 if (!dropped && dragFromHotbar >= 0)
                 {
-                    ClearSlot(dragFromHotbar);           // бросили мимо — убрать из панели
+                    ClearSlot(dragFromHotbar);           // dropped outside — remove from the panel
                     ApplySelection();
                 }
             }
@@ -2152,19 +2123,19 @@ namespace Galilego.Building
             SetColor(Color.white);
         }
 
-        // ─── Мелочи ──────────────────────────────────────────────────────────
+        // ─── Misc ──────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Паспорт двигателя заготовки (по EngineId из реестра EngineSpecs;
-        /// пустой Id — двигатель по умолчанию). Характеристики не зависят
-        /// от того, загружена ли модель.
+        /// Engine spec of the preset (by EngineId from the EngineSpecs registry;
+        /// an empty Id is the default engine). The stats do not depend on whether
+        /// the model is loaded.
         /// </summary>
         private static EngineSpec EngineSpecFor(PartPreset preset)
         {
             return EngineSpecs.Get(preset.EngineId);
         }
 
-        /// <summary>Паспорт двигателя карточки (для не-двигателей null).</summary>
+        /// <summary>Engine spec of the card (null for non-engines).</summary>
         private static EngineSpec EngineSpecFor(CatalogEntry entry)
         {
             return entry.Kind == PartKind.Engine ? EngineSpecs.Get(entry.EngineId) : null;
@@ -2192,8 +2163,8 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Подпись вида с паспортом двигателя: у вакуумного двигателя верхней
-        /// ступени добавляется пометка.
+        /// Kind label with the engine spec: a vacuum-only upper stage engine gets
+        /// an extra tag.
         /// </summary>
         private static string KindLabel(PartKind kind, EngineSpec engine)
         {
@@ -2201,7 +2172,7 @@ namespace Galilego.Building
             return engine != null && engine.VacuumOnly ? label + " · вакуумный" : label;
         }
 
-        /// <summary>Конусный ли бак: верхний радиус задан и отличается от нижнего.</summary>
+        /// <summary>Whether the tank is conical: top radius set and different from the bottom.</summary>
         private static bool IsCone(PartMetrics metrics)
         {
             return metrics.TopRadius > 0.01f
@@ -2218,7 +2189,7 @@ namespace Galilego.Building
             return new Rect(rect.x - amount, rect.y - amount, rect.width + (amount * 2f), rect.height + (amount * 2f));
         }
 
-        // Единая точка установки цвета: учитывает прозрачность анимации окна.
+        // Single point for setting colour: accounts for the window animation transparency.
         private void SetColor(Color color)
         {
             GUI.color = new Color(color.r, color.g, color.b, color.a * uiAlpha);

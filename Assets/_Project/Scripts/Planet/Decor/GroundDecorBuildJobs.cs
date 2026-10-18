@@ -7,9 +7,9 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Стадия 0: джиттер-сетка кандидатов и UV-заготовка, целиком в Burst.
-    /// Формула джиттера (хаши по a/b и по (u,v) раздельно) и направление грани
-    /// остались прежними, поэтому расстановка декора не меняется.
+    /// Stage 0: jitter grid of candidates and UV pre-pass, entirely in Burst.
+    /// The jitter formula (separate hashes over a/b and (u,v)) and the face
+    /// direction define the decor placement.
     /// </summary>
     [BurstCompile]
     public struct GroundDecorPrepJob : IJobParallelFor
@@ -52,11 +52,9 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Burst-стадия сборки травы (слои с PerInstanceDensity): вес кандидата
-    /// с затуханием и ТОЧНОЕ число травинок клетки (стохастическое округление
-    /// ожидания). Раньше здесь резервировались слоты «вслепую» по SubPerCell —
-    /// ближний круг съедал бюджет, а записанные впустую слоты оставались
-    /// дырками в пуле и в отрисовке.
+    /// Burst stage of grass assembly (layers with PerInstanceDensity): candidate
+    /// weight with falloff and the EXACT blade count per cell (stochastic rounding
+    /// of the expected value).
     /// </summary>
     [BurstCompile]
     public struct GroundDecorWeightJob : IJobParallelFor
@@ -76,17 +74,16 @@ namespace Galilego.Universe
         public int Face;
         public int Ix;
         public int Iy;
-        /// <summary>Радиус пула слоя (м) — дальше травинок нет.</summary>
+        /// <summary>Layer pool radius (m) — no blades beyond it.</summary>
         public float PoolRadius;
-        /// <summary>Полоса плавного затухания перед PoolRadius (м): без неё
-        /// край пула обрывался бы ровной линией на границе видимости.</summary>
+        /// <summary>Fade band before PoolRadius (m): softens the cut edge of the pool.</summary>
         public float RadiusFadeMeters;
 
-        /// <summary>Число травинок клетки (0..SubPerCell): ожидание плотности
-        /// с затуханием, округлённое стохастически — сумма по чанку точная.</summary>
+        /// <summary>Blade count for the cell (0..SubPerCell): density expectation
+        /// with falloff, stochastically rounded — the chunk total is exact.</summary>
         [WriteOnly] public NativeArray<int> Counts;
 
-        /// <summary>Тангенциальная дистанция кандидата от центра выборки.</summary>
+        /// <summary>Tangential distance of the candidate from the selection centre.</summary>
         [WriteOnly] public NativeArray<float> Distances;
 
         public void Execute(int index)
@@ -110,16 +107,16 @@ namespace Galilego.Universe
             float distance = math.length(tangential);
             Distances[index] = distance;
 
-            // Плотность на подтуфт: биом×склон (DensityWeight) × профиль слоя
-            // (плоское ядро + затухание). Дальше — сколько из SubPerCell
-            // подтуфтов реально сажаем: на дальней границе это 1-3 травинки на
-            // клетку, вблизи — вся сетка.
+            // Density per sub-tuft: biome×slope (DensityWeight) × layer profile
+            // (flat core + falloff). Then — how many of the SubPerCell
+            // sub-tufts are planted: 1-3 blades per cell at the far edge,
+            // the whole grid up close.
             double density = Placement.Density * instance.DensityWeight
                 * GroundDecorDistribution.Falloff(Placement, distance);
             if (RadiusFadeMeters > 0f)
             {
-                // Мягкий край у радиуса пула: плотность гаснет к PoolRadius,
-                // поэтому даже «недобранный» бюджет не рисует линию по земле.
+                // Soft edge at the pool radius: density fades to zero at PoolRadius,
+                // so even an under-filled budget does not draw a line on the ground.
                 float t = (PoolRadius - distance) / RadiusFadeMeters;
                 if (t < 1f)
                 {
@@ -171,13 +168,12 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Раздача слотов записи: клетки обходятся БАКЕТАМИ ПО ДИСТАНЦИИ от центра
-    /// выборки (ближние первыми), а не в порядке индекса сетки. Прежний
-    /// ряд-мажорный обход при исчерпании бюджета оставлял выжившие клетки
-    /// прямыми полосами по сетке — это и было видно как «трава спавнится
-    /// линиями». Хвост бюджета (FadeShare) размывается: последние слоты
-    /// получают меньше травинок, поэтому граница обрезки — плавное кольцо.
-    /// Работает одним потоком: Count ~ десятков тысяч, в Burst это доли мс.
+    /// Write-slot allocation: cells are walked in BUCKETS BY DISTANCE from the
+    /// selection centre (nearest first), not in grid-index order, so cells that
+    /// fit in the budget form a round cut instead of straight stripes.
+    /// The tail of the budget (FadeShare) is diluted: the last slots get fewer
+    /// blades, so the cut boundary is a smooth ring.
+    /// Runs single-threaded: Count ~ tens of thousands, fractions of a ms in Burst.
     /// </summary>
     [BurstCompile]
     public struct GroundDecorAllocateJob : IJob
@@ -187,19 +183,19 @@ namespace Galilego.Universe
 
         public int Count;
         public int Take;
-        /// <summary>Ширина бакета по дистанции (м): разрешение радиуса обрезки.</summary>
+        /// <summary>Bucket width by distance (m): resolution of the cut radius.</summary>
         public float BucketWidth;
         public int BucketCount;
-        /// <summary>Доля бюджета на плавное затухание у границы обрезки (0..0.9).</summary>
+        /// <summary>Budget share for the soft fade at the cut boundary (0..0.9).</summary>
         public float FadeShare;
         public int Salt;
 
-        /// <summary>Скретч порядка клеток по бакетам: джоба и пишет, и читает его
-        /// (не [WriteOnly] — иначе safety-система бросает на чтении).</summary>
+        /// <summary>Scratch cell order by buckets: the job both writes and reads
+        /// it (not [WriteOnly] — the safety system would throw on read).</summary>
         public NativeArray<int> CellOrder;
         [WriteOnly] public NativeArray<int> Offsets;
         [WriteOnly] public NativeArray<int> WriteCounts;
-        /// <summary>[0] — записано травинок, [1] — радиус обрезки (м).</summary>
+        /// <summary>[0] — blades written, [1] — cut radius (m).</summary>
         [WriteOnly] public NativeArray<float> WrittenTotal;
 
         public void Execute()
@@ -234,8 +230,8 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Порядок клеток по бакетам (префиксные суммы) — обход от ближних
-            // к дальним без сортировки.
+            // Cell order by buckets (prefix sums) — nearest-to-farthest walk
+            // without sorting.
             int running = 0;
             for (int b = 0; b < buckets; b++)
             {
@@ -274,8 +270,8 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    // Плавный край: у последних слотов бюджета травинки редеют
-                    // стохастически — граница пула перестаёт быть линией.
+                    // Soft edge: the last budget slots thin out blades
+                    // stochastically — the pool boundary is not a hard line.
                     if (written > fadeStart)
                     {
                         float t = (Take - written) / (float)math.max(1, Take - fadeStart);
@@ -321,12 +317,12 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Разворот подтуфтов травы: пишутся ровно те травинки, что зарезервированы
-    /// аллокатором (WriteCounts), без вероятностного отбора — он уже учтён в
-    /// счёте клетки. Позиции внутри клетки берутся в «разреженном» порядке
-    /// (шаг 13, взаимно прост с 36) со сдвигом по хешу клетки: прореженная
-    /// клетка рассыпается по всей площади, а не липнет к углу.
-    /// Запись — в свои непересекающиеся диапазоны слотов, гонок нет.
+    /// Grass sub-tuft expansion: exactly the blades reserved by the allocator
+    /// (WriteCounts) are written, with no probabilistic selection — that is already
+    /// accounted for in the cell count. Positions within the cell are taken in a
+    /// "thinned" order (stride 13, coprime with 36) offset by the cell hash: a thinned
+    /// cell scatters over the whole area instead of sticking to a corner.
+    /// Writes go to private non-overlapping slot ranges, so there are no races.
     /// </summary>
     [BurstCompile]
     public struct GroundDecorExpandJob : IJobParallelFor
@@ -337,7 +333,7 @@ namespace Galilego.Universe
         [ReadOnly] public NativeArray<Vector3> MeshVertices;
         [ReadOnly] public NativeArray<int> WriteCounts;
         [ReadOnly] public NativeArray<int> WriteOffsets;
-        /// <summary>[0] — радиус выборки, [1] — доля граничной полосы, [2] — ширина.</summary>
+        /// <summary>[0] — selection radius, [1] — boundary band share, [2] — width.</summary>
         [ReadOnly] public NativeArray<float> Selection;
 
         public int CoreN;
@@ -351,14 +347,14 @@ namespace Galilego.Universe
         public double StepUv;
         public float3 CameraLocal;
 
-        /// <summary>Шум рельефа — для перепроверки подтуфтов (вода/песок/горы).</summary>
+        /// <summary>Terrain noise — for re-checking sub-tufts (water/sand/mountains).</summary>
         public TerrainNoiseParams Terrain;
 
-        /// <summary>Фильтры слоя — для перепроверки подтуфтов и стража снэпа.</summary>
+        /// <summary>Layer filters — for sub-tuft re-checks and the snap guard.</summary>
         public GroundDecorPlacementParams Placement;
 
         public int SubPerCell;
-        /// <summary>Шаг разреженного порядка подтуфтов (взаимно прост с числом клеток сетки).</summary>
+        /// <summary>Stride of the thinned sub-tuft order (coprime with the sub-grid cell count).</summary>
         public int SpreadStride;
         public double MinScale;
         public double MaxScale;
@@ -370,8 +366,8 @@ namespace Galilego.Universe
         public double GroundOffsetMeters;
         public int MeshCount;
         public int Take;
-        /// <summary>Время появления травинок (Time.time): у каждой свой сдвиг
-        /// по хешу — прорастают поштучно, а не полосой.</summary>
+        /// <summary>Blade birth time base (Time.time): each gets its own hash
+        /// offset — they sprout one by one, not in a band.</summary>
         public float BuildTime;
         public float StaggerSeconds;
 
@@ -422,7 +418,7 @@ namespace Galilego.Universe
                     : 0;
                 if (subs == 1 || subCount <= 1)
                 {
-                    // Одиночная травинка — на джиттер-центре клетки (как раньше).
+                    // Single blade — at the cell's jitter centre.
                     finalU = Uvs[index].x;
                     finalV = Uvs[index].y;
                 }
@@ -455,18 +451,17 @@ namespace Galilego.Universe
                         + (leanHash * math.max(0d, WindLeanMaxDegrees - WindLeanMinDegrees)));
                 }
 
-                // Отсев — БЕЗ continue: слоты заранее расписаны аллокатором, а
-                // Stored — из пула с чужими данными. Пропущенная запись оставила
-                // бы в слоте позиции чужого чанка (трава в небе), поэтому
-                // отсеянный подтуфт пишется вырожденным (Scale 0 → точка 1e-4).
+                // Culling — WITHOUT continue: slots are pre-assigned by the allocator and
+                // Stored comes from a pool holding foreign data. A skipped write would
+                // leave another chunk's positions in the slot (grass in the sky), so a
+                // culled sub-tuft is written degenerate (Scale 0 → 1e-4 point).
                 bool culled = false;
                 if (SubPerCell > 1)
                 {
-                    // Подтуфт ушёл от проверенного TryEvaluate центра клетки:
-                    // перепроверяем жёсткие фильтры (вода/песок/горы/биом) по
-                    // его собственному направлению. Без этого на грубом LOD
-                    // край клетки заливал травой воду и пляж. Одиночные
-                    // инстансы здесь не разбрасываются — им проверка не нужна.
+                    // The sub-tuft moved away from the cell centre checked by
+                    // TryEvaluate: re-check the hard filters (water/sand/mountains/biome)
+                    // at its own direction. Single instances are not scattered here —
+                    // they don't need the check.
                     double3 subDirection = GroundDecorDistribution.CubeFaceDirection(Face, finalU, finalV);
                     if (!GroundDecorDistribution.IsSurfaceAllowed(Placement, Terrain, subDirection))
                     {
@@ -477,8 +472,8 @@ namespace Galilego.Universe
                 Vector3 meshPoint = MeshPoint(finalU, finalV);
                 float3 meshPoint3 = new float3(meshPoint.x, meshPoint.y, meshPoint.z);
 
-                // Страж снэпа: грубый меш чанка отклоняется от аналитической
-                // высоты на метры — точка обязана сама быть над водой.
+                // Snap guard: the coarse chunk mesh deviates from the analytic
+                // height by metres — the point itself must be above water.
                 if (!culled && !GroundDecorDistribution.IsMeshPointAboveWater(Placement, meshPoint3))
                 {
                     culled = true;
@@ -503,7 +498,7 @@ namespace Galilego.Universe
                 {
                     float layerOffset = (float)(GroundOffsetMeters - (sub.Scale * sub.SinkFactor));
                     sub.Position = meshPoint3 + (normal * layerOffset);
-                    // Появление: время + случайный сдвиг по (клетка, подтуфт).
+                    // Birth: time + random offset by (cell, sub-tuft).
                     sub.BirthTime = StaggerSeconds > 0f
                         ? BuildTime + ((float)GroundDecorDistribution.Hash01(
                             subSlot, Face, index + Ix + 1997, Iy, 42) * StaggerSeconds)
@@ -544,12 +539,12 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Переносит из СТАРОГО пула травинки, оставшиеся в новой выборке (та же
-    /// клетка, те же первые подтуфты): их данные и BirthTime сохраняются.
-    /// При пересборке пула уже выросшие травинки не «прорастают» заново —
-    /// новыми (со свежим BirthTime) остаются только добавленные градиентом.
-    /// Так локальная плотность никогда не падает пачкой, а появление идёт
-    /// поштучно и плавно.
+    /// Carries over from the OLD pool the blades that remain in the new selection
+    /// (same cell, same first sub-tufts): their data and BirthTime are preserved.
+    /// When the pool is rebuilt, already-grown blades do not sprout again —
+    /// only those added by the gradient stay new (with a fresh BirthTime).
+    /// Thus local density never drops in a batch, and sprouting stays
+    /// one-by-one and smooth.
     /// </summary>
     [BurstCompile]
     public struct GroundDecorMergeKeptJob : IJob

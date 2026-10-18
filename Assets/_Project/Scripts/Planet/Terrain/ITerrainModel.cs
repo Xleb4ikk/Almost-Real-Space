@@ -7,51 +7,51 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Геометрия поверхности тела. Жёсткий контракт (п.5/12 v3): высота h и
-    /// нормаль n относятся К ОДНОЙ И ТОЙ ЖЕ геометрии — реализация обязана
-    /// выводить n из той же функции формы, что и h. Рассинхрон «поверхность
-    /// из одного места, нормаль из другого» запрещён: контактная точка
-    /// (проекция) и разложение сил обязаны согласовываться, иначе трение
-    /// держит там, где проекция уже отпустила, или наоборот.
-    /// Реализации: SphericalTerrain (гладкая сфера) и HeightfieldTerrain
-    /// (процедурный fBm-рельеф + уровень моря).
+    /// Geometry of a body's surface. Hard contract (clause 5/12 v3): height h and
+    /// normal n refer to the SAME geometry — an implementation must derive n from
+    /// the same shape function as h. A mismatch of "surface from one place, normal
+    /// from another" is forbidden: the contact point (projection) and force
+    /// decomposition must agree, otherwise friction holds where the projection has
+    /// already let go, or vice versa.
+    /// Implementations: SphericalTerrain (smooth sphere) and HeightfieldTerrain
+    /// (procedural fBm relief + sea level).
     /// </summary>
     public interface ITerrainModel
     {
         /// <summary>
-        /// Высота поверхности над Radius (м) в тел-fixed координатах
-        /// (lat/lon в радианах — те же, что выдаёт OrbitingBody.SurfaceLatLonAt).
-        /// Вращение тела учтено самим фактом body-fixed координат.
-        /// Включает кламп морем: в океане возвращает уровень моря (плоская
-        /// вода для посадки кораблей и детекторов касания).
+        /// Surface height above Radius (m) in body-fixed coordinates
+        /// (lat/lon in radians — the same as produced by OrbitingBody.SurfaceLatLonAt).
+        /// Body rotation is accounted for by the body-fixed frame itself.
+        /// Includes the sea clamp: in the ocean it returns sea level (flat water for
+        /// ship landing and touch detectors).
         /// </summary>
         double GetHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians);
 
         /// <summary>
-        /// СЫРАЯ высота рельефа над Radius (м) БЕЗ клампа морем: в океане —
-        /// глубина дна (отрицательная относительно уровня моря). Единственный
-        /// путь узнать настоящее дно (для плавания, водной геометрии, глубины).
+        /// RAW relief height above Radius (m) WITHOUT the sea clamp: in the ocean the
+        /// floor depth (negative relative to sea level). The only way to learn the real
+        /// floor (for swimming, water geometry, depth).
         /// </summary>
         double GetRawHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians);
 
         /// <summary>
-        /// Уровень моря над Radius (м). NegativeInfinity (и любое ≤ −1e29) =
-        /// моря нет. Совпадает с порогом, по которому рендер красит воду.
+        /// Sea level above Radius (m). NegativeInfinity (and any value ≤ −1e29) =
+        /// no sea. Matches the threshold at which the renderer paints water.
         /// </summary>
         double GetSeaLevelMeters();
 
         /// <summary>
-        /// Внешняя нормаль поверхности в точке relPos (относительно центра тела,
-        /// мировые координаты) в момент timeSeconds. Время обязательно: рельеф
-        /// вращается вместе с телом, нормаль в мировом базисе зависит от спина.
+        /// Outward surface normal at point relPos (relative to the body centre, world
+        /// coordinates) at time timeSeconds. The time is mandatory: the relief rotates
+        /// with the body, so the normal in the world frame depends on spin.
         /// </summary>
         Vector3d GetOutwardNormal(OrbitingBody body, Vector3d relativePosition, double timeSeconds);
     }
 
     /// <summary>
-    /// Гладкая сфера: h≡0, нормаль — радиальная от центра тела. Точна по
-    /// построению (не приближение): относительная позиция уже лежит на сфере.
-    /// Без полюсов и тригонометрии — только нормализация.
+    /// Smooth sphere: h≡0, the normal is radial from the body centre. Exact by
+    /// construction (not an approximation): the relative position already lies on the
+    /// sphere. No poles or trigonometry — just normalization.
     /// </summary>
     public sealed class SphericalTerrain : ITerrainModel
     {

@@ -6,30 +6,30 @@ using UnityEngine.Rendering.HighDefinition;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Подводное затухание ВИДА: спектральное поглощение по закону
-    /// Бера — Ламберта, полноэкранным проходом HDRP.
+    /// Underwater fade of the VIEW: spectral absorption by the Beer-Lambert law,
+    /// as a full-screen HDRP pass.
     ///
-    /// Чем отличается от UnderwaterEffect: тот задаёт тон и экспозицию
-    /// (ColorAdjustments) и подменяет фон камеры, но НЕ добавляет
-    /// затухания по расстоянию - HDRP Fog у него выключен флагом
-    /// enabled, поэтому весь override игнорируется. Из-за этого под водой
-    /// видно километры с чёткими силуэтами.
+    /// How it differs from UnderwaterEffect: that one sets tone and exposure
+    /// (ColorAdjustments) and swaps the camera background, but adds NO
+    /// distance-based fade — its HDRP Fog is off via the enabled flag, so the whole
+    /// override is ignored. Without it, kilometers are visible underwater with sharp
+    /// silhouettes.
     ///
-    /// Почему свой проход, а не включить тот Fog: встроенный Fog
-    /// одноцветный (цвет + meanFreePath) и не различает каналы, поэтому
-    /// дальнее уходит в серую дымку, а не в сине-зелёный. Ради последнего
-    /// и нужен спектральный sigma.
+    /// Why a custom pass instead of enabling that Fog: the built-in Fog is
+    /// monochrome (color + meanFreePath) and does not distinguish channels, so
+    /// distance turns grey rather than blue-green. Spectral sigma is what makes the
+    /// latter happen.
     ///
-    /// Где стоит в кадре: BeforePostProcess, а не AfterPostProcess.
-    /// На AfterPostProcess буфер глубины в HDRP уже невалиден (у
-    /// UnderwaterSunRays там стоит targetDepthBuffer = None именно поэтому),
-    /// а нам深度 читать обязательно. BeforePostProcess - после
-    /// непрозрачной геометрии, неба и прозрачных, до тонмаппинга и UI.
+    /// Where it sits in the frame: BeforePostProcess, not AfterPostProcess.
+    /// AfterPostProcess the HDRP depth buffer is already invalid (which is why
+    /// UnderwaterSunRays sets targetDepthBuffer = None), and depth must be read here.
+    /// BeforePostProcess runs after opaque geometry, sky and transparents, before
+    /// tonemapping and UI.
     ///
-    /// Точность: высоту камеры над уровнем моря и k = sea^2 - |C|^2 считаем
-    /// в double здесь и передаём готовыми. В шейдере length(C) - sea при
-    /// R = 6 371 000 м даёт шум ±0.5 м (ULP float32), а по этой величине
-    /// решается «под водой ли камера» - будет мигание на границе.
+    /// Precision: the camera height above sea level and k = sea^2 - |C|^2 are
+    /// computed in double here and passed ready-made. In the shader length(C) - sea
+    /// at R = 6 371 000 m gives ±0.5 m of noise (float32 ULP), and "is the camera
+    /// underwater" is decided from that value — this would flicker at the boundary.
     /// </summary>
     [DefaultExecutionOrder(-38)]
     public sealed class UnderwaterViewFog : MonoBehaviour
@@ -87,15 +87,15 @@ namespace Galilego.Universe
         public bool Enabled = true;
 
         /// <summary>
-        /// Отладочный вывод одного слагаемого прямо в кадр, без затухания.
-        /// Нужен, когда картинка «идёт слоями»: сразу видно, КАКОЙ из членов
-        /// полосит - глубина, путь в воде, пропускание или сам захват кадра.
-        /// 0 = выключено (обычный вид).
-        /// 1 = под (плавный переход), 2 = путь в воде pathIn/50 м (красный),
-        /// 3 = пропускание T, 4 = eyeDepth/1000 м, 5 = выход tExit/5000 м,
-/// 6 = uv.x (проверка попадания в кадр), 7 = исходный цвет сцены,
-        /// 8 = маска потолка: R - потолок дорисовывается, G - меш воды есть
-        /// в глубине, B - под водой.
+        /// Debug output of a single term straight into the frame, without fade.
+        /// Useful when the image "comes in layers": it shows WHICH term is banding —
+        /// depth, path in water, transmittance or the frame capture itself.
+        /// 0 = off (normal view).
+        /// 1 = depth (smooth transition), 2 = path in water pathIn/50 m (red),
+        /// 3 = transmittance T, 4 = eyeDepth/1000 m, 5 = exit tExit/5000 m,
+/// 6 = uv.x (framing check), 7 = source scene color,
+/// 8 = ceiling mask: R - ceiling is drawn in, G - water mesh is present
+/// at depth, B - underwater.
         /// </summary>
         [Range(0, 8)]
         public int DebugMode = 0;
@@ -175,9 +175,9 @@ namespace Galilego.Universe
 
         private void UploadGlobals(Camera camera, OrbitingBody body)
         {
-            // Позиция камеры в абсолютных (astro) координатах - та же, что
-            // считает UnderwaterEffect: FloatingOrigin.Anchor плюс локальная
-            // позиция камеры.
+            // Camera position in absolute (astro) coordinates — same as
+            // UnderwaterEffect computes: FloatingOrigin.Anchor plus the camera's
+            // local position.
             Vector3d observer = FloatingOrigin.Anchor
                 + AstroFrame.ToAstro(camera.transform.position);
             body.EvaluateWorldState(Effect.Runner.TimeSeconds, out Vector3d bodyPosition, out _);
@@ -185,8 +185,8 @@ namespace Galilego.Universe
             double seaRadius = body.Radius + SeaLevelMetersOf(body);
             double r = (observer - bodyPosition).Magnitude;
 
-            // Всё, что ниже, - в double. Именно здесь решается «под водой ли
-            // камера» с точностью лучше сантиметра, а не ±0.5 м.
+            // Everything below is in double. This is where "is the camera underwater"
+            // is decided with better than centimetre precision, not ±0.5 m.
             double camAltitude = r - seaRadius;
             double k = (seaRadius - r) * (seaRadius + r);
 
@@ -226,9 +226,9 @@ namespace Galilego.Universe
 
         private double SeaLevelMetersOf(OrbitingBody body)
         {
-            // Уровень моря живёт в модели рельефа. Берём его ОТТУДА ЖЕ, откуда
-            // берёт WaterQuery, иначе сфера «вода» и сфера «погружение» разойдутся
-            // на величину уровня моря и граница перехода уедет.
+            // Sea level lives in the terrain model. Take it from the SAME place
+            // WaterQuery does, otherwise the "water" sphere and the "submersion"
+            // sphere would differ by the sea level and the transition edge would drift.
             return body.Terrain == null ? 0d : body.Terrain.GetSeaLevelMeters();
         }
 
@@ -257,16 +257,15 @@ namespace Galilego.Universe
                 fetchColorBuffer = true,
                 materialPassName = "UnderwaterViewFog",
 
-                // Custom - свой буфер, чтобы не читать и писать буфер камеры
-                // одним ресурсом.
+                // Custom — its own buffer, so the camera buffer is not read and
+                // written as a single resource.
                 //
-                // targetDepthBuffer = None, и это НЕ ошибка: у HDRP в
-                // TargetBuffer только Camera/Custom/None, отдельного "Depth"
-                // нет. Глубину читает CustomPassLoadCameraDepth, которая
-                // берёт ГЛОБАЛЬНЫЙ буфер камеры и от объявления targetDepthBuffer
-                // не зависит. None здесь ещё и потому, что на BeforePostProcess
-                // буфер камеры жив и валиден, а вот на AfterPostProcess (как у
-                // UnderwaterSunRays) он уже непригоден.
+                // targetDepthBuffer = None is NOT a mistake: HDRP's TargetBuffer has
+                // only Camera/Custom/None, there is no separate "Depth". Depth is read
+                // by CustomPassLoadCameraDepth, which takes the GLOBAL camera buffer
+                // and does not depend on the targetDepthBuffer declaration. None is also
+                // here because at BeforePostProcess the camera buffer is alive and valid,
+                // whereas at AfterPostProcess (as in UnderwaterSunRays) it is unusable.
                 targetColorBuffer = CustomPass.TargetBuffer.Custom,
                 targetDepthBuffer = CustomPass.TargetBuffer.None,
                 clearFlags = ClearFlag.Color,
@@ -290,8 +289,8 @@ namespace Galilego.Universe
             volume.isGlobal = true;
             volume.targetCamera = camera;
 
-            // BeforePostProcess, а не AfterPostProcess: там буфер глубины уже
-            // невалиден, а нам он читается попиксельно.
+            // BeforePostProcess, not AfterPostProcess: there the depth buffer is
+            // already invalid, and it is read per-pixel here.
             volume.injectionPoint = CustomPassInjectionPoint.BeforePostProcess;
             volume.customPasses.Add(fogPass);
             volume.customPasses.Add(compositePass);
@@ -301,8 +300,8 @@ namespace Galilego.Universe
 
 private void SetVolumeActive(bool active)
         {
-            // При выходе из воды глобал не обновляется (ранний return) и остаётся
-            // отрицательным навсегда. Ставим заведомо «над водой».
+            // When inactive the global is not updated (early return) and would stay
+            // negative forever, so set it well above water.
             if (!active)
             {
                 Shader.SetGlobalFloat(CamAltId, 1.0e6f);

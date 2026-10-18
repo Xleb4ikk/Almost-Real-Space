@@ -3,18 +3,17 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Палитра поверхности: высотные зоны (пляж → низины → скалы → снег) плюс
-    /// биомы по «влажности» из noise-маски (пустыня/степь/лес). Порядок слоёв:
-    /// (0) маска сдвигает t ДО слоёв и задаёт биом; (1) база по высоте;
-    /// (2) rock-override по склону; (3) снег только на пологих. Все фичи
-    /// выключены (rock/snow/mask = 0) → нейтральная база (= HeightColorLegacy),
-    /// что доказано T83.
+    /// Surface palette: height bands (beach -> lowland -> rock -> snow) plus
+    /// biomes by "wetness" from a noise mask (desert/steppe/forest). Layer order:
+    /// (0) the mask shifts t BEFORE the layers and sets the biome; (1) base by height;
+    /// (2) rock override by slope; (3) snow only on gentle slopes. With all features
+    /// off (rock/snow/mask = 0) -> neutral base (= HeightColorLegacy).
     /// </summary>
     internal static class TerrainPalette
     {
-        // Цвета заданы в привычном sRGB (как в редакторе), а проект рендерит в
-        // Linear: без конверсии альбедо попадает в шейдер как линейное и на
-        // выходе гамма-осветляется/обесцвечивается (бледная поверхность).
+        // Colors are authored in familiar sRGB (as in the editor) while the project
+        // renders in Linear: without conversion the albedo enters the shader as
+        // linear and comes out gamma-brightened/washed out (pale surface).
         internal static float ToLinear(float c)
         {
             return c <= 0.04045f
@@ -22,7 +21,7 @@ namespace Galilego.Universe
                 : (float)System.Math.Pow((c + 0.055f) / 1.055f, 2.4d);
         }
 
-        /// <summary>sRGB→Linear для палитры из TerrainProfile.Palette (T92).</summary>
+        /// <summary>sRGB->Linear for the palette from TerrainProfile.Palette.</summary>
         internal static Color ToLinear(Color c)
         {
             return new Color(ToLinear(c.r), ToLinear(c.g), ToLinear(c.b), 1f);
@@ -42,14 +41,14 @@ namespace Galilego.Universe
         internal static readonly Color Rock = Srgb(0.45f, 0.41f, 0.36f);
         internal static readonly Color Snow = Srgb(0.96f, 0.97f, 0.99f);
         internal static readonly Color Sea = Srgb(0.05f, 0.20f, 0.42f);
-        // Моттлинг земли: пятна почвы (в тёплый коричневый) и сочной зелени.
+        // Ground mottling: patches of soil (warm brown) and lush green.
         internal static readonly Color Soil = Srgb(0.50f, 0.40f, 0.26f);
         internal static readonly Color Lush = Srgb(0.13f, 0.40f, 0.12f);
 
         /// <summary>
-        /// Тангенс угла склона по косинусу между нормалью и радиалью.
-        /// Безразмерен (rise/run) — пороги не едут от масштаба тайла/LOD.
-        /// cos ≤ 1e-6 (нависание/вырождение) — считаем склон вертикальным.
+        /// Slope angle tangent from the cosine between normal and radial.
+        /// Dimensionless (rise/run), so thresholds don't drift with tile/LOD scale.
+        /// cos &lt;= 1e-6 (overhang/degeneracy) counts as a vertical slope.
         /// </summary>
         internal static double SlopeTan(double cosA)
         {
@@ -63,12 +62,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Допуск уровня моря в АБСОЛЮТНЫХ метрах — тот же, что в
-        /// PlanetSurface.shader (SeaEpsilon). Раньше здесь стояло
-        /// amplitude*0.001: при амплитуде 9144 м это 9.14 м, и полоса СУШИ в
-        /// девять метров над водой считалась водой — CPU-палитра красила
-        /// прибрежную равнину океаном, а шейдер (у него допуск уже был
-        /// абсолютным) — сушей. Теперь обе стороны решают одинаково.
+        /// Sea level tolerance in ABSOLUTE meters — the same as in
+        /// PlanetSurface.shader (SeaEpsilon), so both sides decide identically.
         /// </summary>
         internal static double SeaEpsilon(double amplitude)
         {
@@ -93,17 +88,15 @@ namespace Galilego.Universe
             bool maskOn = maskStrength != 0d;
             Color c = BaseColor(height, seaLevel, amplitude, colorMask, maskOn, maskStrength, latitudeRadians, beachHeightMeters);
             bool isSea = height <= seaLevel + SeaEpsilon(amplitude);
-            // Пляж — абсолютными метрами: моттлинг и скала его не трогают
-            // (паритет шейдеру), даже если маска подняла t выше песчаной полосы.
-            // Границы берём те же, что у BaseColor (SandWeight): жёсткий порог
-            // здесь включал бы пятна почвы/зелени ровно на 18 м, и на ровном
-            // берегу моттлинг сам рисовал бы ту же линию, ради которой он снят.
+            // Beach is in absolute meters: mottling and rock leave it alone
+            // (shader parity) even if the mask raised t above the sand band.
+            // Bounds are the same as in BaseColor (SandWeight).
             double beachWeight = SandWeight(height - seaLevel, beachHeightMeters);
             bool isBeach = !isSea && beachWeight > 0d;
 
-            // Нормированная высота t как в шейдере (маска сдвигает пороги):
-            // используется и для отсечения пляжа от моттлинга, и для порога
-            // rock-override по высоте (камни только на крупных горах).
+            // Normalized height t as in the shader (mask shifts the thresholds):
+            // used both to keep mottling off the beach and for the rock-override
+            // height threshold (rock only on tall mountains).
             double tMasked = (height - seaLevel) / System.Math.Max(1d, amplitude);
             if (maskOn)
             {
@@ -115,9 +108,9 @@ namespace Galilego.Universe
                 tMasked = 0d;
             }
 
-            // Мелкомасштабное разнообразие земли: пятна почвы (в тёплый коричневый)
-            // и более сочной/тёмной зелени. Только на земле выше пляжной зоны —
-            // на песке пятен быть не должно.
+            // Small-scale ground variation: patches of soil (warm brown) and
+            // lusher/darker green. Only on land above the beach zone — no patches
+            // on sand.
             if (!isSea && !isBeach && detailStrength != 0d)
             {
                 double d = Clamp(colorDetail, -1d, 1d);
@@ -133,8 +126,8 @@ namespace Galilego.Universe
 
             bool snowBand = !isSea && IsSnowBand(height, seaLevel, amplitude);
 
-            // Скала — только на крутых И достаточно высоких склонах (крупные
-            // горы). Порог по высоте отсекает пляж, дюны и низменности.
+            // Rock only on steep AND sufficiently high slopes (tall mountains).
+            // The height threshold cuts off the beach, dunes and lowlands.
             if (!isSea && !isBeach && rockSlopeTan > 0d && slopeTan >= rockSlopeTan
                 && (rockHeightMin <= 0d || tMasked >= rockHeightMin))
             {
@@ -173,13 +166,11 @@ namespace Galilego.Universe
                 return Sea;
             }
 
-            // Пляж — абсолютными метрами над морем, маской не стирается:
-            // иначе на «плюсовых» берегах зелень начинается от уреза воды.
-            // Не ступенька, а затухание: полная полоса песка только до 0.4·beach,
-            // к 1.6·beach от песка не остаётся ничего, и ровно на beach — половина.
-            // Ступенчатый край на сфере проецировался в прямую линию через весь
-            // кадр (серая полоса у горизонта), а на планете высоты это просто
-            // граница константного цвета. Зеркалит smoothstep в PlanetSurface.
+            // Beach is in absolute meters above sea and is not erased by the mask:
+            // otherwise on "positive" shores green would start at the water's edge.
+            // A fade, not a step: full sand band only up to 0.4·beach, nothing left by
+            // 1.6·beach, and exactly half at beach. Mirrors the smoothstep in
+            // PlanetSurface.
             double sandW = SandWeight(height - seaLevel, beachHeightMeters);
             if (sandW >= 1d)
             {
@@ -197,19 +188,13 @@ namespace Galilego.Universe
                 t = 0d;
             }
 
-            // Биом по влажности: сухо → пустыня → сухая трава → луг → лес.
-            // Ниже НИКАКОЙ нормированной «песчаной» полосы: песок — это только
-            // абсолютный пляж (beachHeightMeters) выше по коду. Полоса t<0.03 при
-            // амплитуде 9144 м — это 274 м высоты, и она красила песком ВСЮ
-            // прибрежную равнину (а Grass/Tree ещё и отсекали её по MinNormalizedHeight,
-            // т.е. зелёная по рельефу земля оставалась без травы).
+            // Biome by wetness: dry -> desert -> dry grass -> meadow -> forest.
+            // No normalized sand band below: sand is only the absolute beach
+            // (beachHeightMeters) earlier in the code.
             //
-            // Кривая wet01 — общая с декором (GroundDecorDistribution.BiomeWetness,
-            // зеркало в PlanetSurface.shader). Мягкая, tanh вместо clamp: маска
-            // SampleColorNoise на сфере широкая (p10=−0.33, p90=+0.32), и старая
-            // clamp(0.5+1.6·mask) САТУРИРОВАЛА 21% планеты в ровные 0/1: четверть
-            // суши получала wet ровно 0, по краям была ровная «пустыня/лес», а
-            // деревья (WetMin=0.2) не росли нигде на площади в десятки километров.
+            // The wet curve is shared with the decor
+            // (GroundDecorDistribution.BiomeWetness, mirrored in PlanetSurface.shader):
+            // soft tanh instead of clamp.
             double wet = maskOn ? GroundDecorDistribution.BiomeWetness(mask) : 0.5d;
             Color lowland = BiomeColor(wet);
             Color c;
@@ -226,7 +211,7 @@ namespace Galilego.Universe
                 c = Color.Lerp(Rock, Snow, (float)((t - 0.70d) * (1d / 0.30d)));
             }
 
-            // Полярные широты: тундра у границы леса, ледяная шапка у полюсов.
+            // Polar latitudes: tundra at the tree line, ice cap at the poles.
             double lat01 = Clamp01(System.Math.Abs(latitudeRadians) / (System.Math.PI * 0.5d));
             double tundra = Smoothstep01((lat01 - 0.52d) / 0.22d);
             double ice = Smoothstep01((lat01 - 0.70d) / 0.16d);
@@ -240,8 +225,8 @@ namespace Galilego.Universe
                 c = Color.Lerp(c, Snow, (float)ice);
             }
 
-            // Песок — поверх биома, а не вместо ветки: на затухании полосы
-            // зелёный биом должен проступать сквозь песок, а не исчезать.
+            // Sand goes on top of the biome rather than replacing the branch: in the
+            // band's fade the green biome must show through the sand, not vanish.
             if (sandW > 0d)
             {
                 c = Color.Lerp(c, Sand, (float)sandW);
@@ -251,9 +236,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Вес песка по высоте над морем: 1 до 0.4·beach, 0 с 1.6·beach,
-        /// ровно 0.5 на самой границе пляжа. Нулевой beach — пляжа нет.
-        /// Единственный источник чисел: шейдер и декор берут тот же beach.
+        /// Sand weight by height above sea: 1 up to 0.4·beach, 0 from 1.6·beach,
+        /// exactly 0.5 at the beach edge. Zero beach means no beach.
+        /// Single source of the numbers: the shader and the decor use the same beach.
         /// </summary>
         internal static double SandWeight(double aboveSea, double beachHeightMeters)
         {
@@ -265,7 +250,7 @@ namespace Galilego.Universe
             return 1d - Smoothstep01((aboveSea - (0.4d * beachHeightMeters)) / (1.2d * beachHeightMeters));
         }
 
-        /// <summary>Цвет низменности по нормированной влажности 0..1.</summary>
+        /// <summary>Lowland color by normalized wetness 0..1.</summary>
         private static Color BiomeColor(double wet)
         {
             if (wet < 0.18d)

@@ -4,27 +4,26 @@ using Galilego.Core;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Тяга ступенчатой установки как IDynamicsSource: берёт тягу и расход у
-    /// активной ступени StagePropulsion (двигатели работают одновременно,
-    /// глохнут по пулам самих ядер). Pure: только читает модель; списание
-    /// топлива — CommitBurn после ПРИНЯТОГО шага, не здесь.
+    /// Stage stack thrust as IDynamicsSource: takes thrust and mass flow from the
+    /// active StagePropulsion stage (engines fire simultaneously, cut out per core
+    /// pool). Pure: only reads the model; fuel consumption is CommitBurn after an
+    /// ACCEPTED step, not here.
     ///
-    /// Направление — как у ThrustSource: снимок ориентации (body-frame) или
-    /// legacy мировое поле; газ — расписание ThrottleAt(t) 0..1 (клампится).
-    /// При нулевом газе (или без зажжённой ступени) вклад ровно нулевой —
-    /// это обязательное условие дальнего варпа (CanEnterLongWarp сканирует
-    /// вклад источников).
+    /// Direction as in ThrustSource: attitude snapshot (body frame) or the legacy
+    /// world field; throttle is the ThrottleAt(t) schedule 0..1 (clamped). At zero
+    /// throttle (or with no lit stage) the contribution is exactly zero — a required
+    /// condition for long warp (CanEnterLongWarp scans source contributions).
     /// </summary>
     public sealed class StageThrustSource : IDynamicsSource
     {
-        /// <summary>Модель установки (общая с физикой и панелью).</summary>
+        /// <summary>Stack model (shared with physics and the panel).</summary>
         public StagePropulsion Model;
 
         public Vector3d ThrustDirection = new Vector3d(1d, 0d, 0d);
         public Vector3d BodyThrustDirection = new Vector3d(0d, 0d, 1d);
         public QuaternionD? AttitudeSnapshot;
 
-        /// <summary>Расписание газа по времени 0..1. null = заглушено (0).</summary>
+        /// <summary>Throttle schedule over time 0..1. null = cut (0).</summary>
         public Func<double, double> ThrottleAt;
 
         public DynamicsContribution Evaluate(Vector3d position, Vector3d velocity, double mass, double timeSeconds)

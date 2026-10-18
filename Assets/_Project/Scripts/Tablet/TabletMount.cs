@@ -5,16 +5,11 @@ using UnityEngine;
 namespace Galilego.Tablet
 {
     /// <summary>
-    /// Крепление планшета к кораблю. Пока у корабля нет интерьера и видимой
-    /// модели, планшет висит у точки корабля: поднят вдоль местной вертикали,
-    /// смещён в сторону (на восток) и развёрнут экраном к точке корабля. Так он
-    /// доступен и из заглушки интерьера (ходьба вокруг точки корабля ≤ 3 м),
-    /// и снаружи, а подъём не даёт ему оказаться в рельефе. Когда появится
-    /// интерьер (или рука-планшет Orion), крепление выключается и планшет
-    /// становится ребёнком кабины.
-    ///
-    /// LateUpdate после ShipView (-90) и до камеры (-40): позиция берётся из
-    /// того же FloatingOrigin, что и корабль, кадром позже не отстаёт.
+    /// Attaches the tablet to the ship. The tablet hangs at the ship point: raised
+    /// along the local vertical, offset sideways (east) and turned to face the ship,
+    /// so it is reachable both inside and outside and the raise keeps it out of the
+    /// terrain. LateUpdate runs after ShipView (-90) and before the camera (-40):
+    /// the position comes from the same FloatingOrigin as the ship, so it never lags a frame.
     /// </summary>
     [DefaultExecutionOrder(-80)]
     public sealed class TabletMount : MonoBehaviour

@@ -5,9 +5,9 @@ using Unity.Mathematics;
 
 internal static partial class P1bTests
 {
-    // Фиксированная сетка узлов: 61^3 — хватает и на статистику по 12
-    // направлениям, и на крайние случаи разбиения на ячейки. Наборы считаются
-    // на детерминированной выборке, иначе такие тесты флакают.
+    // Fixed node grid: 61^3 — enough both for statistics over 12
+    // directions and for cell-splitting edge cases. Sets are computed
+    // on a deterministic sample; otherwise such tests flake.
 
     private static int Test112_GradientSetSymmetry()
     {
@@ -58,30 +58,22 @@ internal static partial class P1bTests
             + "средний градиент {4:E2} (на ось), 3*сигма {5:E2}",
             n, distinct.Count, spread, offDiag, meanPerAxis, seSum));
 
-        // 12 рёбер куба дают Σggᵀ = 4I ровно. Прежний набор (8 диагоналей +
-        // 4 ребра xy + 4 ребра xz) давал разброс 37.5% — ось x была громче на
-        // 42% по мощности, то есть та самая осевая анизотропия, ради которой
-        // value noise менялся. Порог 1% — с запасом от статистики выборки.
+        // 12 cube edges give exactly Σggᵀ = 4I. Threshold 1% leaves margin
+        // over the sampling statistics.
         Check(spread < 1.0, "T112 gradient-set",
             "Σggᵀ изотропна: разброс диагонали " + spread.ToString("F4", CultureInfo.InvariantCulture) + "%");
 
-        // Внедиагональные элементы симметричны нулю: набор замкнут относительно
-        // перестановок осей, иначе появляется предпочтительное направление.
-        // Порог 1e-3 был поставлен ниже шума выборки: при 61^3 узлах и
-        // произведениях gx*gy вида {0, +/-0.5} стандартная ошибка одного
-        // слагаемого около 0.29/sqrt(226981) = 6.1E-4, и сумма трёх слагаемых
-        // даёт около 1.8E-4*3. То есть 1.5E-3 - это меньше одной сигмы, и
-        // проверять её порогом 1e-3 бессмысленно: тест проходил или падал по
-        // удаче. Ниже проверка идёт в сигмах, что делает её осмысленной.
+        // Off-diagonal terms are symmetric about zero: the set is closed under
+        // axis permutations, otherwise a preferred direction appears. A fixed
+        // threshold sits below the sampling noise here, so the check is done in
+        // sigmas instead (standard error of one gx*gy term ≈ 6.1e-4 at 61^3 nodes).
         Check(offDiag < 3d * seSum, "T112 gradient-set",
             "внедиагональный член выше 3 сигм: |внедиаг.| " + offDiag.ToString("E2", CultureInfo.InvariantCulture)
             + " при 3*sigma = " + (3d * seSum).ToString("E2", CultureInfo.InvariantCulture));
-        // Средний градиент должен быть нулём, иначе шум смещён вдоль оси. Точного
-        // нуля не будет: индекс берётся как h % 12, а домашний хеш разбрасывает
-        // 12 корзин не идеально — замер даёт разброс 0.56%. Направление при этом
-        // не «предпочтительное», а слегка смещённое: 0.56% от 0.707 даёт смещение
-        // среднего шума около 0.4% амплитуды, что на рельефе не видно. Порог
-        // взят с запасом от этого измеренного разброса, а не «на глаз».
+        // Mean gradient should be zero, otherwise the noise is biased along an
+        // axis. It is not exactly zero: the index is h % 12 and the hash scatters
+        // the 12 bins imperfectly (measured spread 0.56%), which is invisible on
+        // terrain. The threshold leaves margin over that spread.
         Check(meanPerAxis < 5e-3, "T112 gradient-set",
             "средний градиент ~нулевой: " + meanPerAxis.ToString("E2", CultureInfo.InvariantCulture)
             + " (остаток от разброса h % 12 по 12 корзинам)");
@@ -93,9 +85,9 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// LatticeDot — самая хитрая строка шума: знаки и маски «какая ось занята»
-    /// считаются умножениями, без ветвлений. Сверяем её с эталонным вектором
-    /// LatticeGradientFast на всех 12 индексах, на узлах с большими координатами.
+    /// LatticeDot is the trickiest noise line: signs and "which axis is occupied"
+    /// masks are computed with multiplications, without branches. Checks it against
+    /// the reference LatticeGradientFast vector on all 12 indices, at large node coordinates.
     /// </summary>
     private static int Test113_LatticeDotMatchesTable()
     {
@@ -104,9 +96,9 @@ internal static partial class P1bTests
         int idx = 0;
         var rng = new Random(4242);
 
-        // В том числе крупные смещения: реальные октавы доходят до частоты ~1e4,
-        // и индексы ячеек уезжают далеко за пределы int — именно там ошибка в
-        // разложении индекса проявилась бы как полоса на планете.
+        // Large offsets included: real octaves reach frequency ~1e4 and cell
+        // indices go far beyond int range — an error in index decomposition
+        // would show up there as a band on the planet.
         for (int i = 0; i < 200000; i++)
         {
             int x = rng.Next(-4000000, 4000000);
@@ -136,10 +128,10 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Аналитическая производная против центральной разности. Формула выведена
-    /// вручную и ничем не проверялась, а домен по склону опирается ровно на неё.
-    /// Точки берём не на границах ячеек: там производная непрерывна, но вторые
-    /// производные скачут, и центральная разность даёт конечную погрешность.
+    /// Analytic derivative versus central difference. The slope domain relies on
+    /// exactly this formula. Points are not taken on cell boundaries: there the
+    /// derivative is continuous but the second derivatives jump, giving the central
+    /// difference a finite error.
     /// </summary>
     private static int Test114_DerivativeMatchesFiniteDifference()
     {
@@ -150,9 +142,9 @@ internal static partial class P1bTests
 
         for (int i = 0; i < 50000; i++)
         {
-            // Держим точку внутри ячейки, но не ближе 0.05 к границе, иначе
-            // центральная разность перешагивает соседнюю ячейку и производная
-            // справа считается по другим узлам градиента.
+            // Keep the point inside the cell but no closer than 0.05 to the border,
+            // otherwise the central difference steps into the neighbouring cell and
+            // the derivative is computed with different gradient nodes.
             double3 p = new double3(
                 (rng.NextDouble() * 40d) - 20d + 0.05,
                 (rng.NextDouble() * 40d) - 20d + 0.05,
@@ -179,11 +171,11 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Непрерывность производной на границе ячейки. Квинтическое сглаживание
-    /// выбрано именно ради этого: du/dt = 30t²(t−1)² обращается в ноль на границе,
-    /// поэтому второй член производной гаснет, и оба подхода к границе дают
-    /// градиент ОДНОГО И ТОГО ЖЕ узла решётки. Скачок означал бы, что в
-    /// разложении производной перепутан узел — то есть баг, а не свойство шума.
+    /// Continuity of the derivative at a cell boundary. The quintic smoothing was
+    /// chosen for this: du/dt = 30t²(t−1)² vanishes at the boundary, so the second
+    /// term of the derivative dies and both approaches to the boundary give the
+    /// gradient of the SAME lattice node. A jump would mean the node is mixed up
+    /// in the derivative decomposition — a bug, not a property of the noise.
     /// </summary>
     private static int Test115_DerivativeContinuousAtCellEdge()
     {
@@ -199,7 +191,7 @@ internal static partial class P1bTests
             double fy = rng.NextDouble();
             double fz = rng.NextDouble();
 
-            // Подход к грани справа (fx → 1) и слева в следующей ячейке (fx → 0).
+            // Approach the face from the right (fx → 1) and from the left in the next cell (fx → 0).
             double3 right = new double3(ix + (1d - eps), iy + fy, iz + fz);
             double3 left = new double3(ix + 1d + eps, iy + fy, iz + fz);
             TerrainNoise.GradientNoiseWithDerivative(right, out double3 dr);
@@ -217,14 +209,14 @@ internal static partial class P1bTests
 
     /// <summary>
     /// <summary>
-    /// Проверка anti-no-op у окон damping. Замер на фиксированной выборке, а не
-    /// на разности с соседней ячейкой: соседние точки сферы Фибоначчи стоят
-    /// слишком далеко, чтобы отличить затухание от общего смещения формы.
-    /// Здесь одни и те же 60k направлений подаются всем трём режимам, и
-    /// сравниваются попарно с выключенным - это и есть та величина, которую
-    /// окна и подбирали. Второй признак - разброс сигнала: в T110 окна
-    /// подбирались по сглаженности амплитуды, здесь проверяется, что они
-    /// различаются между режимами и что это не выродилось в no-op.
+    /// Anti-no-op check for the damping windows. Measured on a fixed sample, not
+    /// on the difference with a neighbouring cell: neighbouring Fibonacci-sphere
+    /// points are too far apart to tell damping from an overall shape shift.
+    /// Here the same 60k directions are fed to all three modes and compared
+    /// pairwise against "off" — that is the quantity the windows were fitting.
+    /// The second signal is the spread of the signal: T110 fitted the windows by
+    /// amplitude smoothness, and here it is checked that they differ between modes
+    /// and have not degenerated into a no-op.
     /// </summary>
     private static int Test120_DampIsNotNoOp()
     {
@@ -253,14 +245,11 @@ internal static partial class P1bTests
         Console.WriteLine(string.Format(
             CultureInfo.InvariantCulture,
             "    разброс сигнала (p90/p10): Accum {0:F2}, Gradient {1:F2}", aRange, gRange));
-        // Разброс у двух режимов должен отличаться и не сходиться к 1.0. Если
-        // окна схлопнутся, режимы станут неразличимы по картинке, и это будет
-        // хуже, чем явный no-op: причина не найдётся. Ориентиры: Accum 12.3,
-        // Gradient 1.34. Замеры расходятся между пресетами - оба опираются на
-        // разный вес знаменателя sum/norm, и это ожидаемо. Важна только
-        // устойчивая разница и то, что Gradient заметно площе Accum:
-        // аналитический наклон фильтрует шире, чем накопленная сумма,
-        // и оставляет больше мелкой детали в сигнале.
+        // The spread must differ between the two modes and not collapse to 1.0;
+        // if the windows collapsed, the modes would become indistinguishable in
+        // the picture. What matters is a stable difference and that Gradient is
+        // noticeably flatter than Accum: the analytic slope filters wider than the
+        // accumulated sum and leaves more fine detail in the signal.
         Check(aRange > 1.2, "T120 damp-not-noop",
             "у Accum разброс подозрительно мал (< 1.2): " + aRange.ToString("F2", CultureInfo.InvariantCulture));
         Check(gRange > 1.2, "T120 damp-not-noop",
@@ -317,13 +306,13 @@ internal static partial class P1bTests
 
     /// <summary>
     /// <summary>
-    /// p90/p10 разброс октавного сигнала. Сигнал сходится к 1, когда веса
-    /// выровнены, и расходится, когда у октав разный вес в знаменателе.
-    /// У Accum октавы идут через SampleShapeFbm, где знаменатель тоже
-    /// взвешен суммой амплитуд, и сигнал близок к постоянному; у Gradient
-    /// сигнал строится вручную делением накопленного наклона на 20 - там
-    /// знаменатель жёсткий, и разброс показывает реальную неоднородность
-    /// вклада октав.
+    /// p90/p10 spread of the octave signal. The signal converges to 1 when the
+    /// weights are balanced and diverges when the octaves have different weights
+    /// in the denominator. For Accum the octaves go through SampleShapeFbm, where
+    /// the denominator is also weighted by the amplitude sum, so the signal is
+    /// nearly constant; for Gradient the signal is built manually by dividing the
+    /// accumulated slope by 20 — there the denominator is rigid and the spread
+    /// shows the real inhomogeneity of the octave contributions.
     /// </summary>
     /// </summary>
     private static double WeightRange(int mode)
@@ -369,8 +358,8 @@ internal static partial class P1bTests
         return p10 > 1e-12 ? p90 / p10 : double.PositiveInfinity;
     }
 
-    /// <summary>Детерминированный генератор направлений и смещений: у 3D-бенча
-    /// собственный salt 0, чтобы не совпадать с выборками других тестов.</summary>
+    /// <summary>Deterministic direction and offset generator: the 3D bench has
+    /// its own salt 0 so it does not coincide with other tests' samples.</summary>
     internal sealed class NoiseBenchRandom3
     {
         private readonly int seed;

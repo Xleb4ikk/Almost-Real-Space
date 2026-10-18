@@ -1,10 +1,10 @@
 namespace Galilego.Core
 {
     /// <summary>
-    /// Результат шага SpacecraftOrbitIntegrator — аналог IntegrationResult,
-    /// но с полным состоянием (позиция, скорость, масса) вместо пары
-    /// Position/Velocity. Структура повторяет IntegrationResult, чтобы оба
-    /// степпера отдавали одинаковую форму результата.
+    /// Result of a SpacecraftOrbitIntegrator step — analogous to IntegrationResult,
+    /// but carrying the full state (position, velocity, mass) instead of a
+    /// Position/Velocity pair. The struct mirrors IntegrationResult so both
+    /// steppers return the same result shape.
     /// </summary>
     public struct SpacecraftIntegrationResult
     {

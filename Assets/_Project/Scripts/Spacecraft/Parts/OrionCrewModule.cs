@@ -3,17 +3,17 @@ using UnityEngine;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Экипажный модуль Orion: анимации люка и выдвижной руки-планшета.
-    /// Аниматор стоит на корне модели (вложенный FBX), клипы — отдельные
-    /// .anim: открытие/закрытие люка и выдвижение/складывание руки.
-    /// Состояния аниматора держат конечную позу, поэтому методы можно
-    /// вызывать в любом порядке — механизмы не мешают друг другу.
+    /// Orion crew module: hatch and deployable tablet-arm animations.
+    /// The Animator sits on the model root (nested FBX); clips are separate
+    /// .anim files: hatch open/close and arm deploy/retract. Animator states hold
+    /// a final pose, so methods can be called in any order — mechanisms do not
+    /// interfere with each other.
     ///
-    /// Поза открытой створки: клип открытия крутит дверь только на 100° и в
-    /// конечной позе она перекрывает половину проёма. Поэтому в состоянии
-    /// Hatch_Opening/Hatch_Open створка доворачивается вокруг боковой кромки
-    /// (ось Y двери) на openAngleDegrees и прижимается к борту сбоку от
-    /// проёма; в закрытых состояниях возвращается в закрытую позу.
+    /// Open door pose: the open clip only rotates the door 100°, which in the final
+    /// pose covers half the opening. So in the Hatch_Opening/Hatch_Open states the
+    /// door is rotated further about its side edge (the door's Y axis) by
+    /// openAngleDegrees and pressed against the hull beside the opening; in closed
+    /// states it returns to the closed pose.
     /// </summary>
     [RequireComponent(typeof(Animator))]
     public sealed class OrionCrewModule : MonoBehaviour
@@ -51,7 +51,7 @@ namespace Galilego.Spacecraft
                 animator = GetComponent<Animator>();
             }
 
-            // Створка (по имени узла модели).
+            // Door (by model node name).
             Transform[] all = GetComponentsInChildren<Transform>(true);
             for (int i = 0; i < all.Length; i++)
             {
@@ -84,7 +84,7 @@ namespace Galilego.Spacecraft
             door.localPosition = closedPosition;
             door.localRotation = closedRotation * Quaternion.AngleAxis(swingSign * eased, Vector3.up);
 
-            // Бокс створки строит OrionCollisionBuilder уже после Awake, поэтому ищем лениво.
+            // OrionCollisionBuilder builds the door box after Awake, so find it lazily.
             if (doorCollider == null)
             {
                 doorCollider = door.GetComponent<BoxCollider>();
@@ -95,18 +95,18 @@ namespace Galilego.Spacecraft
                 bool open = swingAngle > 5f;
                 if (open && doorCollider.enabled)
                 {
-                    doorCollider.enabled = false; // открытая створка лежит сбоку и не мешает проходу
+                    doorCollider.enabled = false; // the open door lies to the side and does not block passage
                     doorColliderDisabledByUs = true;
                 }
                 else if (!open && doorColliderDisabledByUs)
                 {
-                    doorCollider.enabled = true; // закрытая — снова стена
+                    doorCollider.enabled = true; // closed — a wall again
                     doorColliderDisabledByUs = false;
                 }
             }
         }
 
-        /// <summary>Шарнир — локальная ось Y двери (так крутит клип). Знак берём по факту: наружу = дальше от оси капсулы.</summary>
+        /// <summary>Hinge is the door's local Y axis (how the clip rotates it). The sign is resolved empirically: outward = farther from the capsule axis.</summary>
         private float ResolveOutwardSign()
         {
             Renderer nose = null, heat = null;
@@ -135,25 +135,25 @@ namespace Galilego.Spacecraft
             return plus >= minus ? 1f : -1f;
         }
 
-        /// <summary>Открыть люк (шлюз наружу).</summary>
+        /// <summary>Open the hatch (airlock outward).</summary>
         public void OpenHatch()
         {
             SetTrigger(HatchOpenId);
         }
 
-        /// <summary>Закрыть люк.</summary>
+        /// <summary>Close the hatch.</summary>
         public void CloseHatch()
         {
             SetTrigger(HatchCloseId);
         }
 
-        /// <summary>Выдвинуть руку с планшетом к пилоту.</summary>
+        /// <summary>Deploy the tablet arm towards the pilot.</summary>
         public void DeployTabletArm()
         {
             SetTrigger(ArmDeployId);
         }
 
-        /// <summary>Убрать руку с планшетом.</summary>
+        /// <summary>Retract the tablet arm.</summary>
         public void RetractTabletArm()
         {
             SetTrigger(ArmRetractId);

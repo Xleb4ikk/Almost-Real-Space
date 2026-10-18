@@ -5,15 +5,15 @@ using Unity.Mathematics;
 
 internal static partial class P1bTests
 {
-    // Приёмка В1: переключение примитива не должно молча менять смысл порогов
-    // профиля. Критерий — не константа нормировки, а то, что реально поехало бы
-    // на планете: доля суши и высота гребней.
+    // Acceptance B1: switching the primitive must not silently change the meaning
+    // of the profile thresholds. The criterion is not a normalization constant but
+    // what would actually change on the planet: land fraction and ridge height.
     //
-    //   доля суши  0.47 ± 0.02
-    //   p99        ±5% от legacy
+    //   land fraction  0.47 ± 0.02
+    //   p99            ±5% of legacy
     //
-    // Оба меряются на ОДНИХ И ТЕХ ЖЕ сидах и одной и той же сфере Фибоначчи,
-    // иначе расхождение можно объяснить разной выборкой, а не шумом.
+    // Both are measured on the SAME seeds and the same Fibonacci sphere,
+    // otherwise the difference could be blamed on sampling rather than noise.
     private struct AcceptanceStats
     {
         public double LandFraction;
@@ -25,8 +25,8 @@ internal static partial class P1bTests
 
     private static AcceptanceStats MeasureAcceptance(HeightfieldTerrain t, int n)
     {
-        // Сфера Фибоначчи: детерминированная и равномерная, та же схема, что в
-        // T87/T107, чтобы доли суши отсюда и оттуда были сравнимы.
+        // Fibonacci sphere: deterministic and uniform, same scheme as in
+        // T87/T107 so land fractions here and there are comparable.
         var dirs = new double3[n];
         double ga = Math.PI * (3.0 - Math.Sqrt(5.0));
         for (int i = 0; i < n; i++)
@@ -77,22 +77,20 @@ internal static partial class P1bTests
     {
         const int n = 200000;
 
-        // Критерий ставится на СРЕДНЕЕ по сидам, а не на каждый сид по
-        // отдельности, и это не смягчение, а требование к статистике. Разброс
-        // доли суши между сидами внутри одного стиля сам по себе больше
-        // допуска: на 12 сидах legacy даёт разброс ±0.041 против допуска 0.02.
-        // Сравнивать по одному сиду — значит сравнивать шум с шумом. Среднее по
-        // сидам эту разницу убирает, оставляя именно смещение от смены схемы.
+        // The criterion applies to the MEAN over seeds, not to each seed alone:
+        // per-seed land-fraction spread within one style already exceeds the
+        // tolerance, so comparing a single seed compares noise with noise. The
+        // mean over seeds removes that and leaves the shift from the scheme change.
         var seeds = new int[12];
         for (int i = 0; i < seeds.Length; i++)
         {
             seeds[i] = 1013 + (i * 7919);
         }
 
-        // Кандидаты: каждый меряется против legacy-базы на тех же сидах.
-        // Multifractal идёт с γ = 0.3 — это подобрано по доле суши в T119 и
-        // продублировано в EarthLike_Perlin.asset. Варианты с γ = 1 оставлены
-        // в замере намеренно: без них не видно, сколько работы делает ремапа.
+        // Candidates: each is measured against the legacy baseline on the same
+        // seeds. Multifractal uses γ = 0.3 (chosen by land fraction in T119 and
+        // mirrored in EarthLike_Perlin.asset). The γ = 1 variants are kept
+        // on purpose: without them the remap's contribution is invisible.
         var variants = new[]
         {
             new NoiseVariant { Name = "value  + legacy ridged  (база)", Style = TerrainNoiseStyle.Value, Ridged = TerrainRidgedMode.Legacy, Gamma = 1.0, Candidate = true },
@@ -143,18 +141,18 @@ internal static partial class P1bTests
                 continue;
             }
 
-            // Доля суши — инвариант, который настраивается ремапой. Гейт на неё
-            // у всех кандидатов.
+            // Land fraction is the invariant tuned by the remap. It is gated
+            // for all candidates.
             if (Math.Abs(variants[v].LandSum - variants[0].LandSum) > 0.02d)
             {
                 landOk = false;
             }
 
-            // p99 — инвариант только там, где высота не перенастраивалась
-            // рычагом уровня (γ или порог континента). Там остаток по высоте
-            // переносится в AmplitudeMeters ассета, а не чинится кодом.
-            // Для чистой подмены примитива (perlin + legacy ridged) высота
-            // обязана остаться прежней.
+            // p99 is an invariant only where the height was not retuned by a
+            // level lever (γ or continent threshold). There the height residual
+            // goes into the asset's AmplitudeMeters rather than being patched in code.
+            // For a pure primitive swap (perlin + legacy ridged) the height
+            // must stay the same.
             if (variants[v].HeightUntuned && System.Math.Abs(variants[v].P99RatioSum - 1d) > 0.05d)
             {
                 p99Ok = false;
@@ -170,9 +168,9 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Подбор RidgedGamma по доле суши. Пробуем ТОЛЬКО монотонную ремапу: γ
-    /// двигает уровень гребней и не трогает топологию, а делить высоту на
-    /// p99 не нужно — остаток гасится AmplitudeMeters в пресете.
+    /// Fits RidgedGamma by land fraction. Tries ONLY a monotone remap: γ
+    /// shifts the ridge level and leaves topology untouched, and dividing height
+    /// by p99 is unnecessary — the residual is absorbed by AmplitudeMeters in the preset.
     /// </summary>
     private static int Test119_RidgedGammaSweep()
     {
@@ -183,7 +181,7 @@ internal static partial class P1bTests
             seeds[i] = 1013 + (i * 7919);
         }
 
-        // База: legacy ridged на value noise, доля суши которой и есть цель.
+        // Baseline: legacy ridged on value noise, whose land fraction is the target.
         double baseLand = 0d;
         foreach (int seed in seeds)
         {
@@ -245,7 +243,7 @@ internal static partial class P1bTests
         return t;
     }
 
-    /// <summary>Кандидат схемы шума для приёмки: имя плюс накопленные метрики.</summary>
+    /// <summary>Noise-scheme candidate for acceptance: name plus accumulated metrics.</summary>
     private struct NoiseVariant
     {
         public string Name;

@@ -3,19 +3,19 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Математика cube-sphere (тестируемая, без Unity-зависимостей кроме Vector3d).
-    /// 6 граней куба; (u,v) ∈ [0,1]² → единичное направление в ТЕЛ-FIXED
-    /// астрокадре (Z-up, тот же базис, что у HeightfieldTerrain.LatLonToDirection).
-    /// Нормализация после проекции даёт равномерное покрытие сферы без
-    /// полюсных вырождений lat/lon-сетки. Непрерывность через рёбра граней —
-    /// свойство отображения, проверяется T85.
+    /// Cube-sphere math (testable, no Unity dependencies besides Vector3d).
+    /// 6 cube faces; (u,v) ∈ [0,1]² → unit direction in the BODY-FIXED astro
+    /// frame (Z-up, same basis as HeightfieldTerrain.LatLonToDirection).
+    /// Normalizing after projection gives uniform sphere coverage without the
+    /// pole singularities of a lat/lon grid. Continuity across face edges is a
+    /// property of the mapping.
     /// </summary>
     internal static class CubeSphere
     {
         public const int FaceCount = 6;
 
-        /// <summary>Направление (u,v) на грани face. u,v могут выходить за [0,1]
-        /// (halo/экстраполяция) — отображение это допускает.</summary>
+        /// <summary>Direction (u,v) on face. u,v may exceed [0,1]
+        /// (halo/extrapolation) — the mapping allows it.</summary>
         public static Vector3d Direction(int face, double u, double v)
         {
             double a = (u * 2d) - 1d;
@@ -36,8 +36,8 @@ namespace Galilego.Universe
             return new Vector3d(x, y, z).Normalized;
         }
 
-        /// <summary>Направление в центре узла quadtree: depth 0 — вся грань,
-        /// далее деление [0,1]² на 2^depth по каждой оси.</summary>
+        /// <summary>Direction at a quadtree node centre: depth 0 is the whole face,
+        /// then [0,1]² split into 2^depth along each axis.</summary>
         public static Vector3d NodeCenterDirection(int face, int depth, int ix, int iy)
         {
             double size = 1d / (1 << depth);

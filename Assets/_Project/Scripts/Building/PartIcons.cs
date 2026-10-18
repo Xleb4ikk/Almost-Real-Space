@@ -3,12 +3,12 @@ using UnityEngine;
 namespace Galilego.Building
 {
     /// <summary>
-    /// Рисунки деталей для инвентаря. Основные иконки — 3D-рендеры деталей под
-    /// углом (их кладёт BuilderPreview через Set: тот же студийный свет и
-    /// прозрачный фон). Если рендера нет (нет превью/двигателя), работает
-    /// запасная процедурная отрисовка (плоские «фотографии» кодом).
-    /// Текстуры кэшируются: статическая ссылка обязательна — иначе сборщик
-    /// мусора съест нативную текстуру, а GUIStyle оставит висячий указатель.
+    /// Part icons for the inventory. Primary icons are 3D renders of the parts at
+    /// an angle (BuilderPreview supplies them via Set: the same studio light and
+    /// transparent background). Without a render (no preview/engine) the fallback
+    /// procedural drawing kicks in (flat "photos" in code).
+    /// Textures are cached: the static reference is mandatory — otherwise the
+    /// garbage collector would eat the native texture and GUIStyle would keep a dangling pointer.
     /// </summary>
     public static class PartIcons
     {
@@ -22,8 +22,8 @@ namespace Galilego.Building
             new System.Collections.Generic.Dictionary<string, Texture2D>();
 
         /// <summary>
-        /// Положить готовую иконку (3D-рендер) вместо процедурной. Ключ — вид
-        /// и (у двигателя) Id модели: у каждого двигателя своя иконка карточки.
+        /// Store a ready icon (3D render) instead of the procedural one. Key — kind
+        /// and (for engines) the model Id: every engine gets its own card icon.
         /// </summary>
         public static void Set(PartKind kind, string engineId, Texture2D texture)
         {
@@ -33,7 +33,7 @@ namespace Galilego.Building
             }
         }
 
-        /// <summary>Рисунок детали (создаётся при первом обращении).</summary>
+        /// <summary>Part icon (created on first use).</summary>
         public static Texture2D Get(PartKind kind, string engineId)
         {
             if (overrides.TryGetValue(Key(kind, engineId), out Texture2D rendered) && rendered != null)
@@ -72,7 +72,7 @@ namespace Galilego.Building
             return kind + "|" + (engineId ?? string.Empty);
         }
 
-        // ─── Бак: цилиндр, вид спереди ───────────────────────────────────────
+        // ─── Tank: cylinder, front view ──────────────────────────────────────
 
         private static Texture2D DrawTank()
         {
@@ -84,7 +84,7 @@ namespace Galilego.Building
             int centerX = (left + right) / 2;
             float halfWidth = (right - left) * 0.5f;
 
-            // Обечайка: горизонтальный градиент металла (цилиндрическая тень).
+            // Shell: horizontal metal gradient (cylindrical shading).
             for (int y = top; y <= bottom; y++)
             {
                 for (int x = left; x <= right; x++)
@@ -96,7 +96,7 @@ namespace Galilego.Building
                 }
             }
 
-            // Стыковые кольца (горизонтальные полосы) — металл читается как бак.
+            // Butt rings (horizontal bands) — makes the metal read as a tank.
             for (int band = 1; band <= 3; band++)
             {
                 int y = top + ((bottom - top) * band) / 4;
@@ -106,7 +106,7 @@ namespace Galilego.Building
                 }
             }
 
-            // Крышки: эллипсы сверху и снизу.
+            // Caps: ellipses at the top and bottom.
             DrawEllipse(pixels, centerX, top, halfWidth, 5f, new Color(0.35f, 0.40f, 0.47f));
             DrawEllipse(pixels, centerX, top - 1, halfWidth * 0.82f, 3.4f, new Color(0.50f, 0.56f, 0.63f));
             DrawEllipse(pixels, centerX, bottom, halfWidth, 5f, new Color(0.22f, 0.26f, 0.31f));
@@ -114,7 +114,7 @@ namespace Galilego.Building
             return Finish(pixels);
         }
 
-        // ─── Отделитель: кольцо сверху ───────────────────────────────────────
+        // ─── Separator: ring seen from above ─────────────────────────────────
 
         private static Texture2D DrawSeparator()
         {
@@ -135,12 +135,12 @@ namespace Galilego.Building
                         continue;
                     }
 
-                    float shade = 0.75f + (0.25f * (dy / outer)); // верх чуть светлее
+                    float shade = 0.75f + (0.25f * (dy / outer)); // top slightly lighter
                     Set(pixels, x, y, new Color(0.13f * shade, 0.14f * shade, 0.16f * shade));
                 }
             }
 
-            // Болты накладок по кольцу.
+            // Plate bolts around the ring.
             for (int i = 0; i < 12; i++)
             {
                 float a = (2f * Mathf.PI * i) / 12f;
@@ -150,7 +150,7 @@ namespace Galilego.Building
                 Set(pixels, bx + 1, by, new Color(0.38f, 0.41f, 0.46f));
             }
 
-            // Кромки кольца.
+            // Ring edges.
             for (int angle = 0; angle < 360; angle++)
             {
                 float a = angle * Mathf.Deg2Rad;
@@ -165,7 +165,7 @@ namespace Galilego.Building
             return Finish(pixels);
         }
 
-        // ─── Двигатель: сопло RS-25, вид спереди ─────────────────────────────
+        // ─── Engine: RS-25 nozzle, front view ────────────────────────────────
 
         private static Texture2D DrawEngine()
         {
@@ -174,7 +174,7 @@ namespace Galilego.Building
             int bottom = 86;
             int centerX = Size / 2;
 
-            // Колокол: ширина растёт от камеры (верх) к срезу (низ).
+            // Bell: width grows from the chamber (top) to the exit plane (bottom).
             for (int y = top; y <= bottom; y++)
             {
                 float v = (y - top) / (float)(bottom - top);          // 0..1
@@ -188,7 +188,7 @@ namespace Galilego.Building
                 }
             }
 
-            // Турбонасосный блок и камера сверху.
+            // Turbopump block and chamber on top.
             for (int y = 2; y < top + 6; y++)
             {
                 for (int x = centerX - 8; x <= centerX + 8; x++)
@@ -197,7 +197,7 @@ namespace Galilego.Building
                 }
             }
 
-            // Красный поясок RS-25 у среза и тёмные рёбра.
+            // RS-25 red band near the exit and dark ribs.
             for (int x = centerX - 27; x <= centerX + 27; x++)
             {
                 Set(pixels, x, bottom - 10, new Color(0.75f, 0.16f, 0.12f));
@@ -218,7 +218,7 @@ namespace Galilego.Building
                 }
             }
 
-            // Тёмный срез сопла.
+            // Dark nozzle exit.
             for (int x = centerX - 28; x <= centerX + 28; x++)
             {
                 Set(pixels, x, bottom + 1, new Color(0.16f, 0.15f, 0.14f));
@@ -227,7 +227,7 @@ namespace Galilego.Building
             return Finish(pixels);
         }
 
-        // ─── Примитивы ───────────────────────────────────────────────────────
+        // ─── Primitives ──────────────────────────────────────────────────────
 
         private static Color[] NewCanvas(Color fill)
         {

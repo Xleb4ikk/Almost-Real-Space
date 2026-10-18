@@ -2,21 +2,21 @@ using UnityEngine;
 
 namespace Galilego.Tablet
 {
-    /// <summary>Относительно чего считается скорость (и маркеры навбола).</summary>
+    /// <summary>Reference for velocity (and the navball markers).</summary>
     public enum SpeedFrame { Surface, Orbit }
 
-    /// <summary>Какая высота показана крупно (переключается нажатием на неё).</summary>
+    /// <summary>Which altitude is shown large (toggled by clicking it).</summary>
     public enum AltitudeMode { SeaLevel, Surface }
 
-    /// <summary>Режим удержания ориентации (САС). Stability — держать текущую.</summary>
+    /// <summary>Attitude hold mode (SAS). Stability holds the current attitude.</summary>
     public enum SasMode { Stability, Prograde, Retrograde, Normal, Antinormal, RadialIn, RadialOut }
 
-    /// <summary>Шесть маркеров навбола (порядок = порядок в массивах рендера).</summary>
+    /// <summary>Six navball markers (order matches the render arrays).</summary>
     public enum NavMarker { Prograde = 0, Retrograde = 1, Normal = 2, Antinormal = 3, RadialIn = 4, RadialOut = 5 }
 
     /// <summary>
-    /// Одна ступень для блока ΔV. Поля 1-в-1 как у DvStage из DeltaVModel.cs —
-    /// конвертация в DvTabletAdapter.
+    /// One stage for the ΔV block. Fields map 1:1 to DvStage from DeltaVModel.cs —
+    /// converted in DvTabletAdapter.
     /// </summary>
     public sealed class TabletStage
     {
@@ -45,7 +45,7 @@ namespace Galilego.Tablet
         public bool HasEngine { get { return EngineCount > 0; } }
     }
 
-    /// <summary>Параметры орбиты. Нет апоцентра (гипербола) — HasApoapsis = false.</summary>
+    /// <summary>Orbit parameters. No apoapsis (hyperbola) — HasApoapsis = false.</summary>
     public struct TabletOrbit
     {
         public bool Valid;
@@ -62,63 +62,63 @@ namespace Galilego.Tablet
     }
 
     /// <summary>
-    /// ВСЁ, что показывает планшет. Игра заполняет этот объект (Fill), планшет
-    /// ничего больше о симуляции не знает. Единицы: СИ (м, м/с, с, кг, Н, Па),
-    /// углы — градусы, перегрузки — в g (g0 = 9.80665).
+    /// EVERYTHING the tablet displays. The game fills this object (Fill); the tablet
+    /// knows nothing else about the simulation. Units: SI (m, m/s, s, kg, N, Pa),
+    /// angles in degrees, g-loads in g (g0 = 9.80665).
     /// </summary>
     public sealed class TabletTelemetry
     {
-        // ── Опорное тело и система отсчёта ───────────────────────────────
+        // ── Reference body and frame ─────────────────────────────────────
         public string[] ReferenceBodies = { "ЗЕМЛЯ" };
         public int ReferenceBodyIndex;
         public SpeedFrame Frame = SpeedFrame.Surface;
 
-        // ── Скорость / ускорение / гравитация ───────────────────────────
-        public double SpeedMs;           // модуль скорости в выбранной системе отсчёта
-        public double VerticalSpeedMs;   // + вверх (по радиус-вектору от тела)
-        public double AccelerationMs2;   // ускорение (как решит игра: модуль d|v|/dt или собственное)
-        public double GForce;            // перегрузка = собственное ускорение / g0
-        public double GravityG;          // гравитация в точке аппарата, в g
+        // ── Speed / acceleration / gravity ──────────────────────────────
+        public double SpeedMs;           // speed magnitude in the selected frame
+        public double VerticalSpeedMs;   // + upward (along the radius vector from the body)
+        public double AccelerationMs2;   // acceleration (however the game decides: |d|v|/dt| or proper)
+        public double GForce;            // g-load = proper acceleration / g0
+        public double GravityG;          // gravity at the craft position, in g
 
-        // ── Высота и среда ───────────────────────────────────────────────
+        // ── Altitude and environment ─────────────────────────────────────
         public double AltitudeSeaLevelM;
         public double AltitudeSurfaceM;
         public double PressurePa;
 
-        // ── Орбита ───────────────────────────────────────────────────────
+        // ── Orbit ────────────────────────────────────────────────────────
         public TabletOrbit Orbit;
 
-        // ── Ориентация (навбол) ──────────────────────────────────────────
-        /// <summary>Поворот корабля относительно местного горизонта: корабль → (X=восток, Y=вверх, Z=север).</summary>
+        // ── Attitude (navball) ───────────────────────────────────────────
+        /// <summary>Ship rotation relative to the local horizon: ship → (X=east, Y=up, Z=north).</summary>
         public Quaternion Attitude = Quaternion.identity;
         public bool MarkersValid;
-        /// <summary>Единичные векторы в системе горизонта (восток, вверх, север).</summary>
+        /// <summary>Unit vectors in the horizon frame (east, up, north).</summary>
         public Vector3 ProgradeDir = Vector3.forward;
         public Vector3 NormalDir = Vector3.up;
         public Vector3 RadialOutDir = Vector3.up;
 
-        // ── Системы управления ───────────────────────────────────────────
+        // ── Control systems ──────────────────────────────────────────────
         public bool SasEnabled;
         public SasMode SasMode;
         public bool RcsEnabled;
 
-        // ── Управление кораблём (панель «УПРАВЛЕНИЕ») ────────────────────
-        /// <summary>Газ (тяга) командой игрока, 0..1.</summary>
+        // ── Ship control (the "CONTROL" panel) ──────────────────────────
+        /// <summary>Throttle commanded by the player, 0..1.</summary>
         public double Throttle01;
 
-        /// <summary>Мастер-выключатель маршевых двигателей: хоть один включён.</summary>
+        /// <summary>Main engine master switch: at least one is on.</summary>
         public bool EngineOn;
 
-        /// <summary>Есть чем управлять (модель полёта существует) — кнопка двигателя активна.</summary>
+        /// <summary>There is something to control (a flight model exists) — the engine button is active.</summary>
         public bool EngineAvailable;
 
-        /// <summary>«Ступень» сейчас что-то сделает: есть что зажигать или отделять.</summary>
+        /// <summary>"Stage" will do something now: there is something to ignite or jettison.</summary>
         public bool CanStage;
 
-        /// <summary>Текущая ступень уже зажжена (кнопка «отделить», иначе «зажечь»).</summary>
+        /// <summary>Current stage is already ignited (button says "jettison", otherwise "ignite").</summary>
         public bool StageIgnited;
 
-        // ── Масса / тяга / ΔV ────────────────────────────────────────────
+        // ── Mass / thrust / ΔV ───────────────────────────────────────────
         public double CurrentMassKg;
         public double ThrustN;
         public double Twr;
@@ -130,7 +130,7 @@ namespace Galilego.Tablet
         public TabletStage[] Stages = new TabletStage[0];
         public string[] Notes = new string[0];
 
-        /// <summary>Направление маркера навбола в системе горизонта.</summary>
+        /// <summary>Direction of a navball marker in the horizon frame.</summary>
         public Vector3 MarkerDir(NavMarker m)
         {
             switch (m)
@@ -145,7 +145,7 @@ namespace Galilego.Tablet
         }
     }
 
-    /// <summary>Команды, которые планшет отправляет игре. Всё необязательное — по умолчанию пустышки.</summary>
+    /// <summary>Commands the tablet sends to the game. All optional — empty stubs by default.</summary>
     public interface ITabletCommands
     {
         void SetSasEnabled(bool on);
@@ -154,23 +154,23 @@ namespace Galilego.Tablet
         void SetSpeedFrame(SpeedFrame frame);
         void SetReferenceBody(int index);
 
-        /// <summary>Газ 0..1 (как Z/X на клавиатуре).</summary>
+        /// <summary>Throttle 0..1 (like Z/X on the keyboard).</summary>
         void SetThrottle(double throttle01);
 
-        /// <summary>Мастер-выключатель маршевых двигателей (как F9/F10).</summary>
+        /// <summary>Main engine master switch (like F9/F10).</summary>
         void SetEnginesEnabled(bool on);
 
-        /// <summary>Ступень: зажигание/отделение (как Space).</summary>
+        /// <summary>Stage: ignite/jettison (like Space).</summary>
         void RequestStage();
     }
 
     /// <summary>
-    /// Мост «игра ↔ планшет». Единственное, что надо написать для подключения:
-    /// наследник, который в Fill кладёт данные симуляции и исполняет команды.
+    /// The "game ↔ tablet" bridge. The only thing to write to hook it up: a subclass
+    /// that fills in simulation data in Fill and executes the commands.
     /// </summary>
     public abstract class TabletLink : MonoBehaviour, ITabletCommands
     {
-        /// <summary>Заполнить телеметрию текущим состоянием (вызывается планшетом до 20 раз/с).</summary>
+        /// <summary>Fill the telemetry with the current state (called by the tablet up to 20 times/s).</summary>
         public abstract void Fill(TabletTelemetry t);
 
         public virtual void SetSasEnabled(bool on) { }

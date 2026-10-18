@@ -6,9 +6,9 @@ using Xunit.Abstractions;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Тестовая заглушка тяги: постоянная сила вдоль фиксированного направления
-    /// и постоянный массовый расход. Живёт ТОЛЬКО в тестовом проекте, не в
-    /// игровом коде. Проверяет, что масса интегрируется внутри состояния.
+    /// Test thrust stub: a constant force along a fixed direction and a constant
+    /// mass flow. Lives ONLY in the test project, not in game code. Verifies that
+    /// mass is integrated inside the state.
     /// </summary>
     internal sealed class ConstantThrustSource : IDynamicsSource
     {
@@ -28,11 +28,11 @@ namespace GalilegoPhysicsTests
     }
 
     /// <summary>
-    /// Тест C — проверка массы / уравнение Циолковского: горение с постоянной
-    /// силой F и постоянным расходом ṁ без гравитации. При ПОСТОЯННОМ расходе
-    /// масса убывает ЛИНЕЙНО: m(t) = m0 − ṁ·t (не экспонента — та была бы при
-    /// расходе, пропорциональном массе). Итоговое Δv обязано совпасть с
-    /// формулой Циолковского для этого случая: Δv = (F/ṁ)·ln(m0/m1).
+    /// Test C — mass / Tsiolkovsky check: a burn with constant force F and
+    /// constant flow ṁ, no gravity. With a CONSTANT flow mass decreases
+    /// LINEARLY: m(t) = m0 − ṁ·t (not an exponential — that would require a
+    /// flow proportional to mass). The resulting Δv must match the Tsiolkovsky
+    /// formula for this case: Δv = (F/ṁ)·ln(m0/m1).
     /// </summary>
     public sealed class TsiolkovskyTests
     {
@@ -63,7 +63,7 @@ namespace GalilegoPhysicsTests
             var ship = new Spacecraft(Vector3d.Zero, Vector3d.Zero, m0);
             physics.Step(ship, 0d, burnTime);
 
-            // Аналитика: линейная масса + Циолковский.
+            // Analytic: linear mass + Tsiolkovsky.
             double expectedMass = m0 - massFlow * burnTime;
             double expectedDv = (thrust / massFlow) * System.Math.Log(m0 / expectedMass);
 

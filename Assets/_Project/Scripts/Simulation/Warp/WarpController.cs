@@ -1,12 +1,12 @@
 namespace Galilego.Events
 {
     /// <summary>
-    /// Неизменяемый снимок ввода на control-tick. Передаётся В RHS как параметр,
-    /// а не читается из живого контроллера внутри вызова: RHS обязан оставаться
-    /// pure (многократные вызовы на шаг, включая отклонённые), побочные эффекты
-        /// чтения ввода внутри производной запрещены. Throttle снимка потребляет
-        /// ThrustSource через расписание ThrottleAt — частота обновления снимка
-        /// задаёт зерно управления (доказано T2/T14).
+    /// Immutable input snapshot at a control tick. Passed INTO the RHS as a
+    /// parameter rather than read from the live controller inside the call: the RHS
+    /// must stay pure (multiple calls per step, including rejected ones), so side
+    /// effects of reading input inside the derivative are forbidden. The snapshot's
+    /// Throttle is consumed by ThrustSource through the ThrottleAt schedule — the
+    /// snapshot update rate sets the control grain.
     /// </summary>
     public readonly struct ControlInputSnapshot
     {
@@ -26,35 +26,34 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Физический варп: то же RHS/интегратор/событийный слой, что и на ×1 —
-    /// разница только в том, сколько симулированного времени просят пройти за
-    /// реальный кадр. Квант Δt_control — граница, которую ни один принятый чанк
-    /// не может пересечь, пока активна тяга: при физическом варпе управление
-    /// не грубеет, ввод сэмплируется с тем же шагом по симулированному времени,
-    /// что и на ×1 (доказано T2/T14).
+    /// Physical warp: the same RHS/integrator/event layer as at ×1 — the only
+    /// difference is how much simulated time is asked to pass per real frame.
+    /// The quantum Δt_control is a boundary no accepted chunk may cross while
+    /// thrust is active: under physical warp control does not coarsen, input is
+    /// sampled with the same simulated-time step as at ×1.
     ///
-    /// Лестница факторов дискретная [1, 5, 10, 100, 500, 1000, 3000] с двумя
-    /// капами: в атмосфере effective = min(ступень, 3); тяга разрешена только
-    /// при effective ≤ 3 — выше двигатель принудительно на нуле, полёт
-    /// баллистический (дальний варп). Дальний варп внутри атмосферы невозможен
-    /// по построению (drag-вклад → CanEnterLongWarp=false, T22e), а кап ×3
-    /// делает физический варп с тягой там легитимным.
+    /// The factor ladder is discrete [1, 5, 10, 100, 500, 1000, 3000] with two caps:
+    /// in the atmosphere effective = min(rung, 3); thrust is allowed only at
+    /// effective ≤ 3 — above that the engine is forced to zero and flight is
+    /// ballistic (long warp). Long warp inside the atmosphere is impossible by
+    /// construction (drag contribution → CanEnterLongWarp=false), and the ×3 cap
+    /// makes physical warp with thrust legitimate there.
     /// </summary>
     public sealed class WarpController
     {
         public const double ControlTickSeconds = 0.5d;
         public const double MinWarpFactor = 1d;
 
-        /// <summary>Дискретные ступени ускорения времени.</summary>
+        /// <summary>Discrete time-acceleration rungs.</summary>
         public static readonly double[] WarpRungs = { 1d, 5d, 10d, 100d, 500d, 1000d, 3000d };
 
-        /// <summary>Верхняя ступень (космос, без тяги — дальний варп).</summary>
+        /// <summary>Top rung (space, no thrust — long warp).</summary>
         public const double MaxWarpFactor = 3000d;
 
-        /// <summary>Кап effective-фактора внутри атмосферы.</summary>
+        /// <summary>Cap on the effective factor inside the atmosphere.</summary>
         public const double AtmosphereMaxWarpFactor = 3d;
 
-        /// <summary>Тяга разрешена только при effective ≤ этого значения.</summary>
+        /// <summary>Thrust is allowed only at effective ≤ this value.</summary>
         public const double ThrustMaxWarpFactor = 3d;
 
         public double WarpFactor { get; private set; } = 1d;
@@ -65,17 +64,12 @@ namespace Galilego.Events
         private double nextTickBoundary = ControlTickSeconds;
 
         /// <summary>
-        /// true — следующий SampleControl обязан пройти мимо тиковой сетки
-        /// (после ResetTicks/PrepareForLongWarp/старта). Прежний sentinel
-        /// «TickTimeSeconds == 0» был проверкой ЭПОХИ, а не отсутствия сэмпла:
-        /// после ресета с ненулевым t (зажигание на t=5с) первый сэмпл до
-        /// t+0.5 молча терялся — начало прожига шло с нулевым газом, а
-        /// PrepareForLongWarp мог молча НЕ обнулить старый ненулевой throttle
-        /// (аудит pre-Unity/9.1).
+        /// true — the next SampleControl must bypass the tick grid
+        /// (after ResetTicks/PrepareForLongWarp/start).
         /// </summary>
         private bool snapshotPending = true;
 
-        /// <summary>Снап запроса к ближайшей ступени лестницы вниз (запрос 7 → ×5).</summary>
+        /// <summary>Snaps the request to the nearest ladder rung downwards (request 7 → ×5).</summary>
         public void SetWarpFactor(double factor)
         {
             double rung = WarpRungs[0];
@@ -91,9 +85,9 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Effective-фактор кадра: внутри атмосферы любая ступень выше капа
-        /// даёт ровно AtmosphereMaxWarpFactor. Правило живёт здесь, а не в
-        /// вызывающем коде, чтобы капитуляция капа была невозможна молча.
+        /// Frame effective factor: in the atmosphere any rung above the cap gives
+        /// exactly AtmosphereMaxWarpFactor. The rule lives here rather than in the
+        /// caller so the cap cannot be bypassed silently.
         /// </summary>
         public double EffectiveWarpFactor(bool inAtmosphere)
         {
@@ -101,8 +95,8 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Тяга выше физического варпа запрещена целиком: при effective > 3
-        /// throttle принудительно 0 (ступени 5+ — только баллистика).
+        /// Thrust above physical warp is fully forbidden: at effective > 3
+        /// throttle is forced to 0 (rungs 5+ are ballistics only).
         /// </summary>
         public double EffectiveThrottle(double rawThrottle, double effectiveFactor)
         {
@@ -110,11 +104,11 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Обнуляет снимок газа перед входом в дальний варп: CanEnterLongWarp
-        /// проверяет фактический вклад тяг-источников, а он читает последний
-        /// snapshot — без обнуления старый ненулевой throttle молча блокировал бы
-        /// легитимный безтопливный варп. Безусловно (не через SampleControl):
-        /// старый сэмпл обязан быть затёрт при любых временах.
+        /// Zeroes the throttle snapshot before entering long warp: CanEnterLongWarp
+        /// checks the actual contribution of thrust sources, which reads the last
+        /// snapshot — without zeroing, an old non-zero throttle would silently block
+        /// legitimate fuel-less warp. Unconditional (not via SampleControl): the old
+        /// sample must be overwritten at any time.
         /// </summary>
         public void PrepareForLongWarp(double currentTimeSeconds)
         {
@@ -124,7 +118,7 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Обновляет снимок ввода на границе тика. Вызывается снаружи, не из RHS.
+        /// Updates the input snapshot at the tick boundary. Called from outside, not from the RHS.
         /// </summary>
         public void SampleControl(double currentTimeSeconds, double throttle)
         {
@@ -137,13 +131,12 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Максимальный размер следующего чанка с учётом границы control-tick.
-        /// Без тяги — ограничение только сверху (maxChunk); с тягой чанк
-        /// обрезается по границе тика и никогда её не пересекает.
-        /// Побочный эффект зафиксирован контрактом: при отставании границы
-        /// от currentTime граница сдвигается прямо здесь (однопоточный
-        /// последовательный вызов из игрового цикла — единственная схема
-        /// потребления).
+        /// Maximum size of the next chunk taking the control-tick boundary into
+        /// account. Without thrust the only limit is above (maxChunk); with thrust
+        /// the chunk is cut at the tick boundary and never crosses it.
+        /// The side effect is part of the contract: if the boundary lags behind
+        /// currentTime it is shifted right here (single-threaded sequential calls
+        /// from the game loop are the only consumption pattern).
         /// </summary>
         public double GetMaxChunkSeconds(double currentTimeSeconds, double maxChunk, bool thrustActive)
         {

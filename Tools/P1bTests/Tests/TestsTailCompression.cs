@@ -6,11 +6,11 @@ using Unity.Mathematics;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Сжатие верхнего хвоста формы: три варианта параметров, цель - максимум
-    /// 8.8..9.0 км при p99 около 5.7 км. Показывает, что сжатие трогает
-    /// именно хвост, а не основную массу распределения, и что оно не ломает
-    /// нормали: у рационального колена наклон на пороге ровно 1, поэтому
-    /// первая производная непрерывна и ребра не появляется.
+    /// Shape tail compression: three parameter variants; target a maximum
+    /// of 8.8..9.0 km with p99 around 5.7 km. Shows that compression affects
+    /// the tail only, not the bulk of the distribution, and that it does not
+    /// break normals: the rational knee has slope exactly 1 at the threshold,
+    /// so the first derivative is continuous and no crease appears.
     /// </summary>
     private static int Test130_TailCompression()
     {
@@ -93,9 +93,9 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Профиль вдоль меридиана через глобальный максимум. Показывает, что
-    /// сжатие не оставляет "плоскую макушку": вершина остаётся острой, просто
-    /// ниже. Плоская макушка была бы признаком жёсткого клиппинга.
+    /// Profile along a meridian through the global maximum. Shows that
+    /// compression does not leave a "flat top": the peak stays sharp, just
+    /// lower. A flat top would indicate hard clipping.
     /// </summary>
     private static void Meridian(double knee, double threshold)
     {
@@ -104,7 +104,7 @@ internal static partial class P1bTests
         TerrainNoiseParams p = TerrainNoiseParams.FromTerrain(t);
         TerrainNoiseParams pRaw = TerrainNoiseParams.FromTerrain(PerlinTuned(0d, 0d));
 
-        // Ищем глобальный максимум по сканированию сферы.
+        // Find the global maximum by scanning the sphere.
         double best = double.NegativeInfinity;
         double3 bestDir = new double3(0d, 0d, 1d);
         double ga = System.Math.PI * (3.0 - System.Math.Sqrt(5.0));
@@ -122,7 +122,7 @@ internal static partial class P1bTests
             }
         }
 
-        // Перпендикуляр к направлению максимума, в нём идёт меридиан.
+        // Perpendicular to the maximum direction; the meridian runs along it.
         double3 up = System.Math.Abs(bestDir.z) < 0.9d ? new double3(0d, 0d, 1d) : new double3(1d, 0d, 0d);
         double3 e1 = SafeNormalize(math.cross(up, bestDir));
         double3 e2 = math.cross(bestDir, e1);
@@ -156,17 +156,17 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Две проверки, которые обязаны выполняться, иначе сжатие портит форму.
+    /// Two checks that must hold, otherwise compression distorts the shape.
     ///
-    /// 1) Непрерывность наклона на пороге. Рациональное колено специально
-    ///    построено так, что y'(t) = 1 с обеих сторон. Если это сломать
-    ///    (например заменить на min/max), на пороге появится излом, и в
-    ///    нормалях поверхности будет видимая полоса. Проверяем численно.
+    /// 1) Slope continuity at the threshold. The rational knee is built so
+    ///    that y'(t) = 1 on both sides. Breaking this (e.g. with min/max)
+    ///    would produce a crease at the threshold and a visible band in the
+    ///    surface normals. Verified numerically.
     ///
-    /// 2) Отсутствие плоской макушки. Потолок у сжатия асимптотический,
-    ///    поэтому вершина остаётся острой: сжатие срезает высоту, но не
-    ///    обнуляет наклон. Проверяем, что у вершины наклон остаётся
-    ///    ненулевым - плоская крыша означала бы, что это клиппинг, а не колено.
+    /// 2) No flat top. The compression ceiling is asymptotic, so the peak
+    ///    stays sharp: it lowers the height but does not zero the slope. We
+    ///    check that the peak slope stays non-zero - a flat roof would mean
+    ///    clipping, not a knee.
     /// </summary>
     private static int Test131_TailCompressionCrease()
     {
@@ -174,7 +174,7 @@ internal static partial class P1bTests
         HeightfieldTerrain p = PerlinTuned(knee, t);
         TerrainNoiseParams np = TerrainNoiseParams.FromTerrain(p);
 
-        // 1) Наклон слева и справа от порога.
+        // 1) Slope to the left and right of the threshold.
         const double h = 1e-7d;
         double left = TerrainNoise.ApplyTailCompression(np, t - h);
         double right = TerrainNoise.ApplyTailCompression(np, t + h);
@@ -190,7 +190,7 @@ internal static partial class P1bTests
         Check(slopeGap < 1e-5d, "T131 tail-crease",
             "на пороге сжатия излом: расхождение наклона " + slopeGap.ToString("E2", CultureInfo.InvariantCulture));
 
-        // 2) Вершина не срезана в ноль: у самой высокой точки наклон остаётся.
+        // 2) The peak is not cut to zero: the highest point keeps its slope.
         TerrainNoiseParams pRaw = TerrainNoiseParams.FromTerrain(PerlinTuned(0d, 0d));
         const int scan = 200000;
         double best = double.NegativeInfinity;
@@ -217,7 +217,7 @@ internal static partial class P1bTests
         double dn2 = TerrainNoise.SampleHeight(np, bestDir - new double3(0d, e, 0d));
         double slope = math.length(new double3(up1 - dn1, up2 - dn2, 0d)) / (2d * e);
 
-        // Для сравнения: наклон у вершины БЕЗ сжатия.
+        // For comparison: peak slope WITHOUT compression.
         double rawBest = double.NegativeInfinity;
         double3 rawDir = new double3(0d, 0d, 1d);
         for (int i = 0; i < scan; i++)
@@ -252,7 +252,7 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Пункт 5: окна домена валидны только при Gain * Lacunarity == 1.
+    /// Item 5: the domain windows are valid only when Gain * Lacunarity == 1.
     /// </summary>
     private static int Test132_DampWindowsValid()
     {
@@ -269,7 +269,7 @@ internal static partial class P1bTests
                 gains[i], lacun[i], product, ok ? "пригодны" : "НЕПРИГОДНЫ"));
         }
 
-        // Текущие профили обязаны быть пригодны.
+        // The current profiles must be valid.
         HeightfieldTerrain legacy = SceneLikeTerrain();
         legacy.SlopeDamp = 0.6d;
         Check(TerrainNoise.SlopeDampWindowsValid(legacy.Gain, legacy.Lacunarity), "T132 damp-windows",
@@ -280,15 +280,15 @@ internal static partial class P1bTests
         Check(TerrainNoise.SlopeDampWindowsValid(perlin.Gain, perlin.Lacunarity), "T132 damp-windows",
             "Perlin-профиль: Gain*Lacunarity != 1 при SlopeDamp > 0");
 
-        // И отрицательный контроль: убеждаемся, что предикат ловит поломку.
+        // Negative control: make sure the predicate catches a broken setup.
         Check(!TerrainNoise.SlopeDampWindowsValid(0.6d, 2d), "T132 damp-windows",
             "предикат не ловит Gain 0.6 * Lacunarity 2 = 1.2, то есть он бесполезен");
         Check(!TerrainNoise.SlopeDampWindowsValid(0.5d, 2.5d), "T132 damp-windows",
             "предикат не ловит Gain 0.5 * Lacunarity 2.5 = 1.25");
 
-        // И что поломка действительно ломает сигнал: вклад октавы в наклон
-        // растёт геометрически, и нормировка /(o+1) перестаёт делить на
-        // константу. Показываем это числами, а не только флагом.
+        // And that the break really damages the signal: the per-octave slope
+        // contribution grows geometrically, so the /(o+1) normalization no
+        // longer divides by a constant. Shown with numbers, not just a flag.
         Console.WriteLine("    вклад октавы в накопленный наклон (амплитуда * частота):");
         foreach (double g in new double[] { 0.5d, 0.6d })
         {
@@ -301,7 +301,7 @@ internal static partial class P1bTests
                 "T132 damp-windows", "контроль соотношения сломан");
         }
 
-        // Конвертация обязана реально гасить домен, а не только ругаться в лог.
+        // Conversion must actually disable the domain, not merely log a warning.
         HeightfieldTerrain broken = PerlinTuned(0.13d, 0.5656d);
         broken.SlopeDamp = 0.6d;
         broken.SlopeDampMode = (int)TerrainSlopeDampMode.Accum;
@@ -314,7 +314,7 @@ internal static partial class P1bTests
         Check(converted.SlopeDampMode == (int)TerrainSlopeDampMode.Off, "T132 damp-windows",
             "при Gain*Lacunarity != 1 режим домена не сброшен в Off при конвертации");
 
-        // И наоборот: валидная конфигурация проходит нетронутой.
+        // Conversely, a valid configuration passes through untouched.
         HeightfieldTerrain valid = PerlinTuned(0.13d, 0.5656d);
         valid.SlopeDamp = 0.6d;
         valid.SlopeDampMode = (int)TerrainSlopeDampMode.Gradient;

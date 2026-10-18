@@ -6,9 +6,9 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Процедурные камни для декора местности: низкополигональные фасетные меши
-    /// (икосаэдр + детерминированное смещение, приплюснутое основание) и
-    /// процедурная тайловая текстура породы. Внешние модели не нужны.
+    /// Procedural rocks for ground decor: low-poly faceted meshes (icosahedron +
+    /// deterministic displacement, flattened base) and a procedural tiling rock
+    /// texture. No external models needed.
     /// </summary>
     public static class RockModelSetup
     {
@@ -26,7 +26,7 @@ namespace Galilego.Universe.EditorTools
             return rocks;
         }
 
-        /// <summary>Тайловая шумовая текстура породы (серые тона + тёмные трещины).</summary>
+        /// <summary>Tiling rock noise texture (grey tones + dark cracks).</summary>
         public static Texture2D CreateOrLoadRockNoise()
         {
             string path = DecorTexturesFolder + "/rock_noise.png";
@@ -78,8 +78,7 @@ namespace Galilego.Universe.EditorTools
         private static Mesh CreateOrLoadRock(int variant)
         {
             string path = DecorModelsFolder + "/Rock" + (variant + 1) + ".asset";
-            // Пересобираем каждый раз при сборке контента: старые битые ассеты
-            // не должны переиспользоваться.
+            // Rebuild on every content assembly so stale assets are never reused.
             AssetDatabase.DeleteAsset(path);
 
             var vertices = new List<Vector3>();
@@ -99,8 +98,8 @@ namespace Galilego.Universe.EditorTools
                 displaced.Add(d * (1f + n));
             }
 
-            // Фасетная нарезка: вершины дублируются по треугольникам —
-            // RecalculateNormals даёт плоские грани (низкополигональный вид).
+            // Faceted split: vertices are duplicated per triangle so
+            // RecalculateNormals gives flat faces (low-poly look).
             var flatVertices = new List<Vector3>(triangles.Count);
             var flatUvs = new List<Vector2>(triangles.Count);
             for (int i = 0; i < triangles.Count; i++)
@@ -113,7 +112,7 @@ namespace Galilego.Universe.EditorTools
                     (Mathf.Asin(Mathf.Clamp(n.y, -1f, 1f)) / Mathf.PI) + 0.5f));
             }
 
-            // Нормализация: габарит ~1 м, основание приплюснуто и на y=0.
+            // Normalization: extent ~1 m, base flattened and at y=0.
             float maxExtent = 0.0001f;
             for (int i = 0; i < flatVertices.Count; i++)
             {
@@ -152,8 +151,8 @@ namespace Galilego.Universe.EditorTools
             var mesh = new Mesh { name = "Rock" + (variant + 1) };
             mesh.SetVertices(flatVertices);
             mesh.SetUVs(0, flatUvs);
-            // Фасетные вершины не индексируются: индексы треугольников —
-            // последовательные (0,1,2,...), а не исходного икосаэдра.
+            // Faceted vertices are unindexed: triangle indices are sequential
+            // (0,1,2,...), not the source icosahedron's.
             var flatTriangles = new List<int>(flatVertices.Count);
             for (int i = 0; i < flatVertices.Count; i++)
             {

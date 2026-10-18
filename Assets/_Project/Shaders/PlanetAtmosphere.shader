@@ -1,24 +1,24 @@
 Shader "Galilego/PlanetAtmosphere"
 {
-    // Атмосфера планеты: камера-центрированный купол (PlanetAtmosphereView),
-    // аналитическое пересечение луча с оболочками, raymarch одиночного
-    // рассеяния + приближение многократного (LUT, Hillaire EGSR 2020).
+    // Planet atmosphere: camera-centred dome (PlanetAtmosphereView), analytic
+    // ray-shell intersection, single-scattering raymarch + multiple-scattering
+    // approximation (LUT, Hillaire EGSR 2020).
     //
-    // Физика: β из C# (AtmosphereOptics — единый источник с CPU SkyPhysics),
-    // LUT прозрачности к Солнцу и многократного рассеяния генерируются на CPU
-    // и лишь сэмплируются тут.
+    // Physics: β comes from C# (AtmosphereOptics — single source shared with
+    // CPU SkyPhysics); the Sun transmittance and multiple-scattering LUTs are
+    // generated on the CPU and only sampled here.
     //
-    // Горизонт: путь луча у касательной математически разрывен (≈2 км до
-    // поверхности ↔ ≈сотни км до выхода из оболочки). Чтобы не было жёсткой
-    // ступеньки, для пикселей неба, попавших по сфере планеты, считаются ДВА
-    // вклада — «земля» (короткий путь) и «небо» (полный путь) — и плавно
-    // смешиваются в узком окне чуть ниже касательной (HorizonFade). Там, где
-    // рельефа нет, сфера закрашивается затенённой землёй с дымкой, а не
-    // тёмным клиром.
+    // Horizon: the ray path is mathematically discontinuous at the tangent
+    // (≈2 km to the surface ↔ ≈hundreds of km to the shell exit). To avoid a
+    // hard step, sky pixels that hit the planet sphere evaluate TWO
+    // contributions — "ground" (short path) and "sky" (full path) — blended
+    // smoothly in a narrow window just below the tangent (HorizonFade). Where
+    // there is no terrain, the sphere is filled with shaded, hazy ground
+    // instead of dark clear colour.
     //
-    // Композит: цвет opaque-сцены уже в буфере — сэмплим сами, гасим по
-    // transmittance и добавляем in-scatter. Blend One Zero = замена, фон учтён
-    // вручную.
+    // Composite: the opaque scene colour is already in the buffer — we sample
+    // it, attenuate by transmittance and add in-scatter. Blend One Zero means
+    // replace, with the background handled manually.
     SubShader
     {
         Tags { "RenderPipeline" = "HDRenderPipeline" "RenderType" = "Transparent" "Queue" = "Transparent" }
@@ -31,21 +31,13 @@ Shader "Galilego/PlanetAtmosphere"
             Blend One Zero
             ZWrite Off
             ZTest Always
-            // Cull Back, а не Cull Off: купол центрирован на камере
-            // (PlanetAtmosphereView: shell.position = cameraPosition), то есть
-            // камера ВНУТРИ замкнутой сферы. Cull Off рисовал её дважды —
-            // ближнюю и дальнюю полусферу, — с ОДИНАКОВЫМ результатом: Vert
-            // отдаёт output.dir = positionOS, а камера в центре, так что обе
-            // половины дают один и тот же direction и одно IntegrateAtmosphere.
-            // Это была ровно вдвое посчитанная впустую растеризация
-            // fullscreen-пасса.
-            //
-            // Именно Cull Back, а НЕ Cull Front: BuildSphereMesh в
-            // PlanetAtmosphereView woundит треугольники нормалью ВНУТРЬ
-            // (проверено на данных меша: right-handed cross product смотрит к
-            // центру, тогда как у встроенной сферы Unity — наружу). Камера
-            // внутри видит такие треугольники с фронтальной стороны, поэтому
-            // Cull Front вырезал купол целиком и небо становилось чёрным.
+            // Cull Back, not Cull Off: the dome is centred on the camera
+            // (PlanetAtmosphereView: shell.position = cameraPosition), so the
+            // camera is inside the closed sphere; Cull Off would rasterise the
+            // fullscreen pass twice with an identical result. Not Cull Front:
+            // BuildSphereMesh winds triangles with the normal pointing inward,
+            // so the dome's inside is its front face and Cull Front would
+            // remove it entirely.
             Cull Back
 
             HLSLPROGRAM
@@ -56,14 +48,14 @@ Shader "Galilego/PlanetAtmosphere"
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
 
-            // --- Камера/тело/солнце ---
+            // --- Camera/body/sun ---
             float3 _AtmCameraWS;
             float3 _AtmCameraForwardWS;
             float3 _AtmBodyCenterWS;
             float3 _AtmSunDirWS;
             float3 _AtmSunColor;
 
-            // --- Геометрия и оптика (м⁻¹) из AtmosphereOptics ---
+            // --- Geometry and optics (m⁻¹) from AtmosphereOptics ---
             float _AtmPlanetRadius;
             float _AtmRadius;
             float _AtmAtmDepth;
@@ -82,7 +74,7 @@ Shader "Galilego/PlanetAtmosphere"
             float4 _AtmGroundColor;
             float _AtmDebugMode;
 
-            // CPU-LUT: прозрачность к Солнцу и многократное рассеяние.
+            // CPU LUTs: Sun transmittance and multiple scattering.
             TEXTURE2D(_AtmTransmittanceTex);
             SAMPLER(sampler_AtmTransmittanceTex);
             TEXTURE2D(_AtmMultiScatterTex);
@@ -90,8 +82,7 @@ Shader "Galilego/PlanetAtmosphere"
 
             #define ATM_PI 3.14159265358979
 
-            // Калибровка радианса сцены: реальные β Рэлея слабее прежних
-            // эмпирических; регулируется Intensity.
+            // Scene radiance calibration applied on top of Intensity.
             #define ATM_RADIANCE_SCALE 5.0
 
             struct Attributes
@@ -109,7 +100,7 @@ Shader "Galilego/PlanetAtmosphere"
             {
                 Varyings output;
                 output.positionCS = TransformObjectToHClip(input.positionOS);
-                output.dir = input.positionOS; // купол единичного радиуса, центр = камера
+                output.dir = input.positionOS; // unit-radius dome, centre = camera
                 return output;
             }
 
@@ -139,7 +130,7 @@ Shader "Galilego/PlanetAtmosphere"
                 return (3.0 / (16.0 * ATM_PI)) * (1.0 + (c * c));
             }
 
-            // Фаза Корнетта-Шенкса (нормированная), дымка/ореол вокруг Солнца.
+            // Cornette-Shanks phase (normalised): haze/glow around the Sun.
             float MiePhase(float c, float g)
             {
                 float g2 = g * g;
@@ -175,48 +166,40 @@ Shader "Galilego/PlanetAtmosphere"
                 return SAMPLE_TEXTURE2D_LOD(_AtmMultiScatterTex, sampler_AtmMultiScatterTex, uv, 0).rgb;
             }
 
-            // Аналитический интеграл однородного сегмента:
+            // Analytic integral over a homogeneous segment:
             // transmittance · (S − S·transSeg) / sigmaE.
             float3 IntegrateOverSegment(float3 S, float3 transSeg, float3 transmittance, float3 sigmaE)
             {
                 return transmittance * (S - (S * transSeg)) / max(sigmaE, 1e-12);
             }
 
-            // Один raymarch от tStart до tEnd. Возвращает in-scatter, в
-            // outTransmittance — прозрачность к концу пути.
+            // One raymarch from tStart to tEnd. Returns in-scatter; outTransmittance
+            // is the transmittance at the end of the path.
             //
-            // Сэмплы — середины N равных сегментов (смещение 0.5), т.е.
-            // стратифицированная выборка. Раньше смещение бралось из per-pixel
-            // белого шума: он разбирается только временным накоплением, а TAA в
-            // проекте выключен (FirstPersonCamera.TemporalAA = false, стоит
-            // SMAA) — поэтому шум оставался прибитым к экрану и шёл за поворотом
-            // камеры (сетка точек в ореоле Солнца и по диску планеты из космоса).
-            // При 48 сегментах и Hr ≈ 8.5 км погрешность midpoint гладкая, мерцания
-            // и бандинга не даёт, поэтому разброс шага не нужен.
+            // Samples are the midpoints of N equal segments (offset 0.5),
+            // i.e. stratified sampling. With 48 segments and Hr ≈ 8.5 km the
+            // midpoint error is smooth and produces no flicker or banding, so
+            // no step jitter is needed.
             float3 IntegrateAtmosphere(float3 ro, float3 rd, float3 sunDir,
                 float tStart, float tEnd, out float3 outTransmittance)
             {
                 int maxSteps = clamp((int)_AtmStepCount, 2, 128);
 
-                // Число шагов — ПО ДЛИНЕ ПУТИ, а не всегда максимум.
+                // Number of steps depends on PATH LENGTH, not always the max.
                 //
-                // Профиль плотности экспоненциальный с масштабом Hr, и он
-                // разрешается, когда шаг ds = L/N много меньше Hr. Требование
-                // ds <= Hr/16 (изменение плотности на шаг <= 6 %) даёт
-                // N = 16·L/Hr; при такой сетке ошибка midpoint по интегралу
-                // ~0.4 %, то есть ниже порога видимости.
+                // The density profile is exponential with scale Hr and is
+                // resolved when ds = L/N is much smaller than Hr. Requiring
+                // ds <= Hr/16 (density change per step <= 6 %) gives
+                // N = 16·L/Hr; the midpoint integral error is then ~0.4 %,
+                // below the visibility threshold.
                 //
-                // Что это даёт. Для НЕБА путь — сотни километров, так что
-                // N упирается в maxSteps и картинка неба не меняется ВООБЩЕ.
-                // Для РЕЛЬЕФА путь до ближайшего песка — единицы и десятки
-                // метров, и там 48 одинаковых шагов были чистой переплатой:
-                // один шаг длиной 5 м интегрирует экспоненту точнее, чем 48
-                // шагов по 10 см. Таких пикселей в кадре (земля в упор под
-                // ногами и близкий берег) — больше половины экрана.
+                // Sky paths are hundreds of km, so N reaches maxSteps and the
+                // sky image is unchanged. Terrain paths are metres, where a few
+                // long steps integrate the exponential accurately and 48 fixed
+                // steps were pure overhead.
                 //
-                // round, а не ceil: ступеньки числа шагов при смене L не
-                // дают видимого стыка — на границе меняется только ошибка
-                // интегрирования, и она уже ниже 0.4 %.
+                // round, not ceil: step-count steps between L changes produce
+                // no visible seam — only the integration error changes.
                 int steps = clamp((int)round((16.0 * (tEnd - tStart)) / max(1.0, _AtmHr)), 1, maxSteps);
                 float ds = (tEnd - tStart) / (float)steps;
 
@@ -284,8 +267,8 @@ Shader "Galilego/PlanetAtmosphere"
                 float r0 = length(ro);
                 float3 n0 = ro / max(r0, 1e-3);
 
-                // Глубина сцены: путь до реального рельефа. Пиксель неба
-                // определяется штатным IsSky (сырая глубина = дальний клир).
+                // Scene depth: path to the actual terrain. Sky pixels are
+                // detected by the standard IsSky (raw depth = far clip).
                 uint2 pixel = uint2(input.positionCS.xy);
                 float cosFwd = dot(rd, _AtmCameraForwardWS);
                 bool hasTerrain = false;
@@ -301,7 +284,7 @@ Shader "Galilego/PlanetAtmosphere"
                     }
                 }
 
-                // Сфера уровня моря — окклюдер/фолбэк-земля.
+                // Sea-level sphere — occluder/fallback ground.
                 float p0;
                 float p1;
                 bool hitPlanet = false;
@@ -314,8 +297,8 @@ Shader "Galilego/PlanetAtmosphere"
 
                 bool planetOccludes = hitPlanet && _AtmPlanetOcclusion > 0.5;
 
-                // Цвет фона — цветовая пирамида с учётом dynamic resolution
-                // (паттерн HDRP Lit.hlsl, рефракция прозрачных).
+                // Background colour — the colour pyramid with dynamic resolution
+                // (HDRP Lit.hlsl pattern, transparent refraction).
                 float2 screenUv = input.positionCS.xy * _ScreenSize.zw;
                 float2 colorUv = min(screenUv * _RTHandleScaleHistory.xy,
                     _ColorPyramidUvScaleAndLimitCurrentFrame.zw);
@@ -336,9 +319,9 @@ Shader "Galilego/PlanetAtmosphere"
                     float3 groundBg = bgRaw;
                     if (!hasTerrain && planetOccludes)
                     {
-                        // Фолбэк-земля: затенённый Ламберт с прозрачностью к
-                        // Солнцу, чтобы за недорисованным рельефом была не
-                        // дыра, а дымчатая земля.
+                        // Fallback ground: shaded Lambert with Sun
+                        // transmittance, so undrawn terrain shows hazy
+                        // ground instead of a hole.
                         float3 hp = ro + (rd * tPlanet);
                         float3 N = hp / max(length(hp), 1e-3);
                         float cosSunG = dot(N, sunDir);
@@ -350,7 +333,7 @@ Shader "Galilego/PlanetAtmosphere"
                     groundColor = (groundBg * groundT) + (groundScatter * radianceScale);
                 }
 
-                // Косинус зенита луча и граница касательной.
+                // Ray zenith cosine and tangent boundary.
                 float cosChi = dot(n0, rd);
                 float sinHor = clamp(_AtmPlanetRadius / max(r0, _AtmPlanetRadius), 0.0, 1.0);
                 float cosHor = -sqrt(max(0.0, 1.0 - (sinHor * sinHor)));
@@ -373,10 +356,10 @@ Shader "Galilego/PlanetAtmosphere"
                     color = groundColor;
                     if (horizon > 0.001)
                     {
-                        // Небо ровно в направлении касательной (планета его не
-                        // перекрывает) — непрерывный ориентир для плавного
-                        // стыка. Интегрировать луч «сквозь» планету нельзя:
-                        // плотность у поверхности даёт яркую ложную полосу.
+                        // Sky exactly along the tangent direction (not blocked
+                        // by the planet) — a continuous reference for the
+                        // blend. Integrating "through" the planet would
+                        // produce a bright false band near the surface.
                         float3 dirHorDelta = rd + ((cosHor - cosChi) * n0);
                         if (dot(dirHorDelta, dirHorDelta) > 1e-12)
                         {
@@ -401,7 +384,7 @@ Shader "Galilego/PlanetAtmosphere"
                     color = skyColor;
                 }
 
-                // --- Debug (Фаза 0) ---
+                // --- Debug (phase 0) ---
                 if (_AtmDebugMode > 0.5)
                 {
                     if (_AtmDebugMode < 1.5)

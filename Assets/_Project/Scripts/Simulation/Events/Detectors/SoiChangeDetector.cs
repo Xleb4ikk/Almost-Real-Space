@@ -5,13 +5,13 @@ using Galilego.Universe;
 namespace Galilego.Events
 {
     /// <summary>
-    /// Смена доминирующего тела (выход/вход в SOI). Дискретное событие:
-    /// непрерывной нуль-функции нет, ключ — сама ссылка OrbitingBody из
-    /// StarSystem.FindDominantBody (сравнение референсное). Проверяется каждый
-    /// чанк без эвристик «только рядом с границей»: дерево маленькое,
-    /// correctness first — эвристика могла бы сама пропустить границу.
-    /// Body в событии — ново-доминирующее тело (старое восстанавливается
-    /// запросом FindDominantBody чуть раньше корня, если нужно).
+    /// Change of the dominant body (SOI exit/entry). A discrete event: there is no
+    /// continuous zero function; the key is the OrbitingBody reference itself from
+    /// StarSystem.FindDominantBody (reference comparison). Checked every chunk with no
+    /// "only near the boundary" heuristics: the tree is small, correctness first — a
+    /// heuristic could miss the boundary. The Body in the event is the newly dominant
+    /// body (the old one is recovered by querying FindDominantBody slightly before the
+    /// root, if needed).
     /// </summary>
     public sealed class SoiChangeDetector : ITransitionDetector
     {

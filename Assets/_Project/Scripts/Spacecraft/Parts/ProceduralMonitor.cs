@@ -4,28 +4,27 @@ using UnityEngine;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Процедурный монитор капсулы Orion: тот же корпус с VESA-плитой и квад
-    /// экрана с UV 0..1, что стоят в Blender-сцене (Monitor_*), но собирается в
-    /// Unity. Основные мониторы уже есть мешами в FBX (Orion_CrewModule.fbx,
-    /// Monitor_Pilot / Monitor_Operator_1/2, Tablet_Screen); этот компонент —
-    /// для дополнительных мониторов на площадках Mount_* и для случаев, когда
-    /// экран нужно нарисовать самому (SetContent).
+    /// Procedural Orion capsule monitor: the same body with a VESA plate and a screen
+    /// quad with UV 0..1 as in the Blender scene (Monitor_*), but assembled in Unity.
+    /// The main monitors already exist as FBX meshes (Orion_CrewModule.fbx,
+    /// Monitor_Pilot / Monitor_Operator_1/2, Tablet_Screen); this component is for
+    /// extra monitors on Mount_* pads and for cases where the screen must be drawn
+    /// yourself (SetContent).
     ///
-    /// Как пользоваться:
-    ///  1. Пустой GameObject + этот компонент (MeshFilter/MeshRenderer добавятся).
-    ///  2. Размеры экрана, материал экрана (screenTemplate) и корпуса.
-    ///  3. Контекстное меню компонента → «Snap To Nearest Mount_*»: монитор
-    ///     встанет на ближайшую площадку из модели капсулы (Mount_Monitor_*,
-    ///     Mount_Tablet_Pilot), сам определив ось, смотрящую в кабину.
-    ///  4. SetContent(renderTexture): у каждого монитора свой экземпляр
-    ///     материала экрана — на разных мониторах можно показывать разное.
-    ///  5. TryGetScreenUV(ray, out uv): луч (мышь, контроллер, палец) в
-    ///     координаты экрана 0..1 (слева внизу) — для UI, который рисуется в
-    ///     RenderTexture.
+    /// Usage:
+    ///  1. Empty GameObject + this component (MeshFilter/MeshRenderer are added).
+    ///  2. Screen size, screen material (screenTemplate) and body material.
+    ///  3. Component context menu → "Snap To Nearest Mount_*": the monitor snaps to
+    ///     the nearest pad in the capsule model (Mount_Monitor_*, Mount_Tablet_Pilot),
+    ///     determining the axis facing the cabin itself.
+    ///  4. SetContent(renderTexture): each monitor has its own screen material instance,
+    ///     so different monitors can show different things.
+    ///  5. TryGetScreenUV(ray, out uv): a ray (mouse, controller, finger) to screen
+    ///     coordinates 0..1 (bottom-left) — for UI drawn into the RenderTexture.
     ///
-    /// Геометрия: начало координат = задняя плоскость (на стене), лицевая
-    /// сторона смотрит в -Z (как у Quad и World Space Canvas). Экран — отдельный
-    /// сабмеш (материал #1) с UV строго 0..1.
+    /// Geometry: the origin is the back plane (against the wall), the front faces -Z
+    /// (like a Quad and World Space Canvas). The screen is a separate submesh
+    /// (material #1) with strictly 0..1 UVs.
     /// </summary>
     [ExecuteAlways]
     [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
@@ -103,7 +102,7 @@ namespace Galilego.Spacecraft
             }
         }
 
-        /// <summary>Пересобрать меш и материалы.</summary>
+        /// <summary>Rebuild the mesh and materials.</summary>
         [ContextMenu("Rebuild")]
         public void Rebuild()
         {
@@ -150,7 +149,7 @@ namespace Galilego.Spacecraft
             mesh.RecalculateBounds();
             filter.sharedMesh = mesh;
 
-            // Свой экземпляр материала экрана на каждый монитор.
+            // Own screen material instance per monitor.
             if (screenTemplate != null
                 && (screenInstance == null || screenInstance.shader != screenTemplate.shader))
             {
@@ -212,9 +211,9 @@ namespace Galilego.Spacecraft
             }
         }
 
-        // ── Содержимое экрана ────────────────────────────────────────────────
+        // ── Screen content ───────────────────────────────────────────────────
 
-        /// <summary>Подставить картинку (RenderTexture с интерфейсом или текстуру).</summary>
+        /// <summary>Set the picture (a RenderTexture with UI, or a texture).</summary>
         public void SetContent(Texture t)
         {
             content = t;
@@ -233,7 +232,7 @@ namespace Galilego.Spacecraft
             {
                 if (m.HasProperty("_UnlitColorMap"))
                 {
-                    m.SetTexture("_UnlitColorMap", content);      // HDRP/Unlit (наш экран)
+                    m.SetTexture("_UnlitColorMap", content);      // HDRP/Unlit (our screen)
                 }
 
                 if (m.HasProperty("_BaseColorMap"))
@@ -270,20 +269,20 @@ namespace Galilego.Spacecraft
             }
         }
 
-        // ── Интерактив ───────────────────────────────────────────────────────
+        // ── Interaction ──────────────────────────────────────────────────────
 
         public Vector3 ScreenCenterWorld
         {
             get { return transform.TransformPoint(new Vector3(0f, 0f, -(standoff + bodyDepth))); }
         }
 
-        /// <summary>Нормаль лицевой стороны экрана.</summary>
+        /// <summary>Normal of the screen face.</summary>
         public Vector3 ScreenNormalWorld
         {
             get { return -transform.forward; }
         }
 
-        /// <summary>Луч → координаты экрана 0..1 (слева внизу). true, если луч попал в экран.</summary>
+        /// <summary>Ray → screen coordinates 0..1 (bottom-left). true if the ray hit the screen.</summary>
         public bool TryGetScreenUV(Ray ray, out Vector2 uv)
         {
             uv = Vector2.zero;
@@ -299,15 +298,15 @@ namespace Galilego.Spacecraft
             return uv.x >= 0f && uv.x <= 1f && uv.y >= 0f && uv.y <= 1f;
         }
 
-        /// <summary>UV 0..1 → пиксели RenderTexture.</summary>
+        /// <summary>UV 0..1 → RenderTexture pixels.</summary>
         public Vector2 UVToPixel(Vector2 uv, int texWidth, int texHeight)
         {
             return new Vector2(uv.x * texWidth, uv.y * texHeight);
         }
 
-        // ── Привязка к площадкам Mount_* ─────────────────────────────────────
+        // ── Snapping to Mount_* pads ─────────────────────────────────────────
 
-        /// <summary>Поставить монитор на ближайшую площадку Mount_* (в т.ч. Mount_Tablet_Pilot).</summary>
+        /// <summary>Snap the monitor to the nearest Mount_* pad (including Mount_Tablet_Pilot).</summary>
         [ContextMenu("Snap To Nearest Mount_*")]
         public void SnapToNearestMount()
         {
@@ -338,7 +337,7 @@ namespace Galilego.Spacecraft
             }
         }
 
-        /// <summary>Выровнять по площадке: задняя плоскость на площадке, экран — в кабину.</summary>
+        /// <summary>Align to a pad: back plane on the pad, screen facing the cabin.</summary>
         public void SnapTo(Transform mount)
         {
             Vector3 center = cabinCenter != null ? cabinCenter.position : mount.root.position;
@@ -349,8 +348,8 @@ namespace Galilego.Spacecraft
             }
             else
             {
-                // Из Blender оси пустышки могли поменяться местами: нормаль площадки —
-                // та из 6 локальных осей, что смотрит в центр кабины.
+                // Blender's empty axes may be permuted: the pad normal is whichever of
+                // the 6 local axes points towards the cabin centre.
                 Vector3 toCenter = (center - mount.position).normalized;
                 Vector3[] axes = { mount.right, -mount.right, mount.up, -mount.up, mount.forward, -mount.forward };
                 float bestDot = -2f;
@@ -366,7 +365,7 @@ namespace Galilego.Spacecraft
                 }
             }
 
-            // «Верх» монитора: из осей площадки, перпендикулярных нормали, — ближайшая к мировому верху.
+            // Monitor "up": of the pad axes perpendicular to the normal, the one closest to world up.
             Vector3 up = Vector3.up;
             float bestUp = -2f;
             foreach (Vector3 axis in new Vector3[] { mount.right, -mount.right, mount.up, -mount.up, mount.forward, -mount.forward })
@@ -384,11 +383,11 @@ namespace Galilego.Spacecraft
                 }
             }
 
-            // Лицо экрана = -forward, значит forward = -нормаль.
+            // Screen face = -forward, so forward = -normal.
             transform.SetPositionAndRotation(mount.position, Quaternion.LookRotation(-normal, up));
         }
 
-        // ── Построение меша ──────────────────────────────────────────────────
+        // ── Mesh construction ────────────────────────────────────────────────
 
         private static void AddQuad(List<Vector3> v, List<Vector3> n, List<Vector2> uv, List<int> t,
             Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal,
@@ -408,7 +407,7 @@ namespace Galilego.Spacecraft
             uv.Add(uc);
             uv.Add(ud);
 
-            // Лицевая сторона — по часовой стрелке: Cross(b−a, c−a) смотрит вдоль нормали.
+            // Front face is clockwise: Cross(b−a, c−a) points along the normal.
             if (Vector3.Dot(Vector3.Cross(b - a, c - a), normal) >= 0f)
             {
                 t.Add(i);

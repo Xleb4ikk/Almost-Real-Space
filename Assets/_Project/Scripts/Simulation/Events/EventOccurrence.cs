@@ -4,15 +4,12 @@ using Galilego.Universe;
 namespace Galilego.Events
 {
     /// <summary>
-    /// Зафиксированное событие: propagate-to-event-and-stop. P1a только
-    /// детектирует и останавливается с точными временем/состоянием в корне —
-    /// никакой реакции (аэро, посадка, варп) здесь нет, это задача P1b.
-    /// Body — тело-участник (для геометрических событий), null для плановых.
-    /// Kind — типизированный вид для таблицы реакций (парсинг Name запрещён).
-    /// SourceDetector — детектор-источник (контекст реакции: сухая масса,
-    /// тело); null только для TimedEvent и EphemerisEnd. Осознанный компромисс связанности:
-    /// реакции уже владеют детекторами (регистрировали их), новых знаний
-    /// о симуляции это поле не добавляет — не разрастать дальше этого.
+    /// A recorded event: propagate-to-event-and-stop. P1a only detects and stops
+    /// at the exact root time/state — no reaction (aero, landing, warp) here, that
+    /// is P1b's job. Body — involved body (for geometric events), null for planned
+    /// ones. Kind — typed kind for the reaction table (parsing Name is forbidden).
+    /// SourceDetector — source detector (reaction context: dry mass, body); null
+    /// only for TimedEvent and EphemerisEnd.
     /// </summary>
     public readonly struct EventOccurrence
     {

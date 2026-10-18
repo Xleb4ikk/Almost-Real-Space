@@ -175,9 +175,9 @@ namespace Galilego.Core
         // Shampine (1986) dense output, via Hairer dopri5.f CONTD5.
         // y(t0+θh) = C0 + θ·(C1 + (1-θ)·(C2 + θ·(C3 + (1-θ)·C4))), θ ∈ [0,1],
         // C0=y0, C1=y1-y0, C2=h·k1-C1, C3=C1-C2-h·k7, C4=h·Σ(D·k), D2=0.
-        // k7 здесь — f(t0+h, y1), т.е. FSAL-оценка: 0 новых RHS на сегмент.
-        // Требует ровно эту таблицу (сверено с CDOPRI Hairer: A, B, E, C) —
-        // при смене таблицы коэффициенты ниже становятся невалидны.
+        // k7 here is f(t0+h, y1), i.e. the FSAL estimate: 0 new RHS per segment.
+        // Requires exactly this tableau (verified against Hairer's CDOPRI: A, B, E, C) —
+        // with a different tableau the coefficients below become invalid.
         //
         // Reference: Shampine, L. F. (1986). "Some practical Runge-Kutta formulas."
         // Mathematics of Computation, 46(173), 135-150.

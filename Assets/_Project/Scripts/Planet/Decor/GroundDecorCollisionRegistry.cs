@@ -4,19 +4,19 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Реестр цилиндрических коллайдеров декора местности (стволы деревьев).
-    /// Рендер обновляет список для доминантного тела по видимым чанкам рядом с
-    /// игроком, а SimulationRunner выталкивает игрока из стволов. Позиции и
-    /// оси — в ИНЕРЦИАЛЬНОМ astro-кадре (как PlayerPosition).
+    /// Registry of cylindrical decor colliders (tree trunks).
+    /// The renderer updates the list for the dominant body from visible chunks near
+    /// the player, and SimulationRunner pushes the player out of trunks. Positions and
+    /// axes are in the INERTIAL astro frame (like PlayerPosition).
     /// </summary>
     public static class GroundDecorCollisionRegistry
     {
         public struct Cylinder
         {
-            /// <summary>Центр основания ствола (инерциальный astro).</summary>
+            /// <summary>Trunk base centre (inertial astro).</summary>
             public Vector3d Position;
 
-            /// <summary>Ось ствола (нормаль поверхности, инерциальная).</summary>
+            /// <summary>Trunk axis (surface normal, inertial).</summary>
             public Vector3d Up;
 
             public double Radius;
@@ -30,7 +30,7 @@ namespace Galilego.Universe
 
         public static Cylinder Get(int index) => cylinders[index];
 
-        /// <summary>Начать обновление набора для тела (вызывает рендер).</summary>
+        /// <summary>Begin updating the set for a body (called by the renderer).</summary>
         public static void Begin(string body)
         {
             bodyName = body;
@@ -49,8 +49,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Вытолкнуть точку из всех стволов тела. Горизонтальное выталкивание
-        /// (вдоль касательной к нормали), высота — по оси ствола.
+        /// Push a point out of all trunks of the body. Push is horizontal
+        /// (along the tangent to the normal); height is measured along the trunk axis.
         /// </summary>
         public static bool TryResolve(string body, Vector3d position, double playerRadius, out Vector3d resolved)
         {

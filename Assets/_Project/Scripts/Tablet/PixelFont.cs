@@ -3,20 +3,19 @@ using System.Collections.Generic;
 namespace Galilego.Tablet
 {
     /// <summary>
-    /// Пиксельный шрифт 5×7 (+1 строка под выносные элементы Ц/Щ/запятой).
-    /// Только заглавные: латиница, кириллица, цифры, знаки. Глифы разной ширины
-    /// (точка, двоеточие — узкие), цифры — по 5 для ровных колонок.
-    /// Формат строки: "символ|ряд/ряд/…", '#' — пиксель. Нужен новый символ —
-    /// добавь строку в Table.
+    /// Pixel font 5×7 (+1 row for descenders such as comma). Uppercase only:
+    /// Latin, Cyrillic, digits, symbols. Glyphs have varying widths (period and
+    /// colon are narrow), digits are 5 wide for even columns. Row format:
+    /// "char|row/row/…", '#' is a pixel. To add a new character, add a row to Table.
     /// </summary>
     public static class PixelFont
     {
         public const int CellHeight = 8;
-        public const int Ascent = 7; // высота заглавной буквы
+        public const int Ascent = 7; // capital letter height
 
         public struct Glyph
         {
-            public ulong Bits; // 8 строк × 8 бит, строка 0 — младший байт
+            public ulong Bits; // 8 rows × 8 bits; row 0 is the least significant byte
             public int Width;
         }
 
@@ -25,7 +24,7 @@ namespace Galilego.Tablet
 
         private static readonly string[] Table =
         {
-            // Цифры
+            // Digits
             "0|.###./#...#/#..##/#.#.#/##..#/#...#/.###.",
             "1|..#../.##../..#../..#../..#../..#../.###.",
             "2|.###./#...#/....#/...#./..#../.#.../#####",
@@ -36,7 +35,7 @@ namespace Galilego.Tablet
             "7|#####/....#/...#./..#../.#.../.#.../.#...",
             "8|.###./#...#/#...#/.###./#...#/#...#/.###.",
             "9|.###./#...#/#...#/.####/....#/...#./.##..",
-            // Латиница
+            // Latin
             "A|.###./#...#/#...#/#####/#...#/#...#/#...#",
             "B|####./#...#/#...#/####./#...#/#...#/####.",
             "C|.###./#...#/#..../#..../#..../#...#/.###.",
@@ -63,7 +62,7 @@ namespace Galilego.Tablet
             "X|#...#/#...#/.#.#./..#../.#.#./#...#/#...#",
             "Y|#...#/#...#/.#.#./..#../..#../..#../..#..",
             "Z|#####/....#/...#./..#../.#.../#..../#####",
-            // Кириллица (Ё → Е, Й, Ъ, Ы, Ь ниже)
+            // Cyrillic (Yo, short I, hard/soft signs below)
             "\u0410|.###./#...#/#...#/#####/#...#/#...#/#...#",
             "\u0411|#####/#..../####./#...#/#...#/#...#/####.",
             "\u0412|####./#...#/#...#/####./#...#/#...#/####.",
@@ -97,9 +96,9 @@ namespace Galilego.Tablet
             "\u042D|.###./#...#/....#/..###/....#/#...#/.###.",
             "\u042E|#.###/#.#.#/#.#.#/###.#/#.#.#/#.#.#/#.###",
             "\u042F|.####/#...#/#...#/.####/..#.#/.#..#/#...#",
-            // Греческая Δ (для «ΔV»)
+            // Greek Δ (for "ΔV")
             "\u0394|..#../..#../.#.#./.#.#./#...#/#...#/#####",
-            // Знаки
+            // Symbols
             " |...",
             ".|./././././.#",
             ",|../../../../..../.#/.#/#.",
@@ -183,7 +182,7 @@ namespace Galilego.Tablet
             map.TryGetValue('?', out q);
             unknown = q;
 
-            // Строчные → заглавные; Ё остаётся отдельным глифом.
+            // Lowercase → uppercase; the Yo glyph stays separate.
             for (char c = 'a'; c <= 'z'; c++)
             {
                 map[c] = map[char.ToUpperInvariant(c)];

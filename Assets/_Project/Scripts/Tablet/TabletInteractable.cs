@@ -4,9 +4,9 @@ using UnityEngine;
 namespace Galilego.Tablet
 {
     /// <summary>
-    /// «Планшет на стене»: игрок наводится (луч ≤ 4 м, нужен коллайдер на GO) и
-    /// жмёт E — планшет разворачивается. Пока он открыт, ввод игрока заблокирован
-    /// (PlayerController.InputBlocked), камера не перехватывает курсор.
+    /// "Wall tablet": the player aims at it (ray ≤ 4 m, the GameObject needs a
+    /// collider) and presses E to expand it. While it is open, player input is
+    /// blocked (PlayerController.InputBlocked) and the camera does not grab the cursor.
     /// </summary>
     public sealed class TabletInteractable : Interactable
     {

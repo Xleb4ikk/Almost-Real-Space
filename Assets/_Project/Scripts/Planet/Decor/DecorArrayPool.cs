@@ -5,12 +5,9 @@ using Unity.Collections;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Пул нативных массивов декора: сборки травы берут буферы в аренду и
-    /// возвращают их, а не создают/освобождают на каждую пересборку. Без этого
-    /// финализация пула (до ~100k инстансов: Stored, WorldMatrices, кандидаты)
-    /// давала десятки МБ native alloc/free в одном кадре — это и читалось
-    /// пролагом при появлении чанка травы.
-    /// Массивы Allocator.Persistent, поэтому на teardown пул дренируется
+    /// Pool of native decor arrays: grass assembly borrows buffers and
+    /// returns them instead of creating/freeing them on every rebuild.
+    /// Arrays use Allocator.Persistent, so on teardown the pool is drained
     /// (DecorArrayPool.ClearAll).
     /// </summary>
     internal static class DecorArrayPool
@@ -47,8 +44,8 @@ namespace Galilego.Universe
         }
     }
 
-    /// <summary>Бакеты по длине: размеры буферов у чанка стабильны, поэтому
-    /// попадание в пул почти всегда есть.</summary>
+    /// <summary>Buckets keyed by length: chunk buffer sizes are stable, so a
+    /// pool hit is almost always available.</summary>
     internal static class DecorPool<T> where T : struct
     {
         private static readonly Dictionary<int, Stack<NativeArray<T>>> Buckets =
@@ -57,11 +54,8 @@ namespace Galilego.Universe
         private static readonly int ElemSize =
             Unity.Collections.LowLevel.Unsafe.UnsafeUtility.SizeOf<T>();
 
-        /// <summary>Потолок простаивающих нативных байтов на один тип T. Без него
-        /// пул растёт без ограничения: бакеты по ТОЧНОЙ длине, а длина зависит
-        /// от cells² конкретного чанка, то есть при езде по широтам и глубинам
-        /// появляются всё новые размеры и старые буферы уже никогда не
-        /// переиспользуются.</summary>
+        /// <summary>Cap of idle native bytes per type T: buckets are keyed by EXACT
+        /// length (which varies per chunk), so without it the pool grows unbounded.</summary>
         private const long MaxPooledBytes = 48L << 20;
 
         private static long pooledBytes;
@@ -98,8 +92,8 @@ namespace Galilego.Universe
             long bytes = (long)array.Length * ElemSize;
             if (pooledBytes + bytes > MaxPooledBytes)
             {
-                // Освобождает только простаивающие буферы: занятые в сессиях в
-                // Buckets не лежат, поэтому освобождать здесь нечего.
+                // Releases idle buffers only: buffers in use are not in Buckets,
+                // so there is nothing else to free here.
                 Clear();
             }
 

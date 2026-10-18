@@ -8,12 +8,12 @@ using UnityEngine;
 namespace Galilego.Simulation.Player
 {
     /// <summary>
-    /// Проба крыши постройки: луч сверху в render-пространстве находит крышу
-    /// (коллайдер SiteBox), игрок ставится на неё и идёт на восток; лог — в файл
-    /// (baseline/player2/roof_probe_log.txt). Проверяет, что опора-постройка держит
-    /// (sourceId ≥ 100), высота стабильна и нет проваливаний — в том числе от
-    /// устаревших поз коллайдеров при выключенном Physics.autoSyncTransforms.
-    /// Автовыход из Play — только в редакторе.
+    /// Building-roof probe: a ray from above in render space finds the roof (a
+    /// SiteBox collider), the player is placed on it and walks east; the log goes to
+    /// a file (baseline/player2/roof_probe_log.txt). It verifies that the building
+    /// support holds (sourceId >= 100), the height is stable and there are no
+    /// fall-throughs — including from stale collider poses with
+    /// Physics.autoSyncTransforms off. Auto-exit from Play — editor only.
     /// </summary>
     public sealed class PlayerRoofProbe : MonoBehaviour
     {
@@ -162,7 +162,7 @@ namespace Galilego.Simulation.Player
             }
         }
 
-        /// <summary>Луч сверху в render-пространстве: найти верхнюю опору-SiteBox и встать на неё.</summary>
+        /// <summary>Ray from above in render space: find the top SiteBox support and stand on it.</summary>
         private void PlaceOnRoof(double ts)
         {
             SiteBox[] boxes = UnityEngine.Object.FindObjectsByType<SiteBox>(FindObjectsSortMode.None);

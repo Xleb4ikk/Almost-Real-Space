@@ -4,20 +4,20 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Полный визуал звезды, созданный кодом (без ассетов и моделек):
-    ///   — ДАЛЕКО (диск за горизонтом): billboard-квад вдоль направления на
-    ///     звезду внутри far plane; направление и УГЛОВОЙ РАЗМЕР из честной
-    ///     геометрии ядра (2·atan(R★/d); аналог Земли ≈ 0.54°). За планетой
-    ///     диск прячет глубинный буфер (восходы/закаты честные).
-    ///   — БЛИЗКО (влезает в far plane): светящаяся сфера Ø 2·R★ на позиции
-    ///     floating origin (как ShipView: доминантное тело + мостнутая дельта).
-    ///   — Цвет — физика: спектр Планка → линейный sRGB при
-    ///     TemperatureKelvin (StarColorUtil). HDR-множитель DiscBrightness
-    ///     кормит bloom (корона получается пост-обработкой).
-    ///   — Directional Light: только ПОВОРОТ по направлению на звезду; цвет
-    ///     света (фотосфера × прозрачность атмосферы) ставит SkyEnvironment
-    ///     каждый кадр — день/ночь, закат и космос без второго владельца.
-    /// Вызов — LateUpdate ПОСЛЕ FirstPersonCamera (читает farClipPlane).
+    /// Full star visual, created entirely in code (no assets or models):
+    ///   — FAR (disc beyond the horizon): billboard quad along the direction to
+    ///     the star, inside the far plane; direction and ANGULAR SIZE from the
+    ///     real core geometry (2·atan(R★/d); Earth analogue ≈ 0.54°). Behind the
+    ///     planet the disc is hidden by the depth buffer (honest sunrises/sunsets).
+    ///   — NEAR (fits inside the far plane): glowing sphere Ø 2·R★ at the floating
+    ///     origin position (like ShipView: dominant body + bridged delta).
+    ///   — Color is physics: Planck spectrum → linear sRGB at TemperatureKelvin
+    ///     (StarColorUtil). HDR multiplier DiscBrightness feeds bloom (the corona
+    ///     is produced by post-processing).
+    ///   — Directional Light: ROTATION only, toward the star; the light color
+    ///     (photosphere × atmospheric transmittance) is set by SkyEnvironment
+    ///     every frame — day/night, sunset and space with no second owner.
+    /// Called from LateUpdate AFTER FirstPersonCamera (reads farClipPlane).
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-30)]
     public sealed class SunBillboard : MonoBehaviour
@@ -102,8 +102,8 @@ namespace Galilego.Universe
 
             billboard = CreateQuad("SunBillboard_Disc", starMaterial);
 
-            // Сфера — своя копия материала с процедурной грануляцией ( Worley-
-            // ячейки как у настоящего Солнца; видны при приближении/зуме).
+            // Sphere gets its own material copy with procedural granulation
+            // (Worley cells like the real Sun; visible when approaching/zooming in).
             sphereMaterial = new Material(shader) { color = starColor };
             ApplyColor(sphereMaterial, starColor);
             Texture2D surface = StarSurfaceTexture.GenerateTexture(
@@ -140,12 +140,12 @@ namespace Galilego.Universe
 
             direction = direction / distanceMeters;
             Vector3 simDirection = AstroFrame.ToSimulation(direction);
-            // Направление на звезду для планетарного шейдера (Galilego/PlanetSurface).
+            // Direction to the star for the planetary shader (Galilego/PlanetSurface).
             Shader.SetGlobalVector("_TerrainSunDir", simDirection);
             float far = camera.farClipPlane;
             Vector3 cameraPosition = camera.transform.position;
 
-            // Высота солнца над локальным горизонтом (для DebugHud).
+            // Sun elevation above the local horizon (for DebugHud).
             sunElevationDeg = double.NaN;
             if (Runner.DominantBody != null)
             {
@@ -159,8 +159,8 @@ namespace Galilego.Universe
                 }
             }
 
-            // Автолог: всегда пишет в консоль высоту солнца (первый кадр +
-            // каждые 10 с), чтобы диагноз не зависел от чекбоксов.
+            // Auto log: always writes the sun elevation to the console (first
+            // frame + every 10 s), so diagnostics do not depend on checkboxes.
             if (!loggedSpawn && !double.IsNaN(sunElevationDeg))
             {
                 loggedSpawn = true;
@@ -190,8 +190,8 @@ namespace Galilego.Universe
                     billboardRenderer != null && billboardRenderer.isVisible));
             }
 
-            // Позиция сферы через floating origin: доминантное тело + мостнутая
-            // дельта до звезды (тот же мост, что в ShipView — точность double).
+            // Sphere position via floating origin: dominant body + bridged delta
+            // to the star (same bridge as in ShipView — double precision).
             Vector3 sphereUnityPosition;
             if (Runner.DominantBody != null
                 && Runner.SystemView != null
@@ -211,8 +211,8 @@ namespace Galilego.Universe
             if (sphereVisible)
             {
                 nearSphere.position = sphereUnityPosition;
-                // Грануляция вращается вместе с телом: ориентация из ядра
-                // (tilt+spin) — тот же мост, что у BodyView (T76).
+                // Granulation rotates with the body: orientation from the core
+                // (tilt+spin) — same bridge as BodyView (T76).
                 Runner.SystemState.GetVisualFrame(star, Runner.TimeSeconds, out _, out _, out QuaternionD orientation);
                 nearSphere.rotation = AstroFrame.ToSimulation(orientation);
                 nearSphere.gameObject.SetActive(true);
@@ -221,14 +221,14 @@ namespace Galilego.Universe
             else
             {
                 nearSphere.gameObject.SetActive(false);
-                // Диск: направление честное, размер — 2·atan(R★/d), дистанция — внутри far.
+                // Disc: direction is real, size is 2·atan(R★/d), distance is inside far.
                 double angularRadius = System.Math.Atan2(star.Radius, distanceMeters);
                 float place = Mathf.Max(1f, far * BillboardFarFraction);
                 float size = place * 2f * Mathf.Tan((float)angularRadius) * 1.5f;
                 billboard.position = cameraPosition + (simDirection * place);
-                // У квада Unity нормаль («лицо») смотрит по −Z: разворачиваем
-                // −Z НА камеру (+Z вдоль направления на звезду), иначе диск
-                // рисуется спиной и отсекается backface-куллингом.
+                // Unity's quad faces along −Z: turn −Z TOWARD the camera
+                // (+Z along the star direction), otherwise the disc renders its
+                // back side and is culled as a backface.
                 billboard.rotation = Quaternion.LookRotation(simDirection);
                 billboard.localScale = new Vector3(size, size, 1f);
                 billboard.gameObject.SetActive(RenderDisc && !underwater);
@@ -246,14 +246,14 @@ namespace Galilego.Universe
 
             if (SunLight != null)
             {
-                // Directional Light испускает лучи вдоль своего forward (+Z),
-                // поэтому forward должен смотреть ОТ солнца (лучи летят к сцене),
-                // иначе день/ночь инвертированы.
+                // A Directional Light emits along its forward (+Z), so forward
+                // must point AWAY from the sun (rays travel toward the scene),
+                // otherwise day/night would be inverted.
                 SunLight.transform.rotation = Quaternion.LookRotation(-simDirection);
             }
 
-            // Ближняя сфера-солнце краснеет/тускнеет как диск (дальний диск берёт
-            // прозрачность из глобала в шейдере Galilego/SunDisc).
+            // The near sun sphere reddens/dims like the disc (the far disc reads
+            // transmittance from the global in the Galilego/SunDisc shader).
             if (Sky != null && sphereMaterial != null)
             {
                 Vector3 t = Sky.Transmittance;
@@ -327,7 +327,7 @@ namespace Galilego.Universe
             return shader;
         }
 
-        /// <summary>Круглый диск: радиальный falloff; fallback — старый unlit (квад).</summary>
+        /// <summary>Round disc: radial falloff; fallback is an unlit shader (quad).</summary>
         private static Shader FindDiscShader(Shader fallback)
         {
             Shader disc = Shader.Find("Galilego/SunDisc");
@@ -335,9 +335,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Цвет ставится во все известные шейдерам слоты: Material.color
-        /// ([MainColor]), _UnlitColor (HDRP/Unlit), _BaseColor (HDRP/Lit-семейство).
-        /// Отсутствующие свойства молча игнорируются.
+        /// The color is set into every shader slot we know of: Material.color
+        /// ([MainColor]), _UnlitColor (HDRP/Unlit), _BaseColor (HDRP/Lit family).
+        /// Missing properties are silently ignored.
         /// </summary>
         private static void ApplyColor(Material material, Color color)
         {

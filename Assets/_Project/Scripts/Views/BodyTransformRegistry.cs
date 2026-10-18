@@ -4,10 +4,10 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Реестр соответствий тело→трансформ для floating-origin рендера:
-    /// BodyView регистрирует себя при старте, ShipView читает позицию
-    /// доминантного тела без перебора иерархии каждый кадр. Plain-объект
-    /// (не MonoBehaviour), живёт в SimulationRunner.SystemView.
+    /// Body-to-transform registry for floating-origin rendering: BodyView registers
+    /// itself at start, ShipView reads the dominant body's transform without walking
+    /// the hierarchy each frame. Plain object (not MonoBehaviour), lives in
+    /// SimulationRunner.SystemView.
     /// </summary>
     public sealed class BodyTransformRegistry
     {

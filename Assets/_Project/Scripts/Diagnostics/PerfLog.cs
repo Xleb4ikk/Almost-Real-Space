@@ -8,27 +8,23 @@ using UnityEngine.Rendering;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Периодический лог производительности в файл, чтобы смотреть его в
-    /// СОБРАННОМ билде, а не только в редакторе.
+    /// Periodic performance log written to a file so it can be inspected in a BUILT
+    /// build, not only in the editor. The editor's <c>FrameTimingManager</c> does not
+    /// attribute real GPU work, and the overlay shows only the current frame — it
+    /// cannot answer "what happened at the moment of the hitch". This log records a
+    /// series: VRAM, fps, timings and camera position.
     ///
-    /// Зачем это нужно. В редакторе <c>FrameTimingManager</c> не атрибутирует
-    /// реальную GPU-работу: на полностью пустой сцене он рапортовал те же
-    /// ~13 мс, что и на полной, а Dynamic Resolution не срабатывал вовсе
-    /// (scale застрял на 1.00). В билде оба работают, но оверлей показывает
-    /// только текущий кадр и не отвечает на вопрос «что было в момент
-    /// провала». Здесь пишется ряд: VRAM, fps, тайминги и положение камеры.
-    ///
-    /// Файл: &lt;persistentDataPath&gt;/perf_log.txt, колонки разделены табом.
-    /// Ничего настраивать не нужно — компонент поднимается сам после загрузки
-    /// сцены. Путь печатается в консоль игрока.
+    /// File: &lt;persistentDataPath&gt;/perf_log.txt, TAB-separated. No setup needed —
+    /// the component bootstraps itself after scene load. The path is printed to the
+    /// player console.
     /// </summary>
     [DefaultExecutionOrder(-1000)]
     public sealed class PerfLog : MonoBehaviour
     {
-        /// <summary>Как часто пишем строку, секунды.</summary>
+        /// <summary>Row write interval, seconds.</summary>
         private const float IntervalSeconds = 2f;
 
-        /// <summary>Сколько последних кадров таймингов держим в буфере.</summary>
+        /// <summary>How many recent frame timings are kept in the buffer.</summary>
         private const int TimingBufferSize = 4;
 
         private static PerfLog instance;
@@ -105,9 +101,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Усредняем тайминги по нескольким кадрам. Одиночный FrameTiming
-        /// квантуется vsync'ом и даёт мусор, а одиночное значение fps в билде
-        /// с плавающей частотой ничего не объясняет.
+        /// Averages timings over several frames. A single FrameTiming is quantized by
+        /// vsync and gives garbage, and a single fps sample explains nothing in a
+        /// build with a floating frame rate.
         /// </summary>
         private void AccumulateTimings()
         {
@@ -116,8 +112,8 @@ namespace Galilego.Universe
 
             for (int i = 0; i < count; i++)
             {
-                // gpuFrameTime в части конфигураций приходит нулевым — тогда
-                // усреднять нечего, и в лог уходит 0, что читается как «ноль».
+                // gpuFrameTime is zero on some configurations — there is nothing to
+                // average then, and 0 in the log reads as "zero".
                 if (timings[i].gpuFrameTime > 0.0)
                 {
                     gpuMsSum += (float)timings[i].gpuFrameTime;
@@ -162,8 +158,8 @@ namespace Galilego.Universe
             line.Append(camPos.x.ToString("F0", inv)).Append('\t');
             line.Append(camPos.y.ToString("F0", inv)).Append('\t');
             line.Append(camPos.z.ToString("F0", inv)).Append('\t');
-            // Новые колонки строго В КОНЕЦ: старые номера не должны поехать, иначе
-            // уже накопленные perf_log.txt перестанут читаться тем же скриптом.
+            // New columns go strictly AT THE END: old indices must not shift, otherwise
+            // already collected perf_log.txt files stop parsing with the same script.
             SurfacePerf.AppendPerfLogColumns(line);
             SurfacePerf.AppendSlowColumns(line);
 

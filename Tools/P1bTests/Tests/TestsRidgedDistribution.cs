@@ -6,13 +6,13 @@ using Unity.Mathematics;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Распределение ridged-составляющей: legacy (сумма октав + smoothstep)
-    /// против multifractal. Нужно для фита аффинной ремапы по двум параметрам —
-    /// среднему и разбросу. Среднее и разброс меряются по всей сфере, квантили
-    /// печатаются для глаза: по форме распределения видно, не ломает ли
-    /// ремапа хвосты.
+    /// Distribution of the ridged component: legacy (sum of octaves + smoothstep)
+    /// versus multifractal. Needed to fit an affine remap by two parameters — mean
+    /// and spread. Mean and spread are measured over the whole sphere, quantiles
+    /// are printed for the eye: the shape of the distribution shows whether the
+    /// remap breaks the tails.
     ///
-    /// Это разбор, а не приёмка: приёмку диапазона делает T117.
+    /// This is analysis, not acceptance: T117 does range acceptance.
     /// </summary>
     private static int Test112c_RidgedDistribution()
     {
@@ -71,10 +71,10 @@ internal static partial class P1bTests
                 }
                 else
                 {
-                    // Кандидаты на ремапу multifractal под статистику legacy.
-                    // Аффинная по среднему и σ: среднее совпадает, но максимум
-                    // вылезает за 1, а нижний хвост остаётся задранным — форма
-                    // распределений разная, и сдвига её не выправить.
+                    // Candidate remaps of multifractal onto legacy statistics.
+                    // Affine by mean and σ: the mean matches, but the maximum goes
+                    // above 1 and the lower tail stays raised — the distributions
+                    // differ in shape, and a shift cannot fix that.
                     double a = legacySd / sd;
                     double b = legacyMean - (a * mean);
                     Console.WriteLine(string.Format(
@@ -82,8 +82,8 @@ internal static partial class P1bTests
                         "        аффинная по (среднее, σ):  a={0:F5} b={1:F5} -> min={2:F4} max={3:F4}",
                         a, b, b, (a * v[n - 1]) + b));
 
-                    // Аффинная по краям диапазона: в [0,1] по построению, но
-                    // среднее проваливается с 0.73 до 0.46 — та же проблема.
+                    // Affine by the range edges: in [0,1] by construction, but the
+                    // mean collapses from 0.73 to 0.46 — the same problem.
                     a = (legacyP95 - legacyP05) / v[n - 1];
                     b = legacyP05;
                     Console.WriteLine(string.Format(
@@ -91,8 +91,8 @@ internal static partial class P1bTests
                         "        аффинная по (p05, p95):    a={0:F5} b={1:F5} -> среднее={2:F4} (legacy {3:F4})",
                         a, b, (a * mean) + b, legacyMean));
 
-                    // Тот же контраст, что у legacy: smoothstep. Диапазон [0,1]
-                    // по построению, и обе схемы становятся сравнимы напрямую.
+                    // Same contrast as legacy: smoothstep. Range [0,1] by
+                    // construction, and both schemes become directly comparable.
                     double ssMean = 0d, ssSum2 = 0d, ssMin = 1d, ssMax = 0d;
                     for (int i = 0; i < n; i++)
                     {
@@ -119,15 +119,15 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Складка гребня не должна выпускать |v| за единицу. Здесь был баг: у
-    /// нормированного градиентного примитива |v| доходит до 1.43, и без
-    /// насыщения `1 − |v|` уходил в минус, квадрат делал его снова
-    /// положительным, и на линии |v| = 1 возникал ложный вторичный хребет.
-    /// Тест печатает, что было бы без насыщения, и проверяет, что стало.
+    /// The ridge fold must not let |v| exceed one. With the normalized gradient
+    /// primitive |v| reaches 1.43; without saturation `1 − |v|` goes negative, the
+    /// square makes it positive again, and a false secondary ridge appears on the
+    /// line |v| = 1. The test prints what would happen without saturation and
+    /// verifies the actual result.
     /// </summary>
     private static int Test118_RidgeFoldRange()
     {
-        const double amp = 1.43d; // измеренный пик октавы Перлина, T111
+        const double amp = 1.43d; // measured Perlin octave peak, T111
         double withoutSaturate = 1d - amp;
         double withoutSq = withoutSaturate * withoutSaturate;
         double withSaturate = TerrainNoise.RidgeFold(amp, 2);
@@ -142,7 +142,7 @@ internal static partial class P1bTests
             "без насыщения квадрат действительно даёт положительный сигнал на ложном гребне: "
             + withoutSq.ToString("F4", CultureInfo.InvariantCulture));
 
-        // Диапазон складки на большой выборке и для обоих примитивов.
+        // Fold range over a large sample and for both primitives.
         double worst = 0d;
         var rng = new Random(60613);
         for (int i = 0; i < 2000000; i++)

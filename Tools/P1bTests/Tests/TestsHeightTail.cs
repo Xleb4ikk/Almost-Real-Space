@@ -6,17 +6,17 @@ using Unity.Mathematics;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Хвост распределения высоты для legacy и Perlin-профиля. Нужен потому,
-    /// что калибровка Perlin-профиля шла по p99, а горы интересуют по максимуму:
-    /// при одном и том же p99 профиль с более тяжёлым хвостом даёт вершины,
-    /// которые торчат выше облаков, и это видно только в хвосте.
+    /// Height distribution tail for the legacy and Perlin profiles. The profiles
+    /// are calibrated by p99, but mountains are interesting by maximum: at the
+    /// same p99, a heavier-tailed profile produces peaks that poke above the
+    /// clouds, which only the tail reveals.
     ///
-    /// Считает всё, что зашито в профиле: ContinentDepth, AmplitudeMeters,
-    /// ContinentThreshold, RidgedMix, warp, - и сравнивает два профиля на
-    /// одной и той же выборке направлений, чтобы разница была честной.
+    /// Measures everything baked into the profile: ContinentDepth, AmplitudeMeters,
+    /// ContinentThreshold, RidgedMix, warp — and compares the two profiles on
+    /// the same set of directions so the difference is honest.
     ///
-    /// Отдельно печатает долю суши, среднюю высоту суши, p99, p99.9, p99.99
-    /// и максимум, плюс высоту в метрах от центра планеты при максимуме.
+    /// Also prints land fraction, mean land height, p99, p99.9, p99.99 and the
+    /// maximum, plus the height in metres from the planet centre at the maximum.
     /// </summary>
     private static int Test129_HeightTail()
     {
@@ -45,10 +45,10 @@ internal static partial class P1bTests
         t.RidgedSharpness = 2;
         t.RidgedWeightGain = 2d;
         t.RidgedGamma = 1d;
-        // Значения ниже сняты с EarthLike_Perlin.asset, а не подобраны:
+        // Values below are taken from EarthLike_Perlin.asset, not hand-picked:
         // AmplitudeMeters = 13662, RidgedMix = 0.7, ContinentDepth = 1.2,
         // ContinentThreshold = -0.4, WarpStrength = 0.1, Gain = 0.5, Octaves = 10.
-        // Расхождение с ассетом здесь означало бы, что тест меряет не то.
+        // A mismatch with the asset here would mean the test measures the wrong thing.
         t.AmplitudeMeters = 13662d;
         t.RidgedMix = 0.7d;
         t.ContinentThreshold = -0.4d;
@@ -125,11 +125,9 @@ internal static partial class P1bTests
             max / p99, 6371000d + (max * amp),
             (max * amp) > 7000d ? (max * amp) > 8500d ? "ДА, выше обоих краёв" : "ДА, выше низа" : "нет"));
 
-        // Проверка не "вершина ниже облаков", а математический потолок колена:
-        // сжатие физически не может дать больше TailThreshold + TailKnee, поэтому
-        // превышение означало бы, что сжатие не применилось. Раньше здесь стояло
-        // max < 8500 (верх облаков) - это уже не критерий: максимум 8.8-9.0 км
-        // принят осознанно, облака с вершинами пересекаются и это нормально.
+        // The check is the mathematical ceiling of the knee, not "peak below clouds":
+        // compression cannot exceed TailThreshold + TailKnee, so exceeding it
+        // would mean the compression was not applied.
         if (p.TailKnee > 0d)
         {
             double ceiling = (p.TailThreshold + p.TailKnee) * amp;

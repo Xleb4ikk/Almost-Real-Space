@@ -6,17 +6,14 @@ using Unity.Mathematics;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Подбор уровня гребня БЕЗ gamma-ремапы. γ = 0.30 отвергнут: s^0.3
-    /// сплющивает гребни (0.5 и 0.9 become 0.81 и 0.97 — разница 0.4 → 0.16),
-    /// растягивает долины и имеет производную, уходящую к бесконечности при
-    /// s → 0, что для нормалей плохо. Порядок рычагов: сначала показатель
-    /// степени k в (1−|v|)^k, потом порог/смещение, и только в последнюю
-    /// очередь γ, ограничив его снизу 0.6.
+    /// Ridge level search WITHOUT gamma remap. Lever order: first the exponent
+    /// k in (1−|v|)^k, then the threshold/bias, and only lastly γ, bounded
+    /// below at 0.6.
     ///
-    /// Для каждого варианта печатается: гистограмма ridged (10 квантилей), доля
-    /// суши, p99, кривизна гребня и максимальный наклон около s → 0.
-    /// Критерий приёмки: доля суши 0.47 ± 0.02 ПРИ кривизне гребня не ниже,
-    /// чем у ветки γ = 1.0.
+    /// For each variant it prints the ridged histogram (10 quantiles), land
+    /// fraction, p99, ridge curvature and max slope near s → 0.
+    /// Acceptance: land fraction 0.47 ± 0.02 with ridge curvature no lower
+    /// than the γ = 1.0 branch.
     /// </summary>
     private static int Test123_RidgeLevelLevers()
     {
@@ -27,9 +24,9 @@ internal static partial class P1bTests
             seeds[i] = 1013 + (i * 7919);
         }
 
-        // Опорная ветка: k=2, γ=1, порог −0.1 — то, что в коде по умолчанию.
-        // Её кривизна гребня и есть уровень, ниже которого опускаться нельзя
-        // (критерий приёмки: суша 0.47 ± 0.02 ПРИ кривизне не ниже опорной).
+        // Baseline: k=2, γ=1, threshold −0.1 — the code default. Its ridge
+        // curvature is the floor: acceptance is land 0.47 ± 0.02 with curvature
+        // no lower than baseline.
         Summary baseline = Summarise("k=2 γ=1 порог −0.10 (ОПОРНАЯ)", seeds, n, 2, 1.0d, -0.1d);
         Console.WriteLine();
         Console.WriteLine("    === рычаг 1: показатель степени k в (1−|v|)^k ===");
@@ -39,10 +36,8 @@ internal static partial class P1bTests
             byK[k - 1] = Summarise("k=" + k, seeds, n, k, 1.0d, -0.1d);
         }
 
-        // Рычаг 2: порог континента ВНИЗ. continentRaw попадает в маску выше
-        // порога, и понижение порога поднимает долю суши. Первая версия свипала
-        // вверх и монотонно уводила сушу вниз, то есть мерила ровно
-        // противоположное нужному.
+        // Lever 2: continent threshold DOWN. continentRaw enters the mask above
+        // the threshold, so lowering the threshold raises the land fraction.
         Console.WriteLine();
         Console.WriteLine("    === рычаг 2: порог континента вниз ===");
         double[] thresholds = { -0.1d, -0.2d, -0.3d, -0.4d, -0.5d, -0.6d };
@@ -58,8 +53,7 @@ internal static partial class P1bTests
             }
         }
 
-        // Рычаг 3: γ, ограниченный снизу 0.6 — и с проверкой, что гребни не
-        // сплющиваются (это и было причиной отвергнуть γ=0.3 в прошлый раз).
+        // Lever 3: γ bounded below at 0.6, verifying ridges don't flatten.
         Console.WriteLine();
         Console.WriteLine("    === рычаг 3: gamma ≥ 0.6 при k=2, порог −0.1 ===");
         Summary[] byGamma = new Summary[4];
@@ -70,7 +64,7 @@ internal static partial class P1bTests
                 "γ=" + gammas[gi].ToString("F1", CultureInfo.InvariantCulture), seeds, n, 2, gammas[gi], -0.1d);
         }
 
-        // Решение: суша в допуске И кривизна не ниже опорной.
+        // Decision: land within tolerance AND curvature not below baseline.
         Summary best = baseline;
         string bestWhy = "опорная ветка";
         Action<Summary, string> consider = (s, why) =>
@@ -198,13 +192,10 @@ internal static partial class P1bTests
         public int RidgeCount;
     }
 
-    // Кривизна и наклон меряются ВДОЛЬ МЕРИДИАНОВ с фиксированным угловым
-    // шагом. Первая версия брала вторую разность по индексу на сфере Фибоначчи,
-    // где соседние индексы НЕ соседи в пространстве, и «кривизна» выходила
-    // ~10000 м, то есть мерила разницу высот между случайными точками планеты.
-    // Шаг обязан быть задан в метрах, иначе величина несравнима между
-    // вариантами.
-    private const double MeridianStepRad = 0.0009d; // ≈ 5.7 м у поверхности
+    // Curvature and slope are measured ALONG MERIDIANS with a fixed angular
+    // step. The step must be given in meters, otherwise the quantity is not
+    // comparable between variants.
+    private const double MeridianStepRad = 0.0009d; // ≈ 5.7 m at the surface
     private const double PlanetRadiusMeters = 6371000d;
     private const int Meridians = 1000;
 
@@ -324,7 +315,7 @@ internal static partial class P1bTests
         Console.WriteLine("      квантили s: " + decStr);
     }
 
-    /// <summary>Детерминированные направления по Фибоначчи для замеров рельефа.</summary>
+    /// <summary>Deterministic Fibonacci directions for terrain sampling.</summary>
     private static double3[] SphereDirs(int n)
     {
         var dirs = new double3[n];

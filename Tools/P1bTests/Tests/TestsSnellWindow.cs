@@ -3,28 +3,27 @@ using System.Globalization;
 
 internal static partial class P1bTests
 {
-    // Показатель преломления воды, как в шейдере (WaterSurface.shader, ветка
-    // isUnderwater). Держим константой в двух местах: тест и шейдер.
+    // Water refractive index, as in the shader (WaterSurface.shader, isUnderwater
+    // branch). Kept as a constant in two places: test and shader.
     private const float WaterIndex = 1.33f;
     private const float AirIndex = 1.0f;
 
     /// <summary>
-    /// Окно Снелла и Френель воды: ЭТАЛОН, а не проверка шейдера.
+    /// Snell window and water Fresnel: a REFERENCE, not a shader check.
     ///
-    /// Тест считает ту же формулу, что и шейдер, поэтому сам по себе он
-    /// доказывает только одно: формулы в проекте непротиворечивы. Настоящая
-    /// сверка с GPU делается снимком окна: в WaterSurface.shader есть
-    /// _UnderwaterDebugMode (1 = Френель в градациях серого, 2 = маска окна),
-    /// и инструмент съёмки (Editor/SurfaceCaptureTool, действие
-    /// underwater-debug) снимает её при взгляде строго вверх с 3 м. Граница
-    /// маски на снимке обязана лечь на 48.6° ± 0.5° — это и есть проверка
-    /// шейдера, которую тест задаёт числом.
+    /// The test computes the same formula as the shader, so by itself it only
+    /// proves that the formulas in the project are consistent. The real GPU check
+    /// is a capture of the window: WaterSurface.shader has _UnderwaterDebugMode
+    /// (1 = Fresnel in grayscale, 2 = window mask), and the capture tool
+    /// (Editor/SurfaceCaptureTool, underwater-debug action) shoots it looking
+    /// straight up from 3 m. The mask boundary in the capture must fall at
+    /// 48.6° ± 0.5° — that is the shader check the test pins down by number.
     /// </summary>
     private static int Test139_SnellWindowReference()
     {
-        // В этом harness о провале сообщает Check: он же ведёт счётчик
-        // failures, из-за которого печатается ALL PASS. Возврат из теста —
-        // всегда 0, иначе один и тот же провал учитывался бы дважды.
+        // In this harness Check reports failure: it also drives the failures
+        // counter that gates the ALL PASS print. The test always returns 0,
+        // otherwise the same failure would be counted twice.
         int Fail(string fmt, params object[] args)
         {
             Check(false, "Test139_SnellWindow", string.Format(CultureInfo.InvariantCulture, fmt, args));
@@ -37,11 +36,11 @@ internal static partial class P1bTests
             return 0;
         }
 
-        // --- критический угол ------------------------------------------------
-        // ПРО ЦИФРУ: учебные 48.6° — это n = 1.333. В шейдере стоит 1.33,
-        // поэтому критический угол равен 48.75°. Разница 0.15° глазом не
-        // видна, но выписать её «по памяти» было бы расхождением с шейдером,
-        // поэтому число считается, а не зашито.
+        // --- critical angle --------------------------------------------------
+        // NOTE ON THE NUMBER: the textbook 48.6° is n = 1.333. The shader uses
+        // 1.33, so the critical angle is 48.75°. The 0.15° difference is
+        // invisible, but hardcoding it from memory would diverge from the
+        // shader, so the number is computed rather than pinned.
         double critical = Math.Asin(AirIndex / WaterIndex) * 180.0 / Math.PI;
         if (Math.Abs(critical - 48.75) > 0.05)
         {
@@ -54,7 +53,7 @@ internal static partial class P1bTests
             return Fail("cos критического {0:F4}, ожидался 0.6594", cosCritical);
         }
 
-        // --- Френель на нормальном падении ------------------------------------
+        // --- Fresnel at normal incidence -------------------------------------
         float f0 = FresnelWater(1.0f);
         float f0Expected = (float)Math.Pow((WaterIndex - AirIndex) / (WaterIndex + AirIndex), 2.0);
         if (Math.Abs(f0 - f0Expected) > 1e-4f)
@@ -67,11 +66,10 @@ internal static partial class P1bTests
             return Fail("F(0°) = {0:F4}, у воды должно быть около 0.02", f0);
         }
 
-        // --- монотонный рост и форма кривой -----------------------------------
-        // Френель НЕ растёт плавно к единице: на 48° (это всего 0.75° до
-        // критического) отражение ещё 0.39, и в единицу оно уходит в
-        // последние доли градуса. Первая версия теста ждала 0.97 на 48° и
-        // падала — формула была права, ожидание нет.
+        // --- monotonic growth and curve shape --------------------------------
+        // Fresnel does NOT rise smoothly to one: at 48° (only 0.75° before the
+        // critical angle) reflection is still 0.39 and only reaches one in the
+        // last fractions of a degree.
         bool growing = true;
         float previous = f0;
         for (int degrees = 1; degrees <= 48; degrees++)
@@ -103,7 +101,7 @@ internal static partial class P1bTests
 
         Ok("кривая: F(0)={0:F4}, F(48)={1:F3}, F(крит)={2:F3} — резкий фронт у 48.75°", f0, previous, atCritical);
 
-        // --- за критическим: полное внутреннее отражение ---------------------
+        // --- beyond critical: total internal reflection ----------------------
         foreach (double degrees in new double[] { 49d, 60d, 89d })
         {
             double rad = degrees * Math.PI / 180.0;
@@ -114,13 +112,13 @@ internal static partial class P1bTests
             }
         }
 
-        // --- закон сохранения: отражение + пропускание = 1 --------------------
-        // Проверяем ПО ПОЛЯРИЗАЦИЯМ, а не «F + T = 1» одной формулой: у
-        // неполяризованного света T — это (n2·cosθt)/(n1·cosθi)·(t_s²+t_p²)/2,
-        // и подставлять «1 − F» значило бы проверить тождество само с собой.
-        // Смысл проверки: rs² + T_s = 1 держится только если Френель и Снелл
-        // взяты из одной оптики. Расхождение означало бы, что окно и зеркало
-        // рисуются из разных формул.
+        // --- conservation: reflection + transmission = 1 ---------------------
+        // Checked PER POLARIZATION, not as a single "F + T = 1" formula: for
+        // unpolarized light T is (n2·cosθt)/(n1·cosθi)·(t_s²+t_p²)/2, and
+        // substituting "1 − F" would just verify an identity with itself.
+        // The point: rs² + T_s = 1 holds only if Fresnel and Snell come from the
+        // same optics. A mismatch would mean the window and the mirror are drawn
+        // from different formulas.
         double worstSum = 0d;
         for (int degrees = 0; degrees <= 48; degrees += 4)
         {
@@ -149,33 +147,29 @@ internal static partial class P1bTests
             return Fail("R + T не равно 1: худшее расхождение {0:F4} на 0..48°", worstSum);
         }
 
-        // --- преломление: отклонение луча при наклоне нормали ----------------
-        // Для малого наклона β отклонение преломлённого луча от исходного
-        // равно (1 - 1/n)·β. Именно эта величина решает, будет ли рябь на
-        // потолке вообще что-то искажать: при β = 10° это 2.5°, то есть
-        // небо в окне смещается на 2.5° — почти незаметно, и поэтому
-        // «плоский потолок» не лечится одной формулой Снелла.
+        // --- refraction: ray deviation for a tilted normal -------------------
+        // For a small tilt β the refracted ray deviates from the original by
+        // (1 - 1/n)·β. This is what decides whether the ceiling ripple distorts
+        // anything at all: at β = 10° it is 2.5°, so the sky in the window shifts
+        // by 2.5° — almost imperceptible.
         double beta = 10.0 * Math.PI / 180.0;
         F3 up = new F3(0f, 1f, 0f);
 
-        // Нормаль передаётся УКАЗАТЕЛЕМ НА ПАДАЮЩУЮ СТОРОНУ, то есть вниз, к
-        // камере. Со знаком наоборот dot(N, I) уходит в +0.98, и refract
-        // выворачивает луч на 156° вместо 2.5° — на этом спотыкалась первая
-        // версия теста.
+        // The normal points INTO THE INCIDENT SIDE, i.e. down towards the
+        // camera. With the sign reversed dot(N, I) goes to +0.98 and refract
+        // flips the ray by 156° instead of 2.5°.
         F3 n = new F3((float)-Math.Sin(beta), (float)-Math.Cos(beta), 0f);
         F3 view = new F3(0f, 1f, 0f);
         F3 refracted = Refract(view, n, WaterIndex / AirIndex);
-        // --- преломление: отклонение луча при наклоне нормали ----------------
-        // Луч смотрит строго вверх, нормаль наклонена на β: угол падения
-        // θi = β, а в воздух луч уходит под θt = asin(n·sin β), то есть
-        // ОТКЛОНЯЕТСЯ ОТ ВЕРТИКАЛИ НА (n − 1)·β.
+        // --- refraction: ray deviation for a tilted normal -------------------
+        // The ray looks straight up and the normal is tilted by β: the incidence
+        // angle is θi = β and the ray leaves into air at θt = asin(n·sin β),
+        // i.e. DEVIATES FROM VERTICAL BY (n − 1)·β.
         //
-        // ВАЖНО, и это была ошибка в постановке задачи: коэффициент здесь
-        // (n − 1) = 0.33, а НЕ (1 − 1/n) = 0.25. Разница 30%: 0.25 — это
-        // отношение отклонения преломления к отклонению зеркала для ЛИНЗЫ
-        // (отклонение 2β), а здесь луч именно преломляется, и наклоняется
-        // поверхность вместе с нормалью. Первая версия теста ждала 2.48° и
-        // получала 3.35° — формула была права.
+        // IMPORTANT: the coefficient here is (n − 1) = 0.33, NOT (1 − 1/n) =
+        // 0.25. The 0.25 figure is the ratio of refraction deviation to mirror
+        // deviation for a LENS (deviation 2β), whereas here the ray is actually
+        // refracted and the surface tilts together with the normal.
         double deviation = RefractionDeviation(10.0);
         double expected = (WaterIndex - 1.0) * 10.0;
         if (Math.Abs(deviation - expected) > 0.15)
@@ -185,26 +179,25 @@ internal static partial class P1bTests
                 deviation, expected);
         }
 
-        // На наклоне в 40° отклонение уже около 10°, то есть рябь с уклоном
-        // 40° (а такая рябь в шейдере есть) двигает небо на десятки градусов.
+        // At a 40° tilt the deviation is already about 10°, so ripple sloped at
+        // 40° (present in the shader) moves the sky by tens of degrees.
         double betaBig = 40.0 * Math.PI / 180.0;
         F3 nBig = new F3((float)-Math.Sin(betaBig), (float)-Math.Cos(betaBig), 0f);
         F3 refractedBig = Refract(view, nBig, WaterIndex / AirIndex);
-        // На наклоне 40° луч уходит в воздух под 58.8°, то есть отклоняется на
-        // 18.8°: рябь с уклоном 40° (а такая в шейдере есть, см. 1.33·cosθi/
-        // cosθt) двигает небо почти на двадцать градусов. Это и есть ответ на
-        // вопрос «почему потолок плоский»: не хватает не формулы, а наклона.
+        // At a 40° tilt the ray exits into air at 58.8°, deviating by 18.8°:
+        // ripple sloped at 40° (present in the shader, see 1.33·cosθi/cosθt)
+        // moves the sky by almost twenty degrees — the answer to "why is the
+        // ceiling flat" is not a missing formula, but missing tilt.
         double deviationBig = RefractionDeviation(40.0);
         if (deviationBig < 15.0 || deviationBig > 22.0)
         {
             return Fail("отклонение при наклоне 40° = {0:F2}°, ожидалось 18-19°", deviationBig);
         }
 
-        // --- преломление не выходит за критический угол ----------------------
-        // Луч, смотрящий на нормаль под 40°, внутри воды преломляется на
-        // 10° наружу, а зеркало начинается с 48.6°: то есть при наклоне 40°
-        // луч ВСЁ ЕЩЁ выходит в небо. Это и есть причина, по которой окно
-        // должно быть большим, а не «мягким пятном».
+        // --- refraction stays within the critical angle ----------------------
+        // A ray at 40° to the normal refracts 10° outward inside the water, while
+        // the mirror starts at 48.6°: so at a 40° tilt the ray STILL exits to the
+        // sky. This is why the window must be large rather than a "soft blob".
         if (!(deviationBig < critical))
         {
             return Fail("преломлённый луч должен выходить в небо при наклоне 40°");
@@ -217,15 +210,15 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Отклонение луча в градусах при наклоне нормали на betaDegrees: луч
-    /// смотрит строго вверх (как камера под водой), нормаль воды наклонена, и
-    /// наружу луч уходит под углом asin(n·sin β) от нормали — то есть
-    /// отклоняется от вертикали на (n−1)·β.
+    /// Ray deviation in degrees for a normal tilted by betaDegrees: the ray looks
+    /// straight up (as the camera does underwater), the water normal is tilted,
+    /// and the ray leaves at asin(n·sin β) from the normal — deviating from
+    /// vertical by (n−1)·β.
     ///
-    /// Считается через refract — той же функцией, что в шейдере. Нормаль
-    /// передаётся УКАЗАТЕЛЕМ НА ПАДАЮЩУЮ СТОРОНУ (вниз, к камере): в HLSL
-    /// dot(N, I) обязан быть отрицательным, иначе refract выворачивает луч
-    /// вместо преломления.
+    /// Computed via refract — the same function as in the shader. The normal
+    /// points INTO THE INCIDENT SIDE (down, towards the camera): in HLSL
+    /// dot(N, I) must be negative, otherwise refract flips the ray instead of
+    /// refracting it.
     /// </summary>
     private static double RefractionDeviation(double betaDegrees)
     {
@@ -242,8 +235,8 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Коэффициент отражения на границе двух диэлектриков для неполяризованного
-    /// света — ровно как в WaterSurface.shader.
+    /// Reflectance at a dielectric boundary for unpolarized light — exactly as
+    /// in WaterSurface.shader.
     /// </summary>
     private static float FresnelWater(float cosIncident)
     {
@@ -261,9 +254,9 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Преломление ровно как HLSL refract(I, N, eta): incident — падающий луч,
-    /// normal указывает В ПАДАЮЩУЮ среду (dot(N, I) &lt; 0), eta = n1/n2.
-    /// Возвращает единичный вектор либо ноль при полном внутреннем отражении.
+    /// Refraction exactly as HLSL refract(I, N, eta): incident is the incoming
+    /// ray, normal points INTO THE INCIDENT MEDIUM (dot(N, I) &lt; 0), eta = n1/n2.
+    /// Returns a unit vector or zero on total internal reflection.
     /// </summary>
     private static F3 Refract(F3 incident, F3 normal, float eta)
     {
@@ -274,9 +267,8 @@ internal static partial class P1bTests
             return new F3(0f, 0f, 0f);
         }
 
-        // HLSL: eta*I - (eta·dot(N,I) + sqrt(k))·N. Знак перед eta·dot(N,I)
-        // обязан быть МИНУС, потому что dot(N,I) < 0; со знаком плюс луч
-        // уезжал на 6.3° вместо 3.35°.
+        // HLSL: eta*I - (eta·dot(N,I) + sqrt(k))·N. The sign before eta·dot(N,I)
+        // must be MINUS because dot(N,I) < 0.
         F3 result = (incident * eta) + (normal * ((-eta * dotNI) - MathF.Sqrt(k)));
         return Normalize(result);
     }

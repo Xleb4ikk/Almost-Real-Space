@@ -6,9 +6,9 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Настройки импорта для текстур декора местности: `*nrm` — normal map
-    /// (sRGB off), карты ветра (`grassuv*`) — линейные, альбедо — sRGB +
-    /// alphaIsTransparency (у травы/биллбордов альфа в текстуре).
+    /// Import settings for ground decor textures: `*nrm` — normal map (sRGB off),
+    /// wind maps (`grassuv*`) — linear, albedo — sRGB + alphaIsTransparency
+    /// (grass/billboards carry alpha in the texture).
     /// </summary>
     public sealed class GroundDecorTexturePostprocessor : AssetPostprocessor
     {
@@ -46,9 +46,9 @@ namespace Galilego.Universe.EditorTools
             importer.mipmapEnabled = true;
             importer.wrapMode = TextureWrapMode.Repeat;
             importer.maxTextureSize = 2048;
-            // ВАЖНО: исходные нормали обычно DirectX (зелёный инвертирован к
-            // Unity); шейдеры декора пока нормали не сэмплят — проверить при
-            // подключении.
+            // IMPORTANT: source normals are usually DirectX (green channel inverted
+            // vs Unity); decor shaders do not sample them yet — check when hooking
+            // them up.
         }
     }
 }

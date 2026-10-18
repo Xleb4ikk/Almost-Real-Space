@@ -4,16 +4,16 @@ using Galilego.Universe;
 
 internal static partial class P1bTests
 {
-    // T108 — математика локального поверхностного фрейма (SurfaceFrameMath).
-    // Фрейм — единственное, на чём держится авторинг базы: если ENU-базис
-    // «правый» неправ, поворот объекта окажется зеркальным, а если
-    // DirectionOffset вернёт неединичное направление, высота в превью уедет
-    // вместе с радиусом. Обе ошибки невидимы на глаз и ломают всё остальное.
+    // T108 — local surface frame math (SurfaceFrameMath).
+    // The frame is the sole basis of base authoring: if the ENU basis is not
+    // right-handed the object rotation comes out mirrored, and if DirectionOffset
+    // returns a non-unit direction, preview height drifts with the radius. Both
+    // errors are invisible and break everything else.
 
     private static int Test108_SurfaceFrameBasis()
     {
-        // 1. Базис ортонормирован и ПРАВЫЙ: X север, Y зенит, Z восток.
-        //    N × U = E. Если знак минус — поворот зеркальный.
+        // 1. The basis is orthonormal and RIGHT-handed: X north, Y up, Z east.
+        //    N × U = E. A minus sign means the rotation is mirrored.
         double[][] samples =
         {
             new double[] { 0d, 0d },
@@ -50,9 +50,9 @@ internal static partial class P1bTests
         Check(rightHanded, "T108 surface-frame-basis", "базис правый: север x зенит = восток");
         Check(axesDistinct, "T108 surface-frame-basis", "оси взаимно перпендикулярны");
 
-        // 2. Кватернион фрейма ровно соответствует базису: q*x = север,
-        //    q*y = зенит, q*z = восток. Rotation собирается матрицей — если
-        //    ветви трассировки разъедутся на полюсах, вылезет NaN.
+        // 2. The frame quaternion matches the basis exactly: q*x = north,
+        //    q*y = up, q*z = east. Rotation is assembled as a matrix — if the trace
+        //    branches diverge at the poles, NaN appears.
         bool quatMatches = true;
         bool finite = true;
         foreach (double[] s in samples)
@@ -72,9 +72,9 @@ internal static partial class P1bTests
         Check(finite, "T108 surface-frame-basis", "кватернион фрейма единичный и конечный на полюсах");
         Check(quatMatches, "T108 surface-frame-basis", "q переводит локальные оси в север/зенит/восток");
 
-        // 3. Зенит совпадает с направлением, которое считает рельеф
-        //    (HeightfieldTerrain.GetRawHeightMeters): иначе превью и физика
-        //    смотрят в разные точки планеты.
+        // 3. Up matches the direction the terrain computes
+        //    (HeightfieldTerrain.GetRawHeightMeters): otherwise preview and physics
+        //    look at different points on the planet.
         HeightfieldTerrain terrain = MakeTerrain(24334543);
         OrbitingBody probe = new OrbitingBody
         {
@@ -94,8 +94,8 @@ internal static partial class P1bTests
         Check(shaderDirError < 1e-15, "T108 surface-frame-basis",
             "Up(lat,lon) совпадает с базисом рельефа (ошибка " + shaderDirError.ToString("E2") + ")");
 
-        // 4. DirectionOffset остаётся ЕДИНИЧНЫМ на любом смещении, иначе
-        //    выборка высоты в превью поедет по радиусу.
+        // 4. DirectionOffset stays UNIT at any offset, otherwise preview height
+        //    sampling slides along the radius.
         double radius = 1143000d;
         bool unitAfterOffset = true;
         double[] offsets = { 0d, 1d, 100d, 5000d, 150000d };
@@ -111,9 +111,7 @@ internal static partial class P1bTests
         Check(unitAfterOffset, "T108 surface-frame-basis",
             "DirectionOffset единичный на смещениях до 150 км");
 
-        // 5. ENU-смещение в осях фрейма: восток -> Z, север -> X, зенит -> Y.
-        //    Раньше здесь стоял LocalOffset, который возвращал вектор в осях
-        //    ТЕЛА: объект смещался на лишний угол фрейма (T108 поймал).
+        // 5. ENU offset in frame axes: east -> Z, north -> X, up -> Y.
         Vector3d eastOffset = SurfaceFrameMath.EnuToFrameLocal(10d, 0d, 0d);
         Vector3d northOffset = SurfaceFrameMath.EnuToFrameLocal(0d, 10d, 0d);
         Vector3d upOffset = SurfaceFrameMath.EnuToFrameLocal(0d, 0d, 10d);
@@ -127,8 +125,8 @@ internal static partial class P1bTests
             && System.Math.Abs(upOffset.Y - 10d) < 1e-9, "T108 surface-frame-basis",
             "10 м вверх -> 10 м по Y");
 
-        // 6. ToLocal обращает перенос ENU в осях тела: круговой цикл не должен
-        //    терять компоненту (иначе превью «съедает» рельеф вдоль одной оси).
+        // 6. ToLocal inverts the body-axes ENU offset: the round trip must not lose
+        //    a component (otherwise the preview "eats" terrain along one axis).
         Vector3d enu = SurfaceFrameMath.EnuToFrameLocal(7d, -13d, 5d);
         Vector3d bodyFixed = (SurfaceFrameMath.East(lat, lon) * enu.Z)
             + (SurfaceFrameMath.North(lat, lon) * enu.X)
@@ -138,8 +136,8 @@ internal static partial class P1bTests
             && System.Math.Abs(roundTrip.Z - 7d) < 1e-9, "T108 surface-frame-basis",
             "ToLocal обращает перенос ENU: (север −13, зенит 5, восток 7)");
 
-        // 7. Смещение вдоль зенита/горизонтали взаимно перпендикулярно в осях
-        //    тела: без этого превью «наклоняет» рельеф.
+        // 7. Offsets along up/horizontal are mutually perpendicular in body axes:
+        //    without this the preview "tilts" the terrain.
         double ortho = System.Math.Abs(
             Vector3d.Dot(SurfaceFrameMath.Up(lat, lon), SurfaceFrameMath.East(lat, lon)))
             + System.Math.Abs(Vector3d.Dot(SurfaceFrameMath.Up(lat, lon), SurfaceFrameMath.North(lat, lon)));

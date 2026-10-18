@@ -2,26 +2,26 @@ using UnityEngine;
 
 namespace Galilego.Spacecraft
 {
-    /// <summary>Итог расчёта бака: объёмы, металл, топливо.</summary>
+    /// <summary>Tank computation result: volumes, metal, propellant.</summary>
     public readonly struct TankMassInfo
     {
         public readonly PropellantLoad Load;
 
-        /// <summary>Внутренний объём по геометрии, м³.</summary>
+        /// <summary>Internal volume from geometry, m³.</summary>
         public readonly double VolumeM3;
 
-        /// <summary>Объём заливаемого топлива (без газовой подушки), м³.</summary>
+        /// <summary>Volume of loaded propellant (excluding ullage gas), m³.</summary>
         public readonly double UsableVolumeM3;
 
         public readonly double ShellAreaM2;
 
-        /// <summary>Металл стенки, кг.</summary>
+        /// <summary>Wall metal, kg.</summary>
         public readonly double StructureMassKg;
 
-        /// <summary>Теплоизоляция, кг.</summary>
+        /// <summary>Insulation, kg.</summary>
         public readonly double InsulationMassKg;
 
-        /// <summary>Топливо в баке при текущем заполнении, кг.</summary>
+        /// <summary>Propellant in the tank at current fill, kg.</summary>
         public readonly double PropellantMassKg;
 
         public TankMassInfo(
@@ -44,21 +44,21 @@ namespace Galilego.Spacecraft
     }
 
     /// <summary>
-    /// Масса бака от размера и вида топлива.
-    ///   объём и площадь — формулы ProceduralFuelTank (единый источник);
-    ///   металл = (оболочка + перегородка) × кг/м² наполнения × ShellScale(радиус);
-    ///   кг/м² и изоляция наполнения — среднее компонентов по объёму;
-    ///   топливо = Σ объём × доля × (1 − подушка) × плотность × заполнение.
-    /// ShellScale: у баков под давлением толщина стенки растёт с радиусом
-    /// (t = p·r/σ), поэтому кг/м² пропорциональны радиусу. Опорные значения
-    /// Propellant.TankStructureKgM2 заданы для радиуса 4.2 м (ET); у бака
-    /// 1.5 м стенка втрое тоньше. Снизу ограничено минимальной толщиной.
+    /// Tank mass from size and propellant kind.
+    ///   volume and area — ProceduralFuelTank formulas (single source);
+    ///   metal = (shell + bulkhead) × structure kg/m² × ShellScale(radius);
+    ///   fill kg/m² and insulation — volume-weighted average of components;
+    ///   propellant = Σ volume × fraction × (1 − ullage) × density × fill.
+    /// ShellScale: pressure tanks have wall thickness growing with radius
+    /// (t = p·r/σ), so kg/m² is proportional to radius. Reference
+    /// Propellant.TankStructureKgM2 values are given for radius 4.2 m (ET);
+    /// a 1.5 m tank has a wall three times thinner. Clamped below by minimum thickness.
     /// </summary>
     public static class TankMassModel
     {
         public const double ReferenceRadiusM = 4.2d;
 
-        /// <summary>Минимальная доля опорной стенки (технологический минимум).</summary>
+        /// <summary>Minimum fraction of the reference wall (manufacturing floor).</summary>
         public const double MinShellScale = 0.25d;
 
         public static double ShellScale(double meanRadiusM)
@@ -73,7 +73,7 @@ namespace Galilego.Spacecraft
             double volume = ProceduralFuelTank.Volume(bottomRadius, topRadius, height);
             double meanRadius = 0.5d * (bottomRadius + topRadius);
 
-            // Оболочка + перегородка между компонентами (диск среднего сечения).
+            // Shell + bulkhead between components (disc of mean cross-section).
             double area = ProceduralFuelTank.ShellArea(bottomRadius, topRadius, height);
             if (l.HasBulkhead)
             {

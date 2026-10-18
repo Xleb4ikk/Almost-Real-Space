@@ -6,15 +6,10 @@ using Unity.Mathematics;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Верхняя граница формы рельефа. Неявный контракт «форма в [−1,1]»
-    /// держался сам собой только у value noise: LatticeValue по построению в
-    /// [−1,1], и трилинейная смесь не выходит за выпуклую оболочку. У
-    /// градиентного примитива такого свойства нет — после выравнивания по RMS
-    /// (T111) пик октавы стал 1.43, а жёсткая граница √3/2 · 2.056 = 1.78.
-    ///
-    /// Тест меряет максимум формы по большой выборке направлений для обеих
-    /// схем и сверяет с TerrainNoise.ShapeBound × AmplitudeMeters. Это ровно
-    /// та величина, на которую опирается всё, что режет по высоте.
+    /// Upper bound of the terrain shape. The test measures the max shape over a
+    /// large sample of directions for both schemes and checks it against
+    /// TerrainNoise.ShapeBound × AmplitudeMeters — exactly the quantity on which
+    /// everything clipping by height relies.
     /// </summary>
     private static int Test128_ShapeBound()
     {
@@ -48,11 +43,11 @@ internal static partial class P1bTests
                 }
             }
 
-            // ГРАНИЦА ФОРМЫ, а не октавы. ShapeBound ограничивает одну октаву
-            // (√3/2 · нормировка), а полная форма ещё и уходит вниз на
-            // ContinentDepth: замер показал |форма| до 2.05 при ShapeBound 1.78.
-            // Значит контракт на полную форму — ShapeBound + ContinentDepth,
-            // и всё, что режет по высоте, обязано ссылаться на него.
+            // SHAPE bound, not octave. ShapeBound limits a single octave
+            // (√3/2 · normalization), while the full shape also dips by
+            // ContinentDepth. The full-shape contract is therefore
+            // ShapeBound + ContinentDepth, and everything clipping by height
+            // must reference it.
             double bound = (TerrainNoise.ShapeBound + System.Math.Max(0d, t.ContinentDepth)) * t.AmplitudeMeters;
             double observed = System.Math.Max(System.Math.Abs(maxForm), System.Math.Abs(minForm)) * t.AmplitudeMeters;
             bool ok = observed <= bound;

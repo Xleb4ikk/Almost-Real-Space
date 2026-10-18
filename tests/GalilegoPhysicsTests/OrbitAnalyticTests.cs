@@ -7,9 +7,9 @@ using Xunit.Abstractions;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Тест B — аналитическая проверка орбиты: после одного полного периода
-    /// T = 2π√(a³/μ) корабль на круговой орбите должен вернуться примерно
-    /// в исходную точку (сравнение нового пути с аналитикой).
+    /// Test B — analytic orbit check: after one full period
+    /// T = 2π√(a³/μ) a ship on a circular orbit should return approximately
+    /// to its start point (comparing the new path against the analytic one).
     /// </summary>
     public sealed class OrbitAnalyticTests
     {

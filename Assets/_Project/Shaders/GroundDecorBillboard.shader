@@ -6,7 +6,7 @@ Shader "Galilego/GroundDecorBillboard"
         _BaseColor("Base Color", Color) = (0.30, 0.50, 0.20, 1)
         _Cutoff("Alpha Cutoff", Range(0.0, 1.0)) = 0.5
         _Translucency("Translucency", Range(0.0, 1.0)) = 0.35
-        // Домножает альбедо к тону земли (окклюзия/моттлинг/текстуры рельефа).
+        // Multiplies albedo toward the ground tone (occlusion/mottling/terrain textures).
         _GroundTint("Ground Match Tint", Color) = (1, 1, 1, 1)
     }
     SubShader
@@ -66,10 +66,9 @@ Shader "Galilego/GroundDecorBillboard"
                 UNITY_SETUP_INSTANCE_ID(input);
                 UNITY_TRANSFER_INSTANCE_ID(input, output);
 
-                // Биллборд разворачивает РЕНДЕРЕР (C#): матрица инстанса уже
-                // смотрит в камеру вокруг нормали поверхности. Шейдер — простой
-                // passthrough: никакой шейдерной ориентации (та ломалась под
-                // HDRP-инстансингом и ложила траву плашмя).
+                // The RENDERER (C#) orients the billboard: the instance matrix already
+                // faces the camera around the surface normal. The shader is a plain
+                // passthrough with no shader-side orientation.
                 float3 positionWS = TransformObjectToWorld(input.positionOS);
                 output.positionWS = positionWS;
                 output.positionCS = TransformWorldToHClip(positionWS);
@@ -84,26 +83,24 @@ Shader "Galilego/GroundDecorBillboard"
 
                 float4 tex = tex2D(_BaseColorMap, input.uv);
                 float alpha = tex.a * _BaseColor.a;
-                // Край листа в текстуре тёмный (RGB на низкой альфе уходит в
-                // чёрное) — именно это читалось «чёрной обводкой» вокруг травы.
-                // Подмешиваем базовый цвет по альфе: пиксели у самой границы
-                // клипа получают цвет травы, а не грязь текстуры.
+                // The leaf edge in the texture is dark (RGB goes black at low alpha).
+                // Blend in the base colour by alpha so pixels at the clip edge get grass
+                // colour rather than texture dirt.
                 float3 albedo = tex.rgb * _BaseColor.rgb;
                 albedo = lerp(_BaseColor.rgb, albedo, saturate(alpha * 1.6));
                 clip(alpha - _Cutoff);
 
                 float3 n = normalize(input.normalWS);
                 float3 l = normalize(_TerrainSunDir);
-                // Двусторонний лист: светим с обеих сторон.
+                // Two-sided leaf: light both sides.
                 float ndl = saturate(abs(dot(n, l)));
-                // Просвет против солнца — как у solid-слоя, иначе дальняя
-                // трава в контровом свете темнее ближней.
+                // Backlight against the sun — as in the solid layer, otherwise distant
+                // grass in backlight is darker than near grass.
                 float back = saturate(dot(-n, l)) * _Translucency;
-                // Свет — как у рельефа: честное солнце (_TerrainSun, может
-                // превышать 1), ambient — полусферический от неба (без *ndl:
-                // на закате небо светит, даже когда прямой луч погас); цвет
-                // солнца (фотосфера × T) и ambient — общие глобалы.
-                // Тень HDRP гасит прямой свет, ambient остаётся.
+                // Lighting as on terrain: true sun (_TerrainSun, may exceed 1), hemispheric
+                // ambient from the sky (no *ndl: at sunset the sky glows even when the direct
+                // ray has faded); the sun colour (photosphere × T) and ambient are shared globals.
+                // The HDRP shadow dims direct light; ambient remains.
                  float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, n, l);
                  float cloudShadow = SampleCloudShadow(input.positionWS);
                  float sun = _TerrainSun;
@@ -120,8 +117,8 @@ Shader "Galilego/GroundDecorBillboard"
             ENDHLSL
         }
 
-        // Глубина для depth-prepass HDRP (см. GroundDecorSolid): без пасса
-        // биллборды на фоне неба выглядят полупрозрачными.
+        // Depth pass for the HDRP depth-prepass (see GroundDecorSolid): without it
+        // billboards look translucent against the sky.
         Pass
         {
             Name "DepthForwardOnly"
@@ -173,7 +170,7 @@ Shader "Galilego/GroundDecorBillboard"
             float4 Frag(Varyings input) : SV_Target
             {
                 UNITY_SETUP_INSTANCE_ID(input);
-                // Alpha-clip обязателен и здесь (см. GroundDecorSolid).
+                // Alpha-clip is required here too (see GroundDecorSolid).
                 float4 albedo = tex2D(_BaseColorMap, input.uv) * _BaseColor;
                 clip(albedo.a - _Cutoff);
                 return 0;

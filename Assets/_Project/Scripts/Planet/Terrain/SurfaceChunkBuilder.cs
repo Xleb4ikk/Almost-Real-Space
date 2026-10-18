@@ -10,15 +10,13 @@ using Unity.Mathematics;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Р’РµСЂС€РёРЅР° СЂРµР»СЊРµС„Р° РІ С„РѕСЂРјР°С‚Рµ, РєРѕС‚РѕСЂС‹Р№ РјРѕР¶РЅРѕ Р·Р°Р»РёС‚СЊ РІ Mesh РѕРґРЅРёРј
-    /// SetVertexBufferData. РџРѕСЂСЏРґРѕРє РїРѕР»РµР№ = РїРѕСЂСЏРґРѕРє VertexAttribute РІ
-    /// layout: Position, Normal, TexCoord1 (f32x3), TexCoord2 (f32x4).
+    /// Relief vertex in a format that can be uploaded to a Mesh with a single
+    /// SetVertexBufferData. Field order = VertexAttribute order in the layout:
+    /// Position, Normal, TexCoord1 (f32x3), TexCoord2 (f32x4).
     ///
-    /// РћРґРёРЅ interleaved-Р±СѓС„РµСЂ РІРјРµСЃС‚Рѕ mesh.vertices / normals / SetUVs(1) /
-    /// SetUVs(2): СЂР°РЅСЊС€Рµ СЌС‚Рѕ Р±С‹Р»Рё С‡РµС‚С‹СЂРµ РѕС‚РґРµР»СЊРЅС‹С… managed-РјР°СЃСЃРёРІР° Рё С‡РµС‚С‹СЂРµ
-    /// РѕР±СЂР°С‰РµРЅРёСЏ Рє РјРµС€Сѓ, РїР»СЋСЃ РґРІР° List<Vector3> СЂР°РґРё РєРѕРЅРІРµСЂС‚Р°С†РёРё. Р—РґРµСЃСЊ
-    /// РІРµСЂС€РёРЅС‹ СЃС‡РёС‚Р°СЋС‚СЃСЏ РІ РґР¶РѕР±Рµ СЃСЂР°Р·Сѓ РІ РЅСѓР¶РЅРѕР№ СЂР°СЃРєР»Р°РґРєРµ, Рё РЅР° РіР»Р°РІРЅС‹Р№ РїРѕС‚РѕРє
-    /// РїСЂРёС…РѕРґРёС‚ РѕРґРЅР° memcpy.
+    /// One interleaved buffer instead of mesh.vertices / normals / SetUVs(1) /
+    /// SetUVs(2). Vertices are computed in the job directly in the required
+    /// layout, so the main thread does a single memcpy.
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct TerrainVertex
@@ -29,9 +27,9 @@ namespace Galilego.Universe
         public float4 Extra;
     }
 
-    /// <summary>Р’РµСЂС€РёРЅР° РІРѕРґРЅРѕР№ РїРѕРІРµСЂС…РЅРѕСЃС‚Рё: РїРѕР·РёС†РёСЏ, РЅРѕСЂРјР°Р»СЊ, РіР»СѓР±РёРЅР° РІ UV2.
-    /// РћС‚РґРµР»СЊРЅР°СЏ СЃС‚СЂСѓРєС‚СѓСЂР°, РїРѕС‚РѕРјСѓ С‡С‚Рѕ Сѓ РІРѕРґС‹ РЅРµС‚ TexCoord1 Рё СЂР°СЃРєР»Р°РґРєР°
-    /// РґСЂСѓРіР°СЏ вЂ” РѕР±С‰РёР№ Р±СѓС„РµСЂ СЃ СЂРµР»СЊРµС„РѕРј РµС‘ Р±С‹ СЃРґРІРёРЅСѓР».</summary>
+    /// <summary>Water surface vertex: position, normal, depth in UV2.
+    /// A separate struct because water has no TexCoord1 and a different layout —
+    /// a buffer shared with the relief would have shifted it.</summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct WaterVertex
     {
@@ -40,10 +38,10 @@ namespace Galilego.Universe
         public float4 Extra;
     }
 
-    /// <summary>РРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ СѓР·Р»Р° quadtree РґР»СЏ Р·Р°РїСЂРѕСЃР° РїРѕСЃС‚СЂРѕР№РєРё. РћС‚РґРµР»СЊРЅР°СЏ
-    /// РїСѓР±Р»РёС‡РЅР°СЏ СЃС‚СЂСѓРєС‚СѓСЂР°, РїРѕС‚РѕРјСѓ С‡С‚Рѕ РІР»РѕР¶РµРЅРЅС‹Р№ Node Сѓ СЂРµРЅРґРµСЂРµСЂР° РїСЂРёРІР°С‚РЅС‹Р№,
-    /// Р° РґР¶РѕР± Рё РїСѓР» Р¶РёРІСѓС‚ РІ РґСЂСѓРіРѕРј С„Р°Р№Р»Рµ. Р”СѓР±Р»РёСЂРѕРІР°РЅРёРµ С‚СЂРёРІРёР°Р»СЊРЅРѕРµ, РЅРѕ
-    /// СЃРІСЏР·Р°С‚СЊ РёС… РЅР°РїСЂСЏРјСѓСЋ РЅРµР»СЊР·СЏ Р±РµР· РІС‹РЅРµСЃРµРЅРёСЏ Node РЅР°СЂСѓР¶Сѓ.</summary>
+    /// <summary>Quadtree node identifier for a build request. A separate public
+    /// struct because the renderer's nested Node is private, while the job and pool
+    /// live in another file. The duplication is trivial, but they can't be linked
+    /// directly without exposing Node.</summary>
     public struct ChunkNodePlan
     {
         public int Face;
@@ -53,11 +51,10 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Р—Р°РїСЂРѕСЃ РЅР° Р°СЃРёРЅС…СЂРѕРЅРЅСѓСЋ РїРѕСЃС‚СЂРѕР№РєСѓ С‡Р°РЅРєР°. Р’Р»Р°РґРµРЅРёРµ РјР°СЃСЃРёРІР°РјРё вЂ” Сѓ РїСѓР»Р°:
-    /// РѕРЅРё Persistent, РїРµСЂРµРёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ Рё РІРѕР·РІСЂР°С‰Р°СЋС‚СЃСЏ РІ Finalize Р»РёР±Рѕ РїСЂРё
-    /// РѕС‚РјРµРЅРµ. РЈС‚РµС‡РєР° С…РѕС‚СЏ Р±С‹ РѕРґРЅРѕРіРѕ С‚Р°РєРѕРіРѕ РјР°СЃСЃРёРІР° РЅР° РєР°Р¶РґС‹Р№ РѕС‚РјРµРЅС‘РЅРЅС‹Р№
-    /// Р·Р°РїСЂРѕСЃ РІРёРґРЅР° С‚РѕР»СЊРєРѕ РІ РѕС‚С‡С‘С‚Рµ Unity Рѕ РЅР°С‚РёРІРЅРѕР№ РїР°РјСЏС‚Рё, РїРѕСЌС‚РѕРјСѓ РѕС‚РјРµРЅР°
-    /// СЃРґРµР»Р°РЅР° РѕРґРЅРѕР№ С„СѓРЅРєС†РёРµР№ Рё РІС‹Р·С‹РІР°РµС‚СЃСЏ РѕС‚РѕРІСЃСЋРґСѓ.
+    /// Request for an asynchronous chunk build. Array ownership belongs to the pool:
+    /// they are Persistent, reused and returned in Finalize or on cancel. A leak of
+    /// even one such array per cancelled request shows up only in Unity's native
+    /// memory report, so cancellation is done by a single function called from everywhere.
     /// </summary>
     public sealed class ChunkBuildRequest
     {
@@ -79,32 +76,29 @@ namespace Galilego.Universe
         public NativeArray<float3> Positions;
         public NativeArray<TerrainVertex> Vertices;
         public NativeArray<WaterVertex> WaterVertices;
-        /// <summary>1 = РІ С‡Р°РЅРєРµ РµСЃС‚СЊ РІРѕРґР°, 0 = РЅРµС‚. РћРґРёРЅ СЌР»РµРјРµРЅС‚: Р·Р°РїРёСЃСЊ РёР·
-        /// РґР¶РѕР±С‹ РґРѕР»Р¶РЅР° Р±С‹С‚СЊ РІРёРґРЅР° РЅР° РіР»Р°РІРЅРѕРј РїРѕС‚РѕРєРµ.</summary>
+        /// <summary>1 = the chunk has water, 0 = no. One element: the write from the
+        /// job must be visible on the main thread.</summary>
         public NativeArray<int> WaterFlags;
         public NativeArray<float3> BoundsMinMax;
 
-        /// <summary>Р¦РµРЅС‚СЂ СѓР·Р»Р° РІ body-fixed double. РќСѓР¶РµРЅ С„РёРЅР°Р»РёР·Р°С†РёРё: РјРµС€
-        /// СЃС‚СЂРѕРёС‚СЃСЏ РІ СЃРёСЃС‚РµРјРµ РѕС‚СЃС‡С‘С‚Р° РѕС‚ С†РµРЅС‚СЂР° С‡Р°РЅРєР°, Р° transform СЃС‚Р°РІРёС‚СЃСЏ
-        /// СѓР¶Рµ РїРѕСЃР»Рµ Р·Р°Р»РёРІРєРё.</summary>
+        /// <summary>Node centre in body-fixed double. Needed at finalize: the mesh is
+        /// built relative to the chunk centre, and the transform is set after upload.</summary>
         public Vector3d CenterAstro;
 
-        /// <summary>Р“Р»СѓР±РёРЅР° СЋР±РєРё СЂРµР»СЊРµС„Р° вЂ” РµСЋ СЂР°СЃС€РёСЂСЏСЋС‚СЃСЏ РіСЂР°РЅРёС†С‹ РјРµС€Р°.</summary>
+        /// <summary>Relief skirt depth — used to expand the mesh bounds.</summary>
         public double SkirtDepth;
 
         public bool HasWater => WaterFlags.Length > 0 && WaterFlags[0] != 0;
     }
 
     /// <summary>
-    /// Burst-СЃРѕРІРјРµСЃС‚РёРјР°СЏ РєРѕРїРёСЏ CubeSphere.Direction.
+    /// Burst-compatible copy of CubeSphere.Direction.
     ///
-    /// Р”СѓР±Р»РёСЂРѕРІР°РЅРёРµ Р·РґРµСЃСЊ РЅР°РјРµСЂРµРЅРЅРѕРµ, Рё СЌС‚Рѕ РµРґРёРЅСЃС‚РІРµРЅРЅРѕРµ РјРµСЃС‚Рѕ, РіРґРµ
-    /// В«РїСЂРѕСЃС‚Рѕ РІС‹Р·РІР°С‚СЊ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёР№ РјРµС‚РѕРґВ» РЅРµРІРѕР·РјРѕР¶РЅРѕ: Vector3d.Normalized
-    /// Р¶РёРІС‘С‚ РІ Core Рё РЅРµРґРѕСЃС‚СѓРїРµРЅ Burst. Р¤РѕСЂРјСѓР»Р° РїРµСЂРµРЅРµСЃРµРЅР° РѕРґРёРЅ РІ РѕРґРёРЅ вЂ”
-    /// С‚Р° Р¶Рµ РїРµСЂРµСЃС‚Р°РЅРѕРІРєР° РѕСЃРµР№, С‚Рѕ Р¶Рµ РґРµР»РµРЅРёРµ РЅР° Math.Sqrt(xВІ+yВІ+zВІ), С‚РѕС‚ Р¶Рµ
-    /// РїРѕСЂСЏРґРѕРє РѕРїРµСЂР°С†РёР№, вЂ” РёРЅР°С‡Рµ РІС‹СЃРѕС‚С‹ РїРѕРµРґСѓС‚ РЅР° РїРѕСЃР»РµРґРЅРµРј Р±РёС‚Рµ Рё С€РІС‹ РјРµР¶РґСѓ
-    /// С‡Р°РЅРєР°РјРё СЂР°Р·СЉРµРґСѓС‚СЃСЏ. РџСЂРѕРІРµСЂСЏС‚СЊ СЌС‚Рѕ РЅР°РґРѕ СЃСЂР°РІРЅРµРЅРёРµРј РєР°СЂС‚РёРЅРєРё, Р° РЅРµ
-    /// РіР»Р°Р·Р°РјРё РЅР° РіР»Р°Р·.
+    /// The duplication is intentional and is the only place where "just call the
+    /// existing method" is impossible: Vector3d.Normalized lives in Core and is not
+    /// Burst-accessible. The formula is ported one-to-one — same axis permutation,
+    /// same division by Math.Sqrt(x²+y²+z²), same operation order — otherwise
+    /// heights would drift by the last bit and seams between chunks would split.
     /// </summary>
     public static class CubeSphereBurst
     {
@@ -135,11 +129,7 @@ namespace Galilego.Universe
         }
     }
 
-    /// <summary>
-    /// РЁР°Рі 1 С†РµРїРѕС‡РєРё: РЅР°РїСЂР°РІР»РµРЅРёСЏ РєСѓР±-СЃС„РµСЂС‹ РґР»СЏ РІСЃРµР№ СЃРµС‚РєРё СЃ halo.
-    /// Р Р°РЅСЊС€Рµ СЌС‚Рѕ Р±С‹Р» РІР»РѕР¶РµРЅРЅС‹Р№ С†РёРєР» РЅР° РіР»Р°РІРЅРѕРј РїРѕС‚РѕРєРµ вЂ” 4489 РёС‚РµСЂР°С†РёР№
-    /// double-РјР°С‚РµРјР°С‚РёРєРё РЅР° С‡Р°РЅРє, С‚Рѕ РµСЃС‚СЊ Р·Р°РјРµС‚РЅР°СЏ РґРѕР»СЏ С‚РµС… СЃР°РјС‹С… 4 РјСЃ.
-    /// </summary>
+    /// <summary>Chain step 1: cube-sphere directions for the whole grid with halo.</summary>
     [BurstCompile]
     public struct FillDirectionsJob : IJobParallelFor
     {
@@ -163,14 +153,14 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// РЁР°Рі 3 С†РµРїРѕС‡РєРё: СЃР±РѕСЂРєР° РІРµСЂС€РёРЅ СЂРµР»СЊРµС„Р° Рё РІРѕРґС‹ РёР· РЅР°РїСЂР°РІР»РµРЅРёР№, РІС‹СЃРѕС‚,
-    /// РјР°СЃРѕРє Рё РґРµС‚Р°Р»РµР№. РќРѕСЂРјР°Р»Рё С†РµРЅС‚СЂР°Р»СЊРЅС‹РјРё СЂР°Р·РЅРѕСЃС‚СЏРјРё, С„Р»РёРї РѕС‚РЅРѕСЃРёС‚РµР»СЊРЅРѕ
-    /// СЂР°РґРёР°Р»Р°, СЋР±РєРё РІРЅРёР·, РіСЂР°РЅРёС†С‹.
+    /// Chain step 3: assembles relief and water vertices from directions, heights,
+    /// masks and details. Normals by central differences, flip relative to the
+    /// radial, skirts downward, bounds.
     ///
-    /// Р’СЃС‘ СЃС‡РёС‚Р°РµС‚СЃСЏ РІ float3/float4 РІ С‚РѕРј Р¶Рµ РїРѕСЂСЏРґРєРµ, С‡С‚Рѕ Рё СЃС‚Р°СЂР°СЏ
-    /// managed-РІРµСЂСЃРёСЏ, С‡С‚РѕР±С‹ СЂРµР·СѓР»СЊС‚Р°С‚ СЃРѕРІРїР°Р»: Vector3.Cross = math.cross,
-    /// Vector3.magnitude = math.length, РґРµР»РµРЅРёРµ РЅР° РґР»РёРЅСѓ вЂ” РґРµР»РµРЅРёРµРј, Р° РЅРµ
-    /// СѓРјРЅРѕР¶РµРЅРёРµРј РЅР° РѕР±СЂР°С‚РЅРѕРµ.
+    /// All computation is in float3/float4 in the same operation order as the
+    /// managed version, so results match: Vector3.Cross = math.cross,
+    /// Vector3.magnitude = math.length, division by length is division, not
+    /// multiplication by the reciprocal.
     /// </summary>
     [BurstCompile]
     public struct AssembleChunkMeshJob : IJob
@@ -192,28 +182,27 @@ namespace Galilego.Universe
         public double WaterSkirtDepth;
         public double3 CenterAstro;
 
-        /// <summary>Промежуточные позиции сетки с halo. Без [WriteOnly]:
-        /// джоб пишет их первым проходом и читает вторым (нормали центральными
-        /// разностями).</summary>
+        /// <summary>Intermediate grid positions with halo. Without [WriteOnly]:
+        /// the job writes them in the first pass and reads them in the second (normals
+        /// by central differences).</summary>
         public NativeArray<float3> Positions;
 
-        /// <summary>Готовые вершины рельефа. Тоже пишутся и потом читаются:
-        /// core-проход заполняет их, а проход юбок берёт из них крайние
-        /// вершины. Помеченный WriteOnly массив читать нельзя, и Burst роняет
-        /// джоб с InvalidOperationException вместо тихой порчи.</summary>
+        /// <summary>Finished relief vertices. Also written then read: the core pass
+        /// fills them, and the skirt pass takes edge vertices from them. A WriteOnly-marked
+        /// array cannot be read, and Burst fails the job with InvalidOperationException
+        /// instead of silently corrupting data.</summary>
         public NativeArray<TerrainVertex> Vertices;
 
-        /// <summary>Вершины воды. Читаются дважды: скан «есть ли вода» и
-        /// проход юбок. Поэтому без [WriteOnly] по той же причине, что и у
-        /// остальных двух.</summary>
+        /// <summary>Water vertices. Read twice: the "is there water" scan and the
+        /// skirt pass. Hence no [WriteOnly], for the same reason as the other two.</summary>
         public NativeArray<WaterVertex> WaterVertices;
         [WriteOnly] public NativeArray<int> WaterFlags;
         public NativeArray<float3> BoundsMinMax;
 
-        /// <summary>РќРѕСЂРјР°Р»РёР·Р°С†РёСЏ СЂРѕРІРЅРѕ РєР°Рє Сѓ Vector3.normalized: СЃ РїРѕСЂРѕРіРѕРј
-        /// kEpsilon = 1e-5 Рё РґРµР»РµРЅРёРµРј, Р° РЅРµ СѓРјРЅРѕР¶РµРЅРёРµРј РЅР° РѕР±СЂР°С‚РЅСѓСЋ РґР»РёРЅСѓ.
-        /// math.normalizesafe С‚РѕР¶Рµ РґРµР»РёС‚, РЅРѕ Р±РµР· РїРѕСЂРѕРіР°, Рё РЅР° РїСЂР°РєС‚РёРєРµ СЌС‚Рѕ
-        /// РµРґРёРЅСЃС‚РІРµРЅРЅРѕРµ РјРµСЃС‚Рѕ, РіРґРµ РјРѕРі Р±С‹ СЂР°Р·СЉРµС…Р°С‚СЊСЃСЏ РїРѕСЃР»РµРґРЅРёР№ Р±РёС‚.</summary>
+        /// <summary>Normalization exactly like Vector3.normalized: with the threshold
+        /// kEpsilon = 1e-5 and by division, not multiplication by the inverse length.
+        /// math.normalizesafe also divides but has no threshold, and in practice this is
+        /// the only place where the last bit could drift.</summary>
         private static float3 NormalizeLikeUnity(float3 v)
         {
             float mag = math.length(v);
@@ -224,9 +213,9 @@ namespace Galilego.Universe
         {
             int gridCount = Grid * Grid;
 
-            // РџРѕР·РёС†РёРё РІ double, РїРѕС‚РѕРј РІ float вЂ” РєР°Рє РІ СЃС‚Р°СЂРѕР№ РІРµСЂСЃРёРё. РџРѕСЂСЏРґРѕРє
-            // РІР°Р¶РµРЅ: double РЅР° СЂР°РґРёСѓСЃРµ РїР»Р°РЅРµС‚С‹ (~1.14e6) РґР°С‘С‚ ulp ~0.1 Рј, Рё
-            // Р»СЋР±РѕРµ РїРµСЂРµСЃС‚Р°РІР»РµРЅРёРµ РѕРїРµСЂР°С†РёР№ СЃРјРµСЃС‚РёС‚ РІРµСЂС€РёРЅСѓ РЅР° СЃР°РЅС‚РёРјРµС‚СЂС‹.
+            // Positions in double, then in float. Order matters: double at the planet
+            // radius (~1.14e6) gives ulp ~0.1 m, and any reordering of operations shifts
+            // the vertex by centimetres.
             for (int gi = 0; gi < Grid; gi++)
             {
                 for (int gj = 0; gj < Grid; gj++)
@@ -291,7 +280,7 @@ namespace Galilego.Universe
                 }
             }
 
-            // Р§Р°РЅРє С†РµР»РёРєРѕРј РЅР°Рґ РјРѕСЂРµРј вЂ” РІРѕРґСѓ РЅРµ СЃС‚СЂРѕРёРј.
+            // The chunk is entirely above the sea — no water is built.
             if (hasWater)
             {
                 hasWater = false;
@@ -307,7 +296,7 @@ namespace Galilego.Universe
 
             WaterFlags[0] = hasWater ? 1 : 0;
 
-            // Р®Р±РєРё СЂРµР»СЊРµС„Р°: РґСѓР±Р»РёСЂСѓРµРј СЂС‘Р±СЂР°, С‚РѕРїРёРј Рє С†РµРЅС‚СЂСѓ РїР»Р°РЅРµС‚С‹.
+            // Relief skirts: duplicate the edges, sink them toward the planet centre.
             for (int edge = 0; edge < 4; edge++)
             {
                 int baseIndex = CoreCount + (edge * N);
@@ -380,9 +369,9 @@ namespace Galilego.Universe
             BoundsMinMax[1] = max;
         }
 
-        /// <summary>РРЅРґРµРєСЃ core-РІРµСЂС€РёРЅС‹ РЅР° СЂРµР±СЂРµ СЋР±РєРё. РџРѕСЂСЏРґРѕРє СЂС‘Р±РµСЂ (row0,
-        /// rowRes, col0, colRes) РѕР±СЏР·Р°РЅ СЃРѕРІРїР°РґР°С‚СЊ СЃ РїРѕСЂСЏРґРєРѕРј РІ РёРЅРґРµРєСЃР°С…,
-        /// РёРЅР°С‡Рµ СЋР±РєР° РїСЂРёРєР»РµРёС‚СЃСЏ РЅРµ Рє С‚РѕР№ СЃС‚РѕСЂРѕРЅРµ.</summary>
+        /// <summary>Index of the core vertex on a skirt edge. The edge order (row0,
+        /// rowRes, col0, colRes) must match the order in the indices, otherwise the
+        /// skirt glues to the wrong side.</summary>
         private static int EdgeCoreIndex(int res, int n, int edge, int k)
         {
             switch (edge)
@@ -396,13 +385,11 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// РџСѓР» Persistent-РјР°СЃСЃРёРІРѕРІ Рё РѕР±С‰РёС… РёРЅРґРµРєСЃРЅС‹С… Р±СѓС„РµСЂРѕРІ.
+    /// Pool of Persistent arrays and shared index buffers.
     ///
-    /// РўРѕРїРѕР»РѕРіРёСЏ С‡Р°РЅРєР° Р·Р°РІРёСЃРёС‚ С‚РѕР»СЊРєРѕ РѕС‚ res, Р° РЅРµ РѕС‚ РїРѕР»РѕР¶РµРЅРёСЏ, РїРѕСЌС‚РѕРјСѓ
-    /// РёРЅРґРµРєСЃС‹ СЃС‚СЂРѕСЏС‚СЃСЏ РћР”РРќ СЂР°Р· РЅР° РєР°Р¶РґРѕРµ res Рё РєРѕРїРёСЂСѓСЋС‚СЃСЏ РІ РјРµС€. Р Р°РЅСЊС€Рµ РЅР°
-    /// РєР°Р¶РґС‹Р№ С‡Р°РЅРѕРє СЃРѕР±РёСЂР°Р»СЃСЏ СЃРІРѕР№ int[] РЅР° 51840 СЌР»РµРјРµРЅС‚РѕРІ Рё СЂР°Р·Р±РёСЂР°Р»СЃСЏ
-    /// mesh.triangles вЂ” СЌС‚Рѕ Рё Р°Р»Р»РѕРєР°С†РёСЏ, Рё СЂР°Р·Р±РѕСЂ РЅР° СЃС‚РѕСЂРѕРЅРµ Unity.
-    /// Р§РёСЃР»Рѕ РІРµСЂС€РёРЅ С‡Р°РЅРєР° Р·Р°РІРµРґРѕРјРѕ РјРµРЅСЊС€Рµ 65535, РїРѕСЌС‚РѕРјСѓ С…РІР°С‚Р°РµС‚ ushort.
+    /// Chunk topology depends only on res, not position, so indices are built ONCE
+    /// per res and copied into the mesh. Chunk vertex count is always below 65535,
+    /// so ushort suffices.
     /// </summary>
     public static class SurfaceChunkPool
     {
@@ -411,8 +398,8 @@ namespace Galilego.Universe
 
         private static readonly List<ChunkBuildRequest> idle = new List<ChunkBuildRequest>();
 
-        /// <summary>РРЅРґРµРєСЃС‹ РґР»СЏ res: core-СЃРµС‚РєР° РїР»СЋСЃ С‡РµС‚С‹СЂРµ СЋР±РєРё, РїРѕ 6 РёРЅРґРµРєСЃРѕРІ
-        /// РЅР° РєРІР°Рґ. РљСЌС€РёСЂСѓСЋС‚СЃСЏ; РІС‹Р·С‹РІР°С‚СЊ РёР· РґР¶РѕР±С‹ РЅРµР»СЊР·СЏ.</summary>
+        /// <summary>Indices for res: core grid plus four skirts, 6 indices per quad.
+        /// Cached; must not be called from a job.</summary>
         public static NativeArray<ushort> GetSharedIndices(int res)
         {
             if (sharedIndices.TryGetValue(res, out NativeArray<ushort> cached) && cached.IsCreated)
@@ -423,19 +410,15 @@ namespace Galilego.Universe
             int n = res + 1;
             int coreCount = n * n;
 
-            // 6 индексов НА КВАД, а не на треугольник: каждый квад пишется как
-            // два треугольника (a,c,b + b,c,d), то есть ровно 6. Здесь стояло
-            // *3 — буфер получался вдвое короче, и запись уходила за конец.
-            // Для res=65 это 13455 вместо 26910, что и выдало IndexOutOfRange
-            // в этом же методе.
+            // 6 indices PER QUAD, not per triangle: each quad is written as two
+            // triangles (a,c,b + b,c,d), i.e. exactly 6.
             int quadCount = ((n - 1) * (n - 1)) + (4 * (n - 1));
             int indexCount = quadCount * 6;
 
-            // Границы проверяются ДО записи, а не после. Проверка в конце
-            // бесполезна: к моменту её выполнения буфер уже переполнен и
-            // NativeArray бросает исключение раньше, чем до неё доходит
-            // управление. Стоимость — одно сравнение, зато ошибка топологии
-            // больше не может тихо уехать в VRAM.
+            // Bounds are checked BEFORE writing, not after. Checking at the end is
+            // useless: by then the buffer is already overflowed and NativeArray throws
+            // before control reaches it. The cost is one comparison, but a topology error
+            // can no longer slip silently into VRAM.
             int expectedCore = (n - 1) * (n - 1) * 6;
             int expectedSkirts = 4 * (n - 1) * 6;
             if (indexCount != expectedCore + expectedSkirts || indexCount <= 0)
@@ -494,9 +477,9 @@ namespace Galilego.Universe
 
             if (t != indexCount)
             {
-                // Сюда попасть уже не должны: арифметика проверена ДО записи.
-                // Осталось убедиться, что циклы не разошлись с ней, — буфер к
-                // этому моменту цел, так что освобождать его безопасно.
+                // Should not be reachable: the arithmetic was checked BEFORE writing.
+                // This only verifies the loops did not diverge from it — the buffer is
+                // intact at this point, so releasing it is safe.
                 indices.Dispose();
                 throw new InvalidOperationException(
                     "SurfaceChunkPool: wrote " + t + " indices, expected " + indexCount
@@ -507,8 +490,8 @@ namespace Galilego.Universe
             return indices;
         }
 
-        /// <summary>Индексов в меше чанка на этом res. 6 индексов на квад: два
-        /// треугольника, a,c,b + b,c,d.</summary>
+        /// <summary>Indices in the chunk mesh at this res. 6 indices per quad: two
+        /// triangles, a,c,b + b,c,d.</summary>
         public static int IndexCountFor(int res)
         {
             int n = res + 1;
@@ -533,10 +516,9 @@ namespace Galilego.Universe
             return new ChunkBuildRequest();
         }
 
-        /// <summary>Р“РѕС‚РѕРІРёС‚ РјР°СЃСЃРёРІС‹ Р·Р°РїСЂРѕСЃР° РїРѕРґ РєРѕРЅРєСЂРµС‚РЅС‹Р№ СЂР°Р·РјРµСЂ С‡Р°РЅРєР°.
-        /// РџРµСЂРµРІС‹РґРµР»РµРЅРёРµ С‚РѕР»СЊРєРѕ РєРѕРіРґР° РїСѓР» РїСѓСЃС‚ РёР»Рё РІС‹СЂРѕСЃР»Р° РїРѕС‚СЂРµР±РЅРѕСЃС‚СЊ: РЅР°
-        /// РїСЂР°РєС‚РёРєРµ РїРѕС‡С‚Рё РІСЃРµРіРґР° РїРµСЂРµРёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ, РїРѕС‚РѕРјСѓ С‡С‚Рѕ РІ РїРѕР»С‘С‚Рµ
-        /// С‡РµСЂРµРґСѓСЋС‚СЃСЏ РѕРґРЅРё Рё С‚Рµ Р¶Рµ res.</summary>
+        /// <summary>Prepares the request arrays for a specific chunk size. Reallocation
+        /// only when the pool is empty or demand grew: in practice they are almost always
+        /// reused, because the same res values alternate in flight.</summary>
         public static void Prepare(ChunkBuildRequest req, int res, int n, int grid, int totalVerts)
         {
             int gridCount = grid * grid;
@@ -568,9 +550,8 @@ namespace Galilego.Universe
             idle.Add(req);
         }
 
-        /// <summary>РџРѕР»РЅС‹Р№ СЃР±СЂРѕСЃ РЅР° teardown: Persistent-РјР°СЃСЃРёРІС‹ РЅРµР»СЊР·СЏ
-        /// РѕСЃС‚Р°РІР»СЏС‚СЊ Р¶РёС‚СЊ РјРµР¶РґСѓ play-СЃРµСЃСЃРёСЏРјРё, РёРЅР°С‡Рµ Unity РЅР°РїРёС€РµС‚ РѕР± СѓС‚РµС‡РєРµ
-        /// РЅР°С‚РёРІРЅРѕР№ РїР°РјСЏС‚Рё РїСЂРё РІС‹С…РѕРґРµ.</summary>
+        /// <summary>Full reset on teardown: Persistent arrays must not survive between
+        /// play sessions, otherwise Unity reports a native memory leak on exit.</summary>
         public static void ClearAll()
         {
             for (int i = 0; i < idle.Count; i++)

@@ -17,22 +17,20 @@ internal static partial class P1bTests
         double R = 1143000d;
         Vector3d extinction = SkyPhysics.ExtinctionPerMeter(1.225d);
 
-        // Космос: плотность 0 → прозрачность (1,1,1).
+        // Space: density 0 → transmittance (1,1,1).
         Vector3d spaceT = SkyPhysics.SunTransmittance(1d, 0d, H, extinction);
         bool spaceClear = Math.Abs(spaceT.X - 1d) < 1e-12d && Math.Abs(spaceT.Y - 1d) < 1e-12d && Math.Abs(spaceT.Z - 1d) < 1e-12d;
 
-        // Зенит у земли: синий гаснет сильнее зелёного, зелёный сильнее красного.
+        // Zenith at ground: blue attenuates more than green, green more than red.
         Vector3d noonT = SkyPhysics.SunTransmittance(1d, 1d, H, extinction);
         bool channelOrder = noonT.Z < noonT.Y && noonT.Y < noonT.X && noonT.X <= 1d;
 
-        // Низкое солнце: зелёный/синий уходят в ноль, красный остаётся заметным.
-        // Порог ослаблен против прежнего (<0.05): реальные β Рэлея слабее
-        // эмпирических, поэтому зелёный на закате ~0.087, но красный по-прежнему
-        // доминирует кратно. Проверяем именно доминирование, а не абсолют.
+        // Low sun: green/blue go to zero, red stays noticeable; we check the
+        // dominance, not the absolute value.
         Vector3d duskT = SkyPhysics.SunTransmittance(0.02d, 1d, H, extinction);
         bool duskRed = duskT.X > (duskT.Y * 3d) && duskT.X > 0.05d && duskT.Y < 0.15d;
 
-        // Airmass: конечна у горизонта и монотонно растёт при снижении солнца.
+        // Airmass: finite at the horizon and monotonically rising as the sun lowers.
         double amZenith = SkyPhysics.Airmass(1d);
         double amHorizon = SkyPhysics.Airmass(0d);
         bool airmassFinite = amHorizon > 20d && amHorizon < 60d && amZenith > 0.9d && amZenith < 1.1d;
@@ -49,13 +47,13 @@ internal static partial class P1bTests
             previous = am;
         }
 
-        // Окклюзия: на поверхности солнце ниже горизонта закрыто; с высоты видно.
+        // Occlusion: at the surface a sun below the horizon is blocked; from altitude it's visible.
         double occGroundUp = SkyPhysics.SunOcclusion(0.1d, 0d, R);
         double occGroundDown = SkyPhysics.SunOcclusion(-0.1d, 0d, R);
         double occHighDown = SkyPhysics.SunOcclusion(-0.1d, 40000d, R);
         bool occlusion = occGroundUp > 0.99d && occGroundDown < 0.01d && occHighDown > 0.99d;
 
-        // Видимость звёзд: полдень у земли скрыта, ночь/космос — видна.
+        // Star visibility: hidden at ground noon, visible at night/in space.
         double noonLum = SkyPhysics.SkyLuminance(1d, SkyPhysics.Density(0d, H, top));
         double noonStars = SkyPhysics.StarVisibility(noonLum);
         double nightStars = SkyPhysics.StarVisibility(SkyPhysics.SkyLuminance(-0.5d, SkyPhysics.Density(0d, H, top)));
@@ -75,10 +73,10 @@ internal static partial class P1bTests
 
     private static int Test80_StarColor()
     {
-        // Физический цвет черного тела: спектр Планка → CIE (фит Wyman) →
-        // линейный sRGB. Проверки: детерминизм бит-в-бит; монотонность цвета
-        // по температуре (1500K красный доминирует, 10000K синий);
-        // 5772K (наша звезда) — тёплый белый: R≥G≥B, близко к белому.
+        // Physical black-body color: Planck spectrum → CIE (Wyman fit) →
+        // linear sRGB. Checks: bit-exact determinism; color monotonicity with
+        // temperature (1500K red dominant, 10000K blue); 5772K (our star) — warm
+        // white: R≥G≥B, close to white.
         bool deterministic = true;
         for (int i = 0; i < 5; i++)
         {
@@ -112,9 +110,9 @@ internal static partial class P1bTests
 
     private static int Test81_StarGranulation()
     {
-        // Грануляция: детерминизм бит-в-бит; диапазон [0,1]; контраст есть
-        // (дорожки и ядра различимы: выборка должна дать и <0.4, и >0.7);
-        // бесшовность — эквивалентные направления (одна точка) дают одно.
+        // Granulation: bit-exact determinism; range [0,1]; contrast present
+        // (lanes and cores distinguishable: the sample must yield both <0.4 and
+        // >0.7); seamless — equivalent directions (same point) give the same value.
         var rng = new Random(5772);
         bool deterministic = true;
         bool inRange = true;
@@ -160,11 +158,11 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Дальность видимости рельефа: горизонт наблюдателя √(2Rh+h²) и сумма
-    /// горизонтов (камера + дальний пик) — база far-плоскости камеры
-    /// (FirstPersonCamera). Проверяем формулу, монотонность и боевые числа
-    /// Terra (R=1.143e6, Amplitude=9144, ContinentDepth=0.9): пик 17.4 км
-    /// виден с земли почти за 200 км, с пика — почти за 400 км.
+    /// Terrain sight range: observer horizon √(2Rh+h²) and the sum of horizons
+    /// (camera + distant peak) — the basis of the camera far plane
+    /// (FirstPersonCamera). Checks the formula, monotonicity and Terra's real
+    /// numbers (R=1.143e6, Amplitude=9144, ContinentDepth=0.9): a 17.4 km peak
+    /// is visible from the ground at almost 200 km, from the peak at almost 400 km.
     /// </summary>
     private static int Test95_HorizonDistance()
     {

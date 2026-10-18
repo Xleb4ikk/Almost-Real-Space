@@ -3,18 +3,18 @@ using UnityEngine;
 namespace Galilego.Building
 {
     /// <summary>
-    /// Скин интерфейса строительства — СВЕТЛАЯ СЕРАЯ тема. Всё рисуется кодом,
-    /// без ассетов: скруглённые прямоугольники по SDF (9-slice), мягкая тень,
-    /// шевроны-стрелки, крестик и виньетка окна предпросмотра. Не зависит от
-    /// CheatGuiSkin, поэтому чит-меню и стройка оформляются независимо.
+    /// Building UI skin — LIGHT GRAY theme. Everything is drawn in code, without
+    /// assets: rounded rectangles via SDF (9-slice), soft shadow, chevron arrows,
+    /// cross and preview-window vignette. Independent of CheatGuiSkin, so the
+    /// cheat menu and building are styled separately.
     ///
-    /// Текстуры лежат в статических полях (иначе сборщик мусора съест нативные
-    /// объекты, а GUIStyle останется с висячим указателем), а Build() заново
-    /// собирает всё, если Unity уничтожил текстуру (выключенный domain reload).
+    /// Textures are kept in static fields (otherwise the GC would eat the native
+    /// objects and GUIStyle would hold a dangling pointer), and Build() rebuilds
+    /// everything if Unity destroyed a texture (disabled domain reload).
     /// </summary>
     internal static class BuilderSkin
     {
-        // ─── Палитра (тёмно-серая, как интерфейс редактора Unity, чуть светлее) ─
+        // ─── Palette (dark gray, like the Unity editor UI, slightly lighter) ─
         public static readonly Color Accent = new Color(0.30f, 0.55f, 0.85f, 1f);
         public static readonly Color AccentDim = new Color(0.30f, 0.55f, 0.85f, 0.30f);
         public static readonly Color TextMain = new Color(0.86f, 0.87f, 0.88f, 1f);
@@ -23,10 +23,10 @@ namespace Galilego.Building
         public static readonly Color Good = new Color(0.35f, 0.78f, 0.50f, 1f);
         public static readonly Color DangerText = new Color(0.92f, 0.62f, 0.62f, 1f);
 
-        /// <summary>Тень вокруг окон и панелей (тонирует Glow).</summary>
+        /// <summary>Shadow around windows and panels (tints Glow).</summary>
         public static readonly Color Shadow = new Color(0f, 0f, 0f, 0.45f);
 
-        // ─── Стили рамок (GUI.Box) ───────────────────────────────────────────
+        // ─── Frame styles (GUI.Box) ───────────────────────────────────────────
         public static GUIStyle Window { get; private set; }
         public static GUIStyle PanelInner { get; private set; }
         public static GUIStyle Plate { get; private set; }
@@ -49,7 +49,7 @@ namespace Galilego.Building
         public static GUIStyle Track { get; private set; }
         public static GUIStyle Glow { get; private set; }
 
-        // ─── Текстовые стили ─────────────────────────────────────────────────
+        // ─── Text styles ─────────────────────────────────────────────────
         public static GUIStyle TitleText { get; private set; }
         public static GUIStyle NameText { get; private set; }
         public static GUIStyle NameTextCenter { get; private set; }
@@ -70,7 +70,7 @@ namespace Galilego.Building
         public static GUIStyle ButtonText { get; private set; }
         public static GUIStyle DangerButtonText { get; private set; }
 
-        // ─── Значки ──────────────────────────────────────────────────────────
+        // ─── Icons ──────────────────────────────────────────────────────────
         public static Texture2D ChevronLeft { get; private set; }
         public static Texture2D ChevronRight { get; private set; }
         public static Texture2D DoubleLeft { get; private set; }
@@ -80,9 +80,9 @@ namespace Galilego.Building
         public static Texture2D Vignette { get; private set; }
 
         private static bool built;
-        private static Texture2D guard;     // по ней узнаём, что текстуры уничтожены
+        private static Texture2D guard;     // it tells us the textures were destroyed
 
-        // Держим ссылки на все текстуры, чтобы их не собрал GC.
+        // Keep references to all textures so the GC doesn't collect them.
         private static readonly System.Collections.Generic.List<Texture2D> Keep =
             new System.Collections.Generic.List<Texture2D>();
 
@@ -96,14 +96,14 @@ namespace Galilego.Building
             built = false;
             Keep.Clear();
 
-            // Окна и панели.
+            // Windows and panels.
             Window = Box(Rounded(48, 16f, C(0.290f, 0.290f, 0.295f, 0.985f), C(0.175f, 0.175f, 0.180f, 1f), 1.5f), 20);
             PanelInner = Box(Rounded(32, 10f, C(0.330f, 0.330f, 0.335f, 1f), C(0.215f, 0.215f, 0.220f, 1f), 1.2f), 12);
             Plate = Box(Rounded(40, 14f, C(0.255f, 0.255f, 0.260f, 0.97f), C(0.170f, 0.170f, 0.175f, 1f), 1.2f), 16);
             Pill = Box(Rounded(40, 14f, C(0.300f, 0.300f, 0.305f, 0.97f), C(0.190f, 0.190f, 0.195f, 1f), 1.2f), 16);
             Viewport = Box(Rounded(48, 14f, C(0.224f, 0.224f, 0.228f, 1f), C(0.160f, 0.160f, 0.165f, 1f), 1.5f), 16);
 
-            // Слоты хотбара и карточки.
+            // Hotbar slots and cards.
             Slot = Box(Rounded(32, 9f, C(0.275f, 0.275f, 0.280f, 1f), C(0.195f, 0.195f, 0.200f, 1f), 1.2f), 11);
             SlotHover = Box(Rounded(32, 9f, C(0.330f, 0.330f, 0.338f, 1f), C(0.470f, 0.470f, 0.490f, 1f), 1.6f), 11);
             SlotSelected = Box(Rounded(32, 9f, C(0.285f, 0.315f, 0.360f, 1f), C(0.30f, 0.55f, 0.85f, 1f), 2.6f), 11);
@@ -111,7 +111,7 @@ namespace Galilego.Building
             CardHover = Box(Rounded(32, 10f, C(0.355f, 0.355f, 0.362f, 1f), C(0.470f, 0.470f, 0.490f, 1f), 1.6f), 12);
             CardSelected = Box(Rounded(32, 10f, C(0.290f, 0.330f, 0.390f, 1f), C(0.30f, 0.55f, 0.85f, 1f), 2.2f), 12);
 
-            // Кнопки-стрелки.
+            // Arrow buttons.
             Step = Box(Rounded(32, 9f, C(0.295f, 0.295f, 0.300f, 1f), C(0.205f, 0.205f, 0.210f, 1f), 1.2f), 11);
             StepHover = Box(Rounded(32, 9f, C(0.350f, 0.350f, 0.358f, 1f), C(0.480f, 0.480f, 0.500f, 1f), 1.6f), 11);
             StepActive = Box(Rounded(32, 9f, C(0.240f, 0.400f, 0.600f, 1f), C(0.40f, 0.65f, 0.92f, 1f), 1.6f), 11);
@@ -123,7 +123,7 @@ namespace Galilego.Building
             Track = Box(Rounded(16, 5f, C(0.215f, 0.215f, 0.220f, 1f), C(0.160f, 0.160f, 0.165f, 1f), 1f), 6);
             Glow = Box(MakeGlow(64, 20f, 12f), 30);
 
-            // Текст.
+            // Text.
             TitleText = Text(20, TextMain, TextAnchor.MiddleLeft, FontStyle.Bold);
             NameText = Text(17, TextMain, TextAnchor.MiddleLeft, FontStyle.Bold);
             NameTextCenter = Text(17, TextMain, TextAnchor.MiddleCenter, FontStyle.Bold);
@@ -137,9 +137,8 @@ namespace Galilego.Building
             TinyRight = Text(11, TextMuted, TextAnchor.MiddleRight, FontStyle.Normal);
             TinyCenter = Text(11, TextMuted, TextAnchor.MiddleCenter, FontStyle.Normal);
             CardName = Text(15, TextMain, TextAnchor.MiddleCenter, FontStyle.Bold);
-            // Подпись под названием — БЕЛАЯ (серая на серой карточке не
-            // читалась) и с переносом: «Двигатель · вакуумный» не влезает
-            // в узкую карточку одной строкой.
+            // Subtitle under the name — WHITE and word-wrapped ("Engine · vacuum"
+            // does not fit a narrow card on one line).
             CardKind = Text(12, TextMain, TextAnchor.MiddleCenter, FontStyle.Normal);
             CardKind.wordWrap = true;
             ValueText = Text(18, TextMain, TextAnchor.MiddleCenter, FontStyle.Bold);
@@ -149,7 +148,7 @@ namespace Galilego.Building
             ButtonText = Text(14, TextMain, TextAnchor.MiddleCenter, FontStyle.Bold);
             DangerButtonText = Text(14, DangerText, TextAnchor.MiddleCenter, FontStyle.Bold);
 
-            // Значки.
+            // Icons.
             ChevronLeft = Chevron(false, false);
             ChevronRight = Chevron(true, false);
             DoubleLeft = Chevron(false, true);
@@ -162,7 +161,7 @@ namespace Galilego.Building
             built = true;
         }
 
-        // ─── Фабрики стилей ──────────────────────────────────────────────────
+        // ─── Style factories ──────────────────────────────────────────────────
 
         private static Color C(float r, float g, float b, float a)
         {
@@ -205,7 +204,7 @@ namespace Galilego.Building
             return style;
         }
 
-        // ─── Текстуры ────────────────────────────────────────────────────────
+        // ─── Textures ────────────────────────────────────────────────────────
 
         private static Texture2D Make(int size, Color[] pixels)
         {
@@ -221,7 +220,7 @@ namespace Galilego.Building
             return texture;
         }
 
-        /// <summary>Скруглённый прямоугольник с кромкой, готовый к 9-slice.</summary>
+        /// <summary>Rounded rectangle with an edge, ready for 9-slice.</summary>
         private static Texture2D Rounded(int size, float radius, Color fill, Color edge, float edgeWidth)
         {
             float half = size * 0.5f;
@@ -245,9 +244,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Мягкая тень/свечение: внутри «коробки» альфа 1, снаружи затухает
-        /// экспонентой до нуля у края текстуры. Рисуется на rect, раздутом на
-        /// inset, тонируется через GUI.color.
+        /// Soft shadow/glow: alpha 1 inside the "box", fading exponentially to
+        /// zero at the texture edge. Drawn on a rect inflated by inset, tinted
+        /// via GUI.color.
         /// </summary>
         private static Texture2D MakeGlow(int size, float inset, float falloff)
         {
@@ -270,7 +269,7 @@ namespace Galilego.Building
             return Make(size, pixels);
         }
 
-        /// <summary>Виньетка для окна предпросмотра: мягкое затемнение к краям.</summary>
+        /// <summary>Vignette for the preview window: soft darkening towards the edges.</summary>
         private static Texture2D MakeVignette()
         {
             const int size = 128;
@@ -313,7 +312,7 @@ namespace Galilego.Building
             return Mathf.Sqrt((dx * dx) + (dy * dy));
         }
 
-        /// <summary>Одиночная или двойная стрелка-шеврон (белая, тонируется).</summary>
+        /// <summary>Single or double chevron arrow (white, gets tinted).</summary>
         private static Texture2D Chevron(bool right, bool dbl)
         {
             const int size = 32;
@@ -344,7 +343,7 @@ namespace Galilego.Building
             return Make(size, pixels);
         }
 
-        // Шеврон с вершиной справа/слева; tail — x «хвоста» (для зеркала считается от края).
+        // Chevron with its apex right/left; tail — x of the "tail" (mirrored: measured from the edge).
         private static float ChevronDistance(float px, float py, float tail, bool right)
         {
             float span = 9.5f;

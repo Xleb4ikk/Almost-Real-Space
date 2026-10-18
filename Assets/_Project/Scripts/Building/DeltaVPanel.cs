@@ -7,26 +7,26 @@ using UnityEngine;
 namespace Galilego.Building
 {
     /// <summary>
-    /// Панель ΔV справа: столбик ступеней почти во всю высоту экрана (нижняя
-    /// ступень — внизу, как в ракете), под столбиком (в полёте — после
-    /// примечаний) шапка с общей ΔV, как основание ракеты. Наведёшь курсор на
-    /// ступень — из неё выезжает влево карточка: двигатели, топливо, время
-    /// работы, тяга, TWR, Isp, массы и предупреждения.
+    /// The ΔV panel on the right: a stage column nearly the full screen height
+    /// (bottom stage at the bottom, like a rocket), with a header showing total
+    /// ΔV below the column (in flight — after the notes), like a rocket's base.
+    /// Hover a stage and a card slides out to the left: engines, propellant,
+    /// burn time, thrust, TWR, Isp, masses and warnings.
     ///
-    /// Два режима:
-    ///  • стройка — план: все баки полные, высота плашки ∝ ΔV ступени;
-    ///  • полёт — остаток по текущей массе корабля (DeltaV.ComputeInFlight):
-    ///    высота плашек по плановой ΔV, заливка снизу — доля оставшейся;
-    ///    выработанные ступени притушены, активная подсвечена.
+    /// Two modes:
+    ///  • build — plan: all tanks full, tab height ∝ stage ΔV;
+    ///  • flight — remaining ΔV by current vessel mass (DeltaV.ComputeInFlight):
+    ///    tab heights by plan ΔV, fill from the bottom — the remaining share;
+    ///    spent stages are dimmed, the active one is highlighted.
     ///
-    /// Рисуется из BuilderUI.OnGUI теми же стилями BuilderSkin. Пересчёт — только
-    /// при изменении сборки или массы корабля (с шагом 10 г).
-    /// Наведение работает при свободном курсоре (удержание Ctrl, окно
-    /// инвентаря или Esc); подсказка — в панели подсказок (H).
+    /// Drawn from BuilderUI.OnGUI with the same BuilderSkin styles. Recompute —
+    /// only when the assembly or vessel mass changes (mass step 10 g).
+    /// Hover works with a free cursor (holding Ctrl, inventory window or Esc);
+    /// the hint lives in the hints panel (H).
     /// </summary>
     public sealed class DeltaVPanel
     {
-        // Геометрия (виртуальные пиксели при высоте экрана 1080).
+        // Geometry (virtual pixels at a screen height of 1080).
         private const float Margin = 18f;
         private const float TabWidth = 92f;
         private const float RailPad = 9f;
@@ -66,25 +66,25 @@ namespace Galilego.Building
         private float[] slide = new float[0];
         private int hovered = -1;
 
-        // Прямоугольники прошлой отрисовки: для перехвата кликов (Captures).
+        // Rects from the previous draw: for click interception (Captures).
         private readonly List<Rect> hitRects = new List<Rect>();
 
         private float width;
         private float height;
         private float alpha = 1f;
 
-        /// <summary>Результат плана (все баки полные); null — ещё не считали.</summary>
+        /// <summary>Plan result (all tanks full); null — not computed yet.</summary>
         public DvResult Plan { get { return plan; } }
 
-        /// <summary>Остаток в полёте; null — полёта нет.</summary>
+        /// <summary>Remaining ΔV in flight; null — not in flight.</summary>
         public DvResult Live { get { return live; } }
 
         private DvResult Shown { get { return flight && live != null ? live : plan; } }
 
         /// <summary>
-        /// Курсор над панелью (плашка ступени или выехавшая карточка): BuilderUI
-        /// гасит клики/колесо, чтобы они не проваливались в окно инвентаря под
-        /// карточкой.
+        /// Cursor is over the panel (a stage tab or a slid-out card): BuilderUI
+        /// swallows clicks/wheel so they don't fall through to the inventory
+        /// window under the card.
         /// </summary>
         public bool Captures(Vector2 mouse)
         {
@@ -100,9 +100,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Пересчитать план/остаток БЕЗ отрисовки. Нужно, когда панель не
-        /// рисуется, а её данные читает кто-то другой (планшет): иначе Live/Plan
-        /// замерли бы на кадре последней отрисовки.
+        /// Recompute plan/remaining WITHOUT drawing. Needed when the panel isn't
+        /// drawn but someone else reads its data (a tablet): otherwise Live/Plan
+        /// would be frozen at the last drawn frame.
         /// </summary>
         public void Tick(SpacecraftBuilder builder)
         {
@@ -143,10 +143,10 @@ namespace Galilego.Building
             Vector2 mouse = Event.current.mousePosition;
             bool repaint = Event.current.type == EventType.Repaint;
 
-            // ─── Раскладка ───────────────────────────────────────────────────
-            // Столбик ступеней — почти во всю высоту экрана, под ним (в полёте)
-            // примечания, шапка — внизу, как основание «ракеты». Края держим
-            // в пределах экрана.
+            // ─── Layout ───────────────────────────────────────────────────
+            // The stage column takes nearly the full screen height; notes go below
+            // it (in flight), the header at the bottom, like a "rocket" base. Keep
+            // the edges within the screen.
             float notesH = 0f;
             if (flight && result.Notes.Count > 0)
             {
@@ -176,8 +176,8 @@ namespace Galilego.Building
 
             Plate(rail);
 
-            // Высоты плашек — по ПЛАНОВОЙ ΔV: в полёте они не прыгают, а убывает
-            // заливка. Не влезло (крошечное окно) — ужимаем плашки и зазоры.
+            // Tab heights use the PLAN ΔV: in flight they don't jump, only the
+            // fill shrinks. Doesn't fit (tiny window) — tabs and gaps are squeezed.
             var heights = new float[n];
             double totalPlan = 0d;
             for (int i = 0; i < n; i++)
@@ -196,7 +196,7 @@ namespace Galilego.Building
                 heights[i] = (StageMinHeight * fit) + (extra * (float)share);
             }
 
-            // Нижняя ступень (индекс 0) — снизу, над шапкой.
+            // Bottom stage (index 0) is at the bottom, above the header.
             var tabs = new Rect[n];
             float cursorY = rail.yMax - RailPad;
             for (int i = 0; i < n; i++)
@@ -206,7 +206,7 @@ namespace Galilego.Building
                 cursorY -= gap;
             }
 
-            // ─── Наведение и анимация выезда ─────────────────────────────────
+            // ─── Hover and slide-out animation ─────────────────────────────────
             int newHover = -1;
             if (interactive)
             {
@@ -233,13 +233,13 @@ namespace Galilego.Building
                 }
             }
 
-            // ─── Плашки ступеней ─────────────────────────────────────────────
+            // ─── Stage tabs ─────────────────────────────────────────────
             for (int i = 0; i < n; i++)
             {
                 DrawTab(tabs[i], result.Stages[i], i == hovered, slide[i]);
                 hitRects.Add(tabs[i]);
 
-                // Отметка отделителя между ступенями.
+                // Separator mark between stages.
                 if (i < n - 1)
                 {
                     var mark = new Rect(tabs[i].x + 14f, tabs[i].y - (gap * 0.5f) - 1f, TabWidth - 28f, 2f);
@@ -247,7 +247,7 @@ namespace Galilego.Building
                 }
             }
 
-            // Выехавшие карточки — поверх всего.
+            // Slid-out cards — on top of everything.
             for (int i = 0; i < n; i++)
             {
                 if (slide[i] > 0.01f)
@@ -260,7 +260,7 @@ namespace Galilego.Building
             }
         }
 
-        // ─── Расчёт по изменению сборки / массы ──────────────────────────────
+        // ─── Recompute on assembly / mass change ──────────────────────────────
 
         private void Refresh(SpacecraftBuilder builder)
         {
@@ -279,8 +279,8 @@ namespace Galilego.Building
                 h = (h * 31) + (inFlight ? 1 : 0);
                 if (inFlight)
                 {
-                    // Масса — с шагом 10 г (legacy-путь); состояние модели —
-                    // по её ревизии (списание, зажигание, сброс ступеней).
+                    // Mass is quantized to 10 g (legacy path); the model state is
+                    // tracked by its revision (burn, ignition, stage jettison).
                     h = (h * 31) + ((long)Math.Round(mass * 100d)).GetHashCode();
                     h = (h * 31) + runner.MainThrustNewtons.GetHashCode();
                     h = (h * 31) + runner.MainIspSeconds.GetHashCode();
@@ -319,10 +319,10 @@ namespace Galilego.Building
             {
                 if (propulsion != null)
                 {
-                    // Остаток — от СОСТОЯНИЯ модели физики (остатки по пулам и
-                    // сброшенные ступени), а не от массы: после сброса масса
-                    // падает на сухую ступени, и массовая эвристика приняла бы
-                    // её за сгоревшее топливо.
+                    // Remaining ΔV comes from the PHYSICS MODEL STATE (pool
+                    // remainders and jettisoned stages), not from mass: after
+                    // jettison the mass drops by the stage dry mass, and the mass
+                    // heuristic would mistake it for burned propellant.
                     var pools = new List<StagePoolState>();
                     propulsion.AppendState(pools);
                     live = DeltaV.ComputeFromState(parts, env, pools, propulsion.JettisonedFlags());
@@ -337,10 +337,10 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Сверка с тем, что реально считает физика полёта. Со ступенчатой
-        /// моделью (propulsion != null) физика жжёт те же пулы, что и панель —
-        /// расхождений по тяге/сухой массе нет, примечаний не нужно. Без модели
-        /// (legacy-сцены) остаётся сверка по инспектору SimulationRunner.
+        /// Cross-check against what flight physics actually computes. With the
+        /// staged model (propulsion != null) physics burns the same pools as the
+        /// panel — no thrust/dry-mass mismatch, no notes needed. Without the
+        /// model (legacy scenes) the SimulationRunner inspector is cross-checked.
         /// </summary>
         private static void AddPhysicsNotes(
             DvResult liveResult, DvResult planResult, SimulationRunner runner, StagePropulsion propulsion)
@@ -389,9 +389,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Условия расчёта. Сейчас — вакуум у доминирующего тела (g на его
-        /// поверхности нужен только для TWR). Выбор планеты и высоты —
-        /// сюда же, в DvEnvironment.
+        /// Computation conditions. Currently vacuum at the dominant body (its
+        /// surface g is only needed for TWR). Planet and altitude selection
+        /// belongs here too, in DvEnvironment.
         /// </summary>
         private static DvEnvironment EnvironmentFor(SpacecraftBuilder builder)
         {
@@ -405,7 +405,7 @@ namespace Galilego.Building
             return new DvEnvironment(body.Name, g);
         }
 
-        // ─── Шапка и примечания ──────────────────────────────────────────────
+        // ─── Header and notes ──────────────────────────────────────────────
 
         private void DrawHeader(Rect rect, DvResult result)
         {
@@ -472,7 +472,7 @@ namespace Galilego.Building
             }
         }
 
-        // ─── Плашка ступени ──────────────────────────────────────────────────
+        // ─── Stage tab ──────────────────────────────────────────────────
 
         private void DrawTab(Rect tab, DvStage stage, bool hover, float slideT)
         {
@@ -494,7 +494,7 @@ namespace Galilego.Building
             Tint(new Color(color.r, color.g, color.b, glow * dim));
             GUI.Box(Inset(tab, 3f), GUIContent.none, fillStyle);
 
-            // Полёт: заливка снизу — доля оставшейся ΔV ступени.
+            // Flight: fill from the bottom — the remaining share of the stage ΔV.
             if (flight)
             {
                 float f = stage.PlanDeltaVMs > 0d ? Mathf.Clamp01((float)(stage.DeltaVMs / stage.PlanDeltaVMs)) : 0f;
@@ -516,11 +516,11 @@ namespace Galilego.Building
                 }
             }
 
-            // Цветная полоска у правого края — «рельса» ступени.
+            // Colored strip at the right edge — the stage "rail".
             Solid(new Rect(tab.xMax - 7f, tab.y + 8f, 3.5f, tab.height - 16f),
                 new Color(color.r, color.g, color.b, dim));
 
-            // Номер ступени слева.
+            // Stage number on the left.
             var num = new Rect(tab.x + 6f, tab.y, 26f, tab.height);
             Label(num, stage.Index + 1 + string.Empty, BuilderSkin.NameTextCenter, new Color(1f, 1f, 1f, dim));
 
@@ -530,7 +530,7 @@ namespace Galilego.Building
                 GUI.DrawTexture(new Rect(tab.x + 9f, tab.y + 7f, 7f, 7f), BuilderSkin.Dot);
             }
 
-            // ΔV справа от номера.
+            // ΔV to the right of the number.
             var value = new Rect(tab.x + 30f, tab.y + (tab.height * 0.5f) - 17f, tab.width - 42f, 18f);
             var unit = new Rect(tab.x + 30f, tab.y + (tab.height * 0.5f) + 1f, tab.width - 42f, 14f);
             string shown = stage.IsJettisoned
@@ -544,7 +544,7 @@ namespace Galilego.Building
             Tint(Color.white);
         }
 
-        // ─── Выезжающая карточка ─────────────────────────────────────────────
+        // ─── Slide-out card ─────────────────────────────────────────────
 
         private Rect CardRect(Rect tab, DvStage stage, float slideT)
         {
@@ -583,15 +583,15 @@ namespace Galilego.Building
             GUI.Box(Expand(card, 16f), GUIContent.none, BuilderSkin.Glow);
             GUI.Box(card, GUIContent.none, BuilderSkin.Window);
 
-            // Содержимое «приклеено» к правому краю и обрезается группой —
-            // так оно выезжает вместе с карточкой, а не растягивается.
+            // The content is "glued" to the right edge and clipped by the group,
+            // so it slides with the card instead of stretching.
             GUI.BeginGroup(card);
             float ox = card.width - CardWidth;
             float x = ox + CardPad;
             float w = CardWidth - (CardPad * 2f);
             float y = CardPad;
 
-            // Заголовок.
+            // Title.
             var dot = new Rect(x, y + 6f, 12f, 12f);
             Tint(new Color(color.r, color.g, color.b, e));
             GUI.DrawTexture(dot, BuilderSkin.Dot);
@@ -647,7 +647,7 @@ namespace Galilego.Building
             Color twrColor = Color.white;
             if (burns && stage.Index == 0 && stage.TwrStart < 1d)
             {
-                twrColor = WarnColor;       // с земли такая ступень не взлетит
+                twrColor = WarnColor;       // such a stage won't lift off the ground
             }
 
             Row(x, ref y, w, e, "TWR",
@@ -709,7 +709,7 @@ namespace Galilego.Building
             y += RowHeight;
         }
 
-        // ─── Рисование и форматы ─────────────────────────────────────────────
+        // ─── Drawing and formats ─────────────────────────────────────────────
 
         private static Color StageColor(DvStage stage)
         {
@@ -754,7 +754,7 @@ namespace Galilego.Building
             return Expand(rect, -amount);
         }
 
-        /// <summary>Число с разрядами через пробел: 12345.6 → «12 346».</summary>
+        /// <summary>Number with digit groups separated by a space: 12345.6 → "12 346".</summary>
         private static string Group(double value)
         {
             long v = (long)Math.Round(value);
@@ -778,7 +778,7 @@ namespace Galilego.Building
             return DeltaV.FormatKg(kg);
         }
 
-        /// <summary>Масса без единицы — для «остаток / всего т».</summary>
+        /// <summary>Mass without a unit — for "remaining / total t".</summary>
         private static string FormatMassNoUnit(double kg)
         {
             return kg >= 1000d ? (kg / 1000d).ToString("0.0") : kg.ToString("0") + " кг";
@@ -817,7 +817,7 @@ namespace Galilego.Building
             return m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? "ступени" : "ступеней";
         }
 
-        // ─── Стили ───────────────────────────────────────────────────────────
+        // ─── Styles ───────────────────────────────────────────────────────────
 
         private static void EnsureStyles()
         {

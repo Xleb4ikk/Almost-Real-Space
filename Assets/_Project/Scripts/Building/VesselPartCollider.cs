@@ -3,12 +3,11 @@ using UnityEngine;
 namespace Galilego.Building
 {
     /// <summary>
-    /// Маркер коллайдера детали аппарата: визуалы поставленных деталей (в
-    /// стройке) и тела прокси зоны контакта (в полёте). По нему опора игрока
-    /// (VesselSupport) понимает, что коллайдер — часть корабля, и не пропускает
-    /// игрока сквозь аппарат. Визуальные коллайдеры в полёте выключаются
-    /// (иначе PhysX-тела прокси сталкивались бы сами с собой), их место
-    /// занимают коллайдеры тел прокси.
+    /// Vessel part collider marker: visuals of placed parts (in build mode) and
+    /// contact zone proxy bodies (in flight). The player support (VesselSupport)
+    /// uses it to treat the collider as part of the ship and not let the player
+    /// through. Visual colliders are disabled in flight (otherwise the PhysX proxy
+    /// bodies would collide with themselves); proxy body colliders take their place.
     /// </summary>
     public sealed class VesselPartCollider : MonoBehaviour
     {

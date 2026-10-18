@@ -7,15 +7,15 @@ using UnityEngine.SceneManagement;
 namespace Galilego.Building.EditorTools
 {
     /// <summary>
-    /// Автосинхронизация моделей двигателей в сцене с реестром EngineSpecs:
-    /// добавил двигатель одной строкой в EngineSpecs (путь к FBX — в той же
-    /// строке) — массив EnginePrefabs у SpacecraftBuilder в открытых сценах
-    /// обновится сам, без запуска Setup Scene. Сцена помечается изменённой:
-    /// сохранить — Ctrl+S (в Play Mode работает и без сохранения — массив уже
-    /// обновлён в памяти).
+    /// Auto-syncs engine models in the scene with the EngineSpecs registry: add
+    /// an engine with one line in EngineSpecs (the FBX path is on the same line)
+    /// and the EnginePrefabs array on SpacecraftBuilder in open scenes updates
+    /// by itself, without running Setup Scene. The scene is marked dirty: save
+    /// with Ctrl+S (in Play Mode it works without saving too — the array is
+    /// already updated in memory).
     ///
-    /// Кнопка Galilego → Building → Setup Scene делает то же самое и сохраняет
-    /// сцену сразу — ей пользуются, когда нужно настроить сцену целиком.
+    /// The Galilego → Building → Setup Scene button does the same and saves the
+    /// scene at once — use it when setting up the whole scene.
     /// </summary>
     [InitializeOnLoad]
     internal static class EnginePrefabSync
@@ -31,7 +31,7 @@ namespace Galilego.Building.EditorTools
             Sync();
         }
 
-        /// <summary>Обновить EnginePrefabs у билдеров открытых сцен по реестру.</summary>
+        /// <summary>Update EnginePrefabs on builders of open scenes from the registry.</summary>
         private static void Sync()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling)

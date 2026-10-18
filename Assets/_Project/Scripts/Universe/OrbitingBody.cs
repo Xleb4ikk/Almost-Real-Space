@@ -5,13 +5,12 @@ using Galilego.Core;
 
 namespace Galilego.Universe
 {
-    /// <summary>
-    /// Небесное тело на кеплеровой "рельсе" вокруг родителя.
-    /// Прямое обобщение старого MoonRail: раньше рельса всегда была "вокруг Юпитера",
-    /// теперь родитель (Parent) — произвольный. Одна и та же структура описывает
-    /// и планету вокруг звезды, и спутник вокруг планеты — на любую глубину вложенности.
-    /// Дерево строится связями Parent/Children; корень дерева (звезда) — тело без Parent.
-    /// </summary>
+        /// <summary>
+        /// Celestial body on a Keplerian "rail" around its parent.
+        /// The same structure describes a planet around a star and a moon
+        /// around a planet, at any nesting depth. The tree is built via
+        /// Parent/Children links; the tree root (a star) is a body without a Parent.
+        /// </summary>
     [Serializable]
     public sealed class OrbitingBody
     {
@@ -23,22 +22,20 @@ namespace Galilego.Universe
         public double Radius = 1d;
 
         /// <summary>
-        /// Допустимая скорость удара о поверхность (м/с) для реакции Touchdown:
-        /// ниже — посадка, выше — разрушение с разлётом (A4). Задел под
-        /// пер-стыковые лимиты прочности: сейчас один порог на всё тело.
+        /// Impact speed against the surface (m/s) tolerated by the Touchdown reaction:
+        /// below it a landing, above it a breakup. Currently one threshold per body.
         /// </summary>
         public double CrashToleranceMps = 5d;
 
         /// <summary>
-        /// Трение поверхности для SurfaceMotion (Кулон, плейсхолдеры до
-        /// материалов/рельефа): стик пока |a_t| ≤ μ_s·|a_n|, скольжение
-        /// тормозит μ_k·|a_n| против движения.
+        /// Surface friction for SurfaceMotion (Coulomb): sticks while
+        /// |a_t| ≤ μ_s·|a_n|, sliding is braked by μ_k·|a_n| against motion.
         /// </summary>
         public double SurfaceStaticFrictionMu = 0.7d;
 
         public double SurfaceKineticFrictionMu = 0.5d;
 
-        /// <summary>Ось вращения (та же нормализация+фолбэк, что в GetSurfaceState).</summary>
+        /// <summary>Spin axis (same normalization and fallback as in GetSurfaceState).</summary>
         public Vector3d SpinAxis
         {
             get
@@ -53,7 +50,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Угловая скорость вращения (рад/с), 0 если не вращается.</summary>
+        /// <summary>Angular spin speed (rad/s), 0 if not rotating.</summary>
         public double SpinAngularSpeed
         {
             get { return RotationPeriodSeconds > 0d ? (2d * Math.PI) / RotationPeriodSeconds : 0d; }
@@ -69,23 +66,23 @@ namespace Galilego.Universe
         public double EpochTimeSeconds;
 
         /// <summary>
-        /// Родитель, вокруг которого вращается тело по кеплеровым элементам выше.
-        /// Null означает корень дерева (звезда) — её положение задаётся напрямую
-        /// через RootPosition/RootVelocity, а не элементами.
+        /// Parent the body orbits via the Keplerian elements above.
+        /// Null means the tree root (a star); its position is set directly
+        /// through RootPosition/RootVelocity rather than elements.
         /// </summary>
         public OrbitingBody Parent;
         public readonly List<OrbitingBody> Children = new List<OrbitingBody>();
 
         [Header("Только для корня дерева (звезды)")]
-        // TODO: пока корень (звезда) неподвижен, а корабль интегрируется в едином мировом
-        // каркасе, indirect terms не нужны. Если RootPosition/RootVelocity когда-нибудь перестанут
-        // быть константами (переход на систему координат относительно текущего доминирующего тела),
-        // в формулу гравитации придётся добавить indirect terms, иначе будет тихая систематическая ошибка.
+        // TODO: while the root (star) is fixed and the ship is integrated in a single
+        // world frame, indirect terms are not needed. If RootPosition/RootVelocity ever
+        // stop being constants (a switch to a frame relative to the current dominant body),
+        // indirect terms must be added to the gravity formula or a silent systematic error appears.
         public Vector3d RootPosition = Vector3d.Zero;
         public Vector3d RootVelocity = Vector3d.Zero;
 
         [Header("Вращение вокруг своей оси (нужно для старта с поверхности)")]
-        public double RotationPeriodSeconds; // 0 = вращение не учитывается
+        public double RotationPeriodSeconds; // 0 = rotation ignored
         public double PrimeMeridianOffsetDegrees;
         public Vector3d NorthPoleDirection = new Vector3d(0d, 0d, 1d);
 
@@ -96,8 +93,8 @@ namespace Galilego.Universe
         public CloudProfile Clouds;
 
         /// <summary>
-        /// Модель поверхности (SphericalTerrain по умолчанию). null — потребители
-        /// (детектор касания, SurfaceMotion) обязаны трактовать как сферу.
+        /// Surface model (SphericalTerrain by default). null means consumers
+        /// (touchdown detector, SurfaceMotion) must treat the body as a sphere.
         /// </summary>
         public ITerrainModel Terrain;
 
@@ -132,7 +129,7 @@ namespace Galilego.Universe
             return total;
         }
 
-        /// <summary>Пересчитывает SOI/Hill радиусы относительно Parent. Для корня — нет смысла, пропускается.</summary>
+        /// <summary>Recomputes SOI/Hill radii relative to Parent. Skipped for the root.</summary>
         public void UpdateInfluenceRadii()
         {
             if (Parent == null)
@@ -153,16 +150,14 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Мировое положение/скорость тела в момент времени t (астродинамическая система,
-        /// т.е. без Unity-специфичного маппинга осей — это забота слоя рендера).
-        /// Для корня — фиксировано. Для остальных — рекурсивно: состояние родителя
-        /// плюс кеплеров оффсет относительно него. Прямое обобщение
-        /// UniverseManager.EvaluateMoonState на произвольную глубину дерева.
+        /// World position/velocity of the body at time t (astrodynamics frame,
+        /// i.e. without Unity-specific axis mapping — that is the render layer's job).
+        /// Fixed for the root. For others, recursive: the parent's state
+        /// plus the Keplerian offset relative to it.
         /// </summary>
         /// <summary>
-        /// Счётчики для теста кэша (раздел 6 P1b): сколько раз реально
-        /// вычислялись мировые состояния и локальные оффсеты. Не влияют на
-        /// физику, только инструментация.
+        /// Cache-test counters (section 6 P1b): how many times world states and
+        /// local offsets were actually evaluated. Instrumentation only, no effect on physics.
         /// </summary>
         public static long WorldStateEvaluationCount;
         public static long LocalOffsetEvaluationCount;
@@ -191,10 +186,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Локальный кеплеров оффсет относительно родителя без рекурсии наверх.
-        /// Публичная обёртка над приватным ядром — нужна кэшу StarSystem, чтобы
-        /// собрать мировые позиции за один проход родители-вперёд вместо
-        /// N рекурсивных EvaluateWorldState. Математика бит-в-бит та же.
+        /// Local Keplerian offset relative to the parent, without recursion upwards.
+        /// Public wrapper over the private core; the StarSystem cache uses it to
+        /// gather world positions in one parents-first pass instead of
+        /// N recursive EvaluateWorldState calls. The math is bit-for-bit the same.
         /// </summary>
         public void ComputeLocalOffset(double timeSeconds, out Vector3d position, out Vector3d velocity)
         {
@@ -202,13 +197,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Положение/скорость ОТНОСИТЕЛЬНО родителя (кеплеров оффсет), без рекурсии наверх.
-        /// Якоби-приближение: внешняя орбита — это движение барицентра подсистемы,
-        /// μ = μ_parent_own + μ_this_subtree (собственная + все потомки рекурсивно).
-        /// Для луны вокруг планеты это μ_планеты + μ_луны как раньше; для планеты
-        /// с луной вокруг звезды это μ_звезды + μ_планеты + μ_луны — иначе период
-        /// внешней орбиты занижен на долю массы луны (~1.2% → ~0.6% к n, десятки
-        /// градусов фазы за 80 витков, поймано Step 0/T39).
+        /// Position/velocity RELATIVE to the parent (Keplerian offset), without recursion upwards.
+        /// Jacobi approximation: the outer orbit is the motion of the subsystem's barycentre,
+        /// μ = μ_parent_own + μ_this_subtree (own + all descendants recursively).
         /// </summary>
         private void EvaluateLocalOffset(double timeSeconds, out Vector3d position, out Vector3d velocity)
         {
@@ -216,10 +207,9 @@ namespace Galilego.Universe
             if (Baked != null)
             {
                 double muLocal = Parent.ResolveStandardGravitationalParameter() + ResolveSubtreeStandardGravitationalParameter();
-                // Вердикт о диапазоне — только TryEvaluate (у неё fp-допуск на
-                // границах: EndSeconds пересчитывается с округлением и может
-                // расходиться со спаном на микросекунды). Сегмент не читается —
-                // по-прежнему громко.
+                // The range verdict comes only from TryEvaluate (it has fp tolerance
+                // at the edges: EndSeconds is recomputed with rounding). A segment
+                // that cannot be read still fails loudly.
                 if (Baked.TryEvaluate(timeSeconds, out Vector3d bakedPosition, out Vector3d bakedVelocity))
                 {
                     position = bakedPosition;
@@ -227,10 +217,9 @@ namespace Galilego.Universe
                     return;
                 }
 
-                // Фолбэк за концом рельсы: кеплерово продолжение, снятое с
-                // интегрированного состояния в EndSeconds — стык бесшовный.
-                // Игрок, дошедший до конца испечённого мира, остаётся в физике:
-                // орбиты продолжаются кеплерово, а не бросают исключение.
+                // Fallback past the end of the rail: Keplerian continuation taken from
+                // the integrated state at EndSeconds — the seam is continuous.
+                // Orbits continue Keplerian rather than throwing.
                 if (Baked.TryEvaluateContinuation(timeSeconds, muLocal, out Vector3d contPosition, out Vector3d contVelocity))
                 {
                     position = contPosition;
@@ -238,9 +227,7 @@ namespace Galilego.Universe
                     return;
                 }
 
-                // Причина отказа — из GetFailReason, а не общий крик «вне
-                // интервала»: битые данные ВНУТРИ спана вели бы чинящего
-                // программиста не туда (аудит S2/4.3).
+                // Fail reason comes from GetFailReason rather than a generic "out of range".
                 BakedEphemeris.FailReason reason = Baked.GetFailReason(timeSeconds);
                 string reasonText = reason switch
                 {
@@ -254,10 +241,8 @@ namespace Galilego.Universe
                     ", интервал [" + Baked.T0Seconds + ", " + Baked.EndSeconds + "]).",
                     timeSeconds, Name);
             }
-            // Рельса — только замкнутая кеплерова орбита. Молчаливые клампы
-            // (a≥1м, e≤0.999) удалены: гиперболическая орбита тела, тихо
-            // превращённая в эллипс, маскирует баг в данных/генерации пресета.
-            // Все существующие пресеты имеют e∈{0, 0.02, 0.09} — проверено.
+            // The rail must be a closed Keplerian orbit. No silent clamping:
+            // a hyperbolic orbit quietly turned into an ellipse would mask a bug.
             if (!(SemiMajorAxis > 0d) || !(Eccentricity >= 0d) || !(Eccentricity < 1d))
             {
                 throw new ArgumentOutOfRangeException(nameof(Eccentricity),
@@ -302,16 +287,15 @@ namespace Galilego.Universe
 
         public void ApplyPeriapsisAndApoapsis(double periapsisDistance, double apoapsisDistance)
         {
-            // Мутация элементов при живой эфемериде молча игнорируется (рельса
-            // приоритетнее в EvaluateLocalOffset) — громко (аудит S2/1.3).
+            // Element mutation with a live ephemeris would be silently ignored
+            // (the rail takes priority in EvaluateLocalOffset), so fail loudly.
             if (Baked != null)
             {
                 throw new InvalidOperationException(
                     "Тело " + Name + " использует испечённую эфемериду — правка кеплеровых элементов молча не подействует. Переиспеките систему или уберите Baked.");
             }
 
-            // apoapsis ≤ periapsis даёт e<0 / a≤0 — рельса отвергнет громко на
-            // первой оценке состояния; здесь тоже громко, при сборке конфига.
+            // apoapsis ≤ periapsis gives e<0 / a≤0; reject here too, at config build time.
             if (!(apoapsisDistance > periapsisDistance) || !(periapsisDistance > 0d))
             {
                 throw new ArgumentOutOfRangeException(nameof(periapsisDistance),
@@ -322,7 +306,7 @@ namespace Galilego.Universe
             Eccentricity = (apoapsisDistance - periapsisDistance) / (apoapsisDistance + periapsisDistance);
         }
 
-        /// <summary>Угол положения нулевого меридиана в момент t (радианы) — собственное вращение тела.</summary>
+        /// <summary>Angle of the prime meridian at time t (radians) — the body's own rotation.</summary>
         public double RotationAngleAtTime(double timeSeconds)
         {
             double offset = KeplerMath.DegreesToRadians(PrimeMeridianOffsetDegrees);
@@ -336,15 +320,12 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Ориентация тела в момент t: кватернион body→world (конвенция
-        /// QuaternionD — v_world = q·v_body·q⁻¹). Тот же путь, что GetSurfaceState:
-        /// сначала собственное вращение вокруг ẑ на угол нулевого меридиана,
-        /// затем наклон оси тем же поворотом Родригеса. При оси (0,0,1) и нуле
-        /// меридиана — тождество бит-в-бит (T17c-ветка ApplyAxisTilt).
-        /// Body-frame зафиксирован: +Z — северный полюс (ось вращения),
-        /// +X — нулевой меридиан на экваторе, +Y — 90°E.
-        /// Рендер-слой берёт отсюда готовую ориентацию, не собирая её из
-        /// SpinAxis/углов вручную (мёртвое Unity-поле VisualTransform удалено).
+        /// Body orientation at time t: body-to-world quaternion (QuaternionD
+        /// convention — v_world = q·v_body·q⁻¹). Same path as GetSurfaceState:
+        /// first the own spin around ẑ by the prime-meridian angle, then the axis
+        /// tilt by the same Rodrigues rotation. Body frame is fixed: +Z is the
+        /// north pole (spin axis), +X the prime meridian on the equator, +Y 90°E.
+        /// The render layer takes the finished orientation from here.
         /// </summary>
         public QuaternionD GetVisualOrientation(double timeSeconds)
         {
@@ -352,8 +333,7 @@ namespace Galilego.Universe
             QuaternionD tilt;
             if (cosAngle < -1d + 1e-12d)
             {
-                // Тот же антиподальный случай, что в GetSurfaceState: (x,−y,−z) —
-                // поворот на π вокруг x̂, а не переворот вокруг k≈0.
+                // Same antipodal case as GetSurfaceState: (x,−y,−z), a π rotation about x̂.
                 tilt = QuaternionD.FromAxisAngle(new Vector3d(1d, 0d, 0d), Math.PI);
             }
             else if (k.SqrMagnitude < 1e-300d)
@@ -370,17 +350,14 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Мировое положение/скорость точки на поверхности тела (широта/долгота в градусах,
-        /// высота над Radius в метрах) в момент t. Нужно, чтобы игра могла корректно
-        /// начинаться с конкретной точки на поверхности планеты: учитывает и текущее
-        /// орбитальное положение тела, и его собственное вращение (иначе стартовая
-        /// площадка "плыла" бы вместе с вращением планеты, а не оставалась на месте).
+        /// World position/velocity of a point on the body's surface (latitude/longitude in
+        /// degrees, altitude above Radius in metres) at time t. Accounts for both the body's
+        /// current orbital position and its own rotation, so the game can start from a fixed
+        /// point on a planet's surface.
         ///
-        /// Ось вращения учитывается честно: экваториальный оффсет поворачивается
-        /// к NorthPoleDirection формулой Родригеса (при оси (0,0,1) — тождество
-        /// бит-в-бит, доказано T17c). Раньше оффсет строился в сырых осях без
-        /// поворота, а скорость уже считалась через ω×r от настоящей оси, —
-        /// позиция и скорость были несогласованы при наклонённой оси.
+        /// The spin axis is honoured: the equatorial offset is rotated to
+        /// NorthPoleDirection via the Rodrigues formula (identity bit-for-bit
+        /// when the axis is (0,0,1)).
         /// </summary>
         public void GetSurfaceState(
             double latitudeDegrees, double longitudeDegrees, double altitudeMeters, double timeSeconds,
@@ -419,13 +396,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Обратная проекция к GetSurfaceState: мировая позиция → lat/lon.
-        /// Базис — то же отображение Родригеса (u=R(x̂), v=R(ŷ) теми же операциями,
-        /// что форвард), а не вторая слегка другая система координат: иначе
-        /// прямое и обратное преобразования разъехались бы на ulp-шум спора.
-        /// Границы: полюса (|экваториальной проекции|≈0) → lon=0 детерминированно;
-        /// долгота нормализуется в [0,2π) — шов ±π существует только в
-        /// представлении, физическое состояние непрерывно (см. тест).
+        /// Inverse of GetSurfaceState: world position → lat/lon.
+        /// The basis uses the same Rodrigues mapping as the forward path
+        /// (u=R(x̂), v=R(ŷ)) so the two transforms don't differ by ulp noise.
+        /// Edge cases: poles (|equatorial projection|≈0) give lon=0 deterministically;
+        /// longitude is normalized to [0,2π).
         /// </summary>
         public void SurfaceLatLonAt(Vector3d worldPosition, double timeSeconds, out double latitudeDegrees, out double longitudeDegrees)
         {
@@ -467,10 +442,7 @@ namespace Galilego.Universe
             longitudeDegrees = longitude * (180d / Math.PI);
         }
 
-        /// <summary>
-        /// Параметры наклона оси: нормализованная ось (дефолт при вырождении),
-        /// вектор k = ẑ×axis и его косинус. Один источник для форварда и инверса.
-        /// </summary>
+        /// <summary>Axis-tilt parameters: normalized axis (default on degeneracy), k = ẑ×axis and its cosine. Single source for forward and inverse.</summary>
         private void GetTiltParams(out Vector3d axis, out Vector3d k, out double cosAngle)
         {
             axis = NorthPoleDirection.Normalized;
@@ -484,9 +456,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Поворот Родригеса экваториального вектора к оси: v + k×v + k×(k×v)/(1+c).
-        /// При оси (0,0,1): k — точный ноль, поправка — точные нули, результат
-        /// бит-в-бит равен входу (доказано T17c).
+        /// Rodrigues rotation of an equatorial vector onto the axis: v + k×v + k×(k×v)/(1+c).
+        /// With axis (0,0,1) the correction is exact zero and the result is bit-for-bit the input.
         /// </summary>
         private static Vector3d ApplyAxisTilt(Vector3d equatorial, Vector3d k, double cosAngle)
         {
@@ -495,28 +466,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Приливный захват 1:1. Период = орбитальный период тела по ПРИВЕДЁННОЙ
-        /// массе μ_local = μ_родителя(собств.) + μ_своего поддерева — ровно той же,
-        /// что использует EvaluateLocalOffset (Step 0: орбита планеты с луной летит
-        /// по барицентру подсистемы). «Похожая» μ_родителя(собств.) дала бы период,
-        /// чуть меньший орбитального, и сторона уползала бы виток за витком —
-        /// ловится T79 на десятках витков, не на одном снимке.
-        ///
-        /// Автодоворот: в эпоху к родителю смотрит долгота 0 (замок без «нужной
-        /// стороны» бессмысленен): θ(Epoch) = atan2-угол направления на родителя
-        /// в тел-экваториальном базисе (тот же базис, что у SurfaceLatLonAt).
-        ///
-        /// Лиbrация: при e>0 направление на родителя гуляет вокруг среднего с
-        /// амплитудой ±2e (уравнение центра ν−M ≈ 2e·sin M; Луна: 2e≈6.3° —
-        /// близко к наблюдаемой оптической либрации). Фаза привязана к СРЕДНЕЙ
-        /// аномалии — осознанная модель, не баг. Только 1:1: на высоком e реальные
-        /// тела иногда предпочитают резонанс (Меркурий 3:2 при e≈0.206) —
-        /// оговорка без громкой валидации: физически корректное поведение, а не ошибка.
-        ///
-        /// Идемпотентно: читает только элементы + состояния на эпоху → пересборка
-        /// без правки данных даёт бит-в-бит тот же период/оффсет (T79).
-        /// Ретроградный захват (h·axis ≤ 0) громко отвергается: ω вращения ядра
-        /// в RotationAngleAtTime всегда положительна.
+        /// 1:1 tidal lock. Period = the body's orbital period using the REDUCED mass
+        /// μ_local = μ_parent(own) + μ_own_subtree — the same used by EvaluateLocalOffset.
+        /// At the epoch, longitude 0 faces the parent (same body-equatorial basis
+        /// as SurfaceLatLonAt). Phase is tied to MEAN anomaly. Only 1:1 is modelled.
+        /// Retrograde lock (h·axis ≤ 0) is rejected loudly.
         /// </summary>
         public void ApplyTidalLock()
         {
@@ -553,7 +507,7 @@ namespace Galilego.Universe
                 (SemiMajorAxis * SemiMajorAxis * SemiMajorAxis) / muLocal);
             double omega = 2d * Math.PI / RotationPeriodSeconds;
 
-            // θ(Epoch) = lonFacing ⇒ SurfaceLatLonAt(подродительская точка, Epoch) = 0.
+            // θ(Epoch) = lonFacing ⇒ SurfaceLatLonAt(sub-parent point, Epoch) = 0.
             Vector3d u = ApplyAxisTilt(new Vector3d(1d, 0d, 0d), k, cosAngle);
             Vector3d v = ApplyAxisTilt(new Vector3d(0d, 1d, 0d), k, cosAngle);
             double axial = Vector3d.Dot(relative, axis);

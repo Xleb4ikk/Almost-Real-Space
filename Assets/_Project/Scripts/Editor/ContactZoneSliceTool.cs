@@ -8,10 +8,10 @@ using UnityEngine.SceneManagement;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Сборка тестовой сцены вертикального среза: центральное тело Terra со сферическим
-    /// рельефом (плоская площадка, h ≡ 0 — Terrain ставит ContactZoneSliceProbe),
-    /// T1 из JSON, раннер и узел зоны контакта (область ±150 м, 129×129 вершин).
-    /// Сцена сохраняется отдельным ассетом, текущая сцена пользователя не трогается.
+    /// Builds the test vertical-slice scene: central body Terra with spherical
+    /// relief (flat pad, h ≡ 0 — Terrain adds ContactZoneSliceProbe), T1 from
+    /// JSON, a runner and a contact-zone node (area ±150 m, 129×129 vertices).
+    /// The scene is saved as a separate asset; the user's current scene is not touched.
     /// </summary>
     public static class ContactZoneSliceTool
     {
@@ -23,7 +23,7 @@ namespace Galilego.Universe.EditorTools
             Debug.Log(BuildScene());
         }
 
-        /// <summary>Собрать сцену среза; вернуть отчёт.</summary>
+        /// <summary>Build the slice scene; return a report.</summary>
         public static string BuildScene()
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);

@@ -4,55 +4,54 @@ using System.Collections.Generic;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Чистое ядро выработки ступени (без Unity): пулы компонентов топлива,
-    /// группы двигателей, выработка участками постоянной тяги. ОДНО на двоих:
-    /// его же используют физика полёта (StagePropulsion — Commit/тяга/отсечка)
-    /// и панель ΔV (StageDeltaV.Evaluate), поэтому остаток и ΔV совпадают с
-    /// физикой по построению.
+    /// Pure stage depletion core (no Unity): propellant component pools,
+    /// engine groups, depletion in constant-thrust segments. Shared by both:
+    /// flight physics (StagePropulsion — Commit/thrust/cutoff) and the ΔV
+    /// panel (StageDeltaV.Evaluate), so remaining propellant and ΔV match
+    /// physics by construction.
     ///
-    /// Модель: двигатели ступени работают одновременно; каждый берёт свои два
-    /// компонента (BipropellantMix) в пропорции O/F. Когда любой из них у
-    /// группы кончился, группа глохнет, остальные продолжают. Перекачки между
-    /// ступенями нет. Все массы — кг, тяга — Н, расход — кг/с; тяга и расход
-    /// считаются при газе 1.0 (газ только масштабирует оба, пропорции пулов
-    /// не меняет).
+    /// Model: stage engines run simultaneously; each draws its two components
+    /// (BipropellantMix) at the O/F ratio. When either runs out for a group,
+    /// that group cuts out, the rest keep running. No transfer between stages.
+    /// All masses in kg, thrust in N, flow in kg/s; thrust and flow are computed
+    /// at throttle 1.0 (throttle only scales both, it does not change pool ratios).
     /// </summary>
     public sealed class StagePool
     {
         public Propellant Component;
 
-        /// <summary>Сколько залито при запуске, кг.</summary>
+        /// <summary>Amount loaded at startup, kg.</summary>
         public double StartKg;
 
-        /// <summary>Сколько осталось сейчас, кг.</summary>
+        /// <summary>Amount remaining now, kg.</summary>
         public double Kg;
 
         internal double Flow;
     }
 
-    /// <summary>Одинаковые двигатели ступени (одна пара топлива, одна тяга).</summary>
+    /// <summary>Identical stage engines (one propellant pair, one thrust).</summary>
     public sealed class StageEngineGroup
     {
-        /// <summary>Идентичность двигателя (в игре — его EngineSpec): равные ключи сливаются в группу.</summary>
+        /// <summary>Engine identity (in game its EngineSpec): equal keys merge into one group.</summary>
         public object Key;
 
-        /// <summary>Название для интерфейса.</summary>
+        /// <summary>Display name.</summary>
         public string Name;
 
         public BipropellantMix Mix;
         public int Count;
 
-        /// <summary>Тяга ОДНОГО двигателя при газе 1.0, Н.</summary>
+        /// <summary>Thrust of a SINGLE engine at throttle 1.0, N.</summary>
         public double ThrustN;
 
-        /// <summary>Расход ОДНОГО двигателя при газе 1.0, кг/с.</summary>
+        /// <summary>Mass flow of a SINGLE engine at throttle 1.0, kg/s.</summary>
         public double MassFlowKgS;
 
         public int OxPool = -1;
         public int FuelPool = -1;
     }
 
-    /// <summary>Состояние одного пула — для передачи панели (и обратно).</summary>
+    /// <summary>State of one pool — passed to the panel (and back).</summary>
     public readonly struct StagePoolState
     {
         public readonly int StageIndex;
@@ -67,16 +66,16 @@ namespace Galilego.Spacecraft
         }
     }
 
-    /// <summary>Итог интегрирования выработки.</summary>
+    /// <summary>Result of the depletion integration.</summary>
     public struct StageBurnResult
     {
-        /// <summary>ΔV по Циолковскому, м/с (только если задана стартовая масса).</summary>
+        /// <summary>Tsiolkovsky ΔV, m/s (only when a start mass is given).</summary>
         public double DeltaV;
 
         public double TimeS;
         public double BurnedKg;
 
-        /// <summary>Тяга/расход на первом участке и тяга на последнем.</summary>
+        /// <summary>Thrust/flow on the first segment and thrust on the last.</summary>
         public double ThrustFirstN;
         public double FlowFirstKgS;
         public double ThrustLastN;
@@ -87,16 +86,16 @@ namespace Galilego.Spacecraft
 
     public sealed class StageCore
     {
-        // 0.1 г: меньше — компонент считается кончившимся.
+        // 0.1 g: below this a component is treated as depleted.
         public const double Eps = 1e-4d;
 
-        /// <summary>Индекс ступени в сборке: 0 — нижняя (горит первой). Стабилен для одной сборки.</summary>
+        /// <summary>Stage index in the assembly: 0 is bottom (burns first). Stable for one assembly.</summary>
         public int Index;
 
-        /// <summary>Сухая масса ступени (металл, двигатели, отделитель), кг.</summary>
+        /// <summary>Stage dry mass (metal, engines, decoupler), kg.</summary>
         public double DryMassKg;
 
-        /// <summary>Индексы деталей черновика (снизу вверх) — для маппинга сброса.</summary>
+        /// <summary>Draft part indices (bottom to top) — for jettison mapping.</summary>
         public readonly List<int> PartIndices = new List<int>();
 
         public readonly List<StagePool> Pools = new List<StagePool>();
@@ -120,7 +119,7 @@ namespace Galilego.Spacecraft
 
         public bool HasEngine { get { return EngineCount > 0; } }
 
-        /// <summary>Топливо сейчас, кг.</summary>
+        /// <summary>Propellant now, kg.</summary>
         public double PropellantKg
         {
             get
@@ -135,7 +134,7 @@ namespace Galilego.Spacecraft
             }
         }
 
-        /// <summary>Топливо при запуске, кг.</summary>
+        /// <summary>Propellant at startup, kg.</summary>
         public double StartPropellantKg
         {
             get
@@ -150,10 +149,10 @@ namespace Galilego.Spacecraft
             }
         }
 
-        /// <summary>Сухая масса + топливо сейчас, кг.</summary>
+        /// <summary>Dry mass + propellant now, kg.</summary>
         public double TotalMassKg { get { return DryMassKg + PropellantKg; } }
 
-        // ─── Сборка ──────────────────────────────────────────────────────────
+        // ─── Assembly ──────────────────────────────────────────────────────────
 
         public StagePool GetOrAddPool(Propellant component)
         {
@@ -171,7 +170,7 @@ namespace Galilego.Spacecraft
             return pool;
         }
 
-        /// <summary>Добавляет двигатель (с одинаковым key объединяются в группу).</summary>
+        /// <summary>Adds an engine (equal key merges into the group).</summary>
         public StageEngineGroup AddEngine(
             object key, string name, BipropellantMix mix, double thrustN, double massFlowKgS)
         {
@@ -198,7 +197,7 @@ namespace Galilego.Spacecraft
             return group;
         }
 
-        /// <summary>Заливает пулы: Kg = StartKg. Зовут после сборки пулов.</summary>
+        /// <summary>Fills pools: Kg = StartKg. Called after pools are assembled.</summary>
         public void FillToStart()
         {
             for (int i = 0; i < Pools.Count; i++)
@@ -239,9 +238,9 @@ namespace Galilego.Spacecraft
             return copy;
         }
 
-        // ─── Состояние (для панели) ──────────────────────────────────────────
+        // ─── State (for panel) ──────────────────────────────────────────
 
-        /// <summary>Добавляет состояние всех пулов ступени в список.</summary>
+        /// <summary>Appends the state of all pools of this stage to the list.</summary>
         public void AppendState(List<StagePoolState> into)
         {
             for (int i = 0; i < Pools.Count; i++)
@@ -251,8 +250,8 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
-        /// Применяет состояние пула этой ступени. Значение зажимается в
-        /// [0, StartKg]. Возвращает false, если такого компонента в ступени нет.
+        /// Applies a pool state for this stage. The value is clamped to
+        /// [0, StartKg]. Returns false if the stage has no such component.
         /// </summary>
         public bool ApplyState(Propellant component, double kg)
         {
@@ -268,9 +267,9 @@ namespace Galilego.Spacecraft
             return false;
         }
 
-        // ─── Текущая тяга ────────────────────────────────────────────────────
+        // ─── Current thrust ────────────────────────────────────────────────────
 
-        /// <summary>Двигатель получает оба компонента.</summary>
+        /// <summary>Engine is fed with both components.</summary>
         public bool IsFed(StageEngineGroup group)
         {
             Resolve();
@@ -279,7 +278,7 @@ namespace Galilego.Spacecraft
                 && Pools[group.OxPool].Kg > Eps && Pools[group.FuelPool].Kg > Eps;
         }
 
-        /// <summary>Тяга работающих двигателей при газе 1.0, Н.</summary>
+        /// <summary>Thrust of running engines at throttle 1.0, N.</summary>
         public double ThrustN
         {
             get
@@ -297,7 +296,7 @@ namespace Galilego.Spacecraft
             }
         }
 
-        /// <summary>Расход работающих двигателей при газе 1.0, кг/с.</summary>
+        /// <summary>Mass flow of running engines at throttle 1.0, kg/s.</summary>
         public double MassFlowKgS
         {
             get
@@ -316,9 +315,9 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
-        /// Сколько массы сгорит до смены состава работающих двигателей
-        /// (кончился какой-то компонент). 0 — тяги нет. Это граница участка
-        /// постоянной тяги: детектор исчерпания ставится на неё.
+        /// Mass that burns before the set of running engines changes
+        /// (some component runs out). 0 — no thrust. This is the boundary of the
+        /// constant-thrust segment: the depletion detector is placed on it.
         /// </summary>
         public double SegmentBurnKg()
         {
@@ -329,21 +328,21 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
-        /// Сколько массы ступень ещё может сжечь до полного останова (с учётом
-        /// того, что состав двигателей меняется по ходу). Масса отсечки
-        /// корабля = текущая масса − CutoffBurnKg().
+        /// Mass the stage can still burn before a complete cutoff (accounting for
+        /// the engine set changing along the way). Ship cutoff mass
+        /// = current mass − CutoffBurnKg().
         /// </summary>
         public double CutoffBurnKg()
         {
             return Clone().Integrate(0d, double.PositiveInfinity, false).BurnedKg;
         }
 
-        // ─── Выработка ───────────────────────────────────────────────────────
+        // ─── Depletion ───────────────────────────────────────────────────────
 
         /// <summary>
-        /// Списывает burnedKg массы с пулов, как при реальной выработке (участки,
-        /// пропорции O/F, глохнущие группы). Возвращает, сколько списано
-        /// на самом деле (меньше запрошенного, если топливо кончилось).
+        /// Commits burnedKg of mass from the pools as real depletion would (segments,
+        /// O/F ratios, cutting-out groups). Returns how much was actually
+        /// committed (less than requested if propellant ran out).
         /// </summary>
         public double Commit(double burnedKg)
         {
@@ -356,9 +355,9 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
-        /// Выработка от стартовой массы корабля startMassKg: ΔV по Циолковскому,
-        /// время, расход. budgetKg — сколько массы можно сжечь (бесконечность —
-        /// до останова). mutate=false — на копии, пулы ступени не меняются.
+        /// Depletion from the ship start mass startMassKg: Tsiolkovsky ΔV,
+        /// time, flow. budgetKg is how much mass may burn (infinity —
+        /// down to cutoff). mutate=false runs on a copy, the stage pools are unchanged.
         /// </summary>
         public StageBurnResult Burn(double startMassKg, double budgetKg, bool mutate)
         {
@@ -400,7 +399,7 @@ namespace Galilego.Spacecraft
             dirty = false;
         }
 
-        /// <summary>Потоки по пулам для работающих двигателей; возвращает суммарный расход.</summary>
+        /// <summary>Per-pool flows for running engines; returns total flow.</summary>
         private double ComputeFlows(out double thrust, out double tPool, out int firstPool)
         {
             Resolve();

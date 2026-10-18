@@ -5,71 +5,70 @@ using Unity.Mathematics;
 
 namespace Galilego.Universe
 {
-    /// <summary>Базовый примитив шума рельефа.</summary>
+    /// <summary>Base terrain noise primitive.</summary>
     public enum TerrainNoiseStyle
     {
         /// <summary>
-        /// Value noise: на 8 углах ячейки стоят СКАЛЯРЫ, они трилинейно
-        /// смешиваются. Было историческим дефолтом проекта.
+        /// Value noise: scalars at the 8 cell corners, blended trilinearly.
         /// </summary>
         Value = 0,
 
         /// <summary>
-        /// Градиентный шум Перлина: на 8 углах стоят ВЕКТОРЫ, берётся их
-        /// скалярное произведение со смещением от угла. Та же решётка и тот же
-        /// хеш, что у value noise, поэтому все солты и частоты профиля остаются
-        /// валидными — меняется только интерпретация хеша.
+        /// Perlin gradient noise: vectors at the 8 corners, dotted with the
+        /// offset from the corner. Same lattice and hash as value noise, so all
+        /// profile salts and frequencies stay valid — only the hash
+        /// interpretation changes.
         /// </summary>
         Perlin = 1
     }
 
-    /// <summary>Как собирается ridged-составляющая рельефа.</summary>
+    /// <summary>How the ridged component of the terrain is assembled.</summary>
     public enum TerrainRidgedMode
     {
         /// <summary>
-        /// Сумма октав (1 − |v|) с последующим smoothstep. Даёт параллельные
-        /// складки: каждая октава независима, связи между ними нет.
+        /// Sum of (1 − |v|) octaves followed by a smoothstep. Gives parallel
+        /// folds: each octave is independent, with no coupling between them.
         /// </summary>
         Legacy = 0,
 
         /// <summary>
-        /// Ridged multifractal (Musgrave): каждая октава домножается на вес,
-        /// унаследованный от предыдущей. Хребты ветвятся и сливаются в сеть,
-        /// долины остаются плоскими — вместо равномерной ряби.
+        /// Ridged multifractal (Musgrave): each octave is weighted by a value
+        /// inherited from the previous one. Ridges branch and merge into a
+        /// network while valleys stay flat, instead of even ripple.
         /// </summary>
         Multifractal = 1
     }
 
     /// <summary>
-    /// <summary>Источник наклона для домена октав (SlopeDamp) в форме рельефа.</summary>
+    /// <summary>Slope source for the octave domain (SlopeDamp) used by the terrain shape.</summary>
     public enum TerrainSlopeDampMode
     {
-        /// <summary>Домена нет: все октавы равновесны. Поведение до изменений.</summary>
+        /// <summary>No domain: all octaves are equally weighted.</summary>
         Off = 0,
 
         /// <summary>
-        /// Наклон берётся из накопленного значения формы. Дёшево, но меряет
-        /// ВЫСОТУ, а не крутизну: деталь уходит из долин и вершин, а средние
-        /// высоты остаются изъеденными.
+        /// Slope comes from the accumulated shape value. Cheap, but it measures
+        /// HEIGHT, not steepness: detail leaves valleys and peaks while mid
+        /// heights stay eroded.
         /// </summary>
         Accum = 1,
 
         /// <summary>
-        /// Наклон берётся из аналитической производной октавы. Меряет крутизну
-        /// по-настоящему: плато остаются гладкими, склоны и гребни изъеденными.
-        /// Требует градиентного примитива (TerrainNoiseStyle.Perlin) — у value
-        /// noise производная разрывна на границах ячеек, и домен по ней дрожал бы
-        /// на стыках. При Value этот режим вырождается в Accum.
+        /// Slope comes from the analytic octave derivative. Measures steepness
+        /// properly: plateaus stay smooth, slopes and ridges stay eroded.
+        /// Requires a gradient primitive (TerrainNoiseStyle.Perlin) — value
+        /// noise has a discontinuous derivative at cell borders, which would
+        /// make the domain jitter at seams. With Value this mode degenerates to Accum.
         /// </summary>
         Gradient = 2
     }
 
     /// <summary>
-    /// Плоские параметры шума для Burst-job: только blittable-поля, без ссылок.
-    /// Все double (касты float запрещены): внутренности шума обязаны идти в
-    /// double — float не держит схему оффсетов (seed·91.7 при warp-offset уже
-    /// ~5e6, ulp ~0.5; замер T84: 827 м расхождения). Float — только массивы
-    /// масок на выходе (цвет физику не касается).
+    /// Flat noise parameters for the Burst job: blittable fields only, no references.
+    /// Everything is double (float casts are forbidden): the noise internals must be
+    /// double — float cannot hold the offset scheme (seed·91.7 with warp offsets
+    /// reaches ~5e6, ulp ~0.5). Float is used only for the output mask arrays
+    /// (color does not affect physics).
     /// </summary>
     public struct TerrainNoiseParams
     {
@@ -85,87 +84,73 @@ namespace Galilego.Universe
         public double ContinentDepth;
 
         /// <summary>
-        /// Затухание амплитуды маски континентов. ≤0 — следовать за общим Gain
-        /// (legacy). Отдельная ручка нужна потому, что у маски своя задача:
-        /// общий Gain = 0.5 гасит верхние октавы слишком быстро, и берег
-        /// остаётся из двух-трёх гладких пятен, а не ломается на острова.
+        /// Continent mask amplitude falloff. ≤0 — follow the general Gain.
         /// </summary>
         public double ContinentGain;
 
         /// <summary>
-        /// Сила ОТДЕЛЬНОГО domain-warp континентальной маски, в единицах
-        /// направления. 0 = маска берётся на общем warp'е рельефа (legacy).
+        /// Strength of the separate continent-mask domain warp, in direction units.
+        /// 0 = the mask uses the terrain warp.
         ///
-        /// Отдельный warp нужен, чтобы «круглость» материков не наследовала
-        /// масштаб горного warp'а: WarpStrength = 0.1 при частоте 2 — это складки
-        /// масштаба гор, и для океанических бассейнов их масштаб слишком мелкий,
-        /// из-за чего берег и получался круглым. Этот warp втрое сильнее и вдвое
-        /// ниже по частоте, то есть ломает материки на острова и заливы.
-        ///
-        /// Источник — НЕВАРПНУТЫЙ direction, иначе второй warp ложился бы поверх
-        /// первого и результат зависел бы от их произведения.
+        /// The source is the UNWARPED direction, otherwise a second warp would
+        /// stack on the first and the result would depend on their product.
         /// </summary>
         public double ContinentWarpStrength;
 
-        /// <summary>Частота warp'а континентальной маски.</summary>
+        /// <summary>Continent mask warp frequency.</summary>
         public double ContinentWarpFrequency;
 
-        /// <summary>Октав warp'а континентальной маски.</summary>
+        /// <summary>Continent mask warp octaves.</summary>
         public int ContinentWarpOctaves;
 
         /// <summary>
-        /// Вклад «хребтового» члена маски континентов: continentRaw +=
-        /// ContinentRidgeMix·(1 − 2·|fBm|). 0 = выключено (legacy).
+        /// Ridge term of the continent mask: continentRaw +=
+        /// ContinentRidgeMix·(1 − 2·|fBm|). 0 = off.
         ///
-        /// Зачем. Нулевая линия |fBm| = 0 — это изолинии, вдоль которых маска
-        /// максимальна, и они тянутся длинными цепями. То есть маска получает
-        /// ВЫТЯНУТЫЕ материки и заливы между ними, а не круглые пятна: обычный
-        /// fBm с двумя-тремя октавами даёт по сути эллипсы.
+        /// The zero line |fBm| = 0 is an isoline along which the mask is maximal,
+        /// so the mask gets STRETCHED continents and bays between them instead of
+        /// round blobs.
         ///
-        /// Член не центрирован: среднее 1 − 2·E|fBm| положительно, то есть это
-        /// ещё и сдвиг в сторону суши. Сдвиг гасится ContinentThreshold, но при
-        /// подборе порога это надо держать в голове.
+        /// The term is not centered, so it also biases toward land; the bias is
+        /// cancelled by ContinentThreshold.
         /// </summary>
         public double ContinentRidgeMix;
 
-        /// <summary>Частота ridge-члена маски континентов.</summary>
+        /// <summary>Continent mask ridge term frequency.</summary>
         public double ContinentRidgeFrequency;
 
-        /// <summary>Октав ridge-члена маски континентов.</summary>
+        /// <summary>Continent mask ridge term octaves.</summary>
         public int ContinentRidgeOctaves;
 
         /// <summary>
-        /// Экваториальный сдвиг маски, continentRaw += ContinentLatitudeBias·
-        /// (1 − 2·|sin φ|). 0 = выключено (legacy).
+        /// Equatorial mask bias, continentRaw += ContinentLatitudeBias·
+        /// (1 − 2·|sin φ|). 0 = off.
         ///
-        /// Смещает материки к экватору. У распределения |sin φ| среднее ровно
-        /// 0.5, поэтому член центрирован и сам по себе долю суши не меняет —
-        /// двигает только распределение по широте. Среднее смещение пояса ±15°
-        /// по замеру: 34% → 46% суши при том же общем количестве.
+        /// Shifts continents toward the equator. |sin φ| has mean 0.5, so the
+        /// term is centered and does not change the land fraction by itself —
+        /// it only moves the distribution over latitude.
         ///
-        /// Читает НЕВАРПНУТЫЙ direction: широта не должна зависеть от шума
-        /// рельефа, иначе «экватор» сам поплыл бы вместе с mountains.
+        /// Reads the UNWARPED direction: latitude must not depend on terrain noise.
         /// </summary>
         public double ContinentLatitudeBias;
 
         /// <summary>
-        /// Глубина абиссального ложа в нормированных единицах. ≤0 — старый путь
-        /// «минус (1−маска)·ContinentDepth»; &gt;0 — рельеф смешивается с дном,
-        /// глубина которого растёт по мере удаления от берега в единицах маски.
-        /// Смысл и цена переключения — в HeightfieldTerrain.OceanFloorDepth.
+        /// Abyssal floor depth in normalized units. ≤0 — the legacy path
+        /// "minus (1−mask)·ContinentDepth"; &gt;0 — terrain blends with a floor
+        /// whose depth grows away from the shore in mask units.
         /// </summary>
         public double OceanFloorDepth;
 
         /// <summary>
-        /// Глубина шельфа у берега, нормированные единицы. Домножается на ocean,
-        /// поэтому на суше всегда ноль. 0 = шельфа нет.
+        /// Shelf depth near the shore, normalized units. Multiplied by ocean,
+        /// so it is always zero on land. 0 = no shelf.
         /// </summary>
         public double OceanShelfDepth;
 
         /// <summary>
-        /// Пол внутренности, нормированные единицы. ≤0 — выключено. Суша не
-        /// опускается ниже continent·InteriorFloor: у берега пол ≈ 0 (острова и
-        /// заливы остаются), внутри материка поднимается над морем.
+        /// Interior floor, normalized units. ≤0 — off. Land does not drop below
+        /// continent·InteriorFloor: near the shore the floor is ≈ 0 (islands and
+        /// bays remain), inside a continent it rises above the sea.
         /// </summary>
         public double InteriorFloor;
 
@@ -185,18 +170,16 @@ namespace Galilego.Universe
         public int NoiseStyle;
 
         /// <summary>
-        /// Примитив для МАСОК и warp, отдельно от формы рельефа. По умолчанию
-        /// следует NoiseStyle. Может быть поставлен в Value, чтобы срезать цену:
-        /// маска continent читается как квантиль, и после нормировки по RMS (T111)
-        /// примитив на её долю суши не влияет, а стоит заметно дешевле — value
-        /// noise втрое быстрее градиентного. Форма при этом остаётся на Перлине.
+        /// Primitive for MASKS and warp, separate from the terrain shape. Follows
+        /// NoiseStyle by default. May be set to Value to cut cost: the continent
+        /// mask is read as a quantile, so the primitive does not affect its land
+        /// fraction and is noticeably cheaper. The shape stays on Perlin.
         ///
-        /// Сентинел «следуй за NoiseStyle» — минус единица, разбирается в
-        /// FromTerrain. Поле намеренно БЕЗ инициализатора: проект на C# 9.0, где
-        /// инициализаторы полей структуры недоступны, а стенд на .NET 8 их
-        /// компилировал и тем самым скрывал несовместимость. Прямой
-        /// `new TerrainNoiseParams()` даёт здесь 0, то есть Value, — поэтому
-        /// параметры собираются через FromTerrain, как делает весь продакшн.
+        /// The sentinel "follow NoiseStyle" is minus one, resolved in FromTerrain.
+        /// The field deliberately has NO initializer: the project is on C# 9.0,
+        /// where struct field initializers are unavailable, so a direct
+        /// `new TerrainNoiseParams()` yields 0 here, i.e. Value — parameters are
+        /// therefore built through FromTerrain, as all production code does.
         /// </summary>
         public int MaskNoiseStyle;
 
@@ -208,34 +191,30 @@ namespace Galilego.Universe
         public double PlainElevation;
 
         /// <summary>
-        /// Сжатие верхнего хвоста формы, выраженное в нормированных единицах
-        /// (как ContinentDepth, НЕ в метрах). Нужно ridged multifractal: у него
-        /// низкая типичная высота и тяжёлый хвост, поэтому калибровка по p99
-        /// задирает вершины. Здесь сжатие применяется к далёкому хвосту и
-        /// почти не трогает основную массу распределения.
+        /// Compression of the upper tail of the shape, in normalized units
+        /// (like ContinentDepth, NOT meters). Applies to the far tail and barely
+        /// touches the bulk of the distribution.
         ///
-        /// TailKnee <= 0 — сжатие выключено, форма не меняется. Это значение
-        /// по умолчанию, и на нём legacy-профиль остаётся бит-в-бит прежним.
+        /// TailKnee &lt;= 0 — compression off, shape unchanged. This is the
+        /// default, on which the legacy profile stays bit-for-bit.
         /// </summary>
         public double TailKnee;
 
-        /// <summary>Порог сжатия в нормированных единицах. Ниже него форма не тронута.</summary>
+        /// <summary>Compression threshold in normalized units. Below it the shape is untouched.</summary>
         public double TailThreshold;
 
         /// <summary>
-        /// Сжатие нижнего (океанского) хвоста, в нормированных единицах, по
-        /// образцу TailKnee. DepthKnee &lt;= 0 — выключено (по умолчанию).
+        /// Compression of the lower (ocean) tail, in normalized units, mirroring
+        /// TailKnee. DepthKnee &lt;= 0 — off (default).
         ///
-        /// Нужно потому, что у ridged-профиля океанский хвост ещё тяжелее
-        /// горного: −25 045 м при средней глубине −4 399 м, то есть дно имеет
-        /// и лёгкую массу, и очень глубокий хвост. Уменьшение ContinentDepth
-        /// поднимает оба сразу и заодно топит шельф, поэтому точечнее резать
-        /// именно хвост.
+        /// Needed because the ridged profile's ocean tail is even heavier than
+        /// the mountain one. Reducing ContinentDepth would raise both at once
+        /// and drown the shelf, so it is more precise to cut only the tail.
         /// </summary>
         public double DepthKnee;
 
-        /// <summary>Порог нижнего сжатия, нормированные единицы. Выше него
-        /// форма не тронута (сжатие одностороннее и вниз).</summary>
+        /// <summary>Lower compression threshold, normalized units. Above it the
+        /// shape is untouched (compression is one-sided and downwards).</summary>
         public double DepthThreshold;
 
         public double DetailMix;
@@ -246,33 +225,32 @@ namespace Galilego.Universe
         public int WarpOctaves;
         public int WarpSeedOffset;
 
-        /// <summary>Уровень моря (м) — для береговой полки (нормировка высот).</summary>
+        /// <summary>Sea level (m) — for the beach shelf (height normalization).</summary>
         public double SeaLevelMeters;
 
-        /// <summary>Амплитуда рельефа (м) — для береговой полки (нормировка высот).</summary>
+        /// <summary>Terrain amplitude (m) — for the beach shelf (height normalization).</summary>
         public double AmplitudeMeters;
 
-        /// <summary>Высота полки пляжа над морем (м). 0 = полка выключена.</summary>
+        /// <summary>Beach shelf height above the sea (m). 0 = shelf off.</summary>
         public double BeachShelfAltitudeMeters;
 
-        /// <summary>Полуширина полки в единицах continent-маски. 0 = выключена.</summary>
+        /// <summary>Shelf half-width in continent-mask units. 0 = off.</summary>
         public double BeachShelfWidth;
 
-        /// <summary>Макс. множитель ширины полки (шум по берегу). ≤1 = ширина постоянна.</summary>
+        /// <summary>Max shelf width multiplier (shore noise). ≤1 = constant width.</summary>
         public double BeachShelfWidthMaxScale;
 
-        /// <summary>Частота шума ширины полки (циклов на единичный вектор). 0 = выключен.</summary>
+        /// <summary>Shelf width noise frequency (cycles per unit vector). 0 = off.</summary>
         public double BeachShelfWidthNoiseFrequency;
 
-        /// <summary>Октав шума ширины полки.</summary>
+        /// <summary>Shelf width noise octaves.</summary>
         public int BeachShelfWidthNoiseOctaves;
 
         /// <summary>
-        /// Ширина «морского плеча» полки в единицах континентальной маски: полоса
-        /// ЗА порогом маски, на которой вес полки гаснет до нуля. ≤0 — авто
-        /// (DefaultSeawardWidthFactor от ширины полки). Зачем — в
-        /// HeightfieldTerrain.BeachShelfSeawardWidth: это замена скачка на
-        /// изолинии порога, из-за которого меш рисовал обрыв частоколом.
+        /// Width of the shelf's "seaward shoulder" in continent-mask units: the band
+        /// BEYOND the mask threshold where the shelf weight fades to zero. ≤0 — auto
+        /// (DefaultSeawardWidthFactor of the shelf width). It replaces the step at
+        /// the threshold isoline with a continuous fade.
         /// </summary>
         public double BeachShelfSeawardWidth;
         public double ColorNoiseFrequency;
@@ -282,61 +260,56 @@ namespace Galilego.Universe
         public int ColorDetailOctaves;
         public int ColorDetailSeedOffset;
 
-        /// <summary>Считать ли маску в job'е (иначе пишет 0). Экономит ~15% при выключенной маске.</summary>
+        /// <summary>Whether to compute the mask in the job (otherwise writes 0). Saves ~15% when the mask is off.</summary>
         public bool ComputeMask;
 
-        /// <summary>Считать ли мелкомасштабную цветовую деталь (моттлинг земли).</summary>
+        /// <summary>Whether to compute small-scale color detail (land mottling).</summary>
         public bool ComputeDetail;
 
         /// <summary>
-        /// Ровные площадки в точках планеты (аналог PQS-мода FlattenArea в KSP).
-        /// NativeArray — blittable, поэтому таблица проходит в эту структуру и
-        /// дальше в [BurstCompile]-джобу рендера без managed-ссылок и без
-        /// изменения подписей: джоба уже получает Params целиком.
+        /// Flat pads at planet points (analogous to KSP PQS FlattenArea).
+        /// NativeArray — blittable, so the table passes through this struct and
+        /// further into the [BurstCompile] render job without managed references
+        /// and without changing signatures: the job already receives all of Params.
         ///
-        /// [ReadOnly] — НЕ косметика, а требование безопасности. Таблица
-        /// читается и никогда не пишется, но контейнерное поле джобы без этой
-        /// метки защита считает ЗАПИСЫВАЕМЫМ. А декорации строятся пачками:
-        /// StepDecorBuilds планирует несколько GroundDecorCandidateJob в одном
-        /// кадре с default(JobHandle), то есть БЕЗ зависимости друг на друга, и
-        /// все получают один и тот же TerrainNoiseParams. Запись в общий
-        /// контейнер без зависимости — исключение защиты job'ов, и оно сыпется
-        /// каждый кадр:
-        ///   «The previously scheduled job ... writes to ...Terrain.Mods. You
-        ///    are trying to schedule a new job ... To guarantee safety, you must
-        ///    include ... as a dependency».
-        /// Это случилось и с пустой общей таблицей: защита работает по
-        /// разметке поля, а не по длине массива.
+        /// [ReadOnly] is NOT cosmetic but a safety requirement. The table is read
+        /// and never written, yet without the attribute the job safety system
+        /// treats the container field as WRITABLE. Decor builds are scheduled in
+        /// batches: StepDecorBuilds schedules several GroundDecorCandidateJob in one
+        /// frame with default(JobHandle), i.e. with no dependency between them, and
+        /// all receive the same TerrainNoiseParams. Writing to a shared container
+        /// without a dependency is a job safety exception and fires every frame.
+        /// It also happened with an empty shared table: the check works from the
+        /// field declaration, not from the array length.
         ///
-        /// Владеет таблицей HeightfieldTerrain, а не этот метод: FromTerrain
-        /// зовётся на КАЖДЫЙ GetRawHeightMeters (тысячи раз в секунду), и
-        /// аллоцировать здесь нельзя — копируется только дескриптор.
-        /// Таблица нулевой длины = модификаторов нет, и SampleHeight идёт по
-        /// старой ветке (бит-в-бит legacy).
+        /// HeightfieldTerrain owns the table, not this method: FromTerrain is called
+        /// on EVERY GetRawHeightMeters (thousands of times per second), so allocation
+        /// here is not allowed — only the descriptor is copied.
+        /// A zero-length table means no modifiers.
         /// </summary>
         [ReadOnly]
         public NativeArray<TerrainModifierData> Mods;
 
         /// <summary>
-        /// Зоны, где декор не растёт (DecorExclusionTable). Тот же контракт, что
-        /// у Mods: владеет таблицей HeightfieldTerrain, FromTerrain копирует
-        /// только дескриптор, джобы читают параллельно.
+        /// Zones where decor does not grow (DecorExclusionTable). Same contract as
+        /// Mods: HeightfieldTerrain owns the table, FromTerrain copies only the
+        /// descriptor, and jobs read it in parallel.
         /// </summary>
         [ReadOnly]
         public NativeArray<DecorExclusionData> DecorExclusions;
 
         public static TerrainNoiseParams FromTerrain(HeightfieldTerrain terrain)
         {
-            // Домен по склону калиброван под Gain*Lacunarity == 1. При нарушении
-            // окна неверны, и домен молча вырождается в no-op или в константу -
-            // то есть профиль выглядит сломанным, а данные им не сломаны.
-            // Поэтому здесь домен выключается ЯВНО, с одним логом на конфигурацию.
+            // The slope domain is calibrated for Gain*Lacunarity == 1. Otherwise
+            // the windows are wrong and the domain silently degenerates to a no-op
+            // or a constant, so the profile looks broken though the data is not.
+            // The domain is therefore disabled EXPLICITLY, with one log per configuration.
             //
-            // Почему не пересчитывать окна на лету: правильные окна зависят от
-            // распределения сигнала по всей сфере, то есть считаются перебором.
-            // Считать их в FromTerrain нельзя - метод зовётся на каждом
-            // GetRawHeightMeters, тысячи раз в секунду. Гасить домен дешевле и
-            // предсказуемее, чем молча подгонять форму рельефа.
+            // Windows are not recomputed on the fly: the correct windows depend on
+            // the signal distribution over the whole sphere and require a search.
+            // FromTerrain is called on every GetRawHeightMeters, thousands of times
+            // per second. Disabling the domain is cheaper and more predictable than
+            // silently retuning the terrain shape.
             double damp = terrain.SlopeDamp;
             int dampMode = terrain.SlopeDampMode;
             if (damp > 0d && dampMode != (int)TerrainSlopeDampMode.Off
@@ -427,46 +400,41 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Burst-совместимая форма heightfield: та же формула, что HeightfieldTerrain
-    /// (порядок операций зеркальный — расхождение только в последнем ulp
-    /// кодогенерации, меряет T84). Чистые статики на double3/math: ни ссылок,
-    /// ни аллокаций, ни System.Math. HeightfieldTerrain делегирует сюда форму —
-    /// дублирования нет, паритет визуал/физика по построению, а не допуском.
+    /// Burst-compatible heightfield shape: the same formula as HeightfieldTerrain
+    /// (operation order mirrored — difference only in the last ulp of codegen).
+    /// Pure statics on double3/math: no references, no allocations, no System.Math.
+    /// HeightfieldTerrain delegates the shape here, so visual/physics parity is by
+    /// construction, not by tolerance.
     /// </summary>
     public static class TerrainNoise
     {
         /// <summary>
-        /// Амплитуда собственного шума равнины, доля от PlainElevation. Без него
-        /// стягивание к константе даёт идеально ровный стол с острыми ребрами на
-        /// границе маски; 0.03 даёт уклон ~0.1°, что читается как равнина.
+        /// Plains' own noise amplitude as a fraction of PlainElevation. Without it,
+        /// pulling toward a constant gives a perfectly flat table with sharp edges
+        /// at the mask border; a small amplitude reads as a plain.
         /// </summary>
         private const double PlainRelief = 0.03d;
 
-        /// <summary>Октав в шуме равнины. 4 — как замеренный поток.</summary>
+        /// <summary>Octaves in the plains noise.</summary>
         private const int PlainReliefOctaves = 4;
 
         /// <summary>
-        /// Ширина сглаживания пола внутренности, доля от самого пола.
+        /// Interior floor smoothing width as a fraction of the floor itself.
         ///
-        /// Скользящая точка маски в горизонтали — это радиусы планеты, и пол
-        /// меняется медленно. 5% дают зону перехода в четверть пола, то есть
-        /// ~120 м при поле 1 км: озёра в глубине материков не появляются, а
-        /// берег остаётся резким, потому что у него пол равен нулю.
-        ///
-        /// Число, а не производная от InteriorFloor, потому что здесь нужен
-        /// масштаб СГЛАЖИВАНИЯ, а не сама величина.
+        /// The scale is not derived from InteriorFloor because what is needed here
+        /// is the SMOOTHING scale, not the magnitude: it keeps the transition zone
+        /// narrow so no inland lakes appear while the shore stays sharp.
         /// </summary>
         private const double InteriorFloorSoftness = 0.05d;
 
         /// <summary>
-        /// Мягкий максимум с гладкой переходной зоной (Inigo Quilez, полиномиальная
-        /// форма). Возвращает a, если a ≥ b + k, и b, если b ≥ a + k, то есть
-        /// ВНЕ зоны перехода это ТОЧНЫЙ max; внутри — купол высотой не больше
-        /// k/4. Первая производная непрерывна, поэтому излома в нормалях нет.
+        /// Smooth maximum with a smooth transition band (Inigo Quilez, polynomial
+        /// form). Returns a if a ≥ b + k and b if b ≥ a + k, i.e. OUTSIDE the
+        /// transition it is an EXACT max; inside it is a bulge at most k/4 high.
+        /// The first derivative is continuous, so normals have no crease.
         ///
-        /// Обычный math.max здесь не годится: озёра появляются ровно там, где
-        /// рельеф пересекает пол, и каждый разрез — это V-образная складка в
-        /// нормалях, то есть полоса в шейдинге по берегу каждого озера.
+        /// A plain math.max is not usable here: lakes appear exactly where the
+        /// terrain crosses the floor, and each cut would crease the normals.
         /// </summary>
         internal static double SmoothMax(double a, double b, double k)
         {
@@ -504,19 +472,17 @@ namespace Galilego.Universe
             double continentRaw = 0d;
             if (p.ContinentFrequency > 0d)
             {
-                // Маска континентов считается на СВОЕМ домене qc, а не на общем
-                // warp'е рельефа q. Иначе масштаб берега задан масштабом горного
-                // warp'а, который втрое слабее и втрое выше по частоте, — из-за
-                // этого материки и выходили круглыми.
+                // The continent mask is computed on its OWN domain qc, not on the
+                // terrain warp q, otherwise the shore scale is set by the mountain
+                // warp scale.
                 //
-                // Без отдельного warp'а домен остаётся ОБЩИМ (legacy, бит-в-бит):
-                // подставить сюда `direction` значило бы молча снять горный warp
-                // с маски континентов у всех старых пресетов, где нового поля
-                // ещё нет, и уехать с ними на другой берег.
+                // Without a separate warp the domain stays SHARED (legacy, bit-for-bit):
+                // using `direction` here would silently remove the mountain warp from
+                // the continent mask.
                 //
-                // Источник отдельного warp'а — исходный direction, не q: иначе
-                // второй warp ложился бы поверх первого, и домен маски зависел бы
-                // от произведения двух искажений вместо одного.
+                // The separate warp source is the original direction, not q: otherwise
+                // a second warp would stack on the first and the mask domain would
+                // depend on the product of two distortions instead of one.
                 double3 qc = q;
                 if (p.ContinentWarpStrength > 0d)
                 {
@@ -530,8 +496,8 @@ namespace Galilego.Universe
 
                 if (p.ContinentRidgeMix > 0d)
                 {
-                    // Вытянутость материков: максимум маски вдоль изолиний
-                    // fBm = 0, то есть вдоль длинных цепей вместо круглых пятен.
+                    // Continent elongation: the mask peaks along the fBm = 0
+                    // isolines, i.e. along long chains instead of round blobs.
                     double cr = SampleFbmEx(
                         qc, p.ContinentRidgeFrequency, p.ContinentRidgeOctaves, p.Seed, 11,
                         cg, lacunarity, p.MaskNoiseStyle);
@@ -540,8 +506,8 @@ namespace Galilego.Universe
 
                 if (p.ContinentLatitudeBias > 0d)
                 {
-                    // Тянем материки к экватору. Читает НЕВАРПНУТЫЙ direction:
-                    // широта не должна зависеть от шума рельефа.
+                    // Pulls continents toward the equator. Reads the UNWARPED
+                    // direction: latitude must not depend on terrain noise.
                     continentRaw += p.ContinentLatitudeBias * (1d - (2d * math.abs(direction.z)));
                 }
 
@@ -551,24 +517,16 @@ namespace Galilego.Universe
 
             double h = baseHeight;
 
-            // Горные ПОЯСА, а не горы на всей суше.
+            // Mountain BELTS, not mountains on all land.
             //
-            // Важно, ЧТО именно масштабируется. Первый вариант домножал на
-            // маску вес ridged-бленда, и это не сработало: при малом весе форма
-            // сходит к базовому fBm, у которого размах ТОТ ЖЕ, поэтому и горы,
-            // и равнины выходили одинаково высокими (замер T142: доля суши выше
-            // 3 км — 7.4% без поясов против 6.1% с поясами, разница в пределах
-            // шума). Вес бленда управляет ХАРАКТЕРОМ шума (гребни против холмов),
-            // а высотой гор управляет размах.
+            // The belt multiplies the RELIEF RANGE relative to the lowland level
+            // (applied below, after the interior floor), while the ridged detail
+            // stays everywhere: outside a belt its detail is pressed against that
+            // shelf and reads as a rolling plain. The mask is low-frequency (own
+            // stream, salt 10), so ridges gather into belts thousands of kilometers
+            // wide.
             //
-            // Поэтому пояс здесь — множитель РАЗМАХА рельефа относительно
-            // уровня низменности (применяется ниже, после пола внутренности), а
-            // сам ridged остаётся везде: вне пояса его детали прижимаются к
-            // этой полке и читаются как волнистая равнина. Маска низкочастотная
-            // (свой поток, соль 10), поэтому хребты собираются в ленты шириной в
-            // тысячи километров.
-            //
-            // OrogenyFrequency ≤ 0 — выключено, форма бит-в-бит прежняя.
+            // OrogenyFrequency ≤ 0 — off, shape bit-for-bit.
             double beltRelief = 1d;
             bool orogeny = p.OrogenyFrequency > 0d;
             if (orogeny)
@@ -587,8 +545,9 @@ namespace Galilego.Universe
                 h = baseHeight + (ridged - baseHeight) * k;
             }
 
-            // Старый океан: одинаковая добавка вниз везде, где маски нет. Остаётся
-            // только при OceanFloorDepth ≤ 0, и тогда поведение бит-в-бит прежнее.
+            // Legacy ocean: a uniform downward offset wherever the mask is absent.
+            // Used only when OceanFloorDepth ≤ 0, and then the behavior is bit-for-bit
+            // unchanged.
             bool oceanModel = p.OceanFloorDepth > 0d;
             if (!oceanModel)
             {
@@ -598,20 +557,18 @@ namespace Galilego.Universe
             double plainK = 0d;
             if (p.PlainMix > 0d && p.PlainFrequency > 0d)
             {
-                // Равнины: низкочастотная маска (свой поток, salt 5) выделяет зоны,
-                // где рельеф стягивается к низкому плато; между зонами остаются
-                // хребты. Множитель continent — равнины только на суше.
+                // Plains: a low-frequency mask (own stream, salt 5) selects zones
+                // where the terrain is pulled to a low plateau; ridges remain between
+                // them. Multiplied by continent — plains only on land.
                 double plainNoise = SampleFbmEx(q, p.PlainFrequency, p.PlainOctaves, p.Seed, 5, gain, lacunarity, p.MaskNoiseStyle);
                 double plainMask = Smoothstep01((plainNoise - (p.PlainThreshold - p.PlainSharpness))
                     / math.max(1e-9d, 2d * p.PlainSharpness));
                 plainK = math.min(1d, math.max(0d, p.PlainMix)) * plainMask * continent;
-                // Цель стягивания — не ровная полка, а собственные низкие холмы.
-                // Берём первые PlainReliefOctaves октав той же формы (p.BaseFrequency,
-                // соль 0): уклон выходит ~0.1° вместо идеального стола, и равнина
-                // не наследует высокие октавы гор, как было при стягивании к
-                // константе. Соль 0 общая с базовой формой намеренно: первые октавы
-                // совпадают, поэтому полки лежат в долинах рельефа, а не в отрыве
-                // от него.
+                // The pull target is low hills of its own, not a flat shelf: the first
+                // PlainReliefOctaves octaves of the same shape (p.BaseFrequency,
+                // salt 0) give a gentle slope instead of a table. Salt 0 is shared
+                // with the base shape on purpose: the first octaves match, so the
+                // shelves lie in terrain valleys rather than detached from them.
                 double flat = p.PlainElevation + PlainRelief * SampleFbmEx(
                     q, p.BaseFrequency, PlainReliefOctaves, p.Seed, 0, gain, lacunarity, p.NoiseStyle);
                 h = flat + ((h - flat) * (1d - plainK));
@@ -619,60 +576,52 @@ namespace Galilego.Universe
 
             if (p.DetailMix > 0d && p.DetailFrequency > 0d)
             {
-                // Мелкомасштабная деталь (скалы/осыпи): высокочастотный свой поток
-                // (salt 6), абсолютная доля амплитуды. Только на суше и гаснет в
-                // равнинах — хребты становятся изрезанными, равнины остаются гладкими.
+                // Small-scale detail (rock/scree): high-frequency own stream (salt 6),
+                // absolute amplitude share. Land only, fades in plains — ridges get
+                // cut up, plains stay smooth.
                 double detail = SampleShapeFbm(p, q, p.DetailFrequency, p.DetailOctaves, 6, gain, lacunarity);
                 double detailLand = continent * (1d - plainK);
                 h += detail * p.DetailMix * detailLand;
             }
 
-            // ПОЛ ВНУТРЕННОСТИ. Ни одна точка суши не опускается ниже
-            // continent·InteriorFloor — во внутренности материков не бывает
-            // внутренних озёр. Сглаживание вместо max: жёсткий max даёт излом
-            // первой производной, а излом виден полосой в нормалях на каждом
-            // озере.
+            // INTERIOR FLOOR. No land point drops below continent·InteriorFloor, so
+            // there are no inland lakes inside continents. Smoothing instead of max:
+            // a hard max creases the first derivative, and the crease shows as a
+            // normal band on every lake.
             //
-            // ПОЛОЖИТЕЛЬНО ТОЛЬКО ТАМ, ГДЕ continent = 1 — в океане маска равна
-            // нулю и пол тоже нулевой. Применять пол ПОСЛЕ океанского бленда
-            // нельзя: тогда на дне вышло бы max(−5700 м, 0) = 0, то есть весь
-            // океан поднялся бы к уровню моря и исчез.
+            // Positive ONLY WHERE continent = 1 — in the ocean the mask is zero and
+            // so is the floor. The floor must not be applied AFTER the ocean blend:
+            // max(depth, 0) = 0 would lift the whole ocean to sea level and it would
+            // disappear.
             if (p.InteriorFloor > 0d)
             {
                 double floorK = p.InteriorFloor * InteriorFloorSoftness;
                 h = SmoothMax(h, continent * p.InteriorFloor, floorK);
             }
 
-            // Размах рельефа по поясам (см. пояс выше). Опорный уровень — пол
-            // внутренности, то есть ровно та высота, ниже которой суша и так не
-            // опускается. Масштабирование ОТ неё вниз невозможно (h ≥ ref), так
-            // что новых озёр этот шаг не заводит.
+            // Relief range by belts (see above). The reference level is the interior
+            // floor, the height below which land never drops. Scaling from it downward
+            // is impossible (h ≥ ref), so this step creates no new lakes.
             //
-            // Требует InteriorFloor > 0: при нулевом полу опорный уровень был бы
-            // нулём, то есть уровнем моря, и вся непясная суша ушла бы под воду.
-            // Без пола этот шаг пропускается, и форма прежняя.
+            // Requires InteriorFloor > 0: with a zero floor the reference would be
+            // sea level and all low land would go under water. Without a floor this
+            // step is skipped and the shape is unchanged.
             if (orogeny && p.InteriorFloor > 0d)
             {
                 double refLevel = continent * p.InteriorFloor;
                 h = refLevel + ((h - refLevel) * beltRelief);
             }
 
-            // НОВЫЙ ОКЕАН. Смешиваем рельеф с дном, а не вычитаем константу.
+            // OCEAN MODEL. Terrain is blended with the floor instead of subtracting
+            // a constant.
             //
-            // Почему так. Прежний ход «минус (1−маска)·ContinentDepth» сдвигает
-            // вниз поле, но НЕ убирает из него высокочастотную составляющую, то
-            // есть на дне остаётся рельеф. Тогда океан = «все места, где шум ниже
-            // нуля», и его граница — фрактальная нулевая изолина шума с базовой
-            // октавой в сотни километров: архипелаги и внутренние моря вместо
-            // океанических впадин. Здесь океан становится величиной ПОСТРОЕНИЕМ.
-            //
-            // Форма: h·continent − ocean·(continent·шельф + глубина·ocean²).
-            // Множитель ocean² вместо ocean даёт профиль Земли — пологая шельф у
-            // берега, крутая материковая окраина, плоское ложе в середине океана.
-            // Шельф тоже домножается на ocean, иначе на continent = 1 он утянул бы
-            // сушу вниз на свою глубину. При continent = 1 всё выражение равно
-            // нулю, то есть суша не тронута ровно; при continent = 0 остаётся
-            // только константа — дно.
+            // Shape: h·continent − ocean·(continent·shelf + depth·ocean²).
+            // The ocean² multiplier gives an Earth-like profile — a gentle shelf
+            // near the shore, a steep continental margin, a flat abyssal plain.
+            // The shelf is also multiplied by ocean, otherwise at continent = 1 it
+            // would pull land down by its depth. At continent = 1 the whole
+            // expression is zero, so land is exactly untouched; at continent = 0
+            // only the constant floor remains.
             if (oceanModel)
             {
                 double ocean = 1d - continent;
@@ -684,10 +633,9 @@ namespace Galilego.Universe
             h = ApplyDepthCompression(p, h);
             h = ApplyBeachShelf(p, h, continentRaw, q);
 
-            // Ровные площадки — ПОСЛЕДНЕЙ операцией. Если применить их раньше,
-            // фартук площадки затянуло бы обратно шумом детали/равнин, и ровное
-            // ядро перестало бы быть ровным. Таблица модификаторов идёт по
-            // собственному направлению, поэтому в warp/маску не вмешивается.
+            // Flat pads are applied LAST. Otherwise detail/plains noise would pull
+            // the pad apron back and the flat core would stop being flat. The
+            // modifier table uses its own direction, so it does not affect warp/masks.
             if (p.Mods.IsCreated && p.Mods.Length > 0)
             {
                 h = ApplyModifiers(p, h, direction);
@@ -697,35 +645,17 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Мягкое сжатие далёкого верхнего хвоста формы.
+        /// Soft compression of the far upper tail of the shape.
         ///
-        /// Зачем. У ridged multifractal распределение с низкой типичной
-        /// высотой и тяжёлым хвостом: p99 и максимум почти не коррелируют.
-        /// Калибровать амплитуду по p99 - значит задирать вершины (у Perlin
-        /// 10.9 км при p99 5.9 км), а резать хвост гаммой - значит сплющить
-        /// гребни по всей длине, что видно на равнинах тоже. Здесь режется
-        /// ТОЛЬКО хвост выше порога, то есть меньше 0.1% точек.
-        ///
-        /// Форма. Рациональное (коши) колено:
+        /// Shape: rational (Cauchy) knee
         ///     e = x - t;   y = t + e / (1 + e / TailKnee)
-        /// Свойства: строго монотонна; на пороге наклон ровно 1, то есть
-        /// первая производная непрерывна и ребра не появляется (вторая
-        /// производная скачет, поэтому вторая производная для нормалей и не
-        /// нужна); при e -> бесконечности y -> t + TailKnee, то есть у
-        /// хвоста есть жёсткий потолок, а не просто "медленнее".
+        /// Strictly monotonic; the slope at the threshold is exactly 1, so the
+        /// first derivative is continuous and no edge appears; as e → ∞, y → t +
+        /// TailKnee, so the tail has a hard ceiling rather than merely growing slower.
         ///
-        /// Параметра крутины здесь нет СОЗНАТЕЛЬНО. Первая версия вводила ещё
-        /// и TailCompress, но он входил только произведением с TailKnee, то
-        /// есть просто дублировал ручку и давал мнимую настройку. Вдобавок
-        /// ужесточение колена прижимает верхушку к потолку и рискует сделать
-        /// "плоскую макушку" - ровно тот артефакт, которого здесь надо
-        /// избежать. Мягкое колено к нему не склонно, поэтому хватает одной
-        /// ручки: TailKnee = сколько ещё разрешено вырасти над порогом.
-        ///
-        /// Ставится ДО пляжа и ДО площадок: площадка задаёт высоту автором
-        /// абсолютно, и сжатие после неё сдвинуло бы плиту с её уровня.
-        /// Океанский хвост не трогается - порог односторонний, поэтому
-        /// глубина моря не меняется.
+        /// Applied BEFORE the beach and the pads: a pad sets its height absolutely,
+        /// so compression after it would move the plate off its level. The ocean
+        /// tail is untouched — the threshold is one-sided.
         /// </summary>
         internal static double ApplyTailCompression(TerrainNoiseParams p, double h)
         {
@@ -739,20 +669,20 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Мягкое сжатие нижнего (океанского) хвоста формы — зеркало
-        /// ApplyTailCompression. Та же рациональная форма, но вниз:
-        ///     u = t - x;   y = t - u / (1 + u / DepthKnee),  при x &lt; t
-        /// Свойства те же: строго монотонна, наклон на пороге ровно 1 (первая
-        /// производная непрерывна, ребра на шельфе не появляется), дно
-        /// асимптотически упирается в t - DepthKnee.
+        /// Soft compression of the lower (ocean) tail — mirror of
+        /// ApplyTailCompression. Same rational form, but downward:
+        ///     u = t - x;   y = t - u / (1 + u / DepthKnee),  for x &lt; t
+        /// Same properties: strictly monotonic, slope at the threshold exactly 1
+        /// (first derivative continuous, no edge on the shelf), the floor
+        /// asymptotically approaches t - DepthKnee.
         ///
-        /// Односторонняя и вниз: точки выше порога не тронуты, поэтому
-        /// береговая линия, SeaLevelMeters и пляжная полка не меняются, а
-        /// поднимается только глубокое ложе. Ставится в том же месте, что и
-        /// верхнее сжатие, - до пляжа и площадок.
+        /// One-sided downwards: points above the threshold are untouched, so the
+        /// shoreline, SeaLevelMeters and beach shelf do not change, and only the
+        /// deep floor rises. Applied in the same place as the upper compression,
+        /// before the beach and pads.
         ///
-        /// DepthKnee &lt;= 0 — выключено, и это значение по умолчанию: legacy
-        /// профиль должен остаться бит-в-бит прежним.
+        /// DepthKnee &lt;= 0 — off, and this is the default: the legacy profile must
+        /// stay bit-for-bit.
         /// </summary>
         internal static double ApplyDepthCompression(TerrainNoiseParams p, double h)
         {
@@ -766,17 +696,16 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Площадки: ровное ядро и гладкий фартук по естественной высоте.
+        /// Pads: a flat core and a smooth apron following the natural height.
         ///
-        /// Всё в НОРМИРОВАННОМ пространстве (SampleHeight возвращает форму
-        /// ~[−1,1], множитель амплитуды ставит вызывающий). Деление на
-        /// амплитуду делается только для модификаторов, которые реально
-        /// задели эту точку — после раннего выхода по косинусу, поэтому в
-        /// горячем цикле оно не стоит ни одного лишнего деления.
+        /// All in NORMALIZED space (SampleHeight returns shape ~[−1,1]; the caller
+        /// applies the amplitude multiplier). Division by amplitude happens only for
+        /// modifiers that actually touch the point — after the cosine early-out, so
+        /// it costs no extra division in the hot loop.
         ///
-        /// Пересечения: модификаторы применяются по порядку в списке, каждый
-        /// считает от результата предыдущего. Порядок детерминирован, значит
-        /// результат воспроизводим; последний в списке при пересечении выигрывает.
+        /// Overlaps: modifiers are applied in list order, each from the previous
+        /// result. The order is deterministic, so the result is reproducible; the
+        /// last one in the list wins on overlap.
         /// </summary>
         public static double ApplyModifiers(TerrainNoiseParams p, double h, double3 direction)
         {
@@ -791,15 +720,15 @@ namespace Galilego.Universe
             {
                 TerrainModifierData m = mods[i];
 
-                // Скалярное произведение убывает с угловым расстоянием, поэтому
-                // одно сравнение отсекает всё, что вне площадки, без acos.
+                // The dot product decreases with angular distance, so one comparison
+                // rejects everything outside the pad, without acos.
                 double dot = math.dot(direction, m.Direction);
                 if (dot < m.CosOuter)
                 {
                     continue;
                 }
 
-                // Ядро: t = 1. Фартук: 0 у внешнего края → 1 у внутреннего.
+                // Core: t = 1. Apron: 0 at the outer edge → 1 at the inner edge.
                 double t = 1d;
                 if (dot < m.CosInner)
                 {
@@ -808,8 +737,8 @@ namespace Galilego.Universe
                     t = math.min(1d, math.max(0d, t));
                 }
 
-                // Smoothstep: нулевые производные на обоих концах фартука, иначе
-                // на границе площадки в нормалях появляется излом.
+                // Smoothstep: zero derivatives at both apron ends, otherwise the
+                // pad border creases the normals.
                 t = t * t * (3d - (2d * t));
 
                 double target = m.TargetHeightMeters / amplitude;
@@ -820,10 +749,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Есть ли здесь площадка, которой разрешено перебивать кламп уровня
-        /// моря. Нужно ровно для раскопок ниже моря: GetHeightMeters поднимает
-        /// всё ниже уровня моря обратно к воде, и без этой проверки сухой док
-        /// молча наполнился бы.
+        /// Whether a pad here is allowed to override the sea-level clamp. Needed
+        /// exactly for digs below the sea: GetHeightMeters lifts everything below
+        /// sea level back to the water, and without this check a dry dock would
+        /// silently fill up.
         /// </summary>
         public static bool ModsOverrideSeaLevel(TerrainNoiseParams p, double3 direction)
         {
@@ -851,51 +780,48 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Береговая полка: у уреза воды (сырая continent-маска рядом с порогом
-        /// со стороны суши) суша стягивается к пологой высоте над морем — иначе
-        /// берег прыгает из воды сразу на склон/равнину и полосе пляжа негде
-        /// лечь. Только суша (h выше моря): океанское дно не трогаем, иначе
-        /// всплыли бы острова; без моря (SeaLevel −∞) и без континентов полка
-        /// выключена. Все пороги в нуле — возврат h без изменений (legacy
-        /// бит-в-бит). Вес — гладкий купол с нулевыми производными на краях,
-        /// чтобы в нормалях не было излома.
+        /// Beach shelf: near the waterline (raw continent mask just above the
+        /// threshold on the land side) land is pulled to a gentle height above the
+        /// sea — otherwise the shore jumps from water straight to a slope/plain
+        /// with nowhere for a beach band. Land only (h above the sea): the ocean
+        /// floor is untouched. The shelf is off without a sea (SeaLevel −∞) or
+        /// without continents. All thresholds zero — return h unchanged (legacy
+        /// bit-for-bit). The weight is a smooth dome with zero derivatives at the
+        /// edges, so normals have no crease.
         /// </summary>
         public static double ApplyBeachShelf(TerrainNoiseParams p, double h, double continentRaw)
         {
-            // Старая сигнатура: ширина полки постоянна (без шума по берегу).
+            // Overload without shore noise: constant shelf width.
             return ApplyBeachShelfCore(p, h, continentRaw, false, default(double3));
         }
 
         /// <summary>
-        /// Береговая полка с неравномерной шириной: <paramref name="direction"/> —
-        /// точка на сфере (после warp), по ней считается шум ширины. Если
-        /// BeachShelfWidthMaxScale ≤ 1 — бит-в-бит как ApplyBeachShelf без direction.
+        /// Beach shelf with variable width: <paramref name="direction"/> is the
+        /// point on the sphere (after warp), used to sample the width noise. If
+        /// BeachShelfWidthMaxScale ≤ 1 — bit-for-bit as ApplyBeachShelf without direction.
         /// </summary>
         public static double ApplyBeachShelf(TerrainNoiseParams p, double h, double continentRaw, double3 direction)
         {
             return ApplyBeachShelfCore(p, h, continentRaw, true, direction);
         }
 
-        /// <summary>Контраст шума ширины пляжа: n·2.2 растягивает fBm (σ≈0.3) почти на весь диапазон 1×..Max×.</summary>
+        /// <summary>Beach width noise contrast: n·2.2 stretches fBm (σ≈0.3) over almost the whole 1×..Max× range.</summary>
         private const double BeachWidthContrast = 2.2d;
 
         /// <summary>
-        /// Доля ширины полки, которую занимает «морское плечо», когда
-        /// BeachShelfSeawardWidth не задан (≤0). 5 % — намеренно мало: плечо
-        /// существует ровно для того, чтобы убрать разрыв, а не чтобы
-        /// перекроить берег. В метрах это 5 % от ширины полки в метрах, то есть
-        /// у EarthLike_Perlin (ширина 0.03 маски) порядка сотен метров.
+        /// Fraction of the shelf width taken by the "seaward shoulder" when
+        /// BeachShelfSeawardWidth is not set (≤0). Deliberately small: the shoulder
+        /// exists only to remove the discontinuity, not to reshape the shore.
         /// </summary>
         private const double DefaultSeawardWidthFactor = 0.05d;
 
-        /// <summary>Gain шума ширины пляжа: выше обычного 0.5, чтобы мелкие октавы давали заметную локальную неровность.</summary>
+        /// <summary>Beach width noise gain: above the usual 0.5 so small octaves give noticeable local variation.</summary>
         private const double BeachWidthNoiseGain = 0.6d;
 
         /// <summary>
-        /// Множитель ширины полки в данной точке: от 1 до BeachShelfWidthMaxScale.
-        /// Интерполяция ЛОГАРИФМИЧЕСКАЯ (Max^x), поэтому значения распределены
-        /// геометрически: на карте есть и участки «в 2–3 раза», и «в 7», и
-        /// «в 10–15 раз шире» базовой ширины. Гладкая по направлению — изломов нет.
+        /// Width multiplier at this point: 1 to BeachShelfWidthMaxScale.
+        /// Interpolation is LOGARITHMIC (Max^x), so values are distributed
+        /// geometrically. Smooth over direction — no creases.
         /// </summary>
         public static double BeachWidthScale(TerrainNoiseParams p, double3 direction)
         {
@@ -926,17 +852,12 @@ namespace Galilego.Universe
             double seaN = p.SeaLevelMeters / amp;
             double shelf = seaN + (p.BeachShelfAltitudeMeters / amp);
 
-            // Полка только ОПУСКАЕТ рельеф к своей высоте.
+            // The shelf only LOWERS terrain toward its height.
             //
-            // Раньше здесь стоял ранний выход по «h > уровня моря», и это была
-            // вторая точка разрыва: у самой воды рельеф поднимался к полке
-            // скачком до BeachShelfAltitudeMeters. Порог по ВЫСОТЕ ПОЛКИ
-            // разрыва не даёт: на самой границе h == shelf, и обе ветки
-            // возвращают одно и то же число.
-            //
-            // Заодно полка перестала поднимать дно: мель глубже полки теперь не
-            // превращается в сушу, и вода у берега остаётся там, где её
-            // поставил океанский бленд.
+            // The early-out threshold is on SHELF HEIGHT, not on "h > sea level":
+            // at the boundary h == shelf and both branches return the same value,
+            // so there is no step. It also stops the shelf from raising the floor:
+            // shallows deeper than the shelf are not turned into land.
             if (!(h > shelf))
             {
                 return h;
@@ -949,7 +870,7 @@ namespace Galilego.Universe
                 double width = math.max(1e-9d, p.BeachShelfWidth);
                 if (varyWidth)
                 {
-                    // Шум считаем только на суше у/над берегом (после ранних выходов).
+                    // Width noise is sampled only on land at/above the shore (after the early outs).
                     width *= BeachWidthScale(p, direction);
                 }
 
@@ -959,19 +880,12 @@ namespace Galilego.Universe
             }
             else
             {
-                // МОРСКОЕ ПЛЕЧО. Раньше при above ≤ 0 полка выключалась скачком,
-                // и на самом пороге маски получался обрыв: с суши вес w = 1 и
-                // высота стоит на полке, а за порогом возвращался природный
-                // рельеф. Там, где порог проходит по высокому рельефу (у
-                // EarthLike_Perlin — под километр), это обрыв в сотни метров
-                // шириной МЕНЬШЕ вершины сетки листа (6.85 м на MaxDepth 12), и
-                // меш рисовал его частоколом вертикальных треугольников.
-                //
-                // Теперь вес гаснет до нуля непрерывно на узком плече за
-                // порогом: на пороге w = 1 (как и с суши — стык без ступеньки),
-                // на дальнем краю плеча w = 0 с нулевой производной. Глубина
-                // плеча в единицах маски, поэтому в метрах это плечо/|∇маски| —
-                // тот же масштаб, что и у самой полки.
+                // SEAWARD SHOULDER. Beyond the mask threshold the weight fades to
+                // zero continuously: w = 1 at the threshold (same as on the land
+                // side, so the seam has no step) and w = 0 with zero derivative at
+                // the far edge of the shoulder. The shoulder depth is in mask units,
+                // so in meters it is shoulder/|∇mask| — the same scale as the shelf
+                // itself.
                 double shoulder = p.BeachShelfSeawardWidth > 0d
                     ? p.BeachShelfSeawardWidth
                     : DefaultSeawardWidthFactor * math.max(1e-9d, p.BeachShelfWidth);
@@ -997,8 +911,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Мелкомасштабная цветовая деталь ~[−1,1] (моттлинг земли: пятна
-        /// почвы/света), свой поток (salt 7). Цвет физику не касается.
+        /// Small-scale color detail ~[−1,1] (land mottling: soil/light patches),
+        /// own stream (salt 7). Color does not affect physics.
         /// </summary>
         public static double SampleColorDetailNoise(TerrainNoiseParams p, double3 direction)
         {
@@ -1010,9 +924,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Шум распределения декора (кластеры) ~[−1,1], свой поток (salt 8):
-        /// не коррелирует ни с формой, ни с цветовой маской. Сид — от рельефа
-        /// тела + оффсет слоя, поэтому слои и планеты не совпадают.
+        /// Decor distribution noise (clusters) ~[−1,1], own stream (salt 8): not
+        /// correlated with shape or the color mask. The seed comes from the body's
+        /// terrain seed + layer offset, so layers and planets do not coincide.
         /// </summary>
         public static double SampleDecorNoise(
             TerrainNoiseParams terrain, int seedOffset, double frequency, int octaves, double3 direction)
@@ -1036,23 +950,21 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Пригодны ли окна домена для этих Gain/Lacunarity.
+        /// Whether the domain windows are valid for these Gain/Lacunarity.
         ///
-        /// Сигнал домена - (slopeAccum/(o+1))/BaseFrequency, и нормировка на
-        /// (o+1) имеет смысл ТОЛЬКО если каждая октава вносит одинаковый вклад
-        /// в накопленный наклон. Вклад октавы o пропорционален
+        /// The domain signal is (slopeAccum/(o+1))/BaseFrequency. The (o+1)
+        /// normalization is meaningful ONLY if every octave contributes equally to
+        /// the accumulated slope: an octave's contribution is proportional to
         /// amplitude * frequency = gain^o * lacunarity^o = (gain*lacunarity)^o,
-        /// то есть он постоянен ровно при Gain * Lacunarity == 1. При текущих
-        /// 0.5 * 2 это выполнено, и окна 1.35..2.05 / 0.05..0.45 откалиброваны
-        /// именно под это.
+        /// constant exactly when Gain * Lacunarity == 1. The windows
+        /// 1.35..2.05 / 0.05..0.45 are calibrated for that.
         ///
-        /// Если произведение уедет (например Gain подняли до 0.6 и оставили
-        /// Lacunarity = 2), вклады начинают расти геометрически, нормировка
-        /// /(o+1) перестаёт делить на константу, сигнал уезжает из окна - и
-        /// домен молча вырождается в no-op или в безвредную константу. Ни
-        /// Assert, ни исключение здесь невозможны: код уходит в Burst-джобу, а
-        /// Debug.Assert в Burst не компилируется. Поэтому проверка живёт в
-        /// тесте (T131_DampWindowsValid), а здесь только предикат.
+        /// If the product drifts, the contributions grow geometrically and the
+        /// signal leaves the window — the domain silently degenerates to a no-op
+        /// or a harmless constant. Neither an Assert nor an exception is possible
+        /// here: the code goes into a Burst job, and Debug.Assert does not compile
+        /// in Burst. The check therefore lives in the test
+        /// (T131_DampWindowsValid) and this is only the predicate.
         /// </summary>
         public static bool SlopeDampWindowsValid(double gain, double lacunarity)
         {
@@ -1060,17 +972,16 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Один лог на каждую встретившуюся пару Gain/Lacunarity. FromTerrain
-        /// зовётся тысячи раз в секунду, поэтому логать каждый раз нельзя - это
-        /// сам по себе способ положить кадр.
+        /// One log per encountered Gain/Lacunarity pair. FromTerrain is called
+        /// thousands of times per second, so logging every time would itself stall
+        /// a frame.
         ///
-        /// Хранилище - фиксированный массив на 8 ключей без аллокаций и без
-        /// хеш-структур: в проекте одновременно живёт несколько профилей, а не
-        /// тысячи, и 8 хватает с запасом. При переполнении логируется снова -
-        /// это правильнее, чем замолчать навсегда.
+        /// Storage is a fixed array of 8 keys without allocations or hash
+        /// structures: the project has only a few profiles alive at once, and 8 is
+        /// more than enough. On overflow it logs again.
         ///
-        /// Ключ - два целых по 1/1024, этого достаточно: в профилях значения
-        /// круглые (0.5, 0.6, 2, 2.5), а 1/1024 их различает.
+        /// The key is two integers at 1/1024 resolution, which is enough: profile
+        /// values are round (0.5, 0.6, 2, 2.5), and 1/1024 tells them apart.
         /// </summary>
         private static readonly long[] dampWindowsLogged = new long[8];
 
@@ -1136,15 +1047,15 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Обычный fBm, без домена. Им собираются ВСЁ, кроме самой формы: маски
-        /// континентов и равнин, warp, цветовая маска и деталь, шум декора.
+        /// Plain fBm, without a domain. Used for everything except the shape itself:
+        /// continent and plains masks, warp, color mask and detail, decor noise.
         ///
-        /// Домен по октавам сюда намеренно не вставлен: маска continent сдвинула
-        /// бы береговую линию и статистику суши, на которой стоят T87 (доля суши
-        /// в 0.15..0.85) и T101 (полка у уреза воды). Маска — это не рельеф, ей
-        /// нужна ровная статистика, а не изъеденные склоны.
+        /// The octave domain is deliberately absent here: a continent mask with the
+        /// domain would shift the shoreline and the land statistics (land fraction
+        /// in 0.15..0.85, and the shelf at the waterline). A mask is not terrain; it
+        /// needs even statistics, not eroded slopes.
         /// </summary>
-        /// <summary>Обёртка: все маски, кроме формы, зовут одну и ту же функцию.</summary>
+        /// <summary>Wrapper: every mask except the shape calls the same function.</summary>
         private static double SampleFbmEx(double3 direction, double baseFrequency, int octaves, int seed, int salt, double gain, double lacunarity, int noiseStyle)
         {
             int n = octaves < 1 ? 1 : octaves;
@@ -1168,25 +1079,24 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// fBm для САМОЙ ФОРМЫ рельефа, с доменом по октавам (SlopeDamp).
+        /// fBm for the terrain SHAPE itself, with an octave domain (SlopeDamp).
         ///
-        /// Идея: чем круче склон, тем больше высокочастотной детали; на пологом
-        /// месте её почти нет. Поэтому октава домножается на вес, посчитанный из
-        /// накопленного наклона, а не на 1. Поля и вершины выходят сглаженными,
-        /// склоны — изъеденными, как бывает в настоящем рельефе.
+        /// Idea: the steeper the slope, the more high-frequency detail; on flat
+        /// ground there is almost none. Each octave is weighted by the accumulated
+        /// slope instead of 1, so fields and peaks come out smooth and slopes
+        /// eroded, as in real terrain.
         ///
-        /// Два источника наклона, выбор по SlopeDampMode (НЕ по примитиву):
-        ///  • Gradient: аналитическая производная |∇| октавы. Меряет крутизну
-        ///    по-настоящему, но стоит трёх лишних трилинейных смешиваний на октаву.
-        ///  • Accum: накопленное значение 1 − k·|sum|. Почти бесплатно, но мерит
-        ///    ВЫСОТУ, а не уклон — деталь уходит в вершины и долины.
+        /// Two slope sources, selected by SlopeDampMode (NOT by primitive):
+        ///  • Gradient: analytic |∇| of the octave. Measures steepness properly,
+        ///    but costs three extra trilinear blends per octave.
+        ///  • Accum: accumulated value 1 − k·|sum|. Nearly free, but measures
+        ///    HEIGHT, not slope — detail leaves peaks and valleys.
         ///
-        /// Источник выбирается отдельным параметром, а не «Перлин значит
-        /// производная»: иначе нельзя проверить ни один режим в комбинации с
-        /// другим примитивом — а сравнивать их нужно, это две разные картинки.
+        /// The source is a separate parameter rather than "Perlin means derivative",
+        /// so either mode can be tested with the other primitive.
         ///
-        /// При SlopeDampMode = Off или SlopeDamp ≤ 0 домена нет, и результат
-        /// бит-в-бит равен SampleFbmEx.
+        /// With SlopeDampMode = Off or SlopeDamp ≤ 0 there is no domain and the
+        /// result is bit-for-bit SampleFbmEx.
         /// </summary>
         private static double SampleShapeFbm(TerrainNoiseParams p, double3 direction, double baseFrequency, int octaves, int salt, double gain, double lacunarity)
         {
@@ -1196,8 +1106,8 @@ namespace Galilego.Universe
                 return SampleFbmEx(direction, baseFrequency, octaves, p.Seed, salt, gain, lacunarity, p.NoiseStyle);
             }
 
-            // Производная есть только у градиентного примитива; под Value этот
-            // режим молча вырождается в Accum.
+            // The derivative exists only for the gradient primitive; under Value
+            // this mode silently degenerates to Accum.
             bool gradient = p.SlopeDampMode == (int)TerrainSlopeDampMode.Gradient
                 && p.NoiseStyle == (int)TerrainNoiseStyle.Perlin;
 
@@ -1219,23 +1129,15 @@ namespace Galilego.Universe
                     v = GradientNoiseWithDerivative((direction * frequency) + offset, out double3 d);
                     slopeAccum += amplitude * (math.length(d) * frequency);
 
-                    // Сигнал домена — средний накопленный наклон на октаву, делённый
-                    // на базовую частоту. Обе нормировки обязательны:
+                    // The domain signal is the average accumulated slope per octave,
+                    // divided by the base frequency. Both normalizations are required:
                     //
-                    //  • деление на (o+1) — потому что каждая октава добавляет к
-                    //    наклону одинаковый вклад (амплитуда падает как 1/частота),
-                    //    и без этого сигнал растёт линейно с номером октавы: замер
-                    //    T112d даёт прирост ровно 34 на октаву;
-                    //  • деление на baseFrequency — потому что наклон пропорционален
-                    //    частоте, и без этого константа насыщения зависела бы от
-                    //    BaseFrequency профиля.
-                    //
-                    // Первая версия домена брала |∇|·freq текущей октавы и насыщала
-                    // насыщением на 1. Это давало полный ноль эффекта: сигнал лежал
-                    // в диапазоне 33..17362 при частотах 20..10240, то есть всегда
-                    // выше порога, вес становился постоянным (1 − damp) и СОКРАЩАЛСЯ
-                    // при нормировке sum/norm. T110 показал байт-идентичную
-                    // статистику у Gradient и Off.
+                    //  • division by (o+1): every octave adds an equal contribution
+                    //    to the slope (amplitude falls as 1/frequency), and without it
+                    //    the signal grows linearly with the octave index;
+                    //  • division by baseFrequency: slope is proportional to frequency,
+                    //    and without it the saturation constant would depend on the
+                    //    profile's BaseFrequency.
                     double signal = (slopeAccum / (o + 1)) / baseFrequency;
                     at = 1d - (damp * SlopeNorm(signal, SlopeWindowLo, SlopeWindowHi));
                 }
@@ -1255,8 +1157,8 @@ namespace Galilego.Universe
 
                 if (!gradient)
                 {
-                    // Накопленное значение — суррогат склона. Делим на норму
-                    // текущей октавы, иначе вес дрейфует вместе с Gain.
+                    // The accumulated value is a slope surrogate. Divide by the
+                    // current norm, otherwise the weight drifts with Gain.
                     weight = 1d - (damp * SlopeNorm(norm > 0d ? math.abs(sum / norm) : 0d, AccumWindowLo, AccumWindowHi));
                 }
             }
@@ -1265,33 +1167,22 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Сколько «детализации» соответствует данному наклону: 0 — гасить
-        /// октаву полностью, 1 — пропустить без изменений. Мягкое насыщение
-        /// со сдвигом окна.
+        /// How much "detail" corresponds to a given slope: 0 — kill the octave
+        /// completely, 1 — pass it unchanged. Soft saturation with a shifted window.
         ///
-        /// Окна РАЗНЫЕ для двух режимов, и это не перестраховка, а следствие
-        /// замера (T112d): сигналы живут в разных масштабах, и с общим окном
-        /// один из режимов молча вырождается в no-op. Накопленное значение всегда
-        /// ниже окна градиентного режима — так и случилось, когда окно было одно.
+        /// The windows DIFFER between the two modes: the signals live at different
+        /// scales, and with a shared window one mode silently degenerates to a no-op.
+        /// The accumulated value is always below the gradient mode's window.
         ///
-        /// Градиентный режим: сигнал нормирован на средний накопленный наклон
-        /// (делить на октаву и на BaseFrequency, иначе он растёт в 515 раз по
-        /// частоте). Замер, октава 5 из 10: p10 = 1.38, p50 = 1.80, p90 = 2.02.
+        /// Gradient mode: the signal is normalized to the average accumulated slope.
+        /// Accum mode: the signal is |accumulated shape| in its own [0,1] scale.
         ///
-        /// Режим Accum: сигнал — |накопленная форма| в её собственном масштабе
-        /// [0,1]. Замер, октава 5: p10 = 0.032, p50 = 0.164, p90 = 0.387.
+        /// The window is wider than the quantiles so the domain neither collapses to
+        /// zero on gentle slopes nor already reaches one on cliffs.
         ///
-        /// Обратите внимание на разброс: у Accum p90/p10 = 12.3, у градиентного
-        /// 1.46. Домен по высоте даёт в восемь раз более широкий рабочий диапазон,
-        /// то есть он гораздо заметнее меняет форму — «на 90% как производная»
-        /// было бы неверно. Именно поэтому режимы выбирают глазами, а не по цене.
-        ///
-        /// Окно шире квантилей, чтобы у пологих склонов домен не схлопывался в
-        /// ноль, а у обрывов уже доходил до единицы.
-        ///
-        /// Форма — smoothstep, а не жёсткий порог: жёсткий порог даёт скачок
-        /// веса октавы, то есть скачок высоты, и на склоне появляется ступенька,
-        /// которая тут же всплывает в нормалях и ломает T84.
+        /// The shape is a smoothstep, not a hard threshold: a hard threshold would
+        /// step the octave weight, hence the height, and the crease would show up in
+        /// the normals.
         /// </summary>
         private static double SlopeNorm(double signal, double lo, double hi)
         {
@@ -1299,12 +1190,12 @@ namespace Galilego.Universe
             return s * s * (3d - (2d * s));
         }
 
-        /// <summary>Окно насыщения для сигнала домена по крутизне (см. T112d).</summary>
+        /// <summary>Saturation window for the steepness domain signal.</summary>
         private const double SlopeWindowLo = 1.35d;
 
         private const double SlopeWindowHi = 2.05d;
 
-        /// <summary>Окно насыщения для сигнала домена по высоте (см. T112d).</summary>
+        /// <summary>Saturation window for the height domain signal.</summary>
         private const double AccumWindowLo = 0.05d;
 
         private const double AccumWindowHi = 0.45d;
@@ -1332,24 +1223,22 @@ namespace Galilego.Universe
                 offset = new double3(offset.y + 19.19d, offset.z + 7.47d, offset.x + 3.13d);
             }
 
-            // smoothstep сохраняет средний уровень 0.5, но обостряет контраст:
-            // узкие гребни и плоские долины вместо равномерной «ряби».
+            // smoothstep keeps the 0.5 mean but sharpens contrast: narrow ridges
+            // and flat valleys instead of even ripple.
             return norm > 0d ? Smoothstep01(sum / norm) : 0d;
         }
 
         /// <summary>
-        /// Складка октавы в гребень: 1 − |v|, возведённое в степень.
+        /// Fold the octave into a ridge: 1 − |v| raised to a power.
         ///
-        /// ВЫЗОВЫ ИЗВЕСТНЫ ОГРАНИЧЕНИЯ. |v| насыщается единицей ДО вычитания, и
-        /// это не страховка, а исправление бага: у нормированного градиентного
-        /// примитива |v| доходит до 1.43 (T111), без насыщения s уходил в −0.43,
-        /// квадрат делал его снова положительным, и на линии |v| = 1 возникал
-        /// ЛОЖНЫЙ ВТОРИЧНЫЙ ХРЕБЕТ — ровно там, где должен быть перевал.
+        /// |v| is saturated at one BEFORE the subtraction. For the normalized
+        /// gradient primitive |v| reaches 1.43; without saturation s would go to
+        /// −0.43, the square would make it positive again, and a FALSE SECONDARY
+        /// RIDGE would appear along |v| = 1 — exactly where a saddle should be.
         ///
-        /// Для value noise насыщение — точная нооперация: LatticeValue по
-        /// построению в [−1,1], трилинейная смесь не выходит за выпуклую
-        /// оболочку, поэтому min(|v|, 1) ничего не меняет и legacy-режим
-        /// остаётся бит-в-бит прежним.
+        /// For value noise the saturation is an exact no-op: LatticeValue is in
+        /// [−1,1] by construction and the trilinear blend stays inside the convex
+        /// hull, so the legacy mode remains bit-for-bit.
         /// </summary>
         internal static double RidgeFold(double v, int sharpness)
         {
@@ -1364,22 +1253,19 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Ridged multifractal (Musgrave). Отличие от Legacy в одном: октава
-        /// домножается на ВЕС, унаследованный от предыдущей, а не идёт с
-        /// фиксированной амплитудой. Из-за этого хребет, погасший на нижней
-        /// октаве, гасит и верхние — и вместо параллельных складок получается
-        /// ветвящаяся сеть, которую видно с любой высоты.
+        /// Ridged multifractal (Musgrave). The only difference from Legacy is that
+        /// each octave is multiplied by a weight inherited from the previous one
+        /// instead of a fixed amplitude. A ridge that dies on a lower octave also
+        /// kills the higher ones, so instead of parallel folds you get a branching
+        /// network visible from any height.
         ///
-        /// Диапазон 0..1 держится ПОСТРОЕНИЕМ, но не «само собой»: складка
-        /// RidgeFold насыщает |v| единицей. Без этого утверждение было бы верно
-        /// только для value noise, а у нормированного Перлина |v| до 1.43.
-        /// Домножение на вес из [0,1] не выводит, sum/norm — выпуклая комбинация.
-        /// Это важно, потому что вызывающий на строке SampleHeight подмешивает
-        /// ridged к baseHeight как «оба в одном диапазоне».
+        /// The 0..1 range holds BY CONSTRUCTION: RidgeFold saturates |v| at one, and
+        /// the weight is in [0,1]. This matters because SampleHeight mixes ridged
+        /// into baseHeight as "both in the same range".
         ///
-        /// Нормировка `sum/norm` вместо деления на gain-геометрию — сознательно:
-        /// при домене знаменатель плавает, и фиксированная нормировка тянула бы
-        /// средний уровень вниз.
+        /// `sum/norm` instead of dividing by gain geometry is deliberate: with the
+        /// domain the denominator varies, and a fixed normalization would pull the
+        /// mean level down.
         /// </summary>
         private static double SampleRidgedMultifractal(
             TerrainNoiseParams p, double3 direction, double gain, double lacunarity)
@@ -1398,8 +1284,8 @@ namespace Galilego.Universe
                 double v = Octave(p, (direction * frequency) + offset);
                 double s = RidgeFold(v, sharpness);
 
-                // Первая октава не гасится: вес = 1, иначе нижний уровень рельефа
-                // зависел бы от того, как счастливо лег хеш именно на октаве 0.
+                // The first octave is not damped (weight = 1), otherwise the base
+                // relief level would depend on how the hash happened to land on octave 0.
                 s *= weight;
                 sum += amplitude * s;
                 norm += amplitude;
@@ -1419,20 +1305,16 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Ремапа уровня гребня: s^γ на s в [0,1]. Один параметр, монотонная,
-        /// диапазон держится по построению и топологию хребтов не меняет — при
-        /// γ > 0 монотонное преобразование сохраняет и порядок, и число
-        /// экстремумов. Именно поэтому γ, а не аффинная ремапа по двум
-        /// параметрам: аффинная по среднему и σ уводит максимум за 1, а по краям
-        /// диапазона проваливает среднее с 0.73 до 0.46 (замер T112c) — то есть
-        /// подгонка разной формы распределений ломается в обе стороны.
+        /// Ridge level remap: s^γ for s in [0,1]. One parameter, monotonic, keeps
+        /// the range by construction and does not change ridge topology — for γ > 0
+        /// a monotonic transform preserves both order and the number of extrema.
+        /// That is why γ rather than an affine remap over two parameters: an affine
+        /// fit to mean and σ pushes the maximum past 1 and, at the ends of the range,
+        /// drops the mean.
         ///
-        /// Совпадение с legacy по среднему и σ НЕ требуется и не нужно: legacy
-        /// был узким и прижатым к верху из-за «усреднить октавы, потом
-        /// сгладить», а разброс multifractal и есть смысл ветвления.
-        ///
-        /// γ = 1 — нооперация без вызова pow: это и дефолт, и путь legacy.
-        /// Остаток по высоте гребней гасится AmplitudeMeters в пресете, не кодом.
+        /// γ = 1 — a no-op without calling pow; this is both the default and the
+        /// legacy path. The remaining ridge height is handled by AmplitudeMeters in
+        /// the preset, not by code.
         /// </summary>
         internal static double RidgeGamma(double s, double gamma)
         {
@@ -1450,9 +1332,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Показатель степени квантуется в целое: pow() в горячем цикле недопустим,
-        /// а разница между 1.9 и 2.0 на глаз не отличается. 1 = без заострения,
-        /// 2 = классическое signal², 3 и 4 — сильнее.
+        /// The exponent is quantized to an integer: pow() in the hot loop is not
+        /// acceptable. 1 = no sharpening, 2 = classic signal², 3 and 4 — stronger.
         /// </summary>
         private static int SharpnessSteps(double sharpness)
         {
@@ -1476,43 +1357,42 @@ namespace Galilego.Universe
                 case 4:
                     return new double3(seed * 17.13d + 2100.7d, seed * 37.31d + 1900.4d, seed * 73.17d + 2300.8d);
                 case 5:
-                    // Собственный поток маски равнин: НЕ default (там уже сидят
-                    // база salt 0 и warp-Z salt 300) — иначе равнины коррелируют
-                    // с warp'ом, а через него с хребтами.
+                    // Own stream for the plains mask: NOT default (base salt 0 and
+                    // warp-Z salt 300 already live there) — otherwise plains would
+                    // correlate with the warp and, through it, with ridges.
                     return new double3(seed * 83.77d + 2600.3d, seed * 29.13d + 2900.7d, seed * 67.31d + 2700.1d);
                 case 6:
-                    // Поток мелкомасштабной детали (rock detail): снова свой,
-                    // чтобы не коррелировать ни с формой, ни с масками.
+                    // Small-scale detail stream (rock detail): own stream again, so
+                    // it correlates with neither shape nor masks.
                     return new double3(seed * 53.19d + 3600.9d, seed * 97.31d + 3300.5d, seed * 41.77d + 3900.3d);
                 case 7:
-                    // Поток мелкомасштабной цветовой детали (моттлинг).
+                    // Small-scale color detail stream (mottling).
                     return new double3(seed * 71.93d + 4600.1d, seed * 33.47d + 4900.7d, seed * 89.11d + 4300.5d);
                 case 8:
-                    // Поток распределения декора (кластеры травы/камней).
+                    // Decor distribution stream (grass/rock clusters).
                     return new double3(seed * 47.11d + 6100.3d, seed * 31.79d + 6400.7d, seed * 73.31d + 6700.1d);
                 case 9:
-                    // Поток ширины пляжа (неравномерный берег): свой, чтобы зоны
-                    // широкого/узкого песка не коррелировали ни с формой, ни с масками.
+                    // Beach width stream (uneven shore): own stream, so zones of
+                    // wide/narrow sand correlate with neither shape nor masks.
                     return new double3(seed * 37.91d + 7300.7d, seed * 61.17d + 7600.3d, seed * 29.53d + 7900.9d);
                 case 10:
-                    // Маска горных поясов: свой поток, чтобы хребты собирались в
-                    // ленты по своей геометрии, а не там, где случайно легла маска
-                    // континентов или равнин (все три иначе получили бы один и тот
-                    // же шум на одной частоте и выглядели бы как одно и то же).
+                    // Mountain belt mask: own stream, so ridges gather into belts by
+                    // their own geometry rather than where the continent or plains mask
+                    // happens to lie (all three would otherwise get the same noise at
+                    // the same frequency and look identical).
                     return new double3(seed * 34.67d + 9100.3d, seed * 87.13d + 9400.7d, seed * 56.29d + 9700.1d);
                 case 11:
-                    // Ridge-член маски континентов: свой поток. Он лежит в ИМЯ
-                    // continentRaw, поэтому делить поток с основной маской нельзя
-                    // — иначе вытянутость материков совпала бы с их формой.
+                    // Ridge term of the continent mask: own stream. It adds into
+                    // continentRaw, so it must not share a stream with the main mask
+                    // — otherwise continent elongation would match its shape.
                     return new double3(seed * 19.37d + 11200.7d, seed * 63.91d + 11500.3d, seed * 42.53d + 11800.9d);
                 case 400:
                 case 500:
                 case 600:
-                    // Warp маски континентов. Отдельные 400/500/600, а не общие
-                    // с горным warp'ом 100/200/300: если бы делили, то форма
-                    // материков и рисунок горных складок брались бы из одного шума
-                    // на одной частоте — и выглядели бы как одно и то же, только в
-                    // разных масштабах.
+                    // Continent mask warp. Separate 400/500/600 rather than the
+                    // mountain warp's 100/200/300: sharing them would take continent
+                    // shape and mountain folds from the same noise at the same
+                    // frequency, so they would look identical, only at different scales.
                     int baseSalt = (salt / 100) * 100;
                     return new double3(
                         seed * 13.19d + (baseSalt * 0.7d) + 13100.3d,
@@ -1549,10 +1429,10 @@ namespace Galilego.Universe
 
         internal static double ValueNoise(double3 p)
         {
-            // floor отдельно: дробная часть p - floor(p) всегда ∈ [0,1), а индекс
-            // ячейки хешируется через long→int. Прямой (int)floor(p) ломается,
-            // когда сид-оффсеты (seed·89.31 и т.п.) выходят за int.MaxValue —
-            // тогда p - (int)floor(p) ~ 4e9 и Quintic взрывается в 1e298.
+            // floor separately: the fractional part p - floor(p) is always ∈ [0,1),
+            // and the cell index is hashed via long→int. A direct (int)floor(p)
+            // breaks when the seed offsets (seed·89.31 etc.) exceed int.MaxValue —
+            // then p - (int)floor(p) ~ 4e9 and Quintic explodes to 1e298.
             double xf = math.floor(p.x);
             double yf = math.floor(p.y);
             double zf = math.floor(p.z);
@@ -1598,67 +1478,64 @@ namespace Galilego.Universe
         private const double Grad2 = 0.70710678118654752440d; // 1/sqrt(2)
 
         /// <summary>
-        /// Нормировка градиентного примитива по RMS, в сравнение с value noise.
+        /// RMS normalization of the gradient primitive compared with value noise.
         ///
-        /// Замерено (T111, 4M точек): RMS value 0.40038, RMS градиента 0.19475,
-        /// отношение 2.05593. Без этой нормировки октавы Перлина были бы вчетверо
-        /// тише, и три-четверти амплитуды профиля уходили бы в пустоту: RMS —
-        /// это средняя энергия, а амплитуда контрастируется по пику. Подбирать
-        /// ContinentThreshold под RMS нельзя, порог стоит на пике, и при
-        /// ContinentDepth = 0.08 у EarthLike доля суши съезжает с 0.469 в 0.707.
+        /// Measured (4M points): RMS value 0.40038, RMS gradient 0.19475, ratio
+        /// 2.05593. Without this normalization Perlin octaves would be far quieter
+        /// and most of the profile amplitude would be lost: RMS is the average
+        /// energy, while amplitude is calibrated by the peak. ContinentThreshold
+        /// cannot be retuned to RMS — the threshold sits on the peak, and with
+        /// ContinentDepth = 0.08 the land fraction shifts from 0.469 to 0.707.
         ///
-        /// Нормировка именно по RMS, а не по максимуму, и это не одно и то же:
-        /// пиковый предел не достигается пик-в-пик на практике, RMS - то, что
-        /// реально даёт вклад в дисперсию. Верхняя граница формы выводится не
-        /// отсюда, а из ShapeBound.
+        /// Normalization is by RMS, not by the maximum, and the two differ: the
+        /// peak-to-peak limit is not reached in practice, whereas RMS is what
+        /// actually contributes to variance. The upper bound of the shape comes
+        /// from ShapeBound, not from here.
         /// </summary>
         private const double PerlinScale = 2.05593d;
         /// <summary>
-        /// Предел нормированной ОДНОЙ октавы градиентного примитива, не формы.
+        /// Limit of ONE normalized octave of the gradient primitive, not of the shape.
         ///
-        /// Октава ограничена сверху суммой |g_i| по трём ближайшим узлам. При
-        /// |g| = 1 и |f| ≤ 1 сумма не превосходит √3, и достигает этого только
-        /// в вершине ячейки с (1,1,1), где интерполяция даёт 1, то есть предел
-        /// одной октавы равен √3/2 = 0.8660. Множитель PerlinScale уже учтён,
-        /// и это замерено, а не выведено из симметрии (см. T111).
+        /// An octave is bounded above by the sum of |g_i| over the three nearest
+        /// nodes. With |g| = 1 and |f| ≤ 1 the sum does not exceed √3, and reaches
+        /// that only at cell corner (1,1,1), where the interpolation gives 1, so the
+        /// limit of one octave is √3/2 = 0.8660. The PerlinScale factor is already
+        /// included.
         ///
-        /// ФОРМА целиком — это НЕ ShapeBound. При выключенном ContinentDepth
-        /// сумма взвешенных октав нормирована и держится в пределах ±1.
-        /// Стоит только включить ContinentDepth, как ContinentFrequency-слой
-        /// (value noise, своя копия хеша) уводит форму вниз сверх предела
-        /// одной октавы, и получить низ уже нельзя из ShapeBound. Измеренный
-        /// минимум формы доходит до −2.05 при ShapeBound = 1.78.
+        /// The WHOLE SHAPE is NOT ShapeBound. With ContinentDepth off, the weighted
+        /// octave sum is normalized and stays within ±1. Enabling ContinentDepth
+        /// lets the ContinentFrequency layer push the shape below the one-octave
+        /// limit, so the low end cannot be obtained from ShapeBound.
         ///
-        /// Настоящий контракт для потребителя Perlin-профиля:
-        ///     |форма| ≤ ShapeBound + ContinentDepth      (уравновешено T128)
-        /// а для legacy value noise граница действительно 1.
+        /// The real contract for a consumer of the Perlin profile:
+        ///     |shape| ≤ ShapeBound + ContinentDepth
+        /// and for legacy value noise the bound is indeed 1.
         ///
-        /// Потребителей этой константы в коде нет и она не используется как
-        /// утверждение о пределах: bounds чанков считаются по фактическим
-        /// вершинам, hasWater оперирует SeaLevelMeters в метрах. Константа
-        /// существует как проверяемое утверждение (T128) и как граница, по
-        /// которой можно построить assert, если появится потребитель.
+        /// The constant has no consumers in code and is not used as a claim about
+        /// limits: chunk bounds are computed from actual vertices and hasWater uses
+        /// SeaLevelMeters in meters. It exists as a checkable statement and as a
+        /// bound on which an assert can be built if a consumer appears.
         /// </summary>
         public const double ShapeBound = 0.86602540378443864676d * PerlinScale;
         /// <summary>
 
         /// <summary>
-        /// Хеш решётки ГРАДИЕНТНОГО примитива. ВАЖНО: это НЕ тот же хеш, что в
-        /// LatticeValue, и он намеренно отличается множителем оси z.
+        /// Lattice hash of the GRADIENT primitive. IMPORTANT: this is NOT the same
+        /// hash as in LatticeValue, and it deliberately differs in the z-axis
+        /// multiplier.
         ///
-        /// В LatticeValue (value noise и весь legacy-режим) множитель z равен
-        /// 2147483647 = 2^31 - 1, то есть z*(2^31-1) = -z (mod 2^31): вклад оси z
-        /// почти не перемешивается. Для скалярного хеша это безвредно - берутся
-        /// младшие 16 бит, и у них хватает случайности. Для выбора направления
-        /// из 12 градиентов это давало измеримую осевую анизотропию поля:
-        /// энергия градиента расходилась на 1.84%, ось z была тяжелее на 5%
-        /// (T127). Подстановка множителя 2654435761 убирает перекос до 0.043%,
-        /// при этом НЕ трогает value noise, его распределение и все пины
-        /// legacy - потому что копии хеша раздельные.
+        /// In LatticeValue (value noise and all legacy paths) the z multiplier is
+        /// 2147483647 = 2^31 - 1, so z*(2^31-1) = -z (mod 2^31): the z axis barely
+        /// mixes. For a scalar hash this is harmless — the low 16 bits are random
+        /// enough. For picking one of 12 gradient directions it produced measurable
+        /// axial anisotropy of the field. Using the multiplier 2654435761 removes the
+        /// skew while NOT touching value noise, its distribution or the legacy pins,
+        /// because the hash copies are separate.
         ///
-        /// Три копии (эта, плюс вызовы из LatticeDot и LatticeGradientFast)
-        /// держать раздельно нельзя: они разойдутся при следующей правке.
-        /// Функция одна, с inline-подсказкой - она в горячем пути 8 раз на октаву.
+        /// The three copies (this one, plus the call sites in LatticeDot and
+        /// LatticeGradientFast) must not be kept separately: they would diverge on
+        /// the next edit. There is one function with an inline hint — it is on the
+        /// hot path 8 times per octave.
         /// </summary>
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
         internal static int PerlinLatticeHash(int x, int y, int z)
@@ -1672,35 +1549,28 @@ namespace Galilego.Universe
             }
         }
         /// <summary>
-        /// Скалярное произведение градиента в узле решётки на смещение — без
-        /// сборки самого вектора.
+        /// Dot product of the lattice node gradient and the offset — without
+        /// materializing the vector itself.
         ///
-        /// Вектор здесь не материализуется. Восемь углов ячейки означали бы
-        /// восемь конструкций double3 по три сохранения каждое плюс лишние
-        /// умножения на сборке. Вместо этого коэффициенты при fx/fy/fz считаются
-        /// сразу из индекса, и на угол остаётся три умножения и два сложения.
+        /// The vector is not built here. Eight cell corners would mean eight double3
+        /// constructions with three stores each plus extra multiplies. Instead the
+        /// coefficients of fx/fy/fz are computed directly from the index, leaving
+        /// three multiplies and two adds per corner.
         ///
-        /// Ветвлений нет, и это не оптимизация ради скорости, а требование
-        /// корректности по цене: индекс случая случаен, и предсказатель
-        /// промахивался на каждом из восьми углов. Вариант со switch на 20
-        /// случаев стоил x8.1 к value noise, ветвистый if — x3.7 (меряет T111).
+        /// There are no branches, and this is a correctness-by-cost requirement, not
+        /// a speed optimization: the case index is random, so a branch predictor
+        /// misses at each of the eight corners. A switch over 20 cases cost x8.1
+        /// versus value noise, a branchy if — x3.7.
         ///
-        /// Набор — 12 рёбер куба, по 4 на плоскость, как в improved Perlin.
-        /// Первая версия брала 8 диагоналей куба + 4 ребра плоскости xy + 4 ребра
-        /// плоскости xz, и это была ошибка: рёбер yz там не было вовсе, и
-        /// матрица вторых моментов выходила diag(6.67, 4.67, 4.67) — ось x была
-        /// громче остальных на 42% по мощности. То есть та самая осевая
-        /// анизотропия, ради которой value noise и менялся, осталась бы на месте
-        /// под новым именем. При 12 рёбрах сумма g gᵀ равна 4I ровно, и набор
-        /// замкнут относительно перестановок осей (проверяет T112).
+        /// The set is the 12 cube edges, 4 per plane, as in improved Perlin.
+        /// With 12 edges the sum g gᵀ is exactly 4I, and the set is closed under
+        /// axis permutations.
         ///
-        /// Про индекс: берётся h % 12, а НЕ привычное (ulong)h·12 >> 32. У
-        /// хеша мёртв верхний бит: на 1.7M узлов решётки ни одно значение не
-        /// оказалось ≥ 2^31, то есть h всегда неотрицателен, и схема на старших
-        /// битах молча вырождалась в нулевой индекс — плоскость yz не
-        /// встречалась ни разу (проверяет T112). Остаток от деления на константу
-        /// компилируется в умножение со сдвигом; разброс по 12 корзинам 0.56%,
-        /// и это неравномерность самого хеша, а не квантование остатка.
+        /// About the index: h % 12, NOT the usual (ulong)h·12 >> 32. The hash has no
+        /// live upper bit, so the shift scheme silently degenerated to a zero index
+        /// and the yz plane never occurred. Remainder by a constant compiles to a
+        /// multiply and shift; the spread over 12 buckets is 0.56%, which is the
+        /// hash's own non-uniformity, not remainder quantization.
         /// </summary>
         internal static double LatticeDot(int x, int y, int z, double fx, double fy, double fz)
         {
@@ -1708,24 +1578,24 @@ namespace Galilego.Universe
             {
                 int h = PerlinLatticeHash(x, y, z);
 
-                // uint, а не int: h >= 0 сегодня, но если верхний бит хеша
-                // оживёт, знаковый остаток дал бы отрицательный индекс.
+                // uint, not int: h >= 0 today, but if the hash's top bit comes alive,
+                // a signed remainder would give a negative index.
                 int idx = (int)((uint)h % 12u);
-                int plane = idx >> 2; // 0 = плоскость xy, 1 = xz, 2 = yz
+                int plane = idx >> 2; // 0 = xy plane, 1 = xz, 2 = yz
                 int k = idx & 3;
 
                 double sa = 1d - (2d * (k & 1));
                 double sb = 1d - (2d * ((k >> 1) & 1));
 
-                // Нулевая ось по плоскости: у xy занят z, у xz — y, у yz — x.
+                // Zero axis by plane: xy has z idle, xz has y, yz has x.
                 double mx = 1d - (plane >> 1);
                 double my = 1d - (plane & 1);
                 double mz = (plane + 1) >> 1;
 
-                // Из двух занятых осей (по возрастанию индекса) первую красит sa.
-                // Для плоскостей xy и xz это ось x, для yz — ось y, поэтому знак y
-                // переключается битом plane>>1. Плоскость xz ось y не красит
-                // вовсе (my = 0), и значение там не важно.
+                // Of the two occupied axes (in increasing index order) the first gets
+                // sa. For the xy and xz planes that is x, for yz it is y, hence the y
+                // sign flips with bit plane>>1. The xz plane does not color y at all
+                // (my = 0), so its value there does not matter.
                 double sy = sb + ((plane >> 1) * (sa - sb));
 
                 return ((sa * Grad2 * mx) * fx) + ((sy * Grad2 * my) * fy) + ((sb * Grad2 * mz) * fz);
@@ -1733,9 +1603,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Градиент в узле решётки вектором — эталонная форма, из которой T112
-        /// берёт набор направлений и сверяет с LatticeDot. В горячем пути не
-        /// используется: материализация вектора там и есть лишняя работа.
+        /// Lattice node gradient as a vector — the reference form from which the test
+        /// takes the direction set and checks it against LatticeDot. Not used on the
+        /// hot path: materializing the vector there is exactly the extra work avoided.
         /// </summary>
         internal static double3 LatticeGradientFast(int x, int y, int z)
         {
@@ -1758,9 +1628,8 @@ namespace Galilego.Universe
 
 
         /// <summary>
-        /// Одна октава выбранного примитива. Раньше был единственный ValueNoise на
-        /// все случаи; теперь точка выбора одна и видна целиком, а не размазана по
-        /// трём вызовам.
+        /// One octave of the selected primitive. The single choice point is visible
+        /// in one place instead of being spread over three call sites.
         /// </summary>
         private static double Octave(TerrainNoiseParams p, double3 at)
         {
@@ -1768,23 +1637,19 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Примитив градиентного шума: 8 углов ячейки, интерполяция quintic,
-        /// набор направлений из 12 рёбер куба. Возвращает ЗНАЧЕНИЕ ОДНОЙ ОКТАВЫ,
-        /// уже умноженное на PerlinScale.
+        /// Gradient noise primitive: 8 cell corners, quintic interpolation, the
+        /// direction set from the 12 cube edges. Returns the VALUE OF ONE OCTAVE,
+        /// already multiplied by PerlinScale.
         ///
-        /// ВАЖНО, старое утверждение здесь было неверным: масштаб НЕ 1.0 и
-        /// функция НЕ обязана лежать в [-1, 1]. Это правда для value noise, где
-        /// SampleHeight нормирует взвешенную сумму октав в [-1, 1] и потому
-        /// |H| <= Amplitude (это и проверял T77). У Перлина нормировки нет -
-        /// вместо неё RMS-множитель PerlinScale = 2.05593, и одна октава доходит
-        /// до ShapeBound = 1.78.
+        /// IMPORTANT: the scale is NOT 1.0 and the function is NOT bounded by
+        /// [-1, 1]. That is true for value noise, where SampleHeight normalizes the
+        /// weighted octave sum to [-1, 1] and thus |H| <= Amplitude. Perlin has no
+        /// such normalization — instead there is the RMS factor
+        /// PerlinScale = 2.05593, and one octave reaches ShapeBound = 1.78.
         ///
-        /// Поэтому потребитель SampleHeight обязан различать два случая:
-        ///   NoiseStyle = Value  ->  |H| <= Amplitude, как и раньше;
-        ///   NoiseStyle = Perlin ->  |H| <= (ShapeBound + ContinentDepth) *
-        ///                           Amplitude, проверяет T128.
-        /// Кто-то мог заменить PerlinScale на 1.0 ради "совместимости" с этим
-        /// комментарием - тогда бы октавы сели вчетверо и порог суши уехал бы.
+        /// Therefore the SampleHeight consumer must distinguish two cases:
+        ///   NoiseStyle = Value  ->  |H| <= Amplitude, as before;
+        ///   NoiseStyle = Perlin ->  |H| <= (ShapeBound + ContinentDepth) * Amplitude.
         /// </summary>
         internal static double GradientNoise(double3 p)
         {
@@ -1814,14 +1679,14 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Значение октавы Перлина вместе с аналитической производной — нужно
-        /// домену по склону (SampleShapeFbm). Новых хешей не считает: 8
-        /// скалярных произведений уже посчитаны для значения, производная — это
-        /// ещё три трилинейных смешивания на ось.
+        /// Perlin octave value together with its analytic derivative — needed by the
+        /// slope domain (SampleShapeFbm). No new hashes: the 8 dot products are
+        /// already computed for the value, and the derivative costs three more
+        /// trilinear blends per axis.
         ///
-        /// Специально НЕ используется для value noise: у него производная
-        /// разрывна на границах ячеек (значение на углу просто меняется
-        /// константой), и домен по ней дрожал бы на стыках.
+        /// Deliberately NOT used for value noise: its derivative is discontinuous at
+        /// cell borders (the corner value simply changes as a constant), and the
+        /// domain would jitter at the seams.
         /// </summary>
         internal static double GradientNoiseWithDerivative(double3 p, out double3 derivative)
         {
@@ -1838,8 +1703,8 @@ namespace Galilego.Universe
             double uy = Quintic(fy);
             double uz = Quintic(fz);
 
-            // du/dt квинтического сглаживания: 30·t²(t−1)². Ноль на границах
-            // ячейки — поэтому производная в целом непрерывна.
+            // du/dt of the quintic smoothing: 30·t²(t−1)². Zero at cell borders,
+            // so the derivative is continuous overall.
             double dudx = 30d * fx * fx * ((fx - 1d) * (fx - 1d));
             double dvdy = 30d * fy * fy * ((fy - 1d) * (fy - 1d));
             double dwdz = 30d * fz * fz * ((fz - 1d) * (fz - 1d));
@@ -1862,8 +1727,8 @@ namespace Galilego.Universe
             double n011 = LatticeDot(ix, iy + 1, iz + 1, fx, fy - 1d, fz - 1d);
             double n111 = LatticeDot(ix + 1, iy + 1, iz + 1, fx - 1d, fy - 1d, fz - 1d);
 
-            // ∂/∂x = трилинейная смесь gx по (u,v,w) + du/dx · разности n по x,
-            // смешанные только по (v,w). Аналогично для y и z.
+            // ∂/∂x = trilinear blend of gx over (u,v,w) + du/dx · n differences
+            // along x, blended only over (v,w). Similarly for y and z.
             double gx = TrilinearBlend(g000.x, g100.x, g010.x, g110.x, g001.x, g101.x, g011.x, g111.x, ux, uy, uz)
                 + (dudx * Bilerp(n100 - n000, n110 - n010, n101 - n001, n111 - n011, uy, uz));
             double gy = TrilinearBlend(g000.y, g100.y, g010.y, g110.y, g001.y, g101.y, g011.y, g111.y, ux, uy, uz)
@@ -1871,9 +1736,9 @@ namespace Galilego.Universe
             double gz = TrilinearBlend(g000.z, g100.z, g010.z, g110.z, g001.z, g101.z, g011.z, g111.z, ux, uy, uz)
                 + (dwdz * Bilerp(n001 - n000, n101 - n100, n011 - n010, n111 - n110, ux, uy));
 
-            // Производная масштабируется тем же коэффициентом, что и значение:
-            // иначе домен по склону мерил бы |∇| в других единицах, и параметр
-            // SlopeDamp перестал бы значить одно и то же при разных примитивах.
+            // The derivative is scaled by the same coefficient as the value:
+            // otherwise the slope domain would measure |∇| in different units, and
+            // SlopeDamp would no longer mean the same thing across primitives.
             derivative = new double3(gx, gy, gz) * PerlinScale;
             return TrilinearBlend(n000, n100, n010, n110, n001, n101, n011, n111, ux, uy, uz) * PerlinScale;
         }
@@ -1901,9 +1766,9 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Пачка вершин тайла: направления (unit, body-fixed, double3) → форма
-    /// (double) + цветовая маска (float; цвет физику не касается).
-    /// Вызывает те же статики, что меряет T84.
+    /// A tile's vertex batch: directions (unit, body-fixed, double3) → shape
+    /// (double) + color mask (float; color does not affect physics).
+    /// Calls the same statics.
     /// </summary>
     [BurstCompile]
     public struct TerrainTileJob : IJobParallelFor

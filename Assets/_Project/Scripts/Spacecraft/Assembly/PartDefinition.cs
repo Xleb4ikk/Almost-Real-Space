@@ -4,13 +4,13 @@ using UnityEngine;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Форма детали для тензора инерции. Point — масса без геометрии (этап R2,
-    /// как раньше). Размеры в Dimensions, м:
-    ///   Box:      полные размеры вдоль осей детали (x, y, z);
-    ///   Cylinder: x = радиус, y = высота вдоль оси Y детали, центр в середине;
-    ///   Sphere:   x = радиус;
-    ///   Frustum:  x = нижний радиус, y = высота, z = верхний радиус
-    ///             (обрезанный конус-переходник, ось Y, центр в середине).
+    /// Part shape for the inertia tensor. Point — mass without geometry.
+    /// Dimensions are in Dimensions, metres:
+    ///   Box:      full size along the part axes (x, y, z);
+    ///   Cylinder: x = radius, y = height along the part's Y axis, centred;
+    ///   Sphere:   x = radius;
+    ///   Frustum:  x = bottom radius, y = height, z = top radius
+    ///             (truncated cone adapter, Y axis, centred).
     /// </summary>
     public enum PartShape
     {
@@ -22,14 +22,14 @@ namespace Galilego.Spacecraft
     }
 
     /// <summary>
-    /// Сериализуемое описание детали. Offset — центр детали в системе корабля, м.
-    /// Orientation — поворот системы детали относительно системы корабля
-    /// (кватернион x, y, z, w; по умолчанию тождественный). Масса — явная:
-    /// форма задаёт только инерцию, плотность не используется.
-    /// ParentIndex — индекс родительской детали в массиве, -1 для корня.
-    /// JointAnchor и EngineOffset — точки в системе детали, м.
-    /// BreakTorqueNm — предел момента стыка; JointStrengthNewtons — предел силы.
-    /// Поля стыков в этой фазе только данные: граф проверяется в фазе 2.
+    /// Serializable part description. Offset — the part centre in the ship frame, metres.
+    /// Orientation — rotation of the part frame relative to the ship frame
+    /// (quaternion x, y, z, w; identity by default). Mass is explicit: the shape
+    /// only defines inertia, density is not used.
+    /// ParentIndex — index of the parent part in the array, -1 for the root.
+    /// JointAnchor and EngineOffset — points in the part frame, metres.
+    /// BreakTorqueNm — joint torque limit; JointStrengthNewtons — force limit.
+    /// Joint fields are data only at this stage: the graph is validated in phase 2.
     /// </summary>
     [Serializable]
     public class PartDefinition

@@ -4,23 +4,25 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Визуальная атмосфера. Рисуется КАМЕРА-ЦЕНТРИРОВАННЫМ куполом-сферой
-    /// (радиус 0.5·far, мировая ориентация), шейдер Galilego/PlanetAtmosphere
-    /// марширует луч и аналитически пересекает его со сферами атмосферы и
-    /// планеты в мировом кадре. Купол всегда влезает в far, поэтому основную
-    /// камеру НЕ надо растягивать под атмосферу (иначе far/near → z-fighting).
+    /// Visual atmosphere. Drawn by a CAMERA-CENTERED dome sphere
+    /// (radius 0.5·far, world orientation); the Galilego/PlanetAtmosphere
+    /// shader marches the ray and analytically intersects it with the
+    /// atmosphere and planet spheres in the world frame. The dome always fits
+    /// inside far, so the main camera does NOT need to be stretched to cover
+    /// the atmosphere (otherwise far/near → z-fighting).
     ///
-    /// Физические коэффициенты β берутся из AtmosphereOptics (общий источник с
-    /// CPU SkyPhysics/SkyEnvironment). Тут же на CPU строятся две LUT, которые
-    /// шейдер только сэмплирует:
-    ///   * Transmittance LUT — прозрачность к Солнцу от (высота, cos θ);
-    ///   * Multi-Scattering LUT — приближение бесконечного многократного
-    ///     рассеяния (синий зенит без пересвета горизонта).
-    /// LUT зависят только от профиля/радиуса, поэтому строятся один раз при
-    /// старте (и пересчитываются, если параметры изменились).
+    /// Physical coefficients β come from AtmosphereOptics (shared source with
+    /// the CPU SkyPhysics/SkyEnvironment). Two LUTs are built on the CPU here
+    /// and only sampled by the shader:
+    ///   * Transmittance LUT — transparency to the Sun as a function of
+    ///     (altitude, cos θ);
+    ///   * Multi-Scattering LUT — approximation of infinite multiple
+    ///     scattering (blue zenith without a blown-out horizon).
+    /// The LUTs depend only on the profile/radius, so they are built once at
+    /// start (and rebuilt if the parameters changed).
     ///
-    /// Все параметры — из AtmosphereProfile, тумблер VisualEnabled, плюс
-    /// DebugMode для визуализации полей шейдера.
+    /// All parameters come from AtmosphereProfile, the VisualEnabled toggle,
+    /// plus DebugMode for visualizing the shader fields.
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-35)]
     public sealed class PlanetAtmosphereView : MonoBehaviour
@@ -61,9 +63,9 @@ namespace Galilego.Universe
         private Texture2D multiScatterLut;
         private bool loggedOnce;
 
-        // Подпись параметров, от которых зависят LUT. Пока совпадает — LUT не
-        // пересобираем. Иначе смена AerosolScale/плотности/озона в рантайме не
-        // влияла бы на небо (LUT запекались один раз в Start).
+        // Signature of the parameters the LUTs depend on: while it matches, the
+        // LUTs are not rebuilt, so runtime changes of AerosolScale/density/ozone
+        // still reach the sky.
         private bool lutBuilt;
         private double lutDensity;
         private double lutScaleHeight;
@@ -101,7 +103,7 @@ namespace Galilego.Universe
 
             BuildLuts();
 
-            // Купол — top-level (НЕ под Terra: у неё скейл 2286000).
+            // Dome is top-level (NOT under Terra: its scale is 2286000).
             GameObject go = new GameObject("AtmosphereDome");
             MeshFilter filter = go.AddComponent<MeshFilter>();
             MeshRenderer renderer = go.AddComponent<MeshRenderer>();
@@ -237,8 +239,8 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Профиль мог смениться в рантайме (AerosolScale и т.п.) — тогда
-            // пересобираем LUT, иначе небо не отреагирует.
+            // The profile may have changed at runtime (AerosolScale etc.):
+            // rebuild the LUTs so the sky reacts.
             if (LutNeedsRebuild())
             {
                 BuildLuts();
@@ -255,10 +257,10 @@ namespace Galilego.Universe
             AtmosphereOptics.Coefficients coeff = profile.ToOptics();
 
             Vector3 cameraPosition = camera.transform.position;
-            // Меш купола — единичный радиус (BuildSphereMesh(1f, …)), поэтому
-            // localScale == мировой радиус. Радиус 0.5·far держит поверхность
-            // купола ВНУТРИ far: иначе вершины у края фрустума зарезаются
-            // far-плоскостью и в небе появляются чёрные дыры.
+            // The dome mesh has unit radius (BuildSphereMesh(1f, …)), so
+            // localScale == world radius. Radius 0.5·far keeps the dome surface
+            // INSIDE far: otherwise far-plane clipping cuts vertices at the
+            // frustum edge and black holes appear in the sky.
             float domeRadius = Mathf.Max(1f, camera.farClipPlane * 0.5f);
             shell.position = cameraPosition;
             shell.rotation = Quaternion.identity;
@@ -278,13 +280,14 @@ namespace Galilego.Universe
                 }
             }
 
-            // Цвет фотосферы (~5772 K) для вклада рассеяния: единый источник
-            // с SunBillboard/SkyEnvironment (SkyEnvironment.PhotosphereLinear).
+            // Photosphere color (~5772 K) for the scattering contribution:
+            // single source shared with SunBillboard/SkyEnvironment
+            // (SkyEnvironment.PhotosphereLinear).
             Vector3d starLinear = SkyEnvironment.PhotosphereLinear;
             Shader.SetGlobalVector("_AtmSunColor",
                 new Vector3((float)starLinear.X, (float)starLinear.Y, (float)starLinear.Z));
 
-            // Тинты — только множители поверх физики (1 = без изменений).
+            // Tints are just multipliers on top of physics (1 = unchanged).
             Color rayleighTint = profile.RayleighColor;
             Color mieTint = profile.MieColor;
             Vector3d betaRayleigh = AtmosphereOptics.VecMul(

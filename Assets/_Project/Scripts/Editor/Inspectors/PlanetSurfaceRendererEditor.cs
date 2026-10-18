@@ -4,10 +4,9 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Инспектор рендера планеты: LOD и производительность разнесены по
-    /// секциям, dev-действия (пересборка чанков, очистка кэша) — кнопками.
-    /// Кнопки работают только в Play: вне его живой HeightfieldTerrain ещё не
-    /// существует, и пересобирать нечего.
+    /// Planet renderer inspector: LOD and performance split into sections, dev
+    /// actions (chunk rebuild, cache clear) as buttons. The buttons work in Play
+    /// mode only: outside it no live HeightfieldTerrain exists yet, so there is nothing to rebuild.
     /// </summary>
     [CustomEditor(typeof(PlanetSurfaceRenderer))]
     public sealed class PlanetSurfaceRendererEditor : Editor
@@ -32,12 +31,8 @@ namespace Galilego.Universe.EditorTools
                 Field("SplitFactor");
                 Field("MergeHysteresis");
                 Field("SkirtFactor");
-                // [ФАЗА 2.5] Раньше в этом списке не было MinTileResolution и
-                // ResolutionHalveEveryLevels, хотя оба напрямую определяют
-                // разрешение дальних чанков. Поля были видны только в
-                // «полном» инспекторе, то есть настраивать их приходилось
-                // переключателем вверху окна — мелочь, которая стоила реального
-                // времени при подборе LOD.
+                // [PHASE 2.5] MinTileResolution and ResolutionHalveEveryLevels directly
+                // set the resolution of distant chunks.
                 Field("MinTileResolution");
                 Field("ResolutionHalveEveryLevels");
                 EditorGUI.indentLevel--;

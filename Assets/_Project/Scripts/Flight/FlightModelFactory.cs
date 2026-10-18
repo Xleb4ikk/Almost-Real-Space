@@ -8,10 +8,10 @@ using UnityEngine;
 namespace Galilego.Flight
 {
     /// <summary>
-    /// Метка сопла на МОДЕЛИ детали (пока моделей РСУ/САС нет — делаются пустышки в 3D-редакторе
-    /// или в префабе). Позиция = transform.position, ВЫХЛОП идёт вдоль transform.forward, сила на
-    /// корабль — обратно. Фабрика берёт метки вместо заглушек, поэтому тяга приходит ровно из того
-    /// места, где стоит сопло на модели.
+    /// Nozzle marker on a part MODEL (while there are no RCS/LES models — placeholders are made in a
+    /// 3D editor or in the prefab). Position = transform.position, exhaust goes along transform.forward,
+    /// force on the ship — backwards. The factory takes markers instead of placeholders, so thrust
+    /// comes exactly from where the nozzle sits on the model.
     /// </summary>
     public sealed class FlightMountMarker : MonoBehaviour
     {
@@ -23,8 +23,8 @@ namespace Galilego.Flight
     }
 
     /// <summary>
-    /// Параметры САС и РСУ. ВСЕ числа — заглушки порядка Orion/Apollo (САС: увод 1.78 МН ≈ 4 с,
-    /// отстрел 178 кН ≈ 1.8 с; РСУ: сопла по 450 Н). Модели нет — настройте под себя здесь.
+    /// LES and RCS parameters. ALL numbers are placeholders of Orion/Apollo order (LES: abort 1.78 MN ≈ 4 s,
+    /// jettison 178 kN ≈ 1.8 s; RCS: 450 N per nozzle). No model — tune them here.
     /// </summary>
     [Serializable]
     public sealed class FlightSystemsConfig
@@ -33,8 +33,8 @@ namespace Galilego.Flight
         public double LesDryKg = 2400d;
         public double LesHeight = 7d;
         public double LesRadius = 0.55d;
-        public int AbortNozzles = 5;               // сопел увода (кольцо, кант внутрь)
-        public double AbortThrustN = 1.78e6d;      // суммарно
+        public int AbortNozzles = 5;               // abort nozzles (ring, canted inward)
+        public double AbortThrustN = 1.78e6d;      // total
         public double AbortIspS = 255d;
         public double AbortPropellantKg = 3000d;
         public double AbortCantDeg = 20d;
@@ -44,20 +44,20 @@ namespace Galilego.Flight
         public double JettisonPropellantKg = 140d;
 
         public bool EnableRcs = true;
-        public int RcsBlocks = 4;                  // блоков по кольцу
-        public double RcsThrustN = 450d;           // тяга одного сопла
+        public int RcsBlocks = 4;                  // blocks around the ring
+        public double RcsThrustN = 450d;           // thrust per nozzle
         public double RcsIspS = 290d;
         public double RcsDryKgPerBlock = 15d;
         public double RcsPropellantKgPerNozzle = 12d;
     }
 
-    /// <summary>Сборка VesselFlightModel из чертежа: реальные двигатели, САС, РСУ.</summary>
+    /// <summary>Builds a VesselFlightModel from a blueprint: real engines, LES, RCS.</summary>
     public static class FlightModelFactory
     {
         /// <summary>
-        /// defs — PartDefinition[] чертежа (BuildMath.ToPartDefinitions); в defs для САС дописывается
-        /// деталь-башня, поэтому возвращается НОВЫЙ массив (Defs модели). Массы defs — полные
-        /// (с топливом и аппаратурой) — как и должен получить Proxy.Build при старте.
+        /// defs — PartDefinition[] of the blueprint (BuildMath.ToPartDefinitions); for LES a tower
+        /// part is appended, so a NEW array is returned (model Defs). defs masses are full
+        /// (with propellant and hardware) — as Proxy.Build must receive them at start.
         /// </summary>
         public static VesselFlightModel Build(
             List<PlacedPart> parts, PartDefinition[] defs, List<StageCore> cores, FlightSystemsConfig cfg)
@@ -87,7 +87,7 @@ namespace Galilego.Flight
 
             var model = new VesselFlightModel(all, dry, prop, stage, hw);
 
-            // ─ маршевые двигатели: точка приложения — шарнир подвеса (верх двигателя), ось +Y ─
+            // ─ main engines: application point — gimbal pivot (top of the engine), axis +Y ─
             for (int i = 0; i < n; i++)
             {
                 if (parts[i].Kind != PartKind.Engine || parts[i].EngineSpec == null) continue;
@@ -107,7 +107,7 @@ namespace Galilego.Flight
 
             if (host < 0) return model;
 
-            // ─ метки на моделях деталей (если есть) ─
+            // ─ markers on part models (if any) ─
             var markers = new List<(FlightMountMarker m, int part)>();
             for (int i = 0; i < n; i++)
             {
@@ -121,7 +121,7 @@ namespace Galilego.Flight
             double ringR = Math.Max(0.5d, hd.Dimensions.x * 0.95d);
             int lesIndex = -1;
 
-            // ─ САС: башня — отдельная деталь (свой Rigidbody в зоне, свой стык) ─
+            // ─ LES: the tower is a separate part (own Rigidbody in the zone, own joint) ─
             if (les)
             {
                 lesIndex = n;
@@ -137,7 +137,7 @@ namespace Galilego.Flight
 
                 bool abortMarked = markers.Exists(x => x.m.Kind == ThrusterKind.AbortMotor);
                 bool jetMarked = markers.Exists(x => x.m.Kind == ThrusterKind.JettisonMotor);
-                // Увод: сопла внизу башни, кант ВНУТРЬ (равнодействующая через ось и ЦМ стека).
+                // Abort: nozzles at the bottom of the tower, canted INWARD (net force through the axis and stack COM).
                 if (!abortMarked)
                     AddRing(model, ThrusterKind.AbortMotor, lesIndex, cfg.AbortNozzles, new Vector3d(hd.Offset.x, topY + 0.6d, hd.Offset.z),
                         0.45d, cfg.AbortThrustN, cfg.AbortIspS, cfg.AbortPropellantKg, cfg.AbortCantDeg, "Увод");
@@ -146,14 +146,14 @@ namespace Galilego.Flight
                         0.40d, cfg.JettisonThrustN, cfg.JettisonIspS, cfg.JettisonPropellantKg, 25d, "Отстрел");
                 model.ArmLes(lesIndex);
 
-                // Остаётся с капсулой при аварии: капсула, всё выше неё по высоте, башня.
+                // Stays with the capsule during an abort: the capsule, everything above it, the tower.
                 var keep = new bool[total];
                 for (int i = 0; i < n; i++) keep[i] = i == host || (parts[i].Pivot.y >= parts[host].Pivot.y && i != host && parts[i].Kind != PartKind.Engine);
                 keep[lesIndex] = true;
                 model.AbortKeep = keep;
             }
 
-            // ─ РСУ: блоки по кольцу на хосте; в каждом блоке 5 сопел «в разные стороны» ─
+            // ─ RCS: blocks around the ring on the host; each block has 5 nozzles pointing in different directions ─
             double hwRcs = 0d;
             bool rcsMarked = markers.Exists(x => x.m.Kind == ThrusterKind.Rcs);
             if (cfg.EnableRcs && !rcsMarked)
@@ -165,7 +165,7 @@ namespace Galilego.Flight
                     var rad = new Vector3d(Math.Cos(a), 0d, Math.Sin(a));
                     var tan = new Vector3d(-Math.Sin(a), 0d, Math.Cos(a));
                     var pos = new Vector3d(hd.Offset.x + (ringR * rad.X), y, hd.Offset.z + (ringR * rad.Z));
-                    // 5 сопел блока: тангенциальные ±, радиально внутрь (выхлоп наружу), вдоль оси ±.
+                    // 5 nozzles per block: tangential ±, radially inward (exhaust outward), along the axis ±.
                     foreach (Vector3d f in new[] { tan, -tan, -rad, new Vector3d(0d, 1d, 0d), new Vector3d(0d, -1d, 0d) })
                         model.Thrusters.Add(new Thruster
                         {
@@ -176,7 +176,7 @@ namespace Galilego.Flight
                 }
             }
 
-            // Метки с моделей: позиция/направление — из трансформов (реальные места сопел).
+            // Markers from models: position/direction come from transforms (real nozzle locations).
             foreach (var (mk, part) in markers)
             {
                 Transform root = parts[part].Visual.Root.transform;
@@ -196,7 +196,7 @@ namespace Galilego.Flight
 
             hw[host] += hwRcs;
 
-            // Начальные массы Proxy: деталь = сухая + топливо + аппаратура + топливо РСУ/САС на ней.
+            // Initial Proxy masses: part = dry + propellant + hardware + RCS/LES propellant on it.
             for (int i = 0; i < total; i++) all[i].MassKg = model.PartMassKg(i);
             return model;
         }
@@ -209,7 +209,7 @@ namespace Galilego.Flight
             {
                 double a = k * 2d * Math.PI / count;
                 var rad = new Vector3d(Math.Cos(a), 0d, Math.Sin(a));
-                // Выхлоп вниз-наружу → сила вверх-внутрь: F = cos(c)·ŷ − sin(c)·r̂.
+                // Exhaust down-and-out → force up-and-in: F = cos(c)·ŷ − sin(c)·r̂.
                 Vector3d dir = (new Vector3d(0d, Math.Cos(cant), 0d)) - (rad * Math.Sin(cant));
                 model.Thrusters.Add(new Thruster
                 {

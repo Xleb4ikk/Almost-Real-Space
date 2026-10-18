@@ -5,14 +5,14 @@ using Galilego.Universe;
 namespace Galilego.Events
 {
     /// <summary>
-    /// Пересечение высотной оболочки вокруг тела:
-    /// g = |r_корабль − r_тело(t)| − (Radius + ThresholdAltitude).
-    /// Один класс на два порога: вход/выход из атмосферы (порог =
-    /// TopAltitudeMeters) и касание поверхности (порог = 0). Позиция тела
-    /// вычисляется на лету через EvaluateWorldState — это чтение, не мутация,
-    /// поэтому pure-контракт детектора не нарушен. Фабрики ниже задают
-    /// осмысленные связки «порог + направление + приоритет», чтобы вызывающему
-    /// коду не приходилось собирать их вручную и ошибаться в знаках.
+    /// Crossing of an altitude shell around a body:
+    /// g = |r_ship − r_body(t)| − (Radius + ThresholdAltitude).
+    /// One class for two thresholds: atmosphere enter/exit (threshold =
+    /// TopAltitudeMeters) and surface touch (threshold = 0). The body position is
+    /// computed on the fly via EvaluateWorldState — a read, not a mutation, so the
+    /// detector's pure contract is not violated. The factories below define
+    /// meaningful "threshold + direction + priority" combos so callers do not have
+    /// to assemble them by hand and get the signs wrong.
     /// </summary>
     public sealed class AltitudeCrossingDetector : ICrossingDetector
     {
@@ -30,7 +30,7 @@ namespace Galilego.Events
 
         public OrbitingBody Body => body;
 
-        /// <summary>Порог высоты над Radius (м): сфера, чьё пересечение детектится.</summary>
+        /// <summary>Altitude threshold above Radius (m): the sphere whose crossing is detected.</summary>
         public double ThresholdAltitude => thresholdAltitude;
 
         public AltitudeCrossingDetector(
@@ -40,8 +40,8 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Вариант с рельефом: порог отсчитывается от локальной высоты поверхности
-        /// (используется для касания: g = |rel| − (R + H(lat,lon))). null — сферический путь.
+        /// Terrain variant: the threshold is measured from the local surface height
+        /// (used for touch: g = |rel| − (R + H(lat,lon))). null — spherical path.
         /// </summary>
         public AltitudeCrossingDetector(
             OrbitingBody body, double thresholdAltitude, EventDirection direction, int priority, string name, EventKind kind, ITerrainModel terrainModel)
@@ -55,7 +55,7 @@ namespace Galilego.Events
             Kind = kind;
         }
 
-        /// <summary>Вход в атмосферу сверху вниз (g: + → −).</summary>
+        /// <summary>Atmosphere entry top to bottom (g: + → −).</summary>
         public static AltitudeCrossingDetector ForAtmosphereEntry(OrbitingBody body)
         {
             if (body == null)
@@ -67,7 +67,7 @@ namespace Galilego.Events
                 EventPriorities.Atmosphere, "AtmosphereEntry:" + body.Name, EventKind.AtmosphereEntry);
         }
 
-        /// <summary>Выход из атмосферы снизу вверх (g: − → +).</summary>
+        /// <summary>Atmosphere exit bottom to top (g: − → +).</summary>
         public static AltitudeCrossingDetector ForAtmosphereExit(OrbitingBody body)
         {
             if (body == null)
@@ -79,7 +79,7 @@ namespace Galilego.Events
                 EventPriorities.Atmosphere, "AtmosphereExit:" + body.Name, EventKind.AtmosphereExit);
         }
 
-        /// <summary>Касание поверхности (g: + → − через Radius); рельеф тела учитывается автоматически.</summary>
+        /// <summary>Surface touch (g: + → − through Radius); the body's terrain is taken into account automatically.</summary>
         public static AltitudeCrossingDetector ForTouchdown(OrbitingBody body)
         {
             if (body == null)

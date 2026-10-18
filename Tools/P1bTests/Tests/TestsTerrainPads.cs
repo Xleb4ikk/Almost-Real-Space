@@ -5,26 +5,25 @@ using Galilego.Universe;
 using Unity.Collections;
 using Unity.Mathematics;
 
-// T109 — ровные площадки в точках планеты (PQS-моды, аналог FlattenArea в KSP).
+// T109 — flat pads at points on a planet (PQS mods, analogous to KSP's FlattenArea).
 //
-// Что тут может сломаться и ПОЧЕМУ это страшно:
-//  1. Модификаторы добавлены в TerrainNoise.SampleHeight — единственную функцию
-//     формы рельефа, от которой зависят и рендер, и физика, и нормали, и
-//     декорации. Ошибка здесь не «сломает площадку», а тихо разъедется между
-//     тем, что видно, и тем, по чему ходят.
-//  2. ПУСТОЙ список обязан дать бит-в-бит прежний рельеф. Иначе включение
-//     «просто списка площадок» сдвинет всю существующую карту мира, потому
-//     что каждая сцена и каждый старый тест получат пустую таблицу.
-//  3. Площадка должна быть ровной ВНУТРИ и плавно сходить наружу. Резкий диск
-//     дал бы стену и излом нормалей.
-//  4. Кламп уровня моря не должен топить площадку и не должен мешать раскопкам
-//     ниже моря.
-//  5. Порядок площадок при пересечении должен быть детерминирован, иначе «база
-//     поверх базы» зависела бы от порядка обхода.
+// What can break here and WHY it matters:
+//  1. The modifiers feed into TerrainNoise.SampleHeight — the single terrain-shape
+//     function that rendering, physics, normals and decor all depend on. An error
+//     here does not "break a pad", it silently diverges what is seen from what is
+//     walked on.
+//  2. An EMPTY list must give the previous terrain bit-for-bit. Otherwise merely
+//     enabling "a list of pads" would shift the whole existing world map, because
+//     every scene and every test would receive an empty table.
+//  3. A pad must be flat INSIDE and blend smoothly outwards. A hard disc would give
+//     a wall and kinked normals.
+//  4. The sea-level clamp must not drown a pad and must not block digs below sea.
+//  5. Pad order on overlap must be deterministic, otherwise "base over base" would
+//     depend on traversal order.
 
 internal static partial class P1bTests
 {
-    private const double PadRadius = 1143000d;   // Terra из сцены
+    private const double PadRadius = 1143000d;   // Terra from the scene
     private const double PadAmplitude = 9144d;   // EarthLike.asset
     private const double PadLatDeg = -27.8405d;
     private const double PadLonDeg = -119.3773d;
@@ -34,13 +33,13 @@ internal static partial class P1bTests
         return degrees * (Math.PI / 180d);
     }
 
-    /// <summary>Смещение на метры вдоль меридиана (север).</summary>
+    /// <summary>Offset in metres along the meridian (north).</summary>
     private static double PadOffsetNorth(double meters)
     {
         return PadRad(PadLatDeg) + (meters / PadRadius);
     }
 
-    /// <summary>Смещение на метры вдоль параллели (восток), с учётом сжатия по широте.</summary>
+    /// <summary>Offset in metres along the parallel (east), accounting for latitude compression.</summary>
     private static double PadOffsetEast(double meters)
     {
         return PadRad(PadLonDeg) + (meters / (PadRadius * Math.Cos(PadRad(PadLatDeg))));
@@ -84,14 +83,10 @@ internal static partial class P1bTests
 
     private static int Test109_TerrainPads()
     {
-        // 0. КОНТЕЙНЕР ДОЛЖЕН БЫТЬ ВАЛИДНЫМ ДАЖЕ ПРИ НУЛЕ ПЛОЩАДОК.
-        //    Это не косметика. TerrainNoiseParams уходит в TerrainTileJob
-        //    целиком, а планировщик job'ов Unity требует валидные контейнеры во
-        //    ВСЕХ полях структуры джобы в момент Schedule — независимо от того,
-        //    читает ли их код. На default(NativeArray) рендер падал целиком:
-        //    «TerrainTileJob.Params.Mods has not been assigned or constructed»,
-        //    и планета пропадала. Проверка IsCreated внутри SampleHeight не
-        //    спасает — до неё управление не доходит.
+        // 0. THE CONTAINER MUST BE VALID EVEN WITH ZERO PADS.
+        //    TerrainNoiseParams is passed into TerrainTileJob wholesale, and Unity's
+        //    job scheduler requires valid containers in ALL fields at Schedule time,
+        //    regardless of whether the code reads them.
         HeightfieldTerrain freshTerrain = MakePadTerrain();
         Check(freshTerrain.Mods.IsCreated, "T109 terrain-pads",
             "у свежего рельефа таблица площадок ВАЛИДНА (иначе рендер падает на Schedule)");
@@ -101,15 +96,15 @@ internal static partial class P1bTests
         Check(noPads.Mods.IsCreated && noPads.Mods.Length == 0, "T109 terrain-pads",
             "пустой список даёт валидную пустую таблицу, а не default");
 
-        // SetModifiers на пустом месте не должен ломать валидность: сюда
-        // попадает рендер, который пересобирает params каждый кадр.
+        // SetModifiers on an empty set must not break validity: the renderer lands
+        // here, rebuilding params every frame.
         noPads.SetModifiers(new List<TerrainModifier> { Pad(PadLatDeg, PadLonDeg, 100d, 300d, 250d) }, PadRadius);
         noPads.SetModifiers(new List<TerrainModifier>(), PadRadius);
         Check(noPads.Mods.IsCreated, "T109 terrain-pads",
             "после добавления и удаления площадки таблица остаётся валидной");
 
-        // 1. Мешающая проверка: естественный рельеф обязан быть неровным, иначе
-        //    все проверки ниже проходят на пустом месте и ничего не значат.
+        // 1. Control check: the natural terrain must be uneven, otherwise all the
+        //    checks below pass vacuously and mean nothing.
         HeightfieldTerrain plain = MakePadTerrain();
         double natCenter = plain.GetRawHeightMeters(null, PadRad(PadLatDeg), PadRad(PadLonDeg));
         double nat250 = plain.GetRawHeightMeters(null, PadOffsetNorth(250d), PadRad(PadLonDeg));
@@ -118,9 +113,9 @@ internal static partial class P1bTests
             "T109 terrain-pads",
             "естественный рельеф неровный (иначе тесты площадок нечего проверять)");
 
-        // 1. БИТ-В-БИТ: без площадок рельеф не меняется ни на ульпу. Сверяем
-        //    пустую таблицу и выключенную площадку — это разные ветки, и обе
-        //    обязаны быть мёртвыми по выходу.
+        // 1. BIT-EXACT: without pads the terrain does not change by a single ulp.
+        //    Compare the empty table and a disabled pad — different branches, both
+        //    must be no-ops at the output.
         HeightfieldTerrain emptyTable = MakePadTerrain();
         emptyTable.SetModifiers(new List<TerrainModifier>(), PadRadius);
         Check(natCenter == emptyTable.GetRawHeightMeters(null, PadRad(PadLatDeg), PadRad(PadLonDeg)),
@@ -135,7 +130,7 @@ internal static partial class P1bTests
             "T109 terrain-pads",
             "выключенная площадка (радиус 0) не трогает рельеф");
 
-        // 2. Ровное ядро: целевая высота, заведомо отличная от естественной.
+        // 2. Flat core: target height deliberately different from the natural one.
         const double target = 250d;
         HeightfieldTerrain padded = MakePadTerrain();
         padded.SetModifiers(
@@ -147,7 +142,7 @@ internal static partial class P1bTests
         Check(Math.Abs(natCenter - target) > 1d, "T109 terrain-pads",
             "естественная высота в центре отличается от целевой (тест не тривиален)");
 
-        // 3. Ядро ровное по всей площади: север/юг/восток/запад внутри InnerRadius.
+        // 3. Core flat over its whole area: north/south/east/west inside InnerRadius.
         double maxCoreDeviation = 0d;
         double[] probes = { 0d, 20d, 60d, 110d, -90d, -30d, 45d, -60d, 100d, -100d };
         for (int i = 0; i < probes.Length; i++)
@@ -169,8 +164,8 @@ internal static partial class P1bTests
             "ядро ровное во всех " + (probes.Length * 2) + " пробах (макс. отклонение "
             + maxCoreDeviation.ToString("E2") + " м)");
 
-        // 4. Фартук. Вес подмешивания идёт от 0 у внешнего края к 1 у ядра,
-        //    поэтому отклонение от целевой УБЫВАЕТ к центру.
+        // 4. Apron. The blend weight goes from 0 at the outer edge to 1 at the core,
+        //    so the deviation from the target DECREASES towards the centre.
         double outerDeviation = Math.Abs(nat500 - target);
         double previousDeviation = outerDeviation;
         bool monotone = true;
@@ -196,13 +191,11 @@ internal static partial class P1bTests
             "на внутренней границе фартука высота приходит к целевой ("
             + atInnerEdge.ToString("F6") + " м)");
 
-        // 4a. ФОРМА фартука, а не только «монотонный». Вес обязан быть ровно
-        //     smoothstep: нулевые производные на обоих концах — ради этого
-        //     фартук и делается гладким, иначе на границе площадки в нормалях
-        //     появляется излом, а здания на краю встают с наклоном.
-        //     Проверяем не «плавно вообще», а конкретное значение на четверти:
-        //     smoothstep(0.25) = 0.15625. Линейная интерполяция дала бы 0.25,
-        //     жёсткий диск — 0 или 1. Одно число отличает все три варианта.
+        // 4a. The SHAPE of the apron, not just "monotone". The weight must be exactly
+        //     smoothstep: zero derivatives at both ends, which is why the apron is
+        //     smooth — otherwise normals kink at the pad edge and buildings on the rim
+        //     sit tilted. Check a concrete value at the quarter point:
+        //     smoothstep(0.25) = 0.15625 (linear would give 0.25, a hard disc 0 or 1).
         double cosOuterProbe = Math.Cos(400d / PadRadius);
         double cosInnerProbe = Math.Cos(120d / PadRadius);
         double quarterAngle = Math.Acos(cosOuterProbe - ((cosOuterProbe - cosInnerProbe) * 0.25d));
@@ -214,7 +207,7 @@ internal static partial class P1bTests
             "форма фартука — smoothstep (вес на четверти " + quarterWeight.ToString("F5")
             + " вместо 0,15625; линейная дала бы 0,25)");
 
-        // На половине фартука вес обязан быть ровно 0.5 — симметрия кривой.
+        // At half the apron the weight must be exactly 0.5 — curve symmetry.
         double halfAngle = Math.Acos(cosOuterProbe - ((cosOuterProbe - cosInnerProbe) * 0.5d));
         double halfDistance = halfAngle * PadRadius;
         double natHalf = plain.GetRawHeightMeters(null, PadOffsetNorth(halfDistance), PadRad(PadLonDeg));
@@ -223,13 +216,13 @@ internal static partial class P1bTests
         Check(Math.Abs(halfWeight - 0.5d) < 1e-3, "T109 terrain-pads",
             "фартук симметричен (вес на половине " + halfWeight.ToString("F5") + ")");
 
-        // 5. Снаружи площадки высота не тронута БИТ-В-БИТ.
+        // 5. Outside the pad the height is untouched BIT-EXACT.
         double naturalFar = plain.GetRawHeightMeters(null, PadOffsetNorth(900d), PadRad(PadLonDeg));
         Check(naturalFar == padded.GetRawHeightMeters(null, PadOffsetNorth(900d), PadRad(PadLonDeg)),
             "T109 terrain-pads", "за внешним радиусом рельеф не тронут БИТ-В-БИТ");
 
-        // 6. Нормаль над ядром = зенит. Косвенно, но строго: если бы ядро было
-        //    чуть неровным, соседи на базе нормали (≈114 м) разошлись бы.
+        // 6. Normal above the core = zenith. Indirect but strict: if the core were
+        //    even slightly uneven, the neighbours at the normal base (~114 m) would diverge.
         double hNorth = padded.GetRawHeightMeters(null, PadOffsetNorth(114d), PadRad(PadLonDeg));
         double hSouth = padded.GetRawHeightMeters(null, PadOffsetNorth(-114d), PadRad(PadLonDeg));
         double hEast = padded.GetRawHeightMeters(null, PadRad(PadLatDeg), PadOffsetEast(114d));
@@ -237,8 +230,8 @@ internal static partial class P1bTests
             "T109 terrain-pads",
             "внутри ядра высоты всех трёх соседей равны целевой → нормаль = зенит");
 
-        // 7. Площадка над водой переживает кламп уровня моря. Флаг не нужен:
-        //    кламп толкает высоту ВВЕРХ до моря, а площадка выше моря.
+        // 7. A pad above water survives the sea-level clamp. No flag needed: the
+        //    clamp pushes height UP to sea level, and the pad is above sea level.
         HeightfieldTerrain shorePad = MakePadTerrain();
         shorePad.SetModifiers(
             new List<TerrainModifier> { Pad(PadLatDeg, PadLonDeg, 100d, 300d, 15d) }, PadRadius);
@@ -246,7 +239,7 @@ internal static partial class P1bTests
             && Math.Abs(shorePad.GetHeightMeters(null, PadRad(PadLatDeg), PadRad(PadLonDeg)) - 15d) < 1e-9,
             "T109 terrain-pads", "площадка +15 м над морем не тонет в клампе");
 
-        // 8. Раскопка НИЖЕ моря: без флага её залило бы водой, с флагом — нет.
+        // 8. Dig BELOW sea level: without the flag it would be flooded, with the flag it is not.
         HeightfieldTerrain digNoFlag = MakePadTerrain();
         digNoFlag.SetModifiers(
             new List<TerrainModifier> { Pad(PadLatDeg, PadLonDeg, 100d, 300d, -30d) }, PadRadius);
@@ -259,9 +252,9 @@ internal static partial class P1bTests
         Check(Math.Abs(digFlag.GetHeightMeters(null, PadRad(PadLatDeg), PadRad(PadLonDeg)) + 30d) < 1e-9,
             "T109 terrain-pads", "с флагом раскопка -30 м остаётся сухой");
 
-        // 9. Сравнение таблиц. Одинаковое содержимое из разных сборок должно
-        //    считаться РАВНЫМ: иначе ParamsEqual в рендере пересобирал бы кэш
-        //    впустую, а настоящая правка модов могла бы не заметиться.
+        // 9. Table comparison. Equal content from different builds must count as
+        //    EQUAL: otherwise ParamsEqual in the renderer would rebuild its cache for
+        //    nothing, and a real modifier edit could go unnoticed.
         var listA = new List<TerrainModifier> { Pad(PadLatDeg, PadLonDeg, 120d, 400d, target) };
         var listB = new List<TerrainModifier> { Pad(PadLatDeg, PadLonDeg, 120d, 400d, target) };
         NativeArray<TerrainModifierData> tableA = TerrainModifiers.Build(listA, PadRadius);
@@ -290,7 +283,7 @@ internal static partial class P1bTests
         tableRadius.Dispose();
         tablePos.Dispose();
 
-        // 10. Порядок в списке решает при пересечении, и результат детерминирован.
+        // 10. List order decides on overlap, and the result is deterministic.
         HeightfieldTerrain overlap = MakePadTerrain();
         overlap.SetModifiers(new List<TerrainModifier>
         {
@@ -310,13 +303,12 @@ internal static partial class P1bTests
         Check(Math.Abs(overlapAB - 300d) < 1e-9 && Math.Abs(overlapBA - 100d) < 1e-9,
             "T109 terrain-pads", "при пересечении побеждает последняя в списке, порядок детерминирован");
 
-        // 11. Круглая форма. Проверять высоту в ядре бессмысленно — там она
-        //     ровно целевая где угодно. Круглость видна только по ВЕСУ
-        //     подмешивания в фартуке: он обязан быть один и тот же на равных
-        //     расстояниях в любом азимуте. Вес восстанавливаем как
-        //     (h_площадка − h_естеств) / (цель − h_естеств).
-        //     Если бы площадка «сплющивалась» в одну сторону, вес разошёлся бы
-        //     по азимутам — и это не видно на глаз в перспективе сцены.
+        // 11. Round shape. Checking the core height is pointless — there it equals the
+        //     target anywhere. Roundness shows only in the apron blend WEIGHT: it must
+        //     be the same at equal distances in any azimuth. Weight recovered as
+        //     (h_pad − h_natural) / (target − h_natural). If the pad were squashed to
+        //     one side, the weight would spread across azimuths — invisible by eye in
+        //     the scene's perspective.
         double probe = 260d;
         double naturalProbe = plain.GetRawHeightMeters(null, PadOffsetNorth(probe), PadRad(PadLonDeg));
         double denominator = target - naturalProbe;
@@ -338,8 +330,8 @@ internal static partial class P1bTests
             "площадка круглая: вес фартука одинаков по всем азимутам (разброс "
             + weightSpread.ToString("E2") + ", вес " + weightAtNorth.ToString("F4") + ")");
 
-        // 12. Круглость в пределах, а не только по четырём румбам: точка на
-        //     диагонали (север+восток на 45°).
+        // 12. Roundness between the compass points too: a diagonal point
+        //     (north+east at 45°).
         double diagonal = probe / Math.Sqrt(2d);
         double weightDiagonal = (padded.GetRawHeightMeters(null, PadOffsetNorth(diagonal), PadOffsetEast(diagonal))
             - plain.GetRawHeightMeters(null, PadOffsetNorth(diagonal), PadOffsetEast(diagonal))) / denominator;

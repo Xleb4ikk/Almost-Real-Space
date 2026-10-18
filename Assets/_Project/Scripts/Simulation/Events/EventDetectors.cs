@@ -3,10 +3,10 @@ using Galilego.Core;
 namespace Galilego.Events
 {
     /// <summary>
-    /// Зафиксированные приоритеты событий: меньше число — выше приоритет.
-    /// Побеждает ранний корень; корни, совпавшие в пределах допуска бисекции,
-    /// разрешаются по приоритету. Порядок — физический смысл потери: сначала
-    /// то, что уничтожает корабль или необратимо меняет режим полёта.
+    /// Fixed event priorities: a smaller number is higher priority. The earlier root
+    /// wins; roots that coincide within the bisection tolerance are resolved by
+    /// priority. The order reflects physical severity: first what destroys the ship
+    /// or irreversibly changes the flight regime.
     /// </summary>
     public static class EventPriorities
     {
@@ -17,9 +17,9 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Типизированный вид события. Таблица реакций (EventReactions) идёт по
-    /// Kind, а не по строке Name: парсинг имён запрещён. Новое событие = новый
-    /// член enum + ветка реакции, молчаливое переиспользование чужого — нет.
+    /// Typed event kind. The reaction table (EventReactions) is keyed by Kind, not by
+    /// the Name string: parsing names is forbidden. A new event means a new enum member
+    /// plus a reaction branch; silently reusing someone else's is not allowed.
     /// </summary>
     public enum EventKind
     {
@@ -33,11 +33,10 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Непрерывное событие: нуль непрерывной функции состояния. Реализация
-    /// ОБЯЗАНА быть pure (как RHS интегратора): вызывается многократно,
-    /// включая бисекционные перепогоны и отклонённые шаги, — внутри нельзя
-    /// мутировать корабль, источники или сам детектор (бейзлайн хранит
-    /// вызывающий драйвер, не детектор).
+    /// Continuous event: a zero of a continuous state function. The implementation
+    /// MUST be pure (like the integrator RHS): it is called many times, including
+    /// bisection re-runs and rejected steps — it must not mutate the ship, the sources
+    /// or the detector itself (the baseline is held by the calling driver, not the detector).
     /// </summary>
     public interface ICrossingDetector
     {
@@ -53,11 +52,11 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Дискретное событие: смена ключа (например, доминирующего тела) между
-    /// двумя точками. Непрерывной нуль-функции здесь нет, поэтому уточнение
-    /// корня идёт бисекцией по булеву предикату «ключ уже новый». Ключ обязан
-    /// быть стабильной ссылкой (сравнение — референсное): для смены SOI это
-    /// сам OrbitingBody. Реализация GetKey — pure, как и Evaluate выше.
+    /// Discrete event: a change of key (e.g. the dominant body) between two points.
+    /// There is no continuous zero function here, so the root is refined by bisection
+    /// on the boolean predicate "key already new". The key must be a stable reference
+    /// (comparison is reference-based): for an SOI change it is the OrbitingBody itself.
+    /// GetKey is pure, like Evaluate above.
     /// </summary>
     public interface ITransitionDetector
     {

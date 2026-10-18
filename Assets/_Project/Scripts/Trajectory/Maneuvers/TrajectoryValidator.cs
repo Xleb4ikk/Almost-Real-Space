@@ -8,10 +8,10 @@ using Ship = Galilego.Spacecraft.Spacecraft;
 namespace Galilego.Events
 {
     /// <summary>
-    /// Итог валидации импульсной дуги полным n-body. Valid ⟺ дошёл до tArr
-    /// без убивающих событий И промах в допуске И минимум клиренса не отрицан
-    /// событием. События собираются все по пути (вход/выход/SOI — мимоходом,
-    /// touchdown/depletion — останов с invalid).
+    /// Result of validating an impulsive arc with full n-body. Valid ⟺ reached tArr
+    /// without killing events AND the miss is within tolerance AND the minimum
+    /// clearance was not denied by an event. All events along the way are collected
+    /// (entry/exit/SOI in passing, touchdown/depletion stop with invalid).
     /// </summary>
     public readonly struct ValidationResult
     {
@@ -42,10 +42,10 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Итог валидации finite-burn: сухой прогон оценщика на клоне против
-    /// НЕЗАВИСИМОГО импульсного идеала (не против живого прогона тем же
-    /// оценщиком — то доказывало бы лишь детерминизм). CompletedBurn=false
-    /// (событие оборвало дугу) — всегда invalid, даже при малом промахе.
+    /// Result of finite-burn validation: a dry run of the evaluator on a clone against
+    /// an INDEPENDENT impulsive ideal (not against a live run with the same evaluator —
+    /// that would only prove determinism). CompletedBurn=false (an event cut the arc
+    /// short) is always invalid, even with a small miss.
     /// </summary>
     public readonly struct BurnValidationResult
     {
@@ -73,19 +73,15 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// P1c: финальная защита перед исполнением манёвра. Porkchop — грубый
-    /// фильтр (16 сэмплов, концы исключены); принятый кандидат проверяется
-    /// целиком тем же движком, что полетит: полный n-body прогон на шаге
-    /// интегратора + штатный детект событий. Закрывает пробелы сэмплинга
-    /// ДЛЯ БЕЗОПАСНОСТИ ИСПОЛНЕНИЯ (ложноотрицательные — отвергнутые валидные
-    /// окна — валидатор не видит по построению; совершенствование фильтра —
-    /// отдельная задача).
+    /// Final safety check before executing a maneuver. Porkchop is a coarse filter
+    /// (16 samples, endpoints excluded); an accepted candidate is re-checked in full
+    /// by the same engine that will fly it: a full n-body run at the integrator step
+    /// plus the standard event detection.
     ///
-    /// Дисциплина «без общего бага»: Ламберт НЕ перерешивается внутри — v1
-    /// приходит параметром от планировщика (иначе проверяли бы согласие
-    /// планировщика с собой, а общий баг обеих сторон спрятался бы).
-    /// Реальный корабль не мутирует никогда: все прогоны — на клонах
-    /// (planning-time new допустим, это не тиковый путь).
+    /// "No shared bug" discipline: Lambert is NOT re-solved here — v1 arrives as a
+    /// parameter from the planner (otherwise we would only check the planner against
+    /// itself and a shared bug would stay hidden). The real ship is never mutated:
+    /// all runs are on clones (planning-time new is fine, this is not the tick path).
     /// </summary>
     public static class TrajectoryValidator
     {

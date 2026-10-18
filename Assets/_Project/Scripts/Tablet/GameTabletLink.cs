@@ -8,27 +8,25 @@ using Ship = Galilego.Spacecraft.Spacecraft;
 namespace Galilego.Tablet
 {
     /// <summary>
-    /// Мост «симуляция Almost Real Space ↔ планшет»: наследник TabletLink, который
-    /// игра вешает на объект планшета (ShipTablet.Link). В Fill кладётся
-    /// телеметрия из SimulationRunner, команды исполняются тем, что уже
-    /// существует в игре:
-    ///  • система отсчёта скорости (поверхность/орбита) и опорное тело — реально
-    ///    меняют показания (тело по умолчанию — доминантное, из SOI);
-    ///  • САС/РСУ — включение/выключение идёт в автопилот модели полёта
-    ///    (VesselFlightModel.Controls); направленные режимы САС (по скорости,
-    ///    нормаль и т.д.) пока не исполняются — об этом честное примечание;
-    ///  • управление кораблём — газ (RawThrottle), мастер-выключатель
-    ///    двигателей (SetAllEngines) и ступень (SpacecraftBuilder.StageJettison).
+    /// Bridge "Almost Real Space simulation ↔ tablet": a TabletLink subclass that the
+    /// game attaches to the tablet object (ShipTablet.Link). Fill pulls
+    /// telemetry from SimulationRunner; commands are executed by what already
+    /// exists in the game:
+    ///  • speed reference frame (surface/orbit) and reference body really
+    ///    change the readouts (default body is the dominant one, from the SOI);
+    ///  • SAS/RCS on/off goes to the flight model autopilot
+    ///    (VesselFlightModel.Controls); directional SAS modes (prograde,
+    ///    normal, etc.) are not implemented — noted honestly on screen;
+    ///  • ship control: throttle (RawThrottle), engine master switch
+    ///    (SetAllEngines) and stage (SpacecraftBuilder.StageJettison).
     ///
-    /// ΔV не пересчитывается: берётся та же панель, что рисует BuilderUI
-    /// (DeltaVPanel.Live ?? Plan) и копируется DvTabletAdapter — как и задумано
-    /// в README дизайна.
+    /// ΔV is not recomputed: it takes the same panel that BuilderUI draws
+    /// (DeltaVPanel.Live ?? Plan) and copies it via DvTabletAdapter.
     ///
-    /// Навбол: настоящей ориентации корабля в игре нет, поэтому Attitude —
-    /// направление взгляда пилота (камеры) в местном горизонтном кадре
-    /// (X=восток, Y=вверх, Z=север), а маркеры — реальные направления скорости
-    /// в том же кадре. Появится угловое состояние корабля — меняется только
-    /// FillAttitude.
+    /// Navball: the game has no true ship orientation, so Attitude is the
+    /// pilot's (camera) look direction in the local horizon frame
+    /// (X=east, Y=up, Z=north), and markers are real velocity directions
+    /// in the same frame.
     /// </summary>
     public sealed class GameTabletLink : TabletLink
     {
@@ -43,17 +41,17 @@ namespace Galilego.Tablet
 
         private static readonly double G0 = DvEnvironment.G0;
 
-        // Состояние команд (показывается на экране).
+        // Command state (shown on screen).
         private bool sasEnabled;
         private SasMode sasMode = SasMode.Stability;
         private bool rcsEnabled;
         private SpeedFrame frame = SpeedFrame.Surface;
-        private int referenceBodyIndex = -1;      // -1 — авто: доминантное тело
+        private int referenceBodyIndex = -1;      // -1 — auto: dominant body
 
         private string[] bodyNames = { "—" };
         private int bodyCountSeen = -1;
 
-        // Измерение собственного ускорения между вызовами Fill.
+        // Proper acceleration measured between Fill calls.
         private Vector3d lastVelocity;
         private double lastVelocityTime = double.NaN;
         private double properAcceleration;
@@ -142,8 +140,8 @@ namespace Galilego.Tablet
             t.Frame = frame;
             t.SasMode = sasMode;
 
-            // Системы и управление: у живой модели полёта состояние — её (клавиши
-            // T/G и кнопки планшета работают с одним и тем же Controls).
+            // Systems and controls: the live flight model owns the state (T/G keys
+            // and tablet buttons act on the same Controls).
             Galilego.Flight.VesselFlightModel flight = Runner != null ? Runner.Flight : null;
             if (flight != null)
             {
@@ -190,11 +188,11 @@ namespace Galilego.Tablet
             double radius = r.Magnitude;
             Vector3d up = radius > 1e-6d ? r / radius : new Vector3d(0d, 0d, 1d);
 
-            // Базис местного горизонта: X=восток, Y=вверх, Z=север.
+            // Local horizon basis: X=east, Y=up, Z=north.
             HorizonBasis(body, up, out Vector3d east, out Vector3d north);
 
-            // Скорость выбранной системы отсчёта: поверхность — минус вращение
-            // тела, орбита — относительно центра тела (инерциальная).
+            // Speed in the selected reference frame: surface — minus body
+            // rotation, orbit — relative to the body center (inertial).
             Vector3d omega = body.SpinAxis.Normalized * body.SpinAngularSpeed;
             Vector3d vSurface = vInertial - Vector3d.Cross(omega, r);
             Vector3d v = frame == SpeedFrame.Surface ? vSurface : vInertial;
@@ -202,7 +200,7 @@ namespace Galilego.Tablet
             t.SpeedMs = v.Magnitude;
             t.VerticalSpeedMs = Vector3d.Dot(v, up);
 
-            // Гравитация — суммарная от всей системы, как в физике полёта.
+            // Gravity summed over the whole system, as in flight physics.
             Vector3d gravity = Runner.SystemState.EvaluateShipAcceleration(ship.Position, time);
             t.GravityG = gravity.Magnitude / G0;
 
@@ -210,7 +208,7 @@ namespace Galilego.Tablet
             t.AccelerationMs2 = hasProperAcceleration ? properAcceleration : 0d;
             t.GForce = hasProperAcceleration ? properAcceleration / G0 : 0d;
 
-            // Высоты.
+            // Altitudes.
             double sea = radius - body.Radius;
             double surface = sea;
             if (body.Terrain != null)
@@ -228,7 +226,7 @@ namespace Galilego.Tablet
             FillMarkers(t, v, up, east, north);
             FillOrbit(t, body, r, vInertial);
 
-            // Масса / тяга / TWR.
+            // Mass / thrust / TWR.
             t.CurrentMassKg = ship.Mass;
             double throttle = Runner.Warp != null ? Runner.Warp.CurrentControlSnapshot.Throttle : 0d;
             double thrust = 0d;
@@ -269,7 +267,7 @@ namespace Galilego.Tablet
             }
         }
 
-        /// <summary>Имена тел системы для кнопки опорного тела (кешируются).</summary>
+        /// <summary>System body names for the reference-body button (cached).</summary>
         private void EnsureBodies()
         {
             var all = Runner != null && Runner.SystemState != null ? Runner.SystemState.AllBodies : null;
@@ -291,8 +289,8 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
-        /// Опорное тело: выбор игрока или доминантное (SOI). Возвращает индекс в
-        /// ReferenceBodyIndex — именно то, что подсветит кнопку на планшете.
+        /// Reference body: the player's choice or the dominant one (SOI). Writes the index to
+        /// ReferenceBodyIndex — exactly what highlights the tablet button.
         /// </summary>
         private OrbitingBody ResolveBody(TabletTelemetry t)
         {
@@ -339,7 +337,7 @@ namespace Galilego.Tablet
             east = Vector3d.Cross(up, north).Normalized;
         }
 
-        /// <summary>Вектор astro-кадра в горизонтный кадр планшета (восток, вверх, север).</summary>
+        /// <summary>Astro-frame vector into the tablet horizon frame (east, up, north).</summary>
         private static Vector3 ToHorizon(Vector3d d, Vector3d east, Vector3d up, Vector3d north)
         {
             return new Vector3(
@@ -349,9 +347,9 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
-        /// Ориентация для навбола. Пока у корабля нет собственного углового
-        /// состояния — это направление взгляда пилота: маркеры скорости и
-        /// картушка остаются в одном (горизонтном) кадре и согласованы.
+        /// Navball orientation. The ship has no angular state of its own, so this is
+        /// the pilot's look direction: velocity markers and the compass stay in one
+        /// (horizon) frame and remain consistent.
         /// </summary>
         private void FillAttitude(TabletTelemetry t, Vector3d east, Vector3d up, Vector3d north)
         {
@@ -389,10 +387,10 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
-        /// Маркеры навбола: прогрейд/ретрогрейд — по вектору скорости выбранной
-        /// системы отсчёта, нормаль — по моменту орбиты, радиаль — радиус
-        /// в плоскости орбиты. Вырожденные случаи (скорость у нуля, радиальный
-        /// полёт) прячут маркеры, а не показывают шум.
+        /// Navball markers: prograde/retrograde from the velocity vector of the selected
+        /// reference frame, normal from the orbit moment, radial from the radius
+        /// in the orbit plane. Degenerate cases (near-zero speed, radial
+        /// flight) hide the markers instead of showing noise.
         /// </summary>
         private void FillMarkers(TabletTelemetry t, Vector3d v, Vector3d up, Vector3d east, Vector3d north)
         {
@@ -459,7 +457,7 @@ namespace Galilego.Tablet
             t.Orbit = orbit;
         }
 
-        /// <summary>Скорость на радиусе по «vis-viva»: v = √(μ·(2/r − 1/a)).</summary>
+        /// <summary>Speed at a radius by "vis-viva": v = √(μ·(2/r − 1/a)).</summary>
         private static double VisViva(double mu, double distance, double semiMajorAxis)
         {
             if (!(distance > 0d) || semiMajorAxis == 0d)
@@ -472,9 +470,9 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
-        /// Давление: собственной модели давления у игры нет — считаем из её же
-        /// высотной модели плотности атмосферы (p ∝ ρ), масштаб — земной
-        /// (101325 Па при 1.225 кг/м³). Для вакуумных тел — 0.
+        /// Pressure: the game has no pressure model of its own — derived from its
+        /// exponential atmosphere density (p ∝ ρ), scaled to Earth
+        /// (101325 Pa at 1.225 kg/m³). Zero for vacuum bodies.
         /// </summary>
         private static double PressureAt(OrbitingBody body, double altitudeMeters)
         {
@@ -498,10 +496,10 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
-        /// Собственное ускорение (перегрузка) — численная производная инерциальной
-        /// скорости минус гравитация: в свободном падении ≈ 0, на thrust ≈ F/m,
-        /// стоя на поверхности ≈ g. Окно измерения ≤ 1 с сим-времени: длиннее —
-        /// это варп, где среднее бессмысленно (держим прежнее значение).
+        /// Proper acceleration (g-load) is the numerical derivative of inertial
+        /// velocity minus gravity: ≈ 0 in free fall, ≈ F/m under thrust,
+        /// ≈ g standing on the surface. Measurement window ≤ 1 s of sim time: longer
+        /// means warp, where the average is meaningless (keeps the previous value).
         /// </summary>
         private void UpdateProperAcceleration(Ship ship, Vector3d gravity, double time)
         {
@@ -524,9 +522,9 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
-        /// ΔV — из панели строителя (panel.Live ?? panel.Plan), поля копируются
-        /// как есть. Масса в не-полёте — полная масса сборки (в полёте её
-        /// проставит адаптер из состояния модели).
+        /// ΔV from the builder panel (panel.Live ?? panel.Plan), fields copied
+        /// as is. Mass out of flight is the full assembly mass (in flight the
+        /// adapter sets it from the model state).
         /// </summary>
         private void FillStages(TabletTelemetry t, Ship ship)
         {
@@ -546,9 +544,9 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
-        /// САС/РСУ исполняются моделью полёта, но направленные режимы САС (по
-        /// скорости, нормаль…) у автопилота пока отсутствуют — выбранный режим
-        /// обязан объясняться на экране, иначе это молчаливая ложь интерфейса.
+        /// SAS/RCS are executed by the flight model, but directional SAS modes (prograde,
+        /// normal…) are absent from the autopilot — the selected mode must be
+        /// explained on screen, otherwise the interface silently lies.
         /// </summary>
         private void AppendCommandNote(TabletTelemetry t)
         {

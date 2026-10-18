@@ -5,13 +5,12 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Процедурная замена текстур рельефа: в исходных фото-текстурах запечён
-    /// направленный волнистый паттерн («газонные полосы»): на тайле 25 м он
-    /// читается как регулярные диагональные линии и мерцает/«двигается» на
-    /// мипах при движении. Здесь берём СРЕДНИЙ цвет исходника как базовый тон
-    /// и наносим изотропное бесшовное value-noise зерно — тон сохраняется,
-    /// направленный паттерн исчезает. Occlusion пересобирается мягким шумом.
-    /// Запуск один раз по маркеру или из меню.
+    /// Procedural terrain texture replacement. Photo-source textures carry a baked
+    /// directional wavy pattern ("lawn stripes") that reads as regular diagonal
+    /// lines on a 25 m tile and shimmers on mips while moving. The source's
+    /// AVERAGE colour becomes the base tone, then isotropic seamless value-noise
+    /// grain is applied, so the tone survives while the pattern goes away.
+    /// Occlusion is rebuilt from soft noise. Runs once by marker or from the menu.
     /// </summary>
     public static class TerrainTextureDeband
     {
@@ -72,7 +71,7 @@ namespace Galilego.Universe.EditorTools
                 for (int x = 0; x < Size; x++)
                 {
                     float u = x / (float)Size;
-                    // Многооктавный бесшовный шум: крупные пятна + средний + мелкое зерно.
+                    // Multi-octave seamless noise: large mottling + medium + fine grain.
                     float mottle = Fbm(u, v, 24, 4, 0.55f, seed) * 0.55f + Fbm(u, v, 96, 2, 0.5f, seed + 11) * 0.45f;
                     float fine = Fbm(u, v, 384, 1, 0.5f, seed + 23);
                     float n = (mottle * 0.7f) + (fine * 0.3f);
@@ -200,7 +199,7 @@ namespace Galilego.Universe.EditorTools
             return (byte)(value + 0.5d);
         }
 
-        // --- Бесшовный (периодический) value-noise ---------------------------
+        // --- Seamless (periodic) value noise ---------------------------
 
         private static float Fbm(float u, float v, int basePeriod, int octaves, float gain, int seed)
         {
@@ -258,7 +257,7 @@ namespace Galilego.Universe.EditorTools
         }
     }
 
-    /// <summary>Автозапуск один раз по маркеру (правки пользователя потом не затираются).</summary>
+    /// <summary>One-off auto-run keyed by a marker (user edits are not overwritten afterwards).</summary>
     [InitializeOnLoad]
     internal static class TerrainTextureDebandAuto
     {
@@ -271,7 +270,7 @@ namespace Galilego.Universe.EditorTools
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)
             {
-                // Не пропускаем сборку навсегда: ждём выхода из Play.
+                // Do not skip generation forever: wait until Play mode ends.
                 EditorApplication.delayCall += Run;
                 return;
             }

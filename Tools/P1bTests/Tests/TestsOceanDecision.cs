@@ -6,13 +6,13 @@ using Unity.Mathematics;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Итог Шага 3: глубины и профиль через берег ДО и ПОСЛЕ сжатия ложа,
-    /// плюс альтернативный параметрический набор с более низким порогом.
+    /// Step 3 outcome: depths and a coast transect BEFORE and AFTER seafloor
+    /// compression, plus an alternative parameter set with a lower threshold.
     ///
-    /// Альтернативный набор НЕ включён в ассет - он посчитан здесь, чтобы
-    /// выбор оставался за владельцем профиля. Порог уводится глубже
-    /// (~-4.5 км), чтобы сжатие не трогало материковый склон, и пол
-    /// поднимается до ~8 км вместо ~11 км.
+    /// The alternative set is NOT wired into the asset - it is computed here so the
+    /// choice stays with the profile owner. The threshold moves deeper (~-4.5 km)
+    /// so compression leaves the continental slope alone, and the floor rises to
+    /// ~8 km instead of ~11 km.
     /// </summary>
     private static int Test137_OceanDepthDecision()
     {
@@ -86,7 +86,7 @@ internal static partial class P1bTests
             label, (double)m / n, d[m - 1], p1, p5, deep6 / m));
     }
 
-    /// <summary>Находит типичный берег и печатает дальний трансект для двух профилей.</summary>
+    /// <summary>Finds a typical coast and prints a far transect for two profiles.</summary>
     private static void CoastTransect(HeightfieldTerrain a, HeightfieldTerrain b)
     {
         double bestGap = double.MaxValue, clat = 0, clon = 0;
@@ -96,9 +96,8 @@ internal static partial class P1bTests
         TerrainNoiseParams pa = TerrainNoiseParams.FromTerrain(a);
         TerrainNoiseParams pb = TerrainNoiseParams.FromTerrain(b);
 
-        // Идём от берега наружу, пока не найдём глубокое ложе, и печатаем окрестность
-        // найденной точки. Раньше печатались все строки сразу, но берег мог
-        // оказаться мелким, и таблица выходила пустой.
+        // Walk outward from the coast until a deep seafloor is found, then print
+        // the neighbourhood of that point.
         double3 deepDir = origin;
         double deepest = 0d;
         for (int k = 0; k <= 60; k++)
@@ -133,7 +132,7 @@ internal static partial class P1bTests
         }
     }
 
-    /// <summary>Ближний трансект: шельф и материковый склон должны совпасть до метра.</summary>
+    /// <summary>Near transect: shelf and continental slope must match to the metre.</summary>
     private static void CoastNear(HeightfieldTerrain a, HeightfieldTerrain b)
     {
         double bestGap = double.MaxValue, clat = 0, clon = 0;

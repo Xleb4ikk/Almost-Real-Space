@@ -6,27 +6,27 @@ using UnityEngine;
 namespace Galilego.Building
 {
     /// <summary>
-    /// Чистая математика строительства (без MonoBehaviour — проверяема без Play):
-    /// полигон площадки, пересечение цилиндров, поиск снапа по узлам у луча
-    /// камеры, конвертация черновика в PartDefinition[] для физики.
-    /// Все координаты — оси МЕСТА: x — север, y — зенит, z — восток.
-    /// Радиальные детали не вращаются: их цилиндры всегда стоят по Y, поэтому
-    /// пересечение — круг в плане × интервал по высоте.
+    /// Pure construction math (no MonoBehaviour — testable without Play):
+    /// pad polygon, cylinder intersection, snap search by nodes near the camera
+    /// ray, draft-to-PartDefinition[] conversion for physics.
+    /// All coordinates are SITE axes: x — north, y — zenith, z — east.
+    /// Radial parts are never rotated: their cylinders always stand along Y, so
+    /// intersection is a circle in plan × an interval in height.
     /// </summary>
     public static class BuildMath
     {
-        /// <summary>Контакт по узлу не считаем пересечением: пропуск по нормали, м.</summary>
+        /// <summary>Node contact is not an intersection: clearance along the normal, m.</summary>
         public const float ContactSkin = 0.02f;
 
-        /// <summary>Максимальная дистанция по лучу для снапа и постановки, м.</summary>
+        /// <summary>Maximum ray distance for snapping and placement, m.</summary>
         public const float SnapReach = 25f;
 
-        /// <summary>Дистанция запасной точки, когда луч никуда не попал, м.</summary>
+        /// <summary>Distance of the fallback point when the ray hits nothing, m.</summary>
         public const float AirFallbackDistance = 6f;
 
-        // ─── Полигон площадки ────────────────────────────────────────────────
+        // ─── Pad polygon ────────────────────────────────────────────────
 
-        /// <summary>Точка внутри замкнутого полигона (x = север, y = восток).</summary>
+        /// <summary>Point inside a closed polygon (x = north, y = east).</summary>
         public static bool InsidePolygon(IReadOnlyList<Vector2> polygon, Vector2 point)
         {
             if (polygon == null || polygon.Count < 3)
@@ -50,8 +50,8 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Всё ПЯТНО детали внутри полигона: центр и окружность основания
-        /// (иначе бак свисал бы за край площадки половиной).
+        /// The part's WHOLE footprint inside the polygon: center and base circle
+        /// (otherwise half the tank would hang off the pad edge).
         /// </summary>
         public static bool FootprintInside(IReadOnlyList<Vector2> polygon, Vector2 center, float radius)
         {
@@ -76,14 +76,14 @@ namespace Galilego.Building
             return true;
         }
 
-        // ─── Пересечения ─────────────────────────────────────────────────────
+        // ─── Intersections ─────────────────────────────────────────────────────
 
         /// <summary>
-        /// Пересекаются ли тела вращения (цилиндры/усечённые конусы): интервалы
-        /// по Y и круги в плане. Радиус детали на высоте линейно меняется между
-        /// нижним и верхним, поэтому сумма радиусов тоже линейна и её максимум
-        /// на интервале перекрытия — на одном из его концов: проверяем оба.
-        /// Касание узлов (интервалы соприкасаются) пересечением не считается.
+        /// Whether two bodies of revolution (cylinders/truncated cones) overlap:
+        /// intervals along Y and circles in plan. A part's radius changes linearly
+        /// between bottom and top, so the sum of radii is also linear and reaches
+        /// its maximum over the overlap interval at one of its ends: check both.
+        /// Node contact (intervals touching) is not an intersection.
         /// </summary>
         public static bool CylindersOverlap(
             Vector3 centerA, PartMetrics a,
@@ -104,7 +104,7 @@ namespace Galilego.Building
             return ((dx * dx) + (dz * dz)) < (maxSum * maxSum);
         }
 
-        /// <summary>Радиус детали на высоте y (оси места): линейно между торцами.</summary>
+        /// <summary>Part radius at height y (site axes): linear between the ends.</summary>
         public static float RadiusAtHeight(Vector3 center, PartMetrics m, float y)
         {
             float span = m.Top - m.Bottom;
@@ -117,7 +117,7 @@ namespace Galilego.Building
             return Mathf.Lerp(m.Radius, m.TopRadius, t);
         }
 
-        /// <summary>Пересекается ли пробная деталь с уже поставленными.</summary>
+        /// <summary>Whether the probe part overlaps the already placed ones.</summary>
         public static bool OverlapsAny(
             IReadOnlyList<PlacedPart> parts, Vector3 pivot, PartMetrics probe, int ignoreIndex)
         {
@@ -137,17 +137,17 @@ namespace Galilego.Building
             return false;
         }
 
-        // ─── Снап ────────────────────────────────────────────────────────────
+        // ─── Snapping ────────────────────────────────────────────────────────────
 
-        /// <summary>Куда нашёлся снап: деталь-партнёр и какой её узел занят.</summary>
+        /// <summary>Where a snap was found: the partner part and which of its nodes is taken.</summary>
         public readonly struct SnapHit
         {
             public readonly int PartIndex;
 
-            /// <summary>true — призрак встаёт низом на ВЕРХ партнёра.</summary>
+            /// <summary>true — the ghost's bottom sits on the partner's TOP.</summary>
             public readonly bool OnTop;
 
-            /// <summary>Желаемый пивот призрака (оси места).</summary>
+            /// <summary>Desired ghost pivot (site axes).</summary>
             public readonly Vector3 Pivot;
 
             public SnapHit(int partIndex, bool onTop, Vector3 pivot)
@@ -159,13 +159,13 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Свободный узел под РУКОЙ прицела, к которому может прилипнуть
-        /// призрак: кандидат — узел в конусе кольца (перпендикулярное
-        /// расстояние ≤ along × coneTangent, дальность ≤ SnapReach), а
-        /// побеждает узел, ближайший ПО УГЛУ к центру кольца (дистанция —
-        /// только при почти равном угле): «навёл кольцо на узел» — это узел
-        /// под центром, а не любой, кого задел край. Кандидаты: низ призрака
-        /// на верх партнёра и верх призрака под низ партнёра.
+        /// A free node under the aiming RETICLE the ghost can stick to: a
+        /// candidate is a node inside the reticle cone (perpendicular distance
+        /// ≤ along × coneTangent, range ≤ SnapReach); the node closest BY ANGLE
+        /// to the reticle center wins, distance only breaks near-ties:
+        /// "reticle aimed at a node" means the node under the center, not any
+        /// node the edge touched. Candidates: ghost bottom onto the partner's
+        /// top and ghost top under the partner's bottom.
         /// </summary>
         public static bool TryFindSnap(
             IReadOnlyList<PlacedPart> parts, PartMetrics ghost,
@@ -212,8 +212,8 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Кто из двух пойманных узлов ближе к центру кольца: меньший угловой
-        /// отступ важнее дистанции; при почти равном отступе — ближний по лучу.
+        /// Which of the two caught nodes is closer to the reticle center: a
+        /// smaller angular offset beats distance; on near-equal offset — the closer along the ray.
         /// </summary>
         private static bool IsCloserToCenter(
             float offset, float t, bool found, float bestOffset, float bestT)
@@ -224,12 +224,12 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Узел в конусе прицела: перпендикулярное расстояние до луча не
-        /// больше along × coneTangent — то же условие, что «пиксель узла
-        /// внутри кольца» на экране (одно и то же отношение сторон у
-        /// перспективной проекции); offset — угловой отступ узла от центра
-        /// кольца (lateral/along). Ближе 0.2 м узел не ловим: точка за
-        /// камерой/в упор даёт мусорные срабатывания.
+        /// Node inside the aiming cone: the perpendicular distance to the ray is
+        /// no more than along × coneTangent — the same condition as "node pixel
+        /// inside the reticle" on screen (perspective projection preserves the
+        /// aspect ratio); offset is the node's angular offset from the reticle
+        /// center (lateral/along). Nodes closer than 0.2 m are not caught: a
+        /// point behind the camera / at point blank gives garbage hits.
         /// </summary>
         private static bool RayHitsNode(
             Vector3 rayOrigin, Vector3 rayDirection, Vector3 node,
@@ -257,11 +257,11 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Второй проход снапа: призрак уже стоит в свободной точке (парит над
-        /// стеком или рядом) — если его низ прошёл ровно над свободным ВЕРХОМ
-        /// детали (или верх под её низом) и центры почти совпадают по XZ,
-        /// прилипаем край-к-краю. Это гарантия «не нужно ловить миллиметры»:
-        /// бак, поставленный с зазором над двигателем, всё равно сядет на него.
+        /// Second snap pass: the ghost already stands at a free point (floating
+        /// over or next to the stack) — if its bottom passed right over a free
+        /// part TOP (or its top under the part's bottom) and the centers nearly
+        /// match in XZ, it snaps edge-to-edge. This guarantees "no need to catch
+        /// millimeters": a tank placed with a gap over an engine still lands on it.
         /// </summary>
         public static bool TryFindProximitySnap(
             IReadOnlyList<PlacedPart> parts, PartMetrics ghost, Vector3 pivot, out SnapHit hit)
@@ -279,8 +279,8 @@ namespace Galilego.Building
                 float dz = pivot.z - p.Pivot.z;
                 float lateral = (dx * dx) + (dz * dz);
 
-                // Допуск по XZ — по СОПРИКАСАЮЩИМСЯ торцам (у конуса радиусы
-                // разные): низ призрака к верху партнёра и верх к низу.
+                // XZ tolerance follows the CONTACTING ends (a cone has different
+                // radii): ghost bottom to partner top and ghost top to its bottom.
                 if (!p.TopOccupied)
                 {
                     float reach = Mathf.Max(0.05f, Mathf.Min(ghost.Radius, p.Metrics.TopRadius) * 0.85f);
@@ -313,18 +313,17 @@ namespace Galilego.Building
             return found;
         }
 
-        // ─── Попадание луча в деталь (удаление по прицелу) ──────────────────
+        // ─── Ray hitting a part (aim-based removal) ──────────────────
 
         /// <summary>
-        /// Сначала проверяется центральный луч: если он попадает в деталь,
-        /// выбирается ближайшая именно по центру прицела. Это не даёт пробам
-        /// по окружности перетянуть выбор на соседнюю деталь (например, двигатель
-        /// под баком), даже если несколько периферийных лучей задевают её край.
-        /// Только когда центральный луч не попал ни в одну деталь, выбираем по
-        /// большинству голосов проб по кольцу. votes — буфер вызывающего
-        /// (индексы по parts; длина ≥ parts.Count): без аллокаций в кадре.
-        /// Чистая математика — коллайдеры визуалам не нужны, и луч постановки
-        /// они не засоряют.
+        /// The center ray is tested first: if it hits a part, the nearest one
+        /// exactly at the reticle center is chosen. This keeps the ring probes
+        /// from pulling the choice to a neighboring part (e.g. an engine under a
+        /// tank), even if several peripheral rays graze its edge. Only when the
+        /// center ray misses every part do we choose by majority vote of the
+        /// ring probes. votes is a caller buffer (indexed by parts; length ≥
+        /// parts.Count): no per-frame allocations. Pure math — visuals need no
+        /// colliders, and they don't pollute the placement ray.
         /// </summary>
         public static bool TryRaycastParts(
             IReadOnlyList<PlacedPart> parts, Vector3 rayOrigin,
@@ -338,10 +337,9 @@ namespace Galilego.Building
                 votes[i] = 0;
             }
 
-            // Центральный луч имеет приоритет над периферией кольца. Иначе при
-            // наведении на нижний край бака несколько лучей кольца могут попасть
-            // в двигатель снизу и выиграть голосование, хотя сам прицел смотрит
-            // на бак.
+            // The center ray has priority over the ring periphery. Otherwise,
+            // aiming at the tank's lower edge could let several ring rays hit
+            // the engine below and win the vote while the reticle looks at the tank.
             if (rayDirections.Count > 0)
             {
                 int centerNearest = -1;
@@ -368,7 +366,7 @@ namespace Galilego.Building
                 }
             }
 
-            // Центральный луч пуст — разрешаем выбор по кольцу прицела.
+            // Center ray empty — allow choosing by the reticle ring.
             for (int s = 1; s < rayDirections.Count; s++)
             {
                 int nearest = -1;
@@ -431,7 +429,7 @@ namespace Galilego.Building
             return index >= 0;
         }
 
-        /// <summary>Минимальная дистанция попадания детали по пробам (или maxDistance).</summary>
+        /// <summary>Minimum part hit distance over the probes (or maxDistance).</summary>
         private static float MinHitDistance(
             IReadOnlyList<PlacedPart> parts, Vector3 rayOrigin,
             IReadOnlyList<Vector3> rayDirections, int partIndex, float maxDistance)
@@ -453,9 +451,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Пересечение луча с вертикальным телом вращения: бок (усечённый конус;
-        /// равные радиусы — цилиндр) + плоские торцы. Квадратное уравнение
-        /// получается подстановкой образующей r(y) = r0 + k·y в x² + z² = r(y)².
+        /// Ray intersection with a vertical body of revolution: side (truncated
+        /// cone; equal radii — cylinder) + flat end caps. The quadratic equation
+        /// comes from substituting the generatrix r(y) = r0 + k·y into x² + z² = r(y)².
         /// </summary>
         public static bool RayFrustum(
             Vector3 rayOrigin, Vector3 rayDirection,
@@ -468,7 +466,7 @@ namespace Galilego.Building
             float ox = rayOrigin.x - baseCenter.x;
             float oz = rayOrigin.z - baseCenter.z;
             float oy = rayOrigin.y - baseCenter.y;
-            float m = bottomRadius + (k * oy);          // радиус на высоте начала луча
+            float m = bottomRadius + (k * oy);          // radius at the ray's start height
             float dx = rayDirection.x;
             float dy = rayDirection.y;
             float dz = rayDirection.z;
@@ -480,8 +478,8 @@ namespace Galilego.Building
             float best = -1f;
             const float eps = 1e-8f;
 
-            // Бок: квадратное уравнение (вырождается в линейное, когда луч
-            // параллелен образующей конуса).
+            // Side: quadratic equation (degenerates to linear when the ray is
+            // parallel to the cone's generatrix).
             if (Mathf.Abs(a) > eps)
             {
                 float disc = (b * b) - (4f * a * c);
@@ -516,7 +514,7 @@ namespace Galilego.Building
                 }
             }
 
-            // Торцы (крышки): нужны, чтобы смотреть на деталь сверху/снизу.
+            // End caps: needed to look at the part from above/below.
             if (Mathf.Abs(dy) > 1e-6f)
             {
                 for (int cap = 0; cap < 2; cap++)
@@ -547,9 +545,9 @@ namespace Galilego.Building
             return true;
         }
 
-        // ─── Сборка для физики ───────────────────────────────────────────────
+        // ─── Assembly for physics ───────────────────────────────────────────────
 
-        /// <summary>Самая низкая точка сборки (низ самой нижней детали), оси места.</summary>
+        /// <summary>Lowest point of the assembly (bottom of the lowest part), site axes.</summary>
         public static Vector3 VesselBottom(IReadOnlyList<PlacedPart> parts)
         {
             Vector3 best = Vector3.zero;
@@ -568,7 +566,7 @@ namespace Galilego.Building
             return best;
         }
 
-        /// <summary>Суммарная масса сборки, кг.</summary>
+        /// <summary>Total assembly mass, kg.</summary>
         public static double TotalMass(IReadOnlyList<PlacedPart> parts)
         {
             double mass = 0d;
@@ -581,12 +579,12 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Сухая масса сборки для ThrustSource: из общей массы вычитается только
-        /// то топливо, что сгорит в пропорции двигателя O/F (BipropellantMix).
-        /// Топливо сгорает парой (окислитель + горючее), поэтому избыток одного
-        /// компонента без пары другого — мёртвый груз: он остаётся в массе и
-        /// после выработки, вычитать его нельзя. Если баки собраны с разными
-        /// наполнениями, избыток тоже не вычитается.
+        /// Dry assembly mass for ThrustSource: only the propellant that burns at
+        /// the engine's O/F ratio (BipropellantMix) is subtracted from the total.
+        /// Propellant burns in pairs (oxidizer + fuel), so an excess of one
+        /// component without the other is dead weight: it stays in the mass after
+        /// burnout and must not be subtracted. If tanks are filled unevenly, the
+        /// excess is not subtracted either.
         /// </summary>
         public static double EffectiveDryMass(IReadOnlyList<PlacedPart> parts, BipropellantMix mix)
         {
@@ -621,10 +619,10 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Черновик → PartDefinition[] для VesselStep/зоны контакта: Offset —
-        /// центр детали от НИЗА сборки (система корабля: y — вверх места),
-        /// ParentIndex — по снапу. Форма — тело вращения: цилиндр, а у бака-
-        /// переходника усечённый конус (Dimensions.z — верхний радиус).
+        /// Draft → PartDefinition[] for VesselStep/contact zone: Offset is the
+        /// part center from the assembly BOTTOM (vessel space: y is site up),
+        /// ParentIndex from snapping. Shape is a body of revolution: a cylinder,
+        /// or a truncated cone for the adapter tank (Dimensions.z — top radius).
         /// </summary>
         public static PartDefinition[] ToPartDefinitions(IReadOnlyList<PlacedPart> parts)
         {

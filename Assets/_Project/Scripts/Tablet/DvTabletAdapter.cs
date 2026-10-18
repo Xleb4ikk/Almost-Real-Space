@@ -3,10 +3,10 @@ using Galilego.Building;
 namespace Galilego.Tablet
 {
     /// <summary>
-    /// Конвертация готового ΔV-расчёта (DvResult из DeltaVModel.cs) в данные
-    /// планшета. Вызывается из будущего TabletLink.Fill:
+    /// Converts a ready ΔV result (DvResult from DeltaVModel.cs) into tablet data.
+    /// Called from TabletLink.Fill:
     ///   DvTabletAdapter.Apply(panel.Live ?? panel.Plan, telemetry);
-    /// Поля копируются 1-в-1, ничего не пересчитывается.
+    /// Fields are copied one-to-one, nothing is recomputed.
     /// </summary>
     public static class DvTabletAdapter
     {

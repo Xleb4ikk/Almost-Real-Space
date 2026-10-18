@@ -5,17 +5,17 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Чистая математика тайлового 3D-шума (без зависимостей от Unity Texture).
-    /// Все функции периодичны: значение в точке p и в точке p+period·k
-    /// (по любой из осей) идентично — обязательное условие для GPU wrap
-    /// (Repeat) без швов на границе текстуры. Период передаётся явно на
-    /// каждом вызове (а не фиксирован в текстуре), поэтому одна и та же
-    /// решётка используется для нескольких октав с разной частотой.
+    /// Pure math of tiled 3D noise (no Unity Texture dependency).
+    /// All functions are periodic: the value at p and at p+period·k
+    /// (along any axis) is identical — a hard requirement for seamless GPU
+    /// wrap (Repeat) at the texture border. The period is passed explicitly on
+    /// every call (not fixed in the texture), so the same
+    /// lattice serves several octaves at different frequencies.
     ///
-    /// Perlin — для связной, "дутой" базовой формы облака. Worley
-    /// (клеточный/cellular) — инвертированный, даёт выпуклые "кучевые" зерна;
-    /// комбинация (Perlin-Worley) — рецепт Horizon Zero Dawn (см. ссылку в
-    /// сопроводительном .md).
+    /// Perlin — for the connected, "puffy" base cloud shape. Worley
+    /// (cellular) — inverted, gives convex "cumulus" grains;
+    /// the combination (Perlin-Worley) is the Horizon Zero Dawn recipe (see the link in
+    /// the accompanying .md).
     /// </summary>
     internal static class CloudNoiseGen
     {
@@ -42,7 +42,7 @@ namespace Galilego.Universe
             return m < 0 ? m + period : m;
         }
 
-        /// <summary>Псевдослучайная точка в [0,1)^3 для узла решётки (лат.точка), период — Worley feature point.</summary>
+        /// <summary>Pseudorandom point in [0,1)^3 for a lattice node (Worley feature point).</summary>
         private static Vector3 LatticePoint(int x, int y, int z, int period, int seed)
         {
             uint h = Hash(Wrap(x, period), Wrap(y, period), Wrap(z, period), seed);
@@ -55,11 +55,11 @@ namespace Galilego.Universe
                 (hz & 0xFFFFFF) / (float)0x1000000);
         }
 
-        /// <summary>Псевдослучайный единичный градиент для узла решётки (Perlin).</summary>
+        /// <summary>Pseudorandom unit gradient for a lattice node (Perlin).</summary>
         private static Vector3 LatticeGradient(int x, int y, int z, int period, int seed)
         {
             uint h = Hash(Wrap(x, period), Wrap(y, period), Wrap(z, period), seed ^ 0x5bd1e995);
-            // 12 направлений на рёбра куба (классический выбор градиентов Перлина).
+            // 12 directions along the cube edges (classic Perlin gradient set).
             switch ((int)(h % 12u))
             {
                 case 0: return new Vector3(1, 1, 0).normalized;
@@ -82,7 +82,7 @@ namespace Galilego.Universe
             return t * t * t * (t * ((t * 6f) - 15f) + 10f);
         }
 
-        /// <summary>Тайловый Перлин. p — координаты в ЯЧЕЙКАХ решётки (не [0,1)); period — целое число ячеек по оси.</summary>
+        /// <summary>Tiled Perlin. p — coordinates in lattice CELLS (not [0,1)); period — integer cell count per axis.</summary>
         public static float Perlin(Vector3 p, int period, int seed)
         {
             int x0 = Mathf.FloorToInt(p.x);
@@ -111,11 +111,11 @@ namespace Galilego.Universe
             float nx11 = Mathf.Lerp(n011, n111, u);
             float nxy0 = Mathf.Lerp(nx00, nx10, v);
             float nxy1 = Mathf.Lerp(nx01, nx11, v);
-            // ~[-1,1] (не строго нормировано для 3D градиентов, но в диапазоне остаётся почти всегда).
+            // ~[-1,1] (not strictly normalized for 3D gradients, but stays in range almost always).
             return Mathf.Lerp(nxy0, nxy1, w) * 1.2f;
         }
 
-        /// <summary>Тайловый Worley (cellular). Возвращает расстояние до ближайшей feature-точки среди 3x3x3 соседних ячеек, в единицах ячейки (обычно 0..~1.2).</summary>
+        /// <summary>Tiled Worley (cellular). Returns the distance to the nearest feature point among the 3x3x3 neighboring cells, in cell units (typically 0..~1.2).</summary>
         public static float Worley(Vector3 p, int period, int seed)
         {
             int xi = Mathf.FloorToInt(p.x);
@@ -147,7 +147,7 @@ namespace Galilego.Universe
             return Mathf.Sqrt(minDistSq);
         }
 
-        /// <summary>fBm суммы Перлина, period0 — период первой октавы (ячеек); каждая октава удваивает период (обязательно для бесшовности).</summary>
+        /// <summary>fBm of Perlin sums, period0 — first octave period (cells); each octave doubles the period (required for seamlessness).</summary>
         public static float PerlinFbm(Vector3 pCells0, int period0, int octaves, float gain, int seed)
         {
             float sum = 0f;
@@ -167,7 +167,7 @@ namespace Galilego.Universe
             return totalAmp > 0f ? sum / totalAmp : 0f; // ~[-1,1]
         }
 
-        /// <summary>fBm инвертированного Worley (1 - distance, зажато в 0..1) — "кучевые" выпуклости, чем больше октав, тем детальнее эрозия.</summary>
+        /// <summary>fBm of inverted Worley (1 - distance, clamped to 0..1) — "cumulus" bulges; more octaves give finer erosion.</summary>
         public static float WorleyFbm(Vector3 pCells0, int period0, int octaves, float gain, int seed)
         {
             float sum = 0f;
@@ -195,19 +195,19 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Печёт 3D/статические текстуры облаков на CPU (как AtmosphereOptics печёт
-    /// LUT атмосферы) — один раз при старте PlanetCloudsView, пересборка только
-    /// при смене профиля. Компьют-шейдер не используется: разрешения намеренно
-    /// скромные (64³/32³/24³), печать занимает доли секунды — тот же бюджет,
-    /// что и у существующих LUT атмосферы.
+    /// Bakes cloud 3D/static textures on the CPU (like AtmosphereOptics bakes
+    /// the atmosphere LUTs) — once at PlanetCloudsView start, rebuilt only
+    /// when the profile changes. No compute shader is used: resolutions are
+    /// deliberately modest (64³/32³/24³) and baking takes fractions of a second — the same
+    /// budget as the existing atmosphere LUTs.
     /// </summary>
     internal static class CloudNoiseBaker
     {
         /// <summary>
-        /// R = Perlin-Worley база (низкая частота, period=3 ячейки на всю
-        /// текстуру — "средние" кучевые формы). G/B/A = fBm инвертированного
-        /// Worley на трёх нарастающих частотах (period 4/7/11) — веса эрозии
-        /// в шейдере (SampleCloudDensity), от крупной до мелкой.
+        /// R = Perlin-Worley base (low frequency, period=3 cells across the whole
+        /// texture — "medium" cumulus shapes). G/B/A = fBm of inverted
+        /// Worley at three increasing frequencies (period 4/7/11) — erosion weights
+        /// in the shader (SampleCloudDensity), from coarse to fine.
         /// </summary>
         public static Texture3D BuildShapeTexture(int resolution, int seed)
         {
@@ -228,7 +228,7 @@ namespace Galilego.Universe
 
                         float worleyBase = CloudNoiseGen.WorleyFbm(uvw * basePeriod, basePeriod, 3, 0.5f, seed + 991);
 
-                        // Рецепт Horizon Zero Dawn: Worley "разбухает" Perlin, сохраняя связность.
+                        // Horizon Zero Dawn recipe: Worley "inflates" Perlin while keeping connectivity.
                         float perlinWorley = CloudNoiseGen.Remap(perlin, worleyBase - 1f, 1f, 0f, 1f);
 
                         float w1 = CloudNoiseGen.WorleyFbm(uvw * 4, 4, 3, 0.5f, seed + 13);
@@ -244,7 +244,7 @@ namespace Galilego.Universe
             return ToTexture3D(pixels, resolution, TextureFormat.RGBA32);
         }
 
-        /// <summary>RGB = 3 октавы fBm Worley на нарастающей частоте (period 3/6/10) — мелкая эрозия краёв ("дым" у основания).</summary>
+        /// <summary>RGB = 3 octaves of Worley fBm at increasing frequency (period 3/6/10) — fine edge erosion ("smoke" at the base).</summary>
         public static Texture3D BuildDetailTexture(int resolution, int seed)
         {
             resolution = Mathf.Clamp(resolution, 4, 64);

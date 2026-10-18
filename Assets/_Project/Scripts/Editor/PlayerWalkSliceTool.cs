@@ -7,9 +7,9 @@ using UnityEngine.SceneManagement;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Сцена регресса ходьбы: Terra со сферическим рельефом (плоская площадка,
-    /// h ≡ 0), раннер и PlayerWalkProbe (60 с ходьбы на восток). Используется
-    /// дважды: до и после интеграции PlayerSurfaceController, сравнение 1 мм.
+    /// Walk regression scene: Terra with spherical relief (flat pad, h ≡ 0), a
+    /// runner and PlayerWalkProbe (60 s of walking east). Used for before/after
+    /// comparisons, down to 1 mm.
     /// </summary>
     public static class PlayerWalkSliceTool
     {
@@ -44,7 +44,7 @@ namespace Galilego.Universe.EditorTools
             return string.Format("Walk-срез: сцена \"{0}\" {1}", ScenePath, saved ? "сохранена" : "НЕ сохранена");
         }
 
-        /// <summary>Сцена пробы крыши: тот же мир + место (SurfaceSite) в точке спавна (0,0).</summary>
+        /// <summary>Roof probe scene: the same world plus a site (SurfaceSite) at spawn (0,0).</summary>
         public static string BuildRoofScene()
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);

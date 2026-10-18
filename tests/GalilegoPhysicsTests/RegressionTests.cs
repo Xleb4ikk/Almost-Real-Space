@@ -7,10 +7,10 @@ using Xunit.Abstractions;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Тест A — регрессия против старого пути: чистая гравитация (MassFlow = 0)
-    /// обязана давать те же Position/Velocity, что существующий
-    /// OrbitIntegrator.StepForward. Доказывает, что рефакторинг не изменил
-    /// поведение для гравитационного случая.
+    /// Test A — regression against the old path: pure gravity (MassFlow = 0)
+    /// must produce the same Position/Velocity as the existing
+    /// OrbitIntegrator.StepForward. Proves the refactor didn't change
+    /// behaviour for the gravity-only case.
     /// </summary>
     public sealed class RegressionTests
     {

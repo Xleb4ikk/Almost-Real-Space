@@ -3,31 +3,30 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// «Зона прицела» — конус направлений, ровно покрывающий нарисованное
-    /// кольцо Crosshair (радиус в точках экрана). Наводка строителя (снап
-    /// по узлам, удаление по прицелу) и интеракция (E) считают попадание
-    /// только внутри этого конуса: зона взаимодействия совпадает с областью
-    /// кольца, а не «примерно рядом» и не точкой ровно в центре.
+    /// "Aim zone" — a cone of directions that exactly covers the drawn Crosshair
+    /// ring (radius in screen pixels). The builder's aiming (node snapping, delete
+    /// by crosshair) and interaction (E) count a hit only inside this cone: the
+    /// interaction zone matches the ring area, not "roughly nearby" and not a single
+    /// point at the center.
     ///
-    /// Угол берётся от ЖИВОГО FOV камеры: ПКМ-приближение сужает угол обзора —
-    /// кольцо при этом закрывает меньше направлений, и конус сужается вместе
-    /// с ним (иначе зона «уезжала» бы относительно нарисованного кольца).
+    /// The angle uses the LIVE camera FOV: RMB zoom narrows the field of view, so the
+    /// ring covers fewer directions and the cone narrows with it (otherwise the zone
+    /// would drift relative to the drawn ring).
     /// </summary>
     public static class AimCone
     {
         /// <summary>
-        /// Проб на конус: центр + 8 по кольцу. Восьмиугольник закрывает диск
-        /// с зазором ~6% радиуса (≈0.3 px при радиусе 5) — для кольца
-        /// неразличимо, а точный конус для тел вращения — это уже сложная
-        /// аналитика ради тех же 0.3 px.
+        /// Cone samples: center + 8 on the ring. The octagon covers the disc with a
+        /// gap of ~6% of the radius (≈0.3 px at radius 5) — indistinguishable for the
+        /// ring, while an exact cone of revolution would be complex analytics for the
+        /// same 0.3 px.
         /// </summary>
         public const int Samples = 9;
 
         /// <summary>
-        /// Тангенс половинного угла конуса для камеры: пиксельный радиус
-        /// кольца переводится в угол через вертикальный FOV. Камера null —
-        /// ноль (зона вырождается в точку — запасной путь для кадров без
-        /// камеры, как было до прицела).
+        /// Tangent of the cone half-angle for the camera: the ring's pixel radius is
+        /// converted to an angle via the vertical FOV. Camera null — zero (the zone
+        /// degenerates to a point, a fallback for frames without a camera).
         /// </summary>
         public static float Tangent(Camera camera)
         {
@@ -43,11 +42,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Направления проб: 0 — центр, далее Samples-1 по кольцу радиуса
-        /// tangent (в тангенциальной плоскости взгляда: та же величина, что
-        /// проверяет снап). Базис строится от forward; при взгляде почти
-        /// вдоль мировой вертикали опорой берётся right — вырожденный крест
-        /// дал бы нулевые направления.
+        /// Sample directions: 0 — center, then Samples-1 around the ring of radius
+        /// tangent (in the tangent plane of the view: the same value the snap checks).
+        /// The basis is built from forward; when looking nearly along the world
+        /// vertical, right is used as reference — a degenerate cross would give zero
+        /// directions.
         /// </summary>
         public static void FillDirections(Vector3 forward, float tangent, Vector3[] directions)
         {

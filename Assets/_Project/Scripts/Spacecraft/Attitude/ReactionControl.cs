@@ -5,12 +5,11 @@ using Galilego.Core;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Источник момента для AttitudePhysics. Отдельный от IDynamicsSource
-    /// осознанно: силе момент не нужен, а вращению не нужна сила; IDynamicsSource
-    /// вообще не имеет канала ориентации (Evaluate без attitude), поэтому RCS-сила
-    /// идёт только через EvaluateFull ниже. Расширение IDynamicsSource каналом
-    /// attitude — будущий breaking change, когда понадобится аэродинамический
-    /// момент; здесь зафиксирован, не забыт.
+    /// Torque source for AttitudePhysics. Separate from IDynamicsSource on purpose:
+    /// a force needs no torque and rotation needs no force; IDynamicsSource has no
+    /// attitude channel (Evaluate without attitude), so RCS force goes only through
+    /// EvaluateFull below. TODO: extend IDynamicsSource with an attitude channel
+    /// when aerodynamic torque is needed.
     /// </summary>
     public interface ITorqueSource
     {
@@ -18,9 +17,9 @@ namespace Galilego.Spacecraft
     }
 
     /// <summary>
-    /// Один RCS-двигатель: точка приложения и направление — в body-frame,
-    /// активность щёлкает игровой цикл (или тест). Класс, не struct: активность
-    /// мутирует, аллокаций в тике нет (пул на старте).
+    /// A single RCS thruster: application point and direction in the body frame;
+    /// the game loop (or a test) toggles Active. A class, not a struct: Active
+    /// mutates; no per-tick allocations (pooled at start).
     /// </summary>
     public sealed class RcsThruster
     {
@@ -31,9 +30,9 @@ namespace Galilego.Spacecraft
 
         public RcsThruster(Vector3d position, Vector3d direction, double thrustNewtons)
         {
-            // Нулевое/вырожденное направление молча давало нулевой вклад (Normalized
-            // от нуля — ноль): опечатка в конфиге = тихая потеря тяги. Громко здесь,
-            // на конфигурации, а не на горячем пути Evaluate.
+            // A zero/degenerate direction would silently contribute nothing (Normalized
+            // of zero is zero). Reject loudly here, at configuration time, rather than
+            // on the hot Evaluate path.
             if (!(direction.SqrMagnitude > 0d) || !direction.IsFinite)
             {
                 throw new ArgumentOutOfRangeException(
@@ -48,20 +47,19 @@ namespace Galilego.Spacecraft
     }
 
     /// <summary>
-    /// Блок RCS: сумма моментов активных двигателей τ = Σ r×F (body-frame).
-    /// Полный канал через IDynamicsSource: задайте AttitudeProvider и добавьте
-    /// блок в SpacecraftPhysics.Sources — сила (в мировой рамке) пойдёт в
-    /// орбитальную RHS, момент (body-frame) — в снимок SpacecraftPhysics.
-    /// TotalTorqueBody, откуда его читает вращение. Так сила+момент идут из
-    /// одного источника; будущий аэродинамический момент ляжет в тот же канал.
+    /// RCS block: sum of torques of active thrusters τ = Σ r×F (body frame).
+    /// Full channel via IDynamicsSource: set AttitudeProvider and add the block
+    /// to SpacecraftPhysics.Sources — force (world frame) goes into the orbital
+    /// RHS, torque (body frame) into the SpacecraftPhysics.TotalTorqueBody
+    /// snapshot, which rotation reads. So force+torque come from one source.
     /// </summary>
     public sealed class RcsBlock : ITorqueSource, IDynamicsSource
     {
         public readonly List<RcsThruster> Thrusters = new List<RcsThruster>();
 
         /// <summary>
-        /// Ориентация body→world для полного канала. null → Evaluate громко
-        /// отказывает: молча нулевая сила RCS — тихая потеря управления.
+        /// Attitude body→world for the full channel. null → Evaluate fails loudly:
+        /// a silent zero RCS force is a silent loss of control.
         /// </summary>
         public Func<QuaternionD> AttitudeProvider;
 
@@ -111,7 +109,7 @@ namespace Galilego.Spacecraft
                     "RcsBlock в орбитальном пути без AttitudeProvider: сила и момент остались бы нулями молча. Задайте провайдер ориентации (снимок из AttitudePhysics) или уберите блок из Sources.");
             }
 
-            // Угловая скорость в канал момента не идёт (τ от RCS не зависит от ω).
+            // Angular velocity is not used in the torque channel (RCS τ is independent of ω).
             return EvaluateFull(AttitudeProvider(), Vector3d.Zero, timeSeconds);
         }
     }

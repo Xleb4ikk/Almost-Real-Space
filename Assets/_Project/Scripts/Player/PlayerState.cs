@@ -3,7 +3,7 @@ using Galilego.Core;
 
 namespace Galilego.Universe
 {
-    /// <summary>Режим игрока: в корабле / EVA (полёт) / на поверхности / в воде.</summary>
+    /// <summary>Player mode: in ship / EVA (flight) / on surface / in water.</summary>
     public enum PlayerMode
     {
         InShip,
@@ -13,20 +13,20 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Топливо джетпака. Контракт под будущее: сейчас бесконечный (MVP),
-    /// потом бак с расходом — имплементировать этот интерфейс и подменить
-    /// в PlayerController.JetpackFuel, физика не меняется.
+    /// Jetpack fuel. Contract for the future: currently infinite (MVP), later a
+    /// tank with drain — implement this interface and substitute it in
+    /// PlayerController.JetpackFuel; physics does not change.
     /// </summary>
     public interface IJetpackFuel
     {
-        /// <summary>Запас в секундах работы (для UI). ∞ = бесконечный.</summary>
+        /// <summary>Remaining seconds of operation (for UI). ∞ = infinite.</summary>
         double RemainingSeconds { get; }
 
-        /// <summary>Списать время работы; false — топлива нет.</summary>
+        /// <summary>Consume operating time; false — no fuel.</summary>
         bool TryConsume(double seconds);
     }
 
-    /// <summary>MVP-топливо джетпака: бесконечное.</summary>
+    /// <summary>MVP jetpack fuel: infinite.</summary>
     public sealed class InfiniteJetpackFuel : IJetpackFuel
     {
         public double RemainingSeconds => double.PositiveInfinity;
@@ -38,50 +38,49 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Намерение игрока на кадр (заполняет PlayerController, исполняет
-    /// SimulationRunner). Разделение ввода и физики: контроллер знает только
-    /// кнопки, раннер — только интеграцию.
+    /// Player intent for a frame (filled by PlayerController, executed by
+    /// SimulationRunner). Input/physics split: the controller knows only buttons,
+    /// the runner only integration.
     /// </summary>
     public struct PlayerIntent
     {
-        /// <summary>Направление ходьбы (касательная плоскость, единичный или ноль).</summary>
+        /// <summary>Walk direction (tangent plane, unit or zero).</summary>
         public Vector3d WalkDirection;
 
-        /// <summary>Скорость ходьбы (м/с).</summary>
+        /// <summary>Walk speed (m/s).</summary>
         public double WalkSpeed;
 
-        /// <summary>Прыжок (срабатывает один раз, на земле).</summary>
+        /// <summary>Jump (fires once, on the ground).</summary>
         public bool Jump;
 
         public bool JetpackToggle;
 
-        /// <summary>Ускорение джетпака (м/с², только в EVA).</summary>
+        /// <summary>Jetpack acceleration (m/s², EVA only).</summary>
         public Vector3d JetpackAccel;
 
-        /// <summary>Переключение висения (двойной тап Shift в полёте).</summary>
+        /// <summary>Hover toggle (double tap Shift in flight).</summary>
         public bool HoverToggle;
 
         /// <summary>
-        /// Желаемая скорость висения относительно местного кадра (астро, м/с):
-        /// WASD — горизонталь, Space/Shift — вверх/вниз. Ноль — замирание.
+        /// Desired hover velocity relative to the local frame (astro, m/s):
+        /// WASD horizontal, Space/Shift up/down. Zero means hold still.
         /// </summary>
         public Vector3d HoverVelocity;
 
-        /// <summary>Направление плавания (мировой астро-кадр, единичный или ноль).</summary>
+        /// <summary>Swim direction (world astro frame, unit or zero).</summary>
         public Vector3d SwimDirection;
 
-        /// <summary>Скорость плавания (м/с).</summary>
+        /// <summary>Swim speed (m/s).</summary>
         public double SwimSpeed;
 
         /// <summary>
-        /// Направление ноуклипа (мировой астро-кадр, единичный или ноль).
-        /// Заполняется, только когда включён SimulationRunner.NoclipActive —
-        /// это единственный переключатель режима, отдельного флага в намерении
-        /// нет намеренно: два переключателя рассинхронизируются.
+        /// Noclip direction (world astro frame, unit or zero). Filled only when
+        /// SimulationRunner.NoclipActive is on — that is the single mode switch; a
+        /// separate flag in the intent is deliberately absent: two switches drift out of sync.
         /// </summary>
         public Vector3d NoclipDirection;
 
-        /// <summary>Скорость ноуклипа (м/с) — от ходьбы до несоразмерных величин.</summary>
+        /// <summary>Noclip speed (m/s) — from walking to absurd values.</summary>
         public double NoclipSpeed;
 
         public static PlayerIntent Idle => default;

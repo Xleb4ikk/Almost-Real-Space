@@ -4,29 +4,26 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Физика неба в рантайме: считает прозрачность к солнцу, окклюзию телом,
-    /// дневной фактор и видимость звёзд для наблюдателя и кладёт их в глобалы
-    /// шейдеров, плюс красит Directional Light по физике (день→закат→ночь).
+    /// Runtime sky physics: computes transmittance to the sun, body occlusion,
+    /// day factor and star visibility for the observer and puts them into shader
+    /// globals, plus colors the Directional Light physically (day→sunset→night).
     ///
-    /// Прозрачность к Солнцу берётся из AtmosphereOptics.TransmittanceToSpace —
-    /// той же функции, что строит transmittance-LUT GPU-неба. Это единая модель
-    /// по фактической геометрии планеты (радиус, верх атмосферы, высотные
-    /// профили β), поэтому диск солнца, цвет прямого света и небо не расходятся
-    /// на закате. Эмпирический SkyPhysics.SunTransmittance (Kasten–Young для
-    /// радиуса Земли) остаётся только в тестах: на маленькой Терре он давал в
-    /// разы более раннее и сильное покраснение, чем GPU-небо, а ниже −1.6°
-    /// воздушная масса становилась отрицательной (T > 1).
+    /// Transmittance to the Sun comes from AtmosphereOptics.TransmittanceToSpace —
+    /// the same function that builds the GPU sky's transmittance LUT. This is a
+    /// single model over the actual planet geometry (radius, top of atmosphere,
+    /// vertical β profiles), so the sun disc, the direct light color and the sky
+    /// do not diverge at sunset. SkyPhysics.SunTransmittance is only used in tests.
     ///
-    /// Вызов — LateUpdate; потребители (SunBillboard, StarField) читают
-    /// вычисленные значения того же/предыдущего кадра.
+    /// Called from LateUpdate; consumers (SunBillboard, StarField) read the values
+    /// computed this or the previous frame.
     /// </summary>
     [ExecuteAlways]
     public sealed class SkyEnvironment : MonoBehaviour
     {
-        /// <summary>Линейный цвет фотосферы (5772 K) — единый источник для света, диска и неба.</summary>
+        /// <summary>Linear photosphere color (5772 K) — single source for the light, disc and sky.</summary>
         public static readonly Vector3d PhotosphereLinear = StarColorUtil.FromTemperature(5772d);
 
-        /// <summary>Светимость фотосферы: нормировка света, чтобы тон звезды не съедал яркость.</summary>
+        /// <summary>Photosphere luminance: light normalization so the star's hue does not eat brightness.</summary>
         private static readonly double PhotosphereLuminance =
             (0.2126d * PhotosphereLinear.X) + (0.7152d * PhotosphereLinear.Y) + (0.0722d * PhotosphereLinear.Z);
 
@@ -36,7 +33,7 @@ namespace Galilego.Universe
         [Tooltip("Время симуляции для превью освещения в Scene view (вне Play).")]
         public double EditorTimeSeconds = 0d;
 
-        /// <summary>Направление НА солнце в координатах симуляции (то же, что _TerrainSunDir).</summary>
+        /// <summary>Direction TO the sun in simulation coordinates (same as _TerrainSunDir).</summary>
         public Vector3 LastSunDirectionSim { get; private set; }
 
         [Tooltip("Directional Light солнца (гасится/краснится по физике).")]
@@ -93,30 +90,30 @@ namespace Galilego.Universe
         [Tooltip("Ширина переходной зоны между тирами фильтрации (м): выбор тира — dither, без двойной стоимости.")]
         public float ShadowBlendWidthMeters = 25f;
 
-        /// <summary>Прозрачность к солнцу по каналам (обновляется каждый кадр).</summary>
+        /// <summary>Per-channel transmittance to the sun (updated every frame).</summary>
         public Vector3 Transmittance { get; private set; } = Vector3.one;
 
-        /// <summary>Дневной фактор прямого света 0..1.</summary>
+        /// <summary>Day factor of direct light, 0..1.</summary>
         public float DayFactor { get; private set; }
 
-        /// <summary>Высота солнца над локальным горизонтом, градусы (диагностика).</summary>
+        /// <summary>Sun elevation above the local horizon, degrees (diagnostics).</summary>
         public float SunElevationDeg { get; private set; }
 
-        /// <summary>Ambient-отношение к опорному дню 0..2 (диагностика).</summary>
+        /// <summary>Ambient ratio to the reference day, 0..2 (diagnostics).</summary>
         public float AmbientAmount { get; private set; }
 
-        /// <summary>Текущая компенсация экспозиции глаза, EV (диагностика).</summary>
+        /// <summary>Current eye exposure compensation in EV (diagnostics).</summary>
         public float ExposureCompensation { get; private set; }
 
-        /// <summary>Окклюзия солнца телом (0/1, сглажено).</summary>
+        /// <summary>Solar occlusion by the body (0/1, smoothed).</summary>
         public float SunOcclusion { get; private set; }
 
-        /// <summary>Видимость звёзд 0..1.</summary>
+        /// <summary>Star visibility, 0..1.</summary>
         public float StarVisibility { get; private set; } = 1f;
 
-        // Кэш опорной яркости неба (день, солнце в зените, уровень моря) для
-        // нормировки ambient: _SkyAmbient сохраняет смысл «сколько света» при
-        // любом профиле (плотная/разреженная атмосфера, другая высота слоя).
+        // Cache of the reference sky luminance (day, sun at zenith, sea level)
+        // for ambient normalization: _SkyAmbient keeps the meaning "how much
+        // light" for any profile (dense/sparse atmosphere, different layer height).
         private bool ambientRefValid;
         private AtmosphereOptics.Coefficients ambientRefCoeff;
         private double ambientRefRadius;
@@ -168,10 +165,10 @@ namespace Galilego.Universe
 
         private void Start()
         {
-            // [ГРАФИКА] Разрешение теней солнца задаётся HDRP-ассетом
-            // (Max Directional Shadow Map Resolution), а не этим кодом: ручной
-            // override здесь перебивал бы и ассет, и пресеты
-            // (GraphicsQualityController). В сцене стоял override 512 — снимаем.
+            // Sun shadow resolution is set by the HDRP asset
+            // (Max Directional Shadow Map Resolution), not by this code: a manual
+            // override here would fight both the asset and the presets
+            // (GraphicsQualityController).
             var hdLight = SunLight != null
                 ? SunLight.GetComponent<UnityEngine.Rendering.HighDefinition.HDAdditionalLightData>()
                 : null;
@@ -216,9 +213,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Вне Play глобалы ставит только этот метод. Вызов ApplyGlobalsNow
-        /// тяжёлый (интеграл атмосферы), поэтому не каждый кадр: только при смене
-        /// тела или точки наблюдения и не чаще раза в 0.5 с.
+        /// Outside Play only this method sets the globals. ApplyGlobalsNow is
+        /// heavy (atmosphere integral), so it is not called every frame: only on
+        /// a body or observer change and at most once per 0.5 s.
         /// </summary>
         private void EditorSyncGlobals()
         {
@@ -248,13 +245,12 @@ namespace Galilego.Universe
             editLastObserver = observer;
             editLastTime = EditorTimeSeconds;
 
-            // Свет как в Play: цвет и яркость Sun, а не только глобалы шейдеров.
+            // Light as in Play: Sun color and intensity, not just the shader globals.
             ApplyGlobalsNow(frame.BodyState, observer, EditorTimeSeconds, applyToLight: true);
 
-            // Тень HDRP идёт от поворота Sun. В Play его ставит SunBillboard,
-            // в редакторе это делает этот код. Иначе шейдер и тень используют
-            // разное солнце, и границы каскадов видны как чёрная сфера вокруг
-            // камеры.
+            // The HDRP shadow follows the Sun rotation. In Play it is set by
+            // SunBillboard, in the editor by this code; otherwise the shader and
+            // the shadow would use different suns.
             if (SunLight != null && LastSunDirectionSim.sqrMagnitude > 0.5f)
             {
                 SunLight.transform.rotation = Quaternion.LookRotation(-LastSunDirectionSim);
@@ -262,16 +258,15 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Пересчитать и выставить все глобалы освещения для произвольного
-        /// наблюдателя. Вынесено из LateUpdate, чтобы редакторское превью
-        /// поверхности получало РОВНО тот же свет, что и игра, не запуская Play.
-        /// Единственный источник правды: своя копия этой физики в редакторе
-        /// разошлась бы с игровой на первом же изменении коэффициентов.
+        /// Recompute and set all lighting globals for an arbitrary observer.
+        /// Extracted from LateUpdate so the editor surface preview gets EXACTLY
+        /// the same light as the game without entering Play — a separate copy of
+        /// this physics in the editor would diverge on the first coefficient change.
         ///
-        /// applyToLight — трогать ли Directional Light сцены. Для игры да,
-        /// для редакторского превью нет: превью нужно только заполнить глобалы
-        /// шейдеров, а запись в SunLight засоряла бы сцену и меняла свет у
-        /// автора между правками.
+        /// applyToLight — whether to touch the scene's Directional Light. Yes for
+        /// the game, no for the editor preview: the preview only needs the shader
+        /// globals filled, while writing to SunLight would dirty the scene and
+        /// change the author's lighting between edits.
         /// </summary>
         public void ApplyGlobalsNow(OrbitingBody body, Vector3d observerPosition, double timeSeconds, bool applyToLight = true)
         {
@@ -288,11 +283,10 @@ namespace Galilego.Universe
             double altitude = System.Math.Max(0d, distance - body.Radius);
             Vector3d up = distance > 0d ? relative / distance : new Vector3d(0d, 0d, 1d);
 
-            // Корень дерева тел ищем по Parent, а НЕ через Runner.SystemState.
-            // Раньше здесь стояло Runner.SystemState.Root — и как только метод
-            // начали звать из редактора (превью поверхности), он падал на null
-            // 999 раз в секунду: вне Play у раннера SystemState не собран.
-            // По той же причине все ссылки на Runner внутри метода недопустимы.
+            // The body-tree root is found via Parent, NOT via Runner.SystemState:
+            // outside Play the runner's SystemState is not built, so all Runner
+            // references are forbidden inside this method (the editor preview
+            // calls it).
             OrbitingBody root = RootOf(body);
             if (root == null)
             {
@@ -306,9 +300,8 @@ namespace Galilego.Universe
 
             double sinEl = Vector3d.Dot(sunDir, up);
 
-            // Единый источник β: те же коэффициенты, что у GPU-купола
-            // (AtmosphereOptics). Раньше здесь был эмпирический ExtinctionPerMeter —
-            // небо и свет Солнца считались по разным моделям и расходились.
+            // Single source of β: the same coefficients as the GPU dome
+            // (AtmosphereOptics).
             AtmosphereOptics.Coefficients coeff = atmosphere != null
                 ? atmosphere.ToOptics()
                 : AtmosphereOptics.FromProfile(0d, 0d, 0d, 0d, false);
@@ -316,9 +309,9 @@ namespace Galilego.Universe
             double topAltitude = atmosphere != null ? atmosphere.TopAltitudeMeters : 0d;
             double density = SkyPhysics.Density(altitude, scaleHeight, topAltitude);
 
-            // Единая прозрачность: тот же интеграл по той же геометрии, что у
-            // transmittance-LUT GPU-неба (AtmosphereOptics.TransmittanceToSpace).
-            // В вакууме/выше атмосферы — ровно (1,1,1).
+            // Single transmittance: the same integral over the same geometry as
+            // the GPU sky's transmittance LUT (AtmosphereOptics.TransmittanceToSpace).
+            // In vacuum / above the atmosphere it is exactly (1,1,1).
             Vector3d transmittance;
             if (atmosphere == null || topAltitude <= 0d || altitude >= topAltitude)
             {
@@ -346,34 +339,32 @@ namespace Galilego.Universe
             Shader.SetGlobalVector("_SkySunDir", AstroFrame.ToSimulation(sunDir));
             Shader.SetGlobalVector("_SkyUp", AstroFrame.ToSimulation(up));
 
-            // Цвет прямого солнечного света для шейдеров поверхности: фотосфера ×
-            // прозрачность атмосферы. В космосе T=(1,1,1) — белый; у земли синий
-            // канал гаснет первым — тёплый жёлтый; на закате остаётся красный.
-            // По высоте меняется плавно: T — интеграл плотности над наблюдателем.
-            // Нормируем на светимость фотосферы: при T=1 свет ровно единичной
-            // яркости (как прежний белый), тёплый тон звезды ничего не затемняет,
-            // а атмосфера только красит и гасит.
+            // Direct sunlight color for surface shaders: photosphere ×
+            // atmospheric transmittance. In space T=(1,1,1) — white; near the
+            // ground the blue channel dies first — warm yellow; at sunset red
+            // remains. T is the density integral above the observer, so the color
+            // varies smoothly with altitude. Normalized by photosphere luminance:
+            // at T=1 the light is exactly unit brightness, the star's warm hue
+            // darkens nothing, and the atmosphere only tints and attenuates.
             Vector3d sunLight = AtmosphereOptics.VecMul(PhotosphereLinear, transmittance) / PhotosphereLuminance;
             Shader.SetGlobalVector("_SunLightColor",
                 new Vector3((float)sunLight.X, (float)sunLight.Y, (float)sunLight.Z));
 
-            // Направление на звезду для планарного шейдера рельефа. Тот же
-            // глобал, что ставит SunBillboard в рантайме: превью и игра должны
-            // светиться с одного угла, иначе склоны читаются противоположно.
+            // Direction to the star for the planar terrain shader. Same global
+            // SunBillboard sets at runtime: preview and game must be lit from the
+            // same angle.
             LastSunDirectionSim = AstroFrame.ToSimulation(sunDir);
             Shader.SetGlobalVector("_TerrainSunDir", LastSunDirectionSim);
 
             Shader.SetGlobalVector("_TerrainBodyCenterWS", FloatingOrigin.ToRender(bodyPos));
 
-            // Ambient террейна — средняя яркость неба над наблюдателем
-            // (полусферический интеграл single-scatter, та же физика, что у
-            // GPU-неба). В отличие от тинта×skyLuminance, он НЕ гаснет на
-            // терминаторе: пока небо светится (сумерки), земля получает
-            // рассеянный свет — иначе при ярком небе земля была чёрной.
-            // Нормируем на опорное значение (день, зенит): _SkyAmbient остаётся
-            // «сколько света», а цвет/затухание — из физики. Вне атмосферы —
-            // 0, остаётся _NightAmbient. От позиции наблюдателя не зависит —
-            // ночная сторона темна всегда.
+            // Terrain ambient — average sky luminance above the observer
+            // (hemispherical single-scatter integral, same physics as the GPU
+            // sky). It does not fade at the terminator: while the sky still
+            // glows, the ground receives scattered light. Normalized to the
+            // reference value (day, zenith): _SkyAmbient remains "how much
+            // light" while color/falloff come from physics. Outside the
+            // atmosphere it is 0, _NightAmbient remains.
             Vector3d ambientRadiance = Vector3d.Zero;
             double ambientAmount = 0d;
             Vector3d ambientHue = new Vector3d(1d, 1d, 1d);
@@ -402,8 +393,8 @@ namespace Galilego.Universe
             Shader.SetGlobalFloat("_SkyAmbient", SkyAmbient);
             Shader.SetGlobalFloat("_TerrainSun", TerrainSunIntensity);
             Shader.SetGlobalFloat("_TerrainRadianceScale", TerrainRadianceScale);
-            // В сумерках тени раскрываем (иначе контровый свет даёт pure black):
-            // днём полная сила, ниже −5° остаётся треть.
+            // Twilight opens up the shadows (backlight would otherwise be pure
+            // black): full strength by day, one third below −5°.
             double shadowTwilight = 0.35d + (0.65d * SkyPhysics.Smoothstep(-0.08d, 0.12d, sinEl));
             Shader.SetGlobalFloat("_ShadowStrength", Mathf.Clamp01(ShadowStrength * (float)shadowTwilight));
             Shader.SetGlobalFloat("_ShadowHighDistance", Mathf.Max(0f, ShadowHighDistanceMeters));
@@ -412,23 +403,20 @@ namespace Galilego.Universe
 
             if (applyToLight && SunLight != null)
             {
-                // Directional Light — свет для объектов на обычных HDRP-материалах.
-                // Небо/рельеф/декор считают свет сами (глобалы _SunLightColor,
-                // _TerrainSun, _TerrainRadianceScale) и живут в искусственном
-                // масштабе «albedo·ndl», где полуденное солнце даёт
-                // TerrainRadianceScale. У HDRP/Lit диффузный член = albedo·E·ndl/π,
-                // поэтому тот же масштаб — это E = π·TerrainRadianceScale·
-                // TerrainSunIntensity (при 2.5 и 1 это ≈7.85). Светить сюда
-                // сырыми SunLightDayLux нельзя: 80 000 — это физические люксы,
-                // на 4 порядка больше масштаба сцены, и белый фасад уходил в
-                // чистый белый, раздувая bloom, при тёмном рельефе рядом.
+                // Directional Light — light for objects with regular HDRP materials.
+                // The sky/terrain/decor compute their own light (_SunLightColor,
+                // _TerrainSun, _TerrainRadianceScale globals) in the artificial
+                // albedo·ndl scale, where the noon sun gives TerrainRadianceScale.
+                // The HDRP/Lit diffuse term is albedo·E·ndl/π, so the matching
+                // scale is E = π·TerrainRadianceScale·TerrainSunIntensity.
+                // Intensity here must NOT use raw SunLightDayLux: those are
+                // physical luxes, orders of magnitude above the scene scale.
                 //
-                // Цвет — по-прежнему физика: фотосфера × прозрачность атмосферы,
-                // оттенок тот же, что у неба, день/ночь — та же яркость.
+                // Color stays physical: photosphere × atmospheric transmittance,
+                // the same hue as the sky.
                 //
-                // applyToLight=false для редакторского превью: там свет нужен
-                // только шейдерам, а трогать SunLight сцены нельзя — превью
-                // засоряло бы сцену и меняло бы свет у автора между правками.
+                // applyToLight=false for the editor preview: only shaders need the
+                // light there, and writing to the scene's SunLight would dirty it.
                 double brightness = Luminance(sunLight);
                 double peak = System.Math.Max(sunLight.X, System.Math.Max(sunLight.Y, sunLight.Z));
                 if (peak > 1e-6d && brightness > 0d)
@@ -445,11 +433,11 @@ namespace Galilego.Universe
                 }
             }
 
-            // Заполняющий свет неба для обычных HDRP-материалов. _SkyAmbientColor
-            // читают только кастомные шейдеры рельефа и декора — здание на
-            // HDRP/Lit в стороне без прямого солнца остаётся чёрным. Этот
-            // Directional Light берёт цвет и яркость из того же ambient, что и
-            // рельеф, и светит сбоку-снизу с противоположной от солнца стороны.
+            // Sky fill light for regular HDRP materials: _SkyAmbientColor is read
+            // only by the custom terrain and decor shaders, so an HDRP/Lit building
+            // out of direct sun would stay black. This Directional Light takes its
+            // color and brightness from the same ambient as the terrain and shines
+            // from the side/below, opposite the sun.
             if (applyToLight && SkyFillLight != null)
             {
                 Vector3 sunW = AstroFrame.ToSimulation(sunDir);
@@ -489,10 +477,10 @@ namespace Galilego.Universe
                     AmbientAmount, DayFactor, SunOcclusion, StarVisibility, ExposureCompensation));
             }
 
-            // Глаз-адаптация: компенсация экспозиции по физической освещённости.
-            // Детерминирована (не зависит от содержимого кадра): histogram-метр
-            // по яркому небу душил бы землю в контровом свете. Днём 0,
-            // в сумерках до TwilightExposureMax, ночью — пол NightExposure.
+            // Eye adaptation: exposure compensation from physical illumination.
+            // Deterministic (independent of frame contents): a histogram meter on
+            // a bright sky would crush the ground in backlight. 0 by day, up to
+            // TwilightExposureMax at twilight, floor NightExposure at night.
             double directLum = Luminance(sunLight);
             double lightLevel = SkyPhysics.Clamp((0.65d * directLum) + (0.35d * ambientAmount), 0d, 1d);
             double exposureComp;
@@ -512,27 +500,26 @@ namespace Galilego.Universe
                 exposure.compensation.Override((float)exposureComp);
             }
 
-            // Настоящий ambient полусферы неба для обычных HDRP-материалов.
-            // Один Directional Light даёт только одну освещённую сторону, а
-            // небо светит со всех сторон сразу — поэтому отдаём HDRP сам
-            // Gradient Sky и подмешиваем в него цвета отсюда. HDRP сворачивает
-            // купол в SH (AmbientProbeConvolution) и без APV отдаёт его
-            // материалам через EvaluateAmbientProbe, то есть стены получают
-            // освещение по нормали без единого дополнительного источника.
+            // True sky-hemisphere ambient for regular HDRP materials: a single
+            // Directional Light lights only one side, so the colors are fed into
+            // HDRP's Gradient Sky, which HDRP convolves into SH
+            // (AmbientProbeConvolution) and hands to materials via
+            // EvaluateAmbientProbe — walls get normal-based lighting without an
+            // extra light source.
             //
-            // Масштаб — тот же, что у рельефа (albedo · ambient · SkyAmbient ·
-            // TerrainRadianceScale), иначе здание и земля разойдутся по яркости.
-            // Фон камеры при этом не меняется: StarFieldView ставит clearColor
-            // в чёрный, а небо рисует атмосфера, поэтому Gradient Sky виден
-            // только как источник ambient/отражений, а не как картинка.
+            // Scale matches the terrain (albedo · ambient · SkyAmbient ·
+            // TerrainRadianceScale), or building and ground would diverge in
+            // brightness. The camera background is unchanged: StarFieldView
+            // clears to black and the atmosphere draws the sky, so Gradient Sky
+            // acts only as an ambient/reflection source, not as an image.
             if (ExposureVolume != null && ExposureVolume.profile != null
                 && ExposureVolume.profile.TryGet<UnityEngine.Rendering.HighDefinition.GradientSky>(out var grad))
             {
                 float k = SkyAmbient * TerrainRadianceScale;
                 Color sky = new Color(ambientColor.r * k, ambientColor.g * k, ambientColor.b * k, 1f);
 
-                // Отражённый от земли свет: зависит от высоты солнца, поэтому
-                // гаснет вместе с прямым светом и не светит ночью.
+                // Ground-reflected light: depends on sun elevation, so it fades
+                // together with the direct light and does not shine at night.
                 float bounce = DayFactor * (float)directLum * TerrainRadianceScale * TerrainSunIntensity * 0.15f;
                 Color ground = new Color(0.20f * bounce, 0.30f * bounce, 0.12f * bounce, 1f);
 

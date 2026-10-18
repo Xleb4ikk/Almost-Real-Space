@@ -4,29 +4,29 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Локальный картографический фрейм на поверхности тела: контейнер для
-    /// авторинга базы. Ставит свой GameObject в НОЛЬ сцены и ориентирует его
-    /// локальными осями ENU (+X север, +Y зенит, +Z восток), поэтому внутри
-    /// фрейма обычные Unity-координаты километрового масштаба с миллиметровой
-    /// точностью.
+    /// Local map frame on a body surface: a container for authoring the base.
+    /// Places its GameObject at the scene ORIGIN and orients it along local ENU
+    /// axes (+X north, +Y zenith, +Z east), so inside the frame ordinary Unity
+    /// coordinates are kilometre-scale with millimetre precision.
     ///
-    /// Зачем. Тело лежит на полуоси 2.6e10 м, где ulp float32 ≈ 2048 м: точку
-    /// спавна и объект базы физически нельзя хранить в мировых координатах
-    /// сцены. Рантайм это обходит floating origin'ом (якорь = позиция игрока),
-    /// и здесь ровно тот же приём, только якорем служит сам фрейм.
+    /// Why: the body sits at a semi-major axis of 2.6e10 m, where float32 ulp is
+    /// about 2048 m: neither the spawn point nor the base object can be stored in
+    /// scene world coordinates. At runtime a floating origin works around this
+    /// (anchor = player position); here the same trick applies, with the frame as
+    /// the anchor.
     ///
-    /// Широта/долгота — ЕДИНСТВЕННЫЙ источник истины о положении фрейма.
-    /// Трансформ как смысл не сериализуется: он каждый раз выводится из
-    /// lat/lon + высоты, и лежать в сцене может любой (на входе в Play фрейм
-    /// прыгает на ~4 м — это якорь игрока, а не ошибка).
+    /// Latitude/longitude are the ONLY source of truth for the frame position.
+    /// The transform is not serialized by meaning: it is derived each time from
+    /// lat/lon + altitude, and may be anything in the scene (on entering Play the
+    /// frame jumps by ~4 m — that is the player anchor, not an error).
     ///
-    /// Дети фрейма — это база: обычные GO/префабы с обычными локальными
-    /// трансформами, собираемые привычными инструментами сцены. Собственного
-    /// обновления им не нужно: фрейм переставляет себя, Unity домножает
-    /// иерархию. SurfacePlaced нужен только объектам ВНЕ фрейма.
+    /// The frame's children are the base: ordinary GOs/prefabs with ordinary local
+    /// transforms, assembled with regular scene tools. They need no update of
+    /// their own: the frame moves itself and Unity multiplies the hierarchy.
+    /// SurfacePlaced is only needed for objects OUTSIDE the frame.
     ///
-    /// [ExecuteAlways] + запись трансформа только при изменении позы: иначе
-    /// Update в редакторе помечал бы сцену грязной каждый кадр.
+    /// [ExecuteAlways] with the transform written only when the pose changes:
+    /// otherwise Update in the editor would mark the scene dirty every frame.
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-90)]
     [ExecuteAlways]
@@ -64,25 +64,25 @@ namespace Galilego.Universe
         [Tooltip("Радиусы колец-рулетки, м.")]
         public double[] ScaleRingsMeters = { 10d, 100d, 1000d, 10000d };
 
-        /// <summary>Абсолютная астропозиция фрейма (double, астро-кадр) на последнем пересчёте.</summary>
+        /// <summary>Absolute astro position of the frame (double, astro frame) at the last refresh.</summary>
         public Vector3d AnchorAstro { get; private set; }
 
-        /// <summary>Body-fixed позиция фрейма (без орбиты и собственного вращения) — для превью рельефа.</summary>
+        /// <summary>Body-fixed frame position (without orbit and rotation) — for the terrain preview.</summary>
         public Vector3d AnchorBodyFixed { get; private set; }
 
-        /// <summary>Живое тело, на котором стоит фрейм; null, если система не собралась.</summary>
+        /// <summary>Live body the frame stands on; null if the system failed to build.</summary>
         public OrbitingBody BodyState { get; private set; }
 
-        /// <summary>Живой рельеф тела фрейма; null = гладкая сфера.</summary>
+        /// <summary>Live terrain of the frame's body; null = smooth sphere.</summary>
         public HeightfieldTerrain Terrain => BodyState?.Terrain as HeightfieldTerrain;
 
-        /// <summary>Радиус тела фрейма, м.</summary>
+        /// <summary>Radius of the frame's body, m.</summary>
         public double BodyRadius => BodyState != null ? BodyState.Radius : 0d;
 
-        /// <summary>Высота рельефа в точке фрейма, м (без смещения).</summary>
+        /// <summary>Terrain height at the frame point, m (without offset).</summary>
         public double GroundHeightMeters => SurfaceSceneSystem.GroundHeight(BodyState, LatitudeDegrees, LongitudeDegrees);
 
-        /// <summary>Высота фрейма над радиусом тела, м — то, что уходит в GetSurfaceState.</summary>
+        /// <summary>Frame altitude above the body radius, m — what goes into GetSurfaceState.</summary>
         public double AltitudeMeters =>
             SnapToTerrain ? (GroundHeightMeters + HeightOffsetMeters) : HeightOffsetMeters;
 
@@ -90,32 +90,31 @@ namespace Galilego.Universe
         private readonly int[] gizmoRingSegments = new int[12];
 
         /// <summary>
-        /// Абсолютная астро-позиция, принятая за НОЛЬ локального пространства в
-        /// редакторе. Её выставляет активный фрейм; всё остальное (SurfacePlaced,
-        /// превью) вычитает её из своей абсолютной позиции и получает километровые
-        /// координаты рядом с фреймом вместо 2.6e10. Ноль означает «фрейма нет» —
-        /// тогда объекты остаются в астро-координатах, что честно видно по
-        /// инспектору.
+        /// Absolute astro position taken as the ZERO of editor local space. The
+        /// active frame sets it; everything else (SurfacePlaced, preview) subtracts
+        /// it from its own absolute position and gets kilometre coordinates near
+        /// the frame instead of 2.6e10. Zero means "no frame" — then objects stay
+        /// in astro coordinates, which is honestly visible in the inspector.
         /// </summary>
         public static Vector3d EditAnchorAstro { get; set; }
 
         /// <summary>
-        /// Поворот «редакторского мира»: обратный повороту активного фрейма в
-        /// астро-ориентации. В редакторе применяется ко ВСЕМУ, что стоит рядом с
-        /// фреймом (сам фрейм, SurfacePlaced), поэтому оси активного фрейма
-        /// (+X север, +Y зенит, +Z восток) совпадают с мировыми осями Unity и
-        /// земля в Scene view лежит горизонтально, как её видит игрок.
-        /// Без этого фрейм получал «честную» ориентацию планеты в пространстве
-        /// (наклон оси, долгота, широта), и в Scene view патч поверхности стоял
-        /// на боку. В Play не используется: там камера игрока и так
-        /// выровнена по локальному зениту.
+        /// "Editor world" rotation: the inverse of the active frame's rotation in
+        /// astro orientation. In the editor it is applied to EVERYTHING near the
+        /// frame (the frame itself, SurfacePlaced), so the active frame's axes
+        /// (+X north, +Y zenith, +Z east) coincide with Unity world axes and the
+        /// ground lies horizontally in the Scene view, as the player sees it.
+        /// Without it the frame would get the planet's "honest" orientation in
+        /// space (axis tilt, longitude, latitude), and the surface patch would
+        /// stand on its side in the Scene view. Unused in Play: there the player
+        /// camera is already aligned with the local zenith.
         /// </summary>
         public static Quaternion EditRotation { get; private set; } = Quaternion.identity;
 
         /// <summary>
-        /// Фрейм, задающий ноль редактора: первый SurfaceFrame в сцене.
-        /// Резолвится с кэшем на 0.5 с — иначе FindAnyObjectByType дёргался бы
-        /// на каждый Update каждого SurfacePlaced в сцене.
+        /// Frame that defines the editor zero: the first SurfaceFrame in the scene.
+        /// Resolved with a 0.5 s cache — otherwise FindAnyObjectByType would fire
+        /// on every Update of every SurfacePlaced in the scene.
         /// </summary>
         public static SurfaceFrame ActiveEditFrame()
         {
@@ -146,7 +145,7 @@ namespace Galilego.Universe
         private static SurfaceFrame cachedFrame;
         private static float cachedFrameTime;
 
-        /// <summary>Фрейм пригоден для превью и потомков: активен и тело найдено.</summary>
+        /// <summary>Frame is usable for the preview and children: active and body resolved.</summary>
         public bool IsUsable => isActiveAndEnabled && BodyState != null;
 
         private void OnEnable()
@@ -162,11 +161,11 @@ namespace Galilego.Universe
 
         private void Update()
         {
-            // В Play поза берётся в LateUpdate: якорь игрока и время ставит
-            // SimulationRunner.Update (порядок 0), а фрейм объявлен с −90, то
-            // есть в Update он читал данные ПРОШЛОГО кадра. На малой скорости
-            // это сантиметры, при ускорении времени — десятки метров. Так же
-            // сделано в SurfacePlaced.
+            // In Play the pose is taken in LateUpdate: the player anchor and time
+            // are set by SimulationRunner.Update (order 0), while the frame is
+            // declared with -90, so in Update it would read the PREVIOUS frame's
+            // data. At low speed that is centimetres, under time warp tens of
+            // metres. Same as in SurfacePlaced.
             if (!Application.isPlaying)
             {
                 Refresh();
@@ -181,7 +180,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Пересчитать позу принудительно (после правки профиля рельефа в инспекторе).</summary>
+        /// <summary>Force a pose refresh (after editing the terrain profile in the inspector).</summary>
         [ContextMenu("Refresh frame")]
         public void Refresh()
         {
@@ -193,9 +192,9 @@ namespace Galilego.Universe
 
             BodyState = body;
 
-            // Время: в Play — системное (планета вращается, фрейм обязан ехать
-            // вместе с ней), в редакторе — ноль, иначе Update двигал бы фрейм
-            // каждый кадр на 1.9 м/с собственного вращения Terra.
+            // Time: in Play the system time (the planet rotates, the frame must
+            // move with it), in the editor zero — otherwise Update would move the
+            // frame every frame by 1.9 m/s of Terra's own rotation.
             double time = Application.isPlaying && Runner != null && Runner.SystemState != null
                 ? Runner.TimeSeconds
                 : 0d;
@@ -207,15 +206,15 @@ namespace Galilego.Universe
 
             QuaternionD orientation = body.GetVisualOrientation(time);
 
-            // Ориентация фрейма собирается сразу в sim-осях: перестановку astro→sim
-            // получает каждый образ локальной оси (SimulationRotation), иначе
-            // сопряжение моста AstroFrame подменяло зенит востоком.
+            // The frame orientation is built directly in sim axes: every image of a
+            // local axis gets the astro→sim permutation (SimulationRotation), else
+            // the AstroFrame bridge conjugation swapped zenith into east.
             QuaternionD renderRotation = SurfaceFrameMath.SimulationRotation(orientation, lat, lon);
 
             if (Application.isPlaying)
             {
-                // Рантайм: точка в абсолютном астро-мире (floating origin), фрейм
-                // встаёт в ToRender от неё — рядом с игроком, а не на 2.6e10.
+                // Runtime: the point in the absolute astro world (floating origin),
+                // the frame stands at ToRender from it — near the player, not at 2.6e10.
                 body.GetSurfaceState(LatitudeDegrees, LongitudeDegrees, AltitudeMeters, time,
                     out Vector3d surfacePos, out _);
                 AnchorAstro = surfacePos;
@@ -225,10 +224,10 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Редактор: первый фрейм сцены становится нулём локального
-            // пространства. Остальные фреймы (если их несколько) встают не в
-            // ноль, а на своё честное смещение от него — так локальные координаты
-            // общие для всей сцены и ничего не «прыгает» от выделения в иерархии.
+            // Editor: the first frame in the scene becomes the zero of local space.
+            // Any other frames stand not at zero but at their true offset from it —
+            // so local coordinates are shared across the scene and nothing jumps
+            // when selecting in the hierarchy.
             body.EvaluateWorldState(time, out Vector3d bodyPos, out _);
             AnchorAstro = bodyPos + orientation.Rotate(bodyFixed);
             Quaternion simRotation = AstroFrame.SimulationQuaternion(renderRotation);
@@ -236,9 +235,9 @@ namespace Galilego.Universe
             {
                 EditAnchorAstro = AnchorAstro;
 
-                // Активный фрейм = мировые оси сцены: позиция ноль, поворот
-                // единичный (точно, а не q⁻¹·q ≈ 1: иначе в трансформе дрожал бы
-                // шум float и сцена помечалась бы грязной).
+                // Active frame = scene world axes: position zero, rotation identity
+                // (exactly, not q⁻¹·q ≈ 1: otherwise float noise would jitter the
+                // transform and mark the scene dirty).
                 EditRotation = Quaternion.Inverse(simRotation);
                 ApplyPose(Vector3.zero, Quaternion.identity);
                 return;
@@ -250,10 +249,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Позиция точки поверхности в render-пространстве. ЕДИНАЯ точка для
-        /// фрейма, SurfacePlaced и превью: одна математика — одно расхождение
-        /// невозможно. В Play — от floating origin (рядом с игроком), в
-        /// редакторе — от фрейма (ноль сцены), поэтому координаты километровые.
+        /// Surface point position in render space. The SINGLE point for the frame,
+        /// SurfacePlaced and the preview: one math means one discrepancy is
+        /// impossible. In Play from the floating origin (near the player), in the
+        /// editor from the frame (scene zero), so coordinates are kilometre-scale.
         /// </summary>
         public static Vector3 RenderPosition(
             OrbitingBody body, double latitudeDegrees, double longitudeDegrees,
@@ -267,18 +266,18 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Поза точки поверхности, ЯВНО привязанная к нулю сцены — в отличие от
-        /// RenderPosition, который в редакторе считает от активного SurfaceFrame.
+        /// Pose of a surface point, EXPLICITLY anchored to the scene zero — unlike
+        /// RenderPosition, which in the editor computes from the active SurfaceFrame.
         ///
-        /// Нужна местам (SurfaceSite). Место — это редакторская рабочая копия
-        /// одной точки: оно всегда должно стоять в нуле, иначе lat/lon, далёкие
-        /// от фрейма сцены, дают километровые координаты. При R = 1143 км хорда
-        /// между точками достигает 2.29e6 м, а float32 на таком масштабе даёт
-        /// шаг 0.25 м — и на расстоянии в тысячи километров шаг переваливает за
-        /// метры, то есть база в Scene view «рассыпается». Ноль сцены снимает
-        /// вопрос: локальные координаты места всегда метровые.
+        /// Needed by sites (SurfaceSite). A site is an editor working copy of one
+        /// point: it must always stand at zero, otherwise lat/lon far from the scene
+        /// frame give kilometre coordinates. At R = 1143 km the chord between points
+        /// reaches 2.29e6 m, and float32 at that scale has a step of 0.25 m — at a
+        /// distance of thousands of kilometres the step exceeds metres, and the base
+        /// "falls apart" in the Scene view. The scene zero removes the issue: site
+        /// local coordinates are always metres.
         ///
-        /// В Play ведёт себя как RenderPosition — едет за якорем игрока.
+        /// In Play it behaves like RenderPosition — it follows the player anchor.
         /// </summary>
         public static void OriginAnchoredPose(
             OrbitingBody body, double latitudeDegrees, double longitudeDegrees,
@@ -287,10 +286,10 @@ namespace Galilego.Universe
             body.GetSurfaceState(latitudeDegrees, longitudeDegrees, altitudeMeters, timeSeconds,
                 out Vector3d surfaceAstro, out _);
 
-            // В редакторе место стоит в нуле и в мировых осях (+X север, +Y
-            // зенит, +Z восток): это рабочая копия одной точки, и строить базу
-            // удобно только на горизонтальной земле. В Play — честная
-            // ориентация, как у игрока.
+            // In the editor the site stands at zero in world axes (+X north, +Y
+            // zenith, +Z east): it is a working copy of one point, and the base is
+            // only convenient to build on horizontal ground. In Play the true
+            // orientation, as the player has.
             rotation = Application.isPlaying
                 ? RenderRotation(body, latitudeDegrees, longitudeDegrees, timeSeconds)
                 : Quaternion.identity;
@@ -299,7 +298,7 @@ namespace Galilego.Universe
                 : Vector3.zero;
         }
 
-        /// <summary>Ориентация локальных осей ENU точки поверхности в render-пространстве.</summary>
+        /// <summary>Orientation of the surface point's local ENU axes in render space.</summary>
         public static Quaternion RenderRotation(
             OrbitingBody body, double latitudeDegrees, double longitudeDegrees, double timeSeconds)
         {
@@ -311,7 +310,7 @@ namespace Galilego.Universe
             return Application.isPlaying ? simRotation : EditRotation * simRotation;
         }
 
-        /// <summary>Body-fixed позиция точки поверхности (без орбиты и вращения) — вход для превью.</summary>
+        /// <summary>Body-fixed position of the surface point (without orbit and rotation) — preview input.</summary>
         public static Vector3d BodyFixedPoint(OrbitingBody body, double latitudeDegrees, double longitudeDegrees, double altitudeMeters)
         {
             return SurfaceFrameMath.Up(
@@ -323,10 +322,10 @@ namespace Galilego.Universe
         {
             HeightfieldTerrain ignored;
 
-            // В Play тело берём из ЖИВОЙ системы раннера: она уже собрана и
-            // точна. Редакторный кэш SurfaceSceneSystem там вообще не нужен и
-            // только мешает (в Play он собирается из сцены, которая ещё
-            // догружается, и кэш может остаться неполным).
+            // In Play the body comes from the runner's LIVE system: it is already
+            // built and exact. The SurfaceSceneSystem editor cache is not needed
+            // there and only gets in the way (in Play it is built from a scene that
+            // is still loading, and the cache may stay incomplete).
             if (Application.isPlaying && Runner != null && Runner.SystemState != null)
             {
                 string wanted = Body != null ? Body.gameObject.name : BodyName;
@@ -356,7 +355,7 @@ namespace Galilego.Universe
         {
             if (Application.isPlaying)
             {
-                // Каждый кадр: якорь игрока едет, едет и фрейм.
+                // Every frame: the player anchor moves, so the frame moves too.
                 transform.SetPositionAndRotation(position, rotation);
                 poseValid = true;
                 return;
@@ -380,7 +379,7 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Локальные оси = ENU фрейма, рисуем в его системе.
+            // Local axes = frame ENU, drawn in its space.
             const float axis = 12f;
             Gizmos.color = new Color(0.2f, 0.9f, 0.4f, 0.9f);
             Gizmos.DrawLine(Vector3.zero, new Vector3(axis, 0f, 0f));
@@ -393,10 +392,10 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Кольца-рулетка: «сантиметр, метр, сотня, километр» в локальных
-            // единицах. Читаются как масштаб и служат страховкой: если превью
-            // не построилось или камера ушла, по кольцам всё равно видно, где
-            // фрейм и какого он размера.
+            // Tape-measure rings: "centimetre, metre, hundred, kilometre" in local
+            // units. They read as scale and serve as a fallback: if the preview did
+            // not build or the camera is away, the rings still show where the frame
+            // is and how big it is.
             Gizmos.color = new Color(1f, 1f, 1f, 0.25f);
             for (int i = 0; i < ScaleRingsMeters.Length; i++)
             {
@@ -423,7 +422,7 @@ namespace Galilego.Universe
             int slot = Mathf.Clamp(Mathf.FloorToInt(Mathf.Log(radius) / Mathf.Log(10f)) + 11, 0, gizmoRingSegments.Length - 1);
             if (gizmoRingSegments[slot] == 0)
             {
-                // ~4 м на сегмент, но не меньше 64 и не больше 512.
+                // ~4 m per segment, but no less than 64 and no more than 512.
                 gizmoRingSegments[slot] = Mathf.Clamp(Mathf.CeilToInt(radius / 4f), 64, 512);
             }
 

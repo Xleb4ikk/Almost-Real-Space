@@ -8,25 +8,19 @@ using Unity.Mathematics;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// ТОПОЛОГИЯ КОНТИНЕНТОВ: сколько связных массивов суши, какая их доля и
-    /// сколько внутренних водоёмов.
+    /// CONTINENT TOPOLOGY: how many connected land masses there are, their share,
+    /// and how many inland water bodies.
     ///
-    /// Зачем. Предыдущая калибровка смотрела только на долю суши (T87) и на
-    /// глубины океана (T135/T137). Обе метрики были «в норме» у мира, который
-    /// на вид состоял из каши: доля суши 0.45 и глубины −4 км не мешают
-    /// береговой линии быть фрактальной нулевой изолиной поля с базовой
-    /// октавой 318 км и 10 октав вниз. Считать надо связность, а не площадь.
+    /// Method. Heights are sampled on a cube grid (the noise is continuous on the
+    /// sphere, so there are no seams). Connectivity is computed on a "6 nearest
+    /// neighbours" graph built ONCE per geometry, independent of the profile, so
+    /// metrics are comparable across presets and cube-face corner transitions need
+    /// no manual handling.
     ///
-    /// Метод. Высоты снимаются на куб-сетке (шум непрерывен на сфере, швов
-    /// нет). СВЯЗНОСТЬ считается по графу «6 ближайших соседей», который строится
-    /// ОДИН раз на геометрию и не зависит от профиля. Так метрики сравнимы
-    /// между пресетами, и не нужно вручную разбирать переходы между гранями
-    /// куба в углах, где параметрические шаги дают разную длину.
-    ///
-    /// Внутренний водоём = водная компонента, которая НЕ достигает −2000 м.
-    /// На Земле это работает: океан доходит до абиссальных равнин (−4…−6 км),
-    /// а Байкал (−1.6 км) и Каспий (−1 км) остаются озёрами. Порог в метрах,
-    /// а не в нормированных единицах, иначе метрика зависела бы от амплитуды.
+    /// Inland water = a water component that never reaches −2000 m. On Earth this
+    /// works: the ocean reaches abyssal plains (−4…−6 km), while Baikal (−1.6 km)
+    /// and the Caspian (−1 km) stay lakes. The threshold is in metres, not
+    /// normalized units, so the metric does not depend on amplitude.
     /// </summary>
     private static int Test141_ContinentsConnectivity()
     {
@@ -59,16 +53,16 @@ internal static partial class P1bTests
         Console.WriteLine("    СТАЛО: " + Shares(now));
 
 Console.WriteLine();
-        // «Как Земля»: доля суши около трети, несколько крупных материков,
-        // фрактальный берег с островами, океан глубже материкового склона.
+        // "Earth-like": land share around a third, several large continents,
+        // a fractal coast with islands, and an ocean deeper than the shelf.
         Check(now.LandFraction > 0.26d && now.LandFraction < 0.38d, "T141 land-fraction",
             "суша " + now.LandFraction.ToString("P2", CultureInfo.InvariantCulture)
             + " (цель 0.26..0.38)");
 
-        // Общее число массивов намеренно большое: 5 октав маски и отдельный warp
-        // дают рваный берег с островами, и это требование, а не дефект. Суша
-        // нужна не «меньше островов», а «не каша из одинаковых кусков» — поэтому
-        // проверяются крупные материки и доля крупнейшего, а не сырой счёт.
+        // The total number of components is intentionally high: 5 mask octaves and a
+        // separate warp give a ragged coast with islands, which is a requirement, not
+        // a defect. What matters is not "fewer islands" but "no mush of identical
+        // pieces" — so large continents and the largest share are checked, not the raw count.
         Check(now.LandComponents <= 130, "T141 land-components",
             "массивов суши " + now.LandComponents + " (цель <= 130 при рваном береге)");
         Check(now.BigLandComponents >= 5 && now.BigLandComponents <= 14, "T141 big-continents",
@@ -150,10 +144,10 @@ Console.WriteLine();
         }
     }
 
-    /// <summary>Порог «это озеро, а не океан»: ниже какой глубины вода считается океаном.</summary>
+    /// <summary>"Lake, not ocean" threshold: below this depth water counts as ocean.</summary>
     private const double OceanFloorMeters = 2000d;
 
-    /// <summary>Минимальная площадь, с которой озеро вообще считается озером (км²).</summary>
+    /// <summary>Minimum area for a lake to count as a lake at all (km²).</summary>
     private const double MinLakeKm2 = 100d;
 
     private static Metrics Measure(HeightfieldTerrain t, int n, string label)
@@ -194,7 +188,7 @@ Console.WriteLine();
         int[] comp = Components(h, n, t.SeaLevelMeters + 0.5d, true);
         int[] water = Components(h, n, t.SeaLevelMeters + 0.5d, false);
 
-        // Площади суши по компонентам.
+        // Land areas per component.
         var landArea = new Dictionary<int, int>();
         for (int i = 0; i < count; i++)
         {
@@ -226,7 +220,7 @@ Console.WriteLine();
             }
         }
 
-        // Озёра: водная компонента без единой точки глубже OceanFloorMeters.
+        // Lakes: a water component with no point deeper than OceanFloorMeters.
         var minDepth = new Dictionary<int, double>();
         var area = new Dictionary<int, int>();
         for (int i = 0; i < count; i++)
@@ -260,8 +254,8 @@ if (!minDepth.TryGetValue(water[i], out double m))
         int lakeCells = 0;
         foreach (KeyValuePair<int, int> kv in area)
         {
-            // Компонента, у которой есть точка глубже OceanFloorMeters, связана
-            // с океаном. Всё остальное — озёрная вода.
+            // A component with a point deeper than OceanFloorMeters is connected
+            // to the ocean. Everything else is lake water.
             if (minDepth[kv.Key] <= -OceanFloorMeters)
             {
                 continue;
@@ -323,7 +317,7 @@ double landCell = 6371d * Math.PI / 2d / n;
     }
 
 
-    /// <summary>Площадь одной клетки куб-сетки в км² (планета радиусом 6371 км).</summary>
+    /// <summary>Area of one cube-grid cell in km² (planet radius 6371 km).</summary>
     private static double CellKm2(int n)
     {
         double side = 6371d * Math.PI / 2d / n;
@@ -331,8 +325,8 @@ double landCell = 6371d * Math.PI / 2d / n;
     }
 
     /// <summary>
-    /// Компоненты связности по графу «6 ближайших». Метка land=true берёт точки
-    /// выше порога, false — ниже. −1 означает «не входит ни в одну компоненту».
+    /// Connected components on the "6 nearest" graph. land=true takes points above
+    /// the threshold, false below it. −1 means "not part of any component".
     /// </summary>
     private static int[] Components(double[] h, int n, double threshold, bool land)
     {
@@ -405,14 +399,14 @@ double landCell = 6371d * Math.PI / 2d / n;
     }
 
     /// <summary>
-    /// Граф «6 ближайших соседей» на куб-сетке. Кэшируется на разрешение:
-    /// геометрия от профиля не зависит, а строить её каждый замер дорого.
+    /// "6 nearest neighbours" graph on the cube grid. Cached per resolution: the
+    /// geometry does not depend on the profile, and rebuilding it per measurement is expensive.
     ///
-    /// Почему kNN, а не «8 параметрических соседей»: у куб-сетки длины шагов в
-    /// углах граней и в их центрах различаются почти вдвое, и параметрическое
-    /// отображение даёт ещё и рёбра, где сосед лежит на ДРУГОЙ грани. Любая
-    /// попытка учесть это вручную — источник тихих ошибок связности именно там,
-    /// где материки стыкуются. У 6 ближайших такой проблемы нет по построению.
+    /// Why kNN instead of "8 parametric neighbours": on a cube grid the step lengths
+    /// at face corners and centres differ almost twofold, and the parametric mapping
+    /// also produces edges where the neighbour lies on ANOTHER face. Handling that by
+    /// hand is a source of silent connectivity errors exactly where continents join.
+    /// The 6 nearest neighbours avoid the problem by construction.
     /// </summary>
     private static readonly Dictionary<int, int[]> neighbourCache = new Dictionary<int, int[]>();
 
@@ -446,7 +440,7 @@ double landCell = 6371d * Math.PI / 2d / n;
                 }
             }
 
-            // Пространственный хеш: корзина ~2 угловых шага.
+            // Spatial hash: bucket ≈ 2 angular steps.
             int m = n;
             var buckets = new Dictionary<long, List<int>>(count / 4);
             for (int i = 0; i < count; i++)
@@ -482,8 +476,8 @@ double landCell = 6371d * Math.PI / 2d / n;
                 int cy = Math.Min((int)Math.Floor((y[i] + 1d) * 0.5d * m), m - 1);
                 int cz = Math.Min((int)Math.Floor((z[i] + 1d) * 0.5d * m), m - 1);
 
-                // Кандидаты: своя корзина и 26 вокруг. Радиус корзины ~2 шага,
-                // поэтому 6 ближайших гарантированно внутри этого окна.
+                // Candidates: own bucket and 26 around it. Bucket radius ≈ 2 steps,
+                // so the 6 nearest are guaranteed to lie inside this window.
                 for (int a = -1; a <= 1; a++)
                 {
                     int qx = cx + a;
@@ -528,7 +522,7 @@ double landCell = 6371d * Math.PI / 2d / n;
                                     continue;
                                 }
 
-                                // Вставка в отсортированный по расстоянию хвост из 6.
+                                // Insert into the distance-sorted tail of 6.
                                 int slot = 5;
                                 while (slot > 0 && bestD2[slot - 1] > d2)
                                 {
@@ -564,9 +558,8 @@ double landCell = 6371d * Math.PI / 2d / n;
     }
 
     /// <summary>
-    /// EarthLike_Perlin ДО правки формы. Захардкожен намеренно: это базовая
-    /// линия для метрик связности, и она обязана оставаться неизменной, когда
-    /// ассет перенастраивают.
+    /// EarthLike_Perlin before the shape rework. Hard-coded on purpose: it is the
+    /// baseline for the connectivity metrics and must stay fixed while the asset is retuned.
     /// </summary>
 private static int Test142_ContinentsDiag()
     {
@@ -620,9 +613,9 @@ private static int Test142_ContinentsDiag()
     }
 
     /// <summary>
-    /// Доля суши в широтном поясе [lo°, hi°] — мера экваториального сдвига.
-    /// Считается по площади (ячейки куб-сетки почти равны по площади), не по
-    /// числу точек на параллели.
+    /// Land share in the latitude belt [lo°, hi°] — a measure of the equatorial shift.
+    /// Computed by area (cube-grid cells have nearly equal area), not by the number
+    /// of points on a parallel.
     /// </summary>
     private static double LandShareInBelt(HeightfieldTerrain t, int n, double loDeg, double hiDeg)
     {
@@ -877,7 +870,7 @@ private static int Test142_ContinentsDiag()
         return t;
     }
 
-    /// <summary>EarthLike_Perlin как в ассете (сверяется T117_EarthLikeProfileDrift).</summary>
+    /// <summary>EarthLike_Perlin as in the asset (verified by T117_EarthLikeProfileDrift).</summary>
 private static HeightfieldTerrain AssetPreset(int n)
     {
         HeightfieldTerrain t = PerlinTuned(0.13d, 0.5656d);
@@ -925,13 +918,12 @@ private static HeightfieldTerrain AssetPreset(int n)
     }
 
     /// <summary>
-    /// AssetPreset() обязан совпадать с EarthLike_Perlin.asset. Иначе метрики
-    /// связности меряют конфигурацию, которой в игре нет — ровно тот дрейф,
-    /// который уже случался с CreateEarthLike (ловит T117).
+    /// AssetPreset() must match EarthLike_Perlin.asset, otherwise the connectivity
+    /// metrics measure a configuration the game does not have.
     ///
-    /// Плюс контракт бит-в-бит: обнуление новых полей обязано вернуть старую
-    /// форму, иначе «нулевые новые параметры = legacy» перестанет быть правдой
-    /// для сцен и ассетов, где их ещё нет.
+    /// Plus a bit-exact contract: zeroing the new fields must restore the old shape,
+    /// otherwise "zero new parameters = legacy" stops holding for scenes and assets
+    /// that predate them.
     /// </summary>
     private static int Test143_PerlinAssetDrift()
     {
@@ -1002,12 +994,11 @@ private static HeightfieldTerrain AssetPreset(int n)
                 + (mismatches.Count == 0 ? string.Empty : "; расхождений: " + mismatches.Count));
         }
 
-        // Дефолты новых полей обязаны давать ту же форму, что и явные нули.
-        // Проверка не на «старую форму вообще» (её уже нет в коде), а на то, что
-        // класс не подставил в новые поля ничего неlegacy: иначе старые ассеты,
-        // где полей ещё нет, молча поедут. Особенно опасен OrogenyFloor: его
-        // дефолт не ноль (пояс выключен частотой, а не полем), и опечатка в нём
-        // при OrogenyFrequency = 0 всё равно перепишет весь рельеф.
+        // Defaults of the new fields must yield the same shape as explicit zeros,
+        // otherwise old assets that lack the fields would silently drift. OrogenyFloor
+        // is especially risky: its default is not zero (the belt is disabled by
+        // frequency, not by the field), so a typo there would still rewrite the whole
+        // terrain at OrogenyFrequency = 0.
         HeightfieldTerrain byDefault = LegacyEquivalent();
         HeightfieldTerrain byZero = LegacyEquivalent();
         byZero.ContinentGain = 0d;
@@ -1052,10 +1043,10 @@ private static HeightfieldTerrain AssetPreset(int n)
     }
 
     /// <summary>
-    /// Профиль с ТОЙ ЖЕ формой, но собранный без новых полей вовсе — то есть
-    /// ровно то, что лежит в старом .asset, где их ещё не было. Новые поля
-    /// обязаны стоять здесь на ДЕФОЛТАХ КЛАССА, иначе проверка ниже
-    /// сравнивала бы «выключено» с «выключено по-разному».
+    /// A profile with the SAME shape but built without the new fields at all — that
+    /// is, exactly what an old .asset contains. The new fields must stay at their
+    /// CLASS DEFAULTS here, otherwise the check below would compare "off" with
+    /// "off in a different way".
     /// </summary>
     private static HeightfieldTerrain LegacyEquivalent()
     {
@@ -1074,7 +1065,7 @@ private static HeightfieldTerrain AssetPreset(int n)
         t.DepthThreshold = -0.3d;
         t.BeachShelfWidth = 0.08d;
 
-        // Всё, что появилось вместе с океаном и новой формой маски, — на дефолтах.
+        // Everything introduced with the ocean and the new mask shape stays at defaults.
         t.ContinentGain = 0d;
         t.ContinentWarpStrength = 0d;
         t.ContinentWarpFrequency = 0d;

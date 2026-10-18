@@ -10,10 +10,9 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Загрузка тестового аппарата T1 (ТЗ v2, раздел 8) из JSON в Parts
-    /// SimulationRunner в открытой сцене. Данные — Tools/P1bTests/Data/
-    /// test_vessel_t1.json (тот же файл, что читает стенд). Сцена сохраняется.
-    /// Меню: Galilego > Test Vessel > Apply T1 From JSON.
+    /// Loads the T1 test vessel (spec v2, section 8) from Tools/P1bTests/Data/
+    /// test_vessel_t1.json into SimulationRunner.Parts in the open scene and
+    /// saves the scene. Menu: Galilego > Test Vessel > Apply T1 From JSON.
     /// </summary>
     public static class TestVesselSceneTool
     {
@@ -25,7 +24,7 @@ namespace Galilego.Universe.EditorTools
             Debug.Log(ApplyFromJson());
         }
 
-        /// <summary>Загрузить T1 из JSON в PartDefinition[] (без применения к сцене). null — ошибка.</summary>
+        /// <summary>Load T1 from JSON into PartDefinition[] (without applying to the scene). null on error.</summary>
         public static List<PartDefinition> LoadT1Parts()
         {
             string projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
@@ -69,7 +68,7 @@ namespace Galilego.Universe.EditorTools
             return parts;
         }
 
-        /// <summary>Применить T1 к раннеру в активной сцене; вернуть отчёт.</summary>
+        /// <summary>Apply T1 to the runner in the active scene; return a report.</summary>
         public static string ApplyFromJson()
         {
             List<PartDefinition> loaded = LoadT1Parts();

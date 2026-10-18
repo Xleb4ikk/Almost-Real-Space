@@ -6,16 +6,13 @@ using Galilego.Universe;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Регресс на разрывы масштаба сетки: высота не должна прыгать на целые
-    /// сотни метров между СОСЕДНИМИ вершинами листа. Так выглядел баг
-    /// береговой полки (T900/T901): на пороге континентальной маски высота
-    /// падала с 977 м до 12 м за один квад 6.85 м, и меш рисовал обрыв
-    /// частоколом вертикальных треугольников.
+    /// Regression against grid-scale discontinuities: height must not jump by
+    /// hundreds of metres between ADJACENT leaf vertices.
     ///
-    /// Порог 250 м, а не «сколько получится»: природный рельеф планеты даёт
-    /// на квад единицы метров (замер: 7.3 м в окрестности кадра), крутой, но
-    /// НЕПРЕРЫВНЫЙ склон после правки — до ~30 м. 250 м ловит именно разрыв,
-    /// а не крутизну.
+    /// Threshold 250 m rather than "whatever": natural planet terrain yields
+    /// single-digit metres per quad (measured: 7.3 m near the frame), and a
+    /// steep but CONTINUOUS slope stays under ~30 m. 250 m catches a
+    /// discontinuity, not steepness.
     /// </summary>
     private static int Test904_NoSubQuadSteps()
     {
@@ -32,8 +29,8 @@ internal static partial class P1bTests
         int lines = 150;
         int perLine = 300;
 
-        // Окрестность кадра + случайные площадки по планете: разрыв может
-        // оказаться в любом месте изолинии порога, а не только у игрока.
+        // Frame neighbourhood + random patches across the planet: a discontinuity
+        // can lie anywhere along the threshold contour, not only near the player.
         for (int region = 0; region <= regions; region++)
         {
             double lat0 = region == 0 ? PlayerLat : (rng.NextDouble() * 140d) - 70d;

@@ -5,11 +5,11 @@ using Galilego.Universe;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// T98: контракт сумерек — заход без попа, свечение после захода.
-    /// Прямой свет гаснет в мягкой полосе горизонта (конечный диск +
-    /// рефракция, HorizonSoftening), а не ступенькой; ambient ещё светит на
-    /// −6° (гражданские сумерки) тёплым и гаснет к −12°; окклюзия/день —
-    /// монотонны и 0 ночью.
+    /// T98: twilight contract — sunset without a cutoff, glow after sunset.
+    /// Direct light fades in a soft horizon band (finite disc + refraction,
+    /// HorizonSoftening) rather than a step; ambient still glows warm at −6°
+    /// (civil twilight) and fades by −12°; occlusion/day are monotonic and zero
+    /// at night.
     /// </summary>
     private static int Test98_SunsetTwilight()
     {
@@ -27,21 +27,20 @@ internal static partial class P1bTests
 
         AtmosphereOptics.Coefficients c = profile.ToOptics();
 
-        // Нет ступеньки: в середине захода (−0.25°, верхний край диска ещё
-        // виден) T ненулевой, но слабее, чем на горизонте; раньше между 0° и
-        // −0.5° было падение 0.38 → 0 за один шаг сетки.
+        // No step: mid-sunset (−0.25°, the disc's upper edge still visible) T is
+        // non-zero but weaker than at the horizon.
         Vector3d above = AtmosphereOptics.TransmittanceToSpace(c, R, Ra, R, 0d, 64);
         Vector3d midset = AtmosphereOptics.TransmittanceToSpace(c, R, Ra, R, Math.Sin(-0.25d * Math.PI / 180d), 64);
         bool noCliff = above.IsFinite && midset.IsFinite
             && above.X > 0d && midset.X > 0d && midset.X < above.X
             && midset.Z <= above.Z + 1e-9d;
 
-        // Глубоко ниже горизонта прямой свет всё ещё ровно 0.
+        // Deep below the horizon direct light is still exactly 0.
         Vector3d deep = AtmosphereOptics.TransmittanceToSpace(c, R, Ra, R, Math.Sin(-2d * Math.PI / 180d), 32);
         bool deepBlocked = deep.X == 0d && deep.Y == 0d && deep.Z == 0d;
 
-        // Сумерки: ambient на −6° тёплый (R max), заметно светит (>1% дня),
-        // но слабее, чем на горизонте; к −12° почти погас (<2% дня).
+        // Twilight: ambient at −6° is warm (R max), noticeably lit (>1% of day) but
+        // weaker than at the horizon; by −12° it is almost gone (<2% of day).
         Vector3d day = AtmosphereOptics.SkyAmbientRadiance(c, R, Ra, R, 1d);
         Vector3d horizonAmb = AtmosphereOptics.SkyAmbientRadiance(c, R, Ra, R, 0d);
         Vector3d twilight = AtmosphereOptics.SkyAmbientRadiance(c, R, Ra, R, Math.Sin(-6d * Math.PI / 180d));
@@ -54,7 +53,7 @@ internal static partial class P1bTests
             && twilightLum > 0.01d * dayLum && twilightLum < horizonLum;
         bool nightGone = lateNight.IsFinite && lateLum < 0.02d * dayLum;
 
-        // Окклюзия и дневной фактор: 1 днём, 0 ночью, монотонны на переходе.
+        // Occlusion and day factor: 1 by day, 0 by night, monotonic through the transition.
         double occDay = SkyPhysics.SunOcclusion(0.2d, 0d, R);
         double occNight = SkyPhysics.SunOcclusion(-0.2d, 0d, R);
         double dayDay = SkyPhysics.DayFactor(0.2d);

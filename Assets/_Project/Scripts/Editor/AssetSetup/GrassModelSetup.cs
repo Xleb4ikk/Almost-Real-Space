@@ -4,20 +4,12 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Сборка ближнего LOD травы: процедурный низкополигональный клинок
-    /// (складчатая лента) + специализированный шейдер Galilego/GrassBlade.
+    /// Near grass LOD assembly: a procedural low-poly blade (folded strip) plus
+    /// the dedicated Galilego/GrassBlade shader.
     ///
-    /// Почему больше не FBX. Замер показал: у прежнего клинка 26 треугольников
-    /// на инстанс, зеркальных пар треугольников НЕТ (все 26 односторонние) и
-    /// одна нормаль на все 46 вершин. То есть это складчатая плоскость, а 26
-    /// треугольников — просто избыточная разбивка. Стоимость травы при этом не
-    /// в геометрии, а в заполнении (ковёр под игроком + Cull Off), поэтому
-    /// геометрию ужать можно почти бесплатно: 3 складки ? 1 квад = 6
-    /// треугольников с тем же силуэтом.
-    ///
-    /// Cull Back на этом меше НЕЛЬЗЯ: односторонний винг + Cull Off = клинок
-    /// виден с обеих сторон, отсечение задних граней holes бы половину
-    /// клинков на половине ракурсов.
+    /// Cull Back is FORBIDDEN on this mesh: a single-sided wing with Cull Off is
+    /// visible from both sides, while back-face culling would cut half the blades
+    /// at half the view angles.
     /// </summary>
     public static class GrassModelSetup
     {
@@ -28,16 +20,15 @@ namespace Galilego.Universe.EditorTools
         private const string FixedMeshPath = DecorModelsFolder + "/GrassBladeFixed.asset";
         private const string FarMeshPath = DecorModelsFolder + "/GrassBladeFar.asset";
 
-        /// <summary>Текстура земли для автотинта травы (средний цвет пикселей).</summary>
+        /// <summary>Ground texture for grass auto-tint (average pixel colour).</summary>
         private const string GroundTexturePath = "Assets/_Project/Textures/Terrain/terrain_mid_clean.jpg";
 
         private const float TargetMinHeightMeters = 1.0f;
         private const float TargetMaxHeightMeters = 2.08f;
 
-        // Геометрия клинка. Ширина в основании совпадает с прежним мешем
-        // (0.34 м), глубина складок — 0.12 м, высота 1.58 м: MinScale/MaxScale
-        // в слое считаются от высоты меша, поэтому размеры те же и слой
-        // продолжает сажать клинки 1.0…2.08 м.
+        // Blade geometry: base width 0.34 m, fold depth 0.12 m, height 1.58 m.
+        // The layer's MinScale/MaxScale are relative to mesh height, so the layer
+        // plants blades 1.0...2.08 m tall.
         private const float BladeBaseWidth = 0.34f;
         private const float BladeTipWidth = 0.09f;
         private const float BladeHeight = 1.58f;
@@ -45,10 +36,9 @@ namespace Galilego.Universe.EditorTools
         private const int BladePanels = 3;
 
         /// <summary>
-        /// Слой травы с ближним 3D-клинком и дешёвым дальним LOD (один квад).
-        /// Дальний квад рендерер разворачивает к камере (GroundDecorMatrixJob,
-        /// Billboard = !near), поэтому одного квада достаточно: 2 треугольника
-        /// вместо 26 на всю дальнюю половину ковра.
+        /// Grass layer with a near 3D blade and a cheap far LOD (single quad).
+        /// The renderer turns the far quad towards the camera (GroundDecorMatrixJob,
+        /// Billboard = !near), so one quad suffices for the whole far half.
         /// </summary>
         internal static GroundDecorLayer BuildGrassLayer(Mesh farBillboard, Material farMaterial)
         {
@@ -60,9 +50,8 @@ namespace Galilego.Universe.EditorTools
                 return null;
             }
 
-            // Одиночный клинок на инстанс: остров собирается из МНОГИХ
-            // отдельных травинок по сетке, а не из кустиков-«точек» —
-            // внутри острова получается плотный ровный ковёр.
+            // Single blade per instance: an island is assembled from MANY
+            // individual blades on a grid, giving a dense even carpet.
             Bounds bounds = blade.bounds;
             float meshHeight = Mathf.Max(1e-4f, bounds.size.y);
             Debug.Log("[GrassModelSetup] GrassBladeFixed bounds.size=" + bounds.size
@@ -76,8 +65,8 @@ namespace Galilego.Universe.EditorTools
                 Debug.LogWarning("[GrassModelSetup] низ меша не на y=0 — GroundOffsetMeters=" + groundOffset);
             }
 
-            // Дальний LOD красим тем же тинтом, что ближний: иначе на
-            // NearDistance трава «попает» из тёмной в ярко-зелёную.
+            // Tint the far LOD the same as the near one: otherwise grass pops
+            // from dark to bright green at NearDistance.
             Color tint = material.GetColor("_BaseColor");
             if (farMaterial != null)
             {
@@ -93,11 +82,10 @@ namespace Galilego.Universe.EditorTools
                 ShadowCastDistanceMeters = 0f,
                 NearMeshes = new[] { blade },
                 NearMaterial = material,
-                // Дальний LOD — ОДИН квад (2 треугольника) вместо клинка:
-                // дальше NearDistance разворачивается к камере, поэтому
-                // подробности сгибов всё равно не читаются, а геометрия идёт
-                // в два пасса. Переход near>far не должен быть виден — квад
-                // повторяет силуэт клинка (та же ширина в основании и высота).
+                // Far LOD is ONE quad (2 triangles) instead of a blade: beyond
+                // NearDistance it faces the camera, so fold detail is unreadable
+                // anyway. The near>far transition must be invisible: the quad
+                // repeats the blade silhouette (same base width and height).
                 FarBillboardMesh = bladeFar,
                 FarMaterial = material,
                 SpacingMeters = 0.8d,
@@ -110,20 +98,18 @@ namespace Galilego.Universe.EditorTools
                 ClusterThreshold = 0.36d,
                 ClusterFade = 0.12d,
                 MinAltitudeMeters = 2d,
-                // Песок — только абсолютный пляж (BeachHeightMeters профиля
-                // террейна), нормированной нижней границы у травы нет: 0.03 при
-                // амплитуде 9144 м — это 274 м высоты, и такая граница оставляла
-                // всю прибрежную равнину (зелёную по рельефу) без травы.
+                // Sand is only the absolute beach (terrain profile
+                // BeachHeightMeters); grass has no normalized lower bound.
                 MinNormalizedHeight = 0d,
-                // Верх зелени палитры: выше t=0.45 рельеф красится скалой —
-                // там только камни. Нижняя граница wet — начало Grass в палитре.
+                // Top of the palette's green: above t=0.45 the terrain is rock,
+                // so only stones there. WetMin is where Grass starts in the palette.
                 MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
                 MaxAltitudeMeters = GroundDecorSetup.GrassMaxAltitudeMeters,
                 MaxSlopeTan = 2.8d,
                 AvoidWater = true,
-                // Ковёр лезвий — на любой земле зелёных высот, включая сухую
-                // степь: песок (t), скалы, снег, пляж, лёд и вода по-прежнему
-                // отсекают. Иначе сухие холмы с зелёным фото лысые.
+                // Blade carpet on any land at green heights, including dry
+                // steppe; sand, rock, snow, beach, ice and water still cut it
+                // off. Otherwise dry hills with a green photo are bald.
                 WetMin = 0d,
                 WetMax = 1d,
                 WetFade = 0.12d,
@@ -139,41 +125,29 @@ namespace Galilego.Universe.EditorTools
                 WindJitterDegrees = 12d,
                 MinGroundSinkFactor = 0d,
                 MaxGroundSinkFactor = 0.5d,
-                // [ГРАФИКА] ДАЛЬНОСТЬ И ЗАКОН ПОКРЫТИЯ.
+                // [GRAPHICS] DISTANCE AND COVERAGE LAW.
                 //
-                // Дальность поднята со 120 до 200 м, но это само по себе
-                // ничего не даёт: плотность обязана падать с расстоянием, иначе
-                // инстансов больше, чем пикселей. Раньше стояла экспонента
-                // exp(-(d-20)/25): на 100 м от неё оставалось ~4%, на 200 м — уже
-                // ничего, и за горизонтом трава просто исчезала (жалоба «лысый
-                // круг»). Экспонента логична для независимых объектов, но не
-                // для сплошного ковра.
-                //
-                // Здесь работает закон покрытия: плотность ∝ (R/d)², а размер
-                // дальнего квада ∝ d (GroundDecorMatrixJob, DistanceCore +
-                // BillboardFarScale). Тогда заполнение экрана n·g² постоянно
-                // вплоть до MaxDistanceMeters, а суммарное число инстансов
-                // растёт как ln(R) вместо R² — то есть вдвое дальше по радиусу
-                // стоит заметно меньше инстансов, чем постоянная плотность.
-                // Power = 2 — точное поддержание покрытия. Больше 2 — реже
-                // (дешевле, дальняя зона бледнее), меньше 2 — дороже.
+                // Coverage law: density ∝ (R/d)² while the far quad size ∝ d
+                // (GroundDecorMatrixJob, DistanceCore + BillboardFarScale). The
+                // screen fill n·g² stays constant up to MaxDistanceMeters, and the
+                // total instance count grows like ln(R) instead of R² — going twice
+                // as far costs markedly fewer instances than constant density.
+                // Power = 2 maintains coverage exactly. Above 2 is sparser
+                // (cheaper, fainter far zone), below 2 is more expensive.
                 NearDistanceMeters = 35f,
                 MaxDistanceMeters = 200f,
-                // FarDensity = 0: на дальней границе травы быть не должно,
-                // иначе последние 200 м держат лишний слой инстансов.
+                // FarDensity = 0: no grass at the far boundary, otherwise the
+                // last 200 m would hold an extra layer of instances.
                 FarDensity = 0d,
-                // DensityFalloffMeters при Power > 0 не участвует в профиле
-                // плотности, но остаётся ради R/keepRadius в сборке.
+                // With Power > 0, DensityFalloffMeters is unused by the density
+                // profile but still feeds R/keepRadius at build time.
                 DensityFalloffMeters = 25f,
                 DensityCoreMeters = 20f,
                 DensityFalloffPower = 2f,
-                // [ПУСТОТА ПОД НОГАМИ] Порог пересборки = core − lookAhead.
-                // При core 20 и lookAhead 25 это упрётся в пол
-                // DecorMinRebuildMeters = 6 м: полная плотность гарантирована
-                // на 20 − 6 = 14 м впереди, дальше лёгкое разрежение и рост
-                // после пересборки остаются. Это осознанный размен: вариант с
-                // ядром 30 дал бы 24 м вперёд, но это (30/20)² ≈ 2.25× инстансов.
-                // Если после маршрута рождений у камеры много — поднимать ядро.
+                // [BARESPOTS] Rebuild threshold = core − lookAhead, floored at
+                // DecorMinRebuildMeters = 6 m: with core 20 full density is
+                // guaranteed 14 m ahead. Raise the core if births near the camera
+                // stay high.
                 DecorLookAheadMeters = 25f,
                 DecorMinRebuildMeters = 6f,
                 PerInstanceDensity = true,
@@ -203,10 +177,9 @@ namespace Galilego.Universe.EditorTools
             material.SetColor("_BaseColor", SampleGroundTint(GroundTexturePath));
             material.SetFloat("_TwoSided", 1f);
             material.SetFloat("_ShadowMul", 1f);
-            // Подмешивание к цвету земли. Границы по DensityFalloffPower: рост
-            // начинается с края ядра (20 м), плотность падает с него же, и
-            // подмешивание должно накрыть ровно ту зону, где трава стала
-            // редкой. 55…185 м при MaxDistanceMeters = 200.
+            // Blend towards the ground colour. Density starts dropping at the
+            // core edge, so the blend covers exactly the zone where grass got
+            // sparse: 55...185 m with MaxDistanceMeters = 200.
             material.SetFloat("_FarFadeStart", 55f);
             material.SetFloat("_FarFadeEnd", 185f);
             material.SetFloat("_FarFadeStrength", 1f);
@@ -227,9 +200,8 @@ namespace Galilego.Universe.EditorTools
             Color avg = fallback;
             try
             {
-                // Декодируем файл на CPU (Texture2D.LoadImage): путь через
-                // RenderTexture/Graphics.Blit в -nographics не работает и
-                // возвращал серый 0.8 — трава становилась белой.
+                // Decode the file on the CPU (Texture2D.LoadImage): the
+                // RenderTexture/Graphics.Blit path does not work in -nographics.
                 string fullPath = System.IO.Path.GetFullPath(texturePath);
                 if (!System.IO.File.Exists(fullPath))
                 {
@@ -267,12 +239,11 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Ближний клинок: складчатая лента из BladePanels квадов, сужающаяся
-        /// к вершине. Все нормали — вверх: у клинка одна нормаль на весь меш
-        /// (так и было у FBX-версии), и после поворота инстанса +Y смотрит
-        /// вдоль нормали поверхности, поэтому свет ложится ровно. Тот же
-        /// «односторонний винг + Cull Off», поэтому Cull Back включать нельзя.
-        /// Vertex colors белые: alpha = маска ветра (гнётся всё), RGB = 1.
+        /// Near blade: a folded strip of BladePanels quads narrowing towards the
+        /// tip. All normals point up (one normal for the whole mesh), so after
+        /// instance rotation +Y follows the surface normal and lighting is even.
+        /// Single-sided wing + Cull Off, so Cull Back must stay off.
+        /// Vertex colors are white: alpha = wind mask (all of it bends), RGB = 1.
         /// </summary>
         private static Mesh BuildBladeMesh()
         {
@@ -282,16 +253,16 @@ namespace Galilego.Universe.EditorTools
             var uvs = new Vector2[vertices.Length];
             var triangles = new int[BladePanels * 6];
 
-            // Раскладка по X: панели идут слева направо, складка задаётся Z.
-            // Углы складки симметричны, поэтому Z положительный/отрицательный
-            // чередуется и клинок в сечении — «зигзаг», а не плоская лента.
+            // Layout along X: panels run left to right, folds are set in Z. Fold
+            // corners are symmetric, so Z alternates sign and the blade
+            // cross-section is a zigzag rather than a flat strip.
             float panelWidth = BladeBaseWidth / BladePanels;
             float tipPanelWidth = BladeTipWidth / BladePanels;
             for (int i = 0; i <= BladePanels; i++)
             {
                 float t = (float)i / BladePanels;
-                // Складка гаснет к вершине (10% в остр��е): иначе верхний край
-                // идёт зигзагом по Z и клинок читается как рваный осколок.
+                // The fold fades towards the tip (10% at the tip): otherwise the
+                // top edge zigzags in Z and the blade reads as a tattered shard.
                 float fold = Mathf.Lerp(1f, 0.1f, t);
                 float halfZ = ((i & 1) == 0 ? 1f : -1f) * (BladeFoldDepth * 0.5f * fold);
                 float x = -BladeBaseWidth * 0.5f + panelWidth * i;
@@ -337,12 +308,10 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Дальний LOD — ОДИН квад (2 треугольника) в габаритах клинка.
-        /// GroundDecorMatrixJob разворачивает его к камере (Billboard = !near),
-        /// поэтому подробности сгибов на дальней дистанции не читаются, а
-        /// платить за них приходилось на всей площади ковра: 26 треугольников
-        /// на инстанс против 2. Ширина в основании и высота совпадают с
-        /// клинком, поэтому переход near>far не виден.
+        /// Far LOD: ONE quad (2 triangles) in the blade's dimensions.
+        /// GroundDecorMatrixJob turns it towards the camera (Billboard = !near),
+        /// so fold detail is unreadable at distance; base width and height match
+        /// the blade, so the near>far transition is invisible.
         /// </summary>
         private static Mesh BuildFarMesh()
         {

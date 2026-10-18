@@ -6,22 +6,17 @@ using Unity.Mathematics;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Распределение сигнала домена. Нужно, чтобы выбрать константу насыщения
-    /// SlopeNorm по данным, а не на глаз (В7а: p10 → ≈0.1, p90 → ≈0.9).
+    /// Domain-signal distribution, used to choose the SlopeNorm saturation
+    /// constant from data rather than by eye (target p10 → ≈0.1, p90 → ≈0.9).
     ///
-    /// Три кандидата, потому что текущий на глаз промахнулся: SlopeNorm
-    /// насыщался единицей на всех октавах, вес становился постоянным
-    /// 1 − damp и СОКРАЩАЛСЯ при нормировке sum/norm. На форме рельефа это давало
-    /// ноль изменения — T110 показал байт-идентичную статистику у Gradient и Off.
+    /// Three candidates:
+    ///   A  |∇_o|·freq_o              — signal of the current octave
+    ///   B  Σ amp·|∇|·freq / Σ amp    — average accumulated slope (frequency-independent)
+    ///   C  Σ amp·|∇|·freq            — accumulated slope as is
     ///
-    ///   A  |∇_o|·freq_o              — сигнал текущей октавы
-    ///   B  Σ amp·|∇|·freq / Σ amp    — средний наклон накопленного (частотонезависим)
-    ///   C  Σ amp·|∇|·freq            — накопленный наклон как есть
-    ///
-    /// Диапазон частот широкий: BaseFrequency 20 и десять октав при Lacunarity 2
-    /// дают от 20 до 10240, то есть частоты различаются в 512 раз. Один порог
-    /// насыщения на все октавы поэтому в принципе не подходит — и это, скорее
-    /// всего, и есть причина, по которой A насыщался везде.
+    /// The frequency range is wide: BaseFrequency 20 with ten octaves at Lacunarity 2
+    /// spans 20 to 10240, a 512× spread. A single saturation threshold for all
+    /// octaves therefore cannot work — the likely reason A saturates everywhere.
     /// </summary>
     private static int Test112d_DampSignalHistogram()
     {
@@ -67,10 +62,10 @@ internal static partial class P1bTests
             ReportOctave("C накопленный", c, n, octaves, o, baseFrequency * Math.Pow(lacunarity, o));
         }
 
-        // Сигнал режима Accum — |накопленное значение| в нормированной форме.
-        // Он живёт в своём масштабе (форма рельефа в [−1,1]), и окно насыщения у
-        // него должно быть своё: с общим окном градиентного режима Accum
-        // молча вырождается в no-op, потому что его сигнал всегда ниже порога.
+        // Accum mode signal — |accumulated value| in normalized form. It lives on
+        // its own scale (terrain shape in [−1,1]) and needs its own saturation
+        // window: with the gradient mode's window Accum silently degenerates into
+        // a no-op, because its signal is always below the threshold.
         var accum = new double[n * octaves];
         for (int i = 0; i < n; i++)
         {
@@ -115,7 +110,7 @@ internal static partial class P1bTests
             label, o, freq, p10, p50, p90, p10 > 1e-12 ? p90 / p10 : double.PositiveInfinity));
     }
 
-    /// <summary>Детерминированные направления и сид-оффсот формы для замеров домена.</summary>
+    /// <summary>Deterministic directions and shape seed offset for domain measurements.</summary>
     private sealed class Random3
     {
         private readonly int seed;

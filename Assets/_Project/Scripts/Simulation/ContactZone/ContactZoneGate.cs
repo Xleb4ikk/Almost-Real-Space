@@ -4,11 +4,11 @@ using Galilego.Universe;
 namespace Galilego.Simulation.ContactZone
 {
     /// <summary>
-    /// Решение о входе корабля в зону контакта. Зона — только посадка: вход возможен лишь при
-    /// малой высоте над рельефом и малой скорости относительно поверхности. Орбитальный и
-    /// входной режимы (высокая скорость) зону не включают по построению. Гистерезис:
-    /// вход (h &lt; Enter и v &lt; EnterSpeed), выход (h &gt; Exit или v &gt; ExitSpeed).
-    /// Класс не меняет состояние корабля: Update получает позицию и скорость по значению.
+    /// Decision about the ship entering the contact zone. The zone is landing only: entry requires
+    /// low altitude above the terrain and low speed relative to the surface. Orbital and entry
+    /// regimes (high speed) never enable the zone by construction. Hysteresis: enter (h &lt; Enter
+    /// and v &lt; EnterSpeed), exit (h &gt; Exit or v &gt; ExitSpeed). The class does not change ship
+    /// state: Update takes position and velocity by value.
     /// </summary>
     public sealed class ContactZoneGate
     {
@@ -19,7 +19,7 @@ namespace Galilego.Simulation.ContactZone
 
         public bool Inside { get; private set; }
 
-        /// <summary>Высота над рельефом и скорость относительно поверхности (co-rotating).</summary>
+        /// <summary>Altitude above terrain and speed relative to the surface (co-rotating).</summary>
         public static void Measure(OrbitingBody body, ITerrainModel terrain, Vector3d position, Vector3d velocity,
             double timeSeconds, out double altitudeAboveTerrain, out double relativeSpeed)
         {
@@ -34,7 +34,7 @@ namespace Galilego.Simulation.ContactZone
             relativeSpeed = (velocity - surfaceVelocity).Magnitude;
         }
 
-        /// <summary>Обновить решение на текущем кадре. Возвращает true, если зона активна.</summary>
+        /// <summary>Update the decision for the current frame. Returns true if the zone is active.</summary>
         public bool Update(OrbitingBody body, ITerrainModel terrain, Vector3d position, Vector3d velocity, double timeSeconds)
         {
             Measure(body, terrain, position, velocity, timeSeconds, out double altitude, out double speed);

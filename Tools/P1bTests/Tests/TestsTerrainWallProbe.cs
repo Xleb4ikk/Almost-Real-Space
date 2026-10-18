@@ -6,18 +6,18 @@ using Galilego.Universe;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Зонд аномалии «стена с вертикальными рёбрами» (скриншот игрока,
-    /// lat 5.715345 / lon 142.200892). Профиль и сид взяты из сцены:
+    /// Probes the "wall with vertical ribs" anomaly (player screenshot,
+    /// lat 5.715345 / lon 142.200892). Profile and seed taken from the scene:
     /// OutdoorsScene → BodyAuthoring.TerrainPreset = EarthLike_Perlin,
     /// TerrainSeed = 24334543, Radius = 1143000.
     ///
-    /// Задача — ответить, есть ли пила МАСШТАБА СЕТКИ в самой функции высоты.
-    /// Шаг сетки листа на MaxDepth 12: (π/2·R/2^12)/(TileResolution-1) ≈ 6.85 м.
-    /// Если пилы в поле нет, то аномалия живёт в сборке меша/рендере, а не в шуме.
+    /// Goal: decide whether there is a GRID-SCALE sawtooth in the height function
+    /// itself. Leaf grid step at MaxDepth 12: (π/2·R/2^12)/(TileResolution-1) ≈ 6.85 m.
+    /// If the field has no sawtooth, the anomaly lives in mesh assembly/rendering.
     /// </summary>
     private static HeightfieldTerrain SceneTerrain()
     {
-        // Копия Assets/_Project/Profiles/Terrain/EarthLike_Perlin.asset один в один.
+        // Exact copy of Assets/_Project/Profiles/Terrain/EarthLike_Perlin.asset.
         return new HeightfieldTerrain
         {
             Seed = 24334543,
@@ -107,7 +107,7 @@ internal static partial class P1bTests
         return body;
     }
 
-    /// <summary>Смещение точки в метрах по северу/востоку от опорной lat/lon.</summary>
+    /// <summary>Offset a point by metres north/east from a reference lat/lon.</summary>
     private static void OffsetLatLon(double latDeg, double lonDeg, double northM, double eastM,
         out double latOut, out double lonOut)
     {
@@ -144,7 +144,7 @@ internal static partial class P1bTests
             "    h(игрок lat {0} lon {1}) = {2:F2} м (сырая), {3:F2} м (с клампом моря). HUD в кадре: рельеф под игроком 26 м.",
             PlayerLat, PlayerLon, hRaw, hClamped));
 
-        // ===== Карта окрестности: 41×41 по 150 м = ±3 км =====
+        // ===== Neighbourhood map: 41×41 at 150 m = ±3 km =====
         const int N = 41;
         const double Step = 150d;
         var map = new double[N, N];
@@ -179,7 +179,7 @@ internal static partial class P1bTests
             Console.WriteLine("    " + line);
         }
 
-        // ===== Где самый крутой уступ в карте =====
+        // ===== Where the steepest step in the map is =====
         double worstSlope = 0d;
         int wi = 0;
         int wj = 0;
@@ -218,7 +218,7 @@ internal static partial class P1bTests
             "    максимальный уклон по карте {0:F3} ({1:F1}°) на клетке ({2},{3}), вдоль {4}",
             worstSlope, Math.Atan(worstSlope) * (180d / Math.PI), wi, wj, worstAlongEast ? "востока" : "севера"));
 
-        // ===== Тонкий профиль 6.85 м через этот уступ =====
+        // ===== Fine 6.85 m profile across this step =====
         double baseNorth = (wi - (N / 2)) * Step;
         double baseEast = (wj - (N / 2)) * Step;
         Console.WriteLine(string.Format(inv,
@@ -236,9 +236,9 @@ internal static partial class P1bTests
             prev = h;
         }
 
-        // ===== Метрика пилы масштаба сетки =====
-        // Идём отрезками по 6.85 м в разные стороны. Пила = знак Δ скачет, а
-        // размах зубца (минимум из двух соседних |Δ|) велик.
+        // ===== Grid-scale sawtooth metric =====
+        // Walk 6.85 m segments in various directions. Sawtooth = the sign of Δ flips
+        // while the tooth amplitude (min of two adjacent |Δ|) is large.
         var rng = new Random(20260127);
         int lines = 600;
         int perLine = 160;

@@ -4,13 +4,9 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Рендер корабля (B3). Корабль живёт в double-мире ядра; Unity-позиция —
-    /// ОТНОСИТЕЛЬНО доминантного тела (floating origin): world-позиция корабля
-    /// = world-позиция BodyView доминантного тела + мостнутая дельта. Важно
-    /// вызывать ПОСЛЕ BodyView.LateUpdate того же кадра (порядок скриптов).
-    /// Поиск трансформа доминантного тела — через Runner.SystemView (кэш
-    /// соответствий тело→трансформ, заполняется BodyView при старте), без
-    /// перебора иерархии каждый кадр.
+    /// Ship render (B3). The ship lives in the core's double world; the Unity position
+    /// is relative to the floating origin. Must run AFTER BodyView.LateUpdate in the
+    /// same frame (script order).
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-90)]
     public sealed class ShipView : MonoBehaviour
@@ -25,7 +21,7 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Floating origin: единый якорь (FloatingOrigin.Anchor).
+            // Floating origin: single anchor (FloatingOrigin.Anchor).
             transform.position = FloatingOrigin.ToRender(Runner.Ship.Position);
         }
     }

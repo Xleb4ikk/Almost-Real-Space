@@ -6,27 +6,26 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Твёрдая постройка внутри места. Игрок двигается через SimulationRunner в
-    /// double и Unity-физику не использует, поэтому выталкивание считается здесь,
-    /// в render-пространстве рядом с якорем.
+    /// Solid construction inside a site. The player moves through SimulationRunner
+    /// in double precision and does not use Unity physics, so pushout is computed
+    /// here, in render space next to the anchor.
     ///
-    /// UseMeshCollision = true: коллизия идёт по запечённым данным части.
-    /// Выпуклая часть получает ОДИН convex MeshCollider из собственного меша —
-    /// точная форма, включая скосы рампы, без лесенки из боксов. Вогнутая часть
-    /// получает набор небольших боксов (вокселизация поверхности). Авторские
-    /// коллайдеры (convex MeshCollider или BoxCollider) на части или на самом
-    /// SiteBox имеют приоритет над автозапеканием.
+    /// UseMeshCollision = true: collision goes by the part's baked data. A convex
+    /// part gets ONE convex MeshCollider from its own mesh — exact shape, ramp
+    /// slopes included, no box staircase. A concave part gets a set of small boxes
+    /// (surface voxelization). Authored colliders (convex MeshCollider or
+    /// BoxCollider) on a part or on the SiteBox itself take priority over
+    /// auto-baking.
     ///
-    /// Center/Size остаётся грубым фильтром. Если запекания нет, используется
-    /// один старый габаритный бокс на часть.
+    /// Center/Size remain a coarse filter. Without baked data a single bounding
+    /// box per part is used.
     ///
-    /// ВАЖНО: невыпуклые (non-convex) MeshCollider нигде не используются —
-    /// Physics.ComputePenetration, на котором держится пушаут, с ними молча
-    /// возвращает отсутствие пересечения (проверено тестом).
+    /// IMPORTANT: non-convex MeshColliders are never used — Physics.ComputePenetration,
+    /// which the pushout relies on, silently reports no intersection with them.
     /// </summary>
     public sealed class SiteBox : MonoBehaviour
     {
-        /// <summary>Минимальная толщина ящика части, м (в локальных единицах меша).</summary>
+        /// <summary>Minimum part box thickness, m (in the mesh's local units).</summary>
         private const float MinSize = 0.01f;
 
         [Tooltip("Грубый габарит в локальных осях объекта, м. Центр.")]
@@ -61,8 +60,8 @@ namespace Galilego.Universe
             public MeshFilter Source;
 
             /// <summary>
-            /// true = часть выпуклая, сварится в один convex MeshCollider по
-            /// собственному мешу (Boxes пустые). false = вогнутая, коллизия по Boxes.
+            /// true = part is convex, merges into one convex MeshCollider from its
+            /// own mesh (Boxes empty). false = concave, collision uses Boxes.
             /// </summary>
             public bool UseConvexMesh;
 
@@ -72,7 +71,7 @@ namespace Galilego.Universe
         [HideInInspector]
         public List<BakedPartData> BakedParts = new List<BakedPartData>();
 
-        /// <summary>Есть ли запечённые данные (боксы или флаги convex hull).</summary>
+        /// <summary>Whether baked data exists (boxes or convex hull flags).</summary>
         public bool HasBakedParts => BakedParts != null && BakedParts.Count > 0;
 
         private sealed class Part
@@ -117,9 +116,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Собрать коллайдеры, если ещё не собраны (страховка от порядка
-        /// жизненного цикла: OnEnable мог отработать до готовности сцены).
-        /// Вызывается из опоры игрока перед запросами.
+        /// Build colliders if not built yet (lifecycle order safety: OnEnable
+        /// may run before the scene is ready). Called by the player support
+        /// code before queries.
         /// </summary>
         public void EnsureBuilt()
         {
@@ -144,8 +143,8 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Авторские коллайдеры прямо на этом объекте (Blender-воркфлоу):
-            // заменяют автозапекание целиком.
+            // Authored colliders on this object itself (Blender workflow):
+            // they replace auto-baking entirely.
             if (TryBuildAuthoredSiteColliders())
             {
                 return;
@@ -196,8 +195,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Авторские MeshCollider/BoxCollider на самом SiteBox. Convex MeshCollider
-        /// поддерживается, невыпуклый — игнорируется с предупреждением (см. шапку).
+        /// Authored MeshCollider/BoxCollider on the SiteBox itself. Convex
+        /// MeshCollider is supported, non-convex is ignored with a warning
+        /// (see the class header).
         /// </summary>
         private bool TryBuildAuthoredSiteColliders()
         {
@@ -247,9 +247,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Авторский коллайдер на самой части (повернутый бокс для скоса,
-        /// convex MeshCollider из упрощённого меша). Без холдера — коллайдер
-        /// уже лежит на нужном трансформе.
+        /// Authored collider on the part itself (a rotated box for a slope,
+        /// a convex MeshCollider from a simplified mesh). No holder needed:
+        /// the collider already sits on the right transform.
         /// </summary>
         private static bool TryAuthoredPartCollider(MeshFilter filter, out Part part)
         {
@@ -359,11 +359,10 @@ namespace Galilego.Universe
                 hideFlags = HideFlags.HideAndDontSave,
                 layer = 2
             };
-            // Поза холдера = поза исходной части: холдер — РЕБЁНОК части с нулевым
-            // локальным трансформом. Так коллайдеры точны при любом порядке
-            // обновления места (SurfaceGrounded/Refresh двигают содержимое после
-            // OnEnable — привязка к SiteBox давала «уехавший» коллайдер).
-            // SiteBox находим по SiteBoxPart.Owner (SiteBox лежит рядом, не в предках).
+            // Holder pose = source part pose: the holder is a CHILD of the part
+            // with a zero local transform, so colliders stay accurate regardless
+            // of the site update order. SiteBox is found via SiteBoxPart.Owner
+            // (it sits beside the holder, not in its ancestry).
             holder.transform.SetParent(source, false);
             holder.transform.localPosition = Vector3.zero;
             holder.transform.localRotation = Quaternion.identity;
@@ -381,7 +380,7 @@ namespace Galilego.Universe
                 Mathf.Max(size.z, MinSize));
         }
 
-        /// <summary>Та же выборка частей LOD0 используется при запекании и в рантайме.</summary>
+        /// <summary>The same LOD0 part selection is used when baking and at runtime.</summary>
         public static List<MeshFilter> CollectPartFilters(Transform root)
         {
             var filters = new List<MeshFilter>();
@@ -450,9 +449,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Вытолкнуть капсулу игрока (ноги в feet, ось вдоль up) из мешей здания.
-        /// Только по горизонтали: пол/крыша (нормаль почти вертикальна) не толкают,
-        /// высоту ведёт проекция на рельеф. Несколько итераций — для углов.
+        /// Push the player capsule (feet at feet, axis along up) out of the
+        /// building meshes. Floors/roofs (near-vertical normals) do not push;
+        /// height is handled by the terrain projection. Several iterations
+        /// for corners.
         /// </summary>
         public bool PushOutMesh(Vector3 feet, Vector3 up, float radius, out Vector3 push)
         {
@@ -476,7 +476,7 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    // Мировой AABB части из локальных границ меша (дёшево, без физики сцены).
+                    // World AABB of the part from local mesh bounds (cheap, no scene physics).
                     Matrix4x4 m = part.Source.localToWorldMatrix;
                     Vector3 c = m.MultiplyPoint3x4(part.LocalCenter);
                     Vector3 e = part.LocalExtents;
@@ -497,20 +497,17 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    // Только настоящее проникновение: у любой стены PhysX из-за
-                    // contact offset даёт микропроникновение касания — пушаут на нём
-                    // каждый подшаг отбрасывал тело от стены (дёрганье у стен).
+                    // Only real penetration counts: contact offset makes PhysX
+                    // report touch micro-penetration, which must not push the body.
                     if (dist < 0.03f)
                     {
                         continue;
                     }
 
-                    // Минимальный выход из пересечения (3D): для тонкой стены это
-                    // горизонталь (как раньше), для больших боксов (фундаменты) —
-                    // ближайшая грань, включая верх. Шаг ограничен 1 м за подшаг,
-                    // чтобы не телепортировать игрока через полкарты (легаси-ветка
-                    // «вбок к ближайшей боковой грани» на больших боксах давала
-                    // прыжок на десятки метров и цикл дёрганья у стены).
+                    // Minimal exit from the intersection (3D): horizontal for a
+                    // thin wall, the nearest face (top included) for large boxes
+                    // (foundations). Step is capped at 1 m per substep so the
+                    // player is never teleported across the map.
                     float step = Mathf.Min(dist + 0.005f, 1f);
                     if (step > 1e-4f)
                     {
@@ -579,13 +576,14 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Реестр построек и выталкивание из них игрока.
+    /// Registry of constructions and player pushout from them.
     ///
-    /// Позиция приходит и уходит в astro-координатах (как PlayerPosition симулятора),
-    /// а постройки живут в render-пространстве рядом с игроком — пересчёт идёт
-    /// через FloatingOrigin: наружу отдаётся СМЕЩЕНИЕ, а не точка.
-    /// Игрок по высоте перекрывается с постройкой только между ногами и головой,
-    /// поэтому на крышу можно запрыгнуть сбоку, а сквозь стену пройти нельзя.
+    /// Position comes in and goes out in astro coordinates (like the simulator's
+    /// PlayerPosition), while constructions live in render space next to the
+    /// player — the conversion goes through FloatingOrigin, and only an OFFSET
+    /// is returned, not a point. The player overlaps a construction vertically
+    /// only between feet and head, so the roof can be jumped onto from the side
+    /// but the wall cannot be walked through.
     /// </summary>
     public static class SiteBoxRegistry
     {
@@ -608,7 +606,7 @@ namespace Galilego.Universe
             boxes.Remove(b);
         }
 
-        /// <summary>Собрать коллайдеры всех зарегистрированных построек (страховка).</summary>
+        /// <summary>Build colliders of all registered constructions (safety net).</summary>
         public static void EnsureAllBuilt()
         {
             for (int i = 0; i < boxes.Count; i++)
@@ -620,7 +618,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Капсула-зонд игрока для ComputePenetration (поза передаётся явно, сама стоит далеко).</summary>
+        /// <summary>Player probe capsule for ComputePenetration (pose passed explicitly; the capsule itself sits far away).</summary>
         internal static CapsuleCollider Probe(float radius)
         {
             if (probe == null)
@@ -674,7 +672,7 @@ namespace Galilego.Universe
 
                     if (b.HasMesh)
                     {
-                        // Бокс — грубый фильтр, точное выталкивание — по мешам.
+                        // Box is a coarse filter; exact pushout goes by meshes.
                         if (Mathf.Abs(c.x) > h.x + r + 1f || Mathf.Abs(c.z) > h.z + r + 1f)
                         {
                             continue;

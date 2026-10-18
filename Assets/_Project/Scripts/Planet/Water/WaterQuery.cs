@@ -4,33 +4,32 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Запросы воды планеты — ЕДИНСТВЕННЫЙ источник правды о море.
-    /// Разделяет два понятия, которые раньше сливались в клампе:
-    ///   - поверхность воды (плоская, Radius + SeaLevel) — для плавания,
-    ///     приводнения, подводных эффектов;
-    ///   - дно (сырая высота БЕЗ клампа) — для глубины, геометрии океана,
-    ///     посадки на дно при нырянии.
-    /// GetHeightMeters (клампнутая) остаётся для кораблей/детекторов: посадка
-    /// на воду = посадка на плоскую твердь уровня моря (мягкое приводнение —
-    /// будущий этап, см. GetSplashdownInfo).
-    /// Чистые функции без UnityEngine — покрываются стендом P1bTests.
+    /// Planet water queries — the SINGLE source of truth about the sea.
+    /// Separates two concepts that used to be merged by clamping:
+    ///   - water surface (flat, Radius + SeaLevel) — for swimming, splashdown,
+    ///     underwater effects;
+    ///   - seabed (raw height WITHOUT clamping) — for depth, ocean geometry,
+    ///     landing on the bottom while diving.
+    /// GetHeightMeters (clamped) stays for ships/detectors: landing on water = landing
+    /// on a flat sea-level solid (soft splashdown is a future stage, see GetSplashdownInfo).
+    /// Pure functions without UnityEngine — covered by the P1bTests stand.
     /// </summary>
     public static class WaterQuery
     {
         /// <summary>
-        /// Порог «моря нет»: уровень моря ≤ этого — океан отсутствует.
-        /// Профиль использует −1e30, рантайм — NegativeInfinity.
+        /// "No sea" threshold: sea level at or below this means no ocean.
+        /// The profile uses −1e30, the runtime NegativeInfinity.
         /// </summary>
         public const double NoOceanSentinel = -1e29d;
 
-        /// <summary>Есть ли на теле океан (уровень моря задан).</summary>
+        /// <summary>Whether the body has an ocean (sea level is set).</summary>
         public static bool HasOcean(OrbitingBody body)
         {
             return body != null && body.Terrain != null
                 && body.Terrain.GetSeaLevelMeters() > NoOceanSentinel;
         }
 
-        /// <summary>Уровень моря над Radius (м). false — моря нет.</summary>
+        /// <summary>Sea level above Radius (m). false — no sea.</summary>
         public static bool TryGetSeaLevel(OrbitingBody body, out double seaLevelMeters)
         {
             if (HasOcean(body))
@@ -44,8 +43,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Сырая высота дна/суши над Radius (м) БЕЗ клампа морем.
-        /// NaN — нет террейна.
+        /// Raw seabed/land height above Radius (m) WITHOUT sea clamping.
+        /// NaN — no terrain.
         /// </summary>
         public static double RawSeabedHeightAt(OrbitingBody body, double latitudeDegrees, double longitudeDegrees)
         {
@@ -61,8 +60,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Глубина воды в точке (м, ≥ 0): уровень моря минус сырое дно.
-        /// 0 — суша, мелководье у берега или моря нет.
+        /// Water depth at a point (m, ≥ 0): sea level minus raw seabed.
+        /// 0 — land, shallow water near shore, or no sea.
         /// </summary>
         public static double WaterDepthAt(OrbitingBody body, double latitudeDegrees, double longitudeDegrees)
         {
@@ -81,9 +80,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Вода ли в точке (сырое дно ниже уровня моря). Строгое сравнение:
-        /// рендер добавляет визуальный эпсилон (amp·0.001) для сглаживания
-        /// кромки, физика — нет.
+        /// Whether there is water at a point (raw seabed below sea level). Strict
+        /// comparison: rendering adds a visual epsilon (amp·0.001) for edge smoothing,
+        /// physics does not.
         /// </summary>
         public static bool IsWaterAt(OrbitingBody body, double latitudeDegrees, double longitudeDegrees)
         {
@@ -91,7 +90,7 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Радиус водной поверхности от центра тела (м). NaN — моря нет.
+        /// Radius of the water surface from the body center (m). NaN — no sea.
         /// </summary>
         public static double SeaSurfaceRadius(OrbitingBody body)
         {
@@ -104,9 +103,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Погружение точки мира под воду (м): радиус поверхности минус
-        /// дистанция до центра тела. &gt; 0 — под водой, ≤ 0 — над водой.
-        /// NaN — моря нет.
+        /// Submersion of a world point under water (m): surface radius minus the
+        /// distance to the body center. &gt; 0 — underwater, ≤ 0 — above water.
+        /// NaN — no sea.
         /// </summary>
         public static double SubmersionDepthAt(OrbitingBody body, Vector3d worldPosition, double timeSeconds)
         {
@@ -138,10 +137,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Высота точки мира над СЫРЫМ дном (м): дистанция до центра минус
-        /// радиус дна в этой lat/lon. Для упора при нырянии (в отличие от
-        /// клампнутой высоты, которая в океане всегда «уровень моря»).
-        /// NaN — нет террейна.
+        /// Height of a world point above the RAW seabed (m): distance to the center
+        /// minus the seabed radius at this lat/lon. Used for diving clearance (unlike
+        /// the clamped height, which in the ocean is always "sea level").
+        /// NaN — no terrain.
         /// </summary>
         public static double ClearanceAboveSeabedAt(OrbitingBody body, Vector3d worldPosition, double timeSeconds)
         {
@@ -162,25 +161,25 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Информация для будущего мягкого приводнения (пока только данные,
-        /// поведение не меняет: посадка идёт по клампнутой высоте).
+        /// Information for future soft splashdown (data only, no behaviour change
+        /// yet: landing uses the clamped height).
         /// </summary>
         public struct SplashdownInfo
         {
-            /// <summary>Точка над водой (сырое дно ниже моря).</summary>
+            /// <summary>Point over water (raw seabed below sea).</summary>
             public bool IsWater;
 
-            /// <summary>Глубина воды (м, ≥ 0).</summary>
+            /// <summary>Water depth (m, ≥ 0).</summary>
             public double WaterDepthMeters;
 
-            /// <summary>Уровень моря над Radius (м, NaN — моря нет).</summary>
+            /// <summary>Sea level above Radius (m, NaN — no sea).</summary>
             public double SeaLevelMeters;
 
-            /// <summary>Сырое дно над Radius (м, NaN — нет террейна).</summary>
+            /// <summary>Raw seabed above Radius (m, NaN — no terrain).</summary>
             public double SeabedHeightMeters;
         }
 
-        /// <summary>Сводка воды в точке для логики приводнения.</summary>
+        /// <summary>Water summary at a point for splashdown logic.</summary>
         public static SplashdownInfo GetSplashdownInfo(OrbitingBody body, double latitudeDegrees, double longitudeDegrees)
         {
             var info = new SplashdownInfo

@@ -4,13 +4,13 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Клетка porkchop-скана: окно вылет/прилёт, суммарная Δv rendezvous
-    /// (уход + прибытие). Невалидна (Δv = +∞, Valid = false), если окно
-    /// вырождено (прилёт не позже вылета), Ламберт не сошёлся, дуга идёт
-    /// сквозь тело (проверка сэмплами через StarSystem.TryEvaluate — тот же
-    /// предикат, что у планировщика, кандидат помечается invalid, а не тихо
-    /// зануляется) или окно выходит за испечённый горизонт. NaN в таблице
-    /// нет по построению.
+    /// A porkchop scan cell: departure/arrival window and the total rendezvous Δv
+    /// (departure + arrival). Invalid (Δv = +∞, Valid = false) if the window is
+    /// degenerate (arrival not later than departure), Lambert did not converge, the
+    /// arc passes through a body (checked by sampling via StarSystem.TryEvaluate — the
+    /// same predicate as the planner, so the candidate is marked invalid rather than
+    /// silently zeroed) or the window exceeds the baked horizon. There are no NaNs in
+    /// the table by construction.
     /// </summary>
     public readonly struct PorkchopCell
     {
@@ -34,13 +34,12 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Скан окон перелёта между двумя телами вокруг общего центра.
-    /// Короткий путь Ламберта (документровано); rendezvous с обоих концов.
-    /// Дуга валидируется 16 сэмплами KeplerAdvance в мировой рамке (центр
-    /// движется — его позиция берётся на момент сэмпла, не вылета):
-    /// сквозной пролёт сквозь любое тело — invalid. Стоимость клетки —
-    /// микросекунды (бисекция z + аналитика), сетка 25 клеток — доли
-    /// миллисекунды. Детерминирован бит-в-бит при тех же входах.
+    /// Scans transfer windows between two bodies around a common center.
+    /// Short-way Lambert; rendezvous at both ends. The arc is validated with 16
+    /// KeplerAdvance samples in the world frame (the center moves — its position is
+    /// taken at the sample time, not at departure): a pass through any body is invalid.
+    /// A cell costs microseconds (z bisection + analytics); a 25-cell grid takes
+    /// fractions of a millisecond. Bit-for-bit deterministic for the same inputs.
     /// </summary>
     public static class Porkchop
     {
@@ -164,10 +163,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Концы дуги (k=0, k=N) исключены осознанно: это центры стартового
-        /// и целевого тел (парковочные орбиты), TryEvaluate там всегда false.
-        /// Проверяется транзитная дуга — сквозной пролёт ловится внутренними
-        /// сэмплами. Без этого валидна была бы ровно ноль клеток (поймано T25).
+        /// The arc endpoints (k=0, k=N) are deliberately excluded: those are the centers
+        /// of the departure and target bodies (parking orbits), where TryEvaluate is always
+        /// false. Only the transit arc is checked — a through-body pass is caught by the
+        /// interior samples. Without this exactly zero cells would be valid.
         /// </summary>
         private static bool IsArcClear(StarSystem system, OrbitingBody centralBody, double mu, Vector3d relativeDepart, Vector3d departureVelocity, double dt, double departTime)
         {
@@ -177,8 +176,8 @@ namespace Galilego.Universe
                 Vector3d relativePosition;
                 try
                 {
-                    // Околопараболическая/вырожденная дуга — не краш всего Scan,
-                    // а невалидная клетка (аудит S1/1.4).
+                    // A near-parabolic/degenerate arc makes this cell invalid instead of
+                    // crashing the whole Scan.
                     KeplerPredictor.Advance(relativeDepart, departureVelocity, mu, sampleDt, out relativePosition, out _);
                 }
                 catch (ArgumentException)

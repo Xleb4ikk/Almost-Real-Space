@@ -6,13 +6,12 @@ using Unity.Mathematics;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Печатает координаты хорошего берега для съёмки. Считается офлайн на
-    /// стенде, потому что поиск по сетке в Editor упирается в лимит главного
-    /// потока (GetHeightMeters там дорогой), а здесь та же функция стоит
-    /// копейки.
+    /// Prints coordinates of a good coast for capture. Computed offline on the
+    /// bench, because a grid search in the Editor hits the main-thread limit
+    /// (GetHeightMeters is expensive there), while here the same function is cheap.
     ///
-    /// «Хороший» = есть и суша, и море в пределах ~0.6°, и в радиусе 40°
-    /// встречается глубокое дно, чтобы в кадр попал и шельф, и ложе.
+    /// "Good" = both land and sea within ~0.6°, and deep floor within a 40° radius,
+    /// so the shot captures both shelf and abyss.
     /// </summary>
     private static int Test138_CoastSpot()
     {
@@ -67,7 +66,7 @@ internal static partial class P1bTests
                     continue;
                 }
 
-                // Глубина неподалёку: ищем океан глубже 2 км в радиусе 25°.
+                // Nearby depth: look for ocean deeper than 2 km within a 25° radius.
                 double deep = 0d;
                 for (int a = 0; a < 12; a++)
                 {

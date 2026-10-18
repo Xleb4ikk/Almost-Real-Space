@@ -6,9 +6,9 @@ using Ship = Galilego.Spacecraft.Spacecraft;
 namespace Galilego.Events
 {
     /// <summary>
-    /// Результат дальнего прыжка: дошли до цели или оборвались на событии.
-    /// Для плавного рендера — AdvanceToTargetWithSegments: цепочка dense output
-    /// пройденного пути, сэмплируется без единого Step (см. DenseSegment).
+    /// Result of a long jump: reached the target or stopped on an event.
+    /// For smooth rendering — AdvanceToTargetWithSegments: a chain of dense output
+    /// for the traversed path, sampled with no Step at all (see DenseSegment).
     /// </summary>
     public readonly struct LongWarpResult
     {
@@ -25,15 +25,14 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Дальний варп — не новый движок, а другой режим вызова готового
-    /// EventDrivenPropagator сразу с большой целевой отметкой. На гладком
-    /// участке адаптивный шаг сам растёт (тесты B/D из P0), слой P1a сам
-    /// обрывает продвижение на первом событии. Условие входа формальное: ни
-    /// один IDynamicsSource, кроме гравитации, не даёт ненулевого вклада
-    /// прямо сейчас (проверяется по факту вклада, не по режиму игрока).
-    /// Сброс при касании тяги — тихий, ДО следующего RHS-вызова: ни один вызов
-    /// не видит одновременно шаг варп-масштаба и активный негравитационный
-    /// источник.
+    /// Long warp — not a new engine but another way of calling the existing
+    /// EventDrivenPropagator straight to a large target mark. On smooth stretches
+    /// the adaptive step grows itself, and the layer stops advancing at the first
+    /// event. The entry condition is formal: no IDynamicsSource other than gravity
+    /// contributes non-zero right now (checked by actual contribution, not by
+    /// player mode). Cancelling on thrust touch is silent, BEFORE the next RHS
+    /// call, so no call ever sees a warp-scale step together with an active
+    /// non-gravity source.
     /// </summary>
     public sealed class LongWarpDriver
     {
@@ -41,8 +40,9 @@ namespace Galilego.Events
         private readonly EventDrivenPropagator propagator;
 
         /// <summary>
-        /// Вызывается каждый RHS через обёртку: если взведён флаг отмены
-        /// (игрок тронул тягу), дальнейший расчёт запрещён. Проверка дешёвая.
+        /// Checked on every RHS through a wrapper: if the cancel flag is set
+        /// (the player touched thrust), further computation is forbidden.
+        /// The check is cheap.
         /// </summary>
         public bool CancelRequested;
 
@@ -53,8 +53,8 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Формальная проверка входа: все источники, кроме GravitySource и
-        /// CachedGravitySource, дают нулевой вклад в текущей точке.
+        /// Formal entry check: all sources except GravitySource and
+        /// CachedGravitySource contribute zero at the current point.
         /// </summary>
         public bool CanEnterLongWarp(SpacecraftIntegrationState state, double timeSeconds)
         {
@@ -77,10 +77,10 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Прогоняет до targetTimeSeconds или до первого события. Тихий сброс:
-        /// если CancelRequested взведён до/во время расчёта — останавливаемся
-        /// на текущей точке без исключения, корабль остаётся в валидном
-        /// состоянии на границе уже принятых чанков.
+        /// Runs to targetTimeSeconds or to the first event. Silent reset: if
+        /// CancelRequested is set before/during the computation, we stop at the
+        /// current point without throwing; the ship stays valid at the boundary
+        /// of the already-accepted chunks.
         /// </summary>
         public LongWarpResult AdvanceToTarget(Ship ship, double currentTimeSeconds, double targetTimeSeconds)
         {
@@ -88,8 +88,8 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Тот же прыжок, плюс цепочка dense-сегментов пройденного пути
-        /// (только до события/цели) для сэмплирования рендера без Step.
+        /// The same jump plus a chain of dense segments for the traversed path
+        /// (only up to the event/target) for render sampling without Step.
         /// </summary>
         public LongWarpResult AdvanceToTargetWithSegments(Ship ship, double currentTimeSeconds, double targetTimeSeconds, System.Collections.Generic.List<DenseSegment> render)
         {
@@ -124,7 +124,7 @@ namespace Galilego.Events
             return new LongWarpResult(targetTimeSeconds, null, true);
         }
 
-        /// <summary>Тихий сброс варпа (касание тяги): следующий RHS его увидит.</summary>
+        /// <summary>Silent warp cancel (thrust touch): the next RHS will see it.</summary>
         public void RequestSilentCancel()
         {
             CancelRequested = true;

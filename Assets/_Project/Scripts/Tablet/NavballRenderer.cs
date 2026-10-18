@@ -3,10 +3,10 @@ using UnityEngine;
 namespace Galilego.Tablet
 {
     /// <summary>
-    /// Навбол, нарисованный попиксельно: сетка небо/земля, горизонт, стороны
-    /// света и шесть маркеров скорости. Шар виден «со стороны носа»: центр —
-    /// куда смотрит корабль. Маркеры за шаром (задняя полусфера) бледные, но
-    /// тоже нажимаются — клик по маркеру = навести корабль (SasMode).
+    /// Pixel-drawn navball: sky/ground grid, horizon, cardinal directions
+    /// and six velocity markers. The sphere is seen "from the nose": the center is
+    /// where the ship points. Markers behind the sphere (rear hemisphere) are pale but
+    /// still clickable — clicking a marker points the ship at it (SasMode).
     /// </summary>
     public sealed class NavballRenderer
     {
@@ -16,17 +16,17 @@ namespace Galilego.Tablet
 
         private static readonly string[][] Icons =
         {
-            // Прогрейд: круг, точка, три «уса»
+            // Prograde: circle, dot, three "whiskers"
             new[] { "....#....", "...###...", "..#...#..", ".#.....#.", "##..#..##", ".#.....#.", "..#...#..", "...###..." },
-            // Ретроград: круг, крест, три «уса»
+            // Retrograde: circle, cross, three "whiskers"
             new[] { "....#....", "...###...", "..#...#..", ".#.#.#.#.", "##..#..##", ".#.#.#.#.", "..#...#..", "...###..." },
-            // Нормаль: треугольник вверх
+            // Normal: triangle up
             new[] { ".........", ".........", "....#....", "...#.#...", "..#...#..", ".#.....#.", "#########" },
-            // Антинормаль: треугольник вниз
+            // Antinormal: triangle down
             new[] { ".........", ".........", "#########", ".#.....#.", "..#...#..", "...#.#...", "....#...." },
-            // Радиально внутрь: ромб с крестом
+            // Radial in: diamond with a cross
             new[] { "....#....", "...#.#...", "..#...#..", ".#.#.#.#.", "#...#...#", ".#.#.#.#.", "..#...#..", "...#.#...", "....#...." },
-            // Радиально наружу: ромб с точкой
+            // Radial out: diamond with a dot
             new[] { "....#....", "...#.#...", "..#...#..", ".#.....#.", "#...#...#", ".#.....#.", "..#...#..", "...#.#...", "....#...." },
         };
 
@@ -35,7 +35,7 @@ namespace Galilego.Tablet
             "ПО СКОРОСТИ", "ПРОТИВ СКОРОСТИ", "НОРМАЛЬ", "АНТИНОРМАЛЬ", "РАДИАЛЬНО ВНУТРЬ", "РАДИАЛЬНО НАРУЖУ",
         };
 
-        // Кэш прошлой отрисовки (для попадания курсором).
+        // Cache of the last draw (for cursor hit-testing).
         private readonly int[] markerX = new int[6];
         private readonly int[] markerY = new int[6];
         private readonly float[] markerZ = new float[6];
@@ -45,10 +45,10 @@ namespace Galilego.Tablet
         private readonly int[] elevCell = new int[Size * Size];
         private readonly int[] azCell = new int[Size * Size];
         private readonly float[] depth = new float[Size * Size];
-        private readonly byte[] flags = new byte[Size * Size]; // 1 — внутри шара, 2 — небо
+        private readonly byte[] flags = new byte[Size * Size]; // 1 — inside the sphere, 2 — sky
         private readonly float[] elevDeg = new float[Size * Size];
 
-        /// <summary>Индекс маркера под точкой (px, py) или -1. Передний маркер важнее заднего.</summary>
+        /// <summary>Marker index under point (px, py) or -1. A front marker beats a rear one.</summary>
         public int HitTest(int px, int py)
         {
             int best = -1;
@@ -79,7 +79,7 @@ namespace Galilego.Tablet
             return best;
         }
 
-        /// <summary>Курс / тангаж / крен корабля (градусы) из ориентации относительно горизонта.</summary>
+        /// <summary>Ship heading / pitch / roll (degrees) from orientation relative to the horizon.</summary>
         public static void Euler(Quaternion q, out float heading, out float pitch, out float roll)
         {
             Vector3 f = q * Vector3.forward;
@@ -111,7 +111,7 @@ namespace Galilego.Tablet
             Vector3 by = q * Vector3.up;
             Vector3 bz = q * Vector3.forward;
 
-            // Проход 1: для каждого пикселя шара — ячейки сетки, небо/земля, глубина.
+            // Pass 1: for each sphere pixel — grid cells, sky/ground, depth.
             for (int j = 0; j < Size; j++)
             {
                 for (int i = 0; i < Size; i++)
@@ -145,7 +145,7 @@ namespace Galilego.Tablet
                 }
             }
 
-            // Проход 2: раскраска.
+            // Pass 2: coloring.
             for (int j = 0; j < Size; j++)
             {
                 for (int i = 0; i < Size; i++)
@@ -240,7 +240,7 @@ namespace Galilego.Tablet
                 }
             }
 
-            // Внешнее пунктирное кольцо — «лимб» прибора.
+            // Outer dashed ring — the instrument limb.
             float ring = Radius + 4f;
             for (int deg = 0; deg < 360; deg += 2)
             {
@@ -296,7 +296,7 @@ namespace Galilego.Tablet
                 markerShown[i] = true;
             }
 
-            // Сначала задние (бледные), потом передние — передние поверх.
+            // Rear (pale) first, then front — front drawn on top.
             for (int pass = 0; pass < 2; pass++)
             {
                 for (int i = 0; i < 6; i++)
@@ -319,7 +319,7 @@ namespace Galilego.Tablet
                     int w = icon[0].Length;
                     int ox = markerX[i] - (w / 2);
                     int oy = markerY[i] - 4;
-                    // тёмная подложка, чтобы значок читался на сетке
+                    // dark backing so the icon reads on the grid
                     for (int r = 0; r < icon.Length; r++)
                     {
                         for (int k = 0; k < icon[r].Length; k++)
@@ -360,7 +360,7 @@ namespace Galilego.Tablet
             c.VLine(x + h, y + h - l + 1, l, col);
         }
 
-        /// <summary>Неподвижная метка корабля в центре: «крылья» и точка.</summary>
+        /// <summary>Fixed ship marker at the center: "wings" and a dot.</summary>
         private static void DrawBoresight(PixelCanvas c, int cx, int cy)
         {
             Color32 dark = TabletTheme.Bg;

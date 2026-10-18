@@ -7,17 +7,17 @@ using UnityEngine;
 namespace Galilego.Building
 {
     /// <summary>
-    /// СТАРТОВАЯ ПЛОЩАДКА как зона строительства: вешается на объект
-    /// «Площадка стартовая» (SurfaceRoad-полигон) в префабе места. Даёт:
-    ///   • полигон пятна (оси места: x — север, z — восток) для проверок границ;
-    ///   • верх плиты в точке (луч в MeshCollider дороги);
-    ///   • перевод осей места ↔ render ↔ double-мир (astro) со скоростью кадра;
-    ///   • точку спавна аппарата (центр пятна) и игрока (рядом).
+    /// LAUNCH PAD as a build zone: attach to the pad object (a SurfaceRoad
+    /// polygon) in the site prefab. Provides:
+    ///   • the footprint polygon (site axes: x — north, z — east) for bounds checks;
+    ///   • pad top height at a point (ray into the road's MeshCollider);
+    ///   • site ↔ render ↔ double world (astro) conversion with per-frame velocity;
+    ///   • vessel spawn point (footprint center) and player spawn (next to it).
     ///
-    /// Точки полигона читаются из самого SurfaceRoad (единственный источник),
-    /// поэтому правка формы площадки в редакторе автоматически правит зону.
-    /// В Play поза места обновляется SurfaceSite каждый кадр — зона просто
-    /// едет в его иерархии (локальные координаты плиты не меняются).
+    /// Polygon points are read from the SurfaceRoad itself (single source of
+    /// truth), so editing the pad shape in the editor automatically edits the zone.
+    /// In Play the site pose is updated by SurfaceSite each frame — the zone just
+    /// rides its hierarchy (the pad's local coordinates don't change).
     /// </summary>
     [DefaultExecutionOrder(-120)]
     public sealed class LaunchPadZone : MonoBehaviour
@@ -31,32 +31,32 @@ namespace Galilego.Building
         [Tooltip("Смещение игрока от центра площадки вдоль востока, м (спавн рядом с аппаратом).")]
         public float PlayerSpawnEastOffset = 10f;
 
-        /// <summary>Полигон плиты в осях места: x — север, y — восток.</summary>
+        /// <summary>Pad polygon in site axes: x — north, y — east.</summary>
         private readonly List<Vector2> polygon = new List<Vector2>();
 
-        /// <summary>Полигон плиты (x — север, y — восток). Пусто, пока не готово.</summary>
+        /// <summary>Pad polygon (x — north, y — east). Empty until ready.</summary>
         public IReadOnlyList<Vector2> Polygon => polygon;
 
-        /// <summary>Центр пятна в осях места (XZ; Y — верх плиты).</summary>
+        /// <summary>Footprint center in site axes (XZ; Y — pad top).</summary>
         public Vector3 CenterLocal { get; private set; }
 
-        /// <summary>Точка постановки аппарата (оси места).</summary>
+        /// <summary>Vessel placement point (site axes).</summary>
         public Vector3 VesselSpawnLocal { get; private set; }
 
-        /// <summary>Точка спавна игрока (оси места).</summary>
+        /// <summary>Player spawn point (site axes).</summary>
         public Vector3 PlayerSpawnLocal { get; private set; }
 
-        /// <summary>Всё собрано: тело места разрешено, полигон и высоты посчитаны.</summary>
+        /// <summary>Everything collected: the site body resolved, polygon and heights computed.</summary>
         public bool Ready { get; private set; }
 
-        /// <summary>Коллайдер плиты (MeshCollider дороги) — по нему лучи постановки.</summary>
+        /// <summary>Pad collider (the road's MeshCollider) — placement rays use it.</summary>
         public Collider PadCollider => padCollider;
 
         private SurfaceSite site;
         private Collider padCollider;
         private OrbitingBody body;
 
-        /// <summary>Готовность к работе; неготовый Update зовёт Refresh сам.</summary>
+        /// <summary>Ready to work; while not ready, Update calls Refresh itself.</summary>
         private void Update()
         {
             if (!Ready)
@@ -65,7 +65,7 @@ namespace Galilego.Building
             }
         }
 
-        /// <summary>Собрать полигон, коллайдер плиты и точки спавна.</summary>
+        /// <summary>Collect the polygon, pad collider and spawn points.</summary>
         [ContextMenu("Refresh build zone")]
         public void Refresh()
         {
@@ -89,17 +89,17 @@ namespace Galilego.Building
                 return;
             }
 
-            // Живое тело места: в Play SurfaceSite первым кадром его разрешает.
+            // The site's live body: in Play SurfaceSite resolves it on the first frame.
             body = site.BodyState;
             if (body == null)
             {
                 return;
             }
 
-            // Плита должна быть построена (её меш и коллайдер), а поза места —
-            // осмысленной: первые кадры место может стоять в астро-координатах
-            // (якорь рендера ещё не выставлен), и лучевая высота в таких
-            // координатах — мусор в километры. Ждём и пробуем снова.
+            // The pad must be built (its mesh and collider) and the site pose
+            // meaningful: for the first frames the site may sit at astro
+            // coordinates (the render anchor isn't set yet), and the ray height
+            // there is garbage in the kilometers. Wait and retry.
             if (!Pad.IsBuilt)
             {
                 return;
@@ -110,7 +110,7 @@ namespace Galilego.Building
                 return;
             }
 
-            // Полигон: точки дороги в локальных осях места (x — север, z — восток).
+            // Polygon: road points in site-local axes (x — north, z — east).
             polygon.Clear();
             List<Vector3> points = Pad.Points;
             if (points == null || points.Count < 3)
@@ -150,10 +150,10 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Высота ВЕРХНЕЙ поверхности места в точке: самый верхний коллайдер
-        /// МЕСТА (плита ИЛИ стартовый стол — модель стола стоит на плите и
-        /// выше неё; спавн/пиннинг обязаны садиться на верх, иначе аппарат
-        /// появляется внутри коллайдеров стола, и PhysX выбрасывает его рывком).
+        /// Height of the site's TOP surface at a point: the topmost SITE
+        /// collider (the pad OR the launch table — the table model stands on the
+        /// pad and above it; spawn/pinning must land on the top or the vessel
+        /// appears inside the table colliders and PhysX throws it out violently).
         /// </summary>
         private bool TryPadTopYAt(Vector2 northEast, out float y)
         {
@@ -191,13 +191,13 @@ namespace Galilego.Building
             return true;
         }
 
-        /// <summary>Коллайдер принадлежит месту (плита, стол, постройки) — по нему можно ставить.</summary>
+        /// <summary>The collider belongs to the site (pad, table, buildings) — placement is allowed on it.</summary>
         public static bool IsSiteCollider(Collider collider)
         {
             return collider != null && collider.GetComponentInParent<SurfaceSite>() != null;
         }
 
-        /// <summary>Высота верхней поверхности места в точке осей места (плита или стартовый стол).</summary>
+        /// <summary>Site top-surface height at a site-axes point (pad or launch table).</summary>
         public float PadTopYAt(Vector2 northEast)
         {
             if (TryPadTopYAt(northEast, out float y))
@@ -205,7 +205,7 @@ namespace Galilego.Building
                 return y;
             }
 
-            // Ничего не нашлось (точка вне построек): честная опора — рельеф под точкой.
+            // Nothing found (point outside the structures): the honest support is the terrain under it.
             if (body != null)
             {
                 Vector3 render = transform.TransformPoint(new Vector3(northEast.x, 0f, northEast.y));
@@ -223,27 +223,27 @@ namespace Galilego.Building
             return 0f;
         }
 
-        // ─── Переводы координат ──────────────────────────────────────────────
+        // ─── Coordinate conversions ──────────────────────────────────────────────
 
-        /// <summary>Оси места → render-пространство (для лучей и визуала).</summary>
+        /// <summary>Site axes → render space (for rays and visuals).</summary>
         public Vector3 SiteToRender(Vector3 local)
         {
             return transform.TransformPoint(local);
         }
 
-        /// <summary>Render-пространство → оси места.</summary>
+        /// <summary>Render space → site axes.</summary>
         public Vector3 RenderToSite(Vector3 render)
         {
             return transform.InverseTransformPoint(render);
         }
 
-        /// <summary>Поворот осей места в render-пространстве.</summary>
+        /// <summary>Rotation of site axes in render space.</summary>
         public Quaternion SiteRenderRotation => transform.rotation;
 
         /// <summary>
-        /// Оси места → double-мир (астро-кадр) со скоростью места в точке.
-        /// Точность: тело-фиксированное смещение малым кватернионом (в пределах
-        /// площадки это доли миллиметра), поверх — точная точка места из ядра.
+        /// Site axes → double world (astro frame) with the site velocity at the point.
+        /// Precision: the body-fixed offset uses a small quaternion (fractions of
+        /// a millimeter across the pad), on top of the exact site point from the core.
         /// </summary>
         public void SiteToAstro(Vector3 local, out Vector3d astro, out Vector3d velocity)
         {
@@ -251,9 +251,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// То же, но на заданное время. Важно для пиннинга аппарата в стройке:
-        /// время обязано совпадать с временем кадра игрока (иначе при быстром
-        /// вращении планеты аппарат отстаёт от плиты на скорость_поверхности·dt).
+        /// Same, but at a given time. Matters for pinning the vessel in the builder:
+        /// the time must match the player's frame time (otherwise, with a fast
+        /// planet spin, the vessel lags the pad by surface_speed·dt).
         /// </summary>
         public void SiteToAstroAt(Vector3 local, double timeSeconds, out Vector3d astro, out Vector3d velocity)
         {

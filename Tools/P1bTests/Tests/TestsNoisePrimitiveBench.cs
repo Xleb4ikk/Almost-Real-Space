@@ -7,15 +7,15 @@ using Unity.Mathematics;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Замер примитива в чистом виде — без всей сборки SampleHeight.
+    /// Measures the primitive in isolation — without the whole SampleHeight assembly.
     ///
-    /// Нужен потому, что в полном конвейере разница схем неразделима: там сливаются
-    /// warp, маски и ridged, и по времени нельзя понять, во сколько обошлась
-    /// именно замена примитива. Здесь видно ровно это.
+    /// Needed because in the full pipeline the schemes' difference is inseparable:
+    /// warp, masks and ridged all mix together, and the timing cannot show how much
+    /// the primitive swap alone cost. Here it is exactly that.
     ///
-    /// Замер без делегатов и без лямбд: вызов через Func стоит больше, чем сам
-    /// примитив, и спокойно съел бы весь эффект. Три явных повтора цикла —
-    /// повторяемость здесь важнее компактности.
+    /// Measured without delegates or lambdas: a call through Func costs more than
+    /// the primitive itself and would easily swallow the whole effect. Three
+    /// explicit loop repeats — repeatability matters more than brevity here.
     /// </summary>
     private static int Test111_NoisePrimitiveBench()
     {
@@ -23,8 +23,8 @@ internal static partial class P1bTests
         var pts = new double3[n];
         var rng = new Random(9001);
 
-        // Широкий разброс координат: в реальности октавы доходят до частоты ~1e4
-        // и индексы ячеек уезжают далеко за пределы int.
+        // Wide coordinate spread: in practice octaves reach frequency ~1e4
+        // and cell indices go far beyond int range.
         for (int i = 0; i < n; i++)
         {
             double z = (rng.NextDouble() * 2d) - 1d;
@@ -55,14 +55,11 @@ internal static partial class P1bTests
         Check(!double.IsNaN(perlinMax) && !double.IsNaN(valueMax), "BENCH noise-primitive",
             "оба примитива дают числа");
 
-        // Контракт диапазона. Прежний был неявным: value noise на углах ячейки
-        // берёт значения из [−1,1], и трилинейная смесь не может выйти за
-        // выпуклую оболочку, поэтому «форма в [−1,1]» выполнялось само собой.
-        // У градиентного примитива такого свойства нет: после выравнивания по
-        // RMS пик октавы уходит за единицу, и граница становится явной —
-        // TerrainNoise.ShapeBound. Проверяем оба факта, потому что смена
-        // неявного контракта на явный — как раз тот случай, который молча ломает
-        // всё, что на него опиралось.
+        // Range contract. Value noise is bounded by 1 by construction: cell-corner
+        // values lie in [−1,1] and the trilinear blend stays inside the convex hull.
+        // The gradient primitive lacks this property — after RMS normalization its
+        // octave peak exceeds 1, so the bound is explicit: TerrainNoise.ShapeBound.
+        // Both facts are checked.
         Check(valueMax <= 1.0, "BENCH noise-primitive",
             "value noise держит неявную границу 1: пик "
             + valueMax.ToString("F4", CultureInfo.InvariantCulture));
@@ -73,17 +70,17 @@ internal static partial class P1bTests
             + perlinMax.ToString("F4", CultureInfo.InvariantCulture)
             + " — значит неявный контракт больше не действует");
 
-        // Границу берём из самого кода, а не пересчитываем: после нормировки
-        // RMS примитивов сравнялись, и обратное отношение дало бы 1 вместо
-        // масштаба — то есть проверялось бы ровно то, чего нет.
+        // The bound is taken from the code itself, not recomputed: after RMS
+        // normalization the primitives' RMS are equal, so the inverse ratio would
+        // give 1 instead of the scale.
         Check(perlinMax <= TerrainNoise.ShapeBound, "BENCH noise-primitive",
             "пик Перлина ≤ ShapeBound ("
             + TerrainNoise.ShapeBound.ToString("F4", CultureInfo.InvariantCulture)
             + "): " + perlinMax.ToString("F4", CultureInfo.InvariantCulture));
 
-        // Нормировка примитива по RMS нужна, чтобы пороги профиля
-        // (ContinentThreshold и подобные) сохраняли смысл: у Перлина RMS ниже,
-        // и без масштаба доля суши уезжает за пределы допуска T87.
+        // RMS normalization keeps the profile thresholds (ContinentThreshold and
+        // similar) meaningful: Perlin has a lower RMS, and without scaling the land
+        // fraction drifts outside the T87 tolerance.
         Check(perlinRms > 0d && valueRms > 0d, "BENCH noise-primitive",
             "RMS примитивов посчитан: value " + valueRms.ToString("F5", CultureInfo.InvariantCulture)
             + ", perlin " + perlinRms.ToString("F5", CultureInfo.InvariantCulture)
@@ -91,7 +88,7 @@ internal static partial class P1bTests
         return 0;
     }
 
-    /// <summary>0 = value noise, 1 = градиентный Перлин. Три повтора, берём минимум.</summary>
+    /// <summary>0 = value noise, 1 = gradient Perlin. Three repeats, minimum taken.</summary>
     private static double TimePrimitive(int n, int which, out double min, out double max, out double rms)
     {
         double best = double.MaxValue;

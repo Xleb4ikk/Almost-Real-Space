@@ -5,10 +5,10 @@ using Galilego.Universe;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// T90: единый модуль оптики атмосферы — реальные β (порядок каналов,
-    /// масштаб по плотности), transmittance к Солнцу и обе CPU-LUT без NaN и
-    /// отрицательных значений. Плюс проверяем, что прозрачность к Солнцу
-    /// согласована с GPU-параметризацией (ниже горизонта = 0).
+    /// T90: unified atmosphere-optics module — real β (channel order, density
+    /// scaling), transmittance to the Sun, and both CPU LUTs free of NaN and
+    /// negative values. Also checks that transmittance to the Sun is consistent
+    /// with the GPU parameterization (below the horizon = 0).
     /// </summary>
     private static int Test90_AtmosphereOptics()
     {
@@ -25,29 +25,29 @@ internal static partial class P1bTests
 
         AtmosphereOptics.Coefficients c = profile.ToOptics();
 
-        // Реальные β Рэлея: синий > зелёный > красный; положительны.
+        // Real Rayleigh β: blue > green > red; all positive.
         bool betaOrder = c.RayleighScattering.Z > c.RayleighScattering.Y
             && c.RayleighScattering.Y > c.RayleighScattering.X
             && c.RayleighScattering.X > 0d;
 
-        // Масштаб по плотности: 0.5·ρ0 даёт вдвое меньшее β.
+        // Density scaling: 0.5·ρ0 gives half the β.
         AtmosphereOptics.Coefficients half = AtmosphereOptics.FromProfile(1.225d * 0.5d, 8500d, 1200d, 0.8d, true);
         bool densityScale = Math.Abs((half.RayleighScattering.Z / c.RayleighScattering.Z) - 0.5d) < 1e-9d;
 
-        // Turbidity: AerosolScale множит только β_Mie, не трогая γ (Рэлей).
+        // Turbidity: AerosolScale multiplies only β_Mie, leaving γ (Rayleigh) untouched.
         AtmosphereOptics.Coefficients hazy = AtmosphereOptics.FromProfile(1.225d, 8500d, 1200d, 0.8d, true, 2d);
         bool aerosolScale = Math.Abs((hazy.MieScattering.Z / c.MieScattering.Z) - 2d) < 1e-9d
             && Math.Abs(hazy.RayleighScattering.Z - c.RayleighScattering.Z) < 1e-18d;
 
-        // Прозрачность к Солнцу в зените у поверхности: синий гасится сильнее
-        // красного, всё в (0,1]; ниже горизонта — ровно 0 (планета закрывает).
+        // Transmittance to the Sun at zenith near the surface: blue is attenuated
+        // more than red, everything in (0,1]; below the horizon exactly 0 (planet blocks).
         Vector3d zenith = AtmosphereOptics.TransmittanceToSpace(c, R, Ra, R, 1d, 16);
         Vector3d belowHorizon = AtmosphereOptics.TransmittanceToSpace(c, R, Ra, R, -1d, 16);
         bool transmittanceOrder = zenith.Z < zenith.Y && zenith.Y < zenith.X
             && zenith.X <= 1d && zenith.X > 0d && zenith.Z > 0d;
         bool horizonBlocked = belowHorizon.X == 0d && belowHorizon.Y == 0d && belowHorizon.Z == 0d;
 
-        // Transmittance LUT: все пиксели конечны и в [0,1].
+        // Transmittance LUT: every pixel is finite and in [0,1].
         AtmosphereOptics.Lut tLut = AtmosphereOptics.BuildTransmittanceLut(c, R, Ra, 8);
         bool tLutOk = tLut.Pixels.Length == 64;
         for (int i = 0; i < tLut.Pixels.Length && tLutOk; i++)
@@ -57,7 +57,7 @@ internal static partial class P1bTests
                 && v.Y >= 0d && v.Y <= 1.0001d && v.Z >= 0d && v.Z <= 1.0001d;
         }
 
-        // Multi-Scattering LUT: конечна, неотрицательна, в дневной части ненулевая.
+        // Multi-Scattering LUT: finite, non-negative, non-zero in the daytime part.
         AtmosphereOptics.Lut mLut = AtmosphereOptics.BuildMultiScatteringLut(c, R, Ra, 8, 8);
         bool mLutOk = mLut.Pixels.Length == 64;
         bool anyPositive = false;
@@ -79,13 +79,12 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// T96: единая прозрачность света (диск/свет поверхности/небо) —
-    /// AtmosphereOptics.TransmittanceToSpace по фактической геометрии Терры.
-    /// Проверяем: тёплый белый в зените и красный на горизонте, ровно (1,1,1)
-    /// выше атмосферы, монотонность и плавность по высоте наблюдателя, никаких
-    /// T>1 на всём диапазоне высот Солнца (старый Kasten–Young давал
-    /// отрицательную воздушную массу ниже ≈−1.6°), и битовую согласованность с
-    /// transmittance-LUT, который сэмплит GPU-небо.
+    /// T96: unified light transmittance (disc/surface light/sky) —
+    /// AtmosphereOptics.TransmittanceToSpace against the actual geometry of Terra.
+    /// Checks: warm white at zenith, red at the horizon, exactly (1,1,1) above the
+    /// atmosphere, monotonic and smooth with observer altitude, no T>1 for any Sun
+    /// altitude, and bit-exact consistency with the transmittance LUT that the GPU
+    /// sky samples.
     /// </summary>
     private static int Test96_SunLightTransmittance()
     {
@@ -103,22 +102,22 @@ internal static partial class P1bTests
 
         AtmosphereOptics.Coefficients c = profile.ToOptics();
 
-        // Зенит у земли: тёплый белый — синий канал гаснет сильнее красного.
+        // Zenith at ground: warm white — the blue channel fades more than red.
         Vector3d zenith = AtmosphereOptics.TransmittanceToSpace(c, R, Ra, R, 1d, 64);
         bool zenithWarm = zenith.IsFinite && zenith.X > zenith.Y && zenith.Y > zenith.Z
             && zenith.X <= 1d && zenith.X > 0.88d && zenith.Z > 0.6d;
 
-        // Горизонт у земли: красный доминирует, синий почти погас.
+        // Horizon at ground: red dominates, blue is almost extinguished.
         Vector3d horizon = AtmosphereOptics.TransmittanceToSpace(c, R, Ra, R, 0d, 512);
         bool horizonRed = horizon.IsFinite && horizon.X > horizon.Y && horizon.Y > horizon.Z
             && horizon.X > 3d * horizon.Z && horizon.Z < 0.15d;
 
-        // Луч ниже геометрического горизонта упирается в планету → ровно 0.
+        // A ray below the geometric horizon hits the planet → exactly 0.
         Vector3d below = AtmosphereOptics.TransmittanceToSpace(c, R, Ra, R, -0.05d, 32);
         bool blocked = below.X == 0d && below.Y == 0d && below.Z == 0d;
 
-        // С высотой наблюдателя прозрачность растёт и меняется плавно; выше
-        // атмосферы — ровно 1 (в космосе свет белый, как и требует задача).
+        // Transmittance grows with observer altitude and changes smoothly; above
+        // the atmosphere it is exactly 1 (light is white in space).
         bool altitudeOk = true;
         bool altitudeSmooth = true;
         Vector3d previous = default;
@@ -142,8 +141,7 @@ internal static partial class P1bTests
             previous = t;
         }
 
-        // Никакого усиления света: T ≤ 1 при любой высоте Солнца и наблюдателя
-        // (старый Kasten–Young ниже −1.6° уходил в минус и давал T > 1).
+        // No light gain: T ≤ 1 for any Sun and observer altitude.
         bool noGain = true;
         foreach (double altitude in new[] { 0d, 10000d, 50000d, 100000d })
         {
@@ -155,12 +153,12 @@ internal static partial class P1bTests
             }
         }
 
-        // Выше атмосферы (r > R_atm) — ровно (1,1,1): диск и свет белые.
+        // Above the atmosphere (r > R_atm) it is exactly (1,1,1): disc and light are white.
         Vector3d space = AtmosphereOptics.TransmittanceToSpace(c, R, Ra, R + (2d * Top), 1d, 16);
         bool spaceWhite = space.X == 1d && space.Y == 1d && space.Z == 1d;
 
-        // CPU-свет и GPU-небо обязаны читать одну и ту же функцию: пиксель LUT
-        // в центре текселя бит-в-бит равен прямому расчёту.
+        // CPU light and GPU sky must read the same function: the LUT pixel at the
+        // texel centre is bit-for-bit equal to the direct computation.
         const int size = 16;
         AtmosphereOptics.Lut lut = AtmosphereOptics.BuildTransmittanceLut(c, R, Ra, size);
         int x = 10;
@@ -189,10 +187,10 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// T97: оценка яркости неба для ambient (SkyAmbientRadiance) — средний
-    /// radiance по верхней полусфере тем же интегратором, что у MS LUT.
-    /// Днём синяя и яркая, на закате тёплая и слабее, ночью ≈ 0, выше
-    /// атмосферы — ровно 0. Детерминирована бит-в-бит.
+    /// T97: sky brightness estimate for ambient (SkyAmbientRadiance) — mean
+    /// radiance over the upper hemisphere using the same integrator as the MS LUT.
+    /// By day it is blue and bright, at sunset warm and weaker, at night ≈ 0, and
+    /// above the atmosphere exactly 0. Deterministic bit-for-bit.
     /// </summary>
     private static int Test97_SkyAmbient()
     {

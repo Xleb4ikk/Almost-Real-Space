@@ -5,9 +5,9 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Описание одного тела системы: чистые данные без UnityEngine-типов
-    /// (кроме Vector3d), сериализуемые и в Unity-инспекторе, и в тестах.
-    /// Иерархия задается ParentIndex (-1 = корень-звезда, ровно один).
+    /// Description of one system body: plain data without UnityEngine types
+    /// (except Vector3d), serializable in the Unity inspector and in tests.
+    /// The hierarchy is set by ParentIndex (-1 = the root star, exactly one).
     /// </summary>
     [Serializable]
     public sealed class BodyBlueprint
@@ -17,7 +17,7 @@ namespace Galilego.Universe
         public double Radius = 1d;
         public double CrashToleranceMps = 5d;
 
-        /// <summary>Трение поверхности (Кулон, см. SurfaceMotion): стик пока |a_t| ≤ μ_s·|a_n|.</summary>
+        /// <summary>Surface friction (Coulomb, see SurfaceMotion): sticks while |a_t| ≤ μ_s·|a_n|.</summary>
         public double SurfaceStaticFrictionMu = 0.7d;
 
         public double SurfaceKineticFrictionMu = 0.5d;
@@ -36,37 +36,36 @@ namespace Galilego.Universe
         public double NorthPoleY = 1d;
         public double NorthPoleZ;
 
-        /// <summary>Приливный захват 1:1 (см. OrbitingBody.ApplyTidalLock): ручной период/оффсет игнорируются.</summary>
+        /// <summary>1:1 tidal lock (see OrbitingBody.ApplyTidalLock): manual period/offset are ignored.</summary>
         public bool TidallyLocked;
 
         public AtmosphereProfile Atmosphere;
 
         public CloudProfile Clouds;
 
-        /// <summary>Рельеф: null — гладкая сфера. Пресет формы/цвета/палитры; при сборке копируется в HeightfieldTerrain.</summary>
+        /// <summary>Terrain: null means a smooth sphere. Shape/colour/palette preset; copied into HeightfieldTerrain at build.</summary>
         public TerrainProfile Terrain;
 
-        /// <summary>Зерно шума per-body: один профиль-пресет — разные сиды у тел.</summary>
+        /// <summary>Per-body noise seed: one profile preset, different seeds per body.</summary>
         public int TerrainSeed;
 
         /// <summary>
-        /// Ровные площадки в точках тела (аналог PQS-модов KSP). Едут чертёжом,
-        /// потому что система собирается и в Play, и в редакторе, и обе сборки
-        /// обязаны видеть ОДНИ И ТЕ ЖЕ площадки — иначе превью врёт.
-        /// null/пусто = рельеф не тронут (бит-в-бит legacy).
+        /// Flattened pads at points of the body (like KSP PQS mods). Carried in the
+        /// blueprint because the system is built both in Play and in the editor, and
+        /// both builds must see the SAME pads — otherwise the preview lies.
+        /// null/empty = terrain untouched.
         /// </summary>
         public TerrainModifier[] TerrainModifiers;
 
-        /// <summary>Индекс родителя в списке; -1 — корень дерева (звезда).</summary>
+        /// <summary>Parent index in the list; -1 is the tree root (star).</summary>
         public int ParentIndex = -1;
     }
 
     /// <summary>
-    /// Чертёж системы: сборка StarSystem из плоских данных. Отделена от
-    /// MonoBehaviour-оберток (BodyAuthoring) ровно для того, чтобы логика
-    /// сборки была тестируемой на чистом стенде (T65) и не тащила Unity API
-    /// в горячий цикл. На Build() срабатывает громкая Hill-валидация (P2) —
-    /// нестабильный контент падает при создании системы, до пекаря не доходит.
+    /// System blueprint: builds a StarSystem from flat data. Kept free of the
+    /// BodyAuthoring MonoBehaviour wrappers so the build logic is testable without
+    /// the Unity API. Build() runs loud Hill validation, so unstable content fails
+    /// at system creation.
     /// </summary>
     [Serializable]
     public sealed class SystemBlueprint
@@ -125,9 +124,8 @@ namespace Galilego.Universe
                 if (bp.Terrain != null)
                 {
                     body.Terrain = HeightfieldTerrain.FromProfile(bp.Terrain, bp.TerrainSeed);
-                    // SetModifiers есть только у HeightfieldTerrain: у гладкой
-                    // сферы (SphericalTerrain) рельефа, который можно править,
-                    // просто нет.
+                    // SetModifiers exists only on HeightfieldTerrain: a smooth
+                    // sphere (SphericalTerrain) has no terrain that could be edited.
                     if (bp.TerrainModifiers != null
                         && bp.TerrainModifiers.Length > 0
                         && body.Terrain is HeightfieldTerrain heightfield)
@@ -157,9 +155,8 @@ namespace Galilego.Universe
                 created[p].Children.Add(created[i]);
             }
 
-            // Приливный захват — ПОСЛЕ связки иерархии: μ_local требует дерева
-            // (μ_родителя + μ_своего поддерева). Pure-функция данных элементов —
-            // пересборка даёт бит-в-бит тот же результат.
+            // Tidal lock runs AFTER the hierarchy is linked: μ_local needs the tree
+            // (μ_parent + μ_own_subtree). A pure function of the element data.
             for (int i = 0; i < Bodies.Count; i++)
             {
                 if (Bodies[i].TidallyLocked)

@@ -3,10 +3,10 @@ using Galilego.Core;
 using Galilego.Spacecraft.Solver;
 using UnityEngine;
 
-// Фаза 2 (ТЗ v2, раздел 7): решатель твёрдых тел и жёсткие стыки, без контактов.
-// Test204 — свободное падение (ускорение = g); Test205 — энергия свободного вращения;
-// Test206 — ползучесть жёстких стыков под постоянной нагрузкой; Test207 — сохранение
-// линейного импульса при внутренних силах стыка.
+// Phase 2 (spec v2, section 7): rigid-body solver and rigid joints, no contacts.
+// Test204 — free fall (acceleration = g); Test205 — free-rotation energy;
+// Test206 — creep of rigid joints under constant load; Test207 — conservation of
+// linear momentum under internal joint forces.
 internal static partial class P1bTests
 {
     private static readonly Vector3d GravityWorld = new Vector3d(0d, -9.81d, 0d);
@@ -75,7 +75,7 @@ internal static partial class P1bTests
         int jab = solver.AddRigidJoint(ia, ib, new Vector3d(0.75d, 0d, 0d));
         int jbc = solver.AddRigidJoint(ib, ic, new Vector3d(1.5d, 0.75d, 0d));
 
-        // Постоянная нагрузка на первое тело: тяга вверх и момент вокруг оси Z.
+        // Constant load on the first body: upward thrust and torque about Z.
         var thrust = new Vector3d(0d, 2000d, 0d);
         var torque = new Vector3d(0d, 0d, 50d);
 

@@ -8,34 +8,32 @@ using Ship = Galilego.Spacecraft.Spacecraft;
 namespace Galilego.Events
 {
     /// <summary>
-    /// Драйвер propagate-to-event-and-stop поверх SpacecraftPhysics.
-    /// Степперы не трогает и не переписывает: чанки идут через
-    /// SpacecraftPhysics.Step, уточнение корней — перепогоном Step от начала
-    /// чанка (бисекция, не секущие: event-функции геометрические, бисекция
-    /// детерминирована и не требует производных). P1a только детектирует и
-    /// останавливается с точными временем/состоянием в корне; реакции нет.
+    /// propagate-to-event-and-stop driver over SpacecraftPhysics.
+    /// Chunks go through SpacecraftPhysics.Step; roots are refined by bisection
+    /// re-stepping from the chunk start (the event functions are geometric, so
+    /// bisection is deterministic and derivative-free). P1a only detects and stops
+    /// at the exact root time/state — there is no reaction.
     ///
-    /// Корабль мутирует только коммитом принятого чанка или усечённого корня:
-    /// зондирование (конец чанка, середины бисекции) идёт через временные
-    /// Spacecraft, видимый вызывающему объект не трогается до решения.
-    /// Детекторы при этом остаются pure — бейзлайн начала чанка хранит драйвер.
+    /// The ship mutates only on commit of an accepted chunk or truncated root:
+    /// probing (chunk end, bisection midpoints) runs on temporary Spacecraft, so
+    /// nothing the caller sees changes until the decision. Detectors stay pure —
+    /// the driver holds the chunk's start baseline.
     ///
-    /// Защита от zero-time loop держится на четырёх механизмах: пересечение
-    /// требует СТРОГОЙ смены знака (g=0 в точке рестарта — не событие);
-    /// усечение оставляет корабль строго ЗА событием, а не в середине брекета
-    /// (рестарт видит пост-сторону и не переоткрывает тот же корень);
-    /// плановое срабатывает только строго позже текущего времени; плюс жёсткая
-    /// граница числа чанков с throw при превышении.
+    /// Zero-time loop protection rests on four mechanisms: a crossing requires a
+    /// STRICT sign change (g=0 at the restart point is not an event); truncation
+    /// leaves the ship strictly PAST the event, so the restart sees the post side
+    /// and does not reopen the same root; a planned event fires only strictly after
+    /// the current time; plus a hard chunk-count cap that throws when exceeded.
     /// </summary>
     public sealed class EventDrivenPropagator
     {
         /// <summary>
-        /// Фиксированный абсолютный допуск локализации корня в секундах.
-        /// Именно абсолютный, а не доля шага: чанк в будущем станет варпом в
-        /// тысячи секунд, и допуск не должен раздуваться вместе с ним — влёт
-        /// в атмосферу после долгого перелёта требует той же точности, что и
-        /// в реальном времени. Численно безопасен: при t ~ 3e7 с ulp double
-        /// ~7.5e-9, запас до 1e-6 — два порядка.
+        /// Fixed absolute root-localization tolerance in seconds. Absolute, not a
+        /// fraction of the step: a far-future chunk becomes a warp of thousands of
+        /// seconds, and the tolerance must not grow with it — an atmospheric entry
+        /// after a long transfer needs the same accuracy as real time. Numerically
+        /// safe: at t ~ 3e7 s the double ulp is ~7.5e-9, two orders of margin
+        /// below 1e-6.
         /// </summary>
         public const double DefaultRootToleranceSeconds = 1e-6;
 
@@ -46,22 +44,15 @@ namespace Galilego.Events
         public readonly List<TimedEvent> TimedEvents = new List<TimedEvent>();
 
         /// <summary>
-        /// Верхняя граница чанка. Дефолт — тот же MaxStepSize интегратора,
-        /// а не новое число: брекет события никогда не шире внутреннего шага.
+        /// Upper bound of a chunk. Defaults to the integrator's MaxStepSize, not a
+        /// new value: an event bracket is never wider than the internal step.
         /// </summary>
         public double MaxChunkSeconds = OrbitIntegrator.DefaultMaxStepSize;
 
         /// <summary>
-        /// На сколько подчанков делится каждый чанк для детекта. Закрывает долг
-        /// P1b: при DetectionSubdivisions=1 (старое поведение) нырок в атмосферу
-        /// туда-обратно внутри одного 600с чанка терялся — знаки g на границах
-        /// чанка совпадают, пересечений как будто нет. При 20 зерно детекта 30с:
-        /// выдерживаются нырки дольше зерна. Остаточный риск честно фиксируется:
-        /// пара пересечений целиком внутри одного подчанка (&lt;30с) по-прежнему
-        /// теряется — для маневров с мелкими характерными временами зерно
-        /// загрубляется явно через это поле, а не молча. Суммарная работа
-        /// интегрирования не растёт (сумма подчанков = чанк), дорожают только
-        /// дешёвые проверки детекторов на границах.
+        /// Number of subchunks each chunk is split into for detection.
+        /// Grain = MaxChunkSeconds/DetectionSubdivisions; a crossing pair that
+        /// falls entirely inside one subchunk is lost.
         /// </summary>
         public int DetectionSubdivisions = 20;
 
@@ -77,27 +68,27 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Переключатель уточнения корней: true — бисекция по dense-сегментам
-        /// чанка (0 реинтеграций), false — legacy-перепогон PropagateState от
-        /// начала чанка. Оставлен для gate-теста T18 и как страховка: инварианты
-        /// (строгая смена знака, возврат конца b, anti-zero-time-loop) одинаковы
-        /// на обоих путях, расходятся только ценой и точностью интерполянта.
+        /// Root-refinement switch: true — bisection over the chunk's dense
+        /// segments (0 reintegrations), false — legacy replay of PropagateState
+        /// from the chunk start. The invariants (strict sign change, returning end
+        /// b, anti-zero-time-loop) are the same on both paths; only cost and
+        /// interpolant accuracy differ.
         /// </summary>
         public bool UseDenseRefinement = true;
 
         /// <summary>
-        /// Система для адаптивного зерна детекта (A5). null — зерно фиксировано
-        /// значением DetectionSubdivisions (старое поведение). Когда задана:
-        /// число подчанков на чанк считается из характерного времени состояния,
-        /// но никогда не меньше DetectionSubdivisions — только мельче, не крупнее.
+        /// System for adaptive detection grain. null — grain is fixed by
+        /// DetectionSubdivisions. When set, the subchunk count per chunk is derived
+        /// from the state's characteristic time, but never below
+        /// DetectionSubdivisions — finer only, never coarser.
         /// </summary>
         public StarSystem SystemForGrain { get; set; }
 
         /// <summary>
-        /// Продвигает корабль вперёд не дальше targetDt. Вернул событие —
-        /// остановился ровно в корне (корабль уже в нём). Вернул null — дошёл
-        /// до конца без событий. Только вперёд: события назад во времени
-        /// (плановые в прошлом, детект в обратную сторону) — вне рамок P1a.
+        /// Advances the ship forward by no more than targetDt. Returns an event —
+        /// stopped exactly at the root (the ship is already in it). Returns null —
+        /// reached the end with no events. Forward only: events back in time
+        /// (planned in the past, detection backwards) are out of P1a scope.
         /// </summary>
         public EventOccurrence? Propagate(Ship ship, double currentTimeSeconds, double targetDt)
         {
@@ -105,12 +96,11 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Тот же propagate-to-event-and-stop, плюс цепочка dense-сегментов
-        /// пройденного пути для сэмплирования рендера без единого Step.
-        /// Цепочка — только до события: сегмент, накрывающий корень, входит
-        /// целиком (хвост за корнем не длиннее одного внутреннего шага).
-        /// render == null — цепочка не отдаётся; сегменты чанка при этом всё
-        /// равно собираются, если включён UseDenseRefinement (для бисекции).
+        /// Same propagate-to-event-and-stop, plus the chain of dense segments of
+        /// the traveled path for sampling the render without a single Step. The
+        /// chain stops at the event: the segment covering the root is included
+        /// whole. render == null — the chain is not returned; chunk segments are
+        /// still collected when UseDenseRefinement is on (for bisection).
         /// </summary>
         public EventOccurrence? PropagateWithSegments(Ship ship, double currentTimeSeconds, double targetDt, List<DenseSegment> render)
         {
@@ -124,10 +114,8 @@ namespace Galilego.Events
                 throw new InvalidOperationException("MaxChunkSeconds обязан быть положительным.");
             if (DetectionSubdivisions < 1)
                 throw new InvalidOperationException("DetectionSubdivisions обязан быть не меньше 1.");
-            // Инвариант границы чанков: фактическое зерно = MaxChunkSeconds/DetectionSubdivisions,
-            // а guard ниже считает по DetectionGrain.MaxSubdivisions. Subdivisions больше
-            // капа → guard не сходится на честном дальнем варпе — громко при
-            // конфигурации, а не посреди варпа (аудит S1/A6).
+            // Chunk-boundary invariant: actual grain = MaxChunkSeconds/DetectionSubdivisions,
+            // but the guard below counts from DetectionGrain.MaxSubdivisions — fail loudly on a bad configuration.
             if (DetectionSubdivisions > DetectionGrain.MaxSubdivisions)
                 throw new InvalidOperationException(
                     "DetectionSubdivisions=" + DetectionSubdivisions + " > MaxSubdivisions=" +
@@ -146,9 +134,9 @@ namespace Galilego.Events
                 return new EventOccurrence(currentTimeSeconds, Capture(ship), "EphemerisEnd", null, EventKind.EphemerisEnd, null);
             }
 
-            // Длительные аккумуляторы — компенсированные: за тысячи чанков
-            // наивное t += chunk дрейфует к допуску корня. Остаток тоже
-            // компенсирован: от него зависит размер последнего чанка и выход.
+            // Long-lived accumulators are compensated: over thousands of chunks a
+            // naive t += chunk drifts toward the root tolerance. The remainder is
+            // compensated too: the last chunk size and the exit depend on it.
             var timeAcc = new KahanAccumulator(currentTimeSeconds);
             var remainingAcc = new KahanAccumulator(targetDt);
             double finestGrain = MaxChunkSeconds / DetectionGrain.MaxSubdivisions;
@@ -166,10 +154,10 @@ namespace Galilego.Events
                 int subdiv = DetectionSubdivisions;
                 if (SystemForGrain != null)
                 {
-                    // A0: пол DetectionSubdivisions применяется только когда
-                    // пересечение поверхности физически возможно внутри чанка.
-                    // Вдали от тел (чистая баллистика) зерно не нужно — чанк
-                    // идёт целиком, иначе дальний варп платит ×20 без пользы.
+                    // A0: the DetectionSubdivisions floor applies only when a surface
+                    // crossing is physically possible inside the chunk. Far from bodies
+                    // (pure ballistics) fine grain is unnecessary — the chunk runs whole,
+                    // otherwise a distant warp pays x20 for nothing.
                     if (DetectionGrain.NeedsFineGrain(SystemForGrain, CrossingDetectors, start, time, MaxChunkSeconds))
                     {
                         double tau = DetectionGrain.CharacteristicTimeSeconds(SystemForGrain, start, time);
@@ -194,9 +182,9 @@ namespace Galilego.Events
                     ICrossingDetector detector = CrossingDetectors[i];
                     double g0 = detector.Evaluate(start, time);
                     double g1 = detector.Evaluate(end, chunkEnd);
-                    // Не-конечное g — не «нет пересечения» (false в IsFiring
-                    // из-за упавших сравнений), а порча состояния: молчаливый
-                    // пропуск события недопустим (аудит S1, NaN-каскад).
+                    // A non-finite g is not "no crossing" (false in IsFiring from
+                    // failed comparisons) but corrupted state: silently skipping an
+                    // event is unacceptable (NaN cascade).
                     if (!double.IsFinite(g0) || !double.IsFinite(g1))
                     {
                         throw new InvalidOperationException(
@@ -213,8 +201,8 @@ namespace Galilego.Events
                         RefineCrossingDense(detector, seg, time, g0, chunkEnd, out rootTime, out rootState);
                     else
                         RefineCrossing(detector, start, time, g0, chunkEnd, out rootTime, out rootState);
-                    // Тело-участник знает только конкретный детектор; базовый
-                    // интерфейс его не обещает — забираем через известный тип.
+                    // Only the concrete detector knows the involved body; the base
+                    // interface does not promise it — fetch it via the known type.
                     OrbitingBody involved = (detector as AltitudeCrossingDetector)?.Body;
                     best = Closer(best, Candidate.ForCrossing(rootTime, rootState, detector, involved));
                 }
@@ -284,8 +272,8 @@ namespace Galilego.Events
 
         private static bool IsFiring(EventDirection direction, double g0, double g1)
         {
-            // Строгая смена знака: g == 0 на любом конце — не пересечение.
-            // Именно это не даёт рестарту из корня тут же «найти» то же событие.
+            // Strict sign change: g == 0 at either end is not a crossing. This is
+            // exactly what stops a restart from the root from re-finding the same event.
             if (g0 == 0d || g1 == 0d)
                 return false;
             bool falling = g0 > 0d && g1 < 0d;
@@ -303,8 +291,8 @@ namespace Galilego.Events
                 return current;
             if (!current.Found)
                 return contender;
-            // Ранний корень побеждает; совпавшие в пределах допуска бисекции —
-            // неразличимы, решает приоритет (меньше число = выше).
+            // The earlier root wins; roots equal within the bisection tolerance are
+            // indistinguishable, so priority decides (a smaller number ranks higher).
             if (contender.Time < current.Time - RootToleranceSeconds)
                 return contender;
             if (Math.Abs(contender.Time - current.Time) <= RootToleranceSeconds && contender.Priority < current.Priority)
@@ -318,9 +306,9 @@ namespace Galilego.Events
             for (int i = 0; i < TimedEvents.Count; i++)
             {
                 TimedEvent te = TimedEvents[i];
-                // Строго позже текущего времени: только что обработанное событие
-                // (Time == now после рестарта) не должно срабатывать повторно.
-                // События в прошлом пропускаются молча — они уже потреблены.
+                // Strictly later than the current time: a just-processed event
+                // (Time == now after a restart) must not fire again. Events in the
+                // past are skipped silently — they are already consumed.
                 if (te.TimeSeconds > time && te.TimeSeconds <= chunkEnd)
                 {
                     if (winner == null || te.TimeSeconds < winner.TimeSeconds)
@@ -335,11 +323,12 @@ namespace Galilego.Events
             SpacecraftIntegrationState start, double t0, double g0, double t1,
             out double rootTime, out SpacecraftIntegrationState rootState)
         {
-            // Инвариант брекета: g(a) — знака g0 (до пересечения), g(b) — знака
-            // g1 (после). Возвращается конец b, а НЕ середина: усечение обязано
-            // оставлять корабль строго ЗА событием (в пределах допуска), иначе
-            // рестарт из корня тут же переоткрывал бы тот же корень — классика
-            // zero-time loop. Ошибка времени при этом всё равно не хуже допуска.
+            // Bracket invariant: g(a) has the sign of g0 (before the crossing), g(b)
+            // has the sign of g1 (after). The end b is returned, NOT the midpoint:
+            // truncation must leave the ship strictly PAST the event (within
+            // tolerance), otherwise a restart from the root would reopen the same
+            // root — the classic zero-time loop. The time error is still no worse
+            // than the tolerance.
             double a = t0;
             double ga = g0;
             double b = t1;
@@ -352,8 +341,8 @@ namespace Galilego.Events
                 double gm = detector.Evaluate(sm, m);
                 if (gm == 0d)
                 {
-                    // Точное попадание: g = 0 в точке рестарта подавляется
-                    // строгим правилом смены знака — переоткрытия не будет.
+                    // Exact hit: g = 0 at the restart point is suppressed by the
+                    // strict sign-change rule — no reopening.
                     rootTime = m;
                     rootState = sm;
                     return;
@@ -377,12 +366,12 @@ namespace Galilego.Events
             SpacecraftIntegrationState start, double t0, object newKey, double t1,
             out double rootTime, out SpacecraftIntegrationState rootState)
         {
-            // Бисекция по предикату «ключ уже новый». Предполагается один
-            // переход в брекете (для SOI локально верно); скользящий случай с
-            // третьим ключом внутри брекета сойдётся лишь приблизительно —
-            // чанки короткие относительно геометрии встречи, это приемлемо для P1a.
-            // Возвращается конец b (сторона нового ключа) — тот же принцип, что
-            // в RefineCrossing: рестарт обязан видеть новый ключ в бейзлайне.
+            // Bisection on the predicate "key is already new". One transition in the
+            // bracket is assumed (locally true for SOI); a sliding case with a third
+            // key inside the bracket converges only approximately — chunks are short
+            // relative to the encounter geometry, acceptable for P1a. The end b
+            // (new-key side) is returned — same principle as RefineCrossing: the
+            // restart must see the new key in the baseline.
             double a = t0;
             double b = t1;
             for (int i = 0; i < MaxRefineIterations; i++)
@@ -401,11 +390,10 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Та же бисекция, что RefineCrossing, но состояние в середине берётся
-        /// из dense-трека чанка, а не реинтеграцией от его начала: 0 вызовов
-        /// интегратора на итерацию. Инвариант тот же — возвращается конец b
-        /// (пост-сторона); «строго за событием» здесь — в пределах точности
-        /// интерполянта, доказательство — тест рестарта T18, не формулировка.
+        /// The same bisection as RefineCrossing, but the midpoint state comes from
+        /// the chunk's dense track instead of a reintegration from its start: 0
+        /// integrator calls per iteration. Same invariant — the end b (post side)
+        /// is returned.
         /// </summary>
         private void RefineCrossingDense(
             ICrossingDetector detector,
@@ -480,8 +468,8 @@ namespace Galilego.Events
                 Velocity = best.State.Velocity,
                 Mass = newMass
             };
-            // DeltaVelocity в P1a намеренно НЕ применяется (задел под импульс
-            // отделения, см. TimedEvent) — разрыв только по массе.
+            // DeltaVelocity is intentionally NOT applied in P1a (reserved for the
+            // separation impulse, see TimedEvent) — only the mass discontinuity.
             Commit(ship, applied);
             return new EventOccurrence(best.Time, applied, te.Name, null, EventKind.Timed, null);
         }
@@ -497,12 +485,12 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// isProbe — уточняющие прогоны (бисекция, dense-уточнение): они идут
-        /// через тот же physics-экземпляр, и снимок момента вокруг них
-        /// save/restore-ится, чтобы TotalTorqueBody после Propagate отражал
-        /// шаг ПРИНЯТОЙ траектории корабля, а не probe-состояние (аудит
-        /// pre-Unity/3.1). Основные шаги корабля (чанки, движок к timed-событию)
-        /// идут без save/restore — их подстадии и есть «принятые».
+        /// isProbe — refinement runs (bisection, dense refinement): they go through
+        /// the same physics instance, and the moment snapshot around them is
+        /// save/restored so TotalTorqueBody after Propagate reflects the accepted
+        /// ship trajectory step, not the probe state. Main ship steps (chunks,
+        /// engine to a timed event) run without save/restore — their substeps are
+        /// the accepted ones.
         /// </summary>
         private SpacecraftIntegrationState PropagateState(
             SpacecraftIntegrationState from, double fromTime, double toTime, List<DenseSegment> segments, bool isProbe)

@@ -3,35 +3,35 @@ using Galilego.Core;
 namespace Galilego.Simulation.Player
 {
     /// <summary>
-    /// Источник геометрии опоры для игрока, в ЛОКАЛЬНЫХ метрах касательной системы
-    /// места (x = восток, y = север, z = вверх; см. SiteFrame). Реализации:
-    /// аналитический рельеф (регресс), мешевые коллайдеры зданий (Unity),
-    /// тестовая заглушка платформы (стенд).
+    /// Source of support geometry for the player, in LOCAL meters of the site's
+    /// tangent frame (x = east, y = north, z = up; see SiteFrame). Implementations:
+    /// analytic terrain (regression), building mesh colliders (Unity), test platform
+    /// stub (test rig).
     /// </summary>
     public interface IPlayerSupport
     {
         /// <summary>
-        /// Самая высокая опора ниже from в пределах maxDrop. height — высота опоры
-        /// по локальной вертикали, normal — внешняя нормаль поверхности,
-        /// sourceId — идентификатор опоры (для переноса движущейся платформой).
+        /// The highest support below from within maxDrop. height — support height
+        /// along the local vertical, normal — outward surface normal, sourceId —
+        /// support id (for transfer by a moving platform).
         /// </summary>
         bool Floor(Vector3d from, double maxDrop, out double height, out Vector3d normal, out int sourceId);
 
-        /// <summary>Потолок выше head в пределах maxRise (height — низ потолка).</summary>
+        /// <summary>Ceiling above head within maxRise (height — the ceiling's underside).</summary>
         bool Ceiling(Vector3d head, double maxRise, out double height);
 
         /// <summary>
-        /// Горизонтальная блокировка капсулой (радиус radius, высота height от from):
-        /// доля пути до первого касания и нормаль стены. Высота — параметр, а не
-        /// константа: пригнувшийся игрок (рост капсулы меньше) проходит под
-        /// низкие проёмы — люк капсулы Orion.
+        /// Horizontal capsule block (radius radius, height height from from): the
+        /// path fraction to first contact and the wall normal. Height is a parameter,
+        /// not a constant: a crouched player (smaller capsule) passes under low
+        /// openings — the Orion capsule hatch.
         /// </summary>
         bool Sweep(Vector3d from, Vector3d to, double radius, double height, out Vector3d normal, out double fraction);
     }
 
     /// <summary>
-    /// Опциональное расширение: движущаяся опора (платформа, деталь корабля).
-    /// Игрок переносится вместе с ней на её горизонтальной скорости.
+    /// Optional extension: a moving support (platform, ship part). The player is
+    /// carried with it at its horizontal velocity.
     /// </summary>
     public interface IMovingSupport
     {
@@ -39,9 +39,10 @@ namespace Galilego.Simulation.Player
     }
 
     /// <summary>
-    /// Опциональное расширение: «капсула с центром в feet, радиусом radius и высотой
-    /// height пересекает опору». Нужна, чтобы вставать из пригиба ТОЛЬКО там, где
-    /// влезает весь объём капсулы (скошенная стена кабины боковым лучом не видна).
+    /// Optional extension: "the capsule centered at feet, radius radius and height
+    /// height overlaps the support". Needed so the player stands up from a crouch
+    /// ONLY where the whole capsule fits (a sloped cabin wall is invisible to a
+    /// sideways ray).
     /// </summary>
     public interface IOverlapSupport
     {

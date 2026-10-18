@@ -3,10 +3,9 @@ using UnityEngine;
 namespace Galilego.Tablet
 {
     /// <summary>
-    /// Тестовый источник: «живой» полёт на орбиту с придуманными числами. Нужен,
-    /// чтобы смотреть и настраивать планшет без симуляции; кнопки на нём
-    /// работают (САС, РСУ, система отсчёта, тело). Когда будет настоящий
-    /// мост (наследник TabletLink), демо просто убирается.
+    /// Test source: a "live" ascent to orbit with made-up numbers. Used to view and
+    /// tune the tablet without a simulation; its buttons work (SAS, RCS, reference
+    /// frame, body). To be removed once a real link (a TabletLink subclass) exists.
     /// </summary>
     public sealed class DemoTabletLink : TabletLink
     {
@@ -17,7 +16,7 @@ namespace Galilego.Tablet
         private int bodyIndex;
         private double throttle01 = 0.62d;
         private bool engineOn = true;
-        private int stagesFired;   // нажатий «ступень» (после двух — нечего)
+        private int stagesFired;   // "stage" presses (nothing left after two)
 
         public override void SetSasEnabled(bool on) { sasEnabled = on; }
         public override void SetSasMode(SasMode mode) { sasMode = mode; }
@@ -33,7 +32,7 @@ namespace Galilego.Tablet
             Sample(t, Time.time, sasEnabled, sasMode, rcsEnabled, frame, bodyIndex, throttle01, engineOn, stagesFired);
         }
 
-        /// <summary>Детерминированный кадр «в момент time» (используется и тестовым стендом).</summary>
+        /// <summary>Deterministic frame "at time" (also used by the test bench).</summary>
         public static void Sample(TabletTelemetry t, float time, bool sas, SasMode mode, bool rcs, SpeedFrame frame, int body,
             double throttle01 = 0.62d, bool engineOn = true, int stagesFired = 0)
         {

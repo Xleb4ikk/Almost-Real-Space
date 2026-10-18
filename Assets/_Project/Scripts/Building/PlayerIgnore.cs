@@ -3,9 +3,9 @@ using UnityEngine;
 namespace Galilego.Building
 {
     /// <summary>
-    /// Коллайдер полностью игнорируется ХОДЬБОЙ игрока (пол, потолок, свип капсулы, проверка
-    /// «влезает»), но остаётся обычным физическим коллайдером для лучей: прицел E, указка по
-    /// экрану монитора и т.п. Для мониторов, планшета, боксов интеракции кресел.
+    /// The collider is fully ignored by the player's WALKING (floor, ceiling, capsule sweep,
+    /// "fits" checks) but remains an ordinary physics collider for rays: E aim,
+    /// screen pointer of monitors, etc. For monitors, the tablet, pilot seat interaction boxes.
     /// </summary>
     public sealed class PlayerIgnore : MonoBehaviour { }
 }

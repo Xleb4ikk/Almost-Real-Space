@@ -5,11 +5,11 @@ using Galilego.Universe;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Модель удельного импульса. Выделена в интерфейс, потому что constant-Isp
-    /// (шаг 1, проверяется против Циолковского) и высотная интерполяция
-    /// sea-level/vacuum (шаг 2, нужен для старта с поверхности через атмосферу) —
-    /// это два разных допущения, и выбор между ними обязан быть виден в коде,
-    /// а не зашит молча внутрь источника тяги.
+    /// Specific-impulse model. Extracted into an interface because constant-Isp
+    /// (checked against Tsiolkovsky) and altitude interpolation of sea-level/vacuum
+    /// (needed for a surface launch through the atmosphere) are two different
+    /// assumptions, and the choice must be visible in code, not silently hard-wired
+    /// inside the thrust source.
     /// </summary>
     public interface IIspModel
     {
@@ -17,8 +17,7 @@ namespace Galilego.Spacecraft
     }
 
     /// <summary>
-    /// Постоянный Isp. Стартовая модель: ровно то, что проверяется против
-    /// аналитики Циолковского. Для первой версии химических двигателей.
+    /// Constant Isp. Exactly what is checked against the Tsiolkovsky analytics.
     /// </summary>
     public sealed class ConstantIsp : IIspModel
     {
@@ -36,10 +35,10 @@ namespace Galilego.Spacecraft
     }
 
     /// <summary>
-    /// Интерполяция Isp по давлению: Isp(h) = Ivac − (Ivac − Isl)·(p(h)/p0),
-    /// p(h)/p0 = exp(−h/H) из AtmosphereProfile тела. На земле (h≤0) — ровно
-    /// sea-level, высоко — асимптотически vacuum, монотонно между. Тело без
-    /// атмосферы или с неполными данными — чистый vacuum, без исключений.
+    /// Isp interpolation by pressure: Isp(h) = Ivac − (Ivac − Isl)·(p(h)/p0),
+    /// p(h)/p0 = exp(−h/H) from the body's AtmosphereProfile. At ground (h≤0) exactly
+    /// sea-level, high up asymptotically vacuum, monotone between. A body without
+    /// an atmosphere or with incomplete data gives pure vacuum, without exceptions.
     /// </summary>
     public sealed class AltitudeInterpolatedIsp : IIspModel
     {
@@ -75,19 +74,17 @@ namespace Galilego.Spacecraft
     }
 
     /// <summary>
-    /// Химический/электрический двигатель как IDynamicsSource:
+    /// Chemical/electric engine as IDynamicsSource:
     /// Force = throttle·Tmax·dir, MassFlow = throttle·Tmax/(Isp·g0).
-    /// Throttle приходит расписанием ThrottleAt(t) 0..1 (клампится) — тем же
-    /// способом, что WarpController сэмплирует ввод по control-tick, поэтому
-    /// физика при ×3 совпадает с ×1 (см. T1/T14). Направление инерциальное,
-    /// нормализуется при использовании. Pure: только читает поля, мутаций нет.
+    /// Throttle comes from the ThrottleAt(t) schedule 0..1 (clamped) — the same way
+    /// WarpController samples input per control tick, so physics at ×3 matches ×1.
+    /// Direction is inertial, normalised on use. Pure: only reads fields, no mutation.
     ///
-    /// Сухая масса — жёсткая граница: при mass ≤ DryMassKg вклад нулевой
-    /// (двигатель заглох, топливо кончилось). Момент исчерпания ловится НЕ
-    /// здесь, а событием по состоянию PropellantDepletionDetector (масса
-    /// пересекает порог сверху вниз — структурно то же, что Touchdown по
-    /// высоте): внутри RK-подстадий интегратор вправе заглядывать чуть ниже
-    /// порога, это пробные состояния, коммит делает драйвер на корне.
+    /// Dry mass is a hard boundary: at mass ≤ DryMassKg the contribution is zero
+    /// (engine cut out, fuel exhausted). The depletion moment is caught NOT here but
+    /// by the state event PropellantDepletionDetector (mass crosses the threshold
+    /// top-down): inside RK sub-steps the integrator may look slightly below the
+    /// threshold; those are trial states, the driver commits at the root.
     /// </summary>
     public sealed class ThrustSource : IDynamicsSource
     {
@@ -98,21 +95,19 @@ namespace Galilego.Spacecraft
         public Vector3d ThrustDirection = new Vector3d(1d, 0d, 0d);
 
         /// <summary>
-        /// Направление тяги в body-frame («вдоль носа», дефолт +Z). Активно только
-        /// когда задан AttitudeSnapshot: мировое направление = snapshot(bodyDir).
-        /// Без снимка действует legacy-поле ThrustDirection как мировое (все старые
-        /// тесты идут этим путём без изменений); оба сразу не смешиваются —
-        /// приоритет явно: снимок есть → body-frame, нет → мировое поле.
-        /// Снимок читается как есть (состояние на начало шага, паттерн
-        /// ControlInputSnapshot): пересчёт на каждой RK-подстадии не нужен —
-        /// поворот за внутренний шаг пренебрежим, доказано R3-отрицательным
-        /// контролем (фиксированный мировой вектор даёт другую траекторию).
+        /// Thrust direction in the body frame ("along the nose", default +Z). Active
+        /// only when AttitudeSnapshot is set: world direction = snapshot(bodyDir).
+        /// Without a snapshot the legacy ThrustDirection field acts as world direction;
+        /// the two are never mixed — snapshot present → body frame, absent → world field.
+        /// The snapshot is read as-is (state at the start of the step, the
+        /// ControlInputSnapshot pattern): recomputing per RK sub-step is unnecessary —
+        /// rotation over an inner step is negligible.
         /// </summary>
         public Vector3d BodyThrustDirection = new Vector3d(0d, 0d, 1d);
 
         public QuaternionD? AttitudeSnapshot;
 
-        /// <summary>Расписание газа по времени 0..1. null = заглушено (0).</summary>
+        /// <summary>Throttle schedule over time 0..1. null = cut (0).</summary>
         public Func<double, double> ThrottleAt;
 
         public IIspModel IspModel;

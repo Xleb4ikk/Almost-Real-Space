@@ -5,9 +5,9 @@ using Galilego.Core;
 namespace Galilego.Spacecraft.Solver
 {
     /// <summary>
-    /// Коллайдер постройки в ЛОКАЛЬНОМ кадре места (x — восток, y — север, z — вверх
-    /// по осям SiteFrame; у экспортированных данных — оси префаба места).
-    /// Запрос точки: depth &gt; 0 — точка внутри, normal — наружная нормаль.
+    /// Site collider in the LOCAL site frame (x east, y north, z up per SiteFrame
+    /// axes; for exported data, the site prefab axes).
+    /// Point query: depth &gt; 0 means inside, normal is the outward normal.
     /// </summary>
     public interface ISiteCollider
     {
@@ -16,7 +16,7 @@ namespace Galilego.Spacecraft.Solver
         void GetAabb(out Vector3d min, out Vector3d max);
     }
 
-    /// <summary>Выпуклая часть постройки (точки — вершины оболочки, кадр места).</summary>
+    /// <summary>Convex part of the site (points are hull vertices, site frame).</summary>
     public sealed class SiteHullCollider : ISiteCollider
     {
         public readonly ConvexHull Hull;
@@ -38,7 +38,7 @@ namespace Galilego.Spacecraft.Solver
         }
     }
 
-    /// <summary>Ориентированный бокс (воксель вогнутой части, кадр места).</summary>
+    /// <summary>Oriented box (voxel of the concave part, site frame).</summary>
     public sealed class SiteBoxCollider : ISiteCollider
     {
         public readonly Vector3d Center;
@@ -101,8 +101,8 @@ namespace Galilego.Spacecraft.Solver
     }
 
     /// <summary>
-    /// Набор коллайдеров постройки: запрос точки — самый глубокий из содержащих её
-    /// (объединение тел). Широкая фаза — по AABB.
+    /// Set of site colliders: a point query returns the deepest containing one
+    /// (union of bodies). Broad phase is by AABB.
     /// </summary>
     public sealed class SiteColliderSet
     {
@@ -110,17 +110,17 @@ namespace Galilego.Spacecraft.Solver
         private readonly List<Vector3d> aabbMin = new List<Vector3d>();
         private readonly List<Vector3d> aabbMax = new List<Vector3d>();
 
-        // Широкая фаза: равномерная сетка по XZ (постройки вытянуты горизонтально).
+        // Broad phase: uniform grid over XZ (sites are horizontally spread).
         private Dictionary<long, List<int>> grid;
         private List<int> oversized;
         private double gridCellSize;
 
         public int Count => colliders.Count;
 
-        /// <summary>Коллайдер по индексу (для тестов/отладки).</summary>
+        /// <summary>Collider by index (for tests/debugging).</summary>
         public ISiteCollider GetCollider(int index) => colliders[index];
 
-        /// <summary>Мировой (в кадре места) AABB коллайдера по индексу.</summary>
+        /// <summary>World (in site frame) AABB of the collider by index.</summary>
         public void GetColliderAabb(int index, out Vector3d min, out Vector3d max)
         {
             min = aabbMin[index];
@@ -140,7 +140,7 @@ namespace Galilego.Spacecraft.Solver
             aabbMax.Add(max);
         }
 
-        /// <summary>Построить сетку широкой фазы (клетка, м). Без неё — перебор всех.</summary>
+        /// <summary>Build the broad-phase grid (cell size, m). Without it, brute force over all.</summary>
         public void BuildGrid(double cellSizeMeters)
         {
             if (!(cellSizeMeters > 0d))
@@ -188,7 +188,7 @@ namespace Galilego.Spacecraft.Solver
 
         private static long CellKey(int cx, int cy, int cz)
         {
-            // 21 бит на ось: сетка 8 м покрывает ±8.8 млн м по каждой оси.
+            // 21 bits per axis: an 8 m grid covers ±8.8 million m per axis.
             return ((long)cx & 0x1FFFFFL)
                 | (((long)cy & 0x1FFFFFL) << 21)
                 | (((long)cz & 0x1FFFFFL) << 42);
@@ -276,7 +276,7 @@ namespace Galilego.Spacecraft.Solver
         }
     }
 
-    /// <summary>Опора-постройка как источник контактов решателя (фаза 6).</summary>
+    /// <summary>Site support as a solver contact source.</summary>
     public sealed class SiteContactGround : IContactGround
     {
         public SiteColliderSet Colliders { get; }
@@ -292,7 +292,7 @@ namespace Galilego.Spacecraft.Solver
         }
     }
 
-    /// <summary>Объединение двух источников контакта: побеждает более глубокий.</summary>
+    /// <summary>Union of two contact sources: the deeper one wins.</summary>
     public sealed class CompositeGround : IContactGround
     {
         private readonly IContactGround primary;

@@ -5,10 +5,10 @@ namespace Galilego.Flight
 {
     public static class AttitudeMath
     {
-        /// <summary>Кватернион body→мир по осям корабля, записанным в мировых координатах (ортонормированный базис).</summary>
+        /// <summary>Body→world quaternion from the ship's axes expressed in world coordinates (orthonormal basis).</summary>
         public static QuaternionD FromAxes(Vector3d x, Vector3d y, Vector3d z)
         {
-            // Матрица R имеет столбцы x, y, z.
+            // Matrix R has columns x, y, z.
             double m00 = x.X, m01 = y.X, m02 = z.X;
             double m10 = x.Y, m11 = y.Y, m12 = z.Y;
             double m20 = x.Z, m21 = y.Z, m22 = z.Z;

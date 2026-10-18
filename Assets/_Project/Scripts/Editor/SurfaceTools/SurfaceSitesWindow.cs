@@ -7,19 +7,10 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Список МЕСТ на планете: создать новое, переключиться на любое,
-    /// отредактировать, телепортировать игрока. Это «взаимодействие», которого
-    /// не хватало: на планете R = 1143 км в сцене нельзя ни найти, ни дойти
-    /// до точки, поэтому навигация живёт в инструменте, а не в Scene view.
-    ///
-    /// Каждое место — ПРЕФАБ с компонентом SurfaceSite (корень) и содержимым
-    /// (дети). Одновременно в сцене редактируется только одно: префаб
-    /// инстанцируется у нуля, и все его объекты видны в Scene view с нормальной
-    /// точностью координат. Переключил место — инстанс сменился.
-    ///
-    /// Путь работы: «Новое место у игрока» (дойдёшь в Play до красивого места и
-    /// жмёшь) → собираешь базу из префабов как обычные объекты → «Сохранить».
-    /// Дальше то же место доступно из списка и из Play по кнопке телепорта.
+    /// List of SITES on the planet: create, open, edit, teleport to.
+    /// A site is a PREFAB whose root carries SurfaceSite; only one is instanced
+    /// in the scene at a time (at the origin, so all its objects keep normal
+    /// coordinate precision in Scene view). Switching a site swaps the instance.
     /// </summary>
     public sealed class SurfaceSitesWindow : EditorWindow
     {
@@ -35,10 +26,8 @@ namespace Galilego.Universe.EditorTools
         private SurfaceSite activeSite;
 
         /// <summary>
-        /// Создавать ли ровную площадку под местом. По умолчанию да: без неё
-        /// база на склоне 10-30° (а при амплитуде рельефа 9144 м это обычное
-        /// дело) получается построенной, но непроходимой. Площадка — правка
-        /// САМОГО рельефа, поэтому под ней сразу садятся и рендер, и физика.
+        /// Whether to create a flat pad under the site: it edits the terrain
+        /// ITSELF, so rendering and physics both pick it up.
         /// </summary>
         private bool createPad = true;
 
@@ -58,9 +47,8 @@ namespace Galilego.Universe.EditorTools
 
         private void OnDisable()
         {
-            // Инстанс места — рабочая копия, её нельзя оставлять в сцене
-            // несохранённой: перезагрузка домена её уберёт, а пользователь
-            // решит, что потерял правки.
+            // The site instance is a working copy and must not be left dirty
+            // in the scene.
             if (activeInstance != null && !Application.isPlaying)
             {
                 DestroyImmediate(activeInstance);
@@ -75,9 +63,8 @@ namespace Galilego.Universe.EditorTools
             if (!AssetDatabase.IsValidFolder(SitesFolder))
             {
                 AssetDatabase.CreateFolder("Assets/_Project", "Sites");
-                // Созданная папка видна AssetDatabase только после Refresh.
-                // Без этого SaveAsPrefabAsset сразу после создания папки падает
-                // с «Given path does not exist» — проверено.
+                // A freshly created folder is visible to AssetDatabase only
+                // after Refresh.
                 AssetDatabase.Refresh();
             }
         }
@@ -119,9 +106,8 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Площадки живут на теле (BodyAuthoring.TerrainPads), а не в префабе
-        /// места: это правка самого рельефа, и она обязана быть в силе всегда,
-        /// независимо от того, открыт ли сейчас какой-либо префаб базы.
+        /// Pads live on the body (BodyAuthoring.TerrainPads), not in the site
+        /// prefab: the terrain edit applies regardless of an open base prefab.
         /// </summary>
         private void DrawPads()
         {
@@ -276,8 +262,7 @@ namespace Galilego.Universe.EditorTools
                     }
                 }
 
-                // Предупреждение, если площадка успела «отстать» от рельефа —
-                // обычно после смены сида. Молча такая площадка просто висит.
+                // Warn if the pad has drifted from the terrain (e.g. after a seed change).
                 double drift = PadHeightDrift(index);
                 if (Math.Abs(drift) > 1d)
                 {
@@ -596,10 +581,8 @@ namespace Galilego.Universe.EditorTools
             site.SiteName = siteName;
             site.BodyName = ResolveBodyName();
 
-            // В редакторе нового места нет «здесь» в смысле игрока, поэтому
-            // берём координаты активного фрейма авторинга. Без этого место
-            // создалось бы на 0°, 0° — это Атлантика, и автор уди��вился бы
-            // пустому списку и воде вместо суши.
+            // In the editor there is no player "here", so use the coordinates of
+            // the active authoring frame instead of 0°, 0° (mid-Atlantic).
             var frame = UnityEngine.Object.FindAnyObjectByType<SurfaceFrame>();
             if (frame != null && frame.IsUsable)
             {
@@ -628,14 +611,10 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Создать (или сдвинуть) ровную площадку в точке места. Высота
-        /// берётся из ЕСТЕСТВЕННОГО рельефа, а не из текущей высоты: если
-        /// спросить обычный GetHeightMeters, то площадка в точке вернёт уже
-        /// сглаженное значение, новая площадка «замкнётся» на старой, и
-        /// ошибка копилась бы от базы к базе.
-        ///
-        /// Возвращает null при успехе или текст проблемы — вызывающий сам
-        /// решает, что показать.
+        /// Create (or move) a flat pad at the site point. Height is captured from
+        /// the NATURAL terrain, not the current height: sampling the smoothed
+        /// value would lock a new pad onto an old one and accumulate error.
+        /// Returns null on success or a problem text for the caller to show.
         /// </summary>
         private string EnsurePad(string bodyName, double latitude, double longitude)
         {
@@ -778,9 +757,8 @@ namespace Galilego.Universe.EditorTools
             GameObject source = new GameObject(activeSite.SiteName);
             try
             {
-                // Копируем содержимое места во временный GO: PrefabUtility требует
-                // объект, а сохранение инстанса, лежащего в сцене, увело бы его
-                // из иерархии.
+                // Save through a temporary clone: saving the scene instance
+                // itself would remove it from the hierarchy.
                 var clone = (GameObject)UnityEngine.Object.Instantiate(root.gameObject);
                 clone.name = activeSite.SiteName;
                 var cloneSite = clone.GetComponent<SurfaceSite>();

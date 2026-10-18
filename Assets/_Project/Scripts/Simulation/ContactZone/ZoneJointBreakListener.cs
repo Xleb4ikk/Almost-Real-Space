@@ -3,9 +3,9 @@ using UnityEngine;
 namespace Galilego.Simulation.ContactZone
 {
     /// <summary>
-    /// Приёмник OnJointBreak на GameObject детали: PhysX шлёт сообщение тому
-    /// объекту, на котором стоит FixedJoint (наша деталь), поэтому прокси вешает
-    /// этот компонент рядом со стыком и получает разрыв с индексом детали.
+    /// OnJointBreak receiver on the part's GameObject: PhysX messages the object
+    /// holding the FixedJoint (our part), so the proxy attaches this component next
+    /// to the joint and receives the break with the part index.
     /// </summary>
     public sealed class ZoneJointBreakListener : MonoBehaviour
     {

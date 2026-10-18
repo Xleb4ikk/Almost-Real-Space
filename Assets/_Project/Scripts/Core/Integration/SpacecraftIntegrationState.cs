@@ -3,15 +3,12 @@ using System;
 namespace Galilego.Core
 {
     /// <summary>
-    /// Полное состояние корабля для интегрирования: позиция, скорость, масса.
-    /// Масса — часть состояния (а не отдельное поле, меняемое после шага),
-    /// потому что расход топлива описывается как dm/dt = -массовый расход —
-    /// обычное ОДУ первого порядка, которое должно эволюционировать СИНХРОННО
-    /// с позицией/скоростью на каждой RK-подстадии, а не постфактум. Иначе все
-    /// внутренние подстадии DOPRI5 считали бы ускорение (сила/масса) по
-    /// устаревшей массе и формальный порядок точности метода был бы потерян.
-    /// Операторы ниже — ровно то, что нужно DOPRI5 для линейных комбинаций
-    /// стадий; больше ничего этой структуре не положено уметь.
+    /// Full spacecraft state for integration: position, velocity, mass.
+    /// Mass is part of the state so that fuel consumption (dMass/dt = -mass flow)
+    /// evolves synchronously with position/velocity in every RK substage; otherwise
+    /// acceleration (force/mass) would use a stale mass and the method's formal
+    /// order of accuracy would be lost. The operators below are exactly what DOPRI5
+    /// needs for linear stage combinations.
     /// </summary>
     [Serializable]
     public struct SpacecraftIntegrationState
@@ -20,7 +17,7 @@ namespace Galilego.Core
         public Vector3d Velocity;
         public double Mass;
 
-        /// <summary>Все компоненты конечны (NaN/Inf в состоянии — порча интеграции).</summary>
+        /// <summary>All components are finite (NaN/Inf in the state means integration corruption).</summary>
         public bool IsFinite =>
             Position.IsFinite && Velocity.IsFinite && !double.IsNaN(Mass) && !double.IsInfinity(Mass);
 

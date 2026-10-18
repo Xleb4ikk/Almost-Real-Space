@@ -190,7 +190,7 @@ namespace UnityEngine
         public static void Destroy(Object target) { }
         public static void Destroy(Component target) { }
 
-        /// <summary>Стаб поиска сцены: в стенде сцены нет, всегда null.</summary>
+        /// <summary>Scene-search stub: the harness has no scene, always null.</summary>
         public static T FindAnyObjectByType<T>() where T : Object => null;
 
         public static T FindFirstObjectByType<T>() where T : Object => null;
@@ -536,8 +536,8 @@ namespace UnityEngine
         public static void LogWarning(object m) { }
         public static void LogError(object m) { }
 
-        /// <summary>Совместимость со старым способом: сообщения с контекстом в юнит-тестах Unity; в стенде
-        /// достаточно сигнатуры, как у Debug.LogWarning(msg, this) ниже (проверяется по аргументам).</summary>
+        /// <summary>Context overload used by Unity unit tests; the harness only needs the
+        /// signature of Debug.LogWarning(msg, this) below (checked by arguments).</summary>
         public static void LogWarning(object m, Object context) { }
     }
 
@@ -620,11 +620,11 @@ namespace UnityEngine.Serialization
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Стаб отладочного меню. Настоящий CheatMenu — MonoBehaviour поверх IMGUI,
-    /// он тянет FlightBenchmark → SurfacePerf → ProfilerRecorder/Resources/SystemInfo,
-    /// и половина этих типов на стенде не имеет смысла. На стенде нужен ровно
-    /// один член: PlayerController читает CheatMenu.NoclipSpeed, а FindAnyObjectByType
-    /// отдаёт null, так что ветки noclip на стенде не исполняются вовсе.
+    /// Debug-menu stub. The real CheatMenu is an IMGUI MonoBehaviour pulling
+    /// FlightBenchmark → SurfacePerf → ProfilerRecorder/Resources/SystemInfo, most of
+    /// which is meaningless here. The harness needs exactly one member: PlayerController
+    /// reads CheatMenu.NoclipSpeed, and FindAnyObjectByType returns null, so noclip
+    /// branches never execute.
     /// </summary>
     public sealed class CheatMenu : UnityEngine.MonoBehaviour
     {
@@ -659,10 +659,8 @@ namespace Unity.Mathematics
         public static float3 operator /(float3 a, float b) => new float3(a.x / b, a.y / b, a.z / b);
     }
 
-    // Настоящее имя Unity.Mathematics.math (строчные буквы) теперь в вызове
-    // OrbitalElements.CalculateBatch. CS8981 (lowercase-тип как будущий
-    // ключевик) — warning, подавлен локально: стаб не должен расходиться
-    // с реальным API пакета.
+    // The lowercase Unity.Mathematics.math name is used by OrbitalElements.CalculateBatch;
+    // CS8981 (future keyword) is suppressed locally so the stub matches the package API.
 #pragma warning disable CS8981
     public static class math
     {
@@ -708,7 +706,7 @@ namespace Unity.Mathematics
 
 namespace Unity.Burst
 {
-    /// <summary>Стаб атрибута: на стенде Burst-компиляции нет, код идёт как обычный C#.</summary>
+    /// <summary>Attribute stub: no Burst compilation here, code runs as plain C#.</summary>
     public sealed class BurstCompileAttribute : Attribute
     {
         public BurstCompileAttribute() { }
@@ -724,9 +722,9 @@ namespace Unity.Collections
     }
 
     /// <summary>
-    /// Функциональный стаб: backing-массив, чтобы тесты гоняли настоящий код
-    /// job'ов (Execute по индексам), а не заглушки. Семантика копирования —
-    /// разделяемое хранилище, как у настоящего NativeArray.
+    /// Functional stub: a backing array so tests exercise the real job code
+    /// (Execute by index), not placeholders. Copy semantics are shared storage,
+    /// like the real NativeArray.
     /// </summary>
     public struct NativeArray<T> where T : struct
     {
@@ -765,8 +763,8 @@ namespace Unity.Jobs
 namespace Simulation
 {
     /// <summary>
-    /// Тестовый стаб отсутствующего Burst-job (в 1game нет реализации):
-    /// только чтобы компилировался настоящий OrbitalElements.CalculateBatch.
+    /// Test stub for a missing Burst job: only so the real
+    /// OrbitalElements.CalculateBatch compiles.
     /// </summary>
     public struct OrbitalElementsJob : Unity.Jobs.IJobParallelFor
     {
@@ -786,12 +784,12 @@ namespace UnityEngine.Rendering
 {
     public enum ShadowCastingMode { Off, On, DoubleSided, ShadowsOnly }
 
-    /// <summary>Стаб Camera.clearFlags (UnderwaterEffect) — в стенде не выполняется.</summary>
+    /// <summary>Camera.clearFlags stub (UnderwaterEffect) — not executed in the harness.</summary>
     public enum CameraClearFlags { Skybox = 1, SolidColor = 2, Depth = 3, Nothing = 4 }
 
     /// <summary>
-    /// Минимальные стабы Volume API для компиляции SkyEnvironment в стенде:
-    /// глаз-адаптация (Exposure.compensation) в тестах не выполняется.
+    /// Minimal Volume API stubs so SkyEnvironment compiles in the harness:
+    /// eye adaptation (Exposure.compensation) is not executed in tests.
     /// </summary>
     public class VolumeParameter<T>
     {
@@ -830,7 +828,7 @@ namespace UnityEngine.Rendering
 
     public enum FogDenoisingMode { None = 0, Gaussian = 1, QuarterRes = 2, FullRes = 3 }
 
-    /// <summary>Стаб HDRP Fog (UnderwaterEffect) — в стенде не выполняется.</summary>
+    /// <summary>HDRP Fog stub (UnderwaterEffect) — not executed in the harness.</summary>
     public sealed class Fog : VolumeComponent
     {
         public VolumeParameter<bool> enabled = new VolumeParameter<bool>();
@@ -846,7 +844,7 @@ namespace UnityEngine.Rendering
         public VolumeParameter<float> depthExtent = new VolumeParameter<float>();
     }
 
-    /// <summary>Стаб HDRP ColorAdjustments (UnderwaterEffect) — в стенде не выполняется.</summary>
+    /// <summary>HDRP ColorAdjustments stub (UnderwaterEffect) — not executed in the harness.</summary>
     public sealed class ColorAdjustments : VolumeComponent
     {
         public VolumeParameter<float> postExposure = new VolumeParameter<float>();
@@ -867,14 +865,14 @@ namespace UnityEngine.Rendering.HighDefinition
         public UnityEngine.Color backgroundColorHDR;
     }
 
-    /// <summary>Стаб для SkyEnvironment.Start (разрешение теней) — в стенде не нужен.</summary>
+    /// <summary>Stub for SkyEnvironment.Start (shadow resolution) — not needed in the harness.</summary>
     public sealed class HDAdditionalLightData : UnityEngine.Component
     {
         public void SetShadowResolutionOverride(bool value) { }
         public void SetShadowResolution(int value) { }
     }
 
-    /// <summary>Стаб для глаз-адаптации SkyEnvironment — в стенде не выполняется.</summary>
+    /// <summary>Stub for SkyEnvironment eye adaptation — not executed in the harness.</summary>
     public sealed class Exposure : UnityEngine.Rendering.VolumeComponent
     {
         public UnityEngine.Rendering.FloatParameter compensation = new UnityEngine.Rendering.FloatParameter();

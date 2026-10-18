@@ -7,15 +7,14 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Рантайм-загрузчик испечённых эфемерид. Файлы лежат в
-    /// StreamingAssets/&lt;папка&gt; (кладутся инспекторной генерацией, уезжают в
-    /// билд автоматически). Файлов нет — тела остаются на кеплеровых рельсах:
-    /// это штатная ситуация, не ошибка.
-    /// Вызов — только с главного потока (UnityEngine API внутри).
+    /// Runtime loader for baked ephemerides. Files live in
+    /// StreamingAssets/&lt;folder&gt; (placed by inspector generation, shipped to the
+    /// build automatically). No files — bodies stay on Keplerian rails: this is
+    /// normal, not an error. Main thread only (uses UnityEngine APIs).
     /// </summary>
     public static class EphemerisRuntime
     {
-        /// <summary>Имя подпапки в StreamingAssets по умолчанию (согласовано с инспекторной генерацией).</summary>
+        /// <summary>Default StreamingAssets subfolder name (matches inspector generation).</summary>
         public const string DefaultFolder = "Ephemerides";
 
         public static bool AttachFromStreamingAssets(StarSystem sys, string folder = DefaultFolder)
@@ -38,12 +37,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Решение кадра ускоренного времени: атмосферный кап ×3, эффективный
-        /// фактор, слой исполнения (физика vs дальний варп). Горизонт — конец
-        /// испечённого мира; без эфемерид — без ограничений. После решения
-        /// caller обязан: при useLongWarp — warp.PrepareForLongWarp(t) и
-        /// LongWarpDriver.AdvanceToTarget(t + simSeconds); иначе — физическая
-        /// цепочка с EffectiveThrottle. Вызов — только с главного потока.
+        /// Accelerated-time decision for this frame: atmosphere cap ×3, effective factor,
+        /// execution layer (physics vs long warp); the horizon is the end of the baked
+        /// world. After it the caller runs either the long-warp path (warp.PrepareForLongWarp
+        /// + LongWarpDriver.AdvanceToTarget) or the physics chain with EffectiveThrottle.
+        /// Main thread only.
         /// </summary>
         public static WarpFrameDecision ComputeFrame(
             StarSystem sys, WarpController warp, Vector3d shipPosition, double timeSeconds, double realDtSeconds)

@@ -1,79 +1,68 @@
-// Небо по направлению для ШЕЙДЕРА ВОДЫ: окно Снелла смотрит в небо, и
-// смотреть оно должно тем же небом, что и небо над водой.
+// Sky by direction for the WATER shader: the Snell window looks at the sky and
+// must show the same sky as above the water.
 //
-// Почему отдельный include, а не функция в WaterSurface.shader: воде нужны
-// ровно те же глобалы, что и рельефу (SkyEnvironment) и облакам
-// (PlanetCloudsView), но подключать GalilegoLighting.hlsl в воду нельзя —
-// он тянет HDShadow, а водяной ForwardOnly-пас сознательно идёт без вариантов
-// теней (DEBUG-MINIMAL3 в WaterSurface.shader). Поэтому здесь объявления
-// глобалов и сам расчёт неба, а GalileoLighting.hlsl остаётся как был.
+// A separate include (not a function in WaterSurface.shader) because the water needs
+// exactly the same globals as the terrain (SkyEnvironment) and clouds (PlanetCloudsView),
+// but GalilegoLighting.hlsl cannot be included in water: it pulls in HDShadow, and the
+// water ForwardOnly pass deliberately runs without shadow variants.
 //
-// Что здесь НЕ делается и почему:
-//   - Не используется IntegrateAtmosphere из PlanetAtmosphere.shader. Точное
-//     совпадение с небом над водой стоит ~48 шагов raymarch с двумя выборками
-//     LUT на пиксель, а потолок занимает весь экран при взгляде вверх: это
-//     удвоение стоимости неба. Вместо этого — аналитика на тех же
-//     физических глобалах.
-//   - Не берётся IntegrateAtmosphere и для окна: тот же raymarch, но уже
-//     один раз на кадр.
+// What is NOT done here and why:
+//   - IntegrateAtmosphere from PlanetAtmosphere.shader is not used. An exact match with
+//     the sky above water would cost ~48 raymarch steps with two LUT samples per pixel,
+//     and the ceiling fills the whole screen when looking up. Instead an analytic
+//     approximation on the same physical globals.
 //
-// Точность на планетарном радиусе: все вычисления облаков идут по
-// НАПРАВЛЕНИЯМ (единичный вектор) и по относительному радиусу, а не по
-// абсолютным координатам вида. RaySphere нормирует начало луча на радиус
-// оболочки перед решением квадратного уравнения (CloudRaySphere), поэтому
-// при R = 6.4e6 м ошибка float32 в ULP (~0.5 м) попадает в коэффициенты
-// после деления, а не в Position в метрах. Остаточная неточность длины
-// луча — 0.5 м на 8000 м пути до облаков, то есть 6e-5 радиана в
-// направлении: облако смещается меньше чем на миллиметр. Мерцания не будет.
+// Precision at planetary radius: all cloud computations use DIRECTIONS (unit vector)
+// and relative radius, not absolute world coordinates. CloudRaySphere normalizes the
+// ray origin by the shell radius before solving the quadratic, so at R = 6.4e6 m a
+// float32 ULP error (~0.5 m) lands in the coefficients after the division, not in the
+// position in metres.
 
 #ifndef GALILEGO_SKY_RADIANCE_INCLUDED
 #define GALILEGO_SKY_RADIANCE_INCLUDED
 
-// GalilegoCloudField.hlsl подключается ради SampleCloudEarthMask и
-// CloudRaySphere. У него собственный guard, поэтому повторное подключение
-// безопасно: WaterSurface.shader уже включает его раньше.
+// GalilegoCloudField.hlsl is included for SampleCloudEarthMask and CloudRaySphere.
+// It has its own guard, so re-inclusion is safe: WaterSurface.shader already includes it.
 #include "GalilegoCloudField.hlsl"
 
-// --- Глобалы SkyEnvironment (тот же набор, что в GalilegoLighting.hlsl) -----
-float3 _SkyAmbientColor;   // тинт ambient × нормированная яркость неба
-float3 _SunLightColor;     // фотосфера × прозрачность атмосферы
-float3 _TerrainSunDir;     // направление НА солнце
-float3 _SkyUp;             // локальная вверх наблюдателя
-float _SkyAmbient;         // множитель дневного ambient
-float _TerrainSun;         // сила солнечного члена сцены
-float _TerrainRadianceScale; // HDR-буст земли (ставит SkyEnvironment)
-float _NightAmbient;       // ночная засветка
-float _StarVisibility;     // видимость звёзд 0..1 (день 0, ночь 1)
+// --- SkyEnvironment globals (same set as in GalilegoLighting.hlsl) ---------
+float3 _SkyAmbientColor;   // ambient tint × normalized sky brightness
+float3 _SunLightColor;     // photosphere × atmosphere transparency
+float3 _TerrainSunDir;     // direction TOWARD the sun
+float3 _SkyUp;             // observer's local up
+float _SkyAmbient;         // daytime ambient multiplier
+float _TerrainSun;         // strength of the scene's sun term
+float _TerrainRadianceScale; // ground HDR boost (set by SkyEnvironment)
+float _NightAmbient;       // night ambient
+float _StarVisibility;     // star visibility 0..1 (0 by day, 1 by night)
 
-// --- Геометрия оболочки облаков для выборки по преломлённому лучу ---------
-// Объявлены в GalilegoCloudField.hlsl: _CldBottomRadius, _CldTopRadius,
+// --- Cloud shell geometry for sampling along the refracted ray ------------
+// Declared in GalilegoCloudField.hlsl: _CldBottomRadius, _CldTopRadius,
 // _CldCoverage, _CldBottomFeather, _CldTopFeather, _CldWorldToBody.
 
 /// <summary>
-/// Угловой радиус Солнца в радианах: 0.265° — половина видимого диаметра
-/// 0.53°. Это ЖЁСТКИЙ НИЖНИЙ предел ширины блика: уже в штиль диск не может
-/// быть резче своего настоящего размера.
+/// Solar angular radius in radians: 0.265° — half of the 0.53° apparent diameter.
+/// A hard lower bound on the glare width: even on calm water the disc cannot be
+/// sharper than its real size.
 /// </summary>
 static const float SunAngularRadius = 0.00463;
 
-// Множитель, переводящий «ambient неба» (_SkyAmbientColor · _SkyAmbient) в
-// яркость неба для окна. Ambient — это СРЕДНЯЯ яркость полусферы, а не
-// небо в конкретном направлении, и неба в направлении зенита она выше в
-// несколько раз. Калибровано так, чтобы окно было примерно в 7-12 раз
-// ярче вуали (0.02..0.25 линейных в дне) — это и есть требуемое соотношение
-// без пересвета.
+// Multiplier converting sky ambient (_SkyAmbientColor · _SkyAmbient) into sky
+// brightness for the window. Ambient is the AVERAGE brightness of a hemisphere, not
+// the sky in a specific direction. Calibrated so the window is roughly 7-12x brighter
+// than the veil without blowing out.
 static const float SkyBaseGain = 20.0;
 
-// ЛУНА — ТОЧКА РАСШИРЕНИЯ. Сейчас ночное окно показывает только звёзды:
-// луны в рендер-пайплайне проекта нет (только в эфемеридах звёздной системы,
-// ни один рендер-объект её не рисует). Когда появится тело с направлением на
-// луну, подставь сюда диск и гало по той же схеме, что и Солнце ниже:
+// MOON — EXTENSION POINT. The night window currently shows only stars: there is no
+// moon in the render pipeline (only in the star-system ephemerides, drawn by no render
+// object). When a body with a moon direction exists, plug in the disc and halo like the
+// Sun below:
 //   float3 moonDir = normalize(_UwMoonDirWS);
 //   float3 moon = GalilegoSunDisc(dir, moonDir, _UwMoonRadiance, sigmaAngle)
 //       + GalilegoSunAureole(dir, moonDir, _UwMoonRadiance * 0.06f);
 /// <summary>
-/// Ночная луна в окне Снелла. Пока тела Луны нет — ноль, и ночное окно
-/// держится на звёздах. См. врезку выше: это точка вставки диска.
+/// Night moon in the Snell window. Zero while no moon body exists, so the night
+/// window rests on the stars. See the block above: this is the disc insertion point.
 /// </summary>
 float3 GalilegoMoonRadiance(float3 dir, float normalSigmaAngle)
 {
@@ -81,8 +70,8 @@ float3 GalilegoMoonRadiance(float3 dir, float normalSigmaAngle)
 }
 
 /// <summary>
-/// Полусферический ambient — та же формула, что в GalilegoLighting.hlsl.
-/// Дублируется здесь потому, что вода не включает GalilegoLighting.hlsl.
+/// Hemispheric ambient — the same formula as in GalilegoLighting.hlsl. Duplicated
+/// here because water does not include GalilegoLighting.hlsl.
 /// </summary>
 float3 GalilegoSkyAmbient(float3 normalWS)
 {
@@ -91,19 +80,16 @@ float3 GalilegoSkyAmbient(float3 normalWS)
 }
 
 /// <summary>
-/// Мягкий диск по Коксу — Манку: exp(−θ²/2σ²), где σ = sqrt(σ_диск² + σ_наклон²).
+/// Soft disc per Cox-Munk: exp(−θ²/2σ²), with σ = sqrt(σ_disc² + σ_slope²).
 ///
-/// Почему не pow(dot, 900) и не жёсткий smoothstep по углу: при наклонах
-/// волны ±8° преломление разносит направление на солнце по площади окна на
-/// углы в несколько раз больше солнечного диска. Жёсткий конус там превращается
-/// в набор редких пикселей и мерцает при движении, а Гаусс той же суммарной
-/// энергии распадается на устойчивые блики — на спокойной воде почти круглый
-/// диск, на волне — россыпь. Это тот же приём, что и в specular anti-aliasing,
-/// только ширина берётся из разброса нормали по пикселю.
+/// Why not pow(dot, 900) or a hard smoothstep over the angle: at wave slopes of ±8°
+/// the refraction spreads the sun direction across the window by several times the
+/// solar disc. A hard cone there turns into sparse flickering pixels, while a Gaussian
+/// of the same total energy spreads into stable glints. Same idea as specular
+/// anti-aliasing, but the width comes from the per-pixel normal spread.
 ///
-/// sigmaAngle — разброс нормали в радианах на пиксель (см.
-/// WaterSurfaceUnderwaterSigma). Диск в спокойной воде не может быть уже
-/// собственного углового радиуса Солнца.
+/// sigmaAngle is the per-pixel normal spread in radians. The disc on calm water cannot
+/// be narrower than the Sun's own angular radius.
 /// </summary>
 float3 GalilegoSunDisc(float3 dir, float3 sunDir, float3 radiance, float sigmaAngle)
 {
@@ -113,8 +99,8 @@ float3 GalilegoSunDisc(float3 dir, float3 sunDir, float3 radiance, float sigmaAn
         return 0.0;
     }
 
-    // θ ≈ sqrt(2(1−cosθ)) — точная аппроксимация на малых углах (диск и
-    // гало — это как раз малые углы), зато без acos на весь экран.
+    // θ ≈ sqrt(2(1−cosθ)) — accurate for small angles (disc and halo are small-angle),
+    // but without an acos over the whole screen.
     float theta2 = 2.0 * (1.0 - cosA);
     float sigma = sqrt(max(SunAngularRadius * SunAngularRadius, sigmaAngle * sigmaAngle));
     float lobe = exp(-theta2 / (2.0 * sigma * sigma));
@@ -122,8 +108,8 @@ float3 GalilegoSunDisc(float3 dir, float3 sunDir, float3 radiance, float sigmaAn
 }
 
 /// <summary>
-/// Гало (ауреоль) вокруг Солнца: Ми с широким хвостом. Тоже сглаженное, иначе
-/// на границе окна рождается кольцо из aliasing-мусора.
+/// Halo (aureole) around the Sun: Mie with a wide tail. Also smoothed, otherwise
+/// aliasing rings appear at the window edge.
 /// </summary>
 float3 GalilegoSunAureole(float3 dir, float3 sunDir, float3 radiance, float sigmaAngle)
 {
@@ -139,8 +125,8 @@ float3 GalilegoSunAureole(float3 dir, float3 sunDir, float3 radiance, float sigm
 }
 
 /// <summary>
-/// Хеш ячейки направления — тот же, что в StarField.shader (звёзды должны
-/// стоять там же, где в небе).
+/// Direction-cell hash — the same as in StarField.shader (stars must sit where they
+/// do in the sky).
 /// </summary>
 float GalilegoHash31(float3 p)
 {
@@ -150,9 +136,9 @@ float GalilegoHash31(float3 p)
 }
 
 /// <summary>
-/// Один слой звёзд, та же схема, что в StarField.shader: по ячейкам направления
-/// звезда со своим положением, яркостью и температурой. Нужна для ночного
-/// окна Снелла — ночью небо иначе равномерно чёрное.
+/// One star layer, the same scheme as StarField.shader: per direction cell a star with
+/// its own position, brightness and temperature. Needed for the night Snell window —
+/// otherwise the sky is uniformly black at night.
 /// </summary>
 float2 GalilegoStarLayer(float3 dir, float density, float keepThreshold, float size, float seed)
 {
@@ -171,16 +157,15 @@ float2 GalilegoStarLayer(float3 dir, float density, float keepThreshold, float s
 }
 
 /// <summary>
-/// Покрытие облаками вдоль луча: одна выборка поля на входе луча в слой.
-/// Дёшево (~32 хеша), но рябь двигает точку входа, поэтому облака в окне
-/// шевелятся вместе с волнами — это и нужно для «живого» окна.
+/// Cloud coverage along the ray: one field sample at the ray's entry into the layer.
+/// Cheap (~32 hashes), but the ripple moves the entry point, so clouds in the window
+/// move together with the waves — that is what a "living" window needs.
 ///
-/// Луч берём из камеры (начало в нуле render-пространства), а не из точки
-/// поверхности: разница в несколько метров при 8 км до слоя смещает вход
-/// меньше чем на сантиметр, зато начало луча остаётся в нуле и вход
-/// считается через CloudRaySphere, который нормирует начало на радиус
-/// оболочки — на R = 6.4e6 м это единственная форма, переживающая точность
-/// float32 (см. врезку в шапке файла).
+/// The ray is taken from the camera (origin at zero in render space), not from the
+/// surface point: a few metres' difference at 8 km to the layer shifts the entry by
+/// less than a centimetre, while the origin stays at zero and the entry is computed
+/// via CloudRaySphere, which normalizes the origin by the shell radius — at
+/// R = 6.4e6 m the only form that survives float32 (see the file header).
 /// </summary>
 float CloudShellCoverage(float3 dir, float3 bodyCenterWS, float radiusBottom, float radiusTop)
 {
@@ -199,8 +184,8 @@ float CloudShellCoverage(float3 dir, float3 bodyCenterWS, float radiusBottom, fl
         return 0.0;
     }
 
-    // Середина пути внутри слоя: берём её, а не вход, чтобы высота не
-    // попадала на самый край оболочки, где перья ещё не разрослись.
+    // Midpoint of the path through the layer, rather than the entry, so the height
+    // doesn't land on the very edge of the shell where the feathers haven't grown in.
     float3 bodyPoint = (bodyCenterWS + (dir * (0.5 * (tEnter + tExit))));
     float radius = length(bodyPoint - bodyCenterWS);
     float heightFraction = saturate((radius - radiusBottom) / max(1.0, radiusTop - radiusBottom));
@@ -211,21 +196,20 @@ float CloudShellCoverage(float3 dir, float3 bodyCenterWS, float radiusBottom, fl
 }
 
 /// <summary>
-/// Небесная яркость в направлении dir для окна Снелла.
+/// Sky brightness in direction dir for the Snell window.
 ///
-/// Состав: градиент горизонт→зенит из физического ambient неба, гало и диск
-/// Солнца, облачный слой вдоль луча, ночью — звёзды. Солнце и Луна гасятся
-/// солнечным фактором, который считает вызывающий: когда солнце ушло под
-/// горизонт, диска быть не должно, а не только потому, что он «сам погас»
-/// по dot — ночью dot вверх всё равно отрицателен только если солнце низко,
-/// а в сумерках при 1° над горизонтом картинка ещё светлая.
+/// Composition: horizon-to-zenith gradient from the physical sky ambient, the Sun
+/// halo and disc, the cloud layer along the ray, and stars at night. Sun and Moon
+/// are gated by the caller-provided sunFactor: with the sun below the horizon there
+/// must be no disc, not merely a disc "faded out" by dot, since at dusk the picture
+/// is still bright with the sun 1° above the horizon.
 /// </summary>
 float3 GalilegoSkyRadiance(float3 dir, float3 sunDir, float normalSigmaAngle, float sunFactor,
     float3 bodyCenterWS, float cloudRadiusBottom, float cloudRadiusTop)
 {
-    // Градиент: горизонт теплее и ярче (длинный путь рэлеевского рассеяния),
-    // зенит холоднее. Обе краски — из одного ambient-цвета неба, поэтому
-    // закат и ночь красятся сами собой, без отдельной ветки.
+    // Gradient: the horizon is warmer and brighter (long Rayleigh scattering path),
+    // the zenith cooler. Both tints come from the single sky ambient colour, so sunset
+    // and night tint themselves without a separate branch.
     float upness = saturate(dot(dir, _SkyUp));
     float3 horizonTint = _SkyAmbientColor * float3(1.22, 1.06, 0.90);
     float3 zenithTint = _SkyAmbientColor * float3(0.70, 0.90, 1.28);
@@ -237,9 +221,8 @@ float3 GalilegoSkyRadiance(float3 dir, float3 sunDir, float normalSigmaAngle, fl
         sky += GalilegoSunDisc(dir, sunDir, _SunLightColor * (22.0 * sunFactor), normalSigmaAngle);
     }
 
-    // Облака. Одна выборка поля вдоль луча, только если луч реально входит в
-    // оболочку (в зеркальной зоне небо всё равно не видно, и платить за
-    // raymarch там незачем).
+    // Clouds. One field sample along the ray, only if the ray really enters the shell
+    // (in the mirror zone the sky isn't visible anyway, so a raymarch there is wasted).
     if (_CldCloudActive > 0.5 && _CldCoverage > 0.001 && upness > 0.02)
     {
         float heightFraction = CloudShellCoverage(dir, bodyCenterWS, cloudRadiusBottom, cloudRadiusTop);

@@ -1,16 +1,13 @@
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Пример вымышленной системы: звезда + 2 планеты, у одной есть спутник.
-    /// Обобщение GalileanMoonPresets — раньше там были реальные JPL-данные Юпитера,
-    /// теперь это просто шаблон: копируешь CreateOrbitingBody под свои тела,
-    /// подставляя собственные (вымышленные) массы и элементы орбит.
-    /// Единицы те же, что и раньше: кг, метры, секунды, градусы.
-    /// Дизайн-правило для спутников: a ≤ ~0.3 радиуса Хилла планеты
-    /// (R_H = a_планеты·(M_планеты/(3·M_звезды))^(1/3)) и разнос соседних лун
-    /// ≥ 3 взаимных R_H — иначе система хаотична (e-folding до долей года,
-    /// измерено T60/probechaos) и любая долговременная эфемерида расходится
-    /// с независимым n-body на масштабе орбиты луны.
+    /// Example fictional system: a star + 2 planets, one with a moon. A template:
+    /// copy CreateOrbitingBody for your own bodies, plugging in your own (fictional)
+    /// masses and orbital elements. Units: kg, metres, seconds, degrees.
+    /// Design rule for moons: a ≤ ~0.3 of the planet's Hill radius
+    /// (R_H = a_planet·(M_planet/(3·M_star))^(1/3)) and adjacent moons separated by
+    /// ≥ 3 mutual R_H — otherwise the system is chaotic and any long-term ephemeris
+    /// diverges from an independent n-body on the scale of the moon's orbit.
     /// </summary>
     public static class ExampleSystemPresets
     {
@@ -19,14 +16,14 @@ namespace Galilego.Universe
             OrbitingBody star = new OrbitingBody
             {
                 Name = "Вымышленная звезда",
-                StandardGravitationalParameter = 1.327e20d, // ориентир: масса ~ как у Солнца
+                StandardGravitationalParameter = 1.327e20d, // reference: mass ~ like the Sun
             };
 
             OrbitingBody planetA = CreateOrbitingBody(
                 name: "Планета А",
-                standardGravitationalParameter: 3.986e14d, // ориентир: масса ~ как у Земли
+                standardGravitationalParameter: 3.986e14d, // reference: mass ~ like Earth
                 radius: 6.371e6d,
-                semiMajorAxis: 1.5e11d,        // ~1 а.е.
+                semiMajorAxis: 1.5e11d,        // ~1 AU
                 eccentricity: 0.02d,
                 inclinationDegrees: 0d,
                 longitudeOfAscendingNodeDegrees: 0d,
@@ -37,7 +34,7 @@ namespace Galilego.Universe
 
             OrbitingBody planetAMoon = CreateOrbitingBody(
                 name: "Спутник планеты А",
-                standardGravitationalParameter: 4.9e12d, // ориентир: масса ~ как у Луны
+                standardGravitationalParameter: 4.9e12d, // reference: mass ~ like the Moon
                 radius: 1.737e6d,
                 semiMajorAxis: 3.84e8d,
                 eccentricity: 0.05d,
@@ -50,9 +47,9 @@ namespace Galilego.Universe
 
             OrbitingBody planetB = CreateOrbitingBody(
                 name: "Планета Б",
-                standardGravitationalParameter: 4.28e13d, // ориентир: масса ~ как у Марса
+                standardGravitationalParameter: 4.28e13d, // reference: mass ~ like Mars
                 radius: 3.39e6d,
-                semiMajorAxis: 2.28e11d,       // ~1.5 а.е.
+                semiMajorAxis: 2.28e11d,       // ~1.5 AU
                 eccentricity: 0.09d,
                 inclinationDegrees: 1.9d,
                 longitudeOfAscendingNodeDegrees: 49d,
@@ -61,7 +58,7 @@ namespace Galilego.Universe
             planetB.Parent = star;
             star.Children.Add(planetB);
 
-            // Спутников у планеты Б нет — показывает, что это не обязательно.
+            // Planet B has no moons — showing that it is optional.
 
             return new StarSystem(star);
         }

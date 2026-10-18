@@ -3,17 +3,16 @@ using UnityEngine;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Процедурный топливный бак: тело вращения с плоскими крышками
-    /// (скруглений нет), ось — локальная Y, низ в начале координат.
-    /// Игрок задаёт нижний радиус, верхний радиус и высоту обечайки:
-    /// радиусы равны — идеальный цилиндр, разные — обрезанный конус
-    /// (бак-переходник между ступенями разных диаметров). Сетка
-    /// перестраивается кодом, поэтому размеры любые, UV не растягиваются,
-    /// а полигонаж минимальный.
+    /// Procedural fuel tank: a surface of revolution with flat caps (no rounding),
+    /// axis is local Y, bottom at the origin. The player sets bottom radius, top
+    /// radius and barrel height: equal radii give a perfect cylinder, different ones
+    /// a truncated cone (an adapter tank between stages of different diameters).
+    /// The mesh is rebuilt in code, so sizes are arbitrary, UVs don't stretch and
+    /// the polycount is minimal.
     ///
-    /// Два подмеша: 0 — боковина (металл, UV в метрах, тайлится), 1 — плоские
-    /// крышки (UV 0..1 на диск, поэтому рисунок ложится ровно на крышку).
-    /// Поверхность крышек остаётся плоскостью: рисунок — только текстура.
+    /// Two submeshes: 0 — side wall (metal, UVs in metres, tiled), 1 — flat caps
+    /// (UV 0..1 over the disc, so the pattern lands squarely on the cap). Cap surface
+    /// stays flat: the pattern is texture only.
     /// </summary>
     [ExecuteAlways]
     [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
@@ -51,21 +50,21 @@ namespace Galilego.Spacecraft
 
         private Mesh mesh;
 
-        /// <summary>Площадь оболочки: обечайка + две плоские крышки, м².</summary>
+        /// <summary>Shell area: barrel + two flat caps, m².</summary>
         public float ShellAreaM2
         {
             get { return ShellArea(Radius, TopRadius, Height); }
         }
 
-        /// <summary>Внутренний объём, м³.</summary>
+        /// <summary>Internal volume, m³.</summary>
         public float VolumeM3
         {
             get { return Volume(Radius, TopRadius, Height); }
         }
 
         /// <summary>
-        /// Площадь оболочки тела вращения: боковина (наклонная образующая) +
-        /// две плоские крышки. Равные радиусы дают формулу цилиндра.
+        /// Shell area of a surface of revolution: side wall (slanted generatrix) plus
+        /// two flat caps. Equal radii give the cylinder formula.
         /// </summary>
         public static float ShellArea(float bottomRadius, float topRadius, float height)
         {
@@ -76,20 +75,20 @@ namespace Galilego.Spacecraft
                 + (Mathf.PI * topRadius * topRadius);
         }
 
-        /// <summary>Внутренний объём тела вращения, м³ (обрезанный конус).</summary>
+        /// <summary>Internal volume of a surface of revolution, m³ (truncated cone).</summary>
         public static float Volume(float bottomRadius, float topRadius, float height)
         {
             return (Mathf.PI * height * ((bottomRadius * bottomRadius) + (bottomRadius * topRadius) + (topRadius * topRadius))) / 3f;
         }
 
-        /// <summary>Наполнение бака (по Id из реестра PropellantLoads).</summary>
+        /// <summary>Tank fill (by Id from the PropellantLoads registry).</summary>
         public PropellantLoad Load
         {
             get { return PropellantLoads.Get(LoadId); }
             set { LoadId = value != null ? value.Id : "RS25"; }
         }
 
-        /// <summary>Расчёт бака: объём, металл, изоляция и топливо (TankMassModel).</summary>
+        /// <summary>Tank calculation: volume, metal, insulation and propellant (TankMassModel).</summary>
         public TankMassInfo Mass
         {
             get { return TankMassModel.Compute(Radius, TopRadius > 0.01f ? TopRadius : Radius, Height, Load, Fill); }
@@ -111,7 +110,7 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
-        /// Сетка цилиндра (частный случай тела вращения с равными радиусами).
+        /// Cylinder mesh (special case of a surface of revolution with equal radii).
         /// </summary>
         public static Mesh BuildCylinder(float radius, float height, int segments, float metersPerTile)
         {
@@ -119,14 +118,13 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
-        /// Сетка тела вращения: боковина + две плоские крышки. Равные радиусы —
-        /// цилиндр, разные — обрезанный конус (бак-переходник).
-        /// Подмеш 0 — боковина (гладкая, UV в метрах), подмеш 1 — крышки
-        /// (нормали ±Y, UV 0..1 по диску). Вершины крышек отдельные, поэтому
-        /// кромка остаётся жёсткой и они не сглаживаются с боковиной.
-        /// Нормали боковины перпендикулярны образующей: у конуса они наклонены
-        /// (сужение кверху — наружу-вверх, расширение — наружу-вниз), иначе
-        /// освещение выдавало бы цилиндр.
+        /// Surface-of-revolution mesh: side wall + two flat caps. Equal radii — cylinder,
+        /// different — truncated cone (adapter tank). Submesh 0 — side wall (smooth, UVs in
+        /// metres), submesh 1 — caps (normals ±Y, UV 0..1 over the disc). Cap vertices are
+        /// separate, so the edge stays hard and they don't smooth with the side wall.
+        /// Side-wall normals are perpendicular to the generatrix: on a cone they are
+        /// slanted (narrowing upward — outward-up, widening — outward-down), otherwise the
+        /// lighting would read as a cylinder.
         /// </summary>
         public static Mesh BuildBody(float bottomRadius, float topRadius, float height, int segments, float metersPerTile)
         {
@@ -136,10 +134,10 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
-        /// Заполнить СУЩЕСТВУЮЩИЙ меш телом вращения. Меш переиспользуется, а не
-        /// пересоздаётся: GPU Resident Drawer (HDRP) ругается на уничтожение
-        /// меша, на который ещё смотрят батчи («invalid Batch/Mesh ID»), а
-        /// превью пересобирается на каждом шаге размера.
+        /// Fill an EXISTING mesh with a surface of revolution. The mesh is reused, not
+        /// recreated: the GPU Resident Drawer (HDRP) complains about destroying a mesh
+        /// that batches still reference ("invalid Batch/Mesh ID"), and the preview is
+        /// rebuilt on every size change.
         /// </summary>
         public static void FillBody(Mesh mesh, float bottomRadius, float topRadius, float height, int segments, float metersPerTile)
         {
@@ -152,8 +150,8 @@ namespace Galilego.Spacecraft
             float slant = Mathf.Sqrt((deltaRadius * deltaRadius) + (height * height));
             bool cylinder = Mathf.Abs(deltaRadius) < 1e-4f;
 
-            // Метраж UV боковины — по средней окружности: растяжение текстуры
-            // вдоль образующей для конуса и цилиндра одинаковое.
+            // Side-wall UV metrage by the mean circumference: texture stretch along the
+            // generatrix is the same for cone and cylinder.
             float circumference = Mathf.PI * (bottomRadius + topRadius);
 
             int sideBottom = 0;
@@ -191,8 +189,8 @@ namespace Galilego.Spacecraft
                 normals[capBottomRing + i] = new Vector3(0f, -1f, 0f);
                 normals[capTopRing + i] = new Vector3(0f, 1f, 0f);
 
-                // UV крышки: диск вписан в квадрат 0..1 (по своему радиусу),
-                // поэтому рисунок ложится один-в-один при любом радиусе.
+                // Cap UV: the disc is inscribed in a 0..1 square (by its own radius), so
+                // the pattern lands one-to-one at any radius.
                 float cu = (0.5f * cs) + 0.5f;
                 float cv = (0.5f * sn) + 0.5f;
                 uvs[capBottomRing + i] = new Vector2(cu, cv);
@@ -253,8 +251,8 @@ namespace Galilego.Spacecraft
             }
 
 #if UNITY_EDITOR
-            // Меш нельзя удалять прямо внутри OnValidate, поэтому пересборка
-            // откладывается на конец кадра.
+            // The mesh cannot be destroyed directly inside OnValidate, so the rebuild is
+            // deferred to the end of the frame.
             UnityEditor.EditorApplication.delayCall -= RebuildDelayed;
             UnityEditor.EditorApplication.delayCall += RebuildDelayed;
 #else
@@ -274,10 +272,10 @@ namespace Galilego.Spacecraft
 #endif
 
         /// <summary>
-        /// Перестроить сетку под текущие Radius/TopRadius/Height. Вызывать после
-        /// изменения параметров из UI (VAB), чтобы не ждать OnValidate.
-        /// Меш переиспользуется (FillBody): GPU Resident Drawer (HDRP) ругается
-        /// на уничтожение меша, на который ещё смотрят батчи.
+        /// Rebuild the mesh for the current Radius/TopRadius/Height. Call it after
+        /// changing parameters from the UI (VAB) so as not to wait for OnValidate.
+        /// The mesh is reused (FillBody): the GPU Resident Drawer (HDRP) complains about
+        /// destroying a mesh that batches still reference.
         /// </summary>
         public void Rebuild()
         {

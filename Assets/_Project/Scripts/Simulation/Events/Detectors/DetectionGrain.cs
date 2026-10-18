@@ -5,18 +5,18 @@ using Galilego.Universe;
 namespace Galilego.Events
 {
     /// <summary>
-    /// Адаптивное зерно детекта событий. Правило — «только мельче, не крупнее»:
-    /// итог всегда max(базовое, адаптивное). Укрупнять зерно для медленных орбит
-    /// запрещено: это была бы регрессия уже закрытого риска multi-crossing
-    /// (комментарий на DetectionSubdivisions). Дробить — можно и нужно, когда
-    /// характерное время системы мало: быстрый гиперболический пролёт,
-    /// тесная/тонкая встреча, в будущем — прожиги с мелкими временами.
+    /// Adaptive event-detection grain. Rule: "only finer, never coarser" — the
+    /// result is always max(base, adaptive). Coarsening the grain for slow orbits is
+    /// forbidden: it would reintroduce the multi-crossing risk (comment on
+    /// DetectionSubdivisions). Subdividing is allowed and needed when the system's
+    /// characteristic time is small: a fast hyperbolic flyby, a tight/grazing
+    /// encounter, later burns with short times.
     ///
-    /// Характерное время τ — из кеплеровых элементов относительно доминантного
-    /// тела (один FromState + один обход дерева на чанк, не на подчанк и не на
-    /// RHS — цена пренебрежима). Эллипс: период 2π√(a³/μ). Гипербола: аналог
-    /// периода по модулю большой полуоси 2π√(|a|³/μ) — для глубокого пролёта
-    /// |a| мало и зерно честно мельчает. Невалидные элементы — фолбэк на базу.
+    /// The characteristic time τ comes from Kepler elements relative to the dominant
+    /// body (one FromState + one tree walk per chunk, not per sub-chunk and not per
+    /// RHS — the cost is negligible). Ellipse: period 2π√(a³/μ). Hyperbola: the period
+    /// analogue with |a|, 2π√(|a|³/μ) — for a deep flyby |a| is small and the grain
+    /// honestly gets finer. Invalid elements fall back to the base.
     /// </summary>
     public static class DetectionGrain
     {
@@ -25,8 +25,8 @@ namespace Galilego.Events
         public const double GrainDivisor = 20d;
 
         /// <summary>
-        /// Характерное время состояния в секундах. PositiveInfinity = неизвестно,
-        /// вызывающий обязан откатиться на базовое зерно.
+        /// Characteristic time of the state in seconds. PositiveInfinity = unknown; the
+        /// caller must fall back to the base grain.
         /// </summary>
         public static double CharacteristicTimeSeconds(StarSystem system, SpacecraftIntegrationState state, double timeSeconds)
         {
@@ -69,9 +69,9 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Число подчанков на MaxChunkSeconds. Никогда не меньше baseDivisions
-        /// (не крупнее базы) и не больше cap. NaN/Inf/неположительное τ —
-        /// ровно baseDivisions.
+        /// Number of sub-chunks per MaxChunkSeconds. Never less than baseDivisions
+        /// (never coarser than the base) and never more than cap. NaN/Inf/non-positive
+        /// τ — exactly baseDivisions.
         /// </summary>
         public static int Subdivisions(double maxChunkSeconds, int baseDivisions, double tauSeconds, int cap)
         {
@@ -107,18 +107,16 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Консервативный предикат «внутри чанка возможно пересечение поверхности».
-        /// Подчанкование (пол DetectionSubdivisions) нужно ТОЛЬКО если корабль
-        /// физически может достичь пороговой сферы: высотного детектора
-        /// (атмосфера/поверхность) или SOI-границы любого тела. Знак-тест g0/g1
-        /// на границах подчанка ловит пересечение, лишь если оно длиннее зерна;
-        /// если сфера недостижима за чанк — пересечения нет, и пол 20 — чистая
-        /// цена без пользы (A0-зонд T58: межпланетный круиз, τ=4.5e7 с,
-        /// subdiv=20 из пола → ×20 к цене дальнего варпа).
-        /// Достижимость — с запасом: зазор до сферы ≤ (|v_корабля|+|v_тела|)·chunk·safety.
-        /// Остальные события в грубом зерне не теряются: PropellantDepletion —
-        /// монотонная масса (двойного пересечения нет), TimedEvent — по часам,
-        /// SOI — переход ключа, но его сфера проверена здесь же.
+        /// Conservative predicate: "a surface crossing is possible within the chunk".
+        /// Sub-chunking (the DetectionSubdivisions floor) is needed ONLY if the ship can
+        /// physically reach a threshold sphere: an altitude detector (atmosphere/surface)
+        /// or any body's SOI boundary. The g0/g1 sign test at sub-chunk boundaries catches
+        /// a crossing only if it is longer than the grain; if the sphere is unreachable
+        /// within the chunk there is no crossing and the floor of 20 is pure cost.
+        /// Reachability is estimated with margin: the gap to the sphere
+        /// ≤ (|v_ship|+|v_body|)·chunk·safety. Other events are not lost in the coarse
+        /// grain: PropellantDepletion is monotone mass (no double crossing), TimedEvent is
+        /// clock-based, SOI is a key change whose sphere is checked right here.
         /// </summary>
         public static bool NeedsFineGrain(
             StarSystem system,
@@ -130,7 +128,7 @@ namespace Galilego.Events
         {
             if (system == null || chunkSeconds <= 0d)
             {
-                return true; // нет данных для оценки — консервативно, как раньше
+                return true; // no data to estimate — conservative
             }
 
             for (int i = 0; i < crossingDetectors.Count; i++)
@@ -153,7 +151,7 @@ namespace Galilego.Events
                 OrbitingBody body = bodies[i];
                 if (body.Parent == null)
                 {
-                    continue; // у корня нет SOI
+                    continue; // the root has no SOI
                 }
 
                 body.EvaluateWorldState(timeSeconds, out Vector3d bp, out Vector3d bv);

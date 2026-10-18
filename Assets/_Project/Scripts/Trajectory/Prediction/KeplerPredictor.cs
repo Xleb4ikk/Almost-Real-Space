@@ -4,12 +4,12 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Аналитический двухтельный прогноз: состояние (r0, v0) → (+dt) без единого
-    /// шага интегратора. Эллипс — через существующие FromState/SolveEccentricAnomaly
-    /// (та же математика, что рельсы OrbitingBody, переиспользована, не скопирована
-    /// на глаз); гипербола — asinh-Ньютон. Парабола (|e−1|≈0) — исключение, не молча.
-    /// Применение: превью-линии перелётов, сэмплирование porkchop-дуг для проверки
-    /// на сквозной пролёт (TryEvaluate), валидация Ламберта прибытием.
+    /// Analytical two-body prediction: state (r0, v0) → (+dt) with no integrator step.
+    /// Ellipse via the existing FromState/SolveEccentricAnomaly (the same math as the
+    /// OrbitingBody rails, reused rather than re-copied); hyperbola via asinh-Newton.
+    /// Parabola (|e−1|≈0) throws rather than silently. Used for transfer preview lines,
+    /// sampling porkchop arcs for through-body checks (TryEvaluate), and Lambert
+    /// arrival validation.
     /// </summary>
     public static class KeplerPredictor
     {
@@ -20,8 +20,8 @@ namespace Galilego.Universe
                 throw new ArgumentOutOfRangeException(nameof(mu), "Гравитационный параметр обязан быть положительным.");
             }
 
-            // Предиктор — аналитика, не интегратор: отрицательный dt валиден
-            // (мост flyby гонит назад между SOI). Запрет только на NaN.
+            // The predictor is analytical, not an integrator: negative dt is valid
+            // (the flyby bridge runs backwards between SOI). Only NaN is rejected.
             if (!double.IsFinite(dtSeconds))
             {
                 throw new ArgumentOutOfRangeException(nameof(dtSeconds), "dt обязан быть конечным.");
@@ -48,18 +48,17 @@ namespace Galilego.Universe
             if (eccentricity < 1d)
             {
                 double semiMajor = elements.SemiMajorAxis;
-                // Энергия ≈ 0 (парабола по eps-классификации FromState) даёт a=+Inf
-                // при e<1: sqrt(mu/Inf³)=0 — время замирает, радиус Inf/NaN молча
-                // (аудит S1/1.3). Громко, той же семантикой, что |e−1|.
+                // Energy ≈ 0 (parabola by FromState's eps classification) gives a=+Inf
+                // for e<1: sqrt(mu/Inf³)=0 — time freezes and radius goes Inf/NaN
+                // silently. Fail loudly with the same semantics as |e−1|.
                 if (!double.IsFinite(semiMajor) || !(semiMajor > 0d))
                 {
                     throw new NotSupportedException("Околопараболические дуги не поддерживаются (a=" + semiMajor + ").");
                 }
 
                 double meanMotion = Math.Sqrt(mu / (semiMajor * semiMajor * semiMajor));
-                // Редукция dt по периоду ДО умножения: на dt в годы M ~ 1e10 рад,
-                // ulp(1e10) ≈ 2e-6 рад — фаза молча теряется ещё до NormalizeAngle
-                // (аудит S1/3.1).
+                // Reduce dt by the period BEFORE multiplying: for dt in years M ~ 1e10 rad,
+                // ulp(1e10) ≈ 2e-6 rad — phase is silently lost even before NormalizeAngle.
                 double period = (2d * Math.PI) / meanMotion;
                 double dtReduced = dtSeconds - (Math.Floor(dtSeconds / period) * period);
                 double meanAnomaly = KeplerMath.NormalizeAngle(
@@ -108,15 +107,13 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Internal для прямого юнит-теста невязки (тестовый проект компилирует
-        /// исходники 1game в ту же сборку). Ньютон 20 итераций + проверка невязки
-        /// с фолбэком на бисекцию: F строго растёт при e&gt;1 (F'=e·cosh−1 ≥ e−1 &gt; 0),
-        /// брекет — расширением от оценки Ньютона с капом ±700 (дальше знак F
-        /// определяется асимптотикой: +∞ справа, −∞ слева). При e≤1 — только
-        /// Ньютон, как раньше. Проверка невязки инвертирована (!≤ tol): исходное
-        /// условие «Abs(NaN) &gt; tol» ложно — NaN проходил наружу мимо фолбэка
-        /// (аудит S1/1.1); не забрекеченный бисекция-интервал теперь громкий отказ,
-        /// а не молчаливый неверный корень.
+        /// Internal for direct unit testing of the residual (the test project compiles
+        /// the game sources into the same assembly). Newton with 20 iterations plus a
+        /// residual check with a bisection fallback: F grows strictly for e&gt;1
+        /// (F'=e·cosh−1 ≥ e−1 &gt; 0); the bracket is expanded from the Newton estimate with
+        /// a cap of ±700 (beyond that the sign of F is set by the asymptotes: +∞ right,
+        /// −∞ left). For e≤1 only Newton runs. The residual check is inverted (!≤ tol):
+        /// an unbracketed bisection interval is a loud failure, not a silent wrong root.
         /// </summary>
         internal static double SolveHyperbolicAnomaly(double meanAnomaly, double eccentricity)
         {
@@ -138,7 +135,7 @@ namespace Galilego.Universe
                 estimate -= function / derivative;
                 if (!double.IsFinite(estimate))
                 {
-                    // Ньютон улетел (e≈1: производная ≈ 1e-9) — чистый старт для бисекции.
+                    // Newton diverged (e≈1: derivative ≈ 1e-9) — clean start for bisection.
                     estimate = meanAnomaly >= 0d ? 0d : -0d;
                     break;
                 }
@@ -211,8 +208,8 @@ namespace Galilego.Universe
 
             if (!(fLo < 0d && fHi > 0d))
             {
-                // Незабрекеченный интервал: бисекция по нему — молчаливо неверный
-                // корень (аудит S1/1.1). Громко.
+                // Unbracketed interval: bisecting it would give a silently wrong root.
+                // Fail loudly.
                 throw new InvalidOperationException(
                     "Гиперболическая аномалия: не найден брекет знака для M=" + meanAnomaly.ToString("R") +
                     ", e=" + eccentricity.ToString("R") + ".");

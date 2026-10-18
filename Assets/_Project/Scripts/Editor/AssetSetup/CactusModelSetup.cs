@@ -5,9 +5,9 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Процедурные кактусы для декора местности: низкополигональные «сагуаро»
-    /// (ствол + 0..2 руки) из трубок с ручным расчётом нормалей. Текстура —
-    /// бесшовная кожа кактуса (cactus.png), UV: вокруг ствола × длина.
+    /// Procedural cacti for ground decor: low-poly saguaros (trunk + 0..2 arms)
+    /// built from tubes with manually computed normals. Texture is seamless
+    /// cactus skin (cactus.png); UVs wrap around the trunk × along its length.
     /// </summary>
     public static class CactusModelSetup
     {
@@ -43,7 +43,7 @@ namespace Galilego.Universe.EditorTools
                 AppendArm(vertices, normals, uvs, triangles, height * 0.3f, 0f, 1f, 0.9f);
             }
 
-            // Нормализация: высота ~1, основание на y=0.
+            // Normalization: height ~1, base at y=0.
             float maxExtent = 0.0001f;
             for (int i = 0; i < vertices.Count; i++)
             {
@@ -150,7 +150,7 @@ namespace Galilego.Universe.EditorTools
                 }
             }
 
-            // Верхний купол (полюс по касательной) и нижняя заглушка.
+            // Top dome (pole along the tangent) and bottom cap.
             Vector3 topTangent = (spine[steps - 1] - spine[steps - 2]).normalized;
             int topRing = ringStart + ((steps - 1) * (Segments + 1));
             int topPole = vertices.Count;

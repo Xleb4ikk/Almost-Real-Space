@@ -11,17 +11,17 @@ using UnityEngine.SceneManagement;
 namespace Galilego.Building.EditorTools
 {
     /// <summary>
-    /// Одноразовая автонастройка сцены для системы строительства
-    /// (меню Galilego → Building → Setup Scene):
-    ///   1. Вешает LaunchPadZone на «Площадку стартовую» в ПРЕФАБЕ места
-    ///      (источник истины о зоне строительства — там же, где геометрия плиты).
-    ///   2. Создаёт в сцене «ContactZone» (Host + Proxy + Patch + MeshCollider).
-    ///   3. Создаёт «Building» (SpacecraftBuilder) и назначает все ссылки:
-    ///      Runner, Ship, зона, зона контакта, модели двигателей из реестра
-    ///      EngineSpecs, материалы деталей.
-    ///   4. Сохраняет сцену.
-    /// Инструмент идемпотентен: повторный запуск обновляет поля, не плодит объекты.
-    /// Массив моделей двигателей синхронизируется с реестром и сам (EnginePrefabSync).
+    /// One-shot scene setup for the building system
+    /// (menu Galilego → Building → Setup Scene):
+    ///   1. Attaches LaunchPadZone to the pad object (PadObjectName) in the site PREFAB
+    ///      (the source of truth for the build zone is next to the pad geometry).
+    ///   2. Creates "ContactZone" in the scene (Host + Proxy + Patch + MeshCollider).
+    ///   3. Creates "Building" (SpacecraftBuilder) and assigns all references:
+    ///      Runner, Ship, zone, contact zone, engine models from the EngineSpecs
+    ///      registry, part materials.
+    ///   4. Saves the scene.
+    /// The tool is idempotent: re-running updates fields without spawning objects.
+    /// The engine model array also syncs with the registry by itself (EnginePrefabSync).
     /// </summary>
     public static class BuildSceneSetupTool
     {
@@ -31,9 +31,9 @@ namespace Galilego.Building.EditorTools
         private const string PadObjectName = "Площадка стартовая";
 
         /// <summary>
-        /// Модели двигателей из реестра EngineSpecs (путь к FBX — в паспорте):
-        /// порядок = порядок записей в реестре. Отсутствующий файл — warning,
-        /// двигатель пропускается.
+        /// Engine models from the EngineSpecs registry (the FBX path is in the
+        /// spec): order = registry order. A missing file yields a warning and
+        /// the engine is skipped.
         /// </summary>
         public static GameObject[] LoadEnginePrefabs()
         {
@@ -88,7 +88,7 @@ namespace Galilego.Building.EditorTools
             Debug.Log("[BuildSetup] Готово: " + (saved ? "сцена сохранена." : "сцена НЕ сохранена."));
         }
 
-        /// <summary>BuilderUI и VesselMirror на том же объекте: ссылки на билдер.</summary>
+        /// <summary>BuilderUI and VesselMirror on the same object: references to the builder.</summary>
         private static void EnsureUi(SpacecraftBuilder builder)
         {
             BuilderUI ui = builder.GetComponent<BuilderUI>();
@@ -112,7 +112,7 @@ namespace Galilego.Building.EditorTools
             mirror.Builder = builder;
         }
 
-        /// <summary>LaunchPadZone — в префаб места (на объект «Площадка стартовая»).</summary>
+        /// <summary>LaunchPadZone goes into the site prefab (onto the PadObjectName object).</summary>
         private static void PatchSitePrefab()
         {
             string[] guids = AssetDatabase.FindAssets("t:Prefab", new[] { "Assets/_Project/Sites" });
@@ -152,7 +152,7 @@ namespace Galilego.Building.EditorTools
             AssetDatabase.SaveAssets();
         }
 
-        /// <summary>GO «ContactZone»: точная физика у земли (Host + Proxy + Patch).</summary>
+        /// <summary>"ContactZone" GO: accurate physics near the ground (Host + Proxy + Patch).</summary>
         private static ContactZoneHost EnsureContactZone(SimulationRunner runner)
         {
             ContactZoneHost host = Object.FindObjectsByType<ContactZoneHost>(FindObjectsInactive.Include)
@@ -191,7 +191,7 @@ namespace Galilego.Building.EditorTools
             return host;
         }
 
-        /// <summary>GO «Building»: режим строительства, ссылки на детали и зону.</summary>
+        /// <summary>"Building" GO: build mode, references to parts and the zone.</summary>
         private static SpacecraftBuilder EnsureBuilder(SimulationRunner runner, Transform ship, ContactZoneHost host)
         {
             SpacecraftBuilder builder = Object.FindObjectsByType<SpacecraftBuilder>(FindObjectsInactive.Include)

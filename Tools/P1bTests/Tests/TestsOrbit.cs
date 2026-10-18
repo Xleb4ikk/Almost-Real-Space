@@ -23,7 +23,7 @@ internal static partial class P1bTests
 
     private static EventOccurrence? RunDense(StarSystem sys, OrbitingBody planet, Vector3d p0, Vector3d v0, double m0, double horizon, bool atmosphere, out long legacyCalls, out long denseCalls)
     {
-        // Замер цены уточнения: считающий источник на обоих путях.
+        // Measure the refinement cost: a counting source on both paths.
         var physL = new SpacecraftPhysics();
         var countL = new CountingSource(new CachedGravitySource(sys));
         physL.Sources.Add(countL);
@@ -86,11 +86,11 @@ internal static partial class P1bTests
 
     private static int Test21_Kahan()
     {
-        // T21a: чистая арифметика. Точное значение 1e7×0.1 = 1e6.
-        // Ошибка наивного накопления НЕ фиксируется порогом (зависит от порядка
-        // округлений конкретной реализации) — печатается информационно.
-        // Kahan обязан быть существенно ближе: свой абсолютный допуск + лучше
-        // наивного минимум в 100 раз (фактически — на порядки).
+        // T21a: pure arithmetic. Exact value 1e7×0.1 = 1e6.
+        // The naive accumulation error is NOT pinned by a threshold (it depends on
+        // the rounding order of a given implementation) — printed for information.
+        // Kahan must be substantially closer: its own absolute tolerance plus at
+        // least 100× better than naive (in practice — orders of magnitude).
         double naive = 0d;
         var kahan = new KahanAccumulator(0d);
         for (int i = 0; i < 10000000; i++)
@@ -103,9 +103,9 @@ internal static partial class P1bTests
         double kahanErr = Math.Abs(kahan.Sum - 1000000d);
         bool micro = kahanErr < 1e-6d && kahanErr <= naiveErr * 0.01d;
 
-        // T21b: 10 лет баллистического coast дневными кадрами (как игра):
-        // завершение, конечность, границы системы, плановое событие ровно
-        // в конце спена, бит-детерминизм повторного прогона.
+        // T21b: 10 years of ballistic coast in daily frames (as the game does):
+        // completion, finiteness, system bounds, a scheduled event exactly at the
+        // end of the span, bit determinism of a repeated run.
         StarSystem sys = TestSystem();
         sys.EvaluateBodyState(sys.AllBodies[1], 0d, out Vector3d pp, out Vector3d pv);
         double span = 10d * 365d * 86400d;
@@ -141,7 +141,7 @@ internal static partial class P1bTests
         };
 
         LongWarpResult r1 = runYears();
-        // Второй прогон для детерминизма — состояние корабля сверяем отдельно.
+        // Second run for determinism — the ship state is compared separately.
         var phys2 = new SpacecraftPhysics();
         phys2.Sources.Add(new CachedGravitySource(sys));
         var prop2 = new EventDrivenPropagator(phys2);
@@ -168,7 +168,7 @@ internal static partial class P1bTests
 
     private static int Test22_DragContract()
     {
-        // B1 контракт: формула, v_rel вращающейся атмосферы, срезы, warp-исключение.
+        // B1 contract: formula, v_rel of a rotating atmosphere, cutoffs, warp exclusion.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.Atmosphere = new AtmosphereProfile
@@ -180,11 +180,12 @@ internal static partial class P1bTests
         planet.RotationPeriodSeconds = 0d;
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
 
-        // (a) Ручной счёт: h=0, ρ=1.2, v_rel=(1000,0,0), Cd=1, A=10 → F=(-6e6,0,0).
+        // (a) Hand calculation: h=0, ρ=1.2, v_rel=(1000,0,0), Cd=1, A=10 → F=(-6e6,0,0).
         var drag = new DragSource(planet);
-        // Допуски 1e-6, не 1e-12: вычитание позиции тела (|bp|~1.5e11) даёт шум
-        // высоты ±3e-5м → шум плотности ~4e-9. Тот самый fp-эффект world-origin
-        // (ради него A2): физика терпит (1e-11 сил), тесты туже не требуют.
+        // Tolerances 1e-6, not 1e-12: subtracting the body position (|bp|~1.5e11)
+        // gives altitude noise ±3e-5 m → density noise ~4e-9. The world-origin fp
+        // effect (the reason for A2): physics tolerates 1e-11 of forces, tests ask
+        // no tighter.
         Vector3d pA = bp0 + new Vector3d(planet.Radius, 0d, 0d);
         DynamicsContribution cA = drag.Evaluate(pA, bv0 + new Vector3d(1000d, 0d, 0d), 1000d, 0d);
         bool formula = Math.Abs((cA.Force.X + 6000000d) / 6000000d) < 1e-6d
@@ -194,9 +195,9 @@ internal static partial class P1bTests
         DynamicsContribution cHalf = drag.Evaluate(bp0 + new Vector3d(planet.Radius + halfH, 0d, 0d), bv0 + new Vector3d(1000d, 0d, 0d), 1000d, 0d);
         bool half = Math.Abs(cHalf.Force.X / cA.Force.X - 0.5d) < 1e-6d;
 
-        // (b) Дисциплина v_rel: вращающееся тело (период 3600), точка над экватором.
-        // Со-вращающийся корабль (|v_world| огромна) → строго 0; инерциально
-        // висящий → drag против v_rel, не против мировой скорости.
+        // (b) v_rel discipline: rotating body (period 3600), point above the equator.
+        // A co-rotating ship (|v_world| huge) → exactly 0; an inertially hovering
+        // one → drag opposes v_rel, not world velocity.
         planet.RotationPeriodSeconds = 3600d;
         double rAt = planet.Radius + 50000d;
         Vector3d rVec = new Vector3d(0d, rAt, 0d);
@@ -211,8 +212,8 @@ internal static partial class P1bTests
         double expectHover = 0.5d * rho50 * 10d * vRelHover.Magnitude * vRelHover.Magnitude;
         bool hoverMag = Math.Abs(cHover.Force.Magnitude / expectHover - 1d) < 1e-6d;
 
-        // (c) Срезы: над Top → 0; под Top → ≠0; нет атмосферы → 0; Cd=0 → 0;
-        // вырожденная (H=0) → 0 и конечно (не NaN).
+        // (c) Cutoffs: above Top → 0; below Top → ≠0; no atmosphere → 0; Cd=0 → 0;
+        // degenerate (H=0) → 0 and finite (not NaN).
         DynamicsContribution cAbove = drag.Evaluate(bp0 + new Vector3d(planet.Radius + 100001d, 0d, 0d), bv0 + new Vector3d(1000d, 0d, 0d), 1000d, 0d);
         DynamicsContribution cBelow = drag.Evaluate(bp0 + new Vector3d(planet.Radius + 99999d, 0d, 0d), bv0 + new Vector3d(1000d, 0d, 0d), 1000d, 0d);
         bool cutoff = cAbove.Force.SqrMagnitude == 0d && cBelow.Force.SqrMagnitude > 0d;
@@ -227,7 +228,7 @@ internal static partial class P1bTests
         bool guards = cNoAtm.Force.SqrMagnitude == 0d && cNoCd.Force.SqrMagnitude == 0d
             && cDeg.Force.SqrMagnitude == 0d && cDeg.Force.IsFinite;
 
-        // (e) Дальний варп: внутри атмосферы запрещён drag-вкладом, снаружи разрешён.
+        // (e) Long warp: forbidden inside the atmosphere by the drag contribution, allowed outside.
         var phys = new SpacecraftPhysics();
         phys.Sources.Add(new CachedGravitySource(sys));
         phys.Sources.Add(drag);
@@ -258,9 +259,9 @@ internal static partial class P1bTests
 
     private static int Test22_DragDip()
     {
-        // (d) Диссипация отдельно от детекта: нырок с drag и без — оба находят
-        // [Exit, Entry], но скорость на выходе с drag меньше (энергия ушла).
-        // События не тронуты: те же детекторы, та же бисекция.
+        // (d) Dissipation separate from detection: a dip with and without drag —
+        // both find [Exit, Entry], but the exit speed is lower with drag (energy
+        // lost). Events untouched: same detectors, same bisection.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.Atmosphere = new AtmosphereProfile
@@ -336,16 +337,16 @@ internal static partial class P1bTests
 
     private static int Test23_Decay()
     {
-        // Орбитальный decay в тонкой атмосфере: 10 витков, апо/пери и энергия
-        // монотонно вниз (рост только в пределах wobble возмущений 1e-6).
+        // Orbital decay in a thin atmosphere: 10 orbits, apo/peri and energy
+        // monotonically down (increase only within the 1e-6 wobble of perturbations).
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.Atmosphere = ThinAtmosphere();
         planet.RotationPeriodSeconds = 0d;
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
-        // Орбита 250км в тонкой атмосфере: линейный режим (−0.7км/виток),
-        // без лавины (на 200км обратная связь ρ сваливает в планету за ~10
-        // витков — проверено отдельным прогоном: ΔE/E=−0.68, пери 3.8e6м).
+        // 250 km orbit in a thin atmosphere: linear regime (−0.7 km/orbit), no
+        // avalanche (at 200 km the ρ feedback drops into the planet within ~10
+        // orbits: ΔE/E=−0.68, periapsis 3.8e6 m).
         double mu = planet.ResolveStandardGravitationalParameter();
         double r0 = planet.Radius + 250000d;
         double circV = Math.Sqrt(mu / r0);
@@ -434,9 +435,9 @@ internal static partial class P1bTests
 
     private static int Test23_Retrograde()
     {
-        // Вращающаяся атмосфера в динамике: +X против ветра, −X по ветру
-        // (в точке +Y атмосфера идёт −X). Потери ∝ v_rel²: отношение ≈
-        // ((7800+473)/(7800−473))² ≈ 1.275. Допуск [1.1, 1.5] — знак + темп.
+        // Rotating atmosphere in dynamics: +X against the wind, −X with it
+        // (at point +Y the atmosphere moves −X). Losses ∝ v_rel²: ratio ≈
+        // ((7800+473)/(7800−473))² ≈ 1.275. Tolerance [1.1, 1.5] — sign + rate.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.Atmosphere = ThinAtmosphere();
@@ -454,9 +455,9 @@ internal static partial class P1bTests
 
     private static int Test23_TopCrossing()
     {
-        // Срез Top: сила непрерывна (ρ→0 снизу, 0 сверху), состояние без скачка,
-        // события [Entry, Touchdown] на месте. Стандартная плотная атмосфера,
-        // крутое падение с 200км, сэмпл 1с: |Δv| ≤ 25м/с везде.
+        // Top cutoff: force is continuous (ρ→0 from below, 0 above), state without
+        // a jump, events [Entry, Touchdown] present. Standard dense atmosphere,
+        // steep fall from 200 km, 1 s sample: |Δv| ≤ 25 m/s throughout.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.Atmosphere = new AtmosphereProfile
@@ -481,8 +482,9 @@ internal static partial class P1bTests
         prop.CrossingDetectors.Add(AltitudeCrossingDetector.ForAtmosphereEntry(planet));
         prop.CrossingDetectors.Add(AltitudeCrossingDetector.ForTouchdown(planet));
         var ship = new Spacecraft(bp0 + new Vector3d(0d, planet.Radius + 200000d, 0d), bv0 + new Vector3d(0d, -1000d, 0d), 1000d);
-        // Непрерывность меряем только в окне ±30с вокруг пересечения Top:
-        // у земли торможение в тысячи g, и это тоже физика, а не скачок силы.
+        // Continuity is measured only in a ±30 s window around the Top crossing:
+        // near the ground braking is thousands of g, which is also physics, not a
+        // force jump.
         var traceT = new List<double>();
         var traceV = new List<Vector3d>();
         var traceAlt = new List<double>();
@@ -516,8 +518,8 @@ internal static partial class P1bTests
             }
         }
 
-        // Окно ±3с: именно зона включения силы (drag 0→~1м/с² + g 9.4).
-        // Шире нельзя: отвесное падение 2.5км/с за 30с уже в инферно на 40км.
+        // ±3 s window: exactly the force switch-on zone (drag 0→~1 m/s² + g 9.4).
+        // Not wider: a 2.5 km/s vertical fall is already deep in after 30 s.
         double maxDv = 0d;
         for (int i = 1; i < traceT.Count; i++)
         {
@@ -528,8 +530,8 @@ internal static partial class P1bTests
             }
         }
 
-        // События — отдельным чистым прогоном пропагатора (шаговый цикл выше —
-        // только для непрерывности скорости; детект ниже — штатным путём).
+        // Events via a separate clean propagator run (the stepping loop above is
+        // only for velocity continuity; detection below uses the standard path).
         var phys2 = new SpacecraftPhysics();
         phys2.Sources.Add(new CachedGravitySource(sys));
         phys2.Sources.Add(new DragSource(planet));
@@ -565,9 +567,9 @@ internal static partial class P1bTests
 
     private static StarSystem TwoBodySystem()
     {
-        // Звезда + одна планета без луны: работа третьих тел (~9% от темпа drag
-        // на 60с окне) исключена конструктивно, остался только прилив звезды
-        // ~0.1%. Для baseline темпа, не для общей физики.
+        // Star + one planet without a moon: third-body work (~9% of the drag rate
+        // over a 60 s window) is excluded by construction, leaving only the star's
+        // tide ~0.1%. For a rate baseline, not general physics.
         var star = new OrbitingBody
         {
             Name = "Звезда",
@@ -594,9 +596,9 @@ internal static partial class P1bTests
 
     private static int Test23_RateBaseline()
     {
-        // Baseline темпа: измеренный dE/dt за 60с против аналитики −½ρCdAv³/m
-        // (круговая 200км, невращающаяся планета, тонкая атмосфера, двухтельная
-        // система). Допуск 5%.
+        // Rate baseline: measured dE/dt over 60 s against the analytic −½ρCdAv³/m
+        // (circular 200 km, non-rotating planet, thin atmosphere, two-body system).
+        // Tolerance 5%.
         StarSystem sys = TwoBodySystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.Atmosphere = ThinAtmosphere();
@@ -624,8 +626,8 @@ internal static partial class P1bTests
 
     private static int Test24_History()
     {
-        // Инвариант 1: история — только чтение трека; голый прогон и прогон
-        // с историей дают бит-в-бит то же состояние/события.
+        // Invariant 1: history only reads the track; a bare run and a run with
+        // history give bit-identical state/events.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
@@ -660,8 +662,8 @@ internal static partial class P1bTests
             && shipBare.Velocity.Z == shipHist.Velocity.Z && shipBare.Mass == shipHist.Mass
             && evBare.Value.TimeSeconds == evHist.Value.TimeSeconds;
 
-        // Инвариант 2: сетка времён не зависит от нарезки чанков (T11-нырок,
-        // slices 10с против одного вызова; stride 60).
+        // Invariant 2: the time grid does not depend on chunk slicing (T11 dip,
+        // 10 s slices vs a single call; stride 60).
         planet.Atmosphere = new AtmosphereProfile
         {
             TopAltitudeMeters = 100000d,
@@ -703,8 +705,8 @@ internal static partial class P1bTests
 
         bool deterministic = gridEqual && maxEventDt < 1e-3d && maxValDiff < 10d;
 
-        // Инвариант 3: грубый stride 120 — события 26.7/407 между узлами сетки,
-        // но сохраняются с точными временами + границы 0/600.
+        // Invariant 3: coarse stride 120 — events 26.7/407 fall between grid nodes
+        // but are kept with exact times plus boundaries 0/600.
         var histC = RunDipHistory(sys, planet, dipP, dipV, 10d, 120d);
         bool preserved = histC.Count == 8
             && histC[0].TimeSeconds == 0d && histC[0].Kind == HistorySampleKind.Boundary
@@ -720,8 +722,8 @@ internal static partial class P1bTests
 
         preserved = preserved && eventCount == 2;
 
-        // Юнит слияния на синтетическом треке: событие ровно на сетке (4.0),
-        // почти на границе (10−5e-10) и внутри (5.0); приоритет Event.
+        // Merge unit on a synthetic track: an event exactly on a grid node (4.0),
+        // nearly on the boundary (10−5e-10) and inside (5.0); priority is Event.
         var zero = SpacecraftIntegrationState.Zero;
         var coeffs = new ShampineCoeffs(zero, zero, zero, zero);
         var synth = new List<DenseSegment>();
@@ -789,8 +791,8 @@ internal static partial class P1bTests
 
     private static int Test25_Lambert()
     {
-        // (a) Гоман ровно 180°: r1=7e6, r2=−14e6, dt=полпериода a_t=10.5e6.
-        // |v1| — точная виз-вива, v1⊥r1, прибытие — KeplerAdvance в r2.
+        // (a) Hohmann exactly 180°: r1=7e6, r2=−14e6, dt=half-period a_t=10.5e6.
+        // |v1| is the exact vis-viva, v1⊥r1, arrival is KeplerAdvance to r2.
         double mu = 3.986e14d;
         var r1 = new Vector3d(7e6d, 0d, 0d);
         var r2 = new Vector3d(-14e6d, 0d, 0d);
@@ -803,7 +805,7 @@ internal static partial class P1bTests
             && Math.Abs(Vector3d.Dot(hohmann.DepartureVelocity, r1)) < 1e-6d
             && (arrP - r2).Magnitude < 1d;
 
-        // (b) Самосогласованность 90° + long way: оба прибывают.
+        // (b) Self-consistency 90° + long way: both arrive.
         var q1 = new Vector3d(7e6d, 0d, 0d);
         var q2 = new Vector3d(0d, 10e6d, 0d);
         LambertSolution shortWay = LambertSolver.Solve(q1, q2, 4000d, mu, false);
@@ -812,7 +814,7 @@ internal static partial class P1bTests
         KeplerPredictor.Advance(q1, longWay.DepartureVelocity, mu, 20000d, out Vector3d arrL, out _);
         bool chordsOk = (arrS - q2).Magnitude < 1d && (arrL - q2).Magnitude < 1d;
 
-        // (c) Стражи: dt≤0, нулевой вектор, совпадающие точки.
+        // (c) Guards: dt≤0, zero vector, coincident points.
         bool guards = false;
         try
         {
@@ -837,8 +839,8 @@ internal static partial class P1bTests
             }
         }
 
-        // (d) Porkchop планетаА→планетаБ: таблица без NaN, best конечен и минимален,
-        // детерминизм бит-в-бит.
+        // (d) Porkchop planetA→planetB: table free of NaN, best finite and minimal,
+        // bit-for-bit determinism.
         StarSystem sys = TestSystem();
         OrbitingBody star = sys.Root;
         OrbitingBody planetA = sys.AllBodies[1];
@@ -872,7 +874,7 @@ internal static partial class P1bTests
         bool found = Porkchop.TryBest(table1, out int bi, out int bj);
         bool bestOk = found && table1[bi, bj].DeltaV == best;
 
-        // (e) Kepler-предикт против численного интегратора: круговая, 1 виток.
+        // (e) Kepler predictor vs numerical integrator: circular, 1 orbit.
         StarSystem sys2 = TwoBodySystem();
         OrbitingBody planet2 = sys2.AllBodies[1];
         planet2.EvaluateWorldState(0d, out Vector3d pp, out Vector3d pv);
@@ -888,10 +890,10 @@ internal static partial class P1bTests
         KeplerPredictor.Advance(
             new Vector3d(0d, rCirc, 0d), new Vector3d(vCirc, 0d, 0d), mu2, period,
             out Vector3d kpP, out _);
-        // Численный корабль в мировой рамке vs предикт относительно планеты:
-        // сравниваем относительно тела в конце. Граница 50м, не 1м: численный
-        // чувствует прилив звезды (~16м за виток), предикт — чистые два тела.
-        // Это честная граница модели, а не шум интегратора.
+        // Numerical ship in the world frame vs prediction relative to the planet:
+        // compared relative to the body at the end. Bound 50 m, not 1 m: the
+        // numerical one feels the star's tide (~16 m per orbit), the prediction is
+        // pure two-body. This is an honest model bound, not integrator noise.
         double numericVsKepler = ((ship.Position - pp1) - kpP).Magnitude;
 
         Check(hohmannOk && chordsOk && guards && tableOk && deterministic && bestOk && numericVsKepler < 50d, "T25 lambert",
@@ -917,9 +919,9 @@ internal static partial class P1bTests
 
     private static int Test27_Impulsive()
     {
-        // P1c.1: pipeline porkchop→Ламберт→валидатор; ударный invalid;
-        // детерминизм; drag виден валидатором.
-        // (a) ПланетаА(t=5д) → планетаБ(t=45д), best клетка 3×3.
+        // P1c.1: porkchop→Lambert→validator pipeline; impact invalid;
+        // determinism; drag seen by the validator.
+        // (a) planetA(t=5d) → planetB(t=45d), best 3×3 cell.
         StarSystem sys = TestSystem();
         OrbitingBody star = sys.Root;
         OrbitingBody planetA = sys.AllBodies[1];
@@ -929,15 +931,10 @@ internal static partial class P1bTests
         bool hasBest = Porkchop.TryBest(table, out int bi, out int bj);
         PorkchopCell best = table[bi, bj];
         double muStar = star.ResolveStandardGravitationalParameter();
-        // Межпланетный пайплайн: Ламберт центр→центр (как планировщик), вылет
-        // с края SOI на v∞. Класс точности — patched-conics (~1e9м, меньше SOI
-        // цели быть не обязан): проверяет сквозное исполнение, не прецизионность.
-        // Прецизионность — лунным перелётом ниже, где two-body ≈ N-body.
-        // Честная оговорка про границу 5e9d ниже: она зафиксирована ПОСЛЕ замера
-        // (5e6 → провал 8.67e9 на старте из глубины well; 5e8 → провал 1.17e9
-        // на старте с края SOI), а не предсказана из теории. Роль границы —
-        // gross-guard от мусора (NaN/расходимость/не та геометрия дают 1e11+),
-        // не доказательство точности. Точность доказывает лунный кейс.
+        // Interplanetary pipeline: Lambert centre→centre (like the planner),
+        // departure from the SOI edge at v∞. patched-conics accuracy class:
+        // end-to-end execution, not precision (the lunar case below covers that).
+        // The 5e9d bound is only a gross guard against garbage.
         double tD = best.DepartTimeSeconds;
         double tA = best.ArriveTimeSeconds;
         planetA.EvaluateWorldState(tD, out Vector3d depP, out Vector3d depV);
@@ -956,8 +953,8 @@ internal static partial class P1bTests
         ValidationResult val = TrajectoryValidator.ValidateImpulsive(sys, flightPhys, flightProp,
             departState, tD, escVel, planetB, tA, 5e9d);
 
-        // Лунная прецизионность: парковка 8e6м → Луна за 3 суток, Ламберт
-        // в рамке планеты (там two-body почти точен), цель — сама Луна.
+        // Lunar precision: parking 8e6 m → Moon in 3 days, Lambert in the planet
+        // frame (where two-body is nearly exact), target is the Moon itself.
         OrbitingBody moon = sys.AllBodies[2];
         double muA = planetA.ResolveStandardGravitationalParameter();
         double parkR = planetA.Radius + 8e6d;
@@ -976,9 +973,9 @@ internal static partial class P1bTests
         var moonState = new SpacecraftIntegrationState { Position = shipP0, Velocity = avD + lamM.DepartureVelocity, Mass = 1000d };
         ValidationResult moonVal = TrajectoryValidator.ValidateImpulsive(sys, moonPhys, moonProp,
             moonState, tD2, avD + lamM.DepartureVelocity, moon, tA2, 1e6d);
-        // Прямое попадание в цель — тоже прибытие (в пределах тела), а не промах:
-        // касание ЦЕЛИ за 8.8кс до tA (фокусировка гравитацией потянула раньше).
-        // Отличать от удара НЕ в цель (T27b): там invalid без оговорок.
+        // A direct hit on the target is also an arrival (within the body), not a
+        // miss: touching the TARGET 8.8 ks before tA (gravity focusing pulled it
+        // earlier). Distinguished from hitting a NON-target (T27b), invalid there.
         bool moonImpact = false;
         for (int i = 0; i < moonVal.Events.Count; i++)
         {
@@ -990,8 +987,8 @@ internal static partial class P1bTests
 
         bool moonOk = (moonVal.Valid && moonVal.ArrivalPositionErrorMeters < 1e6d) || moonImpact;
 
-        // (b) Ударный invalid: радиально вниз с 8e6м, touchdown в пути.
-        // Реальный корабль-образец не мутирует бит-в-бит.
+        // (b) Impact invalid: radially down from 8e6 m, touchdown en route.
+        // The real sample ship does not mutate bit-for-bit.
         planetA.EvaluateWorldState(0d, out Vector3d bp0, out Vector3d bv0);
         var sample = new Spacecraft(bp0 + new Vector3d(0d, planetA.Radius + 8e6d, 0d), bv0 + new Vector3d(0d, -3000d, 0d), 1000d);
         Vector3d sampleP0 = sample.Position;
@@ -1013,7 +1010,7 @@ internal static partial class P1bTests
             }
         }
 
-        // (c) Детерминизм: повтор лунной валидации — бит-в-бит.
+        // (c) Determinism: repeat of the lunar validation — bit-for-bit.
         var moonPhys2 = FlightPhysics(sys, false, planetA);
         var moonProp2 = new EventDrivenPropagator(moonPhys2);
         moonProp2.CrossingDetectors.Add(AltitudeCrossingDetector.ForTouchdown(planetA));
@@ -1024,8 +1021,8 @@ internal static partial class P1bTests
             && moonVal.ArrivalPositionErrorMeters == moonVal2.ArrivalPositionErrorMeters
             && moonVal.MinClearanceMeters == moonVal2.MinClearanceMeters;
 
-        // (d) Drag виден: нырок 95км (T22 ICs), цель — планетаБ далеко
-        // (допуск огромный, важна РАЗНИЦА промахов с/без drag).
+        // (d) Drag is visible: a 95 km dip (T22 ICs), target planetB is far away
+        // (huge tolerance; the DIFFERENCE in misses with/without drag matters).
         planetA.Atmosphere = new AtmosphereProfile
         {
             TopAltitudeMeters = 100000d,
@@ -1038,8 +1035,8 @@ internal static partial class P1bTests
             Velocity = bv0 + new Vector3d(3000d, 800d, 0d),
             Mass = 1000d
         };
-        // Окно сравнения 150с: оба ещё в воздухе (вход ~10с, возврат ~200с),
-        // расхождение уже накопилось (~200м), подземного хаоса нет.
+        // 150 s comparison window: both still in the air (entry ~10 s, return
+        // ~200 s), the divergence has accumulated (~200 m), no underground chaos.
         var cleanPhys = FlightPhysics(sys, false, planetA);
         var cleanProp = new EventDrivenPropagator(cleanPhys);
         ValidationResult clean = TrajectoryValidator.ValidateImpulsive(sys, cleanPhys, cleanProp,
@@ -1059,9 +1056,9 @@ internal static partial class P1bTests
 
     private static int Test28_FiniteBurn()
     {
-        // P1c.2: сухой=живой (детерминизм, НЕ физика); бюджет топлива;
-        // gravity losses парой одинаковый-Δv/тяга×10, направление инерциально
-        // фиксировано (иначе примешался бы steering loss).
+        // P1c.2: dry=live (determinism, NOT physics); fuel budget;
+        // gravity losses from a pair with equal Δv / thrust×10, direction fixed
+        // inertially (otherwise steering loss would mix in).
         StarSystem sys = TestSystem();
         OrbitingBody planetA = sys.AllBodies[1];
         double muA = planetA.ResolveStandardGravitationalParameter();
@@ -1072,7 +1069,7 @@ internal static partial class P1bTests
         Vector3d parkV0 = bv0 + new Vector3d(parkV, 0d, 0d);
         var preset = new BurnTolerancePreset(1e-2d, 1e-5d, 1e-4d, 1e-10d);
 
-        // (a) Детерминизм сухого прогона (честная подпись: не доказательство физики).
+        // (a) Dry-run determinism (honest label: not a proof of physics).
         var thrustA = new ThrustSource(20000d, 4000d, new ConstantIsp(300d));
         thrustA.ThrottleAt = (time) => time >= 100d && time < 110d ? 1d : 0d;
         var physA = FlightPhysics(sys, false, planetA);
@@ -1091,7 +1088,7 @@ internal static partial class P1bTests
             && live.EndState.Velocity.Z == dry.EndState.Velocity.Z
             && live.EndState.Mass == dry.EndState.Mass;
 
-        // (b) Перерасход: бак 10кг, окно 30с требует ~20кг → depletion, invalid.
+        // (b) Overuse: 10 kg tank, a 30 s window needs ~20 kg → depletion, invalid.
         var thrustB = new ThrustSource(2000d, 4990d, new ConstantIsp(300d));
         thrustB.ThrottleAt = (time) => time >= 100d && time < 130d ? 1d : 0d;
         var physB = FlightPhysics(sys, false, planetA);
@@ -1106,9 +1103,9 @@ internal static partial class P1bTests
             && over.StoppingEvent.HasValue && over.StoppingEvent.Value.Kind == EventKind.PropellantDepleted
             && Math.Abs(over.FuelUsedKg - 10d) < 1e-4d;
 
-        // (c) Gravity losses: Δv=1500м/с, тяга 60000Н vs 6000Н (горение ~157с
-        // vs ~1570с), направление — инерциальный прогонный вектор в зажигании.
-        // Флаги валидатора: допуск уже потери → invalid, шире → valid.
+        // (c) Gravity losses: Δv=1500 m/s, thrust 60000 N vs 6000 N (burn ~157 s
+        // vs ~1570 s), direction is the inertial prograde vector at ignition.
+        // Validator flags: tolerance below the loss → invalid, wider → valid.
         double isp = 300d;
         double g0 = ThrustSource.StandardGravity;
         double m0 = 8000d;
@@ -1139,9 +1136,9 @@ internal static partial class P1bTests
 
     private static int Test32_Escape()
     {
-        // V3: убегание от звезды 10 лет (v∞=27км/с, ~57 а.е.). v∞ сохраняется
-        // (нет скрытых источников/стоков энергии в крейсере), прибытие сверяется
-        // с гиперболическим Kepler (возмущения планет — замер, не игнор).
+        // V3: escape from the star over 10 years (v∞=27 km/s, ~57 AU). v∞ is
+        // conserved (no hidden energy sources/sinks in the cruiser), arrival is
+        // checked against a hyperbolic Kepler (planet perturbations measured, not ignored).
         StarSystem sys = TestSystem();
         OrbitingBody star = sys.Root;
         double muStar = star.ResolveStandardGravitationalParameter();
@@ -1180,14 +1177,12 @@ internal static partial class P1bTests
 
     private static int Test34_GoldenState()
     {
-        // Golden-master управляемого базиса (митигация риска #1, не доказательство
-        // корректности — она у T13/Циолковского): фиксированный вход, один шаг
-        // SpacecraftPhysics.Step, эталон Position/Velocity/Mass побитово + число
-        // RHS-вызовов (ловит и смену траектории шагов, не только финал).
-        // Значения записаны с зелёного прогона; любое молчаливое изменение базиса
-        // роняет тест — обновлять эталон только явным решением, не подгонкой.
-        // Независимый якорь: та же дуга аналитикой KeplerPredictor в допуске
-        // (проверяет, что зацементировано не мусорное значение).
+        // Golden-master of the integrator basis (risk mitigation, not a correctness
+        // proof — that is T13/Tsiolkovsky): fixed input, one SpacecraftPhysics.Step,
+        // bitwise Position/Velocity/Mass reference plus the RHS call count.
+        // Values are from a green run; update the reference only by an explicit
+        // decision, not by fitting. Independent anchor: the same arc by
+        // KeplerPredictor within tolerance.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.EvaluateWorldState(0d, out Vector3d bodyPos, out Vector3d bodyVel);
@@ -1223,21 +1218,19 @@ internal static partial class P1bTests
 
     private static int Test39_SecularDrift()
     {
-        // Step 0 + регресс-гейт решения «рельсы навсегда / bake / PEFRL»:
-        // 80 лет двумя шагами (сходимость обязана быть << эффекта) + 2000 лет
-        // без луны для секулярного темпа planet-planet (луна заставляет мелкий
-        // шаг, 2000 лет с ней неподъёмны).
-        // μ-фикс (OrbitingBody): внешняя орбита μ_parent_own + μ_subtree.
-        // Якоби-инициализация N-body: центр планеты смещён так, чтобы барицентр
-        // поддерева совпал с рельсой, иначе +12 м/с ложного дрейфа (~1e9 м/год,
-        // поймано диагностикой роста full vs noMoon).
+        // Step 0 + regression gate for the "rails forever / bake / PEFRL" decision:
+        // 80 years with two steps (convergence must be << the effect) + 2000 years
+        // without the moon for the secular planet-planet rate (the moon forces a
+        // small step, 2000 years with it is infeasible).
+        // Outer orbit μ = μ_parent_own + μ_subtree, with the N-body Jacobi
+        // initialization placing the sub-tree barycentre on the rail.
         StarSystem sys = TestSystem();
         double[] posFine;
         double[] devFine = NBodyDeviations(sys, 80d, 900d, 1d, out posFine);
         double[] posCoarse;
         double[] devCoarse = NBodyDeviations(sys, 80d, 1800d, 1d, out posCoarse);
-        // Сходимость инструмента обязана быть на порядки ниже эффекта:
-        // иначе меряем ошибку интегратора, а не физику.
+        // The tool's convergence must be orders of magnitude below the effect:
+        // otherwise we measure integrator error, not physics.
         double worstConv = 0d;
         for (int i = 0; i < posFine.Length; i++)
         {
@@ -1260,7 +1253,7 @@ internal static partial class P1bTests
             if (devLong[i] > worst2000) worst2000 = devLong[i];
         }
 
-        // Самопроверка инструмента: повтор тем же шагом — бит-в-бит.
+        // Tool self-check: repeat with the same step — bit-for-bit.
         double[] posRepeat;
         double[] devRepeat = NBodyDeviations(sys, 80d, 900d, 1d, out posRepeat);
         bool deterministic = true;
@@ -1280,12 +1273,11 @@ internal static partial class P1bTests
             perBody += string.Format("{0}={1:E2}м ", sys.AllBodies[i].Name, devFine[i]);
         }
 
-        // Решение Step 0 (партия 40-80 лет): эффект 1e9 м >> порога 500 км —
-        // «рельсы навсегда» мертвы, нужен bake (200-500 лет фиксированной эфемериды,
-        // без скользящего окна/чекпоинтов). Гейт пинит именно это решение:
-        // эффект обязан ПРЕВЫШАТЬ порог (иначе решение пересмотреть), сходимость —
-        // быть на порядки ниже эффекта. Верхние границы — от регресса инструмента.
-        // Планета Б без луны: 7.25e8 м ≈ SOI 5.8e5 км / Hill 9.9e5 км — порядок SOI.
+        // Step 0 decision: the effect 1e9 m >> the 500 km threshold, so "rails
+        // forever" is dead and bake is needed (200-500 years of fixed ephemeris).
+        // The gate pins this: the effect must EXCEED the threshold, convergence must
+        // be orders below. Upper bounds come from tool regression. Planet B without
+        // the moon: 7.25e8 m ≈ the SOI/Hill order.
         Check(worst80 > 500000d && worst80 < 5000000000d && worstConv < 5000d && worst2000 > 20000000d && worst2000 < 100000000000d && deterministic, "T39 secular-drift",
             string.Format("80 лет: худш. {0:E2}м (в (500км, 5e9м): bake-решение) [{1}]; сходимость h/h2: {2:E2}м (<5км); 2000 лет: худш. {3:E2}м (в (20000км, 1e11м)); детерминизм: {4}",
                 worst80, perBody, worstConv, worst2000, deterministic));
@@ -1294,10 +1286,10 @@ internal static partial class P1bTests
 
     private static int Test36_HelioDrift()
     {
-        // Долгая гелиоцентрика: круговая r=2.5e11 в TwoBodySystem (возмущение
-        // планеты реально, ~2e-5 относительно — входит в границу осознанно),
-        // 5 лет помесячно (60 чанков). Метрики: ΔE/E в рамке звезды + Δr/r +
-        // ограниченность 0.5·r0<r<2·r0. Границы после замера (дисциплина).
+        // Long heliocentric: circular r=2.5e11 in TwoBodySystem (the planet
+        // perturbation is real, ~2e-5 relative — included in the bound deliberately),
+        // 5 years monthly (60 chunks). Metrics: ΔE/E in the star frame + Δr/r +
+        // boundedness 0.5·r0<r<2·r0.
         StarSystem sys = TwoBodySystem();
         OrbitingBody star = sys.AllBodies[0];
         double mu = star.ResolveStandardGravitationalParameter();
@@ -1352,12 +1344,10 @@ internal static partial class P1bTests
 
     private static int Test37_LunarYears()
     {
-        // Возмущённая Луной многолетняя: та же высокая круговая, что T30
-        // (R+2e7, прямое движение), но в полной системе С Луной, 5 лет
-        // помесячно (60 чанков). Метрики те же, что T30 (ΔE/E, Δапо по истинному
-        // a(1+e)=r для круговой) + ограниченность (без побега/падения).
-        // Границы после замера; отношение к безлунным числам T30 — в отчёт
-        // (цена Луны числом, а не словами).
+        // Moon-perturbed multi-year: the same high circular orbit as T30
+        // (R+2e7, prograde), but in the full system WITH the moon, 5 years monthly
+        // (60 chunks). Same metrics as T30 (ΔE/E, Δapo via the true a(1+e)=r for a
+        // circular orbit) + boundedness (no escape/fall).
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         double mu = planet.ResolveStandardGravitationalParameter();
@@ -1402,8 +1392,8 @@ internal static partial class P1bTests
             if (da > worstDa) worstDa = da;
         }
 
-        // Цена Луны числом: 1.46e-4 против 5.47e-6 безлунного T30 (~27x) —
-        // тот же интегратор, та же орбита, разница только в физике.
+        // Cost of the moon as a number: ~27x the moonless T30, same integrator and
+        // orbit, the difference is only physics.
         Check(worstDe < 5e-4d && worstDa < 3e-2d && minR > planet.Radius && maxR < 10d * r, "T37 lunar-years",
             string.Format("5 лет с Луной, 60 чанков: худш. ΔE/E={0:E2}, худш. Δапо={1:E2}; радиус в [{2:E2},{3:E2}] (R={4:E2})",
                 worstDe, worstDa, minR, maxR, planet.Radius));
@@ -1412,13 +1402,11 @@ internal static partial class P1bTests
 
     private static int Test38_LowDrag()
     {
-        // Низкие drag-орбиты длительно: круговая 200км, тонкая атмосфера
-        // (те же Cd=1/A=10/m=1000, что T23 — сравнимо), 6 витков почанково
-        // (180км/8 и 190км/8 падали в планету — лавина быстрее линейной оценки;
-        // прецедент сдвига T23 200→250км). Метрики как T23 (монотонность со
-        // слаками +10м/1e-6) + пери > R каждый виток + суммарный сброс
-        // в коридоре от аналитической оценки (коридор после замера; аналитика
-        // по начальным условиям занижает, т.к. ρ растёт при снижении).
+        // Low drag orbits over long spans: circular 200 km, thin atmosphere (same
+        // Cd=1/A=10/m=1000 as T23 — comparable), 6 orbits in chunks. Metrics as T23
+        // (monotonicity with +10 m/1e-6 slacks) + periapsis > R every orbit + total
+        // drop in a corridor around the analytic estimate (which understates, since
+        // ρ grows as it descends).
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.Atmosphere = ThinAtmosphere();
@@ -1484,9 +1472,8 @@ internal static partial class P1bTests
             prevE = e;
         }
 
-        // Знак: measured-сброс отрицательный (энергия падает), analyticDrop —
-        // положительная величина темпа. Сравниваем модули (первый прогон
-        // делил знаковое на положительное и получал −1.21 — ошибка теста).
+        // Sign: the measured drop is negative (energy falls), analyticDrop is a
+        // positive rate magnitude, so magnitudes are compared.
         double totalDrop = prevE - e0;
         double ratio = Math.Abs(totalDrop) / analyticDrop;
         Check(mono && !crashed && doneOrbits == 6 && finalMinR > planet.Radius + 50000d && ratio > 0.5d && ratio < 4d, "T38 low-drag",
@@ -1497,10 +1484,10 @@ internal static partial class P1bTests
 
     private static int Test61_UnbakeableMoon()
     {
-        // Луна с периодом 5.4 ч: сегмент 2 сут не может аппроксимировать 9
-        // wrapped витков — бейк обязан ГРОМКО отказаться (и оценщик тоже), а не
-        // выдать алиасированный мусор. Каскад: планета несёт рябь луны — тоже
-        // unbakeable, звезда не в счёте (не выпекается).
+        // Moon with a 5.4 h period: a 2-day segment cannot fit 9 wrapped orbits, so
+        // bake must refuse LOUDLY (and the estimator too), not emit aliased garbage.
+        // Cascade: the planet carries the moon's ripple — also unbakeable; the star
+        // is not counted (it is not baked).
         StarSystem sys = TwelveBodySystem();
         OrbitingBody mI1 = null;
         foreach (OrbitingBody b in sys.AllBodies)
@@ -1511,7 +1498,7 @@ internal static partial class P1bTests
             }
         }
 
-        mI1.SemiMajorAxis = 1.5e7; // период = 2π√(a³/μ_планеты) ≈ 5.4 ч
+        mI1.SemiMajorAxis = 1.5e7; // period = 2π√(a³/μ_planet) ≈ 5.4 h
 
         bool estimateThrows = false;
         try
@@ -1554,18 +1541,18 @@ internal static partial class P1bTests
 
     private static int Test63_KeplerContinuation()
     {
-        // P1: кеплерово продолжение за концом рельсы. Игрок, дошедший до конца
-        // испечённого мира, остаётся в физике: тело летит по кеплеровой орбите,
-        // снятой с интегрированного состояния в EndSeconds (стык бесшовный).
-        // Проверки:
-        // 1) фиттинг валиден для всех тел (a>0, e<1);
-        // 2) стык бесшовный: |cont(End+dt) − rail(End) − railV(End)·dt| ≤ 1 м
-        //    при dt=1с (кривизна даёт ~0.003 м, фиттинг ~1e-9 относительных);
-        // 3) за концом (+10 и +100 лет) — без исключений, радиус ограничен
+        // P1: Kepler continuation past the end of the rail. A player who reaches the
+        // end of the baked world stays in physics: the body follows a Keplerian orbit
+        // taken from the integrated state at EndSeconds (the seam is seamless).
+        // Checks:
+        // 1) the fit is valid for all bodies (a>0, e<1);
+        // 2) seamless seam: |cont(End+dt) − rail(End) − railV(End)·dt| ≤ 1 m
+        //    at dt=1 s (curvature gives ~0.003 m, the fit ~1e-9 relative);
+        // 3) beyond the end (+10 and +100 years) — no exceptions, radius bounded by
         //    a(1+e)·(1+1e-6);
-        // 4) BG3-файл: продолжение читается из хвоста, оконный путь работает;
-        // 5) BE2-файл: то же для несжатого;
-        // 6) эфемерида без продолжения (legacy) за концом — ГРОМКО как раньше.
+        // 4) BG3 file: continuation is read from the tail, the windowed path works;
+        // 5) BE2 file: same for uncompressed;
+        // 6) ephemeris without continuation (legacy) past the end — LOUD as before.
         StarSystem sys = TwelveBodySystem();
         var config = new BakeConfig { Degree = 12, MaxStepSeconds = 900d };
         var memory = EphemerisBaker.Bake(sys, 2d, config);
@@ -1589,7 +1576,7 @@ internal static partial class P1bTests
         var bodies = sys.AllBodies;
         double end = memory[bodies[1]].EndSeconds;
 
-        // Стык: рельса в End против продолжения в End+1с (линейная экстраполяция).
+        // Seam: rail at End vs continuation at End+1 s (linear extrapolation).
         bool seamOk = true;
         double worstSeam = 0d;
         foreach (var kv in memory)
@@ -1614,7 +1601,7 @@ internal static partial class P1bTests
             }
         }
 
-        // За концом: +10 и +100 лет, радиус ограничен.
+        // Beyond the end: +10 and +100 years, radius bounded.
         bool beyondOk = true;
         foreach (var kv in memory)
         {
@@ -1643,7 +1630,7 @@ internal static partial class P1bTests
             }
         }
 
-        // BG3-файл: продолжение из хвоста + оконное чтение.
+        // BG3 file: continuation from the tail + windowed reading.
         string dirC = System.IO.Path.Combine(Path.GetTempPath(), "t63c_" + Guid.NewGuid().ToString("N"));
         StarSystem sysC = TwelveBodySystem();
         var filesC = EphemerisBaker.BakeToFiles(sysC, dirC, 2d, config, null, null, null, compress: true);
@@ -1677,7 +1664,7 @@ internal static partial class P1bTests
 
         if (bg3Ok)
         {
-            // Стык через ОКОННОЕ чтение файла (декодирование сегментов + хвост).
+            // Seam via WINDOWED file reading (segment decoding + tail).
             double muM = moonC.Parent.ResolveStandardGravitationalParameter() + moonC.ResolveSubtreeStandardGravitationalParameter();
             moonFile.TryEvaluate(end - 1d, out Vector3d pRail, out Vector3d vRail);
             moonFile.TryEvaluateContinuation(end + 1d, muM, out Vector3d pCont, out _);
@@ -1688,7 +1675,7 @@ internal static partial class P1bTests
             }
         }
 
-        // BE2-файл: несжатый путь с продолжением.
+        // BE2 file: uncompressed path with continuation.
         string dirP = System.IO.Path.Combine(Path.GetTempPath(), "t63p_" + Guid.NewGuid().ToString("N"));
         StarSystem sysP = TwelveBodySystem();
         var filesP = EphemerisBaker.BakeToFiles(sysP, dirP, 2d, config);
@@ -1704,7 +1691,7 @@ internal static partial class P1bTests
             }
         }
 
-        // Legacy (без продолжения): фолбэк через EvaluateWorldState — громко.
+        // Legacy (no continuation): fallback via EvaluateWorldState — loud.
         bool legacyLoud = true;
         StarSystem sysL = TwelveBodySystem();
         var legacy = EphemerisBaker.Bake(sysL, 2d, config);
@@ -1729,7 +1716,7 @@ internal static partial class P1bTests
             legacyLoud = true;
         }
 
-        // Фолбэк через EvaluateWorldState: за концом без исключения.
+        // Fallback via EvaluateWorldState: past the end without an exception.
         bool worldOk = true;
         try
         {
@@ -1749,18 +1736,18 @@ internal static partial class P1bTests
 
     private static int Test64_HillValidation()
     {
-        // P2: громкая Hill-валидация при загрузке системы. Луна за пределом
-        // устойчивости (0.3 R_H) и слишком близкие сиблинги — InvalidOperationException
-        // с именами и числами при КОНСТРУИРОВАНИИ StarSystem, а не при выпечке.
-        // Дисциплина чисел: планета III (a=1.5e11, μ=4e14) → R_H = a·(μ/(3μ★))^{1/3}
-        // = 1.74e9 м; граница 0.3·R_H = 5.22e8 м; взаимный R_H пары (μ=4.9e12,
-        // 1e12) на a~3e8 ≈ 2.4e7 м; граница разноса 3× = 7.2e7 м.
+        // P2: loud Hill validation at system load. A moon beyond the stability limit
+        // (0.3 R_H) and too-close siblings throw InvalidOperationException with names
+        // and numbers when CONSTRUCTING StarSystem, not when baking.
+        // Numbers: planet III (a=1.5e11, μ=4e14) → R_H = a·(μ/(3μ★))^{1/3}
+        // = 1.74e9 m; limit 0.3·R_H = 5.22e8 m; mutual R_H of a pair (μ=4.9e12,
+        // 1e12) at a~3e8 ≈ 2.4e7 m; separation limit 3× = 7.2e7 m.
         double muStar = 1.327e20;
         double muPlanet = 4e14;
         double aPlanet = 1.5e11;
         double hill = aPlanet * Math.Pow(muPlanet / (3d * muStar), 1d / 3d);
 
-        // 1) Луна на 0.6 R_H — бросает.
+        // 1) Moon at 0.6 R_H — throws.
         bool unstableThrows = false;
         string unstableMessage = "";
         try
@@ -1773,7 +1760,7 @@ internal static partial class P1bTests
             unstableMessage = ex.Message;
         }
 
-        // 2) Луна ровно на границе (0.3 R_H минус запас) — проходит.
+        // 2) Moon just inside the limit (0.3 R_H minus margin) — passes.
         bool boundaryPasses = true;
         try
         {
@@ -1784,7 +1771,7 @@ internal static partial class P1bTests
             boundaryPasses = false;
         }
 
-        // 3) Сиблинги слишком близко — бросает.
+        // 3) Siblings too close — throws.
         bool closeSiblingsThrow = false;
         try
         {
@@ -1792,7 +1779,7 @@ internal static partial class P1bTests
             OrbitingBody planet = T64Planet();
             star.Children.Add(planet);
             OrbitingBody m1 = T64Moon("m1", 2.4e7);
-            OrbitingBody m2 = T64Moon("m2", 2.4e7 + 0.3e7); // разнос 3e6 ≪ 3·взаимного
+            OrbitingBody m2 = T64Moon("m2", 2.4e7 + 0.3e7); // separation 3e6 ≪ 3× mutual
             planet.Children.Add(m1);
             planet.Children.Add(m2);
             new StarSystem(star);
@@ -1802,10 +1789,10 @@ internal static partial class P1bTests
             closeSiblingsThrow = true;
         }
 
-        // 4) Сообщение содержит имя и числа.
+        // 4) The message contains the name and numbers.
         bool messageUseful = unstableMessage.Contains("m1") && unstableMessage.Contains("R_H");
 
-        // 5) Боевая фикстура (после фикса I-1/I-2/II-1) проходит.
+        // 5) The production fixture passes.
         bool fixturePasses = true;
         try
         {
@@ -1824,13 +1811,12 @@ internal static partial class P1bTests
 
     private static int Test65_SystemBlueprint()
     {
-        // P3: сборка StarSystem из чертежа (ядро Unity-инспекторного бейка).
-        // 1) блюпринт (звезда+планета+луна) == ручная сборка: бейк 1 года и
-        //    оценки состояний бит-в-бит совпадают;
-        // 2) нестабильная луна (за 0.3 R_H) — Build() громко бросает (P2 работает
-        //    через блюпринт);
-        // 3) ноль или два корня — громко;
-        // 4) некорректный ParentIndex — громко.
+        // P3: assembling StarSystem from a blueprint (the core of the Unity inspector bake).
+        // 1) blueprint (star+planet+moon) == manual assembly: a 1-year bake and state
+        //    evaluations match bit-for-bit;
+        // 2) unstable moon (beyond 0.3 R_H) — Build() throws loudly (P2 works via blueprint);
+        // 3) zero or two roots — loud;
+        // 4) invalid ParentIndex — loud.
         var bp = new SystemBlueprint();
         bp.Bodies.Add(new BodyBlueprint
         {
@@ -1883,7 +1869,7 @@ internal static partial class P1bTests
             }
         }
 
-        // Нестабильная луна: 0.8 R_H планеты (граница ~0.3).
+        // Unstable moon: 0.8 R_H of the planet (limit ~0.3).
         var unstable = new SystemBlueprint();
         unstable.Bodies.Add(new BodyBlueprint { Name = "Звезда", ParentIndex = -1, StandardGravitationalParameter = 1.327e20 });
         unstable.Bodies.Add(new BodyBlueprint { Name = "Планета", ParentIndex = 0, StandardGravitationalParameter = 4e14, SemiMajorAxis = 1.5e11 });
@@ -1944,15 +1930,15 @@ internal static partial class P1bTests
 
     private static int Test67_KeplerPredictorGuards()
     {
-        // S1: NaN-guard гиперболы, незабрекеченная бисекция, редукция M по периоду.
+        // S1: hyperbolic NaN guard, un-bracketed bisection, M reduction by period.
 
-        // 1) e=1+1e-9 (мимо окна |e−1|<1e-9): Ньютон улетает — результат обязан
-        // быть конечным и соответствовать невязке, а не NaN.
+        // 1) e=1+1e-9 (outside the |e−1|<1e-9 window): Newton diverges — the result
+        // must be finite and match the residual, not NaN.
         double h = KeplerPredictor.SolveHyperbolicAnomaly(0.5d, 1.000000001d);
         double residual = (1.000000001d * Math.Sinh(h)) - h - 0.5d;
         bool nearParabolicFinite = double.IsFinite(h) && Math.Abs(residual) < 1e-6d;
 
-        // 2) NaN M — громко.
+        // 2) NaN M — loud.
         bool nanThrows = false;
         try
         {
@@ -1963,15 +1949,15 @@ internal static partial class P1bTests
             nanThrows = true;
         }
 
-        // 3) Гипербола с очень большим M (dt в годы): конечный результат.
+        // 3) Hyperbola with a very large M (dt in years): finite result.
         double hBig = KeplerPredictor.SolveHyperbolicAnomaly(1e6d, 3d);
         bool bigMFinite = double.IsFinite(hBig);
 
-        // 4) Редукция M по периоду: Advance на 100 лет ≡ Advance на 100 лет − 3
-        // периода (разница фаз — только fp-редукция, не ulp-накопление на 1e10 рад).
+        // 4) M reduction by period: Advance over 100 years ≡ Advance over 100 years
+        // − 3 periods (the phase difference is only fp reduction, not ulp at 1e10 rad).
         Vector3d r0 = new Vector3d(1.5e11, 0d, 0d);
         double muE = 1.327e20d;
-        Vector3d v0 = new Vector3d(0d, Math.Sqrt(muE / 1.5e11) * 1.001d, 0d); // e≈0.001... возьмём заметный эллипс
+        Vector3d v0 = new Vector3d(0d, Math.Sqrt(muE / 1.5e11) * 1.001d, 0d); // e≈0.001... take a noticeable ellipse
         v0 = new Vector3d(0d, Math.Sqrt(2d * muE / 1.5e11) * 0.7d, 0d); // e≈0.51
         double a = 1.5e11 / (2d - (0.7d * 0.7d * (2d * 1.5e11 / 1.5e11)));
         double period = 2d * Math.PI * Math.Sqrt(a * a * a / muE);
@@ -1980,12 +1966,12 @@ internal static partial class P1bTests
         KeplerPredictor.Advance(r0, v0, muE, dt, out Vector3d pLong, out Vector3d vLong);
         KeplerPredictor.Advance(r0, v0, muE, dtReduced, out Vector3d pShort, out Vector3d vShort);
         double phaseDiff = (pLong - pShort).Magnitude;
-        bool reductionWorks = phaseDiff < 1d; // без редукции ulp(1e10 рад) давал бы ~сотни метров
+        bool reductionWorks = phaseDiff < 1d; // without reduction, ulp(1e10 rad) would give ~hundreds of metres
 
         bool parabolicThrows = false;
         try
         {
-            // Ровно параболическая энергия: v = sqrt(2μ/r).
+            // Exactly parabolic energy: v = sqrt(2μ/r).
             double rEsc = 1e11;
             Vector3d rEscVec = new Vector3d(rEsc, 0d, 0d);
             Vector3d vEsc = new Vector3d(0d, Math.Sqrt(2d * muE / rEsc), 0d);
@@ -2008,8 +1994,8 @@ internal static partial class P1bTests
 
     private static StarSystem TunnelSystem()
     {
-        // Малое статичное тело — корень системы (на орбите 1e9 от звезды
-        // астероид летел бы 364 км/с и был бы не ловим по построению теста).
+        // Small static body as the system root (orbiting 1e9 from a star, the
+        // asteroid would move at 364 km/s and be uncatchable by the test's construction).
         var asteroid = new OrbitingBody
         {
             Name = "TunRock",
@@ -2021,8 +2007,8 @@ internal static partial class P1bTests
 
     private static int Test79_TidalLock()
     {
-        // Сборка через блюпринт: приливный замок считает период по μ_local =
-        // μ_родителя(собств.) + μ_поддерева — той же, что EvaluateLocalOffset.
+        // Assembled via blueprint: tidal lock computes the period from μ_local =
+        // μ_parent(own) + μ_subtree — the same as EvaluateLocalOffset.
         StarSystem sys = MakeTidalSystem(0d, false).Build();
         OrbitingBody moon = sys.AllBodies[2];
         OrbitingBody planet = sys.AllBodies[1];
@@ -2032,8 +2018,8 @@ internal static partial class P1bTests
         bool periodOk = moon.RotationPeriodSeconds == expectedPeriod;
         bool manualIgnored = moon.RotationPeriodSeconds != 999d;
 
-        // Многовитковая проверка (50 витков): при e=0 отклонение нулевое всегда;
-        // неверная μ дала бы дрейф ~2π·(Δμ/μ) за виток ≈ 4.4°/виток — не спрятать.
+        // Multi-orbit check (50 orbits): at e=0 the deviation is always zero; a wrong
+        // μ would give drift ~2π·(Δμ/μ) per orbit ≈ 4.4°/orbit — impossible to hide.
         double worstPhase = 0d;
         double orbitPeriod = expectedPeriod;
         for (int k = 1; k <= 50; k++)
@@ -2043,13 +2029,13 @@ internal static partial class P1bTests
 
         bool phaseOk = worstPhase < 1e-6d;
 
-        // Детерминизм: пересборка из НЕизменённого блюпринта — бит-в-бит.
+        // Determinism: rebuild from an UNCHANGED blueprint — bit-for-bit.
         StarSystem sys2 = MakeTidalSystem(0d, false).Build();
         OrbitingBody moon2 = sys2.AllBodies[2];
         bool idempotent = moon2.RotationPeriodSeconds == moon.RotationPeriodSeconds
             && moon2.PrimeMeridianOffsetDegrees == moon.PrimeMeridianOffsetDegrees;
 
-        // Round-trip lat/lon на захваченном теле остаётся взаимно обратным.
+        // lat/lon round-trip on a tidally locked body stays mutually inverse.
         bool roundtrip = true;
         for (int k = 0; k < 8; k++)
         {
@@ -2062,8 +2048,8 @@ internal static partial class P1bTests
             }
         }
 
-        // Лиbrация: e=0.05 → амплитуда отклонения = 2e (уравнение центра
-        // ν−M ≈ 2e·sin M). Границы 1.5e..2.5e: модель «±e» упала бы снизу.
+        // Libration: e=0.05 → deviation amplitude = 2e (equation of the centre
+        // ν−M ≈ 2e·sin M). Bounds 1.5e..2.5e: a "±e" model would fail below.
         StarSystem sysE = MakeTidalSystem(0.05d, false).Build();
         OrbitingBody moonE = sysE.AllBodies[2];
         OrbitingBody planetE = sysE.AllBodies[1];
@@ -2076,7 +2062,7 @@ internal static partial class P1bTests
 
         bool librationOk = worstLibration > 1.5d * 0.05d && worstLibration < 2.5d * 0.05d;
 
-        // Замок на корне (звезде, без родителя) — громкое исключение.
+        // Lock on the root (star, no parent) — loud exception.
         bool rootRejected = false;
         try
         {

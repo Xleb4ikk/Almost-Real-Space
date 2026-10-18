@@ -3,11 +3,10 @@ using UnityEngine;
 namespace Galilego.Tablet
 {
     /// <summary>
-    /// Экран планшета 512×320: раскладка по группам (скорость, высота, давление,
-    /// ориентация, орбита, ΔV) и кнопки. Режим «immediate»: каждый Render
-    /// перерисовывает всё и сразу обрабатывает клик, если он был.
-    /// interactive = false — планшет на корабле просто показывает данные,
-    /// наведение и клики игнорируются.
+    /// Tablet screen 512×320: grouped layout (speed, altitude, pressure, attitude,
+    /// orbit, ΔV) and buttons. "Immediate" mode: every Render redraws everything and
+    /// processes a click right away if there was one.
+    /// interactive = false — the ship tablet only shows data; hover and clicks are ignored.
     /// </summary>
     public sealed class TabletScreen
     {
@@ -16,7 +15,7 @@ namespace Galilego.Tablet
 
         public readonly PixelCanvas Canvas = new PixelCanvas(W, H);
 
-        // Локальные настройки показа (игре не нужны).
+        // Local display settings (the game does not need them).
         public AltitudeMode AltMode = AltitudeMode.SeaLevel;
         private int pinnedStage = -1;
         private bool notesOpen;
@@ -28,14 +27,14 @@ namespace Galilego.Tablet
         private bool clickPending;
         private bool dragPending;
 
-        /// <summary>Указатель пришёл лучом по монитору — панель рисует стрелку-курсор.</summary>
+        /// <summary>The pointer came from a world ray on the monitor — the panel draws a cursor arrow.</summary>
         private bool worldPointer;
 
         private PixelCanvas c;
         private bool interactive;
         private ITabletCommands cmd;
 
-        /// <summary>Координаты курсора в пикселях экрана планшета (вне экрана — valid = false).</summary>
+        /// <summary>Cursor coordinates in tablet screen pixels (valid = false when off-screen).</summary>
         public void SetPointer(bool valid, int x, int y)
         {
             pointerValid = valid;
@@ -43,21 +42,21 @@ namespace Galilego.Tablet
             py = y;
         }
 
-        /// <summary>Нажатие левой кнопки; будет обработано в ближайшем Render.</summary>
+        /// <summary>Left button press; processed on the next Render.</summary>
         public void Click()
         {
             clickPending = true;
         }
 
-        /// <summary>Протяжка с зажатой кнопкой (ползунок газа); будет обработана в ближайшем Render.</summary>
+        /// <summary>Drag with the button held (throttle slider); processed on the next Render.</summary>
         public void Drag()
         {
             dragPending = true;
         }
 
         /// <summary>
-        /// Указатель-луч (игрок целится в монитор из мира): те же пиксели панели,
-        /// но панель сама рисует на себе стрелку-курсор — ею и жмут кнопки.
+        /// World-ray pointer (the player aims at the monitor from the world): same panel
+        /// pixels, but the panel draws the cursor arrow itself — with it you press buttons.
         /// </summary>
         public void SetWorldPointer(bool valid, int x, int y)
         {
@@ -96,7 +95,7 @@ namespace Galilego.Tablet
             dragPending = false;
         }
 
-        /// <summary>Стрелка-курсор панели (мировой клик): куда наводишь — там и рисуется.</summary>
+        /// <summary>The panel's cursor arrow (world click): it is drawn wherever you aim.</summary>
         private static readonly string[] PointerShape =
         {
             "#....",
@@ -110,7 +109,7 @@ namespace Galilego.Tablet
 
         private void DrawPointer(int x, int y)
         {
-            // Тёмная обводка — стрелку видно и на цифрах, и на ярких кнопках.
+            // Dark outline — the arrow is visible against both digits and bright buttons.
             c.Bitmap(x - 1, y, PointerShape, TabletTheme.Bg);
             c.Bitmap(x + 1, y, PointerShape, TabletTheme.Bg);
             c.Bitmap(x, y - 1, PointerShape, TabletTheme.Bg);
@@ -118,7 +117,7 @@ namespace Galilego.Tablet
             c.Bitmap(x, y, PointerShape, TabletTheme.Bright);
         }
 
-        // ── Примитивы раскладки ──────────────────────────────────────────
+        // ── Layout primitives ────────────────────────────────────────────
 
         private bool Over(int x, int y, int w, int h)
         {
@@ -130,7 +129,7 @@ namespace Galilego.Tablet
             return clickPending && Over(x, y, w, h);
         }
 
-        /// <summary>Панель со скошенными углами и заголовком в разрыве рамки.</summary>
+        /// <summary>Panel with beveled corners and a title in a gap in the frame.</summary>
         private void Panel(int x, int y, int w, int h, string title)
         {
             c.Fill(x + 1, y + 1, w - 2, h - 2, TabletTheme.PanelBg);
@@ -174,7 +173,7 @@ namespace Galilego.Tablet
             }
         }
 
-        /// <summary>Кнопка с рамкой; возвращает true в кадре клика.</summary>
+        /// <summary>Framed button; returns true on the frame of the click.</summary>
         private bool Button(int x, int y, int w, int h, string label, bool on, bool enabled)
         {
             bool hover = enabled && Over(x, y, w, h);
@@ -187,7 +186,7 @@ namespace Galilego.Tablet
             return enabled && Clicked(x, y, w, h);
         }
 
-        // ── Скорость ─────────────────────────────────────────────────────
+        // ── Speed ────────────────────────────────────────────────────────
 
         private void DrawSpeed(TabletTelemetry t, int x, int y, int w, int h)
         {
@@ -195,7 +194,7 @@ namespace Galilego.Tablet
             int ix = x + 7;
             int iw = w - 14;
 
-            // Опорное тело и система отсчёта.
+            // Reference body and frame.
             string body = t.ReferenceBodies != null && t.ReferenceBodies.Length > 0
                 ? t.ReferenceBodies[Mathf.Clamp(t.ReferenceBodyIndex, 0, t.ReferenceBodies.Length - 1)]
                 : "—";
@@ -212,7 +211,7 @@ namespace Galilego.Tablet
                 cmd.SetSpeedFrame(surface ? SpeedFrame.Orbit : SpeedFrame.Surface);
             }
 
-            // Главное число.
+            // Main number.
             string unit = "М/С";
             int unitW = PixelCanvas.TextWidth(unit);
             c.TextRight(ix + iw, y + 36, unit, TabletTheme.Dim);
@@ -230,7 +229,7 @@ namespace Galilego.Tablet
             Row(ix, y + 89, iw, "ГРАВ.", TabletFormat.Num(t.GravityG, 3) + " G");
         }
 
-        // ── Высота ───────────────────────────────────────────────────────
+        // ── Altitude ─────────────────────────────────────────────────────
 
         private void DrawAltitude(TabletTelemetry t, int x, int y, int w, int h)
         {
@@ -257,7 +256,7 @@ namespace Galilego.Tablet
             c.TextRight(ix + iw, y + 22, v, TabletTheme.Bright, 2);
         }
 
-        // ── Давление ─────────────────────────────────────────────────────
+        // ── Pressure ─────────────────────────────────────────────────────
 
         private void DrawPressure(TabletTelemetry t, int x, int y, int w, int h)
         {
@@ -268,7 +267,7 @@ namespace Galilego.Tablet
             Row(ix, y + 20, iw, "В АТМ", TabletFormat.Atm(t.PressurePa));
         }
 
-        // ── Ориентация (навбол) ──────────────────────────────────────────
+        // ── Attitude (navball) ───────────────────────────────────────────
 
         private static int ActiveMarker(TabletTelemetry t)
         {
@@ -320,7 +319,7 @@ namespace Galilego.Tablet
 
             navball.Draw(c, cx, cy, t, hover, active);
 
-            // Подпись: что под курсором / что удерживает САС.
+            // Caption: what is under the cursor / what SAS is holding.
             string caption;
             Color32 captionColor = TabletTheme.Dim;
             if (hover >= 0)
@@ -349,7 +348,7 @@ namespace Galilego.Tablet
                 + " КРЕН " + TabletFormat.Signed(Mathf.RoundToInt(roll), 0);
             c.TextCenter(cx, y + 12 + (2 * NavballRenderer.Radius) + 26, att, TabletTheme.Main);
 
-            // САС / РСУ.
+            // SAS / RCS.
             int by = y + h - 24;
             if (ToggleButton(x + 7, by, 74, 17, "САС", t.SasEnabled))
             {
@@ -390,7 +389,7 @@ namespace Galilego.Tablet
             }
         }
 
-        // ── Орбита (узкая колонка слева) ─────────────────────────────────
+        // ── Orbit (narrow left column) ───────────────────────────────────
 
         private void DrawOrbit(TabletTelemetry t, int x, int y, int w, int h)
         {
@@ -415,14 +414,14 @@ namespace Galilego.Tablet
             Row(ix, y + 112, iw, "НАКЛОНЕНИЕ", o.Valid ? TabletFormat.Num(o.InclinationDeg, 2) + "\u00B0" : TabletFormat.Dash);
         }
 
-        /// <summary>Строка апсиды: подпись и крупное значение на одной линии (как «скорость/м/с»).</summary>
+        /// <summary>Apsis row: label and a large value on one line (like "speed/m/s").</summary>
         private void DrawApsisRow(int x, int y, int w, string caption, bool valid, double alt)
         {
             c.Text(x, y + 4, caption, TabletTheme.Dim);
             c.TextRight(x + w, y, valid ? TabletFormat.Dist(alt) : TabletFormat.Dash, TabletTheme.Bright, 2);
         }
 
-        // ── Управление (под ориентацией) ─────────────────────────────────
+        // ── Control (below attitude) ─────────────────────────────────────
 
         private void DrawControl(TabletTelemetry t, int x, int y, int w, int h)
         {
@@ -447,8 +446,8 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
-        /// Газ 0-100 %: крупное значение и полоса-шкала. Клик или протяжка по полосе
-        /// ставят газ прямо в точку под курсором; четвертные засечки — для прицела.
+        /// Throttle 0-100 %: large value and a bar gauge. A click or drag on the bar sets
+        /// the throttle right at the point under the cursor; quarter ticks are for aiming.
         /// </summary>
         private void DrawThrottle(TabletTelemetry t, int x, int y, int w)
         {
@@ -620,7 +619,7 @@ namespace Galilego.Tablet
 
             if (focus >= 0)
             {
-                // Связка «плашка → карточка».
+                // Link "bar → card".
                 int midY = tops[focus] + (heights[focus] / 2);
                 for (int lx = railX - 4; lx < railX; lx += 2)
                 {
@@ -737,7 +736,7 @@ namespace Galilego.Tablet
             }
         }
 
-        /// <summary>Перенос по словам (текст приводится к верхнему регистру шрифтом).</summary>
+        /// <summary>Word wrap (the font renders the text in uppercase).</summary>
         public static string[] Wrap(string text, int maxChars)
         {
             var lines = new System.Collections.Generic.List<string>();

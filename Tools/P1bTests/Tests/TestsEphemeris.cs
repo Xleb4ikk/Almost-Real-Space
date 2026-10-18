@@ -33,8 +33,8 @@ internal static partial class P1bTests
 
     private static string YearDriftCase(StarSystem sys, OrbitingBody planet, Vector3d relP0, Vector3d relV0, double trueApoapsis, string name, bool boundAps, out double maxEnergyDrift, out double maxApoDev, out YearDriftAngles angles)
     {
-        // Год баллистики помесячными чанками (TwoBodySystem: луны нет, прилив
-        // звезды ~1e-6 — внутри границ ниже). Возвращает худшие дрейфы.
+        // A year of ballistics in monthly chunks (TwoBodySystem: no moon, the
+        // star's tide ~1e-6 — within the bounds below). Returns the worst drifts.
         double span = 365d * 86400d;
         double month = span / 12d;
         planet.EvaluateWorldState(0d, out Vector3d pp0, out Vector3d pv0);
@@ -44,9 +44,8 @@ internal static partial class P1bTests
         var ship = new Spacecraft(pp0 + relP0, pv0 + relV0, 1000d);
         double mu = planet.ResolveStandardGravitationalParameter();
         double e0 = 0.5d * relV0.SqrMagnitude - mu / relP0.Magnitude;
-        // База — ИСТИННЫЙ апоцентр a(1+e), а не начальный радиус: иначе «дрейф»
-        // меряет эксцентриситет начальных условий, а не численник (поймано:
-        // e=0.05 давал 7.9e-2 именно поэтому, орбита при этом стабильна).
+        // The base is the TRUE apoapsis a(1+e), not the initial radius: otherwise
+        // the "drift" measures the initial-condition eccentricity, not the integrator.
         double apo0 = trueApoapsis;
         OrbitalElements el0 = OrbitalElements.FromState(relP0, relV0, mu);
         double incl0 = el0.InclinationDegrees;
@@ -102,9 +101,9 @@ internal static partial class P1bTests
                 if (dn > angles.MaxNodeDriftRad) angles.MaxNodeDriftRad = dn;
             }
 
-            // Аргумент перицентра осмыслен только при реальном e: у круговых
-            // кейсов e≈0 и ω блуждает на радианы (замер: 1.4–2.8) — это не дрейф,
-            // а неопределённость самого угла. Граница только при boundAps.
+            // The argument of periapsis is meaningful only at real e: for near-circular
+            // cases e≈0 and ω wanders by radians — that is the angle's own
+            // uncertainty, not drift. The bound applies only when boundAps.
             if (double.IsNaN(el.ArgumentOfPeriapsisDegrees))
             {
                 angles.NanApsMonths++;
@@ -122,11 +121,11 @@ internal static partial class P1bTests
             angles.NanNodeMonths, angles.NanApsMonths, angles.InvalidMonths);
     }
 
-    // ---- Step 0: офлайн-замер взаимных возмущений (НЕ игровой код) ----
-    // Автономный N-body (fixed-step RK4, барицентр, без аллокаций в цикле):
-    // меряет, насколько планеты реально тянут друг друга относительно рельс.
-    // Если дрейф неразличим — рельсы остаются навсегда; иначе данные решают
-    // bake vs PEFRL. Тест ниже фиксирует решение числами как регресс-гейт.
+    // ---- Step 0: offline measurement of mutual perturbations (NOT game code) ----
+    // Standalone N-body (fixed-step RK4, barycentre, no allocations in the loop):
+    // measures how strongly the planets actually pull each other relative to the rails.
+    // If the drift is indistinguishable, rails stay forever; otherwise the data decides
+    // bake vs PEFRL. The test below pins the decision down with numbers as a regression gate.
     private static void NBodyAccel(double[] p, double[] a, double[] m, double g, int n)
     {
         for (int i = 0; i < 3 * n; i++)
@@ -217,15 +216,15 @@ internal static partial class P1bTests
         return total;
     }
 
-    // Прогон spanYears с шагом stepSeconds, сэмпл каждые sampleYears:
-    // возвращает максимальные отклонения от рельс (звездо-относительно)
-    // по телам. Барицентр на входе, сравнение в звездо-центрированной рамке
-    // (разность сокращает дрейф начала координат с обеих сторон).
+    // Runs spanYears with step stepSeconds, sampling every sampleYears:
+    // returns the maximum per-body deviations from the rails (star-relative).
+    // Barycentre at the input, comparison in a star-centred frame
+    // (the difference cancels the origin drift on both sides).
     /// <summary>
-    /// Независимый n-body RK4 (мелкий шаг), записывающий СВОИ позиции
-    /// (относительно звезды) в моменты k·sampleYears — без чтения рельс в ходе
-    /// интегрирования. Благодаря этому справочный прогон независим от выпечки
-    /// и может идти с ней параллельно на другом ядре (T60).
+    /// Independent n-body RK4 (small step) recording ITS OWN positions
+    /// (star-relative) at times k·sampleYears — without reading the rails during
+    /// integration. This makes the reference run independent of the bake and lets it
+    /// run in parallel on another core (T60).
     /// </summary>
     internal static double[][] NBodyReference(StarSystem sys, double spanYears, double stepSeconds, double sampleYears, out double[] finalPos)
     {
@@ -247,7 +246,7 @@ internal static partial class P1bTests
             v[3 * i + 2] = bv.Z;
         }
 
-        // Та же якоби-инициализация, что у NBodyDeviations (дети-вперёд).
+        // Same Jacobi initialization as in NBodyDeviations (children first).
         for (int i = n - 1; i >= 0; i--)
         {
             var b = bodies[i];
@@ -383,12 +382,11 @@ internal static partial class P1bTests
             v[3 * i + 2] = bv.Z;
         }
 
-        // Инициализация Якоби: рельса планеты — это барицентр подсистемы
-        // (μ-фикс), а не центр планеты. Без коррекции N-body барицентр стартует
-        // со сдвигом Mm/(Mp+Mm)*v_rel (~12 м/с → ~1e9 м/год ложного дрейфа,
-        // поймано диагностикой: baryDev линейный с нуля). Коррекция снизу вверх:
-        // центр родителя смещается так, чтобы барицентр поддерева совпал с рельсой.
-        // Обход дети-вперёд (AllBodies — родители-вперёд, идём с конца).
+        // Jacobi initialization: a planet's rail is the subsystem barycentre
+        // (μ-fix), not the planet centre. Without correction the N-body barycentre
+        // starts with an offset Mm/(Mp+Mm)*v_rel (~12 m/s → ~1e9 m/year of false drift).
+        // Correction bottom-up: the parent centre is shifted so the subtree barycentre
+        // matches the rail. Children-first traversal (AllBodies is parents-first, so iterate backwards).
         for (int i = n - 1; i >= 0; i--)
         {
             var b = bodies[i];
@@ -616,13 +614,12 @@ internal static partial class P1bTests
 
     internal static StarSystem TwelveBodySystem()
     {
-        // Представительная игровая система: звезда + 5 планет + 6 спутников.
-        // Луны ≤ ~0.3 R_H планеты (проградная стабильность) и разнос ≥3 взаимных
-        // R_H — иначе система хаотична и рельсы физически нельзя сверить с
-        // n-body на больших горизонтах (I-2 на 3e8 = 0.54 R_H разбегался за
-        // 8 лет: 6.7e10 м между шагами 900/450, поймано probechaos).
-        // Периоды лун 3.9–27.3 сут (все bakeable: период/4 ≥ минимума сегмента);
-        // пара I-1/I-2 и пара II-1/II-2 взаимно возмущаются.
+        // Representative game system: star + 5 planets + 6 moons.
+        // Moons ≤ ~0.3 R_H of the planet (prograde stability) and spacing ≥3 mutual
+        // R_H — otherwise the system is chaotic and the rails cannot physically be
+        // compared with n-body over long horizons.
+        // Moon periods 3.9–27.3 days (all bakeable: period/4 ≥ segment minimum);
+        // the I-1/I-2 pair and the II-1/II-2 pair mutually perturb each other.
         OrbitingBody star = new OrbitingBody { Name = "Звезда", StandardGravitationalParameter = 1.327e20d };
 
         OrbitingBody pI = T60Body("I", 3.5e14, 2.4e6, 5.8e10, 0.02, 0, 0, 0, 10);
@@ -662,18 +659,17 @@ internal static partial class P1bTests
 
     private static int Test60_TwelveBodyAccuracy()
     {
-        // «Насколько точно это моделирует n-body». Позиционный гейт на сотни лет
-        // закрыт физикой: система с массивными лунами хаотична (e-folding < 1
-        // года для лун — измерено probechaos/probechaos2), два интегратора
-        // расходятся экспоненциально при сколь угодно малой разнице шагов и
-        // насыщаются на масштабе ~1e5-5e6 м (перигейные биения) за 5-16 лет.
-        // Поэтому точность доказывается тремя измеримыми величинами:
-        // 1) короткий горизонт: рельсы vs независимый RK4-справочник (шаг 450 с)
-        //    на 4 годах (до насыщения хаоса) — ловит любые систематические баги;
-        // 2) насыщение хаоса на 16 годах — порог выше измеренного насыщения;
-        // 3) энергосохранение рельс на 1024 года (65 срезов через 16 лет):
-        //    дрейф означал бы секулярную порчу орбит (спираль/убегание);
-        // 4) файлы/скорость: оценка байтов == факт, макс-файл под лимитом git.
+        // "How accurately does this model n-body". The positional gate over hundreds
+        // of years is closed by physics: a system with massive moons is chaotic
+        // (e-folding < 1 year for the moons), two integrators diverge exponentially
+        // for any step difference and saturate at ~1e5-5e6 m (perigee beats) within 5-16 years.
+        // So accuracy is proven by three measurable quantities:
+        // 1) short horizon: rails vs independent RK4 reference (step 450 s) over
+        //    4 years (before chaos saturates) — catches any systematic bugs;
+        // 2) chaos saturation over 16 years — threshold above the measured saturation;
+        // 3) rail energy conservation over 1024 years (65 slices every 16 years):
+        //    drift would mean secular orbit corruption (spiral/escape);
+        // 4) files/speed: byte estimate == actual, max file under the git limit.
         StarSystem sys = TwelveBodySystem();
         var config = new BakeConfig { Degree = 12, MaxStepSeconds = 900d };
 
@@ -718,8 +714,8 @@ internal static partial class P1bTests
 
         sys.InvalidatePositionCache();
 
-        // 1) Короткий горизонт: рельсы (относительно звезды) vs сэмплы справочника
-        // в те же моменты (k·1 год, k=1..16).
+        // 1) Short horizon: rails (star-relative) vs the reference samples at the
+        // same times (k·1 year, k=1..16).
         var bodies = sys.AllBodies;
         int n = bodies.Count;
         double[] worst = new double[n];
@@ -758,8 +754,8 @@ internal static partial class P1bTests
             }
         }
 
-        // 2) Энергосохранение рельс на 1024 года (65 срезов через 16 лет).
-        // E = Σ½m|v|² − Σ_{i<j} G·mᵢmⱼ/rᵢⱼ по абсолютным состояниям из рельс.
+        // 2) Rail energy conservation over 1024 years (65 slices every 16 years).
+        // E = Σ½m|v|² − Σ_{i<j} G·mᵢmⱼ/rᵢⱼ from the absolute states taken from the rails.
         double gConst = PhysicsSolver.GravitationalConstant;
         double year = 365d * 86400d;
         double e0 = 0d;
@@ -802,20 +798,15 @@ internal static partial class P1bTests
             }
         }
 
-        // Гейты. Хаос системы с массивными лунами измерен (probechaos/2):
-        // III-1 расходится с любым независимым решением экспоненциально
-        // (e-folding < 1 года) и насыщается на ~1e5-5e6 м (перигейные биения)
-        // — рельсы против справочника на ТОМ ЖЕ шаге 900 с дают тот же
-        // профиль, что и против 450/225, т.е. это физика, а не баг пекаря.
-        // Гейт 1 (4 года): до насыщения хаоса отклонение ~1e4 м (I-1);
-        // линейный баг-сдвиг (скорость 1 м/с) дал бы 1.3e8 м — порог 1e5 м
-        // ловит его с запасом 1000× и остаётся в 3 порядках от масштаба орбиты.
+        // Gates. Gate 1 (4 years): before chaos saturation the deviation is ~1e4 m
+        // (I-1); a linear bug shift (velocity 1 m/s) would give 1.3e8 m, so the
+        // 1e5 m threshold catches it with 1000× margin and stays 3 orders below the orbit scale.
         bool shortOk = worst4y < 1e5d;
-        // Гейт 2 (16 лет): насыщение хаоса; порог 1e7 м = 2.6% орбиты луны.
+        // Gate 2 (16 years): chaos saturation; threshold 1e7 m = 2.6% of the moon's orbit.
         bool chaosOk = worstAll < 1e7d;
-        // Гейт 3: дрейф энергии отсутствует на 1024 годах (полоса осцилляций).
+        // Gate 3: no energy drift over 1024 years (band of oscillations).
         bool energyOk = worstEnergy < 1e-4d;
-        // Гейт 4: макс-файл под лимитом GitHub 100 МБ.
+        // Gate 4: max file under the GitHub 100 MB limit.
         bool filesOk = maxFile < 95d * 1024d * 1024d;
 
         Check(shortOk && chaosOk && energyOk && filesOk, "T60 twelve-body-1024y",
@@ -834,10 +825,10 @@ internal static partial class P1bTests
         OrbitingBody planetB = bakedSys.AllBodies[3];
         bool noThrow = true;
         int beyondTotal = 0;
-        // Контракт P1: за концом рельсы мир живёт (кеплерово продолжение) —
-        // клетки зашипшот-горизонтом теперь ВАЛИДНЫ: позиции планет конечны
-        // (продолжение бесшовно), Ламберт против них согласован с миром, в
-        // котором полетит корабль. Проверяем конечность Δv валидных клеток.
+        // Contract P1: beyond the end of the rail the world lives on (Keplerian
+        // continuation) — cells past the shot horizon are VALID: planet positions are
+        // finite (seamless continuation) and Lambert against them agrees with the world
+        // the craft will fly in. Checks the finiteness of Δv of valid cells.
         bool beyondSane = true;
         try
         {
@@ -936,8 +927,8 @@ internal static partial class P1bTests
         StarSystem sys = TestSystem();
         EphemerisBaker.BakeAndAttach(sys, 30d / 365d, 900d, 12, Test40_SegRule);
         double end = sys.BakedEndSeconds();
-        // Контракт P1: за концом рельсы мир живёт — кеплерово продолжение,
-        // конечные состояние. Громко остаётся только ДО T0.
+        // Contract P1: beyond the end of the rail the world lives on — Keplerian
+        // continuation, finite states. Only times BEFORE T0 still fail loudly.
         bool beyondAlive = false;
         bool pastLoud = false;
         try
@@ -1071,8 +1062,8 @@ internal static partial class P1bTests
             }
         }
 
-        // Контракт P1: до T0 — громко; ЗА концом — кеплерово продолжение
-        // (позиция конечна, без исключения). Проверяем оба направления.
+        // Contract P1: before T0 fails loudly; beyond the end is Keplerian
+        // continuation (finite position, no exception). Checks both directions.
         bool outside = true;
         for (int i = 0; i < n && outside; i++)
         {
@@ -1594,8 +1585,8 @@ internal static partial class P1bTests
         }
 
         StarSystem plainSys = TestSystem();
-        // Контракт P1: ДО T0 — громко; ЗА концом — кеплерово продолжение
-        // (конечные состояние). T40-бейк на 2 года, t=3 года — за концом.
+        // Contract P1: BEFORE T0 fails loudly; beyond the end is Keplerian
+        // continuation (finite states). The T40 bake spans 2 years, t=3 years is past the end.
         bool fb = true;
         for (int i = 0; i < n && fb; i++)
         {
@@ -1627,8 +1618,8 @@ internal static partial class P1bTests
             }
         }
 
-        // Тела без рельсы (звезда) не изменились: кеплеров путь у bakedSys
-        // совпадает с чистой системой в те же моменты.
+        // Bodies without a rail (the star) are unchanged: the Keplerian path in bakedSys
+        // matches the plain system at the same times.
         StarSystem plainSys2 = TestSystem();
         foreach (double t in new double[] { -1000000d, 3d * 365d * 86400d })
         {
@@ -1707,12 +1698,12 @@ internal static partial class P1bTests
 
     private static int Test59_BakeFilesAndSpeed()
     {
-        // B1/D: BakeToFiles (потоковая запись) == Bake (память) бит-в-бит;
-        // EstimateBakeBytes == фактический размер файлов; замер скорости
-        // 8-летней выпечки с проекцией на 1024 года; прогресс/отмена.
-        // ВАЖНО: каждая выпечка — на СВЕЖЕЙ системе: после attach тело читает
-        // испечённую эфемериду вместо рельсов, и следующий бейк пошёл бы от
-        // других начальных состояний (поймано этим же тестом).
+        // B1/D: BakeToFiles (streaming) == Bake (memory) bit-for-bit;
+        // EstimateBakeBytes == actual file size; speed measurement of the
+        // 8-year bake projected onto 1024 years; progress/cancellation.
+        // IMPORTANT: each bake runs on a FRESH system: after attach a body reads
+        // the baked ephemeris instead of the rails, so the next bake would start from
+        // different initial states.
         var config = new BakeConfig { Degree = 12, MaxStepSeconds = 900d };
         StarSystem sys = TestSystem();
         var memory = EphemerisBaker.Bake(sys, 2d, config);
@@ -1720,8 +1711,8 @@ internal static partial class P1bTests
         string dir = Path.Combine(Path.GetTempPath(), "t59_" + Guid.NewGuid().ToString("N"));
         var fileBaked = EphemerisBaker.BakeToFiles(sys, dir, 2d, config);
 
-        // Бит-в-бит: файловый и memory-путь — один движок. Сравнение по
-        // словарям, attach не участвует в сравнении.
+        // Bit-for-bit: the file and memory paths are one engine. Compared via
+        // dictionaries, attach does not participate.
         bool bitExact = true;
         for (int i = 0; i < 500; i++)
         {
@@ -1737,7 +1728,7 @@ internal static partial class P1bTests
             }
         }
 
-        // Оценка размера == факт (формат детерминирован: 27 + seg·stride·8).
+        // Size estimate == actual (deterministic format: 27 + seg·stride·8).
         var estimate = EphemerisBaker.EstimateBakeBytes(sys, 2d, config);
         bool sizeOk = true;
         long totalEstimated = 0;
@@ -1754,9 +1745,9 @@ internal static partial class P1bTests
             totalActual += actual;
         }
 
-        // Сжатие B2-ревизия: BG2-контейнер (квантование с бюджетом ошибки +
-        // zigzag-varint + gzip). Гарантия: |Δpos| ≤ budget/2 = 1 м на сегмент
-        // (шаг кванта ≤ budget/13, Σ|T_j| ≤ 13); скорость проверяется с запасом.
+        // Compression, B2 revision: BG2 container (error-budget quantization +
+        // zigzag-varint + gzip). Guarantee: |Δpos| ≤ budget/2 = 1 m per segment
+        // (quantum step ≤ budget/13, Σ|T_j| ≤ 13); speed is checked with margin.
         string dirC = Path.Combine(Path.GetTempPath(), "t59c_" + Guid.NewGuid().ToString("N"));
         var fileC = EphemerisBaker.BakeToFiles(sys, dirC, 2d, config, null, null, null, compress: true);
         double posBound = config.QuantBudgetMeters * 0.5d;
@@ -1791,7 +1782,7 @@ internal static partial class P1bTests
             }
         }
 
-        // Прыжок назад по окнам: поздний t, затем ранний — переоткрытие потока.
+        // Backward jump across windows: a late t, then an early one — reopening the stream.
         bool backwardOk = true;
         double tLate = 2d * 365d * 86400d - 1d;
         double tEarly = 1d;
@@ -1821,13 +1812,13 @@ internal static partial class P1bTests
 
         double ratio = (double)gzBytes / rawBytes;
 
-        // Скорость: 8 лет, проекция ×128 на 1024 года (порядок, не метрика гейта).
+        // Speed: 8 years, ×128 projection onto 1024 years (order of magnitude, not a gate metric).
         var sw = System.Diagnostics.Stopwatch.StartNew();
         EphemerisBaker.Bake(sys, 8d, config);
         sw.Stop();
         double projected = sw.Elapsed.TotalSeconds * 128d;
 
-        // Прогресс монотонно доходит до ~1; отмена бросает OperationCanceledException.
+        // Progress rises monotonically to ~1; cancellation throws OperationCanceledException.
         double lastProgress = 0d;
         bool progressOk = true;
         EphemerisBaker.Bake(sys, 1d, config, null, f =>
@@ -1870,16 +1861,16 @@ internal static partial class P1bTests
 
     private static int Test62_CompressV2()
     {
-        // B3-ревизия на реальной 12-тельной системе (луны с кламп-сегментами —
-        // худший случай сжатия). Проверки:
-        // 1) ошибка позиции BG2 относительно несжатых рельсок ≤ budget/2 по
-        //    всему спану (гарантия формата: шаг ≤ budget/13, Σ|T_j| ≤ 13);
-        // 2) ошибка скорости ≤ 2e-3 м/с (измеренный класс 1e-7..1e-4, гейт
-        //    T40 1e-2 — двухкратный запас под гейт);
-        // 3) сжатие ≥ 2× к BE1;
-        // 4) прыжок назад по окнам в пределах того же бюджета;
-        // 5) LoadRangeToMemory == оконное чтение бит-в-бит (оба пути декодируют
-        //    одни и те же кванты).
+        // B3 revision on the real 12-body system (moons with clamp segments —
+        // the worst case for compression). Checks:
+        // 1) BG2 position error relative to the uncompressed rails ≤ budget/2 over
+        //    the whole span (format guarantee: step ≤ budget/13, Σ|T_j| ≤ 13);
+        // 2) velocity error ≤ 2e-3 m/s (measured class 1e-7..1e-4, the T40
+        //    gate is 1e-2 — twofold margin under the gate);
+        // 3) compression ≥ 2× versus BE1;
+        // 4) backward jump across windows within the same budget;
+        // 5) LoadRangeToMemory == windowed read bit-for-bit (both paths decode
+        //    the same quanta).
         StarSystem sys = TwelveBodySystem();
         var config = new BakeConfig { Degree = 12, MaxStepSeconds = 900d };
         var memory = EphemerisBaker.Bake(sys, 2d, config);

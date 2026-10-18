@@ -4,8 +4,8 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Инспектор ассета-профиля атмосферы: физика, визуал и художественные
-    /// тинты по секциям (раньше жили inline на BodyAuthoring).
+    /// Inspector for the atmosphere profile asset: physics, visual and artistic
+    /// tint sections.
     /// </summary>
     [CustomEditor(typeof(AtmosphereProfileAsset))]
     public sealed class AtmosphereProfileEditor : Editor

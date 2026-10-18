@@ -5,18 +5,18 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Доступ к собранной системе ТЕЛЯ ВНЕ Play-режима: фрейм авторинга,
-    /// превью рельефа и SurfacePlaced должны знать те же тела, тот же рельеф и
-    /// ту же зернистость, что и рантайм, иначе превью врёт.
+    /// Access to the assembled SYSTEMS OF BODIES OUTSIDE Play mode: the authoring
+    /// frame, the terrain preview and SurfacePlaced must know the same bodies, the
+    /// same terrain and the same granularity as the runtime, or the preview lies.
     ///
-    /// Путь ровно тот же, что у SimulationRunner.Awake: BuildBlueprint() (чистые
-    /// данные из иерархии сцены) → Build() (HeightfieldTerrain из профиля+сида).
-    /// Отдельной «редакторной» модели нет намеренно: одна правда, иначе между
-    /// тем, что видно в сцене, и тем, во что игрок падает, будет расхождение.
+    /// The path is exactly that of SimulationRunner.Awake: BuildBlueprint() (pure
+    /// data from the scene hierarchy) → Build() (HeightfieldTerrain from profile+seed).
+    /// There is deliberately no separate "editor" model: one truth, otherwise the
+    /// scene and what the player falls onto would diverge.
     ///
-    /// Кэш по подписи сцены. Подпись — хеш скалярных полей блюпринта плюс
-    /// ключевые параметры рельефа: пересборка на каждый Update редактора ушла бы
-    /// в горячий цикл, а без кэша правка сида не подхватывалась бы.
+    /// Cached by scene signature. The signature is a hash of the blueprint scalar
+    /// fields plus the key terrain parameters: rebuilding every editor Update would
+    /// be a hot loop, while with no cache a seed edit would not be picked up.
     /// </summary>
     public static class SurfaceSceneSystem
     {
@@ -26,10 +26,10 @@ namespace Galilego.Universe
         private static string lastError;
         private static double lastCheckTime = -1d;
 
-        /// <summary>Как часто проверять, не протух ли кэш, секунды.</summary>
+        /// <summary>How often to check whether the cache is stale, seconds.</summary>
         private const double RevalidateIntervalSeconds = 0.5d;
 
-        /// <summary>Система, собранная из текущей сцены; null при ошибке (см. LastError).</summary>
+        /// <summary>System assembled from the current scene; null on error (see LastError).</summary>
         public static StarSystem System
         {
             get
@@ -40,11 +40,8 @@ namespace Galilego.Universe
                     return cached;
                 }
 
-                // Подпись проверяется ЗДЕСЬ, а не только внутри Rebuild: иначе
-                // протухший кэш вечен. Наблюдалось: первая сборка после входа в
-                // Play успела застать сцену, где под StarSystemAuthoring ещё не
-                // подъехал Terra, подпись совпала — и кэш остался с одним Sol
-                // навсегда, а TryResolve("Terra") молча возвращал false.
+                // The signature is checked HERE, not only inside Rebuild: otherwise a
+                // stale cache is forever.
                 double now = Time.realtimeSinceStartup;
                 if (now - lastCheckTime >= RevalidateIntervalSeconds)
                 {
@@ -59,7 +56,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Кэш не соответствует текущей сцене (по числу тел и по подписи).</summary>
+        /// <summary>Cache does not match the current scene (by body count and by signature).</summary>
         private static bool Stale()
         {
             BodyAuthoring[] found = UnityEngine.Object.FindObjectsByType<BodyAuthoring>(
@@ -88,7 +85,7 @@ namespace Galilego.Universe
 
         public static string LastError => lastError;
 
-        /// <summary>Сбросить кэш (смена сцены, перезагрузка домена).</summary>
+        /// <summary>Reset the cache (scene change, domain reload).</summary>
         public static void Invalidate()
         {
             cachedValid = false;
@@ -118,11 +115,10 @@ namespace Galilego.Universe
                     return;
                 }
 
-                // Таблицы площадок у старой системы Persistent — без освобождения
-                // каждая пересборка в редакторе (а она происходит на каждую
-                // правку рельефа) текла бы на несколько килобайт. Пересборка
-                // редкая, так что ждать конца кадра безопаснее, чем держать
-                // второй си��тем: он всё равно не используется.
+                // The old system's site tables are Persistent — without releasing them
+                // every rebuild in the editor (which happens on every terrain edit)
+                // would leak a few kilobytes. Rebuilds are rare, so waiting until end
+                // of frame is safer than keeping a second system: it is unused anyway.
                 DisposeTerrainModifiers(cached);
                 cached = blueprint.Build();
                 cachedSignature = signature;
@@ -134,7 +130,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Освободить таблицы площадок всем телам системы (Persistent).</summary>
+        /// <summary>Release the site tables of all bodies in the system (Persistent).</summary>
         private static void DisposeTerrainModifiers(StarSystem system)
         {
             if (system == null)
@@ -149,10 +145,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Хеш всего, что влияет на тела и форму рельефа. Подробные поля
-        /// TerrainProfile сюда не входят: правка TerrainProfileAsset меняет
-        /// инстанс ассета, а не этот блюпринт, и пересборку для такого случая
-        /// дёргает явно (кнопка в инспекторе фрейма / перестроить превью).
+        /// Hash of everything that affects the bodies and the terrain shape. The
+        /// detailed TerrainProfile fields are not included: editing a
+        /// TerrainProfileAsset changes the asset instance, not this blueprint, and
+        /// that case triggers a rebuild explicitly (frame inspector button / rebuild preview).
         /// </summary>
         private static long Signature(SystemBlueprint blueprint)
         {
@@ -192,10 +188,10 @@ namespace Galilego.Universe
                     hash = Mix(hash, b.Terrain == null ? 0d : b.Terrain.ContinentFrequency);
                     hash = Mix(hash, b.Terrain == null ? 0d : b.Terrain.WarpStrength);
 
-                    // Площадки в подписи обязательны: без них правка радиуса или
-                    // высоты площадки не пересобрала бы систему, и превью
-                    // продолжало бы показывать старую землю, тогда как Play уже
-                    // считал бы новую. Молчаливое расхождение визуал/физика.
+                    // Sites must be in the signature: without them a change of a site
+                    // radius or height would not rebuild the system, and the preview
+                    // would keep showing the old ground while Play already computed
+                    // the new one — a silent visual/physics divergence.
                     if (b.TerrainModifiers != null)
                     {
                         hash = Mix(hash, b.TerrainModifiers.Length);
@@ -248,9 +244,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Тело по GameObject'у ассета авторинга. Имя GO — ключ связи во всём
-        /// проекте (BodyView/PlanetSurfaceRenderer/PlanetCloudsView ищут тело по
-        /// нему), поэтому и здесь только имя, без ручных ссылок.
+        /// Body by the authoring asset's GameObject. The GO name is the link key
+        /// across the project (BodyView/PlanetSurfaceRenderer/PlanetCloudsView find
+        /// the body by it), so here too only the name, no manual references.
         /// </summary>
         public static bool TryResolve(BodyAuthoring authoring, out OrbitingBody body, out HeightfieldTerrain terrain)
         {
@@ -259,7 +255,7 @@ namespace Galilego.Universe
             return authoring != null && TryResolve(authoring.gameObject.name, out body, out terrain);
         }
 
-        /// <summary>Тело по имени GameObject'а (меню и превью работают без ссылки на ассет).</summary>
+        /// <summary>Body by GameObject name (menus and preview work without an asset reference).</summary>
         public static bool TryResolve(string bodyName, out OrbitingBody body, out HeightfieldTerrain terrain)
         {
             body = null;
@@ -289,9 +285,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Высота рельефа в точке, метры над радиусом, с клампом уровня моря —
-        /// так же, как SimulationRunner.GroundHeight, чтобы превью и посадка
-        /// игрока считали одну и ту же землю. null Terrain = гладкая сфера.
+        /// Terrain height at a point, metres above the radius, with sea-level clamp —
+        /// the same as SimulationRunner.GroundHeight, so the preview and the player
+        /// landing compute the same ground. null Terrain = smooth sphere.
         /// </summary>
         public static double GroundHeight(OrbitingBody body, double latitudeDegrees, double longitudeDegrees)
         {
@@ -304,7 +300,7 @@ namespace Galilego.Universe
             return terrain.GetHeightMeters(body, latitudeDegrees * (Math.PI / 180d), longitudeDegrees * (Math.PI / 180d));
         }
 
-        /// <summary>Все BodyAuthoring сцены — для меню и списков выбора тела.</summary>
+        /// <summary>All BodyAuthoring in the scene — for menus and body selection lists.</summary>
         public static List<BodyAuthoring> AllAuthorings()
         {
             var result = new List<BodyAuthoring>();

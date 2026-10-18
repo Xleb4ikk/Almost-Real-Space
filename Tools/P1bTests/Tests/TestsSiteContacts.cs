@@ -6,11 +6,11 @@ using Galilego.Core;
 using Galilego.Spacecraft.Solver;
 using UnityEngine;
 
-// Фаза 6 (ТЗ §7): постройки. Test240 — посадка на верхнюю грань большой постройки
-// из запечённого префаба места; Test241 — удар о стену: скольжение вдоль, без
-// прохода сквозь; Test242 — 100 случайных посадок без проваливания сквозь
-// коллайдер. Данные — Tools/P1bTests/Data/site_1_colliders.json (экспорт
-// SiteColliderExporter: выпуклые хуллы + воксельные боксы в кадре места).
+// Phase 6 (spec §7): buildings. Test240 — landing on the top face of a large
+// building from a baked site prefab; Test241 — wall impact: sliding along without
+// passing through; Test242 — 100 random landings without falling through the
+// collider. Data — Tools/P1bTests/Data/site_1_colliders.json (exported by
+// SiteColliderExporter: convex hulls + voxel boxes in the site frame).
 internal static partial class P1bTests
 {
     private const double SiteDt = 1e-3;
@@ -54,7 +54,7 @@ internal static partial class P1bTests
         }
     }
 
-    /// <summary>Верхняя поверхность постройки в столбце (x, z): скан сверху вниз.</summary>
+    /// <summary>Building top surface in the (x, z) column: scan from top down.</summary>
     private static double SiteSurfaceTop(SiteColliderSet set, double x, double z)
     {
         for (double y = 300d; y > -20d; y -= 0.05d)
@@ -68,7 +68,7 @@ internal static partial class P1bTests
         return double.NaN;
     }
 
-    /// <summary>Танк + 4 ноги фазы 4 (слидеры, контакт — пятка).</summary>
+    /// <summary>Tank + 4 phase-4 legs (sliders, contact at the foot).</summary>
     private static RigidAssemblySolver BuildSiteLander(Vector3d tankPosition, out int tank, out int[] legs)
     {
         const double tankMass = 4800d;
@@ -105,7 +105,7 @@ internal static partial class P1bTests
         return body.Position + body.Orientation.Rotate(new Vector3d(0d, -0.5d * LegLength, 0d));
     }
 
-    // Test240: посадка на верхнюю грань большой постройки (горизонтальная плита крыши).
+    // Test240: landing on the top face of a large building (horizontal roof slab).
     static int Test240_SiteBoxRoof()
     {
         SiteColliderSet site = LoadSiteColliders();
@@ -114,8 +114,8 @@ internal static partial class P1bTests
         double roofZ = 0d;
         double bestFootprint = -1d;
 
-        // «Большая постройка» — самая большая горизонтальная плита-бокс (мировой AABB:
-        // тонкая по Y, большая по XZ) высоко над землёй.
+        // "Large building" — the largest horizontal box slab (world AABB: thin in
+        // Y, large in XZ) high above the ground.
         for (int i = 0; i < site.Count; i++)
         {
             if (!(site.GetCollider(i) is SiteBoxCollider))
@@ -140,8 +140,8 @@ internal static partial class P1bTests
             }
         }
 
-        // Танк ставим так, чтобы ПЯТКИ (низ ног) были на 1.5 м выше поверхности:
-        // нога свисает на LegLength ниже танка.
+        // Place the tank so the FEET (leg bottoms) are 1.5 m above the surface:
+        // a leg hangs LegLength below the tank.
         var solver = BuildSiteLander(new Vector3d(roofX, roof + LegLength + 1.5d, roofZ), out int tank, out int[] legs);
         solver.Ground = new CompositeGround(
             new PlaneGround(new Vector3d(0d, 1d, 0d), 0d),
@@ -177,13 +177,12 @@ internal static partial class P1bTests
         return 0;
     }
 
-    // Test241: удар о стену 3 м/с: скольжение вдоль, без прохода сквозь.
+    // Test241: wall impact at 3 m/s: sliding along without passing through.
     static int Test241_WallSlide()
     {
         SiteColliderSet site = LoadSiteColliders();
 
-        // Стена — самая большая вертикальная плита-бокс (мировой AABB: тонкая по Z,
-        // высокая по Y).
+        // Wall — the largest vertical box slab (world AABB: thin in Z, tall in Y).
         double wallX = 0d;
         double wallY = 0d;
         double faceZ = 0d;
@@ -241,12 +240,12 @@ internal static partial class P1bTests
         return 0;
     }
 
-    // Test242: 100 случайных посадок: ни одна пятка не провалилась сквозь коллайдер.
+    // Test242: 100 random landings: no foot fell through the collider.
     static int Test242_LandingSweep100()
     {
         SiteColliderSet site = LoadSiteColliders();
 
-        // Плита крыши — та же, что в Test240 (мировой AABB): разброс посадок вокруг неё.
+        // Roof slab — same as in Test240 (world AABB): spread the landings around it.
         double roofX = 0d;
         double roofZ = 0d;
         double roofTop = 0d;

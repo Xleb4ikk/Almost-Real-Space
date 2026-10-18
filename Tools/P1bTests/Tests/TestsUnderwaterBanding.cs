@@ -4,8 +4,8 @@ using System.Globalization;
 
 internal static partial class P1bTests
 {
-    /// <summary>Локальный float3: в заглушках Unity есть только double3, а
-    /// квантование надо считать именно в float, как в шейдере.</summary>
+    /// <summary>Local float3: the Unity stubs only have double3, but quantization
+    /// must be computed in float, exactly as in the shader.</summary>
     private struct F3
     {
         public float x, y, z;
@@ -40,16 +40,16 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Полосы под водой: разбор ЧИСЛЕННЫЙ, без Unity.
+    /// Underwater banding: a NUMERICAL analysis, without Unity.
     ///
-    /// Воспроизводит арифметику UnderwaterViewFog во float (ровно как в шейдере)
-    /// с векторами, снятыми с живой сессии, и меряет, сколько 8-битных уровней
-    /// помещается в кадр по вертикали. Если уровней десятки, полосы - это
-    /// квантование очень пологого градиента, и лечится дизерингом, а не
-    /// правкой формулы.
+    /// Reproduces the UnderwaterViewFog arithmetic in float (exactly as in the
+    /// shader) with vectors captured from a live session, and measures how many
+    /// 8-bit levels fit into the frame vertically. If the levels are in the tens,
+    /// the banding is quantization of a very shallow gradient, cured by dithering
+    /// rather than by changing the formula.
     ///
-    /// Векторы и параметры сняты из живой сессии: камера на 8.5686 м глубины,
-    /// σ = (0.40, 0.12, 0.08), вода (0.02, 0.16, 0.30), ambient 0.08.
+    /// Vectors and parameters captured from a live session: camera at 8.5686 m
+    /// depth, σ = (0.40, 0.12, 0.08), water (0.02, 0.16, 0.30), ambient 0.08.
     /// </summary>
     private static int Test140_UnderwaterBanding()
     {
@@ -70,8 +70,8 @@ internal static partial class P1bTests
         const float downwardDarkening = 0.6f;
         const int rows = 1440;
 
-        // Сцена в этом кадре пустая (только вода), поэтому "пиксель" - дальняя
-        // плоскость, и путь в воде равен выходу луча через поверхность.
+        // The scene in this frame is empty (water only), so a "pixel" is the far
+        // plane, and the in-water path equals the ray's exit through the surface.
         const float farPlane = 1.0e9f;
 
         Console.WriteLine("    sigma=" + F3s(sigma) + " вода=" + F3s(waterColor)
@@ -93,7 +93,7 @@ internal static partial class P1bTests
 
             for (int i = 0; i < rows; i++)
             {
-                // ndc.y от +1 (верх кадра) до -1 (низ), как в шейдере.
+                // ndc.y from +1 (top of frame) to -1 (bottom), as in the shader.
                 float ndcY = 1f - (2f * (i + 0.5f) / rows);
                 F3 d = Normalize(fwd + (camUp * (ndcY * tanY)) + (camRight * (0f * tanX)));
                 float b = r * Dot(up, d);
@@ -111,8 +111,8 @@ internal static partial class P1bTests
                 float down = Sat(-Dot(d, up));
                 scatter = scatter * (1f + ((downwardDarkening - 1f) * down));
 
-                // scene = дальняя плоскость: геометрии в кадре нет, и за
-                // поглощённым светом остаётся только вуаль.
+                // scene = far plane: there is no geometry in the frame, and behind
+                // the absorbed light only the veil remains.
                 F3 outC = scatter - (scatter * T);
 
                 int qr = Quant8(outC.x), qg = Quant8(outC.y), qb = Quant8(outC.z);
@@ -159,16 +159,16 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Сравнивает текущую модель вуали с исправленной.
+    /// Compares the two estimates of light reaching the camera in the veil model.
     ///
-    /// Текущая: цвет воды трактуется как АЛЬБЕДО и домножается на малое число
-    /// света (0.36*0.433 + 0.08 = 0.236), отчего вуаль выходит ~0.025 линейного
-    /// и вся картинка умещается в 4-12 кодов из 256 - отсюда полосы.
+    /// Old: water color is treated as ALBEDO and multiplied by a small light term
+    /// (0.36*0.433 + 0.08 = 0.236), so the veil comes out ~0.025 linear and the
+    /// whole image fits in 4-12 codes out of 256 - hence the banding.
     ///
-    /// Исправленная: рассеянный свет - это ИЗЛУЧЕНИЕ, а не отражение, поэтому
-    /// уровень освещения берётся ~1 и только гаснет с глубиной. Плюс направление
-    /// на солнце смягчено: рассеяние в объёме почти изотропно, ламбертовский
-    /// cos там неуместен и дополнительно съедает яркость.
+    /// New: scattered light is RADIANCE, not reflection, so the illumination level
+    /// is ~1 and only decays with depth. The sun direction is also softened:
+    /// volumetric scattering is nearly isotropic, so a Lambert cos is out of place
+    /// and further eats brightness.
     /// </summary>
     private static void CompareVeilModels(
         float depth, float r, F3 up, F3 sun, F3 camUp, float tanY,
@@ -176,8 +176,8 @@ internal static partial class P1bTests
     {
         const float downwardDarkening = 0.6f;
 
-        // Свет, дошедший до камеры: солнце погасло на пути вниз, плюс подсветка
-        // от неба/рассеяния, которой в воде много.
+        // Light reaching the camera: the sun has decayed on the way down, plus
+        // ambient from sky/scattering, of which there is a lot in water.
         F3 sunT = Exp3(sigma * -depth);
         F3 lightOld = (sunT * ndl) + new F3(0.08f, 0.08f, 0.08f);
         F3 lightNew = (sunT * (0.35f + (0.65f * ndl))) + new F3(0.55f, 0.55f, 0.55f);
@@ -191,7 +191,7 @@ internal static partial class P1bTests
 
         foreach (float bottomDist in new float[] { 8.5f, 20f, 60f, 200f })
         {
-            // Дно внизу кадра на расстоянии bottomDist, у горизонта - далеко.
+            // Bottom at distance bottomDist low in the frame, far away at the horizon.
             float topDist = bottomDist + 400f;
             MeasureBands(bottomDist, topDist, depth, r, up, camUp, tanY, sigma,
                 waterColor, lightOld, downwardDarkening, rows, "старый");
@@ -212,7 +212,7 @@ internal static partial class P1bTests
         {
             float t = i / (float)(rows - 1);
 
-            // Расстояние до дна: внизу близко, к горизонту далеко.
+            // Distance to the bottom: near at the bottom, far towards the horizon.
             float dist = bottomDist + ((topDist - bottomDist) * (t * t));
             float ndcY = 1f - (2f * (i + 0.5f) / rows);
             F3 d = Normalize(camUp + (new F3(0f, 0f, 0f) * (ndcY * tanY)));

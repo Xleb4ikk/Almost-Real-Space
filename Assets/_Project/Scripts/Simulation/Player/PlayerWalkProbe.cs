@@ -8,11 +8,11 @@ using UnityEngine;
 namespace Galilego.Simulation.Player
 {
     /// <summary>
-    /// Проба ходьбы для регресса: игрок идёт на восток заданной скоростью,
-    /// раз в секунду логируется его позиция в кадре места (якорь на старте).
-    /// Выборка — при точных ts (интерполяция состояния между кадрами), чтобы
-    /// сравнение прогонов не зависело от момента кадра: допуск 1 мм.
-    /// Автовыход из Play — только в редакторе.
+    /// Walk probe for regression: the player walks east at a set speed, and its
+    /// position in the site frame is logged once per second (anchor at start).
+    /// Sampling at exact ts (state interpolation between frames) makes run
+    /// comparison independent of the frame moment: 1 mm tolerance. Auto-exit from
+    /// Play — editor only.
     /// </summary>
     public sealed class PlayerWalkProbe : MonoBehaviour
     {

@@ -4,28 +4,28 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Визуальные облака. Как PlanetAtmosphereView — камера-центрированный
-    /// купол-сфера (мировая ориентация, радиус 0.5·far), шейдер
-    /// Galilego/PlanetClouds марширует луч и аналитически пересекает его с
-    /// ДВУМЯ сферами облачного слоя (BottomAltitude/TopAltitude) в мировом
-    /// кадре.
+    /// Visual clouds. Like PlanetAtmosphereView — a camera-centred
+    /// dome sphere (world orientation, radius 0.5·far); the
+    /// Galilego/PlanetClouds shader raymarches the ray and analytically intersects it with
+    /// TWO spheres of the cloud layer (BottomAltitude/TopAltitude) in the world
+    /// frame.
     ///
-    /// Рисуется ПОСЛЕ атмосферы (Queue "Transparent+50" в шейдере) обычным
-    /// premultiplied alpha-блендом (Blend One OneMinusSrcAlpha) поверх уже
-    /// скомпонованного кадра — в отличие от атмосферы, купол облаков НЕ
-    /// пересэмплирует _ColorPyramidTexture и не делает Blend One Zero: если
-    /// бы два таких прохода шли подряд, второй читал бы ДОСЕЙ-transparent
-    /// снимок пирамиды (без вклада первого) и стирал бы атмосферу под собой.
-    /// Обычный альфа-бленд поверх фреймбуфера этой проблемы не имеет и не
-    /// требует знать, что нарисовано снизу.
+    /// Drawn AFTER the atmosphere (Queue "Transparent+50" in the shader) with a plain
+    /// premultiplied alpha blend (Blend One OneMinusSrcAlpha) over the already
+    /// composited frame — unlike the atmosphere, the cloud dome does NOT
+    /// resample _ColorPyramidTexture and does not use Blend One Zero: if
+    /// two such passes ran in succession, the second would read the PRE-transparent
+    /// pyramid snapshot (without the first's contribution) and erase the atmosphere beneath it.
+    /// A plain alpha blend over the framebuffer has no such problem and does not
+    /// need to know what is drawn underneath.
     ///
-    /// Домены шума (shape/detail/weather) сэмплируются в МИРОВЫХ декартовых
-    /// координатах относительно центра планеты — НЕ в lat-long/UV. Это
-    /// осознанный выбор: любая широтно-долготная развёртка на радиусе
-    /// ~1000+ км даёт анизотропию у полюсов и вытянутые вдоль параллелей
-    /// полосы (похоже на артефакт "гигантские линии облаков" из более
-    /// ранних раундов). 3D-тайловые текстуры, сэмплируемые напрямую по XYZ,
-    /// этой проблемы не имеют в принципе — швов и полюсов у них нет.
+    /// Noise domains (shape/detail/weather) are sampled in WORLD Cartesian
+    /// coordinates relative to the planet centre — NOT in lat-long/UV. This is a
+    /// deliberate choice: any latitude-longitude unwrap at radius
+    /// ~1000+ km gives anisotropy at the poles and stripes stretched along the
+    /// parallels. 3D tiled textures sampled directly by XYZ avoid this
+    /// entirely: no seams and no poles means no such distortion anywhere
+    /// on the sphere.
     /// </summary>
     [DefaultExecutionOrder(-30)]
     public sealed class PlanetCloudsView : MonoBehaviour
@@ -101,7 +101,7 @@ namespace Galilego.Universe
 
             BuildTextures();
 
-            // Купол — top-level, как AtmosphereDome (см. PlanetAtmosphereView).
+            // Dome is top-level, like AtmosphereDome (see PlanetAtmosphereView).
             GameObject go = new GameObject("CloudsDome");
             MeshFilter filter = go.AddComponent<MeshFilter>();
             MeshRenderer renderer = go.AddComponent<MeshRenderer>();
@@ -237,8 +237,8 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Тот же приём, что у AtmosphereDome: держим купол внутри far,
-            // иначе вершины у края фрустума зарезаются far-плоскостью.
+            // Same approach as AtmosphereDome: keep the dome inside far,
+            // otherwise vertices at the frustum edge are clipped by the far plane.
             float domeRadius = Mathf.Max(1f, camera.farClipPlane * 0.5f);
             Vector3 cameraPosition = camera.transform.position;
             shell.position = cameraPosition;

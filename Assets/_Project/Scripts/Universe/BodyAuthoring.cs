@@ -5,11 +5,11 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Компонент небесного тела. Вешается на GameObject; иерархия Transform'ов
-    /// сцены = орбитальная иерархия системы (родитель в иерархии — орбитальный
-    /// родитель). Корень дерева (звезда) — GameObject без родителя среди авторингов.
-    /// Поля читаются в SystemBlueprint (чистые данные) — вся логика сборки
-    /// системы живёт там и тестируется на стенде (T65), здесь только сериализация.
+    /// Celestial body component. Attach to a GameObject; the scene's Transform
+    /// hierarchy is the system's orbital hierarchy (a hierarchy parent is the orbital
+    /// parent). The tree root (star) is a GameObject with no parent among the
+    /// authorings. The fields are read by SystemBlueprint (pure data) — all system
+    /// assembly logic lives there and is unit-tested; here there is only serialization.
     /// </summary>
     public sealed class BodyAuthoring : MonoBehaviour
     {
@@ -95,10 +95,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Ровные площадки тела в чертёж. Копируем, а не отдаём ссылкой на
-        /// список сцены: блюпринт — плоские данные, он переживает пересборку
-        /// системы, а список живёт в сериализованном виде и может быть изменён
-        /// из инспектора в любой момент.
+        /// The body's flat pads into the blueprint. Copied rather than passed as a
+        /// reference to the scene list: the blueprint is flat data that survives a system
+        /// rebuild, while the list is serialized and can be changed from the inspector at
+        /// any moment.
         /// </summary>
         private TerrainModifier[] ResolveTerrainModifiers()
         {
@@ -116,7 +116,7 @@ namespace Galilego.Universe
             return copy;
         }
 
-        /// <summary>Runtime-профиль рельефа из ассета-пресета; null — гладкая сфера.</summary>
+        /// <summary>Runtime terrain profile from the preset asset; null — smooth sphere.</summary>
         private TerrainProfile ResolveTerrain()
         {
             return TerrainPreset != null && TerrainPreset.Profile != null
@@ -124,7 +124,7 @@ namespace Galilego.Universe
                 : null;
         }
 
-        /// <summary>Runtime-профиль атмосферы из ассета-пресета; null — атмосферы нет.</summary>
+        /// <summary>Runtime atmosphere profile from the preset asset; null — no atmosphere.</summary>
         private AtmosphereProfile ResolveAtmosphere()
         {
             return AtmospherePreset != null && AtmospherePreset.Profile != null
@@ -140,9 +140,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Перенести параметры пресета рельефа в живой HeightfieldTerrain
-        /// (live-тюнинг в Play-режиме). Единственное место копирования — не
-        /// дублируется по вызывающим.
+        /// Copy the terrain preset parameters into a live HeightfieldTerrain (live tuning
+        /// in Play mode). The single place that copies them, not duplicated across callers.
         /// </summary>
         public void ApplyToTerrain(HeightfieldTerrain terrain)
         {

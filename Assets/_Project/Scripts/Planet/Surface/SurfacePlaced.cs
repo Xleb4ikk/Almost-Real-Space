@@ -4,19 +4,19 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Объект, прибитый к точке поверхности ТЕЛА: хранит lat/lon/высоту, а не
-    /// мировую позицию. Каждый кадр пересчитывает позу через общий с фреймом
-    /// путь (SurfaceFrame.RenderPosition/RenderRotation), поэтому едет за
-    /// планетой, её вращением и варпом, а в сцене стоит в локальных координатах
-    /// километрового масштаба.
+    /// Object pinned to a point on the BODY surface: it stores lat/lon/altitude
+    /// rather than a world position. Every frame it recomputes its pose through the
+    /// path shared with the frame (SurfaceFrame.RenderPosition/RenderRotation), so
+    /// it follows the planet, its rotation and warp, and stands in the scene in
+    /// kilometre-scale local coordinates.
     ///
-    /// Нужен только объектам ВНЕ SurfaceFrame. То, что лежит ДЕТЬМИ фрейма,
-    ///component'а не требует: фрейм переставляет себя, Unity домножает
-    /// иерархию, и обычный локальный трансформ ребёнка и есть авторское намерение.
+    /// Needed only for objects OUTSIDE a SurfaceFrame. Anything that is a CHILD of
+    /// the frame needs no component: the frame moves itself, Unity multiplies the
+    /// hierarchy, and the child's ordinary local transform is the authoring intent.
     ///
-    /// Чего компонент НЕ делает: мировую позицию в сцене он не хранит и не
-    /// выгружает — на 2.6e10 float квантует её до ~2 км, поэтому сохранять там
-    /// нечего. Всё, что нужно игре, выводится из lat/lon + смещений.
+    /// What the component does NOT do: it neither stores nor saves a world position —
+    /// at 2.6e10 float quantizes it to ~2 km, so there is nothing to save. Everything
+    /// the game needs is derived from lat/lon + offsets.
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-85)]
     [ExecuteAlways]
@@ -57,14 +57,14 @@ namespace Galilego.Universe
 
         private bool poseValid;
 
-        /// <summary>Живое тело; null, если система не собралась или имя не найдено.</summary>
+        /// <summary>Live body; null if the system failed to build or the name was not found.</summary>
         public OrbitingBody BodyState { get; private set; }
 
-        /// <summary>Высота рельефа в опорной точке, м.</summary>
+        /// <summary>Terrain height at the reference point, m.</summary>
         public double GroundHeightMeters =>
             SurfaceSceneSystem.GroundHeight(BodyState, LatitudeDegrees, LongitudeDegrees);
 
-        /// <summary>Высота опорной точки над радиусом тела, м.</summary>
+        /// <summary>Altitude of the reference point above the body radius, m.</summary>
         public double AltitudeMeters =>
             SnapToTerrain ? (GroundHeightMeters + HeightOffsetMeters) : HeightOffsetMeters;
 
@@ -81,9 +81,9 @@ namespace Galilego.Universe
 
         private void Update()
         {
-            // В Play поза живёт в LateUpdate: якорь игрока и время системы
-            // выставляет SimulationRunner.Update, читать их раньше — читать
-            // прошлый кадр.
+            // In Play the pose lives in LateUpdate: the player anchor and system time
+            // are set by SimulationRunner.Update, reading them earlier reads the
+            // previous frame.
             if (!Application.isPlaying)
             {
                 Refresh();
@@ -98,7 +98,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Пересчитать позу принудительно (после правки профиля рельефа).</summary>
+        /// <summary>Force a pose refresh (after editing the terrain profile).</summary>
         [ContextMenu("Refresh placement")]
         public void Refresh()
         {
@@ -121,8 +121,8 @@ namespace Galilego.Universe
                 body, LatitudeDegrees, LongitudeDegrees, AltitudeMeters, time, out _);
 
             Quaternion rotation = SurfaceFrame.RenderRotation(body, LatitudeDegrees, LongitudeDegrees, time);
-            // Смещение — в локальных осях фрейма (x=север, y=зенит, z=восток),
-            // поэтому поворачивается тем же поворотом, что и сама точка.
+            // The offset is in the frame's local axes (x=north, y=zenith, z=east),
+            // so it is rotated by the same rotation as the point itself.
             Vector3d frameLocal = SurfaceFrameMath.EnuToFrameLocal(
                 OffsetEastMeters, OffsetNorthMeters, OffsetUpMeters);
             position += rotation * new Vector3(
@@ -138,10 +138,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Доворот ENU-фрейма на наклон нормали рельефа. Нормаль приходит в
-        /// астро-кадре, проецируется в базис ENU (SurfaceFrameMath.ToLocal) и
-        /// становится обычным Unity-поворотом от зенита — без обратной
-        /// quaternion-алгебры в рантайме.
+        /// Tilts the ENU frame by the terrain normal slope. The normal arrives in
+        /// the astro frame, is projected into the ENU basis (SurfaceFrameMath.ToLocal)
+        /// and becomes an ordinary Unity rotation from zenith — with no inverse
+        /// quaternion algebra at runtime.
         /// </summary>
         private Quaternion ComposeNormalAligned(OrbitingBody body, Quaternion enuRotation, double time)
         {

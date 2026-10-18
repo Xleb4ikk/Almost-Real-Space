@@ -7,10 +7,10 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Безкамерный зонд: для каждого слоя декора и каждого пояса широты прогоняет
-    /// те же фильтры, что GroundDecorDistribution.TryEvaluate, и печатает долю
-    /// кандидатов, прошедших каждую стадию. Показывает, ГДЕ режется декор по широте.
-    /// Положить в Assets/_Project/Scripts/Editor/SurfaceTools/. Меню: Tools/Galilego/Decor latitude probe.
+    /// Camera-free probe: for every decor layer and latitude band it runs the same
+    /// filters as GroundDecorDistribution.TryEvaluate and prints the share of
+    /// candidates passing each stage. Shows WHERE decor is cut off by latitude.
+    /// Menu: Tools/Galilego/Decor latitude probe.
     /// </summary>
     public static class DecorLatitudeProbe
     {

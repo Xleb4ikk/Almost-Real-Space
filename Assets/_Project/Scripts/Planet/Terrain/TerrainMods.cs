@@ -6,18 +6,8 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Ровные площадки на теле — список, который автор правит руками, и
-    /// помощник по их размещению.
-    ///
-    /// СПИСОК ЖИВЁТ НЕ ЗДЕСЬ, а в BodyAuthoring.TerrainPads: площадка — это
-    /// часть РЕЛЬЕФА, и она обязана одинаково попасть и в Play-сборку
-    /// (SimulationRunner), и в редакторное превью (SurfaceSceneSystem). Оба идут
-    /// через один путь StarSystemAuthoring.BuildBlueprint(), поэтому правка
-    /// видна в обоих, и расхождение невозможно по построению.
-    ///
-    /// Этот компонент — только гизмо (жёлтое кольцо = фартук, красное = ровное
-    /// ядро) и операции «добавить площадку в точке» / «перезапомнить высоту».
-    /// Сам список виден и правится прямо в инспекторе BodyAuthoring.
+    /// Level pads on a body: gizmos (yellow ring = skirt, red = level core) plus
+    /// add-pad and capture-height helpers. The pad list itself lives in BodyAuthoring.TerrainPads.
     /// </summary>
     [ExecuteAlways]
     [DisallowMultipleComponent]
@@ -37,7 +27,7 @@ namespace Galilego.Universe
 
         private List<TerrainModifier> Pads => Body != null ? Body.TerrainPads : null;
 
-        /// <summary>Активных площадок (выключенные не считаются).</summary>
+        /// <summary>Number of active pads (disabled pads are not counted).</summary>
         public int ActiveCount
         {
             get
@@ -62,10 +52,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Запомнить естественную высоту рельефа в точке как целевую для
-        /// площадки. Смысл: площадка должна стать РОВНОЙ на месте, где рельеф
-        /// и так примерно такого уровня, — тогда она не уедет вверх/вниз и не
-        /// прорежет окружающий склон.
+        /// Capture the natural terrain height at the point as the pad target, so the
+        /// pad sits flush with the terrain and does not cut into the surrounding slope.
         /// </summary>
         public void CaptureTargetHeight(int index, double latitudeDegrees, double longitudeDegrees)
         {
@@ -81,8 +69,7 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Через промежуточную переменную: список — List<TerrainModifier>, а
-            // индексатор у List нельзя присваивать (struct, а не ref).
+            // Copy through an interim variable: List's indexer returns a copy (struct, not ref).
             TerrainModifier pad = pads[index];
             pad.LatitudeDegrees = latitudeDegrees;
             pad.LongitudeDegrees = longitudeDegrees;
@@ -91,8 +78,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Добавить площадку с центром в точке и высотой по естественному рельефу.
-        /// Возвращает индекс или -1, если систему собрать не удалось.
+        /// Add a pad centered at the point with the height of the natural terrain.
+        /// Returns the index, or -1 if the system could not be resolved.
         /// </summary>
         public int AddPad(double latitudeDegrees, double longitudeDegrees)
         {
@@ -120,7 +107,7 @@ namespace Galilego.Universe
             return pads.Count - 1;
         }
 
-        /// <summary>Убрать площадку по индексу.</summary>
+        /// <summary>Remove the pad at the given index.</summary>
         public void RemovePad(int index)
         {
             List<TerrainModifier> pads = Pads;
@@ -131,11 +118,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Естественная высота рельефа в точке — БЕЗ учёта площадок. Именно она
-        /// нужна как целевая: если спросить обычный GetHeightMeters, то площадка
-        /// в точке вернёт уже сглаженное значение и новая площадка «замкнётся»
-        /// на текущем, а не на естественном рельефе. Ошибка накапливалась бы
-        /// от базы к базе.
+        /// Natural terrain height at the point, ignoring pads. Must be used as the pad
+        /// target: regular GetHeightMeters would return the already-smoothed value there.
         /// </summary>
         private double SampleNaturalHeight(double latitudeDegrees, double longitudeDegrees)
         {
@@ -178,8 +162,7 @@ namespace Galilego.Universe
                     continue;
                 }
 
-                // Радиусы в метрах поверхности, а не в градусах: автору нужны
-                // метры, иначе он не сможет прикинуть размер площадки на глаз.
+                // Radii are in surface meters (not degrees) so pad size can be judged by eye.
                 double inner = pad.InnerRadiusMeters;
                 double outer = pad.OuterRadiusMeters;
                 if (outer <= 0d || outer > 1e6d)
@@ -211,8 +194,8 @@ namespace Galilego.Universe
                 pad.TargetHeightMeters,
                 frame.BodyRadius);
 
-            // Смещение живёт в осях фрейма (x=север, y=зенит, z=восток), а гизмо
-            // рисуется в мировых координатах — переносим через позу фрейма.
+            // The offset is in frame axes (x=north, y=up, z=east); gizmos draw in
+            // world space, so transform it through the frame's pose.
             var local = new Vector3((float)offset.X, (float)offset.Y, (float)offset.Z);
             Vector3 center = frame.transform.position + (frame.transform.rotation * local);
 

@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Galilego.Tablet
 {
-    /// <summary>Палитра планшета: зелёный «люминофор» на почти чёрном. Янтарный — только для предупреждений.</summary>
+    /// <summary>Tablet palette: green "phosphor" on near-black. Amber is reserved for warnings.</summary>
     public static class TabletTheme
     {
         public static readonly Color32 Bg = new Color32(2, 9, 5, 255);
@@ -17,7 +17,7 @@ namespace Galilego.Tablet
         public static readonly Color32 ButtonOn = new Color32(14, 70, 34, 255);
         public static readonly Color32 ButtonHover = new Color32(10, 44, 22, 255);
 
-        // Навбол: небо (тёмное) и земля (светлее), по три тона оттенения.
+        // Navball: sky (dark) and ground (lighter), three shading tones each.
         public static readonly Color32[] Sky =
         {
             new Color32(3, 24, 12, 255), new Color32(5, 34, 17, 255), new Color32(8, 46, 23, 255),

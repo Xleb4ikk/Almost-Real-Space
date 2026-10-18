@@ -3,13 +3,12 @@ using Galilego.Core;
 namespace Galilego.Events
 {
     /// <summary>
-    /// Исчерпание топлива — событие ПО СОСТОЯНИЮ, а не по времени: масса
-    /// пересекает порог сухой массы сверху вниз (g = mass − dryMass, Falling).
-    /// Структурно то же, что AltitudeCrossingDetector.Touchdown, только ключ —
-    /// масса, а не высота. Покрывает случай, который TimedEvent покрыть не
-    /// может: игрок держит газ, а топливо кончается раньше расчётного момента.
-    /// Pure, как остальные детекторы. Приоритет — Planned: порядок при
-    /// совпадении корней во времени решает время (ранний побеждает), а не вес.
+    /// Propellant depletion is a STATE event, not a time event: mass crosses the
+    /// dry-mass threshold top to bottom (g = mass − dryMass, Falling). Structurally
+    /// the same as AltitudeCrossingDetector.Touchdown, just keyed on mass instead of
+    /// altitude. Covers a case TimedEvent cannot: the player holds the throttle and
+    /// fuel runs out earlier than planned. Pure, like the other detectors. Priority is
+    /// Planned: on simultaneous roots in time, time decides (the earlier wins), not weight.
     /// </summary>
     public sealed class PropellantDepletionDetector : ICrossingDetector
     {

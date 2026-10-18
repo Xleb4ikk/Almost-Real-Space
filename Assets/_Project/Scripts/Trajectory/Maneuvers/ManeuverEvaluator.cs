@@ -7,11 +7,11 @@ using Ship = Galilego.Spacecraft.Spacecraft;
 namespace Galilego.Events
 {
     /// <summary>
-    /// Допуски burn-режима — ПАРАМЕТР вызова, а не встроенное предположение.
-    /// Химический прожиг (тяга в единицы g) упирается в ошибку массы и
-    /// направления — massTol жёсткий; низкотяговый (ионный, тяга меньше
-    /// гравитации) — в ошибку позиции/скорости на длинной дуге. Неверный выбор
-    /// здесь — решение не той проблемы, поэтому пресет передаётся явно.
+    /// Burn-mode tolerances are a CALL parameter, not a built-in assumption.
+    /// A chemical burn (thrust of a few g) is limited by mass and direction error —
+    /// so massTol is tight; low-thrust (ion, thrust below gravity) is limited by
+    /// position/velocity error over a long arc. Choosing the wrong one solves the
+    /// wrong problem, so the preset is passed explicitly.
     /// </summary>
     public readonly struct BurnTolerancePreset
     {
@@ -28,16 +28,16 @@ namespace Galilego.Events
             RelativeTolerance = relativeTolerance;
         }
 
-        /// <summary>Химический двигатель: доминирует масса/направление.</summary>
+        /// <summary>Chemical engine: mass/direction dominate.</summary>
         public static BurnTolerancePreset Chemical => new BurnTolerancePreset(1e-3d, 1e-6d, 1e-7d, 1e-11d);
 
-        /// <summary>Низкая тяга: доминирует позиция/скорость на длинной дуге.</summary>
+        /// <summary>Low thrust: position/velocity over a long arc dominate.</summary>
         public static BurnTolerancePreset LowThrust => new BurnTolerancePreset(1e-2d, 1e-5d, 1e-6d, 1e-10d);
     }
 
     /// <summary>
-    /// Итог связки coast+burn: где остановились, на чём (событие или отсечка),
-    /// доработала ли тяга до плановой отсечки.
+    /// Result of the coast+burn sequence: where it stopped, why (event or cutoff),
+    /// and whether the burn ran through to the planned cutoff.
     /// </summary>
     public readonly struct ManeuverResult
     {
@@ -56,17 +56,16 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Связка coast→burn поверх готовых драйверов, не новый движок: добор до
-    /// зажигания — LongWarpDriver (баллистика, throttle там ноль и вход
-    /// разрешён формально), сам прожиг — EventDrivenPropagator чанками,
-    /// обрезанными WarpController по control-tick (тяга активна — граница тика
-    /// никогда не пересекается, доказано T2). Пресет допусков применяется на
-    /// время прожига и восстанавливается в finally: архитектура не знает,
-    /// «химия» там или ионник.
+    /// Coast→burn sequence built on the existing drivers, not a new engine: coast to
+    /// ignition is LongWarpDriver (ballistic; throttle is zero there and entry is
+    /// formally allowed), the burn itself is EventDrivenPropagator in chunks clipped
+    /// by WarpController at the control tick. The tolerance preset is applied for the
+    /// burn and restored in finally: the architecture does not know whether this is
+    /// "chemical" or ion.
     ///
-    /// Плановая отсечка — расписанием ThrottleAt (непрерывно в ноль), сброс
-    /// ступени — StageSeparation (разрыв массы/импульс отделения, дискретно,
-    /// внеплановая выработка — PropellantDepletionDetector в burn-пропагаторе.
+    /// Planned cutoff comes from the ThrottleAt schedule (continuous to zero); stage
+    /// jettison is StageSeparation (mass break/impulse, discrete); unplanned depletion
+    /// is handled by PropellantDepletionDetector in the burn propagator.
     /// </summary>
     public sealed class ManeuverEvaluator
     {
@@ -109,17 +108,16 @@ namespace Galilego.Events
                 throw new ArgumentOutOfRangeException("Окно прожига обязано лежать впереди старта.");
             }
 
-            // frameSimSeconds ≤ 0 даёт frameEnd = t: внутренний цикл не
-            // выполняется, timeAcc не растёт — вечный цикл (аудит S1/2.3). Громко.
+            // frameSimSeconds ≤ 0 gives frameEnd = t: the inner loop never runs and
+            // timeAcc never grows — an infinite loop. Fail loudly.
             if (!(frameSimSeconds > 0d) || !double.IsFinite(frameSimSeconds))
             {
                 throw new ArgumentOutOfRangeException(nameof(frameSimSeconds),
                     "frameSimSeconds обязан быть конечным и положительным, получено " + frameSimSeconds + ".");
             }
 
-            // Газ: расписание 0..1 по времени. null = заглушка до системы
-            // ступеней/ввода — полный газ на весь прожиг (прежнее поведение,
-            // раньше 1.0 был захардкожен молча).
+            // Throttle: a schedule 0..1 over time. null = stub until the staging/input
+            // system exists — full throttle for the whole burn.
             Func<double, double> throttle = throttleAt ?? (_ => 1d);
 
             LongWarpResult coast = coastDriver.AdvanceToTarget(ship, startTimeSeconds, igniteTimeSeconds);
@@ -150,16 +148,16 @@ namespace Galilego.Events
                         double chunk = Math.Min(maxChunk, frameEnd - t);
                         if (chunk <= 0d)
                         {
-                            // Ноль от warp-гейта — легитимный отказ продвижения
-                            // (запрет), а не «подшагнём сами»: громко (аудит S1/F13).
+                            // A zero from the warp gate is a legitimate refusal to advance
+                            // (a veto), not a "we'll just sub-step ourselves": fail loudly.
                             throw new InvalidOperationException(
                                 "Warp-контроллер запретил продвижение (maxChunk=" + maxChunk +
                                 ") на t=" + t.ToString("R") + " — продлевать окно симуляции нельзя без диагностики.");
                         }
 
                         double throttleNow = throttle(t);
-                        // NaN-throttle молча проходит кламп (Max/Min с NaN = NaN)
-                        // и уходит в пропагатор (аудит S1/2.3).
+                        // A NaN throttle silently passes the clamp (Max/Min with NaN = NaN)
+                        // and reaches the propagator.
                         if (!double.IsFinite(throttleNow))
                         {
                             throw new InvalidOperationException(
@@ -190,20 +188,13 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Сброс ступени с сохранением импульса. Старый ApplyStaging
-        /// (абсолютный кик separationDv кораблю, второго тела нет) удалён:
-        /// вызывающих было ноль, семантика была неверна. Здесь внутренний
-        /// импульс разводит ДВА тела: v1 = v0 + (m2/M)·Δv_rel остатку,
-        /// v2 = v0 − (m1/M)·Δv_rel отделяемой ступени; m1·v1 + m2·v2 = M·v0
-        /// тождественно по построению коэффициентов (проверено T33a).
-        /// Направление Δv_rel — готовым вектором (вариант А: вызывающий берёт
-        /// из AttitudeState, Events ориентацией не владеет — та же развязка,
-        /// что ControlInputSnapshot). Ступень спавнится в DebrisPool тем же
-        /// методом, что обломки (второго пути создания тел нет); живёт дольше
-        /// дефолтного мусора (отдельный физический объект, не ошмёток взрыва).
-        /// Громкое исключение при уходе массы ниже минимума (как TimedEvent).
-        /// Драйвер пропагатора не трогаем: спавн делает вызывающий слой после
-        /// возврата Timed-события, у драйвера пула нет и не должно быть.
+        /// Stage jettison conserving momentum. The internal impulse separates TWO
+        /// bodies: v1 = v0 + (m2/M)·Δv_rel for the remainder, v2 = v0 − (m1/M)·Δv_rel
+        /// for the jettisoned stage; m1·v1 + m2·v2 = M·v0 holds by construction of the
+        /// coefficients. The Δv_rel direction is supplied as a ready vector by the
+        /// caller (taken from AttitudeState; Events does not own attitude). The stage
+        /// is spawned in DebrisPool the same way debris is and lives longer than
+        /// default debris. Throws loudly if the remaining mass drops below the minimum.
         /// </summary>
         public static int StageSeparation(
             Ship ship,

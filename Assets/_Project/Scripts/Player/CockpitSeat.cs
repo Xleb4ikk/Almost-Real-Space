@@ -3,10 +3,10 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Кресло пилота/оператора: E — сесть (игрок фиксируется у якоря, ходьба
-    /// замирает, голова свободна: мышь смотрит вокруг), E — встать. Монитор
-    /// станции не «прилипает» к лицу: кнопки на нём жмутся прямо мышью-прицелом
-    /// (ShipTablet, мировой указатель), а ПКМ приближает вплотную (камера).
+    /// Pilot/operator seat: E to sit (the player is fixed at the anchor, walking
+    /// freezes, the head is free: the mouse looks around), E to stand. The station
+    /// monitor does not "stick" to the face: its buttons are pressed directly with
+    /// the crosshair mouse (ShipTablet, world pointer), and RMB zooms in close (camera).
     /// </summary>
     public sealed class CockpitSeat : Interactable
     {

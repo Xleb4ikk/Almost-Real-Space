@@ -4,20 +4,20 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Ставит объект НА рельеф. Это то, без чего базу не построить: в
-    /// локальных координатах места (метры) здание, поставленное «на глаз»,
-    /// либо висит в воздухе, либо наполовину в земле — и ни то, ни другое не
-    /// видно в сцене, потому что Scene view не знает про рельеф.
+    /// Places an object ON the terrain. Without it the base cannot be built: in
+    /// site local coordinates (metres) a building placed "by eye" either floats in
+    /// the air or is half in the ground — and neither is visible in the scene,
+    /// because the Scene view knows nothing of the terrain.
     ///
-    /// Компонент работает и в редакторе, и в Play, и пересчитывается сам при
-    /// любой смене позиции места. Чинит три вещи:
-    ///   • ставит Y на высоту земли в этой точке (плюс HeightOffsetMeters);
-    ///   • по желанию доворачивает объект по нормали рельефа (скала, пандус);
-    ///   • показывает в инспекторе, на сколько метров объект провисает или
-    ///     висит — чтобы «поймать» стык с землёй глазами.
+    /// Works in both the editor and Play, and refreshes itself on any change of the
+    /// site position. It does three things:
+    ///   • sets Y to the ground height at this point (plus HeightOffsetMeters);
+    ///   • optionally tilts the object to the terrain normal (rock, ramp);
+    ///   • shows in the inspector how many metres the object sags or floats —
+    ///     to catch the ground seam by eye.
     ///
-    /// Объекты внутри места работают и без него — просто стоят там, куда их
-    /// положили. Snap нужен там, где важно точное касание земли.
+    /// Objects inside a site work without it too — they simply stand where placed.
+    /// Snap is needed where exact ground contact matters.
     /// </summary>
     [ExecuteAlways]
     public sealed class SurfaceGrounded : MonoBehaviour
@@ -37,10 +37,10 @@ namespace Galilego.Universe
         [Tooltip("Пересчитывать при изменении позиции места (снять галку только для объектов, которые двигают вручную).")]
         public bool AutoUpdate = true;
 
-        /// <summary>Позиция места, в чьих осях считаем. Заполняется автоматически.</summary>
+        /// <summary>Site whose axes we compute in. Filled automatically.</summary>
         private SurfaceSite site;
 
-        /// <summary>На сколько метров объект выше/ниже земли прямо сейчас, м.</summary>
+        /// <summary>How many metres the object is above/below the ground right now, m.</summary>
         public double CurrentGapMeters { get; private set; }
 
         private void OnEnable()
@@ -69,7 +69,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Найти место, которому принадлежит объект, и поставить объект на землю.</summary>
+        /// <summary>Find the site the object belongs to and place the object on the ground.</summary>
         public void Apply()
         {
             if (site == null)
@@ -92,7 +92,7 @@ namespace Galilego.Universe
                 ? site.Runner.TimeSeconds
                 : 0d;
 
-            // Позиция объекта в осях МЕСТА (там X — север, Y — зенит, Z — восток).
+            // Object position in SITE axes (there X north, Y zenith, Z east).
             Vector3 local = transform.localPosition;
             double east = local.z;
             double north = local.x;
@@ -106,13 +106,11 @@ namespace Galilego.Universe
             HeightfieldTerrain terrain = body.Terrain as HeightfieldTerrain;
             if (terrain != null)
             {
-                // Высота в точке объекта, а не в точке места: на склоне разница
-                // между центром базы и её краем — десятки метров.
-                // ВАЖНО: SampleHeight ждёт ЕДИНИЧНОЕ направление по поверхности
-                // шара (та же конвенция, что у CubeSphere и у рельефа). Если
-                // передать точку радиуса R (~1.14e6), шум опросится в другой
-                // точке сферы и вернёт чушь — здание встанет на километры в
-                // сторону и вверх (проверено: 3807 м и −7153 м).
+                // Height at the object point, not the site point: on a slope the
+                // difference between the base centre and its edge is tens of metres.
+                // IMPORTANT: SampleHeight expects a UNIT direction on the sphere
+                // (same convention as CubeSphere and the terrain). Passing a point
+                // of radius R samples the noise at a different sphere point.
                 ground = TerrainNoise.SampleHeight(
                     TerrainNoiseParams.FromTerrain(terrain),
                     new Unity.Mathematics.double3(direction.X, direction.Y, direction.Z)) * terrain.AmplitudeMeters;
@@ -136,10 +134,10 @@ namespace Galilego.Universe
 
         private void AlignToTerrainNormal(OrbitingBody body, Vector3d direction, double time, double ground)
         {
-            // GetOutwardNormal ждёт ТОЧКУ радиуса R (не единичное направление)
-            // и усредняет уклон примерно по 114 м. Это ровно та нормаль, по
-            // которой садится корабль, — база и шлюпка получают одинаковый
-            // наклон, и стык не расходится.
+            // GetOutwardNormal expects a POINT of radius R (not a unit direction)
+            // and averages the slope over roughly 114 m. That is exactly the normal
+            // the ship lands on, so base and lander get the same tilt and the seam
+            // does not diverge.
             Vector3d bodyFixed = direction * (body.Radius + ground);
             Vector3d normalAstro = SurfaceFrameMath.Up(
                 KeplerMath.DegreesToRadians(site.LatitudeDegrees),
@@ -161,7 +159,7 @@ namespace Galilego.Universe
             }
 
             target.Normalize();
-            // Поворот от зенита к нормали, выраженный в осях МЕСТА.
+            // Rotation from zenith to the normal, expressed in SITE axes.
             Quaternion tilt = Quaternion.FromToRotation(Vector3.up, target);
             Quaternion yaw = KeepYaw
                 ? Quaternion.Euler(0f, transform.localEulerAngles.y, 0f)
@@ -169,7 +167,7 @@ namespace Galilego.Universe
             transform.localRotation = tilt * yaw;
         }
 
-        /// <summary>Пересчитать всех потомков места — после смены точки или рельефа.</summary>
+        /// <summary>Refresh all site descendants — after a point or terrain change.</summary>
         public static void RefreshAll(Transform siteRoot)
         {
             if (siteRoot == null)

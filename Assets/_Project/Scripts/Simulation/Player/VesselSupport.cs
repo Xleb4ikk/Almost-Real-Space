@@ -5,15 +5,14 @@ using UnityEngine;
 namespace Galilego.Simulation.Player
 {
     /// <summary>
-    /// Опора — детали аппарата: капсульные коллайдеры визуалов в стройке и
-    /// коллайдеры тел прокси зоны контакта в полёте (оба помечены
-    /// VesselPartCollider). Без этого игрок свободно проходил сквозь ракету —
-    /// детали были только картинкой. Механика Floor/Ceiling/Sweep — в
-    /// MeshSupportBase, здесь только опознание деталей и их sourceId.
+    /// Support — vessel parts: capsule colliders of the build-time visuals and
+    /// contact-zone proxy body colliders in flight (both tagged VesselPartCollider).
+    /// Floor/Ceiling/Sweep mechanics are in MeshSupportBase; here only part
+    /// recognition and their sourceId.
     /// </summary>
     public sealed class VesselSupport : MeshSupportBase
     {
-        /// <summary>База идентификаторов деталей аппарата в композите.</summary>
+        /// <summary>Base id for vessel parts in the composite.</summary>
         public const int SourceIdBase = 1000;
 
         private readonly System.Collections.Generic.Dictionary<VesselPartCollider, int> partIds

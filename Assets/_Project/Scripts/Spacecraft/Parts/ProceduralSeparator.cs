@@ -3,15 +3,13 @@ using UnityEngine;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Процедурный отделитель (сепаратор): плоское кольцо квадратного профиля,
-    /// ось — локальная Y, origin в середине кольца. Игрок задаёт наружный радиус;
-    /// ширина кольца — 15% радиуса, толщина — постоянные 40 мм (не зависят от
-    /// того, что рисует игрок радиусом).
-    /// UV вдоль окружности метрические (тайл текстуры = шаг сегментных швов,
-    /// ~250 мм), поэтому швы идут ровно при любом радиусе и не растягиваются.
-    /// Рёбра стенок берут из текстуры только зону фона: болты накладок,
-    /// спроецированные на 40-мм ребро, сплющивались бы в овалы.
-    /// Кромки острые: вершины стенок и торцов отдельные.
+    /// Procedural separator: a flat ring with a square profile, axis is local Y, origin
+    /// at the ring's mid-height. The player sets the outer radius; ring width is 15% of
+    /// the radius, thickness a constant 40 mm (independent of the player's radius).
+    /// UVs around the circumference are metric (texture tile = segment-seam spacing,
+    /// ~250 mm), so seams line up at any radius and don't stretch. Wall edges sample only
+    /// the background zone of the texture: pad bolts projected onto a 40-mm edge would be
+    /// squashed into ovals. Edges are hard: wall and end-face vertices are separate.
     /// </summary>
     [ExecuteAlways]
     [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
@@ -31,28 +29,28 @@ namespace Galilego.Spacecraft
         [Tooltip("Метров поверхности на тайл текстуры: задаёт шаг сегментных швов (~250 мм).")]
         [Min(0.05f)] public float TextureMetersPerTile = 0.25f;
 
-        /// <summary>Ширина кольца — доля радиуса (15%, металл от края к центру).</summary>
+        /// <summary>Ring width as a fraction of the radius (15%, metal from the edge inwards).</summary>
         public const float RingWidthFraction = 0.15f;
 
-        /// <summary>Толщина кольца (высота по Y), постоянная 40 мм.</summary>
+        /// <summary>Ring thickness (height along Y), constant 40 mm.</summary>
         public const float Thickness = 0.04f;
 
-        /// <summary>Строка текстуры, с которой начинается зона фона для стенок (без болтов).</summary>
+        /// <summary>Texture row where the background zone for the walls starts (no bolts).</summary>
         private const float WallTextureV = 0.10f;
 
         private Mesh mesh;
 
-        /// <summary>Ширина кольца при текущем радиусе, м.</summary>
+        /// <summary>Ring width at the current radius, m.</summary>
         public float RingWidthM
         {
             get { return RingWidthFraction * Radius; }
         }
 
         /// <summary>
-        /// Сетка кольца: наружная и внутренняя обечайки плюс два плоских торца,
-        /// один подмеш. UV: вдоль окружности — метры (тайл = metersPerTile);
-        /// у торцов v — доля ширины кольца (0 — внутренняя кромка, 1 — наружная),
-        /// у стенок v — зона фона текстуры. Вершины групп отдельные, кромки жёсткие.
+        /// Ring mesh: outer and inner barrels plus two flat end faces, one submesh.
+        /// UVs: around the circumference in metres (tile = metersPerTile); on the end
+        /// faces v is the fraction of the ring width (0 — inner edge, 1 — outer), on the
+        /// walls v is the texture's background zone. Group vertices are separate, edges hard.
         /// </summary>
         public static Mesh BuildRing(float radius, float ringWidth, float thickness, int segments, float metersPerTile)
         {
@@ -62,10 +60,10 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
-        /// Заполнить СУЩЕСТВУЮЩИЙ меш кольцом. Меш переиспользуется, а не
-        /// пересоздаётся: AddComponent сразу зовёт OnEnable (сборка с размерами
-        /// по умолчанию), затем UI задаёт радиус и просит Rebuild — уничтожение
-        /// меша на глазах GPU Resident Drawer (HDRP) даёт «invalid Batch/Mesh ID».
+        /// Fill an EXISTING mesh with a ring. The mesh is reused, not recreated:
+        /// AddComponent immediately calls OnEnable (build with default sizes), then the
+        /// UI sets the radius and requests Rebuild — destroying the mesh under the GPU
+        /// Resident Drawer (HDRP) gives "invalid Batch/Mesh ID".
         /// </summary>
         public static void FillRing(Mesh mesh, float radius, float ringWidth, float thickness, int segments, float metersPerTile)
         {
@@ -166,8 +164,8 @@ namespace Galilego.Spacecraft
             }
 
 #if UNITY_EDITOR
-            // Меш нельзя удалять прямо внутри OnValidate, поэтому пересборка
-            // откладывается на конец кадра.
+            // The mesh cannot be destroyed directly inside OnValidate, so the rebuild is
+            // deferred to the end of the frame.
             UnityEditor.EditorApplication.delayCall -= RebuildDelayed;
             UnityEditor.EditorApplication.delayCall += RebuildDelayed;
 #else
@@ -187,11 +185,11 @@ namespace Galilego.Spacecraft
 #endif
 
         /// <summary>
-        /// Перестроить сетку под текущие параметры. Вызывать после изменения
-        /// Radius из UI (VAB), чтобы не ждать OnValidate. Меш переиспользуется
-        /// (FillRing): уничтожение меша под GPU Resident Drawer (HDRP) даёт
-        /// «invalid Batch/Mesh ID» — AddComponent успевает собрать кольцо до
-        /// того, как UI задаст радиус.
+        /// Rebuild the mesh for the current parameters. Call it after changing Radius
+        /// from the UI (VAB) so as not to wait for OnValidate. The mesh is reused
+        /// (FillRing): destroying a mesh under the GPU Resident Drawer (HDRP) gives
+        /// "invalid Batch/Mesh ID", since AddComponent builds the ring before the UI
+        /// sets the radius.
         /// </summary>
         public void Rebuild()
         {

@@ -1,18 +1,14 @@
 namespace Galilego.Core
 {
     /// <summary>
-    /// Компенсированное суммирование (Кэхен–Бабушка) для длительных аккумуляторов
-    /// времени: EventDrivenPropagator (тысячи чанков) и burn-цикл ManeuverEvaluator.
-    /// На годах варпа наивное t += chunk накапливает ошибку, сопоставимую с
-    /// допуском корня 1e-6с; компенсация существенно её уменьшает. Конкретная
-    /// величина ошибки зависит от последовательности чисел и IEEE-754 и здесь
-    /// НЕ гарантируется — гарантируется только существенно меньший рост ошибки
-    /// с числом сложений (доказано T21a числами, не формулировкой).
-    /// Sealed struct, ноль аллокаций. Неявных преобразований нет специально:
-    /// должно быть видно, где идёт компенсация, а где голый double.
-    /// Не применяется: короткие внутренние циклы степперов (ошибка ничтожна,
-    /// побитовый churn даром), единичные присваивания (LongWarpDriver,
-    /// WarpController — там нечего компенсировать).
+    /// Compensated (Kahan–Babuška) summation for long-lived time accumulators:
+    /// EventDrivenPropagator (thousands of chunks) and the ManeuverEvaluator burn
+    /// loop. Over years of warp a naive t += chunk accumulates error comparable to
+    /// the 1e-6 s root tolerance; compensation keeps it far smaller. The exact error
+    /// depends on the number sequence and IEEE-754 and is NOT guaranteed here —
+    /// only the much slower error growth (measured by T21a). Plain struct, zero
+    /// allocations; no implicit conversions on purpose, so compensated and raw
+    /// double accumulation stay visibly distinct.
     /// </summary>
     public struct KahanAccumulator
     {

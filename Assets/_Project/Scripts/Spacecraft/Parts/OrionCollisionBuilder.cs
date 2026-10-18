@@ -6,54 +6,49 @@ using UnityEngine;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Коллайдеры капсулы Orion для ходьбы/полёта игрока.
+    /// Orion capsule colliders for player walking/flight.
     ///
-    /// Опора игрока (MeshSupportBase) выталкивает капсулу через Physics.ComputePenetration,
-    /// а он НЕ работает с non-convex MeshCollider. Раньше на КАЖДЫЙ меш модели (болты,
-    /// рамы, стёкла, кресло...) вешался non-convex коллайдер: при малейшем проникновении
-    /// (быстрый вход, угол рамы) стена молча игнорировалась — игрок цеплялся за мелочь
-    /// или вылетал сквозь иллюминатор.
+    /// The player support (MeshSupportBase) pushes the capsule via
+    /// Physics.ComputePenetration, which does NOT work with non-convex MeshCollider.
+    /// So a small set of CONVEX colliders is built from the real meshes: the hull shell
+    /// is cut into wedges (window glass ends up inside a solid wall), a fine grid around
+    /// the hatch keeps the opening open, and the door is a single box that moves with it.
+    /// Everything is derived from the model itself, so re-exporting the FBX in Blender
+    /// is picked up automatically.
     ///
-    /// Здесь вместо этого строится небольшой набор ВЫПУКЛЫХ коллайдеров по реальным
-    /// мешам: оболочка корпуса режется на клинья (стёкла иллюминаторов оказываются
-    /// внутри сплошной стены), вокруг люка — мелкая сетка, чтобы проём остался
-    /// проёмом, а створка — один бокс, едущий вместе с дверью. Всё считается по самой
-    /// модели, поэтому пересборка FBX в Blender подхватывается автоматически.
+    /// IMPORTANT: all geometry and thresholds are in WORLD METRES, not model axes: the
+    /// FBX root has a ×100 scale (centimetres), so thresholds must not be measured in
+    /// its axes.
     ///
-    /// ВАЖНО: вся геометрия и пороги — в МИРОВЫХ МЕТРАХ, а не в осях модели: у корня
-    /// FBX масштаб ×100 (сантиметры), и в его осях пороги 0.5/1.3 м «не срабатывали» —
-    /// проём не вырезался вовсе, оболочка оставалась сплошной.
-    ///
-    /// Нужен Read/Write у Orion_CrewModule.fbx (ставит OrionModelImport).
+    /// Needs Read/Write on Orion_CrewModule.fbx (set by OrionModelImport).
     /// </summary>
     public static class OrionCollisionBuilder
     {
-        /// <summary>Число угловых секторов оболочки (48 → хорда ~0.3 м, прогиб ~5 мм).</summary>
+        /// <summary>Number of angular sectors of the shell (48 → chord ~0.3 m, sagitta ~5 mm).</summary>
         private const int SectorCount = 48;
 
-        /// <summary>Границы высотных поясов оболочки над палубой (м): выпуклость профиля.</summary>
+        /// <summary>Height band boundaries of the shell above the deck (m): profile convexity.</summary>
         private const float BandA = 0.75f;
         private const float BandB = 1.55f;
 
-        /// <summary>Длинные треугольники режем, чтобы они не тянули выпуклую оболочку через проём.</summary>
+        /// <summary>Long triangles are split so they don't pull the convex hull across the opening.</summary>
         private const float MaxEdge = 0.10f;
 
-        /// <summary>Шаг сетки вокруг люка: поперёк (м) и по высоте (м).</summary>
+        /// <summary>Grid step around the hatch: across (m) and vertically (m).</summary>
         private const float CellV = 0.12f;
         private const float CellW = 0.15f;
 
         /// <summary>
-        /// Запас выреза проёма ВНУТРЬ кромок створки (м). Бокс створки строится по её
-        /// габариту минус тот же запас, поэтому закрытая дверь перекрывает проём без
-        /// щелей. Отступ «наружу» (0.10), как было раньше, давал щель слева от створки
-        /// (створка стоит несимметрично оси люка).
+        /// Inset of the opening cut INTO the door edges (m). The door box uses the same
+        /// inset from its bounds, so a closed door covers the opening without gaps
+        /// (the door sits asymmetrically about the hatch axis).
         /// </summary>
         private const float DoorInset = 0.04f;
 
-        /// <summary>Всё ниже палубы (м) — днище, его закрывает выпуклый колпак теплозащиты.</summary>
+        /// <summary>Everything below the deck (m) is the underside, covered by the convex heat-shield cap.</summary>
         private const float BelowDeck = -0.15f;
 
-        /// <summary>Направлений для упрощения крупных выпуклых тел (хулл ≤ 2n-4 = 236 граней &lt; 255).</summary>
+        /// <summary>Directions for simplifying large convex bodies (hull ≤ 2n-4 = 236 faces &lt; 255).</summary>
         private const int ExtremeDirections = 120;
 
         private struct Tri
@@ -63,7 +58,7 @@ namespace Galilego.Spacecraft
             public Vector3 C;
         }
 
-        /// <summary>Система координат капсулы: u — к люку, v — вбок, w — вверх от палубы.</summary>
+        /// <summary>Capsule coordinate frame: u — towards the hatch, v — sideways, w — up from the deck.</summary>
         private sealed class CapsuleFrame
         {
             public Vector3 Origin;
@@ -82,9 +77,9 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
-        /// Собрать коллайдеры капсулы под partRoot (модель — потомок partRoot).
-        /// false — модель не подошла (нет нужных мешей/нечитаемый меш): вызывающий код
-        /// возвращается к старому поведению.
+        /// Build the capsule colliders under partRoot (the model is a descendant of
+        /// partRoot). false — the model did not fit (missing meshes / non-readable
+        /// mesh): the caller falls back.
         /// </summary>
         public static bool Build(Transform partRoot)
         {
@@ -117,10 +112,10 @@ namespace Galilego.Spacecraft
             var hostGo = new GameObject("Orion_Collision");
             hostGo.transform.SetParent(partRoot, false);
             var owner = hostGo.AddComponent<OrionCollisionMeshes>();
-            // host-go хранит вершины тел в СВОИХ локальных осях (у корня модели
-            // масштаб ×100 от FBX — конвертация при сохранении обязательна).
-            // Вся геометрия и пороги (zoneV, clipW, MaxEdge...) — в МИРОВЫХ
-            // МЕТРАХ: считать их в осях host нельзя — там сантиметры модели.
+            // The host GO stores body vertices in ITS local axes (the model root has
+            // a ×100 FBX scale, so conversion on save is mandatory). All geometry and
+            // thresholds (zoneV, clipW, MaxEdge...) are in WORLD METRES: they must not
+            // be computed in host axes, which are the model's centimetres.
             Matrix4x4 toHost = hostGo.transform.worldToLocalMatrix;
 
             List<Vector3> heatPts = Points(heatShield);
@@ -129,12 +124,12 @@ namespace Galilego.Spacecraft
             List<Vector3> framePts = Points(hatchFrame);
             List<Vector3> doorPts = Points(door);
 
-            // Оси капсулы по данным модели (не зависят от разворота осей Blender).
+            // Capsule axes from the model data (independent of Blender's axis orientation).
             var f = new CapsuleFrame();
             Vector3 deckCentre = Mean(deckPts);
             f.Axis = (Mean(nosePts) - Mean(heatPts)).normalized;
-            // Ось люка — по центру СТВОРКИ: у рамы петли с одной стороны, её
-            // центр перекошен (~11°), и вырез проёма в таких осях выходил косым.
+            // Hatch axis through the DOOR centre: the frame has hinges on one side, so
+            // its centre is skewed (~11°) and the opening cut would be slanted.
             Vector3 toHatch = Mean(doorPts) - deckCentre;
             toHatch -= f.Axis * Vector3.Dot(toHatch, f.Axis);
             f.Hatch = toHatch.normalized;
@@ -146,7 +141,7 @@ namespace Galilego.Spacecraft
                 f.DeckTop = Mathf.Max(f.DeckTop, Vector3.Dot(deckPts[i] - f.Origin, f.Axis));
             }
 
-            // Размеры проёма — из створки и рамы.
+            // Opening dimensions — from the door and frame.
             float doorMinV = float.PositiveInfinity;
             float doorMaxV = float.NegativeInfinity;
             for (int i = 0; i < doorPts.Count; i++)
@@ -165,18 +160,17 @@ namespace Galilego.Spacecraft
                 frameMaxW = Mathf.Max(frameMaxW, w);
             }
 
-            // Границы выреза — по кромкам СТВОРКИ (она стоит несимметрично оси люка,
-            // симметричный вырез оставлял щель сбоку). Бокс створки шире на 2 см — щелей нет.
+            // Cut bounds follow the DOOR edges (it sits asymmetrically about the hatch
+            // axis; a symmetric cut would leave a gap at the side). The door box is 2 cm
+            // wider, so there are no gaps.
             float clipVMin = doorMinV + DoorInset;
             float clipVMax = doorMaxV - DoorInset;
-            float zoneVMin = clipVMin - 0.30f;      // мелкая сетка вокруг люка
+            float zoneVMin = clipVMin - 0.30f;      // fine grid around the hatch
             float zoneVMax = clipVMax + 0.30f;
-            // Вертикаль проёма. Порог люка — плоская плита до sillTop (вместо
-            // срезанного скоса): вырез начинается на 12 см ниже её верха, поэтому
-            // верх порога остаётся целым. Раньше вырез шёл от frameMinW+0.14 и
-            // оставлял от порога скос ~31–33° — круче MaxSlopeDegrees (30°), и
-            // выходящий игрок скользил по нему вниз и проваливался.
-            float sillTop = frameMinW + 0.15f;   // верх порога над палубой
+            // Opening vertical. The hatch sill is a flat plate up to sillTop (instead
+            // of a chamfer): the cut starts 12 cm below its top, so the top of the sill
+            // stays intact.
+            float sillTop = frameMinW + 0.15f;   // sill top above the deck
             float sillUIn = float.PositiveInfinity, sillUOut = float.NegativeInfinity;
             for (int i = 0; i < framePts.Count; i++)
             {
@@ -188,13 +182,13 @@ namespace Galilego.Spacecraft
                 }
             }
 
-            // Верхний запас по 4 см от кромки створки: физический просвет ~1.0 м
-            // (выпуклые тела съедают ещё ~0.06 с каждой стороны) — капсула игрока
-            // в приседе (0.8 м) проходит, в полный рост (1.45 м) нет.
-            float clipWMin = sillTop - 0.12f;   // ниже вырез не доходит: остатки ячеек ниже плиты
+            // Top margin 4 cm from the door edge: a physical clearance of ~1.0 m (convex
+            // bodies eat another ~0.06 each side) — the crouched player capsule (0.8 m)
+            // fits, standing (1.45 m) does not.
+            float clipWMin = sillTop - 0.12f;   // the cut does not reach lower: leftover cells below the plate
             float clipWMax = frameMaxW - 0.04f;
 
-            // Оболочка: клинья + сетка у люка.
+            // Shell: wedges + grid at the hatch.
             var cells = new Dictionary<long, List<Vector3>>();
             AddShell(backshell, f, zoneVMin, zoneVMax, clipVMin, clipVMax, clipWMin, clipWMax, cells);
             AddShell(pressure, f, zoneVMin, zoneVMax, clipVMin, clipVMax, clipWMin, clipWMax, cells);
@@ -204,8 +198,8 @@ namespace Galilego.Spacecraft
                 AddTriangleHull(hostGo, cell.Value, owner, toHost);
             }
 
-            // Порог люка — сплошная плита по всей глубине рамы: фрагменты ячеек
-            // оболочки под вырезом тонкие и «полом» служить не должны.
+            // Hatch sill — a solid plate across the frame depth: shell cell fragments
+            // under the cut are thin and must not serve as a floor.
             var sillPts = new List<Vector3>(8);
             foreach (float uu in new[] { sillUIn, sillUOut })
             {
@@ -220,7 +214,7 @@ namespace Galilego.Spacecraft
 
             AddPointsHull(hostGo, sillPts, owner, toHost);
 
-            // Днище и палуба: колпак теплозащиты, верх срезан по палубе.
+            // Underside and deck: heat-shield cap with its top cut off at the deck.
             var heatClamped = new List<Vector3>(heatPts.Count);
             for (int i = 0; i < heatPts.Count; i++)
             {
@@ -231,29 +225,25 @@ namespace Galilego.Spacecraft
 
             AddReducedHull(hostGo, heatClamped, owner, toHost);
 
-            // Палуба (Deck_Floor) — отдельное тело-плита по визуальному полу.
-            // Без него опорой внутри служил только купол теплозащиты: его верх
-            // на пару сантиметров ниже плиты палубы, а у кромок к стенам тела
-            // купола может не хватать — игрок «проваливался под текстуру пола».
+            // Deck (Deck_Floor) — a separate slab body over the visual floor: the
+            // heat-shield cap alone sits a couple of centimetres lower and can be
+            // missing at the edges near the walls.
             AddReducedHull(hostGo, deckPts, owner, toHost);
 
-            // Стекло носа (колпак над кольцом оболочки).
+            // Nose glass (cap above the shell ring).
             AddReducedHull(hostGo, nosePts, owner, toHost);
 
-            // Мебель: кресло пилота, кресло и стол оператора — по одному выпуклому телу
-            // (каждое на своём объекте с маркером PlayerObstacleOnly: стена, не ступенька).
-            // Ячейковая нарезка и воксельные боксы проверены на реальных мешах: при радиусе
-            // капсулы 0.25 м вогнутости кресел уже не пролезть, выигрыш по проходимости
-            // < 0.2 м², а коллайдеров становится 300–600 вместо трёх.
+            // Furniture: pilot seat, operator chair and desk — one convex body each, on
+            // their own object with the PlayerObstacleOnly marker (a wall, not a step).
             AddFurniture(partRoot, "Pilot_Seat", hostGo, owner, toHost);
             AddFurniture(partRoot, "Operator_Chair", hostGo, owner, toHost);
             AddFurniture(partRoot, "Operator_Desk", hostGo, owner, toHost);
 
-            // Створка: бокс в локальных осях двери — едет вместе с ней при открытии.
+            // Door: a box in the door's local axes — moves with it when opening.
             AddDoorBox(door);
 
-            // Готовые коллайдеры модели (корпуса мониторов — 8 вершин, коробки): non-convex
-            // не годится для ComputePenetration.
+            // Model's existing colliders (monitor bodies — 8 vertices, boxes): non-convex
+            // does not work with ComputePenetration.
             MeshCollider[] existing = partRoot.GetComponentsInChildren<MeshCollider>(true);
             for (int i = 0; i < existing.Length; i++)
             {
@@ -264,9 +254,9 @@ namespace Galilego.Spacecraft
 
                 existing[i].convex = true;
 
-                // Мониторы и планшет висят на высоте головы/груди и нужны лучам (прицел,
-                // указка), но не телу: иначе игрок «цепляется» за телевизоры. Остальное
-                // готовое — просто препятствие.
+                // Monitors and tablet sit at head/chest height and are needed for rays
+                // (crosshair, pointer) but not for the body. Everything else existing is
+                // just an obstacle.
                 string n = existing[i].name;
                 if (n.IndexOf("Monitor", System.StringComparison.OrdinalIgnoreCase) >= 0
                     || n.IndexOf("Tablet", System.StringComparison.OrdinalIgnoreCase) >= 0)
@@ -279,15 +269,15 @@ namespace Galilego.Spacecraft
                 }
             }
 
-            // Мониторы (BoxCollider указки) — только для лучей.
+            // Monitors (pointer BoxCollider) — for rays only.
             foreach (ProceduralMonitor monitor in partRoot.GetComponentsInChildren<ProceduralMonitor>(true))
             {
                 MarkIgnored(monitor.gameObject);
             }
 
-            // Бокс интеракции кресла (E) — тоже только для лучей. Физической мебелью
-            // кресла служат тела Col_*. Collider остаётся твёрдым и НЕ Trigger: прицел
-            // его видит при любых настройках Physics.queriesHitTriggers.
+            // Seat interaction box (E) — also for rays only. Physical furniture is the
+            // Col_* bodies. The collider stays solid and NOT a Trigger, so the crosshair
+            // sees it under any Physics.queriesHitTriggers setting.
             foreach (CockpitSeat seat in partRoot.GetComponentsInChildren<CockpitSeat>(true))
             {
                 MarkIgnored(seat.gameObject);
@@ -323,7 +313,7 @@ namespace Galilego.Spacecraft
                     float longest = Mathf.Max(ab, Mathf.Max(bc, ca));
                     if (longest > MaxEdge * MaxEdge)
                     {
-                        // Делим самое длинное ребро пополам.
+                        // Split the longest edge in half.
                         if (ab >= bc && ab >= ca)
                         {
                             Vector3 mid = (t.A + t.B) * 0.5f;
@@ -365,7 +355,7 @@ namespace Galilego.Spacecraft
             bool zone = u > 0f && v > zoneVMin && v < zoneVMax;
             if (zone && v > clipVMin && v < clipVMax && w >= clipWMin && w <= clipWMax)
             {
-                // Створ проёма: вырезаем (створка при закрытии перекрывает его боксом).
+                // The opening: cut it out (the door covers it with its box when closed).
                 return;
             }
 
@@ -373,10 +363,9 @@ namespace Galilego.Spacecraft
             if (zone)
             {
                 int iv = Mathf.FloorToInt((v - zoneVMin) / CellV);
-                // Стойки проёма (v в поясе люка, но вне выреза) в поясе высоты
-                // выреза сливаем в один бакет: получится цельное выпуклое тело без
-                // стыков ячеек по высоте (на стыках боковой луч Floor находил
-                // «пол» в пределах шага вверх и подбрасывал игрока).
+                // Opening jambs (v in the hatch band but outside the cut) within the cut
+                // height band merge into one bucket: a single convex body without vertical
+                // cell seams.
                 int iw = (w >= clipWMin && w <= clipWMax) ? -100 : Mathf.FloorToInt(w / CellW);
                 key = Key(1, iv, iw);
             }
@@ -409,7 +398,7 @@ namespace Galilego.Spacecraft
             return ((long)kind << 44) | ((long)(a & 0x3FFFFF) << 22) | (long)(b & 0x3FFFFF);
         }
 
-        /// <summary>Выпуклое тело по набору треугольников (вершины в мировых метрах идут тройками).</summary>
+        /// <summary>Convex body from a set of triangles (vertices in world metres, in triples).</summary>
         private static void AddTriangleHull(GameObject host, List<Vector3> triangleVertices, OrionCollisionMeshes owner,
             Matrix4x4 toHost)
         {
@@ -440,8 +429,8 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
-        /// Крупное тело: берём крайние точки по фиксированным направлениям — выпуклая оболочка
-        /// гарантированно укладывается в лимит PhysX (255 граней) и не «полу-оболочка».
+        /// Large body: take extreme points along fixed directions — the convex hull fits
+        /// within the PhysX limit (255 faces) for certain and is not a "half hull".
         /// </summary>
         private static void AddReducedHull(GameObject host, List<Vector3> points, OrionCollisionMeshes owner,
             Matrix4x4 toHost)
@@ -484,7 +473,7 @@ namespace Galilego.Spacecraft
                 return;
             }
 
-            // Топология не важна: PhysX считает выпуклую оболочку по вершинам; индексы нужны меш-у.
+            // Topology does not matter: PhysX builds the convex hull from vertices; indices are just for the mesh.
             var indices = new List<int>();
             for (int i = 1; i + 1 < vertices.Count; i++)
             {
@@ -496,7 +485,7 @@ namespace Galilego.Spacecraft
             AttachHull(host, vertices, indices, owner);
         }
 
-        /// <summary>Выпуклое тело по готовому набору точек (плита порога — её 8 углов).</summary>
+        /// <summary>Convex body from a ready point set (the sill plate — its 8 corners).</summary>
         private static void AddPointsHull(GameObject host, List<Vector3> points, OrionCollisionMeshes owner,
             Matrix4x4 toHost)
         {
@@ -511,7 +500,7 @@ namespace Galilego.Spacecraft
                 vertices.Add(toHost.MultiplyPoint3x4(points[i]));
             }
 
-            // Топология не важна: PhysX считает выпуклую оболочку по вершинам.
+            // Topology does not matter: PhysX builds the convex hull from vertices.
             var indices = new List<int>();
             for (int i = 1; i + 1 < vertices.Count; i++)
             {
@@ -524,10 +513,9 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
-        /// Мебель — препятствие, не опора: одно выпуклое тело на предмет, на отдельном
-        /// объекте с маркером PlayerObstacleOnly (маркер действует на все коллайдеры
-        /// своего GameObject, а корпус и палуба на host остаются опорой). Скосы оболочки
-        /// иначе работали бы как ступеньки, и игрок залезал на сиденье.
+        /// Furniture is an obstacle, not support: one convex body per item, on a separate
+        /// object with the PlayerObstacleOnly marker (the marker affects all colliders of
+        /// its GameObject, while the hull and deck on the host stay support).
         /// </summary>
         private static void AddFurniture(Transform partRoot, string meshName, GameObject host,
             OrionCollisionMeshes owner, Matrix4x4 toHost)
@@ -539,7 +527,7 @@ namespace Galilego.Spacecraft
             }
 
             var go = new GameObject("Col_" + meshName);
-            go.transform.SetParent(host.transform, false); // нулевая локальная поза: оси те же, что у host
+            go.transform.SetParent(host.transform, false); // zero local pose: same axes as host
             go.AddComponent<PlayerObstacleOnly>();
             AddReducedHull(go, Points(filter), owner, toHost);
         }
@@ -560,7 +548,7 @@ namespace Galilego.Spacecraft
             }
         }
 
-        /// <summary>Створка: один бокс по габаритам её меша (локальные оси двери).</summary>
+        /// <summary>Door: a single box by its mesh bounds (door local axes).</summary>
         private static void AddDoorBox(MeshFilter door)
         {
             Bounds b = door.sharedMesh.bounds;
@@ -568,10 +556,9 @@ namespace Galilego.Spacecraft
             var box = door.gameObject.AddComponent<BoxCollider>();
             box.center = b.center;
 
-            // Запас DoorInset и минимум 0.05 м — в МЕТРАХ: у узлов FBX стократный
-            // масштаб (меш в сантиметровых единицах, локальный размер ~0.02),
-            // поэтому вычитать сантиметры из локального размера нельзя — бокс
-            // получался 5-8 м и накрывал всю капсулу.
+            // The DoorInset margin and the 0.05 m minimum are in METRES: FBX nodes have a
+            // hundredfold scale (mesh in centimetres, local size ~0.02), so centimetres
+            // must not be subtracted from a local size.
             box.size = new Vector3(
                 Mathf.Max(0.05f, (Mathf.Abs(lossy.x) * b.size.x) - DoorInset) / Mathf.Max(1e-6f, Mathf.Abs(lossy.x)),
                 Mathf.Max(0.05f, (Mathf.Abs(lossy.y) * b.size.y) - DoorInset) / Mathf.Max(1e-6f, Mathf.Abs(lossy.y)),
@@ -619,7 +606,7 @@ namespace Galilego.Spacecraft
             return null;
         }
 
-        /// <summary>Вершины меша в мировых метрах (мировые оси модели уже содержат масштаб FBX).</summary>
+        /// <summary>Mesh vertices in world metres (the model's world axes already include the FBX scale).</summary>
         private static List<Vector3> Points(MeshFilter filter)
         {
             Vector3[] vertices = filter.sharedMesh.vertices;

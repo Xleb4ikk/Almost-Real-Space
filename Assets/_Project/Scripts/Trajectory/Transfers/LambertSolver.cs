@@ -3,8 +3,8 @@ using System;
 namespace Galilego.Core
 {
     /// <summary>
-    /// Итог задачи Ламберта: скорости на концах дуги (инерциальные векторы).
-    /// Single-rev только: многовитковые решения не строятся (исключение).
+    /// Lambert problem result: velocities at the arc endpoints (inertial vectors).
+    /// Single-rev only: multi-rev solutions are not built (throws).
     /// </summary>
     public readonly struct LambertSolution
     {
@@ -21,20 +21,19 @@ namespace Galilego.Core
     }
 
     /// <summary>
-    /// Задача Ламберта (r1 → r2 за dt) методом Bate–Mueller–White с бисекцией по
-    /// универсальной переменной z вместо Ньютона: tof(z) монотонна на single-rev
-    /// семействе, бисекция неубиваема (200 итераций, допуск 1e-13), производные
-    /// не нужны. Цена — микросекунды на клетку porkchop.
+    /// Lambert problem (r1 → r2 over dt) by the Bate–Mueller–White method with
+    /// bisection on the universal variable z instead of Newton: tof(z) is monotone
+    /// on the single-rev family, bisection is unkillable (200 iterations, 1e-13
+    /// tolerance) and needs no derivatives. The cost is microseconds per porkchop cell.
     ///
-        /// Вырожденный случай 180° (g = A√(y/μ) = 0, деление на ноль) решается НЕ
-        /// шевелением геометрии, а точной конструкцией: при Δν=π дуга лежит в
-        /// плоскости с нормалью n=normalize(r1×ref) (ref=+Z, фолбэк +Y), семейство
-        /// коник параметризуется эксцентриситетом при постоянном p=2r1r2/(r1+r2) —
-        /// см. SolveHalfPlane (BMWS-машина тут теряет поправку 2e·sinE1 и не годится).
-        /// Окрестность |sinΔν|&lt;1e-7 идёт тем же
-        /// путём (погрешность O(угол) — для планирования приемлемо, для точного
-        /// 180° — ноль).
-        /// Та же точка (cosΔν≈1) — неоднозначность (любое число витков) → исключение.
+        /// The degenerate 180° case (g = A√(y/μ) = 0, division by zero) is solved NOT by
+        /// nudging the geometry but by an exact construction: at Δν=π the arc lies in
+        /// the plane with normal n=normalize(r1×ref) (ref=+Z, fallback +Y), and the
+        /// conic family is parameterized by eccentricity at constant p=2r1r2/(r1+r2) —
+        /// see SolveHalfPlane (the BMWS machine loses the 2e·sinE1 correction here and is
+        /// unusable). The neighborhood |sinΔν|&lt;1e-7 takes the same
+        /// path (error O(angle) — acceptable for planning, zero for an exact 180°).
+        /// Same point (cosΔν≈1) — ambiguity (any number of revolutions) → throws.
     /// </summary>
     public static class LambertSolver
     {
@@ -110,32 +109,31 @@ namespace Galilego.Core
         }
 
         /// <summary>
-        /// Вырожденный случай 180° (A = sinΔν·√(r1r2/(1−cosΔν)) → 0).
-        /// BMWS-машина тут НЕ годится: её tof-член x³·s/√μ = a^1.5(ΔE−sinΔE)/√μ
-        /// теряет поправку 2e·sinE1 (она жила в A√y, обнулившемся вместе с A),
-        /// и даёт время дуги от периапсиса, а не между антиподами (поймано
-        /// round-trip'ом T53, расхождение 1.4·r2). Правильная параметризация
-        /// семейства: при Δν=π фокальный параметр p = 2r1r2/(r1+r2) ПОСТОЯНЕН
-        /// на всём семействе коник, меняется только e ∈ [|κ|, 1),
-        /// κ = (r2−r1)/(r1+r2) = e·cosν1 (ν1 = acos(κ/e) ∈ [0,π] — первый
-        /// конец дуги). tof(e) = a^1.5·(π + 2e·sinE1)/√μ монотонна по e:
-        /// минимум — полупериод min-energy эллипса (e=|κ|, концы в апсидах,
-        /// a=(r1+r2)/2), ∞ при e→1. Гипербола/парабола антиподальные точки
-        /// из фокуса не соединяют — dt &lt; tof_min: решений НЕТ, громко.
-        /// Скорости — точные компоненты: v_r = (μ/h)·e·sinν = (μ/h)·√(e²−κ²)
-        /// (в ν1 — наружу, в ν1+π — внутрь), v_t = h/r, h = √(μp). Чисто
-        /// тангенциальные концы ТОЛЬКО при e=|κ|.
-        /// longWay — та же коника против хода: v_long = −v_short точно.
-        /// Плоскость при Δν=π двумя точками не определяется — фиксируем
-        /// reference-вектором (ref=+Z, фолбэк +Y).
+        /// Degenerate 180° case (A = sinΔν·√(r1r2/(1−cosΔν)) → 0).
+        /// The BMWS machine is NOT usable here: its tof term x³·s/√μ = a^1.5(ΔE−sinΔE)/√μ
+        /// loses the 2e·sinE1 correction (it lived in A√y, which vanishes with A) and
+        /// gives the arc time from periapsis rather than between the antipodes. The
+        /// correct family parameterization: at Δν=π the focal parameter p = 2r1r2/(r1+r2)
+        /// is CONSTANT over the whole conic family; only e ∈ [|κ|, 1) varies,
+        /// κ = (r2−r1)/(r1+r2) = e·cosν1 (ν1 = acos(κ/e) ∈ [0,π] — the first arc end).
+        /// tof(e) = a^1.5·(π + 2e·sinE1)/√μ is monotone in e: the minimum is the
+        /// half-period of the min-energy ellipse (e=|κ|, ends at the apsides,
+        /// a=(r1+r2)/2), ∞ as e→1. Hyperbola/parabola do not connect antipodal points
+        /// from the focus — dt &lt; tof_min means NO solutions, fail loudly.
+        /// Velocities are exact components: v_r = (μ/h)·e·sinν = (μ/h)·√(e²−κ²)
+        /// (outward at ν1, inward at ν1+π), v_t = h/r, h = √(μp). Purely tangential
+        /// ends ONLY at e=|κ|.
+        /// longWay — the same conic traversed in reverse: v_long = −v_short exactly.
+        /// The plane at Δν=π is not determined by two points — fix it with a reference
+        /// vector (ref=+Z, fallback +Y).
         /// </summary>
         private static LambertSolution SolveHalfPlane(Vector3d r1Vec, Vector3d r2Vec, double r1, double r2, double mu, bool longWay, double dtSeconds)
         {
-            const double eCap = 1d - 1e-9d; // аналог капа z=39: e→1 даёт tof→∞, но численный кап нужен
+            const double eCap = 1d - 1e-9d; // analogous to the z=39 cap: e→1 gives tof→∞, but a numerical cap is needed
 
             double kappa = (r2 - r1) / (r1 + r2); // = e·cosν1, |κ| ≤ 1
             double absKappa = Math.Abs(kappa);
-            double p = (2d * r1 * r2) / (r1 + r2); // фокальный параметр, константа семейства
+            double p = (2d * r1 * r2) / (r1 + r2); // focal parameter, constant of the family
             double aMin = 0.5d * (r1 + r2);
             double tofMin = Math.PI * Math.Sqrt((aMin * aMin * aMin) / mu);
             if (dtSeconds < tofMin * (1d - 1e-12d))
@@ -147,14 +145,13 @@ namespace Galilego.Core
 
             double FamilyTimeOfFlight(double e)
             {
-                // cosE = (e + cosν)/(1 + e·cosν). ВАЖНО: антиподальность по ν НЕ
-                // переходит в E2 = E1 + π (это верно только при e = 0) — E1 и E2
-                // для ν1 и ν1+π считаются НЕЗАВИСИМО, иначе tof занижается и
-                // round-trip промахивается мимо r2 (поймано T53: дуга приходила
-                // в 174.3° вместо 180°).
-                double cosNu1 = kappa / e; // ∈ (−1, 1) для e ∈ (|κ|, 1)
-                // cosE = (e + cosν)/(1 + e·cosν); в семействе e·cosν1 = κ ровно,
-                // поэтому знаменатели — константы (1±κ).
+                // cosE = (e + cosν)/(1 + e·cosν). IMPORTANT: antipodality in ν does NOT
+                // carry over to E2 = E1 + π (that holds only for e = 0) — E1 and E2
+                // for ν1 and ν1+π are computed INDEPENDENTLY, otherwise tof is
+                // understated and the round-trip misses r2.
+                double cosNu1 = kappa / e; // ∈ (−1, 1) for e ∈ (|κ|, 1)
+                // cosE = (e + cosν)/(1 + e·cosν); in the family e·cosν1 = κ exactly,
+                // so the denominators are constants (1±κ).
                 double cosE1 = (e + cosNu1) / (1d + kappa);
                 double cosE2 = (e - cosNu1) / (1d - kappa); // cosν2 = −cosν1
                 double e1 = Math.Acos(Math.Max(-1d, Math.Min(1d, cosE1))); // ν1 ∈ [0, π] ⇒ E1 ∈ [0, π]
@@ -172,17 +169,15 @@ namespace Galilego.Core
                 throw new ArgumentOutOfRangeException(nameof(dtSeconds), "Время перелёта слишком велико для single-rev семейства этой геометрии.");
             }
 
-            // dt ≈ tofMin — ровно min-energy: концы в апсидах, e = |κ| точно,
-            // радиальная компонента строго нулевая. Без снапа бисекция даёт
-            // e = |κ|+δ, а √(e²−κ²) = √(2κδ) превращает δ~1e-12 в конечную
-            // радиальную скорость — v1 перестаёт быть перпендикулярным r1
-            // (поймано T25: гоман 180°, ⊥=241 вместо <1e-6).
+            // dt ≈ tofMin is exactly min-energy: ends at the apsides, e = |κ| exactly,
+            // radial component strictly zero. Snap to it so bisection does not produce
+            // e = |κ|+δ, where √(e²−κ²) turns δ~1e-12 into a finite radial speed.
             if (dtSeconds <= tofMin * (1d + 1e-12d))
             {
                 return HalfPlaneVelocity(r1Vec, r2Vec, r1, r2, mu, longWay, absKappa, p, kappa);
             }
 
-            // Бисекция по e ∈ [|κ|, eCap]: tof(e) строго монотонна.
+            // Bisection over e ∈ [|κ|, eCap]: tof(e) is strictly monotone.
             double lo = absKappa;
             double hi = eCap;
             for (int i = 0; i < MaxBisectionIterations; i++)
@@ -190,7 +185,7 @@ namespace Galilego.Core
                 double mid = 0.5d * (lo + hi);
                 if (mid <= lo || mid >= hi)
                 {
-                    break; // предел точности double
+                    break; // double precision limit
                 }
 
                 double err = (FamilyTimeOfFlight(mid) - dtSeconds) / dtSeconds;
@@ -212,7 +207,7 @@ namespace Galilego.Core
             return HalfPlaneVelocity(r1Vec, r2Vec, r1, r2, mu, longWay, 0.5d * (lo + hi), p, kappa);
         }
 
-        /// <summary>Скорости на концах 180°-дуги по готовому эксцентриситету.</summary>
+        /// <summary>Velocities at the ends of the 180° arc for a given eccentricity.</summary>
         private static LambertSolution HalfPlaneVelocity(
             Vector3d r1Vec, Vector3d r2Vec, double r1, double r2, double mu, bool longWay, double ecc, double p, double kappa)
         {
@@ -227,11 +222,11 @@ namespace Galilego.Core
                 : new Vector3d(0d, 1d, 0d);
             Vector3d normal = Vector3d.Cross(r1Vec, reference).Normalized;
             Vector3d rHat1 = r1Vec / r1;
-            Vector3d rHat2 = r2Vec / r2; // ≈ −rHat1 по геометрии ветки
-            Vector3d tangent1 = Vector3d.Cross(normal, rHat1); // направление роста ν (прогрейд вокруг n)
+            Vector3d rHat2 = r2Vec / r2; // ≈ −rHat1 by the branch geometry
+            Vector3d tangent1 = Vector3d.Cross(normal, rHat1); // direction of increasing ν (prograde around n)
             Vector3d tangent2 = Vector3d.Cross(normal, rHat2);
 
-            // Короткая дуга: ν растёт от ν1 к ν1+π ⇒ v_r(ν1) > 0, v_r(ν1+π) < 0.
+            // Short arc: ν grows from ν1 to ν1+π ⇒ v_r(ν1) > 0, v_r(ν1+π) < 0.
             Vector3d v1 = (rHat1 * radialSpeed) + (tangent1 * tangentialSpeed1);
             Vector3d v2 = (rHat2 * (-radialSpeed)) + (tangent2 * tangentialSpeed2);
             if (longWay)
@@ -258,10 +253,10 @@ namespace Galilego.Core
                     if (hi > 39d)
                     {
                         hi = 39d;
-                        // Кап z=39 — граница single-rev семейства (c→0 при z→4π²).
-                        // Если даже на капе tof меньше запрошенного — решения нет:
-                        // громко, а не молчаливым съездом к капу с чужим ответом
-                        // (поймано T48). Porkchop ловит ArgumentException → invalid.
+                        // The cap z=39 is the boundary of the single-rev family (c→0 as z→4π²).
+                        // If even at the cap tof is less than requested there is no solution:
+                        // fail loudly rather than silently sliding to the cap with a wrong
+                        // answer. Porkchop catches ArgumentException → invalid.
                         if (TimeOfFlight(hi, r1, r2, aParameter, mu) < dtSeconds)
                         {
                             throw new ArgumentOutOfRangeException(nameof(dtSeconds), "Время перелёта слишком велико для single-rev семейства этой геометрии.");
@@ -332,8 +327,8 @@ namespace Galilego.Core
     }
 
     /// <summary>
-    /// Функции Штумпфа C(z), S(z): тригонометрия (z&gt;0), гиперболика (z&lt;0),
-    /// ряд (|z|≤1e-6). Внутренние, наружу не торчат.
+    /// Stumpff functions C(z), S(z): trigonometric (z&gt;0), hyperbolic (z&lt;0),
+    /// series (|z|≤1e-6). Internal, not exposed outside.
     /// </summary>
     internal static class Stumpff
     {

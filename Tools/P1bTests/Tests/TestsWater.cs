@@ -26,7 +26,7 @@ internal static partial class P1bTests
         Check(WaterQuery.TryGetSeaLevel(body, out double sea) && sea == -500d,
             "T105 water-query", "уровень моря −500 м");
 
-        // Паритет сырого дна с TerrainNoise + кламп: raw ≤ clamped, на суше равны.
+        // Raw seabed parity with TerrainNoise + clamp: raw ≤ clamped, equal on land.
         bool parity = true;
         bool foundWater = false;
         bool foundLand = false;
@@ -54,7 +54,7 @@ internal static partial class P1bTests
                     foundWater = true;
                     waterLat = latDeg;
                     waterLon = lonDeg;
-                    // В океане кламп обязан держать ровно уровень моря.
+                    // In the ocean the clamp must hold exactly the sea level.
                     if (clamped != sea)
                     {
                         parity = false;
@@ -88,7 +88,7 @@ internal static partial class P1bTests
         Check(foundWater && foundLand, "T105 water-query",
             "на сетке есть и вода, и суша (вода " + waterLat.ToString("F1") + "," + waterLon.ToString("F1") + ")");
 
-        // Погружение: точка на уровне моря → 0, на 10 м ниже → +10, выше → −.
+        // Submersion: a point at sea level → 0, 10 m below → +10, above → −.
         double surfaceR = WaterQuery.SeaSurfaceRadius(body);
         Check(!double.IsNaN(surfaceR) && Math.Abs(surfaceR - (body.Radius - 500d)) < 1e-6d,
             "T105 water-query", "радиус поверхности моря = R − 500");
@@ -115,13 +115,13 @@ internal static partial class P1bTests
             && !submergedOnLand && Math.Abs(landDepth - 10d) < 1e-6d,
             "T105 water-query", "точка ниже моря, но внутри суши не считается погружённой");
 
-        // Просвет над дном: точка на сыром дне → ~0.
+        // Clearance above the seabed: a point on the raw seabed → ~0.
         double rawWater = WaterQuery.RawSeabedHeightAt(body, waterLat, waterLon);
         body.GetSurfaceState(waterLat, waterLon, rawWater, 0d, out Vector3d atSeabed, out _);
         double clearance = WaterQuery.ClearanceAboveSeabedAt(body, atSeabed, 0d);
         Check(Math.Abs(clearance) < 1e-3d, "T105 water-query", "просвет на дне ~0 (" + clearance.ToString("E2") + ")");
 
-        // SplashdownInfo согласован с запросами.
+        // SplashdownInfo is consistent with the queries.
         WaterQuery.SplashdownInfo infoWater = WaterQuery.GetSplashdownInfo(body, waterLat, waterLon);
         WaterQuery.SplashdownInfo infoLand = WaterQuery.GetSplashdownInfo(body, landLat, landLon);
         Check(infoWater.IsWater && Math.Abs(infoWater.WaterDepthMeters - (-500d - rawWater)) < 1e-9d
@@ -130,7 +130,7 @@ internal static partial class P1bTests
         Check(!infoLand.IsWater && infoLand.WaterDepthMeters == 0d,
             "T105 water-query", "splashdown над сушей: не вода");
 
-        // Тело без океана: всё честно пустое.
+        // Body without an ocean: everything is properly empty.
         var dryBody = new OrbitingBody { Name = "Dry", Radius = 1000d };
         dryBody.Terrain = new SphericalTerrain();
         bool drySubmerged = WaterQuery.IsSubmergedAt(dryBody, Vector3d.Zero, 0d, out double dryDepth);

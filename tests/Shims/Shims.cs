@@ -1,6 +1,6 @@
-// Шим-заглушка UnityEngine: ТОЛЬКО те типы, которые реально используются
-// в компилируемом наборе (Core/Universe/Spacecraft без Burst-джобов).
-// Нужен, чтобы физика собиралась обычным dotnet build без редактора Unity.
+// UnityEngine shim stub: ONLY the types actually used by the compiled set
+// (Core/Universe/Spacecraft without Burst jobs).
+// Needed so the physics builds with a plain dotnet build, no Unity editor.
 
 namespace UnityEngine
 {
@@ -135,8 +135,8 @@ namespace UnityEngine
         public static void LogWarning(object message) { }
     }
 
-    // Заглушки для полей профилей/палитр: в тестах не читаются,
-    // нужны только чтобы файлы конфигурации компилировались.
+    // Stubs for profile/palette fields: never read in tests,
+    // only needed so the config files compile.
     public class Texture2D
     {
     }
@@ -172,15 +172,15 @@ namespace UnityEngine
 
     public static class SystemInfo
     {
-        // Реальное число ядер здесь не важно: используется только внутри
-        // OrbitalElements.CalculateBatch, который в тестах не вызывается.
+        // The real core count doesn't matter here: only used inside
+        // OrbitalElements.CalculateBatch, which tests never call.
         public static int processorCount => 4;
     }
 }
 
-// Шим-заглушка Unity.Mathematics / Unity.Jobs / Unity.Collections: существуют
-// только ради компиляции OrbitalElements.CalculateBatch (в тестах A/B/C
-// не вызывается — тело может кидать NotImplementedException).
+// Unity.Mathematics / Unity.Jobs / Unity.Collections shim stub: exist only
+// so OrbitalElements.CalculateBatch compiles (never called in tests A/B/C —
+// its body may throw NotImplementedException).
 namespace Unity.Mathematics
 {
     public struct double3
@@ -221,9 +221,9 @@ namespace Unity.Collections
         Persistent = 4,
     }
 
-    // Хранит данные в обычном массиве: таблицы рельефа/декораций реально
-    // используются тестами (SphericalTerrain/HeightfieldTerrain), а вот
-    // Burst-раскладка по джобам — нет.
+    // Stores data in a plain array: terrain/decor tables really are used by
+    // tests (SphericalTerrain/HeightfieldTerrain), but the Burst job layout
+    // is not.
     public struct NativeArray<T> : System.IDisposable where T : struct
     {
         private T[] data;
@@ -284,8 +284,8 @@ namespace Unity.Jobs
     }
 }
 
-// Заглушка Burst-джоба, на который ссылается OrbitalElements.CalculateBatch.
-// Сам метод в тестах не вызывается — достаточно совпадения имён полей.
+// Stub for the Burst job that OrbitalElements.CalculateBatch references.
+// The method itself is never called in tests — matching field names suffice.
 namespace Galilego.Simulation
 {
     public struct OrbitalElementsJob : Unity.Jobs.IJobParallelFor

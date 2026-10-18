@@ -2,35 +2,35 @@ using System.Collections.Generic;
 
 namespace Galilego.Spacecraft
 {
-    /// <summary>Итог нажатия «ступень» (Space): что сделала модель.</summary>
+    /// <summary>Result of pressing "stage" (Space): what the model did.</summary>
     public enum StagingResult
     {
-        /// <summary>Ничего: нечего зажигать или последнюю ступень отделять нечем.</summary>
+        /// <summary>Nothing: nothing to ignite, or the last stage cannot be jettisoned.</summary>
         Nothing,
 
-        /// <summary>Зажжена нижняя присоединённая ступень (первое нажатие).</summary>
+        /// <summary>Bottom attached stage ignited (first press).</summary>
         Ignited,
 
-        /// <summary>Нижняя присоединённая ступень отделена, следующая зажжена.</summary>
+        /// <summary>Bottom attached stage jettisoned, the next one ignited.</summary>
         JettisonedAndIgnited
     }
 
     /// <summary>
-    /// Рантайм-модель двигательной установки в полёте: ядра ступеней (StageCore,
-    /// из DeltaV.BuildStageAssembly) плюс состояние «что присоединено и что
-    /// зажжено». Чистая (без Unity), ОДНА на физику и панель: StageThrustSource
-    /// берёт отсюда тягу/расход активной ступени, VesselStep списывает сюда
-    /// ФАКТИЧЕСКУЮ дельту массы шага, панель читает пулы и флаги через
+    /// Runtime model of the propulsion system in flight: stage cores (StageCore,
+    /// from DeltaV.BuildStageAssembly) plus the state of "what is attached and what
+    /// is ignited". Pure (no Unity), ONE for both physics and panel: StageThrustSource
+    /// takes the active stage's thrust/flow from here, VesselStep commits the
+    /// ACTUAL mass delta of the step here, the panel reads pools and flags through
     /// AppendState / JettisonedFlags.
     ///
-    /// Правила (этапы 1–2):
-    ///  • ступени отделяются снизу вверх: присоединённые — суффикс [FirstAttached..];
-    ///  • зажигание — только по Space (Stage): первое нажатие зажигает нижнюю
-    ///    присоединённую, следующее — отделяет её и зажигает новую нижнюю (KSP);
-    ///  • AutoIgnite (отладка этапа 1) — зажигает ступени сами, БЕЗ отделения:
-    ///    выработанная ступень остаётся на борту мёртвой массой, панель честно
-    ///    показывает «выработанные ступени ещё на борту»;
-    ///  • топливо не перекачивается между ступенями; расход — из ядер.
+    /// Rules:
+    ///  • stages jettison bottom-up: attached ones are the suffix [FirstAttached..];
+    ///  • ignition only via Space (Stage): the first press ignites the bottom
+    ///    attached stage, the next jettisons it and ignites the new bottom one (KSP);
+    ///  • AutoIgnite (debug) ignites stages itself, WITHOUT jettison:
+    ///    a depleted stage stays aboard as dead mass, the panel honestly
+    ///    shows "depleted stages still aboard";
+    ///  • propellant is not transferred between stages; flow comes from the cores.
     /// </summary>
     public sealed class StagePropulsion
     {
@@ -38,17 +38,17 @@ namespace Galilego.Spacecraft
         private int firstAttached;
         private int ignited = -1;
 
-        /// <summary>Масса деталей вне основной сборки: в Ship.Mass они есть, в ядрах — нет.</summary>
+        /// <summary>Mass of parts outside the main assembly: present in Ship.Mass, absent from the cores.</summary>
         public double DetachedMassKg { get; private set; }
 
-        /// <summary>Списать массу аппаратуры вне ядер (расход РСУ/САС, отстрел).</summary>
+        /// <summary>Commit the mass of equipment outside the cores (RCS/SAS consumption, jettison).</summary>
         public void ReleaseDetached(double kg)
         {
             DetachedMassKg = System.Math.Max(0d, DetachedMassKg - kg);
             Revision++;
         }
 
-        /// <summary>Все ступени отделены (аварийный увод): остаток корабля — масса вне ядер.</summary>
+        /// <summary>All stages jettisoned (emergency abort): the remaining ship is the mass outside the cores.</summary>
         public void DetachAllStages(double remainingMassKg)
         {
             firstAttached = cores.Count;
@@ -57,10 +57,10 @@ namespace Galilego.Spacecraft
             Revision++;
         }
 
-        /// <summary>Отладка: зажигать ступени автоматически, без отделения (проверка этапа 1).</summary>
+        /// <summary>Debug: ignite stages automatically without jettison.</summary>
         public bool AutoIgnite;
 
-        /// <summary>Счётчик изменений состояния (панель пересчитывает по нему).</summary>
+        /// <summary>State change counter (the panel recomputes off it).</summary>
         public int Revision { get; private set; }
 
         public StagePropulsion(List<StageCore> cores, double detachedMassKg, bool autoIgnite)
@@ -79,19 +79,19 @@ namespace Galilego.Spacecraft
 
         public int StageCount { get { return cores.Count; } }
 
-        /// <summary>Индекс первой присоединённой ступени; всё ниже — сброшено.</summary>
+        /// <summary>Index of the first attached stage; everything below is jettisoned.</summary>
         public int FirstAttached { get { return firstAttached; } }
 
-        /// <summary>Индекс зажжённой ступени, −1 — ничего не горит.</summary>
+        /// <summary>Index of the ignited stage, −1 — nothing is burning.</summary>
         public int ActiveStageIndex { get { return ignited; } }
 
-        /// <summary>Ядро активной ступени; null — нечего жечь.</summary>
+        /// <summary>Core of the active stage; null — nothing to burn.</summary>
         public StageCore ActiveCore
         {
             get { return ignited >= 0 && ignited < cores.Count ? cores[ignited] : null; }
         }
 
-        /// <summary>Тяга работающих двигателей активной ступени при газе 1.0, Н.</summary>
+        /// <summary>Thrust of the active stage's running engines at throttle 1.0, N.</summary>
         public double ThrustN
         {
             get
@@ -101,7 +101,7 @@ namespace Galilego.Spacecraft
             }
         }
 
-        /// <summary>Расход активной ступени при газе 1.0, кг/с.</summary>
+        /// <summary>Active stage flow at throttle 1.0, kg/s.</summary>
         public double MassFlowKgS
         {
             get
@@ -111,7 +111,7 @@ namespace Galilego.Spacecraft
             }
         }
 
-        /// <summary>Масса до смены состава двигателей активной ступени, кг (0 — тяги нет).</summary>
+        /// <summary>Mass until the active stage's engine set changes, kg (0 — no thrust).</summary>
         public double SegmentBurnKg
         {
             get
@@ -121,16 +121,16 @@ namespace Galilego.Spacecraft
             }
         }
 
-        /// <summary>Ступень отделена?</summary>
+        /// <summary>Is the stage jettisoned?</summary>
         public bool IsJettisoned(int stage)
         {
             return stage < firstAttached;
         }
 
-        /// <summary>Над зажжённой ступенью есть ещё ступень (для автозажигания).</summary>
+        /// <summary>There is a stage above the ignited one (for auto-ignition).</summary>
         public bool CanIgniteNext { get { return ignited + 1 < cores.Count; } }
 
-        /// <summary>Масса присоединённых ступеней (сухая + топливо сейчас), кг.</summary>
+        /// <summary>Mass of attached stages (dry + propellant now), kg.</summary>
         public double AttachedTotalKg()
         {
             double sum = 0d;
@@ -142,17 +142,17 @@ namespace Galilego.Spacecraft
             return sum;
         }
 
-        /// <summary>Полная масса ступени (сухая + топливо сейчас), кг.</summary>
+        /// <summary>Total mass of a stage (dry + propellant now), kg.</summary>
         public double StageTotalKg(int stage)
         {
             return stage >= 0 && stage < cores.Count ? cores[stage].TotalMassKg : 0d;
         }
 
         /// <summary>
-        /// Списать фактически сгоревшую массу с активной ступени (единственный
-        /// мутатор пулов). Возвращает, сколько списано на самом деле: меньше
-        /// запрошенного — топлива не хватило, это нарушение инварианта массы,
-        /// ловит вызывающий (VesselStep).
+        /// Commits the actually burned mass from the active stage (the only
+        /// pool mutator). Returns how much was actually committed: less than
+        /// requested means propellant ran short, a mass invariant violation
+        /// caught by the caller (VesselStep).
         /// </summary>
         public double CommitBurn(double burnedKg)
         {
@@ -168,9 +168,9 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
-        /// Нажатие «ступень» (Space): первое — зажигание нижней присоединённой;
-        /// следующее — отделение нижней присоединённой и зажигание новой нижней.
-        /// Последнюю ступень отделять нечем (над ней нет отделителя) — Nothing.
+        /// "Stage" press (Space): first ignites the bottom attached stage;
+        /// the next jettisons the bottom attached one and ignites the new bottom.
+        /// The last stage cannot be jettisoned (no decoupler above it) — Nothing.
         /// </summary>
         public StagingResult Stage()
         {
@@ -202,8 +202,8 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
-        /// Автозажигание (отладка этапа 1): зажечь следующую присоединённую
-        /// ступень, НЕ отделяя выработанную. true — зажгли.
+        /// Auto-ignition (debug): ignite the next attached stage WITHOUT
+        /// jettisoning the depleted one. true — ignited.
         /// </summary>
         public bool IgniteNextAttached()
         {
@@ -218,7 +218,7 @@ namespace Galilego.Spacecraft
             return true;
         }
 
-        /// <summary>Состояние всех пулов — панели (StageDeltaV.EvaluateFromState).</summary>
+        /// <summary>State of all pools — for the panel (StageDeltaV.EvaluateFromState).</summary>
         public void AppendState(List<StagePoolState> into)
         {
             for (int k = 0; k < cores.Count; k++)
@@ -227,7 +227,7 @@ namespace Galilego.Spacecraft
             }
         }
 
-        /// <summary>Флаги сброшенных ступеней по индексу ядра.</summary>
+        /// <summary>Jettisoned-stage flags by core index.</summary>
         public bool[] JettisonedFlags()
         {
             var flags = new bool[cores.Count];

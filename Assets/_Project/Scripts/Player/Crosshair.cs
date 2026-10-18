@@ -3,25 +3,24 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Прицел: маленькое кольцо в центре экрана — только окружность, без
-    /// заливки. Игровые лучи (E-интеракция, кнопки монитора, удаление в
-    /// стройке) идут по Camera.main.transform.forward, то есть ровно в
-    /// точку центра, а курсор в игре скрыт — без кольца эту точку не видно.
+    /// Crosshair: a small ring at the center of the screen — just a circle, no fill.
+    /// Game rays (E interaction, monitor buttons, delete in the builder) go along
+    /// Camera.main.transform.forward, i.e. exactly at the center point, and the in-game
+    /// cursor is hidden — without the ring that point is invisible.
     ///
-    /// Рисуется IMGUI (OnGUI): Canvas/UI Toolkit в проекте не заведены, весь
-    /// HUD — OnGUI, а текстура кольца генерируется кодом (как скины чит-меню
-    /// и стройки) и не тянет ассетов. Видимость — по ЗАХВАТУ курсора: все
-    /// меню (чит-меню, планшет, Ctrl-подсмотр в стройке) и Esc отпускают
-    /// курсор, так что кольцо гаснет само, без списка условий на каждый экран.
+    /// Drawn with IMGUI (OnGUI): the project has no Canvas/UI Toolkit, the whole HUD is
+    /// OnGUI, and the ring texture is generated in code (like the cheat-menu and
+    /// builder skins) so it pulls no assets. Visibility is by CURSOR LOCK: every menu
+    /// (cheat menu, tablet, Ctrl-peek in the builder) and Esc release the cursor, so the
+    /// ring hides itself without a per-screen list of conditions.
     ///
-    /// Radius — не только вид: ровно эту площадь считает зоной попадания
-    /// AimCone (снап/удаление в стройке, E-интеракция). Уменьшил кольцо —
-    /// сузилась и зона.
+    /// Radius is not just visual: AimCone uses exactly this area as the hit zone
+    /// (snap/delete in the builder, E interaction). Shrink the ring and the zone shrinks.
     /// </summary>
     public sealed class Crosshair : MonoBehaviour
     {
-        /// <summary>Радиус кольца по умолчанию (px экрана): им же пользуется
-        /// AimCone, если на камере компонента нет, а зона всё же нужна.</summary>
+        /// <summary>Default ring radius (screen px): also used by AimCone when the
+        /// camera has no component but the zone is still needed.</summary>
         public const float DefaultRadiusPx = 5f;
 
         [Tooltip("Радиус кольца (px экрана) — он же угол зоны взаимодействия.")]
@@ -40,9 +39,9 @@ namespace Galilego.Universe
 
         private void OnGUI()
         {
-            // Кольцо нужно только при прицеливании: с отпущенным курсором
-            // (Esc, чит-меню, планшет, подсмотр в стройке) мышь не управляет
-            // взглядом, и центр экрана ничего не значит.
+            // The ring is only needed while aiming: with the cursor released
+            // (Esc, cheat menu, tablet, builder peek) the mouse does not drive the
+            // view and the screen center means nothing.
             if (Cursor.lockState != CursorLockMode.Locked || !Application.isFocused)
             {
                 return;
@@ -58,10 +57,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Текстура — под текущий размер кольца на экране (рисуем 1:1, без
-        /// масштабирования: иначе кольцо размывает билинейная фильтрация).
-        /// Пересобирается, когда инспектор поменял радиус/толщину (в т.ч. на
-        /// лету в Play); цвет пересборку не вызывает — его несёт GUI.color.
+        /// The texture matches the current on-screen ring size (drawn 1:1, without
+        /// scaling: otherwise bilinear filtering blurs the ring). Rebuilt when the
+        /// inspector changes the radius/thickness (including live in Play); color does
+        /// not trigger a rebuild — it is carried by GUI.color.
         /// </summary>
         private void EnsureTexture()
         {
@@ -85,9 +84,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Кольцо как знаковое расстояние до окружности: |d − R| − толщина/2.
-        /// Дробная часть даёт сглаживание в 1 px — без него кромка
-        /// «ступенчатая» (тот же приём, что в скине чит-меню).
+        /// The ring as a signed distance to the circle: |d − R| − thickness/2.
+        /// The fractional part gives 1 px antialiasing — without it the edge is
+        /// stepped (the same trick as in the cheat-menu skin).
         /// </summary>
         private static Texture2D BuildRing(int size, float radius, float thickness)
         {

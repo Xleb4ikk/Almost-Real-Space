@@ -4,10 +4,10 @@ using System.Collections.Generic;
 namespace Galilego.Core
 {
     /// <summary>
-    /// Коэффициенты Shampine dense output одного принятого шага:
-    /// C1=y1-y0, C2=h·k1-C1, C3=C1-C2-h·k7, C4=h·Σ(D·k). Считаются внутри
-    /// DoPri5Step из уже готовых стадий (k7 — FSAL-оценка f(t0+h,y1)):
-    /// 0 дополнительных RHS-оценок на сегмент.
+    /// Shampine dense output coefficients of one accepted step:
+    /// C1=y1-y0, C2=h·k1-C1, C3=C1-C2-h·k7, C4=h·Σ(D·k). Computed inside
+    /// DoPri5Step from the already available stages (k7 — FSAL estimate f(t0+h,y1)):
+    /// 0 extra RHS evaluations per segment.
     /// </summary>
     public readonly struct ShampineCoeffs
     {
@@ -28,16 +28,13 @@ namespace Galilego.Core
     }
 
     /// <summary>
-    /// Dense output одного принятого внутреннего DOPRI5-шага по Shampine (1986):
+    /// Dense output of one accepted inner DOPRI5 step per Shampine (1986):
     /// y(t0+θh) = C0 + θ·(C1 + (1-θ)·(C2 + θ·(C3 + (1-θ)·C4))).
-    /// Сегмент именно per-step: Эрмит по целому подчанку не держит допуск корня
-    /// 1e-6с (доказано gate-тестом T18: расхождение 3e-5с), пошговый Shampine —
-    /// 4-й порядок с малыми константами, 0 новых RHS-оценок.
+    /// The segment is per-step: 4th-order Shampine with small constants and
+    /// 0 extra RHS evaluations.
     ///
-    /// Концы точные бит-в-бит (θ≤0 → Y0, θ≥1 → Y1 из хранилища, не формула).
-    /// «Строго за событием» при бисекции по сегменту — в пределах точности
-    /// интерполянта, доказательство — тест рестарта T18, не формулировка.
-    /// Только вперёд: драйверы работают вперёд, h положительный.
+    /// Ends are bit-exact (θ≤0 → Y0, θ≥1 → Y1 from storage, not the formula).
+    /// Forward only: the drivers run forward, h is positive.
     /// </summary>
     public readonly struct DenseSegment
     {
@@ -101,10 +98,10 @@ namespace Galilego.Core
         }
 
         /// <summary>
-        /// Состояние трека в момент t. Трек от коллектора упорядочен;
-        /// микрозазоры между чанками (≤MinStepSize, остаток StepForward) терпятся:
-        /// точка в зазоре оценивается соседним сегментом (ошибка ≤ v·1e-6).
-        /// Пустой трек — исключение, молча не возвращаем ничего.
+        /// Track state at time t. The track from the collector is ordered;
+        /// micro-gaps between chunks (≤MinStepSize, StepForward remainder) are
+        /// tolerated: a point in a gap is evaluated by the neighbouring segment
+        /// (error ≤ v·1e-6). An empty track throws instead of silently returning nothing.
         /// </summary>
         public static SpacecraftIntegrationState EvaluateTrack(IReadOnlyList<DenseSegment> segments, double t)
         {

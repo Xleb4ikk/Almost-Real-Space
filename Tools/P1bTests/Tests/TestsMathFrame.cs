@@ -12,10 +12,10 @@ internal static partial class P1bTests
 {
     private static int Test17_FrameBridge()
     {
-        // T17a: roundtrip astro→sim→astro бит-в-бит (боевая перестановка осей).
-        // Через double-двойник моста: под UNITY_5_3_OR_NEWER боевой мост пакует
-        // в float (это его работа на границе рендера), побитовая проверка — на
-        // типизированном sim-типе; формулы маппинга общие (см. SimOf/AstroOf).
+        // T17a: astro→sim→astro roundtrip bit-for-bit (production axis permutation).
+        // Via the bridge's double twin: under UNITY_5_3_OR_NEWER the production
+        // bridge packs to float (its job at the render boundary), and the bitwise
+        // check is on the typed sim type; the mapping formulas are shared (see SimOf/AstroOf).
         var rng = new Random(1234);
         bool roundtrip = true;
         for (int i = 0; i < 1000; i++)
@@ -32,9 +32,8 @@ internal static partial class P1bTests
         var zeroBack = AstroOf(SimOf(Vector3d.Zero));
         roundtrip = roundtrip && zeroBack.X == 0d && zeroBack.Y == 0d && zeroBack.Z == 0d;
 
-        // T17b: жёсткое вращение — проекция оффсета на ось и его длина обязаны
-        // быть константами времени (старый код без поворота к оси давал
-        // синусоиду амплитудой ~r·sin(tilt) ≈ 1e6м — этот тест на нём падает).
+        // T17b: rigid rotation — the projection of the offset onto the axis and its
+        // length must be constant in time.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.RotationPeriodSeconds = 86400d;
@@ -58,19 +57,18 @@ internal static partial class P1bTests
             if (len > maxLen) maxLen = len;
         }
 
-        // Порог 1e-4м: поворот Родригеса сохраняет инварианты с точностью ~20 ulp
-        // (≈2e-5м при r~6e6м) — чистый fp-шум chained-операций; старый код без
-        // поворота давал бы синусоиду амплитудой ~r·sin(tilt) ≈ 1e6м.
+        // Threshold 1e-4 m: Rodrigues rotation preserves the invariants to ~20 ulp
+        // (≈2e-5 m at r~6e6 m) — pure fp noise of the chained operations.
         bool rigid = (maxDot - minDot) < 1e-4d && (maxLen - minLen) < 1e-4d;
 
-        // T17c: ось (0,0,1) — поворот Родригеса обязан быть тождеством бит-в-бит
-        // (нулевой вектор k, вся поправка — точные нули), а сама экваториальная
-        // формула — совпасть с независимым референсом до 1e-12 (референс снят
-        // PowerShell: триг .NET Framework vs .NET 8 различается в последнем ulp,
-        // поэтому побайтово сверяется только поворот, не косинусы).
-        // Оффсет сверяется на звезде в начале координат: вычитание позиции тела
-        // при |bp|~1e11 съедало бы младшие биты ((bp+off)−bp ≠ off), а корень
-        // неподвижен в нуле — wpC и есть оффсет, бит-в-бит.
+        // T17c: axis (0,0,1) — Rodrigues rotation must be the identity bit-for-bit
+        // (zero vector k, the whole correction is exact zeros), and the equatorial
+        // formula must match an independent reference to 1e-12 (trig differs in the
+        // last ulp between .NET Framework and .NET 8, so only the rotation is
+        // compared bytewise, not the cosines).
+        // The offset is compared on the star at the origin: subtracting the body
+        // position at |bp|~1e11 would eat the low bits ((bp+off)−bp ≠ off), while
+        // the root is fixed at zero — wpC is the offset, bit-for-bit.
         OrbitingBody star = sys.Root;
         star.Radius = 6371000d;
         star.RotationPeriodSeconds = 0d;
@@ -91,8 +89,8 @@ internal static partial class P1bTests
                 Math.Abs((eqR.Z - 1106486.18809368d) / 6372000d)));
         bool compat = identityRotation && refErr < 1e-12d;
 
-        // T17d: смена фокуса не двигает физику — реконструкция мировой позиции
-        // из фокус-относительных векторов точна для обоих фокусов.
+        // T17d: changing focus does not move the physics — reconstructing the world
+        // position from focus-relative vectors is accurate for both foci.
         var physD = new SpacecraftPhysics();
         physD.Sources.Add(new CachedGravitySource(sys));
         var propD = new EventDrivenPropagator(physD);
@@ -107,7 +105,7 @@ internal static partial class P1bTests
         Vector3d relM = shipD.Position - bpM;
         Vector3d recA = relA + bpA;
         Vector3d recM = relM + bpM;
-        // (a−b)+b — не тождество в fp (пара ulp): допуск 1мм при |pos|~1e11.
+        // (a−b)+b is not an identity in fp (a couple of ulp): 1 mm tolerance at |pos|~1e11.
         bool focus = (recA - shipD.Position).Magnitude < 1e-3d
             && (recM - shipD.Position).Magnitude < 1e-3d;
         var simA = SimOf(relA);
@@ -128,10 +126,10 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Тестовый двойник позиционного моста (x, z, −y): независим от ветки
-    /// UNITY_5_3_OR_NEWER — под ней AstroFrame.ToSimulation(Vector3d) отдаёт
-    /// UnityEngine.Vector3, а тестам нужен типизированный sim-тип с double.
-    /// Формула обязана совпадать с AstroFrame (проверяется T17_Handedness).
+    /// Test twin of the position bridge (x, z, −y): independent of the
+    /// UNITY_5_3_OR_NEWER branch — under it AstroFrame.ToSimulation(Vector3d)
+    /// returns UnityEngine.Vector3, while the tests need a typed sim type with double.
+    /// The formula must match AstroFrame (checked by T17_Handedness).
     /// </summary>
     private static SimVector3 SimOf(Vector3d astro)
     {
@@ -158,11 +156,11 @@ internal static partial class P1bTests
 
     private static int Test17_Handedness()
     {
-        // Мост обязан быть поворотом (det=+1), а не отражением: иначе все
-        // величины через cross product (в первую очередь скорость вращения
-        // поверхности) тихо меняют знак. Допуск 1e-12, НЕ побитово: прямой
-        // и обратный порядок округлений при перемножении разный, и «улучшать»
-        // этот тест до bit-exact значит сделать его flaky (см. комментарий).
+        // The bridge must be a rotation (det=+1), not a reflection: otherwise all
+        // quantities computed via cross product (above all the surface rotation
+        // velocity) silently flip sign. Tolerance 1e-12, NOT bitwise: forward and
+        // reverse rounding order differ in the multiplication, and forcing this
+        // test to be bit-exact would make it flaky.
         SimVector3 mx = SimOf(new Vector3d(1d, 0d, 0d));
         SimVector3 my = SimOf(new Vector3d(0d, 1d, 0d));
         SimVector3 mz = SimOf(new Vector3d(0d, 0d, 1d));
@@ -191,9 +189,7 @@ internal static partial class P1bTests
 
         bool crossCommutes = worstCross < 1e-12d;
 
-        // Физический дискриминатор: скорость вращения поверхности.
-        // На старом отражении (x,z,y) этот тест падает ЗНАКОМ (lhs ≈ −rhs),
-        // а не шумом — проверено выводом формулы, не запуском.
+        // Physical discriminator: surface rotation velocity.
         StarSystem sys = TestSystem();
         OrbitingBody planet = sys.AllBodies[1];
         planet.RotationPeriodSeconds = 7200d;
@@ -219,18 +215,16 @@ internal static partial class P1bTests
 
     private static int Test26_CircularMatrix()
     {
-        // Матрица e × i, три независимые проверки (не путать!):
-        // (1) roundtrip dt=0 — конвенции углов (класс бага T25: O(1), не шум);
-        // (2) дрейф энергии предиктора против себя — ТОЛЬКО сохранение формы,
-        //     фазу M0 он не видит в принципе (E фазо-независима);
-        // (3) T26b: четверть периода против ВНЕШНЕГО численного эталона
-        //     (TwoBodySystem, луна исключена конструктивно) — единственное,
-        //     что ловит ошибку начальной фазы M0. Граница 10м: ошибки конвенций
-        //     дают километры, прилив звезды ~1м, шум интегратора ~см.
-        // e=0 — другой вырожденный случай (перицентра нет): если красное —
-        // фиксим долготой, а не вариацией ω. Двойное вырождение e≈1e-8 ×
-        // i=90°/180° — главные кандидаты на сюрприз (порог узла + ветки h_z
-        // чинились независимо); отчёт построчный, худший не маскирует впритык.
+        // e × i matrix, three independent checks:
+        // (1) roundtrip dt=0 — angle conventions (an O(1) bug class, not noise);
+        // (2) the predictor's energy drift against itself — shape preservation only;
+        // (3) T26b: a quarter period against an EXTERNAL numeric reference
+        //     (TwoBodySystem, moon excluded by construction) — the only check
+        //     that catches an initial-phase M0 error. Bound 10 m: convention errors
+        //     give kilometres, the star's tide ~1 m, integrator noise ~cm.
+        // e=0 is a separate degenerate case (no periapsis); e≈1e-8 × i=90°/180°
+        // is the main surprise candidate. The report is per-line, so the worst case
+        // does not mask a marginal one.
         double mu = 3.986e14d;
         double[] ecc = new double[] { 0d, 1e-8d, 1e-4d, 0.05d };
         double[] inc = new double[] { 0d, 5d, 90d, 180d };
@@ -304,10 +298,10 @@ internal static partial class P1bTests
 
     private static int Test35_KeplerEdge()
     {
-        // B6/B7: остаточные невязки обоих решателей Кеплера по сетке, включая
-        // тяжёлые углы (e→1 при M≈π и M малом). Допуск — на невязку уравнения,
-        // а не на agreement реализаций. Фолбэк покрыт тем же ассёртом: если
-        // Ньютон где-то не дотянет, бисекция обязана вытянуть.
+        // B6/B7: residual errors of both Kepler solvers over a grid, including
+        // hard angles (e→1 at M≈π and small M). The tolerance is on the equation
+        // residual, not on agreement between implementations. The fallback is
+        // covered by the same assert: if Newton falls short anywhere, bisection must cover it.
         double worstElliptic = 0d;
         double[] ecc = new double[] { 0.9d, 0.99d, 0.999d, 0.9999d };
         double[] means = new double[] { 1e-8d, 1e-4d, 0.1d, 1.0d, Math.PI - 0.1d, Math.PI - 1e-7d };
@@ -340,9 +334,9 @@ internal static partial class P1bTests
             }
         }
 
-        // Гиперболические апсиды: inbound e=2 (ν=−1) → время до перицентра;
-        // проверка независимая: Advance на это время обязан встать в r_p=α(e−1).
-        // Outbound (скорость инвертирована) → перицентра впереди нет (NaN).
+        // Hyperbolic apsides: inbound e=2 (ν=−1) → time to periapsis; the check is
+        // independent: Advance over that time must land at r_p=α(e−1).
+        // Outbound (velocity inverted) → no periapsis ahead (NaN).
         double mu = 3.986e14d;
         double alpha = 1e7d;
         double eh = 2d;
@@ -351,8 +345,8 @@ internal static partial class P1bTests
         double rIn = pParam / (1d + (eh * Math.Cos(nuIn)));
         var posIn = new Vector3d(rIn * Math.Cos(nuIn), rIn * Math.Sin(nuIn), 0d);
         double v2 = mu * ((2d / rIn) + (1d / alpha));
-        // Скорость = cos γ · transverse + sin γ · radial (γ со знаком):
-        // угол вектора = (ν+π/2) − γ. Знак проверен: r·v < 0 (сближение).
+        // Velocity = cos γ · transverse + sin γ · radial (γ signed):
+        // vector angle = (ν+π/2) − γ. Sign checked: r·v < 0 (approach).
         double gamma = Math.Atan2(eh * Math.Sin(nuIn), 1d + (eh * Math.Cos(nuIn)));
         double dirAngle = nuIn + (Math.PI / 2d) - gamma;
         var velIn = new Vector3d(Math.Sqrt(v2) * Math.Cos(dirAngle), Math.Sqrt(v2) * Math.Sin(dirAngle), 0d);
@@ -376,12 +370,12 @@ internal static partial class P1bTests
 
     private static int Test72_VisualFrame()
     {
-        // Фаза 2.1: GetVisualFrame — готовый визуальный кадр (позиция+скорость+
-        // ориентация) из ядра, мёртвое Unity-поле VisualTransform удалено.
-        // Контракт: ориентация собрана тем же путём, что GetSurfaceState —
-        // поворот базисных векторов body-frame кватернионом обязан совпадать
-        // с поверхностными точками (нулевой меридиан, 90°E, полюс) на теле с
-        // НАКЛОНЁННОЙ осью и вращением, в разные моменты времени.
+        // Phase 2.1: GetVisualFrame — a ready visual frame (position+velocity+
+        // orientation) from the core.
+        // Contract: the orientation is built the same way as GetSurfaceState —
+        // rotating the body-frame basis vectors with the quaternion must match
+        // the surface points (prime meridian, 90°E, pole) on a body with a
+        // TILTED axis and rotation, at different times.
         StarSystem sys = ManualStarPlanetMoon();
         OrbitingBody moon = sys.AllBodies[2];
         moon.RotationPeriodSeconds = 86400d;
@@ -420,7 +414,7 @@ internal static partial class P1bTests
             basisOk &= ex < 1e-9d && ey < 1e-9d && ez < 1e-9d;
         }
 
-        // Ось (0,0,1) без вращения — тождество бит-в-бит (T17c-ветка).
+        // Axis (0,0,1) without rotation — identity bit-for-bit (T17c branch).
         OrbitingBody star = sys.AllBodies[0];
         sys.GetVisualFrame(star, 0d, out _, out _, out QuaternionD starOrientation);
         bool identityOk = starOrientation.W == 1d && starOrientation.X == 0d && starOrientation.Y == 0d && starOrientation.Z == 0d;
@@ -433,10 +427,10 @@ internal static partial class P1bTests
 
     private static int Test74_ScaleBounds()
     {
-        // Фаза 2.3: fp-бюджет масштаба громко. Орбита дальше MaxOrbitRadiusMeters
-        // (1e13 м) отвергается при загрузке: ulp(1e13)≈2e-3 м — рельеф и
-        // посадочные допуски теряют смысл. Граница — на полуось рельсы; hyper/
-        // degenerate (a≤0) не проверяются; на границе 1e13 ровно — проходит.
+        // Phase 2.3: the fp scale budget fails loudly. An orbit beyond MaxOrbitRadiusMeters
+        // (1e13 m) is rejected at load: ulp(1e13)≈2e-3 m makes terrain and
+        // landing tolerances meaningless. The bound applies to the orbit semi-major
+        // axis; hyper/degenerate (a≤0) are not checked; exactly 1e13 passes.
         bool farLoud = false;
         try
         {
@@ -457,7 +451,7 @@ internal static partial class P1bTests
         edgeStar.Children.Add(edge);
         bool edgePasses = new StarSystem(edgeStar) != null;
 
-        // Гиперболическая/вырожденная рельса (a≤0) — не проверяется на масштаб.
+        // Hyperbolic/degenerate orbit (a≤0) — not checked for scale.
         var hyper = new OrbitingBody { Name = "Hyper", Radius = 1e6d, SemiMajorAxis = 1e8d, Eccentricity = 1.2d };
         var hyperStar = new OrbitingBody { Name = "Star", Radius = 3e8d, StandardGravitationalParameter = 1.327e20d };
         hyper.Parent = hyperStar;
@@ -472,10 +466,10 @@ internal static partial class P1bTests
 
     private static int Test76_QuaternionBridge()
     {
-        // Фаза B2: мост ориентаций q_sim = R·q_astro·R⁻¹. Инварианты:
-        // 1) ось идёт через позиционный мост: q_sim(axis a, θ) вращает
-        //    ToSim(a); 2) тождество — бит-в-бит; 3) вращение вокруг севера
-        //    +Z выглядит как вращение вокруг up +Y; 4) норма сохранена.
+        // Phase B2: orientation bridge q_sim = R·q_astro·R⁻¹. Invariants:
+        // 1) the axis goes through the position bridge: q_sim(axis a, θ) rotates
+        //    ToSim(a); 2) identity — bit-for-bit; 3) rotation about north
+        //    +Z looks like rotation about up +Y; 4) norm preserved.
         QuaternionD identity = AstroFrame.ToSimulationFrame(QuaternionD.Identity);
         bool identityOk = identity.W == 1d && identity.X == 0d && identity.Y == 0d && identity.Z == 0d;
 
@@ -486,10 +480,10 @@ internal static partial class P1bTests
             Vector3d axisAstro = new Vector3d(1d, 2d, -1d);
             QuaternionD q = QuaternionD.FromAxisAngle(axisAstro, theta);
             QuaternionD qSim = AstroFrame.ToSimulationFrame(q);
-            // Ось в sim-кадре.
+            // Axis in the sim frame.
             SimVector3 axisSim = SimOf(axisAstro.Normalized);
             Vector3d simAxis = new Vector3d(axisSim.X, axisSim.Y, axisSim.Z);
-            // Действие: q_sim, применённое к мостнутой оси, не меняет её (вращение вокруг собственной оси).
+            // Action: q_sim applied to the bridged axis leaves it unchanged (rotation about its own axis).
             Vector3d turned = qSim.Rotate(simAxis);
             double drift = (turned - simAxis).Magnitude;
             if (drift > worst)
@@ -500,12 +494,12 @@ internal static partial class P1bTests
             axisOk &= drift < 1e-12d && Math.Abs(qSim.NormSquared - 1d) < 1e-12d;
         }
 
-        // Север +Z → вращение вокруг up +Y: мост кватерниона вращения вокруг Z
-        // даёт кватернион с осью (0,±1,0).
+        // North +Z → rotation about up +Y: the bridge of a rotation-around-Z
+        // quaternion gives a quaternion with axis (0,±1,0).
         QuaternionD spinZ = AstroFrame.ToSimulationFrame(QuaternionD.FromAxisAngle(new Vector3d(0d, 0d, 1d), 0.7d));
         bool upAxisOk = Math.Abs(spinZ.X) < 1e-12d && Math.Abs(spinZ.Z) < 1e-12d && Math.Abs(Math.Abs(spinZ.Y) - Math.Sin(0.35d)) < 1e-12d;
 
-        // Согласованность с векторным мостом: R·(q·v·q⁻¹) = q_sim·R·v.
+        // Consistency with the vector bridge: R·(q·v·q⁻¹) = q_sim·R·v.
         Vector3d v = new Vector3d(3d, -2d, 5d);
         QuaternionD q2 = QuaternionD.FromAxisAngle(new Vector3d(1d, 1d, 1d), 1.1d);
         Vector3d astroWay = q2.Rotate(v);
@@ -523,7 +517,7 @@ internal static partial class P1bTests
 
     private static int Test85_CubeSphere()
     {
-        // 1) Единичная длина по всем граням.
+        // 1) Unit length on all faces.
         bool unit = true;
         for (int face = 0; face < CubeSphere.FaceCount; face++)
         {
@@ -540,8 +534,8 @@ internal static partial class P1bTests
             }
         }
 
-        // 2) Непрерывность через рёбра грани +Z (face 4): выведенные пары
-        // параметризаций соседних граней должны давать бит-в-бит один вектор.
+        // 2) Continuity across the edges of face +Z (face 4): the derived pairs
+        // of parametrizations of neighbouring faces must give one vector bit-for-bit.
         bool edges = true;
         for (int i = 0; i <= 32; i++)
         {
@@ -552,7 +546,7 @@ internal static partial class P1bTests
             edges &= SameDir(CubeSphere.Direction(4, 1d, t), CubeSphere.Direction(0, 0d, t));
         }
 
-        // 3) Центры узлов quadtree: depth 0 — ось грани, depth 1 — 4 разных центра.
+        // 3) Quadtree node centres: depth 0 — face axis, depth 1 — 4 distinct centres.
         Vector3d c0 = CubeSphere.NodeCenterDirection(4, 0, 0, 0);
         bool axis = Math.Abs(c0.Z - 1d) < 1e-12d;
         Vector3d ca = CubeSphere.NodeCenterDirection(4, 1, 0, 0);

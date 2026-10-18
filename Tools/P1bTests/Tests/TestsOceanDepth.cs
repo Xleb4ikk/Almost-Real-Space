@@ -6,13 +6,13 @@ using Unity.Mathematics;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Гистограмма глубин: распределение дна, а не только минимум. Ориентиры
-    /// Земли - средняя глубина 3.7 км, шельф до 200 м, максимум 11 км, и
-    /// глубже 6 км - лишь малая доля площади.
+    /// Depth histogram: the distribution of the seafloor, not just the minimum.
+    /// Earth reference points: mean depth 3.7 km, shelf to 200 m, maximum 11 km,
+    /// and deeper than 6 km is only a small fraction of the area.
     ///
-    /// Считаются перцентили СРЕДИ ОКЕАНСКИХ точек (h &lt; 0), иначе p50 был бы
-    /// положительной сушей и цифры ничего не значили бы. p1 - самые глубокие
-    /// 1% океана, это и есть хвост, который ломает картину.
+    /// Percentiles are computed AMONG OCEAN points (h &lt; 0), otherwise p50 would
+    /// be positive land and the numbers would mean nothing. p1 is the deepest 1%
+    /// of the ocean — the tail that breaks the picture.
     /// </summary>
     private static int Test135_OceanDepthHistogram()
     {
@@ -21,15 +21,15 @@ internal static partial class P1bTests
         Histogram("legacy EarthLike (value)", SceneLikeTerrain(), n);
         Histogram("EarthLike_Perlin (без сжатия ложа)", PerlinAssetNoDepth(), n);
 
-        // Два средства из плана. ContinentDepth топит и ложе, и шельф, поэтому
-        // как единственный инструмент не годится - видно по p25.
+        // Two tools from the plan. ContinentDepth sinks both the seafloor and the
+        // shelf, so it is unsuitable as the only tool - visible in p25.
         HeightfieldTerrain lessDepth = PerlinAssetNoDepth();
         lessDepth.ContinentDepth = 0.9d;
         Histogram("Perlin, (a) ContinentDepth 1.2 -> 0.9", lessDepth, n);
 
-        // Зеркальное колено: подобрано так, чтобы min попал в реальные 11 км.
-        // Потолок ложа = (DepthThreshold - DepthKnee) * Amp, поэтому порог -0.30
-        // и колено 0.51 дают пол -0.81, то есть -11.1 км.
+        // Floor knee: chosen so min lands at the realistic 11 km. The seafloor
+        // floor = (DepthThreshold - DepthKnee) * Amp, so threshold -0.30 and knee
+        // 0.51 give a floor of -0.81, i.e. -11.1 km.
         foreach (double knee in new double[] { 0.40d, 0.51d, 0.62d })
         {
             HeightfieldTerrain k = PerlinAssetNoDepth();
@@ -95,12 +95,12 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Профиль через берег: шельф, склон, ложе. Именно то, что должен прочитать
-    /// глаз. Сжатие ложа не должно съедать шельф, а уменьшение ContinentDepth
-    /// - поднимать дно слишком сильно.
+    /// Coast transect: shelf, slope, seafloor — what the eye should read.
+    /// Seafloor compression must not eat the shelf, and lowering ContinentDepth
+    /// must not raise the bottom too much.
     ///
-    /// Ищется точка, где форма пересекает уровень моря, и вдоль меридиана
-    /// печатается профиль. Два варианта рядом с контролем.
+    /// Finds a point where the shape crosses sea level and prints the profile
+    /// along the meridian. Two variants next to the control.
     /// </summary>
     private static int Test136_CoastProfile()
     {
@@ -123,8 +123,8 @@ internal static partial class P1bTests
         TerrainNoiseParams p = TerrainNoiseParams.FromTerrain(t);
         double amp = p.AmplitudeMeters;
 
-        // Ищем переход через уровень моря: максимальный |градиент| среди точек
-        // около нуля даёт самый крутой берег, а нам нужен типичный шельф.
+        // Find a sea-level crossing: the largest |gradient| among points near zero
+        // gives the steepest coast, but a typical shelf is wanted.
         const int scan = 200000;
         double ga = System.Math.PI * (3.0 - System.Math.Sqrt(5.0));
         double bestH = 0d, bestGap = double.MaxValue;
@@ -169,10 +169,10 @@ internal static partial class P1bTests
             }
         }
 
-        // Дальний масштаб: от берега до ложа. Ближний трансект доходит только
-        // до 1.3 км, а сжатие ложа начинается с 4.1 км, поэтому без этого
-        // раздела профили A и B выглядят одинаковыми - и это не доказывает
-        // ничего. Шаг 1.5°, размах 45° (~5 000 км) - достигает глубокого дна.
+        // Far scale: from the coast to the seafloor. The near transect only reaches
+        // 1.3 km while seafloor compression starts at 4.1 km, so without this
+        // section profiles A and B look identical - proving nothing. Step 1.5°,
+        // span 45° (~5,000 km) reaches the deep bottom.
         Console.WriteLine("      --- дальний масштаб, шаг 1.5° (размах 45°) ---");
         for (int k = 0; k <= 30; k++)
         {

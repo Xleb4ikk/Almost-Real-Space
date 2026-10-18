@@ -4,8 +4,8 @@ using UnityEngine;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Держатель runtime-мешей выпуклых коллайдеров капсулы (OrionCollisionBuilder):
-    /// при уничтожении детали освобождает их, иначе меши копились бы в памяти.
+    /// Holder for the capsule's runtime convex-collider meshes (OrionCollisionBuilder):
+    /// releases them when the part is destroyed, otherwise the meshes would accumulate in memory.
     /// </summary>
     public sealed class OrionCollisionMeshes : MonoBehaviour
     {

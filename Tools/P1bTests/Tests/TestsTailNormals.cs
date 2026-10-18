@@ -7,10 +7,10 @@ using Unity.Mathematics;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Профиль ровно как в EarthLike_Perlin.asset, включая сжатие хвоста.
-    /// Держим здесь руками, а не читаем ассет: .NET-стенд не умеет грузить
-    /// Unity-ассеты, а расхождение фикстуры с ассетом сделало бы замер
-    /// бессмысленным. Значения помечены, откуда каждое.
+    /// Profile exactly as in EarthLike_Perlin.asset, including tail compression.
+    /// Kept here by hand rather than read from the asset: the .NET harness cannot
+    /// load Unity assets, and a fixture that diverged from the asset would make
+    /// the measurement meaningless. Each value is annotated with its source.
     /// </summary>
     private static HeightfieldTerrain PerlinAsset()
     {
@@ -54,15 +54,15 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// T84 сценарий 2 на тайле 0.5°/65 вершин: нормали double против нормалей
-    /// после приведения позиций к float. Порог T84 - 2e-3 рад.
+    /// T84 scenario 2 on a 0.5 deg / 65-vertex tile: double normals vs normals
+    /// after positions are reduced to float. The T84 budget is 2e-3 rad.
     ///
-    /// Две плитки, потому что сжатие хвоста трогает поле только в одном
-    /// месте, и проверять надо именно его:
-    ///   • гребень  - самая высокая точка, там поле сжато сильнее всего;
-    ///   • порог   - точка, где форма равна TailThreshold, то есть колено.
-    ///     Плитка вокруг неё содержит и сжатые, и несжатые точки сразу, и это
-    ///     самый напряжённый случай для производной.
+    /// Two tiles, because tail compression affects the field in only one
+    /// place and that is what must be tested:
+    ///   - crest     - the highest point, where the field is compressed most;
+    ///   - threshold - the point where the shape equals TailThreshold, i.e. the
+    ///     knee. The tile around it contains both compressed and uncompressed
+    ///     points at once, the most demanding case for the derivative.
     /// </summary>
     private static int Test133_TailNormalParity()
     {
@@ -74,7 +74,7 @@ internal static partial class P1bTests
         double sea = adv.SeaLevelMeters;
         double thresholdMeters = adv.TailThreshold * amp;
 
-        // Ищем две опорные точки на сфере: гребень и порог.
+        // Find two reference points on the sphere: the crest and the threshold.
         const int scanN = 120;
         int count = (scanN + 1) * (scanN + 1);
         double bestH = double.NegativeInfinity, bestLat = 0d, bestLon = 0d;
@@ -96,8 +96,8 @@ internal static partial class P1bTests
                     bestLon = lon;
                 }
 
-                // Работаем в НЕсжатой форме, иначе порог всегда достигается
-                // ровно и расстояние до него всегда ноль.
+                // Work in the UNcompressed form, otherwise the threshold is
+                // always hit exactly and the distance to it is always zero.
                 double raw = TerrainNoise.SampleHeight(TerrainNoiseParams.FromTerrain(
                     PerlinAssetNoTail()), dir) * amp;
                 double gap = System.Math.Abs(raw - thresholdMeters);
@@ -157,7 +157,7 @@ internal static partial class P1bTests
         return new double3(c * Math.Cos(lonRad), c * Math.Sin(lonRad), Math.Sin(latRad));
     }
 
-    /// <summary>Одна плитка 0.5°/65 и worstNormalAngle по T84 сценарию 2.</summary>
+    /// <summary>One 0.5 deg / 65 tile and worstNormalAngle per T84 scenario 2.</summary>
     private static double TileNormalAngle(
         OrbitingBody body, HeightfieldTerrain adv, TerrainNoiseParams par,
         double amp, double sea, double centerLat, double centerLon)
@@ -222,13 +222,13 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Порог сжатия должен попадать между p99.8 и p99.95 высот. Смысл: сжатие
-    /// обязано бытьRare - если порог ниже p99.8, оно трогает больше 0.2% точек
-    /// и перестаёт быть "только хвост"; если выше p99.95, оно не режет
-    /// ничего, и вершины остаются 11 км.
+    /// The compression threshold must fall between p99.8 and p99.95 of the
+    /// heights. Rationale: compression must be rare - below p99.8 it touches
+    /// more than 0.2% of points and stops being "tail only"; above p99.95 it
+    /// cuts almost nothing and peaks stay at 11 km.
     ///
-    /// Считается на ФИКСТУРЕ ИЗ АССЕТА, то есть с отключённым сжатием, иначе
-    /// получился бы тавтологический тест.
+    /// Computed on the ASSET FIXTURE, i.e. with compression disabled, otherwise
+    /// the test would be tautological.
     /// </summary>
     private static int Test134_TailThresholdPlacement()
     {

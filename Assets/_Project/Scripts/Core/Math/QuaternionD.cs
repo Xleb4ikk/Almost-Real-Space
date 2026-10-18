@@ -3,14 +3,12 @@ using System;
 namespace Galilego.Core
 {
     /// <summary>
-    /// Кватернион двойной точности (x, y, z, w), без зависимости от Unity —
-    /// тестовый стенд компилирует его напрямую. Конвенция зафиксирована здесь,
-    /// а не подразумевается: q отображает body-frame в world-frame
-    /// (v_world = q · v_body · q⁻¹), угловая скорость — в body-frame, тогда
-    /// q̇ = ½·q⊗ω_quat. Одноосевые тесты (R1a/R1b) переворот НЕ ловят:
-    /// вращения вокруг одной оси коммутируют (подалгебра ≅ ℂ), а E/|L|
-    /// от конвенции не зависят вовсе — доказано красным прогоном.
-    /// Дискриминатор — сохранение мировой L в кувырке (R1c ΔL_world).
+    /// Double-precision quaternion (x, y, z, w) with no Unity dependency — the test
+    /// harness compiles it directly. The convention is pinned here, not implied:
+    /// q maps body-frame to world-frame (v_world = q · v_body · q⁻¹), angular
+    /// velocity is in body-frame, so q̇ = ½·q⊗ω_quat. Single-axis tests (R1a/R1b)
+    /// do NOT catch a flipped convention; the discriminator is world-L conservation
+    /// in a tumble (R1c ΔL_world).
     /// </summary>
     public readonly struct QuaternionD
     {
@@ -68,7 +66,7 @@ namespace Galilego.Core
                 ((a.W * b.Z) + (a.X * b.Y)) - ((a.Y * b.X) - (a.Z * b.W)),
                 ((a.W * b.W) - (a.X * b.X)) - ((a.Y * b.Y) + (a.Z * b.Z)));
 
-        /// <summary>Поворот вектора из body-frame в world-frame: q·v·q⁻¹.</summary>
+        /// <summary>Rotates a vector from body-frame to world-frame: q·v·q⁻¹.</summary>
         public Vector3d Rotate(Vector3d body)
         {
             QuaternionD v = new QuaternionD(body.X, body.Y, body.Z, 0d);
@@ -85,8 +83,8 @@ namespace Galilego.Core
         }
 
         /// <summary>
-        /// Производная ориентации при body-frame угловой скорости:
-        /// q̇ = ½·q⊗(ωx, ωy, ωz, 0). Пара к конвенции Rotate выше.
+        /// Attitude derivative for body-frame angular velocity:
+        /// q̇ = ½·q⊗(ωx, ωy, ωz, 0). Matches the Rotate convention above.
         /// </summary>
         public static QuaternionD Derivative(QuaternionD attitude, Vector3d angularVelocityBody)
         {

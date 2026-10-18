@@ -3,10 +3,10 @@ using UnityEngine;
 namespace Galilego.Tablet
 {
     /// <summary>
-    /// Программный кадровый буфер планшета: пиксели рисуются прямо в массив
-    /// Color32 (координаты Y вниз, в массиве строки хранятся снизу вверх — так
-    /// ждёт Texture2D, массив заливается в текстуру без перестановки).
-    /// Никаких шрифтов, ассетов и пакетов UI: пиксель-арт получается точным.
+    /// Software framebuffer for the tablet: pixels are drawn straight into a
+    /// Color32 array (Y is down, rows are stored bottom-up in the array — as
+    /// Texture2D expects, so the array uploads without reordering).
+    /// No fonts, assets or UI packages: pixel art comes out exact.
     /// </summary>
     public sealed class PixelCanvas
     {
@@ -63,7 +63,7 @@ namespace Galilego.Tablet
             }
         }
 
-        /// <summary>Шахматная заливка (псевдо-полутон).</summary>
+        /// <summary>Checkerboard fill (pseudo halftone).</summary>
         public void FillChecker(int x, int y, int w, int h, Color32 a, Color32 b)
         {
             for (int yy = y; yy < y + h; yy++)
@@ -123,7 +123,7 @@ namespace Galilego.Tablet
             }
         }
 
-        /// <summary>Битмап из строк ('#' — пиксель), левый верхний угол в (x, y).</summary>
+        /// <summary>Bitmap from rows ('#' is a pixel), top-left corner at (x, y).</summary>
         public void Bitmap(int x, int y, string[] rows, Color32 c)
         {
             for (int r = 0; r < rows.Length; r++)
@@ -139,7 +139,7 @@ namespace Galilego.Tablet
             }
         }
 
-        // ── Текст ───────────────────────────────────────────────────────
+        // ── Text ───────────────────────────────────────────────────────
 
         public static int TextWidth(string s, int scale = 1)
         {
@@ -157,7 +157,7 @@ namespace Galilego.Tablet
             return w - scale;
         }
 
-        /// <summary>Рисует строку, (x, y) — верх левого края. Возвращает правый край.</summary>
+        /// <summary>Draws a string, (x, y) is the top of the left edge. Returns the right edge.</summary>
         public int Text(int x, int y, string s, Color32 c, int scale = 1)
         {
             if (string.IsNullOrEmpty(s))

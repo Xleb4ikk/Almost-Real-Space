@@ -16,8 +16,8 @@ float _CldExtinction;
 float _CldBottomFeather;
 float _CldTopFeather;
 
-// Предзапечённая EarthClusters-маска (Terra: EarthMaskBaker), чтобы не
-// считать процедурный CloudFbm на каждом сэмпле марчинга и тени.
+// Pre-baked EarthClusters mask (Terra: EarthMaskBaker) to avoid procedural
+// CloudFbm on every marching and shadow sample.
 TEXTURE3D(_CldEarthMaskTex);
 SAMPLER(sampler_CldEarthMaskTex);
 float _CldEarthMaskReady;
@@ -124,25 +124,19 @@ float SampleCloudShadow(float3 positionWS)
         return 1.0;
     }
 
-    // Сколько сэмплов поля плотности берём вдоль луча к солнцу.
+    // Density-field samples taken along the ray to the sun.
     //
-    // Каждый сэмпл — это SampleCloudEarthMask, а там CloudFbm на 3 октавы
-    // плюс ещё одна CloudNoise: 4 × CloudHash × 8 = 32 хеша, примерно тысяча
-    // ALU-операций на СЭМПЛ, и ни одной выборки из текстуры — всё в регистрах.
-    // Считается это на КАЖДЫЙ пиксель земли, травы, камня и воды.
+    // Each sample is a SampleCloudEarthMask (procedural CloudFbm fallback), roughly a
+    // thousand ALU ops with no texture fetch, and this runs on EVERY pixel of ground,
+    // grass, rock and water.
     //
-    // Шаг берём по длине пути, а не всегда по потолку — ровно как это уже
-    // сделано в PlanetAtmosphere для IntegrateAtmosphere. Луч к солнцу идёт
-    // сквозь слой 7000-8500 м (всего 1.5 км): при высоком солнце почти
-    // отвесно, и 4 одинаковых шага по ~370 м — переплата, потому что
-    // плотность по толще меняется плавно и midpoint-правило с двумя точками
-    // даёт ту же оптическую толщину. При низком солнце (закат) луч идёт
-    // сквозь слой по касательной на сотни километров, там шаг становится
-    // мелким и число сэмплов само поднимается до потолка — то есть на
-    // горизонтальных лучах качество остаётся ровно прежним.
+    // Step length follows the path length, not always the ceiling — the same approach
+    // as IntegrateAtmosphere in PlanetAtmosphere: with a high sun the ray crosses the
+    // layer almost vertically and short steps suffice; with a low sun it grazes for
+    // hundreds of kilometres and the step shrinks up to the ceiling.
     //
-    // CLOUD_SHADOW_STEP_METERS — длина пути на один сэмпл;
-    // CLOUD_SHADOW_STEPS_MAX — потолок (было фиксированное 4).
+    // CLOUD_SHADOW_STEP_METERS — path length per sample;
+    // CLOUD_SHADOW_STEPS_MAX — ceiling.
     const float CLOUD_SHADOW_STEP_METERS = 800.0;
     const int CLOUD_SHADOW_STEPS_MAX = 4;
 

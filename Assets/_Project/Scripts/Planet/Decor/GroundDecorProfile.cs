@@ -5,24 +5,24 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Один слой декора местности (растительность/камни): near/far геометрия,
-    /// распределение по шуму, фильтры поверхности (высота/склон/биом), масштаб
-    /// и дистанции LOD. Зерно берётся из тела (BodyAuthoring.TerrainSeed) —
-    /// пресет слоя общий, рельеф у каждой планеты свой.
+    /// One terrain decor layer (vegetation/rocks): near/far geometry, noise
+    /// distribution, surface filters (altitude/slope/biome), scale and LOD
+    /// distances. The seed comes from the body (BodyAuthoring.TerrainSeed) —
+    /// the layer preset is shared, each planet's terrain is its own.
     /// </summary>
     [Serializable]
     public sealed class GroundDecorLayer
     {
         /// <summary>
-        /// Низ скальной зоны в нормированной высоте палитры: зеркалит порог
-        /// перехода lowland→Rock в TerrainPalette.BaseColor. Выше — только камни.
+        /// Bottom of the rock zone in palette normalized height: mirrors the
+        /// lowland→Rock threshold in TerrainPalette.BaseColor. Above — rocks only.
         /// </summary>
         public const double RockBottomNormalizedHeight = 0.45d;
 
         /// <summary>
-        /// Нижняя граница зелени палитры по влажности (wet01 из той же маски,
-        /// что красит рельеф): зеркалит переход DryGrass→Grass в
-        /// TerrainPalette.BiomeColor. Трава/деревья/луговые цветы — не ниже.
+        /// Lower bound of the palette's greenery by wetness (wet01 from the same
+        /// mask that colors the terrain): mirrors the DryGrass→Grass threshold in
+        /// TerrainPalette.BiomeColor. Grass/trees/meadow flowers are not below.
         /// </summary>
         public const double GreenWetMin = 0.38d;
 
@@ -259,8 +259,9 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Набор слоёв декора (трава/камни/деревья) для тела. Живёт в ассете
-    /// GroundDecorProfileAsset; планета ссылается на пресет с BodyAuthoring.
+    /// A set of decor layers (grass/rocks/trees) for a body. Lives in the
+    /// GroundDecorProfileAsset asset; the planet references the preset from
+    /// BodyAuthoring.
     /// </summary>
     [Serializable]
     public sealed class GroundDecorProfile

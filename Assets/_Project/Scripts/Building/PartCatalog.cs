@@ -6,19 +6,19 @@ using UnityEngine;
 namespace Galilego.Building
 {
     /// <summary>
-    /// Каталог деталей: имя, пределы размеров, метрики (масса/форма/узлы) и
-    /// сборка визуала. Бака и отделитель — процедурные (радиусы/высота задаёт
-    /// игрок), двигатель — модель RS-25 (габариты мерятся по мешам). Бак может
-    /// быть цилиндром или обрезанным конусом-переходником: тогда нижний и
-    /// верхний радиусы разные, а форма — тело вращения с наклонной образующей.
-    /// Массы: бак — оболочка + топливо (формулы ProceduralFuelTank), отделитель —
-    /// объём кольца из стали, двигатель — плейсхолдер до реальных расчётов.
-    /// Прочности стыков — параметры (плейсхолдеры); отделитель слабее всех:
-    /// он и должен разрываться первым.
+    /// Part catalog: names, size limits, metrics (mass/shape/nodes) and visual
+    /// assembly. Tank and separator are procedural (radii/height are set by the
+    /// player), the engine uses the RS-25 model (dimensions measured from meshes).
+    /// The tank can be a cylinder or a truncated cone adapter: bottom and top
+    /// radii then differ, and the shape is a body of revolution with a slanted
+    /// generatrix. Masses: tank — shell + propellant (ProceduralFuelTank formulas),
+    /// separator — ring volume of steel, engine — placeholder until real
+    /// calculations. Joint strengths are parameters (placeholders); the separator
+    /// is the weakest: it is meant to break first.
     /// </summary>
     public static class PartCatalog
     {
-        // Бак
+        // Tank
         public const float TankDefaultRadius = 1.5f;
         public const float TankDefaultHeight = 6f;
         public const float TankMinRadius = 0.3f;
@@ -26,36 +26,31 @@ namespace Galilego.Building
         public const float TankMinHeight = 1f;
         public const float TankMaxHeight = 15f;
 
-        // Отделитель
+        // Separator
         public const float SeparatorDefaultRadius = 1.5f;
         public const float SeparatorMinRadius = 0.3f;
         public const float SeparatorMaxRadius = 5f;
 
-        // Плейсхолдеры физики
+        // Physics placeholders
         private const double SeparatorSteelDensity = 7850d;
 
-        /// <summary>Масса капсулы Orion (плейсхолдер, как у двигателей), кг.</summary>
+        /// <summary>Orion capsule mass (placeholder, like the engines), kg.</summary>
         private const double CapsuleMassKg = 10400d;
 
         /// <summary>
-        /// Верхний радиус физического тела капсулы (доля нижнего): капсула —
-        /// конус от теплозащиты Ø5 м к носу. Для пересечений/лучей этого
-        /// достаточно, точный силуэт даёт визуал.
+        /// Top radius of the capsule's physics body (fraction of the bottom one):
+        /// the capsule is a cone from the heat shield (Ø5 m) to the nose. This is
+        /// enough for overlaps/rays; the exact silhouette comes from the visual.
         /// </summary>
         private const float CapsuleTopRadiusFraction = 0.38f;
 
-        // Прочности стыков, Н: запас на переходные усилия PhysX (первый шаг
-        // стыка держит вес мгновенно — пик в десятки раз выше веса) и на удар
-        // при падении: 42-тонный бак при посадочном ударе даёт импульс
-        // m·v/dt ~ десятки МН за шаг солвера, поэтому пределы высокие —
-        // «ракета» не должна разваливаться от обычного падения с нескольких
-        // метров. Отделитель слабее прочих (он и должен рваться первым —
-        // ступени позже), но тоже переживает падение.
+        // Joint strengths, N: high enough that the rocket survives a drop from a
+        // few metres; the separator is the weakest — it must break first.
         private const double EngineJointNewtons = 1.5e8d;
         private const double TankJointNewtons = 1.5e8d;
         private const double SeparatorJointNewtons = 3.0e7d;
 
-        /// <summary>Какой это вид детали (для UI/иконок/подсказок).</summary>
+        /// <summary>Display name of the part kind (for UI/icons/tooltips).</summary>
         public static string DisplayName(PartKind kind)
         {
             switch (kind)
@@ -68,8 +63,8 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Название детали с паспортом двигателя: у двигателя добавляется
-        /// модель («Двигатель AJ10-118K»), у прочих паспорт не значим.
+        /// Part name with the engine spec: the engine gets the model appended
+        /// ("Engine AJ10-118K"), for other parts the spec is irrelevant.
         /// </summary>
         public static string DisplayName(PartKind kind, EngineSpec engine)
         {
@@ -81,7 +76,7 @@ namespace Galilego.Building
             return "Двигатель " + engine.DisplayName;
         }
 
-        /// <summary>Зажать размеры в допустимые пределы (иначе меш/физика ломаются).</summary>
+        /// <summary>Clamp sizes to the allowed limits (otherwise mesh/physics break).</summary>
         public static void ClampSizes(PartKind kind, ref float radius, ref float height)
         {
             switch (kind)
@@ -95,7 +90,7 @@ namespace Galilego.Building
                     height = ProceduralSeparator.Thickness;
                     break;
                 case PartKind.Capsule:
-                    // Размеры капсулы фиксированы моделью — не трогаем.
+                    // Capsule sizes are fixed by the model — leave them alone.
                     break;
                 default:
                     radius = 1f;
@@ -104,16 +99,16 @@ namespace Galilego.Building
             }
         }
 
-        /// <summary>Метрики детали под данные размеры (двигатель — из шаблона модели).</summary>
+        /// <summary>Metrics for the given sizes (engine — from its model template).</summary>
         public static PartMetrics Measure(PartKind kind, float sizeA, float sizeB, EngineTemplate engine)
         {
             return Measure(kind, TankForm.Cylinder, sizeA, sizeA, sizeB, null, engine);
         }
 
         /// <summary>
-        /// Метрики детали под данные размеры (двигатель — из шаблона модели).
-        /// Для бака: form — цилиндр или конус, bottomRadius/topRadius — радиусы
-        /// торцов (у цилиндра верхний игнорируется), height — длина.
+        /// Metrics for the given sizes (engine — from its model template).
+        /// For the tank: form — cylinder or cone, bottomRadius/topRadius — end
+        /// radii (the top one is ignored for a cylinder), height — length.
         /// </summary>
         public static PartMetrics Measure(
             PartKind kind, TankForm form, float bottomRadius, float topRadius, float height,
@@ -123,9 +118,9 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// То же, что Measure выше, но с наполнением бака (load):
-        /// масса бака считается от наполнения (TankMassModel). null —
-        /// наполнение по умолчанию из реестра PropellantLoads.
+        /// Same as Measure above, but with a tank load:
+        /// tank mass is computed from the load (TankMassModel). null —
+        /// the default load from the PropellantLoads registry.
         /// </summary>
         public static PartMetrics Measure(
             PartKind kind, TankForm form, float bottomRadius, float topRadius, float height,
@@ -140,9 +135,9 @@ namespace Galilego.Building
                     float top = Mathf.Clamp(cone ? topRadius : radius, TankMinRadius, TankMaxRadius);
                     height = Mathf.Clamp(height, TankMinHeight, TankMaxHeight);
 
-                    // Масса бака от формы, размера и наполнения: объём,
-                    // металл стенки (с перегородкой), изоляция и топливо —
-                    // в TankMassModel (объём/площадь — из ProceduralFuelTank).
+                    // Tank mass from form, size and load: volume,
+                    // wall metal (with a bulkhead), insulation and propellant —
+                    // in TankMassModel (volume/area — from ProceduralFuelTank).
                     TankMassInfo info = TankMassModel.Compute(radius, top, height, load, 1d);
                     return new PartMetrics(radius, top, height, height * 0.5f, 0f, height,
                         info.TotalMassKg, TankJointNewtons, 1e12d,
@@ -161,7 +156,7 @@ namespace Galilego.Building
                 }
 
                 case PartKind.Capsule:
-                    // Размеры — из модели (CapsuleTemplate), входные числа не значимы.
+                    // Dimensions come from the model (CapsuleTemplate); input numbers are irrelevant.
                     return Capsule != null ? Capsule.Metrics : default;
 
                 default:
@@ -169,13 +164,13 @@ namespace Galilego.Building
             }
         }
 
-        // ─── Визуал ──────────────────────────────────────────────────────────
+        // ─── Visual ──────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Шаблон капсулы (Orion): префаб и габариты, посчитанные по мешам
-        /// (пивот — низ по центру оси, как у двигателя). Регистрируется
-        /// строителем на старте (RegisterCapsule): капсула одна на каталог, и
-        /// таскать её через все вызовы CreateVisual/Measure не нужно.
+        /// Capsule template (Orion): prefab and dimensions measured from the meshes
+        /// (pivot — bottom on the axis center, like the engine). Registered by the
+        /// builder at startup (RegisterCapsule): there is a single capsule per
+        /// catalog, so there is no need to carry it through every CreateVisual/Measure call.
         /// </summary>
         public sealed class CapsuleTemplate
         {
@@ -184,13 +179,13 @@ namespace Galilego.Building
             public Vector3 ModelOffset;
         }
 
-        /// <summary>Шаблон капсулы; null — не зарегистрирован (нет префаба в сцене).</summary>
+        /// <summary>Capsule template; null — not registered (no prefab in the scene).</summary>
         public static CapsuleTemplate Capsule { get; private set; }
 
         /// <summary>
-        /// Замерить капсулу по префабу (один раз, старт строителя). Габариты —
-        /// мировые, как у двигателей; физическое тело — конус от теплозащиты
-        /// (нижний радиус) к носу (верхний — доля CapsuleTopRadiusFraction).
+        /// Measure the capsule from the prefab (once, at builder startup). Dimensions
+        /// are world-space, like for engines; the physics body is a cone from the heat
+        /// shield (bottom radius) to the nose (top radius — fraction CapsuleTopRadiusFraction).
         /// </summary>
         public static void RegisterCapsule(GameObject prefab)
         {
@@ -231,7 +226,7 @@ namespace Galilego.Building
             };
         }
 
-        /// <summary>Собранный визуал детали: корень-пивот и его рендереры.</summary>
+        /// <summary>Assembled part visual: pivot root and its renderers.</summary>
         public sealed class PartVisual
         {
             public GameObject Root;
@@ -239,7 +234,7 @@ namespace Galilego.Building
 
             private Material[][] natural;
 
-            /// <summary>Запомнить родные материалы (для возврата после призрака).</summary>
+            /// <summary>Remember the original materials (to restore after the ghost).</summary>
             public void CaptureNatural()
             {
                 natural = new Material[Renderers.Length][];
@@ -249,7 +244,7 @@ namespace Galilego.Building
                 }
             }
 
-            /// <summary>Покрасить все рендереры одним материалом (призрак/невалид).</summary>
+            /// <summary>Paint all renderers with one material (ghost/invalid).</summary>
             public void SetMaterial(Material material)
             {
                 for (int i = 0; i < Renderers.Length; i++)
@@ -269,7 +264,7 @@ namespace Galilego.Building
                 }
             }
 
-            /// <summary>Вернуть родные материалы.</summary>
+            /// <summary>Restore the original materials.</summary>
             public void RestoreNatural()
             {
                 if (natural == null)
@@ -288,12 +283,12 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Собрать визуал детали под готовые метрики. Родные материалы
-        /// запоминаются; призрак поверх красится отдельно (SetMaterial).
-        /// withCollider: у поставленных деталей — коллайдер с маркером
-        /// VesselPartCollider (игрок не проходит сквозь аппарат): капсула по
-        /// габаритам, а у конусного бака — выпуклый меш боковины; призрак
-        /// постановки и превью — без коллайдера.
+        /// Build the part visual for ready metrics. Original materials are
+        /// captured; the ghost overlay is painted separately (SetMaterial).
+        /// withCollider: placed parts get a collider marked with VesselPartCollider
+        /// (the player cannot pass through the vessel): the capsule by its
+        /// dimensions, and a conical tank gets a convex mesh of its side; the
+        /// placement ghost and previews get no collider.
         /// </summary>
         public static PartVisual CreateVisual(
             PartKind kind, PartMetrics metrics, EngineTemplate engine,
@@ -330,13 +325,13 @@ namespace Galilego.Building
                 {
                     if (Capsule == null || Capsule.Prefab == null)
                     {
-                        break;                           // капсула не зарегистрирована — только корень
+                        break;                           // capsule not registered — root only
                     }
 
                     GameObject model = UnityEngine.Object.Instantiate(Capsule.Prefab, root.transform);
                     OperatorMonitorLayout.Apply(model);
-                    // Поворот модели НЕ трогаем: у корня префаба стоит разворот
-                    // осей Blender, как у двигателей — обнуление кладёт капсулу на бок.
+                    // Do NOT touch the model rotation: the prefab root carries a
+                    // Blender axis conversion, like the engines — zeroing it lays the capsule on its side.
                     model.transform.localPosition = Capsule.ModelOffset;
                     break;
                 }
@@ -345,13 +340,12 @@ namespace Galilego.Building
                 {
                     if (engine == null || engine.Prefab == null)
                     {
-                        break;                           // нет модели — только корень детали
+                        break;                           // no model — part root only
                     }
 
                     GameObject model = UnityEngine.Object.Instantiate(engine.Prefab, root.transform);
-                    // Поворот модели НЕ трогаем: у корня FBX стоит разворот на 270°
-                    // по X (данные меша в осях Blender) — обнуление укладывало
-                    // двигатель на бок.
+                    // Do NOT touch the model rotation: the FBX root carries a 270° X
+                    // rotation (mesh data is in Blender axes) — zeroing it lays the engine on its side.
                     model.transform.localPosition = engine.ModelOffset;
                     break;
                 }
@@ -368,16 +362,15 @@ namespace Galilego.Building
             {
                 if (kind == PartKind.Capsule)
                 {
-                    // Капсула: коллайдеры — по мешам модели (OrionCollisionBuilder):
-                    // выпуклые клинья оболочки, мелкая сетка у люка (проём остаётся
-                    // проёмом), дверь-бокс. Невыпуклые MeshCollider тут не годятся:
-                    // Physics.ComputePenetration с ними не работает — стены молча
-                    // игнорировались, игрок цеплялся за мелочь и вылетал сквозь стекло.
+                    // Capsule: colliders from the model meshes (OrionCollisionBuilder):
+                    // convex shell wedges, fine mesh around the hatch (the opening stays
+                    // an opening), door box. Non-convex MeshColliders are unusable here:
+                    // Physics.ComputePenetration ignores them.
                     if (!OrionCollisionBuilder.Build(root.transform))
                     {
-                        // Запасной вариант (нет нужных мешей модели): старые
-                        // невыпуклые коллайдеры по каждому мешу. Меши с уже
-                        // готовым коллайдером (корпуса мониторов) не трогаем.
+                        // Fallback (the model lacks the required meshes): non-convex
+                        // colliders per mesh. Meshes that already have a collider
+                        // (monitor housings) are left alone.
                         MeshFilter[] modelMeshes = root.GetComponentsInChildren<MeshFilter>(true);
                         for (int i = 0; i < modelMeshes.Length; i++)
                         {
@@ -400,9 +393,9 @@ namespace Galilego.Building
                         && Mathf.Abs(metrics.TopRadius - metrics.Radius) > 1e-3f;
                     if (conical)
                     {
-                        // Конус капсулой не описать: выпуклый меш боковины повторяет
-                        // сужение, игрок не упирается в невидимый цилиндр нижнего
-                        // радиуса. Меш уже собран выше (Rebuild бака).
+                        // A capsule cannot describe the cone: the convex side mesh follows
+                        // the taper, so the player does not hit an invisible cylinder of the
+                        // bottom radius. The mesh is already built above (tank Rebuild).
                         var hull = root.AddComponent<MeshCollider>();
                         hull.convex = true;
                         MeshFilter filter = root.GetComponent<MeshFilter>();
@@ -410,9 +403,9 @@ namespace Galilego.Building
                     }
                     else
                     {
-                        // Коллайдер детали для игрока: капсула по габаритам (ось — локальный
-                        // Y; у отделителя высота меньше диаметра, PhysX клампит её до
-                        // сферы — плоское кольцо всё равно перекрывает проход).
+                        // Part collider for the player: a capsule by dimensions (axis — local
+                        // Y; the separator is shorter than its diameter, PhysX clamps it to
+                        // a sphere — the flat ring still blocks the way).
                         var capsule = root.AddComponent<CapsuleCollider>();
                         capsule.direction = 1;
                         capsule.radius = metrics.Radius;
@@ -425,13 +418,11 @@ namespace Galilego.Building
             }
             else
             {
-                // Призрак постановки и превью: коллайдеры САМОЙ МОДЕЛИ
-                // (например, корпусов мониторов в капсуле Orion) обязаны
-                // молчать. Призрак живёт под «Площадкой стартовой» — её
-                // SurfaceSite делает такие коллайдеры «постройками места»,
-                // и призрак ловил собственный объём в проверке постановки:
-                // капсулу было нельзя поставить нигде. Заодно собственные
-                // коллайдеры перестают заслонять луч постановки.
+                // Placement ghost and previews: the model's own colliders (e.g.
+                // monitor housings inside the Orion capsule) must stay silent:
+                // the ghost lives under the launch pad, whose SurfaceSite treats
+                // them as site structures, so the ghost would catch its own volume
+                // and block placement. They would also occlude the placement ray.
                 Collider[] ownColliders = root.GetComponentsInChildren<Collider>(true);
                 for (int i = 0; i < ownColliders.Length; i++)
                 {
@@ -443,10 +434,10 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Шаблон двигателя: модель-префаб и её габариты, посчитанные по мешам
-        /// (пивот — низ по центру оси), плюс паспорт (EngineSpec) — топливная
-        /// пара, тяга, импульс, масса. Меряется один раз при старте; паспорт
-        /// находится по имени модели (EngineSpecs.MatchPrefab).
+        /// Engine template: the model prefab and its dimensions measured from the
+        /// meshes (pivot — bottom on the axis center), plus the spec (EngineSpec) —
+        /// propellant pair, thrust, impulse, mass. Measured once at startup; the
+        /// spec is matched by model name (EngineSpecs.MatchPrefab).
         /// </summary>
         public sealed class EngineTemplate
         {
@@ -490,17 +481,12 @@ namespace Galilego.Building
                 float height = Mathf.Max(0.05f, bounds.size.y);
                 float radius = Mathf.Max(0.05f, Mathf.Max(bounds.size.x, bounds.size.z) * 0.5f);
 
-                // Верхний радиус — по вершинам ВЕРХНЕЙ четверти модели: у
-                // сопловых двигателей низ — широкий раструб, верх — узкая
-                // связка агрегатов. Цилиндр радиусом раструба на ВСЮ высоту
-                // давал фантомный объём у стыка с баком: луч, визуально
-                // бьющий в бак НАД двигателем, математически попадал в
-                // двигатель — наведение и удаление «выбирали движок» при
-                // наведении на бак. Вершины доступны при Read/Write у модели;
-                // нет доступа — остаётся цилиндр (как раньше).
-                // Радиусы считаются относительно оси, которую затем совмещаем
-                // с пивотом через ModelOffset. Использование мирового нуля здесь
-                // смещало верхний радиус у FBX с нецентрированным исходным мешем.
+                // Top radius from the vertices of the model's TOP quarter: nozzle
+                // engines are a wide bell at the bottom and a narrow cluster of
+                // units on top. Vertices are only available with Read/Write enabled
+                // on the model; otherwise the bottom radius is used.
+                // Radii are measured about the axis that ModelOffset later aligns
+                // with the pivot (world zero would skew non-centered FBX meshes).
                 float topRadius = MeasureTopRadius(probe, bounds, radius);
 
                 return new EngineTemplate
@@ -513,10 +499,10 @@ namespace Galilego.Building
             }
 
             /// <summary>
-            /// Радиус верхней четверти габаритов по вершинам мешей — оценка
-            /// сужения тела вращения кверху (двигатель: раструб → связка).
-            /// Мировые координаты пробы (она стоит в нуле): габариты мерены
-            /// тоже в мировых, разномасштабные FBX-узлы учтены.
+            /// Radius of the top quarter of the bounds from the mesh vertices — an
+            /// estimate of how the body tapers upward (engine: bell → cluster).
+            /// Probe world coordinates (it stands at the origin): the bounds are also
+            /// measured in world space, so differently scaled FBX nodes are accounted for.
             /// </summary>
             private static float MeasureTopRadius(GameObject probe, Bounds bounds, float radius)
             {
@@ -543,9 +529,9 @@ namespace Galilego.Building
                         }
 
                         any = true;
-                        // Visual.ModelOffset центрирует модель по центру её
-                        // мировых bounds, поэтому математическая ось двигателя
-                        // здесь должна быть той же, а не (0, 0, 0).
+                        // ModelOffset centers the model on its world bounds center,
+                        // so the engine's mathematical axis here must be that center,
+                        // not (0, 0, 0).
                         float dx = world.x - bounds.center.x;
                         float dz = world.z - bounds.center.z;
                         float radial = Mathf.Sqrt((dx * dx) + (dz * dz));
@@ -560,10 +546,9 @@ namespace Galilego.Building
             }
 
             /// <summary>
-            /// Мировые габариты иерархии. Именно мировые: у FBX-модели масштаб
-            /// единиц (×100, сантиметры) стоит на её корневом узле, и габариты,
-            /// посчитанные «в локальных осях корня», теряют этот масштаб —
-            /// двигатель получался 5 см и проваливался сквозь землю.
+            /// World bounds of the hierarchy. World, not local: the FBX model carries
+            /// its unit scale (×100, centimeters) on the root node, and bounds computed
+            /// in "root local axes" would lose that scale.
             /// </summary>
             internal static Bounds MeasureWorldBounds(GameObject root)
             {

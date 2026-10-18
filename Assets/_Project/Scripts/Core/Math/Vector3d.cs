@@ -16,11 +16,10 @@ namespace Galilego.Core
         public double SqrMagnitude => (X * X) + (Y * Y) + (Z * Z);
         public double Magnitude => Math.Sqrt(SqrMagnitude);
         /// <summary>
-        /// Единичный вектор. Контракт отличается от operator/ сознательно:
-        /// нулевой вектор даёт Zero (не исключение). Вызывающие в горячем пути
-        /// полагаются именно на это — менять на throw нельзя без аудита.
-        /// NaN обязан распространяться (как в QuaternionD): обнуление молча
-        /// маскировало бы порчу состояния (аудит S1).
+        /// Unit vector. The contract intentionally differs from operator/: a zero
+        /// vector returns Zero (not an exception). Hot-path callers rely on this —
+        /// do not change to throw without an audit. NaN must propagate (as in
+        /// QuaternionD): zeroing it would silently mask state corruption (audit S1).
         /// </summary>
         public Vector3d Normalized
         {
@@ -103,10 +102,10 @@ namespace Galilego.Core
         }
 
         /// <summary>
-        /// ГОЛОБЫЙ каст без перестановки осей — перепутанный кадр. Мост astro→sim
-        /// ровно один: AstroFrame.ToSimulation (sim = (x, z, −y)). Метод оставлен
-        /// [Obsolete(..., true)] — любой вызов ломает компиляцию, а не молча
-        /// отдаёт движку Y-up-независимый вектор.
+        /// RAW cast without axis permutation — wrong frame. The single astro→sim
+        /// bridge is AstroFrame.ToSimulation (sim = (x, z, −y)). Kept
+        /// [Obsolete(..., true)] so any call breaks compilation instead of silently
+        /// handing the engine a Y-up-agnostic vector.
         /// </summary>
         [Obsolete("Перепутанный кадр: голый каст без перестановки осей. Используйте AstroFrame.ToSimulation (sim = (x, z, −y)).", true)]
         public Vector3 ToVector3() => new Vector3((float)X, (float)Y, (float)Z);

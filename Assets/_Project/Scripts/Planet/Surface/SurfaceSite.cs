@@ -4,24 +4,23 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// МЕСТО НА ПЛАНЕТЕ: база, точка задания,anything. Хранит lat/lon и является
-    /// корнем содержимого — все объекты места это его дети, с обычными
-    /// локальными трансформами.
+    /// A SITE ON THE PLANET: a base, a quest point, anything. It stores lat/lon and
+    /// is the root of the content — every site object is its child, with ordinary
+    /// local transforms.
     ///
-    /// Почему место это ПРЕФАБ, а не объект сцены: на планете R = 1143 км и
-    /// полуось 2.6e10 м, мировые координаты в сцене не вывозят (float32 на
-    /// 2.6e10 даёт шаг ~2 км). Несколько мест в одной сцене невозможно ещё и
-    /// потому, что все они оказались бы в одной точке у нуля. Префаб решает
-    /// оба: содержимое авторится в нормальном локальном пространстве, lat/lon
-    /// едет вместе с префабом, а в сцене одновременно редактируется ОДНО место.
+    /// Why a site is a PREFAB and not a scene object: on a planet R = 1143 km with a
+    /// semi-major axis of 2.6e10 m, world coordinates in the scene cannot cope
+    /// (float32 at 2.6e10 has a step of ~2 km). Several sites in one scene are also
+    /// impossible because they would all end up at one point near zero. A prefab
+    /// solves both: the content is authored in a normal local space, lat/lon travels
+    /// with the prefab, and only ONE site is edited in the scene at a time.
     ///
-    /// Рабочий цикл: «Правка → Новое место у игрока» создаёт префаб с
-    /// содержимым в точке, где игрок стоял; «Места» в окне показывает список,
-    /// переключает на любое и умеет телепортировать игрока туда в Play.
+    /// Workflow: "Edit → New site at player" creates a prefab with the content at
+    /// the point where the player stood; "Sites" in the window lists them, switches
+    /// to any and can teleport the player there in Play.
     ///
-    /// Место переносит себя в НОЛЬ сцены сам (как SurfaceFrame), поэтому
-    /// Scene view показывает ровно то, что автор собрал, с нормальной точностью
-    /// координат.
+    /// The site moves itself to the scene ZERO (like SurfaceFrame), so the Scene
+    /// view shows exactly what the author built, with normal coordinate precision.
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-90)]
     [ExecuteAlways]
@@ -63,19 +62,19 @@ namespace Galilego.Universe
         [Tooltip("Кольца-рулетка масштаба в сцене, м.")]
         public double[] ScaleRingsMeters = { 1d, 10d, 100d };
 
-        /// <summary>Живое тело места; null, если система не собралась.</summary>
+        /// <summary>Live site body; null if the system failed to build.</summary>
         public OrbitingBody BodyState { get; private set; }
 
-        /// <summary>Живой рельеф; null = гладкая сфера.</summary>
+        /// <summary>Live terrain; null = smooth sphere.</summary>
         public HeightfieldTerrain Terrain => BodyState?.Terrain as HeightfieldTerrain;
 
-        /// <summary>Высота рельефа в точке места, м (без смещения).</summary>
+        /// <summary>Terrain height at the site point, m (without offset).</summary>
         public double GroundHeightMeters => SurfaceSceneSystem.GroundHeight(BodyState, LatitudeDegrees, LongitudeDegrees);
 
-        /// <summary>Высота места над радиусом тела, м.</summary>
+        /// <summary>Site altitude above the body radius, m.</summary>
         public double AltitudeMeters => SnapToTerrain ? (GroundHeightMeters + HeightOffsetMeters) : HeightOffsetMeters;
 
-        /// <summary>Есть ли под точкой вода (для выбора места под базу).</summary>
+        /// <summary>Whether there is water under the point (for choosing a base site).</summary>
         public bool IsWater => BodyState != null && WaterQuery.IsWaterAt(BodyState, LatitudeDegrees, LongitudeDegrees);
 
         private bool poseValid;
@@ -94,9 +93,9 @@ namespace Galilego.Universe
 
         private void Update()
         {
-            // В Play — LateUpdate: время и якорь игрока ставит
-            // SimulationRunner.Update (порядок 0), а место объявлено с −90 и в
-            // Update читало прошлый кадр. Так же сделано в SurfacePlaced.
+            // In Play this is LateUpdate: the time and player anchor are set by
+            // SimulationRunner.Update (order 0), while the site is declared with -90
+            // and in Update read the previous frame. Same as in SurfacePlaced.
             if (!Application.isPlaying)
             {
                 Refresh();
@@ -111,7 +110,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Пересчитать позу и рассадить содержимое по рельефу.</summary>
+        /// <summary>Recompute the pose and seat the content onto the terrain.</summary>
         [ContextMenu("Refresh site")]
         public void Refresh()
         {
@@ -128,16 +127,16 @@ namespace Galilego.Universe
 
             BodyState = body;
 
-            // Время: в Play — системное (планета вращается, место обязано ехать
-            // вместе с ней), в редакторе — ноль, иначе Update двигал бы объект
-            // каждый кадр на 1.9 м/с собственного вращения Terra.
+            // Time: in Play the system time (the planet rotates, the site must move
+            // with it), in the editor zero — otherwise Update would move the object
+            // every frame by 1.9 m/s of Terra's own rotation.
             double time = Application.isPlaying && Runner != null && Runner.SystemState != null
                 ? Runner.TimeSeconds
                 : 0d;
 
-            // Поза привязана к НУЛЮ сцены, а не к активному SurfaceFrame:
-            // место — это рабочая копия одной точки, и его локальные координаты
-            // должны быть метровыми всегда (см. SurfaceFrame.OriginAnchoredPose).
+            // The pose is anchored to the scene ZERO, not to the active SurfaceFrame:
+            // a site is a working copy of one point, and its local coordinates must
+            // always be metres (see SurfaceFrame.OriginAnchoredPose).
             SurfaceFrame.OriginAnchoredPose(
                 body, LatitudeDegrees, LongitudeDegrees, AltitudeMeters, time,
                 out Vector3 position, out Quaternion rotation);
@@ -150,11 +149,11 @@ namespace Galilego.Universe
         {
             HeightfieldTerrain ignored;
 
-            // В Play тело берём из ЖИВОЙ системы раннера (Runner подбирается в
-            // Refresh), как это делает SurfaceFrame: редакторный кэш
-            // SurfaceSceneSystem в Play собран по другой подписи и для времени
-            // 0, поэтому место уезжает из-под игрока. Ветка Body != null идёт
-            // ПОСЛЕ неё — иначе назначенное тело снова уводило бы в кэш.
+            // In Play the body comes from the runner's LIVE system (Runner is found
+            // in Refresh), as SurfaceFrame does: the SurfaceSceneSystem editor cache
+            // in Play is built with a different signature and for time 0, so the site
+            // slips out from under the player. The Body != null branch comes AFTER
+            // it — otherwise the assigned body would lead back into the cache.
             if (Application.isPlaying && Runner != null && Runner.SystemState != null)
             {
                 string wanted = Body != null ? Body.gameObject.name : BodyName;
@@ -185,9 +184,9 @@ namespace Galilego.Universe
             if (Application.isPlaying)
             {
                 transform.SetPositionAndRotation(position, rotation);
-                // Коллайдеры-части едут с местом каждый кадр, а Physics.autoSyncTransforms
-                // выключен: без синхронизации запросы опоры игрока (лучи/капсулы
-                // SiteBoxSupport в Update) видели бы позы прошлых кадров.
+                // Part colliders move with the site every frame, and Physics.autoSyncTransforms
+                // is off: without syncing, the player support queries (rays/capsules of
+                // SiteBoxSupport in Update) would see previous-frame poses.
                 Physics.SyncTransforms();
                 poseValid = true;
                 return;
@@ -211,8 +210,8 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Оси: X — север, Y — зенит, Z — восток (совпадает с локальными
-            // осями префаба, поэтому «север» читается прямо на сцене).
+            // Axes: X north, Y zenith, Z east (matches the prefab's local axes, so
+            // "north" reads directly in the scene).
             const float axis = 8f;
             Gizmos.color = new Color(0.2f, 0.9f, 0.4f, 0.9f);
             Gizmos.DrawLine(Vector3.zero, new Vector3(axis, 0f, 0f));

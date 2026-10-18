@@ -5,36 +5,28 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// ДОРОГА / АСФАЛЬТОВАЯ ПЛОЩАДКА внутри МЕСТА (SurfaceSite).
+    /// ROAD / ASPHALT PAD inside a SITE (SurfaceSite).
     ///
-    /// Кладётся ребёнком места (локальная позиция 0, поворот 0). Из списка точек
-    /// строит Mesh и сажает каждую вершину на рельеф тем же способом, что
-    /// SurfaceGrounded: TerrainNoise.SampleHeight по направлению точки.
+    /// Placed as a child of the site (local position 0, rotation 0). From a list of
+    /// points it builds a Mesh and seats each vertex on the terrain the same way as
+    /// SurfaceGrounded: TerrainNoise.SampleHeight along the point direction.
     ///
-    /// Две формы:
-    ///   Ribbon  — лента заданной ширины вдоль линии точек (обычная дорога).
-    ///   Polygon — произвольный замкнутый контур, закрашенный целиком
-    ///             (площадка как на референсе). Рассчитан на РОВНУЮ площадку:
-    ///             внутри контура вершин нет, поэтому рельеф он повторяет только
-    ///             по углам. Под ним должна лежать «Площадка рельефа».
+    /// Two shapes: Ribbon is a strip along the point line; Polygon is an arbitrary
+    /// closed contour filled entirely, meant for a FLAT pad (no interior vertices,
+    /// so it follows the terrain only at the corners). A "terrain pad" must lie
+    /// under it.
     ///
-    /// Текстура одинаковая везде, потому что UV считаются не от меша, а от
-    /// метровых координат места: u = восток / TileMeters, v = север / TileMeters.
-    /// Любые куски дороги с одним материалом стыкуются без шва.
+    /// The texture is identical everywhere because UVs come from the site's metre
+    /// coordinates: u = east / TileMeters, v = north / TileMeters, so any road
+    /// pieces with one material join seamlessly.
     ///
-    /// Меш не сохраняется в префаб: он строится при включении компонента.
+    /// PLATE: the surface sits LiftMeters above the ground, with edges dropping
+    /// ThicknessMeters and a bevel of EdgeSlopeDegrees (<= 30 deg is the player walk
+    /// limit). AddCollider adds a MeshCollider and a SiteBox marker, since the player
+    /// support (SiteBoxSupport) accepts only colliders tied to a SiteBox.
     ///
-    /// ПЛИТА: сверху — поверхность на LiftMeters над землёй, по краям — борта
-    /// вниз на ThicknessMeters со скосом EdgeSlopeDegrees (≤ 30° — предел
-    /// ходимости игрока, по скосу он заходит без прыжка). Так дорога читается
-    /// насыпью, а не покраской.
-    /// AddCollider ставит MeshCollider и SiteBox-маркер: опора игрока
-    /// (SiteBoxSupport) принимает только коллайдеры, привязанные к SiteBox,
-    /// поэтому без маркера ноги проваливались бы на высоту подъёма.
-    ///
-    /// Держите объект дороги в НУЛЕ места (позиция 0, поворот 0, масштаб 1):
-    /// ширина и толщина задаются полями Width/Thickness, а не масштабом —
-    /// вершины считаются в метрах места, и трансформ их только запутывает.
+    /// Keep the road object at the SITE ZERO (position 0, rotation 0, scale 1):
+    /// width and thickness come from the Width/Thickness fields, not from scale.
     /// </summary>
     [DefaultExecutionOrder(-80)]
     [ExecuteAlways]
@@ -110,14 +102,14 @@ namespace Galilego.Universe
         private float lastAppliedLength;
         private float lastAppliedWidth;
 
-        /// <summary>Построена ли дорога (место найдено и тело разрешилось).</summary>
+        /// <summary>Whether the road is built (site found and body resolved).</summary>
         public bool IsBuilt => built;
 
         private void OnEnable()
         {
             built = false;
-            // Базовая отметка поля длины: при загрузке истина — в точках (в сохранённом
-            // состоянии поле уже совпадает с ними, у старых данных — дозаполнится).
+            // Base mark for the length field: on load the truth is in the points (in
+            // saved state the field already matches them; for old data it is filled in).
             RefreshLengthFromPoints();
             TryBuild();
         }
@@ -150,8 +142,8 @@ namespace Galilego.Universe
         {
             if (!built)
             {
-                // В Play тело места может разрешиться на пару кадров позже,
-                // чем включится дорога — пробуем, пока не получится.
+                // In Play the site body may resolve a couple of frames after the road
+                // is enabled — keep trying until it works.
                 TryBuild();
                 return;
             }
@@ -166,7 +158,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Перестроить меш (после правки площадки рельефа или места).</summary>
+        /// <summary>Rebuild the mesh (after editing the terrain pad or the site).</summary>
         [ContextMenu("Rebuild road")]
         public void Rebuild()
         {
@@ -174,7 +166,7 @@ namespace Galilego.Universe
             TryBuild();
         }
 
-        // ---------- Длина и ширина ----------
+        // ---------- Length and width ----------
 
         private struct ControlBounds2D
         {
@@ -213,8 +205,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Обновить поля размера по текущей геометрии: Ribbon — Length по первой↔последней
-        /// точке; Polygon — Width/Length по габариту контура. Геометрию не трогает.
+        /// Update the size fields from the current geometry: Ribbon — Length by the
+        /// first↔last point; Polygon — Width/Length by the contour bounds. Does not
+        /// touch the geometry.
         /// </summary>
         public void RefreshLengthFromPoints()
         {
@@ -248,7 +241,7 @@ namespace Galilego.Universe
             return (Points[Points.Count - 1] - Points[0]).magnitude;
         }
 
-        /// <summary>Растянуть ленту от первой точки так, чтобы расстояние до последней стало LengthMeters.</summary>
+        /// <summary>Stretch the strip from the first point so the distance to the last becomes LengthMeters.</summary>
         private void ApplyLengthToPoints()
         {
             if (Shape != RoadShape.Ribbon || Points == null || Points.Count < 2)
@@ -270,7 +263,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Масштабировать контур полигона до габарита Width×Length вокруг центра габарита.</summary>
+        /// <summary>Scale the polygon contour to Width×Length bounds around the bounds centre.</summary>
         private void ApplySizeToPoints(ControlBounds2D bounds)
         {
             float kx = bounds.SizeNorth > 1e-3f ? Mathf.Max(0.5f, WidthMeters) / bounds.SizeNorth : 1f;
@@ -285,8 +278,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Поля размера и точки — два вида одного значения. Поменялось поле — тянем
-        /// геометрию; поменялись точки (хендлы, список, undo) — обновляем поля.
+        /// The size fields and the points are two views of one value. Field changed —
+        /// stretch the geometry; points changed (handles, list, undo) — update the fields.
         /// </summary>
         private void SyncSize()
         {
@@ -342,7 +335,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Точки в мировых координатах, уже посаженные на землю (для хендлов в Scene view).</summary>
+        /// <summary>Points in world coordinates, already seated on the ground (for Scene view handles).</summary>
         public Vector3[] GetPointsWorld()
         {
             SurfaceSite site = GetComponentInParent<SurfaceSite>();
@@ -368,7 +361,7 @@ namespace Galilego.Universe
             return result;
         }
 
-        /// <summary>Передвинуть точку в мировую позицию (высота отбрасывается).</summary>
+        /// <summary>Move a point to a world position (height is discarded).</summary>
         public void SetPointFromWorld(int index, Vector3 world)
         {
             if (Points == null || index < 0 || index >= Points.Count)
@@ -381,7 +374,7 @@ namespace Galilego.Universe
             Points[index] = local;
         }
 
-        /// <summary>Добавить точку в конец списка по мировой позиции.</summary>
+        /// <summary>Append a point by world position.</summary>
         public void AddPointFromWorld(Vector3 world)
         {
             if (Points == null)
@@ -420,7 +413,7 @@ namespace Galilego.Universe
 
             if (!ok || verts.Count < 3 || tris.Count < 3)
             {
-                // Точек пока мало — это не ошибка, просто рисовать нечего.
+                // Too few points yet — not an error, just nothing to draw.
                 ReleaseMesh();
                 built = true;
                 signature = SiteSignature(site);
@@ -465,11 +458,11 @@ namespace Galilego.Universe
             System.Type.GetType("UnityEngine.Rendering.DisallowGPUDrivenRendering, Unity.RenderPipelines.GPUDriven.Runtime");
 
         /// <summary>
-        /// Исключить дорогу из GPU Resident Drawer: её меш строится в рантайме
-        /// (HideAndDontSave), а drawer с такими мешами без GPU-регистрации даёт
-        /// «A BatchDrawCommand was submitted with an invalid Batch, Mesh, or
-        /// Material ID». Штатный компонент исключения (Unity показывает его в
-        /// Add Component) объявлен internal — достаём тип рефлексией.
+        /// Exclude the road from the GPU Resident Drawer: its mesh is built at runtime
+        /// (HideAndDontSave), and the drawer with such meshes without GPU registration
+        /// gives "A BatchDrawCommand was submitted with an invalid Batch, Mesh, or
+        /// Material ID". The stock exclusion component (Unity shows it in Add
+        /// Component) is declared internal — the type is fetched by reflection.
         /// </summary>
         private void EnsureGpuDrivenExcluded()
         {
@@ -482,11 +475,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Коллайдер плиты: невыпуклый MeshCollider по сгенерированному мешу.
-        /// SiteBox рядом — маркер «твёрдое»: SiteBoxSupport принимает только
-        /// коллайдеры, привязанные к SiteBox, иначе опора игрока дорогу не видит.
-        /// Габарит маркера вырожденный, чтобы старый боксовый путь Registry
-        /// (PushOutMesh его не касается — запекания нет) ничего не толкал.
+        /// Plate collider: a non-convex MeshCollider over the generated mesh. The
+        /// SiteBox alongside is the "solid" marker: SiteBoxSupport accepts only
+        /// colliders tied to a SiteBox, otherwise the player support does not see the
+        /// road. The marker bounds are degenerate so the old box path of the Registry
+        /// (PushOutMesh does not touch it — there is no baking) pushes nothing.
         /// </summary>
         private void UpdateCollider()
         {
@@ -507,8 +500,8 @@ namespace Galilego.Universe
             }
 
             roadCollider.convex = false;
-            // Переприсваивание тем же мешем заставляет PhysX перепечь коллайдер
-            // после mesh.Clear() — сам MeshCollider содержимое меша не отслеживает.
+            // Reassigning the same mesh forces PhysX to rebake the collider after
+            // mesh.Clear() — the MeshCollider itself does not track the mesh contents.
             roadCollider.sharedMesh = null;
             roadCollider.sharedMesh = mesh;
 
@@ -605,15 +598,14 @@ namespace Galilego.Universe
             }
         }
 
-        // ---------- Точки управления в осях места ----------
+        // ---------- Control points in site axes ----------
 
         /// <summary>
-        /// Точка дороги в осях места. По контракту дорога стоит ребёнком места
-        /// в нуле (позиция 0, поворот 0, масштаб 1) — тогда точки УЖЕ в осях места
-        /// и мировой трансформ не нужен. Это важно не только для точности: через
-        /// точки строится таблица исключения декора, и прогон через world-матрицу
-        /// давал дрожание float каждый кадр — таблица «менялась», и рендерер вечно
-        /// пересобирал кэш чанков рельефа (0.3 fps).
+        /// Road point in site axes. By contract the road is a child of the site at
+        /// zero (position 0, rotation 0, scale 1) — then the points are ALREADY in
+        /// site axes and no world transform is needed. This matters beyond precision:
+        /// the decor exclusion table is built from the points, and running them
+        /// through the world matrix jitters the floats every frame.
         /// </summary>
         private Vector3 ToSitePoint(SurfaceSite site, Vector3 point)
         {
@@ -633,7 +625,7 @@ namespace Galilego.Universe
             return site.transform.InverseTransformPoint(t.TransformPoint(point));
         }
 
-        /// <summary>Контрольные точки как (север, восток) в осях места, без почти-дубликатов подряд.</summary>
+        /// <summary>Control points as (north, east) in site axes, without near-duplicates in a row.</summary>
         private List<Vector2> ControlPoints2D(SurfaceSite site)
         {
             var result = new List<Vector2>();
@@ -684,7 +676,7 @@ namespace Galilego.Universe
             }
         }
 
-        // ---------- Лента ----------
+        // ---------- Ribbon ----------
 
         private bool BuildRibbon(
             SurfaceSite site, GroundSampler ground,
@@ -720,7 +712,7 @@ namespace Galilego.Universe
                 }
 
                 directions[i] = dir;
-                // Оси: x = север, y = восток. Вправо по ходу движения — (восток, -север).
+                // Axes: x = north, y = east. To the right of travel is (east, -north).
                 sideNormals[i] = new Vector2(dir.y, -dir.x);
             }
 
@@ -776,7 +768,7 @@ namespace Galilego.Universe
             return true;
         }
 
-        /// <summary>Торец ленты: стенка по всей ширине, наружу — вдоль пути.</summary>
+        /// <summary>Ribbon cap: a wall across the full width, facing outward along the path.</summary>
         private void AddRibbonCap(
             SurfaceSite site, GroundSampler ground,
             List<Vector3> verts, List<Vector2> uvs, List<int> tris,
@@ -830,7 +822,7 @@ namespace Galilego.Universe
                 + (((3f * p1) - p0 - (3f * p2) + p3) * t3));
         }
 
-        // ---------- Полигон ----------
+        // ---------- Polygon ----------
 
         private bool BuildPolygon(
             SurfaceSite site, GroundSampler ground,
@@ -859,8 +851,8 @@ namespace Galilego.Universe
                 AddVertex(site, ground, contour[i].x, contour[i].y, verts, uvs);
             }
 
-            // Ушная триангуляция даёт обход против часовой в плоскости (север, восток),
-            // для вида сверху Unity нужен по часовой — поэтому (a, c, b).
+            // Ear triangulation gives counter-clockwise winding in the (north, east)
+            // plane; for a top view Unity needs clockwise — hence (a, c, b).
             for (int i = 0; i < indices.Count; i += 3)
             {
                 AddTriangle(tris, indices[i], indices[i + 2], indices[i + 1]);
@@ -879,7 +871,7 @@ namespace Galilego.Universe
                         continue;
                     }
 
-                    // У CCW-контура (север, восток) наружу — (d.y, -d.x), у CW — наоборот.
+                    // For a CCW contour (north, east) outward is (d.y, -d.x); for CW it is the opposite.
                     Vector2 outward = area >= 0f
                         ? new Vector2(d.y, -d.x).normalized
                         : new Vector2(-d.y, d.x).normalized;
@@ -904,11 +896,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Борт плиты на ребре a→b (оси места: x — север, y — восток):
-        /// от поверхности вниз на ThicknessMeters, со скосом EdgeSlopeDegrees
-        /// (bevel=true) или вертикально (bevel=false, торцы ленты — стык с
-        /// соседним куском без клина). outward2 — наружная сторона ребра
-        /// в плоскости (север, восток); от неё зависит порядок вершин.
+        /// Plate edge on segment a→b (site axes: x north, y east): down from the
+        /// surface by ThicknessMeters, with a bevel of EdgeSlopeDegrees (bevel=true)
+        /// or vertical (bevel=false, ribbon caps — a joint with the next piece with
+        /// no wedge). outward2 is the outer side of the edge in the (north, east)
+        /// plane; the vertex order depends on it.
         /// </summary>
         private void AddWallQuad(
             SurfaceSite site, GroundSampler ground,
@@ -924,8 +916,8 @@ namespace Galilego.Universe
             Vector2 shift = Vector2.zero;
             if (bevel && outward2.sqrMagnitude > 1e-8f)
             {
-                // 30° — предел ходимости игрока (MaxSlopeDegrees): круче нельзя,
-                // пол не примет склон, а свип пройдёт сквозь него — зароешься.
+                // 30° is the player walk limit (MaxSlopeDegrees): any steeper and the
+                // floor rejects the slope while the sweep passes through — you get buried.
                 float angle = Mathf.Clamp(EdgeSlopeDegrees, 10f, 30f);
                 float run = thickness / Mathf.Tan(angle * Mathf.Deg2Rad);
                 shift = outward2.normalized * run;
@@ -987,7 +979,7 @@ namespace Galilego.Universe
             return !(hasNeg && hasPos);
         }
 
-        /// <summary>Триангуляция простого многоугольника методом отсечения ушей. Выход: тройки индексов, против часовой.</summary>
+        /// <summary>Triangulation of a simple polygon by ear clipping. Output: index triples, counter-clockwise.</summary>
         private static bool Triangulate(List<Vector2> pts, List<int> output)
         {
             int n = pts.Count;
@@ -1031,7 +1023,7 @@ namespace Galilego.Universe
                     Vector2 b = pts[ib];
                     Vector2 c = pts[ic];
 
-                    // Выпуклая вершина: поворот влево (против часовой).
+                    // Convex vertex: a left turn (counter-clockwise).
                     if (Cross(b - a, c - b) <= 1e-6f)
                     {
                         continue;
@@ -1078,12 +1070,12 @@ namespace Galilego.Universe
             return true;
         }
 
-        // ---------- Пятно для исключения декора ----------
+        // ---------- Patch for decor exclusion ----------
 
         /// <summary>
-        /// Прямоугольники пятна дороги в осях места (север/восток, м) — для таблицы
-        /// исключения декора. Ribbon — коридор по сглаженному пути кусками ~12 м;
-        /// Polygon — габарит контура. Включает видимый скос кромки.
+        /// Road patch rectangles in site axes (north/east, m) — for the decor
+        /// exclusion table. Ribbon — a corridor along the smoothed path in ~12 m
+        /// chunks; Polygon — the contour bounds. Includes the visible edge bevel.
         /// </summary>
         public void CollectExclusionRects(List<RoadExclusionRect> output)
         {
@@ -1171,9 +1163,9 @@ namespace Galilego.Universe
                     continue;
                 }
 
-                // Угол квантуем (как в зонах построек): даже при невыровненном
-                // трансформе дрожание float не должно менять таблицу зон —
-                // её изменение сбрасывает кэш чанков рельефа.
+                // Quantize the angle (as in build zones): even with an unaligned
+                // transform, float jitter must not change the zone table — changing it
+                // resets the terrain chunk cache.
                 double yaw = System.Math.Atan2(d.y, d.x);
                 yaw = System.Math.Round(yaw * (180d / System.Math.PI) * 10d) / 10d * (System.Math.PI / 180d);
                 Vector2 dir = new Vector2((float)System.Math.Cos(yaw), (float)System.Math.Sin(yaw));
@@ -1195,7 +1187,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Видимая ширина скоса кромки над землёй, м (запас пятна дороги).</summary>
+        /// <summary>Visible width of the edge bevel above the ground, m (road patch margin).</summary>
         private float VisibleBevelMeters()
         {
             if (ThicknessMeters <= 0.0001f)
@@ -1208,12 +1200,12 @@ namespace Galilego.Universe
             return run * Mathf.Clamp01(LiftMeters / ThicknessMeters);
         }
 
-        // ---------- Высота земли ----------
+        // ---------- Ground height ----------
 
         /// <summary>
-        /// Высота земли в точке места (north, east) в локальных осях места.
-        /// Формула та же, что в SurfaceGrounded.Apply, поэтому дорога и здания
-        /// садятся на одну и ту же землю.
+        /// Ground height at a site point (north, east) in site local axes. The formula
+        /// is the same as in SurfaceGrounded.Apply, so the road and the buildings sit
+        /// on the same ground.
         /// </summary>
         private sealed class GroundSampler
         {

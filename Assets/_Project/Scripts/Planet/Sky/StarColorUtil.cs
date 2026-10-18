@@ -4,25 +4,25 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Цвет абсолютно чёрного тела (фотосферы звезды) — чистая математика, без
-    /// Unity API, покрывается тестом на стенде (T80).
-    /// Спектр Планка → функции отклика глаза CIE 1931 (аналитический фит
-    /// Wyman et al. 2013: много-лобовые гауссианы, без таблиц) → XYZ →
-    /// линейный sRGB (HDRP работает в linear — конверсия честная).
-    /// Результат нормируется по максимальному каналу в [0,1]; множитель
-    /// яркости — задача вызывающего (HDR-цвет >1 кормит bloom).
-    /// Физическая проверка (T80): 1500 K — красный доминирует, 5772 K —
-    /// тёплый белый (R≥G≥B, звёзды такой температуры БЕЛЫЕ; жёлтой их делает
-    /// рэлеевское рассеяние в атмосфере), 10000 K — синий доминирует.
+    /// Absolute black-body (stellar photosphere) color — pure math, no Unity API,
+    /// covered by a harness test (T80).
+    /// Planck spectrum → CIE 1931 eye response functions (analytic fit
+    /// Wyman et al. 2013: piecewise gaussians, no tables) → XYZ →
+    /// linear sRGB (HDRP works in linear, so the conversion is exact).
+    /// The result is normalized by the maximum channel to [0,1]; the brightness
+    /// multiplier is the caller's job (HDR color >1 feeds bloom).
+    /// Physical check (T80): 1500 K — red dominates, 5772 K — warm white
+    /// (R≥G≥B; stars of this temperature are WHITE — Rayleigh scattering in the
+    /// atmosphere makes them look yellow), 10000 K — blue dominates.
     /// </summary>
     public static class StarColorUtil
     {
-        /// <summary>hc/k в нм·К — для Планка в длинах волн нанометрах.</summary>
+        /// <summary>hc/k in nm·K — for Planck expressed in wavelength nanometers.</summary>
         private const double C2 = 1.4387768775039337e7;
 
         /// <summary>
-        /// Линейный sRGB-цвет черного тела при temperatureKelvin, нормированный
-        /// по максимальному каналу. Компоненты ≥ 0, max = 1.
+        /// Linear sRGB black-body color at temperatureKelvin, normalized by the
+        /// maximum channel. Components ≥ 0, max = 1.
         /// </summary>
         public static Vector3d FromTemperature(double temperatureKelvin)
         {
@@ -42,7 +42,7 @@ namespace Galilego.Universe
                 z += CieZ(lambda) * planck;
             }
 
-            // XYZ → линейный sRGB (стандартная матрица sRGB D65).
+            // XYZ → linear sRGB (standard sRGB D65 matrix).
             double r = (3.2406255d * x) + (-1.537208d * y) + (-0.4986286d * z);
             double g = (-0.9689307d * x) + (1.8757561d * y) + (0.0415175d * z);
             double b = (0.0557101d * x) + (-0.2040261d * y) + (1.0569959d * z);
@@ -59,14 +59,14 @@ namespace Galilego.Universe
             return new Vector3d(r / max, g / max, b / max);
         }
 
-        /// <summary>Спектральная яркость Планка (произвольный общий множитель — он уходит в нормировку).</summary>
+        /// <summary>Planck spectral radiance (an arbitrary common factor — it cancels in the normalization).</summary>
         private static double PlanckSpectralRadiance(double lambdaNm, double temperatureKelvin)
         {
             double lambda5 = lambdaNm * lambdaNm * lambdaNm * lambdaNm * lambdaNm;
             return 1d / (lambda5 * (Math.Exp(C2 / (lambdaNm * temperatureKelvin)) - 1d));
         }
 
-        /// <summary>Много-лобовый гауссиан (σ одно до μ, другое после — фит СИЕ-кривых).</summary>
+        /// <summary>Piecewise gaussian (σ differs before and after μ — fit of the CIE curves).</summary>
         private static double PiecewiseGaussian(double lambda, double mu, double sigma1, double sigma2)
         {
             double t = lambda - mu;

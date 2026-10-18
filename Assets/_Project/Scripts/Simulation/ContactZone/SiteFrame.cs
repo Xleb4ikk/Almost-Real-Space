@@ -5,12 +5,12 @@ using Galilego.Universe;
 namespace Galilego.Simulation.ContactZone
 {
     /// <summary>
-    /// Локальная касательная система места зоны контакта: восток, север, вверх в точке
-    /// рельефа под кораблём. Физика зоны работает в этих координатах (метры, около якоря),
-    /// орбитальное состояние корабля в double не меняется, пока зона не активна.
-    /// Координаты вращаются вместе с планетой (тело-фиксированы): ToLocal/ToWorld на одном
-    /// и том же моменте обратимы точно; на разных моментах — ровно соответствуют
-    /// совместному вращению места.
+    /// Local tangent frame of a contact-zone site: east, north, up at the terrain
+    /// point under the ship. Zone physics runs in these coordinates (meters, near the
+    /// anchor); the ship's orbital state in the double world does not change while the
+    /// zone is inactive. The coordinates rotate with the planet (body-fixed):
+    /// ToLocal/ToWorld at the same instant are exactly invertible; at different
+    /// instants they exactly match the site's co-rotation.
     /// </summary>
     public sealed class SiteFrame
     {
@@ -24,7 +24,7 @@ namespace Galilego.Simulation.ContactZone
         public readonly Vector3d North;
         public readonly Vector3d Up;
 
-        /// <summary>Угловая скорость вращения планеты (рад/с), ось — NorthPoleDirection.</summary>
+        /// <summary>Planet angular velocity (rad/s), axis is NorthPoleDirection.</summary>
         public readonly Vector3d AngularVelocity;
 
         private readonly OrbitingBody body;
@@ -44,7 +44,7 @@ namespace Galilego.Simulation.ContactZone
             Up = up;
         }
 
-        /// <summary>Якорь: точка рельефа под заданной мировой позицией в момент t.</summary>
+        /// <summary>Anchor: the terrain point under the given world position at time t.</summary>
         public static SiteFrame Anchor(OrbitingBody body, ITerrainModel terrain, Vector3d worldPosition, double timeSeconds)
         {
             if (body == null || terrain == null)
@@ -58,7 +58,7 @@ namespace Galilego.Simulation.ContactZone
             return At(body, latDeg, lonDeg, height, timeSeconds);
         }
 
-        /// <summary>Тот же участок поверхности (широта, долгота, высота рельефа) в момент t.</summary>
+        /// <summary>The same surface site (latitude, longitude, terrain height) at time t.</summary>
         public SiteFrame At(double timeSeconds)
         {
             return At(body, LatitudeDegrees, LongitudeDegrees, TerrainHeightMeters, timeSeconds);
@@ -84,8 +84,8 @@ namespace Galilego.Simulation.ContactZone
         }
 
         /// <summary>
-        /// Мировое состояние → локальное (x=восток, y=север, z=вверх). Скорость — относительно
-        /// совместного вращения места: покоящееся на поверхности тело имеет нулевую локальную скорость.
+        /// World state → local (x=east, y=north, z=up). Velocity is relative to the
+        /// site's co-rotation: a body at rest on the surface has zero local velocity.
         /// </summary>
         public void ToLocal(Vector3d worldPosition, Vector3d worldVelocity, out Vector3d localPosition, out Vector3d localVelocity)
         {
@@ -95,7 +95,7 @@ namespace Galilego.Simulation.ContactZone
             localVelocity = new Vector3d(Vector3d.Dot(dv, East), Vector3d.Dot(dv, North), Vector3d.Dot(dv, Up));
         }
 
-        /// <summary>Локальное состояние → мировое в этом же кадре места (момент, для которого построен кадр).</summary>
+        /// <summary>Local state → world in this same site frame (the instant the frame was built for).</summary>
         public void ToWorld(Vector3d localPosition, Vector3d localVelocity, out Vector3d worldPosition, out Vector3d worldVelocity)
         {
             Vector3d d = (East * localPosition.X) + (North * localPosition.Y) + (Up * localPosition.Z);

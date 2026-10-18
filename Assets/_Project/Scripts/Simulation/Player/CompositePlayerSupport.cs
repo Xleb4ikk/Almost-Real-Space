@@ -3,12 +3,11 @@ using Galilego.Core;
 namespace Galilego.Simulation.Player
 {
     /// <summary>
-    /// Композит опор: рельеф (аналитический), постройки (мешевые коллайдеры)
-    /// и детали аппарата (визуалы в стройке / тела прокси в полёте).
-    /// Пол — самая высокая из трёх; потолок — самый низкий из найденных;
-    /// стены — первая по пути. Идентификаторы источников: рельеф —
-    /// TerrainSupport.SourceId, постройки — SiteBoxSupport.SourceIdBase + id,
-    /// детали — VesselSupport.SourceIdBase + id.
+    /// Support composite: terrain (analytic), buildings (mesh colliders) and vessel
+    /// parts (visuals while building / proxy bodies in flight). Floor — the highest
+    /// of the three; ceiling — the lowest found; walls — the first along the path.
+    /// Source ids: terrain — TerrainSupport.SourceId, buildings —
+    /// SiteBoxSupport.SourceIdBase + id, parts — VesselSupport.SourceIdBase + id.
     /// </summary>
     public sealed class CompositePlayerSupport : IPlayerSupport, IOverlapSupport
     {
@@ -72,7 +71,7 @@ namespace Galilego.Simulation.Player
             return true;
         }
 
-        /// <summary>Капсула пересекает постройку или деталь аппарата (рельеф — аналитический, не считается).</summary>
+        /// <summary>The capsule overlaps a building or vessel part (terrain is analytic and not tested).</summary>
         public bool Overlaps(Vector3d feet, double radius, double height)
         {
             return (Sites is IOverlapSupport sites && sites.Overlaps(feet, radius, height))

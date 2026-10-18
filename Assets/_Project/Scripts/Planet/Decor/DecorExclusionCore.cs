@@ -4,13 +4,13 @@ using Unity.Mathematics;
 
 namespace Galilego.Universe
 {
-    // Чистое ядро таблицы зон декора: без Unity-рендерера, Time и сцены.
-    // Подключается и стендом (Tools/P1bTests), и игрой. Реализация сборки и
-    // отложенного освобождения — в DecorExclusion.cs (тот же partial class).
+    // Pure core of the decor zone table: no Unity renderer, Time or scene.
+    // Included by both the test stand (Tools/P1bTests) and the game. The assembly
+    // and deferred-release implementation is in DecorExclusion.cs (same partial class).
     /// <summary>
-    /// Зона, где декор (деревья, трава, камни) не растёт: повёрнутый прямоугольник
-    /// на поверхности. Только blittable — читается из Burst-джоб.
-    /// Центр и оси — единичные body-fixed векторы, полуразмеры — угловые (м / R).
+    /// Zone where decor (trees, grass, rocks) does not grow: a rotated rectangle
+    /// on the surface. Blittable only — read from Burst jobs.
+    /// Centre and axes are unit body-fixed vectors, half-sizes are angular (m / R).
     /// </summary>
     public struct DecorExclusionData
     {
@@ -20,7 +20,7 @@ namespace Galilego.Universe
         public double HalfX;
         public double HalfZ;
 
-        /// <summary>Малый прямоугольник (мягкий отступ, трава): HalfX/HalfZ + узкая зона дорог.</summary>
+        /// <summary>Smaller rectangle (soft margin, grass): HalfX/HalfZ plus a narrow road zone.</summary>
         public double SoftHalfX;
         public double SoftHalfZ;
     }
@@ -30,7 +30,7 @@ namespace Galilego.Universe
         public static readonly NativeArray<DecorExclusionData> Empty =
             new NativeArray<DecorExclusionData>(0, Allocator.Persistent);
 
-        // ---------- проверка (Burst) ----------
+        // ---------- query (Burst) ----------
 
         public static bool IsExcluded(NativeArray<DecorExclusionData> zones, double3 direction)
         {
@@ -57,7 +57,7 @@ namespace Galilego.Universe
             return false;
         }
 
-        /// <summary>Проверка по малому прямоугольнику — трава у края дороги (отступ 0.3 м).</summary>
+        /// <summary>Query against the small rectangle — grass at the road edge (0.3 m margin).</summary>
         public static bool IsExcludedSoft(NativeArray<DecorExclusionData> zones, double3 direction)
         {
             if (!zones.IsCreated)
@@ -110,7 +110,7 @@ namespace Galilego.Universe
                 && x.SoftHalfX == y.SoftHalfX && x.SoftHalfZ == y.SoftHalfZ;
         }
 
-        static partial void AfterRelease();   // реализация в DecorExclusion.cs (игра), в стенде — пусто
+        static partial void AfterRelease();   // implemented in DecorExclusion.cs (game), empty in the test stand
 
         public static void Release(ref NativeArray<DecorExclusionData> table)
         {

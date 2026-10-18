@@ -6,22 +6,21 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Окно просмотра поверхности планеты со СВОЕЙ камерой и СВОИМ мешем.
+    /// Planet surface viewer with its OWN camera and mesh.
     ///
-    /// Почему не Scene view: камера пользователя может быть в 35 км от фрейма
-    /// (в их случае size = 17 км), и её позицию нельзя вычислить из кода —
-    /// Unity пересчитывает её только на репейнте окна. Превью, живущее в сцене,
-    /// от этого зависит целиком и потому то видно, то нет. Здесь и камера, и
-    /// меш наши: окно всегда показывает рельеф вокруг фрейма, мышь орбитит и
-    /// зумит, как в нормальном 3D-редакторе.
+    /// Not the Scene view: the user's camera can be 35 km from the frame and its
+    /// position cannot be computed from code — Unity recalculates it only when the
+    /// window repaints, so a preview living in the scene depends on it entirely and
+    /// flickers in and out. Here both the camera and the mesh belong to the window:
+    /// it always shows the terrain around the frame, with mouse orbit and zoom.
     ///
-    /// Меш строится тем же кодом, что и игровой (TerrainNoise + TerrainTileJob),
-    /// и того же радиуса, что видит окно, поэтому картинка в окне и в Play
-    /// совпадает, а масштаб не зависит от состояния сцены.
+    /// The mesh is built by the same code as the game's (TerrainNoise + TerrainTileJob)
+    /// and at the same radius the window sees, so the image matches Play and the
+    /// scale does not depend on the scene state.
     ///
-    /// Окно умеет всё, что нужно для постановки задачи: показать рельеф, задать
-    /// широту/долготу, взять точку у игрока (в Play) или у точки спавна,
-    /// показать высоту и есть ли под ногами вода.
+    /// The window does everything base placement needs: show the terrain, set
+    /// latitude/longitude, take the player point (in Play) or the spawn point,
+    /// show the height and whether there is water underneath.
     /// </summary>
     public sealed class SurfacePreviewWindow : EditorWindow
     {
@@ -128,8 +127,8 @@ namespace Galilego.Universe.EditorTools
 
             if (material != null)
             {
-                // Материал превью принадлежит SurfaceGameLook и переиспользуется
-                // сценой: убивать его здесь нельзя.
+                // The preview material belongs to SurfaceGameLook and is reused
+                // by the scene: do not destroy it here.
                 material = null;
             }
 
@@ -156,9 +155,8 @@ namespace Galilego.Universe.EditorTools
             frame = SurfacePreviewTool.ResolveFrame();
             if (frame == null)
             {
-                // Фрейма нет — создаём сами. Иначе окно упирается в пустоту:
-                // выход из Play откатывает несохранённую сцену, фрейм исчезает,
-                // и пользователь оказывается перед окном без карты.
+                // No frame — create one. Exiting Play rolls back an unsaved scene,
+                // the frame disappears, and the window would otherwise show nothing.
                 frame = CreateFrameInternal("Фрейм создан автоматически: точка спавна из раннера. Задай lat/lon или нажми «Взять точку игрока».");
                 return;
             }
@@ -194,10 +192,8 @@ namespace Galilego.Universe.EditorTools
                 meshGo.transform.position = frame.transform.position;
             }
 
-            // Жёсткий троттл. Update окна зовётся на КАЖДЫЙ репейнт, а
-            // пересборка — это 12 тысяч сэмплов шума плюс интеграл
-            // атмосферы для света. Без ограничения окно съедало главный поток
-            // редактора на 100% и Unity переставал отвечать (воспроизведено).
+            // Hard throttle: window Update runs on EVERY repaint, and a rebuild
+            // costs ~12k noise samples plus the atmosphere integral for lighting.
             if (EditorApplication.timeSinceStartup - lastRebuildTime < MinRebuildIntervalSeconds)
             {
                 return;
@@ -246,16 +242,14 @@ namespace Galilego.Universe.EditorTools
                 return;
             }
 
-            // Превью рисует упрощённым шейдером (см. SurfacePreviewTool.Rebuild):
-            // палитра и текстуры подтягиваются общим кодом, а игровой
-            // Galileo/PlanetSurface в редакторе не используется — его глобалы
-            // ставит SkyEnvironment, а тот тянет интеграл атмосферы и подвешивает
-            // редактор. Форма рельефа от этого не меняется, а для постановки
-            // базы нужна именно она.
+            // The preview uses the simplified shader (see SurfacePreviewTool.Rebuild):
+            // the game's Galileo/PlanetSurface is not used in the editor because its
+            // globals come from SkyEnvironment, which computes the atmosphere
+            // integral and would hang the editor. Base placement only needs the
+            // terrain shape.
 
-            // Видимый радиус в окне: половина высоты кадра на расстоянии
-            // камеры. Меш строим вчетверо шире — край за кадром, иначе на
-            // горизонте видно обрыв диска.
+            // Visible radius: half the frame height at the camera distance. The mesh
+            // is built four times wider so the disk edge stays off-frame.
             double visible = VisibleRadius();
             long signature = Signature();
             bool zoomed = lastBuiltDistance > 0d
@@ -368,11 +362,9 @@ namespace Galilego.Universe.EditorTools
 
             HandleInput(view);
 
-            // Кадр кэшируется и перерисовывается ТОЛЬКО когда что-то изменилось.
-            // Рендер в RenderTexture + ReadPixels на каждом репейнте — это
-            // CPU-чтение кадра обратно в managed-память, и на каждом репейнте
-            // оно уводило редактор в 100% CPU (воспроизведено: Unity перестала
-            // отвечать на 30+ секунд).
+            // The frame is cached and re-rendered ONLY when something changed:
+            // RenderTexture + ReadPixels on every repaint is a CPU readback into
+            // managed memory.
             Vector3 camPos = camGo.transform.position;
             float aspect = view.width / Mathf.Max(1f, view.height);
             bool cameraMoved = hasRendered
@@ -423,8 +415,8 @@ namespace Galilego.Universe.EditorTools
 
         private void PlaceCamera(Rect view)
         {
-            // FOV по вертикали, а окно обычно шире, чем выше: если оставить
-            // fieldOfView по горизонтали, земля сплющивается по краям.
+            // FOV is vertical while the window is usually wider than tall: with a
+            // horizontal fieldOfView the ground would squash at the edges.
             float aspect = Mathf.Max(0.2f, view.width / Mathf.Max(1f, view.height));
             if (Mathf.Abs(cam.aspect - aspect) > 0.001f)
             {
@@ -488,8 +480,8 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Сдвиг не должен увести камеру за край диска: меш круглый, за краем
-        /// пустота, и «вернуть» камеру в землю больше нечем.
+        /// Pan must not take the camera past the disk edge: the mesh is round and
+        /// there is nothing beyond it to bring the camera back.
         /// </summary>
         private void ClampPan()
         {
@@ -600,9 +592,9 @@ namespace Galilego.Universe.EditorTools
 
             if (!Application.isPlaying)
             {
-                // Точка из последнего прохода в Play. Правка на то, что игрок
-                // стоял под водой/вне зоны фрейма, делается вручную в полях
-                // широты и долготы выше — с ними кнопка не спорит.
+                // Point from the last Play session. Corrections for standing
+                // underwater or outside the frame are made manually in the
+                // latitude/longitude fields above.
                 if (!SurfacePreviewTool.HasRememberedPlayer)
                 {
                     SetStatus("Запомненной точки нет: нажми Play, дойди до нужного места, потом Stop и вернись сюда.", MessageType.Warning);
@@ -693,7 +685,7 @@ namespace Galilego.Universe.EditorTools
             }
         }
 
-        /// <summary>Долгота в [-180, 180]: lat/lon из SurfaceLatLonAt приходят в [0, 360).</summary>
+        /// <summary>Longitude in [-180, 180]: lat/lon from SurfaceLatLonAt come in [0, 360).</summary>
         private static double NormalizeLongitude(double lon)
         {
             double d = lon % 360d;

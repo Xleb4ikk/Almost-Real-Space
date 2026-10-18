@@ -5,12 +5,10 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Рендер обломков (маркеры-сферы). Позиция — относительно доминантного тела
-    /// корабля (floating origin, тот же мост, что в ShipView). Осознанное
-    /// упрощение MVP: обломок у ДРУГОГО тела рисуется от доминантного тела
-    /// корабля — дельта уедет в float. Обломки живут секунды рядом с точкой
-    /// удара, для них это не страшно; честный per-body якорь — когда понадобится.
-    /// Вызов — в LateUpdate ПОСЛЕ BodyView (Script Execution Order).
+    /// Debris render (sphere markers). Position is relative to the floating origin
+    /// (same bridge as ShipView). MVP simplification: debris at ANOTHER body is drawn
+    /// from the ship's anchor, so the delta may lose float precision; debris lives for
+    /// seconds near the impact point, so this is acceptable. Runs in LateUpdate AFTER BodyView.
     /// </summary>
     public sealed class DebrisView : MonoBehaviour
     {

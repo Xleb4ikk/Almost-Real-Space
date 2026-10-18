@@ -5,24 +5,23 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Чит-меню (Alt+F10) и отладочный HUD координат.
+    /// Cheat menu (Alt+F10) and the debug coordinate HUD.
     ///
-    /// Окно — IMGUI (OnGUI), как уже принято в PlayerController: отдельного
-    /// Canvas/UXML в проекте нет, а меню отладки не должен тянуть за собой
-    /// ассеты. Пока окно открыто, ввод игроку отдан меню
-    /// (PlayerController.InputBlocked) и курсор отпускается — под захваченной
-    /// камерой кнопки не кликаются.
+    /// The window is IMGUI (OnGUI), as already used in PlayerController: the project
+    /// has no separate Canvas/UXML, and a debug menu should not pull assets. While
+    /// the window is open, player input goes to the menu
+    /// (PlayerController.InputBlocked) and the cursor is released — buttons cannot
+    /// be clicked under a captured camera.
     ///
-    /// Ноуклип: скорость по слайдеру от 0.1 до 1e9 м/с (лог. шкала) — верхние
-    /// порядки нужны, чтобы за один кадр пересечь планету или улететь за её
-    /// пределы. Направление — полный 3D по камере (WASD + Space/Ctrl), его
-    /// читает PlayerController, а скорость отсюда (SimulationRunner.NoclipActive
-    /// — единственный переключатель, окно его только дёргает).
+    /// Noclip: speed slider from 0.1 to 1e9 m/s (log scale); the high end is needed
+    /// to cross a planet or leave its vicinity in a single frame. Direction is full
+    /// 3D camera-relative (WASD + Space/Ctrl), read by PlayerController; speed is
+    /// owned here (SimulationRunner.NoclipActive is the single switch — the window
+    /// only toggles it).
     ///
-    /// Координаты: lat/lon тела под игроком (доминантного по SOI), высота над
-    /// морем (дистанция до центра минус Radius+SeaLevel) и высота над рельефом.
-    /// Печатаются в градусах с 6 знаками и в градусах/минутах/секундах —
-    /// «точные координаты» в обоих смыслах.
+    /// Coordinates: lat/lon of the body under the player (dominant by SOI), height
+    /// above sea level (distance to center minus Radius+SeaLevel) and height above
+    /// terrain. Printed as decimal degrees with 6 digits and as DMS.
     /// </summary>
     public sealed class CheatMenu : MonoBehaviour
     {
@@ -70,7 +69,7 @@ namespace Galilego.Universe
 
         private const int WindowId = 0xC4EA7;
 
-        /// <summary>Размер окна: вмещает весь контент без прокрутки, с запасом.</summary>
+        /// <summary>Window size: fits all content without scrolling, with some slack.</summary>
         private const float WindowWidth = 520f;
         private const float WindowHeight = 420f;
 
@@ -125,12 +124,12 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Диагностика ноуклипа: раз в 2 с сим-времени, пока он включён, пишет
-        /// направление интента (агрегат зажатых клавиш), скорость и реальное
-        /// смещение. Скорость — ОТНОСИТЕЛЬНО КАДРА: инерциальная на бегу по
-        /// поверхности равна орбитальной скорости планеты (~30 км/с у Terra) и
-        /// в спидометре выглядит как «улетел в космос на 30 км/с, стоя на земле».
-        /// Формат — как у соседнего LogSurfacePosition в SimulationRunner.
+        /// Noclip diagnostics: once per 2 s of sim time, while noclip is on, logs the
+        /// intent direction (aggregate of held keys), speed and actual displacement.
+        /// Speed is FRAME-RELATIVE: inertial speed while running on the surface equals
+        /// the planet's orbital velocity (~30 km/s on Terra) and would read as flying
+        /// to space at 30 km/s while standing still. Format matches LogSurfacePosition
+        /// in SimulationRunner.
         /// </summary>
         private void LogNoclipTick()
         {
@@ -178,18 +177,16 @@ namespace Galilego.Universe
 
             if (ShowPerformance)
             {
-                // Счётчики рендера поверхности — вторым блоком под координатами.
-                // Строку SurfacePerf собирает сам и только пока флаг включён.
+                // Surface render counters as the second block under the coordinates.
+                // SurfacePerf builds its line itself, only while the flag is on.
                 GUI.Label(new Rect(HudMargin, PerfHudY, PerfHudWidth, PerfHudHeight), SurfacePerf.HudLine(), CheatGuiSkin.Readout);
             }
 
             if (isOpen)
             {
-                // Заголовок рисуем сами (Layout с пустым заголовком): встроенный
-                // заголовок окна рисуется стилем выше кромки и налезает на
-                // панель. Размер окна фиксирован — GUILayout подгоняет его под
-                // содержимое, и с нулём в полях стартового Rect окно
-                // схлопывалось в узкую полоску; позицию берём у отрисованного.
+                // The title is drawn manually (Layout with an empty title): the built-in
+                // one renders above the edge and overlaps the panel. Window size is
+                // fixed; only the position is taken from the drawn rect.
                 Rect drawn = GUILayout.Window(WindowId, windowRect, DrawWindow, string.Empty, CheatGuiSkin.WindowTitle);
                 windowRect = new Rect(drawn.x, drawn.y, WindowWidth, WindowHeight);
             }
@@ -261,9 +258,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Включить/выключить ноуклип извне (бенчмарк). Обычный путь — тумблер в
-        /// окне; этот нужен, чтобы тот же переключатель сработал без щелчка по UI
-        /// и без того, чтобы Update меню тут же его откатил.
+        /// Enables/disables noclip externally (benchmark). The usual path is the toggle
+        /// in the window; this one applies the same switch without a UI click and
+        /// without the menu's Update rolling it back.
         /// </summary>
         public void RequestNoclip(bool active)
         {
@@ -287,11 +284,11 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Под захваченным курсором кнопку не нажать, а окно перекрывает обзор:
-            // на время открытия камера отдаёт мышь. LockCursor=false ещё и
-            // отключает её Update — иначе он тут же захватит курсор обратно.
-            // Прежние значения запоминаем и возвращаем: у пользователя курсор
-            // мог быть отпущен по Esc, и закрытие меню не должно его забирать.
+            // With a captured cursor buttons cannot be clicked, and the window blocks
+            // the view: while open, the camera yields the mouse. LockCursor=false also
+            // disables its Update, which would otherwise re-capture the cursor. Prior
+            // values are saved and restored: the user may have released the cursor with
+            // Esc, and closing the menu must not take it back.
             if (open)
             {
                 cameraLockCursorBefore = View.LockCursor;
@@ -333,7 +330,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Куда высадить игрока из корабля при включении ноуклипа — по курсу камеры.</summary>
+        /// <summary>Where to drop the player out of the ship when noclip turns on — along the camera's forward.</summary>
         private Vector3d CameraExitDirection()
         {
             Camera camera = Camera.main;
@@ -351,8 +348,8 @@ namespace Galilego.Universe
 
         private double ToLogSlider(double speed)
         {
-            // Нижняя граница 1e-9, а не MinNoclipSpeed: при нуле в инспекторе
-            // log10 дал бы −inf, и слайдер вернул бы NaN в скорость.
+            // Lower bound is 1e-9, not MinNoclipSpeed: a zero in the inspector would
+            // make log10 return −inf and the slider would push NaN into the speed.
             return Math.Log10(Math.Max(1e-9d, Math.Min(MaxNoclipSpeed, speed)));
         }
 
@@ -362,9 +359,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Координаты игрока: тело под ним (доминантное по SOI), широта/долгота,
-        /// высота над морем и над рельефом, скорость и режим. Считается каждый
-        /// кадр — выборка рельефа копеечная, а цифры должны идти live.
+        /// Player coordinates: the body underneath (dominant by SOI), lat/lon, height
+        /// above sea level and terrain, speed and mode. Computed every frame — the
+        /// terrain sample is cheap and the numbers should stay live.
         /// </summary>
         private void UpdateReadout()
         {
@@ -401,7 +398,7 @@ namespace Galilego.Universe
                 Runner.NoclipActive ? " + НОУКЛИП" : string.Empty);
         }
 
-        /// <summary>Высоты — в метрах/км, мимо_km при 1e9 (иначе строка в 20 символов).</summary>
+        /// <summary>Heights in m/km; "e9 m" beyond 1e9 (otherwise the line is 20 chars).</summary>
         private static string FormatMeters(double meters)
         {
             double magnitude = Math.Abs(meters);
@@ -434,7 +431,7 @@ namespace Galilego.Universe
             return speed.ToString("F1") + " м/с";
         }
 
-        /// <summary>Градусы в DMS: 27°50′25.8″S — читается «на глаз» лучше decimal.</summary>
+        /// <summary>Degrees to DMS: 27°50′25.8″S reads better at a glance than decimal.</summary>
         private static string ToDms(double degrees, string positiveHemisphere, string negativeHemisphere)
         {
             double absolute = Math.Abs(degrees);

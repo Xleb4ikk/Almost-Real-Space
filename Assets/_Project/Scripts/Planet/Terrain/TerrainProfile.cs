@@ -4,10 +4,9 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Палитра поверхности (11 цветов) в привычном sRGB — как настраивается в
-    /// инспекторе. Переводом в Linear занимается TerrainPalette.ToLinear:
-    /// единственный путь sRGB→Linear, поэтому цвета из ассета и старые
-    /// константы палитры не расходятся (доказано T92).
+    /// Surface palette (11 colors) in familiar sRGB, as configured in the
+    /// inspector. TerrainPalette.ToLinear does the conversion to Linear: the
+    /// single sRGB->Linear path, so asset colors and palette constants never diverge.
     /// </summary>
     [Serializable]
     public sealed class TerrainPaletteData
@@ -38,11 +37,11 @@ namespace Galilego.Universe
 
         public TerrainPaletteData Clone()
         {
-            // Color — структура, MemberwiseClone копирует значения полностью.
+            // Color is a struct; MemberwiseClone copies the values fully.
             return (TerrainPaletteData)MemberwiseClone();
         }
 
-        /// <summary>Совпадают ли палитры по значениям (для live-тюнинга рендера).</summary>
+        /// <summary>Whether the palettes match by value (for live render tuning).</summary>
         public bool Matches(TerrainPaletteData other)
         {
             return other != null
@@ -61,14 +60,14 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Профиль процедурного рельефа: форма (fBm/континенты/хребты/равнины/
-    /// деталь/warp), цветовые пороги и палитра. Чистые данные без
-    /// UnityEngine-поведения — живут в ассете (TerrainProfileAsset), копируются
-    /// в HeightfieldTerrain при сборке системы (T91) и сериализуются в тестах.
-    /// Зерно шума остаётся на теле (BodyAuthoring.TerrainSeed): один профиль-
-    /// пресет можно вешать на разные тела с разными сидами.
-    /// Нулевые/дефолтные значения параметров дают бит-в-бит legacy-fBm —
-    /// контракт HeightfieldTerrain не меняется.
+    /// Procedural terrain profile: shape (fBm/continents/ridges/plains/
+    /// detail/warp), color thresholds and palette. Pure data with no
+    /// UnityEngine behaviour — lives in an asset (TerrainProfileAsset), is copied
+    /// into HeightfieldTerrain when the system is built, and is serialized in tests.
+    /// The noise seed stays on the body (BodyAuthoring.TerrainSeed), so one profile
+    /// preset can be used on different bodies with different seeds.
+    /// Zero/default parameter values give bit-identical legacy fBm — the
+    /// HeightfieldTerrain contract is unchanged.
     /// </summary>
     [Serializable]
     public sealed class TerrainProfile
@@ -95,37 +94,37 @@ namespace Galilego.Universe
         [Tooltip("Доля ridged-шума 0..1 (горные хребты, только на континентах). 0 = выключен.")]
         public double RidgedMix = 0d;
 
-        /// <summary>Сборка ridged-составляющей: 0 = сумма октав (legacy), 1 = multifractal (ветвящиеся хребты).</summary>
+        /// <summary>Ridged component assembly: 0 = sum of octaves (legacy), 1 = multifractal (branching ridges).</summary>
         public int RidgedMode = (int)TerrainRidgedMode.Legacy;
 
-        /// <summary>Заострение гребня в multifractal, квантуется в целое 1..4. 2 = классика.</summary>
+        /// <summary>Crest sharpening in the multifractal, quantized to integer 1..4. 2 = classic.</summary>
         public double RidgedSharpness = 2d;
 
-        /// <summary>Насколько сильно вес верхней октавы зависит от нижней (ridged multifractal).</summary>
+        /// <summary>How strongly the upper octave's weight depends on the lower one (ridged multifractal).</summary>
         public double RidgedWeightGain = 2d;
 
         /// <summary>
-        /// Ремапа уровня гребня в multifractal: s^γ. 1 = без ремапы. Подбирается
-        /// по доле суши, остаток по высоте гасится AmplitudeMeters.
+        /// Crest level remap in the multifractal: s^γ. 1 = no remap. Tuned by
+        /// land fraction; the remaining height is absorbed by AmplitudeMeters.
         /// </summary>
         public double RidgedGamma = 1d;
 
-        /// <summary>Сила домена по октавам 0..1 для ФОРМЫ рельефа. 0 = выключено.</summary>
+        /// <summary>Per-octave domain strength 0..1 for the terrain SHAPE. 0 = off.</summary>
         public double SlopeDamp = 0d;
 
-        /// <summary>Источник наклона для домена: Accum (по высоте) или Gradient (по крутизне).</summary>
+        /// <summary>Slope source for the domain: Accum (by height) or Gradient (by steepness).</summary>
         public int SlopeDampMode = (int)TerrainSlopeDampMode.Off;
 
         /// <summary>
-        /// Базовый примитив: 0 = value noise (legacy), 1 = градиентный Перлин.
-        /// Дефолт legacy — см. пояснение в HeightfieldTerrain.NoiseStyle: Unity
-        /// подставляет инициализатор в ассеты без этого поля, и побитовые
-        /// проверки висят на дефолтах.
+        /// Base primitive: 0 = value noise (legacy), 1 = gradient Perlin.
+        /// Default is legacy (see HeightfieldTerrain.NoiseStyle): Unity applies the
+        /// initializer to assets that lack this field, and bitwise checks rely on
+        /// the defaults.
         /// </summary>
         public int NoiseStyle = (int)TerrainNoiseStyle.Value;
 
 
-        /// <summary>Примитив для МАСОК и warp: 0 = следует NoiseStyle.</summary>
+        /// <summary>Primitive for MASKS and warp: 0 = follow NoiseStyle.</summary>
         public int MaskNoiseStyle = -1;
         [Header("Континенты (океан/суша)")]
         [Tooltip("Частота континентальной маски. 0 = выключена.")]
@@ -348,25 +347,20 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Пресет «планета как Земля»: невысокий рельеф (≈0.8% радиуса),
-        /// континенты + редкие хребты + равнины + лёгкий warp, slope-цвет и
-        /// noise-маска. Раньше жил в BodyAuthoring.ApplyEarthLikeTerrainPreset —
-        /// теперь это ассет EarthLike, на который ссылается тело.
+        /// "Planet like Earth" preset: moderate relief (~0.8% of radius), continents +
+        /// sparse ridges + plains + light warp, slope color and a noise mask.
         ///
-        /// ИСТОЧНИК ИСТИНЫ — .asset, а не этот метод. Игра грузит
-        /// Assets/_Project/Profiles/Terrain/EarthLike.asset из OutdoorsScene, и
-        /// этот метод игрой не вызывается вообще — только тестами. Он обязан
-        /// совпадать с ассетом, иначе тесты меряют конфигурацию, которой нет в
-        /// игре; сверяет это T117_EarthLikeProfileDrift, который читает .asset
-        /// как текст.
+        /// SOURCE OF TRUTH is the .asset, not this method: the game loads
+        /// Assets/_Project/Profiles/Terrain/EarthLike.asset from OutdoorsScene, so this
+        /// method is only used by tests and must match the asset (checked by
+        /// T117_EarthLikeProfileDrift, which reads the .asset as text).
         ///
-        /// Амплитуда остаётся параметром радиуса: ассет хранит фиксированные
-        /// 9144 м, а для другого тела масштаб должен считаться от его радиуса.
+        /// Amplitude stays a function of radius: the asset stores a fixed 9144 m, while
+        /// for another body the scale must be computed from its radius.
         ///
-        /// Океан/внутренность/горные пояса здесь ОСТАЮТСЯ НУЛЯМИ, и это не
-        /// упущение: EarthLike.asset — legacy-профиль на value noise, и его
-        /// контракт — бит-в-бит прежняя форма. Новая модель океана включена в
-        /// EarthLike_Perlin.asset, на который ссылается OutdoorsScene.
+        /// Ocean/interior/orogeny stay ZERO here on purpose: EarthLike.asset is a legacy
+        /// value-noise profile with bit-identical shape. The new ocean model lives in
+        /// EarthLike_Perlin.asset, referenced by OutdoorsScene.
         /// </summary>
         public static TerrainProfile CreateEarthLike(double radius)
         {
@@ -396,9 +390,9 @@ namespace Galilego.Universe
                 BeachShelfWidthMaxScale = 14d,
                 BeachShelfWidthNoiseFrequency = 150d,
                 BeachShelfWidthNoiseOctaves = 4,
-                // Морское плечо — 5 % от ширины полки, то есть 0.004 маски
-                // (~1.5 км в метрах). Ставится явно, а не нулём-авто, чтобы у
-                // пресета значение было видно в инспекторе и в ассете.
+                // Seaward shoulder — 5% of the shelf width, i.e. 0.004 in mask
+                // units (~1.5 km in meters). Set explicitly rather than auto-zero so
+                // the value is visible in the inspector and the asset.
                 BeachShelfSeawardWidth = 0.004d,
                 DetailMix = 0d,
                 DetailFrequency = 0d,
@@ -420,19 +414,17 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Диагностика окон домена по склону. Возвращает текст предупреждения
-        /// или null, если всё в порядке.
+        /// Diagnostics for the slope-domain windows. Returns a warning string, or
+        /// null if everything is fine.
         ///
-        /// Отдельный метод, а не OnValidate, потому что TerrainProfile - обычный
-        /// [Serializable] класс, а не UnityEngine.Object: Unity не вызывает
-        /// OnValidate на таких и молча бы его не звал. Реальная точка входа -
-        /// TerrainProfileAsset.OnValidate, который держит этот профиль.
+        /// A separate method rather than OnValidate because TerrainProfile is a
+        /// plain [Serializable] class, not a UnityEngine.Object: Unity does not call
+        /// OnValidate on those. The real entry point is TerrainProfileAsset.OnValidate.
         ///
-        /// Почему только предупреждение, а не автопочинка: при
-        /// Gain * Lacunarity != 1 нормировка сигнала на (o+1) перестаёт делить
-        /// на константу, и правильные окна зависят от профиля целиком. Угадать
-        /// их можно, но это будет молчаливая подгонка формы рельефа. Сама
-        /// защита в рантайме стоит в TerrainNoiseParams.FromTerrain.
+        /// Warns instead of auto-fixing because when Gain * Lacunarity != 1 the per-(o+1)
+        /// normalization stops dividing by a constant and the correct windows depend on
+        /// the whole profile — guessing them would silently reshape the terrain. The
+        /// runtime guard lives in TerrainNoiseParams.FromTerrain.
         /// </summary>
         public string ValidateSlopeDampWindows()
         {

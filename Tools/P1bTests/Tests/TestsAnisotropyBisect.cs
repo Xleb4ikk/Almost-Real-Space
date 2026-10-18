@@ -6,33 +6,33 @@ using Unity.Mathematics;
 internal static partial class P1bTests
 {
     /// <summary>
-    /// Где появляется остаточная осевая анизотропия 1.96% у градиентного
-    /// примитива. T122 показал её на полном пайплайне, но не объяснил: набор
-    /// градиентов T112 симметричен (Σggᵀ = 4I, разброс 0.065%), значит причина
-    /// в другом месте цепочки. Здесь цепочка режется по стадиям:
+    /// Where the residual 1.96% axial anisotropy of the gradient primitive comes
+    /// from. T122 showed it on the full pipeline but didn't explain it: the T112
+    /// gradient set is symmetric (Σggᵀ = 4I, spread 0.065%), so the cause is
+    /// elsewhere in the chain. Here the chain is cut stage by stage:
     ///
-    ///   1) примитив сам по себе, АНАЛИТИЧЕСКИЙ ∇ (без конечных разностей)
-    ///   2) одна октава fBm
-    ///   3) полный fBm формы
+    ///   1) the primitive itself, ANALYTIC ∇ (no finite differences)
+    ///   2) one fBm octave
+    ///   3) full shape fBm
     ///   4) + ridged multifractal
     ///   5) + warp
     ///
-    /// Плюс отдельные проверки на гипотезы:
-    ///   • корреляция индекса h%12 между соседями решётки вдоль каждой оси
-    ///     (мёртвый старший бит хеша мог оставить связь между соседями, и она
-    ///     не обязана быть нулевой);
-    ///   • симметрия SaltOffset по осям;
-    ///   • одинаковые ли соли у трёх осей warp.
+    /// Plus separate hypothesis checks:
+    ///   • correlation of the h%12 index between lattice neighbours along each
+    ///     axis (a dead high hash bit could leave a coupling between neighbours,
+    ///     and it need not be zero);
+    ///   • symmetry of SaltOffset across the axes;
+    ///   • whether the three warp axes share the same salts.
     /// </summary>
     private static int Test124_AnisotropyBisect()
     {
         Console.WriteLine("    разброс энергии градиента по осям (изотропно = 0):");
 
-        // Стадия 1: примитив, аналитический ∇, без fBm и без смещения.
+        // Stage 1: primitive, analytic ∇, no fBm and no offset.
         Stage("1. примитив, аналитический ∇", MeasurePrimitive(1, 2000000));
         Stage("1. value noise, аналитический ∇ нет — конечные разности", MeasurePrimitiveValue(1000000));
 
-        // Стадии 2-5: полный SampleHeight со снятыми по очереди слоями.
+        // Stages 2-5: full SampleHeight with layers removed one at a time.
         Stage("2. одна октава fBm (salt 0)", MeasureStage(2, 0d, 0d, 0, 1));
         Stage("3. полный fBm формы (10 октав)", MeasureStage(3, 0d, 0d, 0, 1));
         Stage("4. + ridged multifractal", MeasureStage(4, 0d, 0.7, 1, 1));
@@ -41,17 +41,17 @@ internal static partial class P1bTests
         Console.WriteLine();
         Console.WriteLine("    гипотезы:");
 
-        // Корреляция индекса градиента между соседями вдоль осей. Если хеш
-        // оставляет связь, соседние узлы будут получать одно и то же
-        // направление чаще, чем случайно.
+        // Gradient-index correlation between neighbours along the axes. If the
+        // hash leaves a coupling, adjacent nodes will get the same direction
+        // more often than by chance.
         for (int axis = 0; axis < 3; axis++)
         {
             Console.WriteLine("    h%12 у соседей вдоль оси " + "xyz"[axis] + ": " + NeighbourAgreement(axis, 200000));
         }
 
-        // Симметрия сдвигов по осям: у SaltOffset коэффициенты разные, но это
-        // не должно давать анизотропию ПОЛЯ, потому что сдвиг только выбирает
-        // область. Проверяем, что сдвиг не вырожден по какой-то оси.
+        // Symmetry of the per-axis offsets: SaltOffset has different coefficients,
+        // but that must not create FIELD anisotropy, because the offset only
+        // selects a region. Check that no axis is degenerate.
         Console.WriteLine("    " + SaltAxisCheck());
 
         return 0;
@@ -150,9 +150,10 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Доля совпадений индекса направления у соседних узлов решётки вдоль оси.
-    /// При независимом хеше ожидание 1/12 = 8.33%. Значимая связь выдала бы
-    /// себя отклонением, и особенно по той оси, где биты хеша перекрываются.
+    /// Fraction of direction-index matches between adjacent lattice nodes along
+    /// an axis. With an independent hash the expectation is 1/12 = 8.33%. A
+    /// significant coupling would show up as a deviation, especially along the
+    /// axis where hash bits overlap.
     /// </summary>
     private static string NeighbourAgreement(int axis, int n)
     {
@@ -177,7 +178,7 @@ internal static partial class P1bTests
             100.0 * agree / n);
     }
 
-    /// <summary>Тот же индекс, что выбирает LatticeDot, но без шума вокруг.</summary>
+    /// <summary>The same index LatticeDot picks, but without the surrounding noise.</summary>
     private static int GradientIndex(int x, int y, int z)
     {
         unchecked
@@ -189,11 +190,11 @@ internal static partial class P1bTests
 
     private static string SaltAxisCheck()
     {
-        // Сдвиги per-октавы: поворотом (y+19.19, z+7.47, x+3.13), то есть по
-        // осям одинаково. SaltOffset — фиксированная таблица с разными
-        // коэффициентами, но это лишь выбор области, а не формы: при разных
-        // сидах набор точек заполняет объём одинаково. Проверяем, что ни одна
-        // ось не вырождена (коэффициент не ноль и не даёт целых шагов).
+        // Per-octave offsets rotate (y+19.19, z+7.47, x+3.13), i.e. the same on
+        // every axis. SaltOffset is a fixed table with different coefficients,
+        // but that only selects a region, not a shape: across seeds the point set
+        // fills the volume the same way. Check that no axis is degenerate (its
+        // coefficient is neither zero nor yields whole steps).
         int[] seeds = { 24334543, 1013, 8932, 16851, 24770, 32689, 40608, 48527 };
         double sx = 0d, sy = 0d, sz = 0d;
         for (int i = 0; i < seeds.Length; i++)
@@ -210,16 +211,16 @@ internal static partial class P1bTests
             sx / seeds.Length, sy / seeds.Length, sz / seeds.Length);
     }
     /// <summary>
-    /// Проверка гипотезы о множителе оси z в домашнем хеше.
+    /// Hypothesis check for the z-axis multiplier in the home hash.
     ///
-    /// z умножается на 2147483647 = 2^31 − 1, то есть z·(2^31−1) ≡ −z (mod 2^31):
-    /// по модулю 2^31 вклад оси z почти равен «минус z». Множители x (374761393)
-    /// и y (668265263) — крупные нечётные, которые перемешивают биты, и z
-    /// выделен. Если причина остаточной анизотропии примитива в этом, замена
-    /// множителя z на крупное нечётное должна убрать её.
+    /// z is multiplied by 2147483647 = 2^31 − 1, i.e. z·(2^31−1) ≡ −z (mod 2^31):
+    /// modulo 2^31 the z-axis contribution is almost "minus z". The x (374761393)
+    /// and y (668265263) multipliers are large odd numbers that mix bits, so z is
+    /// singled out. If that is the cause of the primitive's residual anisotropy,
+    /// replacing the z multiplier with a large odd number should remove it.
     ///
-    /// Энергия градиента меряется по ОДНОМУ слагаемому на узел, то есть это
-    /// сумма |g_x|, |g_y|, |g_z| — мера выбора направления, а не поля.
+    /// Gradient energy is measured over ONE term per node, i.e. the sum of
+    /// |g_x|, |g_y|, |g_z| — a measure of direction choice, not of the field.
     /// </summary>
     private static int Test125_HashAxisMultiplier()
     {
@@ -257,7 +258,7 @@ internal static partial class P1bTests
         return 0;
     }
 
-    /// <summary>Модуль одной компоненты градиента при заданном множителе оси z.</summary>
+    /// <summary>Magnitude of one gradient component for a given z-axis multiplier.</summary>
     private static double GradientComponent(int x, int y, int z, uint zMul, int comp)
     {
         unchecked
@@ -284,10 +285,10 @@ internal static partial class P1bTests
         }
     }
     /// <summary>
-    /// Аналитическая производная примитива против конечных разностей в ОДНОМ
-    /// и том же кубе. Разбивка показала 1.722% на аналитическом ∇ и 0.228% на
-    /// конечных разностях через пайплайн; если разрыв держится и здесь, то
-    /// расходится именно производная (она выведена вручную), а не поле.
+    /// Analytic derivative of the primitive versus finite differences in the SAME
+    /// cube. The breakdown showed 1.722% on the analytic ∇ and 0.228% on finite
+    /// differences through the pipeline; if the gap persists here, it is the
+    /// derivative (hand-derived) that diverges, not the field.
     /// </summary>
     private static int Test126_DerivativeAnisotropy()
     {
@@ -338,14 +339,16 @@ internal static partial class P1bTests
         return 0;
     }
     /// <summary>
-    /// Поле (а не распределение направлений) при разных множителях оси z.
+    /// The field (not the direction distribution) under different z-axis
+    /// multipliers.
     ///
-    /// T125 показал, что выбор направления изотропен при любом множителе
-    /// (разброс 0.035..0.046%), а T126 — что производная верна. Значит перекос
-    /// живёт во второпорядковой структуре хеша: у соседей вдоль z индекс
-    /// совпадает 7.816% раз против 8.333% ожидаемых, тогда как вдоль x 8.427%
-    /// и вдоль y 8.354%. z выделен множителем 2147483647 = 2^31 − 1.
-    /// Здесь меряется именно энергия градиента ПОЛЯ при подмене множителя.
+    /// T125 showed direction choice is isotropic for any multiplier (spread
+    /// 0.035..0.046%), and T126 that the derivative is correct. So the skew lives
+    /// in the second-order hash structure: along z neighbours share the index
+    /// 7.816% of the time versus 8.333% expected, while along x it is 8.427% and
+    /// along y 8.354%. z is singled out by the multiplier 2147483647 = 2^31 − 1.
+    /// Here it is specifically the FIELD gradient energy that is measured when the
+    /// multiplier is swapped.
     /// </summary>
     private static int Test127_HashFixField()
     {
@@ -388,9 +391,9 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Градиент примитива с подменённым множителем оси z. Повторяет
-    /// GradientNoiseWithDerivative, но со своим хешем — иначе подмена
-    /// множителя потребовала бы правки продакшн-кода.
+    /// Primitive gradient with a swapped z-axis multiplier. Mirrors
+    /// GradientNoiseWithDerivative but with its own hash — otherwise swapping the
+    /// multiplier would require editing production code.
     /// </summary>
     private static double GradWithZMul(double3 p, uint zMul, int comp)
     {

@@ -2,6 +2,6 @@ using UnityEngine;
 
 namespace Galilego.Building
 {
-    /// <summary>Коллайдер для игрока — только препятствие (стена/потолок), но не пол и не ступенька.</summary>
+    /// <summary>Collider for the player — an obstacle only (wall/ceiling), not a floor or a step.</summary>
     public sealed class PlayerObstacleOnly : MonoBehaviour { }
 }

@@ -5,54 +5,42 @@ using Galilego.Core;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Продвигает Spacecraft во времени через SpacecraftOrbitIntegrator (тот же
-    /// DOPRI5, что и Core.OrbitIntegrator, но над полным состоянием
-    /// (позиция, скорость, масса)). Суммирует вклады всех зарегистрированных
-    /// IDynamicsSource: готовые ускорения (гравитация) плюс силы (тяга,
-    /// сопротивление), поделённые на массу ПОДШАГА — один раз, в одном месте.
-    /// Масса эволюционирует внутри интегратора как dm/dt = -расход, синхронно
-    /// с позицией/скоростью на каждой RK-подстадии, а не отдельным Update()
-    /// после шага: менять её постфактум значило бы считать все подстадии шага
-    /// по устаревшей массе и потерять формальный порядок точности метода.
+    /// Advances Spacecraft through time via SpacecraftOrbitIntegrator (same DOPRI5 as
+    /// Core.OrbitIntegrator, but over the full state (position, velocity, mass)).
+    /// Sums the contributions of all registered IDynamicsSource: ready accelerations
+    /// (gravity) plus forces (thrust, drag) divided by the SUBSTEP mass — once, in one place.
+    /// Mass evolves inside the integrator as dm/dt = -flow, in sync with
+    /// position/velocity on every RK substage.
     ///
-    /// EvaluateDerivative — pure: вызывается много раз на шаг, включая
-    /// отклонённые шаги, поэтому только суммирует вклады и возвращает
-    /// производную. Мутация корабля — лишь после принятого шага, в Step.
+    /// EvaluateDerivative is pure: called many times per step, including rejected
+    /// steps, so it only sums contributions and returns the derivative. The ship is
+    /// mutated only after an accepted step, in Step.
     /// </summary>
     public sealed class SpacecraftPhysics
     {
         public readonly List<IDynamicsSource> Sources = new List<IDynamicsSource>();
 
-        // Раздельные допуски по величинам: позицию меряем в метрах, скорость
-        // в м/с, массу в кг — один общий atol для всех трёх был бы физически
-        // бессмысленным. Ориентиры (донастроить по игровому опыту):
-        // позиция ~1e-3..1e-1 м, скорость ~1e-6..1e-4 м/с,
-        // масса ~1e-6..1e-3 кг, rtol ~1e-9..1e-11.
+        // Separate tolerances per quantity: position in meters, velocity in m/s,
+        // mass in kg — one shared atol for all three would be physically meaningless.
         public double PositionAbsoluteTolerance = 1e-2;
         public double VelocityAbsoluteTolerance = 1e-5;
         public double MassAbsoluteTolerance = 1e-4;
         public double RelativeTolerance = 1e-10;
 
         /// <summary>
-        /// Снимок суммарного момента (Н·м, body-frame) последней подстадии
-        /// последнего ПРИНЯТОГО шага. Канал оживлён (аудит S3): момент всех
-        /// IDynamicsSource суммируется рядом с силой в EvaluateDerivative,
-        /// и сила+момент идут из одного источника — игровой цикл читает снимок
-        /// после phys.Step и кормит AttitudePhysics.Step с зерном шага
-        /// (та же семантика управления, что throttle-снимок). НЕ производная
-        /// для интегрирования вращения: EvaluateDerivative зовётся много раз
-        /// на шаг (включая отклонённые), снимок — только управление.
+        /// Snapshot of the total torque (N·m, body frame) of the last substage of the last
+        /// ACCEPTED step. The game loop reads it after phys.Step and feeds
+        /// AttitudePhysics.Step. NOT the derivative for rotation integration: EvaluateDerivative
+        /// is called many times per step (including rejected ones), the snapshot is control only.
         /// </summary>
         public Vector3d TotalTorqueBody { get; private set; }
 
         private Vector3d lastEvaluatedTorque = Vector3d.Zero;
 
         /// <summary>
-        /// Save/restore снимка вокруг probe-шагов драйвера событий: бисекция
-        /// и dense-погоны идут через тот же physics-экземпляр и без
-        /// save/restore оставляли бы после Propagate снимок от probe-состояния
-        /// (близко, но не то состояние, где реально остался корабль).
-        /// internal — инструмент драйвера, игровой цикл читает только
+        /// Save/restore of the snapshot around event-driver probe steps, so that
+        /// bisection and dense output do not leave a snapshot from the probe state
+        /// after Propagate. internal — a driver tool; the game loop reads only
         /// TotalTorqueBody.
         /// </summary>
         internal void SuspendTorqueSnapshot(out Vector3d lastEvaluated, out Vector3d total)
@@ -73,8 +61,8 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
-        /// Тот же шаг, плюс dense output принятых внутренних шагов в segments
-        /// (null — не собирать, поведение бит-в-бит как Step).
+        /// Same step, plus dense output of accepted internal steps into segments
+        /// (null — do not collect, bit-for-bit behavior of Step).
         /// </summary>
         public void StepWithSegments(Spacecraft ship, double currentTimeSeconds, double dt, System.Collections.Generic.IList<DenseSegment> segments)
         {
@@ -104,9 +92,7 @@ namespace Galilego.Spacecraft
 
         private SpacecraftIntegrationState EvaluateDerivative(SpacecraftIntegrationState state, double timeSeconds)
         {
-            // Масса ≤ 0 или не-конечная — деление даст NaN/Inf, который расползётся
-            // молча; громко здесь (аудит S1/F4). Источник, сводящий массу в минус,
-            // получит громкий отказ на первом шаге.
+            // Mass ≤ 0 or non-finite would give NaN/Inf; fail loudly here.
             if (!(state.Mass > 0d) || !double.IsFinite(state.Mass))
             {
                 throw new InvalidOperationException(

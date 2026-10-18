@@ -6,17 +6,13 @@ using Xunit.Abstractions;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Синтетический источник с массовым расходом — быстрой явной функцией
-    /// времени: massFlow = k·(1 + 0.9·sin(2πt/P)). Физического смысла не несёт.
-    /// Ключевое свойство: при отсутствии гравитации и тяги движение корабля —
-    /// равномерное прямолинейное, которое DOPRI5 интегрирует ТОЧНО при любом
-    /// размере шага, то есть ошибки по позиции/скорости тождественно нулевые.
-    /// Единственный источник ошибки усечения — масса, и любое дробление шага
-    /// мельче максимального может быть решением ТОЛЬКО массового допуска.
-    /// (Связанный вариант massFlow = k·|v|² на эксцентричной орбите для этого
-    /// не годится: там масса меняется в том же темпе, что и орбита, и шаговый
-    /// контроль гравитации везде доминирует над массовым — проверено, эффект
-    /// тонет на уровне ~10%. Живёт ТОЛЬКО в тестовом проекте.)
+    /// Synthetic mass-flow source — a fast explicit function of time:
+    /// massFlow = k·(1 + 0.9·sin(2πt/P)). Has no physical meaning.
+    /// With no gravity or thrust the ship coasts in a straight line, which
+    /// DOPRI5 integrates exactly for any step size, so position/velocity
+    /// truncation error is identically zero: the only truncation error source
+    /// is mass, so any step subdivision finer than the maximum can only be
+    /// the mass tolerance at work.
     /// </summary>
     internal sealed class OscillatingMassFlowSource : IDynamicsSource
     {
@@ -37,10 +33,10 @@ namespace GalilegoPhysicsTests
     }
 
     /// <summary>
-    /// Декоратор-счётчик вызовов RHS. Число вызовов производной — наблюдаемый
-    /// снаружи прокси числа шагов интегратора (6 новых вычислений на попытку
-    /// шага + FSAL-переиспользование): если допуск реально участвует в
-    /// управлении шагом, его ужесточение обязано увеличить счётчик.
+    /// RHS-call-counting decorator. The number of derivative calls proxies the
+    /// integrator's step count (6 new evaluations per step attempt plus FSAL
+    /// reuse): if a tolerance really drives step control, tightening it must
+    /// increase the count.
     /// </summary>
     internal sealed class CountingSource : IDynamicsSource
     {
@@ -60,15 +56,14 @@ namespace GalilegoPhysicsTests
     }
 
     /// <summary>
-    /// Тест D — MassAbsoluteTolerance реально управляет шагом, а не просто
-    /// существует как параметр. Контролируемый эксперимент: одна и та же сцена
-    /// (дрейф без гравитации + быстро осциллирующий расход), одни и те же
-    /// допуски по позиции/скорости и rtol — отличается ТОЛЬКО
-    /// MassAbsoluteTolerance (жёсткий 1e-9 vs фактически отключающий 1e3).
-    /// При мягком допуске интегратор обязан идти максимальными шагами 600 с;
-    /// при жёстком — дробить шаг под 50-секундную осцилляцию расхода.
-    /// Дополнительно: жёсткий прогон обязан сойтись к аналитике
-    /// m(T) = m0 − k·T (синус за целое число периодов интегрируется в ноль).
+    /// Test D — MassAbsoluteTolerance really drives the step, not just exists as
+    /// a parameter. Controlled experiment: same scene (gravity-free drift plus a
+    /// fast oscillating flow), same position/velocity tolerances and rtol — only
+    /// MassAbsoluteTolerance differs (tight 1e-9 vs effectively disabling 1e3).
+    /// With the loose tolerance the integrator must take maximum 600 s steps;
+    /// with the tight one it must subdivide under the 50 s flow oscillation.
+    /// Additionally the tight run must converge to m(T) = m0 − k·T (the sine
+    /// integrates to zero over a whole number of periods).
     /// </summary>
     public sealed class MassToleranceTests
     {
@@ -81,7 +76,7 @@ namespace GalilegoPhysicsTests
 
         private const double Rate = 0.1;
         private const double OscillationPeriod = 50.0;
-        private const double TotalTime = 3600.0; // 72 полных периода осцилляции
+        private const double TotalTime = 3600.0; // 72 full oscillation periods
         private const double InitialMass = 1000.0;
 
         private static int RunCase(double massAtol, out double finalMass)
@@ -112,7 +107,7 @@ namespace GalilegoPhysicsTests
 
             double ratio = (double)callsTight / callsLoose;
 
-            // Аналитика: за целое число периодов синус даёт ноль.
+            // Analytic: over a whole number of periods the sine averages to zero.
             double expectedMass = InitialMass - Rate * TotalTime;
             double tightRelErr = System.Math.Abs(mTight - expectedMass) / expectedMass;
 

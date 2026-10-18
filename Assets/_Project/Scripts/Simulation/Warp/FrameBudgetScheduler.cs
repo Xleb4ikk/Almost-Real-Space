@@ -5,11 +5,11 @@ using System.Diagnostics;
 namespace Galilego.Events
 {
     /// <summary>
-    /// Общий бюджет 4мс на кадр на всю фоновую физику (варп-догон активного
-    /// корабля + обновление мусора). Активный корабль обслуживается первым
-    /// без урезания; мусору достаётся остаток, недообработанные объекты
-    /// переходят в очередь следующего кадра — не теряются и не режутся.
-    /// Очередь хранится между кадрами внутри планировщика.
+    /// Shared 4 ms per-frame budget for all background physics (warp catch-up of
+    /// the active ship + debris updates). The active ship is serviced first
+    /// without trimming; debris gets the remainder, and unprocessed objects move
+    /// to the next frame's queue — never lost or truncated. The queue is kept
+    /// between frames inside the scheduler.
     /// </summary>
     public sealed class FrameBudgetScheduler
     {
@@ -51,8 +51,8 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Один кадр: сначала активный корабль безусловно, затем мусор пока
-        /// хватает бюджета. Остаток очереди сохраняется на следующий вызов.
+        /// One frame: first the active ship unconditionally, then debris while the
+        /// budget lasts. The remaining queue is kept for the next call.
         /// </summary>
         public void RunFrame(Action advanceActiveShip, Stopwatch stopwatch)
         {

@@ -11,9 +11,9 @@ Shader "Galilego/SurfacePreview"
         _SlopeShade("Slope Shade", Range(0.0, 1.0)) = 0.55
         _UnderwaterTint("Underwater Tint", Color) = (0.16, 0.34, 0.52, 1)
         _PreviewSeaLevel("Sea Level meters", Float) = -1000000000
-        // Сетка масштаба по локальной XZ (север/восток) фрейма. Без неё
-        // превью — просто зелёный купол: не видно, 10 это метров или километр,
-        // и ставить базу не по чему.
+        // Scale grid over the frame's local XZ (north/east). Without it the
+        // preview is just a green dome: you can't tell whether 10 is metres or a
+        // kilometre, and there is no reference for placing the base.
         _PreviewGridSpacing("Grid Spacing meters, 0 = off", Float) = 0
         _PreviewGridMinor("Grid Minor Fraction", Range(0.05, 1.0)) = 0.2
         _PreviewGridStrength("Grid Strength", Range(0.0, 1.0)) = 0.5
@@ -82,9 +82,9 @@ Shader "Galilego/SurfacePreview"
                 return output;
             }
 
-            // Линия сетки по экранной ширине: толщина постоянная в пикселях,
-            // иначе на большом масштабе каждая линия — пол-экрана, а на
-            // маленьком исчезает в шум.
+            // Grid line by screen width: constant thickness in pixels, otherwise
+            // at a large scale each line is half the screen, and at a small one it
+            // disappears into noise.
             float GridLine(float coord, float widthPixels)
             {
                 float d = abs(frac(coord - 0.5) - 0.5) / max(fwidth(coord), 1e-6);
@@ -96,42 +96,41 @@ Shader "Galilego/SurfacePreview"
                 float3 n = normalize(input.normalWS);
                 float3 l = normalize(_PreviewSunDir.xyz);
 
-                // Честный ламберт + небольшой wrap. Полу-ламберт
-                // (dot*0.5+0.5) съедал уклоны: при 9° наклона разница в
-                // освещении выходила 8%, и рельеф с перепадом 92 м на 600 м
-                // читался как ровная столешница. Wrap оставлен маленьким, чтобы
-                // теневые склоны не проваливались в чёрное.
+                // True Lambert + a small wrap. Half-Lambert (dot*0.5+0.5) flattened
+                // slopes: at a 9° incline the lighting difference was only 8 %, so
+                // terrain with 92 m over 600 m read as a flat tabletop. Wrap is kept
+                // small so shadowed slopes don't crush to black.
                 float ndl = saturate(dot(n, l));
                 float wrap = saturate(dot(n, l) * 0.5 + 0.5);
                 float direct = (ndl * 0.85) + (wrap * 0.15);
                 float3 albedo = input.color.rgb;
 
-                // Склон: гасим пологое, подсвечиваем крутое — рельеф читается
-                // даже на однородном зелёном пресете.
+                // Slope: darken shallow, brighten steep — terrain reads
+                // even on a uniform green preset.
                 float slope = saturate(1.0 - input.extra.y);
                 albedo *= lerp(1.0, 0.45, saturate(slope * _SlopeShade));
 
                 float3 color = albedo * (_PreviewAmbient.rgb + (_PreviewSunColor.rgb * direct));
 
-                // Под водой — тонируем в синий: граница «суша/море» в превью
-                // должна читаться, иначе видно дно вместо океана.
+                // Underwater: tint blue so the land/sea boundary reads in the
+                // preview, otherwise you see the bottom instead of the ocean.
                 float sea = step(input.extra.x, _PreviewSeaLevel);
                 color = lerp(color, color * _UnderwaterTint.rgb, sea * 0.75);
 
                 if (_ContourSpacing > 0.0)
                 {
-                    // Горизонтали: расстояние до ближайшей полосы в единицах шага,
-                    // толщина линии — один пиксель (fwidth). Имя НЕ "line":
-                    // это зарезервированное слово HLSL (модификатор интерполяции).
+                    // Contours: distance to the nearest band in step units, line
+                    // thickness is one pixel (fwidth). The name is NOT "line": that is an
+                    // HLSL reserved word (interpolation modifier).
                     float band = input.extra.x / _ContourSpacing;
                     float toLine = abs(frac(band) - 0.5);
                     float contour = 1.0 - smoothstep(0.0, max(fwidth(band), 1e-5), toLine);
                     color = lerp(color, color * 0.55, contour * _ContourStrength);
                 }
 
-                // Сетка масштаба: локальные XZ меша — это север/восток фрейма
-                // в метрах (меш строится в осях фрейма, не мира). Прячется к
-                // горизонту, иначе море линий.
+                // Scale grid: mesh-local XZ are the frame's north/east in metres
+                // (the mesh is built in frame axes, not world). Fades towards the
+                // horizon, otherwise it becomes a sea of lines.
                 if (_PreviewGridSpacing > 0.0)
                 {
                     float2 km = input.localPos.xz * 0.001;

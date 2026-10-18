@@ -6,13 +6,13 @@ using Galilego.Spacecraft;
 namespace Galilego.Events
 {
     /// <summary>
-    /// Спека отделения одной детали: ДАННЫЕ, не спавн. Позиция — мировая
-    /// (проекция точки удара + ε вдоль нормали; все спеки в одной точке —
-    /// валидно, разведением занимается сборочная система). Скорость хранится
-    /// в ДВУХ пространствах сразу, чтобы их нельзя было перепутать:
-    /// FragmentVelocity — относительная f_i (для инварианта импульса),
-    /// Velocity — мировая v_surface + f_i (для спавна). Пересчёт одного
-    /// в другое внутри спеки запрещён: источник правды — конструктор модели.
+    /// Separation spec for one part: DATA, not a spawn. Position is world
+    /// (impact point projected + ε along the normal; all specs at one point is
+    /// valid, spreading is the assembly system's job). Velocity is stored in
+    /// TWO spaces at once so they cannot be confused:
+    /// FragmentVelocity — relative f_i (for the momentum invariant),
+    /// Velocity — world v_surface + f_i (for spawning). Converting one into the
+    /// other inside the spec is forbidden: the model constructor is the source of truth.
     /// </summary>
     public readonly struct PartSeparationSpec
     {
@@ -33,10 +33,9 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Вход модели разрушения. ImpactVelocity — строго ОТНОСИТЕЛЬНАЯ скорость
-    /// (корабль минус точка поверхности); смешивать её с мировой запрещено
-    /// типами использования: модель складывает с SurfacePointVelocity сама,
-    /// ровно один раз, в одном месте.
+    /// Breakup model input. ImpactVelocity is strictly RELATIVE
+    /// (ship minus surface point); mixing it with the world one is forbidden by
+    /// usage: the model adds SurfacePointVelocity itself, exactly once, in one place.
     /// </summary>
     public readonly struct BreakupInput
     {
@@ -48,10 +47,9 @@ namespace Galilego.Events
         public readonly double SpawnEpsilonMeters;
 
         /// <summary>
-        /// Детали сборки (R2). null/пусто = вырожденный whole-ship случай:
-        /// SingleThresholdBreakup массу делит сам и список не читает
-        /// (зафиксировано тестом). Будущий JointedBreakup возьмёт отсюда
-        /// реальные стыки. Опциональный параметр — старые вызовы не ломаются.
+        /// Assembly parts. null/empty = degenerate whole-ship case:
+        /// SingleThresholdBreakup divides the mass itself and does not read the
+        /// list. JointedBreakup takes the real joints from here.
         /// </summary>
         public readonly IReadOnlyList<Part> Parts;
 
@@ -71,11 +69,11 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Контракт модели разрушения. Число деталей НЕ оговаривается: это дело
-    /// реализации (будущий JointedBreakup возьмёт N из списка стыков).
-    /// Математические инварианты выхода (проверяются тестом, не словами):
+    /// Breakup model contract. The number of parts is NOT prescribed: that is up
+    /// to the implementation (JointedBreakup takes N from the joint list).
+    /// Mathematical output invariants (enforced by exceptions, not words):
     ///   Σ m_i = m_ship,
-    ///   Σ m_i·f_i = m_ship·v_impact   (следствие: Σ m_i·v_i = m_ship·v_ship).
+    ///   Σ m_i·f_i = m_ship·v_impact   (corollary: Σ m_i·v_i = m_ship·v_ship).
     /// </summary>
     public interface IBreakupModel
     {
@@ -83,52 +81,51 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Тестовая реализация: whole-ship как сборка из одной «детали» делится на
-    /// N фрагментов. N=10 — приватная константа ЭТОЙ реализации (см. п.3 v3),
-    /// контракту IBreakupModel количество неизвестно. Разброс детерминированный
-    /// (Фибоначчи-сфера × SpreadFactor·|v_impact|), центрирование — ВЗВЕШЕННЫМ
-    /// по массе средним (при равных массах совпадает с обычным, но контракт
-    /// писан под будущие неравные детали):
+    /// Whole-ship as one "part" split into N fragments. N=10 is a private constant
+    /// of THIS implementation; the IBreakupModel contract does not fix the count.
+    /// The spread is deterministic (Fibonacci sphere × SpreadFactor·|v_impact|),
+    /// centred by a MASS-WEIGHTED mean (matches the plain mean for equal masses, but
+    /// the contract is written for unequal parts):
     ///   f_i = v_impact + s_i,  s_i ← s_i − (Σ m_j·s_j)/(Σ m_j).
-    /// Проверка инвариантов — громким исключением, не комментарием.
+    /// Invariants are checked with a loud exception, not a comment.
     /// </summary>
     /// <summary>
-    /// Разрушение по стыкам сборки (детали + прочность стыков из Parts).
-    /// Модель импульсная, детерминированная:
-    ///   v_n  — нормальная компонента ОТНОСИТЕЛЬНОЙ скорости удара;
-    ///   load = m_детали·|v_n|/PulseSeconds — импульсная перегрузка на стык
-    ///          (характерное время гашения PulseSeconds);
-    ///   стык держит ⟺ load ≤ JointStrengthNewtons. Перегруженные детали
-    ///   отсоединяются целиком, выжившие остаются кораблём (Landed).
+    /// Breakup at assembly joints (parts + joint strength from Parts).
+    /// The model is impulsive and deterministic:
+    ///   v_n  — normal component of the RELATIVE impact velocity;
+    ///   load = m_part·|v_n|/PulseSeconds — impulsive overload on the joint
+    ///          (characteristic damping time PulseSeconds);
+    ///   a joint holds ⟺ load ≤ JointStrengthNewtons. Overloaded parts
+    ///   detach entirely, survivors stay the ship (Landed).
     ///
-    /// Отскок отсоединённой детали: нормальная компонента отражается с
-    /// SurfaceRestitution («не сильно отскакивают»), тангенциальная гасится
-    /// в TangentialDampFactor раз у ВСЕХ участков, сверху детерминированный
-    /// разброс в КАСАТЕЛЬНОЙ плоскости (золотой угол × SpreadFactor·|v_n|).
-    /// Книжка импульса (проверяется громко, как в SingleThreshold):
-    ///   ТАНГЕНЦИАЛЬНЫЙ инвариант точный: Σ m_i·f_i^t = m_ship·v_t
-    ///   (момент касания без внешнего тангенциального импульса; трение
-    ///   грунта догасит скорость уже после).
-    ///   НОРМАЛЬНАЯ компонента НЕ сохраняется по построению: есть внешний
-    ///   импульс грунта (гасит прижатие) + отражённый отскок деталей —
-    ///   осознанное отличие от free-разлёта SingleThreshold.
-    /// Пустой список спеков = стыки выдержали удар → посадка с повреждениями.
-    /// input.Parts null/пусто → вырожденный whole-ship путь SingleThreshold.
+    /// Detached-part bounce: the normal component is reflected with
+    /// SurfaceRestitution ("they don't bounce much"), the tangential one is damped
+    /// by TangentialDampFactor for ALL fragments, plus a deterministic spread in
+    /// the TANGENTIAL plane (golden angle × SpreadFactor·|v_n|).
+    /// Momentum bookkeeping (checked loudly, as in SingleThreshold):
+    ///   The TANGENTIAL invariant is exact: Σ m_i·f_i^t = m_ship·v_t
+    ///   (at the instant of contact, with no external tangential impulse; ground
+    ///   friction damps the velocity afterwards).
+    ///   The NORMAL component is NOT conserved by construction: there is an external
+    ///   ground impulse (damping the press-in) + the reflected part bounce — a
+    ///   deliberate difference from SingleThreshold's free break-up.
+    /// An empty spec list = the joints survived the impact → landing with damage.
+    /// input.Parts null/empty → the degenerate whole-ship SingleThreshold path.
     /// </summary>
     public sealed class JointedBreakup : IBreakupModel
     {
         private const double GoldenAngle = 2.3999632297286535d;
 
-        /// <summary>Характерное время гашения удара (с) для перегрузки стыков.</summary>
+        /// <summary>Characteristic impact damping time (s) for joint overload.</summary>
         public double PulseSeconds = 0.05d;
 
-        /// <summary>Коэффициент отскока нормальной скорости отсоединённых деталей.</summary>
+        /// <summary>Restitution coefficient for the normal velocity of detached parts.</summary>
         public double SurfaceRestitution = 0.2d;
 
-        /// <summary>Во сколько раз гасится тангенциальная скорость отломанных деталей.</summary>
+        /// <summary>Factor by which the tangential velocity of broken-off parts is damped.</summary>
         public double TangentialDampFactor = 0.5d;
 
-        /// <summary>Разброс скоростей деталей (доля от |v_n|).</summary>
+        /// <summary>Spread of part velocities (fraction of |v_n|).</summary>
         public double SpreadFactor = 0.3d;
 
         private readonly SingleThresholdBreakup fallback = new SingleThresholdBreakup();
@@ -149,8 +146,8 @@ namespace Galilego.Events
             double normalSpeed = Vector3d.Dot(input.ImpactVelocity, normal);
             Vector3d tangential = input.ImpactVelocity - (normal * normalSpeed);
 
-            // Эффективные массы: детали нормируются к фактической массе корабля
-            // (топливо выгорает — масса сборки дрейфует от сумки деталей).
+            // Effective masses: parts are normalised to the actual ship mass
+            // (fuel burns off, so the assembly mass drifts from the parts sum).
             double partsMass = 0d;
             for (int i = 0; i < input.Parts.Count; i++)
             {
@@ -169,7 +166,7 @@ namespace Galilego.Events
                 effective[i] = input.Parts[i].MassKg * scale;
             }
 
-            // Перегрузка на стык: импульс детали, делённый на время гашения.
+            // Overload on the joint: the part's impulse divided by the damping time.
             double pulse = PulseSeconds > 0d ? PulseSeconds : throw new InvalidOperationException("JointedBreakup: PulseSeconds обязан быть положительным.");
             double loadPerKg = Math.Abs(normalSpeed) / pulse;
             var broken = new List<int>();
@@ -189,19 +186,19 @@ namespace Galilego.Events
 
             if (broken.Count == 0)
             {
-                // Стыки держат: посадка с повреждениями, без спеков.
+                // Joints hold: landing with damage, no specs.
                 return new PartSeparationSpec[0];
             }
 
             Vector3d survivorVelocity = tangential * (1d - TangentialDampFactor);
             double brokenMass = input.ShipMass - survivorsMass;
 
-            // Средняя тангенциальная скорость отломанных деталей — из точного
-            // тангенциального инварианта: Σ m_i·f_i^t = m_ship·v_t − m_surv·f_surv^t.
+            // Mean tangential velocity of broken-off parts — from the exact
+            // tangential invariant: Σ m_i·f_i^t = m_ship·v_t − m_surv·f_surv^t.
             Vector3d brokenMeanTangent = ((tangential * input.ShipMass) - (survivorVelocity * survivorsMass)) / brokenMass;
 
-            // Детерминированный разброс в КАСАТЕЛЬНОЙ плоскости (золотой угол),
-            // центрируется взвешенной поправкой в ноль — нормаль не трогает.
+            // Deterministic spread in the TANGENTIAL plane (golden angle),
+            // centred to zero by a weighted correction — leaves the normal untouched.
             double spreadSpeed = SpreadFactor * Math.Abs(normalSpeed);
             Vector3d t1 = Math.Abs(normal.X) < 0.9d ? new Vector3d(1d, 0d, 0d) : new Vector3d(0d, 1d, 0d);
             t1 = (t1 - (normal * Vector3d.Dot(t1, normal))).Normalized;
@@ -254,14 +251,13 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Тестовая реализация: whole-ship как сборка из одной «детали» делится на
-    /// N фрагментов. N=10 — приватная константа ЭТОЙ реализации (см. п.3 v3),
-    /// контракту IBreakupModel количество неизвестно. Разброс детерминированный
-    /// (Фибоначчи-сфера × SpreadFactor·|v_impact|), центрирование — ВЗВЕШЕННЫМ
-    /// по массе средним (при равных массах совпадает с обычным, но контракт
-    /// писан под будущие неравные детали):
+    /// Whole-ship as one "part" split into N fragments. N=10 is a private constant
+    /// of THIS implementation; the IBreakupModel contract does not fix the count.
+    /// The spread is deterministic (Fibonacci sphere × SpreadFactor·|v_impact|),
+    /// centred by a MASS-WEIGHTED mean (matches the plain mean for equal masses, but
+    /// the contract is written for unequal parts):
     ///   f_i = v_impact + s_i,  s_i ← s_i − (Σ m_j·s_j)/(Σ m_j).
-    /// Проверка инвариантов — громким исключением, не комментарием.
+    /// Invariants are checked with a loud exception, not a comment.
     /// </summary>
     public sealed class SingleThresholdBreakup : IBreakupModel
     {

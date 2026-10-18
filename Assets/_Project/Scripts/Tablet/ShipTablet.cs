@@ -4,15 +4,15 @@ using UnityEngine;
 namespace Galilego.Tablet
 {
     /// <summary>
-    /// Планшет управления кораблём. Вешается на GO планшета (или рядом) и
-    /// рисует экран 512×320 в текстуру, которая кладётся на меш экрана
-    /// (ScreenRenderer). Пока игрок не взаимодействует — просто показывает
-    /// данные (до CompactRefreshHz кадров/с, без реакции на ввод). Open() —
-    /// интерфейс разворачивается на весь экран с целым масштабом пикселей, курсор
-    /// освобождается, работают кнопки; Esc / E — свернуть.
+    /// Ship control tablet. Attach to the tablet GameObject (or nearby); it renders
+    /// a 512×320 screen into a texture that is assigned to the screen mesh
+    /// (ScreenRenderer). While the player is not interacting it only shows data
+    /// (up to CompactRefreshHz times per second, no input handling). Open() expands
+    /// the interface to fullscreen at integer pixel scale, releases the cursor and
+    /// enables the buttons; Esc / E collapses it.
     ///
-    /// Материал экрана: лучше HDRP/Unlit (карта цвета кладётся в _UnlitColorMap);
-    /// подхватываются также _BaseColorMap / _BaseMap / _MainTex / _EmissiveColorMap.
+    /// Screen material: HDRP/Unlit preferred (the color map goes into _UnlitColorMap);
+    /// _BaseColorMap / _BaseMap / _MainTex / _EmissiveColorMap are also picked up.
     /// </summary>
     public sealed class ShipTablet : MonoBehaviour
     {
@@ -49,10 +49,10 @@ namespace Galilego.Tablet
         private bool prevCursorVisible;
         private CursorLockMode prevCursorLock;
 
-        /// <summary>Коллайдер меша экрана (мировой указатель: луч → UV → пиксель панели).</summary>
+        /// <summary>Screen mesh collider (world pointer: ray → UV → panel pixel).</summary>
         private Collider screenCollider;
 
-        /// <summary>В этом кадре луч смотрит на экран (жатие кнопок прямо на мониторе).</summary>
+        /// <summary>This frame the ray hits the screen (button presses directly on the monitor).</summary>
         private bool worldPointerHit;
 
         private Galilego.Universe.SimulationRunner runner;
@@ -60,27 +60,27 @@ namespace Galilego.Tablet
         private readonly RaycastHit[] worldHits = new RaycastHit[8];
 
         /// <summary>
-        /// Кадр, в котором планшет открыли: клавиша открытия (E) в этом же кадре
-        /// ещё лежит в очереди IMGUI-событий, и без этой защиты OnGUI тем же
-        /// нажатием планшет мгновенно закрывал бы.
+        /// Frame in which the tablet was opened: the open key (E) is still queued in
+        /// the IMGUI events during that same frame, and without this guard OnGUI would
+        /// immediately close the tablet with the same press.
         /// </summary>
         private int openFrame = -1;
 
-        /// <summary>Развёрнут ли планшет на весь экран.</summary>
+        /// <summary>Whether the tablet is expanded to fullscreen.</summary>
         public bool Expanded { get; private set; }
 
         private static int expandedCount;
 
         /// <summary>
-        /// Развёрнут ли хоть один планшет: другие интерфейсы (окно инвентаря
-        /// BuilderUI) по этому флагу не перехватывают E, пока планшет открыт.
+        /// Whether any tablet is expanded: other interfaces (the BuilderUI inventory
+        /// window) use this flag to not grab E while a tablet is open.
         /// </summary>
         public static bool AnyExpanded { get { return expandedCount > 0; } }
 
-        /// <summary>Вызывается при сворачивании (игрок вернул управление).</summary>
+        /// <summary>Raised on collapse (the player has regained control).</summary>
         public event Action Closed;
 
-        /// <summary>Текстура экрана (можно повесить на любой другой материал/RawImage).</summary>
+        /// <summary>Screen texture (can be assigned to any other material/RawImage).</summary>
         public Texture2D Texture { get { return texture; } }
 
         private void Awake()
@@ -129,7 +129,7 @@ namespace Galilego.Tablet
                 screenCollider = ScreenRenderer.GetComponentInChildren<Collider>();
             }
 
-            screenMaterial = ScreenRenderer.material; // собственный экземпляр
+            screenMaterial = ScreenRenderer.material; // own instance
             for (int i = 0; i < TextureProperties.Length; i++)
             {
                 if (screenMaterial.HasProperty(TextureProperties[i]))
@@ -146,8 +146,8 @@ namespace Galilego.Tablet
 
             if (screenMaterial.HasProperty("_EmissiveColor"))
             {
-                // HDRP/Unlit без ключа _EMISSIVE_COLOR_MAP светит _EmissiveColor
-                // ровно по всему экрану (UnlitData.hlsl) — белый вымывает картинку.
+                // HDRP/Unlit without the _EMISSIVE_COLOR_MAP keyword lights the
+                // whole screen with _EmissiveColor (UnlitData.hlsl) — white washes the image out.
                 screenMaterial.SetColor("_EmissiveColor", Color.black);
             }
         }
@@ -166,8 +166,8 @@ namespace Galilego.Tablet
 
             UpdateWorldPointer();
 
-            // Свёрнут — CompactRefreshHz; развёрнут или под прицелом (мировой
-            // клик по монитору) — 30 Гц: клик ждёт кадра не дольше 33 мс.
+            // Collapsed — CompactRefreshHz; expanded or under the crosshair (world
+            // click on the monitor) — 30 Hz: a click waits no longer than 33 ms.
             if (!Expanded && Time.unscaledTime < nextRefresh)
             {
                 return;
@@ -176,18 +176,18 @@ namespace Galilego.Tablet
             bool fast = Expanded || worldPointerHit;
             nextRefresh = Time.unscaledTime + (1f / (fast ? 30f : Mathf.Max(1f, CompactRefreshHz)));
             Link.Fill(telemetry);
-            // Под прицелом панель тоже «интерактивна»: работают наведение и клик.
+            // Under the crosshair the panel is "interactive" too: hover and click work.
             screen.Render(telemetry, Link, Expanded || worldPointerHit);
             texture.SetPixels32(screen.Canvas.Pixels);
             texture.Apply(false);
         }
 
         /// <summary>
-        /// Мировой указатель: луч камеры (прицел) в меш экрана — точка попадания
-        /// по UV переводится в пиксели панели; ЛКМ и протяжка жмут кнопки прямо
-        /// на мониторе, стрелка-курсор рисуется на самом экране. Работает, когда
-        /// планшет не развёрнут, курсор захвачен и не идёт стройка (там ЛКМ/ПКМ
-        /// заняты постановкой деталей).
+        /// World pointer: cast the camera ray (crosshair) against the screen mesh; the
+        /// hit point is converted from UV to panel pixels. LMB and drag press buttons
+        /// directly on the monitor, and the cursor arrow is drawn on the screen itself.
+        /// Active while the tablet is collapsed, the cursor is locked and no building is
+        /// in progress (there LMB/RMB place parts).
         /// </summary>
         private void UpdateWorldPointer()
         {
@@ -222,8 +222,8 @@ namespace Galilego.Tablet
             int best = -1;
             for (int i = 0; i < count; i++)
             {
-                // Нас интересует только сам экран (меш-коллайдер с UV): рамка и
-                // корпус монитора снаружи в счёт не идут.
+                // Only the screen itself matters (the mesh collider with UV): the
+                // bezel and the outer monitor housing do not count.
                 if (worldHits[i].collider == screenCollider
                     && (best < 0 || worldHits[i].distance < worldHits[best].distance))
                 {
@@ -254,7 +254,7 @@ namespace Galilego.Tablet
             }
         }
 
-        /// <summary>Развернуть планшет на весь экран (кнопки начинают работать).</summary>
+        /// <summary>Expand the tablet to fullscreen (buttons become active).</summary>
         public void Open()
         {
             if (Expanded)
@@ -271,7 +271,7 @@ namespace Galilego.Tablet
             Cursor.visible = true;
         }
 
-        /// <summary>Свернуть планшет обратно на корабельный экран.</summary>
+        /// <summary>Collapse the tablet back onto the ship screen.</summary>
         public void Close()
         {
             if (!Expanded)
@@ -322,9 +322,9 @@ namespace Galilego.Tablet
 
             if (e.type == EventType.KeyDown && (e.keyCode == KeyCode.Escape || e.keyCode == KeyCode.E))
             {
-                // E в кадре открытия — то же нажатие, что уже обработал
-                // TabletInteractable: закрывать им нельзя, иначе планшет
-                // «не открывается». Esc закрывает всегда.
+                // E in the opening frame is the same press TabletInteractable
+                // already handled: it must not close the tablet, otherwise the
+                // tablet "won't open". Esc always closes.
                 if (e.keyCode == KeyCode.E && Time.frameCount == openFrame)
                 {
                     e.Use();

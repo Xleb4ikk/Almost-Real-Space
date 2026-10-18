@@ -7,9 +7,9 @@ using UnityEngine.SceneManagement;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Разово поднимает бюджеты LOD/кэша у всех PlanetSurfaceRenderer в сценах
-    /// (сцена хранит собственные сериализованные значения): быстрее строится
-    /// ближний LOD, меньше «мигания» чанков и декора при движении.
+    /// One-off raise of the LOD/cache budgets of every PlanetSurfaceRenderer in
+    /// the open scenes (scenes keep their own serialized values): the near LOD
+    /// builds faster and chunks/decor flicker less while moving.
     /// </summary>
     public static class PlanetRendererTuningSetup
     {
@@ -59,7 +59,7 @@ namespace Galilego.Universe.EditorTools
         }
     }
 
-    /// <summary>Первичный автозапуск по маркеру.</summary>
+    /// <summary>First-run auto-run keyed by a marker.</summary>
     [InitializeOnLoad]
     internal static class PlanetRendererTuningSetupAuto
     {

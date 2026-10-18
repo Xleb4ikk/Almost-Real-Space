@@ -4,41 +4,36 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Граница между физикой и движком. Физика живёт в инерциальном
-    /// астродинамическом кадре (Z-up, СИ, double, см. KeplerMath): там считаются
-    /// гравитация, интеграторы, события. Движку нужен Y-up float-кадр.
-    /// Граница ТИПИЗИРОВАНА: sim-вектор — отдельный тип (SimVector3, а в Unity —
-    /// UnityEngine.Vector3), случайно скормить его функции, ждущей Vector3d,
-    /// нельзя без явного прохода через этот мост. Маппинг ровно один, зафиксирован
-    /// здесь, а не размазан по ToVector3():
-    /// sim = (x, z, −y) — поворот на −90° вокруг X (det=+1, праворукость
-    /// сохранена, cross product коммутирует с мостом); север +Z становится
-    /// up +Y. Обратное — транспонированная матрица: astro = (sim.X, −sim.Z,
-    /// sim.Y). Старая перестановка (x,z,y) была отражением (det=−1) и молча
-    /// переворачивала знак всем величинам через cross product — поймано
-    /// рецензией до кода. Vector3d.ToVector3() (голый каст без перестановки
-    /// осей) помечен [Obsolete] — это был единственный оставшийся путь
-    /// перепутать кадр мимо моста. Миграция Unity-boundary callers на мост —
-    /// явным списком, вне ядра.
+    /// The boundary between physics and the engine. Physics lives in the inertial
+    /// astrodynamics frame (Z-up, SI, double, see KeplerMath): gravity, integrators
+    /// and events are computed there. The engine needs a Y-up float frame.
+    /// The boundary is TYPED: a sim vector is a distinct type (SimVector3, and in
+    /// Unity UnityEngine.Vector3), so it cannot be fed by accident to a function
+    /// expecting Vector3d without an explicit pass through this bridge. There is
+    /// exactly one mapping, fixed here rather than scattered across ToVector3():
+    /// sim = (x, z, −y) — a −90° rotation about X (det=+1, handedness preserved,
+    /// cross product commutes with the bridge); north +Z becomes up +Y. The inverse
+    /// is the transposed matrix: astro = (sim.X, −sim.Z, sim.Y). Vector3d.ToVector3()
+    /// (a bare cast without axis permutation) is marked [Obsolete].
     /// </summary>
     public static class AstroFrame
     {
 #if UNITY_5_3_OR_NEWER
-        /// <summary>Астродинамический double-вектор в симуляционный float-кадр.</summary>
+        /// <summary>Astrodynamics double vector into the simulation float frame.</summary>
         public static UnityEngine.Vector3 ToSimulation(Vector3d astro)
         {
             return new UnityEngine.Vector3((float)astro.X, (float)astro.Z, (float)-astro.Y);
         }
 
-        /// <summary>Симуляционный кадр обратно в астродинамический.</summary>
+        /// <summary>Simulation frame back into astrodynamics.</summary>
         public static Vector3d ToAstro(UnityEngine.Vector3 sim)
         {
             return new Vector3d(sim.x, -sim.z, sim.y);
         }
 
-        /// <summary>Ориентация ядра (QuaternionD, body→world) в кватернион Unity:
-        /// та же перестановка осей сопряжением — угол сохраняется, ось идёт через
-        /// позиционный мост. Дёшево на double, конверсия в float — на выходе.</summary>
+        /// <summary>Core orientation (QuaternionD, body→world) into a Unity quaternion:
+        /// the same axis permutation by conjugation — the angle is preserved and the axis
+        /// goes through the position bridge. Cheap in double, converted to float on output.</summary>
         public static UnityEngine.Quaternion ToSimulation(QuaternionD astro)
         {
             QuaternionD sim = ToSimulationFrame(astro);
@@ -46,13 +41,13 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Поворот, УЖЕ собранный в sim-осях: только Float-каст, никакой
-        /// перестановки и никакого сопряжения.
+        /// A rotation ALREADY assembled in sim axes: only a float cast, no permutation
+        /// and no conjugation.
         ///
-        /// Нужен там, где базис строят в sim-координатах явно (SurfaceFrameMath
-        /// .SimulationRotation: перестановка применена к КАЖДОМУ образу локальной
-        /// оси до сборки матрицы). Повторный ToSimulation(QuaternionD) поверх
-        /// такого результата переставил бы оси ещё раз — фрейм вставал боком.
+        /// Needed where the basis is built explicitly in sim coordinates (SurfaceFrameMath
+        /// .SimulationRotation: the permutation is applied to EACH image of the local axis
+        /// before the matrix is assembled). Calling ToSimulation(QuaternionD) again on such
+        /// a result would permute the axes a second time and tilt the frame.
         /// </summary>
         public static UnityEngine.Quaternion SimulationQuaternion(QuaternionD sim)
         {
@@ -60,8 +55,8 @@ namespace Galilego.Universe
         }
 #else
         /// <summary>
-        /// Вне Unity (тестовый стенд): тот же маппинг на double-тройке,
-        /// чтобы roundtrip-тесты гоняли боевую перестановку осей, а не заглушку.
+        /// Outside Unity (test harness): the same mapping on a double triple, so the
+        /// roundtrip tests exercise the real axis permutation rather than a stub.
         /// </summary>
         public static SimVector3 ToSimulation(Vector3d astro)
         {
@@ -75,12 +70,11 @@ namespace Galilego.Universe
 #endif
 
         /// <summary>
-        /// Мост ОРИЕНТАЦИЙ: q_sim = R·q_astro·R⁻¹, где R — тот же поворот
-        /// (x, z, −y) позиционного моста (R_x(−90°), det=+1). Чистая
-        /// double-функция — тестируется на стенде (T76); Unity-ветка выше лишь
-        /// пакует результат в UnityEngine.Quaternion. Сопряжение сохраняет
-        /// угол и переводит ось позиционным мостом: вращение вокруг севера
-        /// +Z становится вращением вокруг up +Y.
+        /// ORIENTATION bridge: q_sim = R·q_astro·R⁻¹, where R is the same (x, z, −y)
+        /// rotation as the position bridge (R_x(−90°), det=+1). A pure double function,
+        /// unit-tested; the Unity branch above merely packs the result into
+        /// UnityEngine.Quaternion. Conjugation preserves the angle and maps the axis via
+        /// the position bridge: a rotation about north +Z becomes a rotation about up +Y.
         /// </summary>
         public static QuaternionD ToSimulationFrame(QuaternionD astro)
         {
@@ -90,13 +84,13 @@ namespace Galilego.Universe
     }
 
     /// <summary>
-    /// Официальный тип sim-кадра (Y-up) вне Unity — типизированная граница
-    /// astro/sim: sim-вектор не совместим по типу с Vector3d, перепутать кадр
-    /// мимо AstroFrame невозможно без явного каста полей. В Unity роль играет
-    /// сам UnityEngine.Vector3 (float, тот же порядок полей x/y/z).
-    /// ВАЖНО: сам struct компилируется ВСЕГДА — T76 roundtrip-тесты ссылаются
-    /// на тип по имени; ветки ToSimulation/ToAstro выше всё равно взаимно
-    /// исключающие, конфликта сигнатур нет.
+    /// The canonical sim-frame (Y-up) type outside Unity — the typed astro/sim
+    /// boundary: a sim vector is not type-compatible with Vector3d, so the frame
+    /// cannot be mixed up away from AstroFrame without an explicit field cast. In
+    /// Unity, UnityEngine.Vector3 itself plays this role (float, same x/y/z field
+    /// order). IMPORTANT: the struct always compiles — roundtrip tests reference the
+    /// type by name, and the ToSimulation/ToAstro branches above are mutually
+    /// exclusive, so there is no signature conflict.
     /// </summary>
     public struct SimVector3
     {

@@ -7,14 +7,14 @@ Shader "Galilego/PlanetSurface"
         _SpecularPower("Specular Power", Float) = 120.0
         _SpecularIntensity("Specular Intensity", Float) = 0.8
         _RimColor("Water Sky Rim", Color) = (0.35, 0.55, 0.85, 1)
-        // _ShoreWetMeters/_ShoreWetTint НЕ в Properties — намеренно: свойство
-        // материала перекрывает глобал, и рантайм-материал (new Material(shader))
-        // молча взял бы свой дефолт. Значения приезжают только из
-        // PlanetSurfaceRenderer.ApplyTerrainGlobals, как _BeachHeightMeters.
-        // (Проверено: с ними в Properties A/B давал 0 изменённых пикселей.)
-        // _TexLow/_TexMid/_TexHigh/_TexSteep/_TexOcclusion НЕ в Properties:
-        // иначе рантайм-материал получает свои дефолтные "white" текстуры,
-        // которые перекрывают глобалы PlanetSurfaceRenderer (земля белела).
+        // _ShoreWetMeters/_ShoreWetTint are intentionally NOT in Properties:
+        // a material property overrides the global, and the runtime material
+        // (new Material(shader)) would silently use its default. Values come
+        // only from PlanetSurfaceRenderer.ApplyTerrainGlobals, like
+        // _BeachHeightMeters. _TexLow/_TexMid/_TexHigh/_TexSteep/_TexOcclusion
+        // are also not in Properties: otherwise the runtime material gets its
+        // default "white" textures, which override the PlanetSurfaceRenderer
+        // globals.
     }
     SubShader
     {
@@ -38,14 +38,14 @@ Shader "Galilego/PlanetSurface"
             #include "GalilegoLighting.hlsl"
             #include "GalilegoUnderwaterCaustics.hlsl"
 
-            // Глобально, ставит PlanetSurfaceRenderer (мировая позиция камеры).
+            // Global, set by PlanetSurfaceRenderer (world camera position).
             float3 _PlanetCameraPos;
 
-            // Трипланарные UV текстур рельефа — camera-relative: дельты мировой
-            // позиции от камеры малы и точны (floating origin), поворот в
-            // тело-fixed оси даёт _TerrainWorldToBody (ставит PlanetSurfaceRenderer
-            // каждый кадр). Абсолютные координаты ~1.14e6 м во float квантуются
-            // шагом ~6 см (~2.5 текселя при scale 0.04) — отсюда шли «полосы».
+            // Terrain texture triplanar UVs are camera-relative: world-position
+            // deltas from the camera are small and precise (floating origin),
+            // rotated into body-fixed axes by _TerrainWorldToBody (set by
+            // PlanetSurfaceRenderer each frame). Absolute coordinates ~1.14e6 m
+            // quantise to ~6 cm in float (~2.5 texels at scale 0.04).
             float4x4 _TerrainWorldToBody;
             float4 _TerrainUVPhase0; // uvX.xy: (z, y), uvY.xy: (x, z)
             float4 _TerrainUVPhase1; // uvZ.xy: (x, y)
@@ -56,8 +56,8 @@ Shader "Galilego/PlanetSurface"
             float _SpecularPower;
             float _SpecularIntensity;
 
-            // Палитра/шум per-pixel альбедо: ставит PlanetSurfaceRenderer из
-            // HeightfieldTerrain + TerrainPalette (единственный источник правды).
+            // Per-pixel albedo palette/noise: set by PlanetSurfaceRenderer from
+            // HeightfieldTerrain + TerrainPalette (single source of truth).
             float _TerrainAmplitude;
             float _TerrainSeaLevel;
             float3 _TerrainBodyCenterWS;
@@ -108,8 +108,8 @@ Shader "Galilego/PlanetSurface"
             {
                 float3 positionOS : POSITION;
                 float3 normalOS   : NORMAL;
-                float3 dirOS      : TEXCOORD1; // тел-fixed единичное направление
-                float4 extra      : TEXCOORD2; // x: сырая высота (м), y: косинус уклона, z: маска цвета CPU, w: деталь CPU
+                float3 dirOS      : TEXCOORD1; // body-fixed unit direction
+                float4 extra      : TEXCOORD2; // x: raw height (m), y: slope cosine, z: CPU color mask, w: CPU detail
             };
 
             struct Varyings
@@ -132,25 +132,11 @@ Shader "Galilego/PlanetSurface"
                 return output;
             }
 
-            // --- Процедурный шум: НЕ ИСПОЛЬЗУЕТСЯ -----------------------------
-            //
-            // Блок ниже — мёртвый код. Он остался от варианта, где шейдер считал
-            // маску сам; сейчас маску и деталь интерполируют из вершин (см.
-            // фрагмент около строки 498), и Fbm/ValueNoise/StreamOffset не
-            // вызываются ниоткуда. Проверено поиском по проекту: .shadergraph в
-            // проекте нет, ни один .mat/.asset/.prefab не пишет _TerrainGain,
-            // _TerrainLacunarity или _TerrainSeed.
-            //
-            // Удалять пока нельзя вместе с заменой шума рельефа: если шейдерный
-            // путь вернёт к жизни, код ниже разойдётся с TerrainNoise.cs ещё и
-            // по набору градиентов — здесь value noise с хешем и 0xFFFF, там
-            // градиентное Перлин с 12 рёбрами куба. Сначала удаление отдельным
-            // коммитом после того, как решение о возврате шейдерного пути будет
-            // принято.
-            //
-            // Сид-оффсеты C# ~1.5e9 в double; во float столько знаков нет, поэтому
-            // потоки разводим МАЛЫМИ float-safe оффсетами. Паттерн отличается от
-            // вершинного варианта, но остаётся детерминированным и связным.
+            // --- Procedural noise: UNUSED --------------------------------------
+            // Dead code kept from the version where the shader computed the mask
+            // itself; Fbm/ValueNoise/StreamOffset are not called. The seed
+            // offsets below are small float-safe values (C# seeds are ~1.5e9
+            // in double, too large for float).
             float3 StreamOffset(float salt)
             {
                 float s = (_TerrainSeed * 0.0001) + (salt * 13.37);
@@ -164,8 +150,8 @@ Shader "Galilego/PlanetSurface"
 
             float LatticeValue(int x, int y, int z)
             {
-                // uint-арифметика: переполнение определено (wrap mod 2^32),
-                // в отличие от знакового int (UB для оптимизатора).
+                // uint arithmetic: overflow is defined (wrap mod 2^32),
+                // unlike signed int (UB for the optimiser).
                 uint h = ((uint)x * 374761393u) + ((uint)y * 668265263u) + ((uint)z * 2147483647u);
                 h = (h ^ (h >> 13)) * 1274126177u;
                 h ^= h >> 16;
@@ -230,7 +216,7 @@ Shader "Galilego/PlanetSurface"
                 return norm > 0.0 ? sum / norm : 0.0;
             }
 
-            // --- Палитра (порт TerrainPalette.HeightColorEx) --------------------
+            // --- Palette (port of TerrainPalette.HeightColorEx) -----------------
             float PaletteSmoothstep(float t)
             {
                 t = saturate(t);
@@ -273,24 +259,18 @@ Shader "Galilego/PlanetSurface"
                 return _ColForest.rgb;
             }
 
-            // Допуск у уровня моря — АБСОЛЮТНЫЙ, в метрах, и почти не зависит от
-            // амплитуды. Раньше здесь стояло amp*0.001 «на всякий случай», но при
-            // амплитуде рельефа 9144 м это 9.14 м: полоса СУШИ высотой 9 метров
-            // над водой классифицировалась как вода и рисовалась по ветке дна
-            // (sand * (0.30,0.38,0.36)), а на границе +9.14 м резко щёлкала на
-            // обычный цвет. Контур постоянной высоты на сфере с 2 м высоты
-            // проецируется почти в прямую горизонтальную линию через весь кадр —
-            // это и была «серая полоса на горизонте». Плюс из-за isWater=1 вся
-            // полоса мокрого песка домножалась на ноль и не рисовалась вовсе.
+            // Sea-level tolerance is ABSOLUTE, in metres, and nearly independent
+            // of amplitude. A constant-height contour on a sphere projects almost
+            // as a straight horizontal line across the frame.
             static float SeaEpsilon(float amp)
             {
                 return max(0.05, amp * 1e-6);
             }
 
-            // Вес песка по высоте над морем. Числа — зеркало TerrainPalette.
-            // SandWeight: полная полоса до 0.4·beach, ноль с 1.6·beach, ровно
-            // половина на beach. Одна функция на все три места (краска, текстуры,
-            // мокрая кромка) — иначе границы песка снова разъездуются.
+            // Sand weight by height above sea. Numbers mirror TerrainPalette.
+            // SandWeight: full band up to 0.4·beach, zero from 1.6·beach, exactly
+            // half at beach. One function for all three places (paint, textures,
+            // wet edge) — otherwise the sand boundaries drift apart.
             float SandWeight(float aboveSea)
             {
                 return _BeachHeightMeters > 0.0
@@ -318,16 +298,11 @@ Shader "Galilego/PlanetSurface"
 
                 t = max(t, 0.0);
 
-                // Песок по высоте над морем, маской не стирается: иначе на
-                // «плюсовых» берегах зелень начинается от уреза воды. НИЖЕ нет
-                // нормированной «песчаной» полосы: t<0.03 при амплитуде 13662 м —
-                // это сотни метров высоты, то есть весь прибрежный пляж/равнина.
-                // Песок = только абсолютная полка у воды (зеркалит
-                // TerrainPalette.SandWeight и фильтр BeachHeightMeters у декора).
-                //
-                // Не ступенька, а затухание: полная полоса до 0.4·beach, ноль с
-                // 1.6·beach, ровно половина на beach. Ступенчатый край константной
-                // высоты на сфере проецируется в прямую линию через весь кадр.
+                // Sand by height above sea, not erased by the mask: otherwise on
+                // "positive" shores greenery starts at the waterline. Sand is an
+                // absolute shelf at the water (mirrors TerrainPalette.SandWeight
+                // and the BeachHeightMeters decor filter). It is a falloff, not a
+                // step: full band to 0.4·beach, zero from 1.6·beach, half at beach.
                 float sandW = SandWeight(aboveSea);
                 float3 c;
                 if (sandW >= 1.0)
@@ -336,12 +311,12 @@ Shader "Galilego/PlanetSurface"
                 }
                 else
                 {
-                    // wet01 — ОБЩАЯ кривая с декором (GroundDecorDistribution.
-                    // BiomeWetness) и с CPU-палитрой. Мягкая, tanh вместо clamp:
+                    // wet01 is the SHARED curve with decor (GroundDecorDistribution.
+                    // BiomeWetness) and with the CPU palette. Soft, tanh instead of clamp:
 
-                    // маска широкая (p10=−0.33, p90=+0.32), clamp(0.5+1.6·mask)
-                    // насыщал 21% планеты в ровные 0/1 — отсюда были огромные
-                    // мёртвые зоны без травы/деревьев и ровные тональные заливки.
+                    // the mask is wide (p10=−0.33, p90=+0.32); clamp(0.5+1.6·mask)
+                    // saturated 21% of the planet to flat 0/1, producing large dead
+                    // zones without grass/trees and flat tonal fills.
                     float wet = maskOn ? (0.5 + 0.5 * tanh(1.6 * clamp(mask, -1.0, 1.0))) : 0.5;
                     float3 lowland = BiomeColor(wet);
                     if (t < 0.45)
@@ -369,15 +344,15 @@ Shader "Galilego/PlanetSurface"
                         c = lerp(c, _ColSnow.rgb, ice);
                     }
 
-                    // Песок — поверх биома: на затухании зелёный биом проступает
-                    // сквозь песок, а не исчезает на границе полосы.
+                    // Sand over the biome: in the falloff the green biome shows
+                    // through the sand instead of vanishing at the band edge.
                     c = lerp(c, _ColSand.rgb, sandW);
                 }
 
-                // Моттлинг земли: пятна почвы / сочной зелени. Только на земле
-                // выше пляжной зоны — на песке пятен быть не должно. Порог берём
-                // по весу песка, а не по жёсткой высоте: иначе пятна включались бы
-                // скачком на верхней границе затухания.
+                // Ground mottling: patches of soil / lush green. Only on land above
+                // the beach zone — no patches on sand. The threshold uses sand weight,
+                // not a hard height, so patches don't switch on abruptly at the top of
+                // the falloff.
                 bool isBeach = sandW > 0.0;
                 if (_ColorDetailStrength != 0.0 && !isBeach)
                 {
@@ -392,9 +367,9 @@ Shader "Galilego/PlanetSurface"
                     }
                 }
 
-                // Rock-override: скала только на крутых И достаточно высоких
-                // склонах (крупные горы). Порог по высоте отсекает пляж, дюны
-                // и низменности, где скалы не должны появляться.
+                // Rock override: rock only on steep AND sufficiently high slopes
+                // (large mountains). The height threshold excludes beach, dunes and
+                // lowlands where rock should not appear.
                 if (_TerrainRockSlopeTan > 0.0 && slopeTan >= _TerrainRockSlopeTan
                     && t >= _TerrainRockHeightMin && !isBeach)
                 {
@@ -403,7 +378,7 @@ Shader "Galilego/PlanetSurface"
                     c = lerp(c, _ColRock.rgb, w);
                 }
 
-                // Снежная полоса на крутых склонах — скала вместо снега.
+                // Snow band on steep slopes — rock instead of snow.
                 float snowT = (height - sea) / max(1.0, amp);
                 if (snowT >= 0.55 && _TerrainSnowSlopeTan > 0.0 && slopeTan > _TerrainSnowSlopeTan)
                 {
@@ -420,14 +395,11 @@ Shader "Galilego/PlanetSurface"
                     + (tex2D(tex, uvZ).rgb * weights.z);
             }
 
-            // Альбедо из текстур рельефа: низ/середина/верх по высоте над
-            // морем, скалы по склону, мягкий AO из occlusion. Биомный тинт
-            // (процедурная палитра) сохраняет климатические зоны читаемыми.
-            // Тинт обязан доминировать над насыщенным зелёным фото: иначе
-            // сухая степь выглядит лугом и противоречит декору (там нет ни
-            // травинок, ни деревьев — по биому).
-            // Координаты — дельта от камеры, повёрнутая в тело-fixed оси:
-            // малые числа без квантования ~6 см (см. _TerrainWorldToBody).
+            // Terrain albedo from textures: low/mid/high by height above sea,
+            // rock by slope, soft AO from occlusion. The biome tint (procedural
+            // palette) keeps climate zones readable and must dominate the
+            // saturated green photo. Coordinates are camera deltas rotated into
+            // body-fixed axes: small numbers without ~6 cm quantisation.
             float3 TerrainTextureAlbedo(float3 positionWS, float raw, float slopeTan, float3 normalObject, float3 biome)
             {
                 float3 relBody = mul((float3x3)_TerrainWorldToBody, positionWS - _PlanetCameraPos);
@@ -445,15 +417,13 @@ Shader "Galilego/PlanetSurface"
                 float midW = max(0.0, 1.0 - lowW - highW);
                 float steepW = smoothstep(_SteepBlendStart, _SteepBlendEnd, slopeTan);
 
-                // Каждый Triplanar — это 3 выборки из текстуры, и их тут пять
-                // (low/mid/high/steep/occlusion), то есть 15 tex2D на КАЖДЫЙ
-                // пиксель земли. Но веса высот по определению суммируются в 1,
-                // и на равнине lowW = 1, а midW = highW = 0 — три четверти
-                // выборок считались впустую и умножались на ноль. То же с
-                // steepW на ровном грунте. Ветки когерентны (высота и уклон
-                // меняются плавно, на квад 8x8 почти всегда одна ветка), так
-                // что дивергенции тут не возникает, а на типичной равнине
-                // остаётся 6 выборок вместо 15.
+                // Each Triplanar is 3 texture samples, and there are five
+                // (low/mid/high/steep/occlusion) = 15 tex2D per land pixel.
+                // Height weights sum to 1, so on flat ground lowW = 1 and
+                // midW = highW = 0; three quarters of the samples were multiplied
+                // by zero. Branches are coherent (height and slope vary slowly
+                // per 8x8 quad), so there is no divergence. A typical plain uses
+                // 6 samples instead of 15.
                 float3 c = float3(0.0, 0.0, 0.0);
                 if (lowW > 0.002)
                 {
@@ -472,13 +442,10 @@ Shader "Galilego/PlanetSurface"
                     c = lerp(c, Triplanar(_TexSteep, uvX, uvY, uvZ, tri), steepW);
                 }
 
-                // AO-текстура: на близкой дистанции полный трипланар, дальше одна
-                // проекция. Тексель AO-текстуры на сотни метрах от камеры много
-                // мельче пикселя, поэтому все три проекции попадают в ОДИН И ТОТ
-                // ЖЕ дальний мип и дают практически одинакое значение — три
-                // выборки, чтобы сложить одно и то же число. Переключение не
-                // даёт ступеньки яркости именно потому, что на этой дистанции
-                // значения и так почти совпадают.
+                // AO texture: full triplanar up close, a single projection
+                // farther away. At hundreds of metres the AO texel is much
+                // smaller than a pixel, so all three projections hit the same
+                // distant mip and give almost identical values.
                 float occl = distance(positionWS, GetCameraPositionWS()) < 220.0
                     ? dot(Triplanar(_TexOcclusion, uvX, uvY, uvZ, tri), float3(0.3333, 0.3333, 0.3333))
                     : dot(Triplanar(_TexOcclusion, uvX, uvY, uvZ, float3(0.0, 0.0, 1.0)), float3(0.0, 0.0, 1.0));
@@ -486,10 +453,9 @@ Shader "Galilego/PlanetSurface"
 
                 c *= lerp(float3(1.0, 1.0, 1.0), saturate(biome * 1.9), 0.65);
 
-                // Пляж поверх текстур: низковысотная текстура — зелёное фото,
-                // без этого полоса песка стиралась бы текстурным путём.
-                // Вес тот же, что у процедурной краски, иначе текстура и палитра
-                // давали бы разные края песка.
+                // Beach over the textures: the low-altitude texture is green
+                // photo, so without this the sand band would be erased. Same
+                // weight as the procedural paint so the edges match.
                 c = lerp(c, _ColSand.rgb, SandWeight(altitude));
 
                 return c;
@@ -501,20 +467,17 @@ Shader "Galilego/PlanetSurface"
                 float3 sunDir = normalize(_TerrainSunDir);
                 float ndl = saturate(dot(normal, sunDir));
 
-                // Тень HDRP (PCSS/PCF) от деревьев/камней/рельефа; гасит только
-                // солнечный член — ambient остаётся, теневые зоны не чёрные.
+                // HDRP shadow (PCSS/PCF) from trees/rocks/terrain; attenuates only
+                // the sun term — ambient remains, shadowed areas are not black.
                 float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, normal, sunDir);
                 float cloudShadow = SampleCloudShadow(input.positionWS);
 
-                // Единый световой член, пофрагментный: ночная засветка (звёзды) +
-                // небесная засветка (средняя яркость неба: день голубая, закат
-                // тёплая — полусферический градиент, НЕ зависит от ndl: на
-                // терминаторе небо светит, даже когда прямой луч уже погас)
-                // и солнце по нормали к НЕЙ, с цветом фотосфера × T атмосферы.
-                // Ночью остаётся только _NightAmbient (≈0) → поверхность почти черна.
-                // Честный солнечный член (вариант B): свет может превышать 1,
-                // пересвет разруливает глобальный тонмаппинг HDRP. Затенение по
-                // нормали сохраняется (множитель ndl ниже), рельеф читается.
+                // Single per-fragment light term: night ambient (stars) + sky
+                // ambient (mean sky brightness: blue by day, warm at sunset —
+                // hemispherical gradient, NOT dependent on ndl) + the sun by
+                // the surface normal, with photosphere × atmosphere T colour.
+                // At night only _NightAmbient remains (≈0) → almost black. The
+                // sun term can exceed 1; HDRP global tonemapping handles it.
                 float sun = _TerrainSun;
                 float3 radialUp = normalize(input.positionWS - _TerrainBodyCenterWS);
                 float dayLocal = smoothstep(-0.12, 0.08, dot(radialUp, sunDir));
@@ -522,21 +485,21 @@ Shader "Galilego/PlanetSurface"
                     + (GalilegoSkyAmbient(normal) * _TerrainRadianceScale * dayLocal)
                      + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale);
 
-                // --- Per-pixel альбедо -----------------------------------------
+                // --- Per-pixel albedo -----------------------------------------
                 float3 dir = normalize(input.dirOS);
                 float raw = input.extra.x;
                 float slopeCos = clamp(input.extra.y, -1.0, 1.0);
                 float slopeTan = SlopeTanFromCos(slopeCos);
                 float lat01 = saturate(abs(asin(clamp(dir.z, -1.0, 1.0))) / 1.5707963267948966);
 
-                // След пикселя в решётке шума: гасим деталь, когда она мельче
-                // пикселя (иначе высокочастотный шум мерцает/алиасится вдали).
+                // Pixel footprint in the noise lattice: attenuate detail when it is
+                // smaller than a pixel (otherwise high-frequency noise shimmers far away).
                 float angular = max(max(fwidth(dir.x), fwidth(dir.y)), fwidth(dir.z));
 
-                // Маска и деталь — интерполяция вершинных значений, посчитанных
-                // тем же CPU-шумом, что читает декор (паритет paint/placement).
-                // Своего Fbm у шейдера больше нет: его float-safe оффсеты давали
-                // другой паттерн, и лес на картинке оказывался степью для декора.
+                // Mask and detail are interpolated vertex values computed by the same
+                // CPU noise the decor reads (paint/placement parity). The shader no
+                // longer has its own Fbm: its float-safe offsets produced a different
+                // pattern, so visual forest would be steppe for the decor.
                 float mask = input.extra.z;
                 float detail = input.extra.w;
                 if (_ColorDetailStrength != 0.0 && _ColorDetailFrequency > 0.0)
@@ -547,8 +510,8 @@ Shader "Galilego/PlanetSurface"
 
                 float3 albedo = TerrainAlbedo(raw, mask, detail, slopeTan, lat01);
 
-                // Текстуры рельефа вместо процедурного альбедо —
-                // только на суше: море остаётся процедурным/водным.
+                // Terrain textures instead of procedural albedo —
+                // land only: the sea stays procedural/water.
                 float isWater = raw <= _TerrainSeaLevel + SeaEpsilon(_TerrainAmplitude) ? 1.0 : 0.0;
                 if (_TerrainUseTextures > 0.5 && isWater < 0.5)
                 {
@@ -556,31 +519,25 @@ Shader "Galilego/PlanetSurface"
                     albedo = TerrainTextureAlbedo(input.positionWS, raw, slopeTan, normalObject, albedo);
                 }
 
-                // Суша.
+                // Land.
                 float3 land = albedo * lightTerm;
 
-                // Дно океана (сырая высота ниже моря): геометрия чанков
-                // раскламплена до настоящего дна, а вода — отдельным
-                // почти непрозрачным мешем чанка (Galilego/WaterSurface: волны,
-                // блик, пена). Поглощение — в МЕТРАХ глубины. Дно гаснет БЫСТРО
-                // (к ~10 м — глухая темнота под почти непрозрачной водой):
-                // детальный рельеф дна сквозь воду не читается, "странного дна"
-                // нет — только тёмная глубина. Мокрый песок у кромки темнее.
+                // Ocean floor (raw height below sea): chunk geometry is clamped
+                // to the real bottom, and water is a separate nearly opaque chunk
+                // mesh (Galilego/WaterSurface: waves, specular, foam). Absorption
+                // is in METRES of depth; the floor fades quickly to darkness, so
+                // detailed seafloor relief is not visible through the water.
                 float depthMeters = max(0.0, _TerrainSeaLevel - raw);
                 float absorb = sqrt(saturate(depthMeters / 10.0));
                 float3 shallowBed = _ColSand.rgb * float3(0.30, 0.38, 0.36);
                 float3 seabedBase = lerp(shallowBed, _WaterDeep.rgb, smoothstep(0.0, 0.45, absorb));
                 float3 seabed = seabedBase * lightTerm * (1.0 - (0.85 * absorb));
 
-                // Мокрая кромка. Раньше здесь было плоское затемнение на 45 % во всех
-                // каналах: урез читался, но это просто «темнее», без перехода и без
-                // привязки к пляжу — тёмная лента лежала и на траве, и на камне.
-                // Теперь это градиент МЕТРОВ над уровнем моря: у самой кромки —
-                // тёмный прохладный мокрый песок (красный гаснет первым, как у
-                // песка под водой), выше — плавно к обычному цвету. Полоса
-                // ограничена пляжной зоной (beachW), поэтому берег остаётся
-                // мокрым на 3 м, а не весь пляж. Геометрия, уровень моря, вода и
-                // screen-door не трогаются — это только вид суши у кромки.
+                // Wet edge: a gradient in METRES above sea level. At the
+                // waterline it is dark, cool wet sand (red fades first, as
+                // underwater sand); higher it blends to the normal colour. The
+                // band is limited to the beach zone (beachW), so only ~3 m of
+                // shore stays wet, not the whole beach.
                 float shoreAlt = max(raw - _TerrainSeaLevel, 0.0);
                 float beachW = SandWeight(shoreAlt);
                 float wetBand = (1.0 - smoothstep(0.0, max(0.05, _ShoreWetMeters), shoreAlt))
@@ -594,11 +551,10 @@ Shader "Galilego/PlanetSurface"
             ENDHLSL
         }
 
-        // Глубина для depth-prepass HDRP. Без этого пасса рельеф не попадает
-        // в depth pyramid, которую читают прозрачные шейдеры (атмосфера,
-        // звёзды, диск солнца): их IsSky() считает пиксели гор небом, и небо
-        // рисуется сквозь рельеф. HDRP требует DepthForwardOnly у forward-
-        // материалов (см. HDRenderPipeline.RenderGraph.cs:952-956).
+        // Depth for the HDRP depth-prepass. Without this pass the terrain is
+        // missing from the depth pyramid read by transparent shaders
+        // (atmosphere, stars, sun disc): their IsSky() treats mountain pixels
+        // as sky. HDRP requires DepthForwardOnly on forward materials.
         Pass
         {
             Name "DepthForwardOnly"

@@ -8,7 +8,7 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Запекает поверхность мешей в непересекающиеся боксы в локальных осях каждой части.
+    /// Bakes mesh surfaces into non-overlapping boxes in each part's local axes.
     /// </summary>
     public static class SiteBoxBaker
     {
@@ -51,9 +51,9 @@ namespace Galilego.Universe.EditorTools
                     continue;
                 }
 
-                // Выпуклая часть → один точный convex hull из собственного меша.
-                // ValidateHull ловит случай, когда PhysX при сварке отсёк
-                // крайние вершины (лимит на облако точек) — тогда остаются боксы.
+                // A convex part becomes one exact convex hull from its own mesh.
+                // ValidateHull catches PhysX cutting off extreme vertices when welding
+                // (point-cloud limit) — in that case boxes are used instead.
                 if (IsConvex(mesh))
                 {
                     if (ValidateHull(mesh, out string reason))
@@ -135,9 +135,9 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Включает Read/Write у моделей, участвующих в запекании: сварка hull'а
-        /// в рантайме (BuildParts при старте сцены) читает данные меша скриптом.
-        /// После переимпорта список частей пересобирается — ссылки на меши могли обновиться.
+        /// Enables Read/Write on models taking part in baking: the runtime hull weld
+        /// (BuildParts at scene start) reads mesh data from script. After reimport the
+        /// part list is recollected — mesh references may have changed.
         /// </summary>
         private static List<MeshFilter> EnsureReadable(Transform root, List<MeshFilter> filters)
         {
@@ -180,7 +180,7 @@ namespace Galilego.Universe.EditorTools
             return SiteBox.CollectPartFilters(root);
         }
 
-        /// <summary>Меш строго выпуклый: все вершины по одну сторону плоскости каждой грани.</summary>
+        /// <summary>Mesh is strictly convex: all vertices on one side of every face plane.</summary>
         private static bool IsConvex(Mesh mesh)
         {
             Vector3[] vertices = mesh.vertices;
@@ -224,9 +224,9 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Сваривает временный convex MeshCollider и проверяет, что PhysX не отсёк
-        /// крайние вершины при построении hull (лимит на облако точек): сфера
-        /// радиуса 0.1% габарита в каждой вершине меша должна пересекать hull.
+        /// Welds a temporary convex MeshCollider and checks that PhysX did not cut off
+        /// extreme vertices when building the hull (point-cloud limit): a sphere of
+        /// radius 0.1% of the extents at each mesh vertex must intersect the hull.
         /// </summary>
         private static bool ValidateHull(Mesh mesh, out string reason)
         {
@@ -255,15 +255,13 @@ namespace Galilego.Universe.EditorTools
                 Vector3 firstFail = Vector3.zero;
                 for (int i = 0; i < vertices.Length; i++)
                 {
-                    // Вершина на поверхности hull'а: dist ≈ radius; внутри — больше;
-                    // снаружи — меньше (или пересечения нет вовсе).
+                    // Vertex on the hull surface: dist ≈ radius; inside — larger;
+                    // outside — smaller (or no intersection at all).
                     //
-                    // Допуск: PhysX при сварке упрощает hull и срезает углы на
-                    // миллиметры-сантиметры (проверено: база площадки — до 2.9 см
-                    // при радиусе 4.6 см). Это не влияет на игру (радиус капсулы
-                    // ~30 см), поэтому провалом считаем только dist < 0.1*radius
-                    // (срез больше 90% радиуса) или полное отсутствие пересечения —
-                    // так ловится реальная потеря PhysX региона вершин.
+                    // PhysX simplifies the hull when welding and shaves corners by
+                    // millimetres-centimetres; this does not affect gameplay (capsule
+                    // radius ~30 cm), so only dist < 0.1*radius or a complete miss
+                    // counts as a failure — that catches real vertex-region loss.
                     bool hit = Physics.ComputePenetration(
                         probe, vertices[i], Quaternion.identity,
                         hull, Vector3.zero, Quaternion.identity,
@@ -558,7 +556,7 @@ namespace Galilego.Universe.EditorTools
                 }
                 else if (part.UseConvexMesh && part.Source.sharedMesh != null)
                 {
-                    // Hull части = её собственный меш, габарит — mesh.bounds.
+                    // A part's hull is its own mesh; the extents come from mesh.bounds.
                     Bounds meshBounds = part.Source.sharedMesh.bounds;
                     for (int corner = 0; corner < 8; corner++)
                     {

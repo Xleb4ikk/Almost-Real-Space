@@ -3,9 +3,9 @@ using Galilego.Core;
 using Galilego.Spacecraft.Solver;
 using UnityEngine;
 
-// Фаза 4 (ТЗ v2, раздел 7): ноги и подвеска — пружинные ползуны с ходом и демпфированием.
-// Test220 — статическая осадка W/(N·k); Test221 — затухание свободных колебаний (ζ = 0.4);
-// Test222 — ограничение хода; Test223 — устойчивость на склоне 15° на трёх ногах.
+// Phase 4 (spec v2, section 7): legs and suspension — spring sliders with travel and damping.
+// Test220 — static sag W/(N·k); Test221 — free-oscillation decay (ζ = 0.4);
+// Test222 — travel limits; Test223 — stability on a 15° slope on three legs.
 internal static partial class P1bTests
 {
     private const double LegDt = 1e-3;
@@ -15,7 +15,7 @@ internal static partial class P1bTests
 
     private static RigidBody LegBody(Vector3d top)
     {
-        // Цилиндр r = 0.15 м, h = 2.5 м, масса 50 кг: Ixx = Izz = m(3r²+h²)/12, Iyy = m·r²/2.
+        // Cylinder r = 0.15 m, h = 2.5 m, mass 50 kg: Ixx = Izz = m(3r²+h²)/12, Iyy = m·r²/2.
         double r = 0.15d;
         double h = LegLength;
         double ixx = LegMass * ((3d * r * r) + (h * h)) / 12d;
@@ -25,7 +25,7 @@ internal static partial class P1bTests
         return leg;
     }
 
-    // Ось ноги — вертикаль вниз; сжатие = s0 − s (тело сближается с ногой).
+    // Leg axis points straight down; compression = s0 − s (body approaches the leg).
     static int Test220_LegSag()
     {
         const double tankMass = 4800d;
@@ -41,14 +41,14 @@ internal static partial class P1bTests
         {
             var top = new Vector3d(xs[i], 2.5d, zs[i]);
             legs[i] = solver.AddBody(LegBody(top));
-            // ζ = 0.4 по опорному режиму: колеблющаяся масса — бак на ногу (ТЗ 6.7).
+            // ζ = 0.4 for the grounded mode: oscillating mass is the tank per leg (spec 6.7).
             solver.AddSliderJoint(it, legs[i], top, new Vector3d(0d, -1d, 0d), -0.3d, 0.3d, k, 0.4d,
                 damperReferenceMass: tankMass / 4d);
         }
 
         bool dbg = Environment.GetEnvironmentVariable("P1B_LEG_DEBUG") == "1";
 
-        // 20 с: мода бака с ζ = 0.4 на массе бака затухает за τ ≈ 2 с; 6 с — недостаточно.
+        // 20 s: the tank mode (ζ = 0.4) on the tank mass decays with τ ≈ 2 s.
         for (int step = 0; step < 20000; step++)
         {
             tank.ForceWorld = new Vector3d(0d, -9.81d * tankMass, 0d);
@@ -84,27 +84,27 @@ internal static partial class P1bTests
         return 0;
     }
 
-    // Одна нога, малая масса бака: собственные колебания относительной координаты.
+    // One leg, small tank mass: free oscillations of the relative coordinate.
     static int Test221_LegDampingDecay()
     {
         const double tankMass = 50d;
         const double k = 49000d;
         const double zeta = 0.4d;
-        // Нога в воздухе (без поверхности): относительная масса — m_эфф = mA·mB/(mA+mB), как
-        // в формуле ζ. Опёртая на землю нога даёт массу бака — это другой, вынужденный случай.
+        // Leg in the air (no surface): relative mass m_eff = mA·mB/(mA+mB), as in
+        // the ζ formula. A leg resting on the ground gives the tank mass — a different, forced case.
         var solver = new RigidAssemblySolver(LegDt, LegIterations);
         var tank = new RigidBody(tankMass, new Vector3d(1d, 1d, 1d), new Vector3d(0d, 3.0d, 0d), QuaternionD.Identity);
         int it = solver.AddBody(tank);
         var top = new Vector3d(0d, 2.5d, 0d);
         int leg = solver.AddBody(LegBody(top));
-        // ζ = 0.4 по опорному режиму (масса аппарата на ногу = масса бака здесь).
+        // ζ = 0.4 for the grounded mode (craft mass per leg = tank mass here).
         double c = 2d * zeta * Math.Sqrt(k * tankMass);
         solver.AddSliderJoint(it, leg, top, new Vector3d(0d, -1d, 0d), -0.3d, 0.3d, k, zeta,
             damperReferenceMass: tankMass);
 
         double mEff = (tankMass * LegMass) / (tankMass + LegMass);
         double omega = Math.Sqrt(k / mEff);
-        // Воздушный режим: эффективное затухание из фактического c, τ = 2·m_eff/c.
+        // Airborne mode: effective damping from the actual c, τ = 2·m_eff/c.
         double zetaAir = c / (2d * Math.Sqrt(k * mEff));
         double sEq = solver.SliderCoordinate(0);
         tank.Position = tank.Position + new Vector3d(0d, 0.02d, 0d);
@@ -115,7 +115,7 @@ internal static partial class P1bTests
         double prevPrev = 0d;
         for (int step = 0; step < 2000; step++)
         {
-            // Без поля тяжести: собственные колебания относительной координаты.
+            // No gravity field: free oscillations of the relative coordinate.
             solver.Step();
             double x = Math.Abs(solver.SliderCoordinate(0) - sEq);
             if (step >= 2 && prev > x && prev > prevPrev && prev > 1e-6)
@@ -156,7 +156,7 @@ internal static partial class P1bTests
         return 0;
     }
 
-    // Сильная нагрузка: статическое сжатие и растяжение выходят за ход — ограничения держат.
+    // Heavy load: static compression and extension exceed travel — the limits hold.
     static int Test222_TravelLimits()
     {
         const double tankMass = 50d;
@@ -173,7 +173,7 @@ internal static partial class P1bTests
         double maxExtension = 0d;
         for (int phase = 0; phase < 2; phase++)
         {
-            // Фаза 0: тянем бак вниз (сжатие). Фаза 1: тянем вверх (растяжение).
+            // Phase 0: pull the tank down (compression). Phase 1: pull up (extension).
             double push = phase == 0 ? 30000d : -30000d;
             for (int step = 0; step < 3000; step++)
             {
@@ -193,7 +193,7 @@ internal static partial class P1bTests
         return 0;
     }
 
-    // Три ноги на склоне 15°: устойчивость 30 с (трение μs = 0.7 > tg 15° = 0.27).
+    // Three legs on a 15° slope: stability for 30 s (friction μs = 0.7 > tan 15° = 0.27).
     static int Test223_Slope15Stable()
     {
         const double tankMass = 4800d;
@@ -214,7 +214,7 @@ internal static partial class P1bTests
             double ang = i * 2d * Math.PI / 3d;
             double x = 2.2d * Math.Cos(ang);
             double z = 2.2d * Math.Sin(ang);
-            // Точка крепления над плоскостью y = −x·tg15 (нога вертикальна, стопа на плоскости).
+            // Attachment point above the plane y = −x·tan 15° (leg vertical, foot on the plane).
             var top = new Vector3d(x, 2.5d - (x * Math.Tan(th)), z);
             legs[i] = solver.AddBody(LegBody(top));
             solver.AddSliderJoint(it, legs[i], top, new Vector3d(0d, -1d, 0d), -0.3d, 0.3d, k, 0.4d,

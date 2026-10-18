@@ -8,12 +8,12 @@ using Xunit.Abstractions;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Тест H — смена SOI. Минимальная система без лун (звезда + одна планета
-    /// на круговой орбите): корабль стартует внутри SOI планеты на радиальной
-    /// траектории убегания и ровно один раз переходит под доминанту звезды.
-    /// Брекет перехода находится грубым сканированием в самом тесте, драйвер
-    /// обязан вернуть событие внутри брекета; доминанты по сторонам корня
-    /// обязаны различаться (планета → звезда).
+    /// Test H — SOI change. A minimal moonless system (a star plus one planet on
+    /// a circular orbit): the ship starts inside the planet's SOI on a radial
+    /// escape trajectory and crosses into the star's dominance exactly once.
+    /// The transition bracket is found by coarse scanning in the test itself, the
+    /// driver must return an event inside the bracket; the dominants on either
+    /// side of the root must differ (planet → star).
     /// </summary>
     public sealed class SoiChangeTests
     {
@@ -62,7 +62,7 @@ namespace GalilegoPhysicsTests
 
             Assert.Same(planet, system.FindDominantBody(pos0, 0d));
 
-            // Грубое сканирование брекета в самом тесте.
+            // Coarse bracket scan in the test itself.
             var scanPhysics = new SpacecraftPhysics();
             scanPhysics.Sources.Add(new GravitySource(system));
             var probe = new Spacecraft(pos0, vel0, TestScene.ShipMass);
@@ -84,7 +84,7 @@ namespace GalilegoPhysicsTests
             Assert.True(flipped, "Скан не нашёл выхода из SOI — неверная сцена.");
             output.WriteLine($"Брекет перехода: [{tPrev:F0}, {tNow:F0}] с.");
 
-            // Драйвер поверх той же физики.
+            // Driver over the same physics.
             var physics = new SpacecraftPhysics();
             physics.Sources.Add(new GravitySource(system));
             var propagator = new EventDrivenPropagator(physics);

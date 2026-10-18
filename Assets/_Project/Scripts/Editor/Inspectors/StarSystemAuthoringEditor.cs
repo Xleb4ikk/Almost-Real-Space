@@ -7,13 +7,12 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Инспектор StarSystemAuthoring: кнопка «Сгенерировать эфемериды» запускает
-    /// выпечку в фоновом потоке (RunBake уже потокобезопасен: читает чистую
-    /// математику тел, Unity API не трогает; система на главном потоке во время
-    /// бейка не мутируется — кнопки задизейблены). Прогресс — через polling
-    /// EditorApplication.update: Unity API вызывается только из главного потока.
-    /// Отмена — через cancelled() пекаря. Ошибки (ValidateBakeable, Hill, файлы)
-    /// — громкий диалог, пекарь намеренно отказывается молчать.
+    /// StarSystemAuthoring inspector: "Generate ephemerides" bakes on a background
+    /// thread (RunBake is thread-safe: pure body maths, no Unity API; the system is
+    /// not mutated on the main thread during baking — buttons are disabled). Progress
+    /// is polled via EditorApplication.update: Unity API is called from the main thread
+    /// only. Cancellation goes through the baker's cancelled(). Errors
+    /// (ValidateBakeable, Hill, files) raise a loud dialog — the baker never fails silently.
     /// </summary>
     [CustomEditor(typeof(StarSystemAuthoring))]
     public sealed class StarSystemAuthoringEditor : Editor
@@ -68,9 +67,8 @@ namespace Galilego.Universe.EditorTools
 
         private void StartBake(StarSystemAuthoring auth)
         {
-            // Сборка системы и все валидации контента (Hill, bakeable) — на
-            // главном потоке: исключения показываем диалогом, до бейка дело
-            // не доходит.
+            // System assembly and all content validation (Hill, bakeable) run on the
+            // main thread: exceptions are shown as a dialog before baking starts.
             SystemBlueprint blueprint;
             try
             {
@@ -187,7 +185,7 @@ namespace Galilego.Universe.EditorTools
             }
         }
 
-        /// <summary>Путь в проекте: "Assets/..." — от корня проекта, иначе как есть.</summary>
+        /// <summary>Project path: "Assets/..." resolves from the project root, otherwise used as is.</summary>
         private static string ResolveProjectPath(string folder)
         {
             if (Path.IsPathRooted(folder))

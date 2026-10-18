@@ -6,36 +6,36 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Превью поверхности в сцене: живёт под SurfaceFrame и показывает рельеф
-    /// вокруг точки спавна прямо в Scene view, без Play-режима. Нужно, чтобы
-    /// видеть планету и ставить базу: в сцене её нет, потому что рельеф
-    /// генерится в рантайме (PlanetSurfaceRenderer.Start), а координаты тела
-    /// (2.6e10 м) не влезают в float32 сцены.
+    /// Surface preview in the scene: lives under SurfaceFrame and shows the
+    /// terrain around the spawn point right in the Scene view, without Play mode.
+    /// Needed to see the planet and place bases: the scene has no terrain because
+    /// it is generated at runtime (PlanetSurfaceRenderer.Start), and body
+    /// coordinates (2.6e10 m) do not fit the scene's float32.
     ///
-    /// Объект превью служебный: HideFlags.DontSave, в сцену не пишется и в
-    /// билд не попадает. Считается тем же шумом, что и игровой, поэтому
-    /// «зелёное пятно под ногами» в сцене и под ногами в игре — одна земля.
+    /// The preview object is transient: HideFlags.DontSave, never written to the
+    /// scene and never included in builds. It samples the same noise as the game,
+    /// so the patch underfoot matches in the scene and in Play.
     ///
-    /// Размер патча ФИКСИРОВАН и не зависит от камеры SceneView — намеренно.
-    /// С поверхности должен быть виден горизонт, а камера автора может стоять
-    /// где угодно (в 35 км, под землёй, в ортографике) и тянуть за собой
-    /// масштаб; на этом уже ловилось «превью то есть, то нет».
+    /// The patch size is FIXED and deliberately independent of the SceneView
+    /// camera: the horizon must be visible from the surface, while the author's
+    /// camera can be anywhere (35 km away, underground, orthographic) and would
+    /// otherwise drag the scale along with it.
     /// </summary>
     [InitializeOnLoad]
     public static class SurfacePreviewTool
     {
         public const string PreviewName = "__SurfacePreview";
 
-        /// <summary>Число колец радиальной сетки. 13 → диапазон 2^12 = 4096:1 по радиусу.</summary>
+        /// <summary>Number of rings in the radial grid. 13 gives a 2^12 = 4096:1 radius range.</summary>
         private const int Rings = 13;
 
-        /// <summary>Видимый радиус, на котором превью перестраивается перед кадрированием, м.</summary>
+        /// <summary>Visible radius the preview rebuilds at before framing, m.</summary>
         private const double FocusVisibleRadius = 100d;
 
         /// <summary>
-        /// Радиус превью в сцене, м. Патх на 5 км одновременно несёт кольца от
-        /// 1.2 м у фрейма до 5 км на горизонте — клипмап это позволяет, а
-        /// автору нужен и масштаб базы, и горизонт.
+        /// Preview radius in the scene, m. A 5 km patch carries rings from 1.2 m
+        /// at the frame up to 5 km at the horizon: the clipmap allows it, and the
+        /// author needs both base-scale detail and the horizon.
         /// </summary>
         public static double PreviewRadiusMeters = 5000d;
 
@@ -46,19 +46,17 @@ namespace Galilego.Universe.EditorTools
         private static Material previewMaterial;
         private static SurfaceFrame boundFrame;
 
-        /// <summary>Рисовать превью вообще (тумблер в инспекторе фрейма).</summary>
+        /// <summary>Draw the preview at all (toggle in the frame's inspector).</summary>
         public static bool Enabled = true;
 
-        // Где игрок стоял в последнем проходе по Play. Кнопка «взять точку у
-        // игрока» обязана работать и после выхода из Play: остановиться,
-        // посмотреть превью и поставить базу — нормальный порядок, а внутри
-        // Play сцену не проверишь. В EditorPrefs, а не в статике: выход из Play
-        // делает перезагрузку домена и обнуляет статические поля.
+        // Where the player stood in the last Play session: "take player point"
+        // must work after exiting Play. Stored in EditorPrefs, not statics, because
+        // exiting Play reloads the domain and resets static fields.
         private const string PlayerLatKey = "Galilego.SurfaceFrame.LastPlayerLatitude";
         private const string PlayerLonKey = "Galilego.SurfaceFrame.LastPlayerLongitude";
         private const string PlayerBodyKey = "Galilego.SurfaceFrame.LastPlayerBody";
 
-        /// <summary>Есть ли запомненная точка игрока.</summary>
+        /// <summary>Whether a player point is remembered.</summary>
         public static bool HasRememberedPlayer => EditorPrefs.HasKey(PlayerLatKey);
 
         public static double RememberedLatitude => EditorPrefs.GetFloat(PlayerLatKey, 0f);
@@ -75,9 +73,8 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Пишет в EditorPrefs, где стоит игрок. Вызывается из
-        /// EditorApplication.update (он работает и в Play) раз в 0.5 с: чаще
-        /// незачем, а каждый кадр — это запись на диск каждый кадр.
+        /// Records the player position into EditorPrefs once per 0.5 s from
+        /// EditorApplication.update (which also runs in Play).
         /// </summary>
         private static void RecordPlayerPosition()
         {
@@ -115,12 +112,10 @@ namespace Galilego.Universe.EditorTools
             EditorApplication.playModeStateChanged -= OnPlayModeChanged;
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
 
-            // Кэш собранной системы инвалидируем по ЛЮБОМУ изменению иерархии.
-            // Подпись (хеш полей блюпринта) ловит правку значений, но не ловит
-            // момент, когда кэш впервые собран: если первая сборка успела
-            // произойти, пока часть тел ещё не подъехала под StarSystemAuthoring,
-            // дальше подпись совпадает и система остаётся неполной навсегда
-            // (наблюдалось: в кэше остался один Sol, Terra не находилась).
+            // Invalidate the assembled-system cache on ANY hierarchy change:
+            // the signature (hash of blueprint fields) catches value edits but not
+            // when the cache was first built, so a partial first build could
+            // otherwise stick forever.
             EditorApplication.hierarchyChanged -= OnHierarchyChanged;
             EditorApplication.hierarchyChanged += OnHierarchyChanged;
         }
@@ -132,8 +127,8 @@ namespace Galilego.Universe.EditorTools
 
         private static void OnPlayModeChanged(PlayModeStateChange change)
         {
-            // В Play превью не нужно: там настоящий рельеф рисует
-            // PlanetSurfaceRenderer, а служебный GO в сцене — лишний.
+            // No preview in Play: PlanetSurfaceRenderer draws the real terrain
+            // and the service GO would be redundant.
             if (change == PlayModeStateChange.EnteredPlayMode)
             {
                 DestroyPreview();
@@ -141,11 +136,9 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// При перезагрузке домена НИЧЕГО не уничтожаем: статика обнулится сама,
-        /// а служебный GO помечен HideFlags.DontSave и Unity уберёт его сам.
-        /// Раньше здесь стоял DestroyPreview, и он убивал объект, пока инспектор
-        /// на него смотрел — инспектор падал в OnEnable с MissingReference на
-        /// каждом скриптовом пересчёте.
+        /// Nothing is destroyed on domain reload: statics reset themselves and the
+        /// service GO (HideFlags.DontSave) is removed by Unity; destroying it here
+        /// would break an inspector that still references it.
         /// </summary>
         private static void Cleanup()
         {
@@ -207,7 +200,7 @@ namespace Galilego.Universe.EditorTools
 
         private const double MinRebuildIntervalSeconds = 0.2d;
 
-        /// <summary>Мокрая кромка воды — значения по умолчанию, как в сцене.</summary>
+        /// <summary>Wet water shoreline, defaults as in the scene.</summary>
         private const float ShoreWetMetersDefault = 3f;
 
         private static readonly Vector4 ShoreWetTintDefault = new Vector4(0.42f, 0.52f, 0.56f, 1f);
@@ -248,14 +241,12 @@ namespace Galilego.Universe.EditorTools
             previewMesh = mesh;
             filter.sharedMesh = mesh;
 
-            // Превью рисует УПРОЩЁННЫМ шейдером, не игровым Galileo/PlanetSurface.
-            // Причина практическая: чтобы игровой шейдер выглядел правильно, его
-            // глобалы ставит SkyEnvironment, а тот тянет интеграл атмосферы; вызванный
-            // из EditorApplication.update он съедал главный поток редактора, и Unity
-            // переставала отвечать (дважды, оба раза до отката). Для постановки базы
-            // игровой вид не нужен — нужна форма рельефа и snap объектов на неё
-            // (SurfaceGrounded). За палитрой и текстурами превью идёт в
-            // PlanetSurfaceRenderer.ApplyTerrainGlobals — это общий код, не копия.
+            // The preview uses a SIMPLIFIED shader, not the game's Galileo/PlanetSurface:
+            // its globals are set by SkyEnvironment, which computes the atmosphere
+            // integral and would block the editor from EditorApplication.update.
+            // Base placement needs the terrain shape and object snapping
+            // (SurfaceGrounded); the palette and textures come from the shared
+            // PlanetSurfaceRenderer.ApplyTerrainGlobals.
             PlanetSurfaceRenderer.ApplyTerrainGlobals(terrain, ShoreWetMetersDefault, ShoreWetTintDefault);
 
             if (previewMaterial == null)
@@ -275,9 +266,9 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Шаг сетки под масштаб: нечётная степень десяти, чтобы шаг менялся
-        /// плавно при каждом зуме, а не прыгал 10 → 100 → 1000 м. Плюс тонкая
-        /// подсетка внутри каждой крупной клетки.
+        /// Grid step for the scale: a 1-2-5 progression so the step changes
+        /// smoothly while zooming instead of jumping 10 → 100 → 1000 m, plus a
+        /// fine sub-grid inside each major cell.
         /// </summary>
         public static void ApplyGridSettings(Material material, double visibleRadius)
         {
@@ -326,14 +317,13 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Показать превью в Scene view: сначала узкое (чтобы F не улетел за
-        /// горизонт на 5 км), потом кадрируем. Ориентация камеры считается в
-        /// ОСЯХ ФРЕЙМА (локальный +Y — зенит точки), не в мировых: на экваторе
-        /// зенит лежит в мире горизонтально, и камера, повёрнутая в мировых осях,
-        /// смотрит на патч с тыла — а меш рисуется с Cull Back, и земли не видно.
-        /// Выделение НЕ трогаем — служебный GO помечен DontSave и не переживает
-        /// перезагрузку домена, оставленное выделенным инспектор падает в OnEnable
-        /// с MissingReference.
+        /// Shows the preview in the Scene view: rebuild narrow first (so pressing F
+        /// does not fly past the horizon at 5 km), then frame it. Camera orientation
+        /// is computed in FRAME AXES (local +Y is the point's zenith), not world
+        /// axes: at the equator the world zenith is horizontal, and a world-rotated
+        /// camera would look at the patch from behind, where Cull Back hides it.
+        /// Selection is left alone: the service GO is DontSave; a stale selection
+        /// would make the inspector throw MissingReference in OnEnable.
         /// </summary>
         public static bool FocusSceneView(SurfaceFrame frame)
         {
@@ -362,19 +352,19 @@ namespace Galilego.Universe.EditorTools
 
             view.orthographic = false;
 
-            // Кадрируем МГНОВЕННО: Frame(bounds, false) анимирует переход, и
-            // доводка камеры затирает поворот, выставленный следом.
+            // Frame INSTANTLY: Frame(bounds, false) animates, and the camera
+            // settle would overwrite the rotation set below.
             Bounds bounds = new Bounds(frame.transform.position, Vector3.one * 250f);
             view.Frame(bounds, true);
 
-            // Зум берём тот, что подобрал Frame под патч: LookAt ставит size сам
-            // и без этого сбросил бы кадрирование.
+            // Keep the zoom Frame picked for the patch: LookAt sets size itself and
+            // would otherwise reset the framing.
             float framedSize = view.size;
 
-            // Смотрим на патч из локального зенита фрейма: 30° над локальным
-            // горизонтом — то же, что встать на склоне и посмотреть вниз-вперёд.
-            // Мировой Euler(30, 0, 0) на экваторе даёт вид с тыла (см. комментарий
-            // к методу), поэтому поворот домножается на поворот фрейма.
+            // Look at the patch from the frame's local zenith: 30° above the local
+            // horizon, like standing on a slope and looking down-forward. A world
+            // Euler(30, 0, 0) at the equator gives the rear view (see the method
+            // comment), so the rotation is multiplied by the frame rotation.
             view.LookAt(
                 bounds.center,
                 frame.transform.rotation * Quaternion.Euler(30f, 0f, 0f),
@@ -386,9 +376,10 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Подпись всего, что меняет картинку превью. Профиль рельефа целиком не
-        /// хешируем (45 полей): форму определяют seed, амплитуда, частота, октавы,
-        /// маски и warp, а на остальное есть кнопка перестроения.
+        /// Signature of everything that changes the preview image. The terrain
+        /// profile is not hashed in full (45 fields): shape is defined by seed,
+        /// amplitude, frequency, octaves, masks and warp; there is a rebuild button
+        /// for the rest.
         /// </summary>
         private static long Signature(SurfaceFrame frame, HeightfieldTerrain terrain)
         {
@@ -426,7 +417,7 @@ namespace Galilego.Universe.EditorTools
             }
         }
 
-        /// <summary>Фрейм, к которому привязано превью: выделенный, иначе первый в сцене.</summary>
+        /// <summary>Frame the preview is bound to: the selected one, otherwise the first in the scene.</summary>
         public static SurfaceFrame ResolveFrame()
         {
             if (Selection.activeGameObject != null)
@@ -464,9 +455,9 @@ namespace Galilego.Universe.EditorTools
                     continue;
                 }
 
-                // Если превью выделено, инспектор держит на него ссылку, а
-                // DestroyImmediate обнулит объект — и следующий OnEnable
-                // инспектора упадёт MissingReference. Снимаем выделение заранее.
+                // If the preview is selected, the inspector holds a reference and
+                // DestroyImmediate would null it, making the next OnEnable throw
+                // MissingReference: clear the selection first.
                 if (Selection.activeGameObject == child.gameObject)
                 {
                     Selection.activeGameObject = frame.gameObject;
@@ -480,7 +471,7 @@ namespace Galilego.Universe.EditorTools
             boundFrame = null;
         }
 
-        /// <summary>Пометить превью как устаревшее (после правки профиля рельефа).</summary>
+        /// <summary>Mark the preview stale (after editing the terrain profile).</summary>
         public static void Invalidate()
         {
             lastSignature = 0L;

@@ -8,10 +8,10 @@ using Galilego.Spacecraft;
 using Galilego.Universe;
 using Ship = Galilego.Spacecraft.Spacecraft;
 
-// Зона контакта (вертикальный срез). Test300–302 — орбитальная безопасность решения о входе:
-// на орбите и на входе зона не включается, посадка включает. Test303 — гистерезис.
-// Test304–305 — точность и совместное вращение перехода координат.
-// Test306 — AdvanceTime (время в зоне без физики). Test307–308 — острова разрыва стыков.
+// Contact zone (vertical slice). Test300–302 — orbital safety of the entry decision:
+// on orbit and on entry the zone stays off, landing turns it on. Test303 — hysteresis.
+// Test304–305 — accuracy and corotation of the coordinate transition.
+// Test306 — AdvanceTime (time in the zone without physics). Test307–308 — joint-break islands.
 internal static partial class P1bTests
 {
     private static OrbitingBody ZonePlanet(StarSystem sys, out ITerrainModel terrain)
@@ -22,7 +22,7 @@ internal static partial class P1bTests
         return planet;
     }
 
-    // Скорость неподвижного на поверхности тела на высоте alt над радиусом (совместное вращение).
+    // Velocity of a body at rest on the surface at altitude alt above the radius (corotation).
     private static Vector3d StandVelocity(OrbitingBody planet, Vector3d nearPoint, double t, double altitude)
     {
         planet.SurfaceLatLonAt(nearPoint, t, out double lat, out double lon);
@@ -157,8 +157,8 @@ internal static partial class P1bTests
         SiteFrame frame0 = SiteFrame.Anchor(planet, terrain, pos0, t0);
         frame0.ToLocal(pos0, StandVelocity(planet, pos0, t0, 2d), out Vector3d lp, out Vector3d lv);
 
-        // Покой на высоте 2 м: локальная скорость ноль; через 2 ч мировая скорость и положение
-        // совпадают с состоянием неподвижной точки на той же высоте (совместное вращение).
+        // Rest at altitude 2 m: local velocity is zero; after 2 h world velocity and
+        // position match a resting point at the same altitude (corotation).
         SiteFrame frame1 = frame0.At(t1);
         frame1.ToWorld(lp, Vector3d.Zero, out Vector3d worldP, out Vector3d worldV);
         planet.GetSurfaceState(frame0.LatitudeDegrees, frame0.LongitudeDegrees, 2d, t1,
@@ -172,8 +172,8 @@ internal static partial class P1bTests
         return 0;
     }
 
-    // Test306: AdvanceTime — только время, без физики: монотонность, точная сумма,
-    // состояние корабля не трогается, StepFlying после него продолжает работать.
+    // Test306: AdvanceTime — time only, no physics: monotonic, exact sum,
+    // ship state untouched, and StepFlying keeps working after it.
     static int Test306_AdvanceTimeMonotonic()
     {
         StarSystem sys = TestSystem();
@@ -193,7 +193,7 @@ internal static partial class P1bTests
         step.Ship = new Ship(bp + new Vector3d(0d, planet.Radius + 200000d, 0d),
             bv + new Vector3d(3000d, 0d, 0d), 1000d);
 
-        // 1) Монотонность и сумма: разные dt, 100 повторов набора (700 вызовов).
+        // 1) Monotonicity and sum: different dt, 100 repeats of the set (700 calls).
         double[] dts = { 0.016d, 0.001d, 0.5d, 0.25d, 0.033d, 1d, 0.1d };
         double expected = 0d;
         double previous = step.TimeSeconds;
@@ -216,7 +216,7 @@ internal static partial class P1bTests
         double tolerance = 1e-9d * Math.Max(1d, expected);
         bool sumOk = Math.Abs(step.TimeSeconds - expected) <= tolerance;
 
-        // 2) Состояние корабля не меняется: AdvanceTime — только время.
+        // 2) Ship state does not change: AdvanceTime is time only.
         Vector3d p0 = step.Ship.Position;
         Vector3d v0 = step.Ship.Velocity;
         double m0 = step.Ship.Mass;
@@ -225,7 +225,7 @@ internal static partial class P1bTests
             && (step.Ship.Velocity - v0).Magnitude == 0d
             && step.Ship.Mass == m0;
 
-        // 3) StepFlying после AdvanceTime работает и продолжает время на свой dt.
+        // 3) StepFlying after AdvanceTime works and advances time by its own dt.
         double before = step.TimeSeconds;
         step.StepFlying(0.5f, true);
         double advanced = step.TimeSeconds - before;
@@ -238,7 +238,7 @@ internal static partial class P1bTests
         return 0;
     }
 
-    // Test307: разрыв одной ноги T1 — отделяется только нога, корень цел.
+    // Test307: breaking one T1 leg — only the leg detaches, the root stays intact.
     static int Test307_IslandSplitLeg()
     {
         List<PartDefinition> defs = LoadVesselT1();
@@ -253,7 +253,7 @@ internal static partial class P1bTests
         return 0;
     }
 
-    // Test308: разрыв ветвей дерева — двигатель, кабина, две ноги.
+    // Test308: breaking tree branches — engine, cabin, two legs.
     static int Test308_IslandSplitTree()
     {
         List<PartDefinition> defs = LoadVesselT1();

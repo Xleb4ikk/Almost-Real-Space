@@ -4,10 +4,9 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Инспектор тела: физика/орбита/вращение плоскими секциями, рельеф и
-    /// атмосфера — ссылками на ассеты-пресеты (редактируются встроенно своими
-    /// инспекторами). Плоские ~45 полей рельефа ушли в TerrainProfileAsset:
-    /// один пресет можно переиспользовать между телами и сценами.
+    /// Body inspector: physics/orbit/rotation in flat sections; terrain and
+    /// atmosphere as preset assets, edited inline by their own inspectors. One
+    /// preset can be reused across bodies and scenes.
     /// </summary>
     [CustomEditor(typeof(BodyAuthoring))]
     public sealed class BodyAuthoringEditor : Editor

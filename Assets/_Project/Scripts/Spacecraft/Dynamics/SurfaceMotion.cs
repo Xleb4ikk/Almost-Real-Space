@@ -5,12 +5,12 @@ using Galilego.Universe;
 namespace Galilego.Events
 {
     /// <summary>
-    /// Режим судна. Переходы (явный автомат, владелец — игровой цикл):
-    /// Flying + Touchdown(soft) → Landed (EventReactions, проекция+v_t);
+    /// Vessel regime. Transitions (explicit state machine, owned by the game loop):
+    /// Flying + Touchdown(soft) → Landed (EventReactions, projection+v_t);
     /// Flying + Touchdown(hard) → Destroyed (+PartSeparationSpecs);
-    /// Landed + потеря контакта → Flying (здесь, Liftoff);
-    /// Landed + LiftoffHook (тяга/Δv) → Flying (задел, триггер позже).
-    /// Драйвер событий в режимах не участвует: он только детектит.
+    /// Landed + loss of contact → Flying (here, Liftoff);
+    /// Landed + LiftoffHook (thrust/Δv) → Flying (hook, trigger later).
+    /// The event driver does not take part in regimes: it only detects.
     /// </summary>
     public enum VesselRegime
     {
@@ -20,8 +20,8 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Итог шага по поверхности: спроецированные мировые состояние, режим
-    /// (Landed или Flying при отрыве), флаг покоя.
+    /// Result of a surface step: projected world state, regime (Landed, or Flying
+    /// on liftoff), at-rest flag.
     /// </summary>
     public readonly struct SurfaceMotionResult
     {
@@ -40,43 +40,39 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Движение севшего судна: стеснённая динамика на поверхности.
-    /// Состояние — декартово (мировые позиция/скорость), углы НЕ интегрируются:
-    /// полюсов нет как класса, lat/lon получаются только для отчётов через
-    /// SurfaceLatLonAt. Схема первого порядка по dt (игровые шаги ≤0.5с):
-    /// точна для постоянных полей, для переменных — O(dt²) локально.
+    /// Motion of a landed vessel: constrained dynamics on the surface.
+    /// State is Cartesian (world position/velocity); angles are NOT integrated:
+    /// poles do not exist as a class; lat/lon are obtained only for reports via
+    /// SurfaceLatLonAt. First-order scheme in dt (game steps ≤0.5 s): exact for
+    /// constant fields, O(dt²) locally for varying ones.
     ///
-    /// Свободное ускорение в системе поверхности (согласованно: v_t строго
-    /// относительно поверхности, иначе член Кориолиса неверен):
+    /// Free acceleration in the surface frame (consistent: v_t is strictly
+    /// surface-relative, otherwise the Coriolis term is wrong):
     ///   a_free = g − ω×(ω×r) − 2ω×v_t.
-    /// Центробежный член −ω×(ω×r) направлен НАРУЖУ от оси: именно он
-    /// позволяет отрыв при быстром спине (ω²R &gt; |g|). Знак пойман багом:
-    /// с +ω×(ω×r) контакт держался всегда, отрыв не наступал никогда.
-    /// Контакт держится ⟺ a_free·n &lt; 0 (прижатие). Детерминированная ветка
-    /// границы: a_free·n &gt; ContactEpsilon → отрыв (Liftoff без изменения
-    /// состояния, дальше летит игровой интегратор); |зона| ≤ eps → контакт
-    /// держится (фликера stick/slip от fp нет). Проверка контакта — только
-    /// в начале шага: внутришаговый переход разрешается следующим шагом
-    /// (задержка ≤ dt, задокументирована, не баг).
-    /// Стик: |a_t| ≤ μ_s·|a_n| → совместное вращение точным поворотом Родригеса.
-    /// Слип: торможение μ_k·|a_n| против движения; t_stop = |v_t|/(μ_k·|a_n|);
-    /// если t_stop &lt; dt — силы и статик-условие пересчитываются В МОМЕНТ
-    /// ОСТАНОВКИ (один доп. вызов гравитации и состояния тела), не в начале.
-    /// FreeAcceleration здесь БЕЗ тяги: тяга добавляется только на пути
-    /// LiftoffHook (EventReactions.TryLiftoff, тот же критерий a·n &gt; eps) —
-    /// стеснённая динамика шага считает прижатие от гравитации/спина.
+    /// The centrifugal term −ω×(ω×r) points OUTWARD from the axis: it is what
+    /// allows liftoff under fast spin (ω²R &gt; |g|).
+    /// Contact holds ⟺ a_free·n &lt; 0 (pressed in). Deterministic boundary branch:
+    /// a_free·n &gt; ContactEpsilon → liftoff (Liftoff without changing state; the
+    /// game integrator continues from there); |band| ≤ eps → contact holds (no
+    /// stick/slip flicker from fp). Contact is checked only at the start of the
+    /// step: an intra-step transition is resolved by the next step (delay ≤ dt).
+    /// Stick: |a_t| ≤ μ_s·|a_n| → co-rotation by an exact Rodrigues rotation.
+    /// Slip: deceleration μ_k·|a_n| opposing motion; t_stop = |v_t|/(μ_k·|a_n|);
+    /// if t_stop &lt; dt — forces and the static condition are recomputed AT THE
+    /// STOP MOMENT (one extra gravity and body-state call), not at the start.
+    /// FreeAcceleration here is WITHOUT thrust: thrust is added only on the
+    /// LiftoffHook path (EventReactions.TryLiftoff, same a·n &gt; eps criterion) —
+    /// the step's constrained dynamics computes press-in from gravity/spin.
     /// </summary>
     public static class SurfaceMotion
     {
         public const double ContactEpsilon = 1e-9d;
 
         /// <summary>
-        /// Порог «тангенциальная скорость нулевая» для выбора стика. Должен
-        /// стоять НАД fp-шумом вычитания абсолютных скоростей: relativeVelocity
-        /// = velocity − surfaceVelocity с операндами ~3e4 м/с (орбитальная
-        /// скорость планеты) даёт шум до ~1e-10 м/с (ulp(3e4)≈3.6e-12 на
-        /// операцию). Старые 1e-12 были недостижимы — детерминизм стика держался
-        /// только на ветке статического трения, сам порог не срабатывал никогда.
+        /// "Tangential speed is zero" threshold for choosing stick. Must sit ABOVE the
+        /// fp noise of subtracting absolute velocities: relativeVelocity =
+        /// velocity − surfaceVelocity with operands ~3e4 m/s (the planet's orbital
+        /// speed) gives noise up to ~1e-10 m/s (ulp(3e4)≈3.6e-12 per operation).
         /// </summary>
         public const double SlipSpeedEpsilon = 1e-9d;
 
@@ -140,11 +136,12 @@ namespace Galilego.Events
                 return CoRotate(contact, body, terrain, timeSeconds, timeSeconds + dt, omega, axis);
             }
 
-            // Кинетика вдоль трека: s=|vT|, drive — проекция движущего aT на
-            // направление движения (при старте с места — на aT), decel=μk|an|.
-            // Скорость вдоль трека: ds/dt = drive − decel. Предполагается
-            // μk ≤ μs (иначе статик и кинетика противоречат — ветки ниже всё
-            // равно детерминированы, но физика конфигурации бессмысленна).
+            // Kinetic behaviour along the track: s=|vT|, drive is the projection of
+            // the driving aT onto the motion direction (onto aT when starting from
+            // rest), decel=μk|an|. Speed along the track: ds/dt = drive − decel.
+            // Assumes μk ≤ μs (otherwise static and kinetic friction contradict —
+            // the branches below stay deterministic, but the configuration physics
+            // is meaningless).
             Vector3d trackDir;
             if (tangentialSpeed > SlipSpeedEpsilon)
             {
@@ -181,8 +178,8 @@ namespace Galilego.Events
                 return atStop;
             }
 
-            // Силы в момент остановки — заново, не из начала шага: гравитация
-            // и тело берутся в stopMoment/stop-точке (нюанс 3).
+            // Forces at the moment of stopping are recomputed, not taken from the
+            // start of the step: gravity and the body are sampled at stopMoment.
             body.EvaluateWorldState(stopMoment, out Vector3d stopBodyP, out Vector3d stopBodyV);
             Vector3d stopNormal = terrain.GetOutwardNormal(body, atStop.Position - stopBodyP, stopMoment).Normalized;
             Vector3d stopSurfV = stopBodyV + Vector3d.Cross(omegaVector, atStop.Position - stopBodyP);
@@ -237,9 +234,9 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Совместное вращение покоящейся точки с телом: точный поворот Родригеса
-        /// оффсета на ω·Δt вокруг оси + перенос за орбитальным движением тела.
-        /// При ω·Δt == 0 возвращает вход бит-в-бит (стоянка без дрейфа).
+        /// Co-rotation of a resting point with the body: exact Rodrigues rotation of
+        /// the offset by ω·Δt about the axis, plus translation by the body's orbital
+        /// motion. At ω·Δt == 0 returns the input bit-for-bit (rest without drift).
         /// </summary>
         private static SurfaceMotionResult CoRotate(Vector3d contact, OrbitingBody body, ITerrainModel terrain, double fromTime, double toTime, double omega, Vector3d axis)
         {
@@ -254,10 +251,10 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Скольжение за интервал: смещение средней касательной скоростью
-        /// (трапеция — точна при постоянном торможении), транспорт поворотом
-        /// тела, проекция на контакт, перенос касательной скорости с чисткой
-        /// нормальной компоненты в новой точке.
+        /// Sliding over an interval: displacement by the average tangential velocity
+        /// (trapezoid — exact under constant deceleration), transport by the body's
+        /// rotation, projection onto the contact, and transfer of tangential velocity
+        /// with the normal component removed at the new point.
         /// </summary>
         private static SurfaceMotionResult Slide(Vector3d contact, Vector3d tangentStart, Vector3d tangentEnd, OrbitingBody body, ITerrainModel terrain, double fromTime, double toTime, double omega, Vector3d axis)
         {

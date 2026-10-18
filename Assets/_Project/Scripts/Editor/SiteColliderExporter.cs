@@ -9,9 +9,9 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Экспорт коллайдеров запечённого места в JSON для стенда (фаза 6):
-    /// выпуклые части — облака вершин, вогнутые — воксельные боксы, всё в локальном
-    /// кадре корня префаба (Y — зенит). Стенд строит по этому файлу SiteColliderSet.
+    /// Exports baked site colliders to JSON for the test rig (phase 6): convex parts
+    /// as vertex clouds, concave parts as voxel boxes, all in the prefab root's local
+    /// frame (Y — zenith). The rig builds SiteColliderSet from this file.
     /// </summary>
     public static class SiteColliderExporter
     {

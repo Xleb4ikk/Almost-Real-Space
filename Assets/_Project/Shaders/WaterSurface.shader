@@ -9,9 +9,9 @@ Shader "Galilego/WaterSurface"
         _UnderwaterColor("Underwater Tint", Color) = (0.02, 0.16, 0.30, 1)
         _SpecularPower("Specular Power", Float) = 420.0
         _SpecularIntensity("Specular Intensity", Float) = 1.0
-        // Две скроллящиеся normal map (схема HOWTO-Water: вторая мельче первой,
-        // скролл в противоход). Дефолт "bump" = плоская нормаль, рендерер
-        // подменяет запечёнными (Resources/Water/water_normal_{a,b}).
+        // Two scrolling normal maps (HOWTO-Water scheme: the second is finer than
+        // the first, scrolling in opposite directions). Default "bump" = flat
+        // normal; the renderer substitutes baked ones (Resources/Water/water_normal_{a,b}).
         _NormalMap0("Water Normal A", 2D) = "bump" {}
         _NormalMap1("Water Normal B", 2D) = "bump" {}
         _UseNormalMap("Use Normal Maps", Float) = 0.0
@@ -46,36 +46,29 @@ Shader "Galilego/WaterSurface"
         _UnderwaterAlpha("Underwater Alpha", Range(0.0, 1.0)) = 1.0
         _UnderwaterRimStrength("Underwater Window Rim", Float) = 0.5
         _UnderwaterSunStrength("Underwater Sun Strength", Range(0.0, 1.0)) = 0.12
-        // Наклон мелкой ряби на потолке. Было 0.12 (при длине волны 4.5 м это
-        // наклон около 8°, а преломление отклоняет луч на (n−1)·slope, то
-        // есть на 2.6°, и небо в окне почти не искажалось). Диапазон
-        // 0.15-0.30 даёт видимую рябь на 2-3 м.
-        // Коэффициент именно (n−1) = 0.33, а НЕ (1−1/n) = 0.25: луч уходит
-        // в воздух под asin(n·sinβ), то есть отклоняется ОТ ВЕРТИКАЛИ на
-        // (n−1)·β. Проверено тестом Test139_SnellWindowReference.
+        // Slope of the fine ceiling ripple. The deviation coefficient is
+        // (n−1) = 0.33, NOT (1−1/n) = 0.25: the ray exits into air at asin(n·sinβ),
+        // i.e. it deviates FROM VERTICAL by (n−1)·β.
         _UnderwaterRippleSlope("Underwater Ripple Slope", Range(0.0, 0.6)) = 0.10
-        // Множитель яркости окна относительно физического неба. Подобран по
-        // замеру: при 1.0 окно читалось в ~2 раза ярче воды после ACES, то
-        // есть как слабый блик, а не как небо. 3.0 даёт ~6-8 раз в линейных
-        // и ~200/255 в кадре при сохранённой детали градиента.
+        // Window brightness multiplier relative to the physical sky.
         _UnderwaterWindowGain("Underwater Window Gain", Float) = 3.0
-        // Сколько света отражает зеркало (полное внутреннее отражение): это
-        // цвет ТОЛЩИ воды, а не отражение неба.
+        // How much light the mirror (total internal reflection) reflects: this is
+        // the color of the water BODY, not a sky reflection.
         _UnderwaterMirrorGain("Underwater Mirror Gain", Float) = 1.5
-        // Отладочный вывод окна Снелла (проверяется снимком PNG):
-        // 0 = обычный вид, 1 = Френель F в градациях серого,
-        // 2 = маска окна (1 — луч проходит, 0 — полное внутреннее отражение),
-        // 3 = log2(яркость), 0.5 — яркость 1.0 (для гистограммы кадра).
+        // Snell-window debug output (checked with a PNG capture):
+        // 0 = normal view, 1 = Fresnel F in grayscale,
+        // 2 = window mask (1 — ray passes, 0 — total internal reflection),
+        // 3 = log2(luminance), 0.5 — luminance 1.0 (for a frame histogram).
         _UnderwaterDebugMode("Underwater Debug Mode", Range(0.0, 3.0)) = 0
     }
     SubShader
     {
-        // Вода — AlphaTest-очередь (opaque-список): проверено — Transparent-очередь
-        // HDRP наш ForwardOnly-пас не рисует вообще (вода пропадает, видно голое
-        // дно). Поэтому прозрачность мелководья — screen-door dither 1px IGN:
-        // мелкое зерно, к миру привязано полосой alphaT 0-2 м у уреза.
-        // НЕ квантовать порог по мировым ячейкам — они дают крупные блок-пиксели
-        // вблизи. Чанки копланарны (bob=0), z-fight нет.
+        // Water is in the AlphaTest queue (opaque list): HDRP does not draw our
+        // ForwardOnly pass in the Transparent queue at all. So shallow-water
+        // transparency is 1px IGN screen-door dither: fine grain, tied to the
+        // world by the alphaT 0-2 m band at the shoreline.
+        // Do NOT quantize the threshold by world cells — they give large block
+        // pixels up close. Chunks are coplanar (bob=0), so there is no z-fight.
         Tags { "RenderPipeline" = "HDRenderPipeline" "RenderType" = "TransparentCutout" "Queue" = "AlphaTest" }
         Pass
         {
@@ -86,33 +79,31 @@ Shader "Galilego/WaterSurface"
             ZTest LEqual
 
             HLSLPROGRAM
-            // DEBUG-MINIMAL3: без shadow-вариантов и без GalilegoLighting
-            // (HDShadow). Если вода появится — виноват один из них.
             #pragma vertex Vert
             #pragma fragment Frag
             #pragma target 4.5
 
              #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
              #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
-             // DEBUG-MINIMAL3: без shadow-вариантов и без GalilegoLighting
-             // (HDShadow). Если вода появится — виноват один из них. Небо для
-             // окна Снелла приходит из GalilegoSkyRadiance.hlsl: там и
-             // объявления глобалов, и сам расчёт (воде не нужен HDShadow).
+             // The sky for the Snell window comes from GalilegoSkyRadiance.hlsl:
+             // it holds both the global declarations and the computation itself
+             // (water doesn't need HDShadow).
              #include "GalilegoSkyRadiance.hlsl"
 
-            // Мировая позиция камеры (ставит PlanetSurfaceRenderer каждый кадр).
+            // World camera position (set by PlanetSurfaceRenderer every frame).
             float3 _PlanetCameraPos;
-            // Центр планеты в render-пространстве: единый радиальный базис
-            // воды для всех чанков/LOD (без него — ступень яркости на стыках).
+            // Planet center in render space: a single radial basis for water
+            // across all chunks/LODs (without it, a brightness step at seams).
             float3 _PlanetWaterCenter;
-            // Время анимации волн (ставит PlanetSurfaceRenderer каждый кадр).
+            // Wave animation time (set by PlanetSurfaceRenderer every frame).
             float _WaterTime;
-            // Привязка узора к морю, а не к игроку: render-пространство едет
-            // вместе с floating origin (якорь = игрок), поэтому узор от
-            // positionWS напрямую ползёт за игроком. Шейдер берёт дельту от
-            // камеры (малые точные числа), крутит в тело-fixed оси и прибавляет
-            // абсолютную фазу игрока — тот же приём, что _TerrainWorldToBody
-            // + _TerrainUVPhase у террейна (ставит PlanetSurfaceRenderer).
+            // Ties the pattern to the sea, not the player: render space moves with
+            // the floating origin (anchored at the player), so a pattern taken
+            // directly from positionWS crawls along with the player. The shader
+            // takes the delta from the camera (small exact numbers), rotates it
+            // into body-fixed axes and adds the player's absolute phase — the same
+            // trick as _TerrainWorldToBody + _TerrainUVPhase for terrain (set by
+            // PlanetSurfaceRenderer).
             float4x4 _WaterWorldToBody;
             float3 _WaterBodyAnchor;
 
@@ -167,7 +158,7 @@ Shader "Galilego/WaterSurface"
             {
                 float3 positionOS : POSITION;
                 float3 normalOS   : NORMAL;
-                float4 waterExtra : TEXCOORD2; // x: глубина воды (м, 0 над сушей)
+                float4 waterExtra : TEXCOORD2; // x: water depth (m, 0 above land)
             };
 
             struct Varyings
@@ -179,13 +170,11 @@ Shader "Galilego/WaterSurface"
                 float waveH       : TEXCOORD3;
             };
 
-            // Процедурный value-noise/FBM без текстур: разбивает регулярность
-            // волн и пены (два слоя в противоход, как принято для морской
-            // пены), микродеталь нормалей вместо «вельвета» синусов.
-            // Хеш решётки на ЦЕЛОМ PCG, без sin. Прежний frac(sin(dot)*43758)
-                // вырождался в полосы: аргумент dot достигал ~1e8, где sin
-                // в float32 уже не имеет точности. PCG-подстановка целым по
-                // битам не теряет точность никогда.
+            // Procedural value-noise/FBM without textures: breaks up the regularity
+            // of waves and foam (two layers in opposite directions, as is usual for
+            // sea foam), micro-detail of normals instead of the "velvet" of sines.
+            // Lattice hash on INTEGER PCG, no sin: the integer-by-bits substitution
+            // never loses precision.
                 uint whashInt(uint x)
                 {
                     x = x * 747796405u + 2891336453u;
@@ -194,10 +183,9 @@ Shader "Galilego/WaterSurface"
                 }
                 float whash(float2 p)
                 {
-                    // Целая часть в uv лежит в пределах +-P/размер ячейки,
-                    // то есть влезает в int32 с запасом; float->int здесь
-                    // безопасен именно из-за того, что целая часть uv держится в пределах
-                    // периода.
+                    // The integer part of uv stays within +-P/cell size, so it fits
+                    // in int32 with margin; the float->int here is safe precisely
+                    // because the integer part of uv stays within the period.
                     int2 c = (int2)floor(p);
                     uint h = whashInt((uint)(c.x * 73856093) ^ (uint)(c.y * 19349663));
                     return (h & 0x00FFFFFFu) * (1.0 / 16777216.0);
@@ -223,38 +211,39 @@ Shader "Galilego/WaterSurface"
                 return v;
             }
 
-            // Общий масштаб периода узора: 2*pi/P при P = 1024 м, и векторы ряби,
-            // заданные ЦЕЛЫМИ парами. Фаза в uv+period сдвигается на
-            // кратное 2*pi, поэтому узор не «прыгает» на границе периода.
+            // Common pattern-period scale: 2*pi/P with P = 1024 m, and ripple
+            // vectors given as INTEGER pairs. The phase at uv+period shifts by a
+            // multiple of 2*pi, so the pattern doesn't "jump" at the period edge.
             static const float kBaseUw = 0.006135923151542565;
             static const float2 kRip1 = float2(883.0, 522.0);
-            // |K| = 2556 -> 15.7 рад/м (~0.4 м). Прежние (-588, 1043) давали 7.3 рад/м, а не заявленные 15.7.
+            // |K| = 2556 -> 15.7 rad/m (~0.4 m).
             static const float2 kRip2 = float2(-1254.0, 2227.0);
 
-            // Тело-fixed координаты узора (м): дельта от камеры в малых числах
-            // + абсолютная фаза игрока. Без этого узор считается от
-            // render-координат, чей ноль едет с floating origin = игроком,
-            // и текстура воды ползёт по морю за игроком.
-            // Якорь приходит уже уменьшенным по модулю 51 200 м (см. UpdateWaterAnchor).
+            // Body-fixed pattern coordinates (m): delta from the camera in small
+            // numbers plus the player's absolute phase. Without this the pattern is
+            // computed from render coordinates, whose zero moves with the floating
+            // origin = the player, so the water texture crawls across the sea with
+            // the player.
+            // The anchor arrives already reduced modulo 51 200 m (see UpdateWaterAnchor).
             float3 WaterBodyFixed(float3 positionWS)
             {
                 float3 relBody = mul((float3x3)_WaterWorldToBody, positionWS - _PlanetCameraPos);
                 return relBody + _WaterBodyAnchor;
             }
 
-            // Живой океан: 5 бегущих волн (упрощённый Герстнер: только
-            // вертикаль — физика плоская через WaterQuery, чанки повёрнуты
-            // с телом планеты). Сумма амплитуд = 1 → возврат [-1,1].
-            // Пятая октава — короткий чоп (~1.5 м), он даёт "небольшие волны"
-            // вблизи, вдали гаснет через fade и fwidth-AA.
+            // Living ocean: 5 travelling waves (simplified Gerstner: vertical only —
+            // physics stays flat via WaterQuery, chunks rotate with the planet body).
+            // Amplitude sum = 1 → returns [-1,1].
+            // The fifth octave is a short chop (~1.5 m), giving "small waves" up
+            // close and fading out at distance via fade and fwidth AA.
             float WaterWaveHeight01(float2 uv, float t, out float2 gradTangent)
             {
                 float2 p = uv;
-                // Волновые векторы - ЦЕЛЫЕ векторы K, фаза = dot(p,K)*kBase.
-                // Тогда узор периодичен по P = 1024 м: сдвиг на P даёт
-                // dot += |K|, то есть фаза += 2*pi*|K|. Направление и
-                // частота берутся разложением K, а не задаются отдельно -
-                // иначе периодичность ломается на нецелых произведениях.
+                // Wave vectors are INTEGER vectors K, phase = dot(p,K)*kBase.
+                // The pattern is then periodic over P = 1024 m: a shift by P gives
+                // dot += |K|, i.e. phase += 2*pi*|K|. Direction and frequency come
+                // from decomposing K rather than being set separately — otherwise
+                // periodicity breaks on non-integer products.
                 const float kBase = 0.006135923151542565;  // 2*pi/1024
                 const float2 K1 = float2(156.0, 47.0);
                 const float2 K2 = float2(-153.0, 231.0);
@@ -281,9 +270,9 @@ Shader "Galilego/WaterSurface"
                 float s4 = sin(p4);
                 float s5 = sin(p5);
                 float h = (0.38 * s1) + (0.26 * s2) + (0.18 * s3) + (0.11 * s4) + (0.07 * s5);
-                // Трохоидальное заострение гребней (дух Герстнера: гребни выше
-                // и острее, впадины шире и площе; физика остаётся плоской).
-                // Производная корректируется аналитически — нормали честные.
+                // Trochoidal crest sharpening (Gerstner spirit: crests higher and
+                // sharper, troughs wider and flatter; physics stays flat).
+                // The derivative is corrected analytically — normals stay honest.
                 float qShape = 0.25;
                 float dhds = 1.0 + (2.0 * qShape * h);
                 float2 grad = ((0.38 * f1 * d1) * cos(p1)
@@ -299,22 +288,18 @@ Shader "Galilego/WaterSurface"
             {
                 Varyings output;
                 float3 baseWS = TransformObjectToWorld(input.positionOS);
-                // Радиаль из единого центра, а не вершинная нормаль меша:
-                // у соседних LOD она разная — отсюда светлая полоса стыка.
-                // Фолбэк на меш-нормаль, пока центр не проставлен (нули).
+                // Radial from the single center, not the mesh vertex normal:
+                // it differs between adjacent LODs, causing a bright seam.
+                // Fall back to the mesh normal while the center is unset (zeros).
                 float3 centerDeltaV = baseWS - _PlanetWaterCenter;
                 float3 baseN = dot(centerDeltaV, centerDeltaV) > 1.0
                     ? normalize(centerDeltaV)
                     : TransformObjectToWorldNormal(input.normalOS);
-                // Живая волна вдоль радиальной нормали (физика плоская).
-                // Fade в ноль вдали: грубый LOD + короткая волна = алиасинг.
+                // Live wave along the radial normal (physics stays flat).
+                // Fades to zero at distance: coarse LOD + short wave = aliasing.
                 float camDistV = length(_PlanetCameraPos - baseWS);
                 float fadeV = exp(-camDistV * 0.00012);
-                // Узор в .xz тело-fixed пространства. Шаг 2 (касательные UV с базисом
-                // east/north от CPU) откачен: он дал фиолетовую заливку и
-                // плоский синий фон вместо поверхности. Причина пунктов 1 и 3
-                // лечится модулем якоря и мягким пределом СКО; пункт 2
-                // (растяжение по меридиану) остаётся нерешённым.
+                // Pattern in body-fixed .xz space.
                 float2 patternUv = WaterBodyFixed(baseWS).xz;
                 float2 gradV;
                 float h01 = WaterWaveHeight01(patternUv * _WaveScale, _WaterTime, gradV);
@@ -328,10 +313,10 @@ Shader "Galilego/WaterSurface"
                 return output;
             }
 
-            // Красивое море: бирюзовое мелководье, океанская глубина,
-            // солнечная дорожка с глиттером, белая пена прибоя и барашки,
-            // зеркало неба по Френелю, дымка горизонта. Лицо — вручную
-            // (dot), кромка — по вершинной глубине (robust без depth buffer).
+            // Pretty sea: turquoise shallows, ocean depth, a sun path with
+            // glitter, white surf foam and whitecaps, a Fresnel sky mirror, horizon
+            // haze. The face is hand-computed (dot); the edge comes from vertex
+            // depth (robust without a depth buffer).
             float4 Frag(Varyings input) : SV_Target
             {
                 float3 viewDir = normalize(_PlanetCameraPos - input.positionWS);
@@ -341,104 +326,86 @@ Shader "Galilego/WaterSurface"
                  float sun = _TerrainSun;
                  float3 sunDir = normalize(_TerrainSunDir);
                  float cloudShadow = SampleCloudShadow(input.positionWS);
-                // Та же единая радиаль, что в вершинном шейдере.
+                // The same single radial as in the vertex shader.
                 float3 centerDeltaF = input.positionWS - _PlanetWaterCenter;
                 float3 baseNFace = dot(centerDeltaF, centerDeltaF) > 1.0
                     ? normalize(centerDeltaF)
                     : normalize(input.normalWS);
 
-                // Вода считает свет в «шкале 1»: _TerrainRadianceScale (2.5 в
-                // сцене) поднят под альбедо суши ~0.4; на воде (shallow G/B
-                // ~0.6, пена ~0.9, прямое зеркало неба) он выжигал всё в
-                // молоко. Террейна это не касается — только вода.
+                // Water computes light at "scale 1": _TerrainRadianceScale (2.5 in
+                // the scene) is tuned for land albedo ~0.4 and would blow water out
+                // to white. This affects water only, not terrain.
                 float waterRad = min(_TerrainRadianceScale, 1.0);
 
-                // --- Под водой ------------------------------------------------
-                // Камера ниже поверхности: взгляд идёт против нормали.
-                // Ветка непрозрачная и БЕЗ screen-door (см. конец шейдера):
-                // потолок воды из-под неё обязан быть сплошным, иначе 18%
-                // дыр discard дают зерно на весь экран.
-                // ОКНО СНЕЛЛА ПО ФИЗИКЕ. Луч вверх преломляется нормалью волны
-                // (вода 1.33 → воздух 1.0). За критическим углом 48.75° луч не
-                // выходит вовсе: там полное внутреннее отражение и глаз видит
-                // толщу. Граница окна и её ободок берутся из той же формулы
-                // Френеля, а не из smoothstep по cosUp — у настоящего окна
-                // физическая граница, и она читается как круглая кромка.
+                // --- Underwater -----------------------------------------------
+                // Camera below the surface: the view goes against the normal.
+                // This branch is opaque and WITHOUT screen-door (see end of shader):
+                // the water ceiling seen from below must be solid, otherwise the
+                // discard holes give grain all over the screen.
+                // SNELL WINDOW BY PHYSICS. An upward ray is refracted by the wave
+                // normal (water 1.33 → air 1.0). Beyond the 48.75° critical angle
+                // the ray does not exit at all: total internal reflection, and the
+                // eye sees the water body. The window boundary and its rim come
+                // from the same Fresnel formula, not from a smoothstep on cosUp —
+                // a real window has a physical boundary and reads as a round edge.
                 //
-                // Чего здесь принципиально нет:
-                //  - своего exp(-dist/28): поглощение делает проход
-                //    UnderwaterViewFog по спектральной σ. Своё затухание
-                //    поверх спектрального давало две модели сразу и мутный
-                //    потолок уже на 2-3 м;
-                //  - каустик на потолке. Каустика — это свет, СОБРАННЫЙ на
-                //    освещённой сверху поверхности; с внутренней стороны её
-                //    не видно, её видно на дне (UnderwaterCaustics.shader).
-                //    На зеркале — низкочастотная модуляция лучами света.
-                // Под водой мы тогда и только тогда, когда ПОВЕРХНОСТЬ НАД
-                // КАМЕРОЙ: dot(камера→поверхность, вверх) > 0. Это геометрический
-                // признак, и он не может разойтись с картинкой ни при каких
-                // настройках мира. Внимание к знаку: viewDir здесь — поверхность
-                // → камера, поэтому «вверх» это -viewDir.
+                // Deliberately absent here:
+                //  - its own exp(-dist/28): absorption is done by the
+                //    UnderwaterViewFog pass via spectral σ;
+                //  - caustics on the ceiling: caustics are light CONCENTRATED on
+                //    the upward-lit surface, invisible from the inside, visible on
+                //    the bottom (UnderwaterCaustics.shader).
+                // We are underwater exactly when the SURFACE IS ABOVE THE CAMERA:
+                // dot(camera→surface, up) > 0. This is a geometric sign that cannot
+                // disagree with the image under any world settings. Mind the sign:
+                // viewDir here is surface → camera, so "up" is -viewDir.
                 //
-                // Зачем страховка к глобалу _UnderwaterCameraDepth: глобал
-                // ставится из запроса «камера ниже уровня моря», и он может
-                // отставать на кадр или обнулиться при смене тела — тогда вода
-                // рисовалась бы ВЕРХНЕЙ веткой: пена прибоя и screen-door
-                // dither, снятые снизу (именно это и было «ужасной поверхностью
-                // из-под воды»). Порог 0.25, а не 0, умышленно: при взгляде на
-                // горизонт dot ≈ 0 и признак неустойчив, а 0.25 — это взгляд
-                // строго вверх (не дальше 14° от вертикали), где сомнений быть
-                // не может.
+                // _UnderwaterCameraDepth is only a fallback: it is set from the
+                // "camera below sea level" query and can lag a frame or reset on a
+                // body change. The 0.25 threshold (not 0) is deliberate: looking at
+                // the horizon dot ≈ 0 and the sign is unstable, while 0.25 means
+                // looking almost straight up (within 14° of vertical).
                 float viewUp = dot(-viewDir, baseNFace);
                 bool isUnderwater = (_UnderwaterCameraDepth > 0.0) || (viewUp > 0.25);
                 if (isUnderwater)
                 {
                     float3 upW = baseNFace;
-                    // viewDir: поверхность -> камера (вниз). toSurf: камера -> поверхность (вверх).
+                    // viewDir: surface -> camera (down). toSurf: camera -> surface (up).
                     float3 toSurf = -viewDir;
 
-                    // Солнце над ЛОКАЛЬНЫМ горизонтом — единственный честный
-                    // признак времени суток, доступный шейдеру. Раньше здесь
-                    // стоял _TerrainSun, а это константа сцены
-                    // (SkyEnvironment.TerrainSunIntensity), от солнца не
-                    // зависящая: dayDim = 1 всегда, и ночью в окне оставался
-                    // солнечный диск. Полка ±2° — как у реального заката.
+                    // Sun above the LOCAL horizon is the only honest time-of-day
+                    // cue available to the shader. The ±2° shelf mimics a real sunset.
                     float sunAboveHorizon = dot(sunDir, _SkyUp);
                     float sunFactor = smoothstep(-0.035, 0.06, sunAboveHorizon);
 
-                    // Тот же Герстнер и та же рябь, что над водой, и в тех же
-                    // касательных UV: потолок и поверхность не расходятся.
+                    // Same Gerstner and ripple as above water, in the same tangent
+                    // UVs: ceiling and surface don't diverge.
                     float3 wposUw = WaterBodyFixed(input.positionWS);
                     float2 patternUw = wposUw.xz;
                     float2 gradUw;
                     float h01Uw = WaterWaveHeight01(patternUw * _WaveScale, _WaterTime, gradUw);
                     float3 gradWUw = mul(float3(gradUw.x, 0.0, gradUw.y) * _WaveScale, (float3x3)_WaterWorldToBody);
                     float3 gradTUw = gradWUw - (upW * dot(gradWUw, upW));
-                    // Макро-наклон. У реального моря СКО наклона 10-15°,
-                    // то есть ~0.2 рад; прежнее (WaveAmplitude*2 +
-                    // WaveStrength*1.5)*0.7 давало до 41°, и это отдельный
-                    // дефект: макро-волна гнёт преломлённый луч сильнее,
-                    // чем весь микро-узор вместе взятый.
+                    // Macro slope. A real sea has an RMS slope of 10-15°, i.e.
+                    // ~0.2 rad.
                     float macroKUw = (_WaveAmplitude * 2.0 + _WaveStrength * 1.5);
 
-                    // Мелкая рябь двумя бегущими октавами. Наклон задан УГЛОМ
-                    // (_UnderwaterRippleSlope, рад), а не множителем градиента:
-                    // иначе «усиление наклона» означает разное при разной
-                    // длине волны. Частоты 6.3 и 15.7 рад/м — это рябь ~1 м и
-                    // ~0.4 м, то есть те самые 10-50 см, которые читаются с
-                    // 2-3 м (было 1.4 рад/м, то есть 4.5 м, и наклоны ~3°).
-                    // Предел AA берётся по следу самого узора, а не по positionWS.x/z:
-                    // на наклонной поверхности производные рендер-координат
-                    // могут сойтись почти в ноль, и предел переставал
-                    // ограничивать что-либо.
+                    // Fine ripple as two travelling octaves. The slope is given as
+                    // an ANGLE (_UnderwaterRippleSlope, rad), not a gradient factor:
+                    // otherwise "slope boost" means different things at different
+                    // wavelengths. Frequencies 6.3 and 15.7 rad/m are ~1 m and
+                    // ~0.4 m ripple.
+                    // The AA limit uses the pattern's own footprint, not
+                    // positionWS.x/z: on a slanted surface the render-coordinate
+                    // derivatives can approach zero, leaving the limit useless.
                     float fwUw = max(fwidth(patternUw.x), fwidth(patternUw.y));
 
-                    // Векторы ряби объявлены выше (общий масштаб периода), здесь только длины.
+                    // The ripple vectors are declared above (common period scale); here only lengths.
                     float rfUw1 = length(kRip1) * kBaseUw;
                     float rfUw2 = length(kRip2) * kBaseUw;
 
-                    // Предел наклона по следу пикселя в осях узора: наклоны
-                    // круче, чем 1/(2*fw), не отдаются в одном пикселе.
+                    // Slope limit from the pixel footprint in pattern axes: slopes
+                    // steeper than 1/(2*fw) can't be represented in one pixel.
                     float slopeLimitUw = 0.5 / max(fwUw, 1e-4);
                     float slopeUw = min(_UnderwaterRippleSlope, slopeLimitUw);
                     float aaUw1 = saturate(1.0 - (fwUw * rfUw1 * 0.35));
@@ -448,28 +415,22 @@ Shader "Galilego/WaterSurface"
                     float rpUw1 = dot(patternUw, ripDir1) * rfUw1 + (_WaterTime * _RippleSpeed * 2.0);
                     float rpUw2 = dot(patternUw, ripDir2) * rfUw2 - (_WaterTime * _RippleSpeed * 3.1);
 
-                    // Амплитуда октав задаётся СРАЗУ в радианах, а сумма потом
-                    // мягко ограничивается. Раньше сумма нормировалась к
-                    // постоянному модулю: у суммы косинусов есть нули вектора,
-                    // возле них направление скачет на 180 градусов, и наклон
-                    // становился ОДИНАКОВЫМ в каждом пикселе - это и давало
-                    // жёсткие границы полос и скачки окно/зеркало. Нормировки
-                    // здесь нет намеренно.
-                    // Амплитуды 0.75/0.53/0.38 дают СКО суммы ~1.0*slope при
-                    // случайных фазах, то есть параметр означает средний
-                    // наклон, а не максимальный.
+                    // Octave amplitudes are given DIRECTLY in radians, and the sum is
+                    // then softly capped. There is deliberately no normalization to a
+                    // constant modulus: a sum of cosines has vector zeros near which
+                    // the direction flips 180°, which would make the slope IDENTICAL
+                    // in every pixel.
+                    // Amplitudes 0.75/0.53/0.38 give a sum RMS of ~1.0*slope for
+                    // random phases, so the parameter means average slope, not peak.
                     float2 rgradUw = (ripDir1 * (0.75 * slopeUw * cos(rpUw1) * aaUw1))
                         + (ripDir2 * (0.53 * slopeUw * cos(rpUw2) * aaUw2));
 
-                    // Третья составляющая — FBM, а не синус. Две синусоиды
-                    // дали идеально правильные концентрические кольца (на
-                    // снимке читалось как отпечаток пальца): настоящая рябь
-                    // нерегулярна, и именно ломаная структура прячет диск
-                    // солнца в устойчивую россыпь, а не в мусор.
-// Третья составляющая - FBM, а не синус: две синусоиды давали
-                    // идеально правильные концентрические кольца. Масштаб UV
-                    // тоже кратен 2*pi/P, иначе FBM не вписывается в период.
-                    const float fbmScaleUw = kBaseUw * 440.0;  // 2.6998 рад/м
+                    // Third component is FBM, not a sine: two sines gave perfectly
+                    // regular concentric rings (read as a fingerprint). Real ripple is
+                    // irregular, and the broken structure hides the sun disc in a
+                    // stable scatter rather than garbage. The UV scale is also a
+                    // multiple of 2*pi/P, otherwise the FBM doesn't fit the period.
+                    const float fbmScaleUw = kBaseUw * 440.0;  // 2.6998 rad/m
                     float2 microUv = (patternUw * fbmScaleUw)
                         + float2(_WaterTime * 0.07, -_WaterTime * 0.05);
                     float mEps = 0.35;
@@ -477,52 +438,49 @@ Shader "Galilego/WaterSurface"
                     float mx = wfbm(microUv + float2(mEps, 0.0));
                     float mz = wfbm(microUv + float2(0.0, mEps));
                     float2 mgrad = float2((mx - m0), (mz - m0)) / mEps;
-                    // Направление FBM нормируется (у суммы октав нули не
-                    // используются как мера амплитуды), но её амплитуда
-                    // входит в общий СКО и тоже в радианах.
+                    // The FBM direction is normalized (a sum of octaves doesn't use
+                    // its zeros as an amplitude measure), but its amplitude enters the
+                    // overall RMS, also in radians.
                     rgradUw += (mgrad / max(length(mgrad), 1e-4)) * (0.38 * slopeUw * aaUw2);
 
-                    // Мягкий предел суммарного наклона. Модуль НЕ приводится к
-                    // заданному значению - он только ограничивается сверху, и
-                    // в нулях суммы наклон спокойно сходит к нулю, а не
-                    // переворачивается на 180 градусов.
+                    // Soft limit on the total slope. The magnitude is NOT forced to a
+                    // set value — it is only capped from above, so at the sum's zeros
+                    // the slope quietly goes to zero instead of flipping 180°.
                     float rlenUw = length(rgradUw);
                     float rcapUw = slopeUw * 1.8;
                     rgradUw *= min(1.0, rcapUw / max(rlenUw, 1e-4));
                     float3 rgradTUw = mul(float3(rgradUw.x, 0.0, rgradUw.y), (float3x3)_WaterWorldToBody);
                     rgradTUw -= upW * dot(rgradTUw, upW);
 
-                    // Макро-наклон ограничен мягко (tanh) примерно 0.25 рад (14°): у реального моря СКО
-                    // наклона 10-15°. Прежнее значение доходило до ~0.72 рад (41°), из-за чего луч вверх
-                    // почти везде попадал в полное внутреннее отражение (потолок = ровная заливка цветом толщи).
+                    // Macro slope is softly limited (tanh) to about 0.25 rad (14°):
+                    // a real sea has an RMS slope of 10-15°.
                     const float kMacroSlopeUw = 0.25;
                     float3 macroTiltUw = gradTUw * (macroKUw * 0.7);
                     float macroLenUw = length(macroTiltUw);
                     macroTiltUw *= (kMacroSlopeUw * tanh(macroLenUw / kMacroSlopeUw)) / max(macroLenUw, 1e-5);
                     float3 nUw = normalize(upW - macroTiltUw - rgradTUw);
 
-                    // Запечённые normal map в подводной ветке. Над водой они
-                    // дают микрорельеф поверх шейдерных волн; из-под воды они и
-                    // есть та самая рябь 10-50 см, которой не хватает
-                    // процедурным октавам, плюс ломают регулярность синусов.
+                    // Baked normal maps in the underwater branch. Above water they add
+                    // micro-relief over the shader waves; from below they are the
+                    // 10-50 cm ripple the procedural octaves lack, and they break the
+                    // regularity of the sines.
                     //
-                    // Вклад ограничен ТЕМ ЖЕ пределом наклона, что и октавы
-                    // выше: карта с плиткой 0.24 м на касательном луче даёт
-                    // наклон в десятки градусов на пиксель, и без ограничения
-                    // окно рассыпается в пятна.
+                    // Their contribution is limited by the SAME slope limit as the
+                    // octaves above: a map tiled at 0.24 m on a grazing ray gives tens
+                    // of degrees of slope per pixel, and without the limit the window
+                    // falls apart into blobs.
                     if (_UseNormalMap > 0.5)
                     {
-                        // Плитки - делители P (степени двойки): 0.625 м и 0.25 м.
-                        // Тогда uv + P даёт целое число плиток и сдвиг
-                        // якоря на период не меняет картинку.
+                        // Tiles are divisors of P (powers of two): 0.625 m and 0.25 m.
+                        // Then uv + P gives a whole number of tiles and shifting the
+                        // anchor by a period doesn't change the image.
                         float2 uvN0 = (patternUw * 1.6) + (_NormalScroll0.xy * _WaterTime);
                         float2 uvN1 = (patternUw * 4.0) + (_NormalScroll1.xy * _WaterTime);
                         float3 tx0 = tex2D(_NormalMap0, uvN0).rgb * 2.0 - 1.0;
                         float3 tx1 = tex2D(_NormalMap1, uvN1).rgb * 2.0 - 1.0;
-                        // Опорная ось от RENDER-пространства: эталонный код
-                        // брал её от мирового Y, то есть у полюсов планеты
-                        // (где upW ≈ ±Y) базис вырождался. _SkyUp здесь нельзя:
-                        // это simulation-пространство, а upW — render.
+                        // Reference axis from RENDER space: a world-Y reference would
+                        // degenerate at the planet's poles (where upW ≈ ±Y). _SkyUp is
+                        // not usable here: it is simulation space, while upW is render.
                         float3 refUw = abs(upW.z) < 0.9 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
                         float3 tanUw = normalize(cross(refUw, upW));
                         float3 binUw = cross(upW, tanUw);
@@ -530,12 +488,11 @@ Shader "Galilego/WaterSurface"
                         nUw = normalize(nUw + ((tanUw * tPert.x + binUw * tPert.y)
                             * (_NormalStrength * slopeUw * 1.5)));
                     }
-                    // --- Окно Снелла: Френель воды -> воздух --------------------
-                    // Полная формула диэлектрика, а не художественный
-                    // smoothstep: у воды F0 = ((1.33-1)/(1.33+1))^2 = 0.020, и
-                    // к критическому углу F идёт к 1. Отсюда сами собой и
-                    // яркий ободок окна, и зеркало за ним — отдельных кривых
-                    // больше не нужно.
+                    // --- Snell window: water -> air Fresnel ----------------------
+                    // The full dielectric formula, not an artistic smoothstep: for
+                    // water F0 = ((1.33-1)/(1.33+1))^2 = 0.020, and F goes to 1 toward
+                    // the critical angle. This yields both the bright window rim and
+                    // the mirror beyond it — no separate curves needed.
                     float cosI = saturate(dot(toSurf, nUw));
                     float sinT = 1.33 * sqrt(saturate(1.0 - (cosI * cosI)));
                     bool transmitted = (sinT < 1.0);
@@ -547,16 +504,15 @@ Shader "Galilego/WaterSurface"
                         float rs = ((1.33 * cosI) - cosT) / ((1.33 * cosI) + cosT);
                         float rp = ((1.33 * cosT) - cosI) / ((1.33 * cosT) + cosI);
                         fresnel = 0.5 * ((rs * rs) + (rp * rp));
-                        // Луч наружу: refract уже отдаёт единичный вектор.
+                        // Outgoing ray: refract already returns a unit vector.
                         skyDir = refract(toSurf, -nUw, 1.33);
                     }
 
-                    // Ширина солнечного блика и звёзд — из разброса нормали по
-                    // пикселю, то есть из того же сигнала, которым гасится
-                    // алиасинг октав. Диск не может быть резче настоящего
-                    // (GalilegoSunDisc держит нижнюю границу), поэтому на штиль
-                    // он круглый, а на волне распадается на устойчивую
-                    // россыпь. Строгий конус при наклонах ±8° мерцал бы.
+                    // Sun-glint and star width come from the per-pixel normal spread,
+                    // the same signal that damps the octave aliasing. The disc can't
+                    // be sharper than a real one (GalilegoSunDisc holds a lower
+                    // bound), so it is round in calm water and breaks into a stable
+                    // scatter on waves. A strict cone would flicker at ±8° slopes.
                     float3 ddxN = ddx(nUw);
                     float3 ddyN = ddy(nUw);
                     float normalSigma = min(sqrt(dot(ddxN, ddxN) + dot(ddyN, ddyN)), 0.35);
@@ -569,13 +525,13 @@ Shader "Galilego/WaterSurface"
                             * (_UnderwaterWindowGain * waterRad);
                     }
 
-                    // Зеркало: отражение ТОЛЩИ, а не неба. Физически за
-                    // критическим углом луч не выходит из воды, и глаз видит то,
-                    // что ниже: рассеянный свет толщи, темнеющий с ростом
-                    // угла (меньше света от зенита). Полосы света — низкочастотные
-                    // (15-60 м), потому что отдельных светлых точек на зеркале
-                    // нет: каустики собираются на освещённой сверху поверхности,
-                    // а не на потолке.
+                    // Mirror: reflection of the BODY, not the sky. Physically, beyond
+                    // the critical angle the ray doesn't leave the water and the eye
+                    // sees what is below: scattered body light, darkening as the angle
+                    // grows (less light from the zenith). The light bands are
+                    // low-frequency (15-60 m) because there are no individual bright
+                    // points on the mirror: caustics collect on the upward-lit
+                    // surface, not on the ceiling.
                     float3 mirrorDir = reflect(toSurf, nUw);
                     float downness = saturate(-dot(mirrorDir, upW));
                     float lightLevel = (_SkyAmbient * 2.2)
@@ -589,11 +545,11 @@ Shader "Galilego/WaterSurface"
 
                     color = lerp(skySeen, mirror, fresnel);
 
-                    // Ободок окна — тот же Френель: там, где отражение ещё не
-                    // полное, но уже сильное. Отдельного smoothstep больше нет.
+                    // Window rim — the same Fresnel: where reflection is strong but
+                    // not yet total.
                     color += skySeen * (_UnderwaterRimStrength * fresnel * (1.0 - fresnel) * 2.0);
 
-                    // Отладка окна: снимок PNG сверяется с эталонным расчётом.
+                    // Window debug: a PNG capture is checked against a reference computation.
                     if (_UnderwaterDebugMode > 0.5)
                     {
                         if (_UnderwaterDebugMode < 1.5) { return float4(fresnel.xxx, 1.0); }
@@ -607,25 +563,22 @@ Shader "Galilego/WaterSurface"
                 else
                 {
 
-                // --- Волновая нормаль -----------------------------------------
-                // shadingFade — макро (градиент + пена) с floor: вода не
-                // превращается в мёртвую заливку вдали.
-                // detailFade — ВЧ (рябь/глиттер) БЕЗ floor, квадратом: первая
-                // уходит в субпиксельный алиасинг, режем раньше базовой волны.
-                // Плюс попиксельный AA через fwidth: октава гаснет, когда её
-                // длина волны < ~3 пикселей.
+                // --- Wave normal ----------------------------------------------
+                // shadingFade — macro (gradient + foam) with a floor: water doesn't
+                // turn into a dead flat fill at distance.
+                // detailFade — high frequency (ripple/glitter) WITHOUT a floor,
+                // squared: it aliases sub-pixel first, so cut it before the base wave.
+                // Plus per-pixel AA via fwidth: an octave fades when its wavelength
+                // is < ~3 pixels.
                 float waveFade = exp(-cameraDist * 0.00012);
                 float shadingFade = _ShadingFadeFloor + ((1.0 - _ShadingFadeFloor) * waveFade);
                 float detailFade = _DetailFadeFloor + ((1.0 - _DetailFadeFloor) * waveFade * waveFade);
                 float t = _WaterTime;
-                // Весь узор (волна, чоп, рябь, пена, спаркл) — в касательных UV:
-                // иначе он стоит на месте только пока стоит игрок, а при
-                // движении ползёт по морю за ним. Тот же UV, что в вертине
-                // и в подводной ветке, поэтому геометрия, нормали и потолок
-                // согласованы (см. WaterBodyFixed).
-                // Узор в .xz тело-fixed пространства. Шаг 2 (касательные UV с базисом
-                // east/north от CPU) откачен: он дал фиолетовую заливку и
-                // плоский синий фон вместо поверхности.
+                // The whole pattern (wave, chop, ripple, foam, sparkle) is in tangent
+                // UVs: otherwise it stays put only while the player stands still and
+                // crawls across the sea with them when moving. The same UV as in the
+                // vertex shader and the underwater branch, so geometry, normals and
+                // ceiling stay consistent (see WaterBodyFixed).
                 float2 patternUv = WaterBodyFixed(input.positionWS).xz;
                 float2 gradF;
                 float h01F = WaterWaveHeight01(patternUv * _WaveScale, t, gradF);
@@ -636,15 +589,15 @@ Shader "Galilego/WaterSurface"
                     : normalize(input.normalWS);
                 float3 gradW = gdirF * _WaveScale;
                 float3 gradT = gradW - (baseN * dot(gradW, baseN));
-                // Усиленный отклик: волны читаются и вблизи, и вдали.
+                // Boosted response: waves read both up close and at distance.
                 float macroK = (_WaveAmplitude * 2.0 + _WaveStrength * 1.5);
-                // Мелкий чоп: две бегущие октавы по world XZ (рад/м, не зависят
-                // от _WaveScale). Идёт в основную нормаль → виден в diffuse,
-                // fresnel и skyRef, а не только в спеке.
-                // Предел AA — по следу узора в его собственных осях.
+                // Fine chop: two travelling octaves over world XZ (rad/m, independent
+                // of _WaveScale). Feeds the main normal → visible in diffuse, fresnel
+                // and skyRef, not just the spec.
+                // AA limit from the pattern's footprint in its own axes.
                 float fwW = max(fwidth(patternUv.x), fwidth(patternUv.y));
-                // Частоты чопа округлены до кратных 2*pi/P, иначе узор не
-                // вписывается в период и «прыгает» при обнулении якоря.
+                // Chop frequencies are rounded to multiples of 2*pi/P, otherwise the
+                // pattern doesn't fit the period and "jumps" when the anchor wraps.
                 float rf1 = max(kBaseUw * 131.0, _RippleScale * 0.35);
                 float rf2 = rf1 * 2.0;
                 float rs1 = _RippleSpeed * 0.8;
@@ -659,8 +612,9 @@ Shader "Galilego/WaterSurface"
                     + (rd2 * (0.5 * cos(rp2) * rf2 * aa2));
                 float3 rgradW = float3(rgrad.x, 0.0, rgrad.y);
                 float3 rgradT = rgradW - (baseN * dot(rgradW, baseN));
-                // Микрорельеф FBM (два слоя в противоход): ломает «вельвет»
-                // синусов, даёт живую рябь вблизи. Гаснет вдали (detailFade).
+                // FBM micro-relief (two layers in opposite directions): breaks the
+                // "velvet" of the sines, gives living ripple up close. Fades at
+                // distance (detailFade).
                 float2 nUv1 = patternUv * 0.55 + float2(t * 0.22, t * 0.13);
                 float2 nUv2 = patternUv * 1.15 - float2(t * 0.17, -t * 0.21);
                 float ne = 0.6;
@@ -673,8 +627,8 @@ Shader "Galilego/WaterSurface"
                     - (gradT * (macroK * shadingFade))
                     - (rgradT * (_RippleStrength * 0.12 * detailFade))
                     - (ngradT * (0.12 * detailFade)));
-                // Текстурная рябь (HOWTO: две normal map в противоход, вторая
-                // мельче). Разворачиваем в касательном базисе вокруг baseN.
+                // Texture ripple (HOWTO: two normal maps in opposite directions, the
+                // second finer). Unwrapped in a tangent basis around baseN.
                 if (_UseNormalMap > 0.5)
                 {
                     float2 uvA = patternUv * _NormalScale0 + (_NormalScroll0.xy * t);
@@ -689,11 +643,11 @@ Shader "Galilego/WaterSurface"
                         * (_NormalStrength * detailFade)));
                 }
 
-                // --- База по глубине: бирюза → океан → глубокий navy ---------
-                // Поглощение экспоненциальное, быстрое: мелководье первые
-                // _AbsorbShallow (~2 м) → mid → глухой deep к _AbsorbDeep
-                // (~14 м). Дно сквозь воду читается только у самой кромки,
-                // дальше — непрозрачный океан, а не "прокрашенное дно".
+                // --- Depth base: turquoise → ocean → deep navy ----------------
+                // Absorption is exponential and fast: shallows for the first
+                // _AbsorbShallow (~2 m) → mid → solid deep by _AbsorbDeep (~14 m).
+                // The bottom reads through the water only at the very edge; beyond
+                // that it's an opaque ocean, not a "tinted bottom".
                 float depth = max(0.0, input.depthMeters);
                 float absorbDeep = 1.0 - exp(-depth / max(1.0, _AbsorbDeep));
                 float deepT = pow(saturate(absorbDeep), 0.6);
@@ -701,18 +655,17 @@ Shader "Galilego/WaterSurface"
                 float deepW = smoothstep(0.30, 1.0, deepT);
                 float3 waterBase = lerp(_WaterShallow.rgb, _WaterMid.rgb, midT);
                 waterBase = lerp(waterBase, _WaterDeep.rgb, deepW);
-                // Светящаяся кромка: первые метры чуть ярче shallow.
+                // Glowing edge: the first metres are slightly brighter than shallow.
                 float shallowKick = 1.0 - exp(-depth / max(0.5, _AbsorbShallow));
                 waterBase = lerp(_WaterShallow.rgb * 1.10, waterBase, saturate(shallowKick));
 
-                // Свет воды: рельефный член здесь даёт черноту (солнце у
-                // горизонта -> ndl=0, небо 0.1). Вода светится толщей:
-                // wrap-диффуз + усиленный полусферический скайлайт, иначе
-                // взгляд строго вниз — плоская чёрная заливка.
+                // Water lighting: a relief term alone goes black here (sun at the
+                // horizon -> ndl=0, sky 0.1). Water glows from its body: wrap diffuse
+                // plus a boosted hemispherical skylight, otherwise looking straight
+                // down is a flat black fill.
                  float ndl = saturate(dot(n, sunDir));
                  float ndlWrap = saturate((dot(n, sunDir) + 0.6) / 1.6);
-                // HOWTO-вода светится отражением, а не ambient-пересветом:
-                // было *3.0 — мелководье выжигалось в молочно-белое.
+                // HOWTO water glows from reflection, not ambient over-lighting.
                 float dayLocal = smoothstep(-0.12, 0.08, dot(baseN, sunDir));
                 float3 waterSky = GalilegoSkyAmbient(n) * waterRad * 1.15 * dayLocal;
                 float3 lightTerm = float3(_NightAmbient, _NightAmbient, _NightAmbient)
@@ -721,13 +674,13 @@ Shader "Galilego/WaterSurface"
 
                 float cosT = saturate(dot(n, viewDir));
                 float fresnelPow = pow(1.0 - cosT, 5.0);
-                // Шлик, F0 воды 0.02-0.04 как в природе (Crest/OceanShader):
-                // вдаль — зеркало, вниз — прозрачная толща, а не молоко.
+                // Sheen, water F0 0.02-0.04 as in nature (Crest/OceanShader):
+                // at distance a mirror, looking down a transparent body, not milk.
                 float fresnelF = 0.03 + (0.97 * fresnelPow);
 
-                // Солнечная дорожка: широкий блик + рассыпчатый глиттер.
-                // Отдельная ВЧ-октава только для specular: дробит блин на
-                // блёстки на закате; diffuse/foam её не видят.
+                // Sun path: a broad glint plus grainy glitter. A separate
+                // high-frequency octave for specular only: shatters the blob into
+                // sparkles at sunset; diffuse/foam don't see it.
                 float sparkleFade = detailFade;
                 const float2 kSpark = float2(660.0, -749.0);
                 float2 sd1 = normalize(kSpark);
@@ -747,10 +700,10 @@ Shader "Galilego/WaterSurface"
                 color = (waterBase * lightTerm)
                      + (spec * sun * _SunLightColor * waterRad * cloudShadow);
 
-                // Подсветка толщи волны (SSS-приближение как в Crest/NorthStar):
-                // смотря сквозь гребень на солнце, волна светится бирюзой
-                // (прямое рассеяние), впадины остаются глубокими. Красный
-                // гаснет первым — только teal-оттенок. Дальше мелководья нет.
+                // Wave-body glow (SSS approximation as in Crest/NorthStar): looking
+                // through a crest toward the sun, the wave glows turquoise (forward
+                // scattering), troughs stay deep. Red extinguishes first — teal only.
+                // Beyond that there are no shallows.
                 float crest01 = saturate(h01F * 0.5 + 0.5);
                 float sunView = saturate(dot(viewDir, sunDir));
                 float sssForward = pow(sunView, 3.0) * pow(crest01, 2.0);
@@ -759,48 +712,45 @@ Shader "Galilego/WaterSurface"
                  color += sssColor * (sssThick + sssForward * 0.9)
                      * saturate(sun * ndl + (0.25 * dayLocal)) * (1.0 - deepW) * waterRad * cloudShadow;
 
-                // Зеркало неба по Шлику (F0 воды 0.06 для красивого моря):
-                // вдаль море светлеет к горизонту, а не остаётся тёмной заливкой.
-                // Неба подмешиваем щедро + тёплый солнечный оттенок — море
-                // зеркалит небо, как настоящий океан в ясный день.
+                // Sky mirror by Schlick (water F0 0.06 for a pretty sea): at distance
+                // the sea brightens toward the horizon instead of staying a dark fill.
+                // Generous sky blend plus a warm sun tint — the sea mirrors the sky
+                // like a real ocean on a clear day.
                 float3 reflectDir = reflect(-viewDir, n);
                  float3 skyRef = (GalilegoSkyAmbient(reflectDir) * waterRad * 1.0
                      + (_SunLightColor * waterRad * 0.06 * cloudShadow)) * dayLocal;
-                // Широкая солнечная дорожка на воде (шеен к солнцу поверх
-                // зеркала; сам глиттер даёт spec ниже).
+                // Broad sun path on the water (sheen toward the sun over the mirror;
+                // the glitter itself feeds the spec below).
                 float sunPath = pow(saturate(dot(reflectDir, sunDir)), 10.0);
                  skyRef += _SunLightColor * (sunPath * 0.05 * waterRad * cloudShadow) * dayLocal;
                 color = lerp(color, skyRef, saturate(fresnelF * _FresnelStrength));
-                // Дальняя дымка воды: горизонт уходит в небо.
-                // Усилена для морских просторов — океаны до горизонта.
+                // Distant water haze: the horizon merges into the sky.
+                // Boosted for open sea — oceans all the way to the horizon.
                 float horizonT = (1.0 - waveFade) * saturate(fresnelPow + 0.35);
                 color = lerp(color, skyRef, horizonT * 0.65 * _FresnelStrength);
 
-                // --- Пена у берега -------------------------------------------
+                // --- Shore foam ----------------------------------------------
                 float slopeW = fwidth(input.depthMeters);
                 float bandW = max(max(0.5, _FoamDepthMeters), slopeW * max(0.0, _FoamSlopeGain));
                 float foamBand = 1.0 - smoothstep(0.0, bandW, depth);
                 float foamFreqBoost = 1.0 + (2.0 * exp(-cameraDist * 0.01));
-                // Пена FBM двумя слоями в противоход (приём из процедурных
-                // океанов): рвёт регулярные полосы, даёт кружево. Слабый
-                // глубинный член оставляет намёк прибойных линий у берега.
-                // HOWTO: мелкое кружево у уреза — частоты подняты (было
-                // 0.35/0.8 — пятна по 3 м заливали весь шельф молоком).
-                // Масштабы кратны kBase, чтобы пена тоже укладывалась в период P.
+                // Foam FBM in two opposite layers (a procedural-ocean trick): tears
+                // regular bands into lace. A weak depth term leaves a hint of surf
+                // lines at the shore.
+                // Scales are multiples of kBase so foam also fits the period P.
                 float foamN1 = wfbm(patternUv * (kBaseUw * 228.0) + float2(t * 0.15, -t * 0.11));
                 float foamN2 = wfbm(patternUv * (kBaseUw * 456.0) - float2(t * 0.12, t * 0.16));
                 float foamNoise = saturate(foamN1 * 0.6 + foamN2 * 0.4 + 0.15
                     + (0.1 * sin((depth * 1.7 * foamFreqBoost) - (t * 2.2))));
-                // Кружево, а не одеяло: шум через порог — рваные пятна пены,
-                // между ними чистая бирюза. Было foamBand*foamNoise — на
-                // пологом шельфе молочная заливка во весь экран.
-                // Порог поднят (было 0.66-0.90): пена ~10-15% площади полосы.
-                // 0.70-0.92 — баланс: кружево видно у уреза, заливки нет.
+                // Lace, not a blanket: noise through a threshold gives torn foam
+                // patches with clean turquoise between them. 0.70-0.92 keeps the
+                // foam at ~10-15% of the band area — lace visible at the shoreline,
+                // no wash-out.
                 float foamLace = smoothstep(0.70, 0.92, foamNoise);
                 float foamBase = saturate(foamBand * foamLace * shadingFade * 0.9 + (foamBand * foamBand * 0.03)
                     + (foamBand * crest01 * _FoamCrestStrength * shadingFade * 0.5));
-                // Бегущий прибой: светлые линии набегают на берег. Полоса уже
-                // и ближе к урезу, чем раньше — иначе весь шельф белеет.
+                // Running surf: bright lines wash onto the shore. The band is narrow
+                // and close to the shoreline, otherwise the whole shelf whitens.
                 const float2 kSurfA = float2(57.0, 68.0);
                 const float2 kSurfB = float2(-50.0, 44.0);
                 float surfNoise = sin(dot(patternUv, kSurfA) * kBaseUw + (t * 0.9))
@@ -809,57 +759,52 @@ Shader "Galilego/WaterSurface"
                 float surfLines = smoothstep(0.78, 0.98, (sin(surfPhase) * 0.5 + 0.5));
                 float surfAtten = 1.0 - smoothstep(0.0, max(1.0, _FoamDepthMeters * 0.9), depth);
                 float surf = surfLines * surfAtten * _SurfStrength * shadingFade * 0.5;
-                // Барашки в открытом море: пена только где гребень высок И шум
-                // утверждён (порог в духе Dupuy whitecaps) — редкие рваные
-                // пятна вместо молочной заливки. Вдали гаснет.
+                // Whitecaps in open sea: foam only where the crest is high AND the
+                // noise agrees (a Dupuy-style threshold) — sparse torn patches rather
+                // than a milky wash. Fades at distance.
                 float capN = wfbm(patternUv * (kBaseUw * 326.0) + float2(-t * 0.2, t * 0.14));
                 float whitecaps = smoothstep(1.0, 1.15, crest01 * 0.8 + capN * 0.4)
                     * _FoamCrestStrength * 0.7 * shadingFade;
                 float foam = saturate(foamBase + surf + whitecaps);
 
-                // --- Мягкий берег по вершинной глубине (без depth buffer) ----
-                // Красивое море обязано РИСОВАТЬСЯ: чтение depth buffer
-                // (LoadCameraDepth) в transparent-проходе HDRP на части
-                // конфигураций даёт пустой кадр — вся вода пропадает и видно
-                // только тёмное дно. Поэтому кромка — по вершинной глубине
-                // чанка (waterExtra.x): robust на любом железе и LOD.
-                // Пена у уреза и мелководный цвет — из той же глубины.
+                // --- Soft shore from vertex depth (no depth buffer) -----------
+                // Reading the depth buffer (LoadCameraDepth) in an HDRP transparent
+                // pass can give an empty frame on some configurations, so the edge
+                // comes from the chunk's vertex depth (waterExtra.x): robust on any
+                // hardware and LOD.
+                // Shore foam and shallow color come from the same depth.
                 float shoreSoft = saturate(depth / max(0.25, _ShoreFadeMeters));
                 {
-                    // Пена уреза — то же кружево в полосе foamBand (1-2 м),
-                    // а не заливка всего, что мельче ShoreFade (8 м).
+                    // Shoreline foam — the same lace within the foamBand (1-2 m),
+                    // not a fill of everything shallower than ShoreFade (8 m).
                     float shoreFoam = foamBand * smoothstep(0.70, 0.92, foamNoise);
                     foam = max(foam, shoreFoam);
                     color = lerp(_WaterShallow.rgb * lightTerm * 1.05, color, smoothstep(0.0, 0.7, shoreSoft));
                 }
-                // Пена — альбедо около белого без дополнительного разгона:
-                // разгон ×1.9 под физическим солнцем выжигал весь шельф в молоко.
+                // Foam albedo is near-white with no extra boost.
                 color = lerp(color, _FoamColor.rgb * lightTerm, foam * 0.75);
 
-                // --- Альфа: глубже ~8 м вода полностью непрозрачна ------------
-                // Мелководье полупрозрачное (дно просвечивает), глубина и пена —
-                // почти непрозрачны. Блендинга нет (AlphaTest-очередь):
-                // прозрачность стохастическая (screen-door через clip ниже) —
-                // отброшенные пиксели показывают дно под водой.
-                // Глубина дополнительно читается цветом (waterBase).
+                // --- Alpha: below ~8 m the water is fully opaque ---------------
+                // Shallows are semi-transparent (the bottom shows through), depth and
+                // foam are nearly opaque. There is no blending (AlphaTest queue):
+                // transparency is stochastic (screen-door via clip below) — discarded
+                // pixels show the bottom under the water.
+                // Depth is additionally read through color (waterBase).
                 float shallowT = smoothstep(0.0, 8.0, depth);
-                // Полоса частичной прозрачности — УЗКАЯ, в метрах, а не в
-                // «диапазоне шейдера». Раньше здесь стояло smoothstep(0, 2, depth):
-                // на пологом шельфе (замерено: глубины 1.8..30 м на километр)
-                // эти 2 м растягивались на сотни метров уреза, вода рисовалась
-                // screen-door'ом (clip(alpha - ign)) поверх СЫРОГО песка — и давала
-                // ровную «шахматную» полосу цвета пляжа с резкой прямой границей
-                // там, где альфа насыщается. Теперь полупрозрачна только тонкая
-                // кромка самого уреза (_ShallowAlphaMeters), дальше вода плотная.
+                // The partial-transparency band is NARROW, in metres, not a "shader
+                // range": on a gentle shelf (measured: depths 1.8..30 m per kilometre)
+                // a fixed 2 m would stretch over hundreds of metres of shoreline. Only
+                // the thin edge itself is semi-transparent (_ShallowAlphaMeters);
+                // beyond that the water is dense.
                 float alphaT = smoothstep(0.0, max(0.02, _ShallowAlphaMeters), depth);
                 float alphaBase = lerp(_MinAlpha, _MaxAlpha, max(alphaT, fresnelPow));
                 float alphaShore = max(foam * 0.98, _ShallowAlpha * (1.0 - (alphaT * 0.35)));
                 alpha = clamp(max(alphaBase, alphaShore), 0.0, 1.0);
                 }
-                // Screen-door 1px IGN: мелкое зерно вместо блендинга (Transparent
-                // наш пас не рисует). Без квантования по мировым ячейкам.
-                // Только НАД водой: из-под воды потолок сплошной (alpha=1,
-                // discard запрещён), иначе зерно на весь экран при нырянии.
+                // 1px IGN screen-door: fine grain instead of blending (HDRP doesn't
+                // draw our pass in Transparent). No quantization by world cells.
+                // Above water only: from below the ceiling is solid (alpha=1, discard
+                // forbidden), otherwise diving covers the screen in grain.
                 if (!isUnderwater)
                 {
                     float ign = frac(52.9829189 * frac(dot(input.positionCS.xy, float2(0.06711056, 0.00583715))));
@@ -869,15 +814,15 @@ Shader "Galilego/WaterSurface"
             }
             ENDHLSL
         }
-        // Вода обязана попадать в depth pyramid. Иначе прозрачные шейдеры
-        // (атмосфера, звёзды, диск солнца) в IsSky() считают пиксели воды небом
-        // и рисуют небо ПОВЕРХ океана. На горизонте путь через атмосферу
-        // огромный, поэтому там это даёт ровную непрозрачную полосу цвета
-        // атмосферы ровно по линии горизонта: океан под ней не виден, и полоса
-        // повторяет силуэт берега. Рельеф ту же проблему уже закрыл пассом
-        // DepthForwardOnly (PlanetSurface.shader), вода — нет.
-        // HDRP требует DepthForwardOnly у forward-материалов
-        // (см. HDRenderPipeline.RenderGraph.cs:952-956).
+        // Water must enter the depth pyramid. Otherwise transparent shaders
+        // (atmosphere, stars, sun disc) treat water pixels as sky in IsSky() and
+        // draw sky OVER the ocean. At the horizon the path through the atmosphere
+        // is huge, so this yields a flat opaque band of atmosphere color exactly at
+        // the horizon line: the ocean beneath is hidden and the band follows the
+        // shoreline silhouette. Terrain already covers this with its
+        // DepthForwardOnly pass (PlanetSurface.shader); water does not.
+        // HDRP requires DepthForwardOnly on forward materials
+        // (see HDRenderPipeline.RenderGraph.cs:952-956).
         Pass
         {
             Name "DepthForwardOnly"
@@ -895,11 +840,11 @@ Shader "Galilego/WaterSurface"
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
 
-            // Те же глобалы и та же волна, что в WaterSurfaceForward: смещение
-            // обязано быть ПОБАЙТОВО тем же. Без него препасс лежит на
-            // невозмущённой поверхности, а forward-vertex с волной ниже неё
-            // проваливается под свой же depth и отсекается ZTest LEqual —
-            // чёрные дыры на воде в ложбинах гребней.
+            // The same globals and the same wave as in WaterSurfaceForward: the
+            // displacement must be BIT-FOR-BIT identical. Otherwise the prepass sits
+            // on the undisturbed surface, and a forward vertex with the wave below it
+            // falls under its own depth and is culled by ZTest LEqual — black holes
+            // in the water in wave troughs.
             float3 _PlanetCameraPos;
             float3 _PlanetWaterCenter;
             float _WaterTime;
@@ -917,8 +862,8 @@ Shader "Galilego/WaterSurface"
             float WaterWaveHeight01Depth(float2 uv, float t, out float2 gradTangent)
             {
                 float2 p = uv;
-                // Те же целые K и тот же kBase, что в WaterWaveHeight01: иначе
-                // потолок (Depth-проход) и поверхность сверху разойдутся.
+                // The same integer K and the same kBase as in WaterWaveHeight01:
+                // otherwise the ceiling (Depth pass) and the surface above diverge.
                 const float kBase = 0.006135923151542565;  // 2*pi/1024
                 const float2 K1 = float2(156.0, 47.0);
                 const float2 K2 = float2(-153.0, 231.0);
@@ -952,8 +897,9 @@ float2 grad = ((0.38 * f1 * d1) * cos(p1)
                     + (0.18 * f3 * d3) * cos(p3)
                     + (0.11 * f4 * d4) * cos(p4)
                     + (0.07 * f5 * d5) * cos(p5)) * dhds;
-                // Градиент в тех же координатах, где посчитан (см. WaterBodyFixed);
-                // вызывающий переводит его в рендер-оси через _WaterWorldToBody.
+                // Gradient in the same coordinates it was computed in (see
+                // WaterBodyFixed); the caller converts it to render axes via
+                // _WaterWorldToBody.
                 gradTangent = grad;
                 return h + (qShape * h * h);
             }

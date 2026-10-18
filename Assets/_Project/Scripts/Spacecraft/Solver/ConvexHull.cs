@@ -5,31 +5,31 @@ using Galilego.Core;
 namespace Galilego.Spacecraft.Solver
 {
     /// <summary>
-    /// Выпуклая оболочка облака точек (quickhull, double). Грани — треугольники с
-    /// наружными нормалями и плоскостями; запрос точки даёт глубину и наружную
-    /// нормаль ближайшей грани (контакты фазы 6: деталь против постройки).
-    /// Дубликаты схлопываются; вырожденные облака (плоские/линейные) заменяются
-    /// оболочкой по AABB (плита), чтобы контакт не пропадал.
+    /// Convex hull of a point cloud (quickhull, double). Faces are triangles with
+    /// outward normals and planes; a point query returns the depth and outward
+    /// normal of the nearest face (part against site contacts).
+    /// Duplicates are collapsed; degenerate clouds (planar/linear) are replaced
+    /// by an AABB hull (slab) so contact is not lost.
     /// </summary>
     public sealed class ConvexHull
     {
-        /// <summary>Вершины оболочки (дедуплицированные).</summary>
+        /// <summary>Hull vertices (deduplicated).</summary>
         public readonly Vector3d[] Points;
 
         public readonly int[] FaceA;
         public readonly int[] FaceB;
         public readonly int[] FaceC;
 
-        /// <summary>Наружные единичные нормали граней.</summary>
+        /// <summary>Outward unit face normals.</summary>
         public readonly Vector3d[] Normals;
 
-        /// <summary>dot(normal, vertex0) для каждой грани.</summary>
+        /// <summary>dot(normal, vertex0) for each face.</summary>
         public readonly double[] Offsets;
 
         public readonly Vector3d Min;
         public readonly Vector3d Max;
 
-        /// <summary>true — облако было вырожденным, оболочка по AABB.</summary>
+        /// <summary>true — the cloud was degenerate, hull built from the AABB.</summary>
         public readonly bool Degenerate;
 
         private ConvexHull(
@@ -63,7 +63,7 @@ namespace Galilego.Spacecraft.Solver
         }
 
         /// <summary>
-        /// Построить оболочку. toleranceScale — относительный допуск (к размеру AABB).
+        /// Builds the hull. toleranceScale is the relative tolerance (to the AABB size).
         /// </summary>
         public static ConvexHull Build(IReadOnlyList<Vector3d> raw, double toleranceScale = 1e-9d)
         {
@@ -96,7 +96,7 @@ namespace Galilego.Spacecraft.Solver
                 return BoxFallback(min, max);
             }
 
-            // Начальный симплекс: линия → треугольник → тетраэдр.
+            // Initial simplex: line → triangle → tetrahedron.
             FindExtremePair(points, out int ia, out int ib);
             Vector3d a = points[ia];
             Vector3d b = points[ib];
@@ -154,7 +154,7 @@ namespace Galilego.Spacecraft.Solver
 
             Vector3d interior = (a + b + c + points[id]) * 0.25d;
 
-            // Четыре грани тетраэдра, ориентированные наружу.
+            // Four tetrahedron faces, oriented outward.
             var faces = new List<int[]>(64);
             var outside = new List<int>(64);
             AddFace(faces, outside, points, interior, eps, ia, ib, ic);
@@ -162,7 +162,7 @@ namespace Galilego.Spacecraft.Solver
             AddFace(faces, outside, points, interior, eps, ia, id, ib);
             AddFace(faces, outside, points, interior, eps, ib, id, ic);
 
-            // Распределение точек по граням, которые они видят.
+            // Distribute points to the faces they see.
             var assignments = new List<int>[faces.Count];
             for (int i = 0; i < faces.Count; i++)
             {
@@ -194,7 +194,7 @@ namespace Galilego.Spacecraft.Solver
                 }
             }
 
-            // Основной цикл: наружная точка расширяет оболочку.
+            // Main loop: an outside point expands the hull.
             var edgeCount = new Dictionary<long, int>(256);
             var horizon = new List<long>(64);
             int guard = 0;
@@ -230,7 +230,7 @@ namespace Galilego.Spacecraft.Solver
 
                 Vector3d farPoint = points[far];
 
-                // Видимые грани: farPoint строго над плоскостью.
+                // Visible faces: farPoint strictly above the plane.
                 var visible = new List<int>(16);
                 for (int f = 0; f < faces.Count; f++)
                 {
@@ -240,7 +240,7 @@ namespace Galilego.Spacecraft.Solver
                     }
                 }
 
-                // Горизонт: рёбра видимых граней, граничащие с невидимыми.
+                // Horizon: edges of visible faces bordering invisible ones.
                 edgeCount.Clear();
                 for (int v = 0; v < visible.Count; v++)
                 {
@@ -259,7 +259,7 @@ namespace Galilego.Spacecraft.Solver
                     }
                 }
 
-                // Точки удаляемых граней переназначаются после построения новых.
+                // Points of removed faces are reassigned after the new ones are built.
                 var orphaned = new List<int>(64);
                 for (int v = 0; v < visible.Count; v++)
                 {
@@ -271,7 +271,7 @@ namespace Galilego.Spacecraft.Solver
                     }
                 }
 
-                // Удаление видимых граней (замена на null — компактность не важна).
+                // Remove visible faces (replaced with null — compaction does not matter).
                 var removed = new bool[faces.Count];
                 for (int v = 0; v < visible.Count; v++)
                 {
@@ -289,14 +289,14 @@ namespace Galilego.Spacecraft.Solver
                     }
                 }
 
-                // Новые грани от горизонта к farPoint.
+                // New faces from the horizon to farPoint.
                 for (int h = 0; h < horizon.Count; h++)
                 {
                     long edge = horizon[h];
                     int e0 = (int)(edge >> 32);
                     int e1 = (int)(edge & 0xFFFFFFFFL);
                     var face = new List<int>(3) { e0, e1, far };
-                    // Наружная ориентация: нормаль — от внутренней точки.
+                    // Outward orientation: normal points away from the interior point.
                     Vector3d n = Vector3d.Cross(points[e1] - points[e0], farPoint - points[e0]);
                     if (Vector3d.Dot(n, interior - points[e0]) > 0d)
                     {
@@ -312,7 +312,7 @@ namespace Galilego.Spacecraft.Solver
                 faces = compactFaces;
                 assignments = compactAssignments.ToArray();
 
-                // Переназначение осиротевших точек на новые/оставшиеся грани.
+                // Reassign orphaned points to new/remaining faces.
                 for (int i = 0; i < orphaned.Count; i++)
                 {
                     int p = orphaned[i];
@@ -344,8 +344,8 @@ namespace Galilego.Spacecraft.Solver
         }
 
         /// <summary>
-        /// Точка внутри оболочки: depth &gt; 0 и наружная нормаль ближайшей грани.
-        /// (Минимум по плоскостям граней; для боксов/типовых хуллов постройки точен.)
+        /// Point inside the hull: depth &gt; 0 and the outward normal of the nearest face.
+        /// (Minimum over face planes; exact for boxes/typical site hulls.)
         /// </summary>
         public bool QueryPoint(Vector3d point, out double depth, out Vector3d normal)
         {
@@ -486,7 +486,7 @@ namespace Galilego.Spacecraft.Solver
 
             var faces = new List<int[]>
             {
-                new[] { 0, 2, 3 }, new[] { 0, 3, 1 },   // -Z, +Z (порядок нормалей исправит конструктор)
+                new[] { 0, 2, 3 }, new[] { 0, 3, 1 },   // -Z, +Z (the constructor fixes the normal order)
                 new[] { 0, 4, 6 }, new[] { 0, 6, 2 },   // -Y, +Y
                 new[] { 0, 1, 5 }, new[] { 0, 5, 4 },   // -X, +X
                 new[] { 1, 3, 7 }, new[] { 1, 7, 5 },

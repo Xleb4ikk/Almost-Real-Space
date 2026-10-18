@@ -6,11 +6,11 @@ using Galilego.Core;
 using Galilego.Spacecraft;
 using UnityEngine;
 
-// Фаза 1 (ТЗ v2, разделы 3.1 и 7): геометрия и масса деталей.
-// Test200 — аналитика тензора инерции примитивов с поворотами;
-// Test201 — явная масса и линейная связь инерции с массой;
-// Test202 — точечная конфигурация через PartDefinition даёт прежний результат Test30;
-// Test203 — независимая дискретизация тестового аппарата T1 против аналитики.
+// Phase 1 (spec v2, sections 3.1 and 7): part geometry and mass.
+// Test200 — analytic inertia tensor of primitives with rotations;
+// Test201 — explicit mass and linear inertia-vs-mass relation;
+// Test202 — point configuration via PartDefinition matches Test30;
+// Test203 — independent discretization of test vessel T1 vs analytic.
 internal static partial class P1bTests
 {
     private static bool NearRel(double actual, double expected, double relTol)
@@ -76,14 +76,14 @@ internal static partial class P1bTests
         }
     }
 
-    // Test200: аналитика главных моментов примитивов и их поворот в систему корабля.
+    // Test200: analytic principal moments of primitives and their rotation into the ship frame.
     static int Test200_CylinderInertia()
     {
-        // Цилиндр r=1, h=2, m=12: Ixx=Izz=m(3r²+h²)/12=7, Iyy=m r²/2=6.
-        // Поворот на +90° вокруг Z переводит ось Y детали в −X: Ixx=6, Iyy=7, Izz=7.
-        // Поворот на +90° вокруг X переводит ось Y в Z: Ixx=7, Iyy=7, Izz=6.
-        // Сфера r=0.5, m=10: I=0.4·m·r²=1 во всех осях.
-        // Коробка 1×2×3, m=6: Ixx=m(b²+c²)/12=6.5, Iyy=m(a²+c²)/12=5, Izz=m(a²+b²)/12=2.5.
+        // Cylinder r=1, h=2, m=12: Ixx=Izz=m(3r²+h²)/12=7, Iyy=m r²/2=6.
+        // +90° rotation about Z maps part axis Y to −X: Ixx=6, Iyy=7, Izz=7.
+        // +90° rotation about X maps axis Y to Z: Ixx=7, Iyy=7, Izz=6.
+        // Sphere r=0.5, m=10: I=0.4·m·r²=1 on every axis.
+        // Box 1×2×3, m=6: Ixx=m(b²+c²)/12=6.5, Iyy=m(a²+c²)/12=5, Izz=m(a²+b²)/12=2.5.
         var cylinder = new Part(12d, Vector3d.Zero, 1e9d, PartShape.Cylinder,
             new Vector3d(1d, 2d, 0d), QuaternionD.Identity);
         var cylZ = new Part(12d, Vector3d.Zero, 1e9d, PartShape.Cylinder,
@@ -118,7 +118,7 @@ internal static partial class P1bTests
         return 0;
     }
 
-    // Test201: масса явная (не из формы), инерция линейна по массе, валидация размеров.
+    // Test201: mass is explicit (not derived from shape), inertia is linear in mass, dimensions validated.
     static int Test201_ExplicitMassAndScaling()
     {
         List<PartDefinition> defs = LoadVesselT1();
@@ -140,7 +140,7 @@ internal static partial class P1bTests
             && Math.Abs(full.CenterOfMass.Y - half.CenterOfMass.Y) < 1e-12
             && Math.Abs(full.CenterOfMass.Z - half.CenterOfMass.Z) < 1e-12;
 
-        // Половина массы при тех же геометриях → ровно половина каждого элемента тензора.
+        // Half the mass with the same geometry → exactly half of every tensor element.
         bool linearOk = NearRel(half.Inertia.M11, 0.5d * full.Inertia.M11, 1e-12)
             && NearRel(half.Inertia.M22, 0.5d * full.Inertia.M22, 1e-12)
             && NearRel(half.Inertia.M33, 0.5d * full.Inertia.M33, 1e-12)
@@ -168,7 +168,7 @@ internal static partial class P1bTests
         return 0;
     }
 
-    // Test202: точечные детали через PartDefinition дают прежний результат Test30.
+    // Test202: point parts via PartDefinition match Test30.
     static int Test202_PointCompat()
     {
         var defs = new List<PartDefinition>
@@ -207,15 +207,15 @@ internal static partial class P1bTests
         return 0;
     }
 
-    // Test203: независимая дискретизация аппарата T1 против аналитики.
-    // Точки берутся по объёму каждой детали (полярная сетка для цилиндров, декартова для коробки),
-    // тензор собирается отдельным проходом по точкам, без PerKgShipFrame.
+    // Test203: independent discretization of vessel T1 vs analytic.
+    // Points are sampled over each part's volume (polar grid for cylinders, Cartesian for boxes),
+    // the tensor is assembled in a separate pass over points, without PerKgShipFrame.
     static int Test203_DiscretizedReference()
     {
         List<Part> parts = PartAssembly.FromDefinitions(LoadVesselT1(), 5000d);
         AssemblyStats analytic = AssemblyStats.Compute(parts);
 
-        // Проход 1: масса и центр масс по точкам.
+        // Pass 1: mass and centre of mass from points.
         double mass = 0d;
         Vector3d weighted = Vector3d.Zero;
         foreach (Part p in parts)
@@ -229,7 +229,7 @@ internal static partial class P1bTests
 
         Vector3d center = weighted / mass;
 
-        // Проход 2: тензор относительно центра масс.
+        // Pass 2: tensor about the centre of mass.
         double ixx = 0d;
         double iyy = 0d;
         double izz = 0d;
@@ -272,7 +272,7 @@ internal static partial class P1bTests
         return 0;
     }
 
-    // Точки объёма детали в системе корабля с весами, сумма весов = массе детали.
+    // Part volume points in the ship frame with weights; sum of weights = part mass.
     private static void EnumerateVolumeSamples(Part p, Action<Vector3d, double> sink)
     {
         const int NRadial = 100;

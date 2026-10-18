@@ -4,10 +4,9 @@ namespace Galilego.Core
 {
     /// <summary>
     /// Unified DOPRI5 (Dormand-Prince 5(4)) orbit integrator with adaptive error control.
-    /// NOTE: historical comments claimed exact parity with FullTrajectoryJob (Burst twin).
-    /// That file is not in this repo, so parity is NOT automatically verified — the managed
-    /// baseline is pinned instead by golden-master test T34. Any intentional behavior change
-    /// must update T34 explicitly, not silently.
+    /// NOTE: parity with FullTrajectoryJob (Burst twin) is NOT automatically verified —
+    /// that file is not in this repo. The managed baseline is pinned by golden-master
+    /// test T34 instead; any intentional behavior change must update T34 explicitly.
     /// </summary>
     public static class OrbitIntegrator
     {
@@ -38,8 +37,8 @@ namespace Galilego.Core
             if (accelerationProvider == null)
                 throw new ArgumentNullException(nameof(accelerationProvider));
             
-            // Forward-only контракт (аудит S1/A1): при targetDt<0 стадии идут
-            // вперёд, а часы назад — молчаливый мусор. Обратный ход — громко.
+            // Forward-only contract (audit S1/A1): with targetDt < 0 the stages run
+            // forward while the clock runs backward — silent garbage. Backward is loud.
             if (targetDt < 0.0)
                 throw new ArgumentOutOfRangeException(nameof(targetDt),
                     "Интегратор forward-only: targetDt=" + targetDt + " < 0.");
@@ -115,10 +114,9 @@ namespace Galilego.Core
                     double rejectScale = Math.Min(Math.Max(
                         0.9 * Math.Pow(1.0 / Math.Max(normalizedError, 1e-10), 0.2),
                         0.1), 0.5);
-                    // Force-accept при клампе к MinStepSize: пересчитываем шаг с
-                    // УМЕНЬШЕННЫМ dt, а не принимаем результат старого крупного
-                    // шага — иначе состояние, time, remainingDt и dense-сегмент
-                    // расходились бы (результат считался со старым dt).
+                    // Force-accept at MinStepSize: recompute the step with the REDUCED
+                    // dt, not the old large-step result — otherwise state, time,
+                    // remainingDt and the dense segment would diverge.
                     double candidateDt = Math.Max(dt * rejectScale, DefaultMinStepSize);
                     if (candidateDt <= DefaultMinStepSize)
                     {

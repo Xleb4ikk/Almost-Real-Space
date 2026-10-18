@@ -3,22 +3,22 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Данные атмосферы планеты. Физика (DragSource/детекторы/Isp) читает только
-    /// высотную модель:
+    /// Planet atmosphere data. Physics (DragSource/detectors/Isp) reads only the
+    /// altitude model:
     ///
     ///     ρ(h) = SeaLevelDensityKgPerCubicMeter * exp(-h / ScaleHeightMeters)
     ///
-    /// обнуляется при h >= TopAltitudeMeters.
+    /// zeroed at h >= TopAltitudeMeters.
     ///
-    /// Коэффициенты рассеяния НЕ задаются здесь художественно: они выводятся из
-    /// SeaLevelDensityKgPerCubicMeter и земных констант в AtmosphereOptics —
-    /// едином источнике для CPU (SkyPhysics/SkyEnvironment) и GPU (шейдер).
-    /// RayleighColor/MieColor ниже — только множители поверх физики (тинты),
-    /// 1 = без изменений.
+    /// Scattering coefficients are NOT authored here: they are derived from
+    /// SeaLevelDensityKgPerCubicMeter and Earth constants in AtmosphereOptics —
+    /// the single source for CPU (SkyPhysics/SkyEnvironment) and GPU (shader).
+    /// RayleighColor/MieColor below are only multipliers on top of the physics
+    /// (tints), 1 = unchanged.
     ///
-    /// Визуал (PlanetAtmosphereView + Galilego/PlanetAtmosphere) читает те же
-    /// высоту/плотность и добавляет оптику — один профиль в инспекторе на оба
-    /// слоя. Всё визуальное за тумблером VisualEnabled и настраиваемо.
+    /// The visuals (PlanetAtmosphereView + Galilego/PlanetAtmosphere) read the same
+    /// altitude/density and add optics — one inspector profile for both layers.
+    /// Everything visual is behind the VisualEnabled toggle and configurable.
     /// </summary>
     [System.Serializable]
     public sealed class AtmosphereProfile
@@ -68,13 +68,13 @@ namespace Galilego.Universe
         [Range(0.001f, 0.2f)]
         public float HorizonFade = 0.01f;
 
-        /// <summary>Копия профиля: runtime не должен мутировать данные ассета.</summary>
+        /// <summary>Profile copy: runtime must not mutate asset data.</summary>
         public AtmosphereProfile Clone()
         {
             return (AtmosphereProfile)MemberwiseClone();
         }
 
-        /// <summary>Единый набор коэффициентов для CPU и GPU (см. AtmosphereOptics).</summary>
+        /// <summary>Unified coefficient set for CPU and GPU (see AtmosphereOptics).</summary>
         public AtmosphereOptics.Coefficients ToOptics()
         {
             return AtmosphereOptics.FromProfile(

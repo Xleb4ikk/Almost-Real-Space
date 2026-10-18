@@ -1,15 +1,14 @@
 // ============================================================================
 // ORBITAL ELEMENTS
 // ============================================================================
-// Структура для представления орбитальных элементов Кеплера
-// Перемещено из Vector3d.cs для архитектурной чистоты (Фаза 2.2)
+// Keplerian orbital elements structure.
 
 using System;
 
 namespace Galilego.Core
 {
     /// <summary>
-    /// Орбитальные элементы Кеплера, описывающие орбиту небесного тела.
+    /// Keplerian orbital elements describing a celestial body's orbit.
     /// </summary>
     public readonly struct OrbitalElements
     {
@@ -81,38 +80,38 @@ namespace Galilego.Core
             double.NaN);
 
         /// <summary>
-        /// Вычисляет орбитальные элементы из векторов состояния.
+        /// Computes orbital elements from state vectors.
         /// </summary>
-        /// <param name="relativePosition">Вектор положения относительно центрального тела в АСТРОДИНАМИЧЕСКОЙ системе (Z-up)</param>
-        /// <param name="relativeVelocity">Вектор скорости относительно центрального тела в АСТРОДИНАМИЧЕСКОЙ системе (Z-up)</param>
-        /// <param name="standardGravitationalParameter">Стандартный гравитационный параметр μ = G·M центрального тела (м³/с²)</param>
-        /// <returns>Орбитальные элементы или Invalid, если расчёт невозможен</returns>
+        /// <param name="relativePosition">Position relative to the central body in the ASTRODYNAMIC frame (Z-up)</param>
+        /// <param name="relativeVelocity">Velocity relative to the central body in the ASTRODYNAMIC frame (Z-up)</param>
+        /// <param name="standardGravitationalParameter">Standard gravitational parameter μ = G·M of the central body (m³/s²)</param>
+        /// <returns>Orbital elements, or Invalid if the computation is impossible</returns>
         /// <remarks>
-        /// ⚠️ ВАЖНО: КОНТРАКТ АСТРОДИНАМИЧЕСКОЙ СИСТЕМЫ КООРДИНАТ
+        /// ⚠️ IMPORTANT: ASTRODYNAMIC FRAME CONTRACT
         /// 
-        /// Этот метод ожидает, что оба вектора переданы в АСТРОДИНАМИЧЕСКОЙ системе координат,
-        /// где ось +Z ВСЕГДА указывает на север опорной плоскости (эклиптика/экватор).
+        /// This method expects both vectors in the ASTRODYNAMIC frame, where +Z ALWAYS
+        /// points to the north of the reference plane (ecliptic/equator).
         /// 
-        /// Если ваши векторы находятся в симуляционном кадре Unity (Y-up),
-        /// вы ДОЛЖНЫ преобразовать их мостом AstroFrame перед вызовом:
+        /// If your vectors are in Unity's simulation frame (Y-up), you MUST convert
+        /// them via the AstroFrame bridge before calling:
         ///
         /// <code>
-        /// // ✅ ПРАВИЛЬНО:
+        /// // ✅ CORRECT:
         /// var astroPos = AstroFrame.ToAstro(simPos);
         /// var astroVel = AstroFrame.ToAstro(simVel);
         /// var elements = OrbitalElements.FromState(astroPos, astroVel, mu);
         /// 
-        /// // ❌ НЕПРАВИЛЬНО (приведёт к неверным наклонению, LAN, аргументу перицентра):
+        /// // ❌ WRONG (yields incorrect inclination, LAN, argument of periapsis):
         /// var elements = OrbitalElements.FromState(simPos, simVel, mu);
         /// </code>
         /// 
-        /// Формулы орбитальной механики:
-        /// - Угловой момент: h = r × v
-        /// - Вектор эксцентриситета: e = (v × h)/μ - r/|r|
-        /// - Узел: n = k × h, где k = (0, 0, 1) в астродинамической системе
-        /// - Наклонение: i = arccos(h_z / |h|)
-        /// - Долгота восходящего узла: Ω = arctan2(n_y, n_x)
-        /// - Аргумент перицентра: ω = arccos(n · e / (|n| |e|))
+        /// Orbital mechanics formulas:
+        /// - Angular momentum: h = r × v
+        /// - Eccentricity vector: e = (v × h)/μ - r/|r|
+        /// - Node: n = k × h, where k = (0, 0, 1) in the astrodynamic frame
+        /// - Inclination: i = arccos(h_z / |h|)
+        /// - Longitude of ascending node: Ω = arctan2(n_y, n_x)
+        /// - Argument of periapsis: ω = arccos(n · e / (|n| |e|))
         /// </remarks>
         public static OrbitalElements FromState(Vector3d relativePosition, Vector3d relativeVelocity, double standardGravitationalParameter)
         {
@@ -133,18 +132,15 @@ namespace Galilego.Core
             }
 
 #if UNITY_EDITOR
-            // Guard удалён в A2: проблема непреобразованных Y-up векторов решена
-            // конструктивно мостом AstroFrame (ToAstro/ToSimulation), эвристика по
-            // угловому моменту давала бы ложные срабатывания на векторах, честно
-            // прошедших мост. См. Universe/AstroFrame.cs.
+            // Astro-frame conversion is guaranteed by the AstroFrame bridge
+            // (Universe/AstroFrame.cs); no heuristic guard is needed here.
 #endif
 
             Vector3d node = Vector3d.Cross(new Vector3d(0d, 0d, 1d), angularMomentum);
             double nodeMagnitude = node.Magnitude;
-            // Узел — ОТНОСИТЕЛЬНЫЙ тест: абсолютный epsilon=1e-10 при |h|~1e10
-            // принимает fp-мусор направления (sin π ≠ 0 в поворотах!) за настоящий
-            // узел. Поймано T26: e=0, i=180° давал Ω=40° из шума и зеркало 2R.
-            // e безразмерен изначально — ему абсолютный порог корректен.
+            // Node test is RELATIVE: an absolute epsilon=1e-10 at |h|~1e10 would take
+            // fp direction noise (sin π ≠ 0 in rotations!) for a real node.
+            // e is dimensionless, so an absolute threshold is correct for it.
             bool hasAscendingNode = nodeMagnitude > 1e-9d * angularMomentumMagnitude;
             Vector3d eccentricityVector =
                 (Vector3d.Cross(relativeVelocity, angularMomentum) / standardGravitationalParameter) -
@@ -172,13 +168,11 @@ namespace Galilego.Core
                 ? NormalizeAngle(Math.Atan2(node.Y, node.X))
                 : 0d;
 
-            // При node≈0 (околоэкваториальная орбита) узел не определён, и ω=0
-            // верно лишь если перицентр случайно в нуле долготы. Правило общее:
-            // ω обязано отображать перифокальный угол ν (меряется от ИСТИННОГО
-            // перицентра e-вектором ниже) в истинную долготу. Прямое: ω=Λ_p,
-            // ретроградное (поворот R1(π) зеркалит угол): ω=−Λ_p.
-            // Без этого KeplerPredictor зеркалит такие орбиты (поймано T25:
-            // хорда давала ν=120.9° при ω=0 — ошибка в масштабе орбиты).
+            // With node≈0 (near-equatorial orbit) the node is undefined, and ω=0 is
+            // correct only if the periapsis happens to lie at zero longitude. General
+            // rule: ω must map the perifocal angle ν (measured from the TRUE periapsis
+            // by the e-vector below) into true longitude. Prograde: ω=Λ_p,
+            // retrograde (the R1(π) rotation mirrors the angle): ω=−Λ_p.
             double argumentOfPeriapsis = 0d;
             if (hasAscendingNode && eccentricity > epsilon)
             {
@@ -223,8 +217,8 @@ namespace Galilego.Core
             }
             else
             {
-                // Круговая ретроградная экваториальная: с ω=π долгота L требует
-                // ν=π−L (поворот R1(π) зеркалит угол). Без этого — зеркало 2R.
+                // Circular retrograde equatorial: with ω=π longitude L requires
+                // ν=π−L (the R1(π) rotation mirrors the angle); otherwise mirrored.
                 trueAnomaly = NormalizeAngle(Math.PI - Math.Atan2(relativePosition.Y, relativePosition.X));
             }
 
@@ -256,12 +250,12 @@ namespace Galilego.Core
         }
 
         /// <summary>
-        /// Вычисляет радиус сферы влияния (Sphere of Influence) по формуле Лапласа.
+        /// Computes the Sphere of Influence radius using Laplace's formula.
         /// </summary>
-        /// <param name="semiMajorAxis">Большая полуось орбиты вокруг родительского тела (м)</param>
-        /// <param name="orbitingMass">Масса орбитирующего тела (кг)</param>
-        /// <param name="parentMass">Масса родительского тела (кг)</param>
-        /// <returns>Радиус сферы влияния (м)</returns>
+        /// <param name="semiMajorAxis">Semi-major axis of the orbit around the parent body (m)</param>
+        /// <param name="orbitingMass">Mass of the orbiting body (kg)</param>
+        /// <param name="parentMass">Mass of the parent body (kg)</param>
+        /// <returns>Sphere of Influence radius (m)</returns>
         public static double CalculateSphereOfInfluenceRadius(double semiMajorAxis, double orbitingMass, double parentMass)
         {
             if (semiMajorAxis <= 0d || orbitingMass <= 0d || parentMass <= 0d)
@@ -273,13 +267,13 @@ namespace Galilego.Core
         }
 
         /// <summary>
-        /// Вычисляет радиус сферы Хилла (Hill sphere).
+        /// Computes the Hill sphere radius.
         /// </summary>
-        /// <param name="semiMajorAxis">Большая полуось орбиты вокруг родительского тела (м)</param>
-        /// <param name="eccentricity">Эксцентриситет орбиты</param>
-        /// <param name="orbitingMass">Масса орбитирующего тела (кг)</param>
-        /// <param name="parentMass">Масса родительского тела (кг)</param>
-        /// <returns>Радиус сферы Хилла (м)</returns>
+        /// <param name="semiMajorAxis">Semi-major axis of the orbit around the parent body (m)</param>
+        /// <param name="eccentricity">Orbit eccentricity</param>
+        /// <param name="orbitingMass">Mass of the orbiting body (kg)</param>
+        /// <param name="parentMass">Mass of the parent body (kg)</param>
+        /// <returns>Hill sphere radius (m)</returns>
         public static double CalculateHillRadius(double semiMajorAxis, double eccentricity, double orbitingMass, double parentMass)
         {
             if (semiMajorAxis <= 0d || orbitingMass <= 0d || parentMass <= 0d)
@@ -390,30 +384,29 @@ namespace Galilego.Core
         }
 
         /// <summary>
-        /// Вычисляет позиции периапсиса и апоапсиса в астродинамической системе координат (Z-up).
+        /// Computes the periapsis and apoapsis positions in the astrodynamic frame (Z-up).
         /// </summary>
-        /// <param name="periapsisPosition">Выходной параметр: позиция периапсиса в астродинамической системе (м)</param>
-        /// <param name="apoapsisPosition">Выходной параметр: позиция апоапсиса в астродинамической системе (м), или Vector3d.Zero для гиперболических орбит</param>
-        /// <returns>true, если расчёт успешен; false, если орбитальные элементы невалидны</returns>
+        /// <param name="periapsisPosition">Output: periapsis position in the astrodynamic frame (m)</param>
+        /// <param name="apoapsisPosition">Output: apoapsis position in the astrodynamic frame (m), or Vector3d.Zero for hyperbolic orbits</param>
+        /// <returns>true if the computation succeeds; false if the orbital elements are invalid</returns>
         /// <remarks>
-        /// Этот метод вычисляет мировые позиции апсид, используя:
-        /// - Вектор эксцентриситета для определения направления на периапсис
-        /// - Формулы r_pe = a(1-e) и r_ap = a(1+e) для расчёта расстояний
-        /// - Матрицу поворота R(Ω, i, ω) для преобразования из орбитальной плоскости в инерциальную систему
+        /// Computes world apsis positions using:
+        /// - the eccentricity vector to find the periapsis direction
+        /// - r_pe = a(1-e) and r_ap = a(1+e) for the distances
+        /// - the rotation matrix R(Ω, i, ω) to transform from the orbital plane into the inertial frame
         /// 
-        /// Для гиперболических орбит (e >= 1.0) возвращается только периапсис,
-        /// а apoapsisPosition устанавливается в Vector3d.Zero.
+        /// For hyperbolic orbits (e >= 1.0) only the periapsis is returned and
+        /// apoapsisPosition is set to Vector3d.Zero.
         /// 
-        /// Возвращаемые позиции находятся в АСТРОДИНАМИЧЕСКОЙ системе координат (Z-up),
-        /// центрированной на центральном теле. Для преобразования в симуляционный кадр
-        /// используйте AstroFrame.ToSimulation().
+        /// Returned positions are in the ASTRODYNAMIC frame (Z-up), centered on the
+        /// central body. Use AstroFrame.ToSimulation() to convert to the simulation frame.
         /// </remarks>
         public bool TryGetApsisPositions(out Vector3d periapsisPosition, out Vector3d apoapsisPosition)
         {
             periapsisPosition = Vector3d.Zero;
             apoapsisPosition = Vector3d.Zero;
 
-            // Проверка валидности орбитальных элементов
+            // Validate orbital elements
             if (!IsValid)
             {
                 return false;
@@ -421,38 +414,38 @@ namespace Galilego.Core
 
             const double epsilon = 1e-10d;
 
-            // Проверка, что вектор эксцентриситета валиден
+            // Check that the eccentricity vector is valid
             if (EccentricityVector.SqrMagnitude < epsilon)
             {
-                // Круговая орбита - нет определённых апсид
+                // Circular orbit - no defined apsides
                 return false;
             }
 
-            // Расчёт расстояния до периапсиса: r_pe = a(1-e)
-            // Для гиперболических орбит a < 0, но формула всё равно работает
+            // Periapsis distance: r_pe = a(1-e)
+            // For hyperbolic orbits a < 0, but the formula still works
             double periapsisDistance = SemiMajorAxis * (1.0 - Eccentricity);
 
-            // Направление на периапсис - нормализованный вектор эксцентриситета
+            // Periapsis direction - normalized eccentricity vector
             Vector3d periapsisDirection = EccentricityVector.Normalized;
 
-            // Позиция периапсиса в астродинамической системе
+            // Periapsis position in the astrodynamic frame
             periapsisPosition = periapsisDirection * periapsisDistance;
 
-            // Для эллиптических орбит вычисляем апоапсис
+            // For elliptical orbits compute the apoapsis
             if (Eccentricity < 1.0)
             {
-                // Расчёт расстояния до апоапсиса: r_ap = a(1+e)
+                // Apoapsis distance: r_ap = a(1+e)
                 double apoapsisDistance = SemiMajorAxis * (1.0 + Eccentricity);
 
-                // Направление на апоапсис - противоположно периапсису
+                // Apoapsis direction - opposite to the periapsis
                 Vector3d apoapsisDirection = -periapsisDirection;
 
-                // Позиция апоапсиса в астродинамической системе
+                // Apoapsis position in the astrodynamic frame
                 apoapsisPosition = apoapsisDirection * apoapsisDistance;
             }
             else
             {
-                // Гиперболическая или параболическая орбита - апоапсиса нет
+                // Hyperbolic or parabolic orbit - no apoapsis
                 apoapsisPosition = Vector3d.Zero;
             }
 
@@ -460,46 +453,45 @@ namespace Galilego.Core
         }
 
         /// <summary>
-        /// Вычисляет время до достижения периапсиса и апоапсиса из текущей позиции на орбите.
+        /// Computes the time to periapsis and apoapsis from the current position on the orbit.
         /// </summary>
-        /// <param name="mu">Гравитационный параметр μ = GM центрального тела (м³/с²)</param>
-        /// <param name="timeToPeriapsis">Выходной параметр: время до периапсиса (секунды)</param>
-        /// <param name="timeToApoapsis">Выходной параметр: время до апоапсиса (секунды), или NaN для гиперболических орбит</param>
-        /// <returns>true, если расчёт успешен; false, если орбитальные элементы невалидны</returns>
+        /// <param name="mu">Gravitational parameter μ = GM of the central body (m³/s²)</param>
+        /// <param name="timeToPeriapsis">Output: time to periapsis (seconds)</param>
+        /// <param name="timeToApoapsis">Output: time to apoapsis (seconds), or NaN for hyperbolic orbits</param>
+        /// <returns>true if the computation succeeds; false if the orbital elements are invalid</returns>
         /// <remarks>
-        /// Этот метод вычисляет время до достижения апсид, используя:
-        /// - Среднее движение: n = sqrt(μ / a³)
-        /// - Текущую среднюю аномалию M (уже вычислена в FromState)
-        /// - Время до периапсиса: Δt_pe = (2π - M) / n
-        /// - Время до апоапсиса: Δt_ap = (π - M) / n (для эллиптических орбит)
+        /// Computes the time to the apsides using:
+        /// - mean motion: n = sqrt(μ / a³)
+        /// - the current mean anomaly M (already computed in FromState)
+        /// - time to periapsis: Δt_pe = (2π - M) / n
+        /// - time to apoapsis: Δt_ap = (π - M) / n (elliptical orbits)
         /// 
-        /// Метод корректно обрабатывает wraparound, когда M > π:
-        /// - Если M < π (между периапсисом и апоапсисом), время до апоапсиса = (π - M) / n
-        /// - Если M > π (между апоапсисом и периапсисом), время до апоапсиса = (3π - M) / n
+        /// Handles wraparound when M > π:
+        /// - M < π (between periapsis and apoapsis): time to apoapsis = (π - M) / n
+        /// - M > π (between apoapsis and periapsis): time to apoapsis = (3π - M) / n
         /// 
-        /// Для гиперболических орбит (e >= 1.0) timeToApoapsis устанавливается в NaN.
+        /// For hyperbolic orbits (e >= 1.0) timeToApoapsis is set to NaN.
         /// 
-        /// Возвращаемое время является относительным (от текущего момента).
-        /// Для получения абсолютного времени добавьте текущее время симуляции.
+        /// The returned time is relative (from the current moment); add the current
+        /// simulation time to get absolute time.
         /// </remarks>
         public bool TryGetTimeToApsides(double mu, out double timeToPeriapsis, out double timeToApoapsis)
         {
             timeToPeriapsis = double.NaN;
             timeToApoapsis = double.NaN;
 
-            // Проверка валидности орбитальных элементов
+            // Validate orbital elements
             if (!IsValid)
             {
                 return false;
             }
 
-            // Гиперболическая ветка: перицентр один, проходится один раз.
-            // H0 из истинной аномалии (без blowup у асимптоты: |ν| < ν∞ строго
-            // для конечных r, AtanhBounded режет только буквально бесконечность).
-            // Mh0 < 0 — летим к перицентру: Δt = −Mh0/n. Mh0 ≥ 0 — перицентр
-            // позади (в точности 0 — сейчас в нём): будущего перицентра нет.
-            // Апоапсиса у гиперболы нет никогда. Околопараболы (|e−1|≈0, n→0)
-            // не поддерживаем, как и предиктор (там NotSupportedException).
+            // Hyperbolic branch: one periapsis, passed once. H0 from the true anomaly
+            // (no blow-up at the asymptote: |ν| < ν∞ for finite r; AtanhBounded clamps
+            // only literal infinity). Mh0 < 0 — heading to the periapsis: Δt = −Mh0/n.
+            // Mh0 ≥ 0 — the periapsis is behind (exactly 0 — currently in it): no future
+            // one. A hyperbola never has an apoapsis; near-parabolic orbits (|e−1|≈0, n→0)
+            // are unsupported, as in the predictor (NotSupportedException there).
             if (!IsBound)
             {
                 timeToApoapsis = double.NaN;
@@ -547,48 +539,47 @@ namespace Galilego.Core
 
             const double epsilon = 1e-10d;
 
-            // Проверка валидности параметров
+            // Validate parameters
             if (mu <= epsilon || SemiMajorAxis <= epsilon)
             {
                 return false;
             }
 
-            // Вычисляем среднее движение: n = sqrt(μ / a³)
+            // Mean motion: n = sqrt(μ / a³)
             double n = Math.Sqrt(mu / (SemiMajorAxis * SemiMajorAxis * SemiMajorAxis));
 
-            // Получаем текущую среднюю аномалию M (уже вычислена в FromState, в градусах)
+            // Current mean anomaly M (already computed in FromState, in degrees)
             if (double.IsNaN(MeanAnomalyDegrees))
             {
                 return false;
             }
 
-            // Конвертируем среднюю аномалию из градусов в радианы
+            // Convert mean anomaly from degrees to radians
             double M = MeanAnomalyDegrees * (Math.PI / 180.0);
 
-            // Нормализуем M в диапазон [0, 2π)
+            // Normalize M into [0, 2π)
             M = NormalizeAngle(M);
 
-            // Вычисляем время до периапсиса: Δt_pe = (2π - M) / n
-            // Когда M = 0, мы в периапсисе, время = 0
-            // Когда M = 2π, мы снова в периапсисе, время = 0
-            // Ровно в периапсисе (M≈0) ответ 0, а не полный период: раньше
-            // (2π − 0)/n возвращал период, противореча комментарию (поймано T50).
+            // Time to periapsis: Δt_pe = (2π - M) / n
+            // M = 0 — at the periapsis, time = 0
+            // M = 2π — at the periapsis again, time = 0
+            // Exactly at the periapsis (M≈0) the answer is 0, not a full period.
             timeToPeriapsis = M <= 1e-12d ? 0d : (2.0 * Math.PI - M) / n;
 
-            // Если время больше орбитального периода, вычитаем период
+            // If the time exceeds the orbital period, subtract one period
             if (timeToPeriapsis > OrbitalPeriodSeconds)
             {
                 timeToPeriapsis -= OrbitalPeriodSeconds;
             }
 
-            // Вычисляем время до апоапсиса (только для эллиптических орбит)
+            // Time to apoapsis (elliptical orbits only)
             if (Eccentricity < 1.0)
             {
-                // Апоапсис находится при M = π
-                // Если M < π (между периапсисом и апоапсисом), время = (π - M) / n
-                // Если M > π (между апоапсисом и периапсисом), время = (3π - M) / n = (2π + π - M) / n
-                // Граница включена: ровно в апоапсисе (M = π) время = 0, а не полный
-                // период (та же ошибка, что была с периапсисом при M = 0, поймано T56).
+                // Apoapsis occurs at M = π
+                // M < π (between periapsis and apoapsis): time = (π - M) / n
+                // M > π (between apoapsis and periapsis): time = (3π - M) / n = (2π + π - M) / n
+                // Boundary inclusive: exactly at the apoapsis (M = π) the time is 0,
+                // not a full period.
                 if (M <= Math.PI)
                 {
                     timeToApoapsis = (Math.PI - M) / n;
@@ -600,7 +591,7 @@ namespace Galilego.Core
             }
             else
             {
-                // Гиперболическая или параболическая орбита - апоапсиса нет
+                // Hyperbolic or parabolic orbit - no apoapsis
                 timeToApoapsis = double.NaN;
             }
 

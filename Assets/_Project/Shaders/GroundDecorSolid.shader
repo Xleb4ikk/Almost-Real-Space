@@ -8,16 +8,15 @@ Shader "Galilego/GroundDecorSolid"
         _WindStrength("Wind Strength", Range(0.0, 1.0)) = 0.15
         _WindSpeed("Wind Speed", Float) = 1.5
         _Translucency("Translucency", Range(0.0, 1.0)) = 0.35
-        // Тинт альбедо vertex-цветом (ствол/листва деревьев). 0 — прочие
-        // слои декора (трава, камни) рисуются как раньше.
+        // Albedo tint by vertex color (tree trunk/foliage). 0 — other decor
+        // layers (grass, rocks) are unaffected.
         _VertexColorTint("Vertex Color Tint", Range(0.0, 1.0)) = 0.0
-        // Двусторонний лист: свет считаем как abs(N·L) — у плоских травинок
-        // нормаль смотрит вбок, и односторонний ndl делал половину клинков
-        // чёрной («обводка» на ковре). Деревьям нужен обычный односторонний
-        // свет, поэтому это свойство материала, а не глобальная правка.
+        // Two-sided leaf lighting: use abs(N·L) — flat grass blades have their
+        // normal pointing sideways. Trees need ordinary one-sided light, so
+        // this is a material property, not a global change.
         _TwoSided("Two Sided Lighting", Range(0.0, 1.0)) = 0.0
-        // Домножает альбедо декора к тону земли: рельеф дополнительно темнеет
-        // окклюзией/моттлингом и текстурами, без этого трава светлее земли.
+        // Multiplies decor albedo to match the ground tone: the terrain
+        // darkens further with occlusion/mottling and textures.
         _GroundTint("Ground Match Tint", Color) = (1, 1, 1, 1)
     }
     SubShader
@@ -47,19 +46,18 @@ Shader "Galilego/GroundDecorSolid"
             #include "GalilegoLighting.hlsl"
             #include "GalilegoUnderwaterCaustics.hlsl"
 #if defined(_DECOR_INDIRECT_MATRICES)
-            // Идентификаторы индирект-рисования (RenderMeshIndirect): без этого
-            // SV_InstanceID на DX12 не заполняется и матрицы читаются мусором.
+            // Indirect draw ids (RenderMeshIndirect): SV_InstanceID is
+            // otherwise not filled on DX12 and matrices read as garbage.
             #define UNITY_INDIRECT_DRAW_ARGS IndirectDrawIndexedArgs
             #include "UnityIndirect.cginc"
 #endif
 
-            // Время — ставит PlanetSurfaceRenderer.
+            // Time — set by PlanetSurfaceRenderer.
             float _GroundDecorTime;
 
-            // Индирект-путь травы: матрицы инстансов (чанк-фрейм) в буфере,
-            // чанк→мир — через MaterialPropertyBlock. Включается ключом
-            // _DECOR_INDIRECT_MATRICES на материале травы; остальные слои декора
-            // идут обычным инстансингом (UNITY_MATRIX_M).
+            // Grass indirect path: instance matrices (chunk frame) in a buffer,
+            // chunk→world via MaterialPropertyBlock. Enabled by the
+            // _DECOR_INDIRECT_MATRICES keyword on the grass material.
             float4x4 _DecorChunkToWorld;
             StructuredBuffer<float4x4> _DecorMatrices;
 
@@ -77,8 +75,8 @@ Shader "Galilego/GroundDecorSolid"
 
             float4x4 DecorInstanceMatrix(uint instanceId)
             {
-                // Данные в буфере — сырой Matrix4x4 (column-major) → HLSL читает
-                // их как транспонированные, поэтому transpose.
+                // Buffer data is a raw Matrix4x4 (column-major) → HLSL reads it
+                // transposed, hence transpose.
                 return mul(_DecorChunkToWorld, transpose(_DecorMatrices[instanceId]));
             }
 
@@ -110,10 +108,9 @@ Shader "Galilego/GroundDecorSolid"
                 UNITY_SETUP_INSTANCE_ID(input);
                 UNITY_TRANSFER_INSTANCE_ID(input, output);
 
-                // Ветер: гнём верх меша (локальный Y) в ЛОКАЛЬНЫХ осях XZ.
-                // Мировые XZ на планете не горизонтальны — из-за этого трава
-                // «летала» вверх-вниз и уходила под землю на склонах.
-                // Vertex color.a — маска ветра: 1 листва, 0 ствол (деревья).
+                // Wind: bend the mesh top (local Y) in LOCAL XZ axes. World XZ
+                // on a planet is not horizontal. Vertex color.a is the wind
+                // mask: 1 foliage, 0 trunk (trees).
                 float3 positionOS = input.positionOS;
                 float phase = (_GroundDecorTime * _WindSpeed) + (positionOS.x * 2.1) + (positionOS.y * 1.7);
                 float bend = saturate(positionOS.y) * _WindStrength * input.color.a;
@@ -150,38 +147,34 @@ Shader "Galilego/GroundDecorSolid"
 
                 float4 tex = tex2D(_BaseColorMap, input.uv);
                 float alpha = tex.a * _BaseColor.a;
-                // Край листа текстуры: RGB на низкой альфе уходит в чёрное —
-                // это читалось «чёрной обводкой» вокруг травы/карточек.
-                // Подмешиваем базовый цвет по альфе (у непрозрачных материалов
-                // с белой текстурой результат не меняется).
+                // Texture edge: RGB goes to black at low alpha. Blend in the
+                // base color by alpha (unchanged for opaque materials with a
+                // white texture).
                 float3 albedoRgb = tex.rgb * _BaseColor.rgb;
                 albedoRgb = lerp(_BaseColor.rgb, albedoRgb, saturate(alpha * 1.6));
                 float4 albedo = float4(albedoRgb, alpha);
-                // Vertex RGB — цвет части меша (деревья: кора/листва).
+                // Vertex RGB — the mesh part's color (trees: bark/foliage).
                 albedo.rgb *= lerp(float3(1.0, 1.0, 1.0), input.color.rgb, _VertexColorTint);
                 clip(alpha - _Cutoff);
 
                 float3 n = normalize(input.normalWS);
                 float3 l = normalize(_TerrainSunDir);
-                // Нормаль клинка совпадает с нормалью поверхности (нормали меша
-                // запечены вдоль роста), поэтому ndl берём как у земли.
-                // _TwoSided оставлен как опция: 0 — ровно земная модель.
+                // The blade normal matches the surface normal (mesh normals are
+                // baked along growth), so ndl is taken as for the ground.
+                // _TwoSided is kept as an option: 0 — exactly the ground model.
                 float oneSided = saturate(dot(n, l));
                 float twoSided = saturate(abs(dot(n, l)));
                 float ndl = lerp(oneSided, twoSided, saturate(_TwoSided));
                 float back = saturate(dot(-n, l)) * _Translucency * lerp(1.0, 0.25, saturate(_TwoSided));
 
-                // Тень HDRP (PCSS/PCF): гасит прямой свет, ambient остаётся.
+                // HDRP shadow (PCSS/PCF): attenuates direct light; ambient remains.
                  float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, n, l);
                  float cloudShadow = SampleCloudShadow(input.positionWS);
 
-                 // Свет — РОВНО как у рельефа (PlanetSurface.shader): честное
-                // солнце (_TerrainSun, может превышать 1), ambient —
-                // полусферический от неба (см. GalilegoSkyAmbient: без *ndl,
-                // иначе закат чёрный); цвет солнца (фотосфера × T) и ambient —
-                // общие глобалы. Плюс просвет листвы против солнца (back):
-                // в контровом свете крона тёпло светится насквозь,
-                // а не чёрным силуэтом.
+                 // Lighting is exactly the terrain model (PlanetSurface.shader):
+                // real sun (_TerrainSun, may exceed 1), hemispherical sky
+                // ambient (see GalilegoSkyAmbient: no *ndl, otherwise the
+                // sunset is black); plus foliage translucency (back).
                 float sun = _TerrainSun;
                 float3 radialUp = normalize(input.positionWS - _TerrainBodyCenterWS);
                 float dayLocal = smoothstep(-0.12, 0.08, dot(radialUp, l));
@@ -196,11 +189,10 @@ Shader "Galilego/GroundDecorSolid"
             ENDHLSL
         }
 
-        // Глубина для depth-prepass HDRP: прозрачные шейдеры (атмосфера, звёзды,
-        // диск солнца) читают depth pyramid, и без этого пасса их IsSky() считает
-        // пиксели деревьев/травы небом — атмосфера просвечивает сквозь них.
-        // Alpha-clip обязателен: иначе вырезанные пиксели пишут глубину и
-        // закрывают небо (чёрные квадраты).
+        // Depth for the HDRP depth-prepass: transparent shaders (atmosphere,
+        // stars, sun disc) read the depth pyramid, and without this pass their
+        // IsSky() treats tree/grass pixels as sky. Alpha-clip is required:
+        // otherwise clipped pixels write depth and cover the sky.
         Pass
         {
             Name "DepthForwardOnly"
@@ -260,10 +252,9 @@ Shader "Galilego/GroundDecorSolid"
                 UNITY_SETUP_INSTANCE_ID(input);
                 UNITY_TRANSFER_INSTANCE_ID(input, output);
 
-                // Ветер — тот же, что в forward-пассе: иначе глубины двух
-                // проходов расходятся (forward смещён, depth нет) → дыры и
-                // чёрные экранные артефакты, ползущие вместе с ветром.
-                // color.a — маска ветра (1 листва, 0 ствол).
+                // Wind is the same as in the forward pass: otherwise the two
+                // passes' depths diverge → holes and black screen artifacts
+                // that crawl with the wind. color.a is the wind mask.
                 float3 positionOS = input.positionOS;
                 float phase = (_GroundDecorTime * _WindSpeed) + (positionOS.x * 2.1) + (positionOS.y * 1.7);
                 float bend = saturate(positionOS.y) * _WindStrength * input.color.a;
@@ -295,9 +286,9 @@ Shader "Galilego/GroundDecorSolid"
             ENDHLSL
         }
 
-        // Тени: этим пассом HDRP рисует кастеров в shadow map. Альфа-клип и
-        // ветер — ровно как в forward: иначе силуэт тени не совпадает с
-        // геометрией и «дрожит» относительно неё.
+        // Shadows: HDRP draws casters into the shadow map with this pass.
+        // Alpha-clip and wind are exactly as in forward: otherwise the shadow
+        // silhouette does not match the geometry.
         Pass
         {
             Name "ShadowCaster"

@@ -6,13 +6,13 @@ using Galilego.Spacecraft;
 namespace Galilego.Flight
 {
     /// <summary>
-    /// Единая 6-DOF модель полёта аппарата (без Unity). Хранит реальные двигатели/сопла с
-    /// точками приложения, считает ЦМ и тензор инерции по ТЕКУЩИМ массам деталей (топливо
-    /// выгорает пропорционально по ступени), суммарные силу и момент (относительно ЦМ),
-    /// расходы, автопилот (удержание ориентации: подвес двигателей + РСУ) и САС.
-    /// Один кадр: Prepare (команды→уровни тяги, кэш силы/момента) → интегратор/PhysX →
-    /// Finish (списание аппаратного топлива). Силы/момент кэшируются на чанк — то же
-    /// «зерно control-tick», что у газа в остальном проекте (физика ×3 совпадает с ×1).
+    /// Single 6-DOF flight model of a vessel (no Unity). Holds the real engines/nozzles with their
+    /// application points, computes COM and inertia tensor from the CURRENT part masses (propellant
+    /// burns proportionally per stage), total force and torque (about the COM),
+    /// flows, the autopilot (attitude hold: engine gimbals + RCS) and the LES.
+    /// One step: Prepare (commands→throttle levels, force/torque cache) → integrator/PhysX →
+    /// Finish (hardware propellant bookkeeping). Force/torque are cached per chunk — the same
+    /// control-tick granularity as throttle elsewhere in the project (×3 physics matches ×1).
     /// </summary>
     public sealed class VesselFlightModel
     {
@@ -23,30 +23,30 @@ namespace Galilego.Flight
         public readonly FlightControls Controls = new FlightControls();
         public StagePropulsion Propulsion;
 
-        // ─ параметры автопилота ─
+        // ─ autopilot parameters ─
         public double MaxManualRateRadS = 0.35d;
         public double ManualAlphaRadS2 = 0.3d;
-        public double HoldOmega = 0.8d;      // собственная частота удержания, рад/с
+        public double HoldOmega = 0.8d;      // hold natural frequency, rad/s
         public double RcsDeadbandRadS2 = 0.004d;
-        public double HoldCaptureRadS = 0.01d;   // ниже этой скорости вращения фиксируется цель удержания
+        public double HoldCaptureRadS = 0.01d;   // below this rotation rate the hold target is captured
         public bool EnforceMinThrottle = true;
 
-        // ─ данные деталей ─
+        // ─ part data ─
         private readonly double[] dry, propStart, hwDry;
         private readonly int[] stageOf;
         private readonly bool[] gone;
         private readonly List<Part> scratch = new List<Part>();
 
-        // ─ САС ─
-        public bool[] AbortKeep;              // детали, остающиеся с капсулой (капсула, всё выше, САС)
-        public int LesPart = -1;              // индекс детали-башни САС (−1 — САС нет)
+        // ─ LES ─
+        public bool[] AbortKeep;              // parts staying with the capsule (capsule, everything above, LES)
+        public int LesPart = -1;              // index of the LES tower part (−1 — no LES)
         public bool LesArmed { get; private set; }
         public bool Aborting { get; private set; }
         public bool EnginesCut { get; private set; }
         public bool SplitPending { get; private set; }
         public bool JettisonPending { get; private set; }
 
-        // ─ кэш чанка ─
+        // ─ chunk cache ─
         public double MassKg { get; private set; }
         public Vector3d Com { get; private set; }
         public Matrix3x3 Inertia { get; private set; } = Matrix3x3.Identity;
@@ -56,7 +56,7 @@ namespace Galilego.Flight
         public double FlowAux { get; private set; }
         public double PressurePa { get; private set; }
 
-        // ─ автопилот ─
+        // ─ autopilot ─
         private QuaternionD holdTarget = QuaternionD.Identity;
         private bool holdValid;
 
@@ -70,7 +70,7 @@ namespace Galilego.Flight
             for (int i = 0; i < defs.Length; i++) PartOfBody[i] = i;
         }
 
-        /// <summary>Тело прокси b ↔ деталь модели PartOfBody[b] (меняется при пересборке остатка).</summary>
+        /// <summary>Proxy body b ↔ model part PartOfBody[b] (changes when the remainder is rebuilt).</summary>
         public int[] PartOfBody;
 
         public int BodyOfPart(int part)
@@ -79,7 +79,7 @@ namespace Galilego.Flight
             return -1;
         }
 
-        /// <summary>Маска тел прокси, остающихся с кораблём (для SeverForStaging).</summary>
+        /// <summary>Mask of proxy bodies that stay with the ship (for SeverForStaging).</summary>
         public bool[] BodyKeepMask()
         {
             var keep = new bool[PartOfBody.Length];
@@ -88,8 +88,8 @@ namespace Galilego.Flight
         }
 
         /// <summary>
-        /// Описание остатка для зоны контакта/посадки: массы ТЕКУЩИЕ (с учётом выгоревшего топлива),
-        /// индексы родителей пересчитаны; PartOfBody обновляется под новую нумерацию тел.
+        /// Remainder description for the contact zone/landing: masses are CURRENT (burnt propellant
+        /// taken into account), parent indices remapped; PartOfBody is updated to the new body numbering.
         /// </summary>
         public PartDefinition[] RemainingDefs()
         {
@@ -122,7 +122,7 @@ namespace Galilego.Flight
 
         public void ArmLes(int part) { LesPart = part; LesArmed = part >= 0; }
 
-        // ─── Массы ───────────────────────────────────────────────────────────
+        // ─── Masses ──────────────────────────────────────────────────────────
 
         public bool IsGone(int i)
         {
@@ -150,7 +150,7 @@ namespace Galilego.Flight
             return m;
         }
 
-        /// <summary>Масса аппаратуры (не входит в ядра ступеней): в Ship.Mass есть, в ядрах нет.</summary>
+        /// <summary>Hardware mass (not part of the stage cores): in Ship.Mass but not in the cores.</summary>
         public double HardwareMassKg()
         {
             double s = 0d;
@@ -187,7 +187,7 @@ namespace Galilego.Flight
             MassKg = s.TotalMassKg; Com = s.CenterOfMass; Inertia = s.Inertia;
         }
 
-        // ─── Управление ──────────────────────────────────────────────────────
+        // ─── Control ─────────────────────────────────────────────────────────
 
         public bool IsOperating(Thruster t, double pressurePa)
         {
@@ -221,7 +221,7 @@ namespace Galilego.Flight
             foreach (var t in Thrusters) if (t.Kind == ThrusterKind.Main) t.Enabled = on;
         }
 
-        /// <summary>Поставить группы ядра активной ступени в соответствие реально работающим двигателям.</summary>
+        /// <summary>Match the active stage core's engine groups to the engines actually running.</summary>
         private void SyncStageGroups(double pressurePa)
         {
             StageCore core = Propulsion != null ? Propulsion.ActiveCore : null;
@@ -240,8 +240,8 @@ namespace Galilego.Flight
         }
 
         /// <summary>
-        /// Подготовка чанка. attitude — body→мир (или →рамка места в зоне), omega — в осях корабля.
-        /// allowed=false (варп выше порога тяги) — всё глушится.
+        /// Chunk preparation. attitude — body→world (or →site frame in the zone), omega — in ship axes.
+        /// allowed=false (warp above the thrust threshold) — everything is muted.
         /// </summary>
         public void Prepare(double dt, QuaternionD attitude, Vector3d omegaBody, double throttle, double pressurePa, bool allowed)
         {
@@ -252,7 +252,7 @@ namespace Galilego.Flight
             SyncStageGroups(pressurePa);
             throttle = Math.Min(1d, Math.Max(0d, throttle));
 
-            // 1) Маршевые: газ → целевой уровень → выход на режим.
+            // 1) Main engines: throttle → target level → ramp to it.
             foreach (var t in Thrusters)
             {
                 if (t.Kind == ThrusterKind.Main)
@@ -270,12 +270,12 @@ namespace Galilego.Flight
                 }
             }
 
-            // 2) Автопилот: требуемый момент → подвес + РСУ.
+            // 2) Autopilot: required torque → gimbals + RCS.
             Vector3d tauReq = RequiredTorque(attitude, omegaBody);
             Vector3d tauRes = AllocateGimbal(tauReq, dt);
             AllocateRcs(tauRes, omegaBody);
 
-            // 3) САС: после выгорания увода — отстрел башни.
+            // 3) LES: after the abort motors burn out — jettison the tower.
             if (Aborting && LesArmed && !JettisonPending) CheckAbortProgress();
             Evaluate();
         }
@@ -291,12 +291,12 @@ namespace Galilego.Flight
             foreach (var t in Thrusters) if (t.Kind != ThrusterKind.JettisonMotor) t.Level = 0d;
         }
 
-        // ─── Автопилот ───────────────────────────────────────────────────────
+        // ─── Autopilot ───────────────────────────────────────────────────────
 
         private Vector3d RequiredTorque(QuaternionD q, Vector3d omega)
         {
             var c = Controls;
-            var manual = new Vector3d(c.Pitch, c.Roll, c.Yaw); // X, Y(ось ракеты), Z
+            var manual = new Vector3d(c.Pitch, c.Roll, c.Yaw); // X, Y (rocket axis), Z
             bool manualActive = manual.SqrMagnitude > 1e-4d;
             double kd = 2d * HoldOmega, kp = HoldOmega * HoldOmega;
 
@@ -305,13 +305,13 @@ namespace Galilego.Flight
             {
                 holdValid = false;
                 if (c.SasOn)
-                    alpha = ((manual * MaxManualRateRadS) - omega) * kd;            // командование скоростью
+                    alpha = ((manual * MaxManualRateRadS) - omega) * kd;            // rate command
                 else
-                    alpha = manual * ManualAlphaRadS2;                               // прямой момент
+                    alpha = manual * ManualAlphaRadS2;                               // direct torque
             }
             else if (c.SasOn)
             {
-                // Цель фиксируется только когда вращение погашено; до этого — демпфирование ω.
+                // The target is captured only once rotation is damped out; before that — ω damping.
                 if (!holdValid && omega.Magnitude < HoldCaptureRadS) { holdTarget = q; holdValid = true; }
                 alpha = holdValid ? (ErrorVector(q, holdTarget) * kp) - (omega * kd) : -(omega * kd);
             }
@@ -320,7 +320,7 @@ namespace Galilego.Flight
             return Inertia * alpha;
         }
 
-        /// <summary>Вектор поворота (в осях корабля) от текущей ориентации к целевой.</summary>
+        /// <summary>Rotation vector (in ship axes) from the current attitude to the target.</summary>
         public static Vector3d ErrorVector(QuaternionD q, QuaternionD target)
         {
             QuaternionD e = (q.Conjugated * target).Normalized;
@@ -334,7 +334,7 @@ namespace Galilego.Flight
 
         public void HoldCurrentAttitude() { holdValid = false; }
 
-        /// <summary>Подбор углов подвеса (МНК) под требуемый момент; возвращает остаток для РСУ.</summary>
+        /// <summary>Least-squares gimbal angle fit for the required torque; returns the residual for RCS.</summary>
         private Vector3d AllocateGimbal(Vector3d tauReq, double dt)
         {
             Vector3d sx = Vector3d.Zero, sz = Vector3d.Zero, tau0 = Vector3d.Zero;
@@ -355,7 +355,7 @@ namespace Galilego.Flight
             if (any)
             {
                 double a11 = Vector3d.Dot(sx, sx), a12 = Vector3d.Dot(sx, sz), a22 = Vector3d.Dot(sz, sz);
-                // τ0 + Sθ = τ_req: момент двигателей при нулевом подвесе (смещение, дрейф ЦМ) — известен, вычитаем.
+                // τ0 + Sθ = τ_req: engine torque at zero gimbal (offset, COM drift) is known — subtract it.
                 Vector3d need = tauReq - tau0;
                 double b1 = Vector3d.Dot(sx, need), b2 = Vector3d.Dot(sz, need);
                 double det = (a11 * a22) - (a12 * a12);
@@ -377,7 +377,7 @@ namespace Galilego.Flight
                 t.GimbalZ = Approach(t.GimbalZ, any && t.Level > 0d ? thz : 0d, step);
             }
 
-            // Остаток считаем по УГЛАМ, которые подвес реально имеет (с ограничением скорости).
+            // The residual uses the ACTUAL gimbal angles (rate-limited).
             double gx = 0d, gz = 0d; int n = 0;
             foreach (var t in Thrusters)
                 if (t.Kind == ThrusterKind.Main && t.GimbalMaxRad > 0d && t.Level > 0d) { gx += t.GimbalX; gz += t.GimbalZ; n++; }
@@ -386,10 +386,10 @@ namespace Galilego.Flight
         }
 
         /// <summary>
-        /// РСУ: жадный подбор набора сопел, минимизирующий остаток (момент + нежелательная сила).
-        /// Одиночное сопло кольца даёт и силу, и момент; чистый крен или тангаж получается только
-        /// ПАРОЙ — набор находится минимизацией |τ_ост|² + (λ·|F_ост|)². Заодно получается
-        /// «мёртвая зона»: сопло не включается, если перелетит цель.
+        /// RCS: greedy nozzle-set selection minimizing the residual (torque + unwanted force).
+        /// A single nozzle of the ring produces both force and torque; pure roll or pitch comes only
+        /// from a PAIR — the set is found by minimizing |τ_res|² + (λ·|F_res|)². This also yields the
+        /// deadband: a nozzle is not fired if it would overshoot the target.
         /// </summary>
         private void AllocateRcs(Vector3d tauDesired, Vector3d omega)
         {
@@ -410,7 +410,7 @@ namespace Galilego.Flight
             int n = Thrusters.Count;
             for (int guard = 0; guard < n; guard++)
             {
-                // Кандидат — одно сопло ИЛИ пара (пара даёт чистый момент с погашенной силой).
+                // Candidate — a single nozzle OR a pair (a pair gives pure torque with the force cancelled).
                 int bi = -1, bj = -1; double bestCost = cost; Vector3d bt = rt, bf = rf;
                 for (int i = 0; i < n; i++)
                 {
@@ -445,9 +445,9 @@ namespace Galilego.Flight
             return t.Kind == ThrusterKind.Rcs && t.Level <= 0d && !IsGone(t.PartIndex) && t.OwnPropKg > Eps;
         }
 
-        // ─── Силы ────────────────────────────────────────────────────────────
+        // ─── Forces ──────────────────────────────────────────────────────────
 
-        /// <summary>Суммарные сила и момент относительно ЦМ, расходы. Силы — в осях корабля.</summary>
+        /// <summary>Total force and torque about the COM, plus flows. Forces are in ship axes.</summary>
         public void Evaluate()
         {
             Vector3d f = Vector3d.Zero, tq = Vector3d.Zero;
@@ -465,7 +465,7 @@ namespace Galilego.Flight
             ForceBody = f; TorqueBody = tq; FlowTotal = flow; FlowAux = aux;
         }
 
-        /// <summary>Максимальный подшаг, пока не кончится топливо аппаратуры (РСУ/САС).</summary>
+        /// <summary>Maximum substep before the hardware propellant (RCS/LES) runs out.</summary>
         public double MaxChunkSeconds()
         {
             double best = double.PositiveInfinity;
@@ -478,7 +478,7 @@ namespace Galilego.Flight
             return best;
         }
 
-        /// <summary>Заглушить всё (дальний варп): уровни в ноль, кэш сил пересчитан.</summary>
+        /// <summary>Mute everything (far warp): levels to zero, force cache recomputed.</summary>
         public void Silence()
         {
             ZeroLevels();
@@ -489,8 +489,8 @@ namespace Galilego.Flight
         public bool AnyThrust { get { return FlowTotal > 0d || ForceBody.SqrMagnitude > 0d; } }
 
         /// <summary>
-        /// Конец чанка: списать топливо аппаратуры (расход постоянен на чанке). Возвращает массу,
-        /// ушедшую из Ship.Mass по аппаратуре (она в DetachedMassKg); маршевую мерит вызывающий.
+        /// End of chunk: burn the hardware propellant (flow is constant over the chunk). Returns the
+        /// mass that left Ship.Mass as hardware (it sits in DetachedMassKg); main burn is measured by the caller.
         /// </summary>
         public double Finish(double dt)
         {
@@ -508,7 +508,7 @@ namespace Galilego.Flight
             return aux;
         }
 
-        /// <summary>Расход маршевых за dt (для зоны PhysX, где интегратора нет), кг.</summary>
+        /// <summary>Main-engine flow over dt (for the PhysX zone, which has no integrator), kg.</summary>
         public double MainBurnKg(double dt)
         {
             double flow = 0d;
@@ -517,9 +517,9 @@ namespace Galilego.Flight
             return flow * dt;
         }
 
-        // ─── САС ─────────────────────────────────────────────────────────────
+        // ─── LES ─────────────────────────────────────────────────────────────
 
-        /// <summary>Аварийный увод: отсечка двигателей, запрос отделения капсулы, зажигание увода.</summary>
+        /// <summary>Abort: cut the engines, request capsule separation, ignite the abort motors.</summary>
         public bool TriggerAbort()
         {
             if (!LesArmed || Aborting) return false;
@@ -528,7 +528,7 @@ namespace Galilego.Flight
             return true;
         }
 
-        /// <summary>Штатный отстрел САС (без аварии).</summary>
+        /// <summary>Nominal LES jettison (no abort).</summary>
         public bool RequestJettison()
         {
             if (!LesArmed || JettisonPending) return false;
@@ -548,9 +548,9 @@ namespace Galilego.Flight
         public void ConsumeJettison() { JettisonPending = false; LesArmed = false; }
 
         /// <summary>
-        /// Убрать детали (keep[i]=false) из аппарата: возвращает их массу и ЦМ (система корабля).
-        /// Если задеты детали ступеней — ступенчатая модель замораживается (всё остальное — масса
-        /// вне ядер), иначе убранная масса просто списывается из «вне сборки».
+        /// Remove parts (keep[i]=false) from the vessel: returns their mass and COM (ship frame).
+        /// If stage parts are touched, the staging model is frozen (everything else becomes mass
+        /// outside the cores); otherwise the removed mass is simply released from the detached pool.
         /// </summary>
         public double RemoveParts(bool[] keep, out Vector3d removedCom)
         {

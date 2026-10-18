@@ -4,42 +4,34 @@ using Galilego.Core;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// ЕДИНЫЙ источник физических коэффициентов атмосферы для CPU и GPU.
+    /// Single source of physical atmosphere coefficients for CPU and GPU.
     ///
-    /// До этого коэффициенты рассеяния жили в двух несогласованных местах:
-    /// SkyPhysics.ExtinctionPerMeter (эмпирический вектор (0.34,1,3.05) с
-    /// подгонкой масштаба) и художественные RayleighColor/MieColor в шейдере.
-    /// Из-за рассинхрона цвет диска Солнца (SkyEnvironment → SunDisc) и цвет
-    /// неба (купол) считались по разным моделям — отсюда, в частности, шов на
-    /// закате. Теперь всё, что читает β, берёт их здесь.
+    /// Values are real Rayleigh/Mie scattering and ozone absorption coefficients
+    /// (Hillaire, "A Scalable and Production Ready Sky and Atmosphere Rendering
+    /// Technique", EGSR 2020; the same numbers are used by UE SkyAtmosphere and
+    /// HDRP Physically Based Sky).
     ///
-    /// Значения — реальные коэффициенты рассеяния Рэлея/Ми и поглощения озона
-    /// (ссылка: Hillaire, "A Scalable and Production Ready Sky and Atmosphere
-    /// Rendering Technique", EGSR 2020; те же числа использует UE SkyAtmosphere
-    /// и HDRP Physically Based Sky).
+    /// Altitude profiles: exponentials with separate scale heights for Rayleigh
+    /// and Mie; ozone — a triangular layer around 25 km.
     ///
-    /// Высотные профили: экспонента с отдельными масштабными высотами для
-    /// Рэлея и Ми (раньше была одна H и HM = H/4 — не физично), озон —
-    /// треугольный слой около 25 км.
+    /// Also generates on the CPU the two LUTs the shader only samples
+    /// (no secondary march to the Sun in the shader):
+    ///   * Transmittance LUT — transmittance of a point to the Sun from (height, cos θ);
+    ///   * Multi-Scattering LUT — infinite multi-scattering approximation after
+    ///     Hillaire (equations 9-10); without it the horizon burns out to white
+    ///     and the zenith stays dim.
     ///
-    /// Плюс здесь же CPU-генерация двух LUT, которые шейдер только сэмплирует
-    /// (никакого вторичного марша к Солнцу в шейдере):
-    ///   * Transmittance LUT — прозрачность точки к Солнцу от (высота, cos θ);
-    ///   * Multi-Scattering LUT — приближение бесконечного многократного
-    ///     рассеяния по Hillaire (уравнения 9-10), без него горизонт
-    ///     выжигается в белый, а зенит остаётся тусклым.
-    ///
-    /// Модуль чистый (только double + Vector3d) — тестируется на стенде.
+    /// The module is pure (double + Vector3d only) — testable standalone.
     /// </summary>
     public static class AtmosphereOptics
     {
-        // Рэлеевское рассеяние на уровне моря (1/м), каналы R~680 / G~550 / B~440 нм.
+        // Rayleigh scattering at sea level (1/m), channels R~680 / G~550 / B~440 nm.
         public static readonly Vector3d EarthRayleighScattering = new Vector3d(5.802e-6, 13.558e-6, 33.1e-6);
 
-        // Ми-рассеяние на уровне моря (1/м), практически не зависит от длины волны.
+        // Mie scattering at sea level (1/m), nearly independent of wavelength.
         public const double EarthMieScattering = 3.996e-6;
 
-        // Поглощение озоном (1/м) на пике слоя.
+        // Ozone absorption (1/m) at the layer peak.
         public static readonly Vector3d EarthOzoneAbsorption = new Vector3d(0.650e-6, 1.881e-6, 0.085e-6);
 
         private static readonly Vector3d One = new Vector3d(1d, 1d, 1d);
@@ -51,28 +43,28 @@ namespace Galilego.Universe
         public const double EarthOzoneHalfWidthMeters = 15000d;
         public const double EarthGroundAlbedo = 0.1d;
 
-        /// <summary>Изотропная фаза (1/4π): к многократному рассеянию анизотропия теряется.</summary>
+        /// <summary>Isotropic phase (1/4π): anisotropy is lost in multi-scattering.</summary>
         public const double IsotropicPhase = 1d / (4d * Math.PI);
 
-        /// <summary>Набор коэффициентов и высотных параметров одного тела.</summary>
+        /// <summary>Coefficient and altitude-parameter set of one body.</summary>
         public struct Coefficients
         {
-            public Vector3d RayleighScattering;   // 1/м на уровне моря
-            public Vector3d MieScattering;         // 1/м на уровне моря
-            public Vector3d OzoneAbsorption;       // 1/м на пике слоя
-            public double RayleighScaleHeight;     // м
-            public double MieScaleHeight;          // м
-            public double OzoneCenterAltitude;     // м
-            public double OzoneHalfWidth;          // м
+            public Vector3d RayleighScattering;   // 1/m at sea level
+            public Vector3d MieScattering;         // 1/m at sea level
+            public Vector3d OzoneAbsorption;       // 1/m at the layer peak
+            public double RayleighScaleHeight;     // m
+            public double MieScaleHeight;          // m
+            public double OzoneCenterAltitude;     // m
+            public double OzoneHalfWidth;          // m
             public double MieAnisotropy;           // -1..1
             public double GroundAlbedo;            // 0..1
             public bool OzoneEnabled;
         }
 
         /// <summary>
-        /// Собирает коэффициенты тела из физических полей профиля. Плотность
-        /// у поверхности линейно масштабирует все β (разреженная атмосфера —
-        /// меньше рассеяния), высоты берутся земные, если в профиле 0.
+        /// Builds a body's coefficients from the profile's physical fields.
+        /// Sea-level density linearly scales all β (rarer atmosphere — less
+        /// scattering); heights fall back to Earth values when the profile has 0.
         /// </summary>
         public static Coefficients FromProfile(
             double seaLevelDensityKgPerCubicMeter,
@@ -85,7 +77,7 @@ namespace Galilego.Universe
             double densityScale = seaLevelDensityKgPerCubicMeter > 0d
                 ? seaLevelDensityKgPerCubicMeter / EarthSeaLevelDensityKgPerCubicMeter
                 : 0d;
-            // Turbidity: количество аэрозоля у поверхности (не высотная форма — её задаёт Hm).
+            // Turbidity: surface aerosol amount (not the altitude shape — Hm sets that).
             double mieScale = densityScale * (aerosolScale > 0d ? aerosolScale : 0d);
 
             Coefficients c;
@@ -102,7 +94,7 @@ namespace Galilego.Universe
             return c;
         }
 
-        /// <summary>Треугольный высотный профиль озонового слоя (как в HDRP PBS), 0..1.</summary>
+        /// <summary>Triangular altitude profile of the ozone layer (as in HDRP PBS), 0..1.</summary>
         public static double OzoneDensity(in Coefficients c, double height)
         {
             if (!c.OzoneEnabled || c.OzoneHalfWidth <= 0d)
@@ -113,7 +105,7 @@ namespace Galilego.Universe
             return Saturate(1d - Math.Abs((height - c.OzoneCenterAltitude) / c.OzoneHalfWidth));
         }
 
-        /// <summary>Полная экстинкция (рассеяние Рэлея/Ми + поглощение озоном), 1/м.</summary>
+        /// <summary>Total extinction (Rayleigh/Mie scattering + ozone absorption), 1/m.</summary>
         public static Vector3d Extinction(in Coefficients c, double height)
         {
             double dR = Math.Exp(-height / c.RayleighScaleHeight);
@@ -123,7 +115,7 @@ namespace Galilego.Universe
             return (c.RayleighScattering * dR) + (c.MieScattering * dM) + (c.OzoneAbsorption * dO);
         }
 
-        /// <summary>Рассеяние (без поглощения) — источник многократного рассеяния, 1/м.</summary>
+        /// <summary>Scattering (without absorption) — the multi-scattering source, 1/m.</summary>
         public static Vector3d Scattering(in Coefficients c, double height)
         {
             double dR = Math.Exp(-height / c.RayleighScaleHeight);
@@ -133,9 +125,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Пересечение луча (точка на радиусе r, косинус зенита cosChi) со сферой
-        /// радиуса radius. Численно устойчивая форма через разность квадратов:
-        /// t = r·(−cosChi ± √d), d = (radius/r)² − (1 − cosChi²).
+        /// Intersection of a ray (point at radius r, zenith cosine cosChi) with a
+        /// sphere of the given radius. Numerically stable form via difference of
+        /// squares: t = r·(−cosChi ± √d), d = (radius/r)² − (1 − cosChi²).
         /// </summary>
         public static bool IntersectSphere(double radius, double r, double cosChi, out double t0, out double t1)
         {
@@ -154,7 +146,7 @@ namespace Galilego.Universe
             return true;
         }
 
-        /// <summary>Косинус видимого горизонта для наблюдателя на радиусе r.</summary>
+        /// <summary>Cosine of the visible horizon for an observer at radius r.</summary>
         public static double CosineOfHorizon(double planetRadius, double r)
         {
             double sinHor = planetRadius / r;
@@ -162,19 +154,19 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Полоса сглаживания горизонта по косинусу зенита (~±0.46°): у Солнца
-        /// конечный угловой радиус (~0.26°) плюс рефракция у горизонта (~0.5°),
-        /// поэтому прямой свет гаснет не ступенькой, а за полградуса захода.
-        /// Глубоко ниже горизонта — ровно 0.
+        /// Horizon smoothing band in zenith cosine (~±0.46°): the Sun has a finite
+        /// angular radius (~0.26°) plus refraction at the horizon (~0.5°), so
+        /// direct light fades over about half a degree of sunset rather than
+        /// stepping. Deep below the horizon it is exactly 0.
         /// </summary>
         public const double HorizonSoftening = 0.008d;
 
         /// <summary>
-        /// Прозрачность к Солнцу для точки на радиусе r и косинусе зенита cosTheta.
-        /// Ниже геометрического горизонта луч упирается в планету → 0, но с
-        /// мягкой полосой HorizonSoftening (конечный диск + рефракция), иначе
-        /// заход даёт видимый поп диска/света за один кадр. Численно
-        /// интегрируем экспоненциальную плотность (согласовано с GPU-моделью).
+        /// Transmittance to the Sun for a point at radius r and zenith cosine cosTheta.
+        /// Below the geometric horizon the ray hits the planet → 0, but with the soft
+        /// HorizonSoftening band (finite disc + refraction), otherwise sunset pops the
+        /// disc/light within one frame. Numerically integrates the exponential density
+        /// (consistent with the GPU model).
         /// </summary>
         public static Vector3d TransmittanceToSpace(
             in Coefficients c, double planetRadius, double atmosphereRadius, double r, double cosTheta, int steps = 8)
@@ -212,7 +204,7 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Перевёрнутый для GPU индекс высоты (линейный). Согласовано с шейдером:
+        /// UV index flipped for the GPU (linear). Consistent with the shader:
         /// uv = (cosTheta·0.5 + 0.5, height / atmosphereDepth).
         /// </summary>
         public static double UvCosTheta(double cosTheta) => Saturate(cosTheta * 0.5d + 0.5d);
@@ -220,7 +212,7 @@ namespace Galilego.Universe
         public static double UvHeight(double height, double atmosphereDepth) =>
             atmosphereDepth > 0d ? Saturate(height / atmosphereDepth) : 0d;
 
-        /// <summary>Плоская LUT (RGB каналы), row-major: y * Width + x.</summary>
+        /// <summary>Flat LUT (RGB channels), row-major: y * Width + x.</summary>
         public struct Lut
         {
             public int Width;
@@ -229,8 +221,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Transmittance LUT: по X — cos θ (низ солнца → верх), по Y — высота.
-        /// Ниже горизонта хранится 0 (Солнце закрыто планетой).
+        /// Transmittance LUT: X — cos θ (low sun → up), Y — altitude.
+        /// Below the horizon 0 is stored (the Sun is blocked by the planet).
         /// </summary>
         public static Lut BuildTransmittanceLut(
             in Coefficients c, double planetRadius, double atmosphereRadius, int size = 64)
@@ -254,11 +246,11 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Multi-Scattering LUT — приближение бесконечного многократного рассеяния
-        /// (Hillaire, EGSR 2020, ур. 9-10): усредняем по сфере однократное
-        /// рассеяние и свет от планеты, копим «пропуск» многократного, затем
+        /// Multi-Scattering LUT — infinite multi-scattering approximation
+        /// (Hillaire, EGSR 2020, eq. 9-10): averages single scattering and planet
+        /// light over the sphere, accumulates the multi-scattering "leak", then
         /// F_ms = 1/(1 − radianceMS), MS = radiance · F_ms.
-        /// Карта: uv = (cos θ·0.5 + 0.5, height / atmosphereDepth).
+        /// Map: uv = (cos θ·0.5 + 0.5, height / atmosphereDepth).
         /// </summary>
         public static Lut BuildMultiScatteringLut(
             in Coefficients c, double planetRadius, double atmosphereRadius, int size = 32, int sampleCount = 64)
@@ -311,9 +303,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Интегрирует вдоль луча от точки origin (в планетоцентрическом кадре)
-        /// до выхода из атмосферы или до поверхности. Возвращает цвет неба и
-        /// накопленное многократное рассеяние (для LUT).
+        /// Integrates along a ray from origin (in the planet-centric frame) to the
+        /// atmosphere exit or the surface. Returns the sky color and accumulated
+        /// multi-scattering (for the LUT).
         /// </summary>
         private static void IntegrateSkyRay(
             in Coefficients c, double planetRadius, double atmosphereRadius,
@@ -400,7 +392,7 @@ namespace Galilego.Universe
                     ? TransmittanceToSpace(c, planetRadius, atmosphereRadius, pr, cosSun)
                     : Vector3d.Zero;
 
-                // Планета принимается серой: albedo/π · max(0, N·L) · T_sun.
+                // The planet is treated as grey: albedo/π · max(0, N·L) · T_sun.
                 double grdf = c.GroundAlbedo / Math.PI;
                 double nl = Saturate(cosSun);
                 Vector3d planet = new Vector3d(
@@ -412,7 +404,7 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Аналитический интеграл однородного сегмента (Frostbite/Hillaire):
+        /// Analytic integral of a homogeneous segment (Frostbite/Hillaire):
         /// transmittance · (S − S·transSeg) / sigmaE.
         /// </summary>
         private static Vector3d IntegrateOverSegment(Vector3d source, Vector3d transSeg, Vector3d transmittance, Vector3d sigmaE)
@@ -424,7 +416,7 @@ namespace Galilego.Universe
                 transmittance.X * sx, transmittance.Y * sy, transmittance.Z * sz);
         }
 
-        /// <summary>Детерминированная равномерная сфера (спираль Фибоначчи).</summary>
+        /// <summary>Deterministic uniform sphere (Fibonacci spiral).</summary>
         private static Vector3d UniformSphere(int index, int count)
         {
             const double goldenAngle = Math.PI * (3d - 2.2360679774997896964d);
@@ -435,21 +427,18 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Оценка яркости неба для ambient-засветки поверхности тем же
-        /// single-scatter интегратором, что строит Multi-Scattering LUT.
-        /// Возвращает «доминирующий оттенок × среднюю энергию»: величина — это
-        /// косинус-взвешенное среднее radiance по верхней полусфере (как
-        /// irradiance/π), а оттенок — средний цвет ярких областей неба БЕЗ
-        /// косинусного веса. Иначе тёплая полоса горизонта на закате тонула бы
-        /// и в синеве зенита, и в собственном косинусном подавлении (у горизонта
-        /// вес ≈ 0), хотя именно эта полоса освещает землю. Поэтому цвет
-        /// согласован с GPU-небом: днём — синий, на закате — тёплый,
-        /// ночью ≈ 0 (верхние слои уже не освещены).
+        /// Sky brightness estimate for surface ambient lighting, using the same
+        /// single-scatter integrator as the Multi-Scattering LUT. Returns
+        /// "dominant hue × mean energy": the magnitude is the cosine-weighted mean
+        /// radiance over the upper hemisphere (as irradiance/π), the hue is the mean
+        /// color of bright sky areas without cosine weight, so the warm horizon band
+        /// at sunset is not buried by zenith blue or by its own ~0 cosine weight.
+        /// Color matches the GPU sky: blue by day, warm at sunset, ≈ 0 at night.
         ///
-        /// Кадр — локальный: наблюдатель в (0, r, 0), зенит +Y, солнце в
-        /// плоскости YZ (cosSunZenith = косинус зенитного угла солнца).
-        /// Дёшево: directions × 16 шагов марша (по умолчанию 12 направлений).
-        /// Выше верха атмосферы — ровно 0 (рассеивать нечему).
+        /// The frame is local: observer at (0, r, 0), zenith +Y, sun in the YZ plane
+        /// (cosSunZenith = cosine of the sun's zenith angle). Cheap: directions × 16
+        /// march steps (12 directions by default). Above the atmosphere top — exactly
+        /// 0 (nothing to scatter).
         /// </summary>
         public static Vector3d SkyAmbientRadiance(
             in Coefficients c, double planetRadius, double atmosphereRadius,
@@ -478,8 +467,7 @@ namespace Galilego.Universe
                 double lum = Luminance(skyColor);
                 energySum += skyColor * w;
                 energyWeight += w;
-                // Оттенок — по яркости без косинуса: иначе горизонт (вес ≈ 0)
-                // никогда не пробьётся, и закат останется синим.
+                // Hue uses luminance without cosine weight: the horizon (weight ≈ 0) would never show otherwise.
                 hueSum += skyColor * lum;
                 hueWeight += lum;
             }
@@ -503,7 +491,7 @@ namespace Galilego.Universe
         private static double Luminance(Vector3d v) =>
             (0.2126d * v.X) + (0.7152d * v.Y) + (0.0722d * v.Z);
 
-        /// <summary>Детерминированная равномерная верхняя полусфера (спираль Фибоначчи), y ∈ (0, 1].</summary>
+        /// <summary>Deterministic uniform upper hemisphere (Fibonacci spiral), y ∈ (0, 1].</summary>
         private static Vector3d HemisphereFibonacci(int index, int count)
         {
             const double goldenAngle = Math.PI * (3d - 2.2360679774997896964d);

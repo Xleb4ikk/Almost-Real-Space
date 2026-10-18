@@ -5,9 +5,9 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Сборка слоя деревьев для декора местности: меши из Models/Tree
-    /// (tree1..tree3), материал Galilego/GroundDecorSolid и объединение частей
-    /// модели в один меш с маской ветра по сабмешам. Используется GroundDecorSetup.
+    /// Builds the tree layer for ground decor: meshes from Models/Tree
+    /// (tree1..tree3), the Galilego/GroundDecorSolid material and merging model
+    /// parts into one mesh with a per-submesh wind mask. Used by GroundDecorSetup.
     /// </summary>
     public static class TreeModelSetup
     {
@@ -18,16 +18,16 @@ namespace Galilego.Universe.EditorTools
         private const string MaterialPath = DecorMaterialsFolder + "/TreeSolid.mat";
         private const float TargetTreeHeightMeters = 15f;
 
-        /// <summary>Кора: цвет Blender-материала Bark; альфа 0 — ветер не гнёт ствол.</summary>
+        /// <summary>Bark: Blender material Bark colour; alpha 0 — wind does not bend the trunk.</summary>
         private static readonly Color TrunkVertexColor = new Color(0.55f, 0.18f, 0.03f, 0f);
 
-        /// <summary>Листва: текущий стилизованный зелёный; альфа 1 — гнётся ветром.</summary>
+        /// <summary>Foliage: the stylised green; alpha 1 — bends in the wind.</summary>
         private static readonly Color LeafVertexColor = new Color(0.01034f, 0.06838f, 0.01848f, 1f);
 
         /// <summary>
-        /// Слой деревьев: меши из Models/Tree, цвет-материал, осевой офсет по
-        /// bbox (пивот FBX может быть в центре — поднимаем, чтобы ствол стоял
-        /// на земле). Используется и GroundDecorSetup.
+        /// Trees layer: meshes from Models/Tree, colour material, bbox axial
+        /// offset (the FBX pivot may be centred — raise it so the trunk stands
+        /// on the ground). Also used by GroundDecorSetup.
         /// </summary>
         internal static GroundDecorLayer BuildTreesLayer()
         {
@@ -44,7 +44,7 @@ namespace Galilego.Universe.EditorTools
                 maxHeight = Mathf.Max(maxHeight, meshes[i].bounds.size.y);
             }
 
-            // Меши уже нормализованы (низ на y=0), осевой офсет не нужен.
+            // Meshes are already normalised (bottom at y=0); no axial offset needed.
             float baseScale = maxHeight > 0.0001f ? TargetTreeHeightMeters / maxHeight : 1f;
             const float groundOffset = 0f;
 
@@ -60,43 +60,36 @@ namespace Galilego.Universe.EditorTools
                 SpacingMeters = 12d,
                 MaxInstancesPerChunk = 800,
                 MaxCellsPerAxis = 128,
-                // Плотность леса: примерно одно дерево на 35-50 м вблизи.
-                // Density, а не MaxInstancesPerChunk: лимит на чанк в ближнем
-                // чанке не режет (там кандидатов ~1300), он влияет только на
-                // дальние чанки, и плотность была бы разной.
+                // Density rather than MaxInstancesPerChunk: the per-chunk limit only cuts
+                // distant chunks (~1300 candidates near), so density would differ between them.
                 Density = 0.25d,
                 DistributionFrequency = 150d,
                 DistributionOctaves = 4,
                 DistributionSeedOffset = 3,
                 ClusterThreshold = 0d,
                 MinAltitudeMeters = 5d,
-                // Песок — только абсолютный пляж (BeachHeightMeters профиля
-                // террейна, ~18 м): выше него начинается зелень, и деревья там
-                // и стоят. Нормированной нижней границы нет — 0.032 при амплитуде
-                // 9144 м отсекал 274 м высоты, то есть всю прибрежную равнину.
+                // Sand is only the absolute beach (terrain profile BeachHeightMeters,
+                // ~18 m); greenery begins above it. No normalised lower bound.
                 MinNormalizedHeight = 0d,
                 MaxNormalizedHeight = GroundDecorLayer.RockBottomNormalizedHeight,
                 MaxAltitudeMeters = GroundDecorSetup.TreeMaxAltitudeMeters,
                 MaxSlopeTan = 0.9d,
                 AvoidWater = true,
-                // Деревья избегают лишь крайней пустыни: сухая степь зарастает,
-                // иначе зелёные с фото холмы стоят без леса. WetFade — мягкий
-                // край: жёсткий порог давал видную линию «лес кончился».
+                // Trees avoid only extreme desert; dry steppe is forested. WetFade gives a
+                // soft edge: a hard threshold draws a visible "forest ends here" line.
                 WetMin = 0.2d,
                 WetMax = 1d,
                 WetFade = 0.2d,
                 MinScale = baseScale * 0.85f,
                 MaxScale = baseScale * 1.5f,
-                // Склон гасит мягко (^1.5): при SteepPower=3 лес вырождался в
-                // единичные деревья там, где рельеф чуть круче 30°.
+                // Slope attenuation is soft (^1.5).
                 SteepPower = 1.5d,
                 GroundOffsetMeters = groundOffset,
                 Collides = true,
                 CollisionRadiusMeters = 1.2d,
                 CollisionHeightMeters = 16d,
-                // [ГРАФИКА] дальность деревьев. Дальше ProxyFromMeters — дешёвый
-                // прокси (см. FarProxy), поэтому 16 км стоят дешевле, чем раньше
-                // стоили 2 км полным мешем. Реальный предел — ещё и горизонт.
+                // [GRAPHICS] Tree draw distance. Past ProxyFromMeters a cheap proxy is
+                // used (see FarProxy). The real limit is also the horizon.
                 NearDistanceMeters = 150f,
                 MaxDistanceMeters = 11200f,
                 FarDensity = 0.35d,
@@ -124,10 +117,8 @@ namespace Galilego.Universe.EditorTools
             }
 
             material.shader = shader;
-            // Цвет ствола/кроны запечён в vertex colors (см. LoadCombinedMesh):
-            // материал белый, иначе его тинт перекрасит кору. Флагом
-            // _VertexColorTint включаем тинт только у деревьев — трава/камни/
-            // ромашки/кактусы рисуются без изменений.
+            // Trunk/leaf colour is baked into vertex colors (see LoadCombinedMesh), so the
+            // material stays white. _VertexColorTint tints trees only; other decor is unchanged.
             material.SetColor("_BaseColor", Color.white);
             material.SetFloat("_VertexColorTint", 1f);
             material.SetFloat("_Cutoff", 0.5f);
@@ -187,7 +178,7 @@ namespace Galilego.Universe.EditorTools
             return bestNonHelper != null ? bestNonHelper : best;
         }
 
-        /// <summary>Служебные меши моделей (коллизионные боксы LODBox и т.п.) в рендер не берём.</summary>
+        /// <summary>Model helper meshes (LODBox collision boxes etc.) are not rendered.</summary>
         private static bool IsHelperMesh(string name)
         {
             if (string.IsNullOrEmpty(name))
@@ -201,10 +192,9 @@ namespace Galilego.Universe.EditorTools
         }
 
         /// <summary>
-        /// Собрать ВСЕ части модели (ствол + листва) в один меш: FBX хранит их
-        /// отдельными объектами, а раньше брался только самый крупный — деревья
-        /// получались «палками» без кроны. Комбайн — через инстанс префаба,
-        /// чтобы учесть локальные трансформы частей.
+        /// Combines ALL parts of the model (trunk + foliage) into one mesh: the FBX
+        /// stores them as separate objects. Uses a prefab instance so local part
+        /// transforms are taken into account.
         /// </summary>
         private static Mesh LoadCombinedMesh(string modelPath)
         {
@@ -222,8 +212,8 @@ namespace Galilego.Universe.EditorTools
 
             try
             {
-                // true — части могут быть выключены в FBX (варианты/крона),
-                // без includeInactive они теряются (tree3 без листвы).
+                // true — parts may be disabled in the FBX (variants/canopy);
+                // without includeInactive they are lost.
                 MeshFilter[] filters = instance.GetComponentsInChildren<MeshFilter>(true);
                 var combines = new List<CombineInstance>();
                 var tempMeshes = new List<Mesh>();
@@ -237,17 +227,15 @@ namespace Galilego.Universe.EditorTools
                         continue;
                     }
 
-                    // Vertex color: RGB — цвет части (ствол/листва), альфа —
-                    // маска ветра. Шейдер GroundDecorSolid красит albedo по RGB
-                    // и гнёт ветром по альфе: раньше здесь был чёрно-белый
-                    // mask, а весь меш красился одним зелёным материалом.
+                    // Vertex color: RGB — part colour (trunk/foliage), alpha — wind
+                    // mask. The GroundDecorSolid shader tints albedo by RGB and bends
+                    // by alpha.
                     Mesh temp = Object.Instantiate(mesh);
                     MeshRenderer partRenderer = filters[i].GetComponent<MeshRenderer>();
                     Material[] partMaterials = partRenderer != null ? partRenderer.sharedMaterials : null;
                     var colors = new Color[temp.vertexCount];
-                    // По умолчанию всё — ствол (не гнётся). Листвой помечаем
-                    // ТОЛЬКО вершины leaf-сабмешей/материалов: у tree3 ствол и
-                    // крона в одном меше, и маска по имени меша гнула всё.
+                    // Default is trunk (not bent). Only vertices of leaf submeshes
+                    // and materials are marked as foliage.
                     for (int v = 0; v < colors.Length; v++)
                     {
                         colors[v] = TrunkVertexColor;
@@ -281,14 +269,14 @@ namespace Galilego.Universe.EditorTools
                             }
                             catch (System.Exception)
                             {
-                                // Нечитаемый сабмеш — остаётся стволом.
+                                // Unreadable submesh — stays trunk.
                             }
                         }
                     }
 
                     if (!hasMaterials && IsLeafPart(mesh.name))
                     {
-                        // Материалов нет — классифицируем по имени меша.
+                        // No materials — classify by mesh name.
                         for (int v = 0; v < colors.Length; v++)
                         {
                             colors[v] = LeafVertexColor;
@@ -301,7 +289,7 @@ namespace Galilego.Universe.EditorTools
                     }
                     catch (System.Exception)
                     {
-                        // Меш только для чтения — маска ветра не критична.
+                        // Read-only mesh — the wind mask is not critical.
                     }
 
                     tempMeshes.Add(temp);
@@ -322,8 +310,8 @@ namespace Galilego.Universe.EditorTools
                         return LoadBiggestMesh(modelPath);
                     }
 
-                    // Одна деталь (tree3): CombineMeshes терял сабмеш кроны —
-                    // сохраняем клон как есть; маска ветра уже в vertex colors.
+                    // Single part: keep the clone as is; the wind mask is already
+                    // in vertex colors.
                     if (tempMeshes.Count == 1)
                     {
                         Mesh single = tempMeshes[0];
@@ -355,7 +343,7 @@ namespace Galilego.Universe.EditorTools
                             }
                             catch (System.Exception)
                             {
-                                // Нечитаемый меш — оставляем локальные координаты.
+                                // Unreadable mesh — keep local coordinates.
                             }
                         }
 
@@ -367,24 +355,22 @@ namespace Galilego.Universe.EditorTools
                     }
 
                     var combined = new Mesh { name = prefab.name + "_Combined" };
-                    // mergeSubMeshes = false: с true CombineMeshes у модели
-                    // tree3 терял половину вершин (крона-сабмеш пропадала).
+                    // mergeSubMeshes = false keeps the submeshes separate.
                     combined.CombineMeshes(combines.ToArray(), false, true);
-                    // Нормали после комбайна могут быть кривыми (части с разными
-                    // матрицами) — чёрные грани. Пересчитываем.
+                    // Normals after combining can be wrong (parts with different
+                    // matrices) — recalculate.
                     combined.RecalculateNormals();
                     combined.RecalculateBounds();
 
-                    // Пивот может быть не в основании (например, крона-икосфера
-                    // с центром в себе) — сдвигаем геометрию так, чтобы низ был
-                    // на y=0: все модели стоят на земле без общего офсета.
+                    // The pivot may not be at the base (e.g. a canopy icosphere centred
+                    // on itself) — shift the geometry so the bottom is at y=0: every
+                    // model then stands on the ground without a shared offset.
                     NormalizeMeshToGround(combined);
 
                     if (combined.vertexCount < sourceVertexCount)
                     {
-                        // CombineMeshes потерял часть геометрии (tree3: крона-
-                        // сабмеш). Берём исходный меш целиком: без vertex-маски
-                        // (ветер гнёт дерево как раньше), но крона на месте.
+                        // CombineMeshes dropped geometry — fall back to the source mesh:
+                        // no vertex mask, but the canopy is intact.
                         Debug.LogWarning("[TreeMesh] " + prefab.name + ": потеря вершин при комбайне — исходный меш.");
                         Object.DestroyImmediate(combined);
                         return LoadBiggestMesh(modelPath);
@@ -414,7 +400,7 @@ namespace Galilego.Universe.EditorTools
             }
         }
 
-        /// <summary>Сдвинуть геометрию так, чтобы низ меша был на y=0.</summary>
+        /// <summary>Shift the geometry so the mesh bottom is at y=0.</summary>
         private static void NormalizeMeshToGround(Mesh mesh)
         {
             Vector3[] vertices = mesh.vertices;
@@ -433,7 +419,7 @@ namespace Galilego.Universe.EditorTools
             mesh.RecalculateBounds();
         }
 
-        /// <summary>Листва (гнётся ветром) или ствол/кора (не гнётся).</summary>
+        /// <summary>Foliage (bends in the wind) or trunk/bark (does not bend).</summary>
         private static bool IsLeafPart(string name)
         {
             string lower = name.ToLowerInvariant();

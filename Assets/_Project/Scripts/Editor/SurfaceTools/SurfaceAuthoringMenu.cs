@@ -4,9 +4,8 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Меню авторинга поверхности: создать фрейм, показать/скрыть превью,
-    /// развернуть префаб в базу. Здесь то, что иначе пришлось бы делать
-    /// руками каждый раз при новой точке спавна.
+    /// Surface authoring menu: create a frame, show/hide the preview, drop a prefab
+    /// into the base. Covers what would otherwise be done by hand for every new spawn point.
     /// </summary>
     public static class SurfaceAuthoringMenu
     {

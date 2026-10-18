@@ -1,9 +1,9 @@
 namespace Galilego.Events
 {
     /// <summary>
-    /// Направление пересечения нуля event-функцией, на которое реагирует детектор.
-    /// Falling — вход (в атмосферу, контакт с поверхностью), Rising — выход,
-    /// Either — любое (например, пара детекторов на одной оболочке для входа и выхода).
+    /// Direction of the event function's zero crossing the detector reacts to.
+    /// Falling — entry (into atmosphere, surface contact), Rising — exit,
+    /// Either — any (e.g. a pair of detectors on one shell for entry and exit).
     /// </summary>
     public enum EventDirection
     {

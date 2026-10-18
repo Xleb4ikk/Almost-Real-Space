@@ -3,22 +3,22 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Данные объёмных облаков планеты. Слой плотности между двумя радиусами
-    /// (planetRadius + BottomAltitude .. planetRadius + TopAltitude), заполняемый
-    /// 3D-шумом (Perlin-Worley форма + Worley-детализация), с coverage/тип из
-    /// низкочастотного 3D weather-шума.
+    /// Planet volumetric cloud data. A density layer between two radii
+    /// (planetRadius + BottomAltitude .. planetRadius + TopAltitude) filled with
+    /// 3D noise (Perlin-Worley shape + Worley detail), with coverage/type from a
+    /// low-frequency 3D weather noise.
     ///
-    /// ВАЖНО про параметризацию: все домены шума (shape/detail/weather/curl)
-    /// сэмплируются в МИРОВЫХ декартовых координатах относительно центра
-    /// планеты (см. PlanetClouds.shader), а НЕ в lat-long/UV. У сферы нет
-    /// естественной беcшовной 2D-развёртки — любой lat-long или cube-UV даёт
-    /// анизотропию у полюсов/швов и на большом радиусе (~1000+ км) превращается
-    /// в вытянутые полосы вдоль параллелей. Декартова 3D-тайловая текстура на
-    /// такой развёртке не нуждается: гладкая и бесшовная в любой точке сферы.
+    /// IMPORTANT about parameterization: all noise domains (shape/detail/weather/curl)
+    /// are sampled in WORLD Cartesian coordinates relative to the planet centre
+    /// (see PlanetClouds.shader), NOT in lat-long/UV. A sphere has no
+    /// natural seamless 2D unwrap — any lat-long or cube UV gives
+    /// anisotropy at the poles/seams and at large radii (~1000+ km) turns
+    /// into stripes stretched along the parallels. A Cartesian 3D tiled texture needs no
+    /// such unwrap: smooth and seamless anywhere on the sphere.
     ///
-    /// Как и AtmosphereProfile — один профиль на физику+визуал, разница в том,
-    /// что у облаков собственной физики (плотность воздуха и т.п.) не завязано,
-    /// профиль целиком визуальный.
+    /// Like AtmosphereProfile — one profile for physics+visuals; the difference is
+    /// that clouds have no physics of their own (air density etc.) tied in —
+    /// the profile is purely visual.
     /// </summary>
     [System.Serializable]
     public sealed class CloudProfile
@@ -154,7 +154,7 @@ namespace Galilego.Universe
         [Tooltip("Зерно генератора шума: одинаковый seed = одинаковые облака (детерминизм между запусками).")]
         public int NoiseSeed = 1337;
 
-        /// <summary>Копия профиля: runtime не должен мутировать данные ассета.</summary>
+        /// <summary>Profile copy: runtime must not mutate the asset data.</summary>
         public CloudProfile Clone()
         {
             return (CloudProfile)MemberwiseClone();

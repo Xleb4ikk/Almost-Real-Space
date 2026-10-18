@@ -7,30 +7,17 @@ using UnityEngine;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// Автозапуск съёмки по файлу-запросу: без клика по меню.
+    /// Starts a capture from a request file, without a menu click.
     ///
-    /// Зачем: пункт «Galilego/Capture/...» можно запустить только руками в
-    /// открытом редакторе, а сравнение «до/после» нужно гонять много раз, и
-    /// каждый запуск кликом стоит отдельного присутствия автора у машины.
-    /// Поэтому рядом с инструментом лежит файл-запрос — обычный редакторский
-    /// код без побочных эффектов: он существует только в редакторе, смотрит в
-    /// Temp/ и начинает съёмку, когда запрос там появился.
-    ///
-    /// Протокол:
-    ///   Temp/surface-capture.request      — текст: underwater-quick |
+    /// Protocol:
+    ///   Temp/surface-capture.request      — text: underwater-quick |
     ///                                     underwater-full | water-skirt | damp |
-    ///                                     benchmark. Пустой файл = underwater-quick.
-    ///   Temp/surface-capture.status       — ответ: что произошло (пишет триггер).
+    ///                                     benchmark. Empty file = underwater-quick.
+    ///   Temp/surface-capture.status       — reply: what happened (written by the trigger).
     ///
-    /// ВАЖНО, и это не формальность: проект входит в Play с
-    /// runInBackground = 0 (ProjectSettings.asset:90), и при потере фокуса
-    /// редактора игровой цикл ОСТАНАВЛИВАЕТСЯ — не «замедляется», а именно
-    /// стоит: не тикают LateUpdate, не качаются джобы сборки чанков, не
-    /// перерисовывается HUD. Все счётчики при этом замирают на последних
-    /// значениях, и картина «очередь 305, в полёте 6, ничего не
-    /// финализируется три съёмки подряд» получается без всякого зависания.
-    /// Поэтому SurfaceCaptureTool на время съёмки сам включает
-    /// Application.runInBackground и возвращает настройку при выходе из Play.
+    /// The project enters Play with runInBackground = 0, so losing editor focus
+    /// stops the game loop and freezes all counters; SurfaceCaptureTool forces
+    /// Application.runInBackground on for the duration of a capture.
     /// </summary>
     [InitializeOnLoad]
     public static class SurfaceCaptureTrigger
@@ -56,9 +43,6 @@ namespace Galilego.Universe.EditorTools
                 action = "underwater-quick";
             }
 
-            // Запрос НЕ удаляем до старта: если старт не удался, файл остаётся и
-            // съёмка попробует снова — молча проглоченный запрос невозможно
-            // отличить от неработающего триггера.
             File.Delete(RequestPath);
 
             switch (action)
@@ -79,10 +63,9 @@ namespace Galilego.Universe.EditorTools
                     SurfaceCaptureTool.FlightBenchmark();
                     break;
                 case "stop":
-                    // Выйти из Play. Нужен после съёмки, умершей от
-                    // перекомпиляции: домен перезагрузился, статики
-                    // SurfaceCaptureTool обнулились, и выйти из Play больше
-                    // некому.
+                    // Leave Play mode. Needed when a capture dies from a
+                    // recompilation: the domain reloads and the tool's statics
+                    // reset, so nothing else can exit Play.
                     WriteStatus("выходим из Play");
                     EditorApplication.isPlaying = false;
                     return;

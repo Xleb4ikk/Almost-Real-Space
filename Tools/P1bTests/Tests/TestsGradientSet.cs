@@ -4,33 +4,32 @@ using Galilego.Universe;
 using Unity.Mathematics;
 
 /// <summary>
-/// Разбор набора градиентов: матрица вторых моментов Σ g gᵀ и замыкатость набора
-/// относительно перестановок осей. Нужен ДО выбора набора, а не после — по
-/// замеру видно, что «сумма векторов нулевая» не гарантирует изотропности.
+/// Gradient-set analysis: second-moment matrix Σ g gᵀ and closure of the set
+/// under axis permutations. Needed BEFORE choosing a set, not after: by
+/// measurement, "the vector sum is zero" does not guarantee isotropy.
 ///
-/// Направления берутся из НАСТОЯЩЕГО хеша решётки по реальным координатам
-/// узлов: подставлять индексы 0..N нельзя, схема выбора опирается на старшие
-/// биты и на малых h вырождается в нулевой индекс.
+/// Directions come from the REAL lattice hash over actual node coordinates:
+/// substituting indices 0..N will not do — the selection scheme relies on the
+/// high bits and degenerates to index zero at small h.
 ///
-/// Печатает оба набора, проверок не содержит: это разбор, а не приёмка.
-/// Приёмку симметрии делает T112.
+/// Prints both sets, contains no checks: this is analysis, not acceptance.
+/// Symmetry acceptance is done by T112.
 /// </summary>
 internal static partial class P1bTests
 {
     private static int Test112b_GradientSetAnalysis()
     {
-        // 61^3 узлов — достаточно, чтобы собрать статистику по всем плоскостям.
+        // 61^3 nodes — enough to gather statistics over all planes.
         const int n = 60;
         Report("было: 8 диагоналей + 4 ребра xy + 4 ребра xz", (x, y, z) => GradSetOld(LatticeHash(x, y, z)), n);
         Report("стало: 12 рёбер куба (h % 12)", GradSetNew, n);
         return 0;
     }
 
-    /// <summary>Исторический хеш СТАРОГО набора из 8 диагоналей. Копия намеренная:
-    /// этот тест показывает, что старый набор давал разброс 37.5%, поэтому хеш
-    /// здесь заморожен на старом множителе z и НЕ должен совпадать с
-    /// TerrainNoise.PerlinLatticeHash. Синхронизировать с продакшеном нельзя -
-    /// это уничтожит то, что тест измеряет.</summary>
+    /// <summary>Historical hash of the OLD 8-diagonal set. The copy is deliberate:
+    /// the hash is frozen on the old z multiplier and must NOT match
+    /// TerrainNoise.PerlinLatticeHash. Syncing it with production would
+    /// destroy what the test measures.</summary>
     private static int LatticeHash(int x, int y, int z)
     {
         unchecked
@@ -42,7 +41,7 @@ internal static partial class P1bTests
         }
     }
 
-    /// <summary>Направление по хешу узла — прежняя схема из 5 младших бит (отброшена).</summary>
+    /// <summary>Direction from node hash — old 5-low-bit scheme (discarded).</summary>
     private static double3 GradSetOld(int h)
     {
         int g = h & 31;
@@ -58,7 +57,7 @@ internal static partial class P1bTests
         return new double3(sx * scale, sy * scale * takeY, sz * scale * takeZ);
     }
 
-    /// <summary>12 рёбер куба — нынешняя схема, зовёт рабочий код.</summary>
+    /// <summary>12 cube edges — current scheme, calls production code.</summary>
     private static double3 GradSetNew(int x, int y, int z)
     {
         return TerrainNoise.LatticeGradientFast(x, y, z);

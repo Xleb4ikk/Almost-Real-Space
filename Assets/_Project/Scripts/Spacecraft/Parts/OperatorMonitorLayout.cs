@@ -4,13 +4,13 @@ using UnityEngine;
 namespace Galilego.Spacecraft
 {
     /// <summary>
-    /// Мониторы оператора Orion расставлены РУКАМИ в префабе (блоки в стене, экраны на
-    /// блоках) — поэтому Apply ничего не двигает и не перекраивает: единственное, что
-    /// осталось от старой автораскладки, — взгляд сидящего при посадке наводится на пару
-    /// мониторов (в остальном камерой свободно рулим мышью).
+    /// Orion operator monitors are placed BY HAND in the prefab (blocks in the wall,
+    /// screens on the blocks) — so Apply moves nothing: it only aims the seated crew
+    /// member's view at the pair of monitors on landing (the camera is otherwise free
+    /// to look around with the mouse).
     ///
-    /// Звать один раз сразу после Instantiate модели капсулы (PartCatalog).
-    /// false — в модели нет кресла/якоря/экранов (двигать нечего).
+    /// Call once right after Instantiating the capsule model (PartCatalog).
+    /// false — the model has no seat/anchor/screens (nothing to aim).
     /// </summary>
     public static class OperatorMonitorLayout
     {
@@ -43,7 +43,7 @@ namespace Galilego.Spacecraft
                 }
             }
 
-            // Глаза сидящего: якорь + (SeatedEyeMeters камеры - EyeHeightMeters кресла).
+            // Seated eye: anchor + (camera SeatedEyeMeters - seat EyeHeightMeters).
             Vector3 up = seat.Anchor.forward;
             float above = 0.30f;
             FirstPersonCamera cam = UnityEngine.Object.FindAnyObjectByType<FirstPersonCamera>();
