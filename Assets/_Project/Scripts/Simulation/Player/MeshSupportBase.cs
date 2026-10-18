@@ -14,7 +14,7 @@ namespace Galilego.Simulation.Player
     /// вдоль стен. Наследники решают, какие коллайдеры считать опорой (постройки,
     /// детали корабля) и как выдавать стабильные sourceId.
     /// </summary>
-    public abstract class MeshSupportBase : IPlayerSupport
+    public abstract class MeshSupportBase : IPlayerSupport, IOverlapSupport
     {
         /// <summary>Диагностика ходьбы: включена галочкой Debug Overlay на PlayerController.</summary>
         public static bool DebugEnabled;
@@ -32,19 +32,68 @@ namespace Galilego.Simulation.Player
         /// <summary>О невыпуклых коллайдерах предупреждаем один раз на коллайдер.</summary>
         private readonly HashSet<Collider> warnedNonConvex = new HashSet<Collider>();
 
-        /// <summary>Кэш «коллайдер — только препятствие» (мебель, мониторы): не пол и не ступенька.</summary>
-        private readonly Dictionary<Collider, bool> obstacleOnly = new Dictionary<Collider, bool>();
+        /// <summary>Роли коллайдера для ходьбы: 1 — только препятствие (PlayerObstacleOnly), 2 — игнорируется (PlayerIgnore).</summary>
+        private readonly Dictionary<Collider, int> roles = new Dictionary<Collider, int>();
 
+        private int RoleOf(Collider collider)
+        {
+            if (!roles.TryGetValue(collider, out int role))
+            {
+                if (roles.Count > 512)
+                {
+                    roles.Clear();
+                }
+
+                role = (collider.GetComponent<PlayerObstacleOnly>() != null ? 1 : 0)
+                    | (collider.GetComponent<PlayerIgnore>() != null ? 2 : 0);
+                roles[collider] = role;
+            }
+
+            return role;
+        }
+
+        /// <summary>Мебель: стена для игрока, но не пол и не ступенька.</summary>
         private bool IsObstacleOnly(Collider collider)
         {
-            if (collider == null) return false;
-            if (!obstacleOnly.TryGetValue(collider, out bool value))
+            return collider != null && (RoleOf(collider) & 1) != 0;
+        }
+
+        /// <summary>
+        /// Коллайдер учитывается ходьбой: принадлежит опоре и не помечен PlayerIgnore
+        /// (мониторы, бокс интеракции кресла: они нужны лучам прицела, но не телу).
+        /// </summary>
+        private bool IsPlayerCollider(Collider collider)
+        {
+            return collider != null && IsSupportCollider(collider) && (RoleOf(collider) & 2) == 0;
+        }
+
+        private readonly Collider[] overlapBuffer = new Collider[64];
+
+        /// <summary>
+        /// Капсула (ноги в feet, радиус, высота) пересекает коллайдер опоры. Капсула
+        /// приподнята на 6 см: стоя на полу, касание пола не считается «не влезает».
+        /// </summary>
+        public bool Overlaps(Vector3d feet, double radius, double height)
+        {
+            if (!ready)
             {
-                if (obstacleOnly.Count > 512) obstacleOnly.Clear();
-                value = collider.GetComponent<PlayerObstacleOnly>() != null;
-                obstacleOnly[collider] = value;
+                return false;
             }
-            return value;
+
+            const float Lift = 0.06f;
+            float r = (float)radius;
+            Vector3 p1 = ToRenderPoint(feet) + (renderUp * (Lift + r));
+            Vector3 p2 = p1 + (renderUp * Mathf.Max(0.01f, (float)height - Lift - (2f * r)));
+            int count = Physics.OverlapCapsuleNonAlloc(p1, p2, r, overlapBuffer, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < count; i++)
+            {
+                if (IsPlayerCollider(overlapBuffer[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>Коллайдер принадлежит опоре этого источника.</summary>
@@ -136,10 +185,11 @@ namespace Galilego.Simulation.Player
                 return false;
             }
 
-            // Опора под стопой: центральный луч + четыре по краю стопы (0.28 м,
-            // по радиусу капсулы). Одиночный луч проскакивает узкие щели между
+            // Опора под стопой: центральный луч + четыре по краю стопы (по радиусу
+            // капсулы). Одиночный луч проскакивает узкие щели между
             // коллайдерами и кромки — игрок «проваливался между ними». Берём
             // САМУЮ ВЫСОКУЮ опору в следе стопы: на неё и встают ноги.
+            const double Foot = PlayerSurfaceController.CapsuleRadius;
             bool found = false;
             double best = double.NegativeInfinity;
             for (int k = 0; k < 5; k++)
@@ -147,10 +197,10 @@ namespace Galilego.Simulation.Player
                 Vector3d sample = from;
                 switch (k)
                 {
-                    case 1: sample = from + new Vector3d(0.28d, 0d, 0d); break;
-                    case 2: sample = from + new Vector3d(-0.28d, 0d, 0d); break;
-                    case 3: sample = from + new Vector3d(0d, 0.28d, 0d); break;
-                    case 4: sample = from + new Vector3d(0d, -0.28d, 0d); break;
+                    case 1: sample = from + new Vector3d(Foot, 0d, 0d); break;
+                    case 2: sample = from + new Vector3d(-Foot, 0d, 0d); break;
+                    case 3: sample = from + new Vector3d(0d, Foot, 0d); break;
+                    case 4: sample = from + new Vector3d(0d, -Foot, 0d); break;
                 }
 
                 // Луч стартует на 5 см выше точки ног: при микропроникновении ноги
@@ -188,7 +238,7 @@ namespace Galilego.Simulation.Player
             for (int i = 0; i < hits.Length; i++)
             {
                 RaycastHit hit = hits[i];
-                if (!IsSupportCollider(hit.collider) || IsObstacleOnly(hit.collider) || hit.distance >= bestDistance)
+                if (!IsPlayerCollider(hit.collider) || IsObstacleOnly(hit.collider) || hit.distance >= bestDistance)
                 {
                     continue;
                 }
@@ -230,7 +280,7 @@ namespace Galilego.Simulation.Player
                 RaycastHit[] hits = Physics.RaycastAll(ToRenderPoint(sample), renderUp, (float)maxRise, ~0, QueryTriggerInteraction.Ignore);
                 for (int i = 0; i < hits.Length; i++)
                 {
-                    if (!IsSupportCollider(hits[i].collider) || hits[i].distance >= best)
+                    if (!IsPlayerCollider(hits[i].collider) || hits[i].distance >= best)
                     {
                         continue;
                     }
@@ -279,7 +329,7 @@ namespace Galilego.Simulation.Player
             for (int i = 0; i < hits.Length; i++)
             {
                 RaycastHit hit = hits[i];
-                if (!IsSupportCollider(hit.collider) || hit.distance < 0f)
+                if (!IsPlayerCollider(hit.collider) || hit.distance < 0f)
                 {
                     continue;
                 }

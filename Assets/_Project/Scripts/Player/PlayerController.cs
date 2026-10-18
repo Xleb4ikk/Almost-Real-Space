@@ -474,7 +474,7 @@ namespace Galilego.Universe
             {
                 GUI.Label(new Rect(20f, 20f, 1100f, 90f),
                     "blocker: " + MeshSupportBase.DebugBlocker
-                    + "\nblocked=" + Runner.PlayerBlocked + "  crouched=" + Runner.PlayerCrouched
+                    + "\nblocked=" + Runner.PlayerBlocked + "  height=" + Runner.PlayerCapsuleHeight.ToString("F2")
                     + "  airborne=" + Runner.PlayerAirborne
                     + "  lift=" + Runner.PlayerDebugLift.ToString("F3")
                     + "  ground=" + Runner.PlayerGroundSourceId);

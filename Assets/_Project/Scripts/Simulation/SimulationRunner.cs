@@ -316,6 +316,14 @@ namespace Galilego.Universe
         /// <summary>Диагностика ходьбы: подъём ног на ступеньку за последний подшаг (м).</summary>
         public double PlayerDebugLift => playerController.DebugLift;
 
+        /// <summary>Высота капсулы игрока сейчас (м): пригибается под скошенной стеной/люком.</summary>
+        public double PlayerCapsuleHeight => playerController.CurrentHeightMeters;
+
+        /// <summary>Степень пригиба 0..1 (0 — полный рост, 1 — минимальная высота). Камера опускает глаза по ней.</summary>
+        public float PlayerStoopFraction => (float)Math.Max(0d, Math.Min(1d,
+            (PlayerSurfaceController.CapsuleHeight - playerController.CurrentHeightMeters)
+            / (PlayerSurfaceController.CapsuleHeight - PlayerSurfaceController.CapsuleHeightCrouched)));
+
         /// <summary>Идентификатор опоры под игроком (-1 — нет опоры; см. TerrainSupport/SiteBoxSupport).</summary>
         public int PlayerGroundSourceId => playerController.GroundSourceId;
 

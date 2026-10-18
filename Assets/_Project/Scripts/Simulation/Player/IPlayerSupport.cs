@@ -37,4 +37,14 @@ namespace Galilego.Simulation.Player
     {
         bool TryGetSupportVelocity(int sourceId, out Vector3d velocity);
     }
+
+    /// <summary>
+    /// Опциональное расширение: «капсула с центром в feet, радиусом radius и высотой
+    /// height пересекает опору». Нужна, чтобы вставать из пригиба ТОЛЬКО там, где
+    /// влезает весь объём капсулы (скошенная стена кабины боковым лучом не видна).
+    /// </summary>
+    public interface IOverlapSupport
+    {
+        bool Overlaps(Vector3d feet, double radius, double height);
+    }
 }

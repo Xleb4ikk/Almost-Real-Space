@@ -244,10 +244,11 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Присед и посадка в кресло: плавно (не рывком) — высота глаз едет
-            // к CrouchEyeMeters / SeatedEyeMeters.
-            bool crouched = Runner != null && Runner.PlayerCrouched;
-            crouchBlend = Mathf.MoveTowards(crouchBlend, crouched ? 1f : 0f, Time.deltaTime * 5f);
+            // Пригиб и посадка в кресло: плавно (не рывком). Пригиб теперь ступенчатый
+            // (капсула подстраивается под скос стены кабины), поэтому глаза едут
+            // за долей пригиба 0..1, а не за флагом «присел».
+            float stoop = Runner != null ? Runner.PlayerStoopFraction : 0f;
+            crouchBlend = Mathf.MoveTowards(crouchBlend, stoop, Time.deltaTime * 3f);
             bool seated = Runner != null && Runner.PlayerSeated;
             seatedBlend = Mathf.MoveTowards(seatedBlend, seated ? 1f : 0f, Time.deltaTime * 5f);
 
@@ -541,7 +542,10 @@ namespace Galilego.Universe
             }
             else
             {
-                eye = EyeHeightMeters + ((CrouchEyeMeters - EyeHeightMeters) * crouchBlend);
+                // Глаза не выше макушки самой низкой капсулы (0.8 м) минус 10 см: иначе
+                // у скошенной стены камера оказывается в самой стене.
+                double crouchEye = System.Math.Min(CrouchEyeMeters, 0.7d);
+                eye = EyeHeightMeters + ((crouchEye - EyeHeightMeters) * crouchBlend);
             }
 
             Vector3 up = ComputeLocalUp();

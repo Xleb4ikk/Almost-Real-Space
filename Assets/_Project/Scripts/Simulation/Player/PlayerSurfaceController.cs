@@ -23,8 +23,8 @@ namespace Galilego.Simulation.Player
     /// </summary>
     public sealed class PlayerSurfaceController
     {
-        /// <summary>Радиус капсулы игрока (м): рост 1.40 м — плечи ~0.7 м.</summary>
-        public const double CapsuleRadius = 0.28d;
+        /// <summary>Радиус капсулы игрока (м): плечи ~0.5 м (в тесной кабине Orion шире не пролезть).</summary>
+        public const double CapsuleRadius = 0.25d;
 
         /// <summary>Высота капсулы (м): рост игрока 1.40 м + запас на макушку.</summary>
         public const double CapsuleHeight = 1.45d;
@@ -37,6 +37,16 @@ namespace Galilego.Simulation.Player
         /// опускать нельзя — это диаметр капсулы.
         /// </summary>
         public const double CapsuleHeightCrouched = 0.8d;
+
+        /// <summary>Ступени пригибания сверху вниз: от полного роста до минимума.</summary>
+        private static readonly double[] StoopLevels =
+            { CapsuleHeight, 1.25d, 1.05d, 0.92d, CapsuleHeightCrouched };
+
+        /// <summary>После пригибания не вставать столько секунд (чтобы высота не дрожала у стены).</summary>
+        private const double StoopHoldSeconds = 0.25d;
+
+        /// <summary>Запас (м) вокруг капсулы при вставании: встаём, только если вокруг есть свободный зазор, иначе высота дрожит у стены.</summary>
+        private const double GrowClearanceMeters = 0.04d;
 
         public const double StepUpMeters = 0.5d;
         public const double SupportDropMeters = 0.5d;
@@ -97,16 +107,31 @@ namespace Galilego.Simulation.Player
         /// <summary>Ускорение свободного падения вдоль локальной вертикали (м/с²).</summary>
         public double Gravity = 9.81d;
 
-        /// <summary>
-        /// Пригнулся ли игрок (автоматически, чтобы пройти низкий проём).
-        /// Камера отражает это высотой глаз (FirstPersonCamera).
-        /// </summary>
-        public bool Crouched { get; private set; }
+        /// <summary>Пригнулся ли игрок (высота капсулы ниже полного роста).</summary>
+        public bool Crouched
+        {
+            get { return height < CapsuleHeight - 1e-6d; }
+        }
 
-        /// <summary>Высота капсулы сейчас: полный рост или присед.</summary>
+        /// <summary>
+        /// Текущая высота капсулы (м), от CapsuleHeightCrouched до CapsuleHeight.
+        /// Игрок пригибается ступенчато (StoopLevels) ровно настолько, чтобы идти
+        /// под скошенной стеной/сводом/притолокой, и встаёт, как только над
+        /// головой есть место. Камера следит за этой высотой (FirstPersonCamera).
+        /// </summary>
+        public double CurrentHeightMeters
+        {
+            get { return height; }
+        }
+
+        private double height = CapsuleHeight;
+
+        /// <summary>Сколько ещё секунд нельзя вставать после пригибания (гистерезис).</summary>
+        private double growHold;
+
         private double CurrentHeight
         {
-            get { return Crouched ? CapsuleHeightCrouched : CapsuleHeight; }
+            get { return height; }
         }
 
         /// <summary>Опора под ногами (sourceId последнего Floor); -1 — нет.</summary>
@@ -133,6 +158,11 @@ namespace Galilego.Simulation.Player
             }
 
             Blocked = false;
+            if (growHold > 0d)
+            {
+                growHold = Math.Max(0d, growHold - dt);
+            }
+
             if (extraAcceleration.SqrMagnitude > 0d)
             {
                 // Дополнительное ускорение (джетпак): добавляется к скорости до шага.
@@ -204,19 +234,10 @@ namespace Galilego.Simulation.Player
             Position = new Vector3d(Position.X, Position.Y, floorHeight);
 
             // Горизонтальный свип со скольжением вдоль стен (до 4 итераций).
-            // Сначала в полный рост; если проход урезан — пробуем пригнувшись:
-            // продвинулись дальше? значит пригибание открывает путь (люк капсулы).
-            Vector3d p = SweepHorizontal(support, Position, move, CurrentHeight);
-            if (!Crouched && move.Magnitude > 1e-9d
-                && (p - Position).Magnitude < move.Magnitude - 1e-3d)
-            {
-                Vector3d pCrouched = SweepHorizontal(support, Position, move, CapsuleHeightCrouched);
-                if ((pCrouched - Position).Magnitude > (p - Position).Magnitude + 0.02d)
-                {
-                    Crouched = true;
-                    p = pCrouched;
-                }
-            }
+            // Высота капсулы подбирается по ступеням: если пригибание даёт
+            // заметно больший ход (скошенная стена кабины, люк), пригибаемся
+            // ровно настолько, чтобы получить этот ход.
+            Vector3d p = SweepStoop(support, Position, move);
 
             Position = new Vector3d(p.X, p.Y, Position.Z);
 
@@ -250,7 +271,7 @@ namespace Galilego.Simulation.Player
             Velocity = intent;
 
             // Встать, когда над головой снова есть полный рост (вышли из проёма).
-            TryStandUp(support);
+            TryGrow(support);
 
             // Полностью зажатый вход (все итерации свипа съедены) — «вход блокирован».
             if (move.Magnitude > 1e-9d && (Position - saved).Magnitude < 1e-3d * move.Magnitude)
@@ -377,17 +398,7 @@ namespace Galilego.Simulation.Player
             // продвигает дальше, пригибаемся (раньше присед был только на земле —
             // висящий у люка игрок упирался головой и застревал).
             Vector3d flatStep = new Vector3d(step.X, step.Y, 0d);
-            Vector3d p = SweepHorizontal(support, Position, flatStep, CurrentHeight);
-            if (!Crouched && flatStep.Magnitude > 1e-9d
-                && (p - Position).Magnitude < flatStep.Magnitude - 1e-3d)
-            {
-                Vector3d pCrouched = SweepHorizontal(support, Position, flatStep, CapsuleHeightCrouched);
-                if ((pCrouched - Position).Magnitude > (p - Position).Magnitude + 0.02d)
-                {
-                    Crouched = true;
-                    p = pCrouched;
-                }
-            }
+            Vector3d p = SweepStoop(support, Position, flatStep);
 
             // Помощь при зависании: ход срезан почти полностью (голова в притолоке
             // люка). Если чуть ниже свип продвигает заметно дальше — плавно
@@ -447,7 +458,7 @@ namespace Galilego.Simulation.Player
                         Velocity = new Vector3d(Velocity.X, Velocity.Y, 0d);
                         Airborne = false;
                         GroundSourceId = floorId;
-                        TryStandUp(support);
+                        TryGrow(support);
                         return;
                     }
                 }
@@ -464,30 +475,104 @@ namespace Galilego.Simulation.Player
             }
 
             Position = p;
-            TryStandUp(support);
+            TryGrow(support);
         }
 
         /// <summary>
-        /// Попытка встать из приседа: потолок ищется в зазоре от макушки приседа
-        /// до полного роста — если он есть, остаёмся пригнутыми. Раньше «встать»
-        /// проверяло потолок только ВЫШЕ полного роста и не видело свод на высоте
-        /// 0.8–1.45 м: игрок вставал прямо в проёме, свип снова резал ход, и он
-        /// дёргано залипал. Работает и на земле, и в воздухе.
+        /// Свип с подбором высоты капсулы. Если ход при текущей высоте урезан, а
+        /// самая низкая ступень проходит заметно дальше — значит мешает голова
+        /// (скос стены, притолока): берём САМУЮ ВЫСОКУЮ ступень, дающую почти
+        /// тот же ход, что и минимум. Если и минимум не лучше — это настоящая
+        /// стена, высоту не трогаем. Порог выигрыша относительный (доля шага):
+        /// прежний абсолютный порог 2 см при шаге кадра ~1.7 см (60 fps)
+        /// никогда не срабатывал, и игрок не пригибался вовсе.
         /// </summary>
-        private void TryStandUp(IPlayerSupport support)
+        private Vector3d SweepStoop(IPlayerSupport support, Vector3d from, Vector3d move)
         {
-            if (!Crouched)
+            Vector3d p = SweepHorizontal(support, from, move, height);
+            double want = move.Magnitude;
+            if (!(want > 1e-9d) || height <= CapsuleHeightCrouched + 1e-9d)
+            {
+                return p;
+            }
+
+            double got = (p - from).Magnitude;
+            if (got >= want - 1e-4d)
+            {
+                return p;
+            }
+
+            Vector3d pMin = SweepHorizontal(support, from, move, CapsuleHeightCrouched);
+            double best = (pMin - from).Magnitude;
+            if (best <= got + Math.Max(1e-3d, 0.1d * want))
+            {
+                return p;
+            }
+
+            double tolerance = Math.Max(1e-3d, 0.05d * want);
+            for (int i = 0; i < StoopLevels.Length - 1; i++)
+            {
+                double level = StoopLevels[i];
+                if (level >= height - 1e-9d)
+                {
+                    continue;
+                }
+
+                Vector3d pl = SweepHorizontal(support, from, move, level);
+                if ((pl - from).Magnitude >= best - tolerance)
+                {
+                    height = level;
+                    growHold = StoopHoldSeconds;
+                    return pl;
+                }
+            }
+
+            height = CapsuleHeightCrouched;
+            growHold = StoopHoldSeconds;
+            return pMin;
+        }
+
+        /// <summary>
+        /// Встать повыше: самая высокая ступень (выше текущей), в которую капсула
+        /// ВЛЕЗАЕТ на этом месте. Проверка — по объёму капсулы (IOverlapSupport),
+        /// а не по лучам вверх: скошенная стена и притолока бокового луча не
+        /// видны, и игрок вставал прямо в стену. Работает на земле и в воздухе.
+        /// </summary>
+        private void TryGrow(IPlayerSupport support)
+        {
+            if (height >= CapsuleHeight - 1e-9d || growHold > 0d)
             {
                 return;
             }
 
-            bool blocked = support.Ceiling(
-                new Vector3d(Position.X, Position.Y, Position.Z + CapsuleHeightCrouched),
-                CapsuleHeight - CapsuleHeightCrouched + 0.05d, out _);
-            if (!blocked)
+            for (int i = 0; i < StoopLevels.Length; i++)
             {
-                Crouched = false;
+                double level = StoopLevels[i];
+                if (level <= height + 1e-9d)
+                {
+                    break;
+                }
+
+                if (Fits(support, level))
+                {
+                    height = level;
+                    return;
+                }
             }
+        }
+
+        private bool Fits(IPlayerSupport support, double level)
+        {
+            IOverlapSupport overlap = support as IOverlapSupport;
+            if (overlap != null)
+            {
+                return !overlap.Overlaps(Position, CapsuleRadius + GrowClearanceMeters, level);
+            }
+
+            // Опора без объёмной проверки (рельеф): как раньше — потолок над головой.
+            return !support.Ceiling(
+                new Vector3d(Position.X, Position.Y, Position.Z + height),
+                level - height + 0.05d, out _);
         }
 
         /// <summary>

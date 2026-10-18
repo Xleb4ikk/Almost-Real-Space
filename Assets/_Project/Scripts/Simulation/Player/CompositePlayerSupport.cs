@@ -10,7 +10,7 @@ namespace Galilego.Simulation.Player
     /// TerrainSupport.SourceId, постройки — SiteBoxSupport.SourceIdBase + id,
     /// детали — VesselSupport.SourceIdBase + id.
     /// </summary>
-    public sealed class CompositePlayerSupport : IPlayerSupport
+    public sealed class CompositePlayerSupport : IPlayerSupport, IOverlapSupport
     {
         public IPlayerSupport Terrain;
         public IPlayerSupport Sites;
@@ -70,6 +70,13 @@ namespace Galilego.Simulation.Player
             }
 
             return true;
+        }
+
+        /// <summary>Капсула пересекает постройку или деталь аппарата (рельеф — аналитический, не считается).</summary>
+        public bool Overlaps(Vector3d feet, double radius, double height)
+        {
+            return (Sites is IOverlapSupport sites && sites.Overlaps(feet, radius, height))
+                || (Vessel is IOverlapSupport vessel && vessel.Overlaps(feet, radius, height));
         }
 
         public bool Sweep(Vector3d from, Vector3d to, double radius, double height, out Vector3d normal, out double fraction)
