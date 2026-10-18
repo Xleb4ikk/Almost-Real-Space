@@ -112,3 +112,8 @@ Assets/.codex_tmp/
 # пишут их пачками, и каждый набор - это десятки мегабайт в истории.
 Assets/Screenshots/
 Assets/Screenshots.meta
+
+# То же под _Project: сюда пишет SurfaceCaptureTool (Screenshots/dampmodes)
+# и пробы; файлы остаются на диске, но в историю больше не попадают.
+Assets/_Project/Screenshots/
+Assets/_Project/Screenshots.meta
