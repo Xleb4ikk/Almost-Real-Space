@@ -1089,7 +1089,18 @@ namespace Galilego.Universe
                     // PlayerView ставит её у нарисованного якоря кресла, так
                     // что лаг/дрожь здесь картинку не шатают.
                     // (Точка опоры разово переведена из render-мира при посадке.)
-                    smoothedShipPosition += (Ship.Position - smoothedShipPosition) * 0.2d;
+                    // Фильтр дрожи 0.2 БЕЗ упреждения на рампе отставал от корабля на
+                    // v*dt/0.2 = 5*v*dt: при скорости поверхности ~2 км/с (в инерциальном
+                    // кадре) это сотни метров, и величина зависела от длины кадра. Якорь
+                    // рендера и высота для near-plane камеры скакали вместе с dt (а dt в
+                    // редакторе прыгает именно при движении мыши). Поэтому: предсказываем
+                    // точку по скорости корабля (позиция корабля относится ко времени
+                    // fromTime, шаг кончается на t+dt) и фильтруем только остаток —
+                    // дрожь физики гасится, постоянное отставание исчезает.
+                    double leadSeconds = (t + dt) - fromTime;
+                    Vector3d shipTarget = Ship.Position + (Ship.Velocity * leadSeconds);
+                    Vector3d predicted = smoothedShipPosition + (Ship.Velocity * dt);
+                    smoothedShipPosition = predicted + ((shipTarget - predicted) * 0.2d);
                     PlayerSeatedPosition += smoothedShipPosition - seatedShipAnchor;
                     seatedShipAnchor = smoothedShipPosition;
                     PlayerPosition = PlayerSeatedPosition;

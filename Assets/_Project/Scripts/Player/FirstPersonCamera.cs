@@ -60,7 +60,13 @@ namespace Galilego.Universe
         [Tooltip("Высота глаз сидящего над НОГАМИ (м). Ноги PlayerView берёт у якоря " +
             "кресла минус EyeHeightMeters кресла, поэтому больше этого значения = " +
             "камера выше якоря (взгляд поверх консоли).")]
-        public double SeatedEyeMeters = 0.85d;
+        public double SeatedEyeMeters = 1.15d;
+
+        [Tooltip("Ближняя плоскость камеры СИДЯ (м). Обычная считается от высоты над рельефом " +
+            "(высота*0.001, не меньше 0.1), а высота берётся из позиции игрока в double-мире: " +
+            "при её ошибке/отставании ближняя плоскость раздувалась и срезала стены и мониторы " +
+            "кабины (вхожу в стену, мерцание). В кабине всё рядом - фиксируем маленькую.")]
+        public float SeatedNearClipMeters = 0.03f;
 
         [Tooltip("ПКМ — приблизиться «в упор» к тому, на что смотришь: максимум, м " +
             "(дальше — по поверхности, но не ближе зазора). 0 — выключено.")]
@@ -119,6 +125,11 @@ namespace Galilego.Universe
 
         /// <summary>Плавный переход «стоя ↔ сидя» (0..1) для высоты глаз.</summary>
         private float seatedBlend;
+
+        /// <summary>Был ли игрок сидящим в прошлом кадре (разовое наведение взгляда при посадке).</summary>
+        private bool wasSeated;
+
+        private PlayerController playerController;
 
         /// <summary>Плавный переход «норма ↔ в упор» (0..1) для ПКМ-приближения.</summary>
         private float leanBlend;
@@ -239,6 +250,14 @@ namespace Galilego.Universe
             crouchBlend = Mathf.MoveTowards(crouchBlend, crouched ? 1f : 0f, Time.deltaTime * 5f);
             bool seated = Runner != null && Runner.PlayerSeated;
             seatedBlend = Mathf.MoveTowards(seatedBlend, seated ? 1f : 0f, Time.deltaTime * 5f);
+
+            // Посадка: один раз наводим взгляд туда, куда кресло просит (пара мониторов).
+            if (seated && !wasSeated)
+            {
+                AimAtSeatLook();
+            }
+
+            wasSeated = seated;
 
             // ПКМ — приблизиться «в упор» (кнопки монитора читаются и жмутся
             // точно). В стройке ПКМ занят постановкой/меню слотов — не мешаем.
@@ -542,6 +561,24 @@ namespace Galilego.Universe
             eyeOffset = up * (float)eye;
         }
 
+        /// <summary>Разово после посадки: взгляд туда, куда просит кресло (CockpitSeat.LocalLookDirection).</summary>
+        private void AimAtSeatLook()
+        {
+            if (playerController == null)
+            {
+                playerController = FindAnyObjectByType<PlayerController>();
+            }
+
+            CockpitSeat seat = playerController != null ? playerController.SeatedSeat : null;
+            if (seat == null || seat.Anchor == null || seat.LocalLookDirection.sqrMagnitude < 1e-6f)
+            {
+                return;
+            }
+
+            lookDirection = seat.Anchor.TransformDirection(seat.LocalLookDirection).normalized;
+            hasLook = true;
+        }
+
         private void UpdateClipPlanes()
         {
             Camera camera = GetComponent<Camera>();
@@ -564,6 +601,12 @@ namespace Galilego.Universe
             // near — от высоты над ЛОКАЛЬНЫМ рельефом (камера у земли).
             double altitude = System.Math.Max(0.5d, relative.Magnitude - (radius + groundHeight));
             double near = System.Math.Max(0.1d, altitude * 0.001d);
+
+            // Сидя в кабине: ближняя плоскость не зависит от высоты (см. SeatedNearClipMeters).
+            if (Runner.PlayerSeated)
+            {
+                near = SeatedNearClipMeters;
+            }
 
             // far — до физического горизонта с запасом на дальние ВЕРШИНЫ:
             // высота камеры и пиков считается от СРЕДНЕГО радиуса. Раньше высота

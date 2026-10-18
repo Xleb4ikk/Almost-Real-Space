@@ -21,6 +21,11 @@ namespace Galilego.Universe
             "(+X — от консоли в проход).")]
         public Vector3 StandOffsetMeters = new Vector3(1.3f, 0f, 0f);
 
+        [HideInInspector]
+        [Tooltip("Куда смотреть сразу после посадки (направление в осях якоря). " +
+            "Ставит OperatorMonitorLayout: взгляд на пару мониторов. Ноль - не менять взгляд.")]
+        public Vector3 LocalLookDirection;
+
         public override string Prompt => "Сесть в кресло (E)";
 
         public override void Interact(PlayerController player)
