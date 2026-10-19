@@ -2080,6 +2080,7 @@ MonoBehaviour:
   LeanMinClearance: 0.22
   LeanFieldOfView: 45
   LeanSensitivityScale: 0.4
+  FocusSeconds: 0.4
 --- !u!1 &1982425599
 GameObject:
   m_ObjectHideFlags: 0
