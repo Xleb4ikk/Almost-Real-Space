@@ -37,6 +37,20 @@ namespace Galilego.Universe
         private float builtRadius;
         private float builtThickness;
 
+        /// <summary>
+        /// The ring must exist even if the component was not placed on the camera in
+        /// the scene (it was silently missing there): add it to the player camera.
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void Boot()
+        {
+            FirstPersonCamera playerCamera = FindAnyObjectByType<FirstPersonCamera>();
+            if (playerCamera != null && playerCamera.GetComponent<Crosshair>() == null)
+            {
+                playerCamera.gameObject.AddComponent<Crosshair>();
+            }
+        }
+
         private void OnGUI()
         {
             // The ring is only needed while aiming: with the cursor released
