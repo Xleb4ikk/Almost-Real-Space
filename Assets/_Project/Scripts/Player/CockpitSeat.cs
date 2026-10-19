@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Galilego.Universe
@@ -26,7 +27,34 @@ namespace Galilego.Universe
             "Ставит OperatorMonitorLayout: взгляд на пару мониторов. Ноль - не менять взгляд.")]
         public Vector3 LocalLookDirection;
 
+        [Tooltip("Имя узла модели с мешем кресла (ищется среди соседей по родителю) — его и обводим.")]
+        public string HighlightNodeName = "Operator_Chair";
+
         public override string Prompt => "Сесть в кресло (E)";
+
+        /// <summary>While seated, the chair is not outlined or offered.</summary>
+        public override bool IsAvailableTo(PlayerController player)
+        {
+            return player == null || !player.Seated;
+        }
+
+        public override void CollectHighlight(List<Renderer> into)
+        {
+            if (HighlightRoot == null && !string.IsNullOrEmpty(HighlightNodeName))
+            {
+                Transform scope = transform.parent != null ? transform.parent : transform;
+                foreach (Transform node in scope.GetComponentsInChildren<Transform>(true))
+                {
+                    if (node.name == HighlightNodeName)
+                    {
+                        HighlightRoot = node;
+                        break;
+                    }
+                }
+            }
+
+            base.CollectHighlight(into);
+        }
 
         public override void Interact(PlayerController player)
         {

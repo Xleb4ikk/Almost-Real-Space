@@ -82,6 +82,54 @@ namespace Galilego.Universe
         [Range(0.1f, 1f)]
         public float LeanSensitivityScale = 0.4f;
 
+        [Tooltip("Время подлёта камеры к экрану (E) и обратно, с.")]
+        public float FocusSeconds = 0.4f;
+
+        private ICameraFocus focusPose;
+        private bool focusWanted;
+        private float focusBlend;
+
+        /// <summary>Smoothly fly to the target (screen, console). The pose is queried from the target every frame.</summary>
+        public void SetFocus(ICameraFocus target)
+        {
+            focusPose = target;
+            focusWanted = target != null;
+        }
+
+        /// <summary>Smoothly return to the normal view (the target is kept until the return finishes).</summary>
+        public void ClearFocus()
+        {
+            focusWanted = false;
+        }
+
+        private void ApplyFocusBlend(Camera cam)
+        {
+            // The target is a destroyed Unity object (ship removed): reset.
+            if (focusPose is UnityEngine.Object destroyedCheck && destroyedCheck == null)
+            {
+                focusPose = null;
+                focusWanted = false;
+            }
+
+            focusBlend = Mathf.MoveTowards(focusBlend, focusWanted ? 1f : 0f,
+                Time.unscaledDeltaTime / Mathf.Max(0.05f, FocusSeconds));
+            if (focusBlend <= 0f)
+            {
+                focusPose = null;
+                return;
+            }
+
+            if (focusPose == null || cam == null
+                || !focusPose.TryGetFocusPose(cam, out Vector3 position, out Quaternion rotation))
+            {
+                return;
+            }
+
+            float t = focusBlend * focusBlend * focusBlend * ((focusBlend * ((focusBlend * 6f) - 15f)) + 10f);
+            transform.position = Vector3.Lerp(transform.position, position, t);
+            transform.rotation = Quaternion.Slerp(transform.rotation, rotation, t);
+        }
+
 #if UNITY_EDITOR
         /// <summary>
         /// Capture tool (Editor/SurfaceCaptureTool) keeps its before/after frames
@@ -255,7 +303,7 @@ namespace Galilego.Universe
 
             // RMB leans in close (monitor buttons are readable and clickable
             // precisely). In build mode RMB is taken by placement/slot menu — leave it.
-            bool lean = LeanMaxMeters > 0f && PlayerInput.MouseRightHeld()
+            bool lean = LeanMaxMeters > 0f && PlayerInput.MouseRightHeld() && focusPose == null
                 && (Runner == null || !Runner.BuildMode);
             leanBlend = Mathf.MoveTowards(leanBlend, lean ? 1f : 0f, Time.deltaTime * 6f);
 
@@ -335,6 +383,7 @@ namespace Galilego.Universe
                 cam.fieldOfView = baseFieldOfView;
             }
 
+            ApplyFocusBlend(cam);
             UpdateClipPlanes();
         }
 

@@ -69,6 +69,12 @@ namespace Galilego.Tablet
         /// <summary>Whether the tablet is expanded to fullscreen.</summary>
         public bool Expanded { get; private set; }
 
+        /// <summary>Aim with the mouse (cursor is free) instead of the screen center. Set by InteractiveScreen.</summary>
+        public bool MouseAim { get; set; }
+
+        /// <summary>The pointer is currently over the screen (for hiding the system cursor).</summary>
+        public bool PointerOnScreen { get { return worldPointerHit; } }
+
         private static int expandedCount;
 
         /// <summary>
@@ -94,6 +100,7 @@ namespace Galilego.Tablet
                 wrapMode = TextureWrapMode.Clamp,
             };
             BindMaterial();
+            InteractiveScreen.EnsureFor(this);
         }
 
         private void OnDestroy()
@@ -193,7 +200,7 @@ namespace Galilego.Tablet
         {
             worldPointerHit = false;
             if (Expanded || ScreenRenderer == null || screenCollider == null
-                || Cursor.lockState != CursorLockMode.Locked)
+                || (!MouseAim && Cursor.lockState != CursorLockMode.Locked))
             {
                 screen.SetWorldPointer(false, 0, 0);
                 return;
@@ -217,7 +224,9 @@ namespace Galilego.Tablet
                 return;
             }
 
-            Ray ray = new Ray(cam.transform.position, cam.transform.forward);
+            Ray ray = MouseAim
+                ? cam.ScreenPointToRay(Galilego.Universe.PlayerInput.MousePosition())
+                : new Ray(cam.transform.position, cam.transform.forward);
             int count = Physics.RaycastNonAlloc(ray, worldHits, WorldTouchMeters, ~0, QueryTriggerInteraction.Ignore);
             int best = -1;
             for (int i = 0; i < count; i++)

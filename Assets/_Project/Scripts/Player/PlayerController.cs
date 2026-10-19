@@ -1,5 +1,6 @@
 using Galilego.Core;
 using Galilego.Simulation.Player;
+using Galilego.Tablet;
 using UnityEngine;
 
 namespace Galilego.Universe
@@ -87,6 +88,14 @@ namespace Galilego.Universe
 
         public bool Seated => SeatedSeat != null;
 
+        /// <summary>The screen we have moved close to (null — not focused).</summary>
+        public InteractiveScreen FocusedScreen { get; private set; }
+
+        private FirstPersonCamera screenCamera;
+        private bool screenFocusActive;
+        private bool screenPrevLockCursor;
+        private bool relockPending;
+
         /// <summary>Aim-cone (AimCone) probes — buffer to avoid per-frame allocation.</summary>
         private readonly Vector3[] focusDirections = new Vector3[AimCone.Samples];
 
@@ -105,6 +114,17 @@ namespace Galilego.Universe
                 return;
             }
 
+            // Restore the cursor lock one frame after leaving screen focus: otherwise Esc,
+            // which closed the screen, would also release the cursor in the same frame (FirstPersonCamera).
+            if (relockPending)
+            {
+                relockPending = false;
+                if (screenCamera != null)
+                {
+                    screenCamera.LockCursor = screenPrevLockCursor;
+                }
+            }
+
             if (InputBlocked)
             {
                 // Menu open: reset the intent, otherwise a stuck previous command
@@ -118,14 +138,36 @@ namespace Galilego.Universe
 
             if (Seated)
             {
-                // Seated: walk step and jumps do not run, the look is free;
-                // E stands up (or closes a monitor if open — the tablet handles
-                // that itself, input is blocked above).
-                Focused = null;
+                // Seated: walking and jumping are disabled, the look is free. The crosshair
+                // looks for interactables available while seated (screens): E on a screen —
+                // move closer, E into empty space — stand up. When focused: E / Esc — back away.
                 Runner.PlayerIntent = PlayerIntent.Idle;
+                if (screenFocusActive)
+                {
+                    Focused = null;
+                    if (FocusedScreen == null || PlayerInput.Down(GameKey.E) || PlayerInput.Down(GameKey.Escape))
+                    {
+                        ExitScreenFocus();
+                    }
+                    else
+                    {
+                        Cursor.visible = !FocusedScreen.PointerOnScreen;
+                    }
+
+                    return;
+                }
+
+                UpdateFocus();
                 if (PlayerInput.Down(GameKey.E))
                 {
-                    StandUp();
+                    if (Focused != null)
+                    {
+                        Focused.Interact(this);
+                    }
+                    else
+                    {
+                        StandUp();
+                    }
                 }
 
                 return;
@@ -203,6 +245,7 @@ namespace Galilego.Universe
                 return;
             }
 
+            ExitScreenFocus();
             CockpitSeat seat = SeatedSeat;
             SeatedSeat = null;
             if (Runner == null)
@@ -219,6 +262,61 @@ namespace Galilego.Universe
             }
 
             Runner.UnseatPlayerAtRender(renderFeet);
+        }
+
+        /// <summary>
+        /// Move close to the screen: the camera smoothly flies right up to it, the cursor
+        /// is released (Confined), and buttons on the screen are clicked with the mouse. Seated only.
+        /// </summary>
+        public bool EnterScreenFocus(InteractiveScreen screen)
+        {
+            if (screen == null || screenFocusActive || !Seated)
+            {
+                return false;
+            }
+
+            FirstPersonCamera cam = FindAnyObjectByType<FirstPersonCamera>();
+            Camera camera = cam != null ? cam.GetComponent<Camera>() : null;
+            if (cam == null || camera == null)
+            {
+                return false;
+            }
+
+            screenCamera = cam;
+            screenPrevLockCursor = cam.LockCursor;
+            cam.LockCursor = false;
+            Cursor.lockState = CursorLockMode.Confined;
+            Cursor.visible = true;
+            FocusedScreen = screen;
+            screenFocusActive = true;
+            screen.BeginFocus(camera);
+            cam.SetFocus(screen);
+            return true;
+        }
+
+        /// <summary>Back away from the screen: the camera smoothly returns, the cursor is locked again.</summary>
+        public void ExitScreenFocus()
+        {
+            if (!screenFocusActive)
+            {
+                return;
+            }
+
+            screenFocusActive = false;
+            if (FocusedScreen != null)
+            {
+                FocusedScreen.EndFocus();
+            }
+
+            FocusedScreen = null;
+            if (screenCamera != null)
+            {
+                screenCamera.ClearFocus();
+            }
+
+            relockPending = true;
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
         }
 
         /// <summary>The seat's "up" in render world: the anchor's local +Z (local rotation is zero).</summary>
@@ -253,7 +351,10 @@ namespace Galilego.Universe
                     && hit.distance < bestDistance)
                 {
                     bestDistance = hit.distance;
-                    best = hit.collider.GetComponent<Interactable>();
+                    // InParent: the collider may be a housing/screen inside a group with
+                    // an Interactable. An unavailable target still occludes what is behind it.
+                    Interactable candidate = hit.collider.GetComponentInParent<Interactable>();
+                    best = candidate != null && candidate.IsAvailableTo(this) ? candidate : null;
                 }
             }
 
@@ -483,10 +584,7 @@ namespace Galilego.Universe
                 }
             }
 
-            if (Focused != null)
-            {
-                GUI.Label(new Rect(Screen.width * 0.5f - 150f, Screen.height * 0.5f + 30f, 300f, 30f), Focused.Prompt);
-            }
+            // The "[E] ..." prompt is now drawn by InteractionHighlighter.
         }
     }
 }

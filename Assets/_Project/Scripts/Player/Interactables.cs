@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Galilego.Universe
@@ -9,11 +10,32 @@ namespace Galilego.Universe
     /// </summary>
     public abstract class Interactable : MonoBehaviour
     {
+        [Tooltip("Что обводить при наведении. Пусто — все меши этого объекта и его детей.")]
+        public Transform HighlightRoot;
+
         /// <summary>Prompt for the player (e.g. "Full throttle (E)").</summary>
         public abstract string Prompt { get; }
 
         /// <summary>Action performed on pressing E.</summary>
         public abstract void Interact(PlayerController player);
+
+        /// <summary>Whether it can be used right now. No — no outline, no prompt, no E.</summary>
+        public virtual bool IsAvailableTo(PlayerController player)
+        {
+            return true;
+        }
+
+        /// <summary>Outline color (an emergency lever may be red).</summary>
+        public virtual Color HighlightColor
+        {
+            get { return Color.white; }
+        }
+
+        /// <summary>Which renderers to outline. By default — HighlightRoot (or this object) with children.</summary>
+        public virtual void CollectHighlight(List<Renderer> into)
+        {
+            InteractionHighlighter.Gather(HighlightRoot != null ? HighlightRoot : transform, into);
+        }
     }
 
     /// <summary>

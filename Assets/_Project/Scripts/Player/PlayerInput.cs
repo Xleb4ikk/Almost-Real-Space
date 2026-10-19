@@ -97,6 +97,13 @@ namespace Galilego.Universe
             return mouse != null ? mouse.delta.ReadValue() * 0.1f : Vector2.zero;
         }
 
+        /// <summary>Cursor position in screen pixels.</summary>
+        public static Vector2 MousePosition()
+        {
+            Mouse mouse = Mouse.current;
+            return mouse != null ? mouse.position.ReadValue() : Vector2.zero;
+        }
+
         public static bool MouseLeftDown()
         {
             Mouse mouse = Mouse.current;
@@ -171,6 +178,8 @@ namespace Galilego.Universe
         public static bool Down(GameKey key) => Input.GetKeyDown(ToKeyCode(key));
 
         public static Vector2 MouseDelta() => new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
+
+        public static Vector2 MousePosition() => Input.mousePosition;
 
         public static bool MouseLeftDown() => Input.GetMouseButtonDown(0);
 
