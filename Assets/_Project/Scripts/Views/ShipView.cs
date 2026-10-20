@@ -7,8 +7,15 @@ namespace Galilego.Universe
     /// Ship render (B3). The ship lives in the core's double world; the Unity position
     /// is relative to the floating origin. Must run AFTER BodyView.LateUpdate in the
     /// same frame (script order).
+    ///
+    /// Order −49: AFTER the contact zone (−50), which writes Ship.Position from the
+    /// PhysX bodies, and BEFORE the mirror (−48), which puts the part visuals into the
+    /// world poses. The part visuals are children of this GameObject, so a stale ship
+    /// position here drags every part (and the seat anchor) by one frame of orbital
+    /// motion — hundreds of metres at 5 km/s. The zone writes the position in its
+    /// LateUpdate, so an earlier order reads the PREVIOUS frame's value.
     /// </summary>
-    [UnityEngine.DefaultExecutionOrder(-90)]
+    [UnityEngine.DefaultExecutionOrder(-49)]
     public sealed class ShipView : MonoBehaviour
     {
         [Tooltip("SimulationRunner сцены.")]

@@ -106,7 +106,7 @@ namespace Galilego.Flight
                     Name = d.Name, MassKg = PartMassKg(i), JointStrengthNewtons = d.JointStrengthNewtons,
                     BreakTorqueNm = d.BreakTorqueNm, Offset = d.Offset, Shape = d.Shape, Dimensions = d.Dimensions,
                     Orientation = d.Orientation, ParentIndex = d.ParentIndex, JointAnchor = d.JointAnchor,
-                    EngineOffset = d.EngineOffset,
+                    EngineOffset = d.EngineOffset, PlayerPassthrough = d.PlayerPassthrough,
                 });
             }
 

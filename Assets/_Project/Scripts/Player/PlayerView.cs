@@ -8,9 +8,12 @@ namespace Galilego.Universe
     /// camera target (FirstPersonCamera.Target): in EVA/OnSurface a position from
     /// the double world relative to the dominant body; in the ship the ship point
     /// plus a local offset (walking); seated: the FEET at the drawn seat anchor
-    /// (render world). Called from LateUpdate AFTER ShipView (ShipTransform must be fresh).
+    /// (render world). Called from LateUpdate AFTER ShipView (ShipTransform must be
+    /// fresh) and AFTER VesselMirror (−48) in flight: the seat anchor lives on the
+    /// capsule visual, so it must already be this frame's pose — otherwise the
+    /// camera rides a frame-old anchor.
     /// </summary>
-    [UnityEngine.DefaultExecutionOrder(-80)]
+    [UnityEngine.DefaultExecutionOrder(-42)]
     public sealed class PlayerView : MonoBehaviour
     {
         [Tooltip("SimulationRunner сцены.")]

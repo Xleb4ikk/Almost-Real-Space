@@ -45,5 +45,14 @@ namespace Galilego.Spacecraft
         public int ParentIndex = -1;
         public Vector3 JointAnchor;
         public Vector3 EngineOffset;
+
+        /// <summary>
+        /// The part has exact colliders on its visual (the capsule interior): the
+        /// player walks on them and the E rays hit them, but they take no part in
+        /// the ship physics — the proxy body of such a part is transparent to the
+        /// player (no VesselPartCollider marker), so the solid prism does not push
+        /// them out of the volume.
+        /// </summary>
+        public bool PlayerPassthrough;
     }
 }

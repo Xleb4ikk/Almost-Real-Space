@@ -137,16 +137,20 @@ namespace Galilego.Universe
         public double DebrisSurfaceRestitution = 0.2d;
 
         /// <summary>Simulated system time (s since the ephemeris epoch).</summary>
-        public double TimeSeconds => step.TimeSeconds;
+        public double TimeSeconds => step != null ? step.TimeSeconds : 0d;
 
         public StarSystem SystemState { get; private set; }
 
-        public WarpController Warp => step.Warp;
+        // The properties below are read by other scripts BEFORE the step exists (the
+        // first frames of Play, before Init). A getter that threw a NullReference
+        // turned every "if (Runner.Ship == null)" guard into a per-frame exception
+        // and flooded the console, so they are null-safe here.
+        public WarpController Warp => step != null ? step.Warp : null;
 
-        public Ship Ship => step.Ship;
+        public Ship Ship => step != null ? step.Ship : null;
 
         /// <summary>Ship regime: flying, resting on the surface or destroyed.</summary>
-        public VesselRegime Regime => step.Regime;
+        public VesselRegime Regime => step != null ? step.Regime : VesselRegime.Destroyed;
 
         /// <summary>Player mode: in the ship / EVA / on the surface.</summary>
         public PlayerMode PlayerMode { get; private set; }

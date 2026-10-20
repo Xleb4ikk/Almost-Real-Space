@@ -145,6 +145,28 @@ namespace Galilego.Building
         private bool pendingPhysics;
         private System.Action<double> frameHook;
 
+        // ─── Mirror filter (solver jitter) ──────────────────────────────────
+
+        /// <summary>Smoothed pose of the mirrored parts, in the zone root axes.</summary>
+        private Vector3[] mirrorPos;
+
+        private Quaternion[] mirrorRot;
+
+        /// <summary>Whether the smoothed pose of a part is initialised.</summary>
+        private bool[] mirrorInit;
+
+        /// <summary>Mirrored frames since the flight start (the self-check runs once).</summary>
+        private int mirrorFrames;
+
+        /// <summary>Filter time constant, s: the solver's millimetre jitter is damped with it.</summary>
+        public const float MirrorJitterSeconds = 0.04f;
+
+        /// <summary>Deadband, m: below it the pose is damped, above it the visual snaps to the body (no lag).</summary>
+        public const float MirrorJitterMeters = 0.05f;
+
+        /// <summary>Deadband, degrees: the same for the rotation.</summary>
+        public const float MirrorJitterDegrees = 0.25f;
+
         /// <summary>Engine catalog is built (no repeated builds).</summary>
         private bool catalogSynced;
 
@@ -383,8 +405,15 @@ namespace Galilego.Building
         /// <summary>
         /// Mirror the visuals onto the contact zone bodies: in flight part poses
         /// come straight from the PhysX proxy bodies (position+rotation — falling
-        /// and tipping are visible). Called by VesselMirror at the very end of the
-        /// frame (order 900), after the zone has moved the frame root.
+        /// and tipping are visible). Called by VesselMirror (order −48), after the
+        /// zone has moved the frame root and before the camera.
+        ///
+        /// The body pose is filtered: the solver's millimetre jitter would otherwise
+        /// reach the seat anchor and shake the camera (the seated player rides the
+        /// anchor, not the smoothed player point). The filter works in the ZONE
+        /// axes — the zone root moves with the floating origin, but the pose inside
+        /// it is smooth. A deadband keeps it lag-free: the jitter is damped, a real
+        /// motion (the ship's speed relative to the pad) snaps the visual to the body.
         /// </summary>
         public void MirrorVisualsToBodies()
         {
@@ -394,6 +423,21 @@ namespace Galilego.Building
             }
 
             ContactZoneProxy proxy = ZoneHost.Proxy;
+            if (proxy == null)
+            {
+                return;
+            }
+
+            if (mirrorPos == null || mirrorPos.Length != parts.Count)
+            {
+                mirrorPos = new Vector3[parts.Count];
+                mirrorRot = new Quaternion[parts.Count];
+                mirrorInit = new bool[parts.Count];
+            }
+
+            Transform zone = proxy.transform;
+            float dt = Mathf.Max(Time.deltaTime, 1e-4f);
+            float k = 1f - Mathf.Exp(-dt / MirrorJitterSeconds);
             for (int i = 0; i < parts.Count; i++)
             {
                 PlacedPart part = parts[i];
@@ -402,19 +446,231 @@ namespace Galilego.Building
                     continue;
                 }
 
-                Rigidbody body = proxy != null ? proxy.BodyAt(i) : null;
-                if (body != null)
+                Rigidbody body = proxy.BodyAt(i);
+                if (body == null)
                 {
-                    // The proxy body sits at the CENTER of the part shape, while the
-                    // visual is built from the part PIVOT (tank/engine bottom,
-                    // separator center). Lower the visual root by Metrics.Center
-                    // along the body's local up.
-                    Transform bodyTransform = body.transform;
-                    Vector3 pivot = bodyTransform.position
-                        - (bodyTransform.up * (float)part.Metrics.Center);
-                    part.Visual.Root.transform.SetPositionAndRotation(
-                        pivot, bodyTransform.rotation);
+                    continue;
                 }
+
+                Vector3 targetPos = zone.InverseTransformPoint(body.transform.position);
+                Quaternion targetRot = Quaternion.Inverse(zone.rotation) * body.transform.rotation;
+                if (!mirrorInit[i])
+                {
+                    mirrorPos[i] = targetPos;
+                    mirrorRot[i] = targetRot;
+                    mirrorInit[i] = true;
+                }
+                else
+                {
+                    Vector3 delta = targetPos - mirrorPos[i];
+                    if (delta.sqrMagnitude <= MirrorJitterMeters * MirrorJitterMeters)
+                    {
+                        mirrorPos[i] = Vector3.Lerp(mirrorPos[i], targetPos, k);
+                    }
+                    else
+                    {
+                        mirrorPos[i] = targetPos;
+                    }
+
+                    if (Quaternion.Angle(mirrorRot[i], targetRot) <= MirrorJitterDegrees)
+                    {
+                        mirrorRot[i] = Quaternion.Slerp(mirrorRot[i], targetRot, k);
+                    }
+                    else
+                    {
+                        mirrorRot[i] = targetRot;
+                    }
+                }
+
+                // The proxy body sits at the CENTER of the part shape, while the
+                // visual is built from the part PIVOT (tank/engine bottom,
+                // separator center). Lower the visual root by Metrics.Center
+                // along the body's local up.
+                Quaternion rot = zone.rotation * mirrorRot[i];
+                Vector3 pivot = zone.TransformPoint(mirrorPos[i])
+                    - (rot * Vector3.up * (float)part.Metrics.Center);
+                part.Visual.Root.transform.SetPositionAndRotation(pivot, rot);
+            }
+
+            // The capsule's exact colliders moved with the visual: the player's
+            // queries run in Update, so the physics needs the new poses now.
+            Physics.SyncTransforms();
+            if (++mirrorFrames == 15)
+            {
+                CheckCapsuleQueries();
+            }
+
+            diagnosticTimer += Time.deltaTime;
+            if (diagnosticTimer >= 1f)
+            {
+                diagnosticTimer = 0f;
+                LogFlightDiagnostics();
+            }
+        }
+
+        /// <summary>Flight diagnostics every second (see LogFlightDiagnostics).</summary>
+        private float diagnosticTimer;
+
+        [Tooltip("Диагностика полёта: раз в секунду писать, где камера, якорь кресла и корабль.")]
+        public bool FlightDiagnostics = false;
+
+        /// <summary>
+        /// Flight diagnostics: where the camera, the seat anchor and the ship are in
+        /// render space, and how much the flat floating-origin bridge and the site
+        /// frame disagree at the seat. The zone and the build mode draw the vessel in
+        /// the SITE axes (the ship's rotation is the site's), while the flat bridge
+        /// maps a render offset as a global vector — at the seat (tens of metres above
+        /// the rocket's bottom) the two interpretations differ, and the seated player's
+        /// astro position (the floating origin) is converted with the flat one.
+        /// A large gap is reported as a warning on its own.
+        /// </summary>
+        private void LogFlightDiagnostics()
+        {
+            Transform capsule = null;
+            CockpitSeat seat = null;
+            for (int i = 0; i < parts.Count; i++)
+            {
+                if (parts[i].Kind != PartKind.Capsule || parts[i].Visual == null || parts[i].Visual.Root == null)
+                {
+                    continue;
+                }
+
+                capsule = parts[i].Visual.Root.transform;
+                seat = capsule.GetComponentInChildren<CockpitSeat>(true);
+                break;
+            }
+
+            if (seat == null || seat.Anchor == null || Runner == null)
+            {
+                return;
+            }
+
+            Vector3 anchor = seat.Anchor.position;
+            Camera cam = Camera.main;
+            Vector3 camPos = cam != null ? cam.transform.position : Vector3.zero;
+            FirstPersonCamera fp = cam != null ? cam.GetComponent<FirstPersonCamera>() : null;
+            Vector3 playerGo = fp != null && fp.Target != null ? fp.Target.position : Vector3.zero;
+            Vector3 shipGo = ShipTransform != null ? ShipTransform.position : Vector3.zero;
+            Vector3 zoneRoot = ZoneHost != null && ZoneHost.Proxy != null ? ZoneHost.Proxy.transform.position : Vector3.zero;
+            Vector3 body = Vector3.zero;
+            float bodySpeed = 0f;
+            Vector3 bodyLocal = Vector3.zero;
+            if (ZoneHost != null && ZoneHost.Proxy != null)
+            {
+                for (int i = 0; i < parts.Count; i++)
+                {
+                    if (parts[i].Kind != PartKind.Capsule)
+                    {
+                        continue;
+                    }
+
+                    Rigidbody rb = ZoneHost.Proxy.BodyAt(i);
+                    if (rb != null)
+                    {
+                        body = rb.transform.position;
+                        bodySpeed = rb.linearVelocity.magnitude;
+                        bodyLocal = ZoneHost.Proxy.transform.InverseTransformPoint(body);
+                    }
+
+                    break;
+                }
+            }
+
+            // The key number: the same point (the seat anchor) converted by the flat
+            // bridge and by the site frame.
+            double flatDiff = -1d;
+            double latitude = 0d;
+            SiteFrame zoneFrame = ZoneHost != null ? ZoneHost.ZoneFrameAt(Runner.TimeSeconds) : null;
+            if (zoneFrame != null)
+            {
+                latitude = zoneFrame.LatitudeDegrees;
+                Galilego.Core.Vector3d flatAstro = FloatingOrigin.Anchor + AstroFrame.ToAstro(anchor);
+
+                // The site axes in render space (the same bridge the player support uses:
+                // the direction of a site axis is the render offset of the world point).
+                Vector3 originRender = FloatingOrigin.ToRender(zoneFrame.Origin);
+                Vector3 eastRender = (FloatingOrigin.ToRender(zoneFrame.Origin + zoneFrame.East) - originRender).normalized;
+                Vector3 northRender = (FloatingOrigin.ToRender(zoneFrame.Origin + zoneFrame.North) - originRender).normalized;
+                Vector3 upRender = (FloatingOrigin.ToRender(zoneFrame.Origin + zoneFrame.Up) - originRender).normalized;
+
+                Vector3 rel = anchor - zoneRoot;
+                var local = new Galilego.Core.Vector3d(
+                    Vector3.Dot(rel, eastRender), Vector3.Dot(rel, northRender), Vector3.Dot(rel, upRender));
+                zoneFrame.ToWorld(local, Galilego.Core.Vector3d.Zero, out Galilego.Core.Vector3d frameAstro, out _);
+                flatDiff = (flatAstro - frameAstro).Magnitude;
+            }
+
+            double camToAnchor = Vector3.Distance(camPos, anchor);
+            double camToPlayer = Vector3.Distance(camPos, playerGo);
+            double camToShip = Vector3.Distance(camPos, shipGo);
+            double astroGap = (Runner.PlayerPosition - Runner.Ship.Position).Magnitude;
+            string line = string.Format(
+                "[Flight] anchor={0} cam={1} playerGo={2} shipGo={3} zoneRoot={4} body={5} bodyLocal={6} | cam-anchor={7:F2} cam-playerGo={8:F2} cam-shipGo={9:F2} cam-zoneRoot={10:F2} | astro player-ship={11:F2} flat-vs-frame@anchor={12:F2} lat={13:F2} bodySpeed={14:F2}",
+                anchor, camPos, playerGo, shipGo, zoneRoot, body, bodyLocal,
+                camToAnchor, camToPlayer, camToShip, Vector3.Distance(camPos, zoneRoot),
+                astroGap, flatDiff, latitude, bodySpeed);
+
+            if (camToAnchor > 2d
+                || System.Math.Abs(camToShip - astroGap) > 3d
+                || flatDiff > 5d
+                || bodySpeed > 50f)
+            {
+                Debug.LogWarning("[Flight] РАСХОЖДЕНИЕ: " + line);
+            }
+            else if (FlightDiagnostics)
+            {
+                Debug.Log(line);
+            }
+        }
+
+        /// <summary>
+        /// Self-check (once per flight): the exact capsule colliders must stay
+        /// visible to the player's queries (the floor rays, the E rays). excludeLayers
+        /// is a CONTACT filter — if it filtered queries as well, the player would
+        /// fall through the capsule floor. The ray comes from ABOVE the capsule: a
+        /// ray from the seat would start inside the seat's own interaction box and
+        /// always hit it, so the check would pass even with a broken filter.
+        /// </summary>
+        private void CheckCapsuleQueries()
+        {
+            for (int i = 0; i < parts.Count; i++)
+            {
+                PlacedPart part = parts[i];
+                if (part.Kind != PartKind.Capsule || part.Visual == null || part.Visual.Root == null)
+                {
+                    continue;
+                }
+
+                Collider[] colliders = part.Visual.Root.GetComponentsInChildren<Collider>(true);
+                if (colliders.Length == 0)
+                {
+                    return;
+                }
+
+                Bounds bounds = colliders[0].bounds;
+                for (int c = 1; c < colliders.Length; c++)
+                {
+                    bounds.Encapsulate(colliders[c].bounds);
+                }
+
+                Transform zone = ZoneHost != null && ZoneHost.Proxy != null ? ZoneHost.Proxy.transform : null;
+                Vector3 up = zone != null ? zone.up : Vector3.up;
+                float span = bounds.extents.magnitude;
+                Vector3 from = bounds.center + (up * (span + 2f));
+                RaycastHit[] hits = Physics.RaycastAll(from, -up, (span * 2f) + 4f, ~0,
+                    QueryTriggerInteraction.Ignore);
+                for (int h = 0; h < hits.Length; h++)
+                {
+                    if (hits[h].collider.transform.IsChildOf(part.Visual.Root.transform))
+                    {
+                        return;
+                    }
+                }
+
+                Debug.LogWarning("[Capsule] excludeLayers фильтрует и запросы: луч сверху не видит коллайдеры капсулы. "
+                    + "Игрок провалится внутрь. Перейди на Physics.IgnoreCollision по парам "
+                    + "(коллайдеры Orion x коллайдеры прокси).");
+                return;
             }
         }
 
@@ -579,7 +835,15 @@ namespace Galilego.Building
             // the parts are turned off, otherwise PhysX bodies would collide with
             // their own visuals. The player still cannot walk through the vessel —
             // the support uses the proxy body colliders (same VesselPartCollider marker).
+            // The capsule is the exception: its exact colliders stay on (the player
+            // walks on the real floor, the E rays reach the screens), but they are
+            // excluded from the contacts — its proxy prism is a solid body around them.
             SetPartColliders(false);
+
+            // The mirror filter starts fresh with the flight: the smoothed pose must
+            // not be inherited from the build-mode poses.
+            mirrorPos = null;
+            mirrorFrames = 0;
 
             Vector3 bottom = BuildMath.VesselBottom(parts);
             Zone.SiteToAstroAt(bottom, t, out Galilego.Core.Vector3d pos, out Galilego.Core.Vector3d vel);
@@ -1164,6 +1428,9 @@ namespace Galilego.Building
         /// Enable/disable the visual colliders of the parts. In flight they are
         /// turned off: proxy bodies take their place (otherwise PhysX bodies would
         /// collide with their own visuals), and the player support switches to proxy bodies.
+        /// The capsule is the exception — its exact colliders stay enabled (the player
+        /// walks on the real floor and the E rays reach the screens), but they are
+        /// excluded from the contacts: its proxy prism is a solid body around them.
         /// </summary>
         private void SetPartColliders(bool enabled)
         {
@@ -1179,6 +1446,17 @@ namespace Galilego.Building
                 // capsule has dozens: shell, cabin floor, open door) — proxy bodies
                 // take their place in flight.
                 Collider[] colliders = part.Visual.Root.GetComponentsInChildren<Collider>(true);
+                if (part.Kind == PartKind.Capsule)
+                {
+                    for (int c = 0; c < colliders.Length; c++)
+                    {
+                        colliders[c].enabled = true;
+                        colliders[c].excludeLayers = enabled ? 0 : ~0;
+                    }
+
+                    continue;
+                }
+
                 for (int c = 0; c < colliders.Length; c++)
                 {
                     colliders[c].enabled = enabled;

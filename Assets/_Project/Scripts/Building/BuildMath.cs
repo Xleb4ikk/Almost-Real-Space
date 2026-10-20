@@ -655,6 +655,7 @@ namespace Galilego.Building
                     ParentIndex = p.ParentIndex,
                     JointAnchor = new Vector3(0f, bottomY - centerY, 0f),
                     EngineOffset = new Vector3(0f, bottomY - centerY, 0f),
+                    PlayerPassthrough = p.Kind == PartKind.Capsule,
                 };
             }
 

@@ -33,6 +33,15 @@ namespace Galilego.Simulation.ContactZone
         private readonly ContactZoneGate gate = new ContactZoneGate();
         private SiteFrame frame;
 
+        /// <summary>The site frame the zone works in (the zone root's axes). Diagnostics only.</summary>
+        public SiteFrame ZoneFrame => frame;
+
+        /// <summary>The site frame at the given simulation time (the zone root's axes).</summary>
+        public SiteFrame ZoneFrameAt(double timeSeconds)
+        {
+            return frame != null ? frame.At(timeSeconds) : null;
+        }
+
         /// <summary>From the center of mass to the ship point along local Up (m). In game
         /// Ship.Position is the ship's bottom (touch point), not the COM: without this
         /// offset the ship jumps to COM height on zone enter and exit.</summary>

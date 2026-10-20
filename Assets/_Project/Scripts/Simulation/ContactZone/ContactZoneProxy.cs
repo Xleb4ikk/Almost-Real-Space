@@ -104,8 +104,14 @@ namespace Galilego.Simulation.ContactZone
                 rb.linearVelocity = vel;
                 AddShapeCollider(go, d);
                 // Vessel part marker: the player support (VesselSupport) does not let
-                // the player through the proxy bodies while in flight.
-                go.AddComponent<Galilego.Building.VesselPartCollider>();
+                // the player through the proxy bodies while in flight. A part with
+                // exact colliders (the capsule) is skipped: the player walks on the
+                // visual's own colliders, and the solid prism would push them out of
+                // the volume.
+                if (!d.PlayerPassthrough)
+                {
+                    go.AddComponent<Galilego.Building.VesselPartCollider>();
+                }
                 bodies.Add(rb);
             }
 
