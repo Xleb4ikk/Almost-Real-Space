@@ -102,6 +102,9 @@ namespace Galilego.Simulation.ContactZone
                 var rb = go.AddComponent<Rigidbody>();
                 rb.mass = (float)d.MassKg;
                 rb.linearVelocity = vel;
+                // Continuous collision detection: a fast vessel (hard landing, re-entry
+                // debris) must not tunnel through the terrain patch between two physics steps.
+                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
                 AddShapeCollider(go, d);
                 // Vessel part marker: the player support (VesselSupport) does not let
                 // the player through the proxy bodies while in flight. A part with

@@ -19,6 +19,23 @@ namespace Galilego.Simulation.Player
             = new System.Collections.Generic.Dictionary<VesselPartCollider, int>();
         private int nextPartId = SourceIdBase;
 
+        // sourceId → part root (the platform the player can be carried by).
+        private readonly System.Collections.Generic.Dictionary<int, Transform> platforms
+            = new System.Collections.Generic.Dictionary<int, Transform>();
+
+        /// <summary>Part root (VesselPartCollider owner) a collider belongs to; null — not a vessel.</summary>
+        public static Transform PlatformOf(Collider collider)
+        {
+            VesselPartCollider part = ResolvePart(collider);
+            return part != null ? part.transform : null;
+        }
+
+        /// <summary>Part root by the support id (the one Floor returned); false — unknown or destroyed.</summary>
+        public bool TryGetPlatform(int sourceId, out Transform platform)
+        {
+            return platforms.TryGetValue(sourceId, out platform) && platform != null;
+        }
+
         public static VesselPartCollider ResolvePart(Collider collider)
         {
             return collider != null ? collider.GetComponentInParent<VesselPartCollider>() : null;
@@ -41,6 +58,7 @@ namespace Galilego.Simulation.Player
             {
                 id = nextPartId++;
                 partIds.Add(part, id);
+                platforms[id] = part.transform;
             }
 
             return id;

@@ -234,6 +234,9 @@ namespace Galilego.Universe
             playerAirborne = true;
             JetpackActive = false;
             PlayerHoverActive = false;
+
+            // Leaving noclip: drop the cheat speed, the player stays still relative to the frame.
+            PlayerVelocity = LocalFrameVelocity(TimeSeconds);
             OrbitingBody body = DominantBody;
             if (body == null)
             {
@@ -325,6 +328,8 @@ namespace Galilego.Universe
         private readonly SiteBoxSupport siteSupport = new SiteBoxSupport();
         private readonly VesselSupport vesselSupport = new VesselSupport();
         private readonly CompositePlayerSupport playerSupport = new CompositePlayerSupport();
+        private readonly PlayerPlatformCarry platformCarry = new PlayerPlatformCarry();
+        private ContactZoneHost zoneHost;
         private static readonly SphericalTerrain playerFallbackTerrain = new SphericalTerrain();
         private bool playerAirborne;
         private bool playerJumpQueued;
@@ -339,6 +344,13 @@ namespace Galilego.Universe
 
         /// <summary>Maximum player integration substep (s).</summary>
         private const double PlayerMaxStepSeconds = 0.5d;
+
+        /// <summary>
+        /// Below this altitude (m) and slower than the speed below, free EVA flight is handed
+        /// to the surface controller: it is the only one that sees buildings and the vessel.
+        /// </summary>
+        private const double SurfaceControllerAltitudeMeters = 3000d;
+        private const double SurfaceControllerMaxRelativeSpeedMps = 200d;
 
         /// <summary>Player radius for tree-trunk collisions (m).</summary>
         private const double PlayerCollisionRadiusMeters = 0.45d;
@@ -1067,6 +1079,8 @@ namespace Galilego.Universe
                 ToggleHover();
             }
 
+            ApplyPlatformCarry(fromTime);
+
             double t = fromTime;
             bool jump = playerJumpQueued;
             while (t < TimeSeconds - 1e-12)
@@ -1126,6 +1140,8 @@ namespace Galilego.Universe
             {
                 playerJumpQueued = false;
             }
+
+            CapturePlatformCarry(fromTime);
         }
 
         private void ToggleJetpack()
@@ -1255,8 +1271,87 @@ namespace Galilego.Universe
             return (PlayerVelocity - LocalFrameVelocity(t)).Magnitude;
         }
 
+        /// <summary>
+        /// Near the ground and slow — EVA flight has no collisions at all (only the planet
+        /// radius), so it must go through the surface controller instead.
+        /// </summary>
+        private bool ShouldUseSurfaceController(OrbitingBody body, double t)
+        {
+            if (body == null)
+            {
+                return false;
+            }
+
+            body.EvaluateWorldState(t, out Vector3d bodyPos, out _);
+            body.SurfaceLatLonAt(PlayerPosition, t, out double latDeg, out double lonDeg);
+            double altitude = (PlayerPosition - bodyPos).Magnitude - body.Radius - GroundHeight(body, latDeg, lonDeg);
+            return altitude < SurfaceControllerAltitudeMeters
+                && PlayerFrameRelativeSpeed(t) < SurfaceControllerMaxRelativeSpeedMps;
+        }
+
+        /// <summary>Contact zone the carry works in; null (and the carry is dropped) when it does not apply.</summary>
+        private ContactZoneHost CarryZone()
+        {
+            if (!ContactZoneHost.Active || PlayerMode != PlayerMode.OnSurface || NoclipActive || PlayerSeated)
+            {
+                platformCarry.Reset();
+                return null;
+            }
+
+            if (zoneHost == null)
+            {
+                zoneHost = FindAnyObjectByType<ContactZoneHost>();
+            }
+
+            return zoneHost != null && zoneHost.Proxy != null ? zoneHost : null;
+        }
+
+        /// <summary>Start of the frame: move the player together with the vessel (before any collision query).</summary>
+        private void ApplyPlatformCarry(double time)
+        {
+            if (!platformCarry.Active)
+            {
+                return;
+            }
+
+            ContactZoneHost host = CarryZone();
+            SiteFrame zoneFrame = host != null ? host.ZoneFrameAt(time) : null;
+            if (zoneFrame == null)
+            {
+                platformCarry.Reset();
+                return;
+            }
+
+            if (platformCarry.TryApply(host.Proxy.transform, zoneFrame, time, out Vector3d carried))
+            {
+                PlayerPosition = carried;
+            }
+        }
+
+        /// <summary>End of the frame: remember where the player is relative to the vessel part under/around them.</summary>
+        private void CapturePlatformCarry(double poseTime)
+        {
+            ContactZoneHost host = CarryZone();
+            SiteFrame zoneFrame = host != null ? host.ZoneFrameAt(TimeSeconds) : null;
+            if (zoneFrame == null)
+            {
+                return;
+            }
+
+            platformCarry.Capture(host.Proxy.transform, zoneFrame, poseTime, PlayerPosition, PlayerVelocity,
+                !playerAirborne, playerController.GroundSourceId, vesselSupport);
+        }
+
         private void StepPlayerEva(double t, double dt)
         {
+            if (ShouldUseSurfaceController(DominantBody, t))
+            {
+                PlayerMode = PlayerMode.OnSurface;
+                playerAirborne = true;
+                StepPlayerSurface(t, dt, false);
+                return;
+            }
+
             if (PlayerHoverActive)
             {
                 StepPlayerHoverEva(t, dt);
@@ -1531,6 +1626,11 @@ namespace Galilego.Universe
             ITerrainModel playerTerrain = body.Terrain ?? playerFallbackTerrain;
             SiteFrame frame = SiteFrame.Anchor(body, playerTerrain, PlayerPosition, t);
             frame.ToLocal(PlayerPosition, PlayerVelocity, out Vector3d localPosition, out Vector3d localVelocity);
+            if (platformCarry.Active)
+            {
+                // The controller works in the vessel's frame: its velocity is relative to the vessel.
+                localVelocity = PlayerPlatformCarry.ToAxes(frame, platformCarry.RelativeVelocity);
+            }
 
             playerController.Position = localPosition;
             playerController.Velocity = localVelocity;
@@ -1566,11 +1666,18 @@ namespace Galilego.Universe
             playerController.HoverVelocity = hoverLocal;
             playerController.Step(playerSupport, dt, walkLocal, jetpackLocal);
 
+            Vector3d platformLocal = Vector3d.Zero;
+            if (platformCarry.Active)
+            {
+                platformCarry.RelativeVelocity = PlayerPlatformCarry.FromAxes(frame, playerController.Velocity);
+                platformLocal = PlayerPlatformCarry.ToAxes(frame, platformCarry.PlatformVelocity);
+            }
+
             // To world — with the frame AT THE END of the substep (frame.At(t+dt)): the
             // frame at time t lags the body's orbital motion by v·dt, and projecting onto
             // the surface at t+dt would bake that lag into the position every substep.
             double tEnd = t + dt;
-            frame.At(tEnd).ToWorld(playerController.Position, playerController.Velocity,
+            frame.At(tEnd).ToWorld(playerController.Position, playerController.Velocity + platformLocal,
                 out Vector3d worldPosition, out Vector3d worldVelocity);
             PlayerPosition = worldPosition;
             PlayerVelocity = worldVelocity;
