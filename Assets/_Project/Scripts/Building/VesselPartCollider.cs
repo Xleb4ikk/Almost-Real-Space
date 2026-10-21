@@ -11,5 +11,12 @@ namespace Galilego.Building
     /// </summary>
     public sealed class VesselPartCollider : MonoBehaviour
     {
+        /// <summary>
+        /// Set on a part's VISUAL colliders in flight when a proxy body represents the part
+        /// while the contact zone is active: the player support then ignores the visual
+        /// copy (two coincident colliders would double the push-out). Outside the zone the
+        /// visual colliders are the only ones and count. Never affects PhysX contacts.
+        /// </summary>
+        public bool VisualCovered;
     }
 }

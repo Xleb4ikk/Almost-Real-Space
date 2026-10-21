@@ -432,10 +432,11 @@ namespace Galilego.Simulation.Player
                 }
             }
 
-            // Vertical is split into chunks: a substep can be up to 0.5 s (meters of
-            // travel), and a thin plate on the path must not be skipped whole. Landing
-            // is checked BEFORE moving the chunk, so a plate inside the chunk is seen.
-            const double maxVerticalChunk = 0.2d;
+            // Landing/ceiling are checked BEFORE moving, by a ray over the WHOLE chunk, so a
+            // thin plate on the path is never skipped. The chunk is long (not 0.2 m): at high
+            // fall speeds 0.2 m chunks meant hundreds of 5-ray queries per substep. The cap
+            // only bounds the ray length.
+            const double maxVerticalChunk = 100d;
             double remainingZ = step.Z;
             while (Math.Abs(remainingZ) > 1e-12d)
             {

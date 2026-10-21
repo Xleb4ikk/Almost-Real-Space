@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Galilego.Core;
 using Galilego.Simulation.ContactZone;
+using Galilego.Universe;
 using UnityEngine;
 
 namespace Galilego.Simulation.Player
@@ -19,6 +20,10 @@ namespace Galilego.Simulation.Player
     /// All maths is in zone-root space (body-fixed, pinned to the site frame), so the orbital
     /// motion and spin of the planet drop out.
     ///
+    /// Two modes: ZONE (the vessel is PhysX bodies, maths in zone-root space) and FREE (outside the
+    /// zone the vessel is moved analytically and ShipView places its root at Ship.Position, maths
+    /// relative to the ship point). A mode change drops the carry, the next Capture re-attaches.
+    ///
     /// Attach: standing on a vessel part (ground source id), or airborne inside one (a probe
     /// up and a probe down hit the same part). Release: standing on anything else, or leaving
     /// the part's bounds while airborne. Orientation: the player's position follows the
@@ -31,6 +36,7 @@ namespace Galilego.Simulation.Player
         private const float BoundsMarginMeters = 0.1f;
 
         private Transform platform;
+        private bool freeMode;
         private Vector3 localPoint;
         private Vector3 lastZonePoint;
         private double poseTime;
@@ -49,9 +55,16 @@ namespace Galilego.Simulation.Player
         /// <summary>Player velocity relative to the vessel (astro axes, m/s).</summary>
         public Vector3d RelativeVelocity;
 
+        /// <summary>The carry works in free flight (outside the contact zone).</summary>
+        public bool IsFree
+        {
+            get { return freeMode; }
+        }
+
         public void Reset()
         {
             platform = null;
+            freeMode = false;
             PlatformVelocity = Vector3d.Zero;
             RelativeVelocity = Vector3d.Zero;
             colliderCache.Clear();
@@ -89,7 +102,7 @@ namespace Galilego.Simulation.Player
         public bool TryApply(Transform zone, SiteFrame zoneFrame, double time, out Vector3d worldPosition)
         {
             worldPosition = Vector3d.Zero;
-            if (platform == null)
+            if (platform == null || freeMode)
             {
                 return false;
             }
@@ -127,26 +140,28 @@ namespace Galilego.Simulation.Player
                     vessel.TryGetPlatform(groundSourceId, out next);
                 }
             }
-            else if (platform != null && InsideBounds(platform, renderPoint))
+            else if (platform != null && !freeMode && InsideBounds(platform, renderPoint))
             {
                 next = platform;
             }
             else
             {
-                next = EnclosingPlatform(zone, renderPoint);
+                next = EnclosingPlatform(zone.up, renderPoint);
             }
 
             if (next == null)
             {
                 platform = null;
+                freeMode = false;
                 return;
             }
 
-            if (platform == null)
+            if (platform == null || freeMode)
             {
                 PlatformVelocity = Vector3d.Zero;
             }
 
+            freeMode = false;
             platform = next;
             localPoint = platform.InverseTransformPoint(renderPoint);
             lastZonePoint = zonePoint;
@@ -154,6 +169,67 @@ namespace Galilego.Simulation.Player
 
             zoneFrame.ToLocal(playerWorld, playerVelocity, out _, out Vector3d relativeToSite);
             RelativeVelocity = FromAxes(zoneFrame, relativeToSite) - PlatformVelocity;
+        }
+
+        /// <summary>
+        /// FREE mode, start of the frame: the colliders are already at the ship's current pose
+        /// (the runner puts the ship root at Ship.Position first). Returns the carried point.
+        /// </summary>
+        public bool TryApplyFree(Transform shipRoot, Vector3d shipPosition, Vector3d shipVelocity,
+            Vector3d frameVelocity, out Vector3d worldPosition)
+        {
+            worldPosition = Vector3d.Zero;
+            if (platform == null || !freeMode || shipRoot == null)
+            {
+                return false;
+            }
+
+            Vector3 renderNow = platform.TransformPoint(localPoint);
+            worldPosition = shipPosition + AstroFrame.ToAstro(renderNow - shipRoot.position);
+            PlatformVelocity = shipVelocity - frameVelocity;
+            return true;
+        }
+
+        /// <summary>
+        /// FREE mode, end of the frame. The platform must be a part of the moving ship root.
+        /// Velocities are world (astro) axes; frameVelocity — the local frame's co-rotation
+        /// velocity at the player.
+        /// </summary>
+        public void CaptureFree(Transform shipRoot, Vector3d playerWorld, Vector3d playerVelocity,
+            Vector3d shipVelocity, Vector3d frameVelocity, Vector3 up, bool grounded, int groundSourceId,
+            VesselSupport vessel)
+        {
+            Vector3 renderPoint = FloatingOrigin.ToRender(playerWorld);
+
+            Transform next = null;
+            if (grounded)
+            {
+                if (groundSourceId >= VesselSupport.SourceIdBase)
+                {
+                    vessel.TryGetPlatform(groundSourceId, out next);
+                }
+            }
+            else if (platform != null && freeMode && InsideBounds(platform, renderPoint))
+            {
+                next = platform;
+            }
+            else
+            {
+                next = EnclosingPlatform(up, renderPoint);
+            }
+
+            if (next == null || shipRoot == null || !next.IsChildOf(shipRoot))
+            {
+                platform = null;
+                freeMode = false;
+                return;
+            }
+
+            freeMode = true;
+            platform = next;
+            localPoint = platform.InverseTransformPoint(renderPoint);
+            PlatformVelocity = shipVelocity - frameVelocity;
+            RelativeVelocity = playerVelocity - frameVelocity - PlatformVelocity;
         }
 
         private bool InsideBounds(Transform root, Vector3 point)
@@ -199,9 +275,8 @@ namespace Galilego.Simulation.Player
         }
 
         /// <summary>The player is airborne inside a vessel part: a probe up and a probe down hit the same part.</summary>
-        private static Transform EnclosingPlatform(Transform zone, Vector3 feet)
+        private static Transform EnclosingPlatform(Vector3 up, Vector3 feet)
         {
-            Vector3 up = zone.up;
             Vector3 origin = feet + (up * EnclosedProbeHeight);
             if (!Physics.Raycast(origin, up, out RaycastHit above, EnclosedProbeMeters, ~0, QueryTriggerInteraction.Ignore)
                 || !Physics.Raycast(origin, -up, out RaycastHit below, EnclosedProbeMeters, ~0, QueryTriggerInteraction.Ignore))

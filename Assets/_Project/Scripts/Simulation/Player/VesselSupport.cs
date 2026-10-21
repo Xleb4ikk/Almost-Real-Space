@@ -1,5 +1,6 @@
 using Galilego.Building;
 using Galilego.Core;
+using Galilego.Simulation.ContactZone;
 using UnityEngine;
 
 namespace Galilego.Simulation.Player
@@ -43,7 +44,8 @@ namespace Galilego.Simulation.Player
 
         protected override bool IsSupportCollider(Collider collider)
         {
-            return ResolvePart(collider) != null;
+            VesselPartCollider part = ResolvePart(collider);
+            return part != null && !(part.VisualCovered && ContactZoneHost.Active);
         }
 
         protected override int SourceIdFor(Collider collider)

@@ -330,6 +330,14 @@ namespace Galilego.Universe
         private readonly CompositePlayerSupport playerSupport = new CompositePlayerSupport();
         private readonly PlayerPlatformCarry platformCarry = new PlayerPlatformCarry();
         private ContactZoneHost zoneHost;
+        private Vector3 playerRenderUp = Vector3.up;
+
+        /// <summary>
+        /// Root of the vessel visuals (ShipView's object). Outside the contact zone it is
+        /// put at Ship.Position BEFORE the player step, so the player collides with the
+        /// vessel where it is now, not where it was last frame.
+        /// </summary>
+        public Transform VesselRoot;
         private static readonly SphericalTerrain playerFallbackTerrain = new SphericalTerrain();
         private bool playerAirborne;
         private bool playerJumpQueued;
@@ -645,6 +653,7 @@ namespace Galilego.Universe
                 debrisUpdater.AdvanceAll(Debris, TimeSeconds, Ship.Position);
             }
 
+            SyncVesselRoot();
             StepPlayer(frameStartTime);
             step.DominantBody = SystemState.FindDominantBody(Ship.Position, TimeSeconds);
 
@@ -1289,12 +1298,29 @@ namespace Galilego.Universe
                 && PlayerFrameRelativeSpeed(t) < SurfaceControllerMaxRelativeSpeedMps;
         }
 
-        /// <summary>Contact zone the carry works in; null (and the carry is dropped) when it does not apply.</summary>
+        /// <summary>Put the vessel root where ShipView will put it in LateUpdate (same formula).</summary>
+        private void SyncVesselRoot()
+        {
+            if (VesselRoot == null || Ship == null)
+            {
+                return;
+            }
+
+            VesselRoot.position = FloatingOrigin.ToRender(Ship.Position);
+            Physics.SyncTransforms();
+        }
+
+        /// <summary>The player may be carried by a vessel at all.</summary>
+        private bool CarryAllowed()
+        {
+            return PlayerMode == PlayerMode.OnSurface && !NoclipActive && !PlayerSeated && !BuildMode;
+        }
+
+        /// <summary>Contact zone the carry works in; null — the vessel is in free flight.</summary>
         private ContactZoneHost CarryZone()
         {
-            if (!ContactZoneHost.Active || PlayerMode != PlayerMode.OnSurface || NoclipActive || PlayerSeated)
+            if (!ContactZoneHost.Active)
             {
-                platformCarry.Reset();
                 return null;
             }
 
@@ -1314,32 +1340,74 @@ namespace Galilego.Universe
                 return;
             }
 
-            ContactZoneHost host = CarryZone();
-            SiteFrame zoneFrame = host != null ? host.ZoneFrameAt(time) : null;
-            if (zoneFrame == null)
+            if (!CarryAllowed())
             {
                 platformCarry.Reset();
                 return;
             }
 
-            if (platformCarry.TryApply(host.Proxy.transform, zoneFrame, time, out Vector3d carried))
+            ContactZoneHost host = CarryZone();
+            if (host != null)
             {
-                PlayerPosition = carried;
+                SiteFrame zoneFrame = platformCarry.IsFree ? null : host.ZoneFrameAt(time);
+                if (zoneFrame == null)
+                {
+                    platformCarry.Reset();
+                    return;
+                }
+
+                if (platformCarry.TryApply(host.Proxy.transform, zoneFrame, time, out Vector3d carried))
+                {
+                    PlayerPosition = carried;
+                }
+
+                return;
             }
+
+            if (!platformCarry.IsFree || Ship == null
+                || !platformCarry.TryApplyFree(VesselRoot, Ship.Position, Ship.Velocity, LocalFrameVelocity(time),
+                    out Vector3d carriedFree))
+            {
+                platformCarry.Reset();
+                return;
+            }
+
+            PlayerPosition = carriedFree;
         }
 
         /// <summary>End of the frame: remember where the player is relative to the vessel part under/around them.</summary>
         private void CapturePlatformCarry(double poseTime)
         {
-            ContactZoneHost host = CarryZone();
-            SiteFrame zoneFrame = host != null ? host.ZoneFrameAt(TimeSeconds) : null;
-            if (zoneFrame == null)
+            if (!CarryAllowed())
             {
+                platformCarry.Reset();
                 return;
             }
 
-            platformCarry.Capture(host.Proxy.transform, zoneFrame, poseTime, PlayerPosition, PlayerVelocity,
-                !playerAirborne, playerController.GroundSourceId, vesselSupport);
+            ContactZoneHost host = CarryZone();
+            if (host != null)
+            {
+                SiteFrame zoneFrame = host.ZoneFrameAt(TimeSeconds);
+                if (zoneFrame == null)
+                {
+                    platformCarry.Reset();
+                    return;
+                }
+
+                platformCarry.Capture(host.Proxy.transform, zoneFrame, poseTime, PlayerPosition, PlayerVelocity,
+                    !playerAirborne, playerController.GroundSourceId, vesselSupport);
+                return;
+            }
+
+            if (Ship == null)
+            {
+                platformCarry.Reset();
+                return;
+            }
+
+            platformCarry.CaptureFree(VesselRoot, PlayerPosition, PlayerVelocity, Ship.Velocity,
+                LocalFrameVelocity(TimeSeconds), playerRenderUp, !playerAirborne, playerController.GroundSourceId,
+                vesselSupport);
         }
 
         private void StepPlayerEva(double t, double dt)
@@ -1626,6 +1694,7 @@ namespace Galilego.Universe
             ITerrainModel playerTerrain = body.Terrain ?? playerFallbackTerrain;
             SiteFrame frame = SiteFrame.Anchor(body, playerTerrain, PlayerPosition, t);
             frame.ToLocal(PlayerPosition, PlayerVelocity, out Vector3d localPosition, out Vector3d localVelocity);
+            playerRenderUp = AstroFrame.ToSimulation(frame.Up);
             if (platformCarry.Active)
             {
                 // The controller works in the vessel's frame: its velocity is relative to the vessel.

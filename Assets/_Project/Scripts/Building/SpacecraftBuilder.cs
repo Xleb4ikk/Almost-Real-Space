@@ -193,6 +193,12 @@ namespace Galilego.Building
                 }
             }
 
+            if (Runner != null && ShipTransform != null)
+            {
+                // The runner puts the ship root at Ship.Position before the player step in free flight.
+                Runner.VesselRoot = ShipTransform;
+            }
+
             if (Zone == null)
             {
                 Zone = FindAnyObjectByType<LaunchPadZone>();
@@ -813,9 +819,8 @@ namespace Galilego.Building
             // assembly — present in Ship.Mass, absent from cores, so the invariant holds.
             var cores = DeltaV.BuildStageAssembly(parts);
 
-            // 6-DOF flight model: real engines/nozzles, LAS, RCS. Appends the LAS
-            // tower part to defs and the hardware (RCS/LAS) to the mass — it is
-            // "outside the cores" and lands in DetachedMassKg.
+            // 6-DOF flight model: real engines/nozzles, RCS. The hardware (RCS blocks)
+            // is added to the mass — it is "outside the cores" and lands in DetachedMassKg.
             Galilego.Flight.VesselFlightModel flight = Galilego.Flight.FlightModelFactory.Build(
                 parts, defs, cores, FlightSystems);
             Runner.SetVesselParts(flight.Defs);
@@ -831,13 +836,12 @@ namespace Galilego.Building
             Runner.Ship.PositionIsCom = false;
             Galilego.Flight.FlightRuntime.Begin(Runner, ZoneHost, flight);
 
-            // In flight the vessel lives as proxy bodies: the visual colliders of
-            // the parts are turned off, otherwise PhysX bodies would collide with
-            // their own visuals. The player still cannot walk through the vessel —
-            // the support uses the proxy body colliders (same VesselPartCollider marker).
-            // The capsule is the exception: its exact colliders stay on (the player
-            // walks on the real floor, the E rays reach the screens), but they are
-            // excluded from the contacts — its proxy prism is a solid body around them.
+            // In flight the visual colliders are excluded from PhysX CONTACTS (otherwise the
+            // proxy bodies would collide with their own visuals) but stay visible to the
+            // player's queries: outside the contact zone there are no proxy bodies at all,
+            // and the visuals are the only thing the player can stand on or bump into.
+            // Inside the zone the support switches to the proxy bodies (VisualCovered),
+            // except for the capsule, whose exact colliders are always the support.
             SetPartColliders(false);
 
             // The mirror filter starts fresh with the flight: the smoothed pose must
@@ -1425,12 +1429,13 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Enable/disable the visual colliders of the parts. In flight they are
-        /// turned off: proxy bodies take their place (otherwise PhysX bodies would
-        /// collide with their own visuals), and the player support switches to proxy bodies.
-        /// The capsule is the exception — its exact colliders stay enabled (the player
-        /// walks on the real floor and the E rays reach the screens), but they are
-        /// excluded from the contacts: its proxy prism is a solid body around them.
+        /// Build mode (enabled = true): visual colliders take part in everything. Flight
+        /// (enabled = false): they are excluded from PhysX CONTACTS only (excludeLayers is a
+        /// contact filter, see CheckCapsuleQueries) so they do not fight the proxy bodies, but
+        /// they are never switched off: outside the contact zone no proxy bodies exist, and
+        /// switching them off left the tanks and engines without any collision for the player.
+        /// The Collider.enabled flag is not touched: the model manages its own (the open
+        /// Orion door is disabled on purpose and must stay so).
         /// </summary>
         private void SetPartColliders(bool enabled)
         {
@@ -1446,20 +1451,16 @@ namespace Galilego.Building
                 // capsule has dozens: shell, cabin floor, open door) — proxy bodies
                 // take their place in flight.
                 Collider[] colliders = part.Visual.Root.GetComponentsInChildren<Collider>(true);
-                if (part.Kind == PartKind.Capsule)
-                {
-                    for (int c = 0; c < colliders.Length; c++)
-                    {
-                        colliders[c].enabled = true;
-                        colliders[c].excludeLayers = enabled ? 0 : ~0;
-                    }
-
-                    continue;
-                }
-
                 for (int c = 0; c < colliders.Length; c++)
                 {
-                    colliders[c].enabled = enabled;
+                    colliders[c].excludeLayers = enabled ? 0 : ~0;
+                }
+
+                // Inside the zone a proxy body represents every part except the capsule.
+                VesselPartCollider marker = part.Visual.Root.GetComponentInParent<VesselPartCollider>();
+                if (marker != null)
+                {
+                    marker.VisualCovered = !enabled && part.Kind != PartKind.Capsule;
                 }
             }
         }
