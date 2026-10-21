@@ -252,8 +252,6 @@ namespace Galilego.Spacecraft
                     continue;
                 }
 
-                existing[i].convex = true;
-
                 // Monitors and tablet sit at head/chest height and are needed for rays
                 // (crosshair, pointer) but not for the body. Everything else existing is
                 // just an obstacle.
@@ -261,10 +259,15 @@ namespace Galilego.Spacecraft
                 if (n.IndexOf("Monitor", System.StringComparison.OrdinalIgnoreCase) >= 0
                     || n.IndexOf("Tablet", System.StringComparison.OrdinalIgnoreCase) >= 0)
                 {
+                    // Keep these NON-convex: convex MeshColliders report
+                    // RaycastHit.triangleIndex = -1 and textureCoord = (0,0), which put
+                    // the pointer in the screen corner. The body ignores them anyway.
+                    existing[i].convex = false;
                     MarkIgnored(existing[i].gameObject);
                 }
                 else
                 {
+                    existing[i].convex = true;
                     MarkObstacleOnly(existing[i].gameObject);
                 }
             }
