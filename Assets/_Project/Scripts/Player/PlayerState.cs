@@ -58,6 +58,13 @@ namespace Galilego.Universe
         /// <summary>Jetpack acceleration (m/s², EVA only).</summary>
         public Vector3d JetpackAccel;
 
+        /// <summary>
+        /// Desired horizontal velocity in the air relative to the local frame
+        /// (astro, m/s): WASD in EVA and while airborne. Zero means brake.
+        /// Filled regardless of the jetpack toggle — the air speed is the same.
+        /// </summary>
+        public Vector3d AirVelocity;
+
         /// <summary>Hover toggle (double tap Shift in flight).</summary>
         public bool HoverToggle;
 

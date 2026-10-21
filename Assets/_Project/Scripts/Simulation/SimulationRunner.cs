@@ -361,6 +361,9 @@ namespace Galilego.Universe
         /// <summary>Velocity response while hovering (1/s): stopping and accelerating in air.</summary>
         private const double PlayerHoverResponse = 6d;
 
+        /// <summary>Horizontal velocity response in air (1/s), the same with and without the jetpack.</summary>
+        private const double PlayerAirResponse = 6d;
+
         /// <summary>Maximum player integration substep (s).</summary>
         private const double PlayerMaxStepSeconds = 0.5d;
 
@@ -1431,6 +1434,18 @@ namespace Galilego.Universe
                 return;
             }
 
+            OrbitingBody body = DominantBody;
+            Vector3d up = new Vector3d(0d, 0d, 1d);
+            if (body != null)
+            {
+                body.EvaluateWorldState(t, out Vector3d bodyPos, out _);
+                Vector3d radial = PlayerPosition - bodyPos;
+                if (radial.SqrMagnitude > 1e-12d)
+                {
+                    up = radial.Normalized;
+                }
+            }
+
             if (PlayerHoverActive)
             {
                 StepPlayerHoverEva(t, dt);
@@ -1439,11 +1454,21 @@ namespace Galilego.Universe
             {
                 Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
                 Vector3d jetpackAccel = JetpackActive ? PlayerIntent.JetpackAccel : Vector3d.Zero;
+
+                // Air control: the horizontal velocity eases to the desired one
+                // relative to the local frame — one speed with or without the
+                // jetpack; no input — smooth braking. Vertical stays physical.
+                Vector3d frameVelocity = LocalFrameVelocity(t);
+                Vector3d relative = PlayerVelocity - frameVelocity;
+                double verticalSpeed = Vector3d.Dot(relative, up);
+                Vector3d horizontal = relative - (up * verticalSpeed);
+                horizontal += (PlayerIntent.AirVelocity - horizontal)
+                    * Math.Min(1d, dt * PlayerAirResponse);
+                PlayerVelocity = frameVelocity + horizontal + (up * verticalSpeed);
                 PlayerVelocity += (gravity + jetpackAccel) * dt;
                 PlayerPosition += PlayerVelocity * dt;
             }
 
-            OrbitingBody body = DominantBody;
             if (body == null)
             {
                 return;
@@ -1451,10 +1476,10 @@ namespace Galilego.Universe
 
             // The position is already at t+dt — check contact and land at t+dt, not t.
             double tEnd = t + dt;
-            body.EvaluateWorldState(tEnd, out Vector3d bodyPos, out _);
+            body.EvaluateWorldState(tEnd, out Vector3d bodyPosEnd, out _);
             body.SurfaceLatLonAt(PlayerPosition, tEnd, out double latDeg, out double lonDeg);
             double terrainRadius = body.Radius + GroundHeight(body, latDeg, lonDeg);
-            if ((PlayerPosition - bodyPos).Magnitude <= terrainRadius)
+            if ((PlayerPosition - bodyPosEnd).Magnitude <= terrainRadius)
             {
                 LandPlayer(body, tEnd);
             }
@@ -1730,6 +1755,11 @@ namespace Galilego.Universe
                 Vector3d.Dot(walkWorld, frame.East),
                 Vector3d.Dot(walkWorld, frame.North),
                 0d);
+            Vector3d airWorld = PlayerIntent.AirVelocity;
+            Vector3d airLocal = new Vector3d(
+                Vector3d.Dot(airWorld, frame.East),
+                Vector3d.Dot(airWorld, frame.North),
+                0d);
             Vector3d jetpack = JetpackActive ? PlayerIntent.JetpackAccel : Vector3d.Zero;
             Vector3d jetpackLocal = new Vector3d(
                 Vector3d.Dot(jetpack, frame.East),
@@ -1744,7 +1774,7 @@ namespace Galilego.Universe
 
             playerController.Hovering = PlayerHoverActive;
             playerController.HoverVelocity = hoverLocal;
-            playerController.Step(playerSupport, dt, walkLocal, jetpackLocal);
+            playerController.Step(playerSupport, dt, playerAirborne ? airLocal : walkLocal, jetpackLocal);
 
             Vector3d platformLocal = Vector3d.Zero;
             if (platformCarry.Active)

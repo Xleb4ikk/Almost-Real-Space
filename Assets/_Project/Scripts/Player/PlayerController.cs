@@ -8,8 +8,8 @@ namespace Galilego.Universe
     /// <summary>
     /// Player input and intent (not physics — SimulationRunner executes physics).
     /// Modes: InShip (walking inside — placeholder around the ship point, interior
-    /// and collisions later), EVA (jetpack: WASD along the camera, Space up,
-    /// LeftCtrl down; fuel is IJetpackFuel, currently infinite), OnSurface
+    /// and collisions later), EVA (jetpack: WASD in the horizontal plane, Space up
+    /// along the local vertical, LeftCtrl down; fuel is IJetpackFuel, currently infinite), OnSurface
     /// (WASD walks along the tangent, Shift runs, Space jumps), Swimming
     /// (WASD swims along the camera — look down + W dives, Space surfaces,
     /// LeftCtrl descends, Shift speeds up).
@@ -41,8 +41,11 @@ namespace Galilego.Universe
         [Tooltip("Скорость бега по аппарату (м/с, Shift).")]
         public float VesselRunSpeed = 1.8f;
 
-        [Tooltip("Ускорение джетпака (м/с²).")]
+        [Tooltip("Ускорение джетпака по вертикали (м/с², Space/Ctrl).")]
         public float JetpackThrust = 20f;
+
+        [Tooltip("Скорость движения в воздухе (м/с, EVA и полёт) — одна и та же с джетпаком и без него.")]
+        public float AirSpeed = 6f;
 
         [Tooltip("Скорость перемещения в висении (м/с, WASD).")]
         public float HoverSpeed = 6f;
@@ -364,20 +367,59 @@ namespace Galilego.Universe
             Focused = best;
         }
 
-        private void ApplyJetpackInput(ref PlayerIntent intent, Camera camera, bool active)
+        /// <summary>
+        /// Air control in EVA and while airborne: WASD sets the SAME horizontal
+        /// speed with or without the jetpack (look pitch is ignored), released —
+        /// the player brakes smoothly. The jetpack itself only lifts/lowers:
+        /// Space/LeftCtrl along the local vertical.
+        /// </summary>
+        private void ApplyAirInput(ref PlayerIntent intent, Camera camera, bool jetpackActive)
         {
-            if (!active || camera == null || JetpackFuel == null)
+            if (camera == null)
             {
                 return;
             }
 
-            Vector3 thrust = (camera.transform.forward * ((PlayerInput.Held(GameAction.MoveForward) ? 1f : 0f) - (PlayerInput.Held(GameAction.MoveBack) ? 1f : 0f)))
-                + (camera.transform.right * ((PlayerInput.Held(GameAction.MoveRight) ? 1f : 0f) - (PlayerInput.Held(GameAction.MoveLeft) ? 1f : 0f)))
-                + (camera.transform.up * ((PlayerInput.Held(GameAction.Jump) ? 1f : 0f) - (PlayerInput.Held(GameAction.Descend) ? 1f : 0f)));
-            if (thrust.sqrMagnitude > 0f && JetpackFuel.TryConsume(Time.deltaTime))
+            Vector3d up = LocalUpAstro();
+            Vector3d look = AstroFrame.ToAstro(camera.transform.forward);
+            Vector3d flatForward = look - (up * Vector3d.Dot(look, up));
+            Vector3d right = AstroFrame.ToAstro(camera.transform.right);
+            right -= up * Vector3d.Dot(right, up);
+            right = right.SqrMagnitude > 1e-12d ? right.Normalized : Vector3d.Zero;
+            flatForward = flatForward.SqrMagnitude > 1e-12d
+                ? flatForward.Normalized
+                : Vector3d.Cross(right, up);
+
+            double forward = (PlayerInput.Held(GameAction.MoveForward) ? 1d : 0d) - (PlayerInput.Held(GameAction.MoveBack) ? 1d : 0d);
+            double strafe = (PlayerInput.Held(GameAction.MoveRight) ? 1d : 0d) - (PlayerInput.Held(GameAction.MoveLeft) ? 1d : 0d);
+            double vertical = (PlayerInput.Held(GameAction.Jump) ? 1d : 0d) - (PlayerInput.Held(GameAction.Descend) ? 1d : 0d);
+
+            Vector3d horizontal = (flatForward * forward) + (right * strafe);
+            intent.AirVelocity = horizontal.SqrMagnitude > 1e-12d
+                ? horizontal.Normalized * AirSpeed
+                : Vector3d.Zero;
+
+            if (jetpackActive && vertical != 0d && JetpackFuel != null && JetpackFuel.TryConsume(Time.deltaTime))
             {
-                intent.JetpackAccel = AstroFrame.ToAstro(thrust.normalized * JetpackThrust);
+                intent.JetpackAccel = up * (vertical * JetpackThrust);
             }
+        }
+
+        /// <summary>Local vertical in astro axes: radial from the dominant body's center.</summary>
+        private Vector3d LocalUpAstro()
+        {
+            OrbitingBody body = Runner != null ? Runner.DominantBody : null;
+            if (body != null && Runner != null)
+            {
+                body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPos, out _);
+                Vector3d radial = Runner.PlayerPosition - bodyPos;
+                if (radial.SqrMagnitude > 1e-12d)
+                {
+                    return radial.Normalized;
+                }
+            }
+
+            return new Vector3d(0d, 0d, 1d);
         }
 
         /// <summary>
@@ -394,19 +436,7 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Local up (astro): the direction from the body center.
-            Vector3d up = new Vector3d(0d, 0d, 1d);
-            OrbitingBody body = Runner != null ? Runner.DominantBody : null;
-            if (body != null && Runner != null)
-            {
-                body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPos, out _);
-                Vector3d radial = Runner.PlayerPosition - bodyPos;
-                if (radial.SqrMagnitude > 1e-12d)
-                {
-                    up = radial.Normalized;
-                }
-            }
-
+            Vector3d up = LocalUpAstro();
             Vector3d look = AstroFrame.ToAstro(camera.transform.forward);
             Vector3d flatForward = look - (up * Vector3d.Dot(look, up));
             flatForward = flatForward.SqrMagnitude > 1e-12d ? flatForward.Normalized : Vector3d.Zero;
@@ -481,7 +511,7 @@ namespace Galilego.Universe
                     }
                     else
                     {
-                        ApplyJetpackInput(ref intent, camera, Runner.JetpackActive || jetpackToggle);
+                        ApplyAirInput(ref intent, camera, Runner.JetpackActive || jetpackToggle);
                     }
 
                     break;
@@ -517,7 +547,7 @@ namespace Galilego.Universe
                         }
                         else
                         {
-                            ApplyJetpackInput(ref intent, camera, (Runner.JetpackActive && Runner.PlayerAirborne) || jetpackToggle);
+                            ApplyAirInput(ref intent, camera, (Runner.JetpackActive && Runner.PlayerAirborne) || jetpackToggle);
                         }
                     }
 

@@ -98,6 +98,12 @@ namespace Galilego.Simulation.Player
         /// <summary>Hover velocity response (1/s).</summary>
         public double HoverResponse = 6d;
 
+        /// <summary>
+        /// Horizontal air-control response (1/s): the velocity eases to the air
+        /// input — the same speed with and without the jetpack; zero input brakes.
+        /// </summary>
+        public double AirResponse = 6d;
+
         /// <summary>Input in the substep was blocked (wall/ceiling): position unchanged.</summary>
         public bool Blocked;
 
@@ -173,7 +179,7 @@ namespace Galilego.Simulation.Player
 
             if (Airborne)
             {
-                StepAirborne(support, dt);
+                StepAirborne(support, dt, intent);
             }
             else
             {
@@ -380,7 +386,7 @@ namespace Galilego.Simulation.Player
             return p;
         }
 
-        private void StepAirborne(IPlayerSupport support, double dt)
+        private void StepAirborne(IPlayerSupport support, double dt, Vector3d intent)
         {
             if (Hovering)
             {
@@ -391,6 +397,13 @@ namespace Galilego.Simulation.Player
             }
             else
             {
+                // Air control: the horizontal velocity eases to the same air speed
+                // with and without the jetpack; zero input brakes smoothly.
+                double blend = Math.Min(1d, dt * AirResponse);
+                Velocity = new Vector3d(
+                    Velocity.X + ((intent.X - Velocity.X) * blend),
+                    Velocity.Y + ((intent.Y - Velocity.Y) * blend),
+                    Velocity.Z);
                 Velocity = new Vector3d(Velocity.X, Velocity.Y, Velocity.Z - (Gravity * dt));
             }
 
