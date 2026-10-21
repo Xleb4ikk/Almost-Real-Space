@@ -38,6 +38,8 @@ namespace Galilego.Universe
         public int anisotropic = -1;         // 0 off, 1 per texture, 2 forced
         public float lodBias = -1f;
         public float shadowDistance;         // 0 = as authored in the scene
+        public float terrainDetail = 1f;     // multiplies the terrain quadtree SplitFactor
+        public int grassQuality = 3;         // 0 off, 1 low, 2 medium, 3 high (authored), 4 maximum
 
         // Effects
         public int motionBlur;               // 0 off .. 3 high
@@ -69,6 +71,13 @@ namespace Galilego.Universe
     {
         private static SettingsData data;
 
+        // What the engine had before the player touched anything: "reset tab" returns here.
+        private static int initialQuality = -1;
+        private static int initialVsync = -1;
+        private static int initialTexture = -1;
+        private static int initialAniso = -1;
+        private static float initialLod = -1f;
+
         /// <summary>Raised after any change (menu, reset, load). Appliers and views subscribe.</summary>
         public static event Action Changed;
 
@@ -96,6 +105,11 @@ namespace Galilego.Universe
         {
             data = null;
             Changed = null;
+            initialQuality = -1;
+            initialVsync = -1;
+            initialTexture = -1;
+            initialAniso = -1;
+            initialLod = -1f;
         }
 
         public static void Load()
@@ -121,6 +135,16 @@ namespace Galilego.Universe
             if (data.bindings == null)
             {
                 data.bindings = new List<BindingEntry>();
+            }
+
+            // Captured before anything is applied: the reset button returns to these.
+            if (initialQuality < 0)
+            {
+                initialQuality = QualitySettings.GetQualityLevel();
+                initialVsync = QualitySettings.vSyncCount > 0 ? 1 : 0;
+                initialTexture = Mathf.Clamp(QualitySettings.globalTextureMipmapLimit, 0, 2);
+                initialAniso = Mathf.Clamp((int)QualitySettings.anisotropicFiltering, 0, 2);
+                initialLod = QualitySettings.lodBias;
             }
 
             ResolveFromEngine(data);
@@ -163,6 +187,8 @@ namespace Galilego.Universe
                     d.antiAliasing = fresh.antiAliasing;
                     d.renderScale = 100;
                     d.shadowDistance = 0f;
+                    d.terrainDetail = 1f;
+                    d.grassQuality = 3;
                     d.motionBlur = 0;
                     d.bloom = true;
                     d.filmGrain = false;
@@ -220,7 +246,7 @@ namespace Galilego.Universe
 
             if (d.vsync < 0)
             {
-                d.vsync = QualitySettings.vSyncCount > 0 ? 1 : 0;
+                d.vsync = initialVsync >= 0 ? initialVsync : (QualitySettings.vSyncCount > 0 ? 1 : 0);
             }
 
             if (d.frameCap < 0)
@@ -230,22 +256,26 @@ namespace Galilego.Universe
 
             if (d.quality < 0 || d.quality >= QualitySettings.names.Length)
             {
-                d.quality = QualitySettings.GetQualityLevel();
+                d.quality = initialQuality >= 0 ? initialQuality : QualitySettings.GetQualityLevel();
             }
 
             if (d.textureQuality < 0)
             {
-                d.textureQuality = Mathf.Clamp(QualitySettings.globalTextureMipmapLimit, 0, 2);
+                d.textureQuality = initialTexture >= 0
+                    ? initialTexture
+                    : Mathf.Clamp(QualitySettings.globalTextureMipmapLimit, 0, 2);
             }
 
             if (d.anisotropic < 0)
             {
-                d.anisotropic = Mathf.Clamp((int)QualitySettings.anisotropicFiltering, 0, 2);
+                d.anisotropic = initialAniso >= 0
+                    ? initialAniso
+                    : Mathf.Clamp((int)QualitySettings.anisotropicFiltering, 0, 2);
             }
 
             if (d.lodBias < 0f)
             {
-                d.lodBias = QualitySettings.lodBias;
+                d.lodBias = initialLod >= 0f ? initialLod : QualitySettings.lodBias;
             }
         }
 
@@ -257,6 +287,8 @@ namespace Galilego.Universe
             d.mouseSensitivity = Mathf.Clamp(d.mouseSensitivity, 0.05f, 5f);
             d.crosshairScale = Mathf.Clamp(d.crosshairScale, 0.25f, 3f);
             d.shadowDistance = Mathf.Max(0f, d.shadowDistance);
+            d.terrainDetail = Mathf.Clamp(d.terrainDetail, 0.5f, 2f);
+            d.grassQuality = Mathf.Clamp(d.grassQuality, 0, 4);
             d.lodBias = Mathf.Clamp(d.lodBias, 0.25f, 4f);
             d.volMaster = Mathf.Clamp01(d.volMaster);
             d.volMusic = Mathf.Clamp01(d.volMusic);

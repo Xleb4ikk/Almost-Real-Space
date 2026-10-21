@@ -178,6 +178,11 @@ namespace Galilego.Universe
 
         private float baseFieldOfView = 60f;
 
+        /// <summary>The camera's authored FOV: the settings menu's "reset" returns to it.</summary>
+        private float defaultFieldOfView = 60f;
+
+        public float DefaultFieldOfView { get { return defaultFieldOfView; } }
+
         private void Start()
         {
 #if UNITY_EDITOR
@@ -196,7 +201,8 @@ namespace Galilego.Universe
             Camera camComponent = GetComponent<Camera>();
             if (camComponent != null)
             {
-                baseFieldOfView = camComponent.fieldOfView;
+                defaultFieldOfView = camComponent.fieldOfView;
+                baseFieldOfView = defaultFieldOfView;
             }
 
             // First launch: the scene camera's own FOV becomes the setting's default.
@@ -404,10 +410,8 @@ namespace Galilego.Universe
             transform.position = eye;
 
             Camera cam = GetComponent<Camera>();
-            if (GameSettings.Data.fov > 0f)
-            {
-                baseFieldOfView = GameSettings.Data.fov;
-            }
+            float fovSetting = GameSettings.Data.fov;
+            baseFieldOfView = fovSetting > 0f ? fovSetting : defaultFieldOfView;
 
             if (cam != null && LeanFieldOfView > 0f && leanBlend > 0.0001f)
             {

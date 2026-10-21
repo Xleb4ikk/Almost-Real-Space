@@ -777,7 +777,9 @@ namespace Galilego.Universe
         private int waterChunkCount;
         private bool waterDiagLogged;
         private BodyAuthoring bodyAuthoring;
+        private GroundDecorProfile sourceDecorProfile;
         private GroundDecorProfile decorProfile;
+        private int appliedGrassQuality = -1;
         private Matrix4x4[] decorBatchScratch;
         private Matrix4x4[] decorPerMeshScratch;
         private Matrix4x4[] decorCastScratch;
@@ -888,15 +890,17 @@ namespace Galilego.Universe
         {
             get
             {
+                // Player's "Terrain detail" setting (settings menu) multiplies the authored value.
+                float user = GameSettings.Data.terrainDetail;
                 if (!EnableQualityTiers)
                 {
-                    return SplitFactor;
+                    return SplitFactor * user;
                 }
 
                 float scale = motionTier == MotionTier.Extreme
                     ? TierSplitScaleExtreme
                     : (motionTier == MotionTier.Fast ? TierSplitScaleFast : 1f);
-                return SplitFactor * scale;
+                return SplitFactor * scale * user;
             }
         }
         private readonly List<DecorBuildSession> decorBuildSessions = new List<DecorBuildSession>();
@@ -1063,15 +1067,34 @@ namespace Galilego.Universe
             surfaceRoot.localScale = Vector3.one;
 
             bodyAuthoring = GetComponent<BodyAuthoring>();
-            decorProfile = bodyAuthoring != null && bodyAuthoring.GroundDecorPreset != null
+            sourceDecorProfile = bodyAuthoring != null && bodyAuthoring.GroundDecorPreset != null
                 ? bodyAuthoring.GroundDecorPreset.Profile
                 : null;
+            decorProfile = CloneDecorProfile(sourceDecorProfile);
+            appliedGrassQuality = Mathf.Clamp(GameSettings.Data.grassQuality, 0, 4);
+            ApplyGrassQuality(decorProfile, appliedGrassQuality);
             // Clean state on every Play: with Enter Play Mode Options (no Reload
             // Scene/Domain) private component fields can survive the previous run while
             // their chunks are already destroyed.
             ClearChunkCache();
             paramsAlive = true;
             EnsureHdrpWaterPatch();
+        }
+
+        private void OnEnable()
+        {
+            GameSettings.Changed += OnSettingsChanged;
+            SyncGrassQuality();
+        }
+
+        private void OnDisable()
+        {
+            GameSettings.Changed -= OnSettingsChanged;
+        }
+
+        private void OnSettingsChanged()
+        {
+            SyncGrassQuality();
         }
 
         /// <summary>
@@ -1113,6 +1136,7 @@ namespace Galilego.Universe
 
         private void OnDestroy()
         {
+            GameSettings.Changed -= OnSettingsChanged;
             CancelAllDecorBuilds();
 
             // [PHASE 1] Chunks are cleared BEFORE Destroy(surfaceRoot.gameObject) and
@@ -1254,6 +1278,227 @@ namespace Galilego.Universe
             chunk.Decor.Clear();
         }
 
+        // ─── Grass quality ───────────────────────────────────────────────────
+
+        /// <summary>
+        /// The decor asset is shared: settings work on a runtime copy, otherwise a
+        /// quality change would dirty the preset (and survive Play in the editor).
+        /// </summary>
+        private static GroundDecorProfile CloneDecorProfile(GroundDecorProfile source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            var copy = new GroundDecorProfile();
+            copy.Layers = new List<GroundDecorLayer>(source.Layers != null ? source.Layers.Count : 0);
+            if (source.Layers != null)
+            {
+                for (int i = 0; i < source.Layers.Count; i++)
+                {
+                    copy.Layers.Add(source.Layers[i] != null ? source.Layers[i].Clone() : null);
+                }
+            }
+
+            return copy;
+        }
+
+        /// <summary>
+        /// Grass (the per-instance layer) scales with the menu quality: 0 off, 1..2
+        /// cheaper, 3 the authored preset, 4 above it. The top level is deliberately
+        /// the authored look; "maximum" is the extra step the user asked for.
+        /// </summary>
+        private static void ApplyGrassQuality(GroundDecorProfile profile, int quality)
+        {
+            if (profile == null || profile.Layers == null)
+            {
+                return;
+            }
+
+            quality = Mathf.Clamp(quality, 0, 4);
+            float spacing;
+            float density;
+            float subs;
+            float cap;
+            float near;
+            float distance;
+            float cells;
+            switch (quality)
+            {
+                case 0:
+                    spacing = 1f;
+                    density = 1f;
+                    subs = 1f;
+                    cap = 1f;
+                    near = 1f;
+                    distance = 1f;
+                    cells = 1f;
+                    break;
+                case 1:
+                    spacing = 1.6f;
+                    density = 0.25f;
+                    subs = 0.25f;
+                    cap = 0.3f;
+                    near = 0.6f;
+                    distance = 0.55f;
+                    cells = 0.5f;
+                    break;
+                case 2:
+                    spacing = 1.25f;
+                    density = 0.5f;
+                    subs = 0.5f;
+                    cap = 0.55f;
+                    near = 0.8f;
+                    distance = 0.75f;
+                    cells = 0.75f;
+                    break;
+                case 3:
+                    spacing = 1f;
+                    density = 1f;
+                    subs = 1f;
+                    cap = 1f;
+                    near = 1f;
+                    distance = 1f;
+                    cells = 1f;
+                    break;
+                default:
+                    spacing = 0.9f;
+                    density = 1.25f;
+                    subs = 1.25f;
+                    cap = 1.25f;
+                    near = 1.1f;
+                    distance = 1.15f;
+                    cells = 1.1f;
+                    break;
+            }
+
+            for (int i = 0; i < profile.Layers.Count; i++)
+            {
+                GroundDecorLayer layer = profile.Layers[i];
+                if (layer == null || !layer.PerInstanceDensity)
+                {
+                    continue;
+                }
+
+                if (quality == 0)
+                {
+                    layer.Enabled = false;
+                    continue;
+                }
+
+                if (quality == 3)
+                {
+                    continue;
+                }
+
+                layer.SpacingMeters = System.Math.Max(0.25d, layer.SpacingMeters * spacing);
+                layer.Density = System.Math.Max(0.001d, layer.Density * density);
+                layer.MaxInstancesPerChunk = Mathf.Max(1, Mathf.RoundToInt(layer.MaxInstancesPerChunk * cap));
+                layer.SubInstancesPerCell = Mathf.Max(1, Mathf.RoundToInt(layer.SubInstancesPerCell * subs));
+                layer.NearDistanceMeters = Mathf.Max(1f, layer.NearDistanceMeters * near);
+                layer.MaxDistanceMeters = Mathf.Max(layer.NearDistanceMeters + 1f,
+                    layer.MaxDistanceMeters * distance);
+                layer.MaxCellsPerAxis = Mathf.Max(8, Mathf.RoundToInt(layer.MaxCellsPerAxis * cells));
+                layer.DensityCoreMeters = Mathf.Max(0f, layer.DensityCoreMeters * distance);
+                layer.DensityFalloffMeters = Mathf.Max(0f, layer.DensityFalloffMeters * distance);
+            }
+        }
+
+        private void SyncGrassQuality()
+        {
+            int quality = Mathf.Clamp(GameSettings.Data.grassQuality, 0, 4);
+            if (quality == appliedGrassQuality)
+            {
+                return;
+            }
+
+            appliedGrassQuality = quality;
+            if (decorProfile == null || sourceDecorProfile == null)
+            {
+                return;
+            }
+
+            RefreshGrassQuality(quality);
+        }
+
+        /// <summary>
+        /// Rebuild only the grass pools: the terrain chunks and the other decor
+        /// layers (trees/rocks/flowers) stay. The grass layers are re-cloned from the
+        /// asset so repeated quality switches never compound the multipliers.
+        /// </summary>
+        private void RefreshGrassQuality(int quality)
+        {
+            if (sourceDecorProfile == null || decorProfile == null || decorProfile.Layers == null)
+            {
+                return;
+            }
+
+            CancelAllDecorBuilds();
+
+            int count = Mathf.Min(decorProfile.Layers.Count,
+                sourceDecorProfile.Layers != null ? sourceDecorProfile.Layers.Count : 0);
+            for (int i = 0; i < count; i++)
+            {
+                GroundDecorLayer source = sourceDecorProfile.Layers[i];
+                if (source != null && source.PerInstanceDensity)
+                {
+                    decorProfile.Layers[i] = source.Clone();
+                }
+            }
+
+            ApplyGrassQuality(decorProfile, quality);
+            ClearGrassRuntimes();
+        }
+
+        private void ClearGrassRuntimes()
+        {
+            if (decorProfile == null || decorProfile.Layers == null)
+            {
+                return;
+            }
+
+            int grassMask = 0;
+            for (int i = 0; i < decorProfile.Layers.Count; i++)
+            {
+                GroundDecorLayer layer = decorProfile.Layers[i];
+                if (layer != null && layer.PerInstanceDensity)
+                {
+                    grassMask |= 1 << i;
+                }
+            }
+
+            if (grassMask == 0)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<long, Chunk> kv in chunks)
+            {
+                Chunk chunk = kv.Value;
+                for (int i = chunk.Decor.Count - 1; i >= 0; i--)
+                {
+                    DecorLayerRuntime runtime = chunk.Decor[i];
+                    if (runtime == null)
+                    {
+                        chunk.Decor.RemoveAt(i);
+                        continue;
+                    }
+
+                    if (runtime.Profile != null && runtime.Profile.PerInstanceDensity)
+                    {
+                        chunk.DecorBuiltMask &= ~(1 << runtime.LayerIndex);
+                        DisposeDecorLayerRuntime(runtime);
+                        chunk.Decor.RemoveAt(i);
+                    }
+                }
+
+                chunk.DecorBuiltMask &= ~grassMask;
+            }
+
+            decorScanBlockedUntil = 0f;
+        }
+
         /// <summary>
         /// Live tuning in Play: copy terrain parameters from the neighbouring
         /// BodyAuthoring into the live HeightfieldTerrain, refresh the noise snapshot
@@ -1276,6 +1521,15 @@ namespace Galilego.Universe
             authoring.ApplyToTerrain(terrain);
             noiseParams = TerrainNoiseParams.FromTerrain(terrain);
             ApplyTerrainGlobals();
+
+            // Re-clone even when the asset reference is unchanged: the inspector may
+            // have edited a layer in place.
+            sourceDecorProfile = authoring.GroundDecorPreset != null
+                ? authoring.GroundDecorPreset.Profile
+                : null;
+            decorProfile = CloneDecorProfile(sourceDecorProfile);
+            appliedGrassQuality = Mathf.Clamp(GameSettings.Data.grassQuality, 0, 4);
+            ApplyGrassQuality(decorProfile, appliedGrassQuality);
 
             ClearChunkCache();
             firstFrameGuard = -1;
@@ -1308,9 +1562,12 @@ namespace Galilego.Universe
             GroundDecorProfile currentDecor = bodyAuthoring.GroundDecorPreset != null
                 ? bodyAuthoring.GroundDecorPreset.Profile
                 : null;
-            if (!ReferenceEquals(currentDecor, decorProfile))
+            if (!ReferenceEquals(currentDecor, sourceDecorProfile))
             {
-                decorProfile = currentDecor;
+                sourceDecorProfile = currentDecor;
+                decorProfile = CloneDecorProfile(sourceDecorProfile);
+                appliedGrassQuality = Mathf.Clamp(GameSettings.Data.grassQuality, 0, 4);
+                ApplyGrassQuality(decorProfile, appliedGrassQuality);
                 ClearChunkCache();
                 firstFrameGuard = -1;
             }

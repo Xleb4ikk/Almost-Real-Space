@@ -256,6 +256,12 @@ namespace Galilego.Universe
                  "горизонт объекта этой высоты над сферой тела, м). Высота = дерево + типичный рельеф. " +
                  "0 = только MaxDistanceMeters.")]
         public float HorizonObjectHeightMeters = 0f;
+
+        /// <summary>Copy for a runtime-only profile (the asset must not be modified by settings).</summary>
+        public GroundDecorLayer Clone()
+        {
+            return (GroundDecorLayer)MemberwiseClone();
+        }
     }
 
     /// <summary>
