@@ -148,7 +148,7 @@ internal static partial class P1bTests
             return found;
         }
 
-        public bool Sweep(Vector3d from, Vector3d to, double radius, out Vector3d normal, out double fraction)
+        public bool Sweep(Vector3d from, Vector3d to, double radius, double height, out Vector3d normal, out double fraction)
         {
             normal = LocalUp;
             fraction = 1d;
@@ -160,7 +160,7 @@ internal static partial class P1bTests
             {
                 Box b = Blockers[i];
                 if (!(b.Max.Z > from.Z + 1e-9d)
-                    || !(b.Min.Z < from.Z + PlayerSurfaceController.CapsuleHeight - 1e-9d))
+                    || !(b.Min.Z < from.Z + height - 1e-9d))
                 {
                     continue;
                 }
@@ -303,7 +303,7 @@ internal static partial class P1bTests
             return false;
         }
 
-        public bool Sweep(Vector3d from, Vector3d to, double radius, out Vector3d outNormal, out double fraction)
+        public bool Sweep(Vector3d from, Vector3d to, double radius, double height, out Vector3d outNormal, out double fraction)
         {
             outNormal = LocalUp;
             fraction = 1d;
@@ -335,7 +335,7 @@ internal static partial class P1bTests
             return false;
         }
 
-        public bool Sweep(Vector3d from, Vector3d to, double radius, out Vector3d normal, out double fraction)
+        public bool Sweep(Vector3d from, Vector3d to, double radius, double height, out Vector3d normal, out double fraction)
         {
             normal = LocalUp;
             fraction = 1d;

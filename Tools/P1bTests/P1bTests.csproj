@@ -28,6 +28,10 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Math\QuaternionD.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Attitude\AttitudePhysics.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Attitude\ReactionControl.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Flight\AttitudeMath.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Flight\FlightHardware.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Flight\FlightThrustSource.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Flight\VesselFlightModel.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Assembly\Parts.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\RigidAssemblySolver.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\ContactGround.cs" />
