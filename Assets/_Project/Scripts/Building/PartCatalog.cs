@@ -388,24 +388,24 @@ namespace Galilego.Building
                 }
                 else
                 {
-                    bool conical = kind == PartKind.FuelTank
-                        && metrics.TopRadius > 0.01f
-                        && Mathf.Abs(metrics.TopRadius - metrics.Radius) > 1e-3f;
-                    if (conical)
+                    MeshFilter filter = root.GetComponent<MeshFilter>();
+                    if ((kind == PartKind.FuelTank || kind == PartKind.Separator)
+                        && filter != null && filter.sharedMesh != null)
                     {
-                        // A capsule cannot describe the cone: the convex side mesh follows
-                        // the taper, so the player does not hit an invisible cylinder of the
-                        // bottom radius. The mesh is already built above (tank Rebuild).
+                        // Tank/separator: the procedural mesh is already the exact body
+                        // (flat-capped cylinder/cone, thin ring). A primitive gets both
+                        // wrong for the player: a CapsuleCollider puts a hemisphere on a
+                        // flat tank top (the player sinks into the rim), and a short wide
+                        // separator collapses into a sphere of its outer radius that fills
+                        // the capsule hatch placed above it. The ring's convex hull is the
+                        // flat disc the player should stand on.
                         var hull = root.AddComponent<MeshCollider>();
                         hull.convex = true;
-                        MeshFilter filter = root.GetComponent<MeshFilter>();
-                        hull.sharedMesh = filter != null ? filter.sharedMesh : null;
+                        hull.sharedMesh = filter.sharedMesh;
                     }
                     else
                     {
-                        // Part collider for the player: a capsule by dimensions (axis — local
-                        // Y; the separator is shorter than its diameter, PhysX clamps it to
-                        // a sphere — the flat ring still blocks the way).
+                        // Part collider for the player: a capsule by dimensions (axis — local Y).
                         var capsule = root.AddComponent<CapsuleCollider>();
                         capsule.direction = 1;
                         capsule.radius = metrics.Radius;
