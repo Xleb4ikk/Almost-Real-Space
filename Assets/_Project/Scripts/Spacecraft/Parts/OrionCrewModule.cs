@@ -135,6 +135,27 @@ namespace Galilego.Spacecraft
             return plus >= minus ? 1f : -1f;
         }
 
+        /// <summary>The hatch exists (the model has the animator and the door node).</summary>
+        public bool HatchAvailable
+        {
+            get { return animator != null && door != null; }
+        }
+
+        /// <summary>The hatch is open or opening (the door is swung aside).</summary>
+        public bool HatchOpen
+        {
+            get
+            {
+                if (animator == null || door == null)
+                {
+                    return false;
+                }
+
+                AnimatorStateInfo s = animator.GetCurrentAnimatorStateInfo(0);
+                return s.IsName("Hatch_Opening") || s.IsName("Hatch_Open");
+            }
+        }
+
         /// <summary>Open the hatch (airlock outward).</summary>
         public void OpenHatch()
         {
@@ -145,6 +166,35 @@ namespace Galilego.Spacecraft
         public void CloseHatch()
         {
             SetTrigger(HatchCloseId);
+        }
+
+        /// <summary>
+        /// Open or close by state. Ignores the command while the door is already
+        /// moving: the animator has no transitions out of the opening/closing
+        /// states, and a queued trigger would fire right after the clip ends.
+        /// </summary>
+        public void SetHatchOpen(bool open)
+        {
+            if (animator == null || door == null)
+            {
+                return;
+            }
+
+            AnimatorStateInfo s = animator.GetCurrentAnimatorStateInfo(0);
+            if (s.IsName("Hatch_Opening") || s.IsName("Hatch_Closing"))
+            {
+                return;
+            }
+
+            bool isOpen = s.IsName("Hatch_Open");
+            if (open && !isOpen)
+            {
+                OpenHatch();
+            }
+            else if (!open && isOpen)
+            {
+                CloseHatch();
+            }
         }
 
         /// <summary>Deploy the tablet arm towards the pilot.</summary>

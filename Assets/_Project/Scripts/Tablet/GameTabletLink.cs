@@ -62,6 +62,9 @@ namespace Galilego.Tablet
         private string[] bodyNames = { "—" };
         private int bodyCountSeen = -1;
 
+        /// <summary>Crew capsule door (the placed capsule's model), found lazily.</summary>
+        private OrionCrewModule hatch;
+
         // Proper acceleration measured between Fill calls.
         private Vector3d lastVelocity;
         private double lastVelocityTime = double.NaN;
@@ -137,6 +140,60 @@ namespace Galilego.Tablet
             }
         }
 
+        public override void SetHatchOpen(bool open)
+        {
+            OrionCrewModule module = FindHatch();
+            if (module != null)
+            {
+                module.SetHatchOpen(open);
+            }
+        }
+
+        /// <summary>
+        /// The placed capsule's OrionCrewModule. The build-mode preview also clones
+        /// the model (with its animator), so the draft is the source of truth; the
+        /// scene-wide search is only for a flight scene without the builder.
+        /// </summary>
+        private OrionCrewModule FindHatch()
+        {
+            if (hatch != null)
+            {
+                return hatch;
+            }
+
+            if (Builder == null)
+            {
+                Builder = FindAnyObjectByType<SpacecraftBuilder>();
+            }
+
+            if (Builder != null)
+            {
+                IReadOnlyList<PlacedPart> parts = Builder.Parts;
+                for (int i = 0; i < parts.Count; i++)
+                {
+                    PlacedPart part = parts[i];
+                    if (part.Kind != PartKind.Capsule || part.Visual == null || part.Visual.Root == null)
+                    {
+                        continue;
+                    }
+
+                    OrionCrewModule found = part.Visual.Root.GetComponentInChildren<OrionCrewModule>(true);
+                    if (found != null)
+                    {
+                        hatch = found;
+                        return hatch;
+                    }
+                }
+            }
+
+            if (Runner == null || !Runner.BuildMode)
+            {
+                hatch = FindAnyObjectByType<OrionCrewModule>();
+            }
+
+            return hatch;
+        }
+
         public override void Fill(TabletTelemetry t)
         {
             EnsureRefs();
@@ -190,6 +247,12 @@ namespace Galilego.Tablet
             t.StageIgnited = activeStage >= 0;
             t.CanStage = propulsion != null
                 && (activeStage < 0 ? propulsion.StageCount > 0 : propulsion.FirstAttached + 1 < propulsion.StageCount);
+
+            // The hatch belongs to the capsule, not to the vessel: its button stays
+            // usable even when the capsule is not connected to anything.
+            OrionCrewModule module = FindHatch();
+            t.HatchAvailable = module != null && module.HatchAvailable;
+            t.HatchOpen = module != null && module.HatchOpen;
 
             OrbitingBody body = ResolveBody(t);
             if (ship == null || body == null)

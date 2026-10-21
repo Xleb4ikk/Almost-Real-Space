@@ -368,7 +368,8 @@ namespace Galilego.Tablet
             }
         }
 
-        private bool ToggleButton(int x, int y, int w, int h, string label, bool on, bool enabled = true)
+        private bool ToggleButton(int x, int y, int w, int h, string label, bool on, bool enabled = true,
+            string onText = null, string offText = null)
         {
             bool hover = enabled && Over(x, y, w, h);
             Color32 bg = on ? TabletTheme.ButtonOn : (hover ? TabletTheme.ButtonHover : TabletTheme.PanelBg);
@@ -378,7 +379,8 @@ namespace Galilego.Tablet
             int ly = y + ((h - 7) / 2);
             c.Fill(x + 5, y + ((h - 5) / 2), 5, 5, !enabled ? TabletTheme.Line : (on ? TabletTheme.Bright : TabletTheme.Line));
             c.Text(x + 14, ly, label, !enabled ? TabletTheme.Line : (on || hover ? TabletTheme.Bright : TabletTheme.Main));
-            c.TextRight(x + w - 5, ly, on ? "ВКЛ" : "ВЫКЛ", !enabled ? TabletTheme.Line : (on ? TabletTheme.Main : TabletTheme.Dim));
+            c.TextRight(x + w - 5, ly, on ? (onText ?? "ВКЛ") : (offText ?? "ВЫКЛ"),
+                !enabled ? TabletTheme.Line : (on ? TabletTheme.Main : TabletTheme.Dim));
             return enabled && Clicked(x, y, w, h);
         }
 
@@ -438,17 +440,23 @@ namespace Galilego.Tablet
 
             DrawThrottle(t, ix, y + 9, iw, t.ControlsAvailable);
 
-            Separator(ix, y + 62, iw);
+            Separator(ix, y + 60, iw);
 
-            if (ToggleButton(ix, y + 68, iw, 18, "ДВИГАТЕЛЬ", t.EngineOn, t.EngineAvailable && t.ControlsAvailable))
+            if (ToggleButton(ix, y + 64, iw, 17, "ДВИГАТЕЛЬ", t.EngineOn, t.EngineAvailable && t.ControlsAvailable))
             {
                 cmd.SetEnginesEnabled(!t.EngineOn);
             }
 
             string stage = t.StageIgnited ? "ОТДЕЛИТЬ СТУПЕНЬ" : "ЗАЖЕЧЬ СТУПЕНЬ";
-            if (Button(ix, y + 92, iw, 18, stage, false, t.CanStage && t.ControlsAvailable))
+            if (Button(ix, y + 83, iw, 17, stage, false, t.CanStage && t.ControlsAvailable))
             {
                 cmd.RequestStage();
+            }
+
+            if (ToggleButton(ix, y + 102, iw, 17, "ЛЮК", t.HatchOpen, t.HatchAvailable,
+                    "ОТКРЫТ", "ЗАКРЫТ"))
+            {
+                cmd.SetHatchOpen(!t.HatchOpen);
             }
         }
 

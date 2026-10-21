@@ -129,6 +129,12 @@ namespace Galilego.Tablet
         /// <summary>Current stage is already ignited (button says "jettison", otherwise "ignite").</summary>
         public bool StageIgnited;
 
+        /// <summary>The crew capsule's hatch exists — the hatch button is active.</summary>
+        public bool HatchAvailable;
+
+        /// <summary>The hatch is open (or opening): the button says "close".</summary>
+        public bool HatchOpen;
+
         // ── Mass / thrust / ΔV ───────────────────────────────────────────
         public double CurrentMassKg;
         public double ThrustN;
@@ -173,6 +179,9 @@ namespace Galilego.Tablet
 
         /// <summary>Stage: ignite/jettison (like Space).</summary>
         void RequestStage();
+
+        /// <summary>Crew capsule hatch: open (true) or close (false), animated.</summary>
+        void SetHatchOpen(bool open);
     }
 
     /// <summary>
@@ -192,5 +201,6 @@ namespace Galilego.Tablet
         public virtual void SetThrottle(double throttle01) { }
         public virtual void SetEnginesEnabled(bool on) { }
         public virtual void RequestStage() { }
+        public virtual void SetHatchOpen(bool open) { }
     }
 }
