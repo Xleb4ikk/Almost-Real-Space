@@ -61,6 +61,26 @@ namespace Galilego.Simulation.Player
             get { return freeMode; }
         }
 
+        /// <summary>
+        /// Render-space point of the carried player on the part's CURRENT pose. The player
+        /// point from the simulation step is one physics frame behind the mirrored visuals
+        /// (the zone writes the bodies in LateUpdate, after the step), so drawing the camera
+        /// from it makes the cabin slide around the view as the vessel falls. Applying the
+        /// captured local point to the pose the visuals have now keeps the camera fixed in
+        /// the cabin. false - not carried (use the simulation point).
+        /// </summary>
+        public bool TryGetRenderPoint(out Vector3 renderPoint)
+        {
+            if (platform == null)
+            {
+                renderPoint = Vector3.zero;
+                return false;
+            }
+
+            renderPoint = platform.TransformPoint(localPoint);
+            return true;
+        }
+
         public void Reset()
         {
             platform = null;

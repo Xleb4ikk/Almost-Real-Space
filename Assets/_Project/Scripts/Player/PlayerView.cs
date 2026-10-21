@@ -5,13 +5,14 @@ namespace Galilego.Universe
 {
     /// <summary>
     /// Player rendering (floating origin, like ShipView). The player GO is the
-    /// camera target (FirstPersonCamera.Target): in EVA/OnSurface a position from
-    /// the double world relative to the dominant body; in the ship the ship point
-    /// plus a local offset (walking); seated: the FEET at the drawn seat anchor
+    /// camera target (FirstPersonCamera.Target): in EVA a position from the double
+    /// world; on the surface a position from the double world, or the current pose
+    /// of the vessel part carrying the player (walking on a ship); in the ship the
+    /// ship point plus a local offset; seated: the FEET at the drawn seat anchor
     /// (render world). Called from LateUpdate AFTER ShipView (ShipTransform must be
-    /// fresh) and AFTER VesselMirror (−48) in flight: the seat anchor lives on the
-    /// capsule visual, so it must already be this frame's pose — otherwise the
-    /// camera rides a frame-old anchor.
+    /// fresh) and AFTER VesselMirror (−48) in flight: the seat anchor and the
+    /// carried point live on the part visuals, so they must already be this frame's
+    /// pose — otherwise the camera rides a frame-old anchor.
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-42)]
     public sealed class PlayerView : MonoBehaviour
@@ -75,6 +76,15 @@ namespace Galilego.Universe
 
         private void PlaceFree()
         {
+            // Carried by a vessel part: ride the pose the cabin is DRAWN at, not the
+            // simulation point (that one is a physics frame behind the mirrored visuals
+            // and made the view shake around a falling vessel).
+            if (Runner.TryGetPlayerRenderPoint(out Vector3 carried))
+            {
+                transform.position = carried;
+                return;
+            }
+
             PlaceFree(Runner.PlayerPosition);
         }
 

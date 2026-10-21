@@ -172,6 +172,17 @@ namespace Galilego.Universe
         /// <summary>Player velocity in the double world.</summary>
         public Vector3d PlayerVelocity { get; private set; }
 
+        /// <summary>
+        /// Render-space player point for the camera. While the player is carried by a
+        /// vessel part, this rides the part's CURRENT pose (the mirror is applied after
+        /// the step), so the view stays fixed in a falling cabin instead of lagging a
+        /// physics frame behind it. false - not carried: use PlayerPosition.
+        /// </summary>
+        public bool TryGetPlayerRenderPoint(out Vector3 renderPoint)
+        {
+            return platformCarry.TryGetRenderPoint(out renderPoint);
+        }
+
         /// <summary>Player seated: the physics step is frozen at PlayerSeatedPosition.</summary>
         public bool PlayerSeated { get; private set; }
 
