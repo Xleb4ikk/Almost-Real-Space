@@ -770,6 +770,13 @@ namespace Galilego.Building
                 return;
             }
 
+            // In flight the ΔV panel lives on the ship tablet only: keep its numbers
+            // ticking for the tablet, but do not draw it on the screen.
+            if (!buildActive)
+            {
+                deltaVPanel.Hide();
+            }
+
             // A fullscreen expanded tablet draws on top and owns the screen: the
             // builder UI is not drawn. The ΔV calculation must stay alive though —
             // the tablet reads the same Live/Plan (panel.Tick without drawing).
@@ -819,7 +826,7 @@ namespace Galilego.Building
             {
                 DrawRHold("Возврат к стройке…");
                 DrawPhysicsBanner();
-                deltaVPanel.Draw(Builder, uiWidth, uiHeight, uiAlpha);
+                deltaVPanel.Tick(Builder);
             }
 
             GUI.color = Color.white;

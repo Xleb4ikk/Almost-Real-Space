@@ -301,7 +301,7 @@ namespace Galilego.Tablet
 
             int hover = interactive && pointerValid ? navball.HitTest(px, py) : -1;
             int active = ActiveMarker(t);
-            if (hover >= 0 && clickPending)
+            if (t.ControlsAvailable && hover >= 0 && clickPending)
             {
                 if (hover == active)
                 {
@@ -350,7 +350,7 @@ namespace Galilego.Tablet
 
             // SAS / RCS.
             int by = y + h - 24;
-            if (ToggleButton(x + 7, by, 74, 17, "САС", t.SasEnabled))
+            if (ToggleButton(x + 7, by, 74, 17, "САС", t.SasEnabled, t.ControlsAvailable))
             {
                 bool on = !t.SasEnabled;
                 if (on)
@@ -362,7 +362,7 @@ namespace Galilego.Tablet
                 cmd.SetSasEnabled(on);
             }
 
-            if (ToggleButton(x + w - 81, by, 74, 17, "РСУ", t.RcsEnabled))
+            if (ToggleButton(x + w - 81, by, 74, 17, "РСУ", t.RcsEnabled, t.ControlsAvailable))
             {
                 cmd.SetRcsEnabled(!t.RcsEnabled);
             }
@@ -436,17 +436,17 @@ namespace Galilego.Tablet
             int ix = x + 8;
             int iw = w - 16;
 
-            DrawThrottle(t, ix, y + 9, iw);
+            DrawThrottle(t, ix, y + 9, iw, t.ControlsAvailable);
 
             Separator(ix, y + 62, iw);
 
-            if (ToggleButton(ix, y + 68, iw, 18, "ДВИГАТЕЛЬ", t.EngineOn, t.EngineAvailable))
+            if (ToggleButton(ix, y + 68, iw, 18, "ДВИГАТЕЛЬ", t.EngineOn, t.EngineAvailable && t.ControlsAvailable))
             {
                 cmd.SetEnginesEnabled(!t.EngineOn);
             }
 
             string stage = t.StageIgnited ? "ОТДЕЛИТЬ СТУПЕНЬ" : "ЗАЖЕЧЬ СТУПЕНЬ";
-            if (Button(ix, y + 92, iw, 18, stage, false, t.CanStage))
+            if (Button(ix, y + 92, iw, 18, stage, false, t.CanStage && t.ControlsAvailable))
             {
                 cmd.RequestStage();
             }
@@ -456,9 +456,9 @@ namespace Galilego.Tablet
         /// Throttle 0-100 %: large value and a bar gauge. A click or drag on the bar sets
         /// the throttle right at the point under the cursor; quarter ticks are for aiming.
         /// </summary>
-        private void DrawThrottle(TabletTelemetry t, int x, int y, int w)
+        private void DrawThrottle(TabletTelemetry t, int x, int y, int w, bool enabled)
         {
-            float frac = Mathf.Clamp01((float)t.Throttle01);
+            float frac = enabled ? Mathf.Clamp01((float)t.Throttle01) : 0f;
 
             c.Text(x, y + 4, "ТЯГА", TabletTheme.Dim);
             int unitW = PixelCanvas.TextWidth("%");
@@ -467,7 +467,7 @@ namespace Galilego.Tablet
 
             int by = y + 21;
             int bh = 16;
-            bool hover = Over(x, by, w, bh);
+            bool hover = enabled && Over(x, by, w, bh);
 
             c.Fill(x, by, w, bh, TabletTheme.Bg);
             for (int i = 1; i < 4; i++)
@@ -495,7 +495,7 @@ namespace Galilego.Tablet
             c.TextCenter(x + (w / 2), sy, "50", TabletTheme.Line);
             c.TextRight(x + w, sy, "100", TabletTheme.Line);
 
-            if (Clicked(x, by, w, bh) || (dragPending && hover))
+            if (enabled && (Clicked(x, by, w, bh) || (dragPending && hover)))
             {
                 cmd.SetThrottle(Mathf.Clamp01((px - (x + 1)) / (float)(w - 2)));
             }

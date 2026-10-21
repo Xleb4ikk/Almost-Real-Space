@@ -112,6 +112,16 @@ namespace Galilego.Building
             }
         }
 
+        /// <summary>
+        /// The panel is not drawn (flight): drop the last hit rects so clicks in that
+        /// screen area fall through to the game instead of being swallowed.
+        /// </summary>
+        public void Hide()
+        {
+            hitRects.Clear();
+            hovered = -1;
+        }
+
         public void Draw(SpacecraftBuilder builder, float uiWidth, float uiHeight, float uiAlpha)
         {
             hitRects.Clear();

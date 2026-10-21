@@ -86,7 +86,20 @@ namespace Galilego.Tablet
             Vector3 r = q * Vector3.right;
             Vector3 u = q * Vector3.up;
             pitch = Mathf.Asin(Mathf.Clamp(f.y, -1f, 1f)) * Mathf.Rad2Deg;
-            heading = Mathf.Atan2(f.x, f.z) * Mathf.Rad2Deg;
+
+            // The chart's X axis is up × north (west on a prograde body), so the
+            // compass heading runs toward −X. With the nose near vertical the
+            // heading is undefined; the ball's up axis (the craft roll reference)
+            // gives a stable reading instead of amplifying float noise.
+            Vector3 flat = new Vector3(f.x, 0f, f.z);
+            if (flat.sqrMagnitude < 1e-4f)
+            {
+                flat = new Vector3(u.x, 0f, u.z);
+            }
+
+            heading = flat.sqrMagnitude > 1e-8f
+                ? Mathf.Atan2(-flat.x, flat.z) * Mathf.Rad2Deg
+                : 0f;
             if (heading < 0f)
             {
                 heading += 360f;
@@ -256,7 +269,8 @@ namespace Galilego.Tablet
             new Vector3(0f, 0f, 1f), new Vector3(1f, 0f, 0f), new Vector3(0f, 0f, -1f), new Vector3(-1f, 0f, 0f),
         };
 
-        private static readonly string[] CardinalNames = { "\u0421", "\u0412", "\u042E", "\u0417" };
+        // Chart +X is up × north (west), so the labels are mirrored relative to east.
+        private static readonly string[] CardinalNames = { "\u0421", "\u0417", "\u042E", "\u0412" };
 
         private static void DrawCardinals(PixelCanvas c, int cx, int cy, Quaternion q)
         {

@@ -89,10 +89,15 @@ namespace Galilego.Tablet
         public TabletOrbit Orbit;
 
         // ── Attitude (navball) ───────────────────────────────────────────
-        /// <summary>Ship rotation relative to the local horizon: ship → (X=east, Y=up, Z=north).</summary>
+        /// <summary>
+        /// Navball orientation: navball axes (X right, Y up, Z nose) → the selected
+        /// body's local horizon chart (X = up × north, Y = up, Z = north). The chart
+        /// is right-handed; X points west on a prograde body, and navball +Z is the
+        /// crew capsule's nose (local +Y of the parts).
+        /// </summary>
         public Quaternion Attitude = Quaternion.identity;
         public bool MarkersValid;
-        /// <summary>Unit vectors in the horizon frame (east, up, north).</summary>
+        /// <summary>Unit vectors in the horizon chart frame (up × north, up, north).</summary>
         public Vector3 ProgradeDir = Vector3.forward;
         public Vector3 NormalDir = Vector3.up;
         public Vector3 RadialOutDir = Vector3.up;
@@ -103,6 +108,12 @@ namespace Galilego.Tablet
         public bool RcsEnabled;
 
         // ── Ship control (the "CONTROL" panel) ──────────────────────────
+        /// <summary>
+        /// Vessel controls are available. False while the crew capsule is not attached
+        /// to any other part: there is no vessel to control yet.
+        /// </summary>
+        public bool ControlsAvailable = true;
+
         /// <summary>Throttle commanded by the player, 0..1.</summary>
         public double Throttle01;
 
