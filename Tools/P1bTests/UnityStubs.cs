@@ -355,6 +355,7 @@ namespace UnityEngine
         public static bool GetKey(KeyCode key) => false;
         public static float GetAxis(string axis) => 0f;
         public static float GetAxisRaw(string axis) => 0f;
+        public static Vector2 mousePosition => new Vector2(0f, 0f);
         public static Vector2 mouseScrollDelta => new Vector2(0f, 0f);
     }
 
@@ -482,7 +483,7 @@ namespace UnityEngine
 
     public enum CursorLockMode { None, Locked }
 
-    public enum KeyCode { Alpha1 = 49, Alpha2 = 50, Alpha3 = 51, Alpha4 = 52, Alpha5 = 53, Alpha6 = 54, Alpha7 = 55, Alpha8 = 56, Alpha9 = 57, Escape = 27, LeftShift = 304, LeftControl = 306, LeftAlt = 308, RightAlt = 309, P = 112, E = 101, F10 = 291, W = 119, A = 97, S = 115, D = 100, H = 104, R = 114, Z = 122, C = 99, Space = 32 }
+    public enum KeyCode { Alpha1 = 49, Alpha2 = 50, Alpha3 = 51, Alpha4 = 52, Alpha5 = 53, Alpha6 = 54, Alpha7 = 55, Alpha8 = 56, Alpha9 = 57, Escape = 27, LeftShift = 304, LeftControl = 306, LeftAlt = 308, RightAlt = 309, P = 112, E = 101, I = 105, F10 = 291, W = 119, A = 97, S = 115, D = 100, H = 104, R = 114, Z = 122, C = 99, Space = 32 }
 
     public static class Cursor
     {
@@ -571,6 +572,18 @@ namespace UnityEngine
         public DefaultExecutionOrderAttribute(int order) { }
     }
 
+    public enum RuntimeInitializeLoadType
+    {
+        AfterSceneLoad, BeforeSceneLoad, AfterAssembliesLoaded, BeforeSplashScreen, SubsystemRegistration
+    }
+
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+    public sealed class RuntimeInitializeOnLoadMethodAttribute : Attribute
+    {
+        public RuntimeInitializeOnLoadMethodAttribute() { }
+        public RuntimeInitializeOnLoadMethodAttribute(RuntimeInitializeLoadType loadType) { }
+    }
+
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
     public sealed class ExecuteAlwaysAttribute : Attribute
     {
@@ -629,6 +642,46 @@ namespace Galilego.Universe
     public sealed class CheatMenu : UnityEngine.MonoBehaviour
     {
         public double NoclipSpeed = 50d;
+    }
+
+    /// <summary>
+    /// Settings-menu stub. The real SettingsMenu is an IMGUI MonoBehaviour with the
+    /// whole graphics/audio/key-binding UI; the harness needs exactly one member:
+    /// PlayerInput gates every query with "the menu is open".
+    /// </summary>
+    public sealed class SettingsMenu : UnityEngine.MonoBehaviour
+    {
+        public static bool IsOpen { get { return false; } }
+    }
+
+    /// <summary>Stub of the action enum: input is asked by action, not by physical key.</summary>
+    internal enum GameAction
+    {
+        MoveForward, MoveBack, MoveLeft, MoveRight, Jump, Sprint, Descend, Interact, Lean,
+        PitchUp, PitchDown, YawRight, YawLeft, RollRight, RollLeft,
+        TransRight, TransLeft, TransUp, TransDown, TransForward, TransBack,
+        ThrottleUp, ThrottleDown, ThrottleFull, ThrottleCut, Sas, Rcs, Stage,
+        Engine1, Engine2, Engine3, Engine4, Engine5, Engine6, Engine7, Engine8,
+        EnginesAllOn, EnginesAllOff, LesAbort, LesJettison,
+        Pause, Warp1, Warp2, Warp3, Warp4, Warp5, Warp6, Warp7,
+        BuildPlace, BuildDelete, BuildPeek, BuildUndo, BuildPhysics, BuildInventory, BuildHints,
+        Hotbar1, Hotbar2, Hotbar3, Hotbar4, Hotbar5, Hotbar6, Hotbar7, Hotbar8, Hotbar9
+    }
+
+    /// <summary>Stub of the action table: only the number of actions matters (double-tap buffer).</summary>
+    internal static class ActionTable
+    {
+        public static int Count { get { return 64; } }
+    }
+
+    /// <summary>Stub of the key bindings: the harness never presses a key.</summary>
+    internal static class KeyBindings
+    {
+        public static bool Held(GameAction action) { return false; }
+
+        public static bool Down(GameAction action) { return false; }
+
+        public static bool Up(GameAction action) { return false; }
     }
 }
 

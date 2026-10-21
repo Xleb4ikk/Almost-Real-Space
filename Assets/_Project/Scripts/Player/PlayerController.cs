@@ -93,6 +93,9 @@ namespace Galilego.Universe
 
         private FirstPersonCamera screenCamera;
         private bool screenFocusActive;
+
+        /// <summary>True while the camera is zoomed onto a cockpit screen (Esc / E leave it, the settings menu stays closed).</summary>
+        public bool InScreenFocus { get { return screenFocusActive; } }
         private bool screenPrevLockCursor;
         private bool relockPending;
 
@@ -145,7 +148,7 @@ namespace Galilego.Universe
                 if (screenFocusActive)
                 {
                     Focused = null;
-                    if (FocusedScreen == null || PlayerInput.Down(GameKey.E) || PlayerInput.Down(GameKey.Escape))
+                    if (FocusedScreen == null || PlayerInput.Down(GameAction.Interact) || PlayerInput.EscapeDown())
                     {
                         ExitScreenFocus();
                     }
@@ -158,7 +161,7 @@ namespace Galilego.Universe
                 }
 
                 UpdateFocus();
-                if (PlayerInput.Down(GameKey.E))
+                if (PlayerInput.Down(GameAction.Interact))
                 {
                     if (Focused != null)
                     {
@@ -173,13 +176,13 @@ namespace Galilego.Universe
                 return;
             }
 
-            bool jetpackToggle = PlayerInput.DoubleDown(GameKey.Space);
-            bool hoverToggle = PlayerInput.DoubleDown(GameKey.LeftShift);
+            bool jetpackToggle = PlayerInput.DoubleDown(GameAction.Jump);
+            bool hoverToggle = PlayerInput.DoubleDown(GameAction.Sprint);
             UpdateFocus();
             // E is world interaction (seat, tablet, etc.) in ANY mode; in build
             // mode the inventory moved to I, so E no longer conflicts here.
             // Ship enter/exit stays outside build mode (HandleE).
-            if (PlayerInput.Down(GameKey.E))
+            if (PlayerInput.Down(GameAction.Interact))
             {
                 HandleE();
             }
@@ -368,9 +371,9 @@ namespace Galilego.Universe
                 return;
             }
 
-            Vector3 thrust = (camera.transform.forward * ((PlayerInput.Held(GameKey.W) ? 1f : 0f) - (PlayerInput.Held(GameKey.S) ? 1f : 0f)))
-                + (camera.transform.right * ((PlayerInput.Held(GameKey.D) ? 1f : 0f) - (PlayerInput.Held(GameKey.A) ? 1f : 0f)))
-                + (camera.transform.up * ((PlayerInput.Held(GameKey.Space) ? 1f : 0f) - (PlayerInput.Held(GameKey.LeftControl) ? 1f : 0f)));
+            Vector3 thrust = (camera.transform.forward * ((PlayerInput.Held(GameAction.MoveForward) ? 1f : 0f) - (PlayerInput.Held(GameAction.MoveBack) ? 1f : 0f)))
+                + (camera.transform.right * ((PlayerInput.Held(GameAction.MoveRight) ? 1f : 0f) - (PlayerInput.Held(GameAction.MoveLeft) ? 1f : 0f)))
+                + (camera.transform.up * ((PlayerInput.Held(GameAction.Jump) ? 1f : 0f) - (PlayerInput.Held(GameAction.Descend) ? 1f : 0f)));
             if (thrust.sqrMagnitude > 0f && JetpackFuel.TryConsume(Time.deltaTime))
             {
                 intent.JetpackAccel = AstroFrame.ToAstro(thrust.normalized * JetpackThrust);
@@ -412,9 +415,9 @@ namespace Galilego.Universe
             right -= up * Vector3d.Dot(right, up);
             right = right.SqrMagnitude > 1e-12d ? right.Normalized : Vector3d.Zero;
 
-            double forward = (PlayerInput.Held(GameKey.W) ? 1d : 0d) - (PlayerInput.Held(GameKey.S) ? 1d : 0d);
-            double strafe = (PlayerInput.Held(GameKey.D) ? 1d : 0d) - (PlayerInput.Held(GameKey.A) ? 1d : 0d);
-            double vertical = (PlayerInput.Held(GameKey.Space) ? 1d : 0d) - (PlayerInput.Held(GameKey.LeftShift) ? 1d : 0d);
+            double forward = (PlayerInput.Held(GameAction.MoveForward) ? 1d : 0d) - (PlayerInput.Held(GameAction.MoveBack) ? 1d : 0d);
+            double strafe = (PlayerInput.Held(GameAction.MoveRight) ? 1d : 0d) - (PlayerInput.Held(GameAction.MoveLeft) ? 1d : 0d);
+            double vertical = (PlayerInput.Held(GameAction.Jump) ? 1d : 0d) - (PlayerInput.Held(GameAction.Sprint) ? 1d : 0d);
 
             Vector3d horizontal = (flatForward * forward) + (right * strafe);
             Vector3d velocity = horizontal.SqrMagnitude > 1e-12d
@@ -454,11 +457,11 @@ namespace Galilego.Universe
                         // the ship point, limited by a radius.
                         Vector3 flatForward = Vector3.ProjectOnPlane(camera.transform.forward, camera.transform.up);
                         flatForward.Normalize();
-                        Vector3 move = (flatForward * ((PlayerInput.Held(GameKey.W) ? 1f : 0f) - (PlayerInput.Held(GameKey.S) ? 1f : 0f)))
-                            + (camera.transform.right * ((PlayerInput.Held(GameKey.D) ? 1f : 0f) - (PlayerInput.Held(GameKey.A) ? 1f : 0f)));
+                        Vector3 move = (flatForward * ((PlayerInput.Held(GameAction.MoveForward) ? 1f : 0f) - (PlayerInput.Held(GameAction.MoveBack) ? 1f : 0f)))
+                            + (camera.transform.right * ((PlayerInput.Held(GameAction.MoveRight) ? 1f : 0f) - (PlayerInput.Held(GameAction.MoveLeft) ? 1f : 0f)));
                         if (move.sqrMagnitude > 0f)
                         {
-                            float speed = PlayerInput.Held(GameKey.LeftShift) ? RunSpeed : WalkSpeed;
+                            float speed = PlayerInput.Held(GameAction.Sprint) ? RunSpeed : WalkSpeed;
                             ShipLocalOffset += move.normalized * (speed * Time.deltaTime);
                             if (ShipLocalOffset.magnitude > ShipWalkRadius)
                             {
@@ -490,14 +493,14 @@ namespace Galilego.Universe
                     {
                         Vector3 flatForward = Vector3.ProjectOnPlane(camera.transform.forward, camera.transform.up);
                         flatForward.Normalize();
-                        Vector3 move = (flatForward * ((PlayerInput.Held(GameKey.W) ? 1f : 0f) - (PlayerInput.Held(GameKey.S) ? 1f : 0f)))
-                            + (camera.transform.right * ((PlayerInput.Held(GameKey.D) ? 1f : 0f) - (PlayerInput.Held(GameKey.A) ? 1f : 0f)));
+                        Vector3 move = (flatForward * ((PlayerInput.Held(GameAction.MoveForward) ? 1f : 0f) - (PlayerInput.Held(GameAction.MoveBack) ? 1f : 0f)))
+                            + (camera.transform.right * ((PlayerInput.Held(GameAction.MoveRight) ? 1f : 0f) - (PlayerInput.Held(GameAction.MoveLeft) ? 1f : 0f)));
                         if (move.sqrMagnitude > 0f)
                         {
                             // The support is a vessel part (sourceId from VesselSupport):
                             // cramped interiors use a separate, slower speed.
                             bool onVessel = Runner.PlayerGroundSourceId >= VesselSupport.SourceIdBase;
-                            float speed = PlayerInput.Held(GameKey.LeftShift)
+                            float speed = PlayerInput.Held(GameAction.Sprint)
                                 ? (onVessel ? VesselRunSpeed : RunSpeed)
                                 : (onVessel ? VesselWalkSpeed : WalkSpeed);
                             Vector3d walkAstro = AstroFrame.ToAstro(move.normalized);
@@ -507,7 +510,7 @@ namespace Galilego.Universe
 
                         // While hovering, Space/Shift are the hover vertical, not a jump.
                         bool hovering = Runner.PlayerHoverActive;
-                        intent.Jump = PlayerInput.Down(GameKey.Space) && !jetpackToggle && !hovering;
+                        intent.Jump = PlayerInput.Down(GameAction.Jump) && !jetpackToggle && !hovering;
                         if (hovering || (hoverToggle && Runner.PlayerAirborne))
                         {
                             ApplyHoverInput(ref intent, camera);
@@ -525,12 +528,12 @@ namespace Galilego.Universe
                     {
                         // Full 3D along the camera: look down + W dives,
                         // Space/Ctrl are explicit surface/descend.
-                        Vector3 swim = (camera.transform.forward * ((PlayerInput.Held(GameKey.W) ? 1f : 0f) - (PlayerInput.Held(GameKey.S) ? 1f : 0f)))
-                            + (camera.transform.right * ((PlayerInput.Held(GameKey.D) ? 1f : 0f) - (PlayerInput.Held(GameKey.A) ? 1f : 0f)))
-                            + (camera.transform.up * ((PlayerInput.Held(GameKey.Space) ? 1f : 0f) - (PlayerInput.Held(GameKey.LeftControl) ? 1f : 0f)));
+                        Vector3 swim = (camera.transform.forward * ((PlayerInput.Held(GameAction.MoveForward) ? 1f : 0f) - (PlayerInput.Held(GameAction.MoveBack) ? 1f : 0f)))
+                            + (camera.transform.right * ((PlayerInput.Held(GameAction.MoveRight) ? 1f : 0f) - (PlayerInput.Held(GameAction.MoveLeft) ? 1f : 0f)))
+                            + (camera.transform.up * ((PlayerInput.Held(GameAction.Jump) ? 1f : 0f) - (PlayerInput.Held(GameAction.Descend) ? 1f : 0f)));
                         if (swim.sqrMagnitude > 0f)
                         {
-                            float speed = PlayerInput.Held(GameKey.LeftShift) ? SwimFastSpeed : SwimSpeed;
+                            float speed = PlayerInput.Held(GameAction.Sprint) ? SwimFastSpeed : SwimSpeed;
                             Vector3d swimAstro = AstroFrame.ToAstro(swim.normalized);
                             intent.SwimDirection = swimAstro.Normalized;
                             intent.SwimSpeed = speed;
@@ -558,9 +561,9 @@ namespace Galilego.Universe
                 return;
             }
 
-            Vector3 move = (camera.transform.forward * ((PlayerInput.Held(GameKey.W) ? 1f : 0f) - (PlayerInput.Held(GameKey.S) ? 1f : 0f)))
-                + (camera.transform.right * ((PlayerInput.Held(GameKey.D) ? 1f : 0f) - (PlayerInput.Held(GameKey.A) ? 1f : 0f)))
-                + (camera.transform.up * ((PlayerInput.Held(GameKey.Space) ? 1f : 0f) - (PlayerInput.Held(GameKey.LeftControl) ? 1f : 0f)));
+            Vector3 move = (camera.transform.forward * ((PlayerInput.Held(GameAction.MoveForward) ? 1f : 0f) - (PlayerInput.Held(GameAction.MoveBack) ? 1f : 0f)))
+                + (camera.transform.right * ((PlayerInput.Held(GameAction.MoveRight) ? 1f : 0f) - (PlayerInput.Held(GameAction.MoveLeft) ? 1f : 0f)))
+                + (camera.transform.up * ((PlayerInput.Held(GameAction.Jump) ? 1f : 0f) - (PlayerInput.Held(GameAction.Descend) ? 1f : 0f)));
             if (move.sqrMagnitude > 0f)
             {
                 intent.NoclipDirection = AstroFrame.ToAstro(move.normalized);

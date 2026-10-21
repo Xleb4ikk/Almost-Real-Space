@@ -5,9 +5,6 @@ using Galilego.Spacecraft;
 using Galilego.Tablet;
 using Galilego.Universe;
 using UnityEngine;
-#if ENABLE_INPUT_SYSTEM
-using UnityEngine.InputSystem;
-#endif
 
 namespace Galilego.Flight
 {
@@ -76,21 +73,22 @@ namespace Galilego.Flight
                 return;
             }
 
-            c.Pitch = Axis(FKey.W, FKey.S);
-            c.Yaw = Axis(FKey.D, FKey.A);
-            c.Roll = Axis(FKey.E, FKey.Q);
-            c.Translate = new Vector3d(Axis(FKey.L, FKey.J), Axis(FKey.I, FKey.K), Axis(FKey.O, FKey.U));
+            c.Pitch = Axis(GameAction.PitchUp, GameAction.PitchDown);
+            c.Yaw = Axis(GameAction.YawRight, GameAction.YawLeft);
+            c.Roll = Axis(GameAction.RollRight, GameAction.RollLeft);
+            c.Translate = new Vector3d(Axis(GameAction.TransRight, GameAction.TransLeft),
+                Axis(GameAction.TransUp, GameAction.TransDown), Axis(GameAction.TransForward, GameAction.TransBack));
 
-            if (Down(FKey.Z)) Runner.RawThrottle = 1d;
-            if (Down(FKey.X)) Runner.RawThrottle = 0d;
-            if (Down(FKey.T)) { c.SasOn = !c.SasOn; model.HoldCurrentAttitude(); }
-            if (Down(FKey.G)) c.RcsOn = !c.RcsOn;
+            if (PlayerInput.Down(GameAction.ThrottleFull)) Runner.RawThrottle = 1d;
+            if (PlayerInput.Down(GameAction.ThrottleCut)) Runner.RawThrottle = 0d;
+            if (PlayerInput.Down(GameAction.Sas)) { c.SasOn = !c.SasOn; model.HoldCurrentAttitude(); }
+            if (PlayerInput.Down(GameAction.Rcs)) c.RcsOn = !c.RcsOn;
             for (int i = 0; i < 8; i++)
-                if (Down((FKey)((int)FKey.F1 + i))) model.ToggleEngine(i);
-            if (Down(FKey.F9)) model.SetAllEngines(true);
-            if (Down(FKey.F10)) model.SetAllEngines(false);
-            if (Down(FKey.Backspace) && model.TriggerAbort()) Debug.Log("[САС] АВАРИЙНЫЙ УВОД");
-            if (Down(FKey.Delete) && model.RequestJettison()) Debug.Log("[САС] отстрел башни");
+                if (PlayerInput.Down((GameAction)((int)GameAction.Engine1 + i))) model.ToggleEngine(i);
+            if (PlayerInput.Down(GameAction.EnginesAllOn)) model.SetAllEngines(true);
+            if (PlayerInput.Down(GameAction.EnginesAllOff)) model.SetAllEngines(false);
+            if (PlayerInput.Down(GameAction.LesAbort) && model.TriggerAbort()) Debug.Log("[САС] АВАРИЙНЫЙ УВОД");
+            if (PlayerInput.Down(GameAction.LesJettison) && model.RequestJettison()) Debug.Log("[САС] отстрел башни");
         }
 
         // ─── Separation / LES ─────────────────────────────────────────────────
@@ -322,54 +320,15 @@ namespace Galilego.Flight
             }
 
             if (model.LesPart >= 0 || model.Aborting)
-                s += "САС: " + (model.Aborting ? "УВОД" : model.LesArmed ? "готова (Backspace — увод)" : "отстрелена") + "\n";
+                s += "САС: " + (model.Aborting ? "УВОД" : model.LesArmed ? "готова (" + KeyBindings.DisplayAction(GameAction.LesAbort) + " — увод)" : "отстрелена") + "\n";
             GUI.Label(new Rect(12, 12, 520, 260), s);
         }
 
         // ─── Keys ─────────────────────────────────────────────────────────
 
-        private enum FKey { W, A, S, D, Q, E, I, J, K, L, U, O, T, G, Z, X, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, Backspace, Delete }
-
-        private static double Axis(FKey plus, FKey minus)
+        private static double Axis(GameAction plus, GameAction minus)
         {
-            return (Held(plus) ? 1d : 0d) - (Held(minus) ? 1d : 0d);
+            return (PlayerInput.Held(plus) ? 1d : 0d) - (PlayerInput.Held(minus) ? 1d : 0d);
         }
-
-#if ENABLE_INPUT_SYSTEM
-        private static Key Map(FKey k)
-        {
-            switch (k)
-            {
-                case FKey.W: return Key.W; case FKey.A: return Key.A; case FKey.S: return Key.S; case FKey.D: return Key.D;
-                case FKey.Q: return Key.Q; case FKey.E: return Key.E; case FKey.I: return Key.I; case FKey.J: return Key.J;
-                case FKey.K: return Key.K; case FKey.L: return Key.L; case FKey.U: return Key.U; case FKey.O: return Key.O;
-                case FKey.T: return Key.T; case FKey.G: return Key.G; case FKey.Z: return Key.Z; case FKey.X: return Key.X;
-                case FKey.F1: return Key.F1; case FKey.F2: return Key.F2; case FKey.F3: return Key.F3; case FKey.F4: return Key.F4;
-                case FKey.F5: return Key.F5; case FKey.F6: return Key.F6; case FKey.F7: return Key.F7; case FKey.F8: return Key.F8;
-                case FKey.F9: return Key.F9; case FKey.F10: return Key.F10;
-                case FKey.Backspace: return Key.Backspace; default: return Key.Delete;
-            }
-        }
-
-        private static bool Held(FKey k) { Keyboard kb = Keyboard.current; return kb != null && kb[Map(k)].isPressed; }
-        private static bool Down(FKey k) { Keyboard kb = Keyboard.current; return kb != null && kb[Map(k)].wasPressedThisFrame; }
-#else
-        private static KeyCode Map(FKey k)
-        {
-            switch (k)
-            {
-                case FKey.Backspace: return KeyCode.Backspace;
-                case FKey.Delete: return KeyCode.Delete;
-                case FKey.F9: return KeyCode.F9;
-                case FKey.F10: return KeyCode.F10;
-                default:
-                    if (k >= FKey.F1 && k <= FKey.F8) return KeyCode.F1 + (k - FKey.F1);
-                    return (KeyCode)Enum.Parse(typeof(KeyCode), k.ToString());
-            }
-        }
-
-        private static bool Held(FKey k) { return Input.GetKey(Map(k)); }
-        private static bool Down(FKey k) { return Input.GetKeyDown(Map(k)); }
-#endif
     }
 }

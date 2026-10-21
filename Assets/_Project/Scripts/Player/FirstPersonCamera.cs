@@ -186,15 +186,7 @@ namespace Galilego.Universe
             // stay on and the next Play would stare at the ceiling.
             ClearDebugLook();
 #endif
-            var hdCamera = GetComponent<UnityEngine.Rendering.HighDefinition.HDAdditionalCameraData>();
-            if (hdCamera != null)
-            {
-                hdCamera.antialiasing = TemporalAA
-                    ? UnityEngine.Rendering.HighDefinition.HDAdditionalCameraData.AntialiasingMode.TemporalAntialiasing
-                    : SubpixelAA
-                        ? UnityEngine.Rendering.HighDefinition.HDAdditionalCameraData.AntialiasingMode.SubpixelMorphologicalAntiAliasing
-                        : UnityEngine.Rendering.HighDefinition.HDAdditionalCameraData.AntialiasingMode.None;
-            }
+            ApplyAntiAliasing();
 
             if (LockCursor)
             {
@@ -205,6 +197,47 @@ namespace Galilego.Universe
             if (camComponent != null)
             {
                 baseFieldOfView = camComponent.fieldOfView;
+            }
+
+            // First launch: the scene camera's own FOV becomes the setting's default.
+            if (GameSettings.Data.fov <= 0f)
+            {
+                GameSettings.Data.fov = baseFieldOfView;
+            }
+        }
+
+        /// <summary>
+        /// Anti-aliasing from the settings menu (0 none, 1 FXAA, 2 SMAA, 3 TAA). Until the
+        /// player picks one, the TemporalAA / SubpixelAA fields above decide, as before.
+        /// </summary>
+        public void ApplyAntiAliasing()
+        {
+            var hdCamera = GetComponent<UnityEngine.Rendering.HighDefinition.HDAdditionalCameraData>();
+            if (hdCamera == null)
+            {
+                return;
+            }
+
+            SettingsData settings = GameSettings.Data;
+            if (settings.antiAliasing < 0)
+            {
+                settings.antiAliasing = TemporalAA ? 3 : (SubpixelAA ? 2 : 0);
+            }
+
+            switch (settings.antiAliasing)
+            {
+                case 1:
+                    hdCamera.antialiasing = UnityEngine.Rendering.HighDefinition.HDAdditionalCameraData.AntialiasingMode.FastApproximateAntialiasing;
+                    break;
+                case 2:
+                    hdCamera.antialiasing = UnityEngine.Rendering.HighDefinition.HDAdditionalCameraData.AntialiasingMode.SubpixelMorphologicalAntiAliasing;
+                    break;
+                case 3:
+                    hdCamera.antialiasing = UnityEngine.Rendering.HighDefinition.HDAdditionalCameraData.AntialiasingMode.TemporalAntialiasing;
+                    break;
+                default:
+                    hdCamera.antialiasing = UnityEngine.Rendering.HighDefinition.HDAdditionalCameraData.AntialiasingMode.None;
+                    break;
             }
         }
 
@@ -225,13 +258,10 @@ namespace Galilego.Universe
 
             // Ctrl in build mode peeks: while the key is held the cursor is
             // released (ΔV panel, hints). Release it and the lock returns on its own.
-            bool peek = Runner != null && Runner.BuildMode && PlayerInput.Held(GameKey.LeftControl);
+            bool peek = Runner != null && Runner.BuildMode && PlayerInput.Held(GameAction.BuildPeek);
 
-            if (PlayerInput.Down(GameKey.Escape))
-            {
-                cursorReleasedByUser = true;
-                SetCursorLocked(false);
-            }
+            // Esc now belongs to the settings menu (SettingsMenu), which releases and
+            // restores the cursor itself through LockCursor.
 
             if (PlayerInput.MouseLeftDown() && Cursor.lockState != CursorLockMode.Locked && !peek)
             {
@@ -303,7 +333,7 @@ namespace Galilego.Universe
 
             // RMB leans in close (monitor buttons are readable and clickable
             // precisely). In build mode RMB is taken by placement/slot menu — leave it.
-            bool lean = LeanMaxMeters > 0f && PlayerInput.MouseRightHeld() && focusPose == null
+            bool lean = LeanMaxMeters > 0f && GameSettings.Data.lean && PlayerInput.Held(GameAction.Lean) && focusPose == null
                 && (Runner == null || !Runner.BuildMode);
             leanBlend = Mathf.MoveTowards(leanBlend, lean ? 1f : 0f, Time.deltaTime * 6f);
 
@@ -374,6 +404,11 @@ namespace Galilego.Universe
             transform.position = eye;
 
             Camera cam = GetComponent<Camera>();
+            if (GameSettings.Data.fov > 0f)
+            {
+                baseFieldOfView = GameSettings.Data.fov;
+            }
+
             if (cam != null && LeanFieldOfView > 0f && leanBlend > 0.0001f)
             {
                 cam.fieldOfView = Mathf.Lerp(baseFieldOfView, LeanFieldOfView, leanBlend);
@@ -448,9 +483,10 @@ namespace Galilego.Universe
             Vector2 md = PlayerInput.MouseDelta();
             // Finer mouse in the lean — otherwise at arm's length the crosshair
             // skips over small monitor buttons.
-            float sensitivity = MouseSensitivity * Mathf.Lerp(1f, LeanSensitivityScale, leanBlend);
+            float sensitivity = MouseSensitivity * GameSettings.Data.mouseSensitivity
+                * Mathf.Lerp(1f, LeanSensitivityScale, leanBlend);
             float yaw = md.x * sensitivity;
-            float pitch = md.y * sensitivity;
+            float pitch = md.y * sensitivity * (GameSettings.Data.invertY ? -1f : 1f);
 
             // Dead zone: with a locked cursor in the editor the new Input System
             // can feed micro delta noise every frame, continuously nudging the

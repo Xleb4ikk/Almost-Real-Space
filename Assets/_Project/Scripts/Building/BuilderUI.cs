@@ -238,7 +238,7 @@ namespace Galilego.Building
             // deletion are muted while held (as with the window open). An
             // expanded tablet uses the same flag: clicks on its buttons must not
             // place/delete parts behind it.
-            Builder.UiOpen = open || PlayerInput.Held(GameKey.LeftControl) || ShipTablet.AnyExpanded;
+            Builder.UiOpen = open || PlayerInput.Held(GameAction.BuildPeek) || ShipTablet.AnyExpanded;
 
             // The station tablet took over the screen (sat in a chair) — close
             // the inventory: two fullscreen windows on top of each other are not needed.
@@ -253,13 +253,18 @@ namespace Galilego.Building
             // Inventory is on I (E is taken by world interactions: chairs, tablet).
             // An expanded tablet also blocks I: two fullscreen interfaces on top
             // of each other are a mess, and there is one cursor.
-            if (PlayerInput.Down(GameKey.I) && !ShipTablet.AnyExpanded)
+            if (PlayerInput.Down(GameAction.BuildInventory) && !ShipTablet.AnyExpanded)
             {
                 SetOpen(!open);
             }
 
+            if (open && PlayerInput.EscapeDown())
+            {
+                SetOpen(false);
+            }
+
             // H — hide/restore key hints (panel at the bottom left).
-            if (PlayerInput.Down(GameKey.H))
+            if (PlayerInput.Down(GameAction.BuildHints))
             {
                 hintsHidden = !hintsHidden;
             }
@@ -267,7 +272,7 @@ namespace Galilego.Building
             // Wheel/digits work with the window open too (handy for tidying up).
             for (int i = 0; i < hotbar.Length; i++)
             {
-                if (PlayerInput.Down((GameKey)((int)GameKey.Digit1 + i)))
+                if (PlayerInput.Down((GameAction)((int)GameAction.Hotbar1 + i)))
                 {
                     SetHotbarIndex(i);
                 }
@@ -303,9 +308,13 @@ namespace Galilego.Building
             }
         }
 
+        /// <summary>The inventory window is open (Esc closes it instead of opening the settings menu).</summary>
+        public static bool AnyOpen { get; private set; }
+
         private void SetOpen(bool value)
         {
             open = value;
+            AnyOpen = value;
             holdId = -1;
             if (!value)
             {

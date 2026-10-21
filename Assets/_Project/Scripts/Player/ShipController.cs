@@ -34,7 +34,7 @@ namespace Galilego.Universe
             {
                 for (int rung = 0; rung < WarpController.WarpRungs.Length; rung++)
                 {
-                    if (PlayerInput.Down((GameKey)((int)GameKey.Digit1 + rung)))
+                    if (PlayerInput.Down((GameAction)((int)GameAction.Warp1 + rung)))
                     {
                         Runner.Warp.SetWarpFactor(WarpController.WarpRungs[rung]);
                     }
@@ -42,19 +42,19 @@ namespace Galilego.Universe
             }
 
             double throttle = Runner.RawThrottle;
-            if (PlayerInput.Held(GameKey.LeftShift))
+            if (PlayerInput.Held(GameAction.ThrottleUp))
             {
                 throttle = System.Math.Min(1d, throttle + ThrottleStep * Time.deltaTime * 2d);
             }
 
-            if (PlayerInput.Held(GameKey.LeftControl))
+            if (PlayerInput.Held(GameAction.ThrottleDown))
             {
                 throttle = System.Math.Max(0d, throttle - ThrottleStep * Time.deltaTime * 2d);
             }
 
             Runner.RawThrottle = throttle;
 
-            if (PlayerInput.Down(GameKey.P))
+            if (PlayerInput.Down(GameAction.Pause))
             {
                 Runner.Paused = !Runner.Paused;
             }

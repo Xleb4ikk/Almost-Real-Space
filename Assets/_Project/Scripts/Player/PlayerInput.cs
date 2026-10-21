@@ -5,91 +5,89 @@ using UnityEngine.InputSystem;
 
 namespace Galilego.Universe
 {
-    /// <summary>Input key abstraction (independent of the input system).</summary>
-    internal enum GameKey
-    {
-        W, A, S, D, Space, LeftShift, LeftControl, E, I, P, H, Escape,
-        Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7,
-        Digit8, Digit9, R, Z, C
-    }
-
     /// <summary>
-    /// Input through the new Input System when active (ENABLE_INPUT_SYSTEM), with
-    /// a legacy fallback for the test bench. Needed because with Active Input
-    /// Handling = Both the old mouse module spams "Screen position out of view
-    /// frustum" while the cursor is locked.
+    /// Game input. Keys are asked by ACTION (GameAction), not by physical key: the
+    /// action → key table lives in KeyBindings and is edited in the settings menu.
+    /// While the settings menu is open every gameplay query returns "nothing pressed",
+    /// so no system (flight, builder, throttle, warp) has to know about the menu.
+    /// The new Input System is used when active (ENABLE_INPUT_SYSTEM), with a legacy
+    /// fallback. Needed because with Active Input Handling = Both the old mouse
+    /// module spams "Screen position out of view frustum" while the cursor is locked.
     /// </summary>
     internal static class PlayerInput
     {
         private const float DoubleTapWindowSeconds = 0.3f;
-        private static bool spaceIsDown;
-        private static float lastSpacePressTime = float.NegativeInfinity;
-        private static bool shiftIsDown;
-        private static float lastShiftPressTime = float.NegativeInfinity;
 
-        /// <summary>
-        /// Double tap on a key: Space — jetpack, LeftShift — hover.
-        /// </summary>
-        public static bool DoubleDown(GameKey key)
+        private static bool[] tapIsDown;
+        private static float[] tapLastPress;
+
+        /// <summary>The settings menu consumed Esc on this frame (opened or closed itself).</summary>
+        public static int EscapeConsumedFrame = -1;
+
+        private static bool Blocked
         {
-            if (key == GameKey.Space)
-            {
-#if ENABLE_INPUT_SYSTEM
-                Keyboard keyboard = Keyboard.current;
-                if (keyboard == null)
-                {
-                    spaceIsDown = false;
-                    return false;
-                }
+            get { return SettingsMenu.IsOpen; }
+        }
 
-                var space = keyboard[Key.Space];
-                return TrackDoubleTap(ref spaceIsDown, ref lastSpacePressTime,
-                    space.isPressed, space.wasPressedThisFrame, space.wasReleasedThisFrame);
-#else
-                return TrackDoubleTap(ref spaceIsDown, ref lastSpacePressTime,
-                    Input.GetKey(KeyCode.Space),
-                    Input.GetKeyDown(KeyCode.Space),
-                    Input.GetKeyUp(KeyCode.Space));
-#endif
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            tapIsDown = null;
+            tapLastPress = null;
+            EscapeConsumedFrame = -1;
+        }
+
+        public static bool Held(GameAction action)
+        {
+            return !Blocked && KeyBindings.Held(action);
+        }
+
+        public static bool Down(GameAction action)
+        {
+            return !Blocked && KeyBindings.Down(action);
+        }
+
+        public static bool Up(GameAction action)
+        {
+            return !Blocked && KeyBindings.Up(action);
+        }
+
+        /// <summary>Double tap on an action's key: Jump — jetpack, Sprint — hover.</summary>
+        public static bool DoubleDown(GameAction action)
+        {
+            if (tapIsDown == null)
+            {
+                tapIsDown = new bool[ActionTable.Count];
+                tapLastPress = new float[ActionTable.Count];
+                for (int i = 0; i < tapLastPress.Length; i++)
+                {
+                    tapLastPress[i] = float.NegativeInfinity;
+                }
             }
 
-            if (key == GameKey.LeftShift)
-            {
-#if ENABLE_INPUT_SYSTEM
-                Keyboard keyboard = Keyboard.current;
-                if (keyboard == null)
-                {
-                    shiftIsDown = false;
-                    return false;
-                }
+            int index = (int)action;
+            return TrackDoubleTap(ref tapIsDown[index], ref tapLastPress[index],
+                Held(action), Down(action), Up(action));
+        }
 
-                var shift = keyboard.leftShiftKey;
-                return TrackDoubleTap(ref shiftIsDown, ref lastShiftPressTime,
-                    shift.isPressed, shift.wasPressedThisFrame, shift.wasReleasedThisFrame);
+        /// <summary>Esc for gameplay (leave a screen, close a window). Not while the menu is open or just used it.</summary>
+        public static bool EscapeDown()
+        {
+            return !Blocked && EscapeConsumedFrame != Time.frameCount && RawEscapeDown();
+        }
+
+        /// <summary>Esc with no filtering — only the settings menu itself uses it.</summary>
+        public static bool RawEscapeDown()
+        {
+#if ENABLE_INPUT_SYSTEM
+            Keyboard keyboard = Keyboard.current;
+            return keyboard != null && keyboard.escapeKey.wasPressedThisFrame;
 #else
-                return TrackDoubleTap(ref shiftIsDown, ref lastShiftPressTime,
-                    Input.GetKey(KeyCode.LeftShift),
-                    Input.GetKeyDown(KeyCode.LeftShift),
-                    Input.GetKeyUp(KeyCode.LeftShift));
+            return Input.GetKeyDown(KeyCode.Escape);
 #endif
-            }
-
-            return false;
         }
 
 #if ENABLE_INPUT_SYSTEM
-        public static bool Held(GameKey key)
-        {
-            Keyboard keyboard = Keyboard.current;
-            return keyboard != null && keyboard[ToKey(key)].isPressed;
-        }
-
-        public static bool Down(GameKey key)
-        {
-            Keyboard keyboard = Keyboard.current;
-            return keyboard != null && keyboard[ToKey(key)].wasPressedThisFrame;
-        }
-
         /// <summary>Mouse delta for this frame in axis units (like the old Mouse X/Y).</summary>
         public static Vector2 MouseDelta()
         {
@@ -107,123 +105,31 @@ namespace Galilego.Universe
         public static bool MouseLeftDown()
         {
             Mouse mouse = Mouse.current;
-            return mouse != null && mouse.leftButton.wasPressedThisFrame;
+            return !Blocked && mouse != null && mouse.leftButton.wasPressedThisFrame;
         }
 
         public static bool MouseLeftHeld()
         {
             Mouse mouse = Mouse.current;
-            return mouse != null && mouse.leftButton.isPressed;
-        }
-
-        public static bool MouseRightDown()
-        {
-            Mouse mouse = Mouse.current;
-            return mouse != null && mouse.rightButton.wasPressedThisFrame;
-        }
-
-        public static bool MouseRightHeld()
-        {
-            Mouse mouse = Mouse.current;
-            return mouse != null && mouse.rightButton.isPressed;
+            return !Blocked && mouse != null && mouse.leftButton.isPressed;
         }
 
         /// <summary>Wheel scroll for this frame (positive is away from the user).</summary>
         public static float MouseScroll()
         {
             Mouse mouse = Mouse.current;
-            return mouse != null ? mouse.scroll.ReadValue().y * 0.01f : 0f;
-        }
-
-        /// <summary>Any Alt held (aim-based delete in build mode).</summary>
-        public static bool AltHeld()
-        {
-            Keyboard keyboard = Keyboard.current;
-            return keyboard != null && (keyboard.leftAltKey.isPressed || keyboard.rightAltKey.isPressed);
-        }
-
-        private static Key ToKey(GameKey key)
-        {
-            switch (key)
-            {
-                case GameKey.W: return Key.W;
-                case GameKey.A: return Key.A;
-                case GameKey.S: return Key.S;
-                case GameKey.D: return Key.D;
-                case GameKey.Space: return Key.Space;
-                case GameKey.LeftShift: return Key.LeftShift;
-                case GameKey.LeftControl: return Key.LeftCtrl;
-                case GameKey.E: return Key.E;
-                case GameKey.I: return Key.I;
-                case GameKey.P: return Key.P;
-                case GameKey.H: return Key.H;
-                case GameKey.Escape: return Key.Escape;
-                case GameKey.Digit1: return Key.Digit1;
-                case GameKey.Digit2: return Key.Digit2;
-                case GameKey.Digit3: return Key.Digit3;
-                case GameKey.Digit4: return Key.Digit4;
-                case GameKey.Digit5: return Key.Digit5;
-                case GameKey.Digit6: return Key.Digit6;
-                case GameKey.Digit7: return Key.Digit7;
-                case GameKey.Digit8: return Key.Digit8;
-                case GameKey.Digit9: return Key.Digit9;
-                case GameKey.R: return Key.R;
-                case GameKey.Z: return Key.Z;
-                default: return Key.C;
-            }
+            return !Blocked && mouse != null ? mouse.scroll.ReadValue().y * 0.01f : 0f;
         }
 #else
-        public static bool Held(GameKey key) => Input.GetKey(ToKeyCode(key));
-
-        public static bool Down(GameKey key) => Input.GetKeyDown(ToKeyCode(key));
-
         public static Vector2 MouseDelta() => new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
 
         public static Vector2 MousePosition() => Input.mousePosition;
 
-        public static bool MouseLeftDown() => Input.GetMouseButtonDown(0);
+        public static bool MouseLeftDown() => !Blocked && Input.GetMouseButtonDown(0);
 
-        public static bool MouseLeftHeld() => Input.GetMouseButton(0);
+        public static bool MouseLeftHeld() => !Blocked && Input.GetMouseButton(0);
 
-        public static bool MouseRightDown() => Input.GetMouseButtonDown(1);
-
-        public static bool MouseRightHeld() => Input.GetMouseButton(1);
-
-        public static float MouseScroll() => Input.mouseScrollDelta.y;
-
-        /// <summary>Any Alt held (aim-based delete in build mode).</summary>
-        public static bool AltHeld() => Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
-
-        private static KeyCode ToKeyCode(GameKey key)
-        {
-            switch (key)
-            {
-                case GameKey.W: return KeyCode.W;
-                case GameKey.A: return KeyCode.A;
-                case GameKey.S: return KeyCode.S;
-                case GameKey.D: return KeyCode.D;
-                case GameKey.Space: return KeyCode.Space;
-                case GameKey.LeftShift: return KeyCode.LeftShift;
-                case GameKey.LeftControl: return KeyCode.LeftControl;
-                case GameKey.E: return KeyCode.E;
-                case GameKey.I: return KeyCode.I;
-                case GameKey.P: return KeyCode.P;
-                case GameKey.H: return KeyCode.H;
-                case GameKey.Escape: return KeyCode.Escape;
-                case GameKey.Digit1: return KeyCode.Alpha1;
-                case GameKey.Digit2: return KeyCode.Alpha2;
-                case GameKey.Digit3: return KeyCode.Alpha3;
-                case GameKey.Digit4: return KeyCode.Alpha4;
-                case GameKey.Digit5: return KeyCode.Alpha5;
-                case GameKey.Digit6: return KeyCode.Alpha6;
-                case GameKey.Digit7: return KeyCode.Alpha7;
-                case GameKey.Digit8: return KeyCode.Alpha8;
-                case GameKey.Digit9: return KeyCode.Alpha9;
-                case GameKey.R: return KeyCode.R;
-                case GameKey.Z: return KeyCode.Z;
-                default: return KeyCode.C;
-            }
-        }
+        public static float MouseScroll() => Blocked ? 0f : Input.mouseScrollDelta.y;
 #endif
 
         /// <summary>

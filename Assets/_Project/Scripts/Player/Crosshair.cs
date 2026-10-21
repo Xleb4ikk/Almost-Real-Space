@@ -56,7 +56,8 @@ namespace Galilego.Universe
             // The ring is only needed while aiming: with the cursor released
             // (Esc, cheat menu, tablet, builder peek) the mouse does not drive the
             // view and the screen center means nothing.
-            if (Cursor.lockState != CursorLockMode.Locked || !Application.isFocused)
+            if (Cursor.lockState != CursorLockMode.Locked || !Application.isFocused
+                || !GameSettings.Data.crosshair)
             {
                 return;
             }
@@ -78,10 +79,13 @@ namespace Galilego.Universe
         /// </summary>
         private void EnsureTexture()
         {
-            int size = Mathf.CeilToInt((Radius + Thickness) * 2f) + 2;
+            float userScale = GameSettings.Data.crosshairScale;
+            float radius = Radius * userScale;
+            float thickness = Thickness * Mathf.Max(1f, userScale);
+            int size = Mathf.CeilToInt((radius + thickness) * 2f) + 2;
             if (ringTexture != null && size == builtSize
-                && Mathf.Approximately(Radius, builtRadius)
-                && Mathf.Approximately(Thickness, builtThickness))
+                && Mathf.Approximately(radius, builtRadius)
+                && Mathf.Approximately(thickness, builtThickness))
             {
                 return;
             }
@@ -92,9 +96,9 @@ namespace Galilego.Universe
             }
 
             builtSize = size;
-            builtRadius = Radius;
-            builtThickness = Thickness;
-            ringTexture = BuildRing(size, Radius, Thickness);
+            builtRadius = radius;
+            builtThickness = thickness;
+            ringTexture = BuildRing(size, radius, thickness);
         }
 
         /// <summary>

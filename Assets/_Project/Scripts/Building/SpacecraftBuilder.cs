@@ -314,7 +314,7 @@ namespace Galilego.Building
 
             // Alt: delete mode — the aim target turns red, RMB deletes it;
             // the placement ghost is hidden.
-            if (!UiOpen && PlayerInput.AltHeld())
+            if (!UiOpen && PlayerInput.Held(GameAction.BuildDelete))
             {
                 HideGhost();
                 UpdateDeleteAim();
@@ -327,19 +327,19 @@ namespace Galilego.Building
 
             if (!UiOpen)
             {
-                if (PlayerInput.AltHeld())
+                if (PlayerInput.Held(GameAction.BuildDelete))
                 {
-                    if (deleteTarget >= 0 && PlayerInput.MouseRightDown())
+                    if (deleteTarget >= 0 && PlayerInput.Down(GameAction.BuildPlace))
                     {
                         RemoveAt(deleteTarget);
                     }
                 }
-                else if (ghostVisible && ghostValid && PlayerInput.MouseRightDown())
+                else if (ghostVisible && ghostValid && PlayerInput.Down(GameAction.BuildPlace))
                 {
                     PlaceGhostedPart();
                 }
 
-                if (PlayerInput.Held(GameKey.LeftControl) && PlayerInput.Down(GameKey.Z))
+                if (PlayerInput.Held(GameAction.BuildPeek) && PlayerInput.Down(GameAction.BuildUndo))
                 {
                     RemoveLast();
                 }
@@ -745,7 +745,7 @@ namespace Galilego.Building
 
         private void UpdateRHold()
         {
-            bool held = !UiOpen && PlayerInput.Held(GameKey.R);
+            bool held = !UiOpen && PlayerInput.Held(GameAction.BuildPhysics);
             if (held)
             {
                 if (!rLatched)
@@ -1031,7 +1031,7 @@ namespace Galilego.Building
             if (Runner == null || Runner.Paused
                 || Runner.PlayerMode != PlayerMode.InShip
                 || ShipTablet.AnyExpanded
-                || !PlayerInput.Down(GameKey.Space))
+                || !PlayerInput.Down(GameAction.Stage))
             {
                 return;
             }

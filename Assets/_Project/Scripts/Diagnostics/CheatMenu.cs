@@ -81,6 +81,10 @@ namespace Galilego.Universe
         private const float PerfHudY = HudMargin + HudHeight + 4f;
 
         private bool isOpen;
+
+        /// <summary>The cheat window is open (the settings menu does not open over it).</summary>
+        public static bool AnyOpen { get; private set; }
+
         private bool noclipRequested;
         private bool showCoordinates;
         private double noclipSpeedLog;
@@ -274,6 +278,7 @@ namespace Galilego.Universe
         private void SetOpen(bool open)
         {
             isOpen = open;
+            AnyOpen = open;
             if (Controller != null)
             {
                 Controller.InputBlocked = open;
