@@ -8,7 +8,7 @@ using UnityEngine;
 namespace Galilego.Flight
 {
     /// <summary>
-    /// Nozzle marker on a part MODEL (while there are no RCS/LES models — placeholders are made in a
+    /// Nozzle marker on a part MODEL (while there are no RCS models — placeholders are made in a
     /// 3D editor or in the prefab). Position = transform.position, exhaust goes along transform.forward,
     /// force on the ship — backwards. The factory takes markers instead of placeholders, so thrust
     /// comes exactly from where the nozzle sits on the model.
@@ -18,31 +18,17 @@ namespace Galilego.Flight
         public ThrusterKind Kind = ThrusterKind.Rcs;
         public float ThrustN = 450f;
         public float IspSeconds = 290f;
-        [Tooltip("Топливо этого сопла, кг (РСУ — монотопливо; САС — твёрдое топливо мотора).")]
+        [Tooltip("Топливо этого сопла, кг (РСУ — монотопливо).")]
         public float PropellantKg = 8f;
     }
 
     /// <summary>
-    /// LES and RCS parameters. ALL numbers are placeholders of Orion/Apollo order (LES: abort 1.78 MN ≈ 4 s,
-    /// jettison 178 kN ≈ 1.8 s; RCS: 450 N per nozzle). No model — tune them here.
+    /// RCS parameters. ALL numbers are placeholders of Orion/Apollo order (RCS: 450 N per nozzle).
+    /// No model — tune them here.
     /// </summary>
     [Serializable]
     public sealed class FlightSystemsConfig
     {
-        public bool EnableLes = true;
-        public double LesDryKg = 2400d;
-        public double LesHeight = 7d;
-        public double LesRadius = 0.55d;
-        public int AbortNozzles = 5;               // abort nozzles (ring, canted inward)
-        public double AbortThrustN = 1.78e6d;      // total
-        public double AbortIspS = 255d;
-        public double AbortPropellantKg = 3000d;
-        public double AbortCantDeg = 20d;
-        public int JettisonNozzles = 4;
-        public double JettisonThrustN = 1.78e5d;
-        public double JettisonIspS = 240d;
-        public double JettisonPropellantKg = 140d;
-
         public bool EnableRcs = true;
         public int RcsBlocks = 4;                  // blocks around the ring
         public double RcsThrustN = 450d;           // thrust per nozzle
@@ -51,13 +37,13 @@ namespace Galilego.Flight
         public double RcsPropellantKgPerNozzle = 12d;
     }
 
-    /// <summary>Builds a VesselFlightModel from a blueprint: real engines, LES, RCS.</summary>
+    /// <summary>Builds a VesselFlightModel from a blueprint: real engines, RCS.</summary>
     public static class FlightModelFactory
     {
         /// <summary>
-        /// defs — PartDefinition[] of the blueprint (BuildMath.ToPartDefinitions); for LES a tower
-        /// part is appended, so a NEW array is returned (model Defs). defs masses are full
-        /// (with propellant and hardware) — as Proxy.Build must receive them at start.
+        /// defs — PartDefinition[] of the blueprint (BuildMath.ToPartDefinitions); a NEW array is
+        /// returned (model Defs). defs masses are full (with propellant and hardware) — as
+        /// Proxy.Build must receive them at start.
         /// </summary>
         public static VesselFlightModel Build(
             List<PlacedPart> parts, PartDefinition[] defs, List<StageCore> cores, FlightSystemsConfig cfg)
@@ -68,12 +54,10 @@ namespace Galilego.Flight
             for (int i = 0; i < n; i++) if (parts[i].Kind == PartKind.Capsule) { capsule = i; break; }
             int host = capsule >= 0 ? capsule : TopMost(parts);
 
-            bool les = cfg.EnableLes && host >= 0;
-            int total = n + (les ? 1 : 0);
-            var all = new PartDefinition[total];
+            var all = new PartDefinition[n];
             Array.Copy(defs, all, n);
-            var dry = new double[total]; var prop = new double[total]; var hw = new double[total]; var stage = new int[total];
-            for (int i = 0; i < total; i++) stage[i] = -1;
+            var dry = new double[n]; var prop = new double[n]; var hw = new double[n]; var stage = new int[n];
+            for (int i = 0; i < n; i++) stage[i] = -1;
 
             for (int c = 0; c < cores.Count; c++)
                 for (int k = 0; k < cores[c].PartIndices.Count; k++) stage[cores[c].PartIndices[k]] = c;
@@ -117,41 +101,7 @@ namespace Galilego.Flight
             }
 
             PartDefinition hd = all[host];
-            double topY = hd.Offset.y + (0.5d * hd.Dimensions.y);
             double ringR = Math.Max(0.5d, hd.Dimensions.x * 0.95d);
-            int lesIndex = -1;
-
-            // ─ LES: the tower is a separate part (own Rigidbody in the zone, own joint) ─
-            if (les)
-            {
-                lesIndex = n;
-                all[lesIndex] = new PartDefinition
-                {
-                    Name = "САС", Offset = new Vector3(hd.Offset.x, (float)(topY + (0.5d * cfg.LesHeight)), hd.Offset.z),
-                    Shape = PartShape.Cylinder, Dimensions = new Vector3((float)cfg.LesRadius, (float)cfg.LesHeight, 0f),
-                    ParentIndex = host, JointStrengthNewtons = 4e6d, BreakTorqueNm = 4e7d,
-                    JointAnchor = new Vector3(0f, (float)(-0.5d * cfg.LesHeight), 0f),
-                };
-                hw[lesIndex] = cfg.LesDryKg;
-                double lesY = all[lesIndex].Offset.y;
-
-                bool abortMarked = markers.Exists(x => x.m.Kind == ThrusterKind.AbortMotor);
-                bool jetMarked = markers.Exists(x => x.m.Kind == ThrusterKind.JettisonMotor);
-                // Abort: nozzles at the bottom of the tower, canted INWARD (net force through the axis and stack COM).
-                if (!abortMarked)
-                    AddRing(model, ThrusterKind.AbortMotor, lesIndex, cfg.AbortNozzles, new Vector3d(hd.Offset.x, topY + 0.6d, hd.Offset.z),
-                        0.45d, cfg.AbortThrustN, cfg.AbortIspS, cfg.AbortPropellantKg, cfg.AbortCantDeg, "Увод");
-                if (!jetMarked)
-                    AddRing(model, ThrusterKind.JettisonMotor, lesIndex, cfg.JettisonNozzles, new Vector3d(hd.Offset.x, lesY + (0.35d * cfg.LesHeight), hd.Offset.z),
-                        0.40d, cfg.JettisonThrustN, cfg.JettisonIspS, cfg.JettisonPropellantKg, 25d, "Отстрел");
-                model.ArmLes(lesIndex);
-
-                // Stays with the capsule during an abort: the capsule, everything above it, the tower.
-                var keep = new bool[total];
-                for (int i = 0; i < n; i++) keep[i] = i == host || (parts[i].Pivot.y >= parts[host].Pivot.y && i != host && parts[i].Kind != PartKind.Engine);
-                keep[lesIndex] = true;
-                model.AbortKeep = keep;
-            }
 
             // ─ RCS: blocks around the ring on the host; each block has 5 nozzles pointing in different directions ─
             double hwRcs = 0d;
@@ -184,10 +134,9 @@ namespace Galilego.Flight
                 Vector3 dirLocal = root.InverseTransformDirection(-mk.transform.forward).normalized;
                 PartDefinition d = all[part];
                 Vector3 centerRel = local - new Vector3(0f, parts[part].Metrics.Center, 0f);
-                int target = mk.Kind == ThrusterKind.AbortMotor || mk.Kind == ThrusterKind.JettisonMotor ? (lesIndex >= 0 ? lesIndex : part) : part;
                 model.Thrusters.Add(new Thruster
                 {
-                    Name = mk.name, Kind = mk.Kind, PartIndex = target,
+                    Name = mk.name, Kind = mk.Kind, PartIndex = part,
                     Position = new Vector3d(d.Offset.x + centerRel.x, d.Offset.y + centerRel.y, d.Offset.z + centerRel.z),
                     Direction = new Vector3d(dirLocal.x, dirLocal.y, dirLocal.z),
                     ThrustVacN = mk.ThrustN, IspVacS = mk.IspSeconds, OwnPropKg = mk.PropellantKg,
@@ -196,28 +145,9 @@ namespace Galilego.Flight
 
             hw[host] += hwRcs;
 
-            // Initial Proxy masses: part = dry + propellant + hardware + RCS/LES propellant on it.
-            for (int i = 0; i < total; i++) all[i].MassKg = model.PartMassKg(i);
+            // Initial Proxy masses: part = dry + propellant + hardware + RCS propellant on it.
+            for (int i = 0; i < n; i++) all[i].MassKg = model.PartMassKg(i);
             return model;
-        }
-
-        private static void AddRing(VesselFlightModel model, ThrusterKind kind, int part, int count, Vector3d center,
-            double radius, double totalThrustN, double isp, double propellantKg, double cantDeg, string name)
-        {
-            double cant = cantDeg * Math.PI / 180d;
-            for (int k = 0; k < count; k++)
-            {
-                double a = k * 2d * Math.PI / count;
-                var rad = new Vector3d(Math.Cos(a), 0d, Math.Sin(a));
-                // Exhaust down-and-out → force up-and-in: F = cos(c)·ŷ − sin(c)·r̂.
-                Vector3d dir = (new Vector3d(0d, Math.Cos(cant), 0d)) - (rad * Math.Sin(cant));
-                model.Thrusters.Add(new Thruster
-                {
-                    Name = name + " " + k, Kind = kind, PartIndex = part,
-                    Position = center + (rad * radius), Direction = dir,
-                    ThrustVacN = totalThrustN / count, IspVacS = isp, OwnPropKg = propellantKg / count,
-                });
-            }
         }
 
         private static int TopMost(List<PlacedPart> parts)

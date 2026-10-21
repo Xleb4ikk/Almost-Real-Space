@@ -352,7 +352,14 @@ namespace Galilego.Tablet
             int by = y + h - 24;
             if (ToggleButton(x + 7, by, 74, 17, "САС", t.SasEnabled))
             {
-                cmd.SetSasEnabled(!t.SasEnabled);
+                bool on = !t.SasEnabled;
+                if (on)
+                {
+                    // The monitor's button always means attitude hold, not a marker mode.
+                    cmd.SetSasMode(SasMode.Stability);
+                }
+
+                cmd.SetSasEnabled(on);
             }
 
             if (ToggleButton(x + w - 81, by, 74, 17, "РСУ", t.RcsEnabled))

@@ -11,14 +11,14 @@ namespace Galilego.Flight
     /// <summary>
     /// Flight runtime: player input → model commands; inside the CONTACT ZONE (PhysX) it applies
     /// engine/nozzle forces at their real points (AddForceAtPosition), updates body masses as
-    /// propellant burns and cuts joints on staging/abort; outside the zone force/torque go through
+    /// propellant burns and cuts joints on staging; outside the zone force/torque go through
     /// VesselStep (n-body, 6-DOF). The two modes are joined by HandoffOut/HandoffIn: attitude and
     /// angular velocity move across without a seam.
     ///
     /// Keys (in the ship): throttle — LeftShift/LeftCtrl, Z — 100 %, X — 0 %;
     /// W/S — pitch, A/D — yaw, Q/E — roll; I/K, J/L, U/O — RCS translation; T — attitude
     /// hold (SAS), G — RCS on/off; F1…F8 — engine #n on/off, F9/F10 — all on/off;
-    /// Space — stage (ignition/separation); Backspace — LES ABORT; Delete — LES jettison.
+    /// Space — stage (ignition/separation).
     /// </summary>
     [DefaultExecutionOrder(-90)]
     public sealed class FlightRuntime : MonoBehaviour
@@ -30,7 +30,6 @@ namespace Galilego.Flight
         public bool ShowHud = true;
 
         private VesselFlightModel model;
-        private GameObject lesVisual;
 
         public static FlightRuntime Begin(SimulationRunner runner, ContactZoneHost zone, VesselFlightModel model)
         {
@@ -43,14 +42,12 @@ namespace Galilego.Flight
             Instance.Runner = runner;
             Instance.Zone = zone;
             Instance.model = model;
-            Instance.BuildLesVisual();
             return Instance;
         }
 
         public static void End()
         {
             if (Instance == null) return;
-            if (Instance.lesVisual != null) Destroy(Instance.lesVisual);
             Instance.model = null;
         }
 
@@ -60,7 +57,6 @@ namespace Galilego.Flight
         {
             if (model == null || Runner == null || Runner.Paused) return;
             ReadInput();
-            ExecuteRequests();
         }
 
         private void ReadInput()
@@ -87,29 +83,6 @@ namespace Galilego.Flight
                 if (PlayerInput.Down((GameAction)((int)GameAction.Engine1 + i))) model.ToggleEngine(i);
             if (PlayerInput.Down(GameAction.EnginesAllOn)) model.SetAllEngines(true);
             if (PlayerInput.Down(GameAction.EnginesAllOff)) model.SetAllEngines(false);
-            if (PlayerInput.Down(GameAction.LesAbort) && model.TriggerAbort()) Debug.Log("[САС] АВАРИЙНЫЙ УВОД");
-            if (PlayerInput.Down(GameAction.LesJettison) && model.RequestJettison()) Debug.Log("[САС] отстрел башни");
-        }
-
-        // ─── Separation / LES ─────────────────────────────────────────────────
-
-        private void ExecuteRequests()
-        {
-            if (model.SplitPending)
-            {
-                model.ConsumeSplit();
-                RemoveAndSplit(model.AbortKeep, false);
-                Debug.Log("[САС] капсула отделена от ракеты");
-            }
-
-            if (model.JettisonPending && model.LesPart >= 0)
-            {
-                var keep = new bool[model.Defs.Length];
-                for (int i = 0; i < keep.Length; i++) keep[i] = i != model.LesPart;
-                model.ConsumeJettison();
-                RemoveAndSplit(keep, true);
-                Debug.Log("[САС] башня отстрелена");
-            }
         }
 
         /// <summary>Staging separation (called by SpacecraftBuilder after Propulsion.Stage()).</summary>
@@ -130,50 +103,6 @@ namespace Galilego.Flight
                 Runner.Ship.Position += Runner.Ship.Attitude.Rotate(model.Com - oldCom);
                 Runner.SetVesselParts(model.RemainingDefs());
             }
-        }
-
-        private void RemoveAndSplit(bool[] keep, bool jettison)
-        {
-            Spacecraft.Spacecraft ship = Runner.Ship;
-            model.RefreshMassProps();
-            Vector3d oldCom = model.Com;
-            QuaternionD q = ship.Attitude;
-            double kickImpulse = 0d;
-            if (jettison)
-                foreach (var t in model.Thrusters)
-                    if (t.Kind == ThrusterKind.JettisonMotor) kickImpulse += t.OwnPropKg * t.IspVacS * Thruster.G0;
-
-            double removed = model.RemoveParts(keep, out Vector3d removedCom);
-            if (Runner.Propulsion != null)
-                ship.Mass = Runner.Propulsion.AttachedTotalKg() + Runner.Propulsion.DetachedMassKg;
-            else
-                ship.Mass -= removed;
-
-            if (ContactZoneHost.Active)
-            {
-                // Zone: joints are severed, PhysX does the rest (abort/jettison via real nozzle forces).
-                Zone.Proxy.SeverForStaging(model.BodyKeepMask(), Vector3.up, 0f);
-                return;
-            }
-
-            // Free flight: what separated becomes debris at the same velocity; the remaining COM shifts.
-            Vector3d up = q.Rotate(new Vector3d(0d, 1d, 0d));
-            Vector3d debrisVelocity = ship.Velocity;
-            if (jettison && removed > 0d)
-            {
-                // Jettison motor: impulse J separates the tower (+Y) and the capsule (−Y) by conservation of momentum.
-                debrisVelocity += up * (kickImpulse / removed);
-                ship.Velocity -= up * (kickImpulse / Math.Max(1d, ship.Mass));
-                foreach (var t in model.Thrusters)
-                    if (t.Kind == ThrusterKind.JettisonMotor) { t.OwnPropKg = 0d; t.Ignited = false; t.Level = 0d; }
-            }
-
-            if (Runner.Debris != null && removed > 0d)
-                Runner.Debris.Spawn(ship.Position + q.Rotate(removedCom - oldCom), debrisVelocity, removed,
-                    Runner.TimeSeconds, Runner.DebrisLifetimeSeconds);
-            model.RefreshMassProps();
-            ship.Position += q.Rotate(model.Com - oldCom);
-            Runner.SetVesselParts(model.RemainingDefs());
         }
 
         // ─── Contact zone physics (PhysX) ────────────────────────────────────
@@ -198,8 +127,7 @@ namespace Galilego.Flight
             foreach (Thruster t in model.Thrusters)
             {
                 if (t.Level <= 0d) continue;
-                bool gone = model.IsGone(t.PartIndex);
-                if (gone && t.Kind != ThrusterKind.JettisonMotor) continue;
+                if (model.IsGone(t.PartIndex)) continue;
                 Rigidbody rb = proxy.BodyAt(model.BodyOfPart(t.PartIndex));
                 if (rb == null) continue;
                 PartDefinition d = model.Defs[t.PartIndex];
@@ -279,28 +207,6 @@ namespace Galilego.Flight
             return new Vector3((float)Vector3d.Dot(a, f.North), (float)Vector3d.Dot(a, f.Up), (float)Vector3d.Dot(a, f.East));
         }
 
-        // ─── LES visual (placeholder: no model yet) ──────────────────────────
-
-        private void BuildLesVisual()
-        {
-            if (lesVisual != null) Destroy(lesVisual);
-            lesVisual = null;
-            if (model == null || model.LesPart < 0) return;
-            PartDefinition d = model.Defs[model.LesPart];
-            lesVisual = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            lesVisual.name = "LES_placeholder";
-            Destroy(lesVisual.GetComponent<Collider>());
-            lesVisual.transform.localScale = new Vector3(2f * d.Dimensions.x, 0.5f * d.Dimensions.y, 2f * d.Dimensions.x);
-        }
-
-        private void LateUpdate()
-        {
-            if (model == null || lesVisual == null) return;
-            Rigidbody rb = Zone != null && ContactZoneHost.Active ? Zone.Proxy.BodyAt(model.BodyOfPart(model.LesPart)) : null;
-            lesVisual.SetActive(rb != null);
-            if (rb != null) lesVisual.transform.SetPositionAndRotation(rb.position, rb.rotation);
-        }
-
         // ─── Diagnostics ─────────────────────────────────────────────────────
 
         private void OnGUI()
@@ -319,8 +225,6 @@ namespace Galilego.Flight
                 k++;
             }
 
-            if (model.LesPart >= 0 || model.Aborting)
-                s += "САС: " + (model.Aborting ? "УВОД" : model.LesArmed ? "готова (" + KeyBindings.DisplayAction(GameAction.LesAbort) + " — увод)" : "отстрелена") + "\n";
             GUI.Label(new Rect(12, 12, 520, 260), s);
         }
 

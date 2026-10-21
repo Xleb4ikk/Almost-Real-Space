@@ -662,7 +662,7 @@ namespace Galilego.Universe
         TransRight, TransLeft, TransUp, TransDown, TransForward, TransBack,
         ThrottleUp, ThrottleDown, ThrottleFull, ThrottleCut, Sas, Rcs, Stage,
         Engine1, Engine2, Engine3, Engine4, Engine5, Engine6, Engine7, Engine8,
-        EnginesAllOn, EnginesAllOff, LesAbort, LesJettison,
+        EnginesAllOn, EnginesAllOff,
         Pause, Warp1, Warp2, Warp3, Warp4, Warp5, Warp6, Warp7,
         BuildPlace, BuildDelete, BuildPeek, BuildUndo, BuildPhysics, BuildInventory, BuildHints,
         Hotbar1, Hotbar2, Hotbar3, Hotbar4, Hotbar5, Hotbar6, Hotbar7, Hotbar8, Hotbar9

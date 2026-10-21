@@ -6,9 +6,7 @@ namespace Galilego.Flight
     public enum ThrusterKind
     {
         Main = 0,          // main engine (propellant from stage pools)
-        Rcs = 1,           // RCS thruster (own propellant)
-        AbortMotor = 2,    // launch abort escape motor (solid propellant)
-        JettisonMotor = 3  // launch abort system jettison motor
+        Rcs = 1            // RCS thruster (own propellant)
     }
 
     /// <summary>
@@ -39,12 +37,11 @@ namespace Galilego.Flight
         public object EngineKey;                    // EngineSpec — link to the StageCore group
         public int Stage = -1;
         public bool Enabled = true;
-        public double OwnPropKg;                    // RCS / solid motor propellant
+        public double OwnPropKg;                    // RCS propellant
 
         // ─ state ─
         public double Level;                        // actual thrust fraction 0..1
         public double GimbalX, GimbalZ;             // gimbal angles (rad) around the ship's X and Z axes
-        public bool Ignited;                        // solid motors: ignited
 
         public double IspAt(double pressurePa)
         {

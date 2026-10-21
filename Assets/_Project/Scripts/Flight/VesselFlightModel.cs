@@ -9,7 +9,7 @@ namespace Galilego.Flight
     /// Single 6-DOF flight model of a vessel (no Unity). Holds the real engines/nozzles with their
     /// application points, computes COM and inertia tensor from the CURRENT part masses (propellant
     /// burns proportionally per stage), total force and torque (about the COM),
-    /// flows, the autopilot (attitude hold: engine gimbals + RCS) and the LES.
+    /// flows, the autopilot (attitude hold: engine gimbals + RCS).
     /// One step: Prepare (commands→throttle levels, force/torque cache) → integrator/PhysX →
     /// Finish (hardware propellant bookkeeping). Force/torque are cached per chunk — the same
     /// control-tick granularity as throttle elsewhere in the project (×3 physics matches ×1).
@@ -37,15 +37,6 @@ namespace Galilego.Flight
         private readonly bool[] gone;
         private readonly List<Part> scratch = new List<Part>();
 
-        // ─ LES ─
-        public bool[] AbortKeep;              // parts staying with the capsule (capsule, everything above, LES)
-        public int LesPart = -1;              // index of the LES tower part (−1 — no LES)
-        public bool LesArmed { get; private set; }
-        public bool Aborting { get; private set; }
-        public bool EnginesCut { get; private set; }
-        public bool SplitPending { get; private set; }
-        public bool JettisonPending { get; private set; }
-
         // ─ chunk cache ─
         public double MassKg { get; private set; }
         public Vector3d Com { get; private set; }
@@ -65,7 +56,6 @@ namespace Galilego.Flight
             Defs = defs ?? throw new ArgumentNullException(nameof(defs));
             dry = dryKg; propStart = propStartKg; stageOf = stages; hwDry = hardwareDryKg;
             gone = new bool[defs.Length];
-            LesArmed = false;
             PartOfBody = new int[defs.Length];
             for (int i = 0; i < defs.Length; i++) PartOfBody[i] = i;
         }
@@ -119,8 +109,6 @@ namespace Galilego.Flight
             PartOfBody = parts.ToArray();
             return list.ToArray();
         }
-
-        public void ArmLes(int part) { LesPart = part; LesArmed = part >= 0; }
 
         // ─── Masses ──────────────────────────────────────────────────────────
 
@@ -191,7 +179,7 @@ namespace Galilego.Flight
 
         public bool IsOperating(Thruster t, double pressurePa)
         {
-            if (IsGone(t.PartIndex) || !t.Enabled || EnginesCut || Propulsion == null) return false;
+            if (IsGone(t.PartIndex) || !t.Enabled || Propulsion == null) return false;
             if (t.Stage != Propulsion.ActiveStageIndex) return false;
             if (pressurePa > t.MaxOperatingPressurePa) return false;
             StageCore core = Propulsion.ActiveCore;
@@ -233,7 +221,7 @@ namespace Galilego.Flight
                 {
                     if (t.Kind != ThrusterKind.Main || t.Stage != Propulsion.ActiveStageIndex) continue;
                     if (!Equals(t.EngineKey, core.Engines[g].Key)) continue;
-                    if (!IsGone(t.PartIndex) && t.Enabled && !EnginesCut && pressurePa <= t.MaxOperatingPressurePa) n++;
+                    if (!IsGone(t.PartIndex) && t.Enabled && pressurePa <= t.MaxOperatingPressurePa) n++;
                 }
                 core.Engines[g].Count = n;
             }
@@ -255,19 +243,12 @@ namespace Galilego.Flight
             // 1) Main engines: throttle → target level → ramp to it.
             foreach (var t in Thrusters)
             {
-                if (t.Kind == ThrusterKind.Main)
-                {
-                    double target = 0d;
-                    if (IsOperating(t, pressurePa) && throttle > 0d)
-                        target = EnforceMinThrottle ? Math.Max(throttle, t.MinThrottle) : throttle;
-                    if (target <= 0d && !IsOperating(t, pressurePa)) t.Level = 0d;
-                    else t.Level = Approach(t.Level, target, t.ThrottleRatePerS * dt);
-                }
-                else if (t.Kind != ThrusterKind.Rcs)
-                {
-                    t.Level = t.Ignited && t.OwnPropKg > Eps ? 1d : 0d;
-                    t.Ignited = t.Ignited && t.OwnPropKg > Eps;
-                }
+                if (t.Kind != ThrusterKind.Main) continue;
+                double target = 0d;
+                if (IsOperating(t, pressurePa) && throttle > 0d)
+                    target = EnforceMinThrottle ? Math.Max(throttle, t.MinThrottle) : throttle;
+                if (target <= 0d && !IsOperating(t, pressurePa)) t.Level = 0d;
+                else t.Level = Approach(t.Level, target, t.ThrottleRatePerS * dt);
             }
 
             // 2) Autopilot: required torque → gimbals + RCS.
@@ -275,8 +256,6 @@ namespace Galilego.Flight
             Vector3d tauRes = AllocateGimbal(tauReq, dt);
             AllocateRcs(tauRes, omegaBody);
 
-            // 3) LES: after the abort motors burn out — jettison the tower.
-            if (Aborting && LesArmed && !JettisonPending) CheckAbortProgress();
             Evaluate();
         }
 
@@ -288,7 +267,7 @@ namespace Galilego.Flight
 
         private void ZeroLevels()
         {
-            foreach (var t in Thrusters) if (t.Kind != ThrusterKind.JettisonMotor) t.Level = 0d;
+            foreach (var t in Thrusters) t.Level = 0d;
         }
 
         // ─── Autopilot ───────────────────────────────────────────────────────
@@ -465,7 +444,7 @@ namespace Galilego.Flight
             ForceBody = f; TorqueBody = tq; FlowTotal = flow; FlowAux = aux;
         }
 
-        /// <summary>Maximum substep before the hardware propellant (RCS/LES) runs out.</summary>
+        /// <summary>Maximum substep before the hardware propellant (RCS) runs out.</summary>
         public double MaxChunkSeconds()
         {
             double best = double.PositiveInfinity;
@@ -482,7 +461,6 @@ namespace Galilego.Flight
         public void Silence()
         {
             ZeroLevels();
-            foreach (var t in Thrusters) if (t.Kind == ThrusterKind.JettisonMotor) t.Level = 0d;
             Evaluate();
         }
 
@@ -515,74 +493,6 @@ namespace Galilego.Flight
             foreach (var t in Thrusters)
                 if (t.Kind == ThrusterKind.Main && t.Level > 0d && !IsGone(t.PartIndex)) flow += t.MassFlow;
             return flow * dt;
-        }
-
-        // ─── LES ─────────────────────────────────────────────────────────────
-
-        /// <summary>Abort: cut the engines, request capsule separation, ignite the abort motors.</summary>
-        public bool TriggerAbort()
-        {
-            if (!LesArmed || Aborting) return false;
-            Aborting = true; EnginesCut = true; SplitPending = true;
-            foreach (var t in Thrusters) if (t.Kind == ThrusterKind.AbortMotor && t.OwnPropKg > Eps) t.Ignited = true;
-            return true;
-        }
-
-        /// <summary>Nominal LES jettison (no abort).</summary>
-        public bool RequestJettison()
-        {
-            if (!LesArmed || JettisonPending) return false;
-            JettisonPending = true;
-            foreach (var t in Thrusters) if (t.Kind == ThrusterKind.JettisonMotor && t.OwnPropKg > Eps) t.Ignited = true;
-            return true;
-        }
-
-        private void CheckAbortProgress()
-        {
-            foreach (var t in Thrusters)
-                if (t.Kind == ThrusterKind.AbortMotor && t.OwnPropKg > Eps && t.Ignited) return;
-            RequestJettison();
-        }
-
-        public void ConsumeSplit() { SplitPending = false; }
-        public void ConsumeJettison() { JettisonPending = false; LesArmed = false; }
-
-        /// <summary>
-        /// Remove parts (keep[i]=false) from the vessel: returns their mass and COM (ship frame).
-        /// If stage parts are touched, the staging model is frozen (everything else becomes mass
-        /// outside the cores); otherwise the removed mass is simply released from the detached pool.
-        /// </summary>
-        public double RemoveParts(bool[] keep, out Vector3d removedCom)
-        {
-            double removed = 0d; Vector3d w = Vector3d.Zero; bool touchedStage = false;
-            RefreshMassProps();
-            for (int i = 0; i < Defs.Length; i++)
-            {
-                if (IsGone(i) || (i < keep.Length && keep[i])) continue;
-                double m = PartMassKg(i);
-                removed += m; w += new Vector3d(Defs[i].Offset.x, Defs[i].Offset.y, Defs[i].Offset.z) * m;
-                if (stageOf[i] >= 0) touchedStage = true;
-                gone[i] = true;
-            }
-
-            removedCom = removed > 0d ? w / removed : Vector3d.Zero;
-            if (Propulsion == null) return removed;
-            if (touchedStage)
-            {
-                for (int i = 0; i < Defs.Length; i++)
-                {
-                    if (IsGone(i) || stageOf[i] < 0) continue;
-                    hwDry[i] += dry[i] + (propStart[i] * Fill(stageOf[i]));
-                    dry[i] = 0d; propStart[i] = 0d; stageOf[i] = -1;
-                }
-
-                double remain = 0d;
-                for (int i = 0; i < Defs.Length; i++) if (!IsGone(i)) remain += PartMassKg(i);
-                Propulsion.DetachAllStages(remain);
-            }
-            else Propulsion.ReleaseDetached(removed);
-            RefreshMassProps();
-            return removed;
         }
     }
 }

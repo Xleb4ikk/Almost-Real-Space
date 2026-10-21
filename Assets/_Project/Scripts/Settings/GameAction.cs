@@ -19,7 +19,7 @@ namespace Galilego.Universe
         TransRight, TransLeft, TransUp, TransDown, TransForward, TransBack,
         ThrottleUp, ThrottleDown, ThrottleFull, ThrottleCut, Sas, Rcs, Stage,
         Engine1, Engine2, Engine3, Engine4, Engine5, Engine6, Engine7, Engine8,
-        EnginesAllOn, EnginesAllOff, LesAbort, LesJettison,
+        EnginesAllOn, EnginesAllOff,
 
         // Time
         Pause, Warp1, Warp2, Warp3, Warp4, Warp5, Warp6, Warp7,
@@ -108,8 +108,6 @@ namespace Galilego.Universe
 
             Add(GameAction.EnginesAllOn, "Все двигатели: включить", gE, S, KeyCode.F9);
             Add(GameAction.EnginesAllOff, "Все двигатели: выключить", gE, S, KeyCode.F10);
-            Add(GameAction.LesAbort, "САС: аварийный увод", gE, S, KeyCode.Backspace);
-            Add(GameAction.LesJettison, "САС: отстрел башни", gE, S, KeyCode.Delete);
 
             Add(GameAction.Pause, "Пауза симуляции", gT, F | S | B, KeyCode.P);
             int[] warp = { 1, 5, 10, 100, 500, 1000, 3000 };
