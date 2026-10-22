@@ -37,6 +37,9 @@ namespace Galilego.Building
         /// <summary>Orion capsule mass (placeholder, like the engines), kg.</summary>
         private const double CapsuleMassKg = 10400d;
 
+        /// <summary>One RCS block (matches FlightSystemsConfig.RcsDryKgPerBlock), kg.</summary>
+        private const double RcsBlockMassKg = 15d;
+
         /// <summary>
         /// Top radius of the capsule's physics body (fraction of the bottom one):
         /// the capsule is a cone from the heat shield (Ø5 m) to the nose. This is
@@ -58,6 +61,7 @@ namespace Galilego.Building
                 case PartKind.Engine: return "Двигатель";
                 case PartKind.FuelTank: return "Топливный бак";
                 case PartKind.Capsule: return "Капсула Orion";
+                case PartKind.RcsBlock: return "Блок РСУ";
                 default: return "Отделитель";
             }
         }
@@ -91,6 +95,11 @@ namespace Galilego.Building
                     break;
                 case PartKind.Capsule:
                     // Capsule sizes are fixed by the model — leave them alone.
+                    break;
+                case PartKind.RcsBlock:
+                    // Fixed model: one block is 1.12 m across and 0.72 m deep.
+                    radius = 0.56f;
+                    height = 1.12f;
                     break;
                 default:
                     radius = 1f;
@@ -159,6 +168,14 @@ namespace Galilego.Building
                     // Dimensions come from the model (CapsuleTemplate); input numbers are irrelevant.
                     return Capsule != null ? Capsule.Metrics : default;
 
+                case PartKind.RcsBlock:
+                    // Fixed model: one block, 15 kg (the flight model's RCS hardware
+                    // mass). The pivot is the hull contact point, so the shape is
+                    // centred on it and spans ±HalfHeight for the vessel bottom.
+                    return new PartMetrics(
+                        0.56f, 0.56f, 1.12f, 0f, -0.56f, 0.56f,
+                        RcsBlockMassKg, TankJointNewtons, 1e12d);
+
                 default:
                     return engine != null ? engine.Metrics : default;
             }
@@ -224,6 +241,18 @@ namespace Galilego.Building
                     CapsuleMassKg, TankJointNewtons, 1e12d),
                 ModelOffset = new Vector3(-center.x, -bounds.min.y, -center.z),
             };
+        }
+
+        /// <summary>
+        /// RCS block model (Models/Parts/RCS): a saddle-mounted thruster block. Registered
+        /// by the builder at startup; CreateVisual puts four of them around every fuel tank.
+        /// </summary>
+        public static GameObject RcsBlock { get; private set; }
+
+        /// <summary>Register the RCS block model (null — tanks without visual RCS).</summary>
+        public static void RegisterRcsBlock(GameObject prefab)
+        {
+            RcsBlock = prefab;
         }
 
         /// <summary>Assembled part visual: pivot root and its renderers.</summary>
@@ -336,6 +365,47 @@ namespace Galilego.Building
                     break;
                 }
 
+                case PartKind.RcsBlock:
+                {
+                    if (RcsBlock == null)
+                    {
+                        break;                           // model not registered — root only
+                    }
+
+                    // The FBX root carries the Blender axis conversion; the extra 180°
+                    // yaw puts the model's outward axis (-Z after import) along the
+                    // part's +Z, so a part rotation is LookRotation(outward, up) and
+                    // the model origin (hull contact point) sits on the part pivot.
+                    var pose = new GameObject("RCS Block Model");
+                    pose.transform.SetParent(root.transform, false);
+                    pose.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+                    GameObject block = UnityEngine.Object.Instantiate(RcsBlock, pose.transform, false);
+                    block.transform.localPosition = Vector3.zero;
+
+                    // Five nozzles feed the flight model: the factory reads markers on
+                    // the part visual and gets thrust/torque from their transforms.
+                    // Marker forward is the exhaust, the force is backwards.
+                    for (int i = 0; i < RcsBlockPlacement.NozzleMouths.Length; i++)
+                    {
+                        var nozzle = new GameObject("RCS Nozzle " + (i + 1));
+                        nozzle.transform.SetParent(root.transform, false);
+                        nozzle.transform.localPosition = RcsBlockPlacement.NozzleMouths[i];
+                        Vector3 exhaust = RcsBlockPlacement.NozzleExhausts[i];
+                        Vector3 up = Mathf.Abs(Vector3.Dot(exhaust, Vector3.up)) > 0.9f
+                            ? Vector3.forward
+                            : Vector3.up;
+                        nozzle.transform.localRotation = Quaternion.LookRotation(exhaust, up);
+
+                        var marker = nozzle.AddComponent<Galilego.Flight.FlightMountMarker>();
+                        marker.Kind = Galilego.Flight.ThrusterKind.Rcs;
+                        marker.ThrustN = RcsBlockPlacement.NozzleThrustN;
+                        marker.IspSeconds = RcsBlockPlacement.NozzleIspSeconds;
+                        marker.PropellantKg = RcsBlockPlacement.NozzlePropellantKg;
+                    }
+
+                    break;
+                }
+
                 default:
                 {
                     if (engine == null || engine.Prefab == null)
@@ -358,7 +428,7 @@ namespace Galilego.Building
             };
             visual.CaptureNatural();
 
-            if (withCollider && metrics.Radius > 0.01f)
+            if (withCollider && metrics.Radius > 0.01f && kind != PartKind.RcsBlock)
             {
                 if (kind == PartKind.Capsule)
                 {

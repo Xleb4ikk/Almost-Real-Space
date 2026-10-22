@@ -128,6 +128,13 @@ namespace Galilego.Building
                     continue;
                 }
 
+                // Radial attachments (RCS blocks) sit on a host's side and are not
+                // stack bodies: they must not block a tank placed above/below.
+                if (parts[i].Radial)
+                {
+                    continue;
+                }
+
                 if (CylindersOverlap(pivot, probe, parts[i].Pivot, parts[i].Metrics))
                 {
                     return true;
@@ -623,6 +630,8 @@ namespace Galilego.Building
         /// part center from the assembly BOTTOM (vessel space: y is site up),
         /// ParentIndex from snapping. Shape is a body of revolution: a cylinder,
         /// or a truncated cone for the adapter tank (Dimensions.z — top radius).
+        /// Radial parts (RCS blocks) are boxes with the part rotation; their body
+        /// is centred on PhysicsCenterLocal, not on the hull contact pivot.
         /// </summary>
         public static PartDefinition[] ToPartDefinitions(IReadOnlyList<PlacedPart> parts)
         {
@@ -636,9 +645,11 @@ namespace Galilego.Building
             for (int i = 0; i < parts.Count; i++)
             {
                 PlacedPart p = parts[i];
-                float centerY = p.Pivot.y + p.Metrics.Center - bottom.y;
+                bool box = p.Kind == PartKind.RcsBlock;
+                Vector3 center = p.Pivot + p.Rotation * p.PhysicsCenterLocal;
+                float centerY = center.y - bottom.y;
                 float bottomY = p.Pivot.y + p.Metrics.Bottom - bottom.y;
-                bool frustum = p.Metrics.TopRadius > 0.01f
+                bool frustum = !box && p.Metrics.TopRadius > 0.01f
                     && Mathf.Abs(p.Metrics.TopRadius - p.Metrics.Radius) > 1e-3f;
                 defs[i] = new PartDefinition
                 {
@@ -646,12 +657,15 @@ namespace Galilego.Building
                     MassKg = p.Metrics.MassKg,
                     JointStrengthNewtons = p.Metrics.JointStrengthNewtons,
                     BreakTorqueNm = p.Metrics.BreakTorqueNm,
-                    Offset = new Vector3(p.Pivot.x - bottom.x, centerY, p.Pivot.z - bottom.z),
-                    Shape = frustum ? PartShape.Frustum : PartShape.Cylinder,
-                    Dimensions = frustum
-                        ? new Vector3(p.Metrics.Radius, p.Metrics.Height, p.Metrics.TopRadius)
-                        : new Vector3(p.Metrics.Radius, p.Metrics.Height, 0f),
-                    Orientation = new Vector4(0f, 0f, 0f, 1f),
+                    Offset = new Vector3(center.x - bottom.x, centerY, center.z - bottom.z),
+                    Shape = box ? PartShape.Box : (frustum ? PartShape.Frustum : PartShape.Cylinder),
+                    Dimensions = box
+                        ? RcsBlockPlacement.BodySize
+                        : (frustum
+                            ? new Vector3(p.Metrics.Radius, p.Metrics.Height, p.Metrics.TopRadius)
+                            : new Vector3(p.Metrics.Radius, p.Metrics.Height, 0f)),
+                    Orientation = new Vector4(
+                        p.Rotation.x, p.Rotation.y, p.Rotation.z, p.Rotation.w),
                     ParentIndex = p.ParentIndex,
                     JointAnchor = new Vector3(0f, bottomY - centerY, 0f),
                     EngineOffset = new Vector3(0f, bottomY - centerY, 0f),

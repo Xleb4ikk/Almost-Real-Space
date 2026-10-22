@@ -147,13 +147,19 @@ namespace Galilego.Simulation.Player
         /// colliders' poses belong to (the start of the frame).
         /// </summary>
         public void Capture(Transform zone, SiteFrame zoneFrame, double poseTime, Vector3d playerWorld,
-            Vector3d playerVelocity, bool grounded, int groundSourceId, VesselSupport vessel)
+            Vector3d playerVelocity, bool grounded, int groundSourceId, VesselSupport vessel,
+            Transform forcedPlatform = null)
         {
             Vector3 zonePoint = ToZone(zoneFrame, playerWorld);
             Vector3 renderPoint = zone.TransformPoint(zonePoint);
 
             Transform next = null;
-            if (grounded)
+            if (forcedPlatform != null)
+            {
+                // The caller knows the platform (standing up from a seat of this part).
+                next = forcedPlatform;
+            }
+            else if (grounded)
             {
                 if (groundSourceId >= VesselSupport.SourceIdBase)
                 {
@@ -217,12 +223,16 @@ namespace Galilego.Simulation.Player
         /// </summary>
         public void CaptureFree(Transform shipRoot, Vector3d playerWorld, Vector3d playerVelocity,
             Vector3d shipVelocity, Vector3d frameVelocity, Vector3 up, bool grounded, int groundSourceId,
-            VesselSupport vessel)
+            VesselSupport vessel, Transform forcedPlatform = null)
         {
             Vector3 renderPoint = FloatingOrigin.ToRender(playerWorld);
 
             Transform next = null;
-            if (grounded)
+            if (forcedPlatform != null)
+            {
+                next = forcedPlatform;
+            }
+            else if (grounded)
             {
                 if (groundSourceId >= VesselSupport.SourceIdBase)
                 {

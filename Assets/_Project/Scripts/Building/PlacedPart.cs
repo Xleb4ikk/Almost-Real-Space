@@ -9,7 +9,8 @@ namespace Galilego.Building
         Engine = 0,
         FuelTank = 1,
         Separator = 2,
-        Capsule = 3
+        Capsule = 3,
+        RcsBlock = 4
     }
 
     /// <summary>
@@ -50,6 +51,13 @@ namespace Galilego.Building
 
         /// <summary>Engine (Id from EngineSpecs; irrelevant for other parts, null — default).</summary>
         public string EngineId;
+
+        /// <summary>
+        /// Ring size for a radial part (RCS block): how many blocks are placed evenly
+        /// around the host part at once, 1/2/3/4/6/8. X grows it, Z shrinks it.
+        /// Irrelevant for other parts.
+        /// </summary>
+        public int Count;
     }
 
     /// <summary>
@@ -154,6 +162,30 @@ namespace Galilego.Building
         public PartMetrics Metrics;
         public Vector3 Pivot;
         public int ParentIndex = -1;
+
+        /// <summary>
+        /// Part frame rotation in the ship/site frame: radial parts (RCS blocks) sit
+        /// with +Z along the hull normal; stack parts keep the identity.
+        /// </summary>
+        public Quaternion Rotation = Quaternion.identity;
+
+        /// <summary>
+        /// Physics body centre offset in the part frame, m: a radial part's body is
+        /// not centred on its hull contact pivot. Zero — the centre is the pivot.
+        /// </summary>
+        public Vector3 PhysicsCenterLocal;
+
+        /// <summary>
+        /// Group id: parts placed together (one RCS ring) are removed together.
+        /// 0 — a standalone part.
+        /// </summary>
+        public int Group;
+
+        /// <summary>
+        /// Radial part (mounted on a host's side): not a stack node (nothing snaps
+        /// to it) and ignored by the stack overlap tests.
+        /// </summary>
+        public bool Radial;
 
         /// <summary>How the part is docked: true — by its bottom onto the parent's TOP.</summary>
         public bool ParentOnTop;

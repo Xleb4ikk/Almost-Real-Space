@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using Galilego.Spacecraft;
 using Galilego.Tablet;
 using Galilego.Universe;
@@ -67,6 +67,7 @@ namespace Galilego.Building
             entries.Add(new CatalogEntry(PartKind.FuelTank, null));
             entries.Add(new CatalogEntry(PartKind.Separator, null));
             entries.Add(new CatalogEntry(PartKind.Capsule, null));
+            entries.Add(new CatalogEntry(PartKind.RcsBlock, null));
             return entries.ToArray();
         }
 
@@ -202,6 +203,7 @@ namespace Galilego.Building
                 AssignPreset(1, Builder.DefaultPreset(PartKind.FuelTank));
                 AssignPreset(2, Builder.DefaultPreset(PartKind.Separator));
                 AssignPreset(3, Builder.DefaultPreset(PartKind.Capsule));
+                AssignPreset(4, Builder.DefaultPreset(PartKind.RcsBlock));
             }
 
             hotbarIndex = 0;
@@ -278,6 +280,21 @@ namespace Galilego.Building
                 }
             }
 
+            // RCS ring size: X adds a block to the ring, Z removes one
+            // (1/2/3/4/6/8). Ctrl is peek/undo — leave those chords alone.
+            if (!PlayerInput.Held(GameAction.BuildPeek) && Builder.SelectedPreset.Kind == PartKind.RcsBlock)
+            {
+                if (PlayerInput.RawKeyDown(KeyCode.X))
+                {
+                    StepRcsCount(1);
+                }
+
+                if (PlayerInput.RawKeyDown(KeyCode.Z))
+                {
+                    StepRcsCount(-1);
+                }
+            }
+
             // The wheel over the stats column scrolls it (OnGUI), not the slots:
             // otherwise scrolling sizes would also switch the selected slot.
             // Same over the card grid — its scroll does not touch the slots.
@@ -306,6 +323,27 @@ namespace Galilego.Building
             {
                 Builder.SelectedPreset = slot.Preset;
             }
+        }
+
+        /// <summary>Change the RCS ring size of the selected slot (X grows, Z shrinks).</summary>
+        private void StepRcsCount(int direction)
+        {
+            HotSlot slot = hotbarIndex >= 0 ? hotbar[hotbarIndex] : null;
+            if (slot == null || !slot.Occupied || slot.Preset.Kind != PartKind.RcsBlock)
+            {
+                return;
+            }
+
+            PartPreset preset = slot.Preset;
+            int next = RcsBlockPlacement.Step(preset.Count, direction);
+            if (next == RcsBlockPlacement.ClampCount(preset.Count))
+            {
+                return;
+            }
+
+            preset.Count = next;
+            ApplyPresetEdit(slot, CardIndexFor(preset), preset);
+            slot.IconDirty = true;
         }
 
         /// <summary>The inventory window is open (Esc closes it instead of opening the settings menu).</summary>
@@ -613,6 +651,7 @@ namespace Galilego.Building
                 && a.Form == b.Form
                 && a.Load == b.Load
                 && a.EngineId == b.EngineId
+                && a.Count == b.Count
                 && Mathf.Abs(a.Radius - b.Radius) < 1e-4f
                 && Mathf.Abs(a.TopRadius - b.TopRadius) < 1e-4f
                 && Mathf.Abs(a.Height - b.Height) < 1e-4f;
@@ -664,9 +703,10 @@ namespace Galilego.Building
 
             PartKind kind = slot.Preset.Kind;
             bool tank = kind == PartKind.FuelTank;
-            bool hasSize = kind != PartKind.Engine;
+            bool rcs = kind == PartKind.RcsBlock;
+            bool hasSize = kind != PartKind.Engine && !rcs;
             int editors = tank ? (slot.Preset.Form == TankForm.Cone ? 3 : 2) : 1;
-            float bodyH = hasSize
+            float bodyH = hasSize || rcs
                 ? (tank ? ShapeRowHeight + LoadRowHeight(PropellantLoads.All.Count) : 0f) + (editors * EditorHeight)
                 : 3f * 26f;
             float menuH = 46f + bodyH + 16f;
@@ -723,6 +763,12 @@ namespace Galilego.Building
                         PartCatalog.TankMinRadius * 2f, PartCatalog.TankMaxRadius * 2f, SlotMenuIdBase + 20, "F1");
                     preset.TopRadius = topDiameter * 0.5f;
                 }
+            }
+            else if (rcs)
+            {
+                int count = RcsBlockPlacement.ClampCount(preset.Count);
+                DrawCountEditor(px, ref py, pw, "Блоков по кольцу", ref count, SlotMenuIdBase + 40);
+                preset.Count = count;
             }
             else if (hasSize)
             {
@@ -1001,6 +1047,7 @@ namespace Galilego.Building
                 new[] { "Колесо" },
                 new[] { "R" },
                 new[] { "Ctrl" },
+                new[] { "X", "Z" },
                 new[] { "H" }
             };
             string[] labels =
@@ -1013,6 +1060,7 @@ namespace Galilego.Building
                 "Выбор слота",
                 "Физика (удерж. 1 с)",
                 "Курсор (удерж.)",
+                "РСУ: блоков в кольце",
                 "Скрыть подсказки"
             };
 
@@ -1285,11 +1333,12 @@ namespace Galilego.Building
             bool tank = kind == PartKind.FuelTank;
             bool engine = kind == PartKind.Engine;
             bool capsule = kind == PartKind.Capsule;
+            bool rcs = kind == PartKind.RcsBlock;
 
             // Stats rows: an engine has mass, propellant, thrust, Isp, flow,
             // expansion ratio, joint strength. A capsule has mass, diameter,
             // height and joint strength; it has no sizes.
-            int rows = engine ? 7 : (kind == PartKind.FuelTank ? 7 : (capsule ? 4 : 3));
+            int rows = engine ? 7 : (kind == PartKind.FuelTank ? 7 : (capsule ? 4 : (rcs ? 4 : 3)));
             int editors = engine || capsule ? 0 : (tank ? (IsCone(m) ? 3 : 2) : 1);
 
             // Everything except the frame: header, labels, rows, shape and
@@ -1393,6 +1442,13 @@ namespace Galilego.Building
                     AddRow(x, ref y, w, "Диаметр", (m.Radius * 2f).ToString("F1") + " м");
                     AddRow(x, ref y, w, "Высота", m.Height.ToString("F1") + " м");
                     break;
+                case PartKind.RcsBlock:
+                {
+                    int ring = RcsBlockPlacement.ClampCount(layout.Preset.Count);
+                    AddRow(x, ref y, w, "Блоков в кольце", ring + " шт.");
+                    AddRow(x, ref y, w, "Сопел", (ring * 5) + " × 450 Н");
+                    break;
+                }
             }
 
             AddRow(x, ref y, w, "Прочность стыка", (m.JointStrengthNewtons / 1e6).ToString("F1") + " МН");
@@ -1433,6 +1489,17 @@ namespace Galilego.Building
                     preset.TopRadius = topDiameter * 0.5f;
                 }
 
+                if (!SamePreset(before, preset))
+                {
+                    ApplyPresetEdit(layout.Owner, layout.Card, preset);
+                }
+            }
+            else if (kind == PartKind.RcsBlock)
+            {
+                PartPreset before = preset;
+                int count = RcsBlockPlacement.ClampCount(preset.Count);
+                DrawCountEditor(x, ref y, w, "Блоков по кольцу", ref count, 40);
+                preset.Count = count;
                 if (!SamePreset(before, preset))
                 {
                     ApplyPresetEdit(layout.Owner, layout.Card, preset);
@@ -1771,6 +1838,41 @@ namespace Galilego.Building
             GUI.Label(new Rect(smallDown.x, y + 36f, btn, 14f), "0.1 м", BuilderSkin.TinyCenter);
             GUI.Label(new Rect(smallUp.x, y + 36f, btn, 14f), "0.1 м", BuilderSkin.TinyCenter);
             GUI.Label(new Rect(bigUp.x, y + 36f, btn, 14f), "1 м", BuilderSkin.TinyCenter);
+
+            y += 62f;
+        }
+
+        /// <summary>
+        /// Ring count editor (RCS): [&lt;] N шт. [&gt;]. Values cycle through the
+        /// symmetry presets 1/2/3/4/6/8; X/Z do the same in the world.
+        /// </summary>
+        private void DrawCountEditor(float x, ref float y, float w, string label, ref int count, int idBase)
+        {
+            GUI.Label(new Rect(x, y, w * 0.6f, 18f), label, BuilderSkin.Body);
+            GUI.Label(new Rect(x + (w * 0.4f), y, w * 0.6f, 18f), "X / Z", BuilderSkin.TinyRight);
+            y += 22f;
+
+            const float btn = 36f;
+            float valueW = w - (btn * 2f) - 16f;
+            var down = new Rect(x, y, btn, 34f);
+            var box = new Rect(x + btn + 8f, y, valueW, 34f);
+            var up = new Rect(box.xMax + 8f, y, btn, 34f);
+
+            if (StepButton(down, BuilderSkin.ChevronLeft, true, idBase, 0.25f))
+            {
+                count = RcsBlockPlacement.Step(count, -1);
+            }
+
+            if (StepButton(up, BuilderSkin.ChevronRight, true, idBase + 1, 0.25f))
+            {
+                count = RcsBlockPlacement.Step(count, 1);
+            }
+
+            GUI.Box(box, GUIContent.none, BuilderSkin.ValueBox);
+            GUI.Label(new Rect(box.x, box.y - 2f, box.width, box.height - 4f),
+                count + " шт.", BuilderSkin.ValueText);
+            GUI.Label(new Rect(x, y + 36f, w, 14f), "1 / 2 / 3 / 4 / 6 / 8 по окружности",
+                BuilderSkin.TinyRight);
 
             y += 62f;
         }
@@ -2174,6 +2276,7 @@ namespace Galilego.Building
                 case PartKind.Engine: return "Двигатель";
                 case PartKind.FuelTank: return "Ёмкость · настраиваемая";
                 case PartKind.Capsule: return "Модуль экипажа · фиксированный";
+                case PartKind.RcsBlock: return "Блок РСУ · радиальный";
                 default: return "Разделение ступеней";
             }
         }
@@ -2227,3 +2330,4 @@ namespace Galilego.Building
         }
     }
 }
+

@@ -35,6 +35,14 @@ namespace Galilego.Flight
         public double RcsIspS = 290d;
         public double RcsDryKgPerBlock = 15d;
         public double RcsPropellantKgPerNozzle = 12d;
+
+        /// <summary>
+        /// Fallback RCS for a ship with no RCS BLOCK PARTS: a hidden ring on the host
+        /// part (the pre-model behaviour). Off by default — the player mounts
+        /// RCS blocks from the inventory, and their nozzles drive the control system
+        /// (part nozzles use RcsBlockPlacement nozzle constants: 450 N, 290 s, 12 kg).
+        /// </summary>
+        public bool VirtualRcsWithoutBlocks;
     }
 
     /// <summary>Builds a VesselFlightModel from a blueprint: real engines, RCS.</summary>
@@ -103,10 +111,17 @@ namespace Galilego.Flight
             PartDefinition hd = all[host];
             double ringR = Math.Max(0.5d, hd.Dimensions.x * 0.95d);
 
-            // ─ RCS: blocks around the ring on the host; each block has 5 nozzles pointing in different directions ─
+            // ─ RCS: the player's blocks (markers on the parts) drive the control system;
+            // the hidden ring on the host is only an explicit fallback for ships without blocks ─
             double hwRcs = 0d;
             bool rcsMarked = markers.Exists(x => x.m.Kind == ThrusterKind.Rcs);
-            if (cfg.EnableRcs && !rcsMarked)
+            if (cfg.EnableRcs && !rcsMarked && !cfg.VirtualRcsWithoutBlocks)
+            {
+                Debug.LogWarning("[Flight] РСУ: на корабле нет блоков РСУ — каналы РСУ/SAS останутся без тяги. "
+                    + "Поставь блоки РСУ на бак в ангаре.");
+            }
+
+            if (cfg.EnableRcs && !rcsMarked && cfg.VirtualRcsWithoutBlocks)
             {
                 double y = hd.Offset.y + (0.2d * hd.Dimensions.y);
                 for (int b = 0; b < cfg.RcsBlocks; b++)
@@ -129,16 +144,22 @@ namespace Galilego.Flight
             // Markers from models: position/direction come from transforms (real nozzle locations).
             foreach (var (mk, part) in markers)
             {
-                Transform root = parts[part].Visual.Root.transform;
+                PlacedPart placed = parts[part];
+                Transform root = placed.Visual.Root.transform;
                 Vector3 local = root.InverseTransformPoint(mk.transform.position);
                 Vector3 dirLocal = root.InverseTransformDirection(-mk.transform.forward).normalized;
+
+                // The visual root can be rotated (radial RCS blocks): lift the nozzle
+                // offset and direction into the vessel frame before adding the centre.
+                Vector3 centerLocal = new Vector3(0f, placed.Metrics.Center, 0f) + placed.PhysicsCenterLocal;
+                Vector3 centerRel = placed.Rotation * (local - centerLocal);
+                Vector3 dirVessel = placed.Rotation * dirLocal;
                 PartDefinition d = all[part];
-                Vector3 centerRel = local - new Vector3(0f, parts[part].Metrics.Center, 0f);
                 model.Thrusters.Add(new Thruster
                 {
                     Name = mk.name, Kind = mk.Kind, PartIndex = part,
                     Position = new Vector3d(d.Offset.x + centerRel.x, d.Offset.y + centerRel.y, d.Offset.z + centerRel.z),
-                    Direction = new Vector3d(dirLocal.x, dirLocal.y, dirLocal.z),
+                    Direction = new Vector3d(dirVessel.x, dirVessel.y, dirVessel.z),
                     ThrustVacN = mk.ThrustN, IspVacS = mk.IspSeconds, OwnPropKg = mk.PropellantKg,
                 });
             }

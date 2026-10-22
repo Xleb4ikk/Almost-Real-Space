@@ -49,6 +49,9 @@ namespace Galilego.Building
         [Tooltip("Префаб капсулы Orion (Models/Parts/Capsules/Orion/Orion_CrewModule.prefab) — экипажный модуль как деталь. Габариты и масса мерятся по нему.")]
         public GameObject CapsulePrefab;
 
+        [Tooltip("Модель блока РСУ (Models/Parts/RCS/RCS_Block_5N.fbx) — четыре блока по кольцу вокруг каждого бака. Пусто — без блоков.")]
+        public GameObject RcsBlockPrefab;
+
         [Tooltip("Материал боковины бака.")]
         public Material TankSideMaterial;
 
@@ -126,6 +129,27 @@ namespace Galilego.Building
         private string ghostEngineId;
         private int deleteTarget = -1;
         private PartCatalog.PartVisual deleteHighlighted;
+
+        // RCS ring ghost: one block visual per ring slot, rebuilt when the count changes.
+        private int ghostRcsCount;
+        private Transform[] rcsGhostBlocks = System.Array.Empty<Transform>();
+
+        // Last valid RCS ring aim: host tank and where the ring sits on its barrel.
+        private bool rcsAimValid;
+        private int rcsAimTank = -1;
+        private float rcsAimHeight;
+        private float rcsAimAngle;
+
+        // Suppress the ghost right after placing a ring: it would otherwise sit on
+        // top of the new blocks. The ghost returns when the aim moves away.
+        private bool rcsPlacedAim;
+        private int rcsPlacedTank = -1;
+        private int rcsPlacedCount;
+        private float rcsPlacedHeight;
+        private float rcsPlacedAngle;
+
+        /// <summary>Next group id for "placed together" parts (an RCS ring).</summary>
+        private int nextPartGroup = 1;
 
         /// <summary>Aim cone samples (AimCone) — buffer to avoid per-frame allocations.</summary>
         private readonly Vector3[] aimDirections = new Vector3[AimCone.Samples];
@@ -262,6 +286,8 @@ namespace Galilego.Building
             {
                 PartCatalog.RegisterCapsule(CapsulePrefab);
             }
+
+            PartCatalog.RegisterRcsBlock(RcsBlockPrefab);
 
             catalogSynced = engines.Count > 0;
             if (!enginesWarned && engines.Count == 0)
@@ -1232,6 +1258,9 @@ namespace Galilego.Building
                 case PartKind.Capsule:
                     // Capsule sizes are fixed by the model — the preset needs nothing.
                     return new PartPreset { Kind = kind };
+                case PartKind.RcsBlock:
+                    // Fixed model; the ring size is the only preset choice.
+                    return new PartPreset { Kind = kind, Count = RcsBlockPlacement.DefaultCount };
                 default:
                     PartCatalog.EngineTemplate engine = DefaultEngine;
                     return new PartPreset
@@ -1252,7 +1281,8 @@ namespace Galilego.Building
                     preset.Load, EngineFor(preset));
             }
 
-            if (preset.Kind == PartKind.Engine || preset.Kind == PartKind.Capsule)
+            if (preset.Kind == PartKind.Engine || preset.Kind == PartKind.Capsule
+                || preset.Kind == PartKind.RcsBlock)
             {
                 // Sizes come from the model template; preset fields are irrelevant.
                 return PartCatalog.Measure(preset.Kind, 0f, 0f, EngineFor(preset));
@@ -1270,14 +1300,22 @@ namespace Galilego.Building
         /// <summary>
         /// Place a part into the draft (visual + record). parentIndex −1 — root.
         /// engineTemplate — the part's engine model (for PartKind.Engine; null — default).
+        /// rotation — part frame in the ship frame (radial parts); radial — mounted on
+        /// a host's side (no stack node); group — parts placed together (RCS ring).
         /// </summary>
         public PlacedPart AddPart(
             PartKind kind, PartMetrics metrics, Vector3 pivot, int parentIndex, bool parentOnTop,
-            PartCatalog.EngineTemplate engineTemplate = null)
+            PartCatalog.EngineTemplate engineTemplate = null,
+            Quaternion rotation = default, bool radial = false, int group = 0)
         {
             PartCatalog.EngineTemplate visualEngine = kind == PartKind.Engine
                 ? (engineTemplate != null ? engineTemplate : DefaultEngine)
                 : null;
+
+            if (rotation.w == 0f && rotation.x == 0f && rotation.y == 0f && rotation.z == 0f)
+            {
+                rotation = Quaternion.identity;
+            }
 
             var part = new PlacedPart
             {
@@ -1290,6 +1328,12 @@ namespace Galilego.Building
                 Pivot = pivot,
                 ParentIndex = parentIndex,
                 ParentOnTop = parentOnTop,
+                Rotation = rotation,
+                Radial = radial,
+                Group = group,
+                PhysicsCenterLocal = radial
+                    ? new Vector3(0f, 0f, RcsBlockPlacement.BodyCenterOutward)
+                    : Vector3.zero,
                 EngineSpec = visualEngine != null ? visualEngine.Spec : null,
             };
 
@@ -1302,7 +1346,14 @@ namespace Galilego.Building
             if (parentIndex >= 0 && parentIndex < parts.Count - 1)
             {
                 PlacedPart parent = parts[parentIndex];
-                if (parentOnTop)
+                if (radial)
+                {
+                    // A side-mounted part is no stack node: nothing snaps to it and
+                    // it does not take the host's top/bottom node.
+                    part.TopOccupied = true;
+                    part.BottomOccupied = true;
+                }
+                else if (parentOnTop)
                 {
                     parent.TopOccupied = true;
                     part.BottomOccupied = true;
@@ -1318,11 +1369,22 @@ namespace Galilego.Building
             return part;
         }
 
-        /// <summary>Remove the last placed part (Ctrl+Z).</summary>
+        /// <summary>Remove the last placed part (Ctrl+Z); an RCS ring goes as a whole.</summary>
         public void RemoveLast()
         {
             if (parts.Count == 0)
             {
+                return;
+            }
+
+            int group = parts[parts.Count - 1].Group;
+            if (group != 0)
+            {
+                while (parts.Count > 0 && parts[parts.Count - 1].Group == group)
+                {
+                    RemoveAt(parts.Count - 1);
+                }
+
                 return;
             }
 
@@ -1480,7 +1542,7 @@ namespace Galilego.Building
                 if (part.Visual != null)
                 {
                     part.Visual.Root.transform.localPosition = part.Pivot - bottom;
-                    part.Visual.Root.transform.localRotation = Quaternion.identity;
+                    part.Visual.Root.transform.localRotation = part.Rotation;
                 }
             }
         }
@@ -1492,6 +1554,12 @@ namespace Galilego.Building
             if (!HasSelection || UiOpen)
             {
                 HideGhost();
+                return;
+            }
+
+            if (SelectedPreset.Kind == PartKind.RcsBlock)
+            {
+                UpdateRcsPlacement();
                 return;
             }
 
@@ -1569,6 +1637,220 @@ namespace Galilego.Building
             ghost.Root.transform.localPosition = pivot;
             ghost.Root.transform.localRotation = Quaternion.identity;
             ghost.SetMaterial(valid ? ghostMaterial : invalidMaterial);
+        }
+
+        /// <summary>
+        /// RCS placement: the reticle aims at a fuel tank hull; the ghost is a full
+        /// ring of SelectedPreset.Count blocks around the aimed height. The blocks
+        /// follow the hull normal (cone included) and sink their round base in.
+        /// </summary>
+        private void UpdateRcsPlacement()
+        {
+            int count = RcsBlockPlacement.ClampCount(SelectedPreset.Count);
+            EnsureRcsGhost(count);
+
+            Camera camera = Camera.main;
+            if (camera == null || ghost == null)
+            {
+                HideGhost();
+                return;
+            }
+
+            Vector3 rayOrigin = Zone.RenderToSite(camera.transform.position);
+            Vector3 rayDirection = Zone.transform.InverseTransformDirection(camera.transform.forward);
+
+            // Nearest tank along the reticle centre ray (analytic hull, no colliders).
+            int tankIndex = -1;
+            float bestT = float.MaxValue;
+            for (int i = 0; i < parts.Count; i++)
+            {
+                PlacedPart p = parts[i];
+                if (p.Kind != PartKind.FuelTank)
+                {
+                    continue;
+                }
+
+                Vector3 baseCenter = p.Pivot + new Vector3(0f, p.Metrics.Bottom, 0f);
+                if (BuildMath.RayFrustum(rayOrigin, rayDirection, baseCenter,
+                        p.Metrics.Radius, p.Metrics.TopRadius, p.Metrics.Height, out float t)
+                    && t >= 0f && t <= BuildMath.SnapReach && t < bestT)
+                {
+                    bestT = t;
+                    tankIndex = i;
+                }
+            }
+
+            if (tankIndex < 0)
+            {
+                rcsAimValid = false;
+                HideGhost();
+                return;
+            }
+
+            PlacedPart host = parts[tankIndex];
+            Vector3 hit = rayOrigin + (rayDirection * bestT);
+            float height = RcsBlockPlacement.ClampHeight(host.Metrics, hit.y - host.Pivot.y);
+
+            // Ring start angle: from the aimed point; aiming at a flat cap, face the player.
+            Vector3 offset = new Vector3(hit.x - host.Pivot.x, 0f, hit.z - host.Pivot.z);
+            float angle = offset.sqrMagnitude > 1e-4f
+                ? Mathf.Atan2(offset.z, offset.x)
+                : Mathf.Atan2(-rayDirection.z, -rayDirection.x);
+
+            // Right after placing, keep the ghost hidden while the aim stays put.
+            if (rcsPlacedAim && tankIndex == rcsPlacedTank && count == rcsPlacedCount
+                && Mathf.Abs(height - rcsPlacedHeight) < 0.12f
+                && Mathf.Abs(Mathf.DeltaAngle(angle * Mathf.Rad2Deg, rcsPlacedAngle * Mathf.Rad2Deg)) < 4f)
+            {
+                rcsAimValid = false;
+                HideGhost();
+                return;
+            }
+
+            rcsPlacedAim = false;
+
+            // A new block must not sit on an already mounted one (rings cannot stack).
+            bool blocked = false;
+            float step = (Mathf.PI * 2f) / count;
+            for (int i = 0; i < count && !blocked; i++)
+            {
+                RcsBlockPlacement.Pose(host.Metrics, host.Pivot, height, angle + (step * i),
+                    out Vector3 blockPivot, out _);
+                for (int j = 0; j < parts.Count; j++)
+                {
+                    PlacedPart other = parts[j];
+                    if (other.Kind != PartKind.RcsBlock)
+                    {
+                        continue;
+                    }
+
+                    if ((other.Pivot - blockPivot).sqrMagnitude < 0.9f * 0.9f)
+                    {
+                        blocked = true;
+                        break;
+                    }
+                }
+            }
+
+            rcsAimValid = !blocked;
+            rcsAimTank = tankIndex;
+            rcsAimHeight = height;
+            rcsAimAngle = angle;
+
+            ghostVisible = true;
+            ghostValid = !blocked;
+            ghost.Root.SetActive(true);
+            ghost.Root.transform.localPosition = host.Pivot;
+            ghost.Root.transform.localRotation = Quaternion.identity;
+            UpdateRcsGhostBlocks(host, count);
+            ghost.SetMaterial(blocked ? invalidMaterial : ghostMaterial);
+        }
+
+        /// <summary>Rebuild the RCS ghost when the ring size changes (one block visual per slot).</summary>
+        private void EnsureRcsGhost(int count)
+        {
+            if (ghost != null && ghostKind == PartKind.RcsBlock && ghostRcsCount == count)
+            {
+                return;
+            }
+
+            if (ghost != null)
+            {
+                Destroy(ghost.Root);
+            }
+
+            var ring = new GameObject("RCS Ring Ghost");
+            ring.transform.SetParent(Zone.transform, false);
+
+            PartMetrics metrics = MetricsFor(DefaultPreset(PartKind.RcsBlock));
+            var blocks = new Transform[count];
+            for (int i = 0; i < count; i++)
+            {
+                PartCatalog.PartVisual block = PartCatalog.CreateVisual(
+                    PartKind.RcsBlock, metrics, null,
+                    TankSideMaterial, TankCapMaterial, SeparatorMaterial, ring.transform,
+                    withCollider: false);
+                blocks[i] = block.Root.transform;
+            }
+
+            ghost = new PartCatalog.PartVisual
+            {
+                Root = ring,
+                Renderers = ring.GetComponentsInChildren<Renderer>(true),
+            };
+            ghostKind = PartKind.RcsBlock;
+            ghostEngineId = null;
+            ghostRadius = metrics.Radius;
+            ghostTopRadius = metrics.TopRadius;
+            ghostHeight = metrics.Height;
+            ghostRcsCount = count;
+            rcsGhostBlocks = blocks;
+
+            for (int i = 0; i < ghost.Renderers.Length; i++)
+            {
+                if (ghost.Renderers[i] != null)
+                {
+                    ghost.Renderers[i].shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                }
+            }
+        }
+
+        /// <summary>Pose the ghost blocks around the host (site axes, ghost root at the host pivot).</summary>
+        private void UpdateRcsGhostBlocks(PlacedPart host, int count)
+        {
+            if (rcsGhostBlocks == null || rcsGhostBlocks.Length != count)
+            {
+                return;
+            }
+
+            float step = (Mathf.PI * 2f) / count;
+            for (int i = 0; i < count; i++)
+            {
+                RcsBlockPlacement.Pose(
+                    host.Metrics, host.Pivot, rcsAimHeight, rcsAimAngle + (step * i),
+                    out Vector3 pivot, out Quaternion rotation);
+                Transform block = rcsGhostBlocks[i];
+                if (block == null)
+                {
+                    continue;
+                }
+
+                block.localPosition = pivot - host.Pivot;
+                block.localRotation = rotation;
+            }
+        }
+
+        /// <summary>Place the aimed RCS ring as one group of radial parts.</summary>
+        private void PlaceRcsRing()
+        {
+            if (!rcsAimValid || rcsAimTank < 0 || rcsAimTank >= parts.Count)
+            {
+                return;
+            }
+
+            int count = RcsBlockPlacement.ClampCount(SelectedPreset.Count);
+            PlacedPart host = parts[rcsAimTank];
+            PartMetrics metrics = MetricsFor(DefaultPreset(PartKind.RcsBlock));
+            int group = nextPartGroup++;
+            float step = (Mathf.PI * 2f) / count;
+
+            for (int i = 0; i < count; i++)
+            {
+                RcsBlockPlacement.Pose(
+                    host.Metrics, host.Pivot, rcsAimHeight, rcsAimAngle + (step * i),
+                    out Vector3 pivot, out Quaternion rotation);
+                AddPart(PartKind.RcsBlock, metrics, pivot, rcsAimTank, false, null,
+                    rotation, radial: true, group: group);
+            }
+
+            // Remember where the ring went: the ghost stays hidden until the aim moves.
+            rcsPlacedAim = true;
+            rcsPlacedTank = rcsAimTank;
+            rcsPlacedCount = count;
+            rcsPlacedHeight = rcsAimHeight;
+            rcsPlacedAngle = rcsAimAngle;
+
+            Debug.Log("[Build] РСУ: " + count + " блок(ов) на баке " + host.Kind + ", всего " + parts.Count);
         }
 
         /// <summary>
@@ -1689,6 +1971,12 @@ namespace Galilego.Building
 
         private void PlaceGhostedPart()
         {
+            if (SelectedPreset.Kind == PartKind.RcsBlock)
+            {
+                PlaceRcsRing();
+                return;
+            }
+
             PartCatalog.EngineTemplate selectedEngine = SelectedPreset.Kind == PartKind.Engine
                 ? EngineFor(SelectedPreset)
                 : null;

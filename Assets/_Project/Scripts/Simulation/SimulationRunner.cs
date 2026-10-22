@@ -343,6 +343,16 @@ namespace Galilego.Universe
         private ContactZoneHost zoneHost;
         private Vector3 playerRenderUp = Vector3.up;
 
+        // Inertial acceleration of the vessel (gravity included), low-pass filtered. A carried
+        // player feels gravity MINUS this: thrust presses them to the floor, free fall — weightless.
+        private Vector3d shipAcceleration;
+        private Vector3d lastShipVelocity;
+        private double lastShipAccelerationTime;
+        private bool shipAccelerationValid;
+
+        private const double ShipAccelerationFilterSeconds = 0.1d;
+        private const double ShipAccelerationClampMps2 = 3000d;
+
         /// <summary>
         /// Root of the vessel visuals (ShipView's object). Outside the contact zone it is
         /// put at Ship.Position BEFORE the player step, so the player collides with the
@@ -967,13 +977,43 @@ namespace Galilego.Universe
         }
 
         /// <summary>Stand up: support point next to the seat (render space) → double world.</summary>
-        public void UnseatPlayerAtRender(Vector3 feetRender)
+        public void UnseatPlayerAtRender(Vector3 feetRender, Transform platform = null)
         {
             RenderToAstro(feetRender, out Vector3d feet);
             PlayerSeated = false;
             PlayerPosition = feet;
             PlayerVelocity = Ship != null ? Ship.Velocity : PlayerVelocity;
             playerAirborne = false;
+            AttachCarryTo(platform);
+        }
+
+        /// <summary>
+        /// Attach the carry to a known vessel part right now (standing up from its seat). Without
+        /// this the player is stepped in the SITE frame on the first frame while the vessel moves
+        /// at hundreds of m/s: the floor is gone before the carry's own capture can pick it up.
+        /// </summary>
+        private void AttachCarryTo(Transform platform)
+        {
+            if (platform == null || Ship == null || !CarryAllowed())
+            {
+                return;
+            }
+
+            ContactZoneHost host = CarryZone();
+            if (host != null)
+            {
+                SiteFrame zoneFrame = host.ZoneFrameAt(TimeSeconds);
+                if (zoneFrame != null)
+                {
+                    platformCarry.Capture(host.Proxy.transform, zoneFrame, TimeSeconds, PlayerPosition, PlayerVelocity,
+                        true, -1, vesselSupport, platform);
+                }
+
+                return;
+            }
+
+            platformCarry.CaptureFree(VesselRoot, PlayerPosition, PlayerVelocity, Ship.Velocity,
+                LocalFrameVelocity(TimeSeconds), playerRenderUp, true, -1, vesselSupport, platform);
         }
 
         /// <summary>Ship point at seating time: the "seated, riding the ship" deltas are measured against it.</summary>
@@ -1102,6 +1142,7 @@ namespace Galilego.Universe
                 ToggleHover();
             }
 
+            UpdateShipAcceleration();
             ApplyPlatformCarry(fromTime);
 
             double t = fromTime;
@@ -1310,6 +1351,43 @@ namespace Galilego.Universe
             double altitude = (PlayerPosition - bodyPos).Magnitude - body.Radius - GroundHeight(body, latDeg, lonDeg);
             return altitude < SurfaceControllerAltitudeMeters
                 && PlayerFrameRelativeSpeed(t) < SurfaceControllerMaxRelativeSpeedMps;
+        }
+
+        /// <summary>Vessel acceleration from the velocity change between two player steps.</summary>
+        private void UpdateShipAcceleration()
+        {
+            if (Ship == null)
+            {
+                shipAcceleration = Vector3d.Zero;
+                shipAccelerationValid = false;
+                return;
+            }
+
+            double now = TimeSeconds;
+            if (shipAccelerationValid)
+            {
+                double dt = now - lastShipAccelerationTime;
+                if (dt > 1e-6d && dt < 0.5d)
+                {
+                    Vector3d raw = (Ship.Velocity - lastShipVelocity) * (1d / dt);
+                    double magnitude = raw.Magnitude;
+                    if (magnitude > ShipAccelerationClampMps2)
+                    {
+                        // A state rewrite (zone entry/exit, staging), not a real acceleration.
+                        raw = raw * (ShipAccelerationClampMps2 / magnitude);
+                    }
+
+                    shipAcceleration += (raw - shipAcceleration) * Math.Min(1d, dt / ShipAccelerationFilterSeconds);
+                }
+                else if (dt >= 0.5d)
+                {
+                    shipAcceleration = Vector3d.Zero;
+                }
+            }
+
+            lastShipVelocity = Ship.Velocity;
+            lastShipAccelerationTime = now;
+            shipAccelerationValid = true;
         }
 
         /// <summary>Put the vessel root where ShipView will put it in LateUpdate (same formula).</summary>
@@ -1741,6 +1819,14 @@ namespace Galilego.Universe
             playerController.Velocity = localVelocity;
             playerController.Airborne = playerAirborne;
             Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
+            if (platformCarry.Active)
+            {
+                // In the vessel's frame the player feels gravity minus the vessel's acceleration:
+                // thrust (or the pad holding the vessel) presses them to the floor, free fall
+                // makes them weightless. Only the component along the cabin's "down" is used.
+                gravity = gravity - shipAcceleration;
+            }
+
             playerController.Gravity = Math.Max(0d, -Vector3d.Dot(gravity, frame.Up));
 
             terrainSupport.SetFrame(body, playerTerrain, frame, t);

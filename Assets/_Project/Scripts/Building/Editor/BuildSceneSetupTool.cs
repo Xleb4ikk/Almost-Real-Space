@@ -28,6 +28,7 @@ namespace Galilego.Building.EditorTools
         private const string TankSidePath = "Assets/_Project/Materials/Parts/FuelTank_Metal.mat";
         private const string TankCapPath = "Assets/_Project/Materials/Parts/FuelTank_Cap.mat";
         private const string SeparatorPath = "Assets/_Project/Materials/Parts/Separator_Metal.mat";
+        private const string RcsBlockPath = "Assets/_Project/Models/Parts/RCS/RCS_Block_5N.fbx";
         private const string PadObjectName = "Площадка стартовая";
 
         /// <summary>
@@ -212,6 +213,7 @@ namespace Galilego.Building.EditorTools
             builder.TankSideMaterial = AssetDatabase.LoadAssetAtPath<Material>(TankSidePath);
             builder.TankCapMaterial = AssetDatabase.LoadAssetAtPath<Material>(TankCapPath);
             builder.SeparatorMaterial = AssetDatabase.LoadAssetAtPath<Material>(SeparatorPath);
+            builder.RcsBlockPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(RcsBlockPath);
 
             if (builder.Zone == null)
             {

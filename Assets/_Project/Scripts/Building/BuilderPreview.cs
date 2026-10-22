@@ -139,6 +139,12 @@ namespace Galilego.Building
             StoreIcon(PartKind.Capsule, null,
                 PartCatalog.Measure(PartKind.Capsule, 0f, 0f, firstEngine),
                 null, tankSide, tankCap, separator);
+
+            // RCS block: the saddle-mounted model (Models/Parts/RCS). Without the
+            // model registered the root is empty and the icon stays procedural.
+            StoreIcon(PartKind.RcsBlock, null,
+                PartCatalog.Measure(PartKind.RcsBlock, 0f, 0f, firstEngine),
+                null, tankSide, tankCap, separator);
         }
 
         /// <summary>

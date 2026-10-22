@@ -267,7 +267,10 @@ namespace Galilego.Universe
                 ShipLocalOffset = ShipTransform.InverseTransformPoint(renderFeet);
             }
 
-            Runner.UnseatPlayerAtRender(renderFeet);
+            // The part the seat belongs to: the player must stand up ALREADY carried by it,
+            // otherwise a moving/accelerating vessel leaves them behind on the first frame.
+            Galilego.Building.VesselPartCollider part = seat.GetComponentInParent<Galilego.Building.VesselPartCollider>();
+            Runner.UnseatPlayerAtRender(renderFeet, part != null ? part.transform : null);
         }
 
         /// <summary>

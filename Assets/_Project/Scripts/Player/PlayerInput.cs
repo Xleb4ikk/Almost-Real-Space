@@ -87,6 +87,35 @@ namespace Galilego.Universe
 #endif
         }
 
+        /// <summary>
+        /// Raw physical key press for UI shortcuts that are not rebindable actions
+        /// (the RCS ring size on X/Z). Works with either input backend.
+        /// </summary>
+        public static bool RawKeyDown(KeyCode key)
+        {
+            if (Blocked)
+            {
+                return false;
+            }
+
+#if ENABLE_INPUT_SYSTEM
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null)
+            {
+                return false;
+            }
+
+            switch (key)
+            {
+                case KeyCode.X: return keyboard.xKey.wasPressedThisFrame;
+                case KeyCode.Z: return keyboard.zKey.wasPressedThisFrame;
+                default: return false;
+            }
+#else
+            return Input.GetKeyDown(key);
+#endif
+        }
+
 #if ENABLE_INPUT_SYSTEM
         /// <summary>Mouse delta for this frame in axis units (like the old Mouse X/Y).</summary>
         public static Vector2 MouseDelta()
