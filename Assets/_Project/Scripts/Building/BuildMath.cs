@@ -631,7 +631,9 @@ namespace Galilego.Building
         /// ParentIndex from snapping. Shape is a body of revolution: a cylinder,
         /// or a truncated cone for the adapter tank (Dimensions.z — top radius).
         /// Radial parts (RCS blocks) are boxes with the part rotation; their body
-        /// is centred on PhysicsCenterLocal, not on the hull contact pivot.
+        /// is centred on PhysicsCenterLocal, not on the hull contact pivot. Offset is
+        /// the BODY centre: the part pivot plus the metrics centre (the pivot is the
+        /// part bottom for tanks, engines and the capsule) and PhysicsCenterLocal.
         /// </summary>
         public static PartDefinition[] ToPartDefinitions(IReadOnlyList<PlacedPart> parts)
         {
@@ -646,7 +648,8 @@ namespace Galilego.Building
             {
                 PlacedPart p = parts[i];
                 bool box = p.Kind == PartKind.RcsBlock;
-                Vector3 center = p.Pivot + p.Rotation * p.PhysicsCenterLocal;
+                Vector3 center = p.Pivot + p.Rotation
+                    * (new Vector3(0f, p.Metrics.Center, 0f) + p.PhysicsCenterLocal);
                 float centerY = center.y - bottom.y;
                 float bottomY = p.Pivot.y + p.Metrics.Bottom - bottom.y;
                 bool frustum = !box && p.Metrics.TopRadius > 0.01f

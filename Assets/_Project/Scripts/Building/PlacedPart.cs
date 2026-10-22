@@ -170,8 +170,9 @@ namespace Galilego.Building
         public Quaternion Rotation = Quaternion.identity;
 
         /// <summary>
-        /// Physics body centre offset in the part frame, m: a radial part's body is
-        /// not centred on its hull contact pivot. Zero — the centre is the pivot.
+        /// Extra physics body centre offset in the part frame, m, on top of Metrics.Center:
+        /// a radial part's body is not centred on its hull contact pivot. Zero — the centre
+        /// is Metrics.Center above the pivot.
         /// </summary>
         public Vector3 PhysicsCenterLocal;
 
