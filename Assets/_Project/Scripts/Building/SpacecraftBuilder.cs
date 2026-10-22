@@ -435,7 +435,35 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Mirror the visuals onto the contact zone bodies: in flight part poses
+        /// Per-frame visual update, dispatched by VesselMirror. In the contact zone the
+        /// proxy bodies are the pose; in free flight the root carries Ship.Attitude
+        /// (ShipView) and every part must be reset to its BUILD local pose — the zone
+        /// mirror leaves per-part world poses that would otherwise be rotated twice.
+        /// </summary>
+        public void UpdateVisuals()
+        {
+            if (Runner == null || !PhysicsOn)
+            {
+                return;
+            }
+
+            if (ContactZoneHost.Active)
+            {
+                MirrorVisualsToBodies();
+                return;
+            }
+
+            if (Runner.Ship == null || !Runner.Ship.PositionIsCom || Runner.Flight == null)
+            {
+                return;
+            }
+
+            RefreshVisualLocals();
+            Physics.SyncTransforms();
+        }
+
+        /// <summary>
+        /// Mirror the visuals onto the contact zone bodies: in the zone part poses
         /// come straight from the PhysX proxy bodies (position+rotation — falling
         /// and tipping are visible). Called by VesselMirror (order −48), after the
         /// zone has moved the frame root and before the camera.
@@ -484,6 +512,7 @@ namespace Galilego.Building
                     continue;
                 }
 
+                proxy.BindVisual(i, part.Visual.Root.transform);
                 Vector3 targetPos = zone.InverseTransformPoint(body.transform.position);
                 Quaternion targetRot = Quaternion.Inverse(zone.rotation) * body.transform.rotation;
                 if (!mirrorInit[i])

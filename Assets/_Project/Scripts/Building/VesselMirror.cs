@@ -21,7 +21,7 @@ namespace Galilego.Building
         {
             if (Builder != null)
             {
-                Builder.MirrorVisualsToBodies();
+                Builder.UpdateVisuals();
             }
         }
     }

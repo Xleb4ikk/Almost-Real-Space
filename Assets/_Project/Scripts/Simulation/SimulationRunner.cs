@@ -973,8 +973,18 @@ namespace Galilego.Universe
             }
 
             Vector3d direction = exitDirection.Normalized;
-            PlayerPosition = Ship.Position + (direction * 3d);
+            Vector3d exitPoint = Ship.Position + (direction * 3d);
+            PlayerPosition = exitPoint;
             PlayerVelocity = Ship.Velocity + (direction * pushSpeed);
+
+            // Free flight: the vessel may be rotating, and the exit point is not the COM.
+            // The player must leave with the rigid-body velocity at their own point.
+            if (!ContactZoneHost.Active && Ship.PositionIsCom)
+            {
+                Vector3d omega = Ship.Attitude.Rotate(Ship.AngularVelocity);
+                PlayerVelocity += Vector3d.Cross(omega, exitPoint - Ship.Position);
+            }
+
             PlayerMode = PlayerMode.EVA;
             playerAirborne = false;
             JetpackActive = false;
@@ -1197,7 +1207,9 @@ namespace Galilego.Universe
                     PlayerSeatedPosition += smoothedShipPosition - seatedShipAnchor;
                     seatedShipAnchor = smoothedShipPosition;
                     PlayerPosition = PlayerSeatedPosition;
-                    PlayerVelocity = Ship.Velocity;
+                    PlayerVelocity = TryZoneVesselVelocityAt(PlayerPosition, t + dt, out Vector3d seatVelocity)
+                        ? seatVelocity
+                        : Ship.Velocity;
                 }
                 else
                 {
@@ -1299,10 +1311,12 @@ namespace Galilego.Universe
         /// <summary>
         /// EVA hover step: no gravity, the velocity relative to the local frame moves
         /// towards the desired one (input), and to zero with no input (stops in air).
+        /// The frame is the vessel: "stop" must mean beside the rocket, not zero
+        /// orbital velocity relative to the planet (which would leave it behind).
         /// </summary>
         private void StepPlayerHoverEva(double t, double dt)
         {
-            Vector3d frameVelocity = LocalFrameVelocity(t);
+            Vector3d frameVelocity = EvaFrameVelocity(t);
             Vector3d relative = PlayerVelocity - frameVelocity;
             double blend = Math.Min(1d, dt * PlayerHoverResponse);
             relative += (PlayerIntent.HoverVelocity - relative) * blend;
@@ -1327,6 +1341,86 @@ namespace Galilego.Universe
             JetpackActive = false;
             PlayerHoverActive = false;
             playerJumpQueued = false;
+        }
+
+        /// <summary>EVA station-keeping radius (m): inside it the reference is the vessel's rigid-body velocity at the player's point.</summary>
+        private const double VesselEvaFrameRadiusMeters = 100d;
+
+        /// <summary>
+        /// EVA reference velocity: the vessel's own rigid-body velocity at the player —
+        /// linear plus ω×r. Stepping out must not change the player's velocity, and the
+        /// craft (engine off) must stay beside them; the planet frame would brake the
+        /// shared orbital velocity. Local frame only as a fallback (no ship / zone,
+        /// where the attitude is stale).
+        /// </summary>
+        private Vector3d EvaFrameVelocity(double t)
+        {
+            if (Ship == null)
+            {
+                return LocalFrameVelocity(t);
+            }
+
+            if (ContactZoneHost.Active
+                && (PlayerPosition - Ship.Position).SqrMagnitude <= VesselEvaFrameRadiusMeters * VesselEvaFrameRadiusMeters
+                && TryZoneVesselVelocityAt(PlayerPosition, t, out Vector3d zoneVelocityAtPlayer))
+            {
+                // Zone: exact PhysX rigid-body velocity at the player's point (linear + ω×r).
+                return zoneVelocityAtPlayer;
+            }
+
+            if (ContactZoneHost.Active || !Ship.PositionIsCom)
+            {
+                // Zone, player far from the vessel: PhysX linear velocity; attitude/ω are stale.
+                return Ship.Velocity;
+            }
+
+            Vector3d lever = PlayerPosition - Ship.Position;
+            if (lever.SqrMagnitude > VesselEvaFrameRadiusMeters * VesselEvaFrameRadiusMeters)
+            {
+                return Ship.Velocity;
+            }
+
+            return VesselVelocityAt(PlayerPosition);
+        }
+
+        /// <summary>
+        /// Contact zone: EXACT rigid-body velocity (world, inertial) of the vessel at an astro point,
+        /// from PhysX (linear + ω×r). false — no zone.
+        /// </summary>
+        private bool TryZoneVesselVelocityAt(Vector3d astroPosition, double t, out Vector3d velocity)
+        {
+            velocity = Vector3d.Zero;
+            ContactZoneHost host = CarryZone();
+            SiteFrame f = host != null ? host.ZoneFrameAt(t) : null;
+            if (f == null)
+            {
+                return false;
+            }
+
+            f.ToLocal(astroPosition, Vector3d.Zero, out Vector3d lp, out _);
+            Transform zone = host.Proxy.transform;
+            // Site (east, north, up) → zone axes (north, up, east).
+            Vector3 zonePoint = new Vector3((float)lp.Y, (float)lp.Z, (float)lp.X);
+            if (!host.Proxy.TryGetPointVelocity(null, zone.TransformPoint(zonePoint), out Vector3 worldVelocity))
+            {
+                return false;
+            }
+
+            Vector3 vz = zone.InverseTransformDirection(worldVelocity);
+            f.ToWorld(lp, new Vector3d(vz.z, vz.x, vz.y), out _, out velocity);
+            return true;
+        }
+
+        /// <summary>Rigid-body velocity of the vessel at an astro point (linear + ω×r).</summary>
+        private Vector3d VesselVelocityAt(Vector3d position)
+        {
+            if (Ship == null)
+            {
+                return Vector3d.Zero;
+            }
+
+            Vector3d omega = Ship.Attitude.Rotate(Ship.AngularVelocity);
+            return Ship.Velocity + Vector3d.Cross(omega, position - Ship.Position);
         }
 
         /// <summary>
@@ -1420,8 +1514,40 @@ namespace Galilego.Universe
                 return;
             }
 
-            VesselRoot.position = FloatingOrigin.ToRender(Ship.Position);
+            if (TryGetFlightVesselRootPose(out Vector3 position, out Quaternion rotation))
+            {
+                VesselRoot.SetPositionAndRotation(position, rotation);
+            }
+            else
+            {
+                VesselRoot.position = FloatingOrigin.ToRender(Ship.Position);
+            }
+
             Physics.SyncTransforms();
+        }
+
+        /// <summary>
+        /// Render pose of the vessel root in FREE FLIGHT. There Ship.Position is the
+        /// CENTER OF MASS, while the visual root's origin is the craft's bottom pivot:
+        /// the root is shifted back along the attitude by Flight.Com, and the attitude
+        /// itself becomes the root rotation. false — the zone/build owns the root pose
+        /// (there the ship point is the bottom and the attitude is stale).
+        /// </summary>
+        public bool TryGetFlightVesselRootPose(out Vector3 position, out Quaternion rotation)
+        {
+            position = default;
+            rotation = default;
+            if (ContactZoneHost.Active || Ship == null || !Ship.PositionIsCom || Flight == null)
+            {
+                return false;
+            }
+
+            QuaternionD attitude = Ship.Attitude.Normalized;
+            // Body axes = the vessel's build axes (Y along the rocket): bridge only the world side.
+            rotation = AstroFrame.SimulationQuaternion(AstroFrame.BodyToSimulationFrame(attitude));
+            Vector3d root = Ship.Position - attitude.Rotate(Flight.Com);
+            position = FloatingOrigin.ToRender(root);
+            return true;
         }
 
         /// <summary>The player may live in a vessel's frame at all.</summary>
@@ -1516,7 +1642,15 @@ namespace Galilego.Universe
             {
                 Transform zone = host.Proxy.transform;
                 Vector3 zonePoint = zone.InverseTransformPoint(render);
-                Vector3 zoneVelocity = zone.InverseTransformDirection(relative) + platformCarry.PlatformVelocityZone;
+                // STRICT: the platform's velocity is the PhysX rigid-body velocity of the player's point
+                // (linear + ω×r), not a finite difference of the (smoothed, fixed-step) visual pose.
+                Vector3 platformVelocityZone = platformCarry.PlatformVelocityZone;
+                if (host.Proxy.TryGetPointVelocity(platformCarry.Platform, render, out Vector3 pointVelocity))
+                {
+                    platformVelocityZone = zone.InverseTransformDirection(pointVelocity);
+                }
+
+                Vector3 zoneVelocity = zone.InverseTransformDirection(relative) + platformVelocityZone;
 
                 // Zone axes (x north, y up, z east) → site (east, north, up).
                 zoneFrame.ToWorld(new Vector3d(zonePoint.z, zonePoint.x, zonePoint.y),
@@ -1528,7 +1662,7 @@ namespace Galilego.Universe
             }
 
             PlayerPosition = FloatingOrigin.Anchor + AstroFrame.ToAstro(render);
-            PlayerVelocity = Ship.Velocity + AstroFrame.ToAstro(relative);
+            PlayerVelocity = VesselVelocityAt(PlayerPosition) + AstroFrame.ToAstro(relative);
         }
 
         /// <summary>Leave cabin mode: the world state is derived one last time, free flight becomes EVA.</summary>
@@ -1666,9 +1800,11 @@ namespace Galilego.Universe
                 Vector3d jetpackAccel = JetpackActive ? PlayerIntent.JetpackAccel : Vector3d.Zero;
 
                 // Air control: the horizontal velocity eases to the desired one
-                // relative to the local frame — one speed with or without the
-                // jetpack; no input — smooth braking. Vertical stays physical.
-                Vector3d frameVelocity = LocalFrameVelocity(t);
+                // relative to the vessel — one speed with or without the jetpack;
+                // no input — smooth braking. Vertical stays physical. The vessel is
+                // the frame in ANY environment: a planet-frame brake would cancel
+                // the speed the player just inherited and leave the rocket behind.
+                Vector3d frameVelocity = EvaFrameVelocity(t);
                 Vector3d relative = PlayerVelocity - frameVelocity;
                 double verticalSpeed = Vector3d.Dot(relative, up);
                 Vector3d horizontal = relative - (up * verticalSpeed);

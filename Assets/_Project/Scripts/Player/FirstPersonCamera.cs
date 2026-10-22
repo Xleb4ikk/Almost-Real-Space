@@ -69,6 +69,11 @@ namespace Galilego.Universe
             "Внутри корабля всё рядом — фиксируем маленькую.")]
         public float SeatedNearClipMeters = 0.03f;
 
+        [Tooltip("Ближняя плоскость камеры в EVA (м): на орбите ближняя плоскость по высоте " +
+            "(высота*0.001) уходит на сотни метров и срезает ракету, стоящую в нескольких " +
+            "метрах от игрока. В свободном полёте рядом только корабль — держим маленькую.")]
+        public float EvaNearClipMeters = 0.1f;
+
         [Tooltip("ПКМ — приблизиться «в упор» к тому, на что смотришь: максимум, м " +
             "(дальше — по поверхности, но не ближе зазора). 0 — выключено.")]
         public float LeanMaxMeters = 0.75f;
@@ -642,7 +647,13 @@ namespace Galilego.Universe
             }
 
             // Aboard a vessel the vertical is the cabin's: what presses the player to the floor
-            // is the thrust along the cabin axis, not the planet's radial.
+            // is the thrust along the cabin axis, not the planet's radial. Seated — the seat's
+            // up (refreshed by PlayerView before this camera), carried — the platform's up.
+            if (Runner.PlayerSeated && Runner.PlayerSeatedUpRender.sqrMagnitude > 1e-8f)
+            {
+                return Runner.PlayerSeatedUpRender.normalized;
+            }
+
             if (Runner.TryGetCarriedUpRender(out Vector3 carriedUp))
             {
                 return carriedUp;
@@ -755,6 +766,14 @@ namespace Galilego.Universe
             if (Runner.PlayerSeated || Runner.PlayerCarried || Runner.PlayerMode == PlayerMode.InShip)
             {
                 near = SeatedNearClipMeters;
+            }
+            else if (Runner.PlayerMode == PlayerMode.EVA)
+            {
+                // In free flight the altitude-scaled near plane would be hundreds of
+                // metres (at 200 km it is 200 m) and clip the whole vessel the player
+                // just stepped out of. Near the ground the surface controller takes
+                // over and the scaled plane is back.
+                near = EvaNearClipMeters;
             }
 
             // far reaches the physical horizon with margin for distant PEAKS:

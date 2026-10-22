@@ -81,6 +81,19 @@ namespace Galilego.Universe
             QuaternionD frame = QuaternionD.FromAxisAngle(new Vector3d(1d, 0d, 0d), -System.Math.PI / 2d);
             return (frame * astro * frame.Conjugated).Normalized;
         }
+
+        /// <summary>
+        /// Render rotation of the VESSEL from Ship.Attitude (body→astro). The ship's body axes are the
+        /// vessel's own build axes (Y along the rocket, the same numbers as the visual's local axes and
+        /// PartDefinition.Offset), NOT astro-style axes — so only the WORLD side goes through the bridge:
+        /// q_sim = R·q. The generic ToSimulationFrame (R·q·R⁻¹) also bridges the body side and turns
+        /// the rocket axis (local Y) onto body Z: the craft was drawn 90° off its thrust direction.
+        /// </summary>
+        public static QuaternionD BodyToSimulationFrame(QuaternionD attitude)
+        {
+            QuaternionD frame = QuaternionD.FromAxisAngle(new Vector3d(1d, 0d, 0d), -System.Math.PI / 2d);
+            return (frame * attitude).Normalized;
+        }
     }
 
     /// <summary>

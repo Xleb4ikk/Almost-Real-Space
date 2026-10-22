@@ -28,6 +28,15 @@ namespace Galilego.Universe
                 return;
             }
 
+            // Free flight: the ship point is the COM, the root is the bottom pivot and
+            // the attitude turns the whole craft. Zone/build: the root is the ship
+            // point, the pose is owned by the mirror / the builder.
+            if (Runner.TryGetFlightVesselRootPose(out Vector3 position, out Quaternion rotation))
+            {
+                transform.SetPositionAndRotation(position, rotation);
+                return;
+            }
+
             // Floating origin: single anchor (FloatingOrigin.Anchor).
             transform.position = FloatingOrigin.ToRender(Runner.Ship.Position);
         }

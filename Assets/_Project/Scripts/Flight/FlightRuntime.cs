@@ -117,8 +117,10 @@ namespace Galilego.Flight
             float dt = Time.fixedDeltaTime;
             Rigidbody root = proxy.BodyAt(rootBody);
             Transform zt = proxy.transform;
-            Quaternion qz = Quaternion.Inverse(zt.rotation) * root.rotation;      // ship → zone axes
-            Vector3 wBody = Quaternion.Inverse(root.rotation) * root.angularVelocity;
+            // Rotation of the SHIP frame in the world (not of the root PART: the part frame differs by d.Orientation).
+            Quaternion rootShip = root.rotation * Quaternion.Inverse(PartQ(model.Defs[model.PartOfBody[rootBody]]));
+            Quaternion qz = Quaternion.Inverse(zt.rotation) * rootShip;           // ship → zone axes
+            Vector3 wBody = Quaternion.Inverse(rootShip) * root.angularVelocity;  // ω in ship axes
             double pressure = Runner.AmbientPressurePa(Runner.Ship.Position, Runner.TimeSeconds);
             model.Prepare(dt, new QuaternionD(qz.x, qz.y, qz.z, qz.w), new Vector3d(wBody.x, wBody.y, wBody.z),
                 Runner.RawThrottle, pressure, true);
@@ -131,11 +133,15 @@ namespace Galilego.Flight
                 Rigidbody rb = proxy.BodyAt(model.BodyOfPart(t.PartIndex));
                 if (rb == null) continue;
                 PartDefinition d = model.Defs[t.PartIndex];
-                Vector3 local = new Vector3(
+                // Thruster.Position/Direction are in SHIP axes (RCS markers are already lifted there by the factory).
+                // Rotate by the ship frame, NOT by the part body: the part body is additionally turned by d.Orientation
+                // (radial RCS blocks), which used to rotate the nozzles a second time.
+                Quaternion shipToWorld = rb.rotation * Quaternion.Inverse(PartQ(d));
+                Vector3 offShip = new Vector3(
                     (float)t.Position.X - d.Offset.x, (float)t.Position.Y - d.Offset.y, (float)t.Position.Z - d.Offset.z);
                 Vector3d dir = t.CurrentDirection();
-                Vector3 worldDir = rb.transform.TransformDirection(new Vector3((float)dir.X, (float)dir.Y, (float)dir.Z));
-                rb.AddForceAtPosition(worldDir * (float)t.ThrustAt(pressure), rb.transform.TransformPoint(local), ForceMode.Force);
+                Vector3 worldDir = shipToWorld * new Vector3((float)dir.X, (float)dir.Y, (float)dir.Z);
+                rb.AddForceAtPosition(worldDir * (float)t.ThrustAt(pressure), rb.position + (shipToWorld * offShip), ForceMode.Force);
             }
 
             // Flow and mass: stage pools and hardware → body masses (PhysX recomputes COM/inertia).
@@ -166,7 +172,9 @@ namespace Galilego.Flight
             if (body == null) return;
 
             Transform pt = proxy.transform;
-            Quaternion qLocal = Quaternion.Inverse(pt.rotation) * body.rotation;
+            int rootPart = runner.Flight != null && rootBody < runner.Flight.PartOfBody.Length ? runner.Flight.PartOfBody[rootBody] : -1;
+            Quaternion rootQ = rootPart >= 0 && rootPart < runner.Flight.Defs.Length ? PartQ(runner.Flight.Defs[rootPart]) : Quaternion.identity;
+            Quaternion qLocal = Quaternion.Inverse(pt.rotation) * body.rotation * Quaternion.Inverse(rootQ);   // SHIP frame, not the part's
             Vector3 wLocal = pt.InverseTransformDirection(body.angularVelocity);
             Vector3d bx = ToAstro(frame, qLocal * Vector3.right);
             Vector3d by = ToAstro(frame, qLocal * Vector3.up);
@@ -194,6 +202,12 @@ namespace Galilego.Flight
             Vector3d wAstro = att.Rotate(ship.AngularVelocity) - frame.AngularVelocity;
             proxy.ApplyRigidState(Quaternion.LookRotation(fwd, upv), ToLocal(frame, wAstro));
             if (runner.Flight != null) runner.Flight.HoldCurrentAttitude();
+        }
+
+        /// <summary>Rotation of the part frame relative to the ship frame.</summary>
+        private static Quaternion PartQ(PartDefinition d)
+        {
+            return new Quaternion(d.Orientation.x, d.Orientation.y, d.Orientation.z, d.Orientation.w);
         }
 
         // Zone axes (Unity): x — north, y — up, z — east.

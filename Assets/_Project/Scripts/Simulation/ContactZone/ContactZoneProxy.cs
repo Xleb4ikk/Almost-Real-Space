@@ -30,6 +30,48 @@ namespace Galilego.Simulation.ContactZone
 
         public int BodyCount => bodies.Count;
 
+        // Visual root of a part → its PhysX body (filled by the visual mirror every frame).
+        private readonly Dictionary<Transform, int> visualBody = new Dictionary<Transform, int>();
+
+        public void BindVisual(int bodyIndex, Transform visualRoot)
+        {
+            if (visualRoot != null)
+            {
+                visualBody[visualRoot] = bodyIndex;
+            }
+        }
+
+        /// <summary>
+        /// EXACT rigid-body velocity (world axes) of a point attached to the part whose visual is `platform`
+        /// (or any child of it); platform == null — the root island body. Linear + ω×r straight from PhysX.
+        /// </summary>
+        public bool TryGetPointVelocity(Transform platform, Vector3 worldPoint, out Vector3 velocityWorld)
+        {
+            velocityWorld = Vector3.zero;
+            int index = -1;
+            for (Transform t = platform; t != null && index < 0; t = t.parent)
+            {
+                if (visualBody.TryGetValue(t, out int found))
+                {
+                    index = found;
+                }
+            }
+
+            if (index < 0)
+            {
+                index = RootBodyIndex();
+            }
+
+            Rigidbody rb = BodyAt(index);
+            if (rb == null)
+            {
+                return false;
+            }
+
+            velocityWorld = rb.GetPointVelocity(worldPoint);
+            return true;
+        }
+
         public Rigidbody BodyAt(int index)
         {
             return index >= 0 && index < bodies.Count ? bodies[index] : null;
@@ -287,6 +329,7 @@ namespace Galilego.Simulation.ContactZone
             }
 
             bodies.Clear();
+            visualBody.Clear();
             joints.Clear();
             partDefs = null;
             brokenChildren.Clear();
