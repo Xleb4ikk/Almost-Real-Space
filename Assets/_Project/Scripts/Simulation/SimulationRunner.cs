@@ -183,8 +183,39 @@ namespace Galilego.Universe
             return platformCarry.TryGetRenderPoint(out renderPoint);
         }
 
+        /// <summary>Cabin-mode state for the debug overlay (empty when the player is not aboard).</summary>
+        public string CabinDebug
+        {
+            get
+            {
+                if (!platformCarry.Active)
+                {
+                    return "cabin: -";
+                }
+
+                return "cabin: " + platformCarry.Platform.name
+                    + "  pos=" + platformCarry.Position.X.ToString("F2") + "," + platformCarry.Position.Y.ToString("F2") + "," + platformCarry.Position.Z.ToString("F2")
+                    + "  vel=" + platformCarry.Velocity.X.ToString("F2") + "," + platformCarry.Velocity.Y.ToString("F2") + "," + platformCarry.Velocity.Z.ToString("F2")
+                    + "  weight=" + playerController.Gravity.ToString("F1") + " m/s2"
+                    + "  zone=" + ContactZoneHost.Active
+                    + "  shipAcc=" + shipAcceleration.Magnitude.ToString("F1");
+            }
+        }
+
+        /// <summary>The cabin's up in render space while the player is aboard (the camera's vertical).</summary>
+        public bool TryGetCarriedUpRender(out Vector3 up)
+        {
+            return platformCarry.TryGetUp(out up);
+        }
+
         /// <summary>Player seated: the physics step is frozen at PlayerSeatedPosition.</summary>
         public bool PlayerSeated { get; private set; }
+
+        /// <summary>
+        /// The player is carried by a vessel part right now (cabin mode): the cabin walls,
+        /// the monitors and the hull are metres away, not a planet radius away.
+        /// </summary>
+        public bool PlayerCarried => platformCarry.Active;
 
         /// <summary>
         /// Support point of the seated player (feet at the seat), double world; driven by StepPlayer.
@@ -339,9 +370,10 @@ namespace Galilego.Universe
         private readonly SiteBoxSupport siteSupport = new SiteBoxSupport();
         private readonly VesselSupport vesselSupport = new VesselSupport();
         private readonly CompositePlayerSupport playerSupport = new CompositePlayerSupport();
+        private readonly TerrainPatchSupport patchSupport = new TerrainPatchSupport();
+        private readonly CompositePlayerSupport cabinSupport = new CompositePlayerSupport();
         private readonly PlayerPlatformCarry platformCarry = new PlayerPlatformCarry();
         private ContactZoneHost zoneHost;
-        private Vector3 playerRenderUp = Vector3.up;
 
         // Inertial acceleration of the vessel (gravity included), low-pass filtered. A carried
         // player feels gravity MINUS this: thrust presses them to the floor, free fall — weightless.
@@ -389,6 +421,11 @@ namespace Galilego.Universe
 
         private void Awake()
         {
+            // Colliders of the vessel move every frame (mirror, ship view); every query — the
+            // player's, the E rays, the tablet pointer — must see the CURRENT poses, not those of
+            // the last physics step (at orbital speeds that is hundreds of metres).
+            Physics.autoSyncTransforms = true;
+
             if (System == null)
             {
                 enabled = false;
@@ -964,6 +1001,7 @@ namespace Galilego.Universe
             if (!PlayerSeated)
             {
                 PlayerSeated = true;
+                platformCarry.Reset();
                 PlayerVelocity = Ship != null ? Ship.Velocity : PlayerVelocity;
                 playerAirborne = false;
                 JetpackActive = false;
@@ -976,44 +1014,30 @@ namespace Galilego.Universe
             smoothedShipPosition = seatedShipAnchor;
         }
 
-        /// <summary>Stand up: support point next to the seat (render space) → double world.</summary>
+        /// <summary>
+        /// Stand up: the support point next to the seat (render space). In a vessel the player
+        /// goes straight into cabin mode: their state is stored in the part's frame, so the
+        /// first frame cannot lose the floor whatever the vessel is doing.
+        /// </summary>
         public void UnseatPlayerAtRender(Vector3 feetRender, Transform platform = null)
         {
-            RenderToAstro(feetRender, out Vector3d feet);
             PlayerSeated = false;
+            playerAirborne = false;
+            JetpackActive = false;
+            PlayerHoverActive = false;
+
+            if (platform != null && Ship != null && !NoclipActive && !BuildMode)
+            {
+                PlayerMode = PlayerMode.OnSurface;
+                platformCarry.Attach(platform, feetRender, Vector3d.Zero);
+                playerController.SetGroundSource(VesselSupport.SourceIdBase);
+                SyncWorldFromCabin(TimeSeconds);
+                return;
+            }
+
+            RenderToAstro(feetRender, out Vector3d feet);
             PlayerPosition = feet;
             PlayerVelocity = Ship != null ? Ship.Velocity : PlayerVelocity;
-            playerAirborne = false;
-            AttachCarryTo(platform);
-        }
-
-        /// <summary>
-        /// Attach the carry to a known vessel part right now (standing up from its seat). Without
-        /// this the player is stepped in the SITE frame on the first frame while the vessel moves
-        /// at hundreds of m/s: the floor is gone before the carry's own capture can pick it up.
-        /// </summary>
-        private void AttachCarryTo(Transform platform)
-        {
-            if (platform == null || Ship == null || !CarryAllowed())
-            {
-                return;
-            }
-
-            ContactZoneHost host = CarryZone();
-            if (host != null)
-            {
-                SiteFrame zoneFrame = host.ZoneFrameAt(TimeSeconds);
-                if (zoneFrame != null)
-                {
-                    platformCarry.Capture(host.Proxy.transform, zoneFrame, TimeSeconds, PlayerPosition, PlayerVelocity,
-                        true, -1, vesselSupport, platform);
-                }
-
-                return;
-            }
-
-            platformCarry.CaptureFree(VesselRoot, PlayerPosition, PlayerVelocity, Ship.Velocity,
-                LocalFrameVelocity(TimeSeconds), playerRenderUp, true, -1, vesselSupport, platform);
         }
 
         /// <summary>Ship point at seating time: the "seated, riding the ship" deltas are measured against it.</summary>
@@ -1097,7 +1121,7 @@ namespace Galilego.Universe
         /// </summary>
         public bool TryEnterShip(double enterDistanceMeters)
         {
-            if (PlayerMode == PlayerMode.InShip || Ship == null || NoclipActive)
+            if (PlayerMode == PlayerMode.InShip || Ship == null || NoclipActive || platformCarry.Active)
             {
                 return false;
             }
@@ -1143,7 +1167,7 @@ namespace Galilego.Universe
             }
 
             UpdateShipAcceleration();
-            ApplyPlatformCarry(fromTime);
+            UpdateCabinKinematics(fromTime);
 
             double t = fromTime;
             bool jump = playerJumpQueued;
@@ -1204,8 +1228,6 @@ namespace Galilego.Universe
             {
                 playerJumpQueued = false;
             }
-
-            CapturePlatformCarry(fromTime);
         }
 
         private void ToggleJetpack()
@@ -1402,13 +1424,13 @@ namespace Galilego.Universe
             Physics.SyncTransforms();
         }
 
-        /// <summary>The player may be carried by a vessel at all.</summary>
+        /// <summary>The player may live in a vessel's frame at all.</summary>
         private bool CarryAllowed()
         {
             return PlayerMode == PlayerMode.OnSurface && !NoclipActive && !PlayerSeated && !BuildMode;
         }
 
-        /// <summary>Contact zone the carry works in; null — the vessel is in free flight.</summary>
+        /// <summary>Contact zone (the vessel is PhysX bodies); null — the vessel is in free flight.</summary>
         private ContactZoneHost CarryZone()
         {
             if (!ContactZoneHost.Active)
@@ -1424,82 +1446,192 @@ namespace Galilego.Universe
             return zoneHost != null && zoneHost.Proxy != null ? zoneHost : null;
         }
 
-        /// <summary>Start of the frame: move the player together with the vessel (before any collision query).</summary>
-        private void ApplyPlatformCarry(double time)
+        /// <summary>Once per frame: the vessel's own velocity/acceleration (zone) before the cabin step.</summary>
+        private void UpdateCabinKinematics(double poseTime)
         {
             if (!platformCarry.Active)
             {
                 return;
             }
 
-            if (!CarryAllowed())
-            {
-                platformCarry.Reset();
-                return;
-            }
-
             ContactZoneHost host = CarryZone();
             if (host != null)
             {
-                SiteFrame zoneFrame = platformCarry.IsFree ? null : host.ZoneFrameAt(time);
-                if (zoneFrame == null)
-                {
-                    platformCarry.Reset();
-                    return;
-                }
-
-                if (platformCarry.TryApply(host.Proxy.transform, zoneFrame, time, out Vector3d carried))
-                {
-                    PlayerPosition = carried;
-                }
-
-                return;
+                platformCarry.UpdateZoneKinematics(host.Proxy.transform, poseTime);
             }
-
-            if (!platformCarry.IsFree || Ship == null
-                || !platformCarry.TryApplyFree(VesselRoot, Ship.Position, Ship.Velocity, LocalFrameVelocity(time),
-                    out Vector3d carriedFree))
+            else
             {
-                platformCarry.Reset();
-                return;
+                platformCarry.ResetKinematics();
             }
-
-            PlayerPosition = carriedFree;
         }
 
-        /// <summary>End of the frame: remember where the player is relative to the vessel part under/around them.</summary>
-        private void CapturePlatformCarry(double poseTime)
+        /// <summary>
+        /// Weight along the cabin's up: gravity minus the vessel's acceleration. Thrust presses
+        /// the player to the floor, a pad holding the vessel gives ordinary weight, free fall
+        /// is weightless. Zone: render-space effective gravity of the zone minus the platform's
+        /// measured acceleration. Free flight: gravity minus the vessel's inertial acceleration.
+        /// </summary>
+        private double CabinGravity(Transform root, double t)
         {
-            if (!CarryAllowed())
-            {
-                platformCarry.Reset();
-                return;
-            }
-
+            Vector3 effective;
             ContactZoneHost host = CarryZone();
             if (host != null)
             {
-                SiteFrame zoneFrame = host.ZoneFrameAt(TimeSeconds);
-                if (zoneFrame == null)
-                {
-                    platformCarry.Reset();
-                    return;
-                }
-
-                platformCarry.Capture(host.Proxy.transform, zoneFrame, poseTime, PlayerPosition, PlayerVelocity,
-                    !playerAirborne, playerController.GroundSourceId, vesselSupport);
-                return;
+                effective = Physics.gravity - host.Proxy.transform.TransformDirection(platformCarry.PlatformAccelerationZone);
             }
-
-            if (Ship == null)
+            else
             {
-                platformCarry.Reset();
+                Vector3d g = SystemState.EvaluateShipAcceleration(PlayerPosition, t) - shipAcceleration;
+                effective = AstroFrame.ToSimulation(g);
+            }
+
+            PlayerPlatformCarry.Axes(root, out _, out _, out Vector3 up);
+            return Math.Max(0d, -(double)Vector3.Dot(effective, up));
+        }
+
+        /// <summary>A world-axes intent vector (built from the camera) as controller axes of the platform, horizontal only.</summary>
+        private static Vector3d CabinIntent(Vector3d worldIntent, Transform root)
+        {
+            Vector3d local = PlayerPlatformCarry.LocalDirection(root, AstroFrame.ToSimulation(worldIntent));
+            return new Vector3d(local.X, local.Y, 0d);
+        }
+
+        /// <summary>
+        /// Derive the double-world player state from the cabin state: position through the bridge
+        /// that matches how the vessel itself is placed (zone: body-fixed zone coordinates and the
+        /// zone frame; free flight: the flat bridge), velocity = vessel + relative.
+        /// </summary>
+        private void SyncWorldFromCabin(double tEnd)
+        {
+            if (!platformCarry.Active || Ship == null)
+            {
                 return;
             }
 
-            platformCarry.CaptureFree(VesselRoot, PlayerPosition, PlayerVelocity, Ship.Velocity,
-                LocalFrameVelocity(TimeSeconds), playerRenderUp, !playerAirborne, playerController.GroundSourceId,
-                vesselSupport);
+            Vector3 render = platformCarry.RenderPoint();
+            Vector3 relative = platformCarry.RenderDirection(platformCarry.Velocity);
+            ContactZoneHost host = CarryZone();
+            SiteFrame zoneFrame = host != null ? host.ZoneFrameAt(tEnd) : null;
+            if (zoneFrame != null)
+            {
+                Transform zone = host.Proxy.transform;
+                Vector3 zonePoint = zone.InverseTransformPoint(render);
+                Vector3 zoneVelocity = zone.InverseTransformDirection(relative) + platformCarry.PlatformVelocityZone;
+
+                // Zone axes (x north, y up, z east) → site (east, north, up).
+                zoneFrame.ToWorld(new Vector3d(zonePoint.z, zonePoint.x, zonePoint.y),
+                    new Vector3d(zoneVelocity.z, zoneVelocity.x, zoneVelocity.y),
+                    out Vector3d worldPosition, out Vector3d worldVelocity);
+                PlayerPosition = worldPosition;
+                PlayerVelocity = worldVelocity;
+                return;
+            }
+
+            PlayerPosition = FloatingOrigin.Anchor + AstroFrame.ToAstro(render);
+            PlayerVelocity = Ship.Velocity + AstroFrame.ToAstro(relative);
+        }
+
+        /// <summary>Leave cabin mode: the world state is derived one last time, free flight becomes EVA.</summary>
+        private void DetachCabin()
+        {
+            if (!platformCarry.Active)
+            {
+                return;
+            }
+
+            SyncWorldFromCabin(TimeSeconds);
+            platformCarry.Reset();
+            OrbitingBody body = DominantBody;
+            if (body != null && PlayerMode == PlayerMode.OnSurface && !ShouldUseSurfaceController(body, TimeSeconds))
+            {
+                PlayerMode = PlayerMode.EVA;
+                playerAirborne = true;
+            }
+        }
+
+        /// <summary>One substep of the player living in the vessel's frame.</summary>
+        private void StepPlayerCabin(double t, double dt, bool jumpRequested)
+        {
+            Transform root = platformCarry.Platform;
+            vesselSupport.SetPlatformFrame(root);
+            siteSupport.SetPlatformFrame(root);
+            patchSupport.SetPlatformFrame(root);
+            cabinSupport.Terrain = patchSupport;
+            cabinSupport.Sites = siteSupport;
+            cabinSupport.Vessel = vesselSupport;
+
+            playerController.Position = platformCarry.Position;
+            playerController.Velocity = platformCarry.Velocity;
+            playerController.Airborne = playerAirborne;
+            playerController.Gravity = CabinGravity(root, t);
+            playerController.Hovering = false;
+            playerController.HoverVelocity = Vector3d.Zero;
+
+            Vector3d walkLocal = CabinIntent(PlayerIntent.WalkDirection * PlayerIntent.WalkSpeed, root);
+            Vector3d airLocal = CabinIntent(PlayerIntent.AirVelocity, root);
+            playerController.Step(cabinSupport, dt, playerAirborne ? airLocal : walkLocal, Vector3d.Zero);
+
+            platformCarry.Position = playerController.Position;
+            platformCarry.Velocity = playerController.Velocity;
+            playerAirborne = playerController.Airborne;
+            PlayerHoverActive = false;
+
+            if (jumpRequested && !playerAirborne)
+            {
+                platformCarry.Velocity += new Vector3d(0d, 0d, PlayerJumpSpeed);
+                playerAirborne = true;
+            }
+
+            // Which part carries the player now: the floor under them (a part of the vessel),
+            // or — in the air — the part whose bounds they are still inside. Anything else
+            // (terrain, a building, open space) ends the cabin mode.
+            Vector3 render = platformCarry.RenderPoint();
+            Transform next = null;
+            if (!playerAirborne)
+            {
+                int id = playerController.GroundSourceId;
+                if (id >= VesselSupport.SourceIdBase)
+                {
+                    vesselSupport.TryGetPlatform(id, out next);
+                }
+            }
+            else if (platformCarry.InsideBounds(render))
+            {
+                next = platformCarry.Platform;
+            }
+
+            if (next == null)
+            {
+                DetachCabin();
+                return;
+            }
+
+            platformCarry.Reframe(next);
+            SyncWorldFromCabin(t + dt);
+        }
+
+        /// <summary>
+        /// Surface mode, end of a substep: the player stands on a vessel part — from now on they
+        /// live in its frame. The point is taken where the controller believes the player is, in
+        /// the very space the colliders live in.
+        /// </summary>
+        private void TryAttachCabin()
+        {
+            if (platformCarry.Active || playerAirborne || !CarryAllowed())
+            {
+                return;
+            }
+
+            int id = playerController.GroundSourceId;
+            if (id < VesselSupport.SourceIdBase || !vesselSupport.TryGetPlatform(id, out Transform platform))
+            {
+                return;
+            }
+
+            Vector3 point = vesselSupport.RenderPointOf(playerController.Position);
+            Vector3 velocity = vesselSupport.RenderDirectionOf(playerController.Velocity);
+            platformCarry.Attach(platform, point, PlayerPlatformCarry.LocalDirection(platform, velocity));
+            PlayerHoverActive = false;
         }
 
         private void StepPlayerEva(double t, double dt)
@@ -1797,6 +1929,21 @@ namespace Galilego.Universe
         // Works in the local site frame (metres), orbital state in the double world.
         private void StepPlayerSurface(double t, double dt, bool jumpRequested)
         {
+            if (platformCarry.Active)
+            {
+                if (CarryAllowed())
+                {
+                    StepPlayerCabin(t, dt, jumpRequested);
+                    return;
+                }
+
+                DetachCabin();
+                if (PlayerMode != PlayerMode.OnSurface)
+                {
+                    return;
+                }
+            }
+
             OrbitingBody body = DominantBody;
             if (body == null)
             {
@@ -1808,25 +1955,11 @@ namespace Galilego.Universe
             ITerrainModel playerTerrain = body.Terrain ?? playerFallbackTerrain;
             SiteFrame frame = SiteFrame.Anchor(body, playerTerrain, PlayerPosition, t);
             frame.ToLocal(PlayerPosition, PlayerVelocity, out Vector3d localPosition, out Vector3d localVelocity);
-            playerRenderUp = AstroFrame.ToSimulation(frame.Up);
-            if (platformCarry.Active)
-            {
-                // The controller works in the vessel's frame: its velocity is relative to the vessel.
-                localVelocity = PlayerPlatformCarry.ToAxes(frame, platformCarry.RelativeVelocity);
-            }
 
             playerController.Position = localPosition;
             playerController.Velocity = localVelocity;
             playerController.Airborne = playerAirborne;
             Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
-            if (platformCarry.Active)
-            {
-                // In the vessel's frame the player feels gravity minus the vessel's acceleration:
-                // thrust (or the pad holding the vessel) presses them to the floor, free fall
-                // makes them weightless. Only the component along the cabin's "down" is used.
-                gravity = gravity - shipAcceleration;
-            }
-
             playerController.Gravity = Math.Max(0d, -Vector3d.Dot(gravity, frame.Up));
 
             terrainSupport.SetFrame(body, playerTerrain, frame, t);
@@ -1862,18 +1995,11 @@ namespace Galilego.Universe
             playerController.HoverVelocity = hoverLocal;
             playerController.Step(playerSupport, dt, playerAirborne ? airLocal : walkLocal, jetpackLocal);
 
-            Vector3d platformLocal = Vector3d.Zero;
-            if (platformCarry.Active)
-            {
-                platformCarry.RelativeVelocity = PlayerPlatformCarry.FromAxes(frame, playerController.Velocity);
-                platformLocal = PlayerPlatformCarry.ToAxes(frame, platformCarry.PlatformVelocity);
-            }
-
             // To world — with the frame AT THE END of the substep (frame.At(t+dt)): the
             // frame at time t lags the body's orbital motion by v·dt, and projecting onto
             // the surface at t+dt would bake that lag into the position every substep.
             double tEnd = t + dt;
-            frame.At(tEnd).ToWorld(playerController.Position, playerController.Velocity + platformLocal,
+            frame.At(tEnd).ToWorld(playerController.Position, playerController.Velocity,
                 out Vector3d worldPosition, out Vector3d worldVelocity);
             PlayerPosition = worldPosition;
             PlayerVelocity = worldVelocity;
@@ -1932,6 +2058,8 @@ namespace Galilego.Universe
                     : (PlayerPosition - bodyPos).Normalized;
                 PlayerVelocity += normal * PlayerJumpSpeed;
             }
+
+            TryAttachCabin();
         }
 
         /// <summary>Body terrain height at a point (lat/lon, degrees); a sphere when null.</summary>

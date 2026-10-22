@@ -62,7 +62,7 @@ namespace Galilego.Flight
         private void ReadInput()
         {
             FlightControls c = model.Controls;
-            bool seated = Runner.PlayerMode == PlayerMode.InShip && !ShipTablet.AnyExpanded;
+            bool seated = (Runner.PlayerSeated || Runner.PlayerMode == PlayerMode.InShip) && !ShipTablet.AnyExpanded;
             if (!seated)
             {
                 c.Pitch = c.Yaw = c.Roll = 0d; c.Translate = Vector3d.Zero;

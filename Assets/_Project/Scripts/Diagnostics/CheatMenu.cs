@@ -91,8 +91,7 @@ namespace Galilego.Universe
         private Rect windowRect = new Rect(WindowWidth + 48f, 24f, WindowWidth, WindowHeight);
         private string coordinatesText = string.Empty;
         private string statusText = string.Empty;
-        private bool cameraLockCursorBefore = true;
-        private bool cursorWasLocked;
+        private bool cursorClaimed;
         private double nextNoclipLogTime = -1e9d;
         private Vector3d lastLoggedPosition;
         private bool hasLoggedPosition;
@@ -100,10 +99,15 @@ namespace Galilego.Universe
         private void Start()
         {
             ResolveReferences();
-            cameraLockCursorBefore = View == null || View.LockCursor;
             SetOpen(OpenOnStart);
             noclipRequested = Runner != null && Runner.NoclipActive;
             noclipSpeedLog = ToLogSlider(NoclipSpeed);
+        }
+
+        private void OnDisable()
+        {
+            // A disabled/destroyed menu must not keep the cursor claimed.
+            FirstPersonCamera.SetCursorClaim(ref cursorClaimed, false, "CheatMenu");
         }
 
         private void Update()
@@ -284,32 +288,20 @@ namespace Galilego.Universe
                 Controller.InputBlocked = open;
             }
 
-            if (View == null)
-            {
-                return;
-            }
-
-            // With a captured cursor buttons cannot be clicked, and the window blocks
-            // the view: while open, the camera yields the mouse. LockCursor=false also
-            // disables its Update, which would otherwise re-capture the cursor. Prior
-            // values are saved and restored: the user may have released the cursor with
-            // Esc, and closing the menu must not take it back.
+            // With a captured cursor the buttons cannot be clicked, and the window
+            // blocks the view: while open the menu CLAIMS the cursor (the camera stops
+            // capturing it) and on close gives it back — the camera re-captures it by
+            // itself. Claims are counted, so a window opened over another one cannot
+            // leave the cursor released (see FirstPersonCamera.SetCursorClaim).
             if (open)
             {
-                cameraLockCursorBefore = View.LockCursor;
-                cursorWasLocked = Cursor.lockState == CursorLockMode.Locked;
-                View.LockCursor = false;
+                FirstPersonCamera.SetCursorClaim(ref cursorClaimed, true, "CheatMenu");
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
                 return;
             }
 
-            View.LockCursor = cameraLockCursorBefore;
-            if (cursorWasLocked)
-            {
-                Cursor.lockState = CursorLockMode.Locked;
-                Cursor.visible = false;
-            }
+            FirstPersonCamera.SetCursorClaim(ref cursorClaimed, false, "CheatMenu");
         }
 
         private void ResolveReferences()

@@ -30,7 +30,7 @@ namespace Galilego.Tablet
         public float CompactRefreshHz = 15f;
 
         [Tooltip("С какого расстояния лучом можно жать кнопки прямо на экране (м).")]
-        public float WorldTouchMeters = 1.6f;
+        public float WorldTouchMeters = 3f;
 
         [Tooltip("Яркость экрана на мешe (для HDRP/Unlit — множитель цвета).")]
         [Range(0.2f, 4f)]
@@ -58,6 +58,12 @@ namespace Galilego.Tablet
         private Galilego.Universe.SimulationRunner runner;
         private bool runnerSearched;
         private readonly RaycastHit[] worldHits = new RaycastHit[8];
+
+        /// <summary>Probe tilt (degrees): the crosshair aims "at the monitor", not at a pixel.</summary>
+        private const float PointerProbeDegrees = 1.5f;
+
+        /// <summary>Last reported reason the world pointer is off (logged once per change).</summary>
+        private string pointerNote;
 
         /// <summary>
         /// Frame in which the tablet was opened: the open key (E) is still queued in
@@ -171,8 +177,6 @@ namespace Galilego.Tablet
                 return;
             }
 
-            UpdateWorldPointer();
-
             // Collapsed — CompactRefreshHz; expanded or under the crosshair (world
             // click on the monitor) — 30 Hz: a click waits no longer than 33 ms.
             if (!Expanded && Time.unscaledTime < nextRefresh)
@@ -190,6 +194,18 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
+        /// World pointer AFTER the camera (FirstPersonCamera runs at order −40): the
+        /// ray must see THIS frame's poses. In Update the camera is still at last
+        /// frame's position — while the vessel moves, the screen is tens of metres
+        /// away from that stale origin and the ray never reaches it (the monitor
+        /// "stops reacting to clicks" in flight, while it works on the pad).
+        /// </summary>
+        private void LateUpdate()
+        {
+            UpdateWorldPointer();
+        }
+
+        /// <summary>
         /// World pointer: cast the camera ray (crosshair) against the screen mesh; the
         /// hit point is converted from UV to panel pixels. LMB and drag press buttons
         /// directly on the monitor, and the cursor arrow is drawn on the screen itself.
@@ -199,9 +215,18 @@ namespace Galilego.Tablet
         private void UpdateWorldPointer()
         {
             worldPointerHit = false;
+
+            // A UI (menu, expanded tablet, screen focus) owns the mouse: the world
+            // pointer yields to it. The screen focus sets MouseAim and still aims.
+            bool uiOwnsCursor = Galilego.Universe.FirstPersonCamera.CursorClaimed;
             if (Expanded || ScreenRenderer == null || screenCollider == null
-                || (!MouseAim && Cursor.lockState != CursorLockMode.Locked))
+                || (uiOwnsCursor && !MouseAim))
             {
+                NotePointerBlocked(Expanded
+                    ? "планшет развёрнут (кнопки жмутся в окне)"
+                    : (ScreenRenderer == null || screenCollider == null
+                        ? "нет меша/коллайдера экрана"
+                        : "курсор занят интерфейсом"));
                 screen.SetWorldPointer(false, 0, 0);
                 return;
             }
@@ -214,6 +239,7 @@ namespace Galilego.Tablet
 
             if (runner != null && runner.BuildMode)
             {
+                NotePointerBlocked("режим стройки (в стройке прицел по экрану выключен)");
                 screen.SetWorldPointer(false, 0, 0);
                 return;
             }
@@ -221,27 +247,57 @@ namespace Galilego.Tablet
             Camera cam = Camera.main;
             if (cam == null)
             {
+                NotePointerBlocked("нет камеры");
                 return;
             }
 
-            Ray ray = MouseAim
+            // The panel draws its own arrow only while the system cursor is captured
+            // (the crosshair mode); with a free cursor the OS pointer is the pointer.
+            screen.DrawArrow = Cursor.lockState == CursorLockMode.Locked;
+
+            // Captured cursor: the crosshair ray. Free cursor (no UI owns it — the
+            // editor just gave the mouse back, or the game view was re-focused):
+            // aim with the visible mouse instead of going dead until the cursor is
+            // captured again — otherwise the monitor "stops reacting to clicks".
+            Ray ray = MouseAim || Cursor.lockState != CursorLockMode.Locked
                 ? cam.ScreenPointToRay(Galilego.Universe.PlayerInput.MousePosition())
                 : new Ray(cam.transform.position, cam.transform.forward);
-            int count = Physics.RaycastNonAlloc(ray, worldHits, WorldTouchMeters, ~0, QueryTriggerInteraction.Ignore);
+
+            // A small cross of PLAIN rays around the aim (the crosshair aims "at the
+            // monitor", not at an exact pixel). Plain raycasts, not a SphereCast: only
+            // they give the panel pixel through RaycastHit.textureCoord — a sphere
+            // cast reports the contact point and the buttons stop registering.
             int best = -1;
-            for (int i = 0; i < count; i++)
+            Vector3 direction = ray.direction;
+            for (int probe = 0; probe < 5 && best < 0; probe++)
             {
-                // Only the screen itself matters (the mesh collider with UV): the
-                // bezel and the outer monitor housing do not count.
-                if (worldHits[i].collider == screenCollider
-                    && (best < 0 || worldHits[i].distance < worldHits[best].distance))
+                Vector3 probeDirection = direction;
+                if (probe == 1) probeDirection = Quaternion.AngleAxis(PointerProbeDegrees, cam.transform.up) * direction;
+                else if (probe == 2) probeDirection = Quaternion.AngleAxis(-PointerProbeDegrees, cam.transform.up) * direction;
+                else if (probe == 3) probeDirection = Quaternion.AngleAxis(PointerProbeDegrees, cam.transform.right) * direction;
+                else if (probe == 4) probeDirection = Quaternion.AngleAxis(-PointerProbeDegrees, cam.transform.right) * direction;
+
+                int count = Physics.RaycastNonAlloc(new Ray(ray.origin, probeDirection), worldHits,
+                    Mathf.Max(WorldTouchMeters, 1f), ~0, QueryTriggerInteraction.Ignore);
+                for (int i = 0; i < count; i++)
                 {
-                    best = i;
+                    // Only the screen itself matters (the mesh collider with UV): the
+                    // bezel and the outer monitor housing do not count.
+                    if (worldHits[i].collider == screenCollider
+                        && (best < 0 || worldHits[i].distance < worldHits[best].distance))
+                    {
+                        best = i;
+                    }
                 }
             }
 
             if (best < 0)
             {
+                float distance = cam != null && screenCollider != null
+                    ? Vector3.Distance(cam.transform.position, screenCollider.bounds.center)
+                    : -1f;
+                NotePointerBlocked("луч мимо экрана (до экрана " + distance.ToString("F2")
+                    + " м, луч " + WorldTouchMeters.ToString("F2") + " м)");
                 screen.SetWorldPointer(false, 0, 0);
                 return;
             }
@@ -251,9 +307,12 @@ namespace Galilego.Tablet
             int py = Mathf.Clamp((int)((1f - uv.y) * TabletScreen.H), 0, TabletScreen.H - 1);
             screen.SetWorldPointer(true, px, py);
             worldPointerHit = true;
+            NotePointerBlocked(null);
 
             if (Galilego.Universe.PlayerInput.MouseLeftDown())
             {
+                Debug.Log("[Click] экран: пиксель " + px + "," + py
+                    + " (mouseAim=" + MouseAim + " expanded=" + Expanded + ")");
                 screen.Click();
             }
 
@@ -261,6 +320,26 @@ namespace Galilego.Tablet
             {
                 screen.Drag();
             }
+        }
+
+        /// <summary>
+        /// The world pointer went on/off — log the reason once per change (the "monitor
+        /// does not react" bug is diagnosed by this line alone).
+        /// </summary>
+        private void NotePointerBlocked(string note)
+        {
+            if (note == pointerNote)
+            {
+                return;
+            }
+
+            pointerNote = note;
+            Debug.Log("[Pointer] " + (note ?? "экран под прицелом: кнопки жмутся")
+                + "  (expanded=" + Expanded + "  cursor=" + Cursor.lockState
+                + "  mouseAim=" + MouseAim
+                + "  заявок=" + Galilego.Universe.FirstPersonCamera.CursorClaimed
+                + "  пиксель=" + (screen != null ? screen.PointerX + "," + screen.PointerY : "-")
+                + "  годен=" + (screen != null ? screen.PointerValid.ToString() : "-") + ")");
         }
 
         /// <summary>Expand the tablet to fullscreen (buttons become active).</summary>
@@ -278,6 +357,8 @@ namespace Galilego.Tablet
             prevCursorLock = Cursor.lockState;
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
+            Debug.Log("[Tablet] развёрнут: курсор=" + Cursor.lockState
+                + " заявок=" + Galilego.Universe.FirstPersonCamera.CursorClaimed);
         }
 
         /// <summary>Collapse the tablet back onto the ship screen.</summary>
@@ -292,6 +373,8 @@ namespace Galilego.Tablet
             expandedCount = Mathf.Max(0, expandedCount - 1);
             screen.SetPointer(false, 0, 0);
             RestoreCursor();
+            Debug.Log("[Tablet] свёрнут: курсор=" + Cursor.lockState
+                + " заявок=" + Galilego.Universe.FirstPersonCamera.CursorClaimed);
             Action handler = Closed;
             if (handler != null)
             {

@@ -118,6 +118,35 @@ namespace Galilego.Simulation.Player
             ready = true;
         }
 
+        /// <summary>
+        /// Cabin mode: the controller's local axes are those of a vessel part — east = forward,
+        /// north = right, up = up, origin = the part's position. The queries then run against the
+        /// colliders in the very frame they move in, with no site frame or floating-origin
+        /// conversion in between.
+        /// </summary>
+        public virtual void SetPlatformFrame(Transform root)
+        {
+            Physics.SyncTransforms();
+            frame = null;
+            renderOrigin = root.position;
+            renderEast = root.forward.normalized;
+            renderNorth = root.right.normalized;
+            renderUp = root.up.normalized;
+            ready = true;
+        }
+
+        /// <summary>Render-space point of the controller's local coordinates in the current frame.</summary>
+        public Vector3 RenderPointOf(Vector3d local)
+        {
+            return ToRenderPoint(local);
+        }
+
+        /// <summary>Render-space direction of a local vector in the current frame.</summary>
+        public Vector3 RenderDirectionOf(Vector3d local)
+        {
+            return (renderEast * (float)local.X) + (renderNorth * (float)local.Y) + (renderUp * (float)local.Z);
+        }
+
         protected Vector3 ToRender(Vector3d local)
         {
             frame.ToWorld(local, Vector3d.Zero, out Vector3d world, out _);

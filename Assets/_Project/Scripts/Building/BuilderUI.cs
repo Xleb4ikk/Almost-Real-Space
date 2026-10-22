@@ -162,7 +162,7 @@ namespace Galilego.Building
         /// </summary>
         private bool controlsActive;
 
-        private bool cursorWasLocked = true;
+        private bool cursorClaimed;
         private float uiWidth = 1920f;
         private float uiHeight = 1080f;
         private float uiAlpha = 1f;
@@ -382,12 +382,10 @@ namespace Galilego.Building
                         : 0;
                 }
 
-                cursorWasLocked = Camera == null || Camera.LockCursor;
-                if (Camera != null)
-                {
-                    Camera.LockCursor = false;
-                }
-
+                // The window needs a free cursor: CLAIM it (the camera stops capturing
+                // and stops reading the mouse), release on close — the camera
+                // re-captures by itself. Counted claims cannot get stuck released.
+                FirstPersonCamera.SetCursorClaim(ref cursorClaimed, true, "BuilderUI");
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
                 return;
@@ -396,13 +394,7 @@ namespace Galilego.Building
             ResetDrag();
             statsHovered = false;
             statsScrollDrag = false;
-            if (Camera != null)
-            {
-                Camera.LockCursor = cursorWasLocked;
-            }
-
-            Cursor.lockState = cursorWasLocked ? CursorLockMode.Locked : CursorLockMode.None;
-            Cursor.visible = !cursorWasLocked;
+            FirstPersonCamera.SetCursorClaim(ref cursorClaimed, false, "BuilderUI");
         }
 
         private void OnDisable()

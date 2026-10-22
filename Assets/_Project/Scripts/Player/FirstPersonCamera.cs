@@ -62,10 +62,11 @@ namespace Galilego.Universe
             "камера выше якоря (взгляд поверх консоли).")]
         public double SeatedEyeMeters = 1.15d;
 
-        [Tooltip("Ближняя плоскость камеры СИДЯ (м). Обычная считается от высоты над рельефом " +
-            "(высота*0.001, не меньше 0.1), а высота берётся из позиции игрока в double-мире: " +
-            "при её ошибке/отставании ближняя плоскость раздувалась и срезала стены и мониторы " +
-            "кабины (вхожу в стену, мерцание). В кабине всё рядом - фиксируем маленькую.")]
+        [Tooltip("Ближняя плоскость камеры ВНУТРИ корабля (м): сидя, идя по кабине или «призраком» " +
+            "в InShip. Обычная считается от высоты над рельефом (высота*0.001, не меньше 0.1), " +
+            "а в кабине на высоте она раздувается до десятков метров и срезает корпус, стены и " +
+            "мониторы (стоя в кабине на 10 км ближняя плоскость = 10 м: видна только земля). " +
+            "Внутри корабля всё рядом — фиксируем маленькую.")]
         public float SeatedNearClipMeters = 0.03f;
 
         [Tooltip("ПКМ — приблизиться «в упор» к тому, на что смотришь: максимум, м " +
@@ -161,6 +162,60 @@ namespace Galilego.Universe
         private Vector3 eyeOffset;
         private bool cursorReleasedByUser;
         private string mouseIgnoredReason;
+
+        /// <summary>
+        /// Cursor claims: UI owners (settings/cheat menus, the builder window, the
+        /// expanded tablet, the cockpit screen focus) that need a free cursor. While any
+        /// claim is held the camera neither captures the cursor nor reads the mouse.
+        /// A counter, not a saved flag: a nested owner (menu opened over a window) cannot
+        /// leave the cursor released forever by restoring a stale value — every owner
+        /// releases exactly the claim it took, whatever the order of openings was.
+        /// </summary>
+        private static int cursorClaims;
+
+        /// <summary>A UI currently owns the mouse: the camera yields it.</summary>
+        public static bool CursorClaimed { get { return cursorClaims > 0; } }
+
+        /// <summary>Take the cursor for a UI. Every claim needs exactly one release.</summary>
+        public static void ClaimCursor(string owner)
+        {
+            cursorClaims++;
+            Debug.Log("[Cursor] +" + cursorClaims + " (" + owner + ")");
+        }
+
+        /// <summary>Give the cursor back; the camera re-captures it on the next Update.</summary>
+        public static void ReleaseCursor(string owner)
+        {
+            cursorClaims = Mathf.Max(0, cursorClaims - 1);
+            Debug.Log("[Cursor] -" + cursorClaims + " (" + owner + ")");
+        }
+
+        /// <summary>Owner-side helper: claim/release once per state change (idempotent).</summary>
+        public static void SetCursorClaim(ref bool claimed, bool claim, string owner)
+        {
+            if (claim == claimed)
+            {
+                return;
+            }
+
+            claimed = claim;
+            if (claim)
+            {
+                ClaimCursor(owner);
+            }
+            else
+            {
+                ReleaseCursor(owner);
+            }
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetCursorClaims()
+        {
+            // The project enters Play with DisableDomainReload: a claim left by a
+            // previous session would keep the cursor released forever.
+            cursorClaims = 0;
+        }
 
         /// <summary>Smooth stand ↔ crouch blend (0..1) for eye height.</summary>
         private float crouchBlend;
@@ -266,10 +321,14 @@ namespace Galilego.Universe
             // released (ΔV panel, hints). Release it and the lock returns on its own.
             bool peek = Runner != null && Runner.BuildMode && PlayerInput.Held(GameAction.BuildPeek);
 
-            // Esc now belongs to the settings menu (SettingsMenu), which releases and
-            // restores the cursor itself through LockCursor.
+            // A UI (menu, tablet, screen focus) owns the mouse right now: leave its
+            // cursor alone — it releases the claim when it closes.
+            bool uiOwnsCursor = CursorClaimed;
 
-            if (PlayerInput.MouseLeftDown() && Cursor.lockState != CursorLockMode.Locked && !peek)
+            // Esc now belongs to the settings menu (SettingsMenu), which claims the
+            // cursor while open and releases it on close (see SetCursorClaim).
+
+            if (!uiOwnsCursor && PlayerInput.MouseLeftDown() && Cursor.lockState != CursorLockMode.Locked && !peek)
             {
                 cursorReleasedByUser = false;
                 SetCursorLocked(true);
@@ -286,13 +345,13 @@ namespace Galilego.Universe
                 SetCursorLocked(false);
             }
 
-            if (UnityEngine.Application.isFocused && !cursorReleasedByUser && !peek
+            if (UnityEngine.Application.isFocused && !cursorReleasedByUser && !peek && !uiOwnsCursor
                 && Cursor.lockState != CursorLockMode.Locked)
             {
                 SetCursorLocked(true);
             }
 
-            if (peek)
+            if (peek && !uiOwnsCursor)
             {
                 SetCursorLocked(false);
             }
@@ -353,9 +412,10 @@ namespace Galilego.Universe
             }
             else
             {
-                NoteMouseIgnored("курсор не захвачен ("
-                    + (UnityEngine.Application.isFocused ? "окно в фокусе" : "окно не в фокусе")
-                    + (cursorReleasedByUser ? ", отпущен Esc" : "") + ")");
+            NoteMouseIgnored("курсор не захвачен ("
+                + (UnityEngine.Application.isFocused ? "окно в фокусе" : "окно не в фокусе")
+                + (cursorReleasedByUser ? ", отпущен Esc" : "")
+                + ", заявок " + cursorClaims + ")");
             }
 
 #if UNITY_EDITOR
@@ -581,6 +641,13 @@ namespace Galilego.Universe
                 return Vector3.up;
             }
 
+            // Aboard a vessel the vertical is the cabin's: what presses the player to the floor
+            // is the thrust along the cabin axis, not the planet's radial.
+            if (Runner.TryGetCarriedUpRender(out Vector3 carriedUp))
+            {
+                return carriedUp;
+            }
+
             OrbitingBody body = Runner.DominantBody;
             body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPos, out _);
             Vector3d outward = Runner.PlayerPosition - bodyPos;
@@ -679,8 +746,13 @@ namespace Galilego.Universe
             double altitude = System.Math.Max(0.5d, relative.Magnitude - (radius + groundHeight));
             double near = System.Math.Max(0.1d, altitude * 0.001d);
 
-            // Seated in the cockpit: the near plane does not depend on altitude (see SeatedNearClipMeters).
-            if (Runner.PlayerSeated)
+            // Inside a vessel — seated, walking the cabin (carried) or the InShip
+            // interior — the near plane must not depend on altitude: at 10 km the
+            // altitude-scaled plane (1 mm per metre) is 10 m and cuts the hull, the
+            // cabin and the monitors away, leaving only the terrain (see
+            // SeatedNearClipMeters). While carried this also hides the lag of the
+            // double-world position used above.
+            if (Runner.PlayerSeated || Runner.PlayerCarried || Runner.PlayerMode == PlayerMode.InShip)
             {
                 near = SeatedNearClipMeters;
             }

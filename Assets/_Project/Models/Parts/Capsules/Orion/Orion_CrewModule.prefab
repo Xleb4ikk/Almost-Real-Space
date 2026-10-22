@@ -1610,7 +1610,7 @@ MonoBehaviour:
   AutoDemo: 0
   ScreenRenderer: {fileID: 6610247386772766419}
   CompactRefreshHz: 15
-  WorldTouchMeters: 1.6
+  WorldTouchMeters: 3
   ScreenBrightness: 1.5
 --- !u!114 &2016830790528454561
 MonoBehaviour:

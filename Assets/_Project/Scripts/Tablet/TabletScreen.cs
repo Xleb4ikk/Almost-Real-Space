@@ -30,6 +30,13 @@ namespace Galilego.Tablet
         /// <summary>The pointer came from a world ray on the monitor — the panel draws a cursor arrow.</summary>
         private bool worldPointer;
 
+        /// <summary>
+        /// Draw the panel's own cursor arrow. On while the crosshair aims (the system
+        /// cursor is captured and invisible then); off while the system cursor is free
+        /// (screen focus) — otherwise there would be two pointers.
+        /// </summary>
+        public bool DrawArrow = true;
+
         private PixelCanvas c;
         private bool interactive;
         private ITabletCommands cmd;
@@ -41,6 +48,15 @@ namespace Galilego.Tablet
             px = x;
             py = y;
         }
+
+        /// <summary>Current pointer pixel (diagnostics).</summary>
+        public int PointerX { get { return px; } }
+
+        /// <summary>Current pointer pixel (diagnostics).</summary>
+        public int PointerY { get { return py; } }
+
+        /// <summary>Pointer validity (diagnostics).</summary>
+        public bool PointerValid { get { return pointerValid; } }
 
         /// <summary>Left button press; processed on the next Render.</summary>
         public void Click()
@@ -73,6 +89,12 @@ namespace Galilego.Tablet
             interactive = isInteractive;
             if (!interactive)
             {
+                if (clickPending)
+                {
+                    Debug.Log("[Click] сброшен: панель не интерактивна (pointerValid=" + pointerValid
+                        + " px=" + px + " py=" + py + ")");
+                }
+
                 clickPending = false;
                 dragPending = false;
             }
@@ -85,7 +107,7 @@ namespace Galilego.Tablet
             DrawOrbit(t, 4, 194, 164, 122);
             DrawControl(t, 172, 194, 168, 122);
             DrawDeltaV(t, 344, 4, 164, 312);
-            if (interactive && worldPointer)
+            if (interactive && worldPointer && DrawArrow)
             {
                 DrawPointer(px, py);
             }
@@ -126,7 +148,14 @@ namespace Galilego.Tablet
 
         private bool Clicked(int x, int y, int w, int h)
         {
-            return clickPending && Over(x, y, w, h);
+            bool hit = clickPending && Over(x, y, w, h);
+            if (hit)
+            {
+                Debug.Log("[Click] кнопка " + x + "," + y + " " + w + "x" + h
+                    + " (px=" + px + " py=" + py + ")");
+            }
+
+            return hit;
         }
 
         /// <summary>Panel with beveled corners and a title in a gap in the frame.</summary>

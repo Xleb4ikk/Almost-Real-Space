@@ -53,8 +53,7 @@ namespace Galilego.Universe
         private PlayerController controller;
         private FirstPersonCamera view;
 
-        private bool lockBefore;
-        private bool cursorWasLocked;
+        private bool cursorClaimed;
         private bool pausedByMenu;
 
         private MenuScreen screen;
@@ -231,13 +230,11 @@ namespace Galilego.Universe
                 controller.InputBlocked = true;
             }
 
-            cursorWasLocked = Cursor.lockState == CursorLockMode.Locked;
-            if (view != null)
-            {
-                lockBefore = view.LockCursor;
-                view.LockCursor = false;
-            }
-
+            // The menu needs a free cursor: it CLAIMS it (the camera stops capturing
+            // and stops reading the mouse) and releases it on close — the camera
+            // re-captures by itself. Counted claims: a menu opened over another window
+            // cannot leave the cursor released (see FirstPersonCamera.SetCursorClaim).
+            FirstPersonCamera.SetCursorClaim(ref cursorClaimed, true, "SettingsMenu");
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
 
@@ -273,16 +270,7 @@ namespace Galilego.Universe
                 controller.InputBlocked = false;
             }
 
-            if (view != null)
-            {
-                view.LockCursor = lockBefore;
-            }
-
-            if (cursorWasLocked)
-            {
-                Cursor.lockState = CursorLockMode.Locked;
-                Cursor.visible = false;
-            }
+            FirstPersonCamera.SetCursorClaim(ref cursorClaimed, false, "SettingsMenu");
 
             if (pausedByMenu && runner != null)
             {

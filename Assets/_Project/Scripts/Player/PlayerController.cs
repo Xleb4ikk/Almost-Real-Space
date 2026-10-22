@@ -99,8 +99,9 @@ namespace Galilego.Universe
 
         /// <summary>True while the camera is zoomed onto a cockpit screen (Esc / E leave it, the settings menu stays closed).</summary>
         public bool InScreenFocus { get { return screenFocusActive; } }
-        private bool screenPrevLockCursor;
-        private bool relockPending;
+
+        /// <summary>The screen focus holds a cursor claim (the camera yields the mouse while focused).</summary>
+        private bool screenCursorClaimed;
 
         /// <summary>Aim-cone (AimCone) probes — buffer to avoid per-frame allocation.</summary>
         private readonly Vector3[] focusDirections = new Vector3[AimCone.Samples];
@@ -113,22 +114,17 @@ namespace Galilego.Universe
             }
         }
 
+        private void OnDisable()
+        {
+            // A disabled/destroyed controller must not keep the cursor claimed.
+            FirstPersonCamera.SetCursorClaim(ref screenCursorClaimed, false, "ScreenFocus");
+        }
+
         private void Update()
         {
             if (Runner == null)
             {
                 return;
-            }
-
-            // Restore the cursor lock one frame after leaving screen focus: otherwise Esc,
-            // which closed the screen, would also release the cursor in the same frame (FirstPersonCamera).
-            if (relockPending)
-            {
-                relockPending = false;
-                if (screenCamera != null)
-                {
-                    screenCamera.LockCursor = screenPrevLockCursor;
-                }
             }
 
             if (InputBlocked)
@@ -157,7 +153,11 @@ namespace Galilego.Universe
                     }
                     else
                     {
-                        Cursor.visible = !FocusedScreen.PointerOnScreen;
+                        // The system cursor stays VISIBLE over the focused screen: the
+                        // tablet's own arrow (drawn on the panel) is a small hint, not a
+                        // replacement — hiding the OS cursor left the player with no
+                        // pointer at all when the crosshair reached the screen.
+                        Cursor.visible = true;
                     }
 
                     return;
@@ -292,14 +292,19 @@ namespace Galilego.Universe
             }
 
             screenCamera = cam;
-            screenPrevLockCursor = cam.LockCursor;
-            cam.LockCursor = false;
+            // The focused screen is clicked with the mouse: CLAIM the cursor (the
+            // camera stops capturing and reading it), release on exit — the camera
+            // re-captures by itself. Counted claims cannot get stuck released.
+            FirstPersonCamera.SetCursorClaim(ref screenCursorClaimed, true, "ScreenFocus");
             Cursor.lockState = CursorLockMode.Confined;
             Cursor.visible = true;
             FocusedScreen = screen;
             screenFocusActive = true;
             screen.BeginFocus(camera);
             cam.SetFocus(screen);
+            Debug.Log("[Focus] приближение к экрану: курсор=" + Cursor.lockState
+                + " заявок=" + FirstPersonCamera.CursorClaimed
+                + " mouseAim=" + (screen.Tablet != null ? screen.Tablet.MouseAim.ToString() : "-"));
             return true;
         }
 
@@ -323,9 +328,12 @@ namespace Galilego.Universe
                 screenCamera.ClearFocus();
             }
 
-            relockPending = true;
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            // Give the cursor back: the camera re-captures it on its next Update
+            // (the claim model keeps Esc — which closed the screen — from leaving
+            // the mouse dead, see FirstPersonCamera.SetCursorClaim).
+            FirstPersonCamera.SetCursorClaim(ref screenCursorClaimed, false, "ScreenFocus");
+            Debug.Log("[Focus] отход от экрана: курсор=" + Cursor.lockState
+                + " заявок=" + FirstPersonCamera.CursorClaimed);
         }
 
         /// <summary>The seat's "up" in render world: the anchor's local +Z (local rotation is zero).</summary>
@@ -613,7 +621,8 @@ namespace Galilego.Universe
                     + "\nblocked=" + Runner.PlayerBlocked + "  height=" + Runner.PlayerCapsuleHeight.ToString("F2")
                     + "  airborne=" + Runner.PlayerAirborne
                     + "  lift=" + Runner.PlayerDebugLift.ToString("F3")
-                    + "  ground=" + Runner.PlayerGroundSourceId);
+                    + "  ground=" + Runner.PlayerGroundSourceId
+                    + "\n" + Runner.CabinDebug);
                 if (Event.current.type == EventType.Repaint)
                 {
                     MeshSupportBase.DebugBlocker = "-";

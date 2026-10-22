@@ -13,8 +13,7 @@ namespace Galilego.Tablet
         public ShipTablet Tablet;
 
         private PlayerController user;
-        private FirstPersonCamera cam;
-        private bool camWasLocked;
+        private bool cursorClaimed;
 
         public override string Prompt
         {
@@ -34,13 +33,10 @@ namespace Galilego.Tablet
                 user.InputBlocked = true;
             }
 
-            cam = Object.FindAnyObjectByType<FirstPersonCamera>();
-            if (cam != null)
-            {
-                camWasLocked = cam.LockCursor;
-                cam.LockCursor = false;
-            }
-
+            // The expanded tablet is clicked with the mouse: CLAIM the cursor for it
+            // (the camera yields it), release on close — the camera re-captures by
+            // itself. Counted claims cannot get stuck released.
+            FirstPersonCamera.SetCursorClaim(ref cursorClaimed, true, "TabletInteractable");
             Tablet.Closed += OnClosed;
             Tablet.Open();
         }
@@ -53,13 +49,26 @@ namespace Galilego.Tablet
                 user.InputBlocked = false;
             }
 
-            if (cam != null)
+            FirstPersonCamera.SetCursorClaim(ref cursorClaimed, false, "TabletInteractable");
+            user = null;
+        }
+
+        private void OnDisable()
+        {
+            // A disabled/destroyed interactable must not keep the cursor claimed
+            // (the tablet may be destroyed while expanded, with no Closed event).
+            if (Tablet != null)
             {
-                cam.LockCursor = camWasLocked;
+                Tablet.Closed -= OnClosed;
             }
 
+            if (user != null)
+            {
+                user.InputBlocked = false;
+            }
+
+            FirstPersonCamera.SetCursorClaim(ref cursorClaimed, false, "TabletInteractable");
             user = null;
-            cam = null;
         }
     }
 }

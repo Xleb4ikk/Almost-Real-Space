@@ -1,74 +1,102 @@
+using System;
 using System.Collections.Generic;
 using Galilego.Core;
-using Galilego.Simulation.ContactZone;
-using Galilego.Universe;
 using UnityEngine;
 
 namespace Galilego.Simulation.Player
 {
     /// <summary>
-    /// Rigid carry of the player by a moving vessel (contact zone, PhysX bodies).
+    /// The player aboard a vessel ("cabin mode"). The player's state is kept IN THE VESSEL
+    /// PART'S FRAME: Position/Velocity are the controller's local coordinates (x = east,
+    /// y = north, z = up) whose axes are the part's own (east = forward, north = right,
+    /// up = up, see SetPlatformFrame). The colliders the controller queries are the same
+    /// transforms, so whatever the vessel does — falls, brakes, tilts, jumps to a new pose
+    /// when the contact zone is left — the player moves with it exactly, with no conversion
+    /// through the double world, the floating origin or the site frame (those bridges
+    /// disagree by metres inside a moving cabin). The double-world position and velocity
+    /// are only DERIVED from this state for everything else (anchor, orbit, UI).
     ///
-    /// The walking controller is kinematic and samples colliders once per frame. A vessel
-    /// that falls or brakes moves metres between two samples, so its colliders "teleport"
-    /// through the player (the roof passes over the head, the floor drops away). The carry
-    /// keeps the player's pose in the PLATFORM's local space: Capture after the step, TryApply
-    /// before the next one. The platform can therefore never move through the player, at any
-    /// speed or deceleration. The controller then only sees small motion relative to the
-    /// vessel (walking, jumping), where sweeps and rays are reliable.
-    ///
-    /// All maths is in zone-root space (body-fixed, pinned to the site frame), so the orbital
-    /// motion and spin of the planet drop out.
-    ///
-    /// Two modes: ZONE (the vessel is PhysX bodies, maths in zone-root space) and FREE (outside the
-    /// zone the vessel is moved analytically and ShipView places its root at Ship.Position, maths
-    /// relative to the ship point). A mode change drops the carry, the next Capture re-attaches.
-    ///
-    /// Attach: standing on a vessel part (ground source id), or airborne inside one (a probe
-    /// up and a probe down hit the same part). Release: standing on anything else, or leaving
-    /// the part's bounds while airborne. Orientation: the player's position follows the
-    /// vessel's rotation, the capsule itself stays upright.
+    /// Zone mode additionally measures the platform's own acceleration (zone-root
+    /// coordinates are body-fixed, so planet motion drops out), which the runner turns
+    /// into the felt weight: gravity minus the vessel's acceleration.
     /// </summary>
     public sealed class PlayerPlatformCarry
     {
-        private const float EnclosedProbeMeters = 3f;
-        private const float EnclosedProbeHeight = 0.7f;
-        private const float BoundsMarginMeters = 0.1f;
+        private const double AccelerationFilterSeconds = 0.1d;
+        private const float BoundsMarginMeters = 0.3f;
 
         private Transform platform;
-        private bool freeMode;
-        private Vector3 localPoint;
-        private Vector3 lastZonePoint;
-        private double poseTime;
-
         private readonly Dictionary<Transform, Collider[]> colliderCache = new Dictionary<Transform, Collider[]>();
 
-        /// <summary>The player is currently carried by a vessel part.</summary>
+        // Platform kinematics in zone-root axes (Unity: x north, y up, z east).
+        private Transform kinematicsPlatform;
+        private bool kinematicsValid;
+        private Vector3 lastOriginZone;
+        private double lastKinematicsTime;
+        private Vector3 velocityZone;
+        private Vector3 accelerationZone;
+
+        /// <summary>Controller coordinates in the platform's frame (x east, y north, z up).</summary>
+        public Vector3d Position;
+
+        /// <summary>Velocity relative to the platform, same axes.</summary>
+        public Vector3d Velocity;
+
         public bool Active
         {
             get { return platform != null; }
         }
 
-        /// <summary>Velocity of the carried point relative to the site (astro axes, m/s).</summary>
-        public Vector3d PlatformVelocity { get; private set; }
-
-        /// <summary>Player velocity relative to the vessel (astro axes, m/s).</summary>
-        public Vector3d RelativeVelocity;
-
-        /// <summary>The carry works in free flight (outside the contact zone).</summary>
-        public bool IsFree
+        public Transform Platform
         {
-            get { return freeMode; }
+            get { return platform; }
         }
 
-        /// <summary>
-        /// Render-space point of the carried player on the part's CURRENT pose. The player
-        /// point from the simulation step is one physics frame behind the mirrored visuals
-        /// (the zone writes the bodies in LateUpdate, after the step), so drawing the camera
-        /// from it makes the cabin slide around the view as the vessel falls. Applying the
-        /// captured local point to the pose the visuals have now keeps the camera fixed in
-        /// the cabin. false - not carried (use the simulation point).
-        /// </summary>
+        /// <summary>Platform velocity in zone-root axes (m/s), zone mode only.</summary>
+        public Vector3 PlatformVelocityZone
+        {
+            get { return velocityZone; }
+        }
+
+        /// <summary>Platform acceleration in zone-root axes (m/s²), filtered, zone mode only.</summary>
+        public Vector3 PlatformAccelerationZone
+        {
+            get { return accelerationZone; }
+        }
+
+        /// <summary>Unit axes of the frame in render space: east = forward, north = right, up = up.</summary>
+        public static void Axes(Transform root, out Vector3 east, out Vector3 north, out Vector3 up)
+        {
+            east = root.forward.normalized;
+            north = root.right.normalized;
+            up = root.up.normalized;
+        }
+
+        public Vector3 RenderPoint()
+        {
+            Axes(platform, out Vector3 e, out Vector3 n, out Vector3 u);
+            return platform.position + (e * (float)Position.X) + (n * (float)Position.Y) + (u * (float)Position.Z);
+        }
+
+        /// <summary>Render-space direction of a vector given in the platform's controller axes.</summary>
+        public Vector3 RenderDirection(Vector3d local)
+        {
+            Axes(platform, out Vector3 e, out Vector3 n, out Vector3 u);
+            return (e * (float)local.X) + (n * (float)local.Y) + (u * (float)local.Z);
+        }
+
+        /// <summary>Controller axes components of a render-space direction.</summary>
+        public static Vector3d LocalDirection(Transform root, Vector3 renderDirection)
+        {
+            Axes(root, out Vector3 e, out Vector3 n, out Vector3 u);
+            return new Vector3d(Vector3.Dot(renderDirection, e), Vector3.Dot(renderDirection, n), Vector3.Dot(renderDirection, u));
+        }
+
+        public static Vector3d LocalPoint(Transform root, Vector3 renderPoint)
+        {
+            return LocalDirection(root, renderPoint - root.position);
+        }
+
         public bool TryGetRenderPoint(out Vector3 renderPoint)
         {
             if (platform == null)
@@ -77,202 +105,115 @@ namespace Galilego.Simulation.Player
                 return false;
             }
 
-            renderPoint = platform.TransformPoint(localPoint);
+            renderPoint = RenderPoint();
             return true;
+        }
+
+        public bool TryGetUp(out Vector3 up)
+        {
+            if (platform == null)
+            {
+                up = Vector3.up;
+                return false;
+            }
+
+            up = platform.up.normalized;
+            return true;
+        }
+
+        /// <summary>Start carrying: the player is at renderPoint now, moving at relativeVelocity (platform axes).</summary>
+        public void Attach(Transform root, Vector3 renderPoint, Vector3d relativeVelocity)
+        {
+            platform = root;
+            Position = LocalPoint(root, renderPoint);
+            Velocity = relativeVelocity;
+            kinematicsValid = false;
+        }
+
+        /// <summary>Switch to another part of the same vessel without moving the player.</summary>
+        public void Reframe(Transform next)
+        {
+            if (next == null || next == platform)
+            {
+                return;
+            }
+
+            Vector3 point = RenderPoint();
+            Vector3 velocity = RenderDirection(Velocity);
+            platform = next;
+            Position = LocalPoint(next, point);
+            Velocity = LocalDirection(next, velocity);
         }
 
         public void Reset()
         {
             platform = null;
-            freeMode = false;
-            PlatformVelocity = Vector3d.Zero;
-            RelativeVelocity = Vector3d.Zero;
+            Position = Vector3d.Zero;
+            Velocity = Vector3d.Zero;
+            kinematicsValid = false;
+            kinematicsPlatform = null;
+            velocityZone = Vector3.zero;
+            accelerationZone = Vector3.zero;
             colliderCache.Clear();
         }
 
-        /// <summary>Vector in astro axes → components along the frame's east/north/up.</summary>
-        public static Vector3d ToAxes(SiteFrame frame, Vector3d v)
+        public void ResetKinematics()
         {
-            return new Vector3d(Vector3d.Dot(v, frame.East), Vector3d.Dot(v, frame.North), Vector3d.Dot(v, frame.Up));
-        }
-
-        /// <summary>Components along the frame's east/north/up → vector in astro axes.</summary>
-        public static Vector3d FromAxes(SiteFrame frame, Vector3d v)
-        {
-            return (frame.East * v.X) + (frame.North * v.Y) + (frame.Up * v.Z);
-        }
-
-        // Site (east, north, up) ↔ zone-root Unity axes (north, up, east), see ContactZoneProxy.
-        private static Vector3 ToZone(SiteFrame frame, Vector3d world)
-        {
-            frame.ToLocal(world, Vector3d.Zero, out Vector3d p, out _);
-            return new Vector3((float)p.Y, (float)p.Z, (float)p.X);
-        }
-
-        private static Vector3d FromZone(SiteFrame frame, Vector3 z)
-        {
-            frame.ToWorld(new Vector3d(z.z, z.x, z.y), Vector3d.Zero, out Vector3d world, out _);
-            return world;
+            kinematicsValid = false;
+            velocityZone = Vector3.zero;
+            accelerationZone = Vector3.zero;
         }
 
         /// <summary>
-        /// Start of the frame (the colliders are already at their new poses): the carried
-        /// point's new position. Also measures the platform velocity over the elapsed time.
+        /// Zone mode, once per frame: platform velocity and acceleration from its origin's motion
+        /// in the (body-fixed) zone-root space. time — the time the colliders' poses belong to.
         /// </summary>
-        public bool TryApply(Transform zone, SiteFrame zoneFrame, double time, out Vector3d worldPosition)
+        public void UpdateZoneKinematics(Transform zone, double time)
         {
-            worldPosition = Vector3d.Zero;
-            if (platform == null || freeMode)
+            if (platform == null || zone == null)
+            {
+                return;
+            }
+
+            Vector3 originZone = zone.InverseTransformPoint(platform.position);
+            double dt = time - lastKinematicsTime;
+            if (kinematicsValid && kinematicsPlatform == platform && dt > 1e-4d && dt < 0.5d)
+            {
+                Vector3 v = (originZone - lastOriginZone) / (float)dt;
+                Vector3 a = (v - velocityZone) / (float)dt;
+                float k = (float)Math.Min(1d, dt / AccelerationFilterSeconds);
+                accelerationZone = Vector3.Lerp(accelerationZone, a, k);
+                velocityZone = v;
+            }
+            else if (!(kinematicsValid && kinematicsPlatform == platform))
+            {
+                velocityZone = Vector3.zero;
+                accelerationZone = Vector3.zero;
+            }
+
+            lastOriginZone = originZone;
+            lastKinematicsTime = time;
+            kinematicsPlatform = platform;
+            kinematicsValid = true;
+        }
+
+        /// <summary>The render point is inside the platform's collider bounds (airborne inside the cabin).</summary>
+        public bool InsideBounds(Vector3 point)
+        {
+            if (platform == null)
             {
                 return false;
             }
 
-            Vector3 zonePoint = zone.InverseTransformPoint(platform.TransformPoint(localPoint));
-            double dt = time - poseTime;
-            if (dt > 1e-6d)
-            {
-                Vector3 d = zonePoint - lastZonePoint;
-                PlatformVelocity = ((zoneFrame.East * d.z) + (zoneFrame.North * d.x) + (zoneFrame.Up * d.y)) * (1d / dt);
-            }
-
-            worldPosition = FromZone(zoneFrame, zonePoint);
-            lastZonePoint = zonePoint;
-            poseTime = time;
-            return true;
-        }
-
-        /// <summary>
-        /// End of the frame (the colliders are still at the poses the step used): choose the
-        /// platform and store the player's pose in its local space. poseTime — the time the
-        /// colliders' poses belong to (the start of the frame).
-        /// </summary>
-        public void Capture(Transform zone, SiteFrame zoneFrame, double poseTime, Vector3d playerWorld,
-            Vector3d playerVelocity, bool grounded, int groundSourceId, VesselSupport vessel,
-            Transform forcedPlatform = null)
-        {
-            Vector3 zonePoint = ToZone(zoneFrame, playerWorld);
-            Vector3 renderPoint = zone.TransformPoint(zonePoint);
-
-            Transform next = null;
-            if (forcedPlatform != null)
-            {
-                // The caller knows the platform (standing up from a seat of this part).
-                next = forcedPlatform;
-            }
-            else if (grounded)
-            {
-                if (groundSourceId >= VesselSupport.SourceIdBase)
-                {
-                    vessel.TryGetPlatform(groundSourceId, out next);
-                }
-            }
-            else if (platform != null && !freeMode && InsideBounds(platform, renderPoint))
-            {
-                next = platform;
-            }
-            else
-            {
-                next = EnclosingPlatform(zone.up, renderPoint);
-            }
-
-            if (next == null)
-            {
-                platform = null;
-                freeMode = false;
-                return;
-            }
-
-            if (platform == null || freeMode)
-            {
-                PlatformVelocity = Vector3d.Zero;
-            }
-
-            freeMode = false;
-            platform = next;
-            localPoint = platform.InverseTransformPoint(renderPoint);
-            lastZonePoint = zonePoint;
-            this.poseTime = poseTime;
-
-            zoneFrame.ToLocal(playerWorld, playerVelocity, out _, out Vector3d relativeToSite);
-            RelativeVelocity = FromAxes(zoneFrame, relativeToSite) - PlatformVelocity;
-        }
-
-        /// <summary>
-        /// FREE mode, start of the frame: the colliders are already at the ship's current pose
-        /// (the runner puts the ship root at Ship.Position first). Returns the carried point.
-        /// </summary>
-        public bool TryApplyFree(Transform shipRoot, Vector3d shipPosition, Vector3d shipVelocity,
-            Vector3d frameVelocity, out Vector3d worldPosition)
-        {
-            worldPosition = Vector3d.Zero;
-            if (platform == null || !freeMode || shipRoot == null)
-            {
-                return false;
-            }
-
-            Vector3 renderNow = platform.TransformPoint(localPoint);
-            worldPosition = shipPosition + AstroFrame.ToAstro(renderNow - shipRoot.position);
-            PlatformVelocity = shipVelocity - frameVelocity;
-            return true;
-        }
-
-        /// <summary>
-        /// FREE mode, end of the frame. The platform must be a part of the moving ship root.
-        /// Velocities are world (astro) axes; frameVelocity — the local frame's co-rotation
-        /// velocity at the player.
-        /// </summary>
-        public void CaptureFree(Transform shipRoot, Vector3d playerWorld, Vector3d playerVelocity,
-            Vector3d shipVelocity, Vector3d frameVelocity, Vector3 up, bool grounded, int groundSourceId,
-            VesselSupport vessel, Transform forcedPlatform = null)
-        {
-            Vector3 renderPoint = FloatingOrigin.ToRender(playerWorld);
-
-            Transform next = null;
-            if (forcedPlatform != null)
-            {
-                next = forcedPlatform;
-            }
-            else if (grounded)
-            {
-                if (groundSourceId >= VesselSupport.SourceIdBase)
-                {
-                    vessel.TryGetPlatform(groundSourceId, out next);
-                }
-            }
-            else if (platform != null && freeMode && InsideBounds(platform, renderPoint))
-            {
-                next = platform;
-            }
-            else
-            {
-                next = EnclosingPlatform(up, renderPoint);
-            }
-
-            if (next == null || shipRoot == null || !next.IsChildOf(shipRoot))
-            {
-                platform = null;
-                freeMode = false;
-                return;
-            }
-
-            freeMode = true;
-            platform = next;
-            localPoint = platform.InverseTransformPoint(renderPoint);
-            PlatformVelocity = shipVelocity - frameVelocity;
-            RelativeVelocity = playerVelocity - frameVelocity - PlatformVelocity;
-        }
-
-        private bool InsideBounds(Transform root, Vector3 point)
-        {
-            if (!colliderCache.TryGetValue(root, out Collider[] colliders) || colliders == null || colliders.Length == 0)
+            if (!colliderCache.TryGetValue(platform, out Collider[] colliders) || colliders == null || colliders.Length == 0)
             {
                 if (colliderCache.Count > 32)
                 {
                     colliderCache.Clear();
                 }
 
-                colliders = root.GetComponentsInChildren<Collider>(false);
-                colliderCache[root] = colliders;
+                colliders = platform.GetComponentsInChildren<Collider>(false);
+                colliderCache[platform] = colliders;
             }
 
             bool any = false;
@@ -302,20 +243,6 @@ namespace Galilego.Simulation.Player
 
             bounds.Expand(BoundsMarginMeters * 2f);
             return bounds.Contains(point);
-        }
-
-        /// <summary>The player is airborne inside a vessel part: a probe up and a probe down hit the same part.</summary>
-        private static Transform EnclosingPlatform(Vector3 up, Vector3 feet)
-        {
-            Vector3 origin = feet + (up * EnclosedProbeHeight);
-            if (!Physics.Raycast(origin, up, out RaycastHit above, EnclosedProbeMeters, ~0, QueryTriggerInteraction.Ignore)
-                || !Physics.Raycast(origin, -up, out RaycastHit below, EnclosedProbeMeters, ~0, QueryTriggerInteraction.Ignore))
-            {
-                return null;
-            }
-
-            Transform a = VesselSupport.PlatformOf(above.collider);
-            return a != null && a == VesselSupport.PlatformOf(below.collider) ? a : null;
         }
     }
 }
