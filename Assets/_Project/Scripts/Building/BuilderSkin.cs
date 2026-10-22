@@ -14,7 +14,7 @@ namespace Galilego.Building
     /// </summary>
     internal static class BuilderSkin
     {
-        // ─── Palette (dark gray, like the Unity editor UI, slightly lighter) ─
+        // ─── Palette (dark charcoal, like the reference inventory) ─
         public static readonly Color Accent = new Color(0.30f, 0.55f, 0.85f, 1f);
         public static readonly Color AccentDim = new Color(0.30f, 0.55f, 0.85f, 0.30f);
         public static readonly Color TextMain = new Color(0.86f, 0.87f, 0.88f, 1f);
@@ -22,6 +22,12 @@ namespace Galilego.Building
         public static readonly Color Line = new Color(1f, 1f, 1f, 0.10f);
         public static readonly Color Good = new Color(0.35f, 0.78f, 0.50f, 1f);
         public static readonly Color DangerText = new Color(0.92f, 0.62f, 0.62f, 1f);
+
+        /// <summary>Active tab text (orange, like the reference inventory).</summary>
+        public static readonly Color Highlight = new Color(1.00f, 0.56f, 0.12f, 1f);
+
+        /// <summary>Thin line under every tab.</summary>
+        public static readonly Color TabLine = new Color(0.27f, 0.62f, 0.80f, 1f);
 
         /// <summary>Shadow around windows and panels (tints Glow).</summary>
         public static readonly Color Shadow = new Color(0f, 0f, 0f, 0.45f);
@@ -49,6 +55,17 @@ namespace Galilego.Building
         public static GUIStyle Track { get; private set; }
         public static GUIStyle Glow { get; private set; }
 
+        // Reference-style inventory: flat grid cells, tabs, search, stat pills.
+        public static GUIStyle Cell { get; private set; }
+        public static GUIStyle CellHover { get; private set; }
+        public static GUIStyle CellSelected { get; private set; }
+        public static GUIStyle Tab { get; private set; }
+        public static GUIStyle TabHover { get; private set; }
+        public static GUIStyle SearchBox { get; private set; }
+        public static GUIStyle SearchField { get; private set; }
+        public static GUIStyle Stat { get; private set; }
+        public static GUIStyle DescBox { get; private set; }
+
         // ─── Text styles ─────────────────────────────────────────────────
         public static GUIStyle TitleText { get; private set; }
         public static GUIStyle NameText { get; private set; }
@@ -69,6 +86,14 @@ namespace Galilego.Building
         public static GUIStyle PillText { get; private set; }
         public static GUIStyle ButtonText { get; private set; }
         public static GUIStyle DangerButtonText { get; private set; }
+        public static GUIStyle TabText { get; private set; }
+        public static GUIStyle TabTextActive { get; private set; }
+        public static GUIStyle StatText { get; private set; }
+        public static GUIStyle DescText { get; private set; }
+        public static GUIStyle PreviewName { get; private set; }
+        public static GUIStyle SlotNumber { get; private set; }
+        public static GUIStyle CountText { get; private set; }
+        public static GUIStyle SearchPlaceholder { get; private set; }
 
         // ─── Icons ──────────────────────────────────────────────────────────
         public static Texture2D ChevronLeft { get; private set; }
@@ -78,6 +103,7 @@ namespace Galilego.Building
         public static Texture2D Cross { get; private set; }
         public static Texture2D Dot { get; private set; }
         public static Texture2D Vignette { get; private set; }
+        public static Texture2D Search { get; private set; }
 
         private static bool built;
         private static Texture2D guard;     // it tells us the textures were destroyed
@@ -96,31 +122,41 @@ namespace Galilego.Building
             built = false;
             Keep.Clear();
 
-            // Windows and panels.
-            Window = Box(Rounded(48, 16f, C(0.290f, 0.290f, 0.295f, 0.985f), C(0.175f, 0.175f, 0.180f, 1f), 1.5f), 20);
-            PanelInner = Box(Rounded(32, 10f, C(0.330f, 0.330f, 0.335f, 1f), C(0.215f, 0.215f, 0.220f, 1f), 1.2f), 12);
-            Plate = Box(Rounded(40, 14f, C(0.255f, 0.255f, 0.260f, 0.97f), C(0.170f, 0.170f, 0.175f, 1f), 1.2f), 16);
-            Pill = Box(Rounded(40, 14f, C(0.300f, 0.300f, 0.305f, 0.97f), C(0.190f, 0.190f, 0.195f, 1f), 1.2f), 16);
-            Viewport = Box(Rounded(48, 14f, C(0.224f, 0.224f, 0.228f, 1f), C(0.160f, 0.160f, 0.165f, 1f), 1.5f), 16);
+            // Windows and panels: dark charcoal, flat, like the reference inventory.
+            Window = Box(Rounded(48, 16f, C(0.105f, 0.112f, 0.120f, 0.95f), C(0.060f, 0.064f, 0.070f, 1f), 1.2f), 20);
+            PanelInner = Box(Rounded(32, 10f, C(0.125f, 0.132f, 0.140f, 1f), C(0.090f, 0.096f, 0.102f, 1f), 1.0f), 12);
+            Plate = Box(Rounded(40, 14f, C(0.120f, 0.128f, 0.136f, 0.95f), C(0.070f, 0.075f, 0.080f, 1f), 1.2f), 16);
+            Pill = Box(Rounded(40, 14f, C(0.150f, 0.158f, 0.168f, 0.96f), C(0.085f, 0.090f, 0.096f, 1f), 1.2f), 16);
+            Viewport = Box(Rounded(48, 14f, C(0.168f, 0.176f, 0.186f, 1f), C(0.110f, 0.116f, 0.122f, 1f), 1.2f), 16);
 
-            // Hotbar slots and cards.
-            Slot = Box(Rounded(32, 9f, C(0.275f, 0.275f, 0.280f, 1f), C(0.195f, 0.195f, 0.200f, 1f), 1.2f), 11);
-            SlotHover = Box(Rounded(32, 9f, C(0.330f, 0.330f, 0.338f, 1f), C(0.470f, 0.470f, 0.490f, 1f), 1.6f), 11);
-            SlotSelected = Box(Rounded(32, 9f, C(0.285f, 0.315f, 0.360f, 1f), C(0.30f, 0.55f, 0.85f, 1f), 2.6f), 11);
-            Card = Box(Rounded(32, 10f, C(0.310f, 0.310f, 0.315f, 1f), C(0.210f, 0.210f, 0.215f, 1f), 1.2f), 12);
-            CardHover = Box(Rounded(32, 10f, C(0.355f, 0.355f, 0.362f, 1f), C(0.470f, 0.470f, 0.490f, 1f), 1.6f), 12);
-            CardSelected = Box(Rounded(32, 10f, C(0.290f, 0.330f, 0.390f, 1f), C(0.30f, 0.55f, 0.85f, 1f), 2.2f), 12);
+            // Hotbar slots: separate dark squares; the selected one gets a white outline.
+            Slot = Box(Rounded(32, 9f, C(0.165f, 0.172f, 0.180f, 0.94f), C(0.100f, 0.105f, 0.110f, 1f), 1.2f), 11);
+            SlotHover = Box(Rounded(32, 9f, C(0.215f, 0.222f, 0.232f, 0.96f), C(0.470f, 0.470f, 0.490f, 1f), 1.6f), 11);
+            SlotSelected = Box(Rounded(32, 9f, C(0.195f, 0.202f, 0.212f, 0.96f), C(0.96f, 0.96f, 0.96f, 1f), 2.6f), 11);
+            Card = Box(Rounded(32, 10f, C(0.165f, 0.172f, 0.180f, 1f), C(0.105f, 0.110f, 0.115f, 1f), 1.2f), 12);
+            CardHover = Box(Rounded(32, 10f, C(0.205f, 0.212f, 0.222f, 1f), C(0.470f, 0.470f, 0.490f, 1f), 1.6f), 12);
+            CardSelected = Box(Rounded(32, 10f, C(0.330f, 0.340f, 0.355f, 1f), C(0.640f, 0.650f, 0.670f, 1f), 2.2f), 12);
+
+            // Inventory grid cells (flat, slightly rounded) and tabs.
+            Cell = Box(Rounded(24, 5f, C(0.168f, 0.176f, 0.186f, 1f), C(0.168f, 0.176f, 0.186f, 1f), 0.5f), 8);
+            CellHover = Box(Rounded(24, 5f, C(0.215f, 0.224f, 0.236f, 1f), C(0.330f, 0.340f, 0.355f, 1f), 1.2f), 8);
+            CellSelected = Box(Rounded(24, 5f, C(0.335f, 0.345f, 0.360f, 1f), C(0.640f, 0.650f, 0.670f, 1f), 2.2f), 8);
+            Tab = Box(Rounded(24, 5f, C(0.140f, 0.150f, 0.160f, 1f), C(0.140f, 0.150f, 0.160f, 1f), 0.5f), 8);
+            TabHover = Box(Rounded(24, 5f, C(0.190f, 0.200f, 0.212f, 1f), C(0.190f, 0.200f, 0.212f, 1f), 0.5f), 8);
+            SearchBox = Box(Rounded(32, 11f, C(0.085f, 0.090f, 0.096f, 1f), C(0.175f, 0.184f, 0.195f, 1f), 1.2f), 12);
+            Stat = Box(Rounded(32, 11f, C(0.175f, 0.183f, 0.194f, 1f), C(0.175f, 0.183f, 0.194f, 1f), 0.5f), 12);
+            DescBox = Box(Rounded(32, 12f, C(0.150f, 0.158f, 0.168f, 1f), C(0.150f, 0.158f, 0.168f, 1f), 0.5f), 14);
 
             // Arrow buttons.
-            Step = Box(Rounded(32, 9f, C(0.295f, 0.295f, 0.300f, 1f), C(0.205f, 0.205f, 0.210f, 1f), 1.2f), 11);
-            StepHover = Box(Rounded(32, 9f, C(0.350f, 0.350f, 0.358f, 1f), C(0.480f, 0.480f, 0.500f, 1f), 1.6f), 11);
+            Step = Box(Rounded(32, 9f, C(0.215f, 0.224f, 0.236f, 1f), C(0.135f, 0.142f, 0.150f, 1f), 1.2f), 11);
+            StepHover = Box(Rounded(32, 9f, C(0.280f, 0.290f, 0.305f, 1f), C(0.480f, 0.480f, 0.500f, 1f), 1.6f), 11);
             StepActive = Box(Rounded(32, 9f, C(0.240f, 0.400f, 0.600f, 1f), C(0.40f, 0.65f, 0.92f, 1f), 1.6f), 11);
-            StepDisabled = Box(Rounded(32, 9f, C(0.270f, 0.270f, 0.275f, 1f), C(0.225f, 0.225f, 0.230f, 1f), 1.2f), 11);
-            ValueBox = Box(Rounded(32, 9f, C(0.205f, 0.205f, 0.210f, 1f), C(0.150f, 0.150f, 0.155f, 1f), 1.2f), 11);
-            Key = Box(Rounded(24, 6f, C(0.245f, 0.245f, 0.250f, 1f), C(0.175f, 0.175f, 0.180f, 1f), 1.2f), 8);
-            Danger = Box(Rounded(32, 9f, C(0.420f, 0.230f, 0.230f, 1f), C(0.540f, 0.290f, 0.290f, 1f), 1.2f), 11);
+            StepDisabled = Box(Rounded(32, 9f, C(0.160f, 0.167f, 0.175f, 1f), C(0.130f, 0.136f, 0.143f, 1f), 1.2f), 11);
+            ValueBox = Box(Rounded(32, 9f, C(0.085f, 0.090f, 0.096f, 1f), C(0.060f, 0.064f, 0.068f, 1f), 1.2f), 11);
+            Key = Box(Rounded(24, 6f, C(0.195f, 0.203f, 0.214f, 1f), C(0.120f, 0.126f, 0.133f, 1f), 1.2f), 8);
+            Danger = Box(Rounded(32, 9f, C(0.380f, 0.200f, 0.200f, 1f), C(0.540f, 0.290f, 0.290f, 1f), 1.2f), 11);
             DangerHover = Box(Rounded(32, 9f, C(0.500f, 0.265f, 0.265f, 1f), C(0.740f, 0.360f, 0.360f, 1f), 1.5f), 11);
-            Track = Box(Rounded(16, 5f, C(0.215f, 0.215f, 0.220f, 1f), C(0.160f, 0.160f, 0.165f, 1f), 1f), 6);
+            Track = Box(Rounded(16, 5f, C(0.100f, 0.105f, 0.110f, 1f), C(0.070f, 0.074f, 0.078f, 1f), 1f), 6);
             Glow = Box(MakeGlow(64, 20f, 12f), 30);
 
             // Text.
@@ -147,6 +183,36 @@ namespace Galilego.Building
             PillText.richText = true;
             ButtonText = Text(14, TextMain, TextAnchor.MiddleCenter, FontStyle.Bold);
             DangerButtonText = Text(14, DangerText, TextAnchor.MiddleCenter, FontStyle.Bold);
+            TabText = Text(17, Color.white, TextAnchor.MiddleCenter, FontStyle.Normal);
+            TabTextActive = Text(17, Highlight, TextAnchor.MiddleCenter, FontStyle.Normal);
+            StatText = Text(16, Color.white, TextAnchor.MiddleLeft, FontStyle.Bold);
+            StatText.clipping = TextClipping.Clip;
+            StatText.richText = true;
+            DescText = Text(15, new Color(0.90f, 0.91f, 0.92f, 1f), TextAnchor.UpperLeft, FontStyle.Normal);
+            DescText.wordWrap = true;
+            DescText.richText = true;
+            PreviewName = Text(18, Color.white, TextAnchor.MiddleCenter, FontStyle.Normal);
+            SlotNumber = Text(19, Color.white, TextAnchor.UpperCenter, FontStyle.Bold);
+            CountText = Text(24, Color.white, TextAnchor.LowerRight, FontStyle.Bold);
+            SearchPlaceholder = Text(17, TextMuted, TextAnchor.MiddleLeft, FontStyle.Italic);
+
+            // Text field: transparent background, the SearchBox frame is drawn under it.
+            SearchField = new GUIStyle(GUI.skin.textField)
+            {
+                fontSize = 17,
+                alignment = TextAnchor.MiddleLeft,
+                padding = new RectOffset(14, 40, 0, 0),
+                margin = new RectOffset(0, 0, 0, 0),
+                clipping = TextClipping.Clip
+            };
+            SearchField.normal.background = null;
+            SearchField.hover.background = null;
+            SearchField.active.background = null;
+            SearchField.focused.background = null;
+            SearchField.normal.textColor = Color.white;
+            SearchField.hover.textColor = Color.white;
+            SearchField.active.textColor = Color.white;
+            SearchField.focused.textColor = Color.white;
 
             // Icons.
             ChevronLeft = Chevron(false, false);
@@ -156,6 +222,7 @@ namespace Galilego.Building
             Cross = MakeCross();
             Dot = MakeDot();
             Vignette = MakeVignette();
+            Search = MakeSearch();
 
             guard = Dot;
             built = true;
@@ -367,6 +434,30 @@ namespace Galilego.Building
                     float d1 = SegmentDistance(px, py, 9f, 9f, 23f, 23f);
                     float d2 = SegmentDistance(px, py, 9f, 23f, 23f, 9f);
                     float a = Mathf.Clamp01((3.2f * 0.5f) - Mathf.Min(d1, d2) + 0.5f);
+                    pixels[(y * size) + x] = new Color(1f, 1f, 1f, a);
+                }
+            }
+
+            return Make(size, pixels);
+        }
+
+        /// <summary>Magnifier icon (white, gets tinted).</summary>
+        private static Texture2D MakeSearch()
+        {
+            const int size = 32;
+            var pixels = new Color[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float px = x + 0.5f;
+                    float py = y + 0.5f;
+                    float dx = px - 13f;
+                    float dy = py - 19f;
+                    float ring = Mathf.Abs(Mathf.Sqrt((dx * dx) + (dy * dy)) - 8f);
+                    float handle = SegmentDistance(px, py, 19.5f, 12.5f, 26f, 6f);
+                    float d = Mathf.Min(ring, handle);
+                    float a = Mathf.Clamp01((3.0f * 0.5f) - d + 0.5f);
                     pixels[(y * size) + x] = new Color(1f, 1f, 1f, a);
                 }
             }

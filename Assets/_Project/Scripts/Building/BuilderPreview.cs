@@ -38,8 +38,8 @@ namespace Galilego.Building
         /// <summary>Fixed exposure of the preview frame (EV100).</summary>
         private const float FixedExposureEv = -3f;
 
-        /// <summary>Frame background — matches the Viewport frame color to avoid seams.</summary>
-        private static readonly Color Background = new Color(0.038f, 0.038f, 0.040f, 1f);
+        /// <summary>Frame background (LINEAR) — matches the Viewport/Cell fill (sRGB 0.168, 0.176, 0.186) to avoid seams.</summary>
+        private static readonly Color Background = new Color(0.0240f, 0.0261f, 0.0289f, 1f);
 
         private GameObject rig;
         private Transform spinner;
@@ -254,6 +254,7 @@ namespace Galilego.Building
                 hideFlags = HideFlags.HideAndDontSave
             };
             texture.ReadPixels(new Rect(0, 0, IconSize, IconSize), 0, 0);
+            KeyOutBackground(texture);
             texture.Apply();
             RenderTexture.active = previous;
 
@@ -262,6 +263,46 @@ namespace Galilego.Building
             visual.Root.SetActive(false);
             Object.Destroy(visual.Root);
             return texture;
+        }
+
+        /// <summary>
+        /// The icon must sit on a cell of ANY colour (normal, hover, selected). HDRP does
+        /// not always keep the alpha of the clear colour, so when the frame came out opaque
+        /// the flat background (known from the corner pixel) is keyed out here.
+        /// </summary>
+        private static void KeyOutBackground(Texture2D texture)
+        {
+            Color32[] pixels = texture.GetPixels32();
+            Color32 key = pixels[0];
+            if (key.a < 250)
+            {
+                return;                              // already transparent — nothing to do
+            }
+
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                Color32 p = pixels[i];
+                int d = Mathf.Max(Mathf.Abs(p.r - key.r), Mathf.Max(Mathf.Abs(p.g - key.g), Mathf.Abs(p.b - key.b)));
+                if (d <= 2)
+                {
+                    pixels[i] = new Color32(0, 0, 0, 0);
+                    continue;
+                }
+
+                if (d >= 10)
+                {
+                    continue;                        // clearly the part
+                }
+
+                // Soft edge: un-mix the background so there is no dark/light halo.
+                float a = Mathf.Clamp01((d - 2f) / 8f);
+                byte r = (byte)Mathf.Clamp(key.r + ((p.r - key.r) / a), 0f, 255f);
+                byte g = (byte)Mathf.Clamp(key.g + ((p.g - key.g) / a), 0f, 255f);
+                byte b = (byte)Mathf.Clamp(key.b + ((p.b - key.b) / a), 0f, 255f);
+                pixels[i] = new Color32(r, g, b, (byte)Mathf.RoundToInt(a * 255f));
+            }
+
+            texture.SetPixels32(pixels);
         }
 
         /// <summary>Tear down the rig and texture (window closed / component disabled).</summary>

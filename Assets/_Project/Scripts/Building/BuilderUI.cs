@@ -74,16 +74,41 @@ namespace Galilego.Building
         private static readonly CatalogEntry[] Catalog = BuildCatalog();
 
         // Geometry (in "virtual" pixels at a screen height of 1080).
-        private const float SlotSize = 58f;
-        private const float SlotGap = 8f;
-        private const float PlatePad = 10f;
+        private const float SlotSize = 64f;
+        private const float SlotGap = 10f;
+
+        /// <summary>Row under the hotbar slots: the key number (1..9) is drawn there.</summary>
+        private const float SlotNumberRow = 26f;
         private const float DragThreshold = 5f;
 
-        /// <summary>The inventory window takes ~70% of the screen (width and height).</summary>
-        private const float WindowFraction = 0.70f;
+        /// <summary>The inventory window: up to ~78% of the screen height.</summary>
+        private const float WindowHeightFraction = 0.78f;
 
-        /// <summary>Minimum inventory window height.</summary>
-        private const float WindowMinHeight = 540f;
+        /// <summary>Free space left of the window.</summary>
+        private const float WindowLeftMargin = 24f;
+
+        /// <summary>
+        /// Free space right of the window: the ΔV panel rail (tabs) lives there
+        /// and would cover the search/preview column otherwise.
+        /// </summary>
+        private const float WindowRightReserve = 146f;
+
+        /// <summary>Top of the window: below the parts/mass summary pill.</summary>
+        private const float WindowTop = 64f;
+
+        /// <summary>
+        /// Screen height kept free under the window: close row, ΔV header block
+        /// (bottom right) and the hotbar with its name plate.
+        /// </summary>
+        private const float WindowBottomReserve = 192f;
+
+        /// <summary>Minimum inventory window height (small game views).</summary>
+        private const float WindowMinHeight = 420f;
+
+        private const float TabHeight = 44f;
+        private const float StatPillHeight = 34f;
+        private const float StatPillGap = 6f;
+        private const int GridColumns = 8;
 
         /// <summary>Wheel scroll step in the stats column, px per notch.</summary>
         private const float StatsScrollStep = 42f;
@@ -146,10 +171,24 @@ namespace Galilego.Building
         /// <summary>Cursor over the stats column (set by OnGUI): the wheel scrolls it, not the slots.</summary>
         private bool statsHovered;
 
-        // Card grid scroll: 6×3 visible, the rest is scrolled with the wheel.
-        private const float GridScrollStep = 46f;
+        // Part grid scroll: 8 columns, the rest is scrolled with the wheel.
+        private const float GridScrollStep = 70f;
         private float gridScroll;
         private bool gridHovered;
+
+        // Inventory tabs and search (reference-style window).
+        private static readonly string[] TabNames = { "ВСЕ", "ДВИГАТЕЛИ", "ТОПЛИВО", "ПРОЧЕЕ" };
+        private int tabIndex;
+        private string search = string.Empty;
+        private const string SearchControl = "BuilderSearch";
+
+        /// <summary>The search field has keyboard focus: gameplay hotkeys (I, H, 1..9, X, Z) are muted.</summary>
+        private bool searchFocused;
+        private bool releaseSearchFocus;
+
+        private readonly List<int> visibleCards = new List<int>();
+        private readonly int[] placedCounts = new int[Catalog.Length];
+        private string cellTooltip;
 
         // Slot mini-menu (RMB on a slot): quick sizes at the panel.
         private const float SlotMenuWidth = 320f;
@@ -255,14 +294,29 @@ namespace Galilego.Building
             // Inventory is on I (E is taken by world interactions: chairs, tablet).
             // An expanded tablet also blocks I: two fullscreen interfaces on top
             // of each other are a mess, and there is one cursor.
-            if (PlayerInput.Down(GameAction.BuildInventory) && !ShipTablet.AnyExpanded)
+            if (PlayerInput.Down(GameAction.BuildInventory) && !ShipTablet.AnyExpanded && !searchFocused)
             {
                 SetOpen(!open);
             }
 
             if (open && PlayerInput.EscapeDown())
             {
-                SetOpen(false);
+                // First Esc leaves the search field, the next one closes the window.
+                if (searchFocused)
+                {
+                    releaseSearchFocus = true;
+                    searchFocused = false;
+                }
+                else
+                {
+                    SetOpen(false);
+                }
+            }
+
+            // Typing in the search field must not trigger hotkeys.
+            if (searchFocused)
+            {
+                return;
             }
 
             // H — hide/restore key hints (panel at the bottom left).
@@ -394,6 +448,8 @@ namespace Galilego.Building
             ResetDrag();
             statsHovered = false;
             statsScrollDrag = false;
+            searchFocused = false;
+            releaseSearchFocus = true;
             FirstPersonCamera.SetCursorClaim(ref cursorClaimed, false, "BuilderUI");
         }
 
@@ -847,7 +903,11 @@ namespace Galilego.Building
             if (buildActive)
             {
                 DrawSummary();
-                DrawHints();
+                if (openAnim <= 0.001f)
+                {
+                    DrawHints();                     // the inventory has its own hint line
+                }
+
                 DrawHotbar();
                 DrawRHold("Включение физики…");
                 if (openAnim > 0.001f)
@@ -873,18 +933,18 @@ namespace Galilego.Building
 
         // ─── Hotbar ──────────────────────────────────────────────────────────
 
+        /// <summary>Bounds of the hotbar row (slots + key numbers under them). No plate is drawn.</summary>
         private Rect PlateRect()
         {
             float total = (SlotSize * hotbar.Length) + (SlotGap * (hotbar.Length - 1));
-            float w = total + (PlatePad * 2f);
-            float h = SlotSize + (PlatePad * 2f);
-            return new Rect((uiWidth - w) * 0.5f, uiHeight - h - 16f, w, h);
+            float h = SlotSize + SlotNumberRow;
+            return new Rect((uiWidth - total) * 0.5f, uiHeight - h - 14f, total, h);
         }
 
         private Rect HotbarSlotRect(int index)
         {
             Rect plate = PlateRect();
-            return new Rect(plate.x + PlatePad + (index * (SlotSize + SlotGap)), plate.y + PlatePad, SlotSize, SlotSize);
+            return new Rect(plate.x + (index * (SlotSize + SlotGap)), plate.y, SlotSize, SlotSize);
         }
 
         private void DrawHotbar()
@@ -892,11 +952,6 @@ namespace Galilego.Building
             Rect plate = PlateRect();
             Event current = Event.current;
             Vector2 mouse = current.mousePosition;
-
-            SetColor(BuilderSkin.Shadow);
-            GUI.Box(Expand(plate, 22f), GUIContent.none, BuilderSkin.Glow);
-            SetColor(Color.white);
-            GUI.Box(plate, GUIContent.none, BuilderSkin.Plate);
 
             DrawNamePlate(plate);
 
@@ -907,14 +962,6 @@ namespace Galilego.Building
                 bool dropTarget = open && dragMoved && rect.Contains(mouse);
                 bool hover = open && !Dragging && rect.Contains(mouse);
                 HotSlot slot = hotbar[i];
-
-                if (selected)
-                {
-                    rect.y -= 5f;                    // selected slot is lifted
-                    SetColor(new Color(0.30f, 0.55f, 0.85f, 0.55f));
-                    GUI.Box(Expand(rect, 20f), GUIContent.none, BuilderSkin.Glow);
-                    SetColor(Color.white);
-                }
 
                 GUIStyle style = selected ? BuilderSkin.SlotSelected
                     : (dropTarget || hover) ? BuilderSkin.SlotHover : BuilderSkin.Slot;
@@ -927,7 +974,7 @@ namespace Galilego.Building
 
                 if (slot.Occupied)
                 {
-                    float inset = selected ? 6f : 8f;
+                    const float inset = 7f;
                     var icon = new Rect(rect.x + inset, rect.y + inset, rect.width - (inset * 2f), rect.height - (inset * 2f));
                     bool lifted = dragMoved && dragFromHotbar == i;
                     SetColor(new Color(1f, 1f, 1f, lifted ? 0.3f : 1f));
@@ -936,8 +983,9 @@ namespace Galilego.Building
                     SetColor(Color.white);
                 }
 
-                GUI.Label(new Rect(rect.x + 6f, rect.y + 3f, 20f, 14f), (i + 1).ToString(),
-                    selected ? BuilderSkin.Body : BuilderSkin.Tiny);
+                // Key number UNDER the slot (bold white with an outline, readable on any scene).
+                DrawOutlinedLabel(new Rect(rect.x, rect.yMax + 3f, rect.width, SlotNumberRow - 3f),
+                    (i + 1).ToString(), BuilderSkin.SlotNumber);
 
                 if (open && current.type == EventType.MouseDown && rect.Contains(mouse) && !Dragging)
                 {
@@ -1225,49 +1273,168 @@ namespace Galilego.Building
             controlsActive = open && slotMenuIndex < 0;
 
             // The window never leaves the screen (clamped to the viewport) and
-            // never grows to fit the content: overflow scrolls in the stats column.
-            float winW = Mathf.Min(uiWidth - 16f, Mathf.Max(760f, uiWidth * WindowFraction));
-            float winH = Mathf.Min(uiHeight - 24f, Mathf.Max(WindowMinHeight, uiHeight * WindowFraction));
+            // never grows to fit the content: overflow scrolls in the right column.
+            float winW = Mathf.Max(640f, uiWidth - WindowLeftMargin - WindowRightReserve);
+            float winTop = Mathf.Max(WindowTop, uiHeight * 0.065f);
+            float winH = Mathf.Max(WindowMinHeight,
+                Mathf.Min(uiHeight * WindowHeightFraction, uiHeight - WindowBottomReserve - winTop));
             float slide = (1f - eased) * 18f;
-            var win = new Rect((uiWidth - winW) * 0.5f, ((uiHeight - winH) * 0.5f) - 24f + slide, winW, winH);
+            var win = new Rect(WindowLeftMargin, winTop + slide, winW, winH);
 
             SetColor(BuilderSkin.Shadow);
             GUI.Box(Expand(win, 26f), GUIContent.none, BuilderSkin.Glow);
             SetColor(Color.white);
             GUI.Box(win, GUIContent.none, BuilderSkin.Window);
 
-            // Header.
-            GUI.Label(new Rect(win.x + 26f, win.y + 14f, 500f, 30f), "Инвентарь деталей", BuilderSkin.TitleText);
-            GUI.Label(new Rect(win.x + 26f, win.y + 40f, 500f, 18f), "Режим строительства", BuilderSkin.Tiny);
+            const float pad = 14f;
+            float rightW = Mathf.Clamp(win.width * 0.26f, 380f, 520f);
+            rightW = Mathf.Min(rightW, win.width - 360f);
+            float rightX = win.xMax - pad - rightW;
 
-            var close = new Rect(win.xMax - 56f, win.y + 16f, 36f, 36f);
-            if (DrawIconButton(close, BuilderSkin.Cross, 22f))
-            {
-                SetOpen(false);
-            }
+            // Top row: tabs on the left, search over the right column.
+            var tabsRow = new Rect(win.x + pad, win.y + pad, rightX - pad - (win.x + pad), TabHeight);
+            var searchRect = new Rect(rightX, win.y + pad, rightW, TabHeight);
+            DrawTabs(tabsRow);
+            DrawSearch(searchRect);
 
-            var keyRect = new Rect(close.x - 38f, win.y + 23f, 28f, 22f);
-            GUI.Box(keyRect, GUIContent.none, BuilderSkin.Key);
-            GUI.Label(keyRect, "E", BuilderSkin.KeyText);
-            GUI.Label(new Rect(keyRect.x - 78f, win.y + 21f, 72f, 26f), "закрыть", BuilderSkin.MutedRight);
+            float bodyY = win.y + pad + TabHeight + 10f;
+            float bodyH = win.yMax - pad - bodyY;
+            var grid = new Rect(win.x + pad, bodyY, rightX - pad - (win.x + pad), bodyH);
+            var stats = new Rect(rightX, bodyY, rightW, bodyH);
 
-            DrawSolid(new Rect(win.x + 18f, win.y + 68f, win.width - 36f, 1f), BuilderSkin.Line);
-
-            float bodyY = win.y + 80f;
-            float bodyH = win.height - 80f - 18f;
-            float statsW = Mathf.Clamp(win.width * 0.30f, 350f, 520f);
-            // Narrow screen: stats shrink, but the grid keeps its space.
-            statsW = Mathf.Min(statsW, win.width - 160f);
-            var stats = new Rect(win.x + 18f, bodyY, statsW, bodyH);
-            var grid = new Rect(stats.xMax + 14f, bodyY, win.xMax - 18f - (stats.xMax + 14f), bodyH);
-
-            GUI.Box(stats, GUIContent.none, BuilderSkin.PanelInner);
-            GUI.Box(grid, GUIContent.none, BuilderSkin.PanelInner);
-            DrawStats(stats);
             DrawGrid(grid);
+            DrawStats(stats);
+            DrawFooter(win);
+            DrawCellTooltip();
 
             uiAlpha = 1f;
             GUI.color = Color.white;
+        }
+
+        // ─── Tabs, search, footer ────────────────────────────────────────
+
+        /// <summary>Which tab a part kind lives in (0 = ВСЕ is handled by the caller).</summary>
+        private static bool InTab(int tab, PartKind kind)
+        {
+            switch (tab)
+            {
+                case 1: return kind == PartKind.Engine || kind == PartKind.RcsBlock;
+                case 2: return kind == PartKind.FuelTank;
+                case 3: return kind == PartKind.Separator || kind == PartKind.Capsule;
+                default: return true;
+            }
+        }
+
+        private bool MatchesSearch(CatalogEntry entry)
+        {
+            if (string.IsNullOrWhiteSpace(search))
+            {
+                return true;
+            }
+
+            EngineSpec spec = EngineSpecFor(entry);
+            string hay = (PartCatalog.DisplayName(entry.Kind, spec) + " " + KindLabel(entry.Kind, spec)).ToLowerInvariant();
+            return hay.Contains(search.Trim().ToLowerInvariant());
+        }
+
+        private void DrawTabs(Rect row)
+        {
+            Event e = Event.current;
+            float x = row.x;
+            for (int i = 0; i < TabNames.Length; i++)
+            {
+                float w = Mathf.Max(72f, BuilderSkin.TabText.CalcSize(new GUIContent(TabNames[i])).x + 40f);
+                var rect = new Rect(x, row.y, w, row.height);
+                bool active = i == tabIndex;
+                bool hover = controlsActive && !Dragging && rect.Contains(e.mousePosition);
+
+                GUI.Box(rect, GUIContent.none, hover && !active ? BuilderSkin.TabHover : BuilderSkin.Tab);
+                DrawSolid(new Rect(rect.x + 2f, rect.yMax - 3f, rect.width - 4f, 3f), BuilderSkin.TabLine);
+                GUI.Label(rect, TabNames[i], active ? BuilderSkin.TabTextActive : BuilderSkin.TabText);
+
+                if (controlsActive && !Dragging && e.type == EventType.MouseDown && e.button == 0 && rect.Contains(e.mousePosition))
+                {
+                    tabIndex = i;
+                    gridScroll = 0f;
+                    e.Use();
+                }
+
+                x += w + 6f;
+            }
+        }
+
+        private void DrawSearch(Rect rect)
+        {
+            if (releaseSearchFocus)
+            {
+                GUI.FocusControl(null);
+                releaseSearchFocus = false;
+            }
+
+            Event e = Event.current;
+            GUI.Box(rect, GUIContent.none, BuilderSkin.SearchBox);
+
+            // A click anywhere outside the field takes the keyboard focus away.
+            if (e.type == EventType.MouseDown && !rect.Contains(e.mousePosition))
+            {
+                GUI.FocusControl(null);
+            }
+
+            GUI.SetNextControlName(SearchControl);
+            search = GUI.TextField(rect, search, 40, BuilderSkin.SearchField);
+            searchFocused = open && GUI.GetNameOfFocusedControl() == SearchControl;
+
+            if (string.IsNullOrEmpty(search) && !searchFocused)
+            {
+                GUI.Label(new Rect(rect.x + 14f, rect.y, rect.width - 60f, rect.height), "Поиск ...", BuilderSkin.SearchPlaceholder);
+            }
+
+            SetColor(new Color(0.72f, 0.74f, 0.77f, 1f));
+            GUI.DrawTexture(new Rect(rect.xMax - 36f, rect.center.y - 11f, 22f, 22f), BuilderSkin.Search);
+            SetColor(Color.white);
+        }
+
+        /// <summary>
+        /// Under the window: hint and part counter on the left, "Clear" and
+        /// "Close" on the right (the close tab hangs under the window corner).
+        /// </summary>
+        private void DrawFooter(Rect win)
+        {
+            var closeRect = new Rect(win.xMax - 160f, win.yMax + 4f, 160f, 40f);
+            var clearRect = new Rect(closeRect.x - 12f - 190f, closeRect.y, 190f, 40f);
+
+            DrawOutlinedLabel(new Rect(win.x + 6f, win.yMax + 6f, clearRect.x - win.x - 18f, 36f),
+                "Перетащите деталь в нижнюю панель · двойной клик — в свободный слот      Поставлено: "
+                + Builder.Parts.Count, BuilderSkin.Muted);
+
+            if (DrawTextButton(clearRect, "Очистить площадку", BuilderSkin.Danger, BuilderSkin.DangerHover, BuilderSkin.DangerButtonText))
+            {
+                Builder.ClearAll();
+            }
+
+            if (DrawTextButton(closeRect, "ЗАКРЫТЬ", BuilderSkin.Tab, BuilderSkin.TabHover, BuilderSkin.TabText))
+            {
+                SetOpen(false);
+            }
+        }
+
+        /// <summary>Hover name of a grid cell (cells show only the picture).</summary>
+        private void DrawCellTooltip()
+        {
+            if (string.IsNullOrEmpty(cellTooltip) || !controlsActive || Dragging)
+            {
+                return;
+            }
+
+            Vector2 mouse = Event.current.mousePosition;
+            Vector2 size = BuilderSkin.PillText.CalcSize(new GUIContent(cellTooltip));
+            float w = size.x + 28f;
+            var rect = new Rect(Mathf.Min(mouse.x + 16f, uiWidth - w - 8f), mouse.y + 20f, w, 28f);
+            SetColor(BuilderSkin.Shadow);
+            GUI.Box(Expand(rect, 8f), GUIContent.none, BuilderSkin.Glow);
+            SetColor(Color.white);
+            GUI.Box(rect, GUIContent.none, BuilderSkin.Pill);
+            GUI.Label(rect, cellTooltip, BuilderSkin.PillText);
         }
 
         /// <summary>
@@ -1310,6 +1477,8 @@ namespace Galilego.Building
             public int Rows;
             public int Editors;
             public float PreviewH;
+            public string Description;
+            public float DescHeight;
             public float ContentHeight;
         }
 
@@ -1333,18 +1502,20 @@ namespace Galilego.Building
             int rows = engine ? 7 : (kind == PartKind.FuelTank ? 7 : (capsule ? 4 : (rcs ? 4 : 3)));
             int editors = engine || capsule ? 0 : (tank ? (IsCone(m) ? 3 : 2) : 1);
 
-            // Everything except the frame: header, labels, rows, shape and
-            // editors. A size editor takes a label + a button row (EditorHeight).
-            // A tank adds two rows: tank shape and load.
+            // Editors (shape, load, sizes): heading + label/button rows. A size
+            // editor takes a label + a button row (EditorHeight). A tank adds
+            // two rows: tank shape and load.
             float extras = editors > 0
-                ? 10f + 26f + (tank ? ShapeRowHeight + LoadRowHeight(PropellantLoads.All.Count) : 0f) + (editors * EditorHeight)
+                ? 26f + (tank ? ShapeRowHeight + LoadRowHeight(PropellantLoads.All.Count) : 0f) + (editors * EditorHeight)
                 : 0f;
-            float rest = 16f + 28f + 14f + 26f + 24f + 8f + (rows * 26f) + extras + 16f;
-            float w = width - 40f;
-            // The preview frame is the SAME for all parts and independent of the
-            // row count (a tank has more rows and editors). If the content does
-            // not fit, the column scrolls.
-            float previewH = Mathf.Clamp(w * 0.75f, 120f, 260f);
+
+            // The column is a stack of rounded blocks: preview (with the name
+            // inside), stat pills, description, then the editors.
+            float w = width - StatsGutter;
+            float previewH = Mathf.Clamp(w * 0.80f, 220f, 340f);
+            string description = KindDescription(kind, EngineSpecFor(preset));
+            float descH = BuilderSkin.DescText.CalcHeight(new GUIContent(description), w - 28f) + 22f;
+            float pills = rows * (StatPillHeight + StatPillGap);
 
             return new StatsLayout
             {
@@ -1357,93 +1528,96 @@ namespace Galilego.Building
                 Rows = rows,
                 Editors = editors,
                 PreviewH = previewH,
-                ContentHeight = rest + previewH,
+                Description = description,
+                DescHeight = descH,
+                ContentHeight = previewH + 8f + pills + 4f + descH + 10f + extras + 16f,
             };
         }
+
+        /// <summary>Right gutter of the stats column (the scrollbar lives there).</summary>
+        private const float StatsGutter = 14f;
 
         // Content is drawn in the panel group's LOCAL coordinates; scroll is how
         // many content pixels have moved up.
         private void DrawStatsContent(float width, StatsLayout layout, float scroll)
         {
-            float x = 20f;
-            float w = width - 40f;
-            float y = 16f - scroll;
-
-            DrawHeading(new Rect(x, y, w, 16f), "ХАРАКТЕРИСТИКИ");
-            y += 28f;
+            float x = 0f;
+            float w = width - StatsGutter;
+            float y = -scroll;
 
             PartKind kind = layout.Kind;
             PartMetrics m = layout.Metrics;
-            float previewW = layout.PreviewH / 0.75f;
-            var viewport = new Rect((width - previewW) * 0.5f, y, previewW, layout.PreviewH);
+            const float nameH = 42f;
 
-            SetColor(new Color(0f, 0f, 0f, 0.45f));
-            GUI.Box(Expand(viewport, 9f), GUIContent.none, BuilderSkin.Glow);
-            SetColor(Color.white);
+            // Preview: the 3D frame with the part name at the bottom, inside one rounded block.
+            var viewport = new Rect(x, y, w, layout.PreviewH);
             GUI.Box(viewport, GUIContent.none, BuilderSkin.Viewport);
 
             Texture frame = preview.Texture;
             if (frame != null)
             {
-                var inner = new Rect(viewport.x + 2f, viewport.y + 2f, viewport.width - 4f, viewport.height - 4f);
-                GUI.DrawTexture(inner, frame, ScaleMode.StretchToFill);
+                var inner = new Rect(viewport.x + 3f, viewport.y + 3f, viewport.width - 6f, viewport.height - nameH - 3f);
+                GUI.DrawTexture(inner, frame, ScaleMode.ScaleToFit);
                 GUI.DrawTexture(inner, BuilderSkin.Vignette, ScaleMode.StretchToFill);
             }
 
-            y = viewport.yMax + 14f;
+            GUI.Label(new Rect(viewport.x, viewport.yMax - nameH, viewport.width, nameH),
+                PartCatalog.DisplayName(kind, EngineSpecFor(layout.Preset)).ToUpperInvariant(), BuilderSkin.PreviewName);
 
-            GUI.Label(new Rect(x, y, w, 24f), PartCatalog.DisplayName(kind, EngineSpecFor(layout.Preset)), BuilderSkin.NameTextCenter);
-            y += 26f;
-            GUI.Label(new Rect(x, y, w, 18f), KindLabel(kind, EngineSpecFor(layout.Preset)), BuilderSkin.MutedCenter);
-            y += 24f;
+            y = viewport.yMax + 8f;
 
-            DrawSolid(new Rect(x, y, w, 1f), BuilderSkin.Line);
-            y += 8f;
-
-            AddRow(x, ref y, w, "Масса", FormatMass(m.MassKg));
+            AddStat(x, ref y, w, "Масса", FormatMass(m.MassKg));
             switch (kind)
             {
                 case PartKind.Engine:
                 {
                     EngineSpec spec = EngineSpecFor(layout.Preset);
                     BipropellantMix mix = spec != null ? spec.Mix : PropellantPairs.Default.Mix;
-                    AddRow(x, ref y, w, "Топливо", mix.Oxidizer.Id + " + " + mix.Fuel.Id);
-                    AddRow(x, ref y, w, "Тяга (вак.)", FormatThrust(spec));
-                    AddRow(x, ref y, w, "Удельный импульс", FormatIsp(spec));
-                    AddRow(x, ref y, w, "Расход",
+                    AddStat(x, ref y, w, "Топливо", mix.Oxidizer.Id + " + " + mix.Fuel.Id);
+                    AddStat(x, ref y, w, "Тяга (вак.)", FormatThrust(spec));
+                    AddStat(x, ref y, w, "Удельный импульс", FormatIsp(spec));
+                    AddStat(x, ref y, w, "Расход",
                         mix.MassFlowKgS.ToString("0.#") + " кг/с · O/F "
                         + mix.OxidizerToFuelMassRatio.ToString("0.##"));
-                    AddRow(x, ref y, w, "Степень расширения",
+                    AddStat(x, ref y, w, "Степень расширения",
                         spec != null ? spec.ExpansionRatio.ToString("0.#") + ":1" : "—");
                     break;
                 }
                 case PartKind.FuelTank:
-                    AddRow(x, ref y, w, "Топливо", m.Load != null ? m.Load.DisplayName : "—");
-                    AddRow(x, ref y, w, "Объём",
+                    AddStat(x, ref y, w, "Топливо", m.Load != null ? m.Load.DisplayName : "—");
+                    AddStat(x, ref y, w, "Объём",
                         m.VolumeM3.ToString("F1") + " м³ (" + (m.VolumeM3 * 1000d).ToString("F0") + " л)");
                     double tankUsable = UsableVolumeM3(m);
-                    AddRow(x, ref y, w, "Залито",
+                    AddStat(x, ref y, w, "Залито",
                         tankUsable.ToString("F1") + " м³ (" + (tankUsable * 1000d).ToString("F0") + " л)");
-                    AddRow(x, ref y, w, "Топливо в баке", FormatMass(m.PropellantMassKg));
-                    AddRow(x, ref y, w, "Сухая масса", FormatMass(m.DryMassKg));
+                    AddStat(x, ref y, w, "Топливо в баке", FormatMass(m.PropellantMassKg));
+                    AddStat(x, ref y, w, "Сухая масса", FormatMass(m.DryMassKg));
                     break;
                 case PartKind.Separator:
-                    AddRow(x, ref y, w, "Толщина", "40 мм");
+                    AddStat(x, ref y, w, "Толщина", "40 мм");
                     break;
                 case PartKind.Capsule:
-                    AddRow(x, ref y, w, "Диаметр", (m.Radius * 2f).ToString("F1") + " м");
-                    AddRow(x, ref y, w, "Высота", m.Height.ToString("F1") + " м");
+                    AddStat(x, ref y, w, "Диаметр", (m.Radius * 2f).ToString("F1") + " м");
+                    AddStat(x, ref y, w, "Высота", m.Height.ToString("F1") + " м");
                     break;
                 case PartKind.RcsBlock:
                 {
                     int ring = RcsBlockPlacement.ClampCount(layout.Preset.Count);
-                    AddRow(x, ref y, w, "Блоков в кольце", ring + " шт.");
-                    AddRow(x, ref y, w, "Сопел", (ring * 5) + " × 450 Н");
+                    AddStat(x, ref y, w, "Блоков в кольце", ring + " шт.");
+                    AddStat(x, ref y, w, "Сопел", (ring * 5) + " × 450 Н");
                     break;
                 }
             }
 
-            AddRow(x, ref y, w, "Прочность стыка", (m.JointStrengthNewtons / 1e6).ToString("F1") + " МН");
+            AddStat(x, ref y, w, "Прочность стыка", (m.JointStrengthNewtons / 1e6).ToString("F1") + " МН");
+
+            // Description block (text per part kind, see KindDescription).
+            y += 4f;
+            var descBox = new Rect(x, y, w, layout.DescHeight);
+            GUI.Box(descBox, GUIContent.none, BuilderSkin.DescBox);
+            GUI.Label(new Rect(descBox.x + 14f, descBox.y + 11f, descBox.width - 28f, descBox.height - 16f),
+                layout.Description, BuilderSkin.DescText);
+            y = descBox.yMax + 10f;
 
             if (kind == PartKind.Engine || kind == PartKind.Capsule)
             {
@@ -1453,7 +1627,6 @@ namespace Galilego.Building
                 return;
             }
 
-            y += 10f;
             DrawHeading(new Rect(x, y, w, 16f), "РАЗМЕРЫ");
             y += 26f;
 
@@ -1764,6 +1937,42 @@ namespace Galilego.Building
             GUI.Label(new Rect(rect.x + 10f, rect.y, rect.width - 10f, rect.height), text, BuilderSkin.Heading);
         }
 
+        /// <summary>Stat as a rounded pill: "Масса: 25 кг" (reference-style).</summary>
+        private static void AddStat(float x, ref float y, float w, string left, string right)
+        {
+            var rect = new Rect(x, y, w, StatPillHeight);
+            GUI.Box(rect, GUIContent.none, BuilderSkin.Stat);
+            GUI.Label(new Rect(rect.x + 14f, rect.y, rect.width - 22f, rect.height), left + ": " + right, BuilderSkin.StatText);
+            y += StatPillHeight + StatPillGap;
+        }
+
+        /// <summary>
+        /// Description under the stats (bold last line = the main gameplay note).
+        /// Plain text per kind — edit the wording here.
+        /// </summary>
+        private static string KindDescription(PartKind kind, EngineSpec engine)
+        {
+            switch (kind)
+            {
+                case PartKind.Engine:
+                    return "Жидкостный ракетный двигатель. Тяга и удельный импульс заданы моделью; у каждой модели своя карточка в каталоге."
+                        + (engine != null && engine.VacuumOnly ? " Рассчитан на работу в вакууме." : string.Empty)
+                        + "\n<b>Размеры двигателя не настраиваются.</b>";
+                case PartKind.FuelTank:
+                    return "Топливный бак: цилиндр или конус-переходник между ступенями разного диаметра. Длина, диаметр и состав топлива настраиваются."
+                        + "\n<b>Масса бака зависит от наполнения.</b>";
+                case PartKind.Separator:
+                    return "Отделитель ступеней. Самое слабое место стыка: при разделении рвётся первым."
+                        + "\n<b>Диаметр отделителя настраивается.</b>";
+                case PartKind.Capsule:
+                    return "Экипажный модуль Orion. Габариты и масса определяются моделью."
+                        + "\n<b>Размеры фиксированные.</b>";
+                default:
+                    return "Блок системы ориентации (РСУ) с пятью соплами. Ставится радиально по кольцу вокруг бака."
+                        + "\n<b>Блоков в кольце: клавиши X / Z.</b>";
+            }
+        }
+
         private static void AddRow(float x, ref float y, float w, string left, string right)
         {
             GUI.Label(new Rect(x, y, w * 0.55f, 24f), left, BuilderSkin.Muted);
@@ -1940,72 +2149,112 @@ namespace Galilego.Building
 
         // ─── Part grid ───────────────────────────────────────────────────
 
+        /// <summary>How many parts of each catalog card are placed on the pad.</summary>
+        private void RefreshPlacedCounts()
+        {
+            System.Array.Clear(placedCounts, 0, placedCounts.Length);
+            IReadOnlyList<PlacedPart> parts = Builder.Parts;
+            if (parts == null)
+            {
+                return;
+            }
+
+            for (int p = 0; p < parts.Count; p++)
+            {
+                PlacedPart part = parts[p];
+                for (int c = 0; c < Catalog.Length; c++)
+                {
+                    if (part.Kind != Catalog[c].Kind)
+                    {
+                        continue;
+                    }
+
+                    if (part.Kind == PartKind.Engine
+                        && (part.EngineSpec == null || part.EngineSpec.Id != Catalog[c].EngineId))
+                    {
+                        continue;
+                    }
+
+                    placedCounts[c]++;
+                    break;
+                }
+            }
+        }
+
         private void DrawGrid(Rect r)
         {
-            float x = r.x + 20f;
-            float w = r.width - 40f;
-            float y = r.y + 16f;
+            GUI.Box(r, GUIContent.none, BuilderSkin.PanelInner);
+            cellTooltip = null;
+            RefreshPlacedCounts();
 
-            DrawHeading(new Rect(x, y, w, 16f), "ДЕТАЛИ");
-            GUI.Label(new Rect(x, y, w, 16f), "Поставлено: " + Builder.Parts.Count, BuilderSkin.TinyRight);
-            y += 30f;
+            // Cards of the current tab that match the search.
+            visibleCards.Clear();
+            for (int i = 0; i < Catalog.Length; i++)
+            {
+                if ((tabIndex == 0 || InTab(tabIndex, Catalog[i].Kind)) && MatchesSearch(Catalog[i]))
+                {
+                    visibleCards.Add(i);
+                }
+            }
 
-            // 6×3 grid: cards are small, 18 visible at once; when there are more
-            // parts, the grid scrolls with the wheel (like the stats column).
-            const int columns = 6;
-            const int visibleRows = 3;
-            const float gap = 14f;
-            int totalRows = Mathf.CeilToInt(Catalog.Length / (float)columns);
-            float cardW = (w - (gap * (columns - 1))) / columns;
-            float viewH = Mathf.Max(80f, r.height - 126f);
-            float cardH = Mathf.Clamp((viewH - (gap * (visibleRows - 1))) / visibleRows, 120f, 380f);
+            const float inset = 8f;
+            const float gap = 4f;
+            const int columns = GridColumns;
+            var view = new Rect(r.x + inset, r.y + inset, r.width - (inset * 2f) - 8f, r.height - (inset * 2f));
+            float cell = (view.width - (gap * (columns - 1))) / columns;
 
-            float contentH = (totalRows * cardH) + ((totalRows - 1) * gap);
-            float maxScroll = Mathf.Max(0f, contentH - viewH);
+            // Empty cells fill the visible area, like the reference: the grid is never "short".
+            int rowsFilled = Mathf.CeilToInt(visibleCards.Count / (float)columns);
+            int rowsVisible = Mathf.CeilToInt((view.height + gap) / (cell + gap));
+            int rows = Mathf.Max(1, Mathf.Max(rowsFilled, rowsVisible));
+            float contentH = (rows * (cell + gap)) - gap;
+            float maxScroll = Mathf.Max(0f, contentH - view.height);
             gridScroll = Mathf.Clamp(gridScroll, 0f, maxScroll);
             gridHovered = r.Contains(Event.current.mousePosition);
             HandleGridScroll(r, maxScroll);
 
-            var view = new Rect(x, y, w, viewH);
-            // The mouse is in global coordinates (before the group): card hits
+            // The mouse is in global coordinates (before the group): cell hits
             // are tested in those, while drawing is local (the group translates).
             Vector2 mouseTop = Event.current.mousePosition;
             bool mouseInView = view.Contains(mouseTop);
             GUI.BeginGroup(view);
             Event e = Event.current;
 
-            for (int i = 0; i < Catalog.Length; i++)
+            for (int n = 0; n < rows * columns; n++)
             {
                 var card = new Rect(
-                    (i % columns) * (cardW + gap),
-                    ((i / columns) * (cardH + gap)) - gridScroll,
-                    cardW, cardH);
-                if (card.yMax < 0f || card.y > viewH)
+                    (n % columns) * (cell + gap),
+                    ((n / columns) * (cell + gap)) - gridScroll,
+                    cell, cell);
+                if (card.yMax < 0f || card.y > view.height)
                 {
                     continue;                            // whole row off-screen
                 }
 
-                var cardTop = new Rect(view.x + card.x, view.y + card.y, cardW, cardH);
+                if (n >= visibleCards.Count)
+                {
+                    SetColor(new Color(1f, 1f, 1f, 0.55f));
+                    GUI.Box(card, GUIContent.none, BuilderSkin.Cell);   // empty cell
+                    SetColor(Color.white);
+                    continue;
+                }
+
+                int i = visibleCards[n];
+                var cardTop = new Rect(view.x + card.x, view.y + card.y, cell, cell);
                 CatalogEntry entry = Catalog[i];
                 PartKind kind = entry.Kind;
                 EngineSpec spec = EngineSpecFor(entry);
                 bool selected = statsIndex == i;
                 bool hover = controlsActive && !Dragging && mouseInView && cardTop.Contains(mouseTop);
 
-                if (selected)
+                GUI.Box(card, GUIContent.none, selected ? BuilderSkin.CellSelected : hover ? BuilderSkin.CellHover : BuilderSkin.Cell);
+
+                if (hover)
                 {
-                    SetColor(new Color(0.30f, 0.55f, 0.85f, 0.45f));
-                    GUI.Box(Expand(card, 16f), GUIContent.none, BuilderSkin.Glow);
-                    SetColor(Color.white);
+                    cellTooltip = PartCatalog.DisplayName(kind, spec);
                 }
 
-                GUI.Box(card, GUIContent.none, selected ? BuilderSkin.CardSelected : hover ? BuilderSkin.CardHover : BuilderSkin.Card);
-
-                var iconBox = new Rect(card.x + 8f, card.y + 8f, card.width - 16f, card.height - 64f);
-                GUI.Box(iconBox, GUIContent.none, BuilderSkin.Slot);
-                float iconSize = Mathf.Min(iconBox.width, iconBox.height) * 0.88f;
-
-                // The card shows the preset's picture: if this card is already in
+                // The cell shows the preset's picture: if this card is already in
                 // the hotbar — the slot icon (matched to shape/sizes), otherwise
                 // the default kind render (per-model for an engine).
                 Texture2D picture = SlotIconFor(entry);
@@ -2014,26 +2263,25 @@ namespace Galilego.Building
                     picture = PartIcons.Get(kind, entry.EngineId);
                 }
 
-                GUI.DrawTexture(new Rect(iconBox.center.x - (iconSize * 0.5f), iconBox.center.y - (iconSize * 0.5f), iconSize, iconSize),
+                float iconSize = cell * 0.80f;
+                GUI.DrawTexture(new Rect(card.center.x - (iconSize * 0.5f), card.center.y - (iconSize * 0.5f), iconSize, iconSize),
                     picture, ScaleMode.ScaleToFit);
 
-                // "In hotbar" badge: slot number.
+                // "In hotbar" badge: slot number (top-left).
                 int slot = FindInHotbar(entry);
                 if (slot >= 0)
                 {
-                    var badge = new Rect(iconBox.xMax - 26f, iconBox.y + 6f, 20f, 20f);
+                    var badge = new Rect(card.x + 8f, card.y + 8f, 24f, 22f);
                     GUI.Box(badge, GUIContent.none, BuilderSkin.Key);
                     GUI.Label(badge, (slot + 1).ToString(), BuilderSkin.KeyText);
                 }
 
-                // An engine card shows the model name ("RS-25", "AJ10-118K"):
-                // with six cards in a row the full "Engine ..." label does not fit.
-                string cardName = kind == PartKind.Engine && spec != null
-                    ? spec.DisplayName
-                    : PartCatalog.DisplayName(kind, spec);
-                GUI.Label(new Rect(card.x + 4f, card.yMax - 54f, card.width - 8f, 20f), cardName, BuilderSkin.CardName);
-                GUI.Label(new Rect(card.x + 4f, card.yMax - 34f, card.width - 8f, 30f),
-                    KindLabel(kind, spec), BuilderSkin.CardKind);
+                // Bottom-right: how many of this part are placed (where the reference shows stock).
+                if (placedCounts[i] > 0)
+                {
+                    DrawOutlinedLabel(new Rect(card.x, card.y, card.width - 8f, card.height - 4f),
+                        placedCounts[i].ToString(), BuilderSkin.CountText);
+                }
 
                 if (controlsActive && e.type == EventType.MouseDown && e.button == 0 && !Dragging
                     && mouseInView && cardTop.Contains(mouseTop))
@@ -2069,23 +2317,24 @@ namespace Galilego.Building
 
             GUI.EndGroup();
 
-            // Panel bottom: hint and "Clear".
-            GUI.Label(new Rect(x, r.yMax - 76f, w, 20f), "Перетащите деталь в нижнюю панель.", BuilderSkin.Muted);
-            GUI.Label(new Rect(x, r.yMax - 56f, w, 20f), "Двойной клик — в свободный слот.", BuilderSkin.Tiny);
-
-            var clear = new Rect(r.xMax - 20f - 186f, r.yMax - 16f - 36f, 186f, 36f);
-            if (DrawTextButton(clear, "Очистить площадку", BuilderSkin.Danger, BuilderSkin.DangerHover))
+            // Thin scrollbar at the right edge (wheel scrolls; this one only shows the position).
+            if (maxScroll > 0f)
             {
-                Builder.ClearAll();
+                var track = new Rect(r.xMax - 12f, r.y + inset, 4f, r.height - (inset * 2f));
+                DrawSolid(track, new Color(1f, 1f, 1f, 0.06f));
+                float thumbH = Mathf.Max(36f, track.height * (view.height / contentH));
+                float t = gridScroll / maxScroll;
+                DrawSolid(new Rect(track.x, Mathf.Lerp(track.y, track.yMax - thumbH, t), track.width, thumbH),
+                    new Color(1f, 1f, 1f, 0.30f));
             }
         }
 
-        private bool DrawTextButton(Rect rect, string text, GUIStyle normal, GUIStyle hover)
+        private bool DrawTextButton(Rect rect, string text, GUIStyle normal, GUIStyle hover, GUIStyle textStyle)
         {
             Event e = Event.current;
             bool inside = rect.Contains(e.mousePosition);
             GUI.Box(rect, GUIContent.none, (controlsActive && inside) ? hover : normal);
-            GUI.Label(rect, text, BuilderSkin.DangerButtonText);
+            GUI.Label(rect, text, textStyle);
 
             if (controlsActive && e.type == EventType.MouseDown && e.button == 0 && inside && !Dragging)
             {
@@ -2311,6 +2560,18 @@ namespace Galilego.Building
             SetColor(color);
             GUI.DrawTexture(rect, Texture2D.whiteTexture);
             SetColor(Color.white);
+        }
+
+        /// <summary>Label with a dark outline: readable over the 3D scene without a plate.</summary>
+        private void DrawOutlinedLabel(Rect rect, string text, GUIStyle style)
+        {
+            SetColor(new Color(0f, 0f, 0f, 0.85f));
+            GUI.Label(new Rect(rect.x - 1.5f, rect.y, rect.width, rect.height), text, style);
+            GUI.Label(new Rect(rect.x + 1.5f, rect.y, rect.width, rect.height), text, style);
+            GUI.Label(new Rect(rect.x, rect.y - 1.5f, rect.width, rect.height), text, style);
+            GUI.Label(new Rect(rect.x, rect.y + 1.5f, rect.width, rect.height), text, style);
+            SetColor(Color.white);
+            GUI.Label(rect, text, style);
         }
 
         private void DrawOutline(Rect rect, float thickness, Color color)
