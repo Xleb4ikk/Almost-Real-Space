@@ -511,6 +511,15 @@ namespace Galilego.Universe
         /// <summary>Local vertical in astro axes: radial from the dominant body's center.</summary>
         private Vector3d LocalUpAstro()
         {
+            // One vertical for input, physics, collision and camera: in orbit it is the cabin's /
+            // the EVA axis, not the planet radial (see SimulationRunner.PlayerUpAstro). With the
+            // radial here, WASD in the doorway pushed along the wrong plane and the capsule-axis
+            // component was thrown away by the cabin step.
+            if (Runner != null)
+            {
+                return Runner.PlayerUpAstro;
+            }
+
             OrbitingBody body = Runner != null ? Runner.DominantBody : null;
             if (body != null && Runner != null)
             {

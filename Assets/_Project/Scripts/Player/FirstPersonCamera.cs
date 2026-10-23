@@ -659,6 +659,14 @@ namespace Galilego.Universe
                 return carriedUp;
             }
 
+            // Free-flight EVA: the same continuous vertical the collision capsule uses. Switching
+            // from the cabin's up straight to the planet radial moved the eye by ~1.5 m and
+            // rotated the view at the hatch — the "yank to the capsule's side".
+            if (Runner.PlayerMode == PlayerMode.EVA && Runner.TryGetEvaUpRender(out Vector3 evaUp))
+            {
+                return evaUp;
+            }
+
             OrbitingBody body = Runner.DominantBody;
             body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPos, out _);
             Vector3d outward = Runner.PlayerPosition - bodyPos;

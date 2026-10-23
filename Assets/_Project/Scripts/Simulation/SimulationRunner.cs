@@ -433,6 +433,30 @@ namespace Galilego.Universe
         private Renderer[] evaCapsuleRenderers;
         private bool evaCapsuleSearched;
 
+        // EVA "up" in free flight. In weightlessness there is no planet vertical to stand on, and
+        // the collision capsule / camera / WASD must use the SAME axis the cabin uses (the capsule
+        // axis): otherwise the hatch opening (cut for a person standing along the capsule axis)
+        // is entered sideways and cannot be passed, and the camera "up" snaps on every
+        // cabin <-> EVA switch (eye offset + look rotation = the sudden yank to the hull's side).
+        // The axis is kept CONTINUOUS: it is inherited from the cabin at the hatch and eased towards
+        // the capsule's up while the player is near the vessel, towards the radial far away.
+        private Vector3d evaUpAstro;
+        private bool evaUpValid;
+        private bool evaAlignedToVessel;
+        private float evaCapsuleDistance = float.MaxValue;
+
+        /// <summary>Distance to the capsule (m) below which the EVA vertical follows the capsule axis.</summary>
+        private const float EvaAlignEnterMeters = 30f;
+
+        /// <summary>Distance (m) above which the EVA vertical goes back to the planet radial (hysteresis).</summary>
+        private const float EvaAlignExitMeters = 60f;
+
+        /// <summary>How fast the EVA vertical eases towards its target (1/s).</summary>
+        private const double EvaUpAlignRate = 2.5d;
+
+        /// <summary>Felt weight below this (m/s²) in free flight counts as zero: filtered-acceleration noise must not "drop" a player standing in the hatch onto the hull.</summary>
+        private const double CabinWeightlessDeadbandMps2 = 0.15d;
+
         // Ship state at the START of the current frame. The player is stepped after the
         // whole ship step, so Ship.Position/Velocity are already at the END of the
         // frame: moving the player with them for the whole frame made the player travel
@@ -1753,7 +1777,17 @@ namespace Galilego.Universe
             }
 
             PlayerPlatformCarry.Axes(root, out _, out _, out Vector3 up);
-            return Math.Max(0d, -(double)Vector3.Dot(effective, up));
+            double weight = Math.Max(0d, -(double)Vector3.Dot(effective, up));
+
+            // Free flight: the weight is a DIFFERENCE of two estimates (gravity minus the filtered
+            // vessel acceleration), so in orbit it is never exactly zero. A few cm/s² were enough
+            // to slowly "land" a player drifting out of the hatch onto the hull below.
+            if (host == null && weight < CabinWeightlessDeadbandMps2)
+            {
+                return 0d;
+            }
+
+            return weight;
         }
 
         /// <summary>A world-axes intent vector (built from the camera) as controller axes of the platform, horizontal only.</summary>
@@ -1815,6 +1849,16 @@ namespace Galilego.Universe
             }
 
             SyncWorldFromCabin(TimeSeconds);
+
+            // Leaving the cabin: the EVA vertical STARTS as the cabin's up (no snap of the camera
+            // and of the collision capsule at the hatch), and then eases as UpdateEvaUp decides.
+            if (!ContactZoneHost.Active && platformCarry.TryGetUp(out Vector3 cabinUp) && cabinUp.sqrMagnitude > 1e-8f)
+            {
+                evaUpAstro = AstroFrame.ToAstro(cabinUp.normalized).Normalized;
+                evaUpValid = true;
+                evaAlignedToVessel = true;
+            }
+
             platformCarry.Reset();
             OrbitingBody body = DominantBody;
             if (body != null && PlayerMode == PlayerMode.OnSurface && !ShouldUseSurfaceController(body, TimeSeconds))
@@ -1921,19 +1965,10 @@ namespace Galilego.Universe
                 return;
             }
 
-            UpdateEvaCrouch();
+            UpdateEvaCrouch(t);
 
             OrbitingBody body = DominantBody;
-            Vector3d up = new Vector3d(0d, 0d, 1d);
-            if (body != null)
-            {
-                body.EvaluateWorldState(t, out Vector3d bodyPos, out _);
-                Vector3d radial = PlayerPosition - bodyPos;
-                if (radial.SqrMagnitude > 1e-12d)
-                {
-                    up = radial.Normalized;
-                }
-            }
+            Vector3d up = UpdateEvaUp(body, t, dt);
 
             Vector3d previousPosition = PlayerPosition;
             if (PlayerHoverActive)
@@ -1977,7 +2012,7 @@ namespace Galilego.Universe
             // The hull is solid in EVA too (walking support only worked on the surface
             // controller). Without this the player flew through the capsule, the camera
             // went inside the single-sided shell ("the rocket turned transparent").
-            ResolveEvaHullCollision(previousPosition, up, t);
+            ResolveEvaHullCollision(previousPosition, up, t, dt);
 
             if (body == null)
             {
@@ -1995,12 +2030,146 @@ namespace Galilego.Universe
             }
         }
 
+        /// <summary>Planet vertical at the player (radial from the dominant body's centre), astro axes.</summary>
+        private Vector3d RadialUpAstro(OrbitingBody body, double t)
+        {
+            if (body != null)
+            {
+                body.EvaluateWorldState(t, out Vector3d bodyPos, out _);
+                Vector3d radial = PlayerPosition - bodyPos;
+                if (radial.SqrMagnitude > 1e-12d)
+                {
+                    return radial.Normalized;
+                }
+            }
+
+            return new Vector3d(0d, 0d, 1d);
+        }
+
+        /// <summary>
+        /// The vessel is drawn at the END of the frame while the player is being stepped at
+        /// time t: their render poses differ by the ship's motion over the REMAINING part of
+        /// the frame. In low orbit that is tens of metres - enough to make "near the capsule"
+        /// false every frame (the hatch crouch and the EVA vertical never engaged) and to turn
+        /// the hull sweep into a spurious high-speed approach. Shift the player to the drawn
+        /// ship's time before measuring anything against its colliders.
+        /// </summary>
+        private Vector3 FrameShipDeltaRender()
+        {
+            if (Ship == null)
+            {
+                return Vector3.zero;
+            }
+
+            return AstroFrame.ToSimulation(Ship.Position - frameShipStartPosition);
+        }
+
+        /// <summary>Fraction of the current frame still ahead at t (1 at frame start, 0 at its end).</summary>
+        private double FrameRemainingFraction(double t)
+        {
+            double span = TimeSeconds - frameShipStartTime;
+            if (span <= 1e-12d)
+            {
+                return 0d;
+            }
+
+            double remaining = (TimeSeconds - t) / span;
+            return remaining < 0d ? 0d : (remaining > 1d ? 1d : remaining);
+        }
+
+        /// <summary>
+        /// One substep of the EVA vertical (see evaUpAstro). Near the capsule it eases to the
+        /// capsule's up, far away to the planet radial; inside a contact zone it stays radial
+        /// (the vessel is PhysX there and the ground is a real floor).
+        /// </summary>
+        private Vector3d UpdateEvaUp(OrbitingBody body, double t, double dt)
+        {
+            Vector3d radial = RadialUpAstro(body, t);
+            if (ContactZoneHost.Active)
+            {
+                evaUpValid = false;
+                return radial;
+            }
+
+            if (!evaUpValid)
+            {
+                evaUpAstro = radial;
+                evaUpValid = true;
+                evaAlignedToVessel = false;
+            }
+
+            if (evaCapsule != null && evaCapsuleDistance < EvaAlignEnterMeters)
+            {
+                evaAlignedToVessel = true;
+            }
+            else if (evaCapsule == null || evaCapsuleDistance > EvaAlignExitMeters)
+            {
+                evaAlignedToVessel = false;
+            }
+
+            Vector3d target = radial;
+            if (evaAlignedToVessel && evaCapsule != null)
+            {
+                Vector3d capsuleUp = AstroFrame.ToAstro(evaCapsule.up);
+                if (capsuleUp.SqrMagnitude > 1e-12d)
+                {
+                    target = capsuleUp.Normalized;
+                }
+            }
+
+            double k = Math.Min(1d, dt * EvaUpAlignRate);
+            Vector3d blended = (evaUpAstro * (1d - k)) + (target * k);
+            evaUpAstro = blended.SqrMagnitude > 1e-12d ? blended.Normalized : target;
+            return evaUpAstro;
+        }
+
+        /// <summary>
+        /// The player's vertical in astro axes — the SAME axis physics, collision and camera use:
+        /// aboard a vessel in free flight the platform's up, in EVA in free flight the continuous
+        /// EVA vertical, otherwise the planet radial.
+        /// </summary>
+        public Vector3d PlayerUpAstro
+        {
+            get
+            {
+                if (!ContactZoneHost.Active)
+                {
+                    if (platformCarry.Active && platformCarry.TryGetUp(out Vector3 carriedUp)
+                        && carriedUp.sqrMagnitude > 1e-8f)
+                    {
+                        return AstroFrame.ToAstro(carriedUp.normalized).Normalized;
+                    }
+
+                    if (PlayerMode == PlayerMode.EVA && evaUpValid)
+                    {
+                        return evaUpAstro;
+                    }
+                }
+
+                return RadialUpAstro(DominantBody, TimeSeconds);
+            }
+        }
+
+        /// <summary>The EVA vertical in render space (the camera's up in free-flight EVA). false — not applicable.</summary>
+        public bool TryGetEvaUpRender(out Vector3 up)
+        {
+            if (!evaUpValid || ContactZoneHost.Active || PlayerMode != PlayerMode.EVA)
+            {
+                up = Vector3.up;
+                return false;
+            }
+
+            up = AstroFrame.ToSimulation(evaUpAstro).normalized;
+            return true;
+        }
+
         /// <summary>
         /// EVA auto-crouch: near the capsule the body is 0.8 m tall (the Orion hatch is
         /// ~1 m), far away it stands. Without this the full capsule hit the hatch frame
         /// and the push-out threw the player sideways instead of letting them in.
+        /// The player point is shifted to the DRAWN ship's time (see FrameShipDeltaRender).
         /// </summary>
-        private void UpdateEvaCrouch()
+        private void UpdateEvaCrouch(double t)
         {
             if (!evaCapsuleSearched)
             {
@@ -2026,6 +2195,7 @@ namespace Galilego.Universe
             if (evaCapsule == null || evaCapsuleRenderers == null || evaCapsuleRenderers.Length == 0)
             {
                 evaCrouched = false;
+                evaCapsuleDistance = float.MaxValue;
                 return;
             }
 
@@ -2038,8 +2208,10 @@ namespace Galilego.Universe
                 }
             }
 
-            Vector3 playerPoint = FloatingOrigin.ToRender(PlayerPosition);
-            evaCrouched = Vector3.Distance(bounds.ClosestPoint(playerPoint), playerPoint) < 1.5f;
+            Vector3 playerPoint = FloatingOrigin.ToRender(PlayerPosition)
+                + (FrameShipDeltaRender() * (float)FrameRemainingFraction(t));
+            evaCapsuleDistance = Vector3.Distance(bounds.ClosestPoint(playerPoint), playerPoint);
+            evaCrouched = evaCapsuleDistance < 1.5f;
         }
 
         /// <summary>Thin hull pieces must not be skipped at high relative speed (m).</summary>
@@ -2054,7 +2226,7 @@ namespace Galilego.Universe
         /// The vessel frame velocity is removed before the normal component is killed:
         /// hitting the hull must stop the approach, not the shared orbital motion.
         /// </summary>
-        private void ResolveEvaHullCollision(Vector3d previousPosition, Vector3d upAstro, double t)
+        private void ResolveEvaHullCollision(Vector3d previousPosition, Vector3d upAstro, double t, double dt)
         {
             if (Ship == null || ContactZoneHost.Active || NoclipActive || !EvaHullCollision
                 || TimeSeconds < evaCollisionGraceUntil)
@@ -2070,9 +2242,16 @@ namespace Galilego.Universe
             float skin = EvaHullSkinMeters;
 
             // Both points are converted through the CURRENT anchor (the frame start), so
-            // the vessel colliders and the path live in the same render space.
-            Vector3 previous = FloatingOrigin.ToRender(previousPosition);
-            Vector3 next = FloatingOrigin.ToRender(PlayerPosition);
+            // the vessel colliders and the path live in the same render space. They do NOT
+            // live at the same TIME: the colliders are drawn at the end of the frame, the
+            // player is at t / t+dt. In low orbit the frame carries the craft tens of metres,
+            // so without this shift every frame looked like a high-speed approach to the
+            // hull and the sweep threw the player onto its near side (the "teleport").
+            Vector3 shipDelta = FrameShipDeltaRender();
+            float startShift = (float)FrameRemainingFraction(t);
+            float endShift = (float)FrameRemainingFraction(t + dt);
+            Vector3 previous = FloatingOrigin.ToRender(previousPosition) + (shipDelta * startShift);
+            Vector3 next = FloatingOrigin.ToRender(PlayerPosition) + (shipDelta * endShift);
             Vector3 delta = next - previous;
             float travel = delta.magnitude;
             bool hit = false;
@@ -2116,7 +2295,8 @@ namespace Galilego.Universe
                 return;
             }
 
-            PlayerPosition = FloatingOrigin.Anchor + AstroFrame.ToAstro(next);
+            Vector3 unshifted = next - (shipDelta * endShift);
+            PlayerPosition = FloatingOrigin.Anchor + AstroFrame.ToAstro(unshifted);
         }
 
         /// <summary>Remove the velocity component INTO a hull normal, measured against the vessel frame.</summary>
