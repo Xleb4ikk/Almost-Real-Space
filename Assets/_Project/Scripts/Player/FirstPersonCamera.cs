@@ -366,7 +366,7 @@ namespace Galilego.Universe
         {
             // Diagnostic logging sits BEFORE the early return so it always runs.
             diagnosticTimer += Time.deltaTime;
-            if (diagnosticTimer >= 1f)
+            if (LogCameraDiagnostics && diagnosticTimer >= 1f)
             {
                 diagnosticTimer = 0f;
                 Vector3 tp = Target != null ? Target.position : Vector3.zero;

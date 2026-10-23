@@ -1088,7 +1088,7 @@ namespace Galilego.Building
         private void UpdateStaging()
         {
             if (Runner == null || Runner.Paused
-                || Runner.PlayerMode != PlayerMode.InShip
+                || (Runner.PlayerMode != PlayerMode.InShip && !Runner.PlayerSeated)
                 || ShipTablet.AnyExpanded
                 || !PlayerInput.Down(GameAction.Stage))
             {

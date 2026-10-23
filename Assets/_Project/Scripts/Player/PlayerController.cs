@@ -222,8 +222,92 @@ namespace Galilego.Universe
             }
             else
             {
+                // A built vessel is boarded through its seat: the old InShip teleport
+                // put the player at the ship point INSIDE the hull (no collisions, no
+                // seat, see-through shell). Legacy scenes without a seat keep it.
+                if (TryBoardNearestSeat())
+                {
+                    return;
+                }
+
                 Runner.TryEnterShip(EnterDistanceMeters);
             }
+        }
+
+        /// <summary>
+        /// E next to the built vessel: sit in the nearest cockpit seat that belongs to
+        /// a real vessel part (a ghost/preview has no VesselPartCollider). The seat
+        /// anchor is inside the capsule, so its distance is the boarding distance.
+        /// </summary>
+        private bool TryBoardNearestSeat()
+        {
+            if (Runner == null || Runner.Ship == null)
+            {
+                return false;
+            }
+
+            // The player's feet are the floating-origin zero in EVA/on foot; the seat
+            // anchor is already in the same render space.
+            Vector3 playerPoint = FloatingOrigin.ToRender(Runner.PlayerPosition);
+            CockpitSeat best = null;
+            float bestDistance = (float)EnterDistanceMeters;
+            CockpitSeat[] seats = FindObjectsByType<CockpitSeat>(FindObjectsInactive.Exclude);
+            for (int i = 0; i < seats.Length; i++)
+            {
+                CockpitSeat seat = seats[i];
+                if (seat == null || seat.Anchor == null)
+                {
+                    continue;
+                }
+
+                Galilego.Building.VesselPartCollider part =
+                    seat.GetComponentInParent<Galilego.Building.VesselPartCollider>();
+                if (part == null)
+                {
+                    continue;
+                }
+
+                // Near the hull counts even when the hatch is closed or the seat anchor
+                // (inside the capsule) is farther than EnterDistanceMeters: E boards
+                // through the seat instead of leaving the player locked out outside.
+                float distance = Vector3.Distance(playerPoint, seat.Anchor.position);
+                if (distance > bestDistance)
+                {
+                    distance = VesselSurfaceDistance(part, playerPoint, distance);
+                }
+
+                if (distance <= bestDistance)
+                {
+                    best = seat;
+                    bestDistance = distance;
+                }
+            }
+
+            return best != null && EnterSeat(best);
+        }
+
+        /// <summary>Distance from a point to a vessel part's hull (m); interaction-only colliders are not the hull.</summary>
+        private static float VesselSurfaceDistance(Galilego.Building.VesselPartCollider part, Vector3 point, float fallback)
+        {
+            float best = fallback;
+            Collider[] colliders = part.GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                Collider collider = colliders[i];
+                if (collider == null || !collider.enabled || collider.isTrigger
+                    || collider.GetComponentInParent<Galilego.Building.PlayerIgnore>() != null)
+                {
+                    continue;
+                }
+
+                float distance = Vector3.Distance(point, collider.ClosestPoint(point));
+                if (distance < best)
+                {
+                    best = distance;
+                }
+            }
+
+            return best;
         }
 
         /// <summary>
@@ -403,7 +487,15 @@ namespace Galilego.Universe
 
             double forward = (PlayerInput.Held(GameAction.MoveForward) ? 1d : 0d) - (PlayerInput.Held(GameAction.MoveBack) ? 1d : 0d);
             double strafe = (PlayerInput.Held(GameAction.MoveRight) ? 1d : 0d) - (PlayerInput.Held(GameAction.MoveLeft) ? 1d : 0d);
-            double vertical = (PlayerInput.Held(GameAction.Jump) ? 1d : 0d) - (PlayerInput.Held(GameAction.Descend) ? 1d : 0d);
+            // In EVA/air Shift is the intuitive "down" (as in KSP) as well as Ctrl:
+            // Sprint has no other meaning in flight (running only applies on the ground).
+            double down = PlayerInput.Held(GameAction.Descend) ? 1d : 0d;
+            if (down <= 0d && PlayerInput.Held(GameAction.Sprint))
+            {
+                down = 1d;
+            }
+
+            double vertical = (PlayerInput.Held(GameAction.Jump) ? 1d : 0d) - down;
 
             Vector3d horizontal = (flatForward * forward) + (right * strafe);
             intent.AirVelocity = horizontal.SqrMagnitude > 1e-12d
@@ -614,6 +706,17 @@ namespace Galilego.Universe
         private void OnGUI()
         {
             MeshSupportBase.DebugEnabled = DebugOverlay;
+
+            // EVA state is not visible anywhere else: without this the player cannot tell
+            // whether Space/Shift should thrust (jetpack) or command a velocity (hover).
+            if (Runner != null && !Runner.BuildMode && Runner.PlayerMode == PlayerMode.EVA)
+            {
+                string eva = "EVA   джетпак: " + (Runner.JetpackActive ? "ВКЛ" : "выкл")
+                    + "   висение: " + (Runner.PlayerHoverActive ? "ВКЛ" : "выкл")
+                    + "\nSpace — вверх, Shift/Ctrl — вниз. Двойной Space — джетпак, двойной Shift — висение.";
+                GUI.Label(new Rect(12f, 96f, 900f, 44f), eva);
+            }
+
             if (DebugOverlay && Runner != null)
             {
                 GUI.Label(new Rect(20f, 20f, 1100f, 90f),

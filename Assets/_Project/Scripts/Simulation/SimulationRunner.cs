@@ -276,6 +276,7 @@ namespace Galilego.Universe
             playerAirborne = true;
             JetpackActive = false;
             PlayerHoverActive = false;
+            evaCollisionGraceUntil = TimeSeconds + 2.0d;
 
             // Leaving noclip: drop the cheat speed, the player stays still relative to the frame.
             PlayerVelocity = LocalFrameVelocity(TimeSeconds);
@@ -359,9 +360,21 @@ namespace Galilego.Universe
         public double PlayerCapsuleHeight => playerController.CurrentHeightMeters;
 
         /// <summary>Stoop fraction 0..1 (0 — full height, 1 — minimum height). The camera lowers the eyes by it.</summary>
-        public float PlayerStoopFraction => (float)Math.Max(0d, Math.Min(1d,
-            (PlayerSurfaceController.CapsuleHeight - playerController.CurrentHeightMeters)
-            / (PlayerSurfaceController.CapsuleHeight - PlayerSurfaceController.CapsuleHeightCrouched)));
+        public float PlayerStoopFraction
+        {
+            get
+            {
+                // EVA near the hatch: duck the camera together with the collision body.
+                if (PlayerMode == PlayerMode.EVA && evaCrouched)
+                {
+                    return 1f;
+                }
+
+                return (float)Math.Max(0d, Math.Min(1d,
+                    (PlayerSurfaceController.CapsuleHeight - playerController.CurrentHeightMeters)
+                    / (PlayerSurfaceController.CapsuleHeight - PlayerSurfaceController.CapsuleHeightCrouched)));
+            }
+        }
 
         /// <summary>Support id under the player (-1 — no support; see TerrainSupport/SiteBoxSupport).</summary>
         public int PlayerGroundSourceId => playerController.GroundSourceId;
@@ -391,11 +404,57 @@ namespace Galilego.Universe
         /// vessel where it is now, not where it was last frame.
         /// </summary>
         public Transform VesselRoot;
+
+        [Tooltip("Коллизия игрока с корпусом в EVA. Выключи для диагностики дрейфа.")]
+        public bool EvaHullCollision = true;
+
+        /// <summary>Cumulative EVA hull correction events (diagnostics).</summary>
+        public int EvaHullCorrections { get; private set; }
+
+        /// <summary>Cumulative EVA hull correction distance, m (diagnostics).</summary>
+        public double EvaHullCorrectionMeters { get; private set; }
+
         private static readonly SphericalTerrain playerFallbackTerrain = new SphericalTerrain();
+
+        // EVA hull collision: a swept capsule only. There is deliberately NO
+        // depenetration/push-out: a thin convex shell can resolve to its inner side and
+        // "teleport" the player to the other side of the capsule. The sweep stops the
+        // motion, the position is never corrected.
+        private readonly RaycastHit[] evaHits = new RaycastHit[32];
+
+        /// <summary>No hull collision for a moment after leaving the cabin/seat: the player is still in the hatch.</summary>
+        private double evaCollisionGraceUntil;
+
+        // EVA auto-crouch near the capsule: the Orion hatch is ~1 m, the standing
+        // collision capsule is 1.45 m, so approaching the door pushed the player
+        // sideways instead of letting them in. Near the capsule the body ducks.
+        private bool evaCrouched;
+        private Transform evaCapsule;
+        private Renderer[] evaCapsuleRenderers;
+        private bool evaCapsuleSearched;
+
+        // Ship state at the START of the current frame. The player is stepped after the
+        // whole ship step, so Ship.Position/Velocity are already at the END of the
+        // frame: moving the player with them for the whole frame made the player travel
+        // farther than the craft by half its acceleration × frame² — a steady drift
+        // that was independent of input and got worse at low FPS.
+        private Vector3d frameShipStartPosition;
+        private Vector3d frameEvaOffset;
+        private double frameShipStartTime;
+
+        // EVA velocity RELATIVE to the vessel frame, kept across frames. Do not re-derive
+        // it as PlayerVelocity - frameVelocity every step: the frame velocity already
+        // contains the ship's acceleration, and the smooth brake would then leave a
+        // permanent lag of about a/response (≈1.6 m/s at g) — the craft "falls away"
+        // even though nothing is pressed. The relative state is the player's own.
+        private Vector3d evaRelativeVelocity;
+        private bool evaRelativeValid;
+
         private bool playerAirborne;
         private bool playerJumpQueued;
         private bool jetpackToggleQueued;
         private bool hoverToggleQueued;
+        private bool jetpackBeforeHover;
 
         /// <summary>Player jump speed (m/s, vertically from the surface).</summary>
         private const double PlayerJumpSpeed = 5d;
@@ -560,6 +619,7 @@ namespace Galilego.Universe
             Ship.Velocity = surfaceVelocity;
             PlayerPosition = surfacePosition;
             PlayerVelocity = surfaceVelocity;
+            evaRelativeValid = false;
             step.ResetTimeAccumulator();
             FloatingOrigin.Anchor = PlayerPosition;
             Debug.Log(string.Format("[Teleport] игрок -> lat/lon места, смещение {0:F0} м", delta.Magnitude));
@@ -661,6 +721,12 @@ namespace Galilego.Universe
                 return;
             }
 
+            // Where the craft was before this frame's step: the EVA frame velocity is
+            // derived from the ACTUAL displacement over the frame, not from the
+            // end-of-frame linear velocity.
+            frameShipStartPosition = Ship.Position;
+            frameShipStartTime = TimeSeconds;
+
             // Build mode: the craft is static (its position is held by build mode at
             // execution order -110, before this Update), so the ship step is skipped.
             // World time flows (the planet moves and the site rides with it — craft
@@ -699,7 +765,7 @@ namespace Galilego.Universe
 
             step.RawThrottle = RawThrottle;
             double frameStartTime = TimeSeconds;
-            bool playerInShip = PlayerMode == PlayerMode.InShip;
+            bool playerInShip = PlayerMode == PlayerMode.InShip || PlayerSeated;
             if (Regime == VesselRegime.Landed)
             {
                 step.StepLanded(realDt, playerInShip);
@@ -958,7 +1024,7 @@ namespace Galilego.Universe
             FloatingOrigin.Anchor = PlayerPosition;
         }
 
-        // ─── Player ──────────────────────────────────────────────────────────
+        // --- Player ----------------------------------------------------------
 
         /// <summary>
         /// Exit the ship (only from InShip). The player is placed 3 m along
@@ -989,6 +1055,7 @@ namespace Galilego.Universe
             playerAirborne = false;
             JetpackActive = false;
             PlayerHoverActive = false;
+            evaCollisionGraceUntil = TimeSeconds + 2.0d;
             return true;
         }
 
@@ -1057,7 +1124,7 @@ namespace Galilego.Universe
         private Vector3d smoothedShipPosition;
 
         /// <summary>
-        /// Render-space point → double world. In the contact zone the assembly and
+        /// Render-space point > double world. In the contact zone the assembly and
         /// terrain are drawn in SITE-FRAME AXES (the zone root is rotated by the
         /// frame), so the conversion goes through the same frame and basis as the
         /// player supports: the "flat" FloatingOrigin bridge errs the more the farther
@@ -1136,6 +1203,15 @@ namespace Galilego.Universe
                 return false;
             }
 
+            // A crewed build is boarded through its seat (PlayerController.TryBoardNearestSeat).
+            // The old InShip path teleported to the ship point INSIDE the hull: no
+            // collision, no seat, and the camera looked through the single-sided shell.
+            // An uncrewed test stack (no seat) keeps the legacy shortcut.
+            if (Flight != null && HasBuiltVesselSeat())
+            {
+                return false;
+            }
+
             if ((PlayerPosition - Ship.Position).Magnitude > enterDistanceMeters)
             {
                 return false;
@@ -1148,6 +1224,22 @@ namespace Galilego.Universe
             JetpackActive = false;
             PlayerHoverActive = false;
             return true;
+        }
+
+        /// <summary>A real vessel part carries at least one cockpit seat (a preview/ghost has no VesselPartCollider).</summary>
+        private static bool HasBuiltVesselSeat()
+        {
+            CockpitSeat[] seats = FindObjectsByType<CockpitSeat>(FindObjectsInactive.Exclude);
+            for (int i = 0; i < seats.Length; i++)
+            {
+                CockpitSeat seat = seats[i];
+                if (seat != null && seat.GetComponentInParent<Galilego.Building.VesselPartCollider>() != null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -1179,6 +1271,13 @@ namespace Galilego.Universe
             UpdateShipAcceleration();
             UpdateCabinKinematics(fromTime);
 
+            // EVA offset at the START of the frame: the player is still at the previous
+            // end point while Ship.Position is already at the end of this frame. Using
+            // PlayerPosition - Ship.Position for the ω×r term would add ω × (ship
+            // displacement over the frame) — with 5.7 km/s orbital speed and ~3°/s turn
+            // that is a spurious several m/s radial velocity, felt as "flying up".
+            frameEvaOffset = PlayerPosition - frameShipStartPosition;
+
             double t = fromTime;
             bool jump = playerJumpQueued;
             while (t < TimeSeconds - 1e-12)
@@ -1186,6 +1285,7 @@ namespace Galilego.Universe
                 double dt = Math.Min(PlayerMaxStepSeconds, TimeSeconds - t);
                 if (NoclipActive)
                 {
+                    evaRelativeValid = false;
                     StepPlayerNoclip(t, dt);
                     t += dt;
                     continue;
@@ -1193,6 +1293,7 @@ namespace Galilego.Universe
 
                 if (PlayerSeated)
                 {
+                    evaRelativeValid = false;
                     // Seated: no gravity, no walking. We ride the OFFICIAL ship point
                     // — but SMOOTHED: the contact zone writes it from physics and it can
                     // jitter frame to frame. This is only the render anchor; the visible
@@ -1209,13 +1310,14 @@ namespace Galilego.Universe
                     PlayerPosition = PlayerSeatedPosition;
                     PlayerVelocity = TryZoneVesselVelocityAt(PlayerPosition, t + dt, out Vector3d seatVelocity)
                         ? seatVelocity
-                        : Ship.Velocity;
+                        : (Ship.PositionIsCom ? VesselVelocityAt(PlayerPosition) : Ship.Velocity);
                 }
                 else
                 {
                     switch (PlayerMode)
                     {
                         case PlayerMode.InShip:
+                            evaRelativeValid = false;
                             PlayerPosition = Ship.Position;
                             PlayerVelocity = Ship.Velocity;
                             break;
@@ -1223,11 +1325,13 @@ namespace Galilego.Universe
                             StepPlayerEva(t, dt);
                             break;
                         case PlayerMode.OnSurface:
+                            evaRelativeValid = false;
                             StepPlayerSurface(t, dt, jump);
                             playerJumpQueued = false;
                             jump = false;
                             break;
                         case PlayerMode.Swimming:
+                            evaRelativeValid = false;
                             StepPlayerSwimming(t, dt);
                             break;
                     }
@@ -1304,7 +1408,14 @@ namespace Galilego.Universe
             PlayerHoverActive = !PlayerHoverActive;
             if (PlayerHoverActive)
             {
-                JetpackActive = false;      // flight modes are mutually exclusive
+                // Flight modes are mutually exclusive, but remember the jetpack: leaving
+                // hover must not silently leave the player with NO vertical control at all.
+                jetpackBeforeHover = JetpackActive;
+                JetpackActive = false;
+            }
+            else
+            {
+                JetpackActive = jetpackBeforeHover;
             }
         }
 
@@ -1317,9 +1428,21 @@ namespace Galilego.Universe
         private void StepPlayerHoverEva(double t, double dt)
         {
             Vector3d frameVelocity = EvaFrameVelocity(t);
-            Vector3d relative = PlayerVelocity - frameVelocity;
+
+            // Same stateful relative velocity as normal EVA: deriving it again from
+            // PlayerVelocity - frameVelocity would make hover lag the ship's acceleration
+            // (≈a/response) and drift radially in orbit, where gravity is perpendicular
+            // to the motion. Hover is a velocity command relative to the vessel.
+            if (!evaRelativeValid)
+            {
+                evaRelativeVelocity = PlayerVelocity - frameVelocity;
+                evaRelativeValid = true;
+            }
+
+            Vector3d relative = evaRelativeVelocity;
             double blend = Math.Min(1d, dt * PlayerHoverResponse);
             relative += (PlayerIntent.HoverVelocity - relative) * blend;
+            evaRelativeVelocity = relative;
             PlayerVelocity = frameVelocity + relative;
             PlayerPosition += PlayerVelocity * dt;
         }
@@ -1350,8 +1473,15 @@ namespace Galilego.Universe
         /// EVA reference velocity: the vessel's own rigid-body velocity at the player —
         /// linear plus ω×r. Stepping out must not change the player's velocity, and the
         /// craft (engine off) must stay beside them; the planet frame would brake the
-        /// shared orbital velocity. Local frame only as a fallback (no ship / zone,
-        /// where the attitude is stale).
+        /// shared orbital velocity.
+        ///
+        /// The player step runs AFTER the whole ship step, so both Ship.Position and
+        /// Ship.Velocity are already at the END of the frame. Using the end velocity for
+        /// the whole frame made the player cover more distance than the craft by roughly
+        /// half the ship acceleration × frame² — a steady drift in a fixed direction that
+        /// no amount of braking could remove (worse at low FPS). The frame's ACTUAL
+        /// displacement and attitude delta are the ground truth: the average velocity
+        /// below moves the player exactly by the craft's displacement over the frame.
         /// </summary>
         private Vector3d EvaFrameVelocity(double t)
         {
@@ -1368,18 +1498,29 @@ namespace Galilego.Universe
                 return zoneVelocityAtPlayer;
             }
 
-            if (ContactZoneHost.Active || !Ship.PositionIsCom)
+            if (ContactZoneHost.Active)
             {
-                // Zone, player far from the vessel: PhysX linear velocity; attitude/ω are stale.
+                // Player far from the vessel inside the zone: PhysX linear velocity.
                 return Ship.Velocity;
             }
 
-            Vector3d lever = PlayerPosition - Ship.Position;
-            if (lever.SqrMagnitude > VesselEvaFrameRadiusMeters * VesselEvaFrameRadiusMeters)
+            double span = TimeSeconds - frameShipStartTime;
+            if (span > 1e-6d)
             {
-                return Ship.Velocity;
+                Vector3d average = (Ship.Position - frameShipStartPosition) * (1d / span);
+                // Use the PHYSICAL body rate, not an attitude-delta average. The visual
+                // attitude delta (Ship.Attitude over the frame) is not a reliable rate in
+                // this scene: the probe measured a delta equal to the rate per SECOND
+                // divided by a frame of ~10 ms, i.e. a 100x oversized omega, which flung
+                // the player away. The body rate is what the hull rigid body actually
+                // rotates with.
+                Vector3d omega = Ship.PositionIsCom
+                    ? Ship.Attitude.Rotate(Ship.AngularVelocity)
+                    : Vector3d.Zero;
+                return average + Vector3d.Cross(omega, frameEvaOffset);
             }
 
+            // Called outside a stepped frame (e.g. a test): fall back to the instantaneous value.
             return VesselVelocityAt(PlayerPosition);
         }
 
@@ -1399,7 +1540,7 @@ namespace Galilego.Universe
 
             f.ToLocal(astroPosition, Vector3d.Zero, out Vector3d lp, out _);
             Transform zone = host.Proxy.transform;
-            // Site (east, north, up) → zone axes (north, up, east).
+            // Site (east, north, up) > zone axes (north, up, east).
             Vector3 zonePoint = new Vector3((float)lp.Y, (float)lp.Z, (float)lp.X);
             if (!host.Proxy.TryGetPointVelocity(null, zone.TransformPoint(zonePoint), out Vector3 worldVelocity))
             {
@@ -1652,7 +1793,7 @@ namespace Galilego.Universe
 
                 Vector3 zoneVelocity = zone.InverseTransformDirection(relative) + platformVelocityZone;
 
-                // Zone axes (x north, y up, z east) → site (east, north, up).
+                // Zone axes (x north, y up, z east) > site (east, north, up).
                 zoneFrame.ToWorld(new Vector3d(zonePoint.z, zonePoint.x, zonePoint.y),
                     new Vector3d(zoneVelocity.z, zoneVelocity.x, zoneVelocity.y),
                     out Vector3d worldPosition, out Vector3d worldVelocity);
@@ -1680,6 +1821,7 @@ namespace Galilego.Universe
             {
                 PlayerMode = PlayerMode.EVA;
                 playerAirborne = true;
+                evaCollisionGraceUntil = TimeSeconds + 2.0d;
             }
         }
 
@@ -1774,9 +1916,12 @@ namespace Galilego.Universe
             {
                 PlayerMode = PlayerMode.OnSurface;
                 playerAirborne = true;
+                evaRelativeValid = false;
                 StepPlayerSurface(t, dt, false);
                 return;
             }
+
+            UpdateEvaCrouch();
 
             OrbitingBody body = DominantBody;
             Vector3d up = new Vector3d(0d, 0d, 1d);
@@ -1790,30 +1935,49 @@ namespace Galilego.Universe
                 }
             }
 
+            Vector3d previousPosition = PlayerPosition;
             if (PlayerHoverActive)
             {
                 StepPlayerHoverEva(t, dt);
             }
             else
             {
-                Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
                 Vector3d jetpackAccel = JetpackActive ? PlayerIntent.JetpackAccel : Vector3d.Zero;
-
-                // Air control: the horizontal velocity eases to the desired one
-                // relative to the vessel — one speed with or without the jetpack;
-                // no input — smooth braking. Vertical stays physical. The vessel is
-                // the frame in ANY environment: a planet-frame brake would cancel
-                // the speed the player just inherited and leave the rocket behind.
                 Vector3d frameVelocity = EvaFrameVelocity(t);
-                Vector3d relative = PlayerVelocity - frameVelocity;
+
+                // Relative velocity is STATE, not a per-step difference (see the field
+                // comment). The vessel frame already carries gravity and thrust; the
+                // player's own relative velocity must not absorb the frame's acceleration.
+                // With no jetpack input BOTH axes brake to the vessel (the old code left
+                // the vertical component untouched, so an exit push or one jetpack tap
+                // drifted forever).
+                if (!evaRelativeValid)
+                {
+                    evaRelativeVelocity = PlayerVelocity - frameVelocity;
+                    evaRelativeValid = true;
+                }
+
+                Vector3d relative = evaRelativeVelocity;
                 double verticalSpeed = Vector3d.Dot(relative, up);
                 Vector3d horizontal = relative - (up * verticalSpeed);
                 horizontal += (PlayerIntent.AirVelocity - horizontal)
                     * Math.Min(1d, dt * PlayerAirResponse);
-                PlayerVelocity = frameVelocity + horizontal + (up * verticalSpeed);
-                PlayerVelocity += (gravity + jetpackAccel) * dt;
+
+                if (jetpackAccel.SqrMagnitude <= 1e-12d)
+                {
+                    // No vertical input: station-keeping, exactly like the horizontal.
+                    verticalSpeed += (0d - verticalSpeed) * Math.Min(1d, dt * PlayerAirResponse);
+                }
+
+                evaRelativeVelocity = horizontal + (up * verticalSpeed) + (jetpackAccel * dt);
+                PlayerVelocity = frameVelocity + evaRelativeVelocity;
                 PlayerPosition += PlayerVelocity * dt;
             }
+
+            // The hull is solid in EVA too (walking support only worked on the surface
+            // controller). Without this the player flew through the capsule, the camera
+            // went inside the single-sided shell ("the rocket turned transparent").
+            ResolveEvaHullCollision(previousPosition, up, t);
 
             if (body == null)
             {
@@ -1829,6 +1993,169 @@ namespace Galilego.Universe
             {
                 LandPlayer(body, tEnd);
             }
+        }
+
+        /// <summary>
+        /// EVA auto-crouch: near the capsule the body is 0.8 m tall (the Orion hatch is
+        /// ~1 m), far away it stands. Without this the full capsule hit the hatch frame
+        /// and the push-out threw the player sideways instead of letting them in.
+        /// </summary>
+        private void UpdateEvaCrouch()
+        {
+            if (!evaCapsuleSearched)
+            {
+                evaCapsuleSearched = true;
+                CockpitSeat[] seats = FindObjectsByType<CockpitSeat>(FindObjectsInactive.Exclude);
+                for (int i = 0; i < seats.Length; i++)
+                {
+                    CockpitSeat seat = seats[i];
+                    Galilego.Building.VesselPartCollider part = seat != null
+                        ? seat.GetComponentInParent<Galilego.Building.VesselPartCollider>()
+                        : null;
+                    if (part == null)
+                    {
+                        continue;
+                    }
+
+                    evaCapsule = part.transform;
+                    evaCapsuleRenderers = evaCapsule.GetComponentsInChildren<Renderer>(true);
+                    break;
+                }
+            }
+
+            if (evaCapsule == null || evaCapsuleRenderers == null || evaCapsuleRenderers.Length == 0)
+            {
+                evaCrouched = false;
+                return;
+            }
+
+            Bounds bounds = evaCapsuleRenderers[0].bounds;
+            for (int i = 1; i < evaCapsuleRenderers.Length; i++)
+            {
+                if (evaCapsuleRenderers[i] != null && evaCapsuleRenderers[i].enabled)
+                {
+                    bounds.Encapsulate(evaCapsuleRenderers[i].bounds);
+                }
+            }
+
+            Vector3 playerPoint = FloatingOrigin.ToRender(PlayerPosition);
+            evaCrouched = Vector3.Distance(bounds.ClosestPoint(playerPoint), playerPoint) < 1.5f;
+        }
+
+        /// <summary>Thin hull pieces must not be skipped at high relative speed (m).</summary>
+        private const float EvaHullSkinMeters = 0.02f;
+
+        /// <summary>
+        /// EVA hull collision: the player capsule is swept to the new point and pushed
+        /// out of vessel colliders, so the craft cannot be flown through and the camera
+        /// cannot end up inside the single-sided shell. Only vessel parts count; the
+        /// contact-zone proxy bodies are skipped while the zone owns the collision, and
+        /// PlayerIgnore colliders (interaction boxes, monitors) are not the body.
+        /// The vessel frame velocity is removed before the normal component is killed:
+        /// hitting the hull must stop the approach, not the shared orbital motion.
+        /// </summary>
+        private void ResolveEvaHullCollision(Vector3d previousPosition, Vector3d upAstro, double t)
+        {
+            if (Ship == null || ContactZoneHost.Active || NoclipActive || !EvaHullCollision
+                || TimeSeconds < evaCollisionGraceUntil)
+            {
+                return;
+            }
+
+            Vector3 up = AstroFrame.ToSimulation(upAstro).normalized;
+            float radius = (float)PlayerSurfaceController.CapsuleRadius;
+            float height = evaCrouched
+                ? (float)PlayerSurfaceController.CapsuleHeightCrouched
+                : (float)PlayerSurfaceController.CapsuleHeight;
+            float skin = EvaHullSkinMeters;
+
+            // Both points are converted through the CURRENT anchor (the frame start), so
+            // the vessel colliders and the path live in the same render space.
+            Vector3 previous = FloatingOrigin.ToRender(previousPosition);
+            Vector3 next = FloatingOrigin.ToRender(PlayerPosition);
+            Vector3 delta = next - previous;
+            float travel = delta.magnitude;
+            bool hit = false;
+
+            Vector3d frameVelocity = EvaFrameVelocity(t);
+
+            if (travel > 1e-5f)
+            {
+                Vector3 direction = delta / travel;
+                Vector3 p1 = previous + (up * radius);
+                Vector3 p2 = previous + (up * (height - radius));
+                int count = Physics.CapsuleCastNonAlloc(p1, p2, radius, direction, evaHits,
+                    travel + skin, ~0, QueryTriggerInteraction.Ignore);
+                float nearest = float.MaxValue;
+                Vector3 nearestNormal = Vector3.zero;
+                for (int i = 0; i < count; i++)
+                {
+                    RaycastHit candidate = evaHits[i];
+                    if (!IsEvaHullCollider(candidate.collider) || candidate.distance >= nearest)
+                    {
+                        continue;
+                    }
+
+                    nearest = candidate.distance;
+                    nearestNormal = candidate.normal;
+                }
+
+                if (nearest <= travel)
+                {
+                    float allowed = Mathf.Max(0f, nearest - skin);
+                    next = previous + (direction * allowed);
+                    hit = true;
+                    EvaHullCorrections++;
+                    EvaHullCorrectionMeters += Mathf.Max(0f, travel - allowed);
+                    CancelEvaVelocityInto(nearestNormal, frameVelocity);
+                }
+            }
+
+            if (!hit)
+            {
+                return;
+            }
+
+            PlayerPosition = FloatingOrigin.Anchor + AstroFrame.ToAstro(next);
+        }
+
+        /// <summary>Remove the velocity component INTO a hull normal, measured against the vessel frame.</summary>
+        private void CancelEvaVelocityInto(Vector3 renderNormal, Vector3d frameVelocity)
+        {
+            if (renderNormal.sqrMagnitude < 1e-8f)
+            {
+                return;
+            }
+
+            Vector3d normal = AstroFrame.ToAstro(renderNormal.normalized);
+            Vector3d relative = evaRelativeValid ? evaRelativeVelocity : (PlayerVelocity - frameVelocity);
+            double into = Vector3d.Dot(relative, normal);
+            if (into < 0d)
+            {
+                relative -= normal * into;
+                if (evaRelativeValid)
+                {
+                    evaRelativeVelocity = relative;
+                }
+
+                PlayerVelocity = frameVelocity + relative;
+            }
+        }
+
+        private static bool IsEvaHullCollider(Collider collider)
+        {
+            if (collider == null || collider.isTrigger)
+            {
+                return false;
+            }
+
+            Galilego.Building.VesselPartCollider part = VesselSupport.ResolvePart(collider);
+            if (part == null || (part.VisualCovered && ContactZoneHost.Active))
+            {
+                return false;
+            }
+
+            return collider.GetComponent<Galilego.Building.PlayerIgnore>() == null;
         }
 
         /// <summary>
