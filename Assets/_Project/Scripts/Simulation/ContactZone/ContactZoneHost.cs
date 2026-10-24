@@ -211,27 +211,12 @@ namespace Galilego.Simulation.ContactZone
             if (Log) Debug.Log("[ContactZone] выход");
         }
 
-        // Effective acceleration of the site frame: gravity at the point minus the origin
-        // acceleration (planet orbital motion) minus the centrifugal term from planet
-        // rotation. Coriolis is not modeled in the slice (order ω·v ≈ 1e-3 m/s² on landing).
-        private static Vector3d EffectiveLocalGravity(OrbitingBody body, SiteFrame f, double t)
+        // Effective acceleration of the site frame (gravity of ALL bodies at the point − origin acceleration −
+        // centrifugal), in site axes (east, north, up); the Unity conversion is in ContactZoneProxy.
+        // One shared definition with the walking player: see SurfaceGravity.
+        private Vector3d EffectiveLocalGravity(OrbitingBody body, SiteFrame f, double t)
         {
-            Vector3d origin = f.Origin;
-            body.EvaluateWorldState(t, out Vector3d bodyPos, out Vector3d bodyVel);
-            body.EvaluateWorldState(t + 1d, out _, out Vector3d bodyVelNext);
-
-            Vector3d toCenter = bodyPos - origin;
-            double r = toCenter.Magnitude;
-            double mu = body.StandardGravitationalParameter;
-            Vector3d gravity = toCenter.Normalized * (mu / (r * r));
-            Vector3d frameAccel = bodyVelNext - bodyVel;
-
-            Vector3d w = f.AngularVelocity;
-            Vector3d centrifugal = Vector3d.Cross(w, Vector3d.Cross(w, origin - bodyPos));
-
-            // Return in site axes (east, north, up); the Unity conversion is in ContactZoneProxy.
-            Vector3d eff = gravity - frameAccel - centrifugal;
-            return new Vector3d(Vector3d.Dot(eff, f.East), Vector3d.Dot(eff, f.North), Vector3d.Dot(eff, f.Up));
+            return SurfaceGravity.EffectiveLocal(Runner.SystemState, body, f, t);
         }
     }
 }

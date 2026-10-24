@@ -2757,8 +2757,10 @@ namespace Galilego.Universe
             playerController.Position = localPosition;
             playerController.Velocity = localVelocity;
             playerController.Airborne = playerAirborne;
-            Vector3d gravity = SystemState.EvaluateShipAcceleration(PlayerPosition, t);
-            playerController.Gravity = Math.Max(0d, -Vector3d.Dot(gravity, frame.Up));
+            // Weight = effective gravity of the site frame (same definition as the contact zone): all bodies,
+            // minus the planet's own acceleration, minus the centrifugal term of its spin.
+            Vector3d effectiveGravity = SurfaceGravity.EffectiveLocal(SystemState, body, frame, t);
+            playerController.Gravity = Math.Max(0d, -effectiveGravity.Z);
 
             terrainSupport.SetFrame(body, playerTerrain, frame, t);
             siteSupport.SetFrame(frame);
