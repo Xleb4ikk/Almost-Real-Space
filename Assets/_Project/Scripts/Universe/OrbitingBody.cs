@@ -35,6 +35,16 @@ namespace Galilego.Universe
 
         public double SurfaceKineticFrictionMu = 0.5d;
 
+        /// <summary>
+        /// Second zonal harmonic (oblateness) of the gravity field. 0 = point mass (default; old assets unchanged).
+        /// Earth 1.08263e-3, Mars 1.96e-3, Moon 2.03e-4, Jupiter 1.4736e-2, Saturn 1.6298e-2.
+        /// Acts on the ship only (the rails/baked ephemeris do not feel it). Spin axis = SpinAxis.
+        /// </summary>
+        public double J2;
+
+        /// <summary>Equatorial radius (m) that J2 is normalized to. 0 = use Radius.</summary>
+        public double J2ReferenceRadius;
+
         /// <summary>Spin axis (same normalization and fallback as in GetSurfaceState).</summary>
         public Vector3d SpinAxis
         {
@@ -74,10 +84,11 @@ namespace Galilego.Universe
         public readonly List<OrbitingBody> Children = new List<OrbitingBody>();
 
         [Header("Только для корня дерева (звезды)")]
-        // TODO: while the root (star) is fixed and the ship is integrated in a single
-        // world frame, indirect terms are not needed. If RootPosition/RootVelocity ever
-        // stop being constants (a switch to a frame relative to the current dominant body),
-        // indirect terms must be added to the gravity formula or a silent systematic error appears.
+        // The world frame is "root fixed at RootPosition" — a NON-inertial frame (the real star is
+        // pulled by its planets). Baked ephemeris positions are heliocentric offsets from an n-body
+        // run in which the star moves, so the ship's gravity MUST include the indirect term
+        // −Σ μ_i·(r_i − r_root)/|r_i − r_root|³ (StarSystem.cachedRootAccel); without it the ship gets
+        // a spurious ~2e-7 m/s² push that the bodies themselves do not feel.
         public Vector3d RootPosition = Vector3d.Zero;
         public Vector3d RootVelocity = Vector3d.Zero;
 
@@ -197,6 +208,23 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Local offset (position only). On the baked path it skips the velocity polynomial; the result
+        /// is bit-for-bit the position of ComputeLocalOffset. Used by the gravity position cache.
+        /// </summary>
+        public Vector3d ComputeLocalPosition(double timeSeconds)
+        {
+            if (Baked != null && Baked.TryEvaluatePosition(timeSeconds, out Vector3d bakedPosition))
+            {
+                LocalOffsetEvaluationCount++;
+                return bakedPosition;
+            }
+
+            // Kepler rail, continuation past the end, or a failure with a loud exception: the full path.
+            EvaluateLocalOffset(timeSeconds, out Vector3d position, out _);
+            return position;
+        }
+
+        /// <summary>
         /// Position/velocity RELATIVE to the parent (Keplerian offset), without recursion upwards.
         /// Jacobi approximation: the outer orbit is the motion of the subsystem's barycentre,
         /// μ = μ_parent_own + μ_this_subtree (own + all descendants recursively).
@@ -206,7 +234,6 @@ namespace Galilego.Universe
             LocalOffsetEvaluationCount++;
             if (Baked != null)
             {
-                double muLocal = Parent.ResolveStandardGravitationalParameter() + ResolveSubtreeStandardGravitationalParameter();
                 // The range verdict comes only from TryEvaluate (it has fp tolerance
                 // at the edges: EndSeconds is recomputed with rounding). A segment
                 // that cannot be read still fails loudly.
@@ -220,6 +247,7 @@ namespace Galilego.Universe
                 // Fallback past the end of the rail: Keplerian continuation taken from
                 // the integrated state at EndSeconds — the seam is continuous.
                 // Orbits continue Keplerian rather than throwing.
+                double muLocal = Parent.ResolveStandardGravitationalParameter() + ResolveSubtreeStandardGravitationalParameter();
                 if (Baked.TryEvaluateContinuation(timeSeconds, muLocal, out Vector3d contPosition, out Vector3d contVelocity))
                 {
                     position = contPosition;

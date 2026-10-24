@@ -26,6 +26,24 @@ namespace Galilego.Universe
         private readonly Dictionary<OrbitingBody, int> bodyIndex = new Dictionary<OrbitingBody, int>();
 
         private Vector3d[] cachedPositions;
+
+        // Parent index and depth per body (allBodies is a parents-first preorder). They replace a Dictionary
+        // lookup per body on every RHS call and the recursive tree walk in FindDominantBody.
+        private int[] parentIndex;
+        private int[] bodyDepth;
+
+        // Root's direct children and their SUBTREE μ (planet + all its moons). The root's own acceleration (indirect
+        // term) is evaluated from these lumps: a moon changes it by ≲1e-11 m/s² (its planet is already counted with
+        // the moon's mass), and the loop shrinks from N−1 bodies to the number of planets. Rebuilt in Revalidate.
+        private int[] rootChildIndex;
+        private double[] rootChildSubtreeMu;
+
+        /// <summary>
+        /// Acceleration of the root (star) from all other bodies at the cached time: the indirect term
+        /// of the "root fixed" frame. Valid together with cachedPositions.
+        /// </summary>
+        private Vector3d cachedRootAccel;
+
         private double cachedTime = double.NaN;
         private bool cacheValid;
         private long cachedStamp;
@@ -43,6 +61,16 @@ namespace Galilego.Universe
             {
                 bodyIndex[allBodies[i]] = i;
             }
+
+            parentIndex = new int[allBodies.Count];
+            bodyDepth = new int[allBodies.Count];
+            for (int i = 0; i < allBodies.Count; i++)
+            {
+                parentIndex[i] = allBodies[i].Parent == null ? -1 : bodyIndex[allBodies[i].Parent];
+                bodyDepth[i] = parentIndex[i] < 0 ? 0 : bodyDepth[parentIndex[i]] + 1;
+            }
+
+            RebuildRootChildLumps();
 
             foreach (OrbitingBody body in allBodies)
             {
@@ -318,7 +346,27 @@ namespace Galilego.Universe
                 body.UpdateInfluenceRadii();
             }
 
+            RebuildRootChildLumps();
             InvalidatePositionCache();
+        }
+
+        private void RebuildRootChildLumps()
+        {
+            var indices = new List<int>();
+            for (int i = 1; i < allBodies.Count; i++)
+            {
+                if (parentIndex[i] == 0)
+                {
+                    indices.Add(i);
+                }
+            }
+
+            rootChildIndex = indices.ToArray();
+            rootChildSubtreeMu = new double[rootChildIndex.Length];
+            for (int k = 0; k < rootChildIndex.Length; k++)
+            {
+                rootChildSubtreeMu[k] = allBodies[rootChildIndex[k]].ResolveSubtreeStandardGravitationalParameter();
+            }
         }
 
         private void FlattenTree(OrbitingBody body)
@@ -358,19 +406,44 @@ namespace Galilego.Universe
         public Vector3d EvaluateShipAcceleration(Vector3d shipPosition, double timeSeconds)
         {
             Vector3d totalAcceleration = Vector3d.Zero;
+            Vector3d rootPosition = Vector3d.Zero;
+            Vector3d rootAcceleration = Vector3d.Zero;
 
             for (int i = 0; i < allBodies.Count; i++)
             {
                 OrbitingBody body = allBodies[i];
                 body.EvaluateWorldState(timeSeconds, out Vector3d bodyPosition, out _);
+                double bodyMu = body.ResolveStandardGravitationalParameter();
 
                 totalAcceleration += PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(
-                    shipPosition,
-                    bodyPosition,
-                    body.ResolveStandardGravitationalParameter());
+                    shipPosition, bodyPosition, bodyMu);
+                totalAcceleration += BodyJ2Acceleration(body, shipPosition, bodyPosition, bodyMu);
+
+                if (i == 0)
+                {
+                    rootPosition = bodyPosition; // allBodies[0] is the root (preorder)
+                }
+                else
+                {
+                    rootAcceleration += PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(
+                        rootPosition, bodyPosition, bodyMu);
+                }
             }
 
-            return totalAcceleration;
+            // Indirect term: the "root fixed" world frame accelerates (the star is pulled by its planets).
+            return totalAcceleration - rootAcceleration;
+        }
+
+        /// <summary>J2 (oblateness) term of one body; zero for point masses (J2 == 0) and beyond the cutoff radius.</summary>
+        private static Vector3d BodyJ2Acceleration(OrbitingBody body, Vector3d shipPosition, Vector3d bodyPosition, double bodyMu)
+        {
+            if (body.J2 == 0d)
+            {
+                return Vector3d.Zero;
+            }
+
+            double referenceRadius = body.J2ReferenceRadius > 0d ? body.J2ReferenceRadius : body.Radius;
+            return PhysicsSolver.CalculateJ2Acceleration(shipPosition - bodyPosition, body.SpinAxis, bodyMu, body.J2, referenceRadius);
         }
 
         /// <summary>
@@ -414,17 +487,30 @@ namespace Galilego.Universe
                     continue;
                 }
 
-                body.ComputeLocalOffset(timeSeconds, out Vector3d local, out _);
-                int parentIdx = bodyIndex[body.Parent];
-                cachedPositions[i] = cachedPositions[parentIdx] + local;
+                cachedPositions[i] = cachedPositions[parentIndex[i]] + body.ComputeLocalPosition(timeSeconds);
             }
 
+            // Indirect term of the root-fixed frame: the root's own acceleration from all other bodies.
+            Vector3d rootPosition = cachedPositions[0];
+            Vector3d rootAcceleration = Vector3d.Zero;
+            for (int k = 0; k < rootChildIndex.Length; k++)
+            {
+                rootAcceleration += PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(
+                    rootPosition, cachedPositions[rootChildIndex[k]], rootChildSubtreeMu[k]);
+            }
+
+            cachedRootAccel = rootAcceleration;
             cachedTime = timeSeconds;
             cacheValid = true;
         }
 
         /// <summary>Same μ/r³ sum as EvaluateShipAcceleration, but body positions come from the substage cache. Used in the hot RHS loop.</summary>
-        public Vector3d EvaluateShipAccelerationCached(Vector3d shipPosition, double timeSeconds)
+        /// <param name="includeOblateness">
+        /// false = point masses only (plus the root-frame indirect term). Used for the WEIGHT on a spherical
+        /// surface: J2 over a sphere gives the wrong equator/pole sign (the real pole is closer to the centre);
+        /// orbital flight keeps J2 (default).
+        /// </param>
+        public Vector3d EvaluateShipAccelerationCached(Vector3d shipPosition, double timeSeconds, bool includeOblateness = true)
         {
             EnsureCachedPositions(timeSeconds);
 
@@ -432,13 +518,18 @@ namespace Galilego.Universe
             for (int i = 0; i < allBodies.Count; i++)
             {
                 OrbitingBody body = allBodies[i];
+                double bodyMu = body.ResolveStandardGravitationalParameter();
                 total += PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(
                     shipPosition,
                     cachedPositions[i],
-                    body.ResolveStandardGravitationalParameter());
+                    bodyMu);
+                if (includeOblateness)
+                {
+                    total += BodyJ2Acceleration(body, shipPosition, cachedPositions[i], bodyMu);
+                }
             }
 
-            return total;
+            return total - cachedRootAccel;
         }
 
         /// <summary>Planner check: false = the point is inside any body, so the candidate trajectory is invalid.</summary>
@@ -467,8 +558,10 @@ namespace Galilego.Universe
                 }
 
                 acceleration += term;
+                acceleration += BodyJ2Acceleration(body, shipPosition, bodyPos, body.ResolveStandardGravitationalParameter());
             }
 
+            acceleration -= cachedRootAccel;
             return acceleration.IsFinite;
         }
 
@@ -649,30 +742,26 @@ namespace Galilego.Universe
 
         public OrbitingBody FindDominantBody(Vector3d shipPosition, double timeSeconds)
         {
+            // One parents-first pass over the cached positions instead of a recursive walk that re-derived
+            // every ancestor of every body (O(N·depth) Kepler/Chebyshev evaluations per call). allBodies is
+            // a preorder, so the iteration order and the "deepest, last wins" rule match the old recursion.
+            EnsureCachedPositions(timeSeconds);
+
             OrbitingBody best = root;
             int bestDepth = -1;
-            FindDominantRecursive(root, shipPosition, timeSeconds, 0, ref best, ref bestDepth);
+            for (int i = 0; i < allBodies.Count; i++)
+            {
+                OrbitingBody body = allBodies[i];
+                bool insideSoi = body.Parent == null
+                    || (shipPosition - cachedPositions[i]).Magnitude <= body.SphereOfInfluenceRadius;
+                if (insideSoi && bodyDepth[i] >= bestDepth)
+                {
+                    bestDepth = bodyDepth[i];
+                    best = body;
+                }
+            }
+
             return best;
-        }
-
-        private void FindDominantRecursive(
-            OrbitingBody body, Vector3d shipPosition, double timeSeconds,
-            int depth, ref OrbitingBody best, ref int bestDepth)
-        {
-            body.EvaluateWorldState(timeSeconds, out Vector3d bodyPosition, out _);
-            double distance = (shipPosition - bodyPosition).Magnitude;
-
-            bool insideSoi = body.Parent == null || distance <= body.SphereOfInfluenceRadius;
-            if (insideSoi && depth >= bestDepth)
-            {
-                bestDepth = depth;
-                best = body;
-            }
-
-            foreach (OrbitingBody child in body.Children)
-            {
-                FindDominantRecursive(child, shipPosition, timeSeconds, depth + 1, ref best, ref bestDepth);
-            }
         }
     }
 }

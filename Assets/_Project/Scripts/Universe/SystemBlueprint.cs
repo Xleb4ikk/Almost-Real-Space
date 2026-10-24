@@ -17,6 +17,12 @@ namespace Galilego.Universe
         public double Radius = 1d;
         public double CrashToleranceMps = 5d;
 
+        /// <summary>Second zonal harmonic (oblateness); 0 = point mass. See OrbitingBody.J2.</summary>
+        public double J2;
+
+        /// <summary>Equatorial radius (m) J2 is normalized to; 0 = Radius.</summary>
+        public double J2ReferenceRadius;
+
         /// <summary>Surface friction (Coulomb, see SurfaceMotion): sticks while |a_t| ≤ μ_s·|a_n|.</summary>
         public double SurfaceStaticFrictionMu = 0.7d;
 
@@ -106,6 +112,8 @@ namespace Galilego.Universe
                     StandardGravitationalParameter = bp.StandardGravitationalParameter,
                     Radius = bp.Radius,
                     CrashToleranceMps = bp.CrashToleranceMps,
+                    J2 = bp.J2,
+                    J2ReferenceRadius = bp.J2ReferenceRadius,
                     SurfaceStaticFrictionMu = bp.SurfaceStaticFrictionMu,
                     SurfaceKineticFrictionMu = bp.SurfaceKineticFrictionMu,
                     SemiMajorAxis = bp.SemiMajorAxis,

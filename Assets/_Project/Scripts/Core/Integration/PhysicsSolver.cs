@@ -33,6 +33,39 @@ namespace Galilego.Core
         public const double NumericalFloorSqrDistance = 1e-6d;
 
         /// <summary>
+        /// J2 (oblateness) is applied only closer than this many reference radii: the term falls as
+        /// 1/r⁴, so beyond ~50 R it is below 1e-6 of the point-mass pull for Earth-like J2 and is not worth the cost.
+        /// </summary>
+        public const double J2CutoffRadii = 50d;
+
+        /// <summary>
+        /// Acceleration from the second zonal harmonic of a body (equatorial bulge), in vector form
+        /// (no basis needed): a = -(3/2)·J2·μ·R²/r⁵ · [ (1 − 5·zc²/r²)·ρ + 2·zc·ẑ ],
+        /// ρ = shipPos − bodyPos, zc = ρ·ẑ, ẑ = unit spin axis, R = equatorial reference radius.
+        /// Added ON TOP of the point-mass term; returns zero beyond J2CutoffRadii·R.
+        /// </summary>
+        public static Vector3d CalculateJ2Acceleration(
+            Vector3d relativePosition, Vector3d spinAxisUnit, double standardGravitationalParameter, double j2, double referenceRadius)
+        {
+            if (j2 == 0d || referenceRadius <= 0d || standardGravitationalParameter == 0d)
+            {
+                return Vector3d.Zero;
+            }
+
+            double r2 = relativePosition.SqrMagnitude;
+            double cutoff = J2CutoffRadii * referenceRadius;
+            if (r2 < NumericalFloorSqrDistance || r2 > cutoff * cutoff)
+            {
+                return Vector3d.Zero;
+            }
+
+            double r = Math.Sqrt(r2);
+            double zc = Vector3d.Dot(relativePosition, spinAxisUnit);
+            double k = -1.5d * j2 * standardGravitationalParameter * referenceRadius * referenceRadius / (r2 * r2 * r);
+            return (relativePosition * ((1d - (5d * zc * zc / r2)) * k)) + (spinAxisUnit * (2d * zc * k));
+        }
+
+        /// <summary>
         /// Geometric "inside body" predicate: sqrDistance &lt; radius².
         /// Separate from the numerical floor above — it does not replace acceleration
         /// with zero, it arms AltitudeCrossingDetector (Falling/Touchdown).

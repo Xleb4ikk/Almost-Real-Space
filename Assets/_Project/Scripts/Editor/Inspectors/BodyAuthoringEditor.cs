@@ -69,6 +69,8 @@ namespace Galilego.Universe.EditorTools
                 Field("StandardGravitationalParameter");
                 Field("Radius");
                 Field("CrashToleranceMps");
+                Field("J2");
+                Field("J2ReferenceRadius");
                 Field("SurfaceStaticFrictionMu");
                 Field("SurfaceKineticFrictionMu");
 

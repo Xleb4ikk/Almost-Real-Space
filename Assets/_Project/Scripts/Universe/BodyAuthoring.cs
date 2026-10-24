@@ -18,6 +18,14 @@ namespace Galilego.Universe
         public double Radius = 1d;
         public double CrashToleranceMps = 5d;
 
+        [Tooltip("Сплюснутость поля тяготения (второй зональный коэффициент J2). 0 = точечная масса. " +
+            "Земля 1.08263e-3, Марс 1.96e-3, Луна 2.03e-4, Юпитер 1.4736e-2, Сатурн 1.6298e-2. " +
+            "Действует на корабль (прецессия орбит), рельсы и эфемерида тел его не чувствуют.")]
+        public double J2;
+
+        [Tooltip("Экваториальный радиус (м), к которому нормирован J2. 0 = взять Radius.")]
+        public double J2ReferenceRadius;
+
         [Header("Трение поверхности (см. SurfaceMotion)")]
         public double SurfaceStaticFrictionMu = 0.7d;
         public double SurfaceKineticFrictionMu = 0.5d;
@@ -70,6 +78,8 @@ namespace Galilego.Universe
                 StandardGravitationalParameter = StandardGravitationalParameter,
                 Radius = Radius,
                 CrashToleranceMps = CrashToleranceMps,
+                J2 = J2,
+                J2ReferenceRadius = J2ReferenceRadius,
                 SurfaceStaticFrictionMu = SurfaceStaticFrictionMu,
                 SurfaceKineticFrictionMu = SurfaceKineticFrictionMu,
                 SemiMajorAxis = SemiMajorAxis,

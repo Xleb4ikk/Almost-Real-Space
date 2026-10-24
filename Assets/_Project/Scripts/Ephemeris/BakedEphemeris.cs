@@ -395,18 +395,35 @@ namespace Galilego.Universe
             {
                 // In-memory instance: no shared state, no race — no gate needed
                 // (hot path for baking/tests without lock overhead).
-                return TryEvaluateCore(timeSeconds, out position, out velocity);
+                return TryEvaluateCore(timeSeconds, true, out position, out velocity);
             }
 
             lock (windowGate)
             {
-                return TryEvaluateCore(timeSeconds, out position, out velocity);
+                return TryEvaluateCore(timeSeconds, true, out position, out velocity);
+            }
+        }
+
+        /// <summary>
+        /// Position only (no DerivSum): the gravity RHS needs positions, not velocities, so the
+        /// hot path skips roughly half of the polynomial work. Same range rules and locking as TryEvaluate.
+        /// </summary>
+        public bool TryEvaluatePosition(double timeSeconds, out Vector3d position)
+        {
+            if (FilePath == null)
+            {
+                return TryEvaluateCore(timeSeconds, false, out position, out _);
+            }
+
+            lock (windowGate)
+            {
+                return TryEvaluateCore(timeSeconds, false, out position, out _);
             }
         }
 
         private readonly object windowGate = new object();
 
-        private bool TryEvaluateCore(double timeSeconds, out Vector3d position, out Vector3d velocity)
+        private bool TryEvaluateCore(double timeSeconds, bool wantVelocity, out Vector3d position, out Vector3d velocity)
         {
             position = Vector3d.Zero;
             velocity = Vector3d.Zero;
@@ -474,6 +491,11 @@ namespace Galilego.Universe
                 Clenshaw(src, basis, Degree, x),
                 Clenshaw(src, basis + width, Degree, x),
                 Clenshaw(src, basis + 2 * width, Degree, x));
+            if (!wantVelocity)
+            {
+                return position.IsFinite;
+            }
+
             double scale = 2d / SegmentLengthSeconds;
             velocity = new Vector3d(
                 DerivSum(src, basis, Degree, x) * scale,
