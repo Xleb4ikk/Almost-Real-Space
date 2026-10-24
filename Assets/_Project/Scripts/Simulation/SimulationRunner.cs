@@ -416,11 +416,15 @@ namespace Galilego.Universe
 
         private static readonly SphericalTerrain playerFallbackTerrain = new SphericalTerrain();
 
-        // EVA hull collision: a swept capsule only. There is deliberately NO
-        // depenetration/push-out: a thin convex shell can resolve to its inner side and
-        // "teleport" the player to the other side of the capsule. The sweep stops the
-        // motion, the position is never corrected.
+        // EVA hull collision: a swept capsule plus a start-overlap push-out. The sweep stops the
+        // motion (no tunnelling at orbital speeds); the push-out exists because a vessel that is
+        // rotating can turn a hull into the body while it is already touching it, and a cast
+        // ignores colliders it starts inside. The push direction is biased to the side the player
+        // came from, so a thin shell cannot resolve to its inner side and "teleport" them.
         private readonly RaycastHit[] evaHits = new RaycastHit[32];
+        private readonly Collider[] evaOverlaps = new Collider[32];
+        private GameObject evaProbeObject;
+        private CapsuleCollider evaProbeCollider;
 
         /// <summary>No hull collision for a moment after leaving the cabin/seat: the player is still in the hatch.</summary>
         private double evaCollisionGraceUntil;
@@ -433,25 +437,26 @@ namespace Galilego.Universe
         private Renderer[] evaCapsuleRenderers;
         private bool evaCapsuleSearched;
 
-        // EVA "up" in free flight. In weightlessness there is no planet vertical to stand on, and
-        // the collision capsule / camera / WASD must use the SAME axis the cabin uses (the capsule
-        // axis): otherwise the hatch opening (cut for a person standing along the capsule axis)
-        // is entered sideways and cannot be passed, and the camera "up" snaps on every
-        // cabin <-> EVA switch (eye offset + look rotation = the sudden yank to the hull's side).
-        // The axis is kept CONTINUOUS: it is inherited from the cabin at the hatch and eased towards
-        // the capsule's up while the player is near the vessel, towards the radial far away.
+        // EVA frame in free flight. In weightlessness there is no planet vertical to stand on,
+        // and the hatch is cut for a person lying along the capsule axis. TWO axes are kept:
+        // - evaUpAstro is the CAMERA/INPUT vertical. It is inherited from the cabin at the hatch
+        //   and then stays INERTIAL: a spinning vessel must not turn the player's view.
+        // - evaCollisionUpAstro is the invisible COLLISION body axis. It follows the capsule
+        //   while the player is near, so the body lines up with the hatch and can pass it.
         private Vector3d evaUpAstro;
         private bool evaUpValid;
+        private Vector3d evaCollisionUpAstro;
+        private bool evaCollisionUpValid;
         private bool evaAlignedToVessel;
         private float evaCapsuleDistance = float.MaxValue;
 
-        /// <summary>Distance to the capsule (m) below which the EVA vertical follows the capsule axis.</summary>
+        /// <summary>Distance to the capsule (m) below which the COLLISION body follows the capsule axis.</summary>
         private const float EvaAlignEnterMeters = 30f;
 
-        /// <summary>Distance (m) above which the EVA vertical goes back to the planet radial (hysteresis).</summary>
+        /// <summary>Distance (m) above which the COLLISION body goes back to the planet radial (hysteresis).</summary>
         private const float EvaAlignExitMeters = 60f;
 
-        /// <summary>How fast the EVA vertical eases towards its target (1/s).</summary>
+        /// <summary>How fast the CAMERA/INPUT vertical eases back to the planet radial far away (1/s).</summary>
         private const double EvaUpAlignRate = 2.5d;
 
         /// <summary>Felt weight below this (m/s²) in free flight counts as zero: filtered-acceleration noise must not "drop" a player standing in the hatch onto the hull.</summary>
@@ -1850,12 +1855,16 @@ namespace Galilego.Universe
 
             SyncWorldFromCabin(TimeSeconds);
 
-            // Leaving the cabin: the EVA vertical STARTS as the cabin's up (no snap of the camera
-            // and of the collision capsule at the hatch), and then eases as UpdateEvaUp decides.
+            // Leaving the cabin: both EVA axes START as the cabin's up. The camera/input axis
+            // then stays inertial (a spinning vessel must not turn the view); the collision
+            // axis follows the capsule as UpdateEvaUp decides.
             if (!ContactZoneHost.Active && platformCarry.TryGetUp(out Vector3 cabinUp) && cabinUp.sqrMagnitude > 1e-8f)
             {
-                evaUpAstro = AstroFrame.ToAstro(cabinUp.normalized).Normalized;
+                Vector3d cabinUpAstro = AstroFrame.ToAstro(cabinUp.normalized).Normalized;
+                evaUpAstro = cabinUpAstro;
+                evaCollisionUpAstro = cabinUpAstro;
                 evaUpValid = true;
+                evaCollisionUpValid = true;
                 evaAlignedToVessel = true;
             }
 
@@ -2012,7 +2021,9 @@ namespace Galilego.Universe
             // The hull is solid in EVA too (walking support only worked on the surface
             // controller). Without this the player flew through the capsule, the camera
             // went inside the single-sided shell ("the rocket turned transparent").
-            ResolveEvaHullCollision(previousPosition, up, t, dt);
+            // The invisible body lines up with the hatch; the camera/input axis does not.
+            Vector3d collisionUp = evaCollisionUpValid ? evaCollisionUpAstro : up;
+            ResolveEvaHullCollision(previousPosition, collisionUp, t, dt);
 
             if (body == null)
             {
@@ -2078,9 +2089,10 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// One substep of the EVA vertical (see evaUpAstro). Near the capsule it eases to the
-        /// capsule's up, far away to the planet radial; inside a contact zone it stays radial
-        /// (the vessel is PhysX there and the ground is a real floor).
+        /// One substep of the two EVA axes (see evaUpAstro). The CAMERA/INPUT axis is inertial:
+        /// inherited at the hatch, then held - a spinning vessel must not turn the player; it only
+        /// eases back to the planet radial once the vessel is far. The COLLISION axis follows the
+        /// capsule while near, so the invisible body can line up with the hatch.
         /// </summary>
         private Vector3d UpdateEvaUp(OrbitingBody body, double t, double dt)
         {
@@ -2088,6 +2100,7 @@ namespace Galilego.Universe
             if (ContactZoneHost.Active)
             {
                 evaUpValid = false;
+                evaCollisionUpValid = false;
                 return radial;
             }
 
@@ -2095,7 +2108,6 @@ namespace Galilego.Universe
             {
                 evaUpAstro = radial;
                 evaUpValid = true;
-                evaAlignedToVessel = false;
             }
 
             if (evaCapsule != null && evaCapsuleDistance < EvaAlignEnterMeters)
@@ -2107,16 +2119,35 @@ namespace Galilego.Universe
                 evaAlignedToVessel = false;
             }
 
-            Vector3d target = radial;
-            if (evaAlignedToVessel && evaCapsule != null)
+            // Collision body: exactly the capsule's axis while near the hatch. It is invisible,
+            // so following a spinning vessel here is fine - it is what lets the body pass the hatch.
+            Vector3d capsuleUp = evaCapsule != null ? AstroFrame.ToAstro(evaCapsule.up) : Vector3d.Zero;
+            bool haveCapsuleUp = capsuleUp.SqrMagnitude > 1e-12d;
+            if (evaAlignedToVessel && haveCapsuleUp)
             {
-                Vector3d capsuleUp = AstroFrame.ToAstro(evaCapsule.up);
-                if (capsuleUp.SqrMagnitude > 1e-12d)
-                {
-                    target = capsuleUp.Normalized;
-                }
+                evaCollisionUpAstro = capsuleUp.Normalized;
+                evaCollisionUpValid = true;
+            }
+            else if (!evaCollisionUpValid)
+            {
+                evaCollisionUpAstro = radial;
+                evaCollisionUpValid = true;
+            }
+            else
+            {
+                double collisionK = Math.Min(1d, dt * EvaUpAlignRate);
+                Vector3d blendedCollision = (evaCollisionUpAstro * (1d - collisionK)) + (radial * collisionK);
+                evaCollisionUpAstro = blendedCollision.SqrMagnitude > 1e-12d
+                    ? blendedCollision.Normalized
+                    : radial;
             }
 
+            // Camera/input axis: hold it while the vessel is near; ease to the planet radial only
+            // when it is far. It must NEVER read the vessel's rotation - that turned the view with
+            // a spinning craft.
+            Vector3d target = evaCapsule != null && evaCapsuleDistance < EvaAlignExitMeters
+                ? evaUpAstro
+                : radial;
             double k = Math.Min(1d, dt * EvaUpAlignRate);
             Vector3d blended = (evaUpAstro * (1d - k)) + (target * k);
             evaUpAstro = blended.SqrMagnitude > 1e-12d ? blended.Normalized : target;
@@ -2124,9 +2155,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// The player's vertical in astro axes — the SAME axis physics, collision and camera use:
-        /// aboard a vessel in free flight the platform's up, in EVA in free flight the continuous
-        /// EVA vertical, otherwise the planet radial.
+        /// The player's CAMERA/INPUT vertical in astro axes: the platform's up aboard a vessel,
+        /// the inertial EVA vertical in free flight, otherwise the planet radial. The collision
+        /// body has its own axis (see evaCollisionUpAstro).
         /// </summary>
         public Vector3d PlayerUpAstro
         {
@@ -2290,13 +2321,137 @@ namespace Galilego.Universe
                 }
             }
 
-            if (!hit)
+            bool overlapFixed = ResolveEvaHullOverlap(ref next, previous, up, radius, height, frameVelocity);
+            if (!hit && !overlapFixed)
             {
                 return;
             }
 
             Vector3 unshifted = next - (shipDelta * endShift);
             PlayerPosition = FloatingOrigin.Anchor + AstroFrame.ToAstro(unshifted);
+        }
+
+        /// <summary>
+        /// Resolve a START overlap: a cast ignores colliders it already touches. A vessel that is
+        /// rotating can turn a hull into the body while the player is touching it, and without
+        /// this the sweep never sees the contact - the player gets dragged along inside the wall.
+        /// The push is biased to the side the player came from (or away from the capsule centre
+        /// when there is no motion), so a thin shell cannot resolve to its inner side.
+        /// </summary>
+        private bool ResolveEvaHullOverlap(ref Vector3 next, Vector3 previous, Vector3 up,
+            float radius, float height, Vector3d frameVelocity)
+        {
+            CapsuleCollider probe = EvaProbeCollider();
+            if (probe == null)
+            {
+                return false;
+            }
+
+            float bodyHeight = Mathf.Max(height, (radius * 2f) + 0.02f);
+            probe.radius = radius;
+            probe.height = bodyHeight;
+            Quaternion probeRotation = Quaternion.FromToRotation(Vector3.up, up);
+            float half = bodyHeight * 0.5f;
+            Vector3 capsuleCenter = evaCapsule != null ? evaCapsule.position : next;
+            Vector3 escape = previous - next;
+            bool corrected = false;
+
+            for (int iteration = 0; iteration < 2; iteration++)
+            {
+                Vector3 capsuleStart = next + (up * radius);
+                Vector3 capsuleEnd = next + (up * (bodyHeight - radius));
+                int count = Physics.OverlapCapsuleNonAlloc(capsuleStart, capsuleEnd,
+                    radius + EvaHullSkinMeters, evaOverlaps, ~0, QueryTriggerInteraction.Ignore);
+                float deepest = 0f;
+                Vector3 pushDirection = Vector3.zero;
+                for (int i = 0; i < count; i++)
+                {
+                    Collider hull = evaOverlaps[i];
+                    if (!IsEvaHullCollider(hull))
+                    {
+                        continue;
+                    }
+
+                    Vector3 center = next + (up * half);
+                    if (!ComputeEvaPenetration(probe, center, probeRotation, hull,
+                            out Vector3 direction, out float distance)
+                        || distance <= 1e-4f || direction.sqrMagnitude < 1e-8f)
+                    {
+                        continue;
+                    }
+
+                    Vector3 outward = center - capsuleCenter;
+                    float alongEscape = escape.sqrMagnitude > 1e-6f
+                        ? Vector3.Dot(direction, escape)
+                        : 0f;
+                    if (escape.sqrMagnitude > 1e-6f && Mathf.Abs(alongEscape) > 0.2f)
+                    {
+                        // Clearly moving into (or out of) the hull: push back the way we came.
+                        if (alongEscape < 0f)
+                        {
+                            direction = -direction;
+                        }
+                    }
+                    else if (outward.sqrMagnitude > 1e-8f && Vector3.Dot(direction, outward) < 0f)
+                    {
+                        // Sliding along the hull: never push through it towards the centre.
+                        direction = -direction;
+                    }
+
+                    if (distance > deepest)
+                    {
+                        deepest = distance;
+                        pushDirection = direction;
+                    }
+                }
+
+                if (deepest <= 1e-4f)
+                {
+                    break;
+                }
+
+                float step = Mathf.Min(deepest + EvaHullSkinMeters, 0.5f);
+                next += pushDirection.normalized * step;
+                CancelEvaVelocityInto(pushDirection, frameVelocity);
+                EvaHullCorrections++;
+                EvaHullCorrectionMeters += step;
+                corrected = true;
+            }
+
+            return corrected;
+        }
+
+        /// <summary>Capsule-vs-hull penetration; the hidden trigger probe is outside the physics scene.</summary>
+        private bool ComputeEvaPenetration(CapsuleCollider probe, Vector3 position, Quaternion rotation,
+            Collider hull, out Vector3 direction, out float distance)
+        {
+            bool ok = Physics.ComputePenetration(probe, position, rotation,
+                hull, hull.transform.position, hull.transform.rotation, out direction, out distance);
+            if (!ok && evaProbeObject != null && !evaProbeObject.activeSelf)
+            {
+                evaProbeObject.SetActive(true);
+                ok = Physics.ComputePenetration(probe, position, rotation,
+                    hull, hull.transform.position, hull.transform.rotation, out direction, out distance);
+                evaProbeObject.SetActive(false);
+            }
+
+            return ok;
+        }
+
+        /// <summary>Hidden trigger capsule used only for penetration queries (never collides).</summary>
+        private CapsuleCollider EvaProbeCollider()
+        {
+            if (evaProbeCollider == null)
+            {
+                evaProbeObject = new GameObject("EVA Body Probe");
+                evaProbeObject.hideFlags = HideFlags.HideAndDontSave;
+                evaProbeCollider = evaProbeObject.AddComponent<CapsuleCollider>();
+                evaProbeCollider.direction = 1;
+                evaProbeCollider.isTrigger = true;
+                evaProbeObject.SetActive(false);
+            }
+
+            return evaProbeCollider;
         }
 
         /// <summary>Remove the velocity component INTO a hull normal, measured against the vessel frame.</summary>

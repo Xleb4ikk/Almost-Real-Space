@@ -231,6 +231,10 @@ namespace Galilego.Universe
         /// <summary>Whether the player was seated last frame (one-shot aim when sitting down).</summary>
         private bool wasSeated;
 
+        /// <summary>Last drawn seat rotation while seated: the view follows its FULL delta (yaw included).</summary>
+        private Quaternion lastSeatRotation;
+        private bool hasSeatRotation;
+
         private PlayerController playerController;
 
         /// <summary>Smooth normal ↔ lean blend (0..1) for the RMB lean-in.</summary>
@@ -391,6 +395,11 @@ namespace Galilego.Universe
             float stoop = Runner != null ? Runner.PlayerStoopFraction : 0f;
             crouchBlend = Mathf.MoveTowards(crouchBlend, stoop, Time.deltaTime * 3f);
             bool seated = Runner != null && Runner.PlayerSeated;
+            if (seated && playerController == null)
+            {
+                playerController = FindAnyObjectByType<PlayerController>();
+            }
+
             seatedBlend = Mathf.MoveTowards(seatedBlend, seated ? 1f : 0f, Time.deltaTime * 5f);
 
             // Seating: one-shot aim toward the direction the seat requests (a couple of monitors).
@@ -409,7 +418,35 @@ namespace Galilego.Universe
 
             ComputeEyeOffset();
             Vector3 up = ComputeLocalUp();
-            TransportLook(up);
+
+            // Seated: the view is fixed to the SEAT, not to the world. Transport the look by the
+            // seat's full rotation delta (yaw included); the up-only transport below would let
+            // the cabin yaw around a stationary view while the player is strapped in.
+            bool seatTracked = false;
+            Quaternion seatRotation = Quaternion.identity;
+            if (seated && playerController != null && playerController.SeatedSeat != null
+                && playerController.SeatedSeat.Anchor != null)
+            {
+                seatRotation = playerController.SeatedSeat.Anchor.rotation;
+                seatTracked = true;
+            }
+
+            if (seatTracked)
+            {
+                if (hasSeatRotation)
+                {
+                    lookDirection = (seatRotation * Quaternion.Inverse(lastSeatRotation)) * lookDirection;
+                }
+
+                lastSeatRotation = seatRotation;
+                hasSeatRotation = true;
+            }
+            else
+            {
+                hasSeatRotation = false;
+            }
+
+            TransportLook(up, !seatTracked);
             if (Cursor.lockState == CursorLockMode.Locked)
             {
                 NoteMouseIgnored(null);
@@ -496,7 +533,7 @@ namespace Galilego.Universe
         /// frame rotates (orbit, planet spin) the vector follows it, so the view
         /// turns physically instead of drifting away from the mouse.
         /// </summary>
-        private void TransportLook(Vector3 up)
+        private void TransportLook(Vector3 up, bool transportFrame)
         {
             if (!hasLook)
             {
@@ -530,7 +567,7 @@ namespace Galilego.Universe
                 lookDirection = initial.normalized;
                 hasLook = true;
             }
-            else if (lastUp.sqrMagnitude > 1e-20f)
+            else if (transportFrame && lastUp.sqrMagnitude > 1e-20f)
             {
                 Quaternion frameRotation = Quaternion.FromToRotation(lastUp, up);
                 if (frameRotation != Quaternion.identity)
@@ -659,9 +696,9 @@ namespace Galilego.Universe
                 return carriedUp;
             }
 
-            // Free-flight EVA: the same continuous vertical the collision capsule uses. Switching
-            // from the cabin's up straight to the planet radial moved the eye by ~1.5 m and
-            // rotated the view at the hatch — the "yank to the capsule's side".
+            // Free-flight EVA: the inertial camera/input vertical, inherited from the cabin at
+            // the hatch. It must not follow the vessel's rotation (the view would turn with a
+            // spinning craft); the collision body has its own hatch-aligned axis.
             if (Runner.PlayerMode == PlayerMode.EVA && Runner.TryGetEvaUpRender(out Vector3 evaUp))
             {
                 return evaUp;
