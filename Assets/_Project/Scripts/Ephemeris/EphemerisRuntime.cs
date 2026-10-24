@@ -33,6 +33,15 @@ namespace Galilego.Universe
             }
 
             EphemerisBaker.AttachFiles(sys, dir);
+
+            string mismatch = sys.DescribeEphemerisRailMismatch();
+            if (mismatch != null)
+            {
+                Debug.LogError("EphemerisRuntime: испечённая эфемерида не совпадает с рельсами на старте (" + mismatch +
+                    ") — файлы испечены старым пекарем или из других элементов. ПЕРЕПЕКИТЕ эфемериду в инспекторе StarSystemAuthoring, " +
+                    "иначе периоды и положения планет будут неверными.");
+            }
+
             return true;
         }
 

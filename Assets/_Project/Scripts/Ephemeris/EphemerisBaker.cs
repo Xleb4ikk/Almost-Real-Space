@@ -775,9 +775,17 @@ namespace Galilego.Universe
                 v[3 * i + 2] = bv.Z;
             }
 
-            // Hierarchy barycentric correction (leaf-first): parent position/velocity
-            // shift against the total child momentum — otherwise child rails would be
-            // computed around a stationary parent.
+            // Hierarchy barycentric correction (leaf-first). The rails give each child's
+            // offset relative to its parent (Jacobi: the child's subtree barycentre about
+            // the parent). To make the n-body reproduce those SAME relative orbits, the
+            // whole subtree (parent + all descendants) is shifted RIGIDLY so that its
+            // barycentre lands on the rail position of the parent. Shifting only the
+            // parent (as before) stretched every child's relative position and velocity
+            // by (1 + m_child/m_parent): wrong periods, wrong start distance.
+            // Child offsets are taken from the untouched rail copies, so a child's own
+            // earlier (leaf-first) shift does not leak into its parent's balance.
+            double[] railP = (double[])p.Clone();
+            double[] railV = (double[])v.Clone();
             for (int i = n - 1; i >= 0; i--)
             {
                 var b = bodies[i];
@@ -786,6 +794,7 @@ namespace Galilego.Universe
                     continue;
                 }
 
+                double mSub = m[i];
                 double sx = 0d;
                 double sy = 0d;
                 double sz = 0d;
@@ -801,20 +810,16 @@ namespace Galilego.Universe
                     }
 
                     double mc = SubtreeMass(bodies, m, n, c);
-                    sx += mc * (p[3 * c] - p[3 * i]);
-                    sy += mc * (p[3 * c + 1] - p[3 * i + 1]);
-                    sz += mc * (p[3 * c + 2] - p[3 * i + 2]);
-                    svx += mc * (v[3 * c] - v[3 * i]);
-                    svy += mc * (v[3 * c + 1] - v[3 * i + 1]);
-                    svz += mc * (v[3 * c + 2] - v[3 * i + 2]);
+                    mSub += mc;
+                    sx += mc * (railP[3 * c] - railP[3 * i]);
+                    sy += mc * (railP[3 * c + 1] - railP[3 * i + 1]);
+                    sz += mc * (railP[3 * c + 2] - railP[3 * i + 2]);
+                    svx += mc * (railV[3 * c] - railV[3 * i]);
+                    svy += mc * (railV[3 * c + 1] - railV[3 * i + 1]);
+                    svz += mc * (railV[3 * c + 2] - railV[3 * i + 2]);
                 }
 
-                p[3 * i] -= sx / m[i];
-                p[3 * i + 1] -= sy / m[i];
-                p[3 * i + 2] -= sz / m[i];
-                v[3 * i] -= svx / m[i];
-                v[3 * i + 1] -= svy / m[i];
-                v[3 * i + 2] -= svz / m[i];
+                ShiftSubtree(bodies, n, i, p, v, -sx / mSub, -sy / mSub, -sz / mSub, -svx / mSub, -svy / mSub, -svz / mSub);
             }
 
             int[] parentIdx = new int[n];
@@ -1161,6 +1166,28 @@ namespace Galilego.Universe
             }
 
             return -1;
+        }
+
+        /// <summary>Rigid shift of body idx and ALL its descendants (positions and velocities): relative vectors inside the subtree stay untouched.</summary>
+        private static void ShiftSubtree(
+            System.Collections.Generic.IReadOnlyList<OrbitingBody> bodies, int n, int idx, double[] p, double[] v,
+            double dx, double dy, double dz, double dvx, double dvy, double dvz)
+        {
+            p[3 * idx] += dx;
+            p[(3 * idx) + 1] += dy;
+            p[(3 * idx) + 2] += dz;
+            v[3 * idx] += dvx;
+            v[(3 * idx) + 1] += dvy;
+            v[(3 * idx) + 2] += dvz;
+            var b = bodies[idx];
+            for (int j = 0; j < b.Children.Count; j++)
+            {
+                int c = IndexOf(bodies, n, b.Children[j]);
+                if (c >= 0)
+                {
+                    ShiftSubtree(bodies, n, c, p, v, dx, dy, dz, dvx, dvy, dvz);
+                }
+            }
         }
 
         private static double SubtreeMass(System.Collections.Generic.IReadOnlyList<OrbitingBody> bodies, double[] m, int n, int idx)

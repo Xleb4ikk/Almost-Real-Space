@@ -241,6 +241,15 @@ namespace Galilego.Universe
                     ", интервал [" + Baked.T0Seconds + ", " + Baked.EndSeconds + "]).",
                     timeSeconds, Name);
             }
+            EvaluateKeplerOffset(timeSeconds, out position, out velocity);
+        }
+
+        /// <summary>
+        /// Pure Keplerian rail offset relative to the parent — ignores Baked. Public so a loaded ephemeris can be
+        /// sanity-checked against the rails it was baked from (StarSystem.DescribeEphemerisRailMismatch).
+        /// </summary>
+        public void EvaluateKeplerOffset(double timeSeconds, out Vector3d position, out Vector3d velocity)
+        {
             // The rail must be a closed Keplerian orbit. No silent clamping:
             // a hyperbolic orbit quietly turned into an ellipse would mask a bug.
             if (!(SemiMajorAxis > 0d) || !(Eccentricity >= 0d) || !(Eccentricity < 1d))

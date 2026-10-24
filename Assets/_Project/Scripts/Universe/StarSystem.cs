@@ -594,6 +594,59 @@ namespace Galilego.Universe
         /// (innermost) match: if the ship is inside both a planet's SOI and its moon's
         /// SOI, the moon is returned.
         /// </summary>
+        /// <summary>
+        /// Sanity check of an attached ephemeris against the rails it was baked from: at the bake start each body's
+        /// offset from its parent must match the Keplerian rail, except for the planet-centre-vs-barycentre
+        /// displacement caused by its own moons (allowed explicitly) and a 1e-4 relative slack.
+        /// A mismatch means the files were baked by an older baker (before the rigid-subtree initial-condition fix:
+        /// wrong periods, millions of km of drift) or from different elements: re-bake. Returns null when consistent.
+        /// </summary>
+        public string DescribeEphemerisRailMismatch(double relativeTolerance = 1e-4d)
+        {
+            System.Text.StringBuilder report = null;
+            for (int i = 1; i < allBodies.Count; i++)
+            {
+                OrbitingBody body = allBodies[i];
+                BakedEphemeris baked = body.Baked;
+                if (baked == null || Math.Abs(baked.T0Seconds) > 1d)
+                {
+                    continue;
+                }
+
+                if (!baked.TryEvaluate(baked.T0Seconds, out Vector3d bakedOffset, out _))
+                {
+                    continue;
+                }
+
+                body.EvaluateKeplerOffset(baked.T0Seconds, out Vector3d railOffset, out _);
+
+                // Own moons displace the planet centre from the subsystem barycentre by up to (μ_moons/μ_subtree)·a_moon.
+                double ownMu = body.ResolveStandardGravitationalParameter();
+                double allowance = 0d;
+                for (int c = 0; c < body.Children.Count; c++)
+                {
+                    OrbitingBody child = body.Children[c];
+                    double childMu = child.ResolveSubtreeStandardGravitationalParameter();
+                    allowance += (childMu / (ownMu + childMu)) * child.SemiMajorAxis * (1d + child.Eccentricity);
+                }
+
+                allowance += relativeTolerance * railOffset.Magnitude;
+                double difference = (bakedOffset - railOffset).Magnitude;
+                if (difference > allowance)
+                {
+                    if (report == null)
+                    {
+                        report = new System.Text.StringBuilder();
+                    }
+
+                    report.Append(body.Name).Append(": ").Append((difference / 1e3).ToString("N0")).Append(" км (допуск ")
+                        .Append((allowance / 1e3).ToString("N0")).Append(" км); ");
+                }
+            }
+
+            return report?.ToString();
+        }
+
         public OrbitingBody FindDominantBody(Vector3d shipPosition, double timeSeconds)
         {
             OrbitingBody best = root;
