@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Galilego.Core;
+using Galilego.Universe;
 
 namespace Galilego.Spacecraft
 {
@@ -22,10 +23,22 @@ namespace Galilego.Spacecraft
 
         // Separate tolerances per quantity: position in meters, velocity in m/s,
         // mass in kg — one shared atol for all three would be physically meaningless.
-        public double PositionAbsoluteTolerance = 1e-2;
-        public double VelocityAbsoluteTolerance = 1e-5;
+        // Defaults tightened (were 1e-2 m / 1e-5 m/s / 1e-10 on absolute magnitudes): with ToleranceFrameSystem set the
+        // relative part is measured against the dominant body, a 400 km LEO coasting for a day drifts ~0.6 m
+        // (was ~60 m). At 1x a chunk is a single step regardless of tolerance, so this costs nothing in real time.
+        public double PositionAbsoluteTolerance = 1e-4;
+        public double VelocityAbsoluteTolerance = 1e-8;
         public double MassAbsoluteTolerance = 1e-4;
-        public double RelativeTolerance = 1e-10;
+        public double RelativeTolerance = 1e-11;
+
+        /// <summary>
+        /// Optional: when set, the integrator's error norm is scaled by distance/speed relative to the dominant body
+        /// instead of the world-frame magnitudes (see ToleranceReference). null = old absolute scaling (debris, tests).
+        /// </summary>
+        public StarSystem ToleranceFrameSystem;
+
+        /// <summary>Calls shorter than this are a single step anyway; the dominant-body lookup is skipped.</summary>
+        private const double MinSpanForToleranceFrameSeconds = 1d;
 
         /// <summary>
         /// Snapshot of the total torque (N·m, body frame) of the last substage of the last
@@ -73,6 +86,14 @@ namespace Galilego.Spacecraft
                 Mass = ship.Mass
             };
 
+            ToleranceReference? toleranceReference = null;
+            if (ToleranceFrameSystem != null && dt >= MinSpanForToleranceFrameSeconds && dt <= ToleranceReference.MaxSpanSeconds)
+            {
+                OrbitingBody dominant = ToleranceFrameSystem.FindDominantBody(ship.Position, currentTimeSeconds);
+                ToleranceFrameSystem.EvaluateBodyState(dominant, currentTimeSeconds, out Vector3d bodyPosition, out Vector3d bodyVelocity);
+                toleranceReference = new ToleranceReference(bodyPosition, bodyVelocity, currentTimeSeconds);
+            }
+
             SpacecraftIntegrationResult result = SpacecraftOrbitIntegrator.StepForward(
                 initialState,
                 currentTimeSeconds,
@@ -82,7 +103,8 @@ namespace Galilego.Spacecraft
                 VelocityAbsoluteTolerance,
                 MassAbsoluteTolerance,
                 RelativeTolerance,
-                segments);
+                segments,
+                toleranceReference);
 
             ship.Position = result.State.Position;
             ship.Velocity = result.State.Velocity;

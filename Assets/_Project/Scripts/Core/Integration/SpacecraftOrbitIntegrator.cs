@@ -14,6 +14,40 @@ namespace Galilego.Core
     /// absolute tolerance — metres, m/s and kilograms have different scales, so a
     /// single error number for them is physically meaningless.
     /// </summary>
+    /// <summary>
+    /// Frame of the dominant body, used ONLY to scale the step-control error norm (never the dynamics).
+    /// The integrator state lives in the world frame (1.5e11 m from the star at 1 AU), so rtol·|position| became
+    /// a ~15 m tolerance for an orbit around a planet whose own radius is 7e6 m. Scaling by the distance and
+    /// speed relative to the dominant body makes rtol mean what it says locally. The body is extrapolated
+    /// linearly from the chunk start (fine for a scale factor over a few hours); a floating-point floor keeps the
+    /// scale above the rounding noise of far-from-origin coordinates (otherwise a ship next to Neptune would
+    /// get its steps rejected forever).
+    /// </summary>
+    public readonly struct ToleranceReference
+    {
+        /// <summary>Longer calls fall back to the absolute (world-frame) scale: linear extrapolation is only valid for short spans.</summary>
+        public const double MaxSpanSeconds = 7200d;
+
+        /// <summary>16 · machine epsilon, applied to the absolute magnitudes of position and velocity.</summary>
+        public const double FloatingPointFloor = 16d * 2.220446049250313e-16;
+
+        public readonly Vector3d Position;
+        public readonly Vector3d Velocity;
+        public readonly double TimeSeconds;
+
+        public ToleranceReference(Vector3d position, Vector3d velocity, double timeSeconds)
+        {
+            Position = position;
+            Velocity = velocity;
+            TimeSeconds = timeSeconds;
+        }
+
+        public Vector3d PositionAt(double timeSeconds)
+        {
+            return Position + (Velocity * (timeSeconds - TimeSeconds));
+        }
+    }
+
     public static class SpacecraftOrbitIntegrator
     {
         /// <summary>
@@ -92,7 +126,8 @@ namespace Galilego.Core
             double velocityAbsoluteTolerance,
             double massAbsoluteTolerance,
             double relativeTolerance,
-            System.Collections.Generic.IList<DenseSegment> segments = null)
+            System.Collections.Generic.IList<DenseSegment> segments = null,
+            ToleranceReference? toleranceReference = null)
         {
             if (derivativeProvider == null)
                 throw new ArgumentNullException(nameof(derivativeProvider));
@@ -122,6 +157,8 @@ namespace Galilego.Core
             double remainingDt = Math.Abs(targetDt);
             double direction = Math.Sign(targetDt);
             double dt = Math.Min(remainingDt, MaxStepSize);
+            bool useReference = toleranceReference.HasValue && remainingDt <= ToleranceReference.MaxSpanSeconds;
+            ToleranceReference reference = useReference ? toleranceReference.Value : default;
 
             while (remainingDt > MinStepSize)
             {
@@ -147,8 +184,26 @@ namespace Galilego.Core
 
                 // Separate error scaling: each physical quantity has its own
                 // absolute tolerance; the relative tolerance is shared.
-                double scalePos = positionAbsoluteTolerance + relativeTolerance * Math.Max(current.Position.Magnitude, fifth.Position.Magnitude);
-                double scaleVel = velocityAbsoluteTolerance + relativeTolerance * Math.Max(current.Velocity.Magnitude, fifth.Velocity.Magnitude);
+                double scalePos;
+                double scaleVel;
+                if (useReference)
+                {
+                    // Local scale: distance/speed relative to the dominant body + a rounding-noise floor.
+                    Vector3d refNow = reference.PositionAt(time);
+                    Vector3d refNext = reference.PositionAt(time + (dt * direction));
+                    scalePos = positionAbsoluteTolerance
+                        + (relativeTolerance * Math.Max((current.Position - refNow).Magnitude, (fifth.Position - refNext).Magnitude))
+                        + (ToleranceReference.FloatingPointFloor * Math.Max(current.Position.Magnitude, fifth.Position.Magnitude));
+                    scaleVel = velocityAbsoluteTolerance
+                        + (relativeTolerance * Math.Max((current.Velocity - reference.Velocity).Magnitude, (fifth.Velocity - reference.Velocity).Magnitude))
+                        + (ToleranceReference.FloatingPointFloor * Math.Max(current.Velocity.Magnitude, fifth.Velocity.Magnitude));
+                }
+                else
+                {
+                    scalePos = positionAbsoluteTolerance + relativeTolerance * Math.Max(current.Position.Magnitude, fifth.Position.Magnitude);
+                    scaleVel = velocityAbsoluteTolerance + relativeTolerance * Math.Max(current.Velocity.Magnitude, fifth.Velocity.Magnitude);
+                }
+
                 double scaleMass = massAbsoluteTolerance + relativeTolerance * Math.Max(Math.Abs(current.Mass), Math.Abs(fifth.Mass));
                 double normalizedError = Math.Max(errorPos / scalePos, Math.Max(errorVel / scaleVel, errorMass / scaleMass));
 
@@ -241,13 +296,14 @@ namespace Galilego.Core
             double velocityAbsoluteTolerance,
             double massAbsoluteTolerance,
             double relativeTolerance,
-            System.Collections.Generic.IList<DenseSegment> segments = null)
+            System.Collections.Generic.IList<DenseSegment> segments = null,
+            ToleranceReference? toleranceReference = null)
         {
             double dt = targetTimeSeconds - currentTimeSeconds;
             return StepForward(
                 initialState, currentTimeSeconds, dt, derivativeProvider,
                 positionAbsoluteTolerance, velocityAbsoluteTolerance,
-                massAbsoluteTolerance, relativeTolerance, segments);
+                massAbsoluteTolerance, relativeTolerance, segments, toleranceReference);
         }
 
         /// <summary>

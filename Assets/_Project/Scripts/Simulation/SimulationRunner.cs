@@ -525,7 +525,7 @@ namespace Galilego.Universe
             bool baked = EphemerisRuntime.AttachFromStreamingAssets(SystemState);
 
             var warp = new WarpController();
-            physics = new SpacecraftPhysics();
+            physics = new SpacecraftPhysics { ToleranceFrameSystem = SystemState };
             physics.Sources.Add(new CachedGravitySource(SystemState));
             mainThrustSource = null;
             if (MainThrustNewtons > 0d)
