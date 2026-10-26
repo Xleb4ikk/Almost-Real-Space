@@ -232,6 +232,9 @@ internal static partial class P1bTests
             new P1bCase("Test904_NoSubQuadSteps", Test904_NoSubQuadSteps, false),
             new P1bCase("Test400_StageCoreConformance", Test400_StageCoreConformance, false),
             new P1bCase("Test401_StagePropulsionFlight", Test401_StagePropulsionFlight, false),
+            new P1bCase("Test500_IntegratorStudyFast", Test500_IntegratorStudyFast, false),
+            new P1bCase("Test501_IntegratorStudySlow", Test501_IntegratorStudySlow, true),
+            new P1bCase("Test504_TaylorReference", Test504_TaylorReference, true),
         };
     }
 }
