@@ -1,85 +1,87 @@
-# Карта стенда
+﻿# РљР°СЂС‚Р° СЃС‚РµРЅРґР°
 
-Весь код стенда — `partial class P1bTests`, разложенный по папкам. Какой файл за что
-отвечает:
+Р’РµСЃСЊ РєРѕРґ СЃС‚РµРЅРґР° вЂ” `partial class P1bTests`, СЂР°Р·Р»РѕР¶РµРЅРЅС‹Р№ РїРѕ РїР°РїРєР°Рј. РљР°РєРѕР№ С„Р°Р№Р» Р·Р° С‡С‚Рѕ
+РѕС‚РІРµС‡Р°РµС‚:
 
 ## `core/`
 
-`StudyConstants.cs` — `StudyYear`, `StudyAU`, `StudyShipT0`; общие типы
+`StudyConstants.cs` вЂ” `StudyYear`, `StudyAU`, `StudyShipT0`; РѕР±С‰РёРµ С‚РёРїС‹
 `StudyNBody`, `StudyRefResult`, `StudySample`.
 
 ## `fixtures/`
 
-`StudyFixtures.cs` — `StudyBody`, `StudyRealSolar7`, `StudyCustomSystem`,
-`StudyMakeNBody`, `StudyShiftSubtree`. Здесь задаются обе системы и их начальные
-состояния (включая барицентрическую поправку поддеревьев, как в `EphemerisBaker`).
+`StudyFixtures.cs` вЂ” `StudyBody`, `StudyRealSolar7`, `StudyCustomSystem`,
+`StudyMakeNBody`, `StudyShiftSubtree`. Р—РґРµСЃСЊ Р·Р°РґР°СЋС‚СЃСЏ РѕР±Рµ СЃРёСЃС‚РµРјС‹ Рё РёС… РЅР°С‡Р°Р»СЊРЅС‹Рµ
+СЃРѕСЃС‚РѕСЏРЅРёСЏ (РІРєР»СЋС‡Р°СЏ Р±Р°СЂРёС†РµРЅС‚СЂРёС‡РµСЃРєСѓСЋ РїРѕРїСЂР°РІРєСѓ РїРѕРґРґРµСЂРµРІСЊРµРІ, РєР°Рє РІ `EphemerisBaker`).
 
 ## `methods/`
 
-По одному файлу на метод/семейство:
+РџРѕ РѕРґРЅРѕРјСѓ С„Р°Р№Р»Сѓ РЅР° РјРµС‚РѕРґ/СЃРµРјРµР№СЃС‚РІРѕ:
 
-| Файл | Что внутри |
+| Р¤Р°Р№Р» | Р§С‚Рѕ РІРЅСѓС‚СЂРё |
 |---|---|
-| `Rk4.cs` | `StudyRk4Step` — RK4 |
-| `Dopri5.cs` | `StudyDopri5Fixed` — DOPRI5, фиксированный шаг |
-| `Pefrl.cs` | `StudyPefrl` — PEFRL |
-| `Yoshida6.cs` | веса Ёсиды, `StudyY6` и `StudyY6C` (compensated) |
-| `Dop853Tableau.cs` | таблица DOP853 (Hairer/Wanner) |
+| `Rk4.cs` | `StudyRk4Step` вЂ” RK4 |
+| `Dopri5.cs` | `StudyDopri5Fixed` вЂ” DOPRI5, С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹Р№ С€Р°Рі |
+| `Pefrl.cs` | `StudyPefrl` вЂ” PEFRL |
+| `Yoshida6.cs` | РІРµСЃР° РЃСЃРёРґС‹, `StudyY6` Рё `StudyY6C` (compensated) |
+| `Dop853Tableau.cs` | С‚Р°Р±Р»РёС†Р° DOP853 (Hairer/Wanner) |
 | `Dop853Ship.cs` | `StudyShipDop853`, `StudyShipDop853Local` |
-| `FixedShip.cs` | `StudyShipFixed`, `StudyShipFixedLocal` (Y6/PEFRL для корабля) |
+| `FixedShip.cs` | `StudyShipFixed`, `StudyShipFixedLocal` (Y6/PEFRL РґР»СЏ РєРѕСЂР°Р±Р»СЏ) |
 | `WisdomHolman.cs` | `StudyKeplerDrift`, `StudyWhStep*`, `StudyShipWh*` |
-| `GamePath.cs` | `StudyShipGame`, `StudyCloneBakedSystem` — реальный игровой путь |
-| `StepDispatch.cs` | `StudyStep` — диспетчер методов по имени |
+| `GamePath.cs` | `StudyShipGame`, `StudyCloneBakedSystem` вЂ” СЂРµР°Р»СЊРЅС‹Р№ РёРіСЂРѕРІРѕР№ РїСѓС‚СЊ |
+| `StepDispatch.cs` | `StudyStep` вЂ” РґРёСЃРїРµС‚С‡РµСЂ РјРµС‚РѕРґРѕРІ РїРѕ РёРјРµРЅРё |
 
 ## `references/`
 
-| Файл | Что внутри |
+| Р¤Р°Р№Р» | Р§С‚Рѕ РІРЅСѓС‚СЂРё |
 |---|---|
 | `NBodyReference.cs` | `StudyAcc`, `StudyAccC` (compensated), `StudyAdd` |
 | `RefRun.cs` | `StudyRefRun`, `StudyRel`, `StudyEnergy` |
-| `DoubleDouble.cs` | `StudyDd`, `StudyDd3`, `StudyForceDd` — dd-арифметика |
+| `DoubleDouble.cs` | `StudyDd`, `StudyDd3`, `StudyForceDd` вЂ” dd-Р°СЂРёС„РјРµС‚РёРєР° |
 | `ShipReferences.cs` | `StudyShipRefA`, `StudyShipRefLocal`, `StudyShipY6CDd` |
 
 ## `scenarios/`
 
-| Файл | Что внутри |
+| Р¤Р°Р№Р» | Р§С‚Рѕ РІРЅСѓС‚СЂРё |
 |---|---|
 | `Planets.cs` | `StudySystemTable`, `StudyPlanetTable`, `StudyBake`, `StudyBakeStep` |
 | `Ships.cs` | `StudyShipOrbit`, `StudyLocalAcceleration*`, `StudyShipTable`, `PrintShipRow` |
-| `Events.cs` | `StudyLiveCost`, `StudyEvent`, `StudyShipFixedStep` — warp/событие |
+| `Events.cs` | `StudyLiveCost`, `StudyEvent`, `StudyShipFixedStep` вЂ” warp/СЃРѕР±С‹С‚РёРµ |
 | `ReferenceCases.cs` | `StudyReferenceCase`, `StudyKeplerReference`, `StudyTimeReversal`, `StudyPlanetReference` |
+| `KnownProblems.cs` | `Test505_KnownProblems` (Lagrange/figure-eight/Arenstorf, double+dd) и `Test506_KnownConvergence` (свип K×допуск) |
 
 ## `tests/`
 
-| Файл | Тест |
+| Р¤Р°Р№Р» | РўРµСЃС‚ |
 |---|---|
-| `Test500.cs` | `Test500_IntegratorStudyFast` — планеты 10 лет, 6 сценариев корабля, бейк, warp |
-| `Test501.cs` | `Test501_IntegratorStudySlow` — 100 лет |
-| `Test503.cs` | `Test503_ReferenceConvergence` — не в исходном реестре, доступен как `--reference` |
+| `Test500.cs` | `Test500_IntegratorStudyFast` вЂ” РїР»Р°РЅРµС‚С‹ 10 Р»РµС‚, 6 СЃС†РµРЅР°СЂРёРµРІ РєРѕСЂР°Р±Р»СЏ, Р±РµР№Рє, warp |
+| `Test501.cs` | `Test501_IntegratorStudySlow` вЂ” 100 Р»РµС‚ |
+| `Test503.cs` | `Test503_ReferenceConvergence` вЂ” РЅРµ РІ РёСЃС…РѕРґРЅРѕРј СЂРµРµСЃС‚СЂРµ, РґРѕСЃС‚СѓРїРµРЅ РєР°Рє `--reference` |
 
 ## `taylor/`
 
-`TaylorReferenceTests.cs` — `Test504_TaylorReference` (Taylor vs Y6C/Y6/RK4/DOP853).
+`TaylorReferenceTests.cs` вЂ” `Test504_TaylorReference` (Taylor vs Y6C/Y6/RK4/DOP853).
 
 ## `TaylorVsY6/`
 
-| Файл | Что внутри |
+| Р¤Р°Р№Р» | Р§С‚Рѕ РІРЅСѓС‚СЂРё |
 |---|---|
-| `Compare.cs` | CLI-режимы `--real/--custom/--ships/--kepler/--y6c/--dd-*`; Taylor vs Y6 |
-| `TaylorDd.cs` | dd-джеты: старая реализация, арена/in-place (`DdView`/`DdArena`), self-check, сравнение реализаций |
+| `Compare.cs` | CLI-СЂРµР¶РёРјС‹ `--real/--custom/--ships/--kepler/--y6c/--dd-*`; Taylor vs Y6 |
+| `TaylorDd.cs` | dd-РґР¶РµС‚С‹: СЃС‚Р°СЂР°СЏ СЂРµР°Р»РёР·Р°С†РёСЏ, Р°СЂРµРЅР°/in-place (`DdView`/`DdArena`), self-check, СЃСЂР°РІРЅРµРЅРёРµ СЂРµР°Р»РёР·Р°С†РёР№ |
 
-## Как добавить новый метод/сценарий
+## РљР°Рє РґРѕР±Р°РІРёС‚СЊ РЅРѕРІС‹Р№ РјРµС‚РѕРґ/СЃС†РµРЅР°СЂРёР№
 
-1. Метод — новый `.cs` в `methods/`, любой приватный `static`-метод в
-   `partial class P1bTests`. Сборка подхватывает `Study/**/*.cs` автоматически.
-2. Эталон — в `references/`.
-3. Сценарий — в `scenarios/`; вызвать из `tests/Test500.cs` или добавить новый тест
-   и строку в `Runner.cs`.
+1. РњРµС‚РѕРґ вЂ” РЅРѕРІС‹Р№ `.cs` РІ `methods/`, Р»СЋР±РѕР№ РїСЂРёРІР°С‚РЅС‹Р№ `static`-РјРµС‚РѕРґ РІ
+   `partial class P1bTests`. РЎР±РѕСЂРєР° РїРѕРґС…РІР°С‚С‹РІР°РµС‚ `Study/**/*.cs` Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё.
+2. Р­С‚Р°Р»РѕРЅ вЂ” РІ `references/`.
+3. РЎС†РµРЅР°СЂРёР№ вЂ” РІ `scenarios/`; РІС‹Р·РІР°С‚СЊ РёР· `tests/Test500.cs` РёР»Рё РґРѕР±Р°РІРёС‚СЊ РЅРѕРІС‹Р№ С‚РµСЃС‚
+   Рё СЃС‚СЂРѕРєСѓ РІ `Runner.cs`.
 
-## Движок
+## Р”РІРёР¶РѕРє
 
-`Assets/_Project/Scripts/` — 114 файлов настоящего кода проекта (не копии).
-Ядро интегратора: `Core/Integration`, `Spacecraft/Dynamics`, `Simulation/Events`,
-`Simulation/Warp`, `Ephemeris`, `Universe`, `Core/Orbits`, `Core/Math`. Остальное —
-compile-closure (террейн, декор, flight, solver). Менять их в пакете можно, но это
-уже не «стенд», а реальный движок.
+`Assets/_Project/Scripts/` вЂ” 114 С„Р°Р№Р»РѕРІ РЅР°СЃС‚РѕСЏС‰РµРіРѕ РєРѕРґР° РїСЂРѕРµРєС‚Р° (РЅРµ РєРѕРїРёРё).
+РЇРґСЂРѕ РёРЅС‚РµРіСЂР°С‚РѕСЂР°: `Core/Integration`, `Spacecraft/Dynamics`, `Simulation/Events`,
+`Simulation/Warp`, `Ephemeris`, `Universe`, `Core/Orbits`, `Core/Math`. РћСЃС‚Р°Р»СЊРЅРѕРµ вЂ”
+compile-closure (С‚РµСЂСЂРµР№РЅ, РґРµРєРѕСЂ, flight, solver). РњРµРЅСЏС‚СЊ РёС… РІ РїР°РєРµС‚Рµ РјРѕР¶РЅРѕ, РЅРѕ СЌС‚Рѕ
+СѓР¶Рµ РЅРµ В«СЃС‚РµРЅРґВ», Р° СЂРµР°Р»СЊРЅС‹Р№ РґРІРёР¶РѕРє.
+
