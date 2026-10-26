@@ -1,0 +1,140 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);UNITY_5_3_OR_NEWER</DefineConstants>
+    <AssemblyName>TaylorVsY6</AssemblyName>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Compare.cs" />
+    <Compile Include="TaylorDd.cs" />
+    <Compile Include="CountingSource.cs" />
+    <Compile Include="..\..\UnityStubs.cs" />
+    <Compile Include="..\core\**\*.cs" />
+    <Compile Include="..\fixtures\**\*.cs" />
+    <Compile Include="..\methods\**\*.cs" />
+    <Compile Include="..\references\**\*.cs" />
+    <Compile Include="..\scenarios\**\*.cs" />
+    <Compile Include="..\taylor\**\*.cs" />
+    <Compile Include="..\..\Reference\**\*.cs" />    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Decor\DecorExclusionCore.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElements.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElementsData.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Math\Vector3d.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\PhysicsSolver.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\DOPRI5Coefficients.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\OrbitIntegrator.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftIntegrationState.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\DenseSegment.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Math\KahanAccumulator.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Math\Matrix3x3.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Math\QuaternionD.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Attitude\AttitudePhysics.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Attitude\ReactionControl.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Flight\AttitudeMath.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Flight\FlightHardware.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Flight\FlightThrustSource.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Flight\VesselFlightModel.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Assembly\Parts.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Solver\RigidAssemblySolver.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Solver\ContactGround.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Solver\ConvexHull.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Solver\SiteColliders.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\ContactZone\SiteFrame.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\ContactZone\ContactZoneGate.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\ContactZone\ZoneIslands.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Player\IPlayerSupport.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Player\PlayerSurfaceController.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Assembly\PartDefinition.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Trajectory\History\TrajectoryHistory.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Trajectory\Transfers\LambertSolver.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Trajectory\Prediction\KeplerPredictor.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Trajectory\Transfers\Porkchop.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftIntegrationResult.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\IntegrationResult.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Orbits\CelestialBody.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftOrbitIntegrator.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalBasis.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Trajectory\History\TrajectoryBuffer.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Trajectory\Display\TrajectoryRenderer.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Universe\OrbitingBody.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Ephemeris\BakedEphemeris.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Ephemeris\EphemerisBaker.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Ephemeris\EphemerisRangeException.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Universe\StarSystem.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Universe\SystemBlueprint.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Trajectory\Prediction\KeplerMath.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Sky\AtmosphereProfile.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Sky\AtmosphereOptics.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Universe\ExampleSystemPresets.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Universe\AstroFrame.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Terrain\ITerrainModel.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Terrain\HeightfieldTerrain.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Water\WaterQuery.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Terrain\TerrainNoise.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Terrain\TerrainModifier.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Terrain\TerrainProfile.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Terrain\TerrainProfileAsset.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Sky\AtmosphereProfileAsset.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Clouds\CloudProfile.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Clouds\CloudProfileAsset.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Decor\GroundDecorProfile.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Decor\GroundDecorProfileAsset.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Decor\GroundDecorPlacement.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Decor\GroundDecorCollisionRegistry.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Terrain\TerrainPalette.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Terrain\CubeSphere.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\SurfaceMotion.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Spacecraft.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\SpacecraftPhysics.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\IDynamicsSource.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\DynamicsContribution.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\GravitySource.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\CachedGravitySource.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\ThrustSource.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\StageThrustSource.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Propulsion\StageBurnCore.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Propulsion\StagePropulsion.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Propellants\Propellants.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Building\DeltaVModel.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Building\EngineSpecs.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Events\Detectors\StageDepletionDetector.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\DragSource.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Events\EventDirection.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Events\EventDetectors.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Events\EventOccurrence.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Events\Detectors\AltitudeCrossingDetector.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Events\Detectors\SoiChangeDetector.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Events\TimedEvent.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Events\EventDrivenPropagator.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Warp\WarpController.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Warp\WarpPlanner.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Warp\LongWarpDriver.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Events\Detectors\PropellantDepletionDetector.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Trajectory\Maneuvers\ManeuverEvaluator.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Trajectory\Maneuvers\TrajectoryValidator.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Spacecraft\Assembly\BreakupModel.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Events\EventReactions.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\VesselStep.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Events\Detectors\DetectionGrain.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Simulation\Warp\FrameBudgetScheduler.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Debris\DebrisPool.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Views\BodyTransformRegistry.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Universe\BodyAuthoring.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Universe\StarSystemAuthoring.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Ephemeris\EphemerisRuntime.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Sky\SkyPhysics.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Player\PlayerInput.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Universe\FloatingOrigin.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Sky\StarColorUtil.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Sky\StarSurfaceTexture.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Player\PlayerState.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Diagnostics\CheatGuiSkin.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Surface\SurfaceFrameMath.cs" />
+  </ItemGroup>
+</Project>
+
