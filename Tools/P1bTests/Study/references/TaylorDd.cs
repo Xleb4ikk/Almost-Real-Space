@@ -138,6 +138,17 @@ internal static partial class P1bTests
             return value;
         }
 
+        public StudyDd EvalDd(StudyDd tau)
+        {
+            StudyDd value = StudyDd.Zero;
+            for (int n = Order; n >= 0; n--)
+            {
+                value = StudyDd.Add(StudyDd.Mul(value, tau), C[n]);
+            }
+
+            return value;
+        }
+
         public static DdJet operator +(DdJet a, DdJet b) => Add(a, b);
         public static DdJet operator -(DdJet a, DdJet b) => Sub(a, b);
         public static DdJet operator *(DdJet a, DdJet b) => Mul(a, b);

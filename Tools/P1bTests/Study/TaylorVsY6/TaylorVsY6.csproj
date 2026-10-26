@@ -12,14 +12,13 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Compare.cs" />
-    <Compile Include="TaylorDd.cs" />
     <Compile Include="CountingSource.cs" />
     <Compile Include="..\..\UnityStubs.cs" />
     <Compile Include="..\core\**\*.cs" />
     <Compile Include="..\fixtures\**\*.cs" />
     <Compile Include="..\methods\**\*.cs" />
     <Compile Include="..\references\**\*.cs" />
-    <Compile Include="..\scenarios\**\*.cs" />
+    <Compile Include="..\scenarios\**\*.cs" Exclude="..\scenarios\KnownProblems.cs" />
     <Compile Include="..\taylor\**\*.cs" />
     <Compile Include="..\..\Reference\**\*.cs" />    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Decor\DecorExclusionCore.cs" />
     <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElements.cs" />
@@ -137,4 +136,6 @@
     <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Surface\SurfaceFrameMath.cs" />
   </ItemGroup>
 </Project>
+
+
 
