@@ -90,6 +90,42 @@ internal static partial class P1bTests
         var p0 = bp + relP;
         var v0 = bv + relV;
         real.EvaluateBodyState(body, T, out Vector3d bpT, out _);
+
+        GoldCp gYear = null;
+        Task<TaylorShipDdResult> yearTask = null;
+        Task<TaylorShipDdResult> yearTightTask = null;
+        string goldenYearPath = Path.Combine("Study", "taylor", "golden", "golden_real_1y_hi.json");
+        if (File.Exists(goldenYearPath))
+        {
+            GoldFile goldenYear = JsonSerializer.Deserialize<GoldFile>(File.ReadAllText(goldenYearPath));
+            foreach (GoldCp cp in goldenYear.Checkpoints)
+            {
+                if (Math.Abs(cp.Days - 365d) < 1e-9d) gYear = cp;
+            }
+
+            Check(gYear != null, "real golden 1y checkpoint", goldenYearPath);
+            if (gYear != null)
+            {
+                StarSystem realYear = StudyRealSolar7();
+                StudyNBody nbYear = StudyMakeNBody(realYear);
+                StudyBake("Dd budget 1y", realYear, nbYear, 1.1d);
+                OrbitingBody bodyYear = realYear.AllBodies[1];
+                double muYear = bodyYear.ResolveStandardGravitationalParameter();
+                realYear.EvaluateBodyState(bodyYear, t0, out Vector3d bpYear, out Vector3d bvYear);
+                StudyShipOrbit(6.771e6d, 4.6371e7d, muYear, out Vector3d relPYear, out Vector3d relVYear);
+                var p0Year = bpYear + relPYear;
+                var v0Year = bvYear + relVYear;
+                yearTask = Task.Run(() => TaylorShip.RunDdSeconds(
+                    realYear, p0Year, v0Year, t0, 365d * 86400d, 24, 1e-9d, 1e-12d, 3600d, 1e-3d));
+                yearTightTask = Task.Run(() => TaylorShip.RunDdSeconds(
+                    realYear, p0Year, v0Year, t0, 365d * 86400d, 24, 1e-12d, 1e-15d, 1800d, 1e-3d));
+            }
+        }
+        else
+        {
+            Console.WriteLine("1y golden not present; run Test518 and mp_golden_real.py --checkpoints 365.");
+        }
+
         var refFine = StudyShipRefLocal(real, 1, relP, relV, t0, days, 0.625d);
         var refFiner = StudyShipRefLocal(real, 1, relP, relV, t0, days, 0.3125d);
         double refSelf = (refFine.p - refFiner.p).Magnitude;
@@ -186,58 +222,22 @@ internal static partial class P1bTests
         Check(ddTightV < 1e-9d, "dd 30d tight absolute dv", ddTightV.ToString("E2", CultureInfo.InvariantCulture));
         Check(double.IsFinite(budget) && double.IsFinite(budgetV), "double-vs-dd finite", "budget");
 
-        string goldenYearPath = Path.Combine("Study", "taylor", "golden", "golden_real_1y_hi.json");
-        if (File.Exists(goldenYearPath))
+        if (gYear != null)
         {
-            GoldFile goldenYear = JsonSerializer.Deserialize<GoldFile>(File.ReadAllText(goldenYearPath));
-            GoldCp gYear = null;
-            foreach (GoldCp cp in goldenYear.Checkpoints)
-            {
-                if (Math.Abs(cp.Days - 365d) < 1e-9d) gYear = cp;
-            }
-
-            Check(gYear != null, "real golden 1y checkpoint", goldenYearPath);
-            if (gYear != null)
-            {
-                StarSystem realYear = StudyRealSolar7();
-                StudyNBody nbYear = StudyMakeNBody(realYear);
-                StudyBake("Dd budget 1y", realYear, nbYear, 1.1d);
-                OrbitingBody bodyYear = realYear.AllBodies[1];
-                double muYear = bodyYear.ResolveStandardGravitationalParameter();
-                realYear.EvaluateBodyState(bodyYear, t0, out Vector3d bpYear, out Vector3d bvYear);
-                StudyShipOrbit(6.771e6d, 4.6371e7d, muYear, out Vector3d relPYear, out Vector3d relVYear);
-                var p0Year = bpYear + relPYear;
-                var v0Year = bvYear + relVYear;
-                TaylorShipDdResult ddYear = null;
-                TaylorShipDdResult ddYearTight = null;
-                Parallel.Invoke(
-                    () =>
-                    {
-                        ddYear = TaylorShip.RunDdSeconds(
-                            realYear, p0Year, v0Year, t0, 365d * 86400d, 24, 1e-9d, 1e-12d, 3600d, 1e-3d);
-                    },
-                    () =>
-                    {
-                        ddYearTight = TaylorShip.RunDdSeconds(
-                            realYear, p0Year, v0Year, t0, 365d * 86400d, 24, 1e-12d, 1e-15d, 1800d, 1e-3d);
-                    });
-                double ddYearP = DdGoldErr(ddYear, gYear.P);
-                double ddYearV = DdGoldErrV(ddYear, gYear.V);
-                double ddYearTightP = DdGoldErr(ddYearTight, gYear.P);
-                double ddYearTightV = DdGoldErrV(ddYearTight, gYear.V);
-                Console.WriteLine(string.Format(
-                    CultureInfo.InvariantCulture,
-                    "1 y: dd={0:E2}/{1:E2} ({2} steps), tight dd={3:E2}/{4:E2} ({5} steps), golden=K28 tol 1e-20 dps 40",
-                    ddYearP, ddYearV, ddYear.Steps, ddYearTightP, ddYearTightV, ddYearTight.Steps));
-                Check(ddYearP < 1e-1d, "dd 1y absolute dp", ddYearP.ToString("E2", CultureInfo.InvariantCulture));
-                Check(ddYearV < 1e-5d, "dd 1y absolute dv", ddYearV.ToString("E2", CultureInfo.InvariantCulture));
-                Check(ddYearTightP < 2e-2d, "dd 1y tight absolute dp", ddYearTightP.ToString("E2", CultureInfo.InvariantCulture));
-                Check(ddYearTightV < 2e-6d, "dd 1y tight absolute dv", ddYearTightV.ToString("E2", CultureInfo.InvariantCulture));
-            }
-        }
-        else
-        {
-            Console.WriteLine("1y golden not present; run Test518 and mp_golden_real.py --checkpoints 1,30,365.");
+            TaylorShipDdResult ddYear = yearTask.Result;
+            TaylorShipDdResult ddYearTight = yearTightTask.Result;
+            double ddYearP = DdGoldErr(ddYear, gYear.P);
+            double ddYearV = DdGoldErrV(ddYear, gYear.V);
+            double ddYearTightP = DdGoldErr(ddYearTight, gYear.P);
+            double ddYearTightV = DdGoldErrV(ddYearTight, gYear.V);
+            Console.WriteLine(string.Format(
+                CultureInfo.InvariantCulture,
+                "1 y: dd={0:E2}/{1:E2} ({2} steps), tight dd={3:E2}/{4:E2} ({5} steps), golden=K28 tol 1e-20 dps 40",
+                ddYearP, ddYearV, ddYear.Steps, ddYearTightP, ddYearTightV, ddYearTight.Steps));
+            Check(ddYearP < 1e-1d, "dd 1y absolute dp", ddYearP.ToString("E2", CultureInfo.InvariantCulture));
+            Check(ddYearV < 1e-5d, "dd 1y absolute dv", ddYearV.ToString("E2", CultureInfo.InvariantCulture));
+            Check(ddYearTightP < 2e-2d, "dd 1y tight absolute dp", ddYearTightP.ToString("E2", CultureInfo.InvariantCulture));
+            Check(ddYearTightV < 2e-6d, "dd 1y tight absolute dv", ddYearTightV.ToString("E2", CultureInfo.InvariantCulture));
         }
 
         Console.WriteLine("--- Real system dd budget complete ---");

@@ -249,6 +249,7 @@ internal static partial class P1bTests
             new P1bCase("Test517_Pythagorean", Test517_Pythagorean, true),
             new P1bCase("Test518_EphemerisExport", Test518_EphemerisExport, true),
             new P1bCase("Test519_ForceVsProduction", Test519_ForceVsProduction, false),
+            new P1bCase("Test520_ParallelProbe", Test520_ParallelProbe, true),
 
         };
     }

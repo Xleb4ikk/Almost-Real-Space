@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Threading.Tasks;
 using Galilego.Core;
 using Galilego.Universe;
 
@@ -35,14 +36,55 @@ internal static partial class P1bTests
         var p0 = bp + relP;
         var v0 = bv + relV;
 
-        var coarse = TaylorShip.RunSeconds(
-            sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, 10d * segment, 1e-6d);
-        var fine = TaylorShip.RunSeconds(
-            sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, segment / 20d, 1e-6d);
-        var ddCoarse = TaylorShip.RunDdSeconds(
-            sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, 10d * segment, 1e-6d);
-        var ddFine = TaylorShip.RunDdSeconds(
-            sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, segment / 20d, 1e-6d);
+        TaylorShipResult coarse = null;
+        TaylorShipResult fine = null;
+        TaylorShipResult fixed300 = null;
+        TaylorShipResult fixed150 = null;
+        TaylorShipDdResult ddCoarse = null;
+        TaylorShipDdResult ddFine = null;
+        TaylorShipDdResult ddFixed300 = null;
+        TaylorShipDdResult ddFixed150 = null;
+        Parallel.Invoke(
+            () =>
+            {
+                coarse = TaylorShip.RunSeconds(
+                    sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, 10d * segment, 1e-6d);
+            },
+            () =>
+            {
+                fine = TaylorShip.RunSeconds(
+                    sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, segment / 20d, 1e-6d);
+            },
+            () =>
+            {
+                ddCoarse = TaylorShip.RunDdSeconds(
+                    sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, 10d * segment, 1e-6d);
+            },
+            () =>
+            {
+                ddFine = TaylorShip.RunDdSeconds(
+                    sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, segment / 20d, 1e-6d);
+            },
+            () =>
+            {
+                fixed300 = TaylorShip.RunSeconds(
+                    sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, 300d, 300d);
+            },
+            () =>
+            {
+                fixed150 = TaylorShip.RunSeconds(
+                    sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, 150d, 150d);
+            },
+            () =>
+            {
+                ddFixed300 = TaylorShip.RunDdSeconds(
+                    sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, 300d, 300d);
+            },
+            () =>
+            {
+                ddFixed150 = TaylorShip.RunDdSeconds(
+                    sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, 150d, 150d);
+            });
         double dp = (coarse.P - fine.P).Magnitude;
         double ddP = DdNorm(
             new[] { ddCoarse.DdPx, ddCoarse.DdPy, ddCoarse.DdPz },
@@ -66,14 +108,6 @@ internal static partial class P1bTests
         Check(ddFine.SegmentClips >= 2L, "boundary dd fine clips", ddFine.SegmentClips.ToString(CultureInfo.InvariantCulture));
         Check(double.IsFinite(ddP) && ddP < 1e-8d, "boundary dd coarse vs fine", ddP.ToString("E3", CultureInfo.InvariantCulture));
 
-        var fixed300 = TaylorShip.RunSeconds(
-            sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, 300d, 300d);
-        var fixed150 = TaylorShip.RunSeconds(
-            sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, 150d, 150d);
-        var ddFixed300 = TaylorShip.RunDdSeconds(
-            sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, 300d, 300d);
-        var ddFixed150 = TaylorShip.RunDdSeconds(
-            sys, p0, v0, t0, total, 16, 1e-12d, 1e-12d, 150d, 150d);
         double fixedDp = (fixed300.P - fixed150.P).Magnitude;
         double ddFixedDp = DdNorm(
             new[] { ddFixed300.DdPx, ddFixed300.DdPy, ddFixed300.DdPz },
