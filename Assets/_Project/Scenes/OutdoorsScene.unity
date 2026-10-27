@@ -147,8 +147,8 @@ Light:
   m_Enabled: 1
   serializedVersion: 13
   m_Type: 1
-  m_Color: {r: 1, g: 0.788224, b: 0.61810845, a: 1}
-  m_Intensity: 6.6309447
+  m_Color: {r: 1, g: 0.7882255, b: 0.61811155, a: 1}
+  m_Intensity: 6.630964
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 0
@@ -210,7 +210,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 157207112}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.00000035807315, y: 0.7070954, z: -0.00000035806164, w: 0.70711815}
+  m_LocalRotation: {x: 0.00000016869132, y: 0.7071014, z: -0.00000016868877, w: 0.70711213}
   m_LocalPosition: {x: 0, y: 3, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -420,9 +420,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7d79bac471c083a40bd345864d557347, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyAuthoring
-  StandardGravitationalParameter: 7.1e+17
-  Radius: 122000000
+  StandardGravitationalParameter: 2.65433e+19
+  Radius: 234500000
   CrashToleranceMps: 5
+  J2: 0
+  J2ReferenceRadius: 0
   SurfaceStaticFrictionMu: 0.7
   SurfaceKineticFrictionMu: 0.5
   SemiMajorAxis: 100000000000
@@ -685,8 +687,8 @@ Light:
   m_Enabled: 1
   serializedVersion: 13
   m_Type: 1
-  m_Color: {r: 0.4018176, g: 0.6776491, b: 1, a: 1}
-  m_Intensity: 1.4686697
+  m_Color: {r: 0.40181634, g: 0.6776478, b: 1, a: 1}
+  m_Intensity: 1.4686726
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -948,9 +950,11 @@ MonoBehaviour:
   StandardGravitationalParameter: 12800000000000
   Radius: 1143000
   CrashToleranceMps: 5
+  J2: 0
+  J2ReferenceRadius: 0
   SurfaceStaticFrictionMu: 0.7
   SurfaceKineticFrictionMu: 0.5
-  SemiMajorAxis: 26000000000
+  SemiMajorAxis: 55187600000
   Eccentricity: 0.017
   InclinationDegrees: 0
   LongitudeOfAscendingNodeDegrees: 0
@@ -1444,6 +1448,7 @@ MonoBehaviour:
   DebrisLifetimeSeconds: 600
   DebrisSurfaceRestitution: 0.2
   VesselRoot: {fileID: 0}
+  EvaHullCollision: 1
 --- !u!4 &1332194276
 Transform:
   m_ObjectHideFlags: 0
@@ -1629,6 +1634,7 @@ MonoBehaviour:
     RcsIspS: 290
     RcsDryKgPerBlock: 15
     RcsPropellantKgPerNozzle: 12
+    VirtualRcsWithoutBlocks: 0
 --- !u!4 &1558714145
 Transform:
   m_ObjectHideFlags: 0
@@ -2075,6 +2081,7 @@ MonoBehaviour:
   CrouchEyeMeters: 0.8
   SeatedEyeMeters: 1.15
   SeatedNearClipMeters: 0.03
+  EvaNearClipMeters: 0.1
   LeanMaxMeters: 0.75
   LeanMinClearance: 0.22
   LeanFieldOfView: 45
