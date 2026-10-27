@@ -251,6 +251,7 @@ internal static partial class P1bTests
             new P1bCase("Test519_ForceVsProduction", Test519_ForceVsProduction, false),
             new P1bCase("Test520_ParallelProbe", Test520_ParallelProbe, true),
             new P1bCase("Test521_LongHorizonMatrix", Test521_LongHorizonMatrix, true),
+            new P1bCase("Test522_YearFloorProbe", Test522_YearFloorProbe, true),
 
         };
     }

@@ -118,7 +118,7 @@ internal static partial class P1bTests
                 yearTask = Task.Run(() => TaylorShip.RunDdSeconds(
                     realYear, p0Year, v0Year, t0, 365d * 86400d, 24, 1e-9d, 1e-12d, 3600d, 1e-3d));
                 yearTightTask = Task.Run(() => TaylorShip.RunDdSeconds(
-                    realYear, p0Year, v0Year, t0, 365d * 86400d, 24, 1e-12d, 1e-15d, 1800d, 1e-3d));
+                    realYear, p0Year, v0Year, t0, 365d * 86400d, 24, 1e-12d, 1e-15d, 900d, 1e-3d));
             }
         }
         else
@@ -232,12 +232,12 @@ internal static partial class P1bTests
             double ddYearTightV = DdGoldErrV(ddYearTight, gYear.V);
             Console.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
-                "1 y: dd={0:E2}/{1:E2} ({2} steps), tight dd={3:E2}/{4:E2} ({5} steps), golden=K28 tol 1e-20 dps 40",
+                "1 y: dd={0:E2}/{1:E2} ({2} steps), tight dd (hmax 900)={3:E2}/{4:E2} ({5} steps), golden=K28 tol 1e-20 dps 40",
                 ddYearP, ddYearV, ddYear.Steps, ddYearTightP, ddYearTightV, ddYearTight.Steps));
             Check(ddYearP < 1e-1d, "dd 1y absolute dp", ddYearP.ToString("E2", CultureInfo.InvariantCulture));
             Check(ddYearV < 1e-5d, "dd 1y absolute dv", ddYearV.ToString("E2", CultureInfo.InvariantCulture));
-            Check(ddYearTightP < 2e-2d, "dd 1y tight absolute dp", ddYearTightP.ToString("E2", CultureInfo.InvariantCulture));
-            Check(ddYearTightV < 2e-6d, "dd 1y tight absolute dv", ddYearTightV.ToString("E2", CultureInfo.InvariantCulture));
+            Check(ddYearTightP < 5e-3d, "dd 1y tight absolute dp", ddYearTightP.ToString("E2", CultureInfo.InvariantCulture));
+            Check(ddYearTightV < 5e-7d, "dd 1y tight absolute dv", ddYearTightV.ToString("E2", CultureInfo.InvariantCulture));
         }
 
         Console.WriteLine("--- Real system dd budget complete ---");

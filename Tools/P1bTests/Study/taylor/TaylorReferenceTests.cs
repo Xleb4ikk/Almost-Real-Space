@@ -36,16 +36,15 @@ internal static partial class P1bTests
         double errY6 = StudyRel(y6.P, 2, 1, r28.P);
         double errRk4 = StudyRel(rk4.P, 2, 1, r28.P);
         Console.WriteLine(
-            "Taylor vs Y6C 28.125: err Moon/Earth={0:E3} m, dE/E={1:E2}, calls={2:N0}, steps={3:N0}, {4:F0} ms",
+            label + " | Taylor vs Y6C 28.125: err Moon/Earth={0:E3} m, dE/E={1:E2}, calls={2:N0}, steps={3:N0}, {4:F0} ms",
             errTaylor,
             Math.Abs((StudyEnergy(t.P, t.V, nb.Mu) - e0) / e0),
             t.Calls, t.Steps, t.Ms);
-        Console.WriteLine("Y6C 28.125 vs 14.0625: err={0:E3} m", errSelf);
-        Console.WriteLine("Taylor maxStep=86400: err={0:E3} m, steps={1:N0}",
+        Console.WriteLine(label + " | Y6C 28.125 vs 14.0625: err={0:E3} m", errSelf);
+        Console.WriteLine(label + " | Taylor maxStep=86400: err={0:E3} m, steps={1:N0}",
             errBig, tBig.Steps);
-        Console.WriteLine("Y6C 28.125: err={0:E3} m", StudyRel(r28.P, 2, 1, r28.P));
-        Console.WriteLine("Y6 7200 vs Y6C 28.125: err={0:E3} m", errY6);
-        Console.WriteLine("RK4 900 vs Y6C 28.125: err={0:E3} m", errRk4);
+        Console.WriteLine(label + " | Y6 7200 vs Y6C 28.125: err={0:E3} m", errY6);
+        Console.WriteLine(label + " | RK4 900 vs Y6C 28.125: err={0:E3} m", errRk4);
         Check(double.IsFinite(errTaylor) && double.IsFinite(errBig),
             label + " finite", errTaylor.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
         Check(errTaylor < 5d, label + " Taylor vs Y6C", errTaylor.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
@@ -87,15 +86,15 @@ internal static partial class P1bTests
         double errTight = (tightRel - refRel).Magnitude;
         double errDirect = (direct.p - refRel).Magnitude;
         Console.WriteLine(
-            "Taylor: err vs local A={0:E3} m, calls={1:N0}, steps={2:N0}, {3:F0} ms",
+            label + " | Taylor: err vs local A={0:E3} m, calls={1:N0}, steps={2:N0}, {3:F0} ms",
             errTaylor, taylor.Calls, taylor.Steps, taylor.Ms);
-        Console.WriteLine("Taylor maxStep=86400: err vs local A={0:E3} m, steps={1:N0}", 
+        Console.WriteLine(label + " | Taylor maxStep=86400: err vs local A={0:E3} m, steps={1:N0}",
             errBig, taylorBig.Steps);
         Console.WriteLine(
-            "DOP853 tight world: err vs local A={0:E3} m, calls={1:N0}, {2:F0} ms",
+            label + " | DOP853 tight world: err vs local A={0:E3} m, calls={1:N0}, {2:F0} ms",
             errTight, tight.calls, tight.ms);
         Console.WriteLine(
-            "DOP853 direct local: err vs local A={0:E3} m, calls={1:N0}, {2:F0} ms",
+            label + " | DOP853 direct local: err vs local A={0:E3} m, calls={1:N0}, {2:F0} ms",
             errDirect, direct.calls, direct.ms);
         Console.WriteLine("alloc note: Taylor jets are allocated per step; see calls/steps above");
         Check(double.IsFinite(errTaylor) && double.IsFinite(errBig) && double.IsFinite(errDirect),
@@ -127,7 +126,7 @@ internal static partial class P1bTests
             one, p0, v0, 0d, seconds, 24, 1e-12d, 1e-15d, maxStep, 1e-3d);
         double dp = (taylor.P - re).Magnitude;
         double dv = (taylor.V - ve).Magnitude;
-        Console.WriteLine("exact vs Taylor: dp={0:E3} m, dv={1:E3} m/s, calls={2:N0}, steps={3:N0}, {4:F0} ms",
+        Console.WriteLine(label + " | exact vs Taylor: dp={0:E3} m, dv={1:E3} m/s, calls={2:N0}, steps={3:N0}, {4:F0} ms",
             dp, dv, taylor.Calls, taylor.Steps, taylor.Ms);
         double dpGate = years > 1d ? 1e-1d : 1e-3d;
         double dvGate = years > 1d ? 1e-4d : 1e-6d;
