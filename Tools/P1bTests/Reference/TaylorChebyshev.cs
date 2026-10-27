@@ -1,4 +1,4 @@
-﻿using Galilego.Universe;
+using Galilego.Universe;
 using System;
 
 internal readonly struct TaylorLocalState
@@ -123,14 +123,18 @@ internal static class TaylorChebyshev
 
         int seg = (int)Math.Floor((tSelect - baked.T0Seconds) / baked.SegmentLengthSeconds);
         seg = Math.Max(0, Math.Min(baked.SegmentCount - 1, seg));
-        double segStart = baked.T0Seconds + (seg * baked.SegmentLengthSeconds);
+        P1bTests.StudyDd segStart = P1bTests.StudyDd.Add(
+            P1bTests.StudyDd.From(baked.T0Seconds),
+            P1bTests.StudyDd.Mul(
+                P1bTests.StudyDd.From(seg),
+                P1bTests.StudyDd.From(baked.SegmentLengthSeconds)));
         P1bTests.StudyDd one = P1bTests.StudyDd.From(1d);
         P1bTests.StudyDd two = P1bTests.StudyDd.From(2d);
         P1bTests.StudyDd length = P1bTests.StudyDd.From(baked.SegmentLengthSeconds);
         P1bTests.StudyDd u0 = P1bTests.StudyDd.Sub(
             P1bTests.StudyDd.Div(
                 P1bTests.StudyDd.Mul(
-                    two, P1bTests.StudyDd.Sub(t, P1bTests.StudyDd.From(segStart))),
+                    two, P1bTests.StudyDd.Sub(t, segStart)),
                 length),
             one);
         P1bTests.StudyDd du = P1bTests.StudyDd.Div(two, length);
@@ -190,5 +194,3 @@ internal static class TaylorChebyshev
         return new TaylorLocalState(z, z, z, z, z, z);
     }
 }
-
-

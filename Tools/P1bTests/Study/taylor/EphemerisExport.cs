@@ -33,17 +33,15 @@ internal static partial class P1bTests
         public ExportBody[] Bodies { get; set; }
     }
 
-    private static int Test518_EphemerisExport()
+    private static void ExportRealBake(string file, double bakeYears, double days)
     {
-        Console.WriteLine("--- Export baked ephemeris for the real-system oracle ---");
         StarSystem real = StudyRealSolar7();
         StudyNBody nb = StudyMakeNBody(real);
-        StudyBake("Export", real, nb, 60d / 365.25d);
+        StudyBake("Export " + file, real, nb, bakeYears);
 
         OrbitingBody central = real.AllBodies[1];
         double mu = central.ResolveStandardGravitationalParameter();
         double t0 = StudyShipT0;
-        const double days = 30d;
         real.EvaluateBodyState(central, t0, out Vector3d bp, out Vector3d bv);
         StudyShipOrbit(6.771e6d, 4.6371e7d, mu, out Vector3d relP, out Vector3d relV);
         var p0 = bp + relP;
@@ -92,11 +90,18 @@ internal static partial class P1bTests
             RelV = new[] { relV.X, relV.Y, relV.Z },
             Bodies = bodies.ToArray()
         };
-        string path = Path.Combine("Study", "taylor", "golden", "real_bake_export.json");
+        string path = Path.Combine("Study", "taylor", "golden", file);
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
         File.WriteAllText(path, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
         Console.WriteLine("written: " + Path.GetFullPath(path));
         Check(File.Exists(path), "ephemeris export", path);
+    }
+
+    private static int Test518_EphemerisExport()
+    {
+        Console.WriteLine("--- Export baked ephemeris for the real-system oracle ---");
+        ExportRealBake("real_bake_export.json", 60d / 365.25d, 30d);
+        ExportRealBake("real_bake_export_1y.json", 1.1d, 365d);
         Console.WriteLine("--- Export complete ---");
         return 0;
     }

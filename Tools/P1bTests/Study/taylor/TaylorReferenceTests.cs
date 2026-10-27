@@ -30,17 +30,27 @@ internal static partial class P1bTests
         var rk4 = StudyRefRun(nb, "RK4", 900d, years, 0d);
         var tBig = TaylorNBody.Run(ToTaylor(nb), years, 24, 1e-9d, 1e-12d, 86400d, 1e-6d, 0d);
         double e0 = StudyEnergy(nb.P0, nb.V0, nb.Mu);
+        double errTaylor = StudyRel(t.P, 2, 1, r28.P);
+        double errBig = StudyRel(tBig.P, 2, 1, r28.P);
+        double errSelf = StudyRel(r28.P, 2, 1, r14.P);
+        double errY6 = StudyRel(y6.P, 2, 1, r28.P);
+        double errRk4 = StudyRel(rk4.P, 2, 1, r28.P);
         Console.WriteLine(
             "Taylor vs Y6C 28.125: err Moon/Earth={0:E3} m, dE/E={1:E2}, calls={2:N0}, steps={3:N0}, {4:F0} ms",
-            StudyRel(t.P, 2, 1, r28.P),
+            errTaylor,
             Math.Abs((StudyEnergy(t.P, t.V, nb.Mu) - e0) / e0),
             t.Calls, t.Steps, t.Ms);
-        Console.WriteLine("Y6C 28.125 vs 14.0625: err={0:E3} m", StudyRel(r28.P, 2, 1, r14.P));
+        Console.WriteLine("Y6C 28.125 vs 14.0625: err={0:E3} m", errSelf);
         Console.WriteLine("Taylor maxStep=86400: err={0:E3} m, steps={1:N0}",
-            StudyRel(tBig.P, 2, 1, r28.P), tBig.Steps);
+            errBig, tBig.Steps);
         Console.WriteLine("Y6C 28.125: err={0:E3} m", StudyRel(r28.P, 2, 1, r28.P));
-        Console.WriteLine("Y6 7200 vs Y6C 28.125: err={0:E3} m", StudyRel(y6.P, 2, 1, r28.P));
-        Console.WriteLine("RK4 900 vs Y6C 28.125: err={0:E3} m", StudyRel(rk4.P, 2, 1, r28.P));
+        Console.WriteLine("Y6 7200 vs Y6C 28.125: err={0:E3} m", errY6);
+        Console.WriteLine("RK4 900 vs Y6C 28.125: err={0:E3} m", errRk4);
+        Check(double.IsFinite(errTaylor) && double.IsFinite(errBig),
+            label + " finite", errTaylor.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
+        Check(errTaylor < 5d, label + " Taylor vs Y6C", errTaylor.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
+        Check(errBig < 5d, label + " Taylor maxStep 1d", errBig.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
+        Check(errSelf < 1e-2d, label + " Y6C self-convergence", errSelf.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
     }
 
     private static void TaylorShipCase(
@@ -72,24 +82,33 @@ internal static partial class P1bTests
         var direct = StudyShipDop853Local(
             sys, central, relP, relV, t0, days, directForce: true);
 
+        double errTaylor = (taylorRel - refRel).Magnitude;
+        double errBig = ((taylorBig.P - bpT) - refRel).Magnitude;
+        double errTight = (tightRel - refRel).Magnitude;
+        double errDirect = (direct.p - refRel).Magnitude;
         Console.WriteLine(
             "Taylor: err vs local A={0:E3} m, calls={1:N0}, steps={2:N0}, {3:F0} ms",
-            (taylorRel - refRel).Magnitude, taylor.Calls, taylor.Steps, taylor.Ms);
+            errTaylor, taylor.Calls, taylor.Steps, taylor.Ms);
         Console.WriteLine("Taylor maxStep=86400: err vs local A={0:E3} m, steps={1:N0}", 
-            ((taylorBig.P - bpT) - refRel).Magnitude, taylorBig.Steps);
+            errBig, taylorBig.Steps);
         Console.WriteLine(
             "DOP853 tight world: err vs local A={0:E3} m, calls={1:N0}, {2:F0} ms",
-            (tightRel - refRel).Magnitude, tight.calls, tight.ms);
+            errTight, tight.calls, tight.ms);
         Console.WriteLine(
             "DOP853 direct local: err vs local A={0:E3} m, calls={1:N0}, {2:F0} ms",
-            (direct.p - refRel).Magnitude, direct.calls, direct.ms);
+            errDirect, direct.calls, direct.ms);
         Console.WriteLine("alloc note: Taylor jets are allocated per step; see calls/steps above");
+        Check(double.IsFinite(errTaylor) && double.IsFinite(errBig) && double.IsFinite(errDirect),
+            label + " ship finite", errTaylor.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
+        Check(errTaylor < 5d, label + " Taylor vs local ref", errTaylor.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
+        Check(errBig < 5d, label + " Taylor maxStep 1d", errBig.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
+        Check(errDirect < 0.1d, label + " direct local", errDirect.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
     }
 
-    private static void TaylorKeplerCase()
+    private static void TaylorKeplerCase(string label, double years)
     {
         Console.WriteLine();
-        Console.WriteLine("=== Taylor exact Kepler one-body (30 d) ===");
+        Console.WriteLine("=== Taylor exact circular Kepler one-body (" + label + ") ===");
         double mu = 3.986004418e14d;
         double r = 6.771e6d;
         double v = Math.Sqrt(mu / r);
@@ -97,10 +116,25 @@ internal static partial class P1bTests
         var v0 = new Vector3d(0d, v, 0d);
         var body = new OrbitingBody { Name = "TestBody", StandardGravitationalParameter = mu, Radius = 1d };
         StarSystem one = new StarSystem(body);
-        StudyKeplerDrift(p0, v0, mu, 30d * 86400d, out Vector3d re, out Vector3d ve);
-        var taylor = TaylorShip.Run(one, p0, v0, 0d, 30d, 24, 1e-12d, 1e-15d, 600d, 1e-3d);
+        double seconds = years * 365.25d * 86400d;
+        double period = 2d * Math.PI * Math.Sqrt((r * r * r) / mu);
+        double turns = seconds / period;
+        double theta = 2d * Math.PI * (turns - Math.Floor(turns));
+        var re = new Vector3d(r * Math.Cos(theta), r * Math.Sin(theta), 0d);
+        var ve = new Vector3d(-v * Math.Sin(theta), v * Math.Cos(theta), 0d);
+        double maxStep = years > 1d ? 3600d : 600d;
+        var taylor = TaylorShip.RunSeconds(
+            one, p0, v0, 0d, seconds, 24, 1e-12d, 1e-15d, maxStep, 1e-3d);
+        double dp = (taylor.P - re).Magnitude;
+        double dv = (taylor.V - ve).Magnitude;
         Console.WriteLine("exact vs Taylor: dp={0:E3} m, dv={1:E3} m/s, calls={2:N0}, steps={3:N0}, {4:F0} ms",
-            (taylor.P - re).Magnitude, (taylor.V - ve).Magnitude, taylor.Calls, taylor.Steps, taylor.Ms);
+            dp, dv, taylor.Calls, taylor.Steps, taylor.Ms);
+        double dpGate = years > 1d ? 1e-1d : 1e-3d;
+        double dvGate = years > 1d ? 1e-4d : 1e-6d;
+        Check(double.IsFinite(dp) && double.IsFinite(dv),
+            "kepler " + label + " finite", dp.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
+        Check(dp < dpGate, "kepler " + label + " dp", dp.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
+        Check(dv < dvGate, "kepler " + label + " dv", dv.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
     }
 
     private static int Test504_TaylorReference()
@@ -123,7 +157,11 @@ internal static partial class P1bTests
                 TaylorNBodyCase("custom 6-body", customNb, 10d);
                 TaylorShipCase("Terra ecc 400/40000", custom, customNb, 1, 1.543e6d, 4.114e7d, 30d);
             },
-            TaylorKeplerCase);
+            () =>
+            {
+                TaylorKeplerCase("30 d", 30d / 365.25d);
+                TaylorKeplerCase("10 y", 10d);
+            });
 
         Console.WriteLine("--- Taylor reference complete ---");
         return 0;
