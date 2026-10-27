@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
@@ -45,11 +45,32 @@ internal static class TaylorNBody
         double minStep,
         double sampleEvery)
     {
+        return RunSeconds(
+            input,
+            years * 365.25d * 86400d,
+            order,
+            positionTolerance,
+            velocityTolerance,
+            maxStep,
+            minStep,
+            sampleEvery);
+    }
+
+    public static TaylorNBodyResult RunSeconds(
+        TaylorNBodyInput input,
+        double totalSeconds,
+        int order,
+        double positionTolerance,
+        double velocityTolerance,
+        double maxStep,
+        double minStep,
+        double sampleEvery)
+    {
         int n = input.Names.Length;
         int dim = 3 * n;
         var p = (double[])input.P0.Clone();
         var v = (double[])input.V0.Clone();
-        double T = years * 365.25d * 86400d;
+        double T = totalSeconds;
         double t = 0d;
         double h = Math.Min(maxStep, T);
         var samples = sampleEvery > 0d ? new List<TaylorSample>() : null;
@@ -62,9 +83,15 @@ internal static class TaylorNBody
         var vJ = new TaylorJet[dim];
         var aJ = new TaylorJet[dim];
 
-        while (t < T - 1e-9d)
+        while (t < T)
         {
-            h = Math.Min(h, T - t);
+            double remaining = T - t;
+            if (!(remaining > 0d))
+            {
+                break;
+            }
+
+            h = Math.Min(h, remaining);
             for (int i = 0; i < dim; i++)
             {
                 pJ[i] = TaylorJet.Constant(order, p[i]);
@@ -83,12 +110,17 @@ internal static class TaylorNBody
             }
 
             double hp = Math.Pow(h, order);
+            double hp1 = Math.Pow(h, order - 1);
             double errP = 0d;
             double errV = 0d;
             for (int i = 0; i < dim; i++)
             {
-                errP = Math.Max(errP, Math.Abs(pJ[i].C[order]) * hp);
-                errV = Math.Max(errV, Math.Abs(vJ[i].C[order]) * hp);
+                errP = Math.Max(errP, Math.Max(
+                    Math.Abs(pJ[i].C[order]) * hp,
+                    Math.Abs(pJ[i].C[order - 1]) * hp1));
+                errV = Math.Max(errV, Math.Max(
+                    Math.Abs(vJ[i].C[order]) * hp,
+                    Math.Abs(vJ[i].C[order - 1]) * hp1));
             }
 
             double norm = Math.Max(errP / positionTolerance, errV / velocityTolerance);
@@ -100,7 +132,8 @@ internal static class TaylorNBody
                     v[i] = vJ[i].Eval(h);
                 }
 
-                t += h;
+                bool last = h >= remaining;
+                t = last ? T : t + h;
                 steps++;
                 if (samples != null && t >= nextSample - 1e-9d)
                 {
@@ -116,7 +149,13 @@ internal static class TaylorNBody
             {
                 double factor = Math.Min(0.5d, Math.Max(0.1d,
                     0.9d * Math.Pow(1d / Math.Max(norm, 1e-14d), 1d / order)));
-                h = Math.Max(minStep, h * factor);
+                double next = Math.Max(minStep, h * factor);
+                if (next >= h && h <= minStep)
+                {
+                    throw new InvalidOperationException("TaylorNBody step rejected at minStep.");
+                }
+
+                h = next;
             }
         }
 
@@ -162,3 +201,4 @@ internal static class TaylorNBody
         }
     }
 }
+

@@ -6,7 +6,7 @@ internal static partial class P1bTests
 {
     // Taylor jet whose coefficients are double-double (StudyDd, ~106-bit significand).
     // Same recurrences as Reference/TaylorJet.cs, but every scalar operation is dd.
-    private sealed class DdJet
+    internal sealed class DdJet
     {
         public readonly int Order;
         public readonly StudyDd[] C;
@@ -24,10 +24,22 @@ internal static partial class P1bTests
             return j;
         }
 
+        public static DdJet Variable(int order, StudyDd value, StudyDd slope)
+        {
+            var j = new DdJet(order);
+            j.C[0] = value;
+            if (order >= 1)
+            {
+                j.C[1] = slope;
+            }
+
+            return j;
+        }
+
         public static DdJet FromSeries(int order, double[] values)
         {
             var j = new DdJet(order);
-            int n = Math.Min(order, values.Length);
+            int n = Math.Min(order + 1, values.Length);
             for (int i = 0; i < n; i++)
             {
                 j.C[i] = StudyDd.From(values[i]);
@@ -149,6 +161,17 @@ internal static partial class P1bTests
             return value;
         }
 
+        public DdJet Derivative()
+        {
+            var r = new DdJet(Order);
+            for (int n = 0; n < Order; n++)
+            {
+                r.C[n] = StudyDd.Mul(StudyDd.From(n + 1d), C[n + 1]);
+            }
+
+            return r;
+        }
+
         public static DdJet operator +(DdJet a, DdJet b) => Add(a, b);
         public static DdJet operator -(DdJet a, DdJet b) => Sub(a, b);
         public static DdJet operator *(DdJet a, DdJet b) => Mul(a, b);
@@ -161,6 +184,8 @@ internal static partial class P1bTests
     {
         public double[] P;
         public double[] V;
+        public StudyDd[] DdP;
+        public StudyDd[] DdV;
         public long Calls;
         public long Steps;
         public double Ms;
@@ -248,12 +273,17 @@ internal static partial class P1bTests
             }
 
             double hp = Math.Pow(h, order);
+            double hp1 = Math.Pow(h, order - 1);
             double errP = 0d;
             double errV = 0d;
             for (int i = 0; i < dim; i++)
             {
-                errP = Math.Max(errP, Math.Abs(pJ[i].C[order].ToDouble) * hp);
-                errV = Math.Max(errV, Math.Abs(vJ[i].C[order].ToDouble) * hp);
+                errP = Math.Max(errP, Math.Max(
+                    Math.Abs(pJ[i].C[order].ToDouble) * hp,
+                    Math.Abs(pJ[i].C[order - 1].ToDouble) * hp1));
+                errV = Math.Max(errV, Math.Max(
+                    Math.Abs(vJ[i].C[order].ToDouble) * hp,
+                    Math.Abs(vJ[i].C[order - 1].ToDouble) * hp1));
             }
 
             double norm = Math.Max(errP / positionTolerance, errV / velocityTolerance);
@@ -292,6 +322,8 @@ internal static partial class P1bTests
         {
             P = P,
             V = V,
+            DdP = p,
+            DdV = v,
             Calls = calls,
             Steps = steps,
             Ms = sw.Elapsed.TotalMilliseconds
@@ -762,6 +794,15 @@ internal static partial class P1bTests
         TaylorNBodyInput input, double years, int order,
         double positionTolerance, double velocityTolerance, double maxStep, double minStep)
     {
+        return RunTaylorNBodyDdOptSeconds(
+            input, years * 365.25d * 86400d, order,
+            positionTolerance, velocityTolerance, maxStep, minStep);
+    }
+
+    private static DdNBodyResult RunTaylorNBodyDdOptSeconds(
+        TaylorNBodyInput input, double totalSeconds, int order,
+        double positionTolerance, double velocityTolerance, double maxStep, double minStep)
+    {
         int n = input.Names.Length;
         int dim = 3 * n;
         var p = new StudyDd[dim];
@@ -772,8 +813,9 @@ internal static partial class P1bTests
             v[i] = StudyDd.From(input.V0[i]);
         }
 
-        double T = years * 365.25d * 86400d;
+        double T = totalSeconds;
         double t = 0d;
+        double tc = 0d;
         double h = Math.Min(maxStep, T);
         int jets = (3 * dim) + (12 * n * n) + 32;
         var arena = new DdArena(jets * (order + 1));
@@ -800,9 +842,16 @@ internal static partial class P1bTests
         long steps = 0L;
         var sw = Stopwatch.StartNew();
 
-        while (t < T - 1e-9d)
+        while (t < T)
         {
-            h = Math.Min(h, T - t);
+            double rem = (T - t) - tc;
+            if (!(rem > 0d))
+            {
+                break;
+            }
+
+            bool last = h >= rem;
+            h = Math.Min(h, rem);
             for (int i = 0; i < dim; i++)
             {
                 JetSetConstant(pJ[i], p[i]);
@@ -823,12 +872,17 @@ internal static partial class P1bTests
             }
 
             double hp = Math.Pow(h, order);
+            double hp1 = Math.Pow(h, order - 1);
             double errP = 0d;
             double errV = 0d;
             for (int i = 0; i < dim; i++)
             {
-                errP = Math.Max(errP, Math.Abs(pJ[i].C(order).ToDouble) * hp);
-                errV = Math.Max(errV, Math.Abs(vJ[i].C(order).ToDouble) * hp);
+                errP = Math.Max(errP, Math.Max(
+                    Math.Abs(pJ[i].C(order).ToDouble) * hp,
+                    Math.Abs(pJ[i].C(order - 1).ToDouble) * hp1));
+                errV = Math.Max(errV, Math.Max(
+                    Math.Abs(vJ[i].C(order).ToDouble) * hp,
+                    Math.Abs(vJ[i].C(order - 1).ToDouble) * hp1));
             }
 
             double norm = Math.Max(errP / positionTolerance, errV / velocityTolerance);
@@ -840,7 +894,19 @@ internal static partial class P1bTests
                     v[i] = JetEval(vJ[i], h);
                 }
 
-                t += h;
+                if (last)
+                {
+                    t = T;
+                    tc = 0d;
+                }
+                else
+                {
+                    double s = t + h;
+                    double bb = s - t;
+                    tc += (t - (s - bb)) + (h - bb);
+                    t = s;
+                }
+
                 steps++;
                 double factor = Math.Min(4d, Math.Max(0.2d,
                     0.9d * Math.Pow(1d / Math.Max(norm, 1e-14d), 1d / order)));
@@ -867,6 +933,8 @@ internal static partial class P1bTests
         {
             P = P,
             V = V,
+            DdP = p,
+            DdV = v,
             Calls = calls,
             Steps = steps,
             Ms = sw.Elapsed.TotalMilliseconds
@@ -930,3 +998,6 @@ internal static partial class P1bTests
     }
 
 }
+
+
+

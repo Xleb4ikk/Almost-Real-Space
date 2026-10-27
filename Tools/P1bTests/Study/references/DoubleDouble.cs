@@ -11,7 +11,7 @@ using Galilego.Universe;
 
 internal static partial class P1bTests
 {    // Double-double arithmetic for a reference that is not limited by double rounding.
-    private readonly struct StudyDd
+    internal readonly struct StudyDd
     {
         public readonly double Hi;
         public readonly double Lo;
@@ -61,7 +61,7 @@ internal static partial class P1bTests
         {
             if (!(a.Hi > 0d))
             {
-                return Zero;
+                throw new ArgumentOutOfRangeException(nameof(a), "StudyDd.Sqrt requires a positive argument.");
             }
 
             double x = Math.Sqrt(a.Hi);
@@ -77,7 +77,7 @@ internal static partial class P1bTests
         public double ToDouble => Hi + Lo;
     }
 
-    private readonly struct StudyDd3
+    internal readonly struct StudyDd3
     {
         public readonly StudyDd X;
         public readonly StudyDd Y;
@@ -148,4 +148,5 @@ internal static partial class P1bTests
         return total - StudyDd3.From(rootAccel);
     }
 }
+
 

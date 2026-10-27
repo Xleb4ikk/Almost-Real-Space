@@ -36,7 +36,7 @@ internal sealed class TaylorJet
     public static TaylorJet FromSeries(int order, double[] values)
     {
         var j = new TaylorJet(order);
-        int n = Math.Min(order, values.Length);
+        int n = Math.Min(order + 1, values.Length);
         for (int i = 0; i < n; i++)
         {
             j.C[i] = values[i];
