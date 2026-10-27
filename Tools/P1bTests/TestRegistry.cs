@@ -234,6 +234,7 @@ internal static partial class P1bTests
             new P1bCase("Test401_StagePropulsionFlight", Test401_StagePropulsionFlight, false),
             new P1bCase("Test500_IntegratorStudyFast", Test500_IntegratorStudyFast, false),
             new P1bCase("Test501_IntegratorStudySlow", Test501_IntegratorStudySlow, true),
+            new P1bCase("Test503_ReferenceConvergence", Test503_ReferenceConvergence, true),
             new P1bCase("Test504_TaylorReference", Test504_TaylorReference, true),
             new P1bCase("Test505_KnownProblems", Test505_KnownProblems, false),
             new P1bCase("Test506_KnownConvergence", Test506_KnownConvergence, true),

@@ -5,6 +5,17 @@ using Galilego.Universe;
 
 internal static partial class P1bTests
 {
+    private static TaylorNBodyInput ToTaylor(StudyNBody nb)
+    {
+        return new TaylorNBodyInput
+        {
+            Names = nb.Names,
+            Mu = nb.Mu,
+            P0 = nb.P0,
+            V0 = nb.V0
+        };
+    }
+
     private static void CompareHeader()
     {
         Console.WriteLine("Taylor vs Y6 вЂ” local comparison (double precision)");

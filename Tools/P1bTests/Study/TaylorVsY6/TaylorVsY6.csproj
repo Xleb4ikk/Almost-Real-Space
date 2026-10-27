@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
@@ -19,7 +19,6 @@
     <Compile Include="..\methods\**\*.cs" />
     <Compile Include="..\references\**\*.cs" />
     <Compile Include="..\scenarios\**\*.cs" Exclude="..\scenarios\KnownProblems.cs" />
-    <Compile Include="..\taylor\**\*.cs" />
     <Compile Include="..\..\Reference\**\*.cs" />    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Decor\DecorExclusionCore.cs" />
     <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElements.cs" />
     <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElementsData.cs" />

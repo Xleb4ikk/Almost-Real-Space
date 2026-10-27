@@ -1,0 +1,17 @@
+taylory6_custom: done.
+taylory6_dd-custom-10y: done.
+taylory6_dd-custom-1y: done.
+taylory6_dd-opt-compare-10y-custom: done.
+taylory6_dd-opt-compare-10y-real: done.
+taylory6_dd-opt-compare-1y-custom: done.
+taylory6_dd-opt-compare-1y-real: done.
+taylory6_dd-real-10y: done.
+taylory6_dd-real-1y: done.
+taylory6_dd-selfcheck: done.
+taylory6_kepler: done.
+taylory6_real: done.
+taylory6_ships: done.
+taylory6_y6c: done.
+taylory6_y6c-fine-custom: done.
+taylory6_y6c-finer-custom: done.
+taylory6_y6c-fine-real: done.
