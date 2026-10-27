@@ -57,7 +57,7 @@ internal static partial class P1bTests
         double dKiB = (GC.GetAllocatedBytesForCurrentThread() - a0) / 1024d;
 
         long b0 = GC.GetAllocatedBytesForCurrentThread();
-        DdNBodyResult dd = RunTaylorNBodyDdOpt(input, years, 12, 1e-12d, 1e-12d, 0.05d, 1e-10d);
+        DdNBodyResult dd = RunTaylorNBodyDdOptSeconds(input, totalTime, 12, 1e-12d, 1e-12d, 0.05d, 1e-10d);
         double ddKiB = (GC.GetAllocatedBytesForCurrentThread() - b0) / 1024d;
 
         double dPos = MaxDiff(td.P, exactP);
@@ -142,25 +142,28 @@ internal static partial class P1bTests
     private static void KnownFigureEight(int periods)
     {
         var mu = new[] { 1d, 1d, 1d };
+        double y = -0.24308756818428653234d;
+        double vx = 0.46620369792022003799d;
+        double vy = 0.43236571164315760836d;
         var p = new double[]
         {
-            0.97000436d, -0.24308753d, 0d,
-            -0.97000436d, 0.24308753d, 0d,
+            0.97000436d, y, 0d,
+            -0.97000436d, -y, 0d,
             0d, 0d, 0d
         };
         var v = new double[]
         {
-            0.466203685d, 0.43236573d, 0d,
-            0.466203685d, 0.43236573d, 0d,
-            -0.93240737d, -0.86473146d, 0d
+            vx, vy, 0d,
+            vx, vy, 0d,
+            -2d * vx, -2d * vy, 0d
         };
 
-        const double period = 6.32591398d;
+        const double period = 6.32591409785902117500d;
         double totalTime = periods * period;
         string label = string.Format(
             System.Globalization.CultureInfo.InvariantCulture,
             "Figure-eight, {0} periods", periods);
-        RunKnownTaylor(label, KnownInput(mu, (double[])p.Clone(), (double[])v.Clone()), totalTime, p, v, true, 1e-5d, 1e-5d);
+        RunKnownTaylor(label, KnownInput(mu, (double[])p.Clone(), (double[])v.Clone()), totalTime, p, v, true, 1e-9d, 1e-9d);
     }
 
     private static (double x, double y, double vx, double vy, long steps) RunCr3bpTaylor(
@@ -287,19 +290,22 @@ internal static partial class P1bTests
         KnownFigureEight(1);
         KnownFigureEight(10);
         KnownFigureEight(100);
-        Console.WriteLine("Figure-eight IC/period are 8-digit; the ~3e-8 per-period return error is the known-data floor (double == dd).");
+        Console.WriteLine("Figure-eight uses the refined Newtonian IC/period (mp residual 5e-39); the return error is now method-limited.");
         KnownArenstorf(1, 12, true);
         KnownArenstorf(1, 16, true);
         KnownArenstorf(2, 12, false);
         KnownArenstorf(5, 12, false);
         KnownArenstorf(5, 16, false);
         KnownArenstorf(10, 12, false);
-        KnownArenstorfDd(1, 12, 1e-14d);
-        KnownArenstorfDd(1, 16, 1e-16d);
-        KnownArenstorfDd(1, 20, 1e-18d);
-        KnownArenstorfDd(1, 24, 1e-20d);
-        KnownArenstorfDd(1, 28, 1e-22d);
-        KnownArenstorfDd(1, 32, 1e-24d);
+        double previousDp = double.PositiveInfinity;
+        for (int order = 12; order <= 32; order += 4)
+        {
+            double tolerance = Math.Pow(10d, -((order * 0.5d) + 8d));
+            (double dp, _) = KnownArenstorfDd(1, order, tolerance);
+            Check(dp < previousDp, "Arenstorf dd improving at K=" + order,
+                dp.ToString("E3", System.Globalization.CultureInfo.InvariantCulture));
+            previousDp = dp;
+        }
         Console.WriteLine("Arenstorf is unstable/sensitive: multi-period rows are informational; the one-period row is the method gate.");
         Console.WriteLine("--- Known problems complete ---");
         return 0;
@@ -364,13 +370,22 @@ internal static partial class P1bTests
         var tols = new[] { 1e-8d, 1e-10d, 1e-12d, 1e-14d };
         foreach (int order in orders)
         {
+            double previousDp = double.PositiveInfinity;
             foreach (double tol in tols)
             {
-                TaylorNBodyResult r = TaylorNBody.Run(input, years, order, tol, tol, 0.05d, 1e-10d, 0d);
+                TaylorNBodyResult r = TaylorNBody.Run(input, years, order, tol, tol, 10d, 1e-10d, 0d);
+                double dp = MaxDiff(r.P, p);
                 Console.WriteLine(string.Format(
                     System.Globalization.CultureInfo.InvariantCulture,
                     "{0,-4} {1,8:E0} {2,11:E2} {3,11:E2} {4,8}",
-                    order, tol, MaxDiff(r.P, p), MaxDiff(r.V, v), r.Steps));
+                    order, tol, dp, MaxDiff(r.V, v), r.Steps));
+                if (tol <= 1e-8d && tol >= 1e-12d)
+                {
+                    Check(dp < previousDp * 1.5d, "Lagrange convergence K=" + order,
+                        dp.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
+                }
+
+                previousDp = dp;
             }
         }
 
@@ -386,32 +401,44 @@ internal static partial class P1bTests
         Console.WriteLine("Figure-eight, 100 periods: return error vs K/tolerance");
         Console.WriteLine("K    tol        dp          dv");
         var mu = new[] { 1d, 1d, 1d };
+        double y = -0.24308756818428653234d;
+        double vx = 0.46620369792022003799d;
+        double vy = 0.43236571164315760836d;
         var p = new double[]
         {
-            0.97000436d, -0.24308753d, 0d,
-            -0.97000436d, 0.24308753d, 0d,
+            0.97000436d, y, 0d,
+            -0.97000436d, -y, 0d,
             0d, 0d, 0d
         };
         var v = new double[]
         {
-            0.466203685d, 0.43236573d, 0d,
-            0.466203685d, 0.43236573d, 0d,
-            -0.93240737d, -0.86473146d, 0d
+            vx, vy, 0d,
+            vx, vy, 0d,
+            -2d * vx, -2d * vy, 0d
         };
-        const double period = 6.32591398d;
+        const double period = 6.32591409785902117500d;
         double years = 100d * period / KnownYearSeconds;
         var input = KnownInput(mu, (double[])p.Clone(), (double[])v.Clone());
         var orders = new[] { 8, 12, 16 };
         var tols = new[] { 1e-8d, 1e-10d, 1e-12d, 1e-14d };
         foreach (int order in orders)
         {
+            double previousDp = double.PositiveInfinity;
             foreach (double tol in tols)
             {
-                TaylorNBodyResult r = TaylorNBody.Run(input, years, order, tol, tol, 0.02d, 1e-10d, 0d);
+                TaylorNBodyResult r = TaylorNBody.Run(input, years, order, tol, tol, 10d, 1e-10d, 0d);
+                double dp = MaxDiff(r.P, p);
                 Console.WriteLine(string.Format(
                     System.Globalization.CultureInfo.InvariantCulture,
                     "{0,-4} {1,8:E0} {2,11:E2} {3,11:E2}",
-                    order, tol, MaxDiff(r.P, p), MaxDiff(r.V, v)));
+                    order, tol, dp, MaxDiff(r.V, v)));
+                if (tol <= 1e-8d && tol >= 1e-12d)
+                {
+                    Check(dp < previousDp * 1.5d, "Figure-eight convergence K=" + order,
+                        dp.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
+                }
+
+                previousDp = dp;
             }
         }
     }
@@ -430,6 +457,7 @@ internal static partial class P1bTests
         var tols = new[] { 1e-4d, 1e-6d, 1e-8d, 1e-10d, 1e-12d, 1e-14d };
         foreach (int order in orders)
         {
+            double previousDp = double.PositiveInfinity;
             foreach (double tol in tols)
             {
                 var r = RunCr3bpTaylor(mu, x0, y0, vx0, vy0, period, order, tol, 0.05d, 1e-10d);
@@ -439,6 +467,13 @@ internal static partial class P1bTests
                     System.Globalization.CultureInfo.InvariantCulture,
                     "{0,-4} {1,8:E0} {2,11:E2} {3,10}",
                     order, tol, dp, r.steps));
+                if (tol <= 1e-8d && tol >= 1e-12d)
+                {
+                    Check(dp < previousDp * 1.5d, "Arenstorf convergence K=" + order,
+                        dp.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
+                }
+
+                previousDp = dp;
             }
         }
     }
@@ -642,7 +677,7 @@ internal static partial class P1bTests
         return (x, y, vx, vy, steps);
     }
 
-    private static void KnownArenstorfDd(int periods, int order, double tolerance)
+    private static (double dp, double dv) KnownArenstorfDd(int periods, int order, double tolerance)
     {
         StudyDd mu = DdFromDecimal("0.012277471");
         StudyDd x0 = DdFromDecimal("0.994");
@@ -666,8 +701,14 @@ internal static partial class P1bTests
             "Arenstorf dd(dd IC/T), {0,2} periods, K={1}, tol={2:E0}: dp={3:E2}, dv={4:E2}, steps={5}",
             periods, order, tolerance, dp, dv, r.steps));
         Check(double.IsFinite(dp) && double.IsFinite(dv), "Arenstorf dd finite", "dp/dv finite");
-        Check(dp < 1e-12d, "Arenstorf dd below double", dp.ToString("E3", System.Globalization.CultureInfo.InvariantCulture));
+        Check(dp < 100d * tolerance, "Arenstorf dd dp vs tol",
+            dp.ToString("E3", System.Globalization.CultureInfo.InvariantCulture));
+        Check(dv < 10000d * tolerance, "Arenstorf dd dv vs tol",
+            dv.ToString("E3", System.Globalization.CultureInfo.InvariantCulture));
+        return (dp, dv);
     }
 }
+
+
 
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using Galilego.Core;
@@ -25,14 +25,19 @@ internal static partial class P1bTests
         var t = TaylorNBody.Run(ToTaylor(nb), years, 24, 1e-9d, 1e-12d, 3600d, 1e-6d, 0d);
         sw.Stop();
         var r28 = StudyRefRun(nb, "Y6C", 28.125d, years, 0d);
+        var r14 = StudyRefRun(nb, "Y6C", 14.0625d, years, 0d);
         var y6 = StudyRefRun(nb, "Y6", 7200d, years, 0d);
         var rk4 = StudyRefRun(nb, "RK4", 900d, years, 0d);
+        var tBig = TaylorNBody.Run(ToTaylor(nb), years, 24, 1e-9d, 1e-12d, 86400d, 1e-6d, 0d);
         double e0 = StudyEnergy(nb.P0, nb.V0, nb.Mu);
         Console.WriteLine(
-            "Taylor: err Moon/Earth={0:E3} m, dE/E={1:E2}, calls={2:N0}, steps={3:N0}, {4:F0} ms",
+            "Taylor vs Y6C 28.125: err Moon/Earth={0:E3} m, dE/E={1:E2}, calls={2:N0}, steps={3:N0}, {4:F0} ms",
             StudyRel(t.P, 2, 1, r28.P),
             Math.Abs((StudyEnergy(t.P, t.V, nb.Mu) - e0) / e0),
             t.Calls, t.Steps, t.Ms);
+        Console.WriteLine("Y6C 28.125 vs 14.0625: err={0:E3} m", StudyRel(r28.P, 2, 1, r14.P));
+        Console.WriteLine("Taylor maxStep=86400: err={0:E3} m, steps={1:N0}",
+            StudyRel(tBig.P, 2, 1, r28.P), tBig.Steps);
         Console.WriteLine("Y6C 28.125: err={0:E3} m", StudyRel(r28.P, 2, 1, r28.P));
         Console.WriteLine("Y6 7200 vs Y6C 28.125: err={0:E3} m", StudyRel(y6.P, 2, 1, r28.P));
         Console.WriteLine("RK4 900 vs Y6C 28.125: err={0:E3} m", StudyRel(rk4.P, 2, 1, r28.P));
@@ -58,6 +63,7 @@ internal static partial class P1bTests
 
         var sw = Stopwatch.StartNew();
         var taylor = TaylorShip.Run(sys, p0, v0, t0, days, 24, 1e-9d, 1e-12d, 3600d, 1e-3d);
+        var taylorBig = TaylorShip.Run(sys, p0, v0, t0, days, 24, 1e-9d, 1e-12d, 86400d, 1e-3d);
         sw.Stop();
         Vector3d taylorRel = taylor.P - bpT;
 
@@ -69,6 +75,8 @@ internal static partial class P1bTests
         Console.WriteLine(
             "Taylor: err vs local A={0:E3} m, calls={1:N0}, steps={2:N0}, {3:F0} ms",
             (taylorRel - refRel).Magnitude, taylor.Calls, taylor.Steps, taylor.Ms);
+        Console.WriteLine("Taylor maxStep=86400: err vs local A={0:E3} m, steps={1:N0}", 
+            ((taylorBig.P - bpT) - refRel).Magnitude, taylorBig.Steps);
         Console.WriteLine(
             "DOP853 tight world: err vs local A={0:E3} m, calls={1:N0}, {2:F0} ms",
             (tightRel - refRel).Magnitude, tight.calls, tight.ms);
@@ -121,3 +129,4 @@ internal static partial class P1bTests
         return 0;
     }
 }
+
