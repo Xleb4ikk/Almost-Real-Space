@@ -13,7 +13,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
   </ItemGroup>
 
-  <!-- НАСТОЯЩИЕ файлы физики (не копии): тест ловит регрессии в реальном коде. -->
+  <!-- Файлы физики (не копии): тест ловит регрессии в реальном коде. -->
   <ItemGroup>
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Math\KahanAccumulator.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Math\Vector3d.cs" />
