@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -43,7 +43,7 @@ internal static partial class P1bTests
         }
     }
 
-    private static int RunCaseProcess(string name)
+    private static int RunCaseProcess(string name, string logDir)
     {
         string host = Environment.ProcessPath;
         if (string.IsNullOrEmpty(host))
@@ -64,6 +64,19 @@ internal static partial class P1bTests
             start.ArgumentList.Add(entry);
         }
 
+        if (!string.IsNullOrEmpty(logDir))
+        {
+            Directory.CreateDirectory(logDir);
+            string safeName = name;
+            foreach (char invalid in Path.GetInvalidFileNameChars())
+            {
+                safeName = safeName.Replace(invalid, '_');
+            }
+
+            start.ArgumentList.Add("--log");
+            start.ArgumentList.Add(Path.Combine(logDir, safeName + ".log"));
+        }
+
         start.ArgumentList.Add("--exact");
         start.ArgumentList.Add(name);
         using (Process process = Process.Start(start))
@@ -78,9 +91,14 @@ internal static partial class P1bTests
         }
     }
 
-    private static int RunParallel(List<P1bCase> cases, int jobs)
+    private static int RunParallel(List<P1bCase> cases, int jobs, string logDir)
     {
         Console.WriteLine("Parallel run: " + cases.Count + " case(s), " + jobs + " job(s)");
+        if (!string.IsNullOrEmpty(logDir))
+        {
+            Directory.CreateDirectory(logDir);
+        }
+
         var failed = new System.Collections.Concurrent.ConcurrentBag<string>();
         int next = -1;
         var gate = new object();
@@ -106,7 +124,7 @@ internal static partial class P1bTests
 
                     P1bCase entry = cases[index];
                     var caseWatch = Stopwatch.StartNew();
-                    int code = RunCaseProcess(entry.Name);
+                    int code = RunCaseProcess(entry.Name, logDir);
                     Console.WriteLine(
                         "[" + entry.Name + "] " + (code == 0 ? "ok" : "FAIL")
                         + " in " + caseWatch.ElapsedMilliseconds + " ms");
@@ -145,6 +163,8 @@ internal static partial class P1bTests
         int benchJobs = 0;
         string exact = null;
         string traceDir = null;
+        string logDir = null;
+        string logFile = null;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "--list")
@@ -214,11 +234,30 @@ internal static partial class P1bTests
             {
                 slowOnly = true;
             }
+            else if (args[i] == "--log-dir" && i + 1 < args.Length)
+            {
+                logDir = args[i + 1];
+                i++;
+            }
+            else if (args[i] == "--log" && i + 1 < args.Length)
+            {
+                logFile = args[i + 1];
+                i++;
+            }
             else if (args[i] == "--trace" && i + 1 < args.Length)
             {
                 traceDir = args[i + 1];
                 i++;
             }
+        }
+
+        if (logFile != null)
+        {
+            string fullLog = Path.GetFullPath(logFile);
+            Directory.CreateDirectory(Path.GetDirectoryName(fullLog));
+            var writer = new StreamWriter(fullLog, false) { AutoFlush = true };
+            Console.SetOut(writer);
+            Console.SetError(writer);
         }
 
         if (traceDir != null)
@@ -264,7 +303,7 @@ internal static partial class P1bTests
             }
 
             var parallelWatch = Stopwatch.StartNew();
-            int code = RunParallel(copies, benchJobs);
+            int code = RunParallel(copies, benchJobs, null);
             parallelWatch.Stop();
             double speedup = (double)singleWatch.ElapsedMilliseconds * benchJobs
                 / Math.Max(1L, parallelWatch.ElapsedMilliseconds);
@@ -289,7 +328,7 @@ internal static partial class P1bTests
             }
 
             // --from/--to are needed because --filter matches a substring and
-            // test names are numbered (Test9, Test90…Test99), so "Test9" would
+            // test names are numbered (Test9, Test90�Test99), so "Test9" would
             // cover ten different numbers at once. Splitting into groups for
             // sequential runs without loading the CPU all at once is otherwise
             // impossible.
@@ -334,7 +373,7 @@ internal static partial class P1bTests
 
         if (jobs > 1 && exact == null)
         {
-            return RunParallel(selected, jobs);
+            return RunParallel(selected, jobs, logDir);
         }
 
         foreach (P1bCase entry in selected)
@@ -349,7 +388,7 @@ internal static partial class P1bTests
         return failures;
     }
 
-    /// <summary>Test number from a name like "Test112b_GradientSetAnalysis" → 112.</summary>
+    /// <summary>Test number from a name like "Test112b_GradientSetAnalysis" > 112.</summary>
     private static int TestNumber(string name)
     {
         if (!name.StartsWith("Test", System.StringComparison.Ordinal))
