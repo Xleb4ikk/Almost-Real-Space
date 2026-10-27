@@ -237,7 +237,24 @@ internal static partial class P1bTests
             new P1bCase("Test504_TaylorReference", Test504_TaylorReference, true),
             new P1bCase("Test505_KnownProblems", Test505_KnownProblems, false),
             new P1bCase("Test506_KnownConvergence", Test506_KnownConvergence, true),
+            new P1bCase("Test507_KeplerGolden", Test507_KeplerGolden, true),
+            new P1bCase("Test508_ChebyshevBoundary", Test508_ChebyshevBoundary, true),
+            new P1bCase("Test509_SolarSystemGolden", Test509_SolarSystemGolden, true),
+            new P1bCase("Test510_TaylorMatrix", Test510_TaylorMatrix, true),
+            new P1bCase("Test511_JetOracle", Test511_JetOracle, false),
+            new P1bCase("Test512_ShipMovingBody", Test512_ShipMovingBody, false),
+            new P1bCase("Test514_DdShip", Test514_DdShip, true),
+            new P1bCase("Test515_ChebyshevDegree", Test515_ChebyshevDegree, false),
+            new P1bCase("Test516_DdRealBudget", Test516_DdRealBudget, true),
+            new P1bCase("Test517_Pythagorean", Test517_Pythagorean, true),
+            new P1bCase("Test518_EphemerisExport", Test518_EphemerisExport, true),
+            new P1bCase("Test519_ForceVsProduction", Test519_ForceVsProduction, false),
+
         };
     }
 }
+
+
+
+
 
