@@ -1,0 +1,13 @@
+Taylor vs Y6 ¢?" local comparison (double precision)
+Reference: Y6C (compensated sum). Taylor and Y6 are plain double.
+Meters are at/near the double rounding floor; compare errors at similar call counts.
+
+=== DD Taylor: real solar 7-body, 1 y ===
+force check (real solar 7-body): max |a_dd - a_double| / max|a| = 7.60E-017
+reference Y6C h=28.125 s; self-convergence vs h=14.0625 s (inner) = 8.941E-008 m; calls=7854337; 1813 ms
+method        K        h     steps       calls        ms   allocKiB        inner          mid        outer       dE/E
+  [running DD Taylor K=12 h=3600 ...]
+DD Taylor   12     3600      8766      105192   16319.0 15471855.0   1.526E-005   5.554E-005   4.388E-005 6.63E-016
+  invariants: dP/sum(mu|v|) = 4.31E-017; dL/L = 1.59E-016
+
+done.

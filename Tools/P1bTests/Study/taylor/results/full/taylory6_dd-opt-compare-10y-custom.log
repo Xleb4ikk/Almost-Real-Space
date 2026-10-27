@@ -1,0 +1,13 @@
+Taylor vs Y6 ¢?" local comparison (double precision)
+Reference: Y6C (compensated sum). Taylor and Y6 are plain double.
+Meters are at/near the double rounding floor; compare errors at similar call counts.
+
+=== DD old vs optimized: custom 6-body, 10 y ===
+force check (custom 6-body): max |a_dd - a_double| / max|a| = 3.94E-016
+max |P_old-P_opt| = 0.000E+000 m (0.00E+000 relative); max |V| diff = 0.000E+000 m/s
+old: 112.7 s, 111,462,431 KiB; opt: 97.5 s, 107 KiB; speedup=1.16x
+old  inner=1.614E-004 mid=4.462E-004 outer=1.786E-004 dE/E=5.00E-016 steps=87660 calls=1051920
+opt  inner=1.614E-004 mid=4.462E-004 outer=1.786E-004 dE/E=5.00E-016 steps=87660 calls=1051920
+METHOD SAME (within 1 mm)
+
+done.

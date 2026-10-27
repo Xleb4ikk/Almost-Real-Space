@@ -1,0 +1,9 @@
+Taylor vs Y6 ¢?" local comparison (double precision)
+Reference: Y6C (compensated sum). Taylor and Y6 are plain double.
+Meters are at/near the double rounding floor; compare errors at similar call counts.
+
+=== Y6C finer self-convergence: custom 6-body ===
+inner 7.03125 vs 3.515625 = 4.582E-004 m; mid=1.526E-005; outer=1.526E-005
+  calls=628346881, 133021 ms
+
+done.

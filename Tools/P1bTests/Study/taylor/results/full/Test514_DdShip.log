@@ -1,0 +1,11 @@
+--- Eccentric ship: double vs double-double, 1000 periods ---
+double: dp=1.28E-007 dv=9.05E-005 steps=147001 | dd: dp=1.13E-011 dv=8.03E-009 steps=184842
+PASS dd ship double finite | dp/dv
+PASS dd ship finite | dp/dv
+PASS dd ship dp | 1.13E-011
+PASS dd ship dv | 8.03E-009
+PASS dd ship dp win | 1.1E+004
+PASS dd ship dv win | 1.1E+004
+--- Eccentric ship complete ---
+[Test514_DdShip] ok in 92301 ms
+ALL PASS

@@ -1,0 +1,79 @@
+Taylor vs Y6 ¢?" local comparison (double precision)
+Reference: Y6C (compensated sum). Taylor and Y6 are plain double.
+Meters are at/near the double rounding floor; compare errors at similar call counts.
+
+--- Ships: bake 1 y so Taylor and Y6 see the same body states ---
+
+=== Ship: real Earth LEO 400 km, 30 d ===
+ref world vs ref local (both Y6C 1.25 s): 6.406E+001 m
+method           h     steps       calls        ms   allocKiB       errWorld      errLocal
+Y6               30     86400      604801     378.2        0.2    5.644E+001    7.619E+000
+Y6               60     43200      302401     193.8        0.2    2.143E+002    1.502E+002
+Y6              120     21600      151201      95.4        0.2    9.497E+003    9.433E+003
+  [running Taylor K=24 h<=3600 ...]
+Taylor         3600      2602       66024    6025.5 17175524.9    7.131E+001    7.252E+000
+|Y6 h=30 - Taylor| = 1.487E+001 m (same world formulation)
+|Y6 h=60 - Taylor| = 1.430E+002 m (same world formulation)
+|Y6 h=120 - Taylor| = 9.426E+003 m (same world formulation)
+
+=== Ship: real Earth 400/40000 km, 30 d ===
+ref world vs ref local (both Y6C 1.25 s): 8.063E+000 m
+method           h     steps       calls        ms   allocKiB       errWorld      errLocal
+Y6               30     86400      604801     345.4        0.2    6.551E+000    1.593E+000
+Y6               60     43200      302401     143.1        0.2    2.289E+002    2.369E+002
+Y6              120     21600      151201      95.0        0.2    1.524E+004    1.525E+004
+  [running Taylor K=24 h<=3600 ...]
+Taylor         3600      2683       79608    7351.6 20709275.1    7.208E+000    8.557E-001
+|Y6 h=30 - Taylor| = 8.157E-001 m (same world formulation)
+|Y6 h=60 - Taylor| = 2.361E+002 m (same world formulation)
+|Y6 h=120 - Taylor| = 1.525E+004 m (same world formulation)
+
+=== Ship: real Sun 1 AU, 30 d ===
+ref world vs ref local (both Y6C 1.25 s): 1.731E+001 m
+method           h     steps       calls        ms   allocKiB       errWorld      errLocal
+Y6               30     86400      604801     300.3        0.2    1.819E+001    9.941E-001
+Y6               60     43200      302401     156.0        0.2    1.816E+001    9.699E-001
+Y6              120     21600      151201      80.5        0.2    1.797E+001    7.968E-001
+  [running Taylor K=24 h<=3600 ...]
+Taylor         3600       724       17376    1581.4  4520203.8    1.789E+001    7.358E-001
+|Y6 h=30 - Taylor| = 3.028E-001 m (same world formulation)
+|Y6 h=60 - Taylor| = 2.734E-001 m (same world formulation)
+|Y6 h=120 - Taylor| = 7.625E-002 m (same world formulation)
+
+=== Ship: real Sun 0.1/5 AU, 30 d ===
+ref world vs ref local (both Y6C 1.25 s): 2.361E+001 m
+method           h     steps       calls        ms   allocKiB       errWorld      errLocal
+Y6               30     86400      604801     305.5        0.2    2.419E+001    1.123E+000
+Y6               60     43200      302401     183.0        0.2    2.417E+001    1.110E+000
+Y6              120     21600      151201      94.4        0.2    2.389E+001    9.846E-001
+  [running Taylor K=24 h<=3600 ...]
+Taylor         3600       724       17376    1499.1  4520203.8    2.379E+001    9.597E-001
+|Y6 h=30 - Taylor| = 3.991E-001 m (same world formulation)
+|Y6 h=60 - Taylor| = 3.770E-001 m (same world formulation)
+|Y6 h=120 - Taylor| = 1.044E-001 m (same world formulation)
+
+=== Ship: custom Terra LEO 400 km, 30 d ===
+ref world vs ref local (both Y6C 1.25 s): 3.967E+001 m
+method           h     steps       calls        ms   allocKiB       errWorld      errLocal
+Y6               30     86400      604801     312.8        0.2    1.813E+001    2.154E+001
+Y6               60     43200      302401     145.8        0.2    1.078E+003    1.118E+003
+Y6              120     21600      151201      78.5        0.2    6.940E+004    6.944E+004
+  [running Taylor K=24 h<=3600 ...]
+Taylor         3600      4072      100176    7568.0 21788280.3    4.071E+001    1.039E+000
+|Y6 h=30 - Taylor| = 2.258E+001 m (same world formulation)
+|Y6 h=60 - Taylor| = 1.119E+003 m (same world formulation)
+|Y6 h=120 - Taylor| = 6.944E+004 m (same world formulation)
+
+=== Ship: custom Terra 400/40000 km, 30 d ===
+ref world vs ref local (both Y6C 1.25 s): 6.535E+000 m
+method           h     steps       calls        ms   allocKiB       errWorld      errLocal
+Y6               30     86400      604801     303.5        0.2    7.738E+001    8.391E+001
+Y6               60     43200      302401     149.9        0.2    5.308E+003    5.315E+003
+Y6              120     21600      151201      78.6        0.2    3.345E+005    3.345E+005
+  [running Taylor K=24 h<=3600 ...]
+Taylor         3600      1261       34608    2683.4  7527240.3    5.081E+000    1.455E+000
+|Y6 h=30 - Taylor| = 8.246E+001 m (same world formulation)
+|Y6 h=60 - Taylor| = 5.313E+003 m (same world formulation)
+|Y6 h=120 - Taylor| = 3.345E+005 m (same world formulation)
+
+done.

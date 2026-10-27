@@ -1,0 +1,72 @@
+--- Taylor reference ---
+
+=== Taylor exact circular Kepler one-body (30 d) ===
+
+
+=== Taylor custom: bake 1 y, RK4 900 s, degree 12, quant 2 m ===
+=== Taylor real: bake 1 y, RK4 900 s, degree 12, quant 2 m ===
+bake: 92 ms, segments=212, worst position error vs Y6C = 3,786E-002 m
+per body: Terra=2,02E-002 m Luna=3,79E-002 m Vesper=1,89E-002 m Jove=2,63E-003 m Ares=3,92E-003 m
+30 d | exact vs Taylor: dp=2,352E-004 m, dv=2,665E-007 m/s, calls=103 680, steps=4 320, 815 ms
+PASS kepler 30 d finite | 2.35E-004
+PASS kepler 30 d dp | 2.35E-004
+PASS kepler 30 d dv | 2.66E-007
+
+=== Taylor exact circular Kepler one-body (10 y) ===
+compressed files: 102 ms, 18 850 bytes; worst vs Y6C = 3,687E-001 m
+bake step (actual formula): 900 s
+
+=== Taylor n-body: custom 6-body, 10 y ===
+bake: 111 ms, segments=133, worst position error vs Y6C = 1,434E-001 m
+per body: Earth=2,45E-002 m Moon=4,12E-002 m Jupiter=6,07E-003 m Saturn=1,05E-002 m Venus=1,43E-001 m Mars=6,27E-003 m
+compressed files: 122 ms, 13 426 bytes; worst vs Y6C = 3,574E-001 m
+bake step (actual formula): 900 s
+
+=== Taylor n-body: real solar 7-body, 10 y ===
+10 y | exact vs Taylor: dp=1,904E-002 m, dv=2,157E-005 m/s, calls=6 697 440, steps=279 059, 46242 ms
+PASS kepler 10 y finite | 1.90E-002
+PASS kepler 10 y dp | 1.90E-002
+PASS kepler 10 y dv | 2.16E-005
+custom 6-body | Taylor vs Y6C 28.125: err Moon/Earth=1,841E+000 m, dE/E=3,97E-014, calls=2 103 840, steps=87 660, 184600 ms
+custom 6-body | Y6C 28.125 vs 14.0625: err=3,693E-004 m
+custom 6-body | Taylor maxStep=86400: err=4,505E-003 m, steps=3 653
+custom 6-body | Y6 7200 vs Y6C 28.125: err=1,422E+001 m
+custom 6-body | RK4 900 vs Y6C 28.125: err=3,556E+000 m
+PASS custom 6-body finite | 1.84E+000
+PASS custom 6-body Taylor vs Y6C | 1.84E+000
+PASS custom 6-body Taylor maxStep 1d | 4.50E-003
+PASS custom 6-body Y6C self-convergence | 3.69E-004
+
+=== Taylor ship: Terra ecc 400/40000, 30 d ===
+Terra ecc 400/40000 | Taylor: err vs local A=1,500E+000 m, calls=34 800, steps=1 263, 2979 ms
+Terra ecc 400/40000 | Taylor maxStep=86400: err vs local A=7,352E-001 m, steps=961
+Terra ecc 400/40000 | DOP853 tight world: err vs local A=4,007E+000 m, calls=262 790, 135 ms
+Terra ecc 400/40000 | DOP853 direct local: err vs local A=4,171E-002 m, calls=73 612, 96 ms
+alloc note: Taylor jets are allocated per step; see calls/steps above
+PASS Terra ecc 400/40000 ship finite | 1.50E+000
+PASS Terra ecc 400/40000 Taylor vs local ref | 1.50E+000
+PASS Terra ecc 400/40000 Taylor maxStep 1d | 7.35E-001
+PASS Terra ecc 400/40000 direct local | 4.17E-002
+real solar 7-body | Taylor vs Y6C 28.125: err Moon/Earth=2,587E+000 m, dE/E=4,64E-015, calls=2 103 840, steps=87 660, 250569 ms
+real solar 7-body | Y6C 28.125 vs 14.0625: err=1,088E-003 m
+real solar 7-body | Taylor maxStep=86400: err=9,097E-001 m, steps=3 653
+real solar 7-body | Y6 7200 vs Y6C 28.125: err=1,207E+000 m
+real solar 7-body | RK4 900 vs Y6C 28.125: err=2,532E+000 m
+PASS real solar 7-body finite | 2.59E+000
+PASS real solar 7-body Taylor vs Y6C | 2.59E+000
+PASS real solar 7-body Taylor maxStep 1d | 9.10E-001
+PASS real solar 7-body Y6C self-convergence | 1.09E-003
+
+=== Taylor ship: Earth ecc 400/40000, 30 d ===
+Earth ecc 400/40000 | Taylor: err vs local A=8,557E-001 m, calls=79 608, steps=2 683, 7571 ms
+Earth ecc 400/40000 | Taylor maxStep=86400: err vs local A=6,893E-002 m, steps=2 690
+Earth ecc 400/40000 | DOP853 tight world: err vs local A=3,007E+001 m, calls=1 103 863, 668 ms
+Earth ecc 400/40000 | DOP853 direct local: err vs local A=4,544E-002 m, calls=135 543, 156 ms
+alloc note: Taylor jets are allocated per step; see calls/steps above
+PASS Earth ecc 400/40000 ship finite | 8.56E-001
+PASS Earth ecc 400/40000 Taylor vs local ref | 8.56E-001
+PASS Earth ecc 400/40000 Taylor maxStep 1d | 6.89E-002
+PASS Earth ecc 400/40000 direct local | 4.54E-002
+--- Taylor reference complete ---
+[Test504_TaylorReference] ok in 365957 ms
+ALL PASS

@@ -1,0 +1,10 @@
+Taylor vs Y6 ¢?" local comparison (double precision)
+Reference: Y6C (compensated sum). Taylor and Y6 are plain double.
+Meters are at/near the double rounding floor; compare errors at similar call counts.
+
+=== DD self-check (dd jet vs double jet, K=12) ===
+add=0.00E+000 sub=0.00E+000 mul=1.45E-016 div=2.27E-016 sqrt=7.12E-017 eval=1.86E-016
+identity: div(mul(a,b),b)-a=8.06E-033, sqrt(a*a)-a=9.50E-033 (relative)
+SELF-CHECK PASS
+
+done.

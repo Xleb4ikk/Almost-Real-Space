@@ -1,0 +1,27 @@
+--- Chebyshev segment boundary ---
+
+=== Boundary: bake 0,08213552361396304 y, RK4 900 s, degree 12, quant 2 m ===
+bake: 16 ms, segments=14, worst position error vs Y6C = 2,243E-003 m
+per body: Earth=2,05E-004 m Moon=1,74E-003 m Jupiter=7,43E-004 m Saturn=2,24E-003 m Venus=4,11E-004 m Mars=3,11E-004 m
+compressed files: 18 ms, 2 071 bytes; worst vs Y6C = 2,118E-001 m
+bake step (actual formula): 900 s
+PASS boundary segment | 518045
+segment=518045 s, coarse clips=4, steps=5485, fine clips=3, steps=5485, dp=1.046E+000 m, double-vs-dd=7.315E-001/1.777E+000 m
+dd: clips=4/3, steps=5485/5485, dp=7.963E-014 m
+PASS boundary double-vs-dd finite | dp
+note: adaptive hmax (10*segment vs segment/20) is far above the ~1e2 s controller step, so these two runs differ only by their initial step/rejection path. The double-vs-dd errors and the fixed 300/150 pair show step-count-proportional roundoff; a naive Kahan power-sum was tried and reverted because it raised the 30-day real-system double error from 0.165 m to 1.18 m. Compensated Horner or a local frame is the correct double fix; dd avoids the issue by storing the absolute state in dd.
+PASS boundary coarse clips | 4
+PASS boundary fine clips | 3
+PASS boundary finite | 1.046E+000
+PASS boundary dd coarse clips | 4
+PASS boundary dd fine clips | 3
+PASS boundary dd coarse vs fine | 7.963E-014
+fixed 300/150: steps=5181/10362, clips=3/3, double dp=2.90E+000, dd dp=1.78E-009, double-vs-dd=1.38E-001/2.77E+000
+note: with maxStep forced below the controller step, dd is independent of the step ratio to ~1e-9 m; the double difference is double roundoff amplified by the eccentric orbit, so it is reported but not used as a correctness gate.
+PASS boundary fixed clips | 3/3
+PASS boundary fixed steps bind | 5181/10362
+PASS boundary fixed finite | dp
+PASS boundary fixed dd agreement | 1.78E-009
+--- Chebyshev segment boundary complete ---
+[Test508_ChebyshevBoundary] ok in 58493 ms
+ALL PASS

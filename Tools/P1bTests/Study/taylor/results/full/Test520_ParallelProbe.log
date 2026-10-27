@@ -1,0 +1,6 @@
+--- Parallel probe: 1-year one-body Kepler ---
+probe ms=8601, steps=52596, dp=1.13E-002 m
+PASS parallel probe dp | 1.13E-002
+--- Parallel probe complete ---
+[Test520_ParallelProbe] ok in 8709 ms
+ALL PASS

@@ -1,0 +1,13 @@
+--- Jet oracle: sqrt, div, mul, composite, derivative, integral ---
+sqrt=1.73E-018 div=3.47E-018 mul=8.67E-019 comp=3.47E-018 der=6.94E-018 int=0.00E+000
+PASS jet sqrt | 1.73E-018
+PASS jet div | 3.47E-018
+PASS jet mul | 8.67E-019
+PASS jet composite | 3.47E-018
+PASS jet derivative | 6.94E-018
+PASS jet integral | 0.00E+000
+jet composite: method=3.47E-018 golden=1.00E-045 ratio=3.5E+027
+PASS jet composite 100x | 3.5E+027
+--- Jet oracle complete ---
+[Test511_JetOracle] ok in 16 ms
+ALL PASS

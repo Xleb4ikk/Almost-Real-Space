@@ -1,0 +1,211 @@
+--- Taylor matrix: 3D Kepler, N-body, dd, invariants ---
+e=0.0 inc=0 100p   ship dp=4.07E-013 dv=5.72E-013 | nbody dp=5.82E-012 dv=8.22E-012
+PASS e=0.0 inc=0 100p ship finite | dp/dv
+PASS e=0.0 inc=0 100p nbody finite | dp/dv
+PASS e=0.0 inc=0 100p ship dp | 4.07E-013
+PASS e=0.0 inc=0 100p ship dv | 5.72E-013
+PASS e=0.0 inc=0 100p nbody dp | 5.82E-012
+PASS e=0.0 inc=0 100p nbody dv | 8.22E-012
+e=0.0 inc=0 100p dp: method=5.82E-012 golden=1.00E-040 ratio=5.8E+028
+PASS e=0.0 inc=0 100p dp 100x | 5.8E+028
+e=0.0 inc=0 100p dv: method=8.22E-012 golden=1.00E-040 ratio=8.2E+028
+PASS e=0.0 inc=0 100p dv 100x | 8.2E+028
+PASS e=0.0 inc=0 100p energy | 1.27E-014
+PASS e=0.0 inc=0 100p momentum | 0.00E+000
+PASS e=0.0 inc=0 100p angular | 6.28E-015
+e=0.0 inc=45 100p  ship dp=1.92E-012 dv=2.72E-012 | nbody dp=6.90E-012 dv=9.75E-012
+PASS e=0.0 inc=45 100p ship finite | dp/dv
+PASS e=0.0 inc=45 100p nbody finite | dp/dv
+PASS e=0.0 inc=45 100p ship dp | 1.92E-012
+PASS e=0.0 inc=45 100p ship dv | 2.72E-012
+PASS e=0.0 inc=45 100p nbody dp | 6.90E-012
+PASS e=0.0 inc=45 100p nbody dv | 9.75E-012
+e=0.0 inc=45 100p dp: method=6.90E-012 golden=1.00E-040 ratio=6.9E+028
+PASS e=0.0 inc=45 100p dp 100x | 6.9E+028
+e=0.0 inc=45 100p dv: method=9.75E-012 golden=1.00E-040 ratio=9.8E+028
+PASS e=0.0 inc=45 100p dv 100x | 9.8E+028
+PASS e=0.0 inc=45 100p energy | 1.60E-014
+PASS e=0.0 inc=45 100p momentum | 0.00E+000
+PASS e=0.0 inc=45 100p angular | 7.88E-015
+e=0.0 inc=90 100p  ship dp=4.07E-013 dv=5.72E-013 | nbody dp=5.82E-012 dv=8.22E-012
+PASS e=0.0 inc=90 100p ship finite | dp/dv
+PASS e=0.0 inc=90 100p nbody finite | dp/dv
+PASS e=0.0 inc=90 100p ship dp | 4.07E-013
+PASS e=0.0 inc=90 100p ship dv | 5.72E-013
+PASS e=0.0 inc=90 100p nbody dp | 5.82E-012
+PASS e=0.0 inc=90 100p nbody dv | 8.22E-012
+e=0.0 inc=90 100p dp: method=5.82E-012 golden=1.00E-040 ratio=5.8E+028
+PASS e=0.0 inc=90 100p dp 100x | 5.8E+028
+e=0.0 inc=90 100p dv: method=8.22E-012 golden=1.00E-040 ratio=8.2E+028
+PASS e=0.0 inc=90 100p dv 100x | 8.2E+028
+PASS e=0.0 inc=90 100p energy | 1.27E-014
+PASS e=0.0 inc=90 100p momentum | 0.00E+000
+PASS e=0.0 inc=90 100p angular | 6.28E-015
+e=0.5 inc=0 100p   ship dp=1.78E-013 dv=5.50E-013 | nbody dp=1.21E-011 dv=3.95E-011
+PASS e=0.5 inc=0 100p ship finite | dp/dv
+PASS e=0.5 inc=0 100p nbody finite | dp/dv
+PASS e=0.5 inc=0 100p ship dp | 1.78E-013
+PASS e=0.5 inc=0 100p ship dv | 5.50E-013
+PASS e=0.5 inc=0 100p nbody dp | 1.21E-011
+PASS e=0.5 inc=0 100p nbody dv | 3.95E-011
+e=0.5 inc=0 100p dp: method=1.21E-011 golden=1.00E-040 ratio=1.2E+029
+PASS e=0.5 inc=0 100p dp 100x | 1.2E+029
+e=0.5 inc=0 100p dv: method=3.95E-011 golden=1.00E-040 ratio=3.9E+029
+PASS e=0.5 inc=0 100p dv 100x | 3.9E+029
+PASS e=0.5 inc=0 100p energy | 2.98E-014
+PASS e=0.5 inc=0 100p momentum | 0.00E+000
+PASS e=0.5 inc=0 100p angular | 2.14E-014
+e=0.5 inc=45 100p  ship dp=5.19E-012 dv=1.69E-011 | nbody dp=3.75E-011 dv=1.22E-010
+PASS e=0.5 inc=45 100p ship finite | dp/dv
+PASS e=0.5 inc=45 100p nbody finite | dp/dv
+PASS e=0.5 inc=45 100p ship dp | 5.19E-012
+PASS e=0.5 inc=45 100p ship dv | 1.69E-011
+PASS e=0.5 inc=45 100p nbody dp | 3.75E-011
+PASS e=0.5 inc=45 100p nbody dv | 1.22E-010
+e=0.5 inc=45 100p dp: method=3.75E-011 golden=1.00E-040 ratio=3.7E+029
+PASS e=0.5 inc=45 100p dp 100x | 3.7E+029
+e=0.5 inc=45 100p dv: method=1.22E-010 golden=1.00E-040 ratio=1.2E+030
+PASS e=0.5 inc=45 100p dv 100x | 1.2E+030
+PASS e=0.5 inc=45 100p energy | 7.19E-014
+PASS e=0.5 inc=45 100p momentum | 0.00E+000
+PASS e=0.5 inc=45 100p angular | 6.37E-014
+e=0.5 inc=90 100p  ship dp=1.78E-013 dv=5.50E-013 | nbody dp=1.21E-011 dv=3.95E-011
+PASS e=0.5 inc=90 100p ship finite | dp/dv
+PASS e=0.5 inc=90 100p nbody finite | dp/dv
+PASS e=0.5 inc=90 100p ship dp | 1.78E-013
+PASS e=0.5 inc=90 100p ship dv | 5.50E-013
+PASS e=0.5 inc=90 100p nbody dp | 1.21E-011
+PASS e=0.5 inc=90 100p nbody dv | 3.95E-011
+e=0.5 inc=90 100p dp: method=1.21E-011 golden=1.00E-040 ratio=1.2E+029
+PASS e=0.5 inc=90 100p dp 100x | 1.2E+029
+e=0.5 inc=90 100p dv: method=3.95E-011 golden=1.00E-040 ratio=3.9E+029
+PASS e=0.5 inc=90 100p dv 100x | 3.9E+029
+PASS e=0.5 inc=90 100p energy | 2.98E-014
+PASS e=0.5 inc=90 100p momentum | 0.00E+000
+PASS e=0.5 inc=90 100p angular | 2.14E-014
+e=0.9 inc=0 100p   ship dp=1.03E-010 dv=3.33E-009 | nbody dp=1.87E-010 dv=6.06E-009
+PASS e=0.9 inc=0 100p ship finite | dp/dv
+PASS e=0.9 inc=0 100p nbody finite | dp/dv
+PASS e=0.9 inc=0 100p ship dp | 1.03E-010
+PASS e=0.9 inc=0 100p ship dv | 3.33E-009
+PASS e=0.9 inc=0 100p nbody dp | 1.87E-010
+PASS e=0.9 inc=0 100p nbody dv | 6.06E-009
+e=0.9 inc=0 100p dp: method=1.87E-010 golden=1.00E-040 ratio=1.9E+030
+PASS e=0.9 inc=0 100p dp 100x | 1.9E+030
+e=0.9 inc=0 100p dv: method=6.06E-009 golden=1.00E-040 ratio=6.1E+031
+PASS e=0.9 inc=0 100p dv 100x | 6.1E+031
+PASS e=0.9 inc=0 100p energy | 8.17E-014
+PASS e=0.9 inc=0 100p momentum | 0.00E+000
+PASS e=0.9 inc=0 100p angular | 2.23E-013
+e=0.9 inc=45 100p  ship dp=1.30E-010 dv=4.21E-009 | nbody dp=1.05E-010 dv=3.41E-009
+PASS e=0.9 inc=45 100p ship finite | dp/dv
+PASS e=0.9 inc=45 100p nbody finite | dp/dv
+PASS e=0.9 inc=45 100p ship dp | 1.30E-010
+PASS e=0.9 inc=45 100p ship dv | 4.21E-009
+PASS e=0.9 inc=45 100p nbody dp | 1.05E-010
+PASS e=0.9 inc=45 100p nbody dv | 3.41E-009
+e=0.9 inc=45 100p dp: method=1.30E-010 golden=1.00E-040 ratio=1.3E+030
+PASS e=0.9 inc=45 100p dp 100x | 1.3E+030
+e=0.9 inc=45 100p dv: method=4.21E-009 golden=1.00E-040 ratio=4.2E+031
+PASS e=0.9 inc=45 100p dv 100x | 4.2E+031
+PASS e=0.9 inc=45 100p energy | 1.10E-013
+PASS e=0.9 inc=45 100p momentum | 0.00E+000
+PASS e=0.9 inc=45 100p angular | 3.88E-013
+time reversal: dp=2.50E-010 dv=8.11E-009
+PASS matrix time reversal dp | 2.50E-010
+PASS matrix time reversal dv | 8.11E-009
+LRL drift: 1.41E-013
+PASS matrix LRL | 1.41E-013
+e=0.9 inc=90 100p  ship dp=1.03E-010 dv=3.33E-009 | nbody dp=1.87E-010 dv=6.06E-009
+PASS e=0.9 inc=90 100p ship finite | dp/dv
+PASS e=0.9 inc=90 100p nbody finite | dp/dv
+PASS e=0.9 inc=90 100p ship dp | 1.03E-010
+PASS e=0.9 inc=90 100p ship dv | 3.33E-009
+PASS e=0.9 inc=90 100p nbody dp | 1.87E-010
+PASS e=0.9 inc=90 100p nbody dv | 6.06E-009
+e=0.9 inc=90 100p dp: method=1.87E-010 golden=1.00E-040 ratio=1.9E+030
+PASS e=0.9 inc=90 100p dp 100x | 1.9E+030
+e=0.9 inc=90 100p dv: method=6.06E-009 golden=1.00E-040 ratio=6.1E+031
+PASS e=0.9 inc=90 100p dv 100x | 6.1E+031
+PASS e=0.9 inc=90 100p energy | 8.17E-014
+PASS e=0.9 inc=90 100p momentum | 0.00E+000
+PASS e=0.9 inc=90 100p angular | 2.23E-013
+e=0.99 inc=0 10p   ship dp=1.26E-010 dv=1.26E-007 | nbody dp=3.72E-011 dv=3.73E-008
+PASS e=0.99 inc=0 10p ship finite | dp/dv
+PASS e=0.99 inc=0 10p nbody finite | dp/dv
+PASS e=0.99 inc=0 10p ship dp | 1.26E-010
+PASS e=0.99 inc=0 10p ship dv | 1.26E-007
+PASS e=0.99 inc=0 10p nbody dp | 3.72E-011
+PASS e=0.99 inc=0 10p nbody dv | 3.73E-008
+e=0.99 inc=0 10p dp: method=1.26E-010 golden=1.00E-040 ratio=1.3E+030
+PASS e=0.99 inc=0 10p dp 100x | 1.3E+030
+e=0.99 inc=0 10p dv: method=1.26E-007 golden=1.00E-040 ratio=1.3E+033
+PASS e=0.99 inc=0 10p dv 100x | 1.3E+033
+PASS e=0.99 inc=0 10p energy | 8.53E-014
+PASS e=0.99 inc=0 10p momentum | 0.00E+000
+PASS e=0.99 inc=0 10p angular | 1.11E-015
+e=0.99 inc=45 10p  ship dp=3.57E-011 dv=3.58E-008 | nbody dp=1.49E-010 dv=1.49E-007
+PASS e=0.99 inc=45 10p ship finite | dp/dv
+PASS e=0.99 inc=45 10p nbody finite | dp/dv
+PASS e=0.99 inc=45 10p ship dp | 3.57E-011
+PASS e=0.99 inc=45 10p ship dv | 3.58E-008
+PASS e=0.99 inc=45 10p nbody dp | 1.49E-010
+PASS e=0.99 inc=45 10p nbody dv | 1.49E-007
+e=0.99 inc=45 10p dp: method=1.49E-010 golden=1.00E-040 ratio=1.5E+030
+PASS e=0.99 inc=45 10p dp 100x | 1.5E+030
+e=0.99 inc=45 10p dv: method=1.49E-007 golden=1.00E-040 ratio=1.5E+033
+PASS e=0.99 inc=45 10p dv 100x | 1.5E+033
+PASS e=0.99 inc=45 10p energy | 1.71E-013
+PASS e=0.99 inc=45 10p momentum | 0.00E+000
+PASS e=0.99 inc=45 10p angular | 2.56E-015
+dd e=0.99 inc=45 10p: dp=9.95E-014 dv=9.98E-011 steps=1434
+PASS matrix dd dp e=0.99 inc=45 10p | 9.95E-014
+PASS matrix dd dv e=0.99 inc=45 10p | 9.98E-011
+e=0.99 inc=90 10p  ship dp=1.26E-010 dv=1.26E-007 | nbody dp=3.72E-011 dv=3.73E-008
+PASS e=0.99 inc=90 10p ship finite | dp/dv
+PASS e=0.99 inc=90 10p nbody finite | dp/dv
+PASS e=0.99 inc=90 10p ship dp | 1.26E-010
+PASS e=0.99 inc=90 10p ship dv | 1.26E-007
+PASS e=0.99 inc=90 10p nbody dp | 3.72E-011
+PASS e=0.99 inc=90 10p nbody dv | 3.73E-008
+e=0.99 inc=90 10p dp: method=1.26E-010 golden=1.00E-040 ratio=1.3E+030
+PASS e=0.99 inc=90 10p dp 100x | 1.3E+030
+e=0.99 inc=90 10p dv: method=1.26E-007 golden=1.00E-040 ratio=1.3E+033
+PASS e=0.99 inc=90 10p dv 100x | 1.3E+033
+PASS e=0.99 inc=90 10p energy | 8.53E-014
+PASS e=0.99 inc=90 10p momentum | 0.00E+000
+PASS e=0.99 inc=90 10p angular | 1.11E-015
+e=0.5 inc=45 100p ratio=0.01 ship dp=5.19E-012 dv=1.69E-011 | nbody dp=9.63E-012 dv=3.15E-011
+PASS e=0.5 inc=45 100p ratio=0.01 ship finite | dp/dv
+PASS e=0.5 inc=45 100p ratio=0.01 nbody finite | dp/dv
+PASS e=0.5 inc=45 100p ratio=0.01 ship dp | 5.19E-012
+PASS e=0.5 inc=45 100p ratio=0.01 ship dv | 1.69E-011
+PASS e=0.5 inc=45 100p ratio=0.01 nbody dp | 9.63E-012
+PASS e=0.5 inc=45 100p ratio=0.01 nbody dv | 3.15E-011
+e=0.5 inc=45 100p ratio=0.01 dp: method=9.63E-012 golden=1.00E-040 ratio=9.6E+028
+PASS e=0.5 inc=45 100p ratio=0.01 dp 100x | 9.6E+028
+e=0.5 inc=45 100p ratio=0.01 dv: method=3.15E-011 golden=1.00E-040 ratio=3.1E+029
+PASS e=0.5 inc=45 100p ratio=0.01 dv 100x | 3.1E+029
+PASS e=0.5 inc=45 100p ratio=0.01 energy | 1.77E-014
+PASS e=0.5 inc=45 100p ratio=0.01 momentum | 4.89E-017
+PASS e=0.5 inc=45 100p ratio=0.01 angular | 2.88E-014
+dd e=0.5 inc=45 100p ratio=0.01: dp=1.67E-011 dv=5.46E-011 steps=5165
+PASS matrix dd dp e=0.5 inc=45 100p ratio=0.01 | 1.67E-011
+PASS matrix dd dv e=0.5 inc=45 100p ratio=0.01 | 5.46E-011
+e=0.9 inc=45 100p ratio=100 ship dp=1.30E-010 dv=4.21E-009 | nbody dp=5.64E-011 dv=1.83E-009
+PASS e=0.9 inc=45 100p ratio=100 ship finite | dp/dv
+PASS e=0.9 inc=45 100p ratio=100 nbody finite | dp/dv
+PASS e=0.9 inc=45 100p ratio=100 ship dp | 1.30E-010
+PASS e=0.9 inc=45 100p ratio=100 ship dv | 4.21E-009
+PASS e=0.9 inc=45 100p ratio=100 nbody dp | 5.64E-011
+PASS e=0.9 inc=45 100p ratio=100 nbody dv | 1.83E-009
+e=0.9 inc=45 100p ratio=100 dp: method=1.30E-010 golden=1.00E-040 ratio=1.3E+030
+PASS e=0.9 inc=45 100p ratio=100 dp 100x | 1.3E+030
+e=0.9 inc=45 100p ratio=100 dv: method=4.21E-009 golden=1.00E-040 ratio=4.2E+031
+PASS e=0.9 inc=45 100p ratio=100 dv 100x | 4.2E+031
+PASS e=0.9 inc=45 100p ratio=100 energy | 2.83E-015
+PASS e=0.9 inc=45 100p ratio=100 momentum | 3.48E-016
+PASS e=0.9 inc=45 100p ratio=100 angular | 1.61E-013
+--- Taylor matrix complete ---
+[Test510_TaylorMatrix] ok in 14714 ms
+ALL PASS

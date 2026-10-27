@@ -1,0 +1,17 @@
+--- 1-year floor probe: tol/hmax sweep ---
+
+=== Year floor: bake 1,1 y, RK4 900 s, degree 12, quant 2 m ===
+bake: 106 ms, segments=147, worst position error vs Y6C = 5,142E-001 m
+per body: Earth=2,71E-002 m Moon=5,14E-001 m Jupiter=5,59E-003 m Saturn=7,79E-003 m Venus=6,61E-002 m Mars=2,65E-002 m
+compressed files: 140 ms, 14 640 bytes; worst vs Y6C = 6,533E-001 m
+bake step (actual formula): 900 s
+PASS year floor golden | Study\taylor\golden\golden_real_1y_hi.json
+tol 1e-12/1e-15 hmax 1800: dp=8.116E-003 m, dv=9.662E-007 m/s, steps=43760
+PASS year floor 0 finite | dp/dv
+tol 1e-14/1e-17 hmax 900: dp=1.601E-003 m, dv=1.928E-007 m/s, steps=59906
+PASS year floor 1 finite | dp/dv
+tol 1e-12/1e-15 hmax 900: dp=1.601E-003 m, dv=1.928E-007 m/s, steps=53492
+PASS year floor 2 finite | dp/dv
+--- 1-year floor probe complete ---
+[Test522_YearFloorProbe] ok in 675410 ms
+ALL PASS

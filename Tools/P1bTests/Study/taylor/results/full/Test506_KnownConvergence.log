@@ -1,0 +1,89 @@
+--- Known problems: convergence sweeps ---
+Lagrange 1:1:100, 100 periods: return error vs K/tolerance
+K    tol        dp          dv          steps
+8      1E-008   1.37E-007   1.38E-006     4025
+PASS Lagrange convergence K=8 | 1.37E-007
+8      1E-010   3.63E-010   3.66E-009     7771
+PASS Lagrange convergence K=8 | 3.63E-010
+8      1E-012   7.22E-013   6.20E-012    15002
+PASS Lagrange convergence K=8 | 7.22E-013
+8      1E-014   4.59E-012   4.69E-011    28965
+12     1E-008   7.34E-007   7.41E-006      942
+PASS Lagrange convergence K=12 | 7.34E-007
+12     1E-010   3.32E-009   3.35E-008     1431
+PASS Lagrange convergence K=12 | 3.32E-009
+12     1E-012   1.23E-011   1.23E-010     2174
+PASS Lagrange convergence K=12 | 1.23E-011
+12     1E-014   4.36E-013   3.81E-012     3305
+16     1E-008   1.00E-006   1.01E-005      435
+PASS Lagrange convergence K=16 | 1.00E-006
+16     1E-010   6.38E-009   6.44E-008      592
+PASS Lagrange convergence K=16 | 6.38E-009
+16     1E-012   3.57E-011   3.60E-010      803
+PASS Lagrange convergence K=16 | 3.57E-011
+16     1E-014   2.34E-012   2.32E-011     1092
+K16, maxStep=0.01: dp=3.71E-011, steps=6222
+Figure-eight, 100 periods: return error vs K/tolerance
+K    tol        dp          dv
+8      1E-008   2.25E-005   2.93E-005
+PASS Figure-eight convergence K=8 | 2.25E-005
+8      1E-010   5.58E-008   7.26E-008
+PASS Figure-eight convergence K=8 | 5.58E-008
+8      1E-012   1.55E-010   2.03E-010
+PASS Figure-eight convergence K=8 | 1.55E-010
+8      1E-014   2.53E-012   1.23E-012
+12     1E-008   1.78E-005   2.49E-005
+PASS Figure-eight convergence K=12 | 1.78E-005
+12     1E-010   4.55E-007   5.92E-007
+PASS Figure-eight convergence K=12 | 4.55E-007
+12     1E-012   1.84E-009   2.40E-009
+PASS Figure-eight convergence K=12 | 1.84E-009
+12     1E-014   3.42E-012   2.93E-012
+16     1E-008   4.16E-005   5.60E-005
+PASS Figure-eight convergence K=16 | 4.16E-005
+16     1E-010   7.56E-007   9.84E-007
+PASS Figure-eight convergence K=16 | 7.56E-007
+16     1E-012   3.34E-009   4.43E-009
+PASS Figure-eight convergence K=16 | 3.34E-009
+16     1E-014   1.18E-011   1.63E-011
+Arenstorf, 1 period: dp vs K/tolerance
+K    tol        dp          steps
+8      1E-004   8.18E-004        366
+8      1E-006   1.71E-005        394
+8      1E-008   2.91E-007        431
+PASS Arenstorf convergence K=8 | 2.91E-007
+8      1E-010   5.40E-009        547
+PASS Arenstorf convergence K=8 | 5.40E-009
+8      1E-012   6.69E-011        834
+PASS Arenstorf convergence K=8 | 6.69E-011
+8      1E-014   3.56E-012       1422
+12     1E-004   3.73E-004        357
+12     1E-006   2.16E-006        370
+12     1E-008   4.68E-008        387
+PASS Arenstorf convergence K=12 | 4.68E-008
+12     1E-010   9.07E-010        404
+PASS Arenstorf convergence K=12 | 9.07E-010
+12     1E-012   1.21E-011        438
+PASS Arenstorf convergence K=12 | 1.21E-011
+12     1E-014   1.16E-012        502
+16     1E-004   3.38E-004        354
+16     1E-006   3.11E-006        361
+16     1E-008   8.43E-009        372
+PASS Arenstorf convergence K=16 | 8.43E-009
+16     1E-010   1.03E-010        385
+PASS Arenstorf convergence K=16 | 1.03E-010
+16     1E-012   2.29E-012        400
+PASS Arenstorf convergence K=16 | 2.29E-012
+16     1E-014   4.35E-013        412
+20     1E-004   2.00E-004        353
+20     1E-006   1.72E-006        356
+20     1E-008   2.14E-008        363
+PASS Arenstorf convergence K=20 | 2.14E-008
+20     1E-010   1.37E-010        373
+PASS Arenstorf convergence K=20 | 1.37E-010
+20     1E-012   5.67E-013        383
+PASS Arenstorf convergence K=20 | 5.67E-013
+20     1E-014   6.90E-013        396
+--- Known convergence complete ---
+[Test506_KnownConvergence] ok in 25385 ms
+ALL PASS

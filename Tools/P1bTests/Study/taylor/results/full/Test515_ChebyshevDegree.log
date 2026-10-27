@@ -1,0 +1,12 @@
+--- Chebyshev degree 12 vs mpmath ---
+degree-12 jet error: 2.71E-016
+PASS Chebyshev degree 12 | 2.71E-016
+Chebyshev degree 12: method=2.71E-016 golden=1.00E-050 ratio=2.7E+034
+PASS Chebyshev degree 12 100x | 2.7E+034
+large-t segment-5 jet error: 1.55E-016
+PASS Chebyshev large t | 1.55E-016
+Chebyshev large t: method=1.55E-016 golden=1.00E-050 ratio=1.6E+034
+PASS Chebyshev large t 100x | 1.6E+034
+--- Chebyshev degree 12 complete ---
+[Test515_ChebyshevDegree] ok in 10 ms
+ALL PASS

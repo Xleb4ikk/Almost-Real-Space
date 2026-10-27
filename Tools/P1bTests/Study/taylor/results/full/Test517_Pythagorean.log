@@ -1,0 +1,24 @@
+--- Pythagorean three-body: double vs double-double ---
+T=  2.0: double dp=1.02E-013 dv=1.27E-012 | dd dp=4.82E-025 dv=4.36E-025 (steps 146/195)
+PASS Pythagorean finite T=2 | dp
+Pythagorean T=2: method=4.82E-025 golden=1.00E-024 ratio=4.8E-001
+  method at/below golden resolution; 100x not applicable
+T=  5.0: double dp=1.20E-011 dv=8.86E-012 | dd dp=1.38E-018 dv=1.70E-018 (steps 282/380)
+PASS Pythagorean finite T=5 | dp
+Pythagorean T=5: method=1.70E-018 golden=1.00E-024 ratio=1.7E+006
+PASS Pythagorean T=5 100x | 1.7E+006
+T= 10.0: double dp=5.85E-011 dv=2.54E-010 | dd dp=1.39E-020 dv=8.44E-020 (steps 551/739)
+PASS Pythagorean finite T=10 | dp
+Pythagorean T=10: method=8.44E-020 golden=1.00E-024 ratio=8.4E+004
+PASS Pythagorean T=10 100x | 8.4E+004
+T= 20.0: double dp=8.07E-009 dv=2.36E-008 | dd dp=2.13E-018 dv=6.41E-018 (steps 1076/1429)
+PASS Pythagorean finite T=20 | dp
+Pythagorean T=20: method=6.41E-018 golden=1.00E-028 ratio=6.4E+010
+PASS Pythagorean T=20 100x | 6.4E+010
+self (K+4,tol/100) T=10: double=7.33E-011 dd=3.07E-019
+PASS Pythagorean self finite | self
+PASS Pythagorean self double | 7.33E-011
+PASS Pythagorean self dd | 3.07E-019
+--- Pythagorean complete ---
+[Test517_Pythagorean] ok in 24396 ms
+ALL PASS

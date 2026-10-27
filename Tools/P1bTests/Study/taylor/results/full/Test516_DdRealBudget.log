@@ -1,0 +1,56 @@
+--- Real baked system: double vs dd vs mp golden ---
+
+=== Dd budget: bake 0,16427104722792607 y, RK4 900 s, degree 12, quant 2 m ===
+bake: 26 ms, segments=23, worst position error vs Y6C = 4,580E-003 m
+per body: Earth=8,87E-004 m Moon=4,58E-003 m Jupiter=3,37E-003 m Saturn=1,56E-003 m Venus=4,90E-004 m Mars=6,72E-004 m
+compressed files: 27 ms, 3 013 bytes; worst vs Y6C = 3,153E-001 m
+bake step (actual formula): 900 s
+PASS real golden checkpoints | Study\taylor\golden\golden_real.json
+PASS real golden 1y checkpoint | Study\taylor\golden\golden_real_1y_hi.json
+
+=== Dd budget 1y: bake 1,1 y, RK4 900 s, degree 12, quant 2 m ===
+bake: 116 ms, segments=147, worst position error vs Y6C = 5,142E-001 m
+per body: Earth=2,71E-002 m Moon=5,14E-001 m Jupiter=5,59E-003 m Saturn=7,79E-003 m Venus=6,61E-002 m Mars=2,65E-002 m
+compressed files: 125 ms, 14 640 bytes; worst vs Y6C = 6,533E-001 m
+bake step (actual formula): 900 s
+1 day: double=2.07E-002/1.73E-005, dd=7.77E-009/6.43E-012, localDOP=9.18E-003, (local context 1.15E-002), golden=2.80E-021/2.20E-024
+double-world 1d: method=2.07E-002 golden=2.80E-021 ratio=7.4E+018
+PASS double-world 1d 100x | 7.4E+018
+dd 1d: method=7.77E-009 golden=2.80E-021 ratio=2.8E+012
+PASS dd 1d 100x | 2.8E+012
+local DOP 1d: method=9.18E-003 golden=2.80E-021 ratio=3.3E+018
+PASS local DOP 1d 100x | 3.3E+018
+double-world v 1d: method=1.73E-005 golden=2.20E-024 ratio=7.9E+018
+PASS double-world v 1d 100x | 7.9E+018
+dd v 1d: method=6.43E-012 golden=2.20E-024 ratio=2.9E+012
+PASS dd v 1d 100x | 2.9E+012
+PASS dd 1d absolute dp | 7.77E-009
+PASS dd 1d absolute dv | 6.43E-012
+30 d: double=1.65E-001/2.35E-005, dd=1.75E-005/2.55E-009, localDOP=5.37E-002, (local context 2.19E-001), golden=5.89E-018/6.41E-022
+double-vs-dd=1.652E-001 m (2.350E-005 m/s), local ref self=1.089E-002 m
+30 d tight dd (tol 1e-12/1e-15, hmax 1800): dp=1.07E-009 dv=1.01E-013, steps=3600
+double-world 30d: method=1.65E-001 golden=5.89E-018 ratio=2.8E+016
+PASS double-world 30d 100x | 2.8E+016
+dd 30d: method=1.75E-005 golden=5.89E-018 ratio=3.0E+012
+PASS dd 30d 100x | 3.0E+012
+dd 30d tight: method=1.07E-009 golden=5.89E-018 ratio=1.8E+008
+PASS dd 30d tight 100x | 1.8E+008
+local DOP 30d: method=5.37E-002 golden=5.89E-018 ratio=9.1E+015
+PASS local DOP 30d 100x | 9.1E+015
+double-world v 30d: method=2.35E-005 golden=6.41E-022 ratio=3.7E+016
+PASS double-world v 30d 100x | 3.7E+016
+dd v 30d: method=2.55E-009 golden=6.41E-022 ratio=4.0E+012
+PASS dd v 30d 100x | 4.0E+012
+PASS dd 30d absolute dp | 1.75E-005
+PASS dd 30d absolute dv | 2.55E-009
+PASS dd 30d tight absolute dp | 1.07E-009
+PASS dd 30d tight absolute dv | 1.01E-013
+PASS double-vs-dd finite | budget
+1 y: dd=4.73E-002/5.64E-006 (32441 steps), tight dd (hmax 900)=1.60E-003/1.93E-007 (53492 steps), golden=K28 tol 1e-20 dps 40
+PASS dd 1y absolute dp | 4.73E-002
+PASS dd 1y absolute dv | 5.64E-006
+PASS dd 1y tight absolute dp | 1.60E-003
+PASS dd 1y tight absolute dv | 1.93E-007
+--- Real system dd budget complete ---
+[Test516_DdRealBudget] ok in 594673 ms
+ALL PASS
