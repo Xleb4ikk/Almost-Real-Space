@@ -1,4 +1,4 @@
-# Orbit validation against JPL DE441
+﻿# Orbit validation against JPL DE441
 
 This folder is a reproducible validation dossier for the solar-system propagator used by
 *Almost Real Space*. It answers three questions:
@@ -321,6 +321,7 @@ dotnet run --project P1bTests.csproj -- --exact Test545_JplIntegratorComparison
 dotnet run --project P1bTests.csproj -- --exact Test546_JplFullSystemIntegrators
 dotnet run --project P1bTests.csproj -- --exact Test544_JplSatelliteComparison
 dotnet run --project P1bTests.csproj -- --exact Test547_SpacecraftDop853
+dotnet run --project P1bTests.csproj -- --exact Test548_Bake100y
 ```
 
 The tableau/order check is pure Python:
@@ -338,27 +339,27 @@ dotnet run --project P1bTests.csproj -- --from 530 --to 546 --parallel --log-dir
 
 ## 6. Data and files
 
-* `horizons_real_2026_10y.json`, `horizons_real_2016_10y.json` — DE441 states
+* `horizons_real_2026_10y.json`, `horizons_real_2016_10y.json` вЂ” DE441 states
   (10 years, 1-year sampling) from JPL Horizons.
-* `horizons_short_2026.json`, `horizons_short_2016.json` — 0/1/10/30/90/180/365-day
+* `horizons_short_2026.json`, `horizons_short_2016.json` вЂ” 0/1/10/30/90/180/365-day
   states for the short-horizon checks.
-* `de441_asteroids.csv` — 343 main-belt numbers and exact DE441 GMs (au^3/day^2), from
+* `de441_asteroids.csv` вЂ” 343 main-belt numbers and exact DE441 GMs (au^3/day^2), from
   JPL IOM 392R-21-005 Table 1.
 * `fetch_horizons.py`, `fetch_holdout.py`, `fetch_short.py`, `add_asteroids.py`,
-  `add_n16.py`, `add_top50.py`, `add_kbos.py`, `add_kbo_ring.py` — data builders.
-* `Jpl1Pn.cs` — Newtonian/1PN/EIH/J2 accelerations and DOP853.
-* `EihUnit.cs` — `Test536` (EIH vs DD, two-body only).
-* `FullComparison.cs` — `Test537`/`538`/`539`/`540`/`541`/`542`/`543`/`544`.
-* `RingBelt.cs` — asteroid-ring/combined belt models.
-* `IntegratorComparison.cs` — `Test545`.
-* `FullSystemIntegrators.cs` — `Test546` and generic fixed-step acceleration paths.
-* `SpacecraftDop853.cs` — `Test547` production `StepForwardDop853` and dense output.
-* `..\..\Assets\_Project\Scripts\Core\Integration\DOP853Coefficients.cs` — production DOP853 tableau.
-* `..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftOrbitIntegrator.cs` — `StepForwardDop853`.
-* `..\..\Assets\_Project\Scripts\Spacecraft\SpacecraftPhysics.cs` — DOP853 default, DOPRI5 option.
-* `check_dop853_order.py` — independent tableau/order check (row sums, order conditions,
+  `add_n16.py`, `add_top50.py`, `add_kbos.py`, `add_kbo_ring.py` вЂ” data builders.
+* `Jpl1Pn.cs` вЂ” Newtonian/1PN/EIH/J2 accelerations and DOP853.
+* `EihUnit.cs` вЂ” `Test536` (EIH vs DD, two-body only).
+* `FullComparison.cs` вЂ” `Test537`/`538`/`539`/`540`/`541`/`542`/`543`/`544`.
+* `RingBelt.cs` вЂ” asteroid-ring/combined belt models.
+* `IntegratorComparison.cs` вЂ” `Test545`.
+* `FullSystemIntegrators.cs` вЂ” `Test546` and generic fixed-step acceleration paths.
+* `SpacecraftDop853.cs` вЂ” `Test547` production `StepForwardDop853` and dense output.
+* `..\..\Assets\_Project\Scripts\Core\Integration\DOP853Coefficients.cs` вЂ” production DOP853 tableau.
+* `..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftOrbitIntegrator.cs` вЂ” `StepForwardDop853`.
+* `..\..\Assets\_Project\Scripts\Spacecraft\SpacecraftPhysics.cs` вЂ” DOP853 default, DOPRI5 option.
+* `check_dop853_order.py` вЂ” independent tableau/order check (row sums, order conditions,
   fixed-step Kepler order, E5 h^6); pure Python, no numpy.
-* `results/` — logs and the parallel-suite run.
+* `results/` вЂ” logs and the parallel-suite run.
 
 Data provenance: NASA/JPL Horizons DE441 and the JPL Planetary Ephemeris DE440/DE441
 (Park et al. 2021); asteroid/KBO masses from JPL IOM 392R-21-005 (Farnocchia 2021).
