@@ -33,11 +33,12 @@ internal static partial class P1bTests
         public ExportBody[] Bodies { get; set; }
     }
 
-    private static void ExportRealBake(string file, double bakeYears, double days)
+    private static void ExportRealBake(
+        string file, double bakeYears, double days, double worstGateMeters)
     {
         StarSystem real = StudyRealSolar7();
         StudyNBody nb = StudyMakeNBody(real);
-        StudyBake("Export " + file, real, nb, bakeYears);
+        StudyBake("Export " + file, real, nb, bakeYears, worstGateMeters);
 
         OrbitingBody central = real.AllBodies[1];
         double mu = central.ResolveStandardGravitationalParameter();
@@ -100,8 +101,18 @@ internal static partial class P1bTests
     private static int Test518_EphemerisExport()
     {
         Console.WriteLine("--- Export baked ephemeris for the real-system oracle ---");
-        ExportRealBake("real_bake_export.json", 60d / 365.25d, 30d);
-        ExportRealBake("real_bake_export_1y.json", 1.1d, 365d);
+        ExportRealBake("real_bake_export.json", 60d / 365.25d, 30d, 0.01d);
+        GoldenRequireFile(
+            Path.Combine("Study", "taylor", "golden", "real_bake_export.json"),
+            "6FC2347D68FC3BCC29FA0D52AF2FBD352C76D5FDDDF991E6D938EAC88A87A027");
+        ExportRealBake("real_bake_export_1y.json", 1.1d, 365d, 1d);
+        GoldenRequireFile(
+            Path.Combine("Study", "taylor", "golden", "real_bake_export_1y.json"),
+            "43E944C19ECC5ADD7BDE51A2D3CC1B105C940F3AAA976BB9D9DF74F9D19760D1");
+        ExportRealBake("real_bake_export_10y.json", 10.1d, 3650d, 20d);
+        GoldenRequireFile(
+            Path.Combine("Study", "taylor", "golden", "real_bake_export_10y.json"),
+            "FF5E6C2DB5E001762E6AC5BA7768E5254AE1B2FBCBB9EB29EDADCAD47E1A80F0");
         Console.WriteLine("--- Export complete ---");
         return 0;
     }

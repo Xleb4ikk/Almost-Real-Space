@@ -10,7 +10,7 @@ internal static partial class P1bTests
         Console.WriteLine("--- Taylor force vs production PhysicsSolver ---");
         StarSystem real = StudyRealSolar7();
         StudyNBody nb = StudyMakeNBody(real);
-        StudyBake("Force", real, nb, 1d);
+        StudyBake("Force", real, nb, 1d, 1d);
         OrbitingBody earth = real.AllBodies[1];
         double mu = earth.ResolveStandardGravitationalParameter();
         double t0 = StudyShipT0;
@@ -68,5 +68,6 @@ internal static partial class P1bTests
         return 0;
     }
 }
+
 
 

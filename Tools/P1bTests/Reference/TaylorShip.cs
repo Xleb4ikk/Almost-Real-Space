@@ -185,6 +185,32 @@ internal static class TaylorShip
             positionTolerance, velocityTolerance, maxStep, minStep);
     }
 
+    public static TaylorShipDdResult[] RunDdSecondsCheckpoints(
+        StarSystem sys,
+        Vector3d p0,
+        Vector3d v0,
+        double t0,
+        double totalSeconds,
+        int order,
+        double positionTolerance,
+        double velocityTolerance,
+        double maxStep,
+        double minStep,
+        double[] checkpointSeconds)
+    {
+        if (checkpointSeconds == null)
+        {
+            throw new ArgumentNullException(nameof(checkpointSeconds));
+        }
+
+        var results = new TaylorShipDdResult[checkpointSeconds.Length];
+        RunDdCore(
+            sys, p0, v0, t0, totalSeconds, order,
+            positionTolerance, velocityTolerance, maxStep, minStep,
+            checkpointSeconds, results);
+        return results;
+    }
+
     public static TaylorShipDdResult RunDdSeconds(
         StarSystem sys,
         Vector3d p0,
@@ -196,6 +222,25 @@ internal static class TaylorShip
         double velocityTolerance,
         double maxStep,
         double minStep)
+    {
+        return RunDdCore(
+            sys, p0, v0, t0, totalSeconds, order,
+            positionTolerance, velocityTolerance, maxStep, minStep, null, null);
+    }
+
+    private static TaylorShipDdResult RunDdCore(
+        StarSystem sys,
+        Vector3d p0,
+        Vector3d v0,
+        double t0,
+        double totalSeconds,
+        int order,
+        double positionTolerance,
+        double velocityTolerance,
+        double maxStep,
+        double minStep,
+        double[] checkpointSeconds,
+        TaylorShipDdResult[] checkpointResults)
     {
         double T = t0 + totalSeconds;
         double t = t0;
@@ -222,6 +267,26 @@ internal static class TaylorShip
         long steps = 0L;
         long segmentClips = 0L;
         var sw = Stopwatch.StartNew();
+        int checkpointIndex = 0;
+        if (checkpointResults != null)
+        {
+            for (int i = 1; i < checkpointSeconds.Length; i++)
+            {
+                if (checkpointSeconds[i] < checkpointSeconds[i - 1])
+                {
+                    throw new ArgumentException(
+                        "checkpointSeconds must be sorted ascending.", nameof(checkpointSeconds));
+                }
+            }
+
+            while (checkpointIndex < checkpointSeconds.Length
+                && checkpointSeconds[checkpointIndex] <= t0)
+            {
+                checkpointResults[checkpointIndex] = MakeResult(
+                    px, py, pz, vx, vy, vz, calls, steps, segmentClips, 0d);
+                checkpointIndex++;
+            }
+        }
 
         while (t < T)
         {
@@ -282,6 +347,31 @@ internal static class TaylorShip
                 vy = vJ[1].Eval(h);
                 vz = vJ[2].Eval(h);
                 bool last = h >= remaining;
+                if (checkpointResults != null)
+                {
+                    double tEnd = last ? T : (t + tc) + h;
+                    while (checkpointIndex < checkpointSeconds.Length
+                        && checkpointSeconds[checkpointIndex] <= tEnd + 1e-9d)
+                    {
+                        double tau = (checkpointSeconds[checkpointIndex] - t) - tc;
+                        if (tau < 0d)
+                        {
+                            tau = 0d;
+                        }
+
+                        P1bTests.StudyDd cpx = pJ[0].Eval(tau);
+                        P1bTests.StudyDd cpy = pJ[1].Eval(tau);
+                        P1bTests.StudyDd cpz = pJ[2].Eval(tau);
+                        P1bTests.StudyDd cvx = vJ[0].Eval(tau);
+                        P1bTests.StudyDd cvy = vJ[1].Eval(tau);
+                        P1bTests.StudyDd cvz = vJ[2].Eval(tau);
+                        checkpointResults[checkpointIndex] = MakeResult(
+                            cpx, cpy, cpz, cvx, cvy, cvz,
+                            calls, steps + 1, segmentClips, sw.Elapsed.TotalMilliseconds);
+                        checkpointIndex++;
+                    }
+                }
+
                 if (last)
                 {
                     t = T;
@@ -316,6 +406,22 @@ internal static class TaylorShip
         }
 
         sw.Stop();
+        return MakeResult(
+            px, py, pz, vx, vy, vz, calls, steps, segmentClips, sw.Elapsed.TotalMilliseconds);
+    }
+
+    private static TaylorShipDdResult MakeResult(
+        P1bTests.StudyDd px,
+        P1bTests.StudyDd py,
+        P1bTests.StudyDd pz,
+        P1bTests.StudyDd vx,
+        P1bTests.StudyDd vy,
+        P1bTests.StudyDd vz,
+        long calls,
+        long steps,
+        long segmentClips,
+        double ms)
+    {
         return new TaylorShipDdResult
         {
             P = new Vector3d(px.ToDouble, py.ToDouble, pz.ToDouble),
@@ -329,7 +435,7 @@ internal static class TaylorShip
             Calls = calls,
             Steps = steps,
             SegmentClips = segmentClips,
-            Ms = sw.Elapsed.TotalMilliseconds
+            Ms = ms
         };
     }
 
@@ -456,8 +562,8 @@ internal static class TaylorShip
                 continue;
             }
 
-            double segment = Math.Floor((t - baked.T0Seconds) / baked.SegmentLengthSeconds);
-            double end = baked.T0Seconds + ((segment + 1d) * baked.SegmentLengthSeconds);
+            int segment = baked.SegmentIndex(t);
+            double end = baked.SegmentEndSeconds(segment);
             if (end > t)
             {
                 remaining = Math.Min(remaining, end - t);

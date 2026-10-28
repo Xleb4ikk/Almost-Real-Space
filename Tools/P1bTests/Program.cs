@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Galilego.Core;
@@ -152,6 +154,11 @@ internal static partial class P1bTests
 
     public static int Main(string[] args)
     {
+        CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        Console.OutputEncoding = new UTF8Encoding(false);
         Console.WriteLine("P1b tests...");
         string filter = null;
         bool fastOnly = false;
@@ -255,7 +262,7 @@ internal static partial class P1bTests
         {
             string fullLog = Path.GetFullPath(logFile);
             Directory.CreateDirectory(Path.GetDirectoryName(fullLog));
-            var writer = new StreamWriter(fullLog, false) { AutoFlush = true };
+            var writer = new StreamWriter(fullLog, false, new UTF8Encoding(false)) { AutoFlush = true };
             Console.SetOut(writer);
             Console.SetError(writer);
         }
@@ -328,7 +335,7 @@ internal static partial class P1bTests
             }
 
             // --from/--to are needed because --filter matches a substring and
-            // test names are numbered (Test9, Test90…Test99), so "Test9" would
+            // test names are numbered (Test9, Test90ï¿½Test99), so "Test9" would
             // cover ten different numbers at once. Splitting into groups for
             // sequential runs without loading the CPU all at once is otherwise
             // impossible.

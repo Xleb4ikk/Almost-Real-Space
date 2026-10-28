@@ -52,8 +52,7 @@ internal static class TaylorChebyshev
             return Zero(order);
         }
 
-        int seg = (int)Math.Floor((t - baked.T0Seconds) / baked.SegmentLengthSeconds);
-        seg = Math.Max(0, Math.Min(baked.SegmentCount - 1, seg));
+        int seg = baked.SegmentIndex(t);
         double segStart = baked.T0Seconds + (seg * baked.SegmentLengthSeconds);
         double u0 = (2d * (t - segStart) / baked.SegmentLengthSeconds) - 1d;
         double du = 2d / baked.SegmentLengthSeconds;
@@ -121,8 +120,7 @@ internal static class TaylorChebyshev
             return ZeroDd(order);
         }
 
-        int seg = (int)Math.Floor((tSelect - baked.T0Seconds) / baked.SegmentLengthSeconds);
-        seg = Math.Max(0, Math.Min(baked.SegmentCount - 1, seg));
+        int seg = baked.SegmentIndex(tSelect);
         P1bTests.StudyDd segStart = P1bTests.StudyDd.Add(
             P1bTests.StudyDd.From(baked.T0Seconds),
             P1bTests.StudyDd.Mul(

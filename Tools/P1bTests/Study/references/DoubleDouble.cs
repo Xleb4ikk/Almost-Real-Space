@@ -59,9 +59,14 @@ internal static partial class P1bTests
 
         public static StudyDd Sqrt(StudyDd a)
         {
+            if (a.Hi == 0d && a.Lo == 0d)
+            {
+                return Zero;
+            }
+
             if (!(a.Hi > 0d))
             {
-                throw new ArgumentOutOfRangeException(nameof(a), "StudyDd.Sqrt requires a positive argument.");
+                throw new ArgumentOutOfRangeException(nameof(a), "StudyDd.Sqrt requires a non-negative argument.");
             }
 
             double x = Math.Sqrt(a.Hi);

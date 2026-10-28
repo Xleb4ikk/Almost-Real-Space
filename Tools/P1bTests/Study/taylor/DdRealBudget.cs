@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
@@ -62,7 +63,7 @@ internal static partial class P1bTests
         Console.WriteLine("--- Real baked system: double vs dd vs mp golden ---");
         StarSystem real = StudyRealSolar7();
         StudyNBody nb = StudyMakeNBody(real);
-        StudyBake("Dd budget", real, nb, 60d / 365.25d);
+        StudyBake("Dd budget", real, nb, 60d / 365.25d, 0.01d);
 
         string goldenPath = Path.Combine("Study", "taylor", "golden", "golden_real.json");
         GoldFile golden = JsonSerializer.Deserialize<GoldFile>(File.ReadAllText(goldenPath));
@@ -108,7 +109,7 @@ internal static partial class P1bTests
             {
                 StarSystem realYear = StudyRealSolar7();
                 StudyNBody nbYear = StudyMakeNBody(realYear);
-                StudyBake("Dd budget 1y", realYear, nbYear, 1.1d);
+                StudyBake("Dd budget 1y", realYear, nbYear, 1.1d, 1d);
                 OrbitingBody bodyYear = realYear.AllBodies[1];
                 double muYear = bodyYear.ResolveStandardGravitationalParameter();
                 realYear.EvaluateBodyState(bodyYear, t0, out Vector3d bpYear, out Vector3d bvYear);
@@ -218,8 +219,8 @@ internal static partial class P1bTests
         CheckReferenceMargin("dd v 30d", ddV, goldDv);
         Check(ddP < 1e-4d, "dd 30d absolute dp", ddP.ToString("E2", CultureInfo.InvariantCulture));
         Check(ddV < 1e-7d, "dd 30d absolute dv", ddV.ToString("E2", CultureInfo.InvariantCulture));
-        Check(ddTightP < 1e-6d, "dd 30d tight absolute dp", ddTightP.ToString("E2", CultureInfo.InvariantCulture));
-        Check(ddTightV < 1e-9d, "dd 30d tight absolute dv", ddTightV.ToString("E2", CultureInfo.InvariantCulture));
+        Check(ddTightP < 1e-8d, "dd 30d tight absolute dp", ddTightP.ToString("E2", CultureInfo.InvariantCulture));
+        Check(ddTightV < 1e-11d, "dd 30d tight absolute dv", ddTightV.ToString("E2", CultureInfo.InvariantCulture));
         Check(double.IsFinite(budget) && double.IsFinite(budgetV), "double-vs-dd finite", "budget");
 
         if (gYear != null)
@@ -234,13 +235,26 @@ internal static partial class P1bTests
                 CultureInfo.InvariantCulture,
                 "1 y: dd={0:E2}/{1:E2} ({2} steps), tight dd (hmax 900)={3:E2}/{4:E2} ({5} steps), golden=K28 tol 1e-20 dps 40",
                 ddYearP, ddYearV, ddYear.Steps, ddYearTightP, ddYearTightV, ddYearTight.Steps));
-            Check(ddYearP < 1e-1d, "dd 1y absolute dp", ddYearP.ToString("E2", CultureInfo.InvariantCulture));
-            Check(ddYearV < 1e-5d, "dd 1y absolute dv", ddYearV.ToString("E2", CultureInfo.InvariantCulture));
-            Check(ddYearTightP < 5e-3d, "dd 1y tight absolute dp", ddYearTightP.ToString("E2", CultureInfo.InvariantCulture));
-            Check(ddYearTightV < 5e-7d, "dd 1y tight absolute dv", ddYearTightV.ToString("E2", CultureInfo.InvariantCulture));
+            Check(ddYearP < 1e-2d, "dd 1y absolute dp", ddYearP.ToString("E2", CultureInfo.InvariantCulture));
+            Check(ddYearV < 1e-6d, "dd 1y absolute dv", ddYearV.ToString("E2", CultureInfo.InvariantCulture));
+            Check(ddYearTightP < 1e-6d, "dd 1y tight absolute dp", ddYearTightP.ToString("E2", CultureInfo.InvariantCulture));
+            Check(ddYearTightV < 1e-9d, "dd 1y tight absolute dv", ddYearTightV.ToString("E2", CultureInfo.InvariantCulture));
+
+            StudyWriteCsv("Test516_DdRealBudget.csv",
+                "case,dp_m,dv_mps,steps",
+                new List<string>
+                {
+                    StudyCsvRow("1d dd", oneDdP, oneDdV, ddOne.Steps),
+                    StudyCsvRow("30d double", doubleP, doubleV, doubleRun.Steps),
+                    StudyCsvRow("30d dd", ddP, ddV, ddRun.Steps),
+                    StudyCsvRow("30d tight dd", ddTightP, ddTightV, ddTight.Steps),
+                    StudyCsvRow("1y dd", ddYearP, ddYearV, ddYear.Steps),
+                    StudyCsvRow("1y tight dd", ddYearTightP, ddYearTightV, ddYearTight.Steps)
+                });
         }
 
         Console.WriteLine("--- Real system dd budget complete ---");
         return 0;
     }
 }
+

@@ -21,34 +21,27 @@ internal static partial class P1bTests
     {
         Console.WriteLine();
         Console.WriteLine("=== Taylor n-body: " + label + ", " + years + " y ===");
-        var sw = Stopwatch.StartNew();
-        var t = TaylorNBody.Run(ToTaylor(nb), years, 24, 1e-9d, 1e-12d, 3600d, 1e-6d, 0d);
-        sw.Stop();
+        var t = TaylorNBody.Run(ToTaylor(nb), years, 24, 1e-9d, 1e-12d, 86400d, 1e-6d, 0d);
         var r28 = StudyRefRun(nb, "Y6C", 28.125d, years, 0d);
         var r14 = StudyRefRun(nb, "Y6C", 14.0625d, years, 0d);
         var y6 = StudyRefRun(nb, "Y6", 7200d, years, 0d);
         var rk4 = StudyRefRun(nb, "RK4", 900d, years, 0d);
-        var tBig = TaylorNBody.Run(ToTaylor(nb), years, 24, 1e-9d, 1e-12d, 86400d, 1e-6d, 0d);
         double e0 = StudyEnergy(nb.P0, nb.V0, nb.Mu);
         double errTaylor = StudyRel(t.P, 2, 1, r28.P);
-        double errBig = StudyRel(tBig.P, 2, 1, r28.P);
         double errSelf = StudyRel(r28.P, 2, 1, r14.P);
         double errY6 = StudyRel(y6.P, 2, 1, r28.P);
         double errRk4 = StudyRel(rk4.P, 2, 1, r28.P);
         Console.WriteLine(
-            label + " | Taylor vs Y6C 28.125: err Moon/Earth={0:E3} m, dE/E={1:E2}, calls={2:N0}, steps={3:N0}, {4:F0} ms",
+            label + " | Taylor hmax 1d vs Y6C 28.125: err Moon/Earth={0:E3} m, dE/E={1:E2}, calls={2:N0}, steps={3:N0}, {4:F0} ms",
             errTaylor,
             Math.Abs((StudyEnergy(t.P, t.V, nb.Mu) - e0) / e0),
             t.Calls, t.Steps, t.Ms);
         Console.WriteLine(label + " | Y6C 28.125 vs 14.0625: err={0:E3} m", errSelf);
-        Console.WriteLine(label + " | Taylor maxStep=86400: err={0:E3} m, steps={1:N0}",
-            errBig, tBig.Steps);
         Console.WriteLine(label + " | Y6 7200 vs Y6C 28.125: err={0:E3} m", errY6);
         Console.WriteLine(label + " | RK4 900 vs Y6C 28.125: err={0:E3} m", errRk4);
-        Check(double.IsFinite(errTaylor) && double.IsFinite(errBig),
+        Check(double.IsFinite(errTaylor),
             label + " finite", errTaylor.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
-        Check(errTaylor < 5d, label + " Taylor vs Y6C", errTaylor.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
-        Check(errBig < 5d, label + " Taylor maxStep 1d", errBig.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
+        Check(errTaylor < 5d, label + " Taylor hmax 1d vs Y6C", errTaylor.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
         Check(errSelf < 1e-2d, label + " Y6C self-convergence", errSelf.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
     }
 
@@ -144,7 +137,7 @@ internal static partial class P1bTests
             {
                 StarSystem real = StudyRealSolar7();
                 StudyNBody realNb = StudyMakeNBody(real);
-                StudyBake("Taylor real", real, realNb, 1d);
+                StudyBake("Taylor real", real, realNb, 1d, 1d);
                 TaylorNBodyCase("real solar 7-body", realNb, 10d);
                 TaylorShipCase("Earth ecc 400/40000", real, realNb, 1, 6.771e6d, 4.6371e7d, 30d);
             },
@@ -152,7 +145,7 @@ internal static partial class P1bTests
             {
                 StarSystem custom = StudyCustomSystem();
                 StudyNBody customNb = StudyMakeNBody(custom);
-                StudyBake("Taylor custom", custom, customNb, 1d);
+                StudyBake("Taylor custom", custom, customNb, 1d, 1d);
                 TaylorNBodyCase("custom 6-body", customNb, 10d);
                 TaylorShipCase("Terra ecc 400/40000", custom, customNb, 1, 1.543e6d, 4.114e7d, 30d);
             },

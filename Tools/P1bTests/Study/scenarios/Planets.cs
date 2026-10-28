@@ -126,7 +126,8 @@ internal static partial class P1bTests
         Console.WriteLine("reference: calls={0:N0}, {1:F0} ms", reference.Calls, reference.Ms);
     }
 
-    private static void StudyBake(string label, StarSystem sys, StudyNBody nb, double years)
+    private static void StudyBake(
+        string label, StarSystem sys, StudyNBody nb, double years, double worstGateMeters = 0d)
     {
         Console.WriteLine();
         Console.WriteLine("=== " + label + ": bake " + years + " y, RK4 900 s, degree 12, quant 2 m ===");
@@ -186,6 +187,13 @@ internal static partial class P1bTests
 
         Console.WriteLine();
 
+        if (worstGateMeters > 0d)
+        {
+            Check(worst < worstGateMeters, label + " bake worst vs Y6C",
+                worst.ToString("E3", CultureInfo.InvariantCulture) + " < "
+                + worstGateMeters.ToString("G3", CultureInfo.InvariantCulture) + " m");
+        }
+
         string dir = Path.Combine(Path.GetTempPath(), "study_bake_" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -218,6 +226,13 @@ internal static partial class P1bTests
 
             Console.WriteLine("compressed files: {0:F0} ms, {1:N0} bytes; worst vs Y6C = {2:E3} m",
                 sw2.Elapsed.TotalMilliseconds, bytes, worstQ);
+            if (worstGateMeters > 0d)
+            {
+                double compressedGate = Math.Max(worstGateMeters, 0.5d);
+                Check(worstQ < compressedGate, label + " compressed bake vs Y6C",
+                    worstQ.ToString("E3", CultureInfo.InvariantCulture) + " < "
+                    + compressedGate.ToString("G3", CultureInfo.InvariantCulture) + " m");
+            }
         }
         finally
         {

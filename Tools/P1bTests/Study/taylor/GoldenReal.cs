@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Numerics;
+using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 
 internal static partial class P1bTests
@@ -11,9 +13,24 @@ internal static partial class P1bTests
         [JsonPropertyName("days")] public double Days { get; set; }
         [JsonPropertyName("P")] public string[] P { get; set; }
         [JsonPropertyName("V")] public string[] V { get; set; }
+        [JsonPropertyName("central_P")] public string[] CentralP { get; set; }
+        [JsonPropertyName("central_V")] public string[] CentralV { get; set; }
         [JsonPropertyName("rel_P")] public string[] RelP { get; set; }
         [JsonPropertyName("rel_V")] public string[] RelV { get; set; }
         [JsonPropertyName("golden_error_estimate")] public Dictionary<string, string> Err { get; set; }
+    }
+
+    private static void GoldenRequireFile(string path, string expectedSha256)
+    {
+        string actual = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+        Check(string.Equals(actual, expectedSha256, StringComparison.OrdinalIgnoreCase),
+            "golden file sha256", Path.GetFileName(path) + " " + actual);
+    }
+
+    private static void GoldenPrintHash(string path)
+    {
+        string actual = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+        Console.WriteLine("sha256 " + Path.GetFileName(path) + " = " + actual);
     }
 
     private sealed class GoldFile

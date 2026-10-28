@@ -21,9 +21,9 @@ internal static partial class P1bTests
         StudySystemTable("Real solar 7-body (report fixture)", real);
 
         StudyPlanetTable("Real solar 7-body 10 y", realNb, 10d, 112.5d, true);
-        StudyBake("Real solar 7-body", real, realNb, 10d);
+        StudyBake("Real solar 7-body", real, realNb, 10d, 20d);
         StudyPlanetTable("Custom 10 y", customNb, 10d, 112.5d, true);
-        StudyBake("Custom", custom, customNb, 10d);
+        StudyBake("Custom", custom, customNb, 10d, 20d);
 
         StudyShipTable("Real solar: Earth LEO 400 km", real, realNb, 1, 6.371e6d + 4e5d, 6.371e6d + 4e5d, 30d);
         StudyShipTable("Real solar: Earth eccentric 400/40000 km", real, realNb, 1, 6.371e6d + 4e5d, 6.371e6d + 4e7d, 30d);

@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Threading.Tasks;
@@ -19,7 +20,7 @@ internal static partial class P1bTests
         Console.WriteLine("--- Long-horizon matrix: 16 scenarios x default/tight dd, 90 d ---");
         StarSystem sys = StudyRealSolar7();
         StudyNBody nb = StudyMakeNBody(sys);
-        StudyBake("Long matrix", sys, nb, 1.1d);
+        StudyBake("Long matrix", sys, nb, 1.1d, 1d);
 
         int[] central = { 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 6, 6, 6, 6 };
         double[] rp =
@@ -75,6 +76,7 @@ internal static partial class P1bTests
         long defaultHmaxSteps = (long)Math.Ceiling(total / 3600d);
         long tightHmaxSteps = (long)Math.Ceiling(total / 1800d);
         int failuresBefore = failures;
+        var rows = new List<string>();
         for (int i = 0; i < central.Length; i++)
         {
             MatrixRun def = runs[2 * i];
@@ -92,6 +94,9 @@ internal static partial class P1bTests
                 "scenario {0,2}: body={1,-7} rp={2:E2} ra={3:E2} steps={4}/{5} dp={6:E2} m dv={7:E2} m/s{8}",
                 i, sys.AllBodies[central[i]].Name, rp[i], ra[i],
                 def.Steps, tight.Steps, dp, dv, hmaxLimited ? " hmax-limited" : ""));
+            rows.Add(StudyCsvRow(
+                "scenario " + i.ToString(CultureInfo.InvariantCulture) + " " + sys.AllBodies[central[i]].Name,
+                dp, dv, def.Steps, tight.Steps, hmaxLimited));
             Check(double.IsFinite(dp) && double.IsFinite(dv),
                 "matrix " + i + " finite", "dp/dv");
             if (!hmaxLimited)
@@ -101,6 +106,9 @@ internal static partial class P1bTests
             }
         }
 
+        StudyWriteCsv("Test521_LongHorizonMatrix.csv",
+            "case,dp_m,dv_mps,default_steps,tight_steps,hmax_limited", rows);
+
         Console.WriteLine(string.Format(
             CultureInfo.InvariantCulture,
             "long matrix wall={0} ms, failed checks={1}",
@@ -109,3 +117,4 @@ internal static partial class P1bTests
         return 0;
     }
 }
+

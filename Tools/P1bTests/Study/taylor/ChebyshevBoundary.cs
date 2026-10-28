@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.Threading.Tasks;
 using Galilego.Core;
@@ -11,7 +11,7 @@ internal static partial class P1bTests
         Console.WriteLine("--- Chebyshev segment boundary ---");
         StarSystem sys = StudyRealSolar7();
         StudyNBody nb = StudyMakeNBody(sys);
-        StudyBake("Boundary", sys, nb, 30d / 365.25d);
+        StudyBake("Boundary", sys, nb, 30d / 365.25d, 0.01d);
 
         double segment = double.PositiveInfinity;
         foreach (OrbitingBody body in sys.AllBodies)
@@ -141,3 +141,4 @@ internal static partial class P1bTests
         return 0;
     }
 }
+

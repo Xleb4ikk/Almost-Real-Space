@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -14,7 +14,7 @@ internal static partial class P1bTests
         Console.WriteLine("--- 1-year floor probe: tol/hmax sweep ---");
         StarSystem real = StudyRealSolar7();
         StudyNBody nb = StudyMakeNBody(real);
-        StudyBake("Year floor", real, nb, 1.1d);
+        StudyBake("Year floor", real, nb, 1.1d, 1d);
 
         string path = Path.Combine("Study", "taylor", "golden", "golden_real_1y_hi.json");
         GoldFile golden = JsonSerializer.Deserialize<GoldFile>(File.ReadAllText(path));
@@ -58,6 +58,7 @@ internal static partial class P1bTests
                 positionTolerances[i], velocityTolerances[i], maxSteps[i], 1e-6d);
         });
 
+        var rows = new List<string>();
         for (int i = 0; i < labels.Length; i++)
         {
             double dp = DdGoldErr(results[i], g.P);
@@ -68,9 +69,12 @@ internal static partial class P1bTests
                 labels[i], dp, dv, results[i].Steps));
             Check(double.IsFinite(dp) && double.IsFinite(dv),
                 "year floor " + i + " finite", "dp/dv");
+            rows.Add(StudyCsvRow(labels[i], dp, dv, results[i].Steps));
         }
 
+        StudyWriteCsv("Test522_YearFloorProbe.csv", "case,dp_m,dv_mps,steps", rows);
         Console.WriteLine("--- 1-year floor probe complete ---");
         return 0;
     }
 }
+

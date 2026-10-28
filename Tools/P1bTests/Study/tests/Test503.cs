@@ -15,11 +15,11 @@ internal static partial class P1bTests
         Console.WriteLine("--- Reference convergence ---");
         StarSystem real = StudyRealSolar7();
         StudyNBody realNb = StudyMakeNBody(real);
-        StudyBake("Reference real", real, realNb, 1d);
+        StudyBake("Reference real", real, realNb, 1d, 1d);
 
         StarSystem custom = StudyCustomSystem();
         StudyNBody customNb = StudyMakeNBody(custom);
-        StudyBake("Reference custom", custom, customNb, 1d);
+        StudyBake("Reference custom", custom, customNb, 1d, 1d);
 
         StudyReferenceCase("Earth LEO 400 km", real, realNb, 1, 6.771e6d, 6.771e6d, 30d, false);
         StudyReferenceCase("Earth ecc 400/40000", real, realNb, 1, 6.771e6d, 4.6371e7d, 30d, true);

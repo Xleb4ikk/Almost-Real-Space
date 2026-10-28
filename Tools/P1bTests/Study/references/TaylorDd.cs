@@ -418,8 +418,8 @@ internal static partial class P1bTests
         Console.WriteLine(worst < 1e-12d ? "SELF-CHECK PASS" : "SELF-CHECK FAIL");
     }
 
-    private static bool DdSmallStep;
-    private static bool DdUseOpt;
+    [ThreadStatic] private static bool DdSmallStep;
+    [ThreadStatic] private static bool DdUseOpt;
 
     private static void CompareY6CFine(string label, StarSystem sys, double years)
     {

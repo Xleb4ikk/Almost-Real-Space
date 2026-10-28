@@ -19,9 +19,9 @@ internal static partial class P1bTests
         StudyNBody realNb = StudyMakeNBody(real);
 
         StudyPlanetTable("Custom 100 y", customNb, 100d, 112.5d, false);
-        StudyBake("Custom", custom, customNb, 100d);
+        StudyBake("Custom", custom, customNb, 100d, 400d);
         StudyPlanetTable("Real solar 7-body 100 y", realNb, 100d, 112.5d, false);
-        StudyBake("Real solar 7-body", real, realNb, 100d);
+        StudyBake("Real solar 7-body", real, realNb, 100d, 200d);
 
         StudyLiveCost(customNb, realNb);
         Console.WriteLine("--- Integrator study: slow complete ---");
