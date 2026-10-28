@@ -120,9 +120,11 @@ Assets/_Project/Screenshots.meta
 
 # Generated study/run artifacts (logs, stderr, partial exports) - not committed
 Tools/P1bTests/Study/**/results/**/*.log
+Tools/P1bTests/Study/**/results/**/*.csv
 Tools/P1bTests/Study/**/*.err
 Tools/P1bTests/Study/**/*stdout.log
 Tools/P1bTests/Study/**/*stderr.log
 Tools/P1bTests/Study/**/*.partial.json
 Tools/P1bTests/Study/taylor/golden/real_bake_export_10y*.json
+Tools/P1bTests/Study/taylor/golden/*_certified.json
 __pycache__/
