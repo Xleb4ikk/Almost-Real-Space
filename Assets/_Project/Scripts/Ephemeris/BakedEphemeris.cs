@@ -423,6 +423,40 @@ namespace Galilego.Universe
 
         private readonly object windowGate = new object();
 
+        /// <summary>
+        /// Segment index with a relative snap: at a boundary k*L the quotient
+        /// (t-T0)/L can round to k-epsilon, and a plain floor then returns the
+        /// previous segment, which extrapolates the old polynomial across the
+        /// whole next step. Snap by a few ulps of the quotient instead.
+        /// </summary>
+        public int SegmentIndex(double timeSeconds)
+        {
+            if (SegmentCount <= 0 || !(SegmentLengthSeconds > 0d))
+            {
+                return 0;
+            }
+
+            double x = (timeSeconds - T0Seconds) / SegmentLengthSeconds;
+            double snap = 1e-12d * Math.Max(1d, Math.Abs(x));
+            int seg = (int)Math.Floor(x + snap);
+            if (seg < 0)
+            {
+                seg = 0;
+            }
+            else if (seg >= SegmentCount)
+            {
+                seg = SegmentCount - 1;
+            }
+
+            return seg;
+        }
+
+        /// <summary>End time of segment <paramref name="seg"/>.</summary>
+        public double SegmentEndSeconds(int seg)
+        {
+            return T0Seconds + ((seg + 1d) * SegmentLengthSeconds);
+        }
+
         private bool TryEvaluateCore(double timeSeconds, bool wantVelocity, out Vector3d position, out Vector3d velocity)
         {
             position = Vector3d.Zero;
@@ -447,11 +481,7 @@ namespace Galilego.Universe
                 dt = 0d;
             }
 
-            int seg = (int)(dt / SegmentLengthSeconds);
-            if (seg >= SegmentCount)
-            {
-                seg = SegmentCount - 1;
-            }
+            int seg = SegmentIndex(timeSeconds);
 
             double[] src;
             int basis;
