@@ -6,8 +6,8 @@ This folder is a reproducible validation dossier for the solar-system propagator
 1. **Is the force law the standard one?** The EIH implementation is checked against the
    Damour--Deruelle two-body 1PN equations. This is a two-body check only.
 2. **Is the integrator converged?** The DOP853 stepper is checked against tighter tolerances,
-   smaller steps, and against five other integrators. This is a self-convergence check; a
-   fixed-step order test is still missing.
+   smaller steps, and against five other integrators. This is a self-convergence check; the
+   tableau/order are checked separately by `check_dop853_order.py`.
 3. **Does the real solar system come out right?** Ten years of propagation are compared with
    JPL Horizons DE441 for the planets, the Moon, the Galilean moons and Titan.
 
@@ -82,10 +82,14 @@ full EIH force is therefore "two-body-verified", not "N-body-verified".
 * both.
 
 All four give the same Jupiter/Saturn/Mars errors to 0.000 km. This is a **self-convergence**
-check: an adaptive controller can hide a wrong coefficient by shrinking the step. The DOP853
-tableau was independently checked against the order conditions in Python (row sums,
-`sum(b*c^k)=1/(k+1)`, `sum(E5)=0`), but that check is not yet in the repository. A fixed-step
-order test (error should fall by ~2^8 per halving of `h`) should be added.
+check: an adaptive controller can hide a wrong coefficient by shrinking the step. The
+`check_dop853_order.py` script in this folder independently checks the tableau: row sums of A
+equal C, `sum(B)=1`, `sum(E5)=0`, and `sum(B*C^k)=1/(k+1)` for k=0..7; it also runs a
+fixed-step Kepler orbit (e=0.1, one revolution) against the exact Kepler-equation solution.
+The empirical order is 7.58 -> 7.74 -> 7.83 -> 7.90 (converging to 8; the finest pairs hit
+round-off), and the embedded E5 estimate scales as h^6. The script is pure Python (no numpy).
+It does not exercise the C# `JplDop853` step/error-control code; a C# fixed-step test is still
+missing.
 
 `Test539` and `Test542` show that the day-0 relative states are exact (0 m; 4.7e-10 after the
 GM/unit combination), and `Test540` checks the initial accelerations and the Mars-moon mass
@@ -241,8 +245,8 @@ the same DE441 ephemeris, so the comparison is offline and reproducible.
   its two-body limit agrees with Damour--Deruelle at 1e-15. The headline model is the simpler
   Sun-only 1PN term, not the full EIH.
 * DOP853 is a standard 8(5,3) Dormand--Prince method; its adaptive error control is tested by
-  tightening the tolerance and halving the step (no change to 0.000 km). A fixed-step order
-  test is still missing.
+  tightening the tolerance and halving the step (no change to 0.000 km). The tableau and
+  fixed-step order are checked by `check_dop853_order.py`; the C# stepper is not.
 * The initial states, GMs and small-body masses are JPL DE441/Horizons/IOM values. The model
   structure (solar/Earth J2, the 409-body set) was selected after inspecting the 2026
   residuals, so this is not a blind prediction; 2016 is a holdout for the parameter values.
@@ -283,8 +287,10 @@ DE441 at the metre level for every body.
   the Moon (27 d) are phase-sensitive at 365 d sampling; a 10--30 d grid and max/RMS over all
   samples would be a stronger test. The comparison is heliocentric, so the Sun's error is
   distributed across all planets.
-* **Test541 is self-convergence**, not a proof of the DOP853 order. A fixed-step order test
-  and an independent Taylor-code cross-check should be added.
+* **Test541 is self-convergence**, not a proof of the DOP853 order. `check_dop853_order.py`
+  validates the tableau and the fixed-step Kepler order (7.6--7.9 -> 8), but not the C#
+  `JplDop853` step/error-control implementation; a C# fixed-step test is still missing. An
+  independent Taylor-code cross-check is also missing.
 * **No N-body EIH conservation/boost test.** Energy, momentum, centre-of-mass and boost
   invariance are not checked; a three-body comparison against an independent EIH
   implementation (e.g. REBOUNDx) is not in the repository.
@@ -314,6 +320,12 @@ dotnet run --project P1bTests.csproj -- --exact Test546_JplFullSystemIntegrators
 dotnet run --project P1bTests.csproj -- --exact Test544_JplSatelliteComparison
 ```
 
+The tableau/order check is pure Python:
+
+```powershell
+python Study\jpl\check_dop853_order.py
+```
+
 `Test537`, `Test538` and `Test546` use all cores (`Parallel.For`; `JPL_JOBS` caps it).
 The full JPL suite can be run with:
 
@@ -337,6 +349,8 @@ dotnet run --project P1bTests.csproj -- --from 530 --to 546 --parallel --log-dir
 * `RingBelt.cs` — asteroid-ring/combined belt models.
 * `IntegratorComparison.cs` — `Test545`.
 * `FullSystemIntegrators.cs` — `Test546` and generic fixed-step acceleration paths.
+* `check_dop853_order.py` — independent tableau/order check (row sums, order conditions,
+  fixed-step Kepler order, E5 h^6); pure Python, no numpy.
 * `results/` — logs and the parallel-suite run.
 
 Data provenance: NASA/JPL Horizons DE441 and the JPL Planetary Ephemeris DE440/DE441
