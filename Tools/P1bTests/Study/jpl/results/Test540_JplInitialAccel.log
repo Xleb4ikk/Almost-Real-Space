@@ -1,0 +1,15 @@
+PASS JPL vectors file | Study\jpl\horizons_real_2026_10y.json
+initial relative acceleration difference EIH - 1PN (m/s^2):
+Mercury    -3.144E-013  -4.351E-013  -8.275E-015  |d|=5.369E-013
+Venus       3.123E-014  -2.111E-013  -4.908E-015  |d|=2.135E-013
+Earth      -9.703E-013  -2.220E-012  -2.157E-013  |d|=2.432E-012
+Moon        8.087E-011   1.831E-010   1.766E-011  |d|=2.009E-010
+Mars        1.148E-014  -4.147E-014  -1.311E-015  |d|=4.305E-014
+Jupiter    -8.895E-016   1.625E-015  -2.998E-017  |d|=1.853E-015
+Saturn      5.379E-017   4.932E-016  -5.658E-017  |d|=4.993E-016
+Uranus     -3.269E-016   3.594E-016  -3.442E-017  |d|=4.871E-016
+Neptune    -4.224E-016   2.541E-016  -3.423E-017  |d|=4.941E-016
+PASS Mars moon mass ratio ~2e-8 | 1.9E-008
+--- Initial acceleration probe complete ---
+[Test540_JplInitialAccel] ok in 35 ms
+ALL PASS

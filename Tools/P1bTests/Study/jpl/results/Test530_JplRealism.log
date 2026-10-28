@@ -1,0 +1,142 @@
+--- Real solar system vs JPL Horizons (DE441) ---
+PASS JPL vectors file | Study\jpl\horizons_real_2026_10y.json
+epoch: 2026-01-01 00:00:00 TDB | frame: heliocentric ecliptic J2000 | source: NASA/JPL Horizons DE441
+
+run      horizon   steps      calls          ms
+7-body      365 d     8760     105120       13849
+10-body     365 d     8760     105120       29874
+7-body     1825 d    43800     525600       68767
+10-body    1825 d    43800     525600      147702
+7-body     3650 d    87600    1051200      138444
+10-body    3650 d    87600    1051200      268039
+
+model       horizon   body       dp(helio, m)   dv(m/s)
+7-body         365 d  Earth         3.651E+005    7.693E-002
+PASS jpl 0 365 Earth finite | 3.65E+005
+7-body         365 d  Moon          3.686E+005    8.910E-002
+PASS jpl 0 365 Moon finite | 3.69E+005
+7-body         365 d  Moon(geo)     1.283E+004    3.279E-002
+7-body         365 d  Venus         1.430E+006    4.502E-001
+PASS jpl 0 365 Venus finite | 1.43E+006
+7-body         365 d  Mars          9.758E+005    8.615E-002
+PASS jpl 0 365 Mars finite | 9.76E+005
+7-body         365 d  Jupiter       9.382E+004    7.869E-003
+PASS jpl 0 365 Jupiter finite | 9.38E+004
+7-body         365 d  Saturn        3.159E+005    1.685E-002
+PASS jpl 0 365 Saturn finite | 3.16E+005
+10-body        365 d  Mercury       4.902E+004    5.393E-002
+PASS jpl 1 365 Mercury finite | 4.90E+004
+PASS jpl Mercury 365 d accuracy | 4.902E+004 < 1E+05 m
+10-body        365 d  Venus         9.545E+004    3.005E-002
+PASS jpl 1 365 Venus finite | 9.55E+004
+PASS jpl Venus 365 d accuracy | 9.545E+004 < 2E+05 m
+10-body        365 d  Earth         5.829E+004    1.162E-002
+PASS jpl 1 365 Earth finite | 5.83E+004
+PASS jpl Earth 365 d accuracy | 5.829E+004 < 1.5E+05 m
+10-body        365 d  Moon          6.255E+004    3.611E-002
+PASS jpl 1 365 Moon finite | 6.25E+004
+PASS jpl Moon 365 d accuracy | 6.255E+004 < 1E+05 m
+10-body        365 d  Moon(geo)     1.277E+004    3.252E-002
+PASS jpl Moon_geo 365 d accuracy | 1.277E+004 < 1E+05 m
+10-body        365 d  Mars          3.304E+004    3.259E-003
+PASS jpl 1 365 Mars finite | 3.30E+004
+PASS jpl Mars 365 d accuracy | 3.304E+004 < 1E+05 m
+10-body        365 d  Jupiter       2.153E+004    1.400E-003
+PASS jpl 1 365 Jupiter finite | 2.15E+004
+PASS jpl Jupiter 365 d accuracy | 2.153E+004 < 2E+05 m
+10-body        365 d  Saturn        1.800E+004    1.113E-003
+PASS jpl 1 365 Saturn finite | 1.80E+004
+PASS jpl Saturn 365 d accuracy | 1.800E+004 < 1E+05 m
+10-body        365 d  Uranus        2.185E+004    1.355E-003
+PASS jpl 1 365 Uranus finite | 2.19E+004
+PASS jpl Uranus 365 d accuracy | 2.185E+004 < 1E+05 m
+10-body        365 d  Neptune       1.980E+004    1.231E-003
+PASS jpl 1 365 Neptune finite | 1.98E+004
+PASS jpl Neptune 365 d accuracy | 1.980E+004 < 1E+05 m
+7-body        1825 d  Earth         1.727E+006    3.492E-001
+PASS jpl 0 1825 Earth finite | 1.73E+006
+7-body        1825 d  Moon          1.739E+006    4.251E-001
+PASS jpl 0 1825 Moon finite | 1.74E+006
+7-body        1825 d  Moon(geo)     7.243E+004    1.988E-001
+7-body        1825 d  Venus         6.914E+006    2.239E+000
+PASS jpl 0 1825 Venus finite | 6.91E+006
+7-body        1825 d  Mars          3.764E+006    3.513E-001
+PASS jpl 0 1825 Mars finite | 3.76E+006
+7-body        1825 d  Jupiter       1.215E+006    3.261E-002
+PASS jpl 0 1825 Jupiter finite | 1.21E+006
+7-body        1825 d  Saturn        8.075E+006    1.353E-001
+PASS jpl 0 1825 Saturn finite | 8.08E+006
+10-body       1825 d  Mercury       6.484E+005    5.383E-001
+PASS jpl 1 1825 Mercury finite | 6.48E+005
+PASS jpl Mercury 1825 d accuracy | 6.484E+005 < 1.5E+06 m
+10-body       1825 d  Venus         4.282E+005    1.391E-001
+PASS jpl 1 1825 Venus finite | 4.28E+005
+PASS jpl Venus 1825 d accuracy | 4.282E+005 < 1.5E+06 m
+10-body       1825 d  Earth         2.908E+005    5.834E-002
+PASS jpl 1 1825 Earth finite | 2.91E+005
+PASS jpl Earth 1825 d accuracy | 2.908E+005 < 7E+05 m
+10-body       1825 d  Moon          3.090E+005    2.105E-001
+PASS jpl 1 1825 Moon finite | 3.09E+005
+PASS jpl Moon 1825 d accuracy | 3.090E+005 < 1E+06 m
+10-body       1825 d  Moon(geo)     7.193E+004    1.973E-001
+PASS jpl Moon_geo 1825 d accuracy | 7.193E+004 < 5E+05 m
+10-body       1825 d  Mars          1.562E+005    1.628E-002
+PASS jpl 1 1825 Mars finite | 1.56E+005
+PASS jpl Mars 1825 d accuracy | 1.562E+005 < 1E+06 m
+10-body       1825 d  Jupiter       6.323E+005    1.114E-002
+PASS jpl 1 1825 Jupiter finite | 6.32E+005
+PASS jpl Jupiter 1825 d accuracy | 6.323E+005 < 1.5E+06 m
+10-body       1825 d  Saturn        2.946E+005    2.615E-003
+PASS jpl 1 1825 Saturn finite | 2.95E+005
+PASS jpl Saturn 1825 d accuracy | 2.946E+005 < 1E+06 m
+10-body       1825 d  Uranus        4.047E+005    4.118E-003
+PASS jpl 1 1825 Uranus finite | 4.05E+005
+PASS jpl Uranus 1825 d accuracy | 4.047E+005 < 1E+06 m
+10-body       1825 d  Neptune       3.726E+005    4.036E-003
+PASS jpl 1 1825 Neptune finite | 3.73E+005
+PASS jpl Neptune 1825 d accuracy | 3.726E+005 < 1E+06 m
+7-body        3650 d  Earth         3.503E+006    7.174E-001
+PASS jpl 0 3650 Earth finite | 3.50E+006
+7-body        3650 d  Moon          3.671E+006    1.118E+000
+PASS jpl 0 3650 Moon finite | 3.67E+006
+7-body        3650 d  Moon(geo)     1.682E+005    4.057E-001
+7-body        3650 d  Venus         1.357E+007    4.401E+000
+PASS jpl 0 3650 Venus finite | 1.36E+007
+7-body        3650 d  Mars          7.656E+006    8.388E-001
+PASS jpl 0 3650 Mars finite | 7.66E+006
+7-body        3650 d  Jupiter       1.482E+007    2.017E-001
+PASS jpl 0 3650 Jupiter finite | 1.48E+007
+7-body        3650 d  Saturn        7.546E+007    7.966E-001
+PASS jpl 0 3650 Saturn finite | 7.55E+007
+10-body       3650 d  Mercury       1.758E+006    1.616E+000
+PASS jpl 1 3650 Mercury finite | 1.76E+006
+PASS jpl Mercury 3650 d accuracy | 1.758E+006 < 5E+06 m
+10-body       3650 d  Venus         8.641E+005    2.805E-001
+PASS jpl 1 3650 Venus finite | 8.64E+005
+PASS jpl Venus 3650 d accuracy | 8.641E+005 < 3E+06 m
+10-body       3650 d  Earth         5.836E+005    1.129E-001
+PASS jpl 1 3650 Earth finite | 5.84E+005
+PASS jpl Earth 3650 d accuracy | 5.836E+005 < 1.5E+06 m
+10-body       3650 d  Moon          7.504E+005    5.152E-001
+PASS jpl 1 3650 Moon finite | 7.50E+005
+PASS jpl Moon 3650 d accuracy | 7.504E+005 < 1.5E+06 m
+10-body       3650 d  Moon(geo)     1.675E+005    4.041E-001
+PASS jpl Moon_geo 3650 d accuracy | 1.675E+005 < 1E+06 m
+10-body       3650 d  Mars          4.109E+005    4.414E-002
+PASS jpl 1 3650 Mars finite | 4.11E+005
+PASS jpl Mars 3650 d accuracy | 4.109E+005 < 1.5E+06 m
+10-body       3650 d  Jupiter       1.579E+006    2.677E-002
+PASS jpl 1 3650 Jupiter finite | 1.58E+006
+PASS jpl Jupiter 3650 d accuracy | 1.579E+006 < 3E+06 m
+10-body       3650 d  Saturn        3.024E+005    3.579E-003
+PASS jpl 1 3650 Saturn finite | 3.02E+005
+PASS jpl Saturn 3650 d accuracy | 3.024E+005 < 1.5E+06 m
+10-body       3650 d  Uranus        7.059E+005    1.365E-003
+PASS jpl 1 3650 Uranus finite | 7.06E+005
+PASS jpl Uranus 3650 d accuracy | 7.059E+005 < 1.5E+06 m
+10-body       3650 d  Neptune       7.072E+005    1.419E-003
+PASS jpl 1 3650 Neptune finite | 7.07E+005
+PASS jpl Neptune 3650 d accuracy | 7.072E+005 < 1.5E+06 m
+--- JPL realism complete ---
+[Test530_JplRealism] ok in 268079 ms
+ALL PASS

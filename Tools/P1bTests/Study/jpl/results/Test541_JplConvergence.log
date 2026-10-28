@@ -1,0 +1,14 @@
+--- 2026 10-body 1PN: integrator convergence (10 years) ---
+PASS JPL vectors file | Study\jpl\horizons_real_2026_10y.json
+run    Jupiter   Saturn     Mars    RMS(8)
+base    18.746   11.201    3.911    8.604
+tol     18.746   11.201    3.911    8.604
+step    18.746   11.201    3.911    8.604
+both    18.746   11.201    3.911    8.604
+change vs base (km):
+tol   Jupiter    0.000  Saturn    0.000  Mars    0.000
+step  Jupiter    0.000  Saturn    0.000  Mars    0.000
+both  Jupiter    0.000  Saturn   -0.000  Mars   -0.000
+--- Convergence probe complete ---
+[Test541_JplConvergence] ok in 1622 ms
+ALL PASS

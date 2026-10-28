@@ -1,0 +1,34 @@
+--- Jupiter: barycenter vs center, planet vs system GM, 10 years ---
+expected before the run:
+  (b)-(a): Jupiter fractions of km, Saturn a few km; tens of km would be unexpected.
+  (c) vs center: small; (d) vs center: ~200 km (barycenter wobble).
+PASS JPL vectors file | Study\jpl\horizons_real_2026_10y.json
+variant  Jupiter(km)   Saturn(km)   steps
+(a)          1578.86       303.92   13077
+(b)            39.40         3.09   13077
+(b')      1066972.12            -   13077
+(b+1PN)        18.75        11.20   13077
+(c)           122.77            -   312603
+(d)       1068921.82            -   13077
+deltas: (b)-(a) Jupiter=-1539.46 km, Saturn=-300.82 km; (c)-(d)=-1068799.05 km; (b')-(d)=-1949.70 km
+PASS variants finite | 3.94E+004
+time-offset diagnostic (heliocentric):
+  (b) Jupiter dt=2.90 s, after=0.78 km; Saturn dt=0.31 s, after=0.33 km; Earth dt=19.97 s, after=0.33 km
+  (c) JupiterCenter dt=7.94 s, after=58.59 km
+GM fit, Jupiter system GM multiplier (planet GM 1-sigma ~1.0e-8 relative):
+  k=-5.00E-008: Jupiter=38.93 km
+  k=-2.00E-008: Jupiter=39.21 km
+  k=0.00E+000: Jupiter=39.40 km
+  k=2.00E-008: Jupiter=39.59 km
+  k=5.00E-008: Jupiter=39.87 km
+  best Jupiter k-1=-5.00E-008, residual=38.93 km
+GM fit, Saturn system GM multiplier:
+  k=-5.00E-008: Saturn=3.04 km
+  k=-2.00E-008: Saturn=3.07 km
+  k=0.00E+000: Saturn=3.09 km
+  k=2.00E-008: Saturn=3.12 km
+  k=5.00E-008: Saturn=3.15 km
+  best Saturn k-1=-5.00E-008, residual=3.04 km
+--- Jupiter variants complete ---
+[Test534_JupiterVariants] ok in 4548 ms
+ALL PASS

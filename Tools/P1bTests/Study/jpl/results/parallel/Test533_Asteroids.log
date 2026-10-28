@@ -1,0 +1,19 @@
+--- 10 vs 13 bodies: Ceres/Pallas/Vesta effect (10 years, barycentric) ---
+expectation: the effect is km-scale; its sign depends on the baseline model.
+PASS JPL vectors file | Study\jpl\horizons_real_2026_10y.json
+body        10-body(km)   13-body(km)   change(km)
+Jupiter           41.13         47.53         6.39
+PASS asteroids Jupiter finite | 4.75E+004
+Saturn             3.77         13.91        10.13
+PASS asteroids Saturn finite | 1.39E+004
+Uranus             1.49          4.97         3.48
+PASS asteroids Uranus finite | 4.97E+003
+Neptune            6.84          6.93         0.08
+PASS asteroids Neptune finite | 6.93E+003
+Earth            608.39        607.56        -0.83
+PASS asteroids Earth finite | 6.08E+005
+PASS asteroid Jupiter effect is km-scale | 6.39 km
+PASS asteroid Saturn effect is km-scale | 10.13 km
+--- Asteroid probe complete ---
+[Test533_Asteroids] ok in 2245 ms
+ALL PASS

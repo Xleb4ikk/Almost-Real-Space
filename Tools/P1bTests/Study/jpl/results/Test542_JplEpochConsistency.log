@@ -1,0 +1,6 @@
+PASS JPL vectors files | Study\jpl\horizons_real_2026_10y.json
+PASS epoch GMs identical | 0.00E+000
+PASS epoch day-0 states exact | 4.66E-010
+--- Epoch consistency probe complete ---
+[Test542_JplEpochConsistency] ok in 34 ms
+ALL PASS

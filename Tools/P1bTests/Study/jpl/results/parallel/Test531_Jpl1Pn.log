@@ -1,0 +1,39 @@
+--- 10-body: Newton vs DOP853 1PN vs JPL, 10 years ---
+PASS JPL vectors file | Study\jpl\horizons_real_2026_10y.json
+body        Newton(km)   1PN(km)      gate(km)
+Mercury        1760.56        0.50          50
+PASS pn Mercury finite | 4.96E+002
+PASS pn Mercury accuracy | 0.50 < 50 km
+Venus           871.18        0.43          50
+PASS pn Venus finite | 4.31E+002
+PASS pn Venus accuracy | 0.43 < 50 km
+Earth           608.39        0.95         100
+PASS pn Earth finite | 9.54E+002
+PASS pn Earth accuracy | 0.95 < 100 km
+Mars            372.62        1.14         100
+PASS pn Mars finite | 1.14E+003
+PASS pn Mars accuracy | 1.14 < 100 km
+Jupiter          41.13       17.01           0
+PASS pn Jupiter finite | 1.70E+004
+  known limitation, not gated
+Saturn            3.77       10.41           0
+PASS pn Saturn finite | 1.04E+004
+  known limitation, not gated
+Uranus            1.49        0.91           0
+PASS pn Uranus finite | 9.07E+002
+  known limitation, not gated
+Neptune           6.84        6.47           0
+PASS pn Neptune finite | 6.47E+003
+  known limitation, not gated
+Moon(geo)       178.06      177.15           0
+  known limitation, not gated (J2 hypothesis)
+
+Y6 h=112.5 s, 1PN (velocity-dependent force, splitting artifact):
+days    Y6 1PN(km)
+   365        0.58
+  1825       15.77
+  3650       72.12
+PASS DOP853 beats Y6 on 1PN | 1.5E+002x
+--- Mercury 1PN probe complete ---
+[Test531_Jpl1Pn] ok in 83826 ms
+ALL PASS

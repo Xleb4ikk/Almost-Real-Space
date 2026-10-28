@@ -1,0 +1,34 @@
+--- Moon vs Galilean moons and Titan, 2026-2036 ---
+PASS JPL vectors file | Study\jpl\horizons_real_2026_10y.json
+moon           planet        dp(km)      dv(m/s)
+Moon           Earth              68.07    8.76E-002
+PASS satellite Moon finite | 
+Io             JupiterCenter   13232.88    6.37E+002
+PASS satellite Io finite | 
+Europa         JupiterCenter   14121.51    4.19E+002
+PASS satellite Europa finite | 
+Ganymede       JupiterCenter    9157.16    1.65E+001
+PASS satellite Ganymede finite | 
+Callisto       JupiterCenter    1126.98    9.48E+000
+PASS satellite Callisto finite | 
+Mimas          SaturnCenter   115942.77    2.44E+004
+PASS satellite Mimas finite | 
+Enceladus      SaturnCenter   374187.37    1.34E+004
+PASS satellite Enceladus finite | 
+Tethys         SaturnCenter   390562.83    1.22E+004
+PASS satellite Tethys finite | 
+Dione          SaturnCenter   610058.45    2.73E+003
+PASS satellite Dione finite | 
+Rhea           SaturnCenter   893539.04    1.46E+004
+PASS satellite Rhea finite | 
+Titan          SaturnCenter   124324.70    6.02E+002
+PASS satellite Titan finite | 
+Hyperion       SaturnCenter   134277.74    5.17E+002
+PASS satellite Hyperion finite | 
+Iapetus        SaturnCenter     7419.71    7.72E+000
+PASS satellite Iapetus finite | 
+JupiterCenter vs JPL: 266.29 km
+SaturnCenter vs JPL:  76.35 km
+--- Satellite comparison complete ---
+[Test544_JplSatelliteComparison] ok in 84145 ms
+ALL PASS

@@ -1,0 +1,30 @@
+--- Integrator comparison: 10 bodies, DE441, Newtonian, 10 years ---
+PASS JPL vectors file | Study\jpl\horizons_real_2026_10y.json
+reference: DOP853 rtol=1e-14, atol=1e-9/1e-12, maxStep=1 d, 504 ms
+method                 h        calls       ms      max err(km)
+DOP853 adaptive        adaptive     156947      307          0.003
+PASS integrator DOP853 adaptive finite | 
+DOPRI5 1 d             1.0 d         21901       32      67092.078
+PASS integrator DOPRI5 1 d finite | 
+RK4 1 d                1.0 d         14600       16     584811.032
+PASS integrator RK4 1 d finite | 
+PEFRL 1 d              1.0 d         14600       16      19859.878
+PASS integrator PEFRL 1 d finite | 
+Y6 1 d                 1.0 d         25551       30       5534.424
+PASS integrator Y6 1 d finite | 
+DOPRI5 0.5 d           0.5 d         43801       65       1259.895
+PASS integrator DOPRI5 0.5 d finite | 
+RK4 0.5 d              0.5 d         29200       33     120665.215
+PASS integrator RK4 0.5 d finite | 
+PEFRL 0.5 d            0.5 d         29200       33       1246.554
+PASS integrator PEFRL 0.5 d finite | 
+Y6 0.5 d               0.5 d         51101       60         88.442
+PASS integrator Y6 0.5 d finite | 
+DOP853 1PN             adaptive     156947      333          0.001
+PASS integrator DOP853 1PN finite | 
+Y6 1PN 112.5 s         112.5 s           0    38347         71.627
+PASS integrator Y6 1PN 112.5 s finite | 
+best by max error: DOP853 1PN
+--- Integrator comparison complete ---
+[Test545_JplIntegratorComparison] ok in 39415 ms
+ALL PASS

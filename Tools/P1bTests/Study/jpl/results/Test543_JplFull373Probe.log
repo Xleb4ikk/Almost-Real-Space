@@ -1,0 +1,7 @@
+PASS JPL vectors file | Study\jpl\horizons_real_2026_10y.json
+full373 bodies=383 small bodies=373
+Jupiter 0.44 km  Saturn 1.03 km  Mars 0.25 km  steps 13077
+PASS full373 finite | 
+--- Full373 probe complete ---
+[Test543_JplFull373Probe] ok in 14141 ms
+ALL PASS
