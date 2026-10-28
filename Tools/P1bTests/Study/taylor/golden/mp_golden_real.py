@@ -19,7 +19,7 @@ Assumptions about the JSON (override with flags if wrong; every guess is checked
   RelP/RelV = state relative to body index Central, Bodies = list of bodies; Parent is a
   name, an index or null; Coeffs is flat, per segment: axis-major, (Degree+1) per axis.
 """
-import argparse, json, math, sys, time
+import argparse, json, math, os, sys, time
 from mpmath import mp, mpf, floor as mfloor
 
 
@@ -258,7 +258,7 @@ def check_jets(S, t, p, v, K):
 
 
 # ------------------------------------------------------------------------ driver
-def integrate(S, K, tol, hmax, checkpoints, log=True, verify_every=0):
+def integrate(S, K, tol, hmax, checkpoints, log=True, verify_every=0, on_checkpoint=None):
     t = S["t0"]; T = t + S["days"] * 86400
     p = list(S["p0"]); v = list(S["v0"])
     cps = sorted(set(mpf(c) * 86400 + S["t0"] for c in checkpoints if mpf(c) * 86400 + S["t0"] < T)) + [T]
@@ -297,6 +297,8 @@ def integrate(S, K, tol, hmax, checkpoints, log=True, verify_every=0):
                             central=cen, rel_p=[p[a] - cen[a] for a in range(3)],
                             rel_v=[v[a] - cenv[a] for a in range(3)]))
             ci += 1
+            if on_checkpoint is not None:
+                on_checkpoint(out)
     return out
 
 
@@ -313,6 +315,20 @@ def fmt(x, n=45):
     return mp.nstr(x, n)
 
 
+def checkpoint_entry(r):
+    return dict(days=r["days"], steps=r["steps"], t=fmt(r["t"]),
+                P=[fmt(x) for x in r["p"]], V=[fmt(x) for x in r["v"]],
+                central_P=[fmt(x) for x in r["central"]],
+                rel_P=[fmt(x) for x in r["rel_p"]], rel_V=[fmt(x) for x in r["rel_v"]])
+
+
+def write_doc(path, doc):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=1)
+    os.replace(tmp, path)
+
+
 def run(S, args):
     mp.dps = args.dps
     dp, dv = sanity_against_export(S)
@@ -322,8 +338,28 @@ def run(S, args):
         if not args.force: sys.exit(2)
     jerr = check_jets(S, S["t0"], S["p0"], S["v0"], args.K)
     print("jets vs direct force at t0: rel.diff %s (should be << 1e-%d)" % (mp.nstr(jerr, 3), args.dps // 2))
+    params = dict(K=args.K, tol=args.tol, dps=args.dps, hmax=args.hmax,
+                  t0=fmt(S["t0"]), bake_offset=fmt(S["t0"] - S["bodies"][S["central"]].T0))
+
+    def make_doc(checkpoints, cert=None, partial=False):
+        doc = dict(params=params, checkpoints=[])
+        for i, r in enumerate(checkpoints):
+            e = checkpoint_entry(r)
+            if cert:
+                e["golden_error_estimate"] = dict(dp=mp.nstr(cert[i][0], 3), dv=mp.nstr(cert[i][1], 3))
+            doc["checkpoints"].append(e)
+        if partial:
+            doc["partial"] = True
+        return doc
+
+    def save_partial(out):
+        if args.partial_out:
+            write_doc(args.partial_out, make_doc(out, partial=True))
+            print("  partial -> %s (%d checkpoint(s))" % (args.partial_out, len(out)), flush=True)
+
     t0 = time.time()
-    res = integrate(S, args.K, mpf(args.tol), args.hmax, args.checkpoints, verify_every=args.verify_every)
+    res = integrate(S, args.K, mpf(args.tol), args.hmax, args.checkpoints,
+                    verify_every=args.verify_every, on_checkpoint=save_partial)
     print("main run: K=%d tol=%s dps=%d  %d steps  %.0f s" % (args.K, args.tol, args.dps, res[-1]["steps"], time.time() - t0))
     cert = None
     if args.certify:
@@ -338,16 +374,7 @@ def run(S, args):
             cert.append((dpp, dvv)); print("  certificate day %.2f: |dp|=%s m |dv|=%s m/s" % (a["days"], mp.nstr(dpp, 3), mp.nstr(dvv, 3)))
         print("certify run: K=%d tol=%s %.0f s" % (K2, mp.nstr(tol2, 2), time.time() - t0))
     if args.out:
-        doc = dict(params=dict(K=args.K, tol=args.tol, dps=args.dps, hmax=args.hmax,
-                              t0=fmt(S["t0"]), bake_offset=fmt(S["t0"] - S["bodies"][S["central"]].T0)), checkpoints=[])
-        for i, r in enumerate(res):
-            e = dict(days=r["days"], steps=r["steps"], t=fmt(r["t"]),
-                     P=[fmt(x) for x in r["p"]], V=[fmt(x) for x in r["v"]],
-                     central_P=[fmt(x) for x in r["central"]],
-                     rel_P=[fmt(x) for x in r["rel_p"]], rel_V=[fmt(x) for x in r["rel_v"]])
-            if cert: e["golden_error_estimate"] = dict(dp=mp.nstr(cert[i][0], 3), dv=mp.nstr(cert[i][1], 3))
-            doc["checkpoints"].append(e)
-        json.dump(doc, open(args.out, "w"), indent=1)
+        write_doc(args.out, make_doc(res, cert))
         print("wrote", args.out)
     return res
 
@@ -428,6 +455,7 @@ if __name__ == "__main__":
     ap.add_argument("--certify", action="store_true")
     ap.add_argument("--verify-every", type=int, default=0, help="re-check jets against the direct force every N steps")
     ap.add_argument("--out")
+    ap.add_argument("--partial-out", help="write checkpoints incrementally (atomic replace)")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()

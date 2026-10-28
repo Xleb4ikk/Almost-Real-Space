@@ -36,6 +36,10 @@ instead introduces errors of order 1e-15, which masks the dd result.
   golden in `golden_real.json` (K=28, tol=1e-20, dps=40).
 - `real_bake_export_1y.json` — 1.1-year bake, `Days=365`; input for the
   1-year golden in `golden_real_1y_hi.json` (K=28, tol=1e-20, dps=40).
+- `real_bake_export_10y.json` — 10.1-year bake, `Days=3650`; input for the
+  optional 10-year golden. The oracle run at K=20/tol=1e-12 is roughly
+  5–7 hours with `gmpy2`; generate it with
+  `--checkpoints 365,730,1095,1460,1825,2190,2555,2920,3285,3650`.
 
 Each export contains `T0`, `Days`, `Central` (Earth), ship absolute
 `ShipP0`/`ShipV0`, `RelP`/`RelV`, and every body with `Parent`, `Mu`,
@@ -50,6 +54,22 @@ Reproduce a golden with:
 python mp_golden_real.py real_bake_export_1y.json `
   --K 28 --tol 1e-20 --dps 40 --hmax 3600 `
   --checkpoints 365 --out golden_real_1y_hi.json
+```
+
+Certify the 1-year golden (main run plus K+6, dps+10, tol/1e6):
+
+```powershell
+python mp_golden_real.py real_bake_export_1y.json `
+  --K 28 --tol 1e-20 --dps 40 --hmax 3600 `
+  --checkpoints 365 --certify --out golden_real_1y_hi_certified.json
+```
+
+The certified file carries `golden_error_estimate` per checkpoint. Compare it
+with the canonical golden; if the checkpoints agree, replace the canonical
+file and update the SHA-256 constants in `Test518`/`Test523`:
+
+```powershell
+python compare_golden.py golden_real_1y_hi.json golden_real_1y_hi_certified.json
 ```
 
 **Bake-span caveat.** `EphemerisBaker.AdjustedSegmentLength` redistributes the
@@ -67,14 +87,36 @@ change `ExportRealBake`'s span without regenerating the corresponding golden.
 - `Test516_DdRealBudget` checks the real baked system at 1 and 30 days with
   `golden_real.json`, and at 1 year with `golden_real_1y_hi.json`.
   At the default dd tolerances (`1e-9`/`1e-12`, `hmax=3600` s) the 1-year
-  errors are `dp=4.7e-2 m`, `dv=5.6e-6 m/s`; the tight dd run
-  (`1e-12`/`1e-15`, `hmax=1800` s) gives `dp=8.1e-3 m`,
-  `dv=9.7e-7 m/s`.
+  errors are `dp=1.55e-3 m`, `dv=1.84e-7 m/s`; the tight dd run
+  (`1e-12`/`1e-15`, `hmax=900` s) gives `dp=1.47e-7 m`,
+  `dv=1.75e-11 m/s`.
+- The pre-fix 1-year tight error was `8.1e-3 m`. It was not a precision
+  floor: at boundaries `k*L` the double quotient `(t-T0)/L` can round to
+  `k-epsilon`, so a plain `floor` selected the previous segment and the
+  step extrapolated the old Chebyshev polynomial across the boundary
+  (observed at k=15 and k=30). `BakedEphemeris.SegmentIndex` now snaps by
+  a few ulps of the quotient; the 1-year error curve is smooth
+  (`3.2e-9 m` at 30 d, `1.6e-7 m` at 365 d).
+- `golden_real_1y_hi.json` is certified: K=34, tol=1e-26, dps=50 gives
+  `|dp|=1.3e-16 m`, `|dv|=1.81e-20 m/s` at day 365. The certified P/V are
+  bit-identical to the pre-certify values.
+- `Test523_BakeGoldenBridge` checks that the in-memory bake is bit-identical
+  to the export used by the golden (`maxCoeffDiff=0`, position/velocity
+  difference 0 at 1, 30 and 365 days) and pins the SHA-256 of both export and
+  golden files. `Test518` also checks the export hash immediately after
+  writing it, so a stale export fails loudly instead of silently invalidating
+  the golden.
+- `Test526_SecondReferenceY6CDd` is the formal independent method check where
+  no analytic solution exists: fixed-step Y6C in dd at `h` and `h/2`. At
+  30 days with `h=10/5 s` the self-difference is 1.4 m and the `h=5 s` result
+  agrees with the golden to 0.297 m. Y6C needs a few seconds per step at
+  perigee; it is a coarse independent check, not a sub-mm reference.
 - A 10-year *real-baked-system* golden is not included: the mpmath oracle is
-  single-threaded and takes about 10 hours for that span. The 10-year Kepler
-  case covers the integrator's long horizon; the real-system model is
-  validated to 1 year. `mp_golden_real.py` plus a longer `ExportRealBake` is
-  the generator if that run is needed.
+  single-threaded and takes about 10 hours for that span (about 7 hours with
+  `gmpy2`; K=20/tol=1e-12 is the practical setting). The 10-year Kepler case
+  covers the integrator's long horizon; the real-system model is validated
+  to 1 year. `mp_golden_real.py` plus a longer `ExportRealBake` is the
+  generator if that run is needed.
 - `mp_golden_real.py --selftest` cross-checks the oracle against a direct
   force expression and scipy DOP853 on a synthetic system.
 
@@ -91,5 +133,6 @@ JetOracle.cs             9C6A81FB600C7C31FCC335C5D73D16DA754F3F2CDAA2255208A0FF7
 real_bake_export.json    6FC2347D68FC3BCC29FA0D52AF2FBD352C76D5FDDDF991E6D938EAC88A87A027
 golden_real.json         2A5206636425B04AE7B21EC9765F1FA4EF3723D98472DF347ED77BA3355402E8
 real_bake_export_1y.json 43E944C19ECC5ADD7BDE51A2D3CC1B105C940F3AAA976BB9D9DF74F9D19760D1
-golden_real_1y_hi.json   60115D515D458DBA96C4B0E62FA58AAE4921E99A6C2048F5805197457CC15DB0
+golden_real_1y_hi.json   7582663FBAF275C2076B9D411DFB91B9833FC8683AD422FF3793C39BD6ACBC4E
+real_bake_export_10y.json FF5E6C2DB5E001762E6AC5BA7768E5254AE1B2FBCBB9EB29EDADCAD47E1A80F0
 ```

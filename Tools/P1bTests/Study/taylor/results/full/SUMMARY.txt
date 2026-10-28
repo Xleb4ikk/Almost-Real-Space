@@ -14,6 +14,12 @@ Folder: Tools/P1bTests/Study/taylor/results/full
    Test504_TaylorReference.log ... Test522_YearFloorProbe.log
    Test513 does not exist (never present in git history).
 
+2b) Bridge/floor block Test523-526 (added with the segment-boundary fix):
+   Test523_BakeGoldenBridge  bake <-> export bit-identical, hashes match
+   Test525_YearErrorCurve    smooth 1-year error curve
+   Test526_SecondReferenceY6CDd  Y6C-dd h/h2 cross-check (30 d)
+   Test524_CertifyYearProbe  K24 vs K28 at hmax 900 (manual/long probe)
+
 3) TaylorVsY6 CLI: 17 modes
    taylory6_*.log and taylory6_*.err
    All logs end with "done.", every .err is empty; dd-selfcheck PASS.
@@ -27,15 +33,33 @@ Folder: Tools/P1bTests/Study/taylor/results/full
 Key current results
 -------------------
 Test522 1-year floor probe:
-  tol 1e-12/1e-15 hmax 1800: dp=8.116e-3 m, dv=9.662e-7 m/s, 43760 steps
-  tol 1e-14/1e-17 hmax  900: dp=1.601e-3 m, dv=1.928e-7 m/s, 59906 steps
-  tol 1e-12/1e-15 hmax  900: dp=1.601e-3 m, dv=1.928e-7 m/s, 53492 steps
+  tol 1e-12/1e-15 hmax 1800: dp=1.824e-8 m, dv=2.174e-12 m/s, 43760 steps
+  tol 1e-14/1e-17 hmax  900: dp=1.679e-9 m, dv=1.500e-13 m/s, 59906 steps
+  tol 1e-12/1e-15 hmax  900: dp=1.470e-7 m, dv=1.751e-11 m/s, 53492 steps
 
 Test516:
   30 d dd: 1.75e-5 m / 2.55e-9 m/s
   30 d tight dd: 1.07e-9 m / 1.01e-13 m/s
-  1 y dd: 4.73e-2 m / 5.64e-6 m/s
-  1 y tight dd (hmax 900): 1.60e-3 m / 1.93e-7 m/s
+  1 y dd: 1.55e-3 m / 1.84e-7 m/s
+  1 y tight dd (hmax 900): 1.47e-7 m / 1.75e-11 m/s
+
+Segment boundary fix (BakedEphemeris.SegmentIndex):
+  at t = k*L the double quotient could round to k-epsilon, so floor()
+  selected the previous segment and the step extrapolated it across the
+  boundary (k=15, 102 d and k=30, 204 d in the 1.1-year bake). The snap
+  removed the 1.6e-3 m "floor"; Test525 error curve is now smooth
+  (3.25e-9 m at 30 d -> 1.59e-7 m at 365 d).
+
+Test523 (bridge):
+  bake <-> real_bake_export_1y.json: coeff/pos/vel diff = 0 at 1/30/365 d
+  golden central @365 vs export: 2.17e-5 m (double evaluation floor)
+
+Test525 (1-year error curve, K24 tight, hmax 900):
+  30 d 3.25e-9 m | 60 d 6.71e-9 | 90 d 1.01e-8 | 120 d 1.78e-8
+  180 d 6.90e-8 | 240 d 2.54e-7 | 300 d 1.26e-7 | 365 d 1.59e-7
+
+Test526 (second reference, Y6C dd, 30 d):
+  h=10/5 s self = 1.404 m; h=5 s vs golden dp = 0.297 m
 
 Test504 labels:
   custom 6-body: 1.841 m, Y6C self 3.693e-4 m, hmax 4.505e-3 m
@@ -55,6 +79,11 @@ dotnet bin\Release\net8.0\P1bTests.dll --from 504 --to 522 --parallel 16 --log-d
 Study\TaylorVsY6\bin\Release\net8.0\TaylorVsY6.exe --real   (and the other modes)
 
 Certify note
-------------
-golden_real_1y_hi.json was not run through --certify (K+6, tol/1e6).
-Cross-check K=20/tol=1e-12/dps=25 vs K=28/tol=1e-20/dps=40: 7.6e-9 m at 365 days.
+-----------
+golden_real_1y_hi.json is now certified: K=34, tol=1e-26, dps=50.
+Certificate at day 365: |dp|=1.3e-16 m, |dv|=1.81e-20 m/s (5489 s).
+The certified P/V are bit-identical to the pre-certify golden
+(compare_golden.py: dp=dv=0). SHA-256 of the canonical file is now
+7582663FBAF275C2076B9D411DFB91B9833FC8683AD422FF3793C39BD6ACBC4E;
+Test518/Test523 constants are updated. The old cross-check K=20 vs K=28
+(7.6e-9 m at 365 days) is superseded by this certificate.
