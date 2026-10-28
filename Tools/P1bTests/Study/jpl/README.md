@@ -96,39 +96,49 @@ ratio.
 `Test537_JplFullComparison` (2026--2036) and `Test538_JplHoldout` (2016--2026) propagate the
 full system and compare with Horizons. Position error in km:
 
-| body | 2026 1PN+409 | 2026 EIH+409 | 2026 full409 | 2016 1PN+409 | 2016 EIH+409 | 2016 full409 |
-|---|---:|---:|---:|---:|---:|---:|
-| Mercury | 0.50 | 0.94 | 0.57 | 1.16 | 1.76 | 0.73 |
-| Venus | 0.43 | 0.06 | 0.45 | 0.03 | 0.06 | 0.15 |
-| Earth | 0.95 | 1.60 | 2.50 | 2.53 | 2.90 | 1.57 |
-| Mars | 1.14 | 1.33 | 0.28 | 4.13 | 4.00 | 0.17 |
-| Jupiter | 17.01 | 17.12 | 0.15 | 1.06 | 1.05 | 0.32 |
-| Saturn | 10.41 | 10.43 | 0.50 | 2.13 | 2.04 | 2.47 |
-| Uranus | 0.91 | 0.93 | 0.80 | 0.52 | 0.49 | 1.01 |
-| Neptune | 6.47 | 6.49 | 1.58 | 5.07 | 5.06 | 2.17 |
-| Moon (geo) | 177.15 | 222.67 | 68.08 | 160.51 | 202.46 | 108.74 |
-| **RMS(8)** | **7.44** | **7.50** | **1.13** | **2.66** | **2.71** | **1.37** |
+| body | 2026 10-body 1PN | 10-body EIH | 409small (Newtonian) | full409 | 2016 10-body 1PN | 10-body EIH | 409small (Newtonian) | full409 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Mercury | 0.50 | 0.94 | 0.57 | 0.57 | 1.16 | 1.76 | 1.20 | 0.73 |
+| Venus | 0.43 | 0.06 | 0.15 | 0.45 | 0.03 | 0.06 | 0.15 | 0.15 |
+| Earth | 0.95 | 1.60 | 2.02 | 2.50 | 2.53 | 2.90 | 1.97 | 1.57 |
+| Mars | 1.14 | 1.33 | 0.23 | 0.28 | 4.13 | 4.00 | 0.13 | 0.17 |
+| Jupiter | 17.01 | 17.12 | 0.15 | 0.15 | 1.06 | 1.05 | 0.32 | 0.32 |
+| Saturn | 10.41 | 10.43 | 0.50 | 0.50 | 2.13 | 2.04 | 2.47 | 2.47 |
+| Uranus | 0.91 | 0.93 | 0.80 | 0.80 | 0.52 | 0.49 | 1.01 | 1.01 |
+| Neptune | 6.47 | 6.49 | 1.58 | 1.58 | 5.07 | 5.06 | 2.17 | 2.17 |
+| Moon (geo) | 177.15 | 222.67 | 177.15 | 68.08 | 160.51 | 202.46 | 160.51 | 108.74 |
+| **RMS(8)** | **7.44** | **7.50** | **0.99** | **1.13** | **2.66** | **2.71** | **1.47** | **1.37** |
 
-All columns include the 409 small bodies except the two-body test in 2.1. `1PN+409` is the
-Sun-only 1PN force; `EIH+409` is the full N-body EIH force; `full409` is Sun-only 1PN + solar
-J2 + Earth J2. The 10-body 1PN-only run (no small bodies, `Test531`) gives Mercury 5.27 km and
-Jupiter 18.75 km; the 409 small bodies are what reduce Mercury to ~0.5 km.
+The `1PN` and `EIH` columns are the 10-body model (`nb10`, barycentric Sun) without the small
+bodies. `409small` is Newtonian + the 409 small bodies; `full409` is Sun-only 1PN + 409 +
+solar J2 + Earth J2. EIH+409 and 1PN+409 were **not run**; the table cannot support an
+EIH-with-small-bodies or 1PN-with-small-bodies conclusion.
 
-Two things in this table matter:
+Three things in this table matter:
 
-* **The full EIH is worse than Sun-only 1PN here**, especially for the Moon (177 -> 223 km in
-  2026, 161 -> 202 km in 2016), Earth (0.95 -> 1.60) and Mercury (0.50 -> 0.94). The formula
-  was checked by hand against Moyer/Standish and the two-body test passes; the N-body
-  discrepancy is unexplained and is a limitation, not a success.
-* **The full409 is not uniformly better than 1PN+409.** It reduces Jupiter from 17.0 to
-  0.15 km and Saturn from 10.4 to 0.50 km, but Earth goes from 0.95 to 2.50 km and Mercury
-  slightly worsens (0.50 -> 0.57). The RMS(8) improves from 7.44 to 1.13, driven by
-  Jupiter/Saturn; the Earth residual is dominated by model choices, not by the integrator.
+* **The full EIH is worse than the 10-body 1PN** in this comparison, especially for the Moon
+  (177 -> 223 km in 2026, 161 -> 202 km in 2016), Earth (0.95 -> 1.60) and Mercury (0.50 ->
+  0.94). The formula was checked by hand against Moyer/Standish and the two-body test passes;
+  the N-body discrepancy is unexplained. EIH with the 409 small bodies was not run.
+* **The full409 is not uniformly better than the 10-body 1PN.** It reduces Jupiter from 17.0
+  to 0.15 km and Saturn from 10.4 to 0.50 km, but Earth goes from 0.95 to 2.50 km: the
+  asteroids take it 0.95 -> 2.02 and solar J2 adds about 0.5. Mercury goes 0.50 -> 0.57 and
+  Venus 0.43 -> 0.45. The RMS(8) improves from 7.44 to 1.13, driven by Jupiter/Saturn; the
+  Earth residual is dominated by model choices, not by the integrator.
+* **The Moon's 177 -> 68 km is entirely Earth J2.** The `409small` column leaves it at
+  177.15 km; adding Earth J2 (`409small+EJ2`) gives 68.08 km, and `full409` keeps 68.08 km.
+  Solar J2 alone does not help the Moon. In 2026 solar J2 slightly worsens RMS
+  (0.99 -> 1.13 with both J2; 1.09 without solar J2) and Venus (0.15 -> 0.45).
 
 The 2016 window does not reproduce every 2026 improvement: Saturn 2.13 -> 2.47 km and Uranus
 0.52 -> 1.01 km are worse in the holdout; Jupiter's 17.0 -> 0.15 km improvement is a 2026
-effect (2016: 1.06 -> 0.32 km). Solar J2 in 2026 worsens Venus (0.15 -> 0.45) and RMS
-(1.09 -> 1.13) when Earth J2 is already present.
+effect (2016: 1.06 -> 0.32 km).
+
+`Test531` is a legacy heliocentric run (`barycentric=false`, Sun fixed): its 1PN Mercury is
+5.27 km and Jupiter 18.75 km, while the 2026 10-body 1PN in this table is 0.50/17.01 km. The
+difference is the initial configuration, not the small bodies; the `409small` Mercury is
+0.57 km. `Test531`'s 50/100 km gates are obsolete; it should be migrated to the barycentric
+configuration or marked legacy.
 
 ### 2.4 Other integrators on the same full system
 
@@ -177,10 +187,11 @@ fair measure of the methods.
 | PEFRL | Newtonian | 1 d | 14 600 | 16 ms | 19 860 km |
 | RK4 | Newtonian | 0.5 d | 29 200 | 33 ms | 120 665 km |
 | RK4 | Newtonian | 1 d | 14 600 | 16 ms | 584 811 km |
-| Y6 1PN | 1PN | 112.5 s | 0 | 38 347 ms | 71.6 km |
+| Y6 1PN | 1PN | 112.5 s | n/a | 38 347 ms | 71.6 km |
 
 For **Newtonian** forces the halving of `h` follows the theoretical order: Y6 5 534 -> 88 km
-(63x, 6th order), PEFRL 19 860 -> 1 247 (16x, 4th), DOPRI5 67 092 -> 1 260 (53x, 5th). The
+(63x, 6th order), PEFRL 19 860 -> 1 247 (16x, 4th), DOPRI5 67 092 -> 1 260 (53x, faster than
+2^5 = 32, pre-asymptotic). The
 Newtonian fixed-step methods are not broken; the step is too coarse for Mercury/the Moon.
 
 For the **1PN** force this no longer holds. Y6 at 112.5 s (3 000x smaller than 0.5 d) still
@@ -224,7 +235,7 @@ matched the Horizons JSON to 0.000--0.002 km for the Earth, the Moon, Jupiter, S
 Galilean moons and Titan. The SPK files are not part of the repository (large); the JSON is
 the same DE441 ephemeris, so the comparison is offline and reproducible.
 
-## 3. Why it should work
+## 3. What the evidence supports
 
 * The force is not invented here: `JplAccEih` is the standard EIH N-body 1PN acceleration;
   its two-body limit agrees with Damour--Deruelle at 1e-15. The headline model is the simpler
@@ -242,7 +253,8 @@ the same DE441 ephemeris, so the comparison is offline and reproducible.
   Jupiter from 17.0 to 0.15 km and Saturn from 10.4 to 0.50 km in 2026; adding Earth J2
   reduces the Moon from 177 to 68 km. The 2016 Jupiter improvement is smaller (1.06 -> 0.32),
   and solar J2 slightly worsens Venus (0.15 -> 0.45) and RMS (1.09 -> 1.13) in 2026. The
-  residual Mercury error (~0.6 km) is the 1PN/gauge/model floor, not an integrator error.
+  residual Mercury error (~0.6 km) is attributed to model error; it is not isolated. It is
+  not an integrator error (Test545 DOP853 gives 0.003 km).
 
 ## 4. Limitations and open issues
 
@@ -250,8 +262,9 @@ This is a validation of a 1PN, point-mass/test-particle model, not a claim to re
 DE441 at the metre level for every body.
 
 * The headline model is Sun-only 1PN. It ignores mutual 1PN terms. The full EIH is
-  implemented and passes the two-body check, but it is worse on the Moon and inner planets in
-  these runs; the reason is not understood. Its N-body terms are not covered by Test536.
+  implemented and passes the two-body check, but it is worse in the 10-body comparison
+  (Moon/inner planets); the reason is not understood. EIH with the 409 small bodies was not
+  run. Its N-body terms are not covered by Test536.
 * 1PN is a truncation; the harmonic-gauge/test-particle terms and the DE441 PPN coordinate
   conventions leave a few-km-level residual on the inner planets and the Earth/Moon.
 * The 409 small bodies are test particles (no mutual perturbations); the KBO ring is a
@@ -283,8 +296,7 @@ DE441 at the metre level for every body.
   model error of ~1 km; `rtol=1e-10...1e-11` may give the same RMS much faster. This has not
   been tested.
 * **Model selection is not blind.** The 2026 residuals motivated solar/Earth J2 and the
-  409-body set; the 2016 window checks their values, not the choice of terms. The
-  "no parameter was fitted" claim has been removed.
+  409-body set; the 2016 window checks their values, not the choice of terms.
 
 ## 5. Reproduce
 
