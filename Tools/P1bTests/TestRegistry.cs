@@ -254,11 +254,24 @@ internal static partial class P1bTests
             new P1bCase("Test521_LongHorizonMatrix", Test521_LongHorizonMatrix, true),
             new P1bCase("Test522_YearFloorProbe", Test522_YearFloorProbe, true),
 
+new P1bCase("Test530_JplRealism", Test530_JplRealism, true),
+            new P1bCase("Test531_Jpl1Pn", Test531_Jpl1Pn, true),
+            new P1bCase("Test532_Precession", Test532_Precession, true),
+            new P1bCase("Test533_Asteroids", Test533_Asteroids, true),
+            new P1bCase("Test535_RingBelt", Test535_RingBelt, true),
+            new P1bCase("Test536_EihTwoBodyDd", Test536_EihTwoBodyDd, true),
+            new P1bCase("Test537_JplFullComparison", Test537_JplFullComparison, true),
+            new P1bCase("Test538_JplHoldout", Test538_JplHoldout, true),
+            new P1bCase("Test539_JplShortHorizon", Test539_JplShortHorizon, true),
+            new P1bCase("Test540_JplInitialAccel", Test540_JplInitialAccel, true),
+            new P1bCase("Test541_JplConvergence", Test541_JplConvergence, true),
+            new P1bCase("Test542_JplEpochConsistency", Test542_JplEpochConsistency, true),
+            new P1bCase("Test543_JplFull409Probe", Test543_JplFull409Probe, true),
+            new P1bCase("Test544_JplSatelliteComparison", Test544_JplSatelliteComparison, true),
+            new P1bCase("Test545_JplIntegratorComparison", Test545_JplIntegratorComparison, true),
+            new P1bCase("Test546_JplFullSystemIntegrators", Test546_JplFullSystemIntegrators, true),
+            new P1bCase("Test534_JupiterVariants", Test534_JupiterVariants, true),
+            new P1bCase("Test534b_MoonsAsBodies", Test534b_MoonsAsBodies, true),
         };
     }
 }
-
-
-
-
-
