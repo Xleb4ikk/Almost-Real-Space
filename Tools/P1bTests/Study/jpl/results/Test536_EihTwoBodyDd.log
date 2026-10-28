@@ -1,5 +1,0 @@
---- EIH two-body vs Damour-Deruelle 1PN, 2000 random CM states ---
-trials=2000  worst relative error vs DD: 1.034E-015
-PASS EIH matches Damour-Deruelle 1PN | 1.03E-015
-[Test536_EihTwoBodyDd] ok in 4 ms
-ALL PASS

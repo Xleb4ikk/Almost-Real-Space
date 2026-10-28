@@ -1,7 +1,0 @@
-PASS JPL vectors file | Study\jpl\horizons_real_2026_10y.json
-full409 bodies=419 small bodies=409
-Jupiter 0.15 km  Saturn 0.50 km  Mars 0.23 km  steps 13077
-PASS full409 finite | 
---- Full409 probe complete ---
-[Test543_JplFull409Probe] ok in 15589 ms
-ALL PASS

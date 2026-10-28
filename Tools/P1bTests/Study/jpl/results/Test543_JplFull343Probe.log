@@ -1,7 +1,0 @@
-PASS JPL vectors file | Study\jpl\horizons_real_2026_10y.json
-full343 bodies=353 asteroids=343
-Jupiter 1.21 km  Saturn 0.52 km  Mars 2.68 km  steps 13077
-PASS full343 finite | 
---- Full343 probe complete ---
-[Test543_JplFull343Probe] ok in 13502 ms
-ALL PASS
