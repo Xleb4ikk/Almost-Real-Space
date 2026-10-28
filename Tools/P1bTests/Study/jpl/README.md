@@ -88,8 +88,9 @@ equal C, `sum(B)=1`, `sum(E5)=0`, and `sum(B*C^k)=1/(k+1)` for k=0..7; it also r
 fixed-step Kepler orbit (e=0.1, one revolution) against the exact Kepler-equation solution.
 The empirical order is 7.58 -> 7.74 -> 7.83 -> 7.90 (converging to 8; the finest pairs hit
 round-off), and the embedded E5 estimate scales as h^6. The script is pure Python (no numpy).
-It does not exercise the C# `JplDop853` step/error-control code; a C# fixed-step test is still
-missing.
+It does not exercise the C# `SpacecraftOrbitIntegrator`. `Test547_SpacecraftDop853` does:
+it runs the production `StepForwardDop853` on a Kepler orbit (DOP853 1.6e-14 m vs DOPRI5
+9.9e-11 m) and checks the dense output. A C# fixed-step order test is still missing.
 
 `Test539` and `Test542` show that the day-0 relative states are exact (0 m; 4.7e-10 after the
 GM/unit combination), and `Test540` checks the initial accelerations and the Mars-moon mass
@@ -288,9 +289,10 @@ DE441 at the metre level for every body.
   samples would be a stronger test. The comparison is heliocentric, so the Sun's error is
   distributed across all planets.
 * **Test541 is self-convergence**, not a proof of the DOP853 order. `check_dop853_order.py`
-  validates the tableau and the fixed-step Kepler order (7.6--7.9 -> 8), but not the C#
-  `JplDop853` step/error-control implementation; a C# fixed-step test is still missing. An
-  independent Taylor-code cross-check is also missing.
+  validates the tableau and the fixed-step Kepler order (7.6--7.9 -> 8), but not a C#
+  fixed-step order test. `Test547_SpacecraftDop853` checks the production
+  `StepForwardDop853` on a Kepler orbit and its dense output. An independent Taylor-code
+  cross-check is also missing.
 * **No N-body EIH conservation/boost test.** Energy, momentum, centre-of-mass and boost
   invariance are not checked; a three-body comparison against an independent EIH
   implementation (e.g. REBOUNDx) is not in the repository.
@@ -318,6 +320,7 @@ dotnet run --project P1bTests.csproj -- --exact Test538_JplHoldout
 dotnet run --project P1bTests.csproj -- --exact Test545_JplIntegratorComparison
 dotnet run --project P1bTests.csproj -- --exact Test546_JplFullSystemIntegrators
 dotnet run --project P1bTests.csproj -- --exact Test544_JplSatelliteComparison
+dotnet run --project P1bTests.csproj -- --exact Test547_SpacecraftDop853
 ```
 
 The tableau/order check is pure Python:
@@ -349,6 +352,10 @@ dotnet run --project P1bTests.csproj -- --from 530 --to 546 --parallel --log-dir
 * `RingBelt.cs` — asteroid-ring/combined belt models.
 * `IntegratorComparison.cs` — `Test545`.
 * `FullSystemIntegrators.cs` — `Test546` and generic fixed-step acceleration paths.
+* `SpacecraftDop853.cs` — `Test547` production `StepForwardDop853` and dense output.
+* `..\..\Assets\_Project\Scripts\Core\Integration\DOP853Coefficients.cs` — production DOP853 tableau.
+* `..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftOrbitIntegrator.cs` — `StepForwardDop853`.
+* `..\..\Assets\_Project\Scripts\Spacecraft\SpacecraftPhysics.cs` — DOP853 default, DOPRI5 option.
 * `check_dop853_order.py` — independent tableau/order check (row sums, order conditions,
   fixed-step Kepler order, E5 h^6); pure Python, no numpy.
 * `results/` — logs and the parallel-suite run.

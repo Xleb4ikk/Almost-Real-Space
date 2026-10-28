@@ -1,0 +1,10 @@
+﻿--- Production spacecraft integrator: DOP853 vs DOPRI5, Kepler e=0.1, one orbit ---
+DOP853  dp=1.557E-014 m
+DOPRI5  dp=9.897E-011 m
+PASS DOP853 state finite |
+PASS DOP853 beats DOPRI5 on the Kepler orbit | 1.557E-014 < 9.897E-011
+PASS DOP853 dense output endpoint matches the state | 132 segments, 0.000E+000 m
+PASS spacecraft default integrator is DOP853 |
+[Test547_SpacecraftDop853] ok
+[Test547_SpacecraftDop853] ok in 8 ms
+ALL PASS

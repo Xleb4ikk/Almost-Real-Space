@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace Galilego.Core
 {
@@ -7,7 +7,7 @@ namespace Galilego.Core
     /// Mass is part of the state so that fuel consumption (dMass/dt = -mass flow)
     /// evolves synchronously with position/velocity in every RK substage; otherwise
     /// acceleration (force/mass) would use a stale mass and the method's formal
-    /// order of accuracy would be lost. The operators below are exactly what DOPRI5
+    /// order of accuracy would be lost. The operators below are exactly what the RK steppers
     /// needs for linear stage combinations.
     /// </summary>
     [Serializable]

@@ -1,9 +1,9 @@
-using System;
+﻿using System;
 
 namespace Galilego.Core
 {
     /// <summary>
-    /// DOPRI5 stepper for the full spacecraft state (position, velocity, mass).
+    /// DOPRI5/DOP853 steppers for the full spacecraft state (position, velocity, mass).
     /// Uses the SAME DOPRI5Coefficients as OrbitIntegrator: not an alternative
     /// integrator, but the same Dormand-Prince 5(4) method applied to a wider
     /// state vector. OrbitIntegrator.cs is left untouched by this file.
@@ -11,12 +11,12 @@ namespace Galilego.Core
     /// Step control (adaptive scaling, FSAL, step-update formulas) mirrors
     /// OrbitIntegrator.StepForward. The ONLY semantic difference: the error norm is
     /// computed separately for Position / Velocity / Mass, each with its own
-    /// absolute tolerance — metres, m/s and kilograms have different scales, so a
+    /// absolute tolerance вЂ” metres, m/s and kilograms have different scales, so a
     /// single error number for them is physically meaningless.
     /// </summary>
     /// <summary>
     /// Frame of the dominant body, used ONLY to scale the step-control error norm (never the dynamics).
-    /// The integrator state lives in the world frame (1.5e11 m from the star at 1 AU), so rtol·|position| became
+    /// The integrator state lives in the world frame (1.5e11 m from the star at 1 AU), so rtolВ·|position| became
     /// a ~15 m tolerance for an orbit around a planet whose own radius is 7e6 m. Scaling by the distance and
     /// speed relative to the dominant body makes rtol mean what it says locally. The body is extrapolated
     /// linearly from the chunk start (fine for a scale factor over a few hours); a floating-point floor keeps the
@@ -28,7 +28,7 @@ namespace Galilego.Core
         /// <summary>Longer calls fall back to the absolute (world-frame) scale: linear extrapolation is only valid for short spans.</summary>
         public const double MaxSpanSeconds = 7200d;
 
-        /// <summary>16 · machine epsilon, applied to the absolute magnitudes of position and velocity.</summary>
+        /// <summary>16 В· machine epsilon, applied to the absolute magnitudes of position and velocity.</summary>
         public const double FloatingPointFloor = 16d * 2.220446049250313e-16;
 
         public readonly Vector3d Position;
@@ -60,7 +60,7 @@ namespace Galilego.Core
         public delegate SpacecraftIntegrationState DerivativeFunction(
             SpacecraftIntegrationState state, double timeSeconds);
 
-        // Butcher tableau coefficients — the same single source of truth as
+        // Butcher tableau coefficients вЂ” the same single source of truth as
         // OrbitIntegrator. No number is duplicated literally here.
         private const double a21 = DOPRI5Coefficients.a21;
         private const double a31 = DOPRI5Coefficients.a31;
@@ -133,22 +133,22 @@ namespace Galilego.Core
                 throw new ArgumentNullException(nameof(derivativeProvider));
 
             // Forward-only contract: with targetDt < 0 the RHS stages run forward while
-            // the clock runs backward — silent garbage (audit S1/A1). All callers go
+            // the clock runs backward вЂ” silent garbage (audit S1/A1). All callers go
             // forward; backward motion fails loudly instead of corrupting silently.
             if (targetDt < 0d)
                 throw new ArgumentOutOfRangeException(nameof(targetDt),
-                    "Интегратор forward-only: targetDt=" + targetDt + " < 0. Обратный ход времени не поддержан.");
+                    "РРЅС‚РµРіСЂР°С‚РѕСЂ forward-only: targetDt=" + targetDt + " < 0. РћР±СЂР°С‚РЅС‹Р№ С…РѕРґ РІСЂРµРјРµРЅРё РЅРµ РїРѕРґРґРµСЂР¶Р°РЅ.");
 
             if (targetDt == 0.0)
                 return new SpacecraftIntegrationResult(initialState);
 
             if (!initialState.IsFinite)
                 throw new InvalidOperationException(
-                    "Начальное состояние корабля не-конечно: " + initialState + " — дальнейшая интеграция бессмысленна.");
+                    "РќР°С‡Р°Р»СЊРЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ РєРѕСЂР°Р±Р»СЏ РЅРµ-РєРѕРЅРµС‡РЅРѕ: " + initialState + " вЂ” РґР°Р»СЊРЅРµР№С€Р°СЏ РёРЅС‚РµРіСЂР°С†РёСЏ Р±РµСЃСЃРјС‹СЃР»РµРЅРЅР°.");
 
             // FSAL (First Same As Last) init: k7 of an accepted step = k1 of the next.
             // The FULL derivative (including dMass/dt) is cached here, not just the
-            // acceleration — otherwise reusing k1 for mass would be wrong.
+            // acceleration вЂ” otherwise reusing k1 for mass would be wrong.
             SpacecraftIntegrationState fsalDerivative = derivativeProvider(initialState, currentTimeSeconds);
             bool fsalValid = true;
 
@@ -221,8 +221,8 @@ namespace Galilego.Core
                     if (!current.IsFinite)
                     {
                         throw new InvalidOperationException(
-                            "Интегратор получил не-конечное состояние (t=" + time.ToString("R") +
-                            ", dt=" + dt.ToString("R") + ") — RHS вернул NaN/Inf (масса ≤ 0? сингулярность?).");
+                            "РРЅС‚РµРіСЂР°С‚РѕСЂ РїРѕР»СѓС‡РёР» РЅРµ-РєРѕРЅРµС‡РЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ (t=" + time.ToString("R") +
+                            ", dt=" + dt.ToString("R") + ") вЂ” RHS РІРµСЂРЅСѓР» NaN/Inf (РјР°СЃСЃР° в‰¤ 0? СЃРёРЅРіСѓР»СЏСЂРЅРѕСЃС‚СЊ?).");
                     }
 
                     fsalDerivative = newFsalDerivative;
@@ -268,8 +268,8 @@ namespace Galilego.Core
                         if (!current.IsFinite)
                         {
                             throw new InvalidOperationException(
-                                "Интегратор получил не-конечное состояние при force-accept (t=" + time.ToString("R") +
-                                ", dt=" + dt.ToString("R") + ") — RHS вернул NaN/Inf.");
+                                "РРЅС‚РµРіСЂР°С‚РѕСЂ РїРѕР»СѓС‡РёР» РЅРµ-РєРѕРЅРµС‡РЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ РїСЂРё force-accept (t=" + time.ToString("R") +
+                                ", dt=" + dt.ToString("R") + ") вЂ” RHS РІРµСЂРЅСѓР» NaN/Inf.");
                         }
 
                         fsalDerivative = forcedFsal;
@@ -279,6 +279,144 @@ namespace Galilego.Core
                     {
                         dt = candidateDt;
                         fsalValid = false;
+                    }
+                }
+            }
+
+            return new SpacecraftIntegrationResult(current);
+        }
+
+        public static SpacecraftIntegrationResult StepForwardDop853(
+            SpacecraftIntegrationState initialState,
+            double currentTimeSeconds,
+            double targetDt,
+            DerivativeFunction derivativeProvider,
+            double positionAbsoluteTolerance,
+            double velocityAbsoluteTolerance,
+            double massAbsoluteTolerance,
+            double relativeTolerance,
+            System.Collections.Generic.IList<DenseSegment> segments = null,
+            ToleranceReference? toleranceReference = null)
+        {
+            if (derivativeProvider == null)
+                throw new ArgumentNullException(nameof(derivativeProvider));
+
+            if (targetDt < 0d)
+                throw new ArgumentOutOfRangeException(nameof(targetDt),
+                    "DOP853 is forward-only: targetDt=" + targetDt + " < 0.");
+
+            if (targetDt == 0.0)
+                return new SpacecraftIntegrationResult(initialState);
+
+            if (!initialState.IsFinite)
+                throw new InvalidOperationException(
+                    "Cannot integrate a non-finite initial state: " + initialState + ".");
+
+            SpacecraftIntegrationState current = initialState;
+            double time = currentTimeSeconds;
+            double remainingDt = Math.Abs(targetDt);
+            double direction = Math.Sign(targetDt);
+            double dt = Math.Min(remainingDt, MaxStepSize);
+            bool useReference = toleranceReference.HasValue && remainingDt <= ToleranceReference.MaxSpanSeconds;
+            ToleranceReference reference = useReference ? toleranceReference.Value : default;
+            bool collectDense = segments != null;
+
+            while (remainingDt > MinStepSize)
+            {
+                dt = Math.Min(dt, remainingDt);
+
+                DoP853Step(
+                    current, time, dt,
+                    derivativeProvider,
+                    collectDense,
+                    out SpacecraftIntegrationState eighth,
+                    out double errorPos,
+                    out double errorVel,
+                    out double errorMass,
+                    out ShampineCoeffs denseStep);
+
+                double scalePos;
+                double scaleVel;
+                if (useReference)
+                {
+                    Vector3d refNow = reference.PositionAt(time);
+                    Vector3d refNext = reference.PositionAt(time + (dt * direction));
+                    scalePos = positionAbsoluteTolerance
+                        + (relativeTolerance * Math.Max((current.Position - refNow).Magnitude, (eighth.Position - refNext).Magnitude))
+                        + (ToleranceReference.FloatingPointFloor * Math.Max(current.Position.Magnitude, eighth.Position.Magnitude));
+                    scaleVel = velocityAbsoluteTolerance
+                        + (relativeTolerance * Math.Max((current.Velocity - reference.Velocity).Magnitude, (eighth.Velocity - reference.Velocity).Magnitude))
+                        + (ToleranceReference.FloatingPointFloor * Math.Max(current.Velocity.Magnitude, eighth.Velocity.Magnitude));
+                }
+                else
+                {
+                    scalePos = positionAbsoluteTolerance + (relativeTolerance * Math.Max(current.Position.Magnitude, eighth.Position.Magnitude));
+                    scaleVel = velocityAbsoluteTolerance + (relativeTolerance * Math.Max(current.Velocity.Magnitude, eighth.Velocity.Magnitude));
+                }
+
+                double scaleMass = massAbsoluteTolerance + (relativeTolerance * Math.Max(Math.Abs(current.Mass), Math.Abs(eighth.Mass)));
+                double normalizedError = Math.Max(errorPos / scalePos, Math.Max(errorVel / scaleVel, errorMass / scaleMass));
+
+                if (normalizedError <= 1.0)
+                {
+                    if (segments != null)
+                    {
+                        segments.Add(new DenseSegment(time, time + (dt * direction), dt, current, eighth, denseStep));
+                    }
+
+                    current = eighth;
+                    time += dt * direction;
+                    remainingDt -= dt;
+
+                    if (!current.IsFinite)
+                    {
+                        throw new InvalidOperationException(
+                            "DOP853 produced a non-finite state (t=" + time.ToString("R") +
+                            ", dt=" + dt.ToString("R") + ").");
+                    }
+
+                    double stepScale = Math.Min(Math.Max(
+                        0.9 * Math.Pow(1.0 / Math.Max(normalizedError, 1e-10), 1.0 / 8.0),
+                        0.2), 5.0);
+                    dt = Math.Min(Math.Max(dt * stepScale, MinStepSize), MaxStepSize);
+                }
+                else
+                {
+                    double rejectScale = Math.Min(Math.Max(
+                        0.9 * Math.Pow(1.0 / Math.Max(normalizedError, 1e-10), 1.0 / 8.0),
+                        0.1), 0.5);
+                    double candidateDt = Math.Max(dt * rejectScale, MinStepSize);
+                    if (candidateDt <= MinStepSize)
+                    {
+                        dt = MinStepSize;
+                        DoP853Step(
+                            current, time, dt,
+                            derivativeProvider,
+                            collectDense,
+                            out SpacecraftIntegrationState forced,
+                            out double forcedErrPos,
+                            out double forcedErrVel,
+                            out double forcedErrMass,
+                            out ShampineCoeffs forcedDense);
+
+                        if (segments != null)
+                        {
+                            segments.Add(new DenseSegment(time, time + (dt * direction), dt, current, forced, forcedDense));
+                        }
+
+                        current = forced;
+                        time += dt * direction;
+                        remainingDt -= dt;
+                        if (!current.IsFinite)
+                        {
+                            throw new InvalidOperationException(
+                                "DOP853 produced a non-finite state at force-accept (t=" + time.ToString("R") +
+                                ", dt=" + dt.ToString("R") + ").");
+                        }
+                    }
+                    else
+                    {
+                        dt = candidateDt;
                     }
                 }
             }
@@ -301,6 +439,25 @@ namespace Galilego.Core
         {
             double dt = targetTimeSeconds - currentTimeSeconds;
             return StepForward(
+                initialState, currentTimeSeconds, dt, derivativeProvider,
+                positionAbsoluteTolerance, velocityAbsoluteTolerance,
+                massAbsoluteTolerance, relativeTolerance, segments, toleranceReference);
+        }
+
+        public static SpacecraftIntegrationResult StepToTimeDop853(
+            SpacecraftIntegrationState initialState,
+            double currentTimeSeconds,
+            double targetTimeSeconds,
+            DerivativeFunction derivativeProvider,
+            double positionAbsoluteTolerance,
+            double velocityAbsoluteTolerance,
+            double massAbsoluteTolerance,
+            double relativeTolerance,
+            System.Collections.Generic.IList<DenseSegment> segments = null,
+            ToleranceReference? toleranceReference = null)
+        {
+            double dt = targetTimeSeconds - currentTimeSeconds;
+            return StepForwardDop853(
                 initialState, currentTimeSeconds, dt, derivativeProvider,
                 positionAbsoluteTolerance, velocityAbsoluteTolerance,
                 massAbsoluteTolerance, relativeTolerance, segments, toleranceReference);
@@ -368,9 +525,9 @@ namespace Galilego.Core
             errVel = (fifth.Velocity - fourth.Velocity).Magnitude;
             errMass = Math.Abs(fifth.Mass - fourth.Mass);
 
-            // Shampine dense output (Hairer dopri5.f CONTD5): k7 here is f(t0+h, y1) —
+            // Shampine dense output (Hairer dopri5.f CONTD5): k7 here is f(t0+h, y1) вЂ”
             // exactly the K2 used by the C3/C4 formulas. Always computed (a few vector
-            // ops); entries go to a segment only for accepted steps — the caller owns
+            // ops); entries go to a segment only for accepted steps вЂ” the caller owns
             // the collector.
             SpacecraftIntegrationState dc1 = fifth - state;
             SpacecraftIntegrationState dc2 = (k1 * dt) - dc1;
@@ -381,6 +538,63 @@ namespace Galilego.Core
 
             // FSAL: k7 of this step = k1 of the next (if the step is accepted)
             lastDerivative = k7;
+        }
+
+        private static void DoP853Step(
+            SpacecraftIntegrationState state,
+            double time,
+            double dt,
+            DerivativeFunction derivativeProvider,
+            bool collectDense,
+            out SpacecraftIntegrationState eighth,
+            out double errPos,
+            out double errVel,
+            out double errMass,
+            out ShampineCoeffs dense)
+        {
+            var k = new SpacecraftIntegrationState[12];
+            k[0] = derivativeProvider(state, time);
+
+            for (int s = 1; s < 12; s++)
+            {
+                SpacecraftIntegrationState stage = state;
+                double[] row = DOP853Coefficients.A[s];
+                for (int j = 0; j < s; j++)
+                {
+                    double a = row[j];
+                    if (a != 0d)
+                    {
+                        stage += k[j] * (dt * a);
+                    }
+                }
+
+                k[s] = derivativeProvider(stage, time + (dt * DOP853Coefficients.C[s]));
+            }
+
+            eighth = state;
+            SpacecraftIntegrationState error = SpacecraftIntegrationState.Zero;
+            for (int s = 0; s < 12; s++)
+            {
+                eighth += k[s] * (dt * DOP853Coefficients.B[s]);
+                error += k[s] * (dt * DOP853Coefficients.E5[s]);
+            }
+
+            errPos = error.Position.Magnitude;
+            errVel = error.Velocity.Magnitude;
+            errMass = Math.Abs(error.Mass);
+
+            if (collectDense)
+            {
+                SpacecraftIntegrationState kEnd = derivativeProvider(eighth, time + dt);
+                SpacecraftIntegrationState dc1 = eighth - state;
+                SpacecraftIntegrationState dc2 = (k[0] * dt) - dc1;
+                SpacecraftIntegrationState dc3 = dc1 - dc2 - (kEnd * dt);
+                dense = new ShampineCoeffs(dc1, dc2, dc3, SpacecraftIntegrationState.Zero);
+            }
+            else
+            {
+                dense = default;
+            }
         }
     }
 }

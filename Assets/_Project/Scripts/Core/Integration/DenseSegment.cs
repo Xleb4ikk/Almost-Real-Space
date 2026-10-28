@@ -1,12 +1,12 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace Galilego.Core
 {
     /// <summary>
     /// Shampine dense output coefficients of one accepted step:
-    /// C1=y1-y0, C2=h·k1-C1, C3=C1-C2-h·k7, C4=h·Σ(D·k). Computed inside
-    /// DoPri5Step from the already available stages (k7 — FSAL estimate f(t0+h,y1)):
+    /// C1=y1-y0, C2=hВ·k1-C1, C3=C1-C2-hВ·k7, C4=hВ·ОЈ(DВ·k). Computed inside
+    /// DoPri5Step/DoP853Step from the already available stages (k7 вЂ” FSAL estimate f(t0+h,y1)):
     /// 0 extra RHS evaluations per segment.
     /// </summary>
     public readonly struct ShampineCoeffs
@@ -28,12 +28,12 @@ namespace Galilego.Core
     }
 
     /// <summary>
-    /// Dense output of one accepted inner DOPRI5 step per Shampine (1986):
-    /// y(t0+θh) = C0 + θ·(C1 + (1-θ)·(C2 + θ·(C3 + (1-θ)·C4))).
+    /// Dense output of one accepted inner DOPRI5/DOP853 step per Shampine (1986):
+    /// y(t0+Оёh) = C0 + ОёВ·(C1 + (1-Оё)В·(C2 + ОёВ·(C3 + (1-Оё)В·C4))).
     /// The segment is per-step: 4th-order Shampine with small constants and
     /// 0 extra RHS evaluations.
     ///
-    /// Ends are bit-exact (θ≤0 → Y0, θ≥1 → Y1 from storage, not the formula).
+    /// Ends are bit-exact (Оёв‰¤0 в†’ Y0, Оёв‰Ґ1 в†’ Y1 from storage, not the formula).
     /// Forward only: the drivers run forward, h is positive.
     /// </summary>
     public readonly struct DenseSegment
@@ -99,15 +99,15 @@ namespace Galilego.Core
 
         /// <summary>
         /// Track state at time t. The track from the collector is ordered;
-        /// micro-gaps between chunks (≤MinStepSize, StepForward remainder) are
+        /// micro-gaps between chunks (в‰¤MinStepSize, StepForward remainder) are
         /// tolerated: a point in a gap is evaluated by the neighbouring segment
-        /// (error ≤ v·1e-6). An empty track throws instead of silently returning nothing.
+        /// (error в‰¤ vВ·1e-6). An empty track throws instead of silently returning nothing.
         /// </summary>
         public static SpacecraftIntegrationState EvaluateTrack(IReadOnlyList<DenseSegment> segments, double t)
         {
             if (segments == null || segments.Count == 0)
             {
-                throw new InvalidOperationException("Трек сегментов пуст — интерполировать нечего.");
+                throw new InvalidOperationException("РўСЂРµРє СЃРµРіРјРµРЅС‚РѕРІ РїСѓСЃС‚ вЂ” РёРЅС‚РµСЂРїРѕР»РёСЂРѕРІР°С‚СЊ РЅРµС‡РµРіРѕ.");
             }
 
             int lo = 0;

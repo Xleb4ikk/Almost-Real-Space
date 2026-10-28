@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
@@ -22,6 +22,7 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Math\Vector3d.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\PhysicsSolver.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\DOPRI5Coefficients.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\DOP853Coefficients.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\OrbitIntegrator.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftIntegrationState.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\DenseSegment.cs" />
@@ -128,11 +129,11 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\StarColorUtil.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\StarSurfaceTexture.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Player\PlayerState.cs" />
-    <!-- CheatMenu.cs сознательно НЕ подключён: это отладочный UI-MonoBehaviour,
-         который тянет FlightBenchmark → SurfacePerf → половину UnityEngine
-         (ProfilerRecorder, Resources, SystemInfo, DontDestroyOnLoad). Стенд
-         его не исполняет, а стабить всю эту поверхность незачем. Ломало сборку
-         с коммита d0f6328. Проверяется в самом редакторе, не здесь. -->
+    <!-- CheatMenu.cs СЃРѕР·РЅР°С‚РµР»СЊРЅРѕ РќР• РїРѕРґРєР»СЋС‡С‘РЅ: СЌС‚Рѕ РѕС‚Р»Р°РґРѕС‡РЅС‹Р№ UI-MonoBehaviour,
+         РєРѕС‚РѕСЂС‹Р№ С‚СЏРЅРµС‚ FlightBenchmark в†’ SurfacePerf в†’ РїРѕР»РѕРІРёРЅСѓ UnityEngine
+         (ProfilerRecorder, Resources, SystemInfo, DontDestroyOnLoad). РЎС‚РµРЅРґ
+         РµРіРѕ РЅРµ РёСЃРїРѕР»РЅСЏРµС‚, Р° СЃС‚Р°Р±РёС‚СЊ РІСЃСЋ СЌС‚Сѓ РїРѕРІРµСЂС…РЅРѕСЃС‚СЊ РЅРµР·Р°С‡РµРј. Р›РѕРјР°Р»Рѕ СЃР±РѕСЂРєСѓ
+         СЃ РєРѕРјРјРёС‚Р° d0f6328. РџСЂРѕРІРµСЂСЏРµС‚СЃСЏ РІ СЃР°РјРѕРј СЂРµРґР°РєС‚РѕСЂРµ, РЅРµ Р·РґРµСЃСЊ. -->
     <Compile Include="..\..\Assets\_Project\Scripts\Diagnostics\CheatGuiSkin.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Surface\SurfaceFrameMath.cs" />
   </ItemGroup>

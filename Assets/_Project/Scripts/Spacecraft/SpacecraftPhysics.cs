@@ -5,9 +5,15 @@ using Galilego.Universe;
 
 namespace Galilego.Spacecraft
 {
+    public enum SpacecraftIntegrator
+    {
+        Dop853,
+        Dopri5
+    }
+
     /// <summary>
-    /// Advances Spacecraft through time via SpacecraftOrbitIntegrator (same DOPRI5 as
-    /// Core.OrbitIntegrator, but over the full state (position, velocity, mass)).
+    /// Advances Spacecraft through time via SpacecraftOrbitIntegrator (DOP853 by
+    /// default, DOPRI5 as an option) over the full state (position, velocity, mass).
     /// Sums the contributions of all registered IDynamicsSource: ready accelerations
     /// (gravity) plus forces (thrust, drag) divided by the SUBSTEP mass — once, in one place.
     /// Mass evolves inside the integrator as dm/dt = -flow, in sync with
@@ -20,6 +26,8 @@ namespace Galilego.Spacecraft
     public sealed class SpacecraftPhysics
     {
         public readonly List<IDynamicsSource> Sources = new List<IDynamicsSource>();
+
+        public SpacecraftIntegrator Integrator = SpacecraftIntegrator.Dop853;
 
         // Separate tolerances per quantity: position in meters, velocity in m/s,
         // mass in kg — one shared atol for all three would be physically meaningless.
@@ -94,17 +102,15 @@ namespace Galilego.Spacecraft
                 toleranceReference = new ToleranceReference(bodyPosition, bodyVelocity, currentTimeSeconds);
             }
 
-            SpacecraftIntegrationResult result = SpacecraftOrbitIntegrator.StepForward(
-                initialState,
-                currentTimeSeconds,
-                dt,
-                EvaluateDerivative,
-                PositionAbsoluteTolerance,
-                VelocityAbsoluteTolerance,
-                MassAbsoluteTolerance,
-                RelativeTolerance,
-                segments,
-                toleranceReference);
+            SpacecraftIntegrationResult result = Integrator == SpacecraftIntegrator.Dopri5
+                ? SpacecraftOrbitIntegrator.StepForward(
+                    initialState, currentTimeSeconds, dt, EvaluateDerivative,
+                    PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
+                    MassAbsoluteTolerance, RelativeTolerance, segments, toleranceReference)
+                : SpacecraftOrbitIntegrator.StepForwardDop853(
+                    initialState, currentTimeSeconds, dt, EvaluateDerivative,
+                    PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
+                    MassAbsoluteTolerance, RelativeTolerance, segments, toleranceReference);
 
             ship.Position = result.State.Position;
             ship.Velocity = result.State.Velocity;
