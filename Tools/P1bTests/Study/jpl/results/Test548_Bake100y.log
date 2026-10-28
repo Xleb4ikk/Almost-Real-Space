@@ -1,4 +1,4 @@
-100-year bake: 25.9 s, 40.0 MB estimated, 11 bodies
+100-year bake: 95.7 s, 40.0 MB estimated, 11 bodies
 PASS 100-year bake produced ephemerides | 
-[Test548_Bake100y] ok in 25898 ms
+[Test548_Bake100y] ok in 95698 ms
 ALL PASS

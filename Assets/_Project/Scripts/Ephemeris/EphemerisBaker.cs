@@ -8,7 +8,7 @@ namespace Galilego.Universe
 {
     /// <summary>
     /// Ephemeris bake configuration. Defaults: segment = smallest subtree period / 4
-    /// (clamped to [2; 64] days), degree 12, RK4 substep from the phase-error budget
+    /// (clamped to [2; 64] days), degree 12, DOP853 substep from the phase-error budget
     /// of the fastest orbit.
     /// </summary>
     public sealed class BakeConfig
@@ -17,13 +17,13 @@ namespace Galilego.Universe
         public int Degree = 12;
 
         /// <summary>
-        /// Phase-error budget per RK4 substep: n·h &lt;= PhasePerStep, where n is the mean
-        /// motion of the system's fastest orbit. Local RK4 error ~ (n·h)⁵/120; smaller
+        /// Phase-error budget per DOP853 substep: n·h &lt;= PhasePerStep, where n is the mean
+        /// motion of the system's fastest orbit. Local DOP853 error ~ (n·h)⁵/120; smaller
         /// value — more accurate and slower.
         /// </summary>
         public double PhasePerStep = 0.02d;
 
-        /// <summary>Absolute RK4 substep cap (s); the former stepSeconds parameter.</summary>
+        /// <summary>Absolute DOP853 substep cap (s); the former stepSeconds parameter.</summary>
         public double MaxStepSeconds = 900d;
 
         /// <summary>
@@ -422,7 +422,7 @@ namespace Galilego.Universe
         private const long ContinuationBytesTotal = 48L;
 
         // ════════════════════════════════════════════════════════════════════
-        // Core: global n-body RK4, samples at the Chebyshev-Lobatto nodes of
+        // Core: global n-body DOP853, samples at the Chebyshev-Lobatto nodes of
         // each segment, coefficients by direct transform (DCT-III), JPL DE-style.
         // ════════════════════════════════════════════════════════════════════
 
@@ -728,7 +728,7 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Bake engine. Bodies are integrated with a global n-body RK4; the substep is
+        /// Bake engine. Bodies are integrated with a global n-body DOP853; the substep is
         /// capped by the phase-error budget of the fastest orbit; samples land exactly
         /// on the Chebyshev-Lobatto nodes of each segment; when the nodes are full, the
         /// DCT produces coefficients and the sink writes them. No allocations in the hot loop.
@@ -932,17 +932,15 @@ namespace Galilego.Universe
                 }
             }
 
-        // RK4 arrays (one allocation for the whole bake).
-        var kp1 = new double[3 * n];
-        var kv1 = new double[3 * n];
-        var kp2 = new double[3 * n];
-        var kv2 = new double[3 * n];
-        var kp3 = new double[3 * n];
-        var kv3 = new double[3 * n];
-        var kp4 = new double[3 * n];
-        var kv4 = new double[3 * n];
+        var stageP = new double[12][];
+        var stageV = new double[12][];
+        for (int s = 0; s < 12; s++)
+        {
+            stageP[s] = new double[3 * n];
+            stageV[s] = new double[3 * n];
+        }
         var tp = new double[3 * n];
-        var ta = new double[3 * n];
+        var tv = new double[3 * n];
         var coeffs = new double[BakedEphemeris.AxisStride(degreeN)];
 
         // Parallel Accel pays off only for large n: scheduler overhead exceeds the
@@ -997,48 +995,49 @@ namespace Galilego.Universe
                 }
 
                 // Substeps up to the node: the last one lands exactly on nextT (no drift).
-                // Integrator — RK4: its secular energy drift at h=900 is negligible
+                // Integrator — DOP853: its secular energy drift at h=900 is negligible
                 // relative to the required accuracy over the baked span.
                 while (t < nextT - 1e-9d)
                 {
                     double h = Math.Min(dtMax, nextT - t);
-                    Accel(p, ta, m, g, n, accelPartials);
+                    Array.Copy(v, stageP[0], 3 * n);
+                    Accel(p, stageV[0], m, g, n, accelPartials);
+                    for (int s = 1; s < 12; s++)
+                    {
+                        Array.Copy(p, tp, 3 * n);
+                        Array.Copy(v, tv, 3 * n);
+                        double[] row = DOP853Coefficients.A[s];
+                        for (int j = 0; j < s; j++)
+                        {
+                            double a = row[j];
+                            if (a == 0d)
+                            {
+                                continue;
+                            }
+                            double ha = h * a;
+                            double[] kp = stageP[j];
+                            double[] kv = stageV[j];
+                            for (int i = 0; i < 3 * n; i++)
+                            {
+                                tp[i] += ha * kp[i];
+                                tv[i] += ha * kv[i];
+                            }
+                        }
+                        Accel(tp, stageV[s], m, g, n, accelPartials);
+                        Array.Copy(tv, stageP[s], 3 * n);
+                    }
                     for (int i = 0; i < 3 * n; i++)
                     {
-                        kp1[i] = v[i];
-                        kv1[i] = ta[i];
-                        tp[i] = p[i] + (0.5d * h * kp1[i]);
+                        double dp = 0d;
+                        double dv = 0d;
+                        for (int s = 0; s < 12; s++)
+                        {
+                            dp += DOP853Coefficients.B[s] * stageP[s][i];
+                            dv += DOP853Coefficients.B[s] * stageV[s][i];
+                        }
+                        p[i] += h * dp;
+                        v[i] += h * dv;
                     }
-
-                    Accel(tp, ta, m, g, n, accelPartials);
-                    for (int i = 0; i < 3 * n; i++)
-                    {
-                        kp2[i] = v[i] + (0.5d * h * kv1[i]);
-                        kv2[i] = ta[i];
-                        tp[i] = p[i] + (0.5d * h * kp2[i]);
-                    }
-
-                    Accel(tp, ta, m, g, n, accelPartials);
-                    for (int i = 0; i < 3 * n; i++)
-                    {
-                        kp3[i] = v[i] + (0.5d * h * kv2[i]);
-                        kv3[i] = ta[i];
-                        tp[i] = p[i] + (h * kp3[i]);
-                    }
-
-                    Accel(tp, ta, m, g, n, accelPartials);
-                    for (int i = 0; i < 3 * n; i++)
-                    {
-                        kp4[i] = v[i] + (h * kv3[i]);
-                        kv4[i] = ta[i];
-                    }
-
-                    for (int i = 0; i < 3 * n; i++)
-                    {
-                        p[i] += (h / 6d) * ((kp1[i] + kp4[i]) + (2d * (kp2[i] + kp3[i])));
-                        v[i] += (h / 6d) * ((kv1[i] + kv4[i]) + (2d * (kv2[i] + kv3[i])));
-                    }
-
                     t += h;
                 }
 
