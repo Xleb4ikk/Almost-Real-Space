@@ -118,5 +118,11 @@ Assets/Screenshots.meta
 Assets/_Project/Screenshots/
 Assets/_Project/Screenshots.meta
 
-# Taylor result logs
-!Tools/P1bTests/Study/taylor/results/**/*.log
+# Generated study/run artifacts (logs, stderr, partial exports) - not committed
+Tools/P1bTests/Study/**/results/**/*.log
+Tools/P1bTests/Study/**/*.err
+Tools/P1bTests/Study/**/*stdout.log
+Tools/P1bTests/Study/**/*stderr.log
+Tools/P1bTests/Study/**/*.partial.json
+Tools/P1bTests/Study/taylor/golden/real_bake_export_10y*.json
+__pycache__/
