@@ -51,6 +51,65 @@ internal static partial class P1bTests
         return new StudyRefResult { P = p, V = v, Samples = samples, Calls = calls, Ms = sw.Elapsed.TotalMilliseconds };
     }
 
+    private static StudyRefResult StudyRefRunSampled(
+        StudyNBody nb, string method, double h, double years, double sampleEvery)
+    {
+        int n = nb.Count;
+        int L = 3 * n;
+        var p = (double[])nb.P0.Clone();
+        var v = (double[])nb.V0.Clone();
+        double T = years * StudyYear;
+        var samples = sampleEvery > 0d ? new List<StudySample>() : null;
+        long calls = 0L;
+        double t = 0d;
+        long block = sampleEvery > 0d && h > 0d
+            ? Math.Max(1L, (long)Math.Round(sampleEvery / h))
+            : long.MaxValue;
+        var sw = Stopwatch.StartNew();
+        void Step(string m, double step, long count)
+        {
+            if (m == "Y6C")
+            {
+                StudyY6C(p, v, step, nb.Mu, count, ref calls);
+            }
+            else
+            {
+                StudyStep(m, p, v, step, nb.Mu, count, ref calls);
+            }
+        }
+
+        while (t < T - 1e-9d)
+        {
+            long full = (long)Math.Floor((T - t) / h);
+            if (full <= 0L)
+            {
+                break;
+            }
+
+            long steps = Math.Min(block, full);
+            Step(method, h, steps);
+            t += steps * h;
+            if (samples != null)
+            {
+                samples.Add(new StudySample(t, StudySampleP(p, null, L), StudySampleP(v, null, L)));
+            }
+        }
+
+        double remainder = T - t;
+        if (remainder > 1e-9d)
+        {
+            Step(method, remainder, 1L);
+            t = T;
+            if (samples != null)
+            {
+                samples.Add(new StudySample(t, StudySampleP(p, null, L), StudySampleP(v, null, L)));
+            }
+        }
+
+        sw.Stop();
+        return new StudyRefResult { P = p, V = v, Samples = samples, Calls = calls, Ms = sw.Elapsed.TotalMilliseconds };
+    }
+
     private static double StudyRel(double[] p, int i, int j, double[] r)
     {
         double dx = (p[3 * i] - p[3 * j]) - (r[3 * i] - r[3 * j]);

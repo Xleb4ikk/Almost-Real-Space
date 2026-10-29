@@ -66,7 +66,7 @@ internal static partial class P1bTests
                 "Y6", 6, h, steps, r.Calls, r.Ms, kib,
                 StudyRel(r.P, 2, 1, reference.P),
                 StudyRel(r.P, 1, 0, reference.P),
-                StudyRel(r.P, nb.Count - 1, 0, reference.P),
+                StudyRel(r.P, StudyOuterIndex(nb), 0, reference.P),
                 Math.Abs((StudyEnergy(r.P, r.V, nb.Mu) - e0) / e0));
         }
 
@@ -89,7 +89,7 @@ internal static partial class P1bTests
                 "Taylor", cfg.Order, cfg.Step, t.Steps, t.Calls, t.Ms, kib,
                 StudyRel(t.P, 2, 1, reference.P),
                 StudyRel(t.P, 1, 0, reference.P),
-                StudyRel(t.P, nb.Count - 1, 0, reference.P),
+                StudyRel(t.P, StudyOuterIndex(nb), 0, reference.P),
                 Math.Abs((StudyEnergy(t.P, t.V, nb.Mu) - e0) / e0));
         }
     }
@@ -176,7 +176,7 @@ internal static partial class P1bTests
             "Y6C", 6, 112.5d, steps, r.Calls, r.Ms, kib,
             StudyRel(r.P, 2, 1, reference.P),
             StudyRel(r.P, 1, 0, reference.P),
-            StudyRel(r.P, nb.Count - 1, 0, reference.P),
+            StudyRel(r.P, StudyOuterIndex(nb), 0, reference.P),
             Math.Abs((StudyEnergy(r.P, r.V, nb.Mu) - e0) / e0));
     }
 

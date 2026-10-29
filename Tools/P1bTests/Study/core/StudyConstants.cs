@@ -16,6 +16,26 @@ internal static partial class P1bTests
     // contains negative sub-step weights, so the force must never see t < 0.
     private const double StudyShipT0 = 172800d;
 
+    private static int StudyOuterIndex(StudyNBody nb)
+    {
+        int best = 0;
+        double bestDistance = -1d;
+        for (int i = 1; i < nb.Count; i++)
+        {
+            double dx = nb.P0[3 * i] - nb.P0[0];
+            double dy = nb.P0[(3 * i) + 1] - nb.P0[1];
+            double dz = nb.P0[(3 * i) + 2] - nb.P0[2];
+            double distance = (dx * dx) + (dy * dy) + (dz * dz);
+            if (distance > bestDistance)
+            {
+                bestDistance = distance;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
     private sealed class StudyNBody
     {
         public string[] Names;
@@ -39,11 +59,20 @@ internal static partial class P1bTests
     {
         public readonly double T;
         public readonly double[] P;
+        public readonly double[] V;
 
         public StudySample(double t, double[] p)
         {
             T = t;
             P = p;
+            V = null;
+        }
+
+        public StudySample(double t, double[] p, double[] v)
+        {
+            T = t;
+            P = p;
+            V = v;
         }
     }
 

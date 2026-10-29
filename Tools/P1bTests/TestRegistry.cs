@@ -254,6 +254,7 @@ internal static partial class P1bTests
             new P1bCase("Test521_LongHorizonMatrix", Test521_LongHorizonMatrix, true),
             new P1bCase("Test522_YearFloorProbe", Test522_YearFloorProbe, true),
 
+new P1bCase("Test528_IntegratorBenchmark", Test528_IntegratorBenchmark, true),
 new P1bCase("Test530_JplRealism", Test530_JplRealism, true),
             new P1bCase("Test531_Jpl1Pn", Test531_Jpl1Pn, true),
             new P1bCase("Test532_Precession", Test532_Precession, true),
@@ -272,6 +273,7 @@ new P1bCase("Test530_JplRealism", Test530_JplRealism, true),
             new P1bCase("Test546_JplFullSystemIntegrators", Test546_JplFullSystemIntegrators, true),
 new P1bCase("Test547_SpacecraftDop853", Test547_SpacecraftDop853, true),
 new P1bCase("Test548_Bake100y", Test548_Bake100y, false),
+new P1bCase("Test549_SpacecraftOrbitIntegrators", Test549_SpacecraftOrbitIntegrators, true),
             new P1bCase("Test534_JupiterVariants", Test534_JupiterVariants, true),
             new P1bCase("Test534b_MoonsAsBodies", Test534b_MoonsAsBodies, true),
         };

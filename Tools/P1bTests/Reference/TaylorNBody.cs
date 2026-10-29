@@ -15,11 +15,20 @@ internal readonly struct TaylorSample
 {
     public readonly double T;
     public readonly double[] P;
+    public readonly double[] V;
 
     public TaylorSample(double t, double[] p)
     {
         T = t;
         P = p;
+        V = null;
+    }
+
+    public TaylorSample(double t, double[] p, double[] v)
+    {
+        T = t;
+        P = p;
+        V = v;
     }
 }
 
@@ -132,12 +141,22 @@ internal static class TaylorNBody
                     v[i] = vJ[i].Eval(h);
                 }
 
+                double stepStart = t;
                 bool last = h >= remaining;
                 t = last ? T : t + h;
                 steps++;
-                if (samples != null && t >= nextSample - 1e-9d)
+                while (samples != null && t >= nextSample - 1e-9d)
                 {
-                    samples.Add(new TaylorSample(t, (double[])p.Clone()));
+                    double tau = Math.Min(h, Math.Max(0d, nextSample - stepStart));
+                    var sampleP = new double[dim];
+                    var sampleV = new double[dim];
+                    for (int i = 0; i < dim; i++)
+                    {
+                        sampleP[i] = pJ[i].Eval(tau);
+                        sampleV[i] = vJ[i].Eval(tau);
+                    }
+
+                    samples.Add(new TaylorSample(nextSample, sampleP, sampleV));
                     nextSample += sampleEvery;
                 }
 

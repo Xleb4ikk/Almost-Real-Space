@@ -48,6 +48,8 @@ namespace Galilego.Spacecraft
         /// <summary>Calls shorter than this are a single step anyway; the dominant-body lookup is skipped.</summary>
         private const double MinSpanForToleranceFrameSeconds = 1d;
 
+        private const double MinMassForDerivative = 1e-3d;
+
         /// <summary>
         /// Snapshot of the total torque (N·m, body frame) of the last substage of the last
         /// ACCEPTED step. The game loop reads it after phys.Step and feeds
@@ -120,14 +122,14 @@ namespace Galilego.Spacecraft
 
         private SpacecraftIntegrationState EvaluateDerivative(SpacecraftIntegrationState state, double timeSeconds)
         {
-            // Mass ≤ 0 or non-finite would give NaN/Inf; fail loudly here.
-            if (!(state.Mass > 0d) || !double.IsFinite(state.Mass))
+            if (!double.IsFinite(state.Mass))
             {
                 throw new InvalidOperationException(
                     "Масса корабля " + state.Mass.ToString("R") + " кг на t=" + timeSeconds.ToString("R") +
                     " — интеграция невозможна (источник расходует больше, чем есть?).");
             }
 
+            double mass = state.Mass > MinMassForDerivative ? state.Mass : MinMassForDerivative;
             Vector3d totalSpecificAcceleration = Vector3d.Zero;
             Vector3d totalForce = Vector3d.Zero;
             Vector3d totalTorque = Vector3d.Zero;
@@ -135,7 +137,7 @@ namespace Galilego.Spacecraft
 
             for (int i = 0; i < Sources.Count; i++)
             {
-                DynamicsContribution c = Sources[i].Evaluate(state.Position, state.Velocity, state.Mass, timeSeconds);
+                DynamicsContribution c = Sources[i].Evaluate(state.Position, state.Velocity, mass, timeSeconds);
                 totalSpecificAcceleration += c.SpecificAcceleration;
                 totalForce += c.Force;
                 totalTorque += c.Torque;
@@ -148,8 +150,14 @@ namespace Galilego.Spacecraft
                     "Источник динамики вернул не-конечный вклад на t=" + timeSeconds.ToString("R") + ".");
             }
 
+            Vector3d acceleration = totalSpecificAcceleration + (totalForce / mass);
+            if (!acceleration.IsFinite)
+            {
+                throw new InvalidOperationException(
+                    "Источник динамики дал не-конечное ускорение на t=" + timeSeconds.ToString("R") + ".");
+            }
+
             lastEvaluatedTorque = totalTorque;
-            Vector3d acceleration = totalSpecificAcceleration + (totalForce / state.Mass);
 
             return new SpacecraftIntegrationState
             {

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Galilego.Universe;
 
@@ -223,7 +224,8 @@ internal static partial class P1bTests
 
     private static DdNBodyResult RunTaylorNBodyDd(
         TaylorNBodyInput input, double years, int order,
-        double positionTolerance, double velocityTolerance, double maxStep, double minStep)
+        double positionTolerance, double velocityTolerance, double maxStep, double minStep,
+        double sampleEvery = 0d, List<StudySample> samples = null)
     {
         int n = input.Names.Length;
         int dim = 3 * n;
@@ -238,6 +240,7 @@ internal static partial class P1bTests
         double T = years * 365.25d * 86400d;
         double t = 0d;
         double h = Math.Min(maxStep, T);
+        double nextSample = samples != null && sampleEvery > 0d ? sampleEvery : double.PositiveInfinity;
         var pJ = new DdJet[dim];
         var vJ = new DdJet[dim];
         var aJ = new DdJet[dim];
@@ -297,6 +300,21 @@ internal static partial class P1bTests
 
                 t += h;
                 steps++;
+                while (samples != null && t >= nextSample - 1e-9d)
+                {
+                    double tau = Math.Min(h, Math.Max(0d, nextSample - (t - h)));
+                    var sample = new double[dim];
+                    var sampleV = new double[dim];
+                    for (int i = 0; i < dim; i++)
+                    {
+                        sample[i] = pJ[i].Eval(tau).ToDouble;
+                        sampleV[i] = vJ[i].Eval(tau).ToDouble;
+                    }
+
+                    samples.Add(new StudySample(nextSample, sample, sampleV));
+                    nextSample += sampleEvery;
+                }
+
                 double factor = Math.Min(4d, Math.Max(0.2d,
                     0.9d * Math.Pow(1d / Math.Max(norm, 1e-14d), 1d / order)));
                 h = Math.Min(maxStep, Math.Max(minStep, h * factor));
@@ -433,7 +451,7 @@ internal static partial class P1bTests
             "inner 14.0625 vs 7.03125 = {0:E3} m; mid={1:E3}; outer={2:E3}; ratio={3:F1}",
             StudyRel(r2.P, 2, 1, r1.P),
             StudyRel(r2.P, 1, 0, r1.P),
-            StudyRel(r2.P, nb.Count - 1, 0, r1.P),
+            StudyRel(r2.P, StudyOuterIndex(nb), 0, r1.P),
             StudyRel(r2.P, 2, 1, r1.P) / Math.Max(StudyRel(r1.P, 2, 1, StudyRefRun(nb, "Y6C", 28.125d, years, 0d).P), 1e-30d)));
         Console.WriteLine("  fine calls=" + r2.Calls + ", " + r2.Ms.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
     }
@@ -473,7 +491,7 @@ internal static partial class P1bTests
         StudyRefResult r2 = StudyRefRun(nb, "Y6C", 3.515625d, years, 0d);
         Console.WriteLine(string.Format(System.Globalization.CultureInfo.InvariantCulture,
             "inner 7.03125 vs 3.515625 = {0:E3} m; mid={1:E3}; outer={2:E3}",
-            StudyRel(r2.P, 2, 1, r1.P), StudyRel(r2.P, 1, 0, r1.P), StudyRel(r2.P, nb.Count - 1, 0, r1.P)));
+            StudyRel(r2.P, 2, 1, r1.P), StudyRel(r2.P, 1, 0, r1.P), StudyRel(r2.P, StudyOuterIndex(nb), 0, r1.P)));
         Console.WriteLine("  calls=" + r2.Calls + ", " + r2.Ms.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + " ms");
     }
 
@@ -520,7 +538,7 @@ internal static partial class P1bTests
                 "DD Taylor", order, step, r.Steps, r.Calls, r.Ms, kib,
                 StudyRel(r.P, 2, 1, reference.P),
                 StudyRel(r.P, 1, 0, reference.P),
-                StudyRel(r.P, nb.Count - 1, 0, reference.P),
+                StudyRel(r.P, StudyOuterIndex(nb), 0, reference.P),
                 Math.Abs((StudyEnergy(r.P, r.V, nb.Mu) - e0) / e0)));
 
             double[] mom = TotalMomentum(r.V, nb.Mu);
@@ -992,7 +1010,7 @@ internal static partial class P1bTests
             name,
             StudyRel(r.P, 2, 1, reference.P),
             StudyRel(r.P, 1, 0, reference.P),
-            StudyRel(r.P, nb.Count - 1, 0, reference.P),
+            StudyRel(r.P, StudyOuterIndex(nb), 0, reference.P),
             Math.Abs((StudyEnergy(r.P, r.V, nb.Mu) - e0) / e0),
             r.Steps, r.Calls));
     }

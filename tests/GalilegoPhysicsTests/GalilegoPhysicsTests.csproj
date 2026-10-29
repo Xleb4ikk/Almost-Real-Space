@@ -20,6 +20,7 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Math\QuaternionD.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\DenseSegment.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\DOPRI5Coefficients.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\DOP853Coefficients.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\OrbitIntegrator.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\IntegrationResult.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftIntegrationState.cs" />

@@ -67,30 +67,165 @@ internal static partial class P1bTests
     // Planet table
     // ------------------------------------------------------------------
 
+    private static List<StudySample> StudyPlanetTaylorSamples(List<TaylorSample> samples)
+    {
+        if (samples == null)
+        {
+            return null;
+        }
+
+        var converted = new List<StudySample>(samples.Count);
+        for (int i = 0; i < samples.Count; i++)
+        {
+            converted.Add(new StudySample(samples[i].T, samples[i].P, samples[i].V));
+        }
+
+        return converted;
+    }
+
+    private static StudyRefResult StudyPlanetIndependentReference(
+        StudyNBody nb, double years, double sampleEvery)
+    {
+        var samples = sampleEvery > 0d ? new List<StudySample>() : null;
+        var dd = RunTaylorNBodyDd(
+            ToTaylor(nb), years, 12, 1e-9d, 1e-12d, 43200d, 1e-6d,
+            sampleEvery, samples);
+        return new StudyRefResult
+        {
+            P = dd.P,
+            V = dd.V,
+            Samples = samples,
+            Calls = dd.Calls,
+            Ms = dd.Ms
+        };
+    }
+
+    private static StudyRefResult StudyPlanetIndependentReferenceAlt(
+        StudyNBody nb, double years, double sampleEvery)
+    {
+        var samples = sampleEvery > 0d ? new List<StudySample>() : null;
+        var dd = RunTaylorNBodyDd(
+            ToTaylor(nb), years, 12, 1e-9d, 1e-12d, 21600d, 1e-6d,
+            sampleEvery, samples);
+        return new StudyRefResult
+        {
+            P = dd.P,
+            V = dd.V,
+            Samples = samples,
+            Calls = dd.Calls,
+            Ms = dd.Ms
+        };
+    }
+
+    private static double StudyPlanetMaxRel(
+        List<StudySample> candidate, List<StudySample> reference, int i, int j)
+    {
+        if (candidate == null || reference == null)
+        {
+            return double.NaN;
+        }
+
+        int count = Math.Min(candidate.Count, reference.Count);
+        double worst = 0d;
+        for (int s = 0; s < count; s++)
+        {
+            worst = Math.Max(worst, StudyRel(candidate[s].P, i, j, reference[s].P));
+        }
+
+        return worst;
+    }
+
+    private static double StudyPlanetMaxEnergyError(
+        List<StudySample> samples, double[] mu, double e0)
+    {
+        if (samples == null || samples.Count == 0)
+        {
+            return double.NaN;
+        }
+
+        double worst = 0d;
+        for (int s = 0; s < samples.Count; s++)
+        {
+            if (samples[s].V == null)
+            {
+                continue;
+            }
+
+            double e = StudyEnergy(samples[s].P, samples[s].V, mu);
+            worst = Math.Max(worst, Math.Abs((e - e0) / e0));
+        }
+
+        return worst;
+    }
+
+    private static double StudyPlanetMaxInvariantError(
+        List<StudySample> samples, double[] mu, double[] mom0, double[] ang0, double sumMuV)
+    {
+        if (samples == null || samples.Count == 0)
+        {
+            return double.NaN;
+        }
+
+        double worstP = 0d;
+        double worstL = 0d;
+        for (int s = 0; s < samples.Count; s++)
+        {
+            if (samples[s].V == null)
+            {
+                continue;
+            }
+
+            double[] mom = TotalMomentum(samples[s].V, mu);
+            double[] ang = TotalAngular(samples[s].P, samples[s].V, mu);
+            worstP = Math.Max(worstP,
+                Magnitude3(Sub3(mom, mom0)) / Math.Max(sumMuV, 1e-300d));
+            worstL = Math.Max(worstL,
+                Magnitude3(Sub3(ang, ang0)) / Math.Max(Magnitude3(ang0), 1e-300d));
+        }
+
+        return Math.Max(worstP, worstL);
+    }
+
     private static void StudyPlanetTable(
         string label, StudyNBody nb, double years, double refH, bool convergence)
     {
         Console.WriteLine();
-        Console.WriteLine("=== " + label + ": " + years + " y, reference Y6C h=" + refH + " s ===");
-        var reference = StudyRefRun(nb, "Y6C", refH, years, 0d);
-        if (convergence)
+        Console.WriteLine("=== " + label + ": " + years + " y, independent "
+            + "dd-Taylor K12 reference ===");
+        double sampleEvery = 30d * 86400d;
+        StudyRefResult reference = StudyPlanetIndependentReference(nb, years, sampleEvery);
+        StudyRefResult alternative = StudyPlanetIndependentReferenceAlt(nb, years, sampleEvery);
+        double referenceSelf = 0d;
+        for (int i = 0; i < nb.Count; i++)
         {
-            var half = StudyRefRun(nb, "Y6C", refH * 0.5d, years, 0d);
-            double worst = 0d;
-            for (int i = 0; i < nb.Count; i++)
+            for (int j = 0; j < i; j++)
             {
-                for (int j = 0; j < i; j++)
-                {
-                    worst = Math.Max(worst, StudyRel(reference.P, i, j, half.P));
-                }
+                referenceSelf = Math.Max(referenceSelf, StudyRel(reference.P, i, j, alternative.P));
+                referenceSelf = Math.Max(referenceSelf, StudyPlanetMaxRel(reference.Samples, alternative.Samples, i, j));
             }
-
-            Console.WriteLine("reference self-convergence (h vs h/2): worst pair = {0:E3} m", worst);
         }
 
+        Console.WriteLine(string.Format(
+            System.Globalization.CultureInfo.InvariantCulture,
+            "reference calls={0:N0}, {1:F0} ms; self-convergence={2:E3} m",
+            reference.Calls, reference.Ms, referenceSelf));
         double e0 = StudyEnergy(nb.P0, nb.V0, nb.Mu);
+        double[] mom0 = TotalMomentum(nb.V0, nb.Mu);
+        double[] ang0 = TotalAngular(nb.P0, nb.V0, nb.Mu);
+        double sumMuV = 0d;
+        for (int i = 0; i < nb.Count; i++)
+        {
+            sumMuV += nb.Mu[i] * Math.Sqrt(
+                (nb.V0[3 * i] * nb.V0[3 * i])
+                + (nb.V0[(3 * i) + 1] * nb.V0[(3 * i) + 1])
+                + (nb.V0[(3 * i) + 2] * nb.V0[(3 * i) + 2]));
+        }
+
+        int outerIndex = StudyOuterIndex(nb);
+        Console.WriteLine("outer body: " + nb.Names[outerIndex]);
         Console.WriteLine("{" + "system,-24} {" + "method,-8} {" + "h, s,6} {" + "calls,12} {" +
-            "Luna/Terra, m,14} {" + "Terra/Sol, m,13} {" + "outer, m,12} {" + "dE/E,10} {" + "ms,9}");
+            "inner, m,11} {" + "mid, m,11} {" + "outer, m,11} {" + "maxInner, m,11} {" +
+            "maxOuter, m,11} {" + "dE/E,9} {" + "maxdE,9} {" + "inv,9} {" + "ms,8}");
         var rows = new[]
         {
             ("RK4", 900d),
@@ -102,28 +237,76 @@ internal static partial class P1bTests
             ("Y6", 3600d),
             ("Y6", 7200d)
         };
-        var rowResults = new (double inner, double mid, double outer, double de, long calls, double ms)[rows.Length];
+        var rowResults = new (double inner, double mid, double outer, double maxInner,
+            double maxOuter, double de, double maxDe, double inv, long calls, double ms)[rows.Length];
         Parallel.For(0, rows.Length, idx =>
         {
             (string method, double h) = rows[idx];
-            var r = StudyRefRun(nb, method, h, years, 0d);
+            StudyRefResult r = StudyRefRunSampled(nb, method, h, years, sampleEvery);
             double e = StudyEnergy(r.P, r.V, nb.Mu);
             double de = Math.Abs((e - e0) / e0);
             double inner = StudyRel(r.P, 2, 1, reference.P);
             double mid = StudyRel(r.P, 1, 0, reference.P);
-            double outer = StudyRel(r.P, nb.Count - 1, 0, reference.P);
-            rowResults[idx] = (inner, mid, outer, de, r.Calls, r.Ms);
+            double outer = StudyRel(r.P, outerIndex, 0, reference.P);
+            double maxInner = StudyPlanetMaxRel(r.Samples, reference.Samples, 2, 1);
+            double maxOuter = StudyPlanetMaxRel(r.Samples, reference.Samples, outerIndex, 0);
+            double maxDe = StudyPlanetMaxEnergyError(r.Samples, nb.Mu, e0);
+            double inv = StudyPlanetMaxInvariantError(r.Samples, nb.Mu, mom0, ang0, sumMuV);
+            rowResults[idx] = (inner, mid, outer, maxInner, maxOuter, de, maxDe, inv, r.Calls, r.Ms);
         });
+
+        double bestScore = double.PositiveInfinity;
+        int bestIndex = -1;
         for (int idx = 0; idx < rows.Length; idx++)
         {
             (string method, double h) = rows[idx];
             var row = rowResults[idx];
-            Console.WriteLine(
-                "{0,-24} {1,-8} {2,6:F0} {3,12:N0} {4,14:E3} {5,13:E3} {6,12:E3} {7,10:E2} {8,9:F0}",
-                label, method, h, row.calls, row.inner, row.mid, row.outer, row.de, row.ms);
+            double score = double.IsFinite(row.maxInner) ? row.maxInner : row.inner;
+            if (score < bestScore)
+            {
+                bestScore = score;
+                bestIndex = idx;
+            }
+
+            Console.WriteLine(string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "{0,-24} {1,-8} {2,6:F0} {3,12:N0} {4,11:E3} {5,11:E3} {6,11:E3} {7,11:E3} {8,11:E3} {9,9:E2} {10,9:E2} {11,9:E2} {12,8:F0}",
+                label, method, h, row.calls, row.inner, row.mid, row.outer,
+                row.maxInner, row.maxOuter, row.de, row.maxDe, row.inv, row.ms));
         }
 
-        Console.WriteLine("reference: calls={0:N0}, {1:F0} ms", reference.Calls, reference.Ms);
+        if (bestIndex >= 0)
+        {
+            (string method, double h) = rows[bestIndex];
+            var best = rowResults[bestIndex];
+            Console.WriteLine(string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "best: {0} h={1:F0} maxInner={2:E3} m maxOuter={3:E3} m maxdE={4:E2} inv={5:E2}",
+                method, h, best.maxInner, best.maxOuter, best.maxDe, best.inv));
+        }
+
+        double innerGate = years <= 20d ? 10d : 5000d;
+        double outerGate = years <= 20d ? 100d : 2000d;
+        double energyGate = years <= 20d ? 1e-9d : 1e-7d;
+        double invariantGate = 1e-9d;
+        Check(referenceSelf < innerGate, label + " independent reference self-convergence",
+            referenceSelf.ToString("E3", System.Globalization.CultureInfo.InvariantCulture));
+        if (bestIndex >= 0)
+        {
+            var best = rowResults[bestIndex];
+            Check(best.maxInner < innerGate, label + " best max inner",
+                best.maxInner.ToString("E3", System.Globalization.CultureInfo.InvariantCulture));
+            Check(best.maxOuter < outerGate, label + " best max outer",
+                best.maxOuter.ToString("E3", System.Globalization.CultureInfo.InvariantCulture));
+            Check(best.maxDe < energyGate, label + " best max dE/E",
+                best.maxDe.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
+            Check(best.inv < invariantGate, label + " best max invariant",
+                best.inv.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
+        }
+        else
+        {
+            Check(false, label + " best row", "none");
+        }
     }
 
     private static void StudyBake(

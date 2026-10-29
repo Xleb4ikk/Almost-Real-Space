@@ -43,32 +43,35 @@ internal static partial class P1bTests
             return;
         }
 
-        OrbitalElements el = OrbitalElements.FromState(r, v, mu);
-        if (!el.IsValid || !(el.Eccentricity < 1d) || !(el.SemiMajorAxis > 0d))
+        Vector3d eVec = (Vector3d.Cross(v, h) / mu) - (r / rMag);
+        double eDirect = eVec.Magnitude;
+        if (!(eDirect > 0d) || !(eDirect < 1d))
         {
             r2 = r;
             v2 = v;
             return;
         }
 
-        double ea = el.Eccentricity;
-        double sma = el.SemiMajorAxis;
-        double nMean = Math.Sqrt(mu / (sma * sma * sma));
-        double m0 = el.MeanAnomalyDegrees * Math.PI / 180d;
-        double mean = m0 + (nMean * dt);
-        double ecc = KeplerMath.SolveEccentricAnomaly(mean, ea);
+        Vector3d periapsis = eVec / eDirect;
+        Vector3d normal = h / hMag;
+        Vector3d transverse = Vector3d.Cross(normal, periapsis);
+        double cosNu = Vector3d.Dot(r, periapsis) / rMag;
+        double sinNu = Vector3d.Dot(r, transverse) / rMag;
+        double nu = Math.Atan2(sinNu, cosNu);
+        double E = 2d * Math.Atan2(
+            Math.Sqrt(1d - eDirect) * Math.Sin(0.5d * nu),
+            Math.Sqrt(1d + eDirect) * Math.Cos(0.5d * nu));
+        double M = E - (eDirect * Math.Sin(E));
+        M += Math.Sqrt(mu / (a * a * a)) * dt;
+        M -= 2d * Math.PI * Math.Floor((M + Math.PI) / (2d * Math.PI));
+        double ecc = KeplerMath.SolveEccentricAnomaly(M, eDirect);
         double cosE = Math.Cos(ecc);
         double sinE = Math.Sin(ecc);
-        double radius = sma * (1d - (ea * cosE));
-        double yScale = Math.Sqrt(1d - (ea * ea));
-        var orbitalP = new Vector3d(sma * (cosE - ea), sma * yScale * sinE, 0d);
-        double factor = Math.Sqrt(mu * sma) / radius;
-        var orbitalV = new Vector3d(-factor * sinE, factor * yScale * cosE, 0d);
-        double node = el.LongitudeOfAscendingNodeDegrees * Math.PI / 180d;
-        double inc = el.InclinationDegrees * Math.PI / 180d;
-        double argp = el.ArgumentOfPeriapsisDegrees * Math.PI / 180d;
-        r2 = KeplerMath.RotateOrbitalToWorld(orbitalP, node, inc, argp);
-        v2 = KeplerMath.RotateOrbitalToWorld(orbitalV, node, inc, argp);
+        double yScale = Math.Sqrt(1d - (eDirect * eDirect));
+        double radius = a * (1d - (eDirect * cosE));
+        double factor = Math.Sqrt(mu * a) / radius;
+        r2 = (periapsis * (a * (cosE - eDirect))) + (transverse * (a * yScale * sinE));
+        v2 = (periapsis * (-factor * sinE)) + (transverse * (factor * yScale * cosE));
     }
 
     private static void StudyWhStep(

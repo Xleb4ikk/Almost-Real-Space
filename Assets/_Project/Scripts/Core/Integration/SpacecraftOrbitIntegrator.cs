@@ -108,6 +108,16 @@ namespace Galilego.Core
         private const double MaxStepSize = OrbitIntegrator.DefaultMaxStepSize;
         private const double MinStepSize = OrbitIntegrator.DefaultMinStepSize;
 
+        private static void EnsurePositiveMass(SpacecraftIntegrationState state, double time)
+        {
+            if (!(state.Mass > 0d))
+            {
+                throw new InvalidOperationException(
+                    "Масса корабля " + state.Mass.ToString("R") + " кг на t=" + time.ToString("R") +
+                    " — расход превышает запас.");
+            }
+        }
+
         /// <summary>
         /// Integrates the full state forward by a target time step with adaptive
         /// DOPRI5. Step control matches OrbitIntegrator.StepForward.
@@ -175,12 +185,26 @@ namespace Galilego.Core
                     dt,
                     derivativeProvider,
                     fsalDerivative,
+                    out bool stageMassInvalid,
                     out SpacecraftIntegrationState fifth,
                     out SpacecraftIntegrationState newFsalDerivative,
                     out double errorPos,
                     out double errorVel,
                     out double errorMass,
                     out ShampineCoeffs denseStep);
+
+                if (stageMassInvalid)
+                {
+                    if (dt <= MinStepSize)
+                    {
+                        throw new InvalidOperationException(
+                            "DOPRI5 не смог подобрать шаг: масса на пробной стадии ≤ 0 при t=" +
+                            time.ToString("R") + ".");
+                    }
+
+                    dt = Math.Max(MinStepSize, dt * 0.5d);
+                    continue;
+                }
 
                 // Separate error scaling: each physical quantity has its own
                 // absolute tolerance; the relative tolerance is shared.
@@ -209,6 +233,7 @@ namespace Galilego.Core
 
                 if (normalizedError <= 1.0)
                 {
+                    EnsurePositiveMass(fifth, time + (dt * direction));
                     if (segments != null)
                     {
                         segments.Add(new DenseSegment(time, time + (dt * direction), dt, current, fifth, denseStep));
@@ -221,8 +246,8 @@ namespace Galilego.Core
                     if (!current.IsFinite)
                     {
                         throw new InvalidOperationException(
-                            "РРЅС‚РµРіСЂР°С‚РѕСЂ РїРѕР»СѓС‡РёР» РЅРµ-РєРѕРЅРµС‡РЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ (t=" + time.ToString("R") +
-                            ", dt=" + dt.ToString("R") + ") вЂ” RHS РІРµСЂРЅСѓР» NaN/Inf (РјР°СЃСЃР° в‰¤ 0? СЃРёРЅРіСѓР»СЏСЂРЅРѕСЃС‚СЊ?).");
+                            "Интегратор получил не-конечное состояние (t=" + time.ToString("R") +
+                            ", dt=" + dt.ToString("R") + ") — RHS вернул NaN/Inf (масса ≤ 0? сингулярность?).");
                     }
 
                     fsalDerivative = newFsalDerivative;
@@ -250,6 +275,7 @@ namespace Galilego.Core
                             dt,
                             derivativeProvider,
                             fsalDerivative,
+                            out bool forcedStageMassInvalid,
                             out SpacecraftIntegrationState forced,
                             out SpacecraftIntegrationState forcedFsal,
                             out double forcedErrPos,
@@ -257,6 +283,14 @@ namespace Galilego.Core
                             out double forcedErrMass,
                             out ShampineCoeffs forcedDense);
 
+                        if (forcedStageMassInvalid)
+                        {
+                            throw new InvalidOperationException(
+                                "DOPRI5 не смог подобрать шаг: масса на пробной стадии ≤ 0 при t=" +
+                                time.ToString("R") + ".");
+                        }
+
+                        EnsurePositiveMass(forced, time + (dt * direction));
                         if (segments != null)
                         {
                             segments.Add(new DenseSegment(time, time + (dt * direction), dt, current, forced, forcedDense));
@@ -329,11 +363,25 @@ namespace Galilego.Core
                     current, time, dt,
                     derivativeProvider,
                     collectDense,
+                    out bool stageMassInvalid,
                     out SpacecraftIntegrationState eighth,
                     out double errorPos,
                     out double errorVel,
                     out double errorMass,
                     out ShampineCoeffs denseStep);
+
+                if (stageMassInvalid)
+                {
+                    if (dt <= MinStepSize)
+                    {
+                        throw new InvalidOperationException(
+                            "DOP853 не смог подобрать шаг: масса на пробной стадии ≤ 0 при t=" +
+                            time.ToString("R") + ".");
+                    }
+
+                    dt = Math.Max(MinStepSize, dt * 0.5d);
+                    continue;
+                }
 
                 double scalePos;
                 double scaleVel;
@@ -359,6 +407,7 @@ namespace Galilego.Core
 
                 if (normalizedError <= 1.0)
                 {
+                    EnsurePositiveMass(eighth, time + (dt * direction));
                     if (segments != null)
                     {
                         segments.Add(new DenseSegment(time, time + (dt * direction), dt, current, eighth, denseStep));
@@ -393,12 +442,21 @@ namespace Galilego.Core
                             current, time, dt,
                             derivativeProvider,
                             collectDense,
+                            out bool forcedStageMassInvalid,
                             out SpacecraftIntegrationState forced,
                             out double forcedErrPos,
                             out double forcedErrVel,
                             out double forcedErrMass,
                             out ShampineCoeffs forcedDense);
 
+                        if (forcedStageMassInvalid)
+                        {
+                            throw new InvalidOperationException(
+                                "DOP853 не смог подобрать шаг: масса на пробной стадии ≤ 0 при t=" +
+                                time.ToString("R") + ".");
+                        }
+
+                        EnsurePositiveMass(forced, time + (dt * direction));
                         if (segments != null)
                         {
                             segments.Add(new DenseSegment(time, time + (dt * direction), dt, current, forced, forcedDense));
@@ -474,6 +532,7 @@ namespace Galilego.Core
             double dt,
             DerivativeFunction derivativeProvider,
             SpacecraftIntegrationState fsalDerivative,
+            out bool stageMassInvalid,
             out SpacecraftIntegrationState fifth,
             out SpacecraftIntegrationState lastDerivative,
             out double errPos,
@@ -481,35 +540,78 @@ namespace Galilego.Core
             out double errMass,
             out ShampineCoeffs dense)
         {
+            stageMassInvalid = false;
+            fifth = state;
+            lastDerivative = default;
+            errPos = 0d;
+            errVel = 0d;
+            errMass = 0d;
+            dense = default;
+
             // Stage 1 (FSAL)
             SpacecraftIntegrationState k1 = fsalDerivative;
 
             // Stage 2
-            SpacecraftIntegrationState k2 = derivativeProvider(
-                state + k1 * (dt * a21), time + dt * DOPRI5Coefficients.c2);
+            SpacecraftIntegrationState s2 = state + k1 * (dt * a21);
+            if (!(s2.Mass > 0d))
+            {
+                stageMassInvalid = true;
+                return;
+            }
+
+            SpacecraftIntegrationState k2 = derivativeProvider(s2, time + dt * DOPRI5Coefficients.c2);
 
             // Stage 3
-            SpacecraftIntegrationState k3 = derivativeProvider(
-                state + k1 * (dt * a31) + k2 * (dt * a32), time + dt * DOPRI5Coefficients.c3);
+            SpacecraftIntegrationState s3 = state + k1 * (dt * a31) + k2 * (dt * a32);
+            if (!(s3.Mass > 0d))
+            {
+                stageMassInvalid = true;
+                return;
+            }
+
+            SpacecraftIntegrationState k3 = derivativeProvider(s3, time + dt * DOPRI5Coefficients.c3);
 
             // Stage 4
-            SpacecraftIntegrationState k4 = derivativeProvider(
-                state + k1 * (dt * a41) + k2 * (dt * a42) + k3 * (dt * a43),
-                time + dt * DOPRI5Coefficients.c4);
+            SpacecraftIntegrationState s4 = state + k1 * (dt * a41) + k2 * (dt * a42) + k3 * (dt * a43);
+            if (!(s4.Mass > 0d))
+            {
+                stageMassInvalid = true;
+                return;
+            }
+
+            SpacecraftIntegrationState k4 = derivativeProvider(s4, time + dt * DOPRI5Coefficients.c4);
 
             // Stage 5
-            SpacecraftIntegrationState k5 = derivativeProvider(
-                state + k1 * (dt * a51) + k2 * (dt * a52) + k3 * (dt * a53) + k4 * (dt * a54),
-                time + dt * DOPRI5Coefficients.c5);
+            SpacecraftIntegrationState s5 = state + k1 * (dt * a51) + k2 * (dt * a52)
+                + k3 * (dt * a53) + k4 * (dt * a54);
+            if (!(s5.Mass > 0d))
+            {
+                stageMassInvalid = true;
+                return;
+            }
+
+            SpacecraftIntegrationState k5 = derivativeProvider(s5, time + dt * DOPRI5Coefficients.c5);
 
             // Stage 6
-            SpacecraftIntegrationState k6 = derivativeProvider(
-                state + k1 * (dt * a61) + k2 * (dt * a62) + k3 * (dt * a63) + k4 * (dt * a64) + k5 * (dt * a65),
-                time + dt * DOPRI5Coefficients.c6);
+            SpacecraftIntegrationState s6 = state + k1 * (dt * a61) + k2 * (dt * a62)
+                + k3 * (dt * a63) + k4 * (dt * a64) + k5 * (dt * a65);
+            if (!(s6.Mass > 0d))
+            {
+                stageMassInvalid = true;
+                return;
+            }
+
+            SpacecraftIntegrationState k6 = derivativeProvider(s6, time + dt * DOPRI5Coefficients.c6);
 
             // Stage 7 (FSAL candidate: evaluated at t+dt)
             SpacecraftIntegrationState s7 =
                 state + k1 * (dt * a71) + k3 * (dt * a73) + k4 * (dt * a74) + k5 * (dt * a75) + k6 * (dt * a76);
+            if (!(s7.Mass > 0d))
+            {
+                stageMassInvalid = true;
+                return;
+            }
+
             SpacecraftIntegrationState k7 = derivativeProvider(s7, time + dt * DOPRI5Coefficients.c7);
 
             // 5th-order solution
@@ -546,12 +648,20 @@ namespace Galilego.Core
             double dt,
             DerivativeFunction derivativeProvider,
             bool collectDense,
+            out bool stageMassInvalid,
             out SpacecraftIntegrationState eighth,
             out double errPos,
             out double errVel,
             out double errMass,
             out ShampineCoeffs dense)
         {
+            stageMassInvalid = false;
+            eighth = state;
+            errPos = 0d;
+            errVel = 0d;
+            errMass = 0d;
+            dense = default;
+
             var k = new SpacecraftIntegrationState[12];
             k[0] = derivativeProvider(state, time);
 
@@ -568,10 +678,15 @@ namespace Galilego.Core
                     }
                 }
 
+                if (!(stage.Mass > 0d))
+                {
+                    stageMassInvalid = true;
+                    return;
+                }
+
                 k[s] = derivativeProvider(stage, time + (dt * DOP853Coefficients.C[s]));
             }
 
-            eighth = state;
             SpacecraftIntegrationState error = SpacecraftIntegrationState.Zero;
             for (int s = 0; s < 12; s++)
             {
@@ -585,15 +700,17 @@ namespace Galilego.Core
 
             if (collectDense)
             {
+                if (!(eighth.Mass > 0d))
+                {
+                    stageMassInvalid = true;
+                    return;
+                }
+
                 SpacecraftIntegrationState kEnd = derivativeProvider(eighth, time + dt);
                 SpacecraftIntegrationState dc1 = eighth - state;
                 SpacecraftIntegrationState dc2 = (k[0] * dt) - dc1;
                 SpacecraftIntegrationState dc3 = dc1 - dc2 - (kEnd * dt);
                 dense = new ShampineCoeffs(dc1, dc2, dc3, SpacecraftIntegrationState.Zero);
-            }
-            else
-            {
-                dense = default;
             }
         }
     }

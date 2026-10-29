@@ -11,6 +11,9 @@ using Galilego.Universe;
 
 internal static partial class P1bTests
 {
+    private static readonly double StudyKeplerVelocityScale =
+        Math.Sqrt(2d * 1.32712440018e20d / StudyAU);
+
     private static double[] ParseKeplerGolden(string[] values)
     {
         var result = new double[values.Length];
@@ -127,9 +130,13 @@ internal static partial class P1bTests
             double[] vt = ParseKeplerGolden(c.VT);
             double period = 2d * Math.PI * Math.Sqrt(1d / c.Mu);
             Console.WriteLine();
-            Console.WriteLine("=== Kepler " + c.Label + " (analytic golden) ===");
-            Console.WriteLine("method      h/tol          steps      calls      ms        dp(m)       dv(m/s)");
+            Console.WriteLine("=== Kepler " + c.Label + " (analytic golden; a=1, mu=2) ===");
+            Console.WriteLine("method      h/tol          steps      calls      ms        dp_norm     dv_norm     dp_m        dv_mps");
+            Console.WriteLine("scale: 1 length unit = 1 AU, 1 velocity unit = sqrt(2*mu_sun/AU) = "
+                + StudyKeplerVelocityScale.ToString("E3", CultureInfo.InvariantCulture) + " m/s");
             StudyNBody nb = KeplerTwoBody(c);
+            double bestDpNorm = double.PositiveInfinity;
+            double bestDvNorm = double.PositiveInfinity;
 
             for (int mi = 0; mi < methods.Length; mi++)
             {
@@ -139,10 +146,14 @@ internal static partial class P1bTests
                     var r = StudyRunFixedSeconds(nb, methods[mi], h, c.TotalSeconds);
                     double dp = KeplerDp(r.p, pt);
                     double dv = KeplerDv(r.v, vt);
+                    double dpM = dp * StudyAU;
+                    double dvMps = dv * StudyKeplerVelocityScale;
+                    bestDpNorm = Math.Min(bestDpNorm, dp);
+                    bestDvNorm = Math.Min(bestDvNorm, dv);
                     Console.WriteLine(string.Format(
                         CultureInfo.InvariantCulture,
-                        "{0,-11} {1,-13:F6} {2,8}  {3,10}  {4,8:F0}  {5,11:E3}  {6,11:E3}",
-                        methods[mi], h, r.steps, r.calls, r.ms, dp, dv));
+                        "{0,-11} {1,-13:F6} {2,8}  {3,10}  {4,8:F0}  {5,11:E3}  {6,11:E3}  {7,11:E3}  {8,11:E3}",
+                        methods[mi], h, r.steps, r.calls, r.ms, dp, dv, dpM, dvMps));
                     Check(double.IsFinite(dp) && double.IsFinite(dv),
                         "kepler " + c.Label + " " + methods[mi] + " h=" + h.ToString("G3", CultureInfo.InvariantCulture) + " finite",
                         dp.ToString("E2", CultureInfo.InvariantCulture));
@@ -166,19 +177,28 @@ internal static partial class P1bTests
                     one, 0, p0, v0, 0d, c.TotalSeconds / 86400d, posTol, velTol, posTol);
                 double dp = (d.p - new Vector3d(pt[0], pt[1], pt[2])).Magnitude;
                 double dv = (d.v - new Vector3d(vt[0], vt[1], vt[2])).Magnitude;
+                double dpM = dp * StudyAU;
+                double dvMps = dv * StudyKeplerVelocityScale;
+                bestDpNorm = Math.Min(bestDpNorm, dp);
+                bestDvNorm = Math.Min(bestDvNorm, dv);
                 Console.WriteLine(string.Format(
                     CultureInfo.InvariantCulture,
-                    "{0,-11} {1,-13} {2,8}  {3,10}  {4,8:F0}  {5,11:E3}  {6,11:E3}",
+                    "{0,-11} {1,-13} {2,8}  {3,10}  {4,8:F0}  {5,11:E3}  {6,11:E3}  {7,11:E3}  {8,11:E3}",
                     "DOP853", "tol=" + posTol.ToString("G0", CultureInfo.InvariantCulture),
-                    "-", d.calls, d.ms, dp, dv));
+                    "-", d.calls, d.ms, dp, dv, dpM, dvMps));
                 Check(double.IsFinite(dp) && double.IsFinite(dv),
                     "kepler " + c.Label + " DOP853 tol=" + posTol.ToString("G0", CultureInfo.InvariantCulture) + " finite",
                     dp.ToString("E2", CultureInfo.InvariantCulture));
             }
+
+            Check(bestDpNorm < 1e-6d, "kepler " + c.Label + " best normalized dp",
+                bestDpNorm.ToString("E3", CultureInfo.InvariantCulture));
+            Check(bestDvNorm < 1e-6d, "kepler " + c.Label + " best normalized dv",
+                bestDvNorm.ToString("E3", CultureInfo.InvariantCulture));
         }
 
         Console.WriteLine();
-        Console.WriteLine("--- Solar 7-body vs Y6C reference ---");
+        Console.WriteLine("--- Solar 7-body vs independent dd-Taylor reference ---");
         StarSystem real = StudyRealSolar7();
         StudyNBody realNb = StudyMakeNBody(real);
         double e0Energy = StudyEnergy(realNb.P0, realNb.V0, realNb.Mu);
@@ -191,42 +211,102 @@ internal static partial class P1bTests
             { "Y6C", new[] { 7200d, 3600d, 900d } }
         };
 
+        int realOuter = StudyOuterIndex(realNb);
+        double[] realMom0 = TotalMomentum(realNb.V0, realNb.Mu);
+        double[] realAng0 = TotalAngular(realNb.P0, realNb.V0, realNb.Mu);
+        double realSumMuV = 0d;
+        for (int i = 0; i < realNb.Count; i++)
+        {
+            realSumMuV += realNb.Mu[i] * Math.Sqrt(
+                (realNb.V0[3 * i] * realNb.V0[3 * i])
+                + (realNb.V0[(3 * i) + 1] * realNb.V0[(3 * i) + 1])
+                + (realNb.V0[(3 * i) + 2] * realNb.V0[(3 * i) + 2]));
+        }
+
         foreach (double years in new[] { 1d, 10d })
         {
-            StudyRefResult reference = StudyRefRun(realNb, "Y6C", 28.125d, years, 0d);
-            StudyRefResult self = StudyRefRun(realNb, "Y6C", 14.0625d, years, 0d);
+            double sampleEvery = 30d * 86400d;
+            StudyRefResult reference = StudyPlanetIndependentReference(realNb, years, sampleEvery);
+            StudyRefResult alternative = StudyPlanetIndependentReferenceAlt(realNb, years, sampleEvery);
+            double referenceSelf = 0d;
+            for (int i = 0; i < realNb.Count; i++)
+            {
+                for (int j = 0; j < i; j++)
+                {
+                    referenceSelf = Math.Max(referenceSelf, StudyRel(reference.P, i, j, alternative.P));
+                    referenceSelf = Math.Max(referenceSelf, StudyPlanetMaxRel(reference.Samples, alternative.Samples, i, j));
+                }
+            }
+
             Console.WriteLine();
             Console.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
-                "=== Solar 7-body, {0} y: reference Y6C 28.125 s, self vs 14.0625 = {1:E2} m, {2:F0} ms ===",
-                years, StudyRel(reference.P, 2, 1, self.P), reference.Ms));
-            Console.WriteLine("method      h(s)      steps      calls      ms       inner(m)    mid(m)      outer(m)    dE/E");
+                "=== Solar 7-body, {0} y: independent {1} reference, self = {2:E2} m, {3:F0} ms; outer={4} ===",
+                years, "dd-Taylor K12",
+                referenceSelf, reference.Ms, realNb.Names[realOuter]));
+            Console.WriteLine("method      h(s)      steps      calls      ms       inner(m)    mid(m)      outer(m)    maxInner    maxOuter    dE/E      maxdE     inv");
+            double bestMaxInner = double.PositiveInfinity;
+            double bestMaxOuter = double.PositiveInfinity;
+            double bestMaxDe = double.PositiveInfinity;
+            double bestInv = double.PositiveInfinity;
+            string bestLabel = "none";
             for (int mi = 0; mi < methods.Length; mi++)
             {
                 double[] stepsChoices = stepChoices[methods[mi]];
                 for (int di = 0; di < stepsChoices.Length; di++)
                 {
                     double h = stepsChoices[di];
-                    StudyRefResult r = StudyRefRun(realNb, methods[mi], h, years, 0d);
+                    StudyRefResult r = StudyRefRunSampled(realNb, methods[mi], h, years, sampleEvery);
                     double inner = StudyRel(r.P, 2, 1, reference.P);
                     double mid = StudyRel(r.P, 1, 0, reference.P);
-                    double outer = StudyRel(r.P, realNb.Count - 1, 0, reference.P);
+                    double outer = StudyRel(r.P, realOuter, 0, reference.P);
+                    double maxInner = StudyPlanetMaxRel(r.Samples, reference.Samples, 2, 1);
+                    double maxOuter = StudyPlanetMaxRel(r.Samples, reference.Samples, realOuter, 0);
                     double dE = Math.Abs((StudyEnergy(r.P, r.V, realNb.Mu) - e0Energy) / e0Energy);
+                    double maxDe = StudyPlanetMaxEnergyError(r.Samples, realNb.Mu, e0Energy);
+                    double inv = StudyPlanetMaxInvariantError(
+                        r.Samples, realNb.Mu, realMom0, realAng0, realSumMuV);
                     long steps = (long)Math.Floor((years * StudyYear) / h);
+                    if (maxInner < bestMaxInner)
+                    {
+                        bestMaxInner = maxInner;
+                        bestMaxOuter = maxOuter;
+                        bestMaxDe = maxDe;
+                        bestInv = inv;
+                        bestLabel = methods[mi] + " h=" + h.ToString("F0", CultureInfo.InvariantCulture);
+                    }
+
                     Console.WriteLine(string.Format(
                         CultureInfo.InvariantCulture,
-                        "{0,-11} {1,7:F0}  {2,8}  {3,10}  {4,8:F0}  {5,10:E2}  {6,10:E2}  {7,10:E2}  {8,9:E1}",
-                        methods[mi], h, steps, r.Calls, r.Ms, inner, mid, outer, dE));
+                        "{0,-11} {1,7:F0}  {2,8}  {3,10}  {4,8:F0}  {5,10:E2}  {6,10:E2}  {7,10:E2}  {8,10:E2}  {9,10:E2}  {10,9:E1}  {11,9:E1}  {12,9:E1}",
+                        methods[mi], h, steps, r.Calls, r.Ms, inner, mid, outer,
+                        maxInner, maxOuter, dE, maxDe, inv));
                     Check(double.IsFinite(inner) && double.IsFinite(dE),
                         "nbody " + years + "y " + methods[mi] + " h=" + h.ToString("F0", CultureInfo.InvariantCulture) + " finite",
                         inner.ToString("E2", CultureInfo.InvariantCulture));
                 }
             }
+
+            Console.WriteLine("best by max inner: " + bestLabel);
+            Check(referenceSelf < (years <= 20d ? 10d : 1000d),
+                "nbody " + years + "y independent reference self",
+                referenceSelf.ToString("E3", CultureInfo.InvariantCulture));
+            Check(bestMaxInner < (years <= 20d ? 10d : 2000d),
+                "nbody " + years + "y best max inner",
+                bestMaxInner.ToString("E3", CultureInfo.InvariantCulture));
+            Check(bestMaxOuter < (years <= 20d ? 100d : 1000d),
+                "nbody " + years + "y best max outer",
+                bestMaxOuter.ToString("E3", CultureInfo.InvariantCulture));
+            Check(bestMaxDe < 1e-9d, "nbody " + years + "y best max dE/E",
+                bestMaxDe.ToString("E2", CultureInfo.InvariantCulture));
+            Check(bestInv < 1e-9d, "nbody " + years + "y best invariant",
+                bestInv.ToString("E2", CultureInfo.InvariantCulture));
         }
 
         Console.WriteLine();
         Console.WriteLine("--- Ship 10-year reference: dd-Taylor K28 (golden_real_10y_k28.json) ---");
-        string shipGoldenPath = Path.Combine("Study", "taylor", "golden", "golden_real_10y_k28.json");
+        string studyRoot = Path.GetFullPath(Path.Combine(StudyShipMatrixResultsDir(), "..", ".."));
+        string shipGoldenPath = Path.Combine(studyRoot, "taylor", "golden", "golden_real_10y_k28.json");
         if (!File.Exists(shipGoldenPath))
         {
             Console.WriteLine("missing " + shipGoldenPath + "; run Test529_TenYearDdGolden first");
@@ -239,7 +319,7 @@ internal static partial class P1bTests
             Console.WriteLine("golden: " + shipGolden.Method + " K" + shipGolden.Order
                 + ", last checkpoint " + final.Days.ToString("F0", CultureInfo.InvariantCulture) + " d");
 
-            string partialPath = Path.Combine("Study", "taylor", "golden", "golden_real_10y_k24.partial.json");
+            string partialPath = Path.Combine(studyRoot, "taylor", "golden", "golden_real_10y_k24.partial.json");
             if (File.Exists(partialPath))
             {
                 GoldFile partial = JsonSerializer.Deserialize<GoldFile>(File.ReadAllText(partialPath));
@@ -281,10 +361,14 @@ internal static partial class P1bTests
             double shipDays = final.Days;
 
             Console.WriteLine("method       step/tol    dp(rel)     dv(rel)     calls      ms");
+            double bestShipDp = double.PositiveInfinity;
+            double bestShipDv = double.PositiveInfinity;
             void ShipRow(string method, double step, Vector3d p, Vector3d v, long calls, double ms)
             {
                 double dp = LocalGoldErr(p, final.RelP);
                 double dv = LocalGoldErr(v, final.RelV);
+                bestShipDp = Math.Min(bestShipDp, dp);
+                bestShipDv = Math.Min(bestShipDv, dv);
                 Console.WriteLine(string.Format(
                     CultureInfo.InvariantCulture,
                     "{0,-12} {1,-10:G4} {2,12:E3} {3,12:E3} {4,10} {5,9:F0}",
@@ -354,6 +438,11 @@ internal static partial class P1bTests
             {
                 ShipRow(run.Method, run.Step, run.P, run.V, run.Calls, run.Ms);
             }
+
+            Check(bestShipDp < 1000d, "ship best dp vs dd-Taylor golden",
+                bestShipDp.ToString("E3", CultureInfo.InvariantCulture));
+            Check(bestShipDv < 1d, "ship best dv vs dd-Taylor golden",
+                bestShipDv.ToString("E3", CultureInfo.InvariantCulture));
         }
 
         Console.WriteLine();

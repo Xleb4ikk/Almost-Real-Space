@@ -90,7 +90,7 @@ internal static partial class P1bTests
             t += h;
             if (samples != null && sampleEvery > 0d && t >= nextSample - 1e-9d)
             {
-                samples.Add(new StudySample(t, StudySampleP(p, pl, L)));
+                samples.Add(new StudySample(t, StudySampleP(p, pl, L), StudySampleP(v, vl, L)));
                 nextSample += sampleEvery;
             }
         }
@@ -98,7 +98,7 @@ internal static partial class P1bTests
         if (samples != null && sampleEvery > 0d
             && (samples.Count == 0 || samples[samples.Count - 1].T < t - 1e-9d))
         {
-            samples.Add(new StudySample(t, StudySampleP(p, pl, L)));
+            samples.Add(new StudySample(t, StudySampleP(p, pl, L), StudySampleP(v, vl, L)));
         }
 
         for (int i = 0; i < L; i++)
