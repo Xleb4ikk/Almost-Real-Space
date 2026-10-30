@@ -247,6 +247,40 @@ internal static partial class P1bTests
         }
 
         // Same Jacobi initialization as in NBodyDeviations (children first).
+        double[] railP = (double[])p.Clone();
+        double[] railV = (double[])v.Clone();
+        int FindBody(OrbitingBody body)
+        {
+            for (int k = 0; k < n; k++)
+            {
+                if (ReferenceEquals(bodies[k], body))
+                {
+                    return k;
+                }
+            }
+
+            return -1;
+        }
+
+        void ShiftSubtree(int index, double dpX, double dpY, double dpZ,
+            double dvX, double dvY, double dvZ)
+        {
+            p[3 * index] += dpX;
+            p[3 * index + 1] += dpY;
+            p[3 * index + 2] += dpZ;
+            v[3 * index] += dvX;
+            v[3 * index + 1] += dvY;
+            v[3 * index + 2] += dvZ;
+            foreach (OrbitingBody child in bodies[index].Children)
+            {
+                int ci = FindBody(child);
+                if (ci >= 0)
+                {
+                    ShiftSubtree(ci, dpX, dpY, dpZ, dvX, dvY, dvZ);
+                }
+            }
+        }
+
         for (int i = n - 1; i >= 0; i--)
         {
             var b = bodies[i];
@@ -255,40 +289,29 @@ internal static partial class P1bTests
                 continue;
             }
 
+            double mSub = m[i];
             double sx = 0d; double sy = 0d; double sz = 0d;
             double svx = 0d; double svy = 0d; double svz = 0d;
             for (int j = 0; j < b.Children.Count; j++)
             {
-                int c = -1;
-                for (int k = 0; k < n; k++)
-                {
-                    if (ReferenceEquals(bodies[k], b.Children[j]))
-                    {
-                        c = k;
-                        break;
-                    }
-                }
-
+                int c = FindBody(b.Children[j]);
                 if (c < 0)
                 {
                     continue;
                 }
 
                 double mc = SubtreeMass(bodies, m, n, c);
-                sx += mc * (p[3 * c] - p[3 * i]);
-                sy += mc * (p[3 * c + 1] - p[3 * i + 1]);
-                sz += mc * (p[3 * c + 2] - p[3 * i + 2]);
-                svx += mc * (v[3 * c] - v[3 * i]);
-                svy += mc * (v[3 * c + 1] - v[3 * i + 1]);
-                svz += mc * (v[3 * c + 2] - v[3 * i + 2]);
+                mSub += mc;
+                sx += mc * (railP[3 * c] - railP[3 * i]);
+                sy += mc * (railP[3 * c + 1] - railP[3 * i + 1]);
+                sz += mc * (railP[3 * c + 2] - railP[3 * i + 2]);
+                svx += mc * (railV[3 * c] - railV[3 * i]);
+                svy += mc * (railV[3 * c + 1] - railV[3 * i + 1]);
+                svz += mc * (railV[3 * c + 2] - railV[3 * i + 2]);
             }
 
-            p[3 * i] -= sx / m[i];
-            p[3 * i + 1] -= sy / m[i];
-            p[3 * i + 2] -= sz / m[i];
-            v[3 * i] -= svx / m[i];
-            v[3 * i + 1] -= svy / m[i];
-            v[3 * i + 2] -= svz / m[i];
+            ShiftSubtree(i, -sx / mSub, -sy / mSub, -sz / mSub,
+                -svx / mSub, -svy / mSub, -svz / mSub);
         }
 
         double totalM = 0d;
@@ -387,6 +410,40 @@ internal static partial class P1bTests
         // starts with an offset Mm/(Mp+Mm)*v_rel (~12 m/s → ~1e9 m/year of false drift).
         // Correction bottom-up: the parent centre is shifted so the subtree barycentre
         // matches the rail. Children-first traversal (AllBodies is parents-first, so iterate backwards).
+        double[] railP = (double[])p.Clone();
+        double[] railV = (double[])v.Clone();
+        int FindBody(OrbitingBody body)
+        {
+            for (int k = 0; k < n; k++)
+            {
+                if (ReferenceEquals(bodies[k], body))
+                {
+                    return k;
+                }
+            }
+
+            return -1;
+        }
+
+        void ShiftSubtree(int index, double dpX, double dpY, double dpZ,
+            double dvX, double dvY, double dvZ)
+        {
+            p[3 * index] += dpX;
+            p[3 * index + 1] += dpY;
+            p[3 * index + 2] += dpZ;
+            v[3 * index] += dvX;
+            v[3 * index + 1] += dvY;
+            v[3 * index + 2] += dvZ;
+            foreach (OrbitingBody child in bodies[index].Children)
+            {
+                int ci = FindBody(child);
+                if (ci >= 0)
+                {
+                    ShiftSubtree(ci, dpX, dpY, dpZ, dvX, dvY, dvZ);
+                }
+            }
+        }
+
         for (int i = n - 1; i >= 0; i--)
         {
             var b = bodies[i];
@@ -395,40 +452,29 @@ internal static partial class P1bTests
                 continue;
             }
 
+            double mSub = m[i];
             double sx = 0d; double sy = 0d; double sz = 0d;
             double svx = 0d; double svy = 0d; double svz = 0d;
             for (int j = 0; j < b.Children.Count; j++)
             {
-                int c = -1;
-                for (int k = 0; k < n; k++)
-                {
-                    if (ReferenceEquals(bodies[k], b.Children[j]))
-                    {
-                        c = k;
-                        break;
-                    }
-                }
-
+                int c = FindBody(b.Children[j]);
                 if (c < 0)
                 {
                     continue;
                 }
 
                 double mc = SubtreeMass(bodies, m, n, c);
-                sx += mc * (p[3 * c] - p[3 * i]);
-                sy += mc * (p[3 * c + 1] - p[3 * i + 1]);
-                sz += mc * (p[3 * c + 2] - p[3 * i + 2]);
-                svx += mc * (v[3 * c] - v[3 * i]);
-                svy += mc * (v[3 * c + 1] - v[3 * i + 1]);
-                svz += mc * (v[3 * c + 2] - v[3 * i + 2]);
+                mSub += mc;
+                sx += mc * (railP[3 * c] - railP[3 * i]);
+                sy += mc * (railP[3 * c + 1] - railP[3 * i + 1]);
+                sz += mc * (railP[3 * c + 2] - railP[3 * i + 2]);
+                svx += mc * (railV[3 * c] - railV[3 * i]);
+                svy += mc * (railV[3 * c + 1] - railV[3 * i + 1]);
+                svz += mc * (railV[3 * c + 2] - railV[3 * i + 2]);
             }
 
-            p[3 * i] -= sx / m[i];
-            p[3 * i + 1] -= sy / m[i];
-            p[3 * i + 2] -= sz / m[i];
-            v[3 * i] -= svx / m[i];
-            v[3 * i + 1] -= svy / m[i];
-            v[3 * i + 2] -= svz / m[i];
+            ShiftSubtree(i, -sx / mSub, -sy / mSub, -sz / mSub,
+                -svx / mSub, -svy / mSub, -svz / mSub);
         }
 
         for (int i = 0; i < n; i++)
@@ -1259,6 +1305,58 @@ internal static partial class P1bTests
             v[3 * i + 2] = bv.Z;
         }
 
+        double[] railP = (double[])p.Clone();
+        double[] railV = (double[])v.Clone();
+        int FindBody(OrbitingBody body)
+        {
+            for (int k = 0; k < n; k++)
+            {
+                if (ReferenceEquals(bodies[k], body))
+                {
+                    return k;
+                }
+            }
+
+            return -1;
+        }
+
+        double SubtreeMass(int index)
+        {
+            double sum = m[index];
+            foreach (OrbitingBody child in bodies[index].Children)
+            {
+                int ci = FindBody(child);
+                if (ci >= 0)
+                {
+                    sum += SubtreeMass(ci);
+                }
+            }
+
+            return sum;
+        }
+
+        void ShiftSubtree(int index, double dpX, double dpY, double dpZ,
+            double dvX, double dvY, double dvZ)
+        {
+            p[3 * index] += dpX;
+            p[3 * index + 1] += dpY;
+            p[3 * index + 2] += dpZ;
+            v[3 * index] += dvX;
+            v[3 * index + 1] += dvY;
+            v[3 * index + 2] += dvZ;
+            foreach (OrbitingBody child in bodies[index].Children)
+            {
+                int ci = FindBody(child);
+                if (ci >= 0)
+                {
+                    ShiftSubtree(ci, dpX, dpY, dpZ, dvX, dvY, dvZ);
+                }
+            }
+        }
+
+        // Same leaf-first subtree correction as EphemerisBaker: put the whole
+        // subtree barycentre on the parent's rail position. Shifting only the
+        // parent (the old truth) leaves a moon at a different relative state.
         for (int i = n - 1; i >= 0; i--)
         {
             var b = bodies[i];
@@ -1267,6 +1365,7 @@ internal static partial class P1bTests
                 continue;
             }
 
+            double mSub = m[i];
             double sx = 0d;
             double sy = 0d;
             double sz = 0d;
@@ -1275,47 +1374,24 @@ internal static partial class P1bTests
             double svz = 0d;
             for (int j = 0; j < b.Children.Count; j++)
             {
-                int c = -1;
-                for (int k = 0; k < n; k++)
-                {
-                    if (ReferenceEquals(bodies[k], b.Children[j]))
-                    {
-                        c = k;
-                        break;
-                    }
-                }
-
+                int c = FindBody(b.Children[j]);
                 if (c < 0)
                 {
                     continue;
                 }
 
-                double mc = m[c];
-                for (int q = 0; q < bodies[c].Children.Count; q++)
-                {
-                    for (int k = 0; k < n; k++)
-                    {
-                        if (ReferenceEquals(bodies[k], bodies[c].Children[q]))
-                        {
-                            mc += m[k];
-                        }
-                    }
-                }
-
-                sx += mc * (p[3 * c] - p[3 * i]);
-                sy += mc * (p[3 * c + 1] - p[3 * i + 1]);
-                sz += mc * (p[3 * c + 2] - p[3 * i + 2]);
-                svx += mc * (v[3 * c] - v[3 * i]);
-                svy += mc * (v[3 * c + 1] - v[3 * i + 1]);
-                svz += mc * (v[3 * c + 2] - v[3 * i + 2]);
+                double mc = SubtreeMass(c);
+                mSub += mc;
+                sx += mc * (railP[3 * c] - railP[3 * i]);
+                sy += mc * (railP[3 * c + 1] - railP[3 * i + 1]);
+                sz += mc * (railP[3 * c + 2] - railP[3 * i + 2]);
+                svx += mc * (railV[3 * c] - railV[3 * i]);
+                svy += mc * (railV[3 * c + 1] - railV[3 * i + 1]);
+                svz += mc * (railV[3 * c + 2] - railV[3 * i + 2]);
             }
 
-            p[3 * i] -= sx / m[i];
-            p[3 * i + 1] -= sy / m[i];
-            p[3 * i + 2] -= sz / m[i];
-            v[3 * i] -= svx / m[i];
-            v[3 * i + 1] -= svy / m[i];
-            v[3 * i + 2] -= svz / m[i];
+            ShiftSubtree(i, -sx / mSub, -sy / mSub, -sz / mSub,
+                -svx / mSub, -svy / mSub, -svz / mSub);
         }
 
         double totalM = 0d;

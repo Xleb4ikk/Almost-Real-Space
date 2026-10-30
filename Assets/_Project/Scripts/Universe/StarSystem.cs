@@ -491,12 +491,15 @@ namespace Galilego.Universe
             }
 
             // Indirect term of the root-fixed frame: the root's own acceleration from all other bodies.
+            // Per-body sum (not subtree mass at the child position): the subtree form moves a moon's
+            // pull to its parent's position, which is a real acceleration error in the frame
+            // (23 m over one year for the Sun at 1 AU and a 7-body field).
             Vector3d rootPosition = cachedPositions[0];
             Vector3d rootAcceleration = Vector3d.Zero;
-            for (int k = 0; k < rootChildIndex.Length; k++)
+            for (int i = 1; i < allBodies.Count; i++)
             {
                 rootAcceleration += PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(
-                    rootPosition, cachedPositions[rootChildIndex[k]], rootChildSubtreeMu[k]);
+                    rootPosition, cachedPositions[i], allBodies[i].ResolveStandardGravitationalParameter());
             }
 
             cachedRootAccel = rootAcceleration;
@@ -530,6 +533,62 @@ namespace Galilego.Universe
             }
 
             return total - cachedRootAccel;
+        }
+
+        /// <summary>
+        /// Acceleration of the ship relative to the central body, formed from relative
+        /// vectors (not by subtracting two ~1.5e11 m fields). This is the force used by
+        /// the local-frame ship integrator: central point mass + J2, plus every other
+        /// body's direct-minus-indirect term and its J2 differential. Translation
+        /// invariant, so a LEO propagation does not lose ulp(1e11) per step.
+        /// </summary>
+        public Vector3d EvaluateShipAccelerationLocal(
+            Vector3d relativePosition, OrbitingBody central, double timeSeconds)
+        {
+            EnsureCachedPositions(timeSeconds);
+            int centralIndex = allBodies.IndexOf(central);
+            if (centralIndex < 0)
+            {
+                throw new ArgumentException("central body is not part of the system", nameof(central));
+            }
+
+            Vector3d centralPosition = cachedPositions[centralIndex];
+            double centralMu = central.ResolveStandardGravitationalParameter();
+            Vector3d total = PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(
+                relativePosition, Vector3d.Zero, centralMu);
+            total += BodyJ2Acceleration(central, relativePosition, Vector3d.Zero, centralMu);
+            for (int i = 0; i < allBodies.Count; i++)
+            {
+                if (i == centralIndex)
+                {
+                    continue;
+                }
+
+                OrbitingBody body = allBodies[i];
+                double bodyMu = body.ResolveStandardGravitationalParameter();
+                if (bodyMu == 0d)
+                {
+                    continue;
+                }
+
+                Vector3d dc = centralPosition - cachedPositions[i];
+                total += PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(
+                    dc + relativePosition, Vector3d.Zero, bodyMu);
+                total -= PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(
+                    dc, Vector3d.Zero, bodyMu);
+                if (body.J2 != 0d)
+                {
+                    double referenceRadius = body.J2ReferenceRadius > 0d
+                        ? body.J2ReferenceRadius
+                        : body.Radius;
+                    total += PhysicsSolver.CalculateJ2Acceleration(
+                        dc + relativePosition, body.SpinAxis, bodyMu, body.J2, referenceRadius);
+                    total -= PhysicsSolver.CalculateJ2Acceleration(
+                        dc, body.SpinAxis, bodyMu, body.J2, referenceRadius);
+                }
+            }
+
+            return total;
         }
 
         /// <summary>Planner check: false = the point is inside any body, so the candidate trajectory is invalid.</summary>

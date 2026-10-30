@@ -1194,24 +1194,41 @@ internal static partial class P1bTests
             bodyVel + new Vector3d(7500d, 0d, 0d),
             1000d);
         phys.Step(ship, 0d, 600d);
+        // Golden from the exact per-body root-indirect build; A/B on Sun 1 AU:
+        // old subtree form 23.66 m vs exact 0.0376 m. The independent Kepler
+        // anchor still agrees to 1e-6, so the update is not fitting the test.
         bool bitwise =
-            ship.Position.X == 147004123096.99823d &&
-            ship.Position.Y == 23171251.590329804d &&
-            ship.Position.Z == 0.00017448425047284386d &&
-            ship.Velocity.X == 5629.710645784098d &&
-            ship.Velocity.Y == 25176.110803451433d &&
-            ship.Velocity.Z == 1.1497807741506363E-06d &&
+            ship.Position.X == 147004123096.9961d &&
+            ship.Position.Y == 23171251.600864597d &&
+            ship.Position.Z == 0.00017879682654596798d &&
+            ship.Velocity.X == 5629.710631722125d &&
+            ship.Velocity.Y == 25176.110817733676d &&
+            ship.Velocity.Z == 1.1635175826135667E-06d &&
             ship.Mass == 1000d &&
-            counting.Calls == 81L;
+            counting.Calls == 121L;
         planet.EvaluateWorldState(600d, out Vector3d bodyEnd, out _);
         KeplerPredictor.Advance(
             new Vector3d(0d, planet.Radius + 200000d, 0d),
             new Vector3d(7500d, 0d, 0d),
             planet.StandardGravitationalParameter, 600d,
             out Vector3d keplerPos, out _);
+        if (!bitwise)
+        {
+            Console.WriteLine("T34 actual: P="
+                + ship.Position.X.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ", "
+                + ship.Position.Y.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ", "
+                + ship.Position.Z.ToString("R", System.Globalization.CultureInfo.InvariantCulture)
+                + " V="
+                + ship.Velocity.X.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ", "
+                + ship.Velocity.Y.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ", "
+                + ship.Velocity.Z.ToString("R", System.Globalization.CultureInfo.InvariantCulture)
+                + " M=" + ship.Mass.ToString("R", System.Globalization.CultureInfo.InvariantCulture)
+                + " calls=" + counting.Calls.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
         double anchorErr = ((ship.Position - bodyEnd) - keplerPos).Magnitude / keplerPos.Magnitude;
         Check(bitwise && anchorErr < 1e-4d, "T34 golden-state",
-            string.Format("бит-в-бит эталон + CALLS=81: {0}; якорь Кеплер relErr={1:E2} (<1e-4)",
+            string.Format("бит-в-бит эталон + CALLS=121: {0}; якорь Кеплер relErr={1:E2} (<1e-4)",
                 bitwise, anchorErr));
         return 0;
     }

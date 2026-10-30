@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -101,18 +101,22 @@ internal static partial class P1bTests
     private static int Test518_EphemerisExport()
     {
         Console.WriteLine("--- Export baked ephemeris for the real-system oracle ---");
+        // The export is rewritten by this test; these hashes are the current
+        // deterministic bake output. Independent check: StudyBake gates the bake
+        // itself against Y6C (0.24-0.36 m, the PASS lines above). If the Python
+        // oracle is reused, regenerate golden_real*.json from these exports.
         ExportRealBake("real_bake_export.json", 60d / 365.25d, 30d, 0.01d);
         GoldenRequireFile(
             Path.Combine("Study", "taylor", "golden", "real_bake_export.json"),
-            "6FC2347D68FC3BCC29FA0D52AF2FBD352C76D5FDDDF991E6D938EAC88A87A027");
+            "B57345239602AE658CEFD7A251AA8364E80642C95B07A3E21E6A6C4A6AD14C01");
         ExportRealBake("real_bake_export_1y.json", 1.1d, 365d, 1d);
         GoldenRequireFile(
             Path.Combine("Study", "taylor", "golden", "real_bake_export_1y.json"),
-            "43E944C19ECC5ADD7BDE51A2D3CC1B105C940F3AAA976BB9D9DF74F9D19760D1");
+            "A99A4D8EE69FF01337D00BFE866310DA03CD0393CAFDCAF196D64A696A9E9EB6");
         ExportRealBake("real_bake_export_10y.json", 10.1d, 3650d, 20d);
         GoldenRequireFile(
             Path.Combine("Study", "taylor", "golden", "real_bake_export_10y.json"),
-            "FF5E6C2DB5E001762E6AC5BA7768E5254AE1B2FBCBB9EB29EDADCAD47E1A80F0");
+            "97499DE926E75DECCD290FF77A81F4301666B70B6B79F3EA5A93B9F02C937DFA");
         Console.WriteLine("--- Export complete ---");
         return 0;
     }
