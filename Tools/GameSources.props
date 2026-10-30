@@ -1,0 +1,183 @@
+﻿<Project>
+  <!--
+    Общий список исходников игры для стендовых проектов (P1bTests, TaylorVsY6).
+    Список явный намеренно: стенд собирает только нужные папки, а не весь Assets.
+    Чтобы добавить файл, добавьте явный Compile в нужную группу ниже.
+    Core подхватывается глобом целиком.
+  -->
+  <PropertyGroup>
+    <GalilegoScripts>$(MSBuildThisFileDirectory)..\Assets\_Project\Scripts\</GalilegoScripts>
+    <DefineConstants>$(DefineConstants);UNITY_5_3_OR_NEWER</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Core: единственная папка, которую можно глобить. -->
+    <Compile Include="$(GalilegoScripts)Core\**\*.cs" LinkBase="Game\Core" />
+
+    <!-- Planet\Decor -->
+    <Compile Include="$(GalilegoScripts)Planet\Decor\DecorExclusionCore.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Decor\GroundDecorProfile.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Decor\GroundDecorProfileAsset.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Decor\GroundDecorPlacement.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Decor\GroundDecorCollisionRegistry.cs" />
+
+    <!-- Spacecraft\Attitude -->
+    <Compile Include="$(GalilegoScripts)Spacecraft\Attitude\AttitudePhysics.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\Attitude\ReactionControl.cs" />
+
+    <!-- Flight -->
+    <Compile Include="$(GalilegoScripts)Flight\AttitudeMath.cs" />
+    <Compile Include="$(GalilegoScripts)Flight\FlightHardware.cs" />
+    <Compile Include="$(GalilegoScripts)Flight\FlightThrustSource.cs" />
+    <Compile Include="$(GalilegoScripts)Flight\VesselFlightModel.cs" />
+
+    <!-- Spacecraft\Assembly -->
+    <Compile Include="$(GalilegoScripts)Spacecraft\Assembly\Parts.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\Assembly\PartDefinition.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\Assembly\BreakupModel.cs" />
+
+    <!-- Spacecraft\Solver -->
+    <Compile Include="$(GalilegoScripts)Spacecraft\Solver\RigidAssemblySolver.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\Solver\ContactGround.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\Solver\ConvexHull.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\Solver\SiteColliders.cs" />
+
+    <!-- Simulation\ContactZone -->
+    <Compile Include="$(GalilegoScripts)Simulation\ContactZone\SiteFrame.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\ContactZone\ContactZoneGate.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\ContactZone\ZoneIslands.cs" />
+
+    <!-- Simulation\Player -->
+    <Compile Include="$(GalilegoScripts)Simulation\Player\IPlayerSupport.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\Player\PlayerSurfaceController.cs" />
+
+    <!-- Trajectory\History -->
+    <Compile Include="$(GalilegoScripts)Trajectory\History\TrajectoryHistory.cs" />
+    <Compile Include="$(GalilegoScripts)Trajectory\History\TrajectoryBuffer.cs" />
+
+    <!-- Trajectory\Transfers -->
+    <Compile Include="$(GalilegoScripts)Trajectory\Transfers\LambertSolver.cs" />
+    <Compile Include="$(GalilegoScripts)Trajectory\Transfers\Porkchop.cs" />
+
+    <!-- Trajectory\Prediction -->
+    <Compile Include="$(GalilegoScripts)Trajectory\Prediction\KeplerPredictor.cs" />
+    <Compile Include="$(GalilegoScripts)Trajectory\Prediction\KeplerMath.cs" />
+
+    <!-- Trajectory\Display -->
+    <Compile Include="$(GalilegoScripts)Trajectory\Display\TrajectoryRenderer.cs" />
+
+    <!-- Universe -->
+    <Compile Include="$(GalilegoScripts)Universe\OrbitingBody.cs" />
+    <Compile Include="$(GalilegoScripts)Universe\StarSystem.cs" />
+    <Compile Include="$(GalilegoScripts)Universe\SystemBlueprint.cs" />
+    <Compile Include="$(GalilegoScripts)Universe\ExampleSystemPresets.cs" />
+    <Compile Include="$(GalilegoScripts)Universe\AstroFrame.cs" />
+    <Compile Include="$(GalilegoScripts)Universe\BodyAuthoring.cs" />
+    <Compile Include="$(GalilegoScripts)Universe\StarSystemAuthoring.cs" />
+    <Compile Include="$(GalilegoScripts)Universe\FloatingOrigin.cs" />
+
+    <!-- Ephemeris -->
+    <Compile Include="$(GalilegoScripts)Ephemeris\BakedEphemeris.cs" />
+    <Compile Include="$(GalilegoScripts)Ephemeris\EphemerisBaker.cs" />
+    <Compile Include="$(GalilegoScripts)Ephemeris\EphemerisRangeException.cs" />
+    <Compile Include="$(GalilegoScripts)Ephemeris\EphemerisRuntime.cs" />
+
+    <!-- Planet\Sky -->
+    <Compile Include="$(GalilegoScripts)Planet\Sky\AtmosphereProfile.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Sky\AtmosphereOptics.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Sky\AtmosphereProfileAsset.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Sky\SkyPhysics.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Sky\StarColorUtil.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Sky\StarSurfaceTexture.cs" />
+
+    <!-- Planet\Terrain -->
+    <Compile Include="$(GalilegoScripts)Planet\Terrain\ITerrainModel.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Terrain\HeightfieldTerrain.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Terrain\TerrainNoise.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Terrain\TerrainModifier.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Terrain\TerrainProfile.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Terrain\TerrainProfileAsset.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Terrain\TerrainPalette.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Terrain\CubeSphere.cs" />
+
+    <!-- Planet\Water -->
+    <Compile Include="$(GalilegoScripts)Planet\Water\WaterQuery.cs" />
+
+    <!-- Planet\Clouds -->
+    <Compile Include="$(GalilegoScripts)Planet\Clouds\CloudProfile.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\Clouds\CloudProfileAsset.cs" />
+
+    <!-- Spacecraft\Dynamics -->
+    <Compile Include="$(GalilegoScripts)Spacecraft\Dynamics\SurfaceMotion.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\Dynamics\IDynamicsSource.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\Dynamics\DynamicsContribution.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\Dynamics\GravitySource.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\Dynamics\CachedGravitySource.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\Dynamics\ThrustSource.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\Dynamics\StageThrustSource.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\Dynamics\DragSource.cs" />
+
+    <!-- Spacecraft -->
+    <Compile Include="$(GalilegoScripts)Spacecraft\Spacecraft.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\SpacecraftPhysics.cs" />
+
+    <!-- Spacecraft\Propulsion -->
+    <Compile Include="$(GalilegoScripts)Spacecraft\Propulsion\StageBurnCore.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\Propulsion\StagePropulsion.cs" />
+
+    <!-- Spacecraft\Propellants -->
+    <Compile Include="$(GalilegoScripts)Spacecraft\Propellants\Propellants.cs" />
+
+    <!-- Building -->
+    <Compile Include="$(GalilegoScripts)Building\DeltaVModel.cs" />
+    <Compile Include="$(GalilegoScripts)Building\EngineSpecs.cs" />
+
+    <!-- Simulation\Events\Detectors -->
+    <Compile Include="$(GalilegoScripts)Simulation\Events\Detectors\StageDepletionDetector.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\Events\Detectors\AltitudeCrossingDetector.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\Events\Detectors\SoiChangeDetector.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\Events\Detectors\PropellantDepletionDetector.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\Events\Detectors\DetectionGrain.cs" />
+
+    <!-- Simulation\Events -->
+    <Compile Include="$(GalilegoScripts)Simulation\Events\EventDirection.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\Events\EventDetectors.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\Events\EventOccurrence.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\Events\TimedEvent.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\Events\EventDrivenPropagator.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\Events\EventReactions.cs" />
+
+    <!-- Simulation\Warp -->
+    <Compile Include="$(GalilegoScripts)Simulation\Warp\WarpController.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\Warp\WarpPlanner.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\Warp\LongWarpDriver.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\Warp\FrameBudgetScheduler.cs" />
+
+    <!-- Trajectory\Maneuvers -->
+    <Compile Include="$(GalilegoScripts)Trajectory\Maneuvers\ManeuverEvaluator.cs" />
+    <Compile Include="$(GalilegoScripts)Trajectory\Maneuvers\TrajectoryValidator.cs" />
+
+    <!-- Simulation -->
+    <Compile Include="$(GalilegoScripts)Simulation\VesselStep.cs" />
+
+    <!-- Debris -->
+    <Compile Include="$(GalilegoScripts)Debris\DebrisPool.cs" />
+
+    <!-- Views -->
+    <Compile Include="$(GalilegoScripts)Views\BodyTransformRegistry.cs" />
+
+    <!-- Player -->
+    <Compile Include="$(GalilegoScripts)Player\PlayerInput.cs" />
+    <Compile Include="$(GalilegoScripts)Player\PlayerState.cs" />
+
+    <!-- Diagnostics -->
+    <!-- CheatMenu.cs сознательно НЕ подключён: это отладочный UI-MonoBehaviour,
+         который тянет FlightBenchmark → SurfacePerf → половину UnityEngine
+         (ProfilerRecorder, Resources, SystemInfo, DontDestroyOnLoad). Стенд
+         его не исполняет, а стабить всю эту поверхность незачем. Ломало сборку
+         с коммита d0f6328. Проверяется в самом редакторе, не здесь. -->
+    <Compile Include="$(GalilegoScripts)Diagnostics\CheatGuiSkin.cs" />
+
+    <!-- Planet\Surface -->
+    <Compile Include="$(GalilegoScripts)Planet\Surface\SurfaceFrameMath.cs" />
+  </ItemGroup>
+</Project>
