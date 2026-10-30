@@ -57,7 +57,7 @@ namespace Galilego.Core
             double direction = Math.Sign(targetDt);
             double dt = Math.Min(remainingDt, DefaultMaxStepSize);
             
-            while (remainingDt > DefaultMinStepSize)
+            while (remainingDt > 0d)
             {
                 // Clamp step to remaining time
                 dt = Math.Min(dt, remainingDt);
@@ -120,7 +120,7 @@ namespace Galilego.Core
                     double candidateDt = Math.Max(dt * rejectScale, DefaultMinStepSize);
                     if (candidateDt <= DefaultMinStepSize)
                     {
-                        dt = DefaultMinStepSize;
+                        dt = Math.Min(DefaultMinStepSize, remainingDt);
                         result = DoPri5Step(
                             currentPos, currentVel, time,
                             dt,

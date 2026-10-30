@@ -170,7 +170,7 @@ namespace Galilego.Core
             bool useReference = toleranceReference.HasValue && remainingDt <= ToleranceReference.MaxSpanSeconds;
             ToleranceReference reference = useReference ? toleranceReference.Value : default;
 
-            while (remainingDt > MinStepSize)
+            while (remainingDt > 0d)
             {
                 dt = Math.Min(dt, remainingDt);
 
@@ -269,7 +269,7 @@ namespace Galilego.Core
                     double candidateDt = Math.Max(dt * rejectScale, MinStepSize);
                     if (candidateDt <= MinStepSize)
                     {
-                        dt = MinStepSize;
+                        dt = Math.Min(MinStepSize, remainingDt);
                         DoPri5Step(
                             current, time,
                             dt,
@@ -355,7 +355,7 @@ namespace Galilego.Core
             ToleranceReference reference = useReference ? toleranceReference.Value : default;
             bool collectDense = segments != null;
 
-            while (remainingDt > MinStepSize)
+            while (remainingDt > 0d)
             {
                 dt = Math.Min(dt, remainingDt);
 
@@ -437,7 +437,7 @@ namespace Galilego.Core
                     double candidateDt = Math.Max(dt * rejectScale, MinStepSize);
                     if (candidateDt <= MinStepSize)
                     {
-                        dt = MinStepSize;
+                        dt = Math.Min(MinStepSize, remainingDt);
                         DoP853Step(
                             current, time, dt,
                             derivativeProvider,

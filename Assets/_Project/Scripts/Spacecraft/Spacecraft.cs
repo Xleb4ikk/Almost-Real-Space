@@ -1,4 +1,5 @@
 using Galilego.Core;
+using Galilego.Universe;
 
 namespace Galilego.Spacecraft
 {
@@ -11,6 +12,19 @@ namespace Galilego.Spacecraft
         public Vector3d Position;
         public Vector3d Velocity;
         public double Mass;
+
+        // Local-frame carry-over between Step() calls. Absolute Position/Velocity are
+        // the public contract; the local copy removes the per-chunk absolute->local
+        // conversion that otherwise loses ulp(1.5e11) = 3e-5 m on every chunk.
+        // Invalidated whenever the absolute state is changed outside the integrator
+        // (Position/Velocity writes, event commits, frame switches).
+        internal Vector3d LocalPosition;
+        internal Vector3d LocalVelocity;
+        internal Vector3d LocalAbsolutePosition;
+        internal Vector3d LocalAbsoluteVelocity;
+        internal OrbitingBody LocalBody;
+        internal double LocalTimeSeconds;
+        internal bool HasLocalState;
 
         /// <summary>body→world orientation and angular velocity in ship axes (6-DOF flight).</summary>
         public QuaternionD Attitude = QuaternionD.Identity;

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Galilego.Core;
 using Galilego.Spacecraft;
@@ -248,6 +248,7 @@ namespace Galilego.Events
 
                 AppendRender(render, seg, best.Time);
                 Commit(ship, best.State);
+                physics.RefreshTorqueSnapshot(ship, best.Time);
                 return new EventOccurrence(best.Time, best.State, best.Name, best.Body, best.Kind, best.Source);
             }
 
@@ -471,6 +472,7 @@ namespace Galilego.Events
             // DeltaVelocity is intentionally NOT applied in P1a (reserved for the
             // separation impulse, see TimedEvent) — only the mass discontinuity.
             Commit(ship, applied);
+            physics.RefreshTorqueSnapshot(ship, best.Time);
             return new EventOccurrence(best.Time, applied, te.Name, null, EventKind.Timed, null);
         }
 

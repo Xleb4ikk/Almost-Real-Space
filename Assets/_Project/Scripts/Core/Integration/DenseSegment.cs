@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using Galilego.Universe;
 
 namespace Galilego.Core
 {
@@ -43,6 +44,14 @@ namespace Galilego.Core
         public readonly SpacecraftIntegrationState Y0;
         public readonly SpacecraftIntegrationState Y1;
 
+        // Non-null for a segment integrated in the dominant body's local frame.
+        // Y0/Y1 stay ABSOLUTE (the renderer and validators read them directly);
+        // the polynomial stays LOCAL and Evaluate adds the body state at the query
+        // time. This lets the event/warp path use the local frame without an
+        // absolute polynomial.
+        public readonly OrbitingBody ReferenceBody;
+        private readonly SpacecraftIntegrationState localY0;
+
         private readonly double h;
         private readonly SpacecraftIntegrationState c1;
         private readonly SpacecraftIntegrationState c2;
@@ -53,16 +62,57 @@ namespace Galilego.Core
             double t0, double t1, double h,
             SpacecraftIntegrationState y0, SpacecraftIntegrationState y1,
             ShampineCoeffs coeffs)
+            : this(t0, t1, h, y0, y1, coeffs, null, y0)
+        {
+        }
+
+        private DenseSegment(
+            double t0, double t1, double h,
+            SpacecraftIntegrationState y0, SpacecraftIntegrationState y1,
+            ShampineCoeffs coeffs, OrbitingBody referenceBody,
+            SpacecraftIntegrationState localY0)
         {
             T0 = t0;
             T1 = t1;
             this.h = h;
             Y0 = y0;
             Y1 = y1;
+            ReferenceBody = referenceBody;
+            this.localY0 = localY0;
             c1 = coeffs.C1;
             c2 = coeffs.C2;
             c3 = coeffs.C3;
             c4 = coeffs.C4;
+        }
+
+        /// <summary>
+        /// Convert a local-frame segment to the public absolute representation
+        /// without losing dense interpolation: endpoints absolute, polynomial local.
+        /// </summary>
+        public DenseSegment AsAbsolute(OrbitingBody referenceBody)
+        {
+            if (ReferenceBody != null)
+            {
+                return this;
+            }
+
+            referenceBody.EvaluateWorldState(T0, out Vector3d p0, out Vector3d v0);
+            referenceBody.EvaluateWorldState(T1, out Vector3d p1, out Vector3d v1);
+            var absolute0 = new SpacecraftIntegrationState
+            {
+                Position = Y0.Position + p0,
+                Velocity = Y0.Velocity + v0,
+                Mass = Y0.Mass
+            };
+            var absolute1 = new SpacecraftIntegrationState
+            {
+                Position = Y1.Position + p1,
+                Velocity = Y1.Velocity + v1,
+                Mass = Y1.Mass
+            };
+            return new DenseSegment(
+                T0, T1, h, absolute0, absolute1,
+                new ShampineCoeffs(c1, c2, c3, c4), referenceBody, Y0);
         }
 
         public SpacecraftIntegrationState Evaluate(double t)
@@ -79,11 +129,24 @@ namespace Galilego.Core
 
             double theta = (t - T0) / h;
             double theta1 = 1d - theta;
+            SpacecraftIntegrationState origin = ReferenceBody != null ? localY0 : Y0;
+            SpacecraftIntegrationState local = new SpacecraftIntegrationState
+            {
+                Position = Poly(origin.Position, c1.Position, c2.Position, c3.Position, c4.Position, theta, theta1),
+                Velocity = Poly(origin.Velocity, c1.Velocity, c2.Velocity, c3.Velocity, c4.Velocity, theta, theta1),
+                Mass = Poly(origin.Mass, c1.Mass, c2.Mass, c3.Mass, c4.Mass, theta, theta1)
+            };
+            if (ReferenceBody == null)
+            {
+                return local;
+            }
+
+            ReferenceBody.EvaluateWorldState(t, out Vector3d bodyPosition, out Vector3d bodyVelocity);
             return new SpacecraftIntegrationState
             {
-                Position = Poly(Y0.Position, c1.Position, c2.Position, c3.Position, c4.Position, theta, theta1),
-                Velocity = Poly(Y0.Velocity, c1.Velocity, c2.Velocity, c3.Velocity, c4.Velocity, theta, theta1),
-                Mass = Poly(Y0.Mass, c1.Mass, c2.Mass, c3.Mass, c4.Mass, theta, theta1)
+                Position = local.Position + bodyPosition,
+                Velocity = local.Velocity + bodyVelocity,
+                Mass = local.Mass
             };
         }
 

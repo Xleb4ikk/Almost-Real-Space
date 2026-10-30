@@ -31,9 +31,11 @@ namespace Galilego.Spacecraft
 
         // Separate tolerances per quantity: position in meters, velocity in m/s,
         // mass in kg — one shared atol for all three would be physically meaningless.
-        // Defaults tightened (were 1e-2 m / 1e-5 m/s / 1e-10 on absolute magnitudes): with ToleranceFrameSystem set the
-        // relative part is measured against the dominant body, a 400 km LEO coasting for a day drifts ~0.6 m
-        // (was ~60 m). At 1x a chunk is a single step regardless of tolerance, so this costs nothing in real time.
+        // Defaults tightened (were 1e-2 m / 1e-5 m/s / 1e-10 on absolute magnitudes). With the
+        // local-frame step (StepWithSegments, segments == null) a 400 km LEO coasting for a day
+        // drifts ~0.1 m; the old absolute path was ~60 m/day, and the 1000-orbit case measured
+        // 60.6 m before the local frame, 6.6 m after. At 1x a chunk is a single step regardless
+        // of tolerance, so this costs nothing in real time.
         public double PositionAbsoluteTolerance = 1e-4;
         public double VelocityAbsoluteTolerance = 1e-8;
         public double MassAbsoluteTolerance = 1e-4;
@@ -96,6 +98,118 @@ namespace Galilego.Spacecraft
                 Mass = ship.Mass
             };
 
+            // The world state is absolute: near Earth at 1 AU the position update adds
+            // ~3e5 m to ~1.5e11 m, so every step drops ~1e-5 m of the increment. Over
+            // 1000 orbits that is the measured 60 m drift (and 158 m at t0=1.5e11 for
+            // 600 s chunks). Integrating the ship in the dominant body's frame removes
+            // the cancellation. Dense segments stay in the absolute frame for now, so
+            // the event/render path keeps the old (bit-identical) behaviour.
+            // No MinSpanForToleranceFrameSeconds floor here: that constant only
+            // guarded the extrapolated error-norm reference. The coordinate
+            // transform is needed for real-time 1/60 s frames too, where the
+            // absolute update loses the same ~1e-5 m per step.
+            bool useLocalFrame = ToleranceFrameSystem != null && dt > 0d;
+
+            if (useLocalFrame)
+            {
+                int segmentStart = segments != null ? segments.Count : 0;
+                OrbitingBody dominant = ToleranceFrameSystem.FindDominantBody(
+                    ship.Position, currentTimeSeconds);
+                ToleranceFrameSystem.EvaluateBodyState(
+                    dominant, currentTimeSeconds,
+                    out Vector3d bodyPosition, out Vector3d bodyVelocity);
+                double localDelta = currentTimeSeconds - ship.LocalTimeSeconds;
+                // The caller owns the clock. A compensated (Kahan) clock can land a few
+                // ulps BEFORE currentTime + dt, while the naive t += dt lands after it.
+                // Rejecting the negative few-ulp case forced a full absolute->local
+                // re-projection every frame, which reintroduced ulp(1.5e11) per step:
+                // 1/60 s frames went from 1.2e-2 to 1.0 m/day in E6. Accept a tiny
+                // backward epsilon; anything larger is a real time jump and re-projects.
+                bool localValid = ship.HasLocalState
+                    && ReferenceEquals(ship.LocalBody, dominant)
+                    && localDelta >= -1e-6d && localDelta <= 1e-3d
+                    && ship.Position.X == ship.LocalAbsolutePosition.X
+                    && ship.Position.Y == ship.LocalAbsolutePosition.Y
+                    && ship.Position.Z == ship.LocalAbsolutePosition.Z
+                    && ship.Velocity.X == ship.LocalAbsoluteVelocity.X
+                    && ship.Velocity.Y == ship.LocalAbsoluteVelocity.Y
+                    && ship.Velocity.Z == ship.LocalAbsoluteVelocity.Z;
+                if (!localValid)
+                {
+                    ship.LocalPosition = ship.Position - bodyPosition;
+                    ship.LocalVelocity = ship.Velocity - bodyVelocity;
+                    ship.LocalBody = dominant;
+                    ship.LocalTimeSeconds = currentTimeSeconds;
+                }
+                else if (localDelta > 0d)
+                {
+                    // The next call can start a few ulps later than the previous end
+                    // (Kahan time). Advance the relative state instead of re-projecting
+                    // absolute coordinates; this is what keeps ulp(1.5e11) out of the
+                    // chunk boundary.
+                    ship.LocalPosition += ship.LocalVelocity * localDelta;
+                    ship.Position = bodyPosition + ship.LocalPosition;
+                    ship.Velocity = bodyVelocity + ship.LocalVelocity;
+                    ship.LocalAbsolutePosition = ship.Position;
+                    ship.LocalAbsoluteVelocity = ship.Velocity;
+                    ship.LocalTimeSeconds = currentTimeSeconds;
+                }
+                else if (localDelta < 0d)
+                {
+                    // A few-ulp backward epsilon: keep the local state, only refresh the
+                    // absolute projection at the caller's time.
+                    ship.Position = bodyPosition + ship.LocalPosition;
+                    ship.Velocity = bodyVelocity + ship.LocalVelocity;
+                    ship.LocalAbsolutePosition = ship.Position;
+                    ship.LocalAbsoluteVelocity = ship.Velocity;
+                    ship.LocalTimeSeconds = currentTimeSeconds;
+                }
+
+                var localStart = new SpacecraftIntegrationState
+                {
+                    Position = ship.LocalPosition,
+                    Velocity = ship.LocalVelocity,
+                    Mass = ship.Mass
+                };
+                SpacecraftOrbitIntegrator.DerivativeFunction localDerivative =
+                    (state, time) => EvaluateLocalDerivative(state, time, dominant);
+                SpacecraftIntegrationResult localResult = Integrator == SpacecraftIntegrator.Dopri5
+                    ? SpacecraftOrbitIntegrator.StepForward(
+                        localStart, currentTimeSeconds, dt, localDerivative,
+                        PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
+                        MassAbsoluteTolerance, RelativeTolerance, segments, null)
+                    : SpacecraftOrbitIntegrator.StepForwardDop853(
+                        localStart, currentTimeSeconds, dt, localDerivative,
+                        PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
+                        MassAbsoluteTolerance, RelativeTolerance, segments, null);
+
+                if (segments != null)
+                {
+                    for (int i = segmentStart; i < segments.Count; i++)
+                    {
+                        segments[i] = segments[i].AsAbsolute(dominant);
+                    }
+                }
+
+                ToleranceFrameSystem.EvaluateBodyState(
+                    dominant, currentTimeSeconds + dt,
+                    out Vector3d bodyEndPosition, out Vector3d bodyEndVelocity);
+                ship.LocalPosition = localResult.State.Position;
+                ship.LocalVelocity = localResult.State.Velocity;
+                ship.Position = bodyEndPosition + ship.LocalPosition;
+                ship.Velocity = bodyEndVelocity + ship.LocalVelocity;
+                ship.Mass = localResult.State.Mass;
+                ship.LocalAbsolutePosition = ship.Position;
+                ship.LocalAbsoluteVelocity = ship.Velocity;
+                ship.LocalBody = dominant;
+                ship.LocalTimeSeconds = currentTimeSeconds + dt;
+                ship.HasLocalState = true;
+                UpdateTorqueSnapshot(ship, currentTimeSeconds + dt);
+                return;
+            }
+
+            ship.HasLocalState = false;
+
             ToleranceReference? toleranceReference = null;
             if (ToleranceFrameSystem != null && dt >= MinSpanForToleranceFrameSeconds && dt <= ToleranceReference.MaxSpanSeconds)
             {
@@ -117,7 +231,59 @@ namespace Galilego.Spacecraft
             ship.Position = result.State.Position;
             ship.Velocity = result.State.Velocity;
             ship.Mass = result.State.Mass;
+            UpdateTorqueSnapshot(ship, currentTimeSeconds + dt);
+        }
+
+        /// <summary>
+        /// The torque snapshot must belong to the ACCEPTED state. The last RHS stage
+        /// of a DOP853 step is a stage state (and the dense path adds kEnd), so two
+        /// equivalent paths could leave different snapshots. One evaluation at the
+        /// accepted state makes the snapshot path-independent and is what attitude
+        /// control actually reads.
+        /// </summary>
+        internal void RefreshTorqueSnapshot(Spacecraft ship, double timeSeconds)
+        {
+            UpdateTorqueSnapshot(ship, timeSeconds);
+        }
+
+        private void UpdateTorqueSnapshot(Spacecraft ship, double timeSeconds)
+        {
+            var state = new SpacecraftIntegrationState
+            {
+                Position = ship.Position,
+                Velocity = ship.Velocity,
+                Mass = ship.Mass
+            };
+            EvaluateDerivative(state, timeSeconds);
             TotalTorqueBody = lastEvaluatedTorque;
+        }
+
+        private SpacecraftIntegrationState EvaluateLocalDerivative(
+            SpacecraftIntegrationState local, double timeSeconds, OrbitingBody dominant)
+        {
+            ToleranceFrameSystem.EvaluateBodyState(
+                dominant, timeSeconds,
+                out Vector3d bodyPosition, out Vector3d bodyVelocity);
+            var absolute = new SpacecraftIntegrationState
+            {
+                Position = bodyPosition + local.Position,
+                Velocity = bodyVelocity + local.Velocity,
+                Mass = local.Mass
+            };
+            SpacecraftIntegrationState derivative = EvaluateDerivative(absolute, timeSeconds);
+            // Replace the absolute-frame gravity term with the relative-vector field.
+            // The force model is the only specific source (CachedGravitySource); drag
+            // and thrust enter as Force and stay untouched.
+            Vector3d absoluteGravity = ToleranceFrameSystem.EvaluateShipAccelerationCached(
+                absolute.Position, timeSeconds);
+            Vector3d localGravity = ToleranceFrameSystem.EvaluateShipAccelerationLocal(
+                local.Position, dominant, timeSeconds);
+            return new SpacecraftIntegrationState
+            {
+                Position = local.Velocity,
+                Velocity = derivative.Velocity - absoluteGravity + localGravity,
+                Mass = derivative.Mass
+            };
         }
 
         private SpacecraftIntegrationState EvaluateDerivative(SpacecraftIntegrationState state, double timeSeconds)
