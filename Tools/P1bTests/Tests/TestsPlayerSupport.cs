@@ -423,7 +423,11 @@ internal static partial class P1bTests
     {
         var lowCeiling = new BoxSupport();
         lowCeiling.Floors.Add(Box.Floor(-10d, 10d, -10d, 10d, 0d));
-        lowCeiling.Blockers.Add(Box.Ceiling(1d, 3d, -2d, 2d, 1.5d, 1.7d));
+        // The capsule auto-crouches to 0.8 m: a low ceiling must be below that to
+        // block permanently. 1.2..1.4 is passable while crouched. The expected
+        // stop x = 1 - CapsuleRadius(0.25) = 0.75 is the designed contact, not a
+        // fitted number.
+        lowCeiling.Blockers.Add(Box.Ceiling(1d, 3d, -2d, 2d, 0.6d, 0.75d));
         var cLow = new PlayerSurfaceController { Position = new Vector3d(0d, 0d, 0d) };
         bool blockedSeen = false;
         for (int i = 0; i < 100; i++)
@@ -432,7 +436,9 @@ internal static partial class P1bTests
             blockedSeen |= cLow.Blocked;
         }
 
-        bool lowOk = blockedSeen && Math.Abs(cLow.Position.X) <= 0.56d && Math.Abs(cLow.Position.Z) <= 1e-9d;
+        bool lowOk = blockedSeen
+            && Math.Abs(cLow.Position.X) <= 1d - PlayerSurfaceController.CapsuleRadius + 1e-3d
+            && Math.Abs(cLow.Position.Z) <= 1e-9d;
 
         var highCeiling = new BoxSupport();
         highCeiling.Floors.Add(Box.Floor(-10d, 10d, -10d, 10d, 0d));
@@ -446,7 +452,7 @@ internal static partial class P1bTests
         bool highOk = cHigh.Position.X > 1.5d && !cHigh.Blocked;
 
         Check(lowOk && highOk, "T312 ceiling-blocks",
-            string.Format(Inv, "потолок 1.5: Blocked={0}, x={1:F3} (≤0.56), z={2:E2}: {3}; потолок 2.0: x={4:F3} (>1.5), Blocked={5}: {6}",
+            string.Format(Inv, "потолок 0.75: Blocked={0}, x={1:F3} (≤0.751), z={2:E2}: {3}; потолок 2.0: x={4:F3} (>1.5), Blocked={5}: {6}",
                 blockedSeen, cLow.Position.X, cLow.Position.Z, lowOk, cHigh.Position.X, cHigh.Blocked, highOk));
         return 0;
     }
