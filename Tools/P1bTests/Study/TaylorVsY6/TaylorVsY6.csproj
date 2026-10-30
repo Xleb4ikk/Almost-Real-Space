@@ -22,7 +22,6 @@
     <Compile Include="..\scenarios\**\*.cs" Exclude="..\scenarios\KnownProblems.cs" />
     <Compile Include="..\..\Reference\**\*.cs" />    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Planet\Decor\DecorExclusionCore.cs" />
     <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElements.cs" />
-    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElementsData.cs" />
     <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Math\Vector3d.cs" />
     <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\PhysicsSolver.cs" />
     <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\DOPRI5Coefficients.cs" />

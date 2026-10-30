@@ -1,5 +1,4 @@
 using System;
-using UnityEngine;
 
 namespace Galilego.Core
 {
@@ -100,15 +99,6 @@ namespace Galilego.Core
             t = Math.Max(0d, Math.Min(1d, t));
             return new Vector3d(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t, a.Z + (b.Z - a.Z) * t);
         }
-
-        /// <summary>
-        /// RAW cast without axis permutation — wrong frame. The single astro→sim
-        /// bridge is AstroFrame.ToSimulation (sim = (x, z, −y)). Kept
-        /// [Obsolete(..., true)] so any call breaks compilation instead of silently
-        /// handing the engine a Y-up-agnostic vector.
-        /// </summary>
-        [Obsolete("Перепутанный кадр: голый каст без перестановки осей. Используйте AstroFrame.ToSimulation (sim = (x, z, −y)).", true)]
-        public Vector3 ToVector3() => new Vector3((float)X, (float)Y, (float)Z);
 
         public override string ToString()
 {

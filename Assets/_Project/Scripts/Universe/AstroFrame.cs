@@ -10,11 +10,10 @@ namespace Galilego.Universe
     /// The boundary is TYPED: a sim vector is a distinct type (SimVector3, and in
     /// Unity UnityEngine.Vector3), so it cannot be fed by accident to a function
     /// expecting Vector3d without an explicit pass through this bridge. There is
-    /// exactly one mapping, fixed here rather than scattered across ToVector3():
+    /// exactly one mapping, fixed here:
     /// sim = (x, z, −y) — a −90° rotation about X (det=+1, handedness preserved,
     /// cross product commutes with the bridge); north +Z becomes up +Y. The inverse
-    /// is the transposed matrix: astro = (sim.X, −sim.Z, sim.Y). Vector3d.ToVector3()
-    /// (a bare cast without axis permutation) is marked [Obsolete].
+    /// is the transposed matrix: astro = (sim.X, −sim.Z, sim.Y).
     /// </summary>
     public static class AstroFrame
     {

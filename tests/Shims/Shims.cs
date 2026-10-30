@@ -172,15 +172,13 @@ namespace UnityEngine
 
     public static class SystemInfo
     {
-        // The real core count doesn't matter here: only used inside
-        // OrbitalElements.CalculateBatch, which tests never call.
+        // Kept for parity with the Unity API; the harness never reads it.
         public static int processorCount => 4;
     }
 }
 
-// Unity.Mathematics / Unity.Jobs / Unity.Collections shim stub: exist only
-// so OrbitalElements.CalculateBatch compiles (never called in tests A/B/C —
-// its body may throw NotImplementedException).
+// Unity.Mathematics / Unity.Jobs / Unity.Collections shim stub, kept for parity
+// with the Unity API. The current xunit test set does not use these types.
 namespace Unity.Mathematics
 {
     public struct double3
@@ -281,18 +279,5 @@ namespace Unity.Jobs
         {
             throw new System.NotImplementedException("Тестовый шим: batch-расчёт не поддерживается.");
         }
-    }
-}
-
-// Stub for the Burst job that OrbitalElements.CalculateBatch references.
-// The method itself is never called in tests — matching field names suffice.
-namespace Galilego.Simulation
-{
-    public struct OrbitalElementsJob : Unity.Jobs.IJobParallelFor
-    {
-        public Unity.Collections.NativeArray<Unity.Mathematics.double3> Positions;
-        public Unity.Collections.NativeArray<Unity.Mathematics.double3> Velocities;
-        public Unity.Collections.NativeArray<double> Mus;
-        public Unity.Collections.NativeArray<Galilego.Core.OrbitalElementsData> Results;
     }
 }

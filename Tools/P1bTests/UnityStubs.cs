@@ -712,8 +712,8 @@ namespace Unity.Mathematics
         public static float3 operator /(float3 a, float b) => new float3(a.x / b, a.y / b, a.z / b);
     }
 
-    // The lowercase Unity.Mathematics.math name is used by OrbitalElements.CalculateBatch;
-    // CS8981 (future keyword) is suppressed locally so the stub matches the package API.
+    // The lowercase Unity.Mathematics.math name matches the package API and is used
+    // by terrain tests; CS8981 (future keyword) is suppressed locally.
 #pragma warning disable CS8981
     public static class math
     {
@@ -809,26 +809,6 @@ namespace Unity.Jobs
             where T : struct, IJobParallelFor
         {
             return default;
-        }
-    }
-}
-
-namespace Simulation
-{
-    /// <summary>
-    /// Test stub for a missing Burst job: only so the real
-    /// OrbitalElements.CalculateBatch compiles.
-    /// </summary>
-    public struct OrbitalElementsJob : Unity.Jobs.IJobParallelFor
-    {
-        public Unity.Collections.NativeArray<Unity.Mathematics.double3> Positions;
-        public Unity.Collections.NativeArray<Unity.Mathematics.double3> Velocities;
-        public Unity.Collections.NativeArray<double> Mus;
-        public Unity.Collections.NativeArray<Galilego.Core.OrbitalElementsData> Results;
-
-        public void Execute(int index)
-        {
-            throw new System.NotImplementedException("Тестовый стаб: batch не выполняется в стенде.");
         }
     }
 }

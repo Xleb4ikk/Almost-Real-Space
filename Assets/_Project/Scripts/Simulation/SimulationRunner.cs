@@ -15,7 +15,7 @@ namespace Galilego.Universe
     // ShipController.cs, ShipView.cs, BodyAuthoring.cs, StarSystemAuthoring.cs,
     // EphemerisRuntime.cs and Editor/StarSystemAuthoringEditor.cs; do NOT copy
     // P1bTests/ (duplicate UnityEngine types). Requires com.unity.mathematics +
-    // com.unity.collections (the Jobs path OrbitalElements.CalculateBatch).
+    // com.unity.collections.
     // Scene: a GameObject hierarchy of bodies with BodyAuthoring (GO name = body name)
     // under StarSystemAuthoring at the root, BodyView on each body, and SimulationRunner
     // (System = root), ShipController, ShipView on the ship GameObject.
