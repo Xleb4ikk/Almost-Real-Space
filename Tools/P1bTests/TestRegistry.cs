@@ -274,6 +274,7 @@ new P1bCase("Test530_JplRealism", Test530_JplRealism, true),
 new P1bCase("Test547_SpacecraftDop853", Test547_SpacecraftDop853, true),
 new P1bCase("Test548_Bake100y", Test548_Bake100y, false),
 new P1bCase("Test549_SpacecraftOrbitIntegrators", Test549_SpacecraftOrbitIntegrators, true),
+            new P1bCase("Test550_ReferenceDiagnostics", Test550_ReferenceDiagnostics, true),
             new P1bCase("Test534_JupiterVariants", Test534_JupiterVariants, true),
             new P1bCase("Test534b_MoonsAsBodies", Test534b_MoonsAsBodies, true),
         };
