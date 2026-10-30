@@ -14,6 +14,7 @@
     <Compile Include="Compare.cs" />
     <Compile Include="CountingSource.cs" />
     <Compile Include="..\..\UnityStubs.cs" />
+    <Compile Include="..\..\CheckSupport.cs" />
     <Compile Include="..\core\**\*.cs" />
     <Compile Include="..\fixtures\**\*.cs" />
     <Compile Include="..\methods\**\*.cs" />
@@ -25,6 +26,7 @@
     <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Math\Vector3d.cs" />
     <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\PhysicsSolver.cs" />
     <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\DOPRI5Coefficients.cs" />
+    <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\DOP853Coefficients.cs" />
     <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\OrbitIntegrator.cs" />
     <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftIntegrationState.cs" />
     <Compile Include="..\..\..\..\Assets\_Project\Scripts\Core\Integration\DenseSegment.cs" />

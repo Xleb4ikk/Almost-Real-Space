@@ -34,17 +34,6 @@ internal sealed class TestThrustSource : IDynamicsSource
 
 internal static partial class P1bTests
 {
-    private static int failures;
-
-    private static void Check(bool cond, string name, string detail)
-    {
-        Console.WriteLine((cond ? "PASS " : "FAIL ") + name + " | " + detail);
-        if (!cond)
-        {
-            Interlocked.Increment(ref failures);
-        }
-    }
-
     private static int RunCaseProcess(string name, string logDir)
     {
         string host = Environment.ProcessPath;

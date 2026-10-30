@@ -12,6 +12,7 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Decor\DecorExclusionCore.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="TestSupport.cs" />
+    <Compile Include="CheckSupport.cs" />
     <Compile Include="TestRegistry.cs" />
     <Compile Include="Tests\**\*.cs" />
     <Compile Include="Study\**\*.cs" Exclude="Study\TaylorVsY6\**\*.cs" />
