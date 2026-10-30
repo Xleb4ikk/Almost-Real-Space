@@ -1,0 +1,7 @@
+{
+    "name": "Galilego.Core",
+    "rootNamespace": "Galilego.Core",
+    "references": [],
+    "noEngineReferences": true,
+    "autoReferenced": true
+}
