@@ -5,6 +5,8 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -13,49 +15,45 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
   </ItemGroup>
 
-  <!-- Файлы физики (не копии): тест ловит регрессии в реальном коде. -->
+  <!--
+    Core is compiled from the real sources, by glob. There is deliberately no
+    ProjectReference to a generated Unity csproj, no UnityStubs and no
+    UNITY_5_3_OR_NEWER: if Core ever pulls UnityEngine back in, this project
+    must stop compiling.
+  -->
   <ItemGroup>
-    <Compile Include="..\..\Assets\_Project\Scripts\Core\Math\KahanAccumulator.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Core\Math\Vector3d.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Core\Math\QuaternionD.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\DenseSegment.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\IBodyStateProvider.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\DOPRI5Coefficients.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\DOP853Coefficients.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\OrbitIntegrator.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\IntegrationResult.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftIntegrationState.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftIntegrationResult.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftOrbitIntegrator.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\PhysicsSolver.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\CelestialBody.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Core\Orbits\OrbitalElements.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\RigidAssemblySolver.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Solver\ContactGround.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Trajectory\Prediction\KeplerMath.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Universe\OrbitingBody.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Universe\StarSystem.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Universe\AstroFrame.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Ephemeris\BakedEphemeris.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Ephemeris\EphemerisRangeException.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Terrain\ITerrainModel.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Clouds\CloudProfile.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\AtmosphereOptics.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\AtmosphereProfile.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Spacecraft.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\DynamicsContribution.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\IDynamicsSource.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\GravitySource.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\SpacecraftPhysics.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\EventDirection.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\EventDetectors.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\EventOccurrence.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\Detectors\DetectionGrain.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\Detectors\AltitudeCrossingDetector.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\Detectors\SoiChangeDetector.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\TimedEvent.cs" />
-    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\EventDrivenPropagator.cs" />
-    <Compile Include="..\Shims\Shims.cs" />
+    <Compile Include="**\*.cs" Exclude="bin\**\*.cs;obj\**\*.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\**\*.cs"
+             Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- Oracle references: linked, not copied. They use only System.* and are
+       not part of the P1bTests harness infrastructure. -->
+  <ItemGroup>
+    <Compile Include="..\..\Tools\P1bTests\Reference\TaylorJet.cs"
+             Link="Oracle\TaylorJet.cs" />
+    <Compile Include="..\..\Tools\P1bTests\Reference\TaylorNBody.cs"
+             Link="Oracle\TaylorNBody.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Existing golden files are linked from the stand so there is exactly one
+       copy on disk. Core-specific golden files live under GoldenData and are
+       generated by GoldenData\gen_core_kepler.py, never by a test. -->
+  <ItemGroup>
+    <None Include="..\..\Tools\P1bTests\Study\taylor\golden\golden_real.json"
+          Link="GoldenData\golden_real.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\Tools\P1bTests\Study\taylor\golden\golden_real_1y_hi.json"
+          Link="GoldenData\golden_real_1y_hi.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\Tools\P1bTests\Study\taylor\golden\golden_real_10y_k28.json"
+          Link="GoldenData\golden_real_10y_k28.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="GoldenData\golden_core_kepler.json"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="GoldenData\golden_core_kepler_10y.json"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

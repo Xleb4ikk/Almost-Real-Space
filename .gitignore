@@ -131,3 +131,6 @@ __pycache__/
 
 # Локальный снимок repomix (генерируется, устаревает и дублирует исходники)
 /repomix-output.xml
+
+# xunit artifacts and calibration output
+/TestResults/
