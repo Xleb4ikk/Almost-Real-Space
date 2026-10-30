@@ -12,7 +12,7 @@ namespace Galilego.Universe
         /// Parent/Children links; the tree root (a star) is a body without a Parent.
         /// </summary>
     [Serializable]
-    public sealed class OrbitingBody
+    public sealed class OrbitingBody : IBodyStateProvider
     {
         public string Name = "Body";
 

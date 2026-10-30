@@ -26,6 +26,7 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\OrbitIntegrator.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\SpacecraftIntegrationState.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\DenseSegment.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Core\Integration\IBodyStateProvider.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Math\KahanAccumulator.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Math\Matrix3x3.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\Math\QuaternionD.cs" />

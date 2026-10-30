@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Galilego.Universe;
 
 namespace Galilego.Core
 {
@@ -49,7 +48,7 @@ namespace Galilego.Core
         // the polynomial stays LOCAL and Evaluate adds the body state at the query
         // time. This lets the event/warp path use the local frame without an
         // absolute polynomial.
-        public readonly OrbitingBody ReferenceBody;
+        public readonly IBodyStateProvider ReferenceBody;
         private readonly SpacecraftIntegrationState localY0;
 
         private readonly double h;
@@ -69,7 +68,7 @@ namespace Galilego.Core
         private DenseSegment(
             double t0, double t1, double h,
             SpacecraftIntegrationState y0, SpacecraftIntegrationState y1,
-            ShampineCoeffs coeffs, OrbitingBody referenceBody,
+            ShampineCoeffs coeffs, IBodyStateProvider referenceBody,
             SpacecraftIntegrationState localY0)
         {
             T0 = t0;
@@ -89,7 +88,7 @@ namespace Galilego.Core
         /// Convert a local-frame segment to the public absolute representation
         /// without losing dense interpolation: endpoints absolute, polynomial local.
         /// </summary>
-        public DenseSegment AsAbsolute(OrbitingBody referenceBody)
+        public DenseSegment AsAbsolute(IBodyStateProvider referenceBody)
         {
             if (ReferenceBody != null)
             {
