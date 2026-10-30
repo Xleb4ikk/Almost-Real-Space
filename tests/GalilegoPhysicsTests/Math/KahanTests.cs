@@ -1,10 +1,11 @@
-﻿using System;
+using System;
 using Galilego.Core;
 using GalilegoPhysicsTests.Support;
 using Xunit;
 
 namespace GalilegoPhysicsTests.Mathematics
 {
+    [Trait("Tier", "Fast")]
     public sealed class KahanTests
     {
         [Fact]

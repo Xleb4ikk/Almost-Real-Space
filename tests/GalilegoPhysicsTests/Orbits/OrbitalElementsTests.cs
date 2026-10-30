@@ -7,6 +7,7 @@ using Xunit.Abstractions;
 
 namespace GalilegoPhysicsTests.Orbits
 {
+    [Trait("Tier", "Fast")]
     public sealed class OrbitalElementsTests
     {
         private const double Mu = 3.986004418e14d;

@@ -10,6 +10,7 @@ using Xunit;
 
 namespace GalilegoPhysicsTests.Integration.Matrix
 {
+    [Trait("Tier", "Fast")]
     public sealed class CalibrationTests
     {
         [Fact]

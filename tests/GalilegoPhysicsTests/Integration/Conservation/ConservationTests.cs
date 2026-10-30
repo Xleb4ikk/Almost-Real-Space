@@ -6,6 +6,7 @@ using Xunit.Abstractions;
 
 namespace GalilegoPhysicsTests.Integration.Conservation
 {
+    [Trait("Tier", "Fast")]
     public sealed class ConservationTests
     {
         private readonly ITestOutputHelper output;

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Galilego.Core;
 using GalilegoPhysicsTests.Support;
 using Xunit;
@@ -6,6 +6,7 @@ using Xunit.Abstractions;
 
 namespace GalilegoPhysicsTests.Integration.Coefficients
 {
+    [Trait("Tier", "Fast")]
     public sealed class ButcherTableauTests
     {
         private readonly ITestOutputHelper output;

@@ -6,6 +6,7 @@ using Xunit;
 
 namespace GalilegoPhysicsTests.Orbits
 {
+    [Trait("Tier", "Fast")]
     public sealed class PhysicsSolverTests
     {
         private const double Mu = 3.986004418e14d;

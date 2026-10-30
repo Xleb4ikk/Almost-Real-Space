@@ -5,6 +5,7 @@ using Xunit;
 
 namespace GalilegoPhysicsTests.Orbits
 {
+    [Trait("Tier", "Fast")]
     public sealed class OrbitalBasisTests
     {
         [Fact]

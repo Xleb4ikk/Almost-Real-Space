@@ -9,6 +9,7 @@ using Xunit.Abstractions;
 
 namespace GalilegoPhysicsTests.Integration.Dense
 {
+    [Trait("Tier", "Fast")]
     public sealed class DenseOutputTests
     {
         private readonly ITestOutputHelper output;

@@ -7,6 +7,7 @@ using Xunit.Abstractions;
 
 namespace GalilegoPhysicsTests.Integration.Ship
 {
+    [Trait("Tier", "Fast")]
     public sealed class SpacecraftIntegratorTests
     {
         private readonly ITestOutputHelper output;

@@ -9,6 +9,7 @@ namespace GalilegoPhysicsTests
     /// Проверяем старый RK4 из PhysicsSolver на простых примерах,
     /// где ответ можно посчитать вручную.
     /// </summary>
+    [Trait("Tier", "Fast")]
     public sealed class Rk4Tests
     {
         private readonly ITestOutputHelper output;

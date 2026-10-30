@@ -11,6 +11,7 @@ namespace GalilegoPhysicsTests.Integration.Kepler
     /// Port of the old RegressionTests intent: the legacy OrbitIntegrator and the
     /// full-state SpacecraftOrbitIntegrator must agree on a pure-gravity arc.
     /// </summary>
+    [Trait("Tier", "Fast")]
     public sealed class LegacyParityTests
     {
         private readonly ITestOutputHelper output;

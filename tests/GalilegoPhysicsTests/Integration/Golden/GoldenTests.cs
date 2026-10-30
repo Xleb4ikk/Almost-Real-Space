@@ -23,6 +23,7 @@ namespace GalilegoPhysicsTests.Integration.Golden
         }
 
         [Fact]
+        [Trait("Tier", "Fast")]
         public void FastCoreGoldenCasesMatch()
         {
             GoldenDocument document = GoldenDocument.Load("golden_core_kepler.json");
@@ -48,6 +49,7 @@ namespace GalilegoPhysicsTests.Integration.Golden
         }
 
         [SlowFact]
+        [Trait("Tier", "Slow")]
         public void SlowCoreGoldenCasesMatch()
         {
             GoldenDocument document = GoldenDocument.Load("golden_core_kepler_10y.json");
@@ -73,6 +75,7 @@ namespace GalilegoPhysicsTests.Integration.Golden
         }
 
         [Fact]
+        [Trait("Tier", "Fast")]
         public void LinkedStandGoldenFilesAreReadableAndInternallyConsistent()
         {
             foreach (string name in new[] { "golden_real.json", "golden_real_1y_hi.json", "golden_real_10y_k28.json" })
@@ -105,6 +108,7 @@ namespace GalilegoPhysicsTests.Integration.Golden
         }
 
         [Fact]
+        [Trait("Tier", "Fast")]
         public void LinkedGoldenHashesMatchTheStandReadme()
         {
             AssertHash("golden_real.json", "2A5206636425B04AE7B21EC9765F1FA4EF3723D98472DF347ED77BA3355402E8");

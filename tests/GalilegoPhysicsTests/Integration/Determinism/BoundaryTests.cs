@@ -6,6 +6,7 @@ using Xunit;
 
 namespace GalilegoPhysicsTests.Integration.Determinism
 {
+    [Trait("Tier", "Fast")]
     public sealed class BoundaryTests
     {
         [Theory]

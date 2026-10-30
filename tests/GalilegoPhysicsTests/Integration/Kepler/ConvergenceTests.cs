@@ -6,6 +6,7 @@ using Xunit.Abstractions;
 
 namespace GalilegoPhysicsTests.Integration.Kepler
 {
+    [Trait("Tier", "Fast")]
     public sealed class ConvergenceTests
     {
         private readonly ITestOutputHelper output;
