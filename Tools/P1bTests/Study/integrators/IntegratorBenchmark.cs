@@ -291,12 +291,12 @@ internal static partial class P1bTests
             Check(referenceSelf < (years <= 20d ? 10d : 1000d),
                 "nbody " + years + "y independent reference self",
                 referenceSelf.ToString("E3", CultureInfo.InvariantCulture));
-            Check(bestMaxInner < (years <= 20d ? 10d : 2000d),
-                "nbody " + years + "y best max inner",
-                bestMaxInner.ToString("E3", CultureInfo.InvariantCulture));
-            Check(bestMaxOuter < (years <= 20d ? 100d : 1000d),
-                "nbody " + years + "y best max outer",
-                bestMaxOuter.ToString("E3", CultureInfo.InvariantCulture));
+            Check(bestMaxInner + referenceSelf < (years <= 20d ? 10d : 2000d),
+                "nbody " + years + "y best max inner + reference self",
+                (bestMaxInner + referenceSelf).ToString("E3", CultureInfo.InvariantCulture));
+            Check(bestMaxOuter + referenceSelf < (years <= 20d ? 100d : 1000d),
+                "nbody " + years + "y best max outer + reference self",
+                (bestMaxOuter + referenceSelf).ToString("E3", CultureInfo.InvariantCulture));
             Check(bestMaxDe < 1e-9d, "nbody " + years + "y best max dE/E",
                 bestMaxDe.ToString("E2", CultureInfo.InvariantCulture));
             Check(bestInv < 1e-9d, "nbody " + years + "y best invariant",
@@ -390,7 +390,7 @@ internal static partial class P1bTests
                 return clone;
             }
 
-            var shipRuns = new (string Method, double Step, Vector3d P, Vector3d V, long Calls, double Ms)[7];
+            var shipRuns = new (string Method, double Step, Vector3d P, Vector3d V, long Calls, double Ms)[8];
             Parallel.Invoke(
                 () =>
                 {
@@ -432,6 +432,12 @@ internal static partial class P1bTests
                     var r = StudyShipDop853Local(
                         MakeClone(), 1, srelP, srelV, shipT0, shipDays, 1e-12d, 1e-15d, 1e-15d);
                     shipRuns[6] = ("DOP853 local", 1e-12d, r.p, r.v, r.calls, r.ms);
+                },
+                () =>
+                {
+                    var r = StudyShipDop853Local(
+                        MakeClone(), 1, srelP, srelV, shipT0, shipDays, 1e-14d, 1e-15d, 1e-15d);
+                    shipRuns[7] = ("DOP853 local", 1e-14d, r.p, r.v, r.calls, r.ms);
                 });
 
             foreach (var run in shipRuns)

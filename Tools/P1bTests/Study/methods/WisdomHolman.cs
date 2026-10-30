@@ -22,7 +22,12 @@ internal static partial class P1bTests
         double vv = v.SqrMagnitude;
         double energy = 0.5d * vv - mu / rMag;
         double a = -mu / (2d * energy);
-        if (!(a > 0d) || dt == 0d)
+        if (!(a > 0d))
+        {
+            throw new InvalidOperationException("WH: unbound orbit");
+        }
+
+        if (dt == 0d)
         {
             r2 = r;
             v2 = v;
@@ -31,8 +36,9 @@ internal static partial class P1bTests
 
         Vector3d h = Vector3d.Cross(r, v);
         double hMag = h.Magnitude;
-        double e = Math.Sqrt(Math.Max(0d, 1d - (hMag * hMag) / (mu * a)));
-        if (e < 1e-8d)
+        Vector3d eVec = (Vector3d.Cross(v, h) / mu) - (r / rMag);
+        double eDirect = eVec.Magnitude;
+        if (eDirect < 1e-10d)
         {
             double n = Math.Sqrt(mu / (rMag * rMag * rMag));
             double theta = n * dt;
@@ -43,8 +49,6 @@ internal static partial class P1bTests
             return;
         }
 
-        Vector3d eVec = (Vector3d.Cross(v, h) / mu) - (r / rMag);
-        double eDirect = eVec.Magnitude;
         if (!(eDirect > 0d) || !(eDirect < 1d))
         {
             r2 = r;
@@ -76,8 +80,9 @@ internal static partial class P1bTests
 
     private static void StudyWhStep(
         StarSystem sys, int central, double mu, ref Vector3d p, ref Vector3d v,
-        double t, double dt, ref long calls)
+        double t, double dt, ref long calls, double tEnd = double.NaN)
     {
+        double end = double.IsNaN(tEnd) ? t + dt : tEnd;
         sys.EvaluateBodyState(sys.AllBodies[central], t, out Vector3d bc, out Vector3d bv);
         Vector3d total = sys.EvaluateShipAccelerationCached(p, t);
         calls++;
@@ -88,14 +93,14 @@ internal static partial class P1bTests
             - centralBodyAccel;
         v += pert * (0.5d * dt);
 
-        sys.EvaluateBodyState(sys.AllBodies[central], t + dt, out Vector3d bc2, out Vector3d bv2);
+        sys.EvaluateBodyState(sys.AllBodies[central], end, out Vector3d bc2, out Vector3d bv2);
         StudyKeplerDrift(p - bc, v - bv, mu, dt, out Vector3d relP2, out Vector3d relV2);
         p = bc2 + relP2;
         v = bv2 + relV2;
 
-        total = sys.EvaluateShipAccelerationCached(p, t + dt);
+        total = sys.EvaluateShipAccelerationCached(p, end);
         calls++;
-        centralBodyAccel = sys.EvaluateShipAccelerationCached(bc2, t + dt);
+        centralBodyAccel = sys.EvaluateShipAccelerationCached(bc2, end);
         calls++;
         pert = total
             - PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(p, bc2, mu)
@@ -107,21 +112,31 @@ internal static partial class P1bTests
         StarSystem sys, int central, Vector3d p0, Vector3d v0, double t0, double days, double h)
     {
         double mu = sys.AllBodies[central].ResolveStandardGravitationalParameter();
-        double T = t0 + (days * 86400d);
-        double t = t0;
+        double span = days * 86400d;
+        long full = (long)Math.Floor(span / h);
+        double rem = span - (full * h);
         var p = p0;
         var v = v0;
         long calls = 0;
         var sw = Stopwatch.StartNew();
         double[] ws = StudyY6Weights();
-        while (t < T - 1e-9d)
+        double[] cw = StudyCumulativeWeights(ws);
+        for (long s = 0; s <= full; s++)
         {
-            double hStep = Math.Min(h, T - t);
-            foreach (double w in ws)
+            double hStep = s < full ? h : rem;
+            if (hStep <= 1e-9d)
             {
-                double dt = w * hStep;
-                StudyWhStep(sys, central, mu, ref p, ref v, t, dt, ref calls);
-                t += dt;
+                break;
+            }
+
+            double tBase = t0 + (s * h);
+            for (int k = 0; k < ws.Length; k++)
+            {
+                double dt = ws[k] * hStep;
+                StudyWhStep(
+                    sys, central, mu, ref p, ref v,
+                    tBase + (cw[k] * hStep), dt, ref calls,
+                    tBase + (cw[k + 1] * hStep));
             }
         }
 
@@ -131,8 +146,9 @@ internal static partial class P1bTests
 
     private static void StudyWhStepLocal(
         StarSystem sys, int central, double mu, ref Vector3d relP, ref Vector3d relV,
-        double t, double dt, ref long calls, bool directForce)
+        double t, double dt, ref long calls, bool directForce, double tEnd = double.NaN)
     {
+        double end = double.IsNaN(tEnd) ? t + dt : tEnd;
         sys.EvaluateBodyState(sys.AllBodies[central], t, out Vector3d bc, out _);
         Vector3d direct = PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(
             bc + relP, bc, mu);
@@ -152,7 +168,7 @@ internal static partial class P1bTests
 
         relV += pert * (0.5d * dt);
 
-        sys.EvaluateBodyState(sys.AllBodies[central], t + dt, out Vector3d bc2, out _);
+        sys.EvaluateBodyState(sys.AllBodies[central], end, out Vector3d bc2, out _);
         StudyKeplerDrift(relP, relV, mu, dt, out Vector3d relP2, out Vector3d relV2);
         relP = relP2;
         relV = relV2;
@@ -161,13 +177,13 @@ internal static partial class P1bTests
             bc2 + relP, bc2, mu);
         if (directForce)
         {
-            pert = StudyLocalAccelerationDirect(sys, central, relP, t + dt) - direct;
+            pert = StudyLocalAccelerationDirect(sys, central, relP, end) - direct;
             calls++;
         }
         else
         {
-            Vector3d total = sys.EvaluateShipAccelerationCached(bc2 + relP, t + dt);
-            Vector3d centralBodyAccel = sys.EvaluateShipAccelerationCached(bc2, t + dt);
+            Vector3d total = sys.EvaluateShipAccelerationCached(bc2 + relP, end);
+            Vector3d centralBodyAccel = sys.EvaluateShipAccelerationCached(bc2, end);
             calls += 2;
             pert = total - centralBodyAccel - direct;
         }
@@ -180,28 +196,32 @@ internal static partial class P1bTests
         double t0, double days, double h, bool directForce = false)
     {
         double mu = sys.AllBodies[central].ResolveStandardGravitationalParameter();
-        double T = t0 + (days * 86400d);
-        double t = t0;
-        long step = 0L;
+        double span = days * 86400d;
+        long full = (long)Math.Floor(span / h);
+        double rem = span - (full * h);
         Vector3d relP = relP0;
         Vector3d relV = relV0;
         long calls = 0;
         var sw = Stopwatch.StartNew();
         double[] ws = StudyY6Weights();
-        while (t < T - 1e-9d)
+        double[] cw = StudyCumulativeWeights(ws);
+        for (long s = 0; s <= full; s++)
         {
-            double target = Math.Min(T, t0 + ((step + 1L) * h));
-            double hStep = target - t;
-            foreach (double w in ws)
+            double hStep = s < full ? h : rem;
+            if (hStep <= 1e-9d)
             {
-                double dt = w * hStep;
-                StudyWhStepLocal(
-                    sys, central, mu, ref relP, ref relV, t, dt, ref calls, directForce);
-                t += dt;
+                break;
             }
 
-            t = target;
-            step++;
+            double tBase = t0 + (s * h);
+            for (int k = 0; k < ws.Length; k++)
+            {
+                double dt = ws[k] * hStep;
+                StudyWhStepLocal(
+                    sys, central, mu, ref relP, ref relV,
+                    tBase + (cw[k] * hStep), dt, ref calls, directForce,
+                    tBase + (cw[k + 1] * hStep));
+            }
         }
 
         sw.Stop();

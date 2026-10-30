@@ -313,7 +313,7 @@ internal static partial class P1bTests
         string label, StarSystem sys, StudyNBody nb, double years, double worstGateMeters = 0d)
     {
         Console.WriteLine();
-        Console.WriteLine("=== " + label + ": bake " + years + " y, RK4 900 s, degree 12, quant 2 m ===");
+        Console.WriteLine("=== " + label + ": bake " + years + " y, DOP853 substeps (900 s cap), degree 12, quant 2 m ===");
         var config = new BakeConfig { Degree = 12, MaxStepSeconds = 900d, PhasePerStep = 0.02d, QuantBudgetMeters = 2d };
         var sw = Stopwatch.StartNew();
         Dictionary<OrbitingBody, BakedEphemeris> eph = EphemerisBaker.Bake(sys, years, config);

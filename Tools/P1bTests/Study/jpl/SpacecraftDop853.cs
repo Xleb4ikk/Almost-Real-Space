@@ -56,6 +56,15 @@ internal static partial class P1bTests
         SpacecraftIntegrationState denseEnd = DenseSegment.EvaluateTrack(segments, total);
         double denseError = (denseEnd.Position - dop853.State.Position).Magnitude;
 
+        double worstMid = 0d;
+        foreach (DenseSegment seg in segments)
+        {
+            double mid = 0.5d * (seg.T0 + seg.T1);
+            SpacecraftIntegrationState denseMid = seg.Evaluate(mid);
+            SpacecraftIntegrationState exactMid = KeplerExactState(mid);
+            worstMid = Math.Max(worstMid, (denseMid.Position - exactMid.Position).Magnitude);
+        }
+
         Console.WriteLine("DOP853  dp={0:E3} m", dop853Error);
         Console.WriteLine("DOPRI5  dp={0:E3} m", dopri5Error);
 
@@ -65,6 +74,9 @@ internal static partial class P1bTests
         Check(segments.Count > 0 && denseError < 1e-9d,
             "DOP853 dense output endpoint matches the state",
             segments.Count + " segments, " + denseError.ToString("E3") + " m");
+        Check(segments.Count > 0 && worstMid < 1e-6d,
+            "DOP853 dense output mid-segment vs exact",
+            segments.Count + " segments, worst mid " + worstMid.ToString("E3") + " m");
         Check(new SpacecraftPhysics().Integrator == SpacecraftIntegrator.Dop853,
             "spacecraft default integrator is DOP853", "");
 

@@ -71,8 +71,8 @@ internal static partial class P1bTests
 
             double x = Math.Sqrt(a.Hi);
             StudyDd r = Sub(a, Mul(From(x), From(x)));
-            double c = r.Hi / (2d * x);
-            return Add(From(x), From(c));
+            StudyDd c = Div(r, From(2d * x));
+            return Add(From(x), c);
         }
 
         public static StudyDd operator +(StudyDd a, StudyDd b) => Add(a, b);
@@ -112,14 +112,22 @@ internal static partial class P1bTests
         public static StudyDd3 operator *(StudyDd3 a, double s) => a * StudyDd.From(s);
     }
 
-    private static StudyDd3 StudyForceDd(StarSystem sys, StudyDd3 p, double t)
+    private static StudyDd3 StudyForceDd(
+        StarSystem sys, StudyDd3 p, double t,
+        bool[] bodyMask = null, bool frozenTime = false, double frozenAt = 0d)
     {
         var bodies = sys.AllBodies;
         int n = bodies.Count;
-        sys.EvaluateBodyState(bodies[0], t, out Vector3d rootPos, out _);
+        double bodyTime = frozenTime ? frozenAt : t;
+        sys.EvaluateBodyState(bodies[0], bodyTime, out Vector3d rootPos, out _);
         StudyDd3 total = StudyDd3.Zero;
         for (int i = 0; i < n; i++)
         {
+            if (bodyMask != null && !bodyMask[i])
+            {
+                continue;
+            }
+
             OrbitingBody body = bodies[i];
             double mu = body.ResolveStandardGravitationalParameter();
             if (mu == 0d)
@@ -127,27 +135,45 @@ internal static partial class P1bTests
                 continue;
             }
 
-            sys.EvaluateBodyState(body, t, out Vector3d bp, out _);
+            sys.EvaluateBodyState(body, bodyTime, out Vector3d bp, out _);
             StudyDd3 d = StudyDd3.From(bp) - p;
             StudyDd r2 = d.SqrMagnitude;
+            if (r2.Hi < 1e-6d)
+            {
+                // Same numerical floor as PhysicsSolver: the body's own field at
+                // its centre is zero, not 0/0. Needed for a_body in the force test.
+                continue;
+            }
+
             StudyDd inv = StudyDd.From(1d) / (r2 * StudyDd.Sqrt(r2));
             total += d * (StudyDd.From(mu) * inv);
+            if (body.J2 != 0d)
+            {
+                double refR = body.J2ReferenceRadius > 0d
+                    ? body.J2ReferenceRadius
+                    : body.Radius;
+                Vector3d shipMinusBody = new Vector3d(
+                    -d.X.ToDouble, -d.Y.ToDouble, -d.Z.ToDouble);
+                total += StudyDd3.From(PhysicsSolver.CalculateJ2Acceleration(
+                    shipMinusBody, body.SpinAxis, mu, body.J2, refR));
+            }
         }
 
-        // Root-fixed frame: subtract the root's acceleration from its direct
-        // children (subtree mu), not the field value at the root (which is 0).
+        // Root-fixed frame: subtract the root's acceleration from all other bodies,
+        // each with its own mu and position (subtree-mu-at-child was an approximation
+        // that moved a moon's pull to its parent's position).
         Vector3d rootAccel = Vector3d.Zero;
         for (int i = 1; i < n; i++)
         {
-            OrbitingBody body = bodies[i];
-            if (!ReferenceEquals(body.Parent, bodies[0]))
+            if (bodyMask != null && !bodyMask[i])
             {
                 continue;
             }
 
-            sys.EvaluateBodyState(body, t, out Vector3d bp, out _);
+            OrbitingBody body = bodies[i];
+            sys.EvaluateBodyState(body, bodyTime, out Vector3d bp, out _);
             rootAccel += PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(
-                rootPos, bp, body.ResolveSubtreeStandardGravitationalParameter());
+                rootPos, bp, body.ResolveStandardGravitationalParameter());
         }
 
         return total - StudyDd3.From(rootAccel);

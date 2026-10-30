@@ -10,28 +10,49 @@ using Galilego.Spacecraft;
 using Galilego.Universe;
 
 internal static partial class P1bTests
-{    private static (Vector3d p, Vector3d v, long calls, double ms) StudyShipY6CDd(
-        StarSystem sys, Vector3d p0, Vector3d v0, double t0, double days, double h)
+{    private static double[] StudyCumulativeWeights(double[] ws)
     {
-        double T = t0 + (days * 86400d);
-        double t = t0;
+        var cw = new double[ws.Length + 1];
+        for (int i = 0; i < ws.Length; i++)
+        {
+            cw[i + 1] = cw[i] + ws[i];
+        }
+
+        cw[ws.Length] = 1d;
+        return cw;
+    }
+
+    private static (Vector3d p, Vector3d v, long calls, double ms) StudyShipY6CDd(
+        StarSystem sys, Vector3d p0, Vector3d v0, double t0, double days, double h,
+        bool[] bodyMask = null, bool frozenTime = false, double frozenAt = 0d)
+    {
+        double span = days * 86400d;
+        long full = (long)Math.Floor(span / h);
+        double rem = span - (full * h);
         StudyDd3 p = StudyDd3.From(p0);
         StudyDd3 v = StudyDd3.From(v0);
         double[] ws = StudyY6Weights();
+        double[] cw = StudyCumulativeWeights(ws);
         long calls = 0;
         var sw = Stopwatch.StartNew();
-        StudyDd3 a = StudyForceDd(sys, p, t);
+        StudyDd3 a = StudyForceDd(sys, p, t0, bodyMask, frozenTime, frozenAt);
         calls++;
-        while (t < T - 1e-9d)
+        for (long s = 0; s <= full; s++)
         {
-            double hStep = Math.Min(h, T - t);
-            foreach (double w in ws)
+            double hStep = s < full ? h : rem;
+            if (hStep <= 1e-9d)
             {
-                double dt = w * hStep;
+                break;
+            }
+
+            double tBase = t0 + (s * h);
+            for (int i = 0; i < ws.Length; i++)
+            {
+                double dt = ws[i] * hStep;
                 v += a * (0.5d * dt);
                 p += v * dt;
-                t += dt;
-                a = StudyForceDd(sys, p, t);
+                a = StudyForceDd(
+                    sys, p, tBase + (cw[i + 1] * hStep), bodyMask, frozenTime, frozenAt);
                 calls++;
                 v += a * (0.5d * dt);
             }
@@ -44,23 +65,31 @@ internal static partial class P1bTests
     private static (Vector3d p, Vector3d v) StudyShipRefA(
         StarSystem sys, Vector3d p0, Vector3d v0, double t0, double days, double h)
     {
-        double T = t0 + days * 86400d;
+        double span = days * 86400d;
+        long full = (long)Math.Floor(span / h);
+        double rem = span - (full * h);
         var p = new[] { p0.X, p0.Y, p0.Z };
         var v = new[] { v0.X, v0.Y, v0.Z };
         var pl = new double[3];
         var vl = new double[3];
-        double t = t0;
         long calls = 0;
         double[] ws = StudyY6Weights();
+        double[] cw = StudyCumulativeWeights(ws);
         Vector3d acc = sys.EvaluateShipAccelerationCached(
-            new Vector3d(p[0] + pl[0], p[1] + pl[1], p[2] + pl[2]), t);
+            new Vector3d(p[0] + pl[0], p[1] + pl[1], p[2] + pl[2]), t0);
         calls++;
-        while (t < T - 1e-9d)
+        for (long s = 0; s <= full; s++)
         {
-            double hStep = Math.Min(h, T - t);
-            foreach (double w in ws)
+            double hStep = s < full ? h : rem;
+            if (hStep <= 1e-9d)
             {
-                double dt = w * hStep;
+                break;
+            }
+
+            double tBase = t0 + (s * h);
+            for (int k = 0; k < ws.Length; k++)
+            {
+                double dt = ws[k] * hStep;
                 for (int i = 0; i < 3; i++)
                 {
                     StudyAdd(ref v[i], ref vl[i], 0.5d * dt * (i == 0 ? acc.X : (i == 1 ? acc.Y : acc.Z)));
@@ -71,9 +100,9 @@ internal static partial class P1bTests
                     StudyAdd(ref p[i], ref pl[i], dt * (v[i] + vl[i]));
                 }
 
-                t += dt;
                 acc = sys.EvaluateShipAccelerationCached(
-                    new Vector3d(p[0] + pl[0], p[1] + pl[1], p[2] + pl[2]), t);
+                    new Vector3d(p[0] + pl[0], p[1] + pl[1], p[2] + pl[2]),
+                    tBase + (cw[k + 1] * hStep));
                 calls++;
                 for (int i = 0; i < 3; i++)
                 {
@@ -95,23 +124,29 @@ internal static partial class P1bTests
         StarSystem sys, int central, Vector3d relP0, Vector3d relV0,
         double t0, double days, double h)
     {
-        double T = t0 + (days * 86400d);
+        double span = days * 86400d;
+        long full = (long)Math.Floor(span / h);
+        double rem = span - (full * h);
         var p = new[] { relP0.X, relP0.Y, relP0.Z };
         var v = new[] { relV0.X, relV0.Y, relV0.Z };
         var pl = new double[3];
         var vl = new double[3];
-        double t = t0;
-        long step = 0L;
         double[] ws = StudyY6Weights();
+        double[] cw = StudyCumulativeWeights(ws);
         Vector3d acc = StudyLocalAcceleration(
-            sys, central, new Vector3d(p[0] + pl[0], p[1] + pl[1], p[2] + pl[2]), t);
-        while (t < T - 1e-9d)
+            sys, central, new Vector3d(p[0] + pl[0], p[1] + pl[1], p[2] + pl[2]), t0);
+        for (long s = 0; s <= full; s++)
         {
-            double target = Math.Min(T, t0 + ((step + 1L) * h));
-            double hStep = target - t;
-            foreach (double w in ws)
+            double hStep = s < full ? h : rem;
+            if (hStep <= 1e-9d)
             {
-                double dt = w * hStep;
+                break;
+            }
+
+            double tBase = t0 + (s * h);
+            for (int k = 0; k < ws.Length; k++)
+            {
+                double dt = ws[k] * hStep;
                 for (int i = 0; i < 3; i++)
                 {
                     StudyAdd(ref v[i], ref vl[i], 0.5d * dt * (i == 0 ? acc.X : (i == 1 ? acc.Y : acc.Z)));
@@ -122,17 +157,14 @@ internal static partial class P1bTests
                     StudyAdd(ref p[i], ref pl[i], dt * (v[i] + vl[i]));
                 }
 
-                t += dt;
                 acc = StudyLocalAcceleration(
-                    sys, central, new Vector3d(p[0] + pl[0], p[1] + pl[1], p[2] + pl[2]), t);
+                    sys, central, new Vector3d(p[0] + pl[0], p[1] + pl[1], p[2] + pl[2]),
+                    tBase + (cw[k + 1] * hStep));
                 for (int i = 0; i < 3; i++)
                 {
                     StudyAdd(ref v[i], ref vl[i], 0.5d * dt * (i == 0 ? acc.X : (i == 1 ? acc.Y : acc.Z)));
                 }
             }
-
-            t = target;
-            step++;
         }
 
         return (new Vector3d(p[0] + pl[0], p[1] + pl[1], p[2] + pl[2]),

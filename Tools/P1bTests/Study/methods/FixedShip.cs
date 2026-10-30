@@ -13,24 +13,32 @@ internal static partial class P1bTests
 {    private static (Vector3d p, Vector3d v, long calls, double ms) StudyShipFixed(
         StarSystem sys, Vector3d p0, Vector3d v0, double t0, double days, double h, string method)
     {
-        double T = t0 + days * 86400d;
+        double span = days * 86400d;
+        long full = (long)Math.Floor(span / h);
+        double rem = span - (full * h);
         var p = new[] { p0.X, p0.Y, p0.Z };
         var v = new[] { v0.X, v0.Y, v0.Z };
-        double t = t0;
         long calls = 0;
         var sw = Stopwatch.StartNew();
         double[] ws = StudyY6Weights();
+        double[] cw = StudyCumulativeWeights(ws);
         if (method == "Y6")
         {
             Vector3d acc = sys.EvaluateShipAccelerationCached(
-                new Vector3d(p[0], p[1], p[2]), t);
+                new Vector3d(p[0], p[1], p[2]), t0);
             calls++;
-            while (t < T - 1e-9d)
+            for (long s = 0; s <= full; s++)
             {
-                double hStep = Math.Min(h, T - t);
-                foreach (double w in ws)
+                double hStep = s < full ? h : rem;
+                if (hStep <= 1e-9d)
                 {
-                    double dt = w * hStep;
+                    break;
+                }
+
+                double tBase = t0 + (s * h);
+                for (int k = 0; k < ws.Length; k++)
+                {
+                    double dt = ws[k] * hStep;
                     for (int i = 0; i < 3; i++)
                     {
                         v[i] += 0.5d * dt * (i == 0 ? acc.X : (i == 1 ? acc.Y : acc.Z));
@@ -41,9 +49,8 @@ internal static partial class P1bTests
                         p[i] += dt * v[i];
                     }
 
-                    t += dt;
                     acc = sys.EvaluateShipAccelerationCached(
-                        new Vector3d(p[0], p[1], p[2]), t);
+                        new Vector3d(p[0], p[1], p[2]), tBase + (cw[k + 1] * hStep));
                     calls++;
                     for (int i = 0; i < 3; i++)
                     {
@@ -57,16 +64,22 @@ internal static partial class P1bTests
             const double xi = 0.1786178958448091d;
             const double lam = -0.2123418310626054d;
             const double chi = -0.06626458266981849d;
-            while (t < T - 1e-9d)
+            for (long s = 0; s <= full; s++)
             {
-                double hStep = Math.Min(h, T - t);
+                double hStep = s < full ? h : rem;
+                if (hStep <= 1e-9d)
+                {
+                    break;
+                }
+
+                double tBase = t0 + (s * h);
                 for (int i = 0; i < 3; i++)
                 {
                     p[i] += xi * hStep * v[i];
                 }
 
-                t += xi * hStep;
-                Vector3d acc = sys.EvaluateShipAccelerationCached(new Vector3d(p[0], p[1], p[2]), t);
+                Vector3d acc = sys.EvaluateShipAccelerationCached(
+                    new Vector3d(p[0], p[1], p[2]), tBase + (xi * hStep));
                 calls++;
                 for (int i = 0; i < 3; i++)
                 {
@@ -78,8 +91,8 @@ internal static partial class P1bTests
                     p[i] += chi * hStep * v[i];
                 }
 
-                t += chi * hStep;
-                acc = sys.EvaluateShipAccelerationCached(new Vector3d(p[0], p[1], p[2]), t);
+                acc = sys.EvaluateShipAccelerationCached(
+                    new Vector3d(p[0], p[1], p[2]), tBase + ((xi + chi) * hStep));
                 calls++;
                 for (int i = 0; i < 3; i++)
                 {
@@ -91,8 +104,8 @@ internal static partial class P1bTests
                     p[i] += (1d - (2d * (chi + xi))) * hStep * v[i];
                 }
 
-                t += (1d - (2d * (chi + xi))) * hStep;
-                acc = sys.EvaluateShipAccelerationCached(new Vector3d(p[0], p[1], p[2]), t);
+                acc = sys.EvaluateShipAccelerationCached(
+                    new Vector3d(p[0], p[1], p[2]), tBase + ((1d - chi - xi) * hStep));
                 calls++;
                 for (int i = 0; i < 3; i++)
                 {
@@ -104,8 +117,8 @@ internal static partial class P1bTests
                     p[i] += chi * hStep * v[i];
                 }
 
-                t += chi * hStep;
-                acc = sys.EvaluateShipAccelerationCached(new Vector3d(p[0], p[1], p[2]), t);
+                acc = sys.EvaluateShipAccelerationCached(
+                    new Vector3d(p[0], p[1], p[2]), tBase + ((1d - xi) * hStep));
                 calls++;
                 for (int i = 0; i < 3; i++)
                 {
@@ -116,8 +129,6 @@ internal static partial class P1bTests
                 {
                     p[i] += xi * hStep * v[i];
                 }
-
-                t += xi * hStep;
             }
         }
         else
@@ -134,28 +145,34 @@ internal static partial class P1bTests
         StarSystem sys, int central, Vector3d relP0, Vector3d relV0,
         double t0, double days, double h, string method, bool directForce = false)
     {
-        double T = t0 + (days * 86400d);
+        double span = days * 86400d;
+        long full = (long)Math.Floor(span / h);
+        double rem = span - (full * h);
         var p = new[] { relP0.X, relP0.Y, relP0.Z };
         var v = new[] { relV0.X, relV0.Y, relV0.Z };
-        double t = t0;
-        long step = 0L;
         long calls = 0;
         var sw = Stopwatch.StartNew();
         double[] ws = StudyY6Weights();
+        double[] cw = StudyCumulativeWeights(ws);
         Vector3d Acc(Vector3d rp, double tt) => directForce
             ? StudyLocalAccelerationDirect(sys, central, rp, tt)
             : StudyLocalAcceleration(sys, central, rp, tt);
         if (method == "Y6")
         {
-            Vector3d acc = Acc(new Vector3d(p[0], p[1], p[2]), t);
+            Vector3d acc = Acc(new Vector3d(p[0], p[1], p[2]), t0);
             calls++;
-            while (t < T - 1e-9d)
+            for (long s = 0; s <= full; s++)
             {
-                double target = Math.Min(T, t0 + ((step + 1L) * h));
-                double hStep = target - t;
-                foreach (double w in ws)
+                double hStep = s < full ? h : rem;
+                if (hStep <= 1e-9d)
                 {
-                    double dt = w * hStep;
+                    break;
+                }
+
+                double tBase = t0 + (s * h);
+                for (int k = 0; k < ws.Length; k++)
+                {
+                    double dt = ws[k] * hStep;
                     for (int i = 0; i < 3; i++)
                     {
                         v[i] += 0.5d * dt * (i == 0 ? acc.X : (i == 1 ? acc.Y : acc.Z));
@@ -166,17 +183,13 @@ internal static partial class P1bTests
                         p[i] += dt * v[i];
                     }
 
-                    t += dt;
-                    acc = Acc(new Vector3d(p[0], p[1], p[2]), t);
+                    acc = Acc(new Vector3d(p[0], p[1], p[2]), tBase + (cw[k + 1] * hStep));
                     calls++;
                     for (int i = 0; i < 3; i++)
                     {
                         v[i] += 0.5d * dt * (i == 0 ? acc.X : (i == 1 ? acc.Y : acc.Z));
                     }
                 }
-
-                t = target;
-                step++;
             }
         }
         else if (method == "PEFRL")
@@ -184,17 +197,21 @@ internal static partial class P1bTests
             const double xi = 0.1786178958448091d;
             const double lam = -0.2123418310626054d;
             const double chi = -0.06626458266981849d;
-            while (t < T - 1e-9d)
+            for (long s = 0; s <= full; s++)
             {
-                double target = Math.Min(T, t0 + ((step + 1L) * h));
-                double hStep = target - t;
+                double hStep = s < full ? h : rem;
+                if (hStep <= 1e-9d)
+                {
+                    break;
+                }
+
+                double tBase = t0 + (s * h);
                 for (int i = 0; i < 3; i++)
                 {
                     p[i] += xi * hStep * v[i];
                 }
 
-                t += xi * hStep;
-                Vector3d acc = Acc(new Vector3d(p[0], p[1], p[2]), t);
+                Vector3d acc = Acc(new Vector3d(p[0], p[1], p[2]), tBase + (xi * hStep));
                 calls++;
                 for (int i = 0; i < 3; i++)
                 {
@@ -206,8 +223,7 @@ internal static partial class P1bTests
                     p[i] += chi * hStep * v[i];
                 }
 
-                t += chi * hStep;
-                acc = Acc(new Vector3d(p[0], p[1], p[2]), t);
+                acc = Acc(new Vector3d(p[0], p[1], p[2]), tBase + ((xi + chi) * hStep));
                 calls++;
                 for (int i = 0; i < 3; i++)
                 {
@@ -219,8 +235,7 @@ internal static partial class P1bTests
                     p[i] += (1d - (2d * (chi + xi))) * hStep * v[i];
                 }
 
-                t += (1d - (2d * (chi + xi))) * hStep;
-                acc = Acc(new Vector3d(p[0], p[1], p[2]), t);
+                acc = Acc(new Vector3d(p[0], p[1], p[2]), tBase + ((1d - chi - xi) * hStep));
                 calls++;
                 for (int i = 0; i < 3; i++)
                 {
@@ -232,8 +247,7 @@ internal static partial class P1bTests
                     p[i] += chi * hStep * v[i];
                 }
 
-                t += chi * hStep;
-                acc = Acc(new Vector3d(p[0], p[1], p[2]), t);
+                acc = Acc(new Vector3d(p[0], p[1], p[2]), tBase + ((1d - xi) * hStep));
                 calls++;
                 for (int i = 0; i < 3; i++)
                 {
@@ -244,10 +258,6 @@ internal static partial class P1bTests
                 {
                     p[i] += xi * hStep * v[i];
                 }
-
-                t += xi * hStep;
-                t = target;
-                step++;
             }
         }
         else
