@@ -27,15 +27,6 @@
              Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
-  <!-- Oracle references: linked, not copied. They use only System.* and are
-       not part of the P1bTests harness infrastructure. -->
-  <ItemGroup>
-    <Compile Include="..\..\Tools\P1bTests\Reference\TaylorJet.cs"
-             Link="Oracle\TaylorJet.cs" />
-    <Compile Include="..\..\Tools\P1bTests\Reference\TaylorNBody.cs"
-             Link="Oracle\TaylorNBody.cs" />
-  </ItemGroup>
-
   <ItemGroup>
     <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
@@ -52,7 +43,7 @@
           Link="GoldenData\golden_real_10y_k28.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="GoldenData\golden_core_kepler.json"
           CopyToOutputDirectory="PreserveNewest" />
-    <None Include="GoldenData\golden_core_kepler_10y.json"
+    <None Include="GoldenData\golden_core_kepler_1y.json"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

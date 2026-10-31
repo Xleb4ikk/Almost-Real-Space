@@ -4,39 +4,37 @@ using System.Linq;
 using GalilegoPhysicsTests.Support;
 using GalilegoPhysicsTests.Support.Scenarios;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace GalilegoPhysicsTests.Integration.Matrix
 {
-    [Trait("Tier", "Fast")]
     public sealed class StepControllerTests
     {
-        private readonly ITestOutputHelper output;
-
-        public StepControllerTests(ITestOutputHelper output)
+        [Theory]
+        [Trait("Tier", "Fast")]
+        [InlineData("Dopri5")]
+        [InlineData("Dop853")]
+        public void TighterToleranceIncreasesTheStepCountOnFastScenarios(string integratorName)
         {
-            this.output = output;
+            AssertStepCountsIncrease(Parse(integratorName), ScenarioCatalog.Fast());
         }
 
         [Theory]
+        [Trait("Tier", "Slow")]
         [InlineData("Dopri5")]
         [InlineData("Dop853")]
-        public void TighterToleranceDoesNotReduceTheStepCountExceptForExplicitBounds(string integratorName)
+        public void TighterToleranceIncreasesTheStepCountOnSlowScenarios(string integratorName)
         {
-            IntegratorKind integrator = integratorName == "Dop853"
-                ? IntegratorKind.Dop853
-                : IntegratorKind.Dopri5;
-            var excluded = new List<string>();
-            foreach (Scenario scenario in ScenarioCatalog.All)
-            {
-                if (scenario.ControllerBound)
-                {
-                    excluded.Add(scenario.Id + " / " + scenario.IntegratorLabel(integrator) +
-                                 ": " + scenario.ControllerBoundReason);
-                    continue;
-                }
+            AssertStepCountsIncrease(Parse(integratorName), ScenarioCatalog.Slow());
+        }
 
+        private static void AssertStepCountsIncrease(IntegratorKind integrator, IEnumerable<Scenario> scenarios)
+        {
+            foreach (Scenario scenario in scenarios)
+            {
                 double[] tolerances = scenario.Tolerances.OrderByDescending(value => value).ToArray();
+                Asserts.True(tolerances.Length >= 2,
+                    scenario.Id + " needs at least two tolerances to exercise the step controller.");
+
                 int previous = -1;
                 var steps = new List<int>();
                 foreach (double tolerance in tolerances)
@@ -50,16 +48,16 @@ namespace GalilegoPhysicsTests.Integration.Matrix
                     previous = run.Steps;
                 }
 
-                Asserts.True(steps.Count >= 2 && steps[steps.Count - 1] > steps[0],
+                Asserts.True(steps[steps.Count - 1] > steps[0],
                     "step controller is not active for " + scenario.Id + " / " +
                     scenario.IntegratorLabel(integrator) + ": steps " +
-                    string.Join(" -> ", steps) + "; mark it ControllerBound with a reason.");
+                    string.Join(" -> ", steps) + ".");
             }
+        }
 
-            foreach (string line in excluded)
-            {
-                output.WriteLine("ControllerBound: " + line);
-            }
+        private static IntegratorKind Parse(string integratorName)
+        {
+            return integratorName == "Dop853" ? IntegratorKind.Dop853 : IntegratorKind.Dopri5;
         }
     }
 }

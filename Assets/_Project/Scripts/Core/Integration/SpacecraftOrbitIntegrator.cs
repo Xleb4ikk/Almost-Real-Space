@@ -11,7 +11,7 @@ namespace Galilego.Core
     /// Step control (adaptive scaling, FSAL, step-update formulas) mirrors
     /// OrbitIntegrator.StepForward. The ONLY semantic difference: the error norm is
     /// computed separately for Position / Velocity / Mass, each with its own
-    /// absolute tolerance вЂ” metres, m/s and kilograms have different scales, so a
+    /// absolute tolerance — metres, m/s and kilograms have different scales, so a
     /// single error number for them is physically meaningless.
     /// </summary>
     /// <summary>
@@ -60,7 +60,7 @@ namespace Galilego.Core
         public delegate SpacecraftIntegrationState DerivativeFunction(
             SpacecraftIntegrationState state, double timeSeconds);
 
-        // Butcher tableau coefficients вЂ” the same single source of truth as
+        // Butcher tableau coefficients — the same single source of truth as
         // OrbitIntegrator. No number is duplicated literally here.
         private const double a21 = DOPRI5Coefficients.a21;
         private const double a31 = DOPRI5Coefficients.a31;
@@ -143,22 +143,22 @@ namespace Galilego.Core
                 throw new ArgumentNullException(nameof(derivativeProvider));
 
             // Forward-only contract: with targetDt < 0 the RHS stages run forward while
-            // the clock runs backward вЂ” silent garbage (audit S1/A1). All callers go
+            // the clock runs backward — silent garbage (audit S1/A1). All callers go
             // forward; backward motion fails loudly instead of corrupting silently.
             if (targetDt < 0d)
                 throw new ArgumentOutOfRangeException(nameof(targetDt),
-                    "РРЅС‚РµРіСЂР°С‚РѕСЂ forward-only: targetDt=" + targetDt + " < 0. РћР±СЂР°С‚РЅС‹Р№ С…РѕРґ РІСЂРµРјРµРЅРё РЅРµ РїРѕРґРґРµСЂР¶Р°РЅ.");
+                    "Интегратор forward-only: targetDt=" + targetDt + " < 0. Обратный ход времени не поддерживается.");
 
             if (targetDt == 0.0)
                 return new SpacecraftIntegrationResult(initialState);
 
             if (!initialState.IsFinite)
                 throw new InvalidOperationException(
-                    "РќР°С‡Р°Р»СЊРЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ РєРѕСЂР°Р±Р»СЏ РЅРµ-РєРѕРЅРµС‡РЅРѕ: " + initialState + " вЂ” РґР°Р»СЊРЅРµР№С€Р°СЏ РёРЅС‚РµРіСЂР°С†РёСЏ Р±РµСЃСЃРјС‹СЃР»РµРЅРЅР°.");
+                    "Начальное состояние корабля не-конечно: " + initialState + " — дальнейшая интеграция бессмысленна.");
 
             // FSAL (First Same As Last) init: k7 of an accepted step = k1 of the next.
             // The FULL derivative (including dMass/dt) is cached here, not just the
-            // acceleration вЂ” otherwise reusing k1 for mass would be wrong.
+            // acceleration — otherwise reusing k1 for mass would be wrong.
             SpacecraftIntegrationState fsalDerivative = derivativeProvider(initialState, currentTimeSeconds);
             bool fsalValid = true;
 
@@ -302,8 +302,8 @@ namespace Galilego.Core
                         if (!current.IsFinite)
                         {
                             throw new InvalidOperationException(
-                                "РРЅС‚РµРіСЂР°С‚РѕСЂ РїРѕР»СѓС‡РёР» РЅРµ-РєРѕРЅРµС‡РЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ РїСЂРё force-accept (t=" + time.ToString("R") +
-                                ", dt=" + dt.ToString("R") + ") вЂ” RHS РІРµСЂРЅСѓР» NaN/Inf.");
+                                "Интегратор получил не-конечное состояние при force-accept (t=" + time.ToString("R") +
+                                ", dt=" + dt.ToString("R") + ") — RHS вернул NaN/Inf.");
                         }
 
                         fsalDerivative = forcedFsal;
@@ -320,6 +320,12 @@ namespace Galilego.Core
             return new SpacecraftIntegrationResult(current);
         }
 
+        /// <summary>
+        /// Integrates the full state forward with adaptive DOP853. When a
+        /// dense-segment collector is supplied, each accepted step gets the full
+        /// Hairer/Wanner contd8 polynomial (8th-order interpolation), which needs
+        /// three extra RHS evaluations per accepted step.
+        /// </summary>
         public static SpacecraftIntegrationResult StepForwardDop853(
             SpacecraftIntegrationState initialState,
             double currentTimeSeconds,
@@ -627,9 +633,9 @@ namespace Galilego.Core
             errVel = (fifth.Velocity - fourth.Velocity).Magnitude;
             errMass = Math.Abs(fifth.Mass - fourth.Mass);
 
-            // Shampine dense output (Hairer dopri5.f CONTD5): k7 here is f(t0+h, y1) вЂ”
+            // Shampine dense output (Hairer dopri5.f CONTD5): k7 here is f(t0+h, y1) —
             // exactly the K2 used by the C3/C4 formulas. Always computed (a few vector
-            // ops); entries go to a segment only for accepted steps вЂ” the caller owns
+            // ops); entries go to a segment only for accepted steps — the caller owns
             // the collector.
             SpacecraftIntegrationState dc1 = fifth - state;
             SpacecraftIntegrationState dc2 = (k1 * dt) - dc1;
@@ -662,7 +668,7 @@ namespace Galilego.Core
             errMass = 0d;
             dense = default;
 
-            var k = new SpacecraftIntegrationState[12];
+            var k = new SpacecraftIntegrationState[collectDense ? 16 : 12];
             k[0] = derivativeProvider(state, time);
 
             for (int s = 1; s < 12; s++)
@@ -706,11 +712,62 @@ namespace Galilego.Core
                     return;
                 }
 
-                SpacecraftIntegrationState kEnd = derivativeProvider(eighth, time + dt);
-                SpacecraftIntegrationState dc1 = eighth - state;
-                SpacecraftIntegrationState dc2 = (k[0] * dt) - dc1;
-                SpacecraftIntegrationState dc3 = dc1 - dc2 - (kEnd * dt);
-                dense = new ShampineCoeffs(dc1, dc2, dc3, SpacecraftIntegrationState.Zero);
+                // FSAL stage k12 = f(t+h, y1), then the three extended stages of
+                // Hairer/Wanner contd8. They are needed only for dense output.
+                k[12] = derivativeProvider(eighth, time + dt);
+                bool extendedStagesValid = true;
+                for (int s = 13; s < 16; s++)
+                {
+                    SpacecraftIntegrationState stage = state;
+                    double[] row = DOP853Coefficients.AExtra[s - 13];
+                    for (int j = 0; j < s; j++)
+                    {
+                        double a = row[j];
+                        if (a != 0d)
+                        {
+                            stage += k[j] * (dt * a);
+                        }
+                    }
+
+                    if (!(stage.Mass > 0d))
+                    {
+                        extendedStagesValid = false;
+                        break;
+                    }
+
+                    k[s] = derivativeProvider(stage, time + (dt * DOP853Coefficients.CExtra[s - 13]));
+                }
+
+                if (extendedStagesValid)
+                {
+                    SpacecraftIntegrationState delta = eighth - state;
+                    SpacecraftIntegrationState f0 = delta;
+                    SpacecraftIntegrationState f1 = (k[0] * dt) - delta;
+                    SpacecraftIntegrationState f2 = (delta * 2d) - ((k[12] + k[0]) * dt);
+                    SpacecraftIntegrationState f3 = SpacecraftIntegrationState.Zero;
+                    SpacecraftIntegrationState f4 = SpacecraftIntegrationState.Zero;
+                    SpacecraftIntegrationState f5 = SpacecraftIntegrationState.Zero;
+                    SpacecraftIntegrationState f6 = SpacecraftIntegrationState.Zero;
+                    for (int s = 0; s < 16; s++)
+                    {
+                        f3 += k[s] * (dt * DOP853Coefficients.D[0][s]);
+                        f4 += k[s] * (dt * DOP853Coefficients.D[1][s]);
+                        f5 += k[s] * (dt * DOP853Coefficients.D[2][s]);
+                        f6 += k[s] * (dt * DOP853Coefficients.D[3][s]);
+                    }
+
+                    dense = new ShampineCoeffs(f0, f1, f2, f3, f4, f5, f6);
+                }
+                else
+                {
+                    // The accepted endpoint is valid, but an extended stage left the
+                    // positive-mass domain. Fall back to the cubic Shampine segment
+                    // instead of rejecting an already accepted step.
+                    SpacecraftIntegrationState dc1 = eighth - state;
+                    SpacecraftIntegrationState dc2 = (k[0] * dt) - dc1;
+                    SpacecraftIntegrationState dc3 = dc1 - dc2 - (k[12] * dt);
+                    dense = new ShampineCoeffs(dc1, dc2, dc3, SpacecraftIntegrationState.Zero);
+                }
             }
         }
     }

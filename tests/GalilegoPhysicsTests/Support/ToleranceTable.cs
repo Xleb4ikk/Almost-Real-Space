@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using GalilegoPhysicsTests.Support.Scenarios;
 
 namespace GalilegoPhysicsTests.Support
@@ -17,131 +18,197 @@ namespace GalilegoPhysicsTests.Support
         public double ChunkingPositionMeters;
         public double ChunkingVelocityMetersPerSecond;
         public double DenseInterpolationMeters;
-
-        public ToleranceProfile Scale(double factor)
-        {
-            return new ToleranceProfile
-            {
-                OraclePositionMeters = OraclePositionMeters * factor,
-                OracleVelocityMetersPerSecond = OracleVelocityMetersPerSecond * factor,
-                OracleMassRelative = OracleMassRelative * factor,
-                EnergyRelative = EnergyRelative * factor,
-                AngularMomentumRelative = AngularMomentumRelative * factor,
-                LaplaceRungeLenzAbsolute = LaplaceRungeLenzAbsolute * factor,
-                ReversibilityPositionMeters = ReversibilityPositionMeters * factor,
-                ReversibilityVelocityMetersPerSecond = ReversibilityVelocityMetersPerSecond * factor,
-                ChunkingPositionMeters = ChunkingPositionMeters * factor,
-                ChunkingVelocityMetersPerSecond = ChunkingVelocityMetersPerSecond * factor,
-                DenseInterpolationMeters = DenseInterpolationMeters * factor
-            };
-        }
     }
 
     /// <summary>
-    /// The single place where assertion tolerances live. Base values are measured
-    /// at requested integrator tolerance 1e-9 on the full fast matrix, then given
-    /// 10x headroom; see TestResults/calibration.md. Scale(tol) applies the
-    /// requested-tolerance ratio (measured errors generally grow with tolerance,
-    /// so the scaled table stays conservative for loose and tight runs).
+    /// Per-(scenario, integrator, tolerance) assertion gates measured by
+    /// GALILEGO_CALIBRATE=1. There is no class lumping and no linear scaling:
+    /// every matrix row owns its gate, with ~3x headroom over the measured error.
+    /// ToleranceTableConsistencyTests fails when a gate drifts outside that band.
     /// </summary>
     internal static class ToleranceTable
     {
-        private static readonly Dictionary<(IntegratorKind, ScenarioClass), ToleranceProfile> Base =
-            new Dictionary<(IntegratorKind, ScenarioClass), ToleranceProfile>
+        private static readonly Dictionary<(IntegratorKind, string, double), ToleranceProfile> Rows =
+            new Dictionary<(IntegratorKind, string, double), ToleranceProfile>
             {
-                [(IntegratorKind.Dopri5, ScenarioClass.KeplerCircular)] =
-                    Profile(7.60e-1, 8.20e-4, 7.550e-9, 1.132e-8, 2.460e-8, 3.894, 3.894, 3.894),
-                [(IntegratorKind.Dopri5, ScenarioClass.KeplerEccentric)] =
-                    Profile(4.509, 6.249e-3, 6.708e-9, 2.061e-8, 4.511e-8, 45.09, 45.09, 45.09),
-                [(IntegratorKind.Dopri5, ScenarioClass.KeplerHighEccentric)] =
-                    Profile(1.628e3, 7.286e2, 3.834e-9, 3.762e-8, 5.216e-8, 1.628e4, 1.628e4, 1.628e4),
-                [(IntegratorKind.Dopri5, ScenarioClass.KeplerHyperbolic)] =
-                    Profile(1.298e-1, 1.516e-4, 1.163e-8, 3.236e-8, 7.475e-8, 1.298, 1.298, 1.298),
-                [(IntegratorKind.Dopri5, ScenarioClass.KeplerNearParabolic)] =
-                    Profile(8.598e-1, 1.164e-2, 3.195e-9, 3.316e-8, 2.154e-8, 8.598, 8.598, 8.598),
-                [(IntegratorKind.Dopri5, ScenarioClass.RestrictedNBody)] =
-                    Profile(1.068e-3, 5.124e-9, 7.381e-5, 1.107e-4, 2.274e-4, 1.068e-2, 1.068e-2, 1.068e-2),
-                [(IntegratorKind.Dopri5, ScenarioClass.RestrictedFlyby)] =
-                    Profile(1.0, 3.20e-2, 0d, 0d, 0d, 1e1, 1e1, 1e1),
-                [(IntegratorKind.Dopri5, ScenarioClass.Thrust)] =
-                    Profile(1.905e-6, 7.723e-9, 0d, 0d, 0d, 1.905e-5, 1.905e-5, 1.905e-5, 2.526e-15),
-                [(IntegratorKind.Dopri5, ScenarioClass.Drift)] =
-                    Profile(1.118e-7, 1e-9, 0d, 0d, 0d, 1.118e-6, 1.118e-6, 1.118e-6),
-
-                [(IntegratorKind.Dop853, ScenarioClass.KeplerCircular)] =
-                    Profile(5.838e1, 6.293e-2, 1.112e-5, 1.668e-5, 2.502e-5, 5.838e2, 5.838e2, 5.838e2),
-                [(IntegratorKind.Dop853, ScenarioClass.KeplerEccentric)] =
-                    Profile(1.479e2, 3.137e-1, 2.623e-5, 5.528e-5, 9.024e-5, 1.479e3, 1.479e3, 1.479e3),
-                [(IntegratorKind.Dop853, ScenarioClass.KeplerHighEccentric)] =
-                    Profile(7.982e1, 2.635e-1, 7.906e-7, 3.538e-5, 2.787e-5, 7.982e2, 7.982e2, 7.982e2),
-                [(IntegratorKind.Dop853, ScenarioClass.KeplerHyperbolic)] =
-                    Profile(4.743e1, 1.377e-1, 8.763e-6, 1.727e-5, 4.925e-5, 4.743e1, 4.743e1, 4.743e1),
-                [(IntegratorKind.Dop853, ScenarioClass.KeplerNearParabolic)] =
-                    Profile(3.170, 4.271e-1, 2.851e-7, 1.024e-5, 2.555e-6, 3.170, 3.170, 3.170),
-                [(IntegratorKind.Dop853, ScenarioClass.RestrictedNBody)] =
-                    Profile(7.838e-2, 4.904e-7, 7.381e-5, 1.107e-4, 2.274e-4, 7.838e-1, 7.838e-1, 7.838e-1),
-                [(IntegratorKind.Dop853, ScenarioClass.RestrictedFlyby)] =
-                    Profile(1.11e2, 1.30e-1, 0d, 0d, 0d, 1.11e3, 1.11e3, 1.11e3),
-                [(IntegratorKind.Dop853, ScenarioClass.Thrust)] =
-                    Profile(3.514e-2, 1.082e-4, 0d, 0d, 0d, 3.514e-1, 3.514e-1, 3.514e-1, 3.790e-15),
-                [(IntegratorKind.Dop853, ScenarioClass.Drift)] =
-                    Profile(1e-8, 1e-10, 0d, 0d, 0d, 1e-7, 1e-7, 1e-7),
-
-                [(IntegratorKind.Dopri5, ScenarioClass.KeplerCircularLong)] =
-                    Profile(7.996e3, 8.619, 8.111e-7, 1.217e-6, 2.345e-8, 7.996e4, 7.996e4, 7.996e4),
-                [(IntegratorKind.Dopri5, ScenarioClass.KeplerEccentricLong)] =
-                    Profile(4.292e3, 6.084, 1.528e-7, 3.959e-7, 9.979e-7, 4.292e4, 4.292e4, 4.292e4),
-                [(IntegratorKind.Dopri5, ScenarioClass.KeplerHighEccentricLong)] =
-                    Profile(5.86e2, 2.828e1, 2.185e-8, 7.929e-8, 1.498e-7, 2.093e3, 2.093e3, 2.093e3),
-                [(IntegratorKind.Dopri5, ScenarioClass.KeplerHyperbolicLong)] =
-                    Profile(4.345, 1.064e-4, 5.104e-9, 3.356e-8, 5.266e-8, 4.345e1, 4.345e1, 4.345e1),
-
-                [(IntegratorKind.Dop853, ScenarioClass.KeplerCircularLong)] =
-                    Profile(1.262e2, 1.361e-1, 2.405e-5, 3.607e-5, 5.411e-5, 1.262e3, 1.262e3, 1.262e3),
-                [(IntegratorKind.Dop853, ScenarioClass.KeplerEccentricLong)] =
-                    Profile(3.002e2, 5.180e-1, 4.320e-5, 1.091e-4, 1.487e-4, 3.002e3, 3.002e3, 3.002e3),
-                [(IntegratorKind.Dop853, ScenarioClass.KeplerHighEccentricLong)] =
-                    Profile(1.374e2, 6.807e-1, 2.925e-5, 6.653e-5, 1.131e-4, 1.374e3, 1.374e3, 1.374e3),
-                [(IntegratorKind.Dop853, ScenarioClass.KeplerHyperbolicLong)] =
-                    Profile(1.379e2, 3.831e-2, 1.103e-6, 8.961e-6, 1.338e-5, 1.379e3, 1.379e3, 1.379e3),
-
-                [(IntegratorKind.Dop853, ScenarioClass.GoldenCircular10y)] =
-                    Profile(3.869e4, 4.171e1, 1d, 1d, 1d, 3.869e5, 3.869e5, 3.869e5),
-                [(IntegratorKind.Dop853, ScenarioClass.GoldenEccentric1y)] =
-                    Profile(3.890e2, 5.638e-1, 1d, 1d, 1d, 3.890e3, 3.890e3, 3.890e3)
+                [(IntegratorKind.Dop853, "drift-harmonic", 1e-12d)] =
+                    Gates(2.906400e-7, 3.930000e-10, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "drift-harmonic", 1e-9d)] =
+                    Gates(1.863000e-4, 3.663000e-7, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "drift-harmonic", 1e-6d)] =
+                    Gates(2.148900e+0, 3.591000e-3, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "drift-harmonic", 1e-12d)] =
+                    Gates(8.532000e-5, 1.895700e-7, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "drift-harmonic", 1e-9d)] =
+                    Gates(9.093000e-2, 1.946400e-4, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "drift-harmonic", 1e-6d)] =
+                    Gates(1.060200e+2, 1.883400e-1, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-circular", 1e-12d)] =
+                    Gates(3.270000e-7, 3.909000e-10, 0d, 7.851000e-15, 1.170000e-14, 1.548000e-14, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-circular", 1e-9d)] =
+                    Gates(6.906000e-5, 6.690000e-8, 0d, 2.593800e-12, 3.891000e-12, 3.489000e-12, 5.369199e-06, 5.729451e-09, 1.180244e-05, 1.165571e-08, 6.690000e-5),
+                [(IntegratorKind.Dop853, "kepler-circular", 1e-6d)] =
+                    Gates(6.801000e-1, 6.231000e-4, 0d, 2.531700e-8, 3.798000e-8, 3.321000e-8, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-circular", 1e-12d)] =
+                    Gates(2.204100e-4, 2.322600e-7, 0d, 2.527500e-12, 3.792000e-12, 6.810000e-12, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-circular", 1e-9d)] =
+                    Gates(1.168200e-1, 9.816000e-5, 0d, 2.265000e-9, 3.396000e-9, 7.380000e-9, 4.580610e-01, 4.858488e-04, 1.994936e-03, 1.302204e-06, 1.177200e-1),
+                [(IntegratorKind.Dopri5, "kepler-circular", 1e-6d)] =
+                    Gates(7.581000e+2, 8.091000e-1, 0d, 2.284500e-6, 3.426000e-6, 1.310700e-5, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-circular-100p", 1e-12d)] =
+                    Gates(2.886900e-4, 3.111000e-7, 0d, 4.539000e-14, 6.804000e-14, 6.036000e-14, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-circular-100p", 1e-10d)] =
+                    Gates(8.955000e-4, 9.657000e-7, 0d, 1.829100e-13, 2.742900e-13, 1.502100e-13, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-circular-100p", 1e-12d)] =
+                    Gates(2.502300e+0, 2.697300e-3, 0d, 2.532000e-10, 3.798000e-10, 6.966000e-12, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-circular-100p", 1e-10d)] =
+                    Gates(2.398800e+2, 2.585700e-1, 0d, 2.433300e-8, 3.651000e-8, 7.035000e-10, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-e01", 1e-9d)] =
+                    Gates(3.609000e-4, 2.288400e-7, 0d, 3.522000e-12, 6.549000e-12, 1.292700e-11, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-e01", 1e-6d)] =
+                    Gates(2.149800e+0, 1.691100e-3, 0d, 3.912000e-8, 6.825000e-8, 1.167000e-7, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-e01", 1e-9d)] =
+                    Gates(2.531100e-1, 1.574700e-4, 0d, 1.891500e-9, 3.519000e-9, 8.964000e-9, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-e01", 1e-6d)] =
+                    Gates(6.792000e+2, 5.490000e-1, 0d, 2.942700e-6, 4.737000e-6, 1.451100e-5, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-e05", 1e-12d)] =
+                    Gates(2.909700e-7, 4.173000e-10, 0d, 4.101000e-15, 6.318000e-15, 1.059300e-14, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-e05", 1e-9d)] =
+                    Gates(5.640000e-4, 8.007000e-7, 0d, 4.770000e-12, 3.036000e-11, 3.021000e-11, 1.236076e-03, 1.737795e-06, 9.500118e-05, 1.272210e-07, 5.847000e-4),
+                [(IntegratorKind.Dop853, "kepler-e05", 1e-6d)] =
+                    Gates(1.688700e+0, 1.997400e-3, 0d, 2.411100e-8, 8.964000e-8, 2.275500e-7, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-e05", 1e-12d)] =
+                    Gates(6.816000e-4, 9.813000e-7, 0d, 2.161500e-12, 4.389000e-12, 1.020600e-11, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-e05", 1e-9d)] =
+                    Gates(1.352700e+0, 1.874700e-3, 0d, 1.844700e-9, 6.183000e-9, 1.353300e-8, 1.005773e+00, 1.423379e-03, 8.861724e-03, 1.145355e-05, 1.358700e+0),
+                [(IntegratorKind.Dopri5, "kepler-e05", 1e-6d)] =
+                    Gates(2.520900e+3, 3.486000e+0, 0d, 2.453700e-6, 9.459000e-6, 2.817000e-5, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-e05-50p", 1e-12d)] =
+                    Gates(1.062300e-3, 1.507800e-6, 0d, 4.182000e-14, 1.031700e-13, 6.360000e-14, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-e05-50p", 1e-10d)] =
+                    Gates(4.470000e-2, 6.348000e-5, 0d, 1.725300e-12, 3.981000e-12, 6.567000e-12, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-e05-50p", 1e-12d)] =
+                    Gates(1.459200e+0, 2.070300e-3, 0d, 5.280000e-11, 1.284600e-10, 1.402200e-10, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-e05-50p", 1e-10d)] =
+                    Gates(1.287600e+2, 1.825200e-1, 0d, 4.584000e-9, 1.187700e-8, 2.993700e-8, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-e09", 1e-9d)] =
+                    Gates(5.898000e-3, 8.535000e-5, 0d, 9.903000e-13, 6.840000e-12, 6.339000e-12, 9.914670e-03, 1.436051e-04, 2.569528e-05, 3.755139e-07, 5.898000e-3),
+                [(IntegratorKind.Dop853, "kepler-e09", 1e-6d)] =
+                    Gates(1.369800e+1, 1.982400e-1, 0d, 5.250000e-9, 3.558000e-8, 2.298000e-8, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-e09", 1e-9d)] =
+                    Gates(1.631400e+1, 2.361900e-1, 0d, 1.150200e-9, 1.128600e-8, 1.564800e-8, 6.684021e+00, 9.681213e-02, 1.181436e-02, 1.716204e-04, 1.631400e+1),
+                [(IntegratorKind.Dopri5, "kepler-e09", 1e-6d)] =
+                    Gates(2.494500e+4, 3.612000e+2, 0d, 1.557300e-6, 8.904000e-6, 1.320300e-5, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-e09-10p", 1e-12d)] =
+                    Gates(4.557000e-4, 6.603000e-6, 0d, 1.042500e-14, 2.245500e-14, 5.790000e-14, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-e09-10p", 1e-10d)] =
+                    Gates(9.816000e-3, 1.422300e-4, 0d, 1.789800e-13, 6.981000e-13, 2.468100e-12, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-e09-10p", 1e-12d)] =
+                    Gates(6.279000e-1, 9.096000e-3, 0d, 7.437000e-12, 2.571900e-11, 3.117000e-11, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-e09-10p", 1e-10d)] =
+                    Gates(5.859000e+1, 8.484000e-1, 0d, 6.555000e-10, 2.378700e-9, 4.494000e-9, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-e099", 1e-9d)] =
+                    Gates(1.727400e-1, 7.731000e-2, 0d, 5.241000e-13, 1.101900e-11, 4.734000e-12, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-e099", 1e-6d)] =
+                    Gates(4.296000e+2, 1.922400e+2, 0d, 1.059000e-8, 6.084000e-8, 4.395000e-8, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-e099", 1e-9d)] =
+                    Gates(4.884000e+2, 2.185800e+2, 0d, 1.030500e-9, 1.116600e-8, 7.830000e-9, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-e099", 1e-6d)] =
+                    Gates(6.366000e+5, 1.859700e+5, 0d, 1.443000e-6, 1.342200e-5, 1.191900e-5, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-hyperbolic", 1e-9d)] =
+                    Gates(3.528000e-5, 3.921000e-8, 0d, 1.726200e-12, 5.514000e-12, 1.672800e-11, 4.220358e-06, 1.130054e-08, 3.776604e-06, 1.171651e-09, 0d),
+                [(IntegratorKind.Dop853, "kepler-hyperbolic", 1e-6d)] =
+                    Gates(6.840000e-2, 7.704000e-5, 0d, 4.965000e-9, 1.334100e-8, 3.699000e-8, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-hyperbolic", 1e-9d)] =
+                    Gates(3.894000e-2, 4.548000e-5, 0d, 3.489000e-9, 9.708000e-9, 2.242500e-8, 1.468972e-02, 8.430369e-06, 4.536795e-03, 1.539315e-06, 0d),
+                [(IntegratorKind.Dopri5, "kepler-hyperbolic", 1e-6d)] =
+                    Gates(6.798000e+1, 8.151000e-2, 0d, 3.213000e-6, 5.850000e-6, 2.081700e-5, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-hyperbolic-1d", 1e-12d)] =
+                    Gates(3.615000e-6, 3.711000e-11, 0d, 2.006400e-15, 1.353900e-13, 1.592100e-13, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-hyperbolic-1d", 1e-9d)] =
+                    Gates(4.992000e-4, 6.276000e-9, 0d, 3.399000e-13, 4.329000e-12, 6.162000e-12, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-hyperbolic-1d", 1e-12d)] =
+                    Gates(4.872000e-4, 4.326000e-8, 0d, 2.506500e-12, 1.325400e-11, 2.264400e-11, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-hyperbolic-1d", 1e-9d)] =
+                    Gates(1.303500e+0, 3.192000e-5, 0d, 1.531200e-9, 1.006800e-8, 1.579800e-8, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-inclined", 1e-9d)] =
+                    Gates(3.462000e-4, 4.137000e-7, 0d, 4.122000e-12, 9.282000e-12, 1.917300e-11, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-inclined", 1e-6d)] =
+                    Gates(2.416500e+0, 3.822000e-3, 0d, 9.270000e-8, 1.810500e-7, 4.293000e-7, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-inclined", 1e-9d)] =
+                    Gates(3.888000e-1, 3.861000e-4, 0d, 2.012400e-9, 4.326000e-9, 1.075200e-8, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-inclined", 1e-6d)] =
+                    Gates(3.033000e+2, 2.004900e-1, 0d, 5.373000e-6, 8.283000e-6, 3.522000e-5, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-near-parabolic", 1e-9d)] =
+                    Gates(9.033000e-5, 1.210500e-6, 0d, 3.315000e-13, 3.057000e-12, 1.998000e-12, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-near-parabolic", 1e-6d)] =
+                    Gates(2.247300e-1, 3.021000e-3, 0d, 8.388000e-10, 7.482000e-9, 5.886000e-9, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-near-parabolic", 1e-9d)] =
+                    Gates(2.579400e-1, 3.492000e-3, 0d, 9.585000e-10, 9.948000e-9, 6.462000e-9, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-near-parabolic", 1e-6d)] =
+                    Gates(3.996000e+2, 5.382000e+0, 0d, 1.438200e-6, 8.577000e-6, 1.149600e-5, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-retrograde", 1e-9d)] =
+                    Gates(6.906000e-5, 6.690000e-8, 0d, 2.593800e-12, 3.891000e-12, 3.489000e-12, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "kepler-retrograde", 1e-6d)] =
+                    Gates(6.801000e-1, 6.231000e-4, 0d, 2.531700e-8, 3.798000e-8, 3.321000e-8, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-retrograde", 1e-9d)] =
+                    Gates(1.168200e-1, 9.816000e-5, 0d, 2.265000e-9, 3.396000e-9, 7.380000e-9, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-retrograde", 1e-6d)] =
+                    Gates(7.581000e+2, 8.091000e-1, 0d, 2.284500e-6, 3.426000e-6, 1.310700e-5, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "restricted-3body", 1e-9d)] =
+                    Gates(5.550000e-5, 4.461000e-8, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "restricted-3body", 1e-6d)] =
+                    Gates(4.677000e-1, 3.753000e-4, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "restricted-3body", 1e-9d)] =
+                    Gates(1.164900e-1, 8.889000e-5, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "restricted-3body", 1e-6d)] =
+                    Gates(5.115000e+2, 5.013000e-1, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "restricted-flyby", 1e-12d)] =
+                    Gates(1.462200e-3, 1.066800e-4, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "restricted-flyby", 1e-9d)] =
+                    Gates(1.380600e-3, 1.066800e-4, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "restricted-flyby", 1e-6d)] =
+                    Gates(1.605900e+0, 8.055000e-4, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "restricted-flyby", 1e-12d)] =
+                    Gates(1.356900e-3, 1.066800e-4, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "restricted-flyby", 1e-9d)] =
+                    Gates(1.632600e-1, 1.438500e-4, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "restricted-flyby", 1e-6d)] =
+                    Gates(3.171000e+2, 2.257800e-1, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "thrust-tsiolkovsky", 1e-9d)] =
+                    Gates(1.288200e-9, 8.208000e-13, 1.137000e-15, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dop853, "thrust-tsiolkovsky", 1e-7d)] =
+                    Gates(3.726000e-7, 2.530500e-10, 1.000000e-15, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "thrust-tsiolkovsky", 1e-9d)] =
+                    Gates(5.715000e-7, 2.316900e-9, 1.000000e-15, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "thrust-tsiolkovsky", 1e-7d)] =
+                    Gates(2.951700e-5, 1.189800e-7, 1.000000e-15, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
             };
 
-        private const double HeadroomDivisor = 3d;
+        public static IReadOnlyList<(IntegratorKind Integrator, string Scenario, double Tolerance)> Keys =>
+            Rows.Keys
+                .OrderBy(key => key.Item2, StringComparer.Ordinal)
+                .ThenBy(key => key.Item1)
+                .ThenBy(key => key.Item3)
+                .ToList();
 
-        public static ToleranceProfile For(IntegratorKind integrator, ScenarioClass scenarioClass, double tolerance)
+        public static ToleranceProfile For(IntegratorKind integrator, string scenarioId, double tolerance)
         {
-            if (!Base.TryGetValue((integrator, scenarioClass), out ToleranceProfile profile))
+            if (Rows.TryGetValue((integrator, scenarioId, tolerance), out ToleranceProfile profile))
             {
-                throw new ArgumentOutOfRangeException(nameof(scenarioClass));
+                return profile;
             }
 
-            double factor = tolerance / 1e-9d;
-            // Below 1e-2 of the reference the observed error stops scaling
-            // linearly (step-control floor and round-off); do not scale the
-            // already measured 10x headroom below that.
-            if (factor < 1e-2d)
-            {
-                factor = 1e-2d;
-            }
-
-            return profile.Scale(factor / HeadroomDivisor);
+            throw new ArgumentOutOfRangeException(nameof(tolerance),
+                "No tolerance gates for " + scenarioId + " / " + integrator +
+                " at tol=" + tolerance.ToString("R") + "; run GALILEGO_CALIBRATE=1 and update ToleranceTable.");
         }
 
-        private static ToleranceProfile Profile(
-            double oraclePosition,
-            double oracleVelocity,
-            double energy,
-            double angular,
-            double lrl,
-            double reversibilityPosition,
-            double chunkingPosition,
-            double dense,
-            double mass = 0d)
+        private static ToleranceProfile Gates(
+            double oraclePosition, double oracleVelocity, double mass,
+            double energy, double angular, double lrl,
+            double reversibilityPosition, double reversibilityVelocity,
+            double chunkingPosition, double chunkingVelocity, double dense)
         {
             return new ToleranceProfile
             {
@@ -152,14 +219,11 @@ namespace GalilegoPhysicsTests.Support
                 AngularMomentumRelative = angular,
                 LaplaceRungeLenzAbsolute = lrl,
                 ReversibilityPositionMeters = reversibilityPosition,
-                ReversibilityVelocityMetersPerSecond = reversibilityPosition * 1e-3,
+                ReversibilityVelocityMetersPerSecond = reversibilityVelocity,
                 ChunkingPositionMeters = chunkingPosition,
-                ChunkingVelocityMetersPerSecond = chunkingPosition * 1e-4,
+                ChunkingVelocityMetersPerSecond = chunkingVelocity,
                 DenseInterpolationMeters = dense
             };
         }
     }
 }
-
-
-

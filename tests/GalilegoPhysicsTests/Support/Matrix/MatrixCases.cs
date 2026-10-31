@@ -16,7 +16,6 @@ namespace GalilegoPhysicsTests.Support.Matrix
         public string Family;
         public string Tier;
         public string ScenarioClass;
-        public string Skip;
 
         public MatrixCase()
         {
@@ -31,7 +30,6 @@ namespace GalilegoPhysicsTests.Support.Matrix
             info.AddValue(nameof(Family), Family);
             info.AddValue(nameof(Tier), Tier);
             info.AddValue(nameof(ScenarioClass), ScenarioClass);
-            info.AddValue(nameof(Skip), Skip);
         }
 
         public void Deserialize(IXunitSerializationInfo info)
@@ -43,7 +41,6 @@ namespace GalilegoPhysicsTests.Support.Matrix
             Family = info.GetValue<string>(nameof(Family));
             Tier = info.GetValue<string>(nameof(Tier));
             ScenarioClass = info.GetValue<string>(nameof(ScenarioClass));
-            Skip = info.GetValue<string>(nameof(Skip));
         }
 
         public Dictionary<string, List<string>> BuildTraits()
@@ -78,9 +75,6 @@ namespace GalilegoPhysicsTests.Support.Matrix
                 {
                     foreach (double tolerance in scenario.Tolerances)
                     {
-                        string skip = scenario.Tier == ScenarioTier.Slow && !Env.SlowEnabled
-                            ? Env.SlowSkipReason
-                            : null;
                         yield return new object[]
                         {
                             new MatrixCase
@@ -91,8 +85,7 @@ namespace GalilegoPhysicsTests.Support.Matrix
                                 Display = scenario.DisplayName(integrator, tolerance),
                                 Family = scenario.Family,
                                 Tier = scenario.Tier.ToString(),
-                                ScenarioClass = scenario.Class.ToString(),
-                                Skip = skip
+                                ScenarioClass = scenario.Class.ToString()
                             }
                         };
                     }
@@ -162,10 +155,6 @@ namespace GalilegoPhysicsTests.Support.Matrix
         {
             matrix = value;
             Traits = value.BuildTraits();
-            if (!string.IsNullOrEmpty(value.Skip))
-            {
-                SkipReason = value.Skip;
-            }
         }
     }
 }

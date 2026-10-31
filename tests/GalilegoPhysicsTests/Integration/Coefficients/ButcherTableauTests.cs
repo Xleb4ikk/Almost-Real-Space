@@ -90,6 +90,35 @@ namespace GalilegoPhysicsTests.Integration.Coefficients
         }
 
         [Fact]
+        public void Dop853_ExtendedRowsMatchTheirAbscissae()
+        {
+            ExactRational[][] aExtra = OrderConditions.ToRational(DOP853Coefficients.AExtra);
+            ExactRational[] cExtra = OrderConditions.ToRational(DOP853Coefficients.CExtra);
+            double rowResidual = OrderConditions.MaxRowSumResidual(aExtra, cExtra);
+
+            output.WriteLine("DOP853 extended rows a=c: " + rowResidual.ToString("E3") + ".");
+            Asserts.True(rowResidual < 2e-15,
+                "DOP853 extended rows do not sum to c: " + rowResidual.ToString("E3"));
+        }
+
+        [Fact]
+        public void Dop853_DenseCoefficientRowsSumToZero()
+        {
+            // For constant k the F3..F6 terms must vanish, so every D row sums
+            // to zero. A single shifted coefficient breaks this identity.
+            ExactRational[][] d = OrderConditions.ToRational(DOP853Coefficients.D);
+            double worst = 0d;
+            for (int i = 0; i < d.Length; i++)
+            {
+                worst = Math.Max(worst, OrderConditions.SumResidual(d[i], 0d));
+            }
+
+            output.WriteLine("DOP853 dense: max |sum D row| = " + worst.ToString("E3") + ".");
+            Asserts.True(worst < 1e-12,
+                "DOP853 dense coefficient rows do not sum to 0: " + worst.ToString("E3"));
+        }
+
+        [Fact]
         public void Dopri5_DenseCoefficientsSumToZero()
         {
             // For constant k the Shampine C4 term must vanish: sum(d_i) = 0.

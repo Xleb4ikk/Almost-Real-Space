@@ -27,7 +27,7 @@ internal static partial class P1bTests
             // The bench may run outside the repo (e.g. a CI container with sources
             // only). Skip quietly: a missing file is not a value divergence.
             Console.WriteLine("    EarthLike.asset не найден рядом со стендом — проверка пропущена");
-            Check(true, "T117 earthlike-drift", "ассет не найден, проверка пропущена");
+            Check(false, "T117 earthlike-drift", "ассет не найден — проверка не выполнена");
             return 0;
         }
 

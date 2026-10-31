@@ -9,6 +9,13 @@ namespace GalilegoPhysicsTests.Support.Scenarios
     {
         private const double Mu = 3.986004418e14d;
 
+        /// <summary>
+        /// Exact constant-velocity drift. The error estimate is identically zero,
+        /// so it exercises the 600 s step cap rather than the adaptive controller;
+        /// StepCapTests owns it and it is deliberately outside the matrix.
+        /// </summary>
+        public static readonly Scenario LinearDrift = CreateLinearDrift();
+
         public static readonly Scenario[] All =
         {
             CreateKepler("kepler-circular", "Kepler circular | 1 period", ScenarioClass.KeplerCircular,
@@ -49,7 +56,7 @@ namespace GalilegoPhysicsTests.Support.Scenarios
 
             CreateThrust(),
 
-            CreateDrift(),
+            CreateHarmonicDrift(),
 
             CreateRestrictedNBody(),
 
@@ -78,7 +85,7 @@ namespace GalilegoPhysicsTests.Support.Scenarios
         {
             if (!ById.TryGetValue(id, out Scenario scenario))
             {
-                throw new ArgumentException("РќРµРёР·РІРµСЃС‚РЅС‹Р№ СЃС†РµРЅР°СЂРёР№: " + id + ".", nameof(id));
+                throw new ArgumentException("Неизвестный сценарий: " + id + ".", nameof(id));
             }
 
             return scenario;
@@ -95,9 +102,21 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             }
         }
 
+        public static IEnumerable<Scenario> Slow()
+        {
+            foreach (Scenario scenario in All)
+            {
+                if (scenario.Tier == ScenarioTier.Slow)
+                {
+                    yield return scenario;
+                }
+            }
+        }
+
         private static Dictionary<string, Scenario> BuildIndex()
         {
             var index = new Dictionary<string, Scenario>(StringComparer.Ordinal);
+            index.Add(LinearDrift.Id, LinearDrift);
             foreach (Scenario scenario in All)
             {
                 index.Add(scenario.Id, scenario);
@@ -204,7 +223,7 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             return scenario;
         }
 
-        private static Scenario CreateDrift()
+        private static Scenario CreateLinearDrift()
         {
             const double duration = 3600.0d;
             Double3 r0 = new Double3(1.0e7d, 0d, 0d);
@@ -233,26 +252,73 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             scenario.CheckEnergy = false;
             scenario.CheckAngularMomentum = false;
             scenario.CheckLrl = false;
-            scenario.Tolerances = new[] { 1e-9d };
-            scenario.ControllerBound = true;
-            scenario.ControllerBoundReason =
-                "zero-g drift is integrated exactly (a=0): the error estimate is zero and the step is pinned at MaxStepSize=600 s for every tolerance";
+            scenario.Tolerances = new[] { 1e-6d, 1e-9d, 1e-12d };
+            return scenario;
+        }
+
+        private static Scenario CreateHarmonicDrift()
+        {
+            const double duration = 3600.0d;
+            const double omega = 2.0d * Math.PI / duration;
+            Double3 r0 = new Double3(1.0e7d, 0d, 0d);
+            Double3 v0 = new Double3(0d, 1.0e5d, 0d);
+            var scenario = new Scenario();
+            scenario.Id = "drift-harmonic";
+            scenario.Title = "Harmonic drift | 1 h";
+            scenario.Family = "Drift";
+            scenario.Class = ScenarioClass.Drift;
+            scenario.Tier = ScenarioTier.Fast;
+            scenario.Mu = 0d;
+            scenario.DurationSeconds = duration;
+            scenario.InitialState = new SpacecraftIntegrationState
+            {
+                Position = r0.ToVector3d(),
+                Velocity = v0.ToVector3d(),
+                Mass = 1000.0d
+            };
+            scenario.Derivative = (state, time) => new SpacecraftIntegrationState
+            {
+                Position = state.Velocity,
+                Velocity = state.Position * (-omega * omega),
+                Mass = 0d
+            };
+            scenario.Oracle = time =>
+            {
+                double cos = Math.Cos(omega * time);
+                double sin = Math.Sin(omega * time);
+                Double3 position = (r0 * cos) + (v0 * (sin / omega));
+                Double3 velocity = (r0 * (-omega * sin)) + (v0 * cos);
+                return new OracleState(position, velocity, 1000.0d);
+            };
+            scenario.CheckEnergy = false;
+            scenario.CheckAngularMomentum = false;
+            scenario.CheckLrl = false;
+            scenario.Tolerances = new[] { 1e-6d, 1e-9d, 1e-12d };
             return scenario;
         }
 
         private static Scenario CreateRestrictedNBody()
         {
-            const double centralMu = 1.32712440018e20d;
-            double radius = 1.5e10d;
+            // Earth-Moon restricted three-body problem: a LEO test particle in
+            // the Earth field with the Moon as a moving perturber. The short
+            // orbital period makes the adaptive controller act; a heliocentric
+            // 1 h arc was capped at 600 s for every tolerance.
+            const double centralMu = 3.986004418e14d;
+            const double radius = 7.0e6d;
+            const double bodyRadius = 3.844e8d;
+            const double bodyMu = 4.9048695e12d;
             double speed = Math.Sqrt(centralMu / radius);
-            RestrictedBody[] bodies = RestrictedNBodyOracle.CreateBodies(centralMu);
+            var body = new RestrictedBody(
+                bodyMu, bodyRadius, 0d,
+                Math.Sqrt(centralMu / (bodyRadius * bodyRadius * bodyRadius)));
+            var bodies = new[] { body };
             Double3 r0 = new Double3(radius, 0d, 0d);
             Double3 v0 = new Double3(0d, speed, 0d);
             const double duration = 3600.0d;
 
             var scenario = new Scenario();
             scenario.Id = "restricted-3body";
-            scenario.Title = "Restricted 3-body test particle | 1 h";
+            scenario.Title = "Restricted 3-body Earth-Moon test particle | 1 h";
             scenario.Family = "NBody";
             scenario.Class = ScenarioClass.RestrictedNBody;
             scenario.Tier = ScenarioTier.Fast;
@@ -287,9 +353,6 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             scenario.CheckAngularMomentum = false;
             scenario.CheckLrl = false;
             scenario.Tolerances = new[] { 1e-6d, 1e-9d };
-            scenario.ControllerBound = true;
-            scenario.ControllerBoundReason =
-                "1 h arc: the error estimate stays below the scale, so every tolerance accepts the 600 s MaxStepSize; this pins the step cap, not the controller";
             return scenario;
         }
 

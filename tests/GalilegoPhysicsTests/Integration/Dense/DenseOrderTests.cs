@@ -22,26 +22,36 @@ namespace GalilegoPhysicsTests.Integration.Dense
         [Fact]
         public void Dopri5DenseInterpolationIsFifthOrder()
         {
-            double slope = MeasureSlope(IntegratorKind.Dopri5);
-            output.WriteLine("DOPRI5 dense log-log slope = " + slope.ToString("F3") + ".");
-            Asserts.True(slope >= 4.7d, "DOPRI5 dense order is " + slope.ToString("F3") + " < 4.7");
+            double circular = MeasureSlope(IntegratorKind.Dopri5, "kepler-circular",
+                new[] { 600d, 300d, 150d, 75d, 37.5d, 18.75d });
+            double eccentric = MeasureSlope(IntegratorKind.Dopri5, "kepler-e05",
+                new[] { 300d, 150d, 75d, 37.5d, 18.75d });
+            output.WriteLine("DOPRI5 dense log-log slope: circular=" + circular.ToString("F3") +
+                             ", e05=" + eccentric.ToString("F3") + ".");
+            Asserts.True(circular >= 4.7d, "DOPRI5 circular dense order is " + circular.ToString("F3") + " < 4.7");
+            Asserts.True(eccentric >= 4.7d, "DOPRI5 e05 dense order is " + eccentric.ToString("F3") + " < 4.7");
         }
 
         [Fact]
-        [Trait("KnownLimitation", "CubicDense")]
-        public void Dop853DenseInterpolationIsCubicKnownLimitation()
+        public void Dop853DenseInterpolationIsEighthOrder()
         {
-            double slope = MeasureSlope(IntegratorKind.Dop853);
-            output.WriteLine("DOP853 dense log-log slope = " + slope.ToString("F3") +
-                             " (C4=0, cubic segment).");
-            Asserts.True(Math.Abs(slope - 4d) <= 0.3d,
-                "DOP853 dense order is " + slope.ToString("F3") + ", expected 4.0 В± 0.3");
+            // The circular probe stops at h=75 s: below that the double-precision
+            // round-off floor dominates before the h^8 term does.
+            double circular = MeasureSlope(IntegratorKind.Dop853, "kepler-circular",
+                new[] { 600d, 300d, 150d, 75d });
+            double eccentric = MeasureSlope(IntegratorKind.Dop853, "kepler-e05",
+                new[] { 300d, 150d, 75d, 37.5d, 18.75d });
+            output.WriteLine("DOP853 dense log-log slope: circular=" + circular.ToString("F3") +
+                             ", e05=" + eccentric.ToString("F3") + " (Hairer/Wanner contd8).");
+            Asserts.True(circular >= 7.5d,
+                "DOP853 circular dense order is " + circular.ToString("F3") + " < 7.5");
+            Asserts.True(eccentric >= 7.5d,
+                "DOP853 e05 dense order is " + eccentric.ToString("F3") + " < 7.5");
         }
 
-        private double MeasureSlope(IntegratorKind integrator)
+        private double MeasureSlope(IntegratorKind integrator, string scenarioId, double[] stepSizes)
         {
-            Scenario scenario = ScenarioCatalog.Get("kepler-circular");
-            double[] stepSizes = { 600d, 300d, 150d, 75d };
+            Scenario scenario = ScenarioCatalog.Get(scenarioId);
             var logH = new List<double>();
             var logError = new List<double>();
             foreach (double h in stepSizes)
@@ -72,7 +82,7 @@ namespace GalilegoPhysicsTests.Integration.Dense
                     worst = Math.Max(worst, (dense.Position - oracle.Position.ToVector3d()).Magnitude);
                 }
 
-                output.WriteLine(integrator + " h=" + h.ToString("R") +
+                output.WriteLine(integrator + " " + scenarioId + " h=" + h.ToString("R") +
                                  " dense error=" + worst.ToString("E3"));
                 logH.Add(Math.Log(h));
                 logError.Add(Math.Log(Math.Max(worst, 1e-300d)));

@@ -116,32 +116,25 @@ namespace GalilegoPhysicsTests.Support.Golden
 
         private static ScenarioClass ClassOf(string id)
         {
-            if (id.Contains("10y"))
+            // Explicit mapping: an unknown golden must fail loudly instead of
+            // silently inheriting the circular-orbit tolerance profile.
+            switch (id)
             {
-                return ScenarioClass.GoldenCircular10y;
+                case "golden-kepler-circular-1p":
+                    return ScenarioClass.KeplerCircular;
+                case "golden-kepler-e05-1p":
+                case "golden-kepler-inclined-1p":
+                    return ScenarioClass.KeplerEccentric;
+                case "golden-kepler-e09-1p":
+                    return ScenarioClass.KeplerHighEccentric;
+                case "golden-kepler-hyperbolic-1h":
+                    return ScenarioClass.KeplerHyperbolic;
+                case "golden-kepler-e05-1y":
+                    return ScenarioClass.GoldenEccentric1y;
+                default:
+                    throw new FormatException(
+                        "Golden case \"" + id + "\" has no ScenarioClass mapping; add it to ClassOf.");
             }
-
-            if (id.Contains("1y"))
-            {
-                return ScenarioClass.GoldenEccentric1y;
-            }
-
-            if (id.Contains("hyperbolic"))
-            {
-                return ScenarioClass.KeplerHyperbolic;
-            }
-
-            if (id.Contains("e09"))
-            {
-                return ScenarioClass.KeplerHighEccentric;
-            }
-
-            if (id.Contains("e05") || id.Contains("inclined"))
-            {
-                return ScenarioClass.KeplerEccentric;
-            }
-
-            return ScenarioClass.KeplerCircular;
         }
     }
 }

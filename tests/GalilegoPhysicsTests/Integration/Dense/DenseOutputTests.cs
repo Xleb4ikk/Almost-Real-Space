@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Galilego.Core;
 using GalilegoPhysicsTests.Support;
@@ -63,7 +63,7 @@ namespace GalilegoPhysicsTests.Integration.Dense
             Scenario scenario = ScenarioCatalog.Get(scenarioId);
             IntegratorKind integrator = Parse(integratorName);
             ScenarioExecution run = Execute(scenarioId, integratorName);
-            ToleranceProfile table = ToleranceTable.For(integrator, scenario.Class, 1e-9d);
+            ToleranceProfile table = ToleranceTable.For(integrator, scenario.Id, 1e-9d);
 
             double worst = 0d;
             foreach (DenseSegment segment in run.Segments)
@@ -88,12 +88,11 @@ namespace GalilegoPhysicsTests.Integration.Dense
         [Theory]
         [InlineData("Dopri5")]
         [InlineData("Dop853")]
-        public void DenseMidpointMatchesATightReferenceStep(string integratorName)
+        public void DenseMidpointMatchesTheAnalyticOracle(string integratorName)
         {
             Scenario scenario = ScenarioCatalog.Get("kepler-e05");
             IntegratorKind integrator = Parse(integratorName);
             ScenarioExecution run = Execute("kepler-e05", integratorName);
-            SpacecraftOrbitIntegrator.DerivativeFunction derivative = (state, time) => scenario.Derivative(state, time);
 
             double worst = 0d;
             int checkedSegments = 0;
@@ -104,20 +103,16 @@ namespace GalilegoPhysicsTests.Integration.Dense
                     break;
                 }
 
-                double half = 0.5d * (segment.T1 - segment.T0);
-                SpacecraftIntegrationState reference = integrator == IntegratorKind.Dopri5
-                    ? SpacecraftOrbitIntegrator.StepForward(
-                        segment.Y0, segment.T0, half, derivative, 1e-14d, 1e-14d, 1e-14d, 1e-14d).State
-                    : SpacecraftOrbitIntegrator.StepForwardDop853(
-                        segment.Y0, segment.T0, half, derivative, 1e-14d, 1e-14d, 1e-14d, 1e-14d).State;
-                SpacecraftIntegrationState dense = segment.Evaluate(segment.T0 + half);
-                worst = Math.Max(worst, (dense.Position - reference.Position).Magnitude);
+                double midpoint = segment.T0 + (0.5d * (segment.T1 - segment.T0));
+                SpacecraftIntegrationState dense = segment.Evaluate(midpoint);
+                OracleState oracle = scenario.Oracle(midpoint);
+                worst = Math.Max(worst, (dense.Position - oracle.Position.ToVector3d()).Magnitude);
             }
 
-            output.WriteLine(integratorName + ": dense midpoint vs tight reference = " + worst.ToString("E3") + " m.");
-            // Measured baselines on this scenario: 1.8e-3 m (DOPRI5) and 5.4 m
-            // (DOP853's cubic segment). The gates below are measured ×10.
-            double tolerance = integrator == IntegratorKind.Dopri5 ? 1.8e-2d : 5.4e1d;
+            output.WriteLine(integratorName + ": dense midpoint vs analytic oracle = " + worst.ToString("E3") + " m.");
+            // Measured vs the independent Kepler oracle: 1.85e-3 m (DOPRI5)
+            // and 1.33e-5 m (DOP853 contd8). Gates carry 10x headroom.
+            double tolerance = integrator == IntegratorKind.Dopri5 ? 1.8e-2d : 1.3e-4d;
             Asserts.True(worst < tolerance, "dense midpoint mismatch " + worst.ToString("E3") + " m.");
         }
 
@@ -256,3 +251,4 @@ namespace GalilegoPhysicsTests.Integration.Dense
         }
     }
 }
+

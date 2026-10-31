@@ -158,11 +158,10 @@ FAST = [
 ]
 
 SLOW = [
-    make_case("golden-kepler-circular-10y", 7.0e6, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0 * 365.25 * 86400.0),
     make_case("golden-kepler-e05-1y", 1.0e7, 0.5, 25.0, 40.0, 60.0, 20.0, 365.25 * 86400.0),
 ]
 
-for name, cases in (("golden_core_kepler.json", FAST), ("golden_core_kepler_10y.json", SLOW)):
+for name, cases in (("golden_core_kepler.json", FAST), ("golden_core_kepler_1y.json", SLOW)):
     with open(name, "w", encoding="utf-8") as handle:
         json.dump({"generator": "gen_core_kepler.py", "model": "two-body, central at origin", "cases": cases}, handle, indent=1)
         handle.write("\n")

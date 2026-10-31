@@ -61,14 +61,15 @@ namespace GalilegoPhysicsTests.Support
             double tolerance,
             SpacecraftIntegrationState initial,
             double durationSeconds,
-            int chunks)
+            int chunks,
+            bool collectDense = true)
         {
             if (chunks < 1)
             {
                 throw new ArgumentOutOfRangeException(nameof(chunks));
             }
 
-            var segments = new List<DenseSegment>();
+            var segments = collectDense ? new List<DenseSegment>() : null;
             long calls = 0L;
             SpacecraftIntegrationState current = initial;
             double chunk = durationSeconds / chunks;
@@ -107,7 +108,7 @@ namespace GalilegoPhysicsTests.Support
                 Final = current,
                 Segments = segments,
                 RhsCalls = calls,
-                Steps = segments.Count
+                Steps = collectDense ? segments.Count : -1
             };
         }
     }
@@ -132,6 +133,10 @@ namespace GalilegoPhysicsTests.Support
         public double MaxEnergyDrift { get; }
         public double MaxAngularMomentumDrift { get; }
         public double MaxLrlDrift { get; }
+        public double ReversibilityPositionError { get; private set; } = double.NaN;
+        public double ReversibilityVelocityError { get; private set; } = double.NaN;
+        public double ChunkingPositionError { get; private set; } = double.NaN;
+        public double ChunkingVelocityError { get; private set; } = double.NaN;
 
         public ScenarioExecution(Scenario scenario, IntegratorKind integrator, double tolerance, int chunks, RunData data)
         {
@@ -279,6 +284,8 @@ namespace GalilegoPhysicsTests.Support
             // Time reversal maps (r, v) to (r, -v): the reverse run must reach
             // the initial position and the negated initial velocity.
             double velocityError = (reversed.Final.Velocity + data.Initial.Velocity).Magnitude;
+            ReversibilityPositionError = positionError;
+            ReversibilityVelocityError = velocityError;
             if (!(positionError <= positionTolerance))
             {
                 ThrowFailure("обратимость по времени: позиция", positionError, positionTolerance, "м",
@@ -294,10 +301,43 @@ namespace GalilegoPhysicsTests.Support
             return this;
         }
 
+        /// <summary>
+        /// Runs the same scenario with segments == null (the production
+        /// SpacecraftPhysics.Step path) and returns its RHS call count. The final
+        /// state must be bit-identical to the dense-collecting run: the extra DOP853
+        /// stages are interpolation-only.
+        /// </summary>
+        public long MeasureProductionRhsCalls()
+        {
+            RunData production = IntegratorDriver.Integrate(
+                Scenario, Integrator, Tolerance, data.Initial,
+                Scenario.DurationSeconds, Chunks, collectDense: false);
+            bool identical =
+                production.Final.Position.X == data.Final.Position.X &&
+                production.Final.Position.Y == data.Final.Position.Y &&
+                production.Final.Position.Z == data.Final.Position.Z &&
+                production.Final.Velocity.X == data.Final.Velocity.X &&
+                production.Final.Velocity.Y == data.Final.Velocity.Y &&
+                production.Final.Velocity.Z == data.Final.Velocity.Z &&
+                production.Final.Mass == data.Final.Mass;
+            if (!identical)
+            {
+                throw new XunitException(
+                    Scenario.Id + " / " + Integrator + " at tol=" + Tolerance.ToString("R") +
+                    ": production (segments=null) final state differs from the dense run.");
+            }
+
+            return production.RhsCalls;
+        }
+
         public ScenarioExecution HasStepBudget(int expectedSteps, long expectedCalls, double relativeTolerance)
         {
-            int stepTolerance = Math.Max(2, (int)Math.Ceiling(expectedSteps * relativeTolerance));
-            long callTolerance = Math.Max(2L, (long)Math.Ceiling(expectedCalls * relativeTolerance));
+            // Tiny rows are pinned exactly: a ±2 floor on a 1-step row accepts a
+            // 3x step-control regression. Larger rows keep the ±10% gate.
+            int stepTolerance = expectedSteps <= 3
+                ? 0
+                : Math.Max(1, (int)Math.Ceiling(expectedSteps * relativeTolerance));
+            long callTolerance = Math.Max(1L, (long)Math.Ceiling(expectedCalls * relativeTolerance));
             bool stepsMatch = Math.Abs(Steps - expectedSteps) <= stepTolerance;
             bool callsMatch = Math.Abs(RhsCalls - expectedCalls) <= callTolerance;
             if (!stepsMatch || !callsMatch)
@@ -308,11 +348,22 @@ namespace GalilegoPhysicsTests.Support
                     expectedSteps,
                     "шагов (RHS=" + RhsCalls + ", ожидалось " + expectedCalls + ")",
                     "Изменился контроль шага. Ожидалось ±" + (relativeTolerance * 100d).ToString("0") +
-                    "%: steps " + expectedSteps + "±" + stepTolerance +
+                    "% (ряды ≤3 шагов — точно): steps " + expectedSteps + "±" + stepTolerance +
                     ", RHS " + expectedCalls + "±" + callTolerance + ".");
             }
 
             return this;
+        }
+
+        private static bool SameState(SpacecraftIntegrationState a, SpacecraftIntegrationState b)
+        {
+            return a.Position.X == b.Position.X &&
+                   a.Position.Y == b.Position.Y &&
+                   a.Position.Z == b.Position.Z &&
+                   a.Velocity.X == b.Velocity.X &&
+                   a.Velocity.Y == b.Velocity.Y &&
+                   a.Velocity.Z == b.Velocity.Z &&
+                   a.Mass == b.Mass;
         }
 
         public ScenarioExecution IsDeterministic()
@@ -320,15 +371,18 @@ namespace GalilegoPhysicsTests.Support
             RunData repeat = IntegratorDriver.Integrate(
                 Scenario, Integrator, Tolerance, data.Initial, Scenario.DurationSeconds, Chunks);
             bool bitwise =
-                repeat.Final.Position.X == data.Final.Position.X &&
-                repeat.Final.Position.Y == data.Final.Position.Y &&
-                repeat.Final.Position.Z == data.Final.Position.Z &&
-                repeat.Final.Velocity.X == data.Final.Velocity.X &&
-                repeat.Final.Velocity.Y == data.Final.Velocity.Y &&
-                repeat.Final.Velocity.Z == data.Final.Velocity.Z &&
-                repeat.Final.Mass == data.Final.Mass &&
+                SameState(repeat.Final, data.Final) &&
                 repeat.Steps == data.Steps &&
-                repeat.RhsCalls == data.RhsCalls;
+                repeat.RhsCalls == data.RhsCalls &&
+                repeat.Segments.Count == data.Segments.Count;
+            for (int i = 0; bitwise && i < data.Segments.Count; i++)
+            {
+                DenseSegment a = data.Segments[i];
+                DenseSegment b = repeat.Segments[i];
+                bitwise = a.T0 == b.T0 && a.T1 == b.T1 &&
+                          SameState(a.Y0, b.Y0) && SameState(a.Y1, b.Y1);
+            }
+
             if (!bitwise)
             {
                 ThrowFailure("детерминизм", 0d, 0d, "бит-в-бит",
@@ -344,6 +398,8 @@ namespace GalilegoPhysicsTests.Support
             ScenarioExecution chunked = Execute(Scenario, Integrator, Tolerance, 7);
             double positionError = (chunked.FinalState.Position - data.Final.Position).Magnitude;
             double velocityError = (chunked.FinalState.Velocity - data.Final.Velocity).Magnitude;
+            ChunkingPositionError = positionError;
+            ChunkingVelocityError = velocityError;
             if (!(positionError <= positionTolerance))
             {
                 ThrowFailure("независимость от разбиения интервала: позиция", positionError, positionTolerance, "м",

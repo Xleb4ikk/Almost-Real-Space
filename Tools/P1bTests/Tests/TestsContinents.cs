@@ -931,7 +931,7 @@ private static HeightfieldTerrain AssetPreset(int n)
         if (path == null)
         {
             Console.WriteLine("    EarthLike_Perlin.asset не найден рядом со стендом — проверка пропущена");
-            Check(true, "T143 perlin-drift", "ассет не найден, проверка пропущена");
+            Check(false, "T143 perlin-drift", "ассет не найден — проверка не выполнена");
         }
         else
         {

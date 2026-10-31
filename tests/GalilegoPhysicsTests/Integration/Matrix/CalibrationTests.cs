@@ -23,6 +23,7 @@ namespace GalilegoPhysicsTests.Integration.Matrix
 
             var rows = new List<string>();
             var snippet = new List<string>();
+            var productionSnippet = new List<string>();
             rows.Add("| scenario | integrator | tol | steps | rhs | maxPos m | maxVel m/s | maxMass rel | E drift | L drift | LRL drift |");
             rows.Add("|---|---|---|---|---|---|---|---|---|---|---|");
 
@@ -47,6 +48,13 @@ namespace GalilegoPhysicsTests.Integration.Matrix
                         snippet.Add(StepBudget.FormatEntry(
                             scenario.Id, scenario.IntegratorLabel(integrator), tolerance,
                             run.Steps, run.RhsCalls));
+                        if (integrator == IntegratorKind.Dop853)
+                        {
+                            long productionCalls = run.MeasureProductionRhsCalls();
+                            productionSnippet.Add(StepBudget.FormatProductionEntry(
+                                scenario.Id, scenario.IntegratorLabel(integrator), tolerance,
+                                productionCalls));
+                        }
                     }
                 }
             }
@@ -62,8 +70,11 @@ namespace GalilegoPhysicsTests.Integration.Matrix
 
             string snippetPath = Path.Combine(ArtifactWriter.RepositoryRoot, "TestResults", "step-budget-snippet.cs");
             File.WriteAllText(snippetPath, string.Join(Environment.NewLine, snippet) + Environment.NewLine, Encoding.UTF8);
+            string productionPath = Path.Combine(ArtifactWriter.RepositoryRoot, "TestResults", "production-step-budget-snippet.cs");
+            File.WriteAllText(productionPath, string.Join(Environment.NewLine, productionSnippet) + Environment.NewLine, Encoding.UTF8);
             Console.WriteLine("calibration written: " + path);
             Console.WriteLine("StepBudget snippet: " + snippetPath);
+            Console.WriteLine("Production StepBudget snippet: " + productionPath);
         }
     }
 }

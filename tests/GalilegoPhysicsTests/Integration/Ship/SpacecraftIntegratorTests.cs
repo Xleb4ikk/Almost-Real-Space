@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Galilego.Core;
 using GalilegoPhysicsTests.Support;
 using GalilegoPhysicsTests.Support.Scenarios;
@@ -24,7 +24,7 @@ namespace GalilegoPhysicsTests.Integration.Ship
         {
             Scenario scenario = ScenarioCatalog.Get("thrust-tsiolkovsky");
             IntegratorKind integrator = Parse(integratorName);
-            ToleranceProfile table = ToleranceTable.For(integrator, scenario.Class, 1e-9d);
+            ToleranceProfile table = ToleranceTable.For(integrator, scenario.Id, 1e-9d);
 
             ScenarioExecution run = ScenarioExecution.Execute(scenario, integrator, 1e-9d, 1);
             run.MatchesOracle(table.OraclePositionMeters, table.OracleVelocityMetersPerSecond)
@@ -243,3 +243,4 @@ namespace GalilegoPhysicsTests.Integration.Ship
         }
     }
 }
+

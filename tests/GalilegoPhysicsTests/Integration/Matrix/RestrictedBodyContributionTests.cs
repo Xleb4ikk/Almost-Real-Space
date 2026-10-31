@@ -30,7 +30,7 @@ namespace GalilegoPhysicsTests.Integration.Matrix
             OracleState one = RestrictedNBodyOracle.Propagate(r0, v0, centralMu, new[] { bodies[0] }, duration, 0.5d);
             double contribution = (all.Position - one.Position).Magnitude;
             double gate = 10d * ToleranceTable.For(
-                IntegratorKind.Dop853, ScenarioClass.RestrictedNBody, 1e-9d).OraclePositionMeters;
+                IntegratorKind.Dop853, "restricted-3body", 1e-9d).OraclePositionMeters;
 
             output.WriteLine("restricted-3body: perturber contribution=" +
                              contribution.ToString("E3") + " m; 10x oracle tolerance=" +
@@ -54,7 +54,7 @@ namespace GalilegoPhysicsTests.Integration.Matrix
             OracleState withoutBody = RestrictedNBodyOracle.Propagate(r0, v0, centralMu, Array.Empty<RestrictedBody>(), duration, 0.1d);
             double contribution = (withBody.Position - withoutBody.Position).Magnitude;
             double gate = 10d * ToleranceTable.For(
-                IntegratorKind.Dop853, ScenarioClass.RestrictedFlyby, 1e-9d).OraclePositionMeters;
+                IntegratorKind.Dop853, "restricted-flyby", 1e-9d).OraclePositionMeters;
 
             output.WriteLine("restricted-flyby: body contribution=" +
                              contribution.ToString("E3") + " m; 10x oracle tolerance=" +

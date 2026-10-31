@@ -4,10 +4,15 @@ using System.Collections.Generic;
 namespace Galilego.Core
 {
     /// <summary>
-    /// Shampine dense output coefficients of one accepted step:
-    /// C1=y1-y0, C2=hВ·k1-C1, C3=C1-C2-hВ·k7, C4=hВ·ОЈ(DВ·k). Computed inside
-    /// DoPri5Step/DoP853Step from the already available stages (k7 вЂ” FSAL estimate f(t0+h,y1)):
-    /// 0 extra RHS evaluations per segment.
+    /// Dense output coefficients of one accepted step.
+    ///
+    /// DOPRI5 (Shampine form): C1=y1-y0, C2=h*k1-C1, C3=C1-C2-h*k7,
+    /// C4=h*(D*k). Computed from the already available stages (k7 is the FSAL
+    /// estimate f(t0+h,y1)); 0 extra RHS evaluations per segment.
+    ///
+    /// DOP853 (Hairer/Wanner contd8 form): C1..C7 are F0..F6; the constructor
+    /// marks the segment as DOP853 and the evaluator uses the mixed
+    /// theta/(1-theta) polynomial of the 8th-order dense output.
     /// </summary>
     public readonly struct ShampineCoeffs
     {
@@ -15,6 +20,10 @@ namespace Galilego.Core
         public readonly SpacecraftIntegrationState C2;
         public readonly SpacecraftIntegrationState C3;
         public readonly SpacecraftIntegrationState C4;
+        public readonly SpacecraftIntegrationState C5;
+        public readonly SpacecraftIntegrationState C6;
+        public readonly SpacecraftIntegrationState C7;
+        public readonly bool IsDop853;
 
         public ShampineCoeffs(
             SpacecraftIntegrationState c1, SpacecraftIntegrationState c2,
@@ -24,17 +33,43 @@ namespace Galilego.Core
             C2 = c2;
             C3 = c3;
             C4 = c4;
+            C5 = default;
+            C6 = default;
+            C7 = default;
+            IsDop853 = false;
+        }
+
+        public ShampineCoeffs(
+            SpacecraftIntegrationState c1, SpacecraftIntegrationState c2,
+            SpacecraftIntegrationState c3, SpacecraftIntegrationState c4,
+            SpacecraftIntegrationState c5, SpacecraftIntegrationState c6,
+            SpacecraftIntegrationState c7)
+        {
+            C1 = c1;
+            C2 = c2;
+            C3 = c3;
+            C4 = c4;
+            C5 = c5;
+            C6 = c6;
+            C7 = c7;
+            IsDop853 = true;
         }
     }
 
     /// <summary>
-    /// Dense output of one accepted inner DOPRI5/DOP853 step per Shampine (1986):
-    /// y(t0+Оёh) = C0 + ОёВ·(C1 + (1-Оё)В·(C2 + ОёВ·(C3 + (1-Оё)В·C4))).
-    /// The segment is per-step: 4th-order Shampine with small constants and
-    /// 0 extra RHS evaluations.
+    /// Dense output of one accepted inner DOPRI5/DOP853 step.
     ///
-    /// Ends are bit-exact (Оёв‰¤0 в†’ Y0, Оёв‰Ґ1 в†’ Y1 from storage, not the formula).
-    /// Forward only: the drivers run forward, h is positive.
+    /// DOPRI5 uses the 4th-order Shampine segment:
+    /// y(t0+theta*h) = Y0 + theta*(C1 + phi*(C2 + theta*(C3 + phi*C4))),
+    /// built with 0 extra RHS evaluations.
+    ///
+    /// DOP853 uses the 8th-order Hairer/Wanner contd8 segment:
+    /// y = Y0 + theta*(F0 + phi*(F1 + theta*(F2 + phi*(F3 + theta*(F4 + phi*(F5 + theta*F6)))))),
+    /// built from the 12 method stages, the FSAL stage and three extended stages
+    /// (3 extra RHS evaluations per accepted step when a collector is supplied).
+    ///
+    /// Ends are bit-exact (theta=0 returns Y0, theta=1 returns Y1 from storage,
+    /// not from the formula). Forward only: the drivers run forward, h is positive.
     /// </summary>
     public readonly struct DenseSegment
     {
@@ -52,10 +87,7 @@ namespace Galilego.Core
         private readonly SpacecraftIntegrationState localY0;
 
         private readonly double h;
-        private readonly SpacecraftIntegrationState c1;
-        private readonly SpacecraftIntegrationState c2;
-        private readonly SpacecraftIntegrationState c3;
-        private readonly SpacecraftIntegrationState c4;
+        private readonly ShampineCoeffs coeffs;
 
         public DenseSegment(
             double t0, double t1, double h,
@@ -78,10 +110,7 @@ namespace Galilego.Core
             Y1 = y1;
             ReferenceBody = referenceBody;
             this.localY0 = localY0;
-            c1 = coeffs.C1;
-            c2 = coeffs.C2;
-            c3 = coeffs.C3;
-            c4 = coeffs.C4;
+            this.coeffs = coeffs;
         }
 
         /// <summary>
@@ -111,7 +140,7 @@ namespace Galilego.Core
             };
             return new DenseSegment(
                 T0, T1, h, absolute0, absolute1,
-                new ShampineCoeffs(c1, c2, c3, c4), referenceBody, Y0);
+                coeffs, referenceBody, Y0);
         }
 
         public SpacecraftIntegrationState Evaluate(double t)
@@ -129,12 +158,34 @@ namespace Galilego.Core
             double theta = (t - T0) / h;
             double theta1 = 1d - theta;
             SpacecraftIntegrationState origin = ReferenceBody != null ? localY0 : Y0;
-            SpacecraftIntegrationState local = new SpacecraftIntegrationState
+            SpacecraftIntegrationState local;
+            if (coeffs.IsDop853)
             {
-                Position = Poly(origin.Position, c1.Position, c2.Position, c3.Position, c4.Position, theta, theta1),
-                Velocity = Poly(origin.Velocity, c1.Velocity, c2.Velocity, c3.Velocity, c4.Velocity, theta, theta1),
-                Mass = Poly(origin.Mass, c1.Mass, c2.Mass, c3.Mass, c4.Mass, theta, theta1)
-            };
+                local = new SpacecraftIntegrationState
+                {
+                    Position = Poly853(
+                        origin.Position,
+                        coeffs.C1.Position, coeffs.C2.Position, coeffs.C3.Position, coeffs.C4.Position,
+                        coeffs.C5.Position, coeffs.C6.Position, coeffs.C7.Position, theta, theta1),
+                    Velocity = Poly853(
+                        origin.Velocity,
+                        coeffs.C1.Velocity, coeffs.C2.Velocity, coeffs.C3.Velocity, coeffs.C4.Velocity,
+                        coeffs.C5.Velocity, coeffs.C6.Velocity, coeffs.C7.Velocity, theta, theta1),
+                    Mass = Poly853(
+                        origin.Mass,
+                        coeffs.C1.Mass, coeffs.C2.Mass, coeffs.C3.Mass, coeffs.C4.Mass,
+                        coeffs.C5.Mass, coeffs.C6.Mass, coeffs.C7.Mass, theta, theta1)
+                };
+            }
+            else
+            {
+                local = new SpacecraftIntegrationState
+                {
+                    Position = Poly(origin.Position, coeffs.C1.Position, coeffs.C2.Position, coeffs.C3.Position, coeffs.C4.Position, theta, theta1),
+                    Velocity = Poly(origin.Velocity, coeffs.C1.Velocity, coeffs.C2.Velocity, coeffs.C3.Velocity, coeffs.C4.Velocity, theta, theta1),
+                    Mass = Poly(origin.Mass, coeffs.C1.Mass, coeffs.C2.Mass, coeffs.C3.Mass, coeffs.C4.Mass, theta, theta1)
+                };
+            }
             if (ReferenceBody == null)
             {
                 return local;
@@ -159,17 +210,33 @@ namespace Galilego.Core
             return c0 + (c1 + (c2 + (c3 + c4 * theta1) * theta) * theta1) * theta;
         }
 
+        private static Vector3d Poly853(
+            Vector3d c0,
+            Vector3d f0, Vector3d f1, Vector3d f2, Vector3d f3, Vector3d f4, Vector3d f5, Vector3d f6,
+            double theta, double theta1)
+        {
+            return c0 + theta * (f0 + theta1 * (f1 + theta * (f2 + theta1 * (f3 + theta * (f4 + theta1 * (f5 + theta * f6))))));
+        }
+
+        private static double Poly853(
+            double c0,
+            double f0, double f1, double f2, double f3, double f4, double f5, double f6,
+            double theta, double theta1)
+        {
+            return c0 + theta * (f0 + theta1 * (f1 + theta * (f2 + theta1 * (f3 + theta * (f4 + theta1 * (f5 + theta * f6))))));
+        }
+
         /// <summary>
         /// Track state at time t. The track from the collector is ordered;
-        /// micro-gaps between chunks (в‰¤MinStepSize, StepForward remainder) are
+        /// micro-gaps between chunks (≤MinStepSize, StepForward remainder) are
         /// tolerated: a point in a gap is evaluated by the neighbouring segment
-        /// (error в‰¤ vВ·1e-6). An empty track throws instead of silently returning nothing.
+        /// (error ≤ v·1e-6). An empty track throws instead of silently returning nothing.
         /// </summary>
         public static SpacecraftIntegrationState EvaluateTrack(IReadOnlyList<DenseSegment> segments, double t)
         {
             if (segments == null || segments.Count == 0)
             {
-                throw new InvalidOperationException("РўСЂРµРє СЃРµРіРјРµРЅС‚РѕРІ РїСѓСЃС‚ вЂ” РёРЅС‚РµСЂРїРѕР»РёСЂРѕРІР°С‚СЊ РЅРµС‡РµРіРѕ.");
+                throw new InvalidOperationException("Трек сегментов пуст — интерполировать нечего.");
             }
 
             int lo = 0;

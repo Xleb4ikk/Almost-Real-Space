@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using GalilegoPhysicsTests.Support;
 using GalilegoPhysicsTests.Support.Scenarios;
 using Xunit;
@@ -33,7 +33,7 @@ namespace GalilegoPhysicsTests.Integration.Conservation
         {
             Scenario scenario = ScenarioCatalog.Get(scenarioId);
             IntegratorKind integrator = Parse(integratorName);
-            ToleranceProfile table = ToleranceTable.For(integrator, scenario.Class, 1e-9d);
+            ToleranceProfile table = ToleranceTable.For(integrator, scenario.Id, 1e-9d);
 
             ScenarioExecution run = ScenarioExecution.Execute(scenario, integrator, 1e-9d, 1);
             run.ConservesEnergy(table.EnergyRelative)
@@ -60,7 +60,7 @@ namespace GalilegoPhysicsTests.Integration.Conservation
         {
             Scenario scenario = ScenarioCatalog.Get(scenarioId);
             IntegratorKind integrator = Parse(integratorName);
-            ToleranceProfile table = ToleranceTable.For(integrator, scenario.Class, 1e-9d);
+            ToleranceProfile table = ToleranceTable.For(integrator, scenario.Id, 1e-9d);
 
             ScenarioExecution run = ScenarioExecution.Execute(scenario, integrator, 1e-9d, 1);
             run.IsTimeReversible(table.ReversibilityPositionMeters, table.ReversibilityVelocityMetersPerSecond);
@@ -78,7 +78,7 @@ namespace GalilegoPhysicsTests.Integration.Conservation
         {
             Scenario scenario = ScenarioCatalog.Get(scenarioId);
             IntegratorKind integrator = Parse(integratorName);
-            ToleranceProfile table = ToleranceTable.For(integrator, scenario.Class, 1e-9d);
+            ToleranceProfile table = ToleranceTable.For(integrator, scenario.Id, 1e-9d);
 
             ScenarioExecution run = ScenarioExecution.Execute(scenario, integrator, 1e-9d, 1);
             run.IsChunkingInvariant(table.ChunkingPositionMeters, table.ChunkingVelocityMetersPerSecond);
@@ -106,3 +106,4 @@ namespace GalilegoPhysicsTests.Integration.Conservation
         }
     }
 }
+
