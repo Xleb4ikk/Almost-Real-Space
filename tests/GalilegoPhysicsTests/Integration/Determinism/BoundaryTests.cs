@@ -96,6 +96,24 @@ namespace GalilegoPhysicsTests.Integration.Determinism
 #pragma warning restore 0618
         }
 
+        [Fact]
+        public void LegacyStepToTimeMatchesStepForward()
+        {
+#pragma warning disable 0618
+            var position = new Vector3d(1e7, 0d, 0d);
+            var velocity = new Vector3d(0d, 6000d, 0d);
+            Func<Vector3d, double, Vector3d> zeroAcceleration = (p, t) => Vector3d.Zero;
+
+            IntegrationResult forward = OrbitIntegrator.StepForward(
+                position, velocity, 0d, 10d, zeroAcceleration);
+            IntegrationResult toTime = OrbitIntegrator.StepToTime(
+                position, velocity, 0d, 10d, zeroAcceleration);
+            Asserts.VectorNear(toTime.Position, forward.Position, 0d, "StepToTime position");
+            Asserts.VectorNear(toTime.Velocity, forward.Velocity, 0d, "StepToTime velocity");
+            Asserts.VectorNear(toTime.Position, new Vector3d(1e7, 60000d, 0d), 1e-9, "StepToTime analytic");
+#pragma warning restore 0618
+        }
+
         private static SpacecraftIntegrationState Step(
             IntegratorKind integrator,
             SpacecraftIntegrationState initial,

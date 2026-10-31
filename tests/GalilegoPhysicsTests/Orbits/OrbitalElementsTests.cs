@@ -156,6 +156,19 @@ namespace GalilegoPhysicsTests.Orbits
             Asserts.True(double.IsNaN(outboundApo), "outbound hyperbola has no apoapsis");
         }
 
+        [Fact]
+        public void NearParabolicHyperbolicApsidesAreRejected()
+        {
+            InitialOrbit.StateFromElements(
+                Mu, -1e12, 1.0000000005, 0d, 0d, 0d, 0d,
+                out var position, out var velocity);
+            OrbitalElements elements = OrbitalElements.FromState(
+                position.ToVector3d(), velocity.ToVector3d(), Mu);
+            Asserts.True(elements.IsValid && !elements.IsBound, "near-parabolic hyperbola must be valid and unbound");
+            Asserts.False(elements.TryGetTimeToApsides(Mu, out _, out _),
+                "near-parabolic hyperbola apsides are documented as unsupported");
+        }
+
         private readonly struct Case
         {
             public readonly double A;

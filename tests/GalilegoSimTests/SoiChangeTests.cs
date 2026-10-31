@@ -1,0 +1,109 @@
+﻿using Galilego.Core;
+using Galilego.Events;
+using Galilego.Spacecraft;
+using Galilego.Universe;
+using Xunit;
+using Xunit.Abstractions;
+
+namespace GalilegoPhysicsTests
+{
+    /// <summary>
+    /// Test H тАФ SOI change. A minimal moonless system (a star plus one planet on
+    /// a circular orbit): the ship starts inside the planet's SOI on a radial
+    /// escape trajectory and crosses into the star's dominance exactly once.
+    /// The transition bracket is found by coarse scanning in the test itself, the
+    /// driver must return an event inside the bracket; the dominants on either
+    /// side of the root must differ (planet тЖТ star).
+    /// </summary>
+    public sealed class SoiChangeTests
+    {
+        private readonly ITestOutputHelper output;
+
+        public SoiChangeTests(ITestOutputHelper output)
+        {
+            this.output = output;
+        }
+
+        private static StarSystem CreateTwoBodySystem(out OrbitingBody star, out OrbitingBody planet)
+        {
+            star = new OrbitingBody
+            {
+                Name = "TestStar",
+                StandardGravitationalParameter = 1.327e20
+            };
+            planet = new OrbitingBody
+            {
+                Name = "TestPlanet",
+                StandardGravitationalParameter = 3.986e14,
+                Radius = 6.371e6,
+                SemiMajorAxis = 1.5e11,
+                Eccentricity = 0d,
+                InclinationDegrees = 0d,
+                LongitudeOfAscendingNodeDegrees = 0d,
+                ArgumentOfPeriapsisDegrees = 0d,
+                MeanAnomalyAtEpochDegrees = 0d,
+                EpochTimeSeconds = 0d,
+                Parent = star
+            };
+            star.Children.Add(planet);
+            return new StarSystem(star);
+        }
+
+        [Fact]
+        public void EscapeFromSoi_ReportsTransitionInsideBracket()
+        {
+            StarSystem system = CreateTwoBodySystem(out OrbitingBody star, out OrbitingBody planet);
+            double soi = planet.SphereOfInfluenceRadius;
+            output.WriteLine($"SOI ╨┐╨╗╨░╨╜╨╡╤В╤Л: {soi:E3} ╨╝.");
+
+            planet.EvaluateWorldState(0d, out Vector3d planetPos, out Vector3d planetVel);
+            Vector3d pos0 = planetPos + new Vector3d(1.0e8, 0d, 0d);
+            Vector3d vel0 = planetVel + new Vector3d(3500d, 0d, 0d);
+
+            Assert.Same(planet, system.FindDominantBody(pos0, 0d));
+
+            // Coarse bracket scan in the test itself.
+            var scanPhysics = new SpacecraftPhysics();
+            scanPhysics.Sources.Add(new GravitySource(system));
+            var probe = new Spacecraft(pos0, vel0, TestScene.ShipMass);
+            double tPrev = 0d;
+            double tNow = 0d;
+            const double scanDt = 3600d;
+            bool flipped = false;
+            for (int i = 0; i < 200; i++)
+            {
+                scanPhysics.Step(probe, tNow, scanDt);
+                tPrev = tNow;
+                tNow += scanDt;
+                if (!ReferenceEquals(system.FindDominantBody(probe.Position, tNow), planet))
+                {
+                    flipped = true;
+                    break;
+                }
+            }
+            Assert.True(flipped, "╨б╨║╨░╨╜ ╨╜╨╡ ╨╜╨░╤И╤С╨╗ ╨▓╤Л╤Е╨╛╨┤╨░ ╨╕╨╖ SOI тАФ ╨╜╨╡╨▓╨╡╤А╨╜╨░╤П ╤Б╤Ж╨╡╨╜╨░.");
+            output.WriteLine($"╨С╤А╨╡╨║╨╡╤В ╨┐╨╡╤А╨╡╤Е╨╛╨┤╨░: [{tPrev:F0}, {tNow:F0}] ╤Б.");
+
+            // Driver over the same physics.
+            var physics = new SpacecraftPhysics();
+            physics.Sources.Add(new GravitySource(system));
+            var propagator = new EventDrivenPropagator(physics);
+            propagator.TransitionDetectors.Add(new SoiChangeDetector(system));
+
+            var ship = new Spacecraft(pos0, vel0, TestScene.ShipMass);
+            EventOccurrence? occurrence = propagator.Propagate(ship, 0d, tNow + scanDt);
+
+            Assert.True(occurrence.HasValue, "╨б╨╛╨▒╤Л╤В╨╕╨╡ ╤Б╨╝╨╡╨╜╤Л SOI ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜╨╛.");
+            double tEvent = occurrence.Value.TimeSeconds;
+            output.WriteLine($"╨Ф╨╡╤В╨╡╨║╤В: t = {tEvent:F6} ╤Б, ╨╜╨╛╨▓╤Л╨╣ ╨┤╨╛╨╝╨╕╨╜╨░╨╜╤В: {occurrence.Value.Body?.Name}.");
+
+            Assert.True(tEvent >= tPrev && tEvent <= tNow,
+                $"╨Ъ╨╛╤А╨╡╨╜╤М {tEvent:F3} ╤Б ╨▓╨╜╨╡ ╨▒╤А╨╡╨║╨╡╤В╨░ [{tPrev:F0}, {tNow:F0}].");
+            Assert.Same(star, occurrence.Value.Body);
+
+            const double eps = 1.0;
+            OrbitingBody before = system.FindDominantBody(occurrence.Value.State.Position, tEvent - eps);
+            Assert.Same(planet, before);
+        }
+    }
+}

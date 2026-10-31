@@ -89,6 +89,22 @@ namespace GalilegoPhysicsTests.Integration.Coefficients
             Asserts.True(orderResidual < 5e-14, "DOP853 is not order 8: residual " + orderResidual.ToString("E3"));
         }
 
+        [Fact]
+        public void Dopri5_DenseCoefficientsSumToZero()
+        {
+            // For constant k the Shampine C4 term must vanish: sum(d_i) = 0.
+            // A single shifted d coefficient breaks this identity.
+            ExactRational sum = ExactRational.FromDouble(DOPRI5Coefficients.d1)
+                                + ExactRational.FromDouble(DOPRI5Coefficients.d3)
+                                + ExactRational.FromDouble(DOPRI5Coefficients.d4)
+                                + ExactRational.FromDouble(DOPRI5Coefficients.d5)
+                                + ExactRational.FromDouble(DOPRI5Coefficients.d6)
+                                + ExactRational.FromDouble(DOPRI5Coefficients.d7);
+            double residual = sum.AbsToDouble();
+            output.WriteLine("DOPRI5 dense: |sum d| = " + residual.ToString("E3") + ".");
+            Asserts.True(residual < 1e-15, "DOPRI5 dense coefficients do not sum to 0: " + residual.ToString("E3"));
+        }
+
         private static ExactRational[][] Dopri5A()
         {
             return new[]

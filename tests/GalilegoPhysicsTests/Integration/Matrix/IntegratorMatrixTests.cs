@@ -20,6 +20,12 @@ namespace GalilegoPhysicsTests.Integration.Matrix
             ToleranceProfile tolerance = ToleranceTable.For(integrator, scenario.Class, matrix.Tolerance);
             ScenarioExecution run = ScenarioExecution.Execute(scenario, integrator, matrix.Tolerance, 1);
 
+            if (StepBudget.TryGet(scenario.Id, matrix.IntegratorName, matrix.Tolerance,
+                out int expectedSteps, out long expectedCalls))
+            {
+                run.HasStepBudget(expectedSteps, expectedCalls, 0.1d);
+            }
+
             run.MatchesOracle(tolerance.OraclePositionMeters, tolerance.OracleVelocityMetersPerSecond);
 
             if (scenario.CheckEnergy)

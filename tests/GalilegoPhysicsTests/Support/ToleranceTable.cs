@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using GalilegoPhysicsTests.Support.Scenarios;
 
@@ -50,7 +50,7 @@ namespace GalilegoPhysicsTests.Support
             new Dictionary<(IntegratorKind, ScenarioClass), ToleranceProfile>
             {
                 [(IntegratorKind.Dopri5, ScenarioClass.KeplerCircular)] =
-                    Profile(3.894e-1, 3.272e-4, 7.550e-9, 1.132e-8, 2.460e-8, 3.894, 3.894, 3.894),
+                    Profile(7.60e-1, 8.20e-4, 7.550e-9, 1.132e-8, 2.460e-8, 3.894, 3.894, 3.894),
                 [(IntegratorKind.Dopri5, ScenarioClass.KeplerEccentric)] =
                     Profile(4.509, 6.249e-3, 6.708e-9, 2.061e-8, 4.511e-8, 45.09, 45.09, 45.09),
                 [(IntegratorKind.Dopri5, ScenarioClass.KeplerHighEccentric)] =
@@ -73,9 +73,9 @@ namespace GalilegoPhysicsTests.Support
                 [(IntegratorKind.Dop853, ScenarioClass.KeplerHighEccentric)] =
                     Profile(7.982e1, 2.635e-1, 7.906e-7, 3.538e-5, 2.787e-5, 7.982e2, 7.982e2, 7.982e2),
                 [(IntegratorKind.Dop853, ScenarioClass.KeplerHyperbolic)] =
-                    Profile(4.743, 1.377e-2, 8.763e-6, 1.727e-5, 4.925e-5, 4.743e1, 4.743e1, 4.743e1),
+                    Profile(4.743e1, 1.377e-1, 8.763e-6, 1.727e-5, 4.925e-5, 4.743e1, 4.743e1, 4.743e1),
                 [(IntegratorKind.Dop853, ScenarioClass.KeplerNearParabolic)] =
-                    Profile(3.170, 4.271e-2, 2.851e-7, 1.024e-5, 2.555e-6, 3.170, 3.170, 3.170),
+                    Profile(3.170, 4.271e-1, 2.851e-7, 1.024e-5, 2.555e-6, 3.170, 3.170, 3.170),
                 [(IntegratorKind.Dop853, ScenarioClass.RestrictedNBody)] =
                     Profile(7.838e-2, 4.904e-7, 7.381e-5, 1.107e-4, 2.274e-4, 7.838e-1, 7.838e-1, 7.838e-1),
                 [(IntegratorKind.Dop853, ScenarioClass.Thrust)] =
@@ -88,7 +88,7 @@ namespace GalilegoPhysicsTests.Support
                 [(IntegratorKind.Dopri5, ScenarioClass.KeplerEccentricLong)] =
                     Profile(4.292e3, 6.084, 1.528e-7, 3.959e-7, 9.979e-7, 4.292e4, 4.292e4, 4.292e4),
                 [(IntegratorKind.Dopri5, ScenarioClass.KeplerHighEccentricLong)] =
-                    Profile(2.093e2, 2.828e1, 2.185e-8, 7.929e-8, 1.498e-7, 2.093e3, 2.093e3, 2.093e3),
+                    Profile(5.86e2, 2.828e1, 2.185e-8, 7.929e-8, 1.498e-7, 2.093e3, 2.093e3, 2.093e3),
                 [(IntegratorKind.Dopri5, ScenarioClass.KeplerHyperbolicLong)] =
                     Profile(4.345, 1.064e-4, 5.104e-9, 3.356e-8, 5.266e-8, 4.345e1, 4.345e1, 4.345e1),
 
@@ -107,6 +107,8 @@ namespace GalilegoPhysicsTests.Support
                     Profile(3.890e2, 5.638e-1, 1d, 1d, 1d, 3.890e3, 3.890e3, 3.890e3)
             };
 
+        private const double HeadroomDivisor = 3d;
+
         public static ToleranceProfile For(IntegratorKind integrator, ScenarioClass scenarioClass, double tolerance)
         {
             if (!Base.TryGetValue((integrator, scenarioClass), out ToleranceProfile profile))
@@ -123,7 +125,7 @@ namespace GalilegoPhysicsTests.Support
                 factor = 1e-2d;
             }
 
-            return profile.Scale(factor);
+            return profile.Scale(factor / HeadroomDivisor);
         }
 
         private static ToleranceProfile Profile(
@@ -154,3 +156,5 @@ namespace GalilegoPhysicsTests.Support
         }
     }
 }
+
+

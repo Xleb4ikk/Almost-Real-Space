@@ -11,8 +11,15 @@ Taylor oracle files from `Tools/P1bTests/Reference` (`TaylorJet.cs`,
 - **no** `ProjectReference` to a generated Unity `.csproj`.
 
 If Core ever takes a `UnityEngine` dependency again, this project stops
-compiling. That is intentional. `tests/Shims` was deleted because Core no longer
-needs it.
+compiling. That is intentional.
+
+The old non-Core xUnit files that were removed from this project are preserved
+verbatim in the separate `tests/GalilegoSimTests` project (with its own local
+`Shims.cs`). It is intentionally outside the Core-only build:
+
+```powershell
+dotnet test tests/GalilegoSimTests/GalilegoSimTests.csproj
+```
 
 ## Quick start
 
@@ -33,6 +40,7 @@ slow rows skipped the same way.
 ### Filters
 
 Traits are per matrix row: `Integrator`, `Scenario`, `Tier`, `ScenarioClass`.
+Every fast test class also carries `Tier=Fast`; slow tests carry `Tier=Slow`.
 
 ```powershell
 dotnet test tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj --filter "Integrator=Dop853&Scenario~Kepler"
@@ -41,8 +49,7 @@ dotnet test tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj --filter "Dis
 dotnet test tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj --filter "FullyQualifiedName~DenseOutputTests"
 ```
 
-`methodDisplay=method` is set in `xunit.runner.json`; test names are readable
-method names, and matrix rows render as
+`methodDisplay=method` is set in `xunit.runner.json`; matrix rows render as
 `Dop853 | Kepler e=0.9 | 1 period | tol 1.0E-009`.
 
 ## Integrator matrix
@@ -61,10 +68,15 @@ CreateKepler("kepler-e07", "Kepler e=0.7 | 1 period", ScenarioClass.KeplerEccent
     new[] { 1e-6d, 1e-9d }),
 ```
 
-The row automatically gets traits and runs conservation + oracle checks. A new
-integrator requires: an `IntegratorKind` value, a switch in
-`Support/ScenarioExecution.cs`, the loop in `MatrixDataAttribute`, and a
-`ToleranceTable` row for every scenario class.
+The row gets traits and runs conservation, oracle and step-budget checks. A new
+integrator requires an `IntegratorKind` value, a switch in
+`Support/ScenarioExecution.cs`, the matrix loop, and a `ToleranceTable` row for
+every scenario class.
+
+`Support/StepBudget.cs` pins the measured step count and RHS-call count for every
+matrix row within ±10%. It is a regression gate for step control, not a
+wall-clock benchmark; when step control changes intentionally, refresh it from
+`TestResults/calibration.md`.
 
 ### Fluent runs
 
@@ -93,7 +105,7 @@ Every assertion failure includes:
 - scenario, integrator and requested tolerance;
 - measured value, unit and the tolerance;
 - step count, RHS call count, chunk count and dense segment count;
-- 10-row table of `time / |О”pos| / |О”vel| / energy drift`;
+- 10-row table of `time / |Δpos| / |Δvel| / energy drift`;
 - a ready `dotnet test --filter` command;
 - the C# snippet that reproduces the run;
 - the CSV artifact path.
@@ -101,12 +113,12 @@ Every assertion failure includes:
 Example:
 
 ```
-РџРђР”Р•РќРР•: РѕС€РёР±РєР° РїРѕР·РёС†РёРё РїСЂРѕС‚РёРІ РѕСЂР°РєСѓР»Р°
-РЎС†РµРЅР°СЂРёР№:   kepler-e05 вЂ” Kepler e=0.5 | 1 period
-РРЅС‚РµРіСЂР°С‚РѕСЂ: Dop853, tol=1E-09
-РР·РјРµСЂРµРЅРѕ:   1.479E+01 Рј > РґРѕРїСѓСЃРє 1.479E+02 Рј
+ПАДЕНИЕ: ошибка позиции против оракула
+Сценарий:   kepler-e05 — Kepler e=0.5 | 1 period
+Интегратор: Dop853, tol=1E-09
+Измерено:   1.479E+01 м > допуск 4.929E+01 м
 ...
-РџРѕРІС‚РѕСЂРёС‚СЊ: dotnet test tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj --filter "Integrator=Dop853&Scenario~Kepler"
+Повторить: dotnet test tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj --filter "Integrator=Dop853&Scenario~Kepler"
 C#:        Run.Scenario("kepler-e05").With(Integrator.Dop853, 1E-09).Execute()
 CSV:       .../TestResults/artifacts/kepler-e05-Dop853-tol-1E-09.csv
 ```
@@ -118,10 +130,11 @@ Artifacts go to `TestResults/artifacts/` at the repository root.
 ## Tolerance calibration
 
 All assertion tolerances live in `Support/ToleranceTable.cs`. Base values are
-measured at requested integrator tolerance `1e-9` (long-horizon classes and
-golden classes have their own measured base rows). `For(integrator, class, tol)`
-scales the base by `tol/1e-9`, with a documented floor of `1e-2`: below that the
-observed error stops scaling linearly because of step-control/round-off floors.
+normalized measurements at requested integrator tolerance `1e-9` (long-horizon
+and golden classes have their own measured rows). `For(integrator, class, tol)`
+scales the base by `tol/1e-9` and applies a documented `HeadroomDivisor = 3`, so
+runtime gates carry about x3 headroom, not x10. Long rows were re-measured at
+both tolerance levels so the loose end is not under-scaled.
 
 To re-measure the whole matrix:
 
@@ -133,30 +146,29 @@ Remove-Item Env:GALILEGO_CALIBRATE
 
 It writes `TestResults/calibration.md` (scenario, integrator, tolerance, steps,
 RHS calls, oracle error, mass error, energy/angular/LRL drift). Set each base to
-`measured Г— 10`; do not edit a tolerance just to make a red test green. Deviations
-from the Г—10 rule are documented next to the affected base row or test.
+`measured × 3` (the table stores the pre-divisor normalization); do not edit a
+tolerance just to make a red test green.
 
 ## Golden data
 
 - `GoldenData/golden_core_kepler.json` and
   `GoldenData/golden_core_kepler_10y.json` are **generated by**
   `GoldenData/gen_core_kepler.py`, never by a test. The Python script uses
-  mpmath closed-form Kepler propagation (50вЂ“70 digits), not the C# integrator.
+  mpmath closed-form Kepler propagation (50–70 digits), not the C# integrator.
 - The existing stand goldens `golden_real.json`, `golden_real_1y_hi.json` and
   `golden_real_10y_k28.json` are **linked**, not copied, from
   `Tools/P1bTests/Study/taylor/golden` via `<None Link=...>`. They describe the
   full baked system and cannot be reproduced by Core-only two-body dynamics;
-  the tests load them, verify `P = central_P + rel_P`, and pin the SHA-256 values
-  from the stand README.
+  the tests load them and verify `P = central_P + rel_P`.
+- The SHA-256 check in `GoldenTests` is an **integrity pin for the linked data**,
+  not a Core physics gate. A deliberate stand golden regeneration updates those
+  hashes in the same change.
 - Regenerate Core goldens with:
 
 ```powershell
 cd tests/GalilegoPhysicsTests/GoldenData
 python gen_core_kepler.py
 ```
-
-Then update the measured Г—10 gates in `ToleranceTable` only if the regenerated
-values intentionally changed.
 
 ## What remains in the stand (and why)
 
@@ -166,20 +178,25 @@ depend on Unity-adjacent code outside Core: `Planet`, `Universe`,
 long-running benchmark/experiment matrix. Those are not Core-only and must not
 be pulled into this project.
 
+The restored legacy xUnit files now live in `tests/GalilegoSimTests`; their
+integration-level equivalents also exist in the stand. They are not part of the
+Core-only project because they need `Spacecraft`, `Universe`, `Events` and
+`Spacecraft.Solver`.
+
 Mapping of the old xUnit project and the ported stand checks:
 
 | Old check | New test |
 |---|---|
 | `Rk4Tests` (free fall, growing acceleration) | `Rk4Tests` (unchanged Core-only) |
-| `RegressionTests` (new path vs old path, pure gravity) | `Integration/Kepler/LegacyParityTests` |
-| `OrbitAnalyticTests` (circular orbit, one period) | matrix `kepler-circular` + `Integration/Golden/GoldenTests` |
-| `TsiolkovskyTests` | `Integration/Ship/SpacecraftIntegratorTests.ConstantThrustMatchesTsiolkovsky` |
-| `MassToleranceTests` | `Integration/Ship/SpacecraftIntegratorTests.TightMassToleranceReallyDrivesTheStepSize` |
+| `RegressionTests` (new path vs old path, pure gravity) | `Integration/Kepler/LegacyParityTests` + restored `tests/GalilegoSimTests` |
+| `OrbitAnalyticTests` (circular orbit, one period) | matrix `kepler-circular` + `Integration/Golden/GoldenTests` + restored project |
+| `TsiolkovskyTests` | `Integration/Ship/SpacecraftIntegratorTests.ConstantThrustMatchesTsiolkovsky` + restored project |
+| `MassToleranceTests` | `Integration/Ship/SpacecraftIntegratorTests.TightMassToleranceReallyDrivesTheStepSize` + restored project |
+| `AltitudeCrossingTests`, `TimedEventTests`, `PriorityRestartTests`, `SoiChangeTests`, `ContactSolverTests` | restored verbatim in `tests/GalilegoSimTests`; integration-level equivalents also exist in the stand |
 | P1b `Test21_Kahan` (micro arithmetic part) | `Mathematics/KahanTests` |
 | P1b `Test34_GoldenState` | stays in the stand: uses `SpacecraftPhysics`/`Universe`; the Core-only analogue is the linked Core golden |
 | P1b `Test35_KeplerEdge` | stays: uses `KeplerMath` in `Trajectory/Prediction`; Core has only `OrbitalElements` |
 | P1b `Test39_SecularDrift`, `Test21` 10-year macro | stays: `LongWarpDriver`/`EventDrivenPropagator`/`StarSystem` |
-| `AltitudeCrossingTests`, `TimedEventTests`, `PriorityRestartTests`, `SoiChangeTests`, `ContactSolverTests` | stay in the stand: they exercise `Events`, `Universe`, `Spacecraft.Solver` |
 
 There is no full N-body integrator in Core (Core integrates one spacecraft
 state). `restricted-3body` is the production-path test particle in a moving
@@ -190,9 +207,12 @@ independent-oracle check (`Integration/Kepler/PythagoreanOracleTests`, Slow).
 
 - DOP853's dense segment is cubic (`C4 = 0` in `SpacecraftOrbitIntegrator`), so
   its interpolation error is larger than DOPRI5's Shampine quartic. The tests
-  measure it and keep the documented gates.
+  measure it and keep the documented gates; full DOP853 dense output is a
+  separate follow-up.
 - DOP853 is not uniformly more accurate than DOPRI5 at the same requested
   tolerance in this implementation (row-wise calibration shows this); the
   tolerance table is per integrator and per class, not a claim of formal
   superiority.
-
+- `OrbitIntegrator.StepToTime` is covered as a thin wrapper; the near-parabolic
+  hyperbolic apsides branch is covered by
+  `OrbitalElementsTests.NearParabolicHyperbolicApsidesAreRejected`.

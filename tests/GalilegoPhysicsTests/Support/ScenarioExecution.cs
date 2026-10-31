@@ -294,6 +294,27 @@ namespace GalilegoPhysicsTests.Support
             return this;
         }
 
+        public ScenarioExecution HasStepBudget(int expectedSteps, long expectedCalls, double relativeTolerance)
+        {
+            int stepTolerance = Math.Max(2, (int)Math.Ceiling(expectedSteps * relativeTolerance));
+            long callTolerance = Math.Max(2L, (long)Math.Ceiling(expectedCalls * relativeTolerance));
+            bool stepsMatch = Math.Abs(Steps - expectedSteps) <= stepTolerance;
+            bool callsMatch = Math.Abs(RhsCalls - expectedCalls) <= callTolerance;
+            if (!stepsMatch || !callsMatch)
+            {
+                ThrowFailure(
+                    "бюджет шагов/RHS",
+                    Steps,
+                    expectedSteps,
+                    "шагов (RHS=" + RhsCalls + ", ожидалось " + expectedCalls + ")",
+                    "Изменился контроль шага. Ожидалось ±" + (relativeTolerance * 100d).ToString("0") +
+                    "%: steps " + expectedSteps + "±" + stepTolerance +
+                    ", RHS " + expectedCalls + "±" + callTolerance + ".");
+            }
+
+            return this;
+        }
+
         public ScenarioExecution IsDeterministic()
         {
             RunData repeat = IntegratorDriver.Integrate(

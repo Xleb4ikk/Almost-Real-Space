@@ -109,8 +109,11 @@ namespace GalilegoPhysicsTests.Integration.Golden
 
         [Fact]
         [Trait("Tier", "Fast")]
+        [Trait("Integrity", "LinkedStandGolden")]
         public void LinkedGoldenHashesMatchTheStandReadme()
         {
+            // Integrity pin for the linked stand data, not a Core physics gate.
+            // A deliberate golden regeneration in P1bTests updates these hashes.
             AssertHash("golden_real.json", "2A5206636425B04AE7B21EC9765F1FA4EF3723D98472DF347ED77BA3355402E8");
             AssertHash("golden_real_1y_hi.json", "7582663FBAF275C2076B9D411DFB91B9833FC8683AD422FF3793C39BD6ACBC4E");
         }
