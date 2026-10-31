@@ -27,15 +27,16 @@ test (`LocalFrameTests`) at 1 AU.
 ## Quick start
 
 ```powershell
-# Full suite (default): ~25 s, includes long horizons and the 1-year golden
+# Full suite (default): ~16 s, includes long horizons and the 1-year golden
 dotnet test tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj
 
 # Fast loop while iterating: excludes the slow tier
 dotnet test tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj --filter "Tier!=Slow"
 ```
 
-There is no environment variable gating: every test runs unless a trait filter
-excludes it.
+There is no environment variable gating for physics tests: every test runs
+unless a trait filter excludes it. `CalibrationTests` is a maintenance tool and
+reports Skipped unless `GALILEGO_CALIBRATE=1`.
 
 ### Filters
 
@@ -105,7 +106,7 @@ Calibration runs **all** matrix rows, including Slow scenarios, and writes:
 
 Paste the snippet into `Support/StepBudget.cs`, then rerun the consistency test.
 
-`CalibrationTests` is a no-op unless `GALILEGO_CALIBRATE=1`, but
+`CalibrationTests` is a skipped tool unless `GALILEGO_CALIBRATE=1`, but
 `ToleranceTableConsistencyTests` always runs the matrix: it fails if a gate is
 below the measured error or more than 10x above it, so a stale or over-loose
 `ToleranceTable` cannot pass silently.
@@ -201,9 +202,11 @@ a gate just to make a test green; recalibrate with `GALILEGO_CALIBRATE=1`.
   origin`. Both DOP853 and DOPRI5 are checked against them, each with its own
   absolute gates.
 - Core golden gates are absolute per case, not drawn from `ToleranceTable`:
-  1e-6 m per fast one-period case (5e-5 m for the high-eccentricity case,
-  5e-8 m for the hyperbolic case, 2e-6 m for the inclined case) and 1.0 m for
-  the 1-year case. The 1-year eccentric case covers ~3,170 orbits; the 10-year
+  1e-6 m per fast one-period case (5e-5 m for e=0.9, 1.8e-3 m for e=0.99,
+  2.8e-6 m for near-parabolic, 5e-8 m for the hyperbolic case, 2e-6 m for the
+  inclined case) and 1.0 m for the 1-year case. DOPRI5 uses its own measured
+  gates (wider at high eccentricity). The 1-year eccentric case covers ~3,170
+  orbits; the 10-year
   circular case was removed because it cost ~59 s and 8M steps without adding a
   different failure mode.
 - Regenerate Core goldens with:
@@ -215,7 +218,7 @@ python gen_core_kepler.py
 
 ## What remains in the stand
 
-`Tools/P1bTests --fast` has 174 cases (the 100-year bake is Slow after its
+`Tools/P1bTests --fast` has 175 cases (the 100-year bake is Slow after its
 coverage/finite-endpoint checks were added). It owns
 tests that depend on Unity-adjacent code outside Core: `Planet`, `Universe`,
 `Spacecraft`, `Events`, `Ephemeris`, `Debris`, terrain, atmosphere and the
@@ -246,3 +249,4 @@ Core has no full N-body integrator. `restricted-3body` (Earth-Moon LEO) and
   is unaffected; this only affects interpolation in that rare case.
 - Every matrix gate is calibrated per row and checked for staleness; the old
   "DOP853 is less accurate than DOPRI5" limitation no longer applies.
+

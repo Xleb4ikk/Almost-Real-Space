@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using Galilego.Universe;
 using Unity.Mathematics;
@@ -103,6 +103,11 @@ internal static partial class P1bTests
                 }
             }
         }
+
+        Check(bestScore > 0d && !double.IsNaN(bestScore) && !double.IsInfinity(bestScore),
+            "T138 coast score", bestScore.ToString("F1", CultureInfo.InvariantCulture));
+        Check(bestLat >= -60d && bestLat <= 60d && bestLon >= -180d && bestLon <= 180d,
+            "T138 coast coordinates", bestLat.ToString("F4") + "," + bestLon.ToString("F4"));
 
         Console.WriteLine(string.Format(
             CultureInfo.InvariantCulture,

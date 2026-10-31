@@ -10,17 +10,24 @@ using Xunit;
 
 namespace GalilegoPhysicsTests.Integration.Matrix
 {
-    [Trait("Tier", "Fast")]
-    public sealed class CalibrationTests
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+    public sealed class CalibrationFactAttribute : FactAttribute
     {
-        [Fact]
-        public void CalibrateMatrix()
+        public CalibrationFactAttribute()
         {
             if (!Env.Calibrate)
             {
-                return;
+                Skip = "Calibration tool: set GALILEGO_CALIBRATE=1 to run it.";
             }
+        }
+    }
 
+    [Trait("Tier", "Fast")]
+    public sealed class CalibrationTests
+    {
+        [CalibrationFact]
+        public void CalibrateMatrix()
+        {
             var rows = new List<string>();
             var snippet = new List<string>();
             var productionSnippet = new List<string>();

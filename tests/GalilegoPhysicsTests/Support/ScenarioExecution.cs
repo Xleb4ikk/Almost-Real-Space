@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Galilego.Core;
@@ -334,22 +334,20 @@ namespace GalilegoPhysicsTests.Support
         {
             // Tiny rows are pinned exactly: a ±2 floor on a 1-step row accepts a
             // 3x step-control regression. Larger rows keep the ±10% gate.
-            int stepTolerance = expectedSteps <= 3
-                ? 0
-                : Math.Max(1, (int)Math.Ceiling(expectedSteps * relativeTolerance));
-            long callTolerance = Math.Max(1L, (long)Math.Ceiling(expectedCalls * relativeTolerance));
+            int stepTolerance = (int)Math.Floor(expectedSteps * relativeTolerance);
+            long callTolerance = (long)Math.Floor(expectedCalls * relativeTolerance);
             bool stepsMatch = Math.Abs(Steps - expectedSteps) <= stepTolerance;
             bool callsMatch = Math.Abs(RhsCalls - expectedCalls) <= callTolerance;
             if (!stepsMatch || !callsMatch)
             {
                 ThrowFailure(
-                    "бюджет шагов/RHS",
+                    "step budget",
                     Steps,
                     expectedSteps,
-                    "шагов (RHS=" + RhsCalls + ", ожидалось " + expectedCalls + ")",
-                    "Изменился контроль шага. Ожидалось ±" + (relativeTolerance * 100d).ToString("0") +
-                    "% (ряды ≤3 шагов — точно): steps " + expectedSteps + "±" + stepTolerance +
-                    ", RHS " + expectedCalls + "±" + callTolerance + ".");
+                    "steps " + Steps + " (expected " + expectedSteps + "±" + stepTolerance +
+                    "), RHS " + RhsCalls + " (expected " + expectedCalls + "±" + callTolerance + ")",
+                    "Step control changed. steps " + Steps + "/" + expectedSteps +
+                    ", RHS " + RhsCalls + "/" + expectedCalls + ".");
             }
 
             return this;

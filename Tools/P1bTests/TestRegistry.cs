@@ -95,6 +95,7 @@ internal static partial class P1bTests
             new P1bCase("Test53_LambertHalfPlane", Test53_LambertHalfPlane, false),
             new P1bCase("Test54_LambertOvershoot", Test54_LambertOvershoot, false),
             new P1bCase("Test55_ForceAcceptSync", Test55_ForceAcceptSync, false),
+            new P1bCase("Test55b_ForceAcceptTriggered", Test55b_ForceAcceptTriggered, false),
             new P1bCase("Test56_ApsisZero", Test56_ApsisZero, false),
             new P1bCase("Test57_RailValidation", Test57_RailValidation, false),
             new P1bCase("Test58_GrainProbe", Test58_GrainProbe, false),
@@ -280,3 +281,4 @@ new P1bCase("Test549_SpacecraftOrbitIntegrators", Test549_SpacecraftOrbitIntegra
         };
     }
 }
+

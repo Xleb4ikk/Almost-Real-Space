@@ -90,6 +90,15 @@ internal static partial class P1bTests
             CultureInfo.InvariantCulture,
             "  {0,-34} p50 {1,7:N0}  p99 {2,7:N0}  p99.9 {3,7:N0}  p99.99 {4,7:N0}  max {5,7:N0}  min {6,8:N0}  суша {7,6:P2}  (м)",
             label, p50, p99, p999, p9999, max, min, land / n));
+
+        Check(max > 8000d && max < 12000d, "T130 max " + label,
+            max.ToString("F0", CultureInfo.InvariantCulture));
+        Check(p99 > 4000d && p99 < 7000d, "T130 p99 " + label,
+            p99.ToString("F0", CultureInfo.InvariantCulture));
+        Check(land > 0.2d * n && land < 0.7d * n, "T130 land fraction " + label,
+            (land / n).ToString("P1", CultureInfo.InvariantCulture));
+        Check(min < 0d && min > -30000d, "T130 min " + label,
+            min.ToString("F0", CultureInfo.InvariantCulture));
     }
 
     /// <summary>

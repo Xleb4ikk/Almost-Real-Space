@@ -79,8 +79,9 @@ internal static partial class P1bTests
             }
 
             File.WriteAllText(path, sb.ToString());
-            Console.WriteLine("    эталон записан: " + path);
-            Check(true, "T903 shelf-fix-ab", "эталон снят");
+            Console.WriteLine("    baseline written: " + path);
+            Check(false, "T903 shelf-fix-ab",
+                "baseline was missing; capture the pre-change dump and re-run the A/B");
             return 0;
         }
 

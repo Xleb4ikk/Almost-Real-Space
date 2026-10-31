@@ -1125,6 +1125,44 @@ internal static partial class P1bTests
         return 0;
     }
 
+    private static int Test55b_ForceAcceptTriggered()
+    {
+        // A high-frequency forcing makes the error estimate exceed the scale even
+        // at MinStepSize, so the driver must take the force-accept branch instead
+        // of rejecting forever.
+        double targetDt = 1e-3d;
+        SpacecraftOrbitIntegrator.DerivativeFunction deriv = (s, t) => new SpacecraftIntegrationState
+        {
+            Position = s.Velocity,
+            Velocity = new Vector3d(1e15d * System.Math.Sin(1e9d * t), 0d, 0d),
+            Mass = 0d
+        };
+
+        var track = new List<DenseSegment>();
+        SpacecraftOrbitIntegrator.StepForward(
+            new SpacecraftIntegrationState
+            {
+                Position = new Vector3d(7e6, 0d, 0d),
+                Velocity = Vector3d.Zero,
+                Mass = 1000d
+            },
+            0d, targetDt, deriv,
+            1e-12d, 1e-12d, 1e-12d, 1e-12d, track);
+
+        int minSteps = 0;
+        foreach (DenseSegment segment in track)
+        {
+            if (segment.T1 - segment.T0 <= 1.01e-6d)
+            {
+                minSteps++;
+            }
+        }
+
+        Check(track.Count > 1 && minSteps > 0, "T55b force-accept triggered",
+            string.Format("сегментов {0}, из них на MinStep: {1}", track.Count, minSteps));
+        return 0;
+    }
+
     private static int Test56_ApsisZero()
     {
         // At periapsis timeToPeriapsis == 0, at apoapsis timeToApoapsis == 0.

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using Galilego.Universe;
 using Unity.Mathematics;
@@ -28,22 +28,22 @@ internal static partial class P1bTests
 
         Console.WriteLine(string.Format(
             CultureInfo.InvariantCulture,
-            "    A. выбранное (DepthKnee 0.51 @ -0.30, пол {0:N0} м) | "
-            + "B. альтернатива (DepthKnee 0.26 @ -0.33, пол {1:N0} м)",
+            "    A. РІС‹Р±СЂР°РЅРЅРѕРµ (DepthKnee 0.51 @ -0.30, РїРѕР» {0:N0} Рј) | "
+            + "B. Р°Р»СЊС‚РµСЂРЅР°С‚РёРІР° (DepthKnee 0.26 @ -0.33, РїРѕР» {1:N0} Рј)",
             (-0.30d - 0.51d) * 13662d, (-0.33d - 0.26d) * 13662d));
         Console.WriteLine();
 
-        Depths("ДО  (сжатия ложа нет)", before, n);
-        Depths("ПОСЛЕ (выбранное 0.51 @ -0.30)", chosen, n);
-        Depths("АЛЬТ (0.26 @ -0.33, не включено)", alt, n);
+        Depths("Р”Рћ  (СЃР¶Р°С‚РёСЏ Р»РѕР¶Р° РЅРµС‚)", before, n);
+        Depths("РџРћРЎР›Р• (РІС‹Р±СЂР°РЅРЅРѕРµ 0.51 @ -0.30)", chosen, n);
+        Depths("РђР›Р¬Рў (0.26 @ -0.33, РЅРµ РІРєР»СЋС‡РµРЅРѕ)", alt, n);
 
         Console.WriteLine();
-        Console.WriteLine("    меридиан через берег, шаг 1.5° (размах 45°) — ложе:");
-        Console.WriteLine("      угол      ДО         ПОСЛЕ      разница");
+        Console.WriteLine("    РјРµСЂРёРґРёР°РЅ С‡РµСЂРµР· Р±РµСЂРµРі, С€Р°Рі 1.5В° (СЂР°Р·РјР°С… 45В°) вЂ” Р»РѕР¶Рµ:");
+        Console.WriteLine("      СѓРіРѕР»      Р”Рћ         РџРћРЎР›Р•      СЂР°Р·РЅРёС†Р°");
         CoastTransect(before, chosen);
         Console.WriteLine();
-        Console.WriteLine("    ближний масштаб через берег, шаг 0.02° — шельф и склон:");
-        Console.WriteLine("      угол      ДО         ПОСЛЕ      разница");
+        Console.WriteLine("    Р±Р»РёР¶РЅРёР№ РјР°СЃС€С‚Р°Р± С‡РµСЂРµР· Р±РµСЂРµРі, С€Р°Рі 0.02В° вЂ” С€РµР»СЊС„ Рё СЃРєР»РѕРЅ:");
+        Console.WriteLine("      СѓРіРѕР»      Р”Рћ         РџРћРЎР›Р•      СЂР°Р·РЅРёС†Р°");
         CoastNear(before, chosen);
 
         return 0;
@@ -80,9 +80,15 @@ internal static partial class P1bTests
             }
         }
 
+        Check(m > 0, "T137 ocean points " + label, m.ToString());
+        Check(d[m - 1] > 0d && d[m - 1] < 30000d, "T137 min " + label, d[m - 1].ToString("F0"));
+        Check(p1 > 0d && p1 < 10000d, "T137 p1 " + label, p1.ToString("F0"));
+        Check(p5 > 0d && p5 < 10000d, "T137 p5 " + label, p5.ToString("F0"));
+        Check(deep6 / m < 0.6d, "T137 deep6 " + label, (deep6 / m).ToString("P1"));
+
         Console.WriteLine(string.Format(
             CultureInfo.InvariantCulture,
-            "  {0,-36} океан {1,6:P2} | min {2,8:N0} м | p1 {3,8:N0} м | p5 {4,7:N0} м | глубже 6 км {5,7:P2}",
+            "  {0,-36} РѕРєРµР°РЅ {1,6:P2} | min {2,8:N0} Рј | p1 {3,8:N0} Рј | p5 {4,7:N0} Рј | РіР»СѓР±Р¶Рµ 6 РєРј {5,7:P2}",
             label, (double)m / n, d[m - 1], p1, p5, deep6 / m));
     }
 
@@ -117,6 +123,7 @@ internal static partial class P1bTests
             }
         }
 
+        Check(deepest < -0.1d, "T137 coast deep floor", deepest.ToString("F3"));
         double3 deepE1 = Perp(deepDir);
         for (int k = 0; k <= 12; k++)
         {
@@ -126,7 +133,7 @@ internal static partial class P1bTests
             double hb = TerrainNoise.SampleHeight(pb, dir);
             Console.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
-                "      {0,6:F1}° {1,10:N0} м {2,10:N0} м {3,10:N0} м",
+                "      {0,6:F1}В° {1,10:N0} Рј {2,10:N0} Рј {3,10:N0} Рј",
                 (k - 6) * 3.0d, ha * a.AmplitudeMeters, hb * b.AmplitudeMeters,
                 (ha - hb) * a.AmplitudeMeters));
         }
@@ -154,7 +161,7 @@ internal static partial class P1bTests
 
             Console.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
-                "      {0,6:F2}° {1,9:N0} м {2,9:N0} м {3,9:N0} м",
+                "      {0,6:F2}В° {1,9:N0} Рј {2,9:N0} Рј {3,9:N0} Рј",
                 (k - 20) * 0.02d, ha, hb, ha - hb));
         }
     }
@@ -232,3 +239,4 @@ internal static partial class P1bTests
         return len > 1e-12d ? v / len : new double3(1d, 0d, 0d);
     }
 }
+

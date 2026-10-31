@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 
@@ -140,6 +140,11 @@ internal static partial class P1bTests
                     maxStep = step;
                 }
             }
+
+            Check(levels.Count > 1, "T140 band levels depth " + depth,
+                levels.Count.ToString());
+            Check(maxStep >= 1, "T140 band step depth " + depth,
+                maxStep.ToString());
 
             Console.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,

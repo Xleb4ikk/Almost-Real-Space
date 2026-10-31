@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using Galilego.Universe;
 using Unity.Mathematics;
@@ -12,14 +12,14 @@ internal static partial class P1bTests
     ///
     /// Percentiles are computed AMONG OCEAN points (h &lt; 0), otherwise p50 would
     /// be positive land and the numbers would mean nothing. p1 is the deepest 1%
-    /// of the ocean — the tail that breaks the picture.
+    /// of the ocean вЂ” the tail that breaks the picture.
     /// </summary>
     private static int Test135_OceanDepthHistogram()
     {
         const int n = 4000000;
 
         Histogram("legacy EarthLike (value)", SceneLikeTerrain(), n);
-        Histogram("EarthLike_Perlin (без сжатия ложа)", PerlinAssetNoDepth(), n);
+        Histogram("EarthLike_Perlin (Р±РµР· СЃР¶Р°С‚РёСЏ Р»РѕР¶Р°)", PerlinAssetNoDepth(), n);
 
         // Two tools from the plan. ContinentDepth sinks both the seafloor and the
         // shelf, so it is unsuitable as the only tool - visible in p25.
@@ -37,7 +37,7 @@ internal static partial class P1bTests
             k.DepthThreshold = -0.30d;
             Histogram(string.Format(
                 CultureInfo.InvariantCulture,
-                "Perlin, (b) DepthKnee {0:F2} при пороге -0.30 (пол {1:N0} м)",
+                "Perlin, (b) DepthKnee {0:F2} РїСЂРё РїРѕСЂРѕРіРµ -0.30 (РїРѕР» {1:N0} Рј)",
                 knee, (-0.30d - knee) * 13662d), k, n);
         }
 
@@ -84,18 +84,24 @@ internal static partial class P1bTests
             }
         }
 
+        Check(m > 0, "T135 ocean points " + label, m.ToString());
+        Check(p50 > 0d && p50 < 6000d, "T135 p50 " + label, p50.ToString("F0"));
+        Check(min > 0d && min < 30000d, "T135 min " + label, min.ToString("F0"));
+        Check(shelf > 0d && shelf < 5000d, "T135 p25 shelf " + label, shelf.ToString("F0"));
+        Check(deep6 / m < 0.6d, "T135 deep6 fraction " + label, (deep6 / m).ToString("P1"));
+
         Console.WriteLine(string.Format(
             CultureInfo.InvariantCulture,
             "  {0}\n"
-            + "    океан {1,6:P2} площади | дно: p50 {2,8:N0} м (медиана), p25 {3,7:N0} м (шельф),"
-            + " p5 {4,8:N0} м, p1 {5,8:N0} м, p0.1 {6,8:N0} м, min {7,9:N0} м\n"
-            + "    глубже 6 км: {8,7:P3} океана | глубже 11 км: {9,7:P3} океана"
-            + " (Земля: единицы процента и меньше)",
+            + "    РѕРєРµР°РЅ {1,6:P2} РїР»РѕС‰Р°РґРё | РґРЅРѕ: p50 {2,8:N0} Рј (РјРµРґРёР°РЅР°), p25 {3,7:N0} Рј (С€РµР»СЊС„),"
+            + " p5 {4,8:N0} Рј, p1 {5,8:N0} Рј, p0.1 {6,8:N0} Рј, min {7,9:N0} Рј\n"
+            + "    РіР»СѓР±Р¶Рµ 6 РєРј: {8,7:P3} РѕРєРµР°РЅР° | РіР»СѓР±Р¶Рµ 11 РєРј: {9,7:P3} РѕРєРµР°РЅР°"
+            + " (Р—РµРјР»СЏ: РµРґРёРЅРёС†С‹ РїСЂРѕС†РµРЅС‚Р° Рё РјРµРЅСЊС€Рµ)",
             label, (double)m / n, p50, shelf, p5, p1, p001, min, deep6 / m, deep11 / m));
     }
 
     /// <summary>
-    /// Coast transect: shelf, slope, seafloor — what the eye should read.
+    /// Coast transect: shelf, slope, seafloor вЂ” what the eye should read.
     /// Seafloor compression must not eat the shelf, and lowering ContinentDepth
     /// must not raise the bottom too much.
     ///
@@ -104,16 +110,16 @@ internal static partial class P1bTests
     /// </summary>
     private static int Test136_CoastProfile()
     {
-        Console.WriteLine("    профиль через берег (по меридиану, 0.02° на шаг, 120 точек в сторону):");
+        Console.WriteLine("    РїСЂРѕС„РёР»СЊ С‡РµСЂРµР· Р±РµСЂРµРі (РїРѕ РјРµСЂРёРґРёР°РЅСѓ, 0.02В° РЅР° С€Р°Рі, 120 С‚РѕС‡РµРє РІ СЃС‚РѕСЂРѕРЅСѓ):");
 
         HeightfieldTerrain control = PerlinAssetNoDepth();
         HeightfieldTerrain knee = PerlinAssetNoDepth();
         knee.DepthKnee = 0.51d;
         knee.DepthThreshold = -0.30d;
 
-        CoastRun("A. контроль (ContinentDepth 1.2, ложе не сжато)", control);
+        CoastRun("A. РєРѕРЅС‚СЂРѕР»СЊ (ContinentDepth 1.2, Р»РѕР¶Рµ РЅРµ СЃР¶Р°С‚Рѕ)", control);
         Console.WriteLine();
-        CoastRun("B. DepthKnee 0.51 при пороге -0.30 (пол -11.1 км)", knee);
+        CoastRun("B. DepthKnee 0.51 РїСЂРё РїРѕСЂРѕРіРµ -0.30 (РїРѕР» -11.1 РєРј)", knee);
 
         return 0;
     }
@@ -145,12 +151,13 @@ internal static partial class P1bTests
             }
         }
 
+        Check(bestGap < 0.01d, "T136 coast crossing " + label, bestGap.ToString("E2"));
         double3 up = System.Math.Abs(coastDir.z) < 0.9d ? new double3(0d, 0d, 1d) : new double3(1d, 0d, 0d);
         double3 e1 = Normalize(math.cross(up, coastDir));
         Console.WriteLine(string.Format(
             CultureInfo.InvariantCulture,
-            "  {0} (берег на {1:N0} м)\n"
-            + "      суша → море, шаг 0.02° (~2.2 км):",
+            "  {0} (Р±РµСЂРµРі РЅР° {1:N0} Рј)\n"
+            + "      СЃСѓС€Р° в†’ РјРѕСЂРµ, С€Р°Рі 0.02В° (~2.2 РєРј):",
             label, bestH * amp));
 
         const double stepDeg = 0.02d;
@@ -159,30 +166,30 @@ internal static partial class P1bTests
             double ang = (k - 20) * stepDeg * System.Math.PI / 180d;
             double3 dir = Normalize((coastDir * System.Math.Cos(ang)) + (e1 * System.Math.Sin(ang)));
             double h = TerrainNoise.SampleHeight(p, dir) * amp;
-            string mark = h > 0d ? "суша" : "море";
+            string mark = h > 0d ? "СЃСѓС€Р°" : "РјРѕСЂРµ";
             if (k % 4 == 0)
             {
                 Console.WriteLine(string.Format(
                     CultureInfo.InvariantCulture,
-                    "      {0,7:F2}° {1,5} {2,9:N0} м{3}",
+                    "      {0,7:F2}В° {1,5} {2,9:N0} Рј{3}",
                     (k - 20) * stepDeg, mark, h, Bar(h, amp)));
             }
         }
 
         // Far scale: from the coast to the seafloor. The near transect only reaches
         // 1.3 km while seafloor compression starts at 4.1 km, so without this
-        // section profiles A and B look identical - proving nothing. Step 1.5°,
-        // span 45° (~5,000 km) reaches the deep bottom.
-        Console.WriteLine("      --- дальний масштаб, шаг 1.5° (размах 45°) ---");
+        // section profiles A and B look identical - proving nothing. Step 1.5В°,
+        // span 45В° (~5,000 km) reaches the deep bottom.
+        Console.WriteLine("      --- РґР°Р»СЊРЅРёР№ РјР°СЃС€С‚Р°Р±, С€Р°Рі 1.5В° (СЂР°Р·РјР°С… 45В°) ---");
         for (int k = 0; k <= 30; k++)
         {
             double ang = k * 1.5d * System.Math.PI / 180d;
             double3 dir = Normalize((coastDir * System.Math.Cos(ang)) + (e1 * System.Math.Sin(ang)));
             double h = TerrainNoise.SampleHeight(p, dir) * amp;
-            string mark = h > 0d ? "суша" : "море";
+            string mark = h > 0d ? "СЃСѓС€Р°" : "РјРѕСЂРµ";
             Console.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
-                "      {0,6:F1}° {1,5} {2,9:N0} м{3}",
+                "      {0,6:F1}В° {1,5} {2,9:N0} Рј{3}",
                 k * 1.5d, mark, h, Bar(h, amp)));
         }
     }
@@ -223,3 +230,4 @@ internal static partial class P1bTests
         return t;
     }
 }
+

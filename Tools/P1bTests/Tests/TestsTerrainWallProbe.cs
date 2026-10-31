@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using Galilego.Core;
 using Galilego.Universe;
@@ -8,11 +8,11 @@ internal static partial class P1bTests
     /// <summary>
     /// Probes the "wall with vertical ribs" anomaly (player screenshot,
     /// lat 5.715345 / lon 142.200892). Profile and seed taken from the scene:
-    /// OutdoorsScene → BodyAuthoring.TerrainPreset = EarthLike_Perlin,
+    /// OutdoorsScene в†’ BodyAuthoring.TerrainPreset = EarthLike_Perlin,
     /// TerrainSeed = 24334543, Radius = 1143000.
     ///
     /// Goal: decide whether there is a GRID-SCALE sawtooth in the height function
-    /// itself. Leaf grid step at MaxDepth 12: (π/2·R/2^12)/(TileResolution-1) ≈ 6.85 m.
+    /// itself. Leaf grid step at MaxDepth 12: (ПЂ/2В·R/2^12)/(TileResolution-1) в‰€ 6.85 m.
     /// If the field has no sawtooth, the anomaly lives in mesh assembly/rendering.
     /// </summary>
     private static HeightfieldTerrain SceneTerrain()
@@ -141,10 +141,10 @@ internal static partial class P1bTests
         double hRaw = terrain.GetRawHeightMeters(body, latRad, lonRad);
         double hClamped = terrain.GetHeightMeters(body, latRad, lonRad);
         Console.WriteLine(string.Format(inv,
-            "    h(игрок lat {0} lon {1}) = {2:F2} м (сырая), {3:F2} м (с клампом моря). HUD в кадре: рельеф под игроком 26 м.",
+            "    h(РёРіСЂРѕРє lat {0} lon {1}) = {2:F2} Рј (СЃС‹СЂР°СЏ), {3:F2} Рј (СЃ РєР»Р°РјРїРѕРј РјРѕСЂСЏ). HUD РІ РєР°РґСЂРµ: СЂРµР»СЊРµС„ РїРѕРґ РёРіСЂРѕРєРѕРј 26 Рј.",
             PlayerLat, PlayerLon, hRaw, hClamped));
 
-        // ===== Neighbourhood map: 41×41 at 150 m = ±3 km =====
+        // ===== Neighbourhood map: 41Г—41 at 150 m = В±3 km =====
         const int N = 41;
         const double Step = 150d;
         var map = new double[N, N];
@@ -165,9 +165,9 @@ internal static partial class P1bTests
         }
 
         Console.WriteLine(string.Format(inv,
-            "    карта ±3 км (шаг {0:F0} м): h от {1:F0} до {2:F0} м. Строки — север, столбцы — восток.",
+            "    РєР°СЂС‚Р° В±3 РєРј (С€Р°Рі {0:F0} Рј): h РѕС‚ {1:F0} РґРѕ {2:F0} Рј. РЎС‚СЂРѕРєРё вЂ” СЃРµРІРµСЂ, СЃС‚РѕР»Р±С†С‹ вЂ” РІРѕСЃС‚РѕРє.",
             Step, minH, maxH));
-        Console.WriteLine("    ~ море  s полка(<13)  . <25  : <50  + <100  * <250  # <600  % <1500  @ выше");
+        Console.WriteLine("    ~ РјРѕСЂРµ  s РїРѕР»РєР°(<13)  . <25  : <50  + <100  * <250  # <600  % <1500  @ РІС‹С€Рµ");
         for (int i = N - 1; i >= 0; i--)
         {
             var line = new System.Text.StringBuilder(N);
@@ -215,15 +215,15 @@ internal static partial class P1bTests
         }
 
         Console.WriteLine(string.Format(inv,
-            "    максимальный уклон по карте {0:F3} ({1:F1}°) на клетке ({2},{3}), вдоль {4}",
-            worstSlope, Math.Atan(worstSlope) * (180d / Math.PI), wi, wj, worstAlongEast ? "востока" : "севера"));
+            "    РјР°РєСЃРёРјР°Р»СЊРЅС‹Р№ СѓРєР»РѕРЅ РїРѕ РєР°СЂС‚Рµ {0:F3} ({1:F1}В°) РЅР° РєР»РµС‚РєРµ ({2},{3}), РІРґРѕР»СЊ {4}",
+            worstSlope, Math.Atan(worstSlope) * (180d / Math.PI), wi, wj, worstAlongEast ? "РІРѕСЃС‚РѕРєР°" : "СЃРµРІРµСЂР°"));
 
         // ===== Fine 6.85 m profile across this step =====
         double baseNorth = (wi - (N / 2)) * Step;
         double baseEast = (wj - (N / 2)) * Step;
         Console.WriteLine(string.Format(inv,
-            "    профиль с шагом сетки листа {0:F2} м вдоль {1} (Δ от точки ({2:F0},{3:F0}) м):",
-            LeafQuadMeters, worstAlongEast ? "востока" : "севера", baseNorth, baseEast));
+            "    РїСЂРѕС„РёР»СЊ СЃ С€Р°РіРѕРј СЃРµС‚РєРё Р»РёСЃС‚Р° {0:F2} Рј РІРґРѕР»СЊ {1} (О” РѕС‚ С‚РѕС‡РєРё ({2:F0},{3:F0}) Рј):",
+            LeafQuadMeters, worstAlongEast ? "РІРѕСЃС‚РѕРєР°" : "СЃРµРІРµСЂР°", baseNorth, baseEast));
         double prev = double.NaN;
         for (int k = -8; k <= 24; k++)
         {
@@ -232,13 +232,13 @@ internal static partial class P1bTests
             OffsetLatLon(PlayerLat, PlayerLon, north, east, out double la, out double lo);
             double h = terrain.GetRawHeightMeters(body, la, lo);
             string delta = double.IsNaN(prev) ? "      " : (h - prev).ToString("+0.0;-0.0", inv).PadLeft(7);
-            Console.WriteLine(string.Format(inv, "      k={0,4}  h={1,10:F2} м  Δ={2}", k, h, delta));
+            Console.WriteLine(string.Format(inv, "      k={0,4}  h={1,10:F2} Рј  О”={2}", k, h, delta));
             prev = h;
         }
 
         // ===== Grid-scale sawtooth metric =====
-        // Walk 6.85 m segments in various directions. Sawtooth = the sign of Δ flips
-        // while the tooth amplitude (min of two adjacent |Δ|) is large.
+        // Walk 6.85 m segments in various directions. Sawtooth = the sign of О” flips
+        // while the tooth amplitude (min of two adjacent |О”|) is large.
         var rng = new Random(20260127);
         int lines = 600;
         int perLine = 160;
@@ -298,13 +298,18 @@ internal static partial class P1bTests
 
         int steps = lines * (perLine - 1);
         Console.WriteLine(string.Format(inv,
-            "    пила: из {0} шагов по {1:F2} м разворот знака Δ на {2} ({3:P2}), из них зубец >5 м: {4}, >20 м: {5}",
+            "    РїРёР»Р°: РёР· {0} С€Р°РіРѕРІ РїРѕ {1:F2} Рј СЂР°Р·РІРѕСЂРѕС‚ Р·РЅР°РєР° О” РЅР° {2} ({3:P2}), РёР· РЅРёС… Р·СѓР±РµС† >5 Рј: {4}, >20 Рј: {5}",
             steps, LeafQuadMeters, zigzags, (double)zigzags / steps, zigzagsOver5m, zigzagsOver20m));
         Console.WriteLine(string.Format(inv,
-            "    самый большой шаг |Δh| = {0:F2} м на ({1:F0},{2:F0}) м от игрока; самый большой зубец {3:F2} м на ({4:F0},{5:F0}) м",
+            "    СЃР°РјС‹Р№ Р±РѕР»СЊС€РѕР№ С€Р°Рі |О”h| = {0:F2} Рј РЅР° ({1:F0},{2:F0}) Рј РѕС‚ РёРіСЂРѕРєР°; СЃР°РјС‹Р№ Р±РѕР»СЊС€РѕР№ Р·СѓР±РµС† {3:F2} Рј РЅР° ({4:F0},{5:F0}) Рј",
             worstStep, worstStepN, worstStepE, worstTooth, worstToothN, worstToothE));
 
-        Check(true, "T900 terrain-wall-probe", "зонд отработал");
+        Check(steps > 0, "T900 terrain-wall-probe steps", steps.ToString());
+        Check(zigzagsOver5m == 0, "T900 no >5 m teeth", zigzagsOver5m.ToString());
+        Check(zigzagsOver20m == 0, "T900 no >20 m teeth", zigzagsOver20m.ToString());
+        Check(worstStep < 100d, "T900 worst grid step", worstStep.ToString("F2"));
+        Check(worstTooth < 5d, "T900 worst tooth", worstTooth.ToString("F2"));
         return 0;
     }
 }
+

@@ -153,6 +153,8 @@ FAST = [
     make_case("golden-kepler-circular-1p", 7.0e6, 0.0, 0.0, 0.0, 0.0, 0.0, period(7.0e6)),
     make_case("golden-kepler-e05-1p", 1.0e7, 0.5, 25.0, 40.0, 60.0, 20.0, period(1.0e7)),
     make_case("golden-kepler-e09-1p", 1.0e7, 0.9, 0.0, 0.0, 0.0, 0.0, period(1.0e7)),
+    make_case("golden-kepler-e099-1p", 1.0e7, 0.99, 0.0, 0.0, 0.0, 0.0, period(1.0e7)),
+    make_case("golden-kepler-near-parabolic-100s", 1.0e7, 0.999, 0.0, 0.0, 0.0, 0.0, 100.0),
     make_case("golden-kepler-hyperbolic-1h", -1.4e7, 1.5, 0.0, 0.0, 0.0, 0.0, 3600.0),
     make_case("golden-kepler-inclined-1p", 8.0e6, 0.2, 63.4, 30.0, 45.0, 10.0, period(8.0e6)),
 ]

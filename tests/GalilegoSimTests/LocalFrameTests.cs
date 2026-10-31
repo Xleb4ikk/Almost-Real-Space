@@ -1,4 +1,5 @@
-﻿using Galilego.Core;
+﻿using System.Collections.Generic;
+using Galilego.Core;
 using Galilego.Spacecraft;
 using Galilego.Universe;
 using Xunit;
@@ -72,6 +73,64 @@ namespace GalilegoPhysicsTests
                 "local-frame error " + localError.ToString("E3") +
                 " m is not at least 10x better than the absolute path " +
                 absoluteError.ToString("E3") + " m.");
+        }
+
+        [Fact]
+        public void LocalFrameDenseSegmentsAreAbsoluteAndContinuous()
+        {
+            StarSystem system = CreatePlanetSystem(out OrbitingBody planet);
+            system.EvaluateBodyState(planet, 0d, out Vector3d planetP, out Vector3d planetV);
+            const double radius = 7.0e6d;
+            double speed = System.Math.Sqrt(planet.StandardGravitationalParameter / radius);
+            var ship = new Spacecraft(
+                planetP + new Vector3d(radius, 0d, 0d),
+                planetV + new Vector3d(0d, speed, 0d),
+                TestScene.ShipMass);
+
+            var local = new SpacecraftPhysics { ToleranceFrameSystem = system };
+            local.Sources.Add(new GravitySource(system));
+            var track = new List<DenseSegment>();
+            var chunkStates = new List<SpacecraftIntegrationState>();
+            const double chunkDt = 3600d;
+            const int chunks = 24;
+            double time = 0d;
+            for (int i = 0; i < chunks; i++)
+            {
+                local.StepWithSegments(ship, time, chunkDt, track);
+                time += chunkDt;
+                chunkStates.Add(new SpacecraftIntegrationState
+                {
+                    Position = ship.Position,
+                    Velocity = ship.Velocity,
+                    Mass = ship.Mass
+                });
+            }
+
+            Assert.True(track.Count >= chunks,
+                "expected at least one dense segment per chunk, got " + track.Count);
+            Assert.True(track[0].T0 == 0d, "first segment starts at t=0.");
+            Assert.True(System.Math.Abs(track[track.Count - 1].T1 - time) < 1e-6d,
+                "last segment ends at the chunk end.");
+            Assert.True(track[track.Count - 1].Y1.Position.X == chunkStates[chunks - 1].Position.X &&
+                        track[track.Count - 1].Y1.Position.Y == chunkStates[chunks - 1].Position.Y &&
+                        track[track.Count - 1].Y1.Position.Z == chunkStates[chunks - 1].Position.Z,
+                "last dense endpoint is not the final ship position.");
+
+            foreach (DenseSegment segment in track)
+            {
+                Assert.True(segment.ReferenceBody != null,
+                    "local-frame segment lost its reference body after AsAbsolute.");
+                SpacecraftIntegrationState start = DenseSegment.EvaluateTrack(track, segment.T0);
+                SpacecraftIntegrationState end = DenseSegment.EvaluateTrack(track, segment.T1);
+                Assert.True((start.Position - segment.Y0.Position).Magnitude < 1e-3d,
+                    "track start does not match segment Y0.");
+                Assert.True((end.Position - segment.Y1.Position).Magnitude < 1e-3d,
+                    "track end does not match segment Y1.");
+                SpacecraftIntegrationState midpoint =
+                    segment.Evaluate(segment.T0 + (0.5d * (segment.T1 - segment.T0)));
+                Assert.True(midpoint.Position.IsFinite && midpoint.Velocity.IsFinite,
+                    "local+dense midpoint is not finite.");
+            }
         }
 
         private static StarSystem CreatePlanetSystem(out OrbitingBody planet)

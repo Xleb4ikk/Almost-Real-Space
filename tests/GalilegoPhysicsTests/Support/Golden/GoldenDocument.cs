@@ -126,7 +126,10 @@ namespace GalilegoPhysicsTests.Support.Golden
                 case "golden-kepler-inclined-1p":
                     return ScenarioClass.KeplerEccentric;
                 case "golden-kepler-e09-1p":
+                case "golden-kepler-e099-1p":
                     return ScenarioClass.KeplerHighEccentric;
+                case "golden-kepler-near-parabolic-100s":
+                    return ScenarioClass.KeplerNearParabolic;
                 case "golden-kepler-hyperbolic-1h":
                     return ScenarioClass.KeplerHyperbolic;
                 case "golden-kepler-e05-1y":

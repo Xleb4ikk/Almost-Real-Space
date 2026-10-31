@@ -1,6 +1,7 @@
 ﻿using System;
 using Galilego.Core;
 using GalilegoPhysicsTests.Support;
+using GalilegoPhysicsTests.Support.Oracles;
 using GalilegoPhysicsTests.Support.Scenarios;
 using Xunit;
 using Xunit.Abstractions;
@@ -79,6 +80,19 @@ namespace GalilegoPhysicsTests.Integration.Ship
                          forward.Velocity.Z == toTime.Velocity.Z,
                 integratorName + ": StepToTime and StepForward differ.");
             Asserts.True(calls > 0, "RHS was never called.");
+
+            // The equality above is implementation consistency. The independent
+            // proof is the analytic Kepler oracle at the same target time.
+            OracleState oracle = scenario.Oracle(scenario.DurationSeconds);
+            ToleranceProfile table = ToleranceTable.For(integrator, scenario.Id, 1e-9d);
+            double positionError = (toTime.Position - oracle.Position.ToVector3d()).Magnitude;
+            double velocityError = (toTime.Velocity - oracle.Velocity.ToVector3d()).Magnitude;
+            Asserts.True(positionError <= table.OraclePositionMeters,
+                integratorName + ": StepToTime position error " + positionError.ToString("E3") +
+                " m exceeds " + table.OraclePositionMeters.ToString("E3") + " m.");
+            Asserts.True(velocityError <= table.OracleVelocityMetersPerSecond,
+                integratorName + ": StepToTime velocity error " + velocityError.ToString("E3") +
+                " m/s exceeds " + table.OracleVelocityMetersPerSecond.ToString("E3") + " m/s.");
         }
 
         [Theory]

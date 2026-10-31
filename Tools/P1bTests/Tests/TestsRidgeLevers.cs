@@ -66,6 +66,7 @@ internal static partial class P1bTests
 
         // Decision: land within tolerance AND curvature not below baseline.
         Summary best = baseline;
+        bool bestIsBaseline = true;
         string bestWhy = "опорная ветка";
         Action<Summary, string> consider = (s, why) =>
         {
@@ -74,10 +75,11 @@ internal static partial class P1bTests
             if (landOk && curvOk)
             {
                 bool better = System.Math.Abs(s.Land - 0.47d) < System.Math.Abs(best.Land - 0.47d);
-                if (better || ReferenceEquals(best, baseline))
+                if (better || bestIsBaseline)
                 {
                     best = s;
                     bestWhy = why;
+                    bestIsBaseline = false;
                 }
             }
         };

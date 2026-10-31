@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using Galilego.Core;
 using Galilego.Universe;
@@ -173,7 +173,11 @@ internal static partial class P1bTests
             noShelfJump, ns2, ee2,
             Math.Abs(ns2 - jumpNs) < 50d && Math.Abs(ee2 - jumpEe) < 50d ? "да" : "нет"));
 
-        Check(true, "T901 terrain-wall-bisect", "бисект отработал");
+        Check(baseJump >= 5d, "T901 shelf jump", baseJump.ToString("F2"));
+        Check(noShelfJump < baseJump, "T901 raw terrain jump is smaller", noShelfJump.ToString("F2"));
+        Check(Math.Abs(ns2 - jumpNs) >= 50d || Math.Abs(ee2 - jumpEe) >= 50d,
+            "T901 raw jump is at a different location", ns2.ToString("F0") + "," + ee2.ToString("F0"));
+        Check(width < 0.5d, "T901 transition width", width.ToString("F3"));
         return 0;
     }
 }
