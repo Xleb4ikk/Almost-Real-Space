@@ -53,6 +53,8 @@ namespace GalilegoPhysicsTests.Support.Scenarios
 
             CreateRestrictedNBody(),
 
+            CreateRestrictedFlyby(),
+
             CreateKepler("kepler-circular-100p", "Kepler circular | 100 periods", ScenarioClass.KeplerCircularLong,
                 7.0e6d, 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, 100.0d, ScenarioTier.Slow,
                 new[] { 1e-10d, 1e-12d }),
@@ -232,6 +234,9 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             scenario.CheckAngularMomentum = false;
             scenario.CheckLrl = false;
             scenario.Tolerances = new[] { 1e-9d };
+            scenario.ControllerBound = true;
+            scenario.ControllerBoundReason =
+                "zero-g drift is integrated exactly (a=0): the error estimate is zero and the step is pinned at MaxStepSize=600 s for every tolerance";
             return scenario;
         }
 
@@ -282,6 +287,64 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             scenario.CheckAngularMomentum = false;
             scenario.CheckLrl = false;
             scenario.Tolerances = new[] { 1e-6d, 1e-9d };
+            scenario.ControllerBound = true;
+            scenario.ControllerBoundReason =
+                "1 h arc: the error estimate stays below the scale, so every tolerance accepts the 600 s MaxStepSize; this pins the step cap, not the controller";
+            return scenario;
+        }
+
+        private static Scenario CreateRestrictedFlyby()
+        {
+            const double centralMu = 1.32712440018e20d;
+            const double bodyR = 1.0e10d;
+            const double bodyMu = 3.986004418e14d;
+            const double separation = 3.0e7d;
+            const double relativeSpeed = 3000d;
+            const double duration = 15000d;
+
+            // The perturbing body is fixed at (bodyR, 0, 0). The particle starts
+            // 30,000 km away and falls inward: the closest approach is ~1.35e7 m,
+            // so the body acceleration reaches the same order as the central one
+            // and the step controller must act.
+            var body = new RestrictedBody(bodyMu, bodyR, 0d, 0d);
+            var bodies = new[] { body };
+            Double3 r0 = new Double3(bodyR + separation, 0d, 0d);
+            Double3 v0 = new Double3(0d, relativeSpeed, 0d);
+
+            var scenario = new Scenario();
+            scenario.Id = "restricted-flyby";
+            scenario.Title = "Restricted flyby near a second body | 15000 s";
+            scenario.Family = "NBody";
+            scenario.Class = ScenarioClass.RestrictedFlyby;
+            scenario.Tier = ScenarioTier.Fast;
+            scenario.Mu = centralMu;
+            scenario.DurationSeconds = duration;
+            scenario.InitialState = new SpacecraftIntegrationState
+            {
+                Position = r0.ToVector3d(),
+                Velocity = v0.ToVector3d(),
+                Mass = 1000d
+            };
+            scenario.Derivative = (state, time) =>
+            {
+                Vector3d acceleration = PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(
+                    state.Position, Vector3d.Zero, centralMu);
+                body.PositionAt(time, out double bx, out double by);
+                acceleration += PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(
+                    state.Position, new Vector3d(bx, by, 0d), bodyMu);
+                return new SpacecraftIntegrationState
+                {
+                    Position = state.Velocity,
+                    Velocity = acceleration,
+                    Mass = 0d
+                };
+            };
+            var trajectory = RestrictedNBodyOracle.Build(r0, v0, centralMu, bodies, duration, stepSeconds: 0.1d);
+            scenario.Oracle = trajectory.Evaluate;
+            scenario.CheckEnergy = false;
+            scenario.CheckAngularMomentum = false;
+            scenario.CheckLrl = false;
+            scenario.Tolerances = new[] { 1e-6d, 1e-9d, 1e-12d };
             return scenario;
         }
     }

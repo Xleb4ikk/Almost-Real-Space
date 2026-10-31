@@ -25,7 +25,8 @@ namespace GalilegoPhysicsTests.Support.Scenarios
         KeplerHighEccentricLong,
         KeplerHyperbolicLong,
         GoldenCircular10y,
-        GoldenEccentric1y
+        GoldenEccentric1y,
+        RestrictedFlyby
     }
 
     internal enum ScenarioTier
@@ -48,6 +49,8 @@ namespace GalilegoPhysicsTests.Support.Scenarios
         public bool CheckEnergy;
         public bool CheckAngularMomentum;
         public bool CheckLrl;
+        public bool ControllerBound;
+        public string ControllerBoundReason;
         public double[] Tolerances;
         public double Mu;
 

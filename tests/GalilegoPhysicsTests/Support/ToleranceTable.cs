@@ -61,6 +61,8 @@ namespace GalilegoPhysicsTests.Support
                     Profile(8.598e-1, 1.164e-2, 3.195e-9, 3.316e-8, 2.154e-8, 8.598, 8.598, 8.598),
                 [(IntegratorKind.Dopri5, ScenarioClass.RestrictedNBody)] =
                     Profile(1.068e-3, 5.124e-9, 7.381e-5, 1.107e-4, 2.274e-4, 1.068e-2, 1.068e-2, 1.068e-2),
+                [(IntegratorKind.Dopri5, ScenarioClass.RestrictedFlyby)] =
+                    Profile(1.0, 3.20e-2, 0d, 0d, 0d, 1e1, 1e1, 1e1),
                 [(IntegratorKind.Dopri5, ScenarioClass.Thrust)] =
                     Profile(1.905e-6, 7.723e-9, 0d, 0d, 0d, 1.905e-5, 1.905e-5, 1.905e-5, 2.526e-15),
                 [(IntegratorKind.Dopri5, ScenarioClass.Drift)] =
@@ -78,6 +80,8 @@ namespace GalilegoPhysicsTests.Support
                     Profile(3.170, 4.271e-1, 2.851e-7, 1.024e-5, 2.555e-6, 3.170, 3.170, 3.170),
                 [(IntegratorKind.Dop853, ScenarioClass.RestrictedNBody)] =
                     Profile(7.838e-2, 4.904e-7, 7.381e-5, 1.107e-4, 2.274e-4, 7.838e-1, 7.838e-1, 7.838e-1),
+                [(IntegratorKind.Dop853, ScenarioClass.RestrictedFlyby)] =
+                    Profile(1.11e2, 1.30e-1, 0d, 0d, 0d, 1.11e3, 1.11e3, 1.11e3),
                 [(IntegratorKind.Dop853, ScenarioClass.Thrust)] =
                     Profile(3.514e-2, 1.082e-4, 0d, 0d, 0d, 3.514e-1, 3.514e-1, 3.514e-1, 3.790e-15),
                 [(IntegratorKind.Dop853, ScenarioClass.Drift)] =
@@ -156,5 +160,6 @@ namespace GalilegoPhysicsTests.Support
         }
     }
 }
+
 
 
