@@ -111,21 +111,10 @@ namespace GalilegoPhysicsTests.Integration.Dense
                 }
             }
 
-            // Measured at tol=1e-9, gates carry ~10x headroom.
-            double gate;
-            if (integrator == IntegratorKind.Dopri5)
-            {
-                gate = scenarioId == "kepler-circular" ? 3.4e-4d
-                    : scenarioId == "kepler-e05" ? 6.4e-3d
-                    : 7.9e-1d;
-            }
-            else
-            {
-                gate = scenarioId == "kepler-circular" ? 2.3e-7d
-                    : scenarioId == "kepler-e05" ? 3.3e-6d
-                    : 2.9e-4d;
-            }
-
+            // Half the endpoint velocity gate: the dense velocity check must be
+            // strictly tighter than the matrix row it belongs to.
+            double gate = ToleranceTable.For(integrator, scenarioId, 1e-9d)
+                .OracleVelocityMetersPerSecond * 0.5d;
             output.WriteLine(scenarioId + "/" + integratorName +
                              ": dense velocity error = " + worst.ToString("E3") + " m/s (gate " +
                              gate.ToString("E3") + ").");

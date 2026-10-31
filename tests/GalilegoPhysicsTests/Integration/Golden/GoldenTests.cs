@@ -37,7 +37,7 @@ namespace GalilegoPhysicsTests.Integration.Golden
                 [("golden-kepler-near-parabolic-100s", IntegratorKind.Dopri5)] = (4.5e-4d, 6.0e-6d),
                 [("golden-kepler-hyperbolic-1h", IntegratorKind.Dopri5)] = (8.4e-5d, 2.7e-8d),
                 [("golden-kepler-inclined-1p", IntegratorKind.Dopri5)] = (1.1e-3d, 1.2e-6d),
-                [("golden-kepler-e05-1y", IntegratorKind.Dopri5)] = (5.0e3d, 5.0d)
+                [("golden-kepler-e05-1y", IntegratorKind.Dopri5)] = (2.4e3d, 3.5d)
             };
 
         private readonly ITestOutputHelper output;
@@ -251,4 +251,5 @@ namespace GalilegoPhysicsTests.Integration.Golden
         }
     }
 }
+
 

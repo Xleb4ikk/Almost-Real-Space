@@ -284,12 +284,12 @@ internal static partial class P1bTests
             Console.WriteLine("Parallel benchmark: one probe, then " + benchJobs + " process copies");
             var singleWatch = Stopwatch.StartNew();
             int before = failures;
-            probe.Run();
+            int probeCode = probe.Run();
             singleWatch.Stop();
-            if (failures != before)
+            if (probeCode != 0 || failures != before)
             {
                 Console.WriteLine("probe failed; benchmark aborted");
-                return failures - before;
+                return probeCode != 0 ? probeCode : failures - before;
             }
 
             var copies = new List<P1bCase>(benchJobs);

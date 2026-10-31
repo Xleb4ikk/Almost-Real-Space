@@ -21,8 +21,9 @@ dotnet test tests/GalilegoSimTests/GalilegoSimTests.csproj
 
 `GalilegoSimTests` also compiles Core by the same
 `..\..\Assets\_Project\Scripts\Core\**\*.cs` glob, not by a handwritten list.
-It includes a fast production-path `SpacecraftPhysics` + `ToleranceFrameSystem`
-test (`LocalFrameTests`) at 1 AU.
+It includes fast production-path `SpacecraftPhysics` + `ToleranceFrameSystem`
+tests (`LocalFrameTests`) at 1 AU, including an independent hand-written RK4
+reference and a local+dense segment walk.
 
 ## Quick start
 
@@ -158,6 +159,8 @@ interpolation/midpoint tests.
 DOP853 dense output uses the 16-stage extended tableau: the 12 method stages,
 the FSAL stage and three extra stages. That costs 3 additional RHS evaluations
 per accepted step only when a dense-segment collector is supplied.
+`DenseVelocityInterpolationMatchesTheOracle` also checks the dense velocity
+inside segments, using half the endpoint velocity gate for the same row.
 
 ## Reading a failure
 
@@ -179,8 +182,11 @@ them; other rows store 0 for those fields. Dead fields (for example
 and the consistency test fails if a non-zero gate is left on an unmeasured
 field.
 `ToleranceTableConsistencyTests` enforces both sides: the measured error must
-fit the gate, and the gate must stay within 10x of the measurement. Do not relax
-a gate just to make a test green; recalibrate with `GALILEGO_CALIBRATE=1`.
+fit the gate, and the gate must stay within 4x of the measurement (with floors
+for tiny mass/energy values). `AbsoluteAccuracyCeilingTests` adds hardcoded
+ceilings at `1e-9` and `1e-6`, tighter than the regression gate for the same row.
+Do not relax a gate just to make a test green; recalibrate with
+`GALILEGO_CALIBRATE=1`.
 
 ## Golden data
 
@@ -201,6 +207,9 @@ a gate just to make a test green; recalibrate with `GALILEGO_CALIBRATE=1`.
   declare generator `gen_core_kepler.py` and model `two-body, central at
   origin`. Both DOP853 and DOPRI5 are checked against them, each with its own
   absolute gates.
+- The 1-year golden also checks 65 interior samples through the analytic
+  Kepler oracle; the DOPRI5 gate is 2.4 km / 3.5 m/s, still wide but no longer
+  a 5 km endpoint-only guard.
 - Core golden gates are absolute per case, not drawn from `ToleranceTable`:
   1e-6 m per fast one-period case (5e-5 m for e=0.9, 1.8e-3 m for e=0.99,
   2.8e-6 m for near-parabolic, 5e-8 m for the hyperbolic case, 2e-6 m for the
@@ -249,4 +258,5 @@ Core has no full N-body integrator. `restricted-3body` (Earth-Moon LEO) and
   is unaffected; this only affects interpolation in that rare case.
 - Every matrix gate is calibrated per row and checked for staleness; the old
   "DOP853 is less accurate than DOPRI5" limitation no longer applies.
+
 

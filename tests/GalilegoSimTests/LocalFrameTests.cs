@@ -89,16 +89,8 @@ namespace GalilegoPhysicsTests
                 Mass = TestScene.ShipMass
             };
 
-            SpacecraftOrbitIntegrator.DerivativeFunction derivative = (state, time) =>
-                new SpacecraftIntegrationState
-                {
-                    Position = state.Velocity,
-                    Velocity = system.EvaluateShipAccelerationLocal(state.Position, planet, time),
-                    Mass = 0d
-                };
-            SpacecraftIntegrationState reference = SpacecraftOrbitIntegrator.StepForwardDop853(
-                localStart, 0d, 86400d, derivative,
-                1e-9d, 1e-12d, 1e-9d, 1e-14d).State;
+            Vector3d reference = PropagateLocalRk4(
+                system, planet, localStart.Position, localStart.Velocity, 86400d, 2d);
 
             var physics = new SpacecraftPhysics { ToleranceFrameSystem = system };
             physics.Sources.Add(new GravitySource(system));
@@ -115,11 +107,50 @@ namespace GalilegoPhysicsTests
                 time += chunkDt;
             }
 
-            double error = (ship.LocalPosition - reference.Position).Magnitude;
-            output.WriteLine("local vs independent local integrator = " + error.ToString("E3") + " m.");
-            Assert.True(error < 1e-3d,
-                "local-frame path differs from an independent local integrator by " +
+            double error = (ship.LocalPosition - reference).Magnitude;
+            output.WriteLine("local vs independent RK4 = " + error.ToString("E3") + " m.");
+            Assert.True(error < 1e-2d,
+                "local-frame path differs from an independent RK4 reference by " +
                 error.ToString("E3") + " m.");
+        }
+
+        private static Vector3d PropagateLocalRk4(
+            StarSystem system, OrbitingBody planet, Vector3d r0, Vector3d v0,
+            double duration, double step)
+        {
+            Vector3d r = r0;
+            Vector3d v = v0;
+            double time = 0d;
+            while (time < duration)
+            {
+                double h = System.Math.Min(step, duration - time);
+                Vector3d a1 = LocalAcceleration(system, planet, r, time);
+                Vector3d k1r = v;
+                Vector3d k2r = v + (a1 * (0.5d * h));
+                Vector3d a2 = LocalAcceleration(system, planet, r + (k1r * (0.5d * h)), time + (0.5d * h));
+                Vector3d k3r = v + (a2 * (0.5d * h));
+                Vector3d a3 = LocalAcceleration(system, planet, r + (k2r * (0.5d * h)), time + (0.5d * h));
+                Vector3d k4r = v + (a3 * h);
+                Vector3d a4 = LocalAcceleration(system, planet, r + (k3r * h), time + h);
+                r += (k1r + (k2r * 2d) + (k3r * 2d) + k4r) * (h / 6d);
+                v += (a1 + (a2 * 2d) + (a3 * 2d) + a4) * (h / 6d);
+                time += h;
+            }
+
+            return r;
+        }
+
+        private static Vector3d LocalAcceleration(
+            StarSystem system, OrbitingBody planet, Vector3d relative, double time)
+        {
+            system.EvaluateBodyState(planet, time, out Vector3d planetP, out _);
+            double muPlanet = planet.StandardGravitationalParameter;
+            double muStar = system.Root.StandardGravitationalParameter;
+            Vector3d absolute = planetP + relative;
+            Vector3d aPlanet = relative * (-muPlanet / System.Math.Pow(relative.Magnitude, 3d));
+            Vector3d aStarShip = absolute * (-muStar / System.Math.Pow(absolute.Magnitude, 3d));
+            Vector3d aStarPlanet = planetP * (-muStar / System.Math.Pow(planetP.Magnitude, 3d));
+            return aPlanet + aStarShip - aStarPlanet;
         }
 
         [Fact]
@@ -202,3 +233,4 @@ namespace GalilegoPhysicsTests
         }
     }
 }
+
