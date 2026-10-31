@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -44,7 +44,7 @@ internal static partial class P1bTests
         StudyBake("TenYear dd", real, nb, 10.1d, 20d);
 
         string exportPath = Path.Combine("Study", "taylor", "golden", "real_bake_export_10y.json");
-        GoldenRequireFile(exportPath, "FF5E6C2DB5E001762E6AC5BA7768E5254AE1B2FBCBB9EB29EDADCAD47E1A80F0");
+        GoldenRequireFile(exportPath, "E16DD9D2D685CA8034C94C6A8BEE16F9385F6D1B1D285523D9EE56E920193BFC");
         ExportData export = JsonSerializer.Deserialize<ExportData>(File.ReadAllText(exportPath));
         int badBodies = 0;
         for (int i = 0; i < real.AllBodies.Count; i++)
@@ -179,3 +179,4 @@ internal static partial class P1bTests
         return 0;
     }
 }
+

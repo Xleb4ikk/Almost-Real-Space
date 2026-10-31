@@ -193,8 +193,9 @@ a gate just to make a test green; recalibrate with `GALILEGO_CALIBRATE=1`.
   baked-system data and cannot be reproduced by Core-only dynamics; the tests
   load them and verify `P = central_P + rel_P`.
 - SHA-256 checks are an **integrity pin for linked data**, not a Core physics
-  gate. A deliberate stand golden regeneration updates the hashes in the same
-  change.
+  gate. They hash LF-normalized bytes, so Windows CRLF and Linux LF checkouts
+  agree; `.gitattributes` also keeps these golden JSON files `eol=lf`. A
+  deliberate stand golden regeneration updates the hashes in the same change.
 - Core golden files are SHA-256 pinned (`CoreGoldenHashesMatch`) and must
   declare generator `gen_core_kepler.py` and model `two-body, central at
   origin`. Both DOP853 and DOPRI5 are checked against them, each with its own

@@ -4,3 +4,8 @@
 # Эталонные артефакты (трейсы, логи, хэши) — байт-в-байт, без EOL-конверсии:
 # иначе checkout меняет байты и SHA-256 из отчёта не воспроизводится.
 baseline/** -text
+
+# Golden JSON is hashed after LF normalization; keep the working tree LF too
+# so raw-byte tools and regenerators see the same bytes everywhere.
+tests/GalilegoPhysicsTests/GoldenData/*.json text eol=lf
+Tools/P1bTests/Study/taylor/golden/*.json text eol=lf

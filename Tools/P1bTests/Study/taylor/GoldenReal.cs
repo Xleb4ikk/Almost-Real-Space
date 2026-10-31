@@ -20,16 +20,32 @@ internal static partial class P1bTests
         [JsonPropertyName("golden_error_estimate")] public Dictionary<string, string> Err { get; set; }
     }
 
+    private static byte[] NormalizeLf(byte[] bytes)
+    {
+        var normalized = new List<byte>(bytes.Length);
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            if (bytes[i] == (byte)'\r' && i + 1 < bytes.Length && bytes[i + 1] == (byte)'\n')
+            {
+                continue;
+            }
+
+            normalized.Add(bytes[i]);
+        }
+
+        return normalized.ToArray();
+    }
+
     private static void GoldenRequireFile(string path, string expectedSha256)
     {
-        string actual = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+        string actual = Convert.ToHexString(SHA256.HashData(NormalizeLf(File.ReadAllBytes(path))));
         Check(string.Equals(actual, expectedSha256, StringComparison.OrdinalIgnoreCase),
             "golden file sha256", Path.GetFileName(path) + " " + actual);
     }
 
     private static void GoldenPrintHash(string path)
     {
-        string actual = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+        string actual = Convert.ToHexString(SHA256.HashData(NormalizeLf(File.ReadAllBytes(path))));
         Console.WriteLine("sha256 " + Path.GetFileName(path) + " = " + actual);
     }
 

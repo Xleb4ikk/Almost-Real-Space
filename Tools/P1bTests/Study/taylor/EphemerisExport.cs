@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -108,16 +108,17 @@ internal static partial class P1bTests
         ExportRealBake("real_bake_export.json", 60d / 365.25d, 30d, 0.01d);
         GoldenRequireFile(
             Path.Combine("Study", "taylor", "golden", "real_bake_export.json"),
-            "B57345239602AE658CEFD7A251AA8364E80642C95B07A3E21E6A6C4A6AD14C01");
+            "2AC44A9C1CA0BB5D1DD7B1A6D456BEBC4F36F2D3B21981C0A4E8E400882C0F92");
         ExportRealBake("real_bake_export_1y.json", 1.1d, 365d, 1d);
         GoldenRequireFile(
             Path.Combine("Study", "taylor", "golden", "real_bake_export_1y.json"),
-            "A99A4D8EE69FF01337D00BFE866310DA03CD0393CAFDCAF196D64A696A9E9EB6");
+            "80AB6A8CE9307B5C473DF15FC0E8A0DC491700738D895863E398905B1478E8B9");
         ExportRealBake("real_bake_export_10y.json", 10.1d, 3650d, 20d);
         GoldenRequireFile(
             Path.Combine("Study", "taylor", "golden", "real_bake_export_10y.json"),
-            "97499DE926E75DECCD290FF77A81F4301666B70B6B79F3EA5A93B9F02C937DFA");
+            "E16DD9D2D685CA8034C94C6A8BEE16F9385F6D1B1D285523D9EE56E920193BFC");
         Console.WriteLine("--- Export complete ---");
         return 0;
     }
 }
+

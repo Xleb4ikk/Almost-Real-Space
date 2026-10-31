@@ -16,7 +16,7 @@ internal static partial class P1bTests
         StudyBake("Bridge", real, nb, 1.1d, 1d);
 
         string path = Path.Combine("Study", "taylor", "golden", "real_bake_export_1y.json");
-        GoldenRequireFile(path, "43E944C19ECC5ADD7BDE51A2D3CC1B105C940F3AAA976BB9D9DF74F9D19760D1");
+        GoldenRequireFile(path, "80AB6A8CE9307B5C473DF15FC0E8A0DC491700738D895863E398905B1478E8B9");
         ExportData data = JsonSerializer.Deserialize<ExportData>(File.ReadAllText(path));
         Console.WriteLine("export T0={0}, Days={1}, bodies={2}",
             data.T0.ToString("R", CultureInfo.InvariantCulture),
@@ -103,7 +103,7 @@ internal static partial class P1bTests
         }
 
         string goldenPath = Path.Combine("Study", "taylor", "golden", "golden_real_1y_hi.json");
-        GoldenRequireFile(goldenPath, "7582663FBAF275C2076B9D411DFB91B9833FC8683AD422FF3793C39BD6ACBC4E");
+        GoldenRequireFile(goldenPath, "F4CD7D9CFAD2EF119EBAA3BB669785A737BBEEB310B82DEF99757C7DF5E2D33B");
         GoldFile golden = JsonSerializer.Deserialize<GoldFile>(File.ReadAllText(goldenPath));
         GoldCp gYear = null;
         foreach (GoldCp cp in golden.Checkpoints)
@@ -181,4 +181,5 @@ internal static partial class P1bTests
         return 0;
     }
 }
+
 
