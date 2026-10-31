@@ -376,8 +376,15 @@ internal static partial class P1bTests
         {
             var caseWatch = Stopwatch.StartNew();
             int before = failures;
-            entry.Run();
-            Console.WriteLine("[" + entry.Name + "] " + (failures == before ? "ok" : "FAIL") + " in " + caseWatch.ElapsedMilliseconds + " ms");
+            int code = entry.Run();
+            bool ok = code == 0 && failures == before;
+            if (!ok && failures == before)
+            {
+                failures++;
+            }
+
+            Console.WriteLine("[" + entry.Name + "] " + (ok ? "ok" : "FAIL (exit " + code + ")") +
+                              " in " + caseWatch.ElapsedMilliseconds + " ms");
         }
 
         Console.WriteLine(failures == 0 ? "ALL PASS" : failures + " FAILURES");

@@ -75,8 +75,8 @@ benchmark.
 If `IntegratorMatrixTests` sees no budget entry, it **fails** with:
 
 ```
-нет бюджета шагов для <scenario | integrator | tolerance>;
-запустите GALILEGO_CALIBRATE=1 и добавьте строку в StepBudget.
+No step budget for <scenario | integrator | tolerance>;
+run GALILEGO_CALIBRATE=1 and add the entry to StepBudget.
 ```
 
 Only `GALILEGO_CALIBRATE=1` allows a missing entry. The consistency test

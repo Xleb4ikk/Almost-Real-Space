@@ -28,9 +28,9 @@ namespace GalilegoPhysicsTests.Integration.Matrix
             else if (!Env.Calibrate)
             {
                 throw new Xunit.Sdk.XunitException(
-                    "РЅРµС‚ Р±СЋРґР¶РµС‚Р° С€Р°РіРѕРІ РґР»СЏ <" + scenario.Id + " | " + matrix.IntegratorName +
+                    "No step budget for <" + scenario.Id + " | " + matrix.IntegratorName +
                     " | " + matrix.Tolerance.ToString("R") +
-                    ">; Р·Р°РїСѓСЃС‚РёС‚Рµ GALILEGO_CALIBRATE=1 Рё РґРѕР±Р°РІСЊС‚Рµ СЃС‚СЂРѕРєСѓ РІ StepBudget.");
+                    ">; run GALILEGO_CALIBRATE=1 and add the entry to StepBudget.");
             }
 
             if (StepBudget.TryGetProduction(

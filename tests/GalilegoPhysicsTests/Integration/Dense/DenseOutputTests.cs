@@ -86,6 +86,55 @@ namespace GalilegoPhysicsTests.Integration.Dense
         }
 
         [Theory]
+        [InlineData("kepler-circular", "Dopri5")]
+        [InlineData("kepler-circular", "Dop853")]
+        [InlineData("kepler-e05", "Dopri5")]
+        [InlineData("kepler-e05", "Dop853")]
+        [InlineData("kepler-e09", "Dopri5")]
+        [InlineData("kepler-e09", "Dop853")]
+        public void DenseVelocityInterpolationMatchesTheOracle(string scenarioId, string integratorName)
+        {
+            Scenario scenario = ScenarioCatalog.Get(scenarioId);
+            IntegratorKind integrator = Parse(integratorName);
+            ScenarioExecution run = Execute(scenarioId, integratorName);
+
+            double worst = 0d;
+            foreach (DenseSegment segment in run.Segments)
+            {
+                for (int i = 1; i <= 3; i++)
+                {
+                    double theta = i / 4d;
+                    double time = segment.T0 + ((segment.T1 - segment.T0) * theta);
+                    SpacecraftIntegrationState dense = segment.Evaluate(time);
+                    OracleState oracle = scenario.Oracle(time);
+                    worst = Math.Max(worst, (dense.Velocity - oracle.Velocity.ToVector3d()).Magnitude);
+                }
+            }
+
+            // Measured at tol=1e-9, gates carry ~10x headroom.
+            double gate;
+            if (integrator == IntegratorKind.Dopri5)
+            {
+                gate = scenarioId == "kepler-circular" ? 3.4e-4d
+                    : scenarioId == "kepler-e05" ? 6.4e-3d
+                    : 7.9e-1d;
+            }
+            else
+            {
+                gate = scenarioId == "kepler-circular" ? 2.3e-7d
+                    : scenarioId == "kepler-e05" ? 3.3e-6d
+                    : 2.9e-4d;
+            }
+
+            output.WriteLine(scenarioId + "/" + integratorName +
+                             ": dense velocity error = " + worst.ToString("E3") + " m/s (gate " +
+                             gate.ToString("E3") + ").");
+            Asserts.True(worst <= gate,
+                scenarioId + "/" + integratorName + ": dense velocity error " +
+                worst.ToString("E3") + " m/s exceeds " + gate.ToString("E3") + " m/s.");
+        }
+
+        [Theory]
         [InlineData("Dopri5")]
         [InlineData("Dop853")]
         public void DenseMidpointMatchesTheAnalyticOracle(string integratorName)

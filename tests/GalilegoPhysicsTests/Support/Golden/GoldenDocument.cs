@@ -105,7 +105,10 @@ namespace GalilegoPhysicsTests.Support.Golden
                         state.Position, Vector3d.Zero, mu),
                     Mass = 0d
                 },
-                Oracle = null,
+                Oracle = time => KeplerOracle.Propagate(
+                    new Double3(golden.R0.X, golden.R0.Y, golden.R0.Z),
+                    new Double3(golden.V0.X, golden.V0.Y, golden.V0.Z),
+                    mu, time),
                 CheckEnergy = false,
                 CheckAngularMomentum = false,
                 CheckLrl = false,

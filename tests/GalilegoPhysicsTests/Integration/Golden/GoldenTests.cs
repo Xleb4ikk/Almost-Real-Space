@@ -109,6 +109,16 @@ namespace GalilegoPhysicsTests.Integration.Golden
                         " m/s > " + velocityGate.ToString("E3") + " m/s.");
                     AssertGateTight(row, "position", positionError, positionGate, 1e-9d);
                     AssertGateTight(row, "velocity", velocityError, velocityGate, 1e-12d);
+
+                    // The 1-year golden is a final state only; the analytic oracle
+                    // checks 65 interior samples so a correct endpoint cannot hide a
+                    // wrong trajectory in between.
+                    Asserts.True(run.MaxPositionError <= positionGate,
+                        row + ": interior max position " + run.MaxPositionError.ToString("E3") +
+                        " m > " + positionGate.ToString("E3") + " m.");
+                    Asserts.True(run.MaxVelocityError <= velocityGate,
+                        row + ": interior max velocity " + run.MaxVelocityError.ToString("E3") +
+                        " m/s > " + velocityGate.ToString("E3") + " m/s.");
                 }
             }
         }

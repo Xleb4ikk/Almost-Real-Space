@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Galilego.Core;
 using GalilegoPhysicsTests.Support;
@@ -10,7 +10,7 @@ namespace GalilegoPhysicsTests.Integration.Matrix
 {
     public sealed class ToleranceTableConsistencyTests
     {
-        private const double MaxHeadroom = 10d;
+        private const double MaxHeadroom = 4d;
 
         [Fact]
         [Trait("Tier", "Fast")]
@@ -92,22 +92,22 @@ namespace GalilegoPhysicsTests.Integration.Matrix
 
                     AssertGate(row, "position", run.MaxPositionError, gate.OraclePositionMeters);
                     AssertGate(row, "velocity", run.MaxVelocityError, gate.OracleVelocityMetersPerSecond);
-                    AssertGate(row, "mass", run.MaxMassError, gate.OracleMassRelative);
+                    AssertGate(row, "mass", run.MaxMassError, gate.OracleMassRelative, 1e-15d);
 
                     if (scenario.CheckEnergy)
                     {
-                        AssertGate(row, "energy", run.MaxEnergyDrift, gate.EnergyRelative);
+                        AssertGate(row, "energy", run.MaxEnergyDrift, gate.EnergyRelative, 1e-15d);
                     }
 
                     if (scenario.CheckAngularMomentum)
                     {
                         AssertGate(row, "angular momentum", run.MaxAngularMomentumDrift,
-                            gate.AngularMomentumRelative);
+                            gate.AngularMomentumRelative, 1e-15d);
                     }
 
                     if (scenario.CheckLrl)
                     {
-                        AssertGate(row, "LRL", run.MaxLrlDrift, gate.LaplaceRungeLenzAbsolute);
+                        AssertGate(row, "LRL", run.MaxLrlDrift, gate.LaplaceRungeLenzAbsolute, 1e-15d);
                     }
 
                     if (gate.ReversibilityPositionMeters > 0d)
@@ -167,7 +167,7 @@ namespace GalilegoPhysicsTests.Integration.Matrix
             return name == "Dop853" ? IntegratorKind.Dop853 : IntegratorKind.Dopri5;
         }
 
-        private static void AssertGate(string row, string field, double measured, double gate)
+        private static void AssertGate(string row, string field, double measured, double gate, double floor = 0d)
         {
             if (double.IsNaN(measured))
             {
@@ -188,10 +188,11 @@ namespace GalilegoPhysicsTests.Integration.Matrix
             Asserts.True(measured <= gate,
                 row + ": " + field + " error " + measured.ToString("E3") +
                 " exceeds gate " + gate.ToString("E3") + ".");
-            Asserts.True(gate <= measured * MaxHeadroom,
+            Asserts.True(gate <= Math.Max(measured * MaxHeadroom, floor),
                 row + ": " + field + " gate " + gate.ToString("E3") +
                 " is more than " + MaxHeadroom.ToString("F0") + "x the measured " +
                 measured.ToString("E3") + "; recalibrate ToleranceTable.");
         }
     }
 }
+

@@ -76,6 +76,53 @@ namespace GalilegoPhysicsTests
         }
 
         [Fact]
+        public void LocalFrameMatchesAnIndependentLocalIntegrator()
+        {
+            StarSystem system = CreatePlanetSystem(out OrbitingBody planet);
+            system.EvaluateBodyState(planet, 0d, out Vector3d planetP, out Vector3d planetV);
+            const double radius = 7.0e6d;
+            double speed = System.Math.Sqrt(planet.StandardGravitationalParameter / radius);
+            var localStart = new SpacecraftIntegrationState
+            {
+                Position = new Vector3d(radius, 0d, 0d),
+                Velocity = new Vector3d(0d, speed, 0d),
+                Mass = TestScene.ShipMass
+            };
+
+            SpacecraftOrbitIntegrator.DerivativeFunction derivative = (state, time) =>
+                new SpacecraftIntegrationState
+                {
+                    Position = state.Velocity,
+                    Velocity = system.EvaluateShipAccelerationLocal(state.Position, planet, time),
+                    Mass = 0d
+                };
+            SpacecraftIntegrationState reference = SpacecraftOrbitIntegrator.StepForwardDop853(
+                localStart, 0d, 86400d, derivative,
+                1e-9d, 1e-12d, 1e-9d, 1e-14d).State;
+
+            var physics = new SpacecraftPhysics { ToleranceFrameSystem = system };
+            physics.Sources.Add(new GravitySource(system));
+            var ship = new Spacecraft(
+                planetP + localStart.Position,
+                planetV + localStart.Velocity,
+                TestScene.ShipMass);
+            const double chunkDt = 3600d;
+            const int chunks = 24;
+            double time = 0d;
+            for (int i = 0; i < chunks; i++)
+            {
+                physics.Step(ship, time, chunkDt);
+                time += chunkDt;
+            }
+
+            double error = (ship.LocalPosition - reference.Position).Magnitude;
+            output.WriteLine("local vs independent local integrator = " + error.ToString("E3") + " m.");
+            Assert.True(error < 1e-3d,
+                "local-frame path differs from an independent local integrator by " +
+                error.ToString("E3") + " m.");
+        }
+
+        [Fact]
         public void LocalFrameDenseSegmentsAreAbsoluteAndContinuous()
         {
             StarSystem system = CreatePlanetSystem(out OrbitingBody planet);
