@@ -66,6 +66,7 @@ internal static partial class P1bTests
 
             if (!fieldValue.TryGetValue(name, out double expected))
             {
+                mismatches.Add(name + " (нет поля в CreateEarthLike)");
                 continue;
             }
 

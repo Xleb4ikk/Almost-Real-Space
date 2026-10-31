@@ -975,6 +975,7 @@ private static HeightfieldTerrain AssetPreset(int n)
 
                 if (!fieldValue.TryGetValue(name, out double expected))
                 {
+                    mismatches.Add(name + " (нет поля в AssetPreset)");
                     continue;
                 }
 
