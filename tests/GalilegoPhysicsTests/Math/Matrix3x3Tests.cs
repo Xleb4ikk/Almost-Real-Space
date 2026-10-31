@@ -36,7 +36,7 @@ namespace GalilegoPhysicsTests.Mathematics
         [Fact]
         public void RotationMatrixIsOrthogonalAndRotatesAsExpected()
         {
-            // Rz(90В°).
+            // Rz(90°).
             var rotation = new Matrix3x3(
                 0d, -1d, 0d,
                 1d, 0d, 0d,

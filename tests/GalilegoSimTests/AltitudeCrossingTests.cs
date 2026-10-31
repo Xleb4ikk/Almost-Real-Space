@@ -131,8 +131,12 @@ namespace GalilegoPhysicsTests
             output.WriteLine($"╨Ф╨╡╤В╨╡╨║╤В: t = {tDetect:F6} ╤Б, r = {rDetect:F4} ╨╝.");
             output.WriteLine($"╨а╨╡╤Д╨╡╤А╨╡╨╜╤Б RK4: t = {tRef:F6} ╤Б. ╨Ю╤И╨╕╨▒╨║╨░ ╨┐╨╛ ╨▓╤А╨╡╨╝╨╡╨╜╨╕: {timeErr:G} ╤Б, ╨┐╨╛ ╤А╨░╨┤╨╕╤Г╤Б╤Г: {radiusErr:G} ╨╝.");
 
-            Assert.True(timeErr < 0.5, $"╨Т╤А╨╡╨╝╤П ╤Б╨╛╨▒╤Л╤В╨╕╤П ╤А╨░╨╖╨╛╤И╨╗╨╛╤Б╤М ╤Б ╤А╨╡╤Д╨╡╤А╨╡╨╜╤Б╨╛╨╝: {timeErr:G} ╤Б.");
-            Assert.True(radiusErr < 5.0, $"╨а╨░╨┤╨╕╤Г╤Б ╨▓ ╨║╨╛╤А╨╜╨╡ ╨╜╨╡ ╨╜╨░ ╨╛╨▒╨╛╨╗╨╛╤З╨║╨╡: {radiusErr:G} ╨╝.");
+            // The driver's declared root tolerance is 1e-6 s
+            // (EventDrivenPropagator.DefaultRootToleranceSeconds). A 1e-5 s gate
+            // is 10x that budget, not 0.5 s: at 7 km/s the old gate accepted a
+            // 3.5 km along-track error.
+            Assert.True(timeErr < 1e-5, $"╨Т╤А╨╡╨╝╤П ╤Б╨╛╨▒╤Л╤В╨╕╤П ╤А╨░╨╖╨╛╤И╨╗╨╛╤Б╤М ╤Б ╤А╨╡╤Д╨╡╤А╨╡╨╜╤Б╨╛╨╝: {timeErr:G} ╤Б.");
+            Assert.True(radiusErr < 1e-2, $"╨а╨░╨┤╨╕╤Г╤Б ╨▓ ╨║╨╛╤А╨╜╨╡ ╨╜╨╡ ╨╜╨░ ╨╛╨▒╨╛╨╗╨╛╤З╨║╨╡: {radiusErr:G} ╨╝.");
             Assert.Same(star, occurrence.Value.Body);
         }
     }

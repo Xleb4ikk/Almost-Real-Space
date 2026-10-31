@@ -20,7 +20,7 @@ namespace GalilegoPhysicsTests.Mathematics
             Asserts.VectorNear(-a, new Vector3d(-1d, -2d, -3d), 0d, "-a");
             Asserts.Near(Vector3d.Dot(a, b), 24d, 0d, "dot");
             Asserts.VectorNear(Vector3d.Cross(a, b), new Vector3d(-3d, -18d, 13d), 0d, "cross");
-            Asserts.Near(a.SqrMagnitude, 14d, 0d, "|a|ВІ");
+            Asserts.Near(a.SqrMagnitude, 14d, 0d, "|a|²");
             Asserts.Near(a.Magnitude, Math.Sqrt(14d), 1e-15, "|a|");
         }
 

@@ -18,23 +18,33 @@ namespace GalilegoPhysicsTests.Integration.Matrix
         }
 
         [Fact]
-        public void RepeatedRestrictedBodiesMeasurablyPerturbTheTrajectory()
+        public void RealRestricted3BodyPerturberMeasurablyBendsTheTrajectory()
         {
-            const double centralMu = 1.32712440018e20d;
-            Double3 r0 = new Double3(1.5e10d, 0d, 0d);
-            Double3 v0 = new Double3(0d, Math.Sqrt(centralMu / 1.5e10d), 0d);
-            const double duration = 3600d;
-            RestrictedBody[] bodies = RestrictedNBodyOracle.CreateBodies(centralMu);
+            Scenario scenario = ScenarioCatalog.Get("restricted-3body");
+            Double3 r0 = new Double3(
+                scenario.InitialState.Position.X,
+                scenario.InitialState.Position.Y,
+                scenario.InitialState.Position.Z);
+            Double3 v0 = new Double3(
+                scenario.InitialState.Velocity.X,
+                scenario.InitialState.Velocity.Y,
+                scenario.InitialState.Velocity.Z);
+            double centralMu = scenario.RestrictedCentralMu;
+            RestrictedBody[] bodies = scenario.RestrictedBodies;
 
-            OracleState all = RestrictedNBodyOracle.Propagate(r0, v0, centralMu, bodies, duration, 0.5d);
-            OracleState one = RestrictedNBodyOracle.Propagate(r0, v0, centralMu, new[] { bodies[0] }, duration, 0.5d);
+            OracleState all = RestrictedNBodyOracle.Propagate(
+                r0, v0, centralMu, bodies, scenario.DurationSeconds, 0.5d);
+            OracleState one = RestrictedNBodyOracle.Propagate(
+                r0, v0, centralMu, System.Array.Empty<RestrictedBody>(), scenario.DurationSeconds, 0.5d);
             double contribution = (all.Position - one.Position).Magnitude;
             double gate = 10d * ToleranceTable.For(
                 IntegratorKind.Dop853, "restricted-3body", 1e-9d).OraclePositionMeters;
 
-            output.WriteLine("restricted-3body: perturber contribution=" +
-                             contribution.ToString("E3") + " m; 10x oracle tolerance=" +
-                             gate.ToString("E3") + " m.");
+            output.WriteLine("restricted-3body: periapsis=" +
+                             scenario.PeriapsisMeters.ToString("E3") + " m, periapsis speed=" +
+                             scenario.PeriapsisSpeedMetersPerSecond.ToString("E3") +
+                             " m/s; perturber contribution=" + contribution.ToString("E3") +
+                             " m; 10x oracle tolerance=" + gate.ToString("E3") + " m.");
             Asserts.True(contribution > gate,
                 "restricted-3body is too weak: perturber contribution " + contribution.ToString("E3") +
                 " m <= 10x oracle tolerance " + gate.ToString("E3") + " m.");
@@ -43,22 +53,31 @@ namespace GalilegoPhysicsTests.Integration.Matrix
         [Fact]
         public void FlybyBodyDominatesTheCentralFieldNearApproach()
         {
-            const double centralMu = 1.32712440018e20d;
-            const double bodyR = 1.0e10d;
-            var body = new RestrictedBody(3.986004418e14d, bodyR, 0d, 0d);
-            Double3 r0 = new Double3(bodyR + 3.0e7d, 0d, 0d);
-            Double3 v0 = new Double3(0d, 3000d, 0d);
-            const double duration = 15000d;
+            Scenario scenario = ScenarioCatalog.Get("restricted-flyby");
+            Double3 r0 = new Double3(
+                scenario.InitialState.Position.X,
+                scenario.InitialState.Position.Y,
+                scenario.InitialState.Position.Z);
+            Double3 v0 = new Double3(
+                scenario.InitialState.Velocity.X,
+                scenario.InitialState.Velocity.Y,
+                scenario.InitialState.Velocity.Z);
+            double centralMu = scenario.RestrictedCentralMu;
+            RestrictedBody[] bodies = scenario.RestrictedBodies;
 
-            OracleState withBody = RestrictedNBodyOracle.Propagate(r0, v0, centralMu, new[] { body }, duration, 0.1d);
-            OracleState withoutBody = RestrictedNBodyOracle.Propagate(r0, v0, centralMu, Array.Empty<RestrictedBody>(), duration, 0.1d);
+            OracleState withBody = RestrictedNBodyOracle.Propagate(
+                r0, v0, centralMu, bodies, scenario.DurationSeconds, 0.1d);
+            OracleState withoutBody = RestrictedNBodyOracle.Propagate(
+                r0, v0, centralMu, Array.Empty<RestrictedBody>(), scenario.DurationSeconds, 0.1d);
             double contribution = (withBody.Position - withoutBody.Position).Magnitude;
             double gate = 10d * ToleranceTable.For(
                 IntegratorKind.Dop853, "restricted-flyby", 1e-9d).OraclePositionMeters;
 
-            output.WriteLine("restricted-flyby: body contribution=" +
-                             contribution.ToString("E3") + " m; 10x oracle tolerance=" +
-                             gate.ToString("E3") + " m.");
+            output.WriteLine("restricted-flyby: periapsis=" +
+                             scenario.PeriapsisMeters.ToString("E3") + " m, periapsis speed=" +
+                             scenario.PeriapsisSpeedMetersPerSecond.ToString("E3") +
+                             " m/s; body contribution=" + contribution.ToString("E3") +
+                             " m; 10x oracle tolerance=" + gate.ToString("E3") + " m.");
             Asserts.True(contribution > gate,
                 "restricted-flyby is too weak: body contribution " + contribution.ToString("E3") +
                 " m <= 10x oracle tolerance " + gate.ToString("E3") + " m.");

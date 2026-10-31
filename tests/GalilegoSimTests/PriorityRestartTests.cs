@@ -56,8 +56,8 @@ namespace GalilegoPhysicsTests
             double r2 = System.Math.Abs(second.Value.State.Position.Magnitude - shell);
 
             output.WriteLine($"t1 = {t1:F6} ╤Б (r-╨╛╤И. {r1:G} ╨╝), t2 = {t2:F6} ╤Б (r-╨╛╤И. {r2:G} ╨╝). ╨Ю╨▒╨░ тАФ HighPriority, ╨╖╨░╤Ж╨╕╨║╨╗╨╕╨▓╨░╨╜╨╕╤П ╨╜╨╡╤В.");
-            Assert.True(r1 < 1.0, $"╨Я╨╡╤А╨▓╤Л╨╣ ╨║╨╛╤А╨╡╨╜╤М ╨╜╨╡ ╨╜╨░ ╨╛╨▒╨╛╨╗╨╛╤З╨║╨╡: {r1:G} ╨╝.");
-            Assert.True(r2 < 1.0, $"╨Т╤В╨╛╤А╨╛╨╣ ╨║╨╛╤А╨╡╨╜╤М ╨╜╨╡ ╨╜╨░ ╨╛╨▒╨╛╨╗╨╛╤З╨║╨╡: {r2:G} ╨╝.");
+            Assert.True(r1 < 1e-2, $"╨Я╨╡╤А╨▓╤Л╨╣ ╨║╨╛╤А╨╡╨╜╤М ╨╜╨╡ ╨╜╨░ ╨╛╨▒╨╛╨╗╨╛╤З╨║╨╡: {r1:G} ╨╝.");
+            Assert.True(r2 < 1e-2, $"╨Т╤В╨╛╤А╨╛╨╣ ╨║╨╛╤А╨╡╨╜╤М ╨╜╨╡ ╨╜╨░ ╨╛╨▒╨╛╨╗╨╛╤З╨║╨╡: {r2:G} ╨╝.");
         }
 
         [Fact]
@@ -99,7 +99,7 @@ namespace GalilegoPhysicsTests
 
             double dt = System.Math.Abs(lone.Value.TimeSeconds - tCombined);
             output.WriteLine($"╨Ъ╨╛╨╝╨▒╨╕╨╜╨╕╤А╨╛╨▓╨░╨╜╨╜╤Л╨╣: t = {tCombined:F6} ╤Б (HighPriority), ╨╛╨┤╨╕╨╜╨╛╨║╨╕╨╣ Low: t = {lone.Value.TimeSeconds:F6} ╤Б. ╨а╨░╤Б╤Е╨╛╨╢╨┤╨╡╨╜╨╕╨╡: {dt:G} ╤Б.");
-            Assert.True(dt < 1e-3, $"Low ╤Д╨░╨╡╤А╨╕╤В ╨╜╨╡ ╨╜╨░ ╤В╨╛╨╝ ╨╢╨╡ ╨║╨╛╤А╨╜╨╡: ╤А╨░╤Б╤Е╨╛╨╢╨┤╨╡╨╜╨╕╨╡ {dt:G} ╤Б.");
+            Assert.True(dt < 1e-5, $"Low ╤Д╨░╨╡╤А╨╕╤В ╨╜╨╡ ╨╜╨░ ╤В╨╛╨╝ ╨╢╨╡ ╨║╨╛╤А╨╜╨╡: ╤А╨░╤Б╤Е╨╛╨╢╨┤╨╡╨╜╨╕╨╡ {dt:G} ╤Б.");
         }
     }
 }

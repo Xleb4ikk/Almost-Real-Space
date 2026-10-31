@@ -130,9 +130,17 @@ def propagate(r0, v0, mu, total_time):
     )
 
 
-def make_case(case_id, a, e, inc, raan, argp, nu, duration):
+def make_case(case_id, a, e, inc, raan, argp, nu, duration, checkpoint_fractions=(0.25, 0.5, 0.75)):
     r0, v0 = initial_double(a, e, inc, raan, argp, nu)
     p, v = propagate(r0, v0, MU, duration)
+    checkpoints = []
+    for fraction in checkpoint_fractions:
+        cp, cv = propagate(r0, v0, MU, duration * fraction)
+        checkpoints.append({
+            "fraction": fraction,
+            "P": [mp.nstr(x, 60) for x in cp],
+            "V": [mp.nstr(x, 60) for x in cv],
+        })
     return {
         "id": case_id,
         "mu": MU,
@@ -141,6 +149,7 @@ def make_case(case_id, a, e, inc, raan, argp, nu, duration):
         "v0": [format(x, ".17g") for x in v0],
         "P": [mp.nstr(x, 60) for x in p],
         "V": [mp.nstr(x, 60) for x in v],
+        "checkpoints": checkpoints,
         "digits": 60,
     }
 

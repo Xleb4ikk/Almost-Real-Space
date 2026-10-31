@@ -21,7 +21,7 @@ namespace GalilegoPhysicsTests.Integration.Matrix
             {
                 foreach (IntegratorKind integrator in new[] { IntegratorKind.Dopri5, IntegratorKind.Dop853 })
                 {
-                    foreach (double tolerance in scenario.Tolerances)
+                    foreach (double tolerance in scenario.TolerancesFor(integrator))
                     {
                         expected.Add((integrator, scenario.Id, tolerance));
                     }
@@ -83,7 +83,7 @@ namespace GalilegoPhysicsTests.Integration.Matrix
         {
             foreach (Scenario scenario in scenarios)
             {
-                foreach (double tolerance in scenario.Tolerances)
+                foreach (double tolerance in scenario.TolerancesFor(integrator))
                 {
                     ToleranceProfile gate = ToleranceTable.For(integrator, scenario.Id, tolerance);
                     ScenarioExecution run = ScenarioExecution.Execute(scenario, integrator, tolerance, 1);

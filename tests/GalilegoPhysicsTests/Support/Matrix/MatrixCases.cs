@@ -73,7 +73,7 @@ namespace GalilegoPhysicsTests.Support.Matrix
             {
                 foreach (IntegratorKind integrator in new[] { IntegratorKind.Dopri5, IntegratorKind.Dop853 })
                 {
-                    foreach (double tolerance in scenario.Tolerances)
+                    foreach (double tolerance in scenario.TolerancesFor(integrator))
                     {
                         yield return new object[]
                         {

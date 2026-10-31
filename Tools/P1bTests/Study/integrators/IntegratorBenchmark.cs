@@ -98,6 +98,9 @@ internal static partial class P1bTests
 
     private static int Test528_IntegratorBenchmark()
     {
+        // Smoke/benchmark, not the certified accuracy gate: Test549 and the
+        // xUnit goldens own that. The thresholds here are deliberately loose
+        // enough for cross-method comparison but tight enough not to be vacuous.
         Console.WriteLine("--- Integrator benchmark: known Kepler solutions + solar 7-body ---");
         Console.WriteLine("Taylor is excluded; all runs are plain double.");
         int failuresBefore = failures;
@@ -191,9 +194,20 @@ internal static partial class P1bTests
                     dp.ToString("E2", CultureInfo.InvariantCulture));
             }
 
-            Check(bestDpNorm < 1e-6d, "kepler " + c.Label + " best normalized dp",
+            // Normalized units, not meters: 1 length unit is 1 AU, so 1e-8 here
+            // is ~1.5e3 m (1.5 km), and 5e-7 velocity units is ~2.1e-2 m/s.
+            // The 100-period high-e cases measure ~2.4e-9 AU / ~7.9e-8 vel, so
+            // this is a real smoke gate, not the old 150 km vacuum. Keep both
+            // numbers in the message.
+            Check(bestDpNorm < 1e-8d,
+                "kepler " + c.Label + " best normalized dp = " +
+                bestDpNorm.ToString("E3", CultureInfo.InvariantCulture) + " AU (" +
+                (bestDpNorm * StudyAU).ToString("E3", CultureInfo.InvariantCulture) + " m)",
                 bestDpNorm.ToString("E3", CultureInfo.InvariantCulture));
-            Check(bestDvNorm < 1e-6d, "kepler " + c.Label + " best normalized dv",
+            Check(bestDvNorm < 5e-7d,
+                "kepler " + c.Label + " best normalized dv = " +
+                bestDvNorm.ToString("E3", CultureInfo.InvariantCulture) + " vel-units (" +
+                (bestDvNorm * StudyKeplerVelocityScale).ToString("E3", CultureInfo.InvariantCulture) + " m/s)",
                 bestDvNorm.ToString("E3", CultureInfo.InvariantCulture));
         }
 
@@ -309,7 +323,8 @@ internal static partial class P1bTests
         string shipGoldenPath = Path.Combine(studyRoot, "taylor", "golden", "golden_real_10y_k28.json");
         if (!File.Exists(shipGoldenPath))
         {
-            Console.WriteLine("missing " + shipGoldenPath + "; run Test529_TenYearDdGolden first");
+            Console.WriteLine("missing " + shipGoldenPath +
+                "; run Test529_TenYearDdGolden manually (--exact Test529_TenYearDdGolden)");
         }
         else
         {
@@ -445,7 +460,7 @@ internal static partial class P1bTests
                 ShipRow(run.Method, run.Step, run.P, run.V, run.Calls, run.Ms);
             }
 
-            Check(bestShipDp < 1000d, "ship best dp vs dd-Taylor golden",
+            Check(bestShipDp < 800d, "ship best dp vs dd-Taylor golden",
                 bestShipDp.ToString("E3", CultureInfo.InvariantCulture));
             Check(bestShipDv < 1d, "ship best dv vs dd-Taylor golden",
                 bestShipDv.ToString("E3", CultureInfo.InvariantCulture));

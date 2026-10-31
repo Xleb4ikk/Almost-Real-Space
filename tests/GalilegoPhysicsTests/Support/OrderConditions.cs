@@ -9,6 +9,11 @@ namespace GalilegoPhysicsTests.Support
         /// Largest deviation between the RK step series and the exact solution
         /// series for y' = f(y), up to h^order, over several polynomial f and
         /// several y0. Exact rational arithmetic removes accumulation rounding.
+        ///
+        /// This is a sampled necessary condition, not a proof of every Butcher
+        /// order condition (17 at order 5, 200 at order 8). It catches a damaged
+        /// coefficient cheaply; empirical order is pinned by the dense-order,
+        /// convergence and P1b tests.
         /// </summary>
         public static double MaxSeriesResidual(ExactRational[][] A, ExactRational[] B, int order)
         {

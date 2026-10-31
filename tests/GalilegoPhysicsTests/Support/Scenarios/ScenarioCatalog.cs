@@ -9,6 +9,12 @@ namespace GalilegoPhysicsTests.Support.Scenarios
     {
         private const double Mu = 3.986004418e14d;
 
+        // Restricted N-body accuracy is an absolute requirement, not a fraction
+        // of a loose 1% ceiling: 300 m at step endpoints and 600 m through dense
+        // output. Both are tighter than the calibrated regression gates.
+        private const double RestrictedStepPositionLimitMeters = 300d;
+        private const double RestrictedDensePositionLimitMeters = 600d;
+
         /// <summary>
         /// Exact constant-velocity drift. The error estimate is identically zero,
         /// so it exercises the 600 s step cap rather than the adaptive controller;
@@ -32,11 +38,11 @@ namespace GalilegoPhysicsTests.Support.Scenarios
 
             CreateKepler("kepler-e09", "Kepler e=0.9 | 1 period", ScenarioClass.KeplerHighEccentric,
                 1.0e7d, 0.9d, 0.0d, 0.0d, 0.0d, 0.0d, 1.0d, ScenarioTier.Fast,
-                new[] { 1e-6d, 1e-9d }),
+                new[] { 1e-6d, 1e-9d }, 0d, new[] { 1e-9d, 1e-12d }),
 
             CreateKepler("kepler-e099", "Kepler e=0.99 | 1 period", ScenarioClass.KeplerHighEccentric,
                 1.0e7d, 0.99d, 0.0d, 0.0d, 0.0d, 0.0d, 1.0d, ScenarioTier.Fast,
-                new[] { 1e-6d, 1e-9d }),
+                new[] { 1e-6d, 1e-9d }, 0d, new[] { 1e-9d, 1e-12d }),
 
             CreateKepler("kepler-hyperbolic", "Kepler hyperbolic e=1.5 | 1 h", ScenarioClass.KeplerHyperbolic,
                 -1.4e7d, 1.5d, 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, ScenarioTier.Fast,
@@ -44,7 +50,7 @@ namespace GalilegoPhysicsTests.Support.Scenarios
 
             CreateKepler("kepler-near-parabolic", "Kepler near-parabolic e=0.999 | 100 s", ScenarioClass.KeplerNearParabolic,
                 1.0e7d, 0.999d, 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, ScenarioTier.Fast,
-                new[] { 1e-6d, 1e-9d }, 100.0d),
+                new[] { 1e-6d, 1e-9d }, 100.0d, new[] { 1e-9d, 1e-12d }),
 
             CreateKepler("kepler-retrograde", "Kepler retrograde i=180 | 1 period", ScenarioClass.KeplerCircular,
                 7.0e6d, 0.0d, 180.0d, 0.0d, 0.0d, 0.0d, 1.0d, ScenarioTier.Fast,
@@ -138,7 +144,8 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             double horizonPeriods,
             ScenarioTier tier,
             double[] tolerances,
-            double explicitDurationSeconds = 0d)
+            double explicitDurationSeconds = 0d,
+            double[] dopri5Tolerances = null)
         {
             InitialOrbit.StateFromElements(
                 Mu, semiMajorAxis, eccentricity, inclinationDegrees, raanDegrees,
@@ -157,6 +164,15 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             scenario.Tier = tier;
             scenario.Mu = Mu;
             scenario.DurationSeconds = duration;
+            scenario.SemiMajorAxisMeters = semiMajorAxis;
+            scenario.Eccentricity = eccentricity;
+            scenario.PeriapsisMeters = Math.Abs(semiMajorAxis * (1d - eccentricity));
+            scenario.ApoapsisMeters = eccentricity < 1d
+                ? semiMajorAxis * (1d + eccentricity)
+                : double.PositiveInfinity;
+            scenario.PeriapsisSpeedMetersPerSecond = Math.Sqrt(
+                Mu * (1d + eccentricity) / scenario.PeriapsisMeters);
+            scenario.Dopri5Tolerances = dopri5Tolerances;
             scenario.InitialState = new SpacecraftIntegrationState
             {
                 Position = position.ToVector3d(),
@@ -194,6 +210,7 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             scenario.Family = "Thrust";
             scenario.Class = ScenarioClass.Thrust;
             scenario.Tier = ScenarioTier.Fast;
+            scenario.CheckPhysicalAccuracy = false;
             scenario.Mu = 0d;
             scenario.DurationSeconds = burn;
             scenario.InitialState = new SpacecraftIntegrationState
@@ -234,6 +251,7 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             scenario.Family = "Drift";
             scenario.Class = ScenarioClass.Drift;
             scenario.Tier = ScenarioTier.Fast;
+            scenario.CheckPhysicalAccuracy = false;
             scenario.Mu = 0d;
             scenario.DurationSeconds = duration;
             scenario.InitialState = new SpacecraftIntegrationState
@@ -268,6 +286,7 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             scenario.Family = "Drift";
             scenario.Class = ScenarioClass.Drift;
             scenario.Tier = ScenarioTier.Fast;
+            scenario.CheckPhysicalAccuracy = false;
             scenario.Mu = 0d;
             scenario.DurationSeconds = duration;
             scenario.InitialState = new SpacecraftIntegrationState
@@ -324,6 +343,12 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             scenario.Tier = ScenarioTier.Fast;
             scenario.Mu = centralMu;
             scenario.DurationSeconds = duration;
+            scenario.PeriapsisMeters = radius;
+            scenario.PeriapsisSpeedMetersPerSecond = speed;
+            scenario.PhysicalStepPositionFraction = RestrictedStepPositionLimitMeters / radius;
+            scenario.PhysicalDensePositionFraction = RestrictedDensePositionLimitMeters / radius;
+            scenario.RestrictedBodies = bodies;
+            scenario.RestrictedCentralMu = centralMu;
             scenario.InitialState = new SpacecraftIntegrationState
             {
                 Position = r0.ToVector3d(),
@@ -374,6 +399,33 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             Double3 r0 = new Double3(bodyR + separation, 0d, 0d);
             Double3 v0 = new Double3(0d, relativeSpeed, 0d);
 
+            // 0.1 s: below this the fixed-step RK4 accumulates more roundoff than
+            // it removes. RestrictedOracleConvergenceTests pins the Build/Hermite
+            // interpolation error against the production gate.
+            RestrictedNBodyTrajectory trajectory = RestrictedNBodyOracle.Build(
+                r0, v0, centralMu, bodies, duration, stepSeconds: 0.1d);
+
+            // Periapsis here is the closest approach to the perturbing body.
+            // Take both distance and speed from the oracle instead of assuming
+            // the initial 3 km/s is the periapsis speed.
+            double closestDistance = double.PositiveInfinity;
+            double closestSpeed = 0d;
+            const int closestSamples = 20000;
+            for (int i = 0; i <= closestSamples; i++)
+            {
+                double time = duration * i / closestSamples;
+                OracleState state = trajectory.Evaluate(time);
+                double dx = state.Position.X - bodyR;
+                double dy = state.Position.Y;
+                double dz = state.Position.Z;
+                double distance = Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
+                if (distance < closestDistance)
+                {
+                    closestDistance = distance;
+                    closestSpeed = state.Velocity.Magnitude;
+                }
+            }
+
             var scenario = new Scenario();
             scenario.Id = "restricted-flyby";
             scenario.Title = "Restricted flyby near a second body | 15000 s";
@@ -382,6 +434,15 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             scenario.Tier = ScenarioTier.Fast;
             scenario.Mu = centralMu;
             scenario.DurationSeconds = duration;
+            // In this restricted model the perturber is fixed, so this is the
+            // inertial speed at closest approach (~11 km/s), not the initial
+            // 3 km/s and not a speed relative to a moving body.
+            scenario.PeriapsisMeters = closestDistance;
+            scenario.PeriapsisSpeedMetersPerSecond = closestSpeed;
+            scenario.PhysicalStepPositionFraction = RestrictedStepPositionLimitMeters / closestDistance;
+            scenario.PhysicalDensePositionFraction = RestrictedDensePositionLimitMeters / closestDistance;
+            scenario.RestrictedBodies = bodies;
+            scenario.RestrictedCentralMu = centralMu;
             scenario.InitialState = new SpacecraftIntegrationState
             {
                 Position = r0.ToVector3d(),
@@ -402,7 +463,6 @@ namespace GalilegoPhysicsTests.Support.Scenarios
                     Mass = 0d
                 };
             };
-            var trajectory = RestrictedNBodyOracle.Build(r0, v0, centralMu, bodies, duration, stepSeconds: 0.1d);
             scenario.Oracle = trajectory.Evaluate;
             scenario.CheckEnergy = false;
             scenario.CheckAngularMomentum = false;

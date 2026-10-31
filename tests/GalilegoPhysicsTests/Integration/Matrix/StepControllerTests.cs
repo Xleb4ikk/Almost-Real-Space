@@ -31,7 +31,8 @@ namespace GalilegoPhysicsTests.Integration.Matrix
         {
             foreach (Scenario scenario in scenarios)
             {
-                double[] tolerances = scenario.Tolerances.OrderByDescending(value => value).ToArray();
+                double[] tolerances = scenario.TolerancesFor(integrator)
+                    .OrderByDescending(value => value).ToArray();
                 Asserts.True(tolerances.Length >= 2,
                     scenario.Id + " needs at least two tolerances to exercise the step controller.");
 

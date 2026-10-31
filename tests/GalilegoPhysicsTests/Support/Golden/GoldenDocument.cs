@@ -9,6 +9,13 @@ using GalilegoPhysicsTests.Support.Scenarios;
 
 namespace GalilegoPhysicsTests.Support.Golden
 {
+    internal sealed class GoldenCheckpoint
+    {
+        public double Fraction;
+        public Vector3d P;
+        public Vector3d V;
+    }
+
     internal sealed class GoldenCase
     {
         public string Id;
@@ -18,6 +25,7 @@ namespace GalilegoPhysicsTests.Support.Golden
         public Vector3d V0;
         public Vector3d P;
         public Vector3d V;
+        public List<GoldenCheckpoint> Checkpoints = new List<GoldenCheckpoint>();
     }
 
     internal sealed class GoldenDocument
@@ -51,6 +59,19 @@ namespace GalilegoPhysicsTests.Support.Golden
                     P = ReadVector(item.GetProperty("P")),
                     V = ReadVector(item.GetProperty("V"))
                 };
+                if (item.TryGetProperty("checkpoints", out JsonElement checkpoints))
+                {
+                    foreach (JsonElement checkpoint in checkpoints.EnumerateArray())
+                    {
+                        golden.Checkpoints.Add(new GoldenCheckpoint
+                        {
+                            Fraction = checkpoint.GetProperty("fraction").GetDouble(),
+                            P = ReadVector(checkpoint.GetProperty("P")),
+                            V = ReadVector(checkpoint.GetProperty("V"))
+                        });
+                    }
+                }
+
                 result.Cases.Add(golden);
             }
 
@@ -114,6 +135,10 @@ namespace GalilegoPhysicsTests.Support.Golden
                 CheckLrl = false,
                 Tolerances = new[] { 1e-12d }
             };
+            scenario.SetKeplerElementsFromState(
+                new Double3(golden.R0.X, golden.R0.Y, golden.R0.Z),
+                new Double3(golden.V0.X, golden.V0.Y, golden.V0.Z),
+                mu);
             return scenario;
         }
 

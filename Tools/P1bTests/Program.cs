@@ -152,6 +152,7 @@ internal static partial class P1bTests
         string filter = null;
         bool fastOnly = false;
         bool slowOnly = false;
+        bool includeGenerators = false;
         int from = int.MinValue;
         int to = int.MaxValue;
         int jobs = 1;
@@ -167,7 +168,8 @@ internal static partial class P1bTests
             {
                 foreach (P1bCase entry in TestRegistry())
                 {
-                    Console.WriteLine((entry.Slow ? "slow " : "fast ") + entry.Name);
+                    Console.WriteLine(
+                        (entry.Generator ? "generator " : entry.Slow ? "slow " : "fast ") + entry.Name);
                 }
 
                 return 0;
@@ -229,6 +231,10 @@ internal static partial class P1bTests
             else if (args[i] == "--slow")
             {
                 slowOnly = true;
+            }
+            else if (args[i] == "--generators" || args[i] == "--include-generators")
+            {
+                includeGenerators = true;
             }
             else if (args[i] == "--log-dir" && i + 1 < args.Length)
             {
@@ -335,6 +341,11 @@ internal static partial class P1bTests
                 {
                     continue;
                 }
+            }
+
+            if (entry.Generator && !includeGenerators && exact == null)
+            {
+                continue;
             }
 
             if (fastOnly && entry.Slow)

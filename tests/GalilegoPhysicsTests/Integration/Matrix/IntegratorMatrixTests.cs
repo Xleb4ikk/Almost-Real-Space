@@ -45,6 +45,7 @@ namespace GalilegoPhysicsTests.Integration.Matrix
             }
 
             run.MatchesOracle(tolerance.OraclePositionMeters, tolerance.OracleVelocityMetersPerSecond);
+            run.MatchesPhysicalAccuracy();
 
             if (scenario.CheckEnergy)
             {

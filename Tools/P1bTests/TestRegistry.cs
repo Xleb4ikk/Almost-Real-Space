@@ -16,11 +16,16 @@ internal static partial class P1bTests
         public readonly Func<int> Run;
         public readonly bool Slow;
 
-        public P1bCase(string name, Func<int> run, bool slow)
+        // Generators rewrite hash-pinned artifacts and can take hours; they are
+        // opt-in (--generators) and never part of the normal fast/slow sweep.
+        public readonly bool Generator;
+
+        public P1bCase(string name, Func<int> run, bool slow, bool generator = false)
         {
             Name = name;
             Run = run;
             Slow = slow;
+            Generator = generator;
         }
     }
 
@@ -254,8 +259,13 @@ internal static partial class P1bTests
             new P1bCase("Test520_ParallelProbe", Test520_ParallelProbe, true),
             new P1bCase("Test521_LongHorizonMatrix", Test521_LongHorizonMatrix, true),
             new P1bCase("Test522_YearFloorProbe", Test522_YearFloorProbe, true),
-
-new P1bCase("Test528_IntegratorBenchmark", Test528_IntegratorBenchmark, true),
+            new P1bCase("Test523_BakeGoldenBridge", Test523_BakeGoldenBridge, true),
+            new P1bCase("Test524_CertifyYearProbe", Test524_CertifyYearProbe, true),
+            new P1bCase("Test525_YearErrorCurve", Test525_YearErrorCurve, true),
+            new P1bCase("Test526_SecondReferenceY6CDd", Test526_SecondReferenceY6CDd, true),
+            new P1bCase("Test527_TenYearDd", Test527_TenYearDd, true),
+            new P1bCase("Test529_TenYearDdGolden", Test529_TenYearDdGolden, true, generator: true),
+            new P1bCase("Test528_IntegratorBenchmark", Test528_IntegratorBenchmark, true),
 new P1bCase("Test530_JplRealism", Test530_JplRealism, true),
             new P1bCase("Test531_Jpl1Pn", Test531_Jpl1Pn, true),
             new P1bCase("Test532_Precession", Test532_Precession, true),

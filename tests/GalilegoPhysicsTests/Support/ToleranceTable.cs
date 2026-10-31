@@ -21,10 +21,14 @@ namespace GalilegoPhysicsTests.Support
     }
 
     /// <summary>
-    /// Per-(scenario, integrator, tolerance) assertion gates measured by
+    /// Per-(scenario, integrator, tolerance) regression gates measured by
     /// GALILEGO_CALIBRATE=1. There is no class lumping and no linear scaling:
     /// every matrix row owns its gate, with ~3x headroom over the measured error.
     /// ToleranceTableConsistencyTests fails when a gate drifts outside that band.
+    ///
+    /// These are regression locks, not accuracy requirements. Required accuracy
+    /// is gated independently against the orbit's periapsis in
+    /// ScenarioExecution.MatchesPhysicalAccuracy and AbsoluteAccuracyCeilingTests.
     /// </summary>
     internal static class ToleranceTable
     {
@@ -97,8 +101,8 @@ namespace GalilegoPhysicsTests.Support
                     Gates(1.369800e+1, 1.982400e-1, 0d, 5.250000e-9, 3.558000e-8, 2.298000e-8, 0d, 0d, 0d, 0d, 0d),
                 [(IntegratorKind.Dopri5, "kepler-e09", 1e-9d)] =
                     Gates(1.631400e+1, 2.361900e-1, 0d, 1.150200e-9, 1.128600e-8, 1.564800e-8, 6.684021e+00, 9.681213e-02, 1.181436e-02, 1.716204e-04, 1.631400e+1),
-                [(IntegratorKind.Dopri5, "kepler-e09", 1e-6d)] =
-                    Gates(2.494500e+4, 3.612000e+2, 0d, 1.557300e-6, 8.904000e-6, 1.320300e-5, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-e09", 1e-12d)] =
+                    Gates(9.219000e-3, 1.335300e-4, 0d, 1.022700e-12, 8.922000e-12, 1.050300e-11, 0d, 0d, 0d, 0d, 0d),
                 [(IntegratorKind.Dop853, "kepler-e09-10p", 1e-12d)] =
                     Gates(4.557000e-4, 6.603000e-6, 0d, 1.042500e-14, 2.245500e-14, 5.790000e-14, 0d, 0d, 0d, 0d, 0d),
                 [(IntegratorKind.Dop853, "kepler-e09-10p", 1e-10d)] =
@@ -113,8 +117,8 @@ namespace GalilegoPhysicsTests.Support
                     Gates(4.296000e+2, 1.922400e+2, 0d, 1.059000e-8, 6.084000e-8, 4.395000e-8, 0d, 0d, 0d, 0d, 0d),
                 [(IntegratorKind.Dopri5, "kepler-e099", 1e-9d)] =
                     Gates(4.884000e+2, 2.185800e+2, 0d, 1.030500e-9, 1.116600e-8, 7.830000e-9, 0d, 0d, 0d, 0d, 0d),
-                [(IntegratorKind.Dopri5, "kepler-e099", 1e-6d)] =
-                    Gates(6.366000e+5, 1.859700e+5, 0d, 1.443000e-6, 1.342200e-5, 1.191900e-5, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-e099", 1e-12d)] =
+                    Gates(2.654100e-1, 1.187700e-1, 0d, 6.267000e-13, 1.007400e-11, 4.197000e-12, 0d, 0d, 0d, 0d, 0d),
                 [(IntegratorKind.Dop853, "kepler-hyperbolic", 1e-9d)] =
                     Gates(3.528000e-5, 3.921000e-8, 0d, 1.726200e-12, 5.514000e-12, 1.672800e-11, 4.220358e-06, 1.130054e-08, 3.776604e-06, 1.171651e-09, 0d),
                 [(IntegratorKind.Dop853, "kepler-hyperbolic", 1e-6d)] =
@@ -145,8 +149,8 @@ namespace GalilegoPhysicsTests.Support
                     Gates(2.247300e-1, 3.021000e-3, 0d, 8.388000e-10, 7.482000e-9, 5.886000e-9, 0d, 0d, 0d, 0d, 0d),
                 [(IntegratorKind.Dopri5, "kepler-near-parabolic", 1e-9d)] =
                     Gates(2.579400e-1, 3.492000e-3, 0d, 9.585000e-10, 9.948000e-9, 6.462000e-9, 0d, 0d, 0d, 0d, 0d),
-                [(IntegratorKind.Dopri5, "kepler-near-parabolic", 1e-6d)] =
-                    Gates(3.996000e+2, 5.382000e+0, 0d, 1.438200e-6, 8.577000e-6, 1.149600e-5, 0d, 0d, 0d, 0d, 0d),
+                [(IntegratorKind.Dopri5, "kepler-near-parabolic", 1e-12d)] =
+                    Gates(1.381500e-4, 1.859400e-6, 0d, 6.495000e-13, 1.062000e-11, 4.452000e-12, 0d, 0d, 0d, 0d, 0d),
                 [(IntegratorKind.Dop853, "kepler-retrograde", 1e-9d)] =
                     Gates(6.906000e-5, 6.690000e-8, 0d, 2.593800e-12, 3.891000e-12, 3.489000e-12, 0d, 0d, 0d, 0d, 0d),
                 [(IntegratorKind.Dop853, "kepler-retrograde", 1e-6d)] =

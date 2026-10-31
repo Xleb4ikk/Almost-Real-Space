@@ -101,7 +101,13 @@ namespace GalilegoPhysicsTests
                 $"╨Ъ╨╛╤А╨╡╨╜╤М {tEvent:F3} ╤Б ╨▓╨╜╨╡ ╨▒╤А╨╡╨║╨╡╤В╨░ [{tPrev:F0}, {tNow:F0}].");
             Assert.Same(star, occurrence.Value.Body);
 
-            const double eps = 1.0;
+            planet.EvaluateWorldState(tEvent, out Vector3d planetAtEvent, out _);
+            double radiusErr = System.Math.Abs(
+                (occurrence.Value.State.Position - planetAtEvent).Magnitude - soi);
+            output.WriteLine($"Ошибка радиуса SOI в корне: {radiusErr:G} м.");
+            Assert.True(radiusErr < 1e-2, $"Корень не на границе SOI: {radiusErr:G} м.");
+
+            const double eps = 1e-3;
             OrbitingBody before = system.FindDominantBody(occurrence.Value.State.Position, tEvent - eps);
             Assert.Same(planet, before);
         }

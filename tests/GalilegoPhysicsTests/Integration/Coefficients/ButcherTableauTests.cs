@@ -17,28 +17,32 @@ namespace GalilegoPhysicsTests.Integration.Coefficients
         }
 
         [Fact]
-        public void Dopri5_RowSumsWeightsAndOrderFive()
+        public void Dopri5_RowSumsWeightsAndSampledSeriesResidual()
         {
+            // This is a sampled B-series residual, not a proof of all 17 order-5
+            // conditions. It is a cheap corruption detector; the empirical order
+            // is pinned by DenseOrderTests, ConvergenceTests and P1b Test549.
             ExactRational[][] a = Dopri5A();
             ExactRational[] b = Dopri5B();
             ExactRational[] c = Dopri5C();
 
             double rowResidual = OrderConditions.MaxRowSumResidual(a, c);
             double weightResidual = OrderConditions.SumResidual(b, 1d);
-            double orderResidual = OrderConditions.MaxSeriesResidual(a, b, 5);
+            double seriesResidual = OrderConditions.MaxSeriesResidual(a, b, 5);
             double bStarResidual = OrderConditions.SumResidual(Dopri5BStar(), 1d);
 
             output.WriteLine("DOPRI5: rows a=c: " + rowResidual.ToString("E3") +
                              "; sum b - 1: " + weightResidual.ToString("E3") +
                              "; sum b* - 1: " + bStarResidual.ToString("E3") +
-                             "; order 5: " + orderResidual.ToString("E3") + ".");
+                             "; sampled series residual: " + seriesResidual.ToString("E3") + ".");
 
             Asserts.True(rowResidual < 1e-15, "DOPRI5: a row sum != c: " + rowResidual.ToString("E3"));
             Asserts.True(weightResidual < 1e-15, "DOPRI5: sum b != 1: " + weightResidual.ToString("E3"));
             Asserts.True(bStarResidual < 1e-15, "DOPRI5: sum b* != 1: " + bStarResidual.ToString("E3"));
             // The tableau is stored as doubles; exact rational arithmetic on those
             // doubles leaves a ~2e-15 residual (the coefficients' binary rounding).
-            Asserts.True(orderResidual < 1e-14, "DOPRI5 is not order 5: residual " + orderResidual.ToString("E3"));
+            Asserts.True(seriesResidual < 1e-14,
+                "DOPRI5 sampled series residual is too large: " + seriesResidual.ToString("E3"));
         }
 
         [Fact]
@@ -63,8 +67,11 @@ namespace GalilegoPhysicsTests.Integration.Coefficients
         }
 
         [Fact]
-        public void Dop853_RowSumsWeightsEmbeddedAndOrder()
+        public void Dop853_RowSumsWeightsEmbeddedAndSampledSeriesResidual()
         {
+            // Sampled B-series residual only: 14 scalar residuals, not all 200
+            // order-8 conditions. See the DOPRI5 test above for the empirical
+            // order checks.
             ExactRational[][] a = OrderConditions.ToRational(DOP853Coefficients.A);
             ExactRational[] b = OrderConditions.ToRational(DOP853Coefficients.B);
             ExactRational[] c = OrderConditions.ToRational(DOP853Coefficients.C);
@@ -73,20 +80,21 @@ namespace GalilegoPhysicsTests.Integration.Coefficients
             double rowResidual = OrderConditions.MaxRowSumResidual(a, c);
             double weightResidual = OrderConditions.SumResidual(b, 1d);
             double embeddedResidual = OrderConditions.SumResidual(e5, 0d);
-            double orderResidual = OrderConditions.MaxSeriesResidual(a, b, 8);
+            double seriesResidual = OrderConditions.MaxSeriesResidual(a, b, 8);
 
             output.WriteLine("DOP853: rows a=c: " + rowResidual.ToString("E3") +
                              "; sum b - 1: " + weightResidual.ToString("E3") +
                              "; sum E5: " + embeddedResidual.ToString("E3") +
-                             "; order 8: " + orderResidual.ToString("E3") + ".");
+                             "; sampled series residual: " + seriesResidual.ToString("E3") + ".");
 
             // DOP853 coefficients are published to ~1e-18 decimal places; exact
             // rational arithmetic on their double representations leaves ~2e-15
-            // in the row sums and ~1e-14 in order-8 series coefficients.
+            // in the row sums and ~1e-14 in sampled order-8 series coefficients.
             Asserts.True(rowResidual < 2e-15, "DOP853: a row sum != c: " + rowResidual.ToString("E3"));
             Asserts.True(weightResidual < 1e-15, "DOP853: sum b != 1: " + weightResidual.ToString("E3"));
             Asserts.True(embeddedResidual < 1e-15, "DOP853: sum E5 != 0: " + embeddedResidual.ToString("E3"));
-            Asserts.True(orderResidual < 5e-14, "DOP853 is not order 8: residual " + orderResidual.ToString("E3"));
+            Asserts.True(seriesResidual < 5e-14,
+                "DOP853 sampled series residual is too large: " + seriesResidual.ToString("E3"));
         }
 
         [Fact]

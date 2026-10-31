@@ -62,6 +62,7 @@ namespace GalilegoPhysicsTests.Support
             SpacecraftIntegrationState initial,
             double durationSeconds,
             int chunks,
+            bool reverseTime = false,
             bool collectDense = true)
         {
             if (chunks < 1)
@@ -78,7 +79,11 @@ namespace GalilegoPhysicsTests.Support
             SpacecraftOrbitIntegrator.DerivativeFunction derivative = (state, t) =>
             {
                 calls++;
-                return scenario.Derivative(state, t);
+                // Time reversal maps the forward solution x(t) to
+                // y(tau) = x(duration - tau), so non-autonomous fields
+                // (moving perturbers) must be evaluated at the reversed time.
+                double scenarioTime = reverseTime ? durationSeconds - t : t;
+                return scenario.Derivative(state, scenarioTime);
             };
 
             for (int i = 0; i < chunks; i++)
@@ -127,8 +132,20 @@ namespace GalilegoPhysicsTests.Support
         public IReadOnlyList<DenseSegment> Segments => data.Segments;
         public long RhsCalls => data.RhsCalls;
         public int Steps => data.Steps;
+        // MaxPositionError/MaxVelocityError include dense interpolation at the
+        // 65 uniform samples. The step metrics below are measured only at
+        // accepted step endpoints, so they isolate the integrator from the
+        // dense-output polynomial; the dense metrics are measured strictly
+        // inside segments, so they isolate the interpolation.
         public double MaxPositionError { get; }
         public double MaxVelocityError { get; }
+        public double MaxStepPositionError { get; }
+        public double MaxStepVelocityError { get; }
+        public double MaxDensePositionError { get; }
+        public double MaxDenseVelocityError { get; }
+        public double FinalPositionError { get; }
+        public double FinalVelocityError { get; }
+        public double MinRadiusMeters { get; }
         public double MaxMassError { get; }
         public double MaxEnergyDrift { get; }
         public double MaxAngularMomentumDrift { get; }
@@ -169,6 +186,54 @@ namespace GalilegoPhysicsTests.Support
             MaxEnergyDrift = maxEnergy;
             MaxAngularMomentumDrift = maxAngular;
             MaxLrlDrift = maxLrl;
+
+            double maxStepPos = 0d;
+            double maxStepVel = 0d;
+            double maxDensePos = 0d;
+            double maxDenseVel = 0d;
+            double minRadius = data.Initial.Position.Magnitude;
+            if (Scenario.Oracle != null && data.Segments != null)
+            {
+                foreach (DenseSegment segment in data.Segments)
+                {
+                    OracleState endOracle = Scenario.Oracle(segment.T1);
+                    maxStepPos = Math.Max(maxStepPos,
+                        (segment.Y1.Position - endOracle.Position.ToVector3d()).Magnitude);
+                    maxStepVel = Math.Max(maxStepVel,
+                        (segment.Y1.Velocity - endOracle.Velocity.ToVector3d()).Magnitude);
+                    minRadius = Math.Min(minRadius, segment.Y1.Position.Magnitude);
+
+                    for (int i = 1; i <= 3; i++)
+                    {
+                        double time = segment.T0 + ((segment.T1 - segment.T0) * (i / 4d));
+                        SpacecraftIntegrationState dense = segment.Evaluate(time);
+                        OracleState oracle = Scenario.Oracle(time);
+                        maxDensePos = Math.Max(maxDensePos,
+                            (dense.Position - oracle.Position.ToVector3d()).Magnitude);
+                        maxDenseVel = Math.Max(maxDenseVel,
+                            (dense.Velocity - oracle.Velocity.ToVector3d()).Magnitude);
+                        minRadius = Math.Min(minRadius, dense.Position.Magnitude);
+                    }
+                }
+            }
+
+            MaxStepPositionError = maxStepPos;
+            MaxStepVelocityError = maxStepVel;
+            MaxDensePositionError = maxDensePos;
+            MaxDenseVelocityError = maxDenseVel;
+            MinRadiusMeters = minRadius;
+
+            if (Scenario.Oracle != null)
+            {
+                OracleState finalOracle = Scenario.Oracle(Scenario.DurationSeconds);
+                FinalPositionError = (data.Final.Position - finalOracle.Position.ToVector3d()).Magnitude;
+                FinalVelocityError = (data.Final.Velocity - finalOracle.Velocity.ToVector3d()).Magnitude;
+            }
+            else
+            {
+                FinalPositionError = double.NaN;
+                FinalVelocityError = double.NaN;
+            }
 
             if (Env.Dump)
             {
@@ -258,6 +323,162 @@ namespace GalilegoPhysicsTests.Support
             return this;
         }
 
+        /// <summary>
+        /// Physical acceptance against the scenario's own orbital scale, not a
+        /// calibrated gate. A trajectory that drifts by a large fraction of its
+        /// periapsis is wrong even if it is bit-stable and matches yesterday's
+        /// calibration exactly.
+        /// </summary>
+        public ScenarioExecution MatchesPhysicalAccuracy()
+        {
+            if (!Scenario.CheckPhysicalAccuracy)
+            {
+                return this;
+            }
+
+            if (Scenario.Oracle == null)
+            {
+                throw new XunitException(
+                    "Сценарий \"" + Scenario.Id + "\" включил физическую точность, но у него нет оракула.");
+            }
+
+            if (Scenario.PeriapsisMeters <= 0d)
+            {
+                throw new XunitException(
+                    "Сценарий \"" + Scenario.Id + "\" включил физическую точность, но у него нет перицентра. " +
+                    "Задайте CheckPhysicalAccuracy = false явно, если сценарий не орбитальный.");
+            }
+
+            if (MaxStepPositionError > Scenario.StepPositionLimitMeters)
+            {
+                ThrowFailure(
+                    "физическая точность: позиция на концах шагов",
+                    MaxStepPositionError,
+                    Scenario.StepPositionLimitMeters,
+                    "м",
+                    "Ошибка больше " + (Scenario.PhysicalStepPositionFraction * 100d).ToString("G3") +
+                    "% перицентра (" + Scenario.PeriapsisMeters.ToString("E3") + " м).");
+            }
+
+            if (MaxDensePositionError > Scenario.DensePositionLimitMeters)
+            {
+                ThrowFailure(
+                    "физическая точность: dense-интерполяция",
+                    MaxDensePositionError,
+                    Scenario.DensePositionLimitMeters,
+                    "м",
+                    "Ошибка интерполяции больше " + (Scenario.PhysicalDensePositionFraction * 100d).ToString("G3") +
+                    "% перицентра (" + Scenario.PeriapsisMeters.ToString("E3") + " м).");
+            }
+
+            if (Scenario.PeriapsisSpeedMetersPerSecond > 0d)
+            {
+                if (MaxStepVelocityError > Scenario.StepVelocityLimitMetersPerSecond)
+                {
+                    ThrowFailure(
+                        "физическая точность: скорость на концах шагов",
+                        MaxStepVelocityError,
+                        Scenario.StepVelocityLimitMetersPerSecond,
+                        "м/с",
+                        "Ошибка больше " + (PhysicalAccuracy.StepVelocityFraction * 100d).ToString("F0") +
+                        "% скорости в перицентре.");
+                }
+
+                if (MaxDenseVelocityError > Scenario.DenseVelocityLimitMetersPerSecond)
+                {
+                    ThrowFailure(
+                        "физическая точность: dense-скорость",
+                        MaxDenseVelocityError,
+                        Scenario.DenseVelocityLimitMetersPerSecond,
+                        "м/с",
+                        "Ошибка интерполяции скорости больше " +
+                        (PhysicalAccuracy.DenseVelocityFraction * 100d).ToString("F0") + "% скорости в перицентре.");
+                }
+            }
+
+            if (Scenario.IsKepler)
+            {
+                AssertKeplerShape();
+            }
+
+            return this;
+        }
+
+        private void AssertKeplerShape()
+        {
+            Vector3d position = data.Final.Position;
+            Vector3d velocity = data.Final.Velocity;
+            double radius = position.Magnitude;
+            double v2 = velocity.SqrMagnitude;
+            double energy = (0.5d * v2) - (Scenario.Mu / radius);
+            double semiMajorAxis = -Scenario.Mu / (2d * energy);
+            Vector3d angularMomentum = Vector3d.Cross(position, velocity);
+            Vector3d eccentricityVector =
+                ((position * (v2 - (Scenario.Mu / radius))) -
+                 (velocity * Vector3d.Dot(position, velocity))) / Scenario.Mu;
+            double eccentricity = eccentricityVector.Magnitude;
+
+            double axisLimit = PhysicalAccuracy.OrbitElementFraction * Math.Abs(Scenario.SemiMajorAxisMeters);
+            if (Math.Abs(semiMajorAxis - Scenario.SemiMajorAxisMeters) > axisLimit)
+            {
+                ThrowFailure(
+                    "физическая форма орбиты: большая полуось",
+                    Math.Abs(semiMajorAxis - Scenario.SemiMajorAxisMeters),
+                    axisLimit,
+                    "м",
+                    "Конечная большая полуось " + semiMajorAxis.ToString("E6") +
+                    " м вместо " + Scenario.SemiMajorAxisMeters.ToString("E6") + " м.");
+            }
+
+            if (Math.Abs(eccentricity - Scenario.Eccentricity) > PhysicalAccuracy.EccentricityAbsolute)
+            {
+                ThrowFailure(
+                    "физическая форма орбиты: эксцентриситет",
+                    Math.Abs(eccentricity - Scenario.Eccentricity),
+                    PhysicalAccuracy.EccentricityAbsolute,
+                    "абс.",
+                    "Конечный эксцентриситет " + eccentricity.ToString("F9") +
+                    " вместо " + Scenario.Eccentricity.ToString("F9") + ".");
+            }
+
+            Vector3d initialAngularMomentum =
+                Vector3d.Cross(data.Initial.Position, data.Initial.Velocity);
+            double angularDrift = (angularMomentum - initialAngularMomentum).Magnitude /
+                                  Math.Max(initialAngularMomentum.Magnitude, 1e-300d);
+            if (angularDrift > PhysicalAccuracy.OrbitElementFraction)
+            {
+                ThrowFailure(
+                    "физическая форма орбиты: момент импульса",
+                    angularDrift,
+                    PhysicalAccuracy.OrbitElementFraction,
+                    "отн.",
+                    "Вектор момента изменился сильнее 1%.");
+            }
+
+            if (Vector3d.Dot(angularMomentum, initialAngularMomentum) <= 0d)
+            {
+                ThrowFailure(
+                    "физическая форма орбиты: направление движения",
+                    0d,
+                    1d,
+                    "бит",
+                    "Численная орбита изменила направление вращения.");
+            }
+
+            double minimumRadius = Scenario.PeriapsisMeters * PhysicalAccuracy.PeriapsisFloorFraction;
+            if (MinRadiusMeters < minimumRadius)
+            {
+                ThrowFailure(
+                    "физическая форма орбиты: перицентр",
+                    MinRadiusMeters,
+                    minimumRadius,
+                    "м",
+                    "Траектория опустилась ниже " +
+                    (PhysicalAccuracy.PeriapsisFloorFraction * 100d).ToString("F0") +
+                    "% аналитического перицентра.");
+            }
+        }
+
         public ScenarioExecution MatchesMass(double relativeTolerance)
         {
             if (Scenario.Oracle == null)
@@ -279,7 +500,8 @@ namespace GalilegoPhysicsTests.Support
             SpacecraftIntegrationState reversedInitial = data.Final;
             reversedInitial.Velocity = -reversedInitial.Velocity;
             RunData reversed = IntegratorDriver.Integrate(
-                Scenario, Integrator, Tolerance, reversedInitial, Scenario.DurationSeconds, 1);
+                Scenario, Integrator, Tolerance, reversedInitial, Scenario.DurationSeconds, 1,
+                reverseTime: true);
             double positionError = (reversed.Final.Position - data.Initial.Position).Magnitude;
             // Time reversal maps (r, v) to (r, -v): the reverse run must reach
             // the initial position and the negated initial velocity.
