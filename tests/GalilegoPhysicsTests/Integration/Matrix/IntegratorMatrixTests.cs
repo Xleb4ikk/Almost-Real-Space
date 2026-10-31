@@ -25,6 +25,13 @@ namespace GalilegoPhysicsTests.Integration.Matrix
             {
                 run.HasStepBudget(expectedSteps, expectedCalls, 0.1d);
             }
+            else if (!Env.Calibrate)
+            {
+                throw new Xunit.Sdk.XunitException(
+                    "нет бюджета шагов для <" + scenario.Id + " | " + matrix.IntegratorName +
+                    " | " + matrix.Tolerance.ToString("R") +
+                    ">; запустите GALILEGO_CALIBRATE=1 и добавьте строку в StepBudget.");
+            }
 
             run.MatchesOracle(tolerance.OraclePositionMeters, tolerance.OracleVelocityMetersPerSecond);
 

@@ -22,16 +22,12 @@ namespace GalilegoPhysicsTests.Integration.Matrix
             }
 
             var rows = new List<string>();
+            var snippet = new List<string>();
             rows.Add("| scenario | integrator | tol | steps | rhs | maxPos m | maxVel m/s | maxMass rel | E drift | L drift | LRL drift |");
             rows.Add("|---|---|---|---|---|---|---|---|---|---|---|");
 
             foreach (Scenario scenario in ScenarioCatalog.All)
             {
-                if (scenario.Tier == ScenarioTier.Slow && !Env.SlowEnabled)
-                {
-                    continue;
-                }
-
                 foreach (IntegratorKind integrator in new[] { IntegratorKind.Dopri5, IntegratorKind.Dop853 })
                 {
                     foreach (double tolerance in scenario.Tolerances)
@@ -48,14 +44,26 @@ namespace GalilegoPhysicsTests.Integration.Matrix
                                  " | " + run.MaxEnergyDrift.ToString("0.000E+0", CultureInfo.InvariantCulture) +
                                  " | " + run.MaxAngularMomentumDrift.ToString("0.000E+0", CultureInfo.InvariantCulture) +
                                  " | " + run.MaxLrlDrift.ToString("0.000E+0", CultureInfo.InvariantCulture) + " |");
+                        snippet.Add(StepBudget.FormatEntry(
+                            scenario.Id, scenario.IntegratorLabel(integrator), tolerance,
+                            run.Steps, run.RhsCalls));
                     }
                 }
             }
 
+            rows.Add("");
+            rows.Add("### StepBudget entries");
+            rows.Add("");
+            rows.AddRange(snippet);
+
             string path = Path.Combine(ArtifactWriter.RepositoryRoot, "TestResults", "calibration.md");
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             File.WriteAllText(path, string.Join(Environment.NewLine, rows) + Environment.NewLine, Encoding.UTF8);
-            Console.WriteLine("Калибровка записана: " + path);
+
+            string snippetPath = Path.Combine(ArtifactWriter.RepositoryRoot, "TestResults", "step-budget-snippet.cs");
+            File.WriteAllText(snippetPath, string.Join(Environment.NewLine, snippet) + Environment.NewLine, Encoding.UTF8);
+            Console.WriteLine("calibration written: " + path);
+            Console.WriteLine("StepBudget snippet: " + snippetPath);
         }
     }
 }

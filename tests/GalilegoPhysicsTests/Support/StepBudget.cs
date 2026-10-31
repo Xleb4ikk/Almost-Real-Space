@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 
 namespace GalilegoPhysicsTests.Support
 {
@@ -79,6 +81,18 @@ namespace GalilegoPhysicsTests.Support
                 [("kepler-hyperbolic-1d", "Dop853", 1.0E-9d)] = (165, 2171L),
                 [("kepler-hyperbolic-1d", "Dop853", 1.0E-12d)] = (240, 3159L),
             };
+
+        public static IReadOnlyList<(string Scenario, string Integrator, double Tolerance)> Keys =>
+            Budget.Keys.OrderBy(key => key.Scenario, StringComparer.Ordinal)
+                .ThenBy(key => key.Integrator, StringComparer.Ordinal)
+                .ThenBy(key => key.Tolerance)
+                .ToList();
+
+        public static string FormatEntry(string scenario, string integrator, double tolerance, int steps, long calls)
+        {
+            return "                [(\"" + scenario + "\", \"" + integrator + "\", " +
+                   tolerance.ToString("R", CultureInfo.InvariantCulture) + "d)] = (" + steps + ", " + calls + "L),";
+        }
 
         public static bool TryGet(string scenario, string integrator, double tolerance,
             out int steps, out long calls)
