@@ -326,10 +326,13 @@ internal static partial class P1bTests
 
                 row.Ms = watch.Elapsed.TotalMilliseconds;
                 row.Calls = calls;
-                row.Err = IntegratorError(row.P, nb.P0, n, out _);
+                // Err is filled below from the JPL ephemeris RMS. Comparing the
+                // endpoint with the INITIAL state (the old code) measured how far
+                // the system moved over 10 years, not the integrator error.
+                row.Err = double.NaN;
             });
 
-        Console.WriteLine("model                     h          calls       ms    RMS(8) km   Jupiter km  Saturn km  Moon(geo) km");
+        Console.WriteLine("model                     h          calls   ms(wall,par)  RMS(8) km   Jupiter km  Saturn km  Moon(geo) km");
         double best = double.MaxValue;
         string bestName = "";
         for (int r = 0; r < rows.Length; r++)
@@ -355,6 +358,7 @@ internal static partial class P1bTests
 
             double moonErr = JplStateError(jpl, nb, row.P, row.V, days, "Moon", true).dp / 1000d;
             double rms = Math.Sqrt(sum / 8d);
+            row.Err = rms;
             string h = row.Method == "DOP853"
                 ? "adaptive"
                 : (row.H / 86400d).ToString("F1", CultureInfo.InvariantCulture) + " d";

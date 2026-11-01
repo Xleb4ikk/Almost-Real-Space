@@ -133,7 +133,7 @@ internal static partial class P1bTests
         var vl = new double[3];
         double[] ws = StudyY6Weights();
         double[] cw = StudyCumulativeWeights(ws);
-        Vector3d acc = StudyLocalAcceleration(
+        Vector3d acc = StudyLocalAccelerationDirect(
             sys, central, new Vector3d(p[0] + pl[0], p[1] + pl[1], p[2] + pl[2]), t0);
         for (long s = 0; s <= full; s++)
         {
@@ -157,7 +157,7 @@ internal static partial class P1bTests
                     StudyAdd(ref p[i], ref pl[i], dt * (v[i] + vl[i]));
                 }
 
-                acc = StudyLocalAcceleration(
+                acc = StudyLocalAccelerationDirect(
                     sys, central, new Vector3d(p[0] + pl[0], p[1] + pl[1], p[2] + pl[2]),
                     tBase + (cw[k + 1] * hStep));
                 for (int i = 0; i < 3; i++)

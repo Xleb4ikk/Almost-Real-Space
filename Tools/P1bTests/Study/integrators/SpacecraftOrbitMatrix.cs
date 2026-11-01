@@ -58,6 +58,9 @@ internal static partial class P1bTests
         public double LocalRatio;
         public double LocalOrder;
         public double LocalFinestDelta;
+        public double[] CheckpointTimes;
+        public Vector3d[] CheckpointP;
+        public Vector3d[] CheckpointV;
         public StudyShipMatrixRef Dd;
         public double DdSelf;
         public double DdError;
@@ -66,6 +69,20 @@ internal static partial class P1bTests
         public bool HasDd;
         public double Formulation;
         public bool HasFormulation;
+
+        /// <summary>Reference error floor for ranking: rows below it measure noise.</summary>
+        public double ReferenceFloor
+        {
+            get
+            {
+                if (LocalAsymptotic && double.IsFinite(LocalError))
+                {
+                    return LocalError;
+                }
+
+                return LocalResolved ? LocalFinestDelta : double.NaN;
+            }
+        }
     }
 
     private sealed class StudyShipMatrixBaseline
@@ -85,30 +102,29 @@ internal static partial class P1bTests
     private static readonly Dictionary<string, StudyShipMatrixBaseline> StudyShipMatrixBaselines =
         new Dictionary<string, StudyShipMatrixBaseline>
         {
-            // Rebased 2026-11-01 to the current Test549 run. The old production
-            // values were so stale that the 3x band accepted enormous
-            // regressions; these are now the regression floor. The best-local
-            // 30 d chunk (4.5e-3 vs 1.7e-5) and 1000-orbit (4.9e-2 vs 1.4e-3)
-            // rows are worse than the old baseline; that local-frame question is
-            // deliberately locked as a separate investigation, not hidden by an
-            // informational report.
-            { "Earth LEO 400 km circular", new StudyShipMatrixBaseline(3.948e-5, 2.390e-5, 1.481e-3) },
-            { "Earth LEO 400 km polar", new StudyShipMatrixBaseline(8.939e-6, 2.887e-7, 1.629e-3) },
-            { "Earth LEO 400 km sun-synchronous", new StudyShipMatrixBaseline(5.217e-6, 5.967e-6, 1.660e-3) },
-            { "Earth GTO 400 x 40000 km", new StudyShipMatrixBaseline(1.912e-5, 1.007e-6, 1.923e-2) },
-            { "Earth Molniya 500 x 40000 km", new StudyShipMatrixBaseline(1.250e-2, 5.608e-4, 1.754) },
-            { "Earth GEO 35786 km", new StudyShipMatrixBaseline(1.242e-4, 5.538e-5, 1.879e-1) },
-            { "Sun 1 AU circular", new StudyShipMatrixBaseline(2.183e-2, 1.292e-2, 4.157e-3) },
-            { "Sun 0.5 x 2 AU eccentric", new StudyShipMatrixBaseline(1.472e-2, 1.197e-2, 8.788e-3) },
-            { "Earth 400 km + J2", new StudyShipMatrixBaseline(1.097e-5, 1.494e-5, double.NaN) },
-            { "Earth 250 km + atmosphere drag", new StudyShipMatrixBaseline(1.380e-5, 2.454e-5, double.NaN) },
-            { "Earth LEO 400 km + 600 s prograde burn", new StudyShipMatrixBaseline(9.289e-2, 3.082e-5, double.NaN) },
-            { "Earth-Moon flyby inside lunar SOI", new StudyShipMatrixBaseline(2.461e-3, 1.570e-5, 8.487e-4) },
-            { "Earth LEO 400 km, 1000 orbits (~64 d)", new StudyShipMatrixBaseline(3.548e-2, 4.932e-2, 8.494) },
-            { "Earth HEO 300 x 120000 km", new StudyShipMatrixBaseline(7.413e-5, 4.351e-5, 7.575e-1) },
-            { "Earth hyperbolic flyby e=1.5", new StudyShipMatrixBaseline(3.068e-6, 5.039e-6, 1.129e-3) },
-            { "Earth LEO 400 km, 30 d, world chunk 1 d", new StudyShipMatrixBaseline(8.571e-4, 4.518e-3, 8.393e-1) },
-            { "Earth LEO 400 km + unaligned 600 s burn", new StudyShipMatrixBaseline(9.279e-2, 2.322e-1, double.NaN) }
+            // Rebased 2026-11-01 to the final max-over-trajectory run (exact
+            // checkpoint landings, rank = max(dp, reference floor)). The old
+            // final-point numbers and the first max-metric pass taken with an
+            // inexact sample flush are not comparable and are discarded: with the
+            // exact flush the production max equals its final error on most cases
+            // (the earlier 3.7e-2 for LEO 1 d was a sampling artifact).
+            { "Earth LEO 400 km circular", new StudyShipMatrixBaseline(2.22228e-5, 1.48325e-6, 1.464e-3) },
+            { "Earth LEO 400 km polar", new StudyShipMatrixBaseline(9.3476e-6, 1.90441e-6, 1.643e-3) },
+            { "Earth LEO 400 km sun-synchronous", new StudyShipMatrixBaseline(1.87243e-5, 1.09409e-5, 1.679e-3) },
+            { "Earth GTO 400 x 40000 km", new StudyShipMatrixBaseline(3.87613e-5, 4.38584e-5, 1.924e-2) },
+            { "Earth Molniya 500 x 40000 km", new StudyShipMatrixBaseline(1.27417e-2, 1.12412e-4, 1.754) },
+            { "Earth GEO 35786 km", new StudyShipMatrixBaseline(4.71387e-5, 6.91894e-5, 1.876e-1) },
+            { "Sun 1 AU circular", new StudyShipMatrixBaseline(6.21497e-2, 7.17697e-4, 7.339e-4) },
+            { "Sun 0.5 x 2 AU eccentric", new StudyShipMatrixBaseline(2.34371e-2, 1.09566e-3, 1.450e-3) },
+            { "Earth 400 km + J2", new StudyShipMatrixBaseline(9.1382e-6, 1.08785e-6, double.NaN) },
+            { "Earth 250 km + atmosphere drag", new StudyShipMatrixBaseline(2.23923e-5, 2.21451e-5, double.NaN) },
+            { "Earth LEO 400 km + 600 s prograde burn", new StudyShipMatrixBaseline(9.2864e-2, 2.47899e-5, double.NaN) },
+            { "Earth-Moon flyby inside lunar SOI", new StudyShipMatrixBaseline(2.55395e-3, 1.80254e-5, 7.697e-4) },
+            { "Earth LEO 400 km, 1000 orbits (~64 d)", new StudyShipMatrixBaseline(5.54329e-2, 5.54329e-2, 8.484) },
+            { "Earth HEO 300 x 120000 km", new StudyShipMatrixBaseline(2.01437e-4, 1.03298e-4, 7.575e-1) },
+            { "Earth hyperbolic flyby e=1.5", new StudyShipMatrixBaseline(9.65466e-6, 1.81942e-6, 1.129e-3) },
+            { "Earth LEO 400 km, 30 d, world chunk 1 d", new StudyShipMatrixBaseline(8.03588e-4, 1.0288e-3, 8.410e-1) },
+            { "Earth LEO 400 km + unaligned 600 s burn", new StudyShipMatrixBaseline(1.94127e-1, 1.85835e-1, double.NaN) }
         };
 
     private sealed class StudyShipMatrixRow
@@ -116,16 +132,39 @@ internal static partial class P1bTests
         public string Method;
         public string Config;
         public string Frame;
+        /// <summary>Max |p(t) - ref(t)| over the sampled trajectory (primary metric).</summary>
         public double Dp;
         public double Dv;
+        /// <summary>Final-point error; diagnostic only, Dp is the ranked metric.</summary>
+        public double DpFinal;
+        public double DvFinal;
         public double Da;
         public double De;
         public double DEnergy;
         public long Calls;
         public long Steps;
         public double Ms;
+        public int Reps = 1;
+        public int SampleCount;
+        public Vector3d P;
+        public Vector3d V;
+        /// <summary>Trajectory checkpoints (same times for every row of a case).</summary>
+        public Vector3d[] SamplesP;
         public bool Finite;
         public string Note;
+    }
+
+    private sealed class StudyShipRun
+    {
+        public Vector3d P;
+        public Vector3d V;
+        public double M;
+        public long Calls;
+        public long Steps;
+        public double Ms;
+        public int Reps = 1;
+        public Vector3d[] SamplesP;
+        public Vector3d[] SamplesV;
     }
 
     private sealed class StudyShipMatrixAcc
@@ -363,10 +402,56 @@ internal static partial class P1bTests
         return 2d * Math.PI * Math.Sqrt(rp * rp * rp / mu);
     }
 
-    private static double[] StudyShipMatrixSteps(double tau, double divisor, double scale)
+    private static double[] StudyShipMatrixSteps(StudyShipMatrixCase c)
     {
-        double h = Math.Max(1d, Math.Min(86400d, tau * scale / divisor));
-        return new[] { h, 2d * h, 4d * h };
+        // ONE grid for every family: the same h values are used for RK4, DOPRI5,
+        // PEFRL, Y6, Y6C and WH, so the Pareto compares like with like. The finest
+        // point is bounded by a force-evaluation budget that assumes the cheapest
+        // method (4 evals/step); a high-order method simply pays more calls at the
+        // same h, and that cost is visible in the table.
+        if (c.Thrust)
+        {
+            return new[] { 1d, 2d, 4d, 8d };
+        }
+
+        double hMax = Math.Max(0.5d, Math.Min(4d * 86400d, c.Tau * c.StepScale / 8d));
+        double hMin = Math.Max(0.5d, Math.Max(
+            c.Tau * c.StepScale / 8192d,
+            c.Seconds * 4d / 400000d));
+        if (!(hMin < hMax))
+        {
+            return new[] { hMax };
+        }
+
+        const int count = 4;
+        var steps = new double[count];
+        double ratio = Math.Pow(hMax / hMin, 1d / (count - 1));
+        for (int i = 0; i < count; i++)
+        {
+            steps[i] = hMin * Math.Pow(ratio, i);
+        }
+
+        steps[count - 1] = hMax;
+        return steps;
+    }
+
+    private static double[] StudyShipMatrixCheckpointTimes(StudyShipMatrixCase c)
+    {
+        // One checkpoint per orbit up to 256, at least 8: the error of a long run
+        // is a phase error that grows and shrinks, and the final point alone can
+        // land on a lucky phase (RK4 at 1000 orbits reads 1.6e6, 8.1e6 and
+        // 6.3e5 m for neighbouring steps). Candidate and reference both step
+        // exactly on these times, so no interpolation enters the metric.
+        int count = (int)Math.Round(c.Seconds / Math.Max(c.Tau, 1d));
+        count = Math.Max(8, Math.Min(256, count));
+        var times = new double[count];
+        for (int i = 0; i < count; i++)
+        {
+            times[i] = StudyShipT0 + c.Seconds * (i + 1) / count;
+        }
+
+        times[count - 1] = StudyShipT0 + c.Seconds;
+        return times;
     }
 
     private static StudyShipMatrixCase StudyShipMatrixCaseOrbit(
@@ -434,19 +519,16 @@ internal static partial class P1bTests
         c.Sys.EvaluateBodyState(central, StudyShipT0, out Vector3d bp, out Vector3d bv);
         if (c.UseTaylorDdReference)
         {
-            var t1 = TaylorShip.RunDd(
-                c.Sys, bp + c.P0, bv + c.V0, StudyShipT0, c.Seconds / 86400d,
-                20, 1e-12d, 1e-15d, 600d, 1e-6d);
-            var t2 = TaylorShip.RunDd(
-                c.Sys, bp + c.P0, bv + c.V0, StudyShipT0, c.Seconds / 86400d,
-                24, 1e-14d, 1e-17d, 300d, 1e-6d);
-            selfError = (t1.P - t2.P).Magnitude;
-            refError = selfError;
+            StudyShipDdGoldenFile golden = StudyShipDdGolden(c);
+            selfError = golden.SelfErrorM;
+            refError = golden.SelfErrorM;
             ratio = double.PositiveInfinity;
-            c.Sys.EvaluateBodyState(central, StudyShipT0 + c.Seconds,
-                out Vector3d bpT, out Vector3d bvT);
-            kind = "Taylor-dd K20/K24";
-            return StudyShipMatrixRefFromState(c, t2.P - bpT, t2.V - bvT, c.Mass0);
+            kind = "Taylor-dd K" + golden.OrderA.ToString(CultureInfo.InvariantCulture)
+                + "/K" + golden.OrderB.ToString(CultureInfo.InvariantCulture)
+                + " (golden " + Path.GetFileName(StudyShipDdGoldenPath()) + ")";
+            return StudyShipMatrixRefFromState(c,
+                new Vector3d(golden.PRel[0], golden.PRel[1], golden.PRel[2]),
+                new Vector3d(golden.VRel[0], golden.VRel[1], golden.VRel[2]), c.Mass0);
         }
 
         double h = c.ReferenceStepSeconds > 0d
@@ -486,7 +568,12 @@ internal static partial class P1bTests
     private static StudyShipMatrixRefs StudyShipMatrixBuildReferences(StudyShipMatrixCase c)
     {
         var refs = new StudyShipMatrixRefs();
-        StudyShipCertifiedRef cert = StudyShipCertifiedReference(c, c.Central == 1 && c.Seconds > 30d * 86400d ? 8d : 24d);
+        refs.CheckpointTimes = StudyShipMatrixCheckpointTimes(c);
+        refs.CheckpointP = new Vector3d[refs.CheckpointTimes.Length];
+        refs.CheckpointV = new Vector3d[refs.CheckpointTimes.Length];
+        StudyShipCertifiedRef cert = StudyShipCertifiedReference(
+            c, c.Central == 1 && c.Seconds > 30d * 86400d ? 8d : 24d,
+            4, refs.CheckpointTimes, refs.CheckpointP, refs.CheckpointV);
         refs.Local = StudyShipMatrixRefFromState(c, cert.P, cert.V, cert.M);
         refs.LocalError = cert.PositionError;
         refs.LocalKind = cert.Detail;
@@ -512,114 +599,226 @@ internal static partial class P1bTests
         return refs;
     }
 
-    private static (SpacecraftIntegrationState state, long calls, double ms)
-        StudyShipMatrixAdaptive(
-        StudyShipMatrixCase c, bool dop853, double posTol, double velTol, double massTol, double rtol)
+    private static StudyShipRun StudyShipMatrixRepeat(Func<StudyShipRun> once)
     {
-        var acc = new StudyShipMatrixAcc(c);
-        var start = new SpacecraftIntegrationState
+        StudyShipRun best = null;
+        double bestMs = double.PositiveInfinity;
+        int reps = 0;
+        while (true)
         {
-            Position = c.P0,
-            Velocity = c.V0,
-            Mass = c.Mass0
-        };
-        var sw = Stopwatch.StartNew();
-        SpacecraftIntegrationResult r = dop853
-            ? SpacecraftOrbitIntegrator.StepForwardDop853(
-                start, StudyShipT0, c.Seconds, acc.Evaluate, posTol, velTol, massTol, rtol)
-            : SpacecraftOrbitIntegrator.StepForward(
-                start, StudyShipT0, c.Seconds, acc.Evaluate, posTol, velTol, massTol, rtol);
-        sw.Stop();
-        return (r.State, acc.Calls, sw.Elapsed.TotalMilliseconds);
+            StudyShipRun run = once();
+            reps++;
+            if (run.Ms < bestMs)
+            {
+                best = run;
+                bestMs = run.Ms;
+            }
+
+            // Wall-clock noise is larger than the differences between methods;
+            // min-of-3 makes the cheap rows comparable. Expensive rows (>250 ms)
+            // are run once: tripling them would dominate the suite for no gain.
+            if (reps >= 3 || bestMs >= 250d)
+            {
+                break;
+            }
+        }
+
+        best.Ms = bestMs;
+        best.Reps = reps;
+        return best;
     }
 
-    private static (Vector3d p, Vector3d v, double m, long calls, double ms)
-        StudyShipMatrixWorld(
+    private static StudyShipRun StudyShipMatrixAdaptive(
+        StudyShipMatrixCase c, bool dop853, double posTol, double velTol, double massTol,
+        double rtol, double[] checkpoints = null)
+    {
+        return StudyShipMatrixRepeat(() =>
+        {
+            var acc = new StudyShipMatrixAcc(c);
+            var run = new StudyShipRun
+            {
+                SamplesP = checkpoints != null ? new Vector3d[checkpoints.Length] : null,
+                SamplesV = checkpoints != null ? new Vector3d[checkpoints.Length] : null,
+                Steps = -1L
+            };
+            var start = new SpacecraftIntegrationState
+            {
+                Position = c.P0,
+                Velocity = c.V0,
+                Mass = c.Mass0
+            };
+            var sw = Stopwatch.StartNew();
+            SpacecraftIntegrationState state = start;
+            double t = StudyShipT0;
+            int count = checkpoints?.Length ?? 1;
+            for (int k = 0; k < count; k++)
+            {
+                double stop = checkpoints != null ? checkpoints[k] : StudyShipT0 + c.Seconds;
+                SpacecraftIntegrationResult r = dop853
+                    ? SpacecraftOrbitIntegrator.StepForwardDop853(
+                        state, t, stop - t, acc.Evaluate, posTol, velTol, massTol, rtol)
+                    : SpacecraftOrbitIntegrator.StepForward(
+                        state, t, stop - t, acc.Evaluate, posTol, velTol, massTol, rtol);
+                state = r.State;
+                t = stop;
+                if (checkpoints != null)
+                {
+                    run.SamplesP[k] = state.Position;
+                    run.SamplesV[k] = state.Velocity;
+                }
+            }
+
+            sw.Stop();
+            run.P = state.Position;
+            run.V = state.Velocity;
+            run.M = state.Mass;
+            run.Calls = acc.Calls;
+            run.Ms = sw.Elapsed.TotalMilliseconds;
+            return run;
+        });
+    }
+
+    private static StudyShipRun StudyShipMatrixWorld(
         StudyShipMatrixCase c, bool dop853,
         double posTol = 1e-4d, double velTol = 1e-8d, double massTol = 1e-4d,
         double rtol = 1e-11d, double chunkSeconds = 600d, bool useToleranceFrame = true,
-        bool splitThrust = false)
+        bool splitThrust = false, double[] checkpoints = null)
     {
-        OrbitingBody central = c.Sys.AllBodies[c.Central];
-        c.Sys.EvaluateBodyState(central, StudyShipT0, out Vector3d bp, out Vector3d bv);
-        var counting = new CountingSource(new CachedGravitySource(c.Sys));
-        var phys = new SpacecraftPhysics
+        return StudyShipMatrixRepeat(() =>
         {
-            Integrator = dop853 ? SpacecraftIntegrator.Dop853 : SpacecraftIntegrator.Dopri5,
-            ToleranceFrameSystem = useToleranceFrame ? c.Sys : null,
-            PositionAbsoluteTolerance = posTol,
-            VelocityAbsoluteTolerance = velTol,
-            MassAbsoluteTolerance = massTol,
-            RelativeTolerance = rtol
-        };
-        phys.Sources.Add(counting);
-        if (c.Drag != null)
-        {
-            phys.Sources.Add(c.Drag);
-        }
-
-        if (c.Thrust)
-        {
-            phys.Sources.Add(new ThrustSource(c.ThrustNewtons, 0d, new ConstantIsp(c.ThrustIsp))
+            OrbitingBody central = c.Sys.AllBodies[c.Central];
+            c.Sys.EvaluateBodyState(central, StudyShipT0, out Vector3d bp, out Vector3d bv);
+            var counting = new CountingSource(new CachedGravitySource(c.Sys));
+            var phys = new SpacecraftPhysics
             {
-                ThrottleAt = t => StudyShipMatrixThrottle(c, t),
-                ThrustDirection = c.ThrustDirection
-            });
-        }
-
-        var ship = new Spacecraft(bp + c.P0, bv + c.V0, c.Mass0);
-        var sw = Stopwatch.StartNew();
-        double t = StudyShipT0;
-        double endTime = StudyShipT0 + c.Seconds;
-        double[] edges = splitThrust
-            ? StudyShipRefBreakpoints(c)
-            : new[] { t, endTime };
-        void StepRange(double from, double to)
-        {
-            while (from < to - 1e-12d)
+                Integrator = dop853 ? SpacecraftIntegrator.Dop853 : SpacecraftIntegrator.Dopri5,
+                ToleranceFrameSystem = useToleranceFrame ? c.Sys : null,
+                PositionAbsoluteTolerance = posTol,
+                VelocityAbsoluteTolerance = velTol,
+                MassAbsoluteTolerance = massTol,
+                RelativeTolerance = rtol
+            };
+            phys.Sources.Add(counting);
+            if (c.Drag != null)
             {
-                double chunk = Math.Min(chunkSeconds, to - from);
-                phys.Step(ship, from, chunk);
-                from += chunk;
-            }
-        }
-
-        double edge = 1e-6d;
-        for (int segment = 0; segment < edges.Length - 1; segment++)
-        {
-            double segmentEnd = edges[segment + 1];
-            if (segmentEnd - t > 3d * edge)
-            {
-                StepRange(t, t + edge);
-                StepRange(t + edge, segmentEnd - edge);
-                StepRange(segmentEnd - edge, segmentEnd);
-            }
-            else
-            {
-                StepRange(t, segmentEnd);
+                phys.Sources.Add(c.Drag);
             }
 
-            t = segmentEnd;
-        }
+            if (c.Thrust)
+            {
+                phys.Sources.Add(new ThrustSource(c.ThrustNewtons, 0d, new ConstantIsp(c.ThrustIsp))
+                {
+                    ThrottleAt = t => StudyShipMatrixThrottle(c, t),
+                    ThrustDirection = c.ThrustDirection
+                });
+            }
 
-        sw.Stop();
-        c.Sys.EvaluateBodyState(central, StudyShipT0 + c.Seconds,
-            out Vector3d bp1, out Vector3d bv1);
-        return (ship.Position - bp1, ship.Velocity - bv1, ship.Mass,
-            counting.Calls, sw.Elapsed.TotalMilliseconds);
+            var run = new StudyShipRun
+            {
+                SamplesP = checkpoints != null ? new Vector3d[checkpoints.Length] : null,
+                SamplesV = checkpoints != null ? new Vector3d[checkpoints.Length] : null,
+                Steps = -1L
+            };
+            var ship = new Spacecraft(bp + c.P0, bv + c.V0, c.Mass0);
+            var sw = Stopwatch.StartNew();
+            double t = StudyShipT0;
+            double endTime = StudyShipT0 + c.Seconds;
+            double[] edges = splitThrust
+                ? StudyShipRefBreakpoints(c)
+                : new[] { t, endTime };
+            int sample = 0;
+            int sampleCount = checkpoints?.Length ?? 0;
+
+            void RecordSample(double time)
+            {
+                c.Sys.EvaluateBodyState(central, time, out Vector3d bps, out Vector3d bvs);
+                run.SamplesP[sample] = ship.Position - bps;
+                run.SamplesV[sample] = ship.Velocity - bvs;
+                sample++;
+            }
+
+            void FlushSamples(double from)
+            {
+                while (checkpoints != null && sample < sampleCount
+                    && checkpoints[sample] <= from + 1e-9d)
+                {
+                    RecordSample(checkpoints[sample]);
+                }
+            }
+
+            void StepRange(double from, double to)
+            {
+                while (from < to - 1e-12d)
+                {
+                    FlushSamples(from);
+                    double stop = to;
+                    if (checkpoints != null && sample < sampleCount
+                        && checkpoints[sample] > from + 1e-9d
+                        && checkpoints[sample] < stop)
+                    {
+                        stop = checkpoints[sample];
+                    }
+
+                    double chunk = Math.Min(chunkSeconds, stop - from);
+                    phys.Step(ship, from, chunk);
+                    from += chunk;
+                }
+
+                FlushSamples(from);
+            }
+
+            double edge = 1e-6d;
+            for (int segment = 0; segment < edges.Length - 1; segment++)
+            {
+                double segmentEnd = edges[segment + 1];
+                if (segmentEnd - t > 3d * edge)
+                {
+                    StepRange(t, t + edge);
+                    StepRange(t + edge, segmentEnd - edge);
+                    StepRange(segmentEnd - edge, segmentEnd);
+                }
+                else
+                {
+                    StepRange(t, segmentEnd);
+                }
+
+                t = segmentEnd;
+            }
+
+            sw.Stop();
+            c.Sys.EvaluateBodyState(central, StudyShipT0 + c.Seconds,
+                out Vector3d bp1, out Vector3d bv1);
+            run.P = ship.Position - bp1;
+            run.V = ship.Velocity - bv1;
+            run.M = ship.Mass;
+            run.Calls = counting.Calls;
+            run.Ms = sw.Elapsed.TotalMilliseconds;
+            return run;
+        });
     }
 
-    private static (Vector3d p, Vector3d v, long calls, long steps, double ms)
-        StudyShipMatrixTaylor(StudyShipMatrixCase c, int order)
+    private static StudyShipRun StudyShipMatrixTaylor(
+        StudyShipMatrixCase c, int order, double[] checkpoints = null)
     {
-        OrbitingBody central = c.Sys.AllBodies[c.Central];
-        c.Sys.EvaluateBodyState(central, StudyShipT0, out Vector3d bp, out Vector3d bv);
-        TaylorShipResult r = TaylorShip.RunSeconds(
-            c.Sys, bp + c.P0, bv + c.V0, StudyShipT0, c.Seconds,
-            order, 1e-3d, 1e-6d, 600d, 1e-6d);
-        c.Sys.EvaluateBodyState(central, StudyShipT0 + c.Seconds,
-            out Vector3d bp1, out Vector3d bv1);
-        return (r.P - bp1, r.V - bv1, r.Calls, r.Steps, r.Ms);
+        return StudyShipMatrixRepeat(() =>
+        {
+            var pSamples = checkpoints != null ? new List<Vector3d>(checkpoints.Length) : null;
+            var vSamples = checkpoints != null ? new List<Vector3d>(checkpoints.Length) : null;
+            TaylorShipResult r = TaylorShip.RunSecondsLocal(
+                c.Sys, c.Central, c.P0, c.V0, StudyShipT0, c.Seconds,
+                order, 1e-3d, 1e-6d, 600d, 1e-6d, checkpoints, pSamples, vSamples);
+            return new StudyShipRun
+            {
+                P = r.P,
+                V = r.V,
+                M = c.Mass0,
+                Calls = r.Calls,
+                Steps = r.Steps,
+                Ms = r.Ms,
+                SamplesP = pSamples?.ToArray(),
+                SamplesV = vSamples?.ToArray()
+            };
+        });
     }
 
     private static void StudyShipMatrixRk4(
@@ -914,41 +1113,69 @@ internal static partial class P1bTests
         }
     }
 
-    private static (SpacecraftIntegrationState state, long calls, long steps, double ms)
-        StudyShipMatrixFixed(
-        StudyShipMatrixCase c, string method, double h)
+    private static StudyShipRun StudyShipMatrixFixed(
+        StudyShipMatrixCase c, string method, double h, double[] checkpoints = null)
     {
-        var acc = new StudyShipMatrixAcc(c);
-        var s = new double[]
+        return StudyShipMatrixRepeat(() =>
         {
-            c.P0.X, c.P0.Y, c.P0.Z,
-            c.V0.X, c.V0.Y, c.V0.Z,
-            c.Mass0
-        };
-        long full = (long)Math.Floor(c.Seconds / h);
-        double rem = c.Seconds - full * h;
-        long calls = 0L;
-        var sw = Stopwatch.StartNew();
-        double t = StudyShipT0;
-        if (full > 0L)
-        {
-            StudyShipMatrixCall(method, s, t, h, full, acc, ref calls);
-            t += full * h;
-        }
+            var acc = new StudyShipMatrixAcc(c);
+            var s = new double[]
+            {
+                c.P0.X, c.P0.Y, c.P0.Z,
+                c.V0.X, c.V0.Y, c.V0.Z,
+                c.Mass0
+            };
+            var run = new StudyShipRun
+            {
+                SamplesP = checkpoints != null ? new Vector3d[checkpoints.Length] : null,
+                SamplesV = checkpoints != null ? new Vector3d[checkpoints.Length] : null
+            };
+            long calls = 0L;
+            long steps = 0L;
+            var sw = Stopwatch.StartNew();
+            double t = StudyShipT0;
+            int count = checkpoints?.Length ?? 1;
+            for (int k = 0; k < count; k++)
+            {
+                double stop = checkpoints != null ? checkpoints[k] : StudyShipT0 + c.Seconds;
+                double span = stop - t;
+                if (span <= 0d)
+                {
+                    continue;
+                }
 
-        if (rem > 1e-12d)
-        {
-            StudyShipMatrixCall(method, s, t, rem, 1L, acc, ref calls);
-        }
+                long full = (long)Math.Floor((span / h) + 1e-12d);
+                double rem = span - (full * h);
+                if (full > 0L)
+                {
+                    StudyShipMatrixCall(method, s, t, h, full, acc, ref calls);
+                    t += full * h;
+                    steps += full;
+                }
 
-        sw.Stop();
-        var state = new SpacecraftIntegrationState
-        {
-            Position = new Vector3d(s[0], s[1], s[2]),
-            Velocity = new Vector3d(s[3], s[4], s[5]),
-            Mass = s[6]
-        };
-        return (state, calls, full + (rem > 1e-12d ? 1L : 0L), sw.Elapsed.TotalMilliseconds);
+                if (rem > 1e-12d)
+                {
+                    StudyShipMatrixCall(method, s, t, rem, 1L, acc, ref calls);
+                    steps++;
+                }
+
+                t = stop;
+                if (checkpoints != null)
+                {
+                    run.SamplesP[k] = new Vector3d(s[0], s[1], s[2]);
+                    run.SamplesV[k] = new Vector3d(s[3], s[4], s[5]);
+                }
+            }
+
+            sw.Stop();
+            run.P = new Vector3d(s[0], s[1], s[2]);
+            run.V = new Vector3d(s[3], s[4], s[5]);
+            run.M = s[6];
+            run.Calls = calls;
+            run.Steps = steps;
+            run.Ms = sw.Elapsed.TotalMilliseconds;
+            return run;
+        });
     }
 
     private static void StudyShipMatrixCall(
@@ -985,44 +1212,109 @@ internal static partial class P1bTests
         return 0.5d * v.SqrMagnitude - mu / p.Magnitude;
     }
 
+    private static double StudyShipMaxSample(Vector3d[] samples, Vector3d[] reference)
+    {
+        if (samples == null || reference == null)
+        {
+            return double.NaN;
+        }
+
+        int count = Math.Min(samples.Length, reference.Length);
+        double worst = 0d;
+        for (int i = 0; i < count; i++)
+        {
+            double d = (samples[i] - reference[i]).Magnitude;
+            if (d > worst)
+            {
+                worst = d;
+            }
+        }
+
+        return worst;
+    }
+
+    /// <summary>
+    /// Worst separation of two rows over the whole trajectory, not just the
+    /// endpoint: two integrators can agree at the end after diverging in between.
+    /// </summary>
+    private static double StudyShipRowSeparation(
+        StudyShipMatrixRow a, StudyShipMatrixRow b)
+    {
+        if (a == null || b == null)
+        {
+            return double.NaN;
+        }
+
+        double worst = (a.P - b.P).Magnitude;
+        if (a.SamplesP != null && b.SamplesP != null)
+        {
+            int count = Math.Min(a.SamplesP.Length, b.SamplesP.Length);
+            for (int i = 0; i < count; i++)
+            {
+                double d = (a.SamplesP[i] - b.SamplesP[i]).Magnitude;
+                if (d > worst)
+                {
+                    worst = d;
+                }
+            }
+        }
+
+        return worst;
+    }
+
     private static StudyShipMatrixRow StudyShipMatrixRowMake(
         string method, string config, string frame,
-        StudyShipMatrixCase c, StudyShipMatrixRef reference,
-        Vector3d p, Vector3d v, double m, long calls, long steps, double ms, string note)
+        StudyShipMatrixCase c, StudyShipMatrixRefs refs,
+        StudyShipRun run, string note)
     {
         var row = new StudyShipMatrixRow
         {
             Method = method,
             Config = config,
             Frame = frame,
-            Calls = calls,
-            Steps = steps,
-            Ms = ms,
-            Note = note
+            Calls = run.Calls,
+            Steps = run.Steps,
+            Ms = run.Ms,
+            Reps = run.Reps,
+            Note = note,
+            P = run.P,
+            V = run.V,
+            SamplesP = run.SamplesP,
+            SampleCount = refs.CheckpointTimes?.Length ?? 0
         };
-        bool finite = p.IsFinite && v.IsFinite && double.IsFinite(m) && m > 0d;
+        bool finite = run.P.IsFinite && run.V.IsFinite
+            && double.IsFinite(run.M) && run.M > 0d;
         row.Finite = finite;
         if (!finite)
         {
             row.Dp = double.NaN;
+            row.DpFinal = double.NaN;
             row.Dv = double.NaN;
+            row.DvFinal = double.NaN;
             row.Da = double.NaN;
             row.De = double.NaN;
             row.DEnergy = double.NaN;
             return row;
         }
 
-        row.Dp = (p - reference.P).Magnitude;
-        row.Dv = (v - reference.V).Magnitude;
+        StudyShipMatrixRef reference = refs.Local;
+        row.DpFinal = (run.P - reference.P).Magnitude;
+        row.DvFinal = (run.V - reference.V).Magnitude;
+        double maxP = StudyShipMaxSample(run.SamplesP, refs.CheckpointP);
+        double maxV = StudyShipMaxSample(run.SamplesV, refs.CheckpointV);
+        // The ranked metric is the worst point of the whole trajectory: a final
+        // point alone rewards a lucky phase on long runs.
+        row.Dp = double.IsFinite(maxP) ? Math.Max(maxP, row.DpFinal) : row.DpFinal;
+        row.Dv = double.IsFinite(maxV) ? Math.Max(maxV, row.DvFinal) : row.DvFinal;
         OrbitalElements el = OrbitalElements.FromState(
-            p, v, c.Sys.AllBodies[c.Central].ResolveStandardGravitationalParameter());
+            run.P, run.V, c.Sys.AllBodies[c.Central].ResolveStandardGravitationalParameter());
         row.Da = el.IsValid && reference.Elements.IsValid
             ? Math.Abs(el.SemiMajorAxis - reference.Elements.SemiMajorAxis)
             : double.NaN;
         row.De = el.IsValid && reference.Elements.IsValid
             ? Math.Abs(el.Eccentricity - reference.Elements.Eccentricity)
             : double.NaN;
-        double energy = StudyShipMatrixEnergy(p, v,
+        double energy = StudyShipMatrixEnergy(run.P, run.V,
             c.Sys.AllBodies[c.Central].ResolveStandardGravitationalParameter());
         double refEnergy = StudyShipMatrixEnergy(reference.P, reference.V,
             c.Sys.AllBodies[c.Central].ResolveStandardGravitationalParameter());
@@ -1031,145 +1323,98 @@ internal static partial class P1bTests
     }
 
     private static void StudyShipMatrixRunAll(
-        StudyShipMatrixCase c, StudyShipMatrixRef localRef, StudyShipMatrixRef worldRef,
-        double[] rk4, double[] y6, List<StudyShipMatrixRow> rows)
+        StudyShipMatrixCase c, StudyShipMatrixRefs refs, List<StudyShipMatrixRow> rows)
     {
-        foreach (double h in rk4)
+        double[] checkpoints = refs.CheckpointTimes;
+        void Add(string method, string config, string frame, Func<StudyShipRun> run, string note)
         {
-            string cfg = "h=" + h.ToString("G6", CultureInfo.InvariantCulture);
+            var rowWatch = Stopwatch.StartNew();
             try
             {
-                var r = StudyShipMatrixFixed(c, "RK4", h);
-                rows.Add(StudyShipMatrixRowMake("RK4", cfg, "local",
-                    c, localRef, r.state.Position, r.state.Velocity, r.state.Mass,
-                    r.calls, r.steps, r.ms, ""));
+                rows.Add(StudyShipMatrixRowMake(
+                    method, config, frame, c, refs, run(), note));
             }
             catch (Exception ex)
             {
-                rows.Add(StudyShipMatrixRowMake("RK4", cfg, "local",
-                    c, localRef, Vector3d.Zero, Vector3d.Zero, 0d, 0L, 0L, 0d, StudyShipMatrixNote(ex)));
+                rows.Add(StudyShipMatrixRowMake(
+                    method, config, frame, c, refs,
+                    new StudyShipRun { P = Vector3d.Zero, V = Vector3d.Zero, M = 0d },
+                    StudyShipMatrixNote(ex)));
             }
+
+            rowWatch.Stop();
+            Console.WriteLine("  row " + frame + " " + method + " " + config
+                + ": " + rowWatch.ElapsedMilliseconds + " ms");
+        }
+
+        string H(double h)
+        {
+            return "h=" + h.ToString("G6", CultureInfo.InvariantCulture);
+        }
+
+        double[] grid = StudyShipMatrixSteps(c);
+        foreach (double h in grid)
+        {
+            Add("RK4", H(h), "local",
+                () => StudyShipMatrixFixed(c, "RK4", h, checkpoints), "");
         }
 
         foreach (string method in new[] { "DOPRI5", "PEFRL" })
         {
-            foreach (double h in rk4)
+            foreach (double h in grid)
             {
-                string cfg = "h=" + h.ToString("G6", CultureInfo.InvariantCulture);
-                try
-                {
-                    var r = StudyShipMatrixFixed(c, method, h);
-                    rows.Add(StudyShipMatrixRowMake(method, cfg, "local",
-                        c, localRef, r.state.Position, r.state.Velocity, r.state.Mass,
-                        r.calls, r.steps, r.ms, ""));
-                }
-                catch (Exception ex)
-                {
-                    rows.Add(StudyShipMatrixRowMake(method, cfg, "local",
-                        c, localRef, Vector3d.Zero, Vector3d.Zero, 0d, 0L, 0L, 0d, StudyShipMatrixNote(ex)));
-                }
+                Add(method, H(h), "local",
+                    () => StudyShipMatrixFixed(c, method, h, checkpoints), "");
             }
         }
 
         foreach (string method in new[] { "Y6", "Y6C", "WH-Y6" })
         {
-            foreach (double h in y6)
+            foreach (double h in grid)
             {
-                string cfg = "h=" + h.ToString("G6", CultureInfo.InvariantCulture);
-                try
-                {
-                    var r = StudyShipMatrixFixed(c, method, h);
-                    rows.Add(StudyShipMatrixRowMake(method, cfg, "local",
-                        c, localRef, r.state.Position, r.state.Velocity, r.state.Mass,
-                        r.calls, r.steps, r.ms, ""));
-                }
-                catch (Exception ex)
-                {
-                    rows.Add(StudyShipMatrixRowMake(method, cfg, "local",
-                        c, localRef, Vector3d.Zero, Vector3d.Zero, 0d, 0L, 0L, 0d, StudyShipMatrixNote(ex)));
-                }
+                Add(method, H(h), "local",
+                    () => StudyShipMatrixFixed(c, method, h, checkpoints), "");
             }
         }
 
         foreach (bool dop853 in new[] { true, false })
         {
-            foreach (double tol in new[] { 1e-6d })
+            foreach (double tol in new[] { 1e-4d, 1e-6d, 1e-8d })
             {
                 string cfg = "tol=" + tol.ToString("G3", CultureInfo.InvariantCulture);
-                try
-                {
-                    // One row only, as a consistency check. A local tolerance sweep
-                    // at tol=1e-9 is fictitious here: rtol*|r| = 6.8e-6 m dominates
-                    // it. The real tolerance sweep is StudyShipMatrixOrderAndTolerance
-                    // (rtol=0, pure two-body).
-                    var r = StudyShipMatrixAdaptive(c, dop853, tol, tol * 1e-3d, tol, 1e-12d);
-                    rows.Add(StudyShipMatrixRowMake(dop853 ? "DOP853" : "DOPRI5", cfg, "local",
-                        c, localRef, r.state.Position, r.state.Velocity, r.state.Mass,
-                        r.calls, -1L, r.ms, ""));
-                }
-                catch (Exception ex)
-                {
-                    rows.Add(StudyShipMatrixRowMake(dop853 ? "DOP853" : "DOPRI5", cfg, "local",
-                        c, localRef, Vector3d.Zero, Vector3d.Zero, 0d, 0L, 0L, 0d, StudyShipMatrixNote(ex)));
-                }
+                Add(dop853 ? "DOP853" : "DOPRI5", cfg, "local",
+                    () => StudyShipMatrixAdaptive(
+                        c, dop853, tol, tol * 1e-3d, tol, 1e-12d, checkpoints),
+                    "");
             }
         }
 
         string worldCfg = "world " + c.WorldChunkSeconds.ToString("G", CultureInfo.InvariantCulture) + " s";
         foreach (bool dop853 in new[] { true, false })
         {
-            try
-            {
-                var r = StudyShipMatrixWorld(c, dop853, chunkSeconds: c.WorldChunkSeconds);
-                rows.Add(StudyShipMatrixRowMake(dop853 ? "DOP853" : "DOPRI5",
-                    worldCfg, "world", c, worldRef, r.p, r.v, r.m,
-                    r.calls, -1L, r.ms, "production"));
-            }
-            catch (Exception ex)
-            {
-                rows.Add(StudyShipMatrixRowMake(dop853 ? "DOP853" : "DOPRI5",
-                    worldCfg, "world", c, worldRef, Vector3d.Zero, Vector3d.Zero, 0d,
-                    0L, 0L, 0d, StudyShipMatrixNote(ex)));
-            }
+            Add(dop853 ? "DOP853" : "DOPRI5", worldCfg, "world",
+                () => StudyShipMatrixWorld(
+                    c, dop853, chunkSeconds: c.WorldChunkSeconds, checkpoints: checkpoints),
+                "production");
         }
 
         if (c.Thrust)
         {
-            try
-            {
-                var r = StudyShipMatrixWorld(
-                    c, true, chunkSeconds: c.WorldChunkSeconds, splitThrust: true);
-                rows.Add(StudyShipMatrixRowMake("DOP853",
-                    "world burn-split", "world", c, worldRef, r.p, r.v, r.m,
-                    r.calls, -1L, r.ms, "burn-split"));
-            }
-            catch (Exception ex)
-            {
-                rows.Add(StudyShipMatrixRowMake("DOP853",
-                    "world burn-split", "world", c, worldRef,
-                    Vector3d.Zero, Vector3d.Zero, 0d, 0L, 0L, 0d,
-                    StudyShipMatrixNote(ex)));
-            }
+            Add("DOP853", "world burn-split", "world",
+                () => StudyShipMatrixWorld(
+                    c, true, chunkSeconds: c.WorldChunkSeconds, splitThrust: true,
+                    checkpoints: checkpoints),
+                "burn-split");
         }
 
         if (c.Thrust && Math.Abs(c.WorldChunkSeconds - 600d) > 1e-9d)
         {
             foreach (bool dop853 in new[] { true, false })
             {
-                string fixedCfg = "world 600 s (fixed)";
-                try
-                {
-                    var r = StudyShipMatrixWorld(c, dop853, chunkSeconds: 600d);
-                    rows.Add(StudyShipMatrixRowMake(dop853 ? "DOP853" : "DOPRI5",
-                        fixedCfg, "world", c, worldRef, r.p, r.v, r.m,
-                        r.calls, -1L, r.ms, "trial-mass check"));
-                }
-                catch (Exception ex)
-                {
-                    rows.Add(StudyShipMatrixRowMake(dop853 ? "DOP853" : "DOPRI5",
-                        fixedCfg, "world", c, worldRef, Vector3d.Zero, Vector3d.Zero, 0d,
-                        0L, 0L, 0d, StudyShipMatrixNote(ex)));
-                }
+                Add(dop853 ? "DOP853" : "DOPRI5", "world 600 s (fixed)", "world",
+                    () => StudyShipMatrixWorld(
+                        c, dop853, chunkSeconds: 600d, checkpoints: checkpoints),
+                    "trial-mass check");
             }
         }
 
@@ -1178,17 +1423,8 @@ internal static partial class P1bTests
             foreach (int order in new[] { 12 })
             {
                 string cfg = "K" + order.ToString(CultureInfo.InvariantCulture);
-                try
-                {
-                    var r = StudyShipMatrixTaylor(c, order);
-                    rows.Add(StudyShipMatrixRowMake("Taylor", cfg, "world",
-                        c, worldRef, r.p, r.v, c.Mass0, r.calls, r.steps, r.ms, ""));
-                }
-                catch (Exception ex)
-                {
-                    rows.Add(StudyShipMatrixRowMake("Taylor", cfg, "world",
-                        c, worldRef, Vector3d.Zero, Vector3d.Zero, 0d, 0L, 0L, 0d, StudyShipMatrixNote(ex)));
-                }
+                Add("Taylor", cfg, "local",
+                    () => StudyShipMatrixTaylor(c, order, checkpoints), "");
             }
         }
     }
@@ -1216,29 +1452,71 @@ internal static partial class P1bTests
         {
             Console.WriteLine("certified-vs-DD: N/A (perturbed/thrust)");
         }
-        Console.WriteLine("frame method      config          dp(m)       dv(m/s)     da(m)       de          dE/E        calls      steps      ms");
+        double floor = refs.ReferenceFloor;
+        Console.WriteLine("ranking floor: "
+            + (double.IsFinite(floor)
+                ? floor.ToString("E2", CultureInfo.InvariantCulture)
+                  + " m (a row below it is measuring reference noise, not accuracy)"
+                : "none (reference not certified; no accuracy ranking)")
+            + "; " + refs.CheckpointTimes.Length + " trajectory checkpoints");
+        if (refs.HasFormulation && double.IsFinite(floor)
+            && refs.Formulation > 10d * floor)
+        {
+            Console.WriteLine("WARN formulation difference certified-local vs world-DD = "
+                + refs.Formulation.ToString("E3", CultureInfo.InvariantCulture)
+                + " m, above the reference's own "
+                + floor.ToString("E2", CultureInfo.InvariantCulture)
+                + " m convergence; the ranking floor does not cover it (separate investigation)");
+        }
+        Console.WriteLine("frame method      config          dp_max(m)   dp_final(m) dv_max(m/s) da(m)       de          dE/E        calls      steps      ms      reps");
         foreach (StudyShipMatrixRow r in rows)
         {
+            string note = r.Note ?? "";
+            if (double.IsFinite(floor) && double.IsFinite(r.Dp) && r.Dp < floor)
+            {
+                note = (note.Length > 0 ? note + " " : "") + "at-floor";
+            }
+
             Console.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
-                "{0,-5} {1,-11} {2,-15} {3,11:E3} {4,11:E3} {5,11:E3} {6,11:E3} {7,11:E3} {8,10} {9,10} {10,8:F0}{11}",
-                r.Frame, r.Method, r.Config, r.Dp, r.Dv, r.Da, r.De, r.DEnergy,
+                "{0,-5} {1,-11} {2,-15} {3,11:E3} {4,11:E3} {5,11:E3} {6,11:E3} {7,11:E3} {8,11:E3} {9,10} {10,10} {11,8:F0} {12,3}{13}",
+                r.Frame, r.Method, r.Config, r.Dp, r.DpFinal, r.Dv, r.Da, r.De,
+                r.DEnergy,
                 r.Calls.ToString("N0", CultureInfo.InvariantCulture),
                 r.Steps < 0L ? "-" : r.Steps.ToString("N0", CultureInfo.InvariantCulture),
-                r.Ms, string.IsNullOrEmpty(r.Note) ? "" : " " + r.Note));
+                r.Ms, r.Reps, note.Length > 0 ? " " + note : ""));
         }
 
-        StudyShipMatrixPareto(rows, "local", c.AccuracyTarget);
-        StudyShipMatrixPareto(rows, "world", c.AccuracyTarget);
+        if (double.IsFinite(floor))
+        {
+            StudyShipMatrixPareto(rows, "local", c.AccuracyTarget, floor);
+            StudyShipMatrixPareto(rows, "world", c.AccuracyTarget, floor);
+        }
+        else
+        {
+            Console.WriteLine("no Pareto ranking: the reference is not certified, so no row can be ranked by accuracy");
+        }
     }
 
-    private static void StudyShipMatrixPareto(List<StudyShipMatrixRow> rows, string frame, double target)
+    private static double StudyShipMatrixRanked(StudyShipMatrixRow r, double floor)
+    {
+        if (!double.IsFinite(r.Dp))
+        {
+            return double.NaN;
+        }
+
+        return double.IsFinite(floor) ? Math.Max(r.Dp, floor) : r.Dp;
+    }
+
+    private static void StudyShipMatrixPareto(
+        List<StudyShipMatrixRow> rows, string frame, double target, double floor)
     {
         var valid = new List<StudyShipMatrixRow>();
         foreach (StudyShipMatrixRow r in rows)
         {
-            if (r.Frame == frame && r.Finite && double.IsFinite(r.Dp) && r.Calls > 0L
-                && r.Dp <= target)
+            double ranked = StudyShipMatrixRanked(r, floor);
+            if (r.Frame == frame && r.Finite && double.IsFinite(ranked) && r.Calls > 0L
+                && ranked <= target)
             {
                 valid.Add(r);
             }
@@ -1253,6 +1531,7 @@ internal static partial class P1bTests
         Console.Write(frame + " Pareto (calls, dp):");
         foreach (StudyShipMatrixRow r in valid)
         {
+            double rp = StudyShipMatrixRanked(r, floor);
             bool dominated = false;
             foreach (StudyShipMatrixRow q in valid)
             {
@@ -1261,8 +1540,9 @@ internal static partial class P1bTests
                     continue;
                 }
 
-                if (q.Calls <= r.Calls && q.Dp <= r.Dp
-                    && (q.Calls < r.Calls || q.Dp < r.Dp))
+                double qp = StudyShipMatrixRanked(q, floor);
+                if (q.Calls <= r.Calls && qp <= rp
+                    && (q.Calls < r.Calls || qp < rp))
                 {
                     dominated = true;
                     break;
@@ -1273,6 +1553,7 @@ internal static partial class P1bTests
             {
                 Console.Write(" " + r.Method + "/" + r.Config
                     + "=" + r.Dp.ToString("E2", CultureInfo.InvariantCulture)
+                    + (rp > r.Dp ? "(floor)" : "")
                     + "@" + r.Calls.ToString("N0", CultureInfo.InvariantCulture)
                     + "/" + r.Ms.ToString("F1", CultureInfo.InvariantCulture) + "ms");
             }
@@ -1282,14 +1563,18 @@ internal static partial class P1bTests
         StudyShipMatrixRow accurate = valid[0];
         foreach (StudyShipMatrixRow r in valid)
         {
-            if (r.Dp < accurate.Dp)
+            double rp = StudyShipMatrixRanked(r, floor);
+            double ap = StudyShipMatrixRanked(accurate, floor);
+            if (rp < ap || (rp == ap && r.Calls < accurate.Calls))
             {
                 accurate = r;
             }
         }
 
+        double accurateRanked = StudyShipMatrixRanked(accurate, floor);
         Console.WriteLine("  best accuracy: " + accurate.Method + "/" + accurate.Config
             + " dp=" + accurate.Dp.ToString("E2", CultureInfo.InvariantCulture)
+            + (accurateRanked > accurate.Dp ? " (at reference floor)" : "")
             + " m calls=" + accurate.Calls.ToString("N0", CultureInfo.InvariantCulture)
             + " ms=" + accurate.Ms.ToString("F0", CultureInfo.InvariantCulture));
         foreach (double limit in new[] { 1d, 10d, 100d, 1000d })
@@ -1298,19 +1583,22 @@ internal static partial class P1bTests
             StudyShipMatrixRow bestMs = null;
             foreach (StudyShipMatrixRow r in valid)
             {
-                if (r.Dp > limit)
+                double rp = StudyShipMatrixRanked(r, floor);
+                if (rp > limit)
                 {
                     continue;
                 }
 
                 if (bestCalls == null || r.Calls < bestCalls.Calls
-                    || (r.Calls == bestCalls.Calls && r.Dp < bestCalls.Dp))
+                    || (r.Calls == bestCalls.Calls
+                        && rp < StudyShipMatrixRanked(bestCalls, floor)))
                 {
                     bestCalls = r;
                 }
 
                 if (bestMs == null || r.Ms < bestMs.Ms
-                    || (r.Ms == bestMs.Ms && r.Dp < bestMs.Dp))
+                    || (r.Ms == bestMs.Ms
+                        && rp < StudyShipMatrixRanked(bestMs, floor)))
                 {
                     bestMs = r;
                 }
@@ -1330,7 +1618,8 @@ internal static partial class P1bTests
     }
 
     private static void StudyShipMatrixScoreboard(
-        List<StudyShipMatrixRow> all, List<string> labels)
+        List<StudyShipMatrixRow> all, List<string> labels,
+        Dictionary<string, double> floors)
     {
         foreach (string frame in new[] { "local", "world" })
         {
@@ -1347,25 +1636,29 @@ internal static partial class P1bTests
                         continue;
                     }
 
+                    floors.TryGetValue(scenario, out double floor);
                     StudyShipMatrixRow bestCalls = null;
                     StudyShipMatrixRow bestMs = null;
                     for (int j = 0; j < all.Count; j++)
                     {
                         StudyShipMatrixRow q = all[j];
+                        double qp = StudyShipMatrixRanked(q, floor);
                         if (labels[j] != scenario || q.Frame != frame || !q.Finite
-                            || !double.IsFinite(q.Dp) || q.Calls <= 0L || q.Dp > target)
+                            || !double.IsFinite(qp) || q.Calls <= 0L || qp > target)
                         {
                             continue;
                         }
 
                         if (bestCalls == null || q.Calls < bestCalls.Calls
-                            || (q.Calls == bestCalls.Calls && q.Dp < bestCalls.Dp))
+                            || (q.Calls == bestCalls.Calls
+                                && qp < StudyShipMatrixRanked(bestCalls, floor)))
                         {
                             bestCalls = q;
                         }
 
                         if (bestMs == null || q.Ms < bestMs.Ms
-                            || (q.Ms == bestMs.Ms && q.Dp < bestMs.Dp))
+                            || (q.Ms == bestMs.Ms
+                                && qp < StudyShipMatrixRanked(bestMs, floor)))
                         {
                             bestMs = q;
                         }
@@ -1388,7 +1681,7 @@ internal static partial class P1bTests
                     + " m wins by calls:");
                 StudyShipMatrixPrintWins(winsCalls);
                 Console.Write(frame + " <= " + target.ToString("G", CultureInfo.InvariantCulture)
-                    + " m wins by ms:");
+                    + " m wins by ms (min of up to 3):");
                 StudyShipMatrixPrintWins(winsMs);
             }
         }
@@ -1411,28 +1704,57 @@ internal static partial class P1bTests
         Console.WriteLine();
     }
 
+    private static string StudyCsvField(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return "";
+        }
+
+        if (value.IndexOfAny(new[] { ',', '"', '\r', '\n' }) < 0)
+        {
+            return value;
+        }
+
+        return "\"" + value.Replace("\"", "\"\"") + "\"";
+    }
+
+    private static string StudyCsvNumber(double value)
+    {
+        return value.ToString("R", CultureInfo.InvariantCulture);
+    }
+
     private static void StudyShipMatrixCsv(
-        List<StudyShipMatrixRow> all, List<string> labels, string path)
+        List<StudyShipMatrixRow> all, List<string> labels,
+        Dictionary<string, double> floors, string path)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("scenario,frame,method,config,dp_m,dv_mps,da_m,de,denergy,calls,steps,ms,finite,note");
+        sb.AppendLine("scenario,frame,method,config,dp_max_m,dp_final_m,dv_max_mps,"
+            + "da_m,de,denergy,calls,steps,ms,reps,samples,ref_err_m,dp_ranked_m,finite,note");
         for (int i = 0; i < all.Count; i++)
         {
             StudyShipMatrixRow r = all[i];
-            sb.Append(labels[i]).Append(',')
-                .Append(r.Frame).Append(',')
-                .Append(r.Method).Append(',')
-                .Append(r.Config).Append(',')
-                .Append(r.Dp.ToString("R", CultureInfo.InvariantCulture)).Append(',')
-                .Append(r.Dv.ToString("R", CultureInfo.InvariantCulture)).Append(',')
-                .Append(r.Da.ToString("R", CultureInfo.InvariantCulture)).Append(',')
-                .Append(r.De.ToString("R", CultureInfo.InvariantCulture)).Append(',')
-                .Append(r.DEnergy.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+            floors.TryGetValue(labels[i], out double floor);
+            double ranked = StudyShipMatrixRanked(r, floor);
+            sb.Append(StudyCsvField(labels[i])).Append(',')
+                .Append(StudyCsvField(r.Frame)).Append(',')
+                .Append(StudyCsvField(r.Method)).Append(',')
+                .Append(StudyCsvField(r.Config)).Append(',')
+                .Append(StudyCsvNumber(r.Dp)).Append(',')
+                .Append(StudyCsvNumber(r.DpFinal)).Append(',')
+                .Append(StudyCsvNumber(r.Dv)).Append(',')
+                .Append(StudyCsvNumber(r.Da)).Append(',')
+                .Append(StudyCsvNumber(r.De)).Append(',')
+                .Append(StudyCsvNumber(r.DEnergy)).Append(',')
                 .Append(r.Calls.ToString(CultureInfo.InvariantCulture)).Append(',')
                 .Append(r.Steps.ToString(CultureInfo.InvariantCulture)).Append(',')
-                .Append(r.Ms.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                .Append(StudyCsvNumber(r.Ms)).Append(',')
+                .Append(r.Reps.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(r.SampleCount.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(StudyCsvNumber(double.IsFinite(floor) ? floor : double.NaN)).Append(',')
+                .Append(StudyCsvNumber(ranked)).Append(',')
                 .Append(r.Finite ? "1" : "0").Append(',')
-                .Append(r.Note).AppendLine();
+                .Append(StudyCsvField(r.Note)).AppendLine();
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(path));
@@ -1495,9 +1817,9 @@ internal static partial class P1bTests
             var e1 = StudyShipMatrixFixed(c, method, h);
             var e2 = StudyShipMatrixFixed(c, method, h * 0.5d);
             var e3 = StudyShipMatrixFixed(c, method, h * 0.25d);
-            double err1 = (e1.state.Position - exact.p).Magnitude;
-            double err2 = (e2.state.Position - exact.p).Magnitude;
-            double err3 = (e3.state.Position - exact.p).Magnitude;
+            double err1 = (e1.P - exact.p).Magnitude;
+            double err2 = (e2.P - exact.p).Magnitude;
+            double err3 = (e3.P - exact.p).Magnitude;
             double order = Math.Log(err1 / Math.Max(err2, 1e-30d), 2d);
             double order2 = Math.Log(err2 / Math.Max(err3, 1e-30d), 2d);
             Console.WriteLine(string.Format(
@@ -1511,7 +1833,7 @@ internal static partial class P1bTests
         }
 
         var wh = StudyShipMatrixFixed(c, "WH-Y6", period / 16d);
-        double whErr = (wh.state.Position - exact.p).Magnitude;
+        double whErr = (wh.P - exact.p).Magnitude;
         Console.WriteLine("WH-Y6 pure Kepler error: " + whErr.ToString("E3", CultureInfo.InvariantCulture) + " m");
         Check(whErr < 1e-3d, "WH-Y6 pure Kepler exact drift",
             whErr.ToString("E3", CultureInfo.InvariantCulture));
@@ -1573,11 +1895,11 @@ internal static partial class P1bTests
         {
             double tol = tolerances[i];
             var r = StudyShipMatrixAdaptive(c, true, tol, tol * 1e-3d, tol, 0d);
-            errors[i] = (r.state.Position - exact.p).Magnitude;
+            errors[i] = (r.P - exact.p).Magnitude;
             Console.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
                 "DOP853 tol={0:E1} rtol=0 err={1:E3} m calls={2:N0}",
-                tol, errors[i], r.calls));
+                tol, errors[i], r.Calls));
             Check(errors[i] < 10d * tol,
                 "tolerance bound " + tol.ToString("E1", CultureInfo.InvariantCulture),
                 errors[i].ToString("E3", CultureInfo.InvariantCulture) + " m < 10x tol");
@@ -1743,8 +2065,8 @@ internal static partial class P1bTests
             };
             double h = c.Tau / 16d;
             var r = StudyShipMatrixFixed(c, "WH-Y6", h);
-            double dp = (r.state.Position - new Vector3d(pt[0], pt[1], pt[2])).Magnitude;
-            double dv = (r.state.Velocity - new Vector3d(vt[0], vt[1], vt[2])).Magnitude;
+            double dp = (r.P - new Vector3d(pt[0], pt[1], pt[2])).Magnitude;
+            double dv = (r.V - new Vector3d(vt[0], vt[1], vt[2])).Magnitude;
             Console.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
                 "WH-Y6 {0} h={1:F6} dp={2:E3} m dv={3:E3} m/s",
@@ -1884,20 +2206,41 @@ internal static partial class P1bTests
         }
         else if (consistencyOnly)
         {
-            // The lunar flyby reference diverges (ratio < 1): finest delta is a
-            // disagreement, not a resolution. Keep the case as a consistency check
-            // (production vs local adaptive DOP853), not as an accuracy proof.
+            // The lunar flyby reference does not converge (its finest pair is
+            // disagreement, not resolution), so it cannot certify accuracy. The
+            // case is still gated: production and an independent local adaptive
+            // DOP853 run must land on the same trajectory.
             Console.WriteLine("INFO Earth-Moon flyby reference (no converging reference): " + refs.LocalKind);
         }
         else
         {
-            Check(certified,
+            Check(certified || refs.LocalResolved,
                 "matrix reference certification " + c.Label,
                 refs.LocalKind);
-            Check(certified && refResolution < 0.1d * productionTarget,
+            Check((certified || refs.LocalResolved) && refResolution < 0.1d * productionTarget,
                 "matrix reference resolution " + c.Label,
                 refResolution.ToString("E3", CultureInfo.InvariantCulture) + " m < "
                 + (0.1d * productionTarget).ToString("G3", CultureInfo.InvariantCulture) + " m");
+        }
+
+        if (consistencyOnly)
+        {
+            double separation = StudyShipRowSeparation(production, localAdaptiveDop853);
+            Check(production != null && localAdaptiveDop853 != null,
+                "matrix flyby production and local adaptive present " + c.Label,
+                production == null ? "missing production"
+                    : localAdaptiveDop853 == null ? "missing local adaptive" : "both present");
+            Check(double.IsFinite(separation) && separation <= productionTarget,
+                "matrix flyby production vs local adaptive DOP853 " + c.Label,
+                double.IsFinite(separation)
+                    ? separation.ToString("E3", CultureInfo.InvariantCulture) + " m <= "
+                      + productionTarget.ToString("G3", CultureInfo.InvariantCulture) + " m"
+                    : "missing");
+            Console.WriteLine("flyby separation production/local-adaptive: "
+                + (double.IsFinite(separation)
+                    ? separation.ToString("E3", CultureInfo.InvariantCulture) + " m"
+                    : "missing") + ", reference finest delta="
+                + refs.LocalFinestDelta.ToString("E2", CultureInfo.InvariantCulture) + " m");
         }
 
         if (hardEdgeBurn)
@@ -1950,6 +2293,18 @@ internal static partial class P1bTests
                 production.DEnergy.ToString("E2", CultureInfo.InvariantCulture) + " < 1E-08");
         }
 
+        // Two independent discretizations of the same force, in different frames
+        // and with different step control, must agree: this is what makes the
+        // uncertified-reference cases meaningful and catches a common-mode frame bug.
+        if (!c.Thrust && !consistencyOnly && production != null && localAdaptiveDop853 != null)
+        {
+            double separation = StudyShipRowSeparation(production, localAdaptiveDop853);
+            Check(double.IsFinite(separation) && separation <= alternativeTarget,
+                "matrix production vs local adaptive DOP853 " + c.Label,
+                separation.ToString("E3", CultureInfo.InvariantCulture) + " m <= "
+                + alternativeTarget.ToString("G3", CultureInfo.InvariantCulture) + " m");
+        }
+
         bool hyperbolic = c.Label.IndexOf("hyperbolic", StringComparison.OrdinalIgnoreCase) >= 0;
         if (!hyperbolic && !c.Thrust)
         {
@@ -1986,17 +2341,159 @@ internal static partial class P1bTests
         }
     }
 
+    private sealed class StudyShipComparisonRule
+    {
+        public string Label;
+        public double Target;
+        public long CheapestCallsCap;
+        public double WhToProductionRatio;
+    }
+
+    private static void StudyShipMatrixComparisons(
+        List<StudyShipMatrixRow> all, List<string> labels, Dictionary<string, double> floors)
+    {
+        // The suite used to only check "no regression". These statements are the
+        // actual study claim: which family is cheapest at a useful accuracy, and
+        // by how much it beats the production path. Caps are ~3x the measured
+        // value, so a regression fails while noise does not.
+        Console.WriteLine();
+        Console.WriteLine("=== integrator comparison claims (failing gates) ===");
+        var rules = new[]
+        {
+            new StudyShipComparisonRule
+            {
+                Label = "Earth LEO 400 km circular", Target = 1d,
+                CheapestCallsCap = 5000L, WhToProductionRatio = 0.25d
+            },
+            new StudyShipComparisonRule
+            {
+                Label = "Earth LEO 400 km polar", Target = 1d,
+                CheapestCallsCap = 5000L, WhToProductionRatio = 0.35d
+            },
+            new StudyShipComparisonRule
+            {
+                Label = "Earth LEO 400 km sun-synchronous", Target = 1d,
+                CheapestCallsCap = 5000L, WhToProductionRatio = 0.35d
+            },
+            new StudyShipComparisonRule
+            {
+                // 3x the measured 25,200 calls; the ratio is the actual claim
+                // (0.449 measured), not a 3x-of-measured bound.
+                Label = "Earth GEO 35786 km", Target = 2d,
+                CheapestCallsCap = 75000L, WhToProductionRatio = 0.6d
+            },
+            new StudyShipComparisonRule
+            {
+                Label = "Sun 1 AU circular", Target = 1d,
+                CheapestCallsCap = 5000L, WhToProductionRatio = 0.1d
+            },
+            new StudyShipComparisonRule
+            {
+                Label = "Earth LEO 400 km, 1000 orbits (~64 d)", Target = 1d,
+                CheapestCallsCap = 350000L, WhToProductionRatio = 0.5d
+            },
+            new StudyShipComparisonRule
+            {
+                Label = "Earth LEO 400 km, 30 d, world chunk 1 d", Target = 1d,
+                CheapestCallsCap = 160000L, WhToProductionRatio = 0.5d
+            }
+        };
+
+        foreach (StudyShipComparisonRule rule in rules)
+        {
+            floors.TryGetValue(rule.Label, out double floor);
+            StudyShipMatrixRow cheapest = null;
+            StudyShipMatrixRow cheapestWh = null;
+            StudyShipMatrixRow production = null;
+            for (int i = 0; i < all.Count; i++)
+            {
+                if (labels[i] != rule.Label)
+                {
+                    continue;
+                }
+
+                StudyShipMatrixRow r = all[i];
+                if (r.Method == "DOP853" && r.Frame == "world"
+                    && r.Note == "production" && r.Finite)
+                {
+                    production = r;
+                }
+
+                double ranked = StudyShipMatrixRanked(r, floor);
+                if (r.Frame != "local" || !r.Finite || !double.IsFinite(ranked)
+                    || r.Calls <= 0L || ranked > rule.Target)
+                {
+                    continue;
+                }
+
+                if (cheapest == null || r.Calls < cheapest.Calls
+                    || (r.Calls == cheapest.Calls
+                        && ranked < StudyShipMatrixRanked(cheapest, floor)))
+                {
+                    cheapest = r;
+                }
+
+                if (r.Method == "WH-Y6"
+                    && (cheapestWh == null || r.Calls < cheapestWh.Calls))
+                {
+                    cheapestWh = r;
+                }
+            }
+
+            Check(cheapest != null,
+                "comparison cheapest <= " + rule.Target.ToString("G", CultureInfo.InvariantCulture)
+                + " m " + rule.Label,
+                cheapest == null ? "no local row meets the target" : cheapest.Method + "/" + cheapest.Config);
+            if (cheapest != null)
+            {
+                Check(cheapest.Calls <= rule.CheapestCallsCap,
+                    "comparison cheapest calls " + rule.Label,
+                    cheapest.Method + "/" + cheapest.Config + " calls="
+                    + cheapest.Calls.ToString("N0", CultureInfo.InvariantCulture) + " <= "
+                    + rule.CheapestCallsCap.ToString("N0", CultureInfo.InvariantCulture));
+            }
+
+            if (rule.WhToProductionRatio > 0d)
+            {
+                Check(production != null && cheapestWh != null,
+                    "comparison WH and production present " + rule.Label,
+                    production == null ? "missing production"
+                        : cheapestWh == null ? "no WH row meets the target" : "both present");
+                if (production != null && cheapestWh != null)
+                {
+                    long cap = (long)(rule.WhToProductionRatio * production.Calls);
+                    Check(cheapestWh.Calls <= cap,
+                        "comparison WH vs production calls " + rule.Label,
+                        "WH " + cheapestWh.Config + " calls="
+                        + cheapestWh.Calls.ToString("N0", CultureInfo.InvariantCulture) + " <= "
+                        + rule.WhToProductionRatio.ToString("G2", CultureInfo.InvariantCulture)
+                        + " x production " + production.Calls.ToString("N0", CultureInfo.InvariantCulture)
+                        + " = " + cap.ToString("N0", CultureInfo.InvariantCulture));
+                    Console.WriteLine(
+                        "claim " + rule.Label + ": cheapest " + cheapest.Method + "/" + cheapest.Config
+                        + " " + cheapest.Calls.ToString("N0", CultureInfo.InvariantCulture)
+                        + " calls, WH " + cheapestWh.Calls.ToString("N0", CultureInfo.InvariantCulture)
+                        + " vs production " + production.Calls.ToString("N0", CultureInfo.InvariantCulture)
+                        + " calls (" + (cheapestWh.Calls / (double)Math.Max(production.Calls, 1L))
+                            .ToString("F3", CultureInfo.InvariantCulture) + "x)");
+                }
+            }
+        }
+    }
+
     private static void StudyShipMatrixRegression(
-        List<StudyShipMatrixRow> all, List<string> labels, Dictionary<string, double> formulations)
+        List<StudyShipMatrixRow> all, List<string> labels,
+        Dictionary<string, double> formulations, Dictionary<string, double> floors)
     {
         Console.WriteLine();
-        Console.WriteLine("=== regression report (3x rebased baseline; failing gate) ===");
+        Console.WriteLine("=== regression report (3x rebased baseline on the max-over-trajectory metric; failing gate) ===");
         int regressions = 0;
         int comparisons = 0;
         foreach (var entry in StudyShipMatrixBaselines)
         {
             string label = entry.Key;
             StudyShipMatrixBaseline baseline = entry.Value;
+            floors.TryGetValue(label, out double floor);
             StudyShipMatrixRow production = null;
             StudyShipMatrixRow bestLocal = null;
             for (int i = 0; i < all.Count; i++)
@@ -2014,14 +2511,18 @@ internal static partial class P1bTests
                 }
 
                 if (r.Frame == "local" && r.Finite && double.IsFinite(r.Dp)
-                    && (bestLocal == null || r.Dp < bestLocal.Dp))
+                    && (bestLocal == null
+                        || StudyShipMatrixRanked(r, floor) < StudyShipMatrixRanked(bestLocal, floor)))
                 {
                     bestLocal = r;
                 }
             }
 
             comparisons++;
-            bool productionOk = production != null && production.Dp <= 3d * baseline.Production;
+            double productionDp = production == null
+                ? double.NaN : StudyShipMatrixRanked(production, floor);
+            bool productionOk = double.IsFinite(productionDp)
+                && productionDp <= 3d * baseline.Production;
             if (!productionOk)
             {
                 regressions++;
@@ -2029,13 +2530,16 @@ internal static partial class P1bTests
 
             string productionDetail = production == null
                 ? "missing"
-                : production.Dp.ToString("E3", CultureInfo.InvariantCulture) + " m vs 3x " +
+                : productionDp.ToString("E3", CultureInfo.InvariantCulture) + " m vs 3x " +
                   3d * baseline.Production + " m";
             Check(productionOk, "matrix regression production " + label, productionDetail);
             Console.WriteLine("INFO production " + label + ": " + productionDetail);
 
             comparisons++;
-            bool bestLocalOk = bestLocal != null && bestLocal.Dp <= 3d * baseline.BestLocal;
+            double bestLocalDp = bestLocal == null
+                ? double.NaN : StudyShipMatrixRanked(bestLocal, floor);
+            bool bestLocalOk = double.IsFinite(bestLocalDp)
+                && bestLocalDp <= 3d * baseline.BestLocal;
             if (!bestLocalOk)
             {
                 regressions++;
@@ -2044,7 +2548,7 @@ internal static partial class P1bTests
             string bestLocalDetail = bestLocal == null
                 ? "missing"
                 : bestLocal.Method + "/" + bestLocal.Config + " " +
-                  bestLocal.Dp.ToString("E3", CultureInfo.InvariantCulture) + " m vs 3x " +
+                  bestLocalDp.ToString("E3", CultureInfo.InvariantCulture) + " m vs 3x " +
                   3d * baseline.BestLocal + " m";
             Check(bestLocalOk, "matrix regression best local " + label, bestLocalDetail);
             Console.WriteLine("INFO best local " + label + ": " + bestLocalDetail);
@@ -2268,6 +2772,7 @@ internal static partial class P1bTests
         var allRows = new List<StudyShipMatrixRow>();
         var allLabels = new List<string>();
         var formulations = new Dictionary<string, double>();
+        var floors = new Dictionary<string, double>();
 
         foreach (StudyShipMatrixCase c in cases)
         {
@@ -2286,14 +2791,8 @@ internal static partial class P1bTests
                 continue;
             }
 
-            double[] rk4 = c.Thrust
-                ? new[] { 1d, 2d, 4d }
-                : StudyShipMatrixSteps(c.Tau, 128d, c.StepScale);
-            double[] y6 = c.Thrust
-                ? new[] { 2d, 4d, 8d }
-                : StudyShipMatrixSteps(c.Tau, 32d, c.StepScale);
             var rows = new List<StudyShipMatrixRow>();
-            StudyShipMatrixRunAll(c, refs.Local, refs.Local, rk4, y6, rows);
+            StudyShipMatrixRunAll(c, refs, rows);
             StudyShipMatrixPrint(c, refs, rows);
             int nonFinite = 0;
             foreach (StudyShipMatrixRow r in rows)
@@ -2313,14 +2812,16 @@ internal static partial class P1bTests
 
             StudyShipMatrixGate(c, refs, rows);
             formulations[c.Label] = refs.HasFormulation ? refs.Formulation : double.NaN;
+            floors[c.Label] = refs.ReferenceFloor;
             caseWatch.Stop();
             Console.WriteLine("case time: " + caseWatch.ElapsedMilliseconds + " ms");
         }
 
         StudyShipMatrixOrderAndTolerance();
-        StudyShipMatrixCsv(allRows, allLabels, csvPath);
-        StudyShipMatrixScoreboard(allRows, allLabels);
-        StudyShipMatrixRegression(allRows, allLabels, formulations);
+        StudyShipMatrixCsv(allRows, allLabels, floors, csvPath);
+        StudyShipMatrixScoreboard(allRows, allLabels, floors);
+        StudyShipMatrixComparisons(allRows, allLabels, floors);
+        StudyShipMatrixRegression(allRows, allLabels, formulations, floors);
         Console.WriteLine("failed checks: " + (failures - failuresBefore));
         Console.WriteLine("--- Spacecraft orbit integrator matrix complete ---");
         return 0;

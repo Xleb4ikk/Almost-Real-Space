@@ -25,5 +25,9 @@
     <None Include="Data\site_1_colliders.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="Study\integrators\golden\ship_1000_orbits_dd.json">
+      <Link>Data\ship_1000_orbits_dd.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>

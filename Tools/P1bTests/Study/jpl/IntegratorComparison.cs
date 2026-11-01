@@ -71,12 +71,17 @@ internal static partial class P1bTests
         var referenceWatch = Stopwatch.StartNew();
         var reference = JplDop853(nb, days, 1e-9d, 1e-12d, 1e-14d, false);
         referenceWatch.Stop();
+        var referenceFine = JplDop853(nb, days, 1e-10d, 1e-13d, 1e-15d, false);
         var pnReference = JplDop853(nb, days, 1e-9d, 1e-12d, 1e-14d, true);
         double referenceMs = referenceWatch.Elapsed.TotalMilliseconds;
+        int referenceWorst;
+        double referenceSelf = IntegratorError(referenceFine.p, reference.p, n, out referenceWorst);
         Console.WriteLine(string.Format(
             CultureInfo.InvariantCulture,
-            "reference: DOP853 rtol=1e-14, atol=1e-9/1e-12, maxStep=1 d, {0:F0} ms",
-            referenceMs));
+            "reference: DOP853 rtol=1e-14, atol=1e-9/1e-12, maxStep=1 d, {0:F0} ms; self-convergence (1e-13 vs 1e-14, worst {2}) = {1:E2} m",
+            referenceMs, referenceSelf, nb.Names[referenceWorst]));
+        Check(referenceSelf < 10d, "JPL reference self-convergence",
+            referenceSelf.ToString("E2", CultureInfo.InvariantCulture) + " m < 10 m");
 
         var rows = new[]
         {
@@ -111,7 +116,7 @@ internal static partial class P1bTests
                 }
                 else if (row.Method == "Y6C")
                 {
-                    var run = JplY6C(nb, days, row.H, row.Pn);
+                    var run = JplY6C(nb, days, row.H, row.Pn, out calls);
                     row.P = run.p;
                     row.V = run.v;
                 }
@@ -137,19 +142,24 @@ internal static partial class P1bTests
             string h = row.Method == "DOP853" || row.Method == "Y6C"
                 ? (row.Method == "Y6C" ? "112.5 s" : "adaptive")
                 : (row.H / 86400d).ToString("F1", CultureInfo.InvariantCulture) + " d";
+            // Ranking cannot go below the reference's own uncertainty: an error
+            // smaller than the self-convergence is not evidence of a better method.
+            double ranked = Math.Max(row.Err, referenceSelf);
             Console.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
-                "{0,-22} {1,-8} {2,10} {3,8:F0} {4,14:F3}",
-                row.Name, h, row.Calls, row.Ms, row.Err / 1000d));
+                "{0,-22} {1,-8} {2,10} {3,8:F0} {4,14:F3}{5}",
+                row.Name, h, row.Calls, row.Ms, row.Err / 1000d,
+                ranked > row.Err ? " (at reference floor)" : ""));
             Check(double.IsFinite(row.Err), "integrator " + row.Name + " finite", "");
-            if (row.Err < bestErr)
+            if (ranked < bestErr)
             {
-                bestErr = row.Err;
+                bestErr = ranked;
                 bestName = row.Name;
             }
         }
 
-        Console.WriteLine("best by max error: " + bestName);
+        Console.WriteLine("best by max error (reference floor "
+            + (referenceSelf / 1000d).ToString("E2", CultureInfo.InvariantCulture) + " km): " + bestName);
         Console.WriteLine("--- Integrator comparison complete ---");
         return 0;
     }

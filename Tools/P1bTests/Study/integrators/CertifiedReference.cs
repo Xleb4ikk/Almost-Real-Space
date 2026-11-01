@@ -35,9 +35,38 @@ internal static partial class P1bTests
         public bool Valid;
         /// <summary>True when that estimate came from a converging pair (same as Valid).</summary>
         public bool Asymptotic;
-        /// <summary>Non-asymptotic reference usable only as a resolution/consistency check, never as an error bound.</summary>
+        /// <summary>
+        /// Non-asymptotic reference usable only as a resolution/consistency check, never as an
+        /// error bound. Requires the finest pair to converge (ratio >= 32) and to be small
+        /// against the target: a ratio near 1 is disagreement, not resolution.
+        /// </summary>
         public bool Resolved;
         public string Detail;
+    }
+
+    private static double[] StudyShipRefMergeEdges(double[] edges, double[] extra)
+    {
+        if (extra == null || extra.Length == 0)
+        {
+            return edges;
+        }
+
+        var all = new List<double>(edges.Length + extra.Length);
+        all.AddRange(edges);
+        all.AddRange(extra);
+        all.Sort();
+        var merged = new double[all.Count];
+        int n = 0;
+        for (int i = 0; i < all.Count; i++)
+        {
+            if (n == 0 || all[i] - merged[n - 1] > 1e-9d)
+            {
+                merged[n++] = all[i];
+            }
+        }
+
+        Array.Resize(ref merged, n);
+        return merged;
     }
 
     private static double[] StudyShipRefBreakpoints(StudyShipMatrixCase c)
@@ -121,7 +150,10 @@ internal static partial class P1bTests
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
     private static SpacecraftIntegrationState StudyShipRefDop853Fixed(
-        StudyShipMatrixCase c, double h, out long calls)
+        StudyShipMatrixCase c, double h, out long calls,
+        double[] sampleTimes = null,
+        Vector3d[] samplePositions = null,
+        Vector3d[] sampleVelocities = null)
     {
         var acc = new StudyShipMatrixAcc(c);
         var state = new SpacecraftIntegrationState
@@ -130,9 +162,10 @@ internal static partial class P1bTests
             Velocity = c.V0,
             Mass = c.Mass0
         };
-        double[] edges = StudyShipRefBreakpoints(c);
+        double[] edges = StudyShipRefMergeEdges(StudyShipRefBreakpoints(c), sampleTimes);
         double t = edges[0];
         double edge = Math.Max(1e-9d, h * 1e-9d);
+        int sample = 0;
         for (int segment = 0; segment < edges.Length - 1; segment++)
         {
             double tEnd = edges[segment + 1];
@@ -175,6 +208,24 @@ internal static partial class P1bTests
                 state = StudyShipRefDop853Step(acc, state, t, span);
                 t = tEnd;
             }
+
+            // Every forced end is either a throttle edge, a checkpoint or the
+            // horizon; record the checkpoints at their exact times.
+            while (sampleTimes != null && sample < sampleTimes.Length
+                && Math.Abs(sampleTimes[sample] - tEnd) <= 1e-6d)
+            {
+                if (samplePositions != null)
+                {
+                    samplePositions[sample] = state.Position;
+                }
+
+                if (sampleVelocities != null)
+                {
+                    sampleVelocities[sample] = state.Velocity;
+                }
+
+                sample++;
+            }
         }
 
         calls = acc.Calls;
@@ -182,7 +233,10 @@ internal static partial class P1bTests
     }
 
     private static StudyShipCertifiedRef StudyShipCertifiedReference(
-        StudyShipMatrixCase c, double stepsPerTau = 24d, int levels = 4)
+        StudyShipMatrixCase c, double stepsPerTau = 24d, int levels = 4,
+        double[] sampleTimes = null,
+        Vector3d[] samplePositions = null,
+        Vector3d[] sampleVelocities = null)
     {
         if (levels < 3)
         {
@@ -220,7 +274,12 @@ internal static partial class P1bTests
             for (int i = 0; i < levels; i++)
             {
                 hs[i] = h0 / (1 << i);
-                states[i] = StudyShipRefDop853Fixed(c, hs[i], out calls[i]);
+                bool finest = i == levels - 1;
+                states[i] = StudyShipRefDop853Fixed(
+                    c, hs[i], out calls[i],
+                    finest ? sampleTimes : null,
+                    finest ? samplePositions : null,
+                    finest ? sampleVelocities : null);
             }
 
             var d = new double[levels - 1];
@@ -249,9 +308,11 @@ internal static partial class P1bTests
 
             bool asymptotic = chosen >= 0;
             double ratioFine = d[levels - 3] / Math.Max(d[levels - 2], 1e-30d);
-            // Ratio <= 1 means the two finest solutions are diverging. FinestDelta
-            // then measures disagreement, not resolution, and cannot certify anything.
-            bool resolved = ratioFine > 1d
+            // "Resolved" needs the finest pair to CONVERGE (an 8th-order pair gives
+            // ~256, so >= 32 is the weakest credible ratio), not merely to differ:
+            // a ratio near 1.0 means the two finest solutions disagree without
+            // telling which one is closer, so FinestDelta is noise, not resolution.
+            bool resolved = ratioFine >= 32d
                 && d[levels - 2] <= 0.05d * Math.Max(c.AccuracyTarget, 1d);
             bool valid = asymptotic || resolved;
             double ratio = ratioFine;
@@ -291,14 +352,17 @@ internal static partial class P1bTests
                 Resolved = resolved,
                 Detail = string.Format(
                     CultureInfo.InvariantCulture,
-                    "fixed DOP853 h={0:G6} s, ratio={1:F2} order={2:F2}{3}, est {4:E2} m / {5:E1} m/s, finest d={6:E2} m{7}{8}",
+                    "fixed DOP853 h={0:G6} s, ratio={1:F2} order={2:F2}{3}, est {4:E2} m / {5:E1} m/s, finest d={6:E2} m{7}",
                     hs[levels - 1], ratio, orderUsed,
-                    asymptotic ? "" : " resolved (non-asymptotic; resolution only)",
+                    asymptotic
+                        ? ""
+                        : resolved
+                            ? " resolved (ratio>=32; resolution only)"
+                            : " UNRESOLVED (finest pair does not converge)",
                     asymptotic ? Math.Max(errPos, roundoffPos) : double.NaN,
                     asymptotic ? Math.Max(errVel, roundoffVel) : double.NaN,
                     d[levels - 2],
-                    attempt > 0 ? " retry " + attempt.ToString(CultureInfo.InvariantCulture) : "",
-                    valid ? "" : " [INVALID]")
+                    attempt > 0 ? " retry " + attempt.ToString(CultureInfo.InvariantCulture) : "")
             };
             if (valid)
             {

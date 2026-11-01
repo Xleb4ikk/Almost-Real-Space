@@ -68,7 +68,61 @@ internal static class TaylorShip
         double positionTolerance,
         double velocityTolerance,
         double maxStep,
-        double minStep)
+        double minStep,
+        double[] checkpointSeconds = null,
+        List<Vector3d> checkpointPositions = null,
+        List<Vector3d> checkpointVelocities = null)
+    {
+        return RunCore(
+            sys, -1, p0, v0, t0, totalSeconds, order,
+            positionTolerance, velocityTolerance, maxStep, minStep,
+            checkpointSeconds, checkpointPositions, checkpointVelocities);
+    }
+
+    /// <summary>
+    /// Same integrator in the central body's local frame (state relative to the
+    /// body). The force is the world force minus the body's own acceleration, so
+    /// this is the same physical model as the production local step, without the
+    /// ulp(1 AU) cancellation in the state itself.
+    /// </summary>
+    public static TaylorShipResult RunSecondsLocal(
+        StarSystem sys,
+        int central,
+        Vector3d relP0,
+        Vector3d relV0,
+        double t0,
+        double totalSeconds,
+        int order,
+        double positionTolerance,
+        double velocityTolerance,
+        double maxStep,
+        double minStep,
+        double[] checkpointSeconds = null,
+        List<Vector3d> checkpointPositions = null,
+        List<Vector3d> checkpointVelocities = null)
+    {
+        return RunCore(
+            sys, central, relP0, relV0, t0, totalSeconds, order,
+            positionTolerance, velocityTolerance, maxStep, minStep,
+            checkpointSeconds, checkpointPositions, checkpointVelocities);
+    }
+
+    /// <summary>central &lt; 0 selects the world frame, otherwise the body's local frame.</summary>
+    private static TaylorShipResult RunCore(
+        StarSystem sys,
+        int central,
+        Vector3d p0,
+        Vector3d v0,
+        double t0,
+        double totalSeconds,
+        int order,
+        double positionTolerance,
+        double velocityTolerance,
+        double maxStep,
+        double minStep,
+        double[] checkpointSeconds,
+        List<Vector3d> checkpointPositions,
+        List<Vector3d> checkpointVelocities)
     {
         double T = t0 + totalSeconds;
         double t = t0;
@@ -81,6 +135,8 @@ internal static class TaylorShip
         long calls = 0L;
         long steps = 0L;
         long segmentClips = 0L;
+        int checkpoint = 0;
+        int checkpointCount = checkpointSeconds?.Length ?? 0;
         var sw = Stopwatch.StartNew();
 
         while (t < T)
@@ -94,6 +150,14 @@ internal static class TaylorShip
             double segment = SegmentRemaining(sys, t);
             bool clipped = segment < remaining && segment <= h;
             h = Math.Min(h, Math.Min(remaining, segment));
+            if (checkpoint < checkpointCount)
+            {
+                double toCheckpoint = checkpointSeconds[checkpoint] - t;
+                if (toCheckpoint > 0d && toCheckpoint < h)
+                {
+                    h = toCheckpoint;
+                }
+            }
             if (clipped)
             {
                 segmentClips++;
@@ -107,7 +171,9 @@ internal static class TaylorShip
 
             for (int s = 0; s < order; s++)
             {
-                aJ = Force(sys, pJ[0], pJ[1], pJ[2], t, order);
+                aJ = central < 0
+                    ? Force(sys, pJ[0], pJ[1], pJ[2], t, order)
+                    : ForceLocal(sys, central, pJ[0], pJ[1], pJ[2], t, order);
                 calls++;
                 for (int i = 0; i < 3; i++)
                 {
@@ -131,12 +197,33 @@ internal static class TaylorShip
             }
 
             double norm = Math.Max(errP / positionTolerance, errV / velocityTolerance);
+            if (!double.IsFinite(norm))
+            {
+                throw new InvalidOperationException(
+                    "TaylorShip non-finite error estimate at t=" + t.ToString("R"));
+            }
+
             if (norm <= 1d)
             {
                 p = new Vector3d(pJ[0].Eval(h), pJ[1].Eval(h), pJ[2].Eval(h));
                 v = new Vector3d(vJ[0].Eval(h), vJ[1].Eval(h), vJ[2].Eval(h));
                 bool last = h >= remaining;
                 t = last ? T : t + h;
+                if (checkpoint < checkpointCount)
+                {
+                    // The step was clamped to the checkpoint, so it lands on it
+                    // within a few ulps. Do NOT snap t to the checkpoint: the
+                    // state at t is what gets recorded, and moving the clock
+                    // without moving the state would bias the sample by v*dt.
+                    while (checkpoint < checkpointCount
+                        && t >= checkpointSeconds[checkpoint] - 1e-9d)
+                    {
+                        checkpointPositions?.Add(p);
+                        checkpointVelocities?.Add(v);
+                        checkpoint++;
+                    }
+                }
+
                 steps++;
                 double factor = Math.Min(4d, Math.Max(0.2d,
                     0.9d * Math.Pow(1d / Math.Max(norm, 1e-14d), 1d / order)));
@@ -576,6 +663,36 @@ internal static class TaylorShip
     private static TaylorJet[] Force(
         StarSystem sys, TaylorJet px, TaylorJet py, TaylorJet pz, double t, int order)
     {
+        TaylorJet[] world = WorldJets(sys, t, order);
+        return ForceAt(sys, world, px, py, pz, order);
+    }
+
+    /// <summary>
+    /// Same force, in the central body's local frame: the ship is placed at the
+    /// body's instantaneous world position plus the relative state, and the body's
+    /// own acceleration is subtracted (the indirect term). This removes the
+    /// cancellation of two ~mu/r^2 fields at 1 AU from the state itself.
+    /// </summary>
+    private static TaylorJet[] ForceLocal(
+        StarSystem sys, int central, TaylorJet rx, TaylorJet ry, TaylorJet rz,
+        double t, int order)
+    {
+        TaylorJet[] world = WorldJets(sys, t, order);
+        int c = 6 * central;
+        TaylorJet[] ship = ForceAt(
+            sys, world, world[c] + rx, world[c + 1] + ry, world[c + 2] + rz, order);
+        // The body's own mu term is singular at the body's position and must be
+        // skipped: only the other bodies act on the central body.
+        TaylorJet[] body = ForceAt(
+            sys, world, world[c], world[c + 1], world[c + 2], order, central);
+        return new[]
+        {
+            ship[0] - body[0], ship[1] - body[1], ship[2] - body[2]
+        };
+    }
+
+    private static TaylorJet[] WorldJets(StarSystem sys, double t, int order)
+    {
         var bodies = sys.AllBodies;
         int n = bodies.Count;
         var index = new Dictionary<OrbitingBody, int>(n);
@@ -609,6 +726,15 @@ internal static class TaylorShip
             world[(6 * i) + 5] = world[(6 * parent) + 5] + local.Vz;
         }
 
+        return world;
+    }
+
+    private static TaylorJet[] ForceAt(
+        StarSystem sys, TaylorJet[] world, TaylorJet px, TaylorJet py, TaylorJet pz, int order,
+        int skipBody = -1)
+    {
+        var bodies = sys.AllBodies;
+        int n = bodies.Count;
         var rootAccel = new[]
         {
             TaylorJet.Constant(order, 0d),
@@ -619,7 +745,16 @@ internal static class TaylorShip
         for (int c = 0; c < root.Children.Count; c++)
         {
             OrbitingBody child = root.Children[c];
-            int ci = index[child];
+            int ci = c;
+            for (int k = 0; k < n; k++)
+            {
+                if (ReferenceEquals(bodies[k], child))
+                {
+                    ci = k;
+                    break;
+                }
+            }
+
             double mc = child.ResolveSubtreeStandardGravitationalParameter();
             TaylorJet dx = world[6 * ci] - world[0];
             TaylorJet dy = world[(6 * ci) + 1] - world[1];
@@ -640,6 +775,11 @@ internal static class TaylorShip
         };
         for (int i = 0; i < n; i++)
         {
+            if (i == skipBody)
+            {
+                continue;
+            }
+
             double mu = bodies[i].ResolveStandardGravitationalParameter();
             if (mu == 0d)
             {

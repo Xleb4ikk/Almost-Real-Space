@@ -18,9 +18,9 @@ internal static partial class P1bTests
         StarSystem real = StudyRealSolar7();
         StudyNBody realNb = StudyMakeNBody(real);
 
-        StudyPlanetTable("Custom 100 y", customNb, 100d, 112.5d, false);
+        StudyPlanetTable("Custom 100 y", customNb, 100d, 112.5d);
         StudyBake("Custom", custom, customNb, 100d, 400d);
-        StudyPlanetTable("Real solar 7-body 100 y", realNb, 100d, 112.5d, false);
+        StudyPlanetTable("Real solar 7-body 100 y", realNb, 100d, 112.5d);
         StudyBake("Real solar 7-body", real, realNb, 100d, 200d);
 
         StudyLiveCost(customNb, realNb);

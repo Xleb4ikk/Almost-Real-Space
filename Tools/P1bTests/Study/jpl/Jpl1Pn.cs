@@ -592,7 +592,7 @@ internal static partial class P1bTests
     }
 
     private static (double[] p, double[] v) JplY6C(
-        StudyNBody nb, double days, double h, bool pn)
+        StudyNBody nb, double days, double h, bool pn, out long calls)
     {
         int n = nb.Count;
         int length = 3 * n;
@@ -605,14 +605,17 @@ internal static partial class P1bTests
         long steps = (long)Math.Floor(T / h);
         double remainder = T - (steps * h);
         JplAcc1PnC(p, pl, v, vl, a, nb.Mu, n, pn);
+        calls = 1L;
         for (long s = 0; s < steps; s++)
         {
             JplY6Step(p, pl, v, vl, a, nb.Mu, n, h, pn);
+            calls += 7L;
         }
 
         if (remainder > 1e-9d)
         {
             JplY6Step(p, pl, v, vl, a, nb.Mu, n, remainder, pn);
+            calls += 7L;
         }
 
         for (int i = 0; i < length; i++)
@@ -718,7 +721,7 @@ internal static partial class P1bTests
         double[] horizons = { 365d, 1825d, 3650d };
         for (int i = 0; i < horizons.Length; i++)
         {
-            var y6 = JplY6C(nb, horizons[i], 112.5d, true);
+            var y6 = JplY6C(nb, horizons[i], 112.5d, true, out _);
             double dp = JplBodyError(jpl, nb, y6.p, horizons[i], "Mercury", false);
             Console.WriteLine(string.Format(
                 CultureInfo.InvariantCulture, "{0,6:F0}  {1,10:F2}", horizons[i], dp / 1000d));

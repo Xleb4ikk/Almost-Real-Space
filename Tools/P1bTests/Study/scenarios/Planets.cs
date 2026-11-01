@@ -187,7 +187,7 @@ internal static partial class P1bTests
     }
 
     private static void StudyPlanetTable(
-        string label, StudyNBody nb, double years, double refH, bool convergence)
+        string label, StudyNBody nb, double years, double refH)
     {
         Console.WriteLine();
         Console.WriteLine("=== " + label + ": " + years + " y, independent "
@@ -209,6 +209,8 @@ internal static partial class P1bTests
             System.Globalization.CultureInfo.InvariantCulture,
             "reference calls={0:N0}, {1:F0} ms; self-convergence={2:E3} m",
             reference.Calls, reference.Ms, referenceSelf));
+        Console.WriteLine("ranking floor: " + referenceSelf.ToString("E3", System.Globalization.CultureInfo.InvariantCulture)
+            + " m (independent reference self-convergence)");
         double e0 = StudyEnergy(nb.P0, nb.V0, nb.Mu);
         double[] mom0 = TotalMomentum(nb.V0, nb.Mu);
         double[] ang0 = TotalAngular(nb.P0, nb.V0, nb.Mu);
@@ -235,8 +237,15 @@ internal static partial class P1bTests
             ("PEFRL", 7200d),
             ("Y6", 1800d),
             ("Y6", 3600d),
-            ("Y6", 7200d)
+            ("Y6", 7200d),
+            ("Y6C", 1800d),
+            ("Y6C", 3600d)
         };
+        // WH is deliberately absent: its drift assumes a prescribed central body
+        // (the ship matrix covers it there). In this pure mutual-gravity table the
+        // Sun moves, so a heliocentric WH would need a different splitting and
+        // would not be the same model as the other rows.
+        Console.WriteLine("WH-Y6: not applicable to the mutual-gravity planet table; see Test549 for its domain");
         var rowResults = new (double inner, double mid, double outer, double maxInner,
             double maxOuter, double de, double maxDe, double inv, long calls, double ms)[rows.Length];
         Parallel.For(0, rows.Length, idx =>
@@ -256,15 +265,20 @@ internal static partial class P1bTests
         });
 
         double bestScore = double.PositiveInfinity;
+        long bestCalls = long.MaxValue;
         int bestIndex = -1;
         for (int idx = 0; idx < rows.Length; idx++)
         {
             (string method, double h) = rows[idx];
             var row = rowResults[idx];
-            double score = double.IsFinite(row.maxInner) ? row.maxInner : row.inner;
-            if (score < bestScore)
+            // Ranking cannot go below the reference's own convergence: a row whose
+            // max error is smaller than the self-convergence is measuring noise.
+            double score = double.IsFinite(row.maxInner)
+                ? Math.Max(row.maxInner, referenceSelf) : row.inner;
+            if (score < bestScore || (score == bestScore && row.calls < bestCalls))
             {
                 bestScore = score;
+                bestCalls = row.calls;
                 bestIndex = idx;
             }
 
@@ -273,6 +287,32 @@ internal static partial class P1bTests
                 "{0,-24} {1,-8} {2,6:F0} {3,12:N0} {4,11:E3} {5,11:E3} {6,11:E3} {7,11:E3} {8,11:E3} {9,9:E2} {10,9:E2} {11,9:E2} {12,8:F0}",
                 label, method, h, row.calls, row.inner, row.mid, row.outer,
                 row.maxInner, row.maxOuter, row.de, row.maxDe, row.inv, row.ms));
+            Check(double.IsFinite(row.maxInner) && double.IsFinite(row.maxOuter)
+                    && double.IsFinite(row.maxDe) && double.IsFinite(row.inv),
+                label + " " + method + " h=" + h.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + " metrics finite",
+                "maxInner=" + row.maxInner.ToString("E2", System.Globalization.CultureInfo.InvariantCulture)
+                + " maxOuter=" + row.maxOuter.ToString("E2", System.Globalization.CultureInfo.InvariantCulture)
+                + " maxdE=" + row.maxDe.ToString("E2", System.Globalization.CultureInfo.InvariantCulture)
+                + " inv=" + row.inv.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        int y6Index = Array.FindIndex(rows, r => r.Item1 == "Y6" && Math.Abs(r.Item2 - 3600d) < 1e-9d);
+        int y6cIndex = Array.FindIndex(rows, r => r.Item1 == "Y6C" && Math.Abs(r.Item2 - 3600d) < 1e-9d);
+        if (y6Index >= 0 && y6cIndex >= 0)
+        {
+            double y6Err = rowResults[y6Index].maxInner;
+            double y6cErr = rowResults[y6cIndex].maxInner;
+            double ratio = Math.Max(y6Err, y6cErr)
+                / Math.Max(Math.Min(y6Err, y6cErr), 1e-30d);
+            Console.WriteLine(string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "Y6C vs Y6 at 3600 s: max inner {0:E3} vs {1:E3} m ({2:F1}x {3})",
+                y6cErr, y6Err, ratio, y6cErr <= y6Err ? "better" : "worse"));
+            // Compensated Y6 must not be worse than plain Y6 on the same system;
+            // in practice it is tens of times better (measured 50-75x over 10 y).
+            Check(y6cErr <= 1.5d * y6Err, label + " Y6C vs Y6 cross-check",
+                y6cErr.ToString("E3", System.Globalization.CultureInfo.InvariantCulture) + " <= 1.5 x "
+                + y6Err.ToString("E3", System.Globalization.CultureInfo.InvariantCulture));
         }
 
         if (bestIndex >= 0)
@@ -281,8 +321,9 @@ internal static partial class P1bTests
             var best = rowResults[bestIndex];
             Console.WriteLine(string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
-                "best: {0} h={1:F0} maxInner={2:E3} m maxOuter={3:E3} m maxdE={4:E2} inv={5:E2}",
-                method, h, best.maxInner, best.maxOuter, best.maxDe, best.inv));
+                "best: {0} h={1:F0} maxInner={2:E3} m maxOuter={3:E3} m maxdE={4:E2} inv={5:E2}{6}",
+                method, h, best.maxInner, best.maxOuter, best.maxDe, best.inv,
+                best.maxInner < referenceSelf ? " (at reference floor)" : ""));
         }
 
         double innerGate = years <= 20d ? 10d : 5000d;
@@ -294,10 +335,16 @@ internal static partial class P1bTests
         if (bestIndex >= 0)
         {
             var best = rowResults[bestIndex];
-            Check(best.maxInner < innerGate, label + " best max inner",
-                best.maxInner.ToString("E3", System.Globalization.CultureInfo.InvariantCulture));
-            Check(best.maxOuter < outerGate, label + " best max outer",
-                best.maxOuter.ToString("E3", System.Globalization.CultureInfo.InvariantCulture));
+            // The reference's own uncertainty is part of the budget: a 2.2 m best
+            // against a 2.3 m floor is not a 2.2 m result.
+            Check(best.maxInner + referenceSelf < innerGate, label + " best max inner",
+                best.maxInner.ToString("E3", System.Globalization.CultureInfo.InvariantCulture)
+                + " + " + referenceSelf.ToString("E3", System.Globalization.CultureInfo.InvariantCulture)
+                + " m < " + innerGate.ToString("G3", System.Globalization.CultureInfo.InvariantCulture) + " m");
+            Check(best.maxOuter + referenceSelf < outerGate, label + " best max outer",
+                best.maxOuter.ToString("E3", System.Globalization.CultureInfo.InvariantCulture)
+                + " + " + referenceSelf.ToString("E3", System.Globalization.CultureInfo.InvariantCulture)
+                + " m < " + outerGate.ToString("G3", System.Globalization.CultureInfo.InvariantCulture) + " m");
             Check(best.maxDe < energyGate, label + " best max dE/E",
                 best.maxDe.ToString("E2", System.Globalization.CultureInfo.InvariantCulture));
             Check(best.inv < invariantGate, label + " best max invariant",
