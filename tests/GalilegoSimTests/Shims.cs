@@ -1,4 +1,4 @@
-﻿// UnityEngine shim stub: ONLY the types actually used by the compiled set
+// UnityEngine shim stub: ONLY the types actually used by the compiled set
 // (Core/Universe/Spacecraft without Burst jobs).
 // Needed so the physics builds with a plain dotnet build, no Unity editor.
 
@@ -277,7 +277,7 @@ namespace Unity.Jobs
         public static JobHandle Schedule<T>(T job, int arrayLength, int innerloopBatchCount, JobHandle dependsOn = default)
             where T : struct, IJobParallelFor
         {
-            throw new System.NotImplementedException("╨в╨╡╤Б╤В╨╛╨▓╤Л╨╣ ╤И╨╕╨╝: batch-╤А╨░╤Б╤З╤С╤В ╨╜╨╡ ╨┐╨╛╨┤╨┤╨╡╤А╨╢╨╕╨▓╨░╨╡╤В╤Б╤П.");
+            throw new System.NotImplementedException("Тестовый шим: batch-расчёт не поддерживается.");
         }
     }
 }

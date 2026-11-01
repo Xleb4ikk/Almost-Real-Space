@@ -32,13 +32,13 @@ instead introduces errors of order 1e-15, which masks the dd result.
 
 `Test518_EphemerisExport` writes three exports with the same ship orbit:
 
-- `real_bake_export.json` � 60-day bake, `Days=30`; input for the 1/30-day
+- `real_bake_export.json` — 60-day bake, `Days=30`; input for the 1/30-day
   golden in `golden_real.json` (K=28, tol=1e-20, dps=40).
-- `real_bake_export_1y.json` � 1.1-year bake, `Days=365`; input for the
+- `real_bake_export_1y.json` — 1.1-year bake, `Days=365`; input for the
   1-year golden in `golden_real_1y_hi.json` (K=28, tol=1e-20, dps=40).
-- `real_bake_export_10y.json` � 10.1-year bake, `Days=3650`; input for the
+- `real_bake_export_10y.json` — 10.1-year bake, `Days=3650`; input for the
   optional 10-year golden. The oracle run at K=20/tol=1e-12 is roughly
-  5�7 hours with `gmpy2`; generate it with
+  5–7 hours with `gmpy2`; generate it with
   `--checkpoints 365,730,1095,1460,1825,2190,2555,2920,3285,3650`.
 
 Each export contains `T0`, `Days`, `Central` (Earth), ship absolute

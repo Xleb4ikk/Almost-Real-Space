@@ -1,4 +1,4 @@
-﻿using Galilego.Events;
+using Galilego.Events;
 using Galilego.Spacecraft;
 using Galilego.Universe;
 using Xunit;
@@ -7,7 +7,7 @@ using Xunit.Abstractions;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Test G тАФ priority plus zero-time-loop protection. Two detectors on the
+    /// Test G — priority plus zero-time-loop protection. Two detectors on the
     /// same shell with different priorities: the first call must return the
     /// higher-priority one; restarting from the returned root must always advance
     /// (g = 0 at the restart point is not an event) and find the next crossing
@@ -41,23 +41,23 @@ namespace GalilegoPhysicsTests
 
             var ship = new Spacecraft(pos0, vel0, TestScene.ShipMass);
             EventOccurrence? first = propagator.Propagate(ship, 0d, period);
-            Assert.True(first.HasValue, "╨Я╨╡╤А╨▓╨╛╨╡ ╨┐╨╡╤А╨╡╤Б╨╡╤З╨╡╨╜╨╕╨╡ ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜╨╛.");
+            Assert.True(first.HasValue, "Первое пересечение не найдено.");
             Assert.Equal("HighPriority", first.Value.DetectorName);
             double t1 = first.Value.TimeSeconds;
 
             // Restart from the root: the same root must not be re-detected.
             EventOccurrence? second = propagator.Propagate(ship, t1, period - t1);
-            Assert.True(second.HasValue, "╨Т╤В╨╛╤А╨╛╨╡ ╨┐╨╡╤А╨╡╤Б╨╡╤З╨╡╨╜╨╕╨╡ ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜╨╛.");
+            Assert.True(second.HasValue, "Второе пересечение не найдено.");
             double t2 = second.Value.TimeSeconds;
-            Assert.True(t2 > t1, $"╨а╨╡╤Б╤В╨░╤А╤В ╨╜╨╡ ╨┐╤А╨╛╨┤╨▓╨╕╨╜╤Г╨╗╤Б╤П: t2 = {t2:F6} <= t1 = {t1:F6} тАФ zero-time loop.");
+            Assert.True(t2 > t1, $"Рестарт не продвинулся: t2 = {t2:F6} <= t1 = {t1:F6} — zero-time loop.");
             Assert.Equal("HighPriority", second.Value.DetectorName);
 
             double r1 = System.Math.Abs(first.Value.State.Position.Magnitude - shell);
             double r2 = System.Math.Abs(second.Value.State.Position.Magnitude - shell);
 
-            output.WriteLine($"t1 = {t1:F6} ╤Б (r-╨╛╤И. {r1:G} ╨╝), t2 = {t2:F6} ╤Б (r-╨╛╤И. {r2:G} ╨╝). ╨Ю╨▒╨░ тАФ HighPriority, ╨╖╨░╤Ж╨╕╨║╨╗╨╕╨▓╨░╨╜╨╕╤П ╨╜╨╡╤В.");
-            Assert.True(r1 < 1e-2, $"╨Я╨╡╤А╨▓╤Л╨╣ ╨║╨╛╤А╨╡╨╜╤М ╨╜╨╡ ╨╜╨░ ╨╛╨▒╨╛╨╗╨╛╤З╨║╨╡: {r1:G} ╨╝.");
-            Assert.True(r2 < 1e-2, $"╨Т╤В╨╛╤А╨╛╨╣ ╨║╨╛╤А╨╡╨╜╤М ╨╜╨╡ ╨╜╨░ ╨╛╨▒╨╛╨╗╨╛╤З╨║╨╡: {r2:G} ╨╝.");
+            output.WriteLine($"t1 = {t1:F6} с (r-ош. {r1:G} м), t2 = {t2:F6} с (r-ош. {r2:G} м). Оба — HighPriority, зацикливания нет.");
+            Assert.True(r1 < 1e-2, $"Первый корень не на оболочке: {r1:G} м.");
+            Assert.True(r2 < 1e-2, $"Второй корень не на оболочке: {r2:G} м.");
         }
 
         [Fact]
@@ -65,7 +65,7 @@ namespace GalilegoPhysicsTests
         {
             // Control for the coincident case above: proves LowPriority really
             // fires on the same root (rather than staying silent and letting
-            // HighPriority win by default). Same chunking, same bisection тАФ the
+            // HighPriority win by default). Same chunking, same bisection — the
             // roots must coincide tightly.
             StarSystem system = AltitudeCrossingTests.CreateSystem(out OrbitingBody star);
             TestScene.EllipticalOrbit(
@@ -83,7 +83,7 @@ namespace GalilegoPhysicsTests
 
             var ship = new Spacecraft(pos0, vel0, TestScene.ShipMass);
             EventOccurrence? combined = propagator.Propagate(ship, 0d, period);
-            Assert.True(combined.HasValue, "╨Ъ╨╛╨╝╨▒╨╕╨╜╨╕╤А╨╛╨▓╨░╨╜╨╜╤Л╨╣ ╨┐╤А╨╛╨│╨╛╨╜ ╨╜╨╡ ╨╜╨░╤И╤С╨╗ ╨║╨╛╤А╨╡╨╜╤М.");
+            Assert.True(combined.HasValue, "Комбинированный прогон не нашёл корень.");
             double tCombined = combined.Value.TimeSeconds;
 
             var lonePhysics = new SpacecraftPhysics();
@@ -94,12 +94,12 @@ namespace GalilegoPhysicsTests
 
             var loneShip = new Spacecraft(pos0, vel0, TestScene.ShipMass);
             EventOccurrence? lone = lonePropagator.Propagate(loneShip, 0d, period);
-            Assert.True(lone.HasValue, "╨Ю╨┤╨╕╨╜╨╛╨║╨╕╨╣ LowPriority ╨╜╨╡ ╤Д╨░╨╡╤А╨╕╤В тАФ ╨┐╨╛╨▒╨╡╨┤╨░ HighPriority ╨▒╤Л╨╗╨░ ╨▒╤Л ╨┐╨╛ ╤Г╨╝╨╛╨╗╤З╨░╨╜╨╕╤О.");
+            Assert.True(lone.HasValue, "Одинокий LowPriority не фаерит — победа HighPriority была бы по умолчанию.");
             Assert.Equal("LowPriority", lone.Value.DetectorName);
 
             double dt = System.Math.Abs(lone.Value.TimeSeconds - tCombined);
-            output.WriteLine($"╨Ъ╨╛╨╝╨▒╨╕╨╜╨╕╤А╨╛╨▓╨░╨╜╨╜╤Л╨╣: t = {tCombined:F6} ╤Б (HighPriority), ╨╛╨┤╨╕╨╜╨╛╨║╨╕╨╣ Low: t = {lone.Value.TimeSeconds:F6} ╤Б. ╨а╨░╤Б╤Е╨╛╨╢╨┤╨╡╨╜╨╕╨╡: {dt:G} ╤Б.");
-            Assert.True(dt < 1e-5, $"Low ╤Д╨░╨╡╤А╨╕╤В ╨╜╨╡ ╨╜╨░ ╤В╨╛╨╝ ╨╢╨╡ ╨║╨╛╤А╨╜╨╡: ╤А╨░╤Б╤Е╨╛╨╢╨┤╨╡╨╜╨╕╨╡ {dt:G} ╤Б.");
+            output.WriteLine($"Комбинированный: t = {tCombined:F6} с (HighPriority), одинокий Low: t = {lone.Value.TimeSeconds:F6} с. Расхождение: {dt:G} с.");
+            Assert.True(dt < 1e-5, $"Low фаерит не на том же корне: расхождение {dt:G} с.");
         }
     }
 }

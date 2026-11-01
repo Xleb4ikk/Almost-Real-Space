@@ -10,7 +10,9 @@ using Xunit;
 
 namespace GalilegoPhysicsTests.Integration.Matrix
 {
-    [Trait("Tier", "Fast")]
+    // Runs the whole matrix, including Slow rows: it must not sit in the
+    // fast iteration loop just because its assertions are cheap.
+    [Trait("Tier", "Slow")]
     public sealed class CalibrationTests
     {
         [Fact]

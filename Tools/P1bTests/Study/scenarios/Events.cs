@@ -28,6 +28,11 @@ internal static partial class P1bTests
     // Event / warp path
     // ------------------------------------------------------------------
 
+    // The reference is a 5 s Y6C bracket refined linearly, so a sub-second
+    // agreement is the reference's own resolution; the game path uses dense
+    // refinement and must stay inside it.
+    private const double StudyEventTimeGateSeconds = 1d;
+
     private static void StudyEvent(StarSystem sys)
     {
         Console.WriteLine();
@@ -92,10 +97,33 @@ internal static partial class P1bTests
         }
 
         Console.WriteLine("ref:  event={0}, t={1:F3} s", found ? "AtmosphereEntry" : "none", eventT);
-        if (found && res.StoppingEvent.HasValue)
+        bool gameFound = res.StoppingEvent.HasValue;
+        bool sameKind = gameFound && found
+            && res.StoppingEvent.Value.Kind == EventKind.AtmosphereEntry;
+        bool sameBody = sameKind && ReferenceEquals(res.StoppingEvent.Value.Body, terra);
+        double eventError = sameKind
+            ? res.StoppingEvent.Value.TimeSeconds - eventT
+            : double.NaN;
+        if (sameKind)
         {
-            Console.WriteLine("event time error = {0:F3} s", res.StoppingEvent.Value.TimeSeconds - eventT);
+            Console.WriteLine("event time error = {0:F3} s", eventError);
         }
+
+        Check(found, "warp event reference crossing found",
+            found ? eventT.ToString("F3", CultureInfo.InvariantCulture) + " s"
+                : "no atmosphere-shell crossing in the reference scan");
+        Check(sameKind, "warp event kind matches reference",
+            gameFound ? res.StoppingEvent.Value.Kind.ToString() : "no game event");
+        Check(sameBody, "warp event body matches reference",
+            gameFound && res.StoppingEvent.Value.Body != null
+                ? res.StoppingEvent.Value.Body.Name
+                : "no game event body");
+        Check(sameKind && Math.Abs(eventError) < StudyEventTimeGateSeconds,
+            "warp event time vs Y6C reference",
+            sameKind
+                ? eventError.ToString("E3", CultureInfo.InvariantCulture) + " s < "
+                    + StudyEventTimeGateSeconds.ToString("G3", CultureInfo.InvariantCulture) + " s"
+                : "event kind mismatch");
     }
 
     private static void StudyShipFixedStep(StarSystem sys, double[] p, double[] v, double t, double h)

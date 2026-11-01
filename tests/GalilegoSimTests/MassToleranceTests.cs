@@ -1,4 +1,4 @@
-﻿using Galilego.Core;
+using Galilego.Core;
 using Galilego.Spacecraft;
 using Xunit;
 using Xunit.Abstractions;
@@ -6,8 +6,8 @@ using Xunit.Abstractions;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Synthetic mass-flow source тАФ a fast explicit function of time:
-    /// massFlow = k┬╖(1 + 0.9┬╖sin(2╧Аt/P)). Has no physical meaning.
+    /// Synthetic mass-flow source — a fast explicit function of time:
+    /// massFlow = k·(1 + 0.9·sin(2πt/P)). Has no physical meaning.
     /// With no gravity or thrust the ship coasts in a straight line, which
     /// DOPRI5 integrates exactly for any step size, so position/velocity
     /// truncation error is identically zero: the only truncation error source
@@ -56,13 +56,13 @@ namespace GalilegoPhysicsTests
     }
 
     /// <summary>
-    /// Test D тАФ MassAbsoluteTolerance really drives the step, not just exists as
+    /// Test D — MassAbsoluteTolerance really drives the step, not just exists as
     /// a parameter. Controlled experiment: same scene (gravity-free drift plus a
-    /// fast oscillating flow), same position/velocity tolerances and rtol тАФ only
+    /// fast oscillating flow), same position/velocity tolerances and rtol — only
     /// MassAbsoluteTolerance differs (tight 1e-9 vs effectively disabling 1e3).
     /// With the loose tolerance the integrator must take maximum 600 s steps;
     /// with the tight one it must subdivide under the 50 s flow oscillation.
-    /// Additionally the tight run must converge to m(T) = m0 тИТ k┬╖T (the sine
+    /// Additionally the tight run must converge to m(T) = m0 − k·T (the sine
     /// integrates to zero over a whole number of periods).
     /// </summary>
     public sealed class MassToleranceTests
@@ -111,14 +111,14 @@ namespace GalilegoPhysicsTests
             double expectedMass = InitialMass - Rate * TotalTime;
             double tightRelErr = System.Math.Abs(mTight - expectedMass) / expectedMass;
 
-            output.WriteLine($"╨Т╤Л╨╖╨╛╨▓╨╛╨▓ RHS: ╨╝╤П╨│╨║╨╕╨╣ ╨┤╨╛╨┐╤Г╤Б╨║ = {callsLoose}, ╨╢╤С╤Б╤В╨║╨╕╨╣ = {callsTight}, ╨╛╤В╨╜╨╛╤И╨╡╨╜╨╕╨╡ = {ratio:F1}.");
-            output.WriteLine($"╨Ь╨░╤Б╤Б╨░: ╨╝╤П╨│╨║╨░╤П = {mLoose:R} ╨║╨│, ╨╢╤С╤Б╤В╨║╨░╤П = {mTight:R} ╨║╨│, ╨░╨╜╨░╨╗╨╕╤В╨╕╨║╨░ = {expectedMass:R} ╨║╨│.");
-            output.WriteLine($"╨Ю╤В╨╜. ╨╛╤И╨╕╨▒╨║╨░ ╨╢╤С╤Б╤В╨║╨╛╨│╨╛ ╨┐╤А╨╛╨│╨╛╨╜╨░ vs ╨░╨╜╨░╨╗╨╕╤В╨╕╨║╨╕: {tightRelErr:G}.");
+            output.WriteLine($"Вызовов RHS: мягкий допуск = {callsLoose}, жёсткий = {callsTight}, отношение = {ratio:F1}.");
+            output.WriteLine($"Масса: мягкая = {mLoose:R} кг, жёсткая = {mTight:R} кг, аналитика = {expectedMass:R} кг.");
+            output.WriteLine($"Отн. ошибка жёсткого прогона vs аналитики: {tightRelErr:G}.");
 
             Assert.True(callsTight > 3 * callsLoose,
-                $"╨Ц╤С╤Б╤В╨║╨╕╨╣ MassAbsoluteTolerance ╨╜╨╡ ╨┤╤А╨╛╨▒╨╕╤В ╤И╨░╨│: {callsTight} vs {callsLoose}. ╨Ф╨╛╨┐╤Г╤Б╨║ ╨╜╨╡ ╤Г╤З╨░╤Б╤В╨▓╤Г╨╡╤В ╨▓ ╤Г╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╨╕ ╤И╨░╨│╨╛╨╝.");
+                $"Жёсткий MassAbsoluteTolerance не дробит шаг: {callsTight} vs {callsLoose}. Допуск не участвует в управлении шагом.");
             Assert.True(tightRelErr < 1e-6,
-                $"╨Ц╤С╤Б╤В╨║╨╕╨╣ ╨┐╤А╨╛╨│╨╛╨╜ ╨╜╨╡ ╤Б╨╛╤И╤С╨╗╤Б╤П ╨║ ╨░╨╜╨░╨╗╨╕╤В╨╕╨║╨╡ m(T) = m0 тИТ kT: ╨╛╤И╨╕╨▒╨║╨░ {tightRelErr:G}.");
+                $"Жёсткий прогон не сошёлся к аналитике m(T) = m0 − kT: ошибка {tightRelErr:G}.");
         }
     }
 }

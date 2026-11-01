@@ -1,4 +1,4 @@
-﻿using Galilego.Core;
+using Galilego.Core;
 using Galilego.Spacecraft;
 using Galilego.Universe;
 using Xunit;
@@ -7,8 +7,8 @@ using Xunit.Abstractions;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Test B тАФ analytic orbit check: after one full period
-    /// T = 2╧АтИЪ(a┬│/╬╝) a ship on a circular orbit should return approximately
+    /// Test B — analytic orbit check: after one full period
+    /// T = 2π√(a³/μ) a ship on a circular orbit should return approximately
     /// to its start point (comparing the new path against the analytic one).
     /// </summary>
     public sealed class OrbitAnalyticTests
@@ -44,10 +44,10 @@ namespace GalilegoPhysicsTests
             double velErr = TestScene.RelativeError(ship.Velocity, vel0);
             double posAbsErr = (ship.Position - pos0).Magnitude;
 
-            output.WriteLine($"╨Я╨╡╤А╨╕╨╛╨┤ T = {period:F3} ╤Б. ╨Ю╤В╨╜. ╨╛╤И╨╕╨▒╨║╨░ ╨┐╨╛╨╖╨╕╤Ж╨╕╨╕: {posErr:G} ({posAbsErr:F4} ╨╝), ╤Б╨║╨╛╤А╨╛╤Б╤В╨╕: {velErr:G}.");
+            output.WriteLine($"Период T = {period:F3} с. Отн. ошибка позиции: {posErr:G} ({posAbsErr:F4} м), скорости: {velErr:G}.");
 
-            Assert.True(posErr < 1e-6, $"╨Я╨╛╨╖╨╕╤Ж╨╕╤П ╨╜╨╡ ╨▓╨╡╤А╨╜╤Г╨╗╨░╤Б╤М: ╨╛╤В╨╜. ╨╛╤И╨╕╨▒╨║╨░ {posErr:G}.");
-            Assert.True(velErr < 1e-6, $"╨б╨║╨╛╤А╨╛╤Б╤В╤М ╨╜╨╡ ╨▓╨╡╤А╨╜╤Г╨╗╨░╤Б╤М: ╨╛╤В╨╜. ╨╛╤И╨╕╨▒╨║╨░ {velErr:G}.");
+            Assert.True(posErr < 1e-6, $"Позиция не вернулась: отн. ошибка {posErr:G}.");
+            Assert.True(velErr < 1e-6, $"Скорость не вернулась: отн. ошибка {velErr:G}.");
         }
     }
 }

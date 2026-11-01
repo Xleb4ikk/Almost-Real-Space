@@ -1,4 +1,4 @@
-﻿using Galilego.Core;
+using Galilego.Core;
 using Galilego.Events;
 using Galilego.Spacecraft;
 using Galilego.Universe;
@@ -8,12 +8,12 @@ using Xunit.Abstractions;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Test H тАФ SOI change. A minimal moonless system (a star plus one planet on
+    /// Test H — SOI change. A minimal moonless system (a star plus one planet on
     /// a circular orbit): the ship starts inside the planet's SOI on a radial
     /// escape trajectory and crosses into the star's dominance exactly once.
     /// The transition bracket is found by coarse scanning in the test itself, the
     /// driver must return an event inside the bracket; the dominants on either
-    /// side of the root must differ (planet тЖТ star).
+    /// side of the root must differ (planet → star).
     /// </summary>
     public sealed class SoiChangeTests
     {
@@ -54,7 +54,7 @@ namespace GalilegoPhysicsTests
         {
             StarSystem system = CreateTwoBodySystem(out OrbitingBody star, out OrbitingBody planet);
             double soi = planet.SphereOfInfluenceRadius;
-            output.WriteLine($"SOI ╨┐╨╗╨░╨╜╨╡╤В╤Л: {soi:E3} ╨╝.");
+            output.WriteLine($"SOI планеты: {soi:E3} м.");
 
             planet.EvaluateWorldState(0d, out Vector3d planetPos, out Vector3d planetVel);
             Vector3d pos0 = planetPos + new Vector3d(1.0e8, 0d, 0d);
@@ -81,8 +81,8 @@ namespace GalilegoPhysicsTests
                     break;
                 }
             }
-            Assert.True(flipped, "╨б╨║╨░╨╜ ╨╜╨╡ ╨╜╨░╤И╤С╨╗ ╨▓╤Л╤Е╨╛╨┤╨░ ╨╕╨╖ SOI тАФ ╨╜╨╡╨▓╨╡╤А╨╜╨░╤П ╤Б╤Ж╨╡╨╜╨░.");
-            output.WriteLine($"╨С╤А╨╡╨║╨╡╤В ╨┐╨╡╤А╨╡╤Е╨╛╨┤╨░: [{tPrev:F0}, {tNow:F0}] ╤Б.");
+            Assert.True(flipped, "Скан не нашёл выхода из SOI — неверная сцена.");
+            output.WriteLine($"Брекет перехода: [{tPrev:F0}, {tNow:F0}] с.");
 
             // Driver over the same physics.
             var physics = new SpacecraftPhysics();
@@ -93,12 +93,12 @@ namespace GalilegoPhysicsTests
             var ship = new Spacecraft(pos0, vel0, TestScene.ShipMass);
             EventOccurrence? occurrence = propagator.Propagate(ship, 0d, tNow + scanDt);
 
-            Assert.True(occurrence.HasValue, "╨б╨╛╨▒╤Л╤В╨╕╨╡ ╤Б╨╝╨╡╨╜╤Л SOI ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜╨╛.");
+            Assert.True(occurrence.HasValue, "Событие смены SOI не найдено.");
             double tEvent = occurrence.Value.TimeSeconds;
-            output.WriteLine($"╨Ф╨╡╤В╨╡╨║╤В: t = {tEvent:F6} ╤Б, ╨╜╨╛╨▓╤Л╨╣ ╨┤╨╛╨╝╨╕╨╜╨░╨╜╤В: {occurrence.Value.Body?.Name}.");
+            output.WriteLine($"Детект: t = {tEvent:F6} с, новый доминант: {occurrence.Value.Body?.Name}.");
 
             Assert.True(tEvent >= tPrev && tEvent <= tNow,
-                $"╨Ъ╨╛╤А╨╡╨╜╤М {tEvent:F3} ╤Б ╨▓╨╜╨╡ ╨▒╤А╨╡╨║╨╡╤В╨░ [{tPrev:F0}, {tNow:F0}].");
+                $"Корень {tEvent:F3} с вне брекета [{tPrev:F0}, {tNow:F0}].");
             Assert.Same(star, occurrence.Value.Body);
 
             planet.EvaluateWorldState(tEvent, out Vector3d planetAtEvent, out _);

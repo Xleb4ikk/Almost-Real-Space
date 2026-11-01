@@ -77,13 +77,24 @@ internal static partial class P1bTests
         return total;
     }
 
+    // The local Y6C reference self-converges (2.5 s vs 1.25 s) below 10 cm on
+    // every scenario and the full n-body reference agrees with it to the same
+    // order. SpacecraftPhysics defaults to DOP853, so the "game" row is the
+    // production world-frame path; it and the local DOP853 row are gated ~3x
+    // above the worst measured error, so a regression cannot turn the study
+    // green while the accuracy is gone.
+    private const double StudyShipRefSelfGateMeters = 0.25d;
+    private const double StudyShipRefAgreementGateMeters = 0.25d;
+    private const double StudyShipGameGateMeters = 18d;
+    private const double StudyShipDop853GateMeters = 0.35d;
+
     private static void StudyShipTable(
         string label, StarSystem sys, StudyNBody nb, int central, double rp, double ra, double days)
     {
         bool custom = label.IndexOf("Custom", StringComparison.Ordinal) >= 0;
         Console.WriteLine();
         Console.WriteLine("=== " + label + ": rp={0:E3} m, ra={1:E3} m, {2} d ===", rp, ra, days);
-        Console.WriteLine("ship state is local to the central body; the game DOPRI5 row is the actual world-state path");
+        Console.WriteLine("ship state is local to the central body; the game DOP853 row is the actual world-state path");
         Console.WriteLine("'direct' forms differential acceleration from relative vectors; 'field-diff' subtracts two world-field samples");
         OrbitingBody body = sys.AllBodies[central];
         double mu = body.ResolveStandardGravitationalParameter();
@@ -128,12 +139,14 @@ internal static partial class P1bTests
 
         sys.EvaluateBodyState(body, T, out Vector3d bpT, out _);
         Vector3d refARel = refA.p;
+        double refSelf = (refA.p - refAHalf.p).Magnitude;
+        double refAgreement = (refARel - refBRel).Magnitude;
 
         Console.WriteLine("ref A local self-convergence (2.5 s vs 1.25 s): dp={0:E3} m, dv={1:E3} m/s",
-            (refA.p - refAHalf.p).Magnitude, (refA.v - refAHalf.v).Magnitude);
+            refSelf, (refA.v - refAHalf.v).Magnitude);
         Console.WriteLine("ref B (full n-body, 5 s): pre={0:N0}+{1:N0} calls, {2:F0}+{3:F0} ms",
             bodiesAtT0.Calls, refB.Calls, bodiesAtT0.Ms, refB.Ms);
-        Console.WriteLine("A vs B at end: {0:E3} m", (refARel - refBRel).Magnitude);
+        Console.WriteLine("A vs B at end: {0:E3} m", refAgreement);
 
         (Vector3d p, Vector3d v, long calls, double ms) game = default;
         (Vector3d p, Vector3d v, long calls, double ms) dop853 = default;
@@ -229,7 +242,7 @@ internal static partial class P1bTests
         Vector3d gameRel = game.p - bpT;
         Console.WriteLine("{" + "system,-24} {" + "method,-22} {" + "h, s,6} {" + "calls,11} {" +
             "err vs A, m,13} {" + "err vs B, m,13} {" + "ms,8} {" + "us/call,9} {" + "KiB,8}");
-        PrintShipRow(label, "DOPRI5 (game, world)", 0d, game.calls, gameRel, refARel, refBRel, game.ms, gameAlloc);
+        PrintShipRow(label, "DOP853 (game, world)", 0d, game.calls, gameRel, refARel, refBRel, game.ms, gameAlloc);
         PrintShipRow(label, "DOP853 field-diff", 0d, dop853.calls, dop853.p, refARel, refBRel, dop853.ms, dopAlloc);
         PrintShipRow(label, "DOP853 direct", 0d, dop853Direct.calls, dop853Direct.p, refARel, refBRel, dop853Direct.ms, dopDirectAlloc);
         PrintShipRow(label, "Y6 direct", 60d, y6_60.calls, y6_60.p, refARel, refBRel, y6_60.ms, y6_60Alloc);
@@ -238,6 +251,21 @@ internal static partial class P1bTests
         PrintShipRow(label, "WH Y6 direct", 120d, wh_120.calls, wh_120.p, refARel, refBRel, wh_120.ms, wh120Alloc);
         PrintShipRow(label, "WH Y6 direct", 240d, wh_240.calls, wh_240.p, refARel, refBRel, wh_240.ms, wh240Alloc);
         PrintShipRow(label, "WH Y6 direct", 480d, wh_480.calls, wh_480.p, refARel, refBRel, wh_480.ms, wh480Alloc);
+
+        double gameError = (gameRel - refARel).Magnitude;
+        double dop853Error = (dop853Direct.p - refARel).Magnitude;
+        Check(refSelf < StudyShipRefSelfGateMeters, label + " ship reference A self-convergence",
+            refSelf.ToString("E3", CultureInfo.InvariantCulture) + " < "
+            + StudyShipRefSelfGateMeters.ToString("G3", CultureInfo.InvariantCulture) + " m");
+        Check(refAgreement < StudyShipRefAgreementGateMeters, label + " ship references A/B agree",
+            refAgreement.ToString("E3", CultureInfo.InvariantCulture) + " < "
+            + StudyShipRefAgreementGateMeters.ToString("G3", CultureInfo.InvariantCulture) + " m");
+        Check(gameError < StudyShipGameGateMeters, label + " game DOP853 vs reference A",
+            gameError.ToString("E3", CultureInfo.InvariantCulture) + " < "
+            + StudyShipGameGateMeters.ToString("G3", CultureInfo.InvariantCulture) + " m");
+        Check(dop853Error < StudyShipDop853GateMeters, label + " DOP853 direct vs reference A",
+            dop853Error.ToString("E3", CultureInfo.InvariantCulture) + " < "
+            + StudyShipDop853GateMeters.ToString("G3", CultureInfo.InvariantCulture) + " m");
         Console.WriteLine();
     }
 

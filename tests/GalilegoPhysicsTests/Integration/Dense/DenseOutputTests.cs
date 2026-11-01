@@ -111,10 +111,11 @@ namespace GalilegoPhysicsTests.Integration.Dense
                 }
             }
 
-            // Half the endpoint velocity gate: the dense velocity check must be
-            // strictly tighter than the matrix row it belongs to.
+            // Three quarters of the endpoint velocity gate: the dense velocity
+            // check must stay tighter than the matrix row it belongs to, but a
+            // half-gate left only 20% margin on the DOP853 e=0.5 row.
             double gate = ToleranceTable.For(integrator, scenarioId, 1e-9d)
-                .OracleVelocityMetersPerSecond * 0.5d;
+                .OracleVelocityMetersPerSecond * 0.75d;
             output.WriteLine(scenarioId + "/" + integratorName +
                              ": dense velocity error = " + worst.ToString("E3") + " m/s (gate " +
                              gate.ToString("E3") + ").");

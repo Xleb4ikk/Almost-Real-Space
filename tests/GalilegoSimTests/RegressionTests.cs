@@ -1,4 +1,4 @@
-﻿using Galilego.Core;
+using Galilego.Core;
 using Galilego.Spacecraft;
 using Galilego.Universe;
 using Xunit;
@@ -7,7 +7,7 @@ using Xunit.Abstractions;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Test A тАФ regression against the old path: pure gravity (MassFlow = 0)
+    /// Test A — regression against the old path: pure gravity (MassFlow = 0)
     /// must produce the same Position/Velocity as the existing
     /// OrbitIntegrator.StepForward. Proves the refactor didn't change
     /// behaviour for the gravity-only case.
@@ -64,13 +64,13 @@ namespace GalilegoPhysicsTests
                 if (posErr > maxPosErr) maxPosErr = posErr;
                 if (velErr > maxVelErr) maxVelErr = velErr;
 
-                Assert.True(posErr < 1e-9, $"╨и╨░╨│ {i}: ╤А╨░╤Б╤Е╨╛╨╢╨┤╨╡╨╜╨╕╨╡ ╨┐╨╛╨╖╨╕╤Ж╨╕╨╕ {posErr:G} ╨┐╤А╨╡╨▓╤Л╤И╨░╨╡╤В 1e-9.");
-                Assert.True(velErr < 1e-9, $"╨и╨░╨│ {i}: ╤А╨░╤Б╤Е╨╛╨╢╨┤╨╡╨╜╨╕╨╡ ╤Б╨║╨╛╤А╨╛╤Б╤В╨╕ {velErr:G} ╨┐╤А╨╡╨▓╤Л╤И╨░╨╡╤В 1e-9.");
+                Assert.True(posErr < 1e-9, $"Шаг {i}: расхождение позиции {posErr:G} превышает 1e-9.");
+                Assert.True(velErr < 1e-9, $"Шаг {i}: расхождение скорости {velErr:G} превышает 1e-9.");
                 Assert.Equal(TestScene.ShipMass, ship.Mass);
             }
 
-            output.WriteLine($"╨з╨░╨╜╨║╨╛╨▓: {chunks} x {chunkDt} ╤Б. ╨Ь╨░╨║╤Б. ╨╛╤В╨╜. ╨╛╤И╨╕╨▒╨║╨░ ╨┐╨╛╨╖╨╕╤Ж╨╕╨╕: {maxPosErr:G}, ╤Б╨║╨╛╤А╨╛╤Б╤В╨╕: {maxVelErr:G}.");
-            output.WriteLine($"╨Ь╨░╤Б╤Б╨░ ╨╜╨╡╨╕╨╖╨╝╨╡╨╜╨╜╨░: {ship.Mass} ╨║╨│.");
+            output.WriteLine($"Чанков: {chunks} x {chunkDt} с. Макс. отн. ошибка позиции: {maxPosErr:G}, скорости: {maxVelErr:G}.");
+            output.WriteLine($"Масса неизменна: {ship.Mass} кг.");
         }
     }
 }

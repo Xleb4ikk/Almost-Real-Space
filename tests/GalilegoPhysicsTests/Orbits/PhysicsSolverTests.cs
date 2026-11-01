@@ -51,16 +51,24 @@ namespace GalilegoPhysicsTests.Orbits
         {
             const double radius = 6.371e6d;
             const double j2 = 1.08263e-3d;
-            var equator = new Vector3d(radius + 200e3, 0d, 0d);
+            double r = radius + 200e3;
+            double scale = 1.5d * j2 * Mu * radius * radius / (r * r * r * r);
+            var equator = new Vector3d(r, 0d, 0d);
             Vector3d equatorial = PhysicsSolver.CalculateJ2Acceleration(
                 equator, new Vector3d(0d, 0d, 1d), Mu, j2, radius);
             Asserts.True(equatorial.X < 0d, "J2 equatorial term must point inward");
             Asserts.Finite(equatorial, "J2 equatorial");
+            // Analytic value: a_eq = -(3/2)·J2·μ·R²/r⁴, a_pole = +3·J2·μ·R²/r⁴.
+            // A sign-only check cannot catch a wrong J2 coefficient or radius.
+            Asserts.Near(equatorial.X, -scale, scale * 1e-12, "J2 equatorial magnitude");
+            Asserts.Near(equatorial.Magnitude, scale, scale * 1e-12, "J2 equatorial vector magnitude");
 
-            var pole = new Vector3d(0d, 0d, radius + 200e3);
+            var pole = new Vector3d(0d, 0d, r);
             Vector3d polar = PhysicsSolver.CalculateJ2Acceleration(
                 pole, new Vector3d(0d, 0d, 1d), Mu, j2, radius);
             Asserts.True(polar.Z > 0d, "J2 polar term is outward (the bulge reduces polar gravity)");
+            Asserts.Near(polar.Z, 2d * scale, scale * 1e-12, "J2 polar magnitude");
+            Asserts.Near(polar.Magnitude, 2d * scale, scale * 1e-12, "J2 polar vector magnitude");
 
             Asserts.VectorNear(PhysicsSolver.CalculateJ2Acceleration(
                 new Vector3d(1e9, 0d, 0d), new Vector3d(0d, 0d, 1d), Mu, j2, radius),

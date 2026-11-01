@@ -4,10 +4,10 @@ Taylor / system simulation results
 Folder: Tools/P1bTests/Study/taylor/results/full
 
 1) Test500/501/503: integrator studies and reference convergence
-   _runner_500_503.log        3/3 PASS, wall 217523 ms
-   Test500_IntegratorStudyFast.log
-   Test501_IntegratorStudySlow.log   (100-year system study)
-   Test503_ReferenceConvergence.log
+   _runner_500_503.log        exit 0, wall 217523 ms
+   Test500_IntegratorStudyFast.log   (gated study)
+   Test501_IntegratorStudySlow.log   (100-year system study, gated)
+   Test503_ReferenceConvergence.log  (diagnostic: prints numbers, no checks)
 
 2) Taylor block Test504-522: 18/18 PASS, wall 675543 ms
    _runner_taylor_504_522.log

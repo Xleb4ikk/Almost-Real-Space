@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Galilego.Core;
@@ -563,10 +563,16 @@ namespace GalilegoPhysicsTests.Support
 
         public ScenarioExecution HasStepBudget(int expectedSteps, long expectedCalls, double relativeTolerance)
         {
-            // Tiny rows are pinned exactly: a ±2 floor on a 1-step row accepts a
-            // 3x step-control regression. Larger rows keep the ±10% gate.
-            int stepTolerance = (int)Math.Floor(expectedSteps * relativeTolerance);
-            long callTolerance = (long)Math.Floor(expectedCalls * relativeTolerance);
+            // Rows with fewer than ten steps are pinned exactly: a floor on a
+            // tiny row otherwise accepts a 2–3x step-control regression. Larger
+            // rows keep the +/-10% gate.
+            bool exactRow = expectedSteps < 10;
+            int stepTolerance = exactRow
+                ? 0
+                : (int)Math.Floor(expectedSteps * relativeTolerance);
+            long callTolerance = exactRow
+                ? 0L
+                : (long)Math.Floor(expectedCalls * relativeTolerance);
             bool stepsMatch = Math.Abs(Steps - expectedSteps) <= stepTolerance;
             bool callsMatch = Math.Abs(RhsCalls - expectedCalls) <= callTolerance;
             if (!stepsMatch || !callsMatch)
@@ -575,8 +581,8 @@ namespace GalilegoPhysicsTests.Support
                     "step budget",
                     Steps,
                     expectedSteps,
-                    "steps " + Steps + " (expected " + expectedSteps + "±" + stepTolerance +
-                    "), RHS " + RhsCalls + " (expected " + expectedCalls + "±" + callTolerance + ")",
+                    "steps " + Steps + " (expected " + expectedSteps + "+/-" + stepTolerance +
+                    "), RHS " + RhsCalls + " (expected " + expectedCalls + "+/-" + callTolerance + ")",
                     "Step control changed. steps " + Steps + "/" + expectedSteps +
                     ", RHS " + RhsCalls + "/" + expectedCalls + ".");
             }
@@ -652,14 +658,17 @@ namespace GalilegoPhysicsTests.Support
             }
 
             ScenarioExecution tighter = Execute(Scenario, Integrator, tighterTolerance, 1);
-            bool errorNotWorse = tighter.MaxPositionError <= Math.Max(MaxPositionError * 1.05d, 1e-9d);
-            bool moreSteps = tighter.Steps >= Steps;
+            // A tighter tolerance that takes no extra step has not exercised the
+            // controller, and an error that grows is not convergence. No slack:
+            // the previous 5% "worse is fine" band could hide a controller bug.
+            bool errorNotWorse = tighter.MaxPositionError <= Math.Max(MaxPositionError, 1e-9d);
+            bool moreSteps = tighter.Steps > Steps;
             if (!errorNotWorse || !moreSteps)
             {
                 ThrowFailure(
                     "сходимость при ужесточении допуска",
                     tighter.MaxPositionError,
-                    Math.Max(MaxPositionError * 1.05d, 1e-9d),
+                    Math.Max(MaxPositionError, 1e-9d),
                     "м",
                     "При tol=" + tighterTolerance.ToString("R") +
                     " ошибка не уменьшилась или шагов не прибавилось. steps=" + Steps + " -> " +
@@ -693,7 +702,7 @@ namespace GalilegoPhysicsTests.Support
                 {
                     state = data.Final;
                 }
-                else if (data.Segments.Count > 0)
+                else if (data.Segments != null && data.Segments.Count > 0)
                 {
                     state = DenseSegment.EvaluateTrack(data.Segments, time);
                 }
@@ -741,9 +750,10 @@ namespace GalilegoPhysicsTests.Support
             }
 
             builder.AppendLine("Шагов: " + Steps + "; вызовов RHS: " + RhsCalls +
-                               "; кусков: " + Chunks + "; сегментов dense: " + Segments.Count + ".");
-            builder.AppendLine("Таблица (t, |Δpos|, м; |Δvel|, м/с; дрейф E, отн.):");
-            builder.AppendLine("        t,          |Δpos|,          |Δvel|,         дрейф E");
+                               "; кусков: " + Chunks + "; сегментов dense: " +
+                               (Segments != null ? Segments.Count : 0) + ".");
+            builder.AppendLine("Таблица (t, |dpos|, м; |dvel|, м/с; дрейф E, отн.):");
+            builder.AppendLine("        t,          |dpos|,          |dvel|,         дрейф E");
             int stride = Math.Max(1, samples.Count / 10);
             for (int i = 0; i < samples.Count; i += stride)
             {

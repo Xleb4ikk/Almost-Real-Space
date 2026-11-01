@@ -1,4 +1,4 @@
-﻿using Galilego.Core;
+using Galilego.Core;
 using Galilego.Spacecraft;
 using Xunit;
 using Xunit.Abstractions;
@@ -28,11 +28,11 @@ namespace GalilegoPhysicsTests
     }
 
     /// <summary>
-    /// Test C тАФ mass / Tsiolkovsky check: a burn with constant force F and
-    /// constant flow с╣Б, no gravity. With a CONSTANT flow mass decreases
-    /// LINEARLY: m(t) = m0 тИТ с╣Б┬╖t (not an exponential тАФ that would require a
-    /// flow proportional to mass). The resulting ╬Фv must match the Tsiolkovsky
-    /// formula for this case: ╬Фv = (F/с╣Б)┬╖ln(m0/m1).
+    /// Test C — mass / Tsiolkovsky check: a burn with constant force F and
+    /// constant flow ṁ, no gravity. With a CONSTANT flow mass decreases
+    /// LINEARLY: m(t) = m0 − ṁ·t (not an exponential — that would require a
+    /// flow proportional to mass). The resulting dv must match the Tsiolkovsky
+    /// formula for this case: dv = (F/ṁ)·ln(m0/m1).
     /// </summary>
     public sealed class TsiolkovskyTests
     {
@@ -71,14 +71,14 @@ namespace GalilegoPhysicsTests
             double dv = ship.Velocity.Magnitude;
             double dvRelErr = System.Math.Abs(dv - expectedDv) / expectedDv;
 
-            output.WriteLine($"m1 ╤З╨╕╤Б╨╗. = {ship.Mass:R}, ╨░╨╜╨░╨╗╨╕╤В. = {expectedMass:R}, ╨╛╤В╨╜. ╨╛╤И╨╕╨▒╨║╨░: {massRelErr:G}.");
-            output.WriteLine($"╬Фv ╤З╨╕╤Б╨╗. = {dv:R} ╨╝/╤Б, ╨░╨╜╨░╨╗╨╕╤В. = {expectedDv:R} ╨╝/╤Б, ╨╛╤В╨╜. ╨╛╤И╨╕╨▒╨║╨░: {dvRelErr:G}.");
-            output.WriteLine($"╨Э╨░╨┐╤А╨░╨▓╨╗╨╡╨╜╨╕╨╡ ╬Фv: ({ship.Velocity.X:G}, {ship.Velocity.Y:G}, {ship.Velocity.Z:G}).");
+            output.WriteLine($"m1 числ. = {ship.Mass:R}, аналит. = {expectedMass:R}, отн. ошибка: {massRelErr:G}.");
+            output.WriteLine($"dv числ. = {dv:R} м/с, аналит. = {expectedDv:R} м/с, отн. ошибка: {dvRelErr:G}.");
+            output.WriteLine($"Направление dv: ({ship.Velocity.X:G}, {ship.Velocity.Y:G}, {ship.Velocity.Z:G}).");
 
-            Assert.True(massRelErr < 1e-9, $"╨Ь╨░╤Б╤Б╨░ ╨╜╨╡ ╨┐╨╛ ╨╗╨╕╨╜╨╡╨╣╨╜╨╛╨╝╤Г ╨╖╨░╨║╨╛╨╜╤Г: ╨╛╤И╨╕╨▒╨║╨░ {massRelErr:G}.");
-            Assert.True(dvRelErr < 1e-6, $"╬Фv ╨╜╨╡ ╨┐╨╛ ╨ж╨╕╨╛╨╗╨║╨╛╨▓╤Б╨║╨╛╨╝╤Г: ╨╛╤И╨╕╨▒╨║╨░ {dvRelErr:G}.");
-            Assert.True(System.Math.Abs(ship.Velocity.Y) / dv < 1e-9, "╨в╤П╨│╨░ ╨╛╨▒╤П╨╖╨░╨╜╨░ ╨▒╤Л╤В╤М ╤Б╤В╤А╨╛╨│╨╛ ╨▓╨┤╨╛╨╗╤М +X.");
-            Assert.True(System.Math.Abs(ship.Velocity.Z) / dv < 1e-9, "╨в╤П╨│╨░ ╨╛╨▒╤П╨╖╨░╨╜╨░ ╨▒╤Л╤В╤М ╤Б╤В╤А╨╛╨│╨╛ ╨▓╨┤╨╛╨╗╤М +X.");
+            Assert.True(massRelErr < 1e-9, $"Масса не по линейному закону: ошибка {massRelErr:G}.");
+            Assert.True(dvRelErr < 1e-6, $"dv не по Циолковскому: ошибка {dvRelErr:G}.");
+            Assert.True(System.Math.Abs(ship.Velocity.Y) / dv < 1e-9, "Тяга обязана быть строго вдоль +X.");
+            Assert.True(System.Math.Abs(ship.Velocity.Z) / dv < 1e-9, "Тяга обязана быть строго вдоль +X.");
         }
     }
 }

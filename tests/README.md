@@ -23,7 +23,10 @@ dotnet test tests/GalilegoSimTests/GalilegoSimTests.csproj
 `..\..\Assets\_Project\Scripts\Core\**\*.cs` glob, not by a handwritten list.
 It includes fast production-path `SpacecraftPhysics` + `ToleranceFrameSystem`
 tests (`LocalFrameTests`) at 1 AU, including an independent hand-written RK4
-reference and a local+dense segment walk.
+reference and a local+dense segment walk. `ProductionPathTests` adds direct
+checks of the full wrapper against a closed-form Kepler solution (absolute and
+local frame, DOP853 and the DOPRI5 option), a local-vs-absolute frame
+equivalence check, and a J2 magnitude check on `GravitySource`.
 
 ## Quick start
 
@@ -44,8 +47,8 @@ artifacts and may run for rows that do not yet have a `ToleranceTable` entry.
 
 Traits are per matrix row: `Integrator`, `Scenario`, `Tier`, `ScenarioClass`.
 Every fast test class and fast StepController method carries `Tier=Fast`; slow
-matrix rows, the 1-year golden and the slow StepController methods carry
-`Tier=Slow`.
+matrix rows, the 1-year golden, `CalibrationTests` (it sweeps the whole matrix)
+and the slow StepController methods carry `Tier=Slow`.
 
 ```powershell
 dotnet test tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj --filter "Integrator=Dop853&Scenario~Kepler"
@@ -69,8 +72,8 @@ traits and runs conservation, oracle and step-budget checks.
 ### Step budget is mandatory
 
 `Support/StepBudget.cs` pins the measured step count and RHS-call count for every
-matrix row within ±10%. Rows with at most three steps (the short thrust cases)
-are pinned exactly, so a 2–3? step-control regression cannot hide behind an
+matrix row within Â±10%. Rows with fewer than ten steps (the short thrust cases)
+are pinned exactly, so a 2â€“3x step-control regression cannot hide behind an
 absolute floor. This is a regression gate for step control, not a wall-clock
 benchmark.
 
@@ -98,7 +101,8 @@ dotnet test tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj --filter "Ful
 Remove-Item Env:GALILEGO_CALIBRATE
 ```
 
-Calibration runs **all** matrix rows, including Slow scenarios, and writes:
+`CalibrationTests` is `Tier=Slow` because it runs **all** matrix rows, including
+Slow scenarios, and writes:
 
 - `TestResults/calibration.md` - measured steps, RHS calls and errors;
 - `TestResults/step-budget-snippet.cs` - ready-to-paste dense `StepBudget`
@@ -163,7 +167,8 @@ DOP853 dense output uses the 16-stage extended tableau: the 12 method stages,
 the FSAL stage and three extra stages. That costs 3 additional RHS evaluations
 per accepted step only when a dense-segment collector is supplied.
 `DenseVelocityInterpolationMatchesTheOracle` also checks the dense velocity
-inside segments, using half the endpoint velocity gate for the same row.
+inside segments, using three quarters of the endpoint velocity gate for the
+same row (still tighter than the matrix row; half left too little margin).
 
 ## Reading a failure
 
@@ -188,8 +193,10 @@ field.
 fit the gate, and the gate must stay within 4x of the measurement (with floors
 for tiny mass/energy values). `AbsoluteAccuracyCeilingTests` adds hardcoded
 absolute ceilings at `1e-9` and `1e-6`, tighter than the periapsis-relative
-physical gate and independent of the calibration table. Do not relax a gate
-just to make a test green; recalibrate with `GALILEGO_CALIBRATE=1`.
+physical gate and independent of the calibration table. Those ceilings are
+tight regression locks pinned to the measured error (at most 4x headroom), not
+bounds derived from first principles. Do not relax a gate just to make a test
+green; recalibrate with `GALILEGO_CALIBRATE=1`.
 
 ## Golden data
 
@@ -211,15 +218,18 @@ just to make a test green; recalibrate with `GALILEGO_CALIBRATE=1`.
   origin`. Both DOP853 and DOPRI5 are checked against them, each with its own
   absolute gates.
 - The 1-year golden checks 65 interior samples through the analytic Kepler
-  oracle for DOP853 (gate 0.5 m). DOPRI5 is deliberately not certified on that
-  case; `Dopri5YearLongGoldenStaysFinite` only requires a finite, non-stalled
-  run at a coarse tolerance.
+  oracle for DOP853 (gate 1.0 m). DOPRI5 is deliberately not certified on that
+  case; `Dopri5YearLongGoldenStaysFinite` requires a finite, non-stalled run at
+  a coarse tolerance plus divergence bounds (within twice the orbit size and
+  twice the periapsis speed), so an escape or collapse cannot pass. It is not
+  an accuracy gate: DOPRI5 measures ~9,000 km of phase drift over the year.
 - Core golden gates are absolute per case, not drawn from `ToleranceTable`.
   DOP853: 3.0e-7 m circular, 4.5e-7 m e=0.5, 1.4e-5 m e=0.9, 4.8e-4 m e=0.99,
-  7.5e-7 m near-parabolic, 2.3e-8 m hyperbolic, 9.0e-7 m inclined, 0.5 m for
+  7.5e-7 m near-parabolic, 2.3e-8 m hyperbolic, 9.0e-7 m inclined, 1.0 m for
   the 1-year case. DOPRI5 uses its own measured gates (wider at high
   eccentricity). The 1-year eccentric case (a=10,000 km, e=0.5) covers about
-  100 orbits; the 10-year circular case was removed because it cost ~59 s and
+  100 orbits and uses a 1.0 m / 1.5e-3 m/s gate (measured 0.389 m /
+  5.64e-4 m/s); the 10-year circular case was removed because it cost ~59 s and
   8M steps without adding a different failure mode.
 - Regenerate Core goldens with:
 
@@ -231,8 +241,14 @@ python gen_core_kepler.py
 ## What remains in the stand
 
 `Tools/P1bTests --fast` has 175 cases (the 100-year bake is Slow after its
-coverage/finite-endpoint checks were added). It owns
-tests that depend on Unity-adjacent code outside Core: `Planet`, `Universe`,
+coverage/finite-endpoint checks were added); 71 cases are Slow and 7 are
+`diagnostic`. Analysis-only cases that assert nothing
+(`Test112b_GradientSetAnalysis`, `Test112c_RidgedDistribution`,
+`Test112d_DampSignalHistogram`, `Test125_HashAxisMultiplier`,
+`Test127_HashFixField`, `Test142_ContinentsDiag`, `Test503_ReferenceConvergence`)
+are `diagnostic`: they are skipped by the normal fast/slow sweeps and run only
+with `--diagnostics` or `--exact`, so they cannot be counted as passing checks.
+P1b also owns tests that depend on Unity-adjacent code outside Core: `Planet`, `Universe`,
 `Spacecraft`, `Events`, `Ephemeris`, `Debris`, terrain, atmosphere and the
 long-running benchmark/experiment matrix.
 

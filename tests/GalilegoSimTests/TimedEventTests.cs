@@ -1,4 +1,4 @@
-﻿using Galilego.Events;
+using Galilego.Events;
 using Galilego.Spacecraft;
 using Galilego.Universe;
 using Xunit;
@@ -7,9 +7,9 @@ using Xunit.Abstractions;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Test F тАФ timed event. Circular-orbit drift plus a TimedEvent in the middle
+    /// Test F — timed event. Circular-orbit drift plus a TimedEvent in the middle
     /// of the interval: the event time must be exactly TimeSeconds, the mass jump
-    /// exactly ╬Фm (the discontinuity is applied at the accepted step boundary,
+    /// exactly Δm (the discontinuity is applied at the accepted step boundary,
     /// bit-for-bit), and continuing past the event must not fire it again
     /// (the event is consumed). Violating MinimumMassKg throws loudly, not a silent clamp.
     /// </summary>
@@ -41,17 +41,17 @@ namespace GalilegoPhysicsTests
             var ship = new Spacecraft(pos0, vel0, TestScene.ShipMass);
             EventOccurrence? first = propagator.Propagate(ship, 0d, 2000d);
 
-            Assert.True(first.HasValue, "╨Я╨╗╨░╨╜╨╛╨▓╨╛╨╡ ╤Б╨╛╨▒╤Л╤В╨╕╨╡ ╨╜╨╡ ╤Б╤А╨░╨▒╨╛╤В╨░╨╗╨╛.");
+            Assert.True(first.HasValue, "Плановое событие не сработало.");
             Assert.Equal(1000.0, first.Value.TimeSeconds);
             Assert.Equal(800.0, first.Value.State.Mass);
             Assert.Equal(800.0, ship.Mass);
 
             // Restart from the root: the event is consumed, pure drift to the end after that.
             EventOccurrence? second = propagator.Propagate(ship, first.Value.TimeSeconds, 1000d);
-            Assert.False(second.HasValue, "╨Я╨╛╤В╤А╨╡╨▒╨╗╤С╨╜╨╜╨╛╨╡ ╤Б╨╛╨▒╤Л╤В╨╕╨╡ ╤Б╤А╨░╨▒╨╛╤В╨░╨╗╨╛ ╨┐╨╛╨▓╤В╨╛╤А╨╜╨╛.");
+            Assert.False(second.HasValue, "Потреблённое событие сработало повторно.");
             Assert.Equal(800.0, ship.Mass);
 
-            output.WriteLine($"╨б╨╛╨▒╤Л╤В╨╕╨╡ ╤А╨╛╨▓╨╜╨╛ ╨▓ t = {first.Value.TimeSeconds:F3} ╤Б, ╨╝╨░╤Б╤Б╨░ 1000 тЖТ {ship.Mass:F3} ╨║╨│, ╨┐╨╛╨▓╤В╨╛╤А╨░ ╨╜╨╡╤В.");
+            output.WriteLine($"Событие ровно в t = {first.Value.TimeSeconds:F3} с, масса 1000 -> {ship.Mass:F3} кг, повтора нет.");
         }
 
         [Fact]
@@ -72,7 +72,7 @@ namespace GalilegoPhysicsTests
 
             var ship = new Spacecraft(pos0, vel0, TestScene.ShipMass);
             Assert.Throws<System.InvalidOperationException>(() => propagator.Propagate(ship, 0d, 2000d));
-            output.WriteLine("╨Э╨░╤А╤Г╤И╨╡╨╜╨╕╨╡ MinimumMassKg тАФ ╨│╤А╨╛╨╝╨║╨╕╨╣ throw, ╨║╨░╨║ ╤В╤А╨╡╨▒╤Г╨╡╤В╤Б╤П.");
+            output.WriteLine("Нарушение MinimumMassKg — громкий throw, как требуется.");
         }
     }
 }

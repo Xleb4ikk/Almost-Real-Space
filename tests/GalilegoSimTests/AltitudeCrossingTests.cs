@@ -1,4 +1,4 @@
-﻿using Galilego.Core;
+using Galilego.Core;
 using Galilego.Events;
 using Galilego.Spacecraft;
 using Galilego.Universe;
@@ -8,9 +8,9 @@ using Xunit.Abstractions;
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Test E тАФ altitude-shell crossing. An elliptical orbit (rp = 7e6,
+    /// Test E — altitude-shell crossing. An elliptical orbit (rp = 7e6,
     /// ra = 9e6) crosses the 7.5e6 shell twice per revolution; the first
-    /// (rising) crossing is checked against an independent reference тАФ fixed-step
+    /// (rising) crossing is checked against an independent reference — fixed-step
     /// RK4 (a different method, not the same code) with its own bisection.
     /// </summary>
     public sealed class AltitudeCrossingTests
@@ -83,7 +83,7 @@ namespace GalilegoPhysicsTests
                 gPrev = gNext;
             }
 
-            throw new System.InvalidOperationException("╨а╨╡╤Д╨╡╤А╨╡╨╜╤Б ╨╜╨╡ ╨╜╨░╤И╤С╨╗ ╨┐╨╡╤А╨╡╤Б╨╡╤З╨╡╨╜╨╕╤П тАФ ╨╜╨╡╨▓╨╡╤А╨╜╨░╤П ╤Б╤Ж╨╡╨╜╨░.");
+            throw new System.InvalidOperationException("Референс не нашёл пересечения — неверная сцена.");
         }
 
         internal static Vector3d PropagateRk4(
@@ -120,7 +120,7 @@ namespace GalilegoPhysicsTests
             var ship = new Spacecraft(pos0, vel0, TestScene.ShipMass);
             EventOccurrence? occurrence = propagator.Propagate(ship, 0d, period);
 
-            Assert.True(occurrence.HasValue, "╨б╨╛╨▒╤Л╤В╨╕╨╡ ╨┐╨╡╤А╨╡╤Б╨╡╤З╨╡╨╜╨╕╤П ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜╨╛ ╨╖╨░ ╨▓╨╕╤В╨╛╨║.");
+            Assert.True(occurrence.HasValue, "Событие пересечения не найдено за виток.");
             double tDetect = occurrence.Value.TimeSeconds;
             double rDetect = occurrence.Value.State.Position.Magnitude;
 
@@ -128,15 +128,15 @@ namespace GalilegoPhysicsTests
             double timeErr = System.Math.Abs(tDetect - tRef);
             double radiusErr = System.Math.Abs(rDetect - ShellRadius);
 
-            output.WriteLine($"╨Ф╨╡╤В╨╡╨║╤В: t = {tDetect:F6} ╤Б, r = {rDetect:F4} ╨╝.");
-            output.WriteLine($"╨а╨╡╤Д╨╡╤А╨╡╨╜╤Б RK4: t = {tRef:F6} ╤Б. ╨Ю╤И╨╕╨▒╨║╨░ ╨┐╨╛ ╨▓╤А╨╡╨╝╨╡╨╜╨╕: {timeErr:G} ╤Б, ╨┐╨╛ ╤А╨░╨┤╨╕╤Г╤Б╤Г: {radiusErr:G} ╨╝.");
+            output.WriteLine($"Детект: t = {tDetect:F6} с, r = {rDetect:F4} м.");
+            output.WriteLine($"Референс RK4: t = {tRef:F6} с. Ошибка по времени: {timeErr:G} с, по радиусу: {radiusErr:G} м.");
 
             // The driver's declared root tolerance is 1e-6 s
             // (EventDrivenPropagator.DefaultRootToleranceSeconds). A 1e-5 s gate
             // is 10x that budget, not 0.5 s: at 7 km/s the old gate accepted a
             // 3.5 km along-track error.
-            Assert.True(timeErr < 1e-5, $"╨Т╤А╨╡╨╝╤П ╤Б╨╛╨▒╤Л╤В╨╕╤П ╤А╨░╨╖╨╛╤И╨╗╨╛╤Б╤М ╤Б ╤А╨╡╤Д╨╡╤А╨╡╨╜╤Б╨╛╨╝: {timeErr:G} ╤Б.");
-            Assert.True(radiusErr < 1e-2, $"╨а╨░╨┤╨╕╤Г╤Б ╨▓ ╨║╨╛╤А╨╜╨╡ ╨╜╨╡ ╨╜╨░ ╨╛╨▒╨╛╨╗╨╛╤З╨║╨╡: {radiusErr:G} ╨╝.");
+            Assert.True(timeErr < 1e-5, $"Время события разошлось с референсом: {timeErr:G} с.");
+            Assert.True(radiusErr < 1e-2, $"Радиус в корне не на оболочке: {radiusErr:G} м.");
             Assert.Same(star, occurrence.Value.Body);
         }
     }

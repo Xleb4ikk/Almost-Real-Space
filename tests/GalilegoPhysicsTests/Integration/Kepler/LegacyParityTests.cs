@@ -57,8 +57,8 @@ namespace GalilegoPhysicsTests.Integration.Kepler
             }
 #pragma warning restore 0618
 
-            output.WriteLine("Legacy parity: max |ΔP|=" + worstPosition.ToString("E3") +
-                             " m, max |ΔV|=" + worstVelocity.ToString("E3") + " m/s.");
+            output.WriteLine("Legacy parity: max |dP|=" + worstPosition.ToString("E3") +
+                             " m, max |dV|=" + worstVelocity.ToString("E3") + " m/s.");
             Asserts.True(worstPosition < 1e-6, "legacy position parity " + worstPosition.ToString("E3"));
             Asserts.True(worstVelocity < 1e-9, "legacy velocity parity " + worstVelocity.ToString("E3"));
         }

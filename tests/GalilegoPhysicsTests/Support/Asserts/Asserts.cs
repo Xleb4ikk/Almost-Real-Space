@@ -44,7 +44,7 @@ namespace GalilegoPhysicsTests.Support
                 throw new XunitException(
                     what + ": измерено " + actual.ToString("R") +
                     ", ожидалось " + expected.ToString("R") +
-                    " (|Δ|=" + error.ToString("R") + " > tol=" + tolerance.ToString("R") + ").");
+                    " (|err|=" + error.ToString("R") + " > tol=" + tolerance.ToString("R") + ").");
             }
         }
 
@@ -58,7 +58,7 @@ namespace GalilegoPhysicsTests.Support
                 throw new XunitException(
                     what + ": измерено " + actual.ToString("R") +
                     ", ожидалось " + expected.ToString("R") +
-                    " (отн. |Δ|=" + relative.ToString("R") + " > tol=" + relativeTolerance.ToString("R") + ").");
+                    " (отн. |err|=" + relative.ToString("R") + " > tol=" + relativeTolerance.ToString("R") + ").");
             }
         }
 
@@ -68,7 +68,7 @@ namespace GalilegoPhysicsTests.Support
             if (!(error <= tolerance))
             {
                 throw new XunitException(
-                    what + ": |Δ|=" + error.ToString("R") + " м > tol=" + tolerance.ToString("R") +
+                    what + ": |err|=" + error.ToString("R") + " м > tol=" + tolerance.ToString("R") +
                     "; получено " + actual + ", ожидалось " + expected + ".");
             }
         }

@@ -1,10 +1,10 @@
-﻿using Galilego.Core;
+using Galilego.Core;
 using Galilego.Universe;
 
 namespace GalilegoPhysicsTests
 {
     /// <summary>
-    /// Shared test scene: a single central body with a known ╬╝ at the origin,
+    /// Shared test scene: a single central body with a known μ at the origin,
     /// and a ship on a circular orbit of radius a in the XY plane.
     /// </summary>
     internal static class TestScene

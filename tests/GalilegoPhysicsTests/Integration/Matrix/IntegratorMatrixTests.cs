@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using GalilegoPhysicsTests.Support;
 using GalilegoPhysicsTests.Support.Matrix;
 using GalilegoPhysicsTests.Support.Scenarios;
@@ -41,7 +41,7 @@ namespace GalilegoPhysicsTests.Integration.Matrix
                 Asserts.True(Math.Abs(productionCalls - expectedProductionCalls) <= callTolerance,
                     "production RHS budget for " + scenario.Id + " / " + matrix.IntegratorName +
                     " at tol=" + matrix.Tolerance.ToString("R") + ": " + productionCalls +
-                    ", expected " + expectedProductionCalls + "±" + callTolerance + ".");
+                    ", expected " + expectedProductionCalls + "+/-" + callTolerance + ".");
             }
 
             run.MatchesOracle(tolerance.OraclePositionMeters, tolerance.OracleVelocityMetersPerSecond);

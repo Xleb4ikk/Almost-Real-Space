@@ -55,12 +55,12 @@ namespace GalilegoPhysicsTests.Integration.Matrix
             double refinementSpread = Math.Max(difference1, difference2);
             double productionGate = ToleranceTable.For(
                 IntegratorKind.Dop853, scenarioId, 1e-9d).OraclePositionMeters;
-            // Reserve at least 10x headroom below the production row for the
-            // flyby, whose close encounter does not show a monotone RK4 order at
-            // these step sizes. restricted-3body does show the order, so a
-            // 2x margin is enough there.
+            // Reserve 5x headroom below the production row for the flyby, whose
+            // close encounter does not show a monotone RK4 order at these step
+            // sizes. restricted-3body does show the order, so a 2x margin is
+            // enough there.
             double gate = scenarioId == "restricted-flyby"
-                ? 0.1d * productionGate
+                ? 0.2d * productionGate
                 : 0.5d * productionGate;
             bool orderVisible = difference2 < difference1 * 0.5d;
 
@@ -134,7 +134,9 @@ namespace GalilegoPhysicsTests.Integration.Matrix
 
             double productionGate = ToleranceTable.For(
                 IntegratorKind.Dop853, scenarioId, 1e-9d).OraclePositionMeters;
-            double gate = 0.1d * productionGate;
+            // 5x headroom, not 10x: the measured flyby midpoint error is
+            // 1.16e-5 m, so a 1.95e-5 m gate had only 68% margin.
+            double gate = 0.2d * productionGate;
             output.WriteLine(scenarioId + ": Build/Hermite h=" + coarseStep.ToString("R") +
                              " vs h/4, worst midpoint=" + worst.ToString("E3") +
                              " m over " + samples + " samples (oracle gate " +

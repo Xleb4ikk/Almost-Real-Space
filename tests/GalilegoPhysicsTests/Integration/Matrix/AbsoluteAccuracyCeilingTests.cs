@@ -14,9 +14,10 @@ namespace GalilegoPhysicsTests.Integration.Matrix
     ///
     /// A periapsis-relative gate alone is far too loose on large orbits (0.2%
     /// of a 7,000 km orbit is 14 km). <see cref="PositionAndVelocityStayUnderAbsoluteCeilings"/>
-    /// keeps the old hardcoded absolute requirements as an additional,
-    /// independent gate. Those numbers are deliberately not read from
-    /// ToleranceTable: a stale calibration cannot silently relax them.
+    /// adds tight absolute ceilings pinned to the measured error (at most 4x
+    /// headroom). Those numbers are deliberately not read from ToleranceTable:
+    /// a stale calibration cannot silently relax them. They are regression
+    /// locks, not requirements derived from first principles.
     /// </summary>
     [Trait("Tier", "Fast")]
     public sealed class AbsoluteAccuracyCeilingTests
@@ -70,7 +71,8 @@ namespace GalilegoPhysicsTests.Integration.Matrix
         }
 
         [Theory]
-        // tol=1e-9. These are hard requirements, not ToleranceTable lookups.
+        // tol=1e-9. Tight regression ceilings pinned to the measured error, not
+        // ToleranceTable lookups and not physically derived bounds.
         [InlineData("Dop853", "kepler-circular", 1e-9d, 3e-5d, 3e-8d)]
         [InlineData("Dop853", "kepler-e05", 1e-9d, 2.5e-4d, 3.5e-7d)]
         [InlineData("Dop853", "kepler-e09", 1e-9d, 2.5e-3d, 4e-5d)]

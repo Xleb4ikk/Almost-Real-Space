@@ -20,12 +20,20 @@ internal static partial class P1bTests
         // opt-in (--generators) and never part of the normal fast/slow sweep.
         public readonly bool Generator;
 
-        public P1bCase(string name, Func<int> run, bool slow, bool generator = false)
+        // Analysis harnesses: they print measurements but assert nothing. They
+        // are opt-in (--diagnostics) so a normal sweep cannot report them as
+        // passing checks they never made.
+        public readonly bool Diagnostic;
+
+        public P1bCase(
+            string name, Func<int> run, bool slow, bool generator = false,
+            bool diagnostic = false)
         {
             Name = name;
             Run = run;
             Slow = slow;
             Generator = generator;
+            Diagnostic = diagnostic;
         }
     }
 
@@ -156,24 +164,24 @@ internal static partial class P1bTests
             new P1bCase("Test109_TerrainPads", Test109_TerrainPads, false),
             new P1bCase("Test110_TerrainNoiseBench", Test110_TerrainNoiseBench, true),
             new P1bCase("Test111_NoisePrimitiveBench", Test111_NoisePrimitiveBench, true),
-            new P1bCase("Test112b_GradientSetAnalysis", Test112b_GradientSetAnalysis, true),
+            new P1bCase("Test112b_GradientSetAnalysis", Test112b_GradientSetAnalysis, true, diagnostic: true),
             new P1bCase("Test112_GradientSetSymmetry", Test112_GradientSetSymmetry, false),
             new P1bCase("Test113_LatticeDotMatchesTable", Test113_LatticeDotMatchesTable, true),
             new P1bCase("Test114_DerivativeMatchesFiniteDifference", Test114_DerivativeMatchesFiniteDifference, true),
             new P1bCase("Test115_DerivativeContinuousAtCellEdge", Test115_DerivativeContinuousAtCellEdge, true),
             new P1bCase("Test116_NoiseStyleAcceptance", Test116_NoiseStyleAcceptance, true),
-            new P1bCase("Test112c_RidgedDistribution", Test112c_RidgedDistribution, true),
+            new P1bCase("Test112c_RidgedDistribution", Test112c_RidgedDistribution, true, diagnostic: true),
             new P1bCase("Test117_EarthLikeProfileDrift", Test117_EarthLikeProfileDrift, false),
-            new P1bCase("Test112d_DampSignalHistogram", Test112d_DampSignalHistogram, true),
+            new P1bCase("Test112d_DampSignalHistogram", Test112d_DampSignalHistogram, true, diagnostic: true),
             new P1bCase("Test118_RidgeFoldRange", Test118_RidgeFoldRange, true),
             new P1bCase("Test119_RidgedGammaSweep", Test119_RidgedGammaSweep, true),
             new P1bCase("Test120_DampIsNotNoOp", Test120_DampIsNotNoOp, true),
             new P1bCase("Test121_WarpSteps", Test121_WarpSteps, true),
             new P1bCase("Test123_RidgeLevelLevers", Test123_RidgeLevelLevers, true),
             new P1bCase("Test124_AnisotropyBisect", Test124_AnisotropyBisect, true),
-            new P1bCase("Test125_HashAxisMultiplier", Test125_HashAxisMultiplier, true),
+            new P1bCase("Test125_HashAxisMultiplier", Test125_HashAxisMultiplier, true, diagnostic: true),
             new P1bCase("Test126_DerivativeAnisotropy", Test126_DerivativeAnisotropy, true),
-            new P1bCase("Test127_HashFixField", Test127_HashFixField, true),
+            new P1bCase("Test127_HashFixField", Test127_HashFixField, true, diagnostic: true),
             new P1bCase("Test128_ShapeBound", Test128_ShapeBound, true),
             new P1bCase("Test129_HeightTail", Test129_HeightTail, false),
             new P1bCase("Test130_TailCompression", Test130_TailCompression, false),
@@ -188,7 +196,7 @@ internal static partial class P1bTests
             new P1bCase("Test139_SnellWindowReference", Test139_SnellWindowReference, false),
             new P1bCase("Test140_UnderwaterBanding", Test140_UnderwaterBanding, false),
             new P1bCase("Test141_ContinentsConnectivity", Test141_ContinentsConnectivity, true),
-            new P1bCase("Test142_ContinentsDiag", Test142_ContinentsDiag, true),
+            new P1bCase("Test142_ContinentsDiag", Test142_ContinentsDiag, true, diagnostic: true),
             new P1bCase("Test143_PerlinAssetDrift", Test143_PerlinAssetDrift, false),
             new P1bCase("Test200_CylinderInertia", Test200_CylinderInertia, false),
             new P1bCase("Test201_ExplicitMassAndScaling", Test201_ExplicitMassAndScaling, false),
@@ -240,7 +248,7 @@ internal static partial class P1bTests
             new P1bCase("Test401_StagePropulsionFlight", Test401_StagePropulsionFlight, false),
             new P1bCase("Test500_IntegratorStudyFast", Test500_IntegratorStudyFast, false),
             new P1bCase("Test501_IntegratorStudySlow", Test501_IntegratorStudySlow, true),
-            new P1bCase("Test503_ReferenceConvergence", Test503_ReferenceConvergence, true),
+            new P1bCase("Test503_ReferenceConvergence", Test503_ReferenceConvergence, true, diagnostic: true),
             new P1bCase("Test504_TaylorReference", Test504_TaylorReference, true),
             new P1bCase("Test505_KnownProblems", Test505_KnownProblems, false),
             new P1bCase("Test506_KnownConvergence", Test506_KnownConvergence, true),

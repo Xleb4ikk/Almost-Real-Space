@@ -118,6 +118,7 @@ internal static partial class P1bTests
                     int code = RunCaseProcess(entry.Name, logDir);
                     Console.WriteLine(
                         "[" + entry.Name + "] " + (code == 0 ? "ok" : "FAIL")
+                        + (entry.Diagnostic ? " (diagnostic, no checks)" : "")
                         + " in " + caseWatch.ElapsedMilliseconds + " ms");
                     if (code != 0)
                     {
@@ -128,7 +129,17 @@ internal static partial class P1bTests
         Console.WriteLine("Parallel wall: " + watch.ElapsedMilliseconds + " ms");
         if (failed.Count == 0)
         {
-            Console.WriteLine("ALL PASS");
+            bool anyChecked = false;
+            foreach (P1bCase entry in cases)
+            {
+                if (!entry.Diagnostic)
+                {
+                    anyChecked = true;
+                    break;
+                }
+            }
+
+            Console.WriteLine(anyChecked ? "ALL PASS" : "DIAGNOSTICS COMPLETE (no checks)");
             return 0;
         }
 
@@ -153,6 +164,7 @@ internal static partial class P1bTests
         }
 
         Console.WriteLine("[" + entry.Name + "] " + (ok ? "ok" : "FAIL (exit " + code + ")") +
+                          (entry.Diagnostic ? " (diagnostic, no checks)" : "") +
                           " in " + caseWatch.ElapsedMilliseconds + " ms" +
                           (string.IsNullOrEmpty(phase) ? "" : " (" + phase + ")"));
         return ok;
@@ -200,6 +212,7 @@ internal static partial class P1bTests
         bool fastOnly = false;
         bool slowOnly = false;
         bool includeGenerators = false;
+        bool includeDiagnostics = false;
         int from = int.MinValue;
         int to = int.MaxValue;
         int jobs = 1;
@@ -215,8 +228,10 @@ internal static partial class P1bTests
             {
                 foreach (P1bCase entry in TestRegistry())
                 {
-                    Console.WriteLine(
-                        (entry.Generator ? "generator " : entry.Slow ? "slow " : "fast ") + entry.Name);
+                    string kind = entry.Diagnostic
+                        ? "diagnostic "
+                        : entry.Generator ? "generator " : entry.Slow ? "slow " : "fast ";
+                    Console.WriteLine(kind + entry.Name);
                 }
 
                 return 0;
@@ -282,6 +297,10 @@ internal static partial class P1bTests
             else if (args[i] == "--generators" || args[i] == "--include-generators")
             {
                 includeGenerators = true;
+            }
+            else if (args[i] == "--diagnostics" || args[i] == "--include-diagnostics")
+            {
+                includeDiagnostics = true;
             }
             else if (args[i] == "--log-dir" && i + 1 < args.Length)
             {
@@ -387,7 +406,7 @@ internal static partial class P1bTests
             }
 
             // --from/--to are needed because --filter matches a substring and
-            // test names are numbered (Test9, Test90�Test99), so "Test9" would
+            // test names are numbered (Test9, Test90..Test99), so "Test9" would
             // cover ten different numbers at once. Splitting into groups for
             // sequential runs without loading the CPU all at once is otherwise
             // impossible.
@@ -401,6 +420,11 @@ internal static partial class P1bTests
             }
 
             if (entry.Generator && !includeGenerators && exact == null)
+            {
+                continue;
+            }
+
+            if (entry.Diagnostic && !includeDiagnostics && exact == null)
             {
                 continue;
             }
@@ -421,6 +445,14 @@ internal static partial class P1bTests
         if (exact != null && selected.Count == 0)
         {
             Console.WriteLine("No exact case: " + exact);
+            return 1;
+        }
+
+        if (selected.Count == 0)
+        {
+            // A filter that matched nothing (or only opt-in diagnostic/generator
+            // cases) must not look like a green run in CI.
+            Console.WriteLine("No cases selected (diagnostics/generators are opt-in).");
             return 1;
         }
 
@@ -478,7 +510,19 @@ internal static partial class P1bTests
             RunSerialCase(entry, null);
         }
 
-        Console.WriteLine(failures == 0 ? "ALL PASS" : failures + " FAILURES");
+        bool anyCheckedSerial = false;
+        foreach (P1bCase entry in selected)
+        {
+            if (!entry.Diagnostic)
+            {
+                anyCheckedSerial = true;
+                break;
+            }
+        }
+
+        Console.WriteLine(failures == 0
+            ? (anyCheckedSerial ? "ALL PASS" : "DIAGNOSTICS COMPLETE (no checks)")
+            : failures + " FAILURES");
         return failures;
     }
 
