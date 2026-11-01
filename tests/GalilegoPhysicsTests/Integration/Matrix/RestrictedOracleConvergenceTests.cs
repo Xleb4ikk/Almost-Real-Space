@@ -11,8 +11,10 @@ namespace GalilegoPhysicsTests.Integration.Matrix
     /// The restricted N-body oracle is an independent fixed-step RK4, but its
     /// own error was never measured. Step halving gives a Richardson estimate:
     /// for a 4th-order method the fine-vs-medium difference is ~1/15 of the
-    /// remaining error. The oracle must converge at the expected order and its
-    /// estimated error must sit below the production gate it certifies.
+    /// remaining error. The oracle must sit well below the production gate it
+    /// certifies. restricted-3body also shows the expected order; the close
+    /// flyby does not at these steps, so there the test uses the stricter
+    /// stability-of-refinement certificate instead of a Richardson estimate.
     /// </summary>
     [Trait("Tier", "Fast")]
     public sealed class RestrictedOracleConvergenceTests
@@ -51,8 +53,15 @@ namespace GalilegoPhysicsTests.Integration.Matrix
             double difference1 = (medium.Position - coarse.Position).Magnitude;
             double difference2 = (fine.Position - medium.Position).Magnitude;
             double refinementSpread = Math.Max(difference1, difference2);
-            double gate = ToleranceTable.For(
+            double productionGate = ToleranceTable.For(
                 IntegratorKind.Dop853, scenarioId, 1e-9d).OraclePositionMeters;
+            // Reserve at least 10x headroom below the production row for the
+            // flyby, whose close encounter does not show a monotone RK4 order at
+            // these step sizes. restricted-3body does show the order, so a
+            // 2x margin is enough there.
+            double gate = scenarioId == "restricted-flyby"
+                ? 0.1d * productionGate
+                : 0.5d * productionGate;
             bool orderVisible = difference2 < difference1 * 0.5d;
 
             output.WriteLine(scenarioId + ": h=" + coarseStep.ToString("R") +
@@ -61,19 +70,20 @@ namespace GalilegoPhysicsTests.Integration.Matrix
                              " m, |h/4-h/2|=" + difference2.ToString("E3") +
                              " m, spread=" + refinementSpread.ToString("E3") +
                              " m, order visible=" + orderVisible +
-                             " (gate " + gate.ToString("E3") + " m).");
+                             " (oracle gate " + gate.ToString("E3") +
+                             " m, production gate " + productionGate.ToString("E3") + " m).");
 
-            // On the smooth flyby the RK4 truncation term is already below
-            // double roundoff at the scenario's 0.1 s step, so successive
-            // differences are not monotone and a Richardson estimate would be
-            // false precision. There the meaningful certificate is stability:
-            // the whole three-step spread stays below the production gate.
+            // On the flyby the close encounter makes successive differences
+            // non-monotone, so a Richardson estimate would be false precision.
+            // The meaningful certificate there is stability: the whole
+            // three-step spread must stay well below the production gate.
             // restricted-3body does show the order, so its Richardson estimate
             // must also stay below the gate.
             Asserts.True(refinementSpread <= gate,
                 scenarioId + ": refinement spread " + refinementSpread.ToString("E3") +
-                " m exceeds the production gate " + gate.ToString("E3") +
-                " m; the oracle's numerical uncertainty is not certified.");
+                " m exceeds the oracle gate " + gate.ToString("E3") +
+                " m (production gate " + productionGate.ToString("E3") +
+                " m); the oracle's numerical uncertainty is not certified.");
             if (orderVisible)
             {
                 double estimatedError = difference2 / 15d;
@@ -86,7 +96,7 @@ namespace GalilegoPhysicsTests.Integration.Matrix
 
         [Theory]
         [InlineData("restricted-3body", 0.5d)]
-        [InlineData("restricted-flyby", 0.1d)]
+        [InlineData("restricted-flyby", ScenarioCatalog.RestrictedFlybyOracleStepSeconds)]
         public void BuildHermiteTrajectoryStaysBelowTheGate(string scenarioId, double stepSeconds)
         {
             // restricted-flyby's Scenario.Oracle is Build + Hermite Evaluate, not
@@ -122,17 +132,20 @@ namespace GalilegoPhysicsTests.Integration.Matrix
                 samples++;
             }
 
-            double gate = ToleranceTable.For(
+            double productionGate = ToleranceTable.For(
                 IntegratorKind.Dop853, scenarioId, 1e-9d).OraclePositionMeters;
+            double gate = 0.1d * productionGate;
             output.WriteLine(scenarioId + ": Build/Hermite h=" + coarseStep.ToString("R") +
                              " vs h/4, worst midpoint=" + worst.ToString("E3") +
-                             " m over " + samples + " samples (gate " +
-                             gate.ToString("E3") + " m).");
+                             " m over " + samples + " samples (oracle gate " +
+                             gate.ToString("E3") + " m, production gate " +
+                             productionGate.ToString("E3") + " m).");
 
             Asserts.True(worst <= gate,
                 scenarioId + ": Build/Hermite error " + worst.ToString("E3") +
-                " m exceeds the production gate " + gate.ToString("E3") +
-                " m; the oracle interpolant is not certified.");
+                " m exceeds the oracle gate " + gate.ToString("E3") +
+                " m (production gate " + productionGate.ToString("E3") +
+                " m); the oracle interpolant is not certified.");
         }
 
         [Theory]

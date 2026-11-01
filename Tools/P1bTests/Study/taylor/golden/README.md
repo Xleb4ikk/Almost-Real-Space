@@ -1,4 +1,4 @@
-﻿# Taylor golden generators
+# Taylor golden generators
 
 These scripts reproduce the strings embedded in the C# tests. Run from this
 directory; they need only `mpmath` (and Python 3).
@@ -30,15 +30,15 @@ instead introduces errors of order 1e-15, which masks the dd result.
 
 ## Real-system exports and golden
 
-`Test518_EphemerisExport` writes two exports with the same ship orbit:
+`Test518_EphemerisExport` writes three exports with the same ship orbit:
 
-- `real_bake_export.json` — 60-day bake, `Days=30`; input for the 1/30-day
+- `real_bake_export.json` � 60-day bake, `Days=30`; input for the 1/30-day
   golden in `golden_real.json` (K=28, tol=1e-20, dps=40).
-- `real_bake_export_1y.json` — 1.1-year bake, `Days=365`; input for the
+- `real_bake_export_1y.json` � 1.1-year bake, `Days=365`; input for the
   1-year golden in `golden_real_1y_hi.json` (K=28, tol=1e-20, dps=40).
-- `real_bake_export_10y.json` — 10.1-year bake, `Days=3650`; input for the
+- `real_bake_export_10y.json` � 10.1-year bake, `Days=3650`; input for the
   optional 10-year golden. The oracle run at K=20/tol=1e-12 is roughly
-  5–7 hours with `gmpy2`; generate it with
+  5�7 hours with `gmpy2`; generate it with
   `--checkpoints 365,730,1095,1460,1825,2190,2555,2920,3285,3650`.
 
 Each export contains `T0`, `Days`, `Central` (Earth), ship absolute
@@ -55,6 +55,10 @@ python mp_golden_real.py real_bake_export_1y.json `
   --K 28 --tol 1e-20 --dps 40 --hmax 3600 `
   --checkpoints 365 --out golden_real_1y_hi.json
 ```
+
+The canonical files consumed by `Test516_DdRealBudget` must also carry
+`golden_error_estimate`; add `--certify` (or copy the estimates from the
+certified output). Without it the test fails loudly instead of crashing.
 
 Certify the 1-year golden (main run plus K+6, dps+10, tol/1e6):
 
@@ -97,9 +101,11 @@ change `ExportRealBake`'s span without regenerating the corresponding golden.
   (observed at k=15 and k=30). `BakedEphemeris.SegmentIndex` now snaps by
   a few ulps of the quotient; the 1-year error curve is smooth
   (`3.2e-9 m` at 30 d, `1.6e-7 m` at 365 d).
-- `golden_real_1y_hi.json` is certified: K=34, tol=1e-26, dps=50 gives
-  `|dp|=1.3e-16 m`, `|dv|=1.81e-20 m/s` at day 365. The certified P/V are
-  bit-identical to the pre-certify values.
+- `golden_real_1y_hi.json` carries the numerical certificate from the last
+  certification run: K=34, tol=1e-26, dps=50 gives `|dp|=1.3e-16 m`,
+  `|dv|=1.81e-20 m/s` at day 365. The certificate was reused after the
+  per-body-root model change because the oracle method and settings are
+  unchanged; rerun `--certify` if the generator itself changes.
 - `Test523_BakeGoldenBridge` checks that the in-memory bake is bit-identical
   to the export used by the golden (`maxCoeffDiff=0`, position/velocity
   difference 0 at 1, 30 and 365 days) and pins the SHA-256 of both export and
@@ -133,8 +139,9 @@ Pythagorean.cs           3C127ABA546393BFC9E6D35E8619740B89B8DB99AE00A93BA3DD7D3
 ChebyshevDegree.cs       4228CE65461A8E4346D30E5B5E1E0561E7F2675644770550E6E8DAE06F300840
 JetOracle.cs             C6CB9F9C5393E80B27016527B279953452D907BBDB2C4D7FD7D5F77996F6D61F
 real_bake_export.json    2AC44A9C1CA0BB5D1DD7B1A6D456BEBC4F36F2D3B21981C0A4E8E400882C0F92
-golden_real.json         0F1031664ED4B43B98B7B7C0B3E902F1C63BEAC4B702C8940A50335AC2A30082
+golden_real.json         6FA820F7C492500C2E7A8FDF3DBF93A2CB72323914104041FDEBFFFB50544A67
 real_bake_export_1y.json 80AB6A8CE9307B5C473DF15FC0E8A0DC491700738D895863E398905B1478E8B9
-golden_real_1y_hi.json   F4CD7D9CFAD2EF119EBAA3BB669785A737BBEEB310B82DEF99757C7DF5E2D33B
+golden_real_1y_hi.json   F5EB80C44B75AE98314098E6FD742EC16B21F16044521B47CCB39CBC06E94BFC
 real_bake_export_10y.json E16DD9D2D685CA8034C94C6A8BEE16F9385F6D1B1D285523D9EE56E920193BFC
+golden_real_10y_k28.json 72AB6A2D7B647321B15C1CD98B02868E03521ECFCB23A5916BEC92BF4A2B83A4
 ```

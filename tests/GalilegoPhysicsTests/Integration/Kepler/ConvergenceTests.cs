@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using Galilego.Core;
 using GalilegoPhysicsTests.Support;
+using GalilegoPhysicsTests.Support.Oracles;
 using GalilegoPhysicsTests.Support.Scenarios;
 using Xunit;
 using Xunit.Abstractions;
@@ -73,6 +76,77 @@ namespace GalilegoPhysicsTests.Integration.Kepler
                 integratorName + ": tighter tolerances did not improve the error by 100x (" +
                 Math.Exp(logError[0]).ToString("E2") + " -> " +
                 Math.Exp(logError[logError.Length - 1]).ToString("E2") + ").");
+        }
+
+        [Theory]
+        [InlineData("Dopri5", 5.5d)]
+        [InlineData("Dop853", 8.0d)]
+        public void OneFixedStepShowsTheMethodOrder(string integratorName, double minimumOrder)
+        {
+            Scenario scenario = ScenarioCatalog.Get("kepler-circular");
+            IntegratorKind integrator = integratorName == "Dop853"
+                ? IntegratorKind.Dop853
+                : IntegratorKind.Dopri5;
+            SpacecraftOrbitIntegrator.DerivativeFunction derivative =
+                (state, time) => scenario.Derivative(state, time);
+            double[] stepSizes = integrator == IntegratorKind.Dopri5
+                ? new[] { 600d, 300d, 150d, 75d, 37.5d }
+                : new[] { 600d, 300d, 150d, 75d };
+            var logH = new double[stepSizes.Length];
+            var logError = new double[stepSizes.Length];
+
+            for (int i = 0; i < stepSizes.Length; i++)
+            {
+                double h = stepSizes[i];
+                // A huge tolerance deliberately disables step rejection so this
+                // measures one full step of the published method. That is the
+                // local truncation order p+1, not the global order; the global
+                // order is pinned by the matrix, golden and absolute-accuracy
+                // gates. DenseOrderTests covers interpolation order separately.
+                var segments = new List<DenseSegment>();
+                SpacecraftIntegrationState final = integrator == IntegratorKind.Dopri5
+                    ? SpacecraftOrbitIntegrator.StepForward(
+                        scenario.InitialState, 0d, h, derivative,
+                        1e6d, 1e6d, 1e6d, 1e6d, segments).State
+                    : SpacecraftOrbitIntegrator.StepForwardDop853(
+                        scenario.InitialState, 0d, h, derivative,
+                        1e6d, 1e6d, 1e6d, 1e6d, segments).State;
+                Asserts.True(segments.Count == 1,
+                    integratorName + " h=" + h.ToString("R") + ": expected exactly one step, got " +
+                    segments.Count + ".");
+                OracleState oracle = scenario.Oracle(h);
+                double error = (final.Position - oracle.Position.ToVector3d()).Magnitude;
+                Asserts.True(error > 0d && double.IsFinite(error),
+                    integratorName + " h=" + h.ToString("R") + ": endpoint error is not finite.");
+                logH[i] = Math.Log(h);
+                logError[i] = Math.Log(error);
+                output.WriteLine(integratorName + " h=" + h.ToString("R") +
+                                 ": endpoint error=" + error.ToString("E3") + " m.");
+            }
+
+            double meanX = 0d;
+            double meanY = 0d;
+            for (int i = 0; i < logH.Length; i++)
+            {
+                meanX += logH[i];
+                meanY += logError[i];
+            }
+
+            meanX /= logH.Length;
+            meanY /= logH.Length;
+            double covariance = 0d;
+            double variance = 0d;
+            for (int i = 0; i < logH.Length; i++)
+            {
+                covariance += (logH[i] - meanX) * (logError[i] - meanY);
+                variance += (logH[i] - meanX) * (logH[i] - meanX);
+            }
+
+            double slope = covariance / variance;
+            output.WriteLine(integratorName + ": one-step local order slope = " + slope.ToString("F3") + ".");
+            Asserts.True(slope >= minimumOrder,
+                integratorName + ": local order " + slope.ToString("F3") +
+                " < " + minimumOrder.ToString("F1") + ".");
         }
 
         [Fact]

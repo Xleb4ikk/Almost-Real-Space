@@ -23,8 +23,9 @@ namespace GalilegoPhysicsTests.Support
     /// <summary>
     /// Per-(scenario, integrator, tolerance) regression gates measured by
     /// GALILEGO_CALIBRATE=1. There is no class lumping and no linear scaling:
-    /// every matrix row owns its gate, with ~3x headroom over the measured error.
-    /// ToleranceTableConsistencyTests fails when a gate drifts outside that band.
+    /// every matrix row owns its gate, with up to 4x headroom over the measured
+    /// error. ToleranceTableConsistencyTests fails when a gate drifts outside
+    /// that band.
     ///
     /// These are regression locks, not accuracy requirements. Required accuracy
     /// is gated independently against the orbit's periapsis in
@@ -168,15 +169,15 @@ namespace GalilegoPhysicsTests.Support
                 [(IntegratorKind.Dopri5, "restricted-3body", 1e-6d)] =
                     Gates(5.115000e+2, 5.013000e-1, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
                 [(IntegratorKind.Dop853, "restricted-flyby", 1e-12d)] =
-                    Gates(1.462200e-3, 1.066800e-4, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                    Gates(1.089300e-4, 6.324000e-9, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
                 [(IntegratorKind.Dop853, "restricted-flyby", 1e-9d)] =
-                    Gates(1.380600e-3, 1.066800e-4, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                    Gates(1.947300e-4, 3.906000e-8, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
                 [(IntegratorKind.Dop853, "restricted-flyby", 1e-6d)] =
-                    Gates(1.605900e+0, 8.055000e-4, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                    Gates(1.606200e+0, 8.058000e-4, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
                 [(IntegratorKind.Dopri5, "restricted-flyby", 1e-12d)] =
-                    Gates(1.356900e-3, 1.066800e-4, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                    Gates(3.204000e-4, 1.609200e-7, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
                 [(IntegratorKind.Dopri5, "restricted-flyby", 1e-9d)] =
-                    Gates(1.632600e-1, 1.438500e-4, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
+                    Gates(1.638900e-1, 1.497000e-4, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
                 [(IntegratorKind.Dopri5, "restricted-flyby", 1e-6d)] =
                     Gates(3.171000e+2, 2.257800e-1, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d, 0d),
                 [(IntegratorKind.Dop853, "thrust-tsiolkovsky", 1e-9d)] =
@@ -198,7 +199,7 @@ namespace GalilegoPhysicsTests.Support
 
         public static ToleranceProfile For(IntegratorKind integrator, string scenarioId, double tolerance)
         {
-            if (Rows.TryGetValue((integrator, scenarioId, tolerance), out ToleranceProfile profile))
+            if (TryFor(integrator, scenarioId, tolerance, out ToleranceProfile profile))
             {
                 return profile;
             }
@@ -206,6 +207,13 @@ namespace GalilegoPhysicsTests.Support
             throw new ArgumentOutOfRangeException(nameof(tolerance),
                 "No tolerance gates for " + scenarioId + " / " + integrator +
                 " at tol=" + tolerance.ToString("R") + "; run GALILEGO_CALIBRATE=1 and update ToleranceTable.");
+        }
+
+        public static bool TryFor(
+            IntegratorKind integrator, string scenarioId, double tolerance,
+            out ToleranceProfile profile)
+        {
+            return Rows.TryGetValue((integrator, scenarioId, tolerance), out profile);
         }
 
         private static ToleranceProfile Gates(

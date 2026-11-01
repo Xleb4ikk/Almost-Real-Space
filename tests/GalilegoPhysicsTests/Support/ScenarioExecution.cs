@@ -342,6 +342,15 @@ namespace GalilegoPhysicsTests.Support
                     "Сценарий \"" + Scenario.Id + "\" включил физическую точность, но у него нет оракула.");
             }
 
+            // A missing dense track leaves MaxStepPositionError and
+            // MaxDensePositionError at zero. Without this guard the physical
+            // checks would pass vacuously.
+            if (data.Segments == null || data.Segments.Count == 0)
+            {
+                throw new XunitException(
+                    "Сценарий \"" + Scenario.Id + "\" включил физическую точность, но запуск не дал ни одного dense-сегмента.");
+            }
+
             if (Scenario.PeriapsisMeters <= 0d)
             {
                 throw new XunitException(

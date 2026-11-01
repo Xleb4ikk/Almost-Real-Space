@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -8,6 +9,14 @@ namespace GalilegoPhysicsTests.Support.Artifacts
 {
     internal static class ArtifactWriter
     {
+        // xUnit parallelizes test collections. Several tests can execute the
+        // same scenario row at the same time (for example the matrix and the
+        // tolerance-consistency sweep), so GALILEGO_DUMP=1 used to fail with
+        // "file is being used by another process". Serialize writers per path
+        // instead of failing the test run.
+        private static readonly ConcurrentDictionary<string, object> FileLocks =
+            new ConcurrentDictionary<string, object>(StringComparer.Ordinal);
+
         private static string repositoryRoot;
 
         public static string RepositoryRoot
@@ -70,7 +79,12 @@ namespace GalilegoPhysicsTests.Support.Artifacts
                 builder.AppendLine(Format(sample.EnergyDrift));
             }
 
-            File.WriteAllText(path, builder.ToString(), Encoding.UTF8);
+            object fileLock = FileLocks.GetOrAdd(path, _ => new object());
+            lock (fileLock)
+            {
+                File.WriteAllText(path, builder.ToString(), Encoding.UTF8);
+            }
+
             return path;
         }
 

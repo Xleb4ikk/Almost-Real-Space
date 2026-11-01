@@ -35,6 +35,21 @@ internal static partial class P1bTests
         Directory.CreateDirectory(dir);
         var lines = new List<string>(rows.Count + 1) { header };
         lines.AddRange(rows);
-        File.WriteAllLines(Path.Combine(dir, fileName), lines, new UTF8Encoding(false));
+        string path = Path.Combine(dir, fileName);
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                File.WriteAllLines(path, lines, new UTF8Encoding(false));
+                return;
+            }
+            catch (IOException) when (attempt < 20)
+            {
+                // --repeat can run the same case in several processes at once;
+                // the CSV is diagnostic, so serialize the writers with retries
+                // instead of failing the test on a sharing violation.
+                System.Threading.Thread.Sleep(25);
+            }
+        }
     }
 }

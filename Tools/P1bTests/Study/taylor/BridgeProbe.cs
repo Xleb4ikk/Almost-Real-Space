@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -103,7 +103,7 @@ internal static partial class P1bTests
         }
 
         string goldenPath = Path.Combine("Study", "taylor", "golden", "golden_real_1y_hi.json");
-        GoldenRequireFile(goldenPath, "F4CD7D9CFAD2EF119EBAA3BB669785A737BBEEB310B82DEF99757C7DF5E2D33B");
+        GoldenRequireFile(goldenPath, "F5EB80C44B75AE98314098E6FD742EC16B21F16044521B47CCB39CBC06E94BFC");
         GoldFile golden = JsonSerializer.Deserialize<GoldFile>(File.ReadAllText(goldenPath));
         GoldCp gYear = null;
         foreach (GoldCp cp in golden.Checkpoints)

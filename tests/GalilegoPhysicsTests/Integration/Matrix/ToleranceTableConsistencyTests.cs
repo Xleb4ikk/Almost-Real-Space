@@ -94,21 +94,18 @@ namespace GalilegoPhysicsTests.Integration.Matrix
                     AssertGate(row, "velocity", run.MaxVelocityError, gate.OracleVelocityMetersPerSecond);
                     AssertGate(row, "mass", run.MaxMassError, gate.OracleMassRelative, 1e-15d);
 
-                    if (scenario.CheckEnergy)
-                    {
-                        AssertGate(row, "energy", run.MaxEnergyDrift, gate.EnergyRelative, 1e-15d);
-                    }
-
-                    if (scenario.CheckAngularMomentum)
-                    {
-                        AssertGate(row, "angular momentum", run.MaxAngularMomentumDrift,
-                            gate.AngularMomentumRelative, 1e-15d);
-                    }
-
-                    if (scenario.CheckLrl)
-                    {
-                        AssertGate(row, "LRL", run.MaxLrlDrift, gate.LaplaceRungeLenzAbsolute, 1e-15d);
-                    }
+                    // A field the scenario never gates is dead. Pass NaN so a
+                    // non-zero gate fails even when the integrator happens to
+                    // compute a meaningless drift for it.
+                    AssertGate(row, "energy",
+                        scenario.CheckEnergy ? run.MaxEnergyDrift : double.NaN,
+                        gate.EnergyRelative, 1e-15d);
+                    AssertGate(row, "angular momentum",
+                        scenario.CheckAngularMomentum ? run.MaxAngularMomentumDrift : double.NaN,
+                        gate.AngularMomentumRelative, 1e-15d);
+                    AssertGate(row, "LRL",
+                        scenario.CheckLrl ? run.MaxLrlDrift : double.NaN,
+                        gate.LaplaceRungeLenzAbsolute, 1e-15d);
 
                     if (gate.ReversibilityPositionMeters > 0d)
                     {
@@ -139,12 +136,18 @@ namespace GalilegoPhysicsTests.Integration.Matrix
         {
             IntegratorKind integrator = Parse(integratorName);
 
-            foreach (string scenarioId in new[] { "kepler-circular", "kepler-e05", "kepler-e09" })
+            // Enumerate every row that actually declares a dense gate. A gate
+            // left on a row with no dense coverage is exactly the kind of dead
+            // entry this consistency test exists to catch.
+            foreach (Scenario scenario in ScenarioCatalog.Fast())
             {
-                Scenario scenario = ScenarioCatalog.Get(scenarioId);
-                ToleranceProfile gate = ToleranceTable.For(integrator, scenario.Id, 1e-9d);
-                ScenarioExecution run = ScenarioExecution.Execute(scenario, integrator, 1e-9d, 1);
+                if (!ToleranceTable.TryFor(integrator, scenario.Id, 1e-9d, out ToleranceProfile gate)
+                    || gate.DenseInterpolationMeters <= 0d)
+                {
+                    continue;
+                }
 
+                ScenarioExecution run = ScenarioExecution.Execute(scenario, integrator, 1e-9d, 1);
                 double worst = 0d;
                 foreach (DenseSegment segment in run.Segments)
                 {

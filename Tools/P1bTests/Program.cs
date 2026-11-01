@@ -141,6 +141,53 @@ internal static partial class P1bTests
         return failed.Count;
     }
 
+    private static bool RunSerialCase(P1bCase entry, string phase)
+    {
+        var caseWatch = Stopwatch.StartNew();
+        int before = failures;
+        int code = entry.Run();
+        bool ok = code == 0 && failures == before;
+        if (!ok && failures == before)
+        {
+            failures++;
+        }
+
+        Console.WriteLine("[" + entry.Name + "] " + (ok ? "ok" : "FAIL (exit " + code + ")") +
+                          " in " + caseWatch.ElapsedMilliseconds + " ms" +
+                          (string.IsNullOrEmpty(phase) ? "" : " (" + phase + ")"));
+        return ok;
+    }
+
+    private static string ResolveUserPath(string path)
+    {
+        return string.IsNullOrEmpty(path) ? path : Path.GetFullPath(path);
+    }
+
+    private static string FindHarnessRoot()
+    {
+        // Prefer the checkout layout so Study/ and Data/ resolve regardless of
+        // the shell's working directory. A published harness with its own
+        // Study/ directory keeps that directory.
+        if (Directory.Exists(Path.Combine(AppContext.BaseDirectory, "Study")))
+        {
+            return AppContext.BaseDirectory;
+        }
+
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null)
+        {
+            string candidate = Path.Combine(directory.FullName, "Tools", "P1bTests");
+            if (Directory.Exists(Path.Combine(candidate, "Study")))
+            {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return Directory.GetCurrentDirectory();
+    }
+
     public static int Main(string[] args)
     {
         CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
@@ -253,11 +300,21 @@ internal static partial class P1bTests
             }
         }
 
+        // Study/ and Data/ paths in this harness are relative to the P1bTests
+        // project, not to the shell's current directory. Resolve user paths
+        // first, then pin the process there so "dotnet run --project
+        // Tools/P1bTests" from the repository root reaches the same files as a
+        // run from Tools/P1bTests. Child processes inherit the pinned
+        // directory through RunCaseProcess.
+        logDir = ResolveUserPath(logDir);
+        traceDir = ResolveUserPath(traceDir);
+        logFile = ResolveUserPath(logFile);
+        Environment.CurrentDirectory = FindHarnessRoot();
+
         if (logFile != null)
         {
-            string fullLog = Path.GetFullPath(logFile);
-            Directory.CreateDirectory(Path.GetDirectoryName(fullLog));
-            var writer = new StreamWriter(fullLog, false, new UTF8Encoding(false)) { AutoFlush = true };
+            Directory.CreateDirectory(Path.GetDirectoryName(logFile));
+            var writer = new StreamWriter(logFile, false, new UTF8Encoding(false)) { AutoFlush = true };
             Console.SetOut(writer);
             Console.SetError(writer);
         }
@@ -380,22 +437,45 @@ internal static partial class P1bTests
 
         if (jobs > 1 && exact == null)
         {
-            return RunParallel(selected, jobs, logDir);
+            // Test518 rewrites the shared bake exports that Test523/527/528
+            // read. Run it to completion before the parallel wave so a reader
+            // can never see a half-written JSON file.
+            var fixtureWriters = new List<P1bCase>();
+            var parallelCases = new List<P1bCase>(selected.Count);
+            foreach (P1bCase entry in selected)
+            {
+                if (entry.Name == "Test518_EphemerisExport" ||
+                    entry.Name == "Test529_TenYearDdGolden")
+                {
+                    fixtureWriters.Add(entry);
+                }
+                else
+                {
+                    parallelCases.Add(entry);
+                }
+            }
+
+            foreach (P1bCase writer in fixtureWriters)
+            {
+                if (!RunSerialCase(writer, "fixture writer"))
+                {
+                    Console.WriteLine(failures + " FAILURES");
+                    return failures;
+                }
+            }
+
+            if (parallelCases.Count == 0)
+            {
+                Console.WriteLine("ALL PASS");
+                return 0;
+            }
+
+            return RunParallel(parallelCases, jobs, logDir);
         }
 
         foreach (P1bCase entry in selected)
         {
-            var caseWatch = Stopwatch.StartNew();
-            int before = failures;
-            int code = entry.Run();
-            bool ok = code == 0 && failures == before;
-            if (!ok && failures == before)
-            {
-                failures++;
-            }
-
-            Console.WriteLine("[" + entry.Name + "] " + (ok ? "ok" : "FAIL (exit " + code + ")") +
-                              " in " + caseWatch.ElapsedMilliseconds + " ms");
+            RunSerialCase(entry, null);
         }
 
         Console.WriteLine(failures == 0 ? "ALL PASS" : failures + " FAILURES");

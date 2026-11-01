@@ -1,4 +1,4 @@
-﻿# GalilegoPhysicsTests
+# GalilegoPhysicsTests
 
 xUnit 2.6.1 (net8.0) suite for **Core only**: `Assets/_Project/Scripts/Core/**`.
 The project compiles the real Core sources by glob. It deliberately contains:
@@ -28,7 +28,7 @@ reference and a local+dense segment walk.
 ## Quick start
 
 ```powershell
-# Full suite (default): ~16 s, includes long horizons and the 1-year golden
+# Full suite (default): ~20 s, includes long horizons and the 1-year golden
 dotnet test tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj
 
 # Fast loop while iterating: excludes the slow tier
@@ -36,8 +36,9 @@ dotnet test tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj --filter "Tie
 ```
 
 There is no environment variable gating for physics tests: every test runs
-unless a trait filter excludes it. `CalibrationTests` is a maintenance tool and
-reports Skipped unless `GALILEGO_CALIBRATE=1`.
+unless a trait filter excludes it. `CalibrationTests` always verifies the
+existing gates; with `GALILEGO_CALIBRATE=1` it also rewrites the calibration
+artifacts and may run for rows that do not yet have a `ToleranceTable` entry.
 
 ### Filters
 
@@ -68,8 +69,8 @@ traits and runs conservation, oracle and step-budget checks.
 ### Step budget is mandatory
 
 `Support/StepBudget.cs` pins the measured step count and RHS-call count for every
-matrix row within ±10%. Rows with at most three steps (the short thrust cases)
-are pinned exactly, so a 2–3× step-control regression cannot hide behind an
+matrix row within �10%. Rows with at most three steps (the short thrust cases)
+are pinned exactly, so a 2�3? step-control regression cannot hide behind an
 absolute floor. This is a regression gate for step control, not a wall-clock
 benchmark.
 
@@ -107,10 +108,12 @@ Calibration runs **all** matrix rows, including Slow scenarios, and writes:
 
 Paste the snippet into `Support/StepBudget.cs`, then rerun the consistency test.
 
-`CalibrationTests` is a skipped tool unless `GALILEGO_CALIBRATE=1`, but
-`ToleranceTableConsistencyTests` always runs the matrix: it fails if a gate is
-below the measured error or more than 10x above it, so a stale or over-loose
-`ToleranceTable` cannot pass silently.
+`CalibrationTests` always runs its verification pass. Without
+`GALILEGO_CALIBRATE=1` a missing `ToleranceTable` row is a failure;
+with it, the measured row is still emitted so a brand-new scenario can be
+bootstrapped. `ToleranceTableConsistencyTests` always runs the matrix: it fails
+if a gate is below the measured error or more than 4x above it, so a stale or
+over-loose `ToleranceTable` cannot pass silently.
 
 ### Step controller
 
@@ -136,7 +139,7 @@ position-exact.
 
 `Integration/Dense/DenseOrderTests.cs` executes exactly one accepted step over
 six step sizes for `kepler-circular` and five for `kepler-e05`, evaluates the
-dense polynomial at θ=0.25/0.5/0.75 against the independent Kepler oracle, and
+dense polynomial at ?=0.25/0.5/0.75 against the independent Kepler oracle, and
 fits `log(error)` versus `log(h)`.
 
 Measured slopes:
@@ -147,12 +150,12 @@ Measured slopes:
   smaller step reaches the double-precision round-off floor.
 
 `Integration/Dense/DenseReferenceTests.cs` compares the DOPRI5 dense polynomial
-at five θ values against an independent Hairer/Shampine reference built from
+at five ? values against an independent Hairer/Shampine reference built from
 `ExactRational` d1..d7 coefficients. A swap or shift of any single d coefficient
 fails this test. `Dopri5_DenseCoefficientsSumToZero` is an additional cheap
 identity. For DOP853, `Dop853DensePolynomialMatchesTheExtendedTableau` is a
 tableau pin: it recomputes F0..F6 from the 16-stage extended tableau and `D`
-coefficients and compares the dense polynomial at five θ values. Independent
+coefficients and compares the dense polynomial at five ? values. Independent
 accuracy evidence comes from `DenseOrderTests` and the analytic-oracle
 interpolation/midpoint tests.
 
@@ -165,7 +168,7 @@ inside segments, using half the endpoint velocity gate for the same row.
 ## Reading a failure
 
 Every assertion failure includes the scenario, integrator, tolerance, measured
-value, step/RHS counts, a 10-row `time / |Δpos| / |Δvel| / energy-drift` table,
+value, step/RHS counts, a 10-row `time / |?pos| / |?vel| / energy-drift` table,
 a repeat `dotnet test --filter` command, the C# snippet, and the CSV path.
 `GALILEGO_DUMP=1` writes CSV artifacts for green runs too, under
 `TestResults/artifacts/`.
@@ -174,7 +177,7 @@ a repeat `dotnet test --filter` command, the C# snippet, and the CSV path.
 
 `Support/ToleranceTable.cs` is the single place for matrix assertion gates. Gates
 are per `(scenario, integrator, tolerance)`, measured by
-`GALILEGO_CALIBRATE=1`; each measured field carries about 3x headroom over the
+`GALILEGO_CALIBRATE=1`; each measured field carries up to 4x headroom over the
 measured error. There is no class lumping and no linear `tol/1e-9` scaling.
 Reversibility/chunking gates are calibrated only for the Kepler rows that use
 them; other rows store 0 for those fields. Dead fields (for example
@@ -184,9 +187,9 @@ field.
 `ToleranceTableConsistencyTests` enforces both sides: the measured error must
 fit the gate, and the gate must stay within 4x of the measurement (with floors
 for tiny mass/energy values). `AbsoluteAccuracyCeilingTests` adds hardcoded
-ceilings at `1e-9` and `1e-6`, tighter than the regression gate for the same row.
-Do not relax a gate just to make a test green; recalibrate with
-`GALILEGO_CALIBRATE=1`.
+absolute ceilings at `1e-9` and `1e-6`, tighter than the periapsis-relative
+physical gate and independent of the calibration table. Do not relax a gate
+just to make a test green; recalibrate with `GALILEGO_CALIBRATE=1`.
 
 ## Golden data
 
@@ -207,17 +210,17 @@ Do not relax a gate just to make a test green; recalibrate with
   declare generator `gen_core_kepler.py` and model `two-body, central at
   origin`. Both DOP853 and DOPRI5 are checked against them, each with its own
   absolute gates.
-- The 1-year golden also checks 65 interior samples through the analytic
-  Kepler oracle; the DOPRI5 gate is 2.4 km / 3.5 m/s, still wide but no longer
-  a 5 km endpoint-only guard.
-- Core golden gates are absolute per case, not drawn from `ToleranceTable`:
-  1e-6 m per fast one-period case (5e-5 m for e=0.9, 1.8e-3 m for e=0.99,
-  2.8e-6 m for near-parabolic, 5e-8 m for the hyperbolic case, 2e-6 m for the
-  inclined case) and 1.0 m for the 1-year case. DOPRI5 uses its own measured
-  gates (wider at high eccentricity). The 1-year eccentric case covers ~3,170
-  orbits; the 10-year
-  circular case was removed because it cost ~59 s and 8M steps without adding a
-  different failure mode.
+- The 1-year golden checks 65 interior samples through the analytic Kepler
+  oracle for DOP853 (gate 0.5 m). DOPRI5 is deliberately not certified on that
+  case; `Dopri5YearLongGoldenStaysFinite` only requires a finite, non-stalled
+  run at a coarse tolerance.
+- Core golden gates are absolute per case, not drawn from `ToleranceTable`.
+  DOP853: 3.0e-7 m circular, 4.5e-7 m e=0.5, 1.4e-5 m e=0.9, 4.8e-4 m e=0.99,
+  7.5e-7 m near-parabolic, 2.3e-8 m hyperbolic, 9.0e-7 m inclined, 0.5 m for
+  the 1-year case. DOPRI5 uses its own measured gates (wider at high
+  eccentricity). The 1-year eccentric case (a=10,000 km, e=0.5) covers about
+  100 orbits; the 10-year circular case was removed because it cost ~59 s and
+  8M steps without adding a different failure mode.
 - Regenerate Core goldens with:
 
 ```powershell

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -74,8 +74,8 @@ namespace GalilegoPhysicsTests.Integration.Golden
                     double positionError = (run.FinalState.Position - golden.P).Magnitude;
                     double velocityError = (run.FinalState.Velocity - golden.V).Magnitude;
                     string row = golden.Id + " / " + run.Integrator;
-                    output.WriteLine(row + ": |О”P|=" + positionError.ToString("E3") +
-                                     " m, |О”V|=" + velocityError.ToString("E3") +
+                    output.WriteLine(row + ": |ΔP|=" + positionError.ToString("E3") +
+                                     " m, |ΔV|=" + velocityError.ToString("E3") +
                                      " m/s, steps=" + run.Steps + ".");
                     Asserts.True(positionError <= positionGate,
                         row + ": position error " + positionError.ToString("E3") +
@@ -114,8 +114,8 @@ namespace GalilegoPhysicsTests.Integration.Golden
                     double positionError = (run.FinalState.Position - golden.P).Magnitude;
                     double velocityError = (run.FinalState.Velocity - golden.V).Magnitude;
                     string row = golden.Id + " / " + run.Integrator;
-                    output.WriteLine(row + ": |О”P|=" + positionError.ToString("E3") +
-                                     " m, |О”V|=" + velocityError.ToString("E3") +
+                    output.WriteLine(row + ": |ΔP|=" + positionError.ToString("E3") +
+                                     " m, |ΔV|=" + velocityError.ToString("E3") +
                                      " m/s, steps=" + run.Steps + ".");
                     Asserts.True(positionError <= positionGate,
                         row + ": position error " + positionError.ToString("E3") +
@@ -256,8 +256,8 @@ namespace GalilegoPhysicsTests.Integration.Golden
         {
             // Integrity pin for the linked stand data, not a Core physics gate.
             // A deliberate golden regeneration in P1bTests updates these hashes.
-            AssertHash("golden_real.json", "0F1031664ED4B43B98B7B7C0B3E902F1C63BEAC4B702C8940A50335AC2A30082");
-            AssertHash("golden_real_1y_hi.json", "F4CD7D9CFAD2EF119EBAA3BB669785A737BBEEB310B82DEF99757C7DF5E2D33B");
+            AssertHash("golden_real.json", "6FA820F7C492500C2E7A8FDF3DBF93A2CB72323914104041FDEBFFFB50544A67");
+            AssertHash("golden_real_1y_hi.json", "F5EB80C44B75AE98314098E6FD742EC16B21F16044521B47CCB39CBC06E94BFC");
             AssertHash("golden_real_10y_k28.json", "72AB6A2D7B647321B15C1CD98B02868E03521ECFCB23A5916BEC92BF4A2B83A4");
         }
 
@@ -287,8 +287,8 @@ namespace GalilegoPhysicsTests.Integration.Golden
                 double positionError = (dense.Position - checkpoint.P).Magnitude;
                 double velocityError = (dense.Velocity - checkpoint.V).Magnitude;
                 output.WriteLine(row + " @" + checkpoint.Fraction.ToString("F2") +
-                                 ": |О”P|=" + positionError.ToString("E3") +
-                                 " m, |О”V|=" + velocityError.ToString("E3") + " m/s.");
+                                 ": |ΔP|=" + positionError.ToString("E3") +
+                                 " m, |ΔV|=" + velocityError.ToString("E3") + " m/s.");
                 // The final-state gate is the requirement. Interior-dense points
                 // get 2x because the interpolation polynomial is not the endpoint
                 // state itself; the factor is still far tighter than any physical

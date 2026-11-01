@@ -15,6 +15,12 @@ namespace GalilegoPhysicsTests.Support.Scenarios
         private const double RestrictedStepPositionLimitMeters = 300d;
         private const double RestrictedDensePositionLimitMeters = 600d;
 
+        // The flyby oracle is a cubic-Hermite track. Its midpoint error scales
+        // as h^4, and the old 0.1 s build sat at the same order as the 1e-9
+        // production gate, making the 1e-9/1e-12 rows indistinguishable.
+        // Twenty-five milliseconds puts the oracle floor well below the gates.
+        public const double RestrictedFlybyOracleStepSeconds = 0.025d;
+
         /// <summary>
         /// Exact constant-velocity drift. The error estimate is identically zero,
         /// so it exercises the 600 s step cap rather than the adaptive controller;
@@ -399,11 +405,9 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             Double3 r0 = new Double3(bodyR + separation, 0d, 0d);
             Double3 v0 = new Double3(0d, relativeSpeed, 0d);
 
-            // 0.1 s: below this the fixed-step RK4 accumulates more roundoff than
-            // it removes. RestrictedOracleConvergenceTests pins the Build/Hermite
-            // interpolation error against the production gate.
             RestrictedNBodyTrajectory trajectory = RestrictedNBodyOracle.Build(
-                r0, v0, centralMu, bodies, duration, stepSeconds: 0.1d);
+                r0, v0, centralMu, bodies, duration,
+                stepSeconds: RestrictedFlybyOracleStepSeconds);
 
             // Periapsis here is the closest approach to the perturbing body.
             // Take both distance and speed from the oracle instead of assuming

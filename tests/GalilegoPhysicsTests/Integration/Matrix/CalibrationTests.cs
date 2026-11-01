@@ -29,18 +29,42 @@ namespace GalilegoPhysicsTests.Integration.Matrix
                     foreach (double tolerance in scenario.TolerancesFor(integrator))
                     {
                         ScenarioExecution run = ScenarioExecution.Execute(scenario, integrator, tolerance, 1);
-                        ToleranceProfile gate = ToleranceTable.For(
-                            integrator, scenario.Id, tolerance);
-                        Asserts.True(run.MaxPositionError <= gate.OraclePositionMeters,
-                            scenario.Id + " / " + scenario.IntegratorLabel(integrator) +
-                            " at tol=" + tolerance.ToString("R") + ": position " +
-                            run.MaxPositionError.ToString("E3") + " m exceeds gate " +
-                            gate.OraclePositionMeters.ToString("E3") + " m.");
-                        Asserts.True(run.MaxVelocityError <= gate.OracleVelocityMetersPerSecond,
-                            scenario.Id + " / " + scenario.IntegratorLabel(integrator) +
-                            " at tol=" + tolerance.ToString("R") + ": velocity " +
-                            run.MaxVelocityError.ToString("E3") + " m/s exceeds gate " +
-                            gate.OracleVelocityMetersPerSecond.ToString("E3") + " m/s.");
+
+                        // Calibration must work for a brand-new scenario whose gate
+                        // row does not exist yet. This test is also run on every
+                        // normal suite pass, where a missing or stale gate is a
+                        // real failure.
+                        if (Env.Calibrate)
+                        {
+                            if (ToleranceTable.TryFor(integrator, scenario.Id, tolerance, out ToleranceProfile existing))
+                            {
+                                Asserts.True(run.MaxPositionError <= existing.OraclePositionMeters,
+                                    scenario.Id + " / " + scenario.IntegratorLabel(integrator) +
+                                    " at tol=" + tolerance.ToString("R") + ": position " +
+                                    run.MaxPositionError.ToString("E3") + " m exceeds gate " +
+                                    existing.OraclePositionMeters.ToString("E3") + " m.");
+                                Asserts.True(run.MaxVelocityError <= existing.OracleVelocityMetersPerSecond,
+                                    scenario.Id + " / " + scenario.IntegratorLabel(integrator) +
+                                    " at tol=" + tolerance.ToString("R") + ": velocity " +
+                                    run.MaxVelocityError.ToString("E3") + " m/s exceeds gate " +
+                                    existing.OracleVelocityMetersPerSecond.ToString("E3") + " m/s.");
+                            }
+                        }
+                        else
+                        {
+                            ToleranceProfile gate = ToleranceTable.For(
+                                integrator, scenario.Id, tolerance);
+                            Asserts.True(run.MaxPositionError <= gate.OraclePositionMeters,
+                                scenario.Id + " / " + scenario.IntegratorLabel(integrator) +
+                                " at tol=" + tolerance.ToString("R") + ": position " +
+                                run.MaxPositionError.ToString("E3") + " m exceeds gate " +
+                                gate.OraclePositionMeters.ToString("E3") + " m.");
+                            Asserts.True(run.MaxVelocityError <= gate.OracleVelocityMetersPerSecond,
+                                scenario.Id + " / " + scenario.IntegratorLabel(integrator) +
+                                " at tol=" + tolerance.ToString("R") + ": velocity " +
+                                run.MaxVelocityError.ToString("E3") + " m/s exceeds gate " +
+                                gate.OracleVelocityMetersPerSecond.ToString("E3") + " m/s.");
+                        }
                         rows.Add("| " + scenario.Id +
                                  " | " + scenario.IntegratorLabel(integrator) +
                                  " | " + tolerance.ToString("0.0E+0", CultureInfo.InvariantCulture) +

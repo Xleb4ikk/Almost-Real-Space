@@ -81,6 +81,16 @@ internal static partial class P1bTests
             return 0;
         }
 
+        // The relative 100x margin checks need the generator's own numerical
+        // uncertainty. Fail with a clear message instead of a NullReference
+        // when someone regenerates the golden without --certify.
+        if (gOne.Err == null || gThirty.Err == null)
+        {
+            Check(false, "real golden certificate",
+                "missing golden_error_estimate; regenerate with mp_golden_real.py --certify");
+            return 1;
+        }
+
         OrbitingBody body = real.AllBodies[1];
         double mu = body.ResolveStandardGravitationalParameter();
         double t0 = StudyShipT0;
