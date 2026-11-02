@@ -57,6 +57,9 @@ internal static partial class P1bTests
 
     private static bool StudyShipRefDop853Compensate = true;
     private static bool StudyShipRefDiagSeams = false;
+    private static bool StudyShipRefDiagTriangle = false;
+    private static bool StudyShipRefDiagMoon = false;
+    private static bool StudyShipRefDiagDd = false;
     // Стыки эфемериды не причина dd-расхождения; на Sun 1 AU включение ломает
     // сходимость; не включать.
     private static bool StudyShipRefSeamBreakpoints = false;
@@ -920,6 +923,217 @@ internal static partial class P1bTests
                 + ", at t=" + (double.IsNaN(atSeam)
                     ? "n/a"
                     : atSeam.ToString("F1", CultureInfo.InvariantCulture)));
+        }
+    }
+
+    private static bool StudyShipRefDiagTriangleCase(StudyShipMatrixCase c)
+    {
+        return c.Label == "Earth GEO 35786 km"
+            || c.Label.StartsWith("Earth LEO 400 km, 1000 orbits", StringComparison.Ordinal);
+    }
+
+    private static void StudyShipRefDiagTriangleForCase(
+        StudyShipMatrixCase c, StudyShipMatrixRefs refs, List<StudyShipMatrixRow> rows)
+    {
+        StudyShipMatrixRow production = null;
+        foreach (StudyShipMatrixRow r in rows)
+        {
+            if (r.Method == "DOP853" && r.Frame == "world"
+                && r.Note == "production" && r.Finite)
+            {
+                production = r;
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("=== triangle: " + c.Label + " ===");
+        if (production == null)
+        {
+            Console.WriteLine("  production missing");
+            return;
+        }
+
+        double prodMax = production.Dp;
+        double prodFinal = production.DpFinal;
+        double ddCert = refs.HasFormulation ? refs.Formulation : double.NaN;
+        double prodDd = double.NaN;
+        if (refs.HasDd && production.SamplesP != null
+            && production.SamplesP.Length > 0)
+        {
+            Vector3d prodLast = production.SamplesP[production.SamplesP.Length - 1];
+            prodDd = (prodLast - refs.Dd.P).Magnitude;
+        }
+
+        Console.WriteLine("  production: DOP853 world " + production.Config
+            + ", max=" + prodMax.ToString("E6", CultureInfo.InvariantCulture)
+            + " m, final=" + prodFinal.ToString("E6", CultureInfo.InvariantCulture) + " m");
+        double d23 = refs.DdRatio > 1d ? refs.DdSelf / refs.DdRatio : double.NaN;
+        Console.WriteLine("  dd: " + refs.DdKind
+            + ", self d(h,h/2)=" + refs.DdSelf.ToString("E3", CultureInfo.InvariantCulture)
+            + " m, d(h/2,h/4)=" + (double.IsFinite(d23)
+                ? d23.ToString("E3", CultureInfo.InvariantCulture) : "n/a")
+            + " m, ratio=" + refs.DdRatio.ToString("F2", CultureInfo.InvariantCulture)
+            + ", err=" + (double.IsFinite(refs.DdError)
+                ? refs.DdError.ToString("E3", CultureInfo.InvariantCulture) : "n/a"));
+        Console.WriteLine("  |production-certified|: max="
+            + prodMax.ToString("E6", CultureInfo.InvariantCulture)
+            + " m, final=" + prodFinal.ToString("E6", CultureInfo.InvariantCulture) + " m");
+        Console.WriteLine("  |dd-certified|: max=n/a (dd final-only), final="
+            + ddCert.ToString("E6", CultureInfo.InvariantCulture) + " m");
+        Console.WriteLine("  |production-dd|: max=n/a (dd final-only), final="
+            + prodDd.ToString("E6", CultureInfo.InvariantCulture) + " m");
+
+        string verdict;
+        if (!double.IsFinite(ddCert) || !double.IsFinite(prodMax))
+        {
+            verdict = "missing";
+        }
+        else if (ddCert > 10d * prodMax)
+        {
+            verdict = "dd is the outlier";
+        }
+        else if (prodMax > 10d * ddCert)
+        {
+            verdict = "production is the outlier";
+        }
+        else
+        {
+            verdict = "dd and production are comparable";
+        }
+
+        Console.WriteLine("  verdict: " + verdict + " (dd/prod max = "
+            + (double.IsFinite(ddCert) && prodMax > 0d
+                ? (ddCert / prodMax).ToString("F2", CultureInfo.InvariantCulture)
+                : "n/a") + ")");
+    }
+
+    private static void StudyShipRefDiagMoonForCase(
+        StudyShipMatrixCase c, StudyShipMatrixRefs refs)
+    {
+        Console.WriteLine();
+        Console.WriteLine("=== moon bisection: " + c.Label + " ===");
+        if (refs == null || refs.CheckpointTimes == null || refs.CheckpointP == null)
+        {
+            Console.WriteLine("  no checkpoints");
+            return;
+        }
+
+        OrbitingBody moon = null;
+        for (int i = 0; i < c.Sys.AllBodies.Count; i++)
+        {
+            if (c.Sys.AllBodies[i].Name.IndexOf("Moon", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                moon = c.Sys.AllBodies[i];
+                break;
+            }
+        }
+
+        if (moon == null)
+        {
+            Console.WriteLine("  no Moon body");
+            return;
+        }
+
+        int moonIdx = 0;
+        double moonMin = double.PositiveInfinity;
+        for (int i = 0; i < refs.CheckpointTimes.Length; i++)
+        {
+            double t = refs.CheckpointTimes[i];
+            c.Sys.EvaluateBodyState(c.Sys.AllBodies[c.Central], t,
+                out Vector3d ep, out _);
+            c.Sys.EvaluateBodyState(moon, t, out Vector3d mp, out _);
+            double dist = ((ep + refs.CheckpointP[i]) - mp).Magnitude;
+            if (dist < moonMin)
+            {
+                moonMin = dist;
+                moonIdx = i;
+            }
+        }
+
+        int perigeeIdx = 0;
+        double perigee = double.PositiveInfinity;
+        for (int i = 0; i < refs.CheckpointTimes.Length; i++)
+        {
+            double r = refs.CheckpointP[i].Magnitude;
+            if (r < perigee)
+            {
+                perigee = r;
+                perigeeIdx = i;
+            }
+        }
+
+        double tMoonMin = refs.CheckpointTimes[moonIdx];
+        double tPerigee = refs.CheckpointTimes[perigeeIdx];
+        Vector3d frozen = StudyShipMatrixMoonAcceleration(
+            c, refs.CheckpointP[moonIdx], tMoonMin);
+        Console.WriteLine("  t_moon_min=" + tMoonMin.ToString("F1", CultureInfo.InvariantCulture)
+            + " s, Moon dist=" + moonMin.ToString("E3", CultureInfo.InvariantCulture)
+            + " m; t_perigee=" + tPerigee.ToString("F1", CultureInfo.InvariantCulture)
+            + " s, |r|=" + perigee.ToString("E3", CultureInfo.InvariantCulture) + " m");
+
+        StudyShipMatrixCase noMoon = c.Clone();
+        noMoon.Label = c.Label + " [no Moon]";
+        noMoon.DiagNoMoon = true;
+        StudyShipMatrixCase withMoon = c.Clone();
+        withMoon.Label = c.Label + " [with Moon]";
+        StudyShipMatrixCase frozenMoon = c.Clone();
+        frozenMoon.Label = c.Label + " [frozen Moon]";
+        frozenMoon.DiagFrozenMoon = true;
+        frozenMoon.DiagFrozenStart = tMoonMin - 3d * 3600d;
+        frozenMoon.DiagFrozenEnd = tMoonMin + 3d * 3600d;
+        frozenMoon.DiagFrozenMoonAccel = frozen;
+
+        void RunVariant(string name, StudyShipMatrixCase vc)
+        {
+            var pos = new Vector3d[refs.CheckpointTimes.Length];
+            var vel = new Vector3d[refs.CheckpointTimes.Length];
+            StudyShipCertifiedRef cert = StudyShipCertifiedReference(
+                vc, 24d, 5, refs.CheckpointTimes, pos, vel);
+            Console.WriteLine("  " + name + ": " + cert.Detail
+                + " valid=" + cert.Valid + " resolved=" + cert.Resolved);
+        }
+
+        RunVariant("no Moon", noMoon);
+        RunVariant("with Moon", withMoon);
+        RunVariant("frozen Moon", frozenMoon);
+
+        Console.WriteLine("  with-Moon d[i] max times (by checkpoint):");
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            double h0 = Math.Max(1d, c.Tau / (24d * (1 << attempt)));
+            var sampleP = new Vector3d[5][];
+            for (int i = 0; i < 5; i++)
+            {
+                sampleP[i] = new Vector3d[refs.CheckpointTimes.Length];
+                var sampleV = new Vector3d[refs.CheckpointTimes.Length];
+                StudyShipRefDop853Fixed(
+                    c, h0 / (1 << i), out _, refs.CheckpointTimes, sampleP[i], sampleV);
+            }
+
+            Console.Write("    attempt " + attempt + " h0="
+                + h0.ToString("G6", CultureInfo.InvariantCulture) + ":");
+            for (int i = 0; i < 4; i++)
+            {
+                double maxD = 0d;
+                int maxS = 0;
+                for (int s = 0; s < refs.CheckpointTimes.Length; s++)
+                {
+                    double d = (sampleP[i][s] - sampleP[i + 1][s]).Magnitude;
+                    if (d > maxD)
+                    {
+                        maxD = d;
+                        maxS = s;
+                    }
+                }
+
+                double t = refs.CheckpointTimes[maxS];
+                Console.Write(" d" + i + "=" + maxD.ToString("E2", CultureInfo.InvariantCulture)
+                    + "@t=" + t.ToString("F0", CultureInfo.InvariantCulture)
+                    + "(moon" + (t - tMoonMin).ToString("+0;-0;0", CultureInfo.InvariantCulture)
+                    + ",per" + (t - tPerigee).ToString("+0;-0;0", CultureInfo.InvariantCulture) + ")");
+            }
+
+            Console.WriteLine();
         }
     }
 }

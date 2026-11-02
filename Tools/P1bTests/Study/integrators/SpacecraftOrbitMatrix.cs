@@ -37,6 +37,16 @@ internal static partial class P1bTests
         public bool UseTaylorDdReference;
         public double AccuracyTarget = 1d;
         public double AlternativeTarget = 10d;
+        public bool DiagNoMoon;
+        public bool DiagFrozenMoon;
+        public double DiagFrozenStart;
+        public double DiagFrozenEnd;
+        public Vector3d DiagFrozenMoonAccel;
+
+        public StudyShipMatrixCase Clone()
+        {
+            return (StudyShipMatrixCase)MemberwiseClone();
+        }
     }
 
     private sealed class StudyShipMatrixRef
@@ -513,9 +523,53 @@ internal static partial class P1bTests
     private static Vector3d StudyShipMatrixLocalAcceleration(
         StudyShipMatrixCase c, Vector3d relP, double t)
     {
-        // Same force the production local-frame step uses; the certified reference
-        // and the candidates share the force model, the integrator is independent.
-        return c.Sys.EvaluateShipAccelerationLocal(relP, c.Sys.AllBodies[c.Central], t);
+        if (!c.DiagNoMoon && !c.DiagFrozenMoon)
+        {
+            // Same force the production local-frame step uses; the certified reference
+            // and the candidates share the force model, the integrator is independent.
+            return c.Sys.EvaluateShipAccelerationLocal(relP, c.Sys.AllBodies[c.Central], t);
+        }
+
+        Vector3d full = c.Sys.EvaluateShipAccelerationLocal(
+            relP, c.Sys.AllBodies[c.Central], t);
+        Vector3d moon = StudyShipMatrixMoonAcceleration(c, relP, t);
+        if (c.DiagNoMoon)
+        {
+            return full - moon;
+        }
+
+        return t >= c.DiagFrozenStart && t <= c.DiagFrozenEnd
+            ? full - moon + c.DiagFrozenMoonAccel
+            : full;
+    }
+
+    private static Vector3d StudyShipMatrixMoonAcceleration(
+        StudyShipMatrixCase c, Vector3d relP, double t)
+    {
+        OrbitingBody moon = null;
+        for (int i = 0; i < c.Sys.AllBodies.Count; i++)
+        {
+            if (c.Sys.AllBodies[i].Name.IndexOf("Moon", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                moon = c.Sys.AllBodies[i];
+                break;
+            }
+        }
+
+        if (moon == null)
+        {
+            return Vector3d.Zero;
+        }
+
+        c.Sys.EvaluateBodyState(c.Sys.AllBodies[c.Central], t,
+            out Vector3d centralPos, out _);
+        c.Sys.EvaluateBodyState(moon, t, out Vector3d moonPos, out _);
+        double mu = moon.ResolveStandardGravitationalParameter();
+        Vector3d dc = centralPos - moonPos;
+        return PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(
+                dc + relP, Vector3d.Zero, mu)
+            - PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(
+                dc, Vector3d.Zero, mu);
     }
     private static StudyShipMatrixRef StudyShipMatrixRefFromState(
         StudyShipMatrixCase c, Vector3d p, Vector3d v, double m)
@@ -3048,6 +3102,19 @@ internal static partial class P1bTests
 
             var rows = new List<StudyShipMatrixRow>();
             StudyShipMatrixRunAll(c, refs, rows);
+            if (StudyShipRefDiagTriangle && StudyShipRefDiagTriangleCase(c))
+            {
+                StudyShipRefDiagTriangleForCase(c, refs, rows);
+            }
+            if (StudyShipRefDiagMoon && c.Label == "Earth-Moon flyby inside lunar SOI")
+            {
+                StudyShipRefDiagMoonForCase(c, refs);
+            }
+            if (StudyShipRefDiagDd
+                && c.Label.StartsWith("Earth LEO 400 km, 1000 orbits", StringComparison.Ordinal))
+            {
+                StudyShipRefDiagDdForCase(c, refs);
+            }
             StudyShipMatrixPrint(c, refs, rows);
             int nonFinite = 0;
             foreach (StudyShipMatrixRow r in rows)

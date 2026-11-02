@@ -288,4 +288,155 @@ internal static partial class P1bTests
             path, golden.SelfErrorM, golden.Calls, golden.Ms / 1000d));
         return golden;
     }
+
+    private static void StudyShipRefDiagDdForCase(
+        StudyShipMatrixCase c, StudyShipMatrixRefs refs)
+    {
+        Console.WriteLine();
+        Console.WriteLine("=== dd diagnostic: " + c.Label + " ===");
+        OrbitingBody central = c.Sys.AllBodies[c.Central];
+        c.Sys.EvaluateBodyState(central, StudyShipT0, out Vector3d bp, out Vector3d bv);
+        Vector3d certP = bp + c.P0;
+        Vector3d certV = bv + c.V0;
+        StudyShipDdGoldenFile golden = StudyShipDdGolden(c);
+        Vector3d goldenLocalP = new Vector3d(golden.P0[0], golden.P0[1], golden.P0[2]);
+        Vector3d goldenLocalV = new Vector3d(golden.V0[0], golden.V0[1], golden.V0[2]);
+        Vector3d goldenP = bp + goldenLocalP;
+        Vector3d goldenV = bv + goldenLocalV;
+
+        Console.WriteLine("  central velocity source: "
+            + (central.Baked != null
+                ? "baked Chebyshev derivative (BakedEphemeris.TryEvaluate)"
+                : "Kepler/local rail"));
+        Console.WriteLine("  initial world certified: p=("
+            + certP.X.ToString("R", CultureInfo.InvariantCulture) + ", "
+            + certP.Y.ToString("R", CultureInfo.InvariantCulture) + ", "
+            + certP.Z.ToString("R", CultureInfo.InvariantCulture) + ") m, v=("
+            + certV.X.ToString("R", CultureInfo.InvariantCulture) + ", "
+            + certV.Y.ToString("R", CultureInfo.InvariantCulture) + ", "
+            + certV.Z.ToString("R", CultureInfo.InvariantCulture) + ") m/s");
+        Console.WriteLine("  initial world production: same bp+c.P0, bv+c.V0 as StudyShipMatrixWorld");
+        Console.WriteLine("  initial world golden: p=("
+            + goldenP.X.ToString("R", CultureInfo.InvariantCulture) + ", "
+            + goldenP.Y.ToString("R", CultureInfo.InvariantCulture) + ", "
+            + goldenP.Z.ToString("R", CultureInfo.InvariantCulture) + ") m, v=("
+            + goldenV.X.ToString("R", CultureInfo.InvariantCulture) + ", "
+            + goldenV.Y.ToString("R", CultureInfo.InvariantCulture) + ", "
+            + goldenV.Z.ToString("R", CultureInfo.InvariantCulture) + ") m/s");
+
+        void PrintDiff(string name, Vector3d pA, Vector3d vA, Vector3d pB, Vector3d vB)
+        {
+            Console.WriteLine("  " + name + ": dp=("
+                + (pA.X - pB.X).ToString("E3", CultureInfo.InvariantCulture) + ", "
+                + (pA.Y - pB.Y).ToString("E3", CultureInfo.InvariantCulture) + ", "
+                + (pA.Z - pB.Z).ToString("E3", CultureInfo.InvariantCulture) + ") m, dv=("
+                + (vA.X - vB.X).ToString("E3", CultureInfo.InvariantCulture) + ", "
+                + (vA.Y - vB.Y).ToString("E3", CultureInfo.InvariantCulture) + ", "
+                + (vA.Z - vB.Z).ToString("E3", CultureInfo.InvariantCulture) + ") m/s");
+        }
+
+        PrintDiff("production-cert initial", certP, certV, certP, certV);
+        PrintDiff("golden-cert initial", goldenP, goldenV, certP, certV);
+        PrintDiff("golden-case local initial", goldenLocalP, goldenLocalV, c.P0, c.V0);
+
+        string path = StudyShipDdGoldenPath();
+        string mtime = "n/a";
+        try
+        {
+            mtime = new FileInfo(path).LastWriteTimeUtc.ToString("o", CultureInfo.InvariantCulture);
+        }
+        catch (IOException)
+        {
+        }
+
+        Console.WriteLine("  golden: " + Path.GetFileName(path) + ", K"
+            + golden.OrderA.ToString(CultureInfo.InvariantCulture) + "/K"
+            + golden.OrderB.ToString(CultureInfo.InvariantCulture)
+            + ", step=" + golden.StepA.ToString("G6", CultureInfo.InvariantCulture)
+            + "/" + golden.StepB.ToString("G6", CultureInfo.InvariantCulture)
+            + " s, tol=" + golden.TolA.ToString("E1", CultureInfo.InvariantCulture)
+            + "/" + golden.TolB.ToString("E1", CultureInfo.InvariantCulture)
+            + ", calls=" + golden.Calls.ToString(CultureInfo.InvariantCulture)
+            + ", ms=" + golden.Ms.ToString("F0", CultureInfo.InvariantCulture)
+            + ", self=" + golden.SelfErrorM.ToString("E3", CultureInfo.InvariantCulture)
+            + " m, mtime=" + mtime);
+        Console.WriteLine("  golden generator: StudyShipDdGoldenBuild (ShipGolden.cs), on-demand cache; "
+            + "P1B_REFRESH_GOLDEN=1 rebuilds");
+        Console.WriteLine("  golden model fingerprint: "
+            + (string.Equals(golden.Model, StudyShipDdGoldenModel(c), StringComparison.Ordinal)
+                ? "match (current bake/force)"
+                : "MISMATCH"));
+        Console.WriteLine("  current bake: degree 12, max step 900 s, phase 0.02 rad, quant 2 m");
+
+        Console.WriteLine("  scaling K20 (step 600 s, tol 1E-12, final-only dd; separate runs):");
+        int[] orbits = { 100, 250, 500, 1000 };
+        double[] times = new double[orbits.Length];
+        double[] errors = new double[orbits.Length];
+        for (int k = 0; k < orbits.Length; k++)
+        {
+            int count = orbits[k];
+            double seconds = count * c.Tau;
+            StudyShipMatrixCase dc = c.Clone();
+            dc.Seconds = seconds;
+            dc.UseTaylorDdReference = false;
+            TaylorShipDdResult dd = TaylorShip.RunDd(
+                dc.Sys, bp + dc.P0, bv + dc.V0, StudyShipT0, seconds / 86400d,
+                20, 1e-12d, 1e-15d, 600d, 1e-6d);
+            dc.Sys.EvaluateBodyState(central, StudyShipT0 + seconds,
+                out Vector3d bpT, out _);
+            Vector3d ddP = dd.P - bpT;
+            double stepsPerTau = dc.Central == 1 && dc.Seconds > 30d * 86400d ? 8d : 24d;
+            double[] checkpoints = StudyShipMatrixCheckpointTimes(dc);
+            var sampleP = new Vector3d[checkpoints.Length];
+            var sampleV = new Vector3d[checkpoints.Length];
+            StudyShipCertifiedRef cert = StudyShipCertifiedReference(
+                dc, stepsPerTau, 5, checkpoints, sampleP, sampleV);
+            double error = (ddP - cert.P).Magnitude;
+            times[k] = seconds;
+            errors[k] = error;
+            Console.WriteLine("    " + count.ToString(CultureInfo.InvariantCulture)
+                + " orbits: t=" + seconds.ToString("E6", CultureInfo.InvariantCulture)
+                + " s, dd-cert=" + error.ToString("E3", CultureInfo.InvariantCulture)
+                + " m, cert valid=" + cert.Valid
+                + ", dd calls=" + dd.Calls.ToString(CultureInfo.InvariantCulture)
+                + ", steps=" + dd.Steps.ToString(CultureInfo.InvariantCulture)
+                + ", ms=" + dd.Ms.ToString("F0", CultureInfo.InvariantCulture));
+        }
+
+        bool positive = true;
+        for (int i = 0; i < errors.Length; i++)
+        {
+            if (!(errors[i] > 0d) || !double.IsFinite(errors[i]))
+            {
+                positive = false;
+            }
+        }
+
+        if (positive)
+        {
+            double sx = 0d;
+            double sy = 0d;
+            double sxx = 0d;
+            double sxy = 0d;
+            for (int i = 0; i < times.Length; i++)
+            {
+                double x = Math.Log(times[i]);
+                double y = Math.Log(errors[i]);
+                sx += x;
+                sy += y;
+                sxx += x * x;
+                sxy += x * y;
+            }
+
+            double n = times.Length;
+            double p = ((n * sxy) - (sx * sy)) / ((n * sxx) - (sx * sx));
+            Console.WriteLine("  growth: dd-cert ~ t^p, p="
+                + p.ToString("F2", CultureInfo.InvariantCulture)
+                + " (1=initial/phase, 2=constant force)");
+        }
+        else
+        {
+            Console.WriteLine("  growth: p unavailable (non-positive/non-finite error)");
+        }
+    }
 }
