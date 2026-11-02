@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Galilego.Core;
@@ -30,6 +31,7 @@ internal static partial class P1bTests
         [JsonPropertyName("tol_b")] public double TolB { get; set; }
         [JsonPropertyName("step_a")] public double StepA { get; set; }
         [JsonPropertyName("step_b")] public double StepB { get; set; }
+        [JsonPropertyName("model")] public string Model { get; set; }
         [JsonPropertyName("p_rel")] public double[] PRel { get; set; }
         [JsonPropertyName("v_rel")] public double[] VRel { get; set; }
         [JsonPropertyName("self_error_m")] public double SelfErrorM { get; set; }
@@ -67,12 +69,105 @@ internal static partial class P1bTests
         return Math.Abs(a - b) <= 1e-12d * Math.Max(1d, Math.Max(Math.Abs(a), Math.Abs(b)));
     }
 
+    /// <summary>
+    /// Stable SHA-256 of the baked Chebyshev coefficients. Metadata alone
+    /// (segment count/length/degree/T0) does not change when the baker, its
+    /// quantization or a coefficient changes, so a golden could silently survive
+    /// a different ephemeris. Coefficients are hashed explicitly; endianness is
+    /// fixed so the fingerprint is checkout/platform independent.
+    /// </summary>
+    private static string StudyShipBakeCoefficientHash(BakedEphemeris baked)
+    {
+        if (baked == null || baked.Coeffs == null)
+        {
+            return "none";
+        }
+
+        using (SHA256 sha = SHA256.Create())
+        {
+            var bytes = new byte[8];
+            for (int i = 0; i < baked.Coeffs.Length; i++)
+            {
+                long bits = BitConverter.DoubleToInt64Bits(baked.Coeffs[i]);
+                for (int b = 0; b < 8; b++)
+                {
+                    bytes[b] = (byte)(bits >> (8 * b));
+                }
+
+                sha.TransformBlock(bytes, 0, bytes.Length, null, 0);
+            }
+
+            sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+            return Convert.ToHexString(sha.Hash);
+        }
+    }
+
+    /// <summary>
+    /// Everything the dd golden depends on besides its endpoint state. The old
+    /// fingerprint only covered t0/seconds/P0/V0, so a force-model or ephemeris
+    /// change silently reused a golden built by another model. Readable text, not
+    /// a hash: a mismatch can be diagnosed from the two strings.
+    /// </summary>
+    private static string StudyShipDdGoldenModel(StudyShipMatrixCase c)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("dd-world force=per-body-indirect v2")
+            .Append("; central=").Append(c.Central.ToString(CultureInfo.InvariantCulture))
+            .Append("; mass0=").Append(c.Mass0.ToString("R", CultureInfo.InvariantCulture))
+            .Append("; perturbed=").Append(c.Perturbed ? "1" : "0")
+            .Append("; worldChunk=").Append(c.WorldChunkSeconds.ToString("R", CultureInfo.InvariantCulture));
+        if (c.Drag != null)
+        {
+            sb.Append("; drag=").Append(c.Drag.DragCoefficient.ToString("R", CultureInfo.InvariantCulture))
+                .Append('/').Append(c.Drag.ReferenceAreaM2.ToString("R", CultureInfo.InvariantCulture));
+        }
+
+        if (c.Thrust)
+        {
+            sb.Append("; thrust=")
+                .Append(c.ThrustDirection.X.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                .Append(c.ThrustDirection.Y.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                .Append(c.ThrustDirection.Z.ToString("R", CultureInfo.InvariantCulture)).Append('/')
+                .Append(c.ThrustStart.ToString("R", CultureInfo.InvariantCulture)).Append('/')
+                .Append(c.ThrustSeconds.ToString("R", CultureInfo.InvariantCulture)).Append('/')
+                .Append(c.ThrustNewtons.ToString("R", CultureInfo.InvariantCulture)).Append('/')
+                .Append(c.ThrustIsp.ToString("R", CultureInfo.InvariantCulture)).Append('/')
+                .Append(c.ThrustRampSeconds.ToString("R", CultureInfo.InvariantCulture));
+        }
+
+        for (int i = 0; i < c.Sys.AllBodies.Count; i++)
+        {
+            OrbitingBody body = c.Sys.AllBodies[i];
+            sb.Append("; b").Append(i.ToString(CultureInfo.InvariantCulture))
+                .Append('=').Append(body.Name)
+                .Append(" parent=").Append(body.Parent == null ? "-" : body.Parent.Name)
+                .Append(" mu=").Append(body.ResolveStandardGravitationalParameter()
+                    .ToString("R", CultureInfo.InvariantCulture))
+                .Append(" R=").Append(body.Radius.ToString("R", CultureInfo.InvariantCulture))
+                .Append(" J2=").Append(body.J2.ToString("R", CultureInfo.InvariantCulture))
+                .Append(" J2R=").Append(body.J2ReferenceRadius.ToString("R", CultureInfo.InvariantCulture))
+                .Append(" atm=").Append(body.Atmosphere == null ? "0" : "1");
+            BakedEphemeris baked = body.Baked;
+            if (baked != null)
+            {
+                sb.Append(" bake=").Append(baked.SegmentCount.ToString(CultureInfo.InvariantCulture))
+                    .Append('/').Append(baked.SegmentLengthSeconds.ToString("R", CultureInfo.InvariantCulture))
+                    .Append('/').Append(baked.Degree.ToString(CultureInfo.InvariantCulture))
+                    .Append('/').Append(baked.T0Seconds.ToString("R", CultureInfo.InvariantCulture))
+                    .Append(" coeff=").Append(StudyShipBakeCoefficientHash(baked));
+            }
+        }
+
+        return sb.ToString();
+    }
+
     private static bool StudyShipDdGoldenMatches(
         StudyShipDdGoldenFile g, StudyShipMatrixCase c)
     {
         return g != null && g.P0 != null && g.P0.Length == 3
             && g.V0 != null && g.V0.Length == 3
             && string.Equals(g.Label, c.Label, StringComparison.Ordinal)
+            && string.Equals(g.Model, StudyShipDdGoldenModel(c), StringComparison.Ordinal)
             && SameGold(g.T0, StudyShipT0)
             && SameGold(g.Seconds, c.Seconds)
             && SameGold(g.P0[0], c.P0.X)
@@ -105,6 +200,18 @@ internal static partial class P1bTests
             out Vector3d bpT, out Vector3d bvT);
         Vector3d pRel = t2.P - bpT;
         Vector3d vRel = t2.V - bvT;
+        // K20 and K24 can agree bit-for-bit after projection to double, which is
+        // NOT a zero error. Report the double-precision roundoff floor of the
+        // relative state instead: it is the smallest error this representation
+        // can resolve, and it keeps downstream budgets non-zero.
+        double selfError = (t1.P - t2.P).Magnitude;
+        double roundoffFloor = ToleranceReference.FloatingPointFloor
+            * Math.Max(pRel.Magnitude, 1d);
+        if (!(selfError > roundoffFloor))
+        {
+            selfError = roundoffFloor;
+        }
+
         return new StudyShipDdGoldenFile
         {
             Label = c.Label,
@@ -118,12 +225,14 @@ internal static partial class P1bTests
             TolB = tolB,
             StepA = stepA,
             StepB = stepB,
+            Model = StudyShipDdGoldenModel(c),
             PRel = new[] { pRel.X, pRel.Y, pRel.Z },
             VRel = new[] { vRel.X, vRel.Y, vRel.Z },
-            SelfErrorM = (t1.P - t2.P).Magnitude,
+            SelfErrorM = selfError,
             Calls = t1.Calls + t2.Calls,
             Ms = sw.Elapsed.TotalMilliseconds,
-            Note = "K20/K24 world-frame dd-Taylor, endpoint projected to the Earth-local frame"
+            Note = "K20/K24 world-frame dd-Taylor, endpoint projected to the Earth-local frame; "
+                + "self_error_m is max(|K20-K24|, double roundoff floor), not zero when they agree bitwise"
         };
     }
 

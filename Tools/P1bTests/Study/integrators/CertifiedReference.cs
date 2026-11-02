@@ -13,11 +13,12 @@ internal static partial class P1bTests
     // stepper changes its own step sequence when the tolerance changes, so
     // "tighter tolerance - looser tolerance" is not an error estimator).
     //
-    // Valid=true only when a pair of step levels is asymptotic: then PositionError
-    // is a Richardson error estimate. A non-asymptotic run may still return
-    // Resolved=true with FinestDelta as a RESOLUTION (the difference between the two
-    // finest steps), never as an 8th-order error bound; such a reference is usable
-    // only for consistency checks, and accuracy gates must not treat it as proof.
+    // Valid=true only when a pair of step levels is asymptotic and the answer level
+    // is self-consistent: then PositionError is a bound, either the Richardson
+    // estimate or (when the finest level stalls) the observed disagreement with the
+    // next finer level, whichever is larger. A run with no converging pair at all is
+    // UNRESOLVED and may only be used for consistency checks; accuracy gates must
+    // not treat FinestDelta as an error bound.
     // ------------------------------------------------------------------
 
     private sealed class StudyShipCertifiedRef
@@ -31,14 +32,23 @@ internal static partial class P1bTests
         public double Ratio;
         public double Order;
         public int Level;
-        /// <summary>True only when the finest pair is asymptotic: the error is an 8th-order estimate.</summary>
-        public bool Valid;
-        /// <summary>True when that estimate came from a converging pair (same as Valid).</summary>
-        public bool Asymptotic;
         /// <summary>
-        /// Non-asymptotic reference usable only as a resolution/consistency check, never as an
-        /// error bound. Requires the finest pair to converge (ratio >= 32) and to be small
-        /// against the target: a ratio near 1 is disagreement, not resolution.
+        /// True when a converging pair exists and the answer level is self-consistent.
+        /// PositionError is then a bound: Richardson extrapolation raised to the
+        /// observed disagreement with the next finer level when that is larger.
+        /// </summary>
+        public bool Valid;
+        /// <summary>
+        /// True when the answer level is certified (same as Valid). Floored says
+        /// whether PositionError was raised above the Richardson estimate.
+        /// </summary>
+        public bool Asymptotic;
+        /// <summary>True when PositionError was raised by the finest observed disagreement.</summary>
+        public bool Floored;
+        /// <summary>
+        /// A converging pair exists and the observed floor is below 10% of the
+        /// accuracy target. This is the flag the case gate uses to accept the
+        /// reference for ranking; it is not an 8th-order certificate.
         /// </summary>
         public bool Resolved;
         public string Detail;
@@ -162,9 +172,31 @@ internal static partial class P1bTests
             Velocity = c.V0,
             Mass = c.Mass0
         };
-        double[] edges = StudyShipRefMergeEdges(StudyShipRefBreakpoints(c), sampleTimes);
-        double t = edges[0];
+        double[] breakpoints = StudyShipRefBreakpoints(c);
+        double[] edges = StudyShipRefMergeEdges(breakpoints, sampleTimes);
         double edge = Math.Max(1e-9d, h * 1e-9d);
+        bool IsThrustBoundary(double time)
+        {
+            if (!c.Thrust
+                || !Array.Exists(breakpoints, b => Math.Abs(b - time) <= 1e-9d))
+            {
+                return false;
+            }
+
+            double thrustStart = c.ThrustStart;
+            double thrustEnd = thrustStart + c.ThrustSeconds;
+            if (Math.Abs(time - thrustStart) <= 1e-9d
+                || Math.Abs(time - thrustEnd) <= 1e-9d)
+            {
+                return true;
+            }
+
+            return c.ThrustRampSeconds > 0d
+                && (Math.Abs(time - (thrustStart + c.ThrustRampSeconds)) <= 1e-9d
+                    || Math.Abs(time - (thrustEnd - c.ThrustRampSeconds)) <= 1e-9d);
+        }
+
+        double t = edges[0];
         int sample = 0;
         for (int segment = 0; segment < edges.Length - 1; segment++)
         {
@@ -175,38 +207,49 @@ internal static partial class P1bTests
                 continue;
             }
 
-            // Do not put a DOP853 stage exactly on a throttle breakpoint: the
-            // one-sided value of the RHS there is not the value the quadrature
-            // needs, and that first-order boundary error never decreases with h.
-            // Midpoints of a C0 force are integrated at the expected order; the
-            // tiny edge steps are below the target accuracy.
-            if (span > 3d * edge)
+            bool startThrust = IsThrustBoundary(t);
+            bool endThrust = IsThrustBoundary(tEnd);
+            if (span <= 3d * edge)
             {
-                state = StudyShipRefDop853Step(acc, state, t, edge);
-                t += edge;
-                double mainEnd = tEnd - edge;
-                double mainSpan = mainEnd - t;
-                long full = (long)Math.Floor(mainSpan / h);
-                double rem = mainSpan - (full * h);
-                for (long n = 0; n < full; n++)
-                {
-                    state = StudyShipRefDop853Step(acc, state, t, h);
-                    t += h;
-                }
-
-                if (rem > 1e-15d)
-                {
-                    state = StudyShipRefDop853Step(acc, state, t, rem);
-                    t += rem;
-                }
-
-                state = StudyShipRefDop853Step(acc, state, t, edge);
+                state = StudyShipRefDop853Step(acc, state, t, span);
                 t = tEnd;
             }
             else
             {
-                state = StudyShipRefDop853Step(acc, state, t, span);
-                t = tEnd;
+                double mainStart = t;
+                if (startThrust)
+                {
+                    double edgeEnd = t + edge;
+                    double edgeStep = edgeEnd - t;
+                    if (edgeStep > 0d)
+                    {
+                        state = StudyShipRefDop853Step(acc, state, t, edgeStep);
+                    }
+
+                    mainStart = edgeEnd;
+                }
+
+                double mainEnd = endThrust ? tEnd - edge : tEnd;
+                double mainSpan = mainEnd - mainStart;
+                long n = Math.Max(1L, (long)Math.Round(mainSpan / h));
+                double step = mainSpan / n;
+                for (long i = 0; i < n; i++)
+                {
+                    double tn = mainStart + (i * step);
+                    state = StudyShipRefDop853Step(acc, state, tn, step);
+                }
+
+                t = mainEnd;
+                if (endThrust)
+                {
+                    double tail = tEnd - mainEnd;
+                    if (tail > 0d)
+                    {
+                        state = StudyShipRefDop853Step(acc, state, mainEnd, tail);
+                    }
+
+                    t = tEnd;
+                }
             }
 
             // Every forced end is either a throttle edge, a checkpoint or the
@@ -233,7 +276,7 @@ internal static partial class P1bTests
     }
 
     private static StudyShipCertifiedRef StudyShipCertifiedReference(
-        StudyShipMatrixCase c, double stepsPerTau = 24d, int levels = 4,
+        StudyShipMatrixCase c, double stepsPerTau = 24d, int levels = 5,
         double[] sampleTimes = null,
         Vector3d[] samplePositions = null,
         Vector3d[] sampleVelocities = null)
@@ -271,35 +314,102 @@ internal static partial class P1bTests
             var hs = new double[levels];
             var states = new SpacecraftIntegrationState[levels];
             var calls = new long[levels];
+            var samplePos = sampleTimes != null ? new Vector3d[levels][] : null;
+            var sampleVel = sampleTimes != null ? new Vector3d[levels][] : null;
             for (int i = 0; i < levels; i++)
             {
                 hs[i] = h0 / (1 << i);
-                bool finest = i == levels - 1;
-                states[i] = StudyShipRefDop853Fixed(
-                    c, hs[i], out calls[i],
-                    finest ? sampleTimes : null,
-                    finest ? samplePositions : null,
-                    finest ? sampleVelocities : null);
+                if (sampleTimes != null)
+                {
+                    samplePos[i] = new Vector3d[sampleTimes.Length];
+                    sampleVel[i] = new Vector3d[sampleTimes.Length];
+                    states[i] = StudyShipRefDop853Fixed(c, hs[i], out calls[i],
+                        sampleTimes, samplePos[i], sampleVel[i]);
+                }
+                else
+                {
+                    states[i] = StudyShipRefDop853Fixed(c, hs[i], out calls[i]);
+                }
             }
 
             var d = new double[levels - 1];
             var dv = new double[levels - 1];
             for (int i = 0; i < levels - 1; i++)
             {
-                d[i] = (states[i].Position - states[i + 1].Position).Magnitude;
-                dv[i] = (states[i].Velocity - states[i + 1].Velocity).Magnitude;
+                if (sampleTimes != null)
+                {
+                    double worstPos = 0d;
+                    double worstVel = 0d;
+                    for (int s = 0; s < sampleTimes.Length; s++)
+                    {
+                        worstPos = Math.Max(worstPos,
+                            (samplePos[i][s] - samplePos[i + 1][s]).Magnitude);
+                        worstVel = Math.Max(worstVel,
+                            (sampleVel[i][s] - sampleVel[i + 1][s]).Magnitude);
+                    }
+
+                    d[i] = worstPos;
+                    dv[i] = worstVel;
+                }
+                else
+                {
+                    d[i] = (states[i].Position - states[i + 1].Position).Magnitude;
+                    dv[i] = (states[i].Velocity - states[i + 1].Velocity).Magnitude;
+                }
             }
 
-            // The answer is the finest state. The finest pair may be roundoff-
-            // limited (its ratio is not asymptotic); in that case the reference is
-            // still usable only if its resolution (the finest delta) is far below
-            // the production target. It is then reported as "resolved", not as an
-            // 8th-order-certified error estimate.
-            int chosen = -1;
-            for (int i = levels - 3; i >= 0; i--)
+            if (string.Equals(Environment.GetEnvironmentVariable("P1B_CERT_TRACE"), "1",
+                StringComparison.Ordinal))
             {
+                Console.Write("cert trace " + c.Label + " attempt " + attempt + " h="
+                    + hs[levels - 1].ToString("G6", CultureInfo.InvariantCulture));
+                for (int i = 0; i < d.Length; i++)
+                {
+                    Console.Write(" d" + i + "=" + d[i].ToString("E2", CultureInfo.InvariantCulture));
+                    if (i > 0)
+                    {
+                        Console.Write(" r" + i + "=" + (d[i - 1] / Math.Max(d[i], 1e-30d))
+                            .ToString("F2", CultureInfo.InvariantCulture));
+                    }
+                }
+
+                Console.WriteLine();
+            }
+
+            // The answer need not be the very finest state: when the extra finest
+            // level stalls or disagrees, return the previous consistent level and
+            // raise the bound to that observed disagreement (see observedPos below).
+            // Inspect every pair, including the finest one. A pair whose smaller
+            // delta is at the double floor is not a convergence measurement: a zero
+            // delta means the two runs agreed bit-for-bit, not that the answer is
+            // exact. Such a pair can neither certify 8th order nor be called a
+            // resolution; the extrapolated coarse pair plus the roundoff floor is
+            // the honest bound in that case.
+            double roundoffPos = ToleranceReference.FloatingPointFloor
+                * Math.Max(states[levels - 1].Position.Magnitude, 1d);
+            double roundoffVel = ToleranceReference.FloatingPointFloor
+                * Math.Max(states[levels - 1].Velocity.Magnitude, 1d);
+            int finestPair = levels - 3;
+            int chosen = -1;
+            double bestRatio = double.NaN;
+            for (int i = finestPair; i >= 0; i--)
+            {
+                if (!(d[i] > roundoffPos) || !(d[i + 1] > roundoffPos))
+                {
+                    continue;
+                }
+
                 double candidate = d[i] / Math.Max(d[i + 1], 1e-30d);
-                if (candidate > 64d && candidate < 1024d)
+                if (!double.IsFinite(bestRatio) || candidate > bestRatio)
+                {
+                    bestRatio = candidate;
+                }
+
+                // An 8th-order pair gives ~256. Accept anything from 32 up: the
+                // coarse end can overshoot (a 1,284 ratio is still a clean
+                // convergence measurement), and the observed finest-level
+                // disagreement below caps the extrapolation in any case.
+                if (candidate >= 32d)
                 {
                     chosen = i;
                     break;
@@ -307,23 +417,58 @@ internal static partial class P1bTests
             }
 
             bool asymptotic = chosen >= 0;
-            double ratioFine = d[levels - 3] / Math.Max(d[levels - 2], 1e-30d);
-            // "Resolved" needs the finest pair to CONVERGE (an 8th-order pair gives
-            // ~256, so >= 32 is the weakest credible ratio), not merely to differ:
-            // a ratio near 1.0 means the two finest solutions disagree without
-            // telling which one is closer, so FinestDelta is noise, not resolution.
-            bool resolved = ratioFine >= 32d
-                && d[levels - 2] <= 0.05d * Math.Max(c.AccuracyTarget, 1d);
-            bool valid = asymptotic || resolved;
-            double ratio = ratioFine;
+            double finestDelta = d[finestPair + 1];
+            // A coarse asymptotic pair certifies the sequence down to that pair.
+            // If the extra finest level is inconsistent (d_finest stops shrinking
+            // or is roundoff-dominated), return the previous, consistent level
+            // instead of the noisy extra one. This is the checked fallback that
+            // keeps the answer and its error estimate at the same h.
+            int answerLevel = levels - 1;
+            if (!(finestDelta <= Math.Max(0.5d * d[finestPair], roundoffPos)))
+            {
+                answerLevel = levels - 2;
+            }
+
+            while (answerLevel > 1)
+            {
+                double answerDelta = d[answerLevel - 1];
+                double coarserDelta = answerLevel > 1 ? d[answerLevel - 2] : double.PositiveInfinity;
+                if (answerDelta <= Math.Max(0.5d * coarserDelta, roundoffPos))
+                {
+                    break;
+                }
+
+                answerLevel--;
+            }
+
+            SpacecraftIntegrationState answer = states[answerLevel];
+            if (sampleTimes != null)
+            {
+                if (samplePositions != null)
+                {
+                    Array.Copy(samplePos[answerLevel], samplePositions, sampleTimes.Length);
+                }
+
+                if (sampleVelocities != null)
+                {
+                    Array.Copy(sampleVel[answerLevel], sampleVelocities, sampleTimes.Length);
+                }
+            }
+
+            double answerRoundoffPos = ToleranceReference.FloatingPointFloor
+                * Math.Max(answer.Position.Magnitude, 1d);
+            double answerRoundoffVel = ToleranceReference.FloatingPointFloor
+                * Math.Max(answer.Velocity.Magnitude, 1d);
+            double ratio = asymptotic
+                ? d[chosen] / Math.Max(d[chosen + 1], 1e-30d)
+                : (double.IsFinite(bestRatio) ? bestRatio : double.NaN);
             double errPos = double.NaN;
             double errVel = double.NaN;
             if (asymptotic)
             {
-                ratio = d[chosen] / Math.Max(d[chosen + 1], 1e-30d);
                 double order = Math.Log(Math.Max(ratio, 1e-30d), 2d);
                 double scale = Math.Pow(
-                    hs[levels - 1] / Math.Max(hs[chosen + 1], 1e-30d), order);
+                    hs[answerLevel] / Math.Max(hs[chosen + 1], 1e-30d), order);
                 double richardson = Math.Max(ratio - 1d, 1d);
                 // Richardson only. d_finest is a separate resolution, not the error
                 // of the finest solution (it is ~2^p times larger when asymptotic).
@@ -331,37 +476,79 @@ internal static partial class P1bTests
                 errVel = dv[chosen] * scale / richardson;
             }
 
+            // The answer level must still be self-consistent. The check below only
+            // looks at coarser levels; a finest pair that stalls says nothing about
+            // the accuracy of the returned state. The observed disagreement with the
+            // next finer level is therefore a lower bound on the answer's error:
+            //   - answer below the finest level: it is d[answerLevel] (S_A vs S_A+1);
+            //   - answer at the finest level: it is d[A-1], divided by the observed
+            //     convergence ratio only when that pair actually converged.
+            double observedPos;
+            double observedVel;
+            if (answerLevel < levels - 1)
+            {
+                observedPos = d[answerLevel];
+                observedVel = dv[answerLevel];
+            }
+            else
+            {
+                double finestRatio = answerLevel >= 2 && d[answerLevel - 1] > roundoffPos
+                    ? d[answerLevel - 2] / Math.Max(d[answerLevel - 1], 1e-30d)
+                    : double.NaN;
+                observedPos = finestRatio >= 32d
+                    ? d[answerLevel - 1] / Math.Max(finestRatio, 2d)
+                    : d[answerLevel - 1];
+                observedVel = finestRatio >= 32d
+                    ? dv[answerLevel - 1] / Math.Max(finestRatio, 2d)
+                    : dv[answerLevel - 1];
+            }
+
+            observedPos = Math.Max(observedPos, answerRoundoffPos);
+            observedVel = Math.Max(observedVel, answerRoundoffVel);
+            bool answerConsistent = answerLevel == 0
+                || d[answerLevel - 1] <= Math.Max(
+                    0.5d * (answerLevel > 1 ? d[answerLevel - 2] : double.PositiveInfinity),
+                    answerRoundoffPos);
+            bool valid = asymptotic && answerConsistent;
+            bool floored = valid && observedPos > errPos * 1.5d;
+            // A usable resolution needs a genuine converging pair (ratio >= 32) and
+            // an observed floor well below the target. This is a ranking floor, not
+            // an 8th-order certificate; the case-level gate still requires Valid.
+            bool resolved = valid
+                && observedPos <= 0.1d * Math.Max(c.AccuracyTarget, 1d);
             double orderUsed = Math.Log(Math.Max(ratio, 1e-30d), 2d);
-            double roundoffPos = ToleranceReference.FloatingPointFloor
-                * Math.Max(states[levels - 1].Position.Magnitude, 1d);
-            double roundoffVel = ToleranceReference.FloatingPointFloor
-                * Math.Max(states[levels - 1].Velocity.Magnitude, 1d);
             var r = new StudyShipCertifiedRef
             {
-                P = states[levels - 1].Position,
-                V = states[levels - 1].Velocity,
-                M = states[levels - 1].Mass,
-                PositionError = asymptotic ? Math.Max(errPos, roundoffPos) : double.NaN,
-                VelocityError = asymptotic ? Math.Max(errVel, roundoffVel) : double.NaN,
-                FinestDelta = d[levels - 2],
+                P = answer.Position,
+                V = answer.Velocity,
+                M = answer.Mass,
+                PositionError = valid ? Math.Max(errPos, observedPos) : double.NaN,
+                VelocityError = valid ? Math.Max(errVel, observedVel) : double.NaN,
+                // The actual difference between the two finest runs. It is a
+                // resolution (how far apart the levels are), not the error of the
+                // returned answer when the sequence converged.
+                FinestDelta = levels > 1
+                    ? Math.Max(d[levels - 2], answerRoundoffPos)
+                    : double.NaN,
                 Ratio = ratio,
                 Order = orderUsed,
-                Level = levels - 1,
-                Valid = asymptotic,
-                Asymptotic = asymptotic,
+                Level = answerLevel,
+                Valid = valid,
+                Asymptotic = valid,
                 Resolved = resolved,
+                Floored = floored,
                 Detail = string.Format(
                     CultureInfo.InvariantCulture,
                     "fixed DOP853 h={0:G6} s, ratio={1:F2} order={2:F2}{3}, est {4:E2} m / {5:E1} m/s, finest d={6:E2} m{7}",
-                    hs[levels - 1], ratio, orderUsed,
-                    asymptotic
-                        ? ""
-                        : resolved
-                            ? " resolved (ratio>=32; resolution only)"
-                            : " UNRESOLVED (finest pair does not converge)",
-                    asymptotic ? Math.Max(errPos, roundoffPos) : double.NaN,
-                    asymptotic ? Math.Max(errVel, roundoffVel) : double.NaN,
-                    d[levels - 2],
+                    hs[answerLevel], ratio, orderUsed,
+                    valid
+                        ? floored
+                            ? " (floor from finest disagreement)"
+                            : ""
+                        : " UNRESOLVED (no converging pair)",
+                    valid ? Math.Max(errPos, observedPos) : double.NaN,
+                    valid ? Math.Max(errVel, observedVel) : double.NaN,
+                    levels > 1 ? Math.Max(d[levels - 2], answerRoundoffPos) : double.NaN,
                     attempt > 0 ? " retry " + attempt.ToString(CultureInfo.InvariantCulture) : "")
             };
             if (valid)

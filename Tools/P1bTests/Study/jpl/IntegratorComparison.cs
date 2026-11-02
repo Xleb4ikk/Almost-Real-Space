@@ -16,6 +16,7 @@ internal static partial class P1bTests
         public double[] P;
         public double[] V;
         public double Ms;
+        /// <summary>Integrator error against a same-force reference.</summary>
         public double Err;
         public long Calls;
     }
@@ -73,15 +74,28 @@ internal static partial class P1bTests
         referenceWatch.Stop();
         var referenceFine = JplDop853(nb, days, 1e-10d, 1e-13d, 1e-15d, false);
         var pnReference = JplDop853(nb, days, 1e-9d, 1e-12d, 1e-14d, true);
+        // 1PN is a different force model, so it needs its own fine run and its
+        // own convergence floor; comparing it with the Newtonian reference is a
+        // force-model difference, not an integrator error.
+        var pnReferenceFine = JplDop853(nb, days, 1e-10d, 1e-13d, 1e-15d, true);
         double referenceMs = referenceWatch.Elapsed.TotalMilliseconds;
         int referenceWorst;
+        int pnReferenceWorst;
         double referenceSelf = IntegratorError(referenceFine.p, reference.p, n, out referenceWorst);
+        double pnReferenceSelf = IntegratorError(
+            pnReferenceFine.p, pnReference.p, n, out pnReferenceWorst);
         Console.WriteLine(string.Format(
             CultureInfo.InvariantCulture,
             "reference: DOP853 rtol=1e-14, atol=1e-9/1e-12, maxStep=1 d, {0:F0} ms; self-convergence (1e-13 vs 1e-14, worst {2}) = {1:E2} m",
             referenceMs, referenceSelf, nb.Names[referenceWorst]));
+        Console.WriteLine(string.Format(
+            CultureInfo.InvariantCulture,
+            "1PN reference: DOP853 rtol=1e-14; self-convergence (1e-13 vs 1e-14, worst {0}) = {1:E2} m",
+            nb.Names[pnReferenceWorst], pnReferenceSelf));
         Check(referenceSelf < 10d, "JPL reference self-convergence",
             referenceSelf.ToString("E2", CultureInfo.InvariantCulture) + " m < 10 m");
+        Check(pnReferenceSelf < 10d, "JPL 1PN reference self-convergence",
+            pnReferenceSelf.ToString("E2", CultureInfo.InvariantCulture) + " m < 10 m");
 
         var rows = new[]
         {
@@ -133,33 +147,67 @@ internal static partial class P1bTests
                 row.Err = IntegratorError(row.P, row.Pn ? pnReference.p : reference.p, n, out _);
             });
 
-        Console.WriteLine("method                 h        calls       ms      max err(km)");
-        double bestErr = double.MaxValue;
-        string bestName = "";
+        Console.WriteLine("method                 force  h        calls  ms(wall,par)  max err(km)   (ms is not a cost metric)");
+
+        double bestNewton = double.MaxValue;
+        string bestNewtonName = "";
+        double bestPn = double.MaxValue;
+        string bestPnName = "";
+        double bestFixed = double.MaxValue;
+        string bestFixedName = "";
         for (int i = 0; i < rows.Length; i++)
         {
             IntegratorRow row = rows[i];
             string h = row.Method == "DOP853" || row.Method == "Y6C"
                 ? (row.Method == "Y6C" ? "112.5 s" : "adaptive")
                 : (row.H / 86400d).ToString("F1", CultureInfo.InvariantCulture) + " d";
-            // Ranking cannot go below the reference's own uncertainty: an error
-            // smaller than the self-convergence is not evidence of a better method.
-            double ranked = Math.Max(row.Err, referenceSelf);
+            // Ranking cannot go below the reference's own uncertainty for the SAME
+            // force model: an error smaller than the self-convergence is not
+            // evidence of a better method. 1PN and Newtonian rows never share a
+            // ranking, because their difference is the force model.
+            double floor = row.Pn ? pnReferenceSelf : referenceSelf;
+            double ranked = Math.Max(row.Err, floor);
             Console.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
-                "{0,-22} {1,-8} {2,10} {3,8:F0} {4,14:F3}{5}",
-                row.Name, h, row.Calls, row.Ms, row.Err / 1000d,
+                "{0,-22} {1,-6} {2,-8} {3,10} {4,8:F0} {5,14:F3}{6}",
+                row.Name, row.Pn ? "1PN" : "newton", h, row.Calls, row.Ms, row.Err / 1000d,
                 ranked > row.Err ? " (at reference floor)" : ""));
             Check(double.IsFinite(row.Err), "integrator " + row.Name + " finite", "");
-            if (ranked < bestErr)
+            if (row.Pn)
             {
-                bestErr = ranked;
-                bestName = row.Name;
+                if (ranked < bestPn)
+                {
+                    bestPn = ranked;
+                    bestPnName = row.Name;
+                }
+            }
+            else
+            {
+                if (ranked < bestNewton)
+                {
+                    bestNewton = ranked;
+                    bestNewtonName = row.Name;
+                }
+
+                // DOP853 is also the reference method; the fixed-step comparison is
+                // the independent-method statement.
+                if (row.Method != "DOP853" && ranked < bestFixed)
+                {
+                    bestFixed = ranked;
+                    bestFixedName = row.Name;
+                }
             }
         }
 
-        Console.WriteLine("best by max error (reference floor "
-            + (referenceSelf / 1000d).ToString("E2", CultureInfo.InvariantCulture) + " km): " + bestName);
+        Console.WriteLine("best Newtonian (reference floor "
+            + (referenceSelf / 1000d).ToString("E2", CultureInfo.InvariantCulture) + " km): "
+            + bestNewtonName);
+        Console.WriteLine("best Newtonian fixed-step: " + bestFixedName);
+        Console.WriteLine("best 1PN (reference floor "
+            + (pnReferenceSelf / 1000d).ToString("E2", CultureInfo.InvariantCulture) + " km): "
+            + bestPnName);
+        Console.WriteLine("note: the adaptive DOP853 row uses looser tolerances than the "
+            + "DOP853 reference; it is not an independent method check.");
         Console.WriteLine("--- Integrator comparison complete ---");
         return 0;
     }

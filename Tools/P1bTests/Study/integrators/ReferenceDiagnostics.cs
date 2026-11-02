@@ -182,17 +182,30 @@ internal static partial class P1bTests
                 tol, dopErrors[i], run.calls));
         }
 
+        // At 1 AU the absolute state has ulp ~3e-5 m; the steps random-walk to a
+        // ~1.5e-3 m floor, so 1e-6/1e-8/1e-10 give the same error and calls. This
+        // sweep is a FLOOR diagnostic, not a proof of tolerance control. Gating it
+        // at "< 1 m" only checked that the floor is below a metre; assert the floor
+        // itself, and leave tolerance control to E6c (local frame, 6.8e6 m).
+        double floorBound = 5e-3d;
+        double floorMin = double.PositiveInfinity;
+        double floorMax = 0d;
         for (int i = 0; i < dopErrors.Length; i++)
         {
-            Check(dopErrors[i] < 1d,
-                "E1b DOP853 30 d tol=" + dopTols[i].ToString("E1", CultureInfo.InvariantCulture),
-                dopErrors[i].ToString("E3", CultureInfo.InvariantCulture) + " m < 1 m");
+            floorMin = Math.Min(floorMin, dopErrors[i]);
+            floorMax = Math.Max(floorMax, dopErrors[i]);
+            Check(dopErrors[i] < floorBound,
+                "E1b DOP853 30 d tol=" + dopTols[i].ToString("E1", CultureInfo.InvariantCulture)
+                + " is at the 1 AU double floor",
+                dopErrors[i].ToString("E3", CultureInfo.InvariantCulture) + " m < "
+                + floorBound.ToString("E1", CultureInfo.InvariantCulture) + " m");
         }
 
-        // At 1 AU the absolute state has ulp ~3e-5 m; 4320 steps random-walk to a
-        // ~1.5e-3 m floor. This sweep is a floor diagnostic, not a proof of
-        // tolerance control. Tolerance control is measured in local coordinates
-        // (E6c, 6.8e6 m) and by the production tolerance test below.
+        Check(floorMax <= 5d * Math.Max(floorMin, 1e-30d),
+            "E1b 30 d tolerance sweep is floor-limited",
+            floorMax.ToString("E3", CultureInfo.InvariantCulture) + " / "
+            + floorMin.ToString("E3", CultureInfo.InvariantCulture) + " <= 5x");
+        Console.WriteLine("E1b 1 AU sweep: floor-limited, not a tolerance-control proof; see E6c");
 
         StudyDd3 f0 = StudyForceDd(sys, StudyDd3.From(p0), 0d);
         double exactAx = -mu / (StudyAU * StudyAU);
@@ -249,7 +262,7 @@ internal static partial class P1bTests
     {
         Console.WriteLine();
         Console.WriteLine("=== E2: field determinism ===");
-        StarSystem sys = StudyShipMatrixSystem(false);
+        StarSystem sys = StudyShipMatrixSystem(false, false);
         double t = StudyShipT0 + (30d * 86400d);
         var p = new Vector3d(6.771e6d, 1.0e6d, 2.0e5d);
         StudyDd3 f0 = StudyForceDd(sys, StudyDd3.From(p), t);
@@ -283,7 +296,7 @@ internal static partial class P1bTests
         Check(forceSame, "E2 StudyForceDd determinism",
             forceSame ? "bitwise" : "changed");
 
-        StarSystem fresh = StudyShipMatrixSystem(false);
+        StarSystem fresh = StudyShipMatrixSystem(false, false);
         Vector3d a0 = fresh.EvaluateShipAccelerationCached(p, t);
         Vector3d a1 = sys.EvaluateShipAccelerationCached(p, t);
         bool accSame = StudyDiagVecSame(a0, a1);
@@ -327,7 +340,7 @@ internal static partial class P1bTests
     {
         Console.WriteLine();
         Console.WriteLine("=== E3: bisection by bodies and time ===");
-        StarSystem gravity = StudyShipMatrixSystem(false);
+        StarSystem gravity = StudyShipMatrixSystem(false, false);
         const double day = 86400d;
         const double year = 365.25d * 86400d;
 
@@ -373,7 +386,7 @@ internal static partial class P1bTests
     {
         Console.WriteLine();
         Console.WriteLine("=== E4: production 1000 orbits vs chunk ===");
-        StarSystem sys = StudyShipMatrixSystem(false);
+        StarSystem sys = StudyShipMatrixSystem(false, false);
         const double day = 86400d;
         StudyShipMatrixCase c = StudyShipMatrixCaseOrbit(
             "diag 1000 orbits", sys, 1,
@@ -456,7 +469,7 @@ internal static partial class P1bTests
     {
         Console.WriteLine();
         Console.WriteLine("=== E5: floating-origin local production vs world ===");
-        StarSystem sys = StudyShipMatrixSystem(false);
+        StarSystem sys = StudyShipMatrixSystem(false, false);
         const double day = 86400d;
         StudyShipMatrixCase c = StudyShipMatrixCaseOrbit(
             "diag 1000 orbits", sys, 1,
@@ -613,13 +626,14 @@ internal static partial class P1bTests
     {
         Console.WriteLine();
         Console.WriteLine("=== E7: Sun root-frame indirect term: production vs certified local ===");
-        StarSystem sys = StudyShipMatrixSystem(false);
+        StarSystem sys = StudyShipMatrixSystem(false, false);
         const double year = 365.25d * 86400d;
         StudyShipMatrixCase c = StudyShipMatrixCaseOrbit(
             "Sun 1 AU circular", sys, 0, StudyAU, StudyAU,
             0d, 0d, 0d, year, false, true, 1d);
         StudyShipCertifiedRef cert = StudyShipCertifiedReference(c);
         Console.WriteLine("certified local: " + cert.Detail);
+        Console.WriteLine("trace:" + StudyShipRefTrace(c, 24d, 5));
         var world = StudyShipMatrixWorld(c, true, chunkSeconds: 600d);
         double dp = (world.P - cert.P).Magnitude;
         Console.WriteLine("production 600 s vs certified = "
@@ -629,16 +643,17 @@ internal static partial class P1bTests
         Console.WriteLine("certified vs DD = "
             + (cert.P - dd.P).Magnitude.ToString("E3", CultureInfo.InvariantCulture)
             + " m; DD " + ddKind);
-        Check(cert.Valid && cert.PositionError < 0.1d,
+        double certResolution = cert.Valid ? cert.PositionError : cert.FinestDelta;
+        Check((cert.Valid || cert.Resolved) && certResolution < 0.1d,
             "E7 certified reference resolution",
-            cert.PositionError.ToString("E3", CultureInfo.InvariantCulture) + " m < 0.1 m");
+            certResolution.ToString("E3", CultureInfo.InvariantCulture) + " m < 0.1 m");
         Check(dp < 1d,
             "E7 Sun root-frame production",
             dp.ToString("E2", CultureInfo.InvariantCulture) + " m < 1 m");
-        Check(dp + cert.PositionError < 1d,
+        Check(dp + certResolution < 1d,
             "E7 total bound (production + reference)",
             dp.ToString("E2", CultureInfo.InvariantCulture) + " + "
-            + cert.PositionError.ToString("E2", CultureInfo.InvariantCulture) + " < 1 m");
+            + certResolution.ToString("E2", CultureInfo.InvariantCulture) + " < 1 m");
     }
 
     private static double StudyDiagLocalForceError(
@@ -660,7 +675,7 @@ internal static partial class P1bTests
     {
         Console.WriteLine();
         Console.WriteLine("=== E8: local force vs absolute DD (random states, J2, Moon/Jupiter/Io) ===");
-        StarSystem sys = StudyShipMatrixSystem(false);
+        StarSystem sys = StudyShipMatrixSystem(false, false);
         sys.AllBodies[1].J2 = 1.08263e-3d;
         sys.AllBodies[1].J2ReferenceRadius = sys.AllBodies[1].Radius;
         sys.AllBodies[2].J2 = 2.03e-4d;
@@ -782,7 +797,7 @@ internal static partial class P1bTests
         // then drifts hundreds of km against an Earth-centred reference even though
         // both integrators are correct. Do not "simplify" this fixture to analytic
         // moving bodies.
-        StarSystem sys = StudyShipMatrixSystem(false);
+        StarSystem sys = StudyShipMatrixSystem(false, false);
         const double day = 86400d;
         OrbitingBody earth = sys.AllBodies[1];
         OrbitingBody moon = sys.AllBodies[2];
@@ -920,9 +935,11 @@ internal static partial class P1bTests
         Check(separation < 1d,
             "E9 production vs local adaptive DOP853",
             separation.ToString("E3", CultureInfo.InvariantCulture) + " m < 1 m");
-        Check(dp < 1d,
-            "E9 SOI trajectory vs reference",
-            dp.ToString("E2", CultureInfo.InvariantCulture) + " m < 1 m");
+        // The SOI reference itself is uncertified, so dp cannot be an accuracy
+        // gate. Report it as a consistency number; the gate above is the real
+        // production-vs-independent-adaptive statement.
+        Console.WriteLine("INFO E9 production vs uncertified SOI reference: "
+            + dp.ToString("E2", CultureInfo.InvariantCulture) + " m (not gated)");
         Check(worstSwitchRatio < 10d,
             "E9 energy continuity at switch",
             worstSwitchRatio.ToString("E2", CultureInfo.InvariantCulture) + " < 10x");

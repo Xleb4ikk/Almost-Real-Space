@@ -535,6 +535,17 @@ internal static class TaylorShip
         return new Vector3d(a[0].C[0], a[1].C[0], a[2].C[0]);
     }
 
+    /// <summary>Same force as the dd golden, exposed for the force-vs-production test.</summary>
+    internal static Vector3d EvaluateAccelerationDd(StarSystem sys, Vector3d p, double t)
+    {
+        P1bTests.DdJet px = P1bTests.DdJet.Constant(0, P1bTests.StudyDd.From(p.X));
+        P1bTests.DdJet py = P1bTests.DdJet.Constant(0, P1bTests.StudyDd.From(p.Y));
+        P1bTests.DdJet pz = P1bTests.DdJet.Constant(0, P1bTests.StudyDd.From(p.Z));
+        P1bTests.DdJet[] a = ForceDd(
+            sys, px, py, pz, P1bTests.StudyDd.From(t), t, 0);
+        return new Vector3d(a[0].C[0].ToDouble, a[1].C[0].ToDouble, a[2].C[0].ToDouble);
+    }
+
     private static P1bTests.DdJet[] ForceDd(
         StarSystem sys, P1bTests.DdJet px, P1bTests.DdJet py, P1bTests.DdJet pz,
         P1bTests.StudyDd t, double tSelect, int order)
@@ -580,22 +591,28 @@ internal static class TaylorShip
             P1bTests.DdJet.Constant(order, P1bTests.StudyDd.Zero),
             P1bTests.DdJet.Constant(order, P1bTests.StudyDd.Zero)
         };
-        OrbitingBody root = bodies[0];
-        for (int c = 0; c < root.Children.Count; c++)
+        // Root-fixed frame: the indirect term is the root's acceleration from every
+        // other body at its own position and own mu. The old subtree-mu-at-child
+        // form moves a moon's pull to its parent's position and is a real force
+        // error (StarSystem.EnsureCachedPositions uses the same per-body sum).
+        for (int i = 1; i < n; i++)
         {
-            OrbitingBody child = root.Children[c];
-            int ci = index[child];
-            P1bTests.StudyDd mc = P1bTests.StudyDd.From(
-                child.ResolveSubtreeStandardGravitationalParameter());
-            P1bTests.DdJet dx = world[6 * ci] - world[0];
-            P1bTests.DdJet dy = world[(6 * ci) + 1] - world[1];
-            P1bTests.DdJet dz = world[(6 * ci) + 2] - world[2];
+            double muDouble = bodies[i].ResolveStandardGravitationalParameter();
+            if (muDouble == 0d)
+            {
+                continue;
+            }
+
+            P1bTests.StudyDd mu = P1bTests.StudyDd.From(muDouble);
+            P1bTests.DdJet dx = world[6 * i] - world[0];
+            P1bTests.DdJet dy = world[(6 * i) + 1] - world[1];
+            P1bTests.DdJet dz = world[(6 * i) + 2] - world[2];
             P1bTests.DdJet r2 = (dx * dx) + (dy * dy) + (dz * dz);
             P1bTests.DdJet r = P1bTests.DdJet.Sqrt(r2);
             P1bTests.DdJet inv = one / (r2 * r);
-            rootAccel[0] = rootAccel[0] + (dx * (inv * mc));
-            rootAccel[1] = rootAccel[1] + (dy * (inv * mc));
-            rootAccel[2] = rootAccel[2] + (dz * (inv * mc));
+            rootAccel[0] = rootAccel[0] + (dx * (inv * mu));
+            rootAccel[1] = rootAccel[1] + (dy * (inv * mu));
+            rootAccel[2] = rootAccel[2] + (dz * (inv * mu));
         }
 
         var total = new[]
@@ -741,30 +758,26 @@ internal static class TaylorShip
             TaylorJet.Constant(order, 0d),
             TaylorJet.Constant(order, 0d)
         };
-        OrbitingBody root = bodies[0];
-        for (int c = 0; c < root.Children.Count; c++)
+        // Per-body indirect term, matching StarSystem.EnsureCachedPositions and
+        // StudyForceDd. Do not use subtree mu at the child position: for a moon
+        // that is a real acceleration error in the root-fixed frame.
+        for (int i = 1; i < n; i++)
         {
-            OrbitingBody child = root.Children[c];
-            int ci = c;
-            for (int k = 0; k < n; k++)
+            double mu = bodies[i].ResolveStandardGravitationalParameter();
+            if (mu == 0d)
             {
-                if (ReferenceEquals(bodies[k], child))
-                {
-                    ci = k;
-                    break;
-                }
+                continue;
             }
 
-            double mc = child.ResolveSubtreeStandardGravitationalParameter();
-            TaylorJet dx = world[6 * ci] - world[0];
-            TaylorJet dy = world[(6 * ci) + 1] - world[1];
-            TaylorJet dz = world[(6 * ci) + 2] - world[2];
+            TaylorJet dx = world[6 * i] - world[0];
+            TaylorJet dy = world[(6 * i) + 1] - world[1];
+            TaylorJet dz = world[(6 * i) + 2] - world[2];
             TaylorJet r2 = (dx * dx) + (dy * dy) + (dz * dz);
             TaylorJet r = TaylorJet.Sqrt(r2);
             TaylorJet inv = TaylorJet.Constant(order, 1d) / (r2 * r);
-            rootAccel[0] += dx * (inv * mc);
-            rootAccel[1] += dy * (inv * mc);
-            rootAccel[2] += dz * (inv * mc);
+            rootAccel[0] += dx * (inv * mu);
+            rootAccel[1] += dy * (inv * mu);
+            rootAccel[2] += dz * (inv * mu);
         }
 
         var total = new[]

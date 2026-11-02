@@ -62,9 +62,24 @@ internal static partial class P1bTests
         var samples = sampleEvery > 0d ? new List<StudySample>() : null;
         long calls = 0L;
         double t = 0d;
-        long block = sampleEvery > 0d && h > 0d
-            ? Math.Max(1L, (long)Math.Round(sampleEvery / h))
-            : long.MaxValue;
+        long block = long.MaxValue;
+        double nextSample = sampleEvery > 0d ? sampleEvery : double.PositiveInfinity;
+        if (sampleEvery > 0d && h > 0d)
+        {
+            // A block that is not an integer number of steps would put samples at
+            // k*block*h, not at k*sampleEvery. The old Math.Round silently shifted
+            // every sample time and then index-compared them against the reference.
+            double ratio = sampleEvery / h;
+            if (Math.Abs(ratio - Math.Round(ratio)) > 1e-9d)
+            {
+                throw new InvalidOperationException(
+                    "StudyRefRunSampled: sampleEvery=" + sampleEvery.ToString("R", CultureInfo.InvariantCulture)
+                    + " is not an integer multiple of h=" + h.ToString("R", CultureInfo.InvariantCulture));
+            }
+
+            block = Math.Max(1L, (long)Math.Round(ratio));
+        }
+
         var sw = Stopwatch.StartNew();
         void Step(string m, double step, long count)
         {
@@ -89,9 +104,10 @@ internal static partial class P1bTests
             long steps = Math.Min(block, full);
             Step(method, h, steps);
             t += steps * h;
-            if (samples != null)
+            while (samples != null && t >= nextSample - 1e-9d)
             {
-                samples.Add(new StudySample(t, StudySampleP(p, null, L), StudySampleP(v, null, L)));
+                samples.Add(new StudySample(nextSample, StudySampleP(p, null, L), StudySampleP(v, null, L)));
+                nextSample += sampleEvery;
             }
         }
 
@@ -100,9 +116,10 @@ internal static partial class P1bTests
         {
             Step(method, remainder, 1L);
             t = T;
-            if (samples != null)
+            while (samples != null && t >= nextSample - 1e-9d)
             {
-                samples.Add(new StudySample(t, StudySampleP(p, null, L), StudySampleP(v, null, L)));
+                samples.Add(new StudySample(nextSample, StudySampleP(p, null, L), StudySampleP(v, null, L)));
+                nextSample += sampleEvery;
             }
         }
 

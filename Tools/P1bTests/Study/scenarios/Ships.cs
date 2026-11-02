@@ -85,7 +85,7 @@ internal static partial class P1bTests
     // green while the accuracy is gone.
     private const double StudyShipRefSelfGateMeters = 0.25d;
     private const double StudyShipRefAgreementGateMeters = 0.25d;
-    private const double StudyShipGameGateMeters = 18d;
+    private const double StudyShipGameGateMeters = 12d;
     private const double StudyShipDop853GateMeters = 0.35d;
 
     private static void StudyShipTable(
@@ -241,7 +241,7 @@ internal static partial class P1bTests
 
         Vector3d gameRel = game.p - bpT;
         Console.WriteLine("{" + "system,-24} {" + "method,-22} {" + "h, s,6} {" + "calls,11} {" +
-            "err vs A, m,13} {" + "err vs B, m,13} {" + "ms,8} {" + "us/call,9} {" + "KiB,8}");
+            "err vs A, m,13} {" + "err vs B, m,13} {" + "ms(par),9} {" + "KiB,8}");
         PrintShipRow(label, "DOP853 (game, world)", 0d, game.calls, gameRel, refARel, refBRel, game.ms, gameAlloc);
         PrintShipRow(label, "DOP853 field-diff", 0d, dop853.calls, dop853.p, refARel, refBRel, dop853.ms, dopAlloc);
         PrintShipRow(label, "DOP853 direct", 0d, dop853Direct.calls, dop853Direct.p, refARel, refBRel, dop853Direct.ms, dopDirectAlloc);
@@ -251,6 +251,7 @@ internal static partial class P1bTests
         PrintShipRow(label, "WH Y6 direct", 120d, wh_120.calls, wh_120.p, refARel, refBRel, wh_120.ms, wh120Alloc);
         PrintShipRow(label, "WH Y6 direct", 240d, wh_240.calls, wh_240.p, refARel, refBRel, wh_240.ms, wh240Alloc);
         PrintShipRow(label, "WH Y6 direct", 480d, wh_480.calls, wh_480.p, refARel, refBRel, wh_480.ms, wh480Alloc);
+        Console.WriteLine("ms(par): wall-clock under Parallel.Invoke, not a per-method cost; calls are the reproducible cost.");
 
         double gameError = (gameRel - refARel).Magnitude;
         double dop853Error = (dop853Direct.p - refARel).Magnitude;
@@ -273,11 +274,14 @@ internal static partial class P1bTests
         string label, string method, double h, long calls, Vector3d rel,
         Vector3d refARel, Vector3d refBRel, double ms, long allocBytes)
     {
-        double usPerCall = calls > 0L ? ms * 1000d / calls : 0d;
+        // ms is the Parallel.Invoke wall clock, so it is not a per-method cost;
+        // dividing it by calls ("us/call") would make a row look cheap only
+        // because it shared the machine. Cost claims here use calls, and the
+        // sequential ship-matrix table in Test549 owns the ms comparison.
         Console.WriteLine(
-            "{0,-24} {1,-22} {2,6:F0} {3,11:N0} {4,13:E3} {5,13:E3} {6,8:F0} {7,9:F2} {8,8:N0}",
+            "{0,-24} {1,-22} {2,6:F0} {3,11:N0} {4,13:E3} {5,13:E3} {6,8:F0} {7,8:N0}",
             label, method, h, calls, (rel - refARel).Magnitude, (rel - refBRel).Magnitude,
-            ms, usPerCall, allocBytes / 1024d);
+            ms, allocBytes / 1024d);
     }
 }
 

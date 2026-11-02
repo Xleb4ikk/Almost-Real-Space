@@ -330,6 +330,23 @@ internal static partial class P1bTests
         {
             TenYearDdGoldenFile shipGolden = JsonSerializer.Deserialize<TenYearDdGoldenFile>(
                 File.ReadAllText(shipGoldenPath));
+            Check(string.Equals(shipGolden.ForceModel, TenYearDdForceModel, StringComparison.Ordinal),
+                "ship 10y golden force model",
+                (shipGolden.ForceModel ?? "<missing>") + " == " + TenYearDdForceModel);
+            // force_model is a version string, not a model hash. Pin the exact baked
+            // export the golden was generated from as well, so a change in the
+            // ephemeris cannot silently reuse a golden built from other coefficients.
+            string shipExportName = string.IsNullOrEmpty(shipGolden.BakeExport)
+                ? "real_bake_export_10y.json" : shipGolden.BakeExport;
+            string shipExportPath = Path.Combine(studyRoot, "taylor", "golden", shipExportName);
+            Check(File.Exists(shipExportPath),
+                "ship 10y golden bake export present", shipExportPath);
+            if (File.Exists(shipExportPath))
+            {
+                GoldenRequireFile(
+                    shipExportPath, "E16DD9D2D685CA8034C94C6A8BEE16F9385F6D1B1D285523D9EE56E920193BFC");
+            }
+
             GoldCp final = shipGolden.Checkpoints[shipGolden.Checkpoints.Length - 1];
             Console.WriteLine("golden: " + shipGolden.Method + " K" + shipGolden.Order
                 + ", last checkpoint " + final.Days.ToString("F0", CultureInfo.InvariantCulture) + " d");
@@ -460,10 +477,12 @@ internal static partial class P1bTests
                 ShipRow(run.Method, run.Step, run.P, run.V, run.Calls, run.Ms);
             }
 
-            Check(bestShipDp < 800d, "ship best dp vs dd-Taylor golden",
-                bestShipDp.ToString("E3", CultureInfo.InvariantCulture));
-            Check(bestShipDv < 1d, "ship best dv vs dd-Taylor golden",
-                bestShipDv.ToString("E3", CultureInfo.InvariantCulture));
+            // The measured 10-year best is ~45 m / 1.3e-2 m/s; the old 800 m / 1 m/s
+            // gates were 18x/80x the measurement and would pass a stale golden.
+            Check(bestShipDp < 150d, "ship best dp vs dd-Taylor golden",
+                bestShipDp.ToString("E3", CultureInfo.InvariantCulture) + " m < 150 m");
+            Check(bestShipDv < 0.05d, "ship best dv vs dd-Taylor golden",
+                bestShipDv.ToString("E3", CultureInfo.InvariantCulture) + " m/s < 0.05 m/s");
         }
 
         Console.WriteLine();

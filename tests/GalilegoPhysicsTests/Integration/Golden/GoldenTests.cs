@@ -281,7 +281,7 @@ namespace GalilegoPhysicsTests.Integration.Golden
             // A deliberate golden regeneration in P1bTests updates these hashes.
             AssertHash("golden_real.json", "6FA820F7C492500C2E7A8FDF3DBF93A2CB72323914104041FDEBFFFB50544A67");
             AssertHash("golden_real_1y_hi.json", "F5EB80C44B75AE98314098E6FD742EC16B21F16044521B47CCB39CBC06E94BFC");
-            AssertHash("golden_real_10y_k28.json", "72AB6A2D7B647321B15C1CD98B02868E03521ECFCB23A5916BEC92BF4A2B83A4");
+            AssertHash("golden_real_10y_k28.json", "2B8730BB137CF8CE1F15021C6B807433C51490BF37295726DB29E43228D429E9");
         }
 
         /// <summary>

@@ -62,6 +62,62 @@ internal static partial class P1bTests
         return (p.ToVector3d(), v.ToVector3d(), calls, sw.Elapsed.TotalMilliseconds);
     }
 
+    /// <summary>
+    /// Y6C in double-double on the LOCAL relative state. The force is the same
+    /// EvaluateShipAccelerationLocal the certified reference uses, so this is a
+    /// same-ephemeris, same-frame reference. Integrating the absolute world state
+    /// in double-double does not work here: the body positions are doubles, and
+    /// subtracting two ~1.5e11 m numbers leaves ~1e-5 m of position noise, which
+    /// the force amplifies. Its measured self-convergence is ratio ~1, not 64.
+    /// </summary>
+    private static (Vector3d p, Vector3d v, long calls, double ms) StudyShipLocalY6CDd(
+        StarSystem sys, int central, Vector3d p0, Vector3d v0,
+        double t0, double days, double h)
+    {
+        double span = days * 86400d;
+        long full = (long)Math.Floor(span / h);
+        double rem = span - (full * h);
+        StudyDd3 p = StudyDd3.From(p0);
+        StudyDd3 v = StudyDd3.From(v0);
+        double[] ws = StudyY6Weights();
+        double[] cw = StudyCumulativeWeights(ws);
+        long calls = 0;
+        var sw = Stopwatch.StartNew();
+        StudyDd3 a = StudyForceDdLocal(sys, central, p, t0);
+        calls++;
+        for (long s = 0; s <= full; s++)
+        {
+            double hStep = s < full ? h : rem;
+            if (hStep <= 1e-9d)
+            {
+                break;
+            }
+
+            double tBase = t0 + (s * h);
+            for (int i = 0; i < ws.Length; i++)
+            {
+                double dt = ws[i] * hStep;
+                v += a * (0.5d * dt);
+                p += v * dt;
+                a = StudyForceDdLocal(
+                    sys, central, p, tBase + (cw[i + 1] * hStep));
+                calls++;
+                v += a * (0.5d * dt);
+            }
+        }
+
+        sw.Stop();
+        return (p.ToVector3d(), v.ToVector3d(), calls, sw.Elapsed.TotalMilliseconds);
+    }
+
+    private static StudyDd3 StudyForceDdLocal(
+        StarSystem sys, int central, StudyDd3 p, double t)
+    {
+        Vector3d acceleration = sys.EvaluateShipAccelerationLocal(
+            p.ToVector3d(), sys.AllBodies[central], t);
+        return StudyDd3.From(acceleration);
+    }
+
     private static (Vector3d p, Vector3d v) StudyShipRefA(
         StarSystem sys, Vector3d p0, Vector3d v0, double t0, double days, double h)
     {

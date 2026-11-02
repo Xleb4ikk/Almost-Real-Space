@@ -10,9 +10,12 @@ using Galilego.Universe;
 
 internal static partial class P1bTests
 {
+    private const string TenYearDdForceModel = "taylor-world-per-body-indirect-v2";
+
     private sealed class TenYearDdGoldenFile
     {
         [JsonPropertyName("method")] public string Method { get; set; }
+        [JsonPropertyName("force_model")] public string ForceModel { get; set; }
         [JsonPropertyName("order")] public int Order { get; set; }
         [JsonPropertyName("position_tolerance")] public double PositionTolerance { get; set; }
         [JsonPropertyName("velocity_tolerance")] public double VelocityTolerance { get; set; }
@@ -157,6 +160,7 @@ internal static partial class P1bTests
         var file = new TenYearDdGoldenFile
         {
             Method = "Taylor dd",
+            ForceModel = TenYearDdForceModel,
             Order = 28,
             PositionTolerance = 1e-14d,
             VelocityTolerance = 1e-17d,
