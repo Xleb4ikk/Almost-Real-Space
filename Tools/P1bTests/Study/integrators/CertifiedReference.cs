@@ -54,6 +54,8 @@ internal static partial class P1bTests
         public string Detail;
     }
 
+    private static bool StudyShipRefDop853Compensate = true;
+
     private static double[] StudyShipRefMergeEdges(double[] edges, double[] extra)
     {
         if (extra == null || extra.Length == 0)
@@ -128,8 +130,9 @@ internal static partial class P1bTests
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    private static SpacecraftIntegrationState StudyShipRefDop853Step(
-        StudyShipMatrixAcc acc, SpacecraftIntegrationState state, double t, double h)
+    private static SpacecraftIntegrationState StudyShipRefDop853Increment(
+        StudyShipMatrixAcc acc, SpacecraftIntegrationState state, double t, double h,
+        out SpacecraftIntegrationState next)
     {
         var k = new SpacecraftIntegrationState[12];
         k[0] = acc.Evaluate(state, t);
@@ -149,13 +152,49 @@ internal static partial class P1bTests
             k[i] = acc.Evaluate(stage, t + (DOP853Coefficients.C[i] * h));
         }
 
-        SpacecraftIntegrationState next = state;
+        next = state;
         for (int i = 0; i < 12; i++)
         {
             next += k[i] * (h * DOP853Coefficients.B[i]);
         }
 
+        SpacecraftIntegrationState increment = SpacecraftIntegrationState.Zero;
+        for (int i = 0; i < 12; i++)
+        {
+            increment += k[i] * (h * DOP853Coefficients.B[i]);
+        }
+
+        return increment;
+    }
+
+    private static SpacecraftIntegrationState StudyShipRefDop853Step(
+        StudyShipMatrixAcc acc, SpacecraftIntegrationState state, double t, double h)
+    {
+        StudyShipRefDop853Increment(acc, state, t, h, out SpacecraftIntegrationState next);
         return next;
+    }
+
+    private static double StudyShipRefNeumaierAdd(double sum, double add, ref double comp)
+    {
+        double s = sum + add;
+        if (Math.Abs(sum) >= Math.Abs(add))
+        {
+            comp += (sum - s) + add;
+        }
+        else
+        {
+            comp += (add - s) + sum;
+        }
+
+        return s;
+    }
+
+    private static Vector3d StudyShipRefNeumaierAdd(Vector3d sum, Vector3d add, ref Vector3d comp)
+    {
+        double x = StudyShipRefNeumaierAdd(sum.X, add.X, ref comp.X);
+        double y = StudyShipRefNeumaierAdd(sum.Y, add.Y, ref comp.Y);
+        double z = StudyShipRefNeumaierAdd(sum.Z, add.Z, ref comp.Z);
+        return new Vector3d(x, y, z);
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
@@ -172,6 +211,31 @@ internal static partial class P1bTests
             Velocity = c.V0,
             Mass = c.Mass0
         };
+        SpacecraftIntegrationState comp = SpacecraftIntegrationState.Zero;
+        bool compensate = StudyShipRefDop853Compensate;
+        void Advance(double time, double step)
+        {
+            if (compensate)
+            {
+                SpacecraftIntegrationState forceState = state + comp;
+                SpacecraftIntegrationState delta = StudyShipRefDop853Increment(
+                    acc, forceState, time, step, out _);
+                state = new SpacecraftIntegrationState
+                {
+                    Position = StudyShipRefNeumaierAdd(
+                        state.Position, delta.Position, ref comp.Position),
+                    Velocity = StudyShipRefNeumaierAdd(
+                        state.Velocity, delta.Velocity, ref comp.Velocity),
+                    Mass = StudyShipRefNeumaierAdd(
+                        state.Mass, delta.Mass, ref comp.Mass)
+                };
+            }
+            else
+            {
+                state = StudyShipRefDop853Step(acc, state, time, step);
+            }
+        }
+
         double[] breakpoints = StudyShipRefBreakpoints(c);
         double[] edges = StudyShipRefMergeEdges(breakpoints, sampleTimes);
         double edge = Math.Max(1e-9d, h * 1e-9d);
@@ -211,7 +275,7 @@ internal static partial class P1bTests
             bool endThrust = IsThrustBoundary(tEnd);
             if (span <= 3d * edge)
             {
-                state = StudyShipRefDop853Step(acc, state, t, span);
+                Advance(t, span);
                 t = tEnd;
             }
             else
@@ -223,7 +287,7 @@ internal static partial class P1bTests
                     double edgeStep = edgeEnd - t;
                     if (edgeStep > 0d)
                     {
-                        state = StudyShipRefDop853Step(acc, state, t, edgeStep);
+                        Advance(t, edgeStep);
                     }
 
                     mainStart = edgeEnd;
@@ -236,7 +300,7 @@ internal static partial class P1bTests
                 for (long i = 0; i < n; i++)
                 {
                     double tn = mainStart + (i * step);
-                    state = StudyShipRefDop853Step(acc, state, tn, step);
+                    Advance(tn, step);
                 }
 
                 t = mainEnd;
@@ -245,13 +309,14 @@ internal static partial class P1bTests
                     double tail = tEnd - mainEnd;
                     if (tail > 0d)
                     {
-                        state = StudyShipRefDop853Step(acc, state, mainEnd, tail);
+                        Advance(mainEnd, tail);
                     }
 
                     t = tEnd;
                 }
             }
 
+            SpacecraftIntegrationState sampled = compensate ? state + comp : state;
             // Every forced end is either a throttle edge, a checkpoint or the
             // horizon; record the checkpoints at their exact times.
             while (sampleTimes != null && sample < sampleTimes.Length
@@ -259,20 +324,21 @@ internal static partial class P1bTests
             {
                 if (samplePositions != null)
                 {
-                    samplePositions[sample] = state.Position;
+                    samplePositions[sample] = sampled.Position;
                 }
 
                 if (sampleVelocities != null)
                 {
-                    sampleVelocities[sample] = state.Velocity;
+                    sampleVelocities[sample] = sampled.Velocity;
                 }
 
                 sample++;
             }
         }
 
+        SpacecraftIntegrationState result = compensate ? state + comp : state;
         calls = acc.Calls;
-        return state;
+        return result;
     }
 
     private static StudyShipCertifiedRef StudyShipCertifiedReference(
