@@ -3041,6 +3041,11 @@ internal static partial class P1bTests
                 continue;
             }
 
+            if (StudyShipRefDiagSeams && StudyShipRefDiagSeamCase(c))
+            {
+                StudyShipRefDiagSeamsForCase(c, refs);
+            }
+
             var rows = new List<StudyShipMatrixRow>();
             StudyShipMatrixRunAll(c, refs, rows);
             StudyShipMatrixPrint(c, refs, rows);

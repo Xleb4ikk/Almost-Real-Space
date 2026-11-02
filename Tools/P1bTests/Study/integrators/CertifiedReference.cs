@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Galilego.Core;
+using Galilego.Universe;
 
 internal static partial class P1bTests
 {
@@ -55,6 +56,10 @@ internal static partial class P1bTests
     }
 
     private static bool StudyShipRefDop853Compensate = true;
+    private static bool StudyShipRefDiagSeams = false;
+    // Стыки эфемериды не причина dd-расхождения; на Sun 1 AU включение ломает
+    // сходимость; не включать.
+    private static bool StudyShipRefSeamBreakpoints = false;
 
     private static double[] StudyShipRefMergeEdges(double[] edges, double[] extra)
     {
@@ -127,6 +132,42 @@ internal static partial class P1bTests
         }
 
         return result.ToArray();
+    }
+
+    private static double[] StudyShipRefSeamTimes(StudyShipMatrixCase c)
+    {
+        double t0 = StudyShipT0;
+        double t1 = t0 + c.Seconds;
+        var times = new List<double>();
+        foreach (OrbitingBody body in c.Sys.AllBodies)
+        {
+            BakedEphemeris baked = body.Baked;
+            if (baked == null || baked.SegmentCount < 2)
+            {
+                continue;
+            }
+
+            for (int seg = 0; seg < baked.SegmentCount - 1; seg++)
+            {
+                double t = baked.SegmentEndSeconds(seg);
+                if (t > t0 + 1e-6d && t < t1 - 1e-6d)
+                {
+                    times.Add(t);
+                }
+            }
+        }
+
+        times.Sort();
+        var unique = new List<double>();
+        foreach (double t in times)
+        {
+            if (unique.Count == 0 || Math.Abs(t - unique[unique.Count - 1]) > 1e-6d)
+            {
+                unique.Add(t);
+            }
+        }
+
+        return unique.ToArray();
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
@@ -237,6 +278,11 @@ internal static partial class P1bTests
         }
 
         double[] breakpoints = StudyShipRefBreakpoints(c);
+        if (StudyShipRefSeamBreakpoints)
+        {
+            breakpoints = StudyShipRefMergeEdges(breakpoints, StudyShipRefSeamTimes(c));
+        }
+
         double[] edges = StudyShipRefMergeEdges(breakpoints, sampleTimes);
         double edge = Math.Max(1e-9d, h * 1e-9d);
         bool IsThrustBoundary(double time)
@@ -658,5 +704,222 @@ internal static partial class P1bTests
         }
 
         return text.ToString();
+    }
+
+    private struct StudyShipRefDiagEntry
+    {
+        public double Time;
+        public int Seam;
+        public int Delta;
+        public int Side;
+    }
+
+    private static Vector3d StudyShipRefDiagPerturbAcceleration(
+        StudyShipMatrixCase c, Vector3d relP, double t)
+    {
+        Vector3d full = StudyShipMatrixLocalAcceleration(c, relP, t);
+        double mu = c.Sys.AllBodies[c.Central].ResolveStandardGravitationalParameter();
+        Vector3d central = PhysicsSolver.CalculateAccelerationFromStandardGravitationalParameter(
+            relP, Vector3d.Zero, mu);
+        return full - central;
+    }
+
+    private static bool StudyShipRefDiagSeamCase(StudyShipMatrixCase c)
+    {
+        return c.Label == "Earth-Moon flyby inside lunar SOI"
+            || c.Label == "Earth GEO 35786 km"
+            || c.Label.StartsWith("Earth LEO 400 km, 1000 orbits", StringComparison.Ordinal);
+    }
+
+    private static void StudyShipRefDiagSeamsForCase(
+        StudyShipMatrixCase c, StudyShipMatrixRefs refs)
+    {
+        double t0 = StudyShipT0;
+        double t1 = t0 + c.Seconds;
+        double[] seams = StudyShipRefSeamTimes(c);
+        Console.WriteLine();
+        Console.WriteLine("=== ref seam diagnostic: " + c.Label + " ===");
+        Console.WriteLine("  horizon " + t0.ToString("F1", CultureInfo.InvariantCulture)
+            + " .. " + t1.ToString("F1", CultureInfo.InvariantCulture)
+            + " s; ephemeris seams = " + seams.Length);
+
+        if (c.Label.IndexOf("Earth-Moon", StringComparison.Ordinal) >= 0)
+        {
+            Console.WriteLine("  central body fixed: " + c.Sys.AllBodies[c.Central].Name
+                + "; no SOI/body-set switch in the reference");
+            OrbitingBody moon = null;
+            for (int i = 0; i < c.Sys.AllBodies.Count; i++)
+            {
+                if (c.Sys.AllBodies[i].Name.IndexOf("Moon", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    moon = c.Sys.AllBodies[i];
+                    break;
+                }
+            }
+
+            if (moon != null && refs != null && refs.CheckpointP != null)
+            {
+                double muEarth = c.Sys.AllBodies[c.Central].ResolveStandardGravitationalParameter();
+                double muMoon = moon.ResolveStandardGravitationalParameter();
+                double soi = moon.SemiMajorAxis * Math.Pow(muMoon / muEarth, 0.4d);
+                double min = double.PositiveInfinity;
+                double minT = 0d;
+                bool anyInside = false;
+                for (int i = 0; i < refs.CheckpointTimes.Length; i++)
+                {
+                    double t = refs.CheckpointTimes[i];
+                    c.Sys.EvaluateBodyState(c.Sys.AllBodies[c.Central], t,
+                        out Vector3d ep, out _);
+                    c.Sys.EvaluateBodyState(moon, t, out Vector3d mp, out _);
+                    double dist = ((ep + refs.CheckpointP[i]) - mp).Magnitude;
+                    if (dist < min)
+                    {
+                        min = dist;
+                        minT = t;
+                    }
+
+                    if (dist < soi)
+                    {
+                        anyInside = true;
+                    }
+                }
+
+                Console.WriteLine("  Moon distance min = "
+                    + min.ToString("E3", CultureInfo.InvariantCulture) + " m at t="
+                    + minT.ToString("F1", CultureInfo.InvariantCulture)
+                    + "; lunar SOI = " + soi.ToString("E3", CultureInfo.InvariantCulture)
+                    + "; inside at checkpoints = " + (anyInside ? "yes" : "no"));
+            }
+        }
+
+        if (seams.Length == 0)
+        {
+            Console.WriteLine("  no ephemeris seams in horizon; seam-jump test skipped");
+            return;
+        }
+
+        double tau = c.Tau / (2d * Math.PI);
+        double stepsPerTau = c.Central == 1 && c.Seconds > 30d * 86400d ? 8d : 24d;
+        double h = Math.Max(1d, c.Tau / (stepsPerTau * 16d));
+        double[] deltas = { 1e-3d, 1d };
+        var entries = new List<StudyShipRefDiagEntry>();
+        for (int si = 0; si < seams.Length; si++)
+        {
+            for (int di = 0; di < deltas.Length; di++)
+            {
+                double d = deltas[di];
+                if (seams[si] - d > t0 + 1e-6d && seams[si] - d < t1 - 1e-6d)
+                {
+                    entries.Add(new StudyShipRefDiagEntry
+                    {
+                        Time = seams[si] - d,
+                        Seam = si,
+                        Delta = di,
+                        Side = -1
+                    });
+                }
+
+                if (seams[si] + d > t0 + 1e-6d && seams[si] + d < t1 - 1e-6d)
+                {
+                    entries.Add(new StudyShipRefDiagEntry
+                    {
+                        Time = seams[si] + d,
+                        Seam = si,
+                        Delta = di,
+                        Side = 1
+                    });
+                }
+            }
+        }
+
+        entries.Sort((a, b) => a.Time.CompareTo(b.Time));
+        double[] sampleTimes = new double[entries.Count];
+        for (int i = 0; i < entries.Count; i++)
+        {
+            sampleTimes[i] = entries[i].Time;
+        }
+
+        var sampleP = new Vector3d[entries.Count];
+        var sampleV = new Vector3d[entries.Count];
+        StudyShipRefDop853Fixed(c, h, out _, sampleTimes, sampleP, sampleV);
+
+        int nD = deltas.Length;
+        var minusP = new Vector3d[seams.Length, nD];
+        var plusP = new Vector3d[seams.Length, nD];
+        var minusT = new double[seams.Length, nD];
+        var plusT = new double[seams.Length, nD];
+        var hasMinus = new bool[seams.Length, nD];
+        var hasPlus = new bool[seams.Length, nD];
+        for (int i = 0; i < entries.Count; i++)
+        {
+            StudyShipRefDiagEntry e = entries[i];
+            if (e.Side < 0)
+            {
+                minusP[e.Seam, e.Delta] = sampleP[i];
+                minusT[e.Seam, e.Delta] = sampleTimes[i];
+                hasMinus[e.Seam, e.Delta] = true;
+            }
+            else
+            {
+                plusP[e.Seam, e.Delta] = sampleP[i];
+                plusT[e.Seam, e.Delta] = sampleTimes[i];
+                hasPlus[e.Seam, e.Delta] = true;
+            }
+        }
+
+        for (int di = 0; di < nD; di++)
+        {
+            double delta = deltas[di];
+            double maxJumpA = 0d;
+            double maxJumpDa = 0d;
+            double maxRatioA = 0d;
+            double maxRatioDa = 0d;
+            double maxA = 0d;
+            double atSeam = double.NaN;
+            for (int si = 0; si < seams.Length; si++)
+            {
+                if (!hasMinus[si, di] || !hasPlus[si, di])
+                {
+                    continue;
+                }
+
+                Vector3d am = StudyShipRefDiagPerturbAcceleration(
+                    c, minusP[si, di], minusT[si, di]);
+                Vector3d ap = StudyShipRefDiagPerturbAcceleration(
+                    c, plusP[si, di], plusT[si, di]);
+                double jumpA = (ap - am).Magnitude;
+                double jumpDa = jumpA / (2d * delta);
+                double aScale = Math.Max(am.Magnitude, ap.Magnitude);
+                double expectA = aScale * delta / tau;
+                double expectDa = aScale / tau;
+                maxA = Math.Max(maxA, aScale);
+                if (jumpA > maxJumpA)
+                {
+                    maxJumpA = jumpA;
+                    atSeam = seams[si];
+                }
+
+                maxJumpDa = Math.Max(maxJumpDa, jumpDa);
+                if (expectA > 0d)
+                {
+                    maxRatioA = Math.Max(maxRatioA, jumpA / expectA);
+                }
+
+                if (expectDa > 0d)
+                {
+                    maxRatioDa = Math.Max(maxRatioDa, jumpDa / expectDa);
+                }
+            }
+
+            Console.WriteLine("  delta=" + delta.ToString("G3", CultureInfo.InvariantCulture)
+                + " s: max |a_pert|=" + maxA.ToString("E3", CultureInfo.InvariantCulture)
+                + ", max jump a=" + maxJumpA.ToString("E3", CultureInfo.InvariantCulture)
+                + " (x" + maxRatioA.ToString("F2", CultureInfo.InvariantCulture) + " smooth)"
+                + ", max jump da/dt=" + maxJumpDa.ToString("E3", CultureInfo.InvariantCulture)
+                + " (x" + maxRatioDa.ToString("F2", CultureInfo.InvariantCulture) + " smooth)"
+                + ", at t=" + (double.IsNaN(atSeam)
+                    ? "n/a"
+                    : atSeam.ToString("F1", CultureInfo.InvariantCulture)));
+        }
     }
 }
