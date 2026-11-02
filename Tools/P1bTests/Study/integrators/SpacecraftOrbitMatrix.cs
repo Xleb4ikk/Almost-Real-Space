@@ -17,6 +17,8 @@ internal static partial class P1bTests
         + "для такого сдвига за 64 суток. Production и certified согласуются на 1.2 см, "
         + "dd решает ОДУ с другим непрямым членом.";
 
+    private static bool StudyShipMatrixInterpScore = false;
+
     private sealed class StudyShipMatrixCase
     {
         public string Label;
@@ -1859,6 +1861,438 @@ internal static partial class P1bTests
         Console.WriteLine();
     }
 
+    private sealed class StudyShipMatrixInterpPoint
+    {
+        public StudyShipMatrixRow Row;
+        public double Error;
+    }
+
+    private sealed class StudyShipMatrixInterpFit
+    {
+        public string Key;
+        public List<StudyShipMatrixInterpPoint> Segment;
+        public int Total;
+        public int Kept;
+        public int Dropped;
+        public double MinError;
+        public double MaxError;
+        public bool SingleRow;
+        public long SingleCost;
+        public double SingleError;
+        public bool Interpolated;
+        public double Cost;
+        public double Order;
+    }
+
+    private static string StudyShipMatrixInterpFamily(StudyShipMatrixRow r)
+    {
+        if (r.Config != null && r.Config.StartsWith("h=", StringComparison.Ordinal))
+        {
+            return r.Method + "/h";
+        }
+
+        if (r.Config != null && r.Config.StartsWith("tol=", StringComparison.Ordinal))
+        {
+            return r.Method + "/tol";
+        }
+
+        return r.Method + "/" + r.Config;
+    }
+
+    private static List<StudyShipMatrixInterpFit> StudyShipMatrixInterpFits(
+        List<StudyShipMatrixRow> all, List<string> labels,
+        string scenario, string frame, double floor)
+    {
+        var groups = new Dictionary<string, List<StudyShipMatrixInterpPoint>>();
+        var keys = new List<string>();
+        for (int j = 0; j < all.Count; j++)
+        {
+            StudyShipMatrixRow q = all[j];
+            if (labels[j] != scenario || q.Frame != frame || q.Method == "Taylor"
+                || !q.Finite || q.Cost <= 0L)
+            {
+                continue;
+            }
+
+            double error = StudyShipMatrixRanked(q, floor);
+            if (!double.IsFinite(error) || error <= 0d)
+            {
+                continue;
+            }
+
+            string key = StudyShipMatrixInterpFamily(q);
+            if (!groups.TryGetValue(key, out List<StudyShipMatrixInterpPoint> points))
+            {
+                points = new List<StudyShipMatrixInterpPoint>();
+                groups.Add(key, points);
+                keys.Add(key);
+            }
+
+            points.Add(new StudyShipMatrixInterpPoint { Row = q, Error = error });
+        }
+
+        keys.Sort(StringComparer.Ordinal);
+        var fits = new List<StudyShipMatrixInterpFit>(keys.Count);
+        foreach (string key in keys)
+        {
+            fits.Add(StudyShipMatrixInterpFitMake(key, groups[key]));
+        }
+
+        return fits;
+    }
+
+    private static StudyShipMatrixInterpFit StudyShipMatrixInterpFitMake(
+        string key, List<StudyShipMatrixInterpPoint> points)
+    {
+        points.Sort((a, b) =>
+        {
+            int byCost = a.Row.Cost.CompareTo(b.Row.Cost);
+            return byCost != 0 ? byCost : a.Error.CompareTo(b.Error);
+        });
+
+        var unique = new List<StudyShipMatrixInterpPoint>(points.Count);
+        foreach (StudyShipMatrixInterpPoint p in points)
+        {
+            if (unique.Count > 0 && unique[unique.Count - 1].Row.Cost == p.Row.Cost)
+            {
+                continue;
+            }
+
+            unique.Add(p);
+        }
+
+        int bestStart = 0;
+        int bestLength = 1;
+        int runStart = 0;
+        for (int i = 1; i < unique.Count; i++)
+        {
+            if (unique[i].Error < unique[i - 1].Error)
+            {
+                int length = i - runStart + 1;
+                if (length > bestLength)
+                {
+                    bestLength = length;
+                    bestStart = runStart;
+                }
+            }
+            else
+            {
+                runStart = i;
+            }
+        }
+
+        var fit = new StudyShipMatrixInterpFit
+        {
+            Key = key,
+            Total = points.Count,
+            Kept = bestLength,
+            Dropped = points.Count - bestLength,
+            Segment = unique.GetRange(bestStart, bestLength),
+            SingleRow = points.Count == 1,
+            Cost = double.NaN,
+            Order = double.NaN
+        };
+        fit.MaxError = fit.Segment[0].Error;
+        fit.MinError = fit.Segment[fit.Segment.Count - 1].Error;
+        if (fit.SingleRow)
+        {
+            fit.SingleCost = fit.Segment[0].Row.Cost;
+            fit.SingleError = fit.Segment[0].Error;
+        }
+
+        return fit;
+    }
+
+    private static void StudyShipMatrixInterpEvaluate(
+        StudyShipMatrixInterpFit fit, double target, double floor)
+    {
+        fit.Interpolated = false;
+        fit.Cost = double.NaN;
+        fit.Order = double.NaN;
+        double raised = Math.Max(target, double.IsFinite(floor) ? floor : target);
+        for (int i = 0; i + 1 < fit.Segment.Count; i++)
+        {
+            double eWorse = fit.Segment[i].Error;
+            double eBetter = fit.Segment[i + 1].Error;
+            if (eWorse <= eBetter || raised > eWorse || raised < eBetter)
+            {
+                continue;
+            }
+
+            long cWorse = fit.Segment[i].Row.Cost;
+            long cBetter = fit.Segment[i + 1].Row.Cost;
+            double t = (Math.Log(eWorse) - Math.Log(raised))
+                / (Math.Log(eWorse) - Math.Log(eBetter));
+            fit.Cost = Math.Exp(Math.Log(cWorse)
+                + t * (Math.Log(cBetter) - Math.Log(cWorse)));
+            double slope = (Math.Log(cBetter) - Math.Log(cWorse))
+                / (Math.Log(eBetter) - Math.Log(eWorse));
+            fit.Order = slope < 0d ? -1d / slope : double.NaN;
+            fit.Interpolated = true;
+            return;
+        }
+    }
+
+    private static string StudyShipMatrixInterpDescribe(StudyShipMatrixInterpFit fit)
+    {
+        if (fit.Interpolated)
+        {
+            return fit.Key + "=" + fit.Cost.ToString("N0", CultureInfo.InvariantCulture)
+                + " (order " + fit.Order.ToString("F2", CultureInfo.InvariantCulture) + ")";
+        }
+
+        if (fit.SingleRow)
+        {
+            return fit.Key + "=" + fit.SingleCost.ToString("N0", CultureInfo.InvariantCulture)
+                + " (measured, single row, err="
+                + fit.SingleError.ToString("E3", CultureInfo.InvariantCulture)
+                + ", not interpolated)";
+        }
+
+        string dropped = fit.Dropped > 0
+            ? "; dropped " + fit.Dropped.ToString(CultureInfo.InvariantCulture)
+              + " of " + fit.Total.ToString(CultureInfo.InvariantCulture) + " non-monotone"
+            : "";
+        string pair = fit.Kept < 2 ? "; no monotone pair" : "";
+        return fit.Key + "=out of range (min err="
+            + fit.MinError.ToString("E3", CultureInfo.InvariantCulture)
+            + ", max err=" + fit.MaxError.ToString("E3", CultureInfo.InvariantCulture)
+            + dropped + pair + ")";
+    }
+
+    private static StudyShipMatrixRow StudyShipMatrixInterpDiscreteBest(
+        List<StudyShipMatrixRow> all, List<string> labels,
+        string scenario, string frame, double floor, double target)
+    {
+        StudyShipMatrixRow best = null;
+        for (int j = 0; j < all.Count; j++)
+        {
+            StudyShipMatrixRow q = all[j];
+            double qp = StudyShipMatrixRanked(q, floor);
+            if (labels[j] != scenario || q.Frame != frame || q.Method == "Taylor"
+                || !q.Finite || !double.IsFinite(qp) || q.Cost <= 0L || qp > target)
+            {
+                continue;
+            }
+
+            if (best == null || q.Cost < best.Cost
+                || (q.Cost == best.Cost && qp < StudyShipMatrixRanked(best, floor)))
+            {
+                best = q;
+            }
+        }
+
+        return best;
+    }
+
+    private static void StudyShipMatrixInterpCompare(
+        List<StudyShipMatrixRow> all, List<string> labels,
+        Dictionary<string, double> floors, List<string> scenarios,
+        string frame, double target,
+        Dictionary<string, StudyShipMatrixInterpFit> bestByScenario)
+    {
+        if (frame == "world")
+        {
+            Console.WriteLine("interp vs discrete: world <= "
+                + target.ToString("G", CultureInfo.InvariantCulture)
+                + " m: no interpolable families in world; see discrete Scoreboard");
+            return;
+        }
+
+        int differ = 0;
+        int same = 0;
+        int noInterp = 0;
+        int noDiscrete = 0;
+        var details = new List<string>();
+        foreach (string scenario in scenarios)
+        {
+            floors.TryGetValue(scenario, out double floor);
+            double scenarioTarget = Math.Max(
+                target, double.IsFinite(floor) ? floor : target);
+            StudyShipMatrixRow discrete = StudyShipMatrixInterpDiscreteBest(
+                all, labels, scenario, frame, floor, scenarioTarget);
+            bestByScenario.TryGetValue(scenario, out StudyShipMatrixInterpFit interp);
+            if (interp == null)
+            {
+                noInterp++;
+                continue;
+            }
+
+            if (discrete == null)
+            {
+                noDiscrete++;
+                continue;
+            }
+
+            string discreteFamily = StudyShipMatrixInterpFamily(discrete);
+            if (discreteFamily == interp.Key)
+            {
+                same++;
+                continue;
+            }
+
+            differ++;
+            double percent = 100d * (interp.Cost - discrete.Cost) / discrete.Cost;
+            details.Add(scenario + ": discrete " + discrete.Method + "/" + discrete.Config
+                + " cost=" + discrete.Cost.ToString("N0", CultureInfo.InvariantCulture)
+                + " -> interp " + interp.Key + " cost="
+                + interp.Cost.ToString("N0", CultureInfo.InvariantCulture)
+                + " (" + (percent >= 0d ? "+" : "")
+                + percent.ToString("F1", CultureInfo.InvariantCulture) + "%)");
+        }
+
+        Console.WriteLine("interp vs discrete: " + frame + " <= "
+            + target.ToString("G", CultureInfo.InvariantCulture) + " m: different winner in "
+            + differ + " of " + scenarios.Count + " scenarios (same " + same
+            + ", no interpolated winner " + noInterp
+            + ", no discrete winner " + noDiscrete + ")");
+        foreach (string detail in details)
+        {
+            Console.WriteLine("  " + detail);
+        }
+    }
+
+    private static void StudyShipMatrixInterpScoreboard(
+        List<StudyShipMatrixRow> all, List<string> labels,
+        Dictionary<string, double> floors)
+    {
+        var scenarios = new List<string>();
+        var seen = new HashSet<string>();
+        for (int i = 0; i < all.Count; i++)
+        {
+            if (seen.Add(labels[i]))
+            {
+                scenarios.Add(labels[i]);
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("=== interpolated cost at target (log-log, informational; Taylor excluded) ===");
+        var totalByFrame = new Dictionary<string, int>();
+        var outByFrame = new Dictionary<string, int>();
+        var nonMonotoneSeries = new Dictionary<string, int>();
+        var nonMonotonePoints = new Dictionary<string, int>();
+
+        foreach (string frame in new[] { "local", "world" })
+        {
+            var fitsByScenario = new Dictionary<string, List<StudyShipMatrixInterpFit>>();
+            foreach (string scenario in scenarios)
+            {
+                floors.TryGetValue(scenario, out double floor);
+                List<StudyShipMatrixInterpFit> fits =
+                    StudyShipMatrixInterpFits(all, labels, scenario, frame, floor);
+                fitsByScenario.Add(scenario, fits);
+                foreach (StudyShipMatrixInterpFit fit in fits)
+                {
+                    if (fit.Total > 1 && fit.Dropped > 0)
+                    {
+                        nonMonotoneSeries[fit.Key] = nonMonotoneSeries.TryGetValue(
+                            fit.Key, out int series) ? series + 1 : 1;
+                        nonMonotonePoints[fit.Key] = nonMonotonePoints.TryGetValue(
+                            fit.Key, out int dropped) ? dropped + fit.Dropped : fit.Dropped;
+                    }
+                }
+            }
+
+            foreach (double target in new[] { 1d, 10d, 100d })
+            {
+                Console.WriteLine();
+                Console.WriteLine("interpolated cost at target: " + frame + " <= "
+                    + target.ToString("G", CultureInfo.InvariantCulture) + " m");
+                var wins = new Dictionary<string, int>();
+                var bestByScenario = new Dictionary<string, StudyShipMatrixInterpFit>();
+                foreach (string scenario in scenarios)
+                {
+                    floors.TryGetValue(scenario, out double floor);
+                    double scenarioTarget = Math.Max(
+                        target, double.IsFinite(floor) ? floor : target);
+                    List<StudyShipMatrixInterpFit> fits = fitsByScenario[scenario];
+                    StudyShipMatrixInterpFit best = null;
+                    var line = new StringBuilder();
+                    line.Append("  ").Append(scenario).Append(':');
+                    foreach (StudyShipMatrixInterpFit fit in fits)
+                    {
+                        StudyShipMatrixInterpEvaluate(fit, scenarioTarget, floor);
+                        totalByFrame[frame] = totalByFrame.TryGetValue(
+                            frame, out int total) ? total + 1 : 1;
+                        if (fit.Interpolated)
+                        {
+                            if (best == null || fit.Cost < best.Cost
+                                || (fit.Cost == best.Cost
+                                    && string.CompareOrdinal(fit.Key, best.Key) < 0))
+                            {
+                                best = fit;
+                            }
+                        }
+                        else
+                        {
+                            outByFrame[frame] = outByFrame.TryGetValue(
+                                frame, out int outCount) ? outCount + 1 : 1;
+                        }
+
+                        line.Append(' ').Append(StudyShipMatrixInterpDescribe(fit)).Append(';');
+                    }
+
+                    if (fits.Count == 0)
+                    {
+                        line.Append(" none");
+                    }
+
+                    Console.WriteLine(line.ToString());
+                    if (best != null)
+                    {
+                        bestByScenario[scenario] = best;
+                        wins[best.Key] = wins.TryGetValue(best.Key, out int n) ? n + 1 : 1;
+                    }
+                }
+
+                Console.Write("interp " + frame + " <= "
+                    + target.ToString("G", CultureInfo.InvariantCulture)
+                    + " m wins by interpolated cost:");
+                StudyShipMatrixPrintWins(wins);
+                StudyShipMatrixInterpCompare(
+                    all, labels, floors, scenarios, frame, target, bestByScenario);
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("interp summary: out of range "
+            + (outByFrame.TryGetValue("local", out int localOut) ? localOut : 0)
+            + " of " + (totalByFrame.TryGetValue("local", out int localTotal) ? localTotal : 0)
+            + " local cells, "
+            + (outByFrame.TryGetValue("world", out int worldOut) ? worldOut : 0)
+            + " of " + (totalByFrame.TryGetValue("world", out int worldTotal) ? worldTotal : 0)
+            + " world cells (production singles count as out of range)");
+        if (nonMonotoneSeries.Count == 0)
+        {
+            Console.WriteLine("interp monotonicity: no non-monotone series");
+        }
+        else
+        {
+            var familyKeys = new List<string>(nonMonotoneSeries.Keys);
+            familyKeys.Sort(StringComparer.Ordinal);
+            int droppedTotal = 0;
+            int seriesTotal = 0;
+            var sb = new StringBuilder();
+            foreach (string key in familyKeys)
+            {
+                int series = nonMonotoneSeries[key];
+                int dropped = nonMonotonePoints[key];
+                droppedTotal += dropped;
+                seriesTotal += series;
+                sb.Append(' ').Append(key).Append(" (")
+                    .Append(series.ToString(CultureInfo.InvariantCulture)).Append(" series, ")
+                    .Append(dropped.ToString(CultureInfo.InvariantCulture)).Append(" points)");
+            }
+
+            Console.WriteLine("interp monotonicity: " + nonMonotoneSeries.Count
+                + " non-monotone families ("
+                + seriesTotal.ToString(CultureInfo.InvariantCulture) + " series), "
+                + droppedTotal.ToString(CultureInfo.InvariantCulture)
+                + " points dropped:" + sb);
+        }
+    }
+
     private static string StudyCsvField(string value)
     {
         if (string.IsNullOrEmpty(value))
@@ -3145,6 +3579,11 @@ internal static partial class P1bTests
         StudyShipMatrixOrderAndTolerance();
         StudyShipMatrixCsv(allRows, allLabels, floors, csvPath);
         StudyShipMatrixScoreboard(allRows, allLabels, floors);
+        if (StudyShipMatrixInterpScore)
+        {
+            StudyShipMatrixInterpScoreboard(allRows, allLabels, floors);
+        }
+
         StudyShipMatrixComparisons(allRows, allLabels, floors);
         StudyShipMatrixRegression(allRows, allLabels, formulations, floors);
         Console.WriteLine("failed checks: " + (failures - failuresBefore));
