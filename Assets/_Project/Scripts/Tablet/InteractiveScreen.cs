@@ -28,6 +28,9 @@ namespace Galilego.Tablet
         [Tooltip("Приближаться только сидя (стоя экран не подсвечивается и не реагирует на E).")]
         public bool RequireSeated = true;
 
+        [Tooltip("Искать ShipTablet выше по иерархии. Выключено для планшетов со своим экраном (навигационный).")]
+        public bool AutoResolve = true;
+
         [Tooltip("Запас по краям при приближении: 1 = экран впритык во весь кадр.")]
         [Min(1f)]
         public float FitMargin = 1.12f;
@@ -54,7 +57,7 @@ namespace Galilego.Tablet
 
         public override bool IsAvailableTo(PlayerController player)
         {
-            if (Tablet == null || ScreenRenderer == null || Tablet.Expanded)
+            if (ScreenRenderer == null || (Tablet != null && Tablet.Expanded))
             {
                 return false;
             }
@@ -75,6 +78,11 @@ namespace Galilego.Tablet
         /// </summary>
         private void Resolve()
         {
+            if (!AutoResolve)
+            {
+                return;
+            }
+
             if (Tablet == null)
             {
                 Tablet = GetComponentInParent<ShipTablet>();
@@ -115,7 +123,7 @@ namespace Galilego.Tablet
             }
 
             Transform t = ScreenRenderer.transform;
-            Bounds b = ScreenRenderer.localBounds;
+            Bounds b = ScreenLocalBounds(ScreenRenderer);
             float[] world =
             {
                 t.TransformVector(new Vector3(b.size.x, 0f, 0f)).magnitude,
@@ -180,7 +188,7 @@ namespace Galilego.Tablet
             }
 
             Transform t = ScreenRenderer.transform;
-            Bounds b = ScreenRenderer.localBounds;
+            Bounds b = ScreenLocalBounds(ScreenRenderer);
             Vector3 center = t.TransformPoint(b.center);
             Vector3 normal = (t.TransformDirection(Axis(axisNormal)) * signNormal).normalized;
             Vector3 up = (t.TransformDirection(Axis(axisUp)) * signUp).normalized;
@@ -196,6 +204,23 @@ namespace Galilego.Tablet
             position = center + (normal * distance);
             rotation = Quaternion.LookRotation(-normal, up);
             return true;
+        }
+
+        /// <summary>
+        /// Mesh bounds, falling back to the shared mesh when the renderer reports
+        /// empty local bounds (FBX screens are flat and some importers leave them
+        /// at zero — the camera then would not know the screen size).
+        /// </summary>
+        private static Bounds ScreenLocalBounds(Renderer renderer)
+        {
+            Bounds b = renderer.localBounds;
+            if (b.size.sqrMagnitude > 1e-10f)
+            {
+                return b;
+            }
+
+            MeshFilter filter = renderer.GetComponent<MeshFilter>();
+            return filter != null && filter.sharedMesh != null ? filter.sharedMesh.bounds : b;
         }
 
         private static Vector3 Axis(int i)

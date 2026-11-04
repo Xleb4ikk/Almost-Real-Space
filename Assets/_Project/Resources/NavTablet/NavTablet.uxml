@@ -1,0 +1,92 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:nav="Galilego.Tablet" editor-extension-mode="False">
+    <Style src="NavTablet.uss" />
+    <ui:VisualElement name="dev" class="dev">
+
+        <!-- left column: map + line-length panel -->
+        <ui:VisualElement name="col" class="col">
+            <ui:VisualElement name="map" class="map">
+                <ui:VisualElement name="map-view" class="map-view" />
+
+                <ui:VisualElement name="clock" class="clock" picking-mode="Ignore">
+                    <ui:VisualElement class="clock-cell" picking-mode="Ignore">
+                        <ui:Label text="ВРЕМЯ МИССИИ" class="clock-cap" />
+                        <ui:Label name="mission" class="clock-val" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="clock-cell clock-cell--sep" picking-mode="Ignore">
+                        <ui:Label text="ДАТА МИРА" class="clock-cap" />
+                        <ui:Label name="world-date" class="clock-val" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <!-- slide-in window: reference frames -->
+                <ui:VisualElement name="frames" class="pn ov collapsed">
+                    <ui:VisualElement name="frames-body" class="pn-body ov-body">
+                        <ui:Label name="frames-desc" class="ds" />
+                        <ui:VisualElement class="tr tr-head">
+                            <ui:Label text="ОРБИТА · ТЕЛО" class="tr-name tr-head-l" />
+                            <ui:Label text="ЦЕНТР" class="tr-b tr-head-c" />
+                            <ui:Label text="ИСК" class="tr-b tr-head-c" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="frames-table" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="frames-tab" class="tg tg-side">
+                        <ui:Label name="frames-tab-l" class="tg-label" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:Label name="tip" class="tip" />
+            </ui:VisualElement>
+
+            <ui:VisualElement name="time" class="pn pn-time">
+                <ui:VisualElement name="time-tab" class="tg">
+                    <ui:Label name="time-tab-l" class="tg-label" />
+                </ui:VisualElement>
+                <ui:VisualElement class="pn-body time-body">
+                    <ui:VisualElement class="row">
+                        <ui:Label text="ДЛИНА ПРОГНОЗА" class="row-l" />
+                        <nav:RateSliderElement name="sl-forecast" class="row-s" />
+                        <ui:TextField name="f-forecast" class="tf row-f" is-delayed="true" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="row">
+                        <ui:Label text="ДЛИНА ИСТОРИИ" class="row-l" />
+                        <nav:RateSliderElement name="sl-history" class="row-s" />
+                        <ui:TextField name="f-history" class="tf row-f" is-delayed="true" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- right column: flight plan -->
+        <ui:VisualElement name="plan" class="pn pn-plan">
+            <ui:VisualElement name="plan-tab" class="tg">
+                <ui:Label name="plan-tab-l" class="tg-label" />
+            </ui:VisualElement>
+            <ui:VisualElement class="pn-body plan-body">
+                <ui:VisualElement class="sum">
+                    <ui:VisualElement class="tile">
+                        <ui:Label text="СУММАРНЫЙ ΔV" class="tile-cap" />
+                        <ui:Label name="s-dv" class="tile-val" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="tile">
+                        <ui:Label text="СУММАРНОЕ ВРЕМЯ ОТЖИГА" class="tile-cap" />
+                        <ui:Label name="s-burn" class="tile-val" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="tile">
+                        <ui:Label text="ДО БЛИЖАЙШЕГО МАНЁВРА" class="tile-cap" />
+                        <ui:Label name="s-next" class="tile-val" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="tile">
+                        <ui:Label text="СИСТЕМА КООРДИНАТ МАНЁВРА" class="tile-cap" />
+                        <ui:DropdownField name="m-frame" class="dd" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+                <ui:VisualElement class="btn-row">
+                    <ui:Button name="add" text="+ МАНЁВР" class="btn btn-wide btn-main" />
+                    <ui:Button name="warp" text="УСКОРИТЬ ДО МАНЁВРА" class="btn btn-wide" enabled="false" />
+                </ui:VisualElement>
+                <ui:ScrollView name="plan-list" class="plan-list" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+    </ui:VisualElement>
+</ui:UXML>

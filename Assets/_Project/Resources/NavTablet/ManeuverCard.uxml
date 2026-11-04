@@ -1,0 +1,42 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:nav="Galilego.Tablet" editor-extension-mode="False">
+    <ui:VisualElement class="mc">
+        <ui:VisualElement class="mc-h">
+            <ui:Label name="title" text="МАНЁВР 1" class="mc-title" />
+            <ui:Button name="up" text="▲" class="btn btn-s" />
+            <ui:Button name="down" text="▼" class="btn btn-s" />
+            <ui:Button name="del" text="×" class="btn btn-s" />
+        </ui:VisualElement>
+
+        <ui:VisualElement class="row">
+            <ui:Label text="T ДО МАНЁВРА" class="row-l" />
+            <nav:RateSliderElement name="sl-t" class="row-s" />
+            <ui:TextField name="f-t" class="tf row-f" is-delayed="true" />
+            <ui:Button name="z-t" text="0" class="btn btn-z" />
+        </ui:VisualElement>
+        <ui:VisualElement class="row">
+            <ui:Label text="ΔV КАС." class="row-l row-l--tan" />
+            <nav:RateSliderElement name="sl-0" class="row-s" />
+            <ui:TextField name="f-0" class="tf row-f" is-delayed="true" />
+            <ui:Button name="z-0" text="0" class="btn btn-z" />
+        </ui:VisualElement>
+        <ui:VisualElement class="row">
+            <ui:Label text="ΔV НОРМ." class="row-l row-l--nrm" />
+            <nav:RateSliderElement name="sl-1" class="row-s" />
+            <ui:TextField name="f-1" class="tf row-f" is-delayed="true" />
+            <ui:Button name="z-1" text="0" class="btn btn-z" />
+        </ui:VisualElement>
+        <ui:VisualElement class="row">
+            <ui:Label text="ΔV БИН." class="row-l row-l--bin" />
+            <nav:RateSliderElement name="sl-2" class="row-s" />
+            <ui:TextField name="f-2" class="tf row-f" is-delayed="true" />
+            <ui:Button name="z-2" text="0" class="btn btn-z" />
+        </ui:VisualElement>
+
+        <ui:VisualElement class="mc-f">
+            <ui:Label text="ΔV МАНЁВРА" class="mc-f-l" />
+            <ui:Label name="dv" class="mc-f-v" />
+            <ui:Label text="ВРЕМЯ ОТЖИГА" class="mc-f-l mc-f-l--r" />
+            <ui:Label name="burn" class="mc-f-v" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

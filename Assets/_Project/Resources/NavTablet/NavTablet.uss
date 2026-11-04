@@ -1,0 +1,245 @@
+﻿/* Navigation tablet вЂ” same look as the HTML prototype (green phosphor, soft rounded panels).
+   USS has no grid / backdrop-filter / box-shadow / gradients: glass and glow are approximated with
+   translucent fills, borders and (for the slider thumb) Painter2D. Assign your font below. */
+
+.dev {
+    --bg: rgb(3, 11, 7);
+    --tx: rgb(191, 242, 208);
+    --mu: rgb(111, 184, 138);
+    --br: rgb(228, 255, 240);
+    --ac: rgb(76, 224, 124);
+    --wn: rgb(240, 196, 80);
+    --bad: rgb(255, 92, 92);
+    --ln: rgba(76, 224, 124, 0.2);
+    --gl: rgba(76, 224, 124, 0.08);
+    --pn: rgba(8, 26, 18, 0.93);
+    --field: rgba(0, 0, 0, 0.32);
+}
+
+/* ---------- root / layout ---------- */
+.dev {
+    flex-grow: 1;
+    flex-direction: row;
+    padding: 6px;
+    background-color: var(--bg);
+    color: var(--tx);
+    font-size: 9.5px;
+    letter-spacing: 0.3px;
+    /* -unity-font-definition: url("project://database/Assets/Fonts/Inter-Regular SDF.asset"); */
+}
+.dev Label { color: var(--tx); margin: 0; padding: 0; }
+
+.col { flex-grow: 1; flex-direction: column; margin-right: 6px; }
+
+.map {
+    flex-grow: 1;
+    border-width: 1px;
+    border-color: var(--ln);
+    border-radius: 14px;
+    background-color: rgb(4, 20, 16);
+    overflow: hidden;
+}
+.map-view { position: absolute; left: 0; top: 0; right: 0; bottom: 0; background-size: 100% 100%; }
+
+/* ---------- panels ---------- */
+.pn {
+    background-color: var(--pn);
+    border-width: 1px;
+    border-color: var(--ln);
+    border-radius: 14px;
+    overflow: hidden;
+    flex-direction: column;
+    transition-property: width, height, translate;
+    transition-duration: 0.3s;
+    transition-timing-function: ease-in-out;
+}
+.pn-time { height: 88px; margin-top: 6px; }
+.pn-time.collapsed { height: 18px; }
+.pn-plan { width: 270px; }
+.pn-plan.collapsed { width: 18px; }
+
+.pn-body { flex-shrink: 0; padding: 2px 10px 8px 10px; }
+.plan-body { width: 268px; flex-grow: 1; }
+.time-body { justify-content: center; padding: 0 12px 8px 12px; }
+.collapsed > .pn-body { opacity: 0; visibility: hidden; }
+
+/* tab / header of a panel */
+.tg { height: 18px; flex-shrink: 0; justify-content: center; padding: 0 10px; }
+.tg:hover { background-color: var(--gl); }
+.tg-label { color: var(--mu); font-size: 8.5px; letter-spacing: 1.2px; white-space: nowrap; }
+.tg:hover > .tg-label { color: var(--br); }
+
+/* side panel collapsed: label rotated, strip fills the panel */
+.pn-plan.collapsed > .tg { flex-grow: 1; padding: 0; }
+.pn-plan.collapsed > .tg > .tg-label {
+    position: absolute;
+    left: 14px;
+    top: 8px;
+    width: 160px;
+    transform-origin: left top;
+    rotate: 90deg;
+}
+
+/* slide-in overlay (reference frames) */
+.ov {
+    position: absolute;
+    left: 0;
+    top: 44px;
+    flex-direction: row;
+    border-left-width: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+.ov-body { width: 208px; padding: 8px 10px; }
+.ov.collapsed { translate: -208px 0; }
+.ov.collapsed > .pn-body { opacity: 1; visibility: visible; }
+.tg-side { width: 18px; height: auto; padding: 0; border-left-width: 1px; border-color: var(--ln); }
+.tg-side > .tg-label { position: absolute; left: 14px; top: 8px; width: 160px; transform-origin: left top; rotate: 90deg; }
+
+/* ---------- clock window ---------- */
+.clock {
+    position: absolute;
+    left: 8px;
+    top: 8px;
+    flex-direction: row;
+    padding: 4px 0;
+    background-color: rgba(4, 16, 11, 0.7);
+    border-width: 1px;
+    border-color: var(--ln);
+    border-radius: 10px;
+}
+.clock-cell { padding: 0 10px; }
+.clock-cell--sep { border-left-width: 1px; border-color: var(--ln); }
+.clock-cap { font-size: 7px; letter-spacing: 1.2px; color: var(--mu); }
+.clock-val { font-size: 10.5px; color: var(--br); -unity-font-style: bold; }
+
+/* ---------- tooltip ---------- */
+.tip {
+    position: absolute;
+    display: none;
+    padding: 4px 8px;
+    background-color: rgba(4, 16, 11, 0.95);
+    border-width: 1px;
+    border-color: var(--ln);
+    border-radius: 8px;
+    color: var(--br);
+    white-space: normal;
+    -unity-text-align: upper-left;
+}
+.tip--on { display: flex; }
+
+/* ---------- rows: label | slider | field | zero ---------- */
+.row { flex-direction: row; align-items: center; margin-top: 3px; margin-bottom: 3px; }
+.row-l { width: 66px; color: var(--mu); font-size: 9px; white-space: normal; }
+.row-s { flex-grow: 1; height: 14px; }
+.row-f { width: 98px; margin-left: 6px; }
+.row-l--tan { color: rgb(255, 210, 63); }
+.row-l--nrm { color: rgb(63, 224, 255); }
+.row-l--bin { color: rgb(255, 90, 217); }
+
+/* ---------- text fields ---------- */
+.tf { margin: 0; }
+.tf > .unity-base-text-field__input {
+    margin: 0;
+    padding: 2px 4px;
+    min-height: 0;
+    background-color: var(--field);
+    border-width: 1px;
+    border-color: var(--ln);
+    border-radius: 7px;
+    color: var(--tx);
+    font-size: 8.5px;
+    -unity-text-align: middle-right;
+}
+.tf:focus > .unity-base-text-field__input { border-color: var(--ac); }
+
+/* ---------- buttons ---------- */
+.btn {
+    margin: 0;
+    padding: 2px 6px;
+    background-color: var(--gl);
+    border-width: 1px;
+    border-color: var(--ln);
+    border-radius: 7px;
+    color: var(--tx);
+    font-size: 9px;
+}
+.btn:hover { background-color: rgba(76, 224, 124, 0.16); border-color: rgba(76, 224, 124, 0.5); }
+.btn:active { background-color: rgba(76, 224, 124, 0.26); }
+.btn:disabled { opacity: 0.5; }
+.btn--on { background-color: rgba(76, 224, 124, 0.22); border-color: var(--ac); color: var(--br); }
+.btn-wide { flex-grow: 1; margin-right: 4px; }
+.btn-main { background-color: rgba(76, 224, 124, 0.14); border-color: rgba(76, 224, 124, 0.45); }
+.btn-s { padding: 0 7px; margin-left: 4px; border-radius: 7px; }
+.btn-z { width: 18px; height: 18px; padding: 0; margin-left: 4px; border-radius: 9px; font-size: 8.5px; color: var(--mu); -unity-text-align: middle-center; }
+
+/* ---------- flight plan ---------- */
+.sum { flex-direction: row; flex-wrap: wrap; margin-bottom: 4px; }
+.tile {
+    width: 48%;
+    margin: 1%;
+    padding: 4px 8px;
+    background-color: rgba(0, 0, 0, 0.3);
+    border-width: 1px;
+    border-color: rgba(76, 224, 124, 0.12);
+    border-radius: 10px;
+}
+.tile-cap { font-size: 8.5px; color: var(--mu); white-space: normal; }
+.tile-val { font-size: 11px; color: var(--br); -unity-font-style: bold; }
+.btn-row { flex-direction: row; margin-bottom: 6px; }
+.plan-list { flex-grow: 1; }
+
+.dd { margin: 2px 0 0 0; }
+.dd .unity-base-popup-field__input {
+    margin: 0;
+    padding: 1px 4px;
+    background-color: var(--field);
+    border-width: 1px;
+    border-color: var(--ln);
+    border-radius: 7px;
+    color: var(--tx);
+    font-size: 9px;
+}
+
+/* ---------- maneuver card ---------- */
+.mc {
+    margin-bottom: 8px;
+    padding: 6px 8px;
+    background-color: rgba(0, 0, 0, 0.25);
+    border-width: 1px;
+    border-color: rgba(76, 224, 124, 0.16);
+    border-radius: 11px;
+}
+.mc-h { flex-direction: row; align-items: center; }
+.mc-title { flex-grow: 1; color: var(--wn); -unity-font-style: bold; }
+.mc .row-l { width: 44px; }
+.mc .row-f { width: 88px; }
+.mc .tf > .unity-base-text-field__input { font-size: 8.5px; }
+.mc-f { flex-direction: row; flex-wrap: wrap; margin-top: 4px; }
+.mc-f-l { color: var(--mu); margin-right: 4px; }
+.mc-f-l--r { margin-left: 8px; }
+.mc-f-v { color: var(--br); -unity-font-style: bold; }
+.mc--bad { border-color: var(--bad); background-color: rgba(255, 92, 92, 0.07); }
+.mc--bad .mc-title { color: var(--bad); }
+
+/* ---------- reference frame table ---------- */
+.ds { color: var(--mu); margin-bottom: 8px; white-space: normal; }
+.tr { flex-direction: row; align-items: center; margin-top: 4px; margin-bottom: 4px; }
+.tr-name { flex-grow: 1; flex-direction: row; align-items: center; color: var(--br); }
+.tr-b { width: 26px; margin-left: 4px; }
+.tr-b.tr-isk { width: 36px; }
+.tr-head-l, .tr-head-c { font-size: 8px; letter-spacing: 1px; color: var(--mu); }
+.tr-head-c { -unity-text-align: middle-center; }
+.dot {
+    width: 9px;
+    height: 9px;
+    margin-right: 7px;
+    border-width: 1.5px;
+    border-color: var(--ac);
+    border-radius: 5px;
+}
+.dot--on { background-color: var(--ac); }
+
+/* ---------- rate slider element (drawn in RateSliderElement.cs) ---------- */
+.rs { min-width: 40px; }
+
