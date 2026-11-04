@@ -202,11 +202,16 @@ internal static partial class P1bTests
         Vector3d vRel = t2.V - bvT;
         // K20 and K24 can agree bit-for-bit after projection to double, which is
         // NOT a zero error. Report the double-precision roundoff floor of the
-        // relative state instead: it is the smallest error this representation
-        // can resolve, and it keeps downstream budgets non-zero.
+        // relative state instead. The world->local projection subtracts two
+        // ~1.5e11 m world positions, so its own ulp is part of the floor even when
+        // the relative state is small; without it the golden understates its
+        // uncertainty by that projection error.
         double selfError = (t1.P - t2.P).Magnitude;
-        double roundoffFloor = ToleranceReference.FloatingPointFloor
+        double relativeRoundoff = ToleranceReference.FloatingPointFloor
             * Math.Max(pRel.Magnitude, 1d);
+        double projectionRoundoff = ToleranceReference.FloatingPointFloor
+            * Math.Max(Math.Max(t2.P.Magnitude, bpT.Magnitude), 1d);
+        double roundoffFloor = Math.Max(relativeRoundoff, projectionRoundoff);
         if (!(selfError > roundoffFloor))
         {
             selfError = roundoffFloor;
@@ -232,46 +237,57 @@ internal static partial class P1bTests
             Calls = t1.Calls + t2.Calls,
             Ms = sw.Elapsed.TotalMilliseconds,
             Note = "K20/K24 world-frame dd-Taylor, endpoint projected to the Earth-local frame; "
-                + "self_error_m is max(|K20-K24|, double roundoff floor), not zero when they agree bitwise"
+                + "self_error_m is max(|K20-K24|, relative roundoff floor, world->local projection "
+                + "ulp), so it is not zero when K20/K24 agree bitwise"
         };
     }
 
     private static StudyShipDdGoldenFile StudyShipDdGolden(StudyShipMatrixCase c)
     {
         string path = StudyShipDdGoldenPath();
-        StudyShipDdGoldenFile golden = null;
-        if (File.Exists(path) && !StudyShipDdGoldenRefreshRequested())
+        bool refresh = StudyShipDdGoldenRefreshRequested();
+        if (!File.Exists(path) && !refresh)
         {
+            throw new InvalidOperationException(
+                "golden dd missing at " + path
+                + "; run with P1B_REFRESH_GOLDEN=1 to build it explicitly");
+        }
+
+        if (File.Exists(path) && !refresh)
+        {
+            StudyShipDdGoldenFile existing;
             try
             {
-                golden = JsonSerializer.Deserialize<StudyShipDdGoldenFile>(
+                existing = JsonSerializer.Deserialize<StudyShipDdGoldenFile>(
                     File.ReadAllText(path));
             }
             catch (JsonException ex)
             {
-                Console.WriteLine("golden dd: unreadable " + path + " (" + ex.Message + "), rebuilding");
+                throw new InvalidOperationException(
+                    "golden dd unreadable at " + path + " (" + ex.Message
+                    + "); set P1B_REFRESH_GOLDEN=1 to rebuild it explicitly", ex);
             }
-        }
 
-        if (StudyShipDdGoldenMatches(golden, c))
-        {
+            if (!StudyShipDdGoldenMatches(existing, c))
+            {
+                // Never overwrite in place on a mismatch: a silent rebuild would
+                // hide a force-model/ephemeris change behind a fresh golden. The
+                // operator must request the refresh, and this test fails loudly.
+                throw new InvalidOperationException(
+                    "golden dd fingerprint mismatch at " + path
+                    + "; the test will not overwrite it. Set P1B_REFRESH_GOLDEN=1 "
+                    + "to rebuild explicitly after reviewing the model change.");
+            }
+
             Console.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
                 "golden dd reference: {0} (self {1:E2} m, built {2:F0} s); set P1B_REFRESH_GOLDEN=1 to rebuild",
-                Path.GetFileName(path), golden.SelfErrorM, golden.Ms / 1000d));
-            return golden;
+                Path.GetFileName(path), existing.SelfErrorM, existing.Ms / 1000d));
+            return existing;
         }
 
-        if (golden != null)
-        {
-            Console.WriteLine("golden dd: fingerprint mismatch, rebuilding " + path);
-        }
-        else
-        {
-            Console.WriteLine("golden dd: building " + path + " (K20+K24; a few minutes)");
-        }
-
-        golden = StudyShipDdGoldenBuild(c);
+        Console.WriteLine("golden dd: explicit rebuild requested for " + path);
+        StudyShipDdGoldenFile golden = StudyShipDdGoldenBuild(c);
         string dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir))
         {

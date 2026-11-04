@@ -34,6 +34,8 @@ internal sealed class TestThrustSource : IDynamicsSource
 
 internal static partial class P1bTests
 {
+    private static bool allowStaleRun;
+
     private static int RunCaseProcess(string name, string logDir)
     {
         string host = Environment.ProcessPath;
@@ -66,6 +68,11 @@ internal static partial class P1bTests
 
             start.ArgumentList.Add("--log");
             start.ArgumentList.Add(Path.Combine(logDir, safeName + ".log"));
+        }
+
+        if (allowStaleRun)
+        {
+            start.ArgumentList.Add("--allow-stale");
         }
 
         start.ArgumentList.Add("--exact");
@@ -200,6 +207,122 @@ internal static partial class P1bTests
         return Directory.GetCurrentDirectory();
     }
 
+    private static DateTime LatestSourceWriteTimeUtc(string root)
+    {
+        // A --no-build run with a stale assembly is the failure mode this guards:
+        // it looks like a green suite while the results belong to old code.
+        // Only sources that actually feed the harness are considered; an
+        // unrelated Unity editor script must not force a rebuild.
+        DateTime latest = DateTime.MinValue;
+        var roots = new List<string>
+        {
+            Path.Combine(root, "Study"),
+            Path.Combine(root, "Tests"),
+            Path.Combine(root, "Reference"),
+            Path.Combine(root, "..", "..", "Assets", "_Project", "Scripts", "Core"),
+            Path.Combine(root, "..", "..", "Assets", "_Project", "Scripts", "Spacecraft"),
+            Path.Combine(root, "..", "..", "Assets", "_Project", "Scripts", "Universe"),
+            Path.Combine(root, "..", "..", "Assets", "_Project", "Scripts", "Ephemeris")
+        };
+        foreach (string directory in roots)
+        {
+            string full = Path.GetFullPath(directory);
+            if (!Directory.Exists(full))
+            {
+                continue;
+            }
+
+            foreach (string file in Directory.EnumerateFiles(full, "*.cs", SearchOption.AllDirectories))
+            {
+                DateTime written = File.GetLastWriteTimeUtc(file);
+                if (written > latest)
+                {
+                    latest = written;
+                }
+            }
+        }
+
+        foreach (string file in new[]
+                 {
+                     Path.Combine(root, "Program.cs"),
+                     Path.Combine(root, "TestSupport.cs"),
+                     Path.Combine(root, "CheckSupport.cs"),
+                     Path.Combine(root, "TestRegistry.cs"),
+                     Path.Combine(root, "UnityStubs.cs"),
+                     Path.Combine(root, "..", "GameSources.props")
+                 })
+        {
+            string full = Path.GetFullPath(file);
+            if (!File.Exists(full))
+            {
+                continue;
+            }
+
+            DateTime written = File.GetLastWriteTimeUtc(full);
+            if (written > latest)
+            {
+                latest = written;
+            }
+        }
+
+        return latest;
+    }
+
+    private static string TryReadGitHead()
+    {
+        DirectoryInfo directory = new DirectoryInfo(FindHarnessRoot());
+        while (directory != null)
+        {
+            string git = Path.Combine(directory.FullName, ".git");
+            if (Directory.Exists(git))
+            {
+                string head = Path.Combine(git, "HEAD");
+                if (File.Exists(head))
+                {
+                    string text = File.ReadAllText(head).Trim();
+                    const string prefix = "ref: ";
+                    if (text.StartsWith(prefix, StringComparison.Ordinal))
+                    {
+                        string reference = Path.Combine(git, text.Substring(prefix.Length)
+                            .Replace('/', Path.DirectorySeparatorChar));
+                        return File.Exists(reference)
+                            ? File.ReadAllText(reference).Trim()
+                            : text;
+                    }
+
+                    return text;
+                }
+            }
+
+            directory = directory.Parent;
+        }
+
+        return "unknown";
+    }
+
+    private static bool WarnIfStale(string root)
+    {
+        string assemblyPath = Assembly.GetEntryAssembly()?.Location;
+        if (string.IsNullOrEmpty(assemblyPath) || !File.Exists(assemblyPath))
+        {
+            return false;
+        }
+
+        DateTime built = File.GetLastWriteTimeUtc(assemblyPath);
+        DateTime latest = LatestSourceWriteTimeUtc(root);
+        if (latest <= built)
+        {
+            return false;
+        }
+
+        Console.WriteLine("STALE BUILD: " + assemblyPath);
+        Console.WriteLine("  assembly written: " + built.ToString("O", CultureInfo.InvariantCulture));
+        Console.WriteLine("  newest source:    " + latest.ToString("O", CultureInfo.InvariantCulture));
+        Console.WriteLine("  rebuild with: dotnet build Tools/P1bTests/P1bTests.csproj");
+        Console.WriteLine("  (or pass --allow-stale to run anyway)");
+        return true;
+    }
+
     public static int Main(string[] args)
     {
         CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
@@ -222,6 +345,7 @@ internal static partial class P1bTests
         string traceDir = null;
         string logDir = null;
         string logFile = null;
+        bool allowStale = false;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "--list")
@@ -302,6 +426,10 @@ internal static partial class P1bTests
             {
                 includeDiagnostics = true;
             }
+            else if (args[i] == "--allow-stale")
+            {
+                allowStale = true;
+            }
             else if (args[i] == "--log-dir" && i + 1 < args.Length)
             {
                 logDir = args[i + 1];
@@ -325,6 +453,7 @@ internal static partial class P1bTests
         // Tools/P1bTests" from the repository root reaches the same files as a
         // run from Tools/P1bTests. Child processes inherit the pinned
         // directory through RunCaseProcess.
+        allowStaleRun = allowStale;
         logDir = ResolveUserPath(logDir);
         traceDir = ResolveUserPath(traceDir);
         logFile = ResolveUserPath(logFile);
@@ -336,6 +465,24 @@ internal static partial class P1bTests
             var writer = new StreamWriter(logFile, false, new UTF8Encoding(false)) { AutoFlush = true };
             Console.SetOut(writer);
             Console.SetError(writer);
+            Console.WriteLine("# P1bTests log");
+            Console.WriteLine("# commit: " + TryReadGitHead());
+            string assemblyPath = Assembly.GetEntryAssembly()?.Location ?? "";
+            Console.WriteLine("# assembly: " + assemblyPath);
+            if (assemblyPath.Length > 0 && File.Exists(assemblyPath))
+            {
+                Console.WriteLine("# assembly written: "
+                    + File.GetLastWriteTimeUtc(assemblyPath).ToString("O", CultureInfo.InvariantCulture));
+            }
+
+            Console.WriteLine("# newest source: "
+                + LatestSourceWriteTimeUtc(Environment.CurrentDirectory)
+                    .ToString("O", CultureInfo.InvariantCulture));
+        }
+
+        if (!allowStale && WarnIfStale(Environment.CurrentDirectory))
+        {
+            return 1;
         }
 
         if (traceDir != null)

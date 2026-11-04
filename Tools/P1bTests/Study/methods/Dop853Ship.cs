@@ -27,9 +27,15 @@ internal static partial class P1bTests
         Vector3d fsalP = Vector3d.Zero;
         Vector3d fsalV = Vector3d.Zero;
         long calls = 0;
+        long guard = 0L;
         var sw = Stopwatch.StartNew();
         while (t < T - 1e-9d)
         {
+            if (++guard > 5000000L)
+            {
+                throw new InvalidOperationException("StudyShipDop853 step-loop guard");
+            }
+
             double h = Math.Min(dt, T - t);
             Vector3d kp0;
             Vector3d kv0;
@@ -111,6 +117,10 @@ internal static partial class P1bTests
                 + (rtol * Math.Max((v - bv).Magnitude, (vn - bv2).Magnitude))
                 + (floor * Math.Max(v.Magnitude, vn.Magnitude));
             double err = Math.Max(ep.Magnitude / scaleP, ev.Magnitude / scaleV);
+            if (!double.IsFinite(err))
+            {
+                throw new InvalidOperationException("StudyShipDop853 non-finite error estimate");
+            }
 
             if (err <= 1d)
             {
@@ -156,12 +166,18 @@ internal static partial class P1bTests
         Vector3d fsalP = Vector3d.Zero;
         Vector3d fsalV = Vector3d.Zero;
         long calls = 0;
+        long guard = 0L;
         var sw = Stopwatch.StartNew();
         Vector3d Acc(Vector3d rp, double tt) => directForce
             ? StudyLocalAccelerationDirect(sys, central, rp, tt)
             : StudyLocalAcceleration(sys, central, rp, tt);
         while (t < T - 1e-9d)
         {
+            if (++guard > 5000000L)
+            {
+                throw new InvalidOperationException("StudyShipDop853Local step-loop guard");
+            }
+
             double h = Math.Min(dt, T - t);
             Vector3d kp0;
             Vector3d kv0;
