@@ -63,14 +63,16 @@ internal static partial class P1bTests
     }
 
     /// <summary>
-    /// Y6C in double-double on the LOCAL relative state. The force is the same
-    /// EvaluateShipAccelerationLocal the certified reference uses, so this is a
-    /// same-ephemeris, same-frame reference. Integrating the absolute world state
+    /// LOCAL Y6C consistency check, not a true dd-force reference: the state is
+    /// double-double but StudyForceDdLocal evaluates the force in plain double.
+    /// It shares the certified reference's ephemeris and frame, so it can only
+    /// cross-check the local force/carry path. A genuine dd-force reference needs
+    /// explicit approval before it is added. Integrating the absolute world state
     /// in double-double does not work here: the body positions are doubles, and
     /// subtracting two ~1.5e11 m numbers leaves ~1e-5 m of position noise, which
     /// the force amplifies. Its measured self-convergence is ratio ~1, not 64.
     /// </summary>
-    private static (Vector3d p, Vector3d v, long calls, double ms) StudyShipLocalY6CDd(
+    private static (Vector3d p, Vector3d v, long calls, double ms) StudyShipLocalY6CDdConsistency(
         StarSystem sys, int central, Vector3d p0, Vector3d v0,
         double t0, double days, double h)
     {

@@ -56,13 +56,37 @@ internal static partial class P1bTests
     }
 
     private static bool StudyShipRefDop853Compensate = true;
-    private static bool StudyShipRefDiagSeams = false;
-    private static bool StudyShipRefDiagTriangle = false;
-    private static bool StudyShipRefDiagMoon = false;
-    private static bool StudyShipRefDiagDd = false;
-    // Стыки эфемериды не причина dd-расхождения; на Sun 1 AU включение ломает
-    // сходимость; не включать.
+    // Diagnostics are opt-in through P1B_REF_DIAG=seams,triangle,moon,dd so the
+    // flags are not dead constants. Dd stays off unless explicitly requested.
+    private static readonly HashSet<string> StudyShipRefDiagEnabled = StudyShipRefDiagParse();
+    private static bool StudyShipRefDiagSeams => StudyShipRefDiagEnabled.Contains("seams");
+    private static bool StudyShipRefDiagTriangle => StudyShipRefDiagEnabled.Contains("triangle");
+    private static bool StudyShipRefDiagMoon => StudyShipRefDiagEnabled.Contains("moon");
+    private static bool StudyShipRefDiagDd => StudyShipRefDiagEnabled.Contains("dd");
+    // Global override for seam-aware reference output. The lunar flyby case opts
+    // in per case (StudyShipMatrixCase.SeamAwareReference); the global switch is
+    // available for targeted diagnostics. It is not enabled globally because on
+    // Sun 1 AU the extra breakpoints broke the asymptotic pair.
     private static bool StudyShipRefSeamBreakpoints = false;
+
+    private static HashSet<string> StudyShipRefDiagParse()
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string value = Environment.GetEnvironmentVariable("P1B_REF_DIAG");
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            foreach (string part in value.Split(','))
+            {
+                string name = part.Trim();
+                if (name.Length > 0)
+                {
+                    set.Add(name);
+                }
+            }
+        }
+
+        return set;
+    }
 
     private static double[] StudyShipRefMergeEdges(double[] edges, double[] extra)
     {
@@ -99,10 +123,11 @@ internal static partial class P1bTests
             double start = c.ThrustStart;
             double end = start + c.ThrustSeconds;
             edges.Add(start);
-            if (c.ThrustRampSeconds > 0d)
+            double ramp = StudyShipMatrixRampSeconds(c);
+            if (ramp > 0d)
             {
-                edges.Add(start + c.ThrustRampSeconds);
-                edges.Add(end - c.ThrustRampSeconds);
+                edges.Add(start + ramp);
+                edges.Add(end - ramp);
             }
 
             edges.Add(end);
@@ -281,7 +306,7 @@ internal static partial class P1bTests
         }
 
         double[] breakpoints = StudyShipRefBreakpoints(c);
-        if (StudyShipRefSeamBreakpoints)
+        if (StudyShipRefSeamBreakpoints || c.SeamAwareReference)
         {
             breakpoints = StudyShipRefMergeEdges(breakpoints, StudyShipRefSeamTimes(c));
         }
@@ -304,9 +329,10 @@ internal static partial class P1bTests
                 return true;
             }
 
-            return c.ThrustRampSeconds > 0d
-                && (Math.Abs(time - (thrustStart + c.ThrustRampSeconds)) <= 1e-9d
-                    || Math.Abs(time - (thrustEnd - c.ThrustRampSeconds)) <= 1e-9d);
+            double ramp = StudyShipMatrixRampSeconds(c);
+            return ramp > 0d
+                && (Math.Abs(time - (thrustStart + ramp)) <= 1e-9d
+                    || Math.Abs(time - (thrustEnd - ramp)) <= 1e-9d);
         }
 
         double t = edges[0];

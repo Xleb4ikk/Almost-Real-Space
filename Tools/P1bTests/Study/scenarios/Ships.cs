@@ -141,9 +141,21 @@ internal static partial class P1bTests
         Vector3d refARel = refA.p;
         double refSelf = (refA.p - refAHalf.p).Magnitude;
         double refAgreement = (refARel - refBRel).Magnitude;
+        double refRoundoff = ToleranceReference.FloatingPointFloor
+            * Math.Max(1d, Math.Max(refA.p.Magnitude, refAHalf.p.Magnitude));
+        bool refSelfMeasured = refSelf > refRoundoff;
 
-        Console.WriteLine("ref A local self-convergence (2.5 s vs 1.25 s): dp={0:E3} m, dv={1:E3} m/s",
-            refSelf, (refA.v - refAHalf.v).Magnitude);
+        if (refSelfMeasured)
+        {
+            Console.WriteLine("ref A local self-convergence (2.5 s vs 1.25 s): dp={0:E3} m, dv={1:E3} m/s",
+                refSelf, (refA.v - refAHalf.v).Magnitude);
+        }
+        else
+        {
+            Console.WriteLine("ref A at roundoff floor: dp={0:E3} m <= {1:E3} m, "
+                + "not a convergence measurement (same floor as StudyShipCertifiedReference)",
+                refSelf, refRoundoff);
+        }
         Console.WriteLine("ref B (full n-body, 5 s): pre={0:N0}+{1:N0} calls, {2:F0}+{3:F0} ms",
             bodiesAtT0.Calls, refB.Calls, bodiesAtT0.Ms, refB.Ms);
         Console.WriteLine("A vs B at end: {0:E3} m", refAgreement);
@@ -255,9 +267,21 @@ internal static partial class P1bTests
 
         double gameError = (gameRel - refARel).Magnitude;
         double dop853Error = (dop853Direct.p - refARel).Magnitude;
-        Check(refSelf < StudyShipRefSelfGateMeters, label + " ship reference A self-convergence",
-            refSelf.ToString("E3", CultureInfo.InvariantCulture) + " < "
-            + StudyShipRefSelfGateMeters.ToString("G3", CultureInfo.InvariantCulture) + " m");
+        if (refSelfMeasured)
+        {
+            Check(refSelf < StudyShipRefSelfGateMeters, label + " ship reference A self-convergence",
+                refSelf.ToString("E3", CultureInfo.InvariantCulture) + " < "
+                + StudyShipRefSelfGateMeters.ToString("G3", CultureInfo.InvariantCulture) + " m");
+        }
+        else
+        {
+            // Not a proof of convergence, but still cannot be above the gate.
+            Check(refSelf < StudyShipRefSelfGateMeters,
+                label + " ship reference A roundoff floor",
+                "at roundoff floor: dp=" + refSelf.ToString("E3", CultureInfo.InvariantCulture)
+                + " m <= " + refRoundoff.ToString("E3", CultureInfo.InvariantCulture)
+                + " m, not a convergence measurement");
+        }
         Check(refAgreement < StudyShipRefAgreementGateMeters, label + " ship references A/B agree",
             refAgreement.ToString("E3", CultureInfo.InvariantCulture) + " < "
             + StudyShipRefAgreementGateMeters.ToString("G3", CultureInfo.InvariantCulture) + " m");
