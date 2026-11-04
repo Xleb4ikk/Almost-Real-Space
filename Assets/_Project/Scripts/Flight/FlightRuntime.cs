@@ -225,7 +225,7 @@ namespace Galilego.Flight
 
         private void OnGUI()
         {
-            if (!ShowHud || model == null || Runner == null) return;
+            if (NavOverlayState.Open || !ShowHud || model == null || Runner == null) return;
             StagePropulsion p = Runner.Propulsion;
             string s = string.Format("Газ {0:F0}%   Масса {1:F0} кг   ступень {2}   SAS {3}  РСУ {4}\n",
                 Runner.RawThrottle * 100d, Runner.Ship.Mass, p != null ? p.ActiveStageIndex + 1 : 0,

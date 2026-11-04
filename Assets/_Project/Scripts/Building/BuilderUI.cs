@@ -846,6 +846,11 @@ namespace Galilego.Building
 
         private void OnGUI()
         {
+            if (NavOverlayState.Open)
+            {
+                return;
+            }
+
             if (Builder == null)
             {
                 return;

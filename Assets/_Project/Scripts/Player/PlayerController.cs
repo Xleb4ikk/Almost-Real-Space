@@ -713,6 +713,12 @@ namespace Galilego.Universe
 
         private void OnGUI()
         {
+            if (NavOverlayState.Open)
+            {
+                MeshSupportBase.DebugEnabled = false;
+                return;
+            }
+
             MeshSupportBase.DebugEnabled = DebugOverlay;
 
             // EVA state is not visible anywhere else: without this the player cannot tell

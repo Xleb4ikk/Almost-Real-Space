@@ -1,4 +1,4 @@
-﻿/* Navigation tablet вЂ” same look as the HTML prototype (green phosphor, soft rounded panels).
+/* Navigation tablet вЂ” same look as the HTML prototype (green phosphor, soft rounded panels).
    USS has no grid / backdrop-filter / box-shadow / gradients: glass and glow are approximated with
    translucent fills, borders and (for the slider thumb) Painter2D. Assign your font below. */
 
@@ -21,20 +21,20 @@
     flex-grow: 1;
     flex-direction: row;
     padding: 6px;
-    background-color: var(--bg);
-    color: var(--tx);
+    background-color: rgb(3, 11, 7);
+    color: rgb(191, 242, 208);
     font-size: 9.5px;
     letter-spacing: 0.3px;
     /* -unity-font-definition: url("project://database/Assets/Fonts/Inter-Regular SDF.asset"); */
 }
-.dev Label { color: var(--tx); margin: 0; padding: 0; }
+.dev Label { color: rgb(191, 242, 208); margin: 0; padding: 0; }
 
 .col { flex-grow: 1; flex-direction: column; margin-right: 6px; }
 
 .map {
     flex-grow: 1;
     border-width: 1px;
-    border-color: var(--ln);
+    border-color: rgba(76, 224, 124, 0.2);
     border-radius: 14px;
     background-color: rgb(4, 20, 16);
     overflow: hidden;
@@ -43,9 +43,9 @@
 
 /* ---------- panels ---------- */
 .pn {
-    background-color: var(--pn);
+    background-color: rgba(8, 26, 18, 0.93);
     border-width: 1px;
-    border-color: var(--ln);
+    border-color: rgba(76, 224, 124, 0.2);
     border-radius: 14px;
     overflow: hidden;
     flex-direction: column;
@@ -65,9 +65,9 @@
 
 /* tab / header of a panel */
 .tg { height: 18px; flex-shrink: 0; justify-content: center; padding: 0 10px; }
-.tg:hover { background-color: var(--gl); }
-.tg-label { color: var(--mu); font-size: 8.5px; letter-spacing: 1.2px; white-space: nowrap; }
-.tg:hover > .tg-label { color: var(--br); }
+.tg:hover { background-color: rgba(76, 224, 124, 0.08); }
+.tg-label { color: rgb(111, 184, 138); font-size: 8.5px; letter-spacing: 1.2px; white-space: nowrap; }
+.tg:hover > .tg-label { color: rgb(228, 255, 240); }
 
 /* side panel collapsed: label rotated, strip fills the panel */
 .pn-plan.collapsed > .tg { flex-grow: 1; padding: 0; }
@@ -93,7 +93,7 @@
 .ov-body { width: 208px; padding: 8px 10px; }
 .ov.collapsed { translate: -208px 0; }
 .ov.collapsed > .pn-body { opacity: 1; visibility: visible; }
-.tg-side { width: 18px; height: auto; padding: 0; border-left-width: 1px; border-color: var(--ln); }
+.tg-side { width: 18px; height: auto; padding: 0; border-left-width: 1px; border-color: rgba(76, 224, 124, 0.2); }
 .tg-side > .tg-label { position: absolute; left: 14px; top: 8px; width: 160px; transform-origin: left top; rotate: 90deg; }
 
 /* ---------- clock window ---------- */
@@ -105,13 +105,13 @@
     padding: 4px 0;
     background-color: rgba(4, 16, 11, 0.7);
     border-width: 1px;
-    border-color: var(--ln);
+    border-color: rgba(76, 224, 124, 0.2);
     border-radius: 10px;
 }
 .clock-cell { padding: 0 10px; }
-.clock-cell--sep { border-left-width: 1px; border-color: var(--ln); }
-.clock-cap { font-size: 7px; letter-spacing: 1.2px; color: var(--mu); }
-.clock-val { font-size: 10.5px; color: var(--br); -unity-font-style: bold; }
+.clock-cell--sep { border-left-width: 1px; border-color: rgba(76, 224, 124, 0.2); }
+.clock-cap { font-size: 7px; letter-spacing: 1.2px; color: rgb(111, 184, 138); }
+.clock-val { font-size: 10.5px; color: rgb(228, 255, 240); -unity-font-style: bold; }
 
 /* ---------- tooltip ---------- */
 .tip {
@@ -120,9 +120,9 @@
     padding: 4px 8px;
     background-color: rgba(4, 16, 11, 0.95);
     border-width: 1px;
-    border-color: var(--ln);
+    border-color: rgba(76, 224, 124, 0.2);
     border-radius: 8px;
-    color: var(--br);
+    color: rgb(228, 255, 240);
     white-space: normal;
     -unity-text-align: upper-left;
 }
@@ -130,7 +130,7 @@
 
 /* ---------- rows: label | slider | field | zero ---------- */
 .row { flex-direction: row; align-items: center; margin-top: 3px; margin-bottom: 3px; }
-.row-l { width: 66px; color: var(--mu); font-size: 9px; white-space: normal; }
+.row-l { width: 84px; color: rgb(111, 184, 138); font-size: 9px; white-space: normal; }
 .row-s { flex-grow: 1; height: 14px; }
 .row-f { width: 98px; margin-left: 6px; }
 .row-l--tan { color: rgb(255, 210, 63); }
@@ -143,35 +143,35 @@
     margin: 0;
     padding: 2px 4px;
     min-height: 0;
-    background-color: var(--field);
+    background-color: rgba(0, 0, 0, 0.32);
     border-width: 1px;
-    border-color: var(--ln);
+    border-color: rgba(76, 224, 124, 0.2);
     border-radius: 7px;
-    color: var(--tx);
+    color: rgb(191, 242, 208);
     font-size: 8.5px;
     -unity-text-align: middle-right;
 }
-.tf:focus > .unity-base-text-field__input { border-color: var(--ac); }
+.tf:focus > .unity-base-text-field__input { border-color: rgb(76, 224, 124); }
 
 /* ---------- buttons ---------- */
 .btn {
     margin: 0;
     padding: 2px 6px;
-    background-color: var(--gl);
+    background-color: rgba(76, 224, 124, 0.08);
     border-width: 1px;
-    border-color: var(--ln);
+    border-color: rgba(76, 224, 124, 0.2);
     border-radius: 7px;
-    color: var(--tx);
+    color: rgb(191, 242, 208);
     font-size: 9px;
 }
 .btn:hover { background-color: rgba(76, 224, 124, 0.16); border-color: rgba(76, 224, 124, 0.5); }
 .btn:active { background-color: rgba(76, 224, 124, 0.26); }
 .btn:disabled { opacity: 0.5; }
-.btn--on { background-color: rgba(76, 224, 124, 0.22); border-color: var(--ac); color: var(--br); }
+.btn--on { background-color: rgba(76, 224, 124, 0.22); border-color: rgb(76, 224, 124); color: rgb(228, 255, 240); }
 .btn-wide { flex-grow: 1; margin-right: 4px; }
 .btn-main { background-color: rgba(76, 224, 124, 0.14); border-color: rgba(76, 224, 124, 0.45); }
 .btn-s { padding: 0 7px; margin-left: 4px; border-radius: 7px; }
-.btn-z { width: 18px; height: 18px; padding: 0; margin-left: 4px; border-radius: 9px; font-size: 8.5px; color: var(--mu); -unity-text-align: middle-center; }
+.btn-z { width: 18px; height: 18px; padding: 0; margin-left: 4px; border-radius: 9px; font-size: 8.5px; color: rgb(111, 184, 138); -unity-text-align: middle-center; }
 
 /* ---------- flight plan ---------- */
 .sum { flex-direction: row; flex-wrap: wrap; margin-bottom: 4px; }
@@ -184,8 +184,8 @@
     border-color: rgba(76, 224, 124, 0.12);
     border-radius: 10px;
 }
-.tile-cap { font-size: 8.5px; color: var(--mu); white-space: normal; }
-.tile-val { font-size: 11px; color: var(--br); -unity-font-style: bold; }
+.tile-cap { font-size: 8.5px; color: rgb(111, 184, 138); white-space: normal; }
+.tile-val { font-size: 11px; color: rgb(228, 255, 240); -unity-font-style: bold; }
 .btn-row { flex-direction: row; margin-bottom: 6px; }
 .plan-list { flex-grow: 1; }
 
@@ -193,11 +193,11 @@
 .dd .unity-base-popup-field__input {
     margin: 0;
     padding: 1px 4px;
-    background-color: var(--field);
+    background-color: rgba(0, 0, 0, 0.32);
     border-width: 1px;
-    border-color: var(--ln);
+    border-color: rgba(76, 224, 124, 0.2);
     border-radius: 7px;
-    color: var(--tx);
+    color: rgb(191, 242, 208);
     font-size: 9px;
 }
 
@@ -211,35 +211,34 @@
     border-radius: 11px;
 }
 .mc-h { flex-direction: row; align-items: center; }
-.mc-title { flex-grow: 1; color: var(--wn); -unity-font-style: bold; }
-.mc .row-l { width: 44px; }
+.mc-title { flex-grow: 1; color: rgb(240, 196, 80); -unity-font-style: bold; }
+.mc .row-l { width: 58px; }
 .mc .row-f { width: 88px; }
 .mc .tf > .unity-base-text-field__input { font-size: 8.5px; }
 .mc-f { flex-direction: row; flex-wrap: wrap; margin-top: 4px; }
-.mc-f-l { color: var(--mu); margin-right: 4px; }
+.mc-f-l { color: rgb(111, 184, 138); margin-right: 4px; }
 .mc-f-l--r { margin-left: 8px; }
-.mc-f-v { color: var(--br); -unity-font-style: bold; }
-.mc--bad { border-color: var(--bad); background-color: rgba(255, 92, 92, 0.07); }
-.mc--bad .mc-title { color: var(--bad); }
+.mc-f-v { color: rgb(228, 255, 240); -unity-font-style: bold; }
+.mc--bad { border-color: rgb(255, 92, 92); background-color: rgba(255, 92, 92, 0.07); }
+.mc--bad .mc-title { color: rgb(255, 92, 92); }
 
 /* ---------- reference frame table ---------- */
-.ds { color: var(--mu); margin-bottom: 8px; white-space: normal; }
+.ds { color: rgb(111, 184, 138); margin-bottom: 8px; white-space: normal; }
 .tr { flex-direction: row; align-items: center; margin-top: 4px; margin-bottom: 4px; }
-.tr-name { flex-grow: 1; flex-direction: row; align-items: center; color: var(--br); }
+.tr-name { flex-grow: 1; flex-direction: row; align-items: center; color: rgb(228, 255, 240); }
 .tr-b { width: 26px; margin-left: 4px; }
 .tr-b.tr-isk { width: 36px; }
-.tr-head-l, .tr-head-c { font-size: 8px; letter-spacing: 1px; color: var(--mu); }
+.tr-head-l, .tr-head-c { font-size: 8px; letter-spacing: 1px; color: rgb(111, 184, 138); }
 .tr-head-c { -unity-text-align: middle-center; }
 .dot {
     width: 9px;
     height: 9px;
     margin-right: 7px;
     border-width: 1.5px;
-    border-color: var(--ac);
+    border-color: rgb(76, 224, 124);
     border-radius: 5px;
 }
-.dot--on { background-color: var(--ac); }
+.dot--on { background-color: rgb(76, 224, 124); }
 
 /* ---------- rate slider element (drawn in RateSliderElement.cs) ---------- */
 .rs { min-width: 40px; }
-

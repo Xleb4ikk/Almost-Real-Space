@@ -1,5 +1,6 @@
 using System;
 using Galilego.Core;
+using Galilego.Tablet;
 using UnityEngine;
 
 namespace Galilego.Universe
@@ -170,6 +171,11 @@ namespace Galilego.Universe
 
         private void OnGUI()
         {
+            if (NavOverlayState.Open)
+            {
+                return;
+            }
+
             if (Runner == null)
             {
                 return;
