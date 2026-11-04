@@ -16,7 +16,7 @@ internal static partial class P1bTests
         public double[] P;
         public double[] V;
         public double Ms;
-        /// <summary>Integrator error against a same-force reference.</summary>
+        /// <summary>Integrator error against a same-force reference; max over half and full horizon.</summary>
         public double Err;
         public long Calls;
     }
@@ -67,7 +67,7 @@ internal static partial class P1bTests
         int n = nb.Count;
         int length = 3 * n;
         const double days = 3650d;
-        const double year = 365d;
+        const double daysHalf = 1825d;
 
         var referenceWatch = Stopwatch.StartNew();
         var reference = JplDop853(nb, days, 1e-9d, 1e-12d, 1e-14d, false);
@@ -78,6 +78,11 @@ internal static partial class P1bTests
         // own convergence floor; comparing it with the Newtonian reference is a
         // force-model difference, not an integrator error.
         var pnReferenceFine = JplDop853(nb, days, 1e-10d, 1e-13d, 1e-15d, true);
+        // A final-point-only error can land on a lucky phase. Check the midpoint
+        // too; this is not a full trajectory metric, but it removes the worst
+        // phase-cancellation cases at modest cost.
+        var referenceHalf = JplDop853(nb, daysHalf, 1e-9d, 1e-12d, 1e-14d, false);
+        var pnReferenceHalf = JplDop853(nb, daysHalf, 1e-9d, 1e-12d, 1e-14d, true);
         double referenceMs = referenceWatch.Elapsed.TotalMilliseconds;
         int referenceWorst;
         int pnReferenceWorst;
@@ -104,12 +109,14 @@ internal static partial class P1bTests
             new IntegratorRow { Name = "RK4 1 d", Method = "RK4", H = 86400d },
             new IntegratorRow { Name = "PEFRL 1 d", Method = "PEFRL", H = 86400d },
             new IntegratorRow { Name = "Y6 1 d", Method = "Y6", H = 86400d },
+            new IntegratorRow { Name = "Y6C 1 d", Method = "Y6C", H = 86400d },
             new IntegratorRow { Name = "DOPRI5 0.5 d", Method = "DOPRI5", H = 43200d },
             new IntegratorRow { Name = "RK4 0.5 d", Method = "RK4", H = 43200d },
             new IntegratorRow { Name = "PEFRL 0.5 d", Method = "PEFRL", H = 43200d },
             new IntegratorRow { Name = "Y6 0.5 d", Method = "Y6", H = 43200d },
+            new IntegratorRow { Name = "Y6C 0.5 d", Method = "Y6C", H = 43200d },
             new IntegratorRow { Name = "DOP853 1PN", Method = "DOP853", H = 86400d, Pn = true },
-            new IntegratorRow { Name = "Y6 1PN 112.5 s", Method = "Y6C", H = 112.5d, Pn = true }
+            new IntegratorRow { Name = "Y6C 1PN 112.5 s", Method = "Y6C", H = 112.5d, Pn = true }
         };
 
         Parallel.For(
@@ -120,34 +127,43 @@ internal static partial class P1bTests
             {
                 IntegratorRow row = rows[index];
                 var watch = Stopwatch.StartNew();
-                long calls = 0L;
-                if (row.Method == "DOP853")
+
+                (double[] p, double[] v, long calls) Run(double duration)
                 {
-                    var run = JplDop853(nb, days, 1e-6d, 1e-9d, 1e-13d, row.Pn);
-                    row.P = run.p;
-                    row.V = run.v;
-                    calls = run.calls;
-                }
-                else if (row.Method == "Y6C")
-                {
-                    var run = JplY6C(nb, days, row.H, row.Pn, out calls);
-                    row.P = run.p;
-                    row.V = run.v;
-                }
-                else
-                {
-                    row.P = (double[])nb.P0.Clone();
-                    row.V = (double[])nb.V0.Clone();
-                    long steps = (long)Math.Round(days * 86400d / row.H);
-                    StudyStep(row.Method, row.P, row.V, row.H, nb.Mu, steps, ref calls);
+                    long calls = 0L;
+                    if (row.Method == "DOP853")
+                    {
+                        var run = JplDop853(nb, duration, 1e-6d, 1e-9d, 1e-13d, row.Pn);
+                        return (run.p, run.v, run.calls);
+                    }
+
+                    if (row.Method == "Y6C")
+                    {
+                        var run = JplY6C(nb, duration, row.H, row.Pn, out calls);
+                        return (run.p, run.v, calls);
+                    }
+
+                    var p = (double[])nb.P0.Clone();
+                    var v = (double[])nb.V0.Clone();
+                    long steps = (long)Math.Round(duration * 86400d / row.H);
+                    StudyStep(row.Method, p, v, row.H, nb.Mu, steps, ref calls);
+                    return (p, v, calls);
                 }
 
+                var full = Run(days);
+                var half = Run(daysHalf);
+                row.P = full.p;
+                row.V = full.v;
+                row.Calls = full.calls + half.calls;
                 row.Ms = watch.Elapsed.TotalMilliseconds;
-                row.Calls = calls;
-                row.Err = IntegratorError(row.P, row.Pn ? pnReference.p : reference.p, n, out _);
+                double fullError = IntegratorError(
+                    full.p, row.Pn ? pnReference.p : reference.p, n, out _);
+                double halfError = IntegratorError(
+                    half.p, row.Pn ? pnReferenceHalf.p : referenceHalf.p, n, out _);
+                row.Err = Math.Max(fullError, halfError);
             });
 
-        Console.WriteLine("method                 force  h        calls  ms(wall,par)  max err(km)   (ms is not a cost metric)");
+        Console.WriteLine("method                 force  h        calls  ms(wall,par)  max err half/full(km)   (calls include both horizons; ms is not a cost metric)");
 
         double bestNewton = double.MaxValue;
         string bestNewtonName = "";
@@ -158,9 +174,11 @@ internal static partial class P1bTests
         for (int i = 0; i < rows.Length; i++)
         {
             IntegratorRow row = rows[i];
-            string h = row.Method == "DOP853" || row.Method == "Y6C"
-                ? (row.Method == "Y6C" ? "112.5 s" : "adaptive")
-                : (row.H / 86400d).ToString("F1", CultureInfo.InvariantCulture) + " d";
+            string h = row.Method == "DOP853"
+                ? "adaptive"
+                : row.H < 3600d
+                    ? row.H.ToString("G6", CultureInfo.InvariantCulture) + " s"
+                    : (row.H / 86400d).ToString("F1", CultureInfo.InvariantCulture) + " d";
             // Ranking cannot go below the reference's own uncertainty for the SAME
             // force model: an error smaller than the self-convergence is not
             // evidence of a better method. 1PN and Newtonian rows never share a
@@ -199,10 +217,36 @@ internal static partial class P1bTests
             }
         }
 
+        // "Best fixed-step" is only meaningful on a symmetric grid. Every
+        // Newtonian fixed-step family must have both 0.5 d and 1 d rows; a
+        // family that alone gets a fine step would win by grid, not by method.
+        foreach (string method in new[] { "RK4", "DOPRI5", "PEFRL", "Y6", "Y6C" })
+        {
+            bool halfDay = false;
+            bool oneDay = false;
+            foreach (IntegratorRow row in rows)
+            {
+                if (row.Pn || row.Method != method)
+                {
+                    continue;
+                }
+
+                halfDay |= Math.Abs(row.H - 43200d) < 1e-9d;
+                oneDay |= Math.Abs(row.H - 86400d) < 1e-9d;
+            }
+
+            Check(halfDay && oneDay,
+                "JPL fixed-step grid " + method,
+                (halfDay ? "0.5 d" : "no 0.5 d") + " / " + (oneDay ? "1 d" : "no 1 d"));
+        }
+
         Console.WriteLine("best Newtonian (reference floor "
             + (referenceSelf / 1000d).ToString("E2", CultureInfo.InvariantCulture) + " km): "
             + bestNewtonName);
         Console.WriteLine("best Newtonian fixed-step: " + bestFixedName);
+        Check(bestFixedName.Length > 0 && bestFixed < double.MaxValue,
+            "JPL best fixed-step present",
+            bestFixedName.Length > 0 ? bestFixedName : "none");
         Console.WriteLine("best 1PN (reference floor "
             + (pnReferenceSelf / 1000d).ToString("E2", CultureInfo.InvariantCulture) + " km): "
             + bestPnName);

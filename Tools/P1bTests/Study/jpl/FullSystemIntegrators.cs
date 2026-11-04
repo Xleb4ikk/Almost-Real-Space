@@ -225,6 +225,18 @@ internal static partial class P1bTests
         }
     }
 
+    private static double MoonRelativeError(
+        double[] candidate, double[] reference, int earth, int moon)
+    {
+        double dx = (candidate[3 * moon] - candidate[3 * earth])
+            - (reference[3 * moon] - reference[3 * earth]);
+        double dy = (candidate[(3 * moon) + 1] - candidate[(3 * earth) + 1])
+            - (reference[(3 * moon) + 1] - reference[(3 * earth) + 1]);
+        double dz = (candidate[(3 * moon) + 2] - candidate[(3 * earth) + 2])
+            - (reference[(3 * moon) + 2] - reference[(3 * earth) + 2]);
+        return Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
+    }
+
     private static int Test546_JplFullSystemIntegrators()
     {
         Console.WriteLine("--- Every integrator on the full DE441 system: planets + Moon + 409 small bodies ---");
@@ -276,10 +288,21 @@ internal static partial class P1bTests
             nb, days, 1e-7d, 1e-10d, 1e-14d, true, false, true,
             43200d, astStart, true);
         refWatch.Stop();
+        var fineWatch = Stopwatch.StartNew();
+        var fullRefFine = JplDop853(
+            nb, days, 1e-8d, 1e-11d, 1e-15d, true, false, true,
+            21600d, astStart, true);
+        fineWatch.Stop();
+        int referenceWorst;
+        double referenceSelf = IntegratorError(fullRefFine.p, fullRef.p, n, out referenceWorst);
         Console.WriteLine(string.Format(
             CultureInfo.InvariantCulture,
-            "same-force reference: DOP853 full409 rtol=1e-14, {0:F0} ms, {1:N0} calls",
-            refWatch.Elapsed.TotalMilliseconds, fullRef.calls));
+            "same-force reference: DOP853 full409 rtol=1e-14, {0:F0} ms, {1:N0} calls; "
+            + "self-convergence (rtol 1e-15, maxStep 0.25 d, worst {2}) = {3:E2} m",
+            refWatch.Elapsed.TotalMilliseconds, fullRef.calls,
+            nb.Names[referenceWorst], referenceSelf));
+        Check(referenceSelf < 10d, "full409 same-force reference self-convergence",
+            referenceSelf.ToString("E2", CultureInfo.InvariantCulture) + " m < 10 m");
 
         // Eight planets, deliberately excluding the Moon: the Moon is reported
         // separately in geocentric coordinates. Including it here would count it
@@ -371,10 +394,14 @@ internal static partial class P1bTests
             CultureInfo.InvariantCulture,
             "model error (same-force reference vs Horizons): RMS(8)={0:F3} km, Jupiter={1:F3} km, Saturn={2:F3} km",
             modelRms, modelJupiter, modelSaturn));
-        Console.WriteLine("method                     h          calls   ms(wall,par)  int err(km) total(km)  Jupiter km  Saturn km  Moon(geo) km");
-        // Rank by the planet RMS, not by row.Err: Err is the maximum over all 419
-        // bodies (asteroids included) and is not the quantity the RMS column
-        // reports. Keep the total as a separate diagnostic.
+        Console.WriteLine("method                     h          calls   ms(wall,par)  int err(km) int rms8(km) total(km)  Jupiter km  Saturn km  Moon(geo) km");
+        // Rank by the SAME-FORCE error, not by the Horizons residual. The
+        // Horizons column (total) contains the model error; a coarse method can
+        // look better there only because its error cancels part of the model
+        // error (e.g. DOPRI5 1 d: 67,092 km same-force vs 2,911 km Horizons).
+        // The same-force reference below uses exactly the rows' acceleration.
+        int earthIndex = JplIndex(nb, "Earth");
+        int moonIndex = JplIndex(nb, "Moon");
         double best = double.MaxValue;
         double bestFixed = double.MaxValue;
         double bestTotal = double.MaxValue;
@@ -389,42 +416,52 @@ internal static partial class P1bTests
             double saturn = 0d;
             for (int b = 0; b < bodies.Length; b++)
             {
-                bool geo = bodies[b] == "Moon";
-                var e = JplStateError(jpl, nb, row.P, row.V, days, bodies[b], geo);
-                sum += (e.dp / 1000d) * (e.dp / 1000d);
+                int index = JplIndex(nb, bodies[b]);
+                double e = IntegratorBodyError(row.P, fullRef.p, index) / 1000d;
+                sum += e * e;
                 if (bodies[b] == "Jupiter")
                 {
-                    jupiter = e.dp / 1000d;
+                    jupiter = e;
                 }
                 else if (bodies[b] == "Saturn")
                 {
-                    saturn = e.dp / 1000d;
+                    saturn = e;
                 }
             }
 
-            double moonErr = JplStateError(jpl, nb, row.P, row.V, days, "Moon", true).dp / 1000d;
-            double rms = Math.Sqrt(sum / 8d);
+            double moonErr = MoonRelativeError(row.P, fullRef.p, earthIndex, moonIndex) / 1000d;
+            double sameForceRms = Math.Sqrt(sum / 8d);
+            double totalRms = 0d;
+            for (int b = 0; b < bodies.Length; b++)
+            {
+                var e = JplStateError(jpl, nb, row.P, row.V, days, bodies[b], false);
+                totalRms += (e.dp / 1000d) * (e.dp / 1000d);
+            }
+
+            totalRms = Math.Sqrt(totalRms / 8d);
             string h = row.Method == "DOP853"
                 ? "adaptive"
                 : (row.H / 86400d).ToString("F1", CultureInfo.InvariantCulture) + " d";
             Console.WriteLine(string.Format(
                 CultureInfo.InvariantCulture,
-                "{0,-25} {1,-9} {2,9} {3,7:F0} {4,10:F3} {5,10:F3} {6,10:F3} {7,10:F3} {8,12:F2}",
-                row.Name, h, row.Calls, row.Ms, row.Err / 1000d, rms, jupiter, saturn, moonErr));
-            Check(double.IsFinite(row.Err) && double.IsFinite(rms) && double.IsFinite(moonErr),
+                "{0,-25} {1,-9} {2,9} {3,7:F0} {4,10:F3} {5,10:F3} {6,10:F3} {7,10:F3} {8,10:F3} {9,12:F2}",
+                row.Name, h, row.Calls, row.Ms, row.Err / 1000d, sameForceRms,
+                totalRms, jupiter, saturn, moonErr));
+            Check(double.IsFinite(row.Err) && double.IsFinite(sameForceRms)
+                    && double.IsFinite(totalRms) && double.IsFinite(moonErr),
                 "full " + row.Name + " finite", "");
-            if (rms < best)
+            if (sameForceRms < best)
             {
-                best = rms;
+                best = sameForceRms;
                 bestName = row.Name;
             }
 
             // The DOP853 row is the same method as the reference; report the
             // independent fixed-step winner separately so the headline is not
             // "DOP853 agrees with DOP853".
-            if (row.Method != "DOP853" && rms < bestFixed)
+            if (row.Method != "DOP853" && sameForceRms < bestFixed)
             {
-                bestFixed = rms;
+                bestFixed = sameForceRms;
                 bestFixedName = row.Name;
             }
 
@@ -435,10 +472,10 @@ internal static partial class P1bTests
             }
         }
 
-        Console.WriteLine("best by planet RMS(8): " + bestName
-            + "; best fixed-step by planet RMS: " + bestFixedName
+        Console.WriteLine("best by same-force RMS(8): " + bestName
+            + "; best fixed-step by same-force RMS: " + bestFixedName
             + "; best by total max over 419: " + bestTotalName
-            + "; model floor is " + modelRms.ToString("F3", CultureInfo.InvariantCulture) + " km");
+            + "; model floor vs Horizons is " + modelRms.ToString("F3", CultureInfo.InvariantCulture) + " km");
         Check(modelRms < 1000d, "full-system model error is a floor below 1000 km",
             modelRms.ToString("F3", CultureInfo.InvariantCulture) + " km");
         Console.WriteLine("--- Full-system integrator comparison complete ---");

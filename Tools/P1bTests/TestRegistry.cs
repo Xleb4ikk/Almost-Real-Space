@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -246,7 +246,9 @@ internal static partial class P1bTests
             new P1bCase("Test904_NoSubQuadSteps", Test904_NoSubQuadSteps, false),
             new P1bCase("Test400_StageCoreConformance", Test400_StageCoreConformance, false),
             new P1bCase("Test401_StagePropulsionFlight", Test401_StagePropulsionFlight, false),
-            new P1bCase("Test500_IntegratorStudyFast", Test500_IntegratorStudyFast, false),
+            // The 10-year dd-Taylor references alone take ~190-205 s each per
+            // system and the test runs several ship tables; it is not a fast case.
+            new P1bCase("Test500_IntegratorStudyFast", Test500_IntegratorStudyFast, true),
             new P1bCase("Test501_IntegratorStudySlow", Test501_IntegratorStudySlow, true),
             new P1bCase("Test503_ReferenceConvergence", Test503_ReferenceConvergence, true, diagnostic: true),
             new P1bCase("Test504_TaylorReference", Test504_TaylorReference, true),
@@ -299,4 +301,3 @@ new P1bCase("Test549_SpacecraftOrbitIntegrators", Test549_SpacecraftOrbitIntegra
         };
     }
 }
-
