@@ -461,7 +461,13 @@ namespace Galilego.Universe
             long stamp = 0L;
             for (int i = 0; i < allBodies.Count; i++)
             {
-                stamp = (stamp * 31) + (allBodies[i].Baked != null ? 1L : 0L) + i;
+                BakedEphemeris baked = allBodies[i].Baked;
+                // Include the object identity, not only null/non-null: replacing
+                // one baked ephemeris with another must invalidate the cache too.
+                long bakedStamp = baked == null
+                    ? 0L
+                    : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(baked);
+                stamp = (stamp * 31) + bakedStamp + i;
             }
 
             if (cacheValid && timeSeconds == cachedTime && cachedPositions != null && cachedPositions.Length == allBodies.Count && stamp == cachedStamp)
