@@ -169,9 +169,21 @@ namespace Galilego.Core
             double dt = Math.Min(remainingDt, MaxStepSize);
             bool useReference = toleranceReference.HasValue && remainingDt <= ToleranceReference.MaxSpanSeconds;
             ToleranceReference reference = useReference ? toleranceReference.Value : default;
+            long loopGuard = 0L;
+            double lastNormalized = 0d;
 
             while (remainingDt > 0d)
             {
+                if (++loopGuard > 5000000L)
+                {
+                    throw new InvalidOperationException(
+                        "DOPRI5 step-loop guard: t=" + time.ToString("R")
+                        + ", dt=" + dt.ToString("R")
+                        + ", remaining=" + remainingDt.ToString("R")
+                        + ", last norm=" + lastNormalized.ToString("R")
+                        + ", state=" + current);
+                }
+
                 dt = Math.Min(dt, remainingDt);
 
                 if (!fsalValid)
@@ -230,6 +242,7 @@ namespace Galilego.Core
 
                 double scaleMass = massAbsoluteTolerance + relativeTolerance * Math.Max(Math.Abs(current.Mass), Math.Abs(fifth.Mass));
                 double normalizedError = Math.Max(errorPos / scalePos, Math.Max(errorVel / scaleVel, errorMass / scaleMass));
+                lastNormalized = normalizedError;
 
                 if (normalizedError <= 1.0)
                 {
@@ -359,22 +372,48 @@ namespace Galilego.Core
             double dt = Math.Min(remainingDt, MaxStepSize);
             bool useReference = toleranceReference.HasValue && remainingDt <= ToleranceReference.MaxSpanSeconds;
             ToleranceReference reference = useReference ? toleranceReference.Value : default;
-            bool collectDense = segments != null;
+            long loopGuard = 0L;
+            double lastNormalized = 0d;
+
+            // DOP853 is a 12-stage method, but the dense-output extension already
+            // evaluates f(t+h, y1) as k12. That derivative is exactly the first
+            // stage of the next step, so carrying it across accepted steps removes
+            // one RHS call per step whenever dense output is collected. It is NOT
+            // available on the plain (segments == null) path: there k12 is never
+            // computed and adding it would cost as much as it saves.
+            SpacecraftIntegrationState fsalDerivative = default;
+            bool fsalValid = false;
 
             while (remainingDt > 0d)
             {
+                if (++loopGuard > 5000000L)
+                {
+                    throw new InvalidOperationException(
+                        "DOP853 step-loop guard: t=" + time.ToString("R")
+                        + ", dt=" + dt.ToString("R")
+                        + ", remaining=" + remainingDt.ToString("R")
+                        + ", last norm=" + lastNormalized.ToString("R")
+                        + ", state=" + current);
+                }
+
                 dt = Math.Min(dt, remainingDt);
+
+                if (!fsalValid)
+                {
+                    fsalDerivative = derivativeProvider(current, time);
+                    fsalValid = true;
+                }
 
                 DoP853Step(
                     current, time, dt,
                     derivativeProvider,
-                    collectDense,
+                    fsalDerivative,
                     out bool stageMassInvalid,
+                    out SpacecraftIntegrationState[] stages,
                     out SpacecraftIntegrationState eighth,
                     out double errorPos,
                     out double errorVel,
-                    out double errorMass,
-                    out ShampineCoeffs denseStep);
+                    out double errorMass);
 
                 if (stageMassInvalid)
                 {
@@ -410,13 +449,24 @@ namespace Galilego.Core
 
                 double scaleMass = massAbsoluteTolerance + (relativeTolerance * Math.Max(Math.Abs(current.Mass), Math.Abs(eighth.Mass)));
                 double normalizedError = Math.Max(errorPos / scalePos, Math.Max(errorVel / scaleVel, errorMass / scaleMass));
+                lastNormalized = normalizedError;
 
                 if (normalizedError <= 1.0)
                 {
                     EnsurePositiveMass(eighth, time + (dt * direction));
                     if (segments != null)
                     {
+                        ShampineCoeffs denseStep = BuildDop853Dense(
+                            current, time, dt, stages, eighth, derivativeProvider,
+                            out fsalDerivative, out _);
                         segments.Add(new DenseSegment(time, time + (dt * direction), dt, current, eighth, denseStep));
+                        fsalValid = true;
+                    }
+                    else
+                    {
+                        // No dense output means no k12 to carry: the next step
+                        // evaluates its own first stage.
+                        fsalValid = false;
                     }
 
                     current = eighth;
@@ -447,13 +497,13 @@ namespace Galilego.Core
                         DoP853Step(
                             current, time, dt,
                             derivativeProvider,
-                            collectDense,
+                            fsalDerivative,
                             out bool forcedStageMassInvalid,
+                            out SpacecraftIntegrationState[] forcedStages,
                             out SpacecraftIntegrationState forced,
                             out double forcedErrPos,
                             out double forcedErrVel,
-                            out double forcedErrMass,
-                            out ShampineCoeffs forcedDense);
+                            out double forcedErrMass);
 
                         if (forcedStageMassInvalid)
                         {
@@ -465,7 +515,15 @@ namespace Galilego.Core
                         EnsurePositiveMass(forced, time + (dt * direction));
                         if (segments != null)
                         {
+                            ShampineCoeffs forcedDense = BuildDop853Dense(
+                                current, time, dt, forcedStages, forced, derivativeProvider,
+                                out fsalDerivative, out _);
                             segments.Add(new DenseSegment(time, time + (dt * direction), dt, current, forced, forcedDense));
+                            fsalValid = true;
+                        }
+                        else
+                        {
+                            fsalValid = false;
                         }
 
                         current = forced;
@@ -653,23 +711,25 @@ namespace Galilego.Core
             double time,
             double dt,
             DerivativeFunction derivativeProvider,
-            bool collectDense,
+            SpacecraftIntegrationState firstDerivative,
             out bool stageMassInvalid,
+            out SpacecraftIntegrationState[] stages,
             out SpacecraftIntegrationState eighth,
             out double errPos,
             out double errVel,
-            out double errMass,
-            out ShampineCoeffs dense)
+            out double errMass)
         {
             stageMassInvalid = false;
+            stages = null;
             eighth = state;
             errPos = 0d;
             errVel = 0d;
             errMass = 0d;
-            dense = default;
 
-            var k = new SpacecraftIntegrationState[collectDense ? 16 : 12];
-            k[0] = derivativeProvider(state, time);
+            // k[0] is supplied by the caller: f(t, y) is either the first stage of
+            // the first step or k12 of the previous accepted step (dense path).
+            var k = new SpacecraftIntegrationState[16];
+            k[0] = firstDerivative;
 
             for (int s = 1; s < 12; s++)
             {
@@ -703,72 +763,78 @@ namespace Galilego.Core
             errPos = error.Position.Magnitude;
             errVel = error.Velocity.Magnitude;
             errMass = Math.Abs(error.Mass);
+            stages = k;
+        }
 
-            if (collectDense)
+        /// <summary>
+        /// Builds the Hairer/Wanner contd8 dense polynomial for an ACCEPTED step.
+        /// Doing this here, after acceptance, avoids paying for the four dense
+        /// stages on rejected attempts; k12 = f(t+h, y1) is returned so the next
+        /// step can reuse it as its first stage (dense-path FSAL).
+        /// </summary>
+        private static ShampineCoeffs BuildDop853Dense(
+            SpacecraftIntegrationState state,
+            double time,
+            double dt,
+            SpacecraftIntegrationState[] k,
+            SpacecraftIntegrationState eighth,
+            DerivativeFunction derivativeProvider,
+            out SpacecraftIntegrationState fsalDerivative,
+            out bool extendedStagesValid)
+        {
+            k[12] = derivativeProvider(eighth, time + dt);
+            fsalDerivative = k[12];
+            extendedStagesValid = true;
+            for (int s = 13; s < 16; s++)
             {
-                if (!(eighth.Mass > 0d))
+                SpacecraftIntegrationState stage = state;
+                double[] row = DOP853Coefficients.AExtra[s - 13];
+                for (int j = 0; j < s; j++)
                 {
-                    stageMassInvalid = true;
-                    return;
-                }
-
-                // FSAL stage k12 = f(t+h, y1), then the three extended stages of
-                // Hairer/Wanner contd8. They are needed only for dense output.
-                k[12] = derivativeProvider(eighth, time + dt);
-                bool extendedStagesValid = true;
-                for (int s = 13; s < 16; s++)
-                {
-                    SpacecraftIntegrationState stage = state;
-                    double[] row = DOP853Coefficients.AExtra[s - 13];
-                    for (int j = 0; j < s; j++)
+                    double a = row[j];
+                    if (a != 0d)
                     {
-                        double a = row[j];
-                        if (a != 0d)
-                        {
-                            stage += k[j] * (dt * a);
-                        }
+                        stage += k[j] * (dt * a);
                     }
-
-                    if (!(stage.Mass > 0d))
-                    {
-                        extendedStagesValid = false;
-                        break;
-                    }
-
-                    k[s] = derivativeProvider(stage, time + (dt * DOP853Coefficients.CExtra[s - 13]));
                 }
 
-                if (extendedStagesValid)
+                if (!(stage.Mass > 0d))
                 {
-                    SpacecraftIntegrationState delta = eighth - state;
-                    SpacecraftIntegrationState f0 = delta;
-                    SpacecraftIntegrationState f1 = (k[0] * dt) - delta;
-                    SpacecraftIntegrationState f2 = (delta * 2d) - ((k[12] + k[0]) * dt);
-                    SpacecraftIntegrationState f3 = SpacecraftIntegrationState.Zero;
-                    SpacecraftIntegrationState f4 = SpacecraftIntegrationState.Zero;
-                    SpacecraftIntegrationState f5 = SpacecraftIntegrationState.Zero;
-                    SpacecraftIntegrationState f6 = SpacecraftIntegrationState.Zero;
-                    for (int s = 0; s < 16; s++)
-                    {
-                        f3 += k[s] * (dt * DOP853Coefficients.D[0][s]);
-                        f4 += k[s] * (dt * DOP853Coefficients.D[1][s]);
-                        f5 += k[s] * (dt * DOP853Coefficients.D[2][s]);
-                        f6 += k[s] * (dt * DOP853Coefficients.D[3][s]);
-                    }
+                    extendedStagesValid = false;
+                    break;
+                }
 
-                    dense = new ShampineCoeffs(f0, f1, f2, f3, f4, f5, f6);
-                }
-                else
-                {
-                    // The accepted endpoint is valid, but an extended stage left the
-                    // positive-mass domain. Fall back to the cubic Shampine segment
-                    // instead of rejecting an already accepted step.
-                    SpacecraftIntegrationState dc1 = eighth - state;
-                    SpacecraftIntegrationState dc2 = (k[0] * dt) - dc1;
-                    SpacecraftIntegrationState dc3 = dc1 - dc2 - (k[12] * dt);
-                    dense = new ShampineCoeffs(dc1, dc2, dc3, SpacecraftIntegrationState.Zero);
-                }
+                k[s] = derivativeProvider(stage, time + (dt * DOP853Coefficients.CExtra[s - 13]));
             }
+
+            if (extendedStagesValid)
+            {
+                SpacecraftIntegrationState delta = eighth - state;
+                SpacecraftIntegrationState f0 = delta;
+                SpacecraftIntegrationState f1 = (k[0] * dt) - delta;
+                SpacecraftIntegrationState f2 = (delta * 2d) - ((k[12] + k[0]) * dt);
+                SpacecraftIntegrationState f3 = SpacecraftIntegrationState.Zero;
+                SpacecraftIntegrationState f4 = SpacecraftIntegrationState.Zero;
+                SpacecraftIntegrationState f5 = SpacecraftIntegrationState.Zero;
+                SpacecraftIntegrationState f6 = SpacecraftIntegrationState.Zero;
+                for (int s = 0; s < 16; s++)
+                {
+                    f3 += k[s] * (dt * DOP853Coefficients.D[0][s]);
+                    f4 += k[s] * (dt * DOP853Coefficients.D[1][s]);
+                    f5 += k[s] * (dt * DOP853Coefficients.D[2][s]);
+                    f6 += k[s] * (dt * DOP853Coefficients.D[3][s]);
+                }
+
+                return new ShampineCoeffs(f0, f1, f2, f3, f4, f5, f6);
+            }
+
+            // The accepted endpoint is valid, but an extended stage left the
+            // positive-mass domain. Fall back to the cubic Shampine segment
+            // instead of rejecting an already accepted step.
+            SpacecraftIntegrationState dc1 = eighth - state;
+            SpacecraftIntegrationState dc2 = (k[0] * dt) - dc1;
+            SpacecraftIntegrationState dc3 = dc1 - dc2 - (k[12] * dt);
+            return new ShampineCoeffs(dc1, dc2, dc3, SpacecraftIntegrationState.Zero);
         }
     }
 }

@@ -56,9 +56,17 @@ namespace Galilego.Core
             double remainingDt = Math.Abs(targetDt);
             double direction = Math.Sign(targetDt);
             double dt = Math.Min(remainingDt, DefaultMaxStepSize);
+            long loopGuard = 0L;
             
             while (remainingDt > 0d)
             {
+                if (++loopGuard > 5000000L)
+                {
+                    throw new InvalidOperationException(
+                        "DOPRI5 step-loop guard: t=" + time.ToString("R")
+                        + ", dt=" + dt.ToString("R") + ", remaining=" + remainingDt.ToString("R"));
+                }
+
                 // Clamp step to remaining time
                 dt = Math.Min(dt, remainingDt);
                 
@@ -83,6 +91,12 @@ namespace Galilego.Core
                 double scalePos = absoluteTolerance + relativeTolerance * Math.Max(currentPos.Magnitude, result.Position.Magnitude);
                 double scaleVel = absoluteTolerance + relativeTolerance * Math.Max(currentVel.Magnitude, result.Velocity.Magnitude);
                 double normalizedError = Math.Max(errorPos / scalePos, errorVel / scaleVel);
+                if (!double.IsFinite(normalizedError))
+                {
+                    throw new InvalidOperationException(
+                        "DOPRI5 non-finite error estimate at t=" + time.ToString("R")
+                        + ", dt=" + dt.ToString("R") + " — accelerationProvider вернул NaN/Inf.");
+                }
                 
                 if (normalizedError <= 1.0)
                 {
