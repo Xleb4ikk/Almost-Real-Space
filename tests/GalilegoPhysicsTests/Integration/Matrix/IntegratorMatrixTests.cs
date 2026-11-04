@@ -13,9 +13,21 @@ namespace GalilegoPhysicsTests.Integration.Matrix
         public void Matrix(MatrixCase matrix)
         {
             Scenario scenario = ScenarioCatalog.Get(matrix.ScenarioId);
-            IntegratorKind integrator = matrix.IntegratorName == "Dop853"
-                ? IntegratorKind.Dop853
-                : IntegratorKind.Dopri5;
+            IntegratorKind integrator;
+            if (matrix.IntegratorName == "Dop853")
+            {
+                integrator = IntegratorKind.Dop853;
+            }
+            else if (matrix.IntegratorName == "Dopri5")
+            {
+                integrator = IntegratorKind.Dopri5;
+            }
+            else
+            {
+                throw new Xunit.Sdk.XunitException(
+                    "Unknown integrator '" + matrix.IntegratorName
+                    + "'. Add it to IntegratorKind and ScenarioExecution; silently running DOPRI5 hides the mistake.");
+            }
 
             ToleranceProfile tolerance = ToleranceTable.For(integrator, scenario.Id, matrix.Tolerance);
             ScenarioExecution run = ScenarioExecution.Execute(scenario, integrator, matrix.Tolerance, 1);

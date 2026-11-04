@@ -533,10 +533,13 @@ namespace GalilegoPhysicsTests.Support
         }
 
         /// <summary>
-        /// Runs the same scenario with segments == null (the production
-        /// SpacecraftPhysics.Step path) and returns its RHS call count. The final
-        /// state must be bit-identical to the dense-collecting run: the extra DOP853
-        /// stages are interpolation-only.
+        /// Runs the same scenario with segments == null and returns its RHS call
+        /// count. This is the production INTEGRATOR setting, not the full
+        /// SpacecraftPhysics.Step path: the local-frame wrapper, the dominant-body
+        /// lookup and the three gravity evaluations per RHS live outside Core and
+        /// are covered by the P1bTools Test549 matrix. The final state must be
+        /// bit-identical to the dense-collecting run: the extra DOP853 stages are
+        /// interpolation-only.
         /// </summary>
         public long MeasureProductionRhsCalls()
         {

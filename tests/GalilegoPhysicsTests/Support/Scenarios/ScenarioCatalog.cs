@@ -28,6 +28,18 @@ namespace GalilegoPhysicsTests.Support.Scenarios
         /// </summary>
         public static readonly Scenario LinearDrift = CreateLinearDrift();
 
+        /// <summary>
+        /// Heliocentric 1 AU circular arc, 30 days. This is deliberately outside
+        /// the per-tolerance matrix: at 1 AU the 600 s step cap, not the error
+        /// controller, chooses the step, so 1e-6 and 1e-9 produce the same run.
+        /// SunRegimeTests owns the claim (step-endpoint accuracy and cost against
+        /// DOPRI5 at the same cap), which the Earth-radius matrix cannot make.
+        /// </summary>
+        public static readonly Scenario SunOneAu = CreateKepler(
+            "sun-1au", "Kepler Sun 1 AU circular | 30 d", ScenarioClass.KeplerCircularLong,
+            1.495978707e11d, 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, 0.0d, ScenarioTier.Fast,
+            new[] { 1e-9d }, 30.0d * 86400.0d, null, 1.32712440018e20d);
+
         public static readonly Scenario[] All =
         {
             CreateKepler("kepler-circular", "Kepler circular | 1 period", ScenarioClass.KeplerCircular,
@@ -151,16 +163,18 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             ScenarioTier tier,
             double[] tolerances,
             double explicitDurationSeconds = 0d,
-            double[] dopri5Tolerances = null)
+            double[] dopri5Tolerances = null,
+            double centralMu = 0d)
         {
+            double mu = centralMu > 0d ? centralMu : Mu;
             InitialOrbit.StateFromElements(
-                Mu, semiMajorAxis, eccentricity, inclinationDegrees, raanDegrees,
+                mu, semiMajorAxis, eccentricity, inclinationDegrees, raanDegrees,
                 argumentOfPeriapsisDegrees, trueAnomalyDegrees,
                 out Double3 position, out Double3 velocity);
 
             double duration = explicitDurationSeconds > 0d
                 ? explicitDurationSeconds
-                : horizonPeriods * InitialOrbit.Period(Mu, semiMajorAxis);
+                : horizonPeriods * InitialOrbit.Period(mu, semiMajorAxis);
 
             var scenario = new Scenario();
             scenario.Id = id;
@@ -168,7 +182,7 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             scenario.Family = "Kepler";
             scenario.Class = scenarioClass;
             scenario.Tier = tier;
-            scenario.Mu = Mu;
+            scenario.Mu = mu;
             scenario.DurationSeconds = duration;
             scenario.SemiMajorAxisMeters = semiMajorAxis;
             scenario.Eccentricity = eccentricity;
@@ -177,7 +191,7 @@ namespace GalilegoPhysicsTests.Support.Scenarios
                 ? semiMajorAxis * (1d + eccentricity)
                 : double.PositiveInfinity;
             scenario.PeriapsisSpeedMetersPerSecond = Math.Sqrt(
-                Mu * (1d + eccentricity) / scenario.PeriapsisMeters);
+                mu * (1d + eccentricity) / scenario.PeriapsisMeters);
             scenario.Dopri5Tolerances = dopri5Tolerances;
             scenario.InitialState = new SpacecraftIntegrationState
             {
@@ -187,7 +201,6 @@ namespace GalilegoPhysicsTests.Support.Scenarios
             };
             Double3 r0 = position;
             Double3 v0 = velocity;
-            double mu = Mu;
             scenario.Derivative = (state, time) => new SpacecraftIntegrationState
             {
                 Position = state.Velocity,
