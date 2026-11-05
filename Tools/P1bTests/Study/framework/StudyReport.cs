@@ -170,6 +170,7 @@ namespace P1bStudy.Framework
 
                 int censored = 0;
                 int errors = 0;
+                int nonFinite = 0;
                 string firstError = "";
                 int capBound = 0;
                 foreach (StudyRow r in rows)
@@ -188,6 +189,11 @@ namespace P1bStudy.Framework
                         }
                     }
 
+                    if (r.Status == "ok" && !r.Finite)
+                    {
+                        nonFinite++;
+                    }
+
                     if (r.Kind == StudyKind.Adaptive && r.Steps > 0 && r.CapLimited * 2 >= r.Steps)
                     {
                         capBound++;
@@ -202,6 +208,12 @@ namespace P1bStudy.Framework
                 if (errors > 0)
                 {
                     notes.Add(key + ": " + errors.ToString(Inv) + " run(s) failed: " + firstError);
+                }
+
+                if (nonFinite > 0)
+                {
+                    notes.Add(key + ": " + nonFinite.ToString(Inv)
+                        + " run(s) had no finite samples (controller collapse or diverged state); excluded from ranking, finer controls were still tried.");
                 }
 
                 if (capBound > 0)
@@ -305,15 +317,30 @@ namespace P1bStudy.Framework
                 case "SKIP":
                     return "skip";
                 default:
+                    // Keep the best achieved error visible: on the planet sweep the
+                    // uncapped adaptive branch misses 100 m but does reach hundreds of
+                    // metres, which is a real work-precision point, not "no data".
+                    if (c.Note != null && c.Note.StartsWith("finest error ", StringComparison.Ordinal))
+                    {
+                        return "not reached (best " + c.Note.Substring("finest error ".Length) + ")";
+                    }
+
                     return "not reached";
             }
         }
 
-        /// <summary>Winner among OK cells only; reports whether an EDGE cell could still be cheaper.</summary>
+        /// <summary>
+        /// Winner among OK cells, or an EDGE cell when its upper bound is already
+        /// cheaper than every bracketed cell: in that case the method is definitely
+        /// cheaper, so naming the bracketed cell and calling it "unresolved" hid a
+        /// real winner (the lunar flyby at 10 m). `unresolved` is kept in the
+        /// signature for callers, but a cheaper EDGE cell is now a resolved answer.
+        /// </summary>
         public static string Winner(StudyScenarioResult res, StudyTarget target, StudyOptions o, out bool unresolved)
         {
             unresolved = false;
             string bestKey = null;
+            string bestEdgeKey = null;
             double bestCost = double.PositiveInfinity;
             double bestEdge = double.PositiveInfinity;
             foreach (string key in Keys(res.Rows))
@@ -327,16 +354,20 @@ namespace P1bStudy.Framework
                 else if (c.Status == "EDGE" && c.Cost < bestEdge)
                 {
                     bestEdge = c.Cost;
+                    bestEdgeKey = key;
                 }
+            }
+
+            if (bestEdgeKey != null && bestEdge < bestCost)
+            {
+                return bestEdgeKey + " (<= " + Num(bestEdge) + ") EDGE";
             }
 
             if (bestKey == null)
             {
-                unresolved = bestEdge < double.PositiveInfinity;
                 return "-";
             }
 
-            unresolved = bestEdge < bestCost;
             return bestKey + " (" + Num(bestCost) + ")";
         }
 
@@ -438,23 +469,23 @@ namespace P1bStudy.Framework
             sb.AppendLine("# Integrator comparison");
             sb.AppendLine();
             sb.AppendLine("Cost = RHS-equivalent calls needed to reach the error target (log-log interpolation between the two bracketing runs; never extrapolated).");
-            sb.AppendLine("`EDGE` = the coarsest tested point was already below the target (cost is an upper bound, not a result). `not reached` = the finest run (or the RHS budget) stayed above the target. `n/a` = method not valid for this problem.");
+            sb.AppendLine("`EDGE` = the coarsest tested point was already below the target (cost is an upper bound, not a result). `not reached` = the finest run (or the RHS budget) stayed above the target; the parenthesised value is the best error it did reach. `n/a` = method not valid for this problem.");
             sb.AppendLine("Build: " + (StudyCalibration.IsDebugBuild ? "**DEBUG - ms are not representative**" : "Release") + ". Per-run RHS budget: " + o.MaxCostRhs.ToString("N0", Inv) + ".");
             sb.AppendLine();
             sb.AppendLine("## Who wins where");
             sb.AppendLine();
             if (results.Count > 0)
             {
-                List<StudyTarget> first = o.Targets(results[0].Problem);
+                List<string> summary = o.SummaryLabels();
                 sb.Append("| scenario |");
-                foreach (StudyTarget t in first)
+                foreach (string label in summary)
                 {
-                    sb.Append(' ').Append(t.Label.Replace("|", "/")).Append(" |");
+                    sb.Append(' ').Append(label.Replace("|", "/")).Append(" |");
                 }
 
                 sb.AppendLine();
                 sb.Append("|---|");
-                foreach (StudyTarget t in first)
+                foreach (string label in summary)
                 {
                     sb.Append("---|");
                 }

@@ -489,6 +489,7 @@ namespace P1bStudy.Framework
         private readonly double[] ds;
         private readonly double[] pert = new double[3];
         private bool have;
+        private bool failed;
 
         public KeplerSplitStepper(StudyProblem p, StudyContext ctx)
         {
@@ -510,6 +511,11 @@ namespace P1bStudy.Framework
 
         public void Step(double t, double h, double[] y)
         {
+            if (failed)
+            {
+                return;
+            }
+
             if (!have)
             {
                 EvalPert(t, y);
@@ -526,7 +532,25 @@ namespace P1bStudy.Framework
                     y[3 + i] += 0.5d * dt * pert[i];
                 }
 
-                KeplerUniversal.Propagate(mu, y, 0, 3, dt);
+                try
+                {
+                    KeplerUniversal.Propagate(mu, y, 0, 3, dt);
+                }
+                catch (InvalidOperationException)
+                {
+                    // The universal Kepler solver occasionally cannot converge for a
+                    // step this large/ill-conditioned. Mark the whole run non-finite
+                    // instead of aborting the sweep: finer controls get a fresh attempt
+                    // and the failed point is excluded from the work-precision curve.
+                    for (int i = 0; i < y.Length; i++)
+                    {
+                        y[i] = double.NaN;
+                    }
+
+                    failed = true;
+                    return;
+                }
+
                 ctx.CountAux(1);
                 EvalPert(t + (cw[k + 1] * h), y);
                 for (int i = 0; i < 3; i++)

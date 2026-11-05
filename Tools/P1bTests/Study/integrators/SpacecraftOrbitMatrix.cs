@@ -683,6 +683,10 @@ internal static partial class P1bTests
             // and the actual period would make the HEO reference far too coarse.
             Tau = StudyShipMatrixTau(rp, mu),
             StepScale = stepScale,
+            // Characteristic orbit size: used for err_rel and the report diagnostics,
+            // never for the (absolute) target values. Without this every orbit case
+            // inherited the 1 m field default.
+            ScaleLength = Math.Max(rp, ra),
             Drag = perturbed && sys.AllBodies[central].Atmosphere != null
                 ? new DragSource(sys.AllBodies[central])
                 : null

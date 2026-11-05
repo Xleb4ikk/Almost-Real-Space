@@ -36,6 +36,7 @@ namespace P1bStudy.Framework
             CallCountChecks(checks, p);
             AdaptiveChecks(checks, p);
             SweepSmoke(checks);
+            PlateauSweepChecks(checks);
             return checks;
         }
 
@@ -482,6 +483,182 @@ namespace P1bStudy.Framework
                 && below.Status == "NR" && above.Status == "EDGE";
             Add(list, "cost interpolation brackets, never extrapolates", interp,
                 "mid=" + mid.Status + " " + mid.Cost.ToString("F3", Inv) + ", below=" + below.Status + ", above=" + above.Status);
+        }
+
+        /// <summary>
+        /// Regression guard for the plateau break. Both an adaptive method (rtol sweep)
+        /// and a fixed-step method (h sweep) may sit at a large error for several points
+        /// and only then enter their convergent branch. The sweep must not stop at that
+        /// plateau: the adaptive planet sweep and the fixed WH-Y6 ship sweep both did.
+        /// </summary>
+        private static void PlateauSweepChecks(List<StudyCheck> list)
+        {
+            CheckPlateauSweep(list, StudyKind.Adaptive);
+            CheckPlateauSweep(list, StudyKind.Fixed);
+        }
+
+        private static void CheckPlateauSweep(List<StudyCheck> list, StudyKind kind)
+        {
+            var p = new StudyProblem();
+            p.Label = "selftest plateau";
+            p.Dim = 3;
+            p.PosDim = 0;
+            p.T0 = 0d;
+            p.Y0 = new double[3];
+            p.Rhs = delegate (double t, double[] y, double[] dy)
+            {
+                dy[0] = 0d;
+                dy[1] = 0d;
+                dy[2] = 0d;
+            };
+            p.CheckpointTimes = new[] { 1d };
+            p.CheckpointRef = new[] { new double[3] };
+            p.Floor = 0d;
+            p.Certified = true;
+            p.CharTime = 1d;
+            // Large enough that the old rules (error < 0.01*ScaleLength) count the
+            // 1e8 plateau as a terminal stall instead of a still-converging regime.
+            p.ScaleLength = 1e12d;
+
+            var o = new StudyOptions();
+            o.RelTargets = new double[0];
+            o.AbsTargets = new[] { 1e2d, 1e3d };
+            o.MaxCostRhs = 1000000L;
+            o.AdaptiveMaxSteps = new[] { double.PositiveInfinity };
+            o.TimingReps = 1;
+
+            var integ = new PlateauIntegrator(kind);
+            StudyScenarioResult res = StudySweepRunner.Run(p, new List<IStudyIntegrator> { integ }, o, null);
+            var target = new StudyTarget();
+            target.Value = 1e2d;
+            target.Label = "1e2 m";
+            StudyCell cell = StudyReport.CellFor(res, integ.Name, target, o);
+            bool reached = cell.Status == "OK" || cell.Status == "EDGE";
+            int points = 0;
+            double finest = double.PositiveInfinity;
+            foreach (StudyRow r in res.Rows)
+            {
+                if (r.Status == "ok" && r.Finite)
+                {
+                    points++;
+                    finest = Math.Min(finest, r.Control);
+                }
+            }
+
+            string label = kind == StudyKind.Adaptive ? "adaptive" : "fixed";
+            Add(list, label + " sweep continues past a plateau above the targets",
+                reached && finest <= 1e-8d,
+                "cell=" + cell.Status + " " + cell.Cost.ToString("F0", Inv)
+                + ", points=" + points.ToString(Inv) + ", finest control=" + E(finest));
+        }
+
+        /// <summary>
+        /// Deliberate test method: error 1e8 for control >= 1e-6 (a plateau far above
+        /// both targets), then 1e3, 1e2, 10 as control goes to 1e-7, 1e-8, 1e-9.
+        /// </summary>
+        private sealed class PlateauIntegrator : IStudyIntegrator
+        {
+            private readonly StudyKind kind;
+
+            public PlateauIntegrator(StudyKind kind)
+            {
+                this.kind = kind;
+            }
+
+            public string Name
+            {
+                get { return "PlateauTest"; }
+            }
+
+            public string Family
+            {
+                get { return "Test"; }
+            }
+
+            public StudyKind Kind
+            {
+                get { return kind; }
+            }
+
+            public double ExpectedOrder
+            {
+                get { return double.NaN; }
+            }
+
+            public bool Supports(StudyProblem p, out string reason)
+            {
+                reason = "";
+                return true;
+            }
+
+            public void ControlRange(StudyProblem p, out double coarse, out double fine, out double ratio)
+            {
+                coarse = 1e-3d;
+                fine = 1e-9d;
+                ratio = 10d;
+            }
+
+            public StudyConfig MakeConfig(StudyProblem p, double control, double maxStep)
+            {
+                var cfg = new StudyConfig();
+                cfg.Control = control;
+                if (kind == StudyKind.Fixed)
+                {
+                    cfg.H = control;
+                    cfg.Label = "h=" + control.ToString("G3", Inv);
+                }
+                else
+                {
+                    cfg.Rtol = control;
+                    cfg.MaxStep = maxStep;
+                    cfg.Label = "rtol=" + control.ToString("G3", Inv);
+                }
+
+                return cfg;
+            }
+
+            public StudyRun Run(StudyProblem p, StudyConfig cfg, StudyContext ctx)
+            {
+                double err;
+                if (cfg.Control >= 1e-6d)
+                {
+                    err = 1e8d;
+                }
+                else if (cfg.Control >= 1e-7d)
+                {
+                    err = 1e3d;
+                }
+                else if (cfg.Control >= 1e-8d)
+                {
+                    err = 1e2d;
+                }
+                else
+                {
+                    err = 10d;
+                }
+
+                // Vary the counted work so the sweep's "cost stopped changing" guard
+                // does not mistake this fake for a cap-bound adaptive run.
+                int calls = 1 + (int)Math.Round(-Math.Log10(cfg.Control));
+                var dy = new double[p.Dim];
+                for (int i = 0; i < calls; i++)
+                {
+                    ctx.Rhs(p.T0, p.Y0, dy);
+                }
+
+                var state = new double[p.Dim];
+                state[0] = err;
+                var run = new StudyRun();
+                run.Samples = new double[p.CheckpointTimes.Length][];
+                for (int k = 0; k < run.Samples.Length; k++)
+                {
+                    run.Samples[k] = (double[])state.Clone();
+                }
+
+                run.Final = state;
+                run.Steps = 1L;
+                return run;
+            }
         }
     }
 }

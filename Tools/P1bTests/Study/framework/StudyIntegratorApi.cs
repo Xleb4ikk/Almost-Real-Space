@@ -164,7 +164,7 @@ namespace P1bStudy.Framework
         public virtual void ControlRange(StudyProblem p, out double coarse, out double fine, out double ratio)
         {
             coarse = 1e-3d;
-            fine = 1e-13d;
+            fine = 1e-16d;
             ratio = Math.Sqrt(10d);
         }
 

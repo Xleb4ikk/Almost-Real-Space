@@ -70,6 +70,27 @@ namespace P1bStudy.Framework
 
             return list;
         }
+
+        /// <summary>
+        /// Column labels for the cross-scenario "who wins" table. They must not contain
+        /// per-problem values: a relative target is a different number of metres in every
+        /// scenario, and using the first problem's labels mislabels every other row.
+        /// </summary>
+        public List<string> SummaryLabels()
+        {
+            var list = new List<string>();
+            foreach (double rel in RelTargets)
+            {
+                list.Add(rel.ToString("0.0E+0", CultureInfo.InvariantCulture) + " rel");
+            }
+
+            foreach (double abs in AbsTargets)
+            {
+                list.Add(abs.ToString("G3", CultureInfo.InvariantCulture) + " m");
+            }
+
+            return list;
+        }
     }
 
     /// <summary>One run of one integrator at one control value.</summary>
@@ -251,6 +272,11 @@ namespace P1bStudy.Framework
                 controlMax = p.MaxControl;
             }
             double floor = double.IsNaN(p.Floor) ? 0d : p.Floor;
+            // A fixed-step plateau is only terminal when it is at the reference floor:
+            // there is nothing left to resolve. A plateau above it (e.g. WH-Y6 at large
+            // h on a circular orbit) is a pre-asymptotic regime that still improves at
+            // smaller h, so it must not stop the sweep.
+            double plateauFloor = Math.Max(10d * floor, 1e-12d * p.ScaleLength);
             double minTarget = double.NaN;
             double maxTarget = double.NaN;
             foreach (StudyTarget t in o.Targets(p))
@@ -290,8 +316,6 @@ namespace P1bStudy.Framework
 
             double best = double.PositiveInfinity;
             int stall = 0;
-            int same = 0;
-            long prevCalls = -1L;
             double stopErr = 0.25d * minTarget;
             for (int i = 0; i < o.MaxPoints; i++)
             {
@@ -312,8 +336,14 @@ namespace P1bStudy.Framework
                         best = r.Err;
                         stall = 0;
                     }
-                    else if (r.Err < 0.01d * p.ScaleLength)
+                    else if (integ.Kind == StudyKind.Fixed && r.Err <= plateauFloor)
                     {
+                        // Fixed-step round-off plateaus at the reference floor are
+                        // terminal: finer h cannot improve them. Adaptive methods are
+                        // different: a plateau far above the targets is the
+                        // loose-tolerance/diverged regime, and tightening rtol can still
+                        // enter the convergent branch (the planet sweep loses the whole
+                        // useful branch if it stops here).
                         stall++;
                     }
 
@@ -324,19 +354,18 @@ namespace P1bStudy.Framework
                     }
                 }
 
-                if (integ.Kind == StudyKind.Adaptive)
-                {
-                    same = r.Calls == prevCalls ? same + 1 : 0;
-                    prevCalls = r.Calls;
-                    if (same >= 2)
-                    {
-                        r.Note = (r.Note + " cap-bound: cost does not depend on rtol").Trim();
-                        break;
-                    }
-                }
+                // A flat cost across two loose tolerances does NOT mean the whole
+                // branch is cap-bound. While the cap binds, the controller cannot
+                // ask for the smaller step a tighter tolerance needs; once rtol is
+                // tight enough the cap stops binding and the error falls again.
+                // Stopping here hid that branch (the planet sweep lost all
+                // adaptive points, and DOP853 [cap=600 s] on LEO looked unable to
+                // reach 100 m). Keep sweeping to the fine bound or the budget.
 
                 double next = c / ratio;
-                if (next < fine)
+                // The 0.1% guard keeps c/ratio = 1e-13 from rounding just below the
+                // fine bound and skipping the last intended point.
+                if (next < fine * 0.999d)
                 {
                     r.Note = (r.Note + " reached finest control").Trim();
                     break;

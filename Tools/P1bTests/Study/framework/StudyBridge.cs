@@ -89,7 +89,10 @@ internal static partial class P1bTests
         p.Floor = refs.ReferenceFloor;           // NaN when the reference is not certified
         p.Certified = double.IsFinite(refs.ReferenceFloor);
         p.CharTime = c.Tau;
-        p.ScaleLength = c.ScaleLength;
+        // Cases that do not set a scale explicitly still need a length for the
+        // relative-error column and the diagnostics. The initial orbital radius is
+        // the natural choice; a bare 1 m default made err_rel meaningless.
+        p.ScaleLength = c.ScaleLength > 1d ? c.ScaleLength : Math.Max(1d, c.P0.Magnitude);
         // The baked ephemeris is only defined from t = 0, and the Y6-family sub-steps
         // reach t - 0.158*h: a step of months (the generic 0.25*CharTime on a Sun orbit)
         // would ask for a negative time and throw EphemerisRangeException. Test549's own
@@ -110,7 +113,13 @@ internal static partial class P1bTests
         List<IStudyIntegrator> integrators = StudyRegistry.Select(StudyBridgeEnv("P1B_INTEGRATORS"));
 
         var options = new StudyOptions();
-        options.RelTargets = new[] { 1e-6d, 1e-8d, 1e-10d };
+        // One absolute target set for every ship scenario: 100 m / 10 m / 1 m.
+        // Absolute metres are what the mission needs, they are identical for every
+        // scenario (so the summary table's columns mean the same thing everywhere),
+        // and they never depend on a per-case ScaleLength. A target below the
+        // certified reference floor is still skipped by the report, per scenario.
+        options.RelTargets = new double[0];
+        options.AbsTargets = new[] { 100d, 10d, 1d };
         // Run adaptive methods once with their own step choice and once with the production cap:
         // a binding cap makes the cost independent of rtol.
         options.AdaptiveMaxSteps = new[] { double.PositiveInfinity, 600d };
@@ -159,10 +168,74 @@ internal static partial class P1bTests
             }
         }
 
+        // A sweep that ran but ranked nothing is not a successful comparison.
+        // Every certified scenario must (a) have a physical length scale and (b)
+        // have at least one target above the reference floor margin and at least one
+        // integrator cell that actually reaches it. The uncertified flyby is exempt
+        // from the ranking check; its report line already says "NOT certified".
+        int badScale = 0;
+        int emptyCertified = 0;
+        foreach (StudyScenarioResult r in results)
+        {
+            if (!(r.Problem.ScaleLength > 1d) || !double.IsFinite(r.Problem.ScaleLength))
+            {
+                badScale++;
+                Console.WriteLine("BAD SCALE " + r.Problem.Label + ": "
+                    + r.Problem.ScaleLength.ToString("E3", CultureInfo.InvariantCulture) + " m");
+            }
+
+            if (!r.Problem.Certified)
+            {
+                continue;
+            }
+
+            double floor = r.Problem.Floor;
+            int targetsAboveFloor = 0;
+            foreach (StudyTarget t in options.Targets(r.Problem))
+            {
+                if (t.Value >= options.FloorMargin * floor)
+                {
+                    targetsAboveFloor++;
+                }
+            }
+
+            bool ranked = false;
+            foreach (string key in StudyReport.Keys(r.Rows))
+            {
+                foreach (StudyTarget t in options.Targets(r.Problem))
+                {
+                    StudyCell cell = StudyReport.CellFor(r, key, t, options);
+                    if (cell.Status == "OK" || cell.Status == "EDGE")
+                    {
+                        ranked = true;
+                        break;
+                    }
+                }
+
+                if (ranked)
+                {
+                    break;
+                }
+            }
+
+            if (targetsAboveFloor == 0 || !ranked)
+            {
+                emptyCertified++;
+                Console.WriteLine("EMPTY " + r.Problem.Label + ": targets above floor "
+                    + targetsAboveFloor.ToString(CultureInfo.InvariantCulture)
+                    + ", ranked=" + ranked + ", floor="
+                    + floor.ToString("E3", CultureInfo.InvariantCulture) + " m");
+            }
+        }
+
         Check(results.Count > 0, "framework ship sweep ran scenarios",
             results.Count.ToString(CultureInfo.InvariantCulture) + " scenario(s); filter=" + (scenarioFilter ?? "none"));
         Check(failedRuns == 0, "framework ship sweep: no failed runs",
             failedRuns.ToString(CultureInfo.InvariantCulture) + " failed run(s)");
+        Check(badScale == 0, "framework ship sweep: every scenario has a physical scale length",
+            badScale.ToString(CultureInfo.InvariantCulture) + " bad scale(s)");
+        Check(emptyCertified == 0, "framework ship sweep: every certified scenario ranks at least one cell",
+            emptyCertified.ToString(CultureInfo.InvariantCulture) + " empty certified scenario(s)");
         Console.WriteLine("report: " + Path.Combine(dir, "Test552_FrameworkShipSweep.md"));
         return 0;
     }
@@ -352,6 +425,63 @@ internal static partial class P1bTests
 
         Check(failedRuns == 0, "framework planet sweep: no failed runs",
             failedRuns.ToString(CultureInfo.InvariantCulture) + " failed run(s)");
+
+        // A green planet sweep must actually compare adaptive methods. Every
+        // adaptive method that supports the problem must reach at least one target
+        // above the reference floor; otherwise its row is only a "not reached"
+        // line and the winner table ranks the fixed-step methods against nothing.
+        // This is the check the old suite was missing: an adaptive method could
+        // miss 100/10/1 m and the diagnostic still reported success.
+        foreach (IStudyIntegrator integ in integrators)
+        {
+            if (integ.Kind != StudyKind.Adaptive)
+            {
+                continue;
+            }
+
+            string supportReason;
+            if (!integ.Supports(problem, out supportReason))
+            {
+                continue;
+            }
+
+            bool reached = false;
+            double bestErr = double.PositiveInfinity;
+            double bestControl = double.NaN;
+            string bestVariant = "";
+            foreach (string key in StudyReport.Keys(r.Rows))
+            {
+                if (key != integ.Name && !key.StartsWith(integ.Name + " [", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                foreach (StudyRow row in r.Rows)
+                {
+                    if (row.Key == key && row.Status == "ok" && row.Finite && row.Err < bestErr)
+                    {
+                        bestErr = row.Err;
+                        bestControl = row.Control;
+                        bestVariant = key;
+                    }
+                }
+
+                foreach (StudyTarget t in options.Targets(problem))
+                {
+                    StudyCell cell = StudyReport.CellFor(r, key, t, options);
+                    if (cell.Status == "OK" || cell.Status == "EDGE")
+                    {
+                        reached = true;
+                    }
+                }
+            }
+
+            string detail = double.IsFinite(bestErr)
+                ? "best " + bestErr.ToString("E3", CultureInfo.InvariantCulture) + " m at rtol="
+                  + bestControl.ToString("G3", CultureInfo.InvariantCulture) + " (" + bestVariant + ")"
+                : "no finite run";
+            Check(reached, "framework planet sweep: adaptive reaches a target: " + integ.Name, detail);
+        }
         Console.WriteLine("report: " + Path.Combine(dir, "Test553_FrameworkPlanetSweep.md"));
         return 0;
     }
