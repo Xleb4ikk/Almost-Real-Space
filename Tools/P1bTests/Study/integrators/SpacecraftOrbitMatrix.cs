@@ -4064,32 +4064,9 @@ internal static partial class P1bTests
             + " of " + comparisons + " comparisons outside 3x");
     }
 
-    private static int Test549_SpacecraftOrbitIntegrators()
+    private static List<StudyShipMatrixCase> StudyShipMatrixBuildCases(
+        StarSystem gravity, StarSystem j2OnlySystem, StarSystem dragOnlySystem)
     {
-        Console.WriteLine("--- Spacecraft orbit integrator matrix: all methods, all conditions ---");
-        int failuresBefore = failures;
-
-        // The production field is the baked N-body ephemeris: its body
-        // accelerations are dynamically consistent with the full force, which is
-        // what lets the local frame subtract the central body's acceleration
-        // exactly. An analytic Kepler hierarchy is NOT consistent for that
-        // subtraction (a Moon-centred step drifts against an Earth-centred one),
-        // so it cannot be used as a "smooth" drop-in here.
-        StarSystem gravity = StudyShipMatrixSystem(false, false);
-        // Keep the perturbations isolated: a "J2" case must not silently add
-        // atmosphere, and a "drag" case must not silently add J2. The old shared
-        // "perturbed" system enabled both, so neither label matched its physics.
-        StarSystem j2OnlySystem = StudyShipMatrixSystem(true, false);
-        StarSystem dragOnlySystem = StudyShipMatrixSystem(false, true);
-        double seamGravity = StudyShipMatrixSeamJump(gravity, "gravity");
-        double seamPerturbed = StudyShipMatrixSeamJump(j2OnlySystem, "J2");
-        double seamDrag = StudyShipMatrixSeamJump(dragOnlySystem, "drag");
-        Check(seamGravity < 0.5d && seamPerturbed < 0.5d && seamDrag < 0.5d,
-            "matrix ephemeris seam jump",
-            "gravity " + seamGravity.ToString("E3", CultureInfo.InvariantCulture)
-            + " m, J2 " + seamPerturbed.ToString("E3", CultureInfo.InvariantCulture)
-            + " m, drag " + seamDrag.ToString("E3", CultureInfo.InvariantCulture)
-            + " m < 0.5 m");
         var cases = new List<StudyShipMatrixCase>();
 
         const double day = 86400d;
@@ -4268,6 +4245,36 @@ internal static partial class P1bTests
                 ScaleLength = 6.371e6d + 4e5d
             });
         }
+        return cases;
+    }
+
+    private static int Test549_SpacecraftOrbitIntegrators()
+    {
+        Console.WriteLine("--- Spacecraft orbit integrator matrix: all methods, all conditions ---");
+        int failuresBefore = failures;
+
+        // The production field is the baked N-body ephemeris: its body
+        // accelerations are dynamically consistent with the full force, which is
+        // what lets the local frame subtract the central body's acceleration
+        // exactly. An analytic Kepler hierarchy is NOT consistent for that
+        // subtraction (a Moon-centred step drifts against an Earth-centred one),
+        // so it cannot be used as a "smooth" drop-in here.
+        StarSystem gravity = StudyShipMatrixSystem(false, false);
+        // Keep the perturbations isolated: a "J2" case must not silently add
+        // atmosphere, and a "drag" case must not silently add J2. The old shared
+        // "perturbed" system enabled both, so neither label matched its physics.
+        StarSystem j2OnlySystem = StudyShipMatrixSystem(true, false);
+        StarSystem dragOnlySystem = StudyShipMatrixSystem(false, true);
+        double seamGravity = StudyShipMatrixSeamJump(gravity, "gravity");
+        double seamPerturbed = StudyShipMatrixSeamJump(j2OnlySystem, "J2");
+        double seamDrag = StudyShipMatrixSeamJump(dragOnlySystem, "drag");
+        Check(seamGravity < 0.5d && seamPerturbed < 0.5d && seamDrag < 0.5d,
+            "matrix ephemeris seam jump",
+            "gravity " + seamGravity.ToString("E3", CultureInfo.InvariantCulture)
+            + " m, J2 " + seamPerturbed.ToString("E3", CultureInfo.InvariantCulture)
+            + " m, drag " + seamDrag.ToString("E3", CultureInfo.InvariantCulture)
+            + " m < 0.5 m");
+        List<StudyShipMatrixCase> cases = StudyShipMatrixBuildCases(gravity, j2OnlySystem, dragOnlySystem);
 
         StudyShipMatrixClaimCoverage(cases);
 
