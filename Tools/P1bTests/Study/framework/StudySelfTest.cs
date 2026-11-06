@@ -35,6 +35,10 @@ namespace P1bStudy.Framework
             FixedOrderChecks(checks, p);
             CallCountChecks(checks, p);
             AdaptiveChecks(checks, p);
+            AdaptiveScaleChecks(checks);
+            AbortReasonChecks(checks);
+            RoundoffFloorChecks(checks);
+            CapLabelChecks(checks);
             SweepSmoke(checks);
             PlateauSweepChecks(checks);
             return checks;
@@ -71,15 +75,20 @@ namespace P1bStudy.Framework
 
         public static StudyProblem MakeKeplerProblem(int checkpoints, double periods)
         {
+            return MakeKeplerProblemEcc(Ecc, checkpoints, periods);
+        }
+
+        private static StudyProblem MakeKeplerProblemEcc(double e, int checkpoints, double periods)
+        {
             var p = new StudyProblem();
-            p.Label = "selftest Kepler e=0.2";
+            p.Label = "selftest Kepler e=" + e.ToString("G3", Inv);
             p.Dim = 7;
             p.PosDim = 3;
             p.ConservativeSecondOrder = true;
             p.CentralMu = 1d;
             p.T0 = 0d;
             p.Y0 = new double[7];
-            Analytic(Ecc, 0d, p.Y0);
+            Analytic(e, 0d, p.Y0);
             p.Rhs = delegate (double t, double[] y, double[] dy)
             {
                 double r2 = (y[0] * y[0]) + (y[1] * y[1]) + (y[2] * y[2]);
@@ -99,7 +108,7 @@ namespace P1bStudy.Framework
                 double t = periods * Period * (k + 1) / checkpoints;
                 p.CheckpointTimes[k] = t;
                 p.CheckpointRef[k] = new double[7];
-                Analytic(Ecc, t, p.CheckpointRef[k]);
+                Analytic(e, t, p.CheckpointRef[k]);
             }
 
             p.Floor = 1e-13d;
@@ -263,6 +272,34 @@ namespace P1bStudy.Framework
             double drift = Math.Sqrt(Math.Pow(c[0] - Math.Cos(ang), 2d) + Math.Pow(c[1] - Math.Sin(ang), 2d));
             Add(list, "Kepler propagator 1e5 sub-steps, no round-off growth", drift < 1e-9d,
                 "position error after " + n.ToString(Inv) + " sub-steps: " + E(drift));
+
+            // GTO-like eccentricity: the ship sweep's large steps live here. After 100
+            // full periods the exact state is the initial state again.
+            const double eHigh = 0.8d;
+            double rp = 1d - eHigh;
+            double vp = Math.Sqrt((1d + eHigh) / (1d - eHigh));
+            double[] g = { rp, 0d, 0d, 0d, vp, 0d, 1d };
+            double[] g0 = (double[])g.Clone();
+            double energy0 = Energy(g);
+            const int nHigh = 1000;
+            for (int i = 0; i < nHigh; i++)
+            {
+                KeplerUniversal.Propagate(1d, g, 0, 3, Period / 10d);
+            }
+
+            double driftHigh = 0d;
+            for (int i = 0; i < 6; i++)
+            {
+                driftHigh = Math.Max(driftHigh, Math.Abs(g[i] - g0[i]));
+            }
+
+            double energyDrift = Math.Abs(Energy(g) - energy0);
+            // The along-track (phase) error accumulates ~1e-11 per periapsis crossing:
+            // the universal-variable update loses a few ulp where the orbit is fastest.
+            // Energy, the quantity a symplectic split relies on, stays at round-off.
+            Add(list, "Kepler propagator e=0.8, 100 periods: energy stable, phase drift bounded",
+                energyDrift < 1e-12d && driftHigh < 1e-8d,
+                "position/velocity drift " + E(driftHigh) + ", |dE| " + E(energyDrift));
         }
 
         private static void StopChecks(List<StudyCheck> list)
@@ -357,6 +394,16 @@ namespace P1bStudy.Framework
             StudyRun r2 = RunDirect(new KeplerSplitIntegrator(), p, Period / 4d, double.PositiveInfinity, out c2);
             double e2 = MaxErr(p, r2);
             Add(list, "WH-Y6 exact on pure Kepler (h = P/4)", e2 < 1e-9d, "error " + E(e2));
+
+            // The GTO ship case runs WH-Y6 at h up to ~Tau (a large fraction of the
+            // periapsis timescale). A pure e=0.8 Kepler orbit must still be exact there;
+            // otherwise the universal-variable drift, not the perturbation order, would
+            // be responsible for the non-monotonic work-precision curve.
+            StudyProblem pec = MakeKeplerProblemEcc(0.8d, 8, 2d);
+            StudyContext c3;
+            StudyRun r3 = RunDirect(new KeplerSplitIntegrator(), pec, Period / 2d, double.PositiveInfinity, out c3);
+            double e3 = MaxErr(pec, r3);
+            Add(list, "WH-Y6 exact on pure Kepler e=0.8 (h = P/2)", e3 < 1e-8d, "error " + E(e3));
         }
 
         private static void CallCountChecks(List<StudyCheck> list, StudyProblem p)
@@ -425,6 +472,245 @@ namespace P1bStudy.Framework
                 "cap-limited steps " + capped.CapLimited.ToString(Inv) + " of " + capped.Steps.ToString(Inv));
         }
 
+        /// <summary>
+        /// A body whose barycentric position is a large constant offset plus a small dynamical
+        /// motion must be controlled at the dynamical scale, not at the offset. This is the
+        /// planet-sweep bug in miniature: without AdaptiveScales the controller lets the
+        /// oscillation fall far below its own error tolerance and the answer is much worse.
+        /// </summary>
+        private static void AdaptiveScaleChecks(List<StudyCheck> list)
+        {
+            const double offsetPos = 1e12d;
+            const double offsetVel = 1e5d;
+            const double amplitude = 1e3d;
+            StudyProblem p = MakeOffsetOscillator(offsetPos, offsetVel, amplitude, 8, 10d);
+
+            StudyContext c1;
+            StudyRun raw = RunDirect(new Dopri5AdaptiveIntegrator(), p, 1e-6d, double.PositiveInfinity, out c1);
+            double errRaw = MaxErr(p, raw);
+
+            p.AdaptiveScales = new[] { amplitude, amplitude };
+            StudyContext c2;
+            StudyRun scaled = RunDirect(new Dopri5AdaptiveIntegrator(), p, 1e-6d, double.PositiveInfinity, out c2);
+            double errScaled = MaxErr(p, scaled);
+
+            bool ok = scaled.Steps > raw.Steps && errScaled < errRaw;
+            Add(list, "adaptive scale uses the local dynamical amplitude, not the offset", ok,
+                "raw: steps=" + raw.Steps.ToString(Inv) + " err=" + E(errRaw)
+                + "; scaled: steps=" + scaled.Steps.ToString(Inv) + " err=" + E(errScaled));
+        }
+
+        private static StudyProblem MakeOffsetOscillator(
+            double offsetPos, double offsetVel, double amplitude, int checkpoints, double periods)
+        {
+            var p = new StudyProblem();
+            p.Label = "selftest offset oscillator";
+            p.Dim = 6;
+            p.PosDim = 3;
+            p.T0 = 0d;
+            p.Y0 = new[] { offsetPos, 0d, 0d, offsetVel + amplitude, 0d, 0d };
+            p.Rhs = delegate (double t, double[] y, double[] dy)
+            {
+                dy[0] = y[3] - offsetVel;
+                dy[1] = y[4];
+                dy[2] = y[5];
+                dy[3] = -(y[0] - offsetPos);
+                dy[4] = -y[1];
+                dy[5] = -y[2];
+            };
+            p.CheckpointTimes = new double[checkpoints];
+            p.CheckpointRef = new double[checkpoints][];
+            for (int k = 0; k < checkpoints; k++)
+            {
+                double t = periods * Period * (k + 1) / checkpoints;
+                p.CheckpointTimes[k] = t;
+                p.CheckpointRef[k] = new double[6];
+                p.CheckpointRef[k][0] = offsetPos + (amplitude * Math.Sin(t));
+                p.CheckpointRef[k][3] = offsetVel + (amplitude * Math.Cos(t));
+            }
+
+            p.Floor = 0d;
+            p.Certified = true;
+            p.CharTime = Period;
+            p.ScaleLength = amplitude;
+            return p;
+        }
+
+        /// <summary>
+        /// An aborted adaptive run must say why (step floor vs. a diverged physical state),
+        /// and that reason must reach the sweep row; "no finite samples" alone is not enough.
+        /// </summary>
+        private static void AbortReasonChecks(List<StudyCheck> list)
+        {
+            StudyProblem p = MakeKeplerProblem(1, 1d);
+            StudyContext ctx;
+            StudyRun floorRun = RunDirect(new NeverConvergesIntegrator(), p, 1e-8d, double.PositiveInfinity, out ctx);
+            Add(list, "adaptive step-floor abort carries a reason",
+                floorRun.Aborted && floorRun.Abort.IndexOf("step floor", StringComparison.Ordinal) >= 0,
+                "aborted=" + floorRun.Aborted.ToString() + " reason=" + floorRun.Abort);
+
+            StudyProblem boxed = MakeKeplerProblem(4, 1d);
+            boxed.DomainViolation = delegate (double[] y) { return "left the box"; };
+            StudyContext ctx2;
+            StudyRun boxRun = RunDirect(new Rk4Integrator(), boxed, boxed.Duration / 8d, double.PositiveInfinity, out ctx2);
+            Add(list, "fixed-step domain violation aborts with the physical reason",
+                boxRun.Aborted && boxRun.Abort == "left the box",
+                "aborted=" + boxRun.Aborted.ToString() + " reason=" + boxRun.Abort);
+
+            var o = new StudyOptions();
+            o.RelTargets = new double[0];
+            o.AbsTargets = new[] { 1d };
+            o.MaxCostRhs = 100000L;
+            o.TimingReps = 1;
+            StudyScenarioResult res = StudySweepRunner.Run(
+                boxed, new List<IStudyIntegrator> { new Rk4Integrator() }, o, null);
+            bool noted = false;
+            foreach (StudyRow r in res.Rows)
+            {
+                if (r.Note != null && r.Note.IndexOf("left the box", StringComparison.Ordinal) >= 0)
+                {
+                    noted = true;
+                }
+            }
+
+            Add(list, "sweep row reports the abort reason instead of generic non-finite", noted,
+                noted ? "reason reached the row" : "no row note contains the reason");
+        }
+
+        private static void RoundoffFloorChecks(List<StudyCheck> list)
+        {
+            var p = new StudyProblem();
+            p.Label = "selftest roundoff";
+            p.Dim = 3;
+            p.PosDim = 0;
+            p.T0 = 0d;
+            p.Y0 = new double[3];
+            p.Rhs = delegate (double t, double[] y, double[] dy)
+            {
+                dy[0] = 0d;
+                dy[1] = 0d;
+                dy[2] = 0d;
+            };
+            p.CheckpointTimes = new[] { 1d };
+            p.CheckpointRef = new[] { new double[3] };
+            p.Floor = 0d;
+            p.Certified = true;
+            p.ScaleLength = 1e12d;
+            p.CharTime = 1d;
+
+            var res = new StudyScenarioResult();
+            res.Problem = p;
+            res.Rows.Add(new StudyRow { Scenario = "t", Integrator = "Naive", Status = "ok", Finite = true, Err = 0.5d, Cost = 100d, Steps = 1000000L });
+            res.Rows.Add(new StudyRow { Scenario = "t", Integrator = "Precise", Status = "ok", Finite = true, Err = 0.5d, Cost = 200d, Steps = 100L });
+
+            var o = new StudyOptions();
+            o.RelTargets = new double[0];
+            o.AbsTargets = new[] { 1d, 10d };
+            StudyTarget one = o.Targets(p)[0];
+            StudyTarget ten = o.Targets(p)[1];
+            StudyCell naiveOne = StudyReport.CellFor(res, "Naive", one, o);
+            StudyCell preciseOne = StudyReport.CellFor(res, "Precise", one, o);
+            StudyCell naiveTen = StudyReport.CellFor(res, "Naive", ten, o);
+            bool unused;
+            string win = StudyReport.Winner(res, one, o, out unused);
+            double floor = StudyReport.RoundoffFloor(p, res.Rows[0]);
+            bool ok = naiveOne.Status == "FLOOR"
+                && naiveOne.Note.IndexOf("round-off", StringComparison.OrdinalIgnoreCase) >= 0
+                && (preciseOne.Status == "OK" || preciseOne.Status == "EDGE")
+                && naiveTen.Status == "FLOOR"
+                && win.IndexOf("Precise", StringComparison.Ordinal) >= 0
+                && win.IndexOf("Naive", StringComparison.Ordinal) < 0
+                && Math.Abs(floor - (16d * 2.220446049250313e-16 * 1e12 * 1000d)) < 1e-6d;
+            Add(list, "targets/errors within a run's round-off floor are marked and never win", ok,
+                "floor=" + E(floor) + ", naive@1=" + naiveOne.Status + ", precise@1=" + preciseOne.Status
+                + ", naive@10=" + naiveTen.Status + ", winner=" + win
+                + ", text='" + StudyReport.CellText(naiveOne) + "'");
+        }
+
+        private static void CapLabelChecks(List<StudyCheck> list)
+        {
+            var p = new StudyProblem();
+            p.Label = "selftest cap label";
+            p.Dim = 3;
+            p.PosDim = 0;
+            p.T0 = 0d;
+            p.Y0 = new double[3];
+            p.Rhs = delegate (double t, double[] y, double[] dy)
+            {
+                dy[0] = 0d;
+                dy[1] = 0d;
+                dy[2] = 0d;
+            };
+            p.CheckpointTimes = new[] { 1d };
+            p.CheckpointRef = new[] { new double[3] };
+            p.Floor = 0d;
+            p.Certified = true;
+            p.ScaleLength = 1d;
+
+            var o = new StudyOptions();
+            o.RelTargets = new double[0];
+            o.AbsTargets = new[] { 1d };
+            StudyTarget target = o.Targets(p)[0];
+
+            var same = new StudyScenarioResult();
+            same.Problem = p;
+            same.Rows.Add(new StudyRow { Scenario = "t", Integrator = "A", Status = "ok", Finite = true, Err = 0.5d, Cost = 1000d });
+            same.Rows.Add(new StudyRow { Scenario = "t", Integrator = "A", Variant = "cap=600 s", Status = "ok", Finite = true, Err = 0.5d, Cost = 1000d });
+            same.Rows.Add(new StudyRow { Scenario = "t", Integrator = "B", Status = "ok", Finite = true, Err = 0.5d, Cost = 2000d });
+            bool unused;
+            string sameWin = StudyReport.Winner(same, target, o, out unused);
+
+            var needed = new StudyScenarioResult();
+            needed.Problem = p;
+            needed.Rows.Add(new StudyRow { Scenario = "t", Integrator = "A", Status = "ok", Finite = true, Err = 1e9d, Cost = 100d });
+            needed.Rows.Add(new StudyRow { Scenario = "t", Integrator = "A", Variant = "cap=600 s", Status = "ok", Finite = true, Err = 0.5d, Cost = 1000d });
+            needed.Rows.Add(new StudyRow { Scenario = "t", Integrator = "B", Status = "ok", Finite = true, Err = 0.5d, Cost = 5000d });
+            string neededWin = StudyReport.Winner(needed, target, o, out unused);
+
+            bool ok = sameWin.IndexOf("[cap=", StringComparison.Ordinal) < 0
+                && sameWin.IndexOf("~ A", StringComparison.Ordinal) < 0
+                && neededWin.IndexOf("A [cap=600 s]", StringComparison.Ordinal) >= 0;
+            Add(list, "a cap that does not decide the result is not named as a separate method", ok,
+                "redundant: " + sameWin + "; load-bearing: " + neededWin);
+        }
+
+        /// <summary>Always fails its error test; used to exercise the step-floor abort.</summary>
+        private sealed class NeverConvergesIntegrator : AdaptiveIntegrator
+        {
+            public override string Name { get { return "NeverConverges"; } }
+
+            public override string Family { get { return "Test"; } }
+
+            public override bool Supports(StudyProblem p, out string reason)
+            {
+                reason = "";
+                return true;
+            }
+
+            protected override IAdaptiveStepper CreateStepper(StudyProblem p, StudyConfig cfg, StudyContext ctx)
+            {
+                return new NeverStepper();
+            }
+
+            private sealed class NeverStepper : IAdaptiveStepper
+            {
+                public int ErrorOrderExponent { get { return 5; } }
+
+                public void Begin(double t, double[] y)
+                {
+                }
+
+                public double TryStep(double t, double h, double[] y, double[] yNew)
+                {
+                    return 2d;
+                }
+
+                public void Accept(double tNew, double[] yNew)
+                {
+                }
+            }
+        }
+
         private static void SweepSmoke(List<StudyCheck> list)
         {
             StudyProblem p = MakeKeplerProblem(8, 2d);
@@ -470,15 +756,22 @@ namespace P1bStudy.Framework
 
             bool unresolved;
             string win = StudyReport.Winner(res, o.Targets(p)[1], o, out unresolved);
-            Add(list, "sweep smoke: a winner is named at the tight target", win != "-", win);
+            string winDetail = win;
+            foreach (string key in StudyReport.Keys(res.Rows))
+            {
+                StudyCell c = StudyReport.CellFor(res, key, o.Targets(p)[1], o);
+                winDetail += " | " + key + ":" + c.Status + "/" + c.Cost.ToString("F0", Inv);
+            }
+
+            Add(list, "sweep smoke: a winner is named at the tight target", win != "-", winDetail);
 
             // the reported cost must be work that was actually spent
             var rows = new List<StudyRow>();
             rows.Add(new StudyRow { Scenario = "t", Integrator = "a", Status = "ok", Finite = true, Err = 1e-2d, Cost = 100d, Ms = 1d });
             rows.Add(new StudyRow { Scenario = "t", Integrator = "b", Status = "ok", Finite = true, Err = 1e-4d, Cost = 400d, Ms = 4d });
-            StudyCell mid = StudyReport.CostAtTarget(rows, 1e-3d);
-            StudyCell below = StudyReport.CostAtTarget(rows, 1e-6d);
-            StudyCell above = StudyReport.CostAtTarget(rows, 1d);
+            StudyCell mid = StudyReport.CostAtTarget(rows, 1e-3d, p);
+            StudyCell below = StudyReport.CostAtTarget(rows, 1e-6d, p);
+            StudyCell above = StudyReport.CostAtTarget(rows, 1d, p);
             bool actual = mid.Status == "OK" && Math.Abs(mid.Cost - 400d) < 1e-9d
                 && below.Status == "NR" && above.Status == "EDGE" && Math.Abs(above.Cost - 100d) < 1e-9d;
             Add(list, "cost is the cheapest executed point at or below target, never extrapolated", actual,

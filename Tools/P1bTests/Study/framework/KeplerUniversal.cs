@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace P1bStudy.Framework
 {
@@ -56,6 +56,18 @@ namespace P1bStudy.Framework
             double sh = Math.Sinh(0.5d * wh);
             c = 2d * sh * sh / (-z);
             s = (Math.Sinh(wh) - wh) / (wh * (-z));
+        }
+
+        /// <summary>Universal Kepler equation F(chi) = 0; monotone for r0 &gt; 0.</summary>
+        private static double KeplerF(
+            double chi, double rvs, double q, double r0, double sm, double dt, double alpha)
+        {
+            double chi2 = chi * chi;
+            double z = alpha * chi2;
+            double c;
+            double s;
+            Stumpff(z, out c, out s);
+            return (rvs * chi2 * c) + (q * chi2 * chi * s) + (r0 * chi) - (sm * dt);
         }
 
         /// <summary>
@@ -132,7 +144,14 @@ namespace P1bStudy.Framework
 
                 double d = 5d * f / den;
                 chi -= d;
-                if (Math.Abs(d) <= (1e-15d * Math.Abs(chi)) + 1e-300d)
+                // The universal Kepler equation can sit at its round-off residual
+                // (f ~ 1e-16) while the Laguerre correction d stalls a few ulp above
+                // the strict relative test; the old test then declared a perfectly
+                // converged root unconverged and the caller turned the state into NaN.
+                // Accept either a resolved step or a residual at double precision.
+                double fScale = Math.Abs(sm * dt) + (r0 * Math.Abs(chi)) + 1d;
+                if (Math.Abs(d) <= (1e-15d * Math.Abs(chi)) + 1e-300d
+                    || Math.Abs(f) <= 1e-14d * fScale)
                 {
                     converged = true;
                     it++;
@@ -142,7 +161,79 @@ namespace P1bStudy.Framework
 
             if (!converged || double.IsNaN(chi) || double.IsInfinity(chi))
             {
-                throw new InvalidOperationException("Kepler solver did not converge");
+                // Laguerre can run away on a near-parabolic hyperbola far from
+                // periapsis (the log initial guess has the wrong sign when its
+                // argument is below 1). The universal Kepler equation is monotone
+                // in chi, so a bisection on a sign-changing bracket always finds
+                // the same root and turns that failure into a usable step.
+                double sign = dt >= 0d ? 1d : -1d;
+                double lo = 0d;
+                double hi = sign * Math.Max(1d, sm * Math.Abs(dt) / Math.Max(r0, 1d));
+                double fhi = KeplerF(hi, rvs, q, r0, sm, dt, alpha);
+                int expand = 0;
+                while ((sign * fhi) < 0d && expand++ < 200
+                    && Math.Abs(hi) < 1e300d && !double.IsNaN(fhi))
+                {
+                    hi *= 2d;
+                    fhi = KeplerF(hi, rvs, q, r0, sm, dt, alpha);
+                }
+
+                if (!double.IsNaN(fhi) && (sign * fhi) >= 0d)
+                {
+                    for (int k = 0; k < 200; k++)
+                    {
+                        double mid = 0.5d * (lo + hi);
+                        double fm = KeplerF(mid, rvs, q, r0, sm, dt, alpha);
+                        it++;
+                        if (double.IsNaN(fm))
+                        {
+                            break;
+                        }
+
+                        if ((sign * fm) >= 0d)
+                        {
+                            hi = mid;
+                            fhi = fm;
+                        }
+                        else
+                        {
+                            lo = mid;
+                        }
+
+                        if (Math.Abs(hi - lo) <= (1e-15d * Math.Max(1d, Math.Abs(mid))) + 1e-300d)
+                        {
+                            chi = mid;
+                            converged = true;
+                            break;
+                        }
+                    }
+
+                    if (!converged)
+                    {
+                        chi = 0.5d * (lo + hi);
+                        converged = !double.IsNaN(chi) && !double.IsInfinity(chi);
+                    }
+
+                    if (converged)
+                    {
+                        // A bisection that ran out of iterations can end on a coarse
+                        // bracket; accept it only when the residual is at round-off.
+                        double fCheck = KeplerF(chi, rvs, q, r0, sm, dt, alpha);
+                        double fScale = Math.Abs(sm * dt) + (r0 * Math.Abs(chi)) + 1d;
+                        converged = !double.IsNaN(fCheck)
+                            && Math.Abs(fCheck) <= 1e-12d * fScale;
+                    }
+                }
+            }
+
+            if (!converged || double.IsNaN(chi) || double.IsInfinity(chi))
+            {
+                throw new InvalidOperationException(
+                    "Kepler solver did not converge: r0=" + r0.ToString("R", System.Globalization.CultureInfo.InvariantCulture)
+                    + " alpha=" + alpha.ToString("R", System.Globalization.CultureInfo.InvariantCulture)
+                    + " dt=" + dt.ToString("R", System.Globalization.CultureInfo.InvariantCulture)
+                    + " chi=" + chi.ToString("R", System.Globalization.CultureInfo.InvariantCulture)
+                    + " it=" + it.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
 
             double chiSq = chi * chi;

@@ -123,6 +123,9 @@ namespace P1bStudy.Framework
         public bool Finite;
         public double Err = double.NaN;       // max over checkpoints
         public double ErrFinal = double.NaN;
+
+        /// <summary>Worst error over the checkpoints reached before an abort (NaN when none).</summary>
+        public double PartialErr = double.NaN;
         public long Calls;
         public long Aux;
         public long Steps;
@@ -611,13 +614,14 @@ namespace P1bStudy.Framework
         {
             double worst = 0d;
             bool finite = true;
+            bool complete = true;
             double last = double.NaN;
             for (int k = 0; k < p.CheckpointTimes.Length; k++)
             {
                 double[] s = run.Samples[k];
                 if (s == null)
                 {
-                    finite = false;
+                    complete = false;
                     break;
                 }
 
@@ -650,9 +654,29 @@ namespace P1bStudy.Framework
                 last = e;
             }
 
-            row.Finite = finite;
-            row.Err = finite ? worst : double.NaN;
-            row.ErrFinal = finite ? last : double.NaN;
+            row.Finite = finite && complete;
+            row.Err = row.Finite ? worst : double.NaN;
+            row.ErrFinal = row.Finite ? last : double.NaN;
+            if (!complete)
+            {
+                row.PartialErr = finite && last >= 0d ? worst : double.NaN;
+                string reason = run.Aborted
+                    ? "aborted at t=" + run.AbortTime.ToString("E3", CultureInfo.InvariantCulture)
+                      + " s: " + run.Abort
+                    : "the run stopped before the horizon without a recorded reason";
+                if (row.PartialErr >= 0d)
+                {
+                    reason += "; worst error at completed checkpoints "
+                        + row.PartialErr.ToString("E2", CultureInfo.InvariantCulture) + " m";
+                }
+
+                row.Note = (row.Note.Length == 0 ? "" : row.Note + "; ") + reason;
+            }
+            else if (!finite)
+            {
+                row.Note = (row.Note.Length == 0 ? "" : row.Note + "; ")
+                    + "non-finite state at a checkpoint (RHS overflow or a diverged trajectory)";
+            }
         }
     }
 }

@@ -206,7 +206,12 @@ namespace P1bStudy.Framework
                 }
 
                 double ab = atol + (p.AdaptiveAtol != null ? p.AdaptiveAtol[b] : 0d);
-                double sc = ab + (rtol * Math.Max(Math.Sqrt(ny), Math.Sqrt(nyn)));
+                double refScale = p.AdaptiveScales != null && b < p.AdaptiveScales.Length
+                    ? p.AdaptiveScales[b]
+                    : 0d;
+                double sc = ab + (rtol * (refScale > 0d
+                    ? refScale
+                    : Math.Max(Math.Sqrt(ny), Math.Sqrt(nyn))));
                 if (sc < 1e-300d)
                 {
                     sc = 1e-300d;
@@ -536,12 +541,16 @@ namespace P1bStudy.Framework
                 {
                     KeplerUniversal.Propagate(mu, y, 0, 3, dt);
                 }
-                catch (InvalidOperationException)
+                catch (InvalidOperationException ex)
                 {
                     // The universal Kepler solver occasionally cannot converge for a
                     // step this large/ill-conditioned. Mark the whole run non-finite
                     // instead of aborting the sweep: finer controls get a fresh attempt
                     // and the failed point is excluded from the work-precision curve.
+                    ctx.Fail("Kepler drift failed at t="
+                        + t.ToString("E3", System.Globalization.CultureInfo.InvariantCulture)
+                        + " s, h=" + dt.ToString("E3", System.Globalization.CultureInfo.InvariantCulture)
+                        + " s: " + ex.Message);
                     for (int i = 0; i < y.Length; i++)
                     {
                         y[i] = double.NaN;

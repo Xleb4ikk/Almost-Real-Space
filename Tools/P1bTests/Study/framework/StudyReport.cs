@@ -10,8 +10,9 @@ namespace P1bStudy.Framework
     internal sealed class StudyCell
     {
         /// <summary>OK = cheapest executed run at or below the target; EDGE = even the cheapest (coarsest) run is
-        /// below the target, so the cost is an upper bound; NR = not reached; SKIP = target below the reference
-        /// floor margin; NA = method not valid for this problem.</summary>
+        /// below the target, so the cost is an upper bound; FLOOR = only runs whose error is within their own
+        /// double-precision accumulation noise reach the target, so the column measures summation, not the method;
+        /// NR = not reached; SKIP = target below the reference floor margin; NA = method not valid for this problem.</summary>
         public string Status = "NR";
         public double Cost = double.NaN;
         public double Ms = double.NaN;
@@ -36,8 +37,10 @@ namespace P1bStudy.Framework
         /// non-smooth error-vs-control curve cannot make an adaptive method look cheaper than it ran.
         /// EDGE means even the cheapest (coarsest) tested run already met the target, so the true cost
         /// is an upper bound and a coarser run might be cheaper.
+        /// A run whose error is below the double-precision round-off floor of its own step count is
+        /// not evidence of accuracy: such a point is FLOOR ("below round-off floor") and is not ranked.
         /// </summary>
-        public static StudyCell CostAtTarget(List<StudyRow> variantRows, double target)
+        public static StudyCell CostAtTarget(List<StudyRow> variantRows, double target, StudyProblem p)
         {
             var pts = new List<StudyRow>();
             foreach (StudyRow r in variantRows)
@@ -60,6 +63,7 @@ namespace P1bStudy.Framework
             StudyRow cheapest = pts[0];
             StudyRow bestBelow = null;
             StudyRow finest = cheapest;
+            double floorAtCheapestBelow = double.NaN;
             for (int i = 0; i < pts.Count; i++)
             {
                 StudyRow r = pts[i];
@@ -68,14 +72,37 @@ namespace P1bStudy.Framework
                     finest = r;
                 }
 
-                if (bestBelow == null && r.Err <= target)
+                if (r.Err <= target)
                 {
-                    bestBelow = r;
+                    double floor = RoundoffFloor(p, r);
+                    if (bestBelow == null)
+                    {
+                        floorAtCheapestBelow = floor;
+                    }
+
+                    // A run that claims an error below its own accumulation noise is
+                    // not evidence that the method resolved the target; the column is
+                    // measuring summation, so it must not be ranked.
+                    if (!(target <= floor) && !(r.Err <= floor))
+                    {
+                        if (bestBelow == null)
+                        {
+                            bestBelow = r;
+                        }
+                    }
                 }
             }
 
             if (bestBelow == null)
             {
+                if (!double.IsNaN(floorAtCheapestBelow))
+                {
+                    cell.Status = "FLOOR";
+                    cell.Note = "below round-off floor ("
+                        + floorAtCheapestBelow.ToString("E2", Inv) + " m)";
+                    return cell;
+                }
+
                 cell.Status = "NR";
                 cell.Note = "finest error " + finest.Err.ToString("E2", Inv);
                 return cell;
@@ -88,6 +115,21 @@ namespace P1bStudy.Framework
                 ? "cheapest tested point already below target"
                 : "cheapest executed point at or below target";
             return cell;
+        }
+
+        /// <summary>
+        /// Accumulation noise of one run: 16 eps times the state scale times sqrt(steps), a
+        /// conservative random-walk bound. Below it an error difference is summation quality,
+        /// not method order.
+        /// </summary>
+        public static double RoundoffFloor(StudyProblem p, StudyRow r)
+        {
+            if (r == null || r.Steps <= 0L)
+            {
+                return 0d;
+            }
+
+            return UnitRoundoff * Math.Max(p.ScaleLength, 1d) * Math.Sqrt(r.Steps);
         }
 
         public static List<string> Keys(List<StudyRow> rows)
@@ -137,7 +179,7 @@ namespace P1bStudy.Framework
                 return cell;
             }
 
-            return CostAtTarget(rows, target.Value);
+            return CostAtTarget(rows, target.Value, res.Problem);
         }
 
         /// <summary>Per-variant findings that make a number untrustworthy. Every entry is a sentence a person can act on.</summary>
@@ -148,7 +190,8 @@ namespace P1bStudy.Framework
             double floor = double.IsNaN(p.Floor) ? 0d : p.Floor;
             if (!p.Certified || double.IsNaN(p.Floor))
             {
-                notes.Add("REFERENCE NOT CERTIFIED: every number of this scenario is provisional (no reference floor).");
+                notes.Add("REFERENCE NOT CERTIFIED: every number of this scenario is provisional (no reference floor)."
+                    + (string.IsNullOrEmpty(p.ReferenceNote) ? "" : " Reference: " + p.ReferenceNote));
             }
 
             foreach (string key in Keys(res.Rows))
@@ -163,6 +206,7 @@ namespace P1bStudy.Framework
                 int errors = 0;
                 int nonFinite = 0;
                 string firstError = "";
+                string firstNonFinite = "";
                 int capBound = 0;
                 foreach (StudyRow r in rows)
                 {
@@ -183,6 +227,10 @@ namespace P1bStudy.Framework
                     if (r.Status == "ok" && !r.Finite)
                     {
                         nonFinite++;
+                        if (firstNonFinite.Length == 0)
+                        {
+                            firstNonFinite = r.Note;
+                        }
                     }
 
                     if (r.Kind == StudyKind.Adaptive && r.Steps > 0 && r.CapLimited * 2 >= r.Steps)
@@ -204,7 +252,9 @@ namespace P1bStudy.Framework
                 if (nonFinite > 0)
                 {
                     notes.Add(key + ": " + nonFinite.ToString(Inv)
-                        + " run(s) had no finite samples (controller collapse or diverged state); excluded from ranking, finer controls were still tried.");
+                        + " run(s) did not complete the horizon: "
+                        + (firstNonFinite.Length == 0 ? "no finite samples (reason not recorded)" : firstNonFinite)
+                        + "; excluded from ranking, finer controls were still tried.");
                 }
 
                 if (capBound > 0)
@@ -295,6 +345,32 @@ namespace P1bStudy.Framework
             return i >= 0 ? key.Substring(0, i) : key;
         }
 
+        /// <summary>
+        /// A cap is a configuration of a method, not a method. Name the cap variant only
+        /// when it is materially different from the same method's uncapped run: the
+        /// uncapped branch does not reach the target at all, or is more than a tie factor
+        /// more expensive. Otherwise the plain method name is the honest label (the cap
+        /// did not decide the result).
+        /// </summary>
+        private static string VariantLabel(
+            StudyScenarioResult res, string key, StudyTarget target, StudyOptions o, double winnerCost)
+        {
+            string baseKey = BaseKey(key);
+            if (baseKey == key)
+            {
+                return key;
+            }
+
+            StudyCell plain = CellFor(res, baseKey, target, o);
+            bool plainUsable = plain.Status == "OK" || plain.Status == "EDGE";
+            if (!plainUsable || plain.Cost > winnerCost * Math.Max(1d, o.TieFactor))
+            {
+                return key;
+            }
+
+            return baseKey;
+        }
+
         private static void DiagnoseTies(StudyScenarioResult res, StudyOptions o, List<string> notes)
         {
             foreach (StudyTarget target in o.Targets(res.Problem))
@@ -368,21 +444,22 @@ namespace P1bStudy.Framework
         private static void DiagnoseRoundoff(StudyScenarioResult res, StudyOptions o, List<string> notes)
         {
             StudyProblem p = res.Problem;
-            long maxSteps = 0L;
+            StudyRow bestRun = null;
             foreach (StudyRow r in res.Rows)
             {
-                if (r.Status == "ok" && r.Finite && r.Steps > maxSteps)
+                if (r.Status == "ok" && r.Finite && r.Steps > 0L
+                    && (bestRun == null || r.Err < bestRun.Err))
                 {
-                    maxSteps = r.Steps;
+                    bestRun = r;
                 }
             }
 
-            if (maxSteps < 1L)
+            if (bestRun == null)
             {
                 return;
             }
 
-            double estimate = UnitRoundoff * Math.Max(p.ScaleLength, 1d) * Math.Sqrt(maxSteps);
+            double estimate = RoundoffFloor(p, bestRun);
             if (!(estimate > 0d) || double.IsNaN(estimate) || double.IsInfinity(estimate))
             {
                 return;
@@ -398,15 +475,29 @@ namespace P1bStudy.Framework
                 }
             }
 
-            if (!(tightest < 10d * estimate))
+            int floorCells = 0;
+            foreach (string key in Keys(res.Rows))
+            {
+                foreach (StudyTarget target in o.Targets(p))
+                {
+                    if (CellFor(res, key, target, o).Status == "FLOOR")
+                    {
+                        floorCells++;
+                    }
+                }
+            }
+
+            if (!(tightest <= estimate) && floorCells == 0)
             {
                 return;
             }
 
             notes.Add("double-precision round-off estimate " + estimate.ToString("E2", Inv)
-                + " m (16 eps * scale * sqrt(max steps=" + maxSteps.ToString("N0", Inv)
-                + ")); the tightest target " + tightest.ToString("E2", Inv)
-                + " m is at that scale, so that column measures summation quality, not method order.");
+                + " m (16 eps * scale * sqrt(steps=" + bestRun.Steps.ToString("N0", Inv)
+                + " of the most accurate run); each cell uses its own run's step count, and a run "
+                + "whose error is within that noise is reported as 'below round-off floor', not as a ranking result"
+                + (floorCells > 0 ? " (" + floorCells.ToString(Inv) + " cell(s) excluded)" : "")
+                + ".");
         }
 
         private static void DiagnoseFixed(string key, List<StudyRow> rows, StudyProblem p, double floor, List<string> notes)
@@ -423,6 +514,10 @@ namespace P1bStudy.Framework
             pts.Sort(delegate (StudyRow a, StudyRow b) { return b.Control.CompareTo(a.Control); });
             var slopes = new List<double>();
             int grows = 0;
+            int transient = 0;
+            double transientCoarse = double.NaN;
+            double transientFine = double.NaN;
+            double transientRecover = double.NaN;
             for (int i = 0; i + 1 < pts.Count; i++)
             {
                 StudyRow a = pts[i];
@@ -436,7 +531,36 @@ namespace P1bStudy.Framework
                     && a.Err < 0.05d * p.ScaleLength && b.Err < 0.05d * p.ScaleLength;
                 if (b.Err > 2d * a.Err && b.Err > 3d * floor && a.Err < 0.05d * p.ScaleLength)
                 {
-                    grows++;
+                    // A local bump at coarse h that a finer run later recovers from is
+                    // pre-asymptotic, not a round-off floor. Only an increase that no
+                    // finer h improves is terminal.
+                    bool recovered = false;
+                    double recoverControl = double.NaN;
+                    for (int j = i + 2; j < pts.Count; j++)
+                    {
+                        if (pts[j].Err < a.Err)
+                        {
+                            recovered = true;
+                            recoverControl = pts[j].Control;
+                            break;
+                        }
+                    }
+
+                    if (recovered)
+                    {
+                        if (transient == 0)
+                        {
+                            transientCoarse = a.Control;
+                            transientFine = b.Control;
+                            transientRecover = recoverControl;
+                        }
+
+                        transient++;
+                    }
+                    else
+                    {
+                        grows++;
+                    }
                 }
 
                 if (usable && b.Err < a.Err)
@@ -449,6 +573,16 @@ namespace P1bStudy.Framework
             {
                 notes.Add(key + ": error GROWS as h shrinks in " + grows.ToString(Inv)
                     + " place(s): round-off/non-convergent regime (steps beyond that point are not 'more accurate').");
+            }
+
+            if (transient > 0)
+            {
+                notes.Add(key + ": error is non-monotonic at coarse h in " + transient.ToString(Inv)
+                    + " place(s) but recovers at finer h (h="
+                    + transientCoarse.ToString("G3", Inv) + " -> "
+                    + transientFine.ToString("G3", Inv) + " s, recovers by h="
+                    + transientRecover.ToString("G3", Inv)
+                    + " s); that coarse branch is pre-asymptotic, not a round-off floor.");
             }
 
             double expected = rows[0].ExpectedOrder;
@@ -495,6 +629,8 @@ namespace P1bStudy.Framework
                     return "n/a";
                 case "SKIP":
                     return "skip";
+                case "FLOOR":
+                    return c.Note;
                 default:
                     // Keep the best achieved error visible: on the planet sweep the
                     // uncapped adaptive branch misses 100 m but does reach hundreds of
@@ -552,7 +688,8 @@ namespace P1bStudy.Framework
 
             if (bestEdgeKey != null && bestEdge < bestCost)
             {
-                return bestEdgeKey + " (<= " + Num(bestEdge) + ") EDGE";
+                return VariantLabel(res, bestEdgeKey, target, o, bestEdge)
+                    + " (<= " + Num(bestEdge) + ") EDGE";
             }
 
             if (bestKey == null)
@@ -560,7 +697,7 @@ namespace P1bStudy.Framework
                 return "-";
             }
 
-            string text = bestKey + " (" + Num(bestCost) + ")";
+            string text = VariantLabel(res, bestKey, target, o, bestCost) + " (" + Num(bestCost) + ")";
             double tieLimit = bestCost * Math.Max(1d, o.TieFactor);
             var tieBases = new List<string>();
             var tieKeys = new List<string>();
@@ -593,7 +730,8 @@ namespace P1bStudy.Framework
             int ties = 0;
             for (int i = 0; i < tieKeys.Count && ties < 3; i++)
             {
-                text += " ~ " + tieKeys[i] + " (" + Num(tieCosts[i]) + ")";
+                text += " ~ " + VariantLabel(res, tieKeys[i], target, o, tieCosts[i])
+                    + " (" + Num(tieCosts[i]) + ")";
                 ties++;
             }
 
@@ -617,6 +755,7 @@ namespace P1bStudy.Framework
             w.WriteLine();
             w.WriteLine("=== " + p.Label + " ===");
             w.WriteLine("reference floor: " + (double.IsNaN(p.Floor) ? "NOT CERTIFIED" : p.Floor.ToString("E2", Inv) + " m")
+                + (string.IsNullOrEmpty(p.ReferenceNote) ? "" : " (" + p.ReferenceNote + ")")
                 + "; Kepler-solve weight: " + res.KeplerWeight.ToString("F2", Inv) + " RHS"
                 + "; RHS multiplier: " + res.RhsMultiplier.ToString("G", Inv)
                 + "; RHS budget: " + res.MaxCostRhs.ToString("N0", Inv)
@@ -642,11 +781,18 @@ namespace P1bStudy.Framework
                 w.WriteLine(line.ToString());
             }
 
-            foreach (StudyTarget t in targets)
+            if (!p.Certified)
             {
-                bool unresolved;
-                string win = Winner(res, t, o, out unresolved);
-                w.WriteLine("  winner @ " + t.Label + ": " + win + (unresolved ? "  [UNRESOLVED: an EDGE cell may be cheaper]" : ""));
+                w.WriteLine("  not ranked: reference is not certified (the table above is provisional)");
+            }
+            else
+            {
+                foreach (StudyTarget t in targets)
+                {
+                    bool unresolved;
+                    string win = Winner(res, t, o, out unresolved);
+                    w.WriteLine("  winner @ " + t.Label + ": " + win + (unresolved ? "  [UNRESOLVED: an EDGE cell may be cheaper]" : ""));
+                }
             }
 
             foreach (string note in Diagnose(res, o))
@@ -710,7 +856,7 @@ namespace P1bStudy.Framework
             sb.AppendLine("# Integrator comparison");
             sb.AppendLine();
             sb.AppendLine("Cost = RHS-equivalent calls of the cheapest actually executed run whose measured error is at or below the target (no interpolation, never extrapolated).");
-            sb.AppendLine("`EDGE` = even the cheapest tested point was already below the target (cost is an upper bound, not a result). `~` marks methods within " + ((o.TieFactor - 1d) * 100d).ToString("F0", Inv) + "% of the winner: that ranking is not resolved. `not reached` = the finest run (or the RHS budget) stayed above the target; the parenthesised value is the best error it did reach. `n/a` = method not valid for this problem.");
+            sb.AppendLine("`EDGE` = even the cheapest tested point was already below the target (cost is an upper bound, not a result). `~` marks methods within " + ((o.TieFactor - 1d) * 100d).ToString("F0", Inv) + "% of the winner: that ranking is not resolved. `not reached` = the finest run (or the RHS budget) stayed above the target; the parenthesised value is the best error it did reach. `below round-off floor` = the target is at or below the run's own double-precision accumulation noise, so it is not ranked. `n/a` = method not valid for this problem. Scenarios whose reference is not certified are listed in the detail but excluded from the summary.");
             sb.AppendLine("Build: " + (StudyCalibration.IsDebugBuild ? "**DEBUG - ms are not representative**" : "Release") + ". Per-run RHS budget: per scenario (see section headers).");
             sb.AppendLine();
             sb.AppendLine("## Who wins where");
@@ -734,7 +880,12 @@ namespace P1bStudy.Framework
                 sb.AppendLine();
                 foreach (StudyScenarioResult res in results)
                 {
-                    sb.Append("| ").Append(res.Problem.Label).Append(res.Problem.Certified ? "" : " (ref. NOT certified)").Append(" |");
+                    if (!res.Problem.Certified)
+                    {
+                        continue;
+                    }
+
+                    sb.Append("| ").Append(res.Problem.Label).Append(" |");
                     foreach (StudyTarget t in o.Targets(res.Problem))
                     {
                         bool unresolved;
@@ -743,6 +894,22 @@ namespace P1bStudy.Framework
                     }
 
                     sb.AppendLine();
+                }
+
+                var uncertified = new List<string>();
+                foreach (StudyScenarioResult res in results)
+                {
+                    if (!res.Problem.Certified)
+                    {
+                        uncertified.Add(res.Problem.Label);
+                    }
+                }
+
+                if (uncertified.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("Not ranked (reference not certified; detail only): "
+                        + string.Join(", ", uncertified) + ".");
                 }
             }
 
@@ -753,6 +920,7 @@ namespace P1bStudy.Framework
                 sb.AppendLine("## " + p.Label);
                 sb.AppendLine();
                 sb.AppendLine("Reference floor: " + (double.IsNaN(p.Floor) ? "not certified" : p.Floor.ToString("E2", Inv) + " m")
+                    + (string.IsNullOrEmpty(p.ReferenceNote) ? "" : " (" + p.ReferenceNote + ")")
                     + ". Kepler-solve weight: " + res.KeplerWeight.ToString("F2", Inv) + " RHS. RHS multiplier: "
                     + res.RhsMultiplier.ToString("G", Inv) + ". RHS budget: "
                     + res.MaxCostRhs.ToString("N0", Inv) + ".");

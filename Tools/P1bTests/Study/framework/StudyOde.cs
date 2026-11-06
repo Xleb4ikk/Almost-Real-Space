@@ -60,11 +60,35 @@ namespace P1bStudy.Framework
         /// <summary>Optional per-block absolute tolerances for adaptive methods (same length as the blocks). Null = 0.</summary>
         public double[] AdaptiveAtol;
 
+        /// <summary>
+        /// Optional per-block magnitude used by the adaptive controller instead of the
+        /// state magnitude (same length as GetBlocks(), 0 = state magnitude). Needed when
+        /// the state carries a large common offset that is irrelevant to the metric: the
+        /// planet sweep stores barycentric positions (~1e11..1e12 m) but scores relative
+        /// pair separations, so controlling a 1e-6 relative to 1e11 would allow a lunar
+        /// orbit to lose 1e5 m per step. With this, a body's position block is scaled by
+        /// its distance to the nearest other body and a velocity block by the circular
+        /// speed of that pair.
+        /// </summary>
+        public double[] AdaptiveScales;
+
+        /// <summary>
+        /// Optional physical-sanity check on an accepted state. Returns null when the state
+        /// is acceptable, or a short reason when it is not (a pair distance collapsed, a
+        /// body left the system, ...). The run then stops with that reason instead of
+        /// grinding the step size down at a singularity; the report distinguishes such a
+        /// divergence from a controller failure.
+        /// </summary>
+        public Func<double[], string> DomainViolation;
+
         /// <summary>Metric (state, reference) -> error in problem units. Null = norm of the first 3 components.</summary>
         public Func<double[], double[], double> ErrorFn;
 
         /// <summary>Reference's own uncertainty in the same unit as the error. NaN = reference not certified.</summary>
         public double Floor = double.NaN;
+
+        /// <summary>Why the reference is (or is not) certified; shown next to the floor.</summary>
+        public string ReferenceNote = "";
 
         public bool Certified;
 
@@ -208,6 +232,14 @@ namespace P1bStudy.Framework
         public long Steps;
         public long Rejected;
         public long CapLimited;                      // accepted steps where the controller wanted more than MaxStep
+
+        /// <summary>True when the run stopped before the last checkpoint (step floor or domain violation).</summary>
+        public bool Aborted;
+
+        public double AbortTime = double.NaN;
+
+        /// <summary>Human-readable reason for Aborted; empty on a complete run.</summary>
+        public string Abort = "";
     }
 
     /// <summary>
@@ -222,10 +254,21 @@ namespace P1bStudy.Framework
         public long Calls;
         public long AuxOps;
 
+        /// <summary>Set by a stepper that cannot continue (e.g. the universal Kepler solver failed); the driver turns it into an aborted run.</summary>
+        public string Abort;
+
         public StudyContext(StudyProblem p, long budget)
         {
             rhs = p.Rhs;
             this.budget = budget;
+        }
+
+        public void Fail(string reason)
+        {
+            if (Abort == null)
+            {
+                Abort = reason;
+            }
         }
 
         public void Rhs(double t, double[] y, double[] dy)

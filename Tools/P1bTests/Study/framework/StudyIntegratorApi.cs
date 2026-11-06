@@ -123,6 +123,14 @@ namespace P1bStudy.Framework
                     for (long i = 0; i < n; i++)
                     {
                         stepper.Step(t + (i * hh), hh, y);
+                        if (ctx.Abort != null)
+                        {
+                            run.Aborted = true;
+                            run.AbortTime = t + (i * hh);
+                            run.Abort = ctx.Abort;
+                            run.Final = y;
+                            return run;
+                        }
                     }
 
                     run.Steps += n;
@@ -133,6 +141,19 @@ namespace P1bStudy.Framework
                 if (stops.CheckpointIndex[k] >= 0)
                 {
                     run.Samples[stops.CheckpointIndex[k]] = (double[])y.Clone();
+                }
+
+                if (p.DomainViolation != null)
+                {
+                    string why = p.DomainViolation(y);
+                    if (why != null)
+                    {
+                        run.Aborted = true;
+                        run.AbortTime = t;
+                        run.Abort = why;
+                        run.Final = y;
+                        return run;
+                    }
                 }
             }
 
@@ -198,6 +219,7 @@ namespace P1bStudy.Framework
             h = Math.Min(h, maxStep);
             double minStep = 1e-14d * Math.Max(p.Duration, 1d);
             int q = stepper.ErrorOrderExponent;
+            bool lastTrialNonFinite = false;
             stepper.Begin(t, y);
             for (int k = 0; k < stops.Times.Length; k++)
             {
@@ -214,7 +236,17 @@ namespace P1bStudy.Framework
                     }
 
                     double err = stepper.TryStep(t, hTry, y, yNew);
-                    if (double.IsNaN(err) || double.IsInfinity(err))
+                    if (ctx.Abort != null)
+                    {
+                        run.Aborted = true;
+                        run.AbortTime = t;
+                        run.Abort = ctx.Abort;
+                        run.Final = y;
+                        return run;
+                    }
+
+                    lastTrialNonFinite = double.IsNaN(err) || double.IsInfinity(err);
+                    if (lastTrialNonFinite)
                     {
                         err = 1e10d;
                     }
@@ -226,6 +258,19 @@ namespace P1bStudy.Framework
                         Array.Copy(yNew, y, dim);
                         t = tNew;
                         run.Steps++;
+                        if (p.DomainViolation != null && (run.Steps & 255L) == 0L)
+                        {
+                            string why = p.DomainViolation(y);
+                            if (why != null)
+                            {
+                                run.Aborted = true;
+                                run.AbortTime = t;
+                                run.Abort = why;
+                                run.Final = y;
+                                return run;
+                            }
+                        }
+
                         double fac = 0.9d * Math.Pow(Math.Max(err, 1e-10d), -1d / q);
                         fac = Math.Min(5d, Math.Max(0.2d, fac));
                         double hNew = hTry * fac;
@@ -250,11 +295,18 @@ namespace P1bStudy.Framework
                         h = hTry * fac;
                         if (h < minStep)
                         {
-                            // The controller collapsed: no step satisfies this tolerance (a
-                            // too-loose rtol lets the state dive into a body and the error
-                            // never drops). That is a crashed run, not a harness failure:
-                            // stop here and let the sweep record a non-finite row, the same
-                            // way it treats a blown-up fixed-step point.
+                            // The step controller reached its floor. This is a property of
+                            // the trajectory (the state entered a singularity or left the
+                            // physical domain), not a harness failure; report the reason so
+                            // the sweep can tell it apart from a controller bug.
+                            run.Aborted = true;
+                            run.AbortTime = t;
+                            run.Abort = (lastTrialNonFinite
+                                    ? "non-finite trial state; "
+                                    : "scaled error stayed above 1 at the smallest step; ")
+                                + "step floor " + minStep.ToString("E3", System.Globalization.CultureInfo.InvariantCulture)
+                                + " s reached at t=" + t.ToString("E3", System.Globalization.CultureInfo.InvariantCulture)
+                                + " s (last scaled error " + err.ToString("E3", System.Globalization.CultureInfo.InvariantCulture) + ")";
                             run.Final = y;
                             return run;
                         }
@@ -265,6 +317,19 @@ namespace P1bStudy.Framework
                 if (stops.CheckpointIndex[k] >= 0)
                 {
                     run.Samples[stops.CheckpointIndex[k]] = (double[])y.Clone();
+                }
+
+                if (p.DomainViolation != null)
+                {
+                    string why = p.DomainViolation(y);
+                    if (why != null)
+                    {
+                        run.Aborted = true;
+                        run.AbortTime = t;
+                        run.Abort = why;
+                        run.Final = y;
+                        return run;
+                    }
                 }
             }
 

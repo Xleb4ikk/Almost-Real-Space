@@ -89,6 +89,7 @@ internal static partial class P1bTests
         // Block layout [pos(3), vel(3), mass(1)] is derived from PosDim = 3, Dim = 7.
         p.Floor = refs.ReferenceFloor;           // NaN when the reference is not certified
         p.Certified = double.IsFinite(refs.ReferenceFloor);
+        p.ReferenceNote = refs.LocalKind;
         p.CharTime = c.Tau;
         // Cases that do not set a scale explicitly still need a length for the
         // relative-error column and the diagnostics. The initial orbital radius is
@@ -356,6 +357,7 @@ internal static partial class P1bTests
 
         p.Floor = floor;
         p.Certified = double.IsFinite(floor);
+        p.ReferenceNote = "independent dd Taylor references (43200 s and 21600 s); floor = worst pair difference";
 
         // scales
         double outer = 0d;
@@ -383,7 +385,87 @@ internal static partial class P1bTests
         }
 
         p.CharTime = fastest;
+        StudyBridgeAttachAdaptiveScales(p, nb);
         return p;
+    }
+
+    /// <summary>
+    /// The planet state is barycentric, but the error metric is the worst relative pair
+    /// separation. Scaling the adaptive error norm by a barycentric radius would let
+    /// rtol = 1e-3 lose ~1e8 m per step on the Moon's 3.8e8 m orbit (and the controller
+    /// then accepts an ejected Moon as a finite state). Use each body's distance to its
+    /// nearest neighbour, and that pair's circular speed for the velocity block, so rtol
+    /// means a fraction of the local dynamical scale.
+    /// </summary>
+    private static void StudyBridgeAttachAdaptiveScales(StudyProblem p, StudyNBody nb)
+    {
+        int n = nb.Count;
+        int[][] blocks = p.GetBlocks();
+        var scales = new double[blocks.Length];
+        double minimumPair = double.PositiveInfinity;
+        for (int i = 0; i < n; i++)
+        {
+            int nearest = -1;
+            double nearestDistance = double.PositiveInfinity;
+            for (int j = 0; j < n; j++)
+            {
+                if (j == i)
+                {
+                    continue;
+                }
+
+                double dx = nb.P0[3 * i] - nb.P0[3 * j];
+                double dy = nb.P0[(3 * i) + 1] - nb.P0[(3 * j) + 1];
+                double dz = nb.P0[(3 * i) + 2] - nb.P0[(3 * j) + 2];
+                double d = Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
+                if (d < nearestDistance)
+                {
+                    nearestDistance = d;
+                    nearest = j;
+                }
+            }
+
+            if (nearest >= 0 && nearestDistance > 0d && double.IsFinite(nearestDistance))
+            {
+                scales[i] = nearestDistance;
+                minimumPair = Math.Min(minimumPair, nearestDistance);
+                if (n + i < scales.Length)
+                {
+                    scales[n + i] = Math.Sqrt((nb.Mu[i] + nb.Mu[nearest]) / nearestDistance);
+                }
+            }
+        }
+
+        p.AdaptiveScales = scales;
+        p.DomainViolation = delegate (double[] y)
+        {
+            double minPair = double.PositiveInfinity;
+            for (int i = 1; i < n; i++)
+            {
+                for (int j = 0; j < i; j++)
+                {
+                    double dx = y[3 * i] - y[3 * j];
+                    double dy = y[(3 * i) + 1] - y[(3 * j) + 1];
+                    double dz = y[(3 * i) + 2] - y[(3 * j) + 2];
+                    double d = Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
+                    if (d < minPair)
+                    {
+                        minPair = d;
+                    }
+                }
+            }
+
+            if (minPair >= 1e-4d * minimumPair)
+            {
+                return null;
+            }
+
+            return "a pair distance collapsed to "
+                + minPair.ToString("E2", CultureInfo.InvariantCulture)
+                + " m (initial minimum "
+                + minimumPair.ToString("E2", CultureInfo.InvariantCulture)
+                + " m): the trajectory left the physical domain";
+        };
     }
 
     private static int Test553_IntegratorFrameworkPlanetSweep()
