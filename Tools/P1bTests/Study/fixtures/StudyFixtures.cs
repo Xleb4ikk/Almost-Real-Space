@@ -90,6 +90,49 @@ internal static partial class P1bTests
         return bp.Build();
     }
 
+    /// <summary>
+    /// A close pair of comparable mass (period ~25 d). The mutual dynamics is
+    /// fast, the hierarchy is shallow, and the reference can resolve it without
+    /// any special central-body assumption.
+    /// </summary>
+    private static StarSystem StudyTightBinarySystem()
+    {
+        var bp = new SystemBlueprint();
+        bp.Bodies.Add(StudyBody("Alpha", -1, 6.6e19d, 5.0e8d, 0d, 0d, 0d, 0d, 0d, 0d));
+        bp.Bodies.Add(StudyBody("Beta", 0, 6.0e19d, 5.0e8d, 2.5e10d, 0.2d, 0d, 0d, 0d, 0d));
+        return bp.Build();
+    }
+
+    /// <summary>
+    /// Sun + a comet with e = 0.8 and Jupiter. The comet is a direct child of
+    /// the Sun, so its pericentre passage is resolved by the reference's own
+    /// step control; Jupiter supplies a slow perturbation.
+    /// </summary>
+    private static StarSystem StudyEccentricSystem()
+    {
+        var bp = new SystemBlueprint();
+        bp.Bodies.Add(StudyBody("Sun", -1, 1.32712440018e20d, 6.96e8d, 0d, 0d, 0d, 0d, 0d, 0d));
+        bp.Bodies.Add(StudyBody("Comet", 0, 1.0e9d, 1.0e4d, 1.495978707e11d, 0.8d, 12d, 30d, 45d, 0d));
+        bp.Bodies.Add(StudyBody("Jupiter", 0, 1.26686534e17d, 6.9911e7d, 7.785e11d, 0.0489d, 1.303d, 100.5d, 273.9d, 20d));
+        return bp.Build();
+    }
+
+    /// <summary>
+    /// Sun, Jupiter and a nearly massless probe. Jupiter is a pure two-body
+    /// orbit around the Sun (the probe cannot move it), so its Kepler rail is
+    /// exact and the probe's heliocentric problem is exactly the relative part
+    /// of the three-body one. This is the scenario where a Kepler-split method
+    /// (one central body + perturbation) is valid in the planet sweep.
+    /// </summary>
+    private static StarSystem StudyHeliocentricSystem()
+    {
+        var bp = new SystemBlueprint();
+        bp.Bodies.Add(StudyBody("Sun", -1, 1.32712440018e20d, 6.96e8d, 0d, 0d, 0d, 0d, 0d, 0d));
+        bp.Bodies.Add(StudyBody("Jupiter", 0, 1.26686534e17d, 6.9911e7d, 7.785e11d, 0.0489d, 1.303d, 100.5d, 273.9d, 20d));
+        bp.Bodies.Add(StudyBody("Probe", 0, 6.674e-8d, 1d, 1.495978707e11d, 0.3d, 2d, 40d, 60d, 0d));
+        return bp.Build();
+    }
+
     private static StudyNBody StudyMakeNBody(StarSystem sys)
     {
         int n = sys.AllBodies.Count;

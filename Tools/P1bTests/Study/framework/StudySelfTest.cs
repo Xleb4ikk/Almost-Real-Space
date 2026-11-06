@@ -472,17 +472,46 @@ namespace P1bStudy.Framework
             string win = StudyReport.Winner(res, o.Targets(p)[1], o, out unresolved);
             Add(list, "sweep smoke: a winner is named at the tight target", win != "-", win);
 
-            // interpolation must never extrapolate
+            // the reported cost must be work that was actually spent
             var rows = new List<StudyRow>();
-            rows.Add(new StudyRow { Status = "ok", Finite = true, Err = 1e-2d, Cost = 100d, Ms = 1d });
-            rows.Add(new StudyRow { Status = "ok", Finite = true, Err = 1e-4d, Cost = 400d, Ms = 4d });
+            rows.Add(new StudyRow { Scenario = "t", Integrator = "a", Status = "ok", Finite = true, Err = 1e-2d, Cost = 100d, Ms = 1d });
+            rows.Add(new StudyRow { Scenario = "t", Integrator = "b", Status = "ok", Finite = true, Err = 1e-4d, Cost = 400d, Ms = 4d });
             StudyCell mid = StudyReport.CostAtTarget(rows, 1e-3d);
             StudyCell below = StudyReport.CostAtTarget(rows, 1e-6d);
             StudyCell above = StudyReport.CostAtTarget(rows, 1d);
-            bool interp = mid.Status == "OK" && Math.Abs(mid.Cost - 200d) < 1e-6d
-                && below.Status == "NR" && above.Status == "EDGE";
-            Add(list, "cost interpolation brackets, never extrapolates", interp,
-                "mid=" + mid.Status + " " + mid.Cost.ToString("F3", Inv) + ", below=" + below.Status + ", above=" + above.Status);
+            bool actual = mid.Status == "OK" && Math.Abs(mid.Cost - 400d) < 1e-9d
+                && below.Status == "NR" && above.Status == "EDGE" && Math.Abs(above.Cost - 100d) < 1e-9d;
+            Add(list, "cost is the cheapest executed point at or below target, never extrapolated", actual,
+                "mid=" + mid.Status + " " + mid.Cost.ToString("F3", Inv) + ", below=" + below.Status
+                + ", above=" + above.Status + " " + above.Cost.ToString("F3", Inv));
+
+            // flat work-precision curves must be reported as ties, not as a ranking
+            var tieRes = new StudyScenarioResult();
+            tieRes.Problem = MakeKeplerProblem(1, 1d);
+            tieRes.Problem.Floor = 0d;
+            tieRes.Problem.Certified = true;
+            tieRes.Rows.Add(new StudyRow { Scenario = "t", Integrator = "A", Status = "ok", Finite = true, Err = 1e-2d, Cost = 100d });
+            tieRes.Rows.Add(new StudyRow { Scenario = "t", Integrator = "B", Status = "ok", Finite = true, Err = 1e-2d, Cost = 300d });
+            tieRes.Rows.Add(new StudyRow { Scenario = "t", Integrator = "B", Status = "ok", Finite = true, Err = 1e-4d, Cost = 400d });
+            tieRes.Rows.Add(new StudyRow { Scenario = "t", Integrator = "C", Status = "ok", Finite = true, Err = 1e-2d, Cost = 320d });
+            tieRes.Rows.Add(new StudyRow { Scenario = "t", Integrator = "C", Status = "ok", Finite = true, Err = 1e-4d, Cost = 430d });
+            tieRes.Rows.Add(new StudyRow { Scenario = "t", Integrator = "D", Status = "ok", Finite = true, Err = 1e-2d, Cost = 350d });
+            tieRes.Rows.Add(new StudyRow { Scenario = "t", Integrator = "D", Status = "ok", Finite = true, Err = 1e-4d, Cost = 800d });
+            var tieOpt = new StudyOptions();
+            tieOpt.RelTargets = new double[0];
+            tieOpt.AbsTargets = new[] { 1e-3d };
+            bool unused;
+            StudyTarget tieTarget = tieOpt.Targets(tieRes.Problem)[0];
+            string tieWin = StudyReport.Winner(tieRes, tieTarget, tieOpt, out unused);
+            string tieDetail = "";
+            foreach (string key in StudyReport.Keys(tieRes.Rows))
+            {
+                StudyCell c = StudyReport.CellFor(tieRes, key, tieTarget, tieOpt);
+                tieDetail += key + ":" + c.Status + " " + c.Cost.ToString("F0", Inv) + "; ";
+            }
+
+            Add(list, "winner marks a 10% cost tie", tieWin.Contains("B (400)") && tieWin.Contains("~ C (430)")
+                && !tieWin.Contains("D (800)"), tieWin + " | " + tieDetail);
         }
 
         /// <summary>

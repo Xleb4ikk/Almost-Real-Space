@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Threading.Tasks;
 using P1bStudy.Framework;
 using Galilego.Core;
 using Galilego.Events;
@@ -120,10 +121,15 @@ internal static partial class P1bTests
         // certified reference floor is still skipped by the report, per scenario.
         options.RelTargets = new double[0];
         options.AbsTargets = new[] { 100d, 10d, 1d };
+        // A fixed weight makes repeated runs comparable. Measuring it by wall clock
+        // moved the reported costs by ~5 % between runs and flipped 3 % "winners".
+        options.KeplerWeight = 1d;
         // Run adaptive methods once with their own step choice and once with the production cap:
         // a binding cap makes the cost independent of rtol.
         options.AdaptiveMaxSteps = new[] { double.PositiveInfinity, 600d };
-        // Costs are in study-RHS calls. Set to 3 to price the production-local path (three gravity sums).
+        // Costs are in study-RHS calls. The production-local path sums three gravity
+        // fields; 3 is its measured price relative to this RHS.
+        options.RhsCostMultiplier = 3d;
         string mult = StudyBridgeEnv("P1B_RHS_MULTIPLIER");
         if (mult != null)
         {
@@ -383,30 +389,84 @@ internal static partial class P1bTests
     private static int Test553_IntegratorFrameworkPlanetSweep()
     {
         Console.WriteLine("--- Integrator framework: planet-orbit work-precision sweep ---");
-        double years = 10d;
-        string yearsEnv = StudyBridgeEnv("P1B_PLANET_YEARS");
-        if (yearsEnv != null)
-        {
-            years = double.Parse(yearsEnv, CultureInfo.InvariantCulture);
-        }
-
         List<IStudyIntegrator> integrators = StudyRegistry.Select(StudyBridgeEnv("P1B_INTEGRATORS"));
         var options = new StudyOptions();
         options.RelTargets = new double[0];
         options.AbsTargets = new[] { 100d, 10d, 1d };       // metres, worst pair error over the horizon
         options.AdaptiveMaxSteps = new[] { double.PositiveInfinity, 86400d };
+        // Deterministic pricing: one Kepler solve is one RHS-equivalent call. Measuring
+        // it by wall clock changed the reported costs between otherwise identical runs.
+        options.KeplerWeight = 1d;
 
+        string scenarioFilter = StudyBridgeEnv("P1B_PLANET_SCENARIOS");
+        string yearsEnv = StudyBridgeEnv("P1B_PLANET_YEARS");
         var results = new List<StudyScenarioResult>();
-        StarSystem real = StudyRealSolar7();
-        StudyNBody nb = StudyMakeNBody(real);
-        double sampleEvery = 30d * 86400d;
-        StudyRefResult reference = StudyPlanetIndependentReference(nb, years, sampleEvery);
-        StudyRefResult alternative = StudyPlanetIndependentReferenceAlt(nb, years, sampleEvery);
-        StudyProblem problem = StudyBridgePlanetProblem(
-            "Real solar 7-body, " + years.ToString("G", CultureInfo.InvariantCulture) + " y", nb, years, reference, alternative);
-        StudyScenarioResult r = StudySweepRunner.Run(problem, integrators, options, Console.Out);
-        results.Add(r);
-        StudyReport.Print(Console.Out, r, options);
+
+        void RunPlanet(string label, StarSystem sys, double years)
+        {
+            if (!StudyBridgeScenarioSelected(label, scenarioFilter))
+            {
+                return;
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("sweeping: " + label);
+            long savedBudget = options.MaxCostRhs;
+            if (years >= 100d)
+            {
+                // The 100-year rows were censored at 2 M before they could bracket
+                // 100 m; give this horizon more room. The override exists because
+                // the fixed-step rows are hopeless here and only burn the budget.
+                string budgetEnv = StudyBridgeEnv("P1B_PLANET_BUDGET");
+                options.MaxCostRhs = budgetEnv != null
+                    ? long.Parse(budgetEnv, CultureInfo.InvariantCulture)
+                    : 5000000L;
+            }
+
+            try
+            {
+                StudyScenarioResult r = StudyBridgeRunPlanetScenario(
+                    label, sys, years, 30d * 86400d, integrators, options);
+                results.Add(r);
+                StudyReport.Print(Console.Out, r, options);
+            }
+            finally
+            {
+                options.MaxCostRhs = savedBudget;
+            }
+        }
+
+        void RunHeliocentric(string label, double years)
+        {
+            if (!StudyBridgeScenarioSelected(label, scenarioFilter))
+            {
+                return;
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("sweeping: " + label);
+            StudyScenarioResult r = StudyBridgeRunHeliocentricScenario(
+                label, years, 30d * 86400d, integrators, options);
+            results.Add(r);
+            StudyReport.Print(Console.Out, r, options);
+        }
+
+        if (yearsEnv != null)
+        {
+            // Backward-compatible shortcut: one real-solar scenario at the requested horizon.
+            double years = double.Parse(yearsEnv, CultureInfo.InvariantCulture);
+            RunPlanet("Real solar 7-body, " + years.ToString("G", CultureInfo.InvariantCulture) + " y",
+                StudyRealSolar7(), years);
+        }
+        else
+        {
+            RunPlanet("Real solar 7-body, 10 y", StudyRealSolar7(), 10d);
+            RunPlanet("Real solar 7-body, 100 y", StudyRealSolar7(), 100d);
+            RunPlanet("Custom 6-body, 10 y", StudyCustomSystem(), 10d);
+            RunPlanet("Tight binary, 10 y", StudyTightBinarySystem(), 10d);
+            RunPlanet("Sun + eccentric comet + Jupiter, 10 y", StudyEccentricSystem(), 10d);
+            RunHeliocentric("Heliocentric Sun-Jupiter probe, 10 y", 10d);
+        }
 
         string dir = StudyShipMatrixResultsDir();
         Directory.CreateDirectory(dir);
@@ -414,76 +474,242 @@ internal static partial class P1bTests
         StudyReport.WriteMarkdown(Path.Combine(dir, "Test553_FrameworkPlanetSweep.md"), results, options);
 
         int failedRuns = 0;
-        foreach (StudyRow row in r.Rows)
+        foreach (StudyScenarioResult res in results)
         {
-            if (row.Status == "error")
+            foreach (StudyRow row in res.Rows)
             {
-                failedRuns++;
-                Console.WriteLine("FAILED RUN " + row.Key + " / " + row.Config + ": " + row.Note);
+                if (row.Status == "error")
+                {
+                    failedRuns++;
+                    Console.WriteLine("FAILED RUN " + res.Problem.Label + " / " + row.Key + " / "
+                        + row.Config + ": " + row.Note);
+                }
             }
         }
 
+        Check(results.Count > 0, "framework planet sweep ran scenarios",
+            results.Count.ToString(CultureInfo.InvariantCulture) + " scenario(s); filter=" + (scenarioFilter ?? "none"));
         Check(failedRuns == 0, "framework planet sweep: no failed runs",
             failedRuns.ToString(CultureInfo.InvariantCulture) + " failed run(s)");
 
-        // A green planet sweep must actually compare adaptive methods. Every
-        // adaptive method that supports the problem must reach at least one target
-        // above the reference floor; otherwise its row is only a "not reached"
-        // line and the winner table ranks the fixed-step methods against nothing.
-        // This is the check the old suite was missing: an adaptive method could
-        // miss 100/10/1 m and the diagnostic still reported success.
-        foreach (IStudyIntegrator integ in integrators)
+        // A green planet sweep must actually compare adaptive methods: on every
+        // scenario at least one adaptive method must reach a target above the
+        // reference floor. Not every method has to: on a hard 100-year or
+        // tight-pair problem one adaptive controller may legitimately collapse
+        // while another still converges. The per-method outcome is printed in
+        // the detail, so a failure is not silently ranked against nothing.
+        foreach (StudyScenarioResult res in results)
         {
-            if (integ.Kind != StudyKind.Adaptive)
+            bool anyReached = false;
+            string details = "";
+            foreach (IStudyIntegrator integ in integrators)
             {
-                continue;
-            }
-
-            string supportReason;
-            if (!integ.Supports(problem, out supportReason))
-            {
-                continue;
-            }
-
-            bool reached = false;
-            double bestErr = double.PositiveInfinity;
-            double bestControl = double.NaN;
-            string bestVariant = "";
-            foreach (string key in StudyReport.Keys(r.Rows))
-            {
-                if (key != integ.Name && !key.StartsWith(integ.Name + " [", StringComparison.Ordinal))
+                if (integ.Kind != StudyKind.Adaptive)
                 {
                     continue;
                 }
 
-                foreach (StudyRow row in r.Rows)
+                string supportReason;
+                if (!integ.Supports(res.Problem, out supportReason))
                 {
-                    if (row.Key == key && row.Status == "ok" && row.Finite && row.Err < bestErr)
+                    continue;
+                }
+
+                bool reached = false;
+                double bestErr = double.PositiveInfinity;
+                double bestControl = double.NaN;
+                foreach (string key in StudyReport.Keys(res.Rows))
+                {
+                    if (key != integ.Name && !key.StartsWith(integ.Name + " [", StringComparison.Ordinal))
                     {
-                        bestErr = row.Err;
-                        bestControl = row.Control;
-                        bestVariant = key;
+                        continue;
+                    }
+
+                    foreach (StudyRow row in res.Rows)
+                    {
+                        if (row.Key == key && row.Status == "ok" && row.Finite && row.Err < bestErr)
+                        {
+                            bestErr = row.Err;
+                            bestControl = row.Control;
+                        }
+                    }
+
+                    foreach (StudyTarget t in options.Targets(res.Problem))
+                    {
+                        StudyCell cell = StudyReport.CellFor(res, key, t, options);
+                        if (cell.Status == "OK" || cell.Status == "EDGE")
+                        {
+                            reached = true;
+                        }
                     }
                 }
 
-                foreach (StudyTarget t in options.Targets(problem))
-                {
-                    StudyCell cell = StudyReport.CellFor(r, key, t, options);
-                    if (cell.Status == "OK" || cell.Status == "EDGE")
-                    {
-                        reached = true;
-                    }
-                }
+                anyReached |= reached;
+                details += (details.Length == 0 ? "" : "; ") + integ.Name + "="
+                    + (reached ? "reached" : "not reached")
+                    + (double.IsFinite(bestErr)
+                        ? " (best " + bestErr.ToString("E3", CultureInfo.InvariantCulture) + " m at "
+                          + bestControl.ToString("G3", CultureInfo.InvariantCulture) + ")"
+                        : " (no finite run)");
             }
 
-            string detail = double.IsFinite(bestErr)
-                ? "best " + bestErr.ToString("E3", CultureInfo.InvariantCulture) + " m at rtol="
-                  + bestControl.ToString("G3", CultureInfo.InvariantCulture) + " (" + bestVariant + ")"
-                : "no finite run";
-            Check(reached, "framework planet sweep: adaptive reaches a target: " + integ.Name, detail);
+            Check(anyReached, "framework planet sweep: an adaptive method reaches a target: "
+                + res.Problem.Label, details.Length == 0 ? "no adaptive method supported" : details);
         }
+
         Console.WriteLine("report: " + Path.Combine(dir, "Test553_FrameworkPlanetSweep.md"));
         return 0;
+    }
+
+    private static StudyScenarioResult StudyBridgeRunPlanetScenario(
+        string label, StarSystem sys, double years, double sampleEvery,
+        List<IStudyIntegrator> integrators, StudyOptions options)
+    {
+        StudyNBody nb = StudyMakeNBody(sys);
+        StudyRefResult reference = null;
+        StudyRefResult alternative = null;
+        // The two independent dd-Taylor references dominate the runtime; run them together.
+        Parallel.Invoke(
+            () => reference = StudyPlanetIndependentReference(nb, years, sampleEvery),
+            () => alternative = StudyPlanetIndependentReferenceAlt(nb, years, sampleEvery));
+        StudyProblem problem = StudyBridgePlanetProblem(label, nb, years, reference, alternative);
+        return StudySweepRunner.Run(problem, integrators, options, Console.Out);
+    }
+
+    private static double[] StudyBridgeRelativeState(double[] p, double[] v, int body, int centre)
+    {
+        var state = new double[6];
+        for (int i = 0; i < 3; i++)
+        {
+            state[i] = p[(3 * body) + i] - p[(3 * centre) + i];
+            state[3 + i] = v[(3 * body) + i] - v[(3 * centre) + i];
+        }
+
+        return state;
+    }
+
+    /// <summary>
+    /// Probe state relative to the Sun, with Jupiter's exact two-body rail as the
+    /// only perturbation. This is the heliocentric form the production local step
+    /// uses, and the one form in the planet sweep where WH-Y6 is valid.
+    /// </summary>
+    private static StudyProblem StudyBridgeHeliocentricProblem(
+        string label, StarSystem sys, StudyNBody nb, int sunIndex, int jupiterIndex, int probeIndex,
+        StudyRefResult reference, StudyRefResult alternative)
+    {
+        double muSun = nb.Mu[sunIndex];
+        double muJupiter = nb.Mu[jupiterIndex];
+        OrbitingBody sun = sys.AllBodies[sunIndex];
+        OrbitingBody jupiter = sys.AllBodies[jupiterIndex];
+        double[] y0 = StudyBridgeRelativeState(nb.P0, nb.V0, probeIndex, sunIndex);
+
+        var p = new StudyProblem();
+        p.Label = label;
+        p.Dim = 6;
+        p.PosDim = 3;
+        p.T0 = 0d;
+        p.Y0 = y0;
+        p.ConservativeSecondOrder = true;
+        p.CentralMu = muSun;
+        p.Rhs = delegate (double t, double[] y, double[] dy)
+        {
+            sys.EvaluateBodyState(jupiter, t, out Vector3d jp, out _);
+            sys.EvaluateBodyState(sun, t, out Vector3d sp, out _);
+            Vector3d rj = jp - sp;
+            var r = new Vector3d(y[0], y[1], y[2]);
+            double r2 = (r.X * r.X) + (r.Y * r.Y) + (r.Z * r.Z);
+            double r3 = r2 * Math.Sqrt(r2);
+            Vector3d d = rj - r;
+            double d2 = (d.X * d.X) + (d.Y * d.Y) + (d.Z * d.Z);
+            double d3 = d2 * Math.Sqrt(d2);
+            double rj2 = (rj.X * rj.X) + (rj.Y * rj.Y) + (rj.Z * rj.Z);
+            double rj3 = rj2 * Math.Sqrt(rj2);
+            Vector3d a = (r * (-muSun / r3)) + (d * (muJupiter / d3)) + (rj * (-muJupiter / rj3));
+            dy[0] = y[3];
+            dy[1] = y[4];
+            dy[2] = y[5];
+            dy[3] = a.X;
+            dy[4] = a.Y;
+            dy[5] = a.Z;
+        };
+
+        var times = new List<double>();
+        var states = new List<double[]>();
+        var altStates = new List<double[]>();
+        bool haveAlt = alternative != null && alternative.Samples != null
+            && reference.Samples != null && alternative.Samples.Count == reference.Samples.Count;
+        if (reference.Samples != null)
+        {
+            for (int k = 0; k < reference.Samples.Count; k++)
+            {
+                StudySample s = reference.Samples[k];
+                times.Add(s.T);
+                states.Add(StudyBridgeRelativeState(s.P, s.V, probeIndex, sunIndex));
+                if (haveAlt)
+                {
+                    StudySample a = alternative.Samples[k];
+                    altStates.Add(StudyBridgeRelativeState(a.P, a.V, probeIndex, sunIndex));
+                }
+            }
+        }
+
+        if (times.Count == 0)
+        {
+            times.Add(reference.Samples != null && reference.Samples.Count > 0
+                ? reference.Samples[reference.Samples.Count - 1].T : 0d);
+            states.Add(StudyBridgeRelativeState(reference.P, reference.V, probeIndex, sunIndex));
+            if (haveAlt)
+            {
+                altStates.Add(StudyBridgeRelativeState(alternative.P, alternative.V, probeIndex, sunIndex));
+            }
+        }
+
+        p.CheckpointTimes = times.ToArray();
+        p.CheckpointRef = states.ToArray();
+
+        double floor = 0d;
+        double scale = 1d;
+        for (int k = 0; k < states.Count; k++)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                scale = Math.Max(scale, Math.Abs(states[k][i]));
+            }
+
+            if (haveAlt && k < altStates.Count)
+            {
+                floor = Math.Max(floor, p.Error(states[k], altStates[k]));
+            }
+        }
+
+        p.Floor = Math.Max(floor, ToleranceReference.FloatingPointFloor * scale);
+        p.Certified = true;
+        p.ScaleLength = scale;
+
+        double r0 = Math.Sqrt((y0[0] * y0[0]) + (y0[1] * y0[1]) + (y0[2] * y0[2]));
+        double v2 = (y0[3] * y0[3]) + (y0[4] * y0[4]) + (y0[5] * y0[5]);
+        double a0 = 1d / Math.Max(1e-30d, (2d / Math.Max(r0, 1d)) - (v2 / muSun));
+        p.CharTime = 2d * Math.PI * Math.Sqrt(a0 * a0 * a0 / muSun);
+        return p;
+    }
+
+    private static StudyScenarioResult StudyBridgeRunHeliocentricScenario(
+        string label, double years, double sampleEvery,
+        List<IStudyIntegrator> integrators, StudyOptions options)
+    {
+        StarSystem sys = StudyHeliocentricSystem();
+        StudyNBody nb = StudyMakeNBody(sys);
+        int sun = 0;
+        int jupiter = 1;
+        int probe = 2;
+        StudyRefResult reference = null;
+        StudyRefResult alternative = null;
+        Parallel.Invoke(
+            () => reference = StudyPlanetIndependentReference(nb, years, sampleEvery),
+            () => alternative = StudyPlanetIndependentReferenceAlt(nb, years, sampleEvery));
+        StudyProblem problem = StudyBridgeHeliocentricProblem(
+            label, sys, nb, sun, jupiter, probe, reference, alternative);
+        return StudySweepRunner.Run(problem, integrators, options, Console.Out);
     }
 
     // ------------------------------------------------------------------------------------

@@ -41,6 +41,21 @@ namespace P1bStudy.Framework
         /// <summary>A target below FloorMargin * reference floor is not ranked (it would measure reference noise).</summary>
         public double FloorMargin = 3d;
 
+        /// <summary>Costs within this factor of the best are reported as a tie, not as a resolved ranking.</summary>
+        public double TieFactor = 1.10d;
+
+        /// <summary>
+        /// After the coarse sweep, bisect the control bracket around each target when the
+        /// cost gap between the cheapest hit and the next cheaper miss is still wider than
+        /// the tie threshold. Without this the reported cost is quantised by the sweep grid
+        /// (1.5x in h, sqrt(10)x in rtol), which is coarser than the tie band.
+        /// </summary>
+        public bool RefineTies = true;
+
+        public int RefineIterations = 5;
+
+        public double RefineCostTolerance = 0.10d;
+
         public int MaxPoints = 40;
 
         /// <summary>The coarse end is loosened until its error exceeds LoosenFactor * the loosest target, so no winner sits on the grid edge.</summary>
@@ -128,6 +143,7 @@ namespace P1bStudy.Framework
         public List<StudyRow> Rows = new List<StudyRow>();
         public double KeplerWeight;
         public double RhsMultiplier = 1d;
+        public long MaxCostRhs;
     }
 
     internal static class StudyCalibration
@@ -214,6 +230,7 @@ namespace P1bStudy.Framework
             var result = new StudyScenarioResult();
             result.Problem = p;
             result.RhsMultiplier = o.RhsCostMultiplier;
+            result.MaxCostRhs = o.MaxCostRhs;
             double kw = double.IsNaN(o.KeplerWeight) ? StudyCalibration.MeasureKeplerWeight(p) : o.KeplerWeight;
             result.KeplerWeight = kw;
             foreach (IStudyIntegrator integ in integrators)
@@ -240,12 +257,12 @@ namespace P1bStudy.Framework
                 {
                     foreach (double cap in o.AdaptiveMaxSteps)
                     {
-                        SweepOne(p, integ, cap, o, result.Rows, log);
+                        SweepOne(p, integ, cap, o, kw, result.Rows, log);
                     }
                 }
                 else
                 {
-                    SweepOne(p, integ, double.PositiveInfinity, o, result.Rows, log);
+                    SweepOne(p, integ, double.PositiveInfinity, o, kw, result.Rows, log);
                 }
             }
 
@@ -254,7 +271,7 @@ namespace P1bStudy.Framework
         }
 
         private static void SweepOne(
-            StudyProblem p, IStudyIntegrator integ, double cap, StudyOptions o,
+            StudyProblem p, IStudyIntegrator integ, double cap, StudyOptions o, double keplerWeight,
             List<StudyRow> rows, TextWriter log)
         {
             double coarse;
@@ -375,11 +392,141 @@ namespace P1bStudy.Framework
                 r = RunPoint(p, integ, c, cap, variant, o, rows);
             }
 
+            RefineTargetBrackets(p, integ, cap, variant, o, keplerWeight, rows);
+
             if (log != null)
             {
                 log.WriteLine("  " + (variant.Length == 0 ? integ.Name : integ.Name + " [" + variant + "]")
                     + ": " + CountRows(rows, p.Label, integ.Name, variant).ToString(CultureInfo.InvariantCulture) + " points");
             }
+        }
+
+        /// <summary>
+        /// The coarse sweep brackets a target with one grid step (1.5x in h, sqrt(10)x in rtol).
+        /// After switching to "cheapest executed run", that step becomes the resolution of the
+        /// reported cost and is coarser than the tie band. Bisect only the winning bracket:
+        /// run a point between the cheapest hit and the next cheaper miss until their costs are
+        /// closer than the tie tolerance. Every added point is a real run, so the cost stays honest.
+        /// </summary>
+        private static void RefineTargetBrackets(
+            StudyProblem p, IStudyIntegrator integ, double cap, string variant,
+            StudyOptions o, double keplerWeight, List<StudyRow> rows)
+        {
+            if (!o.RefineTies)
+            {
+                return;
+            }
+
+            double floor = double.IsNaN(p.Floor) ? 0d : p.Floor;
+            foreach (StudyTarget target in o.Targets(p))
+            {
+                if (target.Value < o.FloorMargin * floor)
+                {
+                    continue;
+                }
+
+                for (int iter = 0; iter < o.RefineIterations; iter++)
+                {
+                    StudyRow hit = null;
+                    double hitCost = double.PositiveInfinity;
+                    StudyRow miss = null;
+                    double missCost = double.NegativeInfinity;
+                    foreach (StudyRow r in rows)
+                    {
+                        if (r.Scenario != p.Label || r.Integrator != integ.Name
+                            || r.Variant != variant || r.Status != "ok" || !r.Finite)
+                        {
+                            continue;
+                        }
+
+                        double cost = ProvisionalCost(r, o, keplerWeight);
+                        if (r.Err <= target.Value)
+                        {
+                            if (cost < hitCost)
+                            {
+                                hitCost = cost;
+                                hit = r;
+                            }
+                        }
+                    }
+
+                    if (hit == null)
+                    {
+                        break;
+                    }
+
+                    foreach (StudyRow r in rows)
+                    {
+                        if (r.Scenario != p.Label || r.Integrator != integ.Name
+                            || r.Variant != variant || r.Status != "ok" || !r.Finite)
+                        {
+                            continue;
+                        }
+
+                        double cost = ProvisionalCost(r, o, keplerWeight);
+                        if (r.Err > target.Value && cost < hitCost && cost > missCost)
+                        {
+                            missCost = cost;
+                            miss = r;
+                        }
+                    }
+
+                    if (miss == null)
+                    {
+                        break;
+                    }
+
+                    if ((hitCost - missCost) <= o.RefineCostTolerance * Math.Max(hitCost, 1e-30d))
+                    {
+                        break;
+                    }
+
+                    if (!(hit.Control > 0d) || !(miss.Control > 0d))
+                    {
+                        break;
+                    }
+
+                    double control = Math.Sqrt(hit.Control * miss.Control);
+                    double lo = Math.Min(hit.Control, miss.Control);
+                    double hi = Math.Max(hit.Control, miss.Control);
+                    if (!(control > lo) || !(control < hi))
+                    {
+                        break;
+                    }
+
+                    bool exists = false;
+                    foreach (StudyRow r in rows)
+                    {
+                        if (r.Scenario != p.Label || r.Integrator != integ.Name || r.Variant != variant)
+                        {
+                            continue;
+                        }
+
+                        if (Math.Abs(r.Control - control) <= 1e-6d * Math.Max(1d, Math.Abs(control)))
+                        {
+                            exists = true;
+                            break;
+                        }
+                    }
+
+                    if (exists)
+                    {
+                        break;
+                    }
+
+                    StudyRow added = RunPoint(p, integ, control, cap, variant, o, rows);
+                    if (added.Status != "ok" || !added.Finite)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+
+        private static double ProvisionalCost(StudyRow r, StudyOptions o, double keplerWeight)
+        {
+            double weight = double.IsNaN(keplerWeight) ? 0d : keplerWeight;
+            return (r.Calls * o.RhsCostMultiplier) + (weight * r.Aux);
         }
 
         private static int CountRows(List<StudyRow> rows, string scenario, string name, string variant)

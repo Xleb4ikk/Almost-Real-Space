@@ -196,7 +196,7 @@ internal static partial class P1bTests
             { "Earth LEO 400 km, 1000 orbits (~64 d)", new StudyShipMatrixBaseline(1.202e-2, 6.388e-3, 8.522) },
             { "Earth HEO 300 x 120000 km", new StudyShipMatrixBaseline(1.022e-4, 4.624e-5, 1.845e-5) },
             { "Earth hyperbolic flyby e=1.5", new StudyShipMatrixBaseline(1.738e-6, 4.470e-7, 5.960e-8) },
-            { "Earth LEO 400 km, 30 d, world chunk 1 d", new StudyShipMatrixBaseline(3.988e-3, 1.476e-3, 5.187e-3) },
+            { "Earth LEO 400 km, 30 d", new StudyShipMatrixBaseline(3.988e-3, 1.476e-3, 5.187e-3) },
             { "Earth LEO 400 km + unaligned 600 s burn", new StudyShipMatrixBaseline(4.6662962712195526e-4, 2.994167236814948e-4, double.NaN) }
         };
 
@@ -3252,10 +3252,10 @@ internal static partial class P1bTests
             c.AccuracyTarget = 1d;
             c.AlternativeTarget = 1d;
         }
-        else if (c.Label.IndexOf("world chunk", StringComparison.Ordinal) >= 0)
+        else if (string.Equals(c.Label, "Earth LEO 400 km, 30 d", StringComparison.Ordinal))
         {
-            // 1-day chunks over 30 days: the local-frame carry-over keeps the
-            // restart cost below the 1 m mission tolerance.
+            // 1-day production chunks over 30 days: the local-frame carry-over
+            // keeps the restart cost below the 1 m mission tolerance.
             c.AccuracyTarget = 1d;
             c.AlternativeTarget = 1d;
         }
@@ -3746,7 +3746,7 @@ internal static partial class P1bTests
             new StudyShipComparisonRule
             {
                 // Measured 27,392 RHS-eq; cap 54,000 = 1.97x.
-                Label = "Earth LEO 400 km, 30 d, world chunk 1 d", Target = 1d,
+                Label = "Earth LEO 400 km, 30 d", Target = 1d,
                 CheapestCostCap = 54000L, WhToProductionRatio = 0.035d
             }
         };
@@ -4215,7 +4215,7 @@ internal static partial class P1bTests
         }
 
         {
-            var chunk = StudyShipMatrixCaseOrbit("Earth LEO 400 km, 30 d, world chunk 1 d",
+            var chunk = StudyShipMatrixCaseOrbit("Earth LEO 400 km, 30 d",
                 gravity, 1, 6.371e6d + 4e5d, 6.371e6d + 4e5d, 0d, 0d, 0d, 30d * day, false, true, 1d);
             chunk.WorldChunkSeconds = 86400d;
             chunk.ReferenceStepSeconds = 20d;
@@ -4240,7 +4240,7 @@ internal static partial class P1bTests
                 ThrustSeconds = 600d,
                 ThrustNewtons = 2000d,
                 ThrustIsp = 300d,
-                ThrustRampSeconds = 0d,
+                ThrustRampSeconds = 1d,
                 AllowTaylor = false,
                 WorldChunkSeconds = 60d,
                 Tau = StudyShipMatrixTau(6.371e6d + 4e5d,
