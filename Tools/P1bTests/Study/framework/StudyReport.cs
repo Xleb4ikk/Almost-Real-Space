@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -9,14 +9,33 @@ namespace P1bStudy.Framework
     /// <summary>Cost (and time) needed to reach one error target, with an explicit status so a grid edge is never presented as a result.</summary>
     internal sealed class StudyCell
     {
-        /// <summary>OK = cheapest executed run at or below the target; EDGE = even the cheapest (coarsest) run is
-        /// below the target, so the cost is an upper bound; FLOOR = only runs whose error is within their own
-        /// double-precision accumulation noise reach the target, so the column measures summation, not the method;
-        /// NR = not reached; SKIP = target below the reference floor margin; NA = method not valid for this problem.</summary>
+        /// <summary>OK = log-log interpolated cost at the target (or the cheapest hit when no valid bracket exists,
+        /// with Unresolved set); EDGE = even the cheapest (coarsest) run is below the target, so the cost is an
+        /// upper bound (cap-limited EDGE is exact, other EDGE is unresolved); FLOOR = only runs whose error is
+        /// within their own double-precision accumulation noise reach the target; NR = not reached; SKIP = target
+        /// below the reference floor margin; NA = method not valid for this problem.</summary>
         public string Status = "NR";
         public double Cost = double.NaN;
         public double Ms = double.NaN;
         public string Note = "";
+
+        /// <summary>Cost was log-log interpolated between a bracketing miss and hit, not taken from one node.</summary>
+        public bool Interpolated;
+
+        /// <summary>An EDGE cell with no cap evidence, or a cell that could not be bracketed. The winner is provisional.</summary>
+        public bool Unresolved;
+
+        /// <summary>The EDGE upper bound comes from a cap-limited run, so the cap itself makes it exact.</summary>
+        public bool CapLimited;
+
+        /// <summary>Relative control gap of the bracketing pair; the tie band when interpolation is unavailable.</summary>
+        public double GridStep = double.NaN;
+
+        /// <summary>Tie band for this cell (1.10 = 10%). NaN means use the caller's default.</summary>
+        public double TieFactor = double.NaN;
+
+        /// <summary>"rhs" or "ms"; which metric is stored in Cost.</summary>
+        public string Metric = "rhs";
     }
 
     internal static class StudyReport
@@ -32,26 +51,28 @@ namespace P1bStudy.Framework
         }
 
         /// <summary>
-        /// Cost of the cheapest actually executed run whose measured error is at or below `target`.
-        /// No interpolation and no extrapolation: the number is work that was really spent, so a
-        /// non-smooth error-vs-control curve cannot make an adaptive method look cheaper than it ran.
-        /// EDGE means even the cheapest (coarsest) tested run already met the target, so the true cost
-        /// is an upper bound and a coarser run might be cheaper.
-        /// A run whose error is below the double-precision round-off floor of its own step count is
-        /// not evidence of accuracy: such a point is FLOOR ("below round-off floor") and is not ranked.
+        /// Cost at the target, interpolated in log-log between the nearest cheaper above-target
+        /// run and the first bracketing below-target run. Interpolation removes the grid
+        /// quantisation (h x1.5, rtol x sqrt(10)) that made sub-grid differences look like ties.
+        /// A run whose error is below the double-precision round-off floor of its own step count
+        /// is not evidence of accuracy (FLOOR). If no bracket exists, the upper bound of the
+        /// cheapest run is returned with Unresolved set; cap-limited EDGE cells are exact.
+        /// byMs selects wall-clock ms instead of RHS-equivalent cost.
         /// </summary>
-        public static StudyCell CostAtTarget(List<StudyRow> variantRows, double target, StudyProblem p)
+        public static StudyCell CostAtTarget(
+            List<StudyRow> variantRows, double target, StudyProblem p, bool byMs = false)
         {
             var pts = new List<StudyRow>();
             foreach (StudyRow r in variantRows)
             {
-                if (r.Status == "ok" && r.Finite && r.Cost > 0d)
+                if (r.Status == "ok" && r.Finite && MetricOf(r, byMs) > 0d)
                 {
                     pts.Add(r);
                 }
             }
 
             var cell = new StudyCell();
+            cell.Metric = byMs ? "ms" : "rhs";
             if (pts.Count == 0)
             {
                 cell.Status = "NR";
@@ -59,9 +80,13 @@ namespace P1bStudy.Framework
                 return cell;
             }
 
-            pts.Sort(delegate (StudyRow a, StudyRow b) { return a.Cost.CompareTo(b.Cost); });
+            pts.Sort(delegate (StudyRow a, StudyRow b)
+            {
+                return MetricOf(a, byMs).CompareTo(MetricOf(b, byMs));
+            });
             StudyRow cheapest = pts[0];
-            StudyRow bestBelow = null;
+            StudyRow hit = null;
+            StudyRow miss = null;
             StudyRow finest = cheapest;
             double floorAtCheapestBelow = double.NaN;
             for (int i = 0; i < pts.Count; i++)
@@ -75,7 +100,7 @@ namespace P1bStudy.Framework
                 if (r.Err <= target)
                 {
                     double floor = RoundoffFloor(p, r);
-                    if (bestBelow == null)
+                    if (double.IsNaN(floorAtCheapestBelow))
                     {
                         floorAtCheapestBelow = floor;
                     }
@@ -85,15 +110,18 @@ namespace P1bStudy.Framework
                     // measuring summation, so it must not be ranked.
                     if (!(target <= floor) && !(r.Err <= floor))
                     {
-                        if (bestBelow == null)
-                        {
-                            bestBelow = r;
-                        }
+                        hit = r;
+                        break;
                     }
+                }
+                else
+                {
+                    // Last cheaper point above the target; it is the left end of the bracket.
+                    miss = r;
                 }
             }
 
-            if (bestBelow == null)
+            if (hit == null)
             {
                 if (!double.IsNaN(floorAtCheapestBelow))
                 {
@@ -108,13 +136,134 @@ namespace P1bStudy.Framework
                 return cell;
             }
 
-            cell.Cost = bestBelow.Cost;
-            cell.Ms = bestBelow.Ms;
-            cell.Status = ReferenceEquals(bestBelow, cheapest) ? "EDGE" : "OK";
-            cell.Note = ReferenceEquals(bestBelow, cheapest)
-                ? "cheapest tested point already below target"
-                : "cheapest executed point at or below target";
+            cell.CapLimited = hit.CapLimited > 0L || hit.Variant.Length > 0;
+            cell.Cost = MetricOf(hit, byMs);
+            cell.Ms = byMs ? cell.Cost : hit.Ms;
+            if (ReferenceEquals(hit, cheapest))
+            {
+                cell.Status = "EDGE";
+                cell.Unresolved = !cell.CapLimited;
+                cell.Note = cell.CapLimited
+                    ? "cap-limited run already below target"
+                    : "cheapest tested point already below target; no coarser bracket";
+                cell.TieFactor = cell.CapLimited ? 1d : double.NaN;
+                return cell;
+            }
+
+            double hitMetric = MetricOf(hit, byMs);
+            double missMetric = miss != null ? MetricOf(miss, byMs) : double.NaN;
+            double gridStep = miss != null ? RelativeGap(hit.Control, miss.Control) : double.NaN;
+            cell.GridStep = gridStep;
+            bool costClose = miss != null && missMetric > 0d && hitMetric > 0d
+                && Math.Max(missMetric, hitMetric) <= 1.5001d * Math.Min(missMetric, hitMetric);
+            bool declaredOrder = !double.IsNaN(hit.ExpectedOrder) && hit.ExpectedOrder > 0d;
+            // Adaptive rtol is continuous. A fixed-step method with no declared order
+            // (Kepler-split, Encke) has no way to validate a local slope, and its cost
+            // grid is integral steps per interval: do not quote an unpayable price.
+            bool interpolationApplies = hit.Kind == StudyKind.Adaptive || declaredOrder;
+            double localOrder = double.NaN;
+            bool orderMatches = true;
+            if (miss != null && miss.Control > 0d && hit.Control > 0d
+                && Math.Abs(miss.Control - hit.Control) > 0d
+                && declaredOrder)
+            {
+                double stepRatio;
+                if (hit.Kind == StudyKind.Fixed && hit.Steps > 0L && miss.Steps > 0L)
+                {
+                    // Fixed-step h_eff = span/n with integer n: the nominal h is not
+                    // the step that was actually taken. The step count is.
+                    stepRatio = (double)Math.Max(hit.Steps, miss.Steps)
+                        / Math.Min(hit.Steps, miss.Steps);
+                }
+                else
+                {
+                    stepRatio = Math.Max(miss.Control, hit.Control)
+                        / Math.Min(miss.Control, hit.Control);
+                }
+
+                if (stepRatio > 1d)
+                {
+                    localOrder = Math.Log(miss.Err / hit.Err) / Math.Log(stepRatio);
+                    orderMatches = localOrder >= 0.7d * hit.ExpectedOrder
+                        && localOrder <= 1.3d * hit.ExpectedOrder;
+                }
+                else
+                {
+                    orderMatches = false;
+                }
+            }
+
+            if (miss != null && miss.Err > target && hit.Err <= target
+                && missMetric > 0d && hitMetric > 0d && hitMetric >= missMetric
+                && costClose && orderMatches && interpolationApplies)
+            {
+                double denominator = Math.Log(hit.Err) - Math.Log(miss.Err);
+                if (denominator < 0d)
+                {
+                    double weight = (Math.Log(target) - Math.Log(miss.Err)) / denominator;
+                    if (weight >= 0d && weight <= 1d)
+                    {
+                        cell.Cost = Math.Exp(Math.Log(missMetric)
+                            + (weight * (Math.Log(hitMetric) - Math.Log(missMetric))));
+                        if (!byMs)
+                        {
+                            cell.Ms = InterpolateTime(miss, hit, weight);
+                        }
+                        else
+                        {
+                            cell.Ms = cell.Cost;
+                        }
+
+                        cell.Status = "OK";
+                        cell.Interpolated = true;
+                        cell.Note = "log-log interpolation";
+                        cell.TieFactor = double.NaN;
+                        return cell;
+                    }
+                }
+            }
+
+            // The bracket is too coarse or its local order contradicts the method's
+            // declared order: use the first executed point that passed the target.
+            // Its cost is achievable; interpolation here would quote a price that
+            // cannot be paid on the fixed-step grid.
+            cell.Status = "OK";
+            cell.Cost = hitMetric;
+            cell.Ms = byMs ? hitMetric : hit.Ms;
+            cell.TieFactor = !double.IsNaN(gridStep) ? 1d + gridStep : 1d;
+            cell.Note = miss == null
+                ? "no coarser above-target point; first passing point"
+                : !interpolationApplies
+                    ? "fixed-step method without declared order; first passing point"
+                    : !costClose
+                        ? "interpolation rejected: cost ratio > 1.5; first passing point"
+                        : "interpolation rejected: local order " + localOrder.ToString("F2", Inv)
+                          + " vs expected " + hit.ExpectedOrder.ToString("F1", Inv) + "; first passing point";
+            cell.Unresolved = miss == null;
             return cell;
+        }
+
+        private static double MetricOf(StudyRow r, bool byMs)
+        {
+            return byMs ? r.Ms : r.Cost;
+        }
+
+        private static double RelativeGap(double a, double b)
+        {
+            double scale = Math.Max(Math.Max(Math.Abs(a), Math.Abs(b)), 1e-300d);
+            return Math.Abs(a - b) / scale;
+        }
+
+        private static double InterpolateTime(StudyRow miss, StudyRow hit, double weight)
+        {
+            if (miss.Ms > 0d && hit.Ms > 0d
+                && !double.IsNaN(miss.Ms) && !double.IsNaN(hit.Ms)
+                && !double.IsInfinity(miss.Ms) && !double.IsInfinity(hit.Ms))
+            {
+                return Math.Exp(Math.Log(miss.Ms) + (weight * (Math.Log(hit.Ms) - Math.Log(miss.Ms))));
+            }
+
+            return hit.Ms;
         }
 
         /// <summary>
@@ -160,7 +309,8 @@ namespace P1bStudy.Framework
             return list;
         }
 
-        public static StudyCell CellFor(StudyScenarioResult res, string key, StudyTarget target, StudyOptions o)
+        public static StudyCell CellFor(
+            StudyScenarioResult res, string key, StudyTarget target, StudyOptions o, bool byMs = false)
         {
             List<StudyRow> rows = RowsOf(res.Rows, key);
             var cell = new StudyCell();
@@ -175,11 +325,17 @@ namespace P1bStudy.Framework
             if (target.Value < o.FloorMargin * floor)
             {
                 cell.Status = "SKIP";
-                cell.Note = "below reference floor";
+                cell.Note = "below reference floor (" + (o.FloorMargin * floor).ToString("E2", Inv) + " m required)";
                 return cell;
             }
 
-            return CostAtTarget(rows, target.Value, res.Problem);
+            cell = CostAtTarget(rows, target.Value, res.Problem, byMs);
+            if (double.IsNaN(cell.TieFactor) && cell.Status == "OK")
+            {
+                cell.TieFactor = o.TieFactor;
+            }
+
+            return cell;
         }
 
         /// <summary>Per-variant findings that make a number untrustworthy. Every entry is a sentence a person can act on.</summary>
@@ -353,7 +509,8 @@ namespace P1bStudy.Framework
         /// did not decide the result).
         /// </summary>
         private static string VariantLabel(
-            StudyScenarioResult res, string key, StudyTarget target, StudyOptions o, double winnerCost)
+            StudyScenarioResult res, string key, StudyTarget target, StudyOptions o,
+            double winnerCost, bool byMs = false)
         {
             string baseKey = BaseKey(key);
             if (baseKey == key)
@@ -361,7 +518,7 @@ namespace P1bStudy.Framework
                 return key;
             }
 
-            StudyCell plain = CellFor(res, baseKey, target, o);
+            StudyCell plain = CellFor(res, baseKey, target, o, byMs);
             bool plainUsable = plain.Status == "OK" || plain.Status == "EDGE";
             if (!plainUsable || plain.Cost > winnerCost * Math.Max(1d, o.TieFactor))
             {
@@ -379,6 +536,7 @@ namespace P1bStudy.Framework
                 var keys = new List<string>();
                 var costs = new List<double>();
                 double best = double.PositiveInfinity;
+                StudyCell bestCell = null;
                 foreach (string key in Keys(res.Rows))
                 {
                     StudyCell c = CellFor(res, key, target, o);
@@ -404,12 +562,16 @@ namespace P1bStudy.Framework
                     if (c.Cost < best)
                     {
                         best = c.Cost;
+                        bestCell = c;
                     }
                 }
 
                 int ties = 0;
                 string detail = "";
-                double limit = best * Math.Max(1d, o.TieFactor);
+                double tieFactor = bestCell != null && !double.IsNaN(bestCell.TieFactor)
+                    ? bestCell.TieFactor
+                    : o.TieFactor;
+                double limit = best * Math.Max(1d, tieFactor);
                 for (int i = 0; i < keys.Count; i++)
                 {
                     if (costs[i] <= limit)
@@ -426,7 +588,7 @@ namespace P1bStudy.Framework
                 if (ties > 1)
                 {
                     notes.Add("TIE at " + target.Label + ": " + detail
-                        + " are within " + ((o.TieFactor - 1d) * 100d).ToString("F0", Inv)
+                        + " are within " + ((tieFactor - 1d) * 100d).ToString("F0", Inv)
                         + "%; do not read the ranking as resolved.");
                 }
             }
@@ -617,13 +779,44 @@ namespace P1bStudy.Framework
             return v.ToString("N0", Inv);
         }
 
+        private static string NumMs(double v)
+        {
+            if (double.IsNaN(v) || double.IsInfinity(v))
+            {
+                return "-";
+            }
+
+            if (v < 1d)
+            {
+                return v.ToString("F3", Inv);
+            }
+
+            if (v < 1000d)
+            {
+                return v.ToString("F1", Inv);
+            }
+
+            return v.ToString("N0", Inv);
+        }
+
         public static string CellText(StudyCell c)
         {
             switch (c.Status)
             {
                 case "OK":
-                    return Num(c.Cost) + (double.IsNaN(c.Ms) ? "" : " (" + c.Ms.ToString("F0", Inv) + " ms)");
+                    if (c.Metric == "ms")
+                    {
+                        return NumMs(c.Cost) + (c.Interpolated ? "*" : "") + " ms";
+                    }
+
+                    return Num(c.Cost) + (c.Interpolated ? "*" : "")
+                        + (double.IsNaN(c.Ms) ? "" : " (" + NumMs(c.Ms) + " ms)");
                 case "EDGE":
+                    if (c.Metric == "ms")
+                    {
+                        return "<=" + NumMs(c.Cost) + " ms EDGE";
+                    }
+
                     return "<=" + Num(c.Cost) + " EDGE";
                 case "NA":
                     return "n/a";
@@ -650,46 +843,52 @@ namespace P1bStudy.Framework
         /// cheaper, so naming the bracketed cell and calling it "unresolved" hid a
         /// real winner (the lunar flyby at 10 m). `unresolved` is kept in the
         /// signature for callers, but a cheaper EDGE cell is now a resolved answer.
-        /// OK cells within TieFactor of the best are appended with "~": on a flat
-        /// work-precision curve a 3 % difference is measurement noise, not a ranking.
+        /// OK cells within the winner's tie band are appended with "~": interpolated
+        /// cells use TieFactor (10%), unbracketed cells use one grid step.
         /// </summary>
-        public static string Winner(StudyScenarioResult res, StudyTarget target, StudyOptions o, out bool unresolved)
+        public static string Winner(
+            StudyScenarioResult res, StudyTarget target, StudyOptions o, out bool unresolved, bool byMs = false)
         {
             unresolved = false;
             var okKeys = new List<string>();
-            var okCosts = new List<double>();
+            var okCells = new List<StudyCell>();
             string bestEdgeKey = null;
+            StudyCell bestEdgeCell = null;
             double bestEdge = double.PositiveInfinity;
             foreach (string key in Keys(res.Rows))
             {
-                StudyCell c = CellFor(res, key, target, o);
+                StudyCell c = CellFor(res, key, target, o, byMs);
                 if (c.Status == "OK")
                 {
                     okKeys.Add(key);
-                    okCosts.Add(c.Cost);
+                    okCells.Add(c);
                 }
                 else if (c.Status == "EDGE" && c.Cost < bestEdge)
                 {
                     bestEdge = c.Cost;
                     bestEdgeKey = key;
+                    bestEdgeCell = c;
                 }
             }
 
             string bestKey = null;
+            StudyCell bestCell = null;
             double bestCost = double.PositiveInfinity;
             for (int i = 0; i < okKeys.Count; i++)
             {
-                if (okCosts[i] < bestCost)
+                if (okCells[i].Cost < bestCost)
                 {
-                    bestCost = okCosts[i];
+                    bestCost = okCells[i].Cost;
                     bestKey = okKeys[i];
+                    bestCell = okCells[i];
                 }
             }
 
             if (bestEdgeKey != null && bestEdge < bestCost)
             {
-                return VariantLabel(res, bestEdgeKey, target, o, bestEdge)
-                    + " (<= " + Num(bestEdge) + ") EDGE";
+                unresolved = bestEdgeCell != null && bestEdgeCell.Unresolved;
+                return VariantLabel(res, bestEdgeKey, target, o, bestEdge, byMs)
+                    + " (<= " + ValueText(bestEdge, byMs) + ") EDGE";
             }
 
             if (bestKey == null)
@@ -697,11 +896,38 @@ namespace P1bStudy.Framework
                 return "-";
             }
 
-            string text = VariantLabel(res, bestKey, target, o, bestCost) + " (" + Num(bestCost) + ")";
-            double tieLimit = bestCost * Math.Max(1d, o.TieFactor);
+            unresolved = bestCell != null && bestCell.Unresolved;
+            if (!unresolved && bestEdgeCell != null && bestEdgeCell.Unresolved
+                && bestEdge <= bestCost * 1.25d)
+            {
+                // The EDGE upper bound is not below the bracketed winner, but it is
+                // close enough that a coarser miss could still be cheaper: keep the
+                // winner provisional.
+                unresolved = true;
+            }
+
+            string text = VariantLabel(res, bestKey, target, o, bestCost, byMs)
+                + " (" + ValueText(bestCost, byMs, bestCell != null && bestCell.Interpolated) + ")";
+            double maxGridStep = 0d;
+            for (int i = 0; i < okCells.Count; i++)
+            {
+                if (!okCells[i].Interpolated && !double.IsNaN(okCells[i].GridStep))
+                {
+                    maxGridStep = Math.Max(maxGridStep, okCells[i].GridStep);
+                }
+            }
+
+            double tieFactor = bestCell != null && !double.IsNaN(bestCell.TieFactor)
+                ? bestCell.TieFactor
+                : o.TieFactor;
+            // An adaptive interpolated cost is not directly comparable with a fixed-step
+            // first-hit upper bound: widen the tie band to the worst first-hit grid.
+            tieFactor = Math.Max(tieFactor, 1d + maxGridStep);
+            double tieLimit = bestCost * Math.Max(1d, tieFactor);
             var tieBases = new List<string>();
             var tieKeys = new List<string>();
             var tieCosts = new List<double>();
+            var tieInterpolated = new List<bool>();
             for (int i = 0; i < okKeys.Count; i++)
             {
                 string baseKey = BaseKey(okKeys[i]);
@@ -710,19 +936,21 @@ namespace P1bStudy.Framework
                     continue;
                 }
 
-                if (okCosts[i] <= tieLimit)
+                if (okCells[i].Cost <= tieLimit)
                 {
                     int at = tieBases.IndexOf(baseKey);
                     if (at < 0)
                     {
                         tieBases.Add(baseKey);
                         tieKeys.Add(okKeys[i]);
-                        tieCosts.Add(okCosts[i]);
+                        tieCosts.Add(okCells[i].Cost);
+                        tieInterpolated.Add(okCells[i].Interpolated);
                     }
-                    else if (okCosts[i] < tieCosts[at])
+                    else if (okCells[i].Cost < tieCosts[at])
                     {
                         tieKeys[at] = okKeys[i];
-                        tieCosts[at] = okCosts[i];
+                        tieCosts[at] = okCells[i].Cost;
+                        tieInterpolated[at] = okCells[i].Interpolated;
                     }
                 }
             }
@@ -730,8 +958,8 @@ namespace P1bStudy.Framework
             int ties = 0;
             for (int i = 0; i < tieKeys.Count && ties < 3; i++)
             {
-                text += " ~ " + VariantLabel(res, tieKeys[i], target, o, tieCosts[i])
-                    + " (" + Num(tieCosts[i]) + ")";
+                text += " ~ " + VariantLabel(res, tieKeys[i], target, o, tieCosts[i], byMs)
+                    + " (" + ValueText(tieCosts[i], byMs, tieInterpolated[i]) + ")";
                 ties++;
             }
 
@@ -743,10 +971,15 @@ namespace P1bStudy.Framework
                     text += "s";
                 }
 
-                text += " within " + ((o.TieFactor - 1d) * 100d).ToString("F0", Inv) + "%]";
+                text += " within " + ((tieFactor - 1d) * 100d).ToString("F0", Inv) + "%]";
             }
 
             return text;
+        }
+
+        private static string ValueText(double value, bool byMs, bool interpolated = false)
+        {
+            return (byMs ? NumMs(value) + " ms" : Num(value)) + (interpolated ? "*" : "");
         }
 
         public static void Print(TextWriter w, StudyScenarioResult res, StudyOptions o)
@@ -791,7 +1024,11 @@ namespace P1bStudy.Framework
                 {
                     bool unresolved;
                     string win = Winner(res, t, o, out unresolved);
-                    w.WriteLine("  winner @ " + t.Label + ": " + win + (unresolved ? "  [UNRESOLVED: an EDGE cell may be cheaper]" : ""));
+                    w.WriteLine("  winner @ " + t.Label + " (RHS): " + win
+                        + (unresolved ? "  [UNRESOLVED: no coarser bracket]" : ""));
+                    string winMs = Winner(res, t, o, out unresolved, true);
+                    w.WriteLine("  winner @ " + t.Label + " (ms):  " + winMs
+                        + (unresolved ? "  [UNRESOLVED: no coarser bracket]" : ""));
                 }
             }
 
@@ -855,14 +1092,20 @@ namespace P1bStudy.Framework
             var sb = new StringBuilder();
             sb.AppendLine("# Integrator comparison");
             sb.AppendLine();
-            sb.AppendLine("Cost = RHS-equivalent calls of the cheapest actually executed run whose measured error is at or below the target (no interpolation, never extrapolated).");
-            sb.AppendLine("`EDGE` = even the cheapest tested point was already below the target (cost is an upper bound, not a result). `~` marks methods within " + ((o.TieFactor - 1d) * 100d).ToString("F0", Inv) + "% of the winner: that ranking is not resolved. `not reached` = the finest run (or the RHS budget) stayed above the target; the parenthesised value is the best error it did reach. `below round-off floor` = the target is at or below the run's own double-precision accumulation noise, so it is not ranked. `n/a` = method not valid for this problem. Scenarios whose reference is not certified are listed in the detail but excluded from the summary.");
+            sb.AppendLine("Cost = RHS-equivalent calls, log-log interpolated between the nearest cheaper above-target run and the first bracketing below-target run; never extrapolated. `*` marks interpolated cells; no star means the first actually executed point that passed the target (used when the bracket is wider than 1.5x in cost or its local order misses the declared order by more than 30%). `ms` is the wall-clock time interpolated on the same bracket; sub-millisecond values are timing noise, use RHS for the deterministic ranking.");
+            sb.AppendLine("`EDGE` = even the cheapest tested point was already below the target (cost is an upper bound). A cap-limited EDGE is exact; a non-cap EDGE is marked **unresolved**. `~` marks methods within " + ((o.TieFactor - 1d) * 100d).ToString("F0", Inv) + "% of the winner (interpolated cells) or one grid step (unbracketed cells): that ranking is not resolved. `not reached` = the finest run (or the RHS budget) stayed above the target. `below round-off floor` = the target is at or below the run's own accumulation noise. `n/a` = method not valid for this problem. Scenarios whose reference is not certified are listed in the detail but excluded from the summary.");
+            sb.AppendLine("Reference-floor rule: a target below " + o.FloorMargin.ToString("G", Inv) + " x the scenario's reference floor is skipped.");
             sb.AppendLine("Build: " + (StudyCalibration.IsDebugBuild ? "**DEBUG - ms are not representative**" : "Release") + ". Per-run RHS budget: per scenario (see section headers).");
-            sb.AppendLine();
-            sb.AppendLine("## Who wins where");
-            sb.AppendLine();
-            if (results.Count > 0)
+            void WriteWinnerSummary(string title, bool byMs)
             {
+                sb.AppendLine();
+                sb.AppendLine("## " + title);
+                sb.AppendLine();
+                if (results.Count == 0)
+                {
+                    return;
+                }
+
                 List<string> summary = o.SummaryLabels();
                 sb.Append("| scenario |");
                 foreach (string label in summary)
@@ -889,7 +1132,7 @@ namespace P1bStudy.Framework
                     foreach (StudyTarget t in o.Targets(res.Problem))
                     {
                         bool unresolved;
-                        string win = Winner(res, t, o, out unresolved);
+                        string win = Winner(res, t, o, out unresolved, byMs);
                         sb.Append(' ').Append(win).Append(unresolved ? " **unresolved**" : "").Append(" |");
                     }
 
@@ -912,6 +1155,9 @@ namespace P1bStudy.Framework
                         + string.Join(", ", uncertified) + ".");
                 }
             }
+
+            WriteWinnerSummary("Who wins where - RHS-equivalent calls", false);
+            WriteWinnerSummary("Who wins where - wall-clock ms", true);
 
             foreach (StudyScenarioResult res in results)
             {

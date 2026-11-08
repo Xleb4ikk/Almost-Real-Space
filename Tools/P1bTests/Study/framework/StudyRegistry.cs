@@ -215,7 +215,15 @@ namespace P1bStudy.Framework
                 new Yoshida6Integrator(false),
                 new Yoshida6Integrator(true),
                 new KeplerSplitIntegrator(),
-                new LeapfrogIntegrator()
+                new LeapfrogIntegrator(),
+
+                // Advanced methods ported from the standalone AdvancedIntegrators prototype.
+                new Rkn1210Integrator(),
+                new Ias15Integrator(),
+                new Srkn14AIntegrator(),
+                new KeplerSplit14AIntegrator(),
+                new GaussJacksonIntegrator(),
+                new EnckeIntegrator()
                 // , new YourNewIntegrator()
             };
         }

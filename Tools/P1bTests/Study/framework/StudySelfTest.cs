@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 
@@ -16,7 +16,8 @@ namespace P1bStudy.Framework
     /// whose exact solution is known. Run these first: if one fails, no sweep result can be trusted.
     /// What they pin: tableau consistency, observed order of every fixed-step method, the exact
     /// RHS-call formula of every method (so cost-accounting bugs cannot creep back in), the
-    /// Kepler propagator, the budget guard, stop/breakpoint merging and a full sweep smoke run.
+    /// Kepler propagator, the budget guard, stop/breakpoint merging, the advanced ports
+    /// (RKN12(10), IAS15, SRKN14A, WH-BM14A, GJ8, Encke-IAS15) and a full sweep smoke run.
     /// </summary>
     internal static class StudySelfTest
     {
@@ -39,6 +40,7 @@ namespace P1bStudy.Framework
             AbortReasonChecks(checks);
             RoundoffFloorChecks(checks);
             CapLabelChecks(checks);
+            AdvancedIntegratorChecks(checks);
             SweepSmoke(checks);
             PlateauSweepChecks(checks);
             return checks;
@@ -144,6 +146,11 @@ namespace P1bStudy.Framework
             double worst = 0d;
             for (int k = 0; k < p.CheckpointTimes.Length; k++)
             {
+                if (run.Samples[k] == null)
+                {
+                    return double.NaN;
+                }
+
                 double e = p.Error(run.Samples[k], p.CheckpointRef[k]);
                 if (double.IsNaN(e))
                 {
@@ -674,6 +681,587 @@ namespace P1bStudy.Framework
                 "redundant: " + sameWin + "; load-bearing: " + neededWin);
         }
 
+        // ---------------------------------------------------------------------------
+        // Advanced methods ported from the standalone AdvancedIntegrators prototype
+        // ---------------------------------------------------------------------------
+
+        private static void AdvancedIntegratorChecks(List<StudyCheck> list)
+        {
+            StudyProblem p = MakeKeplerProblem(8, 2d);
+            StudyContext ctx;
+
+            StudyRun rkn = RunDirect(new Rkn1210Integrator(), p, 1e-11d, double.PositiveInfinity, out ctx);
+            double rknErr = MaxErr(p, rkn);
+            long rknAttempts = rkn.Steps + rkn.Rejected;
+            Add(list, "RKN12(10) error at rtol 1e-11", rknErr < 1e-8d,
+                "err=" + E(rknErr) + " steps=" + rkn.Steps.ToString(Inv) + " rej=" + rkn.Rejected.ToString(Inv));
+            Add(list, "RKN12(10) calls = 1 + 16*(accepted+rejected) + accepted",
+                ctx.Calls == 1L + (16L * rknAttempts) + rkn.Steps,
+                "calls=" + ctx.Calls.ToString(Inv) + " accepted=" + rkn.Steps.ToString(Inv)
+                + " rejected=" + rkn.Rejected.ToString(Inv));
+
+            StudyRun ias = RunDirect(new Ias15Integrator(), p, 1e-10d, double.PositiveInfinity, out ctx);
+            double iasErr = MaxErr(p, ias);
+            Add(list, "IAS15 error at rtol 1e-10", iasErr < 1e-7d,
+                "err=" + E(iasErr) + " steps=" + ias.Steps.ToString(Inv) + " rej=" + ias.Rejected.ToString(Inv));
+            Add(list, "IAS15 calls are 1 + 7*iterations per attempt",
+                ctx.Calls >= 8L * (ias.Steps + ias.Rejected)
+                && ctx.Calls <= 85L * (ias.Steps + ias.Rejected),
+                "calls=" + ctx.Calls.ToString(Inv) + " accepted=" + ias.Steps.ToString(Inv)
+                + " rejected=" + ias.Rejected.ToString(Inv));
+
+            StudyRun iasLoose = RunDirect(new Ias15Integrator(), p, 1e-6d, double.PositiveInfinity, out ctx);
+            double iasLooseErr = MaxErr(p, iasLoose);
+            Add(list, "IAS15 error decreases with rtol (1e-6 -> 1e-10)",
+                iasLooseErr > iasErr && iasErr < 1e-9d,
+                "err(1e-6)=" + E(iasLooseErr) + " err(1e-10)=" + E(iasErr)
+                + " steps=" + iasLoose.Steps.ToString(Inv) + " -> " + ias.Steps.ToString(Inv));
+
+            StudyRun srkn = RunDirect(new Srkn14AIntegrator(), p, Period / 64d, double.PositiveInfinity, out ctx);
+            double srknErr = MaxErr(p, srkn);
+            Add(list, "SRKN14A error at h = P/64", srknErr < 1e-7d, "err=" + E(srknErr));
+            Add(list, "SRKN14A calls = 14*steps", ctx.Calls == 14L * srkn.Steps,
+                "calls=" + ctx.Calls.ToString(Inv) + " steps=" + srkn.Steps.ToString(Inv));
+
+            StudyRun bm = RunDirect(new KeplerSplit14AIntegrator(), p, Period / 4d, double.PositiveInfinity, out ctx);
+            double bmErr = MaxErr(p, bm);
+            Add(list, "WH-BM14A exact on pure Kepler (h = P/4)", bmErr < 1e-9d, "err=" + E(bmErr));
+            Add(list, "WH-BM14A calls = 14*steps, aux = 15*steps",
+                ctx.Calls == 14L * bm.Steps && ctx.AuxOps == 15L * bm.Steps,
+                "calls=" + ctx.Calls.ToString(Inv) + " aux=" + ctx.AuxOps.ToString(Inv)
+                + " steps=" + bm.Steps.ToString(Inv));
+
+            double[] srknA = AdvancedCoefficients.SrknA14A;
+            double[] srknB = AdvancedCoefficients.SrknB14A;
+            double sumA = 0d;
+            double sumB = 0d;
+            bool symmetricA = true;
+            for (int i = 0; i < srknA.Length; i++)
+            {
+                sumA += srknA[i];
+                sumB += srknB[i];
+                if (i < srknA.Length / 2
+                    && Math.Abs(srknA[i] - srknA[srknA.Length - 1 - i]) > 1e-15d)
+                {
+                    symmetricA = false;
+                }
+            }
+
+            Add(list, "SRKN14A/WH-BM14A weights: sum A = sum B = 1, A symmetric",
+                Math.Abs(sumA - 1d) < 1e-14d && Math.Abs(sumB - 1d) < 1e-14d && symmetricA,
+                "sumA=" + sumA.ToString("R", Inv) + " sumB=" + sumB.ToString("R", Inv)
+                + " symmetric=" + symmetricA.ToString());
+
+            StudyRun gj = RunDirect(new GaussJacksonIntegrator(), p, Period / 128d, double.PositiveInfinity, out ctx);
+            double gjErr = MaxErr(p, gj);
+            Add(list, "GJ8 error at h = P/128", gjErr < 1e-4d,
+                "err=" + E(gjErr) + " steps=" + gj.Steps.ToString(Inv) + " calls=" + ctx.Calls.ToString(Inv));
+
+            StudyProblem uneven = MakeUnevenKeplerProblem();
+            StudyRun gjUneven = RunDirect(new GaussJacksonIntegrator(), uneven, Period / 64d, double.PositiveInfinity, out ctx);
+            double gjUnevenErr = MaxErr(uneven, gjUneven);
+            Add(list, "GJ8 survives a change of h at checkpoint boundaries",
+                !gjUneven.Aborted && gjUnevenErr < 1e-4d,
+                "err=" + E(gjUnevenErr) + " steps=" + gjUneven.Steps.ToString(Inv)
+                + " calls=" + ctx.Calls.ToString(Inv) + " aborted=" + gjUneven.Aborted.ToString());
+
+            StudyRun encke = RunDirect(new EnckeIntegrator(), p, Period / 4d, double.PositiveInfinity, out ctx);
+            double enckeErr = MaxErr(p, encke);
+            Add(list, "Encke-IAS15 error at H = P/4", enckeErr < 1e-8d,
+                "err=" + E(enckeErr) + " calls=" + ctx.Calls.ToString(Inv) + " aux=" + ctx.AuxOps.ToString(Inv)
+                + " aborted=" + encke.Aborted.ToString() + " " + encke.Abort);
+            Add(list, "Encke-IAS15 prices one Kepler solve per RHS",
+                ctx.AuxOps == ctx.Calls,
+                "calls=" + ctx.Calls.ToString(Inv) + " aux=" + ctx.AuxOps.ToString(Inv));
+
+            StudyProblem perturbed = MakePerturbedKeplerProblem();
+            StudyRun reference = RunDirect(new Dop853AdaptiveIntegrator(), perturbed, 1e-13d,
+                double.PositiveInfinity, out StudyContext refCtx);
+            for (int k = 0; k < perturbed.CheckpointTimes.Length; k++)
+            {
+                if (reference.Samples[k] != null)
+                {
+                    perturbed.CheckpointRef[k] = (double[])reference.Samples[k].Clone();
+                }
+            }
+
+            StudyRun enckePerturbed = RunDirect(new EnckeIntegrator(), perturbed, Period / 4d,
+                double.PositiveInfinity, out ctx);
+            double enckePerturbedErr = MaxErr(perturbed, enckePerturbed);
+            Add(list, "Encke-IAS15 perturbed branch (DOP853 reference)",
+                !enckePerturbed.Aborted && enckePerturbedErr < 1e-6d && ctx.Calls > 200L,
+                "err=" + E(enckePerturbedErr) + " calls=" + ctx.Calls.ToString(Inv)
+                + " aux=" + ctx.AuxOps.ToString(Inv) + " ref_calls=" + refCtx.Calls.ToString(Inv)
+                + " aborted=" + enckePerturbed.Aborted.ToString());
+
+            StudyProblem drag = MakeDragKeplerProblem();
+            StudyRun dragReference = RunDirect(new Dop853AdaptiveIntegrator(), drag, 1e-13d,
+                double.PositiveInfinity, out StudyContext dragRefCtx);
+            for (int k = 0; k < drag.CheckpointTimes.Length; k++)
+            {
+                if (dragReference.Samples[k] != null)
+                {
+                    drag.CheckpointRef[k] = (double[])dragReference.Samples[k].Clone();
+                }
+            }
+
+            StudyRun enckeDrag = RunDirect(new EnckeIntegrator(), drag, Period / 4d,
+                double.PositiveInfinity, out ctx);
+            double enckeDragErr = MaxErr(drag, enckeDrag);
+            Add(list, "Encke-IAS15 velocity-dependent drag branch (DOP853 reference)",
+                !enckeDrag.Aborted && enckeDragErr < 1e-6d && ctx.Calls > 200L,
+                "err=" + E(enckeDragErr) + " calls=" + ctx.Calls.ToString(Inv)
+                + " aux=" + ctx.AuxOps.ToString(Inv) + " ref_calls=" + dragRefCtx.Calls.ToString(Inv)
+                + " aborted=" + enckeDrag.Aborted.ToString());
+
+            ObservedOrder(list, new Srkn14AIntegrator(), p, 6d, new[] { 8, 16, 32, 64 });
+            ObservedOrder(list, new GaussJacksonIntegrator(), p, 10d, new[] { 64, 128, 256, 512 });
+            Rkn1210FixedOrder(list);
+
+            StudyProblem harmonic = MakeHarmonicProblem();
+            StudyRun harmonicRun = RunDirect(new GaussJacksonIntegrator(), harmonic, Period / 32d,
+                double.PositiveInfinity, out ctx);
+            double harmonicErr = MaxErr(harmonic, harmonicRun);
+            Add(list, "GJ8 harmonic accuracy (non-Kepler)", !harmonicRun.Aborted && harmonicErr < 1e-8d,
+                "err=" + E(harmonicErr) + " steps=" + harmonicRun.Steps.ToString(Inv)
+                + " aborted=" + harmonicRun.Aborted.ToString());
+
+            StudyProblem whPerturbed = MakePerturbedKeplerProblem(1e-4d, 1);
+            StudyRun whReference = RunDirect(new Dop853AdaptiveIntegrator(), whPerturbed, 1e-13d,
+                double.PositiveInfinity, out StudyContext whRefCtx);
+            for (int k = 0; k < whPerturbed.CheckpointTimes.Length; k++)
+            {
+                if (whReference.Samples[k] != null)
+                {
+                    whPerturbed.CheckpointRef[k] = (double[])whReference.Samples[k].Clone();
+                }
+            }
+
+            ObservedOrder(list, new Srkn14AIntegrator(), whPerturbed, 6d, new[] { 16, 32, 64, 128 }, true);
+            StudyRun whRun = RunDirect(new KeplerSplit14AIntegrator(), whPerturbed, Period / 16d,
+                double.PositiveInfinity, out ctx);
+            double whRunErr = MaxErr(whPerturbed, whRun);
+            Add(list, "WH-BM14A perturbed accuracy (DOP853 reference)", !whRun.Aborted && whRunErr < 1e-8d,
+                "err=" + E(whRunErr) + " steps=" + whRun.Steps.ToString(Inv)
+                + " aborted=" + whRun.Aborted.ToString());
+            WhOrderCheck(list);
+
+            string why;
+            StudyProblem offset = MakeOffsetOscillator(1e12d, 1e5d, 1e3d, 1, 1d);
+            Add(list, "RKN12(10) rejects a velocity-dependent force",
+                !new Rkn1210Integrator().Supports(offset, out why), why);
+            Add(list, "SRKN14A rejects a velocity-dependent force",
+                !new Srkn14AIntegrator().Supports(offset, out why), why);
+            Add(list, "GJ8 rejects a velocity-dependent force",
+                !new GaussJacksonIntegrator().Supports(offset, out why), why);
+
+            StudyProblem noCentre = MakeKeplerProblem(1, 1d);
+            noCentre.CentralMu = 0d;
+            Add(list, "WH-BM14A needs a central body",
+                !new KeplerSplit14AIntegrator().Supports(noCentre, out why), why);
+            Add(list, "Encke-IAS15 needs a central body",
+                !new EnckeIntegrator().Supports(noCentre, out why), why);
+
+            StudyProblem firstOrder = new StudyProblem();
+            firstOrder.Dim = 3;
+            firstOrder.PosDim = 0;
+            Add(list, "IAS15 rejects a first-order problem",
+                !new Ias15Integrator().Supports(firstOrder, out why), why);
+
+            var edgeRes = new StudyScenarioResult();
+            edgeRes.Problem = MakeKeplerProblem(1, 1d);
+            edgeRes.Problem.Floor = 0d;
+            edgeRes.Problem.Certified = true;
+            var edgeOpt = new StudyOptions();
+            edgeOpt.RelTargets = new double[0];
+            edgeOpt.AbsTargets = new[] { 1e-3d };
+            StudyTarget edgeTarget = edgeOpt.Targets(edgeRes.Problem)[0];
+            edgeRes.Rows.Add(new StudyRow
+            {
+                Scenario = "t", Integrator = "PlainEdge", Status = "ok", Finite = true,
+                Err = 1e-6d, Cost = 100d, Ms = 1d, Control = 1d, Steps = 10L, CapLimited = 0L
+            });
+            bool unresolvedEdge;
+            string plainEdge = StudyReport.Winner(edgeRes, edgeTarget, edgeOpt, out unresolvedEdge);
+            Add(list, "non-cap EDGE winner is flagged unresolved",
+                unresolvedEdge && plainEdge.Contains("EDGE"), plainEdge);
+
+            edgeRes.Rows.Clear();
+            edgeRes.Rows.Add(new StudyRow
+            {
+                Scenario = "t", Integrator = "CapEdge", Status = "ok", Finite = true,
+                Err = 1e-6d, Cost = 100d, Ms = 1d, Control = 1d, Steps = 10L, CapLimited = 5L
+            });
+            bool unresolvedCap;
+            string capEdge = StudyReport.Winner(edgeRes, edgeTarget, edgeOpt, out unresolvedCap);
+            Add(list, "cap-limited EDGE winner is resolved",
+                !unresolvedCap && capEdge.Contains("EDGE"), capEdge);
+
+            edgeRes.Rows.Clear();
+            edgeRes.Rows.Add(new StudyRow
+            {
+                Scenario = "t", Integrator = "Bracketed", Status = "ok", Finite = true,
+                Err = 1e-2d, Cost = 900d, Ms = 9d, Control = 1d, Steps = 10L
+            });
+            edgeRes.Rows.Add(new StudyRow
+            {
+                Scenario = "t", Integrator = "Bracketed", Status = "ok", Finite = true,
+                Err = 1e-4d, Cost = 1100d, Ms = 11d, Control = 0.5d, Steps = 20L
+            });
+            edgeRes.Rows.Add(new StudyRow
+            {
+                Scenario = "t", Integrator = "CloseEdge", Status = "ok", Finite = true,
+                Err = 1e-6d, Cost = 1200d, Ms = 12d, Control = 1d, Steps = 10L
+            });
+            bool unresolvedClose;
+            string closeEdge = StudyReport.Winner(edgeRes, edgeTarget, edgeOpt, out unresolvedClose);
+            Add(list, "close non-cap EDGE competitor keeps the winner provisional",
+                unresolvedClose && !closeEdge.Contains("EDGE"), closeEdge);
+        }
+
+        private static StudyProblem MakeUnevenKeplerProblem()
+        {
+            StudyProblem p = MakeKeplerProblem(1, 2d);
+            double[] times = { 0.3d * Period, 0.55d * Period, 0.9d * Period, 1.3d * Period, 2d * Period };
+            p.CheckpointTimes = times;
+            p.CheckpointRef = new double[times.Length][];
+            for (int k = 0; k < times.Length; k++)
+            {
+                var reference = new double[7];
+                Analytic(Ecc, times[k], reference);
+                p.CheckpointRef[k] = reference;
+            }
+
+            return p;
+        }
+
+        private static StudyProblem MakePerturbedKeplerProblem(double perturbation = 1e-6d, int checkpoints = 8)
+        {
+            var p = new StudyProblem();
+            p.Label = "selftest perturbed Kepler";
+            p.Dim = 7;
+            p.PosDim = 3;
+            p.ConservativeSecondOrder = true;
+            p.CentralMu = 1d;
+            p.T0 = 0d;
+            p.Y0 = new double[7];
+            Analytic(Ecc, 0d, p.Y0);
+            p.Rhs = delegate (double t, double[] y, double[] dy)
+            {
+                double r2 = (y[0] * y[0]) + (y[1] * y[1]) + (y[2] * y[2]);
+                double r3 = r2 * Math.Sqrt(r2);
+                dy[0] = y[3];
+                dy[1] = y[4];
+                dy[2] = y[5];
+                dy[3] = (-y[0] / r3) + perturbation;
+                dy[4] = -y[1] / r3;
+                dy[5] = -y[2] / r3;
+                dy[6] = 0d;
+            };
+            p.CheckpointTimes = new double[checkpoints];
+            p.CheckpointRef = new double[checkpoints][];
+            for (int k = 0; k < checkpoints; k++)
+            {
+                p.CheckpointTimes[k] = 2d * Period * (k + 1) / checkpoints;
+                p.CheckpointRef[k] = new double[7];
+            }
+
+            p.Floor = 1e-12d;
+            p.Certified = true;
+            p.CharTime = Period;
+            p.ScaleLength = 1d;
+            return p;
+        }
+
+        private static StudyProblem MakeDragKeplerProblem()
+        {
+            const int checkpoints = 8;
+            var p = new StudyProblem();
+            p.Label = "selftest drag Kepler";
+            p.Dim = 7;
+            p.PosDim = 3;
+            p.ConservativeSecondOrder = false;
+            p.CentralMu = 1d;
+            p.T0 = 0d;
+            p.Y0 = new double[7];
+            Analytic(Ecc, 0d, p.Y0);
+            p.Rhs = delegate (double t, double[] y, double[] dy)
+            {
+                double r2 = (y[0] * y[0]) + (y[1] * y[1]) + (y[2] * y[2]);
+                double r3 = r2 * Math.Sqrt(r2);
+                dy[0] = y[3];
+                dy[1] = y[4];
+                dy[2] = y[5];
+                dy[3] = -y[0] / r3 - (0.01d * y[3]);
+                dy[4] = -y[1] / r3 - (0.01d * y[4]);
+                dy[5] = -y[2] / r3 - (0.01d * y[5]);
+                dy[6] = 0d;
+            };
+            p.CheckpointTimes = new double[checkpoints];
+            p.CheckpointRef = new double[checkpoints][];
+            for (int k = 0; k < checkpoints; k++)
+            {
+                p.CheckpointTimes[k] = 2d * Period * (k + 1) / checkpoints;
+                p.CheckpointRef[k] = new double[7];
+            }
+
+            p.Floor = 1e-12d;
+            p.Certified = true;
+            p.CharTime = Period;
+            p.ScaleLength = 1d;
+            return p;
+        }
+
+        private static StudyProblem MakeHarmonicProblem()
+        {
+            var p = new StudyProblem();
+            p.Label = "selftest harmonic 3D";
+            p.Dim = 6;
+            p.PosDim = 3;
+            p.ConservativeSecondOrder = true;
+            p.CentralMu = 0d;
+            p.T0 = 0d;
+            p.Y0 = new[] { 1d, 0d, 0d, 0d, 1d, 0d };
+            p.Rhs = delegate (double t, double[] y, double[] dy)
+            {
+                dy[0] = y[3];
+                dy[1] = y[4];
+                dy[2] = y[5];
+                dy[3] = -y[0];
+                dy[4] = -y[1];
+                dy[5] = -y[2];
+            };
+            p.CheckpointTimes = new[] { Period };
+            p.CheckpointRef = new[]
+            {
+                new[]
+                {
+                    Math.Cos(Period), Math.Sin(Period), 0d,
+                    -Math.Sin(Period), Math.Cos(Period), 0d
+                }
+            };
+            p.Floor = 1e-13d;
+            p.Certified = true;
+            p.CharTime = Period;
+            p.ScaleLength = 1d;
+            return p;
+        }
+
+        private static void Rkn1210FixedOrder(List<StudyCheck> list)
+        {
+            StudyProblem p = MakeKeplerProblem(1, 2d);
+            int[] ns = { 4, 8, 16 };
+            var errors = new double[ns.Length];
+            for (int i = 0; i < ns.Length; i++)
+            {
+                double h = Period / ns[i];
+                var cfg = new StudyConfig();
+                cfg.Rtol = 1e-13d;
+                cfg.Atol = 0d;
+                cfg.Label = "fixed h";
+                var ctx = new StudyContext(p, long.MaxValue / 4L);
+                var stepper = new Rkn1210Stepper(p, cfg, ctx);
+                double[] y = (double[])p.Y0.Clone();
+                double[] yNew = new double[p.Dim];
+                double t = p.T0;
+                stepper.Begin(t, y);
+                int steps = (int)Math.Round((p.EndTime - p.T0) / h);
+                for (int s = 0; s < steps; s++)
+                {
+                    stepper.TryStep(t, h, y, yNew);
+                    stepper.Accept(t + h, yNew);
+                    Array.Copy(yNew, y, y.Length);
+                    t += h;
+                }
+
+                errors[i] = p.Error(y, p.CheckpointRef[0]);
+            }
+
+            var slopes = new List<double>();
+            for (int i = 0; i + 1 < ns.Length; i++)
+            {
+                if (errors[i] > 1e-14d && errors[i + 1] > 1e-14d
+                    && errors[i] < 0.1d && errors[i + 1] < errors[i])
+                {
+                    slopes.Add(Math.Log(errors[i] / errors[i + 1]) / Math.Log(2d));
+                }
+            }
+
+            bool decreasing = true;
+            for (int i = 0; i + 1 < errors.Length; i++)
+            {
+                decreasing &= errors[i + 1] < errors[i];
+            }
+
+            // The leading error term cancels on this symmetric orbit, so a pairwise
+            // slope jumps between 10.5 and 14.5. The slope over the whole tested range
+            // is the stable estimate of the method's order.
+            double overall = Math.Log(errors[0] / errors[errors.Length - 1])
+                / Math.Log((double)ns[ns.Length - 1] / ns[0]);
+            bool ok = decreasing && slopes.Count >= 1 && overall > 11.0d && overall < 13.5d;
+            string allErrors = "";
+            for (int i = 0; i < errors.Length; i++)
+            {
+                allErrors += (i == 0 ? "" : ", ") + ns[i].ToString(Inv) + ":" + E(errors[i]);
+            }
+
+            string pairSlopes = "";
+            for (int i = 0; i < slopes.Count; i++)
+            {
+                pairSlopes += (i == 0 ? "" : ", ") + slopes[i].ToString("F2", Inv);
+            }
+
+            Add(list, "RKN12(10) observed fixed-step order", ok,
+                "expected 12, overall " + overall.ToString("F2", Inv)
+                + " (pairwise " + pairSlopes + "); errors " + allErrors);
+        }
+
+        private static void WhOrderCheck(List<StudyCheck> list)
+        {
+            StudyProblem p = MakePerturbedKeplerProblem(1e-2d, 1);
+            int[] ns = { 8, 16, 32, 64, 128 };
+            var states = new double[ns.Length][];
+            for (int i = 0; i < ns.Length; i++)
+            {
+                StudyContext ctx;
+                StudyRun run = RunDirect(new KeplerSplit14AIntegrator(), p, Period / ns[i],
+                    double.PositiveInfinity, out ctx);
+                states[i] = run.Final;
+            }
+
+            // Self-convergence: difference between h and h/2 is independent of the
+            // reference and its floor. Points below 1e-11 are dominated by round-off.
+            var pairNs = new List<int>();
+            var pairErrors = new List<double>();
+            string detail = "";
+            for (int i = 0; i + 1 < ns.Length; i++)
+            {
+                double difference = p.Error(states[i], states[i + 1]);
+                detail += (i == 0 ? "" : ", ") + ns[i].ToString(Inv) + "/" +
+                    ns[i + 1].ToString(Inv) + ":" + E(difference);
+                if (difference > 1e-12d && difference < 0.1d)
+                {
+                    pairNs.Add(ns[i]);
+                    pairErrors.Add(difference);
+                }
+            }
+
+            double overall = LeastSquaresOrder(pairNs.ToArray(), pairErrors.ToArray());
+            bool ok = pairErrors.Count >= 2 && !double.IsNaN(overall)
+                && overall > 5.0d && overall < 7.0d;
+            Add(list, "WH-BM14A self-converged order", ok,
+                "expected 6, overall " + overall.ToString("F2", Inv) + "; " + detail);
+        }
+
+        private static double LeastSquaresOrder(int[] ns, double[] errors)
+        {
+            double sumX = 0d;
+            double sumY = 0d;
+            int count = 0;
+            for (int i = 0; i < errors.Length; i++)
+            {
+                if (errors[i] > 1e-14d && errors[i] < 0.1d)
+                {
+                    sumX += Math.Log(ns[i]);
+                    sumY += Math.Log(errors[i]);
+                    count++;
+                }
+            }
+
+            if (count < 3)
+            {
+                return double.NaN;
+            }
+
+            double meanX = sumX / count;
+            double meanY = sumY / count;
+            double covariance = 0d;
+            double variance = 0d;
+            for (int i = 0; i < errors.Length; i++)
+            {
+                if (errors[i] > 1e-14d && errors[i] < 0.1d)
+                {
+                    double dx = Math.Log(ns[i]) - meanX;
+                    covariance += dx * (Math.Log(errors[i]) - meanY);
+                    variance += dx * dx;
+                }
+            }
+
+            return variance > 0d ? -covariance / variance : double.NaN;
+        }
+
+        private static void ObservedOrder(
+            List<StudyCheck> list, IStudyIntegrator integ, StudyProblem p, double expected, int[] ns,
+            bool useOverall = false)
+        {
+            if (ns.Length < 2)
+            {
+                return;
+            }
+
+            var errors = new double[ns.Length];
+            for (int i = 0; i < ns.Length; i++)
+            {
+                StudyContext ctx;
+                StudyRun run = RunDirect(integ, p, Period / ns[i], double.PositiveInfinity, out ctx);
+                errors[i] = MaxErr(p, run);
+            }
+
+            var slopes = new List<double>();
+            for (int i = 0; i + 1 < ns.Length; i++)
+            {
+                if (errors[i] > 1e-12d && errors[i + 1] > 1e-12d
+                    && errors[i] < 0.1d && errors[i + 1] < errors[i])
+                {
+                    slopes.Add(Math.Log(errors[i] / errors[i + 1]) / Math.Log(2d));
+                }
+            }
+
+            bool decreasing = true;
+            for (int i = 0; i + 1 < errors.Length; i++)
+            {
+                decreasing &= errors[i + 1] < errors[i];
+            }
+
+            double overallSlope = decreasing ? LeastSquaresOrder(ns, errors) : double.NaN;
+
+            bool ok;
+            double reportedOrder;
+            string orderName;
+            if (useOverall)
+            {
+                ok = !double.IsNaN(overallSlope)
+                    && overallSlope > expected - 1.0d && overallSlope < expected + 1.0d;
+                reportedOrder = overallSlope;
+                orderName = "overall";
+            }
+            else
+            {
+                ok = slopes.Count >= 2;
+                reportedOrder = ok ? Median(slopes) : double.NaN;
+                ok = ok && reportedOrder > expected - 0.7d && reportedOrder < expected + 1.0d;
+                orderName = "median";
+            }
+
+            string allErrors = "";
+            for (int i = 0; i < errors.Length; i++)
+            {
+                allErrors += (i == 0 ? "" : ", ") + ns[i].ToString(Inv) + ":" + E(errors[i]);
+            }
+
+            string pairSlopes = "";
+            for (int i = 0; i < slopes.Count; i++)
+            {
+                pairSlopes += (i == 0 ? "" : ", ") + slopes[i].ToString("F2", Inv);
+            }
+
+            Add(list, integ.Name + " observed order", ok,
+                "expected " + expected.ToString("F0", Inv) + ", " + orderName + " "
+                + reportedOrder.ToString("F2", Inv)
+                + " (overall " + overallSlope.ToString("F2", Inv)
+                + ", pairs " + pairSlopes + "); errors " + allErrors);
+        }
+
         /// <summary>Always fails its error test; used to exercise the step-floor abort.</summary>
         private sealed class NeverConvergesIntegrator : AdaptiveIntegrator
         {
@@ -745,7 +1333,11 @@ namespace P1bStudy.Framework
                 }
 
                 StudyCell cell = StudyReport.CellFor(res, key, loose, o);
-                if (cell.Status != "OK" && cell.Status != "EDGE" && cell.Status != "NA")
+                // FLOOR also reached the loose target numerically; it only means the
+                // error is below the run's accumulation noise, so the report refuses
+                // to rank that point. Reachability is still satisfied.
+                if (cell.Status != "OK" && cell.Status != "EDGE"
+                    && cell.Status != "NA" && cell.Status != "FLOOR")
                 {
                     missing.Add(key + "=" + cell.Status);
                 }
@@ -773,23 +1365,58 @@ namespace P1bStudy.Framework
             StudyCell below = StudyReport.CostAtTarget(rows, 1e-6d, p);
             StudyCell above = StudyReport.CostAtTarget(rows, 1d, p);
             bool actual = mid.Status == "OK" && Math.Abs(mid.Cost - 400d) < 1e-9d
+                && !mid.Interpolated
                 && below.Status == "NR" && above.Status == "EDGE" && Math.Abs(above.Cost - 100d) < 1e-9d;
-            Add(list, "cost is the cheapest executed point at or below target, never extrapolated", actual,
+            Add(list, "wide 4x bracket falls back to the first passing point", actual,
                 "mid=" + mid.Status + " " + mid.Cost.ToString("F3", Inv) + ", below=" + below.Status
                 + ", above=" + above.Status + " " + above.Cost.ToString("F3", Inv));
+
+            var closeRows = new List<StudyRow>
+            {
+                new StudyRow { Scenario = "t", Integrator = "a", Kind = StudyKind.Adaptive, Status = "ok", Finite = true, Err = 1e-2d, Cost = 100d, Ms = 1d, Control = 1d },
+                new StudyRow { Scenario = "t", Integrator = "b", Kind = StudyKind.Adaptive, Status = "ok", Finite = true, Err = 1e-4d, Cost = 140d, Ms = 1.4d, Control = 0.5d }
+            };
+            StudyCell closeMid = StudyReport.CostAtTarget(closeRows, 1e-3d, p);
+            double closeExpected = Math.Sqrt(100d * 140d);
+            bool closeActual = closeMid.Status == "OK" && closeMid.Interpolated
+                && Math.Abs(closeMid.Cost - closeExpected) < 1e-9d;
+            Add(list, "1.4x bracket is log-log interpolated", closeActual,
+                "cost=" + closeMid.Cost.ToString("F3", Inv) + " expected=" + closeExpected.ToString("F3", Inv)
+                + " interpolated=" + closeMid.Interpolated.ToString());
+
+            var fixedRows = new List<StudyRow>
+            {
+                new StudyRow
+                {
+                    Scenario = "t", Integrator = "a", Kind = StudyKind.Fixed, Status = "ok",
+                    Finite = true, Err = 1e-2d, Cost = 100d, Ms = 1d, Control = 1d,
+                    Steps = 10L, ExpectedOrder = 6d
+                },
+                new StudyRow
+                {
+                    Scenario = "t", Integrator = "b", Kind = StudyKind.Fixed, Status = "ok",
+                    Finite = true, Err = 1e-4d, Cost = 140d, Ms = 1.4d, Control = 0.6d,
+                    Steps = 20L, ExpectedOrder = 6d
+                }
+            };
+            StudyCell fixedMid = StudyReport.CostAtTarget(fixedRows, 1e-3d, p);
+            Add(list, "fixed-step local order uses the step-count ratio",
+                fixedMid.Interpolated,
+                "interpolated=" + fixedMid.Interpolated.ToString() + " cost="
+                + fixedMid.Cost.ToString("F3", Inv));
 
             // flat work-precision curves must be reported as ties, not as a ranking
             var tieRes = new StudyScenarioResult();
             tieRes.Problem = MakeKeplerProblem(1, 1d);
             tieRes.Problem.Floor = 0d;
             tieRes.Problem.Certified = true;
-            tieRes.Rows.Add(new StudyRow { Scenario = "t", Integrator = "A", Status = "ok", Finite = true, Err = 1e-2d, Cost = 100d });
-            tieRes.Rows.Add(new StudyRow { Scenario = "t", Integrator = "B", Status = "ok", Finite = true, Err = 1e-2d, Cost = 300d });
-            tieRes.Rows.Add(new StudyRow { Scenario = "t", Integrator = "B", Status = "ok", Finite = true, Err = 1e-4d, Cost = 400d });
-            tieRes.Rows.Add(new StudyRow { Scenario = "t", Integrator = "C", Status = "ok", Finite = true, Err = 1e-2d, Cost = 320d });
-            tieRes.Rows.Add(new StudyRow { Scenario = "t", Integrator = "C", Status = "ok", Finite = true, Err = 1e-4d, Cost = 430d });
-            tieRes.Rows.Add(new StudyRow { Scenario = "t", Integrator = "D", Status = "ok", Finite = true, Err = 1e-2d, Cost = 350d });
-            tieRes.Rows.Add(new StudyRow { Scenario = "t", Integrator = "D", Status = "ok", Finite = true, Err = 1e-4d, Cost = 800d });
+            tieRes.Rows.Add(new StudyRow { Scenario = "t", Kind = StudyKind.Adaptive, Integrator = "A", Status = "ok", Finite = true, Err = 1e-2d, Cost = 100d });
+            tieRes.Rows.Add(new StudyRow { Scenario = "t", Kind = StudyKind.Adaptive, Integrator = "B", Status = "ok", Finite = true, Err = 1e-2d, Cost = 300d });
+            tieRes.Rows.Add(new StudyRow { Scenario = "t", Kind = StudyKind.Adaptive, Integrator = "B", Status = "ok", Finite = true, Err = 1e-4d, Cost = 400d });
+            tieRes.Rows.Add(new StudyRow { Scenario = "t", Kind = StudyKind.Adaptive, Integrator = "C", Status = "ok", Finite = true, Err = 1e-2d, Cost = 320d });
+            tieRes.Rows.Add(new StudyRow { Scenario = "t", Kind = StudyKind.Adaptive, Integrator = "C", Status = "ok", Finite = true, Err = 1e-4d, Cost = 430d });
+            tieRes.Rows.Add(new StudyRow { Scenario = "t", Kind = StudyKind.Adaptive, Integrator = "D", Status = "ok", Finite = true, Err = 1e-2d, Cost = 350d });
+            tieRes.Rows.Add(new StudyRow { Scenario = "t", Kind = StudyKind.Adaptive, Integrator = "D", Status = "ok", Finite = true, Err = 1e-4d, Cost = 800d });
             var tieOpt = new StudyOptions();
             tieOpt.RelTargets = new double[0];
             tieOpt.AbsTargets = new[] { 1e-3d };
@@ -803,8 +1430,8 @@ namespace P1bStudy.Framework
                 tieDetail += key + ":" + c.Status + " " + c.Cost.ToString("F0", Inv) + "; ";
             }
 
-            Add(list, "winner marks a 10% cost tie", tieWin.Contains("B (400)") && tieWin.Contains("~ C (430)")
-                && !tieWin.Contains("D (800)"), tieWin + " | " + tieDetail);
+            Add(list, "winner marks a 10% cost tie", tieWin.Contains("B (") && tieWin.Contains("~ C (")
+                && !tieWin.Contains("D ("), tieWin + " | " + tieDetail);
         }
 
         /// <summary>

@@ -39,16 +39,19 @@ namespace P1bStudy.Framework
         public double[] AdaptiveMaxSteps = new[] { double.PositiveInfinity };
 
         /// <summary>A target below FloorMargin * reference floor is not ranked (it would measure reference noise).</summary>
-        public double FloorMargin = 3d;
+        public double FloorMargin = 10d;
 
-        /// <summary>Costs within this factor of the best are reported as a tie, not as a resolved ranking.</summary>
+        /// <summary>Largest rtol the coarse sweep may try. Weaker tolerances can close EDGE cells.</summary>
+        public double AdaptiveControlMax = 3d;
+
+        /// <summary>Tie band for interpolated cells (1.10 = 10%). Unbracketed cells use one grid step instead.</summary>
         public double TieFactor = 1.10d;
 
         /// <summary>
-        /// After the coarse sweep, bisect the control bracket around each target when the
-        /// cost gap between the cheapest hit and the next cheaper miss is still wider than
-        /// the tie threshold. Without this the reported cost is quantised by the sweep grid
-        /// (1.5x in h, sqrt(10)x in rtol), which is coarser than the tie band.
+        /// After the coarse sweep, bisect the control bracket around each target. Reporting
+        /// interpolates the cost inside the bracket, but extra executed points still make the
+        /// interpolation local and expose non-monotonic branches; without them the bracket can
+        /// span 1.5x in h or sqrt(10)x in rtol.
         /// </summary>
         public bool RefineTies = true;
 
@@ -286,7 +289,9 @@ namespace P1bStudy.Framework
                 coarse = p.MaxControl;
             }
 
-            double controlMax = integ.Kind == StudyKind.Fixed ? Math.Max(coarse, p.Duration) : 0.3d;
+            double controlMax = integ.Kind == StudyKind.Fixed
+                ? Math.Max(coarse, p.Duration)
+                : o.AdaptiveControlMax;
             if (p.MaxControl > 0d && controlMax > p.MaxControl)
             {
                 controlMax = p.MaxControl;
