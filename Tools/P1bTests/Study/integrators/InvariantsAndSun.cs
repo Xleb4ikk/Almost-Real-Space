@@ -40,7 +40,9 @@ internal static partial class P1bTests
                 };
                 StudyShipMatrixSetTargets(c);
                 StudyShipMatrixRefs refs = StudyShipMatrixBuildReferences(c);
-                problems.Add(StudyBridgeShipProblem(c, refs));
+                StudyProblem sp = StudyBridgeShipProblem(c, refs);
+                StudyBridgeAttachSecondReference(sp);
+                problems.Add(sp);
             }
         }
 
@@ -49,15 +51,18 @@ internal static partial class P1bTests
         var options = new StudyOptions();
         options.RelTargets = new double[0];
         options.AbsTargets = new[] { 100d, 10d, 1d, 0.1d, 0.01d };
-        options.KeplerWeight = 1d;
         options.AdaptiveMaxSteps = new[] { double.PositiveInfinity, 600d };
-        options.RhsCostMultiplier = 3d;
         options.MaxCostRhs = 2000000L;
         options.MaxPoints = 50;
+        if (StudyBridgeEnv("P1B_NO_REFINE") == "1")
+        {
+            options.RefineTies = false;
+        }
 
         string filter = StudyBridgeEnv("P1B_SCENARIOS");
         List<IStudyIntegrator> integrators = StudyRegistry.Select(StudyBridgeEnv("P1B_INTEGRATORS"));
         var results = new List<StudyScenarioResult>();
+        var endResults = new List<StudyScenarioResult>();
         foreach (StudyProblem p in problems)
         {
             if (!StudyBridgeScenarioSelected(p.Label, filter))
@@ -70,16 +75,27 @@ internal static partial class P1bTests
             StudyScenarioResult r = StudySweepRunner.Run(p, integrators, options, Console.Out);
             results.Add(r);
             StudyReport.Print(Console.Out, r, options);
+            StudyScenarioResult rEnd = StudySweepRunner.RunEndOnly(p, integrators, options, null);
+            endResults.Add(rEnd);
+            Console.WriteLine("  end-only: " + rEnd.Rows.Count.ToString(CultureInfo.InvariantCulture) + " points");
         }
 
         string dir = StudyShipMatrixResultsDir();
         Directory.CreateDirectory(dir);
         StudyReport.WriteCsv(Path.Combine(dir, "Test558_J2AndSun.csv"), results);
-        StudyReport.WriteMarkdown(Path.Combine(dir, "Test558_J2AndSun.md"), results, options);
-        StudyModeSummary.Write(Path.Combine(dir, "Test558_ModeSummary.md"), "Test558", results, options);
+        StudyReport.WriteCsv(Path.Combine(dir, "Test558_J2AndSun_endonly.csv"), endResults);
+        StudyReport.WriteCellsCsv(Path.Combine(dir, "Test558_J2AndSun_cells.csv"),
+            results, endResults, options);
+        if (!StudyBridgeSkipSummaries())
+        {
+            StudyReport.WriteMarkdown(Path.Combine(dir, "Test558_J2AndSun.md"), results, options);
+            StudyModeSummary.Write(Path.Combine(dir, "Test558_ModeSummary.md"), "Test558", results, options);
+        }
 
         var drift = new StringBuilder();
-        drift.AppendLine("scenario,integrator,variant,config,err_m,energy_drift,angular_drift");
+        drift.AppendLine("scenario,integrator,variant,config,err_m,"
+            + "energy_drift_from_initial,angular_drift_from_initial,"
+            + "energy_drift_vs_ref,energy_drift_ref,angular_drift_vs_ref,angular_drift_ref");
         foreach (StudyScenarioResult r in results)
         {
             if (r.Problem.EnergyFn == null && r.Problem.AngularMomentumFn == null)
@@ -99,8 +115,12 @@ internal static partial class P1bTests
                     .Append(row.Variant.Replace(',', ';')).Append(',')
                     .Append(row.Config.Replace(',', ';')).Append(',')
                     .Append(row.Err.ToString("R", CultureInfo.InvariantCulture)).Append(',')
-                    .Append(row.EnergyDrift.ToString("R", CultureInfo.InvariantCulture)).Append(',')
-                    .Append(row.AngularDrift.ToString("R", CultureInfo.InvariantCulture)).AppendLine();
+                    .Append(row.EnergyDriftFromInitial.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                    .Append(row.AngularDriftFromInitial.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                    .Append(row.EnergyDriftVsRef.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                    .Append(row.EnergyDriftRef.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                    .Append(row.AngularDriftVsRef.ToString("R", CultureInfo.InvariantCulture)).Append(',')
+                    .Append(row.AngularDriftRef.ToString("R", CultureInfo.InvariantCulture)).AppendLine();
             }
         }
 
@@ -168,6 +188,12 @@ internal static partial class P1bTests
             Floor = 1e-9d,
             Certified = true,
             ReferenceNote = "dimensionless circular Kepler; error reported in meters",
+            ReferenceMethod = "analytic circular Kepler",
+            ReferenceFamily = "Analytic",
+            ReferenceIndependent = true,
+            ReferenceResolution = "ratio_ok",
+            ReferenceCrossDiffM = 1e-9d,
+            ReferenceSecondMethod = "closed-form circle",
             AltitudeKm = double.NaN,
             SpeedMps = 29780d,
             Eccentricity = 0d

@@ -52,6 +52,8 @@ internal static partial class P1bTests
         /// reference for ranking; it is not an 8th-order certificate.
         /// </summary>
         public bool Resolved;
+        /// <summary>True when the AllowUnratioedResolution exemption actually fired.</summary>
+        public bool UnratioedResolutionUsed;
         public string Detail;
     }
 

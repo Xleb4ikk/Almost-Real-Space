@@ -63,8 +63,12 @@ internal static partial class P1bTests
         StudyShipMatrixCase far = FarFlightCase(solar);
         StudyShipMatrixSetTargets(far);
         StudyShipMatrixRefs farRefs = StudyShipMatrixBuildReferences(far);
-        problems.Add(StudyBridgeShipProblem(far, farRefs));
-        problems.Add(NormalizedFromCase(far, farRefs));
+        StudyProblem farProblem = StudyBridgeShipProblem(far, farRefs);
+        StudyBridgeAttachSecondReference(farProblem);
+        problems.Add(farProblem);
+        StudyProblem farNormalized = NormalizedFromCase(far, farRefs);
+        StudyBridgeAttachSecondReference(farNormalized);
+        problems.Add(farNormalized);
 
         // Planet flybys: periapsis in planet radii, low/high v_inf, solar tide.
         foreach (double factor in new[] { 1.1d, 3d, 10d })
@@ -81,17 +85,43 @@ internal static partial class P1bTests
             problems.Add(SmallBodyFlybyProblem(vinf));
         }
 
+        if (StudyBridgeEnv("P1B_SEAM_PROBE") == "1")
+        {
+            string probeDir = StudyShipMatrixResultsDir();
+            Directory.CreateDirectory(probeDir);
+            string probeCsv = Path.Combine(probeDir, "Test559_SeamProbe.csv");
+            StudyProblem moon = problems.Find(x => x.Label == "Moon orbit 100 km x1000 orbits");
+            StudyProblem flyby = problems.Find(x => x.Label == "Moon flyby vinf 1000 alt 100");
+            if (moon != null)
+            {
+                StudySeamProbe.Run(Console.Out, probeCsv, moon.Label, solar, moon,
+                    1e-11d, 0.001d, 1570.0337936401368d);
+            }
+
+            if (flyby != null)
+            {
+                StudySeamProbe.Run(Console.Out, probeCsv, flyby.Label, solar, flyby,
+                    1e-11d, 0.0001d, 2292.3905988282368d);
+            }
+
+            Console.WriteLine("seam probe: " + probeCsv);
+            return 0;
+        }
+
         var options = new StudyOptions();
         options.RelTargets = new double[0];
         options.AbsTargets = new[] { 100d, 10d, 1d, 0.1d, 0.01d, 0.001d };
-        options.KeplerWeight = 1d;
         options.AdaptiveMaxSteps = new[] { double.PositiveInfinity, 600d };
         // Extend the coarse end downward: a target that is already met at rtol=10
         // or at one fixed step is floor-limited, not an equivalent method.
         options.AdaptiveControlMax = 10d;
-        options.RhsCostMultiplier = 1d;
         options.MaxCostRhs = 2000000L;
         options.MaxPoints = 50;
+        if (StudyBridgeEnv("P1B_NO_REFINE") == "1")
+        {
+            options.RefineTies = false;
+        }
+
         string maxPointsEnv = StudyBridgeEnv("P1B_MAX_POINTS");
         if (maxPointsEnv != null)
         {
@@ -108,6 +138,7 @@ internal static partial class P1bTests
         string filter = StudyBridgeEnv("P1B_SCENARIOS");
         List<IStudyIntegrator> integrators = StudyRegistry.Select(StudyBridgeEnv("P1B_INTEGRATORS"));
         var results = new List<StudyScenarioResult>();
+        var endResults = new List<StudyScenarioResult>();
         foreach (StudyProblem p in problems)
         {
             if (!StudyBridgeScenarioSelected(p.Label, filter))
@@ -120,23 +151,32 @@ internal static partial class P1bTests
             StudyScenarioResult r = StudySweepRunner.Run(p, integrators, options, Console.Out);
             results.Add(r);
             StudyReport.Print(Console.Out, r, options);
+            StudyScenarioResult rEnd = StudySweepRunner.RunEndOnly(p, integrators, options, null);
+            endResults.Add(rEnd);
+            Console.WriteLine("  end-only: " + rEnd.Rows.Count.ToString(CultureInfo.InvariantCulture) + " points");
         }
 
         string dir = StudyShipMatrixResultsDir();
         Directory.CreateDirectory(dir);
         string csvPath = Path.Combine(dir, "Test559_PureGravity" + suffix + ".csv");
         StudyReport.WriteCsv(csvPath, results);
-        StudyReport.WriteMarkdown(Path.Combine(dir, "Test559_PureGravity" + suffix + ".md"), results, options);
-        string tieCsv = Path.Combine(dir, "Test559_PureGravity_tie115.csv");
-        string[] driftCsv =
+        StudyReport.WriteCsv(Path.Combine(dir, "Test559_PureGravity" + suffix + "_endonly.csv"), endResults);
+        StudyReport.WriteCellsCsv(Path.Combine(dir, "Test559_PureGravity" + suffix + "_cells.csv"),
+            results, endResults, options);
+        if (!StudyBridgeSkipSummaries())
         {
-            Path.Combine(dir, "Test552_FrameworkShipSweep.csv"),
-            Path.Combine(dir, "Test558_J2AndSun.csv"),
-            csvPath
-        };
-        StudyRegimeAnalysis.WriteAll(
-            csvPath, dir, "Test559" + suffix, options,
-            suffix.Length == 0 ? tieCsv : null, driftCsv);
+            StudyReport.WriteMarkdown(Path.Combine(dir, "Test559_PureGravity" + suffix + ".md"), results, options);
+            string tieCsv = Path.Combine(dir, "Test559_PureGravity_tie115.csv");
+            string[] driftCsv =
+            {
+                Path.Combine(dir, "Test552_FrameworkShipSweep.csv"),
+                Path.Combine(dir, "Test558_J2AndSun.csv"),
+                csvPath
+            };
+            StudyRegimeAnalysis.WriteAll(
+                csvPath, dir, "Test559" + suffix, options,
+                suffix.Length == 0 ? tieCsv : null, driftCsv);
+        }
 
         int failed = 0;
         int uncertified = 0;
@@ -341,6 +381,14 @@ internal static partial class P1bTests
             Certified = double.IsFinite(refs.ReferenceFloor),
             MaxControl = 1d,
             ReferenceNote = refs.LocalKind + "; normalized state, error converted to meters",
+            ReferenceMethod = "fixed DOP853, local frame (normalized)",
+            ReferenceFamily = "Runge-Kutta",
+            ReferenceIndependent = false,
+            ReferenceResolution = refs.LocalUnratioedResolutionUsed
+                ? "unratioed_exemption_used"
+                : (refs.LocalValid && refs.LocalAsymptotic ? "ratio_ok" : "not_certified"),
+            ReferenceCrossDiffM = double.NaN,
+            ReferenceSecondMethod = "",
             SpeedMps = c.V0.Magnitude,
             Eccentricity = c.Eccentricity
         };
@@ -462,6 +510,10 @@ internal static partial class P1bTests
         {
             AttachIndependentIas15Reference(p);
         }
+        else
+        {
+            StudyBridgeAttachSecondReference(p);
+        }
 
         return p;
     }
@@ -510,10 +562,16 @@ internal static partial class P1bTests
             return;
         }
 
+        double crossFixed = 0d;
+        for (int k = 0; k < p.CheckpointTimes.Length; k++)
+        {
+            crossFixed = Math.Max(crossFixed, p.Error(fine.Samples[k], p.CheckpointRef[k]));
+        }
+
         double roundoff = 16d * 2.220446049250313e-16
             * Math.Max(p.ScaleLength, 1d) * Math.Sqrt(Math.Max(fine.Steps, 1L));
         double previous = double.IsNaN(p.Floor) ? 0d : p.Floor;
-        double floor = Math.Max(previous, Math.Max(diff, roundoff));
+        double floor = Math.Max(previous, Math.Max(Math.Max(diff, crossFixed), roundoff));
         p.CheckpointRef = new double[p.CheckpointTimes.Length][];
         for (int k = 0; k < p.CheckpointTimes.Length; k++)
         {
@@ -523,6 +581,11 @@ internal static partial class P1bTests
         p.Floor = floor;
         p.Certified = true;
         p.ReferenceFamily = "Gauss-Radau";
+        p.ReferenceMethod = "IAS15 rtol 1e-13";
+        p.ReferenceIndependent = true;
+        p.ReferenceResolution = "ratio_ok";
+        p.ReferenceCrossDiffM = crossFixed;
+        p.ReferenceSecondMethod = "fixed DOP853, local frame";
         p.ReferenceNote = "independent IAS15 rtol 1e-13 vs 1e-12: max checkpoint difference "
             + diff.ToString("E3", CultureInfo.InvariantCulture)
             + " m; floor " + floor.ToString("E3", CultureInfo.InvariantCulture)

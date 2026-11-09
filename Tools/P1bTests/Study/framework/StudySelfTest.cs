@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 
 namespace P1bStudy.Framework
 {
@@ -35,6 +36,8 @@ namespace P1bStudy.Framework
             StudyProblem p = MakeKeplerProblem(8, 2d);
             FixedOrderChecks(checks, p);
             CallCountChecks(checks, p);
+            CalibrationChecks(checks, p);
+            DriftVsReferenceChecks(checks);
             AdaptiveChecks(checks, p);
             AdaptiveScaleChecks(checks);
             AbortReasonChecks(checks);
@@ -527,6 +530,89 @@ namespace P1bStudy.Framework
                 "calls=" + ctx.Calls.ToString(Inv) + " accepted=" + run.Steps.ToString(Inv) + " rejected=" + run.Rejected.ToString(Inv));
         }
 
+        private static void CalibrationChecks(List<StudyCheck> list, StudyProblem p)
+        {
+            StudyKeplerWeight w = StudyCalibration.Measure(p);
+            Add(list, "Kepler weight measurement: 11 blocks of 1e5 calls, finite w/CV",
+                w.Blocks == StudyCalibration.KeplerBlocks
+                && w.CallsPerBlock == StudyCalibration.KeplerCallsPerBlock
+                && double.IsFinite(w.Weight) && w.Weight > 0d
+                && (double.IsNaN(w.Cv) || double.IsFinite(w.Cv)),
+                "w=" + E(w.Weight) + " cv=" + E(w.Cv) + " blocks=" + w.Blocks
+                + " calls/block=" + w.CallsPerBlock + " dt=" + E(w.DtSeconds));
+
+            string overrideDir = Environment.GetEnvironmentVariable("P1B_RESULTS_DIR");
+            string actual = global::P1bTests.StudyResultsDirForCheck();
+            bool pathOk;
+            if (string.IsNullOrWhiteSpace(overrideDir))
+            {
+                pathOk = actual.Replace('\\', '/').EndsWith(
+                    "/Tools/P1bTests/Study/integrators/results", StringComparison.OrdinalIgnoreCase);
+            }
+            else
+            {
+                pathOk = string.Equals(Path.GetFullPath(actual), Path.GetFullPath(overrideDir),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
+            Add(list, "results directory: default path unchanged, P1B_RESULTS_DIR overrides it",
+                pathOk, "dir=" + actual + " env=" + (overrideDir ?? "<unset>"));
+        }
+
+        private static void DriftVsReferenceChecks(List<StudyCheck> list)
+        {
+            StudyProblem p = MakeKeplerProblem(8, 2d);
+            p.EnergyFn = delegate (double[] s)
+            {
+                double r2 = (s[0] * s[0]) + (s[1] * s[1]) + (s[2] * s[2]);
+                double v2 = (s[3] * s[3]) + (s[4] * s[4]) + (s[5] * s[5]);
+                return (0.5d * v2) - (1d / Math.Sqrt(r2));
+            };
+            p.AngularMomentumFn = delegate (double[] s)
+            {
+                double lx = (s[1] * s[5]) - (s[2] * s[4]);
+                double ly = (s[2] * s[3]) - (s[0] * s[5]);
+                double lz = (s[0] * s[4]) - (s[1] * s[3]);
+                return Math.Sqrt((lx * lx) + (ly * ly) + (lz * lz));
+            };
+
+            StudyContext ctx;
+            StudyRun run = RunDirect(new Dop853AdaptiveIntegrator(), p, 1e-12d,
+                double.PositiveInfinity, out ctx);
+            var row = new StudyRow();
+            StudySweepRunner.EvaluateError(p, run, row);
+            double e0 = p.EnergyFn(p.Y0);
+            double relRef = row.EnergyDriftRef / Math.Max(Math.Abs(e0), 1e-300d);
+            Add(list, "drift: analytic reference has no own energy drift (<=1e-13 relative)",
+                double.IsFinite(relRef) && relRef <= 1e-13d,
+                "E_ref_drift=" + E(row.EnergyDriftRef) + " rel=" + E(relRef));
+            Add(list, "drift: method-vs-reference energy is finite and reported separately",
+                double.IsFinite(row.EnergyDriftVsRef) && double.IsFinite(row.EnergyDriftFromInitial),
+                "vs_ref=" + E(row.EnergyDriftVsRef) + " from_initial=" + E(row.EnergyDriftFromInitial));
+
+            // T6: two references of different families against the analytic solution.
+            StudyRun dop = RunDirect(new Dop853AdaptiveIntegrator(), p, 1e-13d,
+                double.PositiveInfinity, out ctx);
+            StudyRun ias = RunDirect(new Ias15Integrator(), p, 1e-13d,
+                double.PositiveInfinity, out ctx);
+            double errDop = 0d;
+            double errIas = 0d;
+            double cross = 0d;
+            for (int k = 0; k < p.CheckpointTimes.Length; k++)
+            {
+                errDop = Math.Max(errDop, p.Error(dop.Samples[k], p.CheckpointRef[k]));
+                errIas = Math.Max(errIas, p.Error(ias.Samples[k], p.CheckpointRef[k]));
+                cross = Math.Max(cross, p.Error(dop.Samples[k], ias.Samples[k]));
+            }
+
+            double floor = Math.Max(p.Floor, Math.Max(cross,
+                16d * 2.220446049250313e-16 * Math.Max(p.ScaleLength, 1d)
+                * Math.Sqrt(Math.Max(Math.Max(dop.Steps, ias.Steps), 1L))));
+            Add(list, "two references vs analytic: both differences <= floor",
+                errDop <= floor && errIas <= floor && double.IsFinite(cross),
+                "dop853=" + E(errDop) + " ias15=" + E(errIas) + " cross=" + E(cross) + " floor=" + E(floor));
+        }
+
         private static void AdaptiveChecks(List<StudyCheck> list, StudyProblem p)
         {
             foreach (IStudyIntegrator m in new IStudyIntegrator[] { new Dopri5AdaptiveIntegrator(), new Dop853AdaptiveIntegrator() })
@@ -642,6 +728,7 @@ namespace P1bStudy.Framework
             o.AbsTargets = new[] { 1d };
             o.MaxCostRhs = 100000L;
             o.TimingReps = 1;
+            o.KeplerWeight = 1d;
             StudyScenarioResult res = StudySweepRunner.Run(
                 boxed, new List<IStudyIntegrator> { new Rk4Integrator() }, o, null);
             bool noted = false;
@@ -747,11 +834,22 @@ namespace P1bStudy.Framework
             needed.Rows.Add(new StudyRow { Scenario = "t", Integrator = "B", Status = "ok", Finite = true, Err = 0.5d, Cost = 5000d });
             string neededWin = StudyReport.Winner(needed, target, o, out unused);
 
-            bool ok = sameWin.IndexOf("[cap=", StringComparison.Ordinal) < 0
-                && sameWin.IndexOf("~ A", StringComparison.Ordinal) < 0
+            // Cap variants must stay separate names in the tie list, even when the
+            // uncapped run is the nominal winner.
+            var variants = new StudyScenarioResult();
+            variants.Problem = p;
+            variants.Rows.Add(new StudyRow { Scenario = "t", Integrator = "A", Kind = StudyKind.Adaptive, Status = "ok", Finite = true, Err = 10d, Cost = 50d, Control = 1d });
+            variants.Rows.Add(new StudyRow { Scenario = "t", Integrator = "A", Kind = StudyKind.Adaptive, Status = "ok", Finite = true, Err = 1e-4d, Cost = 100d, Control = 1d });
+            variants.Rows.Add(new StudyRow { Scenario = "t", Integrator = "A", Variant = "cap=600 s", Kind = StudyKind.Adaptive, Status = "ok", Finite = true, Err = 10d, Cost = 50d, Control = 1d });
+            variants.Rows.Add(new StudyRow { Scenario = "t", Integrator = "A", Variant = "cap=600 s", Kind = StudyKind.Adaptive, Status = "ok", Finite = true, Err = 1e-5d, Cost = 105d, Control = 1d });
+            variants.Rows.Add(new StudyRow { Scenario = "t", Integrator = "B", Kind = StudyKind.Adaptive, Status = "ok", Finite = true, Err = 1e-4d, Cost = 200d, Control = 1d });
+            string variantsWin = StudyReport.Winner(variants, target, o, out unused);
+
+            bool ok = variantsWin.IndexOf("A [cap=600 s]", StringComparison.Ordinal) >= 0
+                && variantsWin.IndexOf("A (", StringComparison.Ordinal) >= 0
                 && neededWin.IndexOf("A [cap=600 s]", StringComparison.Ordinal) >= 0;
-            Add(list, "a cap that does not decide the result is not named as a separate method", ok,
-                "redundant: " + sameWin + "; load-bearing: " + neededWin);
+            Add(list, "every cap variant is a separate method name in the tie list", ok,
+                "variants: " + variantsWin + "; load-bearing: " + neededWin);
         }
 
         // ---------------------------------------------------------------------------
@@ -1379,6 +1477,7 @@ namespace P1bStudy.Framework
             o.RelTargets = new[] { 1e-5d, 1e-8d };
             o.MaxCostRhs = 600000L;
             o.AdaptiveMaxSteps = new[] { double.PositiveInfinity, 0.2d };
+            o.KeplerWeight = 1d;
             StudyScenarioResult res = StudySweepRunner.Run(p, StudyRegistry.All(), o, null);
             int errors = 0;
             foreach (StudyRow r in res.Rows)
@@ -1450,11 +1549,13 @@ namespace P1bStudy.Framework
                 new StudyRow { Scenario = "t", Integrator = "b", Kind = StudyKind.Adaptive, Status = "ok", Finite = true, Err = 1e-4d, Cost = 140d, Ms = 1.4d, Control = 0.5d }
             };
             StudyCell closeMid = StudyReport.CostAtTarget(closeRows, 1e-3d, p);
-            double closeExpected = Math.Sqrt(100d * 140d);
-            bool closeActual = closeMid.Status == "OK" && closeMid.Interpolated
-                && Math.Abs(closeMid.Cost - closeExpected) < 1e-9d;
-            Add(list, "1.4x bracket is log-log interpolated", closeActual,
-                "cost=" + closeMid.Cost.ToString("F3", Inv) + " expected=" + closeExpected.ToString("F3", Inv)
+            bool closeActual = closeMid.Status == "OK" && !closeMid.Interpolated
+                && Math.Abs(closeMid.Cost - 140d) < 1e-9d
+                && Math.Abs(closeMid.BracketRatio - 1.4d) < 1e-9d && closeMid.BracketWide;
+            Add(list, "1.4x bracket reports the cheapest executed hit, no interpolation", closeActual,
+                "cost=" + closeMid.Cost.ToString("F3", Inv)
+                + " ratio=" + closeMid.BracketRatio.ToString("F3", Inv)
+                + " wide=" + closeMid.BracketWide.ToString()
                 + " interpolated=" + closeMid.Interpolated.ToString());
 
             var fixedRows = new List<StudyRow>
@@ -1463,20 +1564,23 @@ namespace P1bStudy.Framework
                 {
                     Scenario = "t", Integrator = "a", Kind = StudyKind.Fixed, Status = "ok",
                     Finite = true, Err = 1e-2d, Cost = 100d, Ms = 1d, Control = 1d,
-                    Steps = 10L, ExpectedOrder = 6d
+                    Steps = 10L, ExpectedOrder = 6d, Nck = 10, CheckpointMode = "all"
                 },
                 new StudyRow
                 {
                     Scenario = "t", Integrator = "b", Kind = StudyKind.Fixed, Status = "ok",
                     Finite = true, Err = 1e-4d, Cost = 140d, Ms = 1.4d, Control = 0.6d,
-                    Steps = 20L, ExpectedOrder = 6d
+                    Steps = 20L, ExpectedOrder = 6d, Nck = 10, CheckpointMode = "all"
                 }
             };
             StudyCell fixedMid = StudyReport.CostAtTarget(fixedRows, 1e-3d, p);
-            Add(list, "fixed-step local order uses the step-count ratio",
-                fixedMid.Interpolated,
-                "interpolated=" + fixedMid.Interpolated.ToString() + " cost="
-                + fixedMid.Cost.ToString("F3", Inv));
+            Add(list, "all-checkpoint fixed-step grid is quantized; no invented intermediate",
+                !fixedMid.Interpolated && fixedMid.BracketQuantized
+                && Math.Abs(fixedMid.Cost - 140d) < 1e-9d,
+                "interpolated=" + fixedMid.Interpolated.ToString()
+                + " quantized=" + fixedMid.BracketQuantized.ToString()
+                + " ratio=" + fixedMid.BracketRatio.ToString("F3", Inv)
+                + " cost=" + fixedMid.Cost.ToString("F3", Inv));
 
             // flat work-precision curves must be reported as ties, not as a ranking
             var tieRes = new StudyScenarioResult();
@@ -1548,6 +1652,7 @@ namespace P1bStudy.Framework
             o.MaxCostRhs = 1000000L;
             o.AdaptiveMaxSteps = new[] { double.PositiveInfinity };
             o.TimingReps = 1;
+            o.KeplerWeight = 1d;
 
             var integ = new PlateauIntegrator(kind);
             StudyScenarioResult res = StudySweepRunner.Run(p, new List<IStudyIntegrator> { integ }, o, null);

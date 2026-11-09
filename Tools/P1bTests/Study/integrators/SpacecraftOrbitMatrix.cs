@@ -138,6 +138,7 @@ internal static partial class P1bTests
         public bool LocalValid;
         public bool LocalAsymptotic;
         public bool LocalResolved;
+        public bool LocalUnratioedResolutionUsed;
         public double LocalRatio;
         public double LocalOrder;
         public double LocalFinestDelta;
@@ -419,8 +420,22 @@ internal static partial class P1bTests
             .Replace('\n', ' ');
     }
 
+    internal static string StudyResultsDirForCheck()
+    {
+        return StudyShipMatrixResultsDir();
+    }
+
     private static string StudyShipMatrixResultsDir()
     {
+        // Isolated output for filtered checks: never let a scenario filter overwrite
+        // the canonical full-run CSVs/MDs. Unset by default, so the normal path is
+        // byte-for-byte the same directory as before.
+        string overrideDir = Environment.GetEnvironmentVariable("P1B_RESULTS_DIR");
+        if (!string.IsNullOrEmpty(overrideDir))
+        {
+            return Path.GetFullPath(overrideDir);
+        }
+
         string dir = AppContext.BaseDirectory;
         while (!string.IsNullOrEmpty(dir))
         {
@@ -908,6 +923,7 @@ internal static partial class P1bTests
             cert.Valid = true;
             cert.Asymptotic = false;
             cert.Resolved = true;
+            cert.UnratioedResolutionUsed = true;
             cert.PositionError = cert.FinestDelta;
             cert.VelocityError = 0d;
             cert.Detail += " RESOLVED WITHOUT RATIO: finest d="
@@ -921,6 +937,7 @@ internal static partial class P1bTests
         refs.LocalValid = cert.Valid;
         refs.LocalAsymptotic = cert.Asymptotic;
         refs.LocalResolved = cert.Resolved;
+        refs.LocalUnratioedResolutionUsed = cert.UnratioedResolutionUsed;
         refs.LocalRatio = cert.Ratio;
         refs.LocalOrder = cert.Order;
         refs.LocalFinestDelta = cert.FinestDelta;

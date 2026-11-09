@@ -120,7 +120,10 @@ Assets/_Project/Screenshots.meta
 
 # Generated study/run artifacts (logs, stderr, partial exports) - not committed
 Tools/P1bTests/Study/**/results/**/*.log
+Tools/P1bTests/Study/**/results/**/*.log.console
 Tools/P1bTests/Study/**/results/**/*.csv
+Tools/P1bTests/Study/integrators/results_baseline/
+Tools/P1bTests/Study/integrators/results_checks/
 Tools/P1bTests/Study/**/*.err
 Tools/P1bTests/Study/**/*stdout.log
 Tools/P1bTests/Study/**/*stderr.log

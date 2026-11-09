@@ -248,8 +248,8 @@ namespace P1bStudy.Framework
                     CapLimited = (long)GetDouble(f, index, "cap_limited"),
                     Ms = GetDouble(f, index, "ms"),
                     Note = Get(f, index, "note"),
-                    EnergyDrift = GetDouble(f, index, "energy_drift"),
-                    AngularDrift = GetDouble(f, index, "angular_drift")
+                    EnergyDriftVsRef = GetDouble(f, index, "energy_drift_vs_ref"),
+                    AngularDriftVsRef = GetDouble(f, index, "angular_drift_vs_ref")
                 };
                 s.Rows.Add(row);
             }
@@ -412,7 +412,9 @@ namespace P1bStudy.Framework
                     continue;
                 }
 
-                string baseName = first.Integrator;
+                // A cap variant is a separate method in every summary: group by the full
+                // key (integrator + variant), never by the bare integrator name.
+                string baseName = first.Key;
                 if (s.KeplerExact && baseName.IndexOf("Encke", StringComparison.Ordinal) >= 0)
                 {
                     continue;
@@ -431,7 +433,7 @@ namespace P1bStudy.Framework
                 };
                 foreach (StudyRow r in s.Rows)
                 {
-                    if (r.Integrator == baseName && r.Status == "ok" && r.Finite
+                    if (r.Key == key && r.Status == "ok" && r.Finite
                         && r.Cost > 0d && r.Cost < p.CheapestCost)
                     {
                         p.CheapestCost = r.Cost;
@@ -1393,7 +1395,7 @@ namespace P1bStudy.Framework
                         {
                             if (!methods.Contains(r.Integrator))
                             {
-                                methods.Add(r.Integrator);
+                                methods.Add(r.Key);
                             }
                         }
 
@@ -1402,9 +1404,9 @@ namespace P1bStudy.Framework
                             StudyRow best = null;
                             foreach (StudyRow r in s.Rows)
                             {
-                                if (r.Integrator != method || r.Status != "ok" || !r.Finite
+                                if (r.Key != method || r.Status != "ok" || !r.Finite
                                     || r.Cost < 0.5d * budget || r.Cost > budget
-                                    || double.IsNaN(r.EnergyDrift))
+                                    || double.IsNaN(r.EnergyDriftVsRef))
                                 {
                                     continue;
                                 }
@@ -1423,8 +1425,8 @@ namespace P1bStudy.Framework
                                     Method = method,
                                     Cost = best.Cost,
                                     Err = best.Err,
-                                    Energy = best.EnergyDrift,
-                                    Angular = best.AngularDrift
+                                    Energy = best.EnergyDriftVsRef,
+                                    Angular = best.AngularDriftVsRef
                                 });
                             }
                         }

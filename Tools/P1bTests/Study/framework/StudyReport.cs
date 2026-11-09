@@ -9,17 +9,25 @@ namespace P1bStudy.Framework
     /// <summary>Cost (and time) needed to reach one error target, with an explicit status so a grid edge is never presented as a result.</summary>
     internal sealed class StudyCell
     {
-        /// <summary>OK = log-log interpolated cost at the target (or the cheapest hit when no valid bracket exists,
-        /// with Unresolved set); EDGE = even the cheapest (coarsest) run is below the target, so the cost is an
+        /// <summary>OK = price of the cheapest executed run whose error is at or below the target;
+        /// EDGE = even the cheapest (coarsest) run is below the target, so the cost is an
         /// upper bound (cap-limited EDGE is exact, other EDGE is unresolved); FLOOR = only runs whose error is
         /// within their own double-precision accumulation noise reach the target; NR = not reached; SKIP = target
         /// below the reference floor margin; NA = method not valid for this problem.</summary>
         public string Status = "NR";
         public double Cost = double.NaN;
         public double Ms = double.NaN;
+        public double Err = double.NaN;
+        public double CostHit = double.NaN;
+        public double ErrHit = double.NaN;
+        public double CostMiss = double.NaN;
+        public double ErrMiss = double.NaN;
+        public double BracketRatio = double.NaN;
+        public bool BracketWide;
+        public bool BracketQuantized;
         public string Note = "";
 
-        /// <summary>Cost was log-log interpolated between a bracketing miss and hit, not taken from one node.</summary>
+        /// <summary>Kept for format compatibility; the single price rule never interpolates.</summary>
         public bool Interpolated;
 
         /// <summary>An EDGE cell with no cap evidence, or a cell that could not be bracketed. The winner is provisional.</summary>
@@ -42,21 +50,20 @@ namespace P1bStudy.Framework
     {
         private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-        public static void FinalizeCosts(List<StudyRow> rows, double keplerWeight, double rhsMultiplier)
+        public static void FinalizeCosts(List<StudyRow> rows, double keplerWeight)
         {
             foreach (StudyRow r in rows)
             {
-                r.Cost = (r.Calls * rhsMultiplier) + (keplerWeight * r.Aux);
+                r.Cost = r.Calls + (keplerWeight * r.Aux);
             }
         }
 
         /// <summary>
-        /// Cost at the target, interpolated in log-log between the nearest cheaper above-target
-        /// run and the first bracketing below-target run. Interpolation removes the grid
-        /// quantisation (h x1.5, rtol x sqrt(10)) that made sub-grid differences look like ties.
+        /// Price at the target: the cheapest EXECUTED run whose error is at or below the
+        /// target. No interpolation and no extrapolation. The bracketing miss is reported
+        /// as a diagnostic (cost_miss / err_miss / bracket_ratio), never as the price.
         /// A run whose error is below the double-precision round-off floor of its own step count
-        /// is not evidence of accuracy (FLOOR). If no bracket exists, the upper bound of the
-        /// cheapest run is returned with Unresolved set; cap-limited EDGE cells are exact.
+        /// is not evidence of accuracy (FLOOR). Cap-limited EDGE cells are exact.
         /// byMs selects wall-clock ms instead of RHS-equivalent cost.
         /// </summary>
         public static StudyCell CostAtTarget(
@@ -86,7 +93,6 @@ namespace P1bStudy.Framework
             });
             StudyRow cheapest = pts[0];
             StudyRow hit = null;
-            StudyRow miss = null;
             StudyRow finest = cheapest;
             double floorAtCheapestBelow = double.NaN;
             for (int i = 0; i < pts.Count; i++)
@@ -114,11 +120,6 @@ namespace P1bStudy.Framework
                         break;
                     }
                 }
-                else
-                {
-                    // Last cheaper point above the target; it is the left end of the bracket.
-                    miss = r;
-                }
             }
 
             if (hit == null)
@@ -139,6 +140,46 @@ namespace P1bStudy.Framework
             cell.CapLimited = hit.CapLimited > 0L || hit.Variant.Length > 0;
             cell.Cost = MetricOf(hit, byMs);
             cell.Ms = byMs ? cell.Cost : hit.Ms;
+            cell.Err = hit.Err;
+
+            double hitMetric = MetricOf(hit, byMs);
+            cell.Cost = hitMetric;
+            cell.Ms = byMs ? hitMetric : hit.Ms;
+            cell.Err = hit.Err;
+            cell.CostHit = hitMetric;
+            cell.ErrHit = hit.Err;
+
+            // Nearest cheaper executed run that did NOT reach the target. It defines
+            // the bracket; the reported price is always the hit's real price.
+            StudyRow nearestMiss = null;
+            double missMetric = double.NegativeInfinity;
+            foreach (StudyRow r in pts)
+            {
+                double m = MetricOf(r, byMs);
+                if (r.Err > target && m > 0d && m < hitMetric && m > missMetric)
+                {
+                    missMetric = m;
+                    nearestMiss = r;
+                }
+            }
+
+            if (nearestMiss != null)
+            {
+                cell.CostMiss = missMetric;
+                cell.ErrMiss = nearestMiss.Err;
+                cell.BracketRatio = missMetric > 0d ? hitMetric / missMetric : double.NaN;
+                cell.BracketWide = cell.BracketRatio > 1.10d;
+                cell.BracketQuantized = IsQuantized(hit, nearestMiss);
+                cell.GridStep = RelativeGap(hit.Control, nearestMiss.Control);
+            }
+            else
+            {
+                cell.CostMiss = double.NaN;
+                cell.ErrMiss = double.NaN;
+                cell.BracketRatio = double.NaN;
+                cell.BracketWide = true;
+            }
+
             if (ReferenceEquals(hit, cheapest))
             {
                 cell.Status = "EDGE";
@@ -150,97 +191,35 @@ namespace P1bStudy.Framework
                 return cell;
             }
 
-            double hitMetric = MetricOf(hit, byMs);
-            double missMetric = miss != null ? MetricOf(miss, byMs) : double.NaN;
-            double gridStep = miss != null ? RelativeGap(hit.Control, miss.Control) : double.NaN;
-            cell.GridStep = gridStep;
-            bool costClose = miss != null && missMetric > 0d && hitMetric > 0d
-                && Math.Max(missMetric, hitMetric) <= 1.5001d * Math.Min(missMetric, hitMetric);
-            bool declaredOrder = !double.IsNaN(hit.ExpectedOrder) && hit.ExpectedOrder > 0d;
-            // Adaptive rtol is continuous. A fixed-step method with no declared order
-            // (Kepler-split, Encke) has no way to validate a local slope, and its cost
-            // grid is integral steps per interval: do not quote an unpayable price.
-            bool interpolationApplies = hit.Kind == StudyKind.Adaptive || declaredOrder;
-            double localOrder = double.NaN;
-            bool orderMatches = true;
-            if (miss != null && miss.Control > 0d && hit.Control > 0d
-                && Math.Abs(miss.Control - hit.Control) > 0d
-                && declaredOrder)
-            {
-                double stepRatio;
-                if (hit.Kind == StudyKind.Fixed && hit.Steps > 0L && miss.Steps > 0L)
-                {
-                    // Fixed-step h_eff = span/n with integer n: the nominal h is not
-                    // the step that was actually taken. The step count is.
-                    stepRatio = (double)Math.Max(hit.Steps, miss.Steps)
-                        / Math.Min(hit.Steps, miss.Steps);
-                }
-                else
-                {
-                    stepRatio = Math.Max(miss.Control, hit.Control)
-                        / Math.Min(miss.Control, hit.Control);
-                }
-
-                if (stepRatio > 1d)
-                {
-                    localOrder = Math.Log(miss.Err / hit.Err) / Math.Log(stepRatio);
-                    orderMatches = localOrder >= 0.7d * hit.ExpectedOrder
-                        && localOrder <= 1.3d * hit.ExpectedOrder;
-                }
-                else
-                {
-                    orderMatches = false;
-                }
-            }
-
-            if (miss != null && miss.Err > target && hit.Err <= target
-                && missMetric > 0d && hitMetric > 0d && hitMetric >= missMetric
-                && costClose && orderMatches && interpolationApplies)
-            {
-                double denominator = Math.Log(hit.Err) - Math.Log(miss.Err);
-                if (denominator < 0d)
-                {
-                    double weight = (Math.Log(target) - Math.Log(miss.Err)) / denominator;
-                    if (weight >= 0d && weight <= 1d)
-                    {
-                        cell.Cost = Math.Exp(Math.Log(missMetric)
-                            + (weight * (Math.Log(hitMetric) - Math.Log(missMetric))));
-                        if (!byMs)
-                        {
-                            cell.Ms = InterpolateTime(miss, hit, weight);
-                        }
-                        else
-                        {
-                            cell.Ms = cell.Cost;
-                        }
-
-                        cell.Status = "OK";
-                        cell.Interpolated = true;
-                        cell.Note = "log-log interpolation";
-                        cell.TieFactor = double.NaN;
-                        return cell;
-                    }
-                }
-            }
-
-            // The bracket is too coarse or its local order contradicts the method's
-            // declared order: use the first executed point that passed the target.
-            // Its cost is achievable; interpolation here would quote a price that
-            // cannot be paid on the fixed-step grid.
             cell.Status = "OK";
-            cell.Cost = hitMetric;
-            cell.Ms = byMs ? hitMetric : hit.Ms;
-            cell.TieFactor = !double.IsNaN(gridStep) ? 1d + gridStep : 1d;
-            cell.Note = miss == null
-                ? "no coarser above-target point; first passing point"
-                : !interpolationApplies
-                    ? "fixed-step method without declared order; first passing point"
-                    : !costClose
-                        ? "interpolation rejected: cost ratio > 1.5; first passing point"
-                        : "interpolation rejected: local order " + localOrder.ToString("F2", Inv)
-                          + " vs expected " + hit.ExpectedOrder.ToString("F1", Inv) + "; first passing point";
-            cell.Unresolved = miss == null;
+            cell.TieFactor = 1.10d;
+            cell.Note = nearestMiss == null
+                ? "no cheaper above-target run; first passing point"
+                : cell.BracketQuantized
+                    ? "bracket is quantized by the checkpoint step grid; first passing point"
+                    : cell.BracketWide
+                        ? "bracket wider than 1.10; first passing point"
+                        : "first passing point";
+            cell.Unresolved = nearestMiss == null;
             return cell;
+        }
+
+        /// <summary>
+        /// True when both ends of the bracket sit on the all-checkpoint fixed-step grid:
+        /// with equal intervals the step count is a multiple of nck, so no intermediate
+        /// run exists between (for example) 20 and 40 steps of WH-BM14A.
+        /// </summary>
+        private static bool IsQuantized(StudyRow hit, StudyRow miss)
+        {
+            if (hit == null || miss == null || hit.Kind != StudyKind.Fixed
+                || !string.Equals(hit.CheckpointMode, "all", StringComparison.Ordinal)
+                || hit.Nck <= 1 || hit.Steps <= 0L || miss.Steps <= 0L
+                || hit.Steps == miss.Steps)
+            {
+                return false;
+            }
+
+            return hit.Steps % hit.Nck == 0L && miss.Steps % hit.Nck == 0L;
         }
 
         private static double MetricOf(StudyRow r, bool byMs)
@@ -512,27 +491,15 @@ namespace P1bStudy.Framework
             StudyScenarioResult res, string key, StudyTarget target, StudyOptions o,
             double winnerCost, bool byMs = false)
         {
-            string baseKey = BaseKey(key);
-            if (baseKey == key)
-            {
-                return key;
-            }
-
-            StudyCell plain = CellFor(res, baseKey, target, o, byMs);
-            bool plainUsable = plain.Status == "OK" || plain.Status == "EDGE";
-            if (!plainUsable || plain.Cost > winnerCost * Math.Max(1d, o.TieFactor))
-            {
-                return key;
-            }
-
-            return baseKey;
+            // Every cap variant is its own method in summaries and tables. Never fold
+            // "DOP853-adaptive [cap=600 s]" into the uncapped name.
+            return key;
         }
 
         private static void DiagnoseTies(StudyScenarioResult res, StudyOptions o, List<string> notes)
         {
             foreach (StudyTarget target in o.Targets(res.Problem))
             {
-                var baseKeys = new List<string>();
                 var keys = new List<string>();
                 var costs = new List<double>();
                 double best = double.PositiveInfinity;
@@ -545,20 +512,8 @@ namespace P1bStudy.Framework
                         continue;
                     }
 
-                    string baseKey = BaseKey(key);
-                    int at = baseKeys.IndexOf(baseKey);
-                    if (at < 0)
-                    {
-                        baseKeys.Add(baseKey);
-                        keys.Add(key);
-                        costs.Add(c.Cost);
-                    }
-                    else if (c.Cost < costs[at])
-                    {
-                        keys[at] = key;
-                        costs[at] = c.Cost;
-                    }
-
+                    keys.Add(key);
+                    costs.Add(c.Cost);
                     if (c.Cost < best)
                     {
                         best = c.Cost;
@@ -947,33 +902,24 @@ namespace P1bStudy.Framework
             // first-hit upper bound: widen the tie band to the worst first-hit grid.
             tieFactor = Math.Max(tieFactor, 1d + maxGridStep);
             double tieLimit = bestCost * Math.Max(1d, tieFactor);
-            var tieBases = new List<string>();
             var tieKeys = new List<string>();
             var tieCosts = new List<double>();
             var tieInterpolated = new List<bool>();
             for (int i = 0; i < okKeys.Count; i++)
             {
-                string baseKey = BaseKey(okKeys[i]);
-                if (okKeys[i] == bestKey || baseKey == BaseKey(bestKey))
+                if (okKeys[i] == bestKey)
                 {
                     continue;
                 }
 
                 if (okCells[i].Cost <= tieLimit)
                 {
-                    int at = tieBases.IndexOf(baseKey);
+                    int at = tieKeys.IndexOf(okKeys[i]);
                     if (at < 0)
                     {
-                        tieBases.Add(baseKey);
                         tieKeys.Add(okKeys[i]);
                         tieCosts.Add(okCells[i].Cost);
                         tieInterpolated.Add(okCells[i].Interpolated);
-                    }
-                    else if (okCells[i].Cost < tieCosts[at])
-                    {
-                        tieKeys[at] = okKeys[i];
-                        tieCosts[at] = okCells[i].Cost;
-                        tieInterpolated[at] = okCells[i].Interpolated;
                     }
                 }
             }
@@ -1012,9 +958,17 @@ namespace P1bStudy.Framework
             w.WriteLine("=== " + p.Label + " ===");
             w.WriteLine("reference floor: " + (double.IsNaN(p.Floor) ? "NOT CERTIFIED" : p.Floor.ToString("E2", Inv) + " m")
                 + (string.IsNullOrEmpty(p.ReferenceNote) ? "" : " (" + p.ReferenceNote + ")")
-                + "; Kepler-solve weight: " + res.KeplerWeight.ToString("F2", Inv) + " RHS"
-                + "; RHS multiplier: " + res.RhsMultiplier.ToString("G", Inv)
+                + "; Kepler-solve weight: " + res.KeplerWeight.ToString("F4", Inv) + " RHS"
+                + " (CV " + (double.IsNaN(res.KeplerCv) ? "n/a" : (res.KeplerCv * 100d).ToString("F1", Inv) + "%")
+                + ", " + res.KeplerSource + ")"
                 + "; RHS budget: " + res.MaxCostRhs.ToString("N0", Inv)
+                + "; nck=" + p.CheckpointTimes.Length.ToString(Inv)
+                + "; checkpoint-mode=" + (p.CheckpointTimes.Length == 1 ? "end" : "all")
+                + "; ref=" + p.ReferenceMethod + " [" + p.ReferenceFamily + "]"
+                + " independent=" + (p.ReferenceIndependent ? "1" : "0")
+                + " resolution=" + p.ReferenceResolution
+                + " cross=" + (double.IsNaN(p.ReferenceCrossDiffM) ? "n/a" : p.ReferenceCrossDiffM.ToString("E3", Inv) + " m")
+                + "; mode=" + p.Mode
                 + "; build: " + (StudyCalibration.IsDebugBuild ? "DEBUG (ms not representative)" : "Release"));
             List<StudyTarget> targets = o.Targets(p);
             var header = new StringBuilder();
@@ -1064,7 +1018,7 @@ namespace P1bStudy.Framework
         public static void WriteCsv(string path, List<StudyScenarioResult> results)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("scenario,integrator,variant,config,control,status,finite,err_m,err_final_m,err_rel,calls,aux_ops,cost_rhs_eq,steps,rejected,cap_limited,ms,floor_m,certified,note,energy_drift,angular_drift,family,stages,kind,expected_order,mode,mode_tags,reference_family,reference_same_family,scale_length,archived,kepler_exact");
+            sb.AppendLine("scenario,integrator,variant,config,control,status,finite,err_m,err_final_m,err_rel,calls,aux_ops,cost_rhs_eq,steps,rejected,cap_limited,ms,floor_m,certified,note,energy_drift_from_initial,angular_drift_from_initial,energy_drift_vs_ref,energy_drift_ref,angular_drift_vs_ref,angular_drift_ref,family,stages,kind,expected_order,mode,mode_tags,reference_family,reference_same_family,scale_length,archived,kepler_exact,kepler_weight,kepler_cv,kepler_weight_source,w_unreliable,nck,steps_forced_min,checkpoint_bound,checkpoint_mode,ref_method,ref_family_method,ref_independent,ref_resolution,ref_cross_diff_m,ref_second_method,calls_startup");
             foreach (StudyScenarioResult res in results)
             {
                 foreach (StudyRow r in res.Rows)
@@ -1089,8 +1043,12 @@ namespace P1bStudy.Framework
                         .Append(res.Problem.Floor.ToString("R", Inv)).Append(',')
                         .Append(res.Problem.Certified ? "1" : "0").Append(',')
                         .Append(Csv(r.Note)).Append(',')
-                        .Append(r.EnergyDrift.ToString("R", Inv)).Append(',')
-                        .Append(r.AngularDrift.ToString("R", Inv)).Append(',')
+                        .Append(r.EnergyDriftFromInitial.ToString("R", Inv)).Append(',')
+                        .Append(r.AngularDriftFromInitial.ToString("R", Inv)).Append(',')
+                        .Append(r.EnergyDriftVsRef.ToString("R", Inv)).Append(',')
+                        .Append(r.EnergyDriftRef.ToString("R", Inv)).Append(',')
+                        .Append(r.AngularDriftVsRef.ToString("R", Inv)).Append(',')
+                        .Append(r.AngularDriftRef.ToString("R", Inv)).Append(',')
                         .Append(Csv(r.Family)).Append(',')
                         .Append(r.Stages.ToString(Inv)).Append(',')
                         .Append(r.Kind == StudyKind.Fixed ? "Fixed" : "Adaptive").Append(',')
@@ -1101,7 +1059,101 @@ namespace P1bStudy.Framework
                         .Append(string.Equals(r.Family, res.Problem.ReferenceFamily, StringComparison.Ordinal) ? "1" : "0").Append(',')
                         .Append(res.Problem.ScaleLength.ToString("R", Inv)).Append(',')
                         .Append(res.Problem.Archived ? "1" : "0").Append(',')
-                        .Append(res.Problem.KeplerExact ? "1" : "0").AppendLine();
+                        .Append(res.Problem.KeplerExact ? "1" : "0").Append(',')
+                        .Append(res.KeplerWeight.ToString("R", Inv)).Append(',')
+                        .Append(res.KeplerCv.ToString("R", Inv)).Append(',')
+                        .Append(Csv(res.KeplerSource)).Append(',')
+                        .Append(double.IsNaN(res.KeplerCv) || res.KeplerCv > 0.10d ? "1" : "0").Append(',')
+                        .Append(r.Nck.ToString(Inv)).Append(',')
+                        .Append(r.StepsForcedMin.ToString(Inv)).Append(',')
+                        .Append(r.CheckpointBound ? "1" : "0").Append(',')
+                        .Append(r.CheckpointMode).Append(',')
+                        .Append(Csv(res.Problem.ReferenceMethod)).Append(',')
+                        .Append(Csv(res.Problem.ReferenceFamily)).Append(',')
+                        .Append(res.Problem.ReferenceIndependent ? "1" : "0").Append(',')
+                        .Append(Csv(res.Problem.ReferenceResolution)).Append(',')
+                        .Append(res.Problem.ReferenceCrossDiffM.ToString("R", Inv)).Append(',')
+                        .Append(Csv(res.Problem.ReferenceSecondMethod)).Append(',')
+                        .Append(r.StartupCalls.ToString(Inv)).AppendLine();
+                }
+            }
+
+            File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+        }
+
+        /// <summary>
+        /// One row per scenario x method-variant x target, with both checkpoint modes.
+        /// This is the machine-readable table the audit uses; neither mode is primary.
+        /// </summary>
+        public static void WriteCellsCsv(
+            string path, List<StudyScenarioResult> all, List<StudyScenarioResult> endOnly, StudyOptions o)
+        {
+            var endByScenario = new Dictionary<string, StudyScenarioResult>(StringComparer.Ordinal);
+            if (endOnly != null)
+            {
+                foreach (StudyScenarioResult r in endOnly)
+                {
+                    endByScenario[r.Problem.Label] = r;
+                }
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine("scenario,integrator,variant,key,target_m,status_all,cost_all_ckpt,err_all_ckpt,"
+                + "status_end,cost_end_only,err_end_only,floor_m,nck_all,nck_end,interpolated_all,"
+                + "cost_hit_all,err_hit_all,cost_miss_all,err_miss_all,bracket_ratio_all,bracket_wide_all,bracket_quantized_all,"
+                + "cost_hit_end,err_hit_end,cost_miss_end,err_miss_end,bracket_ratio_end,bracket_wide_end,bracket_quantized_end,"
+                + "note_all,note_end");
+            foreach (StudyScenarioResult res in all)
+            {
+                StudyScenarioResult end;
+                endByScenario.TryGetValue(res.Problem.Label, out end);
+                foreach (string key in Keys(res.Rows))
+                {
+                    int cut = key.IndexOf(" [", StringComparison.Ordinal);
+                    string integrator = cut >= 0 ? key.Substring(0, cut) : key;
+                    string variant = cut >= 0 ? key.Substring(cut + 2, key.Length - cut - 3) : "";
+                    foreach (StudyTarget target in o.Targets(res.Problem))
+                    {
+                        StudyCell ca = CellFor(res, key, target, o);
+                        StudyCell ce = end != null ? CellFor(end, key, target, o) : new StudyCell();
+                        if (end == null)
+                        {
+                            ce.Status = "NA";
+                            ce.Note = "end-only run missing";
+                        }
+
+                        sb.Append(Csv(res.Problem.Label)).Append(',')
+                            .Append(Csv(integrator)).Append(',')
+                            .Append(Csv(variant)).Append(',')
+                            .Append(Csv(key)).Append(',')
+                            .Append(target.Value.ToString("R", Inv)).Append(',')
+                            .Append(ca.Status).Append(',')
+                            .Append(ca.Cost.ToString("R", Inv)).Append(',')
+                            .Append(ca.Err.ToString("R", Inv)).Append(',')
+                            .Append(ce.Status).Append(',')
+                            .Append(ce.Cost.ToString("R", Inv)).Append(',')
+                            .Append(ce.Err.ToString("R", Inv)).Append(',')
+                            .Append(res.Problem.Floor.ToString("R", Inv)).Append(',')
+                            .Append(res.Problem.CheckpointTimes.Length.ToString(Inv)).Append(',')
+                            .Append((end != null ? end.Problem.CheckpointTimes.Length : 0).ToString(Inv)).Append(',')
+                            .Append(ca.Interpolated ? "1" : "0").Append(',')
+                            .Append(ca.CostHit.ToString("R", Inv)).Append(',')
+                            .Append(ca.ErrHit.ToString("R", Inv)).Append(',')
+                            .Append(ca.CostMiss.ToString("R", Inv)).Append(',')
+                            .Append(ca.ErrMiss.ToString("R", Inv)).Append(',')
+                            .Append(ca.BracketRatio.ToString("R", Inv)).Append(',')
+                            .Append(ca.BracketWide ? "1" : "0").Append(',')
+                            .Append(ca.BracketQuantized ? "1" : "0").Append(',')
+                            .Append(ce.CostHit.ToString("R", Inv)).Append(',')
+                            .Append(ce.ErrHit.ToString("R", Inv)).Append(',')
+                            .Append(ce.CostMiss.ToString("R", Inv)).Append(',')
+                            .Append(ce.ErrMiss.ToString("R", Inv)).Append(',')
+                            .Append(ce.BracketRatio.ToString("R", Inv)).Append(',')
+                            .Append(ce.BracketWide ? "1" : "0").Append(',')
+                            .Append(ce.BracketQuantized ? "1" : "0").Append(',')
+                            .Append(Csv(ca.Note)).Append(',')
+                            .Append(Csv(ce.Note)).AppendLine();
+                    }
                 }
             }
 
@@ -1132,8 +1184,8 @@ namespace P1bStudy.Framework
             var sb = new StringBuilder();
             sb.AppendLine("# Integrator comparison");
             sb.AppendLine();
-            sb.AppendLine("Cost = RHS-equivalent calls, log-log interpolated between the nearest cheaper above-target run and the first bracketing below-target run; never extrapolated. `*` marks interpolated cells; no star means the first actually executed point that passed the target (used when the bracket is wider than 1.5x in cost or its local order misses the declared order by more than 30%). `ms` is the wall-clock time interpolated on the same bracket; sub-millisecond values are timing noise, use RHS for the deterministic ranking.");
-            sb.AppendLine("`EDGE` = even the cheapest tested point was already below the target (cost is an upper bound). A cap-limited EDGE is exact; a non-cap EDGE is marked **unresolved**. `~` marks methods within " + ((o.TieFactor - 1d) * 100d).ToString("F0", Inv) + "% of the winner (interpolated cells) or one grid step (unbracketed cells): that ranking is not resolved. `not reached` = the finest run (or the RHS budget) stayed above the target. `below round-off floor` = the target is at or below the run's own accumulation noise. `n/a` = method not valid for this problem. Scenarios whose reference is not certified are listed in the detail but excluded from the summary.");
+            sb.AppendLine("Cost = price of the cheapest EXECUTED run whose error is at or below the target, in RHS-equivalent calls of that scenario. No interpolation: `cost_hit` is a real run. The bracketing miss and `bracket_ratio` are diagnostic only; `bracket_wide=1` means the bracket is wider than 1.10 (or no miss exists). `bracket_quantized=1` means the all-checkpoint fixed-step grid has no intermediate step count. `ms` is wall-clock and noisy; use RHS for deterministic numbers.");
+            sb.AppendLine("`EDGE` = even the cheapest tested point was already below the target (cost is an upper bound). A cap-limited EDGE is exact; a non-cap EDGE is marked **unresolved**. `~` marks methods within " + ((o.TieFactor - 1d) * 100d).ToString("F0", Inv) + "% of the winner: that ranking is not resolved. `not reached` = the finest run (or the RHS budget) stayed above the target. `below round-off floor` = the target is at or below the run's own accumulation noise. `n/a` = method not valid for this problem. Scenarios whose reference is not certified are listed in the detail but excluded from the summary. Costs of different scenarios are not comparable: each is in that scenario's own RHS unit.");
             sb.AppendLine("Reference-floor rule: a target below " + o.FloorMargin.ToString("G", Inv) + " x the scenario's reference floor is skipped.");
             sb.AppendLine("Build: " + (StudyCalibration.IsDebugBuild ? "**DEBUG - ms are not representative**" : "Release") + ". Per-run RHS budget: per scenario (see section headers).");
             void WriteWinnerSummary(string title, bool byMs)
@@ -1207,8 +1259,9 @@ namespace P1bStudy.Framework
                 sb.AppendLine();
                 sb.AppendLine("Reference floor: " + (double.IsNaN(p.Floor) ? "not certified" : p.Floor.ToString("E2", Inv) + " m")
                     + (string.IsNullOrEmpty(p.ReferenceNote) ? "" : " (" + p.ReferenceNote + ")")
-                    + ". Kepler-solve weight: " + res.KeplerWeight.ToString("F2", Inv) + " RHS. RHS multiplier: "
-                    + res.RhsMultiplier.ToString("G", Inv) + ". RHS budget: "
+                    + ". Kepler-solve weight: " + res.KeplerWeight.ToString("F4", Inv) + " RHS (CV "
+                    + (double.IsNaN(res.KeplerCv) ? "n/a" : (res.KeplerCv * 100d).ToString("F1", Inv) + "%")
+                    + ", " + res.KeplerSource + "). RHS budget: "
                     + res.MaxCostRhs.ToString("N0", Inv) + ".");
                 sb.AppendLine();
                 List<StudyTarget> targets = o.Targets(p);

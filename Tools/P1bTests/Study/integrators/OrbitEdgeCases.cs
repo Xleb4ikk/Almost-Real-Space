@@ -52,6 +52,25 @@ internal static partial class P1bTests
             selected.Add(c);
         }
 
+        if (StudyBridgeEnv("P1B_SEAM_PROBE") == "1")
+        {
+            StudyShipMatrixCase leo = selected.Find(c => c.Label == "Earth LEO 400 km, 30 d");
+            if (leo != null)
+            {
+                string probeDir = StudyShipMatrixResultsDir();
+                Directory.CreateDirectory(probeDir);
+                StudyShipMatrixSetTargets(leo);
+                StudyShipMatrixRefs leoRefs = StudyShipMatrixBuildReferences(leo);
+                StudyProblem leoProblem = StudyBridgeShipProblem(leo, leoRefs);
+                StudyBridgeAttachSecondReference(leoProblem);
+                StudySeamProbe.Run(Console.Out, Path.Combine(probeDir, "Test554_SeamProbe.csv"),
+                    leo.Label, gravity, leoProblem, 1e-11d, 0.001d, 2772.427547990396d);
+                Console.WriteLine("seam probe: " + Path.Combine(probeDir, "Test554_SeamProbe.csv"));
+            }
+
+            return 0;
+        }
+
         string scenarioFilter = StudyBridgeEnv("P1B_SCENARIOS");
         List<IStudyIntegrator> integrators = StudyRegistry.Select(StudyBridgeEnv("P1B_INTEGRATORS"));
 
@@ -61,15 +80,18 @@ internal static partial class P1bTests
         // methods are already below target at their cheapest grid point, so the
         // 1 m cell is an unresolved EDGE and says nothing about the cost.
         options.AbsTargets = new[] { 100d, 10d, 1d, 0.1d, 0.01d };
-        options.KeplerWeight = 1d;
         options.AdaptiveMaxSteps = new[] { double.PositiveInfinity, 600d };
-        options.RhsCostMultiplier = 3d;
         // The 1000-orbit rows can exceed the broad sweep's 2M budget once the
         // local floor makes the 1 m/10 cm targets reachable.
         options.MaxCostRhs = 4000000L;
         options.MaxPoints = 60;
+        if (StudyBridgeEnv("P1B_NO_REFINE") == "1")
+        {
+            options.RefineTies = false;
+        }
 
         var results = new List<StudyScenarioResult>();
+        var endResults = new List<StudyScenarioResult>();
         var production = new StringBuilder();
         production.AppendLine("scenario,method,chunk_seconds,raw_calls,rhs_eq,err_max_m,ms");
 
@@ -83,11 +105,15 @@ internal static partial class P1bTests
             StudyShipMatrixSetTargets(c);
             StudyShipMatrixRefs refs = StudyShipMatrixBuildReferences(c);
             StudyProblem problem = StudyBridgeShipProblem(c, refs);
+            StudyBridgeAttachSecondReference(problem);
             Console.WriteLine();
             Console.WriteLine("sweeping: " + c.Label);
             StudyScenarioResult r = StudySweepRunner.Run(problem, integrators, options, Console.Out);
             results.Add(r);
             StudyReport.Print(Console.Out, r, options);
+            StudyScenarioResult rEnd = StudySweepRunner.RunEndOnly(problem, integrators, options, null);
+            endResults.Add(rEnd);
+            Console.WriteLine("  end-only: " + rEnd.Rows.Count.ToString(CultureInfo.InvariantCulture) + " points");
 
             // The sweep measures the method in the harness. The production row
             // measures the actual SpacecraftPhysics/DOP853 path at the same chunk
@@ -129,8 +155,15 @@ internal static partial class P1bTests
         string dir = StudyShipMatrixResultsDir();
         Directory.CreateDirectory(dir);
         StudyReport.WriteCsv(Path.Combine(dir, "Test554_FrameworkOrbitEdgeCases.csv"), results);
-        StudyReport.WriteMarkdown(Path.Combine(dir, "Test554_FrameworkOrbitEdgeCases.md"), results, options);
-        StudyModeSummary.Write(Path.Combine(dir, "Test554_ModeSummary.md"), "Test554", results, options);
+        StudyReport.WriteCsv(Path.Combine(dir, "Test554_FrameworkOrbitEdgeCases_endonly.csv"), endResults);
+        StudyReport.WriteCellsCsv(Path.Combine(dir, "Test554_FrameworkOrbitEdgeCases_cells.csv"),
+            results, endResults, options);
+        if (!StudyBridgeSkipSummaries())
+        {
+            StudyReport.WriteMarkdown(Path.Combine(dir, "Test554_FrameworkOrbitEdgeCases.md"), results, options);
+            StudyModeSummary.Write(Path.Combine(dir, "Test554_ModeSummary.md"), "Test554", results, options);
+        }
+
         File.WriteAllText(Path.Combine(dir, "Test554_Production.csv"), production.ToString());
 
         int failedRuns = 0;

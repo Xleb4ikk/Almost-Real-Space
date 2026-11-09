@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 
 namespace P1bStudy.Framework
@@ -116,6 +117,21 @@ namespace P1bStudy.Framework
         /// <summary>Integrator family of the reference (e.g. Runge-Kutta, Gauss-Radau, Taylor).</summary>
         public string ReferenceFamily = "Runge-Kutta";
 
+        /// <summary>Concrete reference method and settings.</summary>
+        public string ReferenceMethod = "";
+
+        /// <summary>True when the floor is backed by a second, independent reference.</summary>
+        public bool ReferenceIndependent;
+
+        /// <summary>ratio_ok | unratioed_exemption_used | not_certified.</summary>
+        public string ReferenceResolution = "not_certified";
+
+        /// <summary>Max |reference A - reference B| over the checkpoints (metres).</summary>
+        public double ReferenceCrossDiffM = double.NaN;
+
+        /// <summary>Method/settings of the second reference, when one was built.</summary>
+        public string ReferenceSecondMethod = "";
+
         public bool Certified;
 
         /// <summary>Time scale (orbital period etc.) used to seed the coarse end of fixed-step sweeps.</summary>
@@ -173,6 +189,24 @@ namespace P1bStudy.Framework
 
             ErrorBlocks = list.ToArray();
             return ErrorBlocks;
+        }
+
+        /// <summary>Shallow copy for the end-only checkpoint mode; arrays are replaced by the caller.</summary>
+        public StudyProblem ShallowClone()
+        {
+            return (StudyProblem)MemberwiseClone();
+        }
+
+        /// <summary>
+        /// Same physics, same reference floor, only one recorded checkpoint at the end.
+        /// Mandatory force breakpoints stay in place. Used by the "end-only" report mode.
+        /// </summary>
+        public StudyProblem CloneEndOnly()
+        {
+            StudyProblem q = ShallowClone();
+            q.CheckpointTimes = new[] { EndTime };
+            q.CheckpointRef = new[] { CheckpointRef[CheckpointRef.Length - 1] };
+            return q;
         }
 
         public double Error(double[] state, double[] reference)
@@ -276,17 +310,22 @@ namespace P1bStudy.Framework
     {
         private readonly OdeRhs rhs;
         private readonly long budget;
+        private readonly double deadlineMs;
+        private readonly Stopwatch clock = Stopwatch.StartNew();
 
         public long Calls;
         public long AuxOps;
+        /// <summary>RHS calls spent inside a method's start-up (currently GJ8). Included in Calls.</summary>
+        public long StartupCalls;
 
         /// <summary>Set by a stepper that cannot continue (e.g. the universal Kepler solver failed); the driver turns it into an aborted run.</summary>
         public string Abort;
 
-        public StudyContext(StudyProblem p, long budget)
+        public StudyContext(StudyProblem p, long budget, double deadlineMs = double.PositiveInfinity)
         {
             rhs = p.Rhs;
             this.budget = budget;
+            this.deadlineMs = deadlineMs;
         }
 
         public void Fail(string reason)
@@ -300,7 +339,7 @@ namespace P1bStudy.Framework
         public void Rhs(double t, double[] y, double[] dy)
         {
             Calls++;
-            if (Calls > budget)
+            if (Calls > budget || clock.Elapsed.TotalMilliseconds > deadlineMs)
             {
                 throw new StudyBudgetExceeded(Calls);
             }

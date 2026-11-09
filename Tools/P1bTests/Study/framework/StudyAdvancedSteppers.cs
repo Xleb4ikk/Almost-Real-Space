@@ -648,7 +648,9 @@ namespace P1bStudy.Framework
 
             try
             {
+                long beforeStartup = ctx.Calls;
                 startup.IntegrateFixed(ctx.Rhs, y, t, t + h, startupFresh);
+                ctx.StartupCalls += ctx.Calls - beforeStartup;
                 startupFresh = false;
             }
             catch (InvalidOperationException ex)

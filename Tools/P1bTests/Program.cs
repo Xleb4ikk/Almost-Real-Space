@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -404,6 +405,8 @@ internal static partial class P1bTests
     private static bool IsGeneratedPath(string path)
     {
         return path.IndexOf("/results/", StringComparison.OrdinalIgnoreCase) >= 0
+            || path.IndexOf("/results_baseline/", StringComparison.OrdinalIgnoreCase) >= 0
+            || path.IndexOf("/results_checks/", StringComparison.OrdinalIgnoreCase) >= 0
             || path.IndexOf("/bin/", StringComparison.OrdinalIgnoreCase) >= 0
             || path.IndexOf("/obj/", StringComparison.OrdinalIgnoreCase) >= 0
             || path.EndsWith(".log", StringComparison.OrdinalIgnoreCase)
@@ -589,9 +592,16 @@ internal static partial class P1bTests
             Console.SetOut(writer);
             Console.SetError(writer);
             Console.WriteLine("# P1bTests log");
+            Console.WriteLine("# date: " + DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture));
             Console.WriteLine("# commit: " + TryReadGitHead());
             Console.WriteLine("# dirty: " + TryReadGitDirty());
             Console.WriteLine("# diff hash: " + TryReadGitDiffHash());
+            Console.WriteLine("# runtime: .NET " + Environment.Version.ToString()
+                + " (" + RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()
+                + "), " + RuntimeInformation.FrameworkDescription
+                + "; not Unity / not IL2CPP");
+            Console.WriteLine("# cost unit: one RHS call of the same scenario with all its forces;"
+                + " costs of different scenarios are not comparable");
             string assemblyPath = Assembly.GetEntryAssembly()?.Location ?? "";
             Console.WriteLine("# assembly: " + assemblyPath);
             if (assemblyPath.Length > 0 && File.Exists(assemblyPath))

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -22,6 +22,12 @@ internal static partial class P1bTests
     {
         string v = Environment.GetEnvironmentVariable(name);
         return string.IsNullOrWhiteSpace(v) ? null : v;
+    }
+
+    /// <summary>Filtered checks write CSVs only; a partial mode/regime summary would be misleading.</summary>
+    private static bool StudyBridgeSkipSummaries()
+    {
+        return string.Equals(StudyBridgeEnv("P1B_SKIP_SUMMARIES"), "1", StringComparison.Ordinal);
     }
 
     /// <summary>P1B_SCENARIOS="LEO;Sun 1 AU" runs only scenarios whose label contains one of the fragments.</summary>
@@ -140,6 +146,11 @@ internal static partial class P1bTests
         p.Floor = refs.ReferenceFloor;           // NaN when the reference is not certified
         p.Certified = double.IsFinite(refs.ReferenceFloor);
         p.ReferenceNote = refs.LocalKind;
+        p.ReferenceMethod = "fixed DOP853, local frame";
+        p.ReferenceFamily = "Runge-Kutta";
+        p.ReferenceResolution = refs.LocalUnratioedResolutionUsed
+            ? "unratioed_exemption_used"
+            : (refs.LocalValid && refs.LocalAsymptotic ? "ratio_ok" : "not_certified");
         p.CharTime = c.Tau;
         // Cases that do not set a scale explicitly still need a length for the
         // relative-error column and the diagnostics. The initial orbital radius is
@@ -172,22 +183,17 @@ internal static partial class P1bTests
         // certified reference floor is still skipped by the report, per scenario.
         options.RelTargets = new double[0];
         options.AbsTargets = new[] { 100d, 10d, 1d };
-        // A fixed weight makes repeated runs comparable. Measuring it by wall clock
-        // moved the reported costs by ~5 % between runs and flipped 3 % "winners".
-        options.KeplerWeight = 1d;
+        // The Kepler weight is resolved once per scenario and pinned; see StudyCalibration.
         // Run adaptive methods once with their own step choice and once with the production cap:
         // a binding cap makes the cost independent of rtol.
         options.AdaptiveMaxSteps = new[] { double.PositiveInfinity, 600d };
-        // Costs are in study-RHS calls. The production-local path sums three gravity
-        // fields; 3 is its measured price relative to this RHS.
-        options.RhsCostMultiplier = 3d;
-        string mult = StudyBridgeEnv("P1B_RHS_MULTIPLIER");
-        if (mult != null)
+        if (StudyBridgeEnv("P1B_NO_REFINE") == "1")
         {
-            options.RhsCostMultiplier = double.Parse(mult, CultureInfo.InvariantCulture);
+            options.RefineTies = false;
         }
 
         var results = new List<StudyScenarioResult>();
+        var endResults = new List<StudyScenarioResult>();
         foreach (StudyShipMatrixCase c in cases)
         {
             if (!StudyBridgeScenarioSelected(c.Label, scenarioFilter))
@@ -198,18 +204,28 @@ internal static partial class P1bTests
             StudyShipMatrixSetTargets(c);
             StudyShipMatrixRefs refs = StudyShipMatrixBuildReferences(c);
             StudyProblem problem = StudyBridgeShipProblem(c, refs);
+            StudyBridgeAttachSecondReference(problem);
             Console.WriteLine();
             Console.WriteLine("sweeping: " + c.Label);
             StudyScenarioResult r = StudySweepRunner.Run(problem, integrators, options, Console.Out);
             results.Add(r);
             StudyReport.Print(Console.Out, r, options);
+            StudyScenarioResult rEnd = StudySweepRunner.RunEndOnly(problem, integrators, options, null);
+            endResults.Add(rEnd);
+            Console.WriteLine("  end-only: " + rEnd.Rows.Count.ToString(CultureInfo.InvariantCulture) + " points");
         }
 
         string dir = StudyShipMatrixResultsDir();
         Directory.CreateDirectory(dir);
         StudyReport.WriteCsv(Path.Combine(dir, "Test552_FrameworkShipSweep.csv"), results);
-        StudyReport.WriteMarkdown(Path.Combine(dir, "Test552_FrameworkShipSweep.md"), results, options);
-        StudyModeSummary.Write(Path.Combine(dir, "Test552_ModeSummary.md"), "Test552", results, options);
+        StudyReport.WriteCsv(Path.Combine(dir, "Test552_FrameworkShipSweep_endonly.csv"), endResults);
+        StudyReport.WriteCellsCsv(Path.Combine(dir, "Test552_FrameworkShipSweep_cells.csv"),
+            results, endResults, options);
+        if (!StudyBridgeSkipSummaries())
+        {
+            StudyReport.WriteMarkdown(Path.Combine(dir, "Test552_FrameworkShipSweep.md"), results, options);
+            StudyModeSummary.Write(Path.Combine(dir, "Test552_ModeSummary.md"), "Test552", results, options);
+        }
 
         // Structural checks only. Accuracy rankings are DATA, not pass/fail: a regression lock
         // would just freeze today's numbers (see the review of Test549's baselines).
@@ -308,6 +324,78 @@ internal static partial class P1bTests
         Array.Copy(a, 0, r, 0, a.Length);
         Array.Copy(b, 0, r, a.Length, b.Length);
         return r;
+    }
+
+    /// <summary>
+    /// Build a second reference of a different family (IAS15, Gauss-Radau) and use
+    /// max|ref_A - ref_B| over the checkpoints as an additional floor. The grading
+    /// reference A is NOT replaced, so candidate errors stay comparable.
+    /// Budget: 20M RHS and 300 s wall clock per scenario; a failure is recorded,
+    /// not hidden.
+    /// </summary>
+    private static void StudyBridgeAttachSecondReference(StudyProblem p)
+    {
+        if (!p.Certified || double.IsNaN(p.Floor))
+        {
+            p.ReferenceIndependent = false;
+            p.ReferenceResolution = "not_certified";
+            return;
+        }
+
+        var integ = new Ias15Integrator();
+        string why;
+        if (!integ.Supports(p, out why))
+        {
+            p.ReferenceIndependent = false;
+            p.ReferenceSecondMethod = "IAS15 unsupported: " + why;
+            return;
+        }
+
+        try
+        {
+            StudyConfig cfg = integ.MakeConfig(p, 1e-13d, double.PositiveInfinity);
+            var ctx = new StudyContext(p, 20000000L, 300000d);
+            StudyRun run = integ.Run(p, cfg, ctx);
+            if (run.Aborted || run.Samples == null || run.Samples.Length != p.CheckpointTimes.Length)
+            {
+                p.ReferenceIndependent = false;
+                p.ReferenceSecondMethod = "IAS15 did not complete"
+                    + (string.IsNullOrEmpty(run.Abort) ? "" : ": " + run.Abort);
+                return;
+            }
+
+            double cross = 0d;
+            for (int k = 0; k < p.CheckpointTimes.Length; k++)
+            {
+                if (run.Samples[k] == null)
+                {
+                    p.ReferenceIndependent = false;
+                    p.ReferenceSecondMethod = "IAS15 left checkpoint " + k + " unrecorded";
+                    return;
+                }
+
+                double d = p.Error(run.Samples[k], p.CheckpointRef[k]);
+                if (!double.IsFinite(d))
+                {
+                    p.ReferenceIndependent = false;
+                    p.ReferenceSecondMethod = "IAS15 cross-difference is not finite at checkpoint " + k;
+                    return;
+                }
+
+                cross = Math.Max(cross, d);
+            }
+
+            p.ReferenceIndependent = true;
+            p.ReferenceCrossDiffM = cross;
+            p.ReferenceSecondMethod = "IAS15 rtol 1e-13";
+            p.Floor = Math.Max(p.Floor, cross);
+            p.Certified = double.IsFinite(p.Floor);
+        }
+        catch (Exception ex)
+        {
+            p.ReferenceIndependent = false;
+            p.ReferenceSecondMethod = "IAS15 failed: " + ex.GetType().Name + ": " + ex.Message;
+        }
     }
 
     private static StudyProblem StudyBridgePlanetProblem(
@@ -430,6 +518,12 @@ internal static partial class P1bTests
         p.Floor = floor;
         p.Certified = double.IsFinite(floor);
         p.ReferenceNote = "independent dd Taylor references (43200 s and 21600 s); floor = worst pair difference";
+        p.ReferenceMethod = "dd-Taylor 43200 s / 21600 s";
+        p.ReferenceFamily = "Taylor";
+        p.ReferenceIndependent = true;
+        p.ReferenceResolution = p.Certified ? "ratio_ok" : "not_certified";
+        p.ReferenceCrossDiffM = floor;
+        p.ReferenceSecondMethod = "dd-Taylor (other step)";
 
         // scales
         double outer = 0d;
@@ -548,13 +642,15 @@ internal static partial class P1bTests
         options.RelTargets = new double[0];
         options.AbsTargets = new[] { 100d, 10d, 1d };       // metres, worst pair error over the horizon
         options.AdaptiveMaxSteps = new[] { double.PositiveInfinity, 86400d };
-        // Deterministic pricing: one Kepler solve is one RHS-equivalent call. Measuring
-        // it by wall clock changed the reported costs between otherwise identical runs.
-        options.KeplerWeight = 1d;
+        if (StudyBridgeEnv("P1B_NO_REFINE") == "1")
+        {
+            options.RefineTies = false;
+        }
 
         string scenarioFilter = StudyBridgeEnv("P1B_PLANET_SCENARIOS");
         string yearsEnv = StudyBridgeEnv("P1B_PLANET_YEARS");
         var results = new List<StudyScenarioResult>();
+        var endResults = new List<StudyScenarioResult>();
 
         void RunPlanet(string label, StarSystem sys, double years)
         {
@@ -580,7 +676,7 @@ internal static partial class P1bTests
             try
             {
                 StudyScenarioResult r = StudyBridgeRunPlanetScenario(
-                    label, sys, years, 30d * 86400d, integrators, options);
+                    label, sys, years, 30d * 86400d, integrators, options, endResults);
                 results.Add(r);
                 StudyReport.Print(Console.Out, r, options);
             }
@@ -600,7 +696,7 @@ internal static partial class P1bTests
             Console.WriteLine();
             Console.WriteLine("sweeping: " + label);
             StudyScenarioResult r = StudyBridgeRunHeliocentricScenario(
-                label, years, 30d * 86400d, integrators, options);
+                label, years, 30d * 86400d, integrators, options, endResults);
             results.Add(r);
             StudyReport.Print(Console.Out, r, options);
         }
@@ -625,8 +721,14 @@ internal static partial class P1bTests
         string dir = StudyShipMatrixResultsDir();
         Directory.CreateDirectory(dir);
         StudyReport.WriteCsv(Path.Combine(dir, "Test553_FrameworkPlanetSweep.csv"), results);
-        StudyReport.WriteMarkdown(Path.Combine(dir, "Test553_FrameworkPlanetSweep.md"), results, options);
-        StudyModeSummary.Write(Path.Combine(dir, "Test553_ModeSummary.md"), "Test553", results, options);
+        StudyReport.WriteCsv(Path.Combine(dir, "Test553_FrameworkPlanetSweep_endonly.csv"), endResults);
+        StudyReport.WriteCellsCsv(Path.Combine(dir, "Test553_FrameworkPlanetSweep_cells.csv"),
+            results, endResults, options);
+        if (!StudyBridgeSkipSummaries())
+        {
+            StudyReport.WriteMarkdown(Path.Combine(dir, "Test553_FrameworkPlanetSweep.md"), results, options);
+            StudyModeSummary.Write(Path.Combine(dir, "Test553_ModeSummary.md"), "Test553", results, options);
+        }
 
         int failedRuns = 0;
         foreach (StudyScenarioResult res in results)
@@ -718,7 +820,8 @@ internal static partial class P1bTests
 
     private static StudyScenarioResult StudyBridgeRunPlanetScenario(
         string label, StarSystem sys, double years, double sampleEvery,
-        List<IStudyIntegrator> integrators, StudyOptions options)
+        List<IStudyIntegrator> integrators, StudyOptions options,
+        List<StudyScenarioResult> endResults)
     {
         StudyNBody nb = StudyMakeNBody(sys);
         StudyRefResult reference = null;
@@ -728,7 +831,13 @@ internal static partial class P1bTests
             () => reference = StudyPlanetIndependentReference(nb, years, sampleEvery),
             () => alternative = StudyPlanetIndependentReferenceAlt(nb, years, sampleEvery));
         StudyProblem problem = StudyBridgePlanetProblem(label, nb, years, reference, alternative);
-        return StudySweepRunner.Run(problem, integrators, options, Console.Out);
+        StudyScenarioResult r = StudySweepRunner.Run(problem, integrators, options, Console.Out);
+        if (endResults != null)
+        {
+            endResults.Add(StudySweepRunner.RunEndOnly(problem, integrators, options, null));
+        }
+
+        return r;
     }
 
     private static double[] StudyBridgeRelativeState(double[] p, double[] v, int body, int centre)
@@ -842,6 +951,12 @@ internal static partial class P1bTests
         p.Floor = Math.Max(floor, ToleranceReference.FloatingPointFloor * scale);
         p.Certified = true;
         p.ScaleLength = scale;
+        p.ReferenceMethod = "dd-Taylor 43200 s / 21600 s";
+        p.ReferenceFamily = "Taylor";
+        p.ReferenceIndependent = true;
+        p.ReferenceResolution = p.Certified ? "ratio_ok" : "not_certified";
+        p.ReferenceCrossDiffM = floor;
+        p.ReferenceSecondMethod = "dd-Taylor (other step)";
 
         double r0 = Math.Sqrt((y0[0] * y0[0]) + (y0[1] * y0[1]) + (y0[2] * y0[2]));
         double v2 = (y0[3] * y0[3]) + (y0[4] * y0[4]) + (y0[5] * y0[5]);
@@ -852,7 +967,8 @@ internal static partial class P1bTests
 
     private static StudyScenarioResult StudyBridgeRunHeliocentricScenario(
         string label, double years, double sampleEvery,
-        List<IStudyIntegrator> integrators, StudyOptions options)
+        List<IStudyIntegrator> integrators, StudyOptions options,
+        List<StudyScenarioResult> endResults)
     {
         StarSystem sys = StudyHeliocentricSystem();
         StudyNBody nb = StudyMakeNBody(sys);
@@ -866,7 +982,13 @@ internal static partial class P1bTests
             () => alternative = StudyPlanetIndependentReferenceAlt(nb, years, sampleEvery));
         StudyProblem problem = StudyBridgeHeliocentricProblem(
             label, sys, nb, sun, jupiter, probe, reference, alternative);
-        return StudySweepRunner.Run(problem, integrators, options, Console.Out);
+        StudyScenarioResult r = StudySweepRunner.Run(problem, integrators, options, Console.Out);
+        if (endResults != null)
+        {
+            endResults.Add(StudySweepRunner.RunEndOnly(problem, integrators, options, null));
+        }
+
+        return r;
     }
 
     // ------------------------------------------------------------------------------------
