@@ -33,6 +33,29 @@ namespace P1bStudy.Framework
         public double[] Y0;
         public OdeRhs Rhs;
 
+        /// <summary>Primary mode key used by the mode map (pure-circular, j2, drag, thrust, flyby, ...).</summary>
+        public string Mode = "";
+
+        /// <summary>Full descriptive tag set for this scenario (circular, pure-gravity, central, J2, ...).</summary>
+        public string[] ModeTags = new string[0];
+
+        public double AltitudeKm = double.NaN;
+        public double SpeedMps = double.NaN;
+        public double Eccentricity = double.NaN;
+        public bool HasBreakpoints;
+
+        /// <summary>Archived scenarios stay runnable for regression but are excluded from maps and win counts.</summary>
+        public bool Archived;
+
+        /// <summary>True when the force is a pure two-body Kepler field; Encke is an analytical equivalent there.</summary>
+        public bool KeplerExact;
+
+        /// <summary>Optional invariant for diagnostics: state -> energy.</summary>
+        public Func<double[], double> EnergyFn;
+
+        /// <summary>Optional invariant for diagnostics: state -> angular momentum magnitude.</summary>
+        public Func<double[], double> AngularMomentumFn;
+
         /// <summary>Strictly increasing times, all &gt; T0. The last one is the end time.</summary>
         public double[] CheckpointTimes;
 
@@ -89,6 +112,9 @@ namespace P1bStudy.Framework
 
         /// <summary>Why the reference is (or is not) certified; shown next to the floor.</summary>
         public string ReferenceNote = "";
+
+        /// <summary>Integrator family of the reference (e.g. Runge-Kutta, Gauss-Radau, Taylor).</summary>
+        public string ReferenceFamily = "Runge-Kutta";
 
         public bool Certified;
 

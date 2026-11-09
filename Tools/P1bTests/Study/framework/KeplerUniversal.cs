@@ -139,7 +139,11 @@ namespace P1bStudy.Framework
                 double den = f1 + ((f1 >= 0d ? 1d : -1d) * Math.Sqrt(disc));
                 if (den == 0d || double.IsNaN(den))
                 {
-                    throw new InvalidOperationException("Kepler solver: singular denominator");
+                    // Laguerre's denominator can vanish on a large hyperbolic
+                    // substep (the BM14A composition has negative sub-steps). This
+                    // is not a property of the root: fall through to the monotone
+                    // bisection below instead of failing the whole drift.
+                    break;
                 }
 
                 double d = 5d * f / den;

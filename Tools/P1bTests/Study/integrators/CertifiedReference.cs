@@ -451,7 +451,12 @@ internal static partial class P1bTests
             // If the step is not in the asymptotic regime, halve it. Never turn a
             // non-asymptotic finest delta into a fake error estimate: it is the
             // difference between two solutions, not the error of either.
-            double h0 = Math.Max(1d, c.Tau / (stepsPerTau * (1 << attempt)));
+            // A case may pin the certified reference's start step explicitly: a
+            // lunar SOI flyby needs a step large enough to expose truncation error,
+            // while the candidate sweep still needs its own (smaller) Tau.
+            double h0 = c.CertifiedReferenceStepSeconds > 0d
+                ? c.CertifiedReferenceStepSeconds
+                : Math.Max(1d, c.Tau / (stepsPerTau * (1 << attempt)));
             var hs = new double[levels];
             var states = new SpacecraftIntegrationState[levels];
             var calls = new long[levels];

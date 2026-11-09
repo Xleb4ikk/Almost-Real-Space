@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -300,6 +301,128 @@ internal static partial class P1bTests
         return "unknown";
     }
 
+    private static string TryRunGit(string arguments)
+    {
+        try
+        {
+            var info = new ProcessStartInfo("git", arguments)
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                WorkingDirectory = FindHarnessRoot()
+            };
+            using (var process = Process.Start(info))
+            {
+                if (process == null)
+                {
+                    return "";
+                }
+
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit(5000);
+                return output;
+            }
+        }
+        catch (Exception)
+        {
+            return "";
+        }
+    }
+
+    private static string TryReadGitDirty()
+    {
+        string status = TryRunGit("status --porcelain").Trim();
+        return status.Length == 0 ? "clean" : "dirty";
+    }
+
+    private static string TryReadGitDiffHash()
+    {
+        // Hash the source tree itself, not `git diff`: the sweep writes result
+        // files during the 551-559 sequence, and a diff hash that includes them
+        // changes between two otherwise identical runs. Results, logs and build
+        // outputs are excluded; every source/project/doc file is included.
+        string root = null;
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Tools", "P1bTests", "Program.cs")))
+            {
+                root = directory.FullName;
+                break;
+            }
+
+            directory = directory.Parent;
+        }
+
+        if (root == null)
+        {
+            root = FindHarnessRoot();
+        }
+
+        string sourceRoot = Path.Combine(root, "Tools", "P1bTests");
+        var files = new List<string>();
+        if (Directory.Exists(sourceRoot))
+        {
+            files.AddRange(Directory.GetFiles(sourceRoot, "*", SearchOption.AllDirectories));
+        }
+
+        files.Sort(StringComparer.Ordinal);
+        using (var sha = SHA256.Create())
+        {
+            foreach (string file in files)
+            {
+                string relative = Path.GetRelativePath(root, file).Replace('\\', '/');
+                if (IsGeneratedPath(relative))
+                {
+                    continue;
+                }
+
+                byte[] name = Encoding.UTF8.GetBytes(relative + "\n");
+                sha.TransformBlock(name, 0, name.Length, null, 0);
+                byte[] data;
+                try
+                {
+                    data = File.ReadAllBytes(file);
+                }
+                catch (IOException)
+                {
+                    continue;
+                }
+
+                sha.TransformBlock(data, 0, data.Length, null, 0);
+                byte[] tail = Encoding.UTF8.GetBytes("\n");
+                sha.TransformBlock(tail, 0, tail.Length, null, 0);
+            }
+
+            sha.TransformFinalBlock(new byte[0], 0, 0);
+            return Convert.ToHexString(sha.Hash).ToLowerInvariant();
+        }
+    }
+
+    private static bool IsGeneratedPath(string path)
+    {
+        return path.IndexOf("/results/", StringComparison.OrdinalIgnoreCase) >= 0
+            || path.IndexOf("/bin/", StringComparison.OrdinalIgnoreCase) >= 0
+            || path.IndexOf("/obj/", StringComparison.OrdinalIgnoreCase) >= 0
+            || path.EndsWith(".log", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)
+            || path.IndexOf("Test559_", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static bool IsSourcePath(string path)
+    {
+        return path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".md", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".py", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool WarnIfStale(string root)
     {
         string assemblyPath = Assembly.GetEntryAssembly()?.Location;
@@ -467,6 +590,8 @@ internal static partial class P1bTests
             Console.SetError(writer);
             Console.WriteLine("# P1bTests log");
             Console.WriteLine("# commit: " + TryReadGitHead());
+            Console.WriteLine("# dirty: " + TryReadGitDirty());
+            Console.WriteLine("# diff hash: " + TryReadGitDiffHash());
             string assemblyPath = Assembly.GetEntryAssembly()?.Location ?? "";
             Console.WriteLine("# assembly: " + assemblyPath);
             if (assemblyPath.Length > 0 && File.Exists(assemblyPath))

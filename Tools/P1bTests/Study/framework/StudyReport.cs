@@ -764,9 +764,32 @@ namespace P1bStudy.Framework
         // Tables
         // -------------------------------------------------------------------------------
 
-        public static string Num(double v)
+        /// <summary>Nominal force evaluations per step (GJ8 is one RHS per multistep step).</summary>
+        public static int StagesOf(string name)
         {
-            if (double.IsNaN(v) || double.IsInfinity(v))
+            switch (name)
+            {
+                case "RK4": return 4;
+                case "DOPRI5-fixed":
+                case "DOPRI5-adaptive": return 6;
+                case "DOP853-adaptive": return 12;
+                case "PEFRL": return 4;
+                case "Y6":
+                case "Y6C": return 7;
+                case "WH-Y6": return 7;
+                case "Leapfrog": return 1;
+                case "RKN12(10)": return 16;
+                case "IAS15": return 7;
+                case "SRKN14A": return 14;
+                case "WH-BM14A": return 14;
+                case "GJ8": return 1;
+                case "Encke-IAS15": return 7;
+                default: return 0;
+            }
+        }
+
+        public static string Num(double v)
+        {            if (double.IsNaN(v) || double.IsInfinity(v))
             {
                 return "-";
             }
@@ -1041,7 +1064,7 @@ namespace P1bStudy.Framework
         public static void WriteCsv(string path, List<StudyScenarioResult> results)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("scenario,integrator,variant,config,control,status,finite,err_m,err_final_m,err_rel,calls,aux_ops,cost_rhs_eq,steps,rejected,cap_limited,ms,floor_m,certified,note");
+            sb.AppendLine("scenario,integrator,variant,config,control,status,finite,err_m,err_final_m,err_rel,calls,aux_ops,cost_rhs_eq,steps,rejected,cap_limited,ms,floor_m,certified,note,energy_drift,angular_drift,family,stages,kind,expected_order,mode,mode_tags,reference_family,reference_same_family,scale_length,archived,kepler_exact");
             foreach (StudyScenarioResult res in results)
             {
                 foreach (StudyRow r in res.Rows)
@@ -1065,16 +1088,33 @@ namespace P1bStudy.Framework
                         .Append(r.Ms.ToString("R", Inv)).Append(',')
                         .Append(res.Problem.Floor.ToString("R", Inv)).Append(',')
                         .Append(res.Problem.Certified ? "1" : "0").Append(',')
-                        .Append(Csv(r.Note)).AppendLine();
+                        .Append(Csv(r.Note)).Append(',')
+                        .Append(r.EnergyDrift.ToString("R", Inv)).Append(',')
+                        .Append(r.AngularDrift.ToString("R", Inv)).Append(',')
+                        .Append(Csv(r.Family)).Append(',')
+                        .Append(r.Stages.ToString(Inv)).Append(',')
+                        .Append(r.Kind == StudyKind.Fixed ? "Fixed" : "Adaptive").Append(',')
+                        .Append(r.ExpectedOrder.ToString("R", Inv)).Append(',')
+                        .Append(Csv(res.Problem.Mode)).Append(',')
+                        .Append(Csv(TagText(res.Problem.ModeTags))).Append(',')
+                        .Append(Csv(res.Problem.ReferenceFamily)).Append(',')
+                        .Append(string.Equals(r.Family, res.Problem.ReferenceFamily, StringComparison.Ordinal) ? "1" : "0").Append(',')
+                        .Append(res.Problem.ScaleLength.ToString("R", Inv)).Append(',')
+                        .Append(res.Problem.Archived ? "1" : "0").Append(',')
+                        .Append(res.Problem.KeplerExact ? "1" : "0").AppendLine();
                 }
             }
 
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
         }
 
-        private static string Csv(string s)
+        private static string TagText(string[] tags)
         {
-            if (s == null)
+            return tags == null || tags.Length == 0 ? "" : string.Join("|", tags);
+        }
+
+        private static string Csv(string s)
+        {            if (s == null)
             {
                 return "";
             }

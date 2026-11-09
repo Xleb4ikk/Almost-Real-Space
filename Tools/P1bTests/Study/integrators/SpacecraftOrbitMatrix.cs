@@ -79,8 +79,33 @@ internal static partial class P1bTests
         public DragSource Drag;
         public double WorldChunkSeconds = 600d;
         public double ReferenceStepSeconds;
+        /// <summary>Pin the certified DOP853 reference's start step; 0 = derive from Tau.</summary>
+        public double CertifiedReferenceStepSeconds;
         public double ScaleLength = 1d;
         public bool UseTaylorDdReference;
+        /// <summary>Primary mode key used by the mode map, e.g. pure-circular, j2, drag, thrust, flyby.</summary>
+        public string Mode = "";
+        /// <summary>Full descriptive tag set for this scenario.</summary>
+        public string[] ModeTags = new string[0];
+        public double AltitudeKm = double.NaN;
+        public double SpeedMps = double.NaN;
+        public double Eccentricity = double.NaN;
+        public bool HasBreakpoints;
+        /// <summary>
+        /// Grade against the certified local reference alone and keep the independent
+        /// DD endpoint as a diagnostic. Use this when the two force formulations are
+        /// known to disagree (long LEO) and the game path is the local one; the
+        /// formulation difference is printed, but it is not silently folded into the
+        /// ranking floor.
+        /// </summary>
+        public bool LocalReferenceOnly;
+        /// <summary>
+        /// If the reference has a finite, target-relevant finest disagreement but no
+        /// Richardson pair (stiff entry, round-off plateau), accept the finest delta
+        /// as a resolved floor and say so in the reference note. This is not a
+        /// convergence certificate; it is an honest bound for targets far above it.
+        /// </summary>
+        public bool AllowUnratioedResolution;
         /// <summary>Split the certified reference at baked-ephemeris seams.</summary>
         public bool SeamAwareReference;
         public double AccuracyTarget = 1d;
@@ -876,6 +901,20 @@ internal static partial class P1bTests
         StudyShipCertifiedRef cert = StudyShipCertifiedReference(
             c, c.Central == 1 && c.Seconds > 30d * 86400d ? 8d : 24d,
             5, refs.CheckpointTimes, refs.CheckpointP, refs.CheckpointV);
+        if (!cert.Valid && c.AllowUnratioedResolution
+            && double.IsFinite(cert.FinestDelta)
+            && cert.FinestDelta <= 0.01d * Math.Max(c.AccuracyTarget, 0.01d))
+        {
+            cert.Valid = true;
+            cert.Asymptotic = false;
+            cert.Resolved = true;
+            cert.PositionError = cert.FinestDelta;
+            cert.VelocityError = 0d;
+            cert.Detail += " RESOLVED WITHOUT RATIO: finest d="
+                + cert.FinestDelta.ToString("E3", CultureInfo.InvariantCulture)
+                + " m <= 0.01*target; no Richardson pair (stiff/round-off plateau)";
+        }
+
         refs.Local = StudyShipMatrixRefFromState(c, cert.P, cert.V, cert.M);
         refs.LocalError = cert.PositionError;
         refs.LocalKind = cert.Detail;
@@ -905,12 +944,26 @@ internal static partial class P1bTests
             // 8 m model/formulation uncertainty.
             if (c.UseTaylorDdReference && double.IsFinite(refs.Formulation))
             {
-                refs.LocalError = Math.Max(
-                    double.IsFinite(refs.LocalError) ? refs.LocalError : 0d,
-                    refs.Formulation);
-                refs.LocalKind += " + independent dd endpoint floor "
-                    + refs.Formulation.ToString("E3", CultureInfo.InvariantCulture) + " m";
-                refs.LocalAsymptotic = refs.LocalAsymptotic || refs.LocalError > 0d;
+                if (c.LocalReferenceOnly)
+                {
+                    // The game integrates the local formulation. Grade against the
+                    // local certified reference, but keep the independent DD
+                    // disagreement visible in the reference note. This is how the
+                    // long-LEO sweep can resolve 1 m without pretending that the
+                    // 8.5 m world-vs-local formulation gap does not exist.
+                    refs.LocalKind += " [local-reference floor; independent dd endpoint differs by "
+                        + refs.Formulation.ToString("E3", CultureInfo.InvariantCulture)
+                        + " m, not folded into the floor]";
+                }
+                else
+                {
+                    refs.LocalError = Math.Max(
+                        double.IsFinite(refs.LocalError) ? refs.LocalError : 0d,
+                        refs.Formulation);
+                    refs.LocalKind += " + independent dd endpoint floor "
+                        + refs.Formulation.ToString("E3", CultureInfo.InvariantCulture) + " m";
+                    refs.LocalAsymptotic = refs.LocalAsymptotic || refs.LocalError > 0d;
+                }
             }
         }
 
@@ -1007,7 +1060,8 @@ internal static partial class P1bTests
         StudyShipMatrixCase c, bool dop853,
         double posTol = 1e-4d, double velTol = 1e-8d, double massTol = 1e-4d,
         double rtol = 1e-11d, double chunkSeconds = 600d, bool useToleranceFrame = true,
-        bool splitThrust = false, double[] checkpoints = null)
+        bool splitThrust = false, double[] checkpoints = null,
+        double thrustChunkSeconds = 0d)
     {
         return StudyShipMatrixRepeat(() =>
         {
@@ -1095,6 +1149,13 @@ internal static partial class P1bTests
                     }
 
                     double chunk = Math.Min(chunkSeconds, stop - from);
+                    if (c.Thrust && thrustChunkSeconds > 0d
+                        && StudyShipMatrixThrottle(c, from) > 0d)
+                    {
+                        // The game uses VesselStep.FlightChunkSeconds during thrust,
+                        // but DefaultMaxStepSize on a coast. Reproduce that split.
+                        chunk = Math.Min(chunk, thrustChunkSeconds);
+                    }
                     phys.Step(ship, from, chunk);
                     from += chunk;
                 }
@@ -4143,32 +4204,30 @@ internal static partial class P1bTests
         }
 
         {
-            // The baked N-body field is the one the local frame is designed for:
-            // its body accelerations include the mutual pulls, so subtracting the
-            // central body's Newtonian acceleration is exact.
-            // d-РїР°СЂС‹ ~1e-5 Рј Р»РµР¶Р°С‚ РЅР° СѓСЂРѕРІРЅРµ РЅР°РєРѕРїР»РµРЅРЅРѕРіРѕ РѕРєСЂСѓРіР»РµРЅРёСЏ (РѕС†РµРЅРєР°
-            // eps*|r|*sqrt(N) ~ 3e-5 Рј), РїРѕСЌС‚РѕРјСѓ ratio РЅРµРёРЅС„РѕСЂРјР°С‚РёРІРµРЅ; СЃС†РµРЅР°СЂРёР№
-            // consistency-only, РЅРµ РіРµР№С‚РёС‚СЃСЏ.
-            OrbitingBody moon = gravity.AllBodies[2];
-            gravity.EvaluateBodyState(moon, StudyShipT0, out Vector3d mp, out Vector3d mv);
-            gravity.EvaluateBodyState(gravity.AllBodies[1], StudyShipT0,
-                out Vector3d ep, out Vector3d ev);
+            // The Moon is the dominant body inside its SOI, so the flyby is
+            // integrated and graded in the Moon-centered local frame. This is
+            // exactly the frame the production step uses after FindDominantBody
+            // switches to the Moon; the old Earth-centered version was badly
+            // conditioned and its fixed-step reference never converged.
             var flyby = new StudyShipMatrixCase
             {
-                Label = "Earth-Moon flyby inside lunar SOI",
+                Label = "Earth-Moon flyby inside lunar SOI (Moon-centered)",
                 Sys = gravity,
-                Central = 1,
-                P0 = (mp - ep) + new Vector3d(0d, 2e7d, 0d),
-                V0 = (mv - ev) + new Vector3d(0d, 0d, 500d),
+                Central = 2,
+                P0 = new Vector3d(0d, 2e7d, 0d),
+                V0 = new Vector3d(0d, 0d, 900d),
                 Mass0 = 1000d,
                 Seconds = 2d * day,
                 AllowTaylor = true,
-                Tau = 80000d,
+                Tau = 20000d,
                 StepScale = 0.25d,
+                ScaleLength = 2e7d,
+                CertifiedReferenceStepSeconds = 40000d,
                 // The baked ephemeris has slope changes at segment seams. A fixed
-                // step straddling one breaks the Richardson pair (measured ratio
-                // 4.81, order 2.27); splitting exactly on the seams makes the
-                // reference honest instead of grading against a secret kink.
+                // step straddling one breaks the Richardson pair; splitting exactly
+                // on the seams makes the reference honest instead of grading against
+                // a secret kink. The Moon-centered window has 0 seams, so this is
+                // harmless here and protects the case if the bake window changes.
                 SeamAwareReference = true
             };
             cases.Add(flyby);
@@ -4249,7 +4308,103 @@ internal static partial class P1bTests
                 ScaleLength = 6.371e6d + 4e5d
             });
         }
+        StudyShipMatrixApplyTags(cases);
         return cases;
+    }
+
+    /// <summary>
+    /// Fill the mode metadata used by the mode-map report. The scenario builder is
+    /// the single place that knows the physical regime, so tags live here rather
+    /// than in a separate hand-written table.
+    /// </summary>
+    private static void StudyShipMatrixApplyTags(List<StudyShipMatrixCase> cases)
+    {
+        foreach (StudyShipMatrixCase c in cases)
+        {
+            OrbitingBody central = c.Sys.AllBodies[c.Central];
+            c.AltitudeKm = (c.P0.Magnitude - central.Radius) / 1000d;
+            c.SpeedMps = c.V0.Magnitude;
+            c.Eccentricity = OrbitalElements.FromState(
+                c.P0, c.V0, central.ResolveStandardGravitationalParameter()).Eccentricity;
+            c.HasBreakpoints = c.Thrust;
+            c.ModeTags = new string[0];
+
+            switch (c.Label)
+            {
+                case "Earth LEO 400 km circular":
+                    c.Mode = "pure-circular";
+                    c.ModeTags = new[] { "earth", "leo", "400km", "circular", "pure-gravity", "central" };
+                    break;
+                case "Earth LEO 400 km polar":
+                    c.Mode = "pure-circular";
+                    c.ModeTags = new[] { "earth", "leo", "400km", "circular", "polar", "pure-gravity", "central" };
+                    break;
+                case "Earth LEO 400 km sun-synchronous":
+                    c.Mode = "j2";
+                    c.ModeTags = new[] { "earth", "leo", "400km", "circular", "j2", "sso", "central" };
+                    break;
+                case "Earth GTO 400 x 40000 km":
+                    c.Mode = "eccentric";
+                    c.ModeTags = new[] { "earth", "gto", "elliptic", "eccentric", "pure-gravity", "central" };
+                    break;
+                case "Earth Molniya 500 x 40000 km":
+                    c.Mode = "eccentric";
+                    c.ModeTags = new[] { "earth", "molniya", "elliptic", "eccentric", "high-eccentricity", "pure-gravity", "central" };
+                    break;
+                case "Earth GEO 35786 km":
+                    c.Mode = "pure-circular";
+                    c.ModeTags = new[] { "earth", "geo", "circular", "long", "pure-gravity", "central" };
+                    break;
+                case "Sun 1 AU circular":
+                    c.Mode = "heliocentric";
+                    c.ModeTags = new[] { "sun", "1au", "circular", "long", "pure-gravity", "central" };
+                    break;
+                case "Sun 0.5 x 2 AU eccentric":
+                    c.Mode = "heliocentric-eccentric";
+                    c.ModeTags = new[] { "sun", "elliptic", "eccentric", "long", "pure-gravity", "central" };
+                    break;
+                case "Earth 400 km + J2":
+                    c.Mode = "j2";
+                    c.ModeTags = new[] { "earth", "leo", "400km", "circular", "j2", "central" };
+                    break;
+                case "Earth 250 km + atmosphere drag":
+                    c.Mode = "drag";
+                    c.ModeTags = new[] { "earth", "leo", "250km", "circular", "drag", "atmosphere", "non-conservative" };
+                    break;
+                case "Earth LEO 400 km + 600 s prograde burn":
+                    c.Mode = "thrust";
+                    c.ModeTags = new[] { "earth", "leo", "400km", "burn", "thrust", "variable-mass", "has-breakpoints", "non-conservative" };
+                    break;
+                case "Earth-Moon flyby inside lunar SOI (Moon-centered)":
+                    c.Mode = "flyby";
+                    c.ModeTags = new[] { "moon", "soi", "flyby", "pure-gravity", "central", "close-approach" };
+                    break;
+                case "Earth LEO 400 km, 1000 orbits (~64 d)":
+                    c.Mode = "pure-circular-long";
+                    c.ModeTags = new[] { "earth", "leo", "400km", "circular", "long", "1000-orbits", "pure-gravity", "central" };
+                    break;
+                case "Earth HEO 300 x 120000 km":
+                    c.Mode = "eccentric";
+                    c.ModeTags = new[] { "earth", "heo", "elliptic", "eccentric", "high-eccentricity", "pure-gravity", "central" };
+                    break;
+                case "Earth hyperbolic flyby e=1.5":
+                    c.Mode = "flyby";
+                    c.ModeTags = new[] { "earth", "hyperbolic", "flyby", "pure-gravity", "central", "tight" };
+                    break;
+                case "Earth LEO 400 km, 30 d":
+                    c.Mode = "pure-circular-long";
+                    c.ModeTags = new[] { "earth", "leo", "400km", "circular", "long", "30d", "pure-gravity", "central" };
+                    break;
+                case "Earth LEO 400 km + unaligned 600 s burn":
+                    c.Mode = "thrust";
+                    c.ModeTags = new[] { "earth", "leo", "400km", "burn", "thrust", "variable-mass", "has-breakpoints", "non-conservative", "unaligned" };
+                    break;
+                default:
+                    c.Mode = "other";
+                    c.ModeTags = new[] { "other" };
+                    break;
+            }
+        }
     }
 
     private static int Test549_SpacecraftOrbitIntegrators()

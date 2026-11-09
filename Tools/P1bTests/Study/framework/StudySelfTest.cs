@@ -75,6 +75,44 @@ namespace P1bStudy.Framework
             y[6] = 1d;
         }
 
+        private static double[] AnalyticHyperbola(double e, double dt)
+        {
+            const double mu = 1d;
+            const double rp = 1d;
+            double a = rp / (1d - e);
+            double n = Math.Sqrt(mu / (-a * -a * -a));
+            double mean = n * dt;
+            double h = Math.Asinh(mean / e);
+            if (!double.IsFinite(h))
+            {
+                h = mean >= 0d ? 1d : -1d;
+            }
+            for (int i = 0; i < 100; i++)
+            {
+                double f = (e * Math.Sinh(h)) - h - mean;
+                double df = (e * Math.Cosh(h)) - 1d;
+                double step = f / df;
+                h -= step;
+                if (Math.Abs(step) < 1e-15d * Math.Max(1d, Math.Abs(h)))
+                {
+                    break;
+                }
+            }
+
+            double sh = Math.Sinh(h);
+            double ch = Math.Cosh(h);
+            double r = a * (1d - (e * ch));
+            double sq = Math.Sqrt((e * e) - 1d);
+            var y = new double[6];
+            y[0] = a * (ch - e);
+            y[1] = -a * sq * sh;
+            y[2] = 0d;
+            y[3] = -a * a * n * sh / r;
+            y[4] = a * a * n * sq * ch / r;
+            y[5] = 0d;
+            return y;
+        }
+
         public static StudyProblem MakeKeplerProblem(int checkpoints, double periods)
         {
             return MakeKeplerProblemEcc(Ecc, checkpoints, periods);
@@ -265,6 +303,41 @@ namespace P1bStudy.Framework
             Add(list, "Kepler propagator hyperbola reversible", back < 1e-11d, "return error " + E(back));
             Add(list, "Kepler propagator hyperbola energy", Math.Abs(e1 - e0) < 1e-12d * Math.Max(1d, Math.Abs(e0)),
                 "|dE| = " + E(Math.Abs(e1 - e0)));
+
+            // Large hyperbolic substeps: BM14A's negative composition weights ask
+            // KeplerUniversal for |dt| of hundreds of periapsis times. Compare against
+            // the closed-form hyperbolic anomaly, not against another universal run.
+            double worstHyp = 0d;
+            string hypDetail = "";
+            foreach (double dt in new[] { 10d, 100d, 1000d, -10d, -100d, -1000d })
+            {
+                double[] hh = new[] { 1d, 0d, 0d, 0d, Math.Sqrt(2.5d), 0d, 1d };
+                try
+                {
+                    KeplerUniversal.Propagate(1d, hh, 0, 3, dt);
+                }
+                catch (Exception ex)
+                {
+                    worstHyp = double.PositiveInfinity;
+                    hypDetail += " dt=" + dt.ToString("G", Inv) + " threw " + ex.Message + ";";
+                    continue;
+                }
+
+                double[] hypExact = AnalyticHyperbola(1.5d, dt);
+                double err = 0d;
+                for (int i = 0; i < 6; i++)
+                {
+                    err = Math.Max(err, Math.Abs(hh[i] - hypExact[i]));
+                }
+
+                worstHyp = Math.Max(worstHyp, err);
+                hypDetail += " dt=" + dt.ToString("G", Inv) + ":" + E(err)
+                    + " y=(" + hh[0].ToString("E3", Inv) + "," + hh[1].ToString("E3", Inv)
+                    + ") exact=(" + hypExact[0].ToString("E3", Inv) + "," + hypExact[1].ToString("E3", Inv) + ");";
+            }
+
+            Add(list, "Kepler propagator hyperbola e=1.5, |dt| up to 1000 periapsis times",
+                worstHyp < 1e-9d, "worst component error " + E(worstHyp) + ";" + hypDetail);
 
             // round-off must not accumulate with the number of sub-steps (the old element-based drift did)
             double[] c = new double[] { 1d, 0d, 0d, 0d, 1d, 0d, 1d };

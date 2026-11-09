@@ -47,6 +47,9 @@ namespace P1bStudy.Framework
         /// <summary>Tie band for interpolated cells (1.10 = 10%). Unbracketed cells use one grid step instead.</summary>
         public double TieFactor = 1.10d;
 
+        /// <summary>Optional override of every method's control grid ratio (e.g. 1.15 for a tie rerun). NaN = method default.</summary>
+        public double GridRatio = double.NaN;
+
         /// <summary>
         /// After the coarse sweep, bisect the control bracket around each target. Reporting
         /// interpolates the cost inside the bracket, but extra executed points still make the
@@ -118,6 +121,8 @@ namespace P1bStudy.Framework
         public string Integrator = "";
         public string Variant = "";
         public string Config = "";
+        public string Family = "";
+        public int Stages;
         public StudyKind Kind;
         public double ExpectedOrder = double.NaN;
         public double Control;
@@ -136,6 +141,10 @@ namespace P1bStudy.Framework
         public long CapLimited;
         public double Cost;                   // set by StudyReport.FinalizeCosts
         public double Ms = double.NaN;
+        /// <summary>Max |E(sample)-E(initial)| over reached checkpoints; NaN when not requested.</summary>
+        public double EnergyDrift = double.NaN;
+        /// <summary>Max |L(sample)-L(initial)| over reached checkpoints; NaN when not requested.</summary>
+        public double AngularDrift = double.NaN;
 
         public string Key
         {
@@ -284,6 +293,10 @@ namespace P1bStudy.Framework
             double fine;
             double ratio;
             integ.ControlRange(p, out coarse, out fine, out ratio);
+            if (o.GridRatio > 1d)
+            {
+                ratio = o.GridRatio;
+            }
             if (p.MaxControl > 0d && coarse > p.MaxControl)
             {
                 coarse = p.MaxControl;
@@ -561,6 +574,8 @@ namespace P1bStudy.Framework
             row.Integrator = integ.Name;
             row.Variant = variant;
             row.Config = cfg.Label;
+            row.Family = integ.Family;
+            row.Stages = StudyReport.StagesOf(integ.Name);
             row.Kind = integ.Kind;
             row.ExpectedOrder = integ.ExpectedOrder;
             row.Control = control;
@@ -621,6 +636,12 @@ namespace P1bStudy.Framework
             bool finite = true;
             bool complete = true;
             double last = double.NaN;
+            double energy0 = p.EnergyFn != null ? p.EnergyFn(p.Y0) : double.NaN;
+            double angular0 = p.AngularMomentumFn != null ? p.AngularMomentumFn(p.Y0) : double.NaN;
+            double energyDrift = 0d;
+            double angularDrift = 0d;
+            bool energySeen = false;
+            bool angularSeen = false;
             for (int k = 0; k < p.CheckpointTimes.Length; k++)
             {
                 double[] s = run.Samples[k];
@@ -644,6 +665,26 @@ namespace P1bStudy.Framework
                     break;
                 }
 
+                if (p.EnergyFn != null && double.IsFinite(energy0))
+                {
+                    double energy = p.EnergyFn(s);
+                    if (double.IsFinite(energy))
+                    {
+                        energyDrift = Math.Max(energyDrift, Math.Abs(energy - energy0));
+                        energySeen = true;
+                    }
+                }
+
+                if (p.AngularMomentumFn != null && double.IsFinite(angular0))
+                {
+                    double a = p.AngularMomentumFn(s);
+                    if (double.IsFinite(a))
+                    {
+                        angularDrift = Math.Max(angularDrift, Math.Abs(a - angular0));
+                        angularSeen = true;
+                    }
+                }
+
                 double e = p.Error(s, p.CheckpointRef[k]);
                 if (double.IsNaN(e) || double.IsInfinity(e))
                 {
@@ -662,6 +703,8 @@ namespace P1bStudy.Framework
             row.Finite = finite && complete;
             row.Err = row.Finite ? worst : double.NaN;
             row.ErrFinal = row.Finite ? last : double.NaN;
+            row.EnergyDrift = energySeen ? energyDrift : double.NaN;
+            row.AngularDrift = angularSeen ? angularDrift : double.NaN;
             if (!complete)
             {
                 row.PartialErr = finite && last >= 0d ? worst : double.NaN;

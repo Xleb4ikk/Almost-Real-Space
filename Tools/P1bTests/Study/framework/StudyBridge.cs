@@ -35,7 +35,14 @@ internal static partial class P1bTests
         foreach (string part in filter.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
         {
             string frag = part.Trim();
-            if (frag.Length > 0 && label.IndexOf(frag, StringComparison.OrdinalIgnoreCase) >= 0)
+            if (frag.Length > 0 && frag[0] == '=')
+            {
+                if (string.Equals(label, frag.Substring(1), StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            else if (frag.Length > 0 && label.IndexOf(frag, StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 return true;
             }
@@ -58,10 +65,53 @@ internal static partial class P1bTests
         p.T0 = StudyShipT0;
         p.Y0 = new[] { c.P0.X, c.P0.Y, c.P0.Z, c.V0.X, c.V0.Y, c.V0.Z, c.Mass0 };
         p.Rhs = delegate (double t, double[] y, double[] dy) { acc.EvaluateArray(y, t, dy); };
+        p.Mode = c.Mode;
+        p.ModeTags = c.ModeTags;
+        p.AltitudeKm = c.AltitudeKm;
+        p.SpeedMps = c.SpeedMps;
+        p.Eccentricity = c.Eccentricity;
+        p.HasBreakpoints = c.HasBreakpoints;
 
         // Splitting methods are valid only for a velocity- and mass-independent force.
         p.ConservativeSecondOrder = c.Drag == null && !c.Thrust;
         p.CentralMu = c.Sys.AllBodies[c.Central].ResolveStandardGravitationalParameter();
+        OrbitingBody centralBody = c.Sys.AllBodies[c.Central];
+        if (p.ConservativeSecondOrder && p.CentralMu > 0d && p.PosDim == 3
+            && centralBody.J2 == 0d
+            && c.Label.IndexOf("J2", StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            double mu = p.CentralMu;
+            p.EnergyFn = delegate (double[] s)
+            {
+                double r2 = (s[0] * s[0]) + (s[1] * s[1]) + (s[2] * s[2]);
+                double v2 = (s[3] * s[3]) + (s[4] * s[4]) + (s[5] * s[5]);
+                return (0.5d * v2) - (mu / Math.Sqrt(r2));
+            };
+            p.AngularMomentumFn = delegate (double[] s)
+            {
+                double lx = (s[1] * s[5]) - (s[2] * s[4]);
+                double ly = (s[2] * s[3]) - (s[0] * s[5]);
+                double lz = (s[0] * s[4]) - (s[1] * s[3]);
+                return Math.Sqrt((lx * lx) + (ly * ly) + (lz * lz));
+            };
+        }
+        else if (p.ConservativeSecondOrder && p.CentralMu > 0d && p.PosDim == 3
+            && centralBody.J2 != 0d)
+        {
+            // J2 potential: U = -mu/r * (1 - J2 (R/r)^2 (3/2 (z/r)^2 - 1/2)).
+            double mu = p.CentralMu;
+            double j2 = centralBody.J2;
+            double radius = centralBody.Radius;
+            p.EnergyFn = delegate (double[] s)
+            {
+                double r2 = (s[0] * s[0]) + (s[1] * s[1]) + (s[2] * s[2]);
+                double r = Math.Sqrt(r2);
+                double v2 = (s[3] * s[3]) + (s[4] * s[4]) + (s[5] * s[5]);
+                double c2 = (s[2] * s[2]) / r2;
+                double factor = 1d - (j2 * radius * radius / r2 * ((1.5d * c2) - 0.5d));
+                return (0.5d * v2) - (mu / r * factor);
+            };
+        }
 
         double[] times = refs.CheckpointTimes;
         p.CheckpointTimes = (double[])times.Clone();
@@ -159,6 +209,7 @@ internal static partial class P1bTests
         Directory.CreateDirectory(dir);
         StudyReport.WriteCsv(Path.Combine(dir, "Test552_FrameworkShipSweep.csv"), results);
         StudyReport.WriteMarkdown(Path.Combine(dir, "Test552_FrameworkShipSweep.md"), results, options);
+        StudyModeSummary.Write(Path.Combine(dir, "Test552_ModeSummary.md"), "Test552", results, options);
 
         // Structural checks only. Accuracy rankings are DATA, not pass/fail: a regression lock
         // would just freeze today's numbers (see the review of Test549's baselines).
@@ -270,6 +321,27 @@ internal static partial class P1bTests
         double[] mu = nb.Mu;
         var p = new StudyProblem();
         p.Label = label;
+        if (label.IndexOf("Tight binary", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            p.Mode = "n-body-close";
+            p.ModeTags = new[] { "tight-binary", "n-body", "no-central", "close-pair", "long" };
+        }
+        else if (label.IndexOf("Heliocentric", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            p.Mode = "heliocentric";
+            p.ModeTags = new[] { "sun", "jupiter", "probe", "heliocentric", "central", "long" };
+        }
+        else if (label.IndexOf("comet", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            p.Mode = "n-body-eccentric";
+            p.ModeTags = new[] { "sun", "comet", "jupiter", "eccentric", "n-body", "no-central", "long" };
+        }
+        else
+        {
+            p.Mode = "n-body";
+            p.ModeTags = new[] { "real-solar", "n-body", "no-central", "long", "planets" };
+        }
+
         p.Dim = 2 * len;
         p.PosDim = len;
         p.T0 = 0d;
@@ -554,6 +626,7 @@ internal static partial class P1bTests
         Directory.CreateDirectory(dir);
         StudyReport.WriteCsv(Path.Combine(dir, "Test553_FrameworkPlanetSweep.csv"), results);
         StudyReport.WriteMarkdown(Path.Combine(dir, "Test553_FrameworkPlanetSweep.md"), results, options);
+        StudyModeSummary.Write(Path.Combine(dir, "Test553_ModeSummary.md"), "Test553", results, options);
 
         int failedRuns = 0;
         foreach (StudyScenarioResult res in results)
@@ -687,6 +760,8 @@ internal static partial class P1bTests
 
         var p = new StudyProblem();
         p.Label = label;
+        p.Mode = "heliocentric";
+        p.ModeTags = new[] { "sun", "jupiter", "probe", "heliocentric", "central", "long" };
         p.Dim = 6;
         p.PosDim = 3;
         p.T0 = 0d;

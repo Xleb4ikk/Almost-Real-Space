@@ -134,3 +134,16 @@ __pycache__/
 
 # xunit artifacts and calibration output
 /TestResults/
+
+# P1bTests one-off diagnostics; final human-readable summaries are committed explicitly.
+Tools/P1bTests/Study/integrators/results/Test559_tie115_*
+Tools/P1bTests/Study/integrators/results/Test559_PureGravity_tie115.md
+Tools/P1bTests/Study/integrators/results/Test559_Tie115.log
+Tools/P1bTests/Study/integrators/results/Test_ALL_Integrators*
+Tools/P1bTests/Study/integrators/results/Test554_FrameworkOrbitEdgeCases.md
+Tools/P1bTests/Study/integrators/results/Test555_LowAltitude.md
+Tools/P1bTests/Study/integrators/results/Test558_J2AndSun.md
+Tools/P1bTests/Study/integrators/results/Test559_PureGravity.md
+Tools/P1bTests/Study/integrators/results/make_all_matrix.py
+Tools/P1bTests/Study/integrators/results/mode_margins.py
+Tools/P1bTests/Study/integrators/results/regime_analysis.py

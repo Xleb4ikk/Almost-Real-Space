@@ -157,6 +157,15 @@ production-like режим; сценарий с `ramp = 0` был бы стре�
 Старые матрицы Test549/550 (`SpacecraftOrbitMatrix`, `CertifiedReference`,
 `JplRealism`, `FullComparison` и т. д.). Они по-прежнему используют собственный
 cost-модель и собственные эталоны; новые сравнения делаются в `framework/`.
+Сводная методика теста орбит и итоговый выбор интегратора —
+`integrators/ORBIT_INTEGRATOR_TEST_SCHEME.md`.
+`Test552/553` — широкий свип, `Test554` — Луна/SOI, гипербола, 30 суток и
+1000 витков на целях до 1 см; `Test555` — парашют/взлёт/suicide burn/вход;
+`Test556` — work-precision кривые; `Test557` — production-чанкинг;
+`Test558` — J2/наклонение и normalized Sun; `Test559` — чистая гравитация
+(Луна/гелиоцентрика/пролёты) и карта режимов. `Test555`/`Test557` — ARCHIVED.
+`Test554_Production.csv` — фактический
+production-local DOP853 при 600-с чанках.
 Поле `WorldChunkSeconds` относится только к production-пути Test549 (чанки
 локального кадра); `framework/` его не читает, поэтому в Test552 у сценария
 «Earth LEO 400 km, 30 d» больше нет пометки про world chunk.

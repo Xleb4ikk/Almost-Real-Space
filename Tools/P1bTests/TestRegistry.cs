@@ -299,6 +299,12 @@ new P1bCase("Test549_SpacecraftOrbitIntegrators", Test549_SpacecraftOrbitIntegra
             new P1bCase("Test551_IntegratorFrameworkSelfTest", Test551_IntegratorFrameworkSelfTest, false),
             new P1bCase("Test552_IntegratorFrameworkShipSweep", Test552_IntegratorFrameworkShipSweep, true),
             new P1bCase("Test553_IntegratorFrameworkPlanetSweep", Test553_IntegratorFrameworkPlanetSweep, true),
+            new P1bCase("Test554_IntegratorFrameworkOrbitEdgeCases", Test554_IntegratorFrameworkOrbitEdgeCases, true),
+            new P1bCase("Test555_LowAltitudeAndLanding", Test555_LowAltitudeAndLanding, true),
+            new P1bCase("Test556_IntegratorWorkPrecisionCrossovers", Test556_IntegratorWorkPrecisionCrossovers, false),
+            new P1bCase("Test557_ProductionChunking", Test557_ProductionChunking, true),
+            new P1bCase("Test558_J2InclinationAndNormalizedSun", Test558_J2InclinationAndNormalizedSun, true),
+            new P1bCase("Test559_PureGravityRegimes", Test559_PureGravityRegimes, true),
             new P1bCase("Test534_JupiterVariants", Test534_JupiterVariants, true),
             new P1bCase("Test534b_MoonsAsBodies", Test534b_MoonsAsBodies, true),
         };
