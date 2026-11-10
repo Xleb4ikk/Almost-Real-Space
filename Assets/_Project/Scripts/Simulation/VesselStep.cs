@@ -47,6 +47,30 @@ namespace Galilego.Universe
         /// </summary>
         public VesselFlightModel Flight;
 
+        // TODO(INTEGRATOR-V2): runtime copy of the game switch. The actual
+        // Inspector switch is SimulationRunner.EnableRegimeIntegratorPolicy /
+        // EnableSunCoastPolicy, copied here in SimulationRunner.Awake. Do not
+        // flip these defaults: the policy stays off until the other integrators
+        // are ported and production-tested.
+        /// <summary>
+        /// Per-chunk DOPRI5/DOP853 policy (see IntegratorPolicy). false — the
+        /// historical DOP853 default, no extra dominant-body lookups, bit-for-bit
+        /// behavior. true — each Propagate/LongWarp call chooses once from the
+        /// current chunk and regime.
+        /// </summary>
+        public bool EnableRegimeIntegratorPolicy;
+
+        /// <summary>
+        /// Explicit allowlist for the Sun-coast branch. false keeps every
+        /// heliocentric coast on DOP853 — this is the intentional 5 AU /
+        /// cislunar exclusion until those regimes have their own event tests.
+        /// Surface policy is independent of this flag.
+        /// </summary>
+        public bool EnableSunCoastPolicy;
+
+        /// <summary>Integrator chosen for the last Propagate/LongWarp call (observability/tests).</summary>
+        public SpacecraftIntegrator LastSelectedIntegrator { get; private set; } = SpacecraftIntegrator.Dop853;
+
         /// <summary>Thrust source of the flight model (given the per-chunk attitude snapshot).</summary>
         public FlightThrustSource FlightSource;
 
@@ -178,6 +202,7 @@ namespace Galilego.Universe
 
                 Warp.PrepareForLongWarp(TimeSeconds);
                 Driver.CancelRequested = false;
+                ApplyIntegratorPolicy(OrbitIntegrator.DefaultMaxStepSize, false);
                 LongWarpResult result = Driver.AdvanceToTarget(Ship, TimeSeconds, frameEnd);
                 TimeSeconds = result.ReachedTimeSeconds;
                 time.Reset(TimeSeconds);
@@ -220,6 +245,7 @@ namespace Galilego.Universe
                 RearmDepletion();
                 double massBefore = Ship.Mass;
                 double chunkStart = TimeSeconds;
+                ApplyIntegratorPolicy(chunk, flightOn);
                 EventOccurrence? occurrence = Propagator.Propagate(Ship, TimeSeconds, chunk);
                 double auxBurn = 0d;
                 if (flightOn)
@@ -246,6 +272,115 @@ namespace Galilego.Universe
                     TimeSeconds = time.Sum;
                 }
             }
+        }
+
+        /// <summary>
+        /// Conservative "not near another body" guard for the Sun-coast branch:
+        /// 5 AU / cislunar (and any planet flyby) stay on DOP853 until their
+        /// own event tests pass. Only runs when the Sun branch is actually
+        /// being considered.
+        /// </summary>
+        private bool AnyOtherBodyNear(Vector3d shipPosition)
+        {
+            var bodies = SystemState.AllBodies;
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                OrbitingBody body = bodies[i];
+                if (body.Parent == null || ReferenceEquals(body, SystemState.Root))
+                {
+                    continue;
+                }
+
+                double soi = body.SphereOfInfluenceRadius;
+                if (!(soi > 0d))
+                {
+                    soi = body.HillSphereRadius;
+                }
+
+                if (!(soi > 0d))
+                {
+                    continue;
+                }
+
+                body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPosition, out _);
+                if ((shipPosition - bodyPosition).Magnitude < 10d * soi)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Chooses the integrator for the next Propagate/LongWarp call. Disabled:
+        /// no lookups at all, DOP853 stays exactly as before. Enabled: one
+        /// dominant-body read, then only the work the selected branch needs —
+        /// no CanEnterLongWarp scan on Earth/surface, no local-frame read for a
+        /// stale body (the dominant body is always re-evaluated here).
+        /// </summary>
+        private void ApplyIntegratorPolicy(double chunkSeconds, bool flightModelActive)
+        {
+            if (!EnableRegimeIntegratorPolicy)
+            {
+                Propagator.Integrator = SpacecraftIntegrator.Dop853;
+                LastSelectedIntegrator = SpacecraftIntegrator.Dop853;
+                return;
+            }
+
+            // Always ask the system, not Ship.LocalBody: after an event commit
+            // or a teleport LocalBody can be one step behind the real dominant.
+            OrbitingBody body = SystemState.FindDominantBody(Ship.Position, TimeSeconds);
+            if (body == null)
+            {
+                body = SystemState.Root;
+            }
+
+            bool sunDominant = ReferenceEquals(body, SystemState.Root);
+            bool sunCoastCandidate = sunDominant
+                && EnableSunCoastPolicy
+                && !AnyOtherBodyNear(Ship.Position);
+            bool surfaceCandidate = flightModelActive
+                && chunkSeconds <= IntegratorPolicy.SurfaceChunkSeconds + 1e-9d;
+
+            double altitude = 0d;
+            double verticalSpeed = 0d;
+            if (surfaceCandidate || sunCoastCandidate)
+            {
+                SystemState.EvaluateBodyState(
+                    body, TimeSeconds, out Vector3d bodyPosition, out Vector3d bodyVelocity);
+                Vector3d relative = Ship.Position - bodyPosition;
+                double radius = relative.Magnitude;
+                altitude = radius - body.Radius;
+                verticalSpeed = radius > 1e-9d
+                    ? Vector3d.Dot(Ship.Velocity - bodyVelocity, relative.Normalized)
+                    : 0d;
+            }
+
+            // The non-gravity scan is only meaningful for the Sun-coast branch.
+            bool canCoast = false;
+            if (sunCoastCandidate)
+            {
+                var state = new SpacecraftIntegrationState
+                {
+                    Position = Ship.Position,
+                    Velocity = Ship.Velocity,
+                    Mass = Ship.Mass
+                };
+                canCoast = Driver.CanEnterLongWarp(state, TimeSeconds);
+            }
+
+            var context = new IntegratorContext(
+                chunkSeconds,
+                flightModelActive,
+                sunDominant,
+                EnableSunCoastPolicy,
+                canCoast,
+                altitude,
+                verticalSpeed);
+            SpacecraftIntegrator selected = IntegratorPolicy.Select(context);
+            LastSelectedIntegrator = selected;
+            Propagator.Integrator = selected;
         }
 
         /// <summary>

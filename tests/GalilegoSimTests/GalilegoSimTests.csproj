@@ -29,6 +29,7 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\AtmosphereOptics.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Planet\Sky\AtmosphereProfile.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Spacecraft.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\IntegratorPolicy.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\DynamicsContribution.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\IDynamicsSource.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\GravitySource.cs" />

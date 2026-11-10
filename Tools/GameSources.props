@@ -118,6 +118,7 @@
 
     <!-- Spacecraft -->
     <Compile Include="$(GalilegoScripts)Spacecraft\Spacecraft.cs" />
+    <Compile Include="$(GalilegoScripts)Spacecraft\IntegratorPolicy.cs" />
     <Compile Include="$(GalilegoScripts)Spacecraft\SpacecraftPhysics.cs" />
 
     <!-- Spacecraft\Propulsion -->

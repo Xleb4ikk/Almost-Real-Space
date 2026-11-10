@@ -55,6 +55,18 @@ namespace Galilego.Universe
         [Tooltip("Пауза симуляции (время не идёт, рендер остаётся).")]
         public bool Paused;
 
+        // TODO(INTEGRATOR-V2): THIS IS THE GAME-SIDE ACTIVATION POINT.
+        // Keep both flags false until the remaining integrators are ported and
+        // their production tests pass. Surface v1: EnableRegimeIntegratorPolicy=true,
+        // EnableSunCoastPolicy=false. Sun v1: both true only after a real VesselStep
+        // Sun-coast cost/event test; never enable it for 5 AU/cislunar.
+        [Header("Интегратор")]
+        [Tooltip("Включить политику v1: поверхность 0.05 с (Flight-модель). Sun-coast включается отдельным флагом ниже; по умолчанию всё на DOP853.")]
+        public bool EnableRegimeIntegratorPolicy;
+
+        [Tooltip("Разрешить Sun-coast ветку. Оставь выключенным для 5 AU/cislunar: это явный allowlist; поверхность работает независимо.")]
+        public bool EnableSunCoastPolicy;
+
         [Header("Корабль")]
         [Tooltip("Начальная высота над поверхностью тела спавна (м).")]
         public double SpawnAltitudeMeters = 200000d;
@@ -556,6 +568,10 @@ namespace Galilego.Universe
                 SystemState, warp, propagator, driver, mainThrustSource,
                 new JointedBreakup(), new DebrisPool(),
                 Parts, SpawnEpsilonMeters, DebrisLifetimeSeconds);
+            // TODO(INTEGRATOR-V2): wiring point Inspector -> VesselStep.
+            // Keep both flags false until the ported integrators are production-tested.
+            step.EnableRegimeIntegratorPolicy = EnableRegimeIntegratorPolicy;
+            step.EnableSunCoastPolicy = EnableSunCoastPolicy;
 
             debrisUpdater = new DebrisUpdater(SystemState)
             {

@@ -62,6 +62,18 @@ namespace Galilego.Events
 
         private readonly SpacecraftPhysics physics;
 
+        /// <summary>
+        /// Integrator used for every Step inside the next Propagate call
+        /// (including event probes and root refinement). One choice per
+        /// Propagate: the probe states and the committed state must belong to
+        /// the same method. DOP853 remains the default.
+        /// </summary>
+        public SpacecraftIntegrator Integrator
+        {
+            get => physics.Integrator;
+            set => physics.Integrator = value;
+        }
+
         public EventDrivenPropagator(SpacecraftPhysics physics)
         {
             this.physics = physics ?? throw new ArgumentNullException(nameof(physics));
