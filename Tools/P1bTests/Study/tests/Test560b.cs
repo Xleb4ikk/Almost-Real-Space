@@ -183,7 +183,6 @@ internal static partial class P1bTests
         DecisionBWriteRunsCsv(runsPath, results);
         DecisionBWriteMatrixCsv(matrixPath, scenarios, results, eventMap, eventFloors);
         DecisionBWriteCoverageCsv(coveragePath, scenarios, results);
-        DecisionBWriteValidityCsv(validityPath, validity);
         DecisionBWriteEventsCsv(eventsPath, eventRows);
         DecisionBWriteWarpCsv(warpPath, warpRows);
         DecisionBWriteIsolationCsv(isolationPath, isolation);
@@ -191,6 +190,10 @@ internal static partial class P1bTests
 
         List<DecisionBMatrixRow> matrix = DecisionBReadMatrix(matrixPath);
         List<DecisionBTableRow> table = DecisionBBuildTable(matrix);
+        // Tie-class validity needs the built decision table, so the validity CSV
+        // is written after the table (the parity rows are already in `validity`).
+        DecisionBAppendTieClassChecks(validity, table);
+        DecisionBWriteValidityCsv(validityPath, validity);
         DecisionBWriteTableCsv(tablePath, table);
         DecisionBWriteTableMd(tableMd, table, matrix);
         DecisionBWriteDecisionDetailsMd(detailsMd, table);
@@ -287,6 +290,13 @@ internal static partial class P1bTests
             && File.ReadLines(tablePath).First().Contains("best_ported");
         Check(hasPortColumn, "Test560b: cost_if_ported and best_ported in table",
             hasPortColumn ? "column present" : "missing");
+
+        var badTieClasses = table.FindAll(t => t.BestAll.StartsWith("tie:", StringComparison.Ordinal)
+            && t.BestAll.IndexOf("[production]", StringComparison.Ordinal) >= 0
+            && (t.BestAllClass == "stand-only" || t.BestAllClass == "tie: stand-only"));
+        Check(badTieClasses.Count == 0, "Test560b: mixed tie class includes production",
+            badTieClasses.Count == 0 ? "no stand-only mixed ties"
+                : string.Join(", ", badTieClasses.Select(t => t.Scenario + ":" + t.BestAllClass)));
 
         bool farSelected = scenarios.Exists(s => s.Regime == "far-flight");
         bool helioSelected = scenarios.Exists(s => s.Regime == "heliocentric");

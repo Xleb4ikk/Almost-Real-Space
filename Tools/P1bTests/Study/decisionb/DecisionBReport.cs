@@ -712,12 +712,39 @@ internal static partial class P1bTests
             || t.Scenario.IndexOf("Surface level flight", StringComparison.Ordinal) >= 0;
     }
 
+    private static bool DecisionBMixedTie(DecisionBTableRow t)
+    {
+        return t.BestAllClass == "tie: production+stand-only";
+    }
+
     private static string DecisionBShortWhy(DecisionBTableRow t)
     {
         var parts = new List<string>();
-        parts.Add(t.BestAllClass == "stand-only"
-            ? "best_all is a port candidate"
-            : "best_all is production");
+        if (DecisionBMixedTie(t))
+        {
+            string prod = string.IsNullOrEmpty(t.BestProduction) ? "production" : t.BestProduction;
+            parts.Add("best_all includes production; production option " + prod + " is within "
+                + (double.IsFinite(t.ProductionVsBestAllPct)
+                    ? Math.Abs(t.ProductionVsBestAllPct).ToString("F1", CultureInfo.InvariantCulture) + "% of best_all"
+                    : "the 20% tie band"));
+        }
+        else if (t.BestAllClass == "tie: stand-only")
+        {
+            parts.Add("best_all is a tie of port candidates");
+        }
+        else if (t.BestAllClass == "tie: production")
+        {
+            parts.Add("best_all is a production tie");
+        }
+        else if (t.BestAllClass == "stand-only")
+        {
+            parts.Add("best_all is a port candidate");
+        }
+        else
+        {
+            parts.Add("best_all is production");
+        }
+
         if (double.IsFinite(t.ProductionVsBestAllPct))
         {
             parts.Add("production " + DecisionBPct(t.ProductionVsBestAllPct) + "% vs best_all");
@@ -886,10 +913,15 @@ internal static partial class P1bTests
             var allTies = ok.FindAll(r => DecisionBComparableCost(r) <= 1.20d * Math.Max(allCost, 1e-30d));
             if (allBest.Status == "ok" && allTies.Count > 1)
             {
+                bool tieProduction = allTies.Exists(r => r.MethodClass == "production");
+                bool tieStandOnly = allTies.Exists(r => r.MethodClass == "stand-only");
+                t.BestAllClass = tieProduction && tieStandOnly ? "tie: production+stand-only"
+                    : (tieProduction ? "tie: production" : "tie: stand-only");
                 t.BestAll = "tie: " + string.Join(", ", allTies.Select(DecisionBMethodLabel));
             }
             else
             {
+                t.BestAllClass = allBest.MethodClass;
                 t.BestAll = DecisionBMethodLabel(allBest);
             }
 
@@ -987,6 +1019,7 @@ internal static partial class P1bTests
             bool floorHigh = double.IsFinite(floor) && floor <= t.Target / 100d;
             bool floorOk = double.IsFinite(floor) && floor <= t.Target / 10d;
             bool allProduction = allBest.MethodClass == "production";
+            bool mixedTie = DecisionBMixedTie(t);
             double errFraction = DecisionBRowError(allBest) / t.Target;
 
             if (allBest.Status == "ok" && allTies.Count > 1)
@@ -1035,10 +1068,14 @@ internal static partial class P1bTests
                 : "-";
             string baseText = allProduction
                 ? "best_all base = cost_total (production)"
-                : "best_all base = cost_if_ported (stand port estimate)";
+                : (mixedTie
+                    ? "best_all base = cost_if_ported (stand port estimate); tie includes production"
+                    : "best_all base = cost_if_ported (stand port estimate)");
             string portText = allProduction
                 ? ""
-                : "; requires port: cost_if_ported = cost_total + 2*(raw - chunks)";
+                : (mixedTie
+                    ? "; selected stand option requires port: cost_if_ported = cost_total + 2*(raw - chunks); the production option in the tie needs no port"
+                    : "; requires port: cost_if_ported = cost_total + 2*(raw - chunks)");
             string prescribedText = DecisionBPrescribedForceNote(t);
             t.Why = allBest.Method + " is selected as cheapest comparable hit at "
                 + allCost.ToString("N0", CultureInfo.InvariantCulture)
@@ -1143,6 +1180,35 @@ internal static partial class P1bTests
         }
 
         File.WriteAllText(path, sb.ToString());
+    }
+
+    private static void DecisionBAppendTieClassChecks(
+        List<DecisionBValidityRow> rows, List<DecisionBTableRow> table)
+    {
+        foreach (DecisionBTableRow t in table)
+        {
+            if (!t.BestAll.StartsWith("tie:", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            bool tieContainsProduction = t.BestAll.IndexOf("[production]", StringComparison.Ordinal) >= 0;
+            bool classSaysStandOnly = t.BestAllClass == "stand-only" || t.BestAllClass == "tie: stand-only";
+            bool ok = !(tieContainsProduction && classSaysStandOnly);
+            rows.Add(new DecisionBValidityRow
+            {
+                Check = "best_all_tie_class",
+                Scenario = t.Scenario,
+                Method = "-",
+                Metric = "tie_class_matches_tie_members",
+                Value = ok ? 1d : 0d,
+                Threshold = 1d,
+                Status = ok ? "PASS" : "FAIL",
+                Note = "best_all=\"" + t.BestAll + "\"; class=\"" + t.BestAllClass + "\""
+                    + (tieContainsProduction && t.BestAllClass == "tie: production+stand-only"
+                        ? "; production option is inside the tie, no port required for it" : "")
+            });
+        }
     }
 
     private static void DecisionBWriteEventsCsv(string path, List<DecisionBEventRow> rows)
@@ -1607,7 +1673,8 @@ internal static partial class P1bTests
 
             if (v["check"] != "production_default"
                 && !v["check"].StartsWith("production_parity", StringComparison.Ordinal)
-                && v["check"] != "local_frame_error_control")
+                && v["check"] != "local_frame_error_control"
+                && v["check"] != "best_all_tie_class")
             {
                 continue;
             }
@@ -1736,6 +1803,9 @@ internal static partial class P1bTests
         sb.AppendLine("- A stand-only winner is a port candidate, not a production recommendation:");
         sb.AppendLine("  `cost_if_ported` is an estimate from the measured production local-frame");
         sb.AppendLine("  convention, and the port itself was not run.");
+        sb.AppendLine("- When `best_all` is a mixed tie (`tie: production+stand-only`), the production");
+        sb.AppendLine("  method is already inside the 20% tie band; the production option needs no port,");
+        sb.AppendLine("  and the tie is not called a stand-only port candidate.");
         sb.AppendLine();
 
         File.WriteAllText(path, sb.ToString());

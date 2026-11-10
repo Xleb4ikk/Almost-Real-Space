@@ -365,8 +365,12 @@ internal static partial class P1bTests
                 Stand = standDop853
             };
             double maxStep = s.MaxStep;
+            // True matched atol: the stand adaptive integrator has cfg.Atol = 0
+            // (AdaptiveIntegrator.MakeConfig), so production runs with the same
+            // 0/0/0 absolute tolerances and the same rtol. Nothing but the local
+            // frame/controller differs in this reference row.
             DecisionBRun prod = DecisionBRunProduction(
-                s, "dop853", 1e-12d, maxStep, null, true, false, 1e-6d, 1e-10d, 1e-8d);
+                s, "dop853", 1e-12d, maxStep, null, true, false, 0d, 0d, 0d);
             DecisionBRun stand = DecisionBRunStand(s, dm, 1e-12d, maxStep);
             double diff = double.NaN;
             if (prod.Finite && stand.Finite)
@@ -389,7 +393,7 @@ internal static partial class P1bTests
                 Threshold = target / 10d,
                 Status = double.IsFinite(diff) && diff <= target / 10d ? "PASS" : "FAIL",
                 Note = "reference; rtol=1e-12; max step " + maxStep.ToString("G6", CultureInfo.InvariantCulture)
-                    + "; matched atol=1e-6/1e-10/1e-8"
+                    + "; matched atol=0/0/0 (production pos/vel/mass atol == stand cfg.Atol=0)"
             });
         }
 
@@ -414,7 +418,7 @@ internal static partial class P1bTests
                 leo300, "dopri5", 1e-12d, maxStep, leo300.DominantBodyOverride, true, false);
             DecisionBRun prodMatched = DecisionBRunProduction(
                 leo300, "dopri5", 1e-12d, maxStep, leo300.DominantBodyOverride, true, false,
-                1e-6d, 1e-10d, 1e-8d);
+                0d, 0d, 0d);
             DecisionBRun stand = DecisionBRunStand(leo300, dm, 1e-12d, maxStep);
             double diffGame = DecisionBParityDiff(leo300, prodGame, stand);
             double diffMatched = DecisionBParityDiff(leo300, prodMatched, stand);
@@ -428,7 +432,7 @@ internal static partial class P1bTests
                 Value = diffGame,
                 Threshold = target / 10d,
                 Status = double.IsFinite(diffGame) && diffGame <= target / 10d ? "PASS" : "FINDING",
-                Note = "game-default atol=1e-4/1e-8/1e-4; rtol=1e-12; max step "
+                Note = "game-default atol=1e-4/1e-8/1e-4; stand cfg.Atol=0; rtol=1e-12; max step "
                     + maxStep.ToString("G6", CultureInfo.InvariantCulture)
                     + "; production err "
                     + (prodGame.Finite ? prodGame.ErrMaxM.ToString("E3", CultureInfo.InvariantCulture) : "NaN")
@@ -444,7 +448,8 @@ internal static partial class P1bTests
                 Value = diffMatched,
                 Threshold = target / 10d,
                 Status = double.IsFinite(diffMatched) && diffMatched <= target / 10d ? "PASS" : "FINDING",
-                Note = "matched atol=1e-6/1e-10/1e-8; rtol=1e-12; max step "
+                Note = "matched atol=0/0/0 (production pos/vel/mass atol == stand cfg.Atol=0); "
+                    + "rtol=1e-12; max step "
                     + maxStep.ToString("G6", CultureInfo.InvariantCulture)
                     + "; production err "
                     + (prodMatched.Finite ? prodMatched.ErrMaxM.ToString("E3", CultureInfo.InvariantCulture) : "NaN")
@@ -454,7 +459,7 @@ internal static partial class P1bTests
 
             DecisionBRun prod853 = DecisionBRunProduction(
                 leo300, "dop853", 1e-12d, maxStep, leo300.DominantBodyOverride, true, false,
-                1e-6d, 1e-10d, 1e-8d);
+                0d, 0d, 0d);
             IStudyIntegrator stand853Integrator = DecisionBStand("DOP853-adaptive");
             DecisionBRun stand853 = stand853Integrator == null ? null : DecisionBRunStand(
                 leo300, new DecisionBMethod
@@ -474,17 +479,18 @@ internal static partial class P1bTests
                 Metric = "prod_minus_stand_at_matched_atol_m",
                 Value = diffMatched,
                 Threshold = target / 10d,
-                Status = double.IsFinite(diffMatched) && diffMatched <= target / 10d ? "PASS/ATOL" : "FINDING",
-                Note = "matched atol=1e-6/1e-10/1e-8; production err "
+                Status = double.IsFinite(diffMatched) && diffMatched <= target / 10d ? "PASS/MATCHED" : "FINDING",
+                Note = "matched atol=0/0/0 (production pos/vel/mass atol == stand cfg.Atol=0); "
+                    + "rtol=1e-12; production err "
                     + (prodMatched.Finite ? prodMatched.ErrMaxM.ToString("E3", CultureInfo.InvariantCulture) : "NaN")
                     + " m; stand DOPRI5 err " + (stand.Finite ? stand.ErrMaxM.ToString("E3", CultureInfo.InvariantCulture) : "NaN")
                     + " m; matched diff " + (double.IsFinite(diffMatched) ? diffMatched.ToString("E3", CultureInfo.InvariantCulture) : "NaN")
                     + " m; game-default atol diff " + (double.IsFinite(diffGame) ? diffGame.ToString("E3", CultureInfo.InvariantCulture) : "NaN")
-                    + " m; DOP853 matched reference " + (double.IsFinite(diff853)
+                    + " m; DOP853 matched-atol (0/0/0) reference " + (double.IsFinite(diff853)
                         ? diff853.ToString("E3", CultureInfo.InvariantCulture) : "NaN")
                     + " m; " + (double.IsFinite(diffMatched) && diffMatched > target / 10d
-                        ? "matched-atol mismatch is a local-frame finding"
-                        : "game-default difference is an atol effect, not a local-frame finding")
+                        ? "true matched-atol difference is a local-frame finding"
+                        : "true matched-atol difference is below target/10; the game-default difference is an atol effect, not a local-frame finding")
             });
         }
 
@@ -514,7 +520,7 @@ internal static partial class P1bTests
                 Value = diff,
                 Threshold = target / 10d,
                 Status = double.IsFinite(diff) && diff <= target / 10d ? "PASS" : "FINDING",
-                Note = "game-default atol=1e-4/1e-8/1e-4; rtol=1e-12; surface drag/thrust/variable mass; max step "
+                Note = "game-default atol=1e-4/1e-8/1e-4; stand cfg.Atol=0; rtol=1e-12; surface drag/thrust/variable mass; max step "
                     + surfaceParity.MaxStep.ToString("G6", CultureInfo.InvariantCulture)
             });
         }
