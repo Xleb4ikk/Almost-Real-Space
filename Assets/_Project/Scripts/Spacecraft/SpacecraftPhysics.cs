@@ -42,6 +42,24 @@ namespace Galilego.Spacecraft
         public double RelativeTolerance = 1e-11;
 
         /// <summary>
+        /// 0 = production cap (OrbitIntegrator.DefaultMaxStepSize = 600 s). A test or
+        /// a future regime may raise it; the default behaviour is unchanged.
+        /// </summary>
+        public double MaxStepSize = 0d;
+
+        /// <summary>
+        /// 0 = the game's normal FindDominantBody switch. A test may pin the local frame
+        /// to one body to isolate a dominant-body-switch issue; production leaves null.
+        /// </summary>
+        public OrbitingBody DominantBodyOverride;
+
+        /// <summary>
+        /// Behaviour-neutral counters of the last Step call (attempts/accepted/rejected).
+        /// The object is reused: no per-chunk allocation, no effect on the dynamics.
+        /// </summary>
+        public readonly SpacecraftStepDiagnostics StepDiagnostics = new SpacecraftStepDiagnostics();
+
+        /// <summary>
         /// Optional: when set, the integrator's error norm is scaled by distance/speed relative to the dominant body
         /// instead of the world-frame magnitudes (see ToleranceReference). null = old absolute scaling (debris, tests).
         /// </summary>
@@ -113,8 +131,9 @@ namespace Galilego.Spacecraft
             if (useLocalFrame)
             {
                 int segmentStart = segments != null ? segments.Count : 0;
-                OrbitingBody dominant = ToleranceFrameSystem.FindDominantBody(
-                    ship.Position, currentTimeSeconds);
+                OrbitingBody dominant = DominantBodyOverride != null
+                    ? DominantBodyOverride
+                    : ToleranceFrameSystem.FindDominantBody(ship.Position, currentTimeSeconds);
                 ToleranceFrameSystem.EvaluateBodyState(
                     dominant, currentTimeSeconds,
                     out Vector3d bodyPosition, out Vector3d bodyVelocity);
@@ -177,11 +196,11 @@ namespace Galilego.Spacecraft
                     ? SpacecraftOrbitIntegrator.StepForward(
                         localStart, currentTimeSeconds, dt, localDerivative,
                         PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
-                        MassAbsoluteTolerance, RelativeTolerance, segments, null)
+                        MassAbsoluteTolerance, RelativeTolerance, segments, null, StepDiagnostics, MaxStepSize)
                     : SpacecraftOrbitIntegrator.StepForwardDop853(
                         localStart, currentTimeSeconds, dt, localDerivative,
                         PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
-                        MassAbsoluteTolerance, RelativeTolerance, segments, null);
+                        MassAbsoluteTolerance, RelativeTolerance, segments, null, StepDiagnostics, MaxStepSize);
 
                 if (segments != null)
                 {
@@ -213,7 +232,9 @@ namespace Galilego.Spacecraft
             ToleranceReference? toleranceReference = null;
             if (ToleranceFrameSystem != null && dt >= MinSpanForToleranceFrameSeconds && dt <= ToleranceReference.MaxSpanSeconds)
             {
-                OrbitingBody dominant = ToleranceFrameSystem.FindDominantBody(ship.Position, currentTimeSeconds);
+                OrbitingBody dominant = DominantBodyOverride != null
+                    ? DominantBodyOverride
+                    : ToleranceFrameSystem.FindDominantBody(ship.Position, currentTimeSeconds);
                 ToleranceFrameSystem.EvaluateBodyState(dominant, currentTimeSeconds, out Vector3d bodyPosition, out Vector3d bodyVelocity);
                 toleranceReference = new ToleranceReference(bodyPosition, bodyVelocity, currentTimeSeconds);
             }
@@ -222,11 +243,11 @@ namespace Galilego.Spacecraft
                 ? SpacecraftOrbitIntegrator.StepForward(
                     initialState, currentTimeSeconds, dt, EvaluateDerivative,
                     PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
-                    MassAbsoluteTolerance, RelativeTolerance, segments, toleranceReference)
+                    MassAbsoluteTolerance, RelativeTolerance, segments, toleranceReference, StepDiagnostics, MaxStepSize)
                 : SpacecraftOrbitIntegrator.StepForwardDop853(
                     initialState, currentTimeSeconds, dt, EvaluateDerivative,
                     PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
-                    MassAbsoluteTolerance, RelativeTolerance, segments, toleranceReference);
+                    MassAbsoluteTolerance, RelativeTolerance, segments, toleranceReference, StepDiagnostics, MaxStepSize);
 
             ship.Position = result.State.Position;
             ship.Velocity = result.State.Velocity;

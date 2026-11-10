@@ -305,6 +305,7 @@ new P1bCase("Test549_SpacecraftOrbitIntegrators", Test549_SpacecraftOrbitIntegra
             new P1bCase("Test557_ProductionChunking", Test557_ProductionChunking, true),
             new P1bCase("Test558_J2InclinationAndNormalizedSun", Test558_J2InclinationAndNormalizedSun, true),
             new P1bCase("Test559_PureGravityRegimes", Test559_PureGravityRegimes, true),
+            new P1bCase("Test560b_IntegratorDecisionMatrix", Test560b_IntegratorDecisionMatrix, true),
             new P1bCase("Test534_JupiterVariants", Test534_JupiterVariants, true),
             new P1bCase("Test534b_MoonsAsBodies", Test534b_MoonsAsBodies, true),
         };

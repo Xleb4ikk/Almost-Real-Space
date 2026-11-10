@@ -152,6 +152,21 @@ production-like режим; сценарий с `ramp = 0` был бы стре�
 | `Compare.cs` | CLI-режимы `--real/--custom/--ships/--kepler/--y6c/--dd-*`; Taylor vs Y6 |
 | `TaylorDd.cs` | dd-джеты: старая реализация, арена/in-place (`DdView`/`DdArena`), self-check, сравнение реализаций |
 
+## `decisionb/`
+
+`Test560b_IntegratorDecisionMatrix` — полная карта режим → метод → точность →
+`cost_total` → confidence. `DecisionBScenarios.cs` задаёт surface/LEO/high-orbit/
+cislunar/heliocentric/far-flight и отдельные production/regime/chunk-sensitivity
+конфигурации; `DecisionBCore.cs` гоняет все `StudyRegistry.All()` методы, production
+`SpacecraftPhysics` и cap-варианты; `DecisionBReport.cs`/`DecisionBAudit.cs` пишут
+`results/decision/Test560b_*` (Runs, DecisionMatrix, MethodCoverage, DecisionTable,
+DominanceAudit, HeliocentricIsolation, ChunkSensitivity, Validity, Events, Warp).
+`Test560b.cs` — точка входа. Фильтры: `P1B560B_REGIMES`, `P1B560B_METHODS`,
+`P1B560B_QUICK`; `P1B560B_REGENERATE=1` пересобирает таблицы из CSV без повторных
+прогонов. Audited `results/Test552...Test559` не перезаписываются. Production default
+не меняется; `SpacecraftPhysics.MaxStepSize=0` и `DominantBodyOverride=null` сохраняют
+старое поведение.
+
 ## `integrators/` и `jpl/`
 
 Старые матрицы Test549/550 (`SpacecraftOrbitMatrix`, `CertifiedReference`,

@@ -3,6 +3,25 @@
 namespace Galilego.Core
 {
     /// <summary>
+    /// Behaviour-neutral counters for one StepForward/StepForwardDop853 call.
+    /// Attempts counts every trial (accepted + rejected + stage-mass retries);
+    /// the production dynamics and step control do not read this object.
+    /// </summary>
+    public sealed class SpacecraftStepDiagnostics
+    {
+        public long Attempts;
+        public long Accepted;
+        public long Rejected;
+
+        public void Reset()
+        {
+            Attempts = 0L;
+            Accepted = 0L;
+            Rejected = 0L;
+        }
+    }
+
+    /// <summary>
     /// DOPRI5/DOP853 steppers for the full spacecraft state (position, velocity, mass).
     /// Uses the SAME DOPRI5Coefficients as OrbitIntegrator: not an alternative
     /// integrator, but the same Dormand-Prince 5(4) method applied to a wider
@@ -137,10 +156,19 @@ namespace Galilego.Core
             double massAbsoluteTolerance,
             double relativeTolerance,
             System.Collections.Generic.IList<DenseSegment> segments = null,
-            ToleranceReference? toleranceReference = null)
+            ToleranceReference? toleranceReference = null,
+            SpacecraftStepDiagnostics diagnostics = null,
+            double maxStepSize = 0d)
         {
             if (derivativeProvider == null)
                 throw new ArgumentNullException(nameof(derivativeProvider));
+
+            if (diagnostics != null)
+            {
+                diagnostics.Reset();
+            }
+
+            double maxStep = maxStepSize > 0d ? maxStepSize : MaxStepSize;
 
             // Forward-only contract: with targetDt < 0 the RHS stages run forward while
             // the clock runs backward — silent garbage (audit S1/A1). All callers go
@@ -166,7 +194,7 @@ namespace Galilego.Core
             double time = currentTimeSeconds;
             double remainingDt = Math.Abs(targetDt);
             double direction = Math.Sign(targetDt);
-            double dt = Math.Min(remainingDt, MaxStepSize);
+            double dt = Math.Min(remainingDt, maxStep);
             bool useReference = toleranceReference.HasValue && remainingDt <= ToleranceReference.MaxSpanSeconds;
             ToleranceReference reference = useReference ? toleranceReference.Value : default;
             long loopGuard = 0L;
@@ -192,6 +220,11 @@ namespace Galilego.Core
                     fsalValid = true;
                 }
 
+                if (diagnostics != null)
+                {
+                    diagnostics.Attempts++;
+                }
+
                 DoPri5Step(
                     current, time,
                     dt,
@@ -207,6 +240,11 @@ namespace Galilego.Core
 
                 if (stageMassInvalid)
                 {
+                    if (diagnostics != null)
+                    {
+                        diagnostics.Rejected++;
+                    }
+
                     if (dt <= MinStepSize)
                     {
                         throw new InvalidOperationException(
@@ -246,6 +284,11 @@ namespace Galilego.Core
 
                 if (normalizedError <= 1.0)
                 {
+                    if (diagnostics != null)
+                    {
+                        diagnostics.Accepted++;
+                    }
+
                     EnsurePositiveMass(fifth, time + (dt * direction));
                     if (segments != null)
                     {
@@ -269,10 +312,15 @@ namespace Galilego.Core
                     double stepScale = Math.Min(Math.Max(
                         0.9 * Math.Pow(1.0 / Math.Max(normalizedError, 1e-10), 0.2),
                         0.2), 5.0);
-                    dt = Math.Min(Math.Max(dt * stepScale, MinStepSize), MaxStepSize);
+                    dt = Math.Min(Math.Max(dt * stepScale, MinStepSize), maxStep);
                 }
                 else
                 {
+                    if (diagnostics != null)
+                    {
+                        diagnostics.Rejected++;
+                    }
+
                     double rejectScale = Math.Min(Math.Max(
                         0.9 * Math.Pow(1.0 / Math.Max(normalizedError, 1e-10), 0.2),
                         0.1), 0.5);
@@ -282,6 +330,11 @@ namespace Galilego.Core
                     double candidateDt = Math.Max(dt * rejectScale, MinStepSize);
                     if (candidateDt <= MinStepSize)
                     {
+                        if (diagnostics != null)
+                        {
+                            diagnostics.Attempts++;
+                        }
+
                         dt = Math.Min(MinStepSize, remainingDt);
                         DoPri5Step(
                             current, time,
@@ -301,6 +354,11 @@ namespace Galilego.Core
                             throw new InvalidOperationException(
                                 "DOPRI5 не смог подобрать шаг: масса на пробной стадии ≤ 0 при t=" +
                                 time.ToString("R") + ".");
+                        }
+
+                        if (diagnostics != null)
+                        {
+                            diagnostics.Accepted++;
                         }
 
                         EnsurePositiveMass(forced, time + (dt * direction));
@@ -349,10 +407,19 @@ namespace Galilego.Core
             double massAbsoluteTolerance,
             double relativeTolerance,
             System.Collections.Generic.IList<DenseSegment> segments = null,
-            ToleranceReference? toleranceReference = null)
+            ToleranceReference? toleranceReference = null,
+            SpacecraftStepDiagnostics diagnostics = null,
+            double maxStepSize = 0d)
         {
             if (derivativeProvider == null)
                 throw new ArgumentNullException(nameof(derivativeProvider));
+
+            if (diagnostics != null)
+            {
+                diagnostics.Reset();
+            }
+
+            double maxStep = maxStepSize > 0d ? maxStepSize : MaxStepSize;
 
             if (targetDt < 0d)
                 throw new ArgumentOutOfRangeException(nameof(targetDt),
@@ -369,7 +436,7 @@ namespace Galilego.Core
             double time = currentTimeSeconds;
             double remainingDt = Math.Abs(targetDt);
             double direction = Math.Sign(targetDt);
-            double dt = Math.Min(remainingDt, MaxStepSize);
+            double dt = Math.Min(remainingDt, maxStep);
             bool useReference = toleranceReference.HasValue && remainingDt <= ToleranceReference.MaxSpanSeconds;
             ToleranceReference reference = useReference ? toleranceReference.Value : default;
             long loopGuard = 0L;
@@ -404,6 +471,11 @@ namespace Galilego.Core
                     fsalValid = true;
                 }
 
+                if (diagnostics != null)
+                {
+                    diagnostics.Attempts++;
+                }
+
                 DoP853Step(
                     current, time, dt,
                     derivativeProvider,
@@ -417,6 +489,11 @@ namespace Galilego.Core
 
                 if (stageMassInvalid)
                 {
+                    if (diagnostics != null)
+                    {
+                        diagnostics.Rejected++;
+                    }
+
                     if (dt <= MinStepSize)
                     {
                         throw new InvalidOperationException(
@@ -453,6 +530,11 @@ namespace Galilego.Core
 
                 if (normalizedError <= 1.0)
                 {
+                    if (diagnostics != null)
+                    {
+                        diagnostics.Accepted++;
+                    }
+
                     EnsurePositiveMass(eighth, time + (dt * direction));
                     if (segments != null)
                     {
@@ -483,16 +565,26 @@ namespace Galilego.Core
                     double stepScale = Math.Min(Math.Max(
                         0.9 * Math.Pow(1.0 / Math.Max(normalizedError, 1e-10), 1.0 / 8.0),
                         0.2), 5.0);
-                    dt = Math.Min(Math.Max(dt * stepScale, MinStepSize), MaxStepSize);
+                    dt = Math.Min(Math.Max(dt * stepScale, MinStepSize), maxStep);
                 }
                 else
                 {
+                    if (diagnostics != null)
+                    {
+                        diagnostics.Rejected++;
+                    }
+
                     double rejectScale = Math.Min(Math.Max(
                         0.9 * Math.Pow(1.0 / Math.Max(normalizedError, 1e-10), 1.0 / 8.0),
                         0.1), 0.5);
                     double candidateDt = Math.Max(dt * rejectScale, MinStepSize);
                     if (candidateDt <= MinStepSize)
                     {
+                        if (diagnostics != null)
+                        {
+                            diagnostics.Attempts++;
+                        }
+
                         dt = Math.Min(MinStepSize, remainingDt);
                         DoP853Step(
                             current, time, dt,
@@ -510,6 +602,11 @@ namespace Galilego.Core
                             throw new InvalidOperationException(
                                 "DOP853 не смог подобрать шаг: масса на пробной стадии ≤ 0 при t=" +
                                 time.ToString("R") + ".");
+                        }
+
+                        if (diagnostics != null)
+                        {
+                            diagnostics.Accepted++;
                         }
 
                         EnsurePositiveMass(forced, time + (dt * direction));

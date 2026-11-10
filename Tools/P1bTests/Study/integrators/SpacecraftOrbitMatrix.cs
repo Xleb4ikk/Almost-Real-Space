@@ -73,6 +73,12 @@ internal static partial class P1bTests
         public double ThrustNewtons;
         public double ThrustIsp;
         public double ThrustRampSeconds;
+        /// <summary>
+        /// Hover/level hold: scale thrust with remaining mass, T(t) = T0 * m(t) / m0,
+        /// so T/m stays constant instead of rising as propellant burns off. Default
+        /// false keeps every existing Test552-559 thrust case bit-identical.
+        /// </summary>
+        public bool ThrustScalesWithMass;
         public bool AllowTaylor;
         public double Tau;
         public double StepScale;
@@ -108,6 +114,12 @@ internal static partial class P1bTests
         public bool AllowUnratioedResolution;
         /// <summary>Split the certified reference at baked-ephemeris seams.</summary>
         public bool SeamAwareReference;
+        /// <summary>
+        /// Optional checkpoint list (already in absolute ship time). Test560 uses
+        /// chunk-aligned checkpoints so candidate and reference meet without an
+        /// artificial stop between chunk boundaries.
+        /// </summary>
+        public double[] CheckpointTimesOverride;
         public double AccuracyTarget = 1d;
         public double AlternativeTarget = 10d;
         public bool DiagNoMoon;
@@ -145,6 +157,16 @@ internal static partial class P1bTests
         public double[] CheckpointTimes;
         public Vector3d[] CheckpointP;
         public Vector3d[] CheckpointV;
+        public double LocalVelocityError;
+        public double LocalVelocityFloor
+        {
+            get
+            {
+                return LocalAsymptotic && double.IsFinite(LocalVelocityError)
+                    ? LocalVelocityError
+                    : double.NaN;
+            }
+        }
         public StudyShipMatrixRef Dd;
         public double DdSelf;
         public double DdError;
@@ -372,22 +394,32 @@ internal static partial class P1bTests
         }
 
         double ramp = StudyShipMatrixRampSeconds(c);
+        double throttle;
         if (ramp <= 0d)
         {
-            return 1d;
+            throttle = 1d;
         }
-
-        if (t < start + ramp)
+        else if (t < start + ramp)
         {
-            return Math.Min(1d, (t - start) / ramp);
+            throttle = Math.Min(1d, (t - start) / ramp);
         }
-
-        if (t > end - ramp)
+        else if (t > end - ramp)
         {
-            return Math.Max(0d, Math.Min(1d, (end - t) / ramp));
+            throttle = Math.Max(0d, Math.Min(1d, (end - t) / ramp));
+        }
+        else
+        {
+            throttle = 1d;
         }
 
-        return 1d;
+        if (c.ThrustScalesWithMass && c.ThrustIsp > 0d && c.Mass0 > 0d)
+        {
+            double massFlow = c.ThrustNewtons / (c.ThrustIsp * 9.80665d);
+            double mass = c.Mass0 - (massFlow * (t - start));
+            throttle *= Math.Max(0d, mass / c.Mass0);
+        }
+
+        return throttle;
     }
 
     /// <summary>
@@ -604,6 +636,11 @@ internal static partial class P1bTests
 
     private static double[] StudyShipMatrixCheckpointTimes(StudyShipMatrixCase c)
     {
+        if (c.CheckpointTimesOverride != null)
+        {
+            return (double[])c.CheckpointTimesOverride.Clone();
+        }
+
         // One checkpoint per orbit up to 256, at least 8: the error of a long run
         // is a phase error that grows and shrinks, and the final point alone can
         // land on a lucky phase (RK4 at 1000 orbits reads 1.6e6, 8.1e6 and
@@ -933,6 +970,7 @@ internal static partial class P1bTests
 
         refs.Local = StudyShipMatrixRefFromState(c, cert.P, cert.V, cert.M);
         refs.LocalError = cert.PositionError;
+        refs.LocalVelocityError = cert.VelocityError;
         refs.LocalKind = cert.Detail;
         refs.LocalValid = cert.Valid;
         refs.LocalAsymptotic = cert.Asymptotic;
