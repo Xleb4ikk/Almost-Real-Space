@@ -797,6 +797,10 @@ internal static partial class P1bTests
         }
 
         const long parityBudget = 10000000L;
+        bool sampleMode = string.Equals(DecisionBEnv("P1B560B_PARITY"), "sample", StringComparison.OrdinalIgnoreCase);
+        var parityClock = Stopwatch.StartNew();
+        int executed = 0;
+        int skipped = 0;
         foreach (DecisionBScenario s in scenarios)
         {
             if (s.Config != "production" || s.Sensitivity || covered.Contains(s.Label))
@@ -810,6 +814,27 @@ internal static partial class P1bTests
                 continue;
             }
 
+            if (sampleMode
+                && s.Label.IndexOf("Cislunar", StringComparison.Ordinal) < 0
+                && s.Label.IndexOf("Far flight", StringComparison.Ordinal) < 0
+                && s.Label.IndexOf("5 AU", StringComparison.Ordinal) < 0)
+            {
+                skipped++;
+                rows.Add(new DecisionBValidityRow
+                {
+                    Check = "production_parity_game_default",
+                    Scenario = s.Label,
+                    Method = "DOPRI5",
+                    Metric = "prod_vs_stand_max_m",
+                    Value = double.NaN,
+                    Threshold = target.Value / 10d,
+                    Status = "not run",
+                    Note = "P1B560B_PARITY=sample; use P1B560B_PARITY=full for every production scenario"
+                });
+                continue;
+            }
+
+            var oneClock = Stopwatch.StartNew();
             DecisionBMethodResult mr = results.Find(x => x.Scenario == s && x.Method.Name == "DOPRI5-adaptive");
             DecisionBMatrixRow cell = matrix.Find(x => x.Scenario == s.Label
                 && x.Config == s.Config && x.Method == "DOPRI5-adaptive"
@@ -880,8 +905,16 @@ internal static partial class P1bTests
                     + (stand.Finite ? stand.ErrMaxM.ToString("E3", CultureInfo.InvariantCulture) + " m" : "NaN")
                     + "; cap 10M RHS"
             });
+            executed++;
+            oneClock.Stop();
+            Console.WriteLine("  parity " + s.Label + " -> " + status + " in "
+                + oneClock.Elapsed.TotalMilliseconds.ToString("F0", CultureInfo.InvariantCulture) + " ms");
         }
 
+        parityClock.Stop();
+        Console.WriteLine("  parity all: " + executed.ToString(CultureInfo.InvariantCulture)
+            + " run(s), " + skipped.ToString(CultureInfo.InvariantCulture) + " skipped, "
+            + parityClock.Elapsed.TotalMilliseconds.ToString("F0", CultureInfo.InvariantCulture) + " ms");
         return rows;
     }
 

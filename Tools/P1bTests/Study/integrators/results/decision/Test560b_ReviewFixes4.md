@@ -25,7 +25,14 @@ Effect (same cost, better error wins):
 | Heliocentric 0.3 AU e 0.5, 1 y / 10 km | `tie: RK4, PEFRL`; best_ported RK4 525,600 | `tie: PEFRL@525,600/6.00E-005, RK4@525,600/1.22E-004`; best_ported PEFRL |
 | Heliocentric 5 AU e 0.3, 10 y [regime86400] / 100 km | `tie: RK4, PEFRL`; best_ported RK4 36,640 | `tie: PEFRL@36,640/4.26E-003, RK4@36,640/2.53E-002`; best_ported PEFRL |
 | High orbit 200 000 km, 30 d / 100 m | `tie: RK4, PEFRL`; best_ported RK4 43,200 | `tie: PEFRL@43,200/1.71E-004, RK4@43,200/2.28E-004`; best_ported PEFRL |
-| GEO 35 786 km, 30 d / 100 m | `tie: Y6C, Y6, PEFRL`; best_ported Y6C 95,040 | `tie: Y6@95,040/4.20E-002, Y6C@..., PEFRL@...`; best_ported Y6 |
+| GEO 35 786 km, 30 d / 100 m | `tie: Y6C, Y6, PEFRL`; best_ported Y6C 95,040 | `tie: Y6@95,040/4.20E-002, Y6C@95,040/4.20E-002, PEFRL@...`; best_ported **`tie: Y6, Y6C`** |
+
+The secondary key has a relative epsilon of 0.5%: an equal-cost candidate is
+only moved ahead when its `err/target` is better by more than 0.5%. The GEO
+Y6/Y6C errors differ by 0.0011%, so they remain an explicit tie
+(`best_ported = tie: Y6, Y6C`) instead of flipping the recommendation on
+round-off. The 0.3 AU (2x) and 5 AU (6x) error differences stay above the
+epsilon and still select PEFRL. `tie_break_by_error` uses the same epsilon.
 
 `selection_metric_consistent` re-selects every ok/edge cell from
 `Test560b_Runs.csv` using `cost_if_ported` and compares the control with the
@@ -59,12 +66,23 @@ and the floors were not changed.
 
 ## 3. Scope and bound
 
-`Test560b_DecisionTable.csv/.md` now have `scope` and `bound`:
+`Test560b_DecisionTable.csv/.md` now have `scope`, `bound` and
+`production_bound`:
 
 - `scope` = `config`, `max_step` or `chunk` (which axis the row belongs to);
-- `bound` is a **heuristic** label: `chunk` when `steps <= 1.2*chunks`;
+- `bound` is the **winner's** heuristic label and `production_bound` is the
+  selected production row's label: `chunk` when `steps <= 1.2*chunks`;
   otherwise `max-step` when `maxStep > 0` and
-  `steps >= 0.8*(duration/maxStep)`; otherwise `tolerance`.
+  `0.8*(duration/maxStep) <= steps <= 1.2*(duration/maxStep)`; otherwise
+  `tolerance`.
+
+The upper bound is essential: without it a method that takes *more* steps than
+the cap was mislabelled `max-step`. After the fix, the executed ok/edge rows
+split into 226 `chunk`, 29 `max-step` and 41 `tolerance`; the 41 former false
+`max-step` labels (LEO 200 DOPRI5/DOPRI5-fixed, surface descent chunk-sweep,
+etc.) are now `tolerance`. `P1B560B_REGENERATE=1` recomputes this from
+`steps/chunks/duration_s/max_step` and rewrites the matrix `bound` column; no
+re-run of the trajectory is needed.
 
 The new section **"Max-step variants (informational, not mixed into best_all)"**
 is in `Test560b_DecisionTable.md` and `Test560b_DecisionDetails.md`; the
@@ -73,8 +91,8 @@ every executed production row with `max_step != config_max_step` and status
 ok/edge, and those rows are not candidates for `best_all`/`best_production`.
 The existing production/regime86400 split is unchanged.
 
-Far-flight production `why` now says `max-step-bound (600 s)`. The max-step
-section shows:
+Far-flight production `why` now says `max-step-bound (600 s)` for both winner
+and production. The max-step section shows:
 
 | method | max step | err | cost total | ported |
 |---|---:|---:|---:|---:|
@@ -134,9 +152,11 @@ as a test failure. Three BORDERLINE rows are listed separately.
 
 `DecisionBRun.HAvg = duration / accepted_steps` (NaN when steps = 0). It is in
 `Test560b_Runs.csv`, `Test560b_DecisionMatrix.csv` and
-`Test560b_ChunkSensitivity.csv` as `h_avg`. `Test560b_DecisionTable.md` and
-`Test560b_DecisionDetails.md` show `h_req` and `h_avg` for every executed fixed
-method.
+`Test560b_ChunkSensitivity.csv` as `h_avg`. `Test560b_DecisionDetails.md` has a
+per-cell `fixed_step_h` line, and `Test560b_DecisionTable.md` has a dedicated
+**"Fixed-step h_req vs h_avg"** table with columns for every executed fixed
+method; the compact summary at the top of that file is per cell and does not
+carry per-method h columns.
 
 The cislunar DOPRI5-fixed refinement control 424.264 s really runs two 300 s
 steps per 600 s chunk, so its `h_avg` is 300 s
@@ -168,7 +188,9 @@ error were not changed.
 ## 7. Final run and size
 
 - `Test560b_IntegratorDecisionMatrix`: **ALL PASS (1 FINDING)**, 6,291,835 ms
-  (about 104.9 min), 3 BORDERLINE rows.
+  (about 104.9 min), 3 BORDERLINE rows. Full log:
+  `results/decision/Test560b_full.log` (the previous 1,571,366 ms log was
+  replaced; it described the pre-parity run).
 - Coverage: **475 rows** = 19 scenarios x 25 methods; `ranked=241`, `n/a=99`,
   `not run=135`, `unresolved=0`.
 - Decision matrix: 650 rows; decision table: 21 rows (18 production cells +
@@ -208,3 +230,38 @@ New: this file.
 Production physics (`SpacecraftPhysics`, `SpacecraftOrbitIntegrator`), the cost
 formulas, the 20% tie band, the production default and the audited
 Test552-Test559 files were not changed.
+
+## 10. Follow-up after the code/CSV review
+
+- **`bound` inversion fixed.** The old condition had only a lower bound
+  (`steps >= 0.8*capSteps`), so any method with more steps than the cap was
+  labelled `max-step`. The upper bound `steps <= 1.2*capSteps` was added.
+  The 41 false `max-step` rows (LEO 200 DOPRI5/DOPRI5-fixed, surface descent
+  chunk-sweep, etc.) are now `tolerance`; the executed ok/edge split is
+  226 `chunk`, 29 `max-step`, 41 `tolerance`.
+- **`production_bound` added.** `bound` is the winner's label;
+  `production_bound` is the selected production row's label. Both are in
+  `Test560b_DecisionTable.csv/.md` and both are written in `why`.
+- **GEO noise tie.** Equal-cost err/target differences below 0.5% do not
+  reorder candidates. GEO `best_ported` is now `tie: Y6, Y6C` (errors differ by
+  0.0011%), not a Y6 win.
+- **`h_req`/`h_avg` location clarified.** `DecisionDetails.md` has per-cell
+  `fixed_step_h` lines; `DecisionTable.md` has a dedicated
+  "Fixed-step h_req vs h_avg" table. The compact summary is per cell and does
+  not carry per-method h columns.
+- **Full log updated.** `results/decision/Test560b_full.log` is now the
+  6,291,835 ms / `ALL PASS (1 FINDING)` run; the old 1,571,366 ms log was
+  replaced.
+- **Runtime check.** The new per-scenario DOPRI5 parity is cheap: the
+  far-flight parity run measured 4,317 ms, and the timing line is printed as
+  `parity <scenario> -> <status> in N ms` / `parity all: N run(s), ... ms`.
+  The sum of printed sweep run times is 985,688 ms (old log: 968,971 ms), so
+  the 105-minute wall time is not explained by parity or by the sweep. Most of
+  the wall time was in unprinted reference/event work or machine suspension;
+  the new log and timing lines make that visible. A switch
+  `P1B560B_PARITY=full|sample` was added (`full` is the default; `sample` runs
+  cislunar/5 AU/far-flight parity and marks the rest `not run`).
+
+After the bound fix the table, details and matrix Markdown were rebuilt with
+`P1B560B_REGENERATE=1`; cost/error numbers did not change. The regenerated
+`bound` distribution and GEO tie are reflected in the committed CSVs.

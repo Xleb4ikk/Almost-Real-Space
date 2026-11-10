@@ -39,12 +39,19 @@ internal static partial class P1bTests
             }
 
             List<DecisionBMatrixRow> regenRows = DecisionBReadMatrix(matrixPath);
-            DecisionBWriteTableCsv(tablePath, DecisionBBuildTable(regenRows));
+            List<DecisionBTableRow> regenTable = DecisionBBuildTable(regenRows);
+            // Recompute the heuristic bound from steps/chunks/duration and write
+            // it back to the matrix CSV; refresh the tie-break validity rows so
+            // they match the rebuilt table (the other validity rows are
+            // measurements and are kept as-is).
+            DecisionBRewriteMatrixBoundColumn(matrixPath, regenRows);
+            DecisionBRefreshTieBreakValidity(validityPath, regenTable);
+            DecisionBWriteTableCsv(tablePath, regenTable);
             DecisionBWriteSensitivityCsv(sensitivityPath, regenRows);
             DecisionBWriteMarkdown(matrixMd, matrixPath, coveragePath, tablePath,
                 dominancePath, isolationPath, validityPath, eventsPath, warpPath);
-            DecisionBWriteTableMd(tableMd, DecisionBBuildTable(regenRows), regenRows);
-            DecisionBWriteDecisionDetailsMd(detailsMd, DecisionBBuildTable(regenRows), regenRows);
+            DecisionBWriteTableMd(tableMd, regenTable, regenRows);
+            DecisionBWriteDecisionDetailsMd(detailsMd, regenTable, regenRows);
             Console.WriteLine("regenerated from " + matrixPath);
             return 0;
         }
@@ -456,9 +463,13 @@ internal static partial class P1bTests
         sb.AppendLine("`best_all` uses `cost_if_ported` for stand candidates; `best_production` uses");
         sb.AppendLine("`cost_total`. Full acceptable percentages and selected totals are in");
         sb.AppendLine("`Test560b_DecisionTable.csv` and `Test560b_DecisionDetails.md`.");
-        sb.AppendLine("`scope` is `config`/`max_step`/`chunk`; `bound` is a heuristic label");
-        sb.AppendLine("(`chunk` when steps <= 1.2*chunks, `max-step` when steps >= 0.8*(duration/maxStep),");
-        sb.AppendLine("otherwise `tolerance`). It is not a proof of the controller state.");
+        sb.AppendLine("`scope` is `config`/`max_step`/`chunk`; `bound` is the winner's heuristic label");
+        sb.AppendLine("and `production_bound` is the selected production row's label. `chunk` when");
+        sb.AppendLine("steps <= 1.2*chunks, `max-step` when");
+        sb.AppendLine("0.8*(duration/maxStep) <= steps <= 1.2*(duration/maxStep), otherwise `tolerance`.");
+        sb.AppendLine("It is not a proof of the controller state.");
+        sb.AppendLine("Per-method fixed-step `h_req`/`h_avg` is in the dedicated table");
+        sb.AppendLine("\"Fixed-step h_req vs h_avg\" below.");
         sb.AppendLine();
         sb.AppendLine("## Core decision table");
         sb.AppendLine();
@@ -519,7 +530,8 @@ internal static partial class P1bTests
             sb.AppendLine();
             sb.AppendLine("- regime/config: `" + t.Regime + "` / `" + t.Config + "`");
             sb.AppendLine("- target: " + DecisionBFormatTarget(t.Target, t.TargetKind));
-            sb.AppendLine("- scope/bound: `" + t.Scope + "` / `" + t.Bound + "` (bound is heuristic)");
+            sb.AppendLine("- scope/bound: `" + t.Scope + "`; winner bound `" + t.Bound
+                + "`, production bound `" + t.ProductionBound + "` (both heuristic)");
             sb.AppendLine("- reference: " + (string.IsNullOrEmpty(t.ReferenceResolution) ? "n/a" : t.ReferenceResolution)
                 + ", floor_m " + DecisionBCsvNumber(t.FloorM)
                 + ", floor_v " + DecisionBCsvNumber(t.FloorV));
