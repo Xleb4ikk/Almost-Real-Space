@@ -122,6 +122,11 @@ Assets/_Project/Screenshots.meta
 Tools/P1bTests/Study/**/results/**/*.log
 Tools/P1bTests/Study/**/results/**/*.log.console
 Tools/P1bTests/Study/**/results/**/*.csv
+
+# Test552/553 sweep reports are regenerated local artifacts; do not commit them.
+# (Tracked copies were removed from the index; they stay on disk.)
+Tools/P1bTests/Study/integrators/results/Test552_*.md
+Tools/P1bTests/Study/integrators/results/Test553_*.md
 Tools/P1bTests/Study/integrators/results_baseline/
 Tools/P1bTests/Study/integrators/results_checks/
 Tools/P1bTests/Study/**/*.err
