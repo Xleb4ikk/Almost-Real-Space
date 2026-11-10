@@ -123,6 +123,10 @@ Tools/P1bTests/Study/**/results/**/*.log
 Tools/P1bTests/Study/**/results/**/*.log.console
 Tools/P1bTests/Study/**/results/**/*.csv
 
+# Test562/563 report folders are regenerated local artifacts; do not commit them.
+Tools/P1bTests/Study/integrators/results/work_precision/
+Tools/P1bTests/Study/integrators/results/cap_regime/
+
 # Test552/553 sweep reports are regenerated local artifacts; do not commit them.
 # (Tracked copies were removed from the index; they stay on disk.)
 Tools/P1bTests/Study/integrators/results/Test552_*.md

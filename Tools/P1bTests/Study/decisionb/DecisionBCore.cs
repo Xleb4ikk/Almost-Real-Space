@@ -68,6 +68,8 @@ internal static partial class P1bTests
         public bool Finite;
         public Vector3d[] SamplesP;
         public Vector3d[] SamplesV;
+        /// <summary>Accepted-step segments when the run was requested with dense output (null otherwise).</summary>
+        public List<DenseSegment> Segments;
         public bool Sensitive; // chunk-sweep / max-step sensitivity run
     }
 
@@ -370,6 +372,7 @@ internal static partial class P1bTests
             run.CostTotal = run.CostRhs + run.CostLocalFrame + run.CostAux;
             run.CostIfPorted = run.CostTotal;
             run.Finite = sample == s.Refs.CheckpointTimes.Length && DecisionBAllFinite(run.SamplesP, run.SamplesV);
+            run.Segments = segments;
             DecisionBSetHAvg(s, run);
             DecisionBEvaluateErrors(s, run);
             if (run.Status == "ok" && !run.Finite)
