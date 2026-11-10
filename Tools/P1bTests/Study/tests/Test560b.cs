@@ -44,7 +44,7 @@ internal static partial class P1bTests
             DecisionBWriteMarkdown(matrixMd, matrixPath, coveragePath, tablePath,
                 dominancePath, isolationPath, validityPath, eventsPath, warpPath);
             DecisionBWriteTableMd(tableMd, DecisionBBuildTable(regenRows), regenRows);
-            DecisionBWriteDecisionDetailsMd(detailsMd, DecisionBBuildTable(regenRows));
+            DecisionBWriteDecisionDetailsMd(detailsMd, DecisionBBuildTable(regenRows), regenRows);
             Console.WriteLine("regenerated from " + matrixPath);
             return 0;
         }
@@ -190,13 +190,17 @@ internal static partial class P1bTests
 
         List<DecisionBMatrixRow> matrix = DecisionBReadMatrix(matrixPath);
         List<DecisionBTableRow> table = DecisionBBuildTable(matrix);
-        // Tie-class validity needs the built decision table, so the validity CSV
-        // is written after the table (the parity rows are already in `validity`).
+        // Tie-class, tie-break, selection-metric and per-scenario parity rows
+        // need the built table or the executed run list, so the validity CSV is
+        // written after them (the reference/parity rows are already in `validity`).
         DecisionBAppendTieClassChecks(validity, table);
+        DecisionBAppendTieBreakChecks(validity, table);
+        DecisionBAppendSelectionMetricChecks(validity, results, matrix);
+        validity.AddRange(DecisionBProductionParityAll(scenarios, results, matrix, validity));
         DecisionBWriteValidityCsv(validityPath, validity);
         DecisionBWriteTableCsv(tablePath, table);
         DecisionBWriteTableMd(tableMd, table, matrix);
-        DecisionBWriteDecisionDetailsMd(detailsMd, table);
+        DecisionBWriteDecisionDetailsMd(detailsMd, table, matrix);
         DecisionBWriteSensitivityCsv(sensitivityPath, matrix);
 
         List<DecisionBDominanceRow> dominance = DecisionBDominanceAudit(
@@ -318,14 +322,28 @@ internal static partial class P1bTests
         bool dopri5Matched = validity.Exists(v => v.Check == "production_parity_matched_atol"
             && v.Method == "DOPRI5");
         bool localFrameRow = validity.Exists(v => v.Check == "local_frame_error_control");
-        Check(dopri5Game, "Test560b: DOPRI5 game-default parity row", dopri5Game ? "present" : "missing");
-        Check(dopri5Matched, "Test560b: DOPRI5 matched-atol parity row", dopri5Matched ? "present" : "missing");
+        Check(!leo300Selected || dopri5Game, "Test560b: DOPRI5 game-default parity row",
+            leo300Selected ? (dopri5Game ? "present" : "missing") : "filtered out");
+        Check(!leo300Selected || dopri5Matched, "Test560b: DOPRI5 matched-atol parity row",
+            leo300Selected ? (dopri5Matched ? "present" : "missing") : "filtered out");
         Check(!leo300Selected || localFrameRow, "Test560b: local_frame_error_control row",
             leo300Selected ? (localFrameRow ? "present" : "missing") : "filtered out");
 
-        int uncertified = scenarios.Count(s => !double.IsFinite(s.FloorM));
-        Check(uncertified == 0, "Test560b: every reference certified with a finite floor",
-            uncertified.ToString(CultureInfo.InvariantCulture));
+        var referenceScenarios = scenarios.FindAll(
+            s => s.Config == "production" || s.Config == "regime86400");
+        int ratioOk = referenceScenarios.Count(s => s.Refs.LocalAsymptotic);
+        int resolvedFinest = referenceScenarios.Count(s => !s.Refs.LocalAsymptotic
+            && s.Refs.LocalUnratioedResolutionUsed);
+        int notCertified = referenceScenarios.Count(s => !s.Refs.LocalValid || !s.Refs.LocalResolved);
+        Console.WriteLine("references (" + referenceScenarios.Count.ToString(CultureInfo.InvariantCulture)
+            + " production/regime configs): " + ratioOk.ToString(CultureInfo.InvariantCulture) + " ratio_ok, "
+            + resolvedFinest.ToString(CultureInfo.InvariantCulture) + " resolved_finest_delta, "
+            + notCertified.ToString(CultureInfo.InvariantCulture) + " not_certified");
+        Check(notCertified == 0,
+            "Test560b: every reference is ratio_ok or resolved_finest_delta (unratioed is not called certified)",
+            ratioOk.ToString(CultureInfo.InvariantCulture) + " ratio_ok, "
+            + resolvedFinest.ToString(CultureInfo.InvariantCulture) + " resolved_finest_delta, "
+            + notCertified.ToString(CultureInfo.InvariantCulture) + " not_certified");
 
         Check(table.Count > 0, "Test560b: decision table generated from CSV",
             table.Count.ToString(CultureInfo.InvariantCulture) + " row(s)");
@@ -395,13 +413,36 @@ internal static partial class P1bTests
         Console.WriteLine("local_frame_error_control: "
             + (localFrame == null ? "missing"
                 : localFrame.Status + " value=" + localFrame.Value.ToString("E3", CultureInfo.InvariantCulture)
-                  + " threshold=" + localFrame.Threshold.ToString("E3", CultureInfo.InvariantCulture)));
+                  + " threshold=" + localFrame.Threshold.ToString("E3", CultureInfo.InvariantCulture)
+                  + " (" + (localFrame.Threshold > 0d
+                      ? (100d * localFrame.Value / localFrame.Threshold).ToString("F2", CultureInfo.InvariantCulture) + "% of threshold"
+                      : "n/a") + ")"));
+
+        int findingCount = validity.Count(v => v.Status == "FINDING");
+        int borderlineCount = validity.Count(v => v.Status == "BORDERLINE");
+        if (findingCount > 0 || borderlineCount > 0)
+        {
+            Console.WriteLine("validity findings/borderlines:");
+            foreach (DecisionBValidityRow v in validity)
+            {
+                if (v.Status == "FINDING" || v.Status == "BORDERLINE")
+                {
+                    Console.WriteLine("  " + v.Status + " " + v.Check + " / " + v.Scenario
+                        + " value=" + v.Value.ToString("E3", CultureInfo.InvariantCulture)
+                        + " threshold=" + v.Threshold.ToString("E3", CultureInfo.InvariantCulture));
+                }
+            }
+        }
 
         bool isolationOk = isolation.Exists(x => x.Variant == "forced-sun" && x.Status == "ok");
         Console.WriteLine("heliocentric isolation rows: " + isolation.Count.ToString(CultureInfo.InvariantCulture)
             + (isolationOk ? " (forced-Sun measured)" : " (not measured)"));
 
-        Console.WriteLine("done: " + (failures == 0 ? "ALL PASS" : failures.ToString(CultureInfo.InvariantCulture) + " FAILURE(S)"));
+        Console.WriteLine("borderline rows: " + borderlineCount.ToString(CultureInfo.InvariantCulture));
+        Console.WriteLine("done: " + (failures == 0
+            ? "ALL PASS (" + findingCount.ToString(CultureInfo.InvariantCulture) + " FINDING"
+              + (findingCount == 1 ? "" : "S") + ")"
+            : failures.ToString(CultureInfo.InvariantCulture) + " FAILURE(S)"));
         return 0;
     }
 
@@ -415,6 +456,9 @@ internal static partial class P1bTests
         sb.AppendLine("`best_all` uses `cost_if_ported` for stand candidates; `best_production` uses");
         sb.AppendLine("`cost_total`. Full acceptable percentages and selected totals are in");
         sb.AppendLine("`Test560b_DecisionTable.csv` and `Test560b_DecisionDetails.md`.");
+        sb.AppendLine("`scope` is `config`/`max_step`/`chunk`; `bound` is a heuristic label");
+        sb.AppendLine("(`chunk` when steps <= 1.2*chunks, `max-step` when steps >= 0.8*(duration/maxStep),");
+        sb.AppendLine("otherwise `tolerance`). It is not a proof of the controller state.");
         sb.AppendLine();
         sb.AppendLine("## Core decision table");
         sb.AppendLine();
@@ -453,17 +497,21 @@ internal static partial class P1bTests
                 .Append(r.Status).AppendLine(" |");
         }
 
+        sb.AppendLine();
+        DecisionBAppendMaxStepSection(sb, table, matrix);
+        DecisionBAppendFixedStepSection(sb, matrix);
         File.WriteAllText(path, sb.ToString());
     }
 
     private static void DecisionBWriteDecisionDetailsMd(
-        string path, List<DecisionBTableRow> table)
+        string path, List<DecisionBTableRow> table, List<DecisionBMatrixRow> matrix)
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("# Test560b - decision details");
         sb.AppendLine();
         sb.AppendLine("Per-row detail for `Test560b_DecisionTable.csv`: acceptable percentages,");
-        sb.AppendLine("selected_best_all_total, selected_production_total and edge policy.");
+        sb.AppendLine("selected_best_all_total, selected_production_total, edge policy, reference");
+        sb.AppendLine("certificate, fixed-step h_req/h_avg and the heuristic bound label.");
         sb.AppendLine();
         foreach (DecisionBTableRow t in table)
         {
@@ -471,8 +519,13 @@ internal static partial class P1bTests
             sb.AppendLine();
             sb.AppendLine("- regime/config: `" + t.Regime + "` / `" + t.Config + "`");
             sb.AppendLine("- target: " + DecisionBFormatTarget(t.Target, t.TargetKind));
+            sb.AppendLine("- scope/bound: `" + t.Scope + "` / `" + t.Bound + "` (bound is heuristic)");
+            sb.AppendLine("- reference: " + (string.IsNullOrEmpty(t.ReferenceResolution) ? "n/a" : t.ReferenceResolution)
+                + ", floor_m " + DecisionBCsvNumber(t.FloorM)
+                + ", floor_v " + DecisionBCsvNumber(t.FloorV));
             sb.AppendLine("- best_production: `" + t.BestProduction + "` at "
-                + DecisionBCsvNumber(t.BestProductionCost));
+                + DecisionBCsvNumber(t.BestProductionCost)
+                + " (kind: " + (string.IsNullOrEmpty(t.BestProductionKind) ? "n/a" : t.BestProductionKind) + ")");
             sb.AppendLine("- best_ported: `" + t.BestPorted + "` at "
                 + DecisionBCsvNumber(t.BestPortedCost));
             sb.AppendLine("- best_stand_raw: `" + t.BestStandRaw + "` at "
@@ -488,6 +541,22 @@ internal static partial class P1bTests
                 + (double.IsFinite(t.BestAllVsProductionPct) ? DecisionBPct(t.BestAllVsProductionPct) + "%" : "n/a"));
             sb.AppendLine("- cheapest_edge: `" + t.CheapestEdgeMethod + "` at "
                 + DecisionBCsvNumber(t.CheapestEdgeTotal));
+            var fixedRows = matrix.FindAll(r => r.Scenario == t.Scenario && r.Config == t.Config
+                && Math.Abs(r.Target - t.Target) <= 1e-12d && r.TargetKind == t.TargetKind
+                && r.ControlKind == "h" && (r.Status == "ok" || r.Status == "edge")
+                && double.IsFinite(r.HAvg));
+            if (fixedRows.Count > 0)
+            {
+                var parts = new List<string>();
+                foreach (DecisionBMatrixRow r in fixedRows)
+                {
+                    parts.Add(r.Method + " h_req=" + DecisionBCsvNumber(DecisionBParseDouble(r.Control))
+                        + " s, h_avg=" + DecisionBCsvNumber(r.HAvg) + " s");
+                }
+
+                sb.AppendLine("- fixed_step_h: " + string.Join("; ", parts));
+            }
+
             sb.AppendLine("- edge_policy: " + t.EdgePolicy);
             sb.AppendLine("- acceptable: " + t.Acceptable);
             sb.AppendLine("- n/a: " + t.Na);
@@ -497,6 +566,7 @@ internal static partial class P1bTests
             sb.AppendLine();
         }
 
+        DecisionBAppendMaxStepSection(sb, table, matrix);
         File.WriteAllText(path, sb.ToString());
     }
 
@@ -520,7 +590,7 @@ internal static partial class P1bTests
         foreach (DecisionBDominanceRow r in rows)
         {
             if (r.Check != "dominance_count" && r.Check != "chunk_sweep"
-                && r.Check != "cost_metric" && r.Check != "target_sweep" && r.Check != "cell_winner"
+                && r.Check != "cost_metric" && r.Check != "target_sweep_executed" && r.Check != "cell_winner"
                 && !r.Check.StartsWith("production_", StringComparison.Ordinal))
             {
                 continue;

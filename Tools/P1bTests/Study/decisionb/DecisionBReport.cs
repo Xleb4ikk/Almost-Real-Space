@@ -16,15 +16,20 @@ internal static partial class P1bTests
         public string Scenario = "";
         public string Regime = "";
         public string Config = "";
+        public string Scope = "";
+        public string Bound = "";
         public string Method = "";
         public string MethodClass = "";
         public double MaxStep = double.NaN;
         public double ConfigMaxStep = double.NaN;
         public string Chunk = "";
+        public double DurationS = double.NaN;
         public double Target;
         public string TargetKind = "";
         public string Control = "";
         public string ControlKind = "";
+        public string ProductionAtol = "";
+        public string StandAtol = "";
         public double ErrMaxM = double.NaN;
         public double ErrFinalM = double.NaN;
         public double ErrMaxV = double.NaN;
@@ -46,6 +51,7 @@ internal static partial class P1bTests
         public long Accepted;
         public long Rejected;
         public long Chunks;
+        public double HAvg = double.NaN;
         public long RawRhs;
         public long AuxOps;
         public double FloorM = double.NaN;
@@ -87,11 +93,24 @@ internal static partial class P1bTests
         public string BestAllClass = "";
         public double BestAllCost = double.NaN;
         public string BestProduction = "";
+        public string BestProductionKind = "";
         public double BestProductionCost = double.NaN;
         public string BestPorted = "";
         public double BestPortedCost = double.NaN;
         public string BestStandRaw = "";
         public double BestStandRawCost = double.NaN;
+        public string Scope = "";
+        public string Bound = "";
+        public string ReferenceResolution = "";
+        public double FloorM = double.NaN;
+        public double FloorV = double.NaN;
+        public double SelectedMaxStep = double.NaN;
+        public int TieGroupSize;
+        public bool TieBreakOk = true;
+        public string TieBreakNote = "";
+        public string TieBestMethod = "";
+        public double TieSelectedErrFrac = double.NaN;
+        public double TieBestErrFrac = double.NaN;
         public double ProductionVsBestAllPct = double.NaN;
         public double BestAllVsProductionPct = double.NaN;
         public double ProductionVsStandRawPct = double.NaN;
@@ -200,6 +219,49 @@ internal static partial class P1bTests
         return value.ToString(CultureInfo.InvariantCulture);
     }
 
+    private static string DecisionBScope(DecisionBMethodResult mr, DecisionBScenario s)
+    {
+        if (s.Config == "chunk-sweep")
+        {
+            return "chunk";
+        }
+
+        if (double.IsFinite(mr.EffectiveMaxStep) && double.IsFinite(s.MaxStep)
+            && Math.Abs(mr.EffectiveMaxStep - s.MaxStep) > 1e-9d)
+        {
+            return "max_step";
+        }
+
+        return "config";
+    }
+
+    /// <summary>
+    /// Heuristic bound class for an executed row. `chunk` means one step per
+    /// chunk; `max-step` means the step is at the configured ceiling; anything
+    /// else is tolerance/controller-limited. It is a label, not a proof.
+    /// </summary>
+    private static string DecisionBBound(DecisionBMatrixRow r)
+    {
+        if (r.Steps <= 0L)
+        {
+            return "n/a";
+        }
+
+        if (r.Chunks > 0L && r.Steps <= 1.2d * r.Chunks)
+        {
+            return "chunk";
+        }
+
+        if (double.IsFinite(r.MaxStep) && r.MaxStep > 0d
+            && double.IsFinite(r.DurationS) && r.DurationS > 0d
+            && r.Steps >= 0.8d * (r.DurationS / r.MaxStep))
+        {
+            return "max-step";
+        }
+
+        return "tolerance";
+    }
+
     private static string DecisionBFormatTarget(double value, string kind)
     {
         if (kind == "velocity")
@@ -218,12 +280,13 @@ internal static partial class P1bTests
     private static void DecisionBWriteRunsCsv(string path, List<DecisionBMethodResult> results)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("scenario,regime,config,method,method_class,max_step,control,control_kind,status,"
+        sb.AppendLine("scenario,regime,config,method,method_class,max_step,control,control_kind,"
+            + "production_atol,stand_atol,status,"
             + "err_max_m,err_final_m,err_max_v,cost_rhs,cost_local_frame,cost_aux,cost_total,"
-            + "cost_if_ported,cost_ms,gc_bytes,steps,accepted,rejected,chunks,raw_rhs,aux_ops,note,sensitivity");
+            + "cost_if_ported,cost_ms,gc_bytes,steps,accepted,rejected,chunks,h_avg,raw_rhs,aux_ops,note,sensitivity");
         foreach (DecisionBMethodResult mr in results)
         {
-            foreach (DecisionBRun r in mr.Runs)
+            foreach (DecisionBRun r in mr.Runs.Concat(mr.ExtraRuns))
             {
                 sb.Append(DecisionBCsvField(mr.Scenario.Label)).Append(',')
                     .Append(DecisionBCsvField(mr.Scenario.Regime)).Append(',')
@@ -233,6 +296,8 @@ internal static partial class P1bTests
                     .Append(DecisionBCsvNumber(mr.EffectiveMaxStep)).Append(',')
                     .Append(DecisionBCsvNumber(r.Control)).Append(',')
                     .Append(DecisionBCsvField(r.ControlKind)).Append(',')
+                    .Append(DecisionBCsvField(r.ProductionAtol)).Append(',')
+                    .Append(DecisionBCsvField(r.StandAtol)).Append(',')
                     .Append(DecisionBCsvField(r.Status)).Append(',')
                     .Append(DecisionBCsvNumber(r.ErrMaxM)).Append(',')
                     .Append(DecisionBCsvNumber(r.ErrFinalM)).Append(',')
@@ -248,6 +313,7 @@ internal static partial class P1bTests
                     .Append(DecisionBCsvLong(r.Accepted)).Append(',')
                     .Append(DecisionBCsvLong(r.Rejected)).Append(',')
                     .Append(DecisionBCsvLong(r.Chunks)).Append(',')
+                    .Append(DecisionBCsvNumber(r.HAvg)).Append(',')
                     .Append(DecisionBCsvLong(r.RawCalls)).Append(',')
                     .Append(DecisionBCsvLong(r.Aux)).Append(',')
                     .Append(DecisionBCsvField(r.Note)).Append(',')
@@ -264,12 +330,13 @@ internal static partial class P1bTests
         Dictionary<string, double> eventFloors)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("scenario,regime,config,method,method_class,max_step,config_max_step,chunk,target,target_kind,"
-            + "control,control_kind,err_max_m,err_final_m,err_max_v,"
+        sb.AppendLine("scenario,regime,config,scope,bound,method,method_class,max_step,config_max_step,chunk,duration_s,"
+            + "target,target_kind,"
+            + "control,control_kind,production_atol,stand_atol,err_max_m,err_final_m,err_max_v,"
             + "edge_err_max_m,edge_cost_total,edge_cost_if_ported,edge_control,edge_status,"
             + "cost_rhs,cost_local_frame,"
             + "cost_aux,cost_total,cost_if_ported,cost_ms,ms_median,ms_spread_pct,gc_bytes,gc_bytes_per_step,"
-            + "cost_per_sim_second,cost_per_chunk,steps,accepted,rejected,chunks,raw_rhs,aux_ops,"
+            + "cost_per_sim_second,cost_per_chunk,steps,accepted,rejected,chunks,h_avg,raw_rhs,aux_ops,"
             + "floor_m,floor_v,target_over_floor,status,confidence,note,reference_method,"
             + "reference_resolution,event_target_s,event_err_s,event_floor_s,event_status,sensitivity");
 
@@ -289,18 +356,20 @@ internal static partial class P1bTests
                         Scenario = s.Label,
                         Regime = s.Regime,
                         Config = s.Config,
+                        Scope = DecisionBScope(mr, s),
                         Method = mr.Method.Name,
                         MethodClass = mr.Method.Class,
                         MaxStep = mr.EffectiveMaxStep,
                         ConfigMaxStep = s.MaxStep,
                         Chunk = s.ChunkDescription,
+                        DurationS = s.Case.Seconds,
                         Target = target.Value,
                         TargetKind = target.Kind,
                         FloorM = s.FloorM,
                         FloorV = s.FloorV,
                         ReferenceMethod = s.Refs.LocalKind ?? "",
                         ReferenceResolution = s.Refs.LocalAsymptotic ? "ratio_ok"
-                            : (s.Refs.LocalResolved ? "resolved_finest_delta" : "not_certified"),
+                            : (s.Refs.LocalValid && s.Refs.LocalResolved ? "resolved_finest_delta" : "not_certified"),
                         Sensitivity = s.Sensitivity
                     };
 
@@ -413,18 +482,24 @@ internal static partial class P1bTests
                         }
                     }
 
+                    row.Bound = DecisionBBound(row);
                     sb.Append(DecisionBCsvField(row.Scenario)).Append(',')
                         .Append(DecisionBCsvField(row.Regime)).Append(',')
                         .Append(DecisionBCsvField(row.Config)).Append(',')
+                        .Append(DecisionBCsvField(row.Scope)).Append(',')
+                        .Append(DecisionBCsvField(row.Bound)).Append(',')
                         .Append(DecisionBCsvField(row.Method)).Append(',')
                         .Append(DecisionBCsvField(row.MethodClass)).Append(',')
                         .Append(DecisionBCsvNumber(row.MaxStep)).Append(',')
                         .Append(DecisionBCsvNumber(row.ConfigMaxStep)).Append(',')
                         .Append(DecisionBCsvField(row.Chunk)).Append(',')
+                        .Append(DecisionBCsvNumber(row.DurationS)).Append(',')
                         .Append(DecisionBCsvNumber(row.Target)).Append(',')
                         .Append(DecisionBCsvField(row.TargetKind)).Append(',')
                         .Append(DecisionBCsvField(row.Control)).Append(',')
                         .Append(DecisionBCsvField(row.ControlKind)).Append(',')
+                        .Append(DecisionBCsvField(row.ProductionAtol)).Append(',')
+                        .Append(DecisionBCsvField(row.StandAtol)).Append(',')
                         .Append(DecisionBCsvNumber(row.ErrMaxM)).Append(',')
                         .Append(DecisionBCsvNumber(row.ErrFinalM)).Append(',')
                         .Append(DecisionBCsvNumber(row.ErrMaxV)).Append(',')
@@ -449,6 +524,7 @@ internal static partial class P1bTests
                         .Append(DecisionBCsvLong(row.Accepted)).Append(',')
                         .Append(DecisionBCsvLong(row.Rejected)).Append(',')
                         .Append(DecisionBCsvLong(row.Chunks)).Append(',')
+                        .Append(DecisionBCsvNumber(row.HAvg)).Append(',')
                         .Append(DecisionBCsvLong(row.RawRhs)).Append(',')
                         .Append(DecisionBCsvLong(row.AuxOps)).Append(',')
                         .Append(DecisionBCsvNumber(row.FloorM)).Append(',')
@@ -491,8 +567,11 @@ internal static partial class P1bTests
         row.Accepted = hit.Accepted;
         row.Rejected = hit.Rejected;
         row.Chunks = hit.Chunks;
+        row.HAvg = hit.HAvg;
         row.RawRhs = hit.RawCalls;
         row.AuxOps = hit.Aux;
+        row.ProductionAtol = hit.ProductionAtol;
+        row.StandAtol = hit.StandAtol;
         row.Note = hit.Note;
     }
 
@@ -578,15 +657,20 @@ internal static partial class P1bTests
                 Scenario = get(f, "scenario"),
                 Regime = get(f, "regime"),
                 Config = get(f, "config"),
+                Scope = get(f, "scope"),
+                Bound = get(f, "bound"),
                 Method = get(f, "method"),
                 MethodClass = get(f, "method_class"),
                 MaxStep = DecisionBParseDouble(get(f, "max_step")),
                 ConfigMaxStep = DecisionBParseDouble(get(f, "config_max_step")),
                 Chunk = get(f, "chunk"),
+                DurationS = DecisionBParseDouble(get(f, "duration_s")),
                 Target = DecisionBParseDouble(get(f, "target")),
                 TargetKind = get(f, "target_kind"),
                 Control = get(f, "control"),
                 ControlKind = get(f, "control_kind"),
+                ProductionAtol = get(f, "production_atol"),
+                StandAtol = get(f, "stand_atol"),
                 ErrMaxM = DecisionBParseDouble(get(f, "err_max_m")),
                 ErrFinalM = DecisionBParseDouble(get(f, "err_final_m")),
                 ErrMaxV = DecisionBParseDouble(get(f, "err_max_v")),
@@ -608,6 +692,7 @@ internal static partial class P1bTests
                 Accepted = (long)DecisionBParseDouble(get(f, "accepted")),
                 Rejected = (long)DecisionBParseDouble(get(f, "rejected")),
                 Chunks = (long)DecisionBParseDouble(get(f, "chunks")),
+                HAvg = DecisionBParseDouble(get(f, "h_avg")),
                 RawRhs = (long)DecisionBParseDouble(get(f, "raw_rhs")),
                 AuxOps = (long)DecisionBParseDouble(get(f, "aux_ops")),
                 FloorM = DecisionBParseDouble(get(f, "floor_m")),
@@ -640,6 +725,71 @@ internal static partial class P1bTests
         // Production rows already pay the local frame; stand rows get the port
         // estimate. Missing column on an old CSV falls back to raw cost_total.
         return double.IsFinite(r.CostIfPorted) ? r.CostIfPorted : r.CostTotal;
+    }
+
+    private static double DecisionBErrFraction(DecisionBMatrixRow r)
+    {
+        double err = DecisionBRowError(r);
+        if (!double.IsFinite(err) || !(r.Target > 0d))
+        {
+            return double.PositiveInfinity;
+        }
+
+        return err / r.Target;
+    }
+
+    /// <summary>
+    /// Cost order, with a secondary error tie-break only when the costs are
+    /// equal within 1e-9*max(1,cost). Two runs that cost the same are not a
+    /// ranking tie: the more accurate one is the better evidence.
+    /// </summary>
+    private static int DecisionBCompareCostThenError(DecisionBMatrixRow a, DecisionBMatrixRow b)
+    {
+        double ca = DecisionBComparableCost(a);
+        double cb = DecisionBComparableCost(b);
+        double tol = 1e-9d * Math.Max(1d, Math.Max(Math.Abs(ca), Math.Abs(cb)));
+        if (Math.Abs(ca - cb) <= tol)
+        {
+            int e = DecisionBErrFraction(a).CompareTo(DecisionBErrFraction(b));
+            if (e != 0)
+            {
+                return e;
+            }
+
+            return string.CompareOrdinal(a.Method, b.Method);
+        }
+
+        return ca.CompareTo(cb);
+    }
+
+    private static string DecisionBTieMember(DecisionBMatrixRow r)
+    {
+        string label = r.Method;
+        if (r.MethodClass == "stand-only")
+        {
+            label += " (requires port)";
+        }
+
+        if (r.Status == "edge")
+        {
+            label += " (edge)";
+        }
+
+        return label + "@" + DecisionBComparableCost(r).ToString("N0", CultureInfo.InvariantCulture)
+            + "/" + DecisionBErrFraction(r).ToString("E2", CultureInfo.InvariantCulture);
+    }
+
+    private static string DecisionBProductionLabel(DecisionBMatrixRow r)
+    {
+        if (r == null)
+        {
+            return "unresolved";
+        }
+
+        string kind = r.Method.IndexOf("DOP853", StringComparison.Ordinal) >= 0
+            ? "current default"
+            : "kernel switch";
+        return DecisionBMethodLabel(r) + " [" + kind + "]";
     }
 
     private static string DecisionBPct(double value)
@@ -712,6 +862,17 @@ internal static partial class P1bTests
             || t.Scenario.IndexOf("Surface level flight", StringComparison.Ordinal) >= 0;
     }
 
+    private static string DecisionBOpenLoopNote(DecisionBTableRow t)
+    {
+        if (t.Scenario.IndexOf("Surface ascent", StringComparison.Ordinal) >= 0
+            || t.Scenario.IndexOf("Surface descent", StringComparison.Ordinal) >= 0)
+        {
+            return "; prescribed thrust schedule; open-loop";
+        }
+
+        return "";
+    }
+
     private static bool DecisionBMixedTie(DecisionBTableRow t)
     {
         return t.BestAllClass == "tie: production+stand-only";
@@ -767,17 +928,34 @@ internal static partial class P1bTests
             parts.Add("prescribed-force; no closed-loop altitude hold");
         }
 
+        if (t.Regime == "far-flight" && t.Config == "production")
+        {
+            parts.Add("max-step-bound (600 s)");
+        }
+        else if (!string.IsNullOrEmpty(t.Bound))
+        {
+            parts.Add("bound " + t.Bound + " (heuristic)");
+        }
+
+        if (t.Scenario.IndexOf("Surface ascent", StringComparison.Ordinal) >= 0
+            || t.Scenario.IndexOf("Surface descent", StringComparison.Ordinal) >= 0)
+        {
+            parts.Add("prescribed thrust schedule; open-loop");
+        }
+
         return string.Join("; ", parts);
     }
 
     private static void DecisionBAppendCompactTable(StringBuilder sb, List<DecisionBTableRow> rows)
     {
-        sb.AppendLine("| regime | scenario | target | best_production | best_ported | best_all | confidence | why |");
-        sb.AppendLine("|---|---|---|---|---|---|---|---|");
+        sb.AppendLine("| regime | scenario | scope | bound (heuristic) | target | best_production | best_ported | best_all | confidence | why |");
+        sb.AppendLine("|---|---|---|---|---|---|---|---|---|---|");
         foreach (DecisionBTableRow t in rows)
         {
             sb.Append("| ").Append(t.Regime).Append(" | ")
                 .Append(DecisionBCsvField(t.Scenario)).Append(" | ")
+                .Append(t.Scope).Append(" | ")
+                .Append(t.Bound).Append(" | ")
                 .Append(DecisionBFormatTarget(t.Target, t.TargetKind)).Append(" | ")
                 .Append(t.BestProduction).Append(" | ")
                 .Append(t.BestPorted).Append(" | ")
@@ -830,8 +1008,8 @@ internal static partial class P1bTests
             var unresolved = list.FindAll(r => r.Status == "unresolved" || r.Status == "no_hit");
             var notRun = list.FindAll(r => r.Status == "not run");
 
-            ok.Sort((a, b) => DecisionBComparableCost(a).CompareTo(DecisionBComparableCost(b)));
-            edge.Sort((a, b) => DecisionBComparableCost(a).CompareTo(DecisionBComparableCost(b)));
+            ok.Sort(DecisionBCompareCostThenError);
+            edge.Sort(DecisionBCompareCostThenError);
 
             var t = new DecisionBTableRow
             {
@@ -843,7 +1021,12 @@ internal static partial class P1bTests
                 Na = na.Count == 0 ? "-" : string.Join(", ", na.Select(x => x.Method)),
                 Unresolved = unresolved.Count == 0 ? "-"
                     : string.Join(", ", unresolved.Select(x => x.Method + ":" + x.Status)),
-                NotRun = notRun.Count == 0 ? "-" : string.Join(", ", notRun.Select(x => x.Method))
+                NotRun = notRun.Count == 0 ? "-" : string.Join(", ", notRun.Select(x => x.Method)),
+                Scope = list[0].Scope,
+                Bound = list[0].Bound,
+                ReferenceResolution = list[0].ReferenceResolution,
+                FloorM = list[0].FloorM,
+                FloorV = list[0].FloorV
             };
 
             var okProduction = ok.FindAll(r => r.MethodClass == "production");
@@ -853,11 +1036,11 @@ internal static partial class P1bTests
 
             var prodCandidates = new List<DecisionBMatrixRow>();
             prodCandidates.AddRange(okProduction.Count > 0 ? okProduction : edgeProduction);
-            prodCandidates.Sort((a, b) => DecisionBComparableCost(a).CompareTo(DecisionBComparableCost(b)));
+            prodCandidates.Sort(DecisionBCompareCostThenError);
 
             var portedCandidates = new List<DecisionBMatrixRow>();
             portedCandidates.AddRange(okStand.Count > 0 ? okStand : edgeStand);
-            portedCandidates.Sort((a, b) => DecisionBComparableCost(a).CompareTo(DecisionBComparableCost(b)));
+            portedCandidates.Sort(DecisionBCompareCostThenError);
 
             var rawStandCandidates = new List<DecisionBMatrixRow>();
             rawStandCandidates.AddRange(okStand);
@@ -871,14 +1054,16 @@ internal static partial class P1bTests
                 allCandidates.AddRange(edge);
             }
 
-            allCandidates.Sort((a, b) => DecisionBComparableCost(a).CompareTo(DecisionBComparableCost(b)));
+            allCandidates.Sort(DecisionBCompareCostThenError);
 
             DecisionBMatrixRow prodBest = prodCandidates.Count > 0 ? prodCandidates[0] : null;
             DecisionBMatrixRow portedBest = portedCandidates.Count > 0 ? portedCandidates[0] : null;
             DecisionBMatrixRow rawBest = rawStandCandidates.Count > 0 ? rawStandCandidates[0] : null;
             DecisionBMatrixRow allBest = allCandidates.Count > 0 ? allCandidates[0] : null;
 
-            t.BestProduction = DecisionBMethodLabel(prodBest);
+            t.BestProductionKind = prodBest == null ? ""
+                : (prodBest.Method.IndexOf("DOP853", StringComparison.Ordinal) >= 0 ? "current default" : "kernel switch");
+            t.BestProduction = DecisionBProductionLabel(prodBest);
             t.BestProductionCost = prodBest != null ? DecisionBComparableCost(prodBest) : double.NaN;
             t.SelectedProductionMethod = t.BestProduction;
             t.SelectedProductionTotal = t.BestProductionCost;
@@ -909,15 +1094,76 @@ internal static partial class P1bTests
 
             double allCost = DecisionBComparableCost(allBest);
             t.BestAllCost = allCost;
+            t.SelectedMaxStep = allBest.MaxStep;
+            if (!string.IsNullOrEmpty(allBest.Bound))
+            {
+                t.Bound = allBest.Bound;
+            }
 
             var allTies = ok.FindAll(r => DecisionBComparableCost(r) <= 1.20d * Math.Max(allCost, 1e-30d));
+            allTies.Sort(DecisionBCompareCostThenError);
+
+            // Exact cost tie group: rows at the minimum comparable cost. The
+            // secondary key must pick the lowest err/target inside this group.
+            var exactTie = allCandidates.FindAll(r =>
+            {
+                double c = DecisionBComparableCost(r);
+                double tol = 1e-9d * Math.Max(1d, Math.Abs(c));
+                return Math.Abs(c - allCost) <= tol;
+            });
+            exactTie.Sort(DecisionBCompareCostThenError);
+            t.TieGroupSize = exactTie.Count;
+            t.TieSelectedErrFrac = DecisionBErrFraction(allBest);
+            if (exactTie.Count > 0)
+            {
+                DecisionBMatrixRow tieBestErr = exactTie[0];
+                double bestErr = DecisionBErrFraction(tieBestErr);
+                foreach (DecisionBMatrixRow r in exactTie)
+                {
+                    if (DecisionBErrFraction(r) < bestErr)
+                    {
+                        bestErr = DecisionBErrFraction(r);
+                        tieBestErr = r;
+                    }
+                }
+
+                t.TieBreakOk = !(t.TieSelectedErrFrac > bestErr + 1e-12d);
+                t.TieBreakNote = exactTie.Count.ToString(CultureInfo.InvariantCulture)
+                    + " row(s) at the minimum comparable cost "
+                    + allCost.ToString("N0", CultureInfo.InvariantCulture)
+                    + "; selected " + allBest.Method + " err/target "
+                    + t.TieSelectedErrFrac.ToString("E3", CultureInfo.InvariantCulture)
+                    + "; best error " + tieBestErr.Method + " "
+                    + bestErr.ToString("E3", CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                t.TieBreakOk = true;
+                t.TieBreakNote = "no exact cost tie group";
+            }
+
+            var tieBestErrorRow = allTies.Count > 0 ? allTies[0] : null;
+            double tieBestError = double.PositiveInfinity;
+            foreach (DecisionBMatrixRow r in allTies)
+            {
+                double e = DecisionBErrFraction(r);
+                if (e < tieBestError)
+                {
+                    tieBestError = e;
+                    tieBestErrorRow = r;
+                }
+            }
+
+            t.TieBestMethod = tieBestErrorRow == null ? "-" : tieBestErrorRow.Method;
+            t.TieBestErrFrac = tieBestErrorRow == null ? double.NaN : tieBestError;
+
             if (allBest.Status == "ok" && allTies.Count > 1)
             {
                 bool tieProduction = allTies.Exists(r => r.MethodClass == "production");
                 bool tieStandOnly = allTies.Exists(r => r.MethodClass == "stand-only");
                 t.BestAllClass = tieProduction && tieStandOnly ? "tie: production+stand-only"
                     : (tieProduction ? "tie: production" : "tie: stand-only");
-                t.BestAll = "tie: " + string.Join(", ", allTies.Select(DecisionBMethodLabel));
+                t.BestAll = "tie: " + string.Join(", ", allTies.Select(DecisionBTieMember));
             }
             else
             {
@@ -1077,6 +1323,25 @@ internal static partial class P1bTests
                     ? "; selected stand option requires port: cost_if_ported = cost_total + 2*(raw - chunks); the production option in the tie needs no port"
                     : "; requires port: cost_if_ported = cost_total + 2*(raw - chunks)");
             string prescribedText = DecisionBPrescribedForceNote(t);
+            string tieText = "";
+            if (allBest.Status == "ok" && allTies.Count > 1)
+            {
+                tieText = "; tie: selected " + allBest.Method + " err/target "
+                    + t.TieSelectedErrFrac.ToString("E3", CultureInfo.InvariantCulture)
+                    + " (cost " + allCost.ToString("N0", CultureInfo.InvariantCulture) + ")"
+                    + "; lowest err in tie " + t.TieBestMethod + " "
+                    + t.TieBestErrFrac.ToString("E3", CultureInfo.InvariantCulture);
+                if (t.TieGroupSize > 1)
+                {
+                    tieText += "; equal-cost group " + t.TieGroupSize.ToString(CultureInfo.InvariantCulture)
+                        + " -> " + (t.TieBreakOk ? "tie-break by err/target applied" : "TIE-BREAK FAILED");
+                }
+            }
+
+            string boundText = t.Regime == "far-flight" && t.Config == "production"
+                ? "max-step-bound (600 s)"
+                : (string.IsNullOrEmpty(t.Bound) ? "n/a" : t.Bound);
+            string boundLead = t.Regime == "far-flight" && t.Config == "production" ? "" : "bound ";
             t.Why = allBest.Method + " is selected as cheapest comparable hit at "
                 + allCost.ToString("N0", CultureInfo.InvariantCulture)
                 + " (rhs " + allBest.CostRhs.ToString("N0", CultureInfo.InvariantCulture)
@@ -1098,6 +1363,10 @@ internal static partial class P1bTests
                 + " (" + baseText + ")"
                 + "; " + t.EdgePolicy
                 + prescribedText
+                + "; " + boundLead + boundText + " (heuristic)"
+                + tieText
+                + "; production atol 1e-4/1e-8/1e-4 vs stand Atol=0"
+                + DecisionBOpenLoopNote(t)
                 + "; tie band 20%; " + ok.Count + " ok, " + edgeRunCount + " edge-run row(s), "
                 + na.Count + " n/a, " + unresolved.Count + " unresolved";
             table.Add(t);
@@ -1211,6 +1480,103 @@ internal static partial class P1bTests
         }
     }
 
+    private static void DecisionBAppendTieBreakChecks(
+        List<DecisionBValidityRow> rows, List<DecisionBTableRow> table)
+    {
+        foreach (DecisionBTableRow t in table)
+        {
+            rows.Add(new DecisionBValidityRow
+            {
+                Check = "tie_break_by_error",
+                Scenario = t.Scenario,
+                Method = "-",
+                Metric = "exact_cost_tie_err_order (target "
+                    + DecisionBFormatTarget(t.Target, t.TargetKind) + ")",
+                Value = t.TieGroupSize,
+                Threshold = 1d,
+                Status = t.TieBreakOk ? "PASS" : "FAIL",
+                Note = t.TieBreakNote
+            });
+        }
+    }
+
+    private static void DecisionBAppendSelectionMetricChecks(
+        List<DecisionBValidityRow> rows, List<DecisionBMethodResult> results,
+        List<DecisionBMatrixRow> matrix)
+    {
+        int checkedCells = 0;
+        int mismatches = 0;
+        int metricDiffs = 0;
+        var notes = new List<string>();
+        foreach (DecisionBMethodResult mr in results)
+        {
+            if (mr.Status != "ranked")
+            {
+                continue;
+            }
+
+            foreach (DecisionBTarget target in mr.Scenario.Targets)
+            {
+                DecisionBMatrixRow row = matrix.Find(x => x.Scenario == mr.Scenario.Label
+                    && x.Config == mr.Scenario.Config && x.Method == mr.Method.Name
+                    && x.TargetKind == target.Kind
+                    && Math.Abs(x.Target - target.Value) <= 1e-12d);
+                if (row == null || (row.Status != "ok" && row.Status != "edge"))
+                {
+                    continue;
+                }
+
+                DecisionBRun hit = DecisionBCheapestHit(mr.Runs, target.Value, target.Kind);
+                if (hit == null)
+                {
+                    continue;
+                }
+
+                checkedCells++;
+                double rowControl = DecisionBParseDouble(row.Control);
+                bool same = double.IsFinite(rowControl)
+                    && Math.Abs(rowControl - hit.Control)
+                        <= 1e-9d * Math.Max(Math.Abs(hit.Control), 1e-300d);
+                if (!same)
+                {
+                    mismatches++;
+                    if (notes.Count < 6)
+                    {
+                        notes.Add(mr.Scenario.Label + "/" + mr.Method.Name + "/"
+                            + DecisionBFormatTarget(target.Value, target.Kind) + ": row control "
+                            + row.Control + " vs cost_if_ported selection "
+                            + hit.Control.ToString("R", CultureInfo.InvariantCulture));
+                    }
+                }
+
+                DecisionBRun legacy = DecisionBCheapestHitBy(
+                    mr.Runs, target.Value, target.Kind, r => r.CostTotal);
+                if (legacy != null
+                    && Math.Abs(legacy.Control - hit.Control)
+                        > 1e-9d * Math.Max(Math.Abs(hit.Control), 1e-300d))
+                {
+                    metricDiffs++;
+                }
+            }
+        }
+
+        rows.Add(new DecisionBValidityRow
+        {
+            Check = "selection_metric_consistent",
+            Scenario = "-",
+            Method = "-",
+            Metric = "control_matches_cost_if_ported_selection",
+            Value = mismatches,
+            Threshold = 0d,
+            Status = mismatches == 0 ? "PASS" : "FAIL",
+            Note = checkedCells.ToString(CultureInfo.InvariantCulture)
+                + " ok/edge cells re-selected from Test560b_Runs.csv controls; "
+                + metricDiffs.ToString(CultureInfo.InvariantCulture)
+                + " cell(s) where the cost_total order would pick a different control"
+                + (notes.Count == 0 ? "" : "; " + string.Join("; ", notes))
+        });
+    }
+
     private static void DecisionBWriteEventsCsv(string path, List<DecisionBEventRow> rows)
     {
         var sb = new StringBuilder();
@@ -1265,7 +1631,7 @@ internal static partial class P1bTests
     private static void DecisionBWriteSensitivityCsv(string path, List<DecisionBMatrixRow> rows)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("scenario,regime,config,method,method_class,max_step,config_max_step,chunk,target,target_kind,"
+        sb.AppendLine("scenario,regime,config,method,method_class,max_step,config_max_step,chunk,h_avg,target,target_kind,"
             + "err_max_m,err_max_v,cost_rhs,cost_local_frame,cost_aux,cost_total,cost_if_ported,"
             + "edge_cost_total,edge_cost_if_ported,edge_err_max_m,control,status,note");
         foreach (DecisionBMatrixRow r in rows)
@@ -1285,6 +1651,7 @@ internal static partial class P1bTests
                 .Append(DecisionBCsvNumber(r.MaxStep)).Append(',')
                 .Append(DecisionBCsvNumber(r.ConfigMaxStep)).Append(',')
                 .Append(DecisionBCsvField(r.Chunk)).Append(',')
+                .Append(DecisionBCsvNumber(r.HAvg)).Append(',')
                 .Append(DecisionBCsvNumber(r.Target)).Append(',')
                 .Append(DecisionBCsvField(r.TargetKind)).Append(',')
                 .Append(DecisionBCsvNumber(r.ErrMaxM)).Append(',')
@@ -1308,24 +1675,28 @@ internal static partial class P1bTests
     private static void DecisionBWriteTableCsv(string path, List<DecisionBTableRow> table)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("regime,scenario,config,target,target_kind,best_all_valid,best_all_class,best_all_cost,"
-            + "best_production,best_production_cost,best_ported,best_ported_cost,"
+        sb.AppendLine("regime,scenario,config,scope,bound,target,target_kind,best_all_valid,best_all_class,best_all_cost,"
+            + "best_production,best_production_kind,best_production_cost,best_ported,best_ported_cost,"
             + "best_stand_raw,best_stand_raw_cost,production_vs_best_all_pct,best_all_vs_production_pct,"
             + "best_production_vs_best_stand_raw_pct,"
             + "selected_best_all_total,selected_production_method,selected_production_total,"
             + "cheapest_edge_method,cheapest_edge_total,edge_policy,"
-            + "production_confidence,acceptable,n_a,unresolved,not_run,confidence,why");
+            + "production_confidence,acceptable,n_a,unresolved,not_run,"
+            + "reference_resolution,confidence,why");
         foreach (DecisionBTableRow r in table)
         {
             sb.Append(DecisionBCsvField(r.Regime)).Append(',')
                 .Append(DecisionBCsvField(r.Scenario)).Append(',')
                 .Append(DecisionBCsvField(r.Config)).Append(',')
+                .Append(DecisionBCsvField(r.Scope)).Append(',')
+                .Append(DecisionBCsvField(r.Bound)).Append(',')
                 .Append(DecisionBCsvNumber(r.Target)).Append(',')
                 .Append(DecisionBCsvField(r.TargetKind)).Append(',')
                 .Append(DecisionBCsvField(r.BestAll)).Append(',')
                 .Append(DecisionBCsvField(r.BestAllClass)).Append(',')
                 .Append(DecisionBCsvNumber(r.BestAllCost)).Append(',')
                 .Append(DecisionBCsvField(r.BestProduction)).Append(',')
+                .Append(DecisionBCsvField(r.BestProductionKind)).Append(',')
                 .Append(DecisionBCsvNumber(r.BestProductionCost)).Append(',')
                 .Append(DecisionBCsvField(r.BestPorted)).Append(',')
                 .Append(DecisionBCsvNumber(r.BestPortedCost)).Append(',')
@@ -1345,6 +1716,7 @@ internal static partial class P1bTests
                 .Append(DecisionBCsvField(r.Na)).Append(',')
                 .Append(DecisionBCsvField(r.Unresolved)).Append(',')
                 .Append(DecisionBCsvField(r.NotRun)).Append(',')
+                .Append(DecisionBCsvField(r.ReferenceResolution)).Append(',')
                 .Append(DecisionBCsvField(r.Confidence)).Append(',')
                 .Append(DecisionBCsvField(r.Why)).AppendLine();
         }
@@ -1385,6 +1757,137 @@ internal static partial class P1bTests
         }
 
         return rows;
+    }
+
+    private static void DecisionBAppendCellMaxStepRows(
+        StringBuilder sb, List<DecisionBMatrixRow> matrix, DecisionBTableRow t)
+    {
+        var variants = matrix.FindAll(r =>
+            r.Scenario == t.Scenario && r.Config == t.Config
+            && Math.Abs(r.Target - t.Target) <= 1e-12d && r.TargetKind == t.TargetKind
+            && double.IsFinite(r.ConfigMaxStep) && double.IsFinite(r.MaxStep)
+            && Math.Abs(r.MaxStep - r.ConfigMaxStep) > 1e-9d
+            && (r.Status == "ok" || r.Status == "edge"));
+        if (variants.Count == 0)
+        {
+            return;
+        }
+
+        variants.Sort((a, b) => DecisionBComparableCost(a).CompareTo(DecisionBComparableCost(b)));
+        sb.AppendLine();
+        sb.AppendLine("Max-step variants (informational, not mixed into best_all):");
+        sb.AppendLine();
+        sb.AppendLine("| method | max step | config max step | err | cost total | ported | bound (heuristic) | status |");
+        sb.AppendLine("|---|---:|---:|---:|---:|---:|---|---|");
+        foreach (DecisionBMatrixRow r in variants)
+        {
+            double err = t.TargetKind == "velocity" ? r.ErrMaxV : r.ErrMaxM;
+            sb.Append("| ").Append(r.Method).Append(" | ")
+                .Append(DecisionBCsvNumber(r.MaxStep)).Append(" | ")
+                .Append(DecisionBCsvNumber(r.ConfigMaxStep)).Append(" | ")
+                .Append(double.IsFinite(err) ? err.ToString("E3", CultureInfo.InvariantCulture) : "-").Append(" | ")
+                .Append(DecisionBCsvNumber(r.CostTotal)).Append(" | ")
+                .Append(DecisionBCsvNumber(r.CostIfPorted)).Append(" | ")
+                .Append(r.Bound).Append(" | ").Append(r.Status).AppendLine(" |");
+        }
+    }
+
+    private static void DecisionBAppendMaxStepSection(
+        StringBuilder sb, List<DecisionBTableRow> table, List<DecisionBMatrixRow> matrix)
+    {
+        var rows = matrix.FindAll(r => r.Config == "production"
+            && double.IsFinite(r.ConfigMaxStep) && double.IsFinite(r.MaxStep)
+            && Math.Abs(r.MaxStep - r.ConfigMaxStep) > 1e-9d
+            && (r.Status == "ok" || r.Status == "edge"));
+        sb.AppendLine("## Max-step variants (informational, not mixed into best_all)");
+        sb.AppendLine();
+        sb.AppendLine("These are the same methods run with an explicit max step that differs from the");
+        sb.AppendLine("scenario's config max step. They are **not** candidates for `best_all` or");
+        sb.AppendLine("`best_production`; the production/regime86400 separation is unchanged.");
+        sb.AppendLine();
+        if (rows.Count == 0)
+        {
+            sb.AppendLine("No executed production row has `max_step != config_max_step` with status ok/edge.");
+            sb.AppendLine();
+            return;
+        }
+
+        rows.Sort((a, b) =>
+        {
+            int c = string.CompareOrdinal(a.Scenario, b.Scenario);
+            if (c != 0) return c;
+            c = a.Target.CompareTo(b.Target);
+            if (c != 0) return c;
+            return DecisionBComparableCost(a).CompareTo(DecisionBComparableCost(b));
+        });
+        sb.AppendLine("| scenario | target | method | max step | config max step | err | cost total | ported | bound (heuristic) | status |");
+        sb.AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---|---|");
+        foreach (DecisionBMatrixRow r in rows)
+        {
+            double err = r.TargetKind == "velocity" ? r.ErrMaxV : r.ErrMaxM;
+            sb.Append("| ").Append(DecisionBCsvField(r.Scenario)).Append(" | ")
+                .Append(DecisionBFormatTarget(r.Target, r.TargetKind)).Append(" | ")
+                .Append(r.Method).Append(" | ")
+                .Append(DecisionBCsvNumber(r.MaxStep)).Append(" | ")
+                .Append(DecisionBCsvNumber(r.ConfigMaxStep)).Append(" | ")
+                .Append(double.IsFinite(err) ? err.ToString("E3", CultureInfo.InvariantCulture) : "-").Append(" | ")
+                .Append(DecisionBCsvNumber(r.CostTotal)).Append(" | ")
+                .Append(DecisionBCsvNumber(r.CostIfPorted)).Append(" | ")
+                .Append(r.Bound).Append(" | ").Append(r.Status).AppendLine(" |");
+        }
+
+        DecisionBMatrixRow farCap = rows.Find(r => r.Scenario.IndexOf("Far flight", StringComparison.Ordinal) >= 0
+            && r.Method.StartsWith("DOPRI5-adaptive [cap=86400", StringComparison.Ordinal));
+        DecisionBTableRow farCell = table.Find(t => t.Regime == "far-flight" && t.Config == "production"
+            && Math.Abs(t.Target - 100000d) <= 1e-9d);
+        sb.AppendLine();
+        if (farCap != null)
+        {
+            sb.AppendLine("Far-flight DOPRI5-adaptive `[cap=86400 s]` is "
+                + DecisionBCsvNumber(DecisionBComparableCost(farCap)) + " comparable / "
+                + farCap.ErrMaxM.ToString("G3", CultureInfo.InvariantCulture) + " m at "
+                + DecisionBFormatTarget(farCap.Target, farCap.TargetKind)
+                + (farCell != null && double.IsFinite(farCell.BestAllCost) && farCell.BestAllCost > 0d
+                    ? ", " + (farCell.BestAllCost / DecisionBComparableCost(farCap)).ToString("F1", CultureInfo.InvariantCulture)
+                      + "x cheaper than best_all " + farCell.BestAll + " (" + farCell.BestAllCost.ToString("N0", CultureInfo.InvariantCulture) + ")"
+                    : "")
+                + ". It is a max-step configuration, not the 600 s production default, and is not");
+            sb.AppendLine("selected in `best_all`.");
+        }
+
+        sb.AppendLine();
+    }
+
+    private static void DecisionBAppendFixedStepSection(
+        StringBuilder sb, List<DecisionBMatrixRow> matrix)
+    {
+        var rows = matrix.FindAll(r => r.ControlKind == "h"
+            && (r.Status == "ok" || r.Status == "edge")
+            && double.IsFinite(r.HAvg));
+        sb.AppendLine("## Fixed-step h_req vs h_avg");
+        sb.AppendLine();
+        sb.AppendLine("`h_req` is the fixed-step control requested from the grid/refinement; `h_avg` =");
+        sb.AppendLine("duration / accepted steps. They differ when several steps are packed into a chunk");
+        sb.AppendLine("(for example cislunar DOPRI5-fixed h_req=424.26 s really runs 300 s steps).");
+        sb.AppendLine("The 424.26 s refinement point is the same executed trajectory as h_req=300 s, so");
+        sb.AppendLine("it is kept in `Test560b_Runs.csv` (h_avg=300) but not duplicated in the selection list.");
+        sb.AppendLine();
+        sb.AppendLine("| scenario | config | method | target | h_req | h_avg | err | cost total | status |");
+        sb.AppendLine("|---|---|---|---:|---:|---:|---:|---:|---|");
+        foreach (DecisionBMatrixRow r in rows)
+        {
+            double err = r.TargetKind == "velocity" ? r.ErrMaxV : r.ErrMaxM;
+            sb.Append("| ").Append(DecisionBCsvField(r.Scenario)).Append(" | ")
+                .Append(r.Config).Append(" | ").Append(r.Method).Append(" | ")
+                .Append(DecisionBFormatTarget(r.Target, r.TargetKind)).Append(" | ")
+                .Append(DecisionBCsvNumber(DecisionBParseDouble(r.Control))).Append(" | ")
+                .Append(DecisionBCsvNumber(r.HAvg)).Append(" | ")
+                .Append(double.IsFinite(err) ? err.ToString("E3", CultureInfo.InvariantCulture) : "-").Append(" | ")
+                .Append(DecisionBCsvNumber(r.CostTotal)).Append(" | ")
+                .Append(r.Status).AppendLine(" |");
+        }
+
+        sb.AppendLine();
     }
 
     private static void DecisionBWriteMarkdown(
@@ -1443,7 +1946,10 @@ internal static partial class P1bTests
         sb.AppendLine("  a raw stand number and is explicitly not comparable. `ms` is diagnostic.");
         sb.AppendLine("- Max step: production config uses the game's 600 s cap; far/heliocentric have a");
         sb.AppendLine("  separate `regime86400` configuration. Production and stand methods are compared");
-        sb.AppendLine("  only within the same config/max step.");
+        sb.AppendLine("  only within the same config/max step. `scope` says which axis a row belongs to");
+        sb.AppendLine("  (`config`, `max_step`, `chunk`); `bound` is a heuristic label: `chunk` when");
+        sb.AppendLine("  steps <= 1.2*chunks, `max-step` when maxStep>0 and steps >= 0.8*(duration/maxStep),");
+        sb.AppendLine("  otherwise `tolerance`. It is not a proof of the controller state.");
         sb.AppendLine("- Status: `ok` = error <= 80% target, `edge` = 80-100%, `no_hit` = >100%,");
         sb.AppendLine("  `n/a` = method cannot support the force, `unresolved` = no finite run,");
         sb.AppendLine("  `not run` = deliberate exclusion with a reason. An edge winner gets a margin");
@@ -1455,8 +1961,8 @@ internal static partial class P1bTests
 
         sb.AppendLine("## Scenarios");
         sb.AppendLine();
-        sb.AppendLine("| scenario | regime | config | chunk | targets | floor (m) |");
-        sb.AppendLine("|---|---|---|---:|---|---:|");
+        sb.AppendLine("| scenario | regime | config | chunk | targets | floor (m) | reference |");
+        sb.AppendLine("|---|---|---|---:|---|---:|---|");
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (DecisionBMatrixRow r in matrix)
         {
@@ -1472,6 +1978,7 @@ internal static partial class P1bTests
                 .Append(r.Regime).Append(" | ").Append(r.Config).Append(" | ")
                 .Append(r.Chunk).Append(" | ").Append(string.Join(", ", targets)).Append(" | ")
                 .Append(double.IsFinite(r.FloorM) ? r.FloorM.ToString("E2", CultureInfo.InvariantCulture) : "NaN")
+                .Append(" | ").Append(string.IsNullOrEmpty(r.ReferenceResolution) ? "n/a" : r.ReferenceResolution)
                 .AppendLine(" |");
         }
 
@@ -1527,6 +2034,7 @@ internal static partial class P1bTests
                     .Append(" | ").Append(r.Status).AppendLine(" |");
             }
 
+            DecisionBAppendCellMaxStepRows(sb, matrix, t);
             sb.AppendLine();
         }
 
@@ -1674,7 +2182,10 @@ internal static partial class P1bTests
             if (v["check"] != "production_default"
                 && !v["check"].StartsWith("production_parity", StringComparison.Ordinal)
                 && v["check"] != "local_frame_error_control"
-                && v["check"] != "best_all_tie_class")
+                && v["check"] != "best_all_tie_class"
+                && v["check"] != "reference_resolution"
+                && v["check"] != "tie_break_by_error"
+                && v["check"] != "selection_metric_consistent")
             {
                 continue;
             }
@@ -1715,7 +2226,7 @@ internal static partial class P1bTests
         sb.AppendLine("**Production-only verdict:** "
             + (prodVerdict != null && prodVerdict.ContainsKey("note") ? prodVerdict["note"] : "not available"));
         sb.AppendLine();
-        sb.AppendLine("`cell_winner`, `dominance_count`, `target_sweep` and `chunk_sweep` use raw");
+        sb.AppendLine("`cell_winner`, `dominance_count`, `target_sweep_executed` and `chunk_sweep` use raw");
         sb.AppendLine("`cost_total`; `cost_if_ported` is reported as a separate `cost_metric` row.");
         sb.AppendLine("The decision table above uses `cost_if_ported` for any stand/production comparison.");
         sb.AppendLine();

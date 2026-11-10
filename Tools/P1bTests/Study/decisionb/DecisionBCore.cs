@@ -43,6 +43,12 @@ internal static partial class P1bTests
         public long Rejected;
         public long Chunks;
         public long RawCalls;
+        /// <summary>Effective average fixed step: duration / accepted steps. NaN when steps = 0.</summary>
+        public double HAvg = double.NaN;
+        /// <summary>Production absolute tolerances (pos/vel/mass) for this run; empty on stand rows.</summary>
+        public string ProductionAtol = "";
+        /// <summary>Stand absolute tolerances (pos/vel/mass) for this run; empty on production rows.</summary>
+        public string StandAtol = "";
         public double CostRhs;
         public double CostLocalFrame;
         public double CostAux;
@@ -73,6 +79,12 @@ internal static partial class P1bTests
         public string Reason = "";
         public double EffectiveMaxStep;
         public List<DecisionBRun> Runs = new List<DecisionBRun>();
+        /// <summary>
+        /// Executed runs excluded from the selection list because they reproduce
+        /// an existing fixed-step h_avg (same executed trajectory). They are
+        /// still written to Test560b_Runs.csv so no executed point is hidden.
+        /// </summary>
+        public List<DecisionBRun> ExtraRuns = new List<DecisionBRun>();
         public DecisionBRun BestHit;
     }
 
@@ -242,7 +254,8 @@ internal static partial class P1bTests
     private static DecisionBRun DecisionBRunProduction(
         DecisionBScenario s, string kernel, double rtol, double maxStep,
         OrbitingBody dominantOverride, bool useFrame, bool dense,
-        double posTol = 1e-4d, double velTol = 1e-8d, double massTol = 1e-4d)
+        double posTol = 1e-4d, double velTol = 1e-8d, double massTol = 1e-4d,
+        long budget = DecisionBRunBudgetRhs)
     {
         var run = new DecisionBRun
         {
@@ -250,7 +263,8 @@ internal static partial class P1bTests
             ControlKind = "rtol",
             SamplesP = new Vector3d[s.Refs.CheckpointTimes.Length],
             SamplesV = new Vector3d[s.Refs.CheckpointTimes.Length],
-            Sensitive = s.Sensitivity
+            Sensitive = s.Sensitivity,
+            ProductionAtol = DecisionBAtolLabel(posTol, velTol, massTol)
         };
 
         try
@@ -325,10 +339,10 @@ internal static partial class P1bTests
                 chunksDone++;
                 t += chunk;
 
-                if (counting.Calls > DecisionBRunBudgetRhs)
+                if (counting.Calls > budget)
                 {
                     run.Status = "censored";
-                    run.Note = "RHS budget " + DecisionBRunBudgetRhs.ToString(CultureInfo.InvariantCulture) + " exceeded";
+                    run.Note = "RHS budget " + budget.ToString(CultureInfo.InvariantCulture) + " exceeded";
                     break;
                 }
 
@@ -356,6 +370,7 @@ internal static partial class P1bTests
             run.CostTotal = run.CostRhs + run.CostLocalFrame + run.CostAux;
             run.CostIfPorted = run.CostTotal;
             run.Finite = sample == s.Refs.CheckpointTimes.Length && DecisionBAllFinite(run.SamplesP, run.SamplesV);
+            DecisionBSetHAvg(s, run);
             DecisionBEvaluateErrors(s, run);
             if (run.Status == "ok" && !run.Finite)
             {
@@ -414,6 +429,30 @@ internal static partial class P1bTests
         }
 
         return true;
+    }
+
+    private static void DecisionBSetHAvg(DecisionBScenario s, DecisionBRun run)
+    {
+        run.HAvg = run.Steps > 0L && s.Case.Seconds > 0d
+            ? s.Case.Seconds / run.Steps
+            : double.NaN;
+    }
+
+    private static string DecisionBAtolLabel(double pos, double vel, double mass)
+    {
+        if (pos == 0d && vel == 0d && mass == 0d)
+        {
+            return "0/0/0";
+        }
+
+        if (pos == 1e-4d && vel == 1e-8d && mass == 1e-4d)
+        {
+            return "1e-4/1e-8/1e-4";
+        }
+
+        return pos.ToString("G3", CultureInfo.InvariantCulture) + "/"
+            + vel.ToString("G3", CultureInfo.InvariantCulture) + "/"
+            + mass.ToString("G3", CultureInfo.InvariantCulture);
     }
 
     private static void DecisionBEvaluateErrors(DecisionBScenario s, DecisionBRun run)
@@ -582,7 +621,8 @@ internal static partial class P1bTests
             ControlKind = DecisionBControlKind(m),
             SamplesP = new Vector3d[s.Refs.CheckpointTimes.Length],
             SamplesV = new Vector3d[s.Refs.CheckpointTimes.Length],
-            Sensitive = s.Sensitivity
+            Sensitive = s.Sensitivity,
+            StandAtol = "0/0/0"
         };
 
         try
@@ -614,6 +654,7 @@ internal static partial class P1bTests
             run.Accepted = result.Steps;
             run.Rejected = result.Rejected;
             run.Finite = true;
+            DecisionBSetHAvg(s, run);
             for (int i = 0; i < s.Refs.CheckpointTimes.Length; i++)
             {
                 double[] sample = result.Samples[i];
@@ -809,7 +850,7 @@ internal static partial class P1bTests
 
             foreach (DecisionBTarget t in s.Targets)
             {
-                DecisionBRefineTarget(s, m, maxStep, t.Value, t.Kind, cache, mr.Runs);
+                DecisionBRefineTarget(s, m, maxStep, t.Value, t.Kind, cache, mr.Runs, mr.ExtraRuns);
             }
 
             mr.BestHit = DecisionBCheapestHit(mr.Runs, tightestTarget, tightestKind);
@@ -849,7 +890,28 @@ internal static partial class P1bTests
         return kind == "velocity" ? r.ErrMaxV : r.ErrMaxM;
     }
 
+    /// <summary>
+    /// Comparable cost of one executed control point: the same metric the
+    /// decision table ranks by (`cost_if_ported`). Production already pays the
+    /// local frame; a stand run is charged the disclosed port estimate.
+    /// </summary>
+    private static double DecisionBRunComparableCost(DecisionBRun r)
+    {
+        if (r == null)
+        {
+            return double.PositiveInfinity;
+        }
+
+        return double.IsFinite(r.CostIfPorted) ? r.CostIfPorted : r.CostTotal;
+    }
+
     private static DecisionBRun DecisionBCheapestHit(List<DecisionBRun> runs, double target, string kind)
+    {
+        return DecisionBCheapestHitBy(runs, target, kind, DecisionBRunComparableCost);
+    }
+
+    private static DecisionBRun DecisionBCheapestHitBy(
+        List<DecisionBRun> runs, double target, string kind, Func<DecisionBRun, double> cost)
     {
         DecisionBRun bestOk = null;
         double bestOkCost = double.PositiveInfinity;
@@ -863,14 +925,15 @@ internal static partial class P1bTests
             }
 
             double err = DecisionBRunError(r, kind);
-            if (err <= 0.8d * target && r.CostTotal < bestOkCost)
+            double c = cost(r);
+            if (err <= 0.8d * target && c < bestOkCost)
             {
-                bestOkCost = r.CostTotal;
+                bestOkCost = c;
                 bestOk = r;
             }
-            else if (err <= target && r.CostTotal < bestEdgeCost)
+            else if (err <= target && c < bestEdgeCost)
             {
-                bestEdgeCost = r.CostTotal;
+                bestEdgeCost = c;
                 bestEdge = r;
             }
         }
@@ -896,9 +959,10 @@ internal static partial class P1bTests
             }
 
             double err = DecisionBRunError(r, kind);
-            if (err > 0.8d * target && err <= target && r.CostTotal < bestCost)
+            double c = DecisionBRunComparableCost(r);
+            if (err > 0.8d * target && err <= target && c < bestCost)
             {
-                bestCost = r.CostTotal;
+                bestCost = c;
                 best = r;
             }
         }
@@ -918,9 +982,10 @@ internal static partial class P1bTests
                 continue;
             }
 
-            if (r.CostTotal < belowCost && r.CostTotal > bestCost)
+            double c = DecisionBRunComparableCost(r);
+            if (c < belowCost && c > bestCost)
             {
-                bestCost = r.CostTotal;
+                bestCost = c;
                 best = r;
             }
         }
@@ -930,7 +995,7 @@ internal static partial class P1bTests
 
     private static void DecisionBRefineTarget(
         DecisionBScenario s, DecisionBMethod m, double maxStep, double target, string kind,
-        Dictionary<string, DecisionBRun> cache, List<DecisionBRun> runs)
+        Dictionary<string, DecisionBRun> cache, List<DecisionBRun> runs, List<DecisionBRun> extraRuns)
     {
         for (int i = 0; i < 3; i++)
         {
@@ -940,13 +1005,13 @@ internal static partial class P1bTests
                 return;
             }
 
-            DecisionBRun miss = DecisionBCheapestMiss(runs, target, kind, hit.CostTotal);
+            DecisionBRun miss = DecisionBCheapestMiss(runs, target, kind, DecisionBRunComparableCost(hit));
             if (miss == null)
             {
                 return;
             }
 
-            if (hit.CostTotal <= 1.10d * miss.CostTotal)
+            if (DecisionBRunComparableCost(hit) <= 1.10d * DecisionBRunComparableCost(miss))
             {
                 return;
             }
@@ -975,6 +1040,36 @@ internal static partial class P1bTests
             }
 
             DecisionBRun added = DecisionBRunPoint(s, m, control, maxStep, cache);
+            // Fixed-step controls that differ only by the grid/refinement are
+            // often clipped to the same number of steps per chunk (for example
+            // 424.26 s and 300 s both make two 300 s steps inside a 600 s
+            // chunk). They are the same executed configuration, so do not add a
+            // duplicate row for them.
+            if (m.Stand != null && m.Stand.Kind == StudyKind.Fixed
+                && double.IsFinite(added.HAvg))
+            {
+                bool sameStep = false;
+                foreach (DecisionBRun r in runs)
+                {
+                    if (double.IsFinite(r.HAvg)
+                        && Math.Abs(r.HAvg - added.HAvg)
+                            <= 1e-6d * Math.Max(Math.Abs(added.HAvg), 1e-300d))
+                    {
+                        sameStep = true;
+                        break;
+                    }
+                }
+
+                if (sameStep)
+                {
+                    extraRuns.Add(added);
+                    Console.WriteLine("    refine " + s.Label + " / " + m.Name + ": h_avg "
+                        + added.HAvg.ToString("G6", CultureInfo.InvariantCulture)
+                        + " s already executed; duplicate not added to the selection (kept in Runs.csv)");
+                    return;
+                }
+            }
+
             runs.Add(added);
             if (added.Status != "ok" || !added.Finite)
             {

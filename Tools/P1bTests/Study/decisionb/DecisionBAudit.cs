@@ -70,9 +70,25 @@ internal static partial class P1bTests
             double t = StudyShipT0;
             double end = t + c.Seconds;
             long chunks = 0L;
-            while (t < end - 1e-12d)
+            while (t < end - 1e-12d * Math.Max(1d, Math.Abs(end)))
             {
                 double chunk = Math.Min(s.ChunkAt(t), end - t);
+                chunk = DecisionBClampToBreakpoint(s, t, chunk);
+                for (int i = 0; i < s.Refs.CheckpointTimes.Length; i++)
+                {
+                    double ck = s.Refs.CheckpointTimes[i];
+                    if (ck > t + 1e-9d && ck < t + chunk - 1e-9d)
+                    {
+                        chunk = ck - t;
+                        break;
+                    }
+                }
+
+                if (!(chunk > 0d))
+                {
+                    break;
+                }
+
                 phys.StepWithSegments(ship, t, chunk, segments);
                 t += chunk;
                 chunks++;
@@ -196,15 +212,44 @@ internal static partial class P1bTests
             double[] y = (double[])s.Problem.Y0.Clone();
             double t = s.Problem.T0;
             double end = s.Problem.EndTime;
-            while (t < end - 1e-12d)
+            while (t < end - 1e-12d * Math.Max(1d, Math.Abs(end)))
             {
-                double chunkEnd = Math.Min(t + s.ChunkAt(t), end);
+                double chunk = Math.Min(s.ChunkAt(t), end - t);
+                chunk = DecisionBClampToBreakpoint(s, t, chunk);
+                double chunkEnd = t + chunk;
+                for (int cki = 0; cki < s.Problem.CheckpointTimes.Length; cki++)
+                {
+                    double ck = s.Problem.CheckpointTimes[cki];
+                    if (ck > t + 1e-9d && ck < chunkEnd - 1e-9d)
+                    {
+                        chunkEnd = ck;
+                        break;
+                    }
+                }
+
                 StudyProblem sub = s.Problem.ShallowClone();
                 sub.T0 = t;
                 sub.Y0 = y;
                 sub.CheckpointTimes = new[] { chunkEnd };
                 sub.CheckpointRef = new[] { s.Problem.CheckpointRef[0] };
-                sub.Breakpoints = null;
+                if (s.Problem.Breakpoints != null)
+                {
+                    var kept = new List<double>();
+                    foreach (double b in s.Problem.Breakpoints)
+                    {
+                        if (b > t + 1e-9d && b < chunkEnd - 1e-9d)
+                        {
+                            kept.Add(b);
+                        }
+                    }
+
+                    sub.Breakpoints = kept.Count == 0 ? null : kept.ToArray();
+                }
+                else
+                {
+                    sub.Breakpoints = null;
+                }
+
                 StudyConfig subCfg = m.Stand.MakeConfig(s.Problem, control, double.PositiveInfinity);
                 subCfg.MaxStep = maxStep;
                 subCfg.H0 = Math.Min(chunkEnd - t, maxStep);
@@ -261,7 +306,23 @@ internal static partial class P1bTests
                 sub.Y0 = startY;
                 sub.CheckpointTimes = new[] { mid };
                 sub.CheckpointRef = new[] { s.Problem.CheckpointRef[0] };
-                sub.Breakpoints = null;
+                if (s.Problem.Breakpoints != null)
+                {
+                    var kept = new List<double>();
+                    foreach (double b in s.Problem.Breakpoints)
+                    {
+                        if (b > startT + 1e-9d && b < mid - 1e-9d)
+                        {
+                            kept.Add(b);
+                        }
+                    }
+
+                    sub.Breakpoints = kept.Count == 0 ? null : kept.ToArray();
+                }
+                else
+                {
+                    sub.Breakpoints = null;
+                }
                 double refineControl = m.Stand.Kind == StudyKind.Fixed
                     ? control / 8d
                     : Math.Max(control / 100d, 1e-14d);
@@ -341,6 +402,38 @@ internal static partial class P1bTests
             Status = probe.Integrator == SpacecraftIntegrator.Dop853 ? "PASS" : "FAIL",
             Note = probe.Integrator.ToString()
         });
+
+        foreach (DecisionBScenario s in scenarios)
+        {
+            if (s.Config != "production" && s.Config != "regime86400")
+            {
+                continue;
+            }
+
+            bool ratioOk = s.Refs.LocalAsymptotic;
+            bool resolvedFinest = !ratioOk && s.Refs.LocalValid && s.Refs.LocalResolved
+                && s.Refs.LocalUnratioedResolutionUsed;
+            string status = ratioOk ? "ratio_ok"
+                : (resolvedFinest ? "resolved_finest_delta" : "not_certified");
+            rows.Add(new DecisionBValidityRow
+            {
+                Check = "reference_resolution",
+                Scenario = s.Label,
+                Method = "-",
+                Metric = "floor_m/floor_v",
+                Value = s.FloorM,
+                Threshold = s.FloorV,
+                Status = status,
+                Note = "floor_m=" + (double.IsFinite(s.FloorM)
+                        ? s.FloorM.ToString("E3", CultureInfo.InvariantCulture) : "NaN")
+                    + "; floor_v=" + (double.IsFinite(s.FloorV)
+                        ? s.FloorV.ToString("E3", CultureInfo.InvariantCulture) : "NaN")
+                    + "; " + (s.Refs.LocalKind ?? "no note")
+                    + (resolvedFinest
+                        ? "; weaker certificate: finest observed delta, no Richardson ratio (not called certified)"
+                        : "")
+            });
+        }
 
         foreach (string marker in new[] { "Surface ascent", "LEO 200 km", "GEO" })
         {
@@ -471,6 +564,10 @@ internal static partial class P1bTests
                 }, 1e-12d, maxStep);
             double diff853 = stand853 == null ? double.NaN : DecisionBParityDiff(leo300, prod853, stand853);
 
+            double localThreshold = target / 10d;
+            string localStatus = !double.IsFinite(diffMatched) ? "FINDING"
+                : (diffMatched <= 0.5d * localThreshold ? "PASS/MATCHED"
+                    : (diffMatched <= localThreshold ? "BORDERLINE" : "FINDING"));
             rows.Add(new DecisionBValidityRow
             {
                 Check = "local_frame_error_control",
@@ -478,19 +575,25 @@ internal static partial class P1bTests
                 Method = "DOPRI5",
                 Metric = "prod_minus_stand_at_matched_atol_m",
                 Value = diffMatched,
-                Threshold = target / 10d,
-                Status = double.IsFinite(diffMatched) && diffMatched <= target / 10d ? "PASS/MATCHED" : "FINDING",
+                Threshold = localThreshold,
+                Status = localStatus,
                 Note = "matched atol=0/0/0 (production pos/vel/mass atol == stand cfg.Atol=0); "
                     + "rtol=1e-12; production err "
                     + (prodMatched.Finite ? prodMatched.ErrMaxM.ToString("E3", CultureInfo.InvariantCulture) : "NaN")
                     + " m; stand DOPRI5 err " + (stand.Finite ? stand.ErrMaxM.ToString("E3", CultureInfo.InvariantCulture) : "NaN")
                     + " m; matched diff " + (double.IsFinite(diffMatched) ? diffMatched.ToString("E3", CultureInfo.InvariantCulture) : "NaN")
-                    + " m; game-default atol diff " + (double.IsFinite(diffGame) ? diffGame.ToString("E3", CultureInfo.InvariantCulture) : "NaN")
+                    + " m (" + (double.IsFinite(diffMatched) && localThreshold > 0d
+                        ? (100d * diffMatched / localThreshold).ToString("F2", CultureInfo.InvariantCulture) + "% of threshold"
+                        : "n/a")
+                    + "); game-default atol diff " + (double.IsFinite(diffGame) ? diffGame.ToString("E3", CultureInfo.InvariantCulture) : "NaN")
                     + " m; DOP853 matched-atol (0/0/0) reference " + (double.IsFinite(diff853)
                         ? diff853.ToString("E3", CultureInfo.InvariantCulture) : "NaN")
-                    + " m; " + (double.IsFinite(diffMatched) && diffMatched > target / 10d
-                        ? "true matched-atol difference is a local-frame finding"
-                        : "true matched-atol difference is below target/10; the game-default difference is an atol effect, not a local-frame finding")
+                    + " m; production atol 1e-4/1e-8/1e-4 vs stand Atol=0 (the game-default row); "
+                    + (localStatus == "BORDERLINE"
+                        ? "matched-atol difference is inside target/10 but above target/20: BORDERLINE, not a pass claim"
+                        : (localStatus == "PASS/MATCHED"
+                            ? "matched-atol difference is below target/20"
+                            : "matched-atol difference crosses target/10: local-frame finding"))
             });
         }
 
@@ -647,6 +750,24 @@ internal static partial class P1bTests
             });
         }
 
+        int thrustEventScenarios = scenarios.Count(s => s.Case != null && s.Case.Thrust
+            && !string.IsNullOrEmpty(s.EventKind) && s.Config == "production" && !s.Sensitivity);
+        rows.Add(new DecisionBValidityRow
+        {
+            Check = "thrust_event_clamp",
+            Scenario = "-",
+            Method = "-",
+            Metric = "thrust_scenarios_with_events",
+            Value = thrustEventScenarios,
+            Threshold = 0d,
+            Status = "PASS",
+            Note = (thrustEventScenarios == 0
+                    ? "no production scenario combines thrust with a touchdown/SOI event; "
+                    : thrustEventScenarios.ToString(CultureInfo.InvariantCulture)
+                      + " production scenario(s) combine thrust with an event; ")
+                + "both event paths clamp chunk/breakpoints/checkpoints like the main path"
+        });
+
         return rows;
     }
 
@@ -654,6 +775,114 @@ internal static partial class P1bTests
     {
         List<IStudyIntegrator> all = StudyRegistry.Select(name);
         return all.Count == 1 ? all[0] : null;
+    }
+
+    /// <summary>
+    /// Game-default DOPRI5 parity for every production scenario, using the
+    /// stand DOPRI5 control selected in the decision matrix. This does not feed
+    /// the decision table; it is a transparency row about atol.
+    /// </summary>
+    private static List<DecisionBValidityRow> DecisionBProductionParityAll(
+        List<DecisionBScenario> scenarios, List<DecisionBMethodResult> results,
+        List<DecisionBMatrixRow> matrix, List<DecisionBValidityRow> existing)
+    {
+        var rows = new List<DecisionBValidityRow>();
+        var covered = new HashSet<string>(StringComparer.Ordinal);
+        foreach (DecisionBValidityRow v in existing)
+        {
+            if (v.Check == "production_parity_game_default" && v.Method == "DOPRI5")
+            {
+                covered.Add(v.Scenario);
+            }
+        }
+
+        const long parityBudget = 10000000L;
+        foreach (DecisionBScenario s in scenarios)
+        {
+            if (s.Config != "production" || s.Sensitivity || covered.Contains(s.Label))
+            {
+                continue;
+            }
+
+            DecisionBTarget target = s.Targets.Length > 0 ? s.Targets[0] : null;
+            if (target == null)
+            {
+                continue;
+            }
+
+            DecisionBMethodResult mr = results.Find(x => x.Scenario == s && x.Method.Name == "DOPRI5-adaptive");
+            DecisionBMatrixRow cell = matrix.Find(x => x.Scenario == s.Label
+                && x.Config == s.Config && x.Method == "DOPRI5-adaptive"
+                && Math.Abs(x.Target - target.Value) <= 1e-12d && x.TargetKind == target.Kind);
+            double control = cell == null ? double.NaN : DecisionBParseDouble(cell.Control);
+            DecisionBRun stand = null;
+            if (mr != null)
+            {
+                if (double.IsFinite(control))
+                {
+                    stand = mr.Runs.Find(r => Math.Abs(r.Control - control)
+                        <= 1e-9d * Math.Max(Math.Abs(r.Control), 1e-300d));
+                }
+
+                if (stand == null)
+                {
+                    stand = DecisionBCheapestHit(mr.Runs, target.Value, target.Kind);
+                }
+
+                if (stand == null && mr.Runs.Count > 0)
+                {
+                    stand = mr.Runs[0];
+                }
+            }
+
+            if (stand == null || !double.IsFinite(stand.Control))
+            {
+                rows.Add(new DecisionBValidityRow
+                {
+                    Check = "production_parity_game_default",
+                    Scenario = s.Label,
+                    Method = "DOPRI5",
+                    Metric = "prod_vs_stand_max_m",
+                    Value = double.NaN,
+                    Threshold = target.Value / 10d,
+                    Status = "unresolved",
+                    Note = "no stand DOPRI5 control from the matrix; parity run not executed"
+                });
+                continue;
+            }
+
+            DecisionBRun prod = DecisionBRunProduction(
+                s, "dopri5", stand.Control, s.MaxStep, s.DominantBodyOverride, true, false,
+                1e-4d, 1e-8d, 1e-4d, parityBudget);
+            double diff = DecisionBParityDiff(s, prod, stand);
+            double threshold = target.Value / 10d;
+            string status = !double.IsFinite(diff) ? "unresolved"
+                : (diff <= 0.5d * threshold ? "PASS"
+                    : (diff <= threshold ? "BORDERLINE" : "FINDING"));
+            string productionText = prod.Finite
+                ? prod.ErrMaxM.ToString("E3", CultureInfo.InvariantCulture) + " m"
+                : prod.Status + (string.IsNullOrEmpty(prod.Note) ? "" : ": " + prod.Note);
+            rows.Add(new DecisionBValidityRow
+            {
+                Check = "production_parity_game_default",
+                Scenario = s.Label,
+                Method = "DOPRI5",
+                Metric = "prod_vs_stand_max_m",
+                Value = diff,
+                Threshold = threshold,
+                Status = status,
+                Note = "game-default atol=1e-4/1e-8/1e-4; stand cfg.Atol=0; rtol="
+                    + stand.Control.ToString("G6", CultureInfo.InvariantCulture)
+                    + "; max step " + s.MaxStep.ToString("G6", CultureInfo.InvariantCulture)
+                    + "; one target per scenario (" + DecisionBFormatTarget(target.Value, target.Kind) + ")"
+                    + "; production err " + productionText
+                    + "; stand DOPRI5 err "
+                    + (stand.Finite ? stand.ErrMaxM.ToString("E3", CultureInfo.InvariantCulture) + " m" : "NaN")
+                    + "; cap 10M RHS"
+            });
+        }
+
+        return rows;
     }
 
     private static double DecisionBParityDiff(
@@ -1051,7 +1280,7 @@ internal static partial class P1bTests
 
                 rows.Add(new DecisionBDominanceRow
                 {
-                    Check = "target_sweep",
+                    Check = "target_sweep_executed",
                     Regime = total.Regime,
                     Scenario = total.Scenario,
                     Target = DecisionBFormatTarget(target, total.TargetKind),
@@ -1059,7 +1288,8 @@ internal static partial class P1bTests
                     Winner = best == null ? "unresolved" : best.Method,
                     Second = "-",
                     Value = best == null ? double.NaN : bestCost,
-                    Note = mult.ToString("G3", CultureInfo.InvariantCulture) + "x budget; executed runs only"
+                    Note = mult.ToString("G3", CultureInfo.InvariantCulture)
+                        + "x budget; reuses executed runs; no re-run at 0.1x/10x"
                 });
             }
         }
@@ -1258,7 +1488,7 @@ internal static partial class P1bTests
                 if (best != null && best.Method != pt.Method) prodTargetChanges++;
                 rows.Add(new DecisionBDominanceRow
                 {
-                    Check = "production_target_sweep",
+                    Check = "production_target_sweep_executed",
                     Regime = pt.Regime,
                     Scenario = pt.Scenario,
                     Target = DecisionBFormatTarget(target, pt.TargetKind),
@@ -1266,7 +1496,8 @@ internal static partial class P1bTests
                     Winner = best == null ? "unresolved" : best.Method,
                     Second = "-",
                     Value = best == null ? double.NaN : bestCost,
-                    Note = mult.ToString("G3", CultureInfo.InvariantCulture) + "x budget; production methods only"
+                    Note = mult.ToString("G3", CultureInfo.InvariantCulture)
+                        + "x budget; reuses executed runs; no re-run at 0.1x/10x; production methods only"
                 });
             }
         }
@@ -1401,7 +1632,7 @@ internal static partial class P1bTests
             Second = "-",
             Value = prodTargetChanges,
             Note = prodTargetChanges.ToString(CultureInfo.InvariantCulture)
-                + " target cells where the production winner changes; see production_target_sweep"
+                + " target cells where the production winner changes; see production_target_sweep_executed"
         });
 
         rows.Add(new DecisionBDominanceRow

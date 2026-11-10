@@ -172,9 +172,11 @@ internal static partial class P1bTests
             forced.Note = "forced Sun; production auto path is the isolation finding";
             result.Add(forced);
 
-            result.Add(forced.CloneForConfig(
+            DecisionBScenario forcedRegime = forced.CloneForConfig(
                 "regime86400", 86400d, t => 86400d, 86400d,
-                "86 400 s (regime sensitivity, forced Sun)", true));
+                "86 400 s (regime sensitivity, forced Sun)", true);
+            forcedRegime.Label = forcedRegime.Label + " [forced Sun]";
+            result.Add(forcedRegime);
         }
 
         DecisionBScenario far = DecisionBFar(systems.Helio);
