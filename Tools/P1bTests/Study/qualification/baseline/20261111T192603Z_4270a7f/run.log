@@ -1,0 +1,572 @@
+Test564_MethodQualification
+profile: full
+run dir: C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\Study\qualification\results\20261111T192603Z_4270a7f
+methods: 15
+  RK4 | Runge-Kutta | Fixed | ExpectedOrder=4
+  DOPRI5-fixed | Runge-Kutta | Fixed | ExpectedOrder=5
+  DOPRI5-adaptive | Runge-Kutta | Adaptive | ExpectedOrder=NaN
+  DOP853-adaptive | Runge-Kutta | Adaptive | ExpectedOrder=NaN
+  PEFRL | Symplectic | Fixed | ExpectedOrder=4
+  Y6 | Symplectic | Fixed | ExpectedOrder=6
+  Y6C | Symplectic | Fixed | ExpectedOrder=6
+  WH-Y6 | Kepler-split | Fixed | ExpectedOrder=NaN
+  Leapfrog | Symplectic | Fixed | ExpectedOrder=2
+  RKN12(10) | Runge-Kutta | Adaptive | ExpectedOrder=NaN
+  IAS15 | Gauss-Radau | Adaptive | ExpectedOrder=NaN
+  SRKN14A | Symplectic | Fixed | ExpectedOrder=6
+  WH-BM14A | Kepler-split | Fixed | ExpectedOrder=NaN
+  GJ8 | Multistep | Fixed | ExpectedOrder=10
+  Encke-IAS15 | Encke | Fixed | ExpectedOrder=NaN
+catalog: 17 problem(s)
+  K1: VALID floor=1.000E-14
+  K2: VALID floor=1.000E-14
+  K3: VALID floor=5.050E-14
+  K4: VALID floor=4.067E-14
+  K5: VALID floor=1.000E-14
+  K6: VALID floor=1.000E-14
+  K7: VALID floor=1.000E-14
+  K8: VALID floor=1.000E-14
+  T1: VALID floor=4.000E-16
+  T2: VALID floor=1.000E-14
+  T3: VALID floor=4.000E-16
+  R1: VALID floor=5.882E-02
+  R2: VALID floor=1.969E+00
+  R3: VALID floor=2.544E-03
+  R4: VALID floor=3.682E-07
+  L1: INVALID floor=9.657E+00
+  L2: VALID floor=1.568E-12
+oracle audit: 16 VALID, 1 not VALID (each non-VALID must carry a documented reason)
+wrote environment.txt, runs.csv (header only), matrix.csv (header only), oracle_audit.md
+flag check: 9 method(s) require a conservative second-order force
+flag check K1: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check K2: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check K3: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check K4: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check K5: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check K6: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check K7: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check K8: velocity-dependent=True mass-dependent=False ConservativeSecondOrder=False
+flag check T1: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check T2: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check T3: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check R1: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check R2: velocity-dependent=True mass-dependent=False ConservativeSecondOrder=False
+flag check R3: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check R4: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check L2: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+K1 Kepler, e=0 (Test564 K1 Kepler; e=0)
+  RK4: 20 points
+  DOPRI5-fixed: 16 points
+  DOPRI5-adaptive: 31 points
+  DOP853-adaptive: 25 points
+  PEFRL: 19 points
+  Y6: 14 points
+  Y6C: 15 points
+  WH-Y6: 5 points
+  Leapfrog: 26 points
+  RKN12(10): 19 points
+  IAS15: 8 points
+  SRKN14A: 11 points
+  WH-BM14A: 5 points
+  GJ8: 7 points
+  Encke-IAS15: 4 points
+order RK4 K1: p=4.29654 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-fixed K1: p=4.86845 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive K1: p=0.988915 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order PEFRL K1: p=3.99786 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6 K1: p=5.91357 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6C K1: p=5.91384 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 K1: p=NaN points=0 note=n/a (few points)
+order Leapfrog K1: p=1.99999 points=16 note=median of 15 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) K1: p=1.07973 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 K1: p=2.27727 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order SRKN14A K1: p=5.85806 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A K1: p=NaN points=0 note=n/a (few points)
+order GJ8 K1: p=10.0303 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 K1: p=NaN points=0 note=n/a (few points)
+  -> 45 matrix cells so far
+K2 Kepler, e=0.1 (Test564 K2 Kepler; e=0.1)
+  RK4: 20 points
+  DOPRI5-fixed: 16 points
+  DOPRI5-adaptive: 32 points
+  DOP853-adaptive: 26 points
+  PEFRL: 20 points
+  Y6: 15 points
+  Y6C: 15 points
+  WH-Y6: 5 points
+  Leapfrog: 26 points
+  RKN12(10): 18 points
+  IAS15: 9 points
+  SRKN14A: 11 points
+  WH-BM14A: 5 points
+  GJ8: 6 points
+  Encke-IAS15: 4 points
+order RK4 K2: p=4.37141 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-fixed K2: p=4.99221 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive K2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order PEFRL K2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Y6 K2: p=5.91315 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6C K2: p=6.00126 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 K2: p=NaN points=0 note=n/a (few points)
+order Leapfrog K2: p=2 points=16 note=median of 15 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) K2: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order IAS15 K2: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order SRKN14A K2: p=5.85381 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A K2: p=NaN points=0 note=n/a (few points)
+order GJ8 K2: p=9.26907 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 K2: p=NaN points=0 note=n/a (few points)
+  -> 90 matrix cells so far
+K3 Kepler, e=0.5 (Test564 K3 Kepler; e=0.5)
+  RK4: 26 points
+  DOPRI5-fixed: 23 points
+  DOPRI5-adaptive: 33 points
+  DOP853-adaptive: 26 points
+  PEFRL: 26 points
+  Y6: 17 points
+  Y6C: 17 points
+  WH-Y6: 5 points
+  Leapfrog: 26 points
+  RKN12(10): 21 points
+  IAS15: 10 points
+  SRKN14A: 16 points
+  WH-BM14A: 5 points
+  GJ8: 9 points
+  Encke-IAS15: 4 points
+order RK4 K3: p=4.20903 points=12 note=median of 11 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-fixed K3: p=5.01404 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K3: p=1.0221 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order DOP853-adaptive K3: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order PEFRL K3: p=4.00013 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6 K3: p=5.99957 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6C K3: p=5.99894 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 K3: p=NaN points=0 note=n/a (few points)
+order Leapfrog K3: p=2 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) K3: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order IAS15 K3: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order SRKN14A K3: p=6.10264 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A K3: p=NaN points=0 note=n/a (few points)
+order GJ8 K3: p=7.07793 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 K3: p=NaN points=0 note=n/a (few points)
+  -> 135 matrix cells so far
+K4 Kepler, e=0.9 (Test564 K4 Kepler; e=0.9)
+  RK4: 26 points
+  DOPRI5-fixed: 26 points
+  DOPRI5-adaptive: 30 points
+  DOP853-adaptive: 29 points
+  PEFRL: 26 points
+  Y6: 26 points
+  Y6C: 25 points
+  WH-Y6: 24 points
+  Leapfrog: 26 points
+  RKN12(10): 22 points
+  IAS15: 14 points
+  SRKN14A: 25 points
+  WH-BM14A: 5 points
+  GJ8: 20 points
+  Encke-IAS15: 4 points
+order RK4 K4: p=4.1665 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-fixed K4: p=5.0183 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K4: p=0.998662 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order DOP853-adaptive K4: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order PEFRL K4: p=4.00071 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6 K4: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Y6C K4: p=5.99909 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 K4: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Leapfrog K4: p=NaN points=3 note=n/a (few points)
+order RKN12(10) K4: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order IAS15 K4: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order SRKN14A K4: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order WH-BM14A K4: p=NaN points=0 note=n/a (few points)
+order GJ8 K4: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Encke-IAS15 K4: p=NaN points=1 note=n/a (few points)
+  -> 180 matrix cells so far
+K5 Parabolic, e=1 (Test564 K5 Parabolic; e=1)
+  RK4: 20 points
+  DOPRI5-fixed: 14 points
+  DOPRI5-adaptive: 27 points
+  DOP853-adaptive: 23 points
+  PEFRL: 19 points
+  Y6: 15 points
+  Y6C: 15 points
+  WH-Y6: 3 points
+  Leapfrog: 26 points
+  RKN12(10): 21 points
+  IAS15: 10 points
+  SRKN14A: 10 points
+  WH-BM14A: 3 points
+  GJ8: 6 points
+  Encke-IAS15: 3 points
+order RK4 K5: p=3.99885 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-fixed K5: p=5.27283 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K5: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive K5: p=0.890994 points=18 note=median of 17 pairwise slopes (fine->coarse, doubled-error branch)
+order PEFRL K5: p=3.98439 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6 K5: p=5.83117 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6C K5: p=5.83117 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 K5: p=NaN points=0 note=n/a (few points)
+order Leapfrog K5: p=1.99994 points=18 note=median of 17 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) K5: p=1.18437 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 K5: p=1.7461 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order SRKN14A K5: p=5.77156 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A K5: p=NaN points=0 note=n/a (few points)
+order GJ8 K5: p=9.70451 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 K5: p=NaN points=0 note=n/a (few points)
+  -> 225 matrix cells so far
+K6 Hyperbolic, e=1.5 (flyby) (Test564 K6 Hyperbolic; e=1.5 (flyby))
+  RK4: 20 points
+  DOPRI5-fixed: 14 points
+  DOPRI5-adaptive: 27 points
+  DOP853-adaptive: 23 points
+  PEFRL: 19 points
+  Y6: 15 points
+  Y6C: 15 points
+  WH-Y6: 3 points
+  Leapfrog: 26 points
+  RKN12(10): 22 points
+  IAS15: 10 points
+  SRKN14A: 10 points
+  WH-BM14A: 3 points
+  GJ8: 7 points
+  Encke-IAS15: 3 points
+order RK4 K6: p=3.99865 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-fixed K6: p=5.25917 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K6: p=1.06041 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order DOP853-adaptive K6: p=0.912433 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order PEFRL K6: p=3.99157 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6 K6: p=5.75664 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6C K6: p=5.75664 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 K6: p=NaN points=0 note=n/a (few points)
+order Leapfrog K6: p=2 points=18 note=median of 17 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) K6: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order IAS15 K6: p=1.76366 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order SRKN14A K6: p=5.78067 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A K6: p=NaN points=0 note=n/a (few points)
+order GJ8 K6: p=9.92607 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 K6: p=NaN points=0 note=n/a (few points)
+  -> 270 matrix cells so far
+K7 Harmonic oscillator, omega=1 (Test564 K7 Harmonic oscillator; omega=1)
+  RK4: 20 points
+  DOPRI5-fixed: 14 points
+  DOPRI5-adaptive: 28 points
+  DOP853-adaptive: 26 points
+  PEFRL: 17 points
+  Y6: 14 points
+  Y6C: 14 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 26 points
+  RKN12(10): 18 points
+  IAS15: 8 points
+  SRKN14A: 10 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 6 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order RK4 K7: p=3.99709 points=15 note=median of 14 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-fixed K7: p=5.00082 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K7: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive K7: p=1.00005 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order PEFRL K7: p=3.99336 points=15 note=median of 14 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6 K7: p=5.9838 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6C K7: p=5.98167 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 K7: p=NaN points=0 note=n/a (few points)
+order Leapfrog K7: p=2 points=19 note=median of 18 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) K7: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order IAS15 K7: p=2.26097 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order SRKN14A K7: p=6.0052 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A K7: p=NaN points=0 note=n/a (few points)
+order GJ8 K7: p=10.4662 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 K7: p=NaN points=0 note=n/a (few points)
+  -> 315 matrix cells so far
+K8 Damped oscillator (velocity-dependent), gamma=0.1 (Test564 K8 Damped oscillator (velocity-dependent); gamma=0.1)
+  RK4: 18 points
+  DOPRI5-fixed: 14 points
+  DOPRI5-adaptive: 26 points
+  DOP853-adaptive: 21 points
+  PEFRL: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6C: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Leapfrog: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  RKN12(10): n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  IAS15: 8 points
+  SRKN14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-BM14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  GJ8: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order RK4 K8: p=3.86989 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-fixed K8: p=4.96269 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K8: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive K8: p=0.950064 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order PEFRL K8: p=NaN points=0 note=n/a (few points)
+order Y6 K8: p=NaN points=0 note=n/a (few points)
+order Y6C K8: p=NaN points=0 note=n/a (few points)
+order WH-Y6 K8: p=NaN points=0 note=n/a (few points)
+order Leapfrog K8: p=NaN points=0 note=n/a (few points)
+order RKN12(10) K8: p=NaN points=0 note=n/a (few points)
+order IAS15 K8: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order SRKN14A K8: p=NaN points=0 note=n/a (few points)
+order WH-BM14A K8: p=NaN points=0 note=n/a (few points)
+order GJ8 K8: p=NaN points=0 note=n/a (few points)
+order Encke-IAS15 K8: p=NaN points=0 note=n/a (few points)
+  -> 360 matrix cells so far
+T1 Figure-eight (Chenciner-Montgomery), 3 equal masses (Test564 T1 Figure-eight (Chenciner-Montgomery); 3 equal masses)
+  RK4: 25 points
+  DOPRI5-fixed: 24 points
+  DOPRI5-adaptive: 31 points
+  DOP853-adaptive: 31 points
+  PEFRL: 25 points
+  Y6: 23 points
+  Y6C: 18 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 26 points
+  RKN12(10): 21 points
+  IAS15: 9 points
+  SRKN14A: 22 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 20 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order RK4 T1: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOPRI5-fixed T1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOPRI5-adaptive T1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive T1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order PEFRL T1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Y6 T1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Y6C T1: p=5.98729 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 T1: p=NaN points=0 note=n/a (few points)
+order Leapfrog T1: p=1.9999 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) T1: p=1.12246 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 T1: p=2.16023 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order SRKN14A T1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order WH-BM14A T1: p=NaN points=0 note=n/a (few points)
+order GJ8 T1: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order Encke-IAS15 T1: p=NaN points=0 note=n/a (few points)
+  -> 405 matrix cells so far
+T2 Lagrange equilateral triangle, 3 equal masses (Test564 T2 Lagrange equilateral triangle; 3 equal masses)
+  RK4: 19 points
+  DOPRI5-fixed: 15 points
+  DOPRI5-adaptive: 29 points
+  DOP853-adaptive: 24 points
+  PEFRL: 20 points
+  Y6: 14 points
+  Y6C: 14 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 26 points
+  RKN12(10): 24 points
+  IAS15: 7 points
+  SRKN14A: 10 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 7 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order RK4 T2: p=4.05354 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-fixed T2: p=4.86811 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive T2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive T2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order PEFRL T2: p=3.98229 points=15 note=median of 14 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6 T2: p=5.87152 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6C T2: p=5.94507 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 T2: p=NaN points=0 note=n/a (few points)
+order Leapfrog T2: p=1.99993 points=18 note=median of 17 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) T2: p=1.07028 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 T2: p=NaN points=0 note=n/a (few points)
+order SRKN14A T2: p=5.9886 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A T2: p=NaN points=0 note=n/a (few points)
+order GJ8 T2: p=8.82514 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 T2: p=NaN points=0 note=n/a (few points)
+  -> 450 matrix cells so far
+T3 Pythagorean (Burrau) three-body, masses 3/4/5 (Test564 T3 Pythagorean (Burrau) three-body; masses 3/4/5)
+  RK4: 23 points
+  DOPRI5-fixed: 22 points
+  DOPRI5-adaptive: 28 points
+  DOP853-adaptive: 28 points
+  PEFRL: 23 points
+  Y6: 22 points
+  Y6C: 22 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 26 points
+  RKN12(10): 21 points
+  IAS15: 21 points
+  SRKN14A: 20 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 19 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order RK4 T3: p=NaN points=0 note=n/a (few points)
+order DOPRI5-fixed T3: p=NaN points=0 note=n/a (few points)
+order DOPRI5-adaptive T3: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive T3: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order PEFRL T3: p=NaN points=0 note=n/a (few points)
+order Y6 T3: p=NaN points=0 note=n/a (few points)
+order Y6C T3: p=NaN points=0 note=n/a (few points)
+order WH-Y6 T3: p=NaN points=0 note=n/a (few points)
+order Leapfrog T3: p=NaN points=0 note=n/a (few points)
+order RKN12(10) T3: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order IAS15 T3: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order SRKN14A T3: p=NaN points=0 note=n/a (few points)
+order WH-BM14A T3: p=NaN points=0 note=n/a (few points)
+order GJ8 T3: p=NaN points=0 note=n/a (few points)
+order Encke-IAS15 T3: p=NaN points=0 note=n/a (few points)
+  -> 495 matrix cells so far
+R1 Real solar 7-body (test fixture), Newtonian (Test564 R1 Real solar 7-body (test fixture); Newtonian)
+  RK4: 25 points
+  DOPRI5-fixed: 24 points
+  DOPRI5-adaptive: 33 points
+  DOP853-adaptive: 30 points
+  PEFRL: 24 points
+  Y6: 23 points
+  Y6C: 23 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 25 points
+  RKN12(10): 19 points
+  IAS15: 12 points
+  SRKN14A: 22 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 24 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order RK4 R1: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order DOPRI5-fixed R1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOPRI5-adaptive R1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive R1: p=1.10972 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order PEFRL R1: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order Y6 R1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Y6C R1: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order WH-Y6 R1: p=NaN points=0 note=n/a (few points)
+order Leapfrog R1: p=2.00047 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) R1: p=0.962704 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 R1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order SRKN14A R1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order WH-BM14A R1: p=NaN points=0 note=n/a (few points)
+order GJ8 R1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Encke-IAS15 R1: p=NaN points=0 note=n/a (few points)
+  -> 540 matrix cells so far
+R2 DE441 10 bodies, 1PN (Test564 R2 DE441 10 bodies; 1PN)
+  RK4: 18 points
+  DOPRI5-fixed: 16 points
+  DOPRI5-adaptive: 1 points
+  DOP853-adaptive: 25 points
+  PEFRL: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6C: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Leapfrog: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  RKN12(10): n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  IAS15: 10 points
+  SRKN14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-BM14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  GJ8: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order RK4 R2: p=4.94173 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-fixed R2: p=4.8834 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive R2: p=NaN points=0 note=n/a (few points)
+order DOP853-adaptive R2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order PEFRL R2: p=NaN points=0 note=n/a (few points)
+order Y6 R2: p=NaN points=0 note=n/a (few points)
+order Y6C R2: p=NaN points=0 note=n/a (few points)
+order WH-Y6 R2: p=NaN points=0 note=n/a (few points)
+order Leapfrog R2: p=NaN points=0 note=n/a (few points)
+order RKN12(10) R2: p=NaN points=0 note=n/a (few points)
+order IAS15 R2: p=2.60592 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order SRKN14A R2: p=NaN points=0 note=n/a (few points)
+order WH-BM14A R2: p=NaN points=0 note=n/a (few points)
+order GJ8 R2: p=NaN points=0 note=n/a (few points)
+order Encke-IAS15 R2: p=NaN points=0 note=n/a (few points)
+  -> 585 matrix cells so far
+R3 ship near Earth, Moon and Sun perturbations, 30 d (Test564 R3 ship near Earth; Moon and Sun perturbations; 30 d)
+  RK4: 15 points
+  DOPRI5-fixed: 14 points
+  DOPRI5-adaptive: 24 points
+  DOP853-adaptive: 19 points
+  PEFRL: 14 points
+  Y6: 11 points
+  Y6C: 11 points
+  WH-Y6: 3 points
+  Leapfrog: 19 points
+  RKN12(10): 16 points
+  IAS15: 2 points
+  SRKN14A: 7 points
+  WH-BM14A: 3 points
+  GJ8: 3 points
+  Encke-IAS15: 8 points
+order RK4 R3: p=4.96409 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-fixed R3: p=4.94629 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive R3: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive R3: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order PEFRL R3: p=3.99918 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6 R3: p=6.02946 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6C R3: p=6.00894 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 R3: p=NaN points=3 note=n/a (few points)
+order Leapfrog R3: p=NaN points=2 note=n/a (few points)
+order RKN12(10) R3: p=1.1694 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 R3: p=NaN points=1 note=n/a (few points)
+order SRKN14A R3: p=5.98683 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A R3: p=NaN points=2 note=n/a (few points)
+order GJ8 R3: p=NaN points=2 note=n/a (few points)
+order Encke-IAS15 R3: p=NaN points=0 note=n/a (few points)
+  -> 630 matrix cells so far
+R4 Moon flyby (hyperbolic, vinf 1000 m/s, 100 km) (Test564 R4 Moon flyby (hyperbolic; vinf 1000 m/s; 100 km))
+  RK4: 16 points
+  DOPRI5-fixed: 11 points
+  DOPRI5-adaptive: 22 points
+  DOP853-adaptive: 18 points
+  PEFRL: 15 points
+  Y6: 12 points
+  Y6C: 12 points
+  WH-Y6: 7 points
+  Leapfrog: 26 points
+  RKN12(10): 12 points
+  IAS15: 8 points
+  SRKN14A: 8 points
+  WH-BM14A: 13 points
+  GJ8: 4 points
+  Encke-IAS15: 7 points
+order RK4 R4: p=4.02263 points=12 note=median of 11 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-fixed R4: p=5.31281 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive R4: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive R4: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order PEFRL R4: p=3.99224 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6 R4: p=5.95039 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6C R4: p=5.95051 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 R4: p=6.19394 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order Leapfrog R4: p=2 points=15 note=median of 14 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) R4: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order IAS15 R4: p=2.05712 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order SRKN14A R4: p=5.91797 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A R4: p=6.87661 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order GJ8 R4: p=10.591 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 R4: p=NaN points=0 note=n/a (few points)
+  -> 675 matrix cells so far
+L1: skipped (oracle INVALID)
+L2 Kepler e=0.5, 100 orbits (Test564 L2 Kepler e=0.5; 100 orbits)
+  RK4: 19 points
+  DOPRI5-fixed: 18 points
+  DOPRI5-adaptive: 29 points
+  DOP853-adaptive: 27 points
+  PEFRL: 19 points
+  Y6: 18 points
+  Y6C: 16 points
+  WH-Y6: 13 points
+  Leapfrog: 23 points
+  RKN12(10): 21 points
+  IAS15: 11 points
+  SRKN14A: 12 points
+  WH-BM14A: 13 points
+  GJ8: 8 points
+  Encke-IAS15: 9 points
+order RK4 L2: p=4.89669 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-fixed L2: p=4.92623 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive L2: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive L2: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order PEFRL L2: p=4.00054 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6 L2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Y6C L2: p=5.99889 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 L2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Leapfrog L2: p=2 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) L2: p=1.5406 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 L2: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order SRKN14A L2: p=6.26908 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A L2: p=NaN points=0 note=n/a (few points)
+order GJ8 L2: p=10.708 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 L2: p=NaN points=0 note=n/a (few points)
+  -> 720 matrix cells so far
+matrix: PASS=458 FAIL=47 SKIP=110 N/A=105
+reports: METHOD_QUALIFICATION.md, RECOMMENDATIONS.md
+elapsed: 202582 ms

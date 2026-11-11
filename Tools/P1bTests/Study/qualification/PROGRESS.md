@@ -191,7 +191,7 @@ _Пусто._
 | Каждый N/A — причина из `Supports(...)`; нет исключений по имени | да |
 | Гейты G1–G8 реализованы; пороги заморожены | да, блок «Заморозка порогов» |
 | `METHOD_QUALIFICATION.md` и `RECOMMENDATIONS.md` из CSV | да |
-| Baseline зафиксирован; `--compare` работает | да: `baseline/BASELINE.md` → прогон `20261111T171630Z_4df81a2` (full, commit `4df81a2`); контрольный compare — 0 изменений |
+| Baseline зафиксирован; `--compare` работает | да: `baseline/BASELINE.md` → прогон `20261111T192603Z_4270a7f` (full, commit `4270a7f`); контрольный compare — 0 изменений |
 | Старые тесты и результаты не изменены; `Test551` прежний | да: 84 PASS / 0 FAIL, хэш имён `54ae98e2...` |
 | `FOUND.md`, `BACKLOG.md`, вопросы актуальны | да |
 | G2 наблюдаемый порядок | да, после Q-FIX-1 (сортировка крупный→мелкий, лог `order ...`); проверено: RK4 K1 4.30, GJ8 K2 9.27 |
@@ -337,7 +337,7 @@ sweep/детерминизм/аудит не выполняются. Стату�
 | `dotnet build Tools/P1bTests -c Release` | 0 ошибок |
 | `verify_test551.ps1` | `lines=84 fails=0`, SHA256 `54ae98e2...` (воспроизводится скриптом) |
 | smoke `Test564` | `ALL PASS`, `PASS=460 FAIL=52 SKIP=103 N/A=105 ERROR=0`, ≈135 с |
-| full `Test564` #1 | `ALL PASS`, `PASS=458 FAIL=47 SKIP=110 N/A=105 ERROR=0`, 202.8 с |
+| full `Test564` #1 | `ALL PASS`, `PASS=458 FAIL=47 SKIP=110 N/A=105 ERROR=0`, 202.6 с |
 | full `Test564` #2 с `--compare` #1 | `No changes`, 0 статусов / 0 ошибок / 0 цен |
 | resume (обрезанный smoke, K1–K3) | `reused 135 cell(s)`, 0 расхождений с чистым прогоном, повторный resume — `nothing to resume` |
 | `--compare` флагом | против старого baseline — 62/180/190 изменений; против нового прогона — `No changes` |
@@ -355,13 +355,14 @@ Leapfrog SKIP (было 14 G3-FAIL); 7 G5-ячеек стали PASS; G3-FAIL н
 
 ## Журнал сессий
 
-- **2026-11-11 — исправления после M7 (Q-FIX-1…Q-FIX-9).** G2 (направление обхода и лог
-  `order`), G3 (безразмерная шкала + model-drift guard), детектор 1PN, G5 (только
-  сертифицирующие прогоны), ERROR → exit 1, вычисляемый статус L1, resume, `--compare`
-  флагом, wall time ≥5, документы/отчёты. Baseline пересобран:
-  `baseline/20261111T183727Z_c979ab0/` (commit `c979ab0`, full,
-  `PASS=446 FAIL=59 SKIP=110 N/A=105`, 3529 строк `runs.csv`). Старый baseline
-  `20261111T171630Z_4df81a2` сохранён.
+- **2026-11-11 — исправления после M7 (Q-FIX-1…Q-FIX-10b, повторная приёмка).** G2
+  (направление обхода, затем разворот ветки от мелкой точки по замечанию владельца),
+  G3 (безразмерная шкала + model-drift guard), детектор 1PN, G5 (только сертифицирующие
+  прогоны), ERROR → exit 1, вычисляемый статус L1, resume, `--compare` флагом, wall time ≥5,
+  документы/отчёты. Baseline пересобран: `baseline/20261111T192603Z_4270a7f/`
+  (commit `4270a7f`, full, `PASS=458 FAIL=47 SKIP=110 N/A=105`, 3529 строк `runs.csv`),
+  контрольный прогон — `No changes`. Предыдущие baseline `20261111T171630Z_4df81a2`
+  и `20261111T183727Z_c979ab0` сохранены.
 
 - **2026-11-11 — M0 (завершён).** Создана ветка `qualification/test564-method-qualification`.
   Прочитаны `TASK.md`, `PROGRESS.md`, `Study/README.md`, `framework/*`, `StudySelfTest`,
