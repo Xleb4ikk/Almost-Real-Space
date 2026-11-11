@@ -64,6 +64,15 @@ internal static partial class P1bTests
     // Catalogue
     // ---------------------------------------------------------------------------------
 
+    /// <summary>
+    /// Stable problem label. No commas: StudyCalibration's pin file splits its CSV on commas
+    /// without quoting, so a comma inside a label would corrupt the scenario key.
+    /// </summary>
+    private static string QualificationLabel(string id, string title)
+    {
+        return ("Test564 " + id + " " + title).Replace(',', ';');
+    }
+
     private static List<QualificationProblem> QualificationCatalogBuild()
     {
         var list = new List<QualificationProblem>();
@@ -140,7 +149,7 @@ internal static partial class P1bTests
         q.Build = delegate
         {
             var p = new StudyProblem();
-            p.Label = "Test564 " + id + " " + title;
+            p.Label = QualificationLabel(id, title);
             p.Dim = 6;
             p.PosDim = 3;
             p.ConservativeSecondOrder = true;
@@ -316,7 +325,7 @@ internal static partial class P1bTests
         q.Build = delegate
         {
             var p = new StudyProblem();
-            p.Label = "Test564 K5 " + q.Title;
+            p.Label = QualificationLabel("K5", q.Title);
             p.Dim = 6;
             p.PosDim = 3;
             p.ConservativeSecondOrder = true;
@@ -368,7 +377,7 @@ internal static partial class P1bTests
         q.Build = delegate
         {
             var p = new StudyProblem();
-            p.Label = "Test564 K6 " + q.Title;
+            p.Label = QualificationLabel("K6", q.Title);
             p.Dim = 6;
             p.PosDim = 3;
             p.ConservativeSecondOrder = true;
@@ -427,7 +436,7 @@ internal static partial class P1bTests
         q.Build = delegate
         {
             var p = new StudyProblem();
-            p.Label = "Test564 K7 " + q.Title;
+            p.Label = QualificationLabel("K7", q.Title);
             p.Dim = 6;
             p.PosDim = 3;
             p.ConservativeSecondOrder = true;
@@ -492,7 +501,7 @@ internal static partial class P1bTests
         q.Build = delegate
         {
             var p = new StudyProblem();
-            p.Label = "Test564 K8 " + q.Title;
+            p.Label = QualificationLabel("K8", q.Title);
             p.Dim = 6;
             p.PosDim = 3;
             p.ConservativeSecondOrder = false; // velocity-dependent force
@@ -655,7 +664,10 @@ internal static partial class P1bTests
             V0 = (double[])v0.Clone()
         };
 
-        double[] times = QualificationSplitHorizon(10d * period, 4);
+        // Equal masses make the equilateral Lagrange solution linearly unstable (Routh:
+        // (m1m2+m2m3+m3m1)/(M^2) = 1/3 > 1/27). Over ten periods any round-off grows to O(1)
+        // and no method can converge; one period is the meaningful test of the exact solution.
+        double[] times = QualificationSplitHorizon(1d * period, 4);
         q.OracleTimes = times;
         q.Oracle = new double[times.Length][];
         for (int k = 0; k < times.Length; k++)
@@ -666,7 +678,7 @@ internal static partial class P1bTests
         q.Build = delegate
         {
             var p = new StudyProblem();
-            p.Label = "Test564 T2 " + q.Title;
+            p.Label = QualificationLabel("T2", q.Title);
             p.Dim = 18;
             p.PosDim = 9;
             p.ConservativeSecondOrder = true;
@@ -744,7 +756,7 @@ internal static partial class P1bTests
         double charTime)
     {
         var p = new StudyProblem();
-        p.Label = "Test564 " + id + " " + title;
+        p.Label = QualificationLabel(id, title);
         p.Dim = 2 * (3 * input.Names.Length);
         p.PosDim = 3 * input.Names.Length;
         p.ConservativeSecondOrder = true;

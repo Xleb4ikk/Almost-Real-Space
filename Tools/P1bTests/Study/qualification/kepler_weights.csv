@@ -1,0 +1,12 @@
+scenario,kepler_weight,kepler_cv,source,measured_utc,dotnet,arch,dt_seconds,blocks,calls_per_block,note
+Test564 K1 Kepler; e=0,20.35664268585132,0.1514190447594483,measured,2026-11-11T15:58:35.3154462Z,8.0.24,x64,0.006283185307179587,11,100000,
+Test564 K2 Kepler; e=0.1,41.33870611614043,0.014254990684247971,measured,2026-11-11T15:58:35.7192927Z,8.0.24,x64,0.006283185307179587,11,100000,
+Test564 K3 Kepler; e=0.5,41.45725646123261,0.0353127117072407,measured,2026-11-11T15:58:36.1191228Z,8.0.24,x64,0.006283185307179587,11,100000,
+Test564 K4 Kepler; e=0.9,51.9792826910225,0.028539933434548116,measured,2026-11-11T15:58:36.8587240Z,8.0.24,x64,0.006283185307179587,11,100000,
+Test564 K5 Parabolic; e=1,30.82499448975094,0.009629004813262865,measured,2026-11-11T15:58:38.5327787Z,8.0.24,x64,0.006283185307179587,11,100000,
+Test564 K6 Hyperbolic; e=1.5 (flyby),94.62297592997811,0.017028851131605228,measured,2026-11-11T15:58:39.0975526Z,8.0.24,x64,0.006283185307179587,11,100000,
+Test564 K7 Harmonic oscillator; omega=1,0,0,measured,2026-11-11T15:58:39.1359096Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
+Test564 K8 Damped oscillator (velocity-dependent); gamma=0.1,0,0,measured,2026-11-11T15:58:39.2147935Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
+Test564 T1 Figure-eight (Chenciner-Montgomery); 3 equal masses,0,0,measured,2026-11-11T15:58:39.2332465Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
+Test564 T2 Lagrange equilateral triangle; 3 equal masses,0,0,measured,2026-11-11T15:58:44.5820466Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
+Test564 T3 Pythagorean (Burrau) three-body; masses 3/4/5,0,0,measured,2026-11-11T15:58:50.1362030Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used

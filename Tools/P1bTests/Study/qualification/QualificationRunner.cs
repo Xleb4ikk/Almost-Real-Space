@@ -80,6 +80,9 @@ internal static partial class P1bTests
             log.WriteLine("oracle audit: " + (catalog.Count - invalid).ToString(QualificationInv)
                 + " VALID, " + invalid.ToString(QualificationInv) + " not VALID");
             log.WriteLine("wrote environment.txt, runs.csv (header only), matrix.csv (header only), oracle_audit.md");
+
+            QualificationRunCatalogue(catalog, profile, log, dir);
+
             log.WriteLine("elapsed: " + watch.ElapsedMilliseconds.ToString(QualificationInv) + " ms");
 
             if (invalid > 0)
