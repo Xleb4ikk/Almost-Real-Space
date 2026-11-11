@@ -5,8 +5,8 @@ using System.IO;
 using System.Text;
 using P1bStudy.Framework;
 
-// M6: METHOD_QUALIFICATION.md and RECOMMENDATIONS.md are generated from the run's own
-// matrix.csv / runs.csv (no manual edits, no numbers from memory).
+// M6: METHOD_QUALIFICATION.md, RECOMMENDATIONS.md and COST_TABLE.md are generated
+// from the run's own matrix.csv / runs.csv (no manual edits, no numbers from memory).
 //
 // QualificationCompareRuns reads a previous run folder and reports status/error/price changes.
 internal static partial class P1bTests
@@ -223,10 +223,12 @@ internal static partial class P1bTests
         string recommendations = QualificationRecommendationsText(matrix, catalog, out bestAt);
 
         string qualification = QualificationMethodReport(matrix, runs, catalog, dir, bestAt);
+        string costTable = QualificationCostTableText(matrix, runs, dir);
         File.WriteAllText(Path.Combine(dir, "METHOD_QUALIFICATION.md"), qualification, new UTF8Encoding(false));
         File.WriteAllText(Path.Combine(dir, "RECOMMENDATIONS.md"), recommendations, new UTF8Encoding(false));
+        File.WriteAllText(Path.Combine(dir, "COST_TABLE.md"), costTable, new UTF8Encoding(false));
 
-        log.WriteLine("reports: METHOD_QUALIFICATION.md, RECOMMENDATIONS.md");
+        log.WriteLine("reports: METHOD_QUALIFICATION.md, RECOMMENDATIONS.md, COST_TABLE.md");
     }
 
     private static Dictionary<string, string[]> QualificationTags(List<QualificationProblem> catalog)
@@ -427,6 +429,215 @@ internal static partial class P1bTests
         }
 
         return sb.ToString();
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Cost table (matrix.csv + runs.csv only)
+    // ---------------------------------------------------------------------------------
+
+    private static string QualificationCostTableText(
+        List<QualificationMatrixEntry> matrix, List<QualificationRunEntry> runs, string dir)
+    {
+        var sb = new StringBuilder();
+        string profile = QualificationEnvironmentField(dir, "profile");
+        string commit = QualificationEnvironmentField(dir, "commit");
+        List<string> methods = QualificationMethodsInOrder(matrix);
+        List<string> problems = QualificationProblemsInOrder(matrix);
+
+        sb.AppendLine("# Cost table (Test564)");
+        sb.AppendLine();
+        sb.AppendLine("Generated from `matrix.csv` and `runs.csv` of run `" + Path.GetFileName(dir) + "`.");
+        sb.AppendLine("Profile: **" + profile + "**; commit: `" + commit + "`; "
+            + problems.Count.ToString(QualificationCatalogInv) + " problems × "
+            + methods.Count.ToString(QualificationCatalogInv) + " methods.");
+        sb.AppendLine();
+        sb.AppendLine("Prices are `calls + w·aux` (single-price rule) in the raw cost units written by");
+        sb.AppendLine("`matrix.csv`. `A1/A2/A3` is the price of the cheapest executed control that meets");
+        sb.AppendLine("the level. A single word replaces the price when the level is not reached:");
+        sb.AppendLine("`n/a` (Supports), `floor` (oracle floor), `budget` (RHS budget), `order` (G2),");
+        sb.AppendLine("`level` (level not reached), `finite` (G5), `invariant` (G3), `rev` (G4), `error`.");
+        sb.AppendLine("`err@finest` is `err_max` at the smallest `control` with `status=ok` and a finite");
+        sb.AppendLine("error; `control` is that control. `—` means no executed row.");
+        sb.AppendLine();
+        sb.AppendLine("## Cost by method and problem");
+        sb.AppendLine();
+        sb.AppendLine("| method | problem | A1 | A2 | A3 | err@finest | control |");
+        sb.AppendLine("|---|---|---|---|---|---|---|");
+        foreach (string method in methods)
+        {
+            foreach (string problem in problems)
+            {
+                QualificationMatrixEntry a1 = QualificationFindCell(matrix, problem, method, "A1");
+                QualificationMatrixEntry a2 = QualificationFindCell(matrix, problem, method, "A2");
+                QualificationMatrixEntry a3 = QualificationFindCell(matrix, problem, method, "A3");
+                QualificationRunEntry finest = QualificationFinestRun(runs, problem, method);
+                sb.Append("| ").Append(method).Append(" | ").Append(problem).Append(" | ");
+                sb.Append(QualificationCostCell(a1)).Append(" | ");
+                sb.Append(QualificationCostCell(a2)).Append(" | ");
+                sb.Append(QualificationCostCell(a3)).Append(" | ");
+                sb.Append(finest == null ? "—" : QualificationFormat(finest.Err)).Append(" | ");
+                sb.Append(finest == null ? "—" : QualificationFormat(finest.Control)).AppendLine(" |");
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("## Invariants by problem");
+        sb.AppendLine();
+        sb.AppendLine("`dE` = max `|ΔE|/E`, `dL` = max `|ΔL|/L` over all executed controls of that");
+        sb.AppendLine("method/problem. The values are deliberately per problem, not a method-wide");
+        sb.AppendLine("average. `—` means the problem has no invariant or no executed row.");
+        sb.AppendLine();
+        sb.AppendLine("| problem | method | dE | dL |");
+        sb.AppendLine("|---|---|---|---|");
+        foreach (string problem in problems)
+        {
+            foreach (string method in methods)
+            {
+                double de;
+                double dl;
+                QualificationInvariantMax(runs, problem, method, out de, out dl);
+                sb.Append("| ").Append(problem).Append(" | ").Append(method).Append(" | ");
+                sb.Append(de == de && double.IsFinite(de) ? QualificationFormat(de) : "—").Append(" | ");
+                sb.Append(dl == dl && double.IsFinite(dl) ? QualificationFormat(dl) : "—").AppendLine(" |");
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static QualificationMatrixEntry QualificationFindCell(
+        List<QualificationMatrixEntry> matrix, string problem, string method, string level)
+    {
+        foreach (QualificationMatrixEntry e in matrix)
+        {
+            if (e.Problem == problem && e.Method == method && e.Level == level)
+            {
+                return e;
+            }
+        }
+
+        return null;
+    }
+
+    private static string QualificationCostCell(QualificationMatrixEntry e)
+    {
+        if (e == null)
+        {
+            return "—";
+        }
+
+        if (e.Status == "PASS")
+        {
+            return double.IsFinite(e.Price) ? QualificationFormat(e.Price) : "—";
+        }
+
+        if (e.Status == "N/A")
+        {
+            return "n/a";
+        }
+
+        if (e.Status == "SKIP")
+        {
+            if (e.Reason != null && e.Reason.StartsWith("oracle floor", StringComparison.OrdinalIgnoreCase))
+            {
+                return "floor";
+            }
+
+            if (e.Reason != null && e.Reason.IndexOf("budget", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "budget";
+            }
+
+            return "skip";
+        }
+
+        if (e.Status == "FAIL")
+        {
+            if (e.Reason != null && e.Reason.StartsWith("G2", StringComparison.Ordinal))
+            {
+                return "order";
+            }
+
+            if (e.Reason != null && e.Reason.IndexOf("level not reached", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "level";
+            }
+
+            if (e.Reason != null && (e.Reason.StartsWith("G5", StringComparison.Ordinal)
+                || e.Reason.IndexOf("finiteness", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                return "finite";
+            }
+
+            if (e.Reason != null && e.Reason.StartsWith("G3", StringComparison.Ordinal))
+            {
+                return "invariant";
+            }
+
+            if (e.Reason != null && e.Reason.StartsWith("G4", StringComparison.Ordinal))
+            {
+                return "rev";
+            }
+
+            return "fail";
+        }
+
+        if (e.Status == "ERROR")
+        {
+            return "error";
+        }
+
+        return "—";
+    }
+
+    private static QualificationRunEntry QualificationFinestRun(
+        List<QualificationRunEntry> runs, string problem, string method)
+    {
+        QualificationRunEntry best = null;
+        foreach (QualificationRunEntry r in runs)
+        {
+            if (r.Problem != problem || r.Method != method)
+            {
+                continue;
+            }
+
+            if (r.Status != "ok" || !(r.Control > 0d) || !double.IsFinite(r.Control)
+                || !double.IsFinite(r.Err))
+            {
+                continue;
+            }
+
+            if (best == null || r.Control < best.Control)
+            {
+                best = r;
+            }
+        }
+
+        return best;
+    }
+
+    private static void QualificationInvariantMax(
+        List<QualificationRunEntry> runs, string problem, string method, out double de, out double dl)
+    {
+        de = double.NaN;
+        dl = double.NaN;
+        foreach (QualificationRunEntry r in runs)
+        {
+            if (r.Problem != problem || r.Method != method || r.Status != "ok")
+            {
+                continue;
+            }
+
+            if (double.IsFinite(r.Energy) && (!double.IsFinite(de) || r.Energy > de))
+            {
+                de = r.Energy;
+            }
+
+            if (double.IsFinite(r.Angular) && (!double.IsFinite(dl) || r.Angular > dl))
+            {
+                dl = r.Angular;
+            }
+        }
     }
 
     private static string QualificationFamilyOf(List<QualificationRunEntry> runs, string method)
