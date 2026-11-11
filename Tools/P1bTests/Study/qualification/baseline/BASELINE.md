@@ -1,31 +1,44 @@
 # BASELINE: Test564_MethodQualification
 
 Указатель на прогон-эталон (TASK.md §10, §12 M7). Копия результатов лежит рядом:
-`baseline/20261111T192603Z_4270a7f/`.
+`baseline/20261111T200320Z_2a36227/`.
 
 | поле | значение |
 |---|---|
-| дата (UTC) | 2026-11-11 19:26:03 |
-| commit | `4270a7f` (Q-FIX-10b: G2-ветка от мелкой точки) |
+| дата (UTC) | 2026-11-11 20:03:20 |
+| commit | `2a36227` (Q-FIX-13: K5 и DoD; guard — Q-FIX-12) |
 | ветка | `qualification/test564-method-qualification` |
 | профиль | `full` |
-| папка прогона | `results/20261111T192603Z_4270a7f/` |
+| папка прогона | `results/20261111T200320Z_2a36227/` |
 | задач / методов / уровней | 17 / 15 / 3 = 765 ячеек, из них L1 `INVALID` (F8) → 720 оценённых |
-| ячейки | `PASS=458 FAIL=47 SKIP=110 N/A=105 ERROR=0` |
-| строк `runs.csv` | 3529 (из них `order_obs` заполнен в 1885) |
+| ячейки | `PASS=459 FAIL=46 SKIP=110 N/A=105 ERROR=0` |
+| строк `runs.csv` | 3529 (из них `order_obs` заполнен в 1726) |
 | oracle | 16 `VALID`, 1 `INVALID` (L1, `FOUND.md` F8) |
 | R1 | тестовый фикстур `StudyRealSolar7` (7 тел), эталон — два dd-Taylor прогона Test553, floor 5.882e-2 м |
 | R2 | DE441 10 тел, 1PN, эталон — фикс. DOP853 5 уровней, floor 1.969 м |
 | .NET | 8.0.24 (net8.0), x64 |
 | CPU | AMD Ryzen 9 8940HX, 32 логических CPU |
-| время прогона | 202 582 мс |
+| время прогона | 202 578 мс |
 
-Это первый baseline после **всех** исправлений `Q-FIX-1…Q-FIX-10b`, включая разворот
-G2-ветки (Q-FIX-10/10b). Предыдущие baseline сохранены и для сравнения с текущим не годятся:
+Это эталон после `Q-FIX-12/13` (G2 guard для бюджета/floor + K5 в документации).
+Предыдущие baseline сохранены и для сравнения с текущим не годятся:
+`20261111T171630Z_4df81a2` (до исправлений G2), `20261111T183727Z_c979ab0` (первая версия
+G2), `20261111T192603Z_4270a7f` (ветка от мелкой точки, ещё без guard'а).
 
-* `20261111T171630Z_4df81a2` — до исправлений (G2 не работал);
-* `20261111T183727Z_c979ab0` — после первой версии G2 (ветка от крупного шага, ложный
-  FAIL у RK4 на K8).
+## G2 в этом эталоне
+
+* **G2-FAIL (15 ячеек):**
+  * `GJ8`: K2 (9.27), K3 (7.08), T2 (8.83), R4 (10.59), L2 (10.71) — эффект драйвера
+    (пересборка истории GJ8 на checkpoint'ах, `FOUND.md` F6);
+  * `RK4`: R2 A1/A2 (4.94) — доказанный наклон наблюдаемой ветки (`FOUND.md` F6).
+* **K5 — PASS:** `GJ8 K5` даёт 9.70 при ожидаемых 10.00 (`|Δ| = 0.295 ≤ 0.5`); в K5
+  FAIL-ячеек только `Leapfrog A2/A3` («level not reached»), к G2 это не относится.
+* **`n/a` по бюджету/floor:**
+  * `RK4 L2` — `n/a (budget before the asymptotic branch)`: более мелкая точка
+    (`h=1.0629e-3`) не посчитана (RHS budget 2e6, TASK §9 G7 = SKIP);
+  * `DOPRI5-fixed R2` (smoke) — `n/a (floor-limited window)`: подоконная точка даёт 4.22
+    против 6.02 ветки;
+  * R3/L2 у DOPRI5-fixed/PEFRL/Leapfrog — `n/a (budget ...)`, их ячейки и так SKIP.
 
 ## Файлы копии
 
@@ -46,12 +59,12 @@ G2-ветки (Q-FIX-10/10b). Предыдущие baseline сохранены �
 ## Как сравнивать
 
 ```
-dotnet run --project Tools/P1bTests -c Release -- --exact Test564_MethodQualification --compare Tools\P1bTests\Study\qualification\baseline\20261111T192603Z_4270a7f
+dotnet run --project Tools/P1bTests -c Release -- --exact Test564_MethodQualification --compare Tools\P1bTests\Study\qualification\baseline\20261111T200320Z_2a36227
 ```
 
 или fallback через `P1B564_COMPARE`. Отчёт пишется в `compare.md` нового прогона:
 изменения статусов, ошибок > 10 % и цен > 10 %. Контрольный прогон
-`20261111T192930Z_4270a7f` дал 0 изменений.
+`20261111T200647Z_2a36227` дал 0 изменений.
 
 ## Что НЕ входит в эталон
 
@@ -62,5 +75,4 @@ dotnet run --project Tools/P1bTests -c Release -- --exact Test564_MethodQualific
 * G3 снят по model drift **только на R4 A1/A2** (возмущённая задача: энергия и момент
   относительно Луны физически не сохраняются). На R3 A1 гейт применяется и проходит.
   Это видно в `matrix.csv` и `METHOD_QUALIFICATION.md` как `G3 skipped: model drift`.
-* G2: ветка измеряется от самой мелкой точки окна; где ветка короче 4 точек — `order: n/a`
-  (не FAIL). Текущие G2-FAIL: GJ8 на K2/K3/K5/T2/R4/L2, RK4 на R2/L2.
+* G2 — проверка порядка, а не бюджета/floor: см. правила в `PROGRESS.md` (FIX-11).

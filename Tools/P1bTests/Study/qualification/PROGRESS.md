@@ -191,7 +191,7 @@ _Пусто._
 | Каждый N/A — причина из `Supports(...)`; нет исключений по имени | да |
 | Гейты G1–G8 реализованы; пороги заморожены | да, блок «Заморозка порогов» |
 | `METHOD_QUALIFICATION.md` и `RECOMMENDATIONS.md` из CSV | да |
-| Baseline зафиксирован; `--compare` работает | да: `baseline/BASELINE.md` → прогон `20261111T192603Z_4270a7f` (full, commit `4270a7f`); контрольный compare — 0 изменений |
+| Baseline зафиксирован; `--compare` работает | да: `baseline/BASELINE.md` → прогон `20261111T200320Z_2a36227` (full, commit `2a36227`); контрольный compare — 0 изменений |
 | Старые тесты и результаты не изменены; `Test551` прежний | да: 84 PASS / 0 FAIL, хэш имён `54ae98e2...` |
 | `FOUND.md`, `BACKLOG.md`, вопросы актуальны | да |
 | G2 наблюдаемый порядок | да, после Q-FIX-10b (ветка от мелкого шага к крупному, `Q-FIX-12` guard для бюджета/floor); проверено: RK4 K1 4.30, GJ8 K2 9.27, GJ8 K5 PASS |
@@ -362,7 +362,7 @@ sweep/детерминизм/аудит не выполняются. Стату�
 | `dotnet build Tools/P1bTests -c Release` | 0 ошибок |
 | `verify_test551.ps1` | `lines=84 fails=0`, SHA256 `54ae98e2...` (воспроизводится скриптом) |
 | smoke `Test564` | `ALL PASS`, `PASS=460 FAIL=52 SKIP=103 N/A=105 ERROR=0`, ≈135 с |
-| full `Test564` #1 | `ALL PASS`, `PASS=458 FAIL=47 SKIP=110 N/A=105 ERROR=0`, 202.6 с |
+| full `Test564` #1 | `ALL PASS`, `PASS=459 FAIL=46 SKIP=110 N/A=105 ERROR=0`, 202.6 с |
 | full `Test564` #2 с `--compare` #1 | `No changes`, 0 статусов / 0 ошибок / 0 цен |
 | resume (обрезанный smoke, K1–K3) | `reused 135 cell(s)`, 0 расхождений с чистым прогоном, повторный resume — `nothing to resume` |
 | `--compare` флагом | против старого baseline — 62/180/190 изменений; против нового прогона — `No changes` |
@@ -388,6 +388,13 @@ Leapfrog SKIP (было 14 G3-FAIL); 7 G5-ячеек стали PASS; G3-FAIL н
   (commit `4270a7f`, full, `PASS=458 FAIL=47 SKIP=110 N/A=105`, 3529 строк `runs.csv`),
   контрольный прогон — `No changes`. Предыдущие baseline `20261111T171630Z_4df81a2`
   и `20261111T183727Z_c979ab0` сохранены.
+- **2026-11-11 — закрытие последних дефектов (Q-FIX-12…Q-FIX-14).** G2 guard: `censored`
+  мельче ветки → `n/a (budget)`; floor-limited окно → `n/a (floor)` только при доказанном
+  расхождении подоконной точки (защита от ложного FAIL). `RK4 L2` — `n/a (budget)`;
+  `RK4 R2` — FAIL с доказательством в `FOUND.md` F6; `GJ8 K2/K3/T2/R4/L2` — FAIL; `K5` — PASS.
+  Новый baseline: `baseline/20261111T200320Z_2a36227/` (commit `2a36227`, full,
+  `PASS=459 FAIL=46 SKIP=110 N/A=105`, 3529 строк `runs.csv`, `order_obs` 1726),
+  контрольный прогон — `No changes`.
 
 - **2026-11-11 — M0 (завершён).** Создана ветка `qualification/test564-method-qualification`.
   Прочитаны `TASK.md`, `PROGRESS.md`, `Study/README.md`, `framework/*`, `StudySelfTest`,
