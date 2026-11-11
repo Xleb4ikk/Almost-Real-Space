@@ -76,7 +76,7 @@ internal static partial class P1bTests
         return ("Test564 " + id + " " + title).Replace(',', ';');
     }
 
-    private static List<QualificationProblem> QualificationCatalogBuild()
+    private static List<QualificationProblem> QualificationCatalogBuild(QualificationProfile profile)
     {
         var list = new List<QualificationProblem>();
         list.Add(QualificationKeplerProblem(
@@ -98,12 +98,13 @@ internal static partial class P1bTests
         list.Add(QualificationFigureEightProblem());
         list.Add(QualificationLagrangeProblem());
         list.Add(QualificationPythagoreanProblem());
+        QualificationAppendRl(list, profile);
         return list;
     }
 
     private static List<QualificationProblem> QualificationCatalogFor(QualificationProfile profile)
     {
-        List<QualificationProblem> all = QualificationCatalogBuild();
+        List<QualificationProblem> all = QualificationCatalogBuild(profile);
         if (profile == QualificationProfile.Full)
         {
             return all;

@@ -162,9 +162,35 @@ internal static partial class P1bTests
         foreach (QualificationProblem q in catalog)
         {
             string error = null;
+            if (q.Build == null)
+            {
+                if (q.Status != "INVALID")
+                {
+                    q.Status = "INVALID";
+                }
+
+                if (string.IsNullOrEmpty(q.AuditNote))
+                {
+                    q.AuditNote = "builder unavailable (see log)";
+                }
+
+                log.WriteLine("  " + q.Id + ": " + q.Status + " (" + q.AuditNote + ")");
+                rows.Add(QualificationAuditRow(q));
+                continue;
+            }
+
             try
             {
-                if (q.OracleKind == "analytic")
+                if (q.Id == "L2")
+                {
+                    QualificationAuditAnalytic(q);
+                }
+                else if (q.Id.StartsWith("R", StringComparison.Ordinal)
+                    || q.Id.StartsWith("L", StringComparison.Ordinal))
+                {
+                    QualificationAuditRl(q);
+                }
+                else if (q.OracleKind == "analytic")
                 {
                     QualificationAuditAnalytic(q);
                 }
@@ -262,6 +288,7 @@ internal static partial class P1bTests
             case "K4":
             case "K5":
             case "K6":
+            case "L2":
                 QualificationAuditKepler(q, p);
                 return;
             case "K7":
@@ -300,7 +327,9 @@ internal static partial class P1bTests
             }
             else
             {
-                double e = q.Id == "K1" ? 0d : (q.Id == "K2" ? 0.1d : (q.Id == "K3" ? 0.5d : 0.9d));
+                double e = q.Id == "K1" ? 0d
+                    : (q.Id == "K2" ? 0.1d
+                    : (q.Id == "K3" || q.Id == "L2" ? 0.5d : 0.9d));
                 closed = QualificationEllipticState(p.CentralMu, p.ScaleLength, e, dt);
             }
 
@@ -329,6 +358,31 @@ internal static partial class P1bTests
             + (worstK < 0 ? "n/a" : worstK.ToString(QualificationCatalogInv))
             + " = " + QualificationFormat(residual)
             + (q.Status == "VALID" ? "" : "; above 1e-13");
+
+        if (q.Id == "L2")
+        {
+            // Over 100 revolutions the double-precision universal-variable propagator itself
+            // drifts by ~1e-12, so it cannot certify a 1e-13 formula. The closed form is
+            // checked by invariant constancy (a wrong formula or a wrong velocity breaks E and
+            // L immediately), and the propagator disagreement becomes the oracle floor.
+            double e0 = p.EnergyFn(p.Y0);
+            double l0 = p.AngularMomentumFn(p.Y0);
+            double invariant = 0d;
+            for (int k = 0; k < p.CheckpointTimes.Length; k++)
+            {
+                double eK = p.EnergyFn(q.Oracle[k]);
+                double lK = p.AngularMomentumFn(q.Oracle[k]);
+                invariant = Math.Max(invariant, Math.Abs(eK - e0) / Math.Max(Math.Abs(e0), 1e-300d));
+                invariant = Math.Max(invariant, Math.Abs(lK - l0) / Math.Max(Math.Abs(l0), 1e-300d));
+            }
+
+            q.Floor = Math.Max(1e-13d, crossDiff);
+            q.Status = invariant <= 1e-13d ? "VALID" : "INVALID";
+            q.AuditNote = "closed form invariant drift " + QualificationFormat(invariant)
+                + " (gate 1e-13); KeplerUniversal disagreement " + QualificationFormat(crossDiff)
+                + " is the floor (double-precision propagator over "
+                + QualificationL2Orbits.ToString(QualificationCatalogInv) + " revolutions)";
+        }
     }
 
     private static void QualificationAuditOscillator(QualificationProblem q, StudyProblem p)

@@ -10,3 +10,9 @@ Test564 K8 Damped oscillator (velocity-dependent); gamma=0.1,0,0,measured,2026-1
 Test564 T1 Figure-eight (Chenciner-Montgomery); 3 equal masses,0,0,measured,2026-11-11T15:58:39.2332465Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
 Test564 T2 Lagrange equilateral triangle; 3 equal masses,0,0,measured,2026-11-11T15:58:44.5820466Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
 Test564 T3 Pythagorean (Burrau) three-body; masses 3/4/5,0,0,measured,2026-11-11T15:58:50.1362030Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
+Test564 L1 LEO 400 km; 1000 orbits (pure gravity),0.7372334958184735,0.014577894540837539,measured,2026-11-11T16:19:58.2377873Z,8.0.24,x64,5.544855095980791,11,100000,
+Test564 L2 Kepler e=0.5; 100 orbits,41.716508795669824,0.0058093180663246445,measured,2026-11-11T16:20:32.6606309Z,8.0.24,x64,0.006283185307179587,11,100000,
+Test564 R1 DE441 10 bodies; Newtonian,0,0,measured,2026-11-11T16:23:43.3500395Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
+Test564 R2 DE441 10 bodies; 1PN,0,0,measured,2026-11-11T16:23:43.5923192Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
+Test564 R3 ship near Earth; Moon and Sun perturbations; 30 d,0.7363043016717689,0.1111195867483098,measured,2026-11-11T16:23:43.9672470Z,8.0.24,x64,5.544855095980791,11,100000,
+Test564 R4 Moon flyby (hyperbolic; vinf 1000 m/s; 100 km),3.210695767740486,0.028984788671565533,measured,2026-11-11T16:24:48.8713012Z,8.0.24,x64,4.584781197656474,11,100000,

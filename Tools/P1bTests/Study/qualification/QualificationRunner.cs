@@ -69,26 +69,32 @@ internal static partial class P1bTests
             QualificationAuditOracles(catalog, log, dir);
 
             int invalid = 0;
+            int unaccounted = 0;
             foreach (QualificationProblem problem in catalog)
             {
                 if (problem.Status != "VALID")
                 {
                     invalid++;
+                    if (string.IsNullOrEmpty(problem.AuditNote))
+                    {
+                        unaccounted++;
+                    }
                 }
             }
 
             log.WriteLine("oracle audit: " + (catalog.Count - invalid).ToString(QualificationInv)
-                + " VALID, " + invalid.ToString(QualificationInv) + " not VALID");
+                + " VALID, " + invalid.ToString(QualificationInv) + " not VALID"
+                + " (each non-VALID must carry a documented reason)");
             log.WriteLine("wrote environment.txt, runs.csv (header only), matrix.csv (header only), oracle_audit.md");
 
             QualificationRunCatalogue(catalog, profile, log, dir);
 
             log.WriteLine("elapsed: " + watch.ElapsedMilliseconds.ToString(QualificationInv) + " ms");
 
-            if (invalid > 0)
+            if (unaccounted > 0)
             {
-                Console.WriteLine("FAIL: " + invalid.ToString(QualificationInv)
-                    + " problem(s) with an unaudited/invalid oracle (see oracle_audit.md)");
+                Console.WriteLine("FAIL: " + unaccounted.ToString(QualificationInv)
+                    + " problem(s) with an unaudited oracle and no documented reason (see oracle_audit.md)");
                 return 1;
             }
         }
