@@ -576,15 +576,17 @@ internal static partial class P1bTests
         if (q.Id == "L1")
         {
             // The specified golden (world-frame dd) and the local-frame force model disagree by
-            // ~8.5 m over 1000 orbits. That is a model/frame difference, not an integrator
-            // error, and it means nothing at the 6.8 m level can be certified: INVALID with the
-            // documented reason (TASK.md allows this when the cause is written to FOUND.md).
-            bool goldenOk = false;
+            // ~8.5 m over 1000 orbits. Status is computed: the golden is accepted only when it
+            // agrees with the local model to 0.1 * A1 (0.1 * 1e-6 * ScaleLength). With the
+            // current 9.657 m that is false, hence INVALID (FOUND.md F8), but a rebuilt golden
+            // would flip it automatically.
+            double a1 = QualificationLevelFactors[0] * p.ScaleLength;
+            bool goldenOk = double.IsFinite(q.Residual) && q.Residual <= 0.1d * a1;
             q.Status = goldenOk ? "VALID" : "INVALID";
             q.AuditNote = q.AuditNote
-                + "; golden and local-frame model disagree by "
-                + QualificationFormat(q.Residual)
-                + " m, so the 6.8 m level cannot be certified (FOUND.md F8)";
+                + "; gate |golden - local| = " + QualificationFormat(q.Residual)
+                + " <= 0.1*A1 = " + QualificationFormat(0.1d * a1)
+                + (goldenOk ? "" : " -> INVALID (model/frame difference, FOUND.md F8)");
             return;
         }
 

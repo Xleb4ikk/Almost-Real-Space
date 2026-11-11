@@ -90,6 +90,34 @@ internal static partial class P1bTests
             QualificationRunCatalogue(catalog, profile, log, dir);
             QualificationWriteReports(dir, catalog, log);
 
+            int errorCells = 0;
+            foreach (QualificationMatrixEntry entry in QualificationReadMatrix(dir))
+            {
+                if (entry.Status == "ERROR")
+                {
+                    errorCells++;
+                }
+            }
+
+            int errorProblems = 0;
+            foreach (QualificationProblem problem in catalog)
+            {
+                if (problem.Status == "ERROR")
+                {
+                    errorProblems++;
+                }
+            }
+
+            if (errorCells + errorProblems > 0)
+            {
+                log.WriteLine("ERROR: " + errorCells.ToString(QualificationInv) + " cell(s), "
+                    + errorProblems.ToString(QualificationInv) + " problem(s)");
+                Console.WriteLine("FAIL: " + errorCells.ToString(QualificationInv)
+                    + " ERROR cell(s), " + errorProblems.ToString(QualificationInv)
+                    + " ERROR problem(s); see matrix.csv / oracle_audit.md");
+                return 1;
+            }
+
             string compareDir = Environment.GetEnvironmentVariable("P1B564_COMPARE");
             if (!string.IsNullOrWhiteSpace(compareDir))
             {

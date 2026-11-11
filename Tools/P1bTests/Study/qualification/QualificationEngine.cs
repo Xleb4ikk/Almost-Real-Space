@@ -822,11 +822,8 @@ internal static partial class P1bTests
         StudyConfig cfg = method.MakeConfig(p, control, double.PositiveInfinity);
         method.Run(p, cfg, new StudyContext(p, budget));
 
-        var warm = System.Diagnostics.Stopwatch.StartNew();
-        method.Run(p, cfg, new StudyContext(p, budget));
-        warm.Stop();
-        int reps = warm.Elapsed.TotalMilliseconds > 250d ? 3 : 5;
-
+        // TASK.md section 9: median of at least 5 repeats, always. No short-circuit to 3.
+        const int reps = 5;
         var times = new List<double>(reps);
         var allocs = new List<long>(reps);
         for (int k = 0; k < reps; k++)
