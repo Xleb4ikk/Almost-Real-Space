@@ -41,16 +41,44 @@ internal static partial class P1bTests
         var watch = Stopwatch.StartNew();
         QualificationProfile profile = QualificationResolveProfile();
         string resultsRoot = QualificationResultsRoot();
-        string dir = QualificationCreateRunDir(resultsRoot, profile);
-        Directory.CreateDirectory(dir);
+        string resumeDir = QualificationResumeDir();
+        bool resuming = !string.IsNullOrWhiteSpace(resumeDir);
+        string dir;
+        if (resuming)
+        {
+            dir = Path.GetFullPath(resumeDir);
+            if (!Directory.Exists(dir))
+            {
+                Console.WriteLine("resume: folder not found: " + dir);
+                return 1;
+            }
+
+            string profileFile = Path.Combine(dir, "environment.txt");
+            if (File.Exists(profileFile))
+            {
+                string stored = QualificationEnvironmentField(dir, "profile");
+                if (!string.Equals(stored, profile.ToString().ToLowerInvariant(), StringComparison.Ordinal))
+                {
+                    Console.WriteLine("resume: profile mismatch: folder is '" + stored
+                        + "', current is '" + profile.ToString().ToLowerInvariant() + "'");
+                    return 1;
+                }
+            }
+        }
+        else
+        {
+            dir = QualificationCreateRunDir(resultsRoot, profile);
+            Directory.CreateDirectory(dir);
+        }
+
         string logPath = Path.Combine(dir, "run.log");
 
-        using (var fileWriter = new StreamWriter(logPath, false, new UTF8Encoding(false)) { AutoFlush = true })
+        using (var fileWriter = new StreamWriter(logPath, resuming, new UTF8Encoding(false)) { AutoFlush = true })
         {
             var log = new QualificationTeeWriter(Console.Out, fileWriter);
             log.WriteLine("Test564_MethodQualification");
             log.WriteLine("profile: " + profile.ToString().ToLowerInvariant());
-            log.WriteLine("run dir: " + dir);
+            log.WriteLine("run dir: " + dir + (resuming ? " (resume)" : ""));
 
             List<IStudyIntegrator> methods = StudyRegistry.All();
             log.WriteLine("methods: " + methods.Count.ToString(QualificationInv));
@@ -60,13 +88,25 @@ internal static partial class P1bTests
                     + " | ExpectedOrder=" + QualificationNumber(method.ExpectedOrder));
             }
 
-            QualificationWriteEnvironment(Path.Combine(dir, "environment.txt"), profile, methods);
-            QualificationWriteHeaderOnly(Path.Combine(dir, "runs.csv"), QualificationRunsHeader);
-            QualificationWriteHeaderOnly(Path.Combine(dir, "matrix.csv"), QualificationMatrixHeader);
-
             List<QualificationProblem> catalog = QualificationCatalogFor(profile);
             log.WriteLine("catalog: " + catalog.Count.ToString(QualificationInv) + " problem(s)");
-            QualificationAuditOracles(catalog, log, dir);
+
+            QualificationResumeContext resume = null;
+            if (resuming)
+            {
+                resume = QualificationLoadResume(dir, methods.Count);
+                log.WriteLine("resume: " + resume.ReusedProblems.ToString(QualificationInv)
+                    + " finished problem(s), " + resume.ReusedCells.ToString(QualificationInv)
+                    + " reused cell(s)");
+                QualificationRestoreAuditStatuses(dir, catalog, log);
+            }
+            else
+            {
+                QualificationWriteEnvironment(Path.Combine(dir, "environment.txt"), profile, methods);
+                QualificationWriteHeaderOnly(Path.Combine(dir, "runs.csv"), QualificationRunsHeader);
+                QualificationWriteHeaderOnly(Path.Combine(dir, "matrix.csv"), QualificationMatrixHeader);
+                QualificationAuditOracles(catalog, log, dir);
+            }
 
             int invalid = 0;
             int unaccounted = 0;
@@ -85,9 +125,28 @@ internal static partial class P1bTests
             log.WriteLine("oracle audit: " + (catalog.Count - invalid).ToString(QualificationInv)
                 + " VALID, " + invalid.ToString(QualificationInv) + " not VALID"
                 + " (each non-VALID must carry a documented reason)");
-            log.WriteLine("wrote environment.txt, runs.csv (header only), matrix.csv (header only), oracle_audit.md");
+            if (!resuming)
+            {
+                log.WriteLine("wrote environment.txt, runs.csv (header only), matrix.csv (header only), oracle_audit.md");
+            }
 
-            QualificationRunCatalogue(catalog, profile, log, dir);
+            int remaining = 0;
+            foreach (QualificationProblem problem in catalog)
+            {
+                if (problem.Status == "VALID" && (resume == null || !resume.Completed.Contains(problem.Id)))
+                {
+                    remaining++;
+                }
+            }
+
+            if (resuming && remaining == 0)
+            {
+                log.WriteLine("nothing to resume: all evaluated problems are complete");
+                QualificationWriteReports(dir, catalog, log);
+                return 0;
+            }
+
+            QualificationRunCatalogue(catalog, profile, log, dir, resume);
             QualificationWriteReports(dir, catalog, log);
 
             int errorCells = 0;
@@ -146,9 +205,106 @@ internal static partial class P1bTests
     }
 
     // ---------------------------------------------------------------------------------
-    // Profile
+    // Resume
     // ---------------------------------------------------------------------------------
 
+    /// <summary>--resume &lt;folder&gt; (command line) or P1B564_RESUME (environment).</summary>
+    private static string QualificationResumeDir()
+    {
+        string[] args = Environment.GetCommandLineArgs();
+        for (int i = 0; i + 1 < args.Length; i++)
+        {
+            if (string.Equals(args[i], "--resume", StringComparison.Ordinal))
+            {
+                return args[i + 1];
+            }
+        }
+
+        return Environment.GetEnvironmentVariable("P1B564_RESUME");
+    }
+
+    /// <summary>
+    /// Restores oracle statuses from the previous run's oracle_audit.md. On resume the audit is
+    /// not re-executed (it would rebuild every problem, including the expensive R1/R2
+    /// references), so the statuses and notes come from the file.
+    /// </summary>
+    private static void QualificationRestoreAuditStatuses(
+        string dir, List<QualificationProblem> catalog, TextWriter log)
+    {
+        string path = Path.Combine(dir, "oracle_audit.md");
+        if (!File.Exists(path))
+        {
+            throw new InvalidOperationException("resume: oracle_audit.md is missing in " + dir);
+        }
+
+        var status = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (string line in File.ReadAllLines(path))
+        {
+            if (!line.StartsWith("| ", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            string[] cells = line.Split('|');
+            if (cells.Length < 4)
+            {
+                continue;
+            }
+
+            string id = cells[1].Trim();
+            string state = cells[3].Trim();
+            if (id.Length > 0 && state.Length > 0 && id != "problem" && !id.StartsWith("---", StringComparison.Ordinal))
+            {
+                status[id] = state;
+            }
+        }
+
+        int restored = 0;
+        foreach (QualificationProblem q in catalog)
+        {
+            string state;
+            if (status.TryGetValue(q.Id, out state))
+            {
+                q.Status = state;
+                q.AuditNote = "reused from the previous run's oracle_audit.md";
+                restored++;
+            }
+        }
+
+        // Floors are restored too: resumed problems are not re-audited, but a problem that is
+        // still to be computed needs its floor for the level gate and the G2 window.
+        foreach (string line in File.ReadAllLines(path))
+        {
+            if (!line.StartsWith("| ", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            string[] cells = line.Split('|');
+            if (cells.Length < 6)
+            {
+                continue;
+            }
+
+            string id = cells[1].Trim();
+            double floor = QualificationParseDouble(cells[5].Trim());
+            foreach (QualificationProblem q in catalog)
+            {
+                if (q.Id == id && double.IsFinite(floor))
+                {
+                    q.Floor = floor;
+                    break;
+                }
+            }
+        }
+
+        log.WriteLine("resume: restored " + restored.ToString(QualificationInv)
+            + " oracle status(es) and floors from oracle_audit.md");
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Profile
+    // ---------------------------------------------------------------------------------
     /// <summary>
     /// P1B564_PROFILE=smoke|full. Program.cs filters whole cases by --fast/--slow but does not
     /// pass that flag to a case, so the per-test profile needs its own switch. Default: smoke.

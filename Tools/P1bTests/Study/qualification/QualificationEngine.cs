@@ -50,21 +50,136 @@ internal static partial class P1bTests
         public string Note = "";
     }
 
+    /// <summary>
+    /// Resume state: problems already finished in a previous run of the same folder. Their CSV
+    /// lines are reused verbatim; the sweep, the oracle rebuild and the determinism probe are
+    /// not executed for them.
+    /// </summary>
+    private sealed class QualificationResumeContext
+    {
+        public string Dir = "";
+        public HashSet<string> Completed = new HashSet<string>(StringComparer.Ordinal);
+        public Dictionary<string, List<string>> RunLines =
+            new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        public Dictionary<string, List<string>> MatrixLines =
+            new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        public int ReusedCells;
+        public int ReusedProblems;
+    }
+
+    private static QualificationResumeContext QualificationLoadResume(string dir, int methods)
+    {
+        var resume = new QualificationResumeContext();
+        resume.Dir = dir;
+        List<QualificationMatrixEntry> matrix = QualificationReadMatrix(dir);
+        if (matrix.Count == 0)
+        {
+            return resume;
+        }
+
+        Dictionary<string, int> matrixCount = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (QualificationMatrixEntry e in matrix)
+        {
+            int n;
+            matrixCount.TryGetValue(e.Problem, out n);
+            matrixCount[e.Problem] = n + 1;
+        }
+
+        foreach (KeyValuePair<string, int> pair in matrixCount)
+        {
+            if (pair.Value == methods * QualificationLevelFactors.Length)
+            {
+                resume.Completed.Add(pair.Key);
+            }
+        }
+
+        List<string[]> matrixRows = QualificationReadCsv(Path.Combine(dir, "matrix.csv"));
+        for (int i = 1; i < matrixRows.Count; i++)
+        {
+            string[] f = matrixRows[i];
+            if (f.Length < 3)
+            {
+                continue;
+            }
+
+            if (!resume.Completed.Contains(f[0]))
+            {
+                continue;
+            }
+
+            List<string> list;
+            if (!resume.MatrixLines.TryGetValue(f[0], out list))
+            {
+                list = new List<string>();
+                resume.MatrixLines[f[0]] = list;
+            }
+
+            list.Add(QualificationJoinCsv(f));
+        }
+
+        List<string[]> runRows = QualificationReadCsv(Path.Combine(dir, "runs.csv"));
+        for (int i = 1; i < runRows.Count; i++)
+        {
+            string[] f = runRows[i];
+            if (f.Length < 3 || !resume.Completed.Contains(f[0]))
+            {
+                continue;
+            }
+
+            List<string> list;
+            if (!resume.RunLines.TryGetValue(f[0], out list))
+            {
+                list = new List<string>();
+                resume.RunLines[f[0]] = list;
+            }
+
+            list.Add(QualificationJoinCsv(f));
+        }
+
+        foreach (string id in resume.Completed)
+        {
+            List<string> list;
+            if (resume.MatrixLines.TryGetValue(id, out list))
+            {
+                resume.ReusedCells += list.Count;
+            }
+        }
+
+        resume.ReusedProblems = resume.Completed.Count;
+        return resume;
+    }
+
+    /// <summary>Re-quotes a parsed CSV row so it can be written back unchanged.</summary>
+    private static string QualificationJoinCsv(string[] fields)
+    {
+        var sb = new StringBuilder();
+        for (int i = 0; i < fields.Length; i++)
+        {
+            if (i > 0)
+            {
+                sb.Append(',');
+            }
+
+            sb.Append(QualificationCsvField(fields[i]));
+        }
+
+        return sb.ToString();
+    }
+
     // ---------------------------------------------------------------------------------
     // Entry
     // ---------------------------------------------------------------------------------
 
     private static void QualificationRunCatalogue(
         List<QualificationProblem> catalog, QualificationProfile profile, TextWriter log,
-        string dir)
+        string dir, QualificationResumeContext resume)
     {
         QualificationPrepareKeplerPins();
         List<IStudyIntegrator> methods = StudyRegistry.All();
         QualificationCheckSupportFlags(catalog, methods, log);
 
-        var cells = new List<QualificationCell>();
-        var rows = new List<string>();
         var runRows = new List<string>();
+        var matrixRows = new List<string>();
 
         foreach (QualificationProblem q in catalog)
         {
@@ -74,7 +189,36 @@ internal static partial class P1bTests
                 continue;
             }
 
+            if (resume != null && resume.Completed.Contains(q.Id))
+            {
+                List<string> oldRuns;
+                if (resume.RunLines.TryGetValue(q.Id, out oldRuns))
+                {
+                    runRows.AddRange(oldRuns);
+                }
+
+                List<string> oldMatrix;
+                if (resume.MatrixLines.TryGetValue(q.Id, out oldMatrix))
+                {
+                    matrixRows.AddRange(oldMatrix);
+                }
+
+                log.WriteLine(q.Id + ": reused "
+                    + (oldMatrix == null ? 0 : oldMatrix.Count).ToString(QualificationInv)
+                    + " cells from " + Path.GetFileName(resume.Dir));
+                QualificationWriteCsv(Path.Combine(dir, "runs.csv"), QualificationRunsHeader, runRows);
+                QualificationWriteCsv(Path.Combine(dir, "matrix.csv"), QualificationMatrixHeader, matrixRows);
+                continue;
+            }
+
             StudyProblem p = q.Problem;
+            if (double.IsNaN(p.Floor) && double.IsFinite(q.Floor))
+            {
+                // The audit normally copies the floor into the problem; on resume it is skipped
+                // and the floor comes from oracle_audit.md instead.
+                p.Floor = q.Floor;
+            }
+
             var options = new StudyOptions();
             options.RelTargets = new double[0];
             var targets = new double[QualificationLevelFactors.Length];
@@ -173,16 +317,34 @@ internal static partial class P1bTests
                 }
             }
 
-            cells.AddRange(cellsForProblem);
+            matrixRows.AddRange(QualificationMatrixRows(cellsForProblem));
 
             // Partial results survive an interrupted run: rewrite both CSVs after every problem.
             QualificationWriteCsv(Path.Combine(dir, "runs.csv"), QualificationRunsHeader, runRows);
-            QualificationWriteCsv(Path.Combine(dir, "matrix.csv"), QualificationMatrixHeader,
-                QualificationMatrixRows(cells));
-            log.WriteLine("  -> " + cells.Count.ToString(QualificationInv) + " matrix cells so far");
+            QualificationWriteCsv(Path.Combine(dir, "matrix.csv"), QualificationMatrixHeader, matrixRows);
+            log.WriteLine("  -> " + matrixRows.Count.ToString(QualificationInv) + " matrix cells so far");
         }
 
-        QualificationLogMatrixSummary(cells, log);
+        QualificationLogMatrixSummary(dir, log);
+    }
+
+    private static void QualificationLogMatrixSummary(string dir, TextWriter log)
+    {
+        var counts = new Dictionary<string, int>();
+        foreach (QualificationMatrixEntry entry in QualificationReadMatrix(dir))
+        {
+            int n;
+            counts.TryGetValue(entry.Status, out n);
+            counts[entry.Status] = n + 1;
+        }
+
+        var sb = new StringBuilder("matrix: ");
+        foreach (KeyValuePair<string, int> pair in counts)
+        {
+            sb.Append(pair.Key).Append('=').Append(pair.Value.ToString(QualificationInv)).Append(' ');
+        }
+
+        log.WriteLine(sb.ToString().TrimEnd());
     }
 
     // ---------------------------------------------------------------------------------
@@ -1075,24 +1237,5 @@ internal static partial class P1bTests
         }
 
         return value.ToString("E17", QualificationInv);
-    }
-
-    private static void QualificationLogMatrixSummary(List<QualificationCell> cells, TextWriter log)
-    {
-        var counts = new Dictionary<string, int>();
-        foreach (QualificationCell c in cells)
-        {
-            int n;
-            counts.TryGetValue(c.Status, out n);
-            counts[c.Status] = n + 1;
-        }
-
-        var sb = new StringBuilder("matrix: ");
-        foreach (KeyValuePair<string, int> pair in counts)
-        {
-            sb.Append(pair.Key).Append('=').Append(pair.Value.ToString(QualificationInv)).Append(' ');
-        }
-
-        log.WriteLine(sb.ToString().TrimEnd());
     }
 }
