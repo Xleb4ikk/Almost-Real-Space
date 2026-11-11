@@ -398,6 +398,8 @@ internal static partial class P1bTests
         sb.AppendLine("**Valid for** (in the per-method sections) lists the tags of problems where the method");
         sb.AppendLine("has at least one PASS; it is not a claim that every level of those problems passes.");
         sb.AppendLine("**Gate notes on PASS** shows gates that were skipped by the model-drift guard (G3).");
+        sb.AppendLine("**Observed order** is filled for adaptive methods too (informative only): G2 applies");
+        sb.AppendLine("only to fixed-step methods with a declared ExpectedOrder.");
         sb.AppendLine();
         sb.AppendLine("## Per method");
         sb.AppendLine();

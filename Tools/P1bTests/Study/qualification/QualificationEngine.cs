@@ -572,35 +572,41 @@ internal static partial class P1bTests
             return q;
         }
 
-        // Coarse -> fine. Each next point is a refinement, so the error must fall; the
-        // ascending order walked from the finest point towards coarser ones, and the
-        // "a refinement must halve the error" prefix stopped after the first point. That is
-        // why order_obs was empty in every baseline row.
-        points.Sort(delegate (StudyRow a, StudyRow b) { return b.Control.CompareTo(a.Control); });
+        // Fine -> coarse. The asymptotic branch is the small-step end: from there, a coarser
+        // step must increase the error. Walking from the coarse end instead started inside the
+        // pre-asymptotic branch, where the error falls faster than h^p, and inflated the slope
+        // (RK4 on K8 read 6.33 instead of ~3.9). The window, the 0.5 tolerance and the >=4
+        // points rule are unchanged.
+        points.Sort(delegate (StudyRow a, StudyRow b) { return a.Control.CompareTo(b.Control); });
 
-        // Asymptotic prefix: a refinement must at least halve the error. A plateau (round-off
-        // or a pre-asymptotic branch) is not part of the order estimate even when it sits
-        // above the reference floor.
-        var fit = new List<StudyRow>();
-        fit.Add(points[0]);
-        double bestErr = points[0].Err;
+        // Longest run of consecutive points where each coarser step at least doubles the error
+        // (a single noisy point near the round-off floor must not discard the whole branch).
+        int bestStart = 0;
+        int bestLength = 1;
+        int runStart = 0;
         for (int i = 1; i < points.Count; i++)
         {
-            if (points[i].Err <= 0.5d * bestErr)
+            if (points[i].Err >= 2d * points[i - 1].Err)
             {
-                fit.Add(points[i]);
-                bestErr = points[i].Err;
+                int length = i - runStart + 1;
+                if (length > bestLength)
+                {
+                    bestLength = length;
+                    bestStart = runStart;
+                }
             }
             else
             {
-                break;
+                runStart = i;
             }
         }
+
+        var fit = points.GetRange(bestStart, bestLength);
 
         q.Points = fit.Count;
         if (fit.Count < 4)
         {
-            q.Note = "n/a (few points in the asymptotic prefix)";
+            q.Note = "n/a (few points in the asymptotic branch)";
             return q;
         }
 
@@ -623,7 +629,8 @@ internal static partial class P1bTests
 
         slopes.Sort();
         q.Observed = slopes[slopes.Count / 2];
-        q.Note = "median of " + slopes.Count.ToString(QualificationInv) + " pairwise slopes";
+        q.Note = "median of " + slopes.Count.ToString(QualificationInv)
+            + " pairwise slopes (fine->coarse, longest >=2x run)";
         return q;
     }
 
