@@ -290,7 +290,7 @@ AMD Ryzen 9 8940HX, 32 логических CPU, Windows x64.
 
 | id | что в TASK.md | что взято | отличие |
 |---|---|---|---|
-| R1 | DE441, 10 тел, Newtonian, 10 лет | `JplNBody` (Sun + Mercury…Neptune + Moon), барицентр, 10 лет в `full`, 30 сут в `smoke` | горизонт smoke короче («урезанно по R», §13); `CentralMu = 0`, поэтому WH-Y6/WH-BM14A/Encke дают N/A |
+| R1 | DE441, 10 тел, Newtonian, 10 лет | `StudyRealSolar7` (тестовый фикстур, real solar 7-body) + `StudyMakeNBody` + два независимых dd-Taylor эталона (43200/21600 с) + `StudyBridgePlanetProblem` — тот же путь, что в Test553 | по указанию владельца взят проверенный тестовый фикстур вместо JSON-адаптера; 7 тел вместо 10, горизонт 10 лет в `full`, 1 год в `smoke`; `CentralMu = 0`, поэтому WH-Y6/WH-BM14A/Encke дают N/A |
 | R2 | DE441, 10 тел, 1PN, 10 лет | то же + `JplAcc1Pn` (Sun-only 1PN — headline-модель проекта) | EIH и J2 не включены: TASK.md говорит «1PN», а в проекте headline — Sun-only 1PN |
 | R3 | корабль у Земли + возмущения (Луна, Солнце), 30 сут | Test549-кейс «Earth LEO 400 km, 30 d» (локальный кадр, без тяги/drag) | возмущения идут через запечённые эфемериды системы; отдельного кейса «только Луна+Солнце» нет |
 | R4 | пролёт Луны (гиперболический) | `MoonFlybyProblem(solar, 1000 м/с, 100 км)` (Test559), Moon-centred | вместо Test549-кейса «Earth-Moon flyby inside lunar SOI»; выбран гиперболический пролёт у Луны, как в тексте |

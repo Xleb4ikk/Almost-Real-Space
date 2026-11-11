@@ -40,7 +40,7 @@ internal static partial class P1bTests
     private static void QualificationAppendRl(
         List<QualificationProblem> list, QualificationProfile profile)
     {
-        list.Add(QualificationDe441Problem("R1", false, profile));
+        list.Add(QualificationRealSolarProblem(profile));
         list.Add(QualificationDe441Problem("R2", true, profile));
         list.Add(QualificationShipProblem(
             "R3", "Earth LEO 400 km, 30 d", new[] { "ship", "perturbed" },
@@ -48,6 +48,56 @@ internal static partial class P1bTests
         list.Add(QualificationMoonFlybyProblem());
         list.Add(QualificationLongLeoProblem());
         list.Add(QualificationKeplerLongProblem());
+    }
+
+    // ---------------------------------------------------------------------------------
+    // R1: the proven real-solar test fixture (Test553 path)
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// R1 uses the test-side real-solar fixture StudyRealSolar7 with the same machinery as
+    /// Test553: StudyMakeNBody, two independent dd-Taylor references (43200 s and 21600 s),
+    /// StudyBridgePlanetProblem (worst pair error, adaptive scales). No game production path,
+    /// no baked ephemerides: the fixture is built from BodyBlueprint in Study/fixtures.
+    /// </summary>
+    private static QualificationProblem QualificationRealSolarProblem(QualificationProfile profile)
+    {
+        var q = new QualificationProblem();
+        q.Id = "R1";
+        q.Title = "Real solar 7-body (test fixture), Newtonian";
+        q.Tags = new[] { "nbody-regular", "long-horizon", "many-body", "central-dominant" };
+        q.OracleKind = "reference";
+        q.OracleId = "dd-taylor-pair-v1";
+        q.OracleNote = "Test553 independent dd-Taylor references (43200 s / 21600 s); floor = worst pair difference";
+
+        double years = profile == QualificationProfile.Full ? 10d : 1d;
+        double sampleEvery = 30d * 86400d;
+
+        try
+        {
+            StudyNBody nb = StudyMakeNBody(StudyRealSolar7());
+            StudyRefResult reference = StudyPlanetIndependentReference(nb, years, sampleEvery);
+            StudyRefResult alternative = StudyPlanetIndependentReferenceAlt(nb, years, sampleEvery);
+            StudyProblem p = StudyBridgePlanetProblem(
+                QualificationLabel("R1", q.Title + ", " + years.ToString("G", QualificationCatalogInv) + " y"),
+                nb, years, reference, alternative);
+
+            q.Build = delegate { return p; };
+            q.Floor = p.Floor;
+            q.OracleTimes = (double[])p.CheckpointTimes.Clone();
+            q.Oracle = QualificationCloneStates(p.CheckpointRef);
+            q.Residual = p.ReferenceCrossDiffM;
+            q.AuditNote = "reference " + p.ReferenceNote
+                + "; floor " + QualificationFormat(p.Floor)
+                + "; horizon " + years.ToString("G", QualificationCatalogInv) + " y";
+        }
+        catch (Exception ex)
+        {
+            q.Status = "INVALID";
+            q.AuditNote = ex.GetType().Name + ": " + ex.Message;
+        }
+
+        return q;
     }
 
     // ---------------------------------------------------------------------------------
@@ -496,7 +546,7 @@ internal static partial class P1bTests
     private static void QualificationAuditRl(QualificationProblem q)
     {
         StudyProblem p = q.Problem;
-        if (q.Id == "R1" || q.Id == "R2")
+        if (q.Id == "R2")
         {
             // Self-consistency: the same certified DOP853 with twice the resolution must agree
             // with the stored reference to within a few times its own Richardson floor.
@@ -538,9 +588,10 @@ internal static partial class P1bTests
             return;
         }
 
-        // R3/R4: the reference is a certified Test549/Test559 reference (already carrying an
-        // independent IAS15 cross-check). A floor that only permits A1/A2 is not an oracle
-        // failure: the level gate turns it into SKIP, exactly as TASK.md prescribes.
+        // R2 is the DE441 adapter; R1/R3/R4 use the proven Test553/Test559 reference
+        // machinery (already carrying an independent cross-check). A floor that only permits
+        // A1/A2 is not an oracle failure: the level gate turns it into SKIP, exactly as
+        // TASK.md prescribes.
         bool certified = double.IsFinite(p.Floor) && p.Floor > 0d;
         q.Status = certified ? "VALID" : "INVALID";
         q.AuditNote = q.AuditNote
