@@ -1,0 +1,4 @@
+# Run folders are local artifacts: a new run = a new folder, never rewritten.
+# Only the baseline pointer (../../baseline/BASELINE.md) is committed.
+*
+!.gitignore

@@ -309,6 +309,7 @@ new P1bCase("Test549_SpacecraftOrbitIntegrators", Test549_SpacecraftOrbitIntegra
             new P1bCase("Test561_IntegratorPolicy", Test561_IntegratorPolicy, false),
             new P1bCase("Test562_ProductionWorkPrecision", Test562_ProductionWorkPrecision, true),
             new P1bCase("Test563_LeoCapRegime", Test563_LeoCapRegime, true),
+            new P1bCase("Test564_MethodQualification", Test564_MethodQualification, true),
             new P1bCase("Test534_JupiterVariants", Test534_JupiterVariants, true),
             new P1bCase("Test534b_MoonsAsBodies", Test534b_MoonsAsBodies, true),
         };
