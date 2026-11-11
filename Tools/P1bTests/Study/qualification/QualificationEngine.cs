@@ -100,6 +100,10 @@ internal static partial class P1bTests
             for (int m = 0; m < methods.Count; m++)
             {
                 orders[m] = QualificationObservedOrder(p, result.Rows, methods[m], options);
+                log.WriteLine("order " + methods[m].Name + " " + q.Id + ": p="
+                    + QualificationNumber(orders[m].Observed)
+                    + " points=" + orders[m].Points.ToString(QualificationInv)
+                    + " note=" + (orders[m].Note.Length == 0 ? "ok" : orders[m].Note));
                 List<StudyRow> mine = QualificationRowsOf(result.Rows, methods[m].Name);
                 mineByMethod.Add(mine);
                 detByMethod[m] = QualificationDeterminism(
@@ -396,7 +400,11 @@ internal static partial class P1bTests
             return q;
         }
 
-        points.Sort(delegate (StudyRow a, StudyRow b) { return a.Control.CompareTo(b.Control); });
+        // Coarse -> fine. Each next point is a refinement, so the error must fall; the
+        // ascending order walked from the finest point towards coarser ones, and the
+        // "a refinement must halve the error" prefix stopped after the first point. That is
+        // why order_obs was empty in every baseline row.
+        points.Sort(delegate (StudyRow a, StudyRow b) { return b.Control.CompareTo(a.Control); });
 
         // Asymptotic prefix: a refinement must at least halve the error. A plateau (round-off
         // or a pre-asymptotic branch) is not part of the order estimate even when it sits
