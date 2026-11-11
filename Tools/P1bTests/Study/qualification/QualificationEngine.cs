@@ -579,29 +579,22 @@ internal static partial class P1bTests
         // points rule are unchanged.
         points.Sort(delegate (StudyRow a, StudyRow b) { return a.Control.CompareTo(b.Control); });
 
-        // Longest run of consecutive points where each coarser step at least doubles the error
-        // (a single noisy point near the round-off floor must not discard the whole branch).
-        int bestStart = 0;
-        int bestLength = 1;
-        int runStart = 0;
+        // Start at the finest point in the window and walk towards coarser steps: the error
+        // must at least double at every step. The first violation ends the branch (a noisy
+        // point near the round-off floor gives "n/a", not a fabricated slope).
+        var fit = new List<StudyRow>();
+        fit.Add(points[0]);
         for (int i = 1; i < points.Count; i++)
         {
-            if (points[i].Err >= 2d * points[i - 1].Err)
+            if (points[i].Err >= 2d * fit[fit.Count - 1].Err)
             {
-                int length = i - runStart + 1;
-                if (length > bestLength)
-                {
-                    bestLength = length;
-                    bestStart = runStart;
-                }
+                fit.Add(points[i]);
             }
             else
             {
-                runStart = i;
+                break;
             }
         }
-
-        var fit = points.GetRange(bestStart, bestLength);
 
         q.Points = fit.Count;
         if (fit.Count < 4)
@@ -630,7 +623,7 @@ internal static partial class P1bTests
         slopes.Sort();
         q.Observed = slopes[slopes.Count / 2];
         q.Note = "median of " + slopes.Count.ToString(QualificationInv)
-            + " pairwise slopes (fine->coarse, longest >=2x run)";
+            + " pairwise slopes (fine->coarse, doubled-error branch)";
         return q;
     }
 
