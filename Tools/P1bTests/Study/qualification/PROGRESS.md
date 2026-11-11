@@ -317,7 +317,7 @@ _Пусто._
 | Каждый N/A — причина из `Supports(...)`; нет исключений по имени | да |
 | Гейты G1–G8 реализованы; пороги заморожены | да, блок «Заморозка порогов» |
 | `METHOD_QUALIFICATION.md` и `RECOMMENDATIONS.md` из CSV | да |
-| Baseline зафиксирован; `--compare` работает | да: `baseline/BASELINE.md` → прогон `20261111T200320Z_2a36227` (full, commit `2a36227`); контрольный compare — 0 изменений |
+| Baseline зафиксирован; `--compare` работает | да: `baseline/BASELINE.md` → прогон `20261111T203415Z_becd26a` (full, commit `becd26a`); контрольный compare — 0 изменений |
 | Старые тесты и результаты не изменены; `Test551` прежний | да: 84 PASS / 0 FAIL, хэш имён `54ae98e2...` |
 | `FOUND.md`, `BACKLOG.md`, вопросы актуальны | да |
 | G2 наблюдаемый порядок | да, после Q-FIX-10b (ветка от мелкого шага к крупному, `Q-FIX-12` guard для бюджета/floor); проверено: RK4 K1 4.30, GJ8 K2 9.27, GJ8 K5 PASS |
@@ -363,12 +363,12 @@ G2-FAIL. Владелец это отклонил.
 иначе `order: n/a`. Окно `[100×floor, 1e-2×scale]`, допуск 0.5 и правило ≥4 точек не
 менялись. В `run.log` — строка `order <method> <problem>: p=... points=... note=...`.
 
-Факт (full, после Q-FIX-12): `order_obs` заполнен в 1885 из 3529 строк. RK4: K1 4.30,
+Факт (full, после Q-FIX-15): `order_obs` заполнен в 1850 из 3888 строк. RK4: K1 4.30,
 K8 **3.87** (PASS; было 6.33 FAIL), R2 4.94 (FAIL с доказательством — `FOUND.md` F6),
-L2 — `n/a (budget before the asymptotic branch)`, R1/T1 — `n/a` (ветка короче 4 точек).
-GJ8: K2 9.27, K3 7.08, T2 8.83, R4 10.59, L2 10.71 — G2 FAIL; K1 10.03, **K5 9.70**,
-K6 9.93, K7 10.47 — проходят; K4/T1/R1/R2/R3/T3 — `n/a`. Матрица full:
-`PASS=459 FAIL=46 SKIP=110 N/A=105`.
+R3 4.96 (FAIL с диагностикой — `FOUND.md` F6), L2 — `n/a (few points)`, R1/T1 — `n/a`
+(ветка короче 4 точек). GJ8: K2 9.27, K3 7.08, T2 8.83, R4 10.59, L2 10.71 — G2 FAIL;
+K1 10.03, **K5 9.70**, K6 9.93, K7 10.47 — проходят; K4/T1/R1/R2/R3/T3 — `n/a`.
+Матрица full: `PASS=480 FAIL=68 SKIP=112 N/A=105`.
 
 ### FIX-11 (Q-FIX-12): G2 не наказывает за бюджет и floor
 
@@ -512,18 +512,20 @@ sweep/детерминизм/аудит не выполняются. Стату�
 |---|---|
 | `dotnet build Tools/P1bTests -c Release` | 0 ошибок |
 | `verify_test551.ps1` | `lines=84 fails=0`, SHA256 `54ae98e2...` (воспроизводится скриптом) |
-| smoke `Test564` | `ALL PASS`, `PASS=460 FAIL=52 SKIP=103 N/A=105 ERROR=0`, ≈135 с |
-| full `Test564` #1 | `ALL PASS`, `PASS=459 FAIL=46 SKIP=110 N/A=105 ERROR=0`, 202.6 с |
-| full `Test564` #2 с `--compare` #1 | `No changes`, 0 статусов / 0 ошибок / 0 цен |
+| smoke `Test564` | `ALL PASS`, `PASS=473 FAIL=52 SKIP=135 N/A=105 ERROR=0`, 225.1 с |
+| full `Test564` #1 | `ALL PASS`, `PASS=480 FAIL=68 SKIP=112 N/A=105 ERROR=0`, 709.3 с |
+| full `Test564` #2 с `--compare` #1 | `No changes`, 0 статусов / 0 ошибок / 0 цен, 703.9 с |
 | resume (обрезанный smoke, K1–K3) | `reused 135 cell(s)`, 0 расхождений с чистым прогоном, повторный resume — `nothing to resume` |
 | `--compare` флагом | против старого baseline — 62/180/190 изменений; против нового прогона — `No changes` |
 | ERROR-инъекция | `ERROR=1`, exit code 1, сообщение с причиной; инъекция убрана |
 
-Числа, которые изменились: `order_obs` заполнен в 1885 из 3529 строк (было 0); G2-FAIL:
-GJ8 на 5 задачах (K2, K3, T2, R4, L2 — 13 ячеек), RK4 на R2 (2 ячейки); L2 RK4 — `n/a (budget)`, K5 — PASS;
+Числа финального full: `order_obs` заполнен в 1850 из 3888 строк (было 0); G2-FAIL —
+16 ячеек: GJ8 на 5 задачах (K2, K3, T2, R4, L2 — 13 ячеек), RK4 на R2 (2 ячейки) и R3
+(1 ячейка, доказано диагностикой); L2 RK4 — `n/a (few points)`, K5 — PASS.
 RK4 K8 и T1, GJ8 K4/T1/R1 перешли в `n/a` или PASS. R4 A2: 13 PASS + GJ8 FAIL по G2 +
-Leapfrog SKIP (было 14 G3-FAIL); 7 G5-ячеек стали PASS; G3-FAIL нет ни одной;
-`close-encounter A2` — IAS15.
+Leapfrog SKIP (было 14 G3-FAIL); 7 G5-ячеек стали PASS; G3-FAIL нет ни одной
+(`G3 skipped` — R4 27 и L1 3). L1: 17 PASS, 2 FAIL (`RKN12(10)`/`IAS15` A2 — level not
+reached), 26 SKIP (15 A3 — floor, 11 — бюджет). `close-encounter A2` — IAS15.
 
 Открытым остаётся: только политика G5 (если владелец передумает — вернуть «любое
 нарушение = FAIL»). Остальные вопросы закрыты решениями владельца 2026-11-11 (R1 оставлен
@@ -635,3 +637,13 @@ N/A с отсылкой в отчёте).
   floor=5.882E-02 м` (10 лет), `PASS=453 FAIL=52 SKIP=110 N/A=105`, 196 с; повторный
   полный прогон против эталона — «No changes». Baseline пересобран
   (`baseline/20261111T171630Z_4df81a2/`, commit `4df81a2`).
+- **2026-11-11/12 — решения владельца и финальный baseline (Q-FIX-15…Q-FIX-16).**
+  Full-бюджет RHS поднят до `1e7` (smoke `2e6`); L1 переведён на локальный
+  сертифицированный DOP853 (floor `1.824e-4`, golden — только кросс-проверка); в отчёт
+  `central-dominant` добавлено примечание про WH/Encke N/A на R1; §15 трактуется как
+  «без Unity». Full #1: `PASS=480 FAIL=68 SKIP=112 N/A=105`, 709.3 с, 3888 строк
+  `runs.csv`, `order_obs` 1850; full #2 с `--compare` — `No changes`. Baseline:
+  `baseline/20261111T203415Z_becd26a/` (commit `becd26a`, документация `98ffc1c`).
+  Новый G2-FAIL после подъёма бюджета — `RK4 R3` 4.96; диагностический resume с шагом
+  1.41 с дал 4.99, поэтому FAIL оставлен и доказан (`FOUND.md` F6). `Test551` — 84/0,
+  SHA256 `54ae98e2...`. Старые baseline сохранены.
