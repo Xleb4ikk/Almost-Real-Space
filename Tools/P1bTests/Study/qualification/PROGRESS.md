@@ -512,7 +512,7 @@ sweep/детерминизм/аудит не выполняются. Стату�
 |---|---|
 | `dotnet build Tools/P1bTests -c Release` | 0 ошибок |
 | `verify_test551.ps1` | `lines=84 fails=0`, SHA256 `54ae98e2...` (воспроизводится скриптом) |
-| smoke `Test564` | `ALL PASS`, `PASS=473 FAIL=52 SKIP=135 N/A=105 ERROR=0`, 225.1 с |
+| smoke `Test564` | `ALL PASS`, `PASS=473 FAIL=52 SKIP=135 N/A=105 ERROR=0`, 227.2 с |
 | full `Test564` #1 | `ALL PASS`, `PASS=480 FAIL=68 SKIP=112 N/A=105 ERROR=0`, 709.3 с |
 | full `Test564` #2 с `--compare` #1 | `No changes`, 0 статусов / 0 ошибок / 0 цен, 703.9 с |
 | resume (обрезанный smoke, K1–K3) | `reused 135 cell(s)`, 0 расхождений с чистым прогоном, повторный resume — `nothing to resume` |
