@@ -922,7 +922,7 @@ internal static partial class P1bTests
         }
 
         bool sameControl = rev != null && rev.Control > 0d
-            && Math.Abs(rev.Control - row.Control) <= 1e-12d * Math.Max(rev.Control, 1d);
+            && Math.Abs(rev.Control - row.Control) <= 1e-9d * Math.Max(rev.Control, Math.Abs(row.Control));
 
         var sb = new StringBuilder();
         sb.Append(QualificationCsvField(q.Id)).Append(',');

@@ -88,6 +88,21 @@ internal static partial class P1bTests
             log.WriteLine("wrote environment.txt, runs.csv (header only), matrix.csv (header only), oracle_audit.md");
 
             QualificationRunCatalogue(catalog, profile, log, dir);
+            QualificationWriteReports(dir, catalog, log);
+
+            string compareDir = Environment.GetEnvironmentVariable("P1B564_COMPARE");
+            if (!string.IsNullOrWhiteSpace(compareDir))
+            {
+                string other = Path.GetFullPath(compareDir);
+                if (Directory.Exists(other))
+                {
+                    QualificationCompareRuns(dir, other, log);
+                }
+                else
+                {
+                    log.WriteLine("compare: folder not found: " + other);
+                }
+            }
 
             log.WriteLine("elapsed: " + watch.ElapsedMilliseconds.ToString(QualificationInv) + " ms");
 
