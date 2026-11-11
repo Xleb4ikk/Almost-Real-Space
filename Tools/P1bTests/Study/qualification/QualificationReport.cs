@@ -411,6 +411,12 @@ internal static partial class P1bTests
             sb.AppendLine("* **N/A:** " + QualificationGroupedReasons(mine, "N/A"));
             sb.AppendLine("* **FAIL:** " + QualificationGroupedReasons(mine, "FAIL"));
             sb.AppendLine("* **SKIP:** " + QualificationGroupedReasons(mine, "SKIP"));
+            string passNotes = QualificationPassNotes(mine);
+            if (passNotes.Length > 0)
+            {
+                sb.AppendLine("* **Gate notes on PASS:** " + passNotes);
+            }
+
             sb.AppendLine("* **Observed order:** " + QualificationOrderSummary(runs, method));
             sb.AppendLine("* **Typical invariants (all rows):** " + QualificationDriftSummary(runs, method));
             sb.AppendLine();
@@ -527,6 +533,46 @@ internal static partial class P1bTests
         if (order.Count == 0)
         {
             return "—";
+        }
+
+        var sb = new StringBuilder();
+        foreach (string reason in order)
+        {
+            sb.Append(reason).Append(": ").Append(string.Join(", ", groups[reason])).Append("; ");
+        }
+
+        return sb.ToString().TrimEnd(' ', ';');
+    }
+
+    private static string QualificationPassNotes(List<QualificationMatrixEntry> mine)
+    {
+        var order = new List<string>();
+        var groups = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (QualificationMatrixEntry e in mine)
+        {
+            if (e.Status != "PASS" || string.IsNullOrEmpty(e.Reason))
+            {
+                continue;
+            }
+
+            List<string> list;
+            if (!groups.TryGetValue(e.Reason, out list))
+            {
+                list = new List<string>();
+                groups[e.Reason] = list;
+                order.Add(e.Reason);
+            }
+
+            string key = e.Problem + "." + e.Level;
+            if (!list.Contains(key))
+            {
+                list.Add(key);
+            }
+        }
+
+        if (order.Count == 0)
+        {
+            return "";
         }
 
         var sb = new StringBuilder();

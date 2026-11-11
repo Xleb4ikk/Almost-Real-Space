@@ -631,8 +631,11 @@ internal static partial class P1bTests
             cell.Err = best.Err;
             cell.Best = best;
 
-            string gate = QualificationGateFailure(method, order, deterministic, detNote, p, best, threshold);
-            cell.Status = gate.Length == 0 ? "PASS" : "FAIL";
+            string gate = QualificationGateFailure(
+                method, order, deterministic, detNote, p, best, QualificationLevelFactors[level]);
+            bool failed = gate.Length > 0
+                && !gate.StartsWith("G3 skipped", StringComparison.Ordinal);
+            cell.Status = failed ? "FAIL" : "PASS";
             cell.Reason = gate;
             return cell;
         }
@@ -675,7 +678,7 @@ internal static partial class P1bTests
 
     private static string QualificationGateFailure(
         IStudyIntegrator method, QualificationOrder order, bool deterministic, string detNote,
-        StudyProblem p, StudyRow best, double threshold)
+        StudyProblem p, StudyRow best, double levelFactor)
     {
         // G2: fixed-step only, and only when the method declares an order and the grid has
         // at least 4 points in the window (fewer points is "order n/a", not a failure).
@@ -694,15 +697,32 @@ internal static partial class P1bTests
             return "G6 determinism: " + detNote;
         }
 
-        // G3: invariants, only on conservative problems that expose them.
+        // G3: the drift is dimensionless, so it is compared with the dimensionless level
+        // factor (1e-6 / 1e-9 / 1e-12), NOT with factor * ScaleLength (metres). A model whose
+        // reference itself drifts more than the band cannot be gated on that invariant.
+        var notes = new StringBuilder();
         if (p.EnergyFn != null && double.IsFinite(best.EnergyDriftFromInitial))
         {
             double e0 = p.EnergyFn(p.Y0);
             double eScale = Math.Max(Math.Abs(e0), QualificationEnergyFloor(p));
-            double rel = best.EnergyDriftFromInitial / eScale;
-            if (double.IsFinite(rel) && rel > 10d * threshold)
+            double band = 10d * levelFactor;
+            double refRel = double.IsFinite(best.EnergyDriftRef) && eScale > 0d
+                ? best.EnergyDriftRef / eScale
+                : double.NaN;
+            if (double.IsFinite(refRel) && refRel > band)
             {
-                return "G3 energy drift " + QualificationFormat(rel) + " > 10*" + QualificationFormat(threshold);
+                notes.Append("G3 skipped: model drift (energy ")
+                    .Append(QualificationFormat(refRel)).Append(" > ")
+                    .Append(QualificationFormat(band)).Append("); ");
+            }
+            else
+            {
+                double rel = best.EnergyDriftFromInitial / eScale;
+                if (double.IsFinite(rel) && rel > band)
+                {
+                    return "G3 energy drift " + QualificationFormat(rel)
+                        + " > 10*" + QualificationFormat(levelFactor);
+                }
             }
         }
 
@@ -710,15 +730,28 @@ internal static partial class P1bTests
         {
             double l0 = p.AngularMomentumFn(p.Y0);
             double lScale = Math.Max(Math.Abs(l0), QualificationAngularFloor(p));
-            double rel = best.AngularDriftFromInitial / lScale;
-            if (double.IsFinite(rel) && rel > 10d * threshold)
+            double band = 10d * levelFactor;
+            double refRel = double.IsFinite(best.AngularDriftRef) && lScale > 0d
+                ? best.AngularDriftRef / lScale
+                : double.NaN;
+            if (double.IsFinite(refRel) && refRel > band)
             {
-                return "G3 angular momentum drift " + QualificationFormat(rel)
-                    + " > 10*" + QualificationFormat(threshold);
+                notes.Append("G3 skipped: model drift (angular ")
+                    .Append(QualificationFormat(refRel)).Append(" > ")
+                    .Append(QualificationFormat(band)).Append("); ");
+            }
+            else
+            {
+                double rel = best.AngularDriftFromInitial / lScale;
+                if (double.IsFinite(rel) && rel > band)
+                {
+                    return "G3 angular momentum drift " + QualificationFormat(rel)
+                        + " > 10*" + QualificationFormat(levelFactor);
+                }
             }
         }
 
-        return "";
+        return notes.ToString().TrimEnd(' ', ';');
     }
 
     /// <summary>
