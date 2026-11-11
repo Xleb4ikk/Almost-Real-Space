@@ -621,7 +621,73 @@ internal static partial class P1bTests
         }
 
         slopes.Sort();
-        q.Observed = slopes[slopes.Count / 2];
+        double median = slopes[slopes.Count / 2];
+
+        // G2 is an order check, not a budget or reference-floor check (owner decision).
+        // 1) A censored row finer than the branch means the asymptotic part was never run:
+        //    that is a G7 budget SKIP, not an order FAIL.
+        foreach (StudyRow r in rows)
+        {
+            if (r.Integrator != method.Name || r.Variant.Length != 0)
+            {
+                continue;
+            }
+
+            if (r.Status == "censored" && r.Control > 0d && r.Control < fit[0].Control)
+            {
+                q.Points = fit.Count;
+                q.Note = "n/a (budget before the asymptotic branch)";
+                return q;
+            }
+        }
+
+        // 2) Floor screening: when the branch start is within 10x of the window edge, the frozen
+        //    window may have cut a transition. This is a guard against a FALSE FAIL only: if the
+        //    branch already passes (or G2 does not apply), the measured order is kept. n/a needs
+        //    evidence: a trusted ok point below the window whose slope disagrees with the branch.
+        //    If it continues the branch (RK4 R2: 4.94 vs 4.97), the branch is certifiable and the
+        //    gate applies (FAIL with the number recorded in FOUND.md).
+        bool gateApplies = method.Kind == StudyKind.Fixed && !double.IsNaN(method.ExpectedOrder);
+        bool wouldFail = gateApplies && Math.Abs(median - method.ExpectedOrder) > 0.5d;
+        if (wouldFail && fit[0].Err <= 10d * low)
+        {
+            StudyRow sub = null;
+            foreach (StudyRow r in rows)
+            {
+                if (r.Integrator != method.Name || r.Variant.Length != 0)
+                {
+                    continue;
+                }
+
+                if (r.Status != "ok" || !r.Finite || !(r.Err > 0d) || !(r.Control > 0d)
+                    || !(r.Control < fit[0].Control))
+                {
+                    continue;
+                }
+
+                if (sub == null || r.Control > sub.Control)
+                {
+                    sub = r;
+                }
+            }
+
+            if (sub != null)
+            {
+                double subSlope = Math.Log(fit[0].Err / sub.Err)
+                    / Math.Log(fit[0].Control / sub.Control);
+                if (double.IsFinite(subSlope)
+                    && Math.Abs(subSlope - median) > 0.25d * Math.Max(1d, Math.Abs(median)))
+                {
+                    q.Points = fit.Count;
+                    q.Note = "n/a (floor-limited window: sub-window slope "
+                        + subSlope.ToString("F2", QualificationInv) + " vs branch "
+                        + median.ToString("F2", QualificationInv) + ")";
+                    return q;
+                }
+            }
+        }
+
+        q.Observed = median;
         q.Note = "median of " + slopes.Count.ToString(QualificationInv)
             + " pairwise slopes (fine->coarse, doubled-error branch)";
         return q;
