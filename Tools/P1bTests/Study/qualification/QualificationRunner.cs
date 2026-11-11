@@ -64,8 +64,30 @@ internal static partial class P1bTests
             QualificationWriteHeaderOnly(Path.Combine(dir, "runs.csv"), QualificationRunsHeader);
             QualificationWriteHeaderOnly(Path.Combine(dir, "matrix.csv"), QualificationMatrixHeader);
 
-            log.WriteLine("wrote environment.txt, runs.csv (header only), matrix.csv (header only)");
+            List<QualificationProblem> catalog = QualificationCatalogFor(profile);
+            log.WriteLine("catalog: " + catalog.Count.ToString(QualificationInv) + " problem(s)");
+            QualificationAuditOracles(catalog, log, dir);
+
+            int invalid = 0;
+            foreach (QualificationProblem problem in catalog)
+            {
+                if (problem.Status != "VALID")
+                {
+                    invalid++;
+                }
+            }
+
+            log.WriteLine("oracle audit: " + (catalog.Count - invalid).ToString(QualificationInv)
+                + " VALID, " + invalid.ToString(QualificationInv) + " not VALID");
+            log.WriteLine("wrote environment.txt, runs.csv (header only), matrix.csv (header only), oracle_audit.md");
             log.WriteLine("elapsed: " + watch.ElapsedMilliseconds.ToString(QualificationInv) + " ms");
+
+            if (invalid > 0)
+            {
+                Console.WriteLine("FAIL: " + invalid.ToString(QualificationInv)
+                    + " problem(s) with an unaudited/invalid oracle (see oracle_audit.md)");
+                return 1;
+            }
         }
 
         return 0;
