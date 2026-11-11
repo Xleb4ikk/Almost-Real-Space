@@ -191,7 +191,7 @@ _Пусто._
 | Каждый N/A — причина из `Supports(...)`; нет исключений по имени | да |
 | Гейты G1–G8 реализованы; пороги заморожены | да, блок «Заморозка порогов» |
 | `METHOD_QUALIFICATION.md` и `RECOMMENDATIONS.md` из CSV | да |
-| Baseline зафиксирован; `--compare` работает | да: `baseline/BASELINE.md` → прогон `20261111T164711Z_df7b7a0` (full, commit `df7b7a0`); контрольный compare — 0 изменений |
+| Baseline зафиксирован; `--compare` работает | да: `baseline/BASELINE.md` → прогон `20261111T171630Z_4df81a2` (full, commit `4df81a2`); контрольный compare — 0 изменений |
 | Старые тесты и результаты не изменены; `Test551` прежний | да: 84 PASS / 0 FAIL, хэш имён `54ae98e2...` |
 | `FOUND.md`, `BACKLOG.md`, вопросы актуальны | да |
 
@@ -279,5 +279,7 @@ _Пусто._
   в Test553) → `StudyMakeNBody` → два независимых dd-Taylor эталона (43200/21600 с) →
   `StudyBridgePlanetProblem`. Мой JSON-адаптер DE441 для R1 больше не используется; R2
   (1PN) остался на DE441 10 тел. Smoke с новым R1: `R1 VALID floor=4.139E-03 м`,
-  `PASS=461 FAIL=51 SKIP=103 N/A=105 ERROR=0`, 135 с. Полный прогон и baseline
-  пересобраны после этого изменения (см. `baseline/BASELINE.md`).
+  `PASS=461 FAIL=51 SKIP=103 N/A=105 ERROR=0`, 135 с. Полный прогон: `R1 VALID
+  floor=5.882E-02 м` (10 лет), `PASS=453 FAIL=52 SKIP=110 N/A=105`, 196 с; повторный
+  полный прогон против эталона — «No changes». Baseline пересобран
+  (`baseline/20261111T171630Z_4df81a2/`, commit `4df81a2`).

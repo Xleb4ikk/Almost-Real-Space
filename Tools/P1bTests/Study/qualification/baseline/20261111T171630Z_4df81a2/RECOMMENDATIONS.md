@@ -27,27 +27,27 @@ second method within 15% is declared a tie.
 ### A1
 
 *Problems:* K1, K2, K3, K4, K5, K6, R1
-*Recommended:* **RKN12(10)** (score 1.000)
-*Second:* DOP853-adaptive (score 1.581, margin 58.1%)
+*Recommended:* **RKN12(10)** (score 1.040)
+*Second:* DOP853-adaptive (score 1.619, margin 55.6%)
 *Excluded N/A:* WH-Y6, WH-BM14A, Encke-IAS15
 *Excluded FAIL:* DOPRI5-adaptive, Leapfrog
 
 ### A2
 
 *Problems:* K1, K2, K3, K4, K5, K6, R1
-*Recommended:* **RKN12(10)** (score 1.000)
-*Second:* DOP853-adaptive (score 1.981, margin 98.1%)
+*Recommended:* **RKN12(10)** (score 1.024)
+*Second:* DOP853-adaptive (score 2.024, margin 97.6%)
 *Excluded N/A:* WH-Y6, WH-BM14A, Encke-IAS15
 *Excluded FAIL:* DOPRI5-adaptive, Leapfrog
 
 ### A3
 
-*Problems:* K1, K2, K3, K4, K5, K6
-*Recommended:* **Encke-IAS15** (score 1.069)
-*Second:* RKN12(10) (score 4.685, margin 338.2%)
-*Excluded N/A:* none
-*Excluded FAIL:* RK4, PEFRL, Leapfrog
-*Excluded SKIP:* Y6, SRKN14A
+*Problems:* K1, K2, K3, K4, K5, K6, R1
+*Recommended:* **RKN12(10)** (score 1.000)
+*Second:* IAS15 (score 1.783, margin 78.3%)
+*Excluded N/A:* WH-Y6, WH-BM14A, Encke-IAS15
+*Excluded FAIL:* RK4, DOPRI5-adaptive, PEFRL, Leapfrog
+*Excluded SKIP:* DOPRI5-fixed, Y6, SRKN14A
 
 ## close-encounter
 
@@ -197,22 +197,27 @@ second method within 15% is declared a tie.
 
 *Problems:* T1, R1, R2, L2
 *Recommended:* **DOP853-adaptive** (score 1.000)
-*Second:* IAS15 (score 1.226, margin 22.6%)
+*Second:* IAS15 (score 1.259, margin 25.9%)
 *Excluded N/A:* PEFRL, Y6, Y6C, WH-Y6, Leapfrog, RKN12(10), SRKN14A, WH-BM14A, GJ8, Encke-IAS15
 *Excluded FAIL:* DOPRI5-adaptive
 
 ### A2
 
 *Problems:* T1, R1, R2, L2
-*Recommended:* **IAS15** (score 1.000)
-*Second:* DOP853-adaptive (score 1.260, margin 26.0%)
+*Recommended:* **IAS15** (score 1.013)
+*Second:* DOP853-adaptive (score 1.231, margin 21.5%)
 *Excluded N/A:* PEFRL, Y6, Y6C, WH-Y6, RKN12(10), SRKN14A, WH-BM14A, GJ8, Encke-IAS15
 *Excluded FAIL:* DOPRI5-adaptive, Leapfrog
 *Excluded SKIP:* RK4, DOPRI5-fixed
 
 ### A3
 
-*Not proven (fewer than 2 problems with an evaluated level).* Problems: T1
+*Problems:* T1, R1
+*Recommended:* **RKN12(10)** (score 1.000)
+*Second:* IAS15 (score 1.514, margin 51.4%)
+*Excluded N/A:* WH-Y6, WH-BM14A, Encke-IAS15
+*Excluded FAIL:* DOPRI5-adaptive, Leapfrog
+*Excluded SKIP:* RK4, DOPRI5-fixed, PEFRL, Y6, SRKN14A
 
 ## many-body
 
@@ -220,21 +225,21 @@ second method within 15% is declared a tie.
 
 *Problems:* R1, R2
 *Recommended:* **DOP853-adaptive** (score 1.000)
-*Second:* IAS15 (score 1.362, margin 36.2%)
+*Second:* IAS15 (score 1.434, margin 43.4%)
 *Excluded N/A:* PEFRL, Y6, Y6C, WH-Y6, Leapfrog, RKN12(10), SRKN14A, WH-BM14A, GJ8, Encke-IAS15
 *Excluded FAIL:* DOPRI5-adaptive
 
 ### A2
 
 *Problems:* R1, R2
-*Recommended:* **IAS15** (score 1.000) — tie with **DOP853-adaptive** within 15%
-*Second:* DOP853-adaptive (score 1.101, margin 10.1%)
+*Recommended:* **IAS15** (score 1.027) — tie with **DOP853-adaptive** within 15%
+*Second:* DOP853-adaptive (score 1.050, margin 2.3%)
 *Excluded N/A:* PEFRL, Y6, Y6C, WH-Y6, Leapfrog, RKN12(10), SRKN14A, WH-BM14A, GJ8, Encke-IAS15
 *Excluded FAIL:* DOPRI5-adaptive
 
 ### A3
 
-*Not proven (fewer than 2 problems with an evaluated level).* Problems: none
+*Not proven (fewer than 2 problems with an evaluated level).* Problems: R1
 
 ## nbody-chaotic
 
@@ -255,27 +260,27 @@ second method within 15% is declared a tie.
 ### A1
 
 *Problems:* T1, T2, R1
-*Recommended:* **RKN12(10)** (score 1.001)
-*Second:* SRKN14A (score 1.444, margin 44.3%)
+*Recommended:* **RKN12(10)** (score 1.097)
+*Second:* SRKN14A (score 1.400, margin 27.7%)
 *Excluded N/A:* WH-Y6, WH-BM14A, Encke-IAS15
 *Excluded FAIL:* DOPRI5-adaptive
 
 ### A2
 
 *Problems:* T1, T2, R1
-*Recommended:* **RKN12(10)** (score 1.000)
-*Second:* GJ8 (score 1.503, margin 50.3%)
+*Recommended:* **RKN12(10)** (score 1.058)
+*Second:* GJ8 (score 1.380, margin 30.5%)
 *Excluded N/A:* WH-Y6, WH-BM14A, Encke-IAS15
 *Excluded FAIL:* DOPRI5-adaptive, Leapfrog
 
 ### A3
 
-*Problems:* T1, T2
+*Problems:* T1, T2, R1
 *Recommended:* **RKN12(10)** (score 1.000)
-*Second:* IAS15 (score 1.639, margin 63.9%)
+*Second:* IAS15 (score 1.703, margin 70.3%)
 *Excluded N/A:* WH-Y6, WH-BM14A, Encke-IAS15
 *Excluded FAIL:* DOPRI5-adaptive, Leapfrog
-*Excluded SKIP:* RK4, DOPRI5-fixed, PEFRL, Y6
+*Excluded SKIP:* RK4, DOPRI5-fixed, PEFRL, Y6, SRKN14A
 
 ## perturbed
 
