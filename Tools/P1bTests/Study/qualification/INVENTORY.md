@@ -153,6 +153,16 @@
 | K7 (гармонический) | `StudySelfTest.MakeHarmonicProblem()` | `StudySelfTest.cs:1186` | `private`, одна точка `Period` |
 | K8 (затухание) | `StudySelfTest.MakeDragKeplerProblem()` | `StudySelfTest.cs:1147` | эталон — нули (это тест «аборт/причина»), не решает K8 |
 | T1 (figure-eight) | `KnownFigureEight(periods)` | `scenarios/KnownProblems.cs:142` | IC/период уточнённые (не 8 знаков); считает Taylor-эталон, но не `StudyProblem` |
+
+**Источник ИК T1.** Базовые значения (8 знаков) — Chenciner & Montgomery, *A remarkable
+periodic solution of the three-body problem*, Annals of Mathematics 152 (2000), и
+C. Simó, *Dynamical properties of the figure eight solution of the three-body problem*,
+Contemp. Math. 292 (2002). Уточнённые значения и период, которые использует стенд, взяты
+из уже существующего кода `Study/scenarios/KnownProblems.cs:142-166`:
+`y = -0.24308756818428653234`, `vx = 0.46620369792022003799`,
+`vy = 0.43236571164315760836`, `T = 6.32591409785902117500`; `x = 0.97000436`,
+`v3 = -2·v1`. Стенд вызывает эти значения через `QualificationFigureEightInput()`
+(значения продублированы в `QualificationCatalog.cs` с комментарием-ссылкой).
 | T2 (Lagrange) | `KnownLagrangeTriangle(m1,m2,m3,periods,...)` | `scenarios/KnownProblems.cs:82` | точная формула поворота; не `StudyProblem` |
 | T3 (Pythagorean) | `PythagoreanInput()` + `TaylorNBody`/dd | `taylor/Pythagorean.cs:6` | готовый вход и dd-эталон; не `StudyProblem` |
 | R1, R2 (DE441, Newton/1PN) | **нет** `StudyProblem`; есть `JplFile`/`JplNBody` (`jpl/JplRealism.cs:11,37,42`) и `JplDop853` (`jpl/Jpl1Pn.cs:269`) | — | нужен адаптер в qualification (M5) |
@@ -229,9 +239,12 @@ dotnet run --project Tools/P1bTests -c Release -- --exact Test551_IntegratorFram
 Результат на базовом commit `1dff9e6` (ветка от `main`, до любых изменений):
 
 * `[Test551_IntegratorFrameworkSelfTest] ok`, `ALL PASS`, **84** строки `PASS`, **0** `FAIL`.
-* SHA256 по **именам проверок** (строка `PASS <имя>` до разделителя ` | `):
-  `54ae98e23563b5bec8551f9188a2b83424b049cc6e4cd5deba43141402aec5e6`.
-* Такой же результат воспроизведён после M1: имена совпали побитово, хэш тот же.
+* Воспроизводимая точка сравнения — скрипт
+  `Tools/P1bTests/Study/qualification/baseline/verify_test551.ps1`. Он запускает тест с
+  `--log`, берёт строки `PASS `/`FAIL `, оставляет имя проверки (текст до ` | `),
+  склеивает через LF, добавляет завершающий LF и считает SHA256 по UTF-8 без BOM.
+* Результат скрипта: `lines=84 fails=0`, `SHA256=54ae98e23563b5bec8551f9188a2b83424b049cc6e4cd5deba43141402aec5e6`.
+  Этот же хэш воспроизведён после всех Q-FIX-исправлений.
 
 Почему не хэш всего вывода: две проверки печатают измеряемые величины, которые меняются
 от прогона к прогону:

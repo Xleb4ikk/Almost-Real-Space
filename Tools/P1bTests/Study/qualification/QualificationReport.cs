@@ -324,8 +324,8 @@ internal static partial class P1bTests
 
         sb.AppendLine("## Summary");
         sb.AppendLine();
-        sb.AppendLine("| method | family | PASS | FAIL | N/A | SKIP | best at |");
-        sb.AppendLine("|---|---|---:|---:|---:|---:|---|");
+        sb.AppendLine("| method | family | PASS | FAIL | N/A | SKIP | ERROR | best at |");
+        sb.AppendLine("|---|---|---:|---:|---:|---:|---:|---|");
         foreach (string method in methods)
         {
             List<QualificationMatrixEntry> mine = byMethod[method];
@@ -361,8 +361,7 @@ internal static partial class P1bTests
             List<string> best;
             bestAt.TryGetValue(method, out best);
             sb.AppendLine("| " + method + " | " + QualificationFamilyOf(runs, method) + " | " + pass
-                + " | " + fail + " | " + na + " | " + skip
-                + (error > 0 ? " | ERROR=" + error.ToString(QualificationCatalogInv) : "")
+                + " | " + fail + " | " + na + " | " + skip + " | " + error
                 + " | " + (best == null || best.Count == 0 ? "—" : string.Join(", ", best)) + " |");
         }
 
@@ -396,6 +395,9 @@ internal static partial class P1bTests
 
         sb.AppendLine();
         sb.AppendLine("Legend: P = PASS, F = FAIL, n/a = not applicable, skip = budget/oracle floor.");
+        sb.AppendLine("**Valid for** (in the per-method sections) lists the tags of problems where the method");
+        sb.AppendLine("has at least one PASS; it is not a claim that every level of those problems passes.");
+        sb.AppendLine("**Gate notes on PASS** shows gates that were skipped by the model-drift guard (G3).");
         sb.AppendLine();
         sb.AppendLine("## Per method");
         sb.AppendLine();
@@ -404,7 +406,7 @@ internal static partial class P1bTests
             List<QualificationMatrixEntry> mine = byMethod[method];
             sb.AppendLine("### " + method);
             sb.AppendLine();
-            sb.AppendLine("* **Valid for:** " + QualificationValidFor(mine, tags));
+            sb.AppendLine("* **Valid for (≥1 PASS):** " + QualificationValidFor(mine, tags));
             List<string> best;
             bestAt.TryGetValue(method, out best);
             sb.AppendLine("* **Best at:** " + (best == null || best.Count == 0 ? "—" : string.Join(", ", best)));
@@ -699,7 +701,25 @@ internal static partial class P1bTests
         sb.AppendLine("# Recommendations (Test564)");
         sb.AppendLine();
         sb.AppendLine("Generated from `matrix.csv`; the price is `calls + w·aux` (single-price rule).");
-        sb.AppendLine("L1 is excluded: its oracle is INVALID (see `oracle_audit.md` and `FOUND.md` F8).");
+        var excludedProblems = new List<string>();
+        foreach (QualificationProblem q in catalog)
+        {
+            if (q.Status != "VALID")
+            {
+                excludedProblems.Add(q.Id + " (" + q.Status + ")");
+            }
+        }
+
+        if (excludedProblems.Count > 0)
+        {
+            sb.AppendLine("Problems excluded because their oracle is not VALID: "
+                + string.Join(", ", excludedProblems) + " (see `oracle_audit.md`).");
+        }
+        else
+        {
+            sb.AppendLine("All catalog problems have a VALID oracle.");
+        }
+
         sb.AppendLine();
         sb.AppendLine("Rule (frozen, TASK.md section 11): for each tag and level, use only problems whose");
         sb.AppendLine("level is evaluated by the oracle; need at least 2 problems; candidates must PASS on");
@@ -774,16 +794,22 @@ internal static partial class P1bTests
                     if (allPass)
                     {
                         candidates.Add(method);
+                        continue;
                     }
-                    else if (anyFail)
+
+                    // A method can be N/A on one problem and FAIL on another; it belongs to
+                    // both exclusion lists, not only to the first one that matched.
+                    if (anyFail)
                     {
                         failMethods.Add(method);
                     }
-                    else if (anyNa)
+
+                    if (anyNa)
                     {
                         naMethods.Add(method);
                     }
-                    else if (anySkip)
+
+                    if (anySkip && !anyFail && !anyNa)
                     {
                         skipMethods.Add(method);
                     }

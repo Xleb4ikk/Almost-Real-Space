@@ -79,7 +79,7 @@ internal static partial class P1bTests
             StudyRefResult reference = StudyPlanetIndependentReference(nb, years, sampleEvery);
             StudyRefResult alternative = StudyPlanetIndependentReferenceAlt(nb, years, sampleEvery);
             StudyProblem p = StudyBridgePlanetProblem(
-                QualificationLabel("R1", q.Title + ", " + years.ToString("G", QualificationCatalogInv) + " y"),
+                QualificationLabel("R1", q.Title),
                 nb, years, reference, alternative);
 
             q.Build = delegate { return p; };
