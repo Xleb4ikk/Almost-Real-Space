@@ -341,10 +341,20 @@ internal static partial class P1bTests
 
     private static bool QualificationRhsChanged(double[] a, double[] b, int start, int count)
     {
+        // Relative to the largest acceleration in the block. The old absolute test
+        // (1e-9 * (1 + |a|)) could not see the Sun-only 1PN term: its change under a
+        // 0.1% velocity shift is ~4e-11 of the Newtonian acceleration.
+        double scale = 0d;
         for (int i = start; i < start + count && i < a.Length; i++)
         {
-            double scale = 1d + Math.Abs(a[i]);
-            if (Math.Abs(a[i] - b[i]) > 1e-9d * scale)
+            scale = Math.Max(scale, Math.Abs(a[i]));
+            scale = Math.Max(scale, Math.Abs(b[i]));
+        }
+
+        double tol = Math.Max(1e-12d * scale, 1e-300d);
+        for (int i = start; i < start + count && i < a.Length; i++)
+        {
+            if (Math.Abs(a[i] - b[i]) > tol)
             {
                 return true;
             }
