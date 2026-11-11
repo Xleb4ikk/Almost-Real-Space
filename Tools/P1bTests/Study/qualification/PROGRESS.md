@@ -218,6 +218,7 @@ _Пусто._
 | FIX-7 | Resume без пересчёта готовых задач | сделано |
 | FIX-8 | `--compare` флагом | сделано |
 | FIX-9 | wall time: всегда ≥5 повторов | сделано |
+| FIX-10 | документы и отчёты | сделано |
 | FIX-10 | документы и отчёты | в работе |
 
 ### FIX-1 (G2)
@@ -321,7 +322,38 @@ sweep/детерминизм/аудит не выполняются. Стату�
 дал `62 status, 180 error, 190 price change(s)`; прогон с `--compare` против только что
 созданного прогона — `No changes: statuses, errors and prices are identical within 10%`.
 
+### Итог исправлений (факты)
+
+| проверка | результат |
+|---|---|
+| `dotnet build Tools/P1bTests -c Release` | 0 ошибок |
+| `verify_test551.ps1` | `lines=84 fails=0`, SHA256 `54ae98e2...` (воспроизводится скриптом) |
+| smoke `Test564` | `ALL PASS`, `PASS=446 FAIL=66 SKIP=103 N/A=105 ERROR=0`, ≈134 с |
+| full `Test564` #1 | `ALL PASS`, `PASS=446 FAIL=59 SKIP=110 N/A=105 ERROR=0`, 205.7 с |
+| full `Test564` #2 с `--compare` #1 | `No changes`, 0 статусов / 0 ошибок / 0 цен |
+| resume (обрезанный smoke, K1–K3) | `reused 135 cell(s)`, 0 расхождений с чистым прогоном, повторный resume — `nothing to resume` |
+| `--compare` флагом | против старого baseline — 62/180/190 изменений; против нового прогона — `No changes` |
+| ERROR-инъекция | `ERROR=1`, exit code 1, сообщение с причиной; инъекция убрана |
+
+Числа, которые изменились: `order_obs` заполнен в 2196 из 3529 строк (было 0); G2-FAIL:
+GJ8 на 9 задачах (22 ячейки), RK4 на 6 ячейках (K8/R1/T1/L2 и др., завышенный порядок на
+предсимптотических точках окна); R4 A2: 13 PASS + GJ8 FAIL по G2 + Leapfrog SKIP (было
+14 G3-FAIL); 6 G5-ячеек стали PASS; G3-FAIL нет ни одной; R1 DOPRI5-adaptive A1/A2/A3,
+T3 A1, R3 A1, L2 A1/A2 — PASS.
+
+Открытым остаётся: R1 на фикстуре vs DE441 (решение владельца — оставить), `StarSystem`
+в R3/R4/L1 (§15, вопрос №6), L1 INVALID (вопрос №4), политика G5 (если владелец передумает —
+вернуть «любое нарушение = FAIL»).
+
 ## Журнал сессий
+
+- **2026-11-11 — исправления после M7 (Q-FIX-1…Q-FIX-9).** G2 (направление обхода и лог
+  `order`), G3 (безразмерная шкала + model-drift guard), детектор 1PN, G5 (только
+  сертифицирующие прогоны), ERROR → exit 1, вычисляемый статус L1, resume, `--compare`
+  флагом, wall time ≥5, документы/отчёты. Baseline пересобран:
+  `baseline/20261111T183727Z_c979ab0/` (commit `c979ab0`, full,
+  `PASS=446 FAIL=59 SKIP=110 N/A=105`, 3529 строк `runs.csv`). Старый baseline
+  `20261111T171630Z_4df81a2` сохранён.
 
 - **2026-11-11 — M0 (завершён).** Создана ветка `qualification/test564-method-qualification`.
   Прочитаны `TASK.md`, `PROGRESS.md`, `Study/README.md`, `framework/*`, `StudySelfTest`,
