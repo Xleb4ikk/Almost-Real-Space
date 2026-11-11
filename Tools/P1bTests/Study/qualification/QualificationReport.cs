@@ -734,6 +734,15 @@ internal static partial class P1bTests
         {
             body.AppendLine("## " + tag);
             body.AppendLine();
+            if (tag == "central-dominant")
+            {
+                body.AppendLine("*Note:* WH-Y6 / WH-BM14A / Encke-IAS15 are N/A on R1: it is a 7-body");
+                body.AppendLine("N-body task, while they require one particle in a central field (`PosDim == 3`).");
+                body.AppendLine("For a single particle in a central field see the `ecc-*` and `kepler` tags and R4,");
+                body.AppendLine("with the R2 caveat: R2 (1PN) is certified to A2 only, A3 is SKIP by the oracle floor.");
+                body.AppendLine();
+            }
+
             foreach (string level in QualificationLevelNames)
             {
                 body.AppendLine("### " + level);

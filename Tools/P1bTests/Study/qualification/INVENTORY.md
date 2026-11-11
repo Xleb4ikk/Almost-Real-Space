@@ -168,7 +168,7 @@ Contemp. Math. 292 (2002). Уточнённые значения и период
 | R1, R2 (DE441, Newton/1PN) | **нет** `StudyProblem`; есть `JplFile`/`JplNBody` (`jpl/JplRealism.cs:11,37,42`) и `JplDop853` (`jpl/Jpl1Pn.cs:269`) | — | нужен адаптер в qualification (M5) |
 | R3 (корабль у Земли) | `StudyBridgeShipProblem` + кейсы Test549 | `StudyBridge.cs:64`, `SpacecraftOrbitMatrix.cs:4187` | готово |
 | R4 (пролёт Луны) | `MoonFlybyProblem` | `PureGravityCases.cs:275` | готово (`StudyProblem` с certified ref) |
-| L1 (1000 витков LEO) | кейс `"Earth LEO 400 km, 1000 orbits (~64 d)"` + `StudyShipMatrixBuildReferences` | `SpacecraftOrbitMatrix.cs:4292`, `:930` | готово; golden — `Study/integrators/golden/ship_1000_orbits_dd.json` |
+| L1 (1000 витков LEO) | кейс `"Earth LEO 400 km, 1000 orbits (~64 d)"` + `StudyShipMatrixBuildReferences` | `SpacecraftOrbitMatrix.cs:4292`, `:930` | готово; oracle — локальный сертифицированный DOP853 (`LocalError` = 1.824e-4 м), golden — только кросс-проверка |
 | L2 (Kepler e=0.5, N витков) | — | — | строится как K3 с бо́льшим горизонтом; N фиксируется в M5 |
 
 Готовые обёртки, которые Test564 должен вызывать (а не переписывать):
@@ -307,7 +307,7 @@ AMD Ryzen 9 8940HX, 32 логических CPU, Windows x64.
 | R2 | DE441, 10 тел, 1PN, 10 лет | то же + `JplAcc1Pn` (Sun-only 1PN — headline-модель проекта) | EIH и J2 не включены: TASK.md говорит «1PN», а в проекте headline — Sun-only 1PN |
 | R3 | корабль у Земли + возмущения (Луна, Солнце), 30 сут | Test549-кейс «Earth LEO 400 km, 30 d» (локальный кадр, без тяги/drag) | возмущения идут через запечённые эфемериды системы; отдельного кейса «только Луна+Солнце» нет |
 | R4 | пролёт Луны (гиперболический) | `MoonFlybyProblem(solar, 1000 м/с, 100 км)` (Test559), Moon-centred | вместо Test549-кейса «Earth-Moon flyby inside lunar SOI»; выбран гиперболический пролёт у Луны, как в тексте |
-| L1 | 1000 витков LEO (чистая гравитация) | Test549-кейс «Earth LEO 400 km, 1000 orbits» + dd-golden | «чистая гравитация» = без тяги и drag; возмущения Луны/Солнца через запечённые эфемериды присутствуют. Oracle INVALID: golden и локальная модель расходятся на 8.522 м (`FOUND.md` F8) |
+| L1 | 1000 витков LEO (чистая гравитация) | Test549-кейс «Earth LEO 400 km, 1000 orbits» + локальный сертифицированный DOP853 (`LocalReferenceOnly = true`) | «чистая гравитация» = без тяги и drag; возмущения Луны/Солнца через запечённые эфемериды присутствуют. Oracle — локальная модель, которую интегрируют методы (floor 1.824e-4 м); golden/локальное расхождение 8.522 м — frame difference (`FOUND.md` F8), golden только кросс-проверка. A1/A2 оцениваются, A3 SKIP по floor |
 | L2 | Kepler e=0.5, N витков (N задать) | N = 100 витков, 4 checkpoint'а, замкнутая формула | N зафиксировано |
 
 Уровни: `ScaleLength` берётся из builder'а (для корабля — радиус орбиты, для DE441 — 1 а.е.),

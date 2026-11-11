@@ -400,8 +400,9 @@ internal static partial class P1bTests
         q.Title = "LEO 400 km, 1000 orbits (pure gravity)";
         q.Tags = new[] { "kepler", "long-horizon" };
         q.OracleKind = "reference";
-        q.OracleId = "dd-golden-v1";
-        q.OracleNote = "committed dd golden ship_1000_orbits_dd.json, cross-checked against the certified local DOP853 reference";
+        q.OracleId = "ship-certified-dop853-local-v1";
+        q.OracleNote = "local-frame certified fixed DOP853 reference (the model the methods integrate); "
+            + "the world-frame dd golden is a cross-check only (owner decision 2026-11-11)";
 
         try
         {
@@ -423,56 +424,60 @@ internal static partial class P1bTests
                 return q;
             }
 
-            StudyProblem certified = BuildPureProblem(found);
+            // Same model as the methods: the certified local DOP853 reference of the Test549
+            // case (not the world-frame dd golden). This keeps the oracle and the integrated
+            // force in the same frame (owner decision: the 8.5 m golden difference is a frame
+            // difference, not an integrator error). LocalReferenceOnly leaves the dd
+            // disagreement in the reference note and does not fold it into the floor.
+            found.LocalReferenceOnly = true;
+            StudyShipMatrixSetTargets(found);
+            StudyShipMatrixRefs refs = StudyShipMatrixBuildReferences(found);
+            StudyProblem p = StudyBridgeShipProblem(found, refs);
+            p.Label = QualificationLabel("L1", q.Title);
+            // refs.ReferenceFloor includes the world-frame dd endpoint difference (8.522 m) —
+            // a frame difference, not the local reference error. The owner's decision is to use
+            // the local certified error (1.82e-4 m) as the floor.
+            double localFloor = refs.LocalError;
+            if (!double.IsFinite(localFloor) || localFloor <= 0d)
+            {
+                localFloor = refs.ReferenceFloor;
+            }
+
+            p.Floor = localFloor;
+            p.ReferenceNote = refs.LocalKind;
+            p.ReferenceMethod = "fixed DOP853, local frame";
+            p.Certified = double.IsFinite(p.Floor);
+
+            q.Build = delegate { return p; };
+            q.Floor = p.Floor;
+            q.OracleTimes = (double[])p.CheckpointTimes.Clone();
+            q.Oracle = QualificationCloneStates(p.CheckpointRef);
+
+            // Cross-check only (world-frame dd golden); never the grading reference.
+            string cross = "golden missing";
+            double goldenDiff = double.NaN;
             string path = StudyShipDdGoldenPath();
-            if (!File.Exists(path))
+            if (File.Exists(path))
             {
-                q.Status = "INVALID";
-                q.AuditNote = "golden file missing: " + path;
-                return q;
+                StudyShipDdGoldenFile golden =
+                    JsonSerializer.Deserialize<StudyShipDdGoldenFile>(File.ReadAllText(path));
+                double[] end = p.CheckpointRef[p.CheckpointRef.Length - 1];
+                double dp = 0d;
+                double dv = 0d;
+                for (int i = 0; i < 3; i++)
+                {
+                    dp = Math.Max(dp, Math.Abs(end[i] - golden.PRel[i]));
+                    dv = Math.Max(dv, Math.Abs(end[p.PosDim + i] - golden.VRel[i]));
+                }
+
+                goldenDiff = Math.Max(dp, dv * 1000d);
+                cross = "golden vs local: " + QualificationFormat(dp) + " m, "
+                    + QualificationFormat(dv) + " m/s (frame difference, FOUND.md F8)";
             }
 
-            StudyShipDdGoldenFile golden =
-                JsonSerializer.Deserialize<StudyShipDdGoldenFile>(File.ReadAllText(path));
-
-            // The golden carries one endpoint; keep that single checkpoint.
-            StudyProblem endOnly = certified.CloneEndOnly();
-            double[] certifiedEnd = certified.CheckpointRef[certified.CheckpointRef.Length - 1];
-            double dp = 0d;
-            double dv = 0d;
-            for (int i = 0; i < 3; i++)
-            {
-                dp = Math.Max(dp, Math.Abs(certifiedEnd[i] - golden.PRel[i]));
-                dv = Math.Max(dv, Math.Abs(certifiedEnd[certified.PosDim + i] - golden.VRel[i]));
-            }
-
-            var goldenRef = new double[endOnly.Dim];
-            for (int i = 0; i < 3; i++)
-            {
-                goldenRef[i] = golden.PRel[i];
-                goldenRef[endOnly.PosDim + i] = golden.VRel[i];
-            }
-
-            for (int i = 2 * endOnly.PosDim; i < endOnly.Dim; i++)
-            {
-                goldenRef[i] = endOnly.Y0[i];
-            }
-
-            endOnly.CheckpointRef[0] = goldenRef;
-            endOnly.Floor = Math.Max(Math.Max(golden.SelfErrorM, certified.Floor), Math.Max(dp, dv * 1000d));
-            endOnly.Certified = true;
-            endOnly.Label = QualificationLabel("L1", q.Title);
-            endOnly.MaxControl = 0d;
-
-            q.Build = delegate { return endOnly; };
-            q.Floor = endOnly.Floor;
-            q.OracleTimes = new[] { endOnly.EndTime };
-            q.Oracle = new[] { goldenRef };
-            q.Residual = Math.Max(dp, dv * 1000d);
-            q.AuditNote = "dd golden self " + QualificationFormat(golden.SelfErrorM)
-                + " m; certified local reference vs golden: "
-                + QualificationFormat(dp) + " m, " + QualificationFormat(dv) + " m/s"
-                + "; model/frame difference, see FOUND.md F8";
+            q.Residual = goldenDiff;
+            q.AuditNote = "reference " + p.ReferenceNote
+                + "; floor " + QualificationFormat(p.Floor) + "; " + cross;
         }
         catch (Exception ex)
         {
@@ -575,18 +580,14 @@ internal static partial class P1bTests
 
         if (q.Id == "L1")
         {
-            // The specified golden (world-frame dd) and the local-frame force model disagree by
-            // ~8.5 m over 1000 orbits. Status is computed: the golden is accepted only when it
-            // agrees with the local model to 0.1 * A1 (0.1 * 1e-6 * ScaleLength). With the
-            // current 9.657 m that is false, hence INVALID (FOUND.md F8), but a rebuilt golden
-            // would flip it automatically.
-            double a1 = QualificationLevelFactors[0] * p.ScaleLength;
-            bool goldenOk = double.IsFinite(q.Residual) && q.Residual <= 0.1d * a1;
-            q.Status = goldenOk ? "VALID" : "INVALID";
+            // Owner decision 2026-11-11: the oracle is the local certified DOP853 reference of
+            // the same case (the model the methods integrate). The world-frame dd golden is a
+            // cross-check; its ~8.5 m disagreement is a frame difference (FOUND.md F8), not an
+            // oracle failure. A3 remains SKIP because the local floor is ~1.8e-4 m.
+            bool localCertified = double.IsFinite(p.Floor) && p.Floor > 0d;
+            q.Status = localCertified ? "VALID" : "INVALID";
             q.AuditNote = q.AuditNote
-                + "; gate |golden - local| = " + QualificationFormat(q.Residual)
-                + " <= 0.1*A1 = " + QualificationFormat(0.1d * a1)
-                + (goldenOk ? "" : " -> INVALID (model/frame difference, FOUND.md F8)");
+                + (localCertified ? "" : "; local certified reference has no finite floor");
             return;
         }
 

@@ -229,7 +229,10 @@ internal static partial class P1bTests
 
             options.AbsTargets = targets;
             options.AdaptiveMaxSteps = new[] { double.PositiveInfinity };
-            options.MaxCostRhs = 2000000L;
+            // Owner decision 2026-11-11: smoke keeps 2e6 (minutes), full gets 10e6 so that
+            // RK4 L2 A2 (~4e6 calls) is no longer censored. G7 still turns a real budget hit
+            // into SKIP, not FAIL.
+            options.MaxCostRhs = profile == QualificationProfile.Full ? 10000000L : 2000000L;
             options.RefineTies = profile == QualificationProfile.Full;
             options.TimingReps = 1;
 
