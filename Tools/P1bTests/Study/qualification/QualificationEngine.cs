@@ -33,6 +33,14 @@ internal static partial class P1bTests
         public double BestControl = double.NaN;
         public double Price = double.NaN;
         public double Err = double.NaN;
+        public StudyRow Best;
+    }
+
+    private sealed class QualificationMeasure
+    {
+        public double MsMedian = double.NaN;
+        public long AllocBytes;
+        public int Reps;
     }
 
     private sealed class QualificationOrder
@@ -84,30 +92,84 @@ internal static partial class P1bTests
             log.WriteLine(q.Id + " " + q.Title + " (" + p.Label + ")");
             StudyScenarioResult result = StudySweepRunner.Run(p, methods, options, log);
 
-            QualificationOrder[] orders = new QualificationOrder[methods.Count];
+            var orders = new QualificationOrder[methods.Count];
+            var mineByMethod = new List<List<StudyRow>>(methods.Count);
+            var detByMethod = new bool[methods.Count];
+            var detNoteByMethod = new string[methods.Count];
+            var cellsForProblem = new List<QualificationCell>();
             for (int m = 0; m < methods.Count; m++)
             {
                 orders[m] = QualificationObservedOrder(p, result.Rows, methods[m], options);
+                List<StudyRow> mine = QualificationRowsOf(result.Rows, methods[m].Name);
+                mineByMethod.Add(mine);
+                detByMethod[m] = QualificationDeterminism(
+                    p, methods[m], mine, options, QualificationLevelFactors[0] * p.ScaleLength,
+                    out detNoteByMethod[m]);
+
+                for (int level = 0; level < QualificationLevelFactors.Length; level++)
+                {
+                    cellsForProblem.Add(QualificationCellFor(
+                        q, p, methods[m], mine, level, orders[m], detByMethod[m], detNoteByMethod[m]));
+                }
+            }
+
+            // G7: one sequential pass over the certificate controls (warm-up + median of 5/3
+            // repeats, Test562's scheme). G4: forward-backward at the cheapest passing control.
+            var measured = new Dictionary<string, QualificationMeasure>();
+            var reversibility = new Dictionary<string, QualificationReversibility>();
+            for (int m = 0; m < methods.Count; m++)
+            {
+                IStudyIntegrator method = methods[m];
+                double tightest = double.NaN;
+                double loosest = double.NaN;
+                foreach (QualificationCell c in cellsForProblem)
+                {
+                    if (c.Method != method.Name || c.Status != "PASS" || !(c.BestControl > 0d))
+                    {
+                        continue;
+                    }
+
+                    string key = method.Name + "|" + c.BestControl.ToString("R", QualificationInv);
+                    if (!measured.ContainsKey(key))
+                    {
+                        measured[key] = QualificationMeasureRun(
+                            p, method, c.BestControl, options.MaxCostRhs);
+                    }
+
+                    if (double.IsNaN(loosest) || c.BestControl > loosest)
+                    {
+                        loosest = c.BestControl;
+                    }
+
+                    if (double.IsNaN(tightest) || c.BestControl < tightest)
+                    {
+                        tightest = c.BestControl;
+                    }
+                }
+
+                if (!double.IsNaN(loosest))
+                {
+                    reversibility[method.Name] = QualificationReversibilityOf(q, p, method, loosest);
+                }
             }
 
             for (int m = 0; m < methods.Count; m++)
             {
-                IStudyIntegrator method = methods[m];
-                List<StudyRow> mine = QualificationRowsOf(result.Rows, method.Name);
-                bool deterministic = QualificationDeterminism(
-                    p, method, mine, options, QualificationLevelFactors[0] * p.ScaleLength, out string detNote);
-
+                List<StudyRow> mine = mineByMethod[m];
                 for (int i = 0; i < mine.Count; i++)
                 {
-                    runRows.Add(QualificationRunRow(q, method, mine[i], orders[m], deterministic, detNote));
-                }
-
-                for (int level = 0; level < QualificationLevelFactors.Length; level++)
-                {
-                    cells.Add(QualificationCellFor(
-                        q, p, method, mine, level, orders[m], deterministic, detNote));
+                    QualificationMeasure meas = null;
+                    measured.TryGetValue(
+                        methods[m].Name + "|" + mine[i].Control.ToString("R", QualificationInv), out meas);
+                    QualificationReversibility rev = null;
+                    reversibility.TryGetValue(methods[m].Name, out rev);
+                    runRows.Add(QualificationRunRow(
+                        q, p, methods[m], mine[i], orders[m], detByMethod[m], detNoteByMethod[m],
+                        meas, rev));
                 }
             }
+
+            cells.AddRange(cellsForProblem);
 
             // Partial results survive an interrupted run: rewrite both CSVs after every problem.
             QualificationWriteCsv(Path.Combine(dir, "runs.csv"), QualificationRunsHeader, runRows);
@@ -559,8 +621,9 @@ internal static partial class P1bTests
             cell.BestControl = best.Control;
             cell.Price = best.Cost;
             cell.Err = best.Err;
+            cell.Best = best;
 
-            string gate = QualificationGateFailure(method, order, deterministic, detNote);
+            string gate = QualificationGateFailure(method, order, deterministic, detNote, p, best, threshold);
             cell.Status = gate.Length == 0 ? "PASS" : "FAIL";
             cell.Reason = gate;
             return cell;
@@ -603,7 +666,8 @@ internal static partial class P1bTests
     }
 
     private static string QualificationGateFailure(
-        IStudyIntegrator method, QualificationOrder order, bool deterministic, string detNote)
+        IStudyIntegrator method, QualificationOrder order, bool deterministic, string detNote,
+        StudyProblem p, StudyRow best, double threshold)
     {
         // G2: fixed-step only, and only when the method declares an order and the grid has
         // at least 4 points in the window (fewer points is "order n/a", not a failure).
@@ -622,7 +686,197 @@ internal static partial class P1bTests
             return "G6 determinism: " + detNote;
         }
 
+        // G3: invariants, only on conservative problems that expose them.
+        if (p.EnergyFn != null && double.IsFinite(best.EnergyDriftFromInitial))
+        {
+            double e0 = p.EnergyFn(p.Y0);
+            double eScale = Math.Max(Math.Abs(e0), QualificationEnergyFloor(p));
+            double rel = best.EnergyDriftFromInitial / eScale;
+            if (double.IsFinite(rel) && rel > 10d * threshold)
+            {
+                return "G3 energy drift " + QualificationFormat(rel) + " > 10*" + QualificationFormat(threshold);
+            }
+        }
+
+        if (p.AngularMomentumFn != null && double.IsFinite(best.AngularDriftFromInitial))
+        {
+            double l0 = p.AngularMomentumFn(p.Y0);
+            double lScale = Math.Max(Math.Abs(l0), QualificationAngularFloor(p));
+            double rel = best.AngularDriftFromInitial / lScale;
+            if (double.IsFinite(rel) && rel > 10d * threshold)
+            {
+                return "G3 angular momentum drift " + QualificationFormat(rel)
+                    + " > 10*" + QualificationFormat(threshold);
+            }
+        }
+
         return "";
+    }
+
+    /// <summary>
+    /// Energy scale for the relative drift when E0 is near zero (a parabolic orbit has E = 0
+    /// exactly, so |dE/E| would be 0/0).
+    /// </summary>
+    private static double QualificationEnergyFloor(StudyProblem p)
+    {
+        if (p.CentralMu > 0d && p.ScaleLength > 0d)
+        {
+            return 0.5d * p.CentralMu / p.ScaleLength;
+        }
+
+        return 1e-300d;
+    }
+
+    /// <summary>Angular-momentum scale: sqrt(mu*a) for a central field, else |L0| only.</summary>
+    private static double QualificationAngularFloor(StudyProblem p)
+    {
+        if (p.CentralMu > 0d && p.ScaleLength > 0d)
+        {
+            return Math.Sqrt(p.CentralMu * p.ScaleLength);
+        }
+
+        return 1e-300d;
+    }
+
+    // ---------------------------------------------------------------------------------
+    // G7 (timing) and G4 (reversibility)
+    // ---------------------------------------------------------------------------------
+
+    private sealed class QualificationReversibility
+    {
+        public double Control = double.NaN;
+        public double RevErr = double.NaN;
+        public double ComRel = double.NaN;
+    }
+
+    /// <summary>
+    /// Sequential timing pass: one warm-up, then 5 repeats (3 when a single run exceeds
+    /// 250 ms), median of the wall time, median allocation per run. This is Test562's scheme
+    /// (warm-up, GC.Collect before each repeat, median), applied to the certificate control.
+    /// </summary>
+    private static QualificationMeasure QualificationMeasureRun(
+        StudyProblem p, IStudyIntegrator method, double control, long budget)
+    {
+        var m = new QualificationMeasure();
+        StudyConfig cfg = method.MakeConfig(p, control, double.PositiveInfinity);
+        method.Run(p, cfg, new StudyContext(p, budget));
+
+        var warm = System.Diagnostics.Stopwatch.StartNew();
+        method.Run(p, cfg, new StudyContext(p, budget));
+        warm.Stop();
+        int reps = warm.Elapsed.TotalMilliseconds > 250d ? 3 : 5;
+
+        var times = new List<double>(reps);
+        var allocs = new List<long>(reps);
+        for (int k = 0; k < reps; k++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            long a0 = GC.GetAllocatedBytesForCurrentThread();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            method.Run(p, cfg, new StudyContext(p, budget));
+            sw.Stop();
+            long a1 = GC.GetAllocatedBytesForCurrentThread();
+            times.Add(sw.Elapsed.TotalMilliseconds);
+            allocs.Add(a1 - a0);
+        }
+
+        times.Sort();
+        allocs.Sort();
+        m.MsMedian = times[times.Count / 2];
+        m.AllocBytes = allocs[allocs.Count / 2];
+        m.Reps = reps;
+        return m;
+    }
+
+    /// <summary>
+    /// G4: forward to the horizon, then backward with the negated right-hand side. The
+    /// catalogue is autonomous, so t is not used by any Rhs. Also records the worst COM drift.
+    /// Informational only: adaptive methods are not required to be reversible.
+    /// </summary>
+    private static QualificationReversibility QualificationReversibilityOf(
+        QualificationProblem q, StudyProblem p, IStudyIntegrator method, double control)
+    {
+        var r = new QualificationReversibility();
+        r.Control = control;
+        StudyConfig cfg = method.MakeConfig(p, control, double.PositiveInfinity);
+        StudyRun forward;
+        try
+        {
+            forward = method.Run(p, cfg, new StudyContext(p, 20000000L));
+        }
+        catch (Exception)
+        {
+            return r;
+        }
+
+        if (forward.Aborted || forward.Samples == null)
+        {
+            return r;
+        }
+
+        if (q.ComFn != null)
+        {
+            double[] com0 = q.ComFn(p.Y0);
+            double worst = 0d;
+            for (int k = 0; k < forward.Samples.Length; k++)
+            {
+                double[] s = forward.Samples[k];
+                if (s == null)
+                {
+                    break;
+                }
+
+                double[] com = q.ComFn(s);
+                for (int i = 0; i < 3; i++)
+                {
+                    worst = Math.Max(worst, Math.Abs(com[i] - com0[i]));
+                }
+            }
+
+            r.ComRel = worst / Math.Max(p.ScaleLength, 1e-300d);
+        }
+
+        try
+        {
+            StudyProblem back = p.ShallowClone();
+            back.T0 = 0d;
+            // Time reversal: X(0) = x(T), V(0) = -v(T), and X' = V, V' = -a(X).
+            var backY = (double[])forward.Final.Clone();
+            for (int i = p.PosDim; i < 2 * p.PosDim && i < backY.Length; i++)
+            {
+                backY[i] = -backY[i];
+            }
+
+            back.Y0 = backY;
+            back.Breakpoints = null;
+            back.DomainViolation = null;
+            back.CheckpointTimes = new[] { p.EndTime - p.T0 };
+            back.CheckpointRef = new[] { (double[])p.Y0.Clone() };
+            // For an autonomous second-order system the time reverse is (x, -v) propagated
+            // with the SAME right-hand side; the two sign flips (t and v) cancel for a(x).
+            // A velocity-dependent force is not reversible by construction, which is exactly
+            // what rev_err should show (G4 is informational).
+            StudyRun reverse = method.Run(back, cfg, new StudyContext(back, 20000000L));
+            if (reverse.Final != null && !reverse.Aborted)
+            {
+                // The reversed run ends at (x0, -v0); compare against that same convention.
+                var target = (double[])p.Y0.Clone();
+                for (int i = p.PosDim; i < 2 * p.PosDim && i < target.Length; i++)
+                {
+                    target[i] = -target[i];
+                }
+
+                r.RevErr = p.Error(reverse.Final, target);
+            }
+        }
+        catch (Exception)
+        {
+            r.RevErr = double.NaN;
+        }
+
+        return r;
     }
 
     // ---------------------------------------------------------------------------------
@@ -644,8 +898,9 @@ internal static partial class P1bTests
     }
 
     private static string QualificationRunRow(
-        QualificationProblem q, IStudyIntegrator method, StudyRow row, QualificationOrder order,
-        bool deterministic, string detNote)
+        QualificationProblem q, StudyProblem p, IStudyIntegrator method, StudyRow row,
+        QualificationOrder order, bool deterministic, string detNote,
+        QualificationMeasure meas, QualificationReversibility rev)
     {
         string status = row.Status;
         string reason = row.Note ?? "";
@@ -653,6 +908,21 @@ internal static partial class P1bTests
         {
             status = "nonfinite";
         }
+
+        double eScale = double.NaN;
+        if (p.EnergyFn != null)
+        {
+            eScale = Math.Max(Math.Abs(p.EnergyFn(p.Y0)), QualificationEnergyFloor(p));
+        }
+
+        double lScale = double.NaN;
+        if (p.AngularMomentumFn != null)
+        {
+            lScale = Math.Max(Math.Abs(p.AngularMomentumFn(p.Y0)), QualificationAngularFloor(p));
+        }
+
+        bool sameControl = rev != null && rev.Control > 0d
+            && Math.Abs(rev.Control - row.Control) <= 1e-12d * Math.Max(rev.Control, 1d);
 
         var sb = new StringBuilder();
         sb.Append(QualificationCsvField(q.Id)).Append(',');
@@ -666,16 +936,20 @@ internal static partial class P1bTests
         sb.Append(QualificationCsvNumber(row.ErrFinal)).Append(',');
         sb.Append(QualificationCsvNumber(order.Points >= 4 ? order.Observed : double.NaN)).Append(',');
         sb.Append(QualificationCsvNumber(method.ExpectedOrder)).Append(',');
-        sb.Append(QualificationCsvNumber(row.EnergyDriftFromInitial)).Append(',');
-        sb.Append(QualificationCsvNumber(row.AngularDriftFromInitial)).Append(',');
-        sb.Append(QualificationCsvNumber(double.NaN)).Append(','); // dCOM_rel: M4
-        sb.Append(QualificationCsvNumber(double.NaN)).Append(','); // rev_err: M4
+        sb.Append(QualificationCsvNumber(double.IsFinite(eScale) && double.IsFinite(row.EnergyDriftFromInitial)
+            ? row.EnergyDriftFromInitial / eScale
+            : double.NaN)).Append(',');
+        sb.Append(QualificationCsvNumber(double.IsFinite(lScale) && double.IsFinite(row.AngularDriftFromInitial)
+            ? row.AngularDriftFromInitial / lScale
+            : double.NaN)).Append(',');
+        sb.Append(QualificationCsvNumber(sameControl ? rev.ComRel : double.NaN)).Append(',');
+        sb.Append(QualificationCsvNumber(sameControl ? rev.RevErr : double.NaN)).Append(',');
         sb.Append(row.Steps.ToString(QualificationInv)).Append(',');
         sb.Append(row.Rejected.ToString(QualificationInv)).Append(',');
         sb.Append(row.Calls.ToString(QualificationInv)).Append(',');
         sb.Append(QualificationCsvNumber(row.Cost)).Append(',');
-        sb.Append(QualificationCsvNumber(row.Ms)).Append(',');
-        sb.Append(QualificationCsvNumber(double.NaN)).Append(','); // alloc_bytes: M4
+        sb.Append(QualificationCsvNumber(meas != null ? meas.MsMedian : double.NaN)).Append(',');
+        sb.Append(meas != null && meas.AllocBytes > 0 ? meas.AllocBytes.ToString(QualificationInv) : "").Append(',');
         sb.Append(deterministic ? "1" : "0").Append(',');
         sb.Append(QualificationCsvField(q.OracleId)).Append(',');
         sb.Append(QualificationCsvNumber(q.Floor));

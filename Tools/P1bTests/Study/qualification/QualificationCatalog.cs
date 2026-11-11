@@ -54,6 +54,9 @@ internal static partial class P1bTests
             }
         }
 
+        /// <summary>Optional centre-of-mass function (3-vector) for the G3 report.</summary>
+        public Func<double[], double[]> ComFn;
+
         private StudyProblem problem;
 
         public double[][] Oracle;
@@ -571,6 +574,7 @@ internal static partial class P1bTests
         q.OracleNote = "dd-Taylor (order 32, tol 1e-30), cross-checked by fixed DOP853 5 levels";
 
         TaylorNBodyInput input = QualificationFigureEightInput();
+        q.ComFn = QualificationComFn(input.Mu);
         const int periods = 10;
         double[] times = QualificationSplitHorizon(periods * QualificationFigureEightPeriod, 4);
 
@@ -663,6 +667,7 @@ internal static partial class P1bTests
             P0 = (double[])p0.Clone(),
             V0 = (double[])v0.Clone()
         };
+        q.ComFn = QualificationComFn(input.Mu);
 
         // Equal masses make the equilateral Lagrange solution linearly unstable (Routh:
         // (m1m2+m2m3+m3m1)/(M^2) = 1/3 > 1/27). Over ten periods any round-off grows to O(1)
@@ -734,6 +739,7 @@ internal static partial class P1bTests
         q.OracleNote = "dd-Taylor (order 32, tol 1e-30); the fixed-step DOP853 5-level probe is reported as a chaos diagnostic";
 
         TaylorNBodyInput input = PythagoreanInput();
+        q.ComFn = QualificationComFn(input.Mu);
         double[] times = new[] { 2d, 5d, 10d, 20d };
         q.OracleTimes = times;
         q.Oracle = QualificationDdTaylorStates(input, times, 32, 1e-30d);
@@ -885,6 +891,32 @@ internal static partial class P1bTests
         Array.Copy(p, 0, y, 0, p.Length);
         Array.Copy(v, 0, y, p.Length, v.Length);
         return y;
+    }
+
+    /// <summary>Centre of mass of a [x, v] N-body state, weighted by the gravitational parameters.</summary>
+    private static Func<double[], double[]> QualificationComFn(double[] mu)
+    {
+        int n = mu.Length;
+        double total = 0d;
+        for (int i = 0; i < n; i++)
+        {
+            total += mu[i];
+        }
+
+        return delegate (double[] s)
+        {
+            double x = 0d;
+            double y = 0d;
+            double z = 0d;
+            for (int i = 0; i < n; i++)
+            {
+                x += mu[i] * s[3 * i];
+                y += mu[i] * s[(3 * i) + 1];
+                z += mu[i] * s[(3 * i) + 2];
+            }
+
+            return new[] { x / total, y / total, z / total };
+        };
     }
 
     private static double[][] QualificationCloneStates(double[][] states)
