@@ -578,6 +578,7 @@ internal static partial class P1bTests
         bool anyError = false;
         bool anyCensored = false;
         bool anyNonFinite = false;
+        bool anyFinite = false;
         string nonFiniteNote = "";
         string errorNote = "";
         StudyRow best = null;
@@ -603,13 +604,21 @@ internal static partial class P1bTests
 
             if (r.Status == "ok" && !r.Finite)
             {
-                // G5: NaN/Inf or an aborted run anywhere in the grid is a violation.
+                // G5 is applied to the runs that certify the level (owner decision):
+                // an abort on a coarse control that the level does not need is recorded in
+                // runs.csv but does not fail the cell.
                 anyNonFinite = true;
                 nonFiniteNote = r.Note;
                 continue;
             }
 
-            if (r.Status != "ok" || !r.Finite || !(r.Err <= threshold))
+            if (r.Status != "ok" || !r.Finite)
+            {
+                continue;
+            }
+
+            anyFinite = true;
+            if (!(r.Err <= threshold))
             {
                 continue;
             }
@@ -627,13 +636,6 @@ internal static partial class P1bTests
             return cell;
         }
 
-        if (anyNonFinite)
-        {
-            cell.Status = "FAIL";
-            cell.Reason = "G5 finiteness: " + nonFiniteNote;
-            return cell;
-        }
-
         if (best != null)
         {
             cell.BestControl = best.Control;
@@ -647,6 +649,14 @@ internal static partial class P1bTests
                 && !gate.StartsWith("G3 skipped", StringComparison.Ordinal);
             cell.Status = failed ? "FAIL" : "PASS";
             cell.Reason = gate;
+            return cell;
+        }
+
+        if (anyNonFinite && !anyFinite)
+        {
+            // No finite run at all: that is a genuine finiteness failure for this level.
+            cell.Status = "FAIL";
+            cell.Reason = "G5 finiteness: " + nonFiniteNote;
             return cell;
         }
 
