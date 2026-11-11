@@ -317,7 +317,7 @@ _Пусто._
 | Каждый N/A — причина из `Supports(...)`; нет исключений по имени | да |
 | Гейты G1–G8 реализованы; пороги заморожены | да, блок «Заморозка порогов» |
 | `METHOD_QUALIFICATION.md`, `RECOMMENDATIONS.md` и `COST_TABLE.md` из CSV | да |
-| Baseline зафиксирован; `--compare` работает | да: `baseline/BASELINE.md` → прогон `20261111T203415Z_becd26a` (full, commit `becd26a`); контрольный compare — 0 изменений |
+| Baseline зафиксирован; `--compare` работает | да: `baseline/BASELINE.md` → прогон `20261111T225110Z_22f94b7` (full, commit `22f94b7`); compare против предыдущего — 0 изменений |
 | Старые тесты и результаты не изменены; `Test551` прежний | да: 84 PASS / 0 FAIL, хэш имён `54ae98e2...` |
 | `FOUND.md`, `BACKLOG.md`, вопросы актуальны | да |
 | G2 наблюдаемый порядок | да, после Q-FIX-10b (ветка от мелкого шага к крупному, `Q-FIX-12` guard для бюджета/floor); проверено: RK4 K1 4.30, GJ8 K2 9.27, GJ8 K5 PASS |
@@ -536,8 +536,9 @@ sweep/детерминизм/аудит не выполняются. Стату�
 | `dotnet build Tools/P1bTests -c Release` | 0 ошибок |
 | `verify_test551.ps1` | `lines=84 fails=0`, SHA256 `54ae98e2...` (воспроизводится скриптом) |
 | smoke `Test564` | `ALL PASS`, `PASS=473 FAIL=52 SKIP=135 N/A=105 ERROR=0`, 227.2 с |
-| full `Test564` #1 | `ALL PASS`, `PASS=480 FAIL=68 SKIP=112 N/A=105 ERROR=0`, 709.3 с |
-| full `Test564` #2 с `--compare` #1 | `No changes`, 0 статусов / 0 ошибок / 0 цен, 703.9 с |
+| full `Test564` (этот baseline) | `ALL PASS`, `PASS=480 FAIL=68 SKIP=112 N/A=105 ERROR=0`, 702.2 с |
+| `--compare` против `20261111T203415Z_becd26a` | `No changes`, 0 статусов / 0 ошибок / 0 цен |
+| `COST_TABLE.md` | 255 строк «метод × задача» + 255 строк инвариантов, всё из CSV |
 | resume (обрезанный smoke, K1–K3) | `reused 135 cell(s)`, 0 расхождений с чистым прогоном, повторный resume — `nothing to resume` |
 | `--compare` флагом | против старого baseline — 62/180/190 изменений; против нового прогона — `No changes` |
 | ERROR-инъекция | `ERROR=1`, exit code 1, сообщение с причиной; инъекция убрана |
@@ -549,6 +550,11 @@ RK4 K8 и T1, GJ8 K4/T1/R1 перешли в `n/a` или PASS. R4 A2: 13 PASS +
 Leapfrog SKIP (было 14 G3-FAIL); 7 G5-ячеек стали PASS; G3-FAIL нет ни одной
 (`G3 skipped` — R4 27 и L1 3). L1: 17 PASS, 2 FAIL (`RKN12(10)`/`IAS15` A2 — level not
 reached), 26 SKIP (15 A3 — floor, 11 — бюджет). `close-encounter A2` — IAS15.
+
+`COST_TABLE.md` строится только из `matrix.csv`/`runs.csv`: 255 строк цен A1/A2/A3
+и `err@finest`, 255 строк `max |dE|/E`/`max |dL|/L` с разбивкой по задачам; N/A/SKIP/FAIL
+помечены одним словом. Отдельный эталон R3 не менялся: A2 остаётся SKIP по floor
+(`FOUND.md` F9, `PROGRESS.md` «R3 A2»).
 
 Открытым остаётся: только политика G5 (если владелец передумает — вернуть «любое
 нарушение = FAIL»). Остальные вопросы закрыты решениями владельца 2026-11-11 (R1 оставлен
@@ -670,3 +676,12 @@ N/A с отсылкой в отчёте).
   Новый G2-FAIL после подъёма бюджета — `RK4 R3` 4.96; диагностический resume с шагом
   1.41 с дал 4.99, поэтому FAIL оставлен и доказан (`FOUND.md` F6). `Test551` — 84/0,
   SHA256 `54ae98e2...`. Старые baseline сохранены.
+- **2026-11-12 — COST_TABLE и решение по R3 (Q-FIX-17/18).** Добавлен
+  `COST_TABLE.md`: 255 строк «метод × задача» (цена A1/A2/A3, `err@finest`, control;
+  N/A/SKIP/FAIL — одним словом) и 255 строк инвариантов `max |dE|/E`, `max |dL|/L`
+  с разбивкой по задачам. Всё строится из `matrix.csv`/`runs.csv`. Проверены более
+  точные эталоны R3 (6/7-уровневый DOP853, IAS15 `1e-14/1e-15`, TaylorShip, сетка
+  `stepsPerTau`): устойчивого floor ниже `6.771e-4` нет, поэтому R3 A2 остаётся SKIP
+  (`FOUND.md` F9). Full: `PASS=480 FAIL=68 SKIP=112 N/A=105`, 702.2 с,
+  `--compare` против `20261111T203415Z_becd26a` — `No changes`. Новый baseline:
+  `baseline/20261111T225110Z_22f94b7/` (commit `22f94b7`).
