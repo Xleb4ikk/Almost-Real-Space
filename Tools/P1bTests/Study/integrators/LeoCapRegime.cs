@@ -90,6 +90,12 @@ internal static partial class P1bTests
         public long DenseAccepted;
         public string Status = "ok";
         public string Note = "";
+        public bool Deterministic = true;
+        public bool DeterminismKnown;
+        // Values recorded in the Summary CSV when this cell was loaded by the
+        // regenerate path; used to refuse a stale reference/floor mixture.
+        public double CsvFloorM = double.NaN;
+        public string CsvReferenceStatus = "";
 
         public bool Finite
         {
@@ -102,7 +108,7 @@ internal static partial class P1bTests
         public Test563Case Case;
         public string Method;
         public double Cap;
-        public string Verdict;
+        public string Verdict;                 // min-over-grid ("tuning") verdict
         public string Why = "";
         public double MinErrCap = double.NaN;
         public double MinErr600 = double.NaN;
@@ -121,11 +127,28 @@ internal static partial class P1bTests
         public double MaxRise = 1d;
         public double RiseFromRtol = double.NaN;
         public double RiseToRtol = double.NaN;
+
+        // Production-rtol (1e-11) decision columns. These are what the game
+        // actually does; the min-over-grid row above is a tuning view.
+        public double ErrProductionCap = double.NaN;
+        public double ErrProduction600 = double.NaN;
+        public double RhsProductionCap = double.NaN;
+        public double RhsProduction600 = double.NaN;
+        public double SavingProduction = double.NaN;
+        public double ErrProductionRatio = double.NaN;
+        public bool FloorLimitedProduction;
+        public string VerdictProduction = "";
+        public string WhyProduction = "";
+
+        // Floor guard on the min-over-grid row (same 10 x floor rule).
+        public bool FloorLimitedTuning;
     }
 
     private sealed class Test563Baseline
     {
+        public long Calls;
         public long RhsEq;
+        public long Chunks;
         public double Err;
     }
 
@@ -135,7 +158,7 @@ internal static partial class P1bTests
 
     private static int Test563_LeoCapRegime()
     {
-        Console.WriteLine("--- Test563: LEO step-cap regimes (production DOP853 / DOPRI5) ---");
+        Console.WriteLine("--- Test563: LEO step-cap regimes (production methods) ---");
         string dir = Path.Combine(StudyShipMatrixResultsDir(), "cap_regime");
         Directory.CreateDirectory(dir);
         string runsPath = Path.Combine(dir, "Test563_LeoCapRegime_Runs.csv");
@@ -152,9 +175,12 @@ internal static partial class P1bTests
         Console.WriteLine("  output: " + dir);
 
         List<Test563Case> cases = Test563BuildCases();
-        if (cases.Count == 0)
+        string[] requiredCases = { "L1", "L2", "L3" };
+        List<string> missingCases = requiredCases.Where(k => !cases.Exists(c => c.Key == k)).ToList();
+        if (cases.Count == 0 || missingCases.Count > 0)
         {
-            Console.WriteLine("no Test563 case built");
+            Console.WriteLine("STOP: Test563 requires cases " + string.Join(", ", requiredCases)
+                + "; missing " + (missingCases.Count == 0 ? "all" : string.Join(", ", missingCases)));
             return 1;
         }
 
@@ -206,7 +232,7 @@ internal static partial class P1bTests
             return 1;
         }
 
-        Console.WriteLine("cap 600 s matches Test562 within +/-1% RHS-eq and +/-0.5% error");
+        Console.WriteLine("cap 600 s matches Test562 exactly (calls, chunks, RHS-eq, err max r)");
 
         // ---- Remaining caps ----
         foreach (double cap in Test563Caps)
@@ -249,21 +275,55 @@ internal static partial class P1bTests
         Console.WriteLine("  " + envPath);
 
         int measured = cells.FindAll(x => x.Finite).Count;
-        Check(cells.Count == 123, "Test563: 120 cap cells + 3 cap-only controls",
+        int censored = cells.FindAll(x => x.Status == "censored").Count;
+        int errorCells = cells.FindAll(x => x.Status == "error").Count;
+        int methodCount = Test562AvailableMethods().Length;
+        // One cell per case x method x cap x rtol; one verdict per case x method x cap.
+        int expectedCapCells = cases.Count * methodCount * Test563Caps.Length * Test563Rtols.Length;
+        int expectedCells = expectedCapCells + cases.Count;
+        int expectedVerdicts = cases.Count * methodCount * Test563Caps.Length;
+        Check(cells.Count == expectedCells, "Test563: " + expectedCapCells.ToString(CultureInfo.InvariantCulture)
+            + " cap cells + " + cases.Count.ToString(CultureInfo.InvariantCulture) + " cap-only controls",
             cells.Count.ToString(CultureInfo.InvariantCulture));
-        Check(measured == cells.Count, "Test563: every cell finite",
-            measured.ToString(CultureInfo.InvariantCulture) + "/" + cells.Count.ToString(CultureInfo.InvariantCulture));
-        Check(verdicts.Count == 24, "Test563: verdict per situation x method x cap",
+        Check(errorCells == 0, "Test563: no error cells (censored is a valid outcome)",
+            errorCells.ToString(CultureInfo.InvariantCulture));
+        Check(measured + censored == cells.Count,
+            "Test563: every cell is measured or censored",
+            (measured + censored).ToString(CultureInfo.InvariantCulture) + "/"
+            + cells.Count.ToString(CultureInfo.InvariantCulture));
+        int nonDeterministic = cells.FindAll(x => x.DeterminismKnown && !x.Deterministic).Count;
+        Check(nonDeterministic == 0, "Test563: deterministic calls/chunks/error across repeats",
+            nonDeterministic.ToString(CultureInfo.InvariantCulture));
+        Check(verdicts.Count == expectedVerdicts, "Test563: verdict per situation x method x cap",
             verdicts.Count.ToString(CultureInfo.InvariantCulture));
         Check(File.Exists(runsPath) && File.Exists(summaryPath) && File.Exists(mdPath),
             "Test563: reports written", dir);
 
-        int safeCount = verdicts.FindAll(v => v.Verdict == "SAFE").Count;
-        int marginalCount = verdicts.FindAll(v => v.Verdict == "MARGINAL").Count;
-        int controlCount = verdicts.FindAll(v => v.Verdict.StartsWith("CONTROL", StringComparison.Ordinal)).Count;
-        int unsafeCount = verdicts.FindAll(v => v.Verdict.StartsWith("NOT SAFE", StringComparison.Ordinal)).Count;
-        Console.WriteLine("verdicts: " + safeCount + " SAFE, " + marginalCount + " MARGINAL, "
-            + controlCount + " CONTROL, " + unsafeCount + " NOT SAFE");
+        int safeCount = verdicts.FindAll(v => v.VerdictProduction == "SAFE").Count;
+        int marginalCount = verdicts.FindAll(v => v.VerdictProduction == "MARGINAL").Count;
+        int controlCount = verdicts.FindAll(v => v.VerdictProduction.StartsWith("CONTROL", StringComparison.Ordinal)).Count;
+        int unsafeCount = verdicts.FindAll(v => v.VerdictProduction == "NOT SAFE").Count;
+        int floorLimited = verdicts.FindAll(v => v.VerdictProduction == "FLOOR-LIMITED").Count;
+        Console.WriteLine("production verdicts (rtol 1e-11): " + safeCount + " SAFE, " + marginalCount
+            + " MARGINAL, " + controlCount + " CONTROL, " + floorLimited + " FLOOR-LIMITED, "
+            + unsafeCount + " NOT SAFE");
+        Console.WriteLine("tuning verdicts (min over rtol grid): "
+            + verdicts.FindAll(v => v.Verdict == "SAFE").Count + " SAFE, "
+            + verdicts.FindAll(v => v.Verdict.StartsWith("FLOOR-LIMITED", StringComparison.Ordinal)).Count
+            + " FLOOR-LIMITED, "
+            + verdicts.FindAll(v => v.Verdict.StartsWith("NOT SAFE", StringComparison.Ordinal)).Count + " NOT SAFE");
+        if (censored > 0)
+        {
+            Console.WriteLine("censored cells: " + censored.ToString(CultureInfo.InvariantCulture)
+                + " (RHS budget); they are counted, not failed");
+            foreach (Test563Cell cell in cells.FindAll(x => x.Status == "censored"))
+            {
+                Console.WriteLine("  " + cell.Case.Key + " " + cell.Method + " cap="
+                    + cell.Cap.ToString("G6", CultureInfo.InvariantCulture) + " rtol="
+                    + cell.Rtol.ToString("G3", CultureInfo.InvariantCulture) + ": " + cell.Note);
+            }
+        }
+
         return 0;
     }
 
@@ -379,8 +439,13 @@ internal static partial class P1bTests
     private static DecisionBRun Test563RunOnce(
         DecisionBScenario scene, string method, double rtol, double cap)
     {
-        string kernel = method == "dopri5" ? "dopri5" : "dop853";
-        return DecisionBRunProduction(scene, kernel, rtol, cap,
+        Test562MethodInfo info = Test562MethodLookup(method);
+        if (info == null)
+        {
+            throw new InvalidOperationException("unknown production kernel: " + method);
+        }
+
+        return DecisionBRunProduction(scene, info.Kernel, rtol, cap,
             scene.DominantBodyOverride, true, false, budget: Test563BudgetRhs);
     }
 
@@ -389,7 +454,7 @@ internal static partial class P1bTests
     {
         foreach (Test563Case c in cases)
         {
-            foreach (string method in new[] { "dop853", "dopri5" })
+            foreach (string method in Test562AvailableMethods())
             {
                 foreach (double rtol in Test563Rtols)
                 {
@@ -404,7 +469,7 @@ internal static partial class P1bTests
                         + ", " + cell.MsMedian.ToString("F2", CultureInfo.InvariantCulture) + " ms"
                         + " (cv " + cell.CvPct.ToString("F1", CultureInfo.InvariantCulture) + "%)"
                         + (double.IsFinite(cell.CapBound)
-                            ? ", cap-bound " + (100d * cell.CapBound).ToString("F0", CultureInfo.InvariantCulture) + "%"
+                            ? ", accepted@cap " + (100d * cell.CapBound).ToString("F0", CultureInfo.InvariantCulture) + "%"
                             : ""));
                 }
             }
@@ -486,13 +551,38 @@ internal static partial class P1bTests
         cell.ErrFinal = firstAttempt.ErrFinal;
         cell.ErrMaxV = firstAttempt.ErrMaxV;
 
+        // Determinism: every recorded attempt of the same cell must execute the
+        // same trajectory. Timing may differ; calls, chunks and the graded error
+        // may not.
+        foreach (Test563Attempt a in cell.Attempts)
+        {
+            if (a.Calls != firstAttempt.Calls || a.Chunks != firstAttempt.Chunks
+                || Math.Abs(a.ErrMax - firstAttempt.ErrMax) > 1e-9d * Math.Max(1d, firstAttempt.ErrMax))
+            {
+                cell.Deterministic = false;
+            }
+        }
+
+        if (!cell.Deterministic)
+        {
+            cell.Note = (cell.Note.Length > 0 ? cell.Note + "; " : "")
+                + "non-deterministic caller/error between repeats";
+        }
+
+        cell.DeterminismKnown = true;
+
         if (measureCapBound)
         {
             // The dense pass owns the accepted-step list. It adds one derivative
             // evaluation per step (kEnd) but does not change the step controller;
             // the accepted count is compared and any difference is noted.
-            DecisionBRun dense = DecisionBRunProduction(scene,
-                method == "dopri5" ? "dopri5" : "dop853", rtol, cap,
+            Test562MethodInfo info = Test562MethodLookup(method);
+            if (info == null)
+            {
+                throw new InvalidOperationException("unknown production kernel: " + method);
+            }
+
+            DecisionBRun dense = DecisionBRunProduction(scene, info.Kernel, rtol, cap,
                 scene.DominantBodyOverride, true, true, budget: Test563BudgetRhs);
             if (dense.Status == "ok" && dense.Finite && dense.Segments != null && dense.Segments.Count > 0)
             {
@@ -564,7 +654,7 @@ internal static partial class P1bTests
         }
 
         values.Sort();
-        median = values.Count == 0 ? double.NaN : values[values.Count / 2];
+        median = Test563MedianOfSorted(values);
         min = values.Count == 0 ? double.NaN : values[0];
         max = values.Count == 0 ? double.NaN : values[values.Count - 1];
         if (values.Count > 1)
@@ -595,7 +685,8 @@ internal static partial class P1bTests
         string path = Path.Combine(StudyShipMatrixResultsDir(), "work_precision", "Test562_Summary.csv");
         if (!File.Exists(path))
         {
-            notes.Add("Test562 baseline missing: " + path);
+            notes.Add("Test562 baseline missing: " + path
+                + " - run Test562_ProductionWorkPrecision first (Test563 parity gate needs it)");
             return notes;
         }
 
@@ -628,7 +719,9 @@ internal static partial class P1bTests
                     .ToString("E1", CultureInfo.InvariantCulture);
             baseline[key] = new Test563Baseline
             {
+                Calls = ParseLong(Test562Field(f, columns, "rhs_calls")),
                 RhsEq = ParseLong(Test562Field(f, columns, "rhs_eq")),
+                Chunks = ParseLong(Test562Field(f, columns, "chunks")),
                 Err = DecisionBParseDouble(Test562Field(f, columns, "err_pos_max_m"))
             };
         }
@@ -652,12 +745,19 @@ internal static partial class P1bTests
 
             double rhsPct = 100d * (cell.RhsEq - b.RhsEq) / Math.Max(1d, b.RhsEq);
             double errPct = 100d * (cell.ErrMax - b.Err) / Math.Max(1e-300d, Math.Abs(b.Err));
-            if (Math.Abs(rhsPct) > 1d || Math.Abs(errPct) > 0.5d)
+            if (cell.Calls != b.Calls || cell.RhsEq != b.RhsEq || cell.Chunks != b.Chunks
+                || cell.ErrMax != b.Err)
             {
-                notes.Add(key + ": RHS-eq " + rhsPct.ToString("+0.000;-0.000;0.000", CultureInfo.InvariantCulture)
-                    + "% (" + cell.RhsEq.ToString("N0", CultureInfo.InvariantCulture) + " vs "
-                    + b.RhsEq.ToString("N0", CultureInfo.InvariantCulture) + "), err "
-                    + errPct.ToString("+0.000;-0.000;0.000", CultureInfo.InvariantCulture) + "%");
+                notes.Add(key + ": exact parity failed - calls " + cell.Calls.ToString(CultureInfo.InvariantCulture)
+                    + " vs " + b.Calls.ToString(CultureInfo.InvariantCulture) + ", RHS-eq "
+                    + cell.RhsEq.ToString("N0", CultureInfo.InvariantCulture) + " vs "
+                    + b.RhsEq.ToString("N0", CultureInfo.InvariantCulture) + " ("
+                    + rhsPct.ToString("+0.000;-0.000;0.000", CultureInfo.InvariantCulture) + "%), chunks "
+                    + cell.Chunks.ToString(CultureInfo.InvariantCulture) + " vs "
+                    + b.Chunks.ToString(CultureInfo.InvariantCulture) + ", err "
+                    + cell.ErrMax.ToString("E6", CultureInfo.InvariantCulture) + " vs "
+                    + b.Err.ToString("E6", CultureInfo.InvariantCulture) + " ("
+                    + errPct.ToString("+0.000;-0.000;0.000", CultureInfo.InvariantCulture) + "%)");
             }
 
             compared++;
@@ -685,7 +785,7 @@ internal static partial class P1bTests
         var verdicts = new List<Test563Verdict>();
         foreach (Test563Case c in cases)
         {
-            foreach (string method in new[] { "dop853", "dopri5" })
+            foreach (string method in Test562AvailableMethods())
             {
                 // Loose -> tight. The monotonicity rule is about tightening rtol,
                 // so the walk must start at 1e-9, not at 1e-13.
@@ -697,19 +797,46 @@ internal static partial class P1bTests
                     var capCells = cells.FindAll(x => x.Case == c && x.Method == method
                         && x.Regime == "cap-regime" && x.Cap == cap && x.Finite)
                         .OrderByDescending(x => x.Rtol).ToList();
+                    var capAll = cells.FindAll(x => x.Case == c && x.Method == method
+                        && x.Regime == "cap-regime" && x.Cap == cap);
+                    var baseAll = cells.FindAll(x => x.Case == c && x.Method == method
+                        && x.Regime == "cap-regime" && x.Cap == 600d);
                     var v = new Test563Verdict { Case = c, Method = method, Cap = cap };
                     verdicts.Add(v);
 
                     if (!c.IncludeVerdict)
                     {
                         v.Verdict = "NOT CERTIFIED";
+                        v.VerdictProduction = "NOT CERTIFIED";
                         v.Why = "reference certificate is not usable";
+                        continue;
+                    }
+
+                    bool anyError = capAll.Exists(x => x.Status == "error")
+                        || baseAll.Exists(x => x.Status == "error");
+                    int censored = capAll.FindAll(x => x.Status == "censored").Count
+                        + baseAll.FindAll(x => x.Status == "censored").Count;
+                    if (anyError)
+                    {
+                        v.Verdict = "INCOMPLETE";
+                        v.VerdictProduction = "INCOMPLETE";
+                        v.Why = "an error cell is present";
+                        continue;
+                    }
+
+                    if (censored > 0)
+                    {
+                        v.Verdict = "CENSORED";
+                        v.VerdictProduction = "CENSORED";
+                        v.Why = censored.ToString(CultureInfo.InvariantCulture)
+                            + " cell(s) hit the RHS budget; no verdict";
                         continue;
                     }
 
                     if (baseCells.Count != Test563Rtols.Length || capCells.Count != Test563Rtols.Length)
                     {
                         v.Verdict = "INCOMPLETE";
+                        v.VerdictProduction = "INCOMPLETE";
                         v.Why = baseCells.Count + "/" + capCells.Count + " cells";
                         continue;
                     }
@@ -759,9 +886,75 @@ internal static partial class P1bTests
                         ? "yes (" + v.ErrSpreadDigits.ToString("F1", CultureInfo.InvariantCulture) + " digits)"
                         : "no (" + v.ErrSpreadDigits.ToString("F2", CultureInfo.InvariantCulture) + " digits)";
 
+                    // ---- Production-rtol (1e-11) decision columns ----
+                    Test563Cell prodCap = capCells.Find(x => x.Rtol == 1e-11d);
+                    Test563Cell prod600 = baseCells.Find(x => x.Rtol == 1e-11d);
+                    if (prodCap == null || prod600 == null)
+                    {
+                        v.VerdictProduction = "INCOMPLETE";
+                        v.WhyProduction = "no rtol 1e-11 cell";
+                    }
+                    else
+                    {
+                        v.ErrProductionCap = prodCap.ErrMax;
+                        v.ErrProduction600 = prod600.ErrMax;
+                        v.RhsProductionCap = prodCap.RhsEq;
+                        v.RhsProduction600 = prod600.RhsEq;
+                        v.ErrProductionRatio = v.ErrProductionCap / Math.Max(v.ErrProduction600, 1e-300d);
+                        v.SavingProduction = v.RhsProduction600 > 0d
+                            ? v.RhsProductionCap / v.RhsProduction600
+                            : double.NaN;
+                        double floorLimit = Test562BelowFloorFactor * c.FloorM;
+                        v.FloorLimitedProduction = double.IsFinite(c.FloorM)
+                            && (v.ErrProductionCap < floorLimit || v.ErrProduction600 < floorLimit);
+                        if (cap == 600d)
+                        {
+                            v.VerdictProduction = "CONTROL (production)";
+                            if (v.FloorLimitedProduction)
+                            {
+                                v.WhyProduction = Test563FloorReason(
+                                    v.ErrProductionCap, v.ErrProduction600, c.FloorM);
+                            }
+                        }
+                        else if (v.FloorLimitedProduction)
+                        {
+                            // The game runs rtol 1e-11; the floor error is the accuracy
+                            // limit of the reference, so a ratio inside it is not a verdict.
+                            v.VerdictProduction = "FLOOR-LIMITED";
+                            v.WhyProduction = Test563FloorReason(
+                                v.ErrProductionCap, v.ErrProduction600, c.FloorM);
+                        }
+                        else if (v.ErrProductionRatio <= 1.5d)
+                        {
+                            v.VerdictProduction = "SAFE";
+                            v.WhyProduction = Test563ProductionWhy(v);
+                        }
+                        else if (v.ErrProductionRatio <= 1.65d)
+                        {
+                            v.VerdictProduction = "MARGINAL";
+                            v.WhyProduction = Test563ProductionWhy(v);
+                        }
+                        else
+                        {
+                            v.VerdictProduction = "NOT SAFE";
+                            v.WhyProduction = Test563ProductionWhy(v);
+                        }
+                    }
+
+                    // ---- Min-over-grid ("tuning") verdict, same floor guard ----
+                    double tuningLimit = Test562BelowFloorFactor * c.FloorM;
+                    v.FloorLimitedTuning = double.IsFinite(c.FloorM)
+                        && (v.MinErrCap < tuningLimit || v.MinErr600 < tuningLimit);
                     if (cap == 600d)
                     {
                         v.Verdict = "CONTROL (production)";
+                        continue;
+                    }
+
+                    if (v.FloorLimitedTuning)
+                    {
+                        v.Verdict = "FLOOR-LIMITED (tuning, no verdict)";
+                        v.Why = Test563FloorReason(v.MinErrCap, v.MinErr600, c.FloorM);
                         continue;
                     }
 
@@ -801,6 +994,33 @@ internal static partial class P1bTests
 
         return verdicts;
     }
+
+    private static string Test563FloorReason(double errCap, double err600, double floorM)
+    {
+        double limit = Test562BelowFloorFactor * floorM;
+        var parts = new List<string>();
+        if (errCap < limit)
+        {
+            parts.Add("err(cap) " + errCap.ToString("E3", CultureInfo.InvariantCulture) + " m");
+        }
+
+        if (err600 < limit)
+        {
+            parts.Add("err(600) " + err600.ToString("E3", CultureInfo.InvariantCulture) + " m");
+        }
+
+        return (parts.Count == 0 ? "error" : string.Join(" and ", parts))
+            + " < " + Test562BelowFloorFactor.ToString("G", CultureInfo.InvariantCulture)
+            + " x floor (" + limit.ToString("E3", CultureInfo.InvariantCulture) + " m)";
+    }
+
+    private static string Test563ProductionWhy(Test563Verdict v)
+    {
+        return "prod err " + v.ErrProductionCap.ToString("E3", CultureInfo.InvariantCulture)
+            + " m = " + v.ErrProductionRatio.ToString("F2", CultureInfo.InvariantCulture)
+            + "x the 600 s prod err (" + v.ErrProduction600.ToString("E3", CultureInfo.InvariantCulture)
+            + " m)";
+    }
     private static double Test563Median(List<double> values)
     {
         var finite = values.FindAll(v => double.IsFinite(v));
@@ -810,7 +1030,21 @@ internal static partial class P1bTests
         }
 
         finite.Sort();
-        return finite[finite.Count / 2];
+        return Test563MedianOfSorted(finite);
+    }
+
+    /// <summary>Median of an already sorted list: mean of the two central values for an even count.</summary>
+    private static double Test563MedianOfSorted(List<double> sorted)
+    {
+        if (sorted.Count == 0)
+        {
+            return double.NaN;
+        }
+
+        int mid = sorted.Count / 2;
+        return sorted.Count % 2 == 1
+            ? sorted[mid]
+            : 0.5d * (sorted[mid - 1] + sorted[mid]);
     }
 
     // --------------------------------------------------------------------------------
@@ -822,7 +1056,7 @@ internal static partial class P1bTests
         var sb = new StringBuilder();
         sb.AppendLine("scenario_key,scenario,regime,cap_s,chunk_s,method,rtol,repeat_group,repeat_index,"
             + "batch_runs,ms,alloc_bytes,rhs_calls,rhs_eq,chunks,accepted,rejected,"
-            + "err_pos_max_m,err_pos_final_m,err_vel_max_mps,floor_m,cap_bound,status,note");
+            + "err_pos_max_m,err_pos_final_m,err_vel_max_mps,floor_m,accepted_at_cap_share,status,note");
         foreach (Test563Cell cell in cells)
         {
             foreach (Test563Attempt a in cell.Attempts)
@@ -865,7 +1099,10 @@ internal static partial class P1bTests
         {
             foreach (Test563Verdict v in verdicts)
             {
-                byGroup[v.Case.Key + "|" + v.Method + "|" + v.Cap.ToString("R", CultureInfo.InvariantCulture)] = v;
+                // Regime and chunk are part of the key: cap-only control rows
+                // (cap 86 400, chunk 600) must not inherit cap-regime statistics.
+                byGroup[v.Case.Key + "|" + v.Method + "|" + v.Cap.ToString("R", CultureInfo.InvariantCulture)
+                    + "|cap-regime|" + v.Cap.ToString("R", CultureInfo.InvariantCulture)] = v;
             }
         }
 
@@ -873,13 +1110,20 @@ internal static partial class P1bTests
         sb.AppendLine("scenario_key,scenario,regime,cap_s,chunk_s,method,rtol,reference_status,floor_m,"
             + "attempts,ms_median,ms_min,ms_max,cv_pct,"
             + "err_pos_max_m,err_pos_final_m,err_vel_max_mps,rhs_calls,rhs_eq,chunks,accepted,rejected,"
-            + "alloc_bytes,ns_per_rhs,ns_per_rhs_eq,cap_bound,rtol_controlled,err_spread_ratio,"
-            + "err_spread_digits,rejected_per_chunk,dense_accepted,status,note");
+            + "alloc_bytes,ns_per_rhs,ns_per_rhs_eq,accepted_at_cap_share,rtol_controlled,err_spread_ratio,"
+            + "err_spread_digits,rejected_per_chunk,dense_accepted,deterministic,status,note,"
+            + "err_prod_1e11,rhs_prod_1e11,err_base_prod_1e11,rhs_base_prod_1e11,saving_prod,"
+            + "floor_limited_prod,verdict_prod,floor_limited_tuning,verdict_tuning");
         foreach (Test563Cell cell in cells)
         {
-            Test563Verdict group;
-            byGroup.TryGetValue(cell.Case.Key + "|" + cell.Method + "|"
-                + cell.Cap.ToString("R", CultureInfo.InvariantCulture), out group);
+            Test563Verdict group = null;
+            if (cell.Regime == "cap-regime")
+            {
+                byGroup.TryGetValue(cell.Case.Key + "|" + cell.Method + "|"
+                    + cell.Cap.ToString("R", CultureInfo.InvariantCulture)
+                    + "|cap-regime|" + cell.Chunk.ToString("R", CultureInfo.InvariantCulture), out group);
+            }
+
             double nsRhs = cell.Calls > 0L ? 1e6 * cell.MsMedian / cell.Calls : double.NaN;
             double nsRhsEq = cell.RhsEq > 0L ? 1e6 * cell.MsMedian / cell.RhsEq : double.NaN;
             sb.Append(DecisionBCsvField(cell.Case.Key)).Append(',')
@@ -913,8 +1157,18 @@ internal static partial class P1bTests
                 .Append(group == null ? "" : DecisionBCsvNumber(group.ErrSpreadDigits)).Append(',')
                 .Append(group == null ? "" : DecisionBCsvNumber(group.RejectedPerChunk)).Append(',')
                 .Append(cell.DenseAccepted.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(cell.DeterminismKnown ? (cell.Deterministic ? "1" : "0") : "").Append(',')
                 .Append(cell.Status).Append(',')
-                .Append(DecisionBCsvField(cell.Note)).AppendLine();
+                .Append(DecisionBCsvField(cell.Note)).Append(',')
+                .Append(group == null ? "" : DecisionBCsvNumber(group.ErrProductionCap)).Append(',')
+                .Append(group == null ? "" : DecisionBCsvNumber(group.RhsProductionCap)).Append(',')
+                .Append(group == null ? "" : DecisionBCsvNumber(group.ErrProduction600)).Append(',')
+                .Append(group == null ? "" : DecisionBCsvNumber(group.RhsProduction600)).Append(',')
+                .Append(group == null ? "" : DecisionBCsvNumber(group.SavingProduction)).Append(',')
+                .Append(group == null ? "" : (group.FloorLimitedProduction ? "1" : "0")).Append(',')
+                .Append(group == null ? "" : group.VerdictProduction).Append(',')
+                .Append(group == null ? "" : (group.FloorLimitedTuning ? "1" : "0")).Append(',')
+                .Append(group == null ? "" : group.Verdict).AppendLine();
         }
 
         File.WriteAllText(path, sb.ToString());
@@ -929,7 +1183,8 @@ internal static partial class P1bTests
         List<Test563Case> cases, DecisionBRun anchor, string dir)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("# Test563 - LEO step-cap regimes (production DOP853 / DOPRI5)");
+        sb.AppendLine("# Test563 - LEO step-cap regimes (production "
+            + string.Join(" / ", Test562AvailableMethods().Select(Test562MethodDisplay)) + ")");
         sb.AppendLine();
         sb.AppendLine("Generated " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
             + " UTC by `Test563_LeoCapRegime`.");
@@ -995,18 +1250,21 @@ internal static partial class P1bTests
         sb.AppendLine("## Situation x method x cap");
         sb.AppendLine();
         sb.AppendLine("`err` is `err max r` in metres at rtol 1e-9 / 1e-10 / 1e-11 / 1e-12 / 1e-13.");
-        sb.AppendLine("`min err` is the cap's own minimum over the grid. `err@best`, `RHS-eq` and `ms` are");
-        sb.AppendLine("at the rtol that gives the minimum error at cap 600 s (the task's saving basis), so");
-        sb.AppendLine("`err@best` can be above `min err` when the cap is non-monotone in rtol.");
-        sb.AppendLine("`saving` = RHS-eq(cap) / RHS-eq(600) at that same rtol (lower is cheaper).");
+        sb.AppendLine("`err@1e-11`, `vs600@1e-11`, `RHS-eq@1e-11`, `saving@1e-11` and `verdict@1e-11` are the");
+        sb.AppendLine("production columns: the game runs at rtol 1e-11, so this is the decision row. `vs600@1e-11`");
+        sb.AppendLine("is err(cap, 1e-11) / err(600, 1e-11); `saving@1e-11` = RHS-eq(cap, 1e-11) / RHS-eq(600, 1e-11).");
+        sb.AppendLine("`floor-limited` means the error the verdict is built on is below 10 x the reference floor;");
+        sb.AppendLine("such a row has no accuracy verdict. The `min err` / `err@best` / `saving@best` /");
+        sb.AppendLine("`verdict (tuning)` columns are the old min-over-grid view and are kept separate: they are");
+        sb.AppendLine("a tuning exploration, not the production decision.");
         sb.AppendLine();
-        sb.AppendLine("| key | method | cap s | err 1e-9 | 1e-10 | 1e-11 | 1e-12 | 1e-13 | min err | err@best | RHS-eq | ms | cap-bound | rtol-controlled | saving | verdict |");
-        sb.AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---|");
+        sb.AppendLine("| key | method | cap s | err 1e-9 | 1e-10 | 1e-11 | 1e-12 | 1e-13 | min err | err@best | RHS-eq@best | ms@best | saving@best | accepted@cap | rtol-controlled | verdict (tuning) | err@1e-11 | vs600@1e-11 | RHS-eq@1e-11 | saving@1e-11 | floor-limited | verdict@1e-11 |");
+        sb.AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---|---|");
         foreach (Test563Verdict v in verdicts)
         {
             var rows = cells.FindAll(x => x.Case == v.Case && x.Method == v.Method
                 && x.Regime == "cap-regime" && x.Cap == v.Cap).OrderBy(x => x.Rtol).ToList();
-            sb.Append("| ").Append(v.Case.Key).Append(" | ").Append(v.Method.ToUpperInvariant())
+            sb.Append("| ").Append(v.Case.Key).Append(" | ").Append(Test562MethodDisplay(v.Method))
                 .Append(" | ").Append(v.Cap.ToString("G6", CultureInfo.InvariantCulture)).Append(" | ");
             foreach (double rtol in Test563Rtols)
             {
@@ -1019,20 +1277,36 @@ internal static partial class P1bTests
                 .Append(double.IsFinite(v.ErrAtBestRtol) ? v.ErrAtBestRtol.ToString("E3", CultureInfo.InvariantCulture) : "-").Append(" | ")
                 .Append(double.IsFinite(v.RhsAtBestRtol) ? v.RhsAtBestRtol.ToString("N0", CultureInfo.InvariantCulture) : "-").Append(" | ")
                 .Append(double.IsFinite(v.MsAtBestRtol) ? v.MsAtBestRtol.ToString("F2", CultureInfo.InvariantCulture) : "-").Append(" | ")
+                .Append(double.IsFinite(v.Saving) ? v.Saving.ToString("F3", CultureInfo.InvariantCulture) + "x" : "-").Append(" | ")
                 .Append(double.IsFinite(v.CapBound) ? (100d * v.CapBound).ToString("F0", CultureInfo.InvariantCulture) + "%" : "-").Append(" | ")
                 .Append(v.RtolControlled).Append(" | ")
-                .Append(double.IsFinite(v.Saving) ? v.Saving.ToString("F3", CultureInfo.InvariantCulture) + "x" : "-").Append(" | ")
                 .Append(v.Verdict)
-                .Append(v.Why.Length > 0 ? " (" + DecisionBCsvField(v.Why) + ")" : "")
+                .Append(v.Why.Length > 0 && !v.Verdict.StartsWith("SAFE", StringComparison.Ordinal)
+                    ? " (" + DecisionBCsvField(v.Why) + ")" : "")
+                .Append(" | ")
+                .Append(double.IsFinite(v.ErrProductionCap) ? v.ErrProductionCap.ToString("E3", CultureInfo.InvariantCulture) : "-").Append(" | ")
+                .Append(double.IsFinite(v.ErrProductionRatio) ? v.ErrProductionRatio.ToString("F2", CultureInfo.InvariantCulture) + "x" : "-").Append(" | ")
+                .Append(double.IsFinite(v.RhsProductionCap) ? v.RhsProductionCap.ToString("N0", CultureInfo.InvariantCulture) : "-").Append(" | ")
+                .Append(double.IsFinite(v.SavingProduction) ? v.SavingProduction.ToString("F3", CultureInfo.InvariantCulture) + "x" : "-").Append(" | ")
+                .Append(v.FloorLimitedProduction ? "yes" : "no").Append(" | ")
+                .Append(v.VerdictProduction)
+                .Append(v.VerdictProduction == "FLOOR-LIMITED" && v.WhyProduction.Length > 0
+                    ? " (" + DecisionBCsvField(v.WhyProduction) + ")" : "")
                 .AppendLine(" |");
         }
 
         sb.AppendLine();
-        sb.AppendLine("Verdict rule: `SAFE` when the minimum error over the rtol grid at the cap is");
-        sb.AppendLine("<= 1.5x the minimum at cap 600 s **and** the error does not grow by more than 2x");
-        sb.AppendLine("when the tolerance is tightened (noise allowance). Otherwise `NOT SAFE`, with the");
-        sb.AppendLine("offending rtol (or the error ratio) printed. These are the task's thresholds;");
-        sb.AppendLine("savings are informational and are not part of the safety verdict.");
+        sb.AppendLine("**Verdict rule - production (the game decision).** rtol is fixed at 1e-11, as in the");
+        sb.AppendLine("game. `SAFE` when err(cap, 1e-11) <= 1.5x err(600, 1e-11); `MARGINAL` when it is");
+        sb.AppendLine("<= 1.65x; otherwise `NOT SAFE`. If either the cap or the 600 s production error is");
+        sb.AppendLine("below 10 x the reference floor, the row is `FLOOR-LIMITED` and gets no verdict: the");
+        sb.AppendLine("ratio is inside the uncertainty of the reference, not evidence about the cap.");
+        sb.AppendLine();
+        sb.AppendLine("**Verdict rule - tuning.** The old `min err` view takes the minimum over the whole rtol");
+        sb.AppendLine("grid: `SAFE` when min err(cap) <= 1.5x min err(600) **and** the error does not grow by");
+        sb.AppendLine("more than 2x when the tolerance is tightened. This is a tuning exploration of the");
+        sb.AppendLine("integrator, not a game decision, and it is never mixed with the production verdict.");
+        sb.AppendLine("The same 10 x floor guard applies (`floor_limited_tuning` in the CSV).");
         sb.AppendLine();
         sb.AppendLine("`CONTROL (production)` marks the 600 s row: it is the baseline itself, so it is not");
         sb.AppendLine("given a safety verdict. `MARGINAL` means the only failure is inside 10% of a");
@@ -1043,11 +1317,16 @@ internal static partial class P1bTests
         sb.AppendLine();
         sb.AppendLine("## Where the cap binds the step");
         sb.AppendLine();
-        sb.AppendLine("`cap-bound` = share of accepted steps whose length equals the cap (tolerance 1e-6 s),");
-        sb.AppendLine("median over the five rtol cells. `dense` run is a parallel pass used only to read the");
-        sb.AppendLine("accepted step lengths; its accepted count is compared with the plain run.");
+        sb.AppendLine("`accepted_at_cap_share` = share of accepted steps whose length equals the cap");
+        sb.AppendLine("(tolerance 1e-6 s), median over the five rtol cells. This is not a measure of");
+        sb.AppendLine("cap activity: the first step of every chunk is attempted at the cap by");
+        sb.AppendLine("construction, and the controller then rejects it and accepts a shorter step, so");
+        sb.AppendLine("0% is the expected value when the cap is a hard attempt bound. `rejected/chunk`");
+        sb.AppendLine("is the mean number of rejected attempts per chunk at the production rtol.");
+        sb.AppendLine("`dense` run is a parallel pass used only to read the accepted step lengths; its");
+        sb.AppendLine("accepted count is compared with the plain run.");
         sb.AppendLine();
-        sb.AppendLine("| key | method | cap s | cap-bound | accepted steps | rejected/chunk | rtol-controlled |");
+        sb.AppendLine("| key | method | cap s | accepted at cap | accepted steps | rejected/chunk | rtol-controlled |");
         sb.AppendLine("|---|---|---:|---:|---:|---:|---|");
         foreach (Test563Verdict v in verdicts)
         {
@@ -1090,20 +1369,29 @@ internal static partial class P1bTests
         sb.AppendLine();
         sb.AppendLine("## Notes and discrepancies");
         sb.AppendLine();
-        sb.AppendLine("1. Test562 parity: all 30 cap-600 cells match `Test562_Summary.csv` within +/-1%");
-        sb.AppendLine("   RHS-eq and +/-0.5% error (in practice bit-identical: same scene, same chunk).");
+        sb.AppendLine("1. Test562 parity: all 30 cap-600 cells match `Test562_Summary.csv` exactly");
+        sb.AppendLine("   (RHS-eq, chunks and err max r, the same scene and the same chunk).");
         sb.AppendLine("2. The 600 s cap regime is the control; the other caps are not production and are");
         sb.AppendLine("   not a recommendation to change the game default.");
         sb.AppendLine("3. Cap >= chunk is inert; the measured cap effect is the *chunk* effect, because the");
         sb.AppendLine("   chunk is what enforces the step bound. Raising only `MaxStepSize` in the game");
         sb.AppendLine("   would not reproduce these rows.");
-        sb.AppendLine("4. `cap-bound` comes from a dense-output pass. The dense path adds one derivative");
-        sb.AppendLine("   evaluation per accepted step but does not change the controller; the accepted");
-        sb.AppendLine("   count is compared and any mismatch is noted in the CSV.");
+        sb.AppendLine("4. `accepted_at_cap_share` comes from a dense-output pass. The dense path adds one");
+        sb.AppendLine("   derivative evaluation per accepted step but does not change the controller; the");
+        sb.AppendLine("   accepted count is compared and any mismatch is noted in the CSV.");
         sb.AppendLine("5. Timing: warm-up + 5 attempts (3 when a run > 2 s), GC.Collect before each timed");
-        sb.AppendLine("   batch, batches to 200 ms for runs < 50 ms, CV > 10% repeats the cell.");
-        sb.AppendLine("6. The machine was quiet: cs2, browser, Discord and steam/steamwebhelper were closed");
-        sb.AppendLine("   before the run (see `Test563_Environment.txt`).");
+        sb.AppendLine("   batch, batches to 200 ms for runs < 50 ms, CV > 10% repeats the cell. The ms");
+        sb.AppendLine("   column is the outer end-to-end stopwatch (it includes scene construction and the");
+        sb.AppendLine("   error evaluation); it is not directly comparable with Test562's integration-only");
+        sb.AppendLine("   timing. Cross-report ms comparisons are invalid.");
+        sb.AppendLine("6. Timing is end-to-end and was taken in the machine state recorded at the top of");
+        sb.AppendLine("   `Test563_Environment.txt` (top processes at start). Treat it as an upper bound,");
+        sb.AppendLine("   not a quiet-machine number.");
+        sb.AppendLine("7. Determinism: every recorded attempt of a cell must have the same Calls, Chunks and");
+        sb.AppendLine("   ErrMax. A fresh run writes 1/0 in the `deterministic` column; a loaded CSV without");
+        sb.AppendLine("   that column leaves it blank rather than claiming an unverified 1.");
+        sb.AppendLine("8. The parity gate requires `Test562_Summary.csv`. Run Test562 before Test563 on a");
+        sb.AppendLine("   clean tree; a missing baseline stops the sweep with an explicit message.");
         return sb.ToString();
     }
 
@@ -1175,6 +1463,7 @@ internal static partial class P1bTests
                 continue;
             }
 
+            string detField = Test562Field(f, columns, "deterministic");
             var cell = new Test563Cell
             {
                 Case = c,
@@ -1196,10 +1485,14 @@ internal static partial class P1bTests
                 ErrMax = DecisionBParseDouble(Test562Field(f, columns, "err_pos_max_m")),
                 ErrFinal = DecisionBParseDouble(Test562Field(f, columns, "err_pos_final_m")),
                 ErrMaxV = DecisionBParseDouble(Test562Field(f, columns, "err_vel_max_mps")),
-                CapBound = DecisionBParseDouble(Test562Field(f, columns, "cap_bound")),
+                CapBound = Test563LoadDouble(f, columns, "accepted_at_cap_share", "cap_bound"),
                 DenseAccepted = ParseLong(Test562Field(f, columns, "dense_accepted")),
+                Deterministic = detField != "0",
+                DeterminismKnown = detField.Length > 0,
                 Status = Test562Field(f, columns, "status"),
-                Note = Test562Field(f, columns, "note")
+                Note = Test562Field(f, columns, "note"),
+                CsvFloorM = DecisionBParseDouble(Test562Field(f, columns, "floor_m")),
+                CsvReferenceStatus = Test562Field(f, columns, "reference_status")
             };
             var attempt = new Test563Attempt
             {
@@ -1229,6 +1522,63 @@ internal static partial class P1bTests
         return cells;
     }
 
+    private static double Test563LoadDouble(
+        List<string> fields, Dictionary<string, int> columns, string name, string fallback)
+    {
+        string value = Test562Field(fields, columns, name);
+        if (value.Length == 0 && !string.IsNullOrEmpty(fallback))
+        {
+            value = Test562Field(fields, columns, fallback);
+        }
+
+        return DecisionBParseDouble(value);
+    }
+
+    /// <summary>
+    /// Refuse a regenerate pass that would mix errors measured against a
+    /// different reference/floor with the floor of the current build.
+    /// </summary>
+    private static List<string> Test563ValidateLoadedCells(
+        List<Test563Cell> cells, List<Test563Case> cases)
+    {
+        var stale = new List<string>();
+        foreach (Test563Case c in cases)
+        {
+            var rows = cells.FindAll(x => x.Case == c);
+            if (rows.Count == 0)
+            {
+                stale.Add(c.Key + ": no cells in the Summary CSV");
+                continue;
+            }
+
+            foreach (Test563Cell cell in rows)
+            {
+                if (!double.IsFinite(cell.CsvFloorM))
+                {
+                    stale.Add(c.Key + " " + cell.Regime + " cap " + cell.Cap.ToString("G6", CultureInfo.InvariantCulture)
+                        + ": floor_m missing in the CSV");
+                    continue;
+                }
+
+                if (!double.IsFinite(c.FloorM)
+                    || Math.Abs(cell.CsvFloorM - c.FloorM) > 0.01d * Math.Max(Math.Abs(c.FloorM), 1e-30d))
+                {
+                    stale.Add(c.Key + ": CSV floor " + cell.CsvFloorM.ToString("E3", CultureInfo.InvariantCulture)
+                        + " m != current floor " + c.FloorM.ToString("E3", CultureInfo.InvariantCulture) + " m");
+                }
+
+                if (!string.IsNullOrEmpty(cell.CsvReferenceStatus)
+                    && !string.Equals(cell.CsvReferenceStatus, c.ReferenceStatus, StringComparison.Ordinal))
+                {
+                    stale.Add(c.Key + ": CSV reference " + cell.CsvReferenceStatus
+                        + " != current " + c.ReferenceStatus);
+                }
+            }
+        }
+
+        return stale;
+    }
+
     private static int Test563Regenerate(string dir, string summaryPath, string mdPath)
     {
         Console.WriteLine("regenerate: reading " + summaryPath);
@@ -1237,6 +1587,23 @@ internal static partial class P1bTests
         if (cells.Count == 0)
         {
             Console.WriteLine("regenerate: no cells loaded");
+            return 1;
+        }
+
+        List<string> stale = Test563ValidateLoadedCells(cells, cases);
+        if (stale.Count > 0)
+        {
+            Console.WriteLine("STALE REFERENCE: regenerate refused; the CSV was measured against a different floor/reference.");
+            foreach (string note in stale.Take(10))
+            {
+                Console.WriteLine("  " + note);
+            }
+
+            if (stale.Count > 10)
+            {
+                Console.WriteLine("  ... " + (stale.Count - 10).ToString(CultureInfo.InvariantCulture) + " more");
+            }
+
             return 1;
         }
 
@@ -1252,9 +1619,12 @@ internal static partial class P1bTests
         foreach (Test563Verdict v in verdicts)
         {
             Console.WriteLine("  " + v.Case.Key + " " + v.Method + " cap="
-                + v.Cap.ToString("G6", CultureInfo.InvariantCulture) + ": " + v.Verdict
-                + (v.Why.Length > 0 ? " (" + v.Why + ")" : "")
-                + ", saving " + (double.IsFinite(v.Saving) ? v.Saving.ToString("F3", CultureInfo.InvariantCulture) : "-"));
+                + v.Cap.ToString("G6", CultureInfo.InvariantCulture)
+                + ": prod " + v.VerdictProduction
+                + (v.FloorLimitedProduction ? " [floor-limited]" : "")
+                + ", tuning " + v.Verdict
+                + ", saving@1e-11 " + (double.IsFinite(v.SavingProduction)
+                    ? v.SavingProduction.ToString("F3", CultureInfo.InvariantCulture) : "-"));
         }
 
         Console.WriteLine("regenerated: " + mdPath);
@@ -1284,7 +1654,7 @@ internal static partial class P1bTests
         sb.AppendLine();
         sb.AppendLine("# launch parameters");
         sb.AppendLine("cases:       L1 LEO 200 km 1 d; L2 LEO 300 km 30 d; L3 LEO 400 km 1000 orbits");
-        sb.AppendLine("methods:     dop853, dopri5");
+        sb.AppendLine("methods:     " + string.Join(", ", Test562AvailableMethods()));
         sb.AppendLine("rtol_grid:   " + string.Join(", ", Test563Rtols.Select(r => r.ToString("G3", CultureInfo.InvariantCulture))));
         sb.AppendLine("caps_s:      " + string.Join(", ", Test563Caps.Select(c => c.ToString("G6", CultureInfo.InvariantCulture))));
         sb.AppendLine("cap_regime:  MaxStepSize = chunk = cap; 0.05 s burn chunk kept");
@@ -1293,8 +1663,7 @@ internal static partial class P1bTests
         sb.AppendLine("gc/protocol: GC.Collect(); WaitForPendingFinalizers(); GC.Collect(); timer after");
         sb.AppendLine("output_dir:  " + dir);
         sb.AppendLine();
-        sb.AppendLine("# quiet-machine state: cs2 / browser / Discord / steam+steamwebhelper were closed");
-        sb.AppendLine("# before the run (operator action per task). Top processes at start:");
+        sb.AppendLine("# top processes by working set at start (timing is end-to-end; treat it as an upper bound):");
         sb.Append(Test562ProcessSnapshotText());
         return sb.ToString();
     }

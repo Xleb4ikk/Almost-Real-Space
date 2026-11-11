@@ -24,6 +24,47 @@ internal static partial class P1bTests
 {
     private const long Test562BudgetRhs = 80000000L;
 
+    // Explicit production-kernel registry. Test562/Test563 must never silently
+    // fall back to DOP853 when a name is unknown: the name is a request, and
+    // is either served by an entry here or rejected with an error.
+    private sealed class Test562MethodInfo
+    {
+        public string Kernel;
+        public string Display;
+        public bool Available;
+    }
+
+    private static readonly Test562MethodInfo[] Test562MethodRegistry =
+    {
+        new Test562MethodInfo { Kernel = "dop853", Display = "DOP853", Available = true },
+        new Test562MethodInfo { Kernel = "dopri5", Display = "DOPRI5", Available = true }
+    };
+
+    private static string[] Test562AvailableMethods()
+    {
+        return Test562MethodRegistry.Where(m => m.Available).Select(m => m.Kernel).ToArray();
+    }
+
+    private static string Test562MethodDisplay(string kernel)
+    {
+        Test562MethodInfo info = Test562MethodRegistry.FirstOrDefault(
+            m => string.Equals(m.Kernel, kernel, StringComparison.Ordinal));
+        return info == null ? (kernel ?? "").ToUpperInvariant() : info.Display;
+    }
+
+    /// <summary>Exact registry lookup; null when the name is not a shipped production kernel.</summary>
+    private static Test562MethodInfo Test562MethodLookup(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        string key = name.Trim().ToLowerInvariant();
+        return Test562MethodRegistry.FirstOrDefault(
+            m => m.Available && string.Equals(m.Kernel, key, StringComparison.Ordinal));
+    }
+
     // The production cap (Test560b) and the separate 86 400 s regime. The two
     // are never mixed: every row carries its cap and regime label.
     private const double Test562ShortCap = 600d;
@@ -65,7 +106,12 @@ internal static partial class P1bTests
         public int Group;
         public int Index;
         public int Batch;
+        /// <summary>Legacy alias of MsEndToEnd (the original Runs.csv column `ms`).</summary>
         public double Ms;
+        /// <summary>Outer end-to-end stopwatch per run: scene/ship/array construction + error grading.</summary>
+        public double MsEndToEnd;
+        /// <summary>Inner run.Ms: the integration loop only. This is the speed decision metric.</summary>
+        public double MsIntegration;
         public long AllocBytes;
         public long Calls;
         public long RhsEq;
@@ -88,15 +134,31 @@ internal static partial class P1bTests
         public double Rtol;
         public List<Test562Attempt> Attempts = new List<Test562Attempt>();
         public Test562Attempt First;      // deterministic reference attempt
+        // Legacy end-to-end aliases (Summary `ms_median`/`ms_min`/`ms_max`/`cv_pct`).
         public double MsMedian;
         public double MsMin;
         public double MsMax;
+        // Explicit end-to-end fields (Summary `ms_end_to_end_*`).
+        public double MsEndToEndMedian;
+        public double MsEndToEndMin;
+        public double MsEndToEndMax;
+        public double CvEndToEndPct;
+        // Integration-only fields (the timing decision metric).
+        public double MsIntegrationMedian;
+        public double MsIntegrationMin;
+        public double MsIntegrationMax;
         public double CvPct;
+        public double CvIntegrationPct;
         public long AllocMedian;
         public bool BelowFloor;
         public string Bound = "";
         public string Status = "ok";
         public string Note = "";
+        public string TimingSource = "";
+        // Values recorded in the Summary CSV, used to refuse a stale
+        // floor/reference mixture during regenerate/retime.
+        public double CsvFloorM = double.NaN;
+        public string CsvReferenceStatus = "";
 
         public double ErrMax { get { return First == null ? double.NaN : First.ErrMax; } }
         public double ErrFinal { get { return First == null ? double.NaN : First.ErrFinal; } }
@@ -120,6 +182,8 @@ internal static partial class P1bTests
         public double RhsInterp = double.NaN;
         public double MsInterp = double.NaN;
         public bool Interpolated;
+        public bool FloorExposed;
+        public string FloorNote = "";
         public string Note = "";
     }
 
@@ -147,7 +211,7 @@ internal static partial class P1bTests
 
     private static int Test562_ProductionWorkPrecision()
     {
-        Console.WriteLine("--- Test562: production work/precision (SpacecraftPhysics DOP853/DOPRI5) ---");
+        Console.WriteLine("--- Test562: production work/precision (SpacecraftPhysics) ---");
         string dir = Path.Combine(StudyShipMatrixResultsDir(), "work_precision");
         Directory.CreateDirectory(dir);
         string runsPath = Path.Combine(dir, "Test562_Runs.csv");
@@ -160,12 +224,32 @@ internal static partial class P1bTests
             return Test562Regenerate(dir, summaryPath, mdPath);
         }
 
-        if (!string.IsNullOrWhiteSpace(DecisionBEnv("P1B562_REMEASURE")))
+        string retime = DecisionBEnv("P1B562_RETIME");
+        string remeasure = DecisionBEnv("P1B562_REMEASURE");
+        bool retimeAll = !string.IsNullOrWhiteSpace(retime)
+            || string.Equals((remeasure ?? "").Trim(), "ALL", StringComparison.OrdinalIgnoreCase);
+        if (retimeAll)
+        {
+            return Test562RetimeMode(dir, envPath);
+        }
+
+        if (!string.IsNullOrWhiteSpace(remeasure))
         {
             return Test562RemeasureMode(dir, envPath);
         }
 
-        string[] methods = Test562MethodsFilter();
+        string[] methods = Test562MethodsFilter(out string methodError);
+        if (methodError != null)
+        {
+            Console.WriteLine("STOP: " + methodError);
+            return 1;
+        }
+
+        if (methods.Length == 0)
+        {
+            Console.WriteLine("STOP: no production method selected");
+            return 1;
+        }
         double[] rtols = Test562RtolFilter();
         int attemptsWanted = Test562AttemptsWanted();
         bool doShort = Test562RegimeWanted("600");
@@ -182,6 +266,15 @@ internal static partial class P1bTests
         Console.WriteLine("  environment: " + envPath);
 
         List<Test562Case> all = Test562BuildCases();
+        string[] requiredCases = "abcdefghijklmn".Select(ch => ch.ToString()).ToArray();
+        List<string> missingCases = requiredCases.Where(k => !all.Exists(c => c.Key == k)).ToList();
+        if (missingCases.Count > 0)
+        {
+            Console.WriteLine("STOP: Test562 requires all 14 situations a..n; missing "
+                + string.Join(", ", missingCases));
+            return 1;
+        }
+
         List<Test562Case> cases = all;
         if (!string.IsNullOrWhiteSpace(scenarioFilter))
         {
@@ -340,8 +433,18 @@ internal static partial class P1bTests
                                 ? cell.ErrMax.ToString("E3", CultureInfo.InvariantCulture) + " m"
                                 : cell.Status)
                             + ", rhs-eq " + cell.RhsEq.ToString("N0", CultureInfo.InvariantCulture)
-                            + ", " + cell.MsMedian.ToString("F2", CultureInfo.InvariantCulture) + " ms"
-                            + " (cv " + cell.CvPct.ToString("F1", CultureInfo.InvariantCulture) + "%)"
+                            + ", " + (double.IsFinite(cell.MsIntegrationMedian)
+                                ? cell.MsIntegrationMedian.ToString("F2", CultureInfo.InvariantCulture)
+                                  + " ms int / " + Test562CellEndMs(cell).ToString("F2", CultureInfo.InvariantCulture)
+                                  + " ms end"
+                                : "n/a")
+                            + " (cv int " + (double.IsFinite(cell.CvIntegrationPct)
+                                ? cell.CvIntegrationPct.ToString("F1", CultureInfo.InvariantCulture)
+                                : "-")
+                            + "%, end " + (double.IsFinite(cell.CvPct)
+                                ? cell.CvPct.ToString("F1", CultureInfo.InvariantCulture)
+                                : "-")
+                            + "%)"
                             + (cell.BelowFloor ? " [below floor]" : ""));
                     }
                 }
@@ -354,8 +457,8 @@ internal static partial class P1bTests
         List<Test562TargetPoint[,]> targets = Test562TargetTable(cells, cases, methods,
             out List<string> targetNotes);
         File.WriteAllText(mdPath, Test562Markdown(cells, cases, targets, targetNotes, methods, rtols,
-            attemptsWanted, anchor, anchorProbes, anchorFailures, anchorLiteral, dir, doShort, doLong,
-            scenarioFilter, null));
+            Test562AttemptsText(attemptsWanted), anchor, anchorProbes, anchorFailures, anchorLiteral, dir,
+            doShort, doLong, scenarioFilter, null));
 
         Console.WriteLine();
         Console.WriteLine("files:");
@@ -365,15 +468,37 @@ internal static partial class P1bTests
         Console.WriteLine("  " + envPath);
 
         // ---- Structural checks (data, not accuracy rankings) ----
-        int finiteCells = cells.Count(x => x.Status == "ok" && double.IsFinite(x.ErrMax));
-        int measured = cells.Count(x => x.First != null && (x.Status == "ok" || x.Status == "below-floor"));
+        string[] validStatuses = { "ok", "below-floor", "floor-limited", "censored", "error" };
+        int finiteCells = cells.Count(x => (x.Status == "ok" || x.Status == "below-floor"
+            || x.Status == "floor-limited") && double.IsFinite(x.ErrMax));
+        int censoredCells = cells.Count(x => x.Status == "censored");
+        int errorCells = cells.Count(x => x.Status == "error");
+        int labelled = cells.Count(x => validStatuses.Contains(x.Status));
         Check(cells.Count > 0, "Test562: cells measured", cells.Count.ToString(CultureInfo.InvariantCulture));
         Check(finiteCells > 0, "Test562: finite cells", finiteCells.ToString(CultureInfo.InvariantCulture));
-        Check(measured == cells.Count,
-            "Test562: every cell either produced a finite error or is labelled",
-            measured.ToString(CultureInfo.InvariantCulture) + "/" + cells.Count.ToString(CultureInfo.InvariantCulture));
+        Check(errorCells == 0, "Test562: no error cells (censored is a valid outcome)",
+            errorCells.ToString(CultureInfo.InvariantCulture));
+        Check(labelled == cells.Count,
+            "Test562: every cell has a known status",
+            labelled.ToString(CultureInfo.InvariantCulture) + "/" + cells.Count.ToString(CultureInfo.InvariantCulture));
+        Check(finiteCells + censoredCells == cells.Count,
+            "Test562: every cell is measured or censored",
+            (finiteCells + censoredCells).ToString(CultureInfo.InvariantCulture) + "/"
+            + cells.Count.ToString(CultureInfo.InvariantCulture));
         Check(File.Exists(runsPath) && File.Exists(summaryPath) && File.Exists(mdPath) && File.Exists(envPath),
             "Test562: reports written", dir);
+
+        if (censoredCells > 0)
+        {
+            Console.WriteLine("censored cells: " + censoredCells.ToString(CultureInfo.InvariantCulture)
+                + " (RHS budget); they are counted, not failed");
+            foreach (Test562Cell cell in cells.FindAll(x => x.Status == "censored"))
+            {
+                Console.WriteLine("  " + cell.Case.Key + " " + cell.Method + " " + cell.Regime
+                    + " rtol=" + cell.Rtol.ToString("G3", CultureInfo.InvariantCulture)
+                    + ": " + cell.Note);
+            }
+        }
 
         int cvHigh = cells.Count(x => x.CvPct > 10d);
         Console.WriteLine("cells with CV > 10%: " + cvHigh.ToString(CultureInfo.InvariantCulture)
@@ -601,8 +726,13 @@ internal static partial class P1bTests
     private static DecisionBRun Test562RunOnce(
         Test562Case c, DecisionBScenario scene, string method, double rtol, double cap)
     {
-        string kernel = method == "dopri5" ? "dopri5" : "dop853";
-        return DecisionBRunProduction(scene, kernel, rtol, cap,
+        Test562MethodInfo info = Test562MethodLookup(method);
+        if (info == null)
+        {
+            throw new InvalidOperationException("unknown production kernel: " + method);
+        }
+
+        return DecisionBRunProduction(scene, info.Kernel, rtol, cap,
             scene.DominantBodyOverride, true, false,
             budget: Test562BudgetRhs);
     }
@@ -657,13 +787,22 @@ internal static partial class P1bTests
             first.Add(Test562TimedBatch(c, scene, method, rtol, cap, batch, 1, i + 1));
         }
 
-        Test562Stats(first, out double median, out double min, out double max, out double cv);
-        bool retry = cv > 10d;
+        Test562Stats(first, a => a.Ms,
+            out double medianEnd, out double minEnd, out double maxEnd, out double cvEnd);
+        Test562Stats(first, a => a.MsIntegration,
+            out double medianInt, out double minInt, out double maxInt, out double cvInt);
+        // The speed decision is made on integration time, so the retry is
+        // triggered by integration CV. Fall back to the end-to-end CV only when
+        // integration CV is unavailable (too few attempts).
+        double retryCv = double.IsFinite(cvInt) ? cvInt : cvEnd;
+        bool retry = retryCv > 10d;
+        bool endCvHighIntegrationStable = cvEnd > 10d
+            && (!double.IsFinite(cvInt) || cvInt <= 10d);
         List<Test562Attempt> used = first;
         string cvNote = "";
         if (retry)
         {
-            Console.WriteLine("    CV " + cv.ToString("F1", CultureInfo.InvariantCulture)
+            Console.WriteLine("    integration CV " + retryCv.ToString("F1", CultureInfo.InvariantCulture)
                 + "% > 10% for " + key + "; repeating the cell");
             var second = new List<Test562Attempt>();
             for (int i = 0; i < repeats; i++)
@@ -671,22 +810,40 @@ internal static partial class P1bTests
                 second.Add(Test562TimedBatch(c, scene, method, rtol, cap, batch, 2, i + 1));
             }
 
-            Test562Stats(second, out median, out min, out max, out cv);
+            Test562Stats(second, a => a.Ms,
+                out medianEnd, out minEnd, out maxEnd, out cvEnd);
+            Test562Stats(second, a => a.MsIntegration,
+                out medianInt, out minInt, out maxInt, out cvInt);
             used = second;
-            cvNote = "first pass CV>10%; cell repeated";
+            cvNote = "first pass integration CV>10%; cell repeated";
             cell.Attempts.AddRange(first);
             cell.Attempts.AddRange(second);
         }
         else
         {
             cell.Attempts.AddRange(first);
+            if (endCvHighIntegrationStable)
+            {
+                cvNote = "end-to-end CV high; integration stable";
+                Console.WriteLine("    end-to-end CV " + cvEnd.ToString("F1", CultureInfo.InvariantCulture)
+                    + "% > 10% but integration CV " + cvInt.ToString("F1", CultureInfo.InvariantCulture)
+                    + "% <= 10% for " + key + "; not repeated");
+            }
         }
 
-        cell.MsMedian = median;
-        cell.MsMin = min;
-        cell.MsMax = max;
-        cell.CvPct = cv;
+        cell.MsMedian = medianEnd;
+        cell.MsMin = minEnd;
+        cell.MsMax = maxEnd;
+        cell.MsEndToEndMedian = medianEnd;
+        cell.MsEndToEndMin = minEnd;
+        cell.MsEndToEndMax = maxEnd;
+        cell.CvPct = cvEnd;
+        cell.CvEndToEndPct = cvEnd;
         cell.First = used[0];
+        cell.MsIntegrationMedian = medianInt;
+        cell.MsIntegrationMin = minInt;
+        cell.MsIntegrationMax = maxInt;
+        cell.CvIntegrationPct = cvInt;
 
         long allocSum = 0L;
         foreach (Test562Attempt a in used)
@@ -711,15 +868,17 @@ internal static partial class P1bTests
         cell.BelowFloor = below;
         cell.Status = below ? "below-floor" : "ok";
         cell.Bound = Test562BoundOf(cell);
+        cell.TimingSource = "fresh";
         var notes = new List<string>();
         if (cvNote.Length > 0)
         {
             notes.Add(cvNote);
         }
 
-        if (cv > 10d)
+        double finalCv = double.IsFinite(cvInt) ? cvInt : cvEnd;
+        if (retry && finalCv > 10d)
         {
-            notes.Add("CV still >10% after retry");
+            notes.Add("integration CV still >10% after retry");
         }
 
         if (!deterministic)
@@ -746,14 +905,19 @@ internal static partial class P1bTests
         long alloc0 = GC.GetAllocatedBytesForCurrentThread();
         var sw = Stopwatch.StartNew();
         DecisionBRun last = null;
+        double innerMs = 0d;
         for (int i = 0; i < batch; i++)
         {
             last = Test562RunOnce(c, scene, method, rtol, cap);
+            innerMs += last.Ms;
         }
 
         sw.Stop();
         long alloc = GC.GetAllocatedBytesForCurrentThread() - alloc0;
         Test562Attempt attempt = Test562AttemptFrom(last, group, index, batch, sw.Elapsed.TotalMilliseconds / batch);
+        attempt.MsEndToEnd = sw.Elapsed.TotalMilliseconds / batch;
+        attempt.Ms = attempt.MsEndToEnd;
+        attempt.MsIntegration = innerMs / Math.Max(1, batch);
         attempt.AllocBytes = alloc / Math.Max(1, batch);
         return attempt;
     }
@@ -767,6 +931,7 @@ internal static partial class P1bTests
             Index = index,
             Batch = batch,
             Ms = ms,
+            MsEndToEnd = ms,
             AllocBytes = run.GcBytes,
             Calls = run.Calls,
             RhsEq = (long)run.CostTotal,
@@ -813,16 +978,17 @@ internal static partial class P1bTests
     }
 
     private static void Test562Stats(
-        List<Test562Attempt> attempts, out double median, out double min, out double max, out double cv)
+        List<Test562Attempt> attempts, Func<Test562Attempt, double> selector,
+        out double median, out double min, out double max, out double cv)
     {
         var values = new List<double>();
         foreach (Test562Attempt a in attempts)
         {
-            values.Add(a.Ms);
+            values.Add(selector(a));
         }
 
         values.Sort();
-        median = values.Count == 0 ? double.NaN : values[values.Count / 2];
+        median = Test562MedianOfSorted(values);
         min = values.Count == 0 ? double.NaN : values[0];
         max = values.Count == 0 ? double.NaN : values[values.Count - 1];
         cv = double.NaN;
@@ -844,6 +1010,20 @@ internal static partial class P1bTests
         }
     }
 
+    /// <summary>Median of an already sorted list: mean of the two central values for an even count.</summary>
+    private static double Test562MedianOfSorted(List<double> sorted)
+    {
+        if (sorted.Count == 0)
+        {
+            return double.NaN;
+        }
+
+        int mid = sorted.Count / 2;
+        return sorted.Count % 2 == 1
+            ? sorted[mid]
+            : 0.5d * (sorted[mid - 1] + sorted[mid]);
+    }
+
     // --------------------------------------------------------------------------------
     // CSV
     // --------------------------------------------------------------------------------
@@ -852,7 +1032,7 @@ internal static partial class P1bTests
     {
         var sb = new StringBuilder();
         sb.AppendLine("scenario_key,scenario,regime,method,rtol,max_step_s,repeat_group,repeat_index,batch_runs,"
-            + "ms,alloc_bytes,rhs_calls,rhs_eq,chunks,accepted,rejected,"
+            + "ms,ms_integration,ms_end_to_end,timing_schema,alloc_bytes,rhs_calls,rhs_eq,chunks,accepted,rejected,"
             + "err_pos_max_m,err_pos_final_m,err_vel_max_mps,floor_m,status,note");
         foreach (Test562Cell cell in cells)
         {
@@ -868,6 +1048,9 @@ internal static partial class P1bTests
                     .Append(a.Index.ToString(CultureInfo.InvariantCulture)).Append(',')
                     .Append(a.Batch.ToString(CultureInfo.InvariantCulture)).Append(',')
                     .Append(DecisionBCsvNumber(a.Ms)).Append(',')
+                    .Append(DecisionBCsvNumber(a.MsIntegration)).Append(',')
+                    .Append(DecisionBCsvNumber(a.MsEndToEnd)).Append(',')
+                    .Append("integration_end_to_end_v1").Append(',')
                     .Append(a.AllocBytes.ToString(CultureInfo.InvariantCulture)).Append(',')
                     .Append(a.Calls.ToString(CultureInfo.InvariantCulture)).Append(',')
                     .Append(a.RhsEq.ToString(CultureInfo.InvariantCulture)).Append(',')
@@ -891,13 +1074,22 @@ internal static partial class P1bTests
     {
         var sb = new StringBuilder();
         sb.AppendLine("scenario_key,scenario,regime,method,rtol,max_step_s,cap_s,reference_status,"
-            + "floor_m,floor_v,attempts,ms_median,ms_min,ms_max,cv_pct,"
+            + "floor_m,floor_v,attempts,ms_median,ms_min,ms_max,"
+            + "ms_integration_median,ms_integration_min,ms_integration_max,ms_integration_cv_pct,"
+            + "ms_end_to_end_median,ms_end_to_end_min,ms_end_to_end_max,ms_end_to_end_cv_pct,cv_pct,"
             + "err_pos_max_m,err_pos_final_m,err_vel_max_mps,rhs_calls,rhs_eq,chunks,accepted,rejected,"
-            + "alloc_bytes,ns_per_rhs,ns_per_rhs_eq,below_floor,bound,status,note");
+            + "alloc_bytes,ns_per_rhs,ns_per_rhs_eq,below_floor,bound,status,note,timing_source");
         foreach (Test562Cell cell in cells)
         {
-            double nsPerRhs = cell.Calls > 0 ? 1e6 * cell.MsMedian / cell.Calls : double.NaN;
-            double nsPerRhsEq = cell.RhsEq > 0 ? 1e6 * cell.MsMedian / cell.RhsEq : double.NaN;
+            double nsMs = double.IsFinite(cell.MsIntegrationMedian)
+                ? cell.MsIntegrationMedian
+                : cell.MsMedian;
+            double nsPerRhs = cell.Calls > 0 ? 1e6 * nsMs / cell.Calls : double.NaN;
+            double nsPerRhsEq = cell.RhsEq > 0 ? 1e6 * nsMs / cell.RhsEq : double.NaN;
+            double endMedian = double.IsFinite(cell.MsEndToEndMedian) ? cell.MsEndToEndMedian : cell.MsMedian;
+            double endMin = double.IsFinite(cell.MsEndToEndMin) ? cell.MsEndToEndMin : cell.MsMin;
+            double endMax = double.IsFinite(cell.MsEndToEndMax) ? cell.MsEndToEndMax : cell.MsMax;
+            double endCv = double.IsFinite(cell.CvEndToEndPct) ? cell.CvEndToEndPct : cell.CvPct;
             sb.Append(DecisionBCsvField(cell.Case.Key)).Append(',')
                 .Append(DecisionBCsvField(cell.Case.Title)).Append(',')
                 .Append(cell.Regime).Append(',')
@@ -912,6 +1104,14 @@ internal static partial class P1bTests
                 .Append(DecisionBCsvNumber(cell.MsMedian)).Append(',')
                 .Append(DecisionBCsvNumber(cell.MsMin)).Append(',')
                 .Append(DecisionBCsvNumber(cell.MsMax)).Append(',')
+                .Append(DecisionBCsvNumber(cell.MsIntegrationMedian)).Append(',')
+                .Append(DecisionBCsvNumber(cell.MsIntegrationMin)).Append(',')
+                .Append(DecisionBCsvNumber(cell.MsIntegrationMax)).Append(',')
+                .Append(DecisionBCsvNumber(cell.CvIntegrationPct)).Append(',')
+                .Append(DecisionBCsvNumber(endMedian)).Append(',')
+                .Append(DecisionBCsvNumber(endMin)).Append(',')
+                .Append(DecisionBCsvNumber(endMax)).Append(',')
+                .Append(DecisionBCsvNumber(endCv)).Append(',')
                 .Append(DecisionBCsvNumber(cell.CvPct)).Append(',')
                 .Append(DecisionBCsvNumber(cell.ErrMax)).Append(',')
                 .Append(DecisionBCsvNumber(cell.ErrFinal)).Append(',')
@@ -927,7 +1127,8 @@ internal static partial class P1bTests
                 .Append(cell.BelowFloor ? "1" : "0").Append(',')
                 .Append(cell.Bound).Append(',')
                 .Append(cell.Status).Append(',')
-                .Append(DecisionBCsvField(cell.Note)).AppendLine();
+                .Append(DecisionBCsvField(cell.Note)).Append(',')
+                .Append(DecisionBCsvField(cell.TimingSource)).AppendLine();
         }
 
         File.WriteAllText(path, sb.ToString());
@@ -986,6 +1187,20 @@ internal static partial class P1bTests
         return table;
     }
 
+    private static double Test562CellSpeedMs(Test562Cell cell)
+    {
+        return double.IsFinite(cell.MsIntegrationMedian)
+            ? cell.MsIntegrationMedian
+            : cell.MsMedian;
+    }
+
+    private static double Test562CellEndMs(Test562Cell cell)
+    {
+        return double.IsFinite(cell.MsEndToEndMedian)
+            ? cell.MsEndToEndMedian
+            : cell.MsMedian;
+    }
+
     private static Test562TargetPoint Test562BuildTargetPoint(
         Test562Case c, List<Test562Cell> cells, double target)
     {
@@ -1029,8 +1244,15 @@ internal static partial class P1bTests
             p.RtolMeasured = cheapest.Rtol;
             p.ErrMeasured = cheapest.ErrMax;
             p.RhsMeasured = cheapest.RhsEq;
-            p.MsMeasured = cheapest.MsMedian;
+            p.MsMeasured = Test562CellSpeedMs(cheapest);
             p.Note = "the cheapest measured run already meets the target; cost is an upper bound";
+            if (double.IsFinite(c.FloorM)
+                && cheapest.ErrMax <= Test562BelowFloorFactor * c.FloorM)
+            {
+                p.FloorExposed = true;
+                p.FloorNote = "the cost boundary cell is at/below 10 x floor";
+            }
+
             return p;
         }
 
@@ -1042,7 +1264,7 @@ internal static partial class P1bTests
             p.RtolMeasured = tightest.Rtol;
             p.ErrMeasured = tightest.ErrMax;
             p.RhsMeasured = tightest.RhsEq;
-            p.MsMeasured = tightest.MsMedian;
+            p.MsMeasured = Test562CellSpeedMs(tightest);
             p.Note = "min err " + tightest.ErrMax.ToString("E3", CultureInfo.InvariantCulture)
                 + " m at rtol " + tightest.Rtol.ToString("E1", CultureInfo.InvariantCulture);
             return p;
@@ -1053,7 +1275,7 @@ internal static partial class P1bTests
         p.RtolMeasured = best.Rtol;
         p.ErrMeasured = best.ErrMax;
         p.RhsMeasured = best.RhsEq;
-        p.MsMeasured = best.MsMedian;
+        p.MsMeasured = Test562CellSpeedMs(best);
 
         p.Status = "ok";
         {
@@ -1076,15 +1298,25 @@ internal static partial class P1bTests
                 Test562Cell e0 = byRtol[cross - 1];
                 Test562Cell e1 = byRtol[cross];
                 if (e1.ErrMax > 0d && e0.ErrMax > e1.ErrMax && e0.RhsEq > 0d && e1.RhsEq > 0d
-                    && e0.MsMedian > 0d && e1.MsMedian > 0d)
+                    && Test562CellSpeedMs(e0) > 0d && Test562CellSpeedMs(e1) > 0d)
                 {
                     double w = (Math.Log(target) - Math.Log(e0.ErrMax))
                         / (Math.Log(e1.ErrMax) - Math.Log(e0.ErrMax));
                     w = Math.Max(0d, Math.Min(1d, w));
                     p.RhsInterp = Math.Exp(Math.Log(e0.RhsEq) + (w * (Math.Log(e1.RhsEq) - Math.Log(e0.RhsEq))));
-                    p.MsInterp = Math.Exp(Math.Log(e0.MsMedian) + (w * (Math.Log(e1.MsMedian) - Math.Log(e0.MsMedian))));
+                    p.MsInterp = Math.Exp(Math.Log(Test562CellSpeedMs(e0)) + (w * (Math.Log(Test562CellSpeedMs(e1)) - Math.Log(Test562CellSpeedMs(e0)))));
                     p.RtolInterp = Math.Exp(Math.Log(e0.Rtol) + (w * (Math.Log(e1.Rtol) - Math.Log(e0.Rtol))));
                     p.Interpolated = true;
+                    if (double.IsFinite(c.FloorM))
+                    {
+                        double floorLimit = Test562BelowFloorFactor * c.FloorM;
+                        if (e0.ErrMax <= floorLimit || e1.ErrMax <= floorLimit
+                            || best.ErrMax <= floorLimit)
+                        {
+                            p.FloorExposed = true;
+                            p.FloorNote = "a bracket/target cell is at/below 10 x floor";
+                        }
+                    }
                 }
             }
         }
@@ -1098,13 +1330,14 @@ internal static partial class P1bTests
 
     private static string Test562Markdown(
         List<Test562Cell> cells, List<Test562Case> cases, List<Test562TargetPoint[,]> targets,
-        List<string> targetNotes, string[] methods, double[] rtols, int attemptsWanted,
+        List<string> targetNotes, string[] methods, double[] rtols, string attemptsText,
         Test562Case anchor, List<Test562AnchorProbe> anchorProbes, List<string> anchorFailures,
         bool anchorLiteral, string dir, bool doShort, bool doLong, string scenarioFilter,
         List<Test562LabelRow> labelChanges)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("# Test562 - production work & precision (SpacecraftPhysics DOP853 / DOPRI5)");
+        sb.AppendLine("# Test562 - production work & precision (SpacecraftPhysics, "
+            + string.Join(" / ", methods.Select(Test562MethodDisplay)) + ")");
         sb.AppendLine();
         sb.AppendLine("Generated " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
             + " UTC by `Test562_ProductionWorkPrecision`.");
@@ -1116,22 +1349,29 @@ internal static partial class P1bTests
         sb.AppendLine();
         sb.AppendLine("## Run parameters");
         sb.AppendLine();
-        sb.AppendLine("- methods: " + string.Join(", ", methods));
+        sb.AppendLine("- methods: " + string.Join(", ", methods.Select(Test562MethodDisplay)));
         sb.AppendLine("- rtol grid: " + string.Join(", ", rtols.Select(r => r.ToString("G3", CultureInfo.InvariantCulture))));
         sb.AppendLine("- cap 600 s (production regime)" + (doShort ? ": run" : ": not run"));
         sb.AppendLine("- cap 86 400 s (`regime86400`, separate): "
             + (doLong ? "run for every non-thrust situation" : "not run"));
-        sb.AppendLine("- timing: one unrecorded warm-up, then " + attemptsWanted.ToString(CultureInfo.InvariantCulture)
-            + " attempts (3 if a run is longer than 2 s); a run shorter than 50 ms is repeated inside one");        sb.AppendLine("  timed batch until 200 ms and divided by the batch size; `GC.Collect()` +");
-        sb.AppendLine("  `WaitForPendingFinalizers()` + `GC.Collect()` before every timed batch.");
+        sb.AppendLine("- timing: one unrecorded warm-up, then " + attemptsText);
+        sb.AppendLine("  A run shorter than 50 ms is repeated inside one timed batch until 200 ms and divided by");
+        sb.AppendLine("  the batch size; `GC.Collect()` + `WaitForPendingFinalizers()` + `GC.Collect()` before");
+        sb.AppendLine("  every timed batch.");
         sb.AppendLine("- scenario filter: " + (string.IsNullOrWhiteSpace(scenarioFilter) ? "none" : scenarioFilter));
-        sb.AppendLine("- files: `Test562_Runs.csv` (every attempt), `Test562_Summary.csv` (per cell),");
-        sb.AppendLine("  `Test562_Environment.txt` (machine/.NET/date/parameters).");
+        sb.AppendLine("- files: `Test562_Runs.csv` (raw per-cell run log from the last full run; `ms` is");
+        sb.AppendLine("  end-to-end), `Test562_Summary.csv` (current per-cell medians), `Test562_Retime.csv`");
+        sb.AppendLine("  (every re-time attempt, after `P1B562_RETIME=ALL`), `Test562_Environment.txt`");
+        sb.AppendLine("  (machine/.NET/date/parameters).");
+        sb.AppendLine("- `P1B562_RTOL` accepts any positive tolerance; `P1B562_RTOL=1e-8,1e-9,1e-10,1e-11,1e-12,1e-13`");
+        sb.AppendLine("  includes the rtol that reproduces the Test560b control. The default grid stays 1e-9..1e-13.");
         sb.AppendLine();
 
         sb.AppendLine("## Headline");
         sb.AppendLine();
         Test562AppendHeadline(sb, cells, cases, targets, methods);
+        sb.AppendLine();
+        Test562AppendTimingSection(sb, cells, dir);
         sb.AppendLine();
 
         // ---- Stop condition ----
@@ -1237,22 +1477,27 @@ internal static partial class P1bTests
         }
 
         // ---- Main grid ----
-        Test562AppendGrid(sb, cells, cases, "600", "## Grid: cap 600 s (production regime)");
+        Test562AppendGrid(sb, cells, cases, methods, "600", "## Grid: cap 600 s (production regime)");
         if (doLong)
         {
-            Test562AppendGrid(sb, cells, cases, "86400", "## Grid: cap 86 400 s (`regime86400`, not production)");
+            Test562AppendGrid(sb, cells, cases, methods, "86400", "## Grid: cap 86 400 s (`regime86400`, not production)");
         }
 
         // ---- Target cost ----
         sb.AppendLine("## Cost at a target accuracy (position, err max r <= target)");
         sb.AppendLine();
-        sb.AppendLine("`RHS meas` / `ms meas` = the cheapest *measured* cell that meets the target.");
+        sb.AppendLine("`RHS meas` / `ms meas` = the cheapest *measured* cell that meets the target; `ms meas`");
+        sb.AppendLine("is the integration-only median when available (otherwise the legacy end-to-end value,");
+        sb.AppendLine("marked as an upper bound in the timing section).");
         sb.AppendLine("`RHS @target*` / `ms @target*` = log-log interpolation between the two straddling");
         sb.AppendLine("rtol points, i.e. the estimated cost of exactly the target accuracy (`*`).");
         sb.AppendLine("`EDGE` = the cheapest measured run already meets the target; its cost is an upper");
         sb.AppendLine("bound (a cell whose error is inside 10 x floor can still support this cost bound).");
         sb.AppendLine("`below floor` = the target itself is below 10 x the reference floor; no cost claim.");
         sb.AppendLine("`unreached` = no measured run meets the target; the minimum error is printed.");
+        sb.AppendLine("`floor exposure` = the cost boundary or one end of the interpolation bracket is at");
+        sb.AppendLine("or below 10 x the reference floor; the cost is still an upper bound, but the");
+        sb.AppendLine("accuracy of that bracket is limited by the reference, not by the integrator.");
         sb.AppendLine("This table is the 600 s production cap only; the 86 400 s regime is in the");
         sb.AppendLine("regime section above.");
         sb.AppendLine();
@@ -1262,8 +1507,8 @@ internal static partial class P1bTests
         {
             sb.AppendLine("### " + methods[mi].ToUpperInvariant());
             sb.AppendLine();
-            sb.AppendLine("| key | situation | target | source rtol | err at source, m | RHS meas | ms meas | RHS @target* | ms @target* | flag |");
-            sb.AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---|");
+            sb.AppendLine("| key | situation | target | source rtol | err at source, m | RHS meas | ms meas | RHS @target* | ms @target* | flag | floor exposure |");
+            sb.AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|");
             for (int ci = 0; ci < cases.Count; ci++)
             {
                 for (int ti = 0; ti < targetValues.Length; ti++)
@@ -1277,7 +1522,11 @@ internal static partial class P1bTests
                         .Append(double.IsFinite(p.MsMeasured) ? p.MsMeasured.ToString("F2", CultureInfo.InvariantCulture) : "-").Append(" | ")
                         .Append(p.Interpolated ? p.RhsInterp.ToString("N0", CultureInfo.InvariantCulture) : "-").Append(" | ")
                         .Append(p.Interpolated ? p.MsInterp.ToString("F2", CultureInfo.InvariantCulture) : "-").Append(" | ")
-                        .Append(Test562TargetFlag(p)).AppendLine(" |");
+                        .Append(Test562TargetFlag(p)).Append(" | ")
+                        .Append(p.FloorExposed
+                            ? "floor-exposed (" + DecisionBCsvField(p.FloorNote) + ")"
+                            : "-")
+                        .AppendLine(" |");
                 }
             }
 
@@ -1390,7 +1639,10 @@ internal static partial class P1bTests
         }
         else
         {
-            sb.AppendLine("| key | method | rtol | err 600 s, m | RHS-eq 600 s | err 86400 s, m | RHS-eq 86400 s | ms 600 | ms 86400 |");
+            sb.AppendLine("The `ms int 600` / `ms int 86400` columns are integration-only (`run.Ms`), the same");
+            sb.AppendLine("metric as the main grid; end-to-end ms is not mixed into this table.");
+            sb.AppendLine();
+            sb.AppendLine("| key | method | rtol | err 600 s, m | RHS-eq 600 s | err 86400 s, m | RHS-eq 86400 s | ms int 600 | ms int 86400 |");
             sb.AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|");
             foreach (Test562Case c in cases)
             {
@@ -1446,9 +1698,9 @@ internal static partial class P1bTests
         sb.AppendLine("   printed above and never added to the floor.");
         sb.AppendLine("4. **`regime86400`** rows are a separate cap regime. They are never merged into the");
         sb.AppendLine("   600 s grid or into the target table.");
-        sb.AppendLine("5. Machine-dependent timings: `ms` is wall clock on the machine recorded in");
-        sb.AppendLine("   `Test562_Environment.txt`. RHS-eq and error are machine independent; cross-machine");
-        sb.AppendLine("   comparisons must use RHS-eq, not ms.");
+        sb.AppendLine("5. Machine-dependent timings: `ms integration` is the speed decision metric;");
+        sb.AppendLine("   `ms end-to-end` is stored separately. RHS-eq and error are machine independent;");
+        sb.AppendLine("   cross-machine comparisons must use RHS-eq, not ms.");
         sb.AppendLine("6. Cells whose error is inside 10 x the reference floor carry the grid status");
         sb.AppendLine("   `below-floor`: their error value cannot support an accuracy claim. Their cost can");
         sb.AppendLine("   still be used as an EDGE upper bound, because EDGE bounds the cost of reaching the");
@@ -1533,7 +1785,9 @@ internal static partial class P1bTests
         if (methods.Length >= 2)
         {
             double worstRatio = 0d;
+            double bestRatio = double.PositiveInfinity;
             string worstKey = "-";
+            string bestKey = "-";
             foreach (Test562Case c in cases)
             {
                 Test562Cell d8 = cells.Find(x => x.Case == c && x.Method == "dop853"
@@ -1552,48 +1806,275 @@ internal static partial class P1bTests
                     worstRatio = ratio;
                     worstKey = c.Key;
                 }
+
+                if (ratio < bestRatio)
+                {
+                    bestRatio = ratio;
+                    bestKey = c.Key;
+                }
             }
 
             if (worstRatio > 0d)
             {
                 sb.AppendLine();
-                sb.AppendLine("DOPRI5 vs DOP853 at the same rtol 1e-11 and cap 600 s: the error ratio is");
-                sb.AppendLine("largest in situation " + worstKey + " ("
-                    + worstRatio.ToString("N0", CultureInfo.InvariantCulture) + "x).");
+                sb.AppendLine("DOPRI5 vs DOP853 at the same rtol 1e-11 and cap 600 s: the error ratio ranges");
+                sb.AppendLine("from " + (double.IsFinite(bestRatio) ? bestRatio.ToString("N2", CultureInfo.InvariantCulture) : "-")
+                    + "x (situation " + bestKey + ") to "
+                    + worstRatio.ToString("N0", CultureInfo.InvariantCulture) + "x (situation " + worstKey + ").");
+                sb.AppendLine("Those are the measured numbers; do not summarize them as a fixed 10^2-10^4 band.");
             }
         }
 
         sb.AppendLine();
-        sb.Append("Median cost per RHS-equivalent over all cells: ");
-        for (int mi = 0; mi < methods.Length; mi++)
+        int timedCells = cells.Count(x => x.Status != "error" && x.Status != "censored");
+        int retimedCells = cells.Count(x => x.TimingSource == "retime");
+        bool anyIntegration = cells.Exists(x => double.IsFinite(x.MsIntegrationMedian));
+        bool fullRetime = anyIntegration && timedCells > 0 && retimedCells == timedCells;
+        bool freshRun = anyIntegration && retimedCells == 0;
+        if (!anyIntegration)
+        {
+            sb.AppendLine("No integration-only timing is recorded in this file. The legacy ~303/293 ns/RHS-eq");
+            sb.AppendLine("headline was an end-to-end number (construction and error grading included) taken");
+            sb.AppendLine("under load; it is **not** shown as a machine-speed headline. Run `P1B562_RETIME=ALL`.");
+        }
+        else if (!fullRetime && !freshRun)
+        {
+            sb.AppendLine("Partial re-time: " + retimedCells.ToString(CultureInfo.InvariantCulture) + " of "
+                + timedCells.ToString(CultureInfo.InvariantCulture)
+                + " timed cells were re-measured; the rest are fresh-run cells.");
+            sb.AppendLine("The ns/RHS-eq headline is withheld: a median over a mix of quiet and loaded");
+            sb.AppendLine("cells is not a machine speed. Complete `P1B562_RETIME=ALL` first.");
+        }
+        else
+        {
+            if (freshRun)
+            {
+                sb.AppendLine("Timing source: fresh full run (no load-guard re-time). The ns/RHS-eq");
+                sb.AppendLine("headline below is measured under the load recorded in `Test562_Environment.txt`;");
+                sb.AppendLine("treat it as an upper bound, not a quiet-machine number. Run `P1B562_RETIME=ALL`");
+                sb.AppendLine("for a decision-grade timing.");
+            }
+
+            sb.Append("Median integration cost per RHS-equivalent over all cells: ");
+            for (int mi = 0; mi < methods.Length; mi++)
+            {
+                var ns = new List<double>();
+                foreach (Test562Cell cell in cells)
+                {
+                    double ms = double.IsFinite(cell.MsIntegrationMedian)
+                        ? cell.MsIntegrationMedian
+                        : cell.MsMedian;
+                    if (cell.Method == methods[mi] && cell.RhsEq > 0L && double.IsFinite(ms))
+                    {
+                        ns.Add(1e6d * ms / cell.RhsEq);
+                    }
+                }
+
+                ns.Sort();
+                if (ns.Count > 0)
+                {
+                    sb.Append(Test562MethodDisplay(methods[mi])).Append(' ')
+                        .Append(Test562MedianOfSorted(ns).ToString("F0", CultureInfo.InvariantCulture))
+                        .Append(" ns/RHS-eq; ");
+                }
+            }
+
+            sb.AppendLine("this is the machine-dependent part (see the timing section and the environment file).");
+            sb.AppendLine("The previous published 303/293 headline was end-to-end; these numbers are integration.");
+            if (freshRun)
+            {
+                sb.AppendLine("The two are not apples-to-apples; these values also include the load above.");
+            }
+            else
+            {
+                sb.AppendLine("The two are not apples-to-apples: part of the change is the metric, part is the load.");
+            }
+        }
+    }
+
+    private static string Test562EnvLastValue(string path, string key)
+    {
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        string value = null;
+        foreach (string line in File.ReadLines(path))
+        {
+            int colon = line.IndexOf(':');
+            if (colon <= 0)
+            {
+                continue;
+            }
+
+            string name = line.Substring(0, colon).Trim();
+            if (string.Equals(name, key, StringComparison.Ordinal))
+            {
+                value = line.Substring(colon + 1).Trim();
+            }
+        }
+
+        return value;
+    }
+
+    private static string Test562HeadlineNsText(List<Test562Cell> cells)
+    {
+        var parts = new List<string>();
+        foreach (string method in Test562AvailableMethods())
         {
             var ns = new List<double>();
             foreach (Test562Cell cell in cells)
             {
-                if (cell.Method == methods[mi] && cell.RhsEq > 0L && double.IsFinite(cell.MsMedian))
+                double ms = Test562CellSpeedMs(cell);
+                if (cell.Method == method && cell.RhsEq > 0L && double.IsFinite(ms))
                 {
-                    ns.Add(1e6d * cell.MsMedian / cell.RhsEq);
+                    ns.Add(1e6d * ms / cell.RhsEq);
                 }
             }
 
-            ns.Sort();
             if (ns.Count > 0)
             {
-                sb.Append(methods[mi].ToUpperInvariant()).Append(' ')
-                    .Append(ns[ns.Count / 2].ToString("F0", CultureInfo.InvariantCulture))
-                    .Append(" ns/RHS-eq; ");
+                ns.Sort();
+                parts.Add(Test562MethodDisplay(method) + " "
+                    + Test562MedianOfSorted(ns).ToString("F0", CultureInfo.InvariantCulture));
             }
         }
 
-        sb.AppendLine("this is the machine-dependent part (see the environment file).");
+        return parts.Count == 0 ? "see Headline" : string.Join(" / ", parts);
+    }
+
+    private static void Test562AppendTimingSection(StringBuilder sb, List<Test562Cell> cells, string dir)
+    {
+        int retimed = cells.FindAll(x => x.TimingSource == "retime").Count;
+        int measured = cells.FindAll(x => x.First != null && x.Status != "error"
+            && x.Status != "censored").Count;
+        bool anyIntegration = cells.Exists(x => double.IsFinite(x.MsIntegrationMedian));
+        bool freshRun = anyIntegration && retimed == 0;
+        bool partialRetime = retimed > 0 && retimed < measured;
+        string envPath = Path.Combine(dir, "Test562_Environment.txt");
+        string guardText = Test562EnvLastValue(envPath, "load_guard_threshold_mb");
+        string maxText = Test562EnvLastValue(envPath, "max_process_mb");
+        string maxName = Test562EnvLastValue(envPath, "max_process_name");
+        int guardMb;
+        bool haveGuard = int.TryParse(guardText, NumberStyles.Integer, CultureInfo.InvariantCulture, out guardMb);
+        double maxMb;
+        bool haveMax = double.TryParse(maxText, NumberStyles.Float, CultureInfo.InvariantCulture, out maxMb);
+        sb.AppendLine("## Timing environment");
+        sb.AppendLine();
+        sb.AppendLine("**What `ms` means.** `ms integration` is the inner `run.Ms` from");
+        sb.AppendLine("`DecisionBRunProduction`: only the integration loop. `ms end-to-end` is the outer");
+        sb.AppendLine("`Stopwatch` around a whole `Test562RunOnce`: it also contains `SpacecraftPhysics` and");
+        sb.AppendLine("`Spacecraft` construction, `CountingSource`, the checkpoint arrays and the error");
+        sb.AppendLine("evaluation, so it is always larger and especially misleading for short runs. Speed");
+        sb.AppendLine("decisions, `ns/RHS-eq` and the CV retry use `ms integration`; the end-to-end numbers");
+        sb.AppendLine("are reported as `ms_end_to_end_*` for completeness. In `Test562_Summary.csv`, the old");
+        sb.AppendLine("`ms_median`/`ms_min`/`ms_max`/`cv_pct` columns are legacy end-to-end aliases kept for");
+        sb.AppendLine("compatibility; the explicit columns are `ms_end_to_end_*` and `ms_integration_*`.");
+        sb.AppendLine();
+        sb.AppendLine("`Test562_Runs.csv` is the raw per-cell run log from the last full run; its `ms`");
+        sb.AppendLine("column is end-to-end. `Test562_Summary.csv` holds the current per-cell medians;");
+        sb.AppendLine("`Test562_Retime.csv` (when present) holds every re-time attempt. The");
+        sb.AppendLine("`timing_schema` column in `Test562_Runs.csv` records whether integration timing was");
+        sb.AppendLine("written by that run.");
+        sb.AppendLine();
+        if (retimed > 0)
+        {
+            sb.AppendLine("This report uses the **load-guard re-time** (`P1B562_RETIME=ALL`): "
+                + retimed.ToString(CultureInfo.InvariantCulture)
+                + " of " + measured.ToString(CultureInfo.InvariantCulture) + " timed cells were re-measured"
+                + (retimed < measured ? " (partial; the rest are fresh-run cells)." : "."));
+            if (haveGuard && haveMax)
+            {
+                sb.AppendLine("Recorded load guard: " + guardMb.ToString(CultureInfo.InvariantCulture)
+                    + " MB; max process at re-time: " + maxMb.ToString("F0", CultureInfo.InvariantCulture)
+                    + " MB (" + (string.IsNullOrEmpty(maxName) ? "unknown" : maxName) + ").");
+            }
+            else
+            {
+                sb.AppendLine("The load-guard threshold and max process are recorded in `Test562_Environment.txt`.");
+            }
+
+            sb.AppendLine("The pre-retime numbers were taken under the load recorded in the original block");
+            sb.AppendLine("of `Test562_Environment.txt`; they are not used for the new headline. The");
+            sb.AppendLine("`timing_source` column marks every cell (`retime` or the original).");
+            if (haveGuard && haveMax && guardMb >= 1024 && maxMb >= 900d)
+            {
+                sb.AppendLine();
+                sb.AppendLine("**Legacy guard note.** This re-time was recorded with the old 1024 MB guard; the");
+                sb.AppendLine("max process was " + maxMb.ToString("F0", CultureInfo.InvariantCulture) + " MB ("
+                    + (string.IsNullOrEmpty(maxName) ? "unknown" : maxName) + "). A3/A4 on a quieter machine");
+                sb.AppendLine("were within about 4% of the six cross-check cells (b/i/l about 2-4% higher here,");
+                sb.AppendLine("a/f/g slightly lower), so treat the headline as an upper bound by up to roughly");
+                sb.AppendLine("4% relative to the quietest checks. It is not a claim that the machine was");
+                sb.AppendLine("perfectly idle. A new re-time uses the 768 MB default guard and would refuse the");
+                sb.AppendLine("same machine state unless `P1B562_ALLOW_LOADED=1` is set.");
+            }
+
+            sb.AppendLine("Test563 uses a different (end-to-end) clock; **cross-report ms must not be compared**.");
+        }
+        else if (anyIntegration)
+        {
+            sb.AppendLine("**This report is a fresh full run; no load-guard re-time is recorded.** All `ms`");
+            sb.AppendLine("values here are integration timing from that run, measured under the load recorded");
+            sb.AppendLine("in `Test562_Environment.txt`; they are **upper bounds**, not a quiet-machine speed.");
+            sb.AppendLine("Run `P1B562_RETIME=ALL` for a decision-grade timing.");
+            sb.AppendLine("Test563 uses a different (end-to-end) clock; cross-report ms comparisons are invalid.");
+        }
+        else
+        {
+            sb.AppendLine("**No load-guard re-time is recorded and no integration timing exists in this file.**");
+            sb.AppendLine("All `ms` values here are the legacy end-to-end numbers from the original run");
+            sb.AppendLine("(see `Test562_Environment.txt`); they are **upper bounds**, not a machine speed.");
+            sb.AppendLine("Run `P1B562_RETIME=ALL` for a decision-grade timing.");
+            sb.AppendLine("Test563 uses a different (end-to-end) clock; cross-report ms comparisons are invalid.");
+        }
+
+        sb.AppendLine();
+        if (!anyIntegration)
+        {
+            sb.AppendLine("**Headline metric.** No integration timing is recorded; the legacy 303/293");
+            sb.AppendLine("ns/RHS-eq headline was end-to-end and is not shown as a machine speed.");
+            sb.AppendLine();
+            sb.AppendLine("The loaded CSV predates `ms_integration`; the report uses the legacy end-to-end ms");
+            sb.AppendLine("with the upper-bound caveat above.");
+        }
+        else if (partialRetime)
+        {
+            sb.AppendLine("**Headline metric.** The ns/RHS-eq headline is withheld because the file mixes");
+            sb.AppendLine("re-timed and fresh-run cells; see the timing section.");
+        }
+        else
+        {
+            sb.AppendLine("**Headline metric.** The previous published 303/293 ns/RHS-eq headline was end-to-end;");
+            sb.AppendLine("the current headline is integration (" + Test562HeadlineNsText(cells)
+                + " ns/RHS-eq in this data).");
+            if (freshRun)
+            {
+                sb.AppendLine("These values are from a fresh run under the load above; treat them as upper bounds.");
+            }
+            else
+            {
+                sb.AppendLine("The pure load effect measured by A3/A4 is -16.5..-19.4%.");
+                sb.AppendLine("The two headline numbers are therefore **not apples-to-apples**: part of the change");
+                sb.AppendLine("is the metric (end-to-end -> integration), part is the load. The numbers above are");
+                sb.AppendLine("not adjusted to force a single explanation.");
+            }
+        }
     }
 
     private static void Test562AppendGrid(
-        StringBuilder sb, List<Test562Cell> cells, List<Test562Case> cases, string regime, string title)
+        StringBuilder sb, List<Test562Cell> cells, List<Test562Case> cases, string[] methods,
+        string regime, string title)
     {
         sb.AppendLine(title);
         sb.AppendLine();
-        sb.AppendLine("`ms` is median over the recorded attempts; `CV` is the coefficient of variation.");
+        sb.AppendLine("`ms int` is the median of the inner `run.Ms` (integration loop only) - the timing");
+        sb.AppendLine("used for speed decisions and for the CV retry. `ms end` is the outer end-to-end");
+        sb.AppendLine("stopwatch (scene, ship, counting source, arrays and error grading included).");
+        sb.AppendLine("`CV int %` and `CV end %` are the corresponding coefficients of variation; the");
+        sb.AppendLine("end-to-end CV is shown for completeness and is not the retry criterion. RHS-eq and");
+        sb.AppendLine("error are machine independent.");
         sb.AppendLine("`RHS-eq` = raw RHS + 2 x (raw RHS - chunks), the Test560b production-local convention.");
         sb.AppendLine("`bound` = what limited the step sequence: `chunk` (about one accepted step per chunk),");
         sb.AppendLine("`max-step` (the cap is binding) or `tolerance` (the rtol controller is binding).");
@@ -1602,18 +2083,25 @@ internal static partial class P1bTests
         sb.AppendLine("inside 10 x the reference floor: its error cannot support an accuracy claim, but its");
         sb.AppendLine("cost can still be an EDGE upper bound in the target table.");
         sb.AppendLine();
-        sb.AppendLine("| key | situation | method | rtol | err max r, m | err final, m | err max v, m/s | RHS calls | RHS-eq | ns/RHS | ns/RHS-eq | chunks | acc | rej | bound | ms median | CV % | status |");
-        sb.AppendLine("|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---|");
+        sb.AppendLine("| key | situation | method | rtol | err max r, m | err final, m | err max v, m/s | RHS calls | RHS-eq | ns/RHS int | ns/RHS-eq int | chunks | acc | rej | bound | ms int | ms end | CV int % | CV end % | status |");
+        sb.AppendLine("|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---|");
         foreach (Test562Case c in cases)
         {
-            foreach (string method in new[] { "dop853", "dopri5" })
+            foreach (string method in methods)
             {
                 var rows = cells.FindAll(x => x.Case == c && x.Method == method && x.Regime == regime);
                 rows.Sort((a, b) => b.Rtol.CompareTo(a.Rtol));
                 foreach (Test562Cell cell in rows)
                 {
+                    double msInt = double.IsFinite(cell.MsIntegrationMedian)
+                        ? cell.MsIntegrationMedian
+                        : cell.MsMedian;
+                    double msEnd = Test562CellEndMs(cell);
+                    double cvEnd = double.IsFinite(cell.CvEndToEndPct)
+                        ? cell.CvEndToEndPct
+                        : cell.CvPct;
                     sb.Append("| ").Append(c.Key).Append(" | ").Append(DecisionBCsvField(c.Title))
-                        .Append(" | ").Append(method.ToUpperInvariant()).Append(" | ")
+                        .Append(" | ").Append(Test562MethodDisplay(method)).Append(" | ")
                         .Append(cell.Rtol.ToString("E1", CultureInfo.InvariantCulture)).Append(" | ")
                         .Append(double.IsFinite(cell.ErrMax) ? cell.ErrMax.ToString("E3", CultureInfo.InvariantCulture) : "-").Append(" | ")
                         .Append(double.IsFinite(cell.ErrFinal) ? cell.ErrFinal.ToString("E3", CultureInfo.InvariantCulture) : "-").Append(" | ")
@@ -1621,17 +2109,25 @@ internal static partial class P1bTests
                         .Append(cell.Calls.ToString("N0", CultureInfo.InvariantCulture)).Append(" | ")
                         .Append(cell.RhsEq.ToString("N0", CultureInfo.InvariantCulture)).Append(" | ")
                         .Append(cell.Calls > 0L
-                            ? (1e6d * cell.MsMedian / cell.Calls).ToString("F0", CultureInfo.InvariantCulture)
+                            ? (1e6d * msInt / cell.Calls).ToString("F0", CultureInfo.InvariantCulture)
                             : "-").Append(" | ")
                         .Append(cell.RhsEq > 0L
-                            ? (1e6d * cell.MsMedian / cell.RhsEq).ToString("F0", CultureInfo.InvariantCulture)
+                            ? (1e6d * msInt / cell.RhsEq).ToString("F0", CultureInfo.InvariantCulture)
                             : "-").Append(" | ")
                         .Append(cell.Chunks.ToString("N0", CultureInfo.InvariantCulture)).Append(" | ")
                         .Append(cell.Accepted.ToString("N0", CultureInfo.InvariantCulture)).Append(" | ")
                         .Append(cell.Rejected.ToString("N0", CultureInfo.InvariantCulture)).Append(" | ")
                         .Append(cell.Bound).Append(" | ")
-                        .Append(cell.MsMedian.ToString("F2", CultureInfo.InvariantCulture)).Append(" | ")
-                        .Append(cell.CvPct.ToString("F1", CultureInfo.InvariantCulture)).Append(" | ")
+                        .Append(cell.MsIntegrationMedian > 0d && double.IsFinite(cell.MsIntegrationMedian)
+                            ? cell.MsIntegrationMedian.ToString("F2", CultureInfo.InvariantCulture)
+                            : msInt.ToString("F2", CultureInfo.InvariantCulture)).Append(" | ")
+                        .Append(msEnd.ToString("F2", CultureInfo.InvariantCulture)).Append(" | ")
+                        .Append(double.IsFinite(cell.CvIntegrationPct)
+                            ? cell.CvIntegrationPct.ToString("F1", CultureInfo.InvariantCulture)
+                            : "-").Append(" | ")
+                        .Append(double.IsFinite(cvEnd)
+                            ? cvEnd.ToString("F1", CultureInfo.InvariantCulture)
+                            : "-").Append(" | ")
                         .Append(cell.Status).AppendLine(" |");
                 }
             }
@@ -1653,8 +2149,13 @@ internal static partial class P1bTests
 
     private static string Test562MsCell(Test562Cell cell)
     {
-        return cell == null || !double.IsFinite(cell.MsMedian)
-            ? "-" : cell.MsMedian.ToString("F2", CultureInfo.InvariantCulture);
+        if (cell == null)
+        {
+            return "-";
+        }
+
+        double ms = Test562CellSpeedMs(cell);
+        return double.IsFinite(ms) ? ms.ToString("F2", CultureInfo.InvariantCulture) : "-";
     }
 
     private static string Test562TargetLabel(double target)
@@ -1812,6 +2313,34 @@ internal static partial class P1bTests
                 continue;
             }
 
+            double legacyMedian = DecisionBParseDouble(Test562Field(f, columns, "ms_median"));
+            double legacyMin = DecisionBParseDouble(Test562Field(f, columns, "ms_min"));
+            double legacyMax = DecisionBParseDouble(Test562Field(f, columns, "ms_max"));
+            double legacyCv = DecisionBParseDouble(Test562Field(f, columns, "cv_pct"));
+            double endMedian = DecisionBParseDouble(Test562Field(f, columns, "ms_end_to_end_median"));
+            double endMin = DecisionBParseDouble(Test562Field(f, columns, "ms_end_to_end_min"));
+            double endMax = DecisionBParseDouble(Test562Field(f, columns, "ms_end_to_end_max"));
+            double endCv = DecisionBParseDouble(Test562Field(f, columns, "ms_end_to_end_cv_pct"));
+            if (!double.IsFinite(endMedian))
+            {
+                endMedian = legacyMedian;
+            }
+
+            if (!double.IsFinite(endMin))
+            {
+                endMin = legacyMin;
+            }
+
+            if (!double.IsFinite(endMax))
+            {
+                endMax = legacyMax;
+            }
+
+            if (!double.IsFinite(endCv))
+            {
+                endCv = legacyCv;
+            }
+
             var cell = new Test562Cell
             {
                 Case = c,
@@ -1819,22 +2348,35 @@ internal static partial class P1bTests
                 Cap = DecisionBParseDouble(Test562Field(f, columns, "cap_s")),
                 Method = Test562Field(f, columns, "method"),
                 Rtol = DecisionBParseDouble(Test562Field(f, columns, "rtol")),
-                MsMedian = DecisionBParseDouble(Test562Field(f, columns, "ms_median")),
-                MsMin = DecisionBParseDouble(Test562Field(f, columns, "ms_min")),
-                MsMax = DecisionBParseDouble(Test562Field(f, columns, "ms_max")),
-                CvPct = DecisionBParseDouble(Test562Field(f, columns, "cv_pct")),
+                MsMedian = endMedian,
+                MsMin = endMin,
+                MsMax = endMax,
+                MsEndToEndMedian = endMedian,
+                MsEndToEndMin = endMin,
+                MsEndToEndMax = endMax,
+                CvPct = endCv,
+                CvEndToEndPct = endCv,
+                MsIntegrationMedian = DecisionBParseDouble(Test562Field(f, columns, "ms_integration_median")),
+                MsIntegrationMin = DecisionBParseDouble(Test562Field(f, columns, "ms_integration_min")),
+                MsIntegrationMax = DecisionBParseDouble(Test562Field(f, columns, "ms_integration_max")),
+                CvIntegrationPct = DecisionBParseDouble(Test562Field(f, columns, "ms_integration_cv_pct")),
                 AllocMedian = ParseLong(Test562Field(f, columns, "alloc_bytes")),
                 BelowFloor = Test562Field(f, columns, "below_floor") == "1",
                 Bound = Test562Field(f, columns, "bound"),
                 Status = Test562Field(f, columns, "status"),
-                Note = Test562Field(f, columns, "note")
+                Note = Test562Field(f, columns, "note"),
+                TimingSource = Test562Field(f, columns, "timing_source"),
+                CsvFloorM = DecisionBParseDouble(Test562Field(f, columns, "floor_m")),
+                CsvReferenceStatus = Test562Field(f, columns, "reference_status")
             };
             var attempt = new Test562Attempt
             {
                 Group = 1,
                 Index = 1,
                 Batch = 1,
-                Ms = cell.MsMedian,
+                Ms = endMedian,
+                MsEndToEnd = endMedian,
+                MsIntegration = cell.MsIntegrationMedian,
                 AllocBytes = cell.AllocMedian,
                 Calls = ParseLong(Test562Field(f, columns, "rhs_calls")),
                 RhsEq = ParseLong(Test562Field(f, columns, "rhs_eq")),
@@ -1859,6 +2401,52 @@ internal static partial class P1bTests
         return cells;
     }
 
+    /// <summary>
+    /// Refuse a regenerate/retime pass that would mix errors measured against a
+    /// different reference/floor with the floor of the current build.
+    /// </summary>
+    private static List<string> Test562ValidateLoadedCells(
+        List<Test562Cell> cells, List<Test562Case> cases)
+    {
+        var stale = new List<string>();
+        foreach (Test562Case c in cases)
+        {
+            var rows = cells.FindAll(x => x.Case == c);
+            if (rows.Count == 0)
+            {
+                stale.Add(c.Key + ": no cells in the Summary CSV");
+                continue;
+            }
+
+            foreach (Test562Cell cell in rows)
+            {
+                if (!double.IsFinite(cell.CsvFloorM))
+                {
+                    stale.Add(c.Key + " " + cell.Method + " " + cell.Regime + " rtol "
+                        + cell.Rtol.ToString("G3", CultureInfo.InvariantCulture)
+                        + ": floor_m missing in the CSV");
+                    continue;
+                }
+
+                if (!double.IsFinite(c.FloorM)
+                    || Math.Abs(cell.CsvFloorM - c.FloorM) > 0.01d * Math.Max(Math.Abs(c.FloorM), 1e-30d))
+                {
+                    stale.Add(c.Key + ": CSV floor " + cell.CsvFloorM.ToString("E3", CultureInfo.InvariantCulture)
+                        + " m != current floor " + c.FloorM.ToString("E3", CultureInfo.InvariantCulture) + " m");
+                }
+
+                if (!string.IsNullOrEmpty(cell.CsvReferenceStatus)
+                    && !string.Equals(cell.CsvReferenceStatus, c.ReferenceStatus, StringComparison.Ordinal))
+                {
+                    stale.Add(c.Key + ": CSV reference " + cell.CsvReferenceStatus
+                        + " != current " + c.ReferenceStatus);
+                }
+            }
+        }
+
+        return stale;
+    }
+
     private static DecisionBRun Test562CellToRun(Test562Cell cell)
     {
         return new DecisionBRun
@@ -1878,7 +2466,7 @@ internal static partial class P1bTests
             CostRhs = cell.Calls,
             CostTotal = (double)cell.RhsEq,
             CostIfPorted = (double)cell.RhsEq,
-            Ms = cell.MsMedian,
+            Ms = Test562CellEndMs(cell),
             GcBytes = cell.AllocMedian,
             Finite = true
         };
@@ -1989,25 +2577,12 @@ internal static partial class P1bTests
         return rows;
     }
 
-    private static int Test562Regenerate(string dir, string summaryPath, string mdPath)
+    private static List<Test562LabelRow> Test562BuildAndWriteReports(
+        string dir, string summaryPath, string mdPath, List<Test562Case> cases,
+        List<Test562Cell> cells, bool computeLabelChanges, string logTag)
     {
-        Console.WriteLine("regenerate: reading " + summaryPath);
-        if (!File.Exists(summaryPath))
-        {
-            Console.WriteLine("regenerate: missing " + summaryPath);
-            return 1;
-        }
-
-        List<Test562Case> cases = Test562BuildCases();
-        List<Test562Cell> cells = Test562LoadCellsFromSummary(summaryPath, cases);
-        if (cells.Count == 0)
-        {
-            Console.WriteLine("regenerate: no cells loaded (scenario keys do not match)");
-            return 1;
-        }
-
         var methodList = new List<string>();
-        foreach (string name in new[] { "dop853", "dopri5" })
+        foreach (string name in Test562AvailableMethods())
         {
             if (cells.Exists(x => x.Method == name))
             {
@@ -2027,15 +2602,10 @@ internal static partial class P1bTests
 
         rtolList.Sort();
         rtolList.Reverse();
-        int attemptsWanted = 0;
-        foreach (Test562Cell cell in cells)
-        {
-            attemptsWanted = Math.Max(attemptsWanted, cell.Attempts.Count);
-        }
-
+        string attemptsText = Test562AttemptsDistribution(cells);
         bool doShort = cells.Exists(x => x.Regime == "600");
         bool doLong = cells.Exists(x => x.Regime == "86400");
-        Console.WriteLine("regenerate: " + cells.Count + " cells, " + methods.Length + " method(s)");
+        Console.WriteLine(logTag + ": " + cells.Count + " cells, " + methods.Length + " method(s)");
 
         var anchorProbes = new List<Test562AnchorProbe>();
         Test562Case anchor = cases.Find(c => c.Key == "b");
@@ -2049,7 +2619,7 @@ internal static partial class P1bTests
 
             // 1e-8 is not a grid cell; it is the actual Test560b control and must be
             // measured, not copied.
-            Console.WriteLine("regenerate: anchor probe rtol 1e-8 ...");
+            Console.WriteLine(logTag + ": anchor probe rtol 1e-8 ...");
             var probe8 = new Test562AnchorProbe
             {
                 Rtol = 1e-8d,
@@ -2068,12 +2638,54 @@ internal static partial class P1bTests
 
         List<Test562TargetPoint[,]> targets = Test562TargetTable(cells, cases, methods,
             out List<string> targetNotes);
-        List<Test562LabelRow> labelChanges = Test562DiffLabels(cells, cases, methods, targets);
+        List<Test562LabelRow> labelChanges = computeLabelChanges
+            ? Test562DiffLabels(cells, cases, methods, targets)
+            : new List<Test562LabelRow>();
 
         Test562WriteSummary(summaryPath, cells);
         File.WriteAllText(mdPath, Test562Markdown(cells, cases, targets, targetNotes, methods,
-            rtolList.ToArray(), attemptsWanted, anchor, anchorProbes, anchorFailures, anchorLiteral,
-            dir, doShort, doLong, null, labelChanges));
+            rtolList.ToArray(), attemptsText, anchor, anchorProbes, anchorFailures, anchorLiteral,
+            dir, doShort, doLong, null, computeLabelChanges ? labelChanges : null));
+
+        return labelChanges;
+    }
+
+    private static int Test562Regenerate(string dir, string summaryPath, string mdPath)
+    {
+        Console.WriteLine("regenerate: reading " + summaryPath);
+        if (!File.Exists(summaryPath))
+        {
+            Console.WriteLine("regenerate: missing " + summaryPath);
+            return 1;
+        }
+
+        List<Test562Case> cases = Test562BuildCases();
+        List<Test562Cell> cells = Test562LoadCellsFromSummary(summaryPath, cases);
+        if (cells.Count == 0)
+        {
+            Console.WriteLine("regenerate: no cells loaded (scenario keys do not match)");
+            return 1;
+        }
+
+        List<string> stale = Test562ValidateLoadedCells(cells, cases);
+        if (stale.Count > 0)
+        {
+            Console.WriteLine("STALE REFERENCE: regenerate refused; the CSV was measured against a different floor/reference.");
+            foreach (string note in stale.Take(10))
+            {
+                Console.WriteLine("  " + note);
+            }
+
+            if (stale.Count > 10)
+            {
+                Console.WriteLine("  ... " + (stale.Count - 10).ToString(CultureInfo.InvariantCulture) + " more");
+            }
+
+            return 1;
+        }
+
+        List<Test562LabelRow> labelChanges = Test562BuildAndWriteReports(
+            dir, summaryPath, mdPath, cases, cells, true, "regenerate");
 
         Console.WriteLine("label changes: " + labelChanges.Count);
         foreach (Test562LabelRow row in labelChanges)
@@ -2084,6 +2696,525 @@ internal static partial class P1bTests
 
         Console.WriteLine("regenerated: " + summaryPath);
         Console.WriteLine("regenerated: " + mdPath);
+        return 0;
+    }
+
+    // --------------------------------------------------------------------------------
+    // ALL: quiet-machine re-time of every cell from the Summary CSV
+    // --------------------------------------------------------------------------------
+
+    private sealed class Test562RetimeRow
+    {
+        public string Tag;
+        public Test562Case Case;
+        public string Method;
+        public string Regime;
+        public double Rtol;
+        public double Cap;
+        public int Group;
+        public int Index;
+        public int Batch;
+        public double MsIntegration;
+        public double MsEndToEnd;
+        public long AllocBytes;
+        public long Calls;
+        public long RhsEq;
+        public long Chunks;
+        public long Accepted;
+        public long Rejected;
+        public double ErrMax;
+        public double ErrFinal;
+        public double ErrMaxV;
+        public double OldMs;
+        public double DeltaPct;
+        /// <summary>Legacy alias of CvGroupEndToEndPct (the old `cv_group_pct` column).</summary>
+        public double CvGroup;
+        public double CvGroupIntegrationPct;
+        public double CvGroupEndToEndPct;
+        public string Status = "ok";
+        public string Note = "";
+    }
+
+    private static long Test562WorkingSet(Process p)
+    {
+        try
+        {
+            return p.WorkingSet64;
+        }
+        catch (Exception)
+        {
+            return 0L;
+        }
+    }
+
+    private static List<string> Test562HeavyProcesses(long thresholdBytes)
+    {
+        int current = Process.GetCurrentProcess().Id;
+        var list = new List<string>();
+        foreach (Process p in Process.GetProcesses())
+        {
+            if (p.Id == current)
+            {
+                continue;
+            }
+
+            long ws = Test562WorkingSet(p);
+            if (ws < thresholdBytes)
+            {
+                continue;
+            }
+
+            string name;
+            try
+            {
+                name = p.ProcessName;
+            }
+            catch (Exception)
+            {
+                name = "?";
+            }
+
+            list.Add((ws / 1048576d).ToString("F0", CultureInfo.InvariantCulture) + " MB " + name);
+        }
+
+        return list;
+    }
+
+    private static double Test562MaxProcessMb(out string name)
+    {
+        name = "";
+        long max = 0L;
+        int current = Process.GetCurrentProcess().Id;
+        foreach (Process p in Process.GetProcesses())
+        {
+            if (p.Id == current)
+            {
+                continue;
+            }
+
+            long ws = Test562WorkingSet(p);
+            if (ws <= max)
+            {
+                continue;
+            }
+
+            max = ws;
+            try
+            {
+                name = p.ProcessName;
+            }
+            catch (Exception)
+            {
+                name = "?";
+            }
+        }
+
+        return max / 1048576d;
+    }
+
+    private static int Test562LoadGuardMb()
+    {
+        string value = DecisionBEnv("P1B562_LOAD_GUARD_MB");
+        int mb;
+        if (!string.IsNullOrWhiteSpace(value)
+            && int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out mb)
+            && mb > 0)
+        {
+            return mb;
+        }
+
+        return 768;
+    }
+
+    private static DecisionBScenario Test562RetimeScene(
+        Test562Case c, string regime, Dictionary<string, DecisionBScenario> scenes)
+    {
+        string key = c.Key + "|" + regime;
+        DecisionBScenario scene;
+        if (scenes.TryGetValue(key, out scene))
+        {
+            return scene;
+        }
+
+        scene = regime == "86400"
+            ? c.Scene.CloneForConfig("regime86400", Test562LongCap, t => Test562LongCap, Test562LongCap,
+                "86 400 s (regime sensitivity, not production)", false)
+            : c.Scene;
+        scenes[key] = scene;
+        return scene;
+    }
+
+    private static bool Test562SameTrajectory(DecisionBRun run, Test562Cell cell)
+    {
+        return run.Calls == cell.Calls
+            && run.Chunks == cell.Chunks
+            && (long)run.CostTotal == cell.RhsEq
+            && Math.Abs(run.ErrMaxM - cell.ErrMax) <= 1e-9d * Math.Max(1d, Math.Abs(cell.ErrMax));
+    }
+
+    private static bool Test562SameTrajectory(Test562Attempt attempt, Test562Cell cell)
+    {
+        return attempt.Calls == cell.Calls
+            && attempt.Chunks == cell.Chunks
+            && Math.Abs(attempt.ErrMax - cell.ErrMax) <= 1e-9d * Math.Max(1d, Math.Abs(cell.ErrMax));
+    }
+
+    private static void Test562WriteRetimeCsv(string path, List<Test562RetimeRow> rows)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("tag,scenario_key,scenario,regime,method,rtol,cap_s,repeat_group,repeat_index,batch_runs,"
+            + "ms_integration,ms_end_to_end,alloc_bytes,rhs_calls,rhs_eq,chunks,accepted,rejected,"
+            + "err_pos_max_m,err_pos_final_m,err_vel_max_mps,old_ms_end_to_end,delta_pct,"
+            + "cv_group_pct,cv_group_int_pct,cv_group_end_pct,status,note");
+        foreach (Test562RetimeRow r in rows)
+        {
+            sb.Append(DecisionBCsvField(r.Tag)).Append(',')
+                .Append(r.Case.Key).Append(',')
+                .Append(DecisionBCsvField(r.Case.Title)).Append(',')
+                .Append(r.Regime).Append(',')
+                .Append(r.Method).Append(',')
+                .Append(r.Rtol.ToString("E1", CultureInfo.InvariantCulture)).Append(',')
+                .Append(DecisionBCsvNumber(r.Cap)).Append(',')
+                .Append(r.Group.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(r.Index.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(r.Batch.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(DecisionBCsvNumber(r.MsIntegration)).Append(',')
+                .Append(DecisionBCsvNumber(r.MsEndToEnd)).Append(',')
+                .Append(r.AllocBytes.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(r.Calls.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(r.RhsEq.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(r.Chunks.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(r.Accepted.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(r.Rejected.ToString(CultureInfo.InvariantCulture)).Append(',')
+                .Append(DecisionBCsvNumber(r.ErrMax)).Append(',')
+                .Append(DecisionBCsvNumber(r.ErrFinal)).Append(',')
+                .Append(DecisionBCsvNumber(r.ErrMaxV)).Append(',')
+                .Append(DecisionBCsvNumber(r.OldMs)).Append(',')
+                .Append(DecisionBCsvNumber(r.DeltaPct)).Append(',')
+                .Append(DecisionBCsvNumber(r.CvGroup)).Append(',')
+                .Append(DecisionBCsvNumber(r.CvGroupIntegrationPct)).Append(',')
+                .Append(DecisionBCsvNumber(r.CvGroupEndToEndPct)).Append(',')
+                .Append(r.Status).Append(',')
+                .Append(DecisionBCsvField(r.Note)).AppendLine();
+        }
+
+        File.WriteAllText(path, sb.ToString());
+    }
+
+    private static Test562RetimeRow Test562RetimeRowFrom(
+        Test562Cell cell, Test562Attempt a, double oldMs,
+        double cvGroupIntegration, double cvGroupEndToEnd, string status, string note)
+    {
+        return new Test562RetimeRow
+        {
+            Tag = "RETIME",
+            Case = cell.Case,
+            Method = cell.Method,
+            Regime = cell.Regime,
+            Rtol = cell.Rtol,
+            Cap = cell.Cap,
+            Group = a.Group,
+            Index = a.Index,
+            Batch = a.Batch,
+            MsIntegration = a.MsIntegration,
+            MsEndToEnd = a.MsEndToEnd,
+            AllocBytes = a.AllocBytes,
+            Calls = a.Calls,
+            RhsEq = a.RhsEq,
+            Chunks = a.Chunks,
+            Accepted = a.Accepted,
+            Rejected = a.Rejected,
+            ErrMax = a.ErrMax,
+            ErrFinal = a.ErrFinal,
+            ErrMaxV = a.ErrMaxV,
+            OldMs = oldMs,
+            DeltaPct = oldMs > 0d ? 100d * (a.MsEndToEnd - oldMs) / oldMs : double.NaN,
+            CvGroup = cvGroupEndToEnd,
+            CvGroupIntegrationPct = cvGroupIntegration,
+            CvGroupEndToEndPct = cvGroupEndToEnd,
+            Status = status,
+            Note = note
+        };
+    }
+
+    private static void Test562AppendEnvLine(string envPath, string text)
+    {
+        File.AppendAllText(envPath, text + Environment.NewLine);
+    }
+
+    private static int Test562RetimeMode(string dir, string envPath)
+    {
+        Console.WriteLine("--- Test562 load-guard re-time (ALL) ---");
+        string summaryPath = Path.Combine(dir, "Test562_Summary.csv");
+        string mdPath = Path.Combine(dir, "Test562_WorkPrecision.md");
+        string retimePath = Path.Combine(dir, "Test562_Retime.csv");
+        if (!File.Exists(summaryPath))
+        {
+            Console.WriteLine("retime: missing " + summaryPath + " - run Test562 first");
+            return 1;
+        }
+
+        List<Test562Case> cases = Test562BuildCases();
+        List<Test562Cell> cells = Test562LoadCellsFromSummary(summaryPath, cases);
+        if (cells.Count == 0)
+        {
+            Console.WriteLine("retime: no cells loaded (scenario keys do not match)");
+            return 1;
+        }
+
+        List<string> stale = Test562ValidateLoadedCells(cells, cases);
+        if (stale.Count > 0)
+        {
+            Console.WriteLine("STALE REFERENCE: retime refused; the CSV was measured against a different floor/reference.");
+            foreach (string note in stale.Take(10))
+            {
+                Console.WriteLine("  " + note);
+            }
+
+            if (stale.Count > 10)
+            {
+                Console.WriteLine("  ... " + (stale.Count - 10).ToString(CultureInfo.InvariantCulture) + " more");
+            }
+
+            return 1;
+        }
+
+        int guardMb = Test562LoadGuardMb();
+        long guardBytes = guardMb * 1024L * 1024L;
+        string maxProcessName;
+        double maxProcessMb = Test562MaxProcessMb(out maxProcessName);
+        List<string> heavy = Test562HeavyProcesses(guardBytes);
+        bool allowLoaded = string.Equals(DecisionBEnv("P1B562_ALLOW_LOADED"), "1", StringComparison.Ordinal);
+        if (heavy.Count > 0 && !allowLoaded)
+        {
+            Console.WriteLine("TIMING CONTAMINATED: process(es) over " + guardMb.ToString(CultureInfo.InvariantCulture)
+                + " MB are running (max " + maxProcessMb.ToString("F0", CultureInfo.InvariantCulture)
+                + " MB, " + maxProcessName + "):");
+            foreach (string h in heavy)
+            {
+                Console.WriteLine("  " + h);
+            }
+
+            Console.WriteLine("Set P1B562_ALLOW_LOADED=1 to measure anyway, or raise P1B562_LOAD_GUARD_MB;"
+                + " the headline was not updated.");
+            Test562AppendEnvironmentSection(envPath, "P1B562_RETIME=ALL refused");
+            Test562AppendEnvLine(envPath, "load_guard_threshold_mb: " + guardMb.ToString(CultureInfo.InvariantCulture));
+            Test562AppendEnvLine(envPath, "max_process_mb: " + maxProcessMb.ToString("F0", CultureInfo.InvariantCulture));
+            Test562AppendEnvLine(envPath, "max_process_name: " + maxProcessName);
+            Test562AppendEnvLine(envPath, "heavy_processes: " + string.Join("; ", heavy));
+            Test562AppendEnvLine(envPath, "TIMING CONTAMINATED: " + string.Join("; ", heavy));
+            Test562AppendEnvLine(envPath, "headline_metric: integration");
+            Test562AppendEnvLine(envPath, "headline_updated: no");
+            return 1;
+        }
+
+        int attemptsWanted = Test562AttemptsWanted();
+        int retimeLimit = 0;
+        int.TryParse(DecisionBEnv("P1B562_RETIME_LIMIT"), NumberStyles.Integer,
+            CultureInfo.InvariantCulture, out retimeLimit);
+        int retimed = 0;
+        var rows = new List<Test562RetimeRow>();
+        var scenes = new Dictionary<string, DecisionBScenario>(StringComparer.Ordinal);
+        var failures = new List<string>();
+        var swTotal = Stopwatch.StartNew();
+        Console.WriteLine("  load guard: OK (threshold " + guardMb.ToString(CultureInfo.InvariantCulture)
+            + " MB, max " + maxProcessMb.ToString("F0", CultureInfo.InvariantCulture) + " MB "
+            + maxProcessName + ")");
+        Console.WriteLine("  attempts per cell: " + attemptsWanted.ToString(CultureInfo.InvariantCulture)
+            + " (3 when a run > 2 s)");
+
+        foreach (Test562Cell cell in cells)
+        {
+            if (cell.Status == "error" || cell.Status == "censored")
+            {
+                continue;
+            }
+
+            DecisionBScenario scene = Test562RetimeScene(cell.Case, cell.Regime, scenes);
+            string label = cell.Case.Key + " " + cell.Method + " " + cell.Regime + " rtol="
+                + cell.Rtol.ToString("G3", CultureInfo.InvariantCulture);
+            DecisionBRun warm = Test562RunOnce(cell.Case, scene, cell.Method, cell.Rtol, cell.Cap);
+            if (warm.Status != "ok" || !warm.Finite)
+            {
+                failures.Add(label + ": warm run " + warm.Status + " " + warm.Note);
+                break;
+            }
+
+            if (!Test562SameTrajectory(warm, cell))
+            {
+                failures.Add(label + ": STALE - calls/chunks/RHS-eq/err "
+                    + warm.Calls.ToString(CultureInfo.InvariantCulture) + "/"
+                    + warm.Chunks.ToString(CultureInfo.InvariantCulture) + "/"
+                    + warm.CostTotal.ToString("N0", CultureInfo.InvariantCulture) + "/"
+                    + warm.ErrMaxM.ToString("E6", CultureInfo.InvariantCulture)
+                    + " vs CSV " + cell.Calls.ToString(CultureInfo.InvariantCulture) + "/"
+                    + cell.Chunks.ToString(CultureInfo.InvariantCulture) + "/"
+                    + cell.RhsEq.ToString("N0", CultureInfo.InvariantCulture) + "/"
+                    + cell.ErrMax.ToString("E6", CultureInfo.InvariantCulture));
+                break;
+            }
+
+            double oldMs = Test562CellEndMs(cell);
+            int batch = warm.Ms < 50d
+                ? Math.Max(1, Math.Min(2000, (int)Math.Ceiling(200d / Math.Max(warm.Ms, 0.01d))))
+                : 1;
+            int repeats = warm.Ms > 2000d ? Math.Min(3, attemptsWanted) : attemptsWanted;
+            var first = new List<Test562Attempt>();
+            for (int i = 0; i < repeats; i++)
+            {
+                first.Add(Test562TimedBatch(cell.Case, scene, cell.Method, cell.Rtol, cell.Cap, batch, 1, i + 1));
+            }
+
+            Test562Stats(first, a => a.Ms,
+                out double medianEnd, out double minEnd, out double maxEnd, out double cvEnd);
+            Test562Stats(first, a => a.MsIntegration,
+                out double medianInt, out double minInt, out double maxInt, out double cvInt);
+            double retryCv = double.IsFinite(cvInt) ? cvInt : cvEnd;
+            bool retry = retryCv > 10d;
+            bool endCvHighIntegrationStable = cvEnd > 10d
+                && (!double.IsFinite(cvInt) || cvInt <= 10d);
+            List<Test562Attempt> used = first;
+            var allAttempts = new List<Test562Attempt>(first);
+            string timingNote = "";
+            if (retry)
+            {
+                Console.WriteLine("    integration CV " + retryCv.ToString("F1", CultureInfo.InvariantCulture)
+                    + "% > 10%; repeating the cell");
+                var second = new List<Test562Attempt>();
+                for (int i = 0; i < repeats; i++)
+                {
+                    second.Add(Test562TimedBatch(cell.Case, scene, cell.Method, cell.Rtol, cell.Cap, batch, 2, i + 1));
+                }
+
+                Test562Stats(second, a => a.Ms,
+                    out medianEnd, out minEnd, out maxEnd, out cvEnd);
+                Test562Stats(second, a => a.MsIntegration,
+                    out medianInt, out minInt, out maxInt, out cvInt);
+                used = second;
+                foreach (Test562Attempt a in first)
+                {
+                    rows.Add(Test562RetimeRowFrom(cell, a, oldMs, -1d, -1d, "cv_retry",
+                        "first pass integration CV " + retryCv.ToString("F1", CultureInfo.InvariantCulture)
+                        + "% > 10%"));
+                }
+
+                allAttempts.AddRange(second);
+                timingNote = "first pass integration CV>10%; cell repeated";
+            }
+            else if (endCvHighIntegrationStable)
+            {
+                timingNote = "end-to-end CV high; integration stable";
+                Console.WriteLine("    end-to-end CV " + cvEnd.ToString("F1", CultureInfo.InvariantCulture)
+                    + "% > 10% but integration CV " + cvInt.ToString("F1", CultureInfo.InvariantCulture)
+                    + "% <= 10%; not repeated");
+            }
+
+            bool deterministic = true;
+            foreach (Test562Attempt a in allAttempts)
+            {
+                if (!Test562SameTrajectory(a, cell))
+                {
+                    deterministic = false;
+                    break;
+                }
+            }
+
+            if (!deterministic)
+            {
+                failures.Add(label + ": STALE - a timed attempt does not reproduce the CSV trajectory");
+                break;
+            }
+
+            foreach (Test562Attempt a in used)
+            {
+                rows.Add(Test562RetimeRowFrom(cell, a, oldMs, cvInt, cvEnd, "ok", timingNote));
+            }
+
+            long allocSum = 0L;
+            foreach (Test562Attempt a in used)
+            {
+                allocSum += a.AllocBytes;
+            }
+
+            cell.Attempts.Clear();
+            cell.Attempts.AddRange(allAttempts);
+            cell.MsMedian = medianEnd;
+            cell.MsMin = minEnd;
+            cell.MsMax = maxEnd;
+            cell.MsEndToEndMedian = medianEnd;
+            cell.MsEndToEndMin = minEnd;
+            cell.MsEndToEndMax = maxEnd;
+            cell.MsIntegrationMedian = medianInt;
+            cell.MsIntegrationMin = minInt;
+            cell.MsIntegrationMax = maxInt;
+            cell.CvPct = cvEnd;
+            cell.CvEndToEndPct = cvEnd;
+            cell.CvIntegrationPct = cvInt;
+            cell.AllocMedian = allocSum / Math.Max(1, used.Count);
+            cell.TimingSource = "retime";
+            if (timingNote.Length > 0)
+            {
+                cell.Note = string.IsNullOrEmpty(cell.Note) ? timingNote : cell.Note + "; " + timingNote;
+            }
+
+            retimed++;
+            Console.WriteLine("  " + label + " -> " + medianInt.ToString("F2", CultureInfo.InvariantCulture)
+                + " ms int / " + medianEnd.ToString("F2", CultureInfo.InvariantCulture)
+                + " ms end (old end " + oldMs.ToString("F2", CultureInfo.InvariantCulture)
+                + ", " + (oldMs > 0d ? (100d * (medianEnd - oldMs) / oldMs).ToString("+0.0;-0.0;0.0", CultureInfo.InvariantCulture) + "%" : "n/a")
+                + "), CV int " + cvInt.ToString("F1", CultureInfo.InvariantCulture) + "%");
+            if (retimeLimit > 0 && retimed >= retimeLimit)
+            {
+                Console.WriteLine("  P1B562_RETIME_LIMIT=" + retimeLimit.ToString(CultureInfo.InvariantCulture)
+                    + " reached; stopping the diagnostic pass");
+                break;
+            }
+        }
+
+        swTotal.Stop();
+        Test562WriteRetimeCsv(retimePath, rows);
+        Test562AppendEnvironmentSection(envPath, "P1B562_RETIME=ALL load-guard re-time");
+        Test562AppendEnvLine(envPath, "load_guard_threshold_mb: " + guardMb.ToString(CultureInfo.InvariantCulture));
+        Test562AppendEnvLine(envPath, "max_process_mb: " + maxProcessMb.ToString("F0", CultureInfo.InvariantCulture));
+        Test562AppendEnvLine(envPath, "max_process_name: " + maxProcessName);
+        Test562AppendEnvLine(envPath, "heavy_processes: "
+            + (heavy.Count == 0 ? "none" : string.Join("; ", heavy)));
+        Test562AppendEnvLine(envPath, "load_guard: OK"
+            + (heavy.Count == 0 ? "" : " (ALLOWED via P1B562_ALLOW_LOADED=1)"));
+        Test562AppendEnvLine(envPath, "headline_metric: integration");
+        Test562AppendEnvLine(envPath, "retimed_cells: " + retimed.ToString(CultureInfo.InvariantCulture)
+            + " of " + cells.Count.ToString(CultureInfo.InvariantCulture));
+        Test562AppendEnvLine(envPath, "attempts_per_cell: " + attemptsWanted.ToString(CultureInfo.InvariantCulture)
+            + " (3 when a run > 2 s)");
+        Test562AppendEnvLine(envPath, "cv_policy: integration CV > 10% repeats the cell"
+            + " (fallback end-to-end CV if integration CV is unavailable)");
+        Test562AppendEnvLine(envPath, "elapsed: " + swTotal.Elapsed.TotalSeconds.ToString("F1", CultureInfo.InvariantCulture) + " s");
+        var cvs = cells.FindAll(x => x.TimingSource == "retime" && double.IsFinite(x.CvIntegrationPct))
+            .Select(x => x.CvIntegrationPct).ToList();
+        cvs.Sort();
+        Test562AppendEnvLine(envPath, "cv_integration_median_pct: "
+            + (cvs.Count == 0 ? "-" : Test562MedianOfSorted(cvs).ToString("F2", CultureInfo.InvariantCulture)));
+        Test562AppendEnvLine(envPath, "retime_csv: " + retimePath);
+
+        if (failures.Count > 0)
+        {
+            foreach (string f in failures)
+            {
+                Console.WriteLine("STOP: " + f);
+            }
+
+            Test562AppendEnvLine(envPath, "headline_updated: no (stale determinism)");
+            Console.WriteLine("retime: Summary/MD not updated; " + retimePath + " has the measured attempts");
+            return 1;
+        }
+
+        Test562BuildAndWriteReports(dir, summaryPath, mdPath, cases, cells, false, "retime");
+        Test562AppendEnvLine(envPath, "headline_updated: yes");
+        Console.WriteLine("retimed " + retimed.ToString(CultureInfo.InvariantCulture) + " cells in "
+            + swTotal.Elapsed.TotalSeconds.ToString("F1", CultureInfo.InvariantCulture) + " s");
+        Console.WriteLine("written: " + retimePath);
+        Console.WriteLine("updated: " + summaryPath);
+        Console.WriteLine("updated: " + mdPath);
         return 0;
     }
 
@@ -2102,6 +3233,7 @@ internal static partial class P1bTests
         public int Index;
         public int Batch;
         public double Ms;
+        public double MsIntegration;
         public long AllocBytes;
         public long Calls;
         public long RhsEq;
@@ -2154,7 +3286,7 @@ internal static partial class P1bTests
             first.Add(Test562TimedBatch(c, c.Scene, method, rtol, cap, batch, 1, i + 1));
         }
 
-        Test562Stats(first, out double median, out double min, out double max, out double cv);
+        Test562Stats(first, a => a.Ms, out double median, out double min, out double max, out double cv);
         List<Test562Attempt> used = first;
         if (cv > 10d)
         {
@@ -2166,7 +3298,7 @@ internal static partial class P1bTests
                 second.Add(Test562TimedBatch(c, c.Scene, method, rtol, cap, batch, 2, i + 1));
             }
 
-            Test562Stats(second, out median, out min, out max, out cv);
+            Test562Stats(second, a => a.Ms, out median, out min, out max, out cv);
             used = second;
             foreach (Test562Attempt a in first)
             {
@@ -2213,6 +3345,7 @@ internal static partial class P1bTests
             Index = a.Index,
             Batch = a.Batch,
             Ms = a.Ms,
+            MsIntegration = a.MsIntegration,
             AllocBytes = a.AllocBytes,
             Calls = a.Calls,
             RhsEq = a.RhsEq,
@@ -2282,7 +3415,7 @@ internal static partial class P1bTests
         string csvPath = Path.Combine(dir, "Test562_Remeasure.csv");
         var sb = new StringBuilder();
         sb.AppendLine("tag,scenario_key,scenario,method,rtol,cap,attempt_group,attempt_index,batch_runs,ms,"
-            + "alloc_bytes,rhs_calls,rhs_eq,chunks,accepted,rejected,err_pos_max_m,err_pos_final_m,"
+            + "ms_integration,alloc_bytes,rhs_calls,rhs_eq,chunks,accepted,rejected,err_pos_max_m,err_pos_final_m,"
             + "err_vel_max_mps,floor_m,cv_group_pct,status");
         foreach (Test562RemeasureRow row in rows)
         {
@@ -2296,6 +3429,7 @@ internal static partial class P1bTests
                 .Append(row.Index.ToString(CultureInfo.InvariantCulture)).Append(',')
                 .Append(row.Batch.ToString(CultureInfo.InvariantCulture)).Append(',')
                 .Append(DecisionBCsvNumber(row.Ms)).Append(',')
+                .Append(DecisionBCsvNumber(row.MsIntegration)).Append(',')
                 .Append(row.AllocBytes.ToString(CultureInfo.InvariantCulture)).Append(',')
                 .Append(row.Calls.ToString(CultureInfo.InvariantCulture)).Append(',')
                 .Append(row.RhsEq.ToString(CultureInfo.InvariantCulture)).Append(',')
@@ -2433,10 +3567,11 @@ internal static partial class P1bTests
         sb.AppendLine("rtol_grid:    " + string.Join(", ", rtols.Select(r => r.ToString("G3", CultureInfo.InvariantCulture))));
         sb.AppendLine("caps:         " + (doShort ? "600 s " : "") + (doLong ? "86400 s (regime86400)" : ""));
         sb.AppendLine("attempts:     " + attemptsWanted.ToString(CultureInfo.InvariantCulture) + " (3 when a run > 2 s)");
+        sb.AppendLine("headline_metric: integration (ms_integration; legacy ms_median/cv_pct are end-to-end aliases)");
         sb.AppendLine("warmup:       1 unrecorded run per cell");
         sb.AppendLine("gc_protocol:  GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect(); timer starts after");
         sb.AppendLine("small_runs:   a run < 50 ms is repeated in one timed batch until >= 200 ms, then divided");
-        sb.AppendLine("cv_policy:    CV > 10% repeats the whole cell once and is noted");
+        sb.AppendLine("cv_policy:    integration CV > 10% repeats the whole cell once and is noted");
         sb.AppendLine("scenario_filter: " + (string.IsNullOrWhiteSpace(scenarioFilter) ? "none" : scenarioFilter));
         sb.AppendLine("output_dir:   " + dir);
         sb.AppendLine();
@@ -2512,29 +3647,48 @@ internal static partial class P1bTests
         return sb.ToString();
     }
 
-    private static string[] Test562MethodsFilter()
+    private static string[] Test562MethodsFilter(out string error)
     {
+        error = null;
         string value = DecisionBEnv("P1B562_METHODS");
-        var list = new List<string>();
         if (string.IsNullOrWhiteSpace(value))
         {
-            list.Add("dop853");
-            list.Add("dopri5");
-            return list.ToArray();
+            return Test562AvailableMethods();
         }
 
+        var list = new List<string>();
+        var unknown = new List<string>();
         foreach (string part in value.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
         {
             string name = part.Trim().ToLowerInvariant();
-            if ((name == "dop853" || name == "dopri5") && !list.Contains(name))
+            if (name.Length == 0)
             {
-                list.Add(name);
+                continue;
             }
+
+            Test562MethodInfo info = Test562MethodLookup(name);
+            if (info == null)
+            {
+                unknown.Add(part.Trim());
+            }
+            else if (!list.Contains(info.Kernel))
+            {
+                list.Add(info.Kernel);
+            }
+        }
+
+        if (unknown.Count > 0)
+        {
+            error = "unknown production method(s): " + string.Join(", ", unknown)
+                + "; available: " + string.Join(", ", Test562AvailableMethods());
+            return new string[0];
         }
 
         if (list.Count == 0)
         {
-            list.Add("dop853");
+            error = "P1B562_METHODS did not name a production method; available: "
+                + string.Join(", ", Test562AvailableMethods());
+            return new string[0];
         }
 
         return list.ToArray();
@@ -2559,6 +3713,24 @@ internal static partial class P1bTests
         }
 
         return list.Count == 0 ? Test562RtolGridFull : list.ToArray();
+    }
+
+    private static string Test562AttemptsText(int attemptsWanted)
+    {
+        return attemptsWanted.ToString(CultureInfo.InvariantCulture)
+            + " attempts (3 if a run is longer than 2 s).";
+    }
+
+    private static string Test562AttemptsDistribution(List<Test562Cell> cells)
+    {
+        var groups = new List<string>();
+        foreach (IGrouping<int, Test562Cell> g in cells.GroupBy(x => x.Attempts.Count).OrderByDescending(g => g.Count()))
+        {
+            groups.Add(g.Count().ToString(CultureInfo.InvariantCulture) + " cells x "
+                + g.Key.ToString(CultureInfo.InvariantCulture));
+        }
+
+        return string.Join(", ", groups) + " recorded attempts (the old single `attemptsWanted` value is not representative).";
     }
 
     private static int Test562AttemptsWanted()
