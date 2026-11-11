@@ -46,7 +46,7 @@ internal static partial class P1bTests
         string dir;
         if (resuming)
         {
-            dir = Path.GetFullPath(resumeDir);
+            dir = QualificationResolveFolder(resumeDir);
             if (!Directory.Exists(dir))
             {
                 Console.WriteLine("resume: folder not found: " + dir);
@@ -177,7 +177,7 @@ internal static partial class P1bTests
                 return 1;
             }
 
-            string compareDir = Environment.GetEnvironmentVariable("P1B564_COMPARE");
+            string compareDir = QualificationResolveFolder(QualificationCompareDir());
             if (!string.IsNullOrWhiteSpace(compareDir))
             {
                 string other = Path.GetFullPath(compareDir);
@@ -208,6 +208,28 @@ internal static partial class P1bTests
     // Resume
     // ---------------------------------------------------------------------------------
 
+    /// <summary>
+    /// Resolves a user folder path. Program.cs pins the working directory to Tools/P1bTests,
+    /// so a path typed from the repository root must also be accepted.
+    /// </summary>
+    private static string QualificationResolveFolder(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        string direct = Path.GetFullPath(path);
+        if (Directory.Exists(direct))
+        {
+            return direct;
+        }
+
+        string repoRoot = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "..", ".."));
+        string fromRoot = Path.GetFullPath(Path.Combine(repoRoot, path));
+        return Directory.Exists(fromRoot) ? fromRoot : direct;
+    }
+
     /// <summary>--resume &lt;folder&gt; (command line) or P1B564_RESUME (environment).</summary>
     private static string QualificationResumeDir()
     {
@@ -221,6 +243,21 @@ internal static partial class P1bTests
         }
 
         return Environment.GetEnvironmentVariable("P1B564_RESUME");
+    }
+
+    /// <summary>--compare &lt;folder&gt; (command line) or P1B564_COMPARE (environment fallback).</summary>
+    private static string QualificationCompareDir()
+    {
+        string[] args = Environment.GetCommandLineArgs();
+        for (int i = 0; i + 1 < args.Length; i++)
+        {
+            if (string.Equals(args[i], "--compare", StringComparison.Ordinal))
+            {
+                return args[i + 1];
+            }
+        }
+
+        return Environment.GetEnvironmentVariable("P1B564_COMPARE");
     }
 
     /// <summary>
