@@ -214,6 +214,10 @@ internal static partial class P1bTests
         QualificationWriteConditions(dir, catalog, log);
         List<QualificationMatrixEntry> matrix = QualificationReadMatrix(dir);
         List<QualificationRunEntry> runs = QualificationReadRuns(dir);
+        string conditionsReport = QualificationWriteConditionsReport(dir, catalog, matrix);
+        File.WriteAllText(Path.Combine(dir, "CONDITIONS_REPORT.md"), conditionsReport,
+            new UTF8Encoding(false));
+        log.WriteLine("reports: CONDITIONS_REPORT.md");
         if (matrix.Count == 0)
         {
             log.WriteLine("reports: matrix.csv is empty, nothing to report");
@@ -565,6 +569,138 @@ internal static partial class P1bTests
                 sb.Append("| ").Append(problem).Append(" | ").Append(method).Append(" | ");
                 sb.Append(de == de && double.IsFinite(de) ? QualificationFormat(de) : "—").Append(" | ");
                 sb.Append(dl == dl && double.IsFinite(dl) ? QualificationFormat(dl) : "—").AppendLine(" |");
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("## Time at the certifying control");
+        sb.AppendLine();
+        sb.AppendLine("Wall time is the median of the separate sequential pass (warm-up + 5 repeats).");
+        sb.AppendLine("It is measured for every A-level certifying control and for the tightest");
+        sb.AppendLine("metre-goal control of each method; an unmeasured control stays blank.");
+        sb.AppendLine();
+        sb.AppendLine("| method | problem | control | wall_ms_median | err_max, m | status |");
+        sb.AppendLine("|---|---|---:|---:|---:|---|");
+        foreach (string problem in problems)
+        {
+            foreach (string method in methods)
+            {
+                foreach (QualificationRunEntry r in runs)
+                {
+                    if (r.Problem != problem || r.Method != method || !double.IsFinite(r.Wall))
+                    {
+                        continue;
+                    }
+
+                    sb.Append("| ").Append(method).Append(" | ").Append(problem).Append(" | ")
+                        .Append(QualificationFormat(r.Control)).Append(" | ")
+                        .Append(r.Wall.ToString("F3", QualificationCatalogInv)).Append(" | ")
+                        .Append(QualificationFormat(r.Err)).Append(" | ")
+                        .Append(r.Status).AppendLine(" |");
+                }
+            }
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("## Price versus time, first three");
+        sb.AppendLine();
+        sb.AppendLine("A divergence note means the three cheapest methods by price and by measured wall");
+        sb.AppendLine("time are not the same set (A9.2). Both rankings use the executed rows only.");
+        sb.AppendLine();
+        sb.AppendLine("| problem | goal | by price (first three) | by time (first three) | note |");
+        sb.AppendLine("|---|---|---|---|---|");
+        foreach (string problem in problems)
+        {
+            foreach (string goal in goalNames)
+            {
+                var cells = new List<QualificationMatrixEntry>();
+                foreach (QualificationMatrixEntry e in matrix)
+                {
+                    if (e.Problem == problem && e.Level == goal && e.Status == "PASS"
+                        && e.Price > 0d)
+                    {
+                        cells.Add(e);
+                    }
+                }
+
+                if (cells.Count == 0)
+                {
+                    continue;
+                }
+
+                var byPrice = new List<QualificationMatrixEntry>(cells);
+                byPrice.Sort(delegate (QualificationMatrixEntry a, QualificationMatrixEntry b)
+                {
+                    int c = a.Price.CompareTo(b.Price);
+                    return c != 0 ? c : string.CompareOrdinal(a.Method, b.Method);
+                });
+
+                var timeCells = new List<KeyValuePair<QualificationMatrixEntry, double>>();
+                foreach (QualificationMatrixEntry e in cells)
+                {
+                    QualificationRunEntry r = QualificationFindRun(runs, problem, e.Method, e.Control);
+                    if (r != null && double.IsFinite(r.Wall))
+                    {
+                        timeCells.Add(new KeyValuePair<QualificationMatrixEntry, double>(e, r.Wall));
+                    }
+                }
+
+                string byTime = "not measured";
+                string note = "—";
+                if (timeCells.Count >= 3)
+                {
+                    timeCells.Sort(delegate (
+                        KeyValuePair<QualificationMatrixEntry, double> a,
+                        KeyValuePair<QualificationMatrixEntry, double> b)
+                    {
+                        int c = a.Value.CompareTo(b.Value);
+                        return c != 0 ? c : string.CompareOrdinal(a.Key.Method, b.Key.Method);
+                    });
+
+                    var timeTop = new List<string>();
+                    var priceTop = new List<string>();
+                    for (int i = 0; i < 3 && i < timeCells.Count; i++)
+                    {
+                        timeTop.Add(timeCells[i].Key.Method);
+                    }
+
+                    for (int i = 0; i < 3 && i < byPrice.Count; i++)
+                    {
+                        priceTop.Add(byPrice[i].Method);
+                    }
+
+                    byTime = string.Join(", ", timeTop);
+                    bool same = true;
+                    foreach (string method in priceTop)
+                    {
+                        if (!timeTop.Contains(method))
+                        {
+                            same = false;
+                        }
+                    }
+
+                    note = same ? "same" : "differs";
+                }
+                else if (timeCells.Count > 0)
+                {
+                    var parts = new List<string>();
+                    foreach (var pair in timeCells)
+                    {
+                        parts.Add(pair.Key.Method);
+                    }
+
+                    byTime = string.Join(", ", parts);
+                }
+
+                var priceParts = new List<string>();
+                for (int i = 0; i < 3 && i < byPrice.Count; i++)
+                {
+                    priceParts.Add(byPrice[i].Method);
+                }
+
+                sb.Append("| ").Append(problem).Append(" | ").Append(goal).Append(" | ")
+                    .Append(string.Join(", ", priceParts)).Append(" | ").Append(byTime)
+                    .Append(" | ").Append(note).AppendLine(" |");
             }
         }
 

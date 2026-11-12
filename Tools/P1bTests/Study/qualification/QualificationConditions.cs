@@ -18,6 +18,13 @@ internal static partial class P1bTests
         string dir, List<QualificationProblem> catalog, TextWriter log)
     {
         List<QualificationMatrixEntry> matrix = QualificationReadMatrix(dir);
+        string path = Path.Combine(dir, "conditions.csv");
+        if (File.Exists(path) && QualificationConditionsComplete(path, catalog))
+        {
+            log.WriteLine("conditions: conditions.csv already covers the catalogue, reused");
+            return;
+        }
+
         var sb = new StringBuilder();
         sb.AppendLine("problem_id,class_tags,central_body,r_min_m,r_max_m,v_min_ms,v_max_ms,"
             + "horizon_s,forces,velocity_dependent,oracle_id,oracle_floor_m,targets_evaluated");
@@ -85,6 +92,30 @@ internal static partial class P1bTests
         File.WriteAllText(Path.Combine(dir, "conditions.csv"), sb.ToString(), new UTF8Encoding(false));
         log.WriteLine("conditions: conditions.csv (" + rows.ToString(QualificationCatalogInv)
             + " problem row(s))");
+    }
+
+    /// <summary>True when the existing conditions.csv already has a row for every catalogue id.</summary>
+    private static bool QualificationConditionsComplete(string path, List<QualificationProblem> catalog)
+    {
+        List<string[]> rows = QualificationReadCsv(path);
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 1; i < rows.Count; i++)
+        {
+            if (rows[i].Length > 0)
+            {
+                ids.Add(rows[i][0]);
+            }
+        }
+
+        foreach (QualificationProblem q in catalog)
+        {
+            if (!ids.Contains(q.Id))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Goals of a problem that are actually evaluated (PASS/FAIL/ERROR) in this run.</summary>
