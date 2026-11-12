@@ -123,6 +123,7 @@ internal static partial class P1bTests
         list.Add(QualificationPythagoreanProblem());
         QualificationAppendRl(list, profile);
         QualificationAppendAppendixA(list, profile);
+        QualificationAppendAppendixPlanetsAndF(list, profile);
         QualificationDescribeProblemPhysics(list);
         return list;
     }
