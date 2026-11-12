@@ -23,6 +23,80 @@ internal static partial class P1bTests
 
     private static readonly string[] QualificationLevelNames = { "A1", "A2", "A3" };
 
+    /// <summary>Ordered goal names of one problem: A1-A3 (if enabled) then M100…M0.01.</summary>
+    private static List<QualificationGoal> QualificationGoalsOf(
+        QualificationProblem q, StudyProblem p, QualificationProfile profile)
+    {
+        var goals = new List<QualificationGoal>();
+        if (q.AnalyticLevels)
+        {
+            for (int i = 0; i < QualificationLevelFactors.Length; i++)
+            {
+                var g = new QualificationGoal();
+                g.Name = QualificationLevelNames[i];
+                g.Factor = QualificationLevelFactors[i];
+                g.Threshold = g.Factor * p.ScaleLength;
+                goals.Add(g);
+            }
+        }
+
+        if (q.MeterTargets != null)
+        {
+            foreach (double target in q.MeterTargets)
+            {
+                if (!(target > 0d) || !double.IsFinite(target))
+                {
+                    continue;
+                }
+
+                // Smoke is the minutes-long profile (TASK.md 13): it evaluates the coarse
+                // metre goals M100…M10 and leaves 1 m and finer to full. Full evaluates A7 whole.
+                if (profile == QualificationProfile.Smoke && target < 10d)
+                {
+                    continue;
+                }
+
+                var g = new QualificationGoal();
+                g.Name = QualificationMeterGoalName(target);
+                g.Threshold = target;
+                g.Factor = p.ScaleLength > 0d ? target / p.ScaleLength : double.NaN;
+                g.Meter = true;
+                goals.Add(g);
+            }
+        }
+
+        return goals;
+    }
+
+    /// <summary>Cell count of a problem without building it (resume completeness check).</summary>
+    private static int QualificationGoalCount(QualificationProblem q, QualificationProfile profile)
+    {
+        int n = q.AnalyticLevels ? QualificationLevelFactors.Length : 0;
+        if (q.MeterTargets != null)
+        {
+            foreach (double target in q.MeterTargets)
+            {
+                if (target > 0d && double.IsFinite(target)
+                    && !(profile == QualificationProfile.Smoke && target < 10d))
+                {
+                    n++;
+                }
+            }
+        }
+
+        return n;
+    }
+
+    private static string QualificationMeterGoalName(double target)
+    {
+        return "M" + target.ToString("0.##", QualificationInv);
+    }
+
+    private static double QualificationGoalThreshold(QualificationGoal g, StudyProblem p)
+    {
+        return g.Meter ? g.Threshold : g.Factor * p.ScaleLength;
+    }
+
     private sealed class QualificationCell
     {
         public string ProblemId = "";
@@ -33,7 +107,18 @@ internal static partial class P1bTests
         public double BestControl = double.NaN;
         public double Price = double.NaN;
         public double Err = double.NaN;
+        public bool Meter;
         public StudyRow Best;
+    }
+
+    /// <summary>TASK.md section 7 / A7: one evaluated goal of a problem.</summary>
+    private sealed class QualificationGoal
+    {
+        public string Name = "";
+        public double Threshold;
+        /// <summary>Threshold / ScaleLength: the dimensionless band used by G3.</summary>
+        public double Factor;
+        public bool Meter;
     }
 
     private sealed class QualificationMeasure
@@ -67,7 +152,8 @@ internal static partial class P1bTests
         public int ReusedProblems;
     }
 
-    private static QualificationResumeContext QualificationLoadResume(string dir, int methods)
+    private static QualificationResumeContext QualificationLoadResume(
+        string dir, int methods, Dictionary<string, int> goalsPerProblem)
     {
         var resume = new QualificationResumeContext();
         resume.Dir = dir;
@@ -87,7 +173,9 @@ internal static partial class P1bTests
 
         foreach (KeyValuePair<string, int> pair in matrixCount)
         {
-            if (pair.Value == methods * QualificationLevelFactors.Length)
+            int goals;
+            if (goalsPerProblem.TryGetValue(pair.Key, out goals)
+                && pair.Value == methods * goals)
             {
                 resume.Completed.Add(pair.Key);
             }
@@ -189,6 +277,8 @@ internal static partial class P1bTests
                 continue;
             }
 
+            var problemWatch = System.Diagnostics.Stopwatch.StartNew();
+
             if (resume != null && resume.Completed.Contains(q.Id))
             {
                 List<string> oldRuns;
@@ -221,13 +311,82 @@ internal static partial class P1bTests
 
             var options = new StudyOptions();
             options.RelTargets = new double[0];
-            var targets = new double[QualificationLevelFactors.Length];
-            for (int i = 0; i < targets.Length; i++)
+            List<QualificationGoal> goals = QualificationGoalsOf(q, p, profile);
+            var targets = new List<double>();
+
+            // The coarse end of the sweep must stay where the A-level sweep of the baseline
+            // put it: adding a coarser metre goal would change `maxTarget`, start the sweep
+            // at a finer control and move every A1 price. The sweep targets are therefore:
+            //   * analytic levels: A1-A3 exactly as before (baseline behaviour);
+            //   * plus the single finest metre goal, if it is finer than the finest A level
+            //     (so a metre goal below the A grid is actually reachable);
+            //   * no analytic levels (S/P/F): only the coarsest and the finest metre goal —
+            //     the middle goals are evaluated from the executed rows.
+            var evaluatedGoals = new List<QualificationGoal>();
+            foreach (QualificationGoal goal in goals)
             {
-                targets[i] = QualificationLevelFactors[i] * p.ScaleLength;
+                double threshold = QualificationGoalThreshold(goal, p);
+                if (double.IsFinite(p.Floor) && p.Floor > 0.1d * threshold)
+                {
+                    continue;
+                }
+
+                if (threshold > 0d && double.IsFinite(threshold))
+                {
+                    evaluatedGoals.Add(goal);
+                }
             }
 
-            options.AbsTargets = targets;
+            QualificationGoal coarsestGoal = null;
+            QualificationGoal finestGoal = null;
+            double coarsestThreshold = double.NaN;
+            double finestThreshold = double.NaN;
+            double finestAnalytic = double.NaN;
+            foreach (QualificationGoal goal in evaluatedGoals)
+            {
+                double threshold = QualificationGoalThreshold(goal, p);
+                if (double.IsNaN(coarsestThreshold) || threshold > coarsestThreshold)
+                {
+                    coarsestThreshold = threshold;
+                    coarsestGoal = goal;
+                }
+
+                if (double.IsNaN(finestThreshold) || threshold < finestThreshold)
+                {
+                    finestThreshold = threshold;
+                    finestGoal = goal;
+                }
+
+                if (!goal.Meter && (double.IsNaN(finestAnalytic) || threshold < finestAnalytic))
+                {
+                    finestAnalytic = threshold;
+                }
+            }
+
+            if (q.AnalyticLevels)
+            {
+                foreach (QualificationGoal goal in evaluatedGoals)
+                {
+                    if (!goal.Meter)
+                    {
+                        targets.Add(QualificationGoalThreshold(goal, p));
+                    }
+                }
+
+                if (finestGoal != null && finestGoal.Meter
+                    && (double.IsNaN(finestAnalytic) || finestGoal.Threshold < finestAnalytic))
+                {
+                    targets.Add(finestGoal.Threshold);
+                }
+            }
+            else if (coarsestGoal != null && finestGoal != null)
+            {
+                targets.Add(coarsestThreshold);
+                targets.Add(finestThreshold);
+            }
+
+            targets.Sort();
+            options.AbsTargets = targets.ToArray();
             options.AdaptiveMaxSteps = new[] { double.PositiveInfinity };
             // Owner decision 2026-11-11: smoke keeps 2e6 (minutes), full gets 10e6 so that
             // RK4 L2 A2 (~4e6 calls) is no longer censored. G7 still turns a real budget hit
@@ -237,7 +396,10 @@ internal static partial class P1bTests
             options.TimingReps = 1;
 
             log.WriteLine(q.Id + " " + q.Title + " (" + p.Label + ")");
+            long sweepStart = problemWatch.ElapsedMilliseconds;
             StudyScenarioResult result = StudySweepRunner.Run(p, methods, options, log);
+            long sweepMs = problemWatch.ElapsedMilliseconds - sweepStart;
+            long cellsStart = problemWatch.ElapsedMilliseconds;
 
             var orders = new QualificationOrder[methods.Count];
             var mineByMethod = new List<List<StudyRow>>(methods.Count);
@@ -257,22 +419,24 @@ internal static partial class P1bTests
                     p, methods[m], mine, options, QualificationLevelFactors[0] * p.ScaleLength,
                     out detNoteByMethod[m]);
 
-                for (int level = 0; level < QualificationLevelFactors.Length; level++)
+                for (int level = 0; level < goals.Count; level++)
                 {
                     cellsForProblem.Add(QualificationCellFor(
-                        q, p, methods[m], mine, level, orders[m], detByMethod[m], detNoteByMethod[m]));
+                        q, p, methods[m], mine, goals[level], orders[m], detByMethod[m],
+                        detNoteByMethod[m]));
                 }
             }
 
             // G7: one sequential pass over the certificate controls (warm-up + median of 5/3
             // repeats, Test562's scheme). G4: forward-backward at the cheapest passing control.
+            long measureStart = problemWatch.ElapsedMilliseconds;
             var measured = new Dictionary<string, QualificationMeasure>();
             var reversibility = new Dictionary<string, QualificationReversibility>();
             for (int m = 0; m < methods.Count; m++)
             {
                 IStudyIntegrator method = methods[m];
-                double tightest = double.NaN;
-                double loosest = double.NaN;
+                double loosestAnalytic = double.NaN;
+                double tightestMeter = double.NaN;
                 foreach (QualificationCell c in cellsForProblem)
                 {
                     if (c.Method != method.Name || c.Status != "PASS" || !(c.BestControl > 0d))
@@ -280,27 +444,43 @@ internal static partial class P1bTests
                         continue;
                     }
 
+                    if (c.Meter)
+                    {
+                        if (double.IsNaN(tightestMeter) || c.BestControl < tightestMeter)
+                        {
+                            tightestMeter = c.BestControl;
+                        }
+
+                        continue;
+                    }
+
                     string key = method.Name + "|" + c.BestControl.ToString("R", QualificationInv);
                     if (!measured.ContainsKey(key))
                     {
-                        measured[key] = QualificationMeasureRun(
-                            p, method, c.BestControl, options.MaxCostRhs);
+                        measured[key] = QualificationMeasureRun(p, method, c.BestControl, options.MaxCostRhs);
                     }
 
-                    if (double.IsNaN(loosest) || c.BestControl > loosest)
+                    if (double.IsNaN(loosestAnalytic) || c.BestControl > loosestAnalytic)
                     {
-                        loosest = c.BestControl;
-                    }
-
-                    if (double.IsNaN(tightest) || c.BestControl < tightest)
-                    {
-                        tightest = c.BestControl;
+                        loosestAnalytic = c.BestControl;
                     }
                 }
 
-                if (!double.IsNaN(loosest))
+                // Metre goals share the A-level controls; timing the tightest one keeps the
+                // wall-time pass bounded (TASK.md A9: time is reported where measured).
+                if (double.IsFinite(tightestMeter) && tightestMeter > 0d)
                 {
-                    reversibility[method.Name] = QualificationReversibilityOf(q, p, method, loosest);
+                    string key = method.Name + "|" + tightestMeter.ToString("R", QualificationInv);
+                    if (!measured.ContainsKey(key))
+                    {
+                        measured[key] = QualificationMeasureRun(p, method, tightestMeter, options.MaxCostRhs);
+                    }
+                }
+
+                double revControl = !double.IsNaN(loosestAnalytic) ? loosestAnalytic : tightestMeter;
+                if (double.IsFinite(revControl) && revControl > 0d)
+                {
+                    reversibility[method.Name] = QualificationReversibilityOf(q, p, method, revControl);
                 }
             }
 
@@ -325,7 +505,12 @@ internal static partial class P1bTests
             // Partial results survive an interrupted run: rewrite both CSVs after every problem.
             QualificationWriteCsv(Path.Combine(dir, "runs.csv"), QualificationRunsHeader, runRows);
             QualificationWriteCsv(Path.Combine(dir, "matrix.csv"), QualificationMatrixHeader, matrixRows);
-            log.WriteLine("  -> " + matrixRows.Count.ToString(QualificationInv) + " matrix cells so far");
+            log.WriteLine("  -> " + matrixRows.Count.ToString(QualificationInv) + " matrix cells so far, "
+                + q.Id + " took " + problemWatch.ElapsedMilliseconds.ToString(QualificationInv) + " ms"
+                + " (sweep " + sweepMs.ToString(QualificationInv)
+                + ", cells " + (measureStart - cellsStart).ToString(QualificationInv)
+                + ", measure+rev " + (problemWatch.ElapsedMilliseconds - measureStart)
+                    .ToString(QualificationInv) + ")");
         }
 
         QualificationLogMatrixSummary(dir, log);
@@ -783,14 +968,15 @@ internal static partial class P1bTests
 
     private static QualificationCell QualificationCellFor(
         QualificationProblem q, StudyProblem p, IStudyIntegrator method, List<StudyRow> rows,
-        int level, QualificationOrder order, bool deterministic, string detNote)
+        QualificationGoal goal, QualificationOrder order, bool deterministic, string detNote)
     {
         var cell = new QualificationCell();
         cell.ProblemId = q.Id;
         cell.Method = method.Name;
-        cell.Level = QualificationLevelNames[level];
+        cell.Level = goal.Name;
+        cell.Meter = goal.Meter;
 
-        double threshold = QualificationLevelFactors[level] * p.ScaleLength;
+        double threshold = QualificationGoalThreshold(goal, p);
         string why;
         if (!method.Supports(p, out why))
         {
@@ -875,7 +1061,7 @@ internal static partial class P1bTests
             cell.Best = best;
 
             string gate = QualificationGateFailure(
-                method, order, deterministic, detNote, p, best, QualificationLevelFactors[level]);
+                method, order, deterministic, detNote, p, best, goal.Factor);
             bool failed = gate.Length > 0
                 && !gate.StartsWith("G3 skipped", StringComparison.Ordinal);
             cell.Status = failed ? "FAIL" : "PASS";

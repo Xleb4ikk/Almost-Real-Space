@@ -69,6 +69,9 @@ internal static partial class P1bTests
         q.OracleKind = "reference";
         q.OracleId = "dd-taylor-pair-v1";
         q.OracleNote = "Test553 independent dd-Taylor references (43200 s / 21600 s); floor = worst pair difference";
+        q.MeterTargets = QualificationMeterGoals;
+        q.CentralBody = "barycentre (7 bodies, no central body)";
+        q.Forces = new[] { "gravity" };
 
         double years = profile == QualificationProfile.Full ? 10d : 1d;
         double sampleEvery = 30d * 86400d;
@@ -116,6 +119,8 @@ internal static partial class P1bTests
         q.OracleKind = "reference";
         q.OracleId = "dop853-5level-v1";
         q.OracleNote = "fixed DOP853, 5 step levels, Richardson per checkpoint";
+        q.CentralBody = "barycentre (10 bodies, no central body)";
+        q.Forces = pn ? new[] { "gravity", "1pn" } : new[] { "gravity" };
 
         double horizonDays = profile == QualificationProfile.Full ? 3650d : 30d;
         double horizon = horizonDays * 86400d;
@@ -314,6 +319,7 @@ internal static partial class P1bTests
         q.OracleKind = "reference";
         q.OracleId = "ship-certified-dop853-local-v1";
         q.OracleNote = "Test549 certified fixed DOP853 local reference + independent IAS15 cross-check";
+        q.MeterTargets = QualificationMeterGoals;
 
         StudyShipMatrixCase found = null;
         foreach (StudyShipMatrixCase c in QualificationShipCases())
@@ -337,6 +343,24 @@ internal static partial class P1bTests
             StudyProblem p = BuildPureProblem(found);
             p.Label = QualificationLabel(id, title);
             q.Build = delegate { return p; };
+            q.CentralBody = found.Sys.AllBodies[found.Central].Name;
+            var forces = new List<string> { "gravity", "third-body" };
+            if (found.Sys.AllBodies[found.Central].J2 != 0d)
+            {
+                forces.Add("j2");
+            }
+
+            if (found.Drag != null)
+            {
+                forces.Add("drag");
+            }
+
+            if (found.Thrust)
+            {
+                forces.Add("thrust");
+            }
+
+            q.Forces = forces.ToArray();
             q.Floor = p.Floor;
             q.OracleTimes = (double[])p.CheckpointTimes.Clone();
             q.Oracle = QualificationCloneStates(p.CheckpointRef);
@@ -364,6 +388,9 @@ internal static partial class P1bTests
         q.OracleKind = "reference";
         q.OracleId = "ship-certified-dop853-local-v1";
         q.OracleNote = "Test559 MoonFlybyProblem certified reference + independent IAS15";
+        q.MeterTargets = QualificationMeterGoals;
+        q.CentralBody = "Moon";
+        q.Forces = new[] { "gravity", "third-body" };
 
         try
         {
@@ -403,6 +430,9 @@ internal static partial class P1bTests
         q.OracleId = "ship-certified-dop853-local-v1";
         q.OracleNote = "local-frame certified fixed DOP853 reference (the model the methods integrate); "
             + "the world-frame dd golden is a cross-check only (owner decision 2026-11-11)";
+        q.MeterTargets = QualificationMeterGoals;
+        q.CentralBody = "Earth";
+        q.Forces = new[] { "gravity", "third-body" };
 
         try
         {
@@ -501,6 +531,8 @@ internal static partial class P1bTests
         q.OracleKind = "analytic";
         q.OracleId = "kepler-closed-form-v1";
         q.OracleNote = "closed-form Kepler equation over " + QualificationL2Orbits + " periods";
+        q.CentralBody = "central field (mu=1, origin)";
+        q.Forces = new[] { "gravity" };
 
         const double e = 0.5d;
         const double a = 1d;

@@ -211,6 +211,7 @@ internal static partial class P1bTests
     private static void QualificationWriteReports(
         string dir, List<QualificationProblem> catalog, TextWriter log)
     {
+        QualificationWriteConditions(dir, catalog, log);
         List<QualificationMatrixEntry> matrix = QualificationReadMatrix(dir);
         List<QualificationRunEntry> runs = QualificationReadRuns(dir);
         if (matrix.Count == 0)
@@ -254,6 +255,52 @@ internal static partial class P1bTests
         }
 
         return methods;
+    }
+
+    /// <summary>A1, A2, A3, then M100 … M0.01; unknown names last (deterministic order).</summary>
+    private static int QualificationGoalRank(string level)
+    {
+        for (int i = 0; i < QualificationLevelNames.Length; i++)
+        {
+            if (level == QualificationLevelNames[i])
+            {
+                return i;
+            }
+        }
+
+        if (level == null || level.Length < 2 || level[0] != 'M')
+        {
+            return 1000;
+        }
+
+        double value;
+        if (!double.TryParse(level.Substring(1), NumberStyles.Float, QualificationCatalogInv, out value))
+        {
+            return 1000;
+        }
+
+        // Larger meter goals first: M100 (rank 10), M10 (11), M1 (12), M0.1 (13)…
+        return 10 + (int)Math.Round(Math.Log10(100d / Math.Max(value, 1e-12)));
+    }
+
+    private static List<string> QualificationGoalNamesInOrder(List<QualificationMatrixEntry> matrix)
+    {
+        var names = new List<string>();
+        foreach (QualificationMatrixEntry e in matrix)
+        {
+            if (!names.Contains(e.Level))
+            {
+                names.Add(e.Level);
+            }
+        }
+
+        names.Sort(delegate (string a, string b)
+        {
+            int ra = QualificationGoalRank(a);
+            int rb = QualificationGoalRank(b);
+            return ra != rb ? ra.CompareTo(rb) : string.CompareOrdinal(a, b);
+        });
+        return names;
     }
 
     private static List<string> QualificationProblemsInOrder(List<QualificationMatrixEntry> matrix)
@@ -316,10 +363,15 @@ internal static partial class P1bTests
         sb.AppendLine("# Method qualification (Test564)");
         sb.AppendLine();
         sb.AppendLine("Generated from `matrix.csv` and `runs.csv` of run `" + Path.GetFileName(dir) + "`.");
+        List<string> goalNames = QualificationGoalNamesInOrder(matrix);
         sb.AppendLine("Profile: **" + profile + "**; commit: `" + commit + "`; "
             + problems.Count.ToString(QualificationCatalogInv) + " problems × "
-            + methods.Count.ToString(QualificationCatalogInv) + " methods × 3 levels.");
+            + methods.Count.ToString(QualificationCatalogInv) + " methods × "
+            + goalNames.Count.ToString(QualificationCatalogInv) + " goal(s): "
+            + string.Join(", ", goalNames) + ".");
         sb.AppendLine();
+        sb.AppendLine("Goals: `A1`–`A3` are the relative levels of TASK.md §7 (K/T/R/L); `M100`…`M0.01`");
+        sb.AppendLine("are the absolute metre goals of Appendix A (S/P/F and R1/R3/L1/R4).");
         sb.AppendLine("Statuses: PASS / FAIL / N/A (from `Supports`) / SKIP (oracle floor or budget) / ERROR.");
         sb.AppendLine("Gate thresholds are frozen; see `PROGRESS.md` in this folder.");
         sb.AppendLine();
@@ -368,7 +420,7 @@ internal static partial class P1bTests
         }
 
         sb.AppendLine();
-        sb.AppendLine("## Method × problem (A1 / A2 / A3)");
+        sb.AppendLine("## Method × problem (per goal, in the order " + string.Join(" / ", goalNames) + ")");
         sb.AppendLine();
         sb.Append("| method |");
         foreach (string problem in problems)
@@ -397,6 +449,7 @@ internal static partial class P1bTests
 
         sb.AppendLine();
         sb.AppendLine("Legend: P = PASS, F = FAIL, n/a = not applicable, skip = budget/oracle floor.");
+        sb.AppendLine("A problem shows only the goals it actually has (A1–A3 or M100…M0.01).");
         sb.AppendLine("**Valid for** (in the per-method sections) lists the tags of problems where the method");
         sb.AppendLine("has at least one PASS; it is not a claim that every level of those problems passes.");
         sb.AppendLine("**Gate notes on PASS** shows gates that were skipped by the model-drift guard (G3).");
@@ -461,20 +514,33 @@ internal static partial class P1bTests
         sb.AppendLine();
         sb.AppendLine("## Cost by method and problem");
         sb.AppendLine();
-        sb.AppendLine("| method | problem | A1 | A2 | A3 | err@finest | control |");
-        sb.AppendLine("|---|---|---|---|---|---|---|");
+        List<string> goalNames = QualificationGoalNamesInOrder(matrix);
+        sb.Append("| method | problem |");
+        foreach (string goal in goalNames)
+        {
+            sb.Append(' ').Append(goal).Append(" |");
+        }
+
+        sb.AppendLine(" err@finest | control |");
+        sb.Append("|---|---|");
+        foreach (string goal in goalNames)
+        {
+            sb.Append("---|");
+        }
+
+        sb.AppendLine("---|---|---|");
         foreach (string method in methods)
         {
             foreach (string problem in problems)
             {
-                QualificationMatrixEntry a1 = QualificationFindCell(matrix, problem, method, "A1");
-                QualificationMatrixEntry a2 = QualificationFindCell(matrix, problem, method, "A2");
-                QualificationMatrixEntry a3 = QualificationFindCell(matrix, problem, method, "A3");
                 QualificationRunEntry finest = QualificationFinestRun(runs, problem, method);
                 sb.Append("| ").Append(method).Append(" | ").Append(problem).Append(" | ");
-                sb.Append(QualificationCostCell(a1)).Append(" | ");
-                sb.Append(QualificationCostCell(a2)).Append(" | ");
-                sb.Append(QualificationCostCell(a3)).Append(" | ");
+                foreach (string goal in goalNames)
+                {
+                    sb.Append(QualificationCostCell(
+                        QualificationFindCell(matrix, problem, method, goal))).Append(" | ");
+                }
+
                 sb.Append(finest == null ? "—" : QualificationFormat(finest.Err)).Append(" | ");
                 sb.Append(finest == null ? "—" : QualificationFormat(finest.Control)).AppendLine(" |");
             }
@@ -656,36 +722,38 @@ internal static partial class P1bTests
     private static string QualificationCellSummary(
         List<QualificationMatrixEntry> matrix, string problem, string method)
     {
-        string a1 = "?";
-        string a2 = "?";
-        string a3 = "?";
+        var mine = new List<QualificationMatrixEntry>();
         foreach (QualificationMatrixEntry e in matrix)
         {
-            if (e.Problem != problem || e.Method != method)
+            if (e.Problem == problem && e.Method == method)
             {
-                continue;
-            }
-
-            string shortName = e.Status == "PASS" ? "P"
-                : e.Status == "FAIL" ? "F"
-                : e.Status == "N/A" ? "n/a"
-                : e.Status == "SKIP" ? "skip"
-                : "ERR";
-            if (e.Level == "A1")
-            {
-                a1 = shortName;
-            }
-            else if (e.Level == "A2")
-            {
-                a2 = shortName;
-            }
-            else
-            {
-                a3 = shortName;
+                mine.Add(e);
             }
         }
 
-        return a1 + "/" + a2 + "/" + a3;
+        if (mine.Count == 0)
+        {
+            return "?";
+        }
+
+        mine.Sort(delegate (QualificationMatrixEntry a, QualificationMatrixEntry b)
+        {
+            int ra = QualificationGoalRank(a.Level);
+            int rb = QualificationGoalRank(b.Level);
+            return ra != rb ? ra.CompareTo(rb) : string.CompareOrdinal(a.Level, b.Level);
+        });
+
+        var parts = new List<string>(mine.Count);
+        foreach (QualificationMatrixEntry e in mine)
+        {
+            parts.Add(e.Status == "PASS" ? "P"
+                : e.Status == "FAIL" ? "F"
+                : e.Status == "N/A" ? "n/a"
+                : e.Status == "SKIP" ? "skip"
+                : "ERR");
+        }
+
+        return string.Join("/", parts);
     }
 
     private static string QualificationValidFor(
@@ -941,6 +1009,7 @@ internal static partial class P1bTests
         sb.AppendLine();
 
         var body = new StringBuilder();
+        List<string> goalNames = QualificationGoalNamesInOrder(matrix);
         foreach (string tag in tags)
         {
             body.AppendLine("## " + tag);
@@ -954,7 +1023,7 @@ internal static partial class P1bTests
                 body.AppendLine();
             }
 
-            foreach (string level in QualificationLevelNames)
+            foreach (string level in goalNames)
             {
                 body.AppendLine("### " + level);
                 body.AppendLine();
@@ -1186,6 +1255,7 @@ internal static partial class P1bTests
         sb.AppendLine();
 
         int statusChanges = 0;
+        int newCells = 0;
         foreach (QualificationMatrixEntry a in now)
         {
             QualificationMatrixEntry b = QualificationFind(before, a.Problem, a.Method, a.Level);
@@ -1193,7 +1263,7 @@ internal static partial class P1bTests
             {
                 sb.AppendLine("* new cell " + a.Problem + " " + a.Method + " " + a.Level
                     + ": " + a.Status);
-                statusChanges++;
+                newCells++;
                 continue;
             }
 
@@ -1237,7 +1307,7 @@ internal static partial class P1bTests
             }
         }
 
-        if (statusChanges == 0 && errChanges == 0 && priceChanges == 0)
+        if (statusChanges == 0 && errChanges == 0 && priceChanges == 0 && newCells == 0)
         {
             sb.AppendLine("No changes: statuses, errors and prices are identical within 10%.");
         }
@@ -1245,13 +1315,15 @@ internal static partial class P1bTests
         {
             sb.AppendLine();
             sb.AppendLine("Summary: " + statusChanges + " status change(s), "
+                + newCells + " new cell(s), "
                 + errChanges + " error change(s) > 10%, " + priceChanges + " price change(s) > 10%.");
         }
 
         string text = sb.ToString();
         File.WriteAllText(Path.Combine(currentDir, "compare.md"), text, new UTF8Encoding(false));
-        log.WriteLine("compare: " + statusChanges + " status, " + errChanges + " error, "
-            + priceChanges + " price change(s) vs " + Path.GetFileName(otherDir));
+        log.WriteLine("compare: " + statusChanges + " status, " + newCells + " new cell(s), "
+            + errChanges + " error, " + priceChanges + " price change(s) vs "
+            + Path.GetFileName(otherDir));
         log.Write(text);
     }
 

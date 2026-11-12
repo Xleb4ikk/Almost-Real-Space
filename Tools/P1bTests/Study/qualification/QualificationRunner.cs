@@ -17,7 +17,7 @@ using P1bStudy.Framework;
 // StudyShipMatrixBuildCases, MoonFlybyProblem, ...) without editing existing files.
 internal static partial class P1bTests
 {
-    private const string QualificationTaskVersion = "1";
+    private const string QualificationTaskVersion = "2";
 
     private static readonly CultureInfo QualificationInv = CultureInfo.InvariantCulture;
 
@@ -94,7 +94,13 @@ internal static partial class P1bTests
             QualificationResumeContext resume = null;
             if (resuming)
             {
-                resume = QualificationLoadResume(dir, methods.Count);
+                var goalsPerProblem = new Dictionary<string, int>(StringComparer.Ordinal);
+                foreach (QualificationProblem q in catalog)
+                {
+                    goalsPerProblem[q.Id] = QualificationGoalCount(q, profile);
+                }
+
+                resume = QualificationLoadResume(dir, methods.Count, goalsPerProblem);
                 log.WriteLine("resume: " + resume.ReusedProblems.ToString(QualificationInv)
                     + " finished problem(s), " + resume.ReusedCells.ToString(QualificationInv)
                     + " reused cell(s)");
@@ -105,7 +111,9 @@ internal static partial class P1bTests
                 QualificationWriteEnvironment(Path.Combine(dir, "environment.txt"), profile, methods);
                 QualificationWriteHeaderOnly(Path.Combine(dir, "runs.csv"), QualificationRunsHeader);
                 QualificationWriteHeaderOnly(Path.Combine(dir, "matrix.csv"), QualificationMatrixHeader);
+                var auditWatch = Stopwatch.StartNew();
                 QualificationAuditOracles(catalog, log, dir);
+                log.WriteLine("audit: " + auditWatch.ElapsedMilliseconds.ToString(QualificationInv) + " ms");
             }
 
             int invalid = 0;

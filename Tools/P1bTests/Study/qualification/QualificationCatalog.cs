@@ -18,12 +18,32 @@ internal static partial class P1bTests
 
     private const double QualificationKeplerPeriod = 2d * Math.PI;
 
+    /// <summary>A7: M100 … M0.01, in metres (the problems' error unit).</summary>
+    private static readonly double[] QualificationMeterGoals =
+        { 100d, 10d, 1d, 0.1d, 0.01d };
+
     internal sealed class QualificationProblem
     {
         public string Id = "";
         public string Title = "";
         public string[] Tags = new string[0];
         public bool FullOnly;
+
+        /// <summary>
+        /// Meter goals of TASK.md Appendix A (A7), e.g. 100/10/1/0.1/0.01. Empty: no meter
+        /// goals. A1-A3 are evaluated when <see cref="AnalyticLevels"/> is true.
+        /// </summary>
+        public double[] MeterTargets = new double[0];
+
+        /// <summary>False for S/P/F tiers: A1-A3 are replaced by meter goals (A7.3).</summary>
+        public bool AnalyticLevels = true;
+
+        /// <summary>Central body name for conditions.csv; empty = derive from CentralMu.</summary>
+        public string CentralBody = "";
+
+        /// <summary>Force list for conditions.csv from A8: gravity, j2, drag, thrust, third-body, 1pn.</summary>
+        public string[] Forces = new string[0];
+
 
         /// <summary>Builds (and caches) the problem. The returned instance is owned by the catalogue.</summary>
         public Func<StudyProblem> Build;
@@ -99,7 +119,49 @@ internal static partial class P1bTests
         list.Add(QualificationLagrangeProblem());
         list.Add(QualificationPythagoreanProblem());
         QualificationAppendRl(list, profile);
+        QualificationDescribeProblemPhysics(list);
         return list;
+    }
+
+    /// <summary>
+    /// Force list and central body for conditions.csv (A8). Builders set these themselves
+    /// where the body name is known (ships, planets); this fills the analytic K/T entries.
+    /// No method is named here: it is problem metadata, not a support rule.
+    /// </summary>
+    private static void QualificationDescribeProblemPhysics(List<QualificationProblem> list)
+    {
+        foreach (QualificationProblem q in list)
+        {
+            if (q.Forces.Length > 0 || q.CentralBody.Length > 0)
+            {
+                continue;
+            }
+
+            switch (q.Id)
+            {
+                case "K1":
+                case "K2":
+                case "K3":
+                case "K4":
+                case "K5":
+                case "K6":
+                    q.CentralBody = "central field (mu=1, origin)";
+                    q.Forces = new[] { "gravity" };
+                    break;
+                case "K7":
+                    q.CentralBody = "origin (no central body)";
+                    break;
+                case "K8":
+                    q.CentralBody = "origin (no central body)";
+                    break;
+                case "T1":
+                case "T2":
+                case "T3":
+                    q.CentralBody = "barycentre (3 bodies)";
+                    q.Forces = new[] { "gravity" };
+                    break;
+            }
+        }
     }
 
     private static List<QualificationProblem> QualificationCatalogFor(QualificationProfile profile)
