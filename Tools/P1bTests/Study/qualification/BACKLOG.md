@@ -12,3 +12,8 @@ Test564. Реализация — только после решения вла�
 | B5 | Отдельный `.gitignore`-шаблон для `qualification/results/` | прогоны не должны случайно попадать в индекс, но baseline-папка — должна | корневой `.gitignore` |
 | B6 | DOP853 с фиксированным шагом как отдельная запись реестра | TASK.md (раздел 9) называет «certified DOP853 фикс. шаг», а в реестре только adaptive | `StudyRegistry.cs` |
 | B7 | Экспорт `runs.csv`/`matrix.csv` в Parquet/JSON | удобнее для внешнего анализа | `Study/qualification/` |
+| B8 | Прочие гелиоцентрические сценарии Test559 (0.3/1/5/30 AU × e=0/0.5/0.9/0.99, кроме F02) | A5.4: один представитель класса уже в F02; остальные — отдельная задача владельца | `Study/qualification/` |
+| B9 | Прочие пролёты Луны Test559 (vinf 50…10000 × alt 1…1000, кроме R4) | A5.2/A5.3: дубли класса R4 | `Study/qualification/` |
+| B10 | Прочие орбиты/прыжки Луны Test559 (alt 1/10/100/1000, 10/100 витков; hop 50…1600 м/с) | A5.4: один представитель каждого класса уже в F04/F05 | `Study/qualification/` |
+| B11 | Пролёты планет Test559 (Earth flyby 1.1/3/10 R × vinf) | A5.3: тот же класс и сила, что S15 (Earth + solar tide) | `Study/qualification/` |
+| B12 | `Far flight 30 AU e 0.5 (normalized)` | A5.3: та же физика, что F01, в нормированных единицах | `Study/qualification/` |

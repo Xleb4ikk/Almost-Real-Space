@@ -144,3 +144,17 @@
     грубее, не подходит.
 * Решение: оставить 5-уровневый DOP853, R3 A2 = SKIP. Пороги/окно/TASK.md не менялись;
   диагностический код удалён. Полное решение — `PROGRESS.md`, раздел «R3 A2».
+
+## F10. Encke-IAS15 заявляет поддержку силы, зависящей от скорости/массы (A4 ожидает N/A)
+
+* Путь: `Study/framework/StudyAdvancedIntegrators.cs:209` (`EnckeIntegrator.Supports`),
+  ядро — `Study/framework/StudyAdvancedSteppers.cs:684` (`EnckeStepper`, внутренний IAS15
+  интегрирует и extras-блок массы).
+* Симптом: `Supports` требует только `CentralMu > 0`, `PosDim == 3`, `Dim >= 6`.
+  Для S10 (drag), S11 и S17 (thrust, `Dim = 7`, `PosDim = 3`, `CentralMu = Earth`) он
+  возвращает `true`. TASK.md A4 ожидает, что Encke на этих задачах даёт `N/A`.
+* Факт: Encke физически может интегрировать такие силы (внутренний IAS15 — Gauss-Radau,
+  extras входят в `deviation`), поэтому это не обязательно баг кода; это расхождение
+  ожидания A4 с фактическим `Supports`.
+* Не чиним: §2/§8.2 запрещают править `Supports`; S3 сравнит фактический ответ с A4 и
+  запишет расхождение. Вопрос владельцу — `PROGRESS.md`, «Вопросы к владельцу».
