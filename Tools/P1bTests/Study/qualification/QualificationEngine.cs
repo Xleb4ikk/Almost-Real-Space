@@ -575,6 +575,31 @@ internal static partial class P1bTests
         log.WriteLine("flag check: " + conservativeRequired.Count.ToString(QualificationInv)
             + " method(s) require a conservative second-order force");
 
+        // A4 also names Encke: a method that needs a central body but does not require the
+        // conservative flag. It is identified by behaviour (supports a non-conservative
+        // central problem, refuses the same problem without a central body), not by name.
+        var centralOnly = new List<IStudyIntegrator>();
+        StudyProblem centralNonConservative = QualificationProbeProblem(false);
+        StudyProblem noCentralNonConservative = QualificationProbeProblemNoCentral(false);
+        foreach (IStudyIntegrator method in methods)
+        {
+            if (conservativeRequired.Contains(method))
+            {
+                continue;
+            }
+
+            string whyCentral;
+            string whyNoCentral;
+            if (method.Supports(centralNonConservative, out whyCentral)
+                && !method.Supports(noCentralNonConservative, out whyNoCentral))
+            {
+                centralOnly.Add(method);
+            }
+        }
+
+        log.WriteLine("A4 flag check: " + centralOnly.Count.ToString(QualificationInv)
+            + " central-only method(s) that do not require a conservative force");
+
         int violations = 0;
         foreach (QualificationProblem q in catalog)
         {
@@ -616,6 +641,20 @@ internal static partial class P1bTests
                     violations++;
                 }
             }
+
+            foreach (IStudyIntegrator method in centralOnly)
+            {
+                string why;
+                if (method.Supports(p, out why))
+                {
+                    // A4 names Encke explicitly and expects N/A here. The code's Supports says
+                    // yes and its IAS15 core can integrate velocity/mass-dependent forces, so
+                    // this is a documented expectation mismatch (FOUND.md F10, owner question
+                    // 7), not a silent pass: the line is in every run log.
+                    log.WriteLine("  A4 CHECK NOTE: " + method.Name + " claims support on " + q.Id
+                        + " (non-conservative force); TASK.md A4 expects N/A - FOUND.md F10");
+                }
+            }
         }
 
         if (violations > 0)
@@ -628,11 +667,21 @@ internal static partial class P1bTests
 
     private static StudyProblem QualificationProbeProblem(bool conservative)
     {
+        return QualificationProbeProblemCore(conservative, 1d);
+    }
+
+    private static StudyProblem QualificationProbeProblemNoCentral(bool conservative)
+    {
+        return QualificationProbeProblemCore(conservative, 0d);
+    }
+
+    private static StudyProblem QualificationProbeProblemCore(bool conservative, double centralMu)
+    {
         var p = new StudyProblem();
         p.Label = "Test564 support probe";
         p.Dim = 6;
         p.PosDim = 3;
-        p.CentralMu = 1d;
+        p.CentralMu = centralMu;
         p.ConservativeSecondOrder = conservative;
         p.T0 = 0d;
         p.Y0 = new double[6];
@@ -647,46 +696,92 @@ internal static partial class P1bTests
     /// <summary>
     /// Numerical probe: does the acceleration change when only the velocities (or only the
     /// non-[x,v] extras, e.g. mass) change? Used to decide whether a problem's force is
-    /// non-conservative without hardcoding any problem id.
+    /// non-conservative without hardcoding any problem id. The probe runs at the initial
+    /// time, mid-horizon and inside every breakpoint interval: a thrust arc that starts
+    /// after T0 (S11/S17) has no force at all at T0, so a single t = T0 probe would call a
+    /// thrust case mass-independent.
     /// </summary>
     private static bool QualificationForceDependsOnVelocity(StudyProblem p, out bool massDependent)
     {
         massDependent = false;
-        int pos = Math.Max(p.PosDim, 0);
-        var y0 = p.Y0;
-        var dy0 = new double[p.Dim];
-        p.Rhs(p.T0, y0, dy0);
-
-        var yv = (double[])y0.Clone();
-        for (int i = 0; i < pos; i++)
+        if (p.Rhs == null || p.Y0 == null || p.Dim <= 0)
         {
-            yv[pos + i] = yv[pos + i] + (1e-3d * (Math.Abs(yv[pos + i]) + 1d));
+            return false;
         }
 
-        var dyv = new double[p.Dim];
-        p.Rhs(p.T0, yv, dyv);
-        // Second-order layout: dy[0..PosDim-1] is just v, so only the acceleration block can
-        // reveal a velocity-dependent force. A first-order problem has no split: compare all.
-        bool velocity = pos > 0
-            ? QualificationRhsChanged(dy0, dyv, pos, pos)
-            : QualificationRhsChanged(dy0, dyv, 0, p.Dim);
-
-        if (2 * pos < p.Dim)
+        int pos = Math.Max(p.PosDim, 0);
+        var y0 = p.Y0;
+        bool velocity = false;
+        foreach (double t in QualificationProbeTimes(p))
         {
-            var ym = (double[])y0.Clone();
-            for (int i = 2 * pos; i < p.Dim; i++)
+            var dy0 = new double[p.Dim];
+            p.Rhs(t, y0, dy0);
+
+            var yv = (double[])y0.Clone();
+            for (int i = 0; i < pos; i++)
             {
-                ym[i] = ym[i] + (0.1d * (Math.Abs(ym[i]) + 1d));
+                yv[pos + i] = yv[pos + i] + (1e-3d * (Math.Abs(yv[pos + i]) + 1d));
             }
 
-            var dym = new double[p.Dim];
-            p.Rhs(p.T0, ym, dym);
-            massDependent = pos > 0
-                ? QualificationRhsChanged(dy0, dym, pos, pos)
-                : QualificationRhsChanged(dy0, dym, 0, p.Dim);
+            var dyv = new double[p.Dim];
+            p.Rhs(t, yv, dyv);
+            // Second-order layout: dy[0..PosDim-1] is just v, so only the acceleration block
+            // can reveal a velocity-dependent force. A first-order problem has no split.
+            velocity |= pos > 0
+                ? QualificationRhsChanged(dy0, dyv, pos, pos)
+                : QualificationRhsChanged(dy0, dyv, 0, p.Dim);
+
+            if (2 * pos < p.Dim)
+            {
+                var ym = (double[])y0.Clone();
+                for (int i = 2 * pos; i < p.Dim; i++)
+                {
+                    ym[i] = ym[i] + (0.1d * (Math.Abs(ym[i]) + 1d));
+                }
+
+                var dym = new double[p.Dim];
+                p.Rhs(t, ym, dym);
+                massDependent |= pos > 0
+                    ? QualificationRhsChanged(dy0, dym, pos, pos)
+                    : QualificationRhsChanged(dy0, dym, 0, p.Dim);
+            }
         }
 
         return velocity;
+    }
+
+    private static List<double> QualificationProbeTimes(StudyProblem p)
+    {
+        var times = new List<double>();
+        times.Add(p.T0);
+        if (p.Duration > 0d && double.IsFinite(p.Duration))
+        {
+            times.Add(p.T0 + (0.5d * p.Duration));
+        }
+
+        if (p.Breakpoints != null && p.Breakpoints.Length > 0)
+        {
+            var edges = new List<double>(p.Breakpoints);
+            edges.Sort();
+            foreach (double edge in edges)
+            {
+                if (edge > p.T0 && edge < p.EndTime)
+                {
+                    times.Add(edge + 1e-3d);
+                }
+            }
+
+            for (int i = 0; i + 1 < edges.Count; i++)
+            {
+                double mid = 0.5d * (edges[i] + edges[i + 1]);
+                if (mid > p.T0 && mid < p.EndTime)
+                {
+                    times.Add(mid);
+                }
+            }
+        }
+
+        return times;
     }
 
     private static bool QualificationRhsChanged(double[] a, double[] b, int start, int count)

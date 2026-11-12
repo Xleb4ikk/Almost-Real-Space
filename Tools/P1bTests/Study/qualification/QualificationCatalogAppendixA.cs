@@ -47,6 +47,25 @@ internal static partial class P1bTests
         list.Add(QualificationAppendixShip(
             "S14", "Earth HEO 300 x 120000 km", "Earth HEO 300 x 120000 km, 5 d",
             new[] { "heo", "ecc-high" }, false));
+
+        // S3: velocity/mass-dependent forces and heliocentric flights (A10).
+        list.Add(QualificationAppendixShip(
+            "S10", "Earth 250 km + atmosphere drag", "Earth 250 km + atmosphere drag, 1 d",
+            new[] { "leo", "drag", "velocity-dependent" }, false));
+        list.Add(QualificationAppendixShip(
+            "S11", "Earth LEO 400 km + 600 s prograde burn",
+            "Earth LEO 400 km + 600 s prograde burn, 1 d",
+            new[] { "leo", "thrust", "velocity-dependent" }, false));
+        list.Add(QualificationAppendixShip(
+            "S17", "Earth LEO 400 km + unaligned 600 s burn",
+            "Earth LEO 400 km + unaligned 600 s burn, 1 d",
+            new[] { "leo", "thrust", "velocity-dependent" }, false));
+        list.Add(QualificationAppendixShip(
+            "S07", "Sun 1 AU circular", "Sun 1 AU circular, 1 y",
+            new[] { "heliocentric", "far-flight" }, false));
+        list.Add(QualificationAppendixShip(
+            "S08", "Sun 0.5 x 2 AU eccentric", "Sun 0.5 x 2 AU eccentric, 1 y",
+            new[] { "heliocentric", "far-flight", "ecc-mid" }, false));
     }
 
     /// <summary>
