@@ -66,6 +66,15 @@ internal static partial class P1bTests
         list.Add(QualificationAppendixShip(
             "S08", "Sun 0.5 x 2 AU eccentric", "Sun 0.5 x 2 AU eccentric, 1 y",
             new[] { "heliocentric", "far-flight", "ecc-mid" }, false));
+
+        // S4: Moon flyby and Earth hyperbola; these carry the 0.1/0.01 m goals (A7).
+        list.Add(QualificationAppendixShip(
+            "S12", "Earth-Moon flyby inside lunar SOI (Moon-centered)",
+            "Earth-Moon flyby inside lunar SOI, 2 d",
+            new[] { "flyby", "moon-soi", "close-encounter" }, true));
+        list.Add(QualificationAppendixShip(
+            "S15", "Earth hyperbolic flyby e=1.5", "Earth hyperbolic flyby e=1.5, 1 d",
+            new[] { "flyby", "escape", "close-encounter" }, true));
     }
 
     /// <summary>
