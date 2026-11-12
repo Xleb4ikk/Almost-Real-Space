@@ -181,7 +181,15 @@ internal static partial class P1bTests
 
             try
             {
-                if (q.Id == "L2")
+                if (q.AuditKind == "ship")
+                {
+                    QualificationAuditShip(q);
+                }
+                else if (q.AuditKind == "planet")
+                {
+                    QualificationAuditPlanet(q);
+                }
+                else if (q.Id == "L2")
                 {
                     QualificationAuditAnalytic(q);
                 }
@@ -626,5 +634,40 @@ internal static partial class P1bTests
         }
 
         return value.ToString("0.000E+00", QualificationCatalogInv);
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Appendix A routes: ship (S/F) and planet (P)
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>
+    /// G8 for a ship case: the reference is the existing certified fixed-step DOP853 of
+    /// Test549/552 (5 levels + Richardson), already carrying an independent cross-check
+    /// where the case provides one. VALID only with a finite floor; otherwise INVALID with
+    /// the builder's own reason (A10 allows a documented INVALID).
+    /// </summary>
+    private static void QualificationAuditShip(QualificationProblem q)
+    {
+        StudyProblem p = q.Problem;
+        q.Floor = p.Floor;
+        bool certified = p.Certified && double.IsFinite(p.Floor) && p.Floor > 0d;
+        q.Status = certified ? "VALID" : "INVALID";
+        q.AuditNote = q.AuditNote
+            + (certified ? "" : "; reference is not certified (no asymptotic pair); "
+                + "the case is graded by no method (G8)");
+    }
+
+    /// <summary>
+    /// G8 for a planet case: two independent dd-Taylor references; the floor is the worst
+    /// pair difference (or the floating-point floor), computed by StudyBridgePlanetProblem.
+    /// </summary>
+    private static void QualificationAuditPlanet(QualificationProblem q)
+    {
+        StudyProblem p = q.Problem;
+        q.Floor = p.Floor;
+        bool certified = p.Certified && double.IsFinite(p.Floor) && p.Floor > 0d;
+        q.Status = certified ? "VALID" : "INVALID";
+        q.AuditNote = q.AuditNote
+            + (certified ? "" : "; the two dd-Taylor references left no finite floor");
     }
 }

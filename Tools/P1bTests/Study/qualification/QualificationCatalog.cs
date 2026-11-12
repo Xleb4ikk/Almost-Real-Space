@@ -44,6 +44,9 @@ internal static partial class P1bTests
         /// <summary>Force list for conditions.csv from A8: gravity, j2, drag, thrust, third-body, 1pn.</summary>
         public string[] Forces = new string[0];
 
+        /// <summary>G8 audit route: empty (id rules), ship (certified local DOP853), planet (dd-Taylor pair).</summary>
+        public string AuditKind = "";
+
 
         /// <summary>Builds (and caches) the problem. The returned instance is owned by the catalogue.</summary>
         public Func<StudyProblem> Build;
@@ -119,6 +122,7 @@ internal static partial class P1bTests
         list.Add(QualificationLagrangeProblem());
         list.Add(QualificationPythagoreanProblem());
         QualificationAppendRl(list, profile);
+        QualificationAppendAppendixA(list, profile);
         QualificationDescribeProblemPhysics(list);
         return list;
     }
