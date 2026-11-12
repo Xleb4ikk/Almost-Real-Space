@@ -105,6 +105,11 @@ internal static partial class P1bTests
                     continue;
                 }
 
+                if (!QualificationGoalPresent(matrix, problem, goal))
+                {
+                    continue;
+                }
+
                 string winner;
                 string second;
                 string margin;
@@ -321,11 +326,13 @@ internal static partial class P1bTests
         var candidates = new List<string>();
         var naList = new List<string>();
         var failList = new List<string>();
+        var failSeen = new HashSet<string>(StringComparer.Ordinal);
         foreach (string method in QualificationMethodsInOrder(matrix))
         {
             bool allPass = true;
             bool anyNa = false;
             bool anyFail = false;
+            string failReason = "";
             foreach (string problem in problems)
             {
                 QualificationMatrixEntry e = QualificationFind(matrix, problem, method, goal);
@@ -341,7 +348,14 @@ internal static partial class P1bTests
 
                 allPass = false;
                 anyNa |= e.Status == "N/A";
-                anyFail |= e.Status == "FAIL" || e.Status == "ERROR";
+                if (e.Status == "FAIL" || e.Status == "ERROR")
+                {
+                    anyFail = true;
+                    if (failReason.Length == 0)
+                    {
+                        failReason = e.Reason;
+                    }
+                }
             }
 
             if (allPass)
@@ -355,9 +369,9 @@ internal static partial class P1bTests
                 naList.Add(method);
             }
 
-            if (anyFail)
+            if (anyFail && failSeen.Add(method))
             {
-                failList.Add(method);
+                failList.Add(method + " (" + (failReason.Length == 0 ? "FAIL" : failReason) + ")");
             }
         }
 

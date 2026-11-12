@@ -19,9 +19,12 @@ internal static partial class P1bTests
     {
         List<QualificationMatrixEntry> matrix = QualificationReadMatrix(dir);
         string path = Path.Combine(dir, "conditions.csv");
-        if (File.Exists(path) && QualificationConditionsComplete(path, catalog))
+        bool recondition = string.Equals(
+            Environment.GetEnvironmentVariable("P1B564_RECONDITION"), "1", StringComparison.Ordinal);
+        if (!recondition && File.Exists(path) && QualificationConditionsComplete(path, catalog))
         {
-            log.WriteLine("conditions: conditions.csv already covers the catalogue, reused");
+            log.WriteLine("conditions: conditions.csv already covers the catalogue, reused"
+                + " (set P1B564_RECONDITION=1 to recompute)");
             return;
         }
 
@@ -73,9 +76,8 @@ internal static partial class P1bTests
             fields.Add(QualificationConditionsNumber(vMin));
             fields.Add(QualificationConditionsNumber(vMax));
             fields.Add(QualificationConditionsNumber(horizon));
-            fields.Add(string.Join(";", q.Forces));
-            fields.Add(velocityDependent ? "1" : "0");
-            fields.Add(q.OracleId);
+            fields.Add(q.Forces.Length == 0 ? "none" : string.Join(";", q.Forces));
+            fields.Add(velocityDependent ? "1" : "0");            fields.Add(q.OracleId);
             fields.Add(QualificationConditionsNumber(q.Floor));
             fields.Add(QualificationConditionsTargets(matrix, q));
 
@@ -94,16 +96,21 @@ internal static partial class P1bTests
             + " problem row(s))");
     }
 
-    /// <summary>True when the existing conditions.csv already has a row for every catalogue id.</summary>
+    /// <summary>True when the existing conditions.csv already has a complete row for every catalogue id.</summary>
     private static bool QualificationConditionsComplete(string path, List<QualificationProblem> catalog)
     {
         List<string[]> rows = QualificationReadCsv(path);
         var ids = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 1; i < rows.Count; i++)
         {
-            if (rows[i].Length > 0)
+            string[] f = rows[i];
+            // A truncated/empty row is not a complete one: require the 13 columns and a
+            // finite r_min / v_max. Otherwise a broken file would be reused forever.
+            if (f.Length >= 13
+                && double.IsFinite(QualificationParseDouble(f[3]))
+                && double.IsFinite(QualificationParseDouble(f[6])))
             {
-                ids.Add(rows[i][0]);
+                ids.Add(f[0]);
             }
         }
 
@@ -171,7 +178,6 @@ internal static partial class P1bTests
         {
             return;
         }
-
         var states = new List<double[]>();
         states.Add(p.Y0);
         if (p.CheckpointRef != null)
@@ -210,6 +216,11 @@ internal static partial class P1bTests
             }
         }
 
+        // A checkpoint grid is 8-256 points; on S/P/F that is not enough for a periapsis or
+        // for the peaks of an oscillator. A dense fixed-step DOP853 pass over the model gives
+        // real extrema of the reference trajectory (the same RHS the methods integrate).
+        QualificationConditionsDense(p, ref rMin, ref rMax, ref vMin, ref vMax);
+
         if (central && hasVelocity && bodies == 1)
         {
             var position = new Vector3d(p.Y0[0], p.Y0[1], p.Y0[2]);
@@ -235,6 +246,85 @@ internal static partial class P1bTests
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Dense trajectory sample: fixed-step DOP853 with ~400 points per CharTime (clamped to
+    /// [2000, 2e6] steps). This is the model the methods integrate, so the extrema are the
+    /// real ones, not the values at the 8–256 oracle checkpoints. A non-physical state
+    /// (DomainViolation or non-finite component) aborts the dense pass and leaves the
+    /// checkpoint/osculating values in place.
+    /// </summary>
+    private static void QualificationConditionsDense(
+        StudyProblem p, ref double rMin, ref double rMax, ref double vMin, ref double vMax)
+    {
+        double duration = p.Duration;
+        if (!(duration > 0d) || !double.IsFinite(duration) || p.Rhs == null || p.Y0 == null)
+        {
+            return;
+        }
+
+        double charTime = p.CharTime > 0d && double.IsFinite(p.CharTime)
+            ? p.CharTime
+            : duration / 50d;
+        double wanted = 400d * (duration / Math.Max(charTime, 1e-12d));
+        int steps = (int)Math.Ceiling(Math.Min(Math.Max(wanted, 2000d), 2000000d));
+        bool central = p.CentralMu > 0d;
+        int bodies = p.PosDim / 3;
+        bool hasVelocity = 2 * p.PosDim <= p.Dim;
+        try
+        {
+            var ctx = new StudyContext(p, long.MaxValue / 4L);
+            var stepper = new FixedRkStepper(RkTableau.Dop853, p, ctx);
+            var y = (double[])p.Y0.Clone();
+            double h = duration / steps;
+            double t = p.T0;
+            for (int i = 0; i < steps; i++)
+            {
+                stepper.Step(t, h, y);
+                t += h;
+                if (!QualificationConditionsFinite(y))
+                {
+                    return;
+                }
+
+                if (p.DomainViolation != null && p.DomainViolation(y) != null)
+                {
+                    return;
+                }
+
+                if (central)
+                {
+                    QualificationConditionsSample(y, 0, hasVelocity, p.PosDim,
+                        ref rMin, ref rMax, ref vMin, ref vMax);
+                }
+                else
+                {
+                    for (int b = 0; b < bodies; b++)
+                    {
+                        QualificationConditionsSample(y, 3 * b, hasVelocity, p.PosDim,
+                            ref rMin, ref rMax, ref vMin, ref vMax);
+                    }
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Leave the checkpoint/osculating extrema in place.
+        }
+    }
+
+    private static bool QualificationConditionsFinite(double[] state)
+    {
+        for (int i = 0; i < state.Length; i++)
+        {
+            if (!double.IsFinite(state[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static void QualificationConditionsSample(

@@ -422,9 +422,12 @@ internal static partial class P1bTests
             }
         }
 
-        // 3. Trajectory cross-check against the framework's DOP853 at rtol 1e-13.
+        // 3. Trajectory cross-check against the framework's DOP853 at rtol 1e-14. This is the
+        //    independent accuracy check of G8 (closed form vs an independent integrator), so
+        //    it is what `residual` reports; the finite-difference ODE residual above is only a
+        //    formula sanity check (h=1e-3 cannot certify 1e-13) and lives in the note.
         var integ = new Dop853AdaptiveIntegrator();
-        StudyConfig cfg = integ.MakeConfig(p, 1e-13d, double.PositiveInfinity);
+        StudyConfig cfg = integ.MakeConfig(p, 1e-14d, double.PositiveInfinity);
         var ctx = new StudyContext(p, 20000000L);
         StudyRun run = integ.Run(p, cfg, ctx);
         double cross = 0d;
@@ -440,14 +443,15 @@ internal static partial class P1bTests
             cross = Math.Max(cross, QualificationMaxAbsDiff(run.Samples[k], p.CheckpointRef[k]));
         }
 
-        q.Residual = ode;
-        q.Cross = complete ? cross : double.NaN;
+        q.Residual = complete ? cross : double.NaN;
+        q.Cross = double.NaN;
         q.Floor = 1e-14d * p.ScaleLength;
-        bool ok = ic <= 1e-14d && ode <= 1e-6d && complete && cross <= 1e-9d;
+        bool ok = ic <= 1e-14d && ode <= 1e-6d && complete && cross <= 1e-13d;
         q.Status = ok ? "VALID" : "INVALID";
-        q.AuditNote = "initial-condition " + QualificationFormat(ic)
-            + "; central-difference ODE residual " + QualificationFormat(ode)
-            + " (h=1e-3, formula check only, not a floor); DOP853 cross " + QualificationFormat(cross)
+        q.AuditNote = "independent DOP853 rtol 1e-14 vs closed form " + QualificationFormat(cross)
+            + " (G8 accuracy, gate 1e-13); initial-condition " + QualificationFormat(ic)
+            + "; finite-difference ODE residual " + QualificationFormat(ode)
+            + " (h=1e-3, formula check only, not the accuracy gate)"
             + (ok ? "" : "; one check above threshold");
     }
 

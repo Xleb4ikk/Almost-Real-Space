@@ -1424,10 +1424,20 @@ internal static partial class P1bTests
             back.DomainViolation = null;
             back.CheckpointTimes = new[] { p.EndTime - p.T0 };
             back.CheckpointRef = new[] { (double[])p.Y0.Clone() };
-            // For an autonomous second-order system the time reverse is (x, -v) propagated
-            // with the SAME right-hand side; the two sign flips (t and v) cancel for a(x).
-            // A velocity-dependent force is not reversible by construction, which is exactly
-            // what rev_err should show (G4 is informational).
+            // Time reversal: X(0) = x(T), V(0) = -v(T), and X' = V, V' = -a(X, T - tau).
+            // For an autonomous second-order system the two sign flips cancel and the same
+            // RHS works. For a time-dependent force (the Jupiter rail of P6, baked ephemeris
+            // of the ship problems) the reverse run must evaluate the force at the MIRRORED
+            // time T - tau; using t = tau directly made rev_err ~1e8 m on P6 (all methods),
+            // which measured the ephemeris, not the method.
+            double reverseEnd = p.EndTime;
+            StudyProblem original = p;
+            back.Rhs = delegate (double tau, double[] yy, double[] dy)
+            {
+                original.Rhs(reverseEnd - tau, yy, dy);
+            };
+            // A velocity/mass-dependent force is not reversible by construction, which is
+            // exactly what rev_err should show (G4 is informational).
             StudyRun reverse = method.Run(back, cfg, new StudyContext(back, 20000000L));
             if (reverse.Final != null && !reverse.Aborted)
             {

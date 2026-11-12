@@ -454,8 +454,9 @@ internal static partial class P1bTests
         sb.AppendLine();
         sb.AppendLine("Legend: P = PASS, F = FAIL, n/a = not applicable, skip = budget/oracle floor.");
         sb.AppendLine("A problem shows only the goals it actually has (A1–A3 or M100…M0.01).");
-        sb.AppendLine("**Valid for** (in the per-method sections) lists the tags of problems where the method");
-        sb.AppendLine("has at least one PASS; it is not a claim that every level of those problems passes.");
+        sb.AppendLine("**Valid for** lists a tag only when the method has at least one PASS on that tag");
+        sb.AppendLine("and no FAIL/ERROR on any goal of the problems carrying it (N/A and floor-SKIP do");
+        sb.AppendLine("not contradict the certificate). It is the domain, not a single-level claim.");
         sb.AppendLine("**Gate notes on PASS** shows gates that were skipped by the model-drift guard (G3).");
         sb.AppendLine("**Observed order** is filled for adaptive methods too (informative only): G2 applies");
         sb.AppendLine("only to fixed-step methods with a declared ExpectedOrder.");
@@ -467,7 +468,7 @@ internal static partial class P1bTests
             List<QualificationMatrixEntry> mine = byMethod[method];
             sb.AppendLine("### " + method);
             sb.AppendLine();
-            sb.AppendLine("* **Valid for (≥1 PASS):** " + QualificationValidFor(mine, tags));
+            sb.AppendLine("* **Valid for:** " + QualificationValidFor(mine, tags));
             List<string> best;
             bestAt.TryGetValue(method, out best);
             sb.AppendLine("* **Best at:** " + (best == null || best.Count == 0 ? "—" : string.Join(", ", best)));
@@ -567,8 +568,8 @@ internal static partial class P1bTests
                 double dl;
                 QualificationInvariantMax(runs, problem, method, out de, out dl);
                 sb.Append("| ").Append(problem).Append(" | ").Append(method).Append(" | ");
-                sb.Append(de == de && double.IsFinite(de) ? QualificationFormat(de) : "—").Append(" | ");
-                sb.Append(dl == dl && double.IsFinite(dl) ? QualificationFormat(dl) : "—").AppendLine(" |");
+                sb.Append(!double.IsNaN(de) && double.IsFinite(de) ? QualificationFormat(de) : "—").Append(" | ");
+                sb.Append(!double.IsNaN(dl) && double.IsFinite(dl) ? QualificationFormat(dl) : "—").AppendLine(" |");
             }
         }
 
@@ -892,17 +893,19 @@ internal static partial class P1bTests
         return string.Join("/", parts);
     }
 
+    /// <summary>
+    /// "Valid for" is stricter than "has at least one PASS": a tag qualifies only when the
+    /// method has a PASS on it AND no FAIL/ERROR on any goal of any problem carrying that tag.
+    /// N/A and SKIP-by-floor do not contradict the certificate. This keeps RK4 from being
+    /// advertised as "valid for leo" when it fails G2 on several LEO scenarios.
+    /// </summary>
     private static string QualificationValidFor(
         List<QualificationMatrixEntry> mine, Dictionary<string, string[]> tags)
     {
-        var list = new List<string>();
+        var passedTags = new List<string>();
+        var failedTags = new List<string>();
         foreach (QualificationMatrixEntry e in mine)
         {
-            if (e.Status != "PASS")
-            {
-                continue;
-            }
-
             string[] t;
             if (!tags.TryGetValue(e.Problem, out t))
             {
@@ -911,10 +914,24 @@ internal static partial class P1bTests
 
             foreach (string tag in t)
             {
-                if (!list.Contains(tag))
+                if (e.Status == "PASS" && !passedTags.Contains(tag))
                 {
-                    list.Add(tag);
+                    passedTags.Add(tag);
                 }
+
+                if ((e.Status == "FAIL" || e.Status == "ERROR") && !failedTags.Contains(tag))
+                {
+                    failedTags.Add(tag);
+                }
+            }
+        }
+
+        var list = new List<string>();
+        foreach (string tag in passedTags)
+        {
+            if (!failedTags.Contains(tag))
+            {
+                list.Add(tag);
             }
         }
 

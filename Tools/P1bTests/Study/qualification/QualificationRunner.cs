@@ -94,6 +94,11 @@ internal static partial class P1bTests
             QualificationResumeContext resume = null;
             if (resuming)
             {
+                if (!QualificationResumeMatchesEnvironment(dir, methods, log))
+                {
+                    return 1;
+                }
+
                 var goalsPerProblem = new Dictionary<string, int>(StringComparer.Ordinal);
                 foreach (QualificationProblem q in catalog)
                 {
@@ -151,53 +156,25 @@ internal static partial class P1bTests
             {
                 log.WriteLine("nothing to resume: all evaluated problems are complete");
                 QualificationWriteReports(dir, catalog, log);
+                if (QualificationFailOnErrors(dir, catalog, log))
+                {
+                    return 1;
+                }
+
+                QualificationRunCompareIfRequested(dir, log);
+                log.WriteLine("elapsed: " + watch.ElapsedMilliseconds.ToString(QualificationInv) + " ms");
                 return 0;
             }
 
             QualificationRunCatalogue(catalog, profile, log, dir, resume);
             QualificationWriteReports(dir, catalog, log);
 
-            int errorCells = 0;
-            foreach (QualificationMatrixEntry entry in QualificationReadMatrix(dir))
+            if (QualificationFailOnErrors(dir, catalog, log))
             {
-                if (entry.Status == "ERROR")
-                {
-                    errorCells++;
-                }
-            }
-
-            int errorProblems = 0;
-            foreach (QualificationProblem problem in catalog)
-            {
-                if (problem.Status == "ERROR")
-                {
-                    errorProblems++;
-                }
-            }
-
-            if (errorCells + errorProblems > 0)
-            {
-                log.WriteLine("ERROR: " + errorCells.ToString(QualificationInv) + " cell(s), "
-                    + errorProblems.ToString(QualificationInv) + " problem(s)");
-                Console.WriteLine("FAIL: " + errorCells.ToString(QualificationInv)
-                    + " ERROR cell(s), " + errorProblems.ToString(QualificationInv)
-                    + " ERROR problem(s); see matrix.csv / oracle_audit.md");
                 return 1;
             }
 
-            string compareDir = QualificationResolveFolder(QualificationCompareDir());
-            if (!string.IsNullOrWhiteSpace(compareDir))
-            {
-                string other = Path.GetFullPath(compareDir);
-                if (Directory.Exists(other))
-                {
-                    QualificationCompareRuns(dir, other, log);
-                }
-                else
-                {
-                    log.WriteLine("compare: folder not found: " + other);
-                }
-            }
+            QualificationRunCompareIfRequested(dir, log);
 
             log.WriteLine("elapsed: " + watch.ElapsedMilliseconds.ToString(QualificationInv) + " ms");
 
@@ -210,6 +187,102 @@ internal static partial class P1bTests
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// A report-only resume must not hide a broken folder: an ERROR cell still fails the
+    /// run, exactly as it does after a fresh sweep.
+    /// </summary>
+    private static bool QualificationFailOnErrors(
+        string dir, List<QualificationProblem> catalog, TextWriter log)
+    {
+        int errorCells = 0;
+        foreach (QualificationMatrixEntry entry in QualificationReadMatrix(dir))
+        {
+            if (entry.Status == "ERROR")
+            {
+                errorCells++;
+            }
+        }
+
+        int errorProblems = 0;
+        foreach (QualificationProblem problem in catalog)
+        {
+            if (problem.Status == "ERROR")
+            {
+                errorProblems++;
+            }
+        }
+
+        if (errorCells + errorProblems == 0)
+        {
+            return false;
+        }
+
+        log.WriteLine("ERROR: " + errorCells.ToString(QualificationInv) + " cell(s), "
+            + errorProblems.ToString(QualificationInv) + " problem(s)");
+        Console.WriteLine("FAIL: " + errorCells.ToString(QualificationInv)
+            + " ERROR cell(s), " + errorProblems.ToString(QualificationInv)
+            + " ERROR problem(s); see matrix.csv / oracle_audit.md");
+        return true;
+    }
+
+    /// <summary>--compare works in both the normal path and a report-only resume.</summary>
+    private static void QualificationRunCompareIfRequested(string dir, TextWriter log)
+    {
+        string compareDir = QualificationResolveFolder(QualificationCompareDir());
+        if (string.IsNullOrWhiteSpace(compareDir))
+        {
+            return;
+        }
+
+        string other = Path.GetFullPath(compareDir);
+        if (Directory.Exists(other))
+        {
+            QualificationCompareRuns(dir, other, log);
+        }
+        else
+        {
+            log.WriteLine("compare: folder not found: " + other);
+        }
+    }
+
+    /// <summary>
+    /// A resumed folder must belong to the same TASK.md revision and the same method list:
+    /// mixing a run of an older catalogue with a newer code is what silently corrupts a
+    /// baseline. The profile check is done by the caller.
+    /// </summary>
+    private static bool QualificationResumeMatchesEnvironment(
+        string dir, List<IStudyIntegrator> methods, TextWriter log)
+    {
+        string storedTask = QualificationEnvironmentField(dir, "task_sha256");
+        string currentTask = QualificationFileSha256(Path.Combine(QualificationRoot(), "TASK.md"));
+        if (storedTask != "unknown" && currentTask != "missing"
+            && !string.Equals(storedTask, currentTask, StringComparison.Ordinal))
+        {
+            Console.WriteLine("resume: TASK.md changed since the run: stored " + storedTask
+                + ", current " + currentTask + "; refusing to mix revisions");
+            return false;
+        }
+
+        var names = new List<string>(methods.Count);
+        foreach (IStudyIntegrator method in methods)
+        {
+            names.Add(method.Name);
+        }
+
+        string storedMethods = QualificationEnvironmentField(dir, "methods");
+        string currentMethods = string.Join(", ", names);
+        if (storedMethods != "unknown"
+            && !string.Equals(storedMethods, currentMethods, StringComparison.Ordinal))
+        {
+            Console.WriteLine("resume: method list changed since the run; refusing to mix revisions");
+            Console.WriteLine("  stored:  " + storedMethods);
+            Console.WriteLine("  current: " + currentMethods);
+            return false;
+        }
+
+        return true;
     }
 
     // ---------------------------------------------------------------------------------
@@ -283,6 +356,7 @@ internal static partial class P1bTests
         }
 
         var status = new Dictionary<string, string>(StringComparer.Ordinal);
+        var notes = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (string line in File.ReadAllLines(path))
         {
             if (!line.StartsWith("| ", StringComparison.Ordinal))
@@ -298,9 +372,11 @@ internal static partial class P1bTests
 
             string id = cells[1].Trim();
             string state = cells[3].Trim();
+            string note = cells.Length > 7 ? cells[7].Trim() : "";
             if (id.Length > 0 && state.Length > 0 && id != "problem" && !id.StartsWith("---", StringComparison.Ordinal))
             {
                 status[id] = state;
+                notes[id] = note;
             }
         }
 
@@ -311,7 +387,21 @@ internal static partial class P1bTests
             if (status.TryGetValue(q.Id, out state))
             {
                 q.Status = state;
-                q.AuditNote = "reused from the previous run's oracle_audit.md";
+                string note;
+                notes.TryGetValue(q.Id, out note);
+                if (state == "VALID")
+                {
+                    q.AuditNote = string.IsNullOrEmpty(note)
+                        ? "reused from oracle_audit.md (VALID)"
+                        : "reused from oracle_audit.md: " + note;
+                }
+                else
+                {
+                    // An INVALID problem must keep its documented reason: a generic "reused"
+                    // text would mask a lost reason and trip the unaccounted check.
+                    q.AuditNote = note;
+                }
+
                 restored++;
             }
         }
