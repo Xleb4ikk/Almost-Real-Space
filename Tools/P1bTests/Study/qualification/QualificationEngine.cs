@@ -111,7 +111,138 @@ internal static partial class P1bTests
         public StudyRow Best;
     }
 
-    /// <summary>TASK.md section 7 / A7: one evaluated goal of a problem.</summary>
+    /// <summary>
+    /// A symmetric order-refinement pass (owner decision 2026-11-13, explicit exception to
+    /// §14.4): for EVERY fixed-step method with a declared order, after the main sweep add up
+    /// to eight controls below the current finest one, until the error reaches the G2 window's
+    /// lower edge, the budget censors a point, or the control range ends. The gate thresholds,
+    /// the window and the 0.5 tolerance are untouched; only the sampled branch becomes long
+    /// enough to show the asymptotic slope. The pass runs for all fixed methods, not only for
+    /// those that currently fail, so the result may move in both directions.
+    /// </summary>
+    private static void QualificationOrderRefine(
+        StudyProblem p, IStudyIntegrator method, List<StudyRow> rows, StudyOptions options,
+        TextWriter log)
+    {
+        if (method.Kind != StudyKind.Fixed || double.IsNaN(method.ExpectedOrder))
+        {
+            return;
+        }
+
+        StudyRow finest = null;
+        foreach (StudyRow r in rows)
+        {
+            if (r.Integrator != method.Name || r.Variant.Length != 0 || r.Status != "ok"
+                || !r.Finite || !(r.Control > 0d) || !(r.Err > 0d))
+            {
+                continue;
+            }
+
+            if (finest == null || r.Control < finest.Control)
+            {
+                finest = r;
+            }
+        }
+
+        if (finest == null)
+        {
+            return;
+        }
+
+        double coarse;
+        double fine;
+        double ratio;
+        method.ControlRange(p, out coarse, out fine, out ratio);
+        if (!(ratio > 1d))
+        {
+            return;
+        }
+
+        double floor = double.IsNaN(p.Floor) ? 0d : p.Floor;
+        double low = Math.Max(100d * floor, 1e-16d * p.ScaleLength);
+        double control = finest.Control;
+        int added = 0;
+        for (int k = 0; k < QualificationOrderRefinePoints; k++)
+        {
+            double next = control / ratio;
+            if (next < fine * 0.999d)
+            {
+                break;
+            }
+
+            StudyRow row = QualificationRunSinglePoint(p, method, next, options);
+            rows.Add(row);
+            added++;
+            if (row.Status != "ok" || !row.Finite || !(row.Err > 0d))
+            {
+                break;
+            }
+
+            if (row.Err <= low)
+            {
+                break;
+            }
+
+            control = next;
+        }
+
+        if (added > 0)
+        {
+            log.WriteLine("order refine " + method.Name + " " + p.Label + ": +"
+                + added.ToString(QualificationInv) + " point(s), finest err "
+                + QualificationNumber(finest.Err));
+        }
+    }
+
+    private const int QualificationOrderRefinePoints = 8;
+
+    /// <summary>One executed control point, with the same accounting as the sweep's RunPoint.</summary>
+    private static StudyRow QualificationRunSinglePoint(
+        StudyProblem p, IStudyIntegrator method, double control, StudyOptions options)
+    {
+        StudyConfig cfg = method.MakeConfig(p, control, double.PositiveInfinity);
+        var row = new StudyRow();
+        row.Scenario = p.Label;
+        row.Integrator = method.Name;
+        row.Variant = "";
+        row.Config = cfg.Label;
+        row.Family = method.Family;
+        row.Stages = StudyReport.StagesOf(method.Name);
+        row.Kind = method.Kind;
+        row.ExpectedOrder = method.ExpectedOrder;
+        row.Control = control;
+        row.Nck = p.CheckpointTimes.Length;
+        row.StepsForcedMin = StudyStops.Build(p).Times.Length;
+        row.CheckpointMode = "all";
+        try
+        {
+            var ctx = new StudyContext(p, options.MaxCostRhs);
+            StudyRun run = method.Run(p, cfg, ctx);
+            row.Calls = ctx.Calls;
+            row.Aux = ctx.AuxOps;
+            row.StartupCalls = ctx.StartupCalls;
+            row.Steps = run.Steps;
+            row.Rejected = run.Rejected;
+            row.CapLimited = run.CapLimited;
+            row.CheckpointBound = row.Steps <= 1.5d * row.Nck;
+            StudySweepRunner.EvaluateError(p, run, row);
+        }
+        catch (StudyBudgetExceeded)
+        {
+            row.Status = "censored";
+            row.Calls = options.MaxCostRhs;
+            row.Note = "RHS budget " + options.MaxCostRhs.ToString(QualificationInv)
+                + " exceeded (order refinement)";
+        }
+        catch (Exception ex)
+        {
+            row.Status = "error";
+            row.Note = ex.GetType().Name + ": " + ex.Message;
+        }
+
+        return row;
+    }
+
     private sealed class QualificationGoal
     {
         public string Name = "";
@@ -408,6 +539,12 @@ internal static partial class P1bTests
             var cellsForProblem = new List<QualificationCell>();
             for (int m = 0; m < methods.Count; m++)
             {
+                if (methods[m].Kind == StudyKind.Fixed)
+                {
+                    QualificationOrderRefine(p, methods[m], result.Rows, options, log);
+                    StudyReport.FinalizeCosts(result.Rows, result.KeplerWeight);
+                }
+
                 orders[m] = QualificationObservedOrder(p, result.Rows, methods[m], options);
                 log.WriteLine("order " + methods[m].Name + " " + q.Id + ": p="
                     + QualificationNumber(orders[m].Observed)

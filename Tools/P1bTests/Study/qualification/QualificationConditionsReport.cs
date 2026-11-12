@@ -135,14 +135,14 @@ internal static partial class P1bTests
         sb.AppendLine();
         var classes = new[]
         {
-            new { Name = "leo / gto", Tags = new[] { "leo", "gto" } },
-            new { Name = "molniya / heo", Tags = new[] { "molniya", "heo" } },
-            new { Name = "geo", Tags = new[] { "geo" } },
-            new { Name = "heliocentric / far-flight", Tags = new[] { "heliocentric", "far-flight" } },
-            new { Name = "flyby / moon-soi", Tags = new[] { "flyby", "moon-soi" } },
-            new { Name = "j2", Tags = new[] { "j2" } },
-            new { Name = "drag / thrust", Tags = new[] { "drag", "thrust" } },
-            new { Name = "planets / probe-central", Tags = new[] { "planets", "probe-central" } }
+            new { Name = "leo / gto, gravity", Tags = new[] { "leo", "gto" }, GravityOnly = true },
+            new { Name = "molniya / heo", Tags = new[] { "molniya", "heo" }, GravityOnly = true },
+            new { Name = "geo", Tags = new[] { "geo" }, GravityOnly = true },
+            new { Name = "heliocentric / far-flight", Tags = new[] { "heliocentric", "far-flight" }, GravityOnly = true },
+            new { Name = "flyby / moon-soi", Tags = new[] { "flyby", "moon-soi" }, GravityOnly = true },
+            new { Name = "j2", Tags = new[] { "j2" }, GravityOnly = true },
+            new { Name = "drag / thrust", Tags = new[] { "drag", "thrust" }, GravityOnly = false },
+            new { Name = "planets / probe-central", Tags = new[] { "planets", "probe-central" }, GravityOnly = true }
         };
         Dictionary<string, string[]> tagsOf = QualificationTags(catalog);
         foreach (var cls in classes)
@@ -160,6 +160,14 @@ internal static partial class P1bTests
                 foreach (QualificationProblem q in catalog)
                 {
                     if (q.Status != "VALID" || !QualificationHasAnyTag(q, cls.Tags))
+                    {
+                        continue;
+                    }
+
+                    // Owner decision 2026-11-13: the gravity class must not mix in drag/thrust
+                    // scenarios — they have their own class and would otherwise hide the fact
+                    // that on pure gravity the splitting methods / RKN12 lead.
+                    if (cls.GravityOnly && QualificationHasAnyTag(q, new[] { "drag", "thrust" }))
                     {
                         continue;
                     }
