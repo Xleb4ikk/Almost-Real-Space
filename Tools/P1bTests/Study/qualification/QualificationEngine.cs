@@ -162,6 +162,7 @@ internal static partial class P1bTests
         double low = Math.Max(100d * floor, 1e-16d * p.ScaleLength);
         double control = finest.Control;
         int added = 0;
+        int attempted = 0;
         for (int k = 0; k < QualificationOrderRefinePoints; k++)
         {
             double next = control / ratio;
@@ -170,14 +171,21 @@ internal static partial class P1bTests
                 break;
             }
 
+            attempted++;
             StudyRow row = QualificationRunSinglePoint(p, method, next, options);
-            rows.Add(row);
-            added++;
+            // A censored/aborted refinement attempt carries no order information. It is
+            // logged but NOT added to the rows: otherwise it would trip the G2 budget guard
+            // ("censored finer than the branch") and turn a genuinely measured FAIL into
+            // n/a. The main sweep's own censored points keep their guard.
             if (row.Status != "ok" || !row.Finite || !(row.Err > 0d))
             {
+                log.WriteLine("order refine " + method.Name + " " + p.Label + ": stopped at "
+                    + QualificationFormat(next) + " (" + row.Status + ")");
                 break;
             }
 
+            rows.Add(row);
+            added++;
             if (row.Err <= low)
             {
                 break;
@@ -186,10 +194,11 @@ internal static partial class P1bTests
             control = next;
         }
 
-        if (added > 0)
+        if (added > 0 || attempted > 0)
         {
             log.WriteLine("order refine " + method.Name + " " + p.Label + ": +"
-                + added.ToString(QualificationInv) + " point(s), finest err "
+                + added.ToString(QualificationInv) + " point(s), "
+                + attempted.ToString(QualificationInv) + " attempt(s), finest err "
                 + QualificationNumber(finest.Err));
         }
     }
