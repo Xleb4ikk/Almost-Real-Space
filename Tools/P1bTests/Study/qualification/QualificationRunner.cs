@@ -17,7 +17,7 @@ using P1bStudy.Framework;
 // StudyShipMatrixBuildCases, MoonFlybyProblem, ...) without editing existing files.
 internal static partial class P1bTests
 {
-    private const string QualificationTaskVersion = "2";
+    private const string QualificationTaskVersion = "3";
 
     private static readonly CultureInfo QualificationInv = CultureInfo.InvariantCulture;
 
@@ -86,6 +86,19 @@ internal static partial class P1bTests
             {
                 log.WriteLine("  " + method.Name + " | " + method.Family + " | " + method.Kind
                     + " | ExpectedOrder=" + QualificationNumber(method.ExpectedOrder));
+            }
+
+            // Layer V (TASK.md Appendix B) runs before the catalogue: the H tier's Q goals are
+            // defined against E_model from this layer, so the catalogue needs its numbers.
+            // It never ranks a method; a G9 drift is an adapter error (B5).
+            var vWatch = Stopwatch.StartNew();
+            bool nasaOk = QualificationRunNasaValidation(dir, profile, log);
+            log.WriteLine("V: " + vWatch.ElapsedMilliseconds.ToString(QualificationInv) + " ms");
+            if (!nasaOk)
+            {
+                Console.WriteLine("FAIL: layer V reports a G9 drift or a failed V0 precondition; "
+                    + "see NASA_VALIDATION.md");
+                return 1;
             }
 
             List<QualificationProblem> catalog = QualificationCatalogFor(profile);
