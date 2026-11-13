@@ -44,6 +44,33 @@ internal static partial class P1bTests
         /// <summary>Force list for conditions.csv from A8: gravity, j2, drag, thrust, third-body, 1pn.</summary>
         public string[] Forces = new string[0];
 
+        /// <summary>
+        /// B6 Q goals: factors applied to the model error of the task (0.1 = Q10, 0.01 = Q1).
+        /// Empty: no Q goals.
+        /// </summary>
+        public double[] QTargets = new double[0];
+
+        /// <summary>E_model(rms8) of this task's model from layer V, metres (B6).</summary>
+        public double QModelRms8 = double.NaN;
+
+        /// <summary>E_model(Moon, geocentric) of this task's model from layer V, metres (B6).</summary>
+        public double QModelMoon = double.NaN;
+
+        /// <summary>Per-problem RHS budget for one cell; 0 = the profile default (B4.3).</summary>
+        public long MaxCostRhs;
+
+        /// <summary>G8 refinement resolution for the H audit; 0 = default.</summary>
+        public int AuditCoarseSteps;
+
+        /// <summary>B7: H-tier conditions.csv columns (empty for the other tiers).</summary>
+        public string EpochWindow = "";
+
+        /// <summary>B7: force-model name of the H tier: newton, 1pn, full409, satellites.</summary>
+        public string ModelName = "";
+
+        /// <summary>B7: body count of the H tier; 0 = not reported.</summary>
+        public int NBodies;
+
         /// <summary>G8 audit route: empty (id rules), ship (certified local DOP853), planet (dd-Taylor pair).</summary>
         public string AuditKind = "";
 
@@ -124,6 +151,7 @@ internal static partial class P1bTests
         QualificationAppendRl(list, profile);
         QualificationAppendAppendixA(list, profile);
         QualificationAppendAppendixPlanetsAndF(list, profile);
+        QualificationAppendAppendixH(list, profile);
         QualificationDescribeProblemPhysics(list);
         return list;
     }

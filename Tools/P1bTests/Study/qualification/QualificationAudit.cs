@@ -185,6 +185,10 @@ internal static partial class P1bTests
                 {
                     QualificationAuditShip(q);
                 }
+                else if (q.AuditKind == "h")
+                {
+                    QualificationAuditH(q);
+                }
                 else if (q.AuditKind == "planet")
                 {
                     QualificationAuditPlanet(q);

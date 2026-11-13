@@ -41,3 +41,6 @@ Test564 P3 Custom 6-body; 10 y,0,0,measured,2026-11-12T18:24:45.3992549Z,8.0.24,
 Test564 P4 Tight binary; 10 y,0,0,measured,2026-11-12T18:26:01.7460408Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
 Test564 P5 Sun + eccentric comet + Jupiter; 10 y,0,0,measured,2026-11-12T18:26:24.4365150Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
 Test564 P6 Heliocentric Sun-Jupiter probe; 10 y,0.8960067070666148,0.07998920973969655,measured,2026-11-12T18:26:49.4017050Z,8.0.24,x64,31558.196018241124,11,100000,
+Test564 H1 DE441 10 bodies; Newtonian; 2026-2036,0,0,measured,2026-11-13T21:18:28.9987436Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
+Test564 H1h DE441 10 bodies; Newtonian; 2016-2026 (holdout epoch),0,0,measured,2026-11-13T21:57:18.4969123Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
+Test564 H2h DE441 10 bodies; 1PN; 2016-2026 (holdout epoch),0,0,measured,2026-11-13T21:57:43.6264604Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used

@@ -23,6 +23,10 @@ internal static partial class P1bTests
 
     private static readonly string[] QualificationLevelNames = { "A1", "A2", "A3" };
 
+    /// <summary>Appendix B, B6: auxiliary data for REAL_SYSTEM_REPORT.md (not a fixed TASK.md file).</summary>
+    private const string QualificationRealSystemHeader =
+        "problem_id,method,tier,control,err_max,err_rms8_ref,err_moon_ref,err_vs_horizons_rms8";
+
     /// <summary>Ordered goal names of one problem: A1-A3 (if enabled) then M100…M0.01.</summary>
     private static List<QualificationGoal> QualificationGoalsOf(
         QualificationProblem q, StudyProblem p, QualificationProfile profile)
@@ -65,6 +69,29 @@ internal static partial class P1bTests
             }
         }
 
+        // Appendix B, B6: Q goals ("the integrator does not spoil the model") exist only when
+        // layer V supplied an E_model for this task's model and window.
+        if (q.QTargets != null && double.IsFinite(q.QModelRms8) && double.IsFinite(q.QModelMoon)
+            && q.QModelRms8 > 0d && q.QModelMoon > 0d && p.ScaleLength > 0d)
+        {
+            foreach (double factor in q.QTargets)
+            {
+                if (!(factor > 0d) || !double.IsFinite(factor))
+                {
+                    continue;
+                }
+
+                var g = new QualificationGoal();
+                g.Name = "Q" + (factor >= 0.05d ? "10" : "1");
+                g.Q = true;
+                g.QFactor = factor;
+                g.QTargetMeters = factor * Math.Min(q.QModelRms8, q.QModelMoon);
+                g.Threshold = g.QTargetMeters;
+                g.Factor = g.QTargetMeters / p.ScaleLength;
+                goals.Add(g);
+            }
+        }
+
         return goals;
     }
 
@@ -78,6 +105,18 @@ internal static partial class P1bTests
             {
                 if (target > 0d && double.IsFinite(target)
                     && !(profile == QualificationProfile.Smoke && target < 10d))
+                {
+                    n++;
+                }
+            }
+        }
+
+        if (q.QTargets != null && double.IsFinite(q.QModelRms8) && double.IsFinite(q.QModelMoon)
+            && q.QModelRms8 > 0d && q.QModelMoon > 0d)
+        {
+            foreach (double factor in q.QTargets)
+            {
+                if (factor > 0d && double.IsFinite(factor))
                 {
                     n++;
                 }
@@ -259,6 +298,10 @@ internal static partial class P1bTests
         /// <summary>Threshold / ScaleLength: the dimensionless band used by G3.</summary>
         public double Factor;
         public bool Meter;
+        /// <summary>B6 Q goal: two-component criterion (rms8 and Moon) against E_model.</summary>
+        public bool Q;
+        public double QFactor;
+        public double QTargetMeters;
     }
 
     private sealed class QualificationMeasure
@@ -408,6 +451,7 @@ internal static partial class P1bTests
 
         var runRows = new List<string>();
         var matrixRows = new List<string>();
+        var realSystemRows = new List<string>();
 
         foreach (QualificationProblem q in catalog)
         {
@@ -484,6 +528,13 @@ internal static partial class P1bTests
             double finestAnalytic = double.NaN;
             foreach (QualificationGoal goal in evaluatedGoals)
             {
+                if (goal.Q)
+                {
+                    // The Q criterion reuses the A1-A3 rows; it must not move the sweep grid
+                    // (otherwise the A prices of the baseline would shift).
+                    continue;
+                }
+
                 double threshold = QualificationGoalThreshold(goal, p);
                 if (double.IsNaN(coarsestThreshold) || threshold > coarsestThreshold)
                 {
@@ -507,7 +558,7 @@ internal static partial class P1bTests
             {
                 foreach (QualificationGoal goal in evaluatedGoals)
                 {
-                    if (!goal.Meter)
+                    if (!goal.Meter && !goal.Q)
                     {
                         targets.Add(QualificationGoalThreshold(goal, p));
                     }
@@ -530,8 +581,10 @@ internal static partial class P1bTests
             options.AdaptiveMaxSteps = new[] { double.PositiveInfinity };
             // Owner decision 2026-11-11: smoke keeps 2e6 (minutes), full gets 10e6 so that
             // RK4 L2 A2 (~4e6 calls) is no longer censored. G7 still turns a real budget hit
-            // into SKIP, not FAIL.
-            options.MaxCostRhs = profile == QualificationProfile.Full ? 10000000L : 2000000L;
+            // into SKIP, not FAIL. B4.3: H3/H6 carry their own 1e6 per-cell cap.
+            options.MaxCostRhs = q.MaxCostRhs > 0
+                ? q.MaxCostRhs
+                : (profile == QualificationProfile.Full ? 10000000L : 2000000L);
             options.RefineTies = profile == QualificationProfile.Full;
             options.TimingReps = 1;
 
@@ -648,9 +701,38 @@ internal static partial class P1bTests
 
             matrixRows.AddRange(QualificationMatrixRows(cellsForProblem));
 
+            // Appendix B, B6: the reference column against Horizons and the two Q values of the
+            // certifying control. Kept in a separate CSV so the fixed runs.csv/matrix.csv
+            // formats of TASK.md stay untouched; only real-system tasks produce rows.
+            if (q.QTargets != null && q.QTargets.Length > 0)
+            {
+                foreach (QualificationCell c in cellsForProblem)
+                {
+                    if (c.Best == null)
+                    {
+                        continue;
+                    }
+
+                    var fields = new List<string>
+                    {
+                        c.ProblemId,
+                        c.Method,
+                        c.Level,
+                        QualificationCsvNumber(c.BestControl),
+                        QualificationCsvNumber(c.Best.Err),
+                        QualificationCsvNumber(c.Best.QErrRms8),
+                        QualificationCsvNumber(c.Best.QErrMoon),
+                        QualificationCsvNumber(c.Best.QErrHorizons)
+                    };
+                    realSystemRows.Add(string.Join(",", fields));
+                }
+            }
+
             // Partial results survive an interrupted run: rewrite both CSVs after every problem.
             QualificationWriteCsv(Path.Combine(dir, "runs.csv"), QualificationRunsHeader, runRows);
             QualificationWriteCsv(Path.Combine(dir, "matrix.csv"), QualificationMatrixHeader, matrixRows);
+            QualificationWriteCsv(
+                Path.Combine(dir, "real_system.csv"), QualificationRealSystemHeader, realSystemRows);
             log.WriteLine("  -> " + matrixRows.Count.ToString(QualificationInv) + " matrix cells so far, "
                 + q.Id + " took " + problemWatch.ElapsedMilliseconds.ToString(QualificationInv) + " ms"
                 + " (sweep " + sweepMs.ToString(QualificationInv)
@@ -1207,6 +1289,23 @@ internal static partial class P1bTests
     // Status mapping
     // ---------------------------------------------------------------------------------
 
+    /// <summary>
+    /// B6 Q criterion: both the rms8-over-planets error and the geocentric Moon error against
+    /// the same-model reference must be at most factor * E_model. Values come from the additive
+    /// StudyProblem.QErrorFn hook, evaluated at the final checkpoint of the same run.
+    /// </summary>
+    private static bool QualificationQPass(
+        QualificationProblem q, QualificationGoal goal, StudyRow row)
+    {
+        if (!double.IsFinite(row.QErrRms8) || !double.IsFinite(row.QErrMoon))
+        {
+            return false;
+        }
+
+        return row.QErrRms8 <= goal.QFactor * q.QModelRms8
+            && row.QErrMoon <= goal.QFactor * q.QModelMoon;
+    }
+
     private static QualificationCell QualificationCellFor(
         QualificationProblem q, StudyProblem p, IStudyIntegrator method, List<StudyRow> rows,
         QualificationGoal goal, QualificationOrder order, bool deterministic, string detNote)
@@ -1215,7 +1314,7 @@ internal static partial class P1bTests
         cell.ProblemId = q.Id;
         cell.Method = method.Name;
         cell.Level = goal.Name;
-        cell.Meter = goal.Meter;
+        cell.Meter = goal.Meter || goal.Q;
 
         double threshold = QualificationGoalThreshold(goal, p);
         string why;
@@ -1276,7 +1375,10 @@ internal static partial class P1bTests
             }
 
             anyFinite = true;
-            if (!(r.Err <= threshold))
+            bool pass = goal.Q
+                ? QualificationQPass(q, goal, r)
+                : r.Err <= threshold;
+            if (!pass)
             {
                 continue;
             }

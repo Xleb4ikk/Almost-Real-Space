@@ -108,6 +108,13 @@ namespace P1bStudy.Framework
         /// <summary>Metric (state, reference) -> error in problem units. Null = norm of the first 3 components.</summary>
         public Func<double[], double[], double> ErrorFn;
 
+        /// <summary>
+        /// Optional second metric (additive, TASK.md Appendix B, B6): (state, reference) ->
+        /// { rms8, moon } in problem units, evaluated at the same checkpoints as ErrorFn.
+        /// It exists for the Q goals of the H tier; null means unused and changes nothing.
+        /// </summary>
+        public Func<double[], double[], double[]> QErrorFn;
+
         /// <summary>Reference's own uncertainty in the same unit as the error. NaN = reference not certified.</summary>
         public double Floor = double.NaN;
 

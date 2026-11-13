@@ -132,6 +132,12 @@ namespace P1bStudy.Framework
         public bool Finite;
         public double Err = double.NaN;       // max over checkpoints
         public double ErrFinal = double.NaN;
+        // Q goals of TASK.md Appendix B: values at the LAST checkpoint (B6: rms8_end, Moon).
+        public double QErrRms8 = double.NaN;
+        public double QErrMoon = double.NaN;
+        // Reference-only column of B6: rms8 of this run against Horizons (mixes model and
+        // integrator error; never used for ranking).
+        public double QErrHorizons = double.NaN;
 
         /// <summary>Worst error over the checkpoints reached before an abort (NaN when none).</summary>
         public double PartialErr = double.NaN;
@@ -1052,6 +1058,9 @@ namespace P1bStudy.Framework
             bool energyRefSeen = false;
             bool angularSeen = false;
             bool angularRefSeen = false;
+            double qRms8 = double.NaN;
+            double qMoon = double.NaN;
+            double qHorizons = double.NaN;
             for (int k = 0; k < p.CheckpointTimes.Length; k++)
             {
                 double[] s = run.Samples[k];
@@ -1124,6 +1133,21 @@ namespace P1bStudy.Framework
                     break;
                 }
 
+                if (p.QErrorFn != null && hasRef)
+                {
+                    // Additive hook (Appendix B, B6): the last checkpoint's two Q values.
+                    double[] q = p.QErrorFn(s, reference);
+                    if (q != null && q.Length >= 2)
+                    {
+                        qRms8 = q[0];
+                        qMoon = q[1];
+                        if (q.Length >= 3)
+                        {
+                            qHorizons = q[2];
+                        }
+                    }
+                }
+
                 if (e > worst)
                 {
                     worst = e;
@@ -1135,6 +1159,9 @@ namespace P1bStudy.Framework
             row.Finite = finite && complete;
             row.Err = row.Finite ? worst : double.NaN;
             row.ErrFinal = row.Finite ? last : double.NaN;
+            row.QErrRms8 = qRms8;
+            row.QErrMoon = qMoon;
+            row.QErrHorizons = qHorizons;
             row.EnergyDriftFromInitial = energySeen ? energyDrift : double.NaN;
             row.EnergyDriftVsRef = energyRefSeen ? energyVsRef : double.NaN;
             row.EnergyDriftRef = energyRefSeen ? energyRefDrift : double.NaN;

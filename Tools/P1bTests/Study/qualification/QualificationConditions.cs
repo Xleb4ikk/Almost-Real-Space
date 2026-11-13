@@ -30,7 +30,8 @@ internal static partial class P1bTests
 
         var sb = new StringBuilder();
         sb.AppendLine("problem_id,class_tags,central_body,r_min_m,r_max_m,v_min_ms,v_max_ms,"
-            + "horizon_s,forces,velocity_dependent,oracle_id,oracle_floor_m,targets_evaluated");
+            + "horizon_s,forces,velocity_dependent,oracle_id,oracle_floor_m,targets_evaluated,"
+            + "epoch_window,n_bodies,model");
 
         int rows = 0;
         foreach (QualificationProblem q in catalog)
@@ -80,6 +81,10 @@ internal static partial class P1bTests
             fields.Add(velocityDependent ? "1" : "0");            fields.Add(q.OracleId);
             fields.Add(QualificationConditionsNumber(q.Floor));
             fields.Add(QualificationConditionsTargets(matrix, q));
+            // Appendix B, B7: H-tier columns. Empty for the other tiers.
+            fields.Add(q.EpochWindow);
+            fields.Add(q.NBodies > 0 ? q.NBodies.ToString(QualificationCatalogInv) : "");
+            fields.Add(q.ModelName);
 
             foreach (string field in fields)
             {
@@ -104,9 +109,10 @@ internal static partial class P1bTests
         for (int i = 1; i < rows.Count; i++)
         {
             string[] f = rows[i];
-            // A truncated/empty row is not a complete one: require the 13 columns and a
-            // finite r_min / v_max. Otherwise a broken file would be reused forever.
-            if (f.Length >= 13
+            // A truncated/empty row is not a complete one: require the 16 columns (13 from A8
+            // plus the three H columns of B7) and a finite r_min / v_max. Otherwise a broken
+            // file would be reused forever.
+            if (f.Length >= 16
                 && double.IsFinite(QualificationParseDouble(f[3]))
                 && double.IsFinite(QualificationParseDouble(f[6])))
             {
@@ -145,6 +151,18 @@ internal static partial class P1bTests
                 if (target > 0d && double.IsFinite(target))
                 {
                     names.Add(QualificationMeterGoalName(target));
+                }
+            }
+        }
+
+        // Appendix B, B6: Q goals are goals too; report the ones that were graded.
+        if (q.QTargets != null)
+        {
+            foreach (double factor in q.QTargets)
+            {
+                if (factor > 0d && double.IsFinite(factor))
+                {
+                    names.Add("Q" + (factor >= 0.05d ? "10" : "1"));
                 }
             }
         }

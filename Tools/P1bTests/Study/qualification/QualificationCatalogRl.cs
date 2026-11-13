@@ -41,7 +41,7 @@ internal static partial class P1bTests
         List<QualificationProblem> list, QualificationProfile profile)
     {
         list.Add(QualificationRealSolarProblem(profile));
-        list.Add(QualificationDe441Problem("R2", true, profile));
+        list.Add(QualificationDe441Problem("R2", true, profile, useHGoals: true, modelName: "1PN"));
         list.Add(QualificationShipProblem(
             "R3", "Earth LEO 400 km, 30 d", new[] { "ship", "perturbed" },
             "ship near Earth, Moon and Sun perturbations, 30 d"));
@@ -108,25 +108,57 @@ internal static partial class P1bTests
     // ---------------------------------------------------------------------------------
 
     private static QualificationProblem QualificationDe441Problem(
-        string id, bool pn, QualificationProfile profile)
+        string id, bool pn, QualificationProfile profile,
+        string epochFile = "horizons_real_2026_10y.json",
+        string window = "2026-2036",
+        string title = null,
+        string[] tags = null,
+        string modelName = null,
+        bool useHGoals = false,
+        bool tenYearInSmoke = false)
     {
         var q = new QualificationProblem();
         q.Id = id;
-        q.Title = pn ? "DE441 10 bodies, 1PN" : "DE441 10 bodies, Newtonian";
-        q.Tags = pn
-            ? new[] { "1pn", "velocity-dependent", "long-horizon", "many-body" }
-            : new[] { "nbody-regular", "long-horizon", "many-body", "central-dominant" };
+        q.Title = title != null
+            ? title
+            : (pn ? "DE441 10 bodies, 1PN" : "DE441 10 bodies, Newtonian");
+        q.Tags = tags != null
+            ? tags
+            : (pn
+                ? new[] { "1pn", "velocity-dependent", "long-horizon", "many-body" }
+                : new[] { "nbody-regular", "long-horizon", "many-body", "central-dominant" });
         q.OracleKind = "reference";
         q.OracleId = "dop853-5level-v1";
         q.OracleNote = "fixed DOP853, 5 step levels, Richardson per checkpoint";
         q.CentralBody = "barycentre (10 bodies, no central body)";
         q.Forces = pn ? new[] { "gravity", "1pn" } : new[] { "gravity" };
+        if (useHGoals)
+        {
+            // B7 conditions.csv columns for the H tier (R2 included).
+            q.EpochWindow = window;
+            q.ModelName = pn ? "1pn" : "newton";
+        }
 
-        double horizonDays = profile == QualificationProfile.Full ? 3650d : 30d;
+        // B6: the H tier and R2 carry M100/M10/M1 and the Q goals; A1-A3 stay as they were.
+        bool tenYearSmoke = tenYearInSmoke;
+        if (useHGoals)
+        {
+            q.MeterTargets = QualificationHydroGoals;
+            if (profile == QualificationProfile.Full || tenYearSmoke)
+            {
+                // Q compares against a 10-year E_model, so it is meaningless on the 30-day
+                // smoke horizon of R2; H1 runs its full horizon in smoke and keeps both goals.
+                q.QTargets = new[] { 0.1d, 0.01d };
+                q.QModelRms8 = QualificationNasaModelErrorMeters(window, modelName, false);
+                q.QModelMoon = QualificationNasaModelErrorMeters(window, modelName, true);
+            }
+        }
+
+        double horizonDays = profile == QualificationProfile.Full || tenYearSmoke ? 3650d : 30d;
         double horizon = horizonDays * 86400d;
         double[] times = QualificationSplitHorizon(horizon, 4);
 
-        string path = Path.Combine("Study", "jpl", "horizons_real_2026_10y.json");
+        string path = Path.Combine("Study", "jpl", epochFile);
         if (!File.Exists(path))
         {
             q.Status = "INVALID";
@@ -145,9 +177,20 @@ internal static partial class P1bTests
         int len = 3 * n;
         double[] mu = nb.Mu;
         double[] y0 = QualificationConcat(nb.P0, nb.V0);
+        if (useHGoals)
+        {
+            q.NBodies = n;
+        }
 
         q.OracleTimes = times;
         q.ComFn = QualificationComNBody(mu);
+
+        int[] planetBlocks = { 1, 2, 3, 5, 6, 7, 8, 9 };
+        int moonBlock = 4;
+        int earthBlock = 3;
+        double[][] horizonsPlanets = horizonDays >= 365d
+            ? QualificationHorizonsPlanets(jpl, names, planetBlocks, horizonDays)
+            : null;
 
         q.Build = delegate
         {
@@ -165,6 +208,7 @@ internal static partial class P1bTests
             p.CheckpointTimes = (double[])times.Clone();
             p.CheckpointRef = new double[times.Length][];
             p.ErrorFn = QualificationPairError;
+            p.QErrorFn = QualificationQNBodyMetric(planetBlocks, moonBlock, earthBlock, horizonsPlanets);
             p.CharTime = horizon / 50d;
             p.ScaleLength = StudyAU;
             p.Certified = true;
@@ -177,7 +221,7 @@ internal static partial class P1bTests
         double floor;
         double order;
         string detail;
-        int coarse = profile == QualificationProfile.Full ? 2048 : 512;
+        int coarse = profile == QualificationProfile.Full || tenYearSmoke ? 2048 : 512;
         q.Oracle = QualificationCertifiedDop853(built, times, coarse, out floor, out order, out detail);
         built.CheckpointRef = QualificationCloneStates(q.Oracle);
         q.Floor = floor;
