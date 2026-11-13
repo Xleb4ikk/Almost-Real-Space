@@ -123,6 +123,9 @@ internal static partial class P1bTests
                     + " finished problem(s), " + resume.ReusedCells.ToString(QualificationInv)
                     + " reused cell(s)");
                 QualificationRestoreAuditStatuses(dir, catalog, log);
+                // A problem added to the catalogue after the folder was written has no audit
+                // row; audit only those, so the restored 45 are not rebuilt.
+                QualificationAuditMissing(dir, catalog, log);
             }
             else
             {

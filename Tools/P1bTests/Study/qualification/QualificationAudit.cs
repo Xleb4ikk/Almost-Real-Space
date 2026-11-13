@@ -181,35 +181,7 @@ internal static partial class P1bTests
 
             try
             {
-                if (q.AuditKind == "ship")
-                {
-                    QualificationAuditShip(q);
-                }
-                else if (q.AuditKind == "h")
-                {
-                    QualificationAuditH(q);
-                }
-                else if (q.AuditKind == "planet")
-                {
-                    QualificationAuditPlanet(q);
-                }
-                else if (q.Id == "L2")
-                {
-                    QualificationAuditAnalytic(q);
-                }
-                else if (q.Id.StartsWith("R", StringComparison.Ordinal)
-                    || q.Id.StartsWith("L", StringComparison.Ordinal))
-                {
-                    QualificationAuditRl(q);
-                }
-                else if (q.OracleKind == "analytic")
-                {
-                    QualificationAuditAnalytic(q);
-                }
-                else
-                {
-                    QualificationAuditReference(q);
-                }
+                QualificationAuditProblem(q);
             }
             catch (Exception ex)
             {
@@ -283,6 +255,139 @@ internal static partial class P1bTests
             + " | " + QualificationFormat(q.Floor)
             + " | " + QualificationFormat(q.Cross)
             + " | " + q.AuditNote.Replace("|", "/") + " |";
+    }
+
+    /// <summary>The audit route of one problem (shared by a fresh run and a resume).</summary>
+    private static void QualificationAuditProblem(QualificationProblem q)
+    {
+        if (q.AuditKind == "ship")
+        {
+            QualificationAuditShip(q);
+        }
+        else if (q.AuditKind == "h")
+        {
+            QualificationAuditH(q);
+        }
+        else if (q.AuditKind == "planet")
+        {
+            QualificationAuditPlanet(q);
+        }
+        else if (q.Id == "L2")
+        {
+            QualificationAuditAnalytic(q);
+        }
+        else if (q.Id.StartsWith("R", StringComparison.Ordinal)
+            || q.Id.StartsWith("L", StringComparison.Ordinal))
+        {
+            QualificationAuditRl(q);
+        }
+        else if (q.OracleKind == "analytic")
+        {
+            QualificationAuditAnalytic(q);
+        }
+        else
+        {
+            QualificationAuditReference(q);
+        }
+    }
+
+    /// <summary>
+    /// Resume of a folder written before a problem existed: the restored audit has no row for it.
+    /// Audit only such problems and append their rows to the existing table (TASK.md §13: a long
+    /// run resumes without recomputing finished cells).
+    /// </summary>
+    private static List<QualificationProblem> QualificationAuditMissing(
+        string dir, List<QualificationProblem> catalog, TextWriter log)
+    {
+        var known = new HashSet<string>(StringComparer.Ordinal);
+        string path = Path.Combine(dir, "oracle_audit.md");
+        if (File.Exists(path))
+        {
+            foreach (string line in File.ReadAllLines(path))
+            {
+                if (!line.StartsWith("| ", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                string[] cells = line.Split('|');
+                if (cells.Length > 2)
+                {
+                    known.Add(cells[1].Trim());
+                }
+            }
+        }
+
+        var missing = new List<QualificationProblem>();
+        foreach (QualificationProblem q in catalog)
+        {
+            if (!known.Contains(q.Id))
+            {
+                missing.Add(q);
+            }
+        }
+
+        if (missing.Count == 0)
+        {
+            return missing;
+        }
+
+        var rows = new List<string>();
+        foreach (QualificationProblem q in missing)
+        {
+            string error = null;
+            try
+            {
+                QualificationAuditProblem(q);
+            }
+            catch (Exception ex)
+            {
+                q.Status = "ERROR";
+                q.AuditNote = ex.GetType().Name + ": " + ex.Message;
+                error = q.AuditNote;
+            }
+
+            if (q.Status == "VALID")
+            {
+                q.Problem.Floor = q.Floor;
+                q.Problem.ReferenceNote = q.OracleNote;
+                q.Problem.ReferenceMethod = q.OracleId;
+                q.Problem.ReferenceFamily = q.OracleKind;
+                q.Problem.ReferenceIndependent = double.IsFinite(q.Cross);
+                q.Problem.ReferenceCrossDiffM = double.IsNaN(q.Cross) ? 0d : q.Cross;
+                q.Problem.ReferenceResolution = "ratio_ok";
+            }
+
+            log.WriteLine("  " + q.Id + ": " + q.Status
+                + " floor=" + QualificationFormat(q.Floor)
+                + (error == null ? "" : " (" + error + ")"));
+            rows.Add(QualificationAuditRow(q));
+        }
+
+        // Insert the new rows at the end of the existing table.
+        var text = new List<string>(File.ReadAllLines(path));
+        int lastRow = -1;
+        for (int i = 0; i < text.Count; i++)
+        {
+            if (text[i].StartsWith("| ", StringComparison.Ordinal))
+            {
+                lastRow = i;
+            }
+        }
+
+        if (lastRow < 0)
+        {
+            text.AddRange(rows);
+        }
+        else
+        {
+            text.InsertRange(lastRow + 1, rows);
+        }
+
+        File.WriteAllLines(path, text, new UTF8Encoding(false));
+        log.WriteLine("audit: " + rows.Count.ToString(QualificationCatalogInv)
+            + " new problem(s) appended to oracle_audit.md");
+        return missing;
     }
 
     // ---------------------------------------------------------------------------------

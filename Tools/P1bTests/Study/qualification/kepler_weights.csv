@@ -44,3 +44,5 @@ Test564 P6 Heliocentric Sun-Jupiter probe; 10 y,0.8960067070666148,0.07998920973
 Test564 H1 DE441 10 bodies; Newtonian; 2026-2036,0,0,measured,2026-11-13T21:18:28.9987436Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
 Test564 H1h DE441 10 bodies; Newtonian; 2016-2026 (holdout epoch),0,0,measured,2026-11-13T21:57:18.4969123Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
 Test564 H2h DE441 10 bodies; 1PN; 2016-2026 (holdout epoch),0,0,measured,2026-11-13T21:57:43.6264604Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
+Test564 H3 DE441 10 bodies + 409 small bodies (full409); 2026-2036,0,0,measured,2026-11-13T22:26:22.1001526Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used
+Test564 H6 DE441 satellites: Moon; Galilean moons; Saturn moons (Test544 model),0,0,measured,2026-11-13T22:35:55.1636434Z,8.0.24,x64,0,11,100000,no central body; no Kepler solve is used

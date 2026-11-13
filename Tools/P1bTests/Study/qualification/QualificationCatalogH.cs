@@ -17,9 +17,6 @@ internal static partial class P1bTests
     /// <summary>B6: the H tier gets M100/M10/M1 (A7 rules apply).</summary>
     private static readonly double[] QualificationHydroGoals = { 100d, 10d, 1d };
 
-    /// <summary>Temporary switch for the staged acceptance: B3 runs without H3/H6 (B4).</summary>
-    private static readonly bool QualificationTempDisableH3H6 = true;
-
     private static void QualificationAppendAppendixH(
         List<QualificationProblem> list, QualificationProfile profile)
     {
@@ -45,7 +42,7 @@ internal static partial class P1bTests
         h2h.FullOnly = true;
         list.Add(h2h);
 
-        if (profile == QualificationProfile.Full && !QualificationTempDisableH3H6)
+        if (profile == QualificationProfile.Full)
         {
             // B4.3: H3 and H6 carry a 1e6 RHS budget per cell; a SKIP by budget is recorded,
             // not hidden.
@@ -210,7 +207,7 @@ internal static partial class P1bTests
         q.ModelName = "satellites";
         q.MaxCostRhs = 1000000L;
         q.AuditKind = "h";
-        q.AuditCoarseSteps = 128;
+        q.AuditCoarseSteps = 14600;
         q.FullOnly = true;
 
         double horizon = 3650d * 86400d;
@@ -294,7 +291,9 @@ internal static partial class P1bTests
                 double order;
                 string detail;
                 // Lazy: a report-only resume must not rebuild a 10-year 21-body reference.
-                q.Oracle = QualificationCertifiedDop853(p, times, 7300, out floor, out order, out detail);
+                // 0.125 d at the coarsest level: Mimas (period 0.94 d) is not resolved by a
+                // 0.5 d fixed step, and a non-asymptotic coarse pair inflates the floor.
+                q.Oracle = QualificationCertifiedDop853(p, times, 29200, out floor, out order, out detail);
                 q.Floor = floor;
                 q.Residual = order;
                 q.AuditNote = detail;
