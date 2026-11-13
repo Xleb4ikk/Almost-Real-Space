@@ -150,6 +150,7 @@ internal static partial class P1bTests
         list.Add(new QualificationNasaModel { Name = "EIH", Pn = true, Eih = true });
         if (profile == QualificationProfile.Full)
         {
+            list.Add(new QualificationNasaModel { Name = "1PN+J2", Pn = true, J2 = true });
             list.Add(new QualificationNasaModel
             {
                 Name = "409small", Pn = true, UseSmallBodies = true, AsteroidStart = 10
@@ -218,8 +219,13 @@ internal static partial class P1bTests
             {
                 window.FullBody = JplNBody(
                     window.Data, QualificationNasaSmallBodyNames(window.Data), true, true);
-                window.SatelliteBody = JplNBody(
-                    window.Data, QualificationNasaSatelliteNames(), true, true);
+                // Test544 (the satellite model) exists only for the 2026 window: the 2016
+                // Horizons file has no Jupiter/Saturn centres and no moons.
+                if (window.Name == "2026-2036")
+                {
+                    window.SatelliteBody = JplNBody(
+                        window.Data, QualificationNasaSatelliteNames(), true, true);
+                }
             }
         }
 
@@ -413,6 +419,10 @@ internal static partial class P1bTests
         foreach (QualificationNasaWindow window in windows)
         {
             StudyNBody nb = window.SatelliteBody;
+            if (nb == null)
+            {
+                continue;
+            }
             var run = JplDop853(
                 nb, 3650d, 1e-6d, 1e-9d, 1e-13d, true, false, false, 21600d, -1, true, true);
             for (int i = 0; i < moons.Length; i++)
