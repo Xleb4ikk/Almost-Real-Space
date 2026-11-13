@@ -511,3 +511,231 @@ A1–A3 на S/P/F не вычисляются (A7.3); на R1/R3/L1/R4 оста
 
 Ограничение по времени: P2 (100 лет, два dd-Taylor) — самый дорогой эталон; S — дешёвые
 (один fixed DOP853 на кейс). Это определяет профили: S и F — в smoke, P2–P6 — только full.
+
+---
+
+# ПРИЛОЖЕНИЕ B (B0): реальная Солнечная система и сравнение с Horizons
+
+Результат этапа **B0** (TASK.md, Приложение B, B8). Код не менялся: только этот файл.
+Дата инвентаризации: 2026-11-13. Commit: `05b7869` (`Q-FIX-20b`), рабочее дерево по коду чистое
+(изменены только `TASK.md`/`AGENTS.md`/`CLAUDE.md` владельца).
+
+## B-Data. Данные Horizons/DE441
+
+| файл | что | эпоха (`epoch`) | размер | кто использует |
+|---|---|---|---|---|
+| `Study/jpl/horizons_real_2026_10y.json` | 483 тела, кадр `heliocentric ecliptic J2000`, единицы `m, m/s`; срезы `days = 0,365,…,3650` | `2026-01-01 00:00:00 TDB` | 1 221 121 Б | Test537/539/540/542/544/545/546, Test530/531/543/533/535, **R2** |
+| `Study/jpl/horizons_real_2016_10y.json` | то же, второе окно (holdout) | `2016-01-01 00:00:00 TDB` | 1 183 339 Б | Test538, Test539, Test542 |
+| `Study/jpl/horizons_short_2026.json`, `horizons_short_2016.json` | срезы 0/1/10/30/90/180/365 сут | те же | 14 КБ | Test539 (V0) |
+| `Study/jpl/de441_asteroids.csv` | 343 номера главного пояса + точные GM DE441 (au^3/day^2), JPL IOM 392R-21-005 | — | 9 309 Б | только Python-построители данных; **C# его не читает** (массы уже в JSON) |
+
+Состав `horizons_real_2026_10y.json`: 9 имён `ten` (`Mercury, Venus, Earth, Moon, Mars, Jupiter,
+Saturn, Uranus, Neptune`) + центры `JupiterCenter`, `SaturnCenter` + 12 спутников
+(`Io, Europa, Ganymede, Callisto, Mimas, Enceladus, Tethys, Dione, Rhea, Titan, Hyperion, Iapetus`)
++ 409 малых тел (`Ast*` 343, `Kbo*` 30, `Kbr*` 36) + прочие именованные малые тела (Ceres, Pallas,
+Vesta и др., нужны Test533/535). Начальные состояния моделей берутся только из этого JSON;
+сеть и SPICE не нужны.
+
+## B-Access. Как вызывается `Study/jpl` из стенда
+
+Все точки входа — `private static` члены `internal static partial class P1bTests`
+(`Study/jpl/*.cs`). Стенд — тоже `partial class P1bTests`, поэтому вызовы идут **напрямую**,
+без правок модификаторов. Вложенные `private`-классы `JplFile`, `JplBody`, `JplState`,
+`JplCompareModel`, `IntegratorRow` доступны там же (члены одного типа).
+**Правок `private` → `internal` для B1–B4 не требуется.** Если позже понадобится вызов
+из другого типа — это будет отдельная аддитивная правка с записью в `PROGRESS.md` (B2).
+
+| нужно | готовое (точка входа) | файл |
+|---|---|---|
+| прочитать JSON | `JsonSerializer.Deserialize<JplFile>` | `JplRealism.cs:27` |
+| собрать 10-тельную систему (барицентр, системные GM) | `JplNBody(jpl, names, useSystemGm: true, barycentric: true)` | `JplRealism.cs:42` |
+| собрать систему спутников (GM центра = GM Юпитера) | `JplNBody(..., centerWithSystemGm: true)` | `JplRealism.cs:44` |
+| индекс тела по имени | `JplIndex(nb, name)` | `JplRealism.cs:167` |
+| эталонный адаптивный интегратор | `JplDop853(nb, days, posAtol, velAtol, rtol, pn, eih, j2, maxStepSeconds, asteroidStart, earthJ2, planetJ2)` → `(p, v, calls, steps)` | `Jpl1Pn.cs:269` |
+| силы | `JplAcc1Pn`, `JplAcc1PnC`, `JplAccEih`, `JplAccPlanetsAsteroids`, `JplAccEarthJ2`, `JplAccZonal*` | `Jpl1Pn.cs:9-267` |
+| ошибка против Horizons | `JplStateError(...)` (тело и гео-Луна), `JplRelativeError(...)` (относительно центра) | `FullComparison.cs:36`, `:400` |
+| ошибка против эталона той же модели | `IntegratorError`, `IntegratorBodyError`, `MoonRelativeError` | `IntegratorComparison.cs:24-48`, `FullSystemIntegrators.cs:228` |
+| фиксированные шаги для слоя I (как в старых тестах) | `StudyRk4StepAcc`, `StudyDopri5FixedAcc`, `StudyPefrlAcc`, `StudyY6Acc` + делегат `StudyAccel` | `FullSystemIntegrators.cs:11-226` |
+
+Модельный слой (V) и слой интеграторов (I) разделены уже в коде: `JplCompareModel`
+(`FullComparison.cs:12`) — «имя + набор флагов силы», а `IntegratorRow` — «метод + шаг».
+
+## B-Models. Модели Test537/538 (слой V)
+
+`JplFullComparison` строит 8 моделей (`FullComparison.cs:106-116`); те же 8 в обоих окнах:
+
+| # | имя | `pn` | `eih` | `j2` (солнечный) | `asteroidStart` | `earthJ2` | тел |
+|---|---|---|---|---|---|---|---|
+| 0 | `Newton` | нет | нет | нет | -1 | нет | 10 |
+| 1 | `1PN` | да | нет | нет | -1 | нет | 10 |
+| 2 | `EIH` | (внутри) | да | нет | -1 | нет | 10 |
+| 3 | `1PN+J2` | да | нет | да | -1 | нет | 10 |
+| 4 | `409small` | да | нет | нет | 10 | нет | 419 |
+| 5 | `409small+J2` | да | нет | да | 10 | нет | 419 |
+| 6 | `409small+EJ2` | да | нет | нет | 10 | да | 419 |
+| 7 | `409small+J2+EJ2` (= `full409`) | да | нет | да | 10 | да | 419 |
+
+Интегратор слоя V один: `JplDop853(..., 1e-6, 1e-9, 1e-13, ..., maxStep 86400 s)`; срезы 1, 5, 10 лет
+(`horizons = 365/1825/3650`). Test544 добавляет `planetJ2` (J2/J4/J6 Юпитера и Сатурна, J2 лун)
+и `maxStep 21600 s`; Test545 берёт 10-тельную систему и эталоны `rtol 1e-14` + `1e-15`/`maxStep 0.5 d`;
+Test546 — `full409` (`asteroidStart 10`, `j2`, `earthJ2`) с эталоном той же силы.
+
+## B-Tasks. Построители задач H1…H6
+
+| id | задача | как строится (готовый путь) | эталон (та же модель/эпоха) | теги |
+|---|---|---|---|---|
+| H1 | DE441 10 тел, Ньютон, 2026–2036 | `JplNBody(2026, ten, true, true)` + `QualificationNBodyRhsNoCopy` (R2-код, Ньютон-ветка) | `QualificationCertifiedDop853` (fixed DOP853, 5 уровней, Richardson) | real-system, de441, many-body, long-horizon |
+| H1h | то же, 2016–2026 | тот же код с `horizons_real_2016_10y.json` | то же | real-system, de441, many-body, holdout-epoch |
+| (R2) | DE441 10 тел, 1PN, 2026–2036 | **уже есть** `QualificationCatalogRl.QualificationDe441Problem("R2", pn: true)` | fixed DOP853 5 уровней (floor `1.969 м`) | 1pn, velocity-dependent, long-horizon, many-body |
+| H2h | DE441 10 тел, 1PN, 2016–2026 | тот же код, JSON 2016 | то же | real-system, de441, 1pn, velocity-dependent, holdout-epoch |
+| H3 | 10 тел + 409 малых, `full409` | `JplNBody(2026, ten+Ast/Kbo/Kbr, true, true)` + `JplAccPlanetsAsteroids(..., pn:true, j2:true, planetMu)` + `JplAccEarthJ2` (ровно `acc` из Test546) | `JplDop853` с той же `acc` (Test546: rtol 1e-14/1e-15, maxStep 0.5/0.25 d) или `QualificationCertifiedDop853` по той же силе | real-system, small-bodies, 1pn, velocity-dependent, many-body |
+| H6 | спутники из Test544 | `JplNBody(2026, 21 имя, true, true, centerWithSystemGm:true)` + `JplDop853(..., pn:true, earthJ2:true, planetJ2:true, maxStep 21600 s)` | тот же путь, эталон той же силы | real-system, satellites, many-body |
+
+Совпадения с уже существующими задачами:
+
+* **H2 = R2** (те же тела, та же сила, то же окно). Дублировать нельзя (B2): R2 остаётся R2,
+  к нему добавляются H-цели M100…M1, цели Q и слой V (B3).
+* **H1 ≠ R1.** R1 — фикстур `StudyRealSolar7` (7 тел, `BodyBlueprint`, без запечённых эфемерид),
+  H1 — DE441 JSON (10 тел, барицентр, системные GM). Разные наборы тел и разные ИК.
+* **H1h/H2h** — не дубли R1/H1: другое окно (2016–2026), holdout-эпоха.
+* **H3** — сила `full409` из Test546 (419 тел); ни одна задача стенда её не повторяет.
+* **H6** — 21 тело Test544; в стенде спутников нет.
+* Пункт B2 «R2 (10-body 1PN, 2026) остаётся R2» выполнен: новая задача `H2` не заводится.
+
+## B-V0. Предусловие V0: откуда берутся проверки
+
+| проверка | готовый код | что проверяет |
+|---|---|---|
+| day-0 относительные состояния | `Test539_JplShortHorizon` / `JplStateError` на `horizons_short_*.json` | ошибка 0 м (и `4.7e-10 м` после комбинации GM/единиц) |
+| начальные ускорения, отношение масс спутников Марса | `Test540_JplInitialAccel` (`JplAcc1Pn`, `JplAccEih`, `moonRatio ∈ [1e-8, 5e-8]`) | EIH−1PN по телам; `|d|` стартовых ускорений |
+| согласованность эпох | `Test542_JplEpochConsistency` (GM обоих окон идентичны, day-0 состояния точны) | `worstGm < 1e-12`, `worst0 < 1e-3` |
+
+V0 в стенде = те же три проверки, вызванные через адаптер на тех же данных; пороги берутся
+из существующего кода (Test539/542), не изобретаются.
+
+## B-G9. Эталон воспроизводимости: неизменённые Test537/538/544/545/546
+
+Команды (запускались 2026-11-13, commit `05b7869`, `dotnet run --project Tools/P1bTests -c Release --no-build -- --exact <тест>`;
+рабочий каталог закрепляется `Program.cs` в `Tools/P1bTests`):
+
+```
+dotnet run --project Tools/P1bTests -c Release -- --exact Test537_JplFullComparison
+dotnet run --project Tools/P1bTests -c Release -- --exact Test538_JplHoldout
+dotnet run --project Tools/P1bTests -c Release -- --exact Test544_JplSatelliteComparison
+dotnet run --project Tools/P1bTests -c Release -- --exact Test545_JplIntegratorComparison
+dotnet run --project Tools/P1bTests -c Release -- --exact Test546_JplFullSystemIntegrators
+```
+
+Все пять — `ALL PASS`; полные логи лежат вне репозитория (временный каталог сессии), ниже —
+числа, которые слой V обязан воспроизвести (G9: `|Δ| ≤ max(0.01 км, 0.5 %)` по каждому телу и модели).
+
+### G9-1. Test537, 2026–2036: ошибка положения за 10 лет, км
+
+| тело | Newton | 1PN | EIH | 1PN+J2 | 409small | 409small+J2 | 409small+EJ2 | 409small+J2+EJ2 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Mercury | 1760.56 | 0.50 | 0.94 | 0.64 | 0.57 | 0.57 | 0.57 | 0.57 |
+| Venus | 871.18 | 0.43 | 0.06 | 0.73 | 0.15 | 0.45 | 0.15 | 0.45 |
+| Earth | 608.39 | 0.95 | 1.60 | 0.82 | 2.02 | 1.88 | 2.37 | 2.50 |
+| Mars | 372.62 | 1.14 | 1.33 | 1.10 | 0.23 | 0.28 | 0.23 | 0.28 |
+| Jupiter | 41.13 | 17.01 | 17.12 | 17.01 | 0.15 | 0.15 | 0.15 | 0.15 |
+| Saturn | 3.77 | 10.41 | 10.43 | 10.41 | 0.50 | 0.50 | 0.50 | 0.50 |
+| Uranus | 1.49 | 0.91 | 0.93 | 0.91 | 0.80 | 0.80 | 0.80 | 0.80 |
+| Neptune | 6.84 | 6.47 | 6.49 | 6.47 | 1.58 | 1.58 | 1.58 | 1.58 |
+| Moon(geo) | 178.05 | 177.15 | 222.67 | 177.15 | 177.15 | 177.15 | 68.08 | 68.08 |
+| **RMS(8)** | **739.03** | **7.44** | **7.50** | **7.44** | **0.99** | **0.97** | **1.09** | **1.13** |
+
+Время: 6 392 мс (parallel, jobs=32). Гейты теста: EIH−1PN по Юпитеру `0.11 км`, по Сатурну
+`0.02 км`, 409small улучшает Юпитер (`0.15`) и Сатурн (`0.50`) — все PASS.
+E_model для B6 берётся из этой таблицы: Newton 2026 `739.03 км`, 1PN `7.44`, full409 `1.13`,
+Луна 1PN `177.15`, full409 `68.08`.
+
+### G9-2. Test538, 2016–2026: ошибка положения за 10 лет, км
+
+| тело | Newton | 1PN | EIH | 1PN+J2 | 409small | 409small+J2 | 409small+EJ2 | 409small+J2+EJ2 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Mercury | 2925.33 | 1.16 | 1.76 | 0.76 | 1.20 | 0.73 | 1.20 | 0.73 |
+| Venus | 898.94 | 0.03 | 0.06 | 0.33 | 0.15 | 0.15 | 0.15 | 0.15 |
+| Earth | 610.86 | 2.53 | 2.90 | 2.63 | 1.97 | 2.02 | 1.52 | 1.57 |
+| Mars | 246.03 | 4.13 | 4.00 | 4.17 | 0.13 | 0.17 | 0.13 | 0.17 |
+| Jupiter | 46.84 | 1.06 | 1.05 | 1.06 | 0.32 | 0.32 | 0.32 | 0.32 |
+| Saturn | 13.77 | 2.13 | 2.04 | 2.13 | 2.47 | 2.47 | 2.47 | 2.47 |
+| Uranus | 0.99 | 0.52 | 0.49 | 0.52 | 1.01 | 1.01 | 1.01 | 1.01 |
+| Neptune | 5.36 | 5.07 | 5.06 | 5.07 | 2.17 | 2.17 | 2.17 | 2.17 |
+| Moon(geo) | 161.31 | 160.51 | 202.46 | 160.51 | 160.51 | 160.51 | 108.74 | 108.74 |
+| **RMS(8)** | **1106.89** | **2.66** | **2.71** | **2.66** | **1.47** | **1.44** | **1.40** | **1.37** |
+
+Время: 5 956 мс. E_model 2016 для H2h: 1PN `2.66 км`, Луна `160.51 км`.
+
+### G9-3. Test544, спутники 2026–2036: ошибка на 10 лет
+
+| тело | центр | dp (км) | dv (м/с) |
+|---|---|---:|---:|
+| Moon | Earth | 68.07 | 8.76E-02 |
+| Io | JupiterCenter | 13 232.88 | 6.37E+02 |
+| Europa | JupiterCenter | 14 121.51 | 4.19E+02 |
+| Ganymede | JupiterCenter | 9 157.16 | 1.65E+01 |
+| Callisto | JupiterCenter | 1 126.98 | 9.48E+00 |
+| Mimas | SaturnCenter | 115 942.77 | 2.44E+04 |
+| Enceladus | SaturnCenter | 374 187.37 | 1.34E+04 |
+| Tethys | SaturnCenter | 390 562.83 | 1.22E+04 |
+| Dione | SaturnCenter | 610 058.45 | 2.73E+03 |
+| Rhea | SaturnCenter | 893 539.04 | 1.46E+04 |
+| Titan | SaturnCenter | 124 324.70 | 6.02E+02 |
+| Hyperion | SaturnCenter | 134 277.74 | 5.17E+02 |
+| Iapetus | SaturnCenter | 7 419.71 | 7.72E+00 |
+| JupiterCenter vs JPL | — | 266.29 | — |
+| SaturnCenter vs JPL | — | 76.35 | — |
+
+Время: 23 266 мс.
+
+### G9-4. Test545, 10 тел, эталон той же силы
+
+| строка | сила | шаг | calls (half+full) | ms | max err (км) |
+|---|---|---|---:|---:|---:|
+| DOP853 adaptive | newton | adaptive | 235 498 | 110 | 0.003 |
+| DOPRI5 1 d | newton | 1 d | 32 852 | 13 | 67 092.078 |
+| RK4 1 d | newton | 1 d | 21 900 | 7 | 737 155.445 |
+| PEFRL 1 d | newton | 1 d | 21 900 | 7 | 19 859.878 |
+| Y6 1 d | newton | 1 d | 38 327 | 11 | 5 534.424 |
+| Y6C 1 d | newton | 1 d | 38 327 | 81 | 5 534.422 |
+| DOPRI5 0.5 d | newton | 0.5 d | 65 702 | 23 | 1 259.895 |
+| RK4 0.5 d | newton | 0.5 d | 43 800 | 11 | 120 665.215 |
+| PEFRL 0.5 d | newton | 0.5 d | 43 800 | 12 | 1 246.554 |
+| Y6 0.5 d | newton | 0.5 d | 76 652 | 19 | 88.442 |
+| Y6C 0.5 d | newton | 0.5 d | 76 652 | 152 | 88.442 |
+| DOP853 1PN | 1PN | adaptive | 235 498 | 122 | 0.001 |
+| Y6C 1PN 112.5 s | 1PN | 112.5 s | 29 433 602 | 10 980 | 71.627 |
+
+Эталонные floor'ы теста: Newton `6.85E-01 м` (Меркурий), 1PN `5.03E-01 м` (Луна).
+`best Newtonian fixed-step: Y6 0.5 d`. Время: 11 779 мс.
+
+### G9-5. Test546, `full409` (419 тел): интеграторы против эталона той же силы
+
+Эталон: `DOP853 full409 rtol 1e-14`, 6 461 мс, 230 363 calls, self-convergence `1.07E+00 м`.
+Ошибка модели (`same-force reference` vs Horizons): `RMS(8)=1.133 км`, Юпитер `0.150`, Сатурн `0.504`.
+
+| строка | шаг | calls | ms | int err (км) | int rms8 (км) | total (км) | Юпитер | Сатурн | Moon(geo) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| DOP853 full409 | adaptive | 156 947 | 5 111 | 0.001 | 0.000 | 1.133 | 0.000 | 0.000 | 0.00 |
+| DOPRI5 full409 | 1 d | 21 901 | 896 | 67 092.356 | 2 911.776 | 2 911.662 | 0.000 | 0.000 | 67 916.83 |
+| RK4 full409 | 1 d | 14 600 | 615 | 584 807.869 | 206 768.344 | 206 768.572 | 0.000 | 0.000 | 409 829.08 |
+| PEFRL full409 | 1 d | 14 600 | 636 | 42 945.580 | 15 194.718 | 15 194.504 | 0.173 | 0.006 | 20 239.81 |
+| Y6 full409 | 1 d | 25 551 | 969 | 55 092.469 | 19 492.523 | 19 492.314 | 0.249 | 0.009 | 5 777.34 |
+| DOPRI5 full409 | 0.5 d | 43 801 | 1 500 | 1 259.905 | 129.382 | 129.151 | 0.000 | 0.000 | 1 275.41 |
+| RK4 full409 | 0.5 d | 29 200 | 1 039 | 120 665.649 | 6 525.046 | 6 525.314 | 0.000 | 0.000 | 122 150.97 |
+| PEFRL full409 | 0.5 d | 29 200 | 1 044 | 19 418.264 | 6 870.396 | 6 870.184 | 0.086 | 0.003 | 1 323.58 |
+| Y6 full409 | 0.5 d | 51 101 | 1 350 | 27 505.328 | 9 731.697 | 9 731.486 | 0.124 | 0.004 | 176.96 |
+
+Время: 21 160 мс. Это и есть численная опора H3: сила, эталон и «модельная» ошибка
+`1.133 км` получаются ровно этим путём.
+
+## B-Summary. Что переиспользуется в Приложении B
+
+| нужно | готовое | как вызывается |
+|---|---|---|
+| данные, ИК, GM | `horizons_real_2026_10y.json` / `_2016_` | `JplFile` + `JplNBody` |
+| слой V (модели) | `JplCompareModel` + `JplDop853` + `JplStateError` | напрямую (B1–B2) |
+| слой I (методы) | `QualificationEngine` (свип/гейты) + `StudyNBody`/`StudyProblem` адаптер | расширяется тиром H (B3–B4) |
+| certified reference | `QualificationCertifiedDop853` / `CertifiedReference` | без изменений |
+| H6 | `JplDop853(..., planetJ2: true)` (Test544) | напрямую (B4) |
+| G9 | прогон неизменённых Test537/538/544/545/546 | числа записаны выше |
