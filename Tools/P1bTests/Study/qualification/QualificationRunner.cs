@@ -17,7 +17,7 @@ using P1bStudy.Framework;
 // StudyShipMatrixBuildCases, MoonFlybyProblem, ...) without editing existing files.
 internal static partial class P1bTests
 {
-    private const string QualificationTaskVersion = "3";
+    private const string QualificationTaskVersion = "4";
 
     private static readonly CultureInfo QualificationInv = CultureInfo.InvariantCulture;
 
@@ -29,11 +29,12 @@ internal static partial class P1bTests
     private const string QualificationMatrixHeader =
         "problem_id,method,tier,status,reason,best_control,price_at_tier";
 
-    /// <summary>smoke = minutes; full = hours (TASK.md 13).</summary>
+    /// <summary>smoke = minutes; full = hours; production = the game's conditions (C4).</summary>
     private enum QualificationProfile
     {
         Smoke,
-        Full
+        Full,
+        Production
     }
 
     private static int Test564_MethodQualification()
@@ -80,7 +81,7 @@ internal static partial class P1bTests
             log.WriteLine("profile: " + profile.ToString().ToLowerInvariant());
             log.WriteLine("run dir: " + dir + (resuming ? " (resume)" : ""));
 
-            List<IStudyIntegrator> methods = StudyRegistry.All();
+            List<IStudyIntegrator> methods = QualificationMethodsFor(profile);
             log.WriteLine("methods: " + methods.Count.ToString(QualificationInv));
             foreach (IStudyIntegrator method in methods)
             {
@@ -88,12 +89,26 @@ internal static partial class P1bTests
                     + " | ExpectedOrder=" + QualificationNumber(method.ExpectedOrder));
             }
 
+            if (profile == QualificationProfile.Production)
+            {
+                if (!QualificationProductionAdapterSelfCheck(log))
+                {
+                    Console.WriteLine("FAIL: the production adapters did not pass the K self-check");
+                    return 1;
+                }
+            }
+
             // Layer V (TASK.md Appendix B) runs before the catalogue: the H tier's Q goals are
             // defined against E_model from this layer, so the catalogue needs its numbers.
-            // It never ranks a method; a G9 drift is an adapter error (B5).
+            // It never ranks a method; a G9 drift is an adapter error (B5). The production
+            // profile (Appendix C) has no H tier and does not need layer V.
             var vWatch = Stopwatch.StartNew();
-            bool nasaOk = QualificationRunNasaValidation(dir, profile, log);
-            log.WriteLine("V: " + vWatch.ElapsedMilliseconds.ToString(QualificationInv) + " ms");
+            bool nasaOk = profile == QualificationProfile.Production
+                ? true
+                : QualificationRunNasaValidation(dir, profile, log);
+            log.WriteLine("V: " + (profile == QualificationProfile.Production
+                ? "skipped (production profile)"
+                : vWatch.ElapsedMilliseconds.ToString(QualificationInv) + " ms"));
             if (!nasaOk)
             {
                 Console.WriteLine("FAIL: layer V reports a G9 drift or a failed V0 precondition; "
@@ -457,8 +472,9 @@ internal static partial class P1bTests
     // Profile
     // ---------------------------------------------------------------------------------
     /// <summary>
-    /// P1B564_PROFILE=smoke|full. Program.cs filters whole cases by --fast/--slow but does not
-    /// pass that flag to a case, so the per-test profile needs its own switch. Default: smoke.
+    /// P1B564_PROFILE=smoke|full|production. Program.cs filters whole cases by --fast/--slow but
+    /// does not pass that flag to a case, so the per-test profile needs its own switch.
+    /// Default: smoke.
     /// </summary>
     private static QualificationProfile QualificationResolveProfile()
     {
@@ -479,7 +495,13 @@ internal static partial class P1bTests
             return QualificationProfile.Full;
         }
 
-        throw new ArgumentException("P1B564_PROFILE must be 'smoke' or 'full', got '" + value + "'");
+        if (value.Equals("production", StringComparison.OrdinalIgnoreCase))
+        {
+            return QualificationProfile.Production;
+        }
+
+        throw new ArgumentException(
+            "P1B564_PROFILE must be 'smoke', 'full' or 'production', got '" + value + "'");
     }
 
     // ---------------------------------------------------------------------------------

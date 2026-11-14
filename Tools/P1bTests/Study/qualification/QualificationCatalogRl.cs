@@ -38,16 +38,25 @@ internal static partial class P1bTests
     }
 
     private static void QualificationAppendRl(
-        List<QualificationProblem> list, QualificationProfile profile)
+        List<QualificationProblem> list, QualificationProfile profile, bool productionOnly = false)
     {
-        list.Add(QualificationRealSolarProblem(profile));
-        list.Add(QualificationDe441Problem("R2", true, profile, useHGoals: true, modelName: "1PN"));
+        // The production profile (C4) needs only the ship tasks R3/R4/L1; R1/R2 are planet
+        // and DE441 models the game does not integrate.
+        if (!productionOnly)
+        {
+            list.Add(QualificationRealSolarProblem(profile));
+            list.Add(QualificationDe441Problem("R2", true, profile, useHGoals: true, modelName: "1PN"));
+        }
+
         list.Add(QualificationShipProblem(
             "R3", "Earth LEO 400 km, 30 d", new[] { "ship", "perturbed" },
             "ship near Earth, Moon and Sun perturbations, 30 d"));
         list.Add(QualificationMoonFlybyProblem());
         list.Add(QualificationLongLeoProblem());
-        list.Add(QualificationKeplerLongProblem());
+        if (!productionOnly)
+        {
+            list.Add(QualificationKeplerLongProblem());
+        }
     }
 
     // ---------------------------------------------------------------------------------

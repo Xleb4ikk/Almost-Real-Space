@@ -129,6 +129,37 @@ internal static partial class P1bTests
     private static List<QualificationProblem> QualificationCatalogBuild(QualificationProfile profile)
     {
         var list = new List<QualificationProblem>();
+        if (profile == QualificationProfile.Production)
+        {
+            // Appendix C, C4: only the ship scenarios the game actually runs. No K/T/R1/R2/P/F/H:
+            // their forces (planets, N-body) are not the game's production model.
+            QualificationAppendAppendixShips(list, profile, true);
+            QualificationAppendRl(list, profile, true);
+            QualificationDescribeProblemPhysics(list);
+            return list;
+        }
+
+        QualificationAppendKepler(list);
+        QualificationAppendKnownNBody(list);
+        QualificationAppendRl(list, profile);
+        QualificationAppendAppendixA(list, profile);
+        QualificationAppendAppendixPlanetsAndF(list, profile);
+        QualificationAppendAppendixH(list, profile);
+        QualificationDescribeProblemPhysics(list);
+        return list;
+    }
+
+    /// <summary>K1-K8 only: used by the production adapter self-check (C2).</summary>
+    private static List<QualificationProblem> QualificationCatalogKepler()
+    {
+        var list = new List<QualificationProblem>();
+        QualificationAppendKepler(list);
+        QualificationDescribeProblemPhysics(list);
+        return list;
+    }
+
+    private static void QualificationAppendKepler(List<QualificationProblem> list)
+    {
         list.Add(QualificationKeplerProblem(
             "K1", "Kepler, e=0", 0d,
             new[] { "kepler", "ecc-low", "central-dominant" }));
@@ -145,15 +176,13 @@ internal static partial class P1bTests
         list.Add(QualificationHyperbolicProblem());
         list.Add(QualificationHarmonicProblem());
         list.Add(QualificationDampedProblem());
+    }
+
+    private static void QualificationAppendKnownNBody(List<QualificationProblem> list)
+    {
         list.Add(QualificationFigureEightProblem());
         list.Add(QualificationLagrangeProblem());
         list.Add(QualificationPythagoreanProblem());
-        QualificationAppendRl(list, profile);
-        QualificationAppendAppendixA(list, profile);
-        QualificationAppendAppendixPlanetsAndF(list, profile);
-        QualificationAppendAppendixH(list, profile);
-        QualificationDescribeProblemPhysics(list);
-        return list;
     }
 
     /// <summary>
@@ -200,7 +229,7 @@ internal static partial class P1bTests
     private static List<QualificationProblem> QualificationCatalogFor(QualificationProfile profile)
     {
         List<QualificationProblem> all = QualificationCatalogBuild(profile);
-        if (profile == QualificationProfile.Full)
+        if (profile == QualificationProfile.Full || profile == QualificationProfile.Production)
         {
             return all;
         }

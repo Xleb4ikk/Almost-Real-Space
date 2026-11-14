@@ -151,6 +151,13 @@ namespace P1bStudy.Framework
         /// </summary>
         public double MaxControl;
 
+        /// <summary>
+        /// Largest internal step of an adaptive method (seconds); 0 = no extra cap. Appendix C
+        /// production profile sets the game's 600 s cap here (single source:
+        /// OrbitIntegrator.DefaultMaxStepSize); existing problems leave it 0.
+        /// </summary>
+        public double MaxStepSeconds;
+
         /// <summary>Length scale used to turn relative targets into absolute ones.</summary>
         public double ScaleLength = 1d;
 

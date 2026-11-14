@@ -68,10 +68,11 @@ S07, S08 · S4 S12, S15 и цели 0.1/0.01 · S5 P2–P6 и F · S6 `CONDITION
 
 ## Текущий этап
 
-**Приложение C, этап C1 завершён.** Пороги ворот C6 записаны и заморожены (раздел «Пороги
-ворот Приложения C (C6) — ЗАМОРОЖЕНО»). Следующий этап — **C2: профиль `production` и
-адаптеры `Prod-DOP853`/`Prod-DOPRI5`** (код стенда). Открытый вопрос №10 (`heliocentric`
-в C6 против списка задач C4) нужно закрыть до C4, на C2–C3 он не влияет.
+**Приложение C, этап C2 завершён.** Профиль `production` и адаптеры `Prod-DOP853`/`Prod-DOPRI5`
+работают; K-проверка — побитовый паритет с игровым `SpacecraftPhysics.Step`. Полный `full`-прогон
+против эталона: **0 статусов, 0 новых ячеек, 0 ошибок, 0 цен**; `Test551` — прежний хэш.
+Следующий этап — **C3: прогон `production` и chunk-тест, `PRODUCTION_REPORT.md`**.
+Открытый вопрос №10 (`heliocentric` в C6) нужно закрыть до C4; на C2–C3 он не влияет.
 
 Предыдущий итог: **Приложение B завершено (B0–B6)**. Новый эталон — `baseline/20261114T093336Z_f899097/`
 (`dirty: clean`, commit `f899097`), `BASELINE.md` переписан, предыдущий сохранён
@@ -105,7 +106,7 @@ S07, S08 · S4 S12, S15 и цели 0.1/0.01 · S5 P2–P6 и F · S6 `CONDITION
 - [x] B6 Полный прогон и новый baseline
 - [x] C0 Инвентаризация игрового кода (`INVENTORY.md`, код не меняется)
 - [x] C1 Пороги ворот C6 (запись в `PROGRESS.md`, код не меняется)
-- [ ] C2 Профиль `production` и адаптеры `Prod-DOP853`/`Prod-DOPRI5`
+- [x] C2 Профиль `production` и адаптеры `Prod-DOP853`/`Prod-DOPRI5`
 - [ ] C3 Прогон `production` и chunk-тест, `PRODUCTION_REPORT.md`
 - [ ] C4 Ворота: **остановка и запрос решения владельца**
 - [ ] C5 Порт RKN12(10) (после решения владельца)
@@ -459,6 +460,41 @@ _Формат: дата, этап, решение, причина (одна-дв
   фактами в `PRODUCTION_REPORT.md`, в «два класса» не идут. Это следствие списка C6, а не
   новый порог.
 
+### Приложение C (C2)
+
+- 2026-11-14, C2: профиль `production` собирает **только 13 задач C4** (S01–S06, S09, S14,
+  S12, S15, R3, R4, L1) из существующих ship-builder'ов. S10/S11/S17/S07/S08 и K/T/P/F/H
+  не строятся: фильтр `productionOnly` в `QualificationAppendAppendixShips`/`QualificationAppendRl`,
+  не исключение методов по имени и не новая задача. `QualificationTaskVersion = 4`.
+- 2026-11-14, C2: `Prod-DOP853`/`Prod-DOPRI5` — тонкие адаптеры `IStudyIntegrator`, вызывают
+  `SpacecraftOrbitIntegrator.StepForwardDop853`/`StepForward` по одному чанку (как игра), с
+  допусками из `SpacecraftPhysics` (`1e-4 м`, `1e-8 м/с`, `1e-4 кг`, `1e-11`) и лимитом
+  `OrbitIntegrator.DefaultMaxStepSize = 600 с`; состояние `[pos(3), vel(3)]` или
+  `[pos(3), vel(3), mass(1)]`. `ControlRange` — одна точка (допуски игры не заметаются).
+- 2026-11-14, C2: **K-проверка** адаптеров — побитовый паритет конечного состояния с реальным
+  игровым путём `SpacecraftPhysics.Step` (K1–K8, 16/16 `parity=PASS`). Точность при допусках
+  игры: `Prod-DOP853` — A1 на всех K; `Prod-DOPRI5` — A1 на K1, K5–K8, на K2/K3/K4
+  `4.581e-6 / 1.280e-6 / 3.887e-6` при пороге `1e-6` (многооборотный Kepler вне сертификации
+  игрового DOPRI5; `tests/README.md` прямо не сертифицирует его на 1-летнем golden). Это
+  записано как факт, порог K-проверки не подгонялся: гейт — паритет/конечность, точность
+  публикуется.
+- 2026-11-14, C2: первый production-прогон вскрыл дефект профиля: cap-варианты
+  (`AdaptiveMaxSteps={600}`) имеют `Variant="cap=600 s"`, а `QualificationRowsOf` и все
+  фильтры движка берут только `Variant==""`; ячейки `Prod-*` получали пустой `Best` и FAIL
+  без причины. Исправлено аддитивным полем `StudyProblem.MaxStepSeconds` (0 = нет cap):
+  `p.MaxStepSeconds = 600` + `AdaptiveMaxSteps={∞}` дают строки без variant, cap применяется
+  в `AdaptiveIntegrator.MakeConfig` (единственная правка вне qualification, см. ниже).
+- 2026-11-14, C2: production-профиль не считает слой V (нет H-тира) и не строит Q-цели;
+  `AnalyticLevels` в production не используются (только M-цели A7), `MaxControl = 600` для
+  fixed-step, `MaxStepSeconds = 600` для adaptive, бюджет `1e7`, `RefineTies=true`.
+- 2026-11-14, C2: **регрессия полного профиля** — прогон `20261114T141520Z_e73b10d`
+  (`dirty: dirty`, код C2), 47 задач, 2925 ячеек,
+  `PASS=1800 FAIL=194 N/A=555 SKIP=376 ERROR=0`, 3 391 391 мс;
+  `--compare` против `20261114T093336Z_f899097` — **0 статусов, 0 новых ячеек, 0 ошибок,
+  0 цен**. `Test551` — 84 PASS / 0 FAIL, SHA256 `54ae98e2…`. Smoke не сравнивался с full-
+  эталоном напрямую: сравнение smoke против full даёт бюджетные различия (2e6 vs 1e7), поэтому
+  доказательство неизменности — полный прогон.
+
 ### S1 (метровые цели)
 
 - 2026-11-12, S1: вид цели `M` — отдельный список `QualificationProblem.MeterTargets`
@@ -589,6 +625,17 @@ _Каждое аддитивное изменение существующего
    метрики Q из одного прогона.
    Обе правки — аддитивные, без изменения существующей логики; Test551 после них даёт
    84 PASS / 0 FAIL и прежний SHA256 имён.
+4. `Tools/P1bTests/Study/framework/StudyOde.cs`: у `StudyProblem` добавлено необязательное
+   поле `MaxStepSeconds` (0 = нет cap). Appendix C, C4 требует «адаптивные методы: максимальный
+   шаг 600 с», но существующий механизм `StudyOptions.AdaptiveMaxSteps` помечает такие строки
+   `Variant="cap=..."`, а движок квалификации берёт только строки без variant. Поле позволяет
+   задать cap без variant. Существующие задачи его не заполняют (0), поведение не меняется;
+   `Test551` — 84/0, SHA256 `54ae98e2…`; полный `full`-прогон C2 — 0 изменений против baseline.
+5. `Tools/P1bTests/Study/framework/StudyIntegratorApi.cs`: `AdaptiveIntegrator.MakeConfig`
+   учитывает `p.MaxStepSeconds`, если он задан (иначе `cfg.MaxStep = maxStep` как раньше).
+   Это единственная строка логики, добавленная вне `qualification/`; при `MaxStepSeconds = 0`
+   ветка не выполняется. Обоснование то же: без неё production-профиль не может выразить cap
+   игры, не потеряв строки из `runs.csv`. `Test551` и full-регрессия — как в п. 4.
 
 ## Решения владельца (2026-11-11)
 
@@ -1580,6 +1627,21 @@ FAIL→PASS, F05 Y6/Y6C PASS→FAIL; `PASS=1661 FAIL=152 N/A=237 SKIP=230 ERROR=
   Найдено: `WHICH_INTEGRATOR_WHEN.md` отсутствует (`FOUND.md` F13), `SimulationRunner` не
   входит в `GameSources.props`, локальный кадр включён всегда. Код не менялся (`git diff`
   по `*.cs`/`*.csproj`/`*.props` пуст).
+- **2026-11-14 — C1 (завершён).** Пороги ворот C6 записаны и заморожены до первого запуска
+  C4/C5 (цена 1.5×, ≥2 класса, wall time, ошибка с допуском 1.5×). Операционные определения:
+  классы S01/S02/S03/S09, S04/S05/S14, S06, S12/S15/R4; цена — single-price rule; агрегация —
+  геометрическое среднее отношений цен; wall time — 1/60, 30, 600 с; ошибка — 1.5× на шум.
+  `heliocentric` не участвует, пока нет задач (вопрос №10).
+- **2026-11-14 — C2 (завершён).** `QualificationProduction.cs`: профиль `production` (13 задач
+  C4) и адаптеры `Prod-DOP853`/`Prod-DOPRI5` (игровые `SpacecraftOrbitIntegrator.StepForward*`,
+  допуски из `SpacecraftPhysics`, cap 600 с). K-проверка: побитовый паритет с
+  `SpacecraftPhysics.Step` 16/16; `Prod-DOP853` A1 на всех K, `Prod-DOPRI5` — A1 на K1/K5–K8,
+  на K2–K4 `4.6e-6…3.9e-6` (факт, не порог). Первый production-прогон вскрыл потерю
+  cap-вариантов в `runs.csv`; исправлено аддитивным `StudyProblem.MaxStepSeconds` (+ ветка в
+  `AdaptiveIntegrator.MakeConfig`), записано в «Изменения вне qualification/» п. 4–5.
+  Полный `full` `20261114T141520Z_e73b10d`: 47 задач, 2925 ячеек,
+  `PASS=1800 FAIL=194 N/A=555 SKIP=376 ERROR=0`, 3 391 391 мс; `--compare` — **0 статусов,
+  0 новых ячеек, 0 ошибок, 0 цен**. `Test551` — 84/0, SHA256 `54ae98e2…`.
 
 ## Definition of Done Приложения B (проверено в B6)
 

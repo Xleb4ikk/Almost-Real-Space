@@ -196,6 +196,12 @@ namespace P1bStudy.Framework
             cfg.Rtol = control;
             cfg.Atol = 0d;
             cfg.MaxStep = maxStep;
+            if (p.MaxStepSeconds > 0d
+                && (double.IsPositiveInfinity(cfg.MaxStep) || cfg.MaxStep > p.MaxStepSeconds))
+            {
+                cfg.MaxStep = p.MaxStepSeconds;
+            }
+
             cfg.Label = "rtol=" + control.ToString("G3", System.Globalization.CultureInfo.InvariantCulture);
             return cfg;
         }

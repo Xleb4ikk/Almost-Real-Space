@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using Galilego.Core;
 using P1bStudy.Framework;
 
 // Test564 M3: support matrix and gates G1 (accuracy), G2 (observed order), G5 (finiteness),
@@ -32,7 +33,7 @@ internal static partial class P1bTests
         QualificationProblem q, StudyProblem p, QualificationProfile profile)
     {
         var goals = new List<QualificationGoal>();
-        if (q.AnalyticLevels)
+        if (q.AnalyticLevels && profile != QualificationProfile.Production)
         {
             for (int i = 0; i < QualificationLevelFactors.Length; i++)
             {
@@ -70,8 +71,10 @@ internal static partial class P1bTests
         }
 
         // Appendix B, B6: Q goals ("the integrator does not spoil the model") exist only when
-        // layer V supplied an E_model for this task's model and window.
-        if (q.QTargets != null && double.IsFinite(q.QModelRms8) && double.IsFinite(q.QModelMoon)
+        // layer V supplied an E_model for this task's model and window. The production profile
+        // has no H tier and no layer V, so Q goals are not built there.
+        if (profile != QualificationProfile.Production
+            && q.QTargets != null && double.IsFinite(q.QModelRms8) && double.IsFinite(q.QModelMoon)
             && q.QModelRms8 > 0d && q.QModelMoon > 0d && p.ScaleLength > 0d)
         {
             foreach (double factor in q.QTargets)
@@ -98,7 +101,9 @@ internal static partial class P1bTests
     /// <summary>Cell count of a problem without building it (resume completeness check).</summary>
     private static int QualificationGoalCount(QualificationProblem q, QualificationProfile profile)
     {
-        int n = q.AnalyticLevels ? QualificationLevelFactors.Length : 0;
+        int n = q.AnalyticLevels && profile != QualificationProfile.Production
+            ? QualificationLevelFactors.Length
+            : 0;
         if (q.MeterTargets != null)
         {
             foreach (double target in q.MeterTargets)
@@ -111,7 +116,8 @@ internal static partial class P1bTests
             }
         }
 
-        if (q.QTargets != null && double.IsFinite(q.QModelRms8) && double.IsFinite(q.QModelMoon)
+        if (profile != QualificationProfile.Production
+            && q.QTargets != null && double.IsFinite(q.QModelRms8) && double.IsFinite(q.QModelMoon)
             && q.QModelRms8 > 0d && q.QModelMoon > 0d)
         {
             foreach (double factor in q.QTargets)
@@ -446,7 +452,7 @@ internal static partial class P1bTests
         string dir, QualificationResumeContext resume)
     {
         QualificationPrepareKeplerPins();
-        List<IStudyIntegrator> methods = StudyRegistry.All();
+        List<IStudyIntegrator> methods = QualificationMethodsFor(profile);
         QualificationCheckSupportFlags(catalog, methods, log);
 
         var runRows = new List<string>();
@@ -567,7 +573,7 @@ internal static partial class P1bTests
                 }
             }
 
-            if (q.AnalyticLevels)
+            if (q.AnalyticLevels && profile != QualificationProfile.Production)
             {
                 foreach (QualificationGoal goal in evaluatedGoals)
                 {
@@ -591,14 +597,32 @@ internal static partial class P1bTests
 
             targets.Sort();
             options.AbsTargets = targets.ToArray();
-            options.AdaptiveMaxSteps = new[] { double.PositiveInfinity };
-            // Owner decision 2026-11-11: smoke keeps 2e6 (minutes), full gets 10e6 so that
-            // RK4 L2 A2 (~4e6 calls) is no longer censored. G7 still turns a real budget hit
-            // into SKIP, not FAIL. B4.3: H3/H6 carry their own 1e6 per-cell cap.
-            options.MaxCostRhs = q.MaxCostRhs > 0
-                ? q.MaxCostRhs
-                : (profile == QualificationProfile.Full ? 10000000L : 2000000L);
-            options.RefineTies = profile == QualificationProfile.Full;
+            if (profile == QualificationProfile.Production)
+            {
+                // Appendix C, C4: the game's step cap and tolerance conditions. The adaptive
+                // cap and the fixed-step control cap are both read from the game constant, not
+                // typed in here. AdaptiveControlMax = 1 keeps the Prod-* adapters at their single
+                // game-tolerance point (their ControlRange is one value); it does not truncate a
+                // study rtol range, which never goes above 1.
+                p.MaxControl = OrbitIntegrator.DefaultMaxStepSize;
+                p.MaxStepSeconds = OrbitIntegrator.DefaultMaxStepSize;
+                options.AdaptiveMaxSteps = new[] { double.PositiveInfinity };
+                options.AdaptiveControlMax = 1d;
+                options.MaxCostRhs = 10000000L;
+                options.RefineTies = true;
+            }
+            else
+            {
+                options.AdaptiveMaxSteps = new[] { double.PositiveInfinity };
+                // Owner decision 2026-11-11: smoke keeps 2e6 (minutes), full gets 10e6 so that
+                // RK4 L2 A2 (~4e6 calls) is no longer censored. G7 still turns a real budget hit
+                // into SKIP, not FAIL. B4.3: H3/H6 carry their own 1e6 per-cell cap.
+                options.MaxCostRhs = q.MaxCostRhs > 0
+                    ? q.MaxCostRhs
+                    : (profile == QualificationProfile.Full ? 10000000L : 2000000L);
+                options.RefineTies = profile == QualificationProfile.Full;
+            }
+
             options.TimingReps = 1;
 
             log.WriteLine(q.Id + " " + q.Title + " (" + p.Label + ")");

@@ -10,9 +10,9 @@ using P1bStudy.Framework;
 internal static partial class P1bTests
 {
     private static void QualificationAppendAppendixA(
-        List<QualificationProblem> list, QualificationProfile profile)
+        List<QualificationProblem> list, QualificationProfile profile, bool productionOnly = false)
     {
-        QualificationAppendAppendixShips(list, profile);
+        QualificationAppendAppendixShips(list, profile, productionOnly);
     }
 
     // ---------------------------------------------------------------------------------
@@ -20,7 +20,7 @@ internal static partial class P1bTests
     // ---------------------------------------------------------------------------------
 
     private static void QualificationAppendAppendixShips(
-        List<QualificationProblem> list, QualificationProfile profile)
+        List<QualificationProblem> list, QualificationProfile profile, bool productionOnly = false)
     {
         // S2: ship near Earth, gravity and J2 (A10).
         list.Add(QualificationAppendixShip(
@@ -49,23 +49,29 @@ internal static partial class P1bTests
             new[] { "heo", "ecc-high" }, false));
 
         // S3: velocity/mass-dependent forces and heliocentric flights (A10).
-        list.Add(QualificationAppendixShip(
-            "S10", "Earth 250 km + atmosphere drag", "Earth 250 km + atmosphere drag, 1 d",
-            new[] { "leo", "drag", "velocity-dependent" }, false));
-        list.Add(QualificationAppendixShip(
-            "S11", "Earth LEO 400 km + 600 s prograde burn",
-            "Earth LEO 400 km + 600 s prograde burn, 1 d",
-            new[] { "leo", "thrust", "velocity-dependent" }, false));
-        list.Add(QualificationAppendixShip(
-            "S17", "Earth LEO 400 km + unaligned 600 s burn",
-            "Earth LEO 400 km + unaligned 600 s burn, 1 d",
-            new[] { "leo", "thrust", "velocity-dependent" }, false));
-        list.Add(QualificationAppendixShip(
-            "S07", "Sun 1 AU circular", "Sun 1 AU circular, 1 y",
-            new[] { "heliocentric", "far-flight" }, false));
-        list.Add(QualificationAppendixShip(
-            "S08", "Sun 0.5 x 2 AU eccentric", "Sun 0.5 x 2 AU eccentric, 1 y",
-            new[] { "heliocentric", "far-flight", "ecc-mid" }, false));
+        // The production profile (Appendix C, C4) excludes them: S10/S11/S17 stay on DOP853
+        // in the game and only enter the comparison to prove that candidates give N/A;
+        // S07/S08 are heliocentric and not part of the C4 task list.
+        if (!productionOnly)
+        {
+            list.Add(QualificationAppendixShip(
+                "S10", "Earth 250 km + atmosphere drag", "Earth 250 km + atmosphere drag, 1 d",
+                new[] { "leo", "drag", "velocity-dependent" }, false));
+            list.Add(QualificationAppendixShip(
+                "S11", "Earth LEO 400 km + 600 s prograde burn",
+                "Earth LEO 400 km + 600 s prograde burn, 1 d",
+                new[] { "leo", "thrust", "velocity-dependent" }, false));
+            list.Add(QualificationAppendixShip(
+                "S17", "Earth LEO 400 km + unaligned 600 s burn",
+                "Earth LEO 400 km + unaligned 600 s burn, 1 d",
+                new[] { "leo", "thrust", "velocity-dependent" }, false));
+            list.Add(QualificationAppendixShip(
+                "S07", "Sun 1 AU circular", "Sun 1 AU circular, 1 y",
+                new[] { "heliocentric", "far-flight" }, false));
+            list.Add(QualificationAppendixShip(
+                "S08", "Sun 0.5 x 2 AU eccentric", "Sun 0.5 x 2 AU eccentric, 1 y",
+                new[] { "heliocentric", "far-flight", "ecc-mid" }, false));
+        }
 
         // S4: Moon flyby and Earth hyperbola; these carry the 0.1/0.01 m goals (A7).
         list.Add(QualificationAppendixShip(
