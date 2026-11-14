@@ -91,3 +91,48 @@
 D1 — сверка чисел `DECISION_TABLE.md` с CSV, ссылки «прогон/файл.csv: problem,method,goal[,колонка]»,
 факты D1.d. D2/D3 — измерения G1/T1–T6 и причины выбора. D4/D5 — результаты `VesselStep`-прогонов
 (`dynamic.csv`).
+
+---
+
+## D1. Таблица решений и доказательства
+
+### D1.1. Чистый production-прогон
+
+| поле | значение |
+|---|---|
+| папка | `qualification/results/20261114T193520Z_ff36340/` |
+| `environment.txt` | `profile: production`, `commit: ff36340cd5cd921e1cfef9cd09d07b754fde264b`, `branch: integrator-port/dynamic-policy`, `dirty: clean`, 17 методов, .NET 8.0.24 |
+| длительность | 948 031 мс |
+| ячейки `matrix.csv` | 833: `PASS=746`, `FAIL=48`, `SKIP=39` |
+| `game_control.csv` | 221 `ok`, 0 aborted/error |
+| `chunks.csv` | 1105 `ok`, 0 error/aborted |
+| ERROR | 0 |
+
+Сравнение с `20261114T151403Z_e860827` (гейт §6): 833 общих ячейки, **0** различий статусов,
+**0** цен с отклонением > 10 %. `runs.csv`/`matrix.csv` двух прогонов совпали побитово.
+`game_control.csv` отличается для адаптивных study-методов: старый прогон был `dirty`, протокол
+game-control появился после `e860827` (`QualificationChunkTest.cs`, коммит `7b3e7bb Q-C3`).
+Все числа для включения в `DECISION_TABLE.md` взяты из нового прогона.
+
+### D1.2. Аудит доказательств Surface/Sun-coast
+
+| ветка | CSV-строки | игровые допуски | артефакты в репозитории | статус |
+|---|---|---|---|---|
+| Surface (R2) | нет: 13 production-задач без 6-DOF/тяги; `chunks.csv` 0.05 с — орбитальные чанки | нет | `LiveChunkPolicyTests.cs:41-65`; `IntegratorPolicyRuntime.cs:126-138`; `TouchdownEventIntegratorTests.cs` | `NO-EVIDENCE` |
+| Sun-coast (R3) | нет: класса `heliocentric` в production нет (`PRODUCTION_REPORT.md`, вопрос 10) | нет | `LiveChunkPolicyTests.cs:16-38`; `IntegratorPolicyRuntime.cs:24-41,71-92` | `NO-EVIDENCE` |
+
+Дополнительно: 600-с Sun-coast в репозитории не измерялся; `IntegratorPolicy.cs:93` ссылается на
+«the 30-50 s live chunk and the 600 s stress chunk», но тест есть только на 30 с.
+
+### D1.3. Факты D1.d (только чтение)
+
+| вопрос | факт | ссылка |
+|---|---|---|
+| тела с `J2 == 0` | все: сцены `Sol` и `Terra` (`J2: 0`), остальные сцены без поля → default 0; `ExampleSystemPresets` J2 не задаёт | `OutdoorsScene.unity:426,953`; `ExampleSystemPresets.cs:22-59` |
+| орбиты в диапазоне Ported | у тел — нет (орбиты тел: Terra a=5.519e10 м); корабль стартует на поверхности во всех 4 сценах | `OutdoorsScene.unity:1337-1350`; `ContactZoneSlice.unity:222-235`; `PlayerRoofSlice.unity:466-479`; `PlayerWalkSlice.unity:391-404` |
+| Terra как тело для R1 | R=1 143 000 м, μ=1.28e13; 200/400/2000 км → v_circ 3087/2880/2018 м/с; v_esc 4733 м/с; SOI 1.64e8 м | `OutdoorsScene.unity:949-970`; формулы — `StarSystem.SphereOfInfluenceRadius` |
+| гелиоцентрический coast ≥ 1e10 м | возможен во всех сценах после выхода из SOI Terra (1.64e8 м); требует обоих флагов и `CanCoast` | `SimulationRunner.cs:65-71`; `VesselStep.cs:347-357` |
+| cislunar | недостижим: Луны в сценах нет (только Sol + Terra) | `ExampleSystemPresets.cs` используется только `Tools/P1bTests` |
+| флаги в `.unity` | не сериализованы нигде (0 совпадений), действует default `false` | `grep` по `Assets/**/*.unity,*.prefab,*.asset` |
+| горизонт одного `AdvanceToTarget` | `BakedEndSeconds() = +∞`: `StreamingAssets/Ephemerides` отсутствует | `SimulationRunner.cs:568`; `StarSystem.cs:711-724` |
+
