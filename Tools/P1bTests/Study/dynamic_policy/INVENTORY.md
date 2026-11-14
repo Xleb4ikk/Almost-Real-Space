@@ -136,3 +136,14 @@ game-control появился после `e860827` (`QualificationChunkTest.cs`,
 | флаги в `.unity` | не сериализованы нигде (0 совпадений), действует default `false` | `grep` по `Assets/**/*.unity,*.prefab,*.asset` |
 | горизонт одного `AdvanceToTarget` | `BakedEndSeconds() = +∞`: `StreamingAssets/Ephemerides` отсутствует | `SimulationRunner.cs:568`; `StarSystem.cs:711-724` |
 
+---
+
+## D3. Исправления политики
+
+| элемент | файл:строка | что сделано |
+|---|---|---|
+| G1 guard | `Assets/_Project/Scripts/Spacecraft/SpacecraftPhysics.cs` (`PortedRegimeHolds`, WH-ветка local frame) | на старте каждого WH-чанка: высота в 200 000…2 000 000 м и `0 ≤ e < 0.05` (константы `IntegratorPolicy`); иначе DOP853 на этот чанк и `StepDiagnostics.Fallbacks++`. Guard активен для дочерних тел (root политика никогда не выбирает: SunDominant) |
+| причины выбора | `IntegratorPolicy.cs` (`IntegratorSelectionReason`, `SelectWithReason`), `VesselStep.cs` (`LastSelectionReason`) | аддитивно; `Select` делегирует в `SelectWithReason` и возвращает тот же интегратор |
+| ссылки на таблицу | `IntegratorPolicy.cs` (комментарии ветвей) | R1/R2/R3 + R0, R4–R10 → default |
+
+

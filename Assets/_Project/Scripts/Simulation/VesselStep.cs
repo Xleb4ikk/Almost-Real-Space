@@ -79,6 +79,13 @@ namespace Galilego.Universe
         /// <summary>Integrator chosen for the last Propagate/LongWarp call (observability/tests).</summary>
         public SpacecraftIntegrator LastSelectedIntegrator { get; private set; } = SpacecraftIntegrator.Dop853;
 
+        /// <summary>
+        /// Why the policy picked <see cref="LastSelectedIntegrator"/> (D3 observability):
+        /// DECISION_TABLE.md rows R1/R2/R3, otherwise Default. Does not affect the choice.
+        /// </summary>
+        public IntegratorSelectionReason LastSelectionReason { get; private set; } =
+            IntegratorSelectionReason.Default;
+
         /// <summary>Thrust source of the flight model (given the per-chunk attitude snapshot).</summary>
         public FlightThrustSource FlightSource;
 
@@ -333,6 +340,7 @@ namespace Galilego.Universe
             {
                 Propagator.Integrator = SpacecraftIntegrator.Dop853;
                 LastSelectedIntegrator = SpacecraftIntegrator.Dop853;
+                LastSelectionReason = IntegratorSelectionReason.Default;
                 return;
             }
 
@@ -418,8 +426,10 @@ namespace Galilego.Universe
                 centralMu,
                 eccentricity,
                 EnablePortedIntegratorPolicy);
-            SpacecraftIntegrator selected = IntegratorPolicy.Select(context);
+            SpacecraftIntegrator selected = IntegratorPolicy.SelectWithReason(
+                context, out IntegratorSelectionReason reason);
             LastSelectedIntegrator = selected;
+            LastSelectionReason = reason;
             Propagator.Integrator = selected;
             // WH-BM14A has no certified dense event root: events must re-integrate from the
             // chunk start (C7.3a). The Hermite segment is for rendering only.

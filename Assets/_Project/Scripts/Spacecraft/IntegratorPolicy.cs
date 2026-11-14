@@ -81,6 +81,20 @@ namespace Galilego.Spacecraft
     }
 
     /// <summary>
+    /// Why <see cref="IntegratorPolicy.Select"/> returned its integrator. Maps to the
+    /// DECISION_TABLE.md rows: R1 = PortedLongWarpCoast, R2 = SurfaceFlight,
+    /// R3 = SunCoast; R0 and every row that falls through (R4-R10) = Default.
+    /// Additive observability only: the selection itself is unchanged.
+    /// </summary>
+    public enum IntegratorSelectionReason
+    {
+        Default = 0,
+        PortedLongWarpCoast = 1,
+        SurfaceFlight = 2,
+        SunCoast = 3
+    }
+
+    /// <summary>
     /// Per-chunk DOPRI5/DOP853 choice. The criterion is measured, not
     /// mission-typed: DOPRI5 is cheaper only when the chunk, not the tolerance,
     /// bounds the step (6 stages vs 12), and it is selected only where the
@@ -130,6 +144,19 @@ namespace Galilego.Spacecraft
 
         public static SpacecraftIntegrator Select(in IntegratorContext context)
         {
+            return SelectWithReason(context, out _);
+        }
+
+        /// <summary>
+        /// Same decision as <see cref="Select"/>, plus the reason (D3 observability).
+        /// The returned integrator is identical: the order and every condition below
+        /// are the ones the tests pin in DynamicPolicySelectTests.
+        /// </summary>
+        public static SpacecraftIntegrator SelectWithReason(
+            in IntegratorContext context, out IntegratorSelectionReason reason)
+        {
+            // DECISION_TABLE.md R2: 6-DOF flight at the 0.05 s control grain, above
+            // the touchdown guard. Surface stays off (Q2 = NO, D1.c: NO-EVIDENCE).
             bool surface = context.FlightModelActive
                 && context.ChunkSeconds <= SurfaceChunkSeconds + 1e-9d
                 && context.AltitudeMeters < SurfaceAltitudeMeters;
@@ -137,24 +164,25 @@ namespace Galilego.Spacecraft
             if (surface
                 && !(context.VerticalSpeedMps < 0d && context.AltitudeMeters < TouchdownGuardMeters))
             {
+                reason = IntegratorSelectionReason.SurfaceFlight;
                 return SpacecraftIntegrator.Dopri5;
             }
 
-            // Sun-dominated coast: explicit scene allowlist (5 AU/cislunar stay
-            // off until their own tests pass), no non-gravity contributions,
-            // and outside the inner-heliocentric guard. The 600 s and 30-50 s
-            // tests both show a chunk-bound step and a large error margin.
+            // DECISION_TABLE.md R3: Sun-dominated coast (report-only; Q3 = NO).
+            // Explicit scene allowlist (5 AU/cislunar stay off), no non-gravity
+            // contributions, outside the inner-heliocentric guard.
             if (context.SunDominant
                 && context.SunCoastAllowed
                 && context.CanCoast
                 && context.AltitudeMeters >= MinSunDistanceMeters)
             {
+                reason = IntegratorSelectionReason.SunCoast;
                 return SpacecraftIntegrator.Dopri5;
             }
 
-            // Ported WH-BM14A (Appendix C, per-regime): planetocentric near-circular
-            // long-warp coast only. The branch is off unless the scene sets the new flag;
-            // everything else falls through to DOP853.
+            // DECISION_TABLE.md R1: ported WH-BM14A, planetocentric near-circular
+            // long-warp coast only. Everything else falls through to DOP853 (R0;
+            // R4-R10 are the same default by owner decision).
             if (context.PortedAllowed
                 && context.CanCoast
                 && !context.SunDominant
@@ -166,9 +194,11 @@ namespace Galilego.Spacecraft
                 && context.Eccentricity >= 0d
                 && context.Eccentricity < PortedMaxEccentricity)
             {
+                reason = IntegratorSelectionReason.PortedLongWarpCoast;
                 return SpacecraftIntegrator.WhBm14a;
             }
 
+            reason = IntegratorSelectionReason.Default;
             return SpacecraftIntegrator.Dop853;
         }
     }

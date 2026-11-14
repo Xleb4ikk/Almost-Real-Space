@@ -25,7 +25,7 @@ Surface и Sun-coast остаются выключенными; D2/D4 делаю
 | **D0** | Ритуал и базовая линия (код не меняется) | **завершён 2026-11-14** |
 | **D1** | Таблица решений и доказательства (код не меняется): сверка чисел по CSV, чистый повторный production-прогон, аудит Surface/Sun-coast, факты D1.d | **завершён 2026-11-14, стоп §8.3** |
 | **D2** | Тесты на пробелы политики (T1–T6), только новые файлы тестов | **завершён 2026-11-14** |
-| **D3** | Исправления политики только по подтверждённому в D2 (+ наблюдаемость `LastSelectionReason`) | не начат |
+| **D3** | Исправления политики только по подтверждённому в D2 (+ наблюдаемость `LastSelectionReason`) | **завершён 2026-11-15** |
 | **D4** | Проверка веток через `VesselStep` (R1/R2/R3) → `dynamic.csv`, `DYNAMIC_REPORT.md` | не начат |
 | **D5** | Сквозной сценарий смены режимов (поверхность → LEO → long-warp → тяга → спуск → касание) | не начат |
 | **D6** | Регрессия §10 + итоговый `DYNAMIC_REPORT.md` + одна строка в `PORT_REPORT.md` | не начат |
@@ -274,14 +274,14 @@ Commit этапа: `Q-D2` (`git log --format=%H -1 --grep=^Q-D2`). Произв�
 
 | тест | файл | пункт |
 |---|---|---|
-| `DynamicPolicySelectTests` (37 theory-кейсов) | `tests/GalilegoSimTests/DynamicPolicySelectTests.cs` | T1: строки R0–R10 + граничные пары §6 (высота 200 000/2 000 000 м с обеих сторон, `e = 0.05`, чанк 600 с, `CentralMu = 0`, `e = NaN`, `CanCoast=false`, `FlightModelActive=true`) |
+| `DynamicPolicySelectTests` (35 theory-кейсов) | `tests/GalilegoSimTests/DynamicPolicySelectTests.cs` | T1: строки R0–R10 + граничные пары §6 (высота 200 000/2 000 000 м с обеих сторон, `e = 0.05`, чанк 600 с, `CentralMu = 0`, `e = NaN`, `CanCoast=false`, `FlightModelActive=true`) |
 | `DynamicPolicyRegimeDriftTests` (1 факт, 24 кейса) | `tests/GalilegoSimTests/DynamicPolicyRegimeDriftTests.cs` | T3: S01/S02/S03/S09 × высоты 200/400/2000 км × `e` 0/0.04, J2 у S03/S09, Луна и Солнце; выбор один раз, затем 30 суток по 600 с |
 | `DynamicPolicyFallbackTests` (6 проверок) | `tests/GalilegoSimTests/DynamicPolicyFallbackTests.cs` | T4: `Fallbacks == 0` в режиме (4 сценария), `> 0` на абсолютном пути, 0 при выборе DOP853 |
 | `Test561` +12 проверок/измерений | `Tools/P1bTests/Tests/IntegratorPolicyRuntime.cs` | T2 (побитовость), T5 (crossing/transition через `VesselStep` под WH), T6 (аллокации/время/wall) |
 
 ### Результаты (числа из вывода тестов)
 
-**T1** — 37/37 `Select` совпал с ожидаемым; таблица R0–R10 и все границы §6 подтверждены.
+**T1** — 35/35 `Select` совпал с ожидаемым; таблица R0–R10 и все границы §6 подтверждены.
 `Select` не имеет входа J2, поэтому R9 (тело с `J2 == 0`) даёт DOP853: ветки WH-Y6 в коде нет.
 
 **T2 (флаги выключены, `VesselStep` против прямого `SpacecraftPhysics.Step`).**
@@ -327,7 +327,7 @@ Commit этапа: `Q-D2` (`git log --format=%H -1 --grep=^Q-D2`). Произв�
 ### Регрессия (§10)
 
 * `Test551`: `lines=84 fails=0`, SHA256 `54ae98e2…` — прежний хэш.
-* `GalilegoSimTests`: 60 → **102** (42 новых: 37 T1 + 1 T3 + 4 T4 theory; из них 2 факта T4), все зелёные.
+* `GalilegoSimTests`: 60 → **102** (42 новых: 35 T1 + 1 T3 + 6 T4), все зелёные.
 * `GalilegoPhysicsTests`: 283/283 — без изменений.
 * `Test561_IntegratorPolicy`: **ALL PASS** (28 проверок + 2 MEASURED).
 * `--compare` стенда не требовался: `GameSources.props`-файлы не менялись (только тесты).
@@ -339,4 +339,57 @@ Commit этапа: `Q-D2` (`git log --format=%H -1 --grep=^Q-D2`). Произв�
   (файл `EventDrivenPropagator` вне границ D), либо WH не даёт wall-выигрыша в игре.
 * T3 — измерение, не гейт: красный тест на дефект не коммитился (D2), числа выше.
 
+## D3. Исправления политики — 2026-11-15
+
+Commit этапа: `Q-D3` (`git log --format=%H -1 --grep=^Q-D3`). Изменены только разрешённые §4 файлы:
+`Assets/_Project/Scripts/Spacecraft/IntegratorPolicy.cs`, `Assets/_Project/Scripts/Simulation/VesselStep.cs`,
+`Assets/_Project/Scripts/Spacecraft/SpacecraftPhysics.cs` (ветка WH-BM14A). Новые тесты — два файла в
+`tests/GalilegoSimTests/`. События, источники сил, сцены, численная часть DOP853/DOPRI5 не тронуты.
+
+### 1. G1: guard в ветке WH-BM14A (подтверждено в D2, 11/24 кейсов)
+
+`SpacecraftPhysics.PortedRegimeHolds` на старте каждого WH-чанка в локальном кадре проверяет
+высоту 200 000…2 000 000 м и `0 ≤ e < 0.05` (константы `IntegratorPolicy`). Если инвариант нарушен —
+чанк считается DOP853, `StepDiagnostics.Fallbacks++`. Guard действует для дочерних тел: корень системы
+политика никогда не выбирает (`SunDominant`), поэтому прямой WH на корневом теле (core/production-тесты)
+сохраняет прежнее поведение — `WhBm14aProductionTests` не изменились.
+
+Тест `DynamicPolicyPortedGuardTests` (4 проверки), числа:
+
+| сценарий | Fallbacks | результат |
+|---|---|---|
+| в полосе (400 км, e=0, Sun+Earth) | 0 | WH |
+| старт выше полосы (2 500 км) | 1 | состояние **побитово равно** DOP853 (`dP = 0`) |
+| e = 0.2 при 400 км | 1 | DOP853 |
+| дрейф: 2000 км, e=0.04 | чанк 1: 0, чанк 2: 1 | первый чанк WH, второй — откат |
+
+Тест соответствует измерению D2: на коде до D3 те же вне-полосные чанки давали `Fallbacks = 0`
+и интегрировались WH (T3). Красным он не коммитился — исправление пришло вместе с ним (D3).
+
+### 2. Наблюдаемость
+
+* `IntegratorSelectionReason { Default, PortedLongWarpCoast, SurfaceFlight, SunCoast }` в `IntegratorPolicy.cs`.
+* `IntegratorPolicy.SelectWithReason(context, out reason)`; `Select` делегирует в него и **возвращает тот же интегратор**.
+* `VesselStep.LastSelectionReason` (read-only) заполняется в `ApplyIntegratorPolicy`, в том числе `Default` при выключенных флагах.
+* Комментарии ветвей ссылаются на `DECISION_TABLE.md` R1/R2/R3; R0 и R4–R10 — `Default`.
+* Тест `DynamicPolicyReasonTests`: все 35 кейсов D2/T1 — причина совпадает с ожидаемой, `Select` тождественен
+  `SelectWithReason` по результату (35/35).
+
+### 3. Регрессия (§10)
+
+* `Test551`: `lines=84 fails=0`, SHA256 `54ae98e23563b5bec8551f9188a2b83424b049cc6e4cd5deba43141402aec5e6` — прежний.
+* `GalilegoSimTests`: **107/107** (102 после D2 + 4 guard + 1 reason).
+* `GalilegoPhysicsTests`: 283/283.
+* `Test561_IntegratorPolicy`: **ALL PASS**; `ApplyIntegratorPolicy` — 0 Б/1000 вызовов, 0.742 мкс/вызов;
+  аллокации чанка WH = DOP853 = 74 400 Б; wall 600-с чанка через `VesselStep` 1.1293 vs 1.1231 мс (ratio 1.006) — F4.
+* **`--compare` стенда**: `production` против чистого прогона D1 `20261114T193520Z_ff36340` —
+  **0 статусов, 0 новых ячеек, 0 ошибок, 0 изменений цен**. Профиль совпадает, поэтому это честная проверка.
+  `smoke` против `full`-эталона `20261114T173334Z_142824a` дал 93/194/235 расхождений — это артефакт другой
+  контрольной сетки (smoke упирается в 2e6), а не изменение кода; `full` обязателен в D6.
+* Флаги выключены: `Integrator == DOP853`, guard не вызывается; T2 повторно даёт побитовость для live-чанков,
+  прежние числа для 600 с/flight (F3).
+
+### 4. Что не исправлено (вне списка D2)
+
+Wall-гейт §6 (F4) — не политика: гранулярность событий 30 с. Решение в D4/D6 и у владельца.
 

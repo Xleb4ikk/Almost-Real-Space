@@ -105,6 +105,46 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
+        /// D3/G1: the Ported branch is certified only for a planetocentric coast with
+        /// 200-2000 km altitude and 0 &lt;= e &lt; 0.05 (DECISION_TABLE.md R1). The policy
+        /// picks WH once per Propagate/AdvanceToTarget, while a long warp can carry the
+        /// state out of that band; check the invariants at the start of every chunk and
+        /// let the caller fall back to DOP853 for the offending chunk.
+        ///
+        /// The root body is never a policy-selected centre (VesselStep treats it as
+        /// Sun-dominant), so the guard applies to child bodies only; direct WH use on a
+        /// root body (core/production tests) keeps its previous behaviour.
+        /// </summary>
+        private static bool PortedRegimeHolds(
+            OrbitingBody body, in SpacecraftIntegrationState state)
+        {
+            if (body == null || body.Parent == null)
+            {
+                return true;
+            }
+
+            double mu = body.ResolveStandardGravitationalParameter();
+            double radius = state.Position.Magnitude;
+            if (!(mu > 0d) || !(radius > 0d))
+            {
+                return false;
+            }
+
+            double altitude = radius - body.Radius;
+            OrbitalElements elements = OrbitalElements.FromState(
+                state.Position, state.Velocity, mu);
+            if (!elements.IsValid)
+            {
+                return false;
+            }
+
+            return altitude >= IntegratorPolicy.PortedMinAltitudeMeters
+                && altitude <= IntegratorPolicy.PortedMaxAltitudeMeters
+                && elements.Eccentricity >= 0d
+                && elements.Eccentricity < IntegratorPolicy.PortedMaxEccentricity;
+        }
+
+        /// <summary>
         /// Same step, plus dense output of accepted internal steps into segments
         /// (null — do not collect, bit-for-bit behavior of Step).
         /// </summary>
@@ -194,7 +234,16 @@ namespace Galilego.Spacecraft
                 SpacecraftOrbitIntegrator.DerivativeFunction localDerivative =
                     (state, time) => EvaluateLocalDerivative(state, time, dominant);
                 SpacecraftIntegrationResult localResult;
-                if (Integrator == SpacecraftIntegrator.WhBm14a)
+                bool whRegimeHolds = Integrator == SpacecraftIntegrator.WhBm14a
+                    && PortedRegimeHolds(dominant, localStart);
+                if (Integrator == SpacecraftIntegrator.WhBm14a && !whRegimeHolds
+                    && StepDiagnostics != null)
+                {
+                    // D3/G1: the state left the certified Ported band inside the call.
+                    StepDiagnostics.Fallbacks++;
+                }
+
+                if (whRegimeHolds)
                 {
                     try
                     {
