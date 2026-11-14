@@ -186,7 +186,17 @@ internal static partial class P1bTests
             if (resuming && remaining == 0)
             {
                 log.WriteLine("nothing to resume: all evaluated problems are complete");
+                if (profile == QualificationProfile.Production)
+                {
+                    QualificationRunChunkTest(catalog, methods, dir, log);
+                }
+
                 QualificationWriteReports(dir, catalog, log);
+                if (profile == QualificationProfile.Production)
+                {
+                    QualificationWriteProductionReport(dir, catalog, log);
+                }
+
                 if (QualificationFailOnErrors(dir, catalog, log))
                 {
                     return 1;
@@ -198,7 +208,16 @@ internal static partial class P1bTests
             }
 
             QualificationRunCatalogue(catalog, profile, log, dir, resume);
+            if (profile == QualificationProfile.Production)
+            {
+                QualificationRunChunkTest(catalog, methods, dir, log);
+            }
+
             QualificationWriteReports(dir, catalog, log);
+            if (profile == QualificationProfile.Production)
+            {
+                QualificationWriteProductionReport(dir, catalog, log);
+            }
 
             if (QualificationFailOnErrors(dir, catalog, log))
             {

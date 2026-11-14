@@ -27,6 +27,7 @@ internal static partial class P1bTests
         public string Problem;
         public string Method;
         public string Family;
+        public string Kind;
         public double Control = double.NaN;
         public string Status;
         public double Err = double.NaN;
@@ -182,6 +183,7 @@ internal static partial class P1bTests
             e.Problem = f[0];
             e.Method = f[1];
             e.Family = f[2];
+            e.Kind = f[3];
             e.Control = QualificationParseDouble(f[4]);
             e.Status = f[5];
             e.Err = QualificationParseDouble(f[7]);
