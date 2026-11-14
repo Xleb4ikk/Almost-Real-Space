@@ -1334,6 +1334,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.SimulationRunner
   System: {fileID: 230795294}
   Paused: 0
+  EnableRegimeIntegratorPolicy: 0
+  EnableSunCoastPolicy: 0
+  EnablePortedIntegratorPolicy: 0
   SpawnAltitudeMeters: 50000
   SpawnFacingSun: 1
   SpawnPhaseDegrees: 1
