@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics;
+using System.Reflection;
 using Galilego.Core;
 using Galilego.Debris;
 using Galilego.Events;
@@ -184,6 +186,16 @@ internal static partial class P1bTests
         Check(whThrust.LastSelectedIntegrator != SpacecraftIntegrator.WhBm14a,
             "T561 ported with thrust -> not WH-BM14A", whThrust.LastSelectedIntegrator.ToString());
 
+        // 8) D2/T2: with every flag off, the VesselStep path must be bitwise the
+        // direct SpacecraftPhysics.Step at the live/600 s/flight chunks.
+        Test561PolicyOffParity(sys, planet);
+
+        // 9) D2/T5: crossing and transition events through VesselStep under WH-BM14A.
+        Test561WhCrossingAndTransition(sys, planet);
+
+        // 10) D2/T6: policy overhead (allocations, call time, 600 s wall vs Prod-DOP853).
+        Test561PolicyOverhead(sys, planet);
+
         Console.WriteLine("done: " + (failures == 0 ? "ALL PASS" : failures + " FAILURE(S)"));
         return 0;
     }
@@ -295,5 +307,327 @@ internal static partial class P1bTests
             planetP + radial * orbitRadius,
             planetV + east * circular,
             1000d);
+    }
+
+    // ---------------------------------------------------------------------------------
+    // D2 additions (T2, T5, T6). No production code is changed: these checks only
+    // exercise the already-built policy through VesselStep.
+    // ---------------------------------------------------------------------------------
+
+    private static void Test561PolicyOffParity(StarSystem sys, OrbitingBody planet)
+    {
+        CheckPolicyOffMatchesDirect(sys, planet, 1d / 60d, false, "live 1/60 s", true);
+        CheckPolicyOffMatchesDirect(sys, planet, 30d, false, "live 30 s", true);
+        CheckPolicyOffMatchesDirect(sys, planet, 600d, false, "long-warp 600 s", false);
+        CheckPolicyOffMatchesDirect(sys, planet, 0.05d, true, "flight 0.05 s", false);
+        CheckLongWarpDeterministic(sys, planet);
+    }
+
+    /// <summary>
+    /// T2: policy off must reproduce the direct Step path bit for bit. The
+    /// propagator integrates a call in chunks of MaxChunkSeconds/DetectionSubdivisions
+    /// (VesselStep 600 s / 20 = 30 s), so the direct reference repeats the same
+    /// subdivision instead of one big step; anything else would compare different
+    /// chunking, not the policy.
+    /// </summary>
+    private static void CheckPolicyOffMatchesDirect(
+        StarSystem sys, OrbitingBody planet, double dt, bool flight, string label, bool requireBitwise)
+    {
+        VesselStep step;
+        if (flight)
+        {
+            (step, _) = BuildSurfaceRig(sys, planet, false);
+        }
+        else
+        {
+            (step, _) = BuildPolicyRig(sys);
+            ConfigureEarthCoast(step, planet);
+            step.EnableRegimeIntegratorPolicy = false;
+            step.EnableSunCoastPolicy = false;
+            step.EnablePortedIntegratorPolicy = false;
+        }
+
+        var directShip = new Ship(step.Ship.Position, step.Ship.Velocity, step.Ship.Mass);
+        var physics = new SpacecraftPhysics { ToleranceFrameSystem = sys };
+        physics.Sources.Add(new CachedGravitySource(sys));
+
+        float realDt = (float)dt;
+        step.StepFlying(realDt, true);
+        double elapsed = step.TimeSeconds;
+        double grain = step.Propagator.MaxChunkSeconds / step.Propagator.DetectionSubdivisions;
+        double sub = Math.Min(grain, elapsed);
+        double time = 0d;
+        while (time < elapsed - 1e-12d)
+        {
+            double subDt = Math.Min(sub, elapsed - time);
+            physics.Step(directShip, time, subDt);
+            time += subDt;
+        }
+
+        double dp = (step.Ship.Position - directShip.Position).Magnitude;
+        double dv = (step.Ship.Velocity - directShip.Velocity).Magnitude;
+        double dm = Math.Abs(step.Ship.Mass - directShip.Mass);
+        bool same = step.Ship.Position.X == directShip.Position.X
+            && step.Ship.Position.Y == directShip.Position.Y
+            && step.Ship.Position.Z == directShip.Position.Z
+            && step.Ship.Velocity.X == directShip.Velocity.X
+            && step.Ship.Velocity.Y == directShip.Velocity.Y
+            && step.Ship.Velocity.Z == directShip.Velocity.Z
+            && step.Ship.Mass == directShip.Mass;
+        string detail = "dp=" + dp.ToString("E3") + " dv=" + dv.ToString("E3")
+            + " dm=" + dm.ToString("E3") + " elapsed=" + elapsed.ToString("R");
+        if (requireBitwise)
+        {
+            Check(same, "T561 policy off bitwise == direct Step, " + label, detail);
+        }
+        else
+        {
+            // TASK_D.md D2: a difference is a measurement, not a red test. The
+            // number goes to PROGRESS.md; D2 changes no production code.
+            Measured("T561 policy off vs direct Step, " + label, detail);
+        }
+    }
+
+    private static void CheckLongWarpDeterministic(StarSystem sys, OrbitingBody planet)
+    {
+        (VesselStep first, _) = BuildPolicyRig(sys);
+        first.EnablePortedIntegratorPolicy = false;
+        ConfigureEarthCoast(first, planet);
+        first.StepFlying(600f, true);
+
+        (VesselStep second, _) = BuildPolicyRig(sys);
+        second.EnablePortedIntegratorPolicy = false;
+        ConfigureEarthCoast(second, planet);
+        second.StepFlying(600f, true);
+
+        bool same = first.Ship.Position.X == second.Ship.Position.X
+            && first.Ship.Position.Y == second.Ship.Position.Y
+            && first.Ship.Position.Z == second.Ship.Position.Z
+            && first.Ship.Velocity.X == second.Ship.Velocity.X
+            && first.Ship.Velocity.Y == second.Ship.Velocity.Y
+            && first.Ship.Velocity.Z == second.Ship.Velocity.Z;
+        Check(same, "T561 long-warp 600 s repeated runs bitwise equal",
+            "dp=" + (first.Ship.Position - second.Ship.Position).Magnitude.ToString("E3"));
+    }
+
+    private static void Measured(string name, string detail)
+    {
+        Console.WriteLine("MEASURED " + name + " | " + detail);
+    }
+
+    private static void Test561WhCrossingAndTransition(StarSystem sys, OrbitingBody planet)
+    {
+        string trace;
+        double whCross = RunPolicyEvent(sys, planet, true, true, out SpacecraftIntegrator crossIntegrator, out trace);
+        double dopCross = RunPolicyEvent(sys, planet, false, true, out _, out string dopTrace);
+        Check(crossIntegrator == SpacecraftIntegrator.WhBm14a,
+            "T561 WH crossing event uses WH-BM14A", crossIntegrator + " [" + trace + "]");
+        Check(Math.Abs(whCross - dopCross) <= 1e-3d,
+            "T561 WH crossing event time vs DOP853 <= 1 ms",
+            "WH=" + whCross.ToString("R") + " s, DOP853=" + dopCross.ToString("R")
+            + " s, d=" + Math.Abs(whCross - dopCross).ToString("E3") + " s");
+
+        double whTransition = RunPolicyEvent(sys, planet, true, false, out SpacecraftIntegrator transitionIntegrator, out trace);
+        double dopTransition = RunPolicyEvent(sys, planet, false, false, out _, out string transitionDopTrace);
+        Check(transitionIntegrator == SpacecraftIntegrator.WhBm14a,
+            "T561 WH transition event uses WH-BM14A", transitionIntegrator + " [" + trace + "]");
+        Check(Math.Abs(whTransition - dopTransition) <= 1e-3d,
+            "T561 WH transition event time vs DOP853 <= 1 ms",
+            "WH=" + whTransition.ToString("R") + " s, DOP853=" + dopTransition.ToString("R")
+            + " s, d=" + Math.Abs(whTransition - dopTransition).ToString("E3") + " s [" + transitionDopTrace + "]");
+    }
+
+    /// <summary>
+    /// T5 probe. Crossing = a real AltitudeCrossingDetector shell inside the Ported
+    /// band. Transition = the ITransitionDetector path with a time-keyed test probe:
+    /// a real SoiChangeDetector cannot fire inside a 200-2000 km planetocentric coast
+    /// (the SOI boundary is far outside the Ported band), so the probe checks the
+    /// transition/root-refinement path under WH without inventing physics.
+    /// </summary>
+    private static double RunPolicyEvent(
+        StarSystem sys, OrbitingBody planet, bool useWh, bool crossing,
+        out SpacecraftIntegrator selected, out string trace)
+    {
+        (VesselStep step, _) = BuildPolicyRig(sys);
+        step.EnableRegimeIntegratorPolicy = false;
+        step.EnableSunCoastPolicy = false;
+        step.EnablePortedIntegratorPolicy = useWh;
+
+        planet.EvaluateWorldState(0d, out Vector3d bodyP, out Vector3d bodyV);
+        // The event must fall inside the FIRST 600 s call: only then is the long-warp
+        // policy still in force (after it, the warp factor drops and the live 0.5 s
+        // chunk correctly selects DOP853). Crossing: start at apogee (400 km + 2ae)
+        // and fall through a 500 km shell (~90 s). Transition: probe at 300 s.
+        double periapsisAltitude = 400_000d;
+        double eccentricity = crossing ? 0.01d : 0d;
+        double semiMajorAxis = planet.Radius + periapsisAltitude;
+        double apoapsisRadius = planet.Radius + periapsisAltitude + 2d * eccentricity * semiMajorAxis;
+        double radius = crossing ? apoapsisRadius : semiMajorAxis;
+        double speed = crossing
+            ? Math.Sqrt(planet.StandardGravitationalParameter * (1d - eccentricity) / radius)
+            : Math.Sqrt(planet.StandardGravitationalParameter / radius);
+        step.DominantBody = planet;
+        step.Ship = new Ship(
+            bodyP + new Vector3d(0d, radius, 0d),
+            bodyV + new Vector3d(0d, 0d, speed),
+            1000d);
+
+        if (crossing)
+        {
+            step.Propagator.CrossingDetectors.Add(new AltitudeCrossingDetector(
+                planet, 534_000d, EventDirection.Falling,
+                EventPriorities.Planned, "T561TestCrossing", EventKind.AtmosphereEntry));
+        }
+        else
+        {
+            step.Propagator.TransitionDetectors.Add(new T561TimeTransitionDetector(300d));
+        }
+
+        double eventTime = double.NaN;
+        SpacecraftIntegrator integratorAtEvent = SpacecraftIntegrator.Dop853;
+        step.OccurrenceHandled = occurrence =>
+        {
+            if (double.IsNaN(eventTime))
+            {
+                eventTime = occurrence.TimeSeconds;
+                // The event is produced by the Propagate call of the current chunk:
+                // LastSelectedIntegrator at this instant is the integrator that
+                // integrated the event. After it, VesselStep re-selects for the
+                // remaining part of the frame (a shorter chunk -> DOP853), so the
+                // post-call value is not the event's integrator.
+                integratorAtEvent = step.LastSelectedIntegrator;
+            }
+        };
+
+        var traceBuilder = new System.Text.StringBuilder();
+        for (int i = 0; i < 20 && double.IsNaN(eventTime); i++)
+        {
+            step.StepFlying(600f, true);
+            traceBuilder.Append(step.TimeSeconds.ToString("F1"))
+                .Append(':').Append(step.LastSelectedIntegrator).Append(' ');
+        }
+
+        trace = traceBuilder.ToString().Trim();
+        selected = integratorAtEvent;
+        return eventTime;
+    }
+
+    private static void Test561PolicyOverhead(StarSystem sys, OrbitingBody planet)
+    {
+        MethodInfo apply = typeof(VesselStep).GetMethod(
+            "ApplyIntegratorPolicy", BindingFlags.Instance | BindingFlags.NonPublic,
+            null, new[] { typeof(double), typeof(bool) }, null);
+        if (apply == null)
+        {
+            Check(false, "T561 policy overhead", "ApplyIntegratorPolicy not found");
+            return;
+        }
+
+        (VesselStep policyStep, _) = BuildPolicyRig(sys);
+        policyStep.EnableRegimeIntegratorPolicy = true;
+        policyStep.EnableSunCoastPolicy = false;
+        policyStep.EnablePortedIntegratorPolicy = true;
+        ConfigureEarthCoast(policyStep, planet);
+
+        var applyDelegate = (Action<double, bool>)apply.CreateDelegate(
+            typeof(Action<double, bool>), policyStep);
+
+        for (int i = 0; i < 200; i++)
+        {
+            applyDelegate(600d, false);
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++)
+        {
+            applyDelegate(600d, false);
+        }
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Check(allocated == 0L, "T561 ApplyIntegratorPolicy allocations == 0",
+            allocated + " B / 1000 calls");
+
+        const int timingCalls = 1000;
+        var timer = Stopwatch.StartNew();
+        for (int i = 0; i < timingCalls; i++)
+        {
+            applyDelegate(600d, false);
+        }
+
+        timer.Stop();
+        double microseconds = timer.Elapsed.TotalMilliseconds * 1000d / timingCalls;
+        Console.WriteLine("T561 ApplyIntegratorPolicy: " + microseconds.ToString("F3")
+            + " us/call (single sequential pass, " + timingCalls + " calls)");
+
+        // §6 wall row: policy + 600 s WH chunk vs the same chunk on DOP853.
+        // The game's propagator subdivides a 600 s warp into
+        // MaxChunkSeconds/DetectionSubdivisions = 30 s chunks (SystemForGrain is
+        // not set by SimulationRunner), so this is a VesselStep-path measurement,
+        // not the stand's single-600 s-step figure.
+        double whMs = MedianChunkWall(sys, planet, true);
+        double dopMs = MedianChunkWall(sys, planet, false);
+        double ratio = whMs / dopMs;
+        Console.WriteLine("T561 600 s chunk wall (VesselStep, 30 s grain): WH="
+            + whMs.ToString("F4") + " ms, DOP853=" + dopMs.ToString("F4")
+            + " ms, ratio=" + ratio.ToString("F3"));
+
+        long allocOn = AllocatedForOneChunk(sys, planet, true);
+        long allocOff = AllocatedForOneChunk(sys, planet, false);
+        Check(allocOn <= allocOff, "T561 policy on allocations <= policy off",
+            "on=" + allocOn + " B, off=" + allocOff + " B");
+    }
+
+    private static double MedianChunkWall(StarSystem sys, OrbitingBody planet, bool useWh)
+    {
+        const int samples = 5;
+        (VesselStep step, _) = BuildPolicyRig(sys);
+        step.EnableRegimeIntegratorPolicy = false;
+        step.EnablePortedIntegratorPolicy = useWh;
+        ConfigureEarthCoast(step, planet);
+        step.StepFlying(600f, true); // warm-up: lazy caches, JIT, first-step effects
+        var values = new double[samples];
+        for (int rep = 0; rep < samples; rep++)
+        {
+            var timer = Stopwatch.StartNew();
+            step.StepFlying(600f, true);
+            timer.Stop();
+            values[rep] = timer.Elapsed.TotalMilliseconds;
+        }
+
+        Array.Sort(values);
+        return values[samples / 2];
+    }
+
+    private static long AllocatedForOneChunk(StarSystem sys, OrbitingBody planet, bool useWh)
+    {
+        (VesselStep step, _) = BuildPolicyRig(sys);
+        step.EnableRegimeIntegratorPolicy = false;
+        step.EnablePortedIntegratorPolicy = useWh;
+        ConfigureEarthCoast(step, planet);
+        step.StepFlying(600f, true);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        step.StepFlying(600f, true);
+        return GC.GetAllocatedBytesForCurrentThread() - before;
+    }
+
+    private sealed class T561TimeTransitionDetector : ITransitionDetector
+    {
+        private readonly double switchTimeSeconds;
+
+        public T561TimeTransitionDetector(double switchTimeSeconds)
+        {
+            this.switchTimeSeconds = switchTimeSeconds;
+        }
+
+        public int Priority => EventPriorities.SoiChange;
+
+        public string Name => "T561TimeTransition";
+
+        public EventKind Kind => EventKind.SoiChange;
+
+        public object GetKey(SpacecraftIntegrationState state, double timeSeconds)
+        {
+            return timeSeconds >= switchTimeSeconds ? "after" : "before";
+        }
     }
 }
