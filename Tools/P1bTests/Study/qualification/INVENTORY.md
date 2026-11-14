@@ -536,6 +536,11 @@ Saturn, Uranus, Neptune`) + центры `JupiterCenter`, `SaturnCenter` + 12 с
 Vesta и др., нужны Test533/535). Начальные состояния моделей берутся только из этого JSON;
 сеть и SPICE не нужны.
 
+**Важно (B2):** в `horizons_real_2016_10y.json` **469 тел** — нет `JupiterCenter`,
+`SaturnCenter` и 12 спутников. Поэтому слой V для спутников (Test544) и задача H6 относятся
+только к окну 2026. Это состав существующего файла, а не пропуск: B2 запрещает добавлять
+новые данные Horizons.
+
 ## B-Access. Как вызывается `Study/jpl` из стенда
 
 Все точки входа — `private static` члены `internal static partial class P1bTests`
