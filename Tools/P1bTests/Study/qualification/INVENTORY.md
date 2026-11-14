@@ -744,3 +744,190 @@ E_model для B6 берётся из этой таблицы: Newton 2026 `739.
 | certified reference | `QualificationCertifiedDop853` / `CertifiedReference` | без изменений |
 | H6 | `JplDop853(..., planetJ2: true)` (Test544) | напрямую (B4) |
 | G9 | прогон неизменённых Test537/538/544/545/546 | числа записаны выше |
+
+---
+
+# Приложение C (C0): игровой код, лимиты, события, тесты
+
+Инвентаризация сделана 2026-11-14 при commit `4c4d182` (`Q-B6`), ветка
+`qualification/test564-method-qualification`, `git diff` по коду пуст. Ниже — только факты из кода:
+пути, значения, номера строк. Ничего не менялось.
+
+## C-Paths. Файлы и роли
+
+| файл | роль | ключевые точки |
+|---|---|---|
+| `Assets/_Project/Scripts/Core/Integration/SpacecraftOrbitIntegrator.cs` | шаг DOPRI5 и DOP853 по полному состоянию (позиция, скорость, масса) | `ToleranceReference` (45), `StepForward` DOPRI5 (149), `StepForwardDop853` (400), `StepToTime`/`StepToTimeDop853` (647/666), `DoPri5Step` (690), `DoP853Step` (806), `BuildDop853Dense` (872), `SpacecraftStepDiagnostics` (10) |
+| `Assets/_Project/Scripts/Core/Integration/SpacecraftIntegrationState.cs` | состояние: `Position`, `Velocity`, `Mass`, `IsFinite` | 14–22 |
+| `Assets/_Project/Scripts/Core/Integration/SpacecraftIntegrationResult.cs` | результат шага: `State` | 9–16 |
+| `Assets/_Project/Scripts/Core/Integration/DenseSegment.cs` | плотный выход одного принятого шага | `ShampineCoeffs` (17), `DenseSegment` (74), `Evaluate` (146), `EvaluateTrack` (235); степени 4 (DOPRI5) и 8 (DOP853) |
+| `Assets/_Project/Scripts/Core/Integration/DOP853Coefficients.cs` | таблица DOP853 + `AExtra`/`CExtra`/`D` (плотный выход) | 12 стадий + расширение |
+| `Assets/_Project/Scripts/Core/Integration/DOPRI5Coefficients.cs` | таблица DOPRI5 + `d1..d7` (плотный выход) | 7 стадий |
+| `Assets/_Project/Scripts/Core/Integration/OrbitIntegrator.cs` | исторический RK4/DOPRI5 и **единственный источник** лимитов шага | `DefaultMaxStepSize=600` (16), `DefaultMinStepSize=1e-6` (17), `DefaultAbsoluteTolerance=1e-6` (14), `DefaultRelativeTolerance=1e-9` (15) |
+| `Assets/_Project/Scripts/Core/Integration/PhysicsSolver.cs` | исторический RK4 (не production-путь корабля) | — |
+| `Assets/_Project/Scripts/Spacecraft/SpacecraftPhysics.cs` | сборка RHS из `IDynamicsSource`, выбор интегратора, допуски, локальный кадр | `Integrator=Dop853` (30), допуски (39–42), `MaxStepSize=0` (48), `ToleranceFrameSystem` (66), `StepDiagnostics` (60), `Step`/`StepWithSegments` (101/110), локальный кадр (129–228), абсолютный путь (230–255), `EvaluateLocalDerivative` (282), `EvaluateDerivative` (310) |
+| `Assets/_Project/Scripts/Spacecraft/IntegratorPolicy.cs` | чистая функция выбора интегратора по контексту | `IntegratorContext` (14), константы (81–97), `Select` (99) |
+| `Assets/_Project/Scripts/Simulation/VesselStep.cs` | шаг корабля: чанки, control tick, политика, события, ориентация | `FlightChunkSeconds=0.05` (81), `SurfaceMaxStepSeconds=0.5` (124), `StepFlying` (187), размер чанка (222–242), `ApplyIntegratorPolicy` (322–384), `StepLanded` (409), `HandleOccurrence` (461) |
+| `Assets/_Project/Scripts/Simulation/Events/EventDrivenPropagator.cs` | чанковый цикл, детекторы, уточнение корня | `RootToleranceSeconds=1e-6` (38), `MaxRefineIterations=100` (40), `MaxChunkSeconds=600` (50), `DetectionSubdivisions=20` (57), `UseDenseRefinement=true` (89), `PropagateWithSegments` (117), `RefineCrossing` (336), `RefineCrossingDense` (411), `PropagateState` (509) |
+| `Assets/_Project/Scripts/Simulation/Events/Detectors/DetectionGrain.cs` | адаптивное зерно детекции | `MaxSubdivisions=200` (23), `GrainDivisor=20` (25), `Subdivisions` (76), `NeedsFineGrain` (121) |
+| `Assets/_Project/Scripts/Simulation/Warp/WarpController.cs` | тик управления, ступени варпа, резка чанка | `ControlTickSeconds=0.5` (44), `WarpRungs` (48), `MaxWarpFactor=3000` (51), `AtmosphereMaxWarpFactor=3` (54), `ThrustMaxWarpFactor=3` (57), `GetMaxChunkSeconds` (141) |
+| `Assets/_Project/Scripts/Simulation/Warp/LongWarpDriver.cs` | длинный варп: гоняет `EventDrivenPropagator` до цели/события | `CanEnterLongWarp` (59), `AdvanceToTarget` (85), `AdvanceToTargetWithSegments` (94) |
+| `Assets/_Project/Scripts/Simulation/SimulationRunner.cs` | MonoBehaviour: сборка системы, источники силы, детекторы, флаги | источники (540–548), `EventDrivenPropagator` (550), детекторы (551–560), `HardHorizonSeconds` (565), `LongWarpDriver` (566), `VesselStep` (567), флаги `EnableRegimeIntegratorPolicy`/`EnableSunCoastPolicy` (65–68), передача в `VesselStep` (573–574) |
+| `Assets/_Project/Scripts/Spacecraft/Spacecraft.cs` | состояние корабля, локальный кадр | `HasLocalState`, `LocalPosition/LocalVelocity`, `LocalBody`, `LocalTimeSeconds`, `LocalAbsolutePosition/Velocity` |
+| `tests/GalilegoSimTests/*.cs` | xUnit по production-пути (VesselStep, события, политика) | см. C-Tests |
+| `tests/GalilegoPhysicsTests/*.cs` | xUnit по `Core` (DOP853/DOPRI5, плотный выход, golden) | см. C-Tests |
+| `Tools/P1bTests/Tests/IntegratorPolicyRuntime.cs` | Test561: политика через реальный `VesselStep` | 16–142 |
+| `Tools/P1bTests/TestRegistry.cs` | регистрация Test561/Test564 | 309, 312 |
+
+Примечание о сборке стенда: `Tools/GameSources.props` включает в `P1bTests` `Core\**`,
+`Spacecraft\SpacecraftPhysics.cs`, `IntegratorPolicy.cs`, `Simulation\VesselStep.cs`,
+`Simulation\Events\*`, `Simulation\Warp\*`, но **не включает `SimulationRunner.cs`**
+(это MonoBehaviour с Unity-зависимостями). Адаптеры `Prod-*` (C5) должны вызывать
+`SpacecraftPhysics` / `SpacecraftOrbitIntegrator` / `VesselStep`, а не `SimulationRunner`.
+
+## C-Limits. Лимиты, допуски, длины чанков
+
+| величина | значение | источник |
+|---|---|---|
+| максимальный внутренний шаг интегратора | **600 с** | `OrbitIntegrator.DefaultMaxStepSize` (16) → `SpacecraftOrbitIntegrator.MaxStepSize` (127) и `SpacecraftPhysics.MaxStepSize=0` (48) |
+| минимальный шаг | `1e-6` с | `OrbitIntegrator.DefaultMinStepSize` (17) → `SpacecraftOrbitIntegrator.MinStepSize` (128) |
+| допуск позиции (игра) | `1e-4` м | `SpacecraftPhysics.PositionAbsoluteTolerance` (39) |
+| допуск скорости (игра) | `1e-8` м/с | `SpacecraftPhysics.VelocityAbsoluteTolerance` (40) |
+| допуск массы (игра) | `1e-4` кг | `SpacecraftPhysics.MassAbsoluteTolerance` (41) |
+| относительный допуск (игра) | `1e-11` | `SpacecraftPhysics.RelativeTolerance` (42) |
+| допуски исторического `OrbitIntegrator` | `1e-6` / `1e-9` | `OrbitIntegrator` (14–15); кораблём не используются |
+| максимальный интервал для `ToleranceReference` | 7200 с | `ToleranceReference.MaxSpanSeconds` (48) |
+| floor относительного масштаба | `16·eps` | `ToleranceReference.FloatingPointFloor` (51) |
+| минимальный интервал для абсолютного tolerance-reference | 1 с | `SpacecraftPhysics.MinSpanForToleranceFrameSeconds` (69) |
+| минимальная масса для RHS | `1e-3` кг | `SpacecraftPhysics.MinMassForDerivative` (71) |
+| control tick | **0.5 с** | `WarpController.ControlTickSeconds` (44) |
+| ступени варпа | `1, 5, 10, 100, 500, 1000, 3000` | `WarpController.WarpRungs` (48) |
+| кап варпа в атмосфере / с тягой | 3 / 3 | `WarpController` (54, 57) |
+| чанк полёта (6-DOF) | **0.05 с** | `VesselStep.FlightChunkSeconds` (81) |
+| чанк посадки | **0.5 с** | `VesselStep.SurfaceMaxStepSeconds` (124) |
+| чанк варпа / стресс-чанк | **600 с** | `EventDrivenPropagator.MaxChunkSeconds` (50); `LongWarpDriver.AdvanceToTarget` передаёт весь остаток, пропагатор режет его по 600 с |
+| живой чанк ×1 при 60 fps | `1/60 ≈ 0.0167 с` | `VesselStep.StepFlying`: `realDt·factor`, `factor=1`; используется в `LiveChunkPolicyTests` и Test561 |
+| живой чанк варпа (тест/комментарий) | **30 с** | `LiveChunkPolicyTests` `[InlineData(30d, 86_400d)]`; комментарий `IntegratorPolicy` «30-50 s live chunk» |
+| зерно детекции (база) | 600/20 = **30 с** | `DetectionSubdivisions=20` (57) |
+| зерно детекции (адаптив) | `τ/20`, не грубее 600/20 и не мельче 600/200 | `DetectionGrain` (23–25, 76–102) |
+| допуск корня события | `1e-6` с | `EventDrivenPropagator.RootToleranceSeconds` (38) |
+| итераций уточнения корня | 100 | `EventDrivenPropagator.MaxRefineIterations` (40) |
+| защита цикла шагов | 5 000 000 итераций | `SpacecraftOrbitIntegrator` (456) |
+
+Вывод для C4: ось чанка берётся как **1/60 с, 30 с, 0.05 с, 0.5 с, 600 с** — все значения
+уже есть в коде/тестах, новых не вводится. В `production`-профиле шаг интегратора дополнительно
+ограничен теми же 600 с (`OrbitIntegrator.DefaultMaxStepSize`), а не «новым» числом.
+
+## C-Stages. Число стадий (из кода)
+
+| метод | стадий | RHS на принятый шаг | плотный выход |
+|---|---|---|---|
+| игровой DOPRI5 (`StepForward`) | 7 (`k1..k7`) | 7 на первом шаге, 6 далее (FSAL `k7→k1`) | Shampine 4-й степени, **0** доп. RHS (использует `k7`) |
+| игровой DOP853 (`StepForwardDop853`) | 12 (`k0..k11`, `k0` — FSAL или f(t,y)) | 12 без коллектора; **15** с коллектором (12 + `k12..k15`, `k12` переиспользуется как `k0` следующего шага) | Hairer/Wanner contd8, 8-й порядок; 3 доп. стадии (`k13..k15`) на принятый шаг |
+| `RK4` (реестр) | 4 | 4 | — |
+| `DOPRI5-fixed` / `DOPRI5-adaptive` | 6 | 6 | — |
+| `DOP853-adaptive` | 12 | 12 | — |
+| `PEFRL` | 4 | 4 | — |
+| `Y6` / `Y6C` / `WH-Y6` | 7 | 7 | — |
+| `Leapfrog` | 1 | 1 | — |
+| `RKN12(10)` | 16 | 16 | — |
+| `IAS15` / `Encke-IAS15` | 7 | 7 | — |
+| `SRKN14A` / `WH-BM14A` | 14 | 14 | — |
+| `GJ8` | 1 | 1 | — |
+
+Источник чисел реестра — `StudyReport.StagesOf` (722–744); для игровых методов — циклы
+`DoPri5Step`/`DoP853Step` и `BuildDop853Dense`. «Стадии» здесь номинальные RHS-вызовы на шаг;
+для fixed-step это же число идёт в цену.
+
+## C-Events. Где проверяются события
+
+1. **Чанковый цикл.** `EventDrivenPropagator.PropagateWithSegments` (117) режет запрошенный
+   интервал на чанки `MaxChunkSeconds/subdiv` (184) и вызывает `SpacecraftPhysics.StepWithSegments`
+   (520). Сегменты собираются, только если включён `UseDenseRefinement` или запрошен рендер.
+2. **Пересечения (crossing).** На каждом чанке считается `g0 = detector.Evaluate(start, time)` и
+   `g1 = detector.Evaluate(end, chunkEnd)` (195–196). Смена знака → `RefineCrossingDense` (411):
+   бисекция по `DenseSegment.EvaluateTrack` до `RootToleranceSeconds=1e-6`; при
+   `UseDenseRefinement=false` — `RefineCrossing` (336) с повторным интегрированием от начала чанка.
+3. **Переходы (transition, смена ключа).** `detector.GetKey(end, chunkEnd)` сравнивается с ключом
+   старта; при смене — `RefineTransitionDense`/`RefineTransition` (446/379).
+4. **Запланированные события.** `FindTimedEvent` (316) выбирает ближайшее `TimedEvent` в
+   `(time, chunkEnd]`; `ApplyTimedEvent` (468) применяет скачок массы и коммитит состояние.
+5. **Приоритет.** Несколько кандидатов сводятся к одному по приоритету и времени (`Candidate`,
+   551); после корня цикл может до-advance'ить остаток.
+6. **Регистрация в игре** (`SimulationRunner` 550–560): `AltitudeCrossingDetector.ForTouchdown`
+   для каждого тела; `ForAtmosphereEntry`/`ForAtmosphereExit` для тел с атмосферой;
+   `StageDepletionDetector` — при ступенчатой тяге (923–926). `SoiChangeDetector` в рантайме
+   игры не регистрируется (только в xUnit `SoiChangeTests`).
+7. **Реакции.** `VesselStep.HandleOccurrence` (461): `Touchdown`, `PropellantDepleted`,
+   `EphemerisEnd`; события обрабатываются после коммита чанка/корня.
+
+Следствие для порта: событийный путь читает `DenseSegment`; метод без плотного выхода обязан
+либо (а) пересчитывать подинтервал от начала принятого шага, либо (б) давать интерполяцию с
+документированной ошибкой ≤ 0.1 допуска (C7.3). Тихая потеря точности запрещена.
+
+## C-Defaults. Что включено по умолчанию
+
+| что | значение | источник |
+|---|---|---|
+| интегратор `SpacecraftPhysics` | `SpacecraftIntegrator.Dop853` | `SpacecraftPhysics.cs:30`; тест `ProductionUsesDop853ByDefault` |
+| `EnableRegimeIntegratorPolicy` | `false` | `SimulationRunner.cs:65` |
+| `EnableSunCoastPolicy` | `false` | `SimulationRunner.cs:68` |
+| `IntegratorPolicy.Select` без флагов | `Dop853` | `IntegratorPolicy.cs:99–124` (обе ветки требуют флагов/условий) |
+| сцена | флаги не включены | `SimulationRunner` 60–63 (пометка `INTEGRATOR-V2`: держать `false` до порта) |
+
+Порт (C5/C6) обязан сохранить эти значения; включение — только владелец.
+
+## C-Tests. Игровые тесты: команды и текущий результат
+
+Дата прогона: **2026-11-14**, commit `4c4d182`, .NET 8.0.24, Windows.
+
+| команда | результат |
+|---|---|
+| `dotnet build Tools/P1bTests -c Release` | 0 ошибок, 16 предупреждений (CS0649 и т. п.), 7.5 с |
+| `dotnet test tests/GalilegoSimTests/GalilegoSimTests.csproj -c Release` | **44 / 44 passed**, 0 failed, 1.0 с |
+| `dotnet test tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj -c Release` | **279 / 279 passed**, 0 failed, 10.6 с |
+| `verify_test551.ps1` | `lines=84 fails=0`, SHA256 `54ae98e23563b5bec8551f9188a2b83424b049cc6e4cd5deba43141402aec5e6` |
+| `P1bTests.exe --exact Test561_IntegratorPolicy` | `ALL PASS` (11 проверок), 20 мс |
+
+Хэши **упорядоченных имён** тестов (LF, UTF-8 без BOM, завершающий LF; имена из TRX,
+сортировка по `testName`):
+
+| набор | тестов | SHA256 |
+|---|---|---|
+| `GalilegoSimTests` | 44 | `32ba6a0f8278887d80e1e05eefecc963677eab144413e15a0215c8353b8d4376` |
+| `GalilegoPhysicsTests` | 279 | `65ac343b5ef06d2500a62a67b63820d881c94a85b0f81c845d1bc2dfffa2f28c` |
+| вместе (sim + `\n` + phys) | 323 | `9913f91d53039745bb9babe91ca1ba087bf9641509343eeec1597538e62fd16f` |
+
+Это и есть «эталон до порта»: после каждого этапа C число тестов и хэш имён должны совпадать
+(если этап не добавляет новых тестов; новые тесты C5/C6 добавляют имена — тогда сравнивается
+пересечение, а новые имена перечисляются в PROGRESS).
+
+Релевантные файлы тестов:
+- политика: `tests/GalilegoSimTests/IntegratorPolicyTests.cs`, `LiveChunkPolicyTests.cs`,
+  `ProductionIntegratorDefaultTests.cs`, `Tools/P1bTests/Tests/IntegratorPolicyRuntime.cs`;
+- production-путь: `ProductionPathTests.cs`, `LocalFrameTests.cs`, `RegressionTests.cs`;
+- события: `AltitudeCrossingTests.cs`, `SoiChangeTests.cs`, `TimedEventTests.cs`,
+  `PriorityRestartTests.cs`, `TouchdownEventIntegratorTests.cs`;
+- точность/допуски: `OrbitAnalyticTests.cs`, `MassToleranceTests.cs`, `TsiolkovskyTests.cs`;
+  в `GalilegoPhysicsTests` — матрица DOP853/DOPRI5, `DenseOrderTests`, `StepBudget`,
+  `ToleranceTable`, golden-файлы.
+
+## C-Gaps. Расхождения и ограничения, замеченные при C0
+
+1. **`WHICH_INTEGRATOR_WHEN.md` отсутствует.** TASK.md C3/C6 ссылается на него как на карту
+   победителей стенда. В репозитории такого файла нет (`grep` по `*.md` — только сам TASK.md).
+   Фактическая карта — `baseline/20261114T093336Z_f899097/RECOMMENDATIONS.md` и
+   `METHOD_QUALIFICATION.md` (они построены из `matrix.csv`). Записано в `FOUND.md` F13;
+   в C4 сравнение «изменившиеся победители» делается против `RECOMMENDATIONS.md` этого baseline.
+2. **`SimulationRunner` не входит в `GameSources.props`.** Стенд не может и не должен его
+   вызывать; адаптер `Prod-*` работает через `SpacecraftPhysics`/`SpacecraftOrbitIntegrator`,
+   а chunk-тест — через `VesselStep` (он включён) или прямой чанковый цикл.
+3. **Живой чанк — не константа.** Он равен `realDt · effectiveFactor` и ограничен control tick
+   (0.5 с) и 600 с; в тестах зафиксированы 1/60 с и 30 с. В C4 ось чанка задаётся этими
+   значениями, а не новым полем.
+4. **Локальный кадр всегда включён в игре** (`ToleranceFrameSystem = SystemState`,
+   `SpacecraftPhysics.StepWithSegments` 129). Порт, который не умеет локальный кадр, изменит
+   поведение; C7.4 требует покрыть оба пути.
+5. **Игровой DOP853 с плотным выходом стоит 15 RHS/шаг, без него — 12.** Любое сравнение
+   «цена на шаг» должно указывать, какой путь использован; `StepBudget.Production` в
+   `tests/README.md` — это путь `segments == null`.
