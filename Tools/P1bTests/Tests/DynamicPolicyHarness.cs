@@ -41,6 +41,7 @@ internal static partial class P1bTests
         DynRunR1(rows);
         DynRunR1OutOfRegime(rows);
         DynRunR3(rows);
+        DynRunD5(rows);
 
         DynWriteCsv(csvPath, rows);
         string reportPath = Path.Combine(FindHarnessRoot(), "Study",
@@ -323,6 +324,194 @@ internal static partial class P1bTests
             near.Step.LastSelectedIntegrator == SpacecraftIntegrator.Dop853 ? 1d : 0d, "1/0", 1d,
             near.Step.LastSelectedIntegrator == SpacecraftIntegrator.Dop853 ? "PASS" : "FAIL",
             "near another body keeps DOP853"));
+    }
+
+    // ----------------------------------------------------------------------------------
+    // D5: one scripted phase sequence through VesselStep. Owner decision A after D4:
+    // every policy flag is off, so every phase must stay on DOP853 / Default. The
+    // sequence still exercises flight chunks, live chunk, long warp, thrust and
+    // touchdown, and the two runs must be bitwise identical.
+    // ----------------------------------------------------------------------------------
+    private sealed class DynD5Phase
+    {
+        public string Name;
+        public SpacecraftIntegrator Integrator;
+        public IntegratorSelectionReason Reason;
+        public double AltitudeM;
+    }
+
+    private sealed class DynD5Result
+    {
+        public readonly List<DynD5Phase> Phases = new List<DynD5Phase>();
+        public double TouchdownSeconds = double.NaN;
+        public bool Landed;
+        public Ship FinalShip;
+    }
+
+    private static void DynRunD5(List<DynRow> rows)
+    {
+        DynD5Result first = DynRunD5Once();
+        DynD5Result second = DynRunD5Once();
+
+        foreach (DynD5Phase phase in first.Phases)
+        {
+            bool ok = phase.Integrator == SpacecraftIntegrator.Dop853
+                && phase.Reason == IntegratorSelectionReason.Default;
+            rows.Add(DynRow.Number("D5", phase.Name, phase.AltitudeM, 0d, "integrator",
+                (double)(int)phase.Integrator, "enum", 0d, ok ? "PASS" : "FAIL",
+                "reason=" + phase.Reason));
+            rows.Add(DynRow.Number("D5", phase.Name, phase.AltitudeM, 0d, "reason",
+                (double)(int)phase.Reason, "enum", 0d,
+                phase.Reason == IntegratorSelectionReason.Default ? "PASS" : "FAIL", ""));
+        }
+
+        rows.Add(DynRow.Number("D5", "touchdown", double.NaN, 0d, "event_touchdown_s",
+            first.TouchdownSeconds, "s", double.NaN,
+            double.IsFinite(first.TouchdownSeconds) ? "PASS" : "FAIL", ""));
+        rows.Add(DynRow.Number("D5", "touchdown", double.NaN, 0d, "regime_landed",
+            first.Landed ? 1d : 0d, "1/0", 1d, first.Landed ? "PASS" : "FAIL", ""));
+
+        bool same = first.FinalShip != null && second.FinalShip != null
+            && DynSameState(first.FinalShip, second.FinalShip);
+        rows.Add(DynRow.Number("D5", "sequence", double.NaN, 0d, "determinism_bitwise",
+            same ? 1d : 0d, "1/0", 1d, same ? "PASS" : "FAIL", "two identical scripted runs"));
+    }
+
+    private static DynD5Result DynRunD5Once()
+    {
+        StarSystem system = DynCreateSunEarthMoon(false);
+        OrbitingBody earth = system.AllBodies[1];
+
+        var physics = new SpacecraftPhysics
+        {
+            Integrator = SpacecraftIntegrator.Dop853,
+            ToleranceFrameSystem = system
+        };
+        physics.Sources.Add(new CachedGravitySource(system));
+        var flight = new VesselFlightModel(
+            new[]
+            {
+                new PartDefinition
+                {
+                    Name = "Test part",
+                    MassKg = 1000d,
+                    Shape = PartShape.Cylinder,
+                    Dimensions = new Vector3(2f, 4f, 2f),
+                    ParentIndex = -1
+                }
+            },
+            new[] { 1000d },
+            new[] { 0d },
+            new[] { -1 },
+            new[] { 0d });
+        var flightSource = new FlightThrustSource { Model = flight };
+        physics.Sources.Add(flightSource);
+        var thrust = new TestThrustSource
+        {
+            ThrustNewtons = 100d,
+            MassFlowKgS = 0d,
+            Direction = new Vector3d(1d, 0d, 0d),
+            ActiveAt = _ => true
+        };
+        physics.Sources.Add(thrust);
+
+        var propagator = new EventDrivenPropagator(physics)
+        {
+            HardHorizonSeconds = system.BakedEndSeconds()
+        };
+        propagator.CrossingDetectors.Add(AltitudeCrossingDetector.ForTouchdown(earth));
+        var driver = new LongWarpDriver(physics, propagator);
+        var step = new VesselStep(
+            system, new WarpController(), propagator, driver, null,
+            new JointedBreakup(), new DebrisPool(), new PartDefinition[0], 1d, 600d);
+        step.Flight = flight;
+        step.FlightSource = flightSource;
+        step.Thrust = thrust;
+        step.EnableRegimeIntegratorPolicy = false;
+        step.EnableSunCoastPolicy = false;
+        step.EnablePortedIntegratorPolicy = false;
+
+        var result = new DynD5Result();
+        step.OccurrenceHandled = occurrence =>
+        {
+            if (occurrence.Kind == EventKind.Touchdown && double.IsNaN(result.TouchdownSeconds))
+            {
+                result.TouchdownSeconds = occurrence.TimeSeconds;
+            }
+        };
+
+        // 1) surface, flight model, 0.05 s chunk.
+        DynD5Place(step, earth, 1d, 2d, 0d);
+        DynD5Step(step, earth, "surface liftoff 0.05 s", 0.05f, 1, result);
+
+        // 2) ascent, flight model, 0.05 s chunk.
+        DynD5Place(step, earth, 5_000d, 100d, 0d);
+        DynD5Step(step, earth, "ascent 5 km 0.05 s", 0.05f, 1, result);
+
+        // 3) circular LEO, live chunk 1/60 s.
+        DynD5Place(step, earth, 400_000d, 0d, DynCircularSpeed(earth, 400_000d));
+        DynD5Step(step, earth, "LEO live 1/60 s", 1f / 60f, 1, result);
+
+        // 4) long warp 600 s.
+        DynD5Step(step, earth, "LEO long-warp 600 s", (float)DynChunk, 1, result);
+
+        // 5) thrust maneuver: the policy must keep DOP853 (flags are off; the source
+        //    scan is not even reached, which is exactly the disabled-path check).
+        step.RawThrottle = 1d;
+        DynD5Step(step, earth, "thrust maneuver 600 s", (float)DynChunk, 1, result);
+        step.RawThrottle = 0d;
+
+        // 6) long warp again.
+        DynD5Step(step, earth, "LEO long-warp again 600 s", (float)DynChunk, 1, result);
+
+        // 7) descent to touchdown, flight model, 0.05 s chunks.
+        DynD5Place(step, earth, 1d, 0d, 0d);
+        for (int i = 0; i < 200 && step.Regime == VesselRegime.Flying; i++)
+        {
+            step.StepFlying(0.05f, true);
+        }
+
+        DynD5Step(step, earth, "touchdown 0.05 s", 0f, 0, result);
+        result.Landed = step.Regime == VesselRegime.Landed;
+        result.FinalShip = step.Ship;
+        return result;
+    }
+
+    private static void DynD5Step(
+        VesselStep step, OrbitingBody earth, string name, float chunk, int calls, DynD5Result result)
+    {
+        for (int i = 0; i < calls; i++)
+        {
+            step.StepFlying(chunk, true);
+        }
+
+        earth.EvaluateWorldState(step.TimeSeconds, out Vector3d bodyPosition, out _);
+        double altitude = (step.Ship.Position - bodyPosition).Magnitude - earth.Radius;
+        result.Phases.Add(new DynD5Phase
+        {
+            Name = name,
+            Integrator = step.LastSelectedIntegrator,
+            Reason = step.LastSelectionReason,
+            AltitudeM = altitude
+        });
+    }
+
+    private static void DynD5Place(
+        VesselStep step, OrbitingBody earth, double altitude, double verticalSpeed, double horizontalSpeed)
+    {
+        earth.EvaluateWorldState(step.TimeSeconds, out Vector3d bodyPosition, out Vector3d bodyVelocity);
+        Vector3d radial = new Vector3d(0d, 1d, 0d);
+        Vector3d east = new Vector3d(0d, 0d, 1d);
+        step.DominantBody = earth;
+        step.Ship = new Ship(
+            bodyPosition + radial * (earth.Radius + altitude),
+            bodyVelocity + radial * verticalSpeed + east * horizontalSpeed,
+            1000d);
+    }
+
+    private static double DynCircularSpeed(OrbitingBody body, double altitude)
+    {
+        return Math.Sqrt(body.StandardGravitationalParameter / (body.Radius + altitude));
     }
 
     // ----------------------------------------------------------------------------------
