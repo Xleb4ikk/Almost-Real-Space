@@ -234,6 +234,7 @@ internal static partial class P1bTests
         File.WriteAllText(Path.Combine(dir, "COST_TABLE.md"), costTable, new UTF8Encoding(false));
 
         log.WriteLine("reports: METHOD_QUALIFICATION.md, RECOMMENDATIONS.md, COST_TABLE.md");
+        QualificationWriteRealSystemReport(dir, catalog, matrix, log);
     }
 
     private static Dictionary<string, string[]> QualificationTags(List<QualificationProblem> catalog)
@@ -270,6 +271,12 @@ internal static partial class P1bTests
             {
                 return i;
             }
+        }
+
+        if (level != null && level.StartsWith("Q", StringComparison.Ordinal))
+        {
+            // Appendix B, B6: Q10/Q1 after the M goals, before unknown names.
+            return 500;
         }
 
         if (level == null || level.Length < 2 || level[0] != 'M')

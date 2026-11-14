@@ -451,7 +451,20 @@ internal static partial class P1bTests
 
         var runRows = new List<string>();
         var matrixRows = new List<string>();
+        // Layer V/Q auxiliary data: keep rows of the problems this run does not recompute
+        // (resume), replace the rows of the problems it does.
         var realSystemRows = new List<string>();
+        string realPath = Path.Combine(dir, "real_system.csv");
+        if (File.Exists(realPath))
+        {
+            foreach (string line in File.ReadAllLines(realPath))
+            {
+                if (line.Length > 0 && !line.StartsWith("problem_id,", StringComparison.Ordinal))
+                {
+                    realSystemRows.Add(line);
+                }
+            }
+        }
 
         foreach (QualificationProblem q in catalog)
         {
@@ -706,6 +719,8 @@ internal static partial class P1bTests
             // formats of TASK.md stay untouched; only real-system tasks produce rows.
             if (q.QTargets != null && q.QTargets.Length > 0)
             {
+                realSystemRows.RemoveAll(
+                    line => line.StartsWith(q.Id + ",", StringComparison.Ordinal));
                 foreach (QualificationCell c in cellsForProblem)
                 {
                     if (c.Best == null)
