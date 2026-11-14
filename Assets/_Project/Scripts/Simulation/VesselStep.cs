@@ -68,6 +68,14 @@ namespace Galilego.Universe
         /// </summary>
         public bool EnableSunCoastPolicy;
 
+        /// <summary>
+        /// Ported WH-BM14A branch (Appendix C, per-regime). false — the historical
+        /// DOP853/DOPRI5 policy only. true — IntegratorPolicy may select WH-BM14A for a
+        /// planetocentric near-circular long-warp coast (600 s, CanCoast); everything else
+        /// stays on DOP853. The flag is off by default and is enabled by the owner.
+        /// </summary>
+        public bool EnablePortedIntegratorPolicy;
+
         /// <summary>Integrator chosen for the last Propagate/LongWarp call (observability/tests).</summary>
         public SpacecraftIntegrator LastSelectedIntegrator { get; private set; } = SpacecraftIntegrator.Dop853;
 
@@ -321,7 +329,7 @@ namespace Galilego.Universe
         /// </summary>
         private void ApplyIntegratorPolicy(double chunkSeconds, bool flightModelActive)
         {
-            if (!EnableRegimeIntegratorPolicy)
+            if (!EnableRegimeIntegratorPolicy && !EnablePortedIntegratorPolicy)
             {
                 Propagator.Integrator = SpacecraftIntegrator.Dop853;
                 LastSelectedIntegrator = SpacecraftIntegrator.Dop853;
@@ -340,21 +348,39 @@ namespace Galilego.Universe
             bool sunCoastCandidate = sunDominant
                 && EnableSunCoastPolicy
                 && !AnyOtherBodyNear(Ship.Position);
-            bool surfaceCandidate = flightModelActive
+            bool flightModelForPolicy = flightModelActive && EnableRegimeIntegratorPolicy;
+            bool surfaceCandidate = flightModelForPolicy
                 && chunkSeconds <= IntegratorPolicy.SurfaceChunkSeconds + 1e-9d;
+            bool portedCandidate = EnablePortedIntegratorPolicy
+                && !sunDominant
+                && chunkSeconds >= IntegratorPolicy.PortedChunkSeconds;
+            bool needsGeometry = surfaceCandidate || sunCoastCandidate || portedCandidate;
 
             double altitude = 0d;
             double verticalSpeed = 0d;
-            if (surfaceCandidate || sunCoastCandidate)
+            double centralMu = 0d;
+            double eccentricity = double.NaN;
+            if (needsGeometry)
             {
                 SystemState.EvaluateBodyState(
                     body, TimeSeconds, out Vector3d bodyPosition, out Vector3d bodyVelocity);
                 Vector3d relative = Ship.Position - bodyPosition;
+                Vector3d relativeVelocity = Ship.Velocity - bodyVelocity;
                 double radius = relative.Magnitude;
                 altitude = radius - body.Radius;
                 verticalSpeed = radius > 1e-9d
                     ? Vector3d.Dot(Ship.Velocity - bodyVelocity, relative.Normalized)
                     : 0d;
+                centralMu = body.ResolveStandardGravitationalParameter();
+                if (centralMu > 0d && radius > 0d)
+                {
+                    OrbitalElements elements =
+                        OrbitalElements.FromState(relative, relativeVelocity, centralMu);
+                    if (elements.IsValid)
+                    {
+                        eccentricity = elements.Eccentricity;
+                    }
+                }
             }
 
             // The non-gravity scan is only meaningful for the Sun-coast branch.
@@ -369,18 +395,35 @@ namespace Galilego.Universe
                 };
                 canCoast = Driver.CanEnterLongWarp(state, TimeSeconds);
             }
+            else if (portedCandidate)
+            {
+                // WH-BM14A needs no drag/thrust/mass flow; reuse the same formal check.
+                var state = new SpacecraftIntegrationState
+                {
+                    Position = Ship.Position,
+                    Velocity = Ship.Velocity,
+                    Mass = Ship.Mass
+                };
+                canCoast = Driver.CanEnterLongWarp(state, TimeSeconds);
+            }
 
             var context = new IntegratorContext(
                 chunkSeconds,
-                flightModelActive,
+                flightModelForPolicy,
                 sunDominant,
                 EnableSunCoastPolicy,
                 canCoast,
                 altitude,
-                verticalSpeed);
+                verticalSpeed,
+                centralMu,
+                eccentricity,
+                EnablePortedIntegratorPolicy);
             SpacecraftIntegrator selected = IntegratorPolicy.Select(context);
             LastSelectedIntegrator = selected;
             Propagator.Integrator = selected;
+            // WH-BM14A has no certified dense event root: events must re-integrate from the
+            // chunk start (C7.3a). The Hermite segment is for rendering only.
+            Propagator.UseDenseRefinement = selected != SpacecraftIntegrator.WhBm14a;
         }
 
         /// <summary>

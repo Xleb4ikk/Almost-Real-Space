@@ -67,6 +67,9 @@ namespace Galilego.Universe
         [Tooltip("Разрешить Sun-coast ветку. Оставь выключенным для 5 AU/cislunar: это явный allowlist; поверхность работает независимо.")]
         public bool EnableSunCoastPolicy;
 
+        [Tooltip("Разрешить порт WH-BM14A: только планетоцентрический near-circular coast на длинном варпе (чанк 600 с). По умолчанию false; DOP853 остаётся везде остальном.")]
+        public bool EnablePortedIntegratorPolicy;
+
         [Header("Корабль")]
         [Tooltip("Начальная высота над поверхностью тела спавна (м).")]
         public double SpawnAltitudeMeters = 200000d;
@@ -572,6 +575,7 @@ namespace Galilego.Universe
             // Keep both flags false until the ported integrators are production-tested.
             step.EnableRegimeIntegratorPolicy = EnableRegimeIntegratorPolicy;
             step.EnableSunCoastPolicy = EnableSunCoastPolicy;
+            step.EnablePortedIntegratorPolicy = EnablePortedIntegratorPolicy;
 
             debrisUpdater = new DebrisUpdater(SystemState)
             {

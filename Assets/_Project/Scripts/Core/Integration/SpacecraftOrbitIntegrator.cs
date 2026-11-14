@@ -12,6 +12,7 @@ namespace Galilego.Core
         public long Attempts;
         public long Accepted;
         public long Rejected;
+        public long Fallbacks;
 
         public void Reset()
         {

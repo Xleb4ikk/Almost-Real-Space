@@ -106,6 +106,85 @@ namespace GalilegoPhysicsTests
                 altitude: 0d, vertical: 0d));
         }
 
+        [Fact]
+        public void PortedLongWarpCoastSelectsWhBm14a()
+        {
+            Assert.Equal(SpacecraftIntegrator.WhBm14a, SelectPorted(
+                chunk: 600d, flight: false, sun: false, coast: true,
+                altitude: 400_000d, eccentricity: 0d, ported: true));
+        }
+
+        [Fact]
+        public void PortedLiveChunkStaysDop853()
+        {
+            Assert.Equal(SpacecraftIntegrator.Dop853, SelectPorted(
+                chunk: 1d / 60d, flight: false, sun: false, coast: true,
+                altitude: 400_000d, eccentricity: 0d, ported: true));
+        }
+
+        [Fact]
+        public void PortedWithoutFlagStaysDop853()
+        {
+            Assert.Equal(SpacecraftIntegrator.Dop853, SelectPorted(
+                chunk: 600d, flight: false, sun: false, coast: true,
+                altitude: 400_000d, eccentricity: 0d, ported: false));
+        }
+
+        [Fact]
+        public void PortedEccentricOrbitStaysDop853()
+        {
+            Assert.Equal(SpacecraftIntegrator.Dop853, SelectPorted(
+                chunk: 600d, flight: false, sun: false, coast: true,
+                altitude: 400_000d, eccentricity: 0.2d, ported: true));
+        }
+
+        [Fact]
+        public void PortedWithDragThrustStaysDop853()
+        {
+            Assert.Equal(SpacecraftIntegrator.Dop853, SelectPorted(
+                chunk: 600d, flight: false, sun: false, coast: false,
+                altitude: 400_000d, eccentricity: 0d, ported: true));
+        }
+
+        [Fact]
+        public void PortedHighAltitudeStaysDop853()
+        {
+            Assert.Equal(SpacecraftIntegrator.Dop853, SelectPorted(
+                chunk: 600d, flight: false, sun: false, coast: true,
+                altitude: 40_000_000d, eccentricity: 0d, ported: true));
+        }
+
+        [Fact]
+        public void PortedSunDominantStaysDop853()
+        {
+            Assert.Equal(SpacecraftIntegrator.Dop853, SelectPorted(
+                chunk: 600d, flight: false, sun: true, coast: true,
+                altitude: 1e11d, eccentricity: 0d, ported: true));
+        }
+
+        [Fact]
+        public void PortedUnknownMuStaysDop853()
+        {
+            Assert.Equal(SpacecraftIntegrator.Dop853, SelectPorted(
+                chunk: 600d, flight: false, sun: false, coast: true,
+                altitude: 400_000d, eccentricity: 0d, ported: true, centralMu: 0d));
+        }
+
+        private static SpacecraftIntegrator SelectPorted(
+            double chunk,
+            bool flight,
+            bool sun,
+            bool coast,
+            double altitude,
+            double eccentricity,
+            bool ported,
+            double centralMu = 3.986004418e14d)
+        {
+            return IntegratorPolicy.Select(new IntegratorContext(
+                chunk, flight, sun, false, coast, altitude, 0d,
+                centralMu, eccentricity, ported));
+        }
+
         private static SpacecraftIntegrator Select(
             double chunk,
             bool flight,

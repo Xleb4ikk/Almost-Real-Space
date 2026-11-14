@@ -43,6 +43,18 @@ namespace Galilego.Spacecraft
         /// <summary>Radial speed relative to the current dominant body (m/s, + up).</summary>
         public readonly double VerticalSpeedMps;
 
+        /// <summary>Gravitational parameter of the dominant body (m^3/s^2); 0 = unknown.</summary>
+        public readonly double CentralMu;
+
+        /// <summary>Osculating eccentricity relative to the dominant body; NaN = unknown.</summary>
+        public readonly double Eccentricity;
+
+        /// <summary>
+        /// true when the scene allows the ported WH-BM14A branch (the new
+        /// EnablePortedIntegratorPolicy flag). Keep false until the port is certified.
+        /// </summary>
+        public readonly bool PortedAllowed;
+
         public IntegratorContext(
             double chunkSeconds,
             bool flightModelActive,
@@ -50,7 +62,10 @@ namespace Galilego.Spacecraft
             bool sunCoastAllowed,
             bool canCoast,
             double altitudeMeters,
-            double verticalSpeedMps)
+            double verticalSpeedMps,
+            double centralMu = 0d,
+            double eccentricity = 0d,
+            bool portedAllowed = false)
         {
             ChunkSeconds = chunkSeconds;
             FlightModelActive = flightModelActive;
@@ -59,6 +74,9 @@ namespace Galilego.Spacecraft
             CanCoast = canCoast;
             AltitudeMeters = altitudeMeters;
             VerticalSpeedMps = verticalSpeedMps;
+            CentralMu = centralMu;
+            Eccentricity = eccentricity;
+            PortedAllowed = portedAllowed;
         }
     }
 
@@ -96,6 +114,20 @@ namespace Galilego.Spacecraft
         /// </summary>
         public const double TouchdownGuardMeters = 2_000d;
 
+        /// <summary>
+        /// Ported WH-BM14A branch (Appendix C, per-regime approval): only planetocentric,
+        /// near-circular coast at the 600 s long-warp chunk. The C3 data: 600 s LEO,
+        /// 5.6x cheaper, 7.3x faster, 1e-6..2e-5 m absolute error at the 1 m goal.
+        /// Live 1/60-30 s chunks stay on DOP853 (no gain, frame-bound).
+        /// </summary>
+        public const double PortedChunkSeconds = 600d;
+
+        public const double PortedMinAltitudeMeters = 200_000d;
+
+        public const double PortedMaxAltitudeMeters = 2_000_000d;
+
+        public const double PortedMaxEccentricity = 0.05d;
+
         public static SpacecraftIntegrator Select(in IntegratorContext context)
         {
             bool surface = context.FlightModelActive
@@ -118,6 +150,23 @@ namespace Galilego.Spacecraft
                 && context.AltitudeMeters >= MinSunDistanceMeters)
             {
                 return SpacecraftIntegrator.Dopri5;
+            }
+
+            // Ported WH-BM14A (Appendix C, per-regime): planetocentric near-circular
+            // long-warp coast only. The branch is off unless the scene sets the new flag;
+            // everything else falls through to DOP853.
+            if (context.PortedAllowed
+                && context.CanCoast
+                && !context.SunDominant
+                && !context.FlightModelActive
+                && context.ChunkSeconds >= PortedChunkSeconds
+                && context.AltitudeMeters >= PortedMinAltitudeMeters
+                && context.AltitudeMeters <= PortedMaxAltitudeMeters
+                && context.CentralMu > 0d
+                && context.Eccentricity >= 0d
+                && context.Eccentricity < PortedMaxEccentricity)
+            {
+                return SpacecraftIntegrator.WhBm14a;
             }
 
             return SpacecraftIntegrator.Dop853;

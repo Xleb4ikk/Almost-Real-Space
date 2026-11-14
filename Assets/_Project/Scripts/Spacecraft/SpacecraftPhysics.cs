@@ -8,7 +8,8 @@ namespace Galilego.Spacecraft
     public enum SpacecraftIntegrator
     {
         Dop853,
-        Dopri5
+        Dopri5,
+        WhBm14a
     }
 
     /// <summary>
@@ -192,15 +193,42 @@ namespace Galilego.Spacecraft
                 };
                 SpacecraftOrbitIntegrator.DerivativeFunction localDerivative =
                     (state, time) => EvaluateLocalDerivative(state, time, dominant);
-                SpacecraftIntegrationResult localResult = Integrator == SpacecraftIntegrator.Dopri5
-                    ? SpacecraftOrbitIntegrator.StepForward(
-                        localStart, currentTimeSeconds, dt, localDerivative,
-                        PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
-                        MassAbsoluteTolerance, RelativeTolerance, segments, null, StepDiagnostics, MaxStepSize)
-                    : SpacecraftOrbitIntegrator.StepForwardDop853(
-                        localStart, currentTimeSeconds, dt, localDerivative,
-                        PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
-                        MassAbsoluteTolerance, RelativeTolerance, segments, null, StepDiagnostics, MaxStepSize);
+                SpacecraftIntegrationResult localResult;
+                if (Integrator == SpacecraftIntegrator.WhBm14a)
+                {
+                    try
+                    {
+                        localResult = WhBm14aIntegrator.StepForward(
+                            localStart, currentTimeSeconds, dt, localDerivative,
+                            dominant.ResolveStandardGravitationalParameter(), segments, StepDiagnostics);
+                    }
+                    catch (Exception)
+                    {
+                        // C7.2: never throw in the game loop. The policy should have excluded
+                        // this state; fall back to the certified DOP853 for this chunk.
+                        if (StepDiagnostics != null)
+                        {
+                            StepDiagnostics.Fallbacks++;
+                        }
+
+                        localResult = SpacecraftOrbitIntegrator.StepForwardDop853(
+                            localStart, currentTimeSeconds, dt, localDerivative,
+                            PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
+                            MassAbsoluteTolerance, RelativeTolerance, segments, null, StepDiagnostics, MaxStepSize);
+                    }
+                }
+                else
+                {
+                    localResult = Integrator == SpacecraftIntegrator.Dopri5
+                        ? SpacecraftOrbitIntegrator.StepForward(
+                            localStart, currentTimeSeconds, dt, localDerivative,
+                            PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
+                            MassAbsoluteTolerance, RelativeTolerance, segments, null, StepDiagnostics, MaxStepSize)
+                        : SpacecraftOrbitIntegrator.StepForwardDop853(
+                            localStart, currentTimeSeconds, dt, localDerivative,
+                            PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
+                            MassAbsoluteTolerance, RelativeTolerance, segments, null, StepDiagnostics, MaxStepSize);
+                }
 
                 if (segments != null)
                 {
@@ -239,15 +267,33 @@ namespace Galilego.Spacecraft
                 toleranceReference = new ToleranceReference(bodyPosition, bodyVelocity, currentTimeSeconds);
             }
 
-            SpacecraftIntegrationResult result = Integrator == SpacecraftIntegrator.Dopri5
-                ? SpacecraftOrbitIntegrator.StepForward(
-                    initialState, currentTimeSeconds, dt, EvaluateDerivative,
-                    PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
-                    MassAbsoluteTolerance, RelativeTolerance, segments, toleranceReference, StepDiagnostics, MaxStepSize)
-                : SpacecraftOrbitIntegrator.StepForwardDop853(
+            SpacecraftIntegrationResult result;
+            if (Integrator == SpacecraftIntegrator.WhBm14a)
+            {
+                // WH-BM14A needs a central body at the origin (the local frame). The absolute
+                // path (debris, tests) keeps the certified DOP853 instead of guessing a centre.
+                if (StepDiagnostics != null)
+                {
+                    StepDiagnostics.Fallbacks++;
+                }
+
+                result = SpacecraftOrbitIntegrator.StepForwardDop853(
                     initialState, currentTimeSeconds, dt, EvaluateDerivative,
                     PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
                     MassAbsoluteTolerance, RelativeTolerance, segments, toleranceReference, StepDiagnostics, MaxStepSize);
+            }
+            else
+            {
+                result = Integrator == SpacecraftIntegrator.Dopri5
+                    ? SpacecraftOrbitIntegrator.StepForward(
+                        initialState, currentTimeSeconds, dt, EvaluateDerivative,
+                        PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
+                        MassAbsoluteTolerance, RelativeTolerance, segments, toleranceReference, StepDiagnostics, MaxStepSize)
+                    : SpacecraftOrbitIntegrator.StepForwardDop853(
+                        initialState, currentTimeSeconds, dt, EvaluateDerivative,
+                        PositionAbsoluteTolerance, VelocityAbsoluteTolerance,
+                        MassAbsoluteTolerance, RelativeTolerance, segments, toleranceReference, StepDiagnostics, MaxStepSize);
+            }
 
             ship.Position = result.State.Position;
             ship.Velocity = result.State.Velocity;

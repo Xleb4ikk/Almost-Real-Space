@@ -137,6 +137,53 @@ internal static partial class P1bTests
             "T561 surface Flight state agrees with DOP853",
             (surfaceOn.Ship.Position - surfaceOff.Ship.Position).Magnitude.ToString("E3") + " m");
 
+        // 7) Ported WH-BM14A (Appendix C): narrow 600 s long-warp coast, flag on.
+        (VesselStep whStep, _) = BuildPolicyRig(sys);
+        whStep.EnableRegimeIntegratorPolicy = false;
+        whStep.EnableSunCoastPolicy = false;
+        whStep.EnablePortedIntegratorPolicy = true;
+        ConfigureEarthCoast(whStep, planet);
+        whStep.StepFlying(600f, true);
+        Check(whStep.LastSelectedIntegrator == SpacecraftIntegrator.WhBm14a,
+            "T561 ported 600 s LEO coast -> WH-BM14A",
+            whStep.LastSelectedIntegrator.ToString());
+        Check(whStep.Ship.Position.IsFinite && whStep.Ship.Velocity.IsFinite,
+            "T561 ported WH-BM14A state is finite",
+            whStep.Ship.Position.ToString());
+
+        // 7b) Live 1/60 chunk: the ported branch must stay on DOP853.
+        (VesselStep whLive, _) = BuildPolicyRig(sys);
+        whLive.EnablePortedIntegratorPolicy = true;
+        ConfigureEarthCoast(whLive, planet);
+        whLive.StepFlying(1f / 60f, true);
+        Check(whLive.LastSelectedIntegrator == SpacecraftIntegrator.Dop853,
+            "T561 ported live 1/60 -> DOP853", whLive.LastSelectedIntegrator.ToString());
+
+        // 7c) Eccentric orbit: not the ported regime.
+        (VesselStep whEcc, _) = BuildPolicyRig(sys);
+        whEcc.EnablePortedIntegratorPolicy = true;
+        planet.EvaluateWorldState(0d, out Vector3d eccP, out Vector3d eccV);
+        Vector3d eccRadial = new Vector3d(0d, 1d, 0d);
+        Vector3d eccEast = new Vector3d(0d, 0d, 1d);
+        double eccRadius = planet.Radius + 400_000d;
+        double eccSpeed = Math.Sqrt(planet.StandardGravitationalParameter * 1.2d / eccRadius);
+        whEcc.DominantBody = planet;
+        whEcc.Ship = new Ship(eccP + eccRadial * eccRadius, eccV + eccEast * eccSpeed, 1000d);
+        whEcc.StepFlying(600f, true);
+        Check(whEcc.LastSelectedIntegrator == SpacecraftIntegrator.Dop853,
+            "T561 ported eccentric 600 s -> DOP853", whEcc.LastSelectedIntegrator.ToString());
+
+        // 7d) Non-zero thrust: CanCoast false, the ported branch must not be selected.
+        (VesselStep whThrust, TestThrustSource whThrustSource) = BuildPolicyRig(sys);
+        whThrust.EnablePortedIntegratorPolicy = true;
+        whThrustSource.ThrustNewtons = 100d;
+        whThrustSource.ActiveAt = _ => true;
+        whThrust.RawThrottle = 1d;
+        ConfigureEarthCoast(whThrust, planet);
+        whThrust.StepFlying(600f, true);
+        Check(whThrust.LastSelectedIntegrator != SpacecraftIntegrator.WhBm14a,
+            "T561 ported with thrust -> not WH-BM14A", whThrust.LastSelectedIntegrator.ToString());
+
         Console.WriteLine("done: " + (failures == 0 ? "ALL PASS" : failures + " FAILURE(S)"));
         return 0;
     }
