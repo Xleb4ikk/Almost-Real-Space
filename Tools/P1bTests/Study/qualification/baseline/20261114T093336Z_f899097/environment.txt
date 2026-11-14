@@ -1,0 +1,16 @@
+test: Test564_MethodQualification
+task_version: 3
+task_sha256: d03f49419d476fa2c9f2c09d3c3ba10e6f0a65c5d7da8f3d3846441b084136cc
+profile: full
+date_utc: 2026-11-14 09:38:04
+date_local: 2026-11-14 12:38:04 +03:00
+commit: f89909797c9405c0d10c66530dd417a7a898c426
+branch: qualification/test564-method-qualification
+dirty: clean
+dotnet: 8.0.24 (.NET 8.0.24)
+os: Microsoft Windows 10.0.26200
+arch: x64
+cpu: AMD64 Family 25 Model 97 Stepping 2, AuthenticAMD
+logical_cpus: 32
+methods_count: 15
+methods: RK4, DOPRI5-fixed, DOPRI5-adaptive, DOP853-adaptive, PEFRL, Y6, Y6C, WH-Y6, Leapfrog, RKN12(10), IAS15, SRKN14A, WH-BM14A, GJ8, Encke-IAS15

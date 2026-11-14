@@ -1,0 +1,2632 @@
+Test564_MethodQualification
+profile: full
+run dir: C:\MyData\UnityProj\Almost Real Space\Tools\P1bTests\Study\qualification\results\20261114T093336Z_f899097
+methods: 15
+  RK4 | Runge-Kutta | Fixed | ExpectedOrder=4
+  DOPRI5-fixed | Runge-Kutta | Fixed | ExpectedOrder=5
+  DOPRI5-adaptive | Runge-Kutta | Adaptive | ExpectedOrder=NaN
+  DOP853-adaptive | Runge-Kutta | Adaptive | ExpectedOrder=NaN
+  PEFRL | Symplectic | Fixed | ExpectedOrder=4
+  Y6 | Symplectic | Fixed | ExpectedOrder=6
+  Y6C | Symplectic | Fixed | ExpectedOrder=6
+  WH-Y6 | Kepler-split | Fixed | ExpectedOrder=NaN
+  Leapfrog | Symplectic | Fixed | ExpectedOrder=2
+  RKN12(10) | Runge-Kutta | Adaptive | ExpectedOrder=NaN
+  IAS15 | Gauss-Radau | Adaptive | ExpectedOrder=NaN
+  SRKN14A | Symplectic | Fixed | ExpectedOrder=6
+  WH-BM14A | Kepler-split | Fixed | ExpectedOrder=NaN
+  GJ8 | Multistep | Fixed | ExpectedOrder=10
+  Encke-IAS15 | Encke | Fixed | ExpectedOrder=NaN
+V0 PASS day-0 relative state 2026-2036 | 0.000E+00 m (all) < 1E-03 m
+V0 PASS day-0 relative state 2016-2026 | 0.000E+00 m (all) < 1E-03 m
+V0 PASS initial acceleration EIH-1PN finite | max |d a| = 2.009E-10 m/s^2
+V0 PASS Mars moon mass ratio | 1.891E-08 in [1E-08, 5E-08]
+V0 PASS epoch GMs identical | 0.000E+00 < 1E-12
+V: satellites 2026-2036 JupiterCenter vs JPL 266.29 km, SaturnCenter 76.35 km
+V: 1584 row(s), 15 satellite row(s), 255 G9 comparison(s), 0 drift, 101217 ms
+V: NASA_VALIDATION.md written (layer V is a report, not a method status)
+V: 101446 ms
+catalog: 47 problem(s)
+  K1: VALID floor=1.000E-14
+  K2: VALID floor=1.000E-14
+  K3: VALID floor=5.050E-14
+  K4: VALID floor=4.067E-14
+  K5: VALID floor=1.000E-14
+  K6: VALID floor=1.000E-14
+  K7: VALID floor=1.000E-14
+  K8: VALID floor=1.000E-14
+  T1: VALID floor=4.000E-16
+  T2: VALID floor=1.000E-14
+  T3: VALID floor=4.000E-16
+  R1: VALID floor=5.882E-02
+  R2: VALID floor=1.969E+00
+  R3: VALID floor=2.544E-03
+  R4: VALID floor=3.682E-07
+  L1: VALID floor=1.824E-04
+  L2: VALID floor=1.568E-12
+  S01: VALID floor=5.021E-06
+  S02: VALID floor=1.458E-06
+  S03: VALID floor=2.623E-06
+  S04: VALID floor=3.390E-06
+  S05: VALID floor=9.521E-05
+  S06: VALID floor=1.796E-04
+  S09: VALID floor=2.568E-06
+  S14: VALID floor=2.316E-05
+  S10: VALID floor=1.921E-05
+  S11: VALID floor=1.778E-05
+  S17: VALID floor=2.505E-05
+  S07: VALID floor=5.315E-04
+  S08: VALID floor=9.181E-04
+  S12: VALID floor=4.621E-06
+  S15: VALID floor=1.819E-06
+  P2: VALID floor=1.712E+00
+  P3: VALID floor=3.590E-02
+  P4: VALID floor=9.126E-02
+  P5: VALID floor=7.359E-02
+  P6: VALID floor=6.875E-04
+  F01: VALID floor=1.163E-02
+  F02: VALID floor=1.253E-03
+  F03: VALID floor=5.232E-08
+  F04: VALID floor=1.178E-02
+  F05: VALID floor=1.060E-07
+  H1: VALID floor=1.053E+00
+  H1h: VALID floor=2.860E+00
+  H2h: VALID floor=2.573E+00
+  H3: VALID floor=2.231E+00
+  H6: VALID floor=2.654E+03
+audit: 1684957 ms
+oracle audit: 47 VALID, 0 not VALID (each non-VALID must carry a documented reason)
+wrote environment.txt, runs.csv (header only), matrix.csv (header only), oracle_audit.md
+flag check: 9 method(s) require a conservative second-order force
+A4 flag check: 1 central-only method(s) that do not require a conservative force
+flag check K1: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check K2: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check K3: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check K4: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check K5: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check K6: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check K7: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check K8: velocity-dependent=True mass-dependent=False ConservativeSecondOrder=False
+flag check T1: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check T2: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check T3: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check R1: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check R2: velocity-dependent=True mass-dependent=False ConservativeSecondOrder=False
+flag check R3: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check R4: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check L1: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check L2: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check S01: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check S02: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check S03: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check S04: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check S05: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check S06: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check S09: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check S14: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check S10: velocity-dependent=True mass-dependent=True ConservativeSecondOrder=False
+  A4 CHECK NOTE: Encke-IAS15 claims support on S10 (non-conservative force); TASK.md A4 expects N/A - FOUND.md F10
+flag check S11: velocity-dependent=False mass-dependent=True ConservativeSecondOrder=False
+  A4 CHECK NOTE: Encke-IAS15 claims support on S11 (non-conservative force); TASK.md A4 expects N/A - FOUND.md F10
+flag check S17: velocity-dependent=False mass-dependent=True ConservativeSecondOrder=False
+  A4 CHECK NOTE: Encke-IAS15 claims support on S17 (non-conservative force); TASK.md A4 expects N/A - FOUND.md F10
+flag check S07: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check S08: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check S12: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check S15: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check P2: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check P3: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check P4: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check P5: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check P6: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check F01: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check F02: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check F03: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check F04: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check F05: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check H1: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check H1h: velocity-dependent=False mass-dependent=False ConservativeSecondOrder=True
+flag check H2h: velocity-dependent=True mass-dependent=False ConservativeSecondOrder=False
+flag check H3: velocity-dependent=True mass-dependent=False ConservativeSecondOrder=False
+flag check H6: velocity-dependent=True mass-dependent=False ConservativeSecondOrder=False
+K1 Kepler, e=0 (Test564 K1 Kepler; e=0)
+  RK4: 20 points
+  DOPRI5-fixed: 16 points
+  DOPRI5-adaptive: 31 points
+  DOP853-adaptive: 25 points
+  PEFRL: 19 points
+  Y6: 14 points
+  Y6C: 15 points
+  WH-Y6: 5 points
+  Leapfrog: 26 points
+  RKN12(10): 19 points
+  IAS15: 8 points
+  SRKN14A: 11 points
+  WH-BM14A: 5 points
+  GJ8: 7 points
+  Encke-IAS15: 4 points
+order refine RK4 Test564 K1 Kepler; e=0: +1 point(s), 1 attempt(s), finest err 5.60302E-14
+order RK4 K1: p=4.29654 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 K1 Kepler; e=0: +1 point(s), 1 attempt(s), finest err 1.42078E-14
+order DOPRI5-fixed K1: p=4.86845 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive K1: p=0.988915 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order refine PEFRL Test564 K1 Kepler; e=0: +1 point(s), 1 attempt(s), finest err 2.39246E-13
+order PEFRL K1: p=3.99786 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 K1 Kepler; e=0: +1 point(s), 1 attempt(s), finest err 1.46187E-13
+order Y6 K1: p=5.91357 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 K1 Kepler; e=0: +1 point(s), 1 attempt(s), finest err 2.9506E-14
+order Y6C K1: p=5.91384 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 K1: p=NaN points=0 note=n/a (few points)
+order Leapfrog K1: p=1.99999 points=16 note=median of 15 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) K1: p=1.07973 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 K1: p=2.27727 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order refine SRKN14A Test564 K1 Kepler; e=0: +1 point(s), 1 attempt(s), finest err 2.25112E-13
+order SRKN14A K1: p=5.85806 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A K1: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 K1 Kepler; e=0: +1 point(s), 1 attempt(s), finest err 7.81685E-14
+order GJ8 K1: p=10.0303 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 K1: p=NaN points=0 note=n/a (few points)
+  -> 45 matrix cells so far, K1 took 880 ms (sweep 336, cells 86, measure+rev 458)
+K2 Kepler, e=0.1 (Test564 K2 Kepler; e=0.1)
+  RK4: 20 points
+  DOPRI5-fixed: 16 points
+  DOPRI5-adaptive: 32 points
+  DOP853-adaptive: 26 points
+  PEFRL: 20 points
+  Y6: 15 points
+  Y6C: 15 points
+  WH-Y6: 5 points
+  Leapfrog: 26 points
+  RKN12(10): 18 points
+  IAS15: 9 points
+  SRKN14A: 11 points
+  WH-BM14A: 5 points
+  GJ8: 6 points
+  Encke-IAS15: 4 points
+order refine RK4 Test564 K2 Kepler; e=0.1: +1 point(s), 1 attempt(s), finest err 2.66347E-14
+order RK4 K2: p=4.37141 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 K2 Kepler; e=0.1: +1 point(s), 1 attempt(s), finest err 4.3443E-14
+order DOPRI5-fixed K2: p=4.99221 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive K2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 K2 Kepler; e=0.1: +1 point(s), 1 attempt(s), finest err 7.35637E-14
+order PEFRL K2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Y6 Test564 K2 Kepler; e=0.1: +1 point(s), 1 attempt(s), finest err 7.98591E-14
+order Y6 K2: p=5.91315 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 K2 Kepler; e=0.1: +1 point(s), 1 attempt(s), finest err 4.4646E-14
+order Y6C K2: p=6.00126 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 K2: p=NaN points=0 note=n/a (few points)
+order Leapfrog K2: p=2 points=16 note=median of 15 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) K2: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order IAS15 K2: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 K2 Kepler; e=0.1: +1 point(s), 1 attempt(s), finest err 9.95622E-14
+order SRKN14A K2: p=5.85381 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A K2: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 K2 Kepler; e=0.1: +1 point(s), 1 attempt(s), finest err 2.32982E-13
+order GJ8 K2: p=9.26907 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 K2: p=NaN points=0 note=n/a (few points)
+  -> 90 matrix cells so far, K2 took 713 ms (sweep 204, cells 48, measure+rev 461)
+K3 Kepler, e=0.5 (Test564 K3 Kepler; e=0.5)
+  RK4: 26 points
+  DOPRI5-fixed: 23 points
+  DOPRI5-adaptive: 33 points
+  DOP853-adaptive: 26 points
+  PEFRL: 26 points
+  Y6: 17 points
+  Y6C: 17 points
+  WH-Y6: 5 points
+  Leapfrog: 26 points
+  RKN12(10): 21 points
+  IAS15: 10 points
+  SRKN14A: 16 points
+  WH-BM14A: 5 points
+  GJ8: 9 points
+  Encke-IAS15: 4 points
+order RK4 K3: p=4.20903 points=12 note=median of 11 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 K3 Kepler; e=0.5: +1 point(s), 1 attempt(s), finest err 3.66314E-13
+order DOPRI5-fixed K3: p=5.01404 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K3: p=1.0221 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order DOP853-adaptive K3: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order PEFRL K3: p=4.00013 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 K3 Kepler; e=0.5: +1 point(s), 1 attempt(s), finest err 1.63177E-13
+order Y6 K3: p=5.99957 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 K3 Kepler; e=0.5: +1 point(s), 1 attempt(s), finest err 1.98718E-13
+order Y6C K3: p=5.99894 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 K3: p=NaN points=0 note=n/a (few points)
+order Leapfrog K3: p=2 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) K3: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order IAS15 K3: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 K3 Kepler; e=0.5: +1 point(s), 1 attempt(s), finest err 7.91559E-14
+order SRKN14A K3: p=6.10264 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A K3: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 K3 Kepler; e=0.5: +1 point(s), 1 attempt(s), finest err 1.3355E-13
+order GJ8 K3: p=7.07793 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 K3: p=NaN points=0 note=n/a (few points)
+  -> 135 matrix cells so far, K3 took 1850 ms (sweep 777, cells 143, measure+rev 930)
+K4 Kepler, e=0.9 (Test564 K4 Kepler; e=0.9)
+  RK4: 26 points
+  DOPRI5-fixed: 26 points
+  DOPRI5-adaptive: 30 points
+  DOP853-adaptive: 29 points
+  PEFRL: 26 points
+  Y6: 26 points
+  Y6C: 25 points
+  WH-Y6: 24 points
+  Leapfrog: 26 points
+  RKN12(10): 22 points
+  IAS15: 14 points
+  SRKN14A: 26 points
+  WH-BM14A: 5 points
+  GJ8: 20 points
+  Encke-IAS15: 4 points
+order RK4 K4: p=4.1665 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-fixed K4: p=5.0183 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K4: p=0.998662 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order DOP853-adaptive K4: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order PEFRL K4: p=4.00071 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order Y6 K4: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Y6C Test564 K4 Kepler; e=0.9: +1 point(s), 1 attempt(s), finest err 3.00618E-14
+order Y6C K4: p=5.99909 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 K4: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Leapfrog K4: p=NaN points=3 note=n/a (few points)
+order RKN12(10) K4: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order IAS15 K4: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order SRKN14A K4: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order WH-BM14A K4: p=NaN points=0 note=n/a (few points)
+order GJ8 K4: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Encke-IAS15 K4: p=NaN points=1 note=n/a (few points)
+  -> 180 matrix cells so far, K4 took 7754 ms (sweep 3348, cells 336, measure+rev 4070)
+K5 Parabolic, e=1 (Test564 K5 Parabolic; e=1)
+  RK4: 20 points
+  DOPRI5-fixed: 14 points
+  DOPRI5-adaptive: 27 points
+  DOP853-adaptive: 23 points
+  PEFRL: 19 points
+  Y6: 15 points
+  Y6C: 15 points
+  WH-Y6: 3 points
+  Leapfrog: 26 points
+  RKN12(10): 21 points
+  IAS15: 10 points
+  SRKN14A: 10 points
+  WH-BM14A: 3 points
+  GJ8: 6 points
+  Encke-IAS15: 3 points
+order refine RK4 Test564 K5 Parabolic; e=1: +1 point(s), 1 attempt(s), finest err 1.12136E-13
+order RK4 K5: p=3.99885 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 K5 Parabolic; e=1: +1 point(s), 1 attempt(s), finest err 2.24182E-13
+order DOPRI5-fixed K5: p=5.27283 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K5: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive K5: p=0.890994 points=18 note=median of 17 pairwise slopes (fine->coarse, doubled-error branch)
+order refine PEFRL Test564 K5 Parabolic; e=1: +1 point(s), 1 attempt(s), finest err 1.90427E-13
+order PEFRL K5: p=3.98439 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 K5 Parabolic; e=1: +1 point(s), 1 attempt(s), finest err 6.61857E-14
+order Y6 K5: p=5.83117 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 K5 Parabolic; e=1: +1 point(s), 1 attempt(s), finest err 2.86016E-14
+order Y6C K5: p=5.83117 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 K5: p=NaN points=0 note=n/a (few points)
+order Leapfrog K5: p=1.99994 points=18 note=median of 17 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) K5: p=1.18437 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 K5: p=1.7461 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order refine SRKN14A Test564 K5 Parabolic; e=1: +1 point(s), 1 attempt(s), finest err 1.36791E-13
+order SRKN14A K5: p=5.77156 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A K5: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 K5 Parabolic; e=1: +1 point(s), 1 attempt(s), finest err 2.47872E-13
+order GJ8 K5: p=9.70451 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 K5: p=NaN points=0 note=n/a (few points)
+  -> 225 matrix cells so far, K5 took 458 ms (sweep 67, cells 18, measure+rev 373)
+K6 Hyperbolic, e=1.5 (flyby) (Test564 K6 Hyperbolic; e=1.5 (flyby))
+  RK4: 20 points
+  DOPRI5-fixed: 14 points
+  DOPRI5-adaptive: 27 points
+  DOP853-adaptive: 23 points
+  PEFRL: 19 points
+  Y6: 15 points
+  Y6C: 15 points
+  WH-Y6: 3 points
+  Leapfrog: 26 points
+  RKN12(10): 22 points
+  IAS15: 10 points
+  SRKN14A: 10 points
+  WH-BM14A: 3 points
+  GJ8: 7 points
+  Encke-IAS15: 3 points
+order refine RK4 Test564 K6 Hyperbolic; e=1.5 (flyby): +1 point(s), 1 attempt(s), finest err 5.57504E-14
+order RK4 K6: p=3.99865 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 K6 Hyperbolic; e=1.5 (flyby): +1 point(s), 1 attempt(s), finest err 2.28902E-13
+order DOPRI5-fixed K6: p=5.25917 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K6: p=1.06041 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order DOP853-adaptive K6: p=0.912433 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order refine PEFRL Test564 K6 Hyperbolic; e=1.5 (flyby): +1 point(s), 1 attempt(s), finest err 1.70533E-13
+order PEFRL K6: p=3.99157 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 K6 Hyperbolic; e=1.5 (flyby): +1 point(s), 1 attempt(s), finest err 4.7107E-14
+order Y6 K6: p=5.75664 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 K6 Hyperbolic; e=1.5 (flyby): +1 point(s), 1 attempt(s), finest err 3.80157E-14
+order Y6C K6: p=5.75664 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 K6: p=NaN points=0 note=n/a (few points)
+order Leapfrog K6: p=2 points=18 note=median of 17 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) K6: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order IAS15 K6: p=1.76366 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order refine SRKN14A Test564 K6 Hyperbolic; e=1.5 (flyby): +1 point(s), 1 attempt(s), finest err 2.10818E-13
+order SRKN14A K6: p=5.78067 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A K6: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 K6 Hyperbolic; e=1.5 (flyby): +1 point(s), 1 attempt(s), finest err 3.03544E-14
+order GJ8 K6: p=9.92607 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 K6: p=NaN points=0 note=n/a (few points)
+  -> 270 matrix cells so far, K6 took 447 ms (sweep 66, cells 19, measure+rev 362)
+K7 Harmonic oscillator, omega=1 (Test564 K7 Harmonic oscillator; omega=1)
+  RK4: 20 points
+  DOPRI5-fixed: 14 points
+  DOPRI5-adaptive: 28 points
+  DOP853-adaptive: 26 points
+  PEFRL: 17 points
+  Y6: 14 points
+  Y6C: 14 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 26 points
+  RKN12(10): 18 points
+  IAS15: 8 points
+  SRKN14A: 10 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 6 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order refine RK4 Test564 K7 Harmonic oscillator; omega=1: +1 point(s), 1 attempt(s), finest err 5.25863E-14
+order RK4 K7: p=3.99709 points=15 note=median of 14 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 K7 Harmonic oscillator; omega=1: +1 point(s), 1 attempt(s), finest err 2.38369E-13
+order DOPRI5-fixed K7: p=5.00082 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K7: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive K7: p=1.00005 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order refine PEFRL Test564 K7 Harmonic oscillator; omega=1: +1 point(s), 1 attempt(s), finest err 3.41882E-14
+order PEFRL K7: p=3.99336 points=15 note=median of 14 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 K7 Harmonic oscillator; omega=1: +1 point(s), 1 attempt(s), finest err 2.89477E-14
+order Y6 K7: p=5.9838 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 K7 Harmonic oscillator; omega=1: +1 point(s), 1 attempt(s), finest err 2.89091E-14
+order Y6C K7: p=5.98167 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 K7: p=NaN points=0 note=n/a (few points)
+order Leapfrog K7: p=2 points=19 note=median of 18 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) K7: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order IAS15 K7: p=2.26097 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order refine SRKN14A Test564 K7 Harmonic oscillator; omega=1: +1 point(s), 1 attempt(s), finest err 2.50109E-14
+order SRKN14A K7: p=6.0052 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A K7: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 K7 Harmonic oscillator; omega=1: +1 point(s), 1 attempt(s), finest err 9.66098E-14
+order GJ8 K7: p=10.4662 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 K7: p=NaN points=0 note=n/a (few points)
+  -> 315 matrix cells so far, K7 took 570 ms (sweep 168, cells 33, measure+rev 369)
+K8 Damped oscillator (velocity-dependent), gamma=0.1 (Test564 K8 Damped oscillator (velocity-dependent); gamma=0.1)
+  RK4: 18 points
+  DOPRI5-fixed: 14 points
+  DOPRI5-adaptive: 26 points
+  DOP853-adaptive: 21 points
+  PEFRL: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6C: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Leapfrog: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  RKN12(10): n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  IAS15: 8 points
+  SRKN14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-BM14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  GJ8: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order refine RK4 Test564 K8 Damped oscillator (velocity-dependent); gamma=0.1: +1 point(s), 1 attempt(s), finest err 7.09988E-14
+order RK4 K8: p=3.86989 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 K8 Damped oscillator (velocity-dependent); gamma=0.1: +1 point(s), 1 attempt(s), finest err 6.85563E-14
+order DOPRI5-fixed K8: p=4.96269 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive K8: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive K8: p=0.950064 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order PEFRL K8: p=NaN points=0 note=n/a (few points)
+order Y6 K8: p=NaN points=0 note=n/a (few points)
+order Y6C K8: p=NaN points=0 note=n/a (few points)
+order WH-Y6 K8: p=NaN points=0 note=n/a (few points)
+order Leapfrog K8: p=NaN points=0 note=n/a (few points)
+order RKN12(10) K8: p=NaN points=0 note=n/a (few points)
+order IAS15 K8: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order SRKN14A K8: p=NaN points=0 note=n/a (few points)
+order WH-BM14A K8: p=NaN points=0 note=n/a (few points)
+order GJ8 K8: p=NaN points=0 note=n/a (few points)
+order Encke-IAS15 K8: p=NaN points=0 note=n/a (few points)
+  -> 360 matrix cells so far, K8 took 199 ms (sweep 36, cells 10, measure+rev 153)
+T1 Figure-eight (Chenciner-Montgomery), 3 equal masses (Test564 T1 Figure-eight (Chenciner-Montgomery); 3 equal masses)
+  RK4: 26 points
+  DOPRI5-fixed: 26 points
+  DOPRI5-adaptive: 31 points
+  DOP853-adaptive: 31 points
+  PEFRL: 26 points
+  Y6: 26 points
+  Y6C: 18 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 26 points
+  RKN12(10): 21 points
+  IAS15: 9 points
+  SRKN14A: 26 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 20 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order RK4 T1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOPRI5-fixed T1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOPRI5-adaptive T1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive T1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order PEFRL T1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Y6 T1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Y6C Test564 T1 Figure-eight (Chenciner-Montgomery); 3 equal masses: +1 point(s), 1 attempt(s), finest err 4.29257E-14
+order Y6C T1: p=5.98729 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 T1: p=NaN points=0 note=n/a (few points)
+order Leapfrog T1: p=1.9999 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) T1: p=1.12246 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 T1: p=2.16023 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order refine SRKN14A Test564 T1 Figure-eight (Chenciner-Montgomery); 3 equal masses: stopped at 6.263E-05 (censored)
+order refine SRKN14A Test564 T1 Figure-eight (Chenciner-Montgomery); 3 equal masses: +0 point(s), 1 attempt(s), finest err 5.06061E-11
+order SRKN14A T1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order WH-BM14A T1: p=NaN points=0 note=n/a (few points)
+order GJ8 T1: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order Encke-IAS15 T1: p=NaN points=0 note=n/a (few points)
+  -> 405 matrix cells so far, T1 took 22396 ms (sweep 18696, cells 1278, measure+rev 2422)
+T2 Lagrange equilateral triangle, 3 equal masses (Test564 T2 Lagrange equilateral triangle; 3 equal masses)
+  RK4: 19 points
+  DOPRI5-fixed: 15 points
+  DOPRI5-adaptive: 29 points
+  DOP853-adaptive: 24 points
+  PEFRL: 20 points
+  Y6: 14 points
+  Y6C: 14 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 26 points
+  RKN12(10): 24 points
+  IAS15: 7 points
+  SRKN14A: 10 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 7 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order refine RK4 Test564 T2 Lagrange equilateral triangle; 3 equal masses: +1 point(s), 1 attempt(s), finest err 2.16777E-13
+order RK4 T2: p=4.05354 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 T2 Lagrange equilateral triangle; 3 equal masses: +1 point(s), 1 attempt(s), finest err 1.26111E-13
+order DOPRI5-fixed T2: p=4.86811 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive T2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive T2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 T2 Lagrange equilateral triangle; 3 equal masses: +1 point(s), 1 attempt(s), finest err 1.63804E-13
+order PEFRL T2: p=3.98229 points=15 note=median of 14 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 T2 Lagrange equilateral triangle; 3 equal masses: +1 point(s), 1 attempt(s), finest err 1.72964E-13
+order Y6 T2: p=5.87152 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 T2 Lagrange equilateral triangle; 3 equal masses: +1 point(s), 1 attempt(s), finest err 1.28067E-13
+order Y6C T2: p=5.94507 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 T2: p=NaN points=0 note=n/a (few points)
+order Leapfrog T2: p=1.99993 points=18 note=median of 17 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) T2: p=1.07028 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 T2: p=NaN points=0 note=n/a (few points)
+order refine SRKN14A Test564 T2 Lagrange equilateral triangle; 3 equal masses: +1 point(s), 1 attempt(s), finest err 1.60066E-13
+order SRKN14A T2: p=5.9886 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A T2: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 T2 Lagrange equilateral triangle; 3 equal masses: +1 point(s), 1 attempt(s), finest err 2.52556E-14
+order GJ8 T2: p=8.82514 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 T2: p=NaN points=0 note=n/a (few points)
+  -> 450 matrix cells so far, T2 took 384 ms (sweep 81, cells 21, measure+rev 282)
+T3 Pythagorean (Burrau) three-body, masses 3/4/5 (Test564 T3 Pythagorean (Burrau) three-body; masses 3/4/5)
+  RK4: 26 points
+  DOPRI5-fixed: 26 points
+  DOPRI5-adaptive: 28 points
+  DOP853-adaptive: 28 points
+  PEFRL: 26 points
+  Y6: 26 points
+  Y6C: 26 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 26 points
+  RKN12(10): 21 points
+  IAS15: 21 points
+  SRKN14A: 24 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 20 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order RK4 T3: p=NaN points=0 note=n/a (few points)
+order refine DOPRI5-fixed Test564 T3 Pythagorean (Burrau) three-body; masses 3/4/5: stopped at 9.901E-06 (censored)
+order refine DOPRI5-fixed Test564 T3 Pythagorean (Burrau) three-body; masses 3/4/5: +0 point(s), 1 attempt(s), finest err 720.609
+order DOPRI5-fixed T3: p=NaN points=0 note=n/a (few points)
+order DOPRI5-adaptive T3: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive T3: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order PEFRL T3: p=NaN points=0 note=n/a (few points)
+order refine Y6 Test564 T3 Pythagorean (Burrau) three-body; masses 3/4/5: stopped at 9.901E-06 (censored)
+order refine Y6 Test564 T3 Pythagorean (Burrau) three-body; masses 3/4/5: +0 point(s), 1 attempt(s), finest err 501.368
+order Y6 T3: p=NaN points=0 note=n/a (few points)
+order refine Y6C Test564 T3 Pythagorean (Burrau) three-body; masses 3/4/5: stopped at 9.901E-06 (censored)
+order refine Y6C Test564 T3 Pythagorean (Burrau) three-body; masses 3/4/5: +0 point(s), 1 attempt(s), finest err 501.316
+order Y6C T3: p=NaN points=0 note=n/a (few points)
+order WH-Y6 T3: p=NaN points=0 note=n/a (few points)
+order Leapfrog T3: p=NaN points=0 note=n/a (few points)
+order RKN12(10) T3: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order IAS15 T3: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 T3 Pythagorean (Burrau) three-body; masses 3/4/5: stopped at 2.228E-05 (censored)
+order refine SRKN14A Test564 T3 Pythagorean (Burrau) three-body; masses 3/4/5: +0 point(s), 1 attempt(s), finest err 752.871
+order SRKN14A T3: p=NaN points=0 note=n/a (few points)
+order WH-BM14A T3: p=NaN points=0 note=n/a (few points)
+order GJ8 T3: p=NaN points=0 note=n/a (few points)
+order Encke-IAS15 T3: p=NaN points=0 note=n/a (few points)
+  -> 495 matrix cells so far, T3 took 47262 ms (sweep 40106, cells 6830, measure+rev 326)
+R1 Real solar 7-body (test fixture), Newtonian (Test564 R1 Real solar 7-body (test fixture); Newtonian)
+  RK4: 28 points
+  DOPRI5-fixed: 27 points
+  DOPRI5-adaptive: 35 points
+  DOP853-adaptive: 31 points
+  PEFRL: 27 points
+  Y6: 27 points
+  Y6C: 23 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 32 points
+  RKN12(10): 22 points
+  IAS15: 12 points
+  SRKN14A: 26 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 28 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order refine RK4 Test564 R1 Real solar 7-body (test fixture); Newtonian: stopped at 1.254E+02 (censored)
+order refine RK4 Test564 R1 Real solar 7-body (test fixture); Newtonian: +0 point(s), 1 attempt(s), finest err 11.1206
+order RK4 R1: p=NaN points=4 note=n/a (budget before the asymptotic branch)
+order refine DOPRI5-fixed Test564 R1 Real solar 7-body (test fixture); Newtonian: stopped at 1.880E+02 (censored)
+order refine DOPRI5-fixed Test564 R1 Real solar 7-body (test fixture); Newtonian: +0 point(s), 1 attempt(s), finest err 11.7949
+order DOPRI5-fixed R1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOPRI5-adaptive R1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive R1: p=1.10972 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order refine PEFRL Test564 R1 Real solar 7-body (test fixture); Newtonian: stopped at 1.254E+02 (censored)
+order refine PEFRL Test564 R1 Real solar 7-body (test fixture); Newtonian: +0 point(s), 1 attempt(s), finest err 78.2403
+order PEFRL R1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Y6 Test564 R1 Real solar 7-body (test fixture); Newtonian: stopped at 1.880E+02 (censored)
+order refine Y6 Test564 R1 Real solar 7-body (test fixture); Newtonian: +0 point(s), 1 attempt(s), finest err 14.74
+order Y6 R1: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine Y6C Test564 R1 Real solar 7-body (test fixture); Newtonian: +1 point(s), 1 attempt(s), finest err 0.191665
+order Y6C R1: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order WH-Y6 R1: p=NaN points=0 note=n/a (few points)
+order refine Leapfrog Test564 R1 Real solar 7-body (test fixture); Newtonian: stopped at 2.476E+01 (censored)
+order refine Leapfrog Test564 R1 Real solar 7-body (test fixture); Newtonian: +0 point(s), 1 attempt(s), finest err 1255.18
+order Leapfrog R1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order RKN12(10) R1: p=0.962704 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 R1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 R1 Real solar 7-body (test fixture); Newtonian: stopped at 4.231E+02 (censored)
+order refine SRKN14A Test564 R1 Real solar 7-body (test fixture); Newtonian: +0 point(s), 1 attempt(s), finest err 44.6673
+order SRKN14A R1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order WH-BM14A R1: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 R1 Real solar 7-body (test fixture); Newtonian: stopped at 5.077E+01 (censored)
+order refine GJ8 Test564 R1 Real solar 7-body (test fixture); Newtonian: +0 point(s), 1 attempt(s), finest err 24.3318
+order GJ8 R1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Encke-IAS15 R1: p=NaN points=0 note=n/a (few points)
+  -> 615 matrix cells so far, R1 took 251683 ms (sweep 165119, cells 42985, measure+rev 43579)
+R2 DE441 10 bodies, 1PN (Test564 R2 DE441 10 bodies; 1PN)
+  RK4: 18 points
+  DOPRI5-fixed: 16 points
+  DOPRI5-adaptive: 1 points
+  DOP853-adaptive: 27 points
+  PEFRL: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6C: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Leapfrog: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  RKN12(10): n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  IAS15: 10 points
+  SRKN14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-BM14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  GJ8: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order refine RK4 Test564 R2 DE441 10 bodies; 1PN: +1 point(s), 1 attempt(s), finest err 2.71596
+order RK4 R2: p=4.94173 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 R2 DE441 10 bodies; 1PN: +1 point(s), 1 attempt(s), finest err 15.14
+order DOPRI5-fixed R2: p=4.8834 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive R2: p=NaN points=0 note=n/a (few points)
+order DOP853-adaptive R2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order PEFRL R2: p=NaN points=0 note=n/a (few points)
+order Y6 R2: p=NaN points=0 note=n/a (few points)
+order Y6C R2: p=NaN points=0 note=n/a (few points)
+order WH-Y6 R2: p=NaN points=0 note=n/a (few points)
+order Leapfrog R2: p=NaN points=0 note=n/a (few points)
+order RKN12(10) R2: p=NaN points=0 note=n/a (few points)
+order IAS15 R2: p=2.60592 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order SRKN14A R2: p=NaN points=0 note=n/a (few points)
+order WH-BM14A R2: p=NaN points=0 note=n/a (few points)
+order GJ8 R2: p=NaN points=0 note=n/a (few points)
+order Encke-IAS15 R2: p=NaN points=0 note=n/a (few points)
+  -> 735 matrix cells so far, R2 took 23966 ms (sweep 16278, cells 2279, measure+rev 5409)
+R3 ship near Earth, Moon and Sun perturbations, 30 d (Test564 R3 ship near Earth; Moon and Sun perturbations; 30 d)
+  RK4: 18 points
+  DOPRI5-fixed: 16 points
+  DOPRI5-adaptive: 30 points
+  DOP853-adaptive: 23 points
+  PEFRL: 17 points
+  Y6: 13 points
+  Y6C: 13 points
+  WH-Y6: 5 points
+  Leapfrog: 23 points
+  RKN12(10): 20 points
+  IAS15: 2 points
+  SRKN14A: 9 points
+  WH-BM14A: 4 points
+  GJ8: 4 points
+  Encke-IAS15: 8 points
+order refine RK4 Test564 R3 ship near Earth; Moon and Sun perturbations; 30 d: stopped at 9.380E-01 (censored)
+order refine RK4 Test564 R3 ship near Earth; Moon and Sun perturbations; 30 d: +0 point(s), 1 attempt(s), finest err 0.0142
+order RK4 R3: p=4.96337 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 R3 ship near Earth; Moon and Sun perturbations; 30 d: +1 point(s), 1 attempt(s), finest err 0.0182394
+order DOPRI5-fixed R3: p=4.94629 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive R3: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive R3: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 R3 ship near Earth; Moon and Sun perturbations; 30 d: +1 point(s), 1 attempt(s), finest err 0.0197862
+order PEFRL R3: p=3.99491 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 R3 ship near Earth; Moon and Sun perturbations; 30 d: +1 point(s), 1 attempt(s), finest err 0.00467051
+order Y6 R3: p=6.02946 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 R3 ship near Earth; Moon and Sun perturbations; 30 d: +1 point(s), 1 attempt(s), finest err 0.00667548
+order Y6C R3: p=6.00894 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 R3: p=NaN points=3 note=n/a (few points)
+order refine Leapfrog Test564 R3 ship near Earth; Moon and Sun perturbations; 30 d: stopped at 1.853E-01 (censored)
+order refine Leapfrog Test564 R3 ship near Earth; Moon and Sun perturbations; 30 d: +0 point(s), 1 attempt(s), finest err 657.356
+order Leapfrog R3: p=NaN points=6 note=n/a (budget before the asymptotic branch)
+order RKN12(10) R3: p=1.1694 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 R3: p=NaN points=1 note=n/a (few points)
+order refine SRKN14A Test564 R3 ship near Earth; Moon and Sun perturbations; 30 d: +1 point(s), 1 attempt(s), finest err 0.00517409
+order SRKN14A R3: p=5.98683 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A R3: p=NaN points=2 note=n/a (few points)
+order refine GJ8 Test564 R3 ship near Earth; Moon and Sun perturbations; 30 d: +1 point(s), 1 attempt(s), finest err 0.00382133
+order GJ8 R3: p=NaN points=2 note=n/a (few points)
+order Encke-IAS15 R3: p=NaN points=0 note=n/a (few points)
+  -> 855 matrix cells so far, R3 took 376896 ms (sweep 150387, cells 77248, measure+rev 149261)
+R4 Moon flyby (hyperbolic, vinf 1000 m/s, 100 km) (Test564 R4 Moon flyby (hyperbolic; vinf 1000 m/s; 100 km))
+  RK4: 16 points
+  DOPRI5-fixed: 11 points
+  DOPRI5-adaptive: 22 points
+  DOP853-adaptive: 18 points
+  PEFRL: 15 points
+  Y6: 12 points
+  Y6C: 12 points
+  WH-Y6: 7 points
+  Leapfrog: 26 points
+  RKN12(10): 12 points
+  IAS15: 8 points
+  SRKN14A: 8 points
+  WH-BM14A: 13 points
+  GJ8: 4 points
+  Encke-IAS15: 7 points
+order refine RK4 Test564 R4 Moon flyby (hyperbolic; vinf 1000 m/s; 100 km): +1 point(s), 1 attempt(s), finest err 0.000146023
+order RK4 R4: p=4.02263 points=12 note=median of 11 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 R4 Moon flyby (hyperbolic; vinf 1000 m/s; 100 km): +1 point(s), 1 attempt(s), finest err 0.000250282
+order DOPRI5-fixed R4: p=5.31281 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive R4: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive R4: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 R4 Moon flyby (hyperbolic; vinf 1000 m/s; 100 km): +2 point(s), 2 attempt(s), finest err 0.000385083
+order PEFRL R4: p=3.98611 points=12 note=median of 11 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 R4 Moon flyby (hyperbolic; vinf 1000 m/s; 100 km): +1 point(s), 1 attempt(s), finest err 5.50579E-05
+order Y6 R4: p=5.95039 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 R4 Moon flyby (hyperbolic; vinf 1000 m/s; 100 km): +1 point(s), 1 attempt(s), finest err 5.58202E-05
+order Y6C R4: p=5.95051 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 R4: p=6.19394 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order Leapfrog R4: p=2 points=16 note=median of 15 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) R4: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order IAS15 R4: p=2.05712 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order refine SRKN14A Test564 R4 Moon flyby (hyperbolic; vinf 1000 m/s; 100 km): +1 point(s), 1 attempt(s), finest err 4.53679E-05
+order SRKN14A R4: p=5.91797 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A R4: p=6.87661 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order refine GJ8 Test564 R4 Moon flyby (hyperbolic; vinf 1000 m/s; 100 km): +1 point(s), 1 attempt(s), finest err 0.000312662
+order GJ8 R4: p=10.591 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 R4: p=NaN points=0 note=n/a (few points)
+  -> 975 matrix cells so far, R4 took 27789 ms (sweep 7152, cells 1653, measure+rev 18984)
+L1 LEO 400 km, 1000 orbits (pure gravity) (Test564 L1 LEO 400 km; 1000 orbits (pure gravity))
+  RK4: 17 points
+  DOPRI5-fixed: 16 points
+  DOPRI5-adaptive: 28 points
+  DOP853-adaptive: 29 points
+  PEFRL: 17 points
+  Y6: 16 points
+  Y6C: 16 points
+  WH-Y6: 18 points
+  Leapfrog: 21 points
+  RKN12(10): 22 points
+  IAS15: 25 points
+  SRKN14A: 14 points
+  WH-BM14A: 18 points
+  GJ8: 13 points
+  Encke-IAS15: 12 points
+order refine RK4 Test564 L1 LEO 400 km; 1000 orbits (pure gravity): stopped at 2.110E+00 (censored)
+order refine RK4 Test564 L1 LEO 400 km; 1000 orbits (pure gravity): +0 point(s), 1 attempt(s), finest err 3.4522
+order RK4 L1: p=NaN points=5 note=n/a (budget before the asymptotic branch)
+order refine DOPRI5-fixed Test564 L1 LEO 400 km; 1000 orbits (pure gravity): stopped at 3.166E+00 (censored)
+order refine DOPRI5-fixed Test564 L1 LEO 400 km; 1000 orbits (pure gravity): +0 point(s), 1 attempt(s), finest err 0.512618
+order DOPRI5-fixed L1: p=NaN points=6 note=n/a (budget before the asymptotic branch)
+order DOPRI5-adaptive L1: p=NaN points=4 note=n/a (budget before the asymptotic branch)
+order DOP853-adaptive L1: p=1.08572 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order refine PEFRL Test564 L1 LEO 400 km; 1000 orbits (pure gravity): stopped at 2.110E+00 (censored)
+order refine PEFRL Test564 L1 LEO 400 km; 1000 orbits (pure gravity): +0 point(s), 1 attempt(s), finest err 0.128294
+order PEFRL L1: p=NaN points=9 note=n/a (budget before the asymptotic branch)
+order refine Y6 Test564 L1 LEO 400 km; 1000 orbits (pure gravity): stopped at 3.166E+00 (censored)
+order refine Y6 Test564 L1 LEO 400 km; 1000 orbits (pure gravity): +0 point(s), 1 attempt(s), finest err 0.0282558
+order Y6 L1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Y6C Test564 L1 LEO 400 km; 1000 orbits (pure gravity): stopped at 3.166E+00 (censored)
+order refine Y6C Test564 L1 LEO 400 km; 1000 orbits (pure gravity): +0 point(s), 1 attempt(s), finest err 0.0174759
+order Y6C L1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order WH-Y6 L1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Leapfrog Test564 L1 LEO 400 km; 1000 orbits (pure gravity): stopped at 4.169E-01 (censored)
+order refine Leapfrog Test564 L1 LEO 400 km; 1000 orbits (pure gravity): +0 point(s), 1 attempt(s), finest err 7119.68
+order Leapfrog L1: p=NaN points=3 note=n/a (few points)
+order RKN12(10) L1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order IAS15 L1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 L1 LEO 400 km; 1000 orbits (pure gravity): stopped at 7.123E+00 (censored)
+order refine SRKN14A Test564 L1 LEO 400 km; 1000 orbits (pure gravity): +0 point(s), 1 attempt(s), finest err 0.004394
+order SRKN14A L1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order WH-BM14A L1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine GJ8 Test564 L1 LEO 400 km; 1000 orbits (pure gravity): stopped at 8.547E-01 (censored)
+order refine GJ8 Test564 L1 LEO 400 km; 1000 orbits (pure gravity): +0 point(s), 1 attempt(s), finest err 0.016496
+order GJ8 L1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Encke-IAS15 L1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+  -> 1095 matrix cells so far, L1 took 1204135 ms (sweep 519336, cells 145717, measure+rev 539082)
+L2 Kepler e=0.5, 100 orbits (Test564 L2 Kepler e=0.5; 100 orbits)
+  RK4: 23 points
+  DOPRI5-fixed: 19 points
+  DOPRI5-adaptive: 29 points
+  DOP853-adaptive: 27 points
+  PEFRL: 20 points
+  Y6: 18 points
+  Y6C: 16 points
+  WH-Y6: 13 points
+  Leapfrog: 26 points
+  RKN12(10): 21 points
+  IAS15: 11 points
+  SRKN14A: 12 points
+  WH-BM14A: 13 points
+  GJ8: 8 points
+  Encke-IAS15: 9 points
+order refine RK4 Test564 L2 Kepler e=0.5; 100 orbits: stopped at 2.099E-04 (censored)
+order refine RK4 Test564 L2 Kepler e=0.5; 100 orbits: +0 point(s), 1 attempt(s), finest err 2.58389E-10
+order RK4 L2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine DOPRI5-fixed Test564 L2 Kepler e=0.5; 100 orbits: +1 point(s), 1 attempt(s), finest err 1.5751E-10
+order DOPRI5-fixed L2: p=4.82381 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive L2: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive L2: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 L2 Kepler e=0.5; 100 orbits: stopped at 2.099E-04 (censored)
+order refine PEFRL Test564 L2 Kepler e=0.5; 100 orbits: +2 point(s), 3 attempt(s), finest err 1.16437E-10
+order PEFRL L2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Y6 Test564 L2 Kepler e=0.5; 100 orbits: +1 point(s), 1 attempt(s), finest err 1.36987E-10
+order Y6 L2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Y6C Test564 L2 Kepler e=0.5; 100 orbits: +1 point(s), 1 attempt(s), finest err 8.45081E-11
+order Y6C L2: p=5.99889 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 L2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Leapfrog Test564 L2 Kepler e=0.5; 100 orbits: stopped at 6.221E-05 (censored)
+order refine Leapfrog Test564 L2 Kepler e=0.5; 100 orbits: +0 point(s), 1 attempt(s), finest err 3.90168E-05
+order Leapfrog L2: p=NaN points=7 note=n/a (budget before the asymptotic branch)
+order RKN12(10) L2: p=1.5406 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 L2: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 L2 Kepler e=0.5; 100 orbits: +1 point(s), 1 attempt(s), finest err 1.48711E-10
+order SRKN14A L2: p=6.26908 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A L2: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 L2 Kepler e=0.5; 100 orbits: +1 point(s), 1 attempt(s), finest err 1.11365E-10
+order GJ8 L2: p=10.708 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 L2: p=NaN points=0 note=n/a (few points)
+  -> 1140 matrix cells so far, L2 took 22065 ms (sweep 8444, cells 5391, measure+rev 8230)
+S01 Earth LEO 400 km circular, 1 d (Test564 S01 Earth LEO 400 km circular; 1 d)
+  RK4: 14 points
+  DOPRI5-fixed: 12 points
+  DOPRI5-adaptive: 22 points
+  DOP853-adaptive: 15 points
+  PEFRL: 13 points
+  Y6: 10 points
+  Y6C: 10 points
+  WH-Y6: 11 points
+  Leapfrog: 26 points
+  RKN12(10): 12 points
+  IAS15: 9 points
+  SRKN14A: 6 points
+  WH-BM14A: 9 points
+  GJ8: 5 points
+  Encke-IAS15: 6 points
+order refine RK4 Test564 S01 Earth LEO 400 km circular; 1 d: +4 point(s), 4 attempt(s), finest err 0.11066
+order RK4 S01: p=4.57785 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 S01 Earth LEO 400 km circular; 1 d: +3 point(s), 3 attempt(s), finest err 0.0520968
+order DOPRI5-fixed S01: p=4.93302 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive S01: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive S01: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 S01 Earth LEO 400 km circular; 1 d: +4 point(s), 4 attempt(s), finest err 0.243719
+order PEFRL S01: p=3.99665 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 S01 Earth LEO 400 km circular; 1 d: +3 point(s), 3 attempt(s), finest err 0.231575
+order Y6 S01: p=5.94914 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 S01 Earth LEO 400 km circular; 1 d: +3 point(s), 3 attempt(s), finest err 0.231578
+order Y6C S01: p=5.97347 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 S01: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order Leapfrog S01: p=1.99991 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) S01: p=1.07777 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 S01: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 S01 Earth LEO 400 km circular; 1 d: +3 point(s), 3 attempt(s), finest err 0.219879
+order SRKN14A S01: p=5.92522 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A S01: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine GJ8 Test564 S01 Earth LEO 400 km circular; 1 d: +1 point(s), 1 attempt(s), finest err 0.0295694
+order GJ8 S01: p=9.82428 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 S01: p=NaN points=0 note=n/a (few points)
+  -> 1185 matrix cells so far, S01 took 23602 ms (sweep 5857, cells 3101, measure+rev 14644)
+S02 Earth LEO 400 km polar, 1 d (Test564 S02 Earth LEO 400 km polar; 1 d)
+  RK4: 14 points
+  DOPRI5-fixed: 12 points
+  DOPRI5-adaptive: 22 points
+  DOP853-adaptive: 15 points
+  PEFRL: 13 points
+  Y6: 10 points
+  Y6C: 10 points
+  WH-Y6: 5 points
+  Leapfrog: 26 points
+  RKN12(10): 12 points
+  IAS15: 9 points
+  SRKN14A: 6 points
+  WH-BM14A: 9 points
+  GJ8: 5 points
+  Encke-IAS15: 6 points
+order refine RK4 Test564 S02 Earth LEO 400 km polar; 1 d: +4 point(s), 4 attempt(s), finest err 0.110664
+order RK4 S02: p=4.57783 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 S02 Earth LEO 400 km polar; 1 d: +3 point(s), 3 attempt(s), finest err 0.0520975
+order DOPRI5-fixed S02: p=4.93298 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive S02: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive S02: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 S02 Earth LEO 400 km polar; 1 d: +5 point(s), 5 attempt(s), finest err 0.243696
+order PEFRL S02: p=3.99605 points=12 note=median of 11 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 S02 Earth LEO 400 km polar; 1 d: +4 point(s), 4 attempt(s), finest err 0.231561
+order Y6 S02: p=5.99495 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 S02 Earth LEO 400 km polar; 1 d: +4 point(s), 4 attempt(s), finest err 0.231574
+order Y6C S02: p=5.9817 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 S02: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order Leapfrog S02: p=1.99993 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) S02: p=1.0733 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 S02: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 S02 Earth LEO 400 km polar; 1 d: +4 point(s), 4 attempt(s), finest err 0.219884
+order SRKN14A S02: p=5.99308 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A S02: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine GJ8 Test564 S02 Earth LEO 400 km polar; 1 d: +2 point(s), 2 attempt(s), finest err 0.0295536
+order GJ8 S02: p=10.0781 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 S02: p=NaN points=0 note=n/a (few points)
+  -> 1230 matrix cells so far, S02 took 24046 ms (sweep 5833, cells 3530, measure+rev 14683)
+S03 Earth sun-synchronous 400 km, 1 d (Test564 S03 Earth sun-synchronous 400 km; 1 d)
+  RK4: 14 points
+  DOPRI5-fixed: 12 points
+  DOPRI5-adaptive: 22 points
+  DOP853-adaptive: 15 points
+  PEFRL: 13 points
+  Y6: 10 points
+  Y6C: 10 points
+  WH-Y6: 8 points
+  Leapfrog: 26 points
+  RKN12(10): 11 points
+  IAS15: 7 points
+  SRKN14A: 6 points
+  WH-BM14A: 4 points
+  GJ8: 5 points
+  Encke-IAS15: 6 points
+order refine RK4 Test564 S03 Earth sun-synchronous 400 km; 1 d: +4 point(s), 4 attempt(s), finest err 0.11127
+order RK4 S03: p=4.57699 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 S03 Earth sun-synchronous 400 km; 1 d: +3 point(s), 3 attempt(s), finest err 0.0522149
+order DOPRI5-fixed S03: p=4.93226 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive S03: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive S03: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 S03 Earth sun-synchronous 400 km; 1 d: +5 point(s), 5 attempt(s), finest err 0.24447
+order PEFRL S03: p=3.9995 points=12 note=median of 11 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 S03 Earth sun-synchronous 400 km; 1 d: +3 point(s), 3 attempt(s), finest err 0.232511
+order Y6 S03: p=5.97347 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 S03 Earth sun-synchronous 400 km; 1 d: +3 point(s), 3 attempt(s), finest err 0.232512
+order Y6C S03: p=5.97347 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 S03: p=5.752 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order Leapfrog S03: p=1.99992 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) S03: p=1.5995 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 S03: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 S03 Earth sun-synchronous 400 km; 1 d: +3 point(s), 3 attempt(s), finest err 0.219751
+order SRKN14A S03: p=5.92483 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A S03: p=7.30797 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order refine GJ8 Test564 S03 Earth sun-synchronous 400 km; 1 d: +1 point(s), 1 attempt(s), finest err 0.00565133
+order GJ8 S03: p=9.83517 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 S03: p=NaN points=0 note=n/a (few points)
+  -> 1275 matrix cells so far, S03 took 24313 ms (sweep 6013, cells 3432, measure+rev 14868)
+S04 Earth GTO 400 x 40000 km, 2 d (Test564 S04 Earth GTO 400 x 40000 km; 2 d)
+  RK4: 15 points
+  DOPRI5-fixed: 12 points
+  DOPRI5-adaptive: 22 points
+  DOP853-adaptive: 17 points
+  PEFRL: 15 points
+  Y6: 11 points
+  Y6C: 11 points
+  WH-Y6: 15 points
+  Leapfrog: 26 points
+  RKN12(10): 13 points
+  IAS15: 8 points
+  SRKN14A: 7 points
+  WH-BM14A: 11 points
+  GJ8: 4 points
+  Encke-IAS15: 7 points
+order refine RK4 Test564 S04 Earth GTO 400 x 40000 km; 2 d: +5 point(s), 5 attempt(s), finest err 0.116518
+order RK4 S04: p=4.18898 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 S04 Earth GTO 400 x 40000 km; 2 d: +3 point(s), 3 attempt(s), finest err 0.0770823
+order DOPRI5-fixed S04: p=4.97282 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive S04: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive S04: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 S04 Earth GTO 400 x 40000 km; 2 d: +4 point(s), 4 attempt(s), finest err 0.072502
+order PEFRL S04: p=4.0003 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 S04 Earth GTO 400 x 40000 km; 2 d: +3 point(s), 3 attempt(s), finest err 0.149538
+order Y6 S04: p=5.96664 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 S04 Earth GTO 400 x 40000 km; 2 d: +3 point(s), 3 attempt(s), finest err 0.149476
+order Y6C S04: p=5.99263 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 S04: p=9.16861 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order Leapfrog S04: p=2.00001 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) S04: p=1.4244 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 S04: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 S04 Earth GTO 400 x 40000 km; 2 d: +3 point(s), 3 attempt(s), finest err 0.168925
+order SRKN14A S04: p=6.03535 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A S04: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order refine GJ8 Test564 S04 Earth GTO 400 x 40000 km; 2 d: +2 point(s), 2 attempt(s), finest err 0.107275
+order GJ8 S04: p=10.76 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 S04: p=NaN points=0 note=n/a (few points)
+  -> 1320 matrix cells so far, S04 took 49554 ms (sweep 11416, cells 8734, measure+rev 29404)
+S05 Earth Molniya 500 x 40000 km, 7 d (Test564 S05 Earth Molniya 500 x 40000 km; 7 d)
+  RK4: 16 points
+  DOPRI5-fixed: 13 points
+  DOPRI5-adaptive: 24 points
+  DOP853-adaptive: 20 points
+  PEFRL: 15 points
+  Y6: 12 points
+  Y6C: 12 points
+  WH-Y6: 7 points
+  Leapfrog: 26 points
+  RKN12(10): 14 points
+  IAS15: 11 points
+  SRKN14A: 8 points
+  WH-BM14A: 14 points
+  GJ8: 5 points
+  Encke-IAS15: 8 points
+order refine RK4 Test564 S05 Earth Molniya 500 x 40000 km; 7 d: +2 point(s), 2 attempt(s), finest err 0.0876099
+order RK4 S05: p=4.42758 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 S05 Earth Molniya 500 x 40000 km; 7 d: +2 point(s), 2 attempt(s), finest err 0.117853
+order DOPRI5-fixed S05: p=4.95087 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive S05: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive S05: p=1.1512 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order refine PEFRL Test564 S05 Earth Molniya 500 x 40000 km; 7 d: +2 point(s), 2 attempt(s), finest err 0.249672
+order PEFRL S05: p=3.99512 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 S05 Earth Molniya 500 x 40000 km; 7 d: +1 point(s), 1 attempt(s), finest err 0.0448498
+order Y6 S05: p=5.95543 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 S05 Earth Molniya 500 x 40000 km; 7 d: +1 point(s), 1 attempt(s), finest err 0.04461
+order Y6C S05: p=5.97537 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 S05: p=6.14304 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Leapfrog Test564 S05 Earth Molniya 500 x 40000 km; 7 d: stopped at 5.612E-02 (censored)
+order refine Leapfrog Test564 S05 Earth Molniya 500 x 40000 km; 7 d: +0 point(s), 1 attempt(s), finest err 61.9416
+order Leapfrog S05: p=NaN points=12 note=n/a (budget before the asymptotic branch)
+order RKN12(10) S05: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order IAS15 S05: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 S05 Earth Molniya 500 x 40000 km; 7 d: +1 point(s), 1 attempt(s), finest err 0.0477404
+order SRKN14A S05: p=6.03651 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A S05: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order refine GJ8 Test564 S05 Earth Molniya 500 x 40000 km; 7 d: +1 point(s), 1 attempt(s), finest err 0.0159978
+order GJ8 S05: p=NaN points=5 note=n/a (floor-limited window: sub-window slope 3.89 vs branch 10.74)
+order Encke-IAS15 S05: p=NaN points=0 note=n/a (few points)
+  -> 1365 matrix cells so far, S05 took 148083 ms (sweep 41048, cells 32572, measure+rev 74463)
+S06 Earth GEO 35786 km, 30 d (Test564 S06 Earth GEO 35786 km; 30 d)
+  RK4: 16 points
+  DOPRI5-fixed: 13 points
+  DOPRI5-adaptive: 24 points
+  DOP853-adaptive: 18 points
+  PEFRL: 15 points
+  Y6: 11 points
+  Y6C: 11 points
+  WH-Y6: 6 points
+  Leapfrog: 26 points
+  RKN12(10): 16 points
+  IAS15: 10 points
+  SRKN14A: 7 points
+  WH-BM14A: 5 points
+  GJ8: 4 points
+  Encke-IAS15: 5 points
+order refine RK4 Test564 S06 Earth GEO 35786 km; 30 d: +1 point(s), 1 attempt(s), finest err 0.0490793
+order RK4 S06: p=4.75831 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 S06 Earth GEO 35786 km; 30 d: +2 point(s), 2 attempt(s), finest err 0.160654
+order DOPRI5-fixed S06: p=4.9235 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive S06: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive S06: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 S06 Earth GEO 35786 km; 30 d: +2 point(s), 2 attempt(s), finest err 0.113593
+order PEFRL S06: p=3.99743 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 S06 Earth GEO 35786 km; 30 d: +2 point(s), 2 attempt(s), finest err 0.23995
+order Y6 S06: p=5.94405 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 S06 Earth GEO 35786 km; 30 d: +2 point(s), 2 attempt(s), finest err 0.239817
+order Y6C S06: p=5.96938 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 S06: p=7.27058 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order Leapfrog S06: p=1.99992 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) S06: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order IAS15 S06: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 S06 Earth GEO 35786 km; 30 d: +2 point(s), 2 attempt(s), finest err 0.241136
+order SRKN14A S06: p=5.75687 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A S06: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine GJ8 Test564 S06 Earth GEO 35786 km; 30 d: +1 point(s), 1 attempt(s), finest err 0.00768609
+order GJ8 S06: p=NaN points=3 note=n/a (few points)
+order Encke-IAS15 S06: p=NaN points=0 note=n/a (few points)
+  -> 1410 matrix cells so far, S06 took 34961 ms (sweep 12584, cells 6855, measure+rev 15522)
+S09 Earth LEO 400 km + J2, 1 d (Test564 S09 Earth LEO 400 km + J2; 1 d)
+  RK4: 14 points
+  DOPRI5-fixed: 12 points
+  DOPRI5-adaptive: 22 points
+  DOP853-adaptive: 15 points
+  PEFRL: 13 points
+  Y6: 10 points
+  Y6C: 10 points
+  WH-Y6: 6 points
+  Leapfrog: 26 points
+  RKN12(10): 12 points
+  IAS15: 6 points
+  SRKN14A: 6 points
+  WH-BM14A: 9 points
+  GJ8: 4 points
+  Encke-IAS15: 6 points
+order refine RK4 Test564 S09 Earth LEO 400 km + J2; 1 d: +4 point(s), 4 attempt(s), finest err 0.112445
+order RK4 S09: p=4.58107 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 S09 Earth LEO 400 km + J2; 1 d: +3 point(s), 3 attempt(s), finest err 0.0535048
+order DOPRI5-fixed S09: p=4.93257 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive S09: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive S09: p=1.24743 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order refine PEFRL Test564 S09 Earth LEO 400 km + J2; 1 d: +5 point(s), 5 attempt(s), finest err 0.247237
+order PEFRL S09: p=3.99427 points=12 note=median of 11 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 S09 Earth LEO 400 km + J2; 1 d: +3 point(s), 3 attempt(s), finest err 0.235007
+order Y6 S09: p=5.97335 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 S09 Earth LEO 400 km + J2; 1 d: +3 point(s), 3 attempt(s), finest err 0.235006
+order Y6C S09: p=5.97335 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 S09: p=5.32236 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order Leapfrog S09: p=1.99992 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) S09: p=1.11933 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 S09: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 S09 Earth LEO 400 km + J2; 1 d: +3 point(s), 3 attempt(s), finest err 0.224321
+order SRKN14A S09: p=5.92484 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A S09: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine GJ8 Test564 S09 Earth LEO 400 km + J2; 1 d: +1 point(s), 1 attempt(s), finest err 0.0142188
+order GJ8 S09: p=9.8498 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 S09: p=NaN points=0 note=n/a (few points)
+  -> 1455 matrix cells so far, S09 took 25408 ms (sweep 6388, cells 3674, measure+rev 15346)
+S14 Earth HEO 300 x 120000 km, 5 d (Test564 S14 Earth HEO 300 x 120000 km; 5 d)
+  RK4: 16 points
+  DOPRI5-fixed: 12 points
+  DOPRI5-adaptive: 21 points
+  DOP853-adaptive: 17 points
+  PEFRL: 16 points
+  Y6: 12 points
+  Y6C: 12 points
+  WH-Y6: 5 points
+  Leapfrog: 26 points
+  RKN12(10): 13 points
+  IAS15: 7 points
+  SRKN14A: 8 points
+  WH-BM14A: 14 points
+  GJ8: 5 points
+  Encke-IAS15: 8 points
+order refine RK4 Test564 S14 Earth HEO 300 x 120000 km; 5 d: +3 point(s), 3 attempt(s), finest err 0.0957346
+order RK4 S14: p=4.0872 points=12 note=median of 11 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 S14 Earth HEO 300 x 120000 km; 5 d: +3 point(s), 3 attempt(s), finest err 0.153311
+order DOPRI5-fixed S14: p=5.06353 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive S14: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive S14: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 S14 Earth HEO 300 x 120000 km; 5 d: +2 point(s), 2 attempt(s), finest err 0.0645934
+order PEFRL S14: p=3.99064 points=12 note=median of 11 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 S14 Earth HEO 300 x 120000 km; 5 d: +2 point(s), 2 attempt(s), finest err 0.0595877
+order Y6 S14: p=5.95064 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 S14 Earth HEO 300 x 120000 km; 5 d: +2 point(s), 2 attempt(s), finest err 0.05956
+order Y6C S14: p=5.9507 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 S14: p=7.24226 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Leapfrog S14: p=2.00008 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) S14: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order IAS15 S14: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 S14 Earth HEO 300 x 120000 km; 5 d: +2 point(s), 2 attempt(s), finest err 0.0751481
+order SRKN14A S14: p=6.02743 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A S14: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order refine GJ8 Test564 S14 Earth HEO 300 x 120000 km; 5 d: +1 point(s), 1 attempt(s), finest err 0.0367948
+order GJ8 S14: p=10.3219 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 S14: p=NaN points=0 note=n/a (few points)
+  -> 1500 matrix cells so far, S14 took 107055 ms (sweep 31628, cells 20527, measure+rev 54900)
+S10 Earth 250 km + atmosphere drag, 1 d (Test564 S10 Earth 250 km + atmosphere drag; 1 d)
+  RK4: 14 points
+  DOPRI5-fixed: 12 points
+  DOPRI5-adaptive: 22 points
+  DOP853-adaptive: 15 points
+  PEFRL: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6C: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Leapfrog: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  RKN12(10): n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  IAS15: 9 points
+  SRKN14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-BM14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  GJ8: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Encke-IAS15: 7 points
+order refine RK4 Test564 S10 Earth 250 km + atmosphere drag; 1 d: +3 point(s), 3 attempt(s), finest err 0.120629
+order RK4 S10: p=4.62977 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 S10 Earth 250 km + atmosphere drag; 1 d: +2 point(s), 2 attempt(s), finest err 0.0542229
+order DOPRI5-fixed S10: p=4.92499 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive S10: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive S10: p=1.26754 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order PEFRL S10: p=NaN points=0 note=n/a (few points)
+order Y6 S10: p=NaN points=0 note=n/a (few points)
+order Y6C S10: p=NaN points=0 note=n/a (few points)
+order WH-Y6 S10: p=NaN points=0 note=n/a (few points)
+order Leapfrog S10: p=NaN points=0 note=n/a (few points)
+order RKN12(10) S10: p=NaN points=0 note=n/a (few points)
+order IAS15 S10: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order SRKN14A S10: p=NaN points=0 note=n/a (few points)
+order WH-BM14A S10: p=NaN points=0 note=n/a (few points)
+order GJ8 S10: p=NaN points=0 note=n/a (few points)
+order Encke-IAS15 S10: p=NaN points=0 note=n/a (few points)
+  -> 1545 matrix cells so far, S10 took 3260 ms (sweep 1234, cells 902, measure+rev 1124)
+S11 Earth LEO 400 km + 600 s prograde burn, 1 d (Test564 S11 Earth LEO 400 km + 600 s prograde burn; 1 d)
+  RK4: 21 points
+  DOPRI5-fixed: 18 points
+  DOPRI5-adaptive: 21 points
+  DOP853-adaptive: 18 points
+  PEFRL: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6C: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Leapfrog: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  RKN12(10): n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  IAS15: 6 points
+  SRKN14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-BM14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  GJ8: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Encke-IAS15: 6 points
+order refine RK4 Test564 S11 Earth LEO 400 km + 600 s prograde burn; 1 d: +3 point(s), 3 attempt(s), finest err 0.111968
+order RK4 S11: p=3.46156 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 S11 Earth LEO 400 km + 600 s prograde burn; 1 d: +2 point(s), 2 attempt(s), finest err 0.0237031
+order DOPRI5-fixed S11: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order DOPRI5-adaptive S11: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive S11: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order PEFRL S11: p=NaN points=0 note=n/a (few points)
+order Y6 S11: p=NaN points=0 note=n/a (few points)
+order Y6C S11: p=NaN points=0 note=n/a (few points)
+order WH-Y6 S11: p=NaN points=0 note=n/a (few points)
+order Leapfrog S11: p=NaN points=0 note=n/a (few points)
+order RKN12(10) S11: p=NaN points=0 note=n/a (few points)
+order IAS15 S11: p=2.3099 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order SRKN14A S11: p=NaN points=0 note=n/a (few points)
+order WH-BM14A S11: p=NaN points=0 note=n/a (few points)
+order GJ8 S11: p=NaN points=0 note=n/a (few points)
+order Encke-IAS15 S11: p=NaN points=0 note=n/a (few points)
+  -> 1590 matrix cells so far, S11 took 2098 ms (sweep 802, cells 658, measure+rev 638)
+S17 Earth LEO 400 km + unaligned 600 s burn, 1 d (Test564 S17 Earth LEO 400 km + unaligned 600 s burn; 1 d)
+  RK4: 20 points
+  DOPRI5-fixed: 17 points
+  DOPRI5-adaptive: 21 points
+  DOP853-adaptive: 18 points
+  PEFRL: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6C: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Leapfrog: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  RKN12(10): n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  IAS15: 6 points
+  SRKN14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-BM14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  GJ8: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Encke-IAS15: 6 points
+order refine RK4 Test564 S17 Earth LEO 400 km + unaligned 600 s burn; 1 d: +5 point(s), 5 attempt(s), finest err 0.119931
+order RK4 S17: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine DOPRI5-fixed Test564 S17 Earth LEO 400 km + unaligned 600 s burn; 1 d: +3 point(s), 3 attempt(s), finest err 0.178792
+order DOPRI5-fixed S17: p=4.92421 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive S17: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive S17: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order PEFRL S17: p=NaN points=0 note=n/a (few points)
+order Y6 S17: p=NaN points=0 note=n/a (few points)
+order Y6C S17: p=NaN points=0 note=n/a (few points)
+order WH-Y6 S17: p=NaN points=0 note=n/a (few points)
+order Leapfrog S17: p=NaN points=0 note=n/a (few points)
+order RKN12(10) S17: p=NaN points=0 note=n/a (few points)
+order IAS15 S17: p=2.37878 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order SRKN14A S17: p=NaN points=0 note=n/a (few points)
+order WH-BM14A S17: p=NaN points=0 note=n/a (few points)
+order GJ8 S17: p=NaN points=0 note=n/a (few points)
+order Encke-IAS15 S17: p=NaN points=0 note=n/a (few points)
+  -> 1635 matrix cells so far, S17 took 2520 ms (sweep 704, cells 1015, measure+rev 801)
+S07 Sun 1 AU circular, 1 y (Test564 S07 Sun 1 AU circular; 1 y)
+  RK4: 10 points
+  DOPRI5-fixed: 6 points
+  DOPRI5-adaptive: 25 points
+  DOP853-adaptive: 21 points
+  PEFRL: 10 points
+  Y6: 6 points
+  Y6C: 6 points
+  WH-Y6: 1 points
+  Leapfrog: 18 points
+  RKN12(10): 13 points
+  IAS15: 10 points
+  SRKN14A: 2 points
+  WH-BM14A: 1 points
+  GJ8: 1 points
+  Encke-IAS15: 1 points
+order refine RK4 Test564 S07 Sun 1 AU circular; 1 y: +1 point(s), 1 attempt(s), finest err 0.227047
+order RK4 S07: p=4.01324 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 S07 Sun 1 AU circular; 1 y: +1 point(s), 1 attempt(s), finest err 0.137137
+order DOPRI5-fixed S07: p=4.66606 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive S07: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive S07: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 S07 Sun 1 AU circular; 1 y: +1 point(s), 1 attempt(s), finest err 0.167528
+order PEFRL S07: p=3.98141 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 S07 Sun 1 AU circular; 1 y: +1 point(s), 1 attempt(s), finest err 0.0546484
+order Y6 S07: p=5.86368 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 S07 Sun 1 AU circular; 1 y: +1 point(s), 1 attempt(s), finest err 0.038679
+order Y6C S07: p=5.99764 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 S07: p=NaN points=0 note=n/a (few points)
+order Leapfrog S07: p=1.99951 points=18 note=median of 17 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) S07: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order IAS15 S07: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 S07 Sun 1 AU circular; 1 y: +1 point(s), 1 attempt(s), finest err 0.0337687
+order SRKN14A S07: p=NaN points=1 note=n/a (few points)
+order WH-BM14A S07: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 S07 Sun 1 AU circular; 1 y: +1 point(s), 1 attempt(s), finest err 0.0315287
+order GJ8 S07: p=NaN points=0 note=n/a (few points)
+order Encke-IAS15 S07: p=NaN points=0 note=n/a (few points)
+  -> 1680 matrix cells so far, S07 took 1223 ms (sweep 458, cells 156, measure+rev 609)
+S08 Sun 0.5 x 2 AU eccentric, 1 y (Test564 S08 Sun 0.5 x 2 AU eccentric; 1 y)
+  RK4: 13 points
+  DOPRI5-fixed: 9 points
+  DOPRI5-adaptive: 25 points
+  DOP853-adaptive: 24 points
+  PEFRL: 13 points
+  Y6: 8 points
+  Y6C: 8 points
+  WH-Y6: 1 points
+  Leapfrog: 21 points
+  RKN12(10): 15 points
+  IAS15: 6 points
+  SRKN14A: 4 points
+  WH-BM14A: 1 points
+  GJ8: 6 points
+  Encke-IAS15: 1 points
+order refine RK4 Test564 S08 Sun 0.5 x 2 AU eccentric; 1 y: +1 point(s), 1 attempt(s), finest err 0.210627
+order RK4 S08: p=4.01977 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 S08 Sun 0.5 x 2 AU eccentric; 1 y: +1 point(s), 1 attempt(s), finest err 0.0651625
+order DOPRI5-fixed S08: p=5.10786 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive S08: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive S08: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 S08 Sun 0.5 x 2 AU eccentric; 1 y: +1 point(s), 1 attempt(s), finest err 0.129595
+order PEFRL S08: p=4.00043 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 S08 Sun 0.5 x 2 AU eccentric; 1 y: +1 point(s), 1 attempt(s), finest err 0.24172
+order Y6 S08: p=5.98097 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 S08 Sun 0.5 x 2 AU eccentric; 1 y: +1 point(s), 1 attempt(s), finest err 0.233025
+order Y6C S08: p=5.98097 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 S08: p=NaN points=0 note=n/a (few points)
+order Leapfrog S08: p=1.99967 points=18 note=median of 17 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) S08: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order IAS15 S08: p=2.03629 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order refine SRKN14A Test564 S08 Sun 0.5 x 2 AU eccentric; 1 y: +1 point(s), 1 attempt(s), finest err 0.134233
+order SRKN14A S08: p=6.03606 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A S08: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 S08 Sun 0.5 x 2 AU eccentric; 1 y: +1 point(s), 1 attempt(s), finest err 0.0123488
+order GJ8 S08: p=9.07274 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 S08: p=NaN points=0 note=n/a (few points)
+  -> 1725 matrix cells so far, S08 took 2748 ms (sweep 1360, cells 312, measure+rev 1076)
+S12 Earth-Moon flyby inside lunar SOI, 2 d (Test564 S12 Earth-Moon flyby inside lunar SOI; 2 d)
+  RK4: 10 points
+  DOPRI5-fixed: 9 points
+  DOPRI5-adaptive: 19 points
+  DOP853-adaptive: 19 points
+  PEFRL: 11 points
+  Y6: 8 points
+  Y6C: 8 points
+  WH-Y6: 10 points
+  Leapfrog: 24 points
+  RKN12(10): 7 points
+  IAS15: 7 points
+  SRKN14A: 10 points
+  WH-BM14A: 8 points
+  GJ8: 8 points
+  Encke-IAS15: 6 points
+order refine RK4 Test564 S12 Earth-Moon flyby inside lunar SOI; 2 d: +1 point(s), 1 attempt(s), finest err 0.00153952
+order RK4 S12: p=4.01125 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 S12 Earth-Moon flyby inside lunar SOI; 2 d: +1 point(s), 1 attempt(s), finest err 0.000706436
+order DOPRI5-fixed S12: p=5.55876 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive S12: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive S12: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 S12 Earth-Moon flyby inside lunar SOI; 2 d: +1 point(s), 1 attempt(s), finest err 0.000701237
+order PEFRL S12: p=4.00102 points=11 note=median of 10 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 S12 Earth-Moon flyby inside lunar SOI; 2 d: +1 point(s), 1 attempt(s), finest err 0.000309895
+order Y6 S12: p=5.9738 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 S12 Earth-Moon flyby inside lunar SOI; 2 d: +1 point(s), 1 attempt(s), finest err 0.000309625
+order Y6C S12: p=5.9738 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 S12: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order refine Leapfrog Test564 S12 Earth-Moon flyby inside lunar SOI; 2 d: +2 point(s), 2 attempt(s), finest err 0.001881
+order Leapfrog S12: p=1.99998 points=24 note=median of 23 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) S12: p=NaN points=0 note=n/a (few points)
+order IAS15 S12: p=NaN points=0 note=n/a (few points)
+order refine SRKN14A Test564 S12 Earth-Moon flyby inside lunar SOI; 2 d: +1 point(s), 1 attempt(s), finest err 0.000239308
+order SRKN14A S12: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order WH-BM14A S12: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine GJ8 Test564 S12 Earth-Moon flyby inside lunar SOI; 2 d: +1 point(s), 1 attempt(s), finest err 5.18377E-06
+order GJ8 S12: p=NaN points=6 note=n/a (floor-limited window: sub-window slope 9.73 vs branch 6.94)
+order Encke-IAS15 S12: p=NaN points=0 note=n/a (few points)
+  -> 1800 matrix cells so far, S12 took 4448 ms (sweep 1279, cells 1521, measure+rev 1648)
+S15 Earth hyperbolic flyby e=1.5, 1 d (Test564 S15 Earth hyperbolic flyby e=1.5; 1 d)
+  RK4: 17 points
+  DOPRI5-fixed: 12 points
+  DOPRI5-adaptive: 20 points
+  DOP853-adaptive: 17 points
+  PEFRL: 16 points
+  Y6: 13 points
+  Y6C: 13 points
+  WH-Y6: 14 points
+  Leapfrog: 26 points
+  RKN12(10): 17 points
+  IAS15: 7 points
+  SRKN14A: 9 points
+  WH-BM14A: 11 points
+  GJ8: 5 points
+  Encke-IAS15: 6 points
+order refine RK4 Test564 S15 Earth hyperbolic flyby e=1.5; 1 d: +1 point(s), 1 attempt(s), finest err 0.000726985
+order RK4 S15: p=4.03654 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 S15 Earth hyperbolic flyby e=1.5; 1 d: +1 point(s), 1 attempt(s), finest err 0.00123189
+order DOPRI5-fixed S15: p=5.31411 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive S15: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive S15: p=0.940297 points=15 note=median of 14 pairwise slopes (fine->coarse, doubled-error branch)
+order refine PEFRL Test564 S15 Earth hyperbolic flyby e=1.5; 1 d: +2 point(s), 2 attempt(s), finest err 0.00192298
+order PEFRL S15: p=3.99336 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 S15 Earth hyperbolic flyby e=1.5; 1 d: +1 point(s), 1 attempt(s), finest err 0.000311735
+order Y6 S15: p=5.93417 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 S15 Earth hyperbolic flyby e=1.5; 1 d: +1 point(s), 1 attempt(s), finest err 0.000308663
+order Y6C S15: p=5.93411 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 S15: p=4.06894 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order Leapfrog S15: p=1.99988 points=18 note=median of 17 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) S15: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order IAS15 S15: p=1.76647 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order refine SRKN14A Test564 S15 Earth hyperbolic flyby e=1.5; 1 d: +1 point(s), 1 attempt(s), finest err 0.000258389
+order SRKN14A S15: p=6.19431 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A S15: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order refine GJ8 Test564 S15 Earth hyperbolic flyby e=1.5; 1 d: +1 point(s), 1 attempt(s), finest err 0.00227195
+order GJ8 S15: p=10.2986 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 S15: p=NaN points=0 note=n/a (few points)
+  -> 1875 matrix cells so far, S15 took 23360 ms (sweep 6298, cells 1289, measure+rev 15773)
+P2 Real solar 7-body, 100 y (Test564 P2 Real solar 7-body; 100 y)
+  RK4: 17 points
+  DOPRI5-fixed: 16 points
+  DOPRI5-adaptive: 5 points
+  DOP853-adaptive: 25 points
+  PEFRL: 20 points
+  Y6: 18 points
+  Y6C: 16 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 20 points
+  RKN12(10): 20 points
+  IAS15: 11 points
+  SRKN14A: 17 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 15 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order refine RK4 Test564 P2 Real solar 7-body; 100 y: stopped at 9.519E+02 (censored)
+order refine RK4 Test564 P2 Real solar 7-body; 100 y: +0 point(s), 1 attempt(s), finest err 659.196
+order RK4 P2: p=NaN points=8 note=n/a (budget before the asymptotic branch)
+order refine DOPRI5-fixed Test564 P2 Real solar 7-body; 100 y: stopped at 1.428E+03 (censored)
+order refine DOPRI5-fixed Test564 P2 Real solar 7-body; 100 y: +0 point(s), 1 attempt(s), finest err 104.885
+order DOPRI5-fixed P2: p=NaN points=9 note=n/a (budget before the asymptotic branch)
+order DOPRI5-adaptive P2: p=NaN points=0 note=n/a (few points)
+order DOP853-adaptive P2: p=1.13316 points=12 note=median of 11 pairwise slopes (fine->coarse, doubled-error branch)
+order refine PEFRL Test564 P2 Real solar 7-body; 100 y: stopped at 9.519E+02 (censored)
+order refine PEFRL Test564 P2 Real solar 7-body; 100 y: +0 point(s), 1 attempt(s), finest err 441.676
+order PEFRL P2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Y6 Test564 P2 Real solar 7-body; 100 y: stopped at 2.142E+03 (censored)
+order refine Y6 Test564 P2 Real solar 7-body; 100 y: +0 point(s), 1 attempt(s), finest err 324.721
+order Y6 P2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Y6C Test564 P2 Real solar 7-body; 100 y: +1 point(s), 1 attempt(s), finest err 2.43266
+order Y6C P2: p=5.95986 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 P2: p=NaN points=0 note=n/a (few points)
+order refine Leapfrog Test564 P2 Real solar 7-body; 100 y: stopped at 2.821E+02 (censored)
+order refine Leapfrog Test564 P2 Real solar 7-body; 100 y: +0 point(s), 1 attempt(s), finest err 2.00718E+06
+order Leapfrog P2: p=NaN points=9 note=n/a (budget before the asymptotic branch)
+order RKN12(10) P2: p=0.95816 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 P2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 P2 Real solar 7-body; 100 y: stopped at 3.213E+03 (censored)
+order refine SRKN14A Test564 P2 Real solar 7-body; 100 y: +0 point(s), 1 attempt(s), finest err 496.309
+order SRKN14A P2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order WH-BM14A P2: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 P2 Real solar 7-body; 100 y: stopped at 5.783E+02 (censored)
+order refine GJ8 Test564 P2 Real solar 7-body; 100 y: +0 point(s), 1 attempt(s), finest err 286.647
+order GJ8 P2: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Encke-IAS15 P2: p=NaN points=0 note=n/a (few points)
+  -> 1920 matrix cells so far, P2 took 309577 ms (sweep 186532, cells 58318, measure+rev 64727)
+P3 Custom 6-body, 10 y (Test564 P3 Custom 6-body; 10 y)
+  RK4: 24 points
+  DOPRI5-fixed: 23 points
+  DOPRI5-adaptive: 29 points
+  DOP853-adaptive: 29 points
+  PEFRL: 24 points
+  Y6: 23 points
+  Y6C: 19 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 24 points
+  RKN12(10): 23 points
+  IAS15: 12 points
+  SRKN14A: 21 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 22 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order refine RK4 Test564 P3 Custom 6-body; 10 y: stopped at 1.029E+02 (censored)
+order refine RK4 Test564 P3 Custom 6-body; 10 y: +0 point(s), 1 attempt(s), finest err 4.33176
+order RK4 P3: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine DOPRI5-fixed Test564 P3 Custom 6-body; 10 y: stopped at 1.543E+02 (censored)
+order refine DOPRI5-fixed Test564 P3 Custom 6-body; 10 y: +0 point(s), 1 attempt(s), finest err 4.75334
+order DOPRI5-fixed P3: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOPRI5-adaptive P3: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive P3: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 P3 Custom 6-body; 10 y: stopped at 1.029E+02 (censored)
+order refine PEFRL Test564 P3 Custom 6-body; 10 y: +0 point(s), 1 attempt(s), finest err 30.0928
+order PEFRL P3: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Y6 Test564 P3 Custom 6-body; 10 y: stopped at 1.543E+02 (censored)
+order refine Y6 Test564 P3 Custom 6-body; 10 y: +0 point(s), 1 attempt(s), finest err 5.80996
+order Y6 P3: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine Y6C Test564 P3 Custom 6-body; 10 y: +1 point(s), 1 attempt(s), finest err 0.110056
+order Y6C P3: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order WH-Y6 P3: p=NaN points=0 note=n/a (few points)
+order refine Leapfrog Test564 P3 Custom 6-body; 10 y: stopped at 3.048E+01 (censored)
+order refine Leapfrog Test564 P3 Custom 6-body; 10 y: +0 point(s), 1 attempt(s), finest err 4628.76
+order Leapfrog P3: p=NaN points=15 note=n/a (budget before the asymptotic branch)
+order RKN12(10) P3: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order IAS15 P3: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 P3 Custom 6-body; 10 y: stopped at 3.472E+02 (censored)
+order refine SRKN14A Test564 P3 Custom 6-body; 10 y: +0 point(s), 1 attempt(s), finest err 5.81591
+order SRKN14A P3: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order WH-BM14A P3: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 P3 Custom 6-body; 10 y: stopped at 6.249E+01 (censored)
+order refine GJ8 Test564 P3 Custom 6-body; 10 y: +0 point(s), 1 attempt(s), finest err 4.73802
+order GJ8 P3: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order Encke-IAS15 P3: p=NaN points=0 note=n/a (few points)
+  -> 1965 matrix cells so far, P3 took 179946 ms (sweep 125829, cells 35561, measure+rev 18556)
+P4 Tight binary, 10 y (Test564 P4 Tight binary; 10 y)
+  RK4: 24 points
+  DOPRI5-fixed: 26 points
+  DOPRI5-adaptive: 31 points
+  DOP853-adaptive: 28 points
+  PEFRL: 24 points
+  Y6: 23 points
+  Y6C: 21 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 25 points
+  RKN12(10): 21 points
+  IAS15: 9 points
+  SRKN14A: 19 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 12 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order refine RK4 Test564 P4 Tight binary; 10 y: stopped at 1.190E+02 (censored)
+order refine RK4 Test564 P4 Tight binary; 10 y: +0 point(s), 1 attempt(s), finest err 1.14697
+order RK4 P4: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine DOPRI5-fixed Test564 P4 Tight binary; 10 y: stopped at 1.785E+02 (censored)
+order refine DOPRI5-fixed Test564 P4 Tight binary; 10 y: +0 point(s), 1 attempt(s), finest err 2.25318
+order DOPRI5-fixed P4: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOPRI5-adaptive P4: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive P4: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 P4 Tight binary; 10 y: stopped at 1.190E+02 (censored)
+order refine PEFRL Test564 P4 Tight binary; 10 y: +0 point(s), 1 attempt(s), finest err 1.2759
+order PEFRL P4: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Y6 Test564 P4 Tight binary; 10 y: stopped at 1.785E+02 (censored)
+order refine Y6 Test564 P4 Tight binary; 10 y: +0 point(s), 1 attempt(s), finest err 11.353
+order Y6 P4: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine Y6C Test564 P4 Tight binary; 10 y: +1 point(s), 1 attempt(s), finest err 0.0677785
+order Y6C P4: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order WH-Y6 P4: p=NaN points=0 note=n/a (few points)
+order refine Leapfrog Test564 P4 Tight binary; 10 y: stopped at 2.351E+01 (censored)
+order refine Leapfrog Test564 P4 Tight binary; 10 y: +0 point(s), 1 attempt(s), finest err 149355
+order Leapfrog P4: p=NaN points=9 note=n/a (budget before the asymptotic branch)
+order RKN12(10) P4: p=0.999807 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 P4: p=2.43958 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order refine SRKN14A Test564 P4 Tight binary; 10 y: +1 point(s), 1 attempt(s), finest err 0.0895142
+order SRKN14A P4: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order WH-BM14A P4: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 P4 Tight binary; 10 y: +1 point(s), 1 attempt(s), finest err 0.206664
+order GJ8 P4: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order Encke-IAS15 P4: p=NaN points=0 note=n/a (few points)
+  -> 2010 matrix cells so far, P4 took 48989 ms (sweep 25898, cells 8473, measure+rev 14618)
+P5 Sun + eccentric comet + Jupiter, 10 y (Test564 P5 Sun + eccentric comet + Jupiter; 10 y)
+  RK4: 26 points
+  DOPRI5-fixed: 28 points
+  DOPRI5-adaptive: 29 points
+  DOP853-adaptive: 29 points
+  PEFRL: 29 points
+  Y6: 24 points
+  Y6C: 22 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 26 points
+  RKN12(10): 21 points
+  IAS15: 13 points
+  SRKN14A: 17 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 14 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order refine RK4 Test564 P5 Sun + eccentric comet + Jupiter; 10 y: stopped at 9.432E+01 (censored)
+order refine RK4 Test564 P5 Sun + eccentric comet + Jupiter; 10 y: +0 point(s), 1 attempt(s), finest err 19.7888
+order RK4 P5: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine DOPRI5-fixed Test564 P5 Sun + eccentric comet + Jupiter; 10 y: stopped at 1.415E+02 (censored)
+order refine DOPRI5-fixed Test564 P5 Sun + eccentric comet + Jupiter; 10 y: +0 point(s), 1 attempt(s), finest err 5.07473
+order DOPRI5-fixed P5: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOPRI5-adaptive P5: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive P5: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 P5 Sun + eccentric comet + Jupiter; 10 y: stopped at 9.432E+01 (censored)
+order refine PEFRL Test564 P5 Sun + eccentric comet + Jupiter; 10 y: +0 point(s), 1 attempt(s), finest err 8.4413
+order PEFRL P5: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Y6 Test564 P5 Sun + eccentric comet + Jupiter; 10 y: stopped at 2.122E+02 (censored)
+order refine Y6 Test564 P5 Sun + eccentric comet + Jupiter; 10 y: +0 point(s), 1 attempt(s), finest err 16.3458
+order Y6 P5: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Y6C Test564 P5 Sun + eccentric comet + Jupiter; 10 y: +1 point(s), 1 attempt(s), finest err 0.102314
+order Y6C P5: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order WH-Y6 P5: p=NaN points=0 note=n/a (few points)
+order refine Leapfrog Test564 P5 Sun + eccentric comet + Jupiter; 10 y: stopped at 2.795E+01 (censored)
+order refine Leapfrog Test564 P5 Sun + eccentric comet + Jupiter; 10 y: +0 point(s), 1 attempt(s), finest err 399117
+order Leapfrog P5: p=NaN points=13 note=n/a (budget before the asymptotic branch)
+order RKN12(10) P5: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order IAS15 P5: p=3.77285 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order refine SRKN14A Test564 P5 Sun + eccentric comet + Jupiter; 10 y: +2 point(s), 2 attempt(s), finest err 0.234874
+order SRKN14A P5: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order WH-BM14A P5: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 P5 Sun + eccentric comet + Jupiter; 10 y: +1 point(s), 1 attempt(s), finest err 0.19617
+order GJ8 P5: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order Encke-IAS15 P5: p=NaN points=0 note=n/a (few points)
+  -> 2055 matrix cells so far, P5 took 54450 ms (sweep 31548, cells 10188, measure+rev 12714)
+P6 Heliocentric Sun-Jupiter probe, 10 y (Test564 P6 Heliocentric Sun-Jupiter probe; 10 y)
+  RK4: 22 points
+  DOPRI5-fixed: 18 points
+  DOPRI5-adaptive: 29 points
+  DOP853-adaptive: 25 points
+  PEFRL: 26 points
+  Y6: 17 points
+  Y6C: 16 points
+  WH-Y6: 11 points
+  Leapfrog: 26 points
+  RKN12(10): 20 points
+  IAS15: 17 points
+  SRKN14A: 12 points
+  WH-BM14A: 15 points
+  GJ8: 7 points
+  Encke-IAS15: 6 points
+order refine RK4 Test564 P6 Heliocentric Sun-Jupiter probe; 10 y: +4 point(s), 4 attempt(s), finest err 0.170175
+order RK4 P6: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine DOPRI5-fixed Test564 P6 Heliocentric Sun-Jupiter probe; 10 y: +8 point(s), 8 attempt(s), finest err 0.132787
+order DOPRI5-fixed P6: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOPRI5-adaptive P6: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive P6: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order PEFRL P6: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Y6 Test564 P6 Heliocentric Sun-Jupiter probe; 10 y: +8 point(s), 8 attempt(s), finest err 0.234517
+order Y6 P6: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine Y6C Test564 P6 Heliocentric Sun-Jupiter probe; 10 y: +1 point(s), 1 attempt(s), finest err 0.0281175
+order Y6C P6: p=5.88605 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 P6: p=6.12347 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Leapfrog P6: p=1.99982 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) P6: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order IAS15 P6: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 P6 Heliocentric Sun-Jupiter probe; 10 y: +2 point(s), 2 attempt(s), finest err 0.180006
+order SRKN14A P6: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order WH-BM14A P6: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine GJ8 Test564 P6 Heliocentric Sun-Jupiter probe; 10 y: +1 point(s), 1 attempt(s), finest err 0.143853
+order GJ8 P6: p=NaN points=7 note=n/a (floor-limited window: sub-window slope 1.85 vs branch 9.07)
+order Encke-IAS15 P6: p=NaN points=0 note=n/a (few points)
+  -> 2100 matrix cells so far, P6 took 40210 ms (sweep 11096, cells 22829, measure+rev 6285)
+F01 Far flight 30 AU e 0.5 (physical) (Test564 F01 Far flight 30 AU e 0.5 (physical))
+  RK4: 1 points
+  DOPRI5-fixed: 1 points
+  DOPRI5-adaptive: 24 points
+  DOP853-adaptive: 26 points
+  PEFRL: 1 points
+  Y6: 1 points
+  Y6C: 1 points
+  WH-Y6: 1 points
+  Leapfrog: 8 points
+  RKN12(10): 7 points
+  IAS15: 7 points
+  SRKN14A: 1 points
+  WH-BM14A: 1 points
+  GJ8: 1 points
+  Encke-IAS15: 1 points
+order refine RK4 Test564 F01 Far flight 30 AU e 0.5 (physical): +1 point(s), 1 attempt(s), finest err 0.150954
+order RK4 F01: p=NaN points=0 note=n/a (few points)
+order refine DOPRI5-fixed Test564 F01 Far flight 30 AU e 0.5 (physical): +1 point(s), 1 attempt(s), finest err 0.0014963
+order DOPRI5-fixed F01: p=NaN points=0 note=n/a (few points)
+order DOPRI5-adaptive F01: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive F01: p=NaN points=0 note=n/a (few points)
+order refine PEFRL Test564 F01 Far flight 30 AU e 0.5 (physical): +1 point(s), 1 attempt(s), finest err 0.121637
+order PEFRL F01: p=NaN points=0 note=n/a (few points)
+order refine Y6 Test564 F01 Far flight 30 AU e 0.5 (physical): +1 point(s), 1 attempt(s), finest err 0.00391589
+order Y6 F01: p=NaN points=0 note=n/a (few points)
+order refine Y6C Test564 F01 Far flight 30 AU e 0.5 (physical): +1 point(s), 1 attempt(s), finest err 0.000503311
+order Y6C F01: p=NaN points=0 note=n/a (few points)
+order WH-Y6 F01: p=NaN points=0 note=n/a (few points)
+order Leapfrog F01: p=1.99999 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) F01: p=NaN points=0 note=n/a (few points)
+order IAS15 F01: p=NaN points=0 note=n/a (few points)
+order refine SRKN14A Test564 F01 Far flight 30 AU e 0.5 (physical): +1 point(s), 1 attempt(s), finest err 0.00638977
+order SRKN14A F01: p=NaN points=0 note=n/a (few points)
+order WH-BM14A F01: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 F01 Far flight 30 AU e 0.5 (physical): +1 point(s), 1 attempt(s), finest err 0.00882369
+order GJ8 F01: p=NaN points=0 note=n/a (few points)
+order Encke-IAS15 F01: p=NaN points=0 note=n/a (few points)
+  -> 2145 matrix cells so far, F01 took 410 ms (sweep 37, cells 57, measure+rev 316)
+F02 Heliocentric 1 AU e 0.5 (Test564 F02 Heliocentric 1 AU e 0.5)
+  RK4: 13 points
+  DOPRI5-fixed: 9 points
+  DOPRI5-adaptive: 26 points
+  DOP853-adaptive: 23 points
+  PEFRL: 13 points
+  Y6: 9 points
+  Y6C: 8 points
+  WH-Y6: 1 points
+  Leapfrog: 21 points
+  RKN12(10): 14 points
+  IAS15: 12 points
+  SRKN14A: 4 points
+  WH-BM14A: 1 points
+  GJ8: 6 points
+  Encke-IAS15: 1 points
+order refine RK4 Test564 F02 Heliocentric 1 AU e 0.5: +1 point(s), 1 attempt(s), finest err 0.244543
+order RK4 F02: p=4.05837 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 F02 Heliocentric 1 AU e 0.5: +1 point(s), 1 attempt(s), finest err 0.123112
+order DOPRI5-fixed F02: p=5.12745 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive F02: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive F02: p=0.923553 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order refine PEFRL Test564 F02 Heliocentric 1 AU e 0.5: +1 point(s), 1 attempt(s), finest err 0.204229
+order PEFRL F02: p=4.00033 points=13 note=median of 12 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 F02 Heliocentric 1 AU e 0.5: +1 point(s), 1 attempt(s), finest err 0.00604003
+order Y6 F02: p=5.98515 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 F02 Heliocentric 1 AU e 0.5: +1 point(s), 1 attempt(s), finest err 0.247733
+order Y6C F02: p=5.98515 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 F02: p=NaN points=0 note=n/a (few points)
+order Leapfrog F02: p=1.99998 points=17 note=median of 16 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) F02: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order IAS15 F02: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 F02 Heliocentric 1 AU e 0.5: +1 point(s), 1 attempt(s), finest err 0.167574
+order SRKN14A F02: p=6.00343 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A F02: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 F02 Heliocentric 1 AU e 0.5: +1 point(s), 1 attempt(s), finest err 0.0153972
+order GJ8 F02: p=9.40068 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 F02: p=NaN points=0 note=n/a (few points)
+  -> 2190 matrix cells so far, F02 took 2970 ms (sweep 1407, cells 353, measure+rev 1210)
+F03 Small-body flyby vinf 50 (Test564 F03 Small-body flyby vinf 50)
+  RK4: 11 points
+  DOPRI5-fixed: 8 points
+  DOPRI5-adaptive: 16 points
+  DOP853-adaptive: 15 points
+  PEFRL: 10 points
+  Y6: 8 points
+  Y6C: 8 points
+  WH-Y6: 10 points
+  Leapfrog: 23 points
+  RKN12(10): 9 points
+  IAS15: 7 points
+  SRKN14A: 14 points
+  WH-BM14A: 10 points
+  GJ8: 9 points
+  Encke-IAS15: 7 points
+order refine RK4 Test564 F03 Small-body flyby vinf 50: +4 point(s), 4 attempt(s), finest err 0.00080489
+order RK4 F03: p=4.0599 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 F03 Small-body flyby vinf 50: +3 point(s), 3 attempt(s), finest err 0.000460858
+order DOPRI5-fixed F03: p=5.23775 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive F03: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive F03: p=0.916939 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order refine PEFRL Test564 F03 Small-body flyby vinf 50: +4 point(s), 4 attempt(s), finest err 0.0023192
+order PEFRL F03: p=3.98601 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 F03 Small-body flyby vinf 50: +3 point(s), 3 attempt(s), finest err 0.00135067
+order Y6 F03: p=5.94096 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 F03 Small-body flyby vinf 50: +3 point(s), 3 attempt(s), finest err 0.00135067
+order Y6C F03: p=5.94096 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 F03: p=NaN points=0 note=n/a (few points)
+order refine Leapfrog Test564 F03 Small-body flyby vinf 50: +3 point(s), 3 attempt(s), finest err 0.00148343
+order Leapfrog F03: p=2 points=15 note=median of 14 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) F03: p=0.962826 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 F03: p=NaN points=2 note=n/a (few points in the asymptotic branch)
+order refine SRKN14A Test564 F03 Small-body flyby vinf 50: +3 point(s), 3 attempt(s), finest err 0.00134337
+order SRKN14A F03: p=5.992 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A F03: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 F03 Small-body flyby vinf 50: +2 point(s), 2 attempt(s), finest err 0.00232042
+order GJ8 F03: p=10.2519 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 F03: p=NaN points=0 note=n/a (few points)
+  -> 2265 matrix cells so far, F03 took 7007 ms (sweep 1338, cells 3850, measure+rev 1819)
+F04 Moon orbit 100 km x1000 orbits (Test564 F04 Moon orbit 100 km x1000 orbits)
+  RK4: 17 points
+  DOPRI5-fixed: 15 points
+  DOPRI5-adaptive: 28 points
+  DOP853-adaptive: 21 points
+  PEFRL: 15 points
+  Y6: 12 points
+  Y6C: 12 points
+  WH-Y6: 6 points
+  Leapfrog: 21 points
+  RKN12(10): 20 points
+  IAS15: 8 points
+  SRKN14A: 8 points
+  WH-BM14A: 5 points
+  GJ8: 4 points
+  Encke-IAS15: 8 points
+order refine RK4 Test564 F04 Moon orbit 100 km x1000 orbits: stopped at 2.689E+00 (censored)
+order refine RK4 Test564 F04 Moon orbit 100 km x1000 orbits: +0 point(s), 1 attempt(s), finest err 0.932106
+order RK4 F04: p=NaN points=4 note=n/a (budget before the asymptotic branch)
+order refine DOPRI5-fixed Test564 F04 Moon orbit 100 km x1000 orbits: stopped at 4.034E+00 (censored)
+order refine DOPRI5-fixed Test564 F04 Moon orbit 100 km x1000 orbits: +0 point(s), 1 attempt(s), finest err 0.14753
+order DOPRI5-fixed F04: p=4.95649 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive F04: p=NaN points=3 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive F04: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 F04 Moon orbit 100 km x1000 orbits: +1 point(s), 1 attempt(s), finest err 0.18077
+order PEFRL F04: p=3.99265 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 F04 Moon orbit 100 km x1000 orbits: +1 point(s), 1 attempt(s), finest err 0.0408786
+order Y6 F04: p=5.9888 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 F04 Moon orbit 100 km x1000 orbits: +1 point(s), 1 attempt(s), finest err 0.0427055
+order Y6C F04: p=5.9888 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 F04: p=6.36415 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Leapfrog Test564 F04 Moon orbit 100 km x1000 orbits: stopped at 5.312E-01 (censored)
+order refine Leapfrog Test564 F04 Moon orbit 100 km x1000 orbits: +0 point(s), 1 attempt(s), finest err 1931.59
+order Leapfrog F04: p=NaN points=3 note=n/a (few points)
+order RKN12(10) F04: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order IAS15 F04: p=2.10336 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order refine SRKN14A Test564 F04 Moon orbit 100 km x1000 orbits: +1 point(s), 1 attempt(s), finest err 0.0447173
+order SRKN14A F04: p=5.86175 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A F04: p=NaN points=3 note=n/a (few points)
+order refine GJ8 Test564 F04 Moon orbit 100 km x1000 orbits: +1 point(s), 1 attempt(s), finest err 0.0146252
+order GJ8 F04: p=NaN points=2 note=n/a (few points)
+order Encke-IAS15 F04: p=NaN points=0 note=n/a (few points)
+  -> 2310 matrix cells so far, F04 took 510028 ms (sweep 188228, cells 108079, measure+rev 213721)
+F05 Moon hop 1000 m/s (Test564 F05 Moon hop 1000 m/s)
+  RK4: 10 points
+  DOPRI5-fixed: 7 points
+  DOPRI5-adaptive: 13 points
+  DOP853-adaptive: 7 points
+  PEFRL: 9 points
+  Y6: 8 points
+  Y6C: 8 points
+  WH-Y6: 6 points
+  Leapfrog: 14 points
+  RKN12(10): 7 points
+  IAS15: 7 points
+  SRKN14A: 7 points
+  WH-BM14A: 6 points
+  GJ8: 13 points
+  Encke-IAS15: 5 points
+order refine RK4 Test564 F05 Moon hop 1000 m/s: +6 point(s), 6 attempt(s), finest err 0.0817651
+order RK4 F05: p=3.95275 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 F05 Moon hop 1000 m/s: +5 point(s), 5 attempt(s), finest err 0.0155032
+order DOPRI5-fixed F05: p=5.09951 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive F05: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive F05: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 F05 Moon hop 1000 m/s: +7 point(s), 7 attempt(s), finest err 0.175532
+order PEFRL F05: p=3.94381 points=9 note=median of 8 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 F05 Moon hop 1000 m/s: +4 point(s), 4 attempt(s), finest err 0.0479939
+order Y6 F05: p=6.67512 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 F05 Moon hop 1000 m/s: +4 point(s), 4 attempt(s), finest err 0.047994
+order Y6C F05: p=6.67483 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 F05: p=NaN points=0 note=n/a (few points)
+order refine Leapfrog Test564 F05 Moon hop 1000 m/s: +8 point(s), 8 attempt(s), finest err 0.120994
+order Leapfrog F05: p=2 points=19 note=median of 18 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) F05: p=NaN points=0 note=n/a (few points)
+order IAS15 F05: p=NaN points=0 note=n/a (few points)
+order refine SRKN14A Test564 F05 Moon hop 1000 m/s: +1 point(s), 1 attempt(s), finest err 0.000102001
+order SRKN14A F05: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order WH-BM14A F05: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 F05 Moon hop 1000 m/s: +1 point(s), 1 attempt(s), finest err 6.80107E-07
+order GJ8 F05: p=5.71377 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 F05: p=NaN points=0 note=n/a (few points)
+  -> 2355 matrix cells so far, F05 took 442 ms (sweep 46, cells 260, measure+rev 136)
+H1 DE441 10 bodies, Newtonian, 2026-2036 (Test564 H1 DE441 10 bodies; Newtonian; 2026-2036)
+  RK4: 18 points
+  DOPRI5-fixed: 16 points
+  DOPRI5-adaptive: 30 points
+  DOP853-adaptive: 27 points
+  PEFRL: 17 points
+  Y6: 14 points
+  Y6C: 14 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 26 points
+  RKN12(10): 15 points
+  IAS15: 10 points
+  SRKN14A: 10 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 6 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order refine RK4 Test564 H1 DE441 10 bodies; Newtonian; 2026-2036: +1 point(s), 1 attempt(s), finest err 15.1525
+order RK4 H1: p=4.94141 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 H1 DE441 10 bodies; Newtonian; 2026-2036: +1 point(s), 1 attempt(s), finest err 9.26542
+order DOPRI5-fixed H1: p=4.88465 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive H1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order DOP853-adaptive H1: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order refine PEFRL Test564 H1 DE441 10 bodies; Newtonian; 2026-2036: +1 point(s), 1 attempt(s), finest err 16.8476
+order PEFRL H1: p=4.00072 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 H1 DE441 10 bodies; Newtonian; 2026-2036: +1 point(s), 1 attempt(s), finest err 5.99437
+order Y6 H1: p=5.98062 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 H1 DE441 10 bodies; Newtonian; 2026-2036: +1 point(s), 1 attempt(s), finest err 3.0245
+order Y6C H1: p=5.98058 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 H1: p=NaN points=0 note=n/a (few points)
+order Leapfrog H1: p=2.00091 points=15 note=median of 14 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) H1: p=1.76357 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order IAS15 H1: p=2.44842 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order refine SRKN14A Test564 H1 DE441 10 bodies; Newtonian; 2026-2036: +1 point(s), 1 attempt(s), finest err 1.25355
+order SRKN14A H1: p=5.90862 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A H1: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 H1 DE441 10 bodies; Newtonian; 2026-2036: +1 point(s), 1 attempt(s), finest err 3.28855
+order GJ8 H1: p=8.62631 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order Encke-IAS15 H1: p=NaN points=0 note=n/a (few points)
+  -> 2475 matrix cells so far, H1 took 59972 ms (sweep 21097, cells 5390, measure+rev 33485)
+H1h DE441 10 bodies, Newtonian, 2016-2026 (holdout epoch) (Test564 H1h DE441 10 bodies; Newtonian; 2016-2026 (holdout epoch))
+  RK4: 18 points
+  DOPRI5-fixed: 16 points
+  DOPRI5-adaptive: 30 points
+  DOP853-adaptive: 26 points
+  PEFRL: 17 points
+  Y6: 13 points
+  Y6C: 13 points
+  WH-Y6: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  Leapfrog: 26 points
+  RKN12(10): 17 points
+  IAS15: 12 points
+  SRKN14A: 10 points
+  WH-BM14A: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+  GJ8: 5 points
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order refine RK4 Test564 H1h DE441 10 bodies; Newtonian; 2016-2026 (holdout epoch): +1 point(s), 1 attempt(s), finest err 17.8608
+order RK4 H1h: p=4.92024 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 H1h DE441 10 bodies; Newtonian; 2016-2026 (holdout epoch): +1 point(s), 1 attempt(s), finest err 6.87784
+order DOPRI5-fixed H1h: p=4.88667 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive H1h: p=0.986914 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order DOP853-adaptive H1h: p=1.08765 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order refine PEFRL Test564 H1h DE441 10 bodies; Newtonian; 2016-2026 (holdout epoch): +1 point(s), 1 attempt(s), finest err 12.9575
+order PEFRL H1h: p=3.99698 points=10 note=median of 9 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6 Test564 H1h DE441 10 bodies; Newtonian; 2016-2026 (holdout epoch): +1 point(s), 1 attempt(s), finest err 22.3022
+order Y6 H1h: p=5.98739 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order refine Y6C Test564 H1h DE441 10 bodies; Newtonian; 2016-2026 (holdout epoch): +1 point(s), 1 attempt(s), finest err 23.3398
+order Y6C H1h: p=5.98716 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-Y6 H1h: p=NaN points=0 note=n/a (few points)
+order Leapfrog H1h: p=1.99959 points=14 note=median of 13 pairwise slopes (fine->coarse, doubled-error branch)
+order RKN12(10) H1h: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order IAS15 H1h: p=2.36111 points=6 note=median of 5 pairwise slopes (fine->coarse, doubled-error branch)
+order refine SRKN14A Test564 H1h DE441 10 bodies; Newtonian; 2016-2026 (holdout epoch): +1 point(s), 1 attempt(s), finest err 9.42292
+order SRKN14A H1h: p=5.93697 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order WH-BM14A H1h: p=NaN points=0 note=n/a (few points)
+order refine GJ8 Test564 H1h DE441 10 bodies; Newtonian; 2016-2026 (holdout epoch): +1 point(s), 1 attempt(s), finest err 2.77085
+order GJ8 H1h: p=NaN points=3 note=n/a (few points)
+order Encke-IAS15 H1h: p=NaN points=0 note=n/a (few points)
+  -> 2595 matrix cells so far, H1h took 53326 ms (sweep 21263, cells 6028, measure+rev 26035)
+H2h DE441 10 bodies, 1PN, 2016-2026 (holdout epoch) (Test564 H2h DE441 10 bodies; 1PN; 2016-2026 (holdout epoch))
+  RK4: 18 points
+  DOPRI5-fixed: 16 points
+  DOPRI5-adaptive: 1 points
+  DOP853-adaptive: 27 points
+  PEFRL: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6C: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Leapfrog: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  RKN12(10): n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  IAS15: 12 points
+  SRKN14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-BM14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  GJ8: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order refine RK4 Test564 H2h DE441 10 bodies; 1PN; 2016-2026 (holdout epoch): +1 point(s), 1 attempt(s), finest err 13.7381
+order RK4 H2h: p=4.92004 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 H2h DE441 10 bodies; 1PN; 2016-2026 (holdout epoch): +1 point(s), 1 attempt(s), finest err 10.5135
+order DOPRI5-fixed H2h: p=4.88313 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive H2h: p=NaN points=0 note=n/a (few points)
+order DOP853-adaptive H2h: p=NaN points=1 note=n/a (few points in the asymptotic branch)
+order PEFRL H2h: p=NaN points=0 note=n/a (few points)
+order Y6 H2h: p=NaN points=0 note=n/a (few points)
+order Y6C H2h: p=NaN points=0 note=n/a (few points)
+order WH-Y6 H2h: p=NaN points=0 note=n/a (few points)
+order Leapfrog H2h: p=NaN points=0 note=n/a (few points)
+order RKN12(10) H2h: p=NaN points=0 note=n/a (few points)
+order IAS15 H2h: p=2.36214 points=7 note=median of 6 pairwise slopes (fine->coarse, doubled-error branch)
+order SRKN14A H2h: p=NaN points=0 note=n/a (few points)
+order WH-BM14A H2h: p=NaN points=0 note=n/a (few points)
+order GJ8 H2h: p=NaN points=0 note=n/a (few points)
+order Encke-IAS15 H2h: p=NaN points=0 note=n/a (few points)
+  -> 2715 matrix cells so far, H2h took 24011 ms (sweep 16292, cells 2289, measure+rev 5430)
+H3 DE441 10 bodies + 409 small bodies (full409), 2026-2036 (Test564 H3 DE441 10 bodies + 409 small bodies (full409); 2026-2036)
+  RK4: 18 points
+  DOPRI5-fixed: 16 points
+  DOPRI5-adaptive: 31 points
+  DOP853-adaptive: 27 points
+  PEFRL: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6C: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Leapfrog: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  RKN12(10): n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  IAS15: 11 points
+  SRKN14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-BM14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  GJ8: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order refine RK4 Test564 H3 DE441 10 bodies + 409 small bodies (full409); 2026-2036: stopped at 1.067E+03 (censored)
+order refine RK4 Test564 H3 DE441 10 bodies + 409 small bodies (full409); 2026-2036: +0 point(s), 1 attempt(s), finest err 11.2461
+order RK4 H3: p=4.94174 points=8 note=median of 7 pairwise slopes (fine->coarse, doubled-error branch)
+order refine DOPRI5-fixed Test564 H3 DE441 10 bodies + 409 small bodies (full409); 2026-2036: +1 point(s), 1 attempt(s), finest err 6.91094
+order DOPRI5-fixed H3: p=4.88169 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order DOPRI5-adaptive H3: p=0.988185 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order DOP853-adaptive H3: p=1.09484 points=5 note=median of 4 pairwise slopes (fine->coarse, doubled-error branch)
+order PEFRL H3: p=NaN points=0 note=n/a (few points)
+order Y6 H3: p=NaN points=0 note=n/a (few points)
+order Y6C H3: p=NaN points=0 note=n/a (few points)
+order WH-Y6 H3: p=NaN points=0 note=n/a (few points)
+order Leapfrog H3: p=NaN points=0 note=n/a (few points)
+order RKN12(10) H3: p=NaN points=0 note=n/a (few points)
+order IAS15 H3: p=2.67656 points=4 note=median of 3 pairwise slopes (fine->coarse, doubled-error branch)
+order SRKN14A H3: p=NaN points=0 note=n/a (few points)
+order WH-BM14A H3: p=NaN points=0 note=n/a (few points)
+order GJ8 H3: p=NaN points=0 note=n/a (few points)
+order Encke-IAS15 H3: p=NaN points=0 note=n/a (few points)
+  -> 2835 matrix cells so far, H3 took 1207334 ms (sweep 534590, cells 132832, measure+rev 539912)
+H6 DE441 satellites: Moon, Galilean moons, Saturn moons (Test544 model) (Test564 H6 DE441 satellites: Moon; Galilean moons; Saturn moons (Test544 model))
+  RK4: 19 points
+  DOPRI5-fixed: 18 points
+  DOPRI5-adaptive: 7 points
+  DOP853-adaptive: 18 points
+  PEFRL: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Y6C: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-Y6: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Leapfrog: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  RKN12(10): n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  IAS15: 2 points
+  SRKN14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  WH-BM14A: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  GJ8: n/a (force depends on velocity or mass (drag/thrust): splitting order is lost)
+  Encke-IAS15: n/a (needs one central body at the origin (CentralMu > 0, PosDim == 3))
+order refine RK4 Test564 H6 DE441 satellites: Moon; Galilean moons; Saturn moons (Test544 model): stopped at 1.067E+03 (censored)
+order refine RK4 Test564 H6 DE441 satellites: Moon; Galilean moons; Saturn moons (Test544 model): +0 point(s), 1 attempt(s), finest err 7.98133E+08
+order RK4 H6: p=NaN points=1 note=n/a (few points)
+order refine DOPRI5-fixed Test564 H6 DE441 satellites: Moon; Galilean moons; Saturn moons (Test544 model): stopped at 1.600E+03 (censored)
+order refine DOPRI5-fixed Test564 H6 DE441 satellites: Moon; Galilean moons; Saturn moons (Test544 model): +0 point(s), 1 attempt(s), finest err 4.13235E+08
+order DOPRI5-fixed H6: p=NaN points=2 note=n/a (few points)
+order DOPRI5-adaptive H6: p=NaN points=0 note=n/a (few points)
+order DOP853-adaptive H6: p=NaN points=5 note=n/a (budget before the asymptotic branch)
+order PEFRL H6: p=NaN points=0 note=n/a (few points)
+order Y6 H6: p=NaN points=0 note=n/a (few points)
+order Y6C H6: p=NaN points=0 note=n/a (few points)
+order WH-Y6 H6: p=NaN points=0 note=n/a (few points)
+order Leapfrog H6: p=NaN points=0 note=n/a (few points)
+order RKN12(10) H6: p=NaN points=0 note=n/a (few points)
+order IAS15 H6: p=NaN points=1 note=n/a (few points)
+order SRKN14A H6: p=NaN points=0 note=n/a (few points)
+order WH-BM14A H6: p=NaN points=0 note=n/a (few points)
+order GJ8 H6: p=NaN points=0 note=n/a (few points)
+order Encke-IAS15 H6: p=NaN points=0 note=n/a (few points)
+  -> 2925 matrix cells so far, H6 took 203319 ms (sweep 137276, cells 66034, measure+rev 9)
+matrix: PASS=1800 FAIL=194 N/A=555 SKIP=376
+conditions: conditions.csv (47 problem row(s))
+reports: CONDITIONS_REPORT.md
+reports: METHOD_QUALIFICATION.md, RECOMMENDATIONS.md, COST_TABLE.md
+reports: REAL_SYSTEM_REPORT.md
+compare: 0 status, 645 new cell(s), 0 error, 0 price change(s) vs 20261112T233742Z_9580bd7
+# Comparison with 20261112T233742Z_9580bd7
+
+* new cell R2 RK4 M100: FAIL
+* new cell R2 RK4 M10: SKIP
+* new cell R2 RK4 M1: SKIP
+* new cell R2 RK4 Q10: FAIL
+* new cell R2 RK4 Q1: FAIL
+* new cell R2 DOPRI5-fixed M100: PASS
+* new cell R2 DOPRI5-fixed M10: SKIP
+* new cell R2 DOPRI5-fixed M1: SKIP
+* new cell R2 DOPRI5-fixed Q10: PASS
+* new cell R2 DOPRI5-fixed Q1: PASS
+* new cell R2 DOPRI5-adaptive M100: FAIL
+* new cell R2 DOPRI5-adaptive M10: SKIP
+* new cell R2 DOPRI5-adaptive M1: SKIP
+* new cell R2 DOPRI5-adaptive Q10: FAIL
+* new cell R2 DOPRI5-adaptive Q1: FAIL
+* new cell R2 DOP853-adaptive M100: PASS
+* new cell R2 DOP853-adaptive M10: SKIP
+* new cell R2 DOP853-adaptive M1: SKIP
+* new cell R2 DOP853-adaptive Q10: PASS
+* new cell R2 DOP853-adaptive Q1: PASS
+* new cell R2 PEFRL M100: N/A
+* new cell R2 PEFRL M10: N/A
+* new cell R2 PEFRL M1: N/A
+* new cell R2 PEFRL Q10: N/A
+* new cell R2 PEFRL Q1: N/A
+* new cell R2 Y6 M100: N/A
+* new cell R2 Y6 M10: N/A
+* new cell R2 Y6 M1: N/A
+* new cell R2 Y6 Q10: N/A
+* new cell R2 Y6 Q1: N/A
+* new cell R2 Y6C M100: N/A
+* new cell R2 Y6C M10: N/A
+* new cell R2 Y6C M1: N/A
+* new cell R2 Y6C Q10: N/A
+* new cell R2 Y6C Q1: N/A
+* new cell R2 WH-Y6 M100: N/A
+* new cell R2 WH-Y6 M10: N/A
+* new cell R2 WH-Y6 M1: N/A
+* new cell R2 WH-Y6 Q10: N/A
+* new cell R2 WH-Y6 Q1: N/A
+* new cell R2 Leapfrog M100: N/A
+* new cell R2 Leapfrog M10: N/A
+* new cell R2 Leapfrog M1: N/A
+* new cell R2 Leapfrog Q10: N/A
+* new cell R2 Leapfrog Q1: N/A
+* new cell R2 RKN12(10) M100: N/A
+* new cell R2 RKN12(10) M10: N/A
+* new cell R2 RKN12(10) M1: N/A
+* new cell R2 RKN12(10) Q10: N/A
+* new cell R2 RKN12(10) Q1: N/A
+* new cell R2 IAS15 M100: PASS
+* new cell R2 IAS15 M10: SKIP
+* new cell R2 IAS15 M1: SKIP
+* new cell R2 IAS15 Q10: PASS
+* new cell R2 IAS15 Q1: PASS
+* new cell R2 SRKN14A M100: N/A
+* new cell R2 SRKN14A M10: N/A
+* new cell R2 SRKN14A M1: N/A
+* new cell R2 SRKN14A Q10: N/A
+* new cell R2 SRKN14A Q1: N/A
+* new cell R2 WH-BM14A M100: N/A
+* new cell R2 WH-BM14A M10: N/A
+* new cell R2 WH-BM14A M1: N/A
+* new cell R2 WH-BM14A Q10: N/A
+* new cell R2 WH-BM14A Q1: N/A
+* new cell R2 GJ8 M100: N/A
+* new cell R2 GJ8 M10: N/A
+* new cell R2 GJ8 M1: N/A
+* new cell R2 GJ8 Q10: N/A
+* new cell R2 GJ8 Q1: N/A
+* new cell R2 Encke-IAS15 M100: N/A
+* new cell R2 Encke-IAS15 M10: N/A
+* new cell R2 Encke-IAS15 M1: N/A
+* new cell R2 Encke-IAS15 Q10: N/A
+* new cell R2 Encke-IAS15 Q1: N/A
+* new cell H1 RK4 A1: FAIL
+* new cell H1 RK4 A2: FAIL
+* new cell H1 RK4 A3: SKIP
+* new cell H1 RK4 M100: FAIL
+* new cell H1 RK4 M10: SKIP
+* new cell H1 RK4 M1: SKIP
+* new cell H1 RK4 Q10: FAIL
+* new cell H1 RK4 Q1: FAIL
+* new cell H1 DOPRI5-fixed A1: PASS
+* new cell H1 DOPRI5-fixed A2: PASS
+* new cell H1 DOPRI5-fixed A3: SKIP
+* new cell H1 DOPRI5-fixed M100: PASS
+* new cell H1 DOPRI5-fixed M10: SKIP
+* new cell H1 DOPRI5-fixed M1: SKIP
+* new cell H1 DOPRI5-fixed Q10: PASS
+* new cell H1 DOPRI5-fixed Q1: PASS
+* new cell H1 DOPRI5-adaptive A1: PASS
+* new cell H1 DOPRI5-adaptive A2: PASS
+* new cell H1 DOPRI5-adaptive A3: SKIP
+* new cell H1 DOPRI5-adaptive M100: PASS
+* new cell H1 DOPRI5-adaptive M10: SKIP
+* new cell H1 DOPRI5-adaptive M1: SKIP
+* new cell H1 DOPRI5-adaptive Q10: PASS
+* new cell H1 DOPRI5-adaptive Q1: PASS
+* new cell H1 DOP853-adaptive A1: PASS
+* new cell H1 DOP853-adaptive A2: PASS
+* new cell H1 DOP853-adaptive A3: SKIP
+* new cell H1 DOP853-adaptive M100: PASS
+* new cell H1 DOP853-adaptive M10: SKIP
+* new cell H1 DOP853-adaptive M1: SKIP
+* new cell H1 DOP853-adaptive Q10: PASS
+* new cell H1 DOP853-adaptive Q1: PASS
+* new cell H1 PEFRL A1: PASS
+* new cell H1 PEFRL A2: PASS
+* new cell H1 PEFRL A3: SKIP
+* new cell H1 PEFRL M100: PASS
+* new cell H1 PEFRL M10: SKIP
+* new cell H1 PEFRL M1: SKIP
+* new cell H1 PEFRL Q10: PASS
+* new cell H1 PEFRL Q1: PASS
+* new cell H1 Y6 A1: PASS
+* new cell H1 Y6 A2: PASS
+* new cell H1 Y6 A3: SKIP
+* new cell H1 Y6 M100: PASS
+* new cell H1 Y6 M10: SKIP
+* new cell H1 Y6 M1: SKIP
+* new cell H1 Y6 Q10: PASS
+* new cell H1 Y6 Q1: PASS
+* new cell H1 Y6C A1: PASS
+* new cell H1 Y6C A2: PASS
+* new cell H1 Y6C A3: SKIP
+* new cell H1 Y6C M100: PASS
+* new cell H1 Y6C M10: SKIP
+* new cell H1 Y6C M1: SKIP
+* new cell H1 Y6C Q10: PASS
+* new cell H1 Y6C Q1: PASS
+* new cell H1 WH-Y6 A1: N/A
+* new cell H1 WH-Y6 A2: N/A
+* new cell H1 WH-Y6 A3: N/A
+* new cell H1 WH-Y6 M100: N/A
+* new cell H1 WH-Y6 M10: N/A
+* new cell H1 WH-Y6 M1: N/A
+* new cell H1 WH-Y6 Q10: N/A
+* new cell H1 WH-Y6 Q1: N/A
+* new cell H1 Leapfrog A1: PASS
+* new cell H1 Leapfrog A2: FAIL
+* new cell H1 Leapfrog A3: SKIP
+* new cell H1 Leapfrog M100: FAIL
+* new cell H1 Leapfrog M10: SKIP
+* new cell H1 Leapfrog M1: SKIP
+* new cell H1 Leapfrog Q10: PASS
+* new cell H1 Leapfrog Q1: FAIL
+* new cell H1 RKN12(10) A1: PASS
+* new cell H1 RKN12(10) A2: PASS
+* new cell H1 RKN12(10) A3: SKIP
+* new cell H1 RKN12(10) M100: PASS
+* new cell H1 RKN12(10) M10: SKIP
+* new cell H1 RKN12(10) M1: SKIP
+* new cell H1 RKN12(10) Q10: PASS
+* new cell H1 RKN12(10) Q1: PASS
+* new cell H1 IAS15 A1: PASS
+* new cell H1 IAS15 A2: PASS
+* new cell H1 IAS15 A3: SKIP
+* new cell H1 IAS15 M100: PASS
+* new cell H1 IAS15 M10: SKIP
+* new cell H1 IAS15 M1: SKIP
+* new cell H1 IAS15 Q10: PASS
+* new cell H1 IAS15 Q1: PASS
+* new cell H1 SRKN14A A1: PASS
+* new cell H1 SRKN14A A2: PASS
+* new cell H1 SRKN14A A3: SKIP
+* new cell H1 SRKN14A M100: PASS
+* new cell H1 SRKN14A M10: SKIP
+* new cell H1 SRKN14A M1: SKIP
+* new cell H1 SRKN14A Q10: PASS
+* new cell H1 SRKN14A Q1: PASS
+* new cell H1 WH-BM14A A1: N/A
+* new cell H1 WH-BM14A A2: N/A
+* new cell H1 WH-BM14A A3: N/A
+* new cell H1 WH-BM14A M100: N/A
+* new cell H1 WH-BM14A M10: N/A
+* new cell H1 WH-BM14A M1: N/A
+* new cell H1 WH-BM14A Q10: N/A
+* new cell H1 WH-BM14A Q1: N/A
+* new cell H1 GJ8 A1: FAIL
+* new cell H1 GJ8 A2: FAIL
+* new cell H1 GJ8 A3: SKIP
+* new cell H1 GJ8 M100: FAIL
+* new cell H1 GJ8 M10: SKIP
+* new cell H1 GJ8 M1: SKIP
+* new cell H1 GJ8 Q10: FAIL
+* new cell H1 GJ8 Q1: FAIL
+* new cell H1 Encke-IAS15 A1: N/A
+* new cell H1 Encke-IAS15 A2: N/A
+* new cell H1 Encke-IAS15 A3: N/A
+* new cell H1 Encke-IAS15 M100: N/A
+* new cell H1 Encke-IAS15 M10: N/A
+* new cell H1 Encke-IAS15 M1: N/A
+* new cell H1 Encke-IAS15 Q10: N/A
+* new cell H1 Encke-IAS15 Q1: N/A
+* new cell H1h RK4 A1: FAIL
+* new cell H1h RK4 A2: FAIL
+* new cell H1h RK4 A3: SKIP
+* new cell H1h RK4 M100: FAIL
+* new cell H1h RK4 M10: SKIP
+* new cell H1h RK4 M1: SKIP
+* new cell H1h RK4 Q10: FAIL
+* new cell H1h RK4 Q1: FAIL
+* new cell H1h DOPRI5-fixed A1: PASS
+* new cell H1h DOPRI5-fixed A2: PASS
+* new cell H1h DOPRI5-fixed A3: SKIP
+* new cell H1h DOPRI5-fixed M100: PASS
+* new cell H1h DOPRI5-fixed M10: SKIP
+* new cell H1h DOPRI5-fixed M1: SKIP
+* new cell H1h DOPRI5-fixed Q10: PASS
+* new cell H1h DOPRI5-fixed Q1: PASS
+* new cell H1h DOPRI5-adaptive A1: PASS
+* new cell H1h DOPRI5-adaptive A2: PASS
+* new cell H1h DOPRI5-adaptive A3: SKIP
+* new cell H1h DOPRI5-adaptive M100: PASS
+* new cell H1h DOPRI5-adaptive M10: SKIP
+* new cell H1h DOPRI5-adaptive M1: SKIP
+* new cell H1h DOPRI5-adaptive Q10: PASS
+* new cell H1h DOPRI5-adaptive Q1: PASS
+* new cell H1h DOP853-adaptive A1: PASS
+* new cell H1h DOP853-adaptive A2: PASS
+* new cell H1h DOP853-adaptive A3: SKIP
+* new cell H1h DOP853-adaptive M100: PASS
+* new cell H1h DOP853-adaptive M10: SKIP
+* new cell H1h DOP853-adaptive M1: SKIP
+* new cell H1h DOP853-adaptive Q10: PASS
+* new cell H1h DOP853-adaptive Q1: PASS
+* new cell H1h PEFRL A1: PASS
+* new cell H1h PEFRL A2: PASS
+* new cell H1h PEFRL A3: SKIP
+* new cell H1h PEFRL M100: PASS
+* new cell H1h PEFRL M10: SKIP
+* new cell H1h PEFRL M1: SKIP
+* new cell H1h PEFRL Q10: PASS
+* new cell H1h PEFRL Q1: PASS
+* new cell H1h Y6 A1: PASS
+* new cell H1h Y6 A2: PASS
+* new cell H1h Y6 A3: SKIP
+* new cell H1h Y6 M100: PASS
+* new cell H1h Y6 M10: SKIP
+* new cell H1h Y6 M1: SKIP
+* new cell H1h Y6 Q10: PASS
+* new cell H1h Y6 Q1: PASS
+* new cell H1h Y6C A1: PASS
+* new cell H1h Y6C A2: PASS
+* new cell H1h Y6C A3: SKIP
+* new cell H1h Y6C M100: PASS
+* new cell H1h Y6C M10: SKIP
+* new cell H1h Y6C M1: SKIP
+* new cell H1h Y6C Q10: PASS
+* new cell H1h Y6C Q1: PASS
+* new cell H1h WH-Y6 A1: N/A
+* new cell H1h WH-Y6 A2: N/A
+* new cell H1h WH-Y6 A3: N/A
+* new cell H1h WH-Y6 M100: N/A
+* new cell H1h WH-Y6 M10: N/A
+* new cell H1h WH-Y6 M1: N/A
+* new cell H1h WH-Y6 Q10: N/A
+* new cell H1h WH-Y6 Q1: N/A
+* new cell H1h Leapfrog A1: PASS
+* new cell H1h Leapfrog A2: FAIL
+* new cell H1h Leapfrog A3: SKIP
+* new cell H1h Leapfrog M100: FAIL
+* new cell H1h Leapfrog M10: SKIP
+* new cell H1h Leapfrog M1: SKIP
+* new cell H1h Leapfrog Q10: PASS
+* new cell H1h Leapfrog Q1: FAIL
+* new cell H1h RKN12(10) A1: PASS
+* new cell H1h RKN12(10) A2: PASS
+* new cell H1h RKN12(10) A3: SKIP
+* new cell H1h RKN12(10) M100: PASS
+* new cell H1h RKN12(10) M10: SKIP
+* new cell H1h RKN12(10) M1: SKIP
+* new cell H1h RKN12(10) Q10: PASS
+* new cell H1h RKN12(10) Q1: PASS
+* new cell H1h IAS15 A1: PASS
+* new cell H1h IAS15 A2: PASS
+* new cell H1h IAS15 A3: SKIP
+* new cell H1h IAS15 M100: PASS
+* new cell H1h IAS15 M10: SKIP
+* new cell H1h IAS15 M1: SKIP
+* new cell H1h IAS15 Q10: PASS
+* new cell H1h IAS15 Q1: PASS
+* new cell H1h SRKN14A A1: PASS
+* new cell H1h SRKN14A A2: PASS
+* new cell H1h SRKN14A A3: SKIP
+* new cell H1h SRKN14A M100: PASS
+* new cell H1h SRKN14A M10: SKIP
+* new cell H1h SRKN14A M1: SKIP
+* new cell H1h SRKN14A Q10: PASS
+* new cell H1h SRKN14A Q1: PASS
+* new cell H1h WH-BM14A A1: N/A
+* new cell H1h WH-BM14A A2: N/A
+* new cell H1h WH-BM14A A3: N/A
+* new cell H1h WH-BM14A M100: N/A
+* new cell H1h WH-BM14A M10: N/A
+* new cell H1h WH-BM14A M1: N/A
+* new cell H1h WH-BM14A Q10: N/A
+* new cell H1h WH-BM14A Q1: N/A
+* new cell H1h GJ8 A1: PASS
+* new cell H1h GJ8 A2: PASS
+* new cell H1h GJ8 A3: SKIP
+* new cell H1h GJ8 M100: PASS
+* new cell H1h GJ8 M10: SKIP
+* new cell H1h GJ8 M1: SKIP
+* new cell H1h GJ8 Q10: PASS
+* new cell H1h GJ8 Q1: PASS
+* new cell H1h Encke-IAS15 A1: N/A
+* new cell H1h Encke-IAS15 A2: N/A
+* new cell H1h Encke-IAS15 A3: N/A
+* new cell H1h Encke-IAS15 M100: N/A
+* new cell H1h Encke-IAS15 M10: N/A
+* new cell H1h Encke-IAS15 M1: N/A
+* new cell H1h Encke-IAS15 Q10: N/A
+* new cell H1h Encke-IAS15 Q1: N/A
+* new cell H2h RK4 A1: FAIL
+* new cell H2h RK4 A2: FAIL
+* new cell H2h RK4 A3: SKIP
+* new cell H2h RK4 M100: FAIL
+* new cell H2h RK4 M10: SKIP
+* new cell H2h RK4 M1: SKIP
+* new cell H2h RK4 Q10: FAIL
+* new cell H2h RK4 Q1: FAIL
+* new cell H2h DOPRI5-fixed A1: PASS
+* new cell H2h DOPRI5-fixed A2: PASS
+* new cell H2h DOPRI5-fixed A3: SKIP
+* new cell H2h DOPRI5-fixed M100: PASS
+* new cell H2h DOPRI5-fixed M10: SKIP
+* new cell H2h DOPRI5-fixed M1: SKIP
+* new cell H2h DOPRI5-fixed Q10: PASS
+* new cell H2h DOPRI5-fixed Q1: PASS
+* new cell H2h DOPRI5-adaptive A1: FAIL
+* new cell H2h DOPRI5-adaptive A2: FAIL
+* new cell H2h DOPRI5-adaptive A3: SKIP
+* new cell H2h DOPRI5-adaptive M100: FAIL
+* new cell H2h DOPRI5-adaptive M10: SKIP
+* new cell H2h DOPRI5-adaptive M1: SKIP
+* new cell H2h DOPRI5-adaptive Q10: FAIL
+* new cell H2h DOPRI5-adaptive Q1: FAIL
+* new cell H2h DOP853-adaptive A1: PASS
+* new cell H2h DOP853-adaptive A2: PASS
+* new cell H2h DOP853-adaptive A3: SKIP
+* new cell H2h DOP853-adaptive M100: PASS
+* new cell H2h DOP853-adaptive M10: SKIP
+* new cell H2h DOP853-adaptive M1: SKIP
+* new cell H2h DOP853-adaptive Q10: PASS
+* new cell H2h DOP853-adaptive Q1: PASS
+* new cell H2h PEFRL A1: N/A
+* new cell H2h PEFRL A2: N/A
+* new cell H2h PEFRL A3: N/A
+* new cell H2h PEFRL M100: N/A
+* new cell H2h PEFRL M10: N/A
+* new cell H2h PEFRL M1: N/A
+* new cell H2h PEFRL Q10: N/A
+* new cell H2h PEFRL Q1: N/A
+* new cell H2h Y6 A1: N/A
+* new cell H2h Y6 A2: N/A
+* new cell H2h Y6 A3: N/A
+* new cell H2h Y6 M100: N/A
+* new cell H2h Y6 M10: N/A
+* new cell H2h Y6 M1: N/A
+* new cell H2h Y6 Q10: N/A
+* new cell H2h Y6 Q1: N/A
+* new cell H2h Y6C A1: N/A
+* new cell H2h Y6C A2: N/A
+* new cell H2h Y6C A3: N/A
+* new cell H2h Y6C M100: N/A
+* new cell H2h Y6C M10: N/A
+* new cell H2h Y6C M1: N/A
+* new cell H2h Y6C Q10: N/A
+* new cell H2h Y6C Q1: N/A
+* new cell H2h WH-Y6 A1: N/A
+* new cell H2h WH-Y6 A2: N/A
+* new cell H2h WH-Y6 A3: N/A
+* new cell H2h WH-Y6 M100: N/A
+* new cell H2h WH-Y6 M10: N/A
+* new cell H2h WH-Y6 M1: N/A
+* new cell H2h WH-Y6 Q10: N/A
+* new cell H2h WH-Y6 Q1: N/A
+* new cell H2h Leapfrog A1: N/A
+* new cell H2h Leapfrog A2: N/A
+* new cell H2h Leapfrog A3: N/A
+* new cell H2h Leapfrog M100: N/A
+* new cell H2h Leapfrog M10: N/A
+* new cell H2h Leapfrog M1: N/A
+* new cell H2h Leapfrog Q10: N/A
+* new cell H2h Leapfrog Q1: N/A
+* new cell H2h RKN12(10) A1: N/A
+* new cell H2h RKN12(10) A2: N/A
+* new cell H2h RKN12(10) A3: N/A
+* new cell H2h RKN12(10) M100: N/A
+* new cell H2h RKN12(10) M10: N/A
+* new cell H2h RKN12(10) M1: N/A
+* new cell H2h RKN12(10) Q10: N/A
+* new cell H2h RKN12(10) Q1: N/A
+* new cell H2h IAS15 A1: PASS
+* new cell H2h IAS15 A2: PASS
+* new cell H2h IAS15 A3: SKIP
+* new cell H2h IAS15 M100: PASS
+* new cell H2h IAS15 M10: SKIP
+* new cell H2h IAS15 M1: SKIP
+* new cell H2h IAS15 Q10: PASS
+* new cell H2h IAS15 Q1: PASS
+* new cell H2h SRKN14A A1: N/A
+* new cell H2h SRKN14A A2: N/A
+* new cell H2h SRKN14A A3: N/A
+* new cell H2h SRKN14A M100: N/A
+* new cell H2h SRKN14A M10: N/A
+* new cell H2h SRKN14A M1: N/A
+* new cell H2h SRKN14A Q10: N/A
+* new cell H2h SRKN14A Q1: N/A
+* new cell H2h WH-BM14A A1: N/A
+* new cell H2h WH-BM14A A2: N/A
+* new cell H2h WH-BM14A A3: N/A
+* new cell H2h WH-BM14A M100: N/A
+* new cell H2h WH-BM14A M10: N/A
+* new cell H2h WH-BM14A M1: N/A
+* new cell H2h WH-BM14A Q10: N/A
+* new cell H2h WH-BM14A Q1: N/A
+* new cell H2h GJ8 A1: N/A
+* new cell H2h GJ8 A2: N/A
+* new cell H2h GJ8 A3: N/A
+* new cell H2h GJ8 M100: N/A
+* new cell H2h GJ8 M10: N/A
+* new cell H2h GJ8 M1: N/A
+* new cell H2h GJ8 Q10: N/A
+* new cell H2h GJ8 Q1: N/A
+* new cell H2h Encke-IAS15 A1: N/A
+* new cell H2h Encke-IAS15 A2: N/A
+* new cell H2h Encke-IAS15 A3: N/A
+* new cell H2h Encke-IAS15 M100: N/A
+* new cell H2h Encke-IAS15 M10: N/A
+* new cell H2h Encke-IAS15 M1: N/A
+* new cell H2h Encke-IAS15 Q10: N/A
+* new cell H2h Encke-IAS15 Q1: N/A
+* new cell H3 RK4 A1: FAIL
+* new cell H3 RK4 A2: FAIL
+* new cell H3 RK4 A3: SKIP
+* new cell H3 RK4 M100: FAIL
+* new cell H3 RK4 M10: SKIP
+* new cell H3 RK4 M1: SKIP
+* new cell H3 RK4 Q10: FAIL
+* new cell H3 RK4 Q1: SKIP
+* new cell H3 DOPRI5-fixed A1: PASS
+* new cell H3 DOPRI5-fixed A2: PASS
+* new cell H3 DOPRI5-fixed A3: SKIP
+* new cell H3 DOPRI5-fixed M100: PASS
+* new cell H3 DOPRI5-fixed M10: SKIP
+* new cell H3 DOPRI5-fixed M1: SKIP
+* new cell H3 DOPRI5-fixed Q10: PASS
+* new cell H3 DOPRI5-fixed Q1: SKIP
+* new cell H3 DOPRI5-adaptive A1: PASS
+* new cell H3 DOPRI5-adaptive A2: PASS
+* new cell H3 DOPRI5-adaptive A3: SKIP
+* new cell H3 DOPRI5-adaptive M100: PASS
+* new cell H3 DOPRI5-adaptive M10: SKIP
+* new cell H3 DOPRI5-adaptive M1: SKIP
+* new cell H3 DOPRI5-adaptive Q10: PASS
+* new cell H3 DOPRI5-adaptive Q1: SKIP
+* new cell H3 DOP853-adaptive A1: PASS
+* new cell H3 DOP853-adaptive A2: PASS
+* new cell H3 DOP853-adaptive A3: SKIP
+* new cell H3 DOP853-adaptive M100: PASS
+* new cell H3 DOP853-adaptive M10: SKIP
+* new cell H3 DOP853-adaptive M1: SKIP
+* new cell H3 DOP853-adaptive Q10: PASS
+* new cell H3 DOP853-adaptive Q1: SKIP
+* new cell H3 PEFRL A1: N/A
+* new cell H3 PEFRL A2: N/A
+* new cell H3 PEFRL A3: N/A
+* new cell H3 PEFRL M100: N/A
+* new cell H3 PEFRL M10: N/A
+* new cell H3 PEFRL M1: N/A
+* new cell H3 PEFRL Q10: N/A
+* new cell H3 PEFRL Q1: N/A
+* new cell H3 Y6 A1: N/A
+* new cell H3 Y6 A2: N/A
+* new cell H3 Y6 A3: N/A
+* new cell H3 Y6 M100: N/A
+* new cell H3 Y6 M10: N/A
+* new cell H3 Y6 M1: N/A
+* new cell H3 Y6 Q10: N/A
+* new cell H3 Y6 Q1: N/A
+* new cell H3 Y6C A1: N/A
+* new cell H3 Y6C A2: N/A
+* new cell H3 Y6C A3: N/A
+* new cell H3 Y6C M100: N/A
+* new cell H3 Y6C M10: N/A
+* new cell H3 Y6C M1: N/A
+* new cell H3 Y6C Q10: N/A
+* new cell H3 Y6C Q1: N/A
+* new cell H3 WH-Y6 A1: N/A
+* new cell H3 WH-Y6 A2: N/A
+* new cell H3 WH-Y6 A3: N/A
+* new cell H3 WH-Y6 M100: N/A
+* new cell H3 WH-Y6 M10: N/A
+* new cell H3 WH-Y6 M1: N/A
+* new cell H3 WH-Y6 Q10: N/A
+* new cell H3 WH-Y6 Q1: N/A
+* new cell H3 Leapfrog A1: N/A
+* new cell H3 Leapfrog A2: N/A
+* new cell H3 Leapfrog A3: N/A
+* new cell H3 Leapfrog M100: N/A
+* new cell H3 Leapfrog M10: N/A
+* new cell H3 Leapfrog M1: N/A
+* new cell H3 Leapfrog Q10: N/A
+* new cell H3 Leapfrog Q1: N/A
+* new cell H3 RKN12(10) A1: N/A
+* new cell H3 RKN12(10) A2: N/A
+* new cell H3 RKN12(10) A3: N/A
+* new cell H3 RKN12(10) M100: N/A
+* new cell H3 RKN12(10) M10: N/A
+* new cell H3 RKN12(10) M1: N/A
+* new cell H3 RKN12(10) Q10: N/A
+* new cell H3 RKN12(10) Q1: N/A
+* new cell H3 IAS15 A1: PASS
+* new cell H3 IAS15 A2: PASS
+* new cell H3 IAS15 A3: SKIP
+* new cell H3 IAS15 M100: PASS
+* new cell H3 IAS15 M10: SKIP
+* new cell H3 IAS15 M1: SKIP
+* new cell H3 IAS15 Q10: PASS
+* new cell H3 IAS15 Q1: SKIP
+* new cell H3 SRKN14A A1: N/A
+* new cell H3 SRKN14A A2: N/A
+* new cell H3 SRKN14A A3: N/A
+* new cell H3 SRKN14A M100: N/A
+* new cell H3 SRKN14A M10: N/A
+* new cell H3 SRKN14A M1: N/A
+* new cell H3 SRKN14A Q10: N/A
+* new cell H3 SRKN14A Q1: N/A
+* new cell H3 WH-BM14A A1: N/A
+* new cell H3 WH-BM14A A2: N/A
+* new cell H3 WH-BM14A A3: N/A
+* new cell H3 WH-BM14A M100: N/A
+* new cell H3 WH-BM14A M10: N/A
+* new cell H3 WH-BM14A M1: N/A
+* new cell H3 WH-BM14A Q10: N/A
+* new cell H3 WH-BM14A Q1: N/A
+* new cell H3 GJ8 A1: N/A
+* new cell H3 GJ8 A2: N/A
+* new cell H3 GJ8 A3: N/A
+* new cell H3 GJ8 M100: N/A
+* new cell H3 GJ8 M10: N/A
+* new cell H3 GJ8 M1: N/A
+* new cell H3 GJ8 Q10: N/A
+* new cell H3 GJ8 Q1: N/A
+* new cell H3 Encke-IAS15 A1: N/A
+* new cell H3 Encke-IAS15 A2: N/A
+* new cell H3 Encke-IAS15 A3: N/A
+* new cell H3 Encke-IAS15 M100: N/A
+* new cell H3 Encke-IAS15 M10: N/A
+* new cell H3 Encke-IAS15 M1: N/A
+* new cell H3 Encke-IAS15 Q10: N/A
+* new cell H3 Encke-IAS15 Q1: N/A
+* new cell H6 RK4 A1: SKIP
+* new cell H6 RK4 A2: SKIP
+* new cell H6 RK4 A3: SKIP
+* new cell H6 RK4 M100: SKIP
+* new cell H6 RK4 M10: SKIP
+* new cell H6 RK4 M1: SKIP
+* new cell H6 DOPRI5-fixed A1: SKIP
+* new cell H6 DOPRI5-fixed A2: SKIP
+* new cell H6 DOPRI5-fixed A3: SKIP
+* new cell H6 DOPRI5-fixed M100: SKIP
+* new cell H6 DOPRI5-fixed M10: SKIP
+* new cell H6 DOPRI5-fixed M1: SKIP
+* new cell H6 DOPRI5-adaptive A1: FAIL
+* new cell H6 DOPRI5-adaptive A2: SKIP
+* new cell H6 DOPRI5-adaptive A3: SKIP
+* new cell H6 DOPRI5-adaptive M100: SKIP
+* new cell H6 DOPRI5-adaptive M10: SKIP
+* new cell H6 DOPRI5-adaptive M1: SKIP
+* new cell H6 DOP853-adaptive A1: SKIP
+* new cell H6 DOP853-adaptive A2: SKIP
+* new cell H6 DOP853-adaptive A3: SKIP
+* new cell H6 DOP853-adaptive M100: SKIP
+* new cell H6 DOP853-adaptive M10: SKIP
+* new cell H6 DOP853-adaptive M1: SKIP
+* new cell H6 PEFRL A1: N/A
+* new cell H6 PEFRL A2: N/A
+* new cell H6 PEFRL A3: N/A
+* new cell H6 PEFRL M100: N/A
+* new cell H6 PEFRL M10: N/A
+* new cell H6 PEFRL M1: N/A
+* new cell H6 Y6 A1: N/A
+* new cell H6 Y6 A2: N/A
+* new cell H6 Y6 A3: N/A
+* new cell H6 Y6 M100: N/A
+* new cell H6 Y6 M10: N/A
+* new cell H6 Y6 M1: N/A
+* new cell H6 Y6C A1: N/A
+* new cell H6 Y6C A2: N/A
+* new cell H6 Y6C A3: N/A
+* new cell H6 Y6C M100: N/A
+* new cell H6 Y6C M10: N/A
+* new cell H6 Y6C M1: N/A
+* new cell H6 WH-Y6 A1: N/A
+* new cell H6 WH-Y6 A2: N/A
+* new cell H6 WH-Y6 A3: N/A
+* new cell H6 WH-Y6 M100: N/A
+* new cell H6 WH-Y6 M10: N/A
+* new cell H6 WH-Y6 M1: N/A
+* new cell H6 Leapfrog A1: N/A
+* new cell H6 Leapfrog A2: N/A
+* new cell H6 Leapfrog A3: N/A
+* new cell H6 Leapfrog M100: N/A
+* new cell H6 Leapfrog M10: N/A
+* new cell H6 Leapfrog M1: N/A
+* new cell H6 RKN12(10) A1: N/A
+* new cell H6 RKN12(10) A2: N/A
+* new cell H6 RKN12(10) A3: N/A
+* new cell H6 RKN12(10) M100: N/A
+* new cell H6 RKN12(10) M10: N/A
+* new cell H6 RKN12(10) M1: N/A
+* new cell H6 IAS15 A1: SKIP
+* new cell H6 IAS15 A2: SKIP
+* new cell H6 IAS15 A3: SKIP
+* new cell H6 IAS15 M100: SKIP
+* new cell H6 IAS15 M10: SKIP
+* new cell H6 IAS15 M1: SKIP
+* new cell H6 SRKN14A A1: N/A
+* new cell H6 SRKN14A A2: N/A
+* new cell H6 SRKN14A A3: N/A
+* new cell H6 SRKN14A M100: N/A
+* new cell H6 SRKN14A M10: N/A
+* new cell H6 SRKN14A M1: N/A
+* new cell H6 WH-BM14A A1: N/A
+* new cell H6 WH-BM14A A2: N/A
+* new cell H6 WH-BM14A A3: N/A
+* new cell H6 WH-BM14A M100: N/A
+* new cell H6 WH-BM14A M10: N/A
+* new cell H6 WH-BM14A M1: N/A
+* new cell H6 GJ8 A1: N/A
+* new cell H6 GJ8 A2: N/A
+* new cell H6 GJ8 A3: N/A
+* new cell H6 GJ8 M100: N/A
+* new cell H6 GJ8 M10: N/A
+* new cell H6 GJ8 M1: N/A
+* new cell H6 Encke-IAS15 A1: N/A
+* new cell H6 Encke-IAS15 A2: N/A
+* new cell H6 Encke-IAS15 A3: N/A
+* new cell H6 Encke-IAS15 M100: N/A
+* new cell H6 Encke-IAS15 M10: N/A
+* new cell H6 Encke-IAS15 M1: N/A
+
+Summary: 0 status change(s), 645 new cell(s), 0 error change(s) > 10%, 0 price change(s) > 10%.
+elapsed: 7162407 ms
