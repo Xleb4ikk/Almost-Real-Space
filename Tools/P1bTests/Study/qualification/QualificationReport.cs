@@ -43,6 +43,7 @@ internal static partial class P1bTests
         public double Price = double.NaN;
         public double Wall = double.NaN;
         public long Alloc;
+        public double OracleFloor = double.NaN;
         public bool Deterministic;
     }
 
@@ -200,6 +201,7 @@ internal static partial class P1bTests
             e.Wall = QualificationParseDouble(f[19]);
             e.Alloc = QualificationParseLong(f[20]);
             e.Deterministic = f[21] == "1";
+            e.OracleFloor = QualificationParseDouble(f[23]);
             list.Add(e);
         }
 
