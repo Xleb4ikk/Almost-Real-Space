@@ -1,0 +1,16 @@
+test: Test564_MethodQualification
+task_version: 4
+task_sha256: 7779706cf649a4c7dfe1a12b34fcd9aee97084fe600c3c0ea44440d487db1b16
+profile: full
+date_utc: 2026-11-14 17:36:07
+date_local: 2026-11-14 20:36:07 +03:00
+commit: 142824af5eaed4c4cf71b206df7d5733d058ccf7
+branch: integrator-port/wh-bm14a
+dirty: clean
+dotnet: 8.0.24 (.NET 8.0.24)
+os: Microsoft Windows 10.0.26200
+arch: x64
+cpu: AMD64 Family 25 Model 97 Stepping 2, AuthenticAMD
+logical_cpus: 32
+methods_count: 15
+methods: RK4, DOPRI5-fixed, DOPRI5-adaptive, DOP853-adaptive, PEFRL, Y6, Y6C, WH-Y6, Leapfrog, RKN12(10), IAS15, SRKN14A, WH-BM14A, GJ8, Encke-IAS15

@@ -18,3 +18,4 @@ Test564. Реализация — только после решения вла�
 | B11 | Пролёты планет Test559 (Earth flyby 1.1/3/10 R × vinf) | A5.3: тот же класс и сила, что S15 (Earth + solar tide) | `Study/qualification/` |
 | B12 | `Far flight 30 AU e 0.5 (normalized)` | A5.3: та же физика, что F01, в нормированных единицах | `Study/qualification/` |
 | B13 | Отдельный проход уточнения порядка G2 для S/P/F (досчитать точки ниже последнего control'а) | Предсимптотическая ветка даёт ложные G2-FAIL RK4/DOPRI5 на S (`FOUND.md` F11); менять процедуру G2 без владельца нельзя | `Study/qualification/` |
+| B14 | Расширение WH-BM14A на GTO/Молнию: perigee-guard (e≈0.745), J2, события, 2–7 суток, эталон лучше S05 floor | C6-класс GTO/Молния-only даёт 1.45× < 1.5; S05 1.12× floor; GEO нельзя захватывать max-altitude-условием | `Study/qualification/` + `IntegratorPolicy` |
