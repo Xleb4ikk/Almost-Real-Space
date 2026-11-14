@@ -888,6 +888,52 @@ internal static partial class P1bTests
             sb.AppendLine("* " + pair.Key + ": " + pair.Value);
         }
 
+        sb.AppendLine();
+        sb.AppendLine("## Decision table statuses");
+        sb.AppendLine();
+        sb.AppendLine("| row | status | why |");
+        sb.AppendLine("|---|---|---|");
+        sb.AppendLine("| R0 | DEFAULT | DOP853, the certified default |");
+        sb.AppendLine("| R1 WH-BM14A | REJECTED | D4 wall gate: 0.998-1.112x > 0.5x through VesselStep |");
+        sb.AppendLine("| R2 Surface | OFF-BY-OWNER | Q2 = NO; D1.c NO-EVIDENCE |");
+        sb.AppendLine("| R3 Sun-coast | OFF-BY-OWNER | Q3 = NO; D4 report only |");
+        sb.AppendLine("| R4 GTO/Molniya | OFF-BY-OWNER | Q4 = NO (BACKLOG B14) |");
+        sb.AppendLine("| R5 HEO | DEFAULT | no port |");
+        sb.AppendLine("| R6 GEO | DEFAULT | no port; wall fails |");
+        sb.AppendLine("| R7 flyby | OFF-BY-OWNER | Q8 = NO |");
+        sb.AppendLine("| R8 J2 near-circular | DEFAULT | WH-Y6 breaks on J2 |");
+        sb.AppendLine("| R9 J2 == 0 | OFF-BY-OWNER | Q6 = NO |");
+        sb.AppendLine("| R10 chaos/encounters | OFF-BY-OWNER | Q7 = NO |");
+        sb.AppendLine();
+        sb.AppendLine("## Flags");
+        sb.AppendLine();
+        sb.AppendLine("* `EnableRegimeIntegratorPolicy` = false (default; serialized 0 in OutdoorsScene).");
+        sb.AppendLine("* `EnableSunCoastPolicy` = false (default; serialized 0 in OutdoorsScene).");
+        sb.AppendLine("* `EnablePortedIntegratorPolicy` = false (default; serialized 0 in OutdoorsScene).");
+        sb.AppendLine("* `SpacecraftIntegrator.Dop853` remains the default. Nothing is enabled.");
+        sb.AppendLine();
+        sb.AppendLine("## Confirmed gaps and fixes");
+        sb.AppendLine();
+        sb.AppendLine("* G1 (mode drift): confirmed in D2 (11 of 24 cases left the Ported band during one");
+        sb.AppendLine("  30-day warp while WH kept integrating); fixed in D3 by the per-chunk invariant");
+        sb.AppendLine("  guard (in-band 0 fallbacks; out-of-band 1 fallback, bitwise equal to DOP853).");
+        sb.AppendLine("* F3: the VesselStep long-warp/flight path is not bitwise equal to a single direct");
+        sb.AppendLine("  Step (round-off/float-frame); live 1/60 s and 30 s chunks are bitwise. Measured,");
+        sb.AppendLine("  not fixed (events are outside D).");
+        sb.AppendLine("* F4: the game's propagator uses a 30 s event grain, so WH-BM14A has no wall gain");
+        sb.AppendLine("  through VesselStep (0.998-1.112x); this is the D4 REJECTED reason.");
+        sb.AppendLine("* F5: with the Sun-coast flag on, 5 AU selects DOPRI5 (TASK_D expected DOP853);");
+        sb.AppendLine("  the flag stays false, so the game is unaffected.");
+        sb.AppendLine();
+        sb.AppendLine("## Limits");
+        sb.AppendLine();
+        sb.AppendLine("* R1 error is measured against the game's certified default path (DOP853, flags off),");
+        sb.AppendLine("  not the qualification stand's study-frame reference; the gate is the 1 m target.");
+        sb.AppendLine("* R2 was not executed: no CSV evidence (owner decision A).");
+        sb.AppendLine("* R3 is report-only: the flag remains false (Q3 = NO).");
+        sb.AppendLine("* `dynamic.csv` is ignored by the repository's .gitignore; the file is kept locally");
+        sb.AppendLine("  in `results/<UTC>_<hash>/`, the report is committed.");
+
         File.WriteAllText(reportPath, sb.ToString(), new UTF8Encoding(false));
     }
 

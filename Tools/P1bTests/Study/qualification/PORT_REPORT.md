@@ -142,3 +142,4 @@ RKN12 при этом не «небезопасен абсолютно»: S01 `0
 4. L1 — локальный эталон; мировой dd-golden 8.52 м, это не ошибка WH.
 5. Wall 1/60 и 30 с в `chunks.csv` — информационно, с overhead стенда; игровой гейт — 600 с.
 6. Стенд не проходит полный `VesselStep`/`SimulationRunner` путь; он покрыт игровыми тестами.
+Приложение D (динамический выбор интегратора): итог D4–D6 — `Tools/P1bTests/Study/dynamic_policy/DYNAMIC_REPORT.md`; R1 WH-BM14A REJECTED по wall-гейту, все флаги false.
