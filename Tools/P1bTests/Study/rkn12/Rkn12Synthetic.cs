@@ -356,7 +356,7 @@ internal static partial class P1bTests
         BaselineInitialState(sys, out double[] p, out double[] v, out double[] mu);
         double years = 1024d;
         double end = years * Rkn12R3YearSeconds;
-        long steps = 642000L;
+        long steps = 1284000L;
         double h = end / steps;
 
         // Reference stepper: 12-component [p(2 bodies), v(2 bodies)] state.
@@ -491,6 +491,449 @@ internal static partial class P1bTests
         }
 
         return 0;
+    }
+
+    // ------------------------------------------------------------------------
+    // B-probe: is the residual 15 m at the optimal h a compensated-summation
+    // problem? Test-only RKN12 with Neumaier accumulation of the state and of
+    // the stage/weighted sums. No game code is touched here.
+    // ------------------------------------------------------------------------
+
+    private static int Rkn12CompensatedProbe()
+    {
+        StarSystem sys = BaselineOutdoorsSystem();
+        BaselineInitialState(sys, out double[] p0, out double[] v0, out double[] mu);
+        double end = 1024d * Rkn12R3YearSeconds;
+        double h = end / 1284000d;
+        long steps = 1284000L;
+        OrbitingBody body = sys.AllBodies[1];
+
+        Console.WriteLine("R3 compensated probe: h=" + h.ToString("F1", CultureInfo.InvariantCulture) +
+            " s, steps=" + steps);
+        Console.WriteLine("variant,err_100y_m,err_256y_m,err_512y_m,err_1024y_m");
+        foreach (int mode in new[] { 0, 1, 2 })
+        {
+            double[] pp = (double[])p0.Clone();
+            double[] vv = (double[])v0.Clone();
+            double err = Rkn12CompensatedRun(
+                pp, vv, mu, h, steps, mode, body, out double[] samples);
+            Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                "mode{0},{1:E3},{2:E3},{3:E3},{4:E3}",
+                mode, samples[1], samples[2], samples[3], samples[4]));
+            Check(double.IsFinite(err), "R3 compensated probe finite mode " + mode,
+                err.ToString("E3", CultureInfo.InvariantCulture));
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Fixed-step RKN12 for 2 bodies with optional Neumaier accumulation.
+    /// mode 0: plain double (game reference).
+    /// mode 1: compensated final state addition only.
+    /// mode 2: compensated stage sums + final weights + state.
+    /// Returns the final error and fills samples at 10/25/50/100% of the run.
+    /// </summary>
+    private static double Rkn12CompensatedRun(
+        double[] p, double[] v, double[] mu, double h, long steps, int mode,
+        OrbitingBody body, out double[] samples)
+    {
+        int n = 2;
+        int dim = 6;
+        var k = new double[17][];
+        for (int i = 0; i < 17; i++)
+        {
+            k[i] = new double[dim];
+        }
+
+        var stage = new double[dim];
+        var pc = new double[dim];
+        var vc = new double[dim];
+        var pe = new double[dim];
+        var ve = new double[dim];
+        Rkn1210Acceleration accel = Rkn12GravityMu(mu);
+        Array.Copy(p, pe, dim);
+        Array.Copy(v, ve, dim);
+        accel(0d, pe, k[0]);
+        samples = new double[5];
+        long[] marks =
+        {
+            steps * 100L / 1024L,
+            steps * 256L / 1024L,
+            steps * 512L / 1024L,
+            steps
+        };
+        int sampleIndex = 0;
+        double t = 0d;
+        for (long s = 0; s < steps; s++)
+        {
+            for (int i = 1; i < 17; i++)
+            {
+                double ci = Rkn1210Coefficients.C[i];
+                double[] row = Rkn1210Coefficients.A[i];
+                for (int j = 0; j < dim; j++)
+                {
+                    double sum = 0d;
+                    double sumc = 0d;
+                    for (int m = 0; m < i; m++)
+                    {
+                        if (mode == 2)
+                        {
+                            Rkn12NeumaierAdd(ref sum, ref sumc, row[m] * k[m][j]);
+                        }
+                        else
+                        {
+                            sum += row[m] * k[m][j];
+                        }
+                    }
+
+                    double se = sum + sumc;
+                    stage[j] = pe[j] + (h * ((ci * ve[j]) + (h * se)));
+                }
+
+                accel(t + (h * ci), stage, k[i]);
+            }
+
+            for (int j = 0; j < dim; j++)
+            {
+                double sb = 0d;
+                double sbc = 0d;
+                double sbp = 0d;
+                double sbpc = 0d;
+                for (int i = 0; i < 17; i++)
+                {
+                    if (mode == 2)
+                    {
+                        Rkn12NeumaierAdd(ref sb, ref sbc, Rkn1210Coefficients.B[i] * k[i][j]);
+                        Rkn12NeumaierAdd(ref sbp, ref sbpc, Rkn1210Coefficients.BP[i] * k[i][j]);
+                    }
+                    else
+                    {
+                        sb += Rkn1210Coefficients.B[i] * k[i][j];
+                        sbp += Rkn1210Coefficients.BP[i] * k[i][j];
+                    }
+                }
+
+                double dP = (h * ve[j]) + (h * h * (sb + sbc));
+                double dV = h * (sbp + sbpc);
+                if (mode >= 1)
+                {
+                    // Match the game's p + h*v + h^2*B*k ordering, but compensate
+                    // each addition separately (Neumaier).
+                    Rkn12NeumaierAdd(ref p[j], ref pc[j], h * ve[j]);
+                    Rkn12NeumaierAdd(ref p[j], ref pc[j], h * h * (sb + sbc));
+                    Rkn12NeumaierAdd(ref v[j], ref vc[j], dV);
+                }
+                else
+                {
+                    p[j] = p[j] + (h * ve[j]) + (h * h * sb);
+                    v[j] += dV;
+                }
+            }
+
+            // Effective state for the next step and for stage 0.
+            for (int j = 0; j < dim; j++)
+            {
+                pe[j] = p[j] + pc[j];
+                ve[j] = v[j] + vc[j];
+            }
+
+            accel(t + h, pe, k[0]);
+            t += h;
+
+            long mark = sampleIndex < 4 ? marks[sampleIndex] : long.MaxValue;
+            if (s + 1 == mark)
+            {
+                body.EvaluateKeplerOffset((double)mark * h, out Vector3d rail, out _);
+                var rel = new Vector3d(pe[3] - pe[0], pe[4] - pe[1], pe[5] - pe[2]);
+                samples[sampleIndex + 1] = (rel - rail).Magnitude;
+                sampleIndex++;
+            }
+        }
+
+        body.EvaluateKeplerOffset((double)steps * h, out Vector3d railEnd, out _);
+        var relEnd = new Vector3d(pe[3] - pe[0], pe[4] - pe[1], pe[5] - pe[2]);
+        return (relEnd - railEnd).Magnitude;
+    }
+
+    private static void Rkn12NeumaierAdd(ref double sum, ref double correction, double value)
+    {
+        double t = sum + value;
+        if (Math.Abs(sum) >= Math.Abs(value))
+        {
+            correction += (sum - t) + value;
+        }
+        else
+        {
+            correction += (value - t) + sum;
+        }
+
+        sum = t;
+    }
+
+    // ------------------------------------------------------------------------
+    // B-probe 2: full double-double state/stages. If this reaches < 1 m at
+    // 1024 years, B is viable; the game would then need a dd stepper (slower).
+    // ------------------------------------------------------------------------
+
+    private static int Rkn12DdProbe()
+    {
+        StarSystem sys = BaselineOutdoorsSystem();
+        BaselineInitialState(sys, out double[] p0, out double[] v0, out double[] mu);
+        double end = 1024d * Rkn12R3YearSeconds;
+        long steps = 1284000L;
+        double h = end / steps;
+        OrbitingBody body = sys.AllBodies[1];
+        Rkn1210Acceleration accel = Rkn12GravityMu(mu);
+
+        var p = new StudyDd[6];
+        var v = new StudyDd[6];
+        for (int j = 0; j < 6; j++)
+        {
+            p[j] = StudyDd.From(p0[j]);
+            v[j] = StudyDd.From(v0[j]);
+        }
+
+        var k = new StudyDd[17][];
+        for (int i = 0; i < 17; i++)
+        {
+            k[i] = new StudyDd[6];
+        }
+
+        var stageD = new double[6];
+        var accD = new double[6];
+        var pD = new double[6];
+        var vD = new double[6];
+        for (int j = 0; j < 6; j++)
+        {
+            pD[j] = p[j].ToDouble;
+            vD[j] = v[j].ToDouble;
+        }
+
+        accel(0d, pD, accD);
+        for (int j = 0; j < 6; j++)
+        {
+            k[0][j] = StudyDd.From(accD[j]);
+        }
+
+        StudyDd hDd = StudyDd.From(h);
+        StudyDd h2Dd = StudyDd.From(h * h);
+        long[] marks =
+        {
+            steps * 100L / 1024L,
+            steps * 256L / 1024L,
+            steps * 512L / 1024L,
+            steps
+        };
+        int sampleIndex = 0;
+        Console.WriteLine("R3 dd probe: h=" + h.ToString("F1", CultureInfo.InvariantCulture) +
+            " s, steps=" + steps);
+        for (long s = 0; s < steps; s++)
+        {
+            for (int i = 1; i < 17; i++)
+            {
+                StudyDd ci = StudyDd.From(Rkn1210Coefficients.C[i]);
+                double[] row = Rkn1210Coefficients.A[i];
+                for (int j = 0; j < 6; j++)
+                {
+                    StudyDd sum = StudyDd.Zero;
+                    for (int m = 0; m < i; m++)
+                    {
+                        sum = StudyDd.Add(sum, StudyDd.Mul(StudyDd.From(row[m]), k[m][j]));
+                    }
+
+                    StudyDd stage = StudyDd.Add(p[j], StudyDd.Mul(hDd,
+                        StudyDd.Add(StudyDd.Mul(ci, v[j]), StudyDd.Mul(hDd, sum))));
+                    stageD[j] = stage.ToDouble;
+                }
+
+                accel(s * h, stageD, accD);
+                for (int j = 0; j < 6; j++)
+                {
+                    k[i][j] = StudyDd.From(accD[j]);
+                }
+            }
+
+            for (int j = 0; j < 6; j++)
+            {
+                StudyDd sb = StudyDd.Zero;
+                StudyDd sbp = StudyDd.Zero;
+                for (int i = 0; i < 17; i++)
+                {
+                    sb = StudyDd.Add(sb, StudyDd.Mul(StudyDd.From(Rkn1210Coefficients.B[i]), k[i][j]));
+                    sbp = StudyDd.Add(sbp, StudyDd.Mul(StudyDd.From(Rkn1210Coefficients.BP[i]), k[i][j]));
+                }
+
+                p[j] = StudyDd.Add(p[j], StudyDd.Add(StudyDd.Mul(hDd, v[j]), StudyDd.Mul(h2Dd, sb)));
+                v[j] = StudyDd.Add(v[j], StudyDd.Mul(hDd, sbp));
+                pD[j] = p[j].ToDouble;
+                vD[j] = v[j].ToDouble;
+            }
+
+            accel((s + 1) * h, pD, accD);
+            for (int j = 0; j < 6; j++)
+            {
+                k[0][j] = StudyDd.From(accD[j]);
+            }
+
+            long mark = sampleIndex < 4 ? marks[sampleIndex] : long.MaxValue;
+            if (s + 1 == mark)
+            {
+                body.EvaluateKeplerOffset((double)mark * h, out Vector3d rail, out _);
+                var rel = new Vector3d(
+                    p[3].ToDouble - p[0].ToDouble,
+                    p[4].ToDouble - p[1].ToDouble,
+                    p[5].ToDouble - p[2].ToDouble);
+                Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                    "  dd @ {0} y: {1:E3} m", mark * 1024.0 / steps, (rel - rail).Magnitude));
+                sampleIndex++;
+            }
+        }
+
+        body.EvaluateKeplerOffset(end, out Vector3d railEnd, out _);
+        var relEnd = new Vector3d(
+            p[3].ToDouble - p[0].ToDouble,
+            p[4].ToDouble - p[1].ToDouble,
+            p[5].ToDouble - p[2].ToDouble);
+        double err = (relEnd - railEnd).Magnitude;
+        Console.WriteLine("R3 dd probe 1024 y error: " + err.ToString("E3", CultureInfo.InvariantCulture) + " m");
+        Check(double.IsFinite(err), "R3 dd probe finite", "");
+        return 0;
+    }
+
+    // ------------------------------------------------------------------------
+    // B-probe 3: full double-double RKN12 INCLUDING the pairwise force.
+    // This is a test-only prototype; the game's shared Accel is double.
+    // ------------------------------------------------------------------------
+
+    private static int Rkn12DdForceProbe()
+    {
+        StarSystem sys = BaselineOutdoorsSystem();
+        BaselineInitialState(sys, out double[] p0, out double[] v0, out double[] mu);
+        double end = 1024d * Rkn12R3YearSeconds;
+        long steps = 5136000L;
+        double h = end / steps;
+        OrbitingBody body = sys.AllBodies[1];
+
+        var p = new StudyDd3[2];
+        var v = new StudyDd3[2];
+        p[0] = StudyDd3.From(new Vector3d(p0[0], p0[1], p0[2]));
+        p[1] = StudyDd3.From(new Vector3d(p0[3], p0[4], p0[5]));
+        v[0] = StudyDd3.From(new Vector3d(v0[0], v0[1], v0[2]));
+        v[1] = StudyDd3.From(new Vector3d(v0[3], v0[4], v0[5]));
+
+        var k = new StudyDd3[17][];
+        for (int i = 0; i < 17; i++)
+        {
+            k[i] = new StudyDd3[2];
+        }
+
+        Rkn12DdForce(p, k[0], mu);
+        StudyDd hDd = StudyDd.From(h);
+        StudyDd h2Dd = StudyDd.From(h * h);
+        long[] marks =
+        {
+            steps * 100L / 1024L,
+            steps * 256L / 1024L,
+            steps * 512L / 1024L,
+            steps
+        };
+        int sampleIndex = 0;
+        Console.WriteLine("R3 dd-force probe: h=" + h.ToString("F1", CultureInfo.InvariantCulture) +
+            " s, steps=" + steps);
+        for (long s = 0; s < steps; s++)
+        {
+            for (int i = 1; i < 17; i++)
+            {
+                StudyDd ci = StudyDd.From(Rkn1210Coefficients.C[i]);
+                double[] row = Rkn1210Coefficients.A[i];
+                var stage = new StudyDd3[2];
+                for (int b = 0; b < 2; b++)
+                {
+                    StudyDd3 sum = StudyDd3.Zero;
+                    for (int m = 0; m < i; m++)
+                    {
+                        sum += k[m][b] * StudyDd.From(row[m]);
+                    }
+
+                    stage[b] = p[b] + ((v[b] * ci) + (sum * hDd)) * hDd;
+                }
+
+                Rkn12DdForce(stage, k[i], mu);
+            }
+
+            for (int b = 0; b < 2; b++)
+            {
+                StudyDd3 sb = StudyDd3.Zero;
+                StudyDd3 sbp = StudyDd3.Zero;
+                for (int i = 0; i < 17; i++)
+                {
+                    sb += k[i][b] * StudyDd.From(Rkn1210Coefficients.B[i]);
+                    sbp += k[i][b] * StudyDd.From(Rkn1210Coefficients.BP[i]);
+                }
+
+                p[b] = p[b] + (v[b] * hDd) + (sb * h2Dd);
+                v[b] = v[b] + (sbp * hDd);
+            }
+
+            Rkn12DdForce(p, k[0], mu);
+
+            long mark = sampleIndex < 4 ? marks[sampleIndex] : long.MaxValue;
+            if (s + 1 == mark)
+            {
+                body.EvaluateKeplerOffset((double)mark * h, out Vector3d rail, out _);
+                var rel = p[1].ToVector3d() - p[0].ToVector3d();
+                Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                    "  dd-force @ {0} y: {1:E3} m", mark * 1024.0 / steps, (rel - rail).Magnitude));
+                sampleIndex++;
+            }
+        }
+
+        body.EvaluateKeplerOffset(end, out Vector3d railEnd, out _);
+        var relEnd = p[1].ToVector3d() - p[0].ToVector3d();
+        double err = (relEnd - railEnd).Magnitude;
+
+        // The analytic Kepler solution from the SAME initial relative state as the
+        // bake (the rail is built from elements and may differ by an ulp-level
+        // barycentric shift; that difference grows as a phase error over 1024 y).
+        double muSum = mu[0] + mu[1];
+        var yUni = new double[]
+        {
+            p0[3] - p0[0], p0[4] - p0[1], p0[5] - p0[2],
+            v0[3] - v0[0], v0[4] - v0[1], v0[5] - v0[2]
+        };
+        KeplerUniversal.Propagate(muSum, yUni, 0, 3, end);
+        var relUni = new Vector3d(yUni[0], yUni[1], yUni[2]);
+        double errUni = (relEnd - relUni).Magnitude;
+        double railVsUni = (railEnd - relUni).Magnitude;
+        body.EvaluateKeplerOffset(0d, out Vector3d rail0, out Vector3d railV0);
+        double initDeltaR = Math.Sqrt(
+            ((p0[3] - p0[0] - rail0.X) * (p0[3] - p0[0] - rail0.X)) +
+            ((p0[4] - p0[1] - rail0.Y) * (p0[4] - p0[1] - rail0.Y)) +
+            ((p0[5] - p0[2] - rail0.Z) * (p0[5] - p0[2] - rail0.Z)));
+        double initDeltaV = Math.Sqrt(
+            ((v0[3] - v0[0] - railV0.X) * (v0[3] - v0[0] - railV0.X)) +
+            ((v0[4] - v0[1] - railV0.Y) * (v0[4] - v0[1] - railV0.Y)) +
+            ((v0[5] - v0[2] - railV0.Z) * (v0[5] - v0[2] - railV0.Z)));
+        Console.WriteLine("R3 dd-force probe 1024 y error vs rail: " + err.ToString("E3", CultureInfo.InvariantCulture) + " m");
+        Console.WriteLine("R3 dd-force vs analytic from the SAME initial state: " + errUni.ToString("E3", CultureInfo.InvariantCulture) + " m");
+        Console.WriteLine("R3 rail vs universal (initial-state reference): " + railVsUni.ToString("E3", CultureInfo.InvariantCulture) + " m");
+        Console.WriteLine("R3 initial deltas vs rail: |dr|=" + initDeltaR.ToString("E3", CultureInfo.InvariantCulture) +
+            " m, |dv|=" + initDeltaV.ToString("E3", CultureInfo.InvariantCulture) + " m/s");
+        Check(double.IsFinite(err), "R3 dd-force probe finite", "");
+        return 0;
+    }
+
+    private static void Rkn12DdForce(StudyDd3[] p, StudyDd3[] a, double[] mu)
+    {
+        a[0] = StudyDd3.Zero;
+        a[1] = StudyDd3.Zero;
+        StudyDd3 d = p[1] - p[0];
+        StudyDd r2 = d.SqrMagnitude;
+        StudyDd r = StudyDd.Sqrt(r2);
+        StudyDd inv = StudyDd.From(1d) / (r2 * r);
+        a[0] += d * (StudyDd.From(mu[1]) * inv);
+        a[1] -= d * (StudyDd.From(mu[0]) * inv);
     }
 
     // ------------------------------------------------------------------------

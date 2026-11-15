@@ -318,6 +318,9 @@ new P1bCase("Test549_SpacecraftOrbitIntegrators", Test549_SpacecraftOrbitIntegra
             // test required by TASK_RKN12 §4. Diagnostic: measures, asserts only hashes.
             new P1bCase("Rkn12BaselineDop853", Rkn12BaselineDop853, true, diagnostic: true),
             new P1bCase("Rkn12RoundoffProbe", Rkn12RoundoffProbe, true, diagnostic: true),
+            new P1bCase("Rkn12CompensatedProbe", Rkn12CompensatedProbe, true, diagnostic: true),
+            new P1bCase("Rkn12DdProbe", Rkn12DdProbe, true, diagnostic: true),
+            new P1bCase("Rkn12DdForceProbe", Rkn12DdForceProbe, true, diagnostic: true),
             new P1bCase("Test534_JupiterVariants", Test534_JupiterVariants, true),
             new P1bCase("Test534b_MoonsAsBodies", Test534b_MoonsAsBodies, true),
         };
