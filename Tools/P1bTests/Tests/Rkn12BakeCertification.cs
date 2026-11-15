@@ -47,6 +47,7 @@ internal static partial class P1bTests
         Rkn12Allocations();
         Rkn12RelativeNormTranslation();
         Rkn12ReferenceStepAgreement();
+        Rkn12CertificationSynthetic();
         return 0;
     }
 

@@ -317,6 +317,7 @@ new P1bCase("Test549_SpacecraftOrbitIntegrators", Test549_SpacecraftOrbitIntegra
             // Unnumbered on purpose: Test566 is reserved for the RKN12 certification
             // test required by TASK_RKN12 §4. Diagnostic: measures, asserts only hashes.
             new P1bCase("Rkn12BaselineDop853", Rkn12BaselineDop853, true, diagnostic: true),
+            new P1bCase("Rkn12RoundoffProbe", Rkn12RoundoffProbe, true, diagnostic: true),
             new P1bCase("Test534_JupiterVariants", Test534_JupiterVariants, true),
             new P1bCase("Test534b_MoonsAsBodies", Test534b_MoonsAsBodies, true),
         };
