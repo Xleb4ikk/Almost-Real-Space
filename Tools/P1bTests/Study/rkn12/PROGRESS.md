@@ -1,7 +1,7 @@
 # PROGRESS — RKN12(10) как production-интегратор выпечки эфемерид
 
 Задание: `TASK_RKN12.md` (заморожено, версия 1). Ветка: `rkn12-bake`.
-Один этап за раз. Текущий этап: **R1 выполнен, коммит `Q-RK1`**. R2 — следующий.
+Один этап за раз. Текущий этап: **R2 выполнен, коммит `Q-RK2`**. R3 — следующий.
 
 ---
 
@@ -319,10 +319,75 @@ R1 разблокирован, но **не начат**: ждём отдельн
 
 ---
 
-## R2 — НЕ НАЧАТ
+## R2 — интеграция в baker за enum (default DOP853)
 
-План: `BakeIntegrator { Dop853Fixed = 0, Rkn1210Adaptive = 1 }`, поле в
-`BakeConfig` и `StarSystemAuthoring` (инициализатор `Dop853Fixed` навсегда),
-popup в инспекторе, ветка в `RunBake` с node forcing/per-body norm. DOP853-ветка
-обязана остаться побитово прежней.
+### R2.1 Что сделано
+
+* `EphemerisBaker.cs`:
+  * `public enum BakeIntegrator { Dop853Fixed = 0, Rkn1210Adaptive = 1 }`;
+  * `BakeConfig.Integrator` с инициализатором `Dop853Fixed` (значение 0 не меняется);
+  * `Validate()` отвергает неизвестный enum (без fallback);
+  * `RunBake` — явная ветка `Dop853Fixed` (код шага не изменён ни на символ) и
+    ветка `Rkn1210Adaptive` с node forcing, адаптивным шагом и per-body relative
+    norm; `Accel`/`FitSegmentChebyshev`/`ValidateBakeable`/file sink не менялись;
+  * счётчики/исключения: non-finite и step floor → `InvalidOperationException`
+    с `t`, `h`, `errorNorm`, `body`; 50 подряд reject'ов → исключение.
+* `StarSystemAuthoring.cs` — поле `Integrator` с инициализатором `Dop853Fixed`.
+* `StarSystemAuthoringEditor.cs` — `Integrator` передаётся в `BakeConfig`; enum
+  рисуется штатным `DrawDefaultInspector` как popup, добавлен HelpBox о границах.
+* `Test566` расширен R2-проверками.
+
+**DOP853 не изменён**: `Test566` бейкает Outdoors 1.2 г и сравнивает combined
+sha256 с R0 — `2AECA30F…D23C1DEC3`, совпадение побитово.
+
+### R2.2 Решение по max step для RKN12
+
+`BakeConfig.MaxStepSeconds` в коде документирован как **«Absolute DOP853 substep
+cap»**. Если применить 900 с и к RKN12, он делает те же 36 млн шагов, но по 16
+стадий вместо 12 — то есть **медленнее** DOP853, и ворота §8.4 (≥1.33×) недостижимы
+по построению. Поэтому ветка RKN12 ограничена **фазовым бюджетом**
+`PhasePerStep` (метод-независимый кап, 0.02 рад на шаг), а не 900-с капом DOP853.
+Значения `PhasePerStep`/`MaxStepSeconds`/`Degree`/`Quant` не менялись; DOP853
+по-прежнему использует `min(900, phaseStep)`.
+
+Это решение зафиксировано здесь; на R4 оно проверяется временем/ошибкой. Если
+владелец считает иначе — откат одной строки (`rknMaxStep = dtMax`).
+
+### R2.3 Результаты `Test566` (ALL PASS)
+
+| Проверка §R2 | Факт |
+|---|---|
+| `Dop853Fixed=0`, `Rkn1210Adaptive=1` | да |
+| `BakeConfig.Integrator` / `StarSystemAuthoring.Integrator` default | `Dop853Fixed` |
+| неизвестный enum | `ArgumentOutOfRangeException`, без fallback |
+| DOP853 bake Outdoors 1.2 г vs R0 | sha256 **совпал** (`2AECA30F…`) |
+| RKN12 Outdoors 1.2 г | 1/1 тело, BG3, manifest attach, finite; **6.5 мс** (DOP853 52.6 мс) |
+| RKN12 Example4 1.2 г | 3/3 тела, BG3, manifest attach, finite; **48.5 мс** |
+| RKN12 output != DOP853 | да для обеих систем (нет silent fallback) |
+
+Примерное время 1.2 г: Outdoors 6.5 мс vs 52.6 мс (8×), Example4 48.5 мс vs
+~56 мс (только ~1.16×). Example4 — риск для ворот §8.4; измерение медианой 5 и
+горизонтами 10/100/1024 — R4.
+
+### R2.4 Регрессия §8.0
+
+| Проверка | Результат |
+|---|---|
+| build | 0 ошибок |
+| `GalilegoPhysicsTests` | 283/283 |
+| `GalilegoSimTests` | 107/107 |
+| `Test551` | 84/0, SHA256 `54ae98e2…` |
+| `Test565_DynamicPolicy` | ALL PASS |
+| `Test566_Rkn12BakeCertification` | ALL PASS |
+| `--compare` стенда | не требовался: `GameSources.props` в R2 не менялся |
+
+---
+
+## R3 — НЕ НАЧАТ
+
+План: 2-body Kepler (аналитика, 1.2 г и 1024 года), Example4 (10/100 лет,
+dd-Taylor endpoint; Луна отдельно), P3/P4 (read-only фикстуры qualification),
+энергия/импульс/COM по §8.3. Для 1024 лет 4-body независимый dd-Taylor —
+отдельное решение (владелец запретил Taylor по умолчанию).
+
 

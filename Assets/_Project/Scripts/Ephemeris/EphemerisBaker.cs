@@ -1,11 +1,24 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using Galilego.Core;
 
 namespace Galilego.Universe
 {
+    /// <summary>
+    /// Ephemeris bake integrator. Value 0 and the field initialisers are permanent:
+    /// Unity reads the initialiser when an old scene has no such field in YAML, so
+    /// changing them would silently switch existing scenes. RKN12 is opt-in per
+    /// system only (owner decision, TASK_RKN12 RQ9).
+    /// </summary>
+    public enum BakeIntegrator
+    {
+        Dop853Fixed = 0,
+        Rkn1210Adaptive = 1
+    }
+
     /// <summary>
     /// Ephemeris bake configuration. Defaults: segment = smallest subtree period / 4
     /// (clamped to [2; 64] days), degree 12, DOP853 substep from the phase-error budget
@@ -40,9 +53,23 @@ namespace Galilego.Universe
 
         public double MaxSegmentSeconds = 64d * 86400d;
 
+        /// <summary>
+        /// Bake integrator. Default Dop853Fixed = 0, forever: old scenes without this
+        /// field must keep the fixed-step DOP853 path. RKN12 is selected explicitly by
+        /// the owner for a concrete system (TASK_RKN12 RQ9); there is no global default
+        /// switch and no silent fallback.
+        /// </summary>
+        public BakeIntegrator Integrator = BakeIntegrator.Dop853Fixed;
+
         /// <summary>Validates the ranges; throws loudly on garbage.</summary>
         public void Validate()
         {
+            if (Integrator != BakeIntegrator.Dop853Fixed && Integrator != BakeIntegrator.Rkn1210Adaptive)
+            {
+                throw new ArgumentOutOfRangeException(nameof(Integrator), Integrator,
+                    "Неизвестный интегратор выпечки: допустимы Dop853Fixed (0) и Rkn1210Adaptive (1).");
+            }
+
             if (Degree < 1 || Degree > 32)
             {
                 throw new ArgumentOutOfRangeException(nameof(Degree), Degree, "Степень обязана быть в [1, 32].");
@@ -835,6 +862,7 @@ namespace Galilego.Universe
             // Substep cap from the fastest period (n·h &lt;= PhasePerStep), not a hard
             // constant: systems without fast moons bake proportionally faster.
             double dtMax = config.MaxStepSeconds;
+            double phaseStepMax = double.PositiveInfinity;
             for (int i = 0; i < n; i++)
             {
                 if (parentIdx[i] < 0)
@@ -863,8 +891,23 @@ namespace Galilego.Universe
                     {
                         dtMax = phaseStep;
                     }
+
+                    if (phaseStep < phaseStepMax)
+                    {
+                        phaseStepMax = phaseStep;
+                    }
                 }
             }
+
+            // MaxStepSeconds is documented as the absolute DOP853 substep cap
+            // (BakeConfig comment). RKN12 is adaptive: its step is controlled by
+            // rtol (§6.5) and bounded by the METHOD-AGNOSTIC phase budget
+            // PhasePerStep, not by the DOP853 900-s cap. Keeping the 900-s cap
+            // here would make the §8.4 speed gate unreachable by construction
+            // (16 stages vs 12 at the same h).
+            double rknMaxStep = double.IsPositiveInfinity(phaseStepMax)
+                ? config.MaxStepSeconds
+                : phaseStepMax;
 
             // Segments/nodes per body.
             int bakedCount = 0;
@@ -957,6 +1000,31 @@ namespace Galilego.Universe
             }
         }
 
+        // RKN12(10) branch: the stepper is created once per bake; its callback calls
+        // the SAME Accel (same physics, same summation order), and its buffers are
+        // allocated once. The DOP853 branch never touches any of this.
+        Rkn1210Stepper rknStepper = null;
+        double[] rknPNew = null;
+        double[] rknVNew = null;
+        double rknHAdaptive = rknMaxStep;
+        int rknRejects = 0;
+        if (config.Integrator == BakeIntegrator.Rkn1210Adaptive)
+        {
+            rknStepper = new Rkn1210Stepper(
+                n,
+                parentIdx,
+                Rkn12RelativeTolerance,
+                Rkn12AbsolutePositionTolerance,
+                Rkn12AbsoluteVelocityTolerance,
+                delegate (double attemptTime, double[] attemptPositions, double[] attemptAccelerations)
+                {
+                    Accel(attemptPositions, attemptAccelerations, m, g, n, accelPartials);
+                });
+            rknPNew = new double[3 * n];
+            rknVNew = new double[3 * n];
+            rknStepper.Begin(0d, p, v);
+        }
+
             double t = 0d;
             double nextProgress = 0d;
             while (t < maxEnd - 1e-9d)
@@ -994,51 +1062,114 @@ namespace Galilego.Universe
                     break;
                 }
 
-                // Substeps up to the node: the last one lands exactly on nextT (no drift).
-                // Integrator — DOP853: its secular energy drift at h=900 is negligible
-                // relative to the required accuracy over the baked span.
-                while (t < nextT - 1e-9d)
+                if (config.Integrator == BakeIntegrator.Dop853Fixed)
                 {
-                    double h = Math.Min(dtMax, nextT - t);
-                    Array.Copy(v, stageP[0], 3 * n);
-                    Accel(p, stageV[0], m, g, n, accelPartials);
-                    for (int s = 1; s < 12; s++)
+                    // Substeps up to the node: the last one lands exactly on nextT (no drift).
+                    // Integrator — DOP853: its secular energy drift at h=900 is negligible
+                    // relative to the required accuracy over the baked span.
+                    while (t < nextT - 1e-9d)
                     {
-                        Array.Copy(p, tp, 3 * n);
-                        Array.Copy(v, tv, 3 * n);
-                        double[] row = DOP853Coefficients.A[s];
-                        for (int j = 0; j < s; j++)
+                        double h = Math.Min(dtMax, nextT - t);
+                        Array.Copy(v, stageP[0], 3 * n);
+                        Accel(p, stageV[0], m, g, n, accelPartials);
+                        for (int s = 1; s < 12; s++)
                         {
-                            double a = row[j];
-                            if (a == 0d)
+                            Array.Copy(p, tp, 3 * n);
+                            Array.Copy(v, tv, 3 * n);
+                            double[] row = DOP853Coefficients.A[s];
+                            for (int j = 0; j < s; j++)
                             {
-                                continue;
+                                double a = row[j];
+                                if (a == 0d)
+                                {
+                                    continue;
+                                }
+                                double ha = h * a;
+                                double[] kp = stageP[j];
+                                double[] kv = stageV[j];
+                                for (int i = 0; i < 3 * n; i++)
+                                {
+                                    tp[i] += ha * kp[i];
+                                    tv[i] += ha * kv[i];
+                                }
                             }
-                            double ha = h * a;
-                            double[] kp = stageP[j];
-                            double[] kv = stageV[j];
-                            for (int i = 0; i < 3 * n; i++)
+                            Accel(tp, stageV[s], m, g, n, accelPartials);
+                            Array.Copy(tv, stageP[s], 3 * n);
+                        }
+                        for (int i = 0; i < 3 * n; i++)
+                        {
+                            double dp = 0d;
+                            double dv = 0d;
+                            for (int s = 0; s < 12; s++)
                             {
-                                tp[i] += ha * kp[i];
-                                tv[i] += ha * kv[i];
+                                dp += DOP853Coefficients.B[s] * stageP[s][i];
+                                dv += DOP853Coefficients.B[s] * stageV[s][i];
+                            }
+                            p[i] += h * dp;
+                            v[i] += h * dv;
+                        }
+                        t += h;
+                    }
+                }
+                else
+                {
+                    // RKN12(10): adaptive step, node forcing (§6.4). hAdaptive survives
+                    // between nodes; a clipped step must not shrink it. Rejections never
+                    // cross nextT; an accept at the node assigns nextT exactly.
+                    while (t < nextT)
+                    {
+                        double remaining = nextT - t;
+                        if (!(remaining > 0d))
+                        {
+                            break;
+                        }
+
+                        double hTry = Math.Min(rknHAdaptive, rknMaxStep);
+                        bool clipped = hTry * 1.01d >= remaining;
+                        if (clipped)
+                        {
+                            hTry = remaining;
+                        }
+
+                        double errorNorm = rknStepper.TryStep(t, hTry, p, v, rknPNew, rknVNew);
+                        if (errorNorm <= 1d)
+                        {
+                            double tNew = clipped ? nextT : t + hTry;
+                            rknStepper.Accept(tNew, rknPNew, rknVNew);
+                            Array.Copy(rknPNew, p, 3 * n);
+                            Array.Copy(rknVNew, v, 3 * n);
+                            t = tNew;
+                            rknRejects = 0;
+
+                            double factor = Math.Min(5d, Math.Max(0.2d,
+                                0.9d * Math.Pow(Math.Max(errorNorm, 1e-10d), -1d / 11d)));
+                            double hNew = Math.Min(hTry * factor, rknMaxStep);
+                            if (clipped)
+                            {
+                                hNew = Math.Max(hNew, Math.Min(rknHAdaptive, rknMaxStep));
+                            }
+
+                            rknHAdaptive = hNew;
+                        }
+                        else
+                        {
+                            rknRejects++;
+                            double factor = Math.Min(0.9d, Math.Max(0.1d,
+                                0.9d * Math.Pow(errorNorm, -1d / 11d)));
+                            rknHAdaptive = hTry * factor;
+                            if (rknHAdaptive < Rkn12MinStepSeconds || rknRejects > Rkn12MaxConsecutiveRejects)
+                            {
+                                throw new InvalidOperationException(
+                                    "RKN12(10): шаг не проходит допуск на пределе: t=" +
+                                    t.ToString("R", CultureInfo.InvariantCulture) +
+                                    " s, h=" + hTry.ToString("R", CultureInfo.InvariantCulture) +
+                                    " s, errorNorm=" + errorNorm.ToString("E6", CultureInfo.InvariantCulture) +
+                                    ", body=" + rknStepper.LastErrorBody +
+                                    ", rejects=" + rknRejects +
+                                    ", floor=" + Rkn12MinStepSeconds.ToString("R", CultureInfo.InvariantCulture) + " s.");
                             }
                         }
-                        Accel(tp, stageV[s], m, g, n, accelPartials);
-                        Array.Copy(tv, stageP[s], 3 * n);
                     }
-                    for (int i = 0; i < 3 * n; i++)
-                    {
-                        double dp = 0d;
-                        double dv = 0d;
-                        for (int s = 0; s < 12; s++)
-                        {
-                            dp += DOP853Coefficients.B[s] * stageP[s][i];
-                            dv += DOP853Coefficients.B[s] * stageV[s][i];
-                        }
-                        p[i] += h * dp;
-                        v[i] += h * dv;
-                    }
-                    t += h;
                 }
 
                 t = nextT; // exact landing: samples are taken at the nodes, not "almost at" them
@@ -1210,6 +1341,18 @@ namespace Galilego.Universe
         /// (scheduler overhead exceeds the work for small systems; summation order is kept).
         /// </summary>
         private const int ParallelAccelBodies = 64;
+
+        /// <summary>RKN12(10) defaults for R2 (TASK_RKN12 §6.5). Not owner-tunable here.</summary>
+        private const double Rkn12RelativeTolerance = 1e-12d;
+
+        private const double Rkn12AbsolutePositionTolerance = 1e-3d;
+
+        private const double Rkn12AbsoluteVelocityTolerance = 1e-6d;
+
+        /// <summary>Hard floor for a rejected/adapted step; below this we fail loudly, not clamp.</summary>
+        private const double Rkn12MinStepSeconds = 1e-3d;
+
+        private const int Rkn12MaxConsecutiveRejects = 50;
 
         private static void Accel(double[] p, double[] a, double[] m, double g, int n, double[][] partials = null)
         {

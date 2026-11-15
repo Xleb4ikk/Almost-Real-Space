@@ -35,6 +35,18 @@ namespace Galilego.Universe.EditorTools
             EditorGUILayout.Space(8);
             StarSystemAuthoring auth = (StarSystemAuthoring)target;
 
+            // The enum is rendered as a popup by DrawDefaultInspector; the help box
+            // makes the contract explicit (RKN12 is conservative-gravity only and
+            // never changes the spacecraft runtime path).
+            if (auth.Integrator == BakeIntegrator.Rkn1210Adaptive)
+            {
+                EditorGUILayout.HelpBox(
+                    "RKN12(10): адаптивный интегратор выпечки только для консервативной гравитации N тел. " +
+                    "Runtime корабля остаётся DOP853; drag/тяга/переменная масса сюда не передаются. " +
+                    "Dop853Fixed (0) — default для всех старых сцен.",
+                    MessageType.Info);
+            }
+
             using (new EditorGUI.DisabledScope(baking))
             {
                 if (GUILayout.Button("Сгенерировать эфемериды (" + auth.SpanYears + " лет)"))
@@ -95,7 +107,8 @@ namespace Galilego.Universe.EditorTools
             {
                 Degree = auth.Degree,
                 MaxStepSeconds = auth.MaxStepSeconds,
-                QuantBudgetMeters = auth.QuantBudgetMeters
+                QuantBudgetMeters = auth.QuantBudgetMeters,
+                Integrator = auth.Integrator
             };
 
             string folder = auth.OutputFolder ?? "Assets/StreamingAssets/Ephemerides";

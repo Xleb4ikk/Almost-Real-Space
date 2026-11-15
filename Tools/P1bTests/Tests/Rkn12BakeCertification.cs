@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Globalization;
+using System.IO;
 using System.Reflection;
 using Galilego.Core;
 using Galilego.Universe;
@@ -31,6 +32,10 @@ internal static partial class P1bTests
     private static int Test566_Rkn12BakeCertification()
     {
         Console.WriteLine("--- Test566: RKN12(10) stepper certification (R1) ---");
+        Rkn12ConfigDefaults();
+        Rkn12UnknownIntegrator();
+        Rkn12Dop853Bitwise();
+        Rkn12BakePaths();
         Rkn12CoefficientsIdentities();
         Rkn12ReferenceCoefficients();
         Rkn12CallCount();
@@ -43,6 +48,146 @@ internal static partial class P1bTests
         Rkn12RelativeNormTranslation();
         Rkn12ReferenceStepAgreement();
         return 0;
+    }
+
+    // ------------------------------------------------------------------------
+    // R2: configuration defaults and baker branch
+    // ------------------------------------------------------------------------
+
+    private static void Rkn12ConfigDefaults()
+    {
+        Check((int)BakeIntegrator.Dop853Fixed == 0,
+            "R2 config: Dop853Fixed = 0", ((int)BakeIntegrator.Dop853Fixed).ToString(CultureInfo.InvariantCulture));
+        Check((int)BakeIntegrator.Rkn1210Adaptive == 1,
+            "R2 config: Rkn1210Adaptive = 1", ((int)BakeIntegrator.Rkn1210Adaptive).ToString(CultureInfo.InvariantCulture));
+        Check(new BakeConfig().Integrator == BakeIntegrator.Dop853Fixed,
+            "R2 config: BakeConfig initialiser is Dop853Fixed", "");
+        Check(new StarSystemAuthoring().Integrator == BakeIntegrator.Dop853Fixed,
+            "R2 config: StarSystemAuthoring initialiser is Dop853Fixed", "");
+        new BakeConfig().Validate();
+    }
+
+    private static void Rkn12UnknownIntegrator()
+    {
+        var config = BaselineConfig();
+        config.Integrator = (BakeIntegrator)99;
+        bool threw = false;
+        try
+        {
+            EphemerisBaker.Bake(BaselineOutdoorsSystem(), 0.01d, config);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            threw = true;
+        }
+
+        Check(threw, "R2 config: unknown integrator fails loudly (no fallback)", "");
+    }
+
+    private static void Rkn12Dop853Bitwise()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "rkn12_r2_dop_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            StarSystem sys = BaselineOutdoorsSystem();
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            EphemerisBaker.BakeToFiles(sys, dir, 1.2d, BaselineConfig(), null, null, null, true);
+            watch.Stop();
+            string[] files = Directory.GetFiles(dir, "*.bin");
+            Array.Sort(files, StringComparer.Ordinal);
+            string hash = BaselineHashDirectory(dir, files);
+            const string r0Hash = "2AECA30F587EDF18C814C0A0C708C8C1007445BAA9F95CA0C8E9198D23C1DEC3";
+            Check(string.Equals(hash, r0Hash, StringComparison.Ordinal),
+                "R2 DOP853: bake is bitwise equal to the R0 baseline",
+                hash + (string.Equals(hash, r0Hash, StringComparison.Ordinal) ? "" : " != " + r0Hash));
+            Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                "  R2 DOP853 Outdoors 1.2 y: {0:F1} ms", watch.Elapsed.TotalMilliseconds));
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+    }
+
+    private static void Rkn12BakePaths()
+    {
+        Rkn12BakePath("Outdoors", BaselineOutdoorsSystem());
+        Rkn12BakePath("Example4", ExampleSystemPresets.CreateExampleSystem());
+    }
+
+    private static void Rkn12BakePath(string label, StarSystem sys)
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "rkn12_r2_" + label + "_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            BakeConfig config = BaselineConfig();
+            config.Integrator = BakeIntegrator.Rkn1210Adaptive;
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var baked = EphemerisBaker.BakeToFiles(sys, dir, 1.2d, config, null, null, null, true);
+            watch.Stop();
+            Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                "  R2 RKN12 {0} 1.2 y: {1:F1} ms", label, watch.Elapsed.TotalMilliseconds));
+            int expected = sys.AllBodies.Count - 1;
+            Check(baked.Count == expected, "R2 RKN12 bake " + label + ": every body baked",
+                baked.Count + "/" + expected);
+
+            bool filesPresent = true;
+            foreach (var kv in baked)
+            {
+                filesPresent &= !string.IsNullOrEmpty(kv.Value.FilePath) && File.Exists(kv.Value.FilePath);
+            }
+
+            Check(filesPresent, "R2 RKN12 bake " + label + ": BG3 files written", "");
+            string[] files = Directory.GetFiles(dir, "*.bin");
+            Array.Sort(files, StringComparer.Ordinal);
+            string hash = BaselineHashDirectory(dir, files);
+            string dopHash = label == "Outdoors"
+                ? "2AECA30F587EDF18C814C0A0C708C8C1007445BAA9F95CA0C8E9198D23C1DEC3"
+                : "2E7DDE62E7DE7884424518D7AB34794EE4721D6FFE70E70F9ABA9E0F32217BF0";
+            Check(!string.Equals(hash, dopHash, StringComparison.Ordinal),
+                "R2 RKN12 bake " + label + ": output differs from DOP853 (no silent fallback)", hash);
+
+            EphemerisBaker.AttachFiles(sys, dir);
+            double end = sys.BakedEndSeconds();
+            double span = 1.2d * 365d * 86400d;
+            Check(double.IsFinite(end) && end >= span * 0.999d,
+                "R2 RKN12 bake " + label + ": manifest attaches and covers span",
+                end.ToString("R", CultureInfo.InvariantCulture));
+
+            bool finite = true;
+            foreach (OrbitingBody body in sys.AllBodies)
+            {
+                if (body.Parent == null)
+                {
+                    continue;
+                }
+
+                sys.EnsureCachedPositions(end * 0.5d);
+                sys.EvaluateBodyState(body, end * 0.5d, out Vector3d p, out Vector3d v);
+                finite &= p.IsFinite && v.IsFinite;
+            }
+
+            Check(finite, "R2 RKN12 bake " + label + ": reader returns finite states", "");
+
+            foreach (OrbitingBody body in sys.AllBodies)
+            {
+                if (body.Baked != null)
+                {
+                    body.Baked.Dispose();
+                    body.Baked = null;
+                }
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+            {
+                Directory.Delete(dir, true);
+            }
+        }
     }
 
     // ------------------------------------------------------------------------

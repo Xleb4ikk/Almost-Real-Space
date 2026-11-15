@@ -33,6 +33,10 @@ namespace Galilego.Universe
         [Tooltip("Сжатые файлы BG3 (квантование + varint + gzip). Выключить только для отладки.")]
         public bool CompressFiles = true;
 
+        [Tooltip("Интегратор выпечки. Dop853Fixed (0) — навсегда default; Rkn1210Adaptive включается " +
+            "владельцем только для консервативной гравитации N тел. Runtime корабля это не меняет.")]
+        public BakeIntegrator Integrator = BakeIntegrator.Dop853Fixed;
+
         [Tooltip("Папка внутри проекта для испечённых файлов (manifest.txt + тела).")]
         public string OutputFolder = "Assets/StreamingAssets/Ephemerides";
 
