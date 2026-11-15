@@ -1,0 +1,1684 @@
+using System;
+using System.Collections.Generic;
+using Galilego.Core;
+using Galilego.Universe;
+using UnityEngine;
+
+namespace Galilego.Tablet
+{
+    /// <summary>Numbers the monitor frame shows beside the map (not part of the map geometry).</summary>
+    public sealed class NavMapInfo
+    {
+        public bool Connected;
+        public double PlanDeltaVMs;
+        public int ManeuverCount;
+        public double MassKg;
+        public double SpeedMs;
+        public double AltitudeMeters;
+        public double VerticalSpeedMps;
+        public bool HasShip;
+        public string Status = string.Empty;
+    }
+
+    /// <summary>
+    /// Software renderer of the navigation map into a Texture2D. It draws exactly the
+    /// geometry built by NavMapModel: body positions/velocities from the baked
+    /// ephemerides, the ship's N-body coast forecast and its actual history trail.
+    ///
+    /// The projection is orthographic with a user tilt, so an inclined orbit is an
+    /// ellipse and an out-of-plane body really sits off the line. Pixels are drawn
+    /// through the same PixelCanvas/PixelFont as the main tablet, so the monitor keeps
+    /// the game's green phosphor look instead of being a separate 3D view.
+    /// </summary>
+    public sealed class NavMapRenderer
+    {
+        public readonly int Width;
+        public readonly int Height;
+        public readonly bool Preview;
+
+        public float Zoom = 1f;
+        public float AzimuthRad;
+        public float TiltRad = 0.38f;
+
+        /// <summary>
+        /// While the player drags/zooms the map, the globe is rasterised at a coarse
+        /// block size (a full-quality ray-sphere pass is a 100 ms main-thread hit).
+        /// The station turns this off after the gesture and asks for one clean frame.
+        /// </summary>
+        public bool Interactive { get; set; }
+
+        private readonly PixelCanvas canvas;
+        private readonly Texture2D texture;
+        private readonly List<PickEntry> picks = new List<PickEntry>();
+
+        // Rendered planet disk cache: the per-pixel sphere raster is the single most
+        // expensive part of the map. Reuse it until the view (or the planet's visible
+        // orientation / light) actually changes; only the ship, orbits and HUD are
+        // redrawn on the regular map tick.
+        private Color32[] diskCache;
+        private int diskCacheX;
+        private int diskCacheY;
+        private int diskCacheWidth;
+        private int diskCacheHeight;
+        private int diskCacheStep = -1;
+        private int diskCacheMapX;
+        private int diskCacheMapY;
+        private int diskCacheMapWidth;
+        private int diskCacheMapHeight;
+        private bool diskCacheValid;
+        private OrbitingBody diskCacheBody;
+        private NavBodyTexture diskCacheTexture;
+        private float diskCacheCenterX;
+        private float diskCacheCenterY;
+        private float diskCacheRadius;
+        private QuaternionD diskCacheOrientation;
+        private Vector3d diskCacheRight;
+        private Vector3d diskCacheUp;
+        private Vector3d diskCacheView;
+        private Vector3d diskCacheSun;
+
+        private double lastScale;
+        private double lastSurfaceMetersPerPixel;
+        private Vector2 lastRectCenter;
+        private Vector2 panPixels;
+        private int lastFrameIndex = -1;
+        private int lastCenterIndex = -1;
+        private int lastBodyCount = -1;
+
+        private static readonly Color32 OrbitColorA = TabletTheme.LineHi;
+        private static readonly Color32 OrbitColorB = TabletTheme.Dim;
+        private static readonly Color32 OrbitColorC = TabletTheme.Line;
+        private static readonly Color32 ShipColor = TabletTheme.Bright;
+        private static readonly Color32 ForecastColor = TabletTheme.Warn;
+
+        private struct PickEntry
+        {
+            public float X;
+            public float Y;
+            public float Radius;
+            public string Text;
+        }
+
+        public NavMapRenderer(int width, int height, bool preview)
+        {
+            Width = width;
+            Height = height;
+            Preview = preview;
+            canvas = new PixelCanvas(width, height);
+            texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
+            {
+                name = preview ? "NavMapPreview" : "NavMapOverlay",
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp,
+            };
+        }
+
+        public Texture2D Texture => texture;
+
+        public void Dispose()
+        {
+            if (texture != null)
+            {
+                UnityEngine.Object.Destroy(texture);
+            }
+        }
+
+        /// <summary>Redraw the full texture. Call at 1–4 Hz, not every frame.</summary>
+        public void Draw(NavMapModel model, NavState state, NavMapInfo info)
+        {
+            canvas.Clear(TabletTheme.Bg);
+            picks.Clear();
+
+            if (model == null)
+            {
+                DrawDisconnected(info);
+                Upload();
+                return;
+            }
+
+            if (model.FrameIndex != lastFrameIndex)
+            {
+                panPixels = Vector2.zero;
+                Zoom = 1f;
+                AzimuthRad = 0f;
+                TiltRad = 0.38f;
+                lastFrameIndex = model.FrameIndex;
+            }
+
+            if (model.CenterIndex != lastCenterIndex)
+            {
+                panPixels = Vector2.zero;
+                lastCenterIndex = model.CenterIndex;
+            }
+
+            if (model.Bodies.Count != lastBodyCount)
+            {
+                lastBodyCount = model.Bodies.Count;
+            }
+
+            RectInt mapRect = Preview
+                ? new RectInt(18, 56, Mathf.Max(80, Width - 312), Height - 74)
+                : new RectInt(8, 8, Width - 16, Height - 16);
+
+            if (Preview)
+            {
+                DrawPreviewChrome(model, state, info, mapRect);
+            }
+
+            if (model.ViewMode == NavViewMode.Surface && model.DominantBody != null && model.DominantBody.Terrain != null)
+            {
+                DrawSurfaceMap(model, state, info, mapRect);
+            }
+            else
+            {
+                DrawMap(model, state, mapRect);
+            }
+
+            if (Preview)
+            {
+                DrawPreviewFooter(model, state, info, mapRect);
+            }
+            else if (model.ViewMode == NavViewMode.Surface && model.DominantBody != null && model.DominantBody.Terrain != null)
+            {
+                DrawSurfaceHud(model, rect: mapRect);
+            }
+            else
+            {
+                DrawHud(model, state, info, mapRect);
+            }
+
+            Upload();
+        }
+
+        public void PanByPixels(Vector2 delta)
+        {
+            if (!float.IsFinite(delta.x) || !float.IsFinite(delta.y))
+            {
+                return;
+            }
+
+            panPixels += delta;
+        }
+
+        public void ResetPan()
+        {
+            panPixels = Vector2.zero;
+        }
+
+        public void RotateByPixels(Vector2 delta)
+        {
+            if (!float.IsFinite(delta.x) || !float.IsFinite(delta.y))
+            {
+                return;
+            }
+
+            AzimuthRad += delta.x * 0.01f;
+            TiltRad = Mathf.Clamp(TiltRad + (delta.y * 0.01f), 0f, 1.45f);
+        }
+
+        public void ZoomAt(Vector2 texturePixel, float wheelDelta)
+        {
+            if (lastScale <= 0d || !(Zoom > 0f) || !float.IsFinite(texturePixel.x) || !float.IsFinite(texturePixel.y))
+            {
+                return;
+            }
+
+            float factor = Mathf.Pow(1.2f, -wheelDelta);
+            float newZoom = Mathf.Clamp(Zoom * factor, 0.02f, 80f);
+            double newScale = lastScale * (newZoom / Zoom);
+            Vector2 worldOffset = new Vector2(
+                (float)((texturePixel.x - lastRectCenter.x - panPixels.x) / lastScale),
+                (float)((texturePixel.y - lastRectCenter.y - panPixels.y) / lastScale));
+            panPixels = new Vector2(
+                texturePixel.x - lastRectCenter.x - (float)(worldOffset.x * newScale),
+                texturePixel.y - lastRectCenter.y - (float)(worldOffset.y * newScale));
+            Zoom = newZoom;
+        }
+
+        public void ResetView()
+        {
+            panPixels = Vector2.zero;
+            Zoom = 1f;
+            AzimuthRad = 0f;
+            TiltRad = 0.38f;
+        }
+
+        /// <summary>Nearest labelled object to a texture pixel, as rich text for the UI tooltip.</summary>
+        public bool TryPick(Vector2 texturePixel, out string text)
+        {
+            text = null;
+            float best = 14f * 14f;
+            for (int i = 0; i < picks.Count; i++)
+            {
+                PickEntry pick = picks[i];
+                float dx = pick.X - texturePixel.x;
+                float dy = pick.Y - texturePixel.y;
+                float d = (dx * dx) + (dy * dy);
+                if (d <= best)
+                {
+                    best = d;
+                    text = pick.Text;
+                }
+            }
+
+            return text != null;
+        }
+
+        // ─── Map geometry ─────────────────────────────────────────────────────
+
+        private void DrawMap(NavMapModel model, NavState state, RectInt rect)
+        {
+            int centerIndex = state != null ? state.CenterIndex : model.CenterIndex;
+            bool shipCenter = model.HasShip && centerIndex == model.ShipIndex;
+            Vector3d center = model.CenterPosition;
+
+            // Zoom in towards the craft instead of the planet centre: the whole globe
+            // at 1x, then the camera slides to the ship so its marker never runs off
+            // to the side while the surface is enlarged.
+            if (model.HasShip && !shipCenter && centerIndex == model.FrameIndex && Zoom > 1f)
+            {
+                double t = Math.Min(1d, (Zoom - 1d) / 2.5d);
+                center = center + ((model.FrameRelativeShipPosition - center) * t);
+            }
+
+            double radius = AutoRadius(model, centerIndex, shipCenter);
+            double scale = Math.Min(rect.width, rect.height) * 0.44d / radius * Zoom;
+            lastScale = scale;
+            lastRectCenter = new Vector2(rect.x + (rect.width * 0.5f), rect.y + (rect.height * 0.5f));
+
+            Vector3d normal = model.OrbitNormal.Normalized;
+            Vector3d right = RotateAround(model.OrbitRight.Normalized, normal, AzimuthRad);
+            right = (right - (normal * Vector3d.Dot(right, normal))).Normalized;
+            Vector3d up = Vector3d.Cross(normal, right).Normalized;
+            float cosTilt = Mathf.Cos(TiltRad);
+            float sinTilt = Mathf.Sin(TiltRad);
+            Vector3d screenUp = (up * cosTilt) - (normal * sinTilt);
+            Vector3d viewDir = (normal * cosTilt) + (up * sinTilt);
+
+            Vector2 Project(Vector3d point)
+            {
+                Vector3d d = point - center;
+                double x = Vector3d.Dot(d, right);
+                double y = Vector3d.Dot(d, up);
+                double z = Vector3d.Dot(d, normal);
+                double sy = (y * cosTilt) - (z * sinTilt);
+                float sx = (float)(rect.x + (rect.width * 0.5f) + panPixels.x + (x * scale));
+                float syPx = (float)(rect.y + (rect.height * 0.5f) + panPixels.y - (sy * scale));
+                return new Vector2(sx, syPx);
+            }
+
+            // A globe already gives scale and orientation; the old concentric rings
+            // read as a fake orbit when the craft is on the ground. The only lines on
+            // this map are real trajectories.
+            // DrawGrid(rect, Project, radius, center, right, up);
+
+            // Body orbits first (the dim context), then the ship's own trail.
+            for (int i = 0; i < model.Lines.Count; i++)
+            {
+                NavLine line = model.Lines[i];
+                if (line.Kind != NavLineKind.BodyOrbit)
+                {
+                    continue;
+                }
+
+                Color32 color = BodyColor(line.BodyIndex);
+                if (line.BodyIndex == centerIndex)
+                {
+                    color = TabletTheme.Main;
+                }
+
+                DrawPolyline(line.Points, Project, rect, color, false, 1);
+            }
+
+            for (int i = 0; i < model.Lines.Count; i++)
+            {
+                NavLine line = model.Lines[i];
+                if (line.Kind == NavLineKind.ShipHistory)
+                {
+                    // On/near the ground the old flight trail reads as a fake orbit
+                    // around the planet; the globe itself is the surface reference.
+                    if (model.HasSurfaceFrame && model.ShipHeightAboveTerrain < 50_000d)
+                    {
+                        continue;
+                    }
+
+                    DrawPolyline(line.Points, Project, rect, TabletTheme.Main, false, 2);
+                }
+            }
+
+            for (int i = 0; i < model.Lines.Count; i++)
+            {
+                NavLine line = model.Lines[i];
+                if (line.Kind == NavLineKind.ShipForecast)
+                {
+                    DrawPolyline(line.Points, Project, rect, ForecastColor, true, 1);
+                    if (line.Points.Count > 1)
+                    {
+                        Vector2 end = Project(line.Points[line.Points.Count - 1]);
+                        DrawCross(end.x, end.y, 4f, ForecastColor);
+                    }
+                }
+            }
+
+            // Bodies on top of their orbits.
+            for (int i = 0; i < model.Bodies.Count; i++)
+            {
+                NavBodyMarker body = model.Bodies[i];
+                Vector2 p = Project(body.Position);
+                if (!IsFinite(p))
+                {
+                    continue;
+                }
+
+                double trueRadiusMeters = body.RadiusMeters * scale;
+                float bodyRadius = Mathf.Max(2f, (float)trueRadiusMeters);
+                bool centerBody = i == centerIndex;
+                Color32 color = body.IsFrame || centerBody ? TabletTheme.Bright : BodyColor(i);
+                bool centerVisible = Inside(rect, p, 12f);
+                bool isGlobe = trueRadiusMeters >= 5d;
+
+                if (isGlobe)
+                {
+                    // The globe may cover the map with its centre off-screen at high zoom.
+                    DrawPlanetDisk(model, body, p, bodyRadius, right, screenUp, viewDir, rect, color);
+                }
+                else if (centerVisible)
+                {
+                    DrawDisc(p.x, p.y, bodyRadius, color);
+                }
+
+                if (!centerVisible)
+                {
+                    continue;
+                }
+
+                if ((body.IsFrame || centerBody) && !isGlobe)
+                {
+                    DrawCircle(p.x, p.y, bodyRadius + 3f, TabletTheme.Main);
+                }
+
+                string name = body.IsFrame ? "[" + body.Name + "]" : body.Name;
+                float labelY = bodyRadius > 40f ? p.y - bodyRadius - 12f : p.y - 3f;
+                DrawLabel(p.x + (bodyRadius > 40f ? 0f : bodyRadius + 5f), labelY, name, rect, color);
+                picks.Add(new PickEntry
+                {
+                    X = p.x,
+                    Y = p.y,
+                    Radius = Mathf.Max(5f, Mathf.Min(bodyRadius, 20f)),
+                    Text = name + "\nR " + TabletFormat.Dist(body.RadiusMeters),
+                });
+            }
+
+            // Apsides of the current osculating orbit.
+            if (model.HasApsides)
+            {
+                Vector2 pe = Project(model.PeriapsisPosition);
+                if (IsFinite(pe) && Inside(rect, pe, 12f))
+                {
+                    DrawMarker(pe.x, pe.y, "П", TabletTheme.Main, rect);
+                }
+
+                if (model.HasApoapsis)
+                {
+                    Vector2 ap = Project(model.ApoapsisPosition);
+                    if (IsFinite(ap) && Inside(rect, ap, 12f))
+                    {
+                        DrawMarker(ap.x, ap.y, "А", TabletTheme.Dim, rect);
+                    }
+                }
+            }
+
+            // The ship itself: a diamond with a short velocity pointer.
+            if (model.HasShip)
+            {
+                Vector2 ship = Project(model.FrameRelativeShipPosition);
+                if (IsFinite(ship) && Inside(rect, ship, 12f))
+                {
+                    DrawShip(ship.x, ship.y, model.FrameRelativeShipVelocity, scale, right, up, normal, cosTilt, sinTilt);
+                    DrawLabel(ship.x + 9f, ship.y - 4f, "АППАРАТ", rect, TabletTheme.Bright);
+                    double speed = model.FrameRelativeShipVelocity.Magnitude;
+                    picks.Add(new PickEntry
+                    {
+                        X = ship.x,
+                        Y = ship.y,
+                        Radius = 12f,
+                        Text = "АППАРАТ\nV " + TabletFormat.Speed(speed) + " М/С",
+                    });
+                }
+            }
+        }
+
+        private void DrawSurfaceMap(NavMapModel model, NavState state, NavMapInfo info, RectInt rect)
+        {
+            OrbitingBody body = model.DominantBody;
+            ITerrainModel terrain = body != null ? body.Terrain : null;
+            if (body == null || terrain == null)
+            {
+                DrawMap(model, state, rect);
+                return;
+            }
+
+            // Real local map: a top-down view of the actual heightfield around the
+            // ship's sub-point. The span widens with altitude so an ascent still
+            // shows the regional relief, then the globe/orbit view takes over.
+            double altitude = Math.Max(0d, model.ShipHeightAboveTerrain);
+            double span = Math.Max(20_000d, Math.Min(6_000_000d, 20_000d + (altitude * 4d)));
+            double mpp = span / Math.Max(1, Math.Min(rect.width, rect.height)) / Math.Max(0.05f, Zoom);
+            lastSurfaceMetersPerPixel = mpp;
+            lastScale = 1d / mpp;
+            lastRectCenter = new Vector2(rect.x + (rect.width * 0.5f), rect.y + (rect.height * 0.5f));
+
+            float centerX = rect.x + (rect.width * 0.5f) + panPixels.x;
+            float centerY = rect.y + (rect.height * 0.5f) + panPixels.y;
+
+            double lat0 = model.ShipLatitudeDegrees * (Math.PI / 180d);
+            double lon0 = model.ShipLongitudeDegrees * (Math.PI / 180d);
+            double radius = Math.Max(1d, body.Radius);
+            double cosLat = Math.Max(1e-4d, Math.Cos(lat0));
+
+            int sampleW = 64;
+            int sampleH = Mathf.Clamp(Mathf.RoundToInt(sampleW * rect.height / (float)Math.Max(1, rect.width)), 36, 80);
+            double[] heights = new double[sampleW * sampleH];
+            double[] latitudes = new double[sampleW * sampleH];
+            double[] longitudes = new double[sampleW * sampleH];
+
+            for (int j = 0; j < sampleH; j++)
+            {
+                double py = rect.y + ((j + 0.5d) * rect.height / sampleH);
+                double north = (centerY - py) * mpp;
+                double lat = lat0 + (north / radius);
+                for (int i = 0; i < sampleW; i++)
+                {
+                    double px = rect.x + ((i + 0.5d) * rect.width / sampleW);
+                    double east = (px - centerX) * mpp;
+                    double lon = NormalizeLongitude(lon0 + (east / (radius * cosLat)));
+                    int k = (j * sampleW) + i;
+                    latitudes[k] = lat;
+                    longitudes[k] = lon;
+                    try
+                    {
+                        heights[k] = terrain.GetRawHeightMeters(body, lat, lon);
+                    }
+                    catch (Exception)
+                    {
+                        heights[k] = 0d;
+                    }
+                }
+            }
+
+            TerrainPaletteData palette = (terrain as HeightfieldTerrain)?.Palette ?? DefaultPalette;
+            double seaLevel = model.BodySeaLevelMeters;
+            double amplitude = Math.Max(1d, model.BodyTerrainAmplitudeMeters);
+            double eastStep = mpp * rect.width / sampleW;
+            double northStep = mpp * rect.height / sampleH;
+            float sunEast = (float)Vector3d.Dot(model.SunDirection, model.ShipEast);
+            float sunNorth = (float)Vector3d.Dot(model.SunDirection, model.ShipNorth);
+            float sunUp = (float)Vector3d.Dot(model.SunDirection, model.ShipUp);
+
+            Color32[] colors = new Color32[sampleW * sampleH];
+            for (int j = 0; j < sampleH; j++)
+            {
+                for (int i = 0; i < sampleW; i++)
+                {
+                    int k = (j * sampleW) + i;
+                    int left = (j * sampleW) + Math.Max(0, i - 1);
+                    int right = (j * sampleW) + Math.Min(sampleW - 1, i + 1);
+                    int down = (Math.Min(sampleH - 1, j + 1) * sampleW) + i;
+                    int up = (Math.Max(0, j - 1) * sampleW) + i;
+                    double slopeEast = (heights[right] - heights[left]) / Math.Max(1d, eastStep * (right == left ? 1d : 2d));
+                    double slopeNorth = (heights[down] - heights[up]) / Math.Max(1d, northStep * (down == up ? 1d : 2d));
+                    float light = Hillshade(slopeEast, slopeNorth, sunEast, sunNorth, sunUp);
+                    colors[k] = TerrainColor(palette, heights[k], seaLevel, amplitude, latitudes[k], slopeEast, slopeNorth, light);
+                }
+            }
+
+            // Fill the map in blocks (the tablet is a pixel display; bilinear
+            // interpolation over 350k pixels was the dominant cost of a rebuild).
+            for (int j = 0; j < sampleH; j++)
+            {
+                int y0 = rect.y + ((j * rect.height) / sampleH);
+                int y1 = rect.y + (((j + 1) * rect.height) / sampleH);
+                int cellHeight = Math.Max(1, y1 - y0);
+                for (int i = 0; i < sampleW; i++)
+                {
+                    int x0 = rect.x + ((i * rect.width) / sampleW);
+                    int x1 = rect.x + (((i + 1) * rect.width) / sampleW);
+                    int cellWidth = Math.Max(1, x1 - x0);
+                    canvas.Fill(x0, y0, cellWidth, cellHeight, colors[(j * sampleW) + i]);
+                }
+            }
+
+            // Real ground track and the ship at its true sub-point.
+            DrawSurfaceHistory(model, body, centerX, centerY, mpp, radius, lat0, lon0, cosLat);
+            DrawSurfaceShip(centerX, centerY, model);
+        }
+
+        private void DrawSurfaceHistory(NavMapModel model, OrbitingBody body, float centerX, float centerY,
+            double mpp, double radius, double lat0, double lon0, double cosLat)
+        {
+            if (model.HistorySeconds <= 0d || model.History.Count < 2 || mpp <= 0d)
+            {
+                return;
+            }
+
+            bool hasPrevious = false;
+            Vector2 previous = default;
+            for (int i = 0; i < model.History.Count; i++)
+            {
+                NavShipSample sample = model.History[i];
+                try
+                {
+                    body.EvaluateWorldState(sample.TimeSeconds, out Vector3d bodyPosition, out _);
+                    if ((sample.Position - bodyPosition).Magnitude > body.Radius * 4d)
+                    {
+                        hasPrevious = false;
+                        continue;
+                    }
+
+                    body.SurfaceLatLonAt(sample.Position, sample.TimeSeconds, out double latDeg, out double lonDeg);
+                    double lat = latDeg * (Math.PI / 180d);
+                    double lon = lon0 + NormalizeLongitude((lonDeg * (Math.PI / 180d)) - lon0);
+                    double east = NormalizeLongitude(lon - lon0) * radius * cosLat;
+                    double north = (lat - lat0) * radius;
+                    var screen = new Vector2(
+                        centerX + (float)(east / mpp),
+                        centerY - (float)(north / mpp));
+                    if (!IsFinite(screen) || !Inside(new RectInt(0, 0, Width, Height), screen, 2f))
+                    {
+                        hasPrevious = false;
+                        continue;
+                    }
+
+                    if (hasPrevious)
+                    {
+                        canvas.Line(
+                            Mathf.RoundToInt(previous.x), Mathf.RoundToInt(previous.y),
+                            Mathf.RoundToInt(screen.x), Mathf.RoundToInt(screen.y), TabletTheme.Main);
+                    }
+
+                    previous = screen;
+                    hasPrevious = true;
+                }
+                catch (Exception)
+                {
+                    hasPrevious = false;
+                }
+            }
+        }
+
+        private void DrawSurfaceShip(float centerX, float centerY, NavMapModel model)
+        {
+            int x = Mathf.RoundToInt(centerX);
+            int y = Mathf.RoundToInt(centerY);
+            Color32 color = TabletTheme.Bright;
+            canvas.Line(x, y - 7, x + 6, y, color);
+            canvas.Line(x + 6, y, x, y + 7, color);
+            canvas.Line(x, y + 7, x - 6, y, color);
+            canvas.Line(x - 6, y, x, y - 7, color);
+            canvas.Px(x, y, color);
+
+            double east = model.ShipGroundEastMps;
+            double north = model.ShipGroundNorthMps;
+            double speed = Math.Sqrt((east * east) + (north * north));
+            if (speed > 0.2d)
+            {
+                float length = 18f;
+                float ex = x + (float)(east / speed * length);
+                float ey = y - (float)(north / speed * length);
+                canvas.Line(x, y, Mathf.RoundToInt(ex), Mathf.RoundToInt(ey), TabletTheme.Main);
+                canvas.Px(Mathf.RoundToInt(ex), Mathf.RoundToInt(ey), color);
+            }
+
+            picks.Add(new PickEntry
+            {
+                X = x,
+                Y = y,
+                Radius = 12f,
+                Text = "АППАРАТ\nH " + TabletFormat.Dist(model.ShipHeightAboveTerrain)
+                    + "\nV " + TabletFormat.Speed(speed) + " М/С",
+            });
+        }
+
+        private static double NormalizeLongitude(double radians)
+        {
+            double twoPi = Math.PI * 2d;
+            radians -= twoPi * Math.Floor((radians + Math.PI) / twoPi);
+            return radians;
+        }
+
+        private static float Hillshade(double slopeEast, double slopeNorth,
+            float sunEast, float sunNorth, float sunUp)
+        {
+            Vector3 normal = new Vector3((float)-slopeEast, (float)-slopeNorth, 1f).normalized;
+            Vector3 light = new Vector3(sunEast, sunNorth, Mathf.Max(0.05f, sunUp)).normalized;
+            return Mathf.Clamp01(Vector3.Dot(normal, light));
+        }
+
+        internal static readonly TerrainPaletteData DefaultPalette = new TerrainPaletteData();
+
+        internal static Color32 TerrainColor(TerrainPaletteData palette, double height, double seaLevel,
+            double amplitude, double latitude, double slopeEast, double slopeNorth, float light)
+        {
+            if (palette == null)
+            {
+                palette = DefaultPalette;
+            }
+
+            bool hasSea = seaLevel > -1e29d;
+            double rel;
+            Color color;
+
+            if (hasSea && height < seaLevel)
+            {
+                double depth = Math.Min(1d, (seaLevel - height) / Math.Max(100d, amplitude * 0.5d));
+                color = Color.Lerp(palette.Sea, new Color(0.01f, 0.04f, 0.11f, 1f), (float)(depth * 0.8d));
+                float shade = 0.82f + (0.18f * light);
+                return ToColor32(color, shade);
+            }
+
+            if (hasSea)
+            {
+                rel = Math.Max(0d, Math.Min(1d, (height - seaLevel) / amplitude));
+            }
+            else
+            {
+                rel = Math.Max(0d, Math.Min(1d, ((height + (amplitude * 0.5d)) / amplitude)));
+            }
+
+            if (rel < 0.02d)
+            {
+                color = palette.Sand;
+            }
+            else if (rel < 0.08d)
+            {
+                color = Color.Lerp(palette.Sand, palette.Grass, (float)(rel / 0.08d));
+            }
+            else if (rel < 0.25d)
+            {
+                color = Color.Lerp(palette.Grass, palette.Forest, (float)((rel - 0.08d) / 0.17d));
+            }
+            else if (rel < 0.55d)
+            {
+                color = Color.Lerp(palette.Forest, palette.Rock, (float)((rel - 0.25d) / 0.30d));
+            }
+            else
+            {
+                color = Color.Lerp(palette.Rock, palette.Snow, (float)Math.Min(1d, (rel - 0.55d) / 0.45d));
+            }
+
+            double absLat = Math.Abs(latitude);
+            if (absLat > 1.0d)
+            {
+                color = Color.Lerp(color, palette.Tundra, (float)Math.Min(1d, (absLat - 1.0d) / 0.35d));
+            }
+
+            double slope = Math.Sqrt((slopeEast * slopeEast) + (slopeNorth * slopeNorth));
+            if (slope > 0.35d)
+            {
+                color = Color.Lerp(color, palette.Rock, (float)Math.Min(0.85d, (slope - 0.35d) / 1.1d));
+            }
+
+            if (slope > 1.2d || rel > 0.9d)
+            {
+                color = Color.Lerp(color, palette.Snow, (float)Math.Min(0.8d, Math.Max((slope - 1.2d) / 1.4d, (rel - 0.9d) / 0.1d)));
+            }
+
+            float shading = 0.55f + (0.45f * light);
+            return ToColor32(color, shading);
+        }
+
+        private static Color32 ToColor32(Color color, float shade)
+        {
+            return new Color32(
+                (byte)Mathf.Clamp(Mathf.RoundToInt(color.r * shade * 255f), 0, 255),
+                (byte)Mathf.Clamp(Mathf.RoundToInt(color.g * shade * 255f), 0, 255),
+                (byte)Mathf.Clamp(Mathf.RoundToInt(color.b * shade * 255f), 0, 255),
+                255);
+        }
+
+        private void DrawSurfaceHud(NavMapModel model, RectInt rect)
+        {
+            string name = model.DominantBody != null ? (model.DominantBody.Name ?? "?").ToUpperInvariant() : "?";
+            int x = rect.x + 10;
+            int y = rect.y + rect.height - 92;
+            canvas.Fill(x - 4, y - 4, 236, 50, TabletTheme.PanelBg);
+            canvas.Frame(x - 4, y - 4, 236, 50, TabletTheme.Line);
+            canvas.Text(x, y, "РЕЛЬЕФ · " + name, TabletTheme.Main);
+            canvas.Text(x, y + 12,
+                "H " + TabletFormat.Dist(model.ShipHeightAboveTerrain) + " AGL", TabletTheme.Bright);
+            canvas.Text(x, y + 22,
+                "Ш " + TabletFormat.Signed(model.ShipLatitudeDegrees, 2) + "\u00B0  Д "
+                + TabletFormat.Num(model.ShipLongitudeDegrees, 2) + "\u00B0", TabletTheme.Dim);
+            canvas.Text(x, y + 32,
+                "ВЕРТ. " + TabletFormat.Signed(model.ShipVerticalSpeedMps, 1) + " М/С", TabletTheme.Dim);
+
+            int nx = rect.x + rect.width - 26;
+            int ny = rect.y + 22;
+            canvas.VLine(nx, ny, 18, TabletTheme.Bright);
+            canvas.Line(nx, ny, nx - 4, ny + 6, TabletTheme.Bright);
+            canvas.Line(nx, ny, nx + 4, ny + 6, TabletTheme.Bright);
+            canvas.Text(nx - 3, ny - 10, "С", TabletTheme.Bright);
+
+            DrawScaleBar(rect, 1d / Math.Max(1e-9d, lastSurfaceMetersPerPixel));
+        }
+
+        private double AutoRadius(NavMapModel model, int centerIndex, bool shipCenter)
+        {
+            double radius = 0d;
+            Vector3d center = model.CenterPosition;
+
+            if (shipCenter)
+            {
+                for (int i = 0; i < model.Lines.Count; i++)
+                {
+                    NavLine line = model.Lines[i];
+                    if (line.Kind == NavLineKind.BodyOrbit)
+                    {
+                        continue;
+                    }
+
+                    radius = Math.Max(radius, MaxDistance(line.Points, center));
+                }
+
+                double frameDistance = model.FrameRelativeShipPosition.Magnitude;
+                if (frameDistance > 0d)
+                {
+                    // Show the WHOLE planet plus the craft: the body centre is offset
+                    // from the ship by frameDistance, so the required radius is
+                    // frameDistance + body radius, not just the ship's distance.
+                    radius = Math.Max(radius, (frameDistance + model.BodyRadiusMeters) * 1.12d);
+                }
+            }
+            else if (centerIndex >= 0 && centerIndex < model.Bodies.Count)
+            {
+                NavBodyMarker body = model.Bodies[centerIndex];
+                // Planet view: fit the body and the craft, not the whole moon system.
+                // Deep orbits stay reachable with the wheel zoom.
+                if (model.HasShip && model.FrameRelativeShipPosition.Magnitude > 0d)
+                {
+                    double shipDistance = (model.FrameRelativeShipPosition - center).Magnitude;
+                    if (shipDistance > 0d)
+                    {
+                        // Whole planet + the craft marker (at/above the surface).
+                        radius = Math.Max(radius, shipDistance * 1.08d);
+                    }
+                }
+
+                radius = Math.Max(radius, body.RadiusMeters * 1.08d);
+            }
+
+            if (!(radius > 1d) || !double.IsFinite(radius))
+            {
+                radius = Math.Max(1e5d, model.FrameRelativeShipPosition.Magnitude * 2d);
+            }
+
+            return radius;
+        }
+
+        private static double MaxDistance(List<Vector3d> points, Vector3d center)
+        {
+            double max = 0d;
+            for (int i = 0; i < points.Count; i++)
+            {
+                double d = (points[i] - center).Magnitude;
+                if (d > max)
+                {
+                    max = d;
+                }
+            }
+
+            return max;
+        }
+
+        private void DrawGrid(RectInt rect, Func<Vector3d, Vector2> project, double radius,
+            Vector3d center, Vector3d right, Vector3d up)
+        {
+            // Rings at fractions of the auto-fit radius. Drawn in the orbital plane:
+            // the tilt turns them into the same ellipses as the orbit lines.
+            for (int ring = 1; ring <= 4; ring++)
+            {
+                double r = radius * ring / 4d;
+                Vector2 previous = default;
+                bool hasPrevious = false;
+                for (int i = 0; i <= 64; i++)
+                {
+                    double a = (Math.PI * 2d) * i / 64d;
+                    Vector3d p = center + (right * (Math.Cos(a) * r)) + (up * (Math.Sin(a) * r));
+                    Vector2 screen = project(p);
+                    if (hasPrevious)
+                    {
+                        DrawClippedLine(previous, screen, rect, TabletTheme.Line, false);
+                    }
+
+                    previous = screen;
+                    hasPrevious = true;
+                }
+            }
+        }
+
+        private void DrawPolyline(List<Vector3d> points, Func<Vector3d, Vector2> project, RectInt rect,
+            Color32 color, bool dashed, int width)
+        {
+            if (points == null || points.Count < 2)
+            {
+                return;
+            }
+
+            Vector2 previous = project(points[0]);
+            for (int i = 1; i < points.Count; i++)
+            {
+                Vector2 current = project(points[i]);
+                if (!IsFinite(previous) || !IsFinite(current))
+                {
+                    previous = current;
+                    continue;
+                }
+
+                DrawClippedLine(previous, current, rect, color, dashed, width);
+                previous = current;
+            }
+        }
+
+        private static bool IsFinite(Vector2 v)
+        {
+            return float.IsFinite(v.x) && float.IsFinite(v.y);
+        }
+
+        private void DrawClippedLine(Vector2 a, Vector2 b, RectInt rect, Color32 color, bool dashed, int width = 1)
+        {
+            if (!Clip(ref a, ref b, rect, 4f))
+            {
+                return;
+            }
+
+            int x0 = Mathf.RoundToInt(a.x);
+            int y0 = Mathf.RoundToInt(a.y);
+            int x1 = Mathf.RoundToInt(b.x);
+            int y1 = Mathf.RoundToInt(b.y);
+
+            if (width <= 1)
+            {
+                if (dashed)
+                {
+                    DashedLine(x0, y0, x1, y1, color);
+                }
+                else
+                {
+                    canvas.Line(x0, y0, x1, y1, color);
+                }
+
+                return;
+            }
+
+            int half = width / 2;
+            for (int oy = -half; oy <= half; oy++)
+            {
+                for (int ox = -half; ox <= half; ox++)
+                {
+                    if (dashed)
+                    {
+                        DashedLine(x0 + ox, y0 + oy, x1 + ox, y1 + oy, color);
+                    }
+                    else
+                    {
+                        canvas.Line(x0 + ox, y0 + oy, x1 + ox, y1 + oy, color);
+                    }
+                }
+            }
+        }
+
+        private void DashedLine(int x0, int y0, int x1, int y1, Color32 c)
+        {
+            int dx = Mathf.Abs(x1 - x0);
+            int dy = -Mathf.Abs(y1 - y0);
+            int sx = x0 < x1 ? 1 : -1;
+            int sy = y0 < y1 ? 1 : -1;
+            int err = dx + dy;
+            int step = 0;
+            while (true)
+            {
+                if ((step / 5) % 2 == 0)
+                {
+                    canvas.Px(x0, y0, c);
+                }
+
+                step++;
+                if (x0 == x1 && y0 == y1)
+                {
+                    break;
+                }
+
+                int e2 = 2 * err;
+                if (e2 >= dy)
+                {
+                    err += dy;
+                    x0 += sx;
+                }
+
+                if (e2 <= dx)
+                {
+                    err += dx;
+                    y0 += sy;
+                }
+            }
+        }
+
+        /// <summary>Liang–Barsky clip; a zero-length segment is clipped to the map rect.</summary>
+        private static bool Clip(ref Vector2 a, ref Vector2 b, RectInt rect, float margin)
+        {
+            float xmin = rect.x + margin;
+            float ymin = rect.y + margin;
+            float xmax = rect.x + rect.width - margin;
+            float ymax = rect.y + rect.height - margin;
+            float dx = b.x - a.x;
+            float dy = b.y - a.y;
+            float t0 = 0f;
+            float t1 = 1f;
+
+            if (!ClipTest(-dx, a.x - xmin, ref t0, ref t1)
+                || !ClipTest(dx, xmax - a.x, ref t0, ref t1)
+                || !ClipTest(-dy, a.y - ymin, ref t0, ref t1)
+                || !ClipTest(dy, ymax - a.y, ref t0, ref t1))
+            {
+                return false;
+            }
+
+            Vector2 original = a;
+            a = new Vector2(original.x + (dx * t0), original.y + (dy * t0));
+            b = new Vector2(original.x + (dx * t1), original.y + (dy * t1));
+            return true;
+        }
+
+        private static bool ClipTest(float p, float q, ref float t0, ref float t1)
+        {
+            if (p == 0f)
+            {
+                return q >= 0f;
+            }
+
+            float r = q / p;
+            if (p < 0f)
+            {
+                if (r > t1)
+                {
+                    return false;
+                }
+
+                if (r > t0)
+                {
+                    t0 = r;
+                }
+            }
+            else
+            {
+                if (r < t0)
+                {
+                    return false;
+                }
+
+                if (r < t1)
+                {
+                    t1 = r;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool Inside(RectInt rect, Vector2 p, float margin)
+        {
+            return p.x >= rect.x - margin && p.x <= rect.x + rect.width + margin
+                && p.y >= rect.y - margin && p.y <= rect.y + rect.height + margin;
+        }
+
+        private static Vector3d RotateAround(Vector3d v, Vector3d axis, float radians)
+        {
+            if (Math.Abs(radians) < 1e-6f)
+            {
+                return v;
+            }
+
+            QuaternionD q = QuaternionD.FromAxisAngle(axis, radians);
+            return q.Rotate(v);
+        }
+
+        private static Color32 BodyColor(int index)
+        {
+            switch (Mathf.Abs(index) % 3)
+            {
+                case 0: return OrbitColorA;
+                case 1: return OrbitColorB;
+                default: return OrbitColorC;
+            }
+        }
+
+        // ─── Markers ──────────────────────────────────────────────────────────
+
+        private void DrawDisc(float cx, float cy, float radius, Color32 color)
+        {
+            int r = Mathf.Max(1, Mathf.RoundToInt(radius));
+            for (int y = -r; y <= r; y++)
+            {
+                for (int x = -r; x <= r; x++)
+                {
+                    if ((x * x) + (y * y) <= r * r)
+                    {
+                        canvas.Px(Mathf.RoundToInt(cx) + x, Mathf.RoundToInt(cy) + y, color);
+                    }
+                }
+            }
+        }
+
+        private void DrawCircle(float cx, float cy, float radius, Color32 color)
+        {
+            int r = Mathf.Max(1, Mathf.RoundToInt(radius));
+            int cxI = Mathf.RoundToInt(cx);
+            int cyI = Mathf.RoundToInt(cy);
+            int x = r;
+            int y = 0;
+            int err = 1 - r;
+            while (x >= y)
+            {
+                Plot8(cxI, cyI, x, y, color);
+                Plot8(cxI, cyI, y, x, color);
+                y++;
+                if (err < 0)
+                {
+                    err += (2 * y) + 1;
+                }
+                else
+                {
+                    x--;
+                    err += (2 * (y - x)) + 1;
+                }
+            }
+        }
+
+        private void Plot8(int cx, int cy, int x, int y, Color32 color)
+        {
+            canvas.Px(cx + x, cy + y, color);
+            canvas.Px(cx + y, cy + x, color);
+            canvas.Px(cx - y, cy + x, color);
+            canvas.Px(cx - x, cy + y, color);
+            canvas.Px(cx - x, cy - y, color);
+            canvas.Px(cx - y, cy - x, color);
+            canvas.Px(cx + y, cy - x, color);
+            canvas.Px(cx + x, cy - y, color);
+        }
+
+        private void DrawCross(float x, float y, float size, Color32 color)
+        {
+            int xi = Mathf.RoundToInt(x);
+            int yi = Mathf.RoundToInt(y);
+            int s = Mathf.RoundToInt(size);
+            canvas.Line(xi - s, yi - s, xi + s, yi + s, color);
+            canvas.Line(xi - s, yi + s, xi + s, yi - s, color);
+        }
+
+        private void DrawMarker(float x, float y, string label, Color32 color, RectInt rect)
+        {
+            int xi = Mathf.RoundToInt(x);
+            int yi = Mathf.RoundToInt(y);
+            canvas.VLine(xi, yi - 4, 9, color);
+            canvas.HLine(xi - 4, yi, 9, color);
+            if (Inside(rect, new Vector2(x, y), 10f))
+            {
+                canvas.Text(xi + 6, yi - 3, label, color);
+            }
+        }
+
+        private void DrawShip(float x, float y, Vector3d velocity, double scale, Vector3d right, Vector3d up,
+            Vector3d normal, float cosTilt, float sinTilt)
+        {
+            int xi = Mathf.RoundToInt(x);
+            int yi = Mathf.RoundToInt(y);
+            canvas.Line(xi, yi - 6, xi + 5, yi, ShipColor);
+            canvas.Line(xi + 5, yi, xi, yi + 6, ShipColor);
+            canvas.Line(xi, yi + 6, xi - 5, yi, ShipColor);
+            canvas.Line(xi - 5, yi, xi, yi - 6, ShipColor);
+            canvas.Px(xi, yi, ShipColor);
+
+            if (velocity.SqrMagnitude < 1e-6d)
+            {
+                return;
+            }
+
+            Vector3d direction = velocity.Normalized;
+            double vx = Vector3d.Dot(direction, right);
+            double vy = (Vector3d.Dot(direction, up) * cosTilt) - (Vector3d.Dot(direction, normal) * sinTilt);
+            float length = 16f;
+            float ex = x + (float)(vx * length);
+            float ey = y - (float)(vy * length);
+            canvas.Line(xi, yi, Mathf.RoundToInt(ex), Mathf.RoundToInt(ey), TabletTheme.Main);
+            canvas.Px(Mathf.RoundToInt(ex), Mathf.RoundToInt(ey), ShipColor);
+        }
+
+        private void DrawPlanetDisk(NavMapModel model, NavBodyMarker body, Vector2 center, float radius,
+            Vector3d right, Vector3d screenUp, Vector3d viewDir, RectInt rect, Color32 edge)
+        {
+            OrbitingBody planet = body.Body;
+            if (planet == null || radius < 1f)
+            {
+                DrawDisc(center.x, center.y, Mathf.Max(2f, radius), edge);
+                return;
+            }
+
+            if (planet.Parent == null)
+            {
+                DrawStarDisk(center, radius);
+                return;
+            }
+
+            NavBodyTexture texture = GetBodyTexture(planet);
+            if (texture == null)
+            {
+                DrawDisc(center.x, center.y, radius, edge);
+                return;
+            }
+
+            QuaternionD orientation = planet.GetVisualOrientation(model.TimeSeconds);
+            Vector3d sun = model.SunDirection;
+
+            // Two block sizes: a coarse interactive pass while the finger is down,
+            // then one clean frame when the gesture ends. Either way the result is
+            // cached and reused by the regular map tick.
+            int step = Interactive ? 4 : 2;
+            if (!TryBlitPlanetDisk(planet, texture, center, radius, right, screenUp, viewDir,
+                    sun, orientation, rect, step))
+            {
+                RasterisePlanetDisk(planet, texture, center, radius, right, screenUp, viewDir,
+                    sun, orientation, rect, step);
+            }
+
+            // A thin atmosphere/limb so the body reads as a planet, not a flat disc.
+            // When the globe is larger than the map, the limb is off-screen.
+            if (radius < Mathf.Max(rect.width, rect.height) * 0.9f)
+            {
+                DrawCircle(center.x, center.y, radius + 1.5f, new Color32(70, 150, 190, 255));
+                if (radius > 8f)
+                {
+                    DrawCircle(center.x, center.y, radius + 3f, new Color32(26, 64, 92, 255));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Ray-sphere raster of the planet. The disk is stored so panning the map,
+        /// moving the ship marker and ticking the map do not repeat this work.
+        /// </summary>
+        private void RasterisePlanetDisk(OrbitingBody planet, NavBodyTexture texture, Vector2 center,
+            float radius, Vector3d right, Vector3d screenUp, Vector3d viewDir, Vector3d sun,
+            QuaternionD orientation, RectInt rect, int step)
+        {
+            int texWidth = texture.Width;
+            int texHeight = texture.Height;
+            Color32[] pixels = texture.Pixels;
+            float invRadius = 1f / Mathf.Max(1f, radius);
+
+            int x0 = Mathf.Max(rect.x, Mathf.CeilToInt(center.x - radius));
+            int x1 = Mathf.Min(rect.x + rect.width - 1, Mathf.FloorToInt(center.x + radius));
+            int y0 = Mathf.Max(rect.y, Mathf.CeilToInt(center.y - radius));
+            int y1 = Mathf.Min(rect.y + rect.height - 1, Mathf.FloorToInt(center.y + radius));
+            if (x1 < x0 || y1 < y0)
+            {
+                return;
+            }
+
+            QuaternionD inverse = orientation.Conjugated;
+            int canvasWidth = canvas.Width;
+            int canvasHeight = canvas.Height;
+
+            for (int y = y0; y <= y1; y += step)
+            {
+                int cellHeight = Mathf.Min(step, y1 - y + 1);
+                float ny = (center.y - y) * invRadius;
+                int rowTop = (canvasHeight - 1 - y) * canvasWidth;
+                for (int x = x0; x <= x1; x += step)
+                {
+                    float nx = (x - center.x) * invRadius;
+                    float rr = (nx * nx) + (ny * ny);
+                    if (rr > 1f)
+                    {
+                        continue;
+                    }
+
+                    float nz = Mathf.Sqrt(1f - rr);
+                    Vector3d worldNormal = (right * nx) + (screenUp * ny) + (viewDir * nz);
+                    Vector3d bodyNormal = inverse.Rotate(worldNormal);
+
+                    double lat = Math.Asin(Math.Max(-1d, Math.Min(1d, bodyNormal.Z)));
+                    double lon = Math.Atan2(bodyNormal.Y, bodyNormal.X);
+
+                    int tx = (int)(((lon + Math.PI) / (Math.PI * 2d)) * texWidth);
+                    int ty = (int)(((lat + (Math.PI * 0.5d)) / Math.PI) * texHeight);
+                    if (tx < 0) { tx = 0; } else if (tx >= texWidth) { tx = texWidth - 1; }
+                    if (ty < 0) { ty = 0; } else if (ty >= texHeight) { ty = texHeight - 1; }
+                    Color32 c = pixels[(ty * texWidth) + tx];
+
+                    double light = Vector3d.Dot(worldNormal, sun);
+                    double facing = Math.Max(0d, Vector3d.Dot(worldNormal, viewDir));
+                    float shade = 0.28f + (0.50f * (float)Math.Max(0d, light)) + (0.22f * (float)facing);
+                    shade = Mathf.Clamp(shade, 0.20f, 1f);
+
+                    var shaded = new Color32(
+                        (byte)Mathf.Clamp(Mathf.RoundToInt(c.r * shade), 0, 255),
+                        (byte)Mathf.Clamp(Mathf.RoundToInt(c.g * shade), 0, 255),
+                        (byte)Mathf.Clamp(Mathf.RoundToInt(c.b * shade), 0, 255),
+                        255);
+
+                    int cellWidth = Mathf.Min(step, x1 - x + 1);
+                    for (int yy = 0; yy < cellHeight; yy++)
+                    {
+                        int row = rowTop - (yy * canvasWidth);
+                        for (int xx = 0; xx < cellWidth; xx++)
+                        {
+                            canvas.Pixels[row + x + xx] = shaded;
+                        }
+                    }
+                }
+            }
+
+            StorePlanetDisk(planet, texture, center, radius, right, screenUp, viewDir, sun,
+                orientation, rect, step, x0, y0, x1, y1);
+        }
+
+        private bool TryBlitPlanetDisk(OrbitingBody planet, NavBodyTexture texture, Vector2 center,
+            float radius, Vector3d right, Vector3d up, Vector3d view, Vector3d sun,
+            QuaternionD orientation, RectInt rect, int step)
+        {
+            if (!diskCacheValid || diskCache == null)
+            {
+                return false;
+            }
+
+            if (!ReferenceEquals(diskCacheBody, planet) || !ReferenceEquals(diskCacheTexture, texture)
+                || diskCacheStep != step
+                || diskCacheMapX != rect.x || diskCacheMapY != rect.y
+                || diskCacheMapWidth != rect.width || diskCacheMapHeight != rect.height)
+            {
+                return false;
+            }
+
+            if (Mathf.Abs(diskCacheCenterX - center.x) > 0.5f
+                || Mathf.Abs(diskCacheCenterY - center.y) > 0.5f
+                || Mathf.Abs(diskCacheRadius - radius) > 0.5f)
+            {
+                return false;
+            }
+
+            if (Vector3d.Dot(diskCacheRight, right) < 0.999995d
+                || Vector3d.Dot(diskCacheUp, up) < 0.999995d
+                || Vector3d.Dot(diskCacheView, view) < 0.999995d)
+            {
+                return false;
+            }
+
+            // The sun direction is not normalised: compare with the product of
+            // the magnitudes, otherwise a valid cache misses on every draw.
+            double sunDot = Vector3d.Dot(diskCacheSun, sun);
+            double sunNorm = diskCacheSun.Magnitude * sun.Magnitude;
+            if (!(sunNorm > 0d) || sunDot < 0.99999d * sunNorm)
+            {
+                return false;
+            }
+
+            double quaternionDot = Math.Abs(
+                (diskCacheOrientation.X * orientation.X)
+                + (diskCacheOrientation.Y * orientation.Y)
+                + (diskCacheOrientation.Z * orientation.Z)
+                + (diskCacheOrientation.W * orientation.W));
+            if (quaternionDot < 0.99999d)
+            {
+                return false;
+            }
+
+            int x0 = diskCacheX;
+            int y0 = diskCacheY;
+            int width = diskCacheWidth;
+            int height = diskCacheHeight;
+            float invRadius = 1f / Mathf.Max(1f, diskCacheRadius);
+            int centerX = Mathf.RoundToInt(diskCacheCenterX);
+            int centerY = Mathf.RoundToInt(diskCacheCenterY);
+
+            // Copy only the pixels inside the disk: the cached rect's corners hold
+            // whatever was on the map before (orbit lines, background).
+            for (int yy = 0; yy < height; yy++)
+            {
+                int y = y0 + yy;
+                float ny = (diskCacheCenterY - y) * invRadius;
+                float inside = 1f - (ny * ny);
+                if (inside <= 0f)
+                {
+                    continue;
+                }
+
+                int half = Mathf.FloorToInt(diskCacheRadius * Mathf.Sqrt(inside));
+                int left = Mathf.Max(x0, centerX - half);
+                int rightEdge = Mathf.Min(x0 + width - 1, centerX + half);
+                int count = rightEdge - left + 1;
+                if (count <= 0)
+                {
+                    continue;
+                }
+
+                Array.Copy(
+                    diskCache, (yy * width) + (left - x0),
+                    canvas.Pixels, ((canvas.Height - 1 - y) * canvas.Width) + left,
+                    count);
+            }
+
+            return true;
+        }
+
+        private void StorePlanetDisk(OrbitingBody planet, NavBodyTexture texture, Vector2 center,
+            float radius, Vector3d right, Vector3d up, Vector3d view, Vector3d sun,
+            QuaternionD orientation, RectInt rect, int step, int x0, int y0, int x1, int y1)
+        {
+            int width = x1 - x0 + 1;
+            int height = y1 - y0 + 1;
+            if (diskCache == null || diskCacheWidth != width || diskCacheHeight != height
+                || diskCache.Length != width * height)
+            {
+                diskCache = new Color32[width * height];
+            }
+
+            for (int y = y0; y <= y1; y++)
+            {
+                Array.Copy(
+                    canvas.Pixels, ((canvas.Height - 1 - y) * canvas.Width) + x0,
+                    diskCache, (y - y0) * width,
+                    width);
+            }
+
+            diskCacheBody = planet;
+            diskCacheTexture = texture;
+            diskCacheCenterX = center.x;
+            diskCacheCenterY = center.y;
+            diskCacheRadius = radius;
+            diskCacheRight = right;
+            diskCacheUp = up;
+            diskCacheView = view;
+            diskCacheSun = sun;
+            diskCacheOrientation = orientation;
+            diskCacheX = x0;
+            diskCacheY = y0;
+            diskCacheWidth = width;
+            diskCacheHeight = height;
+            diskCacheStep = step;
+            diskCacheMapX = rect.x;
+            diskCacheMapY = rect.y;
+            diskCacheMapWidth = rect.width;
+            diskCacheMapHeight = rect.height;
+            diskCacheValid = true;
+        }
+
+        private static QuaternionD RotationFromTo(Vector3d from, Vector3d to)
+        {
+            from = from.Normalized;
+            to = to.Normalized;
+            double dot = Math.Max(-1d, Math.Min(1d, Vector3d.Dot(from, to)));
+            if (dot > 0.999999d)
+            {
+                return QuaternionD.Identity;
+            }
+
+            if (dot < -0.999999d)
+            {
+                Vector3d axis = Vector3d.Cross(from, new Vector3d(0d, 0d, 1d));
+                if (axis.SqrMagnitude < 1e-12d)
+                {
+                    axis = Vector3d.Cross(from, new Vector3d(1d, 0d, 0d));
+                }
+
+                return QuaternionD.FromAxisAngle(axis.Normalized, Math.PI);
+            }
+
+            Vector3d rotationAxis = Vector3d.Cross(from, to).Normalized;
+            return QuaternionD.FromAxisAngle(rotationAxis, Math.Acos(dot));
+        }
+
+        private void DrawStarDisk(Vector2 center, float radius)
+        {
+            int cx = Mathf.RoundToInt(center.x);
+            int cy = Mathf.RoundToInt(center.y);
+            int r = Mathf.Min(300, Mathf.CeilToInt(radius));
+            for (int y = -r; y <= r; y++)
+            {
+                for (int x = -r; x <= r; x++)
+                {
+                    float rr = (x * x) + (y * y);
+                    if (rr > r * r)
+                    {
+                        continue;
+                    }
+
+                    float f = 1f - (rr / Mathf.Max(1f, r * r));
+                    byte v = (byte)Mathf.Clamp(Mathf.RoundToInt(180f + (75f * f)), 0, 255);
+                    canvas.Px(cx + x, cy + y, new Color32(v, (byte)Mathf.Clamp(v - 20, 0, 255), (byte)Mathf.Clamp(v - 70, 0, 255), 255));
+                }
+            }
+
+            DrawCircle(center.x, center.y, radius + 2f, TabletTheme.Warn);
+        }
+
+        private NavBodyTexture GetBodyTexture(OrbitingBody planet)
+        {
+            return NavBodyTextureCache.Get(planet);
+        }
+
+        private void DrawLabel(float x, float y, string text, RectInt rect, Color32 color)
+        {
+            int xi = Mathf.RoundToInt(x);
+            int yi = Mathf.RoundToInt(y);
+            int width = PixelCanvas.TextWidth(text);
+            if (xi + width > rect.x + rect.width - 4)
+            {
+                xi = rect.x + rect.width - width - 4;
+            }
+
+            if (xi < rect.x + 4)
+            {
+                xi = rect.x + 4;
+            }
+
+            if (yi < rect.y + 2)
+            {
+                yi = rect.y + 2;
+            }
+
+            if (yi > rect.y + rect.height - 9)
+            {
+                yi = rect.y + rect.height - 9;
+            }
+
+            canvas.Fill(xi - 2, yi - 1, width + 4, 9, TabletTheme.Bg);
+            canvas.Text(xi, yi, text, color);
+        }
+
+        // ─── HUD / preview ────────────────────────────────────────────────────
+
+        private void DrawHud(NavMapModel model, NavState state, NavMapInfo info, RectInt rect)
+        {
+            int x = rect.x + 10;
+            int y = rect.y + rect.height - 32;
+
+            string frame = model.FrameName;
+            canvas.Text(x, y, "СК: " + frame, TabletTheme.Main);
+            canvas.Text(x, y + 10, TabletFormat.Clip(model.Note, rect.width - 20), NoteColor(model.Note));
+            if (model.HasSurfaceFrame)
+            {
+                canvas.Text(x, y - 10,
+                    "H " + TabletFormat.Dist(model.ShipHeightAboveTerrain) + " AGL   V "
+                    + TabletFormat.Signed(model.ShipVerticalSpeedMps, 1) + " М/С", TabletTheme.Dim);
+            }
+
+            int legendX = x;
+            int legendY = y - 34;
+            canvas.Line(legendX, legendY + 3, legendX + 16, legendY + 3, TabletTheme.Main);
+            canvas.Text(legendX + 20, legendY, "ИСТОРИЯ", TabletTheme.Dim);
+            DashedHudLine(legendX, legendY + 13, 16, ForecastColor);
+            canvas.Text(legendX + 20, legendY + 10, "ПРОГНОЗ", TabletTheme.Dim);
+
+            DrawScaleBar(rect, lastScale);
+        }
+
+        private void DrawScaleBar(RectInt rect, double scale)
+        {
+            if (!(scale > 0d) || !double.IsFinite(scale))
+            {
+                return;
+            }
+
+            double target = rect.width * 0.18d / scale;
+            double magnitude = Math.Pow(10d, Math.Floor(Math.Log10(Math.Max(1d, target))));
+            double distance = magnitude;
+            double[] steps = { 1d, 2d, 5d };
+            for (int i = 0; i < steps.Length; i++)
+            {
+                double candidate = steps[i] * magnitude;
+                if (candidate <= target)
+                {
+                    distance = candidate;
+                }
+            }
+
+            int length = Mathf.Max(8, Mathf.RoundToInt((float)(distance * scale)));
+            int x1 = rect.x + rect.width - 12;
+            int x0 = x1 - length;
+            int y = rect.y + rect.height - 18;
+            canvas.HLine(x0, y, length + 1, TabletTheme.Dim);
+            canvas.VLine(x0, y - 3, 7, TabletTheme.Dim);
+            canvas.VLine(x1, y - 3, 7, TabletTheme.Dim);
+            canvas.TextCenter((x0 + x1) / 2, y - 12, TabletFormat.Dist(distance), TabletTheme.Dim);
+        }
+
+        private void DashedHudLine(int x, int y, int length, Color32 color)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                if ((i / 3) % 2 == 0)
+                {
+                    canvas.Px(x + i, y, color);
+                }
+            }
+        }
+
+        private static Color32 NoteColor(string note)
+        {
+            if (string.IsNullOrEmpty(note))
+            {
+                return TabletTheme.Dim;
+            }
+
+            if (note.IndexOf("УДАР", StringComparison.OrdinalIgnoreCase) >= 0
+                || note.IndexOf("ОСТАНОВ", StringComparison.OrdinalIgnoreCase) >= 0
+                || note.IndexOf("ВЫКЛ", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return TabletTheme.Warn;
+            }
+
+            return TabletTheme.Dim;
+        }
+
+        private void DrawPreviewChrome(NavMapModel model, NavState state, NavMapInfo info, RectInt mapRect)
+        {
+            canvas.Text(22, 14, "НАВИГАЦИЯ", TabletTheme.Main, 2);
+            string subtitle = model != null && model.HasSurfaceFrame && model.DominantBody != null
+                ? "ПЛАНЕТА · " + (model.DominantBody.Name ?? "?").ToUpperInvariant()
+                : "КАРТА ОРБИТ · N-BODY";
+            canvas.Text(24, 36, TabletFormat.Clip(subtitle, 300), TabletTheme.Dim);
+            canvas.Frame(mapRect.x - 4, mapRect.y - 4, mapRect.width + 8, mapRect.height + 8, TabletTheme.Line);
+
+            int panelX = Width - 286;
+            int panelY = 18;
+            int panelW = 268;
+            int panelH = Height - 36;
+            canvas.Fill(panelX, panelY, panelW, panelH, TabletTheme.PanelBg);
+            canvas.Frame(panelX, panelY, panelW, panelH, TabletTheme.Line);
+
+            canvas.Text(panelX + 12, panelY + 12, "ΔV ПЛАНА", TabletTheme.Dim);
+            canvas.Text(panelX + 12, panelY + 26, TabletFormat.Num(info != null ? info.PlanDeltaVMs : 0d, 0),
+                TabletTheme.Bright, 2);
+            canvas.Text(panelX + panelW - 12 - PixelCanvas.TextWidth("М/С", 1), panelY + 34, "М/С", TabletTheme.Dim);
+
+            string maneuvers = info != null && info.ManeuverCount > 0
+                ? "МАНЁВРОВ: " + info.ManeuverCount
+                : "МАНЁВРОВ НЕТ";
+            canvas.Text(panelX + 12, panelY + 56, maneuvers, TabletTheme.Main);
+
+            if (info != null)
+            {
+                canvas.Text(panelX + 12, panelY + 82, "МАССА", TabletTheme.Dim);
+                canvas.Text(panelX + panelW - 12 - PixelCanvas.TextWidth(TabletFormat.Mass(info.MassKg)),
+                    panelY + 82, TabletFormat.Mass(info.MassKg), TabletTheme.Main);
+                canvas.Text(panelX + 12, panelY + 94, "СКОРОСТЬ", TabletTheme.Dim);
+                canvas.Text(panelX + panelW - 12 - PixelCanvas.TextWidth(TabletFormat.Speed(info.SpeedMs) + " М/С"),
+                    panelY + 94, TabletFormat.Speed(info.SpeedMs) + " М/С", TabletTheme.Main);
+                if (info.HasShip)
+                {
+                    canvas.Text(panelX + 12, panelY + 106, "ВЫСОТА AGL", TabletTheme.Dim);
+                    canvas.Text(panelX + panelW - 12 - PixelCanvas.TextWidth(TabletFormat.Dist(info.AltitudeMeters)),
+                        panelY + 106, TabletFormat.Dist(info.AltitudeMeters), TabletTheme.Bright);
+                    canvas.Text(panelX + 12, panelY + 118, "ВЕРТ.", TabletTheme.Dim);
+                    canvas.Text(panelX + panelW - 12 - PixelCanvas.TextWidth(TabletFormat.Signed(info.VerticalSpeedMps, 1) + " М/С"),
+                        panelY + 118, TabletFormat.Signed(info.VerticalSpeedMps, 1) + " М/С", TabletTheme.Main);
+                }
+            }
+
+            if (model != null)
+            {
+                canvas.Text(panelX + 12, panelY + 132, "СК", TabletTheme.Dim);
+                canvas.Text(panelX + panelW - 12 - PixelCanvas.TextWidth(model.FrameName),
+                    panelY + 132, model.FrameName, TabletTheme.Main);
+                canvas.Text(panelX + 12, panelY + 144, "ТЕЛ", TabletTheme.Dim);
+                canvas.Text(panelX + panelW - 12 - PixelCanvas.TextWidth(model.Bodies.Count.ToString()),
+                    panelY + 144, model.Bodies.Count.ToString(), TabletTheme.Main);
+                canvas.Text(panelX + 12, panelY + 156, "ПРОГНОЗ", TabletTheme.Dim);
+                string forecastText = model.ForecastValid
+                    ? TabletFormat.Time(model.ForecastWindowSeconds)
+                    : "ВЫКЛ";
+                canvas.Text(panelX + panelW - 12 - PixelCanvas.TextWidth(forecastText),
+                    panelY + 156, forecastText, model.ForecastValid ? TabletTheme.Main : TabletTheme.Warn);
+                canvas.Text(panelX + 12, panelY + 168, "ИСТОРИЯ", TabletTheme.Dim);
+                string historyText = model.HistorySeconds > 0d
+                    ? TabletFormat.Time(model.HistorySeconds)
+                    : "ВЫКЛ";
+                canvas.Text(panelX + panelW - 12 - PixelCanvas.TextWidth(historyText),
+                    panelY + 168, historyText, model.HistorySeconds > 0d ? TabletTheme.Main : TabletTheme.Dim);
+            }
+
+            string status = info != null && !string.IsNullOrEmpty(info.Status) ? info.Status : (model != null ? model.Note : "НЕТ ДАННЫХ");
+            int statusY = panelY + panelH - 64;
+            canvas.HLine(panelX + 12, statusY - 10, panelW - 24, TabletTheme.Line);
+            canvas.Text(panelX + 12, statusY, TabletFormat.Clip(status, panelW - 24), NoteColor(status));
+
+            canvas.Text(panelX + 12, panelY + panelH - 22, "E — ОТКРЫТЬ", TabletTheme.Main);
+        }
+
+        private void DrawPreviewFooter(NavMapModel model, NavState state, NavMapInfo info, RectInt mapRect)
+        {
+            int x = mapRect.x + 4;
+            int y = mapRect.y + mapRect.height + 6;
+            canvas.Text(x, y, TabletTime.Mission(model != null ? model.TimeSeconds : 0d), TabletTheme.Dim);
+            string frame = model != null ? model.FrameName : "?";
+            canvas.TextRight(mapRect.x + mapRect.width - 4, y, "СК " + frame, TabletTheme.Dim);
+        }
+
+        private void DrawDisconnected(NavMapInfo info)
+        {
+            canvas.Fill(0, 0, Width, Height, TabletTheme.Bg);
+            canvas.Text(24, 24, "НАВИГАЦИЯ", TabletTheme.Main, 2);
+            canvas.Text(24, 50, "НЕТ СВЯЗИ С СИМУЛЯЦИЕЙ", TabletTheme.Warn);
+            if (Preview)
+            {
+                canvas.Text(24, Height - 28, "E — ОТКРЫТЬ", TabletTheme.Line);
+            }
+        }
+
+        private void Upload()
+        {
+            texture.SetPixels32(canvas.Pixels);
+            texture.Apply(false);
+        }
+    }
+}

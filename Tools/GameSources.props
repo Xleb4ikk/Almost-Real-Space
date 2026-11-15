@@ -62,6 +62,9 @@
     <Compile Include="$(GalilegoScripts)Trajectory\Prediction\KeplerPredictor.cs" />
     <Compile Include="$(GalilegoScripts)Trajectory\Prediction\KeplerMath.cs" />
 
+    <!-- Tablet\Nav (pure-C# map model; no UnityEngine) -->
+    <Compile Include="$(GalilegoScripts)Tablet\Nav\NavMapModel.cs" />
+
     <!-- Trajectory\Display -->
     <Compile Include="$(GalilegoScripts)Trajectory\Display\TrajectoryRenderer.cs" />
 

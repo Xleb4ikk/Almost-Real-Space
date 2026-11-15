@@ -1,5 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
 using Galilego.Building;
+using Galilego.Events;
+using Galilego.Simulation.ContactZone;
+using Galilego.Spacecraft;
 using Galilego.Universe;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -10,9 +14,10 @@ namespace Galilego.Tablet
     /// Second (navigation) tablet in the Orion cabin. The main ShipTablet uses one
     /// operator monitor (Monitor_Operator_2); this station uses the other operator
     /// monitor (Monitor_Operator_1), which is already in the capsule model to its
-    /// right. The monitor shows a navigation preview; aim + E zooms the camera to it
-    /// and opens the live UI Toolkit navigation interface full-screen with mouse
-    /// input. Outline, prompt and E/Esc match the main tablet.
+    /// right. The monitor shows a live map built from the simulation (baked
+    /// ephemerides + N-body ship trajectory); aim + E zooms the camera to it and
+    /// opens the live UI Toolkit navigation interface full-screen with mouse input.
+    /// Outline, prompt and E/Esc match the main tablet.
     /// </summary>
     [DefaultExecutionOrder(-55)]
     public sealed class NavTabletStation : MonoBehaviour
@@ -41,6 +46,24 @@ namespace Galilego.Tablet
         private bool focused;
         private bool overlay;
         private bool initialized;
+
+        // Live map: the model is rebuilt from the simulation, the renderers only draw it.
+        private NavMapModel mapModel;
+        private NavMapRenderer overlayMap;
+        private NavMapRenderer previewMap;
+        private readonly List<NavShipSample> shipHistory = new List<NavShipSample>();
+        private readonly NavMapInfo mapInfo = new NavMapInfo();
+        private double lastHistorySampleTime = double.NaN;
+        private double nextMapBuild;
+        private int lastCalcVersion = -1;
+        private int lastViewVersion = -1;
+        private bool mapErrorLogged;
+        private bool framePinned;
+        private int lastTextureVersion = -1;
+        private float nextInteractiveMapRedraw;
+        private float interactiveUntil;
+        private bool mapDirty;
+        private Vector2 lastHoverLocal;
 
         public InteractiveScreen Screen { get { return screen; } }
         public NavTabletView View { get { return view; } }
@@ -118,37 +141,26 @@ namespace Galilego.Tablet
                 return;
             }
 
-            // The right monitor shows the navigation preview image (a texture on the
-            // screen material), so it is never a black hole. The live interface opens
-            // as a screen-space overlay on E.
-            Texture2D preview = Resources.Load<Texture2D>("NavTablet/NavTabletPreview");
+            // The right monitor carries the same live map the overlay shows: the
+            // renderer below is redrawn from SimulationRunner (baked ephemerides +
+            // N-body ship trajectory), not from a static preview image.
+            overlayMap = new NavMapRenderer(1024, 640, false);
+            previewMap = new NavMapRenderer(1024, 576, true);
+            previewMap.Draw(null, null, new NavMapInfo { Connected = false, Status = "НЕТ СВЯЗИ С СИМУЛЯЦИЕЙ" });
+            overlayMap.Draw(null, null, new NavMapInfo { Connected = false, Status = "НЕТ СВЯЗИ С СИМУЛЯЦИЕЙ" });
             screenMaterial = screenRenderer.material; // own instance
-            if (preview != null)
-            {
-                string[] textureProperties =
-                {
-                    "_UnlitColorMap", "_BaseColorMap", "_BaseMap", "_MainTex", "_EmissiveColorMap",
-                };
-                for (int i = 0; i < textureProperties.Length; i++)
-                {
-                    if (screenMaterial.HasProperty(textureProperties[i]))
-                    {
-                        screenMaterial.SetTexture(textureProperties[i], preview);
-                    }
-                }
-            }
-
-            if (screenMaterial.HasProperty("_UnlitColor"))
+            AssignPreviewTexture();
+            if (screenMaterial != null && screenMaterial.HasProperty("_UnlitColor"))
             {
                 screenMaterial.SetColor("_UnlitColor", Color.white);
             }
 
-            if (screenMaterial.HasProperty("_BaseColor"))
+            if (screenMaterial != null && screenMaterial.HasProperty("_BaseColor"))
             {
                 screenMaterial.SetColor("_BaseColor", Color.white);
             }
 
-            if (screenMaterial.HasProperty("_EmissiveColor"))
+            if (screenMaterial != null && screenMaterial.HasProperty("_EmissiveColor"))
             {
                 screenMaterial.SetColor("_EmissiveColor", Color.black);
             }
@@ -164,6 +176,19 @@ namespace Galilego.Tablet
 
             view = uiObject.AddComponent<NavTabletView>();
             view.Configure(document, card);
+            view.FrameChanged += _ =>
+            {
+                framePinned = true;
+                overlayMap.ResetView();
+                RebuildMap(true);
+            };
+            view.CenterChanged += _ => { overlayMap.ResetPan(); RebuildMap(true); };
+            view.OrbitToggled += _ => RebuildMap(true);
+            view.MapDragged += OnMapDragged;
+            view.MapZoomed += OnMapZoomed;
+            view.MapHovered += OnMapHovered;
+            view.MapPointerLeft += () => { if (view != null) { view.HideTip(); } };
+            view.ManeuverDue += _ => RebuildMap(true);
 
             Transform monitor = screenRenderer.transform.parent;
             monitor.gameObject.AddComponent<NavTabletScreenMarker>();
@@ -221,11 +246,12 @@ namespace Galilego.Tablet
             }
 
             FeedBodies();
+            AutoFrame();
 
             view.MissionSeconds = runner.TimeSeconds;
             view.UniverseSeconds = runner.TimeSeconds;
 
-            double mass = runner.Ship != null && runner.Ship.Mass > 0d ? runner.Ship.Mass : 14000d;
+            double mass = runner.Ship != null && runner.Ship.Mass > 0d ? runner.Ship.Mass : 0d;
             double thrust = 0d;
             double flow = 0d;
             if (runner.Propulsion != null)
@@ -240,13 +266,373 @@ namespace Galilego.Tablet
             }
 
             view.ShipMassKg = mass;
-            view.ThrustN = thrust > 0d ? thrust : 40000d;
-            view.IspS = thrust > 0d && flow > 1e-9d ? thrust / (flow * 9.80665d) : 330d;
+            view.ThrustN = thrust;
+            view.IspS = thrust > 0d && flow > 1e-9d ? thrust / (flow * 9.80665d) : 0d;
 
             double now = runner.TimeSeconds;
             double simDt = double.IsNaN(lastTime) ? 0d : Math.Max(0d, now - lastTime);
             lastTime = now;
+
+            SampleHistory(now);
+            NavBodyTextureCache.Advance(1024);
+            if (NavBodyTextureCache.Version != lastTextureVersion)
+            {
+                lastTextureVersion = NavBodyTextureCache.Version;
+                RebuildMap(true);
+            }
+
+            RebuildMapIfNeeded(false);
+            TickInteractiveMap();
             view.Tick(Time.unscaledDeltaTime, simDt);
+        }
+
+        /// <summary>
+        /// Dragging the map used to redraw the whole software globe on every pointer
+        /// event (a 100+ ms main-thread raster per event). Input now only records the
+        /// new view; the image follows at ~10 Hz with a coarse globe, and one clean
+        /// frame is rendered when the gesture ends.
+        /// </summary>
+        private void TickInteractiveMap()
+        {
+            if (overlayMap == null || view == null || !view.Bound)
+            {
+                return;
+            }
+
+            if (!overlay)
+            {
+                // The overlay texture is not visible; do not spend a full-quality
+                // globe pass after the panel closes.
+                overlayMap.Interactive = false;
+                mapDirty = false;
+                return;
+            }
+
+            bool interacting = Time.unscaledTime < interactiveUntil;
+            if (overlayMap.Interactive != interacting)
+            {
+                overlayMap.Interactive = interacting;
+                mapDirty = true;
+            }
+
+            if (!mapDirty || Time.unscaledTime < nextInteractiveMapRedraw)
+            {
+                return;
+            }
+
+            nextInteractiveMapRedraw = Time.unscaledTime + (interacting ? 0.1f : 0f);
+            mapDirty = false;
+            RedrawOverlayMap();
+        }
+
+        /// <summary>
+        /// Actual ship position trail, sampled from the simulation on every frame the
+        /// clock has moved (up to the history length). The map's history line is this
+        /// buffer, never an analytical reconstruction.
+        /// </summary>
+        private void SampleHistory(double now)
+        {
+            if (view == null || runner == null || runner.Ship == null)
+            {
+                return;
+            }
+
+            double historySeconds = view.State.HistoryS;
+            if (historySeconds <= 0d)
+            {
+                shipHistory.Clear();
+                lastHistorySampleTime = now;
+                return;
+            }
+
+            if (double.IsNaN(lastHistorySampleTime))
+            {
+                lastHistorySampleTime = now;
+            }
+
+            double wanted = Math.Max(0.25d, historySeconds / 240d);
+            double elapsed = now - lastHistorySampleTime;
+            if (elapsed < 0d)
+            {
+                // The clock was reset (teleport/new flight): the old trail is not the
+                // same trajectory any more.
+                shipHistory.Clear();
+                lastHistorySampleTime = now;
+                return;
+            }
+
+            if (elapsed < wanted && shipHistory.Count > 0)
+            {
+                return;
+            }
+
+            shipHistory.Add(new NavShipSample(now, runner.Ship.Position));
+            lastHistorySampleTime = now;
+
+            double cutoff = now - historySeconds;
+            int drop = 0;
+            while (drop < shipHistory.Count && shipHistory[drop].TimeSeconds < cutoff)
+            {
+                drop++;
+            }
+
+            if (drop > 0)
+            {
+                shipHistory.RemoveRange(0, drop);
+            }
+
+            if (shipHistory.Count > NavMapModel.MaxHistoryPoints)
+            {
+                shipHistory.RemoveRange(0, shipHistory.Count - NavMapModel.MaxHistoryPoints);
+            }
+        }
+
+        /// <summary>
+        /// Rebuild the map when the geometry actually changes: a slider/frame/center/
+        /// visibility edit, or a low-rate clock tick. Forecast integration is the
+        /// expensive part, so it never runs every frame.
+        /// </summary>
+        private void RebuildMapIfNeeded(bool force)
+        {
+            if (view == null || !view.Bound || runner == null || runner.SystemState == null)
+            {
+                return;
+            }
+
+            bool forced = force;
+            int calc = view.State.CalcVersion;
+            int viewVersion = view.State.ViewVersion;
+            if (calc != lastCalcVersion || viewVersion != lastViewVersion)
+            {
+                forced = true;
+            }
+
+            double interval = overlay
+                ? (mapModel != null && mapModel.ViewMode == NavViewMode.Surface ? 0.6d : 0.35d)
+                : 1.0d;
+            if (!forced && Time.unscaledTime < nextMapBuild)
+            {
+                return;
+            }
+
+            nextMapBuild = Time.unscaledTime + interval;
+            lastCalcVersion = calc;
+            lastViewVersion = viewVersion;
+            RebuildMap();
+        }
+
+        private void RebuildMap(bool force = true)
+        {
+            if (view == null || !view.Bound || runner == null || runner.SystemState == null)
+            {
+                return;
+            }
+
+            if (overlayMap == null)
+            {
+                overlayMap = new NavMapRenderer(1024, 640, false);
+            }
+
+            if (previewMap == null)
+            {
+                previewMap = new NavMapRenderer(1024, 576, true);
+            }
+
+            if (mapModel == null)
+            {
+                mapModel = new NavMapModel();
+            }
+
+            bool allowForecast = !ContactZoneHost.Active
+                && !runner.BuildMode
+                && runner.Regime == VesselRegime.Flying
+                && runner.Ship != null;
+
+            try
+            {
+                mapModel.Rebuild(
+                    runner.SystemState,
+                    runner.Ship,
+                    runner.TimeSeconds,
+                    view.State.FrameIndex,
+                    view.State.CenterIndex,
+                    view.State.OrbitVisible,
+                    view.State.ForecastS,
+                    view.State.HistoryS,
+                    shipHistory,
+                    allowForecast);
+            }
+            catch (Exception e)
+            {
+                // The tablet is a display: a corrupt ephemeris or a bad system asset
+                // must not take down the simulation loop. Keep the last good geometry
+                // and state the problem on the panel.
+                if (!mapErrorLogged)
+                {
+                    mapErrorLogged = true;
+                    Debug.LogWarning("[NavTablet] карта не построена: " + e);
+                }
+
+                mapInfo.Connected = false;
+                mapInfo.Status = "ОШИБКА КАРТЫ: " + e.GetType().Name;
+                if (overlay)
+                {
+                    overlayMap.Draw(mapModel, view.State, mapInfo);
+                    view.SetMapTexture(overlayMap.Texture);
+                }
+                else
+                {
+                    previewMap.Draw(mapModel, view.State, mapInfo);
+                    AssignPreviewTexture();
+                }
+
+                return;
+            }
+
+            FillMapInfo(allowForecast);
+            if (overlay)
+            {
+                overlayMap.Draw(mapModel, view.State, mapInfo);
+                view.SetMapTexture(overlayMap.Texture);
+            }
+            else
+            {
+                previewMap.Draw(mapModel, view.State, mapInfo);
+                AssignPreviewTexture();
+            }
+
+            if (force)
+            {
+                nextMapBuild = Time.unscaledTime + (overlay
+                    ? (mapModel.ViewMode == NavViewMode.Surface ? 0.6d : 0.35d)
+                    : 1.0d);
+            }
+        }
+
+        private void FillMapInfo(bool allowForecast)
+        {
+            mapInfo.Connected = runner != null && runner.SystemState != null && runner.Ship != null;
+            mapInfo.PlanDeltaVMs = view != null ? view.State.Plan.TotalDv : 0d;
+            mapInfo.ManeuverCount = view != null ? view.State.Plan.Count : 0;
+            mapInfo.MassKg = runner != null && runner.Ship != null ? runner.Ship.Mass : 0d;
+            mapInfo.SpeedMs = mapModel != null ? mapModel.FrameRelativeShipVelocity.Magnitude : 0d;
+            mapInfo.HasShip = mapModel != null && mapModel.HasShip;
+            mapInfo.AltitudeMeters = mapModel != null ? mapModel.ShipHeightAboveTerrain : 0d;
+            mapInfo.VerticalSpeedMps = mapModel != null ? mapModel.ShipVerticalSpeedMps : 0d;
+            mapInfo.Status = mapModel != null ? mapModel.Note : string.Empty;
+
+            if (runner == null || runner.Ship == null || runner.SystemState == null)
+            {
+                return;
+            }
+
+            if (!allowForecast)
+            {
+                mapInfo.Status = mapModel != null ? mapModel.Note : "ПРОГНОЗ ВЫКЛЮЧЕН";
+            }
+        }
+
+        private void OnMapDragged(Vector2 delta, bool rotate)
+        {
+            if (overlayMap == null || view == null)
+            {
+                return;
+            }
+
+            Vector2 pixels = ToMapPixels(delta);
+            if (rotate)
+            {
+                overlayMap.RotateByPixels(pixels);
+            }
+            else
+            {
+                overlayMap.PanByPixels(pixels);
+            }
+
+            overlayMap.Interactive = true;
+            interactiveUntil = Time.unscaledTime + 0.2f;
+            mapDirty = true;
+        }
+
+        private void OnMapZoomed(Vector2 localPosition, float wheelDelta)
+        {
+            if (overlayMap == null)
+            {
+                return;
+            }
+
+            overlayMap.ZoomAt(ToMapPixels(localPosition), wheelDelta);
+            overlayMap.Interactive = true;
+            interactiveUntil = Time.unscaledTime + 0.2f;
+            mapDirty = true;
+        }
+
+        private void OnMapHovered(Vector2 localPosition)
+        {
+            if (overlayMap == null || view == null)
+            {
+                return;
+            }
+
+            lastHoverLocal = localPosition;
+            if (overlayMap.TryPick(ToMapPixels(localPosition), out string text))
+            {
+                view.ShowTip(text, lastHoverLocal);
+            }
+            else
+            {
+                view.HideTip();
+            }
+        }
+
+        private void RedrawOverlayMap()
+        {
+            if (overlayMap == null || mapModel == null || view == null || !view.Bound)
+            {
+                return;
+            }
+
+            overlayMap.Draw(mapModel, view.State, mapInfo);
+            view.SetMapTexture(overlayMap.Texture);
+        }
+
+        /// <summary>UI pixels → overlay texture pixels (the texture is stretched to the map view).</summary>
+        private Vector2 ToMapPixels(Vector2 uiPixels)
+        {
+            if (overlayMap == null || view == null)
+            {
+                return uiPixels;
+            }
+
+            Vector2 size = view.MapSize;
+            if (!float.IsFinite(size.x) || !float.IsFinite(size.y) || size.x <= 0.5f || size.y <= 0.5f)
+            {
+                return uiPixels;
+            }
+
+            return new Vector2(
+                uiPixels.x * overlayMap.Width / size.x,
+                uiPixels.y * overlayMap.Height / size.y);
+        }
+
+        private void AssignPreviewTexture()
+        {
+            if (screenMaterial == null || previewMap == null)
+            {
+                return;
+            }
+
+            string[] textureProperties =
+            {
+                "_UnlitColorMap", "_BaseColorMap", "_BaseMap", "_MainTex", "_EmissiveColorMap",
+            };
+            for (int i = 0; i < textureProperties.Length; i++)
+            {
+                if (screenMaterial.HasProperty(textureProperties[i]))
+                {
+                    screenMaterial.SetTexture(textureProperties[i], previewMap.Texture);
+                }
+            }
         }
 
         private void SetOverlay(bool on)
@@ -259,6 +645,9 @@ namespace Galilego.Tablet
             overlay = on;
             NavOverlayState.Open = on;
             document.rootVisualElement.style.display = on ? DisplayStyle.Flex : DisplayStyle.None;
+            // Opening/closing swaps which texture is visible: redraw the one that
+            // just became active immediately, not on the next low-rate tick.
+            RebuildMap(true);
         }
 
         private void FeedBodies()
@@ -284,6 +673,66 @@ namespace Galilego.Tablet
             view.SetBodies(bodies);
         }
 
+        /// <summary>
+        /// By default the map's inertial frame follows the body the ship is actually
+        /// orbiting (the dominant body, chosen by the simulation). As soon as the player
+        /// presses "ИСК" in the reference-frame table, the choice is pinned and is not
+        /// overridden on an SOI change.
+        /// </summary>
+        private void AutoFrame()
+        {
+            if (framePinned || view == null || !view.Bound || runner == null || runner.SystemState == null)
+            {
+                return;
+            }
+
+            OrbitingBody dominant = runner.DominantBody;
+            if (dominant == null)
+            {
+                return;
+            }
+
+            var all = runner.SystemState.AllBodies;
+            int index = -1;
+            for (int i = 0; i < all.Count; i++)
+            {
+                if (ReferenceEquals(all[i], dominant))
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            if (index < 0)
+            {
+                return;
+            }
+
+            if (view.State.FrameIndex == index)
+            {
+                return;
+            }
+
+            view.State.SetFrame(index);
+            if (!view.State.CenterChosen)
+            {
+                // Planet view by default: the whole body is the focus, the craft
+                // marker sits on/above it. A manual "ЦЕНТР" click pins another focus.
+                view.State.SetCenterDefault(index);
+            }
+
+            if (bodies != null)
+            {
+                // Rebuild the table's highlight with the new frame/centre.
+                view.SetBodies(bodies);
+            }
+
+            if (overlayMap != null)
+            {
+                overlayMap.ResetView();
+            }
+        }
+
         private void OnDestroy()
         {
             NavOverlayState.Open = false;
@@ -291,6 +740,18 @@ namespace Galilego.Tablet
             if (screenMaterial != null)
             {
                 Destroy(screenMaterial);
+            }
+
+            if (overlayMap != null)
+            {
+                overlayMap.Dispose();
+                overlayMap = null;
+            }
+
+            if (previewMap != null)
+            {
+                previewMap.Dispose();
+                previewMap = null;
             }
         }
     }

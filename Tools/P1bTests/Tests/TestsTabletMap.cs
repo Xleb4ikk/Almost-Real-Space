@@ -1,0 +1,152 @@
+using System;
+using System.Collections.Generic;
+using Galilego.Core;
+using Galilego.Spacecraft;
+using Galilego.Tablet;
+using Galilego.Universe;
+
+internal static partial class P1bTests
+{
+    /// <summary>
+    /// The navigation map is built from the game's own physics: frame-relative body
+    /// positions come from ephemerides/rails, the forecast is a DOP853 N-body coast
+    /// with the same gravity/drag sources as SimulationRunner, and the history is the
+    /// actual ship samples. This checks the data contract, not the drawing.
+    /// </summary>
+    private static int Test567_NavMapModel()
+    {
+        StarSystem system = TwoBodySystem();
+        OrbitingBody planet = system.AllBodies[1];
+        planet.EvaluateWorldState(0d, out Vector3d bodyPosition, out Vector3d bodyVelocity);
+
+        double altitude = 200e3d;
+        double radius = planet.Radius + altitude;
+        double mu = planet.ResolveStandardGravitationalParameter();
+        Vector3d radial = new Vector3d(0d, 0d, 1d);
+        Vector3d tangent = new Vector3d(1d, 0d, 0d);
+        var ship = new Spacecraft(
+            bodyPosition + (radial * radius),
+            bodyVelocity + (tangent * Math.Sqrt(mu / radius)),
+            1000d);
+
+        bool[] visible = new bool[system.AllBodies.Count + 1];
+        for (int i = 0; i < visible.Length; i++)
+        {
+            visible[i] = true;
+        }
+
+        int shipId = system.AllBodies.Count;
+        var model = new NavMapModel();
+        model.Rebuild(system, ship, 0d, 1, shipId, visible, 3600d, 0d, null, true);
+
+        bool markers = model.Bodies.Count == system.AllBodies.Count
+            && model.Bodies[1].IsFrame
+            && model.Bodies[1].Position.Magnitude < 1e-6d
+            && model.Bodies[0].Position.Magnitude > 1e8d;
+        bool frameRelative = Math.Abs(model.FrameRelativeShipPosition.Magnitude - radius) < 1d;
+
+        NavLine forecast = null;
+        for (int i = 0; i < model.Lines.Count; i++)
+        {
+            if (model.Lines[i].Kind == NavLineKind.ShipForecast)
+            {
+                forecast = model.Lines[i];
+                break;
+            }
+        }
+
+        bool forecastValid = model.ForecastValid && forecast != null && forecast.Points.Count > 100;
+        bool forecastFinite = true;
+        bool forecastStartsAtShip = false;
+        if (forecast != null)
+        {
+            for (int i = 0; i < forecast.Points.Count; i++)
+            {
+                if (!forecast.Points[i].IsFinite)
+                {
+                    forecastFinite = false;
+                }
+            }
+
+            if (forecast.Points.Count > 0)
+            {
+                Vector3d expected = ship.Position - model.FramePosition;
+                forecastStartsAtShip = (forecast.Points[0] - expected).Magnitude < 1e-3d;
+            }
+        }
+
+        // No forecast on the surface/contact path, but the real state and history remain.
+        var history = new List<NavShipSample>();
+        for (int i = 0; i <= 20; i++)
+        {
+            double t = i * 30d;
+            double angle = i * 0.03d;
+            Vector3d offset = (radial * (Math.Cos(angle) * radius)) + (tangent * (Math.Sin(angle) * radius));
+            planet.EvaluateWorldState(t, out Vector3d p, out _);
+            history.Add(new NavShipSample(t, p + offset));
+        }
+
+        var surfaceModel = new NavMapModel();
+        surfaceModel.Rebuild(system, ship, 600d, 1, shipId, visible, 3600d, 3600d, history, false);
+
+        bool forecastOff = !surfaceModel.ForecastValid;
+        bool historyValid = false;
+        for (int i = 0; i < surfaceModel.Lines.Count; i++)
+        {
+            if (surfaceModel.Lines[i].Kind == NavLineKind.ShipHistory && surfaceModel.Lines[i].Points.Count >= 2)
+            {
+                historyValid = true;
+            }
+        }
+
+        bool noteHonest = surfaceModel.Note.IndexOf("ВЫКЛ", StringComparison.OrdinalIgnoreCase) >= 0;
+        bool planeOrthonormal = Math.Abs(model.OrbitNormal.Magnitude - 1d) < 1e-9d
+            && Math.Abs(model.OrbitRight.Magnitude - 1d) < 1e-9d
+            && Math.Abs(Vector3d.Dot(model.OrbitNormal, model.OrbitRight)) < 1e-9d;
+
+        // Low-altitude surface view: the dominant body has a heightfield, so the map
+        // must switch to the real local terrain and keep the true sub-point.
+        planet.Terrain = new HeightfieldTerrain();
+        double lowRadius = planet.Radius + 10e3d;
+        var lowShip = new Spacecraft(
+            bodyPosition + (radial * lowRadius),
+            bodyVelocity + (tangent * Math.Sqrt(mu / lowRadius)),
+            1000d);
+        var surfaceView = new NavMapModel();
+        surfaceView.Rebuild(system, lowShip, 0d, 1, shipId, visible, 3600d, 0d, null, false);
+        bool surfaceMode = surfaceView.ViewMode == NavViewMode.Orbits
+            && surfaceView.HasSurfaceFrame
+            && surfaceView.DominantBodyIndex == 1
+            && surfaceView.ShipHeightAboveTerrain > -1000d
+            && surfaceView.ShipHeightAboveTerrain < 20000d
+            && Math.Abs(surfaceView.ShipLatitudeDegrees) <= 90d
+            && surfaceView.ShipLongitudeDegrees >= 0d
+            && surfaceView.ShipLongitudeDegrees < 360d
+            && surfaceView.BodyRadiusMeters > 1d;
+
+        bool pass = markers && frameRelative && forecastValid && forecastFinite && forecastStartsAtShip
+            && forecastOff && historyValid && noteHonest && planeOrthonormal && surfaceMode;
+        Check(pass, "T567 nav map model",
+            string.Format(
+                "bodies={0} frame={1:F2}м; forecast={2} pts={3} finite={4} start={5}; no-forecast={6} history={7} note={8}; plane={9}; surface={10} mode={11} hasFrame={12} dominant={13} terrain={14} lat={15:F2} lon={16:F2} hAGL={17:F0}",
+                model.Bodies.Count,
+                model.FrameRelativeShipPosition.Magnitude,
+                forecastValid,
+                forecast != null ? forecast.Points.Count : 0,
+                forecastFinite,
+                forecastStartsAtShip,
+                forecastOff,
+                historyValid,
+                surfaceModel.Note,
+                planeOrthonormal,
+                surfaceMode,
+                surfaceView.ViewMode,
+                surfaceView.HasSurfaceFrame,
+                surfaceView.DominantBodyIndex,
+                surfaceView.DominantBody != null ? surfaceView.DominantBody.Terrain != null : false,
+                surfaceView.ShipLatitudeDegrees,
+                surfaceView.ShipLongitudeDegrees,
+                surfaceView.ShipHeightAboveTerrain));
+        return 0;
+    }
+}

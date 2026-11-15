@@ -66,6 +66,7 @@ namespace Galilego.Tablet
         private DropdownField mFrame;
         private int maneuverFrame;
         private bool bound;
+        private float refreshTimer;
 
         /// <summary>Create the view on an inactive object, then activate it (UIDocument builds the tree on enable).</summary>
         public void Configure(UIDocument doc, VisualTreeAsset card)
@@ -107,11 +108,6 @@ namespace Galilego.Tablet
 
             root = tree;
             mapView = root.Q("map-view");
-            Texture2D mapBackground = Resources.Load<Texture2D>("NavTablet/NavMapBackground");
-            if (mapView != null && mapBackground != null)
-            {
-                mapView.style.backgroundImage = new StyleBackground(mapBackground);
-            }
 
             tip = root.Q<Label>("tip");
             mission = root.Q<Label>("mission");
@@ -191,9 +187,35 @@ namespace Galilego.Tablet
         }
 
         /// <summary>Map camera output.</summary>
-        public void SetMapTexture(RenderTexture rt)
+        public void SetMapTexture(Texture texture)
         {
-            mapView.style.backgroundImage = new StyleBackground(Background.FromRenderTexture(rt));
+            if (mapView == null)
+            {
+                return;
+            }
+
+            if (texture is RenderTexture rt)
+            {
+                mapView.style.backgroundImage = new StyleBackground(Background.FromRenderTexture(rt));
+            }
+            else if (texture is Texture2D t2d)
+            {
+                mapView.style.backgroundImage = new StyleBackground(t2d);
+            }
+        }
+
+        /// <summary>Current map view size in UI pixels (the texture is stretched to it).</summary>
+        public Vector2 MapSize
+        {
+            get
+            {
+                if (mapView == null)
+                {
+                    return Vector2.zero;
+                }
+
+                return new Vector2(mapView.resolvedStyle.width, mapView.resolvedStyle.height);
+            }
         }
 
         public void ShowTip(string richText, Vector2 mapPos)
@@ -229,7 +251,16 @@ namespace Galilego.Tablet
 
             TickCardSliders(realDt);
             State.Plan.ComputeBurns(ShipMassKg, ThrustN, IspS);
-            Refresh();
+
+            // Text is layout work in UI Toolkit: 10 Hz is indistinguishable from
+            // every frame for a clock/readout panel, and leaves the frame budget
+            // to the sim and the planet.
+            refreshTimer += realDt;
+            if (refreshTimer >= 0.1f)
+            {
+                refreshTimer = 0f;
+                Refresh();
+            }
         }
 
         // ------------------------------------------------------------------ panels

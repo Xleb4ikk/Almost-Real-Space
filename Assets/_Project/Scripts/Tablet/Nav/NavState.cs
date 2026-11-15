@@ -40,7 +40,9 @@ namespace Galilego.Tablet
         public bool[] OrbitVisible { get; private set; } = new bool[1];
 
         public int FrameIndex;
-        public int CenterIndex;
+        public int CenterIndex = -1;
+        public bool CenterChosen { get; private set; }
+        private bool centerAuto;
         public double ForecastS = 3d * 86400d;
         public double HistoryS = 86400d;
 
@@ -66,7 +68,8 @@ namespace Galilego.Tablet
             OrbitVisible = new bool[BodyNames.Length + 1];
             for (int i = 0; i < OrbitVisible.Length; i++) { OrbitVisible[i] = i < old.Length ? old[i] : true; }
             if (FrameIndex >= BodyCount) { FrameIndex = 0; }
-            if (CenterIndex > ShipId) { CenterIndex = 0; }
+            if (!CenterChosen && !centerAuto) { CenterIndex = ShipId; }
+            else if (!CenterChosen && (CenterIndex < 0 || CenterIndex > ShipId)) { CenterIndex = ShipId; }
             ViewVersion++;
         }
 
@@ -83,8 +86,23 @@ namespace Galilego.Tablet
         {
             if (i < 0 || i > ShipId) { return false; }
             CenterIndex = i;
+            CenterChosen = true;
+            centerAuto = false;
             ViewVersion++;
             return true;
+        }
+
+        /// <summary>
+        /// Default focus while the player has not chosen one: the map follows the
+        /// dominant body (planet view), not the craft point. An explicit centre click
+        /// keeps the choice forever.
+        /// </summary>
+        public void SetCenterDefault(int i)
+        {
+            if (CenterChosen || i < 0 || i > ShipId) { return; }
+            CenterIndex = i;
+            centerAuto = true;
+            ViewVersion++;
         }
 
         public void ToggleOrbit(int i)
