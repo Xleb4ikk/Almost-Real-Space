@@ -226,6 +226,7 @@
 .ds { color: rgb(111, 184, 138); margin-bottom: 8px; white-space: normal; }
 .tr { flex-direction: row; align-items: center; margin-top: 4px; margin-bottom: 4px; }
 .tr-name { flex-grow: 1; flex-direction: row; align-items: center; color: rgb(228, 255, 240); }
+.tr-name:hover .dot { border-color: rgb(150, 255, 180); }
 .tr-b { width: 26px; margin-left: 4px; }
 .tr-b.tr-isk { width: 36px; }
 .tr-head-l, .tr-head-c { font-size: 8px; letter-spacing: 1px; color: rgb(111, 184, 138); }
@@ -239,6 +240,7 @@
     border-radius: 5px;
 }
 .dot--on { background-color: rgb(76, 224, 124); }
+.dot--off { border-color: rgb(62, 96, 74); }
 
 /* ---------- rate slider element (drawn in RateSliderElement.cs) ---------- */
 .rs { min-width: 40px; }

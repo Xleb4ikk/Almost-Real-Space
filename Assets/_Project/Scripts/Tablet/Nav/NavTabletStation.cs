@@ -188,6 +188,13 @@ namespace Galilego.Tablet
             view.MapZoomed += OnMapZoomed;
             view.MapHovered += OnMapHovered;
             view.MapPointerLeft += () => { if (view != null) { view.HideTip(); } };
+            view.MapReset += () =>
+            {
+                overlayMap.ResetView();
+                interactiveUntil = Time.unscaledTime + 0.2f;
+                mapDirty = true;
+                RebuildMap(true);
+            };
             view.ManeuverDue += _ => RebuildMap(true);
 
             Transform monitor = screenRenderer.transform.parent;
@@ -281,9 +288,30 @@ namespace Galilego.Tablet
                 RebuildMap(true);
             }
 
+            TickMapAnimation();
             RebuildMapIfNeeded(false);
             TickInteractiveMap();
             view.Tick(Time.unscaledDeltaTime, simDt);
+        }
+
+        /// <summary>
+        /// Eases the map camera toward the drag target. While it moves, the map is
+        /// redrawn at the interactive rate; when it settles, TickInteractiveMap
+        /// renders one clean frame. Without this the view snapped on every drag delta.
+        /// </summary>
+        private void TickMapAnimation()
+        {
+            if (!overlay || overlayMap == null || view == null || !view.Bound)
+            {
+                return;
+            }
+
+            if (overlayMap.Tick(Time.unscaledDeltaTime))
+            {
+                overlayMap.Interactive = true;
+                interactiveUntil = Time.unscaledTime + 0.15f;
+                mapDirty = true;
+            }
         }
 
         /// <summary>
@@ -320,7 +348,7 @@ namespace Galilego.Tablet
                 return;
             }
 
-            nextInteractiveMapRedraw = Time.unscaledTime + (interacting ? 0.1f : 0f);
+            nextInteractiveMapRedraw = Time.unscaledTime + (interacting ? 0.033f : 0f);
             mapDirty = false;
             RedrawOverlayMap();
         }
@@ -664,13 +692,15 @@ namespace Galilego.Tablet
             }
 
             bodies = new string[all.Count];
+            var orbitAvailable = new bool[all.Count];
             for (int i = 0; i < all.Count; i++)
             {
                 bodies[i] = (all[i].Name ?? "?").ToUpperInvariant();
+                orbitAvailable[i] = all[i].Parent != null;
             }
 
             bodyCountSeen = all.Count;
-            view.SetBodies(bodies);
+            view.SetBodies(bodies, orbitAvailable);
         }
 
         /// <summary>

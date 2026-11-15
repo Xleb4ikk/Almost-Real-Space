@@ -45,6 +45,57 @@ internal static partial class P1bTests
             && model.Bodies[0].Position.Magnitude > 1e8d;
         bool frameRelative = Math.Abs(model.FrameRelativeShipPosition.Magnitude - radius) < 1d;
 
+        // The frame body itself must have an orbit too, and its marker (the map
+        // origin) must lie exactly on that polyline. Without the inserted origin
+        // vertex a 160-point chord passes wide of the body at planet zoom.
+        bool frameOrbit = false;
+        bool frameOrbitOnBody = false;
+        for (int i = 0; i < model.Lines.Count; i++)
+        {
+            NavLine line = model.Lines[i];
+            if (line.Kind != NavLineKind.BodyOrbit || line.BodyIndex != 1)
+            {
+                continue;
+            }
+
+            frameOrbit = true;
+            for (int k = 0; k < line.Points.Count; k++)
+            {
+                if (line.Points[k].Magnitude < 1e-3d)
+                {
+                    frameOrbitOnBody = true;
+                }
+            }
+        }
+
+        bool[] frameHidden = (bool[])visible.Clone();
+        frameHidden[1] = false;
+        var frameHiddenModel = new NavMapModel();
+        frameHiddenModel.Rebuild(system, ship, 0d, 1, shipId, frameHidden, 3600d, 0d, null, true);
+        bool frameOrbitToggle = true;
+        for (int i = 0; i < frameHiddenModel.Lines.Count; i++)
+        {
+            NavLine line = frameHiddenModel.Lines[i];
+            if (line.Kind == NavLineKind.BodyOrbit && line.BodyIndex == 1)
+            {
+                frameOrbitToggle = false;
+            }
+        }
+
+        bool[] shipHidden = (bool[])visible.Clone();
+        shipHidden[shipId] = false;
+        var shipHiddenModel = new NavMapModel();
+        shipHiddenModel.Rebuild(system, ship, 0d, 1, shipId, shipHidden, 3600d, 3600d, null, true);
+        bool shipToggle = true;
+        for (int i = 0; i < shipHiddenModel.Lines.Count; i++)
+        {
+            if (shipHiddenModel.Lines[i].Kind == NavLineKind.ShipForecast
+                || shipHiddenModel.Lines[i].Kind == NavLineKind.ShipHistory)
+            {
+                shipToggle = false;
+            }
+        }
+
         NavLine forecast = null;
         for (int i = 0; i < model.Lines.Count; i++)
         {
@@ -125,10 +176,11 @@ internal static partial class P1bTests
             && surfaceView.BodyRadiusMeters > 1d;
 
         bool pass = markers && frameRelative && forecastValid && forecastFinite && forecastStartsAtShip
-            && forecastOff && historyValid && noteHonest && planeOrthonormal && surfaceMode;
+            && forecastOff && historyValid && noteHonest && planeOrthonormal && surfaceMode
+            && frameOrbit && frameOrbitOnBody && frameOrbitToggle && shipToggle;
         Check(pass, "T567 nav map model",
             string.Format(
-                "bodies={0} frame={1:F2}м; forecast={2} pts={3} finite={4} start={5}; no-forecast={6} history={7} note={8}; plane={9}; surface={10} mode={11} hasFrame={12} dominant={13} terrain={14} lat={15:F2} lon={16:F2} hAGL={17:F0}",
+                "bodies={0} frame={1:F2}м; forecast={2} pts={3} finite={4} start={5}; no-forecast={6} history={7} note={8}; plane={9}; surface={10} mode={11} hasFrame={12} dominant={13} terrain={14} lat={15:F2} lon={16:F2} hAGL={17:F0}; frameOrbit={18}/{19} toggle={20} shipToggle={21}",
                 model.Bodies.Count,
                 model.FrameRelativeShipPosition.Magnitude,
                 forecastValid,
@@ -146,7 +198,11 @@ internal static partial class P1bTests
                 surfaceView.DominantBody != null ? surfaceView.DominantBody.Terrain != null : false,
                 surfaceView.ShipLatitudeDegrees,
                 surfaceView.ShipLongitudeDegrees,
-                surfaceView.ShipHeightAboveTerrain));
+                surfaceView.ShipHeightAboveTerrain,
+                frameOrbit,
+                frameOrbitOnBody,
+                frameOrbitToggle,
+                shipToggle));
         return 0;
     }
 }

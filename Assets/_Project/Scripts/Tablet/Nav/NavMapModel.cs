@@ -240,13 +240,18 @@ namespace Galilego.Tablet
             }
 
             BuildBodyOrbits(system, timeSeconds, frameIndex, orbitVisible);
+            BuildFrameOrbit(system, timeSeconds, frameIndex, orbitVisible);
 
-            if (historySeconds > 0d && history != null && HasShip)
+            bool shipLinesVisible = orbitVisible == null
+                || ShipIndex >= orbitVisible.Length
+                || orbitVisible[ShipIndex];
+
+            if (shipLinesVisible && historySeconds > 0d && history != null && HasShip)
             {
                 BuildHistory(system, frame, timeSeconds, historySeconds, history);
             }
 
-            if (allowForecast && HasShip && ship.Mass > 0d)
+            if (shipLinesVisible && allowForecast && HasShip && ship.Mass > 0d)
             {
                 BuildForecast(system, ship, timeSeconds, frame, forecastSeconds);
             }
@@ -525,10 +530,98 @@ namespace Galilego.Tablet
                     }
                 }
 
+                if (line.Points.Count > n / 2)
+                {
+                    // The marker is evaluated at exactly `time`, which falls between
+                    // two samples. Insert it as a vertex so the body is visibly ON
+                    // its orbit at planet zoom instead of a chord passing wide.
+                    line.Points.Insert(n / 2, Bodies[i].Position);
+                }
+
                 if (line.Points.Count >= 2)
                 {
                     Lines.Add(line);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Orbit of the reference body around its parent, translated so the body sits
+        /// at the map origin at the current time. Without this a body-centred map has
+        /// no orbit for the body itself — the "Земля не на своей орбите" view — and
+        /// the orbit toggle in its row does nothing.
+        /// </summary>
+        private void BuildFrameOrbit(StarSystem system, double time, int frameIndex, bool[] orbitVisible)
+        {
+            if (frameIndex < 0 || frameIndex >= system.AllBodies.Count)
+            {
+                return;
+            }
+
+            if (orbitVisible != null && frameIndex < orbitVisible.Length && !orbitVisible[frameIndex])
+            {
+                return;
+            }
+
+            OrbitingBody body = system.AllBodies[frameIndex];
+            OrbitingBody parent = body.Parent;
+            if (parent == null)
+            {
+                return;
+            }
+
+            double mu = parent.ResolveStandardGravitationalParameter()
+                + body.ResolveSubtreeStandardGravitationalParameter();
+            double a = body.SemiMajorAxis;
+            if (!(mu > 0d) || !(a > 0d) || !(body.Eccentricity >= 0d) || !(body.Eccentricity < 1d))
+            {
+                return;
+            }
+
+            double period = 2d * Math.PI * Math.Sqrt((a * a * a) / mu);
+            if (!double.IsFinite(period) || period <= 0d)
+            {
+                return;
+            }
+
+            double start = time - (period * 0.5d);
+            double end = time + (period * 0.5d);
+            var line = new NavLine
+            {
+                Kind = NavLineKind.BodyOrbit,
+                BodyIndex = frameIndex,
+                ParentIndex = IndexOf(system, parent),
+                StartTimeS = start,
+                EndTimeS = end,
+            };
+
+            int n = BodyOrbitSamples;
+            for (int k = 0; k < n; k++)
+            {
+                double ts = start + ((end - start) * k / (n - 1d));
+                try
+                {
+                    // Path around the parent, shifted so the CURRENT body position
+                    // is the origin: the marker at the centre lies exactly on it.
+                    body.EvaluateWorldState(ts, out Vector3d p, out _);
+                    line.Points.Add(p - FramePosition);
+                }
+                catch (EphemerisRangeException)
+                {
+                    break;
+                }
+            }
+
+            if (line.Points.Count > n / 2)
+            {
+                // The frame body is at the map origin now; insert it as a vertex so
+                // its own orbit visibly passes through the body, not beside it.
+                line.Points.Insert(n / 2, Vector3d.Zero);
+            }
+
+            if (line.Points.Count >= 2)
+            {
+                Lines.Add(line);
             }
         }
 

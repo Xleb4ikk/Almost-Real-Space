@@ -39,6 +39,9 @@ namespace Galilego.Tablet
         public string[] BodyNames { get; private set; } = new string[0];
         public bool[] OrbitVisible { get; private set; } = new bool[1];
 
+        /// <summary>True for bodies whose orbit around a parent can be drawn (the root has none).</summary>
+        public bool[] OrbitAvailable { get; private set; } = new bool[1];
+
         public int FrameIndex;
         public int CenterIndex = -1;
         public bool CenterChosen { get; private set; }
@@ -61,12 +64,22 @@ namespace Galilego.Tablet
         public int ShipId { get { return BodyNames.Length; } }
 
         /// <summary>Re-reads the body list; keeps the selection when the indices are still valid.</summary>
-        public void SetBodies(string[] names)
+        public void SetBodies(string[] names, bool[] orbitAvailable = null)
         {
             BodyNames = names ?? new string[0];
             bool[] old = OrbitVisible;
+            bool[] oldAvailable = OrbitAvailable;
             OrbitVisible = new bool[BodyNames.Length + 1];
+            OrbitAvailable = new bool[BodyNames.Length + 1];
             for (int i = 0; i < OrbitVisible.Length; i++) { OrbitVisible[i] = i < old.Length ? old[i] : true; }
+            for (int i = 0; i < BodyNames.Length; i++)
+            {
+                OrbitAvailable[i] = orbitAvailable != null && i < orbitAvailable.Length
+                    ? orbitAvailable[i]
+                    : (i < oldAvailable.Length ? oldAvailable[i] : true);
+            }
+
+            OrbitAvailable[ShipId] = true;
             if (FrameIndex >= BodyCount) { FrameIndex = 0; }
             if (!CenterChosen && !centerAuto) { CenterIndex = ShipId; }
             else if (!CenterChosen && (CenterIndex < 0 || CenterIndex > ShipId)) { CenterIndex = ShipId; }

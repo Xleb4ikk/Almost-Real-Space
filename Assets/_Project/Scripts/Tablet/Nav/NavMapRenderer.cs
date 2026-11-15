@@ -37,8 +37,25 @@ namespace Galilego.Tablet
         public readonly bool Preview;
 
         public float Zoom = 1f;
-        public float AzimuthRad;
-        public float TiltRad = 0.38f;
+
+        /// <summary>
+        /// Turntable camera angles. Azimuth is around the reference-plane normal,
+        /// elevation is above that plane (0 = edge-on, +90° = north pole up).
+        /// The visible angles ease toward <see cref="TargetAzimuthRad"/> /
+        /// <see cref="TargetElevationRad"/> in <see cref="Tick"/>; input only moves
+        /// the targets, so a drag never snaps the map.
+        /// </summary>
+        public float AzimuthRad = DefaultAzimuthRad;
+        public float ElevationRad = DefaultElevationRad;
+        public float TargetAzimuthRad = DefaultAzimuthRad;
+        public float TargetElevationRad = DefaultElevationRad;
+
+        private const float DefaultAzimuthRad = -Mathf.PI * 0.5f;
+        private const float DefaultElevationRad = 1.19f;   // ~68° above the plane
+        private const float MinElevationRad = -1.45f;      // keep the view off the pole
+        private const float MaxElevationRad = 1.45f;
+        private const float RotateSensitivity = 0.0055f;
+        private const float RotateDamping = 13f;
 
         /// <summary>
         /// While the player drags/zooms the map, the globe is rasterised at a coarse
@@ -138,10 +155,12 @@ namespace Galilego.Tablet
 
             if (model.FrameIndex != lastFrameIndex)
             {
+                // Keep the user's orientation across a focus change; ease back to
+                // the default angles instead of snapping the map.
                 panPixels = Vector2.zero;
                 Zoom = 1f;
-                AzimuthRad = 0f;
-                TiltRad = 0.38f;
+                TargetAzimuthRad = DefaultAzimuthRad;
+                TargetElevationRad = DefaultElevationRad;
                 lastFrameIndex = model.FrameIndex;
             }
 
@@ -212,8 +231,39 @@ namespace Galilego.Tablet
                 return;
             }
 
-            AzimuthRad += delta.x * 0.01f;
-            TiltRad = Mathf.Clamp(TiltRad + (delta.y * 0.01f), 0f, 1.45f);
+            // Input moves the TARGET only. Tick() eases the visible angles toward it,
+            // so a mouse event never rotates the map by a whole step.
+            TargetAzimuthRad -= delta.x * RotateSensitivity;
+            TargetElevationRad = Mathf.Clamp(
+                TargetElevationRad + (delta.y * RotateSensitivity),
+                MinElevationRad, MaxElevationRad);
+        }
+
+        /// <summary>
+        /// Eases the visible camera toward the target angles. Returns true while the
+        /// view is still moving, so the caller can redraw at a higher rate and then
+        /// finish with one clean frame. Damping is frame-rate independent.
+        /// </summary>
+        public bool Tick(float deltaSeconds)
+        {
+            if (!(deltaSeconds > 0f) || !float.IsFinite(deltaSeconds))
+            {
+                deltaSeconds = 1f / 60f;
+            }
+
+            float blend = 1f - Mathf.Exp(-RotateDamping * deltaSeconds);
+            AzimuthRad = Mathf.Lerp(AzimuthRad, TargetAzimuthRad, blend);
+            ElevationRad = Mathf.Lerp(ElevationRad, TargetElevationRad, blend);
+
+            bool moving = Mathf.Abs(AzimuthRad - TargetAzimuthRad) > 1e-4f
+                || Mathf.Abs(ElevationRad - TargetElevationRad) > 1e-4f;
+            if (!moving)
+            {
+                AzimuthRad = TargetAzimuthRad;
+                ElevationRad = TargetElevationRad;
+            }
+
+            return moving;
         }
 
         public void ZoomAt(Vector2 texturePixel, float wheelDelta)
@@ -239,8 +289,8 @@ namespace Galilego.Tablet
         {
             panPixels = Vector2.zero;
             Zoom = 1f;
-            AzimuthRad = 0f;
-            TiltRad = 0.38f;
+            TargetAzimuthRad = DefaultAzimuthRad;
+            TargetElevationRad = DefaultElevationRad;
         }
 
         /// <summary>Nearest labelled object to a texture pixel, as rich text for the UI tooltip.</summary>
@@ -287,23 +337,45 @@ namespace Galilego.Tablet
             lastRectCenter = new Vector2(rect.x + (rect.width * 0.5f), rect.y + (rect.height * 0.5f));
 
             Vector3d normal = model.OrbitNormal.Normalized;
-            Vector3d right = RotateAround(model.OrbitRight.Normalized, normal, AzimuthRad);
-            right = (right - (normal * Vector3d.Dot(right, normal))).Normalized;
-            Vector3d up = Vector3d.Cross(normal, right).Normalized;
-            float cosTilt = Mathf.Cos(TiltRad);
-            float sinTilt = Mathf.Sin(TiltRad);
-            Vector3d screenUp = (up * cosTilt) - (normal * sinTilt);
-            Vector3d viewDir = (normal * cosTilt) + (up * sinTilt);
+            Vector3d right0 = model.OrbitRight.Normalized;
+            right0 = (right0 - (normal * Vector3d.Dot(right0, normal))).Normalized;
+            if (right0.SqrMagnitude < 0.5d)
+            {
+                right0 = Vector3d.Cross(normal, new Vector3d(0d, 1d, 0d)).Normalized;
+                if (right0.SqrMagnitude < 0.5d)
+                {
+                    right0 = Vector3d.Cross(normal, new Vector3d(1d, 0d, 0d)).Normalized;
+                }
+            }
+
+            Vector3d up0 = Vector3d.Cross(normal, right0).Normalized;
+
+            // Turntable camera with a fixed north-up screen. Azimuth orbits around
+            // the reference-plane normal, elevation raises the camera above the
+            // plane. The screen up is the projected plane normal, so the map never
+            // rolls and north stays at the top of the frame.
+            float elevation = Mathf.Clamp(ElevationRad, MinElevationRad, MaxElevationRad);
+            float yaw = AzimuthRad;
+            float cosElevation = Mathf.Cos(elevation);
+            float sinElevation = Mathf.Sin(elevation);
+            Vector3d horizontal = (right0 * Mathf.Cos(yaw)) + (up0 * Mathf.Sin(yaw));
+            Vector3d camDir = (horizontal * cosElevation) + (normal * sinElevation);
+            Vector3d screenUp = normal - (camDir * Vector3d.Dot(normal, camDir));
+            if (screenUp.SqrMagnitude < 1e-6d)
+            {
+                screenUp = up0;
+            }
+
+            screenUp = screenUp.Normalized;
+            Vector3d screenRight = Vector3d.Cross(screenUp, camDir).Normalized;
 
             Vector2 Project(Vector3d point)
             {
                 Vector3d d = point - center;
-                double x = Vector3d.Dot(d, right);
-                double y = Vector3d.Dot(d, up);
-                double z = Vector3d.Dot(d, normal);
-                double sy = (y * cosTilt) - (z * sinTilt);
+                double x = Vector3d.Dot(d, screenRight);
+                double y = Vector3d.Dot(d, screenUp);
                 float sx = (float)(rect.x + (rect.width * 0.5f) + panPixels.x + (x * scale));
-                float syPx = (float)(rect.y + (rect.height * 0.5f) + panPixels.y - (sy * scale));
+                float syPx = (float)(rect.y + (rect.height * 0.5f) + panPixels.y - (y * scale));
                 return new Vector2(sx, syPx);
             }
 
@@ -312,7 +384,33 @@ namespace Galilego.Tablet
             // this map are real trajectories.
             // DrawGrid(rect, Project, radius, center, right, up);
 
-            // Body orbits first (the dim context), then the ship's own trail.
+            // 1. Globes first: they are the background the orbits are drawn over.
+            for (int i = 0; i < model.Bodies.Count; i++)
+            {
+                NavBodyMarker body = model.Bodies[i];
+                Vector2 p = Project(body.Position);
+                if (!IsFinite(p))
+                {
+                    continue;
+                }
+
+                double trueRadiusMeters = body.RadiusMeters * scale;
+                if (trueRadiusMeters < 5d)
+                {
+                    continue;
+                }
+
+                float bodyRadius = Mathf.Max(2f, (float)trueRadiusMeters);
+                bool centerBody = i == centerIndex;
+                Color32 color = body.IsFrame || centerBody ? TabletTheme.Bright : BodyColor(i);
+                DrawPlanetDisk(model, body, p, bodyRadius, screenRight, screenUp, camDir, rect, color);
+            }
+
+            // 2. Reference plane: a faint dashed ring gives the eye a horizon and
+            // makes a tilt readable even when the globe itself is featureless.
+            DrawPlaneRing(Project, right0, up0, radius * 1.035d, rect);
+
+            // 3. Real trajectories on top of the globes, as in a map view.
             for (int i = 0; i < model.Lines.Count; i++)
             {
                 NavLine line = model.Lines[i];
@@ -322,7 +420,7 @@ namespace Galilego.Tablet
                 }
 
                 Color32 color = BodyColor(line.BodyIndex);
-                if (line.BodyIndex == centerIndex)
+                if (line.BodyIndex == centerIndex || line.BodyIndex == model.FrameIndex)
                 {
                     color = TabletTheme.Main;
                 }
@@ -360,7 +458,7 @@ namespace Galilego.Tablet
                 }
             }
 
-            // Bodies on top of their orbits.
+            // 4. Body markers and labels, on top of every line.
             for (int i = 0; i < model.Bodies.Count; i++)
             {
                 NavBodyMarker body = model.Bodies[i];
@@ -377,12 +475,7 @@ namespace Galilego.Tablet
                 bool centerVisible = Inside(rect, p, 12f);
                 bool isGlobe = trueRadiusMeters >= 5d;
 
-                if (isGlobe)
-                {
-                    // The globe may cover the map with its centre off-screen at high zoom.
-                    DrawPlanetDisk(model, body, p, bodyRadius, right, screenUp, viewDir, rect, color);
-                }
-                else if (centerVisible)
+                if (!isGlobe && centerVisible)
                 {
                     DrawDisc(p.x, p.y, bodyRadius, color);
                 }
@@ -434,7 +527,7 @@ namespace Galilego.Tablet
                 Vector2 ship = Project(model.FrameRelativeShipPosition);
                 if (IsFinite(ship) && Inside(rect, ship, 12f))
                 {
-                    DrawShip(ship.x, ship.y, model.FrameRelativeShipVelocity, scale, right, up, normal, cosTilt, sinTilt);
+                    DrawShip(ship.x, ship.y, model.FrameRelativeShipVelocity, screenRight, screenUp);
                     DrawLabel(ship.x + 9f, ship.y - 4f, "АППАРАТ", rect, TabletTheme.Bright);
                     double speed = model.FrameRelativeShipVelocity.Magnitude;
                     picks.Add(new PickEntry
@@ -856,6 +949,32 @@ namespace Galilego.Tablet
             }
         }
 
+        private void DrawPlaneRing(Func<Vector3d, Vector2> project, Vector3d right, Vector3d up,
+            double ringRadius, RectInt rect)
+        {
+            if (!(ringRadius > 0d) || !double.IsFinite(ringRadius))
+            {
+                return;
+            }
+
+            const int segments = 96;
+            Vector2 previous = default;
+            bool hasPrevious = false;
+            for (int i = 0; i <= segments; i++)
+            {
+                double angle = (Math.PI * 2d) * i / segments;
+                Vector3d point = (right * (Math.Cos(angle) * ringRadius)) + (up * (Math.Sin(angle) * ringRadius));
+                Vector2 screen = project(point);
+                if (hasPrevious)
+                {
+                    DrawClippedLine(previous, screen, rect, TabletTheme.Line, true, 1);
+                }
+
+                previous = screen;
+                hasPrevious = true;
+            }
+        }
+
         private void DrawPolyline(List<Vector3d> points, Func<Vector3d, Vector2> project, RectInt rect,
             Color32 color, bool dashed, int width)
         {
@@ -1127,8 +1246,7 @@ namespace Galilego.Tablet
             }
         }
 
-        private void DrawShip(float x, float y, Vector3d velocity, double scale, Vector3d right, Vector3d up,
-            Vector3d normal, float cosTilt, float sinTilt)
+        private void DrawShip(float x, float y, Vector3d velocity, Vector3d screenRight, Vector3d screenUp)
         {
             int xi = Mathf.RoundToInt(x);
             int yi = Mathf.RoundToInt(y);
@@ -1144,8 +1262,8 @@ namespace Galilego.Tablet
             }
 
             Vector3d direction = velocity.Normalized;
-            double vx = Vector3d.Dot(direction, right);
-            double vy = (Vector3d.Dot(direction, up) * cosTilt) - (Vector3d.Dot(direction, normal) * sinTilt);
+            double vx = Vector3d.Dot(direction, screenRight);
+            double vy = Vector3d.Dot(direction, screenUp);
             float length = 16f;
             float ex = x + (float)(vx * length);
             float ey = y - (float)(vy * length);
@@ -1513,11 +1631,30 @@ namespace Galilego.Tablet
             }
 
             int legendX = x;
-            int legendY = y - 34;
+            int legendY = y - 46;
             canvas.Line(legendX, legendY + 3, legendX + 16, legendY + 3, TabletTheme.Main);
-            canvas.Text(legendX + 20, legendY, "ИСТОРИЯ", TabletTheme.Dim);
-            DashedHudLine(legendX, legendY + 13, 16, ForecastColor);
-            canvas.Text(legendX + 20, legendY + 10, "ПРОГНОЗ", TabletTheme.Dim);
+            canvas.Text(legendX + 20, legendY, "ОРБИТА", TabletTheme.Dim);
+            canvas.Line(legendX, legendY + 15, legendX + 16, legendY + 15, TabletTheme.Main);
+            canvas.Text(legendX + 20, legendY + 12, "ИСТОРИЯ", TabletTheme.Dim);
+            DashedHudLine(legendX, legendY + 25, 16, ForecastColor);
+            canvas.Text(legendX + 20, legendY + 22, "ПРОГНОЗ", TabletTheme.Dim);
+
+            // Orientation and controls. The screen is a turntable: north is always
+            // up, so the corner cue stays in place while the globe turns under it.
+            int hintX = rect.x + 10;
+            int hintY = rect.y + 8;
+            canvas.Text(hintX, hintY, "ЛКМ — ВРАЩ", TabletTheme.Dim);
+            canvas.Text(hintX, hintY + 10, "КОЛЕСО — МАСШТАБ", TabletTheme.Dim);
+            canvas.Text(hintX, hintY + 20, "2 КЛИКА — СБРОС", TabletTheme.Dim);
+
+            int northX = rect.x + rect.width - 16;
+            int northCenter = northX - 18;
+            canvas.TextRight(northX, hintY, "ВЕРХ", TabletTheme.Main);
+            canvas.VLine(northCenter, hintY + 10, 5, TabletTheme.Main);
+            canvas.Line(northCenter, hintY + 10, northCenter - 3, hintY + 14, TabletTheme.Main);
+            canvas.Line(northCenter, hintY + 10, northCenter + 3, hintY + 14, TabletTheme.Main);
+            int tilt = Mathf.RoundToInt(ElevationRad * Mathf.Rad2Deg);
+            canvas.TextRight(northX, hintY + 20, "УГОЛ " + tilt + "°", TabletTheme.Dim);
 
             DrawScaleBar(rect, lastScale);
         }

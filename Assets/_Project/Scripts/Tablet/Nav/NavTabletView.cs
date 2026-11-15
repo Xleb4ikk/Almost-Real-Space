@@ -41,6 +41,7 @@ namespace Galilego.Tablet
         public event Action<Vector2, float> MapZoomed;   // cursor position in map, wheel delta
         public event Action<Vector2> MapHovered;         // cursor position in map (for picking planets / markers)
         public event Action MapPointerLeft;
+        public event Action MapReset;                    // double-click: back to the default view
 
         private sealed class Card
         {
@@ -67,6 +68,7 @@ namespace Galilego.Tablet
         private int maneuverFrame;
         private bool bound;
         private float refreshTimer;
+        private Texture lastMapTexture;
 
         /// <summary>Create the view on an inactive object, then activate it (UIDocument builds the tree on enable).</summary>
         public void Configure(UIDocument doc, VisualTreeAsset card)
@@ -141,7 +143,18 @@ namespace Galilego.Tablet
                 RebuildCards();
             };
 
-            mapView.RegisterCallback<PointerDownEvent>(e => mapView.CapturePointer(e.pointerId));
+            mapView.RegisterCallback<PointerDownEvent>(e =>
+            {
+                if (e.clickCount >= 2)
+                {
+                    HideTip();
+                    if (MapReset != null) { MapReset(); }
+                    e.StopPropagation();
+                    return;
+                }
+
+                mapView.CapturePointer(e.pointerId);
+            });
             mapView.RegisterCallback<PointerUpEvent>(e => mapView.ReleasePointer(e.pointerId));
             mapView.RegisterCallback<PointerLeaveEvent>(e => { HideTip(); if (MapPointerLeft != null) { MapPointerLeft(); } });
             mapView.RegisterCallback<PointerMoveEvent>(e =>
@@ -171,9 +184,9 @@ namespace Galilego.Tablet
         // ------------------------------------------------------------------ public API
 
         /// <summary>Body list from the simulation (names as shown on screen). Call once after the universe is loaded.</summary>
-        public void SetBodies(string[] names)
+        public void SetBodies(string[] names, bool[] orbitAvailable = null)
         {
-            State.SetBodies(names);
+            State.SetBodies(names, orbitAvailable);
             if (!bound || mFrame == null)
             {
                 return;
@@ -189,11 +202,12 @@ namespace Galilego.Tablet
         /// <summary>Map camera output.</summary>
         public void SetMapTexture(Texture texture)
         {
-            if (mapView == null)
+            if (mapView == null || ReferenceEquals(texture, lastMapTexture))
             {
                 return;
             }
 
+            lastMapTexture = texture;
             if (texture is RenderTexture rt)
             {
                 mapView.style.backgroundImage = new StyleBackground(Background.FromRenderTexture(rt));
@@ -312,17 +326,31 @@ namespace Galilego.Tablet
 
             var nm = new VisualElement();
             nm.AddToClassList("tr-name");
+            bool canToggle = id < State.OrbitAvailable.Length && State.OrbitAvailable[id];
+            nm.tooltip = !canToggle
+                ? "У этого тела нет орбиты вокруг родителя"
+                : (ship ? "Показать/скрыть траекторию аппарата" : "Показать/скрыть орбиту");
             var dot = new VisualElement();
             dot.AddToClassList("dot");
-            dot.EnableInClassList("dot--on", State.OrbitVisible[id]);
-            dot.RegisterCallback<ClickEvent>(e =>
+            dot.EnableInClassList("dot--on", canToggle && State.OrbitVisible[id]);
+            dot.EnableInClassList("dot--off", !canToggle || !State.OrbitVisible[id]);
+            if (!canToggle)
             {
-                State.ToggleOrbit(id);
-                if (OrbitToggled != null) { OrbitToggled(id); }
-                RebuildFrames();
-            });
+                dot.style.opacity = 0.35f;
+            }
+
             nm.Add(dot);
             nm.Add(new Label(name));
+            if (canToggle)
+            {
+                nm.RegisterCallback<ClickEvent>(e =>
+                {
+                    State.ToggleOrbit(id);
+                    if (OrbitToggled != null) { OrbitToggled(id); }
+                    RebuildFrames();
+                    e.StopPropagation();
+                });
+            }
             row.Add(nm);
 
             var center = new Button(() =>
