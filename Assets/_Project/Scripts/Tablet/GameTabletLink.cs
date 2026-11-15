@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Galilego.Building;
 using Galilego.Core;
+using Galilego.Events;
 using Galilego.Simulation.ContactZone;
 using Galilego.Spacecraft;
 using Galilego.Universe;
@@ -203,6 +204,7 @@ namespace Galilego.Tablet
             bool hasCapsule;
             bool controlsAvailable = CapsuleControlsAvailable(out hasCapsule, out double capsuleMass);
             t.ControlsAvailable = controlsAvailable;
+            t.InFlight = Runner != null && !Runner.BuildMode && Runner.Regime == VesselRegime.Flying;
 
             Ship ship = Runner != null ? Runner.Ship : null;
             if (ship == null || Runner.SystemState == null || bodyCountSeen != Runner.SystemState.AllBodies.Count)
@@ -322,17 +324,38 @@ namespace Galilego.Tablet
 
             t.AltitudeSeaLevelM = sea;
             t.AltitudeSurfaceM = surface;
-            t.PressurePa = PressureAt(body, sea);
+            t.PressurePa = Runner.AmbientPressurePa(statePosition, time);
+            if (!(t.PressurePa > 0d))
+            {
+                // No atmosphere profile at the selected body (or above its top):
+                // keep the old analytic fallback for bodies whose atmosphere was
+                // authored without the runner's isothermal pressure path.
+                t.PressurePa = PressureAt(body, sea);
+            }
 
             FillAttitude(t, ship, chartRight, up, north);
             FillMarkers(t, v, vInertial, r, up, chartRight, north);
             FillOrbit(t, body, r, vInertial);
 
-            // Mass / thrust / TWR.
+            // Mass / thrust / TWR. Thrust is the sum of the engines' ACTUAL output
+            // at their current levels and ambient pressure (the same Thruster objects
+            // the N-body/PhysX physics uses), not a nominal stage figure.
             t.CurrentMassKg = ship.Mass;
             double throttle = Runner.Warp != null ? Runner.Warp.CurrentControlSnapshot.Throttle : 0d;
+            double pressure = Runner.AmbientPressurePa(statePosition, time);
             double thrust = 0d;
-            if (Runner.Propulsion != null)
+            if (flight != null)
+            {
+                for (int i = 0; i < flight.MainEngineCount; i++)
+                {
+                    Galilego.Flight.Thruster engine = flight.MainEngine(i);
+                    if (engine != null && !flight.IsGone(engine.PartIndex))
+                    {
+                        thrust += engine.ThrustAt(pressure);
+                    }
+                }
+            }
+            else if (Runner.Propulsion != null)
             {
                 thrust = Runner.Propulsion.ThrustN * throttle;
             }
@@ -342,10 +365,8 @@ namespace Galilego.Tablet
             }
 
             t.ThrustN = thrust;
-            double gSurface = body.Radius > 0d
-                ? body.ResolveStandardGravitationalParameter() / (body.Radius * body.Radius)
-                : G0;
-            t.Twr = ship.Mass > 0d ? thrust / (ship.Mass * gSurface) : 0d;
+            double localGravity = gravity.Magnitude;
+            t.Twr = ship.Mass > 0d && localGravity > 1e-9d ? thrust / (ship.Mass * localGravity) : 0d;
 
             FillStages(t, ship);
             AppendCommandNote(t);
@@ -996,6 +1017,14 @@ namespace Galilego.Tablet
                         : measured;
                     hasProperAcceleration = true;
                 }
+                else if (dt > 1d)
+                {
+                    // Long warp above the thrust gate: the craft coasts ballistically
+                    // and a finite difference over the jumped clock is meaningless.
+                    // Show the physical truth for that mode, not the last pre-warp g.
+                    properAcceleration = 0d;
+                    hasProperAcceleration = true;
+                }
             }
 
             lastVelocity = velocity;
@@ -1016,7 +1045,12 @@ namespace Galilego.Tablet
             }
 
             DvTabletAdapter.Apply(result, t);
-            if (result != null && !result.InFlight)
+
+            // The adapter copies the panel's own InFlight flag; the authoritative
+            // state is the simulation regime. The panel may still be on Plan for a
+            // frame after ignition.
+            t.InFlight = Runner != null && !Runner.BuildMode && Runner.Regime == VesselRegime.Flying;
+            if (result != null && !t.InFlight)
             {
                 t.CurrentMassKg = result.TotalMassKg;
                 t.ThrustN = 0d;
