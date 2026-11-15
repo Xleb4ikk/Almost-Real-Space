@@ -80,6 +80,8 @@
     <Compile Include="$(GalilegoScripts)Ephemeris\EphemerisBaker.cs" />
     <Compile Include="$(GalilegoScripts)Ephemeris\EphemerisRangeException.cs" />
     <Compile Include="$(GalilegoScripts)Ephemeris\EphemerisRuntime.cs" />
+    <Compile Include="$(GalilegoScripts)Ephemeris\Rkn1210Coefficients.cs" />
+    <Compile Include="$(GalilegoScripts)Ephemeris\Rkn1210Stepper.cs" />
 
     <!-- Planet\Sky -->
     <Compile Include="$(GalilegoScripts)Planet\Sky\AtmosphereProfile.cs" />

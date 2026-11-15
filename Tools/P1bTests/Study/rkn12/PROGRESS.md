@@ -1,7 +1,7 @@
 # PROGRESS — RKN12(10) как production-интегратор выпечки эфемерид
 
 Задание: `TASK_RKN12.md` (заморожено, версия 1). Ветка: `rkn12-bake`.
-Один этап за раз. Текущий этап: **R0 завершён; R1 не начат** (ждём «продолжай»).
+Один этап за раз. Текущий этап: **R1 выполнен, коммит `Q-RK1`**. R2 — следующий.
 
 ---
 
@@ -240,9 +240,89 @@ R1 разблокирован, но **не начат**: ждём отдельн
 
 ---
 
-## R1 — НЕ НАЧАТ
+## R1 — коэффициенты и stepper (без включения в baker)
 
-Решение по §6.2 получено: **A** (`sum(B)=1/2`, коэффициенты без нормализации).
-Ждёт команды «продолжай». План по TASK §R1: `Rkn1210Coefficients.cs`,
-`Rkn1210Stepper.cs`, две строки в `Tools/GameSources.props`, тесты
-`Test566_Rkn12BakeCertification` (имя уточняется), без включения в baker.
+### R1.1 Что сделано
+
+* `Assets/_Project/Scripts/Ephemeris/Rkn1210Coefficients.cs` — `C/B/BP/BT/BPT/A`
+  дословно из `StudyAdvancedSteppers.cs`; в комментарии — ссылка на эталон и
+  статью Dormand–El-Mikkawy–Prince (1987), «RKN12(10)17M».
+* `Assets/_Project/Scripts/Ephemeris/Rkn1210Stepper.cs` — чистый C#,
+  `Rkn1210Acceleration(t, p, a)` callback, 17 стадий, `k[0]` в `Begin/Accept`,
+  16 RHS на попытку, per-body relative error norm, без аллокаций в шаге.
+* `Tools/GameSources.props` — две строки `<Compile Include=...>`.
+* `Tools/P1bTests/Tests/Rkn12BakeCertification.cs` — `Test566_Rkn12BakeCertification`
+  (R1-объём; R2–R5 будут расширять этот же кейс).
+* `TestRegistry.cs` — регистрация `Test566` (slow).
+
+Код игры (baker/runtime/сцены) не менялся: `RunBake` по-прежнему DOP853,
+`BakeConfig.Integrator` ещё не существует (это R2).
+
+### R1.2 Результаты `Test566` (ALL PASS)
+
+| Проверка §8.1 | Факт |
+|---|---|
+| `sum(B)=1/2` (решение владельца A), `sum(BP)=1`, `sum(BT)=0`, `sum(BPT)=0` | 0.5 / 1 / −3.9e−18 / +1.0e−17 |
+| `sum_j A[i][j]=C[i]²/2` | max \|diff\| = 2.33e−15 (стадия 16) |
+| Коэффициенты == эталон (reflection, bitwise) | C/B/BP/BT/BPT/A идентичны |
+| Стадии | `Begin` 1 RHS, `TryStep` **16**, `Accept` 1 |
+| Наблюдаемый порядок (ns={4,8,16}) | errors 5.448e−6 / 2.703e−9 / 1.219e−12; overall **11.05** (гейт 11.0–13.5) |
+| Kepler 2-body, один период | **5.81e−8 м** (гейт <1e−6) |
+| N-body 10 лет | `\|ΔP\|/P_scale=4.92e−15`, `\|ΔCOM\|/COM_scale=1.38e−13`, `\|ΔE/E\|=1.88e−15` (гейты P/COM 1e−11; энергия — отчёт) |
+| Node landing | **13/13 узлов бит-в-бит** `t == nextT`, 1 reject |
+| Детерминизм | два прогона бит-в-бит равны |
+| Аллокации | **0 байт** на 2000 шагов после прогрева |
+| Ошибка одной попытки vs эталон | max \|diff\| = **0.0** |
+
+Заметки:
+* Порядок 11.05 — тот же, что у эталонного self-test: на симметричной орбите
+  ведущий член сокращается, и парные наклоны скачут; гейт использует общий
+  наклон по ns={4,8,16}. Имплементация совпадает с эталоном побитово на шаге.
+* Тест «норма не зависит от абсолютной координаты» сравнивает ошибку при
+  смещении всей системы; на больших смещениях (1e6 м) computed-норма уходит на
+  ~1e-4 из-за сокращения в embedded error estimate. Гейт 1e-4 отделяет
+  относительную норму от абсолютной (последняя изменилась бы на порядки).
+  Это свойство обусловленности оценки, а не формула нормы.
+
+### R1.3 Регрессия §8.0 после R1
+
+| Проверка | Результат |
+|---|---|
+| build | 0 ошибок |
+| `GalilegoPhysicsTests` | 283/283 |
+| `GalilegoSimTests` | 107/107 |
+| `Test551` | 84/0, SHA256 `54ae98e2…` — совпал |
+| `Test565_DynamicPolicy` | ALL PASS |
+| `Test566_Rkn12BakeCertification` | ALL PASS |
+| `--compare` стенда (GameSources.props изменён) | см. R1.4 |
+
+### R1.4 `--compare` стенда
+
+`Test564_MethodQualification` (profile `full`) против
+`qualification/baseline/20261114T173334Z_142824a`:
+
+* **0** изменений статусов, **0** новых ячеек, **0** ошибок, **0** изменений цены >10%;
+* `No changes: statuses, errors and prices are identical within 10%`;
+* 2925 ячеек matrix (`PASS=1800 FAIL=194 N/A=555 SKIP=376`), elapsed **3 274 688 мс**
+  (~54.6 мин), ALL PASS;
+* лог: `results/qualification_compare_r1.log` (локальный, git-ignored).
+
+Это подтверждает: две новые строки в `Tools/GameSources.props` не сдвинули
+поведение стенда. Результаты прогона записаны в штатную (git-ignored) папку
+`qualification/results/`.
+
+### R1.5 Итог R1
+
+* R1-код готов, `Test566` ALL PASS, DOP853-путь не тронут (baker ещё не ветвится).
+* `GameSources.props` изменён только двумя строками; `--compare` — 0 изменений.
+* Коммит: `Q-RK1`.
+
+---
+
+## R2 — НЕ НАЧАТ
+
+План: `BakeIntegrator { Dop853Fixed = 0, Rkn1210Adaptive = 1 }`, поле в
+`BakeConfig` и `StarSystemAuthoring` (инициализатор `Dop853Fixed` навсегда),
+popup в инспекторе, ветка в `RunBake` с node forcing/per-body norm. DOP853-ветка
+обязана остаться побитово прежней.
+
