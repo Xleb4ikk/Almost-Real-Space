@@ -384,7 +384,25 @@ namespace Galilego.Tablet
             // this map are real trajectories.
             // DrawGrid(rect, Project, radius, center, right, up);
 
-            // 1. Globes first: they are the background the orbits are drawn over.
+            // 1. Reference plane: a faint dashed ring gives the eye a horizon and
+            // makes a tilt readable even when the globe itself is featureless.
+            DrawPlaneRing(Project, right0, up0, radius * 1.035d, rect);
+
+            // 2. Body orbits go BEHIND the globes. A planet's own orbit passes
+            // through its centre, so drawing it on top made a bright line look
+            // like it was painted across the planet.
+            for (int i = 0; i < model.Lines.Count; i++)
+            {
+                NavLine line = model.Lines[i];
+                if (line.Kind != NavLineKind.BodyOrbit)
+                {
+                    continue;
+                }
+
+                DrawPolyline(line.Points, Project, rect, BodyColor(line.BodyIndex), false, 1);
+            }
+
+            // 3. Globes.
             for (int i = 0; i < model.Bodies.Count; i++)
             {
                 NavBodyMarker body = model.Bodies[i];
@@ -406,40 +424,12 @@ namespace Galilego.Tablet
                 DrawPlanetDisk(model, body, p, bodyRadius, screenRight, screenUp, camDir, rect, color);
             }
 
-            // 2. Reference plane: a faint dashed ring gives the eye a horizon and
-            // makes a tilt readable even when the globe itself is featureless.
-            DrawPlaneRing(Project, right0, up0, radius * 1.035d, rect);
-
-            // 3. Real trajectories on top of the globes, as in a map view.
-            for (int i = 0; i < model.Lines.Count; i++)
-            {
-                NavLine line = model.Lines[i];
-                if (line.Kind != NavLineKind.BodyOrbit)
-                {
-                    continue;
-                }
-
-                Color32 color = BodyColor(line.BodyIndex);
-                if (line.BodyIndex == centerIndex || line.BodyIndex == model.FrameIndex)
-                {
-                    color = TabletTheme.Main;
-                }
-
-                DrawPolyline(line.Points, Project, rect, color, false, 1);
-            }
-
+            // 4. Ship trails are above the surface, so they may overlay the globe.
             for (int i = 0; i < model.Lines.Count; i++)
             {
                 NavLine line = model.Lines[i];
                 if (line.Kind == NavLineKind.ShipHistory)
                 {
-                    // On/near the ground the old flight trail reads as a fake orbit
-                    // around the planet; the globe itself is the surface reference.
-                    if (model.HasSurfaceFrame && model.ShipHeightAboveTerrain < 50_000d)
-                    {
-                        continue;
-                    }
-
                     DrawPolyline(line.Points, Project, rect, TabletTheme.Main, false, 2);
                 }
             }
@@ -458,7 +448,7 @@ namespace Galilego.Tablet
                 }
             }
 
-            // 4. Body markers and labels, on top of every line.
+            // 5. Body markers and labels, on top of every line.
             for (int i = 0; i < model.Bodies.Count; i++)
             {
                 NavBodyMarker body = model.Bodies[i];
@@ -1632,12 +1622,19 @@ namespace Galilego.Tablet
 
             int legendX = x;
             int legendY = y - 46;
-            canvas.Line(legendX, legendY + 3, legendX + 16, legendY + 3, TabletTheme.Main);
+            canvas.Line(legendX, legendY + 3, legendX + 16, legendY + 3, TabletTheme.LineHi);
             canvas.Text(legendX + 20, legendY, "ОРБИТА", TabletTheme.Dim);
             canvas.Line(legendX, legendY + 15, legendX + 16, legendY + 15, TabletTheme.Main);
-            canvas.Text(legendX + 20, legendY + 12, "ИСТОРИЯ", TabletTheme.Dim);
+            string history = model.HistorySeconds > 0d
+                ? "ИСТОРИЯ " + TabletFormat.Time(model.HistorySeconds)
+                : "ИСТОРИЯ ВЫКЛ";
+            canvas.Text(legendX + 20, legendY + 12, history, TabletTheme.Dim);
             DashedHudLine(legendX, legendY + 25, 16, ForecastColor);
-            canvas.Text(legendX + 20, legendY + 22, "ПРОГНОЗ", TabletTheme.Dim);
+            string forecast = model.ForecastValid
+                ? "ПРОГНОЗ " + TabletFormat.Time(model.ForecastWindowSeconds)
+                : "ПРОГНОЗ ВЫКЛ";
+            canvas.Text(legendX + 20, legendY + 22, forecast,
+                model.ForecastValid ? TabletTheme.Dim : ForecastColor);
 
             // Orientation and controls. The screen is a turntable: north is always
             // up, so the corner cue stays in place while the globe turns under it.

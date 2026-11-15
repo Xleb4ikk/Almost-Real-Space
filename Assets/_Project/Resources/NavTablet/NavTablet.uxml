@@ -43,12 +43,12 @@
                 </ui:VisualElement>
                 <ui:VisualElement class="pn-body time-body">
                     <ui:VisualElement class="row">
-                        <ui:Label text="ДЛИНА ПРОГНОЗА" class="row-l" />
+                        <ui:Label name="l-forecast" text="ДЛИНА ПРОГНОЗА" class="row-l" />
                         <nav:RateSliderElement name="sl-forecast" class="row-s" />
                         <ui:TextField name="f-forecast" class="tf row-f" is-delayed="true" />
                     </ui:VisualElement>
                     <ui:VisualElement class="row">
-                        <ui:Label text="ДЛИНА ИСТОРИИ" class="row-l" />
+                        <ui:Label name="l-history" text="ДЛИНА ИСТОРИИ" class="row-l" />
                         <nav:RateSliderElement name="sl-history" class="row-s" />
                         <ui:TextField name="f-history" class="tf row-f" is-delayed="true" />
                     </ui:VisualElement>

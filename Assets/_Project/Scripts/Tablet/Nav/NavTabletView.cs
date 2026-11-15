@@ -69,6 +69,28 @@ namespace Galilego.Tablet
         private bool bound;
         private float refreshTimer;
         private Texture lastMapTexture;
+        private Label lForecast;
+        private bool forecastAvailable = true;
+
+        /// <summary>
+        /// False on the surface / in contact / in the builder: the map cannot
+        /// integrate a coast there, so the forecast slider must say so instead of
+        /// silently changing a value that draws nothing.
+        /// </summary>
+        public bool ForecastAvailable
+        {
+            get { return forecastAvailable; }
+            set
+            {
+                if (forecastAvailable == value)
+                {
+                    return;
+                }
+
+                forecastAvailable = value;
+                ApplyForecastAvailability();
+            }
+        }
 
         /// <summary>Create the view on an inactive object, then activate it (UIDocument builds the tree on enable).</summary>
         public void Configure(UIDocument doc, VisualTreeAsset card)
@@ -131,6 +153,7 @@ namespace Galilego.Tablet
             slHistory.Model = State.HistorySlider;
             fForecast = root.Q<TextField>("f-forecast");
             fHistory = root.Q<TextField>("f-history");
+            lForecast = root.Q<Label>("l-forecast");
             fForecast.RegisterValueChangedCallback(e => { double t; if (TabletTime.TryParse(e.newValue, out t)) { State.SetForecast(t); } });
             fHistory.RegisterValueChangedCallback(e => { double t; if (TabletTime.TryParse(e.newValue, out t)) { State.SetHistory(t); } });
 
@@ -182,6 +205,38 @@ namespace Galilego.Tablet
             bound = true;
             SetBodies(State.BodyNames);
             RebuildCards();
+            ApplyForecastAvailability();
+        }
+
+        private void ApplyForecastAvailability()
+        {
+            if (!bound)
+            {
+                return;
+            }
+
+            if (lForecast != null)
+            {
+                lForecast.text = forecastAvailable ? "ДЛИНА ПРОГНОЗА" : "ПРОГНОЗ ВЫКЛ";
+                lForecast.EnableInClassList("row-l--tan", !forecastAvailable);
+            }
+
+            float opacity = forecastAvailable ? 1f : 0.45f;
+            if (slForecast != null)
+            {
+                slForecast.style.opacity = opacity;
+                slForecast.tooltip = forecastAvailable
+                    ? null
+                    : "На поверхности и в контакте прогноз не строится";
+            }
+
+            if (fForecast != null)
+            {
+                fForecast.style.opacity = opacity;
+                fForecast.tooltip = forecastAvailable
+                    ? null
+                    : "На поверхности и в контакте прогноз не строится";
+            }
         }
 
         // ------------------------------------------------------------------ public API

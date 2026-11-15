@@ -126,6 +126,16 @@ internal static partial class P1bTests
             }
         }
 
+        // Forecast length is the slider value: a longer requested window must
+        // produce a longer integrated forecast (unless the 3-orbit map cap binds).
+        var shortForecastModel = new NavMapModel();
+        shortForecastModel.Rebuild(system, ship, 0d, 1, shipId, visible, 600d, 0d, null, true);
+        var longForecastModel = new NavMapModel();
+        longForecastModel.Rebuild(system, ship, 0d, 1, shipId, visible, 6d * 3600d, 0d, null, true);
+        bool forecastLengthReacts = longForecastModel.ForecastValid
+            && shortForecastModel.ForecastValid
+            && longForecastModel.ForecastWindowSeconds > shortForecastModel.ForecastWindowSeconds + 1d;
+
         // No forecast on the surface/contact path, but the real state and history remain.
         var history = new List<NavShipSample>();
         for (int i = 0; i <= 20; i++)
@@ -177,10 +187,10 @@ internal static partial class P1bTests
 
         bool pass = markers && frameRelative && forecastValid && forecastFinite && forecastStartsAtShip
             && forecastOff && historyValid && noteHonest && planeOrthonormal && surfaceMode
-            && frameOrbit && frameOrbitOnBody && frameOrbitToggle && shipToggle;
+            && frameOrbit && frameOrbitOnBody && frameOrbitToggle && shipToggle && forecastLengthReacts;
         Check(pass, "T567 nav map model",
             string.Format(
-                "bodies={0} frame={1:F2}м; forecast={2} pts={3} finite={4} start={5}; no-forecast={6} history={7} note={8}; plane={9}; surface={10} mode={11} hasFrame={12} dominant={13} terrain={14} lat={15:F2} lon={16:F2} hAGL={17:F0}; frameOrbit={18}/{19} toggle={20} shipToggle={21}",
+                "bodies={0} frame={1:F2}м; forecast={2} pts={3} finite={4} start={5}; no-forecast={6} history={7} note={8}; plane={9}; surface={10} mode={11} hasFrame={12} dominant={13} terrain={14} lat={15:F2} lon={16:F2} hAGL={17:F0}; frameOrbit={18}/{19} toggle={20} shipToggle={21} forecastLen={22}",
                 model.Bodies.Count,
                 model.FrameRelativeShipPosition.Magnitude,
                 forecastValid,
@@ -202,7 +212,8 @@ internal static partial class P1bTests
                 frameOrbit,
                 frameOrbitOnBody,
                 frameOrbitToggle,
-                shipToggle));
+                shipToggle,
+                forecastLengthReacts));
         return 0;
     }
 }

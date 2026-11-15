@@ -475,6 +475,7 @@ namespace Galilego.Tablet
                 && !runner.BuildMode
                 && runner.Regime == VesselRegime.Flying
                 && runner.Ship != null;
+            view.ForecastAvailable = allowForecast;
 
             try
             {
