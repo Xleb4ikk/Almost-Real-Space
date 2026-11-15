@@ -428,6 +428,8 @@ internal static partial class P1bTests
 
         OrbitingBody body = sys.AllBodies[1];
         body.EvaluateKeplerOffset(t, out Vector3d railP, out _);
+        double tExact = (double)steps * h;
+        body.EvaluateKeplerOffset(tExact, out Vector3d railExact, out _);
         var refRel = new Vector3d(
             problem.Y0[3] - problem.Y0[0],
             problem.Y0[4] - problem.Y0[1],
@@ -436,11 +438,58 @@ internal static partial class P1bTests
         double refErr = (refRel - railP).Magnitude;
         double ourErr = (ourRel - railP).Magnitude;
         double cross = (refRel - ourRel).Magnitude;
+        double refErrExact = (refRel - railExact).Magnitude;
+        double ourErrExact = (ourRel - railExact).Magnitude;
+        double dt = t - tExact;
         Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
             "R3 roundoff probe 1024 y, h={0:F0} s, steps={1}: reference vs rail={2:E3} m, ours vs rail={3:E3} m, reference vs ours={4:E3} m",
             h, steps, refErr, ourErr, cross));
+        Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+            "R3 time-base probe: tAccum={0:R}, tExact={1:R}, dt={2:E6} s; ref vs rail@tExact={3:E3} m, ours vs rail@tExact={4:E3} m",
+            t, tExact, dt, refErrExact, ourErrExact));
         Check(double.IsFinite(refErr) && double.IsFinite(ourErr),
             "R3 roundoff probe finite", "");
+
+        // Convergence at the EXACT physical time: the state is advanced by h, so
+        // its physical time is steps*h; the accumulated label t drifts. Compare
+        // both to separate truncation/round-off from time-base bookkeeping.
+        Console.WriteLine("R3 convergence at exact time (2-body 1024 y):");
+        foreach (double factor in new[] { 1.0d, 0.5d, 0.25d })
+        {
+            double hh = end / Math.Round(end / (h * factor));
+            long n = (long)Math.Round(end / hh);
+            double[] pp = new double[6];
+            double[] vv = new double[6];
+            Array.Copy(p, 0, pp, 0, 6);
+            Array.Copy(v, 0, vv, 0, 6);
+            // Rebuild the initial state: p/v above are the final ones; use the
+            // exact RunBake initial state again.
+            BaselineInitialState(sys, out double[] p0c, out double[] v0c, out _);
+            Array.Copy(p0c, 0, pp, 0, 6);
+            Array.Copy(v0c, 0, vv, 0, 6);
+            var st = new Rkn12BakeStepper(2, new[] { -1, 0 }, 1e-12, 1e-3, 1e-6, Rkn12GravityMu(mu));
+            var ppn = new double[6];
+            var vvn = new double[6];
+            st.Begin(0d, pp, vv);
+            double tc = 0d;
+            for (long s = 0; s < n; s++)
+            {
+                st.TryStep(tc, hh, pp, vv, ppn, vvn);
+                st.Accept(tc + hh, ppn, vvn);
+                Array.Copy(ppn, pp, 6);
+                Array.Copy(vvn, vv, 6);
+                tc += hh;
+            }
+
+            double tEnd = (double)n * hh;
+            var rel = new Vector3d(pp[3] - pp[0], pp[4] - pp[1], pp[5] - pp[2]);
+            body.EvaluateKeplerOffset(tc, out Vector3d railAccum, out _);
+            body.EvaluateKeplerOffset(tEnd, out Vector3d railExact2, out _);
+            Console.WriteLine(string.Format(CultureInfo.InvariantCulture,
+                "  h={0:E3} s, steps={1}: dt={2:E3} s, err@tAccum={3:E3} m, err@tExact={4:E3} m",
+                hh, n, tc - tEnd, (rel - railAccum).Magnitude, (rel - railExact2).Magnitude));
+        }
+
         return 0;
     }
 

@@ -1116,9 +1116,19 @@ namespace Galilego.Universe
                     // RKN12(10): adaptive step, node forcing (§6.4). hAdaptive survives
                     // between nodes; a clipped step must not shrink it. Rejections never
                     // cross nextT; an accept at the node assigns nextT exactly.
+                    //
+                    // The physical time of the state is the exact sum of the accepted h
+                    // values. Plain t += h accumulates a 0.5 s bias over 10^5-10^6 steps
+                    // (measured: 0.5006 s over 642k steps at 1024 y), which at 30 km/s
+                    // looks like kilometres even though the state itself is accurate.
+                    // Kahan-compensate the time base; the node label is still assigned
+                    // bitwise-equal nextT.
+                    double rknTime = t;
+                    double rknTimeComp = 0d;
                     while (t < nextT)
                     {
-                        double remaining = nextT - t;
+                        double currentTime = rknTime - rknTimeComp;
+                        double remaining = nextT - currentTime;
                         if (!(remaining > 0d))
                         {
                             break;
@@ -1131,14 +1141,25 @@ namespace Galilego.Universe
                             hTry = remaining;
                         }
 
-                        double errorNorm = rknStepper.TryStep(t, hTry, p, v, rknPNew, rknVNew);
+                        double errorNorm = rknStepper.TryStep(currentTime, hTry, p, v, rknPNew, rknVNew);
                         if (errorNorm <= 1d)
                         {
-                            double tNew = clipped ? nextT : t + hTry;
+                            double tNew = clipped ? nextT : currentTime + hTry;
                             rknStepper.Accept(tNew, rknPNew, rknVNew);
                             Array.Copy(rknPNew, p, 3 * n);
                             Array.Copy(rknVNew, v, 3 * n);
-                            t = tNew;
+
+                            double y = hTry - rknTimeComp;
+                            double tComp = rknTime + y;
+                            rknTimeComp = (tComp - rknTime) - y;
+                            rknTime = tComp;
+                            t = clipped ? nextT : rknTime;
+                            if (clipped)
+                            {
+                                rknTime = nextT;
+                                rknTimeComp = 0d;
+                            }
+
                             rknRejects = 0;
 
                             double factor = Math.Min(5d, Math.Max(0.2d,
@@ -1161,7 +1182,7 @@ namespace Galilego.Universe
                             {
                                 throw new InvalidOperationException(
                                     "RKN12(10): шаг не проходит допуск на пределе: t=" +
-                                    t.ToString("R", CultureInfo.InvariantCulture) +
+                                    currentTime.ToString("R", CultureInfo.InvariantCulture) +
                                     " s, h=" + hTry.ToString("R", CultureInfo.InvariantCulture) +
                                     " s, errorNorm=" + errorNorm.ToString("E6", CultureInfo.InvariantCulture) +
                                     ", body=" + rknStepper.LastErrorBody +
