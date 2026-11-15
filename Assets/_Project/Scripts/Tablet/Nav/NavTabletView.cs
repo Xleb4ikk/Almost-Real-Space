@@ -37,7 +37,7 @@ namespace Galilego.Tablet
         public event Action<int> CenterChanged;
         public event Action<int> OrbitToggled;
         public event Action<Maneuver> ManeuverDue;
-        public event Action<Vector2, bool> MapDragged;   // pixel delta, rotate (right button or Shift)
+        public event Action<Vector2, bool> MapDragged;   // pixel delta, rotate (primary button or Shift)
         public event Action<Vector2, float> MapZoomed;   // cursor position in map, wheel delta
         public event Action<Vector2> MapHovered;         // cursor position in map (for picking planets / markers)
         public event Action MapPointerLeft;
@@ -162,7 +162,10 @@ namespace Galilego.Tablet
                 if (mapView.HasPointerCapture(e.pointerId))
                 {
                     HideTip();
-                    if (MapDragged != null) { MapDragged(e.deltaPosition, (e.pressedButtons & 2) != 0 || e.shiftKey); }
+                    // Primary button (and Shift) rotates the view; secondary pans.
+                    // A globe is a 3D view first: the old binding made left-drag pan
+                    // while the HUD said "LMB rotates".
+                    if (MapDragged != null) { MapDragged(e.deltaPosition, (e.pressedButtons & 2) == 0 || e.shiftKey); }
                 }
                 else if (MapHovered != null)
                 {

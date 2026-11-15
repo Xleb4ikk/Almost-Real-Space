@@ -1644,8 +1644,9 @@ namespace Galilego.Tablet
             int hintX = rect.x + 10;
             int hintY = rect.y + 8;
             canvas.Text(hintX, hintY, "ЛКМ — ВРАЩ", TabletTheme.Dim);
-            canvas.Text(hintX, hintY + 10, "КОЛЕСО — МАСШТАБ", TabletTheme.Dim);
-            canvas.Text(hintX, hintY + 20, "2 КЛИКА — СБРОС", TabletTheme.Dim);
+            canvas.Text(hintX, hintY + 10, "ПКМ — СДВИГ", TabletTheme.Dim);
+            canvas.Text(hintX, hintY + 20, "КОЛЕСО — МАСШТАБ", TabletTheme.Dim);
+            canvas.Text(hintX, hintY + 30, "2 КЛИКА — СБРОС", TabletTheme.Dim);
 
             int northX = rect.x + rect.width - 16;
             int northCenter = northX - 18;
