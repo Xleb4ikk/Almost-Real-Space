@@ -311,6 +311,11 @@ new P1bCase("Test549_SpacecraftOrbitIntegrators", Test549_SpacecraftOrbitIntegra
             new P1bCase("Test563_LeoCapRegime", Test563_LeoCapRegime, true),
             new P1bCase("Test564_MethodQualification", Test564_MethodQualification, true),
             new P1bCase("Test565_DynamicPolicy", Test565_DynamicPolicy, true),
+
+            // R0 baseline probe of the current DOP853 ephemeris bake (TASK_RKN12 §R0).
+            // Unnumbered on purpose: Test566 is reserved for the RKN12 certification
+            // test required by TASK_RKN12 §4. Diagnostic: measures, asserts only hashes.
+            new P1bCase("Rkn12BaselineDop853", Rkn12BaselineDop853, true, diagnostic: true),
             new P1bCase("Test534_JupiterVariants", Test534_JupiterVariants, true),
             new P1bCase("Test534b_MoonsAsBodies", Test534b_MoonsAsBodies, true),
         };

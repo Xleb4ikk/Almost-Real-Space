@@ -1,0 +1,86 @@
+# R0 environment — TASK_RKN12
+
+date_utc: 2026-11-15T12:12:52Z
+machine: XLEB4IKK
+os: Microsoft Windows 11 Pro 10.0.26200 (build 26200)
+cpu: AMD Ryzen 9 8940HX with Radeon Graphics (16C/32T)
+ram_gb: 31.21
+dotnet_sdk: 10.0.401 (MSBuild 18.9.11)
+dotnet_runtimes: Microsoft.NETCore.App 8.0.11, 8.0.21, 8.0.24
+target_framework: net8.0
+powershell: Windows PowerShell 5.1 (console output is cp866; result files are UTF-8)
+
+git_branch: rkn12-bake
+git_head: 0d87ada8f8e63f2feb0aa00757eb0f0a48646ae0 Q-RK-TASK: freeze RKN12 bake task (frozen spec, AGENTS pointer)
+git_task_commit: 0d87ada8f8e63f2feb0aa00757eb0f0a48646ae0
+git_status_at_start: clean
+
+## Commands (R0)
+
+    dotnet build Tools/P1bTests/P1bTests.csproj -c Release
+    dotnet test tests/GalilegoPhysicsTests/GalilegoPhysicsTests.csproj -c Release
+    dotnet test tests/GalilegoSimTests/GalilegoSimTests.csproj -c Release
+    powershell -ExecutionPolicy Bypass -File Tools/P1bTests/Study/qualification/baseline/verify_test551.ps1
+    Tools/P1bTests/bin/Release/net8.0/P1bTests.exe --exact Test565_DynamicPolicy
+
+    # R0 DOP853 bake baseline (from the repository root).
+    # dd-Taylor is OPT-IN and disabled by default (owner decision, 2026-11-15):
+    $env:RKN12_BASELINE_DD="none"          # default; dd-Taylor not run
+    $env:RKN12_BASELINE_TIGHT="1.2,10,100"
+    Tools/P1bTests/bin/Release/net8.0/P1bTests.exe --exact Rkn12BaselineDop853 `
+        --log Tools/P1bTests/Study/rkn12/results/baseline/run.log
+
+    # The dd-Taylor endpoint rows in node_errors.csv were produced by ONE
+    # explicit opt-in run up to 100 years (1.2 y = 4 s, 10 y = 31 s,
+    # 100 y = 315 s). The 1024-year dd-Taylor was started and stopped by the
+    # owner (~1 h estimate); 1024 years is therefore consistency/energy only.
+    # Repeating those rows: RKN12_BASELINE_DD="1.2,10,100".
+
+## Regression at Q-RK-TASK (R0)
+
+    build:              0 errors, 16 warnings (pre-existing)
+    GalilegoPhysicsTests: 283/283 passed, 0 failed
+    GalilegoSimTests:     107/107 passed, 0 failed
+    Test551:              lines=84 fails=0
+                          SHA256=54ae98e23563b5bec8551f9188a2b83424b049cc6e4cd5deba43141402aec5e6
+    Test565_DynamicPolicy: ALL PASS (175 rows; 13 gate-FAIL rows are the pre-existing
+                          dynamic-policy result, not a regression)
+
+Note: Test565 rewrites Study/dynamic_policy/DYNAMIC_REPORT.md wall-time rows. That
+file belongs to the frozen dynamic_policy task; it was restored to HEAD with
+`git checkout --` after the run, so the RKN12 branch does not modify it.
+
+## Baseline configuration
+
+    Integrator:          DOP853 fixed step (current RunBake, 12 stages)
+    Degree:              12
+    PhasePerStep:        0.02
+    MaxStepSeconds:      900
+    QuantBudgetMeters:   2
+    SegmentPeriodDivisor: 4 (2..64 days clamp)
+    Files:               BG3 (quantized + varint + gzip), as the inspector writes them
+
+Systems (values copied from the scenes / preset, no scene was opened):
+
+    Outdoors:    Sol mu=2.65433e19 R=2.345e8; Terra mu=1.28e13 R=1.143e6,
+                 a=5.51876e10, e=0.017, angles 0.
+                 Source: Assets/_Project/Scenes/OutdoorsScene.unity:423-436,950-963.
+    ContactZone: Star mu=1.327e20 R=6.96e8; Terra mu=1.28e13 R=1.143e6,
+                 a=1.5e11, e=0.017, angles 0.
+                 Source: Assets/_Project/Scenes/ContactZoneSlice.unity:166-177,387-398.
+    Example4:    ExampleSystemPresets.CreateExampleSystem() — star + planet A + moon + planet B.
+                 Source: Assets/_Project/Scripts/Universe/ExampleSystemPresets.cs:14-63.
+
+Reference policy for R0:
+
+    * 2-body (Outdoors, ContactZone): analytic Kepler rail of the same body,
+      exact for the two-body problem; the reported node error is the DELIVERED
+      error of the BG3 file (it includes coefficient quantization, budget 2 m).
+    * 4-body (Example4): dd-Taylor (order 32, tolerance 1e-30, max step 86400 s)
+      started from the exact RunBake initial state; only the endpoint node is
+      compared in R0 (dense independent sampling is an R3/R5 item).
+    * tighter DOP853 (60 s, phase 0.002) is a consistency probe only, never the
+      sole reference (§5).
+    * 1024-year 4-body: dd-Taylor is NOT run (owner decision 2026-11-15;
+      estimated ~1 h). The 1024-year result is labelled consistency/energy,
+      as §8.5 allows when the independent reference is unavailable.
