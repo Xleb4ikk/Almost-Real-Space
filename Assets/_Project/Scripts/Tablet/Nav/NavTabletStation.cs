@@ -475,7 +475,6 @@ namespace Galilego.Tablet
                 && !runner.BuildMode
                 && runner.Regime == VesselRegime.Flying
                 && runner.Ship != null;
-            view.ForecastAvailable = allowForecast;
 
             try
             {
@@ -504,6 +503,7 @@ namespace Galilego.Tablet
 
                 mapInfo.Connected = false;
                 mapInfo.Status = "ОШИБКА КАРТЫ: " + e.GetType().Name;
+                view.ForecastAvailable = false;
                 if (overlay)
                 {
                     overlayMap.Draw(mapModel, view.State, mapInfo);
@@ -519,6 +519,7 @@ namespace Galilego.Tablet
             }
 
             FillMapInfo(allowForecast);
+            view.ForecastAvailable = allowForecast || (mapModel != null && mapModel.ForecastValid);
             if (overlay)
             {
                 overlayMap.Draw(mapModel, view.State, mapInfo);

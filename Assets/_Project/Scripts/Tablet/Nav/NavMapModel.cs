@@ -104,6 +104,9 @@ namespace Galilego.Tablet
         public Vector3d ApoapsisPosition;
         public string Note = string.Empty;
         public bool ForecastValid;
+
+        /// <summary>True when the forecast line is the landed site's rotation path, not a ballistic coast.</summary>
+        public bool SurfaceForecast;
         public bool ForecastTruncated;
         public double ForecastSeconds;
         public double ForecastWindowSeconds;
@@ -166,6 +169,7 @@ namespace Galilego.Tablet
             CenterIndex = centerIndex;
             HasShip = ship != null;
             ForecastValid = false;
+            SurfaceForecast = false;
             ForecastTruncated = false;
             ForecastWindowSeconds = 0d;
             Note = string.Empty;
@@ -251,11 +255,21 @@ namespace Galilego.Tablet
                 BuildHistory(system, frame, timeSeconds, historySeconds, history);
             }
 
+            bool surfaceForecast = false;
             if (shipLinesVisible && allowForecast && HasShip && ship.Mass > 0d)
             {
                 BuildForecast(system, ship, timeSeconds, frame, forecastSeconds);
             }
-            else if (!allowForecast)
+            else if (shipLinesVisible && HasShip && HasSurfaceFrame
+                && ShipHeightAboveTerrain < 50_000d && forecastSeconds > 1d)
+            {
+                // A supported craft cannot coast, but its landing site still moves
+                // with the planet. That rotation path is the honest forecast here.
+                BuildSurfaceForecast(timeSeconds, frame, forecastSeconds);
+                surfaceForecast = ForecastValid;
+            }
+
+            if (!allowForecast && !surfaceForecast)
             {
                 Note = "ПРОГНОЗ ВЫКЛЮЧЕН: НЕТ СВОБОДНОГО ПОЛЁТА (КОНТАКТ/ПОВЕРХНОСТЬ/СТРОЙКА)";
             }
@@ -453,6 +467,76 @@ namespace Galilego.Tablet
             normal = normal.Normalized;
             // Complete the right-handed (right, up, normal) triple.
             right = (right - (normal * Vector3d.Dot(right, normal))).Normalized;
+        }
+
+        /// <summary>
+        /// Forecast for a craft standing on the surface: it cannot coast, but the
+        /// landing site travels with the planet's rotation. Draw that path instead
+        /// of pretending the craft is in free fall. Capped at one rotation — after
+        /// that the same circle repeats.
+        /// </summary>
+        private void BuildSurfaceForecast(double time, OrbitingBody frame, double forecastSeconds)
+        {
+            OrbitingBody body = DominantBody;
+            if (body == null || !HasSurfaceFrame || !(forecastSeconds > 1d))
+            {
+                return;
+            }
+
+            double window = forecastSeconds;
+            if (body.RotationPeriodSeconds > 0d)
+            {
+                window = Math.Min(window, body.RotationPeriodSeconds);
+            }
+            else
+            {
+                window = Math.Min(window, 86400d);
+            }
+
+            if (!(window > 1d))
+            {
+                return;
+            }
+
+            int n = ForecastSamples;
+            var line = new NavLine
+            {
+                Kind = NavLineKind.ShipForecast,
+                Dashed = true,
+                StartTimeS = time,
+                EndTimeS = time + window,
+            };
+
+            double altitude = Math.Max(0d, ShipAltitudeMeters);
+            for (int k = 0; k < n; k++)
+            {
+                double t = time + (window * k / (n - 1d));
+                try
+                {
+                    body.GetSurfaceState(ShipLatitudeDegrees, ShipLongitudeDegrees, altitude,
+                        t, out Vector3d point, out _);
+                    frame.EvaluateWorldState(t, out Vector3d framePoint, out _);
+                    line.Points.Add(point - framePoint);
+                }
+                catch (EphemerisRangeException)
+                {
+                    break;
+                }
+            }
+
+            if (line.Points.Count < 2)
+            {
+                return;
+            }
+
+            Lines.Add(line);
+            ForecastValid = true;
+            SurfaceForecast = true;
+            ForecastWindowSeconds = window;
+            ForecastTruncated = window < forecastSeconds - 1e-6d;
+            Note = ForecastTruncated
+                ? "ПРОГНОЗ ВРАЩЕНИЯ ПЛОЩАДКИ · 1 ОБОРОТ"
+                : "ПРОГНОЗ ВРАЩЕНИЯ ПЛОЩАДКИ";
         }
 
         private void BuildBodyOrbits(StarSystem system, double time, int frameIndex, bool[] orbitVisible)

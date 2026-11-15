@@ -402,7 +402,26 @@ namespace Galilego.Tablet
                 DrawPolyline(line.Points, Project, rect, BodyColor(line.BodyIndex), false, 1);
             }
 
-            // 3. Globes.
+            // 3. Ship trails: base pass behind the globe.
+            for (int i = 0; i < model.Lines.Count; i++)
+            {
+                NavLine line = model.Lines[i];
+                if (line.Kind == NavLineKind.ShipHistory)
+                {
+                    DrawPolyline(line.Points, Project, rect, TabletTheme.Main, false, 2);
+                }
+            }
+
+            for (int i = 0; i < model.Lines.Count; i++)
+            {
+                NavLine line = model.Lines[i];
+                if (line.Kind == NavLineKind.ShipForecast)
+                {
+                    DrawPolyline(line.Points, Project, rect, ForecastColor, true, 1);
+                }
+            }
+
+            // 4. Globes.
             for (int i = 0; i < model.Bodies.Count; i++)
             {
                 NavBodyMarker body = model.Bodies[i];
@@ -424,31 +443,43 @@ namespace Galilego.Tablet
                 DrawPlanetDisk(model, body, p, bodyRadius, screenRight, screenUp, camDir, rect, color);
             }
 
-            // 4. Ship trails are above the surface, so they may overlay the globe.
-            for (int i = 0; i < model.Lines.Count; i++)
+            // 5. Near halves of the ship trails over the globe. The far halves stay
+            // under it, so a surface site path no longer shows through the planet.
+            int occluderIndex = centerIndex >= 0 && centerIndex < model.Bodies.Count
+                ? centerIndex
+                : model.DominantBodyIndex;
+            if (occluderIndex >= 0 && occluderIndex < model.Bodies.Count)
             {
-                NavLine line = model.Lines[i];
-                if (line.Kind == NavLineKind.ShipHistory)
+                Vector3d occluderCenter = model.Bodies[occluderIndex].Position;
+                double occluderRadius = model.Bodies[occluderIndex].RadiusMeters;
+                for (int i = 0; i < model.Lines.Count; i++)
                 {
-                    DrawPolyline(line.Points, Project, rect, TabletTheme.Main, false, 2);
-                }
-            }
-
-            for (int i = 0; i < model.Lines.Count; i++)
-            {
-                NavLine line = model.Lines[i];
-                if (line.Kind == NavLineKind.ShipForecast)
-                {
-                    DrawPolyline(line.Points, Project, rect, ForecastColor, true, 1);
-                    if (line.Points.Count > 1)
+                    NavLine line = model.Lines[i];
+                    if (line.Kind == NavLineKind.ShipHistory)
                     {
-                        Vector2 end = Project(line.Points[line.Points.Count - 1]);
-                        DrawCross(end.x, end.y, 4f, ForecastColor);
+                        DrawPolylineNear(line.Points, Project, rect, TabletTheme.Main, false, 2,
+                            occluderCenter, occluderRadius, screenRight, screenUp, camDir);
+                    }
+                    else if (line.Kind == NavLineKind.ShipForecast)
+                    {
+                        DrawPolylineNear(line.Points, Project, rect, ForecastColor, true, 1,
+                            occluderCenter, occluderRadius, screenRight, screenUp, camDir);
                     }
                 }
             }
 
-            // 5. Body markers and labels, on top of every line.
+            // Forecast endpoint cross, on top of the globe when in front.
+            for (int i = 0; i < model.Lines.Count; i++)
+            {
+                NavLine line = model.Lines[i];
+                if (line.Kind == NavLineKind.ShipForecast && line.Points.Count > 1)
+                {
+                    Vector2 end = Project(line.Points[line.Points.Count - 1]);
+                    DrawCross(end.x, end.y, 4f, ForecastColor);
+                }
+            }
+
+            // 6. Body markers and labels, on top of every line.
             for (int i = 0; i < model.Bodies.Count; i++)
             {
                 NavBodyMarker body = model.Bodies[i];
@@ -962,6 +993,48 @@ namespace Galilego.Tablet
 
                 previous = screen;
                 hasPrevious = true;
+            }
+        }
+
+        /// <summary>
+        /// Draws only the part of a polyline that lies on the near side of the
+        /// occluding globe and inside its projected disk. Used after the globe to
+        /// put the near half of a trail on top without showing its far half through
+        /// the planet.
+        /// </summary>
+        private void DrawPolylineNear(List<Vector3d> points, Func<Vector3d, Vector2> project, RectInt rect,
+            Color32 color, bool dashed, int width, Vector3d occluderCenter, double occluderRadius,
+            Vector3d screenRight, Vector3d screenUp, Vector3d camDir)
+        {
+            if (points == null || points.Count < 2 || !(occluderRadius > 0d))
+            {
+                return;
+            }
+
+            double radiusSquared = occluderRadius * occluderRadius * 1.02d;
+            const int subdivisions = 4;
+            for (int i = 1; i < points.Count; i++)
+            {
+                Vector3d a = points[i - 1];
+                Vector3d b = points[i];
+                Vector2 previous = project(a);
+                for (int s = 1; s <= subdivisions; s++)
+                {
+                    double t = (double)s / subdivisions;
+                    Vector3d point = a + ((b - a) * t);
+                    Vector3d q = point - occluderCenter;
+                    double dx = Vector3d.Dot(q, screenRight);
+                    double dy = Vector3d.Dot(q, screenUp);
+                    bool insideDisk = (dx * dx) + (dy * dy) <= radiusSquared;
+                    bool nearSide = Vector3d.Dot(q, camDir) > 0d;
+                    Vector2 current = project(point);
+                    if (insideDisk && nearSide)
+                    {
+                        DrawClippedLine(previous, current, rect, color, dashed, width);
+                    }
+
+                    previous = current;
+                }
             }
         }
 
@@ -1631,7 +1704,8 @@ namespace Galilego.Tablet
             canvas.Text(legendX + 20, legendY + 12, history, TabletTheme.Dim);
             DashedHudLine(legendX, legendY + 25, 16, ForecastColor);
             string forecast = model.ForecastValid
-                ? "ПРОГНОЗ " + TabletFormat.Time(model.ForecastWindowSeconds)
+                ? "ПРОГНОЗ " + (model.SurfaceForecast ? "ВРАЩ. " : string.Empty)
+                    + TabletFormat.Time(model.ForecastWindowSeconds)
                 : "ПРОГНОЗ ВЫКЛ";
             canvas.Text(legendX + 20, legendY + 22, forecast,
                 model.ForecastValid ? TabletTheme.Dim : ForecastColor);
