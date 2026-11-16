@@ -81,6 +81,9 @@ namespace Galilego.Tablet
         public const int ForecastSamples = 160;
         public const int MaxHistoryPoints = 512;
 
+        /// <summary>Reused buffer for one body's non-uniform orbit sample times.</summary>
+        private readonly double[] orbitSampleTimes = new double[BodyOrbitSamples];
+
         /// <summary>Longest forecast actually integrated for the map, seconds (visual/CPU budget).</summary>
         public const double MaxForecastSeconds = 60d * 86400d;
 
@@ -525,16 +528,8 @@ namespace Galilego.Tablet
                     continue;
                 }
 
-                double mu = body.Parent.ResolveStandardGravitationalParameter()
-                    + body.ResolveSubtreeStandardGravitationalParameter();
-                double a = body.SemiMajorAxis;
-                if (!(mu > 0d) || !(a > 0d) || !(body.Eccentricity >= 0d) || !(body.Eccentricity < 1d))
-                {
-                    continue;
-                }
-
-                double period = 2d * Math.PI * Math.Sqrt((a * a * a) / mu);
-                if (!double.IsFinite(period) || period <= 0d)
+                double period = OrbitalPeriodSeconds(body);
+                if (!double.IsFinite(period))
                 {
                     continue;
                 }
@@ -554,9 +549,10 @@ namespace Galilego.Tablet
                 };
 
                 int n = BodyOrbitSamples;
+                SampleOrbitTimes(body, time, n, period, orbitSampleTimes);
                 for (int k = 0; k < n; k++)
                 {
-                    double ts = start + ((end - start) * k / (n - 1d));
+                    double ts = orbitSampleTimes[k];
                     if (ts < lo)
                     {
                         ts = lo;
@@ -620,16 +616,8 @@ namespace Galilego.Tablet
                 return;
             }
 
-            double mu = parent.ResolveStandardGravitationalParameter()
-                + body.ResolveSubtreeStandardGravitationalParameter();
-            double a = body.SemiMajorAxis;
-            if (!(mu > 0d) || !(a > 0d) || !(body.Eccentricity >= 0d) || !(body.Eccentricity < 1d))
-            {
-                return;
-            }
-
-            double period = 2d * Math.PI * Math.Sqrt((a * a * a) / mu);
-            if (!double.IsFinite(period) || period <= 0d)
+            double period = OrbitalPeriodSeconds(body);
+            if (!double.IsFinite(period))
             {
                 return;
             }
@@ -646,9 +634,10 @@ namespace Galilego.Tablet
             };
 
             int n = BodyOrbitSamples;
+            SampleOrbitTimes(body, time, n, period, orbitSampleTimes);
             for (int k = 0; k < n; k++)
             {
-                double ts = start + ((end - start) * k / (n - 1d));
+                double ts = orbitSampleTimes[k];
                 try
                 {
                     // Path around the parent, shifted so the CURRENT body position
@@ -672,6 +661,96 @@ namespace Galilego.Tablet
             if (line.Points.Count >= 2)
             {
                 Lines.Add(line);
+            }
+        }
+
+        /// <summary>
+        /// Orbital period of a body around its parent (parent + subtree μ), or +∞ if
+        /// the rail is not a drawable ellipse. One definition for the orbit line and
+        /// the trail caps.
+        /// </summary>
+        private static double OrbitalPeriodSeconds(OrbitingBody body)
+        {
+            if (body == null || body.Parent == null)
+            {
+                return double.PositiveInfinity;
+            }
+
+            double mu = body.Parent.ResolveStandardGravitationalParameter()
+                + body.ResolveSubtreeStandardGravitationalParameter();
+            double semiMajor = body.SemiMajorAxis;
+            double eccentricity = body.Eccentricity;
+            if (!(mu > 0d) || !(semiMajor > 0d) || !(eccentricity >= 0d) || !(eccentricity < 1d))
+            {
+                return double.PositiveInfinity;
+            }
+
+            double period = 2d * Math.PI * Math.Sqrt((semiMajor * semiMajor * semiMajor) / mu);
+            return double.IsFinite(period) && period > 0d ? period : double.PositiveInfinity;
+        }
+
+        /// <summary>
+        /// One full revolution of an elliptical rail, sampled uniformly in TRUE
+        /// anomaly. Uniform time clusters samples at apoapsis and leaves the fast,
+        /// high-curvature periapsis as a few long chords; equal anomaly steps keep the
+        /// drawn orbit smooth for any eccentricity. Falls back to uniform time for
+        /// circular rails and hyperbolic rails.
+        /// </summary>
+        private static void SampleOrbitTimes(
+            OrbitingBody body, double time, int count, double period, double[] times)
+        {
+            int n = Math.Max(2, count);
+            double twoPi = 2d * Math.PI;
+            double eccentricity = body.Eccentricity;
+            if (!(period > 0d) || !double.IsFinite(period))
+            {
+                for (int k = 0; k < n; k++)
+                {
+                    times[k] = time;
+                }
+
+                return;
+            }
+
+            if (!(eccentricity > 1e-9d)
+                || !double.IsFinite(body.MeanAnomalyAtEpochDegrees)
+                || !double.IsFinite(body.EpochTimeSeconds))
+            {
+                double start = time - (period * 0.5d);
+                for (int k = 0; k < n; k++)
+                {
+                    times[k] = start + (period * k / (n - 1d));
+                }
+
+                return;
+            }
+
+            double meanMotion = twoPi / period;
+            double meanNow = KeplerMath.NormalizeAngle(
+                KeplerMath.DegreesToRadians(body.MeanAnomalyAtEpochDegrees)
+                + (meanMotion * (time - body.EpochTimeSeconds)));
+            double eccentricNow = KeplerMath.SolveEccentricAnomaly(meanNow, eccentricity);
+            double trueNow = 2d * Math.Atan2(
+                Math.Sqrt(1d + eccentricity) * Math.Sin(0.5d * eccentricNow),
+                Math.Sqrt(1d - eccentricity) * Math.Cos(0.5d * eccentricNow));
+
+            for (int k = 0; k < n; k++)
+            {
+                double trueAnomaly = trueNow + (twoPi * ((k / (n - 1d)) - 0.5d));
+                double mean = MeanAnomalyFromTrueAnomaly(
+                    KeplerMath.NormalizeAngle(trueAnomaly), eccentricity);
+                double delta = mean - meanNow;
+                while (delta > Math.PI)
+                {
+                    delta -= twoPi;
+                }
+
+                while (delta < -Math.PI)
+                {
+                    delta += twoPi;
+                }
+
+                times[k] = time + (delta / meanMotion);
             }
         }
 
@@ -704,32 +783,41 @@ namespace Galilego.Tablet
             OrbitingBody body = system.AllBodies[trailIndex];
             OrbitingBody frame = system.AllBodies[frameIndex];
 
-            if (historySeconds > 1d)
+            // A short-period moon over a multi-day slider would be a scribble of
+            // dozens of overlapping revolutions sampled by 160 chords. The same
+            // three-revolution budget as the craft forecast keeps the line readable
+            // and dense enough to be a curve.
+            double historyWindow = Math.Min(historySeconds, MaxHistorySeconds);
+            double forecastWindow = Math.Min(forecastSeconds, MaxForecastSeconds);
+            double period = OrbitalPeriodSeconds(body);
+            if (double.IsFinite(period))
             {
-                NavLine history = SampleBodyPath(body, frame, time - historySeconds, time);
+                double threeOrbits = 3d * period;
+                historyWindow = Math.Min(historyWindow, threeOrbits);
+                forecastWindow = Math.Min(forecastWindow, threeOrbits);
+            }
+
+            if (historyWindow > 1d)
+            {
+                NavLine history = SampleBodyPath(body, frame, time - historyWindow, time);
                 if (history != null)
                 {
                     history.Kind = NavLineKind.BodyHistory;
                     history.BodyIndex = trailIndex;
                     history.ParentIndex = IndexOf(system, body.Parent);
-                    history.StartTimeS = time - historySeconds;
-                    history.EndTimeS = time;
                     Lines.Add(history);
                     HasBodyHistory = true;
                 }
             }
 
-            if (forecastSeconds > 1d)
+            if (forecastWindow > 1d)
             {
-                double window = Math.Min(forecastSeconds, MaxForecastSeconds);
-                NavLine forecast = SampleBodyPath(body, frame, time, time + window);
+                NavLine forecast = SampleBodyPath(body, frame, time, time + forecastWindow);
                 if (forecast != null)
                 {
                     forecast.Kind = NavLineKind.BodyForecast;
                     forecast.BodyIndex = trailIndex;
                     forecast.ParentIndex = IndexOf(system, body.Parent);
-                    forecast.StartTimeS = time;
-                    forecast.EndTimeS = time + window;
                     forecast.Dashed = true;
                     Lines.Add(forecast);
                     HasBodyForecast = true;
@@ -747,7 +835,11 @@ namespace Galilego.Tablet
             }
 
             int n = BodyOrbitSamples;
-            var line = new NavLine();
+            var line = new NavLine
+            {
+                StartTimeS = start,
+                EndTimeS = start,
+            };
             for (int k = 0; k < n; k++)
             {
                 double t = start + ((end - start) * k / (n - 1d));
@@ -756,6 +848,7 @@ namespace Galilego.Tablet
                     body.EvaluateWorldState(t, out Vector3d p, out _);
                     frame.EvaluateWorldState(t, out Vector3d fp, out _);
                     line.Points.Add(p - fp);
+                    line.EndTimeS = t;
                 }
                 catch (EphemerisRangeException)
                 {
@@ -959,9 +1052,11 @@ namespace Galilego.Tablet
             bool revolutionsLimited = false;
 
             // A map with hundreds of overlapping revolutions is noise: show at most
-            // three revolutions of the current osculating orbit, but never less than
-            // six hours of flight.
+            // three revolutions of the current osculating orbit. The old 6 h floor
+            // could stretch that to four or more revolutions for a low orbit, so the
+            // same 160 samples were spread over a longer path (visible corners).
             OrbitingBody dominant = system.FindDominantBody(ship.Position, time);
+            double impactSeconds = double.PositiveInfinity;
             if (dominant != null)
             {
                 dominant.EvaluateWorldState(time, out Vector3d bodyPosition, out Vector3d bodyVelocity);
@@ -974,14 +1069,27 @@ namespace Galilego.Tablet
                     double threeOrbits = 3d * elements.OrbitalPeriodSeconds;
                     if (threeOrbits > 1d && threeOrbits < window)
                     {
-                        window = Math.Min(window, Math.Max(threeOrbits, 6d * HourSeconds));
+                        window = threeOrbits;
                         revolutionsLimited = true;
                     }
+
+                    impactSeconds = EstimateSurfaceImpactSeconds(elements, dominant.Radius, mu);
                 }
             }
 
+            // A suborbital hop is bound too (its ellipse intersects the ground),
+            // but the whole flight lasts minutes. Sampling the requested hours
+            // would give two or three chords through the planet. The conic knows
+            // where the arc ends: spend the same 160 samples on the part that is
+            // actually flown.
+            double sampleWindow = window;
+            if (impactSeconds > 1d && double.IsFinite(impactSeconds) && impactSeconds < window)
+            {
+                sampleWindow = impactSeconds * 1.05d;
+            }
+
             int n = ForecastSamples;
-            double dt = window / (n - 1d);
+            double dt = sampleWindow / (n - 1d);
             if (!(dt > 0d) || !double.IsFinite(dt))
             {
                 return;
@@ -1014,7 +1122,7 @@ namespace Galilego.Tablet
                 Kind = NavLineKind.ShipForecast,
                 Dashed = true,
                 StartTimeS = time,
-                EndTimeS = time + window,
+                EndTimeS = time,
             };
 
             line.Points.Add(ship.Position - FramePosition);
@@ -1022,25 +1130,44 @@ namespace Galilego.Tablet
             double t = time;
             try
             {
-                for (int k = 1; k < n; k++)
+                // First pass: the ballistic arc itself, dense enough that a short
+                // suborbital hop is a curve, not two chords.
+                int denseSteps = n - 1;
+                for (int k = 1; k <= denseSteps && impact == null; k++)
                 {
-                    physics.Step(probe, t, dt);
-                    t += dt;
-
-                    if (!probe.Position.IsFinite || !probe.Velocity.IsFinite)
+                    if (!AdvanceForecast(physics, system, probe, frame, line, ref t, dt, out OrbitingBody hit))
                     {
                         impact = "ПРОГНОЗ ОСТАНОВЛЕН: НЕКОНЕЧНОЕ СОСТОЯНИЕ";
                         break;
                     }
 
-                    frame.EvaluateWorldState(t, out Vector3d fp, out _);
-                    line.Points.Add(probe.Position - fp);
-                    line.EndTimeS = t;
-
-                    if (TryFindImpact(system, probe.Position, t, out OrbitingBody hit))
+                    if (hit != null)
                     {
                         impact = "УДАР О " + (hit.Name ?? "?").ToUpperInvariant();
-                        break;
+                    }
+                }
+
+                // The conic estimate can be a little early (it ignores drag, but a
+                // third body or a perturbed path may keep the craft up longer).
+                // Continue the same forecast with a coarse fallback instead of
+                // silently shortening the requested window.
+                double rest = (time + window) - t;
+                if (impact == null && rest > 1d)
+                {
+                    int restSteps = 48;
+                    double restDt = rest / restSteps;
+                    for (int k = 0; k < restSteps && impact == null; k++)
+                    {
+                        if (!AdvanceForecast(physics, system, probe, frame, line, ref t, restDt, out OrbitingBody hit))
+                        {
+                            impact = "ПРОГНОЗ ОСТАНОВЛЕН: НЕКОНЕЧНОЕ СОСТОЯНИЕ";
+                            break;
+                        }
+
+                        if (hit != null)
+                        {
+                            impact = "УДАР О " + (hit.Name ?? "?").ToUpperInvariant();
+                        }
                     }
                 }
             }
@@ -1055,6 +1182,7 @@ namespace Galilego.Tablet
 
             if (line.Points.Count >= 2)
             {
+                ForecastWindowSeconds = Math.Max(0d, line.EndTimeS - time);
                 Lines.Add(line);
                 ForecastValid = true;
                 Note = impact ?? (ForecastTruncated
@@ -1067,6 +1195,216 @@ namespace Galilego.Tablet
             {
                 Note = impact;
             }
+        }
+
+        /// <summary>
+        /// One forecast step with an exact surface stop. Returns false on a non-finite
+        /// state; <paramref name="hit"/> is non-null when the step ends on the ground,
+        /// in which case the last line point is the real surface crossing, not the
+        /// first underground sample.
+        /// </summary>
+        private static bool AdvanceForecast(
+            SpacecraftPhysics physics,
+            StarSystem system,
+            Ship probe,
+            OrbitingBody frame,
+            NavLine line,
+            ref double t,
+            double stepSeconds,
+            out OrbitingBody hit)
+        {
+            Vector3d fromPosition = probe.Position;
+            Vector3d fromVelocity = probe.Velocity;
+            double fromMass = probe.Mass;
+            double fromTime = t;
+
+            physics.Step(probe, fromTime, stepSeconds);
+            t = fromTime + stepSeconds;
+
+            if (!probe.Position.IsFinite || !probe.Velocity.IsFinite)
+            {
+                hit = null;
+                return false;
+            }
+
+            frame.EvaluateWorldState(t, out Vector3d framePosition, out _);
+            line.Points.Add(probe.Position - framePosition);
+            line.EndTimeS = t;
+
+            if (!TryFindImpact(system, probe.Position, t, out hit))
+            {
+                hit = null;
+                return true;
+            }
+
+            if (TryRefineImpact(physics, hit, fromPosition, fromVelocity, fromMass,
+                    fromTime, stepSeconds, out Vector3d impactPosition, out double impactTime))
+            {
+                // A coarse step can be minutes long (an orbital decay), so the last
+                // chord would still dive into the globe. Subdivide the final step so
+                // the approach follows the real curve all the way to the surface.
+                const int tailSamples = 8;
+                var tail = new Vector3d[tailSamples - 1];
+                int tailCount = 0;
+                double span = impactTime - fromTime;
+                for (int j = 1; j < tailSamples && span > 0d; j++)
+                {
+                    double offset = span * j / tailSamples;
+                    var sub = new Ship(fromPosition, fromVelocity, fromMass);
+                    physics.Step(sub, fromTime, offset);
+                    if (!sub.Position.IsFinite)
+                    {
+                        break;
+                    }
+
+                    frame.EvaluateWorldState(fromTime + offset, out Vector3d subFrame, out _);
+                    tail[tailCount++] = sub.Position - subFrame;
+                }
+
+                frame.EvaluateWorldState(impactTime, out framePosition, out _);
+                line.Points[line.Points.Count - 1] = impactPosition - framePosition;
+                for (int i = 0; i < tailCount; i++)
+                {
+                    line.Points.Insert(line.Points.Count - 1, tail[i]);
+                }
+
+                line.EndTimeS = impactTime;
+                t = impactTime;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Bisects the last integration step for the first contact with
+        /// <paramref name="hit"/>. The endpoint is known to be inside; without this a
+        /// 135 s step can end tens of kilometres underground and the drawn line dives
+        /// into the globe instead of ending on it.
+        /// </summary>
+        private static bool TryRefineImpact(
+            SpacecraftPhysics physics,
+            OrbitingBody hit,
+            Vector3d fromPosition,
+            Vector3d fromVelocity,
+            double fromMass,
+            double fromTime,
+            double stepSeconds,
+            out Vector3d impactPosition,
+            out double impactTime)
+        {
+            impactPosition = default;
+            impactTime = fromTime;
+            if (hit == null || !(stepSeconds > 1e-6d))
+            {
+                return false;
+            }
+
+            try
+            {
+                double lo = 0d;
+                double hi = stepSeconds;
+                for (int i = 0; i < 28; i++)
+                {
+                    double mid = 0.5d * (lo + hi);
+                    var test = new Ship(fromPosition, fromVelocity, fromMass);
+                    physics.Step(test, fromTime, mid);
+                    if (IsInsideBody(hit, test.Position, fromTime + mid))
+                    {
+                        hi = mid;
+                    }
+                    else
+                    {
+                        lo = mid;
+                    }
+                }
+
+                var surface = new Ship(fromPosition, fromVelocity, fromMass);
+                physics.Step(surface, fromTime, hi);
+                impactTime = fromTime + hi;
+                impactPosition = surface.Position;
+                return impactPosition.IsFinite;
+            }
+            catch (Exception)
+            {
+                // A display refinement must not abort the whole forecast; the
+                // underground endpoint is still a valid last sample.
+                return false;
+            }
+        }
+
+        private static bool IsInsideBody(OrbitingBody body, Vector3d position, double time)
+        {
+            body.EvaluateWorldState(time, out Vector3d bodyPosition, out _);
+            return (position - bodyPosition).Magnitude <= body.Radius;
+        }
+
+        /// <summary>
+        /// Time until a bound, ballistic arc reaches the body's surface, from the
+        /// osculating conic (two-body). Positive infinity when the periapsis is above
+        /// the ground or the orbit is not an ellipse. Drag can only remove energy and
+        /// make this earlier, never later.
+        /// </summary>
+        private static double EstimateSurfaceImpactSeconds(OrbitalElements elements, double bodyRadius, double mu)
+        {
+            if (!elements.IsValid || !elements.IsBound || !(bodyRadius > 0d) || !(mu > 0d))
+            {
+                return double.PositiveInfinity;
+            }
+
+            double eccentricity = elements.Eccentricity;
+            if (!(eccentricity > 1e-9d) || !(elements.SemiMajorAxis > 0d))
+            {
+                return double.PositiveInfinity;
+            }
+
+            double p = elements.SpecificAngularMomentum * elements.SpecificAngularMomentum / mu;
+            if (!(p > 0d) || !(p / (1d + eccentricity) < bodyRadius))
+            {
+                return double.PositiveInfinity;
+            }
+
+            // Descending crossing of the r = bodyRadius sphere.
+            double cosine = ((p / bodyRadius) - 1d) / eccentricity;
+            if (!(cosine > -1d && cosine < 1d))
+            {
+                return double.PositiveInfinity;
+            }
+
+            double hitAnomaly = (2d * Math.PI) - Math.Acos(cosine);
+            double meanNow = elements.MeanAnomalyDegrees * (Math.PI / 180d);
+            double meanHit = MeanAnomalyFromTrueAnomaly(hitAnomaly, eccentricity);
+
+            double delta = meanHit - meanNow;
+            double twoPi = 2d * Math.PI;
+            delta %= twoPi;
+            if (delta <= 0d)
+            {
+                delta += twoPi;
+            }
+
+            double meanMotion = Math.Sqrt(mu / (elements.SemiMajorAxis * elements.SemiMajorAxis * elements.SemiMajorAxis));
+            if (!(meanMotion > 0d) || !double.IsFinite(meanMotion))
+            {
+                return double.PositiveInfinity;
+            }
+
+            return delta / meanMotion;
+        }
+
+        private static double MeanAnomalyFromTrueAnomaly(double trueAnomaly, double eccentricity)
+        {
+            double eccentricAnomaly = 2d * Math.Atan2(
+                Math.Sqrt(1d - eccentricity) * Math.Sin(trueAnomaly * 0.5d),
+                Math.Sqrt(1d + eccentricity) * Math.Cos(trueAnomaly * 0.5d));
+            double meanAnomaly = eccentricAnomaly - (eccentricity * Math.Sin(eccentricAnomaly));
+            double twoPi = 2d * Math.PI;
+            meanAnomaly %= twoPi;
+            if (meanAnomaly < 0d)
+            {
+                meanAnomaly += twoPi;
+            }
+
+            return meanAnomaly;
         }
 
         private static string FormatDays(double seconds)

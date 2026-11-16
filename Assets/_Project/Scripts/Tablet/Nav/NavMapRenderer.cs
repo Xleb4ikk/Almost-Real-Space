@@ -1072,6 +1072,7 @@ namespace Galilego.Tablet
 
             double radiusSquared = occluderRadius * occluderRadius * 1.02d;
             const int subdivisions = 4;
+            float dashPhase = 0f;
             for (int i = 1; i < points.Count; i++)
             {
                 Vector3d a = points[i - 1];
@@ -1089,7 +1090,7 @@ namespace Galilego.Tablet
                     Vector2 current = project(point);
                     if (insideDisk && nearSide)
                     {
-                        DrawClippedLine(previous, current, rect, color, dashed, width);
+                        DrawClippedLine(previous, current, rect, color, dashed, width, ref dashPhase);
                     }
 
                     previous = current;
@@ -1105,6 +1106,7 @@ namespace Galilego.Tablet
                 return;
             }
 
+            float dashPhase = 0f;
             Vector2 previous = project(points[0]);
             for (int i = 1; i < points.Count; i++)
             {
@@ -1115,7 +1117,7 @@ namespace Galilego.Tablet
                     continue;
                 }
 
-                DrawClippedLine(previous, current, rect, color, dashed, width);
+                DrawClippedLine(previous, current, rect, color, dashed, width, ref dashPhase);
                 previous = current;
             }
         }
@@ -1126,6 +1128,13 @@ namespace Galilego.Tablet
         }
 
         private void DrawClippedLine(Vector2 a, Vector2 b, RectInt rect, Color32 color, bool dashed, int width = 1)
+        {
+            float dashPhase = 0f;
+            DrawClippedLine(a, b, rect, color, dashed, width, ref dashPhase);
+        }
+
+        private void DrawClippedLine(Vector2 a, Vector2 b, RectInt rect, Color32 color, bool dashed,
+            int width, ref float dashPhase)
         {
             if (!Clip(ref a, ref b, rect, 4f))
             {
@@ -1141,7 +1150,7 @@ namespace Galilego.Tablet
             {
                 if (dashed)
                 {
-                    DashedLine(x0, y0, x1, y1, color);
+                    DashedLine(x0, y0, x1, y1, color, ref dashPhase);
                 }
                 else
                 {
@@ -1152,13 +1161,17 @@ namespace Galilego.Tablet
             }
 
             int half = width / 2;
+            float startPhase = dashPhase;
             for (int oy = -half; oy <= half; oy++)
             {
                 for (int ox = -half; ox <= half; ox++)
                 {
                     if (dashed)
                     {
-                        DashedLine(x0 + ox, y0 + oy, x1 + ox, y1 + oy, color);
+                        // Every thickness copy shows the same dash pattern; the
+                        // phase advances once for the whole segment below.
+                        float localPhase = startPhase;
+                        DashedLine(x0 + ox, y0 + oy, x1 + ox, y1 + oy, color, ref localPhase);
                     }
                     else
                     {
@@ -1166,19 +1179,30 @@ namespace Galilego.Tablet
                     }
                 }
             }
+
+            if (dashed)
+            {
+                dashPhase = startPhase + Mathf.Max(Mathf.Abs(x1 - x0), Mathf.Abs(y1 - y0)) + 1;
+            }
         }
 
-        private void DashedLine(int x0, int y0, int x1, int y1, Color32 c)
+        /// <summary>
+        /// Dashed Bresenham with a phase carried across the polyline's segments.
+        /// Restarting the pattern at every vertex made the dash length depend on the
+        /// segment length (a dense orbit trail turned into irregular blobs).
+        /// </summary>
+        private void DashedLine(int x0, int y0, int x1, int y1, Color32 c, ref float dashPhase)
         {
             int dx = Mathf.Abs(x1 - x0);
             int dy = -Mathf.Abs(y1 - y0);
             int sx = x0 < x1 ? 1 : -1;
             int sy = y0 < y1 ? 1 : -1;
             int err = dx + dy;
-            int step = 0;
+            int step = Mathf.FloorToInt(dashPhase);
+            int start = step;
             while (true)
             {
-                if ((step / 5) % 2 == 0)
+                if (((step / 5) % 2) == 0)
                 {
                     canvas.Px(x0, y0, c);
                 }
@@ -1202,6 +1226,8 @@ namespace Galilego.Tablet
                     y0 += sy;
                 }
             }
+
+            dashPhase = start + Mathf.Max(dx, -dy) + 1;
         }
 
         /// <summary>Liang–Barsky clip; a zero-length segment is clipped to the map rect.</summary>

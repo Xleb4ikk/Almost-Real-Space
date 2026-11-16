@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using Galilego.Building;
+using Galilego.Core;
 using Galilego.Events;
 using Galilego.Simulation.ContactZone;
 using Galilego.Spacecraft;
@@ -391,12 +392,59 @@ namespace Galilego.Tablet
 
             if (elapsed < wanted && shipHistory.Count > 0)
             {
-                return;
+                // A short suborbital arc can cross the whole visible sky before the
+                // window-scaled cadence gives it a second sample. Add a point when
+                // the bearing around the dominant body changes noticeably, so the
+                // trail is a curve and not one chord. Slower flights keep the time
+                // cadence (and the buffer is decimated, never truncated).
+                NavShipSample previous = shipHistory[shipHistory.Count - 1];
+                if (!BearingChanged(previous.Position, runner.Ship.Position, now, 0.25d))
+                {
+                    return;
+                }
             }
 
             shipHistory.Add(new NavShipSample(now, runner.Ship.Position));
             lastHistorySampleTime = now;
+            TrimHistory(historySeconds, now);
+        }
 
+        /// <summary>True when the direction from the dominant body turned by at least <paramref name="minDegrees"/>.</summary>
+        private bool BearingChanged(Vector3d previous, Vector3d current, double time, double minDegrees)
+        {
+            OrbitingBody body = runner.Ship != null ? runner.Ship.LocalBody : null;
+            if (body == null && runner.SystemState != null)
+            {
+                body = runner.SystemState.FindDominantBody(current, time);
+            }
+
+            if (body == null)
+            {
+                return false;
+            }
+
+            body.EvaluateWorldState(time, out Vector3d center, out _);
+            Vector3d a = previous - center;
+            Vector3d b = current - center;
+            double lengthA = a.Magnitude;
+            double lengthB = b.Magnitude;
+            if (!(lengthA > 1d) || !(lengthB > 1d))
+            {
+                return false;
+            }
+
+            double cosine = Math.Max(-1d, Math.Min(1d, Vector3d.Dot(a, b) / (lengthA * lengthB)));
+            return Math.Acos(cosine) * (180d / Math.PI) >= minDegrees;
+        }
+
+        /// <summary>
+        /// Keeps the whole slider span while preserving detail near the craft: once the
+        /// buffer exceeds twice the draw cap, the newest half is kept intact and the
+        /// older half is thinned to fill the other half. Truncating the front instead
+        /// would silently shorten a fast flight's trail to the last few minutes.
+        /// </summary>
+        private void TrimHistory(double historySeconds, double now)
+        {
             double cutoff = now - historySeconds;
             int drop = 0;
             while (drop < shipHistory.Count && shipHistory[drop].TimeSeconds < cutoff)
@@ -409,10 +457,29 @@ namespace Galilego.Tablet
                 shipHistory.RemoveRange(0, drop);
             }
 
-            if (shipHistory.Count > NavMapModel.MaxHistoryPoints)
+            int max = NavMapModel.MaxHistoryPoints;
+            if (shipHistory.Count <= 2 * max)
             {
-                shipHistory.RemoveRange(0, shipHistory.Count - NavMapModel.MaxHistoryPoints);
+                return;
             }
+
+            int keepRecent = max / 2;
+            int older = shipHistory.Count - keepRecent;
+            int targetOlder = max - keepRecent;
+            int stride = Math.Max(2, (older + targetOlder - 1) / targetOlder);
+            var compact = new List<NavShipSample>((targetOlder + keepRecent) + 1);
+            for (int i = 0; i < older; i += stride)
+            {
+                compact.Add(shipHistory[i]);
+            }
+
+            for (int i = older; i < shipHistory.Count; i++)
+            {
+                compact.Add(shipHistory[i]);
+            }
+
+            shipHistory.Clear();
+            shipHistory.AddRange(compact);
         }
 
         /// <summary>
