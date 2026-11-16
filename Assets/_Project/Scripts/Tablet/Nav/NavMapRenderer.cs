@@ -102,6 +102,10 @@ namespace Galilego.Tablet
         private double lastScale;
         private double lastSurfaceMetersPerPixel;
         private Vector2 lastRectCenter;
+        // Drawable map extent of the last frame: the physical monitor and the
+        // overlay have different layouts, so pan has to be transferred as a
+        // fraction of the map, not as raw texture pixels.
+        private float lastMapExtent = 1f;
         private Vector2 panPixels;
         private int lastFrameIndex = -1;
         private int lastCenterIndex = -1;
@@ -300,6 +304,41 @@ namespace Galilego.Tablet
             TargetElevationRad = DefaultElevationRad;
         }
 
+        /// <summary>
+        /// Transfers the camera (zoom, turntable angles, pan) from the other map
+        /// renderer. The physical monitor and the full-screen overlay are separate
+        /// renderers with different layouts; without this, opening or closing the
+        /// tablet snapped the visible view back to that renderer's own last camera.
+        /// Pan is stored in texture pixels, so it is scaled by the drawable map
+        /// extent to keep the same world point at the same relative screen position.
+        /// </summary>
+        public void CopyViewFrom(NavMapRenderer source)
+        {
+            if (source == null)
+            {
+                return;
+            }
+
+            Zoom = source.Zoom;
+            TargetAzimuthRad = source.TargetAzimuthRad;
+            TargetElevationRad = source.TargetElevationRad;
+            AzimuthRad = source.AzimuthRad;
+            ElevationRad = source.ElevationRad;
+
+            float sourceExtent = source.lastMapExtent > 1f
+                ? source.lastMapExtent
+                : Mathf.Max(1f, Mathf.Min(source.Width, source.Height));
+            float targetExtent = lastMapExtent > 1f
+                ? lastMapExtent
+                : Mathf.Max(1f, Mathf.Min(Width, Height));
+            panPixels = source.panPixels * (targetExtent / sourceExtent);
+            lastFrameIndex = source.lastFrameIndex;
+            lastCenterIndex = source.lastCenterIndex;
+
+            // A changed camera must not reuse the previous globe raster.
+            diskCacheValid = false;
+        }
+
         /// <summary>Nearest labelled object to a texture pixel, as rich text for the UI tooltip.</summary>
         public bool TryPick(Vector2 texturePixel, out string text)
         {
@@ -342,6 +381,7 @@ namespace Galilego.Tablet
             double scale = Math.Min(rect.width, rect.height) * 0.44d / radius * Zoom;
             lastScale = scale;
             lastRectCenter = new Vector2(rect.x + (rect.width * 0.5f), rect.y + (rect.height * 0.5f));
+            lastMapExtent = Mathf.Max(1f, Mathf.Min(rect.width, rect.height));
 
             Vector3d normal = model.OrbitNormal.Normalized;
             Vector3d right0 = model.OrbitRight.Normalized;
@@ -640,6 +680,7 @@ namespace Galilego.Tablet
             lastSurfaceMetersPerPixel = mpp;
             lastScale = 1d / mpp;
             lastRectCenter = new Vector2(rect.x + (rect.width * 0.5f), rect.y + (rect.height * 0.5f));
+            lastMapExtent = Mathf.Max(1f, Mathf.Min(rect.width, rect.height));
 
             float centerX = rect.x + (rect.width * 0.5f) + panPixels.x;
             float centerY = rect.y + (rect.height * 0.5f) + panPixels.y;

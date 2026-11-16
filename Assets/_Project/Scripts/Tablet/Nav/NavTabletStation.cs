@@ -58,6 +58,12 @@ namespace Galilego.Tablet
         private double nextMapBuild;
         private int lastCalcVersion = -1;
         private int lastViewVersion = -1;
+
+        /// <summary>
+        /// The physical monitor is always live: a low-rate model rebuild keeps its
+        /// craft/body markers moving even while the player is not at the tablet.
+        /// </summary>
+        private const double PreviewMapIntervalSeconds = 0.5d;
         private bool mapErrorLogged;
         private bool framePinned;
         private int lastTextureVersion = -1;
@@ -291,8 +297,35 @@ namespace Galilego.Tablet
 
             TickMapAnimation();
             RebuildMapIfNeeded(false);
+            TickPreviewAnimation();
             TickInteractiveMap();
             view.Tick(Time.unscaledDeltaTime, simDt);
+        }
+
+        /// <summary>
+        /// The physical monitor uses the same camera hand-over as the overlay. If the
+        /// player left while the turntable was still easing, keep easing the monitor
+        /// to that target; the markers themselves come from the low-rate rebuild.
+        /// </summary>
+        private void TickPreviewAnimation()
+        {
+            if (overlay || previewMap == null || view == null || !view.Bound)
+            {
+                return;
+            }
+
+            if (previewMap.Tick(Time.unscaledDeltaTime))
+            {
+                previewMap.Interactive = true;
+                mapDirty = true;
+            }
+            else if (previewMap.Interactive)
+            {
+                // The camera has settled: draw one clean globe instead of keeping
+                // the coarse interactive raster forever.
+                previewMap.Interactive = false;
+                mapDirty = true;
+            }
         }
 
         /// <summary>
@@ -323,17 +356,35 @@ namespace Galilego.Tablet
         /// </summary>
         private void TickInteractiveMap()
         {
-            if (overlayMap == null || view == null || !view.Bound)
+            if (view == null || !view.Bound)
             {
                 return;
             }
 
             if (!overlay)
             {
-                // The overlay texture is not visible; do not spend a full-quality
-                // globe pass after the panel closes.
-                overlayMap.Interactive = false;
+                // The physical monitor is visible while the player is away: keep the
+                // camera easing and redraw the existing model. The simulation clock
+                // still rebuilds the model at the low-rate tick, so markers move too.
+                if (previewMap == null || mapModel == null || !mapDirty)
+                {
+                    return;
+                }
+
+                if (Time.unscaledTime < nextInteractiveMapRedraw)
+                {
+                    return;
+                }
+
+                nextInteractiveMapRedraw = Time.unscaledTime + (previewMap.Interactive ? 0.05f : 0f);
                 mapDirty = false;
+                previewMap.Draw(mapModel, view.State, mapInfo);
+                AssignPreviewTexture();
+                return;
+            }
+
+            if (overlayMap == null)
+            {
                 return;
             }
 
@@ -504,7 +555,7 @@ namespace Galilego.Tablet
 
             double interval = overlay
                 ? (mapModel != null && mapModel.ViewMode == NavViewMode.Surface ? 0.6d : 0.35d)
-                : 1.0d;
+                : PreviewMapIntervalSeconds;
             if (!forced && Time.unscaledTime < nextMapBuild)
             {
                 return;
@@ -609,7 +660,7 @@ namespace Galilego.Tablet
             {
                 nextMapBuild = Time.unscaledTime + (overlay
                     ? (mapModel.ViewMode == NavViewMode.Surface ? 0.6d : 0.35d)
-                    : 1.0d);
+                    : PreviewMapIntervalSeconds);
             }
         }
 
@@ -734,6 +785,19 @@ namespace Galilego.Tablet
             if (overlay == on || document == null)
             {
                 return;
+            }
+
+            // The monitor and the overlay are two renderers with different layouts.
+            // Hand the camera over so entering and leaving the tablet does not snap
+            // the map back to the other renderer's last remembered view.
+            NavMapRenderer target = on ? overlayMap : previewMap;
+            NavMapRenderer source = on ? previewMap : overlayMap;
+            if (target != null && source != null)
+            {
+                target.CopyViewFrom(source);
+                // The hand-over replaces the camera; the first frame of the newly
+                // visible map should be the clean, full-quality one.
+                target.Interactive = false;
             }
 
             overlay = on;
