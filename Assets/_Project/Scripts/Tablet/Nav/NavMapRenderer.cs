@@ -94,6 +94,11 @@ namespace Galilego.Tablet
         private Vector3d diskCacheView;
         private Vector3d diskCacheSun;
 
+        // Set by DrawMap, read by DrawHud: explains why an orbit legend may have
+        // no line on screen (planet-centred view hides the parent's orbit).
+        private bool orbitLinesAvailable;
+        private bool orbitsDrawn;
+
         private double lastScale;
         private double lastSurfaceMetersPerPixel;
         private Vector2 lastRectCenter;
@@ -384,13 +389,14 @@ namespace Galilego.Tablet
             // this map are real trajectories.
             // DrawGrid(rect, Project, radius, center, right, up);
 
-            // 1. Reference plane: a faint dashed ring gives the eye a horizon and
-            // makes a tilt readable even when the globe itself is featureless.
-            DrawPlaneRing(Project, right0, up0, radius * 1.035d, rect);
+            // 1. Reference frames are implied by the "ВЕРХ" cue and the turntable
+            // camera; a full dashed ring around the planet reads as a fake orbit.
 
             // 2. Body orbits go BEHIND the globes. A planet's own orbit passes
             // through its centre, so drawing it on top made a bright line look
             // like it was painted across the planet.
+            orbitLinesAvailable = false;
+            orbitsDrawn = false;
             for (int i = 0; i < model.Lines.Count; i++)
             {
                 NavLine line = model.Lines[i];
@@ -399,6 +405,21 @@ namespace Galilego.Tablet
                     continue;
                 }
 
+                orbitLinesAvailable = true;
+                if (line.BodyIndex == model.FrameIndex
+                    && line.ParentIndex >= 0 && line.ParentIndex < model.Bodies.Count)
+                {
+                    // In a planet-centred view the parent is astronomically far away
+                    // and the body's own orbit is a meaningless straight chord. Show
+                    // it only when the parent is actually in the frame (zoomed out).
+                    Vector2 parent = Project(model.Bodies[line.ParentIndex].Position);
+                    if (!Inside(rect, parent, Mathf.Max(rect.width, rect.height)))
+                    {
+                        continue;
+                    }
+                }
+
+                orbitsDrawn = true;
                 DrawPolyline(line.Points, Project, rect, BodyColor(line.BodyIndex), false, 1);
             }
 
@@ -476,6 +497,22 @@ namespace Galilego.Tablet
                 {
                     Vector2 end = Project(line.Points[line.Points.Count - 1]);
                     DrawCross(end.x, end.y, 4f, ForecastColor);
+                }
+            }
+
+            // History start marker: a trail has a beginning, an orbit does not.
+            for (int i = 0; i < model.Lines.Count; i++)
+            {
+                NavLine line = model.Lines[i];
+                if (line.Kind == NavLineKind.ShipHistory && line.Points.Count > 1)
+                {
+                    Vector2 start = Project(line.Points[0]);
+                    if (IsFinite(start) && Inside(rect, start, 4f))
+                    {
+                        int sx = Mathf.RoundToInt(start.x);
+                        int sy = Mathf.RoundToInt(start.y);
+                        canvas.Fill(sx - 1, sy - 1, 3, 3, TabletTheme.Main);
+                    }
                 }
             }
 
@@ -1696,16 +1733,56 @@ namespace Galilego.Tablet
             int legendX = x;
             int legendY = y - 46;
             canvas.Line(legendX, legendY + 3, legendX + 16, legendY + 3, TabletTheme.LineHi);
-            canvas.Text(legendX + 20, legendY, "ОРБИТА", TabletTheme.Dim);
+            string orbitText = orbitsDrawn
+                ? "ОРБИТА"
+                : (orbitLinesAvailable ? "ОРБИТА ВНЕ ВИДА" : "ОРБИТА ВЫКЛ");
+            canvas.Text(legendX + 20, legendY, orbitText, TabletTheme.Dim);
             canvas.Line(legendX, legendY + 15, legendX + 16, legendY + 15, TabletTheme.Main);
-            string history = model.HistorySeconds > 0d
-                ? "ИСТОРИЯ " + TabletFormat.Time(model.HistorySeconds)
-                : "ИСТОРИЯ ВЫКЛ";
+            string history;
+            if (model.HistorySeconds <= 0d)
+            {
+                history = "ИСТОРИЯ ВЫКЛ";
+            }
+            else
+            {
+                NavLine historyLine = null;
+                for (int i = 0; i < model.Lines.Count; i++)
+                {
+                    if (model.Lines[i].Kind == NavLineKind.ShipHistory)
+                    {
+                        historyLine = model.Lines[i];
+                        break;
+                    }
+                }
+
+                if (historyLine == null || historyLine.Points.Count < 2
+                    || !double.IsFinite(historyLine.StartTimeS))
+                {
+                    history = "ИСТОРИЯ НЕТ";
+                }
+                else
+                {
+                    Vector3d origin = historyLine.Points[0];
+                    double extent = 0d;
+                    for (int i = 1; i < historyLine.Points.Count; i++)
+                    {
+                        double distance = (historyLine.Points[i] - origin).Magnitude;
+                        if (distance > extent)
+                        {
+                            extent = distance;
+                        }
+                    }
+
+                    history = extent > 1000d
+                        ? "ИСТОРИЯ " + TabletFormat.Time(historyLine.EndTimeS - historyLine.StartTimeS)
+                        : "ИСТОРИЯ БЕЗ ДВИЖЕНИЯ";
+                }
+            }
+
             canvas.Text(legendX + 20, legendY + 12, history, TabletTheme.Dim);
             DashedHudLine(legendX, legendY + 25, 16, ForecastColor);
             string forecast = model.ForecastValid
-                ? "ПРОГНОЗ " + (model.SurfaceForecast ? "ВРАЩ. " : string.Empty)
-                    + TabletFormat.Time(model.ForecastWindowSeconds)
+                ? "ПРОГНОЗ " + TabletFormat.Time(model.ForecastWindowSeconds)
                 : "ПРОГНОЗ ВЫКЛ";
             canvas.Text(legendX + 20, legendY + 22, forecast,
                 model.ForecastValid ? TabletTheme.Dim : ForecastColor);

@@ -519,7 +519,7 @@ namespace Galilego.Tablet
             }
 
             FillMapInfo(allowForecast);
-            view.ForecastAvailable = allowForecast || (mapModel != null && mapModel.ForecastValid);
+            view.ForecastAvailable = allowForecast;
             if (overlay)
             {
                 overlayMap.Draw(mapModel, view.State, mapInfo);

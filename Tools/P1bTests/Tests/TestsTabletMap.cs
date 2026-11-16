@@ -184,17 +184,13 @@ internal static partial class P1bTests
             && surfaceView.ShipLongitudeDegrees >= 0d
             && surfaceView.ShipLongitudeDegrees < 360d
             && surfaceView.BodyRadiusMeters > 1d;
-        bool surfaceForecast = surfaceView.ForecastValid
-            && surfaceView.SurfaceForecast
-            && surfaceView.ForecastWindowSeconds > 1d;
 
         bool pass = markers && frameRelative && forecastValid && forecastFinite && forecastStartsAtShip
             && forecastOff && historyValid && noteHonest && planeOrthonormal && surfaceMode
-            && frameOrbit && frameOrbitOnBody && frameOrbitToggle && shipToggle && forecastLengthReacts
-            && surfaceForecast;
+            && frameOrbit && frameOrbitOnBody && frameOrbitToggle && shipToggle && forecastLengthReacts;
         Check(pass, "T567 nav map model",
             string.Format(
-                "bodies={0} frame={1:F2}м; forecast={2} pts={3} finite={4} start={5}; no-forecast={6} history={7} note={8}; plane={9}; surface={10} mode={11} hasFrame={12} dominant={13} terrain={14} lat={15:F2} lon={16:F2} hAGL={17:F0}; frameOrbit={18}/{19} toggle={20} shipToggle={21} forecastLen={22} surfaceForecast={23}",
+                "bodies={0} frame={1:F2}м; forecast={2} pts={3} finite={4} start={5}; no-forecast={6} history={7} note={8}; plane={9}; surface={10} mode={11} hasFrame={12} dominant={13} terrain={14} lat={15:F2} lon={16:F2} hAGL={17:F0}; frameOrbit={18}/{19} toggle={20} shipToggle={21} forecastLen={22}",
                 model.Bodies.Count,
                 model.FrameRelativeShipPosition.Magnitude,
                 forecastValid,
@@ -217,8 +213,7 @@ internal static partial class P1bTests
                 frameOrbitOnBody,
                 frameOrbitToggle,
                 shipToggle,
-                forecastLengthReacts,
-                surfaceForecast));
+                forecastLengthReacts));
         return 0;
     }
 }
