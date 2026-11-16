@@ -29,9 +29,13 @@ namespace Galilego.Tablet
     {
         private const int LowWidth = 192;
         private const int LowHeight = 96;
-        private const int HighWidth = 1024;
-        private const int HighHeight = 512;
-        private const int MaxConcurrentBuilds = 2;
+        // 2048×1024 is four times the old map. It is built on a worker thread, so
+        // the only main-thread cost is the final texture raster (cached per view).
+        private const int HighWidth = 2048;
+        private const int HighHeight = 1024;
+        // One detailed build at a time: two parallel fbm fills oversubscribe the
+        // CPU and can stutter the simulation while the map is open.
+        private const int MaxConcurrentBuilds = 1;
 
         private static readonly Dictionary<OrbitingBody, NavBodyTexture> Ready =
             new Dictionary<OrbitingBody, NavBodyTexture>();
@@ -230,7 +234,9 @@ namespace Galilego.Tablet
             var heights = new double[width * height];
             var pixels = new Color32[width * height];
 
-            int threads = Math.Max(1, Math.Min(6, Environment.ProcessorCount - 1));
+            // Leave the rest of the cores to the simulation: the 2048×1024 build
+            // is a background nicety, not a reason to stutter the flight.
+            int threads = Math.Max(1, Math.Min(4, Environment.ProcessorCount - 1));
             const double twoPi = Math.PI * 2d;
 
             Parallel.For(0, height, new ParallelOptions { MaxDegreeOfParallelism = threads }, y =>

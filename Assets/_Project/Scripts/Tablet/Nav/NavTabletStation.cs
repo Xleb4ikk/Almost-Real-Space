@@ -39,7 +39,9 @@ namespace Galilego.Tablet
         private UIDocument document;
         private SimulationRunner runner;
         private PlayerController player;
+        private Renderer screenRenderer;
         private Material screenMaterial;
+        private Material screenTemplate;
         private string[] bodies;
         private int bodyCountSeen = -1;
         private double lastTime = double.NaN;
@@ -58,6 +60,7 @@ namespace Galilego.Tablet
         private double nextMapBuild;
         private int lastCalcVersion = -1;
         private int lastViewVersion = -1;
+        private int lastPlanVersion = -1;
 
         /// <summary>
         /// The physical monitor is always live: a low-rate model rebuild keeps its
@@ -138,6 +141,7 @@ namespace Galilego.Tablet
 
         private void BuildOn(Renderer screenRenderer)
         {
+            this.screenRenderer = screenRenderer;
             PanelSettings panel = Resources.Load<PanelSettings>("NavTablet/NavTabletPanelSettings");
             VisualTreeAsset tree = Resources.Load<VisualTreeAsset>("NavTablet/NavTablet");
             VisualTreeAsset card = Resources.Load<VisualTreeAsset>("NavTablet/ManeuverCard");
@@ -155,22 +159,9 @@ namespace Galilego.Tablet
             previewMap = new NavMapRenderer(1024, 576, true);
             previewMap.Draw(null, null, new NavMapInfo { Connected = false, Status = "НЕТ СВЯЗИ С СИМУЛЯЦИЕЙ" });
             overlayMap.Draw(null, null, new NavMapInfo { Connected = false, Status = "НЕТ СВЯЗИ С СИМУЛЯЦИЕЙ" });
-            screenMaterial = screenRenderer.material; // own instance
+            screenTemplate = screenRenderer.sharedMaterial;
+            BindScreenMaterial();
             AssignPreviewTexture();
-            if (screenMaterial != null && screenMaterial.HasProperty("_UnlitColor"))
-            {
-                screenMaterial.SetColor("_UnlitColor", Color.white);
-            }
-
-            if (screenMaterial != null && screenMaterial.HasProperty("_BaseColor"))
-            {
-                screenMaterial.SetColor("_BaseColor", Color.white);
-            }
-
-            if (screenMaterial != null && screenMaterial.HasProperty("_EmissiveColor"))
-            {
-                screenMaterial.SetColor("_EmissiveColor", Color.black);
-            }
 
             GameObject uiObject = new GameObject("NavTabletUI");
             uiObject.SetActive(false);
@@ -189,7 +180,7 @@ namespace Galilego.Tablet
                 overlayMap.ResetView();
                 RebuildMap(true);
             };
-            view.CenterChanged += _ => { overlayMap.ResetPan(); RebuildMap(true); };
+            view.CenterChanged += _ => RebuildMap(true);
             view.OrbitToggled += _ => RebuildMap(true);
             view.MapDragged += OnMapDragged;
             view.MapZoomed += OnMapZoomed;
@@ -548,7 +539,8 @@ namespace Galilego.Tablet
             bool forced = force;
             int calc = view.State.CalcVersion;
             int viewVersion = view.State.ViewVersion;
-            if (calc != lastCalcVersion || viewVersion != lastViewVersion)
+            int planVersion = view.State.Plan.Version;
+            if (calc != lastCalcVersion || viewVersion != lastViewVersion || planVersion != lastPlanVersion)
             {
                 forced = true;
             }
@@ -564,6 +556,7 @@ namespace Galilego.Tablet
             nextMapBuild = Time.unscaledTime + interval;
             lastCalcVersion = calc;
             lastViewVersion = viewVersion;
+            lastPlanVersion = planVersion;
             RebuildMap();
         }
 
@@ -613,7 +606,9 @@ namespace Galilego.Tablet
                     view.State.HistoryS,
                     shipHistory,
                     allowForecast,
-                    parked);
+                    parked,
+                    view.State.Plan,
+                    view.IspS);
             }
             catch (Exception e)
             {
@@ -644,7 +639,10 @@ namespace Galilego.Tablet
             }
 
             FillMapInfo();
-            view.ForecastAvailable = allowForecast || (mapModel != null && mapModel.ForecastValid);
+            // A body forecast (the centred body's own ephemeris span) uses the
+            // forecast slider even when the ship has no free-flight forecast.
+            view.ForecastAvailable = allowForecast
+                || (mapModel != null && (mapModel.ForecastValid || mapModel.HasBodyForecast));
             if (overlay)
             {
                 overlayMap.Draw(mapModel, view.State, mapInfo);
@@ -677,23 +675,16 @@ namespace Galilego.Tablet
             mapInfo.Status = mapModel != null ? mapModel.Note : string.Empty;
         }
 
-        private void OnMapDragged(Vector2 delta, bool rotate)
+        private void OnMapDragged(Vector2 delta)
         {
             if (overlayMap == null || view == null)
             {
                 return;
             }
 
-            Vector2 pixels = ToMapPixels(delta);
-            if (rotate)
-            {
-                overlayMap.RotateByPixels(pixels);
-            }
-            else
-            {
-                overlayMap.PanByPixels(pixels);
-            }
-
+            // Centre-locked map: a drag is always a turntable rotation around the
+            // selected body. There is no pan that could move it off screen centre.
+            overlayMap.RotateByPixels(ToMapPixels(delta));
             overlayMap.Interactive = true;
             interactiveUntil = Time.unscaledTime + 0.2f;
             mapDirty = true;
@@ -760,9 +751,70 @@ namespace Galilego.Tablet
                 uiPixels.y * overlayMap.Height / size.y);
         }
 
+        /// <summary>
+        /// The builder paints placed parts with ghost/delete materials and restores
+        /// them with <see cref="PartCatalog.PartVisual.RestoreNatural"/>, which puts the
+        /// shared material back and drops the instance this station had textured. The
+        /// physical monitor then shows its static texture (or nothing) until a rebind.
+        /// Detect the swap and take a fresh instance instead of writing to an orphan.
+        /// </summary>
+        private void BindScreenMaterial()
+        {
+            if (screenRenderer == null)
+            {
+                return;
+            }
+
+            Material current = screenRenderer.sharedMaterial;
+            if (current == null)
+            {
+                screenMaterial = null;
+                return;
+            }
+
+            // A ghost/delete paint (HDRP/Lit) must not become the monitor surface;
+            // put the original screen shader back and take an instance of that.
+            if (screenTemplate != null && current.shader != screenTemplate.shader)
+            {
+                screenRenderer.sharedMaterial = screenTemplate;
+                current = screenTemplate;
+            }
+
+            if (!ReferenceEquals(current, screenMaterial))
+            {
+                screenMaterial = screenRenderer.material; // own instance of the current material
+            }
+
+            if (screenMaterial == null)
+            {
+                return;
+            }
+
+            if (screenMaterial.HasProperty("_UnlitColor"))
+            {
+                screenMaterial.SetColor("_UnlitColor", Color.white);
+            }
+
+            if (screenMaterial.HasProperty("_BaseColor"))
+            {
+                screenMaterial.SetColor("_BaseColor", Color.white);
+            }
+
+            if (screenMaterial.HasProperty("_EmissiveColor"))
+            {
+                screenMaterial.SetColor("_EmissiveColor", Color.black);
+            }
+        }
+
         private void AssignPreviewTexture()
         {
-            if (screenMaterial == null || previewMap == null)
+            if (previewMap == null)
+            {
+                return;
+            }
+
+            BindScreenMaterial();
+            if (screenMaterial == null)
             {
                 return;
             }

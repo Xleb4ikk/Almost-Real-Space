@@ -23,7 +23,7 @@
                     <ui:VisualElement name="frames-body" class="pn-body ov-body">
                         <ui:Label name="frames-desc" class="ds" />
                         <ui:VisualElement class="tr tr-head">
-                            <ui:Label text="ОРБИТА · ТЕЛО" class="tr-name tr-head-l" />
+                            <ui:Label text="СЛЕД · ТЕЛО" class="tr-name tr-head-l" />
                             <ui:Label text="ЦЕНТР" class="tr-b tr-head-c" />
                             <ui:Label text="ИСК" class="tr-b tr-head-c" />
                         </ui:VisualElement>

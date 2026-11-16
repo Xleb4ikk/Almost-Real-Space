@@ -176,30 +176,39 @@ internal static partial class P1bTests
         landedModel.Rebuild(system, landedShip, 600d, 0, 1, visible,
             3d * 86400d, 86400d, null, false, true);
 
-        bool landedHistoryValid = landedModel.HasSurfaceHistory;
-        bool landedForecastValid = landedModel.ForecastValid && landedModel.HasSurfaceForecast;
-        bool landedNoteHonest = landedModel.Note.IndexOf("СТОЯНК", StringComparison.OrdinalIgnoreCase) >= 0;
-        double landedExtent = 0d;
+        // A parked craft deliberately draws no site track: the full rotation at
+        // ~4 m AGL reads as a very low orbit. Only the standing marker remains.
+        bool landedHistoryOff = !landedModel.HasSurfaceHistory;
+        bool landedForecastOff = !landedModel.ForecastValid && !landedModel.HasSurfaceForecast;
+        bool landedNoteHonest = landedModel.Note.IndexOf("ПОВЕРХНОСТ", StringComparison.OrdinalIgnoreCase) >= 0
+            || landedModel.Note.IndexOf("СТОЯНК", StringComparison.OrdinalIgnoreCase) >= 0;
+        bool landedNoShipLine = true;
         for (int i = 0; i < landedModel.Lines.Count; i++)
         {
             NavLine line = landedModel.Lines[i];
-            if (line.Kind != NavLineKind.ShipForecast || line.Points.Count < 2)
+            if (line.Kind == NavLineKind.ShipForecast || line.Kind == NavLineKind.ShipHistory)
             {
-                continue;
-            }
-
-            for (int k = 1; k < line.Points.Count; k++)
-            {
-                landedExtent = Math.Max(landedExtent, (line.Points[k] - line.Points[0]).Magnitude);
+                landedNoShipLine = false;
             }
         }
 
-        bool landedPathMoves = landedExtent > 1e6d;
-
         // The centred body itself gets the same history/forecast spans (ephemeris).
+        // A long slider (641 days) must not be clipped by the ship forecast's
+        // 60-day N-body budget: body paths are cheap ephemeris samples.
         var bodyTrailModel = new NavMapModel();
-        bodyTrailModel.Rebuild(system, ship, 0d, 0, 1, visible, 2d * 86400d, 2d * 86400d, null, true);
+        bodyTrailModel.Rebuild(system, ship, 0d, 0, 1, visible, 641d * 86400d, 2d * 86400d, null, true);
         bool bodyTrailValid = bodyTrailModel.HasBodyHistory && bodyTrailModel.HasBodyForecast;
+        double bodyForecastSpan = 0d;
+        for (int i = 0; i < bodyTrailModel.Lines.Count; i++)
+        {
+            NavLine line = bodyTrailModel.Lines[i];
+            if (line.Kind == NavLineKind.BodyForecast)
+            {
+                bodyForecastSpan = line.EndTimeS - line.StartTimeS;
+            }
+        }
+
+        bool bodyForecastLong = bodyForecastSpan > 60d * 86400d;
 
         // Low-altitude surface view: the dominant body has a heightfield, so the map
         // must switch to the real local terrain and keep the true sub-point.
@@ -224,11 +233,11 @@ internal static partial class P1bTests
         bool pass = markers && frameRelative && forecastValid && forecastFinite && forecastStartsAtShip
             && forecastOff && historyValid && noteHonest && planeOrthonormal && surfaceMode
             && frameOrbit && frameOrbitOnBody && frameOrbitToggle && shipToggle && forecastLengthReacts
-            && landedHistoryValid && landedForecastValid && landedNoteHonest && landedPathMoves
-            && bodyTrailValid;
+            && landedHistoryOff && landedForecastOff && landedNoteHonest && landedNoShipLine
+            && bodyTrailValid && bodyForecastLong;
         Check(pass, "T567 nav map model",
             string.Format(
-                "bodies={0} frame={1:F2}м; forecast={2} pts={3} finite={4} start={5}; no-forecast={6} history={7} note={8}; plane={9}; surface={10} mode={11} hasFrame={12} dominant={13} terrain={14} lat={15:F2} lon={16:F2} hAGL={17:F0}; frameOrbit={18}/{19} toggle={20} shipToggle={21} forecastLen={22}; landed={23}/{24} note={25} span={26:F0}м; bodyTrail={27}",
+                "bodies={0} frame={1:F2}м; forecast={2} pts={3} finite={4} start={5}; no-forecast={6} history={7} note={8}; plane={9}; surface={10} mode={11} hasFrame={12} dominant={13} terrain={14} lat={15:F2} lon={16:F2} hAGL={17:F0}; frameOrbit={18}/{19} toggle={20} shipToggle={21} forecastLen={22}; landedHistoryOff={23} landedForecastOff={24} note={25} noShipLine={26}; bodyTrail={27} bodyForecastSpan={28:F0}s",
                 model.Bodies.Count,
                 model.FrameRelativeShipPosition.Magnitude,
                 forecastValid,
@@ -252,11 +261,12 @@ internal static partial class P1bTests
                 frameOrbitToggle,
                 shipToggle,
                 forecastLengthReacts,
-                landedHistoryValid,
-                landedForecastValid,
+                landedHistoryOff,
+                landedForecastOff,
                 landedModel.Note,
-                landedExtent,
-                bodyTrailValid));
+                landedNoShipLine,
+                bodyTrailValid,
+                bodyForecastSpan));
         return 0;
     }
 }

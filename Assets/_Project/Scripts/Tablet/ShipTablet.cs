@@ -45,6 +45,7 @@ namespace Galilego.Tablet
         private TabletTelemetry telemetry;
         private Texture2D texture;
         private Material screenMaterial;
+        private Material screenTemplate;
         private float nextRefresh;
         private bool prevCursorVisible;
         private CursorLockMode prevCursorLock;
@@ -129,11 +130,54 @@ namespace Galilego.Tablet
             }
         }
 
-        private void BindMaterial()
+        /// <summary>
+        /// The builder paints placed parts with ghost/delete materials and restores
+        /// them with the saved shared materials. That drops this tablet's material
+        /// instance (and the live screen texture) until the next bind.
+        /// </summary>
+        private void EnsureScreenMaterial()
         {
             if (ScreenRenderer == null)
             {
                 return;
+            }
+
+            Material current = ScreenRenderer.sharedMaterial;
+            if (current == null)
+            {
+                BindMaterial();
+                return;
+            }
+
+            if (screenTemplate != null && current.shader != screenTemplate.shader)
+            {
+                // Ghost/delete paint from the builder replaced the screen material.
+                BindMaterial();
+                return;
+            }
+
+            if (!ReferenceEquals(current, screenMaterial))
+            {
+                BindMaterial();
+            }
+        }
+
+        private void BindMaterial()
+        {
+            if (ScreenRenderer == null || ScreenRenderer.sharedMaterial == null)
+            {
+                return;
+            }
+
+            if (screenTemplate == null)
+            {
+                screenTemplate = ScreenRenderer.sharedMaterial;
+            }
+
+            Material current = ScreenRenderer.sharedMaterial;
+            if (screenTemplate != null && current != null && current.shader != screenTemplate.shader)
+            {
+                ScreenRenderer.sharedMaterial = screenTemplate;
             }
 
             screenCollider = ScreenRenderer.GetComponent<Collider>();
@@ -176,6 +220,8 @@ namespace Galilego.Tablet
             {
                 return;
             }
+
+            EnsureScreenMaterial();
 
             // Collapsed — CompactRefreshHz; expanded or under the crosshair (world
             // click on the monitor) — 30 Hz: a click waits no longer than 33 ms.

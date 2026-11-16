@@ -23,7 +23,8 @@ namespace Galilego.Tablet
     /// <summary>
     /// Software renderer of the navigation map into a Texture2D. It draws exactly the
     /// geometry built by NavMapModel: body positions/velocities from the baked
-    /// ephemerides, the ship's N-body coast forecast and its actual history trail.
+    /// ephemerides, the ship's N-body forecast (coast plus planned impulses) and its
+    /// actual history trail.
     ///
     /// The projection is orthographic with a user tilt, so an inclined orbit is an
     /// ellipse and an out-of-plane body really sits off the line. Pixels are drawn
@@ -94,19 +95,8 @@ namespace Galilego.Tablet
         private Vector3d diskCacheView;
         private Vector3d diskCacheSun;
 
-        // Set by DrawMap, read by DrawHud: explains why an orbit legend may have
-        // no line on screen (planet-centred view hides the parent's orbit).
-        private bool orbitLinesAvailable;
-        private bool orbitsDrawn;
-
         private double lastScale;
         private double lastSurfaceMetersPerPixel;
-        private Vector2 lastRectCenter;
-        // Drawable map extent of the last frame: the physical monitor and the
-        // overlay have different layouts, so pan has to be transferred as a
-        // fraction of the map, not as raw texture pixels.
-        private float lastMapExtent = 1f;
-        private Vector2 panPixels;
         private int lastFrameIndex = -1;
         private int lastCenterIndex = -1;
         private int lastBodyCount = -1;
@@ -116,6 +106,9 @@ namespace Galilego.Tablet
         private static readonly Color32 OrbitColorC = TabletTheme.Line;
         private static readonly Color32 ShipColor = TabletTheme.Bright;
         private static readonly Color32 ForecastColor = TabletTheme.Warn;
+        private static readonly Color32 ManeuverForecastColor = TabletTheme.Bright;
+        private static readonly Color32 SurfaceForecastColor = TabletTheme.Main;
+        private static readonly Color32 SurfaceHistoryColor = TabletTheme.Dim;
 
         private struct PickEntry
         {
@@ -166,7 +159,6 @@ namespace Galilego.Tablet
             {
                 // Keep the user's orientation across a focus change; ease back to
                 // the default angles instead of snapping the map.
-                panPixels = Vector2.zero;
                 Zoom = 1f;
                 TargetAzimuthRad = DefaultAzimuthRad;
                 TargetElevationRad = DefaultElevationRad;
@@ -175,7 +167,6 @@ namespace Galilego.Tablet
 
             if (model.CenterIndex != lastCenterIndex)
             {
-                panPixels = Vector2.zero;
                 lastCenterIndex = model.CenterIndex;
             }
 
@@ -216,21 +207,6 @@ namespace Galilego.Tablet
             }
 
             Upload();
-        }
-
-        public void PanByPixels(Vector2 delta)
-        {
-            if (!float.IsFinite(delta.x) || !float.IsFinite(delta.y))
-            {
-                return;
-            }
-
-            panPixels += delta;
-        }
-
-        public void ResetPan()
-        {
-            panPixels = Vector2.zero;
         }
 
         public void RotateByPixels(Vector2 delta)
@@ -275,9 +251,14 @@ namespace Galilego.Tablet
             return moving;
         }
 
+        /// <summary>
+        /// Wheel zoom around the selected centre. The cursor is deliberately
+        /// ignored: anchoring the world point under the mouse moved the chosen
+        /// body off the screen centre, which made the map feel like it drifted.
+        /// </summary>
         public void ZoomAt(Vector2 texturePixel, float wheelDelta)
         {
-            if (lastScale <= 0d || !(Zoom > 0f) || !float.IsFinite(texturePixel.x) || !float.IsFinite(texturePixel.y))
+            if (!(Zoom > 0f) || !float.IsFinite(wheelDelta))
             {
                 return;
             }
@@ -285,32 +266,21 @@ namespace Galilego.Tablet
             float factor = Mathf.Pow(1.2f, -wheelDelta);
             // Deep zoom-out: from a planet-centred view the wheel must reach the
             // planet's own orbit around its star (≈1 AU), not stop at a local map.
-            float newZoom = Mathf.Clamp(Zoom * factor, 0.00005f, 80f);
-            double newScale = lastScale * (newZoom / Zoom);
-            Vector2 worldOffset = new Vector2(
-                (float)((texturePixel.x - lastRectCenter.x - panPixels.x) / lastScale),
-                (float)((texturePixel.y - lastRectCenter.y - panPixels.y) / lastScale));
-            panPixels = new Vector2(
-                texturePixel.x - lastRectCenter.x - (float)(worldOffset.x * newScale),
-                texturePixel.y - lastRectCenter.y - (float)(worldOffset.y * newScale));
-            Zoom = newZoom;
+            Zoom = Mathf.Clamp(Zoom * factor, 0.00005f, 80f);
         }
 
         public void ResetView()
         {
-            panPixels = Vector2.zero;
             Zoom = 1f;
             TargetAzimuthRad = DefaultAzimuthRad;
             TargetElevationRad = DefaultElevationRad;
         }
 
         /// <summary>
-        /// Transfers the camera (zoom, turntable angles, pan) from the other map
+        /// Transfers the camera (zoom, turntable angles) from the other map
         /// renderer. The physical monitor and the full-screen overlay are separate
         /// renderers with different layouts; without this, opening or closing the
         /// tablet snapped the visible view back to that renderer's own last camera.
-        /// Pan is stored in texture pixels, so it is scaled by the drawable map
-        /// extent to keep the same world point at the same relative screen position.
         /// </summary>
         public void CopyViewFrom(NavMapRenderer source)
         {
@@ -324,14 +294,6 @@ namespace Galilego.Tablet
             TargetElevationRad = source.TargetElevationRad;
             AzimuthRad = source.AzimuthRad;
             ElevationRad = source.ElevationRad;
-
-            float sourceExtent = source.lastMapExtent > 1f
-                ? source.lastMapExtent
-                : Mathf.Max(1f, Mathf.Min(source.Width, source.Height));
-            float targetExtent = lastMapExtent > 1f
-                ? lastMapExtent
-                : Mathf.Max(1f, Mathf.Min(Width, Height));
-            panPixels = source.panPixels * (targetExtent / sourceExtent);
             lastFrameIndex = source.lastFrameIndex;
             lastCenterIndex = source.lastCenterIndex;
 
@@ -366,22 +328,15 @@ namespace Galilego.Tablet
         {
             int centerIndex = state != null ? state.CenterIndex : model.CenterIndex;
             bool shipCenter = model.HasShip && centerIndex == model.ShipIndex;
-            Vector3d center = model.CenterPosition;
 
-            // Zoom in towards the craft instead of the planet centre: the whole globe
-            // at 1x, then the camera slides to the ship so its marker never runs off
-            // to the side while the surface is enlarged.
-            if (model.HasShip && !shipCenter && centerIndex == model.FrameIndex && Zoom > 1f)
-            {
-                double t = Math.Min(1d, (Zoom - 1d) / 2.5d);
-                center = center + ((model.FrameRelativeShipPosition - center) * t);
-            }
+            // The chosen centre is the camera pivot at every zoom level. The old
+            // zoom-in slide toward the ship (and the cursor-anchored wheel) moved
+            // the selected body off-centre, especially when zooming back out.
+            Vector3d center = model.CenterPosition;
 
             double radius = AutoRadius(model, centerIndex, shipCenter);
             double scale = Math.Min(rect.width, rect.height) * 0.44d / radius * Zoom;
             lastScale = scale;
-            lastRectCenter = new Vector2(rect.x + (rect.width * 0.5f), rect.y + (rect.height * 0.5f));
-            lastMapExtent = Mathf.Max(1f, Mathf.Min(rect.width, rect.height));
 
             Vector3d normal = model.OrbitNormal.Normalized;
             Vector3d right0 = model.OrbitRight.Normalized;
@@ -421,8 +376,8 @@ namespace Galilego.Tablet
                 Vector3d d = point - center;
                 double x = Vector3d.Dot(d, screenRight);
                 double y = Vector3d.Dot(d, screenUp);
-                float sx = (float)(rect.x + (rect.width * 0.5f) + panPixels.x + (x * scale));
-                float syPx = (float)(rect.y + (rect.height * 0.5f) + panPixels.y - (y * scale));
+                float sx = (float)(rect.x + (rect.width * 0.5f) + (x * scale));
+                float syPx = (float)(rect.y + (rect.height * 0.5f) - (y * scale));
                 return new Vector2(sx, syPx);
             }
 
@@ -434,36 +389,10 @@ namespace Galilego.Tablet
             // 1. Reference frames are implied by the "ВЕРХ" cue and the turntable
             // camera; a full dashed ring around the planet reads as a fake orbit.
 
-            // 2. Body orbits go BEHIND the globes. A planet's own orbit passes
-            // through its centre, so drawing it on top made a bright line look
-            // like it was painted across the planet.
-            orbitLinesAvailable = false;
-            orbitsDrawn = false;
-            for (int i = 0; i < model.Lines.Count; i++)
-            {
-                NavLine line = model.Lines[i];
-                if (line.Kind != NavLineKind.BodyOrbit)
-                {
-                    continue;
-                }
-
-                orbitLinesAvailable = true;
-                if (line.BodyIndex == model.FrameIndex
-                    && line.ParentIndex >= 0 && line.ParentIndex < model.Bodies.Count)
-                {
-                    // In a planet-centred view the parent is astronomically far away
-                    // and the body's own orbit is a meaningless straight chord. Show
-                    // it only when the parent is actually in the frame (zoomed out).
-                    Vector2 parent = Project(model.Bodies[line.ParentIndex].Position);
-                    if (!Inside(rect, parent, Mathf.Max(rect.width, rect.height)))
-                    {
-                        continue;
-                    }
-                }
-
-                orbitsDrawn = true;
-                DrawPolyline(line.Points, Project, rect, BodyColor(line.BodyIndex), false, 1);
-            }
+            // Full body orbit rails are intentionally not drawn: with the short
+            // default history/forecast windows a complete ellipse reads as the
+            // predicted path ("why is the whole orbit green?"). Only the
+            // time-limited body/ship spans below are drawn.
 
             // 2b. The centred body's own history/forecast over the slider windows.
             // Same real ephemeris as its orbit rail, but the highlighted spans show
@@ -489,7 +418,11 @@ namespace Galilego.Tablet
                 NavLine line = model.Lines[i];
                 if (line.Kind == NavLineKind.ShipHistory)
                 {
-                    DrawPolyline(line.Points, Project, rect, TabletTheme.Main, false, 2);
+                    // A parked craft's "history" is the site path from the
+                    // ephemerides, not a flown orbit: keep it dim and thin.
+                    bool surface = model.HasSurfaceHistory;
+                    DrawPolyline(line.Points, Project, rect,
+                        surface ? SurfaceHistoryColor : TabletTheme.Main, false, surface ? 1 : 2);
                 }
             }
 
@@ -498,14 +431,38 @@ namespace Galilego.Tablet
                 NavLine line = model.Lines[i];
                 if (line.Kind == NavLineKind.ShipForecast)
                 {
-                    DrawPolyline(line.Points, Project, rect, ForecastColor, true, 1);
+                    if (model.HasSurfaceForecast)
+                    {
+                        // Site track while standing: a dashed ground path, not a
+                        // ballistic orbit. A solid amber circle at 4 m AGL reads as
+                        // a very low orbit, which is exactly the wrong message.
+                        DrawPolyline(line.Points, Project, rect, SurfaceForecastColor, true, 1);
+                    }
+                    else
+                    {
+                        DrawPolyline(line.Points, Project, rect, ForecastColor, false, 2);
+                    }
+                }
+                else if (line.Kind == NavLineKind.ManeuverForecast)
+                {
+                    DrawPolyline(line.Points, Project, rect, ManeuverForecastColor, true, 2);
                 }
             }
+
+            int occluderIndex = centerIndex >= 0 && centerIndex < model.Bodies.Count
+                ? centerIndex
+                : model.DominantBodyIndex;
 
             // 4. Globes.
             for (int i = 0; i < model.Bodies.Count; i++)
             {
                 NavBodyMarker body = model.Bodies[i];
+                if (i != occluderIndex
+                    && IsMarkerOccluded(model, occluderIndex, body.Position, screenRight, screenUp, camDir))
+                {
+                    continue;
+                }
+
                 Vector2 p = Project(body.Position);
                 if (!IsFinite(p))
                 {
@@ -526,9 +483,6 @@ namespace Galilego.Tablet
 
             // 5. Near halves of the ship trails over the globe. The far halves stay
             // under it, so a surface site path no longer shows through the planet.
-            int occluderIndex = centerIndex >= 0 && centerIndex < model.Bodies.Count
-                ? centerIndex
-                : model.DominantBodyIndex;
             if (occluderIndex >= 0 && occluderIndex < model.Bodies.Count)
             {
                 Vector3d occluderCenter = model.Bodies[occluderIndex].Position;
@@ -538,12 +492,27 @@ namespace Galilego.Tablet
                     NavLine line = model.Lines[i];
                     if (line.Kind == NavLineKind.ShipHistory)
                     {
-                        DrawPolylineNear(line.Points, Project, rect, TabletTheme.Main, false, 2,
+                        bool surface = model.HasSurfaceHistory;
+                        DrawPolylineNear(line.Points, Project, rect,
+                            surface ? SurfaceHistoryColor : TabletTheme.Main, false, surface ? 1 : 2,
                             occluderCenter, occluderRadius, screenRight, screenUp, camDir);
                     }
                     else if (line.Kind == NavLineKind.ShipForecast)
                     {
-                        DrawPolylineNear(line.Points, Project, rect, ForecastColor, true, 1,
+                        if (model.HasSurfaceForecast)
+                        {
+                            DrawPolylineNear(line.Points, Project, rect, SurfaceForecastColor, true, 1,
+                                occluderCenter, occluderRadius, screenRight, screenUp, camDir);
+                        }
+                        else
+                        {
+                            DrawPolylineNear(line.Points, Project, rect, ForecastColor, false, 2,
+                                occluderCenter, occluderRadius, screenRight, screenUp, camDir);
+                        }
+                    }
+                    else if (line.Kind == NavLineKind.ManeuverForecast)
+                    {
+                        DrawPolylineNear(line.Points, Project, rect, ManeuverForecastColor, true, 2,
                             occluderCenter, occluderRadius, screenRight, screenUp, camDir);
                     }
                 }
@@ -553,11 +522,22 @@ namespace Galilego.Tablet
             for (int i = 0; i < model.Lines.Count; i++)
             {
                 NavLine line = model.Lines[i];
-                if ((line.Kind == NavLineKind.ShipForecast || line.Kind == NavLineKind.BodyForecast)
+                if ((line.Kind == NavLineKind.ShipForecast
+                        || line.Kind == NavLineKind.ManeuverForecast
+                        || line.Kind == NavLineKind.BodyForecast)
                     && line.Points.Count > 1)
                 {
-                    Vector2 end = Project(line.Points[line.Points.Count - 1]);
-                    DrawCross(end.x, end.y, 4f, ForecastColor);
+                    Vector3d endpoint = line.Points[line.Points.Count - 1];
+                    if (IsMarkerOccluded(model, occluderIndex, endpoint, screenRight, screenUp, camDir))
+                    {
+                        continue;
+                    }
+
+                    Vector2 end = Project(endpoint);
+                    Color32 endColor = line.Kind == NavLineKind.ShipForecast && model.HasSurfaceForecast
+                        ? SurfaceForecastColor
+                        : ForecastColor;
+                    DrawCross(end.x, end.y, 4f, endColor);
                 }
             }
 
@@ -568,20 +548,51 @@ namespace Galilego.Tablet
                 if ((line.Kind == NavLineKind.ShipHistory || line.Kind == NavLineKind.BodyHistory)
                     && line.Points.Count > 1)
                 {
+                    if (IsMarkerOccluded(model, occluderIndex, line.Points[0], screenRight, screenUp, camDir))
+                    {
+                        continue;
+                    }
+
                     Vector2 start = Project(line.Points[0]);
                     if (IsFinite(start) && Inside(rect, start, 4f))
                     {
                         int sx = Mathf.RoundToInt(start.x);
                         int sy = Mathf.RoundToInt(start.y);
-                        canvas.Fill(sx - 1, sy - 1, 3, 3, TabletTheme.Main);
+                        canvas.Fill(sx - 1, sy - 1, 3, 3,
+                            model.HasSurfaceHistory ? SurfaceHistoryColor : TabletTheme.Main);
                     }
                 }
+            }
+
+            // Planned burn points: the forecast changes colour there because the
+            // orbit changes, not merely because time passed.
+            for (int i = 0; i < model.BurnMarkers.Count; i++)
+            {
+                NavBurnMarker burn = model.BurnMarkers[i];
+                if (IsMarkerOccluded(model, occluderIndex, burn.Position, screenRight, screenUp, camDir))
+                {
+                    continue;
+                }
+
+                Vector2 p = Project(burn.Position);
+                if (!IsFinite(p))
+                {
+                    continue;
+                }
+
+                DrawMarker(p.x, p.y, "ΔV" + burn.Index.ToString(), ForecastColor, rect);
             }
 
             // 6. Body markers and labels, on top of every line.
             for (int i = 0; i < model.Bodies.Count; i++)
             {
                 NavBodyMarker body = model.Bodies[i];
+                if (i != occluderIndex
+                    && IsMarkerOccluded(model, occluderIndex, body.Position, screenRight, screenUp, camDir))
+                {
+                    continue;
+                }
+
                 Vector2 p = Project(body.Position);
                 if (!IsFinite(p))
                 {
@@ -625,13 +636,17 @@ namespace Galilego.Tablet
             // Apsides of the current osculating orbit.
             if (model.HasApsides)
             {
-                Vector2 pe = Project(model.PeriapsisPosition);
-                if (IsFinite(pe) && Inside(rect, pe, 12f))
+                if (!IsMarkerOccluded(model, occluderIndex, model.PeriapsisPosition, screenRight, screenUp, camDir))
                 {
-                    DrawMarker(pe.x, pe.y, "П", TabletTheme.Main, rect);
+                    Vector2 pe = Project(model.PeriapsisPosition);
+                    if (IsFinite(pe) && Inside(rect, pe, 12f))
+                    {
+                        DrawMarker(pe.x, pe.y, "П", TabletTheme.Main, rect);
+                    }
                 }
 
-                if (model.HasApoapsis)
+                if (model.HasApoapsis
+                    && !IsMarkerOccluded(model, occluderIndex, model.ApoapsisPosition, screenRight, screenUp, camDir))
                 {
                     Vector2 ap = Project(model.ApoapsisPosition);
                     if (IsFinite(ap) && Inside(rect, ap, 12f))
@@ -642,7 +657,8 @@ namespace Galilego.Tablet
             }
 
             // The ship itself: a diamond with a short velocity pointer.
-            if (model.HasShip)
+            if (model.HasShip
+                && !IsMarkerOccluded(model, occluderIndex, model.FrameRelativeShipPosition, screenRight, screenUp, camDir))
             {
                 Vector2 ship = Project(model.FrameRelativeShipPosition);
                 if (IsFinite(ship) && Inside(rect, ship, 12f))
@@ -659,6 +675,38 @@ namespace Galilego.Tablet
                     });
                 }
             }
+        }
+
+        /// <summary>
+        /// True when a marker is behind the globe (or inside it) and must not be
+        /// drawn through the surface. Uses the same orthographic disk test as the
+        /// near/far trail passes.
+        /// </summary>
+        private static bool IsMarkerOccluded(NavMapModel model, int occluderIndex, Vector3d point,
+            Vector3d screenRight, Vector3d screenUp, Vector3d camDir)
+        {
+            if (occluderIndex < 0 || occluderIndex >= model.Bodies.Count)
+            {
+                return false;
+            }
+
+            NavBodyMarker body = model.Bodies[occluderIndex];
+            double radius = body.RadiusMeters;
+            if (!(radius > 0d))
+            {
+                return false;
+            }
+
+            Vector3d q = point - body.Position;
+            if (q.SqrMagnitude < radius * radius)
+            {
+                return true; // physically inside the body
+            }
+
+            double dx = Vector3d.Dot(q, screenRight);
+            double dy = Vector3d.Dot(q, screenUp);
+            double disk = radius * radius * 1.02d;
+            return ((dx * dx) + (dy * dy) <= disk) && Vector3d.Dot(q, camDir) < 0d;
         }
 
         private void DrawSurfaceMap(NavMapModel model, NavState state, NavMapInfo info, RectInt rect)
@@ -679,11 +727,9 @@ namespace Galilego.Tablet
             double mpp = span / Math.Max(1, Math.Min(rect.width, rect.height)) / Math.Max(0.05f, Zoom);
             lastSurfaceMetersPerPixel = mpp;
             lastScale = 1d / mpp;
-            lastRectCenter = new Vector2(rect.x + (rect.width * 0.5f), rect.y + (rect.height * 0.5f));
-            lastMapExtent = Mathf.Max(1f, Mathf.Min(rect.width, rect.height));
 
-            float centerX = rect.x + (rect.width * 0.5f) + panPixels.x;
-            float centerY = rect.y + (rect.height * 0.5f) + panPixels.y;
+            float centerX = rect.x + (rect.width * 0.5f);
+            float centerY = rect.y + (rect.height * 0.5f);
 
             double lat0 = model.ShipLatitudeDegrees * (Math.PI / 180d);
             double lon0 = model.ShipLongitudeDegrees * (Math.PI / 180d);
@@ -1487,9 +1533,10 @@ namespace Galilego.Tablet
             Vector3d sun = model.SunDirection;
 
             // Two block sizes: a coarse interactive pass while the finger is down,
-            // then one clean frame when the gesture ends. Either way the result is
-            // cached and reused by the regular map tick.
-            int step = Interactive ? 4 : 2;
+            // then one clean frame when the gesture ends. The clean pass is full
+            // screen resolution (step 1) and is cached, so it is paid once per view
+            // change — not on every map tick.
+            int step = Interactive ? 4 : 1;
             if (!TryBlitPlanetDisk(planet, texture, center, radius, right, screenUp, viewDir,
                     sun, orientation, rect, step))
             {
@@ -1535,7 +1582,7 @@ namespace Galilego.Tablet
             int canvasWidth = canvas.Width;
             int canvasHeight = canvas.Height;
 
-            for (int y = y0; y <= y1; y += step)
+            Action<int> rasterRow = y =>
             {
                 int cellHeight = Mathf.Min(step, y1 - y + 1);
                 float ny = (center.y - y) * invRadius;
@@ -1556,11 +1603,24 @@ namespace Galilego.Tablet
                     double lat = Math.Asin(Math.Max(-1d, Math.Min(1d, bodyNormal.Z)));
                     double lon = Math.Atan2(bodyNormal.Y, bodyNormal.X);
 
-                    int tx = (int)(((lon + Math.PI) / (Math.PI * 2d)) * texWidth);
-                    int ty = (int)(((lat + (Math.PI * 0.5d)) / Math.PI) * texHeight);
-                    if (tx < 0) { tx = 0; } else if (tx >= texWidth) { tx = texWidth - 1; }
-                    if (ty < 0) { ty = 0; } else if (ty >= texHeight) { ty = texHeight - 1; }
-                    Color32 c = pixels[(ty * texWidth) + tx];
+                    Color32 c;
+                    if (step <= 1)
+                    {
+                        // Full-resolution clean pass: bilinear keeps the high-res
+                        // map smooth instead of aliasing into speckle. The pass is
+                        // cached, so the extra taps are paid once per view change.
+                        double u = (((lon + Math.PI) / (Math.PI * 2d)) * texWidth) - 0.5d;
+                        double v = (((lat + (Math.PI * 0.5d)) / Math.PI) * texHeight) - 0.5d;
+                        c = SampleBilinear(pixels, texWidth, texHeight, u, v);
+                    }
+                    else
+                    {
+                        int tx = (int)(((lon + Math.PI) / (Math.PI * 2d)) * texWidth);
+                        int ty = (int)(((lat + (Math.PI * 0.5d)) / Math.PI) * texHeight);
+                        if (tx < 0) { tx = 0; } else if (tx >= texWidth) { tx = texWidth - 1; }
+                        if (ty < 0) { ty = 0; } else if (ty >= texHeight) { ty = texHeight - 1; }
+                        c = pixels[(ty * texWidth) + tx];
+                    }
 
                     double light = Vector3d.Dot(worldNormal, sun);
                     double facing = Math.Max(0d, Vector3d.Dot(worldNormal, viewDir));
@@ -1583,10 +1643,71 @@ namespace Galilego.Tablet
                         }
                     }
                 }
+            };
+
+            if (step <= 1)
+            {
+                // The full-res clean pass is the one expensive frame; split its
+                // rows across workers so it costs a few milliseconds, not ~17.
+                // Rows write disjoint canvas pixels, so no locking is needed.
+                int rows = ((y1 - y0) / step) + 1;
+                var options = new System.Threading.Tasks.ParallelOptions
+                {
+                    MaxDegreeOfParallelism = Math.Max(1, Math.Min(4, Environment.ProcessorCount - 1)),
+                };
+                System.Threading.Tasks.Parallel.For(0, rows, options, i => rasterRow(y0 + (i * step)));
+            }
+            else
+            {
+                for (int y = y0; y <= y1; y += step)
+                {
+                    rasterRow(y);
+                }
             }
 
             StorePlanetDisk(planet, texture, center, radius, right, screenUp, viewDir, sun,
                 orientation, rect, step, x0, y0, x1, y1);
+        }
+
+        /// <summary>Bilinear texel fetch with longitude wrap and latitude clamp.</summary>
+        private static Color32 SampleBilinear(Color32[] pixels, int width, int height, double u, double v)
+        {
+            double wrapped = u - (Math.Floor(u / width) * width);
+            int x0 = (int)Math.Floor(wrapped);
+            float fx = (float)(wrapped - x0);
+            if (x0 < 0) { x0 = 0; fx = 0f; }
+            if (x0 >= width) { x0 = width - 1; fx = 0f; }
+            int x1 = x0 + 1;
+            if (x1 >= width) { x1 = 0; }
+
+            int y0 = (int)Math.Floor(v);
+            float fy = (float)(v - y0);
+            if (y0 < 0) { y0 = 0; fy = 0f; }
+            if (y0 >= height) { y0 = height - 1; fy = 0f; }
+            int y1 = y0 + 1;
+            if (y1 >= height) { y1 = height - 1; }
+
+            Color32 c00 = pixels[(y0 * width) + x0];
+            Color32 c10 = pixels[(y0 * width) + x1];
+            Color32 c01 = pixels[(y1 * width) + x0];
+            Color32 c11 = pixels[(y1 * width) + x1];
+            float w00 = (1f - fx) * (1f - fy);
+            float w10 = fx * (1f - fy);
+            float w01 = (1f - fx) * fy;
+            float w11 = fx * fy;
+            return new Color32(
+                BlendChannel(c00.r, c10.r, c01.r, c11.r, w00, w10, w01, w11),
+                BlendChannel(c00.g, c10.g, c01.g, c11.g, w00, w10, w01, w11),
+                BlendChannel(c00.b, c10.b, c01.b, c11.b, w00, w10, w01, w11),
+                255);
+        }
+
+        private static byte BlendChannel(byte c00, byte c10, byte c01, byte c11,
+            float w00, float w10, float w01, float w11)
+        {
+            int value = (int)((c00 * w00) + (c10 * w10) + (c01 * w01) + (c11 * w11) + 0.5f);
+            if (value < 0) { return 0; }
+            return value > 255 ? (byte)255 : (byte)value;
         }
 
         private bool TryBlitPlanetDisk(OrbitingBody planet, NavBodyTexture texture, Vector2 center,
@@ -1820,13 +1941,12 @@ namespace Galilego.Tablet
             }
 
             int legendX = x;
-            int legendY = y - 46;
-            canvas.Line(legendX, legendY + 3, legendX + 16, legendY + 3, TabletTheme.LineHi);
-            string orbitText = orbitsDrawn
-                ? "ОРБИТА"
-                : (orbitLinesAvailable ? "ОРБИТА ВНЕ ВИДА" : "ОРБИТА ВЫКЛ");
-            canvas.Text(legendX + 20, legendY, orbitText, TabletTheme.Dim);
-            canvas.Line(legendX, legendY + 15, legendX + 16, legendY + 15, TabletTheme.Main);
+            // No full-orbit row: rails are not drawn. The plan row needs one more
+            // line; lift the legend while it is visible so it never collides with
+            // the status text at y.
+            int legendY = y - 33 - (model.PlannedWindowSeconds > 0d ? 13 : 0);
+            canvas.Line(legendX, legendY + 3, legendX + 16, legendY + 3,
+                model.HasSurfaceHistory ? SurfaceHistoryColor : TabletTheme.Main);
             string history;
             if (model.HistorySeconds <= 0d)
             {
@@ -1880,41 +2000,68 @@ namespace Galilego.Tablet
                 }
             }
 
-            canvas.Text(legendX + 20, legendY + 12, history, TabletTheme.Dim);
-            DashedHudLine(legendX, legendY + 25, 16, ForecastColor);
-            string forecast;
-            if (model.ForecastValid)
+            if (model.HasSurfaceHistory && history.StartsWith("ИСТОРИЯ", StringComparison.Ordinal))
             {
-                forecast = "ПРОГНОЗ " + TabletFormat.Time(model.ForecastWindowSeconds);
+                history = "ИСТОРИЯ СТОЯНКИ" + history.Substring("ИСТОРИЯ".Length);
+            }
+
+            canvas.Text(legendX + 20, legendY, history, TabletTheme.Dim);
+
+            // The craft's own path is solid only while it coasts. A standing craft
+            // has a site track (planet rotation), which must not read as an orbit:
+            // same dashed sample and label as the standing note.
+            string ballistic;
+            if (model.HasSurfaceForecast)
+            {
+                DashedHudLine(legendX, legendY + 15, 16, SurfaceForecastColor);
+                ballistic = "ПРОГНОЗ СТОЯНКИ "
+                    + TabletFormat.Time(model.ForecastWindowSeconds);
             }
             else
             {
-                NavLine bodyForecast = null;
-                for (int i = 0; i < model.Lines.Count; i++)
+                canvas.Line(legendX, legendY + 15, legendX + 16, legendY + 15, ForecastColor);
+                if (model.ForecastValid)
                 {
-                    if (model.Lines[i].Kind == NavLineKind.BodyForecast)
-                    {
-                        bodyForecast = model.Lines[i];
-                        break;
-                    }
+                    double span = model.BallisticWindowSeconds > 0d
+                        ? model.BallisticWindowSeconds
+                        : model.ForecastWindowSeconds;
+                    ballistic = "БАЛЛИСТИКА " + TabletFormat.Time(span);
                 }
+                else
+                {
+                    NavLine bodyForecast = null;
+                    for (int i = 0; i < model.Lines.Count; i++)
+                    {
+                        if (model.Lines[i].Kind == NavLineKind.BodyForecast)
+                        {
+                            bodyForecast = model.Lines[i];
+                            break;
+                        }
+                    }
 
-                forecast = bodyForecast != null
-                    ? "ПРОГНОЗ " + TabletFormat.Time(bodyForecast.EndTimeS - bodyForecast.StartTimeS)
-                    : "ПРОГНОЗ ВЫКЛ";
+                    ballistic = bodyForecast != null
+                        ? "ПРОГНОЗ " + TabletFormat.Time(bodyForecast.EndTimeS - bodyForecast.StartTimeS)
+                        : "ПРОГНОЗ ВЫКЛ";
+                }
             }
 
-            canvas.Text(legendX + 20, legendY + 22, forecast,
+            canvas.Text(legendX + 20, legendY + 12, ballistic,
                 model.ForecastValid ? TabletTheme.Dim : ForecastColor);
+
+            if (model.PlannedWindowSeconds > 0d)
+            {
+                DashedHudLine(legendX, legendY + 28, 16, ManeuverForecastColor);
+                string plan = "МАНЁВР " + Math.Max(1, model.AppliedManeuverCount).ToString();
+                canvas.Text(legendX + 20, legendY + 25, plan, TabletTheme.Dim);
+            }
 
             // Orientation and controls. The screen is a turntable: north is always
             // up, so the corner cue stays in place while the globe turns under it.
             int hintX = rect.x + 10;
             int hintY = rect.y + 8;
-            canvas.Text(hintX, hintY, "ЛКМ — ВРАЩ", TabletTheme.Dim);
-            canvas.Text(hintX, hintY + 10, "ПКМ — СДВИГ", TabletTheme.Dim);
-            canvas.Text(hintX, hintY + 20, "КОЛЕСО — МАСШТАБ", TabletTheme.Dim);
-            canvas.Text(hintX, hintY + 30, "2 КЛИКА — СБРОС", TabletTheme.Dim);
+            canvas.Text(hintX, hintY, "ЛКМ/ПКМ — ВРАЩ", TabletTheme.Dim);
+            canvas.Text(hintX, hintY + 10, "КОЛЕСО — МАСШТАБ", TabletTheme.Dim);
+            canvas.Text(hintX, hintY + 20, "2 КЛИКА — СБРОС", TabletTheme.Dim);
 
             int northX = rect.x + rect.width - 16;
             int northCenter = northX - 18;
@@ -1978,7 +2125,9 @@ namespace Galilego.Tablet
 
             if (note.IndexOf("УДАР", StringComparison.OrdinalIgnoreCase) >= 0
                 || note.IndexOf("ОСТАНОВ", StringComparison.OrdinalIgnoreCase) >= 0
-                || note.IndexOf("ВЫКЛ", StringComparison.OrdinalIgnoreCase) >= 0)
+                || note.IndexOf("ВЫКЛ", StringComparison.OrdinalIgnoreCase) >= 0
+                || note.IndexOf("КОНФЛИКТ", StringComparison.OrdinalIgnoreCase) >= 0
+                || note.IndexOf("ЗА ОКНОМ", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 return TabletTheme.Warn;
             }

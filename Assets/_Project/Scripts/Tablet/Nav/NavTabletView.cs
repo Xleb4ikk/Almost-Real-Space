@@ -37,8 +37,8 @@ namespace Galilego.Tablet
         public event Action<int> CenterChanged;
         public event Action<int> OrbitToggled;
         public event Action<Maneuver> ManeuverDue;
-        public event Action<Vector2, bool> MapDragged;   // pixel delta, rotate (primary button or Shift)
-        public event Action<Vector2, float> MapZoomed;   // cursor position in map, wheel delta
+        public event Action<Vector2> MapDragged;         // pixel delta; always a turntable rotation
+        public event Action<Vector2, float> MapZoomed;   // cursor position (unused for the pivot), wheel delta
         public event Action<Vector2> MapHovered;         // cursor position in map (for picking planets / markers)
         public event Action MapPointerLeft;
         public event Action MapReset;                    // double-click: back to the default view
@@ -185,10 +185,9 @@ namespace Galilego.Tablet
                 if (mapView.HasPointerCapture(e.pointerId))
                 {
                     HideTip();
-                    // Primary button (and Shift) rotates the view; secondary pans.
-                    // A globe is a 3D view first: the old binding made left-drag pan
-                    // while the HUD said "LMB rotates".
-                    if (MapDragged != null) { MapDragged(e.deltaPosition, (e.pressedButtons & 2) == 0 || e.shiftKey); }
+                    // Both buttons rotate around the selected centre; the centre
+                    // body is locked to the screen middle, so there is no pan.
+                    if (MapDragged != null) { MapDragged(e.deltaPosition); }
                 }
                 else if (MapHovered != null)
                 {
@@ -387,7 +386,7 @@ namespace Galilego.Tablet
             bool canToggle = id < State.OrbitAvailable.Length && State.OrbitAvailable[id];
             nm.tooltip = !canToggle
                 ? "У этого тела нет орбиты вокруг родителя"
-                : (ship ? "Показать/скрыть траекторию аппарата" : "Показать/скрыть орбиту");
+                : (ship ? "Показать/скрыть траекторию аппарата" : "Показать/скрыть след (историю и прогноз)");
             var dot = new VisualElement();
             dot.AddToClassList("dot");
             dot.EnableInClassList("dot--on", canToggle && State.OrbitVisible[id]);

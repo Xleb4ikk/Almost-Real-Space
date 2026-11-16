@@ -18,6 +18,9 @@ namespace Galilego.Tablet
 
         /// <summary>Reference body's own path over the forecast window (ephemeris, not an integration).</summary>
         BodyForecast = 4,
+
+        /// <summary>Predicted path after a planned maneuver (same integrator, ΔV applied at ignition).</summary>
+        ManeuverForecast = 5,
     }
 
     /// <summary>What the map should show at the current ship state.</summary>
@@ -50,6 +53,18 @@ namespace Galilego.Tablet
         public OrbitingBody Body;
     }
 
+    /// <summary>Planned burn point of the forecast, already in the reference frame.</summary>
+    public sealed class NavBurnMarker
+    {
+        /// <summary>1-based number of the maneuver in the plan.</summary>
+        public int Index;
+
+        public double TimeSeconds;
+        public Vector3d Position;
+        public double DvMs;
+        public int FrameBodyIndex = -1;
+    }
+
     /// <summary>Actual ship state sample kept for the history trail.</summary>
     public struct NavShipSample
     {
@@ -67,9 +82,10 @@ namespace Galilego.Tablet
     /// Geometry source of the navigation map. It uses only the game's own orbital
     /// physics: body positions/velocities come from the baked ephemerides
     /// (OrbitingBody.EvaluateWorldState), the ship's future is integrated with the
-    /// same N-body gravity + drag sources as SimulationRunner, and the history is
-    /// sampled from the actually simulated ship state. No Kepler preview is
-    /// substituted for the game physics.
+    /// same N-body gravity + drag sources as SimulationRunner (planned maneuvers
+    /// enter as impulses at their ignition time), and the history is sampled from
+    /// the actually simulated ship state. No Kepler preview is substituted for the
+    /// game physics.
     ///
     /// Everything is stored in the selected reference frame: the frame body is at
     /// the origin at time TimeSeconds, and each point is (world point - frame body
@@ -96,6 +112,16 @@ namespace Galilego.Tablet
         public readonly List<NavLine> Lines = new List<NavLine>();
         public readonly List<NavBodyMarker> Bodies = new List<NavBodyMarker>();
         public readonly List<NavShipSample> History = new List<NavShipSample>();
+        public readonly List<NavBurnMarker> BurnMarkers = new List<NavBurnMarker>();
+
+        /// <summary>Maneuvers actually folded into the forecast (not just present in the plan).</summary>
+        public int AppliedManeuverCount;
+
+        /// <summary>True when the plan is time-conflicting: only the part before the conflict is predicted.</summary>
+        public bool PlanConflict;
+
+        /// <summary>True when a planned maneuver lies beyond the requested forecast window.</summary>
+        public bool PlanOutsideWindow;
 
         public double TimeSeconds;
         public int FrameIndex;
@@ -108,7 +134,11 @@ namespace Galilego.Tablet
         public Vector3d FrameRelativeShipPosition;
         public Vector3d FrameRelativeShipVelocity;
         public Vector3d CenterPosition;
+
+        /// <summary>Map camera plane normal: the reference body's spin axis, fixed (not the ship's orbit).</summary>
         public Vector3d OrbitNormal = new Vector3d(0d, 0d, 1d);
+
+        /// <summary>Fixed in-plane direction of the map camera basis.</summary>
         public Vector3d OrbitRight = new Vector3d(1d, 0d, 0d);
         public bool HasApsides;
         public bool HasApoapsis;
@@ -119,6 +149,13 @@ namespace Galilego.Tablet
         public bool ForecastTruncated;
         public double ForecastSeconds;
         public double ForecastWindowSeconds;
+
+        /// <summary>End of the coast-only (no maneuver) line, seconds from now.</summary>
+        public double BallisticWindowSeconds;
+
+        /// <summary>End of the planned (maneuver) line, seconds from now; 0 when no plan is drawn.</summary>
+        public double PlannedWindowSeconds;
+
         public double HistorySeconds;
 
         /// <summary>True when the centred body has a history/forecast arc for the current sliders.</summary>
@@ -180,11 +217,17 @@ namespace Galilego.Tablet
             double historySeconds,
             List<NavShipSample> history,
             bool allowForecast,
-            bool parked = false)
+            bool parked = false,
+            ManeuverPlan plan = null,
+            double ispS = 0d)
         {
             Lines.Clear();
             Bodies.Clear();
             History.Clear();
+            BurnMarkers.Clear();
+            AppliedManeuverCount = 0;
+            PlanConflict = false;
+            PlanOutsideWindow = false;
             TimeSeconds = timeSeconds;
             FrameIndex = frameIndex;
             CenterIndex = centerIndex;
@@ -192,6 +235,8 @@ namespace Galilego.Tablet
             ForecastValid = false;
             ForecastTruncated = false;
             ForecastWindowSeconds = 0d;
+            BallisticWindowSeconds = 0d;
+            PlannedWindowSeconds = 0d;
             HasBodyHistory = false;
             HasBodyForecast = false;
             HasSurfaceHistory = false;
@@ -248,9 +293,10 @@ namespace Galilego.Tablet
                 });
             }
 
-            // Map plane: the ship's current orbital plane around its dominant body
-            // (face-on view); on the ground — the frame body's equatorial plane.
-            BuildPlane(system, ship, timeSeconds, frame, out OrbitNormal, out OrbitRight);
+            // Map plane: the reference body's equatorial plane, fixed north-up.
+            // It must not follow the ship's instantaneous r×v: pitching a rocket
+            // during ascent used to rotate the whole globe on the tablet.
+            BuildPlane(frame, out OrbitNormal, out OrbitRight);
             BuildApsides(system, ship, timeSeconds, frame);
             BuildSurfaceFrame(system, ship, timeSeconds);
 
@@ -276,40 +322,29 @@ namespace Galilego.Tablet
                 || ShipIndex >= orbitVisible.Length
                 || orbitVisible[ShipIndex];
 
-            // A parked craft is carried by the site frame: its real past and future
-            // are the planet's orbital + rotational motion, so they are reconstructed
-            // from the same ephemerides the simulation uses (backwards and forwards),
-            // not limited to the samples recorded since the tablet was opened.
+            // A parked craft is carried by the site frame. Its site path over one
+            // rotation is a ring at ~4 m AGL and reads as a very low orbit, so it is
+            // deliberately NOT drawn: the standing marker is enough. The surface
+            // history/forecast builders stay available for a future local-track view.
             bool surfacePath = parked && HasShip && HasSurfaceFrame && DominantBody != null;
 
-            if (shipLinesVisible && historySeconds > 0d && HasShip)
+            if (shipLinesVisible && historySeconds > 0d && HasShip && !surfacePath)
             {
-                if (surfacePath)
-                {
-                    BuildSurfaceHistory(timeSeconds, frame, historySeconds);
-                }
-                else if (history != null)
+                if (history != null)
                 {
                     BuildHistory(system, frame, timeSeconds, historySeconds, history);
                 }
             }
 
-            if (shipLinesVisible && HasShip && ship.Mass > 0d)
+            if (shipLinesVisible && HasShip && ship.Mass > 0d && allowForecast)
             {
-                if (allowForecast)
-                {
-                    BuildForecast(system, ship, timeSeconds, frame, forecastSeconds);
-                }
-                else if (surfacePath && forecastSeconds > 1d)
-                {
-                    BuildSurfaceForecast(timeSeconds, frame, forecastSeconds);
-                }
+                BuildForecast(system, ship, timeSeconds, frame, forecastSeconds, plan, ispS);
             }
 
             if (!allowForecast && !ForecastValid)
             {
-                Note = HasSurfaceHistory
-                    ? "ИСТОРИЯ СТОЯНКИ · ЭФЕМЕРИДЫ; ПРОГНОЗ ВЫКЛ"
+                Note = surfacePath
+                    ? "АППАРАТ НА ПОВЕРХНОСТИ · ОРБИТА НЕ СТРОИТСЯ"
                     : "ПРОГНОЗ ВЫКЛЮЧЕН: НЕТ СВОБОДНОГО ПОЛЁТА (КОНТАКТ/ПОВЕРХНОСТЬ/СТРОЙКА)";
             }
 
@@ -454,53 +489,30 @@ namespace Galilego.Tablet
             ViewMode = NavViewMode.Orbits;
         }
 
-        private static void BuildPlane(StarSystem system, Ship ship, double time, OrbitingBody frame,
-            out Vector3d normal, out Vector3d right)
+        /// <summary>
+        /// Stable map camera basis. The normal is the reference body's spin axis;
+        /// the right direction is a fixed world axis projected into the equatorial
+        /// plane. Deliberately independent of the ship: the old ship r×v basis
+        /// re-oriented the whole globe whenever the craft pitched during ascent.
+        /// </summary>
+        private static void BuildPlane(OrbitingBody frame, out Vector3d normal, out Vector3d right)
         {
             normal = frame.SpinAxis.Normalized;
-            right = Vector3d.Zero;
-
-            if (ship != null)
+            if (!normal.IsFinite || normal.SqrMagnitude < 0.5d)
             {
-                OrbitingBody dominant = system.FindDominantBody(ship.Position, time);
-                if (dominant != null)
-                {
-                    dominant.EvaluateWorldState(time, out Vector3d bodyPosition, out Vector3d bodyVelocity);
-                    Vector3d r = ship.Position - bodyPosition;
-                    Vector3d v = ship.Velocity - bodyVelocity;
-                    Vector3d h = Vector3d.Cross(r, v);
-                    if (h.SqrMagnitude > 1e-12d * Math.Max(1d, r.SqrMagnitude * v.SqrMagnitude))
-                    {
-                        normal = h.Normalized;
-                        Vector3d projected = r - (normal * Vector3d.Dot(r, normal));
-                        if (projected.SqrMagnitude > 1e-12d)
-                        {
-                            right = projected.Normalized;
-                        }
-                    }
-                    else if (r.SqrMagnitude > 1e-12d && r.Magnitude > dominant.Radius)
-                    {
-                        Vector3d radial = r.Normalized;
-                        right = Vector3d.Cross(normal, radial);
-                    }
-                }
+                normal = new Vector3d(0d, 0d, 1d);
             }
 
-            if (right.SqrMagnitude < 0.5d)
+            Vector3d reference = new Vector3d(0d, 0d, 1d);
+            if (Math.Abs(Vector3d.Dot(reference, normal)) > 0.9d)
             {
-                Vector3d reference = frame.SpinAxis.Normalized;
-                right = Vector3d.Cross(normal, reference);
-                if (right.SqrMagnitude < 1e-12d)
-                {
-                    right = Vector3d.Cross(normal, new Vector3d(1d, 0d, 0d));
-                }
+                reference = new Vector3d(1d, 0d, 0d);
+            }
 
-                if (right.SqrMagnitude < 1e-12d)
-                {
-                    right = new Vector3d(1d, 0d, 0d);
-                }
-
-                right = right.Normalized;
+            right = Vector3d.Cross(normal, reference).Normalized;
+            if (!right.IsFinite || right.SqrMagnitude < 0.5d)
+            {
+                right = Vector3d.Cross(normal, new Vector3d(0d, 1d, 0d)).Normalized;
             }
 
             normal = normal.Normalized;
@@ -788,7 +800,10 @@ namespace Galilego.Tablet
             // three-revolution budget as the craft forecast keeps the line readable
             // and dense enough to be a curve.
             double historyWindow = Math.Min(historySeconds, MaxHistorySeconds);
-            double forecastWindow = Math.Min(forecastSeconds, MaxForecastSeconds);
+            // Body paths are ephemeris samples, not an N-body integration: the
+            // 60-day ship-forecast budget does not apply here. The slider value is
+            // honoured (up to the UI ceiling), so a 500-day orbit is drawn fully.
+            double forecastWindow = Math.Min(forecastSeconds, MaxHistorySeconds);
             double period = OrbitalPeriodSeconds(body);
             if (double.IsFinite(period))
             {
@@ -1040,16 +1055,19 @@ namespace Galilego.Tablet
             }
         }
 
-        private void BuildForecast(StarSystem system, Ship ship, double time, OrbitingBody frame, double forecastSeconds)
+        private void BuildForecast(StarSystem system, Ship ship, double time, OrbitingBody frame,
+            double forecastSeconds, ManeuverPlan plan, double ispS)
         {
             if (!(forecastSeconds > 1d) || !(ship.Mass > 0d))
             {
                 return;
             }
 
-            double window = Math.Min(forecastSeconds, MaxForecastSeconds);
+            double requested = Math.Min(forecastSeconds, MaxForecastSeconds);
+            double window = requested;
             ForecastTruncated = window < forecastSeconds - 1e-6d;
             bool revolutionsLimited = false;
+            double orbitalPeriod = double.NaN;
 
             // A map with hundreds of overlapping revolutions is noise: show at most
             // three revolutions of the current osculating orbit. The old 6 h floor
@@ -1066,6 +1084,7 @@ namespace Galilego.Tablet
                 OrbitalElements elements = OrbitalElements.FromState(r, v, mu);
                 if (elements.IsValid && elements.IsBound && double.IsFinite(elements.OrbitalPeriodSeconds))
                 {
+                    orbitalPeriod = elements.OrbitalPeriodSeconds;
                     double threeOrbits = 3d * elements.OrbitalPeriodSeconds;
                     if (threeOrbits > 1d && threeOrbits < window)
                     {
@@ -1077,11 +1096,159 @@ namespace Galilego.Tablet
                 }
             }
 
-            // A suborbital hop is bound too (its ellipse intersects the ground),
-            // but the whole flight lasts minutes. Sampling the requested hours
-            // would give two or three chords through the planet. The conic knows
-            // where the arc ends: spend the same 160 samples on the part that is
-            // actually flown.
+            // Planned burns enter the prediction exactly where the countdown will
+            // fire them. Conflict entries are never applied (same rule as the live
+            // AdvanceTime), so the line changes at the point the plan stops being
+            // executable.
+            var burns = new List<PlannedBurn>();
+            if (plan != null)
+            {
+                PlanConflict = plan.ConflictIndex >= 0;
+                int valid = plan.ValidCount;
+                for (int i = 0; i < valid; i++)
+                {
+                    Maneuver maneuver = plan[i];
+                    if (maneuver == null || !(maneuver.DvMagnitude > 1e-9d))
+                    {
+                        continue;
+                    }
+
+                    double ignite = time + maneuver.TimeToStartS;
+                    if (maneuver.TimeToStartS <= 1e-6d)
+                    {
+                        continue;
+                    }
+
+                    if (ignite > time + requested + 1e-6d)
+                    {
+                        PlanOutsideWindow = true;
+                        continue;
+                    }
+
+                    burns.Add(new PlannedBurn
+                    {
+                        Item = maneuver,
+                        TimeSeconds = ignite,
+                        Number = i + 1,
+                    });
+                }
+
+                burns.Sort((a, b) => a.TimeSeconds.CompareTo(b.TimeSeconds));
+            }
+
+            // The 3-orbit visual cap would hide the result of a burn scheduled near
+            // the end of that window (the default LEO plan is added at ~1/10 of the
+            // slider, which is already almost 3 orbits). Extend just enough to show
+            // two post-burn orbits, never beyond what the user asked for or six
+            // initial orbits (a longer window becomes a scribble at 160 samples).
+            if (burns.Count > 0 && double.IsFinite(orbitalPeriod) && orbitalPeriod > 1d)
+            {
+                double lastBurn = burns[burns.Count - 1].TimeSeconds - time;
+                double wanted = Math.Min(requested,
+                    Math.Min(lastBurn + (2d * orbitalPeriod), 6d * orbitalPeriod));
+                if (wanted > window)
+                {
+                    window = wanted;
+                }
+            }
+
+            if (burns.Count > 0)
+            {
+                int before = burns.Count;
+                burns.RemoveAll(b => b.TimeSeconds > time + window + 1e-6d);
+                if (burns.Count < before)
+                {
+                    PlanOutsideWindow = true;
+                }
+            }
+
+            // A time-conflicting plan is only executable up to the first conflict;
+            // cut the planned line there. The ballistic line keeps the full window:
+            // it is the reference "what the craft does without the maneuver".
+            double plannedWindow = window;
+            if (plan != null && PlanConflict && double.IsFinite(plan.CutTimeS)
+                && plan.CutTimeS > 0d)
+            {
+                plannedWindow = Math.Min(plannedWindow, Math.Max(0d, plan.CutTimeS));
+            }
+
+            bool planned = burns.Count > 0 && plannedWindow > 1d;
+
+            // The same force sources as SimulationRunner: N-body gravity (baked
+            // ephemerides + the indirect star term + J2) and drag in atmospheres.
+            // A planned burn is an impulse at ignition: the map is a plan view, and
+            // the card shows the finite burn time separately.
+            int n = ForecastSamples;
+            double maxDt = Math.Max(window / (n - 1d), plannedWindow / (n - 1d));
+            var physics = new SpacecraftPhysics
+            {
+                ToleranceFrameSystem = system,
+                MaxStepSize = Math.Min(Math.Max(OrbitIntegrator.DefaultMaxStepSize, maxDt), 6d * HourSeconds),
+            };
+            physics.Sources.Add(new CachedGravitySource(system));
+            for (int i = 0; i < system.AllBodies.Count; i++)
+            {
+                OrbitingBody body = system.AllBodies[i];
+                if (body.Atmosphere != null)
+                {
+                    physics.Sources.Add(new DragSource(body));
+                }
+            }
+
+            // Two probes: the solid line is always the pure coast, the dashed line
+            // is the plan. Keeping the coast visible is the whole point: after a
+            // maneuver is added the player must still see where the craft would go
+            // without it.
+            double ballisticReached = time;
+            bool ballisticAny = false;
+            string ballisticImpact = null;
+            var ballisticProbe = new Ship(ship.Position, ship.Velocity, ship.Mass);
+            BuildBallisticPath(physics, system, ballisticProbe, frame, time, window, impactSeconds,
+                ref ballisticReached, ref ballisticAny, ref ballisticImpact);
+
+            double plannedReached = time;
+            bool plannedAny = false;
+            string plannedImpact = null;
+            if (planned)
+            {
+                var plannedProbe = new Ship(ship.Position, ship.Velocity, ship.Mass);
+                BuildPlannedPath(physics, system, plannedProbe, frame, time, plannedWindow, burns, ispS,
+                    ref plannedReached, ref plannedAny, ref plannedImpact);
+            }
+
+            BallisticWindowSeconds = ballisticAny ? Math.Max(0d, ballisticReached - time) : 0d;
+            PlannedWindowSeconds = plannedAny ? Math.Max(0d, plannedReached - time) : 0d;
+
+            if (ballisticAny || plannedAny)
+            {
+                ForecastValid = true;
+                ForecastWindowSeconds = Math.Max(BallisticWindowSeconds, PlannedWindowSeconds);
+                Note = plannedAny
+                    ? (plannedImpact != null
+                        ? "ПЛАН: " + plannedImpact
+                        : PlannedNote(true, revolutionsLimited, window))
+                    : (ballisticImpact ?? PlannedNote(false, revolutionsLimited, window));
+            }
+            else
+            {
+                string impact = plannedImpact ?? ballisticImpact;
+                if (!string.IsNullOrEmpty(impact))
+                {
+                    Note = impact;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Coast-only forecast. It is drawn solid and stays on the map after a
+        /// maneuver is planned, so the player can compare the flown path with the
+        /// plan. A suborbital conic is sampled densely over the actual flight and
+        /// coarsely for the rest of the window.
+        /// </summary>
+        private void BuildBallisticPath(SpacecraftPhysics physics, StarSystem system, Ship probe,
+            OrbitingBody frame, double time, double window, double impactSeconds,
+            ref double reachedTime, ref bool anyLine, ref string impact)
+        {
             double sampleWindow = window;
             if (impactSeconds > 1d && double.IsFinite(impactSeconds) && impactSeconds < window)
             {
@@ -1095,47 +1262,21 @@ namespace Galilego.Tablet
                 return;
             }
 
-            ForecastWindowSeconds = window;
+            double endTime = time + window;
+            double denseEnd = time + sampleWindow;
+            double coarseDt = sampleWindow < window - 1e-6d
+                ? (window - sampleWindow) / 48d
+                : 0d;
 
-            // The same force sources as SimulationRunner: N-body gravity (baked
-            // ephemerides + the indirect star term + J2) and drag in atmospheres.
-            // Thrust is intentionally absent: the line is a coast forecast; the
-            // engine state is shown separately on the tablet.
-            var physics = new SpacecraftPhysics
-            {
-                ToleranceFrameSystem = system,
-                MaxStepSize = Math.Min(Math.Max(OrbitIntegrator.DefaultMaxStepSize, dt), 6d * HourSeconds),
-            };
-            physics.Sources.Add(new CachedGravitySource(system));
-            for (int i = 0; i < system.AllBodies.Count; i++)
-            {
-                OrbitingBody body = system.AllBodies[i];
-                if (body.Atmosphere != null)
-                {
-                    physics.Sources.Add(new DragSource(body));
-                }
-            }
-
-            var probe = new Ship(ship.Position, ship.Velocity, ship.Mass);
-            var line = new NavLine
-            {
-                Kind = NavLineKind.ShipForecast,
-                Dashed = true,
-                StartTimeS = time,
-                EndTimeS = time,
-            };
-
-            line.Points.Add(ship.Position - FramePosition);
-            string impact = null;
+            var line = NewForecastLine(NavLineKind.ShipForecast, time);
+            line.Points.Add(probe.Position - FramePosition);
             double t = time;
             try
             {
-                // First pass: the ballistic arc itself, dense enough that a short
-                // suborbital hop is a curve, not two chords.
-                int denseSteps = n - 1;
-                for (int k = 1; k <= denseSteps && impact == null; k++)
+                while (impact == null && t < endTime - 1e-9d)
                 {
-                    if (!AdvanceForecast(physics, system, probe, frame, line, ref t, dt, out OrbitingBody hit))
+                    double step = Math.Min(NextForecastStep(t, denseEnd, dt, coarseDt), endTime - t);
+                    if (!AdvanceForecast(physics, system, probe, frame, line, ref t, step, out OrbitingBody hit))
                     {
                         impact = "ПРОГНОЗ ОСТАНОВЛЕН: НЕКОНЕЧНОЕ СОСТОЯНИЕ";
                         break;
@@ -1146,19 +1287,96 @@ namespace Galilego.Tablet
                         impact = "УДАР О " + (hit.Name ?? "?").ToUpperInvariant();
                     }
                 }
+            }
+            catch (EphemerisRangeException)
+            {
+                impact = "ПРОГНОЗ ОСТАНОВЛЕН: КОНЕЦ ЭФЕМЕРИД";
+            }
+            catch (InvalidOperationException)
+            {
+                impact = "ПРОГНОЗ ОСТАНОВЛЕН: ИНТЕГРАТОР";
+            }
 
-                // The conic estimate can be a little early (it ignores drag, but a
-                // third body or a perturbed path may keep the craft up longer).
-                // Continue the same forecast with a coarse fallback instead of
-                // silently shortening the requested window.
-                double rest = (time + window) - t;
-                if (impact == null && rest > 1d)
+            FinishForecastLine(line, ref reachedTime, ref anyLine);
+        }
+
+        /// <summary>
+        /// Maneuver forecast, drawn dashed. The coast before the first ignition is
+        /// not repeated: the solid ballistic line already shows it. The dashed line
+        /// starts exactly at the first burn and follows every subsequent leg.
+        /// </summary>
+        private void BuildPlannedPath(SpacecraftPhysics physics, StarSystem system, Ship probe,
+            OrbitingBody frame, double time, double window, List<PlannedBurn> burns, double ispS,
+            ref double reachedTime, ref bool anyLine, ref string impact)
+        {
+            int n = ForecastSamples;
+            double dt = window / (n - 1d);
+            if (!(dt > 0d) || !double.IsFinite(dt))
+            {
+                return;
+            }
+
+            double endTime = time + window;
+            NavLine line = NewForecastLine(NavLineKind.ManeuverForecast, time);
+            double t = time;
+            int burnIndex = 0;
+            bool started = false;
+            try
+            {
+                while (impact == null && burnIndex < burns.Count)
                 {
-                    int restSteps = 48;
-                    double restDt = rest / restSteps;
-                    for (int k = 0; k < restSteps && impact == null; k++)
+                    double ignite = burns[burnIndex].TimeSeconds;
+                    if (ignite >= endTime - 1e-6d)
                     {
-                        if (!AdvanceForecast(physics, system, probe, frame, line, ref t, restDt, out OrbitingBody hit))
+                        break;
+                    }
+
+                    // Coast exactly to ignition. Before the first successful burn
+                    // these points are discarded: they duplicate the solid line.
+                    while (t < ignite - 1e-9d && impact == null)
+                    {
+                        double step = Math.Min(dt, ignite - t);
+                        if (!AdvanceForecast(physics, system, probe, frame, line, ref t, step, out OrbitingBody hit))
+                        {
+                            impact = "ПРОГНОЗ ОСТАНОВЛЕН: НЕКОНЕЧНОЕ СОСТОЯНИЕ";
+                            break;
+                        }
+
+                        if (hit != null)
+                        {
+                            impact = "УДАР О " + (hit.Name ?? "?").ToUpperInvariant();
+                        }
+                    }
+
+                    if (impact != null)
+                    {
+                        break;
+                    }
+
+                    PlannedBurn burn = burns[burnIndex];
+                    burnIndex++;
+                    if (!ApplyBurn(system, probe, frame, burn, t, ispS))
+                    {
+                        continue;
+                    }
+
+                    if (started)
+                    {
+                        FinishForecastLine(line, ref reachedTime, ref anyLine);
+                    }
+
+                    line = NewForecastLine(NavLineKind.ManeuverForecast, t);
+                    frame.EvaluateWorldState(t, out Vector3d burnFrame, out _);
+                    line.Points.Add(probe.Position - burnFrame);
+                    started = true;
+                }
+
+                if (impact == null)
+                {
+                    while (t < endTime - 1e-9d)
+                    {
+                        double step = Math.Min(dt, endTime - t);
+                        if (!AdvanceForecast(physics, system, probe, frame, line, ref t, step, out OrbitingBody hit))
                         {
                             impact = "ПРОГНОЗ ОСТАНОВЛЕН: НЕКОНЕЧНОЕ СОСТОЯНИЕ";
                             break;
@@ -1180,21 +1398,171 @@ namespace Galilego.Tablet
                 impact = "ПРОГНОЗ ОСТАНОВЛЕН: ИНТЕГРАТОР";
             }
 
-            if (line.Points.Count >= 2)
+            if (started)
             {
-                ForecastWindowSeconds = Math.Max(0d, line.EndTimeS - time);
-                Lines.Add(line);
-                ForecastValid = true;
-                Note = impact ?? (ForecastTruncated
-                    ? "БАЛЛИСТИКА · N-BODY, ПЕРВЫЕ " + FormatDays(window)
-                    : (revolutionsLimited
-                        ? "БАЛЛИСТИКА · N-BODY, 3 ВИТКА"
-                        : "БАЛЛИСТИКА · N-BODY + ЭФЕМЕРИДЫ"));
+                FinishForecastLine(line, ref reachedTime, ref anyLine);
             }
-            else if (!string.IsNullOrEmpty(impact))
+        }
+
+        private struct PlannedBurn
+        {
+            public Maneuver Item;
+            public double TimeSeconds;
+            public int Number;
+        }
+
+        private static NavLine NewForecastLine(NavLineKind kind, double startTime)
+        {
+            return new NavLine
             {
-                Note = impact;
+                Kind = kind,
+                Dashed = true,
+                StartTimeS = startTime,
+                EndTimeS = startTime,
+            };
+        }
+
+        /// <summary>Dense stride up to the sample window, then the coarse fallback stride.</summary>
+        private static double NextForecastStep(double t, double denseEnd, double dt, double coarseDt)
+        {
+            if (t < denseEnd - 1e-9d)
+            {
+                return Math.Min(dt, denseEnd - t);
             }
+
+            return coarseDt > 0d ? coarseDt : dt;
+        }
+
+        private void FinishForecastLine(NavLine line, ref double reachedTime, ref bool anyLine)
+        {
+            if (line == null || line.Points.Count < 2)
+            {
+                return;
+            }
+
+            Lines.Add(line);
+            anyLine = true;
+            if (line.EndTimeS > reachedTime)
+            {
+                reachedTime = line.EndTimeS;
+            }
+        }
+
+        /// <summary>
+        /// Applies one planned impulse in the maneuver's frame axes: tangent along the
+        /// frame-relative velocity, normal towards that body, binormal along r×v. Mass
+        /// follows the rocket equation with the same Isp the burn-time card uses.
+        /// </summary>
+        private bool ApplyBurn(StarSystem system, Ship probe, OrbitingBody mapFrame,
+            PlannedBurn burn, double t, double ispS)
+        {
+            Maneuver maneuver = burn.Item;
+            double dv = maneuver.DvMagnitude;
+            if (!(dv > 1e-9d) || !probe.Position.IsFinite || !probe.Velocity.IsFinite)
+            {
+                return false;
+            }
+
+            OrbitingBody reference = null;
+            int referenceIndex = -1;
+            if (maneuver.FrameBody >= 0 && maneuver.FrameBody < system.AllBodies.Count)
+            {
+                reference = system.AllBodies[maneuver.FrameBody];
+                referenceIndex = maneuver.FrameBody;
+            }
+            else
+            {
+                reference = system.FindDominantBody(probe.Position, t);
+                if (reference != null)
+                {
+                    referenceIndex = IndexOf(system, reference);
+                }
+            }
+
+            if (reference == null)
+            {
+                return false;
+            }
+
+            reference.EvaluateWorldState(t, out Vector3d bodyPosition, out Vector3d bodyVelocity);
+            Vector3d r = probe.Position - bodyPosition;
+            Vector3d v = probe.Velocity - bodyVelocity;
+            Vector3d tangent = v.Normalized;
+            if (!tangent.IsFinite || !(tangent.SqrMagnitude > 0.5d))
+            {
+                return false;
+            }
+
+            Vector3d binormal = Vector3d.Cross(r, v).Normalized;
+            if (!binormal.IsFinite || !(binormal.SqrMagnitude > 0.5d))
+            {
+                // Radial flight has no orbital plane: fall back to the map plane.
+                binormal = OrbitNormal.IsFinite && OrbitNormal.SqrMagnitude > 0.5d
+                    ? OrbitNormal.Normalized
+                    : new Vector3d(0d, 0d, 1d);
+            }
+
+            Vector3d normal = Vector3d.Cross(binormal, tangent).Normalized;
+            if (!normal.IsFinite || !(normal.SqrMagnitude > 0.5d))
+            {
+                return false;
+            }
+
+            Vector3d impulse = (tangent * maneuver.Tangent)
+                + (normal * maneuver.Normal)
+                + (binormal * maneuver.Binormal);
+            if (!impulse.IsFinite)
+            {
+                return false;
+            }
+
+            probe.Velocity += impulse;
+            if (ispS > 0d)
+            {
+                probe.Mass *= Math.Exp(-dv / (ispS * ManeuverPlan.StandardGravity));
+            }
+
+            mapFrame.EvaluateWorldState(t, out Vector3d framePosition, out _);
+            BurnMarkers.Add(new NavBurnMarker
+            {
+                Index = burn.Number,
+                TimeSeconds = t,
+                Position = probe.Position - framePosition,
+                DvMs = dv,
+                FrameBodyIndex = referenceIndex,
+            });
+            AppliedManeuverCount++;
+            return true;
+        }
+
+        private string PlannedNote(bool planned, bool revolutionsLimited, double window)
+        {
+            string text;
+            if (planned)
+            {
+                text = "БАЛЛИСТИКА + МАНЁВР · N-BODY";
+            }
+            else if (ForecastTruncated)
+            {
+                text = "БАЛЛИСТИКА · N-BODY, ПЕРВЫЕ " + FormatDays(window);
+            }
+            else
+            {
+                text = revolutionsLimited
+                    ? "БАЛЛИСТИКА · N-BODY, 3 ВИТКА"
+                    : "БАЛЛИСТИКА · N-BODY + ЭФЕМЕРИДЫ";
+            }
+
+            if (PlanConflict)
+            {
+                text = "ПЛАН: КОНФЛИКТ · " + text;
+            }
+            else if (PlanOutsideWindow)
+            {
+                text = "МАНЁВР ЗА ОКНОМ · " + text;
+            }
+
+            return text;
         }
 
         /// <summary>
