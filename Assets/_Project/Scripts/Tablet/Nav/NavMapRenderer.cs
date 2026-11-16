@@ -279,7 +279,9 @@ namespace Galilego.Tablet
             }
 
             float factor = Mathf.Pow(1.2f, -wheelDelta);
-            float newZoom = Mathf.Clamp(Zoom * factor, 0.02f, 80f);
+            // Deep zoom-out: from a planet-centred view the wheel must reach the
+            // planet's own orbit around its star (≈1 AU), not stop at a local map.
+            float newZoom = Mathf.Clamp(Zoom * factor, 0.00005f, 80f);
             double newScale = lastScale * (newZoom / Zoom);
             Vector2 worldOffset = new Vector2(
                 (float)((texturePixel.x - lastRectCenter.x - panPixels.x) / lastScale),
@@ -423,6 +425,24 @@ namespace Galilego.Tablet
                 DrawPolyline(line.Points, Project, rect, BodyColor(line.BodyIndex), false, 1);
             }
 
+            // 2b. The centred body's own history/forecast over the slider windows.
+            // Same real ephemeris as its orbit rail, but the highlighted spans show
+            // where the body was and where it will be; the rail itself stays faint.
+            // History/forecast keep the ship-trail colours so the sliders visibly
+            // control the drawn span.
+            for (int i = 0; i < model.Lines.Count; i++)
+            {
+                NavLine line = model.Lines[i];
+                if (line.Kind == NavLineKind.BodyHistory)
+                {
+                    DrawPolyline(line.Points, Project, rect, TabletTheme.Main, false, 2);
+                }
+                else if (line.Kind == NavLineKind.BodyForecast)
+                {
+                    DrawPolyline(line.Points, Project, rect, ForecastColor, true, 2);
+                }
+            }
+
             // 3. Ship trails: base pass behind the globe.
             for (int i = 0; i < model.Lines.Count; i++)
             {
@@ -493,7 +513,8 @@ namespace Galilego.Tablet
             for (int i = 0; i < model.Lines.Count; i++)
             {
                 NavLine line = model.Lines[i];
-                if (line.Kind == NavLineKind.ShipForecast && line.Points.Count > 1)
+                if ((line.Kind == NavLineKind.ShipForecast || line.Kind == NavLineKind.BodyForecast)
+                    && line.Points.Count > 1)
                 {
                     Vector2 end = Project(line.Points[line.Points.Count - 1]);
                     DrawCross(end.x, end.y, 4f, ForecastColor);
@@ -504,7 +525,8 @@ namespace Galilego.Tablet
             for (int i = 0; i < model.Lines.Count; i++)
             {
                 NavLine line = model.Lines[i];
-                if (line.Kind == NavLineKind.ShipHistory && line.Points.Count > 1)
+                if ((line.Kind == NavLineKind.ShipHistory || line.Kind == NavLineKind.BodyHistory)
+                    && line.Points.Count > 1)
                 {
                     Vector2 start = Project(line.Points[0]);
                     if (IsFinite(start) && Inside(rect, start, 4f))
@@ -1755,6 +1777,18 @@ namespace Galilego.Tablet
                     }
                 }
 
+                if (historyLine == null)
+                {
+                    for (int i = 0; i < model.Lines.Count; i++)
+                    {
+                        if (model.Lines[i].Kind == NavLineKind.BodyHistory)
+                        {
+                            historyLine = model.Lines[i];
+                            break;
+                        }
+                    }
+                }
+
                 if (historyLine == null || historyLine.Points.Count < 2
                     || !double.IsFinite(historyLine.StartTimeS))
                 {
@@ -1781,9 +1815,28 @@ namespace Galilego.Tablet
 
             canvas.Text(legendX + 20, legendY + 12, history, TabletTheme.Dim);
             DashedHudLine(legendX, legendY + 25, 16, ForecastColor);
-            string forecast = model.ForecastValid
-                ? "ПРОГНОЗ " + TabletFormat.Time(model.ForecastWindowSeconds)
-                : "ПРОГНОЗ ВЫКЛ";
+            string forecast;
+            if (model.ForecastValid)
+            {
+                forecast = "ПРОГНОЗ " + TabletFormat.Time(model.ForecastWindowSeconds);
+            }
+            else
+            {
+                NavLine bodyForecast = null;
+                for (int i = 0; i < model.Lines.Count; i++)
+                {
+                    if (model.Lines[i].Kind == NavLineKind.BodyForecast)
+                    {
+                        bodyForecast = model.Lines[i];
+                        break;
+                    }
+                }
+
+                forecast = bodyForecast != null
+                    ? "ПРОГНОЗ " + TabletFormat.Time(bodyForecast.EndTimeS - bodyForecast.StartTimeS)
+                    : "ПРОГНОЗ ВЫКЛ";
+            }
+
             canvas.Text(legendX + 20, legendY + 22, forecast,
                 model.ForecastValid ? TabletTheme.Dim : ForecastColor);
 

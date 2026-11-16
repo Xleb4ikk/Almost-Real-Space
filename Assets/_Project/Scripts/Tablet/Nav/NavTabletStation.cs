@@ -476,6 +476,12 @@ namespace Galilego.Tablet
                 && runner.Regime == VesselRegime.Flying
                 && runner.Ship != null;
 
+            // A standing craft is carried by the site frame. Its past/future is the
+            // planet's orbit + rotation, computed from the ephemerides, so it has a
+            // real (non-ballistic) history/forecast even though it cannot coast.
+            bool parked = runner.Ship != null
+                && (ContactZoneHost.Active || runner.BuildMode || runner.Regime == VesselRegime.Landed);
+
             try
             {
                 mapModel.Rebuild(
@@ -488,7 +494,8 @@ namespace Galilego.Tablet
                     view.State.ForecastS,
                     view.State.HistoryS,
                     shipHistory,
-                    allowForecast);
+                    allowForecast,
+                    parked);
             }
             catch (Exception e)
             {
@@ -518,8 +525,8 @@ namespace Galilego.Tablet
                 return;
             }
 
-            FillMapInfo(allowForecast);
-            view.ForecastAvailable = allowForecast;
+            FillMapInfo();
+            view.ForecastAvailable = allowForecast || (mapModel != null && mapModel.ForecastValid);
             if (overlay)
             {
                 overlayMap.Draw(mapModel, view.State, mapInfo);
@@ -539,7 +546,7 @@ namespace Galilego.Tablet
             }
         }
 
-        private void FillMapInfo(bool allowForecast)
+        private void FillMapInfo()
         {
             mapInfo.Connected = runner != null && runner.SystemState != null && runner.Ship != null;
             mapInfo.PlanDeltaVMs = view != null ? view.State.Plan.TotalDv : 0d;
@@ -550,16 +557,6 @@ namespace Galilego.Tablet
             mapInfo.AltitudeMeters = mapModel != null ? mapModel.ShipHeightAboveTerrain : 0d;
             mapInfo.VerticalSpeedMps = mapModel != null ? mapModel.ShipVerticalSpeedMps : 0d;
             mapInfo.Status = mapModel != null ? mapModel.Note : string.Empty;
-
-            if (runner == null || runner.Ship == null || runner.SystemState == null)
-            {
-                return;
-            }
-
-            if (!allowForecast)
-            {
-                mapInfo.Status = mapModel != null ? mapModel.Note : "ПРОГНОЗ ВЫКЛЮЧЕН";
-            }
         }
 
         private void OnMapDragged(Vector2 delta, bool rotate)

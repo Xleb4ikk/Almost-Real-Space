@@ -394,6 +394,7 @@ MonoBehaviour:
   MaxStepSeconds: 900
   QuantBudgetMeters: 2
   CompressFiles: 1
+  Integrator: 0
   OutputFolder: Assets/StreamingAssets/Ephemerides
 --- !u!114 &230795295
 MonoBehaviour:

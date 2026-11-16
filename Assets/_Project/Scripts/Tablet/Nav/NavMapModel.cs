@@ -12,6 +12,12 @@ namespace Galilego.Tablet
         BodyOrbit = 0,
         ShipHistory = 1,
         ShipForecast = 2,
+
+        /// <summary>Reference body's own path over the history window (ephemeris, not a live sample).</summary>
+        BodyHistory = 3,
+
+        /// <summary>Reference body's own path over the forecast window (ephemeris, not an integration).</summary>
+        BodyForecast = 4,
     }
 
     /// <summary>What the map should show at the current ship state.</summary>
@@ -78,6 +84,9 @@ namespace Galilego.Tablet
         /// <summary>Longest forecast actually integrated for the map, seconds (visual/CPU budget).</summary>
         public const double MaxForecastSeconds = 60d * 86400d;
 
+        /// <summary>Longest history reconstructed from the ephemerides, seconds (same ≈100-year ceiling as the UI).</summary>
+        public const double MaxHistorySeconds = 3.156e9d;
+
         private const double DaySeconds = 86400d;
         private const double HourSeconds = 3600d;
 
@@ -108,6 +117,14 @@ namespace Galilego.Tablet
         public double ForecastSeconds;
         public double ForecastWindowSeconds;
         public double HistorySeconds;
+
+        /// <summary>True when the centred body has a history/forecast arc for the current sliders.</summary>
+        public bool HasBodyHistory;
+        public bool HasBodyForecast;
+
+        /// <summary>True when the standing ship's path was built from the site ephemeris, not live samples.</summary>
+        public bool HasSurfaceHistory;
+        public bool HasSurfaceForecast;
 
         // ── Planet / surface view ─────────────────────────────────────────────
         public NavViewMode ViewMode;
@@ -144,7 +161,10 @@ namespace Galilego.Tablet
 
         /// <summary>
         /// Build the map. allowForecast=false (surface/contact/build) still gives the
-        /// real body positions and the real history trail.
+        /// real body positions and the real history trail. <paramref name="parked"/>
+        /// means the ship is standing on <see cref="DominantBody"/>: its history and
+        /// forecast are then the site path from the ephemerides (the planet's orbital
+        /// and rotational motion), not a ballistic integration.
         /// </summary>
         public void Rebuild(
             StarSystem system,
@@ -156,7 +176,8 @@ namespace Galilego.Tablet
             double forecastSeconds,
             double historySeconds,
             List<NavShipSample> history,
-            bool allowForecast)
+            bool allowForecast,
+            bool parked = false)
         {
             Lines.Clear();
             Bodies.Clear();
@@ -168,6 +189,10 @@ namespace Galilego.Tablet
             ForecastValid = false;
             ForecastTruncated = false;
             ForecastWindowSeconds = 0d;
+            HasBodyHistory = false;
+            HasBodyForecast = false;
+            HasSurfaceHistory = false;
+            HasSurfaceForecast = false;
             Note = string.Empty;
             ForecastSeconds = forecastSeconds;
             HistorySeconds = historySeconds;
@@ -241,23 +266,48 @@ namespace Galilego.Tablet
 
             BuildBodyOrbits(system, timeSeconds, frameIndex, orbitVisible);
             BuildFrameOrbit(system, timeSeconds, frameIndex, orbitVisible);
+            BuildBodyTrails(system, timeSeconds, frameIndex, centerIndex, orbitVisible,
+                historySeconds, forecastSeconds);
 
             bool shipLinesVisible = orbitVisible == null
                 || ShipIndex >= orbitVisible.Length
                 || orbitVisible[ShipIndex];
 
-            if (shipLinesVisible && historySeconds > 0d && history != null && HasShip)
+            // A parked craft is carried by the site frame: its real past and future
+            // are the planet's orbital + rotational motion, so they are reconstructed
+            // from the same ephemerides the simulation uses (backwards and forwards),
+            // not limited to the samples recorded since the tablet was opened.
+            bool surfacePath = parked && HasShip && HasSurfaceFrame && DominantBody != null;
+
+            if (shipLinesVisible && historySeconds > 0d && HasShip)
             {
-                BuildHistory(system, frame, timeSeconds, historySeconds, history);
+                if (surfacePath)
+                {
+                    BuildSurfaceHistory(timeSeconds, frame, historySeconds);
+                }
+                else if (history != null)
+                {
+                    BuildHistory(system, frame, timeSeconds, historySeconds, history);
+                }
             }
 
-            if (shipLinesVisible && allowForecast && HasShip && ship.Mass > 0d)
+            if (shipLinesVisible && HasShip && ship.Mass > 0d)
             {
-                BuildForecast(system, ship, timeSeconds, frame, forecastSeconds);
+                if (allowForecast)
+                {
+                    BuildForecast(system, ship, timeSeconds, frame, forecastSeconds);
+                }
+                else if (surfacePath && forecastSeconds > 1d)
+                {
+                    BuildSurfaceForecast(timeSeconds, frame, forecastSeconds);
+                }
             }
-            else if (!allowForecast)
+
+            if (!allowForecast && !ForecastValid)
             {
-                Note = "ПРОГНОЗ ВЫКЛЮЧЕН: НЕТ СВОБОДНОГО ПОЛЁТА (КОНТАКТ/ПОВЕРХНОСТЬ/СТРОЙКА)";
+                Note = HasSurfaceHistory
+                    ? "ИСТОРИЯ СТОЯНКИ · ЭФЕМЕРИДЫ; ПРОГНОЗ ВЫКЛ"
+                    : "ПРОГНОЗ ВЫКЛЮЧЕН: НЕТ СВОБОДНОГО ПОЛЁТА (КОНТАКТ/ПОВЕРХНОСТЬ/СТРОЙКА)";
             }
 
             if (HasShip && string.IsNullOrEmpty(Note))
@@ -623,6 +673,233 @@ namespace Galilego.Tablet
             {
                 Lines.Add(line);
             }
+        }
+
+        /// <summary>
+        /// History/forecast of the body the map is centred on. A body's path is a
+        /// known ephemeris, so unlike the ship's live trail it can be sampled both
+        /// into the past and into the future: the sliders select the span.
+        /// </summary>
+        private void BuildBodyTrails(StarSystem system, double time, int frameIndex, int centerIndex,
+            bool[] orbitVisible, double historySeconds, double forecastSeconds)
+        {
+            // When the map is centred on the craft, the planet it is standing on is
+            // the meaningful body trail (and the one the system view is fitted to).
+            int trailIndex = centerIndex;
+            if (trailIndex == ShipIndex && DominantBodyIndex >= 0)
+            {
+                trailIndex = DominantBodyIndex;
+            }
+
+            if (trailIndex < 0 || trailIndex >= system.AllBodies.Count || trailIndex == frameIndex)
+            {
+                return;
+            }
+
+            if (orbitVisible != null && trailIndex < orbitVisible.Length && !orbitVisible[trailIndex])
+            {
+                return;
+            }
+
+            OrbitingBody body = system.AllBodies[trailIndex];
+            OrbitingBody frame = system.AllBodies[frameIndex];
+
+            if (historySeconds > 1d)
+            {
+                NavLine history = SampleBodyPath(body, frame, time - historySeconds, time);
+                if (history != null)
+                {
+                    history.Kind = NavLineKind.BodyHistory;
+                    history.BodyIndex = trailIndex;
+                    history.ParentIndex = IndexOf(system, body.Parent);
+                    history.StartTimeS = time - historySeconds;
+                    history.EndTimeS = time;
+                    Lines.Add(history);
+                    HasBodyHistory = true;
+                }
+            }
+
+            if (forecastSeconds > 1d)
+            {
+                double window = Math.Min(forecastSeconds, MaxForecastSeconds);
+                NavLine forecast = SampleBodyPath(body, frame, time, time + window);
+                if (forecast != null)
+                {
+                    forecast.Kind = NavLineKind.BodyForecast;
+                    forecast.BodyIndex = trailIndex;
+                    forecast.ParentIndex = IndexOf(system, body.Parent);
+                    forecast.StartTimeS = time;
+                    forecast.EndTimeS = time + window;
+                    forecast.Dashed = true;
+                    Lines.Add(forecast);
+                    HasBodyForecast = true;
+                }
+            }
+        }
+
+        private static NavLine SampleBodyPath(OrbitingBody body, OrbitingBody frame,
+            double start, double end)
+        {
+            if (body == null || frame == null || !(end > start)
+                || !double.IsFinite(start) || !double.IsFinite(end))
+            {
+                return null;
+            }
+
+            int n = BodyOrbitSamples;
+            var line = new NavLine();
+            for (int k = 0; k < n; k++)
+            {
+                double t = start + ((end - start) * k / (n - 1d));
+                try
+                {
+                    body.EvaluateWorldState(t, out Vector3d p, out _);
+                    frame.EvaluateWorldState(t, out Vector3d fp, out _);
+                    line.Points.Add(p - fp);
+                }
+                catch (EphemerisRangeException)
+                {
+                    break;
+                }
+            }
+
+            return line.Points.Count >= 2 ? line : null;
+        }
+
+        /// <summary>
+        /// A standing craft follows its landing site: the site is fixed in the body
+        /// frame, so the planet's rotation and heliocentric motion are the craft's
+        /// real history — computable backwards from the same ephemerides.
+        /// </summary>
+        private void BuildSurfaceHistory(double time, OrbitingBody frame, double historySeconds)
+        {
+            if (!HasSurfaceFrame || DominantBody == null)
+            {
+                return;
+            }
+
+            double window = Math.Min(historySeconds, MaxHistorySeconds);
+            if (ReferenceEquals(frame, DominantBody) && DominantBody.RotationPeriodSeconds > 0d)
+            {
+                // In the planet's own frame the site path is one closed circle.
+                window = Math.Min(window, DominantBody.RotationPeriodSeconds);
+            }
+
+            if (!(window > 1d))
+            {
+                return;
+            }
+
+            var line = new NavLine
+            {
+                Kind = NavLineKind.ShipHistory,
+                StartTimeS = double.NaN,
+                EndTimeS = time,
+            };
+
+            int n = ForecastSamples;
+            for (int k = 0; k < n; k++)
+            {
+                double t = time - window + (window * k / (n - 1d));
+                try
+                {
+                    DominantBody.GetSurfaceState(ShipLatitudeDegrees, ShipLongitudeDegrees,
+                        Math.Max(0d, ShipAltitudeMeters), t,
+                        out Vector3d position, out _);
+                    frame.EvaluateWorldState(t, out Vector3d framePosition, out _);
+                    line.Points.Add(position - framePosition);
+                    if (double.IsNaN(line.StartTimeS))
+                    {
+                        line.StartTimeS = t;
+                    }
+                }
+                catch (EphemerisRangeException)
+                {
+                    break;
+                }
+            }
+
+            if (line.Points.Count >= 1 && HasShip)
+            {
+                line.Points.Add(FrameRelativeShipPosition);
+                line.EndTimeS = time;
+            }
+
+            if (line.Points.Count >= 2)
+            {
+                Lines.Add(line);
+                HasSurfaceHistory = true;
+            }
+        }
+
+        /// <summary>
+        /// Forward site path for a standing craft: planet orbit + rotation. This is
+        /// a real prediction of where the craft will be, not a ballistic coast, so
+        /// it is built while landed instead of switching the forecast off.
+        /// </summary>
+        private void BuildSurfaceForecast(double time, OrbitingBody frame, double forecastSeconds)
+        {
+            if (!HasSurfaceFrame || DominantBody == null)
+            {
+                return;
+            }
+
+            double window = Math.Min(forecastSeconds, MaxForecastSeconds);
+            bool rotationCap = false;
+            if (ReferenceEquals(frame, DominantBody) && DominantBody.RotationPeriodSeconds > 0d
+                && window > DominantBody.RotationPeriodSeconds)
+            {
+                // In the planet frame the site circles the body once per rotation;
+                // repeating the same circle for days is noise.
+                window = DominantBody.RotationPeriodSeconds;
+                rotationCap = true;
+            }
+
+            if (!(window > 1d))
+            {
+                return;
+            }
+
+            var line = new NavLine
+            {
+                Kind = NavLineKind.ShipForecast,
+                Dashed = true,
+                StartTimeS = time,
+                EndTimeS = time,
+            };
+
+            int n = ForecastSamples;
+            for (int k = 0; k < n; k++)
+            {
+                double t = time + (window * k / (n - 1d));
+                try
+                {
+                    DominantBody.GetSurfaceState(ShipLatitudeDegrees, ShipLongitudeDegrees,
+                        Math.Max(0d, ShipAltitudeMeters), t,
+                        out Vector3d position, out _);
+                    frame.EvaluateWorldState(t, out Vector3d framePosition, out _);
+                    line.Points.Add(position - framePosition);
+                    line.EndTimeS = t;
+                }
+                catch (EphemerisRangeException)
+                {
+                    break;
+                }
+            }
+
+            if (line.Points.Count < 2)
+            {
+                return;
+            }
+
+            Lines.Add(line);
+            ForecastValid = true;
+            HasSurfaceForecast = true;
+            ForecastWindowSeconds = line.EndTimeS - time;
+            ForecastTruncated = rotationCap || ForecastWindowSeconds < forecastSeconds - 1e-6d;
+            Note = rotationCap
+                ? "ПРОГНОЗ СТОЯНКИ · 1 ОБОРОТ"
+                : "ПРОГНОЗ СТОЯНКИ · ВРАЩЕНИЕ + ОРБИТА";
         }
 
         private void BuildHistory(StarSystem system, OrbitingBody frame, double time, double historySeconds,

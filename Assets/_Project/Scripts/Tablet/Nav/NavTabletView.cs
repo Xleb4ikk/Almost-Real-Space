@@ -73,9 +73,9 @@ namespace Galilego.Tablet
         private bool forecastAvailable = true;
 
         /// <summary>
-        /// False on the surface / in contact / in the builder: the map cannot
-        /// integrate a coast there, so the forecast slider must say so instead of
-        /// silently changing a value that draws nothing.
+        /// False when there is nothing to predict (no ship / no support point): the
+        /// slider must say so instead of silently changing a value that draws nothing.
+        /// A landed craft still has a forecast — its site path over the ephemerides.
         /// </summary>
         public bool ForecastAvailable
         {
@@ -227,7 +227,7 @@ namespace Galilego.Tablet
                 slForecast.style.opacity = opacity;
                 slForecast.tooltip = forecastAvailable
                     ? null
-                    : "На поверхности и в контакте прогноз не строится";
+                    : "Прогноз недоступен: нет аппарата или опорной точки";
             }
 
             if (fForecast != null)
@@ -235,7 +235,7 @@ namespace Galilego.Tablet
                 fForecast.style.opacity = opacity;
                 fForecast.tooltip = forecastAvailable
                     ? null
-                    : "На поверхности и в контакте прогноз не строится";
+                    : "Прогноз недоступен: нет аппарата или опорной точки";
             }
         }
 

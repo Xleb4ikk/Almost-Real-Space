@@ -165,6 +165,42 @@ internal static partial class P1bTests
             && Math.Abs(model.OrbitRight.Magnitude - 1d) < 1e-9d
             && Math.Abs(Vector3d.Dot(model.OrbitNormal, model.OrbitRight)) < 1e-9d;
 
+        // A standing craft is carried by the planet: in the star frame its site
+        // path is the planet's orbit + rotation. The map must build both the
+        // past and the future from the ephemerides over the requested windows.
+        var landedShip = new Spacecraft(
+            bodyPosition + (radial * (planet.Radius + 5d)),
+            bodyVelocity,
+            1000d);
+        var landedModel = new NavMapModel();
+        landedModel.Rebuild(system, landedShip, 600d, 0, 1, visible,
+            3d * 86400d, 86400d, null, false, true);
+
+        bool landedHistoryValid = landedModel.HasSurfaceHistory;
+        bool landedForecastValid = landedModel.ForecastValid && landedModel.HasSurfaceForecast;
+        bool landedNoteHonest = landedModel.Note.IndexOf("СТОЯНК", StringComparison.OrdinalIgnoreCase) >= 0;
+        double landedExtent = 0d;
+        for (int i = 0; i < landedModel.Lines.Count; i++)
+        {
+            NavLine line = landedModel.Lines[i];
+            if (line.Kind != NavLineKind.ShipForecast || line.Points.Count < 2)
+            {
+                continue;
+            }
+
+            for (int k = 1; k < line.Points.Count; k++)
+            {
+                landedExtent = Math.Max(landedExtent, (line.Points[k] - line.Points[0]).Magnitude);
+            }
+        }
+
+        bool landedPathMoves = landedExtent > 1e6d;
+
+        // The centred body itself gets the same history/forecast spans (ephemeris).
+        var bodyTrailModel = new NavMapModel();
+        bodyTrailModel.Rebuild(system, ship, 0d, 0, 1, visible, 2d * 86400d, 2d * 86400d, null, true);
+        bool bodyTrailValid = bodyTrailModel.HasBodyHistory && bodyTrailModel.HasBodyForecast;
+
         // Low-altitude surface view: the dominant body has a heightfield, so the map
         // must switch to the real local terrain and keep the true sub-point.
         planet.Terrain = new HeightfieldTerrain();
@@ -187,10 +223,12 @@ internal static partial class P1bTests
 
         bool pass = markers && frameRelative && forecastValid && forecastFinite && forecastStartsAtShip
             && forecastOff && historyValid && noteHonest && planeOrthonormal && surfaceMode
-            && frameOrbit && frameOrbitOnBody && frameOrbitToggle && shipToggle && forecastLengthReacts;
+            && frameOrbit && frameOrbitOnBody && frameOrbitToggle && shipToggle && forecastLengthReacts
+            && landedHistoryValid && landedForecastValid && landedNoteHonest && landedPathMoves
+            && bodyTrailValid;
         Check(pass, "T567 nav map model",
             string.Format(
-                "bodies={0} frame={1:F2}м; forecast={2} pts={3} finite={4} start={5}; no-forecast={6} history={7} note={8}; plane={9}; surface={10} mode={11} hasFrame={12} dominant={13} terrain={14} lat={15:F2} lon={16:F2} hAGL={17:F0}; frameOrbit={18}/{19} toggle={20} shipToggle={21} forecastLen={22}",
+                "bodies={0} frame={1:F2}м; forecast={2} pts={3} finite={4} start={5}; no-forecast={6} history={7} note={8}; plane={9}; surface={10} mode={11} hasFrame={12} dominant={13} terrain={14} lat={15:F2} lon={16:F2} hAGL={17:F0}; frameOrbit={18}/{19} toggle={20} shipToggle={21} forecastLen={22}; landed={23}/{24} note={25} span={26:F0}м; bodyTrail={27}",
                 model.Bodies.Count,
                 model.FrameRelativeShipPosition.Magnitude,
                 forecastValid,
@@ -213,7 +251,12 @@ internal static partial class P1bTests
                 frameOrbitOnBody,
                 frameOrbitToggle,
                 shipToggle,
-                forecastLengthReacts));
+                forecastLengthReacts,
+                landedHistoryValid,
+                landedForecastValid,
+                landedModel.Note,
+                landedExtent,
+                bodyTrailValid));
         return 0;
     }
 }
