@@ -94,6 +94,11 @@ Shader "Galilego/PlanetClouds"
 
             #define CLD_PI 3.14159265358979
 
+            // Closer than this, a non-sky depth is the observer's own craft and must
+            // still occlude the clouds; farther (camera above the layer) it is the
+            // planet, whose screen-space depth is quantized — see marchEnd below.
+            #define CLD_NEAR_OCCLUDER_M 1000.0
+
             struct Attributes
             {
                 float3 positionOS : POSITION;
@@ -321,6 +326,18 @@ Shader "Galilego/PlanetClouds"
                 float planet1;
                 bool hitPlanet = CloudRaySphere(ro, rd, _CldPlanetRadius, planet0, planet1) && planet1 > 0.0;
                 float tPlanet = hitPlanet ? max(planet0, 0.0) : 1e30;
+
+                // Same screen-space depth caveat as in PlanetAtmosphere: with the
+                // cabin's 3 cm near plane the reconstructed distance at planetary
+                // scale can land FAR BELOW marchStart (the cloud-layer entry), which
+                // discarded the whole layer while the planet itself kept rendering.
+                // A cockpit surface is metres away; anything farther than that while
+                // the camera is above the layer is the planet, so use the exact
+                // analytic sphere instead of the quantized depth.
+                if (hitPlanet && r0 > _CldTopRadius && tDepth > CLD_NEAR_OCCLUDER_M)
+                {
+                    tDepth = tPlanet;
+                }
 
                 // Above the layer nothing physical can be closer than the layer entry:
                 // a nearer depth would be the observer's own craft (cockpit hull, hatch

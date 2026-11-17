@@ -86,6 +86,13 @@ Shader "Galilego/PlanetAtmosphere"
 
             #define ATM_PI 3.14159265358979
 
+            // Closer than this, a non-sky depth is the observer's own craft (hull,
+            // hatch frame, canopy) and must still occlude the atmosphere; farther,
+            // while the camera is above the shell, it is the planet — whose depth is
+            // quantized by the screen-space projection and replaced by the analytic
+            // sphere.
+            #define ATM_NEAR_OCCLUDER_M 1000.0
+
             // Scene radiance calibration applied on top of Intensity.
             #define ATM_RADIANCE_SCALE 5.0
 
@@ -318,6 +325,23 @@ Shader "Galilego/PlanetAtmosphere"
                 }
 
                 bool planetOccludes = hitPlanet && _AtmPlanetOcclusion > 0.5;
+
+                // The scene depth is a SCREEN-SPACE value. With the cockpit's 3 cm
+                // near plane against a far plane of hundreds of km, its float clip
+                // precision at planetary distances is coarse: at 200 km the
+                // reconstructed distance snaps between ~126 and ~252 km. A cockpit
+                // surface (hull, hatch frame, canopy) is metres from the eye; anything
+                // the depth reports farther than ATM_NEAR_OCCLUDER_M while the camera
+                // is above the atmosphere is the planet itself, so the exact analytic
+                // sphere replaces the quantized depth. Without this the depth can land
+                // inside the atmosphere entry and erase the haze over the disc — the
+                // limb survives only because it integrates its own tangent path. The
+                // effect flips with the near plane (3 cm seated vs 10 cm in EVA),
+                // which is why the haze "appeared" on leaving the craft.
+                if (hasTerrain && hitPlanet && r0 > _AtmRadius && tDepth > ATM_NEAR_OCCLUDER_M)
+                {
+                    tDepth = tPlanet;
+                }
 
                 // Outside the shell nothing physical can be closer than the atmosphere
                 // entry: a nearer depth would be the observer's own craft (cockpit hull,
