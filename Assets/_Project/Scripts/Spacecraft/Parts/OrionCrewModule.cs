@@ -36,7 +36,7 @@ namespace Galilego.Spacecraft
         [SerializeField] private Animator animator;
 
         [Header("Освещение кабины")]
-        [Tooltip("Яркость потолочных ламп кабины, лм (HDRP Lumen). 0 — лампы не создаются.")]
+        [Tooltip("Яркость ламп кабины, лм (HDRP Lumen). 0 — лампы не создаются.")]
         [SerializeField] private float cabinLampLumens = 10f;
 
         [Tooltip("Радиус действия лампы, м.")]
@@ -51,6 +51,11 @@ namespace Galilego.Spacecraft
         [Tooltip("Расстояние между лампами, м.")]
         [SerializeField] private float cabinLampSpacing = 1.25f;
 
+        [Tooltip("Смещение точечных ламп от центра полос Cabin_Lights вдоль «вверх» кресла, м. " +
+            "0 — по центру кабины; положительное — к потолку. Потолочное смещение освещало " +
+            "верхние стенки заметно сильнее нижних: из люка кабина казалась ярче, чем изнутри.")]
+        [SerializeField] private float cabinLampHeightMeters = 0f;
+
         [Tooltip("Множитель яркости ламп, пока КАМЕРА рядом с модулем (снаружи или внутри " +
             "кабины): интерьер не гаснет на фоне залитого солнцем корпуса и планеты и не " +
             "мигает при переходе кресло/проход/люк.")]
@@ -60,10 +65,9 @@ namespace Galilego.Spacecraft
             "горит одинаково; базовая яркость остаётся только для далёкой камеры.")]
         [SerializeField] private float cabinLampOutsideRange = 60f;
 
-        [Tooltip("Небольшое ослабление ламп, когда камера снаружи кабины (EVA/прогулка): " +
-            "изнутри кабина чуть темнее, чем кажется снаружи через остекление и на фоне " +
-            "тёмного корпуса. 1 — без ослабления.")]
-        [SerializeField] private float cabinLampOutsideScale = 0.85f;
+        [Tooltip("Опциональное ослабление ламп снаружи кабины (1 — выключено). Оставлено для " +
+            "подстройки: основной рычаг равномерности — cabinLampHeightMeters.")]
+        [SerializeField] private float cabinLampOutsideScale = 1f;
 
         [Tooltip("Радиус «внутри кабины» от центра модуля, м: ближе — лампы на полной яркости.")]
         [SerializeField] private float cabinLampInsideRadius = 2.5f;
@@ -253,11 +257,13 @@ namespace Galilego.Spacecraft
                 }
             }
 
-            // The seat's local +Z is its up (see CockpitSeat): use the seat axes so
-            // the lamps sit at the ceiling whatever node scale the FBX carries.
+            // The seat's local +Z is its up (see CockpitSeat): use the seat axes so the
+            // lamps use the cabin's up/right whatever node scale the FBX carries. The
+            // height offset is measured from the strip-ring center: 0 = mid-cabin, a
+            // positive value pushes the lamps toward the ceiling.
             Vector3 up = seat.Anchor.TransformDirection(Vector3.forward);
             Vector3 right = seat.Anchor.TransformDirection(Vector3.right);
-            Vector3 center = strips.bounds.center + (up * 1.1f);
+            Vector3 center = strips.bounds.center + (up * cabinLampHeightMeters);
 
             cabinLamps = new Light[cabinLampCount];
             for (int i = 0; i < cabinLampCount; i++)
