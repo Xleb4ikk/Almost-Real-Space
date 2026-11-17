@@ -42,7 +42,7 @@ float _GG_WindTimeA;
 float _GG_WindTimeB;
 float _GG_VortexTimeA;
 float _GG_VortexTimeB;
-float _GG_PhaseWeight;
+float _GG_LayerBlend;
 float _GG_PatternSpin;
 
 float _GG_WarpAmplitude;
@@ -107,14 +107,26 @@ float2 GGSurfaceUv(float3 p)
     return float2(u, v);
 }
 
-float3 GGSampleSurfaceUv(float2 uv)
+// Analytic derivatives of the equirectangular mapping. The hardware
+// differentiates frac(atan2(y,x)/2pi + const), which jumps by a whole map
+// width across the seam; that spike forces the smallest mip and paints a
+// blurred meridian on the globe. Here the atan2 branch cut cancels in the
+// quotient, so the derivatives stay finite and mip selection is correct.
+float2 GGSurfaceUvDerivative(float3 p, float3 dp)
 {
-    return SAMPLE_TEXTURE2D(_GG_SurfaceMap, sampler_GG_SurfaceMap, uv).rgb;
+    float r2 = max((p.x * p.x) + (p.y * p.y), 1e-12);
+    float du = ((p.x * dp.y) - (p.y * dp.x)) / (r2 * (2.0 * GG_PI));
+    float sinLat = sqrt(max(1.0 - (p.z * p.z), 1e-12));
+    float dv = dp.z / (sinLat * GG_PI);
+    return float2(du, dv);
 }
 
 float3 GGSampleSurfaceMap(float3 p)
 {
-    return GGSampleSurfaceUv(GGSurfaceUv(p));
+    float2 uv = GGSurfaceUv(p);
+    float2 ddxUv = GGSurfaceUvDerivative(p, ddx(p));
+    float2 ddyUv = GGSurfaceUvDerivative(p, ddy(p));
+    return SAMPLE_TEXTURE2D_GRAD(_GG_SurfaceMap, sampler_GG_SurfaceMap, uv, ddxUv, ddyUv).rgb;
 }
 
 float GGHash31(float3 p)
@@ -239,7 +251,7 @@ GGVortexSample SampleVortices(float3 q, float timeSeconds)
     return result;
 }
 
-float3 SampleCloudLayer(float3 p, float windTime, float vortexTime)
+float3 SampleCloudLayer(float3 p, float windTime, float vortexTime, out float3 windCoord)
 {
     float lat = asin(clamp(p.z, -1.0, 1.0));
     float cosLat = max(cos(lat), 0.16);
@@ -247,6 +259,7 @@ float3 SampleCloudLayer(float3 p, float windTime, float vortexTime)
 
     float theta = weather.r * windTime * _GG_ShearExaggeration / (_GG_PlanetRadius * cosLat);
     float3 q = GGRotateZ(p, theta);
+    windCoord = q;
 
     float latQ = asin(clamp(q.z, -1.0, 1.0));
 
@@ -293,7 +306,11 @@ float3 SampleCloudLayer(float3 p, float windTime, float vortexTime)
     float mapStrength = saturate(_GG_SurfaceMapStrength);
     if (mapStrength > 0.001)
     {
-        albedo = lerp(albedo, GGSampleSurfaceMap(p), mapStrength);
+        // q, not p: the baked cloud map follows the same zonal winds as the
+        // procedural detail. Adjacent latitude bands therefore slide at their
+        // own speeds (the wind LUT), instead of the map being frozen to the
+        // body while only the faint procedural haze moves.
+        albedo = lerp(albedo, GGSampleSurfaceMap(q), mapStrength);
     }
 
     // Polar hoods: cooler and mottled, but not a solid cap. Disabled when the
@@ -334,10 +351,14 @@ float3 GGCloudNormal(float3 p, float3 n, float3 west, float3 north)
 
         float2 uv = GGSurfaceUv(p);
         float2 texel = _GG_SurfaceMap_TexelSize.xy;
+        float2 ddxUv = GGSurfaceUvDerivative(p, ddx(p));
+        float2 ddyUv = GGSurfaceUvDerivative(p, ddy(p));
         float3 luma = float3(0.2126, 0.7152, 0.0722);
-        float h0 = dot(GGSampleSurfaceUv(uv), luma);
-        float hE = dot(GGSampleSurfaceUv(uv + float2(texel.x, 0.0)), luma);
-        float hN = dot(GGSampleSurfaceUv(uv + float2(0.0, texel.y)), luma);
+        float h0 = dot(SAMPLE_TEXTURE2D_GRAD(_GG_SurfaceMap, sampler_GG_SurfaceMap, uv, ddxUv, ddyUv).rgb, luma);
+        float hE = dot(SAMPLE_TEXTURE2D_GRAD(_GG_SurfaceMap, sampler_GG_SurfaceMap,
+            uv + float2(texel.x, 0.0), ddxUv, ddyUv).rgb, luma);
+        float hN = dot(SAMPLE_TEXTURE2D_GRAD(_GG_SurfaceMap, sampler_GG_SurfaceMap,
+            uv + float2(0.0, texel.y), ddxUv, ddyUv).rgb, luma);
         float3 grad = (west * (h0 - hE)) + (north * (h0 - hN));
         return normalize(n + (grad * (_GG_MapBump * 10.0)));
     }
@@ -361,28 +382,33 @@ float3 ShadeGasGiant(float3 pBody, float3 normalWS, float3 viewWS)
 {
     pBody = GGRotateZ(pBody, _GG_PatternSpin);
 
-    float3 colorA = SampleCloudLayer(pBody, _GG_WindTimeA, _GG_VortexTimeA);
-    float3 colorB = SampleCloudLayer(pBody, _GG_WindTimeB, _GG_VortexTimeB);
+    float3 windCoordA;
+    float3 windCoordB;
+    float3 colorA = SampleCloudLayer(pBody, _GG_WindTimeA, _GG_VortexTimeA, windCoordA);
+    float3 colorB = SampleCloudLayer(pBody, _GG_WindTimeB, _GG_VortexTimeB, windCoordB);
 
-    // Keep the animation, but do not average two independent cloud fields
-    // 50/50: that was the main source of the old smeared look. The second
-    // sample only contributes a small high-frequency shimmer.
-    float3 albedo = lerp(colorA, colorB, saturate(_GG_PhaseWeight) * 0.18);
+    // The second sample is a slightly faster cloud deck. Blending it in at
+    // LayerBlend adds parallax between the upper/lower deck without smearing
+    // the primary map the way a 50/50 average used to.
+    float3 albedo = lerp(colorA, colorB, saturate(_GG_LayerBlend));
 
     float3 Ng = normalize(normalWS);
     float3 L = normalize(_GG_SunDirWS);
     float3 V = normalize(viewWS);
 
-    // Local tangent frame for the cloud relief.
-    float3 west = cross(float3(0.0, 0.0, 1.0), pBody);
+    // Local tangent frame for the cloud relief, in the advected cloud frame
+    // so the bump gradients follow the moving deck.
+    float3 west = cross(float3(0.0, 0.0, 1.0), windCoordA);
     if (dot(west, west) < 1e-6)
     {
         west = float3(1.0, 0.0, 0.0);
     }
     west = normalize(west);
-    float3 north = normalize(cross(pBody, west));
+    float3 north = normalize(cross(windCoordA, west));
 
-    float3 N = GGCloudNormal(pBody, Ng, west, north);
+    // The bump samples the same advected coordinate as the albedo, so the
+    // relief travels with the cloud deck instead of staying frozen to the body.
+    float3 N = GGCloudNormal(windCoordA, Ng, west, north);
 
     float ndl = dot(N, L);
     float diffuse = saturate((ndl + _GG_WrapDiffuse) / (1.0 + _GG_WrapDiffuse));

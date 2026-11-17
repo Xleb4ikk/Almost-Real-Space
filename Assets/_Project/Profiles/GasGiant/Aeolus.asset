@@ -377,6 +377,7 @@ MonoBehaviour:
     VortexSpinPeriodSeconds: 40
     ShearExaggeration: 18
     LayerSpeedDelta: 0.08
+    LayerBlend: 0.18
     WarpAmplitude: 0.06
     WarpScale: 5.5
     TurbulenceScale: 24

@@ -22,7 +22,7 @@ Shader "Galilego/GasGiantSurface"
         [HideInInspector] _GG_WindTimeB("Wind Time B", Float) = 0
         [HideInInspector] _GG_VortexTimeA("Vortex Time A", Float) = 0
         [HideInInspector] _GG_VortexTimeB("Vortex Time B", Float) = 0
-        [HideInInspector] _GG_PhaseWeight("Phase Weight", Float) = 1
+        [HideInInspector] _GG_LayerBlend("Layer Blend", Float) = 0.18
         [HideInInspector] _GG_PatternSpin("Pattern Spin", Float) = 0
         [HideInInspector] _GG_WarpAmplitude("Warp Amplitude", Float) = 0.22
         [HideInInspector] _GG_WarpScale("Warp Scale", Float) = 3.2

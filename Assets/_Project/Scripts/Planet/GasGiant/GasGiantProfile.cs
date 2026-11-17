@@ -132,11 +132,11 @@ namespace Galilego.Universe
         public Color RimColor = new Color(0.66f, 0.75f, 0.82f, 1f);
 
         [Header("РђРЅРёРјР°С†РёСЏ (Р°СЂС‚-С‡Р°СЃС‹)")]
-        [Tooltip("Р’РёР·СѓР°Р»СЊРЅС‹Р№ РїРµСЂРёРѕРґ РІСЂР°С‰РµРЅРёСЏ РѕР±Р»Р°С‡РЅРѕРіРѕ СѓР·РѕСЂР°, СЃ. РўРµР»Рѕ РїСЂРё СЌС‚РѕРј РѕСЃС‚Р°С‘С‚СЃСЏ РЅР° С„РёР·РёС‡РµСЃРєРѕРј РІСЂР°С‰РµРЅРёРё.")]
+        [Tooltip("Темп арт-часов анимации облаков, с. НЕ задаёт видимое вращение: тело вращается с периодом RotationPeriodSeconds.")]
         [Min(1f)]
         public float VisualSpinPeriodSeconds = 120f;
 
-        [Tooltip("РћРєРЅРѕ phase blending, СЃ Р°СЂС‚-С‡Р°СЃРѕРІ.")]
+        [Tooltip("Период короткого цикла арт-времени для вихрей, с.")]
         [Min(1f)]
         public float PhasePeriodSeconds = 30f;
 
@@ -144,13 +144,17 @@ namespace Galilego.Universe
         [Min(1f)]
         public float VortexSpinPeriodSeconds = 30f;
 
-        [Tooltip("РЈСЃРёР»РµРЅРёРµ РґРёС„С„РµСЂРµРЅС†РёР°Р»СЊРЅРѕРіРѕ СЃРґРІРёРіР°. 25 вЂ” РІРёРґРёРјС‹Р№ СЃРґРІРёРі ~0.3-0.4 СЂР°Рґ Р·Р° РѕРєРЅРѕ С„Р°Р·С‹.")]
+        [Tooltip("Усиление дифференциального сдвига зональных ветров. Больше — быстрее перетекают полосы.")]
         [Range(0f, 80f)]
         public float ShearExaggeration = 25f;
 
-        [Tooltip("Р Р°Р·РЅРёС†Р° СЃРєРѕСЂРѕСЃС‚РµР№ РІРµСЂС…РЅРµРіРѕ/РЅРёР¶РЅРµРіРѕ РѕР±Р»Р°С‡РЅРѕРіРѕ СЃР»РѕСЏ, РґРѕР»СЏ.")]
+        [Tooltip("Разница скоростей двух облачных слоёв (доля от скорости ветра). 0 = один слой.")]
         [Range(0f, 0.5f)]
         public float LayerSpeedDelta = 0.1f;
+
+        [Tooltip("Вес вторичного облачного слоя. 0 = только основной слой, 0.18 = лёгкий параллакс.")]
+        [Range(0f, 0.5f)]
+        public float LayerBlend = 0.18f;
 
         [Header("РЁСѓРј Рё РѕРїС‚РёРєР°")]
         [Range(0f, 0.3f)]
@@ -458,6 +462,7 @@ namespace Galilego.Universe
                 VortexSpinPeriodSeconds = VortexSpinPeriodSeconds,
                 ShearExaggeration = ShearExaggeration,
                 LayerSpeedDelta = LayerSpeedDelta,
+                LayerBlend = LayerBlend,
                 WarpAmplitude = WarpAmplitude,
                 WarpScale = WarpScale,
                 TurbulenceScale = TurbulenceScale,
@@ -545,6 +550,8 @@ namespace Galilego.Universe
             PhasePeriodSeconds = Mathf.Max(1f, PhasePeriodSeconds);
             VortexSpinPeriodSeconds = Mathf.Max(1f, VortexSpinPeriodSeconds);
             ShearExaggeration = Mathf.Clamp(ShearExaggeration, 0f, 80f);
+            LayerSpeedDelta = Mathf.Clamp(LayerSpeedDelta, 0f, 0.5f);
+            LayerBlend = Mathf.Clamp(LayerBlend, 0f, 0.5f);
             OblatenessRatio = Mathf.Clamp(OblatenessRatio, 0.8f, 1f);
             BandLutWidth = Mathf.Clamp(BandLutWidth, 32, 8192);
             WindLutWidth = Mathf.Clamp(WindLutWidth, 32, 2048);

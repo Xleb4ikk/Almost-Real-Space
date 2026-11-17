@@ -568,33 +568,44 @@ namespace Galilego.Universe
             double physicalRotation = body.RotationPeriodSeconds > 0d
                 ? body.RotationPeriodSeconds
                 : 1d;
-            float visualScale = (float)(physicalRotation / Mathf.Max(1f, profile.VisualSpinPeriodSeconds));
+            double visualScale = physicalRotation / Mathf.Max(1f, profile.VisualSpinPeriodSeconds);
 
-            float artSpin = (float)(((t / Mathf.Max(1f, profile.VisualSpinPeriodSeconds)) % 1d) * 2d * Math.PI);
-            float physicalSpin = (float)body.RotationAngleAtTime(t);
-            float patternSpin = Mathf.Repeat(artSpin - physicalSpin + Mathf.PI, 2f * Mathf.PI) - Mathf.PI;
+            // Continuous art clock. The old tA/tB values wrapped every
+            // PhasePeriodSeconds, so the whole cloud field jumped once per
+            // window; now only the vortices use that short loop. The wind
+            // layers run on the unbounded clock.
+            double windTimeA = t * visualScale;
+            double windTimeB = windTimeA * (1d + Math.Max(0d, (double)profile.LayerSpeedDelta));
 
-            float phaseWeight = 1f - Mathf.Abs((2f * (float)phase) - 1f);
+            // The cloud deck is fixed to the body. BodyView already rotates the
+            // mesh at the physical period (Aeolus: 37 800 s = 10.5 h); an extra
+            // art-clock shell spin here would make the visible planet turn every
+            // VisualSpinPeriodSeconds instead. That clock now only speeds up the
+            // differential winds/vortices (see visualScale above), never the
+            // planet's apparent rotation.
+            float patternSpin = 0f;
 
             ApplyProfileConstants(surfaceMaterial);
             ApplyProfileConstants(discMaterial);
-            SetTimeUniforms(surfaceMaterial, tA, tB, visualScale, phaseWeight, patternSpin);
-            SetTimeUniforms(discMaterial, tA, tB, visualScale, phaseWeight, patternSpin);
+            SetTimeUniforms(surfaceMaterial, windTimeA, windTimeB, tA, tB, patternSpin);
+            SetTimeUniforms(discMaterial, windTimeA, windTimeB, tA, tB, patternSpin);
         }
 
-        private void SetTimeUniforms(Material material, float tA, float tB, float visualScale,
-            float phaseWeight, float patternSpin)
+        private void SetTimeUniforms(Material material, double windTimeA, double windTimeB,
+            float vortexTimeA, float vortexTimeB, float patternSpin)
         {
             if (material == null)
             {
                 return;
             }
 
-            material.SetFloat("_GG_WindTimeA", tA * visualScale);
-            material.SetFloat("_GG_WindTimeB", tB * visualScale);
-            material.SetFloat("_GG_VortexTimeA", tA);
-            material.SetFloat("_GG_VortexTimeB", tB);
-            material.SetFloat("_GG_PhaseWeight", phaseWeight);
+            material.SetFloat("_GG_WindTimeA", (float)windTimeA);
+            material.SetFloat("_GG_WindTimeB", (float)windTimeB);
+            material.SetFloat("_GG_VortexTimeA", vortexTimeA);
+            material.SetFloat("_GG_VortexTimeB", vortexTimeB);
+            // Weight of the secondary (faster) cloud deck. Previously this
+            // uniform was a phase triangle that made the deck fade in and out.
+            material.SetFloat("_GG_LayerBlend", profile.LayerBlend);
             material.SetFloat("_GG_PatternSpin", patternSpin);
         }
 
