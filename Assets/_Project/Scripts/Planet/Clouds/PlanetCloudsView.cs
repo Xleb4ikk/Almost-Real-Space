@@ -33,6 +33,11 @@ namespace Galilego.Universe
         [Tooltip("SimulationRunner сцены.")]
         public SimulationRunner Runner;
 
+        [Tooltip("Камера игрока (FirstPersonCamera). Пусто — Camera.main. " +
+                 "Купол и проверка «тело рядом» должны смотреть в ТУ камеру, " +
+                 "которая рисует кадр, а не в случайную Camera.main.")]
+        public Camera PlayerCamera;
+
         [Tooltip("Сегментов по широте купола.")]
         [Range(4, 128)]
         public int LatitudeSegments = 24;
@@ -41,11 +46,21 @@ namespace Galilego.Universe
         [Range(8, 256)]
         public int LongitudeSegments = 48;
 
+        [Tooltip("Игнорировать глубину ближе входа в слой облаков (это всегда свой корабль). " +
+                 "Включать, только если смотреть сквозь ПРОЗРАЧНЫЙ, но пишущий глубину корпус/стекло: " +
+                 "иначе marchEnd обрежется ниже входа в слой и облака исчезнут целиком. " +
+                 "Выключено по умолчанию: непрозрачная стена кабины должна закрывать облака, " +
+                 "а не быть закрашенной ими.")]
+        public bool IgnoreCockpitDepth;
+
         private OrbitingBody body;
         private CloudProfile profile;
         private Transform shell;
         private Material materialCache;
         private SkyEnvironment skyEnvironment;
+
+        /// <summary>The camera the picture is drawn with (falls back to Camera.main).</summary>
+        private Camera ViewCamera => PlayerCamera != null ? PlayerCamera : Camera.main;
 
         private Texture3D shapeTex;
         private Texture3D detailTex;
@@ -202,6 +217,9 @@ namespace Galilego.Universe
         {
             Shader.SetGlobalFloat("_CldCloudActive", 0f);
             Shader.SetGlobalFloat("_CldShadowStrength", 0f);
+            // The switch is a global: push it before any early return so flipping it
+            // in the inspector takes effect immediately.
+            Shader.SetGlobalFloat("_CldIgnoreCockpitDepth", IgnoreCockpitDepth ? 1f : 0f);
 
             if (Runner == null || Runner.SystemState == null || Runner.SystemState.Root == null
                 || body == null || profile == null || shell == null)
@@ -211,11 +229,22 @@ namespace Galilego.Universe
 
             bool active = profile.VisualEnabled
                 && profile.TopAltitudeMeters > profile.BottomAltitudeMeters
-                && (Runner.DominantBody == body || IsCloudBodyRelevant(Camera.main))
+                && (Runner.DominantBody == body || IsCloudBodyRelevant(ViewCamera))
                 && !UnderwaterEffect.CameraIsUnderwater;
             if (shell.gameObject.activeSelf != active)
             {
                 shell.gameObject.SetActive(active);
+
+                // Same reasoning as PlanetAtmosphere: name the condition that closed
+                // the dome, so a cockpit report can be diagnosed from the console.
+                Debug.Log(string.Format(
+                    "[PlanetClouds] {0}: dominant={1}, body={2}, relevant={3}, underwater={4}, carried={5}, seated={6}, mode={7}",
+                    active ? "ON" : "OFF",
+                    Runner.DominantBody != null ? Runner.DominantBody.Name : "null",
+                    body != null ? body.Name : "null",
+                    IsCloudBodyRelevant(ViewCamera),
+                    UnderwaterEffect.CameraIsUnderwater,
+                    Runner.PlayerCarried, Runner.PlayerSeated, Runner.PlayerMode));
             }
 
             if (!active)
@@ -231,7 +260,7 @@ namespace Galilego.Universe
                 BuildTextures();
             }
 
-            Camera camera = Camera.main;
+            Camera camera = ViewCamera;
             if (camera == null)
             {
                 return;
@@ -239,6 +268,13 @@ namespace Galilego.Universe
 
             // Same approach as AtmosphereDome: keep the dome inside far,
             // otherwise vertices at the frustum edge are clipped by the far plane.
+            //
+            // The dome radius is ONLY a screen-covering proxy: the shader marches the ray
+            // analytically against the cloud spheres, so the dome does not have to reach
+            // the planet. This view must NOT touch camera.farClipPlane: FirstPersonCamera
+            // owns near/far (it sets them every frame from the horizon), and a LateUpdate
+            // that inflated far here fought it — the sun billboard sits at 0.9·far, so the
+            // star jumped millions of metres between frames.
             float domeRadius = Mathf.Max(1f, camera.farClipPlane * 0.5f);
             Vector3 cameraPosition = camera.transform.position;
             shell.position = cameraPosition;
@@ -247,18 +283,6 @@ namespace Galilego.Universe
 
             body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPos, out _);
             Vector3 bodyRenderPosition = FloatingOrigin.ToRender(bodyPos);
-            float bodyDistance = Vector3.Distance(cameraPosition, bodyRenderPosition);
-            if (bodyDistance > (float)body.Radius * 1.2f)
-            {
-                float requiredDomeRadius = bodyDistance + (float)body.Radius + (float)profile.TopAltitudeMeters + 1000f;
-                float requiredFar = requiredDomeRadius * 2f;
-                if (camera.farClipPlane < requiredFar)
-                {
-                    camera.farClipPlane = requiredFar;
-                    domeRadius = requiredDomeRadius;
-                    shell.localScale = Vector3.one * domeRadius;
-                }
-            }
 
             Vector3 sunDirWorld = Vector3.up;
             if (Runner.SystemState.Root != null && Runner.Ship != null)

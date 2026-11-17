@@ -73,6 +73,10 @@ Shader "Galilego/PlanetAtmosphere"
             float _AtmHorizonFade;
             float4 _AtmGroundColor;
             float _AtmDebugMode;
+            // Set by PlanetAtmosphereView (IgnoreCockpitDepth): when 1, a depth nearer
+            // than the atmosphere entry is treated as the observer's own craft and
+            // ignored. Off by default: an opaque cockpit wall must keep its own colour.
+            float _AtmIgnoreCockpitDepth;
 
             // CPU LUTs: Sun transmittance and multiple scattering.
             TEXTURE2D(_AtmTransmittanceTex);
@@ -185,6 +189,16 @@ Shader "Galilego/PlanetAtmosphere"
             {
                 int maxSteps = clamp((int)_AtmStepCount, 2, 128);
 
+                // Empty (or inverted) segment: no atmosphere between the observer and the
+                // surface. Must be explicit: tStart is now the shell entry, and a cockpit
+                // wall can be NEARER than it — a negative ds would turn exp(-sigma·ds)
+                // into a bright artifact instead of "nothing".
+                if (tEnd <= tStart)
+                {
+                    outTransmittance = 1.0;
+                    return 0.0;
+                }
+
                 // Number of steps depends on PATH LENGTH, not always the max.
                 //
                 // The density profile is exponential with scale Hr and is
@@ -264,6 +278,14 @@ Shader "Galilego/PlanetAtmosphere"
                     discard;
                 }
 
+                // Where the march STARTS. The camera is usually ABOVE the shell (orbit),
+                // and the old code integrated from 0: most of the (small) step budget was
+                // spent on vacuum. At 700 km altitude the 24-step budget left ~3 samples
+                // inside the 100 km atmosphere, so the haze over the planet's disc almost
+                // vanished — while the thin limb ring (a much longer path) still looked
+                // plausible. Start at the shell entry instead (0 when the camera is inside).
+                float tAtmStart = max(a0, 0.0);
+
                 float r0 = length(ro);
                 float3 n0 = ro / max(r0, 1e-3);
 
@@ -297,6 +319,21 @@ Shader "Galilego/PlanetAtmosphere"
 
                 bool planetOccludes = hitPlanet && _AtmPlanetOcclusion > 0.5;
 
+                // Outside the shell nothing physical can be closer than the atmosphere
+                // entry: a nearer depth would be the observer's own craft (cockpit hull,
+                // hatch frame, canopy). Ignore it — otherwise a cockpit surface cuts the
+                // path to ~1 m and the planet loses its haze/limb, while the planet
+                // itself (an opaque mesh) still shows through. The real backdrop along
+                // the ray is the planet, or empty space when the ray misses it.
+                // Opt-in (IgnoreCockpitDepth): an OPAQUE cockpit wall must not be turned
+                // into "planet + haze" — it is the wall's own colour that must stay.
+                if (_AtmIgnoreCockpitDepth > 0.5
+                    && hasTerrain && r0 > _AtmRadius && tDepth < max(a0, 0.0))
+                {
+                    hasTerrain = hitPlanet;
+                    tDepth = hitPlanet ? tPlanet : 1e30;
+                }
+
                 // Background colour — the colour pyramid with dynamic resolution
                 // (HDRP Lit.hlsl pattern, transparent refraction).
                 float2 screenUv = input.positionCS.xy * _ScreenSize.zw;
@@ -329,7 +366,7 @@ Shader "Galilego/PlanetAtmosphere"
                         groundBg = _AtmGroundColor.rgb * saturate(cosSunG) * sunG;
                     }
 
-                    float3 groundScatter = IntegrateAtmosphere(ro, rd, sunDir, 0.0, tGround, groundT);
+                    float3 groundScatter = IntegrateAtmosphere(ro, rd, sunDir, tAtmStart, tGround, groundT);
                     groundColor = (groundBg * groundT) + (groundScatter * radianceScale);
                 }
 
@@ -342,7 +379,7 @@ Shader "Galilego/PlanetAtmosphere"
                 float3 skyColor = 0.0;
                 if (!hasTerrain && !planetOccludes)
                 {
-                    float3 skyScatter = IntegrateAtmosphere(ro, rd, sunDir, 0.0, tAtm, skyT);
+                    float3 skyScatter = IntegrateAtmosphere(ro, rd, sunDir, tAtmStart, tAtm, skyT);
                     skyColor = (bgRaw * skyT) + (skyScatter * radianceScale);
                 }
 
@@ -367,13 +404,15 @@ Shader "Galilego/PlanetAtmosphere"
                             float ha0;
                             float ha1;
                             float tAtmHor = tAtm;
+                            float tHorStart = tAtmStart;
                             if (RaySphere(ro, dirHor, _AtmRadius, ha0, ha1))
                             {
                                 tAtmHor = max(ha1, 0.0);
+                                tHorStart = max(ha0, 0.0);
                             }
 
                             float3 horT;
-                            float3 horScatter = IntegrateAtmosphere(ro, dirHor, sunDir, 0.0, tAtmHor, horT);
+                            float3 horScatter = IntegrateAtmosphere(ro, dirHor, sunDir, tHorStart, tAtmHor, horT);
                             float3 skyHorizonColor = (bgRaw * horT) + (horScatter * radianceScale);
                             color = lerp(groundColor, skyHorizonColor, horizon);
                         }
@@ -416,7 +455,7 @@ Shader "Galilego/PlanetAtmosphere"
                     if (_AtmDebugMode < 6.5)
                     {
                         float3 dbgT;
-                        float3 dbgScatter = IntegrateAtmosphere(ro, rd, sunDir, 0.0,
+                        float3 dbgScatter = IntegrateAtmosphere(ro, rd, sunDir, tAtmStart,
                             hasGround ? tGround : tAtm, dbgT);
                         return float4(dbgScatter * radianceScale, 1.0);
                     }

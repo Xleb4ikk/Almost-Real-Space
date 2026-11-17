@@ -44,6 +44,11 @@ namespace Galilego.Universe
         [Tooltip("SimulationRunner сцены.")]
         public SimulationRunner Runner;
 
+        [Tooltip("Камера игрока (FirstPersonCamera). Пусто — Camera.main. " +
+                 "То же поле, что у SunBillboard: купол должен строиться вокруг ТОЙ камеры, " +
+                 "которая реально рисует кадр, даже если в сцене появится вторая.")]
+        public Camera PlayerCamera;
+
         [Tooltip("Сегментов по широте купола.")]
         [Range(4, 128)]
         public int LatitudeSegments = 24;
@@ -55,6 +60,13 @@ namespace Galilego.Universe
         [Tooltip("Отладочный вывод вместо финального кадра (0 = выключено).")]
         public AtmosphereDebugMode DebugMode = AtmosphereDebugMode.Final;
 
+        [Tooltip("Игнорировать глубину ближе входа в атмосферу (это всегда свой корабль). " +
+                 "Включать, только если смотреть сквозь ПРОЗРАЧНЫЙ, но пишущий глубину корпус/стекло: " +
+                 "иначе купол посчитает путь до корпуса (~1 м) и атмосфера исчезнет. " +
+                 "Выключено по умолчанию: непрозрачная стена кабины должна оставаться стеной, " +
+                 "а не превращаться в планету с дымкой.")]
+        public bool IgnoreCockpitDepth;
+
         private OrbitingBody body;
         private AtmosphereProfile profile;
         private Transform shell;
@@ -62,6 +74,9 @@ namespace Galilego.Universe
         private Texture2D transmittanceLut;
         private Texture2D multiScatterLut;
         private bool loggedOnce;
+
+        /// <summary>The camera the picture is drawn with (falls back to Camera.main).</summary>
+        private Camera ViewCamera => PlayerCamera != null ? PlayerCamera : Camera.main;
 
         // Signature of the parameters the LUTs depend on: while it matches, the
         // LUTs are not rebuilt, so runtime changes of AerosolScale/density/ozone
@@ -219,6 +234,10 @@ namespace Galilego.Universe
 
         private void LateUpdate()
         {
+            // The switch is a global: push it before any early return so flipping it
+            // in the inspector takes effect immediately.
+            Shader.SetGlobalFloat("_AtmIgnoreCockpitDepth", IgnoreCockpitDepth ? 1f : 0f);
+
             if (Runner == null || Runner.SystemState == null || Runner.SystemState.Root == null
                 || body == null || profile == null || shell == null)
             {
@@ -232,6 +251,17 @@ namespace Galilego.Universe
             if (shell.gameObject.activeSelf != active)
             {
                 shell.gameObject.SetActive(active);
+
+                // The dome is a screen-space pass: when it is off, the planet simply
+                // looks like it has no atmosphere. One line per toggle names the exact
+                // condition that closed it, so a report from the cockpit is diagnosable.
+                Debug.Log(string.Format(
+                    "[PlanetAtmosphere] {0}: dominant={1}, body={2}, underwater={3}, carried={4}, seated={5}, mode={6}",
+                    active ? "ON" : "OFF",
+                    Runner.DominantBody != null ? Runner.DominantBody.Name : "null",
+                    body != null ? body.Name : "null",
+                    UnderwaterEffect.CameraIsUnderwater,
+                    Runner.PlayerCarried, Runner.PlayerSeated, Runner.PlayerMode));
             }
 
             if (!active)
@@ -246,7 +276,7 @@ namespace Galilego.Universe
                 BuildLuts();
             }
 
-            Camera camera = Camera.main;
+            Camera camera = ViewCamera;
             if (camera == null)
             {
                 return;

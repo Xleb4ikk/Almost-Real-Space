@@ -82,6 +82,8 @@ Shader "Galilego/PlanetClouds"
             float _CldLightSteps;
             float _CldEarlyExitT;
             float _CldDebugMode;
+            // Set by PlanetCloudsView (IgnoreCockpitDepth): see PlanetAtmosphere.
+            float _CldIgnoreCockpitDepth;
 
             TEXTURE3D(_CldShapeTex);
             SAMPLER(sampler_CldShapeTex);
@@ -319,6 +321,18 @@ Shader "Galilego/PlanetClouds"
                 float planet1;
                 bool hitPlanet = CloudRaySphere(ro, rd, _CldPlanetRadius, planet0, planet1) && planet1 > 0.0;
                 float tPlanet = hitPlanet ? max(planet0, 0.0) : 1e30;
+
+                // Above the layer nothing physical can be closer than the layer entry:
+                // a nearer depth would be the observer's own craft (cockpit hull, hatch
+                // frame, canopy). Ignore it — otherwise marchEnd is clamped below
+                // marchStart and the entire cloud layer is discarded, while the planet
+                // itself (an opaque mesh) keeps showing through the same cockpit surface.
+                // Opt-in (IgnoreCockpitDepth): an OPAQUE cockpit wall must occlude the
+                // clouds, not get clouds painted over it.
+                if (_CldIgnoreCockpitDepth > 0.5 && r0 > _CldTopRadius && tDepth < marchStart)
+                {
+                    tDepth = hitPlanet ? tPlanet : 1e30;
+                }
 
                 marchEnd = min(marchEnd, tDepth);
                 marchEnd = min(marchEnd, tPlanet);

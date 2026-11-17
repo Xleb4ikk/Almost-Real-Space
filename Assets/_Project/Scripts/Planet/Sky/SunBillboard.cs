@@ -145,6 +145,15 @@ namespace Galilego.Universe
             float far = camera.farClipPlane;
             Vector3 cameraPosition = camera.transform.position;
 
+            // The far disc is a billboard placed at 0.9·far. Its shader hides the star
+            // only behind geometry FARTHER than that disc (the planet and its terrain):
+            // nearer depth — the observer's own cockpit hull, hatch frame or canopy —
+            // must not swallow the star, otherwise the sun vanishes exactly when it is
+            // centred (and stays visible at the screen edge). The disc distance is
+            // published as a global for Galilego/SunDisc.
+            float discDistance = Mathf.Max(1f, far * BillboardFarFraction);
+            Shader.SetGlobalFloat("_SunDiscDistance", discDistance);
+
             // Sun elevation above the local horizon (for DebugHud).
             sunElevationDeg = double.NaN;
             if (Runner.DominantBody != null)
@@ -223,7 +232,7 @@ namespace Galilego.Universe
                 nearSphere.gameObject.SetActive(false);
                 // Disc: direction is real, size is 2·atan(R★/d), distance is inside far.
                 double angularRadius = System.Math.Atan2(star.Radius, distanceMeters);
-                float place = Mathf.Max(1f, far * BillboardFarFraction);
+                float place = discDistance;
                 float size = place * 2f * Mathf.Tan((float)angularRadius) * 1.5f;
                 billboard.position = cameraPosition + (simDirection * place);
                 // Unity's quad faces along −Z: turn −Z TOWARD the camera

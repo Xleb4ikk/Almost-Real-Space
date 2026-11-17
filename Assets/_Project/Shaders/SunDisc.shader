@@ -35,6 +35,10 @@ Shader "Galilego/SunDisc"
             float _GlowFalloff;
             // Set by SkyEnvironment: transmittance to the sun (space → 1, sunset → red).
             float3 _SunTransmittance;
+            // Set by SunBillboard: distance of the disc billboard (0.9·far). The shader
+            // uses it to tell a real occluder (the planet behind the disc) from the
+            // observer's own craft (nearer than the disc).
+            float _SunDiscDistance;
 
             struct Attributes
             {
@@ -74,9 +78,16 @@ Shader "Galilego/SunDisc"
                     discard;
                 }
 
-                // Hide the sun behind the planet by depth (not by the disc ZTest,
-                // which at large distances ends up in front of the planet).
-                if (!IsSky(uint2(input.positionCS.xy)))
+                // Hide the sun behind the body by depth. The disc is a billboard at
+                // 0.9·far, so an occluder FARTHER than it is the planet/terrain the disc
+                // must not be drawn over; anything NEARER is already depth-tested by
+                // ZTest (a real occluder) or is the observer's own craft — a cockpit
+                // hull, hatch frame or canopy — which must not swallow the star. The
+                // old "!IsSky" test discarded the disc for ANY non-sky depth, so the
+                // sun vanished whenever a near hull surface appeared under it.
+                float rawDepth = LoadCameraDepth(uint2(input.positionCS.xy));
+                if (!IsSky(rawDepth)
+                    && LinearEyeDepth(rawDepth, _ZBufferParams) > _SunDiscDistance)
                 {
                     discard;
                 }
