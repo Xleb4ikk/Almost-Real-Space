@@ -60,10 +60,16 @@ namespace Galilego.Spacecraft
             "горит одинаково; базовая яркость остаётся только для далёкой камеры.")]
         [SerializeField] private float cabinLampOutsideRange = 60f;
 
-        [Tooltip("Небольшое ослабление ламп, когда игрок снаружи кабины (EVA/прогулка): " +
+        [Tooltip("Небольшое ослабление ламп, когда камера снаружи кабины (EVA/прогулка): " +
             "изнутри кабина чуть темнее, чем кажется снаружи через остекление и на фоне " +
             "тёмного корпуса. 1 — без ослабления.")]
-        [SerializeField] private float cabinLampOutsideScale = 0.9f;
+        [SerializeField] private float cabinLampOutsideScale = 0.85f;
+
+        [Tooltip("Радиус «внутри кабины» от центра модуля, м: ближе — лампы на полной яркости.")]
+        [SerializeField] private float cabinLampInsideRadius = 2.5f;
+
+        [Tooltip("Радиус полного «снаружи», м: дальше — лампы на cabinLampOutsideScale.")]
+        [SerializeField] private float cabinLampOutsideRadius = 5f;
 
         [Tooltip("Время плавного перехода яркости при входе/выходе из кабины, с.")]
         [SerializeField] private float cabinLampOutsideBlendSeconds = 1.5f;
@@ -173,7 +179,8 @@ namespace Galilego.Spacecraft
             }
 
             Vector3 eye = camera.transform.position;
-            bool nearCabin = Vector3.Distance(eye, transform.position) <= cabinLampOutsideRange;
+            float distance = Vector3.Distance(eye, transform.position);
+            bool nearCabin = distance <= cabinLampOutsideRange;
             float boostTarget = nearCabin ? Mathf.Max(1f, cabinLampOutsideBoost) : 1f;
 
             float boostRange = Mathf.Max(1f, cabinLampOutsideBoost) - 1f;
@@ -182,10 +189,12 @@ namespace Galilego.Spacecraft
 
             // A slight outside-only attenuation, blended slowly: from outside the cabin
             // reads a touch brighter through the glazing and against the dark hull, so
-            // the interior light is trimmed a little while the player is out. The slow
-            // blend keeps the hatch transition unnoticeable (the old AABB test dropped
-            // the lamps 3x in one step).
-            float insideTarget = IsOnboard() ? 1f : 0f;
+            // the interior light is trimmed a little while the player is out. The inside
+            // test is the distance to the module, not the player state alone: in build
+            // mode (no physics) the player is inside the capsule but not seated/carried.
+            float insideTarget = IsOnboard()
+                ? 1f
+                : 1f - Mathf.Clamp01(Mathf.InverseLerp(cabinLampInsideRadius, cabinLampOutsideRadius, distance));
             cabinLampInsideBlend = Mathf.MoveTowards(cabinLampInsideBlend, insideTarget,
                 Time.deltaTime / Mathf.Max(0.01f, cabinLampOutsideBlendSeconds));
             float outsideScale = Mathf.Clamp(cabinLampOutsideScale, 0.2f, 1f);
