@@ -41,6 +41,12 @@ namespace Galilego.Universe
         [Tooltip("Тело для кнопки быстрого перелёта в чит-меню.")]
         public string FlyToBodyName = "Aeolus";
 
+        [Tooltip("Тело для кнопки «на орбиту в кресле».")]
+        public string OrbitBodyName = "Terra";
+
+        [Tooltip("Высота круговой орбиты для кнопки «на орбиту в кресле», м.")]
+        public double OrbitAltitudeMeters = 200000d;
+
         [Tooltip("Показывать окно сразу при старте (для отладки и скриншотов).")]
         public bool OpenOnStart;
 
@@ -77,7 +83,7 @@ namespace Galilego.Universe
 
         /// <summary>Window size: fits all content without scrolling, with some slack.</summary>
         private const float WindowWidth = 520f;
-        private const float WindowHeight = 500f;
+        private const float WindowHeight = 560f;
 
         private const float HudWidth = 540f;
         private const float HudHeight = 108f;
@@ -245,6 +251,13 @@ namespace Galilego.Universe
 
             GUILayout.Space(10f);
             GUILayout.Label("ПЕРЕЛЁТ", CheatGuiSkin.Header);
+            if (GUILayout.Button("  На орбиту " + OrbitBodyName + " " + (OrbitAltitudeMeters / 1000d).ToString("F0") + " км (в кресле)", CheatGuiSkin.Button))
+            {
+                OrbitCapsule();
+            }
+
+            GUILayout.Label("Капсула игрока на круговой орбите, сразу в кресле", CheatGuiSkin.LabelMuted);
+
             string flyToLabel = string.IsNullOrEmpty(FlyToBodyName) ? "Aeolus" : FlyToBodyName;
             if (GUILayout.Button("  К " + flyToLabel + " (облёт)", CheatGuiSkin.Button))
             {
@@ -441,6 +454,270 @@ namespace Galilego.Universe
             Debug.Log(string.Format(
                 "[CheatMenu] перелёт к {0}: 2.2 R, фаза 35°, ноуклип включён. {1} — закрыть меню.",
                 body.Name, MenuKeyLabel));
+        }
+
+        /// <summary>
+        /// Debug shortcut: teleport the player's craft AND the player to the SAME
+        /// point on a circular orbit at <see cref="OrbitAltitudeMeters"/> above
+        /// <see cref="OrbitBodyName"/>. The player is left standing in the cabin
+        /// (or InShip when the stack has no seat) — sitting is up to them (E).
+        ///
+        /// Build mode is why the first version "did nothing": while
+        /// SimulationRunner.BuildMode is true, SpacecraftBuilder's frame hook pins
+        /// the craft to the pad EVERY Update, so a teleport written here is undone
+        /// next frame. The craft is handed to physics first
+        /// (builder.SetPhysics(true)); the teleport runs on the frame the pin stops,
+        /// and the contact zone is force-exited so it cannot write the old pose back.
+        ///
+        /// The seat/stand step is one frame later: the seat anchor is a RENDER
+        /// transform owned by VesselMirror (order −48) and is still at the pad pose
+        /// when the button is clicked.
+        /// </summary>
+        public void OrbitCapsule()
+        {
+            ResolveReferences();
+            if (Runner == null || Runner.SystemState == null || Runner.Ship == null)
+            {
+                Debug.LogWarning("[CheatMenu] орбита: нет SimulationRunner/SystemState/корабля.");
+                return;
+            }
+
+            ClearOrbitStages();
+
+            if (Runner.BuildMode)
+            {
+                Galilego.Building.SpacecraftBuilder builder =
+                    FindAnyObjectByType<Galilego.Building.SpacecraftBuilder>();
+                if (builder != null && builder.Parts != null && builder.Parts.Count > 0)
+                {
+                    builder.SetPhysics(true);
+                    orbitStage = OrbitStage.WaitFlight;
+                    orbitFramesLeft = 240;   // ~4 s at 60 fps
+                    Debug.Log("[CheatMenu] орбита: выход из стройки (SetPhysics)…");
+                    return;
+                }
+
+                Debug.LogWarning("[CheatMenu] орбита: режим стройки, но SpacecraftBuilder не найден/пуст.");
+            }
+
+            TeleportToOrbitNow();
+            orbitStage = OrbitStage.WaitSeatFrame;
+            orbitFramesLeft = 1;
+        }
+
+        private enum OrbitStage
+        {
+            Idle = 0,
+            WaitFlight = 1,
+            WaitSeatFrame = 2,
+        }
+
+        private OrbitStage orbitStage;
+        private int orbitFramesLeft;
+
+        private void ClearOrbitStages()
+        {
+            orbitStage = OrbitStage.Idle;
+            orbitFramesLeft = 0;
+        }
+
+        /// <summary>The teleport itself: craft and player to the SAME astro point.</summary>
+        private void TeleportToOrbitNow()
+        {
+            string targetName = string.IsNullOrEmpty(OrbitBodyName) ? "Terra" : OrbitBodyName;
+            OrbitingBody body = null;
+            foreach (OrbitingBody candidate in Runner.SystemState.AllBodies)
+            {
+                if (candidate.Name == targetName)
+                {
+                    body = candidate;
+                    break;
+                }
+            }
+
+            if (body == null)
+            {
+                body = Runner.DominantBody;
+            }
+
+            if (body == null)
+            {
+                Debug.LogWarning("[CheatMenu] орбита: тело \"" + targetName + "\" не найдено.");
+                return;
+            }
+
+            if (Runner.Warp != null)
+            {
+                Runner.Warp.SetWarpFactor(1d);
+            }
+
+            noclipRequested = false;
+            if (Runner.NoclipActive)
+            {
+                Runner.SetNoclip(false, Vector3d.Zero);
+            }
+
+            // The contact zone drives the craft from the pad's PhysX bodies; a forced
+            // exit stops it writing the old pose back after the teleport.
+            Galilego.Simulation.ContactZone.ContactZoneHost zone =
+                FindAnyObjectByType<Galilego.Simulation.ContactZone.ContactZoneHost>();
+            if (zone != null)
+            {
+                zone.ForceExit();
+            }
+
+            double time = Runner.TimeSeconds;
+            body.EvaluateWorldState(time, out Vector3d bodyPosition, out Vector3d bodyVelocity);
+
+            // Orbit "up": the player's current radial if they are near this body,
+            // otherwise away from the star (any direction is a valid orbit).
+            Vector3d up = Runner.PlayerPosition - bodyPosition;
+            if (up.SqrMagnitude < 1e-6d)
+            {
+                OrbitingBody star = Runner.SystemState.Root;
+                Vector3d starPosition = Vector3d.Zero;
+                if (star != null)
+                {
+                    star.EvaluateWorldState(time, out starPosition, out _);
+                }
+
+                up = bodyPosition - starPosition;
+            }
+
+            if (up.SqrMagnitude < 1e-6d)
+            {
+                up = new Vector3d(0d, 1d, 0d);
+            }
+
+            up = up.Normalized;
+            Vector3d tangent = Vector3d.Cross(up, new Vector3d(0d, 0d, 1d));
+            if (tangent.SqrMagnitude < 1e-9d)
+            {
+                tangent = Vector3d.Cross(up, new Vector3d(1d, 0d, 0d));
+            }
+
+            tangent = tangent.Normalized;
+
+            double radius = body.Radius + OrbitAltitudeMeters;
+            double speed = System.Math.Sqrt(body.StandardGravitationalParameter / radius);
+            Vector3d position = bodyPosition + (up * radius);
+            Vector3d velocity = bodyVelocity + (tangent * speed);
+
+            // Craft and player to the SAME point; the player sits themselves.
+            Runner.SetShipState(position, velocity, Galilego.Events.VesselRegime.Flying);
+            Runner.SetPlayerOnSurface(position, velocity);
+            Runner.TryEnterShip(1e6d);   // uncrewed stack → InShip; crewed → refused (seat below)
+
+            if (View == null)
+            {
+                View = FindAnyObjectByType<FirstPersonCamera>();
+            }
+
+            if (View != null)
+            {
+                View.SnapLookDirection(AstroFrame.ToSimulation(-up));
+            }
+
+            Debug.Log(string.Format(
+                "[CheatMenu] орбита {0}: высота {1:F0} км, круговая {2:F0} м/с, режим {3}",
+                body.Name, OrbitAltitudeMeters / 1000d, speed, Runner.PlayerMode));
+        }
+
+        private void LateUpdate()
+        {
+            if (orbitStage == OrbitStage.Idle)
+            {
+                return;
+            }
+
+            if (Runner == null)
+            {
+                ClearOrbitStages();
+                return;
+            }
+
+            if (orbitFramesLeft > 0)
+            {
+                orbitFramesLeft--;
+            }
+
+            switch (orbitStage)
+            {
+                case OrbitStage.WaitFlight:
+                    // SetPhysics(true) defers the handoff to the runner's build-mode
+                    // frame hook; once BuildMode is false the pin no longer runs.
+                    if (!Runner.BuildMode)
+                    {
+                        TeleportToOrbitNow();
+                        orbitStage = OrbitStage.WaitSeatFrame;
+                        orbitFramesLeft = 1;
+                    }
+                    else if (orbitFramesLeft <= 0)
+                    {
+                        Debug.LogWarning("[CheatMenu] орбита: физика не включилась (стройка не отпустила).");
+                        ClearOrbitStages();
+                    }
+
+                    return;
+
+                case OrbitStage.WaitSeatFrame:
+                    if (orbitFramesLeft > 0)
+                    {
+                        return;
+                    }
+
+                    ClearOrbitStages();
+                    SeatOrStandInCabin();
+                    return;
+            }
+        }
+
+        /// <summary>
+        /// After the teleport: the seat anchor is up to date (VesselMirror ran).
+        /// Sitting and immediately standing leaves the player CARRIED by the cabin
+        /// part — the state the atmosphere report is about — and they can sit again
+        /// with E. An uncrewed stack is already InShip.
+        /// </summary>
+        private void SeatOrStandInCabin()
+        {
+            if (Controller == null)
+            {
+                Controller = FindAnyObjectByType<PlayerController>();
+            }
+
+            CockpitSeat seat = FindVesselSeat();
+            if (seat == null || Controller == null)
+            {
+                if (Runner != null && Runner.PlayerMode != PlayerMode.InShip)
+                {
+                    Debug.LogWarning("[CheatMenu] орбита: кресло не найдено, игрок не в кабине.");
+                }
+
+                return;
+            }
+
+            if (Controller.EnterSeat(seat))
+            {
+                Controller.StandUp();
+                Debug.Log("[CheatMenu] орбита: игрок стоит в кабине (E — сесть)");
+            }
+        }
+
+        /// <summary>The cockpit seat that belongs to the built vessel (not a preview ghost).</summary>
+        private static CockpitSeat FindVesselSeat()
+        {
+            CockpitSeat[] seats = FindObjectsByType<CockpitSeat>(FindObjectsInactive.Exclude);
+            for (int i = 0; i < seats.Length; i++)
+            {
+                CockpitSeat seat = seats[i];
+                if (seat != null && seat.Anchor != null
+                    && seat.GetComponentInParent<Galilego.Building.VesselPartCollider>() != null)
+                {
+                    return seat;
+                }
+            }
+
+            return null;
         }
 
         private void SetOpen(bool open)

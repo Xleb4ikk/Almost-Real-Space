@@ -1287,8 +1287,9 @@ MonoBehaviour:
   Controller: {fileID: 1250304430}
   View: {fileID: 1823688469}
   Benchmark: {fileID: 0}
+  FlyToBodyName: Aeolus
   OpenOnStart: 0
-  RequireAlt: 1
+  MenuKey: 96
   ShowPerformance: 1
   MinNoclipSpeed: 0.1
   MaxNoclipSpeed: 1000000000
