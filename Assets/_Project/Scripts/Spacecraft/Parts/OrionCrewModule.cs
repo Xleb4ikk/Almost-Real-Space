@@ -100,6 +100,19 @@ namespace Galilego.Spacecraft
         private bool cabinLayersApplied;
         private SimulationRunner lampRunner;
 
+        // Exposure hold: the auto exposure outside is metered on the dark hull/space and
+        // drops to limitMin (1), which makes the lit cabin blow out white through the
+        // hatch (inside it sits at ~3.8 EV on the pad). While the player is near the
+        // craft but outside, clamp the global exposure to the last inside value.
+        private Exposure cabinExposure;
+        private float cabinExposureLimitMin = 1f;
+        private bool cabinExposureLimitCaptured;
+        private bool cabinExposureHeld;
+        private float cabinHeldExposureEv;
+        private bool cabinHasHeldExposure;
+        private float cabinNextExposureSample;
+        private Texture2D cabinExposureProbe;
+
         /// <summary>HDRP light layer 2: the cabin interior. The sun does not light it; the cabin lamps do.</summary>
         private const uint CabinInteriorLightLayer = 1u << 1;
 
@@ -138,6 +151,21 @@ namespace Galilego.Spacecraft
             EnsureCabinLamps();
             lampRunner = FindAnyObjectByType<SimulationRunner>();
             cabinLampInsideBlend = IsOnboard() ? 1f : 0f;
+        }
+
+        private void OnDisable()
+        {
+            if (cabinExposure != null && cabinExposureHeld)
+            {
+                cabinExposure.limitMin.Override(cabinExposureLimitMin);
+                cabinExposureHeld = false;
+            }
+
+            if (cabinExposureProbe != null)
+            {
+                Destroy(cabinExposureProbe);
+                cabinExposureProbe = null;
+            }
         }
 
         /// <summary>The player is in the cabin: seated, walking on the floor, or in the legacy InShip mode.</summary>
@@ -221,6 +249,84 @@ namespace Galilego.Spacecraft
                     cabinLamps[i].intensity = intensity;
                 }
             }
+
+            UpdateCabinExposureHold(insideTarget > 0.75f, distance);
+        }
+
+        /// <summary>
+        /// Hold the global exposure at the cabin's inside value while the player is near
+        /// the craft but outside. Outside, the auto exposure is metered on the dark hull
+        /// and space and drops to limitMin (1 EV); the lit cabin is then ~2.8 stops
+        /// brighter through the hatch than from the seat (pad: 3.8 EV inside). The hold
+        /// clamps limitMin to the last inside value, so the hatch matches the interior.
+        /// </summary>
+        private void UpdateCabinExposureHold(bool inside, float distance)
+        {
+            if (cabinExposure == null)
+            {
+                return;
+            }
+
+            if (inside)
+            {
+                if (cabinExposureHeld)
+                {
+                    cabinExposure.limitMin.Override(cabinExposureLimitMin);
+                    cabinExposureHeld = false;
+                }
+
+                if (Time.unscaledTime >= cabinNextExposureSample)
+                {
+                    cabinNextExposureSample = Time.unscaledTime + 0.5f;
+                    if (TryReadExposureEv(out float ev))
+                    {
+                        cabinHeldExposureEv = ev;
+                        cabinHasHeldExposure = true;
+                    }
+                }
+
+                return;
+            }
+
+            if (cabinHasHeldExposure && distance <= cabinLampOutsideRange)
+            {
+                cabinExposure.limitMin.Override(cabinHeldExposureEv);
+                cabinExposureHeld = true;
+            }
+            else if (cabinExposureHeld)
+            {
+                cabinExposure.limitMin.Override(cabinExposureLimitMin);
+                cabinExposureHeld = false;
+            }
+        }
+
+        /// <summary>Read the current EV100 from the HDRP exposure texture (1x1, RG float).</summary>
+        private bool TryReadExposureEv(out float ev)
+        {
+            ev = 0f;
+            Texture texture = Shader.GetGlobalTexture("_ExposureTexture");
+            if (texture == null)
+            {
+                return false;
+            }
+
+            if (cabinExposureProbe == null)
+            {
+                cabinExposureProbe = new Texture2D(1, 1, TextureFormat.RGBAFloat, false);
+            }
+
+            RenderTexture rt = RenderTexture.GetTemporary(1, 1, 0, RenderTextureFormat.ARGBFloat);
+            Graphics.Blit(texture, rt);
+            RenderTexture previous = RenderTexture.active;
+            RenderTexture.active = rt;
+            cabinExposureProbe.ReadPixels(new Rect(0, 0, 1, 1), 0, 0);
+            cabinExposureProbe.Apply();
+            Color value = cabinExposureProbe.GetPixel(0, 0);
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(rt);
+
+            ev = value.g; // y = current EV100 (see HDRP DebugExposure.shader)
+            return ev > 0.01f;
         }
 
         /// <summary>
@@ -378,6 +484,17 @@ namespace Galilego.Spacecraft
                 if (hd != null)
                 {
                     hd.lightlayersMask = (UnityEngine.Rendering.HighDefinition.RenderingLayerMask)(((uint)hd.lightlayersMask) | CabinInteriorLightLayer);
+                }
+            }
+
+            if (sky != null && sky.ExposureVolume != null && sky.ExposureVolume.profile != null
+                && sky.ExposureVolume.profile.TryGet<Exposure>(out Exposure exposure))
+            {
+                cabinExposure = exposure;
+                if (!cabinExposureLimitCaptured)
+                {
+                    cabinExposureLimitMin = exposure.limitMin.value;
+                    cabinExposureLimitCaptured = true;
                 }
             }
 
