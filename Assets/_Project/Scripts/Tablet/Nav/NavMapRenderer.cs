@@ -104,11 +104,39 @@ namespace Galilego.Tablet
         private static readonly Color32 OrbitColorA = TabletTheme.LineHi;
         private static readonly Color32 OrbitColorB = TabletTheme.Dim;
         private static readonly Color32 OrbitColorC = TabletTheme.Line;
-        private static readonly Color32 ShipColor = TabletTheme.Bright;
         private static readonly Color32 ForecastColor = TabletTheme.Warn;
         private static readonly Color32 ManeuverForecastColor = TabletTheme.Bright;
         private static readonly Color32 SurfaceForecastColor = TabletTheme.Main;
         private static readonly Color32 SurfaceHistoryColor = TabletTheme.Dim;
+
+        /// <summary>Colours of the ship / apsis markers. One set per kind of orbit.</summary>
+        private struct MarkerPalette
+        {
+            public Color32 Main;
+            public Color32 Light;
+            public Color32 Dark;
+        }
+
+        /// <summary>Ballistic coast: cyan.</summary>
+        private static readonly MarkerPalette BallisticMarkers = new MarkerPalette
+        {
+            Main = new Color32(70, 205, 255, 255),
+            Light = new Color32(200, 244, 255, 255),
+            Dark = new Color32(5, 40, 60, 255),
+        };
+
+        /// <summary>Maneuver (engine firing): orange.</summary>
+        private static readonly MarkerPalette ManeuverMarkers = new MarkerPalette
+        {
+            Main = new Color32(255, 138, 56, 255),
+            Light = new Color32(255, 226, 184, 255),
+            Dark = new Color32(66, 28, 5, 255),
+        };
+
+        private static MarkerPalette MarkersFor(NavMapModel model)
+        {
+            return model.ShipThrusting ? ManeuverMarkers : BallisticMarkers;
+        }
 
         private struct PickEntry
         {
@@ -634,6 +662,8 @@ namespace Galilego.Tablet
             }
 
             // Apsides of the current osculating orbit.
+            MarkerPalette markers = MarkersFor(model);
+            string orbitKind = model.ShipThrusting ? "МАНЁВР" : "БАЛЛИСТИКА";
             if (model.HasApsides)
             {
                 if (!IsMarkerOccluded(model, occluderIndex, model.PeriapsisPosition, screenRight, screenUp, camDir))
@@ -641,7 +671,8 @@ namespace Galilego.Tablet
                     Vector2 pe = Project(model.PeriapsisPosition);
                     if (IsFinite(pe) && Inside(rect, pe, 12f))
                     {
-                        DrawMarker(pe.x, pe.y, "П", TabletTheme.Main, rect);
+                        DrawApsisMarker(pe.x, pe.y, false, markers, rect);
+                        picks.Add(new PickEntry { X = pe.x, Y = pe.y, Radius = 8f, Text = "ПЕРИЦЕНТР\n" + orbitKind });
                     }
                 }
 
@@ -651,27 +682,29 @@ namespace Galilego.Tablet
                     Vector2 ap = Project(model.ApoapsisPosition);
                     if (IsFinite(ap) && Inside(rect, ap, 12f))
                     {
-                        DrawMarker(ap.x, ap.y, "А", TabletTheme.Dim, rect);
+                        DrawApsisMarker(ap.x, ap.y, true, markers, rect);
+                        picks.Add(new PickEntry { X = ap.x, Y = ap.y, Radius = 8f, Text = "АПОЦЕНТР\n" + orbitKind });
                     }
                 }
             }
 
-            // The ship itself: a diamond with a short velocity pointer.
+            // The ship itself: a diamond with a velocity arrow.
             if (model.HasShip
                 && !IsMarkerOccluded(model, occluderIndex, model.FrameRelativeShipPosition, screenRight, screenUp, camDir))
             {
                 Vector2 ship = Project(model.FrameRelativeShipPosition);
                 if (IsFinite(ship) && Inside(rect, ship, 12f))
                 {
-                    DrawShip(ship.x, ship.y, model.FrameRelativeShipVelocity, screenRight, screenUp);
-                    DrawLabel(ship.x + 9f, ship.y - 4f, "АППАРАТ", rect, TabletTheme.Bright);
+                    DrawShip(ship.x, ship.y, model.FrameRelativeShipVelocity, screenRight, screenUp, markers);
+                    DrawShipTag(ship.x, ship.y, model.ShipThrusting ? "АППАРАТ · МАНЁВР" : "АППАРАТ", markers, rect,
+                        model.FrameRelativeShipVelocity, screenRight, screenUp);
                     double speed = model.FrameRelativeShipVelocity.Magnitude;
                     picks.Add(new PickEntry
                     {
                         X = ship.x,
                         Y = ship.y,
                         Radius = 12f,
-                        Text = "АППАРАТ\nV " + TabletFormat.Speed(speed) + " М/С",
+                        Text = "АППАРАТ · " + orbitKind + "\nV " + TabletFormat.Speed(speed) + " М/С",
                     });
                 }
             }
@@ -1469,6 +1502,10 @@ namespace Galilego.Tablet
             canvas.Line(xi - s, yi + s, xi + s, yi - s, color);
         }
 
+        private static readonly string[] ApoGlyph = { "..#..", ".###.", "#####" };
+        private static readonly string[] PeriGlyph = { "#####", ".###.", "..#.." };
+
+        /// <summary>Small cross with a letter: used for the planned burn points.</summary>
         private void DrawMarker(float x, float y, string label, Color32 color, RectInt rect)
         {
             int xi = Mathf.RoundToInt(x);
@@ -1481,29 +1518,153 @@ namespace Galilego.Tablet
             }
         }
 
-        private void DrawShip(float x, float y, Vector3d velocity, Vector3d screenRight, Vector3d screenUp)
+        /// <summary>Tag plate: dark fill, 1 px frame in the kind colour, cut corners.</summary>
+        private void DrawTagBox(int x, int y, int w, int h, MarkerPalette pal)
+        {
+            canvas.Fill(x, y, w, h, pal.Dark);
+            canvas.Frame(x, y, w, h, pal.Main);
+            canvas.Px(x, y, pal.Dark);
+            canvas.Px(x + w - 1, y, pal.Dark);
+            canvas.Px(x, y + h - 1, pal.Dark);
+            canvas.Px(x + w - 1, y + h - 1, pal.Dark);
+        }
+
+        private void FillDiamond(int cx, int cy, int r, Color32 color)
+        {
+            for (int dy = -r; dy <= r; dy++)
+            {
+                int half = r - Mathf.Abs(dy);
+                canvas.HLine(cx - half, cy + dy, (half * 2) + 1, color);
+            }
+        }
+
+        /// <summary>Line with a 1 px dark outline so it stays readable over orbits and the globe.</summary>
+        private void DrawHaloLine(int x0, int y0, int x1, int y1, Color32 color, Color32 halo)
+        {
+            canvas.Line(x0 + 1, y0, x1 + 1, y1, halo);
+            canvas.Line(x0 - 1, y0, x1 - 1, y1, halo);
+            canvas.Line(x0, y0 + 1, x1, y1 + 1, halo);
+            canvas.Line(x0, y0 - 1, x1, y1 - 1, halo);
+            canvas.Line(x0, y0, x1, y1, color);
+        }
+
+        /// <summary>
+        /// Apsis mark: a reticle on the exact orbit point, a leader and a tag with a
+        /// triangle (up = apoapsis, down = periapsis) and the letter.
+        /// </summary>
+        private void DrawApsisMarker(float x, float y, bool apoapsis, MarkerPalette pal, RectInt rect)
         {
             int xi = Mathf.RoundToInt(x);
             int yi = Mathf.RoundToInt(y);
-            canvas.Line(xi, yi - 6, xi + 5, yi, ShipColor);
-            canvas.Line(xi + 5, yi, xi, yi + 6, ShipColor);
-            canvas.Line(xi, yi + 6, xi - 5, yi, ShipColor);
-            canvas.Line(xi - 5, yi, xi, yi - 6, ShipColor);
-            canvas.Px(xi, yi, ShipColor);
+            string letter = apoapsis ? "А" : "П";
 
+            int tw = 13 + PixelCanvas.TextWidth(letter);
+            const int th = 11;
+            int tx = xi + 9;
+            int ty = apoapsis ? yi - 9 - th : yi + 9;
+            tx = Mathf.Clamp(tx, rect.x + 2, Mathf.Max(rect.x + 2, rect.x + rect.width - tw - 2));
+            ty = Mathf.Clamp(ty, rect.y + 2, Mathf.Max(rect.y + 2, rect.y + rect.height - th - 2));
+
+            // Leader from the point to the nearest spot of the tag.
+            int lx = Mathf.Clamp(xi, tx, tx + tw - 1);
+            int ly = Mathf.Clamp(yi, ty, ty + th - 1);
+            DrawHaloLine(xi, yi, lx, ly, pal.Main, pal.Dark);
+
+            DrawTagBox(tx, ty, tw, th, pal);
+            canvas.Bitmap(tx + 3, ty + 4, apoapsis ? ApoGlyph : PeriGlyph, pal.Main);
+            canvas.Text(tx + 10, ty + 2, letter, pal.Light);
+
+            // Reticle on top of everything else.
+            DrawCircle(xi, yi, 4, pal.Dark);
+            DrawCircle(xi, yi, 3, pal.Main);
+            canvas.HLine(xi - 7, yi, 3, pal.Main);
+            canvas.HLine(xi + 5, yi, 3, pal.Main);
+            canvas.VLine(xi, yi - 7, 3, pal.Main);
+            canvas.VLine(xi, yi + 5, 3, pal.Main);
+            canvas.Px(xi, yi, pal.Light);
+        }
+
+        /// <summary>Screen-space direction of a world velocity (x right, y down). False when it has none.</summary>
+        private static bool TryProjectDirection(Vector3d velocity, Vector3d screenRight, Vector3d screenUp,
+            out float px, out float py)
+        {
+            px = 0f;
+            py = 0f;
             if (velocity.SqrMagnitude < 1e-6d)
             {
-                return;
+                return false;
             }
 
             Vector3d direction = velocity.Normalized;
-            double vx = Vector3d.Dot(direction, screenRight);
-            double vy = Vector3d.Dot(direction, screenUp);
-            float length = 16f;
-            float ex = x + (float)(vx * length);
-            float ey = y - (float)(vy * length);
-            canvas.Line(xi, yi, Mathf.RoundToInt(ex), Mathf.RoundToInt(ey), TabletTheme.Main);
-            canvas.Px(Mathf.RoundToInt(ex), Mathf.RoundToInt(ey), ShipColor);
+            px = (float)Vector3d.Dot(direction, screenRight);
+            py = -(float)Vector3d.Dot(direction, screenUp);
+            return true;
+        }
+
+        /// <summary>
+        /// Name plate next to the ship, tinted by the kind of orbit. It sits on the
+        /// side the velocity arrow does not point at, so the arrow is never hidden.
+        /// </summary>
+        private void DrawShipTag(float x, float y, string text, MarkerPalette pal, RectInt rect,
+            Vector3d velocity, Vector3d screenRight, Vector3d screenUp)
+        {
+            int tw = PixelCanvas.TextWidth(text) + 8;
+            const int th = 11;
+            float px, py;
+            TryProjectDirection(velocity, screenRight, screenUp, out px, out py);
+
+            int xi = Mathf.RoundToInt(x);
+            int yi = Mathf.RoundToInt(y);
+            int tx = px > 0f ? xi - 12 - tw : xi + 12;
+            int ty = py < 0f ? yi + 4 : yi - 15;
+            tx = Mathf.Clamp(tx, rect.x + 2, Mathf.Max(rect.x + 2, rect.x + rect.width - tw - 2));
+            ty = Mathf.Clamp(ty, rect.y + 2, Mathf.Max(rect.y + 2, rect.y + rect.height - th - 2));
+            DrawTagBox(tx, ty, tw, th, pal);
+            canvas.Text(tx + 4, ty + 2, text, pal.Light);
+        }
+
+        /// <summary>Ship: ringed diamond with a core and a velocity arrow, tinted by the kind of orbit.</summary>
+        private void DrawShip(float x, float y, Vector3d velocity, Vector3d screenRight, Vector3d screenUp, MarkerPalette pal)
+        {
+            int xi = Mathf.RoundToInt(x);
+            int yi = Mathf.RoundToInt(y);
+
+            // Velocity arrow first, so the body covers its root. The projected length
+            // foreshortens when the craft flies along the view axis.
+            if (TryProjectDirection(velocity, screenRight, screenUp, out float px, out float py))
+            {
+                float mag = Mathf.Sqrt((px * px) + (py * py));
+                if (mag > 0.12f)
+                {
+                    float dx = px / mag;
+                    float dy = py / mag;
+                    float tip = 9f + (15f * mag);
+                    int sx = xi + Mathf.RoundToInt(dx * 8f);
+                    int sy = yi + Mathf.RoundToInt(dy * 8f);
+                    int ex = xi + Mathf.RoundToInt(dx * tip);
+                    int ey = yi + Mathf.RoundToInt(dy * tip);
+                    DrawHaloLine(sx, sy, ex, ey, pal.Main, pal.Dark);
+
+                    float angle = Mathf.Atan2(dy, dx);
+                    for (int side = -1; side <= 1; side += 2)
+                    {
+                        float a = angle + (side * 2.5f);
+                        int hx = ex + Mathf.RoundToInt(Mathf.Cos(a) * 4f);
+                        int hy = ey + Mathf.RoundToInt(Mathf.Sin(a) * 4f);
+                        DrawHaloLine(ex, ey, hx, hy, pal.Main, pal.Dark);
+                    }
+
+                    canvas.Px(ex, ey, pal.Light);
+                }
+            }
+
+            FillDiamond(xi, yi, 7, pal.Dark);
+            canvas.Line(xi, yi - 6, xi + 6, yi, pal.Main);
+            canvas.Line(xi + 6, yi, xi, yi + 6, pal.Main);
+            canvas.Line(xi, yi + 6, xi - 6, yi, pal.Main);
+            canvas.Line(xi - 6, yi, xi, yi - 6, pal.Main);
+            FillDiamond(xi, yi, 3, pal.Main);
+            FillDiamond(xi, yi, 1, pal.Light);
         }
 
         private void DrawPlanetDisk(NavMapModel model, NavBodyMarker body, Vector2 center, float radius,

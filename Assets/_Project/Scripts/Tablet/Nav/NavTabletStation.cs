@@ -609,6 +609,11 @@ namespace Galilego.Tablet
                     parked,
                     view.State.Plan,
                     view.IspS);
+
+                // Ballistic coast vs. a maneuver in progress: the map tints the ship and its apsis marks by it.
+                mapModel.ShipThrusting = runner.Ship != null
+                    && runner.RawThrottle > 0.001d
+                    && ((runner.Propulsion != null && runner.Propulsion.ThrustN > 0d) || runner.MainThrustNewtons > 0d);
             }
             catch (Exception e)
             {

@@ -140,6 +140,10 @@ namespace Galilego.Tablet
 
         /// <summary>Fixed in-plane direction of the map camera basis.</summary>
         public Vector3d OrbitRight = new Vector3d(1d, 0d, 0d);
+
+        /// <summary>True while the engine is firing (a maneuver), false on a ballistic coast.
+        /// Set by the station; the map tints the ship, periapsis and apoapsis markers by it.</summary>
+        public bool ShipThrusting;
         public bool HasApsides;
         public bool HasApoapsis;
         public Vector3d PeriapsisPosition;
