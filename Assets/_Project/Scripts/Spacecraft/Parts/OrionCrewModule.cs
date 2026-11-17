@@ -1,4 +1,7 @@
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.HighDefinition;
+using Galilego.Universe;
 
 namespace Galilego.Spacecraft
 {
@@ -14,6 +17,12 @@ namespace Galilego.Spacecraft
     /// door is rotated further about its side edge (the door's Y axis) by
     /// openAngleDegrees and pressed against the hull beside the opening; in closed
     /// states it returns to the closed pose.
+    ///
+    /// Cabin lighting: the Cabin_Lights strips are emissive only. HDRP's SSGI is
+    /// off, so emissive surfaces do not light the HDRP/Lit walls: in vacuum the
+    /// cabin was lit solely by the Sun through the hatch, and its brightness
+    /// depended on the ship's attitude and on what the camera happened to see.
+    /// Real point lights at the strip ring give the cabin a stable interior light.
     /// </summary>
     [RequireComponent(typeof(Animator))]
     public sealed class OrionCrewModule : MonoBehaviour
@@ -25,6 +34,22 @@ namespace Galilego.Spacecraft
 
         [Tooltip("Аниматор модели (по умолчанию — на этом же объекте).")]
         [SerializeField] private Animator animator;
+
+        [Header("Освещение кабины")]
+        [Tooltip("Яркость потолочных ламп кабины, лм (HDRP Lumen). 0 — лампы не создаются.")]
+        [SerializeField] private float cabinLampLumens = 5f;
+
+        [Tooltip("Радиус действия лампы, м.")]
+        [SerializeField] private float cabinLampRange = 7f;
+
+        [Tooltip("Цвет ламп (тёплый белый).")]
+        [SerializeField] private Color cabinLampColor = new Color(1f, 0.94f, 0.86f, 1f);
+
+        [Tooltip("Сколько ламп вдоль потолка (0 — выключить).")]
+        [SerializeField] private int cabinLampCount = 3;
+
+        [Tooltip("Расстояние между лампами, м.")]
+        [SerializeField] private float cabinLampSpacing = 1.25f;
 
         [Tooltip("Угол открытия створки на шарнире (град.). ~160° прижимает её к борту сбоку от проёма.")]
         [SerializeField] private float openAngleDegrees = 160f;
@@ -66,6 +91,83 @@ namespace Galilego.Spacecraft
                 closedPosition = door.localPosition;
                 closedRotation = door.localRotation;
                 swingSign = ResolveOutwardSign();
+            }
+        }
+
+        private void Start()
+        {
+            EnsureCabinLamps();
+        }
+
+        /// <summary>
+        /// Real interior lights at the Cabin_Lights strip ring. The strips are
+        /// emissive only and HDRP's SSGI is off, so without them the HDRP/Lit
+        /// cabin walls receive no light in vacuum (the Sun through the hatch is
+        /// the only source, and it changes with the ship's attitude and view).
+        /// </summary>
+        private void EnsureCabinLamps()
+        {
+            if (cabinLampCount <= 0 || cabinLampLumens <= 0f)
+            {
+                return;
+            }
+
+            Renderer strips = null;
+            foreach (Renderer candidate in GetComponentsInChildren<Renderer>(true))
+            {
+                if (candidate.name == "Cabin_Lights")
+                {
+                    strips = candidate;
+                    break;
+                }
+            }
+
+            CockpitSeat seat = GetComponentInChildren<CockpitSeat>(true);
+            if (strips == null || seat == null || seat.Anchor == null)
+            {
+                return;
+            }
+
+            Transform parent = strips.transform;
+            // Guard against a repeated Start (object re-enabled, domain reload off).
+            for (int i = 0; i < parent.childCount; i++)
+            {
+                if (parent.GetChild(i).name.StartsWith("CabinLamp"))
+                {
+                    return;
+                }
+            }
+
+            // The seat's local +Z is its up (see CockpitSeat): use the seat axes so
+            // the lamps sit at the ceiling whatever node scale the FBX carries.
+            Vector3 up = seat.Anchor.TransformDirection(Vector3.forward);
+            Vector3 right = seat.Anchor.TransformDirection(Vector3.right);
+            Vector3 center = strips.bounds.center + (up * 1.1f);
+
+            for (int i = 0; i < cabinLampCount; i++)
+            {
+                float offset = (i - ((cabinLampCount - 1) * 0.5f)) * cabinLampSpacing;
+                GameObject go = new GameObject("CabinLamp" + (i + 1));
+                go.transform.SetParent(parent, false);
+                go.transform.position = center + (right * offset);
+
+                Light lamp = go.AddComponent<Light>();
+                lamp.type = LightType.Point;
+                lamp.range = cabinLampRange;
+                lamp.intensity = cabinLampLumens;
+                lamp.color = cabinLampColor;
+                lamp.shadows = LightShadows.None;
+                lamp.lightUnit = LightUnit.Lumen;
+                lamp.lightmapBakeType = LightmapBakeType.Realtime;
+
+                HDAdditionalLightData hd = go.GetComponent<HDAdditionalLightData>();
+                if (hd == null)
+                {
+                    hd = go.AddComponent<HDAdditionalLightData>();
+                }
+
+                hd.affectDiffuse = true;
+                hd.affectSpecular = true;
             }
         }
 
