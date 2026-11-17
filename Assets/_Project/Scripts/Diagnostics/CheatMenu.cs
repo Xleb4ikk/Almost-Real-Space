@@ -6,7 +6,7 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Cheat menu (Alt+F10) and the debug coordinate HUD.
+    /// Cheat menu (Alt+` or F11) and the debug coordinate HUD.
     ///
     /// The window is IMGUI (OnGUI), as already used in PlayerController: the project
     /// has no separate Canvas/UXML, and a debug menu should not pull assets. While
@@ -44,8 +44,10 @@ namespace Galilego.Universe
         [Tooltip("Показывать окно сразу при старте (для отладки и скриншотов).")]
         public bool OpenOnStart;
 
-        [Tooltip("Требовать Alt на горячей клавише открытия/закрытия.")]
-        public bool RequireAlt = true;
+        [Tooltip("Клавиша открытия/закрытия меню (всегда вместе с Alt или Ctrl). По умолчанию `~` (Ё). " +
+                 "Не F10/F2: F10 и Alt+F2/F3 заняты глобальными хоткеями (RegisterHotKey = 1409), " +
+                 "а Ctrl+F10 в редакторе — это «Focus Player Two». Alt+` свободна везде.")]
+        public KeyCode MenuKey = KeyCode.BackQuote;
 
         [Header("Диагностика")]
         [Tooltip("Показывать счётчики рендера поверхности (чанки, GC, меши, декор) в HUD. " +
@@ -89,6 +91,29 @@ namespace Galilego.Universe
         /// <summary>The cheat window is open (the settings menu does not open over it).</summary>
         public static bool AnyOpen { get; private set; }
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            // Play mode may run without a domain reload: a stale "open" would keep
+            // the settings menu blocked and the next session believing the window
+            // is on screen.
+            AnyOpen = false;
+        }
+
+        private string MenuKeyLabel
+        {
+            get { return MenuKey == KeyCode.BackQuote ? "`" : MenuKey.ToString(); }
+        }
+
+        private string HotkeyLabel
+        {
+            get
+            {
+                string primary = "Alt/Ctrl+" + MenuKeyLabel;
+                return MenuKey == KeyCode.F11 ? primary : primary + " / F11";
+            }
+        }
+
         private bool noclipRequested;
         private bool showCoordinates;
         private double noclipSpeedLog;
@@ -106,6 +131,8 @@ namespace Galilego.Universe
             SetOpen(OpenOnStart);
             noclipRequested = Runner != null && Runner.NoclipActive;
             noclipSpeedLog = ToLogSlider(NoclipSpeed);
+            Debug.Log("[CheatMenu] горячая клавиша: " + HotkeyLabel
+                + " (старая комбинация F10+Alt/Ctrl тоже работает)");
         }
 
         private void OnDisable()
@@ -122,8 +149,11 @@ namespace Galilego.Universe
                 return;
             }
 
-            if (PlayerInput.CheatMenuDown(RequireAlt))
+            if (PlayerInput.CheatMenuDown(MenuKey, true)
+                || PlayerInput.CheatMenuDown(KeyCode.F11, false)
+                || PlayerInput.CheatMenuDown(KeyCode.F10, true))
             {
+                Debug.Log("[CheatMenu] переключение: " + MenuKeyLabel + " (открыто=" + !isOpen + ")");
                 SetOpen(!isOpen);
             }
 
@@ -211,7 +241,7 @@ namespace Galilego.Universe
 
         private void DrawWindow(int id)
         {
-            GUILayout.Label(RequireAlt ? "ЧИТЫ   (Alt+F10)" : "ЧИТЫ   (F10)", CheatGuiSkin.Header);
+            GUILayout.Label("ЧИТЫ   (" + HotkeyLabel + ")", CheatGuiSkin.Header);
 
             GUILayout.Space(10f);
             GUILayout.Label("ПЕРЕЛЁТ", CheatGuiSkin.Header);
@@ -409,8 +439,8 @@ namespace Galilego.Universe
             }
 
             Debug.Log(string.Format(
-                "[CheatMenu] перелёт к {0}: 2.2 R, фаза 35°, ноуклип включён. Alt+F10 — закрыть меню.",
-                body.Name));
+                "[CheatMenu] перелёт к {0}: 2.2 R, фаза 35°, ноуклип включён. {1} — закрыть меню.",
+                body.Name, MenuKeyLabel));
         }
 
         private void SetOpen(bool open)

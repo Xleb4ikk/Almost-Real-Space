@@ -162,34 +162,54 @@ namespace Galilego.Universe
 #endif
 
         /// <summary>
-        /// Cheat menu: F10, and with requireAlt only together with Alt. Alt is
-        /// checked as held rather than pressed: the combo is pressed in one
-        /// motion, so Alt may be held well before F10.
+        /// Cheat menu: a rebindable key (the backquote `~` by default), optionally
+        /// with Alt or Ctrl held. F10 stays supported for compatibility, but it
+        /// is a poor hotkey here: Windows treats it as the menu key, NVIDIA and
+        /// other apps register Alt+F10/Alt+F2 system-wide (RegisterHotKey returns
+        /// 1409), and Ctrl+F10 is the Editor's "Focus Player Two" shortcut. The
+        /// modifier is checked as held rather than pressed: the combo is pressed
+        /// in one motion, so it may be held well before the key.
         /// </summary>
-        public static bool CheatMenuDown(bool requireAlt)
+        public static bool CheatMenuDown(KeyCode key, bool requireModifier)
         {
 #if ENABLE_INPUT_SYSTEM
             Keyboard keyboard = Keyboard.current;
-            if (keyboard == null)
+            if (keyboard == null || !TryToInputKey(key, out Key inputKey))
             {
                 return false;
             }
 
-            if (!keyboard.f10Key.wasPressedThisFrame)
+            if (!keyboard[inputKey].wasPressedThisFrame)
             {
                 return false;
             }
 
-            return !requireAlt || keyboard.leftAltKey.isPressed;
+            return !requireModifier || keyboard.altKey.isPressed || keyboard.ctrlKey.isPressed;
 #else
-            if (!Input.GetKeyDown(KeyCode.F10))
+            if (!Input.GetKeyDown(key))
             {
                 return false;
             }
 
-            return !requireAlt || Input.GetKey(KeyCode.LeftAlt);
+            return !requireModifier
+                || Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt)
+                || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
 #endif
         }
+
+#if ENABLE_INPUT_SYSTEM
+        /// <summary>KeyCode to Input System key for the keys used as menu shortcuts.</summary>
+        private static bool TryToInputKey(KeyCode key, out Key inputKey)
+        {
+            if (key == KeyCode.BackQuote)
+            {
+                inputKey = Key.Backquote;
+                return true;
+            }
+
+            return System.Enum.TryParse(key.ToString(), out inputKey);
+        }
+#endif
 
         private static bool TrackDoubleTap(ref bool isDown, ref float lastPressTime,
             bool isPressed, bool wasPressedThisFrame, bool wasReleasedThisFrame)
