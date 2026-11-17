@@ -59,6 +59,9 @@ namespace Galilego.Universe
         [Tooltip("Пресет облаков (см. PlanetCloudsView). null = облаков нет.")]
         public CloudProfileAsset CloudsPreset;
 
+        [Tooltip("Пресет газового гиганта (см. GasGiantView). null = газового гиганта нет.")]
+        public GasGiantProfileAsset GasGiantPreset;
+
         [Tooltip("Пресет декора местности (трава/камни/деревья). null = декора нет.")]
         public GroundDecorProfileAsset GroundDecorPreset;
 

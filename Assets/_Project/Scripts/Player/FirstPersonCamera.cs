@@ -108,6 +108,26 @@ namespace Galilego.Universe
             focusWanted = false;
         }
 
+        /// <summary>
+        /// One-shot look direction in world space. Used by debug teleports (the
+        /// Aeolus flyby in the cheat menu) so the planet is in frame immediately;
+        /// the normal mouse look takes over on the next input.
+        /// </summary>
+        public void SnapLookDirection(Vector3 worldDirection)
+        {
+            if (worldDirection.sqrMagnitude < 1e-8f)
+            {
+                return;
+            }
+
+            lookDirection = worldDirection.normalized;
+            lastFlatDirection = Vector3.ProjectOnPlane(lookDirection, transform.up);
+            hasLook = true;
+            lastUp = transform.up;
+            lookOverrideDirection = lookDirection;
+            lookOverrideUntil = Time.unscaledTime + 2f;
+        }
+
         private void ApplyFocusBlend(Camera cam)
         {
             // The target is a destroyed Unity object (ship removed): reset.
@@ -163,6 +183,8 @@ namespace Galilego.Universe
         private Vector3 lookDirection;
         private Vector3 lastUp;
         private Vector3 lastFlatDirection;
+        private Vector3 lookOverrideDirection;
+        private float lookOverrideUntil;
         private bool hasLook;
         private Vector3 eyeOffset;
         private bool cursorReleasedByUser;
@@ -476,6 +498,16 @@ namespace Galilego.Universe
                 lastUp = up;
             }
 #endif
+
+            // Debug flyby: hold the requested aim for two seconds while the
+            // dominant body and the local frame settle after a 1.6 AU teleport.
+            if (Time.unscaledTime < lookOverrideUntil)
+            {
+                lookDirection = lookOverrideDirection;
+                lastFlatDirection = Vector3.ProjectOnPlane(lookDirection, up);
+                hasLook = true;
+                lastUp = up;
+            }
 
             // Reference up for roll is the local up. When the look is parallel to
             // it (sun exactly at zenith on a noon spawn), LookRotation degenerates

@@ -1,0 +1,14 @@
+AeolusSurfaceMap.jpg
+====================
+
+Equirectangular Jupiter texture by Solar System Scope, based on NASA imagery.
+Source: http://solarsystemscope.com/textures
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+Derived work for the fictional gas giant Aeolus:
+  * the Great Red Spot and its white collar were removed by inpainting;
+  * the latitude geometry was remapped to change the band widths;
+  * the palette was changed to violet belts and pale cyan zones.
+
+The shader adds its own lighting, limb haze and cloud relief on top of the map.

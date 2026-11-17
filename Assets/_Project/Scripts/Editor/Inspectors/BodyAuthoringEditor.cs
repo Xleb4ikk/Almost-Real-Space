@@ -149,6 +149,18 @@ namespace Galilego.Universe.EditorTools
                 }
 
                 EditorGUILayout.Space(6);
+                Field("GasGiantPreset");
+                GasGiantProfileAsset gasGiantPreset = serializedObject.FindProperty("GasGiantPreset").objectReferenceValue as GasGiantProfileAsset;
+                if (gasGiantPreset == null)
+                {
+                    EditorGUILayout.HelpBox("Газового гиганта нет. Пресет-пример: Assets/_Project/Profiles/GasGiant/Aeolus.asset.", MessageType.Info);
+                }
+                else
+                {
+                    EditorGUILayout.HelpBox("GasGiantView читает этот пресет; рельеф/вода/облака/декор для газового гиганта не используются.", MessageType.None);
+                }
+
+                EditorGUILayout.Space(6);
                 Field("GroundDecorPreset");
                 GroundDecorProfileAsset decorPreset = serializedObject.FindProperty("GroundDecorPreset").objectReferenceValue as GroundDecorProfileAsset;
                 if (decorPreset == null)

@@ -336,6 +336,20 @@ namespace Galilego.Universe
         /// <summary>Body the ship currently lives relative to (floating origin, SOI).</summary>
         public OrbitingBody DominantBody => step != null ? step.DominantBody : null;
 
+        /// <summary>
+        /// Debug/eval hook: force the body used for local gravity, frame
+        /// velocity and camera clip planes. The regular step may replace it on
+        /// the next ship tick; the flyby view anchor keeps the camera usable
+        /// regardless.
+        /// </summary>
+        public void SetDominantBodyForDebug(OrbitingBody body)
+        {
+            if (step != null && body != null)
+            {
+                step.DominantBody = body;
+            }
+        }
+
         /// <summary>Debris pool (slots are reused); DebrisView reads it for rendering.</summary>
         public DebrisPool Debris => step.Debris;
 

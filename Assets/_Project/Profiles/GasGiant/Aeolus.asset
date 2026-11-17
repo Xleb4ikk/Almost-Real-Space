@@ -1,0 +1,396 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 46ac3b6bbe96f804cab517bfd6f51e0e, type: 3}
+  m_Name: Aeolus
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.GasGiantProfileAsset
+  Profile:
+    VisualEnabled: 1
+    SurfaceMap: {fileID: 2800000, guid: 7351048e9b9841140b476accfa3671d8, type: 3}
+    SurfaceMapStrength: 1
+    SurfaceMapLongitudeOffset: 0
+    SurfaceMapBump: 0
+    OblatenessRatio: 0.935
+    Bands:
+    - Name: North Polar Hood
+      LatitudeDegrees: 78
+      HalfWidthDegrees: 11
+      Color: {r: 0.654902, g: 0.6117647, b: 0.54901963, a: 1}
+      ZoneMask: 0.25
+      Softness: 0.75
+    - Name: N Polar Belt
+      LatitudeDegrees: 63
+      HalfWidthDegrees: 4
+      Color: {r: 0.42352942, g: 0.3529412, b: 0.3137255, a: 1}
+      ZoneMask: 0.2
+      Softness: 0.6
+    - Name: N Polar Zone
+      LatitudeDegrees: 57
+      HalfWidthDegrees: 4
+      Color: {r: 0.8039216, g: 0.73333335, b: 0.61960787, a: 1}
+      ZoneMask: 0.72
+      Softness: 0.55
+    - Name: NNTB 3
+      LatitudeDegrees: 50
+      HalfWidthDegrees: 2.2
+      Color: {r: 0.4392157, g: 0.2509804, b: 0.17254902, a: 1}
+      ZoneMask: 0.12
+      Softness: 0.38
+    - Name: NNTZ 3
+      LatitudeDegrees: 46
+      HalfWidthDegrees: 2.8
+      Color: {r: 0.8666667, g: 0.79607844, b: 0.65882355, a: 1}
+      ZoneMask: 0.8
+      Softness: 0.5
+    - Name: NNTB 2
+      LatitudeDegrees: 40
+      HalfWidthDegrees: 2
+      Color: {r: 0.40784314, g: 0.21568628, b: 0.13333334, a: 1}
+      ZoneMask: 0.1
+      Softness: 0.35
+    - Name: NNTZ 2
+      LatitudeDegrees: 36
+      HalfWidthDegrees: 2.2
+      Color: {r: 0.8901961, g: 0.8235294, b: 0.68235296, a: 1}
+      ZoneMask: 0.85
+      Softness: 0.5
+    - Name: NNTB
+      LatitudeDegrees: 32
+      HalfWidthDegrees: 2.2
+      Color: {r: 0.43137255, g: 0.22745098, b: 0.14117648, a: 1}
+      ZoneMask: 0.1
+      Softness: 0.35
+    - Name: NNTZ
+      LatitudeDegrees: 28
+      HalfWidthDegrees: 2
+      Color: {r: 0.9098039, g: 0.84705883, b: 0.7058824, a: 1}
+      ZoneMask: 0.85
+      Softness: 0.5
+    - Name: NTB
+      LatitudeDegrees: 24
+      HalfWidthDegrees: 3
+      Color: {r: 0.44313726, g: 0.22745098, b: 0.14117648, a: 1}
+      ZoneMask: 0.08
+      Softness: 0.3
+    - Name: NTrZ
+      LatitudeDegrees: 19
+      HalfWidthDegrees: 2.5
+      Color: {r: 0.91764706, g: 0.85882354, b: 0.72156864, a: 1}
+      ZoneMask: 0.9
+      Softness: 0.5
+    - Name: NEB
+      LatitudeDegrees: 13
+      HalfWidthDegrees: 4
+      Color: {r: 0.36862746, g: 0.1764706, b: 0.101960786, a: 1}
+      ZoneMask: 0.05
+      Softness: 0.28
+    - Name: NEBn
+      LatitudeDegrees: 8
+      HalfWidthDegrees: 1.7
+      Color: {r: 0.43137255, g: 0.21960784, b: 0.1254902, a: 1}
+      ZoneMask: 0.1
+      Softness: 0.3
+    - Name: NEB s edge
+      LatitudeDegrees: 5
+      HalfWidthDegrees: 1
+      Color: {r: 0.5411765, g: 0.32156864, b: 0.19607843, a: 1}
+      ZoneMask: 0.25
+      Softness: 0.45
+    - Name: EZn
+      LatitudeDegrees: 2.5
+      HalfWidthDegrees: 2.2
+      Color: {r: 0.84705883, g: 0.70980394, b: 0.47843137, a: 1}
+      ZoneMask: 0.65
+      Softness: 0.5
+    - Name: EZ
+      LatitudeDegrees: -1.5
+      HalfWidthDegrees: 3.2
+      Color: {r: 0.9137255, g: 0.79607844, b: 0.56078434, a: 1}
+      ZoneMask: 0.82
+      Softness: 0.5
+    - Name: SEBn
+      LatitudeDegrees: -5.5
+      HalfWidthDegrees: 2
+      Color: {r: 0.41960785, g: 0.20784314, b: 0.1254902, a: 1}
+      ZoneMask: 0.08
+      Softness: 0.3
+    - Name: SEB
+      LatitudeDegrees: -11
+      HalfWidthDegrees: 4
+      Color: {r: 0.34901962, g: 0.16470589, b: 0.09411765, a: 1}
+      ZoneMask: 0.04
+      Softness: 0.28
+    - Name: SEBs
+      LatitudeDegrees: -16
+      HalfWidthDegrees: 1.8
+      Color: {r: 0.47843137, g: 0.25882354, b: 0.15686275, a: 1}
+      ZoneMask: 0.1
+      Softness: 0.3
+    - Name: STrZ
+      LatitudeDegrees: -20.5
+      HalfWidthDegrees: 2.8
+      Color: {r: 0.9137255, g: 0.8509804, b: 0.7137255, a: 1}
+      ZoneMask: 0.9
+      Softness: 0.5
+    - Name: GRS moat
+      LatitudeDegrees: -24.5
+      HalfWidthDegrees: 2
+      Color: {r: 0.49019608, g: 0.2901961, b: 0.20392157, a: 1}
+      ZoneMask: 0.15
+      Softness: 0.4
+    - Name: STB
+      LatitudeDegrees: -28.5
+      HalfWidthDegrees: 2.5
+      Color: {r: 0.41568628, g: 0.21960784, b: 0.14117648, a: 1}
+      ZoneMask: 0.08
+      Softness: 0.3
+    - Name: STZ
+      LatitudeDegrees: -33
+      HalfWidthDegrees: 2.6
+      Color: {r: 0.8862745, g: 0.81960785, b: 0.6745098, a: 1}
+      ZoneMask: 0.85
+      Softness: 0.5
+    - Name: SSTB
+      LatitudeDegrees: -38.5
+      HalfWidthDegrees: 2.2
+      Color: {r: 0.43137255, g: 0.23921569, b: 0.16078432, a: 1}
+      ZoneMask: 0.1
+      Softness: 0.35
+    - Name: SSTZ
+      LatitudeDegrees: -43
+      HalfWidthDegrees: 2.6
+      Color: {r: 0.8509804, g: 0.78431374, b: 0.6509804, a: 1}
+      ZoneMask: 0.8
+      Softness: 0.5
+    - Name: S Temperate Belt
+      LatitudeDegrees: -49
+      HalfWidthDegrees: 2
+      Color: {r: 0.45882353, g: 0.2627451, b: 0.1764706, a: 1}
+      ZoneMask: 0.12
+      Softness: 0.35
+    - Name: S Temperate Zone
+      LatitudeDegrees: -54
+      HalfWidthDegrees: 3
+      Color: {r: 0.7882353, g: 0.7254902, b: 0.6117647, a: 1}
+      ZoneMask: 0.7
+      Softness: 0.55
+    - Name: S Polar Belt
+      LatitudeDegrees: -62
+      HalfWidthDegrees: 3.5
+      Color: {r: 0.42352942, g: 0.3529412, b: 0.3137255, a: 1}
+      ZoneMask: 0.2
+      Softness: 0.6
+    - Name: South Polar Hood
+      LatitudeDegrees: -78
+      HalfWidthDegrees: 11
+      Color: {r: 0.6117647, g: 0.5686275, b: 0.5176471, a: 1}
+      ZoneMask: 0.25
+      Softness: 0.75
+    - Name: NEB filament
+      LatitudeDegrees: 6.5
+      HalfWidthDegrees: 0.6
+      Color: {r: 0.627451, g: 0.4392157, b: 0.24705882, a: 1}
+      ZoneMask: 0.3
+      Softness: 0.5
+    - Name: SEB filament
+      LatitudeDegrees: -7.8
+      HalfWidthDegrees: 0.7
+      Color: {r: 0.5411765, g: 0.32156864, b: 0.19607843, a: 1}
+      ZoneMask: 0.3
+      Softness: 0.5
+    - Name: NTrZ filament
+      LatitudeDegrees: 17
+      HalfWidthDegrees: 0.5
+      Color: {r: 0.6901961, g: 0.5019608, b: 0.3137255, a: 1}
+      ZoneMask: 0.5
+      Softness: 0.55
+    - Name: STrZ filament
+      LatitudeDegrees: -18.5
+      HalfWidthDegrees: 0.5
+      Color: {r: 0.6901961, g: 0.5019608, b: 0.3137255, a: 1}
+      ZoneMask: 0.5
+      Softness: 0.55
+    - Name: NTB filament
+      LatitudeDegrees: 34
+      HalfWidthDegrees: 0.5
+      Color: {r: 0.6039216, g: 0.3529412, b: 0.22745098, a: 1}
+      ZoneMask: 0.3
+      Softness: 0.5
+    - Name: STB filament
+      LatitudeDegrees: -31
+      HalfWidthDegrees: 0.5
+      Color: {r: 0.6039216, g: 0.3529412, b: 0.22745098, a: 1}
+      ZoneMask: 0.3
+      Softness: 0.5
+    Winds:
+    - LatitudeDegrees: -90
+      SpeedMps: 0
+    - LatitudeDegrees: -70
+      SpeedMps: -18
+    - LatitudeDegrees: -60
+      SpeedMps: 22
+    - LatitudeDegrees: -50
+      SpeedMps: -28
+    - LatitudeDegrees: -40
+      SpeedMps: 55
+    - LatitudeDegrees: -33
+      SpeedMps: -38
+    - LatitudeDegrees: -27
+      SpeedMps: 62
+    - LatitudeDegrees: -20
+      SpeedMps: -18
+    - LatitudeDegrees: -14
+      SpeedMps: 30
+    - LatitudeDegrees: -8
+      SpeedMps: -12
+    - LatitudeDegrees: 0
+      SpeedMps: 105
+    - LatitudeDegrees: 8
+      SpeedMps: 58
+    - LatitudeDegrees: 15
+      SpeedMps: -42
+    - LatitudeDegrees: 21
+      SpeedMps: 24
+    - LatitudeDegrees: 27
+      SpeedMps: -58
+    - LatitudeDegrees: 34
+      SpeedMps: 36
+    - LatitudeDegrees: 42
+      SpeedMps: -26
+    - LatitudeDegrees: 55
+      SpeedMps: 12
+    - LatitudeDegrees: 70
+      SpeedMps: -8
+    - LatitudeDegrees: 90
+      SpeedMps: 0
+    Vortices:
+    - Name: Great Salmon Spot
+      LatitudeDegrees: -22
+      LongitudeDegrees: 30
+      RadiusLatDegrees: 8.5
+      RadiusLonDegrees: 15
+      Spin: 1
+      CoreColor: {r: 0.9098039, g: 0.6627451, b: 0.52156866, a: 1}
+      CollarColor: {r: 0.45490196, g: 0.20784314, b: 0.12156863, a: 1}
+      Intensity: 1
+      CollarWidth: 0.38
+      DriftDegreesPerDay: 1.2
+      SwirlStrength: 1
+    - Name: Oval BA
+      LatitudeDegrees: -33
+      LongitudeDegrees: 120
+      RadiusLatDegrees: 4.2
+      RadiusLonDegrees: 7.5
+      Spin: -1
+      CoreColor: {r: 0.7882353, g: 0.56078434, b: 0.44705883, a: 1}
+      CollarColor: {r: 0.5411765, g: 0.2901961, b: 0.19607843, a: 1}
+      Intensity: 0.9
+      CollarWidth: 0.36
+      DriftDegreesPerDay: 0.9
+      SwirlStrength: 0.7
+    - Name: White Oval 1
+      LatitudeDegrees: -36
+      LongitudeDegrees: 60
+      RadiusLatDegrees: 2.2
+      RadiusLonDegrees: 3.8
+      Spin: -1
+      CoreColor: {r: 1, g: 0.95686275, b: 0.8862745, a: 1}
+      CollarColor: {r: 0.6039216, g: 0.3529412, b: 0.22745098, a: 1}
+      Intensity: 0.85
+      CollarWidth: 0.36
+      DriftDegreesPerDay: 1
+      SwirlStrength: 0.35
+    - Name: White Oval 2
+      LatitudeDegrees: -40
+      LongitudeDegrees: 20
+      RadiusLatDegrees: 1.8
+      RadiusLonDegrees: 3.2
+      Spin: -1
+      CoreColor: {r: 1, g: 0.95686275, b: 0.8862745, a: 1}
+      CollarColor: {r: 0.6039216, g: 0.3529412, b: 0.22745098, a: 1}
+      Intensity: 0.75
+      CollarWidth: 0.36
+      DriftDegreesPerDay: 1.1
+      SwirlStrength: 0.3
+    - Name: White Oval 3
+      LatitudeDegrees: -31
+      LongitudeDegrees: -80
+      RadiusLatDegrees: 1.6
+      RadiusLonDegrees: 2.8
+      Spin: -1
+      CoreColor: {r: 1, g: 0.9411765, b: 0.84705883, a: 1}
+      CollarColor: {r: 0.5411765, g: 0.32156864, b: 0.19607843, a: 1}
+      Intensity: 0.7
+      CollarWidth: 0.35
+      DriftDegreesPerDay: 0.8
+      SwirlStrength: 0.25
+    - Name: Brown Barge 1
+      LatitudeDegrees: 15
+      LongitudeDegrees: -50
+      RadiusLatDegrees: 2
+      RadiusLonDegrees: 5
+      Spin: 1
+      CoreColor: {r: 0.22745098, g: 0.16470589, b: 0.1254902, a: 1}
+      CollarColor: {r: 0.43137255, g: 0.22745098, b: 0.14117648, a: 1}
+      Intensity: 0.8
+      CollarWidth: 0.4
+      DriftDegreesPerDay: -0.7
+      SwirlStrength: 0.4
+    - Name: Brown Barge 2
+      LatitudeDegrees: 13
+      LongitudeDegrees: 70
+      RadiusLatDegrees: 1.5
+      RadiusLonDegrees: 3.8
+      Spin: 1
+      CoreColor: {r: 0.20784314, g: 0.26666668, b: 0.24705882, a: 1}
+      CollarColor: {r: 0.43137255, g: 0.22745098, b: 0.14117648, a: 1}
+      Intensity: 0.65
+      CollarWidth: 0.4
+      DriftDegreesPerDay: -0.5
+      SwirlStrength: 0.3
+    - Name: Brown Barge 3
+      LatitudeDegrees: 16.5
+      LongitudeDegrees: -105
+      RadiusLatDegrees: 1.2
+      RadiusLonDegrees: 3
+      Spin: 1
+      CoreColor: {r: 0.22745098, g: 0.16470589, b: 0.1254902, a: 1}
+      CollarColor: {r: 0.43137255, g: 0.22745098, b: 0.14117648, a: 1}
+      Intensity: 0.55
+      CollarWidth: 0.4
+      DriftDegreesPerDay: -0.4
+      SwirlStrength: 0.25
+    NorthPoleColor: {r: 0.32, g: 0.28, b: 0.45, a: 1}
+    SouthPoleColor: {r: 0.26, g: 0.22, b: 0.38, a: 1}
+    HazeColor: {r: 0.82, g: 0.92, b: 0.86, a: 1}
+    RimColor: {r: 0.72, g: 0.66, b: 0.88, a: 1}
+    VisualSpinPeriodSeconds: 120
+    PhasePeriodSeconds: 30
+    VortexSpinPeriodSeconds: 40
+    ShearExaggeration: 18
+    LayerSpeedDelta: 0.08
+    WarpAmplitude: 0.06
+    WarpScale: 5.5
+    TurbulenceScale: 24
+    TurbulenceAnisotropy: 9
+    HazeDensity: 0.03
+    LimbDarkening: 0.3
+    WrapDiffuse: 0.45
+    RimIntensity: 0.08
+    Saturation: 1
+    CloudBump: 0.2
+    Contrast: 1.15
+    PolarTint: 0
+    DetailStrength: 0
+    MinScreenRadiusPixels: 2
+    BandLutWidth: 2048
+    WindLutWidth: 512
+    MeshResolution: 128

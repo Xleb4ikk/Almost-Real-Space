@@ -445,6 +445,7 @@ MonoBehaviour:
   TerrainPreset: {fileID: 0}
   AtmospherePreset: {fileID: 11400000, guid: 0f2f567f675cabc4291bb22c37d6876d, type: 2}
   CloudsPreset: {fileID: 0}
+  GasGiantPreset: {fileID: 0}
   GroundDecorPreset: {fileID: 0}
   TerrainSeed: 0
   TerrainPads: []
@@ -463,6 +464,7 @@ Transform:
   m_Children:
   - {fileID: 1081663216}
   - {fileID: 1982425600}
+  - {fileID: 2135535064}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &306252428
@@ -972,6 +974,7 @@ MonoBehaviour:
   TerrainPreset: {fileID: 11400000, guid: 3b7f1d0c9a4e42f8b6c15e7a0d2b8f46, type: 2}
   AtmospherePreset: {fileID: 11400000, guid: 04cd67a1c36ca9249926bf7a20997ff8, type: 2}
   CloudsPreset: {fileID: 11400000, guid: d3bc22e4e10e05047ae0493324cd61fc, type: 2}
+  GasGiantPreset: {fileID: 0}
   GroundDecorPreset: {fileID: 11400000, guid: b70dba692e6607b4985ce5eaa0a0df5e, type: 2}
   TerrainSeed: 24334543
   TerrainPads: []
@@ -1169,9 +1172,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlanetAtmosphereView
   Runner: {fileID: 1332194275}
+  PlayerCamera: {fileID: 0}
   LatitudeSegments: 24
   LongitudeSegments: 48
   DebugMode: 0
+  IgnoreCockpitDepth: 0
 --- !u!114 &1081663224
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1185,8 +1190,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlanetCloudsView
   Runner: {fileID: 1332194275}
+  PlayerCamera: {fileID: 0}
   LatitudeSegments: 24
   LongitudeSegments: 48
+  IgnoreCockpitDepth: 0
 --- !u!1 &1250304429
 GameObject:
   m_ObjectHideFlags: 0
@@ -1338,17 +1345,17 @@ MonoBehaviour:
   EnableRegimeIntegratorPolicy: 0
   EnableSunCoastPolicy: 0
   EnablePortedIntegratorPolicy: 0
-  SpawnAltitudeMeters: 50000
+  SpawnAltitudeMeters: 110508000
   SpawnFacingSun: 1
-  SpawnPhaseDegrees: 1
-  SpawnHorizontalSpeedMps: 3278
+  SpawnPhaseDegrees: 0
+  SpawnHorizontalSpeedMps: 0
   SpawnMassKg: 5000
   MainThrustNewtons: 100000
   MainIspSeconds: 320
   DryMassKg: 3000
-  SpawnBodyName: Terra
-  SpawnOnSurface: 1
-  SpawnByCoordinates: 1
+  SpawnBodyName: Aeolus
+  SpawnOnSurface: 0
+  SpawnByCoordinates: 0
   SpawnLatitudeDegrees: -1.2972825934861871
   SpawnLongitudeDegrees: 225.96700450491107
   SpawnEpsilonMeters: 1
@@ -2245,6 +2252,118 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2135535063
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2135535064}
+  - component: {fileID: 2135535067}
+  - component: {fileID: 2135535066}
+  - component: {fileID: 2135535065}
+  m_Layer: 0
+  m_Name: Aeolus
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2135535064
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2135535063}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 230795297}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2135535065
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2135535063}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 091e6973b6b893a41b1bb67918d425af, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.GasGiantView
+  Runner: {fileID: 1332194275}
+  PlayerCamera: {fileID: 1823688466}
+  Profile: {fileID: 11400000, guid: 04a6c4efb4b7aec45a868e17bba95c96, type: 2}
+  SurfaceMaterial: {fileID: 2100000, guid: 8fbcf48776cea8c4da9837289a55d50e, type: 2}
+  DiscMaterial: {fileID: 2100000, guid: 501a131a1637bda46affbde7776907c8, type: 2}
+  RenderNearSphere: 1
+  RenderFarDisc: 1
+  MinScreenRadiusPixels: 2
+  SurfaceBrightness: 3
+  FarDiscBrightness: 12
+  MinEnergyScale: 0.08
+  MeshResolution: 128
+  LogDiagnostics: 1
+--- !u!114 &2135535066
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2135535063}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d7bb586c9cc3da549bc90d89a0c0a345, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyView
+  Runner: {fileID: 1332194275}
+--- !u!114 &2135535067
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2135535063}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7d79bac471c083a40bd345864d557347, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyAuthoring
+  StandardGravitationalParameter: 76012100000000000
+  Radius: 55254000
+  CrashToleranceMps: 0
+  J2: 0.0147
+  J2ReferenceRadius: 55254000
+  SurfaceStaticFrictionMu: 0
+  SurfaceKineticFrictionMu: 0
+  SemiMajorAxis: 245000000000
+  Eccentricity: 0.0489
+  InclinationDegrees: 1.303
+  LongitudeOfAscendingNodeDegrees: 100.464
+  ArgumentOfPeriapsisDegrees: 273.867
+  MeanAnomalyAtEpochDegrees: 347.00600000000014
+  EpochTimeSeconds: 0
+  RotationPeriodSeconds: 37800
+  TidallyLocked: 0
+  PrimeMeridianOffsetDegrees: 0
+  NorthPoleDirection:
+    X: 0
+    Y: -0.2079
+    Z: 0.9781
+  TerrainPreset: {fileID: 0}
+  AtmospherePreset: {fileID: 0}
+  CloudsPreset: {fileID: 0}
+  GasGiantPreset: {fileID: 11400000, guid: 04a6c4efb4b7aec45a868e17bba95c96, type: 2}
+  GroundDecorPreset: {fileID: 0}
+  TerrainSeed: 0
+  TerrainPads: []
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

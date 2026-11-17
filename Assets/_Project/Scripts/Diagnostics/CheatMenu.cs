@@ -38,6 +38,9 @@ namespace Galilego.Universe
         [Tooltip("Бенчмарк-полёт для замера fps на скорости. Пусто — найдётся сам.")]
         public FlightBenchmark Benchmark;
 
+        [Tooltip("Тело для кнопки быстрого перелёта в чит-меню.")]
+        public string FlyToBodyName = "Aeolus";
+
         [Tooltip("Показывать окно сразу при старте (для отладки и скриншотов).")]
         public bool OpenOnStart;
 
@@ -72,7 +75,7 @@ namespace Galilego.Universe
 
         /// <summary>Window size: fits all content without scrolling, with some slack.</summary>
         private const float WindowWidth = 520f;
-        private const float WindowHeight = 420f;
+        private const float WindowHeight = 500f;
 
         private const float HudWidth = 540f;
         private const float HudHeight = 108f;
@@ -209,6 +212,17 @@ namespace Galilego.Universe
         private void DrawWindow(int id)
         {
             GUILayout.Label(RequireAlt ? "ЧИТЫ   (Alt+F10)" : "ЧИТЫ   (F10)", CheatGuiSkin.Header);
+
+            GUILayout.Space(10f);
+            GUILayout.Label("ПЕРЕЛЁТ", CheatGuiSkin.Header);
+            string flyToLabel = string.IsNullOrEmpty(FlyToBodyName) ? "Aeolus" : FlyToBodyName;
+            if (GUILayout.Button("  К " + flyToLabel + " (облёт)", CheatGuiSkin.Button))
+            {
+                FlyToBody();
+            }
+
+            GUILayout.Label("2.2 R, фаза 35°, ноуклип включится сам", CheatGuiSkin.LabelMuted);
+
             if (NoclipExternallyDriven)
             {
                 GUILayout.Label("  Ноуклип ведёт бенчмарк (см. блок ниже)", CheatGuiSkin.LabelMuted);
@@ -283,6 +297,120 @@ namespace Galilego.Universe
             {
                 Runner.SetNoclip(active, CameraExitDirection());
             }
+        }
+
+        /// <summary>
+        /// Debug flyby: teleports the player to 2.2 body radii on the day side
+        /// (35-degree phase), enables noclip and aims the camera at the body.
+        /// Used for the "К Aeolus (облёт)" button: the gas giant is otherwise
+        /// 1.6 AU away and cannot be inspected without a long noclip flight.
+        /// </summary>
+        public void FlyToBody()
+        {
+            ResolveReferences();
+            if (Runner == null || Runner.SystemState == null)
+            {
+                Debug.LogWarning("[CheatMenu] перелёт: нет SimulationRunner/SystemState.");
+                return;
+            }
+
+            OrbitingBody body = null;
+            string targetName = string.IsNullOrEmpty(FlyToBodyName) ? "Aeolus" : FlyToBodyName;
+            foreach (OrbitingBody candidate in Runner.SystemState.AllBodies)
+            {
+                if (candidate.Name == targetName)
+                {
+                    body = candidate;
+                    break;
+                }
+            }
+
+            if (body == null)
+            {
+                Debug.LogWarning("[CheatMenu] перелёт: тело \"" + targetName + "\" не найдено.");
+                return;
+            }
+
+            OrbitingBody star = Runner.SystemState.Root;
+            if (star == null)
+            {
+                return;
+            }
+
+            double time = Runner.TimeSeconds;
+            body.EvaluateWorldState(time, out Vector3d bodyPosition, out Vector3d bodyVelocity);
+            star.EvaluateWorldState(time, out Vector3d starPosition, out _);
+            Runner.SystemState.GetVisualFrame(body, time, out _, out _, out QuaternionD orientation);
+
+            Quaternion bodyRotation = AstroFrame.ToSimulation(orientation);
+            Vector3 north = bodyRotation * Vector3.forward;
+            Vector3 sunDirection = AstroFrame.ToSimulation((starPosition - bodyPosition).Normalized);
+
+            // 35 degrees from the sub-solar point, tilted 8 degrees south: the
+            // visible disk has a lit side, a terminator and a little polar view.
+            Vector3 toCamera = Quaternion.AngleAxis(35f, north) * sunDirection;
+            toCamera = ((toCamera * Mathf.Cos(-8f * Mathf.Deg2Rad))
+                + (north * Mathf.Sin(-8f * Mathf.Deg2Rad))).normalized;
+
+            Vector3d toCameraAstro = AstroFrame.ToAstro(toCamera);
+            Vector3d target = bodyPosition + (toCameraAstro * (body.Radius * 2.2d));
+
+            if (Runner.Warp != null)
+            {
+                Runner.Warp.SetWarpFactor(1d);
+            }
+
+            if (!Runner.NoclipActive)
+            {
+                Runner.SetNoclip(true, toCameraAstro);
+            }
+
+            // Keep the cheat menu's own toggle in sync: without this the next
+            // Update sees noclipRequested == false and immediately turns noclip
+            // off, dropping the player out of the flyby pose.
+            noclipRequested = true;
+            Runner.PlayerIntent.NoclipDirection = Vector3d.Zero;
+            Runner.PlayerIntent.NoclipSpeed = 0d;
+            Runner.TeleportTo(target, bodyVelocity);
+            Runner.SetDominantBodyForDebug(body);
+
+            // The dominant body may still be Terra for a frame (or longer if the
+            // SOI is not solved), which makes FirstPersonCamera derive a near
+            // plane in front of the gas giant. Pin usable clip planes and hide
+            // Terra's camera-centred atmosphere/cloud domes for the flyby.
+            GameObject oldAnchor = GameObject.Find("AeolusFlybyView");
+            if (oldAnchor != null)
+            {
+                Destroy(oldAnchor);
+            }
+
+            GameObject anchorGo = new GameObject("AeolusFlybyView");
+            FlybyViewAnchor anchor = anchorGo.AddComponent<FlybyViewAnchor>();
+            anchor.Camera = Camera.main;
+            anchor.Runner = Runner;
+            anchor.Body = body;
+            anchor.NearClip = 1000f;
+            anchor.FarClip = 4e8f;
+            anchor.LifeSeconds = 90f;
+            anchor.Hide = new[]
+            {
+                GameObject.Find("AtmosphereDome"),
+                GameObject.Find("CloudsDome"),
+            };
+
+            if (View == null)
+            {
+                View = FindAnyObjectByType<FirstPersonCamera>();
+            }
+
+            if (View != null)
+            {
+                View.SnapLookDirection(-toCamera);
+            }
+
+            Debug.Log(string.Format(
+                "[CheatMenu] перелёт к {0}: 2.2 R, фаза 35°, ноуклип включён. Alt+F10 — закрыть меню.",
+                body.Name));
         }
 
         private void SetOpen(bool open)
