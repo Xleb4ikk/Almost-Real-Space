@@ -97,7 +97,11 @@ namespace Galilego.Spacecraft
         private Light[] cabinLamps;
         private float cabinLampBoost = 1f;
         private float cabinLampInsideBlend = 1f;
+        private bool cabinLayersApplied;
         private SimulationRunner lampRunner;
+
+        /// <summary>HDRP light layer 2: the cabin interior. The sun does not light it; the cabin lamps do.</summary>
+        private const uint CabinInteriorLightLayer = 1u << 1;
 
         private void Reset()
         {
@@ -176,6 +180,11 @@ namespace Galilego.Spacecraft
                 return;
             }
 
+            if (!cabinLayersApplied)
+            {
+                TryApplyCabinLightLayers();
+            }
+
             Camera camera = Camera.main;
             if (camera == null)
             {
@@ -248,13 +257,12 @@ namespace Galilego.Spacecraft
             }
 
             Transform parent = strips.transform;
-            // Guard against a repeated Start (object re-enabled, domain reload off).
-            for (int i = 0; i < parent.childCount; i++)
+            Light[] existing = parent.GetComponentsInChildren<Light>(true);
+            if (existing.Length > 0)
             {
-                if (parent.GetChild(i).name.StartsWith("CabinLamp"))
-                {
-                    return;
-                }
+                // Re-enabled object / domain reload off: reuse the lamps created earlier.
+                cabinLamps = existing;
+                return;
             }
 
             // The seat's local +Z is its up (see CockpitSeat): use the seat axes so the
@@ -292,6 +300,101 @@ namespace Galilego.Spacecraft
                 hd.affectDiffuse = true;
                 hd.affectSpecular = true;
             }
+        }
+
+        /// <summary>
+        /// HDRP light layers: the cabin interior sits on layer 2. The sun is removed from
+        /// that layer, so the direct sunlight through the hatch/windows no longer changes
+        /// the cabin brightness with the view (bright at the hatch, dim over the console).
+        /// The cabin lamps and the soft sky fill stay on layer 2, so the interior has a
+        /// stable artificial light; the exterior hull remains on the default layer and is
+        /// still sunlit. Retried from LateUpdate until the strip mesh bounds are valid.
+        /// </summary>
+        private bool TryApplyCabinLightLayers()
+        {
+            if (cabinLamps == null || cabinLamps.Length == 0)
+            {
+                return false;
+            }
+
+            Renderer strips = FindCabinStrips();
+            if (strips == null)
+            {
+                return false;
+            }
+
+            Bounds cabin = strips.bounds;
+            if (cabin.size.sqrMagnitude < 1e-6f)
+            {
+                return false; // mesh bounds not ready on the first frame
+            }
+
+            foreach (Renderer r in GetComponentsInChildren<Renderer>(true))
+            {
+                if (r == null || r == strips || IsExteriorRenderer(r.name))
+                {
+                    continue;
+                }
+
+                if (!cabin.Contains(r.bounds.center))
+                {
+                    continue;
+                }
+
+                r.renderingLayerMask = CabinInteriorLightLayer;
+            }
+
+            for (int i = 0; i < cabinLamps.Length; i++)
+            {
+                Light lamp = cabinLamps[i];
+                if (lamp == null)
+                {
+                    continue;
+                }
+
+                HDAdditionalLightData hd = lamp.GetComponent<HDAdditionalLightData>();
+                if (hd != null)
+                {
+                    hd.lightlayersMask = (UnityEngine.Rendering.HighDefinition.RenderingLayerMask)CabinInteriorLightLayer;
+                }
+            }
+
+            // Direct sun is exterior-only; the cabin lamps above take over the interior.
+            // The soft, shadowless sky fill stays on the interior layer too: it is an
+            // ambient-like term, not the hard sunlight that made the hatch view brighter.
+            SkyEnvironment sky = FindAnyObjectByType<SkyEnvironment>();
+            if (sky != null && sky.SunLight != null)
+            {
+                HDAdditionalLightData hd = sky.SunLight.GetComponent<HDAdditionalLightData>();
+                if (hd != null)
+                {
+                    hd.lightlayersMask = (UnityEngine.Rendering.HighDefinition.RenderingLayerMask)(((uint)hd.lightlayersMask) & ~CabinInteriorLightLayer);
+                }
+            }
+
+            if (sky != null && sky.SkyFillLight != null)
+            {
+                HDAdditionalLightData hd = sky.SkyFillLight.GetComponent<HDAdditionalLightData>();
+                if (hd != null)
+                {
+                    hd.lightlayersMask = (UnityEngine.Rendering.HighDefinition.RenderingLayerMask)(((uint)hd.lightlayersMask) | CabinInteriorLightLayer);
+                }
+            }
+
+            cabinLayersApplied = true;
+            return true;
+        }
+
+        /// <summary>Hull, heat shield and glazing stay on the default layer (sunlit exterior).</summary>
+        private static bool IsExteriorRenderer(string name)
+        {
+            return name.Contains("Backshell")
+                || name.Contains("HeatShield")
+                || name.Contains("Hatch_Frame")
+                || name.Contains("Hatch_Door")
+                || name.Contains("Glass")
+                || name.Contains("Window")
+                || name.Contains("Nose");
         }
 
         private void LateUpdate()
