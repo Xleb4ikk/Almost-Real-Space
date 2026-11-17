@@ -60,6 +60,14 @@ namespace Galilego.Spacecraft
             "горит одинаково; базовая яркость остаётся только для далёкой камеры.")]
         [SerializeField] private float cabinLampOutsideRange = 60f;
 
+        [Tooltip("Небольшое ослабление ламп, когда игрок снаружи кабины (EVA/прогулка): " +
+            "изнутри кабина чуть темнее, чем кажется снаружи через остекление и на фоне " +
+            "тёмного корпуса. 1 — без ослабления.")]
+        [SerializeField] private float cabinLampOutsideScale = 0.9f;
+
+        [Tooltip("Время плавного перехода яркости при входе/выходе из кабины, с.")]
+        [SerializeField] private float cabinLampOutsideBlendSeconds = 1.5f;
+
         [Tooltip("Время перехода яркости ламп, с.")]
         [SerializeField] private float cabinLampBlendSeconds = 0.4f;
 
@@ -78,6 +86,8 @@ namespace Galilego.Spacecraft
 
         private Light[] cabinLamps;
         private float cabinLampBoost = 1f;
+        private float cabinLampInsideBlend = 1f;
+        private SimulationRunner lampRunner;
 
         private void Reset()
         {
@@ -112,6 +122,21 @@ namespace Galilego.Spacecraft
         private void Start()
         {
             EnsureCabinLamps();
+            lampRunner = FindAnyObjectByType<SimulationRunner>();
+            cabinLampInsideBlend = IsOnboard() ? 1f : 0f;
+        }
+
+        /// <summary>The player is in the cabin: seated, walking on the floor, or in the legacy InShip mode.</summary>
+        private bool IsOnboard()
+        {
+            if (lampRunner == null)
+            {
+                lampRunner = FindAnyObjectByType<SimulationRunner>();
+            }
+
+            return lampRunner != null
+                && (lampRunner.PlayerSeated || lampRunner.PlayerCarried
+                    || lampRunner.PlayerMode == PlayerMode.InShip);
         }
 
         /// <summary>
@@ -125,7 +150,9 @@ namespace Galilego.Spacecraft
         /// In the seat the eye fell just outside it (a few centimetres in height and ~0.7 m
         /// behind), while standing up put it inside — so the lamps dropped 3x exactly at
         /// the sit/stand and hatch transitions (bright seated, dark standing/after EVA).
-        /// Proximity is continuous, so no transition can change the cabin brightness.
+        /// Proximity is continuous; the only remaining inside/outside difference is a
+        /// small attenuation (cabinLampOutsideScale) faded over a couple of seconds, not
+        /// a hard flip.
         ///
         /// Called from LateUpdate, after VesselMirror/PlayerView/FirstPersonCamera:
         /// in Update the vessel pose is one physics frame behind the camera, and at
@@ -153,7 +180,18 @@ namespace Galilego.Spacecraft
             cabinLampBoost = Mathf.MoveTowards(cabinLampBoost, boostTarget,
                 Time.deltaTime * boostRange / Mathf.Max(0.01f, cabinLampBlendSeconds));
 
-            float intensity = cabinLampLumens * cabinLampBoost;
+            // A slight outside-only attenuation, blended slowly: from outside the cabin
+            // reads a touch brighter through the glazing and against the dark hull, so
+            // the interior light is trimmed a little while the player is out. The slow
+            // blend keeps the hatch transition unnoticeable (the old AABB test dropped
+            // the lamps 3x in one step).
+            float insideTarget = IsOnboard() ? 1f : 0f;
+            cabinLampInsideBlend = Mathf.MoveTowards(cabinLampInsideBlend, insideTarget,
+                Time.deltaTime / Mathf.Max(0.01f, cabinLampOutsideBlendSeconds));
+            float outsideScale = Mathf.Clamp(cabinLampOutsideScale, 0.2f, 1f);
+            float scale = Mathf.Lerp(outsideScale, 1f, cabinLampInsideBlend);
+
+            float intensity = cabinLampLumens * cabinLampBoost * scale;
             for (int i = 0; i < cabinLamps.Length; i++)
             {
                 if (cabinLamps[i] != null)
