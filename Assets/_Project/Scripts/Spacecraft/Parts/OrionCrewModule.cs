@@ -37,7 +37,7 @@ namespace Galilego.Spacecraft
 
         [Header("Освещение кабины")]
         [Tooltip("Яркость потолочных ламп кабины, лм (HDRP Lumen). 0 — лампы не создаются.")]
-        [SerializeField] private float cabinLampLumens = 5f;
+        [SerializeField] private float cabinLampLumens = 10f;
 
         [Tooltip("Радиус действия лампы, м.")]
         [SerializeField] private float cabinLampRange = 7f;
@@ -51,6 +51,18 @@ namespace Galilego.Spacecraft
         [Tooltip("Расстояние между лампами, м.")]
         [SerializeField] private float cabinLampSpacing = 1.25f;
 
+        [Tooltip("Множитель яркости ламп, пока КАМЕРА рядом с модулем (снаружи или внутри " +
+            "кабины): интерьер не гаснет на фоне залитого солнцем корпуса и планеты и не " +
+            "мигает при переходе кресло/проход/люк.")]
+        [SerializeField] private float cabinLampOutsideBoost = 5f;
+
+        [Tooltip("Дальность усиления, м (камера — модуль). Внутри и снаружи кабины лампа " +
+            "горит одинаково; базовая яркость остаётся только для далёкой камеры.")]
+        [SerializeField] private float cabinLampOutsideRange = 60f;
+
+        [Tooltip("Время перехода яркости ламп, с.")]
+        [SerializeField] private float cabinLampBlendSeconds = 0.4f;
+
         [Tooltip("Угол открытия створки на шарнире (град.). ~160° прижимает её к борту сбоку от проёма.")]
         [SerializeField] private float openAngleDegrees = 160f;
 
@@ -63,6 +75,9 @@ namespace Galilego.Spacecraft
         private float swingAngle;
         private Collider doorCollider;
         private bool doorColliderDisabledByUs;
+
+        private Light[] cabinLamps;
+        private float cabinLampBoost = 1f;
 
         private void Reset()
         {
@@ -100,11 +115,73 @@ namespace Galilego.Spacecraft
         }
 
         /// <summary>
+        /// Cabin lamps hold the boosted brightness while the camera is near the module —
+        /// inside the cabin, in the aisle, in the hatch or right outside it. The base
+        /// brightness is only for a camera far away (the view through the hatch does not
+        /// read as a dark hole against the sunlit hull).
+        ///
+        /// The test is the DISTANCE to the module, not the camera in the Cabin_Lights
+        /// bounds: that bounds is the AABB of the ceiling strip mesh, offset from the seat.
+        /// In the seat the eye fell just outside it (a few centimetres in height and ~0.7 m
+        /// behind), while standing up put it inside — so the lamps dropped 3x exactly at
+        /// the sit/stand and hatch transitions (bright seated, dark standing/after EVA).
+        /// Proximity is continuous, so no transition can change the cabin brightness.
+        ///
+        /// Called from LateUpdate, after VesselMirror/PlayerView/FirstPersonCamera:
+        /// in Update the vessel pose is one physics frame behind the camera, and at
+        /// orbital speed the module can read as hundreds of metres away from its own
+        /// camera — the near-camera gate then never opens and the cabin stays dim.
+        /// </summary>
+        private void UpdateCabinLamps()
+        {
+            if (cabinLamps == null || cabinLamps.Length == 0)
+            {
+                return;
+            }
+
+            Camera camera = Camera.main;
+            if (camera == null)
+            {
+                return;
+            }
+
+            Vector3 eye = camera.transform.position;
+            bool nearCabin = Vector3.Distance(eye, transform.position) <= cabinLampOutsideRange;
+            float boostTarget = nearCabin ? Mathf.Max(1f, cabinLampOutsideBoost) : 1f;
+
+            float boostRange = Mathf.Max(1f, cabinLampOutsideBoost) - 1f;
+            cabinLampBoost = Mathf.MoveTowards(cabinLampBoost, boostTarget,
+                Time.deltaTime * boostRange / Mathf.Max(0.01f, cabinLampBlendSeconds));
+
+            float intensity = cabinLampLumens * cabinLampBoost;
+            for (int i = 0; i < cabinLamps.Length; i++)
+            {
+                if (cabinLamps[i] != null)
+                {
+                    cabinLamps[i].intensity = intensity;
+                }
+            }
+        }
+
+        /// <summary>
         /// Real interior lights at the Cabin_Lights strip ring. The strips are
         /// emissive only and HDRP's SSGI is off, so without them the HDRP/Lit
         /// cabin walls receive no light in vacuum (the Sun through the hatch is
         /// the only source, and it changes with the ship's attitude and view).
         /// </summary>
+        private Renderer FindCabinStrips()
+        {
+            foreach (Renderer candidate in GetComponentsInChildren<Renderer>(true))
+            {
+                if (candidate.name == "Cabin_Lights")
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
         private void EnsureCabinLamps()
         {
             if (cabinLampCount <= 0 || cabinLampLumens <= 0f)
@@ -112,16 +189,7 @@ namespace Galilego.Spacecraft
                 return;
             }
 
-            Renderer strips = null;
-            foreach (Renderer candidate in GetComponentsInChildren<Renderer>(true))
-            {
-                if (candidate.name == "Cabin_Lights")
-                {
-                    strips = candidate;
-                    break;
-                }
-            }
-
+            Renderer strips = FindCabinStrips();
             CockpitSeat seat = GetComponentInChildren<CockpitSeat>(true);
             if (strips == null || seat == null || seat.Anchor == null)
             {
@@ -144,6 +212,7 @@ namespace Galilego.Spacecraft
             Vector3 right = seat.Anchor.TransformDirection(Vector3.right);
             Vector3 center = strips.bounds.center + (up * 1.1f);
 
+            cabinLamps = new Light[cabinLampCount];
             for (int i = 0; i < cabinLampCount; i++)
             {
                 float offset = (i - ((cabinLampCount - 1) * 0.5f)) * cabinLampSpacing;
@@ -159,6 +228,7 @@ namespace Galilego.Spacecraft
                 lamp.shadows = LightShadows.None;
                 lamp.lightUnit = LightUnit.Lumen;
                 lamp.lightmapBakeType = LightmapBakeType.Realtime;
+                cabinLamps[i] = lamp;
 
                 HDAdditionalLightData hd = go.GetComponent<HDAdditionalLightData>();
                 if (hd == null)
@@ -173,6 +243,8 @@ namespace Galilego.Spacecraft
 
         private void LateUpdate()
         {
+            UpdateCabinLamps();
+
             if (animator == null || door == null)
             {
                 return;

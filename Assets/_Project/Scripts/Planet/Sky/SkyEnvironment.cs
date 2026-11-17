@@ -209,7 +209,28 @@ namespace Galilego.Universe
                 return;
             }
 
-            ApplyGlobalsNow(Runner.DominantBody, Runner.PlayerPosition, Runner.TimeSeconds);
+            ApplyGlobalsNow(Runner.DominantBody, ObserverPosition(), Runner.TimeSeconds);
+        }
+
+        /// <summary>
+        /// The observer for the sky/ambient is the CAMERA's eye, not Runner.PlayerPosition.
+        /// The seated/standing player position is written through the site frame when the
+        /// builder hands the craft to physics; it can stay at the pad while the craft is
+        /// already in orbit. The atmosphere integral then sees a ground observer, turns the
+        /// sky fill light on (AmbientAmount > 0) and lights the cabin with a phantom ambient
+        /// sunlight that disappears as soon as the player leaves the seat/EVA (correct
+        /// PlayerPosition). The camera is always in render space around the floating origin,
+        /// so this conversion is the actual eye position whatever the player state is.
+        /// </summary>
+        private Vector3d ObserverPosition()
+        {
+            Camera camera = Camera.main;
+            if (camera != null)
+            {
+                return FloatingOrigin.Anchor + AstroFrame.ToAstro(camera.transform.position);
+            }
+
+            return Runner.PlayerPosition;
         }
 
         /// <summary>
