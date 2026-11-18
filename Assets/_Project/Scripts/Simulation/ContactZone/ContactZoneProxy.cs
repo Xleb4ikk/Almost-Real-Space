@@ -162,9 +162,11 @@ namespace Galilego.Simulation.ContactZone
                 rb.solverIterations = 20;
                 rb.solverVelocityIterations = 4;
                 rb.linearVelocity = velocityWorld;
-                // Continuous collision detection: a fast vessel (hard landing, re-entry
-                // debris) must not tunnel through the terrain patch between two physics steps.
-                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+                // CCD against tunneling, but only the root body needs ContinuousDynamic:
+                // the parts are jointed to it, and speculative contacts are cheaper.
+                rb.collisionDetectionMode = d.ParentIndex < 0
+                    ? CollisionDetectionMode.ContinuousDynamic
+                    : CollisionDetectionMode.ContinuousSpeculative;
                 AddShapeCollider(go, d);
                 // The flight mass model puts a part's COM at d.Offset (the shape center).
                 // PhysX would otherwise derive it from the collider volume: for a frustum
