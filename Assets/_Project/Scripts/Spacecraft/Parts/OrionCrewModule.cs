@@ -23,6 +23,14 @@ namespace Galilego.Spacecraft
     /// cabin was lit solely by the Sun through the hatch, and its brightness
     /// depended on the ship's attitude and on what the camera happened to see.
     /// Real point lights at the strip ring give the cabin a stable interior light.
+    ///
+    /// The lamps run at ONE constant intensity — the same from the seat, from the
+    /// aisle and through the open hatch. They must not be boosted near the camera:
+    /// the hatch view sees the same lit walls as the interior, but auto exposure
+    /// meters that small patch of cabin against the much darker hull and blows it
+    /// out white, while the same walls look normal once they fill the frame. A
+    /// cabin whose light level sits near the daylight scene, plus a fixed interior
+    /// light layer that keeps direct sun off it, is what makes both views match.
     /// </summary>
     [RequireComponent(typeof(Animator))]
     public sealed class OrionCrewModule : MonoBehaviour
@@ -36,8 +44,10 @@ namespace Galilego.Spacecraft
         [SerializeField] private Animator animator;
 
         [Header("Освещение кабины")]
-        [Tooltip("Яркость ламп кабины, лм (HDRP Lumen). 0 — лампы не создаются.")]
-        [SerializeField] private float cabinLampLumens = 10f;
+        [Tooltip("Яркость ламп кабины, лм (HDRP Lumen). 0 — лампы не создаются. " +
+            "Подобрана так, чтобы средняя яркость кабины совпадала с внешней сценой: " +
+            "тогда авто-экспозиция даёт одинаковую яркость стен и с кресла, и через люк.")]
+        [SerializeField] private float cabinLampLumens = 6f;
 
         [Tooltip("Радиус действия лампы, м.")]
         [SerializeField] private float cabinLampRange = 7f;
@@ -52,34 +62,8 @@ namespace Galilego.Spacecraft
         [SerializeField] private float cabinLampSpacing = 1.25f;
 
         [Tooltip("Смещение точечных ламп от центра полос Cabin_Lights вдоль «вверх» кресла, м. " +
-            "0 — по центру кабины; положительное — к потолку. Потолочное смещение освещало " +
-            "верхние стенки заметно сильнее нижних: из люка кабина казалась ярче, чем изнутри.")]
+            "0 — по центру кабины; положительное — к потолку.")]
         [SerializeField] private float cabinLampHeightMeters = 0f;
-
-        [Tooltip("Множитель яркости ламп, пока КАМЕРА рядом с модулем (снаружи или внутри " +
-            "кабины): интерьер не гаснет на фоне залитого солнцем корпуса и планеты и не " +
-            "мигает при переходе кресло/проход/люк.")]
-        [SerializeField] private float cabinLampOutsideBoost = 5f;
-
-        [Tooltip("Дальность усиления, м (камера — модуль). Внутри и снаружи кабины лампа " +
-            "горит одинаково; базовая яркость остаётся только для далёкой камеры.")]
-        [SerializeField] private float cabinLampOutsideRange = 60f;
-
-        [Tooltip("Опциональное ослабление ламп снаружи кабины (1 — выключено). Оставлено для " +
-            "подстройки: основной рычаг равномерности — cabinLampHeightMeters.")]
-        [SerializeField] private float cabinLampOutsideScale = 1f;
-
-        [Tooltip("Радиус «внутри кабины» от центра модуля, м: ближе — лампы на полной яркости.")]
-        [SerializeField] private float cabinLampInsideRadius = 2.5f;
-
-        [Tooltip("Радиус полного «снаружи», м: дальше — лампы на cabinLampOutsideScale.")]
-        [SerializeField] private float cabinLampOutsideRadius = 5f;
-
-        [Tooltip("Время плавного перехода яркости при входе/выходе из кабины, с.")]
-        [SerializeField] private float cabinLampOutsideBlendSeconds = 1.5f;
-
-        [Tooltip("Время перехода яркости ламп, с.")]
-        [SerializeField] private float cabinLampBlendSeconds = 0.4f;
 
         [Tooltip("Угол открытия створки на шарнире (град.). ~160° прижимает её к борту сбоку от проёма.")]
         [SerializeField] private float openAngleDegrees = 160f;
@@ -95,23 +79,7 @@ namespace Galilego.Spacecraft
         private bool doorColliderDisabledByUs;
 
         private Light[] cabinLamps;
-        private float cabinLampBoost = 1f;
-        private float cabinLampInsideBlend = 1f;
         private bool cabinLayersApplied;
-        private SimulationRunner lampRunner;
-
-        // Exposure hold: the auto exposure outside is metered on the dark hull/space and
-        // drops to limitMin (1), which makes the lit cabin blow out white through the
-        // hatch (inside it sits at ~3.8 EV on the pad). While the player is near the
-        // craft but outside, clamp the global exposure to the last inside value.
-        private Exposure cabinExposure;
-        private float cabinExposureLimitMin = 1f;
-        private bool cabinExposureLimitCaptured;
-        private bool cabinExposureHeld;
-        private float cabinHeldExposureEv;
-        private bool cabinHasHeldExposure;
-        private float cabinNextExposureSample;
-        private Texture2D cabinExposureProbe;
 
         /// <summary>HDRP light layer 2: the cabin interior. The sun does not light it; the cabin lamps do.</summary>
         private const uint CabinInteriorLightLayer = 1u << 1;
@@ -149,184 +117,38 @@ namespace Galilego.Spacecraft
         private void Start()
         {
             EnsureCabinLamps();
-            lampRunner = FindAnyObjectByType<SimulationRunner>();
-            cabinLampInsideBlend = IsOnboard() ? 1f : 0f;
-        }
-
-        private void OnDisable()
-        {
-            if (cabinExposure != null && cabinExposureHeld)
-            {
-                cabinExposure.limitMin.Override(cabinExposureLimitMin);
-                cabinExposureHeld = false;
-            }
-
-            if (cabinExposureProbe != null)
-            {
-                Destroy(cabinExposureProbe);
-                cabinExposureProbe = null;
-            }
-        }
-
-        /// <summary>The player is in the cabin: seated, walking on the floor, or in the legacy InShip mode.</summary>
-        private bool IsOnboard()
-        {
-            if (lampRunner == null)
-            {
-                lampRunner = FindAnyObjectByType<SimulationRunner>();
-            }
-
-            return lampRunner != null
-                && (lampRunner.PlayerSeated || lampRunner.PlayerCarried
-                    || lampRunner.PlayerMode == PlayerMode.InShip);
         }
 
         /// <summary>
-        /// Cabin lamps hold the boosted brightness while the camera is near the module —
-        /// inside the cabin, in the aisle, in the hatch or right outside it. The base
-        /// brightness is only for a camera far away (the view through the hatch does not
-        /// read as a dark hole against the sunlit hull).
-        ///
-        /// The test is the DISTANCE to the module, not the camera in the Cabin_Lights
-        /// bounds: that bounds is the AABB of the ceiling strip mesh, offset from the seat.
-        /// In the seat the eye fell just outside it (a few centimetres in height and ~0.7 m
-        /// behind), while standing up put it inside — so the lamps dropped 3x exactly at
-        /// the sit/stand and hatch transitions (bright seated, dark standing/after EVA).
-        /// Proximity is continuous; the only remaining inside/outside difference is a
-        /// small attenuation (cabinLampOutsideScale) faded over a couple of seconds, not
-        /// a hard flip.
-        ///
-        /// Called from LateUpdate, after VesselMirror/PlayerView/FirstPersonCamera:
-        /// in Update the vessel pose is one physics frame behind the camera, and at
-        /// orbital speed the module can read as hundreds of metres away from its own
-        /// camera — the near-camera gate then never opens and the cabin stays dim.
+        /// The cabin interior is everything under Orion_Interior in the model; the hull,
+        /// windows and hatch stay on the default layer. Exact by construction: the AABB of
+        /// the ceiling strip misses the floor and the console centers, and those would then
+        /// keep the sun and lose the cabin lamps.
         /// </summary>
-        private void UpdateCabinLamps()
+        private static bool IsCabinRenderer(Transform transform)
         {
-            if (cabinLamps == null || cabinLamps.Length == 0)
+            for (Transform t = transform; t != null; t = t.parent)
             {
-                return;
-            }
-
-            if (!cabinLayersApplied)
-            {
-                TryApplyCabinLightLayers();
-            }
-
-            Camera camera = Camera.main;
-            if (camera == null)
-            {
-                return;
-            }
-
-            Vector3 eye = camera.transform.position;
-            float distance = Vector3.Distance(eye, transform.position);
-            bool nearCabin = distance <= cabinLampOutsideRange;
-            float boostTarget = nearCabin ? Mathf.Max(1f, cabinLampOutsideBoost) : 1f;
-
-            float boostRange = Mathf.Max(1f, cabinLampOutsideBoost) - 1f;
-            cabinLampBoost = Mathf.MoveTowards(cabinLampBoost, boostTarget,
-                Time.deltaTime * boostRange / Mathf.Max(0.01f, cabinLampBlendSeconds));
-
-            // A slight outside-only attenuation, blended slowly: from outside the cabin
-            // reads a touch brighter through the glazing and against the dark hull, so
-            // the interior light is trimmed a little while the player is out. The inside
-            // test is the distance to the module, not the player state alone: in build
-            // mode (no physics) the player is inside the capsule but not seated/carried.
-            float insideTarget = IsOnboard()
-                ? 1f
-                : 1f - Mathf.Clamp01(Mathf.InverseLerp(cabinLampInsideRadius, cabinLampOutsideRadius, distance));
-            cabinLampInsideBlend = Mathf.MoveTowards(cabinLampInsideBlend, insideTarget,
-                Time.deltaTime / Mathf.Max(0.01f, cabinLampOutsideBlendSeconds));
-            float outsideScale = Mathf.Clamp(cabinLampOutsideScale, 0.2f, 1f);
-            float scale = Mathf.Lerp(outsideScale, 1f, cabinLampInsideBlend);
-
-            float intensity = cabinLampLumens * cabinLampBoost * scale;
-            for (int i = 0; i < cabinLamps.Length; i++)
-            {
-                if (cabinLamps[i] != null)
+                if (t.name == "Orion_Interior")
                 {
-                    cabinLamps[i].intensity = intensity;
+                    return true;
                 }
             }
 
-            UpdateCabinExposureHold(insideTarget > 0.75f, distance);
+            return false;
         }
 
         /// <summary>
-        /// Hold the global exposure at the cabin's inside value while the player is near
-        /// the craft but outside. Outside, the auto exposure is metered on the dark hull
-        /// and space and drops to limitMin (1 EV); the lit cabin is then ~2.8 stops
-        /// brighter through the hatch than from the seat (pad: 3.8 EV inside). The hold
-        /// clamps limitMin to the last inside value, so the hatch matches the interior.
+        /// Light layers are applied once, as soon as the scene's SkyEnvironment exists.
+        /// The lamps themselves never change: without a camera-dependent boost the
+        /// auto-exposure has nothing to chase between the seat and the hatch.
         /// </summary>
-        private void UpdateCabinExposureHold(bool inside, float distance)
+        private void UpdateCabinLightLayers()
         {
-            if (cabinExposure == null)
+            if (!cabinLayersApplied && cabinLamps != null && cabinLamps.Length > 0)
             {
-                return;
+                cabinLayersApplied = TryApplyCabinLightLayers();
             }
-
-            if (inside)
-            {
-                if (cabinExposureHeld)
-                {
-                    cabinExposure.limitMin.Override(cabinExposureLimitMin);
-                    cabinExposureHeld = false;
-                }
-
-                if (Time.unscaledTime >= cabinNextExposureSample)
-                {
-                    cabinNextExposureSample = Time.unscaledTime + 0.5f;
-                    if (TryReadExposureEv(out float ev))
-                    {
-                        cabinHeldExposureEv = ev;
-                        cabinHasHeldExposure = true;
-                    }
-                }
-
-                return;
-            }
-
-            if (cabinHasHeldExposure && distance <= cabinLampOutsideRange)
-            {
-                cabinExposure.limitMin.Override(cabinHeldExposureEv);
-                cabinExposureHeld = true;
-            }
-            else if (cabinExposureHeld)
-            {
-                cabinExposure.limitMin.Override(cabinExposureLimitMin);
-                cabinExposureHeld = false;
-            }
-        }
-
-        /// <summary>Read the current EV100 from the HDRP exposure texture (1x1, RG float).</summary>
-        private bool TryReadExposureEv(out float ev)
-        {
-            ev = 0f;
-            Texture texture = Shader.GetGlobalTexture("_ExposureTexture");
-            if (texture == null)
-            {
-                return false;
-            }
-
-            if (cabinExposureProbe == null)
-            {
-                cabinExposureProbe = new Texture2D(1, 1, TextureFormat.RGBAFloat, false);
-            }
-
-            RenderTexture rt = RenderTexture.GetTemporary(1, 1, 0, RenderTextureFormat.ARGBFloat);
-            Graphics.Blit(texture, rt);
-            RenderTexture previous = RenderTexture.active;
-            RenderTexture.active = rt;
-            cabinExposureProbe.ReadPixels(new Rect(0, 0, 1, 1), 0, 0);
-            cabinExposureProbe.Apply();
-            Color value = cabinExposureProbe.GetPixel(0, 0);
-            RenderTexture.active = previous;
-            RenderTexture.ReleaseTemporary(rt);
-
-            ev = value.g; // y = current EV100 (see HDRP DebugExposure.shader)
-            return ev > 0.01f;
         }
 
         /// <summary>
@@ -410,11 +232,19 @@ namespace Galilego.Spacecraft
 
         /// <summary>
         /// HDRP light layers: the cabin interior sits on layer 2. The sun is removed from
-        /// that layer, so the direct sunlight through the hatch/windows no longer changes
-        /// the cabin brightness with the view (bright at the hatch, dim over the console).
+        /// that layer, so direct sunlight through the hatch/windows no longer changes the
+        /// cabin brightness with the view (bright at the hatch, dim over the console).
         /// The cabin lamps and the soft sky fill stay on layer 2, so the interior has a
         /// stable artificial light; the exterior hull remains on the default layer and is
-        /// still sunlit. Retried from LateUpdate until the strip mesh bounds are valid.
+        /// still sunlit.
+        ///
+        /// This requires "Light Layers" in the active HDRP asset. High Fidelity shipped
+        /// with them off, so the whole layer setup was silently a no-op and the sun kept
+        /// lighting the cabin.
+        ///
+        /// Retried from LateUpdate until the scene's SkyEnvironment is available: the sun
+        /// mask is part of the setup, and applying half of it would leave the cabin lit by
+        /// the sun until the next re-enable.
         /// </summary>
         private bool TryApplyCabinLightLayers()
         {
@@ -423,31 +253,18 @@ namespace Galilego.Spacecraft
                 return false;
             }
 
-            Renderer strips = FindCabinStrips();
-            if (strips == null)
+            SkyEnvironment sky = FindAnyObjectByType<SkyEnvironment>();
+            if (sky == null || sky.SunLight == null)
             {
                 return false;
             }
 
-            Bounds cabin = strips.bounds;
-            if (cabin.size.sqrMagnitude < 1e-6f)
-            {
-                return false; // mesh bounds not ready on the first frame
-            }
-
             foreach (Renderer r in GetComponentsInChildren<Renderer>(true))
             {
-                if (r == null || r == strips || IsExteriorRenderer(r.name))
+                if (r != null && IsCabinRenderer(r.transform))
                 {
-                    continue;
+                    r.renderingLayerMask = CabinInteriorLightLayer;
                 }
-
-                if (!cabin.Contains(r.bounds.center))
-                {
-                    continue;
-                }
-
-                r.renderingLayerMask = CabinInteriorLightLayer;
             }
 
             for (int i = 0; i < cabinLamps.Length; i++)
@@ -468,55 +285,27 @@ namespace Galilego.Spacecraft
             // Direct sun is exterior-only; the cabin lamps above take over the interior.
             // The soft, shadowless sky fill stays on the interior layer too: it is an
             // ambient-like term, not the hard sunlight that made the hatch view brighter.
-            SkyEnvironment sky = FindAnyObjectByType<SkyEnvironment>();
-            if (sky != null && sky.SunLight != null)
+            HDAdditionalLightData sun = sky.SunLight.GetComponent<HDAdditionalLightData>();
+            if (sun != null)
             {
-                HDAdditionalLightData hd = sky.SunLight.GetComponent<HDAdditionalLightData>();
-                if (hd != null)
+                sun.lightlayersMask = (UnityEngine.Rendering.HighDefinition.RenderingLayerMask)(((uint)sun.lightlayersMask) & ~CabinInteriorLightLayer);
+            }
+
+            if (sky.SkyFillLight != null)
+            {
+                HDAdditionalLightData fill = sky.SkyFillLight.GetComponent<HDAdditionalLightData>();
+                if (fill != null)
                 {
-                    hd.lightlayersMask = (UnityEngine.Rendering.HighDefinition.RenderingLayerMask)(((uint)hd.lightlayersMask) & ~CabinInteriorLightLayer);
+                    fill.lightlayersMask = (UnityEngine.Rendering.HighDefinition.RenderingLayerMask)(((uint)fill.lightlayersMask) | CabinInteriorLightLayer);
                 }
             }
 
-            if (sky != null && sky.SkyFillLight != null)
-            {
-                HDAdditionalLightData hd = sky.SkyFillLight.GetComponent<HDAdditionalLightData>();
-                if (hd != null)
-                {
-                    hd.lightlayersMask = (UnityEngine.Rendering.HighDefinition.RenderingLayerMask)(((uint)hd.lightlayersMask) | CabinInteriorLightLayer);
-                }
-            }
-
-            if (sky != null && sky.ExposureVolume != null && sky.ExposureVolume.profile != null
-                && sky.ExposureVolume.profile.TryGet<Exposure>(out Exposure exposure))
-            {
-                cabinExposure = exposure;
-                if (!cabinExposureLimitCaptured)
-                {
-                    cabinExposureLimitMin = exposure.limitMin.value;
-                    cabinExposureLimitCaptured = true;
-                }
-            }
-
-            cabinLayersApplied = true;
             return true;
-        }
-
-        /// <summary>Hull, heat shield and glazing stay on the default layer (sunlit exterior).</summary>
-        private static bool IsExteriorRenderer(string name)
-        {
-            return name.Contains("Backshell")
-                || name.Contains("HeatShield")
-                || name.Contains("Hatch_Frame")
-                || name.Contains("Hatch_Door")
-                || name.Contains("Glass")
-                || name.Contains("Window")
-                || name.Contains("Nose");
         }
 
         private void LateUpdate()
         {
-            UpdateCabinLamps();
+            UpdateCabinLightLayers();
 
             if (animator == null || door == null)
             {
