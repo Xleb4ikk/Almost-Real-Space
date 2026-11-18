@@ -13,13 +13,17 @@ namespace Galilego.Tablet
         public Color32[] Pixels;
         public int Width;
         public int Height;
+        // Alpha carries the water mask (255 = below sea level). The map is never
+        // uploaded as a texture, so the alpha channel is free and sampling it
+        // costs nothing extra next to the colour.
     }
 
     /// <summary>
-    /// Cached terrain colour maps for the globe. A small map is built immediately
-    /// (the map must open without a freeze); the detailed one is generated on a
-    /// worker thread and swapped in when ready, so the main thread never spends
-    /// frames sampling the heightfield for the globe.
+    /// Cached terrain colour maps for the globe. Nothing is built on the main
+    /// thread: the first (map-opening) pass is a small 640×320 map on a worker,
+    /// then a detailed 2048×1024 map swaps in when ready. The renderer draws a
+    /// shaded placeholder sphere while the first map is in flight, so opening
+    /// the tablet never freezes the frame and never shows a blocky planet.
     ///
     /// The texture is the same HeightfieldTerrain the physics uses, with the
     /// heightfield's own slope baked in as relief shading — otherwise a
@@ -27,8 +31,8 @@ namespace Galilego.Tablet
     /// </summary>
     internal static class NavBodyTextureCache
     {
-        private const int LowWidth = 192;
-        private const int LowHeight = 96;
+        private const int FirstWidth = 640;
+        private const int FirstHeight = 320;
         // 2048×1024 is four times the old map. It is built on a worker thread, so
         // the only main-thread cost is the final texture raster (cached per view).
         private const int HighWidth = 2048;
@@ -43,9 +47,16 @@ namespace Galilego.Tablet
         private static readonly Dictionary<OrbitingBody, BuildJob> Jobs =
             new Dictionary<OrbitingBody, BuildJob>();
 
-        private static readonly Queue<OrbitingBody> Pending = new Queue<OrbitingBody>();
+        private static readonly Queue<BuildRequest> Pending = new Queue<BuildRequest>();
         private static readonly HashSet<OrbitingBody> Unsupported = new HashSet<OrbitingBody>();
         private static int running;
+
+        private struct BuildRequest
+        {
+            public OrbitingBody Body;
+            public int Width;
+            public int Height;
+        }
 
         /// <summary>Bumped when a detailed map replaces a low-resolution one.</summary>
         public static int Version { get; private set; }
@@ -78,10 +89,25 @@ namespace Galilego.Tablet
                 return ready;
             }
 
-            NavBodyTexture low = BuildLow(body);
-            Ready[body] = low;
-            EnsureHighBuild(body);
-            return low;
+            if (Unsupported.Contains(body))
+            {
+                return null;
+            }
+
+            // A body without a heightfield (spherical placeholder): a flat colour.
+            // Building this is trivial, so it stays synchronous.
+            HeightfieldTerrain terrain = body.Terrain as HeightfieldTerrain;
+            if (terrain == null)
+            {
+                NavBodyTexture flat = BuildFlat();
+                Ready[body] = flat;
+                return flat;
+            }
+
+            // The first globe map is a worker job too; the renderer shows a shaded
+            // placeholder sphere for a few frames instead of a blocky one.
+            Request(body, FirstWidth, FirstHeight);
+            return null;
         }
 
         /// <summary>
@@ -127,11 +153,24 @@ namespace Galilego.Tablet
                 {
                     Ready[body] = job.Texture;
                     Version++;
+
+                    // Keep refining after the map closes: a detailed globe should be
+                    // ready by the next time the tablet is opened.
+                    if (job.Texture.Width < HighWidth)
+                    {
+                        Request(body, HighWidth, HighHeight);
+                    }
                 }
                 else
                 {
-                    // Do not respawn a failing job on every map tick.
+                    // Do not respawn a failing job on every map tick. A flat globe is
+                    // a better fallback than a permanent "still loading" sphere.
                     Unsupported.Add(body);
+                    if (!Ready.ContainsKey(body))
+                    {
+                        Ready[body] = BuildFlat();
+                        Version++;
+                    }
                 }
             }
 
@@ -146,21 +185,27 @@ namespace Galilego.Tablet
                 return;
             }
 
-            if (Unsupported.Contains(body) || Jobs.ContainsKey(body))
+            Request(body, HighWidth, HighHeight);
+        }
+
+        /// <summary>Queues a build once: a body has at most one job and one pending entry.</summary>
+        private static void Request(OrbitingBody body, int width, int height)
+        {
+            if (body == null || Unsupported.Contains(body) || Jobs.ContainsKey(body))
             {
                 return;
             }
 
             // The queue is tiny (one entry per body); a linear scan beats a set.
-            foreach (OrbitingBody queued in Pending)
+            foreach (BuildRequest queued in Pending)
             {
-                if (ReferenceEquals(queued, body))
+                if (ReferenceEquals(queued.Body, body))
                 {
                     return;
                 }
             }
 
-            Pending.Enqueue(body);
+            Pending.Enqueue(new BuildRequest { Body = body, Width = width, Height = height });
             StartPending();
         }
 
@@ -168,16 +213,23 @@ namespace Galilego.Tablet
         {
             while (running < MaxConcurrentBuilds && Pending.Count > 0)
             {
-                OrbitingBody body = Pending.Dequeue();
+                BuildRequest request = Pending.Dequeue();
+                OrbitingBody body = request.Body;
                 if (body == null || Jobs.ContainsKey(body))
                 {
                     continue;
                 }
 
-                BuildInput input = BuildInput.Capture(body, HighWidth, HighHeight);
+                BuildInput input = BuildInput.Capture(body, request.Width, request.Height);
                 if (input == null)
                 {
                     Unsupported.Add(body);
+                    if (!Ready.ContainsKey(body))
+                    {
+                        Ready[body] = BuildFlat();
+                        Version++;
+                    }
+
                     continue;
                 }
 
@@ -188,31 +240,19 @@ namespace Galilego.Tablet
             }
         }
 
-        private static NavBodyTexture BuildLow(OrbitingBody body)
+        private static NavBodyTexture BuildFlat()
         {
-            BuildInput input = BuildInput.Capture(body, LowWidth, LowHeight);
-            if (input != null)
-            {
-                try
-                {
-                    return Build(input);
-                }
-                catch (Exception)
-                {
-                    // Fall through to the flat placeholder: the map is a display
-                    // and must not take the frame down.
-                }
-            }
-
-            // A body without a heightfield (spherical placeholder): flat sea colour.
+            const int width = 32;
+            const int height = 16;
             var flat = new NavBodyTexture
             {
-                Width = LowWidth,
-                Height = LowHeight,
-                Pixels = new Color32[LowWidth * LowHeight],
+                Width = width,
+                Height = height,
+                Pixels = new Color32[width * height],
             };
             Color32 color = NavMapRenderer.TerrainColor(
                 NavMapRenderer.DefaultPalette, 0d, 0d, 1d, 0d, 0d, 0d, 1f);
+            color.a = 0;
             for (int i = 0; i < flat.Pixels.Length; i++)
             {
                 flat.Pixels[i] = color;
@@ -233,6 +273,7 @@ namespace Galilego.Tablet
             int height = input.Height;
             var heights = new double[width * height];
             var pixels = new Color32[width * height];
+            bool hasSea = input.SeaLevelMeters > -1e29d;
 
             // Leave the rest of the cores to the simulation: the 2048×1024 build
             // is a background nicety, not a reason to stutter the flight.
@@ -291,12 +332,14 @@ namespace Galilego.Tablet
 
                     // Mild baked relief: the globe raster adds its own day/night shade,
                     // this only stops the texture from reading as flat colour bands.
-                    float relief = 0.78f + (0.44f * light);
+                    // Softer than before, so the real sun shading dominates and the
+                    // relief does not rotate with an obviously baked light.
+                    float relief = 0.88f + (0.26f * light);
                     pixels[row + x] = new Color32(
                         (byte)Mathf.Clamp(Mathf.RoundToInt(color.r * relief), 0, 255),
                         (byte)Mathf.Clamp(Mathf.RoundToInt(color.g * relief), 0, 255),
                         (byte)Mathf.Clamp(Mathf.RoundToInt(color.b * relief), 0, 255),
-                        255);
+                        (byte)(hasSea && heights[row + x] < input.SeaLevelMeters ? 255 : 0));
                 }
             });
 

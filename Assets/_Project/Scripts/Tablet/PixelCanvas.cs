@@ -47,6 +47,36 @@ namespace Galilego.Tablet
             return new Color32(0, 0, 0, 255);
         }
 
+        /// <summary>Blend one pixel over what is already there (soft fills, glows, shadows).</summary>
+        public void PxBlend(int x, int y, Color32 c, float alpha)
+        {
+            if ((uint)x >= (uint)Width || (uint)y >= (uint)Height || !(alpha > 0f))
+            {
+                return;
+            }
+
+            int i = ((Height - 1 - y) * Width) + x;
+            Color32 d = Pixels[i];
+            float a = alpha > 1f ? 1f : alpha;
+            Pixels[i] = new Color32(
+                (byte)(d.r + ((c.r - d.r) * a) + 0.5f),
+                (byte)(d.g + ((c.g - d.g) * a) + 0.5f),
+                (byte)(d.b + ((c.b - d.b) * a) + 0.5f),
+                (byte)Mathf.Max(d.a, c.a));
+        }
+
+        /// <summary>Alpha-blended rectangle.</summary>
+        public void FillBlend(int x, int y, int w, int h, Color32 c, float alpha)
+        {
+            for (int yy = y; yy < y + h; yy++)
+            {
+                for (int xx = x; xx < x + w; xx++)
+                {
+                    PxBlend(xx, yy, c, alpha);
+                }
+            }
+        }
+
         public void Fill(int x, int y, int w, int h, Color32 c)
         {
             int x0 = Mathf.Max(0, x);
@@ -202,6 +232,39 @@ namespace Galilego.Tablet
             }
 
             return cx - scale;
+        }
+
+        /// <summary>
+        /// Text with a 1 px dark outline. Labels that sit on the globe need this:
+        /// a filled black plate around every name looks heavy, an outline does not.
+        /// </summary>
+        public int TextHalo(int x, int y, string s, Color32 c, Color32 halo, int scale = 1)
+        {
+            if (string.IsNullOrEmpty(s))
+            {
+                return x;
+            }
+
+            int step = Mathf.Max(1, scale);
+            Text(x - step, y, s, halo, scale);
+            Text(x + step, y, s, halo, scale);
+            Text(x, y - step, s, halo, scale);
+            Text(x, y + step, s, halo, scale);
+            Text(x - step, y - step, s, halo, scale);
+            Text(x + step, y - step, s, halo, scale);
+            Text(x - step, y + step, s, halo, scale);
+            Text(x + step, y + step, s, halo, scale);
+            return Text(x, y, s, c, scale);
+        }
+
+        public static Color32 Mix(Color32 a, Color32 b, float t)
+        {
+            float k = t < 0f ? 0f : (t > 1f ? 1f : t);
+            return new Color32(
+                (byte)(a.r + ((b.r - a.r) * k) + 0.5f),
+                (byte)(a.g + ((b.g - a.g) * k) + 0.5f),
+                (byte)(a.b + ((b.b - a.b) * k) + 0.5f),
+                255);
         }
 
         public void TextRight(int xRight, int y, string s, Color32 c, int scale = 1)

@@ -69,6 +69,20 @@ namespace Galilego.Tablet
         private readonly Texture2D texture;
         private readonly List<PickEntry> picks = new List<PickEntry>();
 
+        /// <summary>
+        /// A fixed, very dim star field behind the map. Static on purpose: it is
+        /// backdrop, not world geometry, so it must never read as a moving body.
+        /// </summary>
+        private readonly List<Star> stars = new List<Star>();
+
+        private struct Star
+        {
+            public int X;
+            public int Y;
+            public byte Brightness;
+            public bool Glint;
+        }
+
         /// <summary>Pick currently under the cursor. Kept between draws so a tag can expand in place.</summary>
         private PickKind hoverKind = PickKind.None;
         private int hoverIndex = -1;
@@ -179,6 +193,8 @@ namespace Galilego.Tablet
                 filterMode = FilterMode.Point,
                 wrapMode = TextureWrapMode.Clamp,
             };
+
+            BuildStarfield(width, height);
         }
 
         public Texture2D Texture => texture;
@@ -426,6 +442,88 @@ namespace Galilego.Tablet
 
         // ─── Map geometry ─────────────────────────────────────────────────────
 
+        private void BuildStarfield(int width, int height)
+        {
+            const int cell = 22;
+            for (int cy = 0; cy < height; cy += cell)
+            {
+                for (int cx = 0; cx < width; cx += cell)
+                {
+                    uint h = Hash(cx, cy);
+                    if ((h & 7u) != 0u)
+                    {
+                        continue;
+                    }
+
+                    int x = cx + (int)((h >> 8) % cell);
+                    int y = cy + (int)((h >> 16) % cell);
+                    int brightness = 18 + (int)((h >> 24) % 46u);
+                    if (((h >> 5) & 63u) == 0u)
+                    {
+                        brightness += 34;
+                    }
+
+                    stars.Add(new Star
+                    {
+                        X = x,
+                        Y = y,
+                        Brightness = (byte)Mathf.Clamp(brightness, 0, 120),
+                        Glint = ((h >> 11) & 7u) == 0u,
+                    });
+                }
+            }
+        }
+
+        private static uint Hash(int x, int y)
+        {
+            uint h = ((uint)x * 73856093u) ^ ((uint)y * 19349663u) ^ 0x9E3779B9u;
+            h ^= h >> 13;
+            h *= 0x85EBCA6Bu;
+            h ^= h >> 16;
+            return h;
+        }
+
+        /// <summary>Dim backdrop stars inside the map viewport only (not behind the HUD panels).</summary>
+        private void DrawStarfield(RectInt rect)
+        {
+            for (int i = 0; i < stars.Count; i++)
+            {
+                Star star = stars[i];
+                if (star.X < rect.x || star.X >= rect.x + rect.width
+                    || star.Y < rect.y || star.Y >= rect.y + rect.height)
+                {
+                    continue;
+                }
+
+                byte b = star.Brightness;
+                var color = new Color32((byte)(b * 0.72f), b, (byte)(b * 0.92f), 255);
+                canvas.PxBlend(star.X, star.Y, color, 0.85f);
+                if (star.Glint)
+                {
+                    canvas.PxBlend(star.X - 1, star.Y, color, 0.22f);
+                    canvas.PxBlend(star.X + 1, star.Y, color, 0.22f);
+                    canvas.PxBlend(star.X, star.Y - 1, color, 0.22f);
+                    canvas.PxBlend(star.X, star.Y + 1, color, 0.22f);
+                }
+            }
+        }
+
+        /// <summary>Edge falloff that sinks the map border into the bezel.</summary>
+        private void DrawVignette(RectInt rect)
+        {
+            const int depth = 18;
+            var black = new Color32(0, 0, 0, 255);
+            for (int i = 0; i < depth; i++)
+            {
+                float t = 1f - (i / (float)depth);
+                float alpha = 0.20f * t * t;
+                canvas.FillBlend(rect.x, rect.y + i, rect.width, 1, black, alpha);
+                canvas.FillBlend(rect.x, rect.y + rect.height - 1 - i, rect.width, 1, black, alpha);
+                canvas.FillBlend(rect.x + i, rect.y, 1, rect.height, black, alpha);
+                canvas.FillBlend(rect.x + rect.width - 1 - i, rect.y, 1, rect.height, black, alpha);
+            }
+        }
+
         private void DrawMap(NavMapModel model, NavState state, RectInt rect)
         {
             int centerIndex = state != null ? state.CenterIndex : model.CenterIndex;
@@ -483,6 +581,9 @@ namespace Galilego.Tablet
                 return new Vector2(sx, syPx);
             }
 
+            DrawStarfield(rect);
+            DrawVignette(rect);
+
             // A globe already gives scale and orientation; the old concentric rings
             // read as a fake orbit when the craft is on the ground. The only lines on
             // this map are real trajectories.
@@ -506,11 +607,14 @@ namespace Galilego.Tablet
                 NavLine line = model.Lines[i];
                 if (line.Kind == NavLineKind.BodyHistory)
                 {
-                    DrawPolyline(line.Points, Project, rect, TabletTheme.Main, false, 2);
+                    DrawPolylineFade(line.Points, Project, rect,
+                        PixelCanvas.Mix(TabletTheme.Main, TabletTheme.Bg, 0.55f), TabletTheme.Main,
+                        false, 2);
                 }
                 else if (line.Kind == NavLineKind.BodyForecast)
                 {
-                    DrawPolyline(line.Points, Project, rect, ForecastColor, true, 2);
+                    DrawPolylineFade(line.Points, Project, rect, ForecastColor,
+                        PixelCanvas.Mix(ForecastColor, TabletTheme.Bg, 0.55f), true, 2);
                 }
             }
 
@@ -523,8 +627,9 @@ namespace Galilego.Tablet
                     // A parked craft's "history" is the site path from the
                     // ephemerides, not a flown orbit: keep it dim and thin.
                     bool surface = model.HasSurfaceHistory;
-                    DrawPolyline(line.Points, Project, rect,
-                        surface ? SurfaceHistoryColor : TabletTheme.Main, false, surface ? 1 : 2);
+                    Color32 trail = surface ? SurfaceHistoryColor : TabletTheme.Main;
+                    DrawPolylineFade(line.Points, Project, rect,
+                        PixelCanvas.Mix(trail, TabletTheme.Bg, 0.60f), trail, false, surface ? 1 : 2);
                 }
             }
 
@@ -538,16 +643,19 @@ namespace Galilego.Tablet
                         // Site track while standing: a dashed ground path, not a
                         // ballistic orbit. A solid amber circle at 4 m AGL reads as
                         // a very low orbit, which is exactly the wrong message.
-                        DrawPolyline(line.Points, Project, rect, SurfaceForecastColor, true, 1);
+                        DrawPolylineFade(line.Points, Project, rect, SurfaceForecastColor,
+                            PixelCanvas.Mix(SurfaceForecastColor, TabletTheme.Bg, 0.55f), true, 1);
                     }
                     else
                     {
-                        DrawPolyline(line.Points, Project, rect, ForecastColor, false, 2);
+                        DrawPolylineFade(line.Points, Project, rect, ForecastColor,
+                            PixelCanvas.Mix(ForecastColor, TabletTheme.Bg, 0.50f), false, 2);
                     }
                 }
                 else if (line.Kind == NavLineKind.ManeuverForecast)
                 {
-                    DrawPolyline(line.Points, Project, rect, ManeuverForecastColor, true, 2);
+                    DrawPolylineFade(line.Points, Project, rect, ManeuverForecastColor,
+                        PixelCanvas.Mix(ManeuverForecastColor, TabletTheme.Bg, 0.55f), true, 2);
                 }
             }
 
@@ -595,26 +703,31 @@ namespace Galilego.Tablet
                     if (line.Kind == NavLineKind.ShipHistory)
                     {
                         bool surface = model.HasSurfaceHistory;
-                        DrawPolylineNear(line.Points, Project, rect,
-                            surface ? SurfaceHistoryColor : TabletTheme.Main, false, surface ? 1 : 2,
+                        Color32 trail = surface ? SurfaceHistoryColor : TabletTheme.Main;
+                        DrawPolylineNearFade(line.Points, Project, rect,
+                            PixelCanvas.Mix(trail, TabletTheme.Bg, 0.60f), trail,
+                            false, surface ? 1 : 2,
                             occluderCenter, occluderRadius, screenRight, screenUp, camDir);
                     }
                     else if (line.Kind == NavLineKind.ShipForecast)
                     {
                         if (model.HasSurfaceForecast)
                         {
-                            DrawPolylineNear(line.Points, Project, rect, SurfaceForecastColor, true, 1,
+                            DrawPolylineNearFade(line.Points, Project, rect, SurfaceForecastColor,
+                                PixelCanvas.Mix(SurfaceForecastColor, TabletTheme.Bg, 0.55f), true, 1,
                                 occluderCenter, occluderRadius, screenRight, screenUp, camDir);
                         }
                         else
                         {
-                            DrawPolylineNear(line.Points, Project, rect, ForecastColor, false, 2,
+                            DrawPolylineNearFade(line.Points, Project, rect, ForecastColor,
+                                PixelCanvas.Mix(ForecastColor, TabletTheme.Bg, 0.50f), false, 2,
                                 occluderCenter, occluderRadius, screenRight, screenUp, camDir);
                         }
                     }
                     else if (line.Kind == NavLineKind.ManeuverForecast)
                     {
-                        DrawPolylineNear(line.Points, Project, rect, ManeuverForecastColor, true, 2,
+                        DrawPolylineNearFade(line.Points, Project, rect, ManeuverForecastColor,
+                            PixelCanvas.Mix(ManeuverForecastColor, TabletTheme.Bg, 0.55f), true, 2,
                             occluderCenter, occluderRadius, screenRight, screenUp, camDir);
                     }
                 }
@@ -733,16 +846,16 @@ namespace Galilego.Tablet
                     // Same in-place plate as the apsis/ship markers: header plus the
                     // data row, no separate floating window.
                     var pal = new MarkerPalette { Main = color, Light = color, Dark = TabletTheme.Bg };
-                    int tw = Mathf.Max(PixelCanvas.TextWidth(name), PixelCanvas.TextWidth(radiusLine)) + 10;
-                    const int th = 11 + 3 + PlateRowHeight;
+                    int tw = Mathf.Max(PixelCanvas.TextWidth(name), PixelCanvas.TextWidth(radiusLine)) + 14;
+                    const int th = 12 + 3 + PlateRowHeight;
                     int tx = Mathf.RoundToInt(labelX) - 2;
                     int ty = Mathf.RoundToInt(labelY) - 1;
                     tx = Mathf.Clamp(tx, rect.x + 2, Mathf.Max(rect.x + 2, rect.x + rect.width - tw - 2));
                     ty = Mathf.Clamp(ty, rect.y + 2, Mathf.Max(rect.y + 2, rect.y + rect.height - th - 2));
                     DrawTagBox(tx, ty, tw, th, pal);
-                    canvas.Text(tx + 5, ty + 2, name, pal.Main);
-                    canvas.HLine(tx + 2, ty + 11, tw - 4, pal.Main);
-                    canvas.Text(tx + 5, ty + 14, radiusLine, pal.Light);
+                    canvas.Text(tx + 7, ty + 2, name, pal.Main);
+                    canvas.HLine(tx + 4, ty + 12, tw - 7, PixelCanvas.Mix(pal.Main, pal.Dark, 0.30f));
+                    canvas.Text(tx + 7, ty + 15, radiusLine, pal.Light);
                     labelBox = new RectInt(tx, ty, tw, th);
                 }
                 else
@@ -1325,15 +1438,47 @@ namespace Galilego.Tablet
             }
         }
 
+        private static bool IsFinite(Vector2 v)
+        {
+            return float.IsFinite(v.x) && float.IsFinite(v.y);
+        }
+
         /// <summary>
-        /// Draws only the part of a polyline that lies on the near side of the
-        /// occluding globe and inside its projected disk. Used after the globe to
-        /// put the near half of a trail on top without showing its far half through
-        /// the planet.
+        /// Polyline whose colour runs from <paramref name="start"/> to
+        /// <paramref name="end"/> along the samples: a trail fades into the past and
+        /// a forecast fades into the future, so the direction of time is visible.
         /// </summary>
-        private void DrawPolylineNear(List<Vector3d> points, Func<Vector3d, Vector2> project, RectInt rect,
-            Color32 color, bool dashed, int width, Vector3d occluderCenter, double occluderRadius,
-            Vector3d screenRight, Vector3d screenUp, Vector3d camDir)
+        private void DrawPolylineFade(List<Vector3d> points, Func<Vector3d, Vector2> project, RectInt rect,
+            Color32 start, Color32 end, bool dashed, int width)
+        {
+            if (points == null || points.Count < 2)
+            {
+                return;
+            }
+
+            float dashPhase = 0f;
+            Vector2 previous = project(points[0]);
+            int last = points.Count - 1;
+            for (int i = 1; i <= last; i++)
+            {
+                Vector2 current = project(points[i]);
+                if (!IsFinite(previous) || !IsFinite(current))
+                {
+                    previous = current;
+                    continue;
+                }
+
+                Color32 color = last > 0
+                    ? PixelCanvas.Mix(start, end, (i - 0.5f) / last)
+                    : end;
+                DrawClippedLine(previous, current, rect, color, dashed, width, ref dashPhase);
+                previous = current;
+            }
+        }
+
+        private void DrawPolylineNearFade(List<Vector3d> points, Func<Vector3d, Vector2> project, RectInt rect,
+            Color32 start, Color32 end, bool dashed, int width, Vector3d occluderCenter,
+            double occluderRadius, Vector3d screenRight, Vector3d screenUp, Vector3d camDir)
         {
             if (points == null || points.Count < 2 || !(occluderRadius > 0d))
             {
@@ -1343,10 +1488,14 @@ namespace Galilego.Tablet
             double radiusSquared = occluderRadius * occluderRadius * 1.02d;
             const int subdivisions = 4;
             float dashPhase = 0f;
-            for (int i = 1; i < points.Count; i++)
+            int last = points.Count - 1;
+            for (int i = 1; i <= last; i++)
             {
                 Vector3d a = points[i - 1];
                 Vector3d b = points[i];
+                Color32 color = last > 0
+                    ? PixelCanvas.Mix(start, end, (i - 0.5f) / last)
+                    : end;
                 Vector2 previous = project(a);
                 for (int s = 1; s <= subdivisions; s++)
                 {
@@ -1366,35 +1515,6 @@ namespace Galilego.Tablet
                     previous = current;
                 }
             }
-        }
-
-        private void DrawPolyline(List<Vector3d> points, Func<Vector3d, Vector2> project, RectInt rect,
-            Color32 color, bool dashed, int width)
-        {
-            if (points == null || points.Count < 2)
-            {
-                return;
-            }
-
-            float dashPhase = 0f;
-            Vector2 previous = project(points[0]);
-            for (int i = 1; i < points.Count; i++)
-            {
-                Vector2 current = project(points[i]);
-                if (!IsFinite(previous) || !IsFinite(current))
-                {
-                    previous = current;
-                    continue;
-                }
-
-                DrawClippedLine(previous, current, rect, color, dashed, width, ref dashPhase);
-                previous = current;
-            }
-        }
-
-        private static bool IsFinite(Vector2 v)
-        {
-            return float.IsFinite(v.x) && float.IsFinite(v.y);
         }
 
         private void DrawClippedLine(Vector2 a, Vector2 b, RectInt rect, Color32 color, bool dashed, int width = 1)
@@ -1674,23 +1794,72 @@ namespace Galilego.Tablet
         {
             int xi = Mathf.RoundToInt(x);
             int yi = Mathf.RoundToInt(y);
+            canvas.PxBlend(xi, yi, color, 0.20f);
             canvas.VLine(xi, yi - 4, 9, color);
             canvas.HLine(xi - 4, yi, 9, color);
+            canvas.PxBlend(xi - 1, yi, TabletTheme.Bg, 1f);
+            canvas.PxBlend(xi + 1, yi, TabletTheme.Bg, 1f);
+            canvas.PxBlend(xi, yi - 1, TabletTheme.Bg, 1f);
+            canvas.PxBlend(xi, yi + 1, TabletTheme.Bg, 1f);
             if (Inside(rect, new Vector2(x, y), 10f))
             {
-                canvas.Text(xi + 6, yi - 3, label, color);
+                canvas.TextHalo(xi + 6, yi - 3, label, color, TabletTheme.Bg);
             }
         }
 
-        /// <summary>Tag plate: dark fill, 1 px frame in the kind colour, cut corners.</summary>
+        /// <summary>
+        /// Tag plate: soft shadow, dark two-tone fill, a 2 px colour "spine" on the
+        /// left and a single-pixel frame. Still pixel art, but it reads as a HUD
+        /// callout instead of a flat coloured box.
+        /// </summary>
         private void DrawTagBox(int x, int y, int w, int h, MarkerPalette pal)
         {
-            canvas.Fill(x, y, w, h, pal.Dark);
-            canvas.Frame(x, y, w, h, pal.Main);
-            canvas.Px(x, y, pal.Dark);
-            canvas.Px(x + w - 1, y, pal.Dark);
-            canvas.Px(x, y + h - 1, pal.Dark);
-            canvas.Px(x + w - 1, y + h - 1, pal.Dark);
+            if (w < 3 || h < 3)
+            {
+                return;
+            }
+
+            var black = new Color32(0, 0, 0, 255);
+            canvas.FillBlend(x + 2, y + 2, w, h, black, 0.34f);
+
+            Color32 top = PixelCanvas.Mix(pal.Dark, pal.Main, 0.09f);
+            Color32 bottom = PixelCanvas.Mix(pal.Dark, black, 0.30f);
+            for (int i = 0; i < h; i++)
+            {
+                float t = h > 1 ? i / (float)(h - 1) : 0f;
+                canvas.HLine(x, y + i, w, PixelCanvas.Mix(top, bottom, t));
+            }
+
+            canvas.HLine(x + 2, y + 1, Mathf.Max(1, w - 4), PixelCanvas.Mix(top, pal.Light, 0.10f));
+            canvas.Frame(x, y, w, h, PixelCanvas.Mix(pal.Main, pal.Dark, 0.42f));
+
+            // Colour spine on the left edge; the two tones keep it from reading
+            // as a 2 px border.
+            canvas.VLine(x, y + 1, h - 2, pal.Main);
+            canvas.VLine(x + 1, y + 2, Mathf.Max(1, h - 4), PixelCanvas.Mix(pal.Main, pal.Dark, 0.55f));
+        }
+
+        /// <summary>Small callout notch that joins the plate to its leader line.</summary>
+        private void DrawTagNotch(int x, int y, int w, int h, MarkerPalette pal, bool left, int midY)
+        {
+            int mid = Mathf.Clamp(midY, y + 3, y + h - 4);
+            int edgeX = left ? x : x + w - 1;
+            int dir = left ? -1 : 1;
+            Color32 fill = PixelCanvas.Mix(pal.Dark, pal.Main, 0.08f);
+            Color32 edge = PixelCanvas.Mix(pal.Main, pal.Dark, 0.30f);
+            for (int i = -2; i <= 2; i++)
+            {
+                int length = 3 - Mathf.Abs(i);
+                int start = edgeX + (dir * length);
+                int count = length + 1;
+                if (count <= 0)
+                {
+                    continue;
+                }
+
+                canvas.HLine(Mathf.Min(start, start + count - 1), mid + i, count, fill);
+                canvas.PxBlend(start, mid + i, edge, 0.9f);
+            }
         }
 
         private void FillDiamond(int cx, int cy, int r, Color32 color)
@@ -1712,6 +1881,95 @@ namespace Galilego.Tablet
             canvas.Line(x0, y0, x1, y1, color);
         }
 
+        /// <summary>True when a plate would cover an already drawn tag or name plate.</summary>
+        private bool PlateOverlaps(RectInt box)
+        {
+            for (int i = 0; i < picks.Count; i++)
+            {
+                PickEntry entry = picks[i];
+                if (!entry.HasBox)
+                {
+                    continue;
+                }
+
+                RectInt other = entry.Box;
+                if (box.x < other.x + other.width + 2
+                    && box.x + box.width + 2 > other.x
+                    && box.y < other.y + other.height + 2
+                    && box.y + box.height + 2 > other.y)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Places a callout plate beside its anchor, moving it to the next free side
+        /// or row when it would cover another plate. Clamped to the map rect.
+        /// </summary>
+        private bool TryPlacePlate(RectInt bounds, int anchorX, int anchorY, int w, int h,
+            bool preferRight, bool preferDown, int gapX, int gapY, out int x, out int y)
+        {
+            int side = preferRight ? 1 : -1;
+            int vertical = preferDown ? 1 : -1;
+            int baseX = anchorX + (side * gapX) - (side < 0 ? w : 0);
+            int baseY = anchorY + (vertical * gapY) - (vertical < 0 ? h : 0);
+            int oppositeX = anchorX - (side * gapX) - (side > 0 ? w : 0);
+
+            x = baseX;
+            y = baseY;
+            for (int attempt = 0; attempt < 9; attempt++)
+            {
+                int cx = baseX;
+                int cy = baseY;
+                switch (attempt)
+                {
+                    case 1:
+                        cy += vertical * (h + 6);
+                        break;
+                    case 2:
+                        cy -= vertical * (h + 6);
+                        break;
+                    case 3:
+                        cy += vertical * 2 * (h + 6);
+                        break;
+                    case 4:
+                        cx = oppositeX;
+                        break;
+                    case 5:
+                        cy -= vertical * 2 * (h + 6);
+                        break;
+                    case 6:
+                        cx = oppositeX;
+                        cy += vertical * (h + 6);
+                        break;
+                    case 7:
+                        cx = oppositeX;
+                        cy -= vertical * (h + 6);
+                        break;
+                    case 8:
+                        cx = anchorX - (w / 2);
+                        cy = bounds.y + 2;
+                        break;
+                }
+
+                cx = Mathf.Clamp(cx, bounds.x + 2, Mathf.Max(bounds.x + 2, bounds.x + bounds.width - w - 2));
+                cy = Mathf.Clamp(cy, bounds.y + 2, Mathf.Max(bounds.y + 2, bounds.y + bounds.height - h - 2));
+                if (!PlateOverlaps(new RectInt(cx, cy, w, h)))
+                {
+                    x = cx;
+                    y = cy;
+                    return true;
+                }
+            }
+
+            x = Mathf.Clamp(x, bounds.x + 2, Mathf.Max(bounds.x + 2, bounds.x + bounds.width - w - 2));
+            y = Mathf.Clamp(y, bounds.y + 2, Mathf.Max(bounds.y + 2, bounds.y + bounds.height - h - 2));
+            return false;
+        }
+
         /// <summary>
         /// Apsis mark: a reticle on the exact orbit point, a leader and a large tag
         /// with a triangle (up = apoapsis, down = periapsis) and the letters.
@@ -1731,57 +1989,119 @@ namespace Galilego.Tablet
                 : Array.Empty<string>();
             int glyphW = 5 * ApsisTagScale;
             int letterW = PixelCanvas.TextWidth(letter, ApsisTagScale);
-            int innerW = glyphW + 4 + letterW;
-            int tw = innerW + 8;
+            int innerW = glyphW + 5 + letterW;
+            int tw = innerW + 13;
             int dataH = rows.Length > 0 ? 3 + (rows.Length * ApsisValueRowHeight) : 0;
             for (int i = 0; i < rows.Length; i++)
             {
-                tw = Mathf.Max(tw, PixelCanvas.TextWidth(rows[i], ApsisTagScale) + 10);
+                tw = Mathf.Max(tw, PixelCanvas.TextWidth(rows[i], ApsisTagScale) + 14);
             }
 
             int th = ApsisHeaderHeight + dataH;
-            int tx = xi + 12;
             // Apoapsis grows upward, periapsis downward: the header stays put, the
             // values appear away from the orbit point and never cover the reticle.
-            int ty = apoapsis ? yi - 11 - th : yi + 11;
-            tx = Mathf.Clamp(tx, rect.x + 2, Mathf.Max(rect.x + 2, rect.x + rect.width - tw - 2));
-            ty = Mathf.Clamp(ty, rect.y + 2, Mathf.Max(rect.y + 2, rect.y + rect.height - th - 2));
+            TryPlacePlate(rect, xi, yi, tw, th, true, !apoapsis, 15, 11, out int tx, out int ty);
 
-            // Leader from the point to the nearest spot of the plate.
-            int lx = Mathf.Clamp(xi, tx, tx + tw - 1);
-            int ly = Mathf.Clamp(yi, ty, ty + th - 1);
-            DrawHaloLine(xi, yi, lx, ly, pal.Main, pal.Dark);
+            // Leader from the reticle to the notch on the plate's near edge.
+            bool plateRight = tx > xi;
+            int edgeX = plateRight ? tx - 4 : tx + tw + 3;
+            int edgeY = Mathf.Clamp(yi, ty + 4, ty + th - 4);
+            DrawHaloLine(xi + (plateRight ? 6 : -6), yi, edgeX, edgeY, pal.Main, pal.Dark);
 
             DrawTagBox(tx, ty, tw, th, pal);
+            DrawTagNotch(tx, ty, tw, th, pal, plateRight, edgeY);
 
             int headerY = apoapsis ? ty + dataH : ty;
             // Anchored to the left edge so the header does not slide when the plate
             // widens for the value rows.
-            int headerX = tx + 4;
+            int headerX = tx + 6;
             canvas.Bitmap(headerX, headerY + 7, apoapsis ? ApoGlyph : PeriGlyph, pal.Main, ApsisTagScale);
-            canvas.Text(headerX + glyphW + 4, headerY + 3, letter, pal.Light, ApsisTagScale);
+            canvas.Text(headerX + glyphW + 5, headerY + 3, letter, pal.Light, ApsisTagScale);
 
             if (rows.Length > 0)
             {
-                canvas.HLine(tx + 2, apoapsis ? headerY - 1 : headerY + ApsisHeaderHeight, tw - 4, pal.Main);
-                int rowY = apoapsis ? ty + 2 : headerY + ApsisHeaderHeight + 2;
+                canvas.HLine(tx + 4, apoapsis ? headerY - 1 : headerY + ApsisHeaderHeight, tw - 7,
+                    PixelCanvas.Mix(pal.Main, pal.Dark, 0.30f));
+                int rowY = apoapsis ? ty + 2 : headerY + ApsisHeaderHeight + 3;
                 for (int i = 0; i < rows.Length; i++)
                 {
-                    canvas.Text(tx + 5, rowY, rows[i], pal.Light, ApsisTagScale);
+                    canvas.Text(tx + 7, rowY, rows[i], pal.Light, ApsisTagScale);
                     rowY += ApsisValueRowHeight;
                 }
             }
 
-            // Reticle on top of everything else.
-            DrawCircle(xi, yi, 5, pal.Dark);
-            DrawCircle(xi, yi, 4, pal.Main);
-            canvas.HLine(xi - 9, yi, 4, pal.Main);
-            canvas.HLine(xi + 6, yi, 4, pal.Main);
-            canvas.VLine(xi, yi - 9, 4, pal.Main);
-            canvas.VLine(xi, yi + 6, 4, pal.Main);
+            // Reticle on top of everything else: a soft glow, a dark separation
+            // ring, the main ring, four ticks and a bright centre.
+            DrawCircleBlend(xi, yi, 8f, pal.Main, 0.10f);
+            DrawCircle(xi, yi, 6, pal.Dark);
+            DrawCircle(xi, yi, 5, pal.Main);
+            canvas.HLine(xi - 10, yi, 4, pal.Main);
+            canvas.HLine(xi + 7, yi, 4, pal.Main);
+            canvas.VLine(xi, yi - 10, 4, pal.Main);
+            canvas.VLine(xi, yi + 7, 4, pal.Main);
             canvas.Px(xi, yi, pal.Light);
 
             box = new RectInt(tx, ty, tw, th);
+        }
+
+        private void DrawCircleBlend(float cx, float cy, float radius, Color32 color, float alpha)
+        {
+            int r = Mathf.Max(1, Mathf.RoundToInt(radius));
+            int cxI = Mathf.RoundToInt(cx);
+            int cyI = Mathf.RoundToInt(cy);
+            int x = r;
+            int y = 0;
+            int err = 1 - r;
+            while (x >= y)
+            {
+                Plot8Blend(cxI, cyI, x, y, color, alpha);
+                Plot8Blend(cxI, cyI, y, x, color, alpha);
+                y++;
+                if (err < 0)
+                {
+                    err += (2 * y) + 1;
+                }
+                else
+                {
+                    x--;
+                    err += (2 * (y - x)) + 1;
+                }
+            }
+        }
+
+        /// <summary>Soft circular shading: a marker halo that never shows a rectangular edge.</summary>
+        private void DrawGlowDisc(float cx, float cy, float radius, Color32 color, float alpha)
+        {
+            int r = Mathf.Max(1, Mathf.CeilToInt(radius));
+            int cxI = Mathf.RoundToInt(cx);
+            int cyI = Mathf.RoundToInt(cy);
+            float inv = 1f / r;
+            for (int y = -r; y <= r; y++)
+            {
+                for (int x = -r; x <= r; x++)
+                {
+                    float d = Mathf.Sqrt((x * x) + (y * y));
+                    if (d > r)
+                    {
+                        continue;
+                    }
+
+                    float t = 1f - (d * inv);
+                    canvas.PxBlend(cxI + x, cyI + y, color, alpha * t * t);
+                }
+            }
+        }
+
+        private void Plot8Blend(int cx, int cy, int x, int y, Color32 color, float alpha)
+        {
+            canvas.PxBlend(cx + x, cy + y, color, alpha);
+            canvas.PxBlend(cx + y, cy + x, color, alpha);
+            canvas.PxBlend(cx - y, cy + x, color, alpha);
+            canvas.PxBlend(cx - x, cy + y, color, alpha);
+            canvas.PxBlend(cx - x, cy - y, color, alpha);
+            canvas.PxBlend(cx - y, cy - x, color, alpha);
+            canvas.PxBlend(cx + y, cy - x, color, alpha);
+            canvas.PxBlend(cx + x, cy - y, color, alpha);
         }
 
         /// <summary>Screen-space direction of a world velocity (x right, y down). False when it has none.</summary>
@@ -1814,12 +2134,12 @@ namespace Galilego.Tablet
             string[] rows = expanded && !string.IsNullOrEmpty(detail)
                 ? detail.Split('\n')
                 : Array.Empty<string>();
-            int tw = PixelCanvas.TextWidth(text) + 8;
-            const int headerH = 11;
+            int tw = PixelCanvas.TextWidth(text) + 12;
+            const int headerH = 12;
             int dataH = rows.Length > 0 ? 3 + (rows.Length * PlateRowHeight) : 0;
             for (int i = 0; i < rows.Length; i++)
             {
-                tw = Mathf.Max(tw, PixelCanvas.TextWidth(rows[i]) + 10);
+                tw = Mathf.Max(tw, PixelCanvas.TextWidth(rows[i]) + 14);
             }
 
             int th = headerH + dataH;
@@ -1828,31 +2148,46 @@ namespace Galilego.Tablet
 
             int xi = Mathf.RoundToInt(x);
             int yi = Mathf.RoundToInt(y);
-            int tx = px > 0f ? xi - 12 - tw : xi + 12;
-            int ty = py < 0f ? yi + 4 : yi - 15;
 
-            // Grow away from the ship; keep the header on the side nearest the ship
-            // so it does not shift when the plate gains its data rows.
-            int headerOffset = 0;
-            if (rows.Length > 0 && py >= 0f)
+            // The plate sits on the side the velocity arrow does not point at, so
+            // the arrow is never hidden. Collision avoidance may move it further.
+            bool preferRight = px <= 0f;
+            bool preferDown = py < 0f;
+            TryPlacePlate(rect, xi, yi, tw, th, preferRight, preferDown,
+                14, preferDown ? 4 : 16, out int tx, out int ty);
+            // Keep the header on the side nearest the ship, even after a collision
+            // shift moved the plate to the other side.
+            bool above = (ty + (th / 2)) < yi;
+            int headerOffset = above ? dataH : 0;
+            int headerY = ty + headerOffset;
+
+            // Leader from the marker to the plate, so the tag is unambiguously
+            // attached to this craft even when several markers sit close together.
+            bool plateRight = (tx + (tw / 2)) > xi;
+            int edgeX = plateRight ? tx - 4 : tx + tw + 3;
+            int edgeY = headerY + (headerH / 2);
+            float dx = edgeX - xi;
+            float dy = edgeY - yi;
+            float distance = Mathf.Sqrt((dx * dx) + (dy * dy));
+            if (distance > 12f)
             {
-                ty -= dataH;
-                headerOffset = dataH;
+                int sx = xi + Mathf.RoundToInt(dx / distance * 8f);
+                int sy = yi + Mathf.RoundToInt(dy / distance * 8f);
+                DrawHaloLine(sx, sy, edgeX, edgeY, pal.Main, pal.Dark);
             }
 
-            tx = Mathf.Clamp(tx, rect.x + 2, Mathf.Max(rect.x + 2, rect.x + rect.width - tw - 2));
-            ty = Mathf.Clamp(ty, rect.y + 2, Mathf.Max(rect.y + 2, rect.y + rect.height - th - 2));
-            int headerY = ty + headerOffset;
             DrawTagBox(tx, ty, tw, th, pal);
-            canvas.Text(tx + 4, headerY + 2, text, pal.Light);
+            DrawTagNotch(tx, ty, tw, th, pal, plateRight, edgeY);
+            canvas.Text(tx + 7, headerY + 2, text, pal.Light);
 
             if (rows.Length > 0)
             {
-                canvas.HLine(tx + 2, py >= 0f ? headerY - 1 : headerY + headerH, tw - 4, pal.Main);
-                int rowY = py >= 0f ? ty + 2 : headerY + headerH + 2;
+                canvas.HLine(tx + 4, above ? headerY - 1 : headerY + headerH, tw - 7,
+                    PixelCanvas.Mix(pal.Main, pal.Dark, 0.30f));
+                int rowY = above ? ty + 3 : headerY + headerH + 3;
                 for (int i = 0; i < rows.Length; i++)
                 {
-                    canvas.Text(tx + 5, rowY, rows[i], pal.Light);
+                    canvas.Text(tx + 7, rowY, rows[i], pal.Light);
                     rowY += PlateRowHeight;
                 }
             }
@@ -1860,11 +2195,16 @@ namespace Galilego.Tablet
             box = new RectInt(tx, ty, tw, th);
         }
 
-        /// <summary>Ship: ringed diamond with a core and a velocity arrow, tinted by the kind of orbit.</summary>
+        /// <summary>Ship: glowing ringed diamond with a core and a velocity arrow, tinted by the kind of orbit.</summary>
         private void DrawShip(float x, float y, Vector3d velocity, Vector3d screenRight, Vector3d screenUp, MarkerPalette pal)
         {
             int xi = Mathf.RoundToInt(x);
             int yi = Mathf.RoundToInt(y);
+
+            // Soft circular halo so the marker separates from bright terrain
+            // without darkening a visible square around it.
+            DrawGlowDisc(xi, yi, 12f, TabletTheme.Bg, 0.55f);
+            DrawCircleBlend(xi, yi, 10f, pal.Main, 0.20f);
 
             // Velocity arrow first, so the body covers its root. The projected length
             // foreshortens when the craft flies along the view axis.
@@ -1886,8 +2226,8 @@ namespace Galilego.Tablet
                     for (int side = -1; side <= 1; side += 2)
                     {
                         float a = angle + (side * 2.5f);
-                        int hx = ex + Mathf.RoundToInt(Mathf.Cos(a) * 4f);
-                        int hy = ey + Mathf.RoundToInt(Mathf.Sin(a) * 4f);
+                        int hx = ex + Mathf.RoundToInt(Mathf.Cos(a) * 5f);
+                        int hy = ey + Mathf.RoundToInt(Mathf.Sin(a) * 5f);
                         DrawHaloLine(ex, ey, hx, hy, pal.Main, pal.Dark);
                     }
 
@@ -1920,15 +2260,33 @@ namespace Galilego.Tablet
                 return;
             }
 
+            Vector3d sun = model.SunDirection;
+
+            // A soft atmosphere ring first: the globe then sits inside it. Drawing
+            // the halo as two hard circles (the old look) read as a sticker outline.
+            if (radius < Mathf.Max(rect.width, rect.height) * 0.9f)
+            {
+                DrawAtmosphere(center, radius, right, screenUp, sun, rect);
+            }
+
             NavBodyTexture texture = GetBodyTexture(planet);
             if (texture == null)
             {
-                DrawDisc(center.x, center.y, radius, edge);
+                if (planet.Terrain != null)
+                {
+                    // The first terrain map is built on a worker. A shaded sphere
+                    // reads as "planet, still resolving"; a flat disc reads as a bug.
+                    DrawLoadingGlobe(center, radius, right, screenUp, viewDir, sun, rect);
+                }
+                else
+                {
+                    DrawDisc(center.x, center.y, radius, edge);
+                }
+
                 return;
             }
 
             QuaternionD orientation = planet.GetVisualOrientation(model.TimeSeconds);
-            Vector3d sun = model.SunDirection;
 
             // Two block sizes: a coarse interactive pass while the finger is down,
             // then one clean frame when the gesture ends. The clean pass is full
@@ -1941,17 +2299,107 @@ namespace Galilego.Tablet
                 RasterisePlanetDisk(planet, texture, center, radius, right, screenUp, viewDir,
                     sun, orientation, rect, step);
             }
+        }
 
-            // A thin atmosphere/limb so the body reads as a planet, not a flat disc.
-            // When the globe is larger than the map, the limb is off-screen.
-            if (radius < Mathf.Max(rect.width, rect.height) * 0.9f)
+        /// <summary>Soft, sun-weighted airglow just outside the limb.</summary>
+        private void DrawAtmosphere(Vector2 center, float radius, Vector3d right, Vector3d screenUp,
+            Vector3d sun, RectInt rect)
+        {
+            float inner = radius - 1.5f;
+            float outer = radius + Mathf.Clamp(radius * 0.05f, 3f, 12f);
+            if (outer <= inner)
             {
-                DrawCircle(center.x, center.y, radius + 1.5f, new Color32(70, 150, 190, 255));
-                if (radius > 8f)
+                return;
+            }
+
+            Vector3d sunN = sun.Normalized;
+            float sunRight = (float)Vector3d.Dot(sunN, right);
+            float sunUp = (float)Vector3d.Dot(sunN, screenUp);
+            var glow = new Color32(74, 166, 214, 255);
+            var limb = new Color32(146, 218, 246, 255);
+
+            int x0 = Mathf.Max(rect.x, Mathf.FloorToInt(center.x - outer));
+            int x1 = Mathf.Min(rect.x + rect.width - 1, Mathf.CeilToInt(center.x + outer));
+            int y0 = Mathf.Max(rect.y, Mathf.FloorToInt(center.y - outer));
+            int y1 = Mathf.Min(rect.y + rect.height - 1, Mathf.CeilToInt(center.y + outer));
+            float span = outer - inner;
+
+            for (int y = y0; y <= y1; y++)
+            {
+                float dy = center.y - y;
+                for (int x = x0; x <= x1; x++)
                 {
-                    DrawCircle(center.x, center.y, radius + 3f, new Color32(26, 64, 92, 255));
+                    float dx = x - center.x;
+                    float d = Mathf.Sqrt((dx * dx) + (dy * dy));
+                    if (d < inner || d > outer)
+                    {
+                        continue;
+                    }
+
+                    float nx = d > 0.001f ? dx / d : 0f;
+                    float ny = d > 0.001f ? dy / d : 0f;
+                    float lit = 0.28f + (0.72f * Mathf.Clamp01((nx * sunRight) + (ny * sunUp)));
+                    float t = Mathf.Clamp01((d - inner) / span);
+                    float falloff = (1f - t) * (1f - t);
+
+                    // A bright thin limb plus a wide, faint glow.
+                    canvas.PxBlend(x, y, glow, 0.58f * falloff * lit);
+                    if (t < 0.28f)
+                    {
+                        canvas.PxBlend(x, y, limb, 0.40f * (1f - (t / 0.28f)) * lit);
+                    }
                 }
             }
+        }
+
+        /// <summary>Placeholder sphere shown for the few frames before the first map lands.</summary>
+        private void DrawLoadingGlobe(Vector2 center, float radius, Vector3d right, Vector3d screenUp,
+            Vector3d viewDir, Vector3d sun, RectInt rect)
+        {
+            Vector3d sunN = sun.Normalized;
+            float invRadius = 1f / Mathf.Max(1f, radius);
+            int x0 = Mathf.Max(rect.x, Mathf.CeilToInt(center.x - radius));
+            int x1 = Mathf.Min(rect.x + rect.width - 1, Mathf.FloorToInt(center.x + radius));
+            int y0 = Mathf.Max(rect.y, Mathf.CeilToInt(center.y - radius));
+            int y1 = Mathf.Min(rect.y + rect.height - 1, Mathf.FloorToInt(center.y + radius));
+            var deep = new Color32(18, 48, 68, 255);
+
+            for (int y = y0; y <= y1; y++)
+            {
+                float ny = (center.y - y) * invRadius;
+                for (int x = x0; x <= x1; x++)
+                {
+                    float nx = (x - center.x) * invRadius;
+                    float rr = (nx * nx) + (ny * ny);
+                    if (rr > 1f)
+                    {
+                        continue;
+                    }
+
+                    float nz = Mathf.Sqrt(1f - rr);
+                    Vector3d normal = (right * nx) + (screenUp * ny) + (viewDir * nz);
+                    float light = (float)Vector3d.Dot(normal, sunN);
+                    float wrap = SmoothStep(-0.14f, 0.30f, light);
+                    float facing = Mathf.Max(0f, (float)Vector3d.Dot(normal, viewDir));
+                    float shade = 0.20f + (0.11f * facing) + (0.72f * wrap);
+                    shade *= 0.94f + (0.06f * facing);
+                    shade = Mathf.Clamp(shade, 0.20f, 1f);
+                    var color = new Color32(
+                        (byte)Mathf.Clamp(Mathf.RoundToInt(deep.r * shade), 0, 255),
+                        (byte)Mathf.Clamp(Mathf.RoundToInt(deep.g * shade), 0, 255),
+                        (byte)Mathf.Clamp(Mathf.RoundToInt(deep.b * shade), 0, 255),
+                        255);
+
+                    float edge = Mathf.Clamp01((1f - Mathf.Sqrt(rr)) * radius * 1.4f);
+                    canvas.Px(x, y, edge < 1f ? PixelCanvas.Mix(canvas.Get(x, y), color, edge) : color);
+                }
+            }
+        }
+
+        private static float SmoothStep(float edge0, float edge1, float x)
+        {
+            float t = Mathf.Clamp01((x - edge0) / Mathf.Max(1e-6f, edge1 - edge0));
+            return t * t * (3f - (2f * t));
         }
 
         /// <summary>
@@ -1979,6 +2427,7 @@ namespace Galilego.Tablet
             QuaternionD inverse = orientation.Conjugated;
             int canvasWidth = canvas.Width;
             int canvasHeight = canvas.Height;
+            Vector3d sunN = sun.Normalized;
 
             Action<int> rasterRow = y =>
             {
@@ -2000,6 +2449,8 @@ namespace Galilego.Tablet
 
                     double lat = Math.Asin(Math.Max(-1d, Math.Min(1d, bodyNormal.Z)));
                     double lon = Math.Atan2(bodyNormal.Y, bodyNormal.X);
+                    double u = (((lon + Math.PI) / (Math.PI * 2d)) * texWidth) - 0.5d;
+                    double v = (((lat + (Math.PI * 0.5d)) / Math.PI) * texHeight) - 0.5d;
 
                     Color32 c;
                     if (step <= 1)
@@ -2007,8 +2458,6 @@ namespace Galilego.Tablet
                         // Full-resolution clean pass: bilinear keeps the high-res
                         // map smooth instead of aliasing into speckle. The pass is
                         // cached, so the extra taps are paid once per view change.
-                        double u = (((lon + Math.PI) / (Math.PI * 2d)) * texWidth) - 0.5d;
-                        double v = (((lat + (Math.PI * 0.5d)) / Math.PI) * texHeight) - 0.5d;
                         c = SampleBilinear(pixels, texWidth, texHeight, u, v);
                     }
                     else
@@ -2020,16 +2469,55 @@ namespace Galilego.Tablet
                         c = pixels[(ty * texWidth) + tx];
                     }
 
-                    double light = Vector3d.Dot(worldNormal, sun);
-                    double facing = Math.Max(0d, Vector3d.Dot(worldNormal, viewDir));
-                    float shade = 0.28f + (0.50f * (float)Math.Max(0d, light)) + (0.22f * (float)facing);
-                    shade = Mathf.Clamp(shade, 0.20f, 1f);
+                    // Alpha is the water mask, so the mask comes free with the colour.
+                    float sea = c.a * (1f / 255f);
 
-                    var shaded = new Color32(
-                        (byte)Mathf.Clamp(Mathf.RoundToInt(c.r * shade), 0, 255),
-                        (byte)Mathf.Clamp(Mathf.RoundToInt(c.g * shade), 0, 255),
-                        (byte)Mathf.Clamp(Mathf.RoundToInt(c.b * shade), 0, 255),
+                    // Wrapped terminator: the night side stays readable but clearly
+                    // unlit, and the day side gets a warmer, fuller light.
+                    float light = (float)Vector3d.Dot(worldNormal, sunN);
+                    float facing = Mathf.Max(0f, (float)Vector3d.Dot(worldNormal, viewDir));
+                    float wrap = SmoothStep(-0.14f, 0.30f, light);
+                    float shade = 0.20f + (0.11f * facing) + (0.72f * wrap);
+                    shade *= 0.94f + (0.06f * facing);
+                    shade = Mathf.Clamp(shade, 0.15f, 1.02f);
+
+                    // Sun glint on water: a soft highlight makes the globe read as
+                    // a lit sphere instead of a flat tinted map.
+                    float glint = 0f;
+                    if (sea > 0.01f)
+                    {
+                        Vector3d half = sunN + viewDir;
+                        double halfMagnitude = half.Magnitude;
+                        if (halfMagnitude > 1e-6d)
+                        {
+                            half = half * (1d / halfMagnitude);
+                            float d = Mathf.Max(0f, (float)Vector3d.Dot(worldNormal, half));
+                            // d^48 without Math.Pow: three squarings and products.
+                            float d2 = d * d;
+                            float d4 = d2 * d2;
+                            float d8 = d4 * d4;
+                            float d16 = d8 * d8;
+                            float d32 = d16 * d16;
+                            glint = d32 * d16 * sea * (0.10f + (0.70f * wrap));
+                        }
+                    }
+
+                    Color32 shaded = new Color32(
+                        (byte)Mathf.Clamp(Mathf.RoundToInt((c.r * shade) + (glint * 60f)), 0, 255),
+                        (byte)Mathf.Clamp(Mathf.RoundToInt((c.g * shade) + (glint * 82f)), 0, 255),
+                        (byte)Mathf.Clamp(Mathf.RoundToInt((c.b * shade) + (glint * 98f)), 0, 255),
                         255);
+
+                    // Anti-aliased limb: blend the last pixel ring with what is
+                    // behind the globe instead of leaving a hard stair edge.
+                    if (step <= 1)
+                    {
+                        float edge = Mathf.Clamp01((1f - Mathf.Sqrt(rr)) * radius * 1.5f);
+                        if (edge < 1f)
+                        {
+                            shaded = PixelCanvas.Mix(canvas.Get(x, y), shaded, edge);
+                        }
+                    }
 
                     int cellWidth = Mathf.Min(step, x1 - x + 1);
                     for (int yy = 0; yy < cellHeight; yy++)
@@ -2047,7 +2535,9 @@ namespace Galilego.Tablet
             {
                 // The full-res clean pass is the one expensive frame; split its
                 // rows across workers so it costs a few milliseconds, not ~17.
-                // Rows write disjoint canvas pixels, so no locking is needed.
+                // Rows write disjoint canvas pixels, so no locking is needed. The
+                // coarse drag pass is small enough that parallelism would only add
+                // scheduling overhead.
                 int rows = ((y1 - y0) / step) + 1;
                 var options = new System.Threading.Tasks.ParallelOptions
                 {
@@ -2097,7 +2587,7 @@ namespace Galilego.Tablet
                 BlendChannel(c00.r, c10.r, c01.r, c11.r, w00, w10, w01, w11),
                 BlendChannel(c00.g, c10.g, c01.g, c11.g, w00, w10, w01, w11),
                 BlendChannel(c00.b, c10.b, c01.b, c11.b, w00, w10, w01, w11),
-                255);
+                BlendChannel(c00.a, c10.a, c01.a, c11.a, w00, w10, w01, w11));
         }
 
         private static byte BlendChannel(byte c00, byte c10, byte c01, byte c11,
@@ -2317,9 +2807,10 @@ namespace Galilego.Tablet
                 yi = rect.y + rect.height - 9;
             }
 
-            canvas.Fill(xi - 2, yi - 1, width + 4, 9, TabletTheme.Bg);
-            canvas.Text(xi, yi, text, color);
-            return new RectInt(xi - 2, yi - 1, width + 4, 9);
+            // A dark 1 px outline instead of a filled box: the name sits on the
+            // globe like a map callout, not like a label sticker.
+            canvas.TextHalo(xi, yi, text, color, TabletTheme.Bg);
+            return new RectInt(xi - 3, yi - 2, width + 6, 11);
         }
 
         // ─── HUD / preview ────────────────────────────────────────────────────
