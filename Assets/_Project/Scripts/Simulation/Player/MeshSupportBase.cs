@@ -32,6 +32,16 @@ namespace Galilego.Simulation.Player
         /// <summary>Warn about non-convex colliders once per collider.</summary>
         private readonly HashSet<Collider> warnedNonConvex = new HashSet<Collider>();
 
+        // Query layers: everything is still on layer 0; the named mask is the single
+        // place to change when FIX-10b assigns real support layers.
+        private const int SupportLayers = ~0;
+
+        // 64 is headroom: a downward ray only reports colliders along the ray, not the
+        // whole 150-hull capsule. A full buffer is logged instead of silently truncated.
+        private readonly RaycastHit[] floorHits = new RaycastHit[64];
+        private readonly RaycastHit[] ceilingHits = new RaycastHit[64];
+        private readonly RaycastHit[] sweepHits = new RaycastHit[64];
+
         /// <summary>Collider roles for walking: 1 — obstacle only (PlayerObstacleOnly), 2 — ignored (PlayerIgnore).</summary>
         private readonly Dictionary<Collider, int> roles = new Dictionary<Collider, int>();
 
@@ -242,8 +252,14 @@ namespace Galilego.Simulation.Player
                 // length is increased by the same lift, so support depth is unchanged.
                 const float Lift = 0.05f;
                 Vector3 origin = ToRenderPoint(sample) + (renderUp * Lift);
-                RaycastHit[] hits = Physics.RaycastAll(origin, -renderUp, (float)maxDrop + Lift, ~0, QueryTriggerInteraction.Ignore);
-                if (!TryPickFloor(hits, out double h, out Vector3d n, out int id))
+                int count = Physics.RaycastNonAlloc(origin, -renderUp, floorHits,
+                    (float)maxDrop + Lift, SupportLayers, QueryTriggerInteraction.Ignore);
+                if (count == floorHits.Length)
+                {
+                    DebugBlocker = "floor buffer full (" + count + ")";
+                }
+
+                if (!TryPickFloor(floorHits, count, out double h, out Vector3d n, out int id))
                 {
                     continue;
                 }
@@ -261,14 +277,14 @@ namespace Galilego.Simulation.Player
             return found;
         }
 
-        private bool TryPickFloor(RaycastHit[] hits, out double height, out Vector3d normal, out int sourceId)
+        private bool TryPickFloor(RaycastHit[] hits, int count, out double height, out Vector3d normal, out int sourceId)
         {
             height = 0d;
             normal = new Vector3d(0d, 0d, 1d);
             sourceId = -1;
             bool found = false;
             float bestDistance = float.PositiveInfinity;
-            for (int i = 0; i < hits.Length; i++)
+            for (int i = 0; i < count; i++)
             {
                 RaycastHit hit = hits[i];
                 if (!IsPlayerCollider(hit.collider) || IsObstacleOnly(hit.collider) || hit.distance >= bestDistance)
@@ -310,16 +326,22 @@ namespace Galilego.Simulation.Player
                     case 4: sample = head + new Vector3d(0d, -0.25d, 0d); break;
                 }
 
-                RaycastHit[] hits = Physics.RaycastAll(ToRenderPoint(sample), renderUp, (float)maxRise, ~0, QueryTriggerInteraction.Ignore);
-                for (int i = 0; i < hits.Length; i++)
+                int count = Physics.RaycastNonAlloc(ToRenderPoint(sample), renderUp, ceilingHits,
+                    (float)maxRise, SupportLayers, QueryTriggerInteraction.Ignore);
+                if (count == ceilingHits.Length)
                 {
-                    if (!IsPlayerCollider(hits[i].collider) || hits[i].distance >= best)
+                    DebugBlocker = "ceiling buffer full (" + count + ")";
+                }
+
+                for (int i = 0; i < count; i++)
+                {
+                    if (!IsPlayerCollider(ceilingHits[i].collider) || ceilingHits[i].distance >= best)
                     {
                         continue;
                     }
 
-                    best = hits[i].distance;
-                    height = LocalHeight(hits[i].point);
+                    best = ceilingHits[i].distance;
+                    height = LocalHeight(ceilingHits[i].point);
                     found = true;
                 }
             }
@@ -351,7 +373,13 @@ namespace Galilego.Simulation.Player
             }
 
             Vector3 moveDir = delta / distance;
-            RaycastHit[] hits = Physics.CapsuleCastAll(p1, p2, (float)radius, moveDir, distance, ~0, QueryTriggerInteraction.Ignore);
+            int count = Physics.CapsuleCastNonAlloc(p1, p2, (float)radius, moveDir,
+                sweepHits, distance, SupportLayers, QueryTriggerInteraction.Ignore);
+            if (count == sweepHits.Length)
+            {
+                DebugBlocker = "sweep buffer full (" + count + ")";
+            }
+
             bool found = false;
             float bestFraction = 1f;
             Vector3 bestNormal = renderUp;
@@ -359,9 +387,9 @@ namespace Galilego.Simulation.Player
             // Wall gap: stop not at the contact point (otherwise the next substep
             // starts already inside PhysX's contact tolerance) but Skin before it.
             const float Skin = 0.015f;
-            for (int i = 0; i < hits.Length; i++)
+            for (int i = 0; i < count; i++)
             {
-                RaycastHit hit = hits[i];
+                RaycastHit hit = sweepHits[i];
                 if (!IsPlayerCollider(hit.collider) || hit.distance < 0f)
                 {
                     continue;
