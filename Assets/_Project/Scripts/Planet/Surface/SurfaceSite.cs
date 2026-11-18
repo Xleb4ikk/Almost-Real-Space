@@ -84,6 +84,12 @@ namespace Galilego.Universe
         {
             poseValid = false;
             Refresh();
+            if (Application.isPlaying)
+            {
+                // Enabling a site is a rare out-of-band move; give the next query the
+                // current pose instead of waiting for PoseSync after LateUpdate.
+                Physics.SyncTransforms();
+            }
         }
 
         private void OnValidate()
@@ -184,10 +190,6 @@ namespace Galilego.Universe
             if (Application.isPlaying)
             {
                 transform.SetPositionAndRotation(position, rotation);
-                // Part colliders move with the site every frame, and Physics.autoSyncTransforms
-                // is off: without syncing, the player support queries (rays/capsules of
-                // SiteBoxSupport in Update) would see previous-frame poses.
-                Physics.SyncTransforms();
                 poseValid = true;
                 return;
             }

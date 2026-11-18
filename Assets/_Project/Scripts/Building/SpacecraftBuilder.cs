@@ -463,7 +463,6 @@ namespace Galilego.Building
             }
 
             RefreshVisualLocals();
-            Physics.SyncTransforms();
         }
 
         /// <summary>
@@ -557,9 +556,8 @@ namespace Galilego.Building
                 part.Visual.Root.transform.SetPositionAndRotation(pivot, rot);
             }
 
-            // The capsule's exact colliders moved with the visual: the player's
-            // queries run in Update, so the physics needs the new poses now.
-            Physics.SyncTransforms();
+            // PoseSync covers the visual poses after LateUpdate. The capsule self-check
+            // runs its own raycast every 15 frames and syncs there.
             if (++mirrorFrames == 15)
             {
                 CheckCapsuleQueries();
@@ -698,6 +696,9 @@ namespace Galilego.Building
         /// </summary>
         private void CheckCapsuleQueries()
         {
+            // Runs inside LateUpdate before PoseSync: make the just-mirrored capsule
+            // colliders visible to this raycast.
+            Physics.SyncTransforms();
             for (int i = 0; i < parts.Count; i++)
             {
                 PlacedPart part = parts[i];

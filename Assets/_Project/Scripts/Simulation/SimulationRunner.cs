@@ -538,10 +538,13 @@ namespace Galilego.Universe
 
         private void Awake()
         {
-            // Colliders of the vessel move every frame (mirror, ship view); every query — the
-            // player's, the E rays, the tablet pointer — must see the CURRENT poses, not those of
-            // the last physics step (at orbital speeds that is hundreds of metres).
-            Physics.autoSyncTransforms = true;
+            // One explicit sync per frame (PoseSync below) instead of implicit syncs before
+            // every query: the writers all run in LateUpdate, the readers in the next Update.
+            Physics.autoSyncTransforms = false;
+            if (GetComponent<PoseSync>() == null)
+            {
+                gameObject.AddComponent<PoseSync>();
+            }
 
             if (System == null)
             {

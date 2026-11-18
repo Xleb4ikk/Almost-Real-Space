@@ -293,7 +293,6 @@ namespace Galilego.Simulation.ContactZone
             Quaternion rotation = SurfaceFrame.RenderRotation(
                 Runner.DominantBody, frameAtTime.LatitudeDegrees, frameAtTime.LongitudeDegrees, t);
             transform.SetPositionAndRotation(position, rotation);
-            Physics.SyncTransforms();
         }
 
         private void Enter(OrbitingBody body, ITerrainModel terrain, Ship ship, double t)
@@ -316,6 +315,10 @@ namespace Galilego.Simulation.ContactZone
                 // Re-entry from flight: the assembly puts its COM at the point and turns like the ship.
                 Galilego.Flight.FlightRuntime.HandoffIn(Runner, Proxy, frame);
             }
+
+            // One entry sync: the bodies just moved (or were created), and the COM read
+            // below uses worldCenterOfMass. This is the only extra sync outside PoseSync.
+            Physics.SyncTransforms();
 
             // Frame gravity is set immediately, not on the next frame: with world
             // gravity (0,−9.81,0) and the root rotated by site axes the bodies would

@@ -105,11 +105,8 @@ namespace Galilego.Simulation.Player
 
         public virtual void SetFrame(SiteFrame siteFrame)
         {
-            // Colliders move in LateUpdate with the floating origin, and
-            // Physics.autoSyncTransforms is off: without synchronization the support
-            // queries (rays/capsules in Update) would see last frame's poses — an
-            // error equal to the player's displacement since the last sync.
-            Physics.SyncTransforms();
+            // Poses are synced once per frame by PoseSync; this call runs on every
+            // player substep and must not force a second sync.
             frame = siteFrame;
             renderOrigin = ToRender(Vector3d.Zero);
             renderUp = Direction(new Vector3d(0d, 0d, 1d));
@@ -126,7 +123,6 @@ namespace Galilego.Simulation.Player
         /// </summary>
         public virtual void SetPlatformFrame(Transform root)
         {
-            Physics.SyncTransforms();
             frame = null;
             renderOrigin = root.position;
             renderEast = root.forward.normalized;
