@@ -181,6 +181,33 @@ namespace Galilego.Simulation.ContactZone
             Proxy.GetCenterOfMassState(frame, t, out Vector3d com, out _);
             anchorUp = com.Z - lp.Z;
 
+            // Phase 0 measurement (temporary): the numbers from COLLISION_FIX_PLAN §4.1.
+            if (Log)
+            {
+                Rigidbody b0 = Proxy.BodyAt(0);
+                // The zone lives in render space: the expected velocity is the site-relative
+                // local velocity rotated by the zone root, WITHOUT the frame origin velocity.
+                // Site axes (east, north, up) → Unity local axes (north, up, east).
+                Vector3 expected = transform.TransformDirection(
+                    new Vector3((float)lv.Y, (float)lv.Z, (float)lv.X));
+                Vector3 bodyVelocity = b0 != null ? b0.linearVelocity : Vector3.zero;
+                double dv = b0 != null ? (bodyVelocity - expected).magnitude : -1d;
+                Debug.Log("[CZ-IN] lat=" + frame.LatitudeDegrees.ToString("F5")
+                    + " lon=" + frame.LongitudeDegrees.ToString("F5")
+                    + " root.rot=" + transform.rotation.eulerAngles
+                    + " gravity=" + Physics.gravity
+                    + " iters_global=" + Physics.defaultSolverIterations
+                    + " iters_body0=" + (b0 != null ? b0.solverIterations : -1)
+                    + " com_zone=" + com
+                    + " com_flight=" + (Runner.Flight != null ? Runner.Flight.Com : Vector3d.Zero)
+                    + " v_body0=" + bodyVelocity
+                    + " v_expected=" + expected
+                    + " dv=" + dv.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)
+                    + " com_physx0=" + (b0 != null ? b0.worldCenterOfMass : Vector3.zero)
+                    + " maxAngular=" + (b0 != null ? b0.maxAngularVelocity : -1f)
+                    + " maxLinear=" + (b0 != null ? b0.maxLinearVelocity : -1f));
+            }
+
             // Warp is forbidden in the zone: time runs on real dt (AdvanceTime), not
             // the warp factor; raised warp would jerk the ship on exit.
             Runner.Warp.SetWarpFactor(WarpController.MinWarpFactor);

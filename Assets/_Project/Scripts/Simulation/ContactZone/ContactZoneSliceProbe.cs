@@ -1,5 +1,6 @@
 using System.Globalization;
 using Galilego.Core;
+using Galilego.Events;
 using Galilego.Universe;
 using UnityEngine;
 
@@ -29,6 +30,12 @@ namespace Galilego.Simulation.ContactZone
 
         [Tooltip("Высота старта над поверхностью (м): 0.2 м ≈ касание 2 м/с.")]
         public double DropHeightMeters = 0.2d;
+
+        [Tooltip("land00/land30: высота старта над поверхностью, м.")]
+        public double LandingHeightMeters = 300d;
+
+        [Tooltip("land30: горизонтальная скорость относительно поверхности, м/с.")]
+        public double LandingHorizontalMps = 30d;
 
         [Tooltip("breakLeg: латеральная сила на ногу 3 (Н). Предел ноги T1 — 400 кН.")]
         public float BreakForceNewtons = 450000f;
@@ -67,6 +74,15 @@ namespace Galilego.Simulation.ContactZone
         private Vector3[] dropHome;
         private float savedTimeScale = 1f;
 
+        // land00 / land30
+        private SiteFrame landingFrame;
+        private double landingMinAltitude = double.PositiveInfinity;
+        private int landingEntries;
+        private int landingExits;
+        private bool landingWasActive;
+        private float landingSettleTimer;
+        private double landingNextLog = 1d;
+
         private void Start()
         {
             if (Runner == null || Runner.DominantBody == null || Runner.Ship == null)
@@ -80,15 +96,36 @@ namespace Galilego.Simulation.ContactZone
                 Runner.DominantBody.Terrain = new SphericalTerrain();
             }
 
-            if (DropHeightMeters > 0d)
+            bool landing = Case == "land00" || Case == "land30";
+            double dropHeight = landing ? LandingHeightMeters : DropHeightMeters;
+            if (dropHeight > 0d)
             {
                 Runner.DominantBody.EvaluateWorldState(Runner.TimeSeconds, out Vector3d center, out _);
                 Vector3d radial = (Runner.Ship.Position - center).Normalized;
-                Runner.Ship.Position += radial * DropHeightMeters;
+                Vector3d position = Runner.Ship.Position + (radial * dropHeight);
+                if (landing)
+                {
+                    landingFrame = SiteFrame.Anchor(Runner.DominantBody, Runner.DominantBody.Terrain,
+                        position, Runner.TimeSeconds);
+                    Vector3d velocity = Runner.Ship.Velocity;
+                    if (Case == "land30")
+                    {
+                        velocity += landingFrame.East * LandingHorizontalMps;
+                    }
+
+                    // The slice spawns Landed; a drop from 300 m must run as free flight,
+                    // otherwise StepLanded keeps the ship pinned to the surface.
+                    Runner.SetShipState(position, velocity, VesselRegime.Flying);
+                }
+                else
+                {
+                    Runner.Ship.Position = position;
+                }
             }
 
-            Debug.Log("[CZProbe] старт: case=" + Case + ", drop=" + DropHeightMeters.ToString("F2", Inv)
-                + " м, зона=" + ContactZoneHost.Active);
+            Debug.Log("[CZProbe] старт: case=" + Case + ", drop=" + dropHeight.ToString("F2", Inv)
+                + " м, горизонталь=" + (Case == "land30" ? LandingHorizontalMps.ToString("F1", Inv) : "0")
+                + " м/с, зона=" + ContactZoneHost.Active);
         }
 
         private void Update()
@@ -117,12 +154,95 @@ namespace Galilego.Simulation.ContactZone
 
         private void LateUpdate()
         {
-            if (Runner == null || Case != "stand")
+            if (Runner == null)
             {
                 return;
             }
 
-            UpdateStand();
+            if (Case == "stand")
+            {
+                UpdateStand();
+            }
+            else if (Case == "land00" || Case == "land30")
+            {
+                UpdateLanding();
+            }
+        }
+
+        // ─── land00 / land30 ─────────────────────────────────────────────────
+
+        private void UpdateLanding()
+        {
+            OrbitingBody body = Runner.DominantBody;
+            ContactZoneGate.Measure(body, body.Terrain, Runner.Ship.Position, Runner.Ship.Velocity,
+                Runner.TimeSeconds, out double altitude, out double speed);
+            if (altitude < landingMinAltitude)
+            {
+                landingMinAltitude = altitude;
+            }
+
+            bool active = ContactZoneHost.Active;
+            if (active && !landingWasActive)
+            {
+                landingEntries++;
+                Debug.Log("[CZProbe] landing: вход №" + landingEntries + " на t="
+                    + elapsed.ToString("F2", Inv) + " с, высота=" + altitude.ToString("F2", Inv)
+                    + " м, скорость=" + speed.ToString("F2", Inv) + " м/с");
+            }
+            else if (!active && landingWasActive)
+            {
+                landingExits++;
+                Debug.Log("[CZProbe] landing: выход №" + landingExits + " на t="
+                    + elapsed.ToString("F2", Inv) + " с, высота=" + altitude.ToString("F2", Inv)
+                    + " м, скорость=" + speed.ToString("F2", Inv) + " м/с");
+            }
+
+            landingWasActive = active;
+
+            if (elapsed >= landingNextLog)
+            {
+                landingNextLog = Mathf.FloorToInt(elapsed) + 1d;
+                landingFrame.At(Runner.TimeSeconds).ToLocal(Runner.Ship.Position, Runner.Ship.Velocity,
+                    out Vector3d local, out _);
+                Debug.Log("[CZProbe] landing t=" + elapsed.ToString("F1", Inv)
+                    + " с, зона=" + active
+                    + ", высота=" + altitude.ToString("F2", Inv) + " м"
+                    + ", |v|=" + speed.ToString("F2", Inv) + " м/с"
+                    + ", место=(" + local.X.ToString("F1", Inv) + ", "
+                    + local.Y.ToString("F1", Inv) + ")");
+            }
+
+            // Settled on the surface: slow and above the floor for a whole second.
+            if (active && altitude > -0.5d && speed < 2d)
+            {
+                landingSettleTimer += Time.deltaTime;
+            }
+            else
+            {
+                landingSettleTimer = 0f;
+            }
+
+            bool settled = landingSettleTimer >= 1f;
+            bool fellThrough = elapsed > 2d && altitude < -2d;
+            bool timeout = elapsed > 60d;
+            if (!settled && !fellThrough && !timeout)
+            {
+                return;
+            }
+
+            landingFrame.At(Runner.TimeSeconds).ToLocal(Runner.Ship.Position, Runner.Ship.Velocity,
+                out Vector3d endLocal, out _);
+            double horizontalMeters = System.Math.Sqrt((endLocal.X * endLocal.X) + (endLocal.Y * endLocal.Y));
+            Debug.Log("[CZProbe] DONE-land" + (settled ? "" : " ФЕЙЛ")
+                + ": case=" + Case
+                + ", входов=" + landingEntries
+                + ", выходов=" + landingExits
+                + ", мин.высота=" + landingMinAltitude.ToString("F2", Inv) + " м"
+                + ", конечная=" + altitude.ToString("F2", Inv) + " м"
+                + ", |v|=" + speed.ToString("F2", Inv) + " м/с"
+                + ", горизонт=" + horizontalMeters.ToString("F1", Inv) + " м"
+                + ", t=" + Runner.TimeSeconds.ToString("F2", Inv) + " с");
+            Finish();
         }
 
         // ─── stand ───────────────────────────────────────────────────────────
@@ -181,7 +301,9 @@ namespace Galilego.Simulation.ContactZone
                     Rigidbody b = Proxy.BodyAt(i);
                     if (b != null && Proxy.IsRootBody(i))
                     {
-                        b.linearVelocity += new Vector3(0f, 95f, 0f);
+                        // The zone root is rotated by the site axes: push along its local up,
+                        // not world Y (the old line sent the ship sideways).
+                        b.linearVelocity += Proxy.transform.up * 95f;
                     }
                 }
 
