@@ -448,84 +448,6 @@ namespace Galilego.Universe
             parts.Clear();
         }
 
-        /// <summary>
-        /// Push the player capsule (feet at feet, axis along up) out of the
-        /// building meshes. Floors/roofs (near-vertical normals) do not push;
-        /// height is handled by the terrain projection. Several iterations
-        /// for corners.
-        /// </summary>
-        public bool PushOutMesh(Vector3 feet, Vector3 up, float radius, out Vector3 push)
-        {
-            push = Vector3.zero;
-            CapsuleCollider cap = SiteBoxRegistry.Probe(radius);
-            Quaternion rot = Quaternion.FromToRotation(Vector3.up, up);
-            float half = SiteBoxRegistry.PlayerHeight * 0.5f;
-            float reach = half + radius + 0.1f;
-            Vector3 pos = feet;
-
-            for (int iter = 0; iter < 4; iter++)
-            {
-                bool moved = false;
-                Vector3 mid = pos + (up * half);
-
-                for (int i = 0; i < parts.Count; i++)
-                {
-                    Part part = parts[i];
-                    if (part.Source == null || part.Collider == null)
-                    {
-                        continue;
-                    }
-
-                    // World AABB of the part from local mesh bounds (cheap, no scene physics).
-                    Matrix4x4 m = part.Source.localToWorldMatrix;
-                    Vector3 c = m.MultiplyPoint3x4(part.LocalCenter);
-                    Vector3 e = part.LocalExtents;
-                    float ex = (Mathf.Abs(m.m00) * e.x) + (Mathf.Abs(m.m01) * e.y) + (Mathf.Abs(m.m02) * e.z);
-                    float ey = (Mathf.Abs(m.m10) * e.x) + (Mathf.Abs(m.m11) * e.y) + (Mathf.Abs(m.m12) * e.z);
-                    float ez = (Mathf.Abs(m.m20) * e.x) + (Mathf.Abs(m.m21) * e.y) + (Mathf.Abs(m.m22) * e.z);
-                    Vector3 d = mid - c;
-                    if (Mathf.Abs(d.x) > ex + reach || Mathf.Abs(d.y) > ey + reach || Mathf.Abs(d.z) > ez + reach)
-                    {
-                        continue;
-                    }
-
-                    if (!Physics.ComputePenetration(
-                            cap, pos, rot,
-                            part.Collider, part.Source.position, part.Source.rotation,
-                            out Vector3 dir, out float dist))
-                    {
-                        continue;
-                    }
-
-                    // Only real penetration counts: contact offset makes PhysX
-                    // report touch micro-penetration, which must not push the body.
-                    if (dist < 0.03f)
-                    {
-                        continue;
-                    }
-
-                    // Minimal exit from the intersection (3D): horizontal for a
-                    // thin wall, the nearest face (top included) for large boxes
-                    // (foundations). Step is capped at 1 m per substep so the
-                    // player is never teleported across the map.
-                    float step = Mathf.Min(dist + 0.005f, 1f);
-                    if (step > 1e-4f)
-                    {
-                        pos += dir.normalized * step;
-                        moved = true;
-                    }
-                }
-
-                if (!moved)
-                {
-                    break;
-                }
-            }
-
-            push = pos - feet;
-            return push.sqrMagnitude > 1e-10f;
-        }
-
         private void OnDrawGizmosSelected()
         {
             Gizmos.matrix = transform.localToWorldMatrix;
@@ -587,7 +509,6 @@ namespace Galilego.Universe
     /// </summary>
     public static class SiteBoxRegistry
     {
-        internal const float PlayerHeight = 1.8f;
         private static readonly List<SiteBox> boxes = new List<SiteBox>();
         private static CapsuleCollider probe;
 
@@ -637,81 +558,5 @@ namespace Galilego.Universe
             return probe;
         }
 
-        // Temporary while the dead PushOutMesh path still exists (CLEAN-01 removes both).
-        internal static CapsuleCollider Probe(float radius) => Probe(radius, PlayerHeight);
-
-        public static bool TryResolve(Vector3d position, double playerRadius, out Vector3d resolved)
-        {
-            resolved = position;
-            if (boxes.Count == 0 || !Application.isPlaying)
-            {
-                return false;
-            }
-
-            Profiler.BeginSample("SiteBoxRegistry.TryResolve");
-            try
-            {
-                Vector3 p = FloatingOrigin.ToRender(position);
-                Vector3 total = Vector3.zero;
-                float r = (float)playerRadius;
-
-                for (int i = 0; i < boxes.Count; i++)
-                {
-                    SiteBox b = boxes[i];
-                    if (b == null || !b.isActiveAndEnabled)
-                    {
-                        continue;
-                    }
-
-                    Transform t = b.transform;
-                    Vector3 c = t.InverseTransformPoint(p + total) - b.Center;
-                    Vector3 h = b.Size * 0.5f;
-                    if (c.y < -h.y - PlayerHeight || c.y > h.y)
-                    {
-                        continue;
-                    }
-
-                    if (b.HasMesh)
-                    {
-                        // Box is a coarse filter; exact pushout goes by meshes.
-                        if (Mathf.Abs(c.x) > h.x + r + 1f || Mathf.Abs(c.z) > h.z + r + 1f)
-                        {
-                            continue;
-                        }
-
-                        if (b.PushOutMesh(p + total, t.up, r, out Vector3 meshPush))
-                        {
-                            total += meshPush;
-                        }
-
-                        continue;
-                    }
-
-                    float px = (h.x + r) - Mathf.Abs(c.x);
-                    float pz = (h.z + r) - Mathf.Abs(c.z);
-                    if (px <= 0f || pz <= 0f)
-                    {
-                        continue;
-                    }
-
-                    Vector3 pushLocal = px < pz
-                        ? new Vector3(Mathf.Sign(c.x) * px, 0f, 0f)
-                        : new Vector3(0f, 0f, Mathf.Sign(c.z) * pz);
-                    total += t.TransformVector(pushLocal);
-                }
-
-                if (total.sqrMagnitude <= 0f)
-                {
-                    return false;
-                }
-
-                resolved = position + AstroFrame.ToAstro(total);
-                return true;
-            }
-            finally
-            {
-                Profiler.EndSample();
-            }
-        }
     }
 }
