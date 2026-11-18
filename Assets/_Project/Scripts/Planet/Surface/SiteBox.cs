@@ -619,7 +619,7 @@ namespace Galilego.Universe
         }
 
         /// <summary>Player probe capsule for ComputePenetration (pose passed explicitly; the capsule itself sits far away).</summary>
-        internal static CapsuleCollider Probe(float radius)
+        internal static CapsuleCollider Probe(float radius, float height)
         {
             if (probe == null)
             {
@@ -627,17 +627,18 @@ namespace Galilego.Universe
                 go.transform.position = new Vector3(50000f, -100000f, 0f);
                 probe = go.AddComponent<CapsuleCollider>();
                 probe.direction = 1;
-                probe.height = PlayerHeight;
-                probe.center = new Vector3(0f, PlayerHeight * 0.5f, 0f);
             }
 
-            if (!Mathf.Approximately(probe.radius, radius))
-            {
-                probe.radius = radius;
-            }
-
+            probe.radius = radius;
+            // PhysX rejects a capsule shorter than its diameter; crouch (0.8 m) passes.
+            float capsuleHeight = Mathf.Max(height, (radius * 2f) + 0.01f);
+            probe.height = capsuleHeight;
+            probe.center = new Vector3(0f, capsuleHeight * 0.5f, 0f);
             return probe;
         }
+
+        // Temporary while the dead PushOutMesh path still exists (CLEAN-01 removes both).
+        internal static CapsuleCollider Probe(float radius) => Probe(radius, PlayerHeight);
 
         public static bool TryResolve(Vector3d position, double playerRadius, out Vector3d resolved)
         {

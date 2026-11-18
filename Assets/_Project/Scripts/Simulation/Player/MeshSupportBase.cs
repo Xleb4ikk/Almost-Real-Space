@@ -180,7 +180,7 @@ namespace Galilego.Simulation.Player
         /// push-out — the projection onto the plane degenerates and the method returns
         /// false (not a wall; horizontal is handled by the support/step logic).
         /// </summary>
-        protected bool TryPushOut(Collider collider, Vector3 feet, float radius, out Vector3 direction)
+        protected bool TryPushOut(Collider collider, Vector3 feet, float radius, float height, out Vector3 direction)
         {
             direction = Vector3.zero;
             if (collider == null)
@@ -203,7 +203,7 @@ namespace Galilego.Simulation.Player
                 }
             }
 
-            CapsuleCollider probe = SiteBoxRegistry.Probe(radius);
+            CapsuleCollider probe = SiteBoxRegistry.Probe(radius, height);
             Quaternion rotation = Quaternion.FromToRotation(Vector3.up, renderUp);
             bool overlap = Physics.ComputePenetration(
                 probe, feet, rotation,
@@ -403,7 +403,8 @@ namespace Galilego.Simulation.Player
                     // the push-out direction. Moving away from the wall is free, entering
                     // deeper is blocked (see the direction check below). Touching the floor
                     // or ceiling is not a wall (vertical push-out).
-                    if (!TryPushOut(hit.collider, p1 - (renderUp * (float)radius), (float)radius, out wallN))
+                    if (!TryPushOut(hit.collider, p1 - (renderUp * (float)radius),
+                            (float)radius, (float)height, out wallN))
                     {
                         continue;
                     }
