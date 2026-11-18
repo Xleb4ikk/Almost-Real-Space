@@ -165,6 +165,11 @@ namespace Galilego.Simulation.ContactZone
                 // debris) must not tunnel through the terrain patch between two physics steps.
                 rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
                 AddShapeCollider(go, d);
+                // The flight mass model puts a part's COM at d.Offset (the shape center).
+                // PhysX would otherwise derive it from the collider volume: for a frustum
+                // (capsule/adapter) the centroid is off the middle, and HandoffOut jumps.
+                rb.automaticCenterOfMass = false;
+                rb.centerOfMass = Vector3.zero;
                 // Vessel part marker: the player support (VesselSupport) does not let
                 // the player through the proxy bodies while in flight. A part with
                 // exact colliders (the capsule) is skipped: the player walks on the
