@@ -43,6 +43,9 @@ namespace Galilego.Simulation.ContactZone
         [Tooltip("Секунд держать сцену (stand); затем итог и выход из Play.")]
         public float DurationSeconds = 12f;
 
+        [Tooltip("stand: после выхода вернуть корабль на площадку и проверить второй вход.")]
+        public bool SecondEntry;
+
         private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
         private float elapsed;
@@ -55,6 +58,8 @@ namespace Galilego.Simulation.ContactZone
         private bool exitTestStarted;
         private Vector3d localBeforeExit;
         private float exitTestTimer;
+        private int standSession;
+        private double standSessionStart;
 
         // breakLeg
         private int breakPhase;
@@ -249,7 +254,7 @@ namespace Galilego.Simulation.ContactZone
 
         private void UpdateStand()
         {
-            if (ContactZoneHost.Active && !captured && elapsed >= 2f)
+            if (ContactZoneHost.Active && !captured && elapsed - standSessionStart >= 2f)
             {
                 captured = true;
                 // Site-frame anchor at settle time: drift is measured RELATIVE to the
@@ -288,7 +293,7 @@ namespace Galilego.Simulation.ContactZone
                     + ", |v|=" + Runner.Ship.Velocity.Magnitude.ToString("F5", Inv) + " м/с");
             }
 
-            if (elapsed >= DurationSeconds && !exitTestStarted)
+            if (elapsed - standSessionStart >= DurationSeconds && !exitTestStarted)
             {
                 // Task-1 criterion: leaving the zone at 400 m altitude without a position
                 // jump. Physically push the assembly up (a velocity impulse, not a teleport):
@@ -335,10 +340,34 @@ namespace Galilego.Simulation.ContactZone
                     + ", первый вне " + Format(localAfter)
                     + ", |Δ|=" + (localAfter - localBeforeExit).Magnitude.ToString("F4", Inv)
                     + " м (ожидание — ход за кадр; скачок формулы дал бы ~6 м ЦМ)");
-                Debug.Log("[CZProbe] DONE-stand зона=False, max |ΔPosition| (кадр места) после 2 с="
+                Debug.Log("[CZProbe] DONE-stand" + (standSession > 0 ? " (вход №" + (standSession + 1) + ")" : "")
+                    + " зона=False, max |ΔPosition| (кадр места) после 2 с="
                     + maxPosDelta.ToString("F5", Inv) + " м"
                     + ", TimeSeconds=" + Runner.TimeSeconds.ToString("F3", Inv)
                     + ", деталей=" + (Runner.Parts != null ? Runner.Parts.Length : 0));
+
+                if (SecondEntry && standSession == 0)
+                {
+                    SiteFrame previous = standFrame;
+                    standSession = 1;
+                    standSessionStart = elapsed;
+                    captured = false;
+                    havePreviousLocal = false;
+                    maxPosDelta = 0d;
+                    exitTestStarted = false;
+                    exitTestTimer = 0f;
+                    nextLog = Mathf.FloorToInt(elapsed) + 1;
+                    if (previous != null)
+                    {
+                        Runner.DominantBody.GetSurfaceState(previous.LatitudeDegrees, previous.LongitudeDegrees,
+                            0d, Runner.TimeSeconds, out Vector3d p, out Vector3d v);
+                        Runner.SetShipState(p, v, VesselRegime.Landed);
+                    }
+
+                    Debug.Log("[CZProbe] второй вход: корабль возвращён на площадку");
+                    return;
+                }
+
                 Finish();
                 return;
             }
@@ -399,7 +428,7 @@ namespace Galilego.Simulation.ContactZone
                     phaseTimer = 0d;
                     RootMomentum(out momentum0, out momentumMass);
                     momentumFixedTime0 = Time.fixedTime;
-                    gAtWindow = Physics.gravity;
+                    gAtWindow = Proxy.GravityWorld;
                     Debug.Log("[CZProbe] breakLeg: P0=" + Format(momentum0));
                     return;
                 }

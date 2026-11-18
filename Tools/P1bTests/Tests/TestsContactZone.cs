@@ -306,6 +306,27 @@ internal static partial class P1bTests
         return 0;
     }
 
+    // Test324: gravity is carried in site axes and rotated through the same basis as
+    // velocity; the formula never reads the global Physics.gravity (zero in the stand).
+    static int Test324_ZoneGravityFrameMath()
+    {
+        var local = new Vector3d(-1d, 2d, -9.8d); // site axes (east, north, up)
+        Vector3d zone = ContactZoneFrameMath.SiteToZone(local);
+        var east = new Vector3d(0d, 1d, 0d);
+        var north = new Vector3d(0d, 0d, 1d);
+        var up = new Vector3d(1d, 0d, 0d);
+        Vector3d world = ContactZoneFrameMath.ZoneToWorld(zone, east, north, up);
+        Vector3d expected = (east * local.X) + (north * local.Y) + (up * local.Z);
+        bool axesOk = (world - expected).Magnitude < 1e-12d;
+        bool radialOk = Math.Abs(Vector3d.Dot(world, up) + 9.8d) < 1e-12d;
+        bool notGlobalGravity = (world - new Vector3d(0d, -9.81d, 0d)).Magnitude > 1e-3d;
+
+        Check(axesOk && radialOk && notGlobalGravity, "T324 zone-gravity-frame-math",
+            string.Format(Inv, "local={0}, zone={1}, world={2}, ожидание={3}, g·up={4}",
+                local, zone, world, expected, Vector3d.Dot(world, up)));
+        return 0;
+    }
+
     private static bool SameSet(int[] actual, int[] expected)
     {
         if (actual.Length != expected.Length)

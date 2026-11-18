@@ -64,7 +64,6 @@ namespace Galilego.Simulation.ContactZone
             Proxy.Clear();
             Patch.Clear();
             Active = false;
-            Physics.gravity = new Vector3(0f, -9.81f, 0f);
             gate.Reset();
             if (Log) Debug.Log("[ContactZone] принудительный выход");
         }
@@ -234,7 +233,6 @@ namespace Galilego.Simulation.ContactZone
             Proxy.Clear();
             Patch.Clear();
             Active = false;
-            Physics.gravity = new Vector3(0f, -9.81f, 0f);
             if (Log) Debug.Log("[ContactZone] выход");
         }
 

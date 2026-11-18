@@ -16,6 +16,9 @@ namespace Galilego.Simulation.ContactZone
         public Vector3d CenterOfMassLocal { get; private set; }
         public Vector3d CenterOfMassVelocityLocal { get; private set; }
 
+        /// <summary>Frame gravity in world axes — replaces the global Physics.gravity.</summary>
+        public Vector3 GravityWorld { get; private set; }
+
         private readonly List<Rigidbody> bodies = new List<Rigidbody>();
         private readonly List<Joint> joints = new List<Joint>();
 
@@ -151,6 +154,12 @@ namespace Galilego.Simulation.ContactZone
 
                 var rb = go.AddComponent<Rigidbody>();
                 rb.mass = (float)d.MassKg;
+                // Gravity is applied per body by FixedUpdate below; solver counts are
+                // per body too, otherwise the first and the next zone entries run on
+                // different solvers (global defaults are applied at body creation only).
+                rb.useGravity = false;
+                rb.solverIterations = 20;
+                rb.solverVelocityIterations = 4;
                 rb.linearVelocity = velocityWorld;
                 // Continuous collision detection: a fast vessel (hard landing, re-entry
                 // debris) must not tunnel through the terrain patch between two physics steps.
@@ -184,8 +193,23 @@ namespace Galilego.Simulation.ContactZone
                 bodies[i].gameObject.AddComponent<ZoneJointBreakListener>().Bind(this, i);
             }
 
-            Physics.defaultSolverIterations = 20;
-            Physics.defaultSolverVelocityIterations = 4;
+        }
+
+        /// <summary>
+        /// One gravity impulse per body per physics step. The zone owns gravity instead of
+        /// FlightRuntime: scenes without the flight model (the `stand` slice) would float.
+        /// ForceMode.Acceleration is mass-independent, so FlightRuntime mass updates are safe.
+        /// </summary>
+        private void FixedUpdate()
+        {
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                Rigidbody rb = bodies[i];
+                if (rb != null)
+                {
+                    rb.AddForce(GravityWorld, ForceMode.Acceleration);
+                }
+            }
         }
 
         /// <summary>Index of the root-island body (for ship orientation); −1 — none.</summary>
@@ -347,9 +371,9 @@ namespace Galilego.Simulation.ContactZone
         public void SetFrameGravity(Vector3d localGravity)
         {
             // Frame gravity in Unity axes (north, up, east), then into WORLD through
-            // the zone root rotation: Physics.gravity is world, while the root is
-            // rotated by site axes.
-            Physics.gravity = transform.rotation * ToUnity(localGravity);
+            // the zone root rotation: the zone bodies share the root's rotated axes.
+            // The global Physics.gravity is not touched (see FIX-02).
+            GravityWorld = transform.rotation * ToUnity(localGravity);
         }
 
         // Center of mass and its velocity from the current bodies (site coordinates).

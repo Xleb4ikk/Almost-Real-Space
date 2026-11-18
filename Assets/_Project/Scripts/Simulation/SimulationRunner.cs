@@ -2007,7 +2007,7 @@ namespace Galilego.Universe
             ContactZoneHost host = CarryZone();
             if (host != null)
             {
-                effective = Physics.gravity - host.Proxy.transform.TransformDirection(platformCarry.PlatformAccelerationZone);
+                effective = host.Proxy.GravityWorld - host.Proxy.transform.TransformDirection(platformCarry.PlatformAccelerationZone);
             }
             else
             {
