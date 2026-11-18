@@ -237,6 +237,7 @@ internal static partial class P1bTests
             new P1bCase("Test318_FallNoTunneling", Test318_FallNoTunneling, false),
             new P1bCase("Test319_SteepSlopeWall", Test319_SteepSlopeWall, false),
             new P1bCase("Test320_JumpNotCancelled", Test320_JumpNotCancelled, false),
+            new P1bCase("Test321_PatchEdgeDecision", Test321_PatchEdgeDecision, false),
             new P1bCase("Test323_LocalVelocityToWorld", Test323_LocalVelocityToWorld, false),
             new P1bCase("Test324_ZoneGravityFrameMath", Test324_ZoneGravityFrameMath, false),
             new P1bCase("Test240_SiteBoxRoof", Test240_SiteBoxRoof, false),

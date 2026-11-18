@@ -277,6 +277,20 @@ internal static partial class P1bTests
         return 0;
     }
 
+    // Test321: patch recenter decision — central part, edge, interval.
+    static int Test321_PatchEdgeDecision()
+    {
+        bool central = !ContactZoneGate.ShouldRecenterPatch(10d, 10d, 60f, 0.4f, 1d, double.NegativeInfinity, 0.5d);
+        bool edge = ContactZoneGate.ShouldRecenterPatch(25d, 0d, 60f, 0.4f, 1d, double.NegativeInfinity, 0.5d);
+        bool intervalBlocks = !ContactZoneGate.ShouldRecenterPatch(30d, 0d, 60f, 0.4f, 0.4d, 0d, 0.5d);
+        bool intervalAllows = ContactZoneGate.ShouldRecenterPatch(30d, 0d, 60f, 0.4f, 0.6d, 0d, 0.5d);
+
+        Check(central && edge && intervalBlocks && intervalAllows, "T321 patch-edge-decision",
+            string.Format(Inv, "центр={0} (ожидание false), край={1} (true), интервал: 0.4с={2} (false), 0.6с={3} (true)",
+                central, edge, intervalBlocks, intervalAllows));
+        return 0;
+    }
+
     // Test323: zone-local velocity written to rb.linearVelocity must pass through the
     // site basis. SiteToZone alone is a permutation; using it as a world vector rotates
     // (and here mirrors) the direction — exactly the land30 Δv = 59.96 m/s finding.

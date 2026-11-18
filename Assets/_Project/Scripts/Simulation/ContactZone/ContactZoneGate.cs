@@ -57,5 +57,14 @@ namespace Galilego.Simulation.ContactZone
         {
             Inside = false;
         }
+
+        /// <summary>Whether the terrain patch should be rebuilt around the ship (pure decision).</summary>
+        public static bool ShouldRecenterPatch(double x, double z, float halfSize, float fraction,
+            double now, double lastRebuild, double intervalSeconds)
+        {
+            double trigger = halfSize * fraction;
+            return now - lastRebuild > intervalSeconds
+                && (x * x) + (z * z) > trigger * trigger;
+        }
     }
 }

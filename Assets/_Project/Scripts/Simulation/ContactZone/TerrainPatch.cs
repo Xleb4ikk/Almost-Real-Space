@@ -20,8 +20,18 @@ namespace Galilego.Simulation.ContactZone
         private Mesh mesh;
 
         public void Build(OrbitingBody body, ITerrainModel terrain, SiteFrame frame, double t)
+            => Build(body, terrain, frame, t, Vector3.zero);
+
+        /// <summary>
+        /// Rebuild the patch around a point in the zone root's local axes (x = north,
+        /// z = east). Called again when the ship leaves the central part of the patch;
+        /// the old mesh must be detached and destroyed, otherwise every recenter leaks it.
+        /// </summary>
+        public void Build(OrbitingBody body, ITerrainModel terrain, SiteFrame frame, double t, Vector3 centerLocal)
         {
             col = GetComponent<MeshCollider>();
+            col.sharedMesh = null;
+            if (mesh != null) Destroy(mesh);
             mesh = new Mesh();
             int n = Resolution;
             var verts = new Vector3[n * n];
@@ -30,8 +40,8 @@ namespace Galilego.Simulation.ContactZone
             {
                 for (int i = 0; i < n; i++)
                 {
-                    double east = -HalfSize + (2d * HalfSize * i / (n - 1));
-                    double north = -HalfSize + (2d * HalfSize * j / (n - 1));
+                    double east = centerLocal.z - HalfSize + (2d * HalfSize * i / (n - 1));
+                    double north = centerLocal.x - HalfSize + (2d * HalfSize * j / (n - 1));
                     double up = HeightAt(body, terrain, frame, east, north, t);
                     // Local (east, north, up) → Unity (north, up, east).
                     verts[(j * n) + i] = new Vector3((float)north, (float)up, (float)east);

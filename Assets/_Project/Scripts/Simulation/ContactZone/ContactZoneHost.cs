@@ -47,6 +47,15 @@ namespace Galilego.Simulation.ContactZone
         /// offset the ship jumps to COM height on zone enter and exit.</summary>
         private double anchorUp;
 
+        [Tooltip("Доля HalfSize: ближе к центру патч не трогаем, дальше — пересобираем вокруг корабля.")]
+        public float PatchRecenterFraction = 0.4f;
+
+        [Tooltip("Не чаще, с: пересборка = кукинг меша и потеря contact manifold на кадр.")]
+        public float PatchRebuildIntervalSeconds = 0.5f;
+
+        private double lastPatchRebuildTime = double.NegativeInfinity;
+        private Vector2 patchCenterLocal;
+
         /// <summary>
         /// Forced exit from the zone without writing ship state back (a writing Exit
         /// would leave the ship where PhysX had it — wrong when rolling back to build
@@ -141,6 +150,26 @@ namespace Galilego.Simulation.ContactZone
             // Effective gravity of the site frame (in its local axes) — see SLICE_PLAN.md.
             Proxy.SetFrameGravity(EffectiveLocalGravity(body, current, t));
 
+            // The patch follows the ship; build around the CURRENT frame, not the entry
+            // anchor. Measure from the last patch center: the mesh is rebuilt around the
+            // ship while the root stays at the frame origin, so a root-relative trigger
+            // stays true forever (measured: 35+ rebuilds instead of ≈4).
+            Vector3 shipLocal = transform.InverseTransformPoint(FloatingOrigin.ToRender(worldPosition));
+            double patchDx = shipLocal.x - patchCenterLocal.x;
+            double patchDz = shipLocal.z - patchCenterLocal.y;
+            if (ContactZoneGate.ShouldRecenterPatch(patchDx, patchDz, Patch.HalfSize,
+                    PatchRecenterFraction, t, lastPatchRebuildTime, PatchRebuildIntervalSeconds))
+            {
+                Patch.Build(body, terrain, current, t, new Vector3(shipLocal.x, 0f, shipLocal.z));
+                patchCenterLocal = new Vector2(shipLocal.x, shipLocal.z);
+                lastPatchRebuildTime = t;
+                if (Log)
+                {
+                    Debug.Log("[CZ] патч пересобран: x=" + shipLocal.x.ToString("F1")
+                        + " z=" + shipLocal.z.ToString("F1"));
+                }
+            }
+
             // The zone drives ship state: written back to the double world every frame.
             ship.Position = worldPosition;
             ship.Velocity = worldVelocity;
@@ -162,6 +191,8 @@ namespace Galilego.Simulation.ContactZone
             Patch.Build(body, terrain, frame, t);
             ApplyPose(frame, t);
             frame.ToLocal(ship.Position, ship.Velocity, out Vector3d lp, out Vector3d lv);
+            // Zone local axes are (north, up, east); the entry patch is centered on the anchor.
+            patchCenterLocal = new Vector2((float)lp.Y, (float)lp.X);
             bool centerOfMass = Runner.Flight != null && ship.PositionIsCom;
             Proxy.Build(Runner.Parts, frame, lp, lv, centerOfMass);
             if (centerOfMass)
