@@ -43,6 +43,11 @@ namespace Galilego.Universe
         [Tooltip("Доля far plane для диск-билборда.")]
         public float BillboardFarFraction = 0.9f;
 
+        [Tooltip("Радиус собственного корабля вокруг камеры (м) при EVA: твёрдые части ближе этого " +
+                 "радиуса не скрывают диск. Тёмный борт корабля невидим на фоне космоса, но всё равно " +
+                 "писал бы глубину и съедал звезду. 0 — не игнорировать (в кабине всегда 0).")]
+        public float EvaCraftClearanceMeters = 25f;
+
         [Tooltip("Разрешение процедурной текстуры грануляции (по горизонтали).")]
         public int SurfaceTextureWidth = 512;
 
@@ -145,14 +150,20 @@ namespace Galilego.Universe
             float far = camera.farClipPlane;
             Vector3 cameraPosition = camera.transform.position;
 
-            // The far disc is a billboard placed at 0.9·far. Its shader hides the star
-            // only behind geometry FARTHER than that disc (the planet and its terrain):
-            // nearer depth — the observer's own cockpit hull, hatch frame or canopy —
-            // must not swallow the star, otherwise the sun vanishes exactly when it is
-            // centred (and stays visible at the screen edge). The disc distance is
-            // published as a global for Galilego/SunDisc.
+            // The far disc is a billboard at 0.9·far drawn after the atmosphere, so the
+            // scene depth is its only occluder. The shader tests it by hand (ZTest
+            // Always): anything FARTHER than the clearance is the world (the planet,
+            // terrain) and hides the star; anything NEARER is the observer's own craft.
+            // In EVA the craft's unlit side is a black silhouette against space —
+            // invisible, yet it still wrote depth and swallowed the sun exactly when it
+            // drifted behind the hull (visible at the screen edge, gone in the middle).
+            // Inside a vessel the clearance is 0: the cabin wall must hide the sun and
+            // only the glass (transparent, no depth) may let it through.
             float discDistance = Mathf.Max(1f, far * BillboardFarFraction);
-            Shader.SetGlobalFloat("_SunDiscDistance", discDistance);
+            bool eva = Runner.PlayerMode == PlayerMode.EVA;
+            Shader.SetGlobalFloat("_SunSelfOccluder",
+                eva ? Mathf.Max(0f, EvaCraftClearanceMeters) : 0f);
+            Shader.SetGlobalFloat("_SunFarLimit", far * 0.999f);
 
             // Sun elevation above the local horizon (for DebugHud).
             sunElevationDeg = double.NaN;

@@ -19,7 +19,11 @@ Shader "Galilego/SunDisc"
 
             Blend SrcAlpha One
             ZWrite Off
-            ZTest LEqual
+            // The discard below does the occlusion by hand. A hardware ZTest would
+            // reject the disc behind ANY nearer surface — including the observer's
+            // own craft, whose dark side is invisible against space — so the star
+            // died exactly when it drifted behind the ship.
+            ZTest Always
             Cull Off
 
             HLSLPROGRAM
@@ -35,10 +39,14 @@ Shader "Galilego/SunDisc"
             float _GlowFalloff;
             // Set by SkyEnvironment: transmittance to the sun (space → 1, sunset → red).
             float3 _SunTransmittance;
-            // Set by SunBillboard: distance of the disc billboard (0.9·far). The shader
-            // uses it to tell a real occluder (the planet behind the disc) from the
-            // observer's own craft (nearer than the disc).
-            float _SunDiscDistance;
+            // Set by SunBillboard: clearance (m) around the eye where solid geometry
+            // is the observer's own craft, not the world. Inside that radius the disc
+            // is kept — an EVA hull is a black silhouette against space and would
+            // otherwise swallow the star without showing anything.
+            float _SunSelfOccluder;
+            // Far plane (m), from SunBillboard. A depth at/over it is "no geometry",
+            // not an occluder: the test never relies on IsSky alone.
+            float _SunFarLimit;
 
             struct Attributes
             {
@@ -78,16 +86,19 @@ Shader "Galilego/SunDisc"
                     discard;
                 }
 
-                // Hide the sun behind the body by depth. The disc is a billboard at
-                // 0.9·far, so an occluder FARTHER than it is the planet/terrain the disc
-                // must not be drawn over; anything NEARER is already depth-tested by
-                // ZTest (a real occluder) or is the observer's own craft — a cockpit
-                // hull, hatch frame or canopy — which must not swallow the star. The
-                // old "!IsSky" test discarded the disc for ANY non-sky depth, so the
-                // sun vanished whenever a near hull surface appeared under it.
+                // Occlusion by the scene depth, with a craft-sized hole around the eye.
+                // Everything farther than _SunSelfOccluder is the real world (the planet,
+                // the terrain, buildings) and hides the star; everything nearer is the
+                // observer's own craft — the hull, the hatch frame, the canopy — which
+                // must not. A depth at the far plane is empty space, not an occluder, so
+                // the test does not depend on IsSky() alone. In a cockpit SunBillboard
+                // publishes 0: the cabin wall still hides the sun and only the glass
+                // (transparent, no depth) lets it through.
                 float rawDepth = LoadCameraDepth(uint2(input.positionCS.xy));
+                float eyeDepth = LinearEyeDepth(rawDepth, _ZBufferParams);
                 if (!IsSky(rawDepth)
-                    && LinearEyeDepth(rawDepth, _ZBufferParams) > _SunDiscDistance)
+                    && eyeDepth > max(_SunSelfOccluder, 0.05)
+                    && eyeDepth < _SunFarLimit)
                 {
                     discard;
                 }
