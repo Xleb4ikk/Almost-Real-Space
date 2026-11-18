@@ -74,6 +74,13 @@ namespace Galilego.Tablet
         private float interactiveUntil;
         private bool mapDirty;
 
+        /// <summary>Map view aspect the overlay texture was last sized for (0 = not sized yet).</summary>
+        private float overlayAspect;
+
+        private const int OverlayMapHeight = 640;
+        private const int OverlayMapMinWidth = 320;
+        private const int OverlayMapMaxWidth = 2048;
+
         public InteractiveScreen Screen { get { return screen; } }
         public NavTabletView View { get { return view; } }
 
@@ -220,6 +227,8 @@ namespace Galilego.Tablet
                 return;
             }
 
+            EnsureOverlayAspect();
+
             if (runner == null)
             {
                 runner = FindAnyObjectByType<SimulationRunner>();
@@ -293,6 +302,64 @@ namespace Galilego.Tablet
             TickPreviewAnimation();
             TickInteractiveMap();
             view.Tick(Time.unscaledDeltaTime, simDt);
+        }
+
+        /// <summary>
+        /// The overlay texture must have the map view's aspect ratio. The globe is
+        /// drawn with one uniform scale (a circle in texture pixels); the map view
+        /// stretches the texture to its own box, so a 16:10 texture in a squarer
+        /// panel shows an oval planet on any resolution whose panel is not 16:10.
+        /// Reallocated only when the panel size actually changes.
+        /// </summary>
+        private void EnsureOverlayAspect()
+        {
+            if (overlayMap == null || view == null || !view.Bound)
+            {
+                return;
+            }
+
+            Vector2 size = view.MapSize;
+            if (!(size.x > 8f) || !(size.y > 8f))
+            {
+                return;
+            }
+
+            float aspect = size.x / size.y;
+            if (Mathf.Abs(aspect - overlayAspect) < 0.005f)
+            {
+                return;
+            }
+
+            overlayAspect = aspect;
+
+            // Clamp a sensible size, but keep the exact aspect: the height follows
+            // the width when the width had to be clamped.
+            int height = OverlayMapHeight;
+            int width = Mathf.Clamp(Mathf.RoundToInt(height * aspect), OverlayMapMinWidth, OverlayMapMaxWidth);
+            if (width == OverlayMapMinWidth || width == OverlayMapMaxWidth)
+            {
+                height = Mathf.Max(64, Mathf.RoundToInt(width / aspect));
+            }
+
+            if (Mathf.Abs(((float)width / height) - ((float)overlayMap.Width / overlayMap.Height)) < 0.005f)
+            {
+                return;
+            }
+
+            NavMapRenderer replacement = new NavMapRenderer(width, height, false);
+            replacement.CopyViewFrom(overlayMap);
+            overlayMap.Dispose();
+            overlayMap = replacement;
+            mapDirty = true;
+
+            // The old texture is gone: swap the panel over right away instead of
+            // waiting for the next low-rate map rebuild.
+            if (mapModel != null)
+            {
+                overlayMap.Draw(mapModel, view.State, mapInfo);
+            }
+
+            view.SetMapTexture(overlayMap.Texture);
         }
 
         /// <summary>
