@@ -371,9 +371,15 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
-        /// Apsis markers of the CURRENT osculating orbit (the same two-body elements the
-        /// orbit panel shows). N-body perturbations move them from one frame to the next;
-        /// the map is a snapshot, not a frozen prediction.
+        /// Apsis markers of the CURRENT osculating orbit around the dominant body,
+        /// placed in the SELECTED reference frame. The orbit itself does not depend
+        /// on the frame, but the map draws every point as
+        /// (world point - frame body at that same time), so the marker is evaluated
+        /// at the moment the craft really reaches the apsis. Anchoring it at "now"
+        /// left it behind when the frame body moved along its own path, which is
+        /// what made Ap look frozen after switching SOL ↔ TERRA. Altitude and speed
+        /// stay body-relative: they describe the orbit around the dominant body, not
+        /// a fictitious conic around the frame origin.
         /// </summary>
         private void BuildApsides(StarSystem system, Ship ship, double time, OrbitingBody frame)
         {
@@ -383,7 +389,7 @@ namespace Galilego.Tablet
             ApoapsisAltitudeMeters = double.NaN;
             PeriapsisSpeedMps = double.NaN;
             ApoapsisSpeedMps = double.NaN;
-            if (ship == null)
+            if (ship == null || frame == null)
             {
                 return;
             }
@@ -395,32 +401,71 @@ namespace Galilego.Tablet
             }
 
             dominant.EvaluateWorldState(time, out Vector3d bodyPosition, out Vector3d bodyVelocity);
+            double mu = dominant.ResolveStandardGravitationalParameter();
             Vector3d r = ship.Position - bodyPosition;
             Vector3d v = ship.Velocity - bodyVelocity;
-            OrbitalElements elements = OrbitalElements.FromState(r, v, dominant.ResolveStandardGravitationalParameter());
+            OrbitalElements elements = OrbitalElements.FromState(r, v, mu);
             if (!elements.IsValid || elements.Eccentricity <= 1e-9d)
             {
                 return;
             }
 
+            double toPeriapsis = 0d;
+            double toApoapsis = 0d;
+            if (!elements.TryGetTimeToApsides(mu, out toPeriapsis, out toApoapsis))
+            {
+                toPeriapsis = 0d;
+                toApoapsis = 0d;
+            }
+
             Vector3d eDirection = elements.EccentricityVector / elements.Eccentricity;
-            Vector3d local = bodyPosition - FramePosition;
-            PeriapsisPosition = local + (eDirection * elements.PeriapsisDistance);
+            PeriapsisPosition = ApsisPointInFrame(dominant, frame, time, toPeriapsis,
+                eDirection, elements.PeriapsisDistance);
             PeriapsisAltitudeMeters = elements.PeriapsisDistance - dominant.Radius;
             PeriapsisSpeedMps = ApsisSpeed(elements.SpecificAngularMomentum, elements.PeriapsisDistance);
             if (elements.IsBound && double.IsFinite(elements.ApoapsisDistance))
             {
-                ApoapsisPosition = local - (eDirection * elements.ApoapsisDistance);
+                ApoapsisPosition = ApsisPointInFrame(dominant, frame, time, toApoapsis,
+                    -eDirection, elements.ApoapsisDistance);
                 ApoapsisAltitudeMeters = elements.ApoapsisDistance - dominant.Radius;
                 ApoapsisSpeedMps = ApsisSpeed(elements.SpecificAngularMomentum, elements.ApoapsisDistance);
                 HasApoapsis = true;
             }
             else
             {
-                ApoapsisPosition = local;
+                ApoapsisPosition = bodyPosition - FramePosition;
             }
 
             HasApsides = true;
+        }
+
+        /// <summary>
+        /// Apsis point in the map frame: the dominant body's conic apse, translated by
+        /// the frame body's position AT THE APSIS TIME (not at "now"). The trajectory
+        /// lines use the same per-sample translation, so the marker stays on the drawn
+        /// frame-relative path instead of hanging at the previous frame's location.
+        /// </summary>
+        private static Vector3d ApsisPointInFrame(OrbitingBody dominant, OrbitingBody frame,
+            double time, double secondsToApsis, Vector3d direction, double distance)
+        {
+            if (double.IsFinite(secondsToApsis) && Math.Abs(secondsToApsis) > 1e-6d)
+            {
+                try
+                {
+                    double t = time + secondsToApsis;
+                    dominant.EvaluateWorldState(t, out Vector3d bodyAtApsis, out _);
+                    frame.EvaluateWorldState(t, out Vector3d frameAtApsis, out _);
+                    return (bodyAtApsis - frameAtApsis) + (direction * distance);
+                }
+                catch (EphemerisRangeException)
+                {
+                    // Apsis outside the baked span: fall back to the current instant.
+                }
+            }
+
+            dominant.EvaluateWorldState(time, out Vector3d bodyPosition, out _);
+            frame.EvaluateWorldState(time, out Vector3d framePosition, out _);
+            return (bodyPosition - framePosition) + (direction * distance);
         }
 
         /// <summary>Speed at an apsis: the specific angular momentum h = r·v is constant, so v = h / r.</summary>

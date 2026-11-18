@@ -876,7 +876,10 @@ namespace Galilego.Tablet
                 });
             }
 
-            // Apsides of the current osculating orbit.
+            // Apsides of the current osculating orbit. In a frame whose body is far
+            // from the craft (SOL while in LEO) the real apsis point is off-map at
+            // AU scale: clamp it to the map edge with an outward arrow, so Ap/Pe are
+            // never silently missing when the reference frame changes.
             MarkerPalette markers = MarkersFor(model);
             string orbitKind = model.ShipThrusting ? "МАНЁВР" : "БАЛЛИСТИКА";
             if (model.HasApsides)
@@ -884,15 +887,16 @@ namespace Galilego.Tablet
                 if (!IsMarkerOccluded(model, occluderIndex, model.PeriapsisPosition, screenRight, screenUp, camDir))
                 {
                     Vector2 pe = Project(model.PeriapsisPosition);
-                    if (IsFinite(pe) && Inside(rect, pe, 12f))
+                    if (IsFinite(pe))
                     {
+                        Vector2 placed = ClampToMap(rect, pe, ApsisEdgeMargin, out bool offMap);
                         string detail = ApsisDetail(model.PeriapsisAltitudeMeters, model.PeriapsisSpeedMps);
-                        DrawApsisMarker(pe.x, pe.y, false, markers, rect, detail,
-                            hoverKind == PickKind.Periapsis, out RectInt box);
+                        DrawApsisMarker(placed.x, placed.y, false, markers, rect, detail,
+                            hoverKind == PickKind.Periapsis, offMap, out RectInt box);
                         picks.Add(new PickEntry
                         {
-                            X = pe.x,
-                            Y = pe.y,
+                            X = placed.x,
+                            Y = placed.y,
                             Radius = 10f,
                             Kind = PickKind.Periapsis,
                             Box = box,
@@ -906,15 +910,16 @@ namespace Galilego.Tablet
                     && !IsMarkerOccluded(model, occluderIndex, model.ApoapsisPosition, screenRight, screenUp, camDir))
                 {
                     Vector2 ap = Project(model.ApoapsisPosition);
-                    if (IsFinite(ap) && Inside(rect, ap, 12f))
+                    if (IsFinite(ap))
                     {
+                        Vector2 placed = ClampToMap(rect, ap, ApsisEdgeMargin, out bool offMap);
                         string detail = ApsisDetail(model.ApoapsisAltitudeMeters, model.ApoapsisSpeedMps);
-                        DrawApsisMarker(ap.x, ap.y, true, markers, rect, detail,
-                            hoverKind == PickKind.Apoapsis, out RectInt box);
+                        DrawApsisMarker(placed.x, placed.y, true, markers, rect, detail,
+                            hoverKind == PickKind.Apoapsis, offMap, out RectInt box);
                         picks.Add(new PickEntry
                         {
-                            X = ap.x,
-                            Y = ap.y,
+                            X = placed.x,
+                            Y = placed.y,
                             Radius = 10f,
                             Kind = PickKind.Apoapsis,
                             Box = box,
@@ -1444,6 +1449,24 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
+        /// Keeps a projected marker inside the map. When the real point is off-map
+        /// (an AU-scale apsis in a star frame at planet zoom) the marker is placed
+        /// on the edge and <paramref name="outside"/> tells the drawing code to add
+        /// an outward arrow, so the apsis never silently disappears with the frame.
+        /// </summary>
+        private static Vector2 ClampToMap(RectInt rect, Vector2 point, float margin, out bool outside)
+        {
+            float xmin = rect.x + margin;
+            float xmax = rect.x + rect.width - margin;
+            float ymin = rect.y + margin;
+            float ymax = rect.y + rect.height - margin;
+            float x = Mathf.Clamp(point.x, xmin, xmax);
+            float y = Mathf.Clamp(point.y, ymin, ymax);
+            outside = x != point.x || y != point.y;
+            return new Vector2(x, y);
+        }
+
+        /// <summary>
         /// Polyline whose colour runs from <paramref name="start"/> to
         /// <paramref name="end"/> along the samples: a trail fades into the past and
         /// a forecast fades into the future, so the direction of time is visible.
@@ -1780,6 +1803,9 @@ namespace Galilego.Tablet
         private const int ApsisHeaderHeight = 20;
         private const int ApsisValueRowHeight = 18;
 
+        /// <summary>Inset of an off-map apsis marker from the map edge (room for its arrow).</summary>
+        private const int ApsisEdgeMargin = 26;
+
         /// <summary>Row step for the smaller 1x plates (ship, body, surface readout).</summary>
         private const int PlateRowHeight = 9;
 
@@ -1976,9 +2002,11 @@ namespace Galilego.Tablet
         /// While hovered the same plate expands in place with the altitude and speed
         /// at that point; <paramref name="box"/> is the exact drawn rectangle and is
         /// reused as the pick area, so the hover zone always matches the plate.
+        /// <paramref name="offMap"/> draws an outward chevron: the real point is
+        /// outside the view and the marker is clamped to the map edge.
         /// </summary>
         private void DrawApsisMarker(float x, float y, bool apoapsis, MarkerPalette pal, RectInt rect,
-            string detail, bool expanded, out RectInt box)
+            string detail, bool expanded, bool offMap, out RectInt box)
         {
             int xi = Mathf.RoundToInt(x);
             int yi = Mathf.RoundToInt(y);
@@ -2040,6 +2068,27 @@ namespace Galilego.Tablet
             canvas.VLine(xi, yi - 10, 4, pal.Main);
             canvas.VLine(xi, yi + 7, 4, pal.Main);
             canvas.Px(xi, yi, pal.Light);
+
+            // Off-map: an outward chevron on the edge marker. The reticle is clamped,
+            // but it must not read as the true apsis point inside the view.
+            if (offMap)
+            {
+                Vector2 outward = new Vector2(
+                    xi - (rect.x + (rect.width * 0.5f)),
+                    yi - (rect.y + (rect.height * 0.5f)));
+                if (outward.sqrMagnitude > 1e-6f)
+                {
+                    outward.Normalize();
+                    int tipX = xi + Mathf.RoundToInt(outward.x * 14f);
+                    int tipY = yi + Mathf.RoundToInt(outward.y * 14f);
+                    int baseX = xi + Mathf.RoundToInt(outward.x * 8f);
+                    int baseY = yi + Mathf.RoundToInt(outward.y * 8f);
+                    int perpX = Mathf.RoundToInt(-outward.y * 4f);
+                    int perpY = Mathf.RoundToInt(outward.x * 4f);
+                    DrawHaloLine(tipX, tipY, baseX + perpX, baseY + perpY, pal.Main, pal.Dark);
+                    DrawHaloLine(tipX, tipY, baseX - perpX, baseY - perpY, pal.Main, pal.Dark);
+                }
+            }
 
             box = new RectInt(tx, ty, tw, th);
         }

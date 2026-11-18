@@ -109,6 +109,10 @@
     <!-- Planet\Water -->
     <Compile Include="$(GalilegoScripts)Planet\Water\WaterQuery.cs" />
 
+    <!-- Planet\GasGiant (profile + asset; referenced by BodyAuthoring) -->
+    <Compile Include="$(GalilegoScripts)Planet\GasGiant\GasGiantProfile.cs" />
+    <Compile Include="$(GalilegoScripts)Planet\GasGiant\GasGiantProfileAsset.cs" />
+
     <!-- Planet\Clouds -->
     <Compile Include="$(GalilegoScripts)Planet\Clouds\CloudProfile.cs" />
     <Compile Include="$(GalilegoScripts)Planet\Clouds\CloudProfileAsset.cs" />

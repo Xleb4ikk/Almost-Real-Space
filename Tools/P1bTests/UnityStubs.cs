@@ -99,6 +99,10 @@ namespace UnityEngine
             return new Color(a.r + ((b.r - a.r) * t), a.g + ((b.g - a.g) * t), a.b + ((b.b - a.b) * t), a.a + ((b.a - a.a) * t));
         }
         public static Color white => new Color(1f, 1f, 1f, 1f);
+        public static Color gray => new Color(0.5f, 0.5f, 0.5f, 1f);
+        public static Color magenta => new Color(1f, 0f, 1f, 1f);
+        /// <summary>Unity converts sRGB → linear; the stub keeps the same numbers (data presets only).</summary>
+        public Color linear => this;
         public static Color operator *(Color a, Color b) => new Color(a.r * b.r, a.g * b.g, a.b * b.b, a.a * b.a);
         public static Color operator *(Color a, float d) => new Color(a.r * d, a.g * d, a.b * d, a.a * d);
         public static bool operator ==(Color a, Color b) => a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
@@ -483,7 +487,7 @@ namespace UnityEngine
 
     public enum CursorLockMode { None, Locked }
 
-    public enum KeyCode { Alpha1 = 49, Alpha2 = 50, Alpha3 = 51, Alpha4 = 52, Alpha5 = 53, Alpha6 = 54, Alpha7 = 55, Alpha8 = 56, Alpha9 = 57, Escape = 27, LeftShift = 304, LeftControl = 306, LeftAlt = 308, RightAlt = 309, P = 112, E = 101, I = 105, F10 = 291, W = 119, A = 97, S = 115, D = 100, H = 104, R = 114, Z = 122, C = 99, Space = 32 }
+    public enum KeyCode { Alpha1 = 49, Alpha2 = 50, Alpha3 = 51, Alpha4 = 52, Alpha5 = 53, Alpha6 = 54, Alpha7 = 55, Alpha8 = 56, Alpha9 = 57, Escape = 27, LeftShift = 304, RightControl = 305, LeftControl = 306, LeftAlt = 308, RightAlt = 309, P = 112, E = 101, I = 105, F10 = 291, W = 119, A = 97, S = 115, D = 100, H = 104, R = 114, Z = 122, C = 99, Space = 32 }
 
     public static class Cursor
     {
@@ -523,6 +527,48 @@ namespace UnityEngine
         public static int CeilToInt(float v) => (int)System.Math.Ceiling(v);
         public static int RoundToInt(float v) => (int)System.Math.Round(v);
         public static float Sign(float v) => v >= 0f ? 1f : -1f;
+        public static float InverseLerp(float a, float b, float v) => a == b ? 0f : Clamp01((v - a) / (b - a));
+        public static float SmoothStep(float from, float to, float t)
+        {
+            t = Clamp01((t - from) / (to - from));
+            return t * t * (3f - (2f * t));
+        }
+    }
+
+    public static class ColorUtility
+    {
+        public static bool TryParseHtmlString(string htmlString, out Color color)
+        {
+            color = Color.white;
+            if (string.IsNullOrEmpty(htmlString))
+            {
+                return false;
+            }
+
+            string s = htmlString.TrimStart('#');
+            if (s.Length < 6)
+            {
+                return false;
+            }
+
+            try
+            {
+                color = new Color(
+                    Convert.ToInt32(s.Substring(0, 2), 16) / 255f,
+                    Convert.ToInt32(s.Substring(2, 2), 16) / 255f,
+                    Convert.ToInt32(s.Substring(4, 2), 16) / 255f,
+                    s.Length >= 8 ? Convert.ToInt32(s.Substring(6, 2), 16) / 255f : 1f);
+                return true;
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+            catch (OverflowException)
+            {
+                return false;
+            }
+        }
     }
 
     public sealed class LineRenderer

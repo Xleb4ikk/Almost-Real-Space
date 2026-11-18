@@ -319,6 +319,7 @@ new P1bCase("Test549_SpacecraftOrbitIntegrators", Test549_SpacecraftOrbitIntegra
             new P1bCase("Test567_NavMapModel", Test567_NavMapModel, false),
             new P1bCase("Test568_NavMapShortArc", Test568_NavMapShortArc, false),
             new P1bCase("Test569_NavMapManeuvers", Test569_NavMapManeuvers, false),
+            new P1bCase("Test570_NavMapFrameApsides", Test570_NavMapFrameApsides, false),
 
             // R0 baseline probe of the current DOP853 ephemeris bake (TASK_RKN12 §R0).
             // Unnumbered on purpose: Test566 is reserved for the RKN12 certification

@@ -269,4 +269,99 @@ internal static partial class P1bTests
                 bodyForecastSpan));
         return 0;
     }
+
+    /// <summary>
+    /// Apsis markers are the dominant body's apse, placed in the SELECTED frame at
+    /// the time the craft reaches it. The old code anchored the marker at "now", so
+    /// switching TERRA → SOL left it where the previous frame had it instead of
+    /// following the frame's own motion along the drawn path.
+    /// </summary>
+    private static int Test570_NavMapFrameApsides()
+    {
+        StarSystem system = TwoBodySystem();
+        OrbitingBody star = system.AllBodies[0];
+        OrbitingBody planet = system.AllBodies[1];
+        star.EvaluateWorldState(0d, out Vector3d starPosition, out _);
+        planet.EvaluateWorldState(0d, out Vector3d bodyPosition, out Vector3d bodyVelocity);
+
+        double altitude = 100e3d;
+        double radius = planet.Radius + altitude;
+        double mu = planet.ResolveStandardGravitationalParameter();
+        Vector3d radial = new Vector3d(0d, 0d, 1d);
+        Vector3d tangent = new Vector3d(1d, 0d, 0d);
+
+        // A short bound hop (mostly radial, a little tangential): a real Ap a few
+        // minutes ahead, like the suborbital launch in the bug report. It is NOT a
+        // heliocentric conic, so the marker must stay near the craft.
+        var ship = new Spacecraft(
+            bodyPosition + (radial * radius),
+            bodyVelocity + (radial * 3000d) + (tangent * 100d),
+            1000d);
+
+        bool[] visible = new bool[system.AllBodies.Count + 1];
+        for (int i = 0; i < visible.Length; i++)
+        {
+            visible[i] = true;
+        }
+
+        // Same centre (the planet) in both runs: only the reference frame differs,
+        // exactly like pressing "ИСК" in the tablet's frame table.
+        var planetFrame = new NavMapModel();
+        planetFrame.Rebuild(system, ship, 0d, 1, 1, visible, 3600d, 0d, null, true);
+
+        var starFrame = new NavMapModel();
+        starFrame.Rebuild(system, ship, 0d, 0, 1, visible, 3600d, 0d, null, true);
+
+        OrbitalElements elements = OrbitalElements.FromState(
+            radial * radius, (radial * 3000d) + (tangent * 100d), mu);
+        if (!elements.IsValid || !elements.IsBound
+            || !elements.TryGetTimeToApsides(mu, out _, out double toApoapsis))
+        {
+            Check(false, "T570 nav frame apsides", "исходная орбита не построена");
+            return 0;
+        }
+
+        Vector3d eDirection = elements.EccentricityVector / elements.Eccentricity;
+        planet.EvaluateWorldState(toApoapsis, out Vector3d planetAtAp, out _);
+        star.EvaluateWorldState(0d, out Vector3d starAtNow, out _);
+
+        // In the planet frame the frame body IS the dominant body at the apsis time,
+        // so the marker is the pure conic apse.
+        bool planetApsis = planetFrame.HasApsides
+            && (planetFrame.ApoapsisPosition - (-(eDirection * elements.ApoapsisDistance))).Magnitude < 1e-3d
+            && (planetFrame.PeriapsisPosition - (eDirection * elements.PeriapsisDistance)).Magnitude < 1e-3d
+            && Math.Abs(planetFrame.ApoapsisAltitudeMeters
+                - (elements.ApoapsisDistance - planet.Radius)) < 1e-3d;
+
+        // In the star frame the same physical apse is translated by the planet's own
+        // heliocentric position at the APOAPSIS TIME, not at "now".
+        Vector3d expectedStarAp = (planetAtAp - starAtNow) - (eDirection * elements.ApoapsisDistance);
+        bool starApsis = starFrame.HasApsides && starFrame.HasApoapsis
+            && (starFrame.ApoapsisPosition - expectedStarAp).Magnitude < 1e-3d;
+
+        // On screen the centre is the planet, so the frame motion over the time to
+        // the apsis is exactly what moves the marker. The old code produced the same
+        // screen offset in both frames (frameMovesMarker would be false).
+        Vector3d planetScreen = planetFrame.ApoapsisPosition - planetFrame.CenterPosition;
+        Vector3d starScreen = starFrame.ApoapsisPosition - starFrame.CenterPosition;
+        Vector3d frameTravel = planetAtAp - bodyPosition;
+        Vector3d shift = starScreen - planetScreen;
+        bool frameMovesMarker = (shift - frameTravel).Magnitude < 1e-3d
+            && frameTravel.Magnitude > 1e5d;
+
+        // The star-frame marker is ~1 AU from the STAR (map origin), but relative to
+        // the craft/planet it must stay at hop scale, not at an AU-scale conic.
+        bool onPath = starScreen.Magnitude < 1e9d;
+
+        bool pass = planetApsis && starApsis && frameMovesMarker && onPath;
+        Check(pass, "T570 nav frame apsides",
+            string.Format(
+                "planetAp={0:E3}м starAp={1:E3}м shift={2:E3}м frameTravel={3:E3}м screen={4:E3}м",
+                planetScreen.Magnitude,
+                starScreen.Magnitude,
+                shift.Magnitude,
+                frameTravel.Magnitude,
+                starScreen.Magnitude));
+        return 0;
+    }
 }
