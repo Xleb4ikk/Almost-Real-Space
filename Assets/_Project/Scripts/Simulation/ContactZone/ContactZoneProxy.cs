@@ -6,6 +6,7 @@
 using System.Collections.Generic;
 using Galilego.Core;
 using Galilego.Spacecraft;
+using Galilego.Universe;
 using UnityEngine;
 
 namespace Galilego.Simulation.ContactZone
@@ -100,7 +101,14 @@ namespace Galilego.Simulation.ContactZone
             }
 
             Vector3 origin = ToUnity(localPosition);
-            Vector3 vel = ToUnity(localVelocity);
+
+            // Build receives the ship velocity in SITE axes (east, north, up) relative to
+            // the surface. rb.linearVelocity is WORLD: rotate the local vector through
+            // the site basis instead of writing the local triple into the world field.
+            Vector3 velocityWorld = AstroFrame.ToSimulation(
+                ContactZoneFrameMath.ZoneToWorld(
+                    ContactZoneFrameMath.SiteToZone(localVelocity),
+                    frame.East, frame.North, frame.Up));
 
             // In game the ship point is the vessel bottom (touch is detected by it), while
             // part Offset is measured from the assembly's internal origin, so T1 hangs 5.5 m
@@ -143,7 +151,7 @@ namespace Galilego.Simulation.ContactZone
 
                 var rb = go.AddComponent<Rigidbody>();
                 rb.mass = (float)d.MassKg;
-                rb.linearVelocity = vel;
+                rb.linearVelocity = velocityWorld;
                 // Continuous collision detection: a fast vessel (hard landing, re-entry
                 // debris) must not tunnel through the terrain patch between two physics steps.
                 rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;

@@ -277,6 +277,35 @@ internal static partial class P1bTests
         return 0;
     }
 
+    // Test323: zone-local velocity written to rb.linearVelocity must pass through the
+    // site basis. SiteToZone alone is a permutation; using it as a world vector rotates
+    // (and here mirrors) the direction — exactly the land30 Δv = 59.96 m/s finding.
+    static int Test323_LocalVelocityToWorld()
+    {
+        var site = new Vector3d(2d, -3d, 5d);
+        Vector3d zone = ContactZoneFrameMath.SiteToZone(site);
+        bool permuted = Math.Abs(zone.X - site.Y) < 1e-12d
+            && Math.Abs(zone.Y - site.Z) < 1e-12d
+            && Math.Abs(zone.Z - site.X) < 1e-12d;
+
+        // Orthonormal site basis; ZoneToWorld must return the same vector in world axes.
+        var east = new Vector3d(0d, 1d, 0d);
+        var north = new Vector3d(0d, 0d, 1d);
+        var up = new Vector3d(1d, 0d, 0d);
+        Vector3d world = ContactZoneFrameMath.ZoneToWorld(zone, east, north, up);
+        Vector3d expected = (east * site.X) + (north * site.Y) + (up * site.Z);
+        bool worldOk = (world - expected).Magnitude < 1e-12d;
+        bool roundTripOk = (ContactZoneFrameMath.ZoneToSite(world) - site).Magnitude < 1e-12d;
+
+        // The naive "local triple is already world" value differs from the real world one.
+        bool naiveDiffers = (zone - expected).Magnitude > 1e-6d;
+
+        Check(permuted && worldOk && roundTripOk && naiveDiffers, "T323 local-velocity-to-world",
+            string.Format(Inv, "site={0}, zone={1}, world={2}, ожидание={3}, round-trip={4}",
+                site, zone, world, expected, ContactZoneFrameMath.ZoneToSite(world)));
+        return 0;
+    }
+
     private static bool SameSet(int[] actual, int[] expected)
     {
         if (actual.Length != expected.Length)

@@ -45,6 +45,7 @@
     <Compile Include="$(GalilegoScripts)Simulation\ContactZone\SiteFrame.cs" />
     <Compile Include="$(GalilegoScripts)Simulation\ContactZone\ContactZoneGate.cs" />
     <Compile Include="$(GalilegoScripts)Simulation\ContactZone\ZoneIslands.cs" />
+    <Compile Include="$(GalilegoScripts)Simulation\ContactZone\ContactZoneFrameMath.cs" />
 
     <!-- Simulation\Player -->
     <Compile Include="$(GalilegoScripts)Simulation\Player\IPlayerSupport.cs" />
