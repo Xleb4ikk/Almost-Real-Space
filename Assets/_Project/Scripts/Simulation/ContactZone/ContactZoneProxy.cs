@@ -28,7 +28,23 @@ namespace Galilego.Simulation.ContactZone
         // living in the scene as PhysX physics until zone exit).
         private PartDefinition[] partDefs;
         private readonly List<int> brokenChildren = new List<int>();
+        private readonly List<int> stagedCuts = new List<int>();
         private bool[] rootMask;
+
+        // 0 — root island, 1..N — detached islands; null — no breaks, one island.
+        private int[] islandOf;
+
+        private struct DeferredPair
+        {
+            public Collider A;
+            public Collider B;
+            public int Waited;
+        }
+
+        // Newly separated islands may still interpenetrate at the joint; enabling
+        // their collisions in the break frame gives a depenetration impulse that
+        // changes the very break the probe measures. Enable after 2 fixed steps.
+        private readonly List<DeferredPair> deferredCollisionPairs = new List<DeferredPair>();
 
         /// <summary>Indices of parts with broken joints (in break order).</summary>
         public IReadOnlyList<int> BrokenChildren => brokenChildren;
@@ -98,6 +114,8 @@ namespace Galilego.Simulation.ContactZone
             Clear();
             if (parts == null || parts.Count == 0) return;
 
+            stagedCuts.Clear();
+            islandOf = null;
             partDefs = new PartDefinition[parts.Count];
             for (int i = 0; i < parts.Count; i++)
             {
@@ -201,6 +219,7 @@ namespace Galilego.Simulation.ContactZone
                 bodies[i].gameObject.AddComponent<ZoneJointBreakListener>().Bind(this, i);
             }
 
+            ApplyIslandCollisions();
         }
 
         /// <summary>
@@ -216,6 +235,31 @@ namespace Galilego.Simulation.ContactZone
                 if (rb != null)
                 {
                     rb.AddForce(GravityWorld, ForceMode.Acceleration);
+                }
+            }
+
+            for (int i = deferredCollisionPairs.Count - 1; i >= 0; i--)
+            {
+                DeferredPair pair = deferredCollisionPairs[i];
+                if (pair.A == null || pair.B == null)
+                {
+                    deferredCollisionPairs.RemoveAt(i);
+                    continue;
+                }
+
+                pair.Waited++;
+                // Enable only once the bounds no longer overlap: an impulse in the
+                // break frame changes the very joint break being measured. The cap
+                // keeps debris from staying non-colliding forever.
+                bool separated = !pair.A.bounds.Intersects(pair.B.bounds);
+                if (separated || pair.Waited >= 30)
+                {
+                    Physics.IgnoreCollision(pair.A, pair.B, false);
+                    deferredCollisionPairs.RemoveAt(i);
+                }
+                else
+                {
+                    deferredCollisionPairs[i] = pair;
                 }
             }
         }
@@ -312,20 +356,29 @@ namespace Galilego.Simulation.ContactZone
                 bool parentKeep = parent >= 0 && parent < keep.Length && keep[parent];
                 if (inKeep != parentKeep)
                 {
+                    stagedCuts.Add(i);
                     Destroy(fj);
                 }
             }
 
-            // Joints that could connect the jettisoned part to a remaining one "below" (parent is jettisoned).
-            rootMask = new bool[bodies.Count];
+            var keepSeeds = new List<int>();
             for (int i = 0; i < bodies.Count; i++)
             {
-                rootMask[i] = i < keep.Length && keep[i];
-                if (!rootMask[i] && bodies[i] != null && kickMetersPerSecond != 0f)
+                bool inKeep = i < keep.Length && keep[i];
+                if (inKeep)
+                {
+                    keepSeeds.Add(i);
+                }
+                else if (bodies[i] != null && kickMetersPerSecond != 0f)
                 {
                     bodies[i].linearVelocity += transform.TransformDirection(kickDirLocal) * kickMetersPerSecond;
                 }
             }
+
+            // The physical root (ParentIndex < 0) may be the part that just flew away;
+            // seed the root island from the KEPT side explicitly. Newly separated
+            // islands may still touch at the joint, so defer their collisions.
+            RebuildIslands(keepSeeds, deferCrossIsland: true);
         }
 
         /// <summary>
@@ -342,31 +395,131 @@ namespace Galilego.Simulation.ContactZone
             }
 
             brokenChildren.Add(partIndex);
-            RecomputeRootMask();
+            RebuildIslands(CurrentRootSeeds(), deferCrossIsland: true);
             Debug.Log("[ContactZone] стык разорван: деталь " + partIndex
                 + " (сила " + breakForce.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + " Н),"
                 + " отломков-островов: " + (rootMask != null ? DetachedIslandCount() : 0)
                 + ", корневых деталей: " + RootCount());
         }
 
-        private void RecomputeRootMask()
+        /// <summary>
+        /// Recompute root/island maps from all cuts (staged + broken) and re-apply the
+        /// collision filter: inside an island parts ignore each other, between islands
+        /// they collide (debris must hit the ship and the ground).
+        /// </summary>
+        private void RebuildIslands(IReadOnlyCollection<int> rootSeeds = null, bool deferCrossIsland = false)
         {
             if (partDefs == null)
             {
                 rootMask = null;
+                islandOf = null;
+                ApplyIslandCollisions();
                 return;
             }
 
-            ZoneIslands.SplitResult split = ZoneIslands.Split(partDefs, brokenChildren);
+            ZoneIslands.SplitResult split = ZoneIslands.Split(partDefs, AllCuts(), rootSeeds);
             rootMask = new bool[bodies.Count];
+            islandOf = new int[bodies.Count];
             for (int i = 0; i < split.Root.Length; i++)
             {
                 int index = split.Root[i];
-                if (index >= 0 && index < rootMask.Length)
+                if (index < 0 || index >= rootMask.Length) continue;
+                rootMask[index] = true;
+                islandOf[index] = 0;
+            }
+
+            for (int k = 0; k < split.Detached.Count; k++)
+            {
+                int[] island = split.Detached[k];
+                for (int i = 0; i < island.Length; i++)
                 {
-                    rootMask[index] = true;
+                    int index = island[i];
+                    if (index >= 0 && index < islandOf.Length) islandOf[index] = k + 1;
                 }
             }
+
+            ApplyIslandCollisions(deferCrossIsland);
+        }
+
+        private void ApplyIslandCollisions(bool deferCrossIsland = false)
+        {
+            for (int a = 0; a < bodies.Count; a++)
+            {
+                Collider ca = bodies[a] != null ? bodies[a].GetComponent<Collider>() : null;
+                if (ca == null) continue;
+                for (int b = a + 1; b < bodies.Count; b++)
+                {
+                    Collider cb = bodies[b] != null ? bodies[b].GetComponent<Collider>() : null;
+                    if (cb == null) continue;
+                    bool sameIsland = islandOf == null
+                        || (a < islandOf.Length && b < islandOf.Length && islandOf[a] == islandOf[b]);
+                    if (sameIsland)
+                    {
+                        Physics.IgnoreCollision(ca, cb, true);
+                        for (int d = deferredCollisionPairs.Count - 1; d >= 0; d--)
+                        {
+                            DeferredPair pair = deferredCollisionPairs[d];
+                            if ((pair.A == ca && pair.B == cb) || (pair.A == cb && pair.B == ca))
+                            {
+                                deferredCollisionPairs.RemoveAt(d);
+                            }
+                        }
+
+                        continue;
+                    }
+
+                    if (deferCrossIsland)
+                    {
+                        bool present = false;
+                        for (int d = 0; d < deferredCollisionPairs.Count; d++)
+                        {
+                            DeferredPair pair = deferredCollisionPairs[d];
+                            if ((pair.A == ca && pair.B == cb) || (pair.A == cb && pair.B == ca))
+                            {
+                                present = true;
+                                break;
+                            }
+                        }
+
+                        if (!present)
+                        {
+                            deferredCollisionPairs.Add(new DeferredPair { A = ca, B = cb, Waited = 0 });
+                        }
+
+                        continue;
+                    }
+
+                    Physics.IgnoreCollision(ca, cb, false);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Seeds of the CURRENT root island: a part whose parent is not in the root
+        /// (or has none). All rootMask parts must not be used: the child that just
+        /// broke is still marked root, and flooding from it would make its own
+        /// subtree the root.
+        /// </summary>
+        private List<int> CurrentRootSeeds()
+        {
+            if (rootMask == null || partDefs == null) return null;
+
+            var seeds = new List<int>();
+            for (int i = 0; i < partDefs.Length; i++)
+            {
+                if (!rootMask[i]) continue;
+                int p = partDefs[i].ParentIndex;
+                if (p < 0 || p >= rootMask.Length || !rootMask[p]) seeds.Add(i);
+            }
+
+            return seeds.Count > 0 ? seeds : null;
+        }
+
+        private List<int> AllCuts()
+        {
+            var cuts = new List<int>(stagedCuts);
+            cuts.AddRange(brokenChildren);
+            return cuts;
         }
 
         private int RootCount()
@@ -390,7 +543,7 @@ namespace Galilego.Simulation.ContactZone
                 return 0;
             }
 
-            return ZoneIslands.Split(partDefs, brokenChildren).Detached.Count;
+            return ZoneIslands.Split(partDefs, AllCuts(), CurrentRootSeeds()).Detached.Count;
         }
 
         public void Clear()
@@ -422,7 +575,10 @@ namespace Galilego.Simulation.ContactZone
             joints.Clear();
             partDefs = null;
             brokenChildren.Clear();
+            stagedCuts.Clear();
+            deferredCollisionPairs.Clear();
             rootMask = null;
+            islandOf = null;
         }
 
         public void SetFrameGravity(Vector3d localGravity)

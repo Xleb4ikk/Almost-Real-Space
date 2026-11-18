@@ -28,7 +28,8 @@ namespace Galilego.Simulation.ContactZone
             }
         }
 
-        public static SplitResult Split(IReadOnlyList<PartDefinition> parts, IReadOnlyCollection<int> brokenChildIndices)
+        public static SplitResult Split(IReadOnlyList<PartDefinition> parts,
+            IReadOnlyCollection<int> brokenChildIndices, IReadOnlyCollection<int> rootSeeds = null)
         {
             int n = parts.Count;
             var cut = new bool[n];
@@ -59,7 +60,7 @@ namespace Galilego.Simulation.ContactZone
                 }
             }
 
-            bool[] inRoot = FloodFromRoots(parts, adjacency);
+            bool[] inRoot = FloodFromSeeds(parts, adjacency, rootSeeds);
             var root = new List<int>();
             for (int i = 0; i < n; i++)
             {
@@ -103,17 +104,38 @@ namespace Galilego.Simulation.ContactZone
             return new SplitResult(root.ToArray(), detached);
         }
 
-        private static bool[] FloodFromRoots(IReadOnlyList<PartDefinition> parts, List<int>[] adjacency)
+        /// <summary>
+        /// rootSeeds == null — root is every ParentIndex &lt; 0 (a broken joint leaves
+        /// the base part in the ship). For staging jettison the caller passes the
+        /// kept parts: the physical root (e.g. the bottom engine) may be the one
+        /// that flew away, and seeding from it would invert root and debris.
+        /// </summary>
+        private static bool[] FloodFromSeeds(IReadOnlyList<PartDefinition> parts,
+            List<int>[] adjacency, IReadOnlyCollection<int> rootSeeds)
         {
             int n = parts.Count;
             var inRoot = new bool[n];
             var queue = new Queue<int>();
-            for (int i = 0; i < n; i++)
+            if (rootSeeds != null)
             {
-                if (parts[i].ParentIndex < 0)
+                foreach (int seed in rootSeeds)
                 {
-                    inRoot[i] = true;
-                    queue.Enqueue(i);
+                    if (seed >= 0 && seed < n)
+                    {
+                        inRoot[seed] = true;
+                        queue.Enqueue(seed);
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < n; i++)
+                {
+                    if (parts[i].ParentIndex < 0)
+                    {
+                        inRoot[i] = true;
+                        queue.Enqueue(i);
+                    }
                 }
             }
 
