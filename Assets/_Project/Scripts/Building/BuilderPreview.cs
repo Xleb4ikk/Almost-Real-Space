@@ -107,11 +107,21 @@ namespace Galilego.Building
                 return;
             }
 
+            // The HDRP exposure debug overlay is a global full-screen pass; if the
+            // Rendering Debugger left it on, every icon/preview texture bakes it in.
+            // Turn it off for the game session (the debugger can re-enable it).
+            SetExposureDebugMode(ExposureDebugMode.None);
+
             EnsureRig();
             if (rig == null)
             {
                 return;
             }
+
+            // Warm the HDRP pipeline with the overlay off: the debug display state is
+            // latched at the start of a camera render, so without this warm-up the very
+            // first icon still bakes the exposure overlay (it did for the RS-25).
+            camera.Render();
 
             iconsReady = true;
 
@@ -148,6 +158,40 @@ namespace Galilego.Building
         }
 
         /// <summary>
+        /// HDRP's Rendering Debugger exposure overlay is a global full-screen pass. It
+        /// lands in the icon/preview render textures and made the inventory/hotbar icons
+        /// look empty. Access the live pipeline debug settings; false — nothing to do.
+        /// </summary>
+        private static bool TryGetExposureDebugMode(out ExposureDebugMode mode)
+        {
+            mode = ExposureDebugMode.None;
+            HDRenderPipeline pipeline = RenderPipelineManager.currentPipeline as HDRenderPipeline;
+            DebugDisplaySettings settings = pipeline != null ? pipeline.debugDisplaySettings : null;
+            if (settings == null || settings.data == null || settings.data.lightingDebugSettings == null)
+            {
+                return false;
+            }
+
+            mode = settings.data.lightingDebugSettings.exposureDebugMode;
+            return true;
+        }
+
+        private static void SetExposureDebugMode(ExposureDebugMode mode)
+        {
+            HDRenderPipeline pipeline = RenderPipelineManager.currentPipeline as HDRenderPipeline;
+            DebugDisplaySettings settings = pipeline != null ? pipeline.debugDisplaySettings : null;
+            if (settings == null || settings.data == null || settings.data.lightingDebugSettings == null)
+            {
+                return;
+            }
+
+            if (settings.data.lightingDebugSettings.exposureDebugMode != mode)
+            {
+                settings.data.lightingDebugSettings.exposureDebugMode = mode;
+            }
+        }
+
+        /// <summary>
         /// Render a part icon for ARBITRARY sizes (a hotbar slot with its own
         /// sizes): same studio and angle as the default icons. The texture
         /// belongs to the caller, which destroys it. null if the rig/geometry
@@ -162,15 +206,17 @@ namespace Galilego.Building
                 return null;
             }
 
-            // Transparent background and a temporary small target: the icon fits
-            // a slot of any color, and the preview frame is unaffected. Camera
-            // and spinner are restored afterwards: icon framing is its OWN (the
-            // icon frame margin), while the preview re-frames only on part change.
-            var hd = camera.GetComponent<HDAdditionalCameraData>();
+            // Temporary small target and the icon's own framing: the preview frame is
+            // unaffected (camera/spinner restored afterwards).
+            // The icon frame used to render on a transparent clear colour, but HDRP's
+            // opaque pass writes alpha 0, so the whole frame came out transparent and
+            // the part vanished from the slot. Render against the known studio
+            // background and key it out below; the part pixels are forced opaque.
+            HDAdditionalCameraData hd = camera.GetComponent<HDAdditionalCameraData>();
             Color previousBackground = hd.backgroundColorHDR;
-            Color transparent = new Color(Background.r, Background.g, Background.b, 0f);
-            hd.backgroundColorHDR = transparent;
-            camera.backgroundColor = transparent;
+            Color iconBackground = Background;
+            hd.backgroundColorHDR = iconBackground;
+            camera.backgroundColor = iconBackground;
 
             var iconTarget = new RenderTexture(IconSize, IconSize, 24, RenderTextureFormat.ARGB32)
             {
@@ -196,7 +242,20 @@ namespace Galilego.Building
             int previousMask = camera.cullingMask;
             camera.cullingMask = 1 << IconLayer;
 
+            // The exposure debug overlay is global; keep it out of this capture too
+            // (the user may re-enable the Rendering Debugger after startup).
+            bool hadExposureDebug = TryGetExposureDebugMode(out ExposureDebugMode previousExposureDebug);
+            if (hadExposureDebug && previousExposureDebug != ExposureDebugMode.None)
+            {
+                SetExposureDebugMode(ExposureDebugMode.None);
+            }
+
             Texture2D texture = CaptureIconPixels(kind, metrics, engine, tankSide, tankCap, separator);
+
+            if (hadExposureDebug && previousExposureDebug != ExposureDebugMode.None)
+            {
+                SetExposureDebugMode(previousExposureDebug);
+            }
 
             camera.cullingMask = previousMask;
             cameraTransform.SetPositionAndRotation(cameraPosition, cameraRotation);
@@ -274,11 +333,7 @@ namespace Galilego.Building
         {
             Color32[] pixels = texture.GetPixels32();
             Color32 key = pixels[0];
-            if (key.a < 250)
-            {
-                return;                              // already transparent — nothing to do
-            }
-
+            bool transparentBackground = key.a < 250;
             for (int i = 0; i < pixels.Length; i++)
             {
                 Color32 p = pixels[i];
@@ -289,9 +344,20 @@ namespace Galilego.Building
                     continue;
                 }
 
+                if (transparentBackground)
+                {
+                    // HDRP wrote alpha 0 for the whole frame, including the opaque part.
+                    // The background RGB is known, so the pixels that differ from it are
+                    // the part: make them opaque.
+                    pixels[i] = new Color32(p.r, p.g, p.b, 255);
+                    continue;
+                }
+
                 if (d >= 10)
                 {
-                    continue;                        // clearly the part
+                    // Clear part pixel: HDRP's opaque alpha is 0, force the icon visible.
+                    pixels[i] = new Color32(p.r, p.g, p.b, 255);
+                    continue;
                 }
 
                 // Soft edge: un-mix the background so there is no dark/light halo.
