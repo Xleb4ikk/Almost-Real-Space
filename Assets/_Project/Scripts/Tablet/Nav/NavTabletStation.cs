@@ -73,7 +73,6 @@ namespace Galilego.Tablet
         private float nextInteractiveMapRedraw;
         private float interactiveUntil;
         private bool mapDirty;
-        private Vector2 lastHoverLocal;
 
         public InteractiveScreen Screen { get { return screen; } }
         public NavTabletView View { get { return view; } }
@@ -185,7 +184,10 @@ namespace Galilego.Tablet
             view.MapDragged += OnMapDragged;
             view.MapZoomed += OnMapZoomed;
             view.MapHovered += OnMapHovered;
-            view.MapPointerLeft += () => { if (view != null) { view.HideTip(); } };
+            view.MapPointerLeft += () =>
+            {
+                if (overlayMap != null && overlayMap.ClearHover()) { RedrawOverlayMap(); }
+            };
             view.MapReset += () =>
             {
                 overlayMap.ResetView();
@@ -689,6 +691,7 @@ namespace Galilego.Tablet
 
             // Centre-locked map: a drag is always a turntable rotation around the
             // selected body. There is no pan that could move it off screen centre.
+            overlayMap.ClearHover();
             overlayMap.RotateByPixels(ToMapPixels(delta));
             overlayMap.Interactive = true;
             interactiveUntil = Time.unscaledTime + 0.2f;
@@ -715,14 +718,12 @@ namespace Galilego.Tablet
                 return;
             }
 
-            lastHoverLocal = localPosition;
-            if (overlayMap.TryPick(ToMapPixels(localPosition), out string text))
+            Vector2 pixel = ToMapPixels(localPosition);
+            if (overlayMap.Hover(pixel, out _))
             {
-                view.ShowTip(text, lastHoverLocal);
-            }
-            else
-            {
-                view.HideTip();
+                // Info is shown inside the marker plate itself: repaint now so the
+                // plate, its contents and its hit area stay the same rectangle.
+                RedrawOverlayMap();
             }
         }
 
@@ -855,6 +856,11 @@ namespace Galilego.Tablet
                 // The hand-over replaces the camera; the first frame of the newly
                 // visible map should be the clean, full-quality one.
                 target.Interactive = false;
+            }
+
+            if (overlayMap != null)
+            {
+                overlayMap.ClearHover();
             }
 
             overlay = on;

@@ -123,17 +123,27 @@ namespace Galilego.Tablet
             }
         }
 
-        /// <summary>Bitmap from rows ('#' is a pixel), top-left corner at (x, y).</summary>
-        public void Bitmap(int x, int y, string[] rows, Color32 c)
+        /// <summary>Bitmap from rows ('#' is a pixel), top-left corner at (x, y). Scale makes chunky pixels.</summary>
+        public void Bitmap(int x, int y, string[] rows, Color32 c, int scale = 1)
         {
+            int s = Mathf.Max(1, scale);
             for (int r = 0; r < rows.Length; r++)
             {
                 string row = rows[r];
                 for (int i = 0; i < row.Length; i++)
                 {
-                    if (row[i] == '#')
+                    if (row[i] != '#')
+                    {
+                        continue;
+                    }
+
+                    if (s == 1)
                     {
                         Px(x + i, y + r, c);
+                    }
+                    else
+                    {
+                        Fill(x + (i * s), y + (r * s), s, s, c);
                     }
                 }
             }

@@ -69,6 +69,10 @@ namespace Galilego.Tablet
         private readonly Texture2D texture;
         private readonly List<PickEntry> picks = new List<PickEntry>();
 
+        /// <summary>Pick currently under the cursor. Kept between draws so a tag can expand in place.</summary>
+        private PickKind hoverKind = PickKind.None;
+        private int hoverIndex = -1;
+
         // Rendered planet disk cache: the per-pixel sphere raster is the single most
         // expensive part of the map. Reuse it until the view (or the planet's visible
         // orientation / light) actually changes; only the ship, orbits and HUD are
@@ -138,12 +142,29 @@ namespace Galilego.Tablet
             return model.ShipThrusting ? ManeuverMarkers : BallisticMarkers;
         }
 
+        /// <summary>What a pick entry belongs to. Apsis tags expand in place while hovered.</summary>
+        private enum PickKind
+        {
+            None,
+            Body,
+            Burn,
+            Apoapsis,
+            Periapsis,
+            Ship,
+        }
+
         private struct PickEntry
         {
             public float X;
             public float Y;
             public float Radius;
             public string Text;
+            public PickKind Kind;
+            public int Index;
+
+            /// <summary>Exact screen rectangle of the drawn tag; empty when the pick is only a point.</summary>
+            public RectInt Box;
+            public bool HasBox;
         }
 
         public NavMapRenderer(int width, int height, bool preview)
@@ -329,25 +350,78 @@ namespace Galilego.Tablet
             diskCacheValid = false;
         }
 
-        /// <summary>Nearest labelled object to a texture pixel, as rich text for the UI tooltip.</summary>
+        /// <summary>
+        /// Nearest labelled object to a texture pixel, as rich text for the UI tooltip.
+        /// Tag rectangles are tested exactly first: pointing at the visible "АП"/"ПР"
+        /// plate must work over the whole plate, not only near the orbit point.
+        /// </summary>
         public bool TryPick(Vector2 texturePixel, out string text)
         {
-            text = null;
+            bool found = PickAt(texturePixel, out PickEntry pick);
+            text = found ? pick.Text : null;
+            return found;
+        }
+
+        /// <summary>
+        /// Hover bookkeeping for the active map. Returns true when the hovered object
+        /// changed (an in-place plate must be expanded/collapsed or redrawn); the
+        /// tooltip text is still returned for callers that want it.
+        /// </summary>
+        public bool Hover(Vector2 texturePixel, out string text)
+        {
+            bool found = PickAt(texturePixel, out PickEntry pick);
+            text = found ? pick.Text : null;
+            PickKind kind = found ? pick.Kind : PickKind.None;
+            int index = found ? pick.Index : -1;
+            bool changed = kind != hoverKind || index != hoverIndex;
+            hoverKind = kind;
+            hoverIndex = index;
+            return changed;
+        }
+
+        /// <summary>Clears the hovered pick; true when the map must be redrawn collapsed.</summary>
+        public bool ClearHover()
+        {
+            bool hadHover = hoverKind != PickKind.None;
+            hoverKind = PickKind.None;
+            hoverIndex = -1;
+            return hadHover;
+        }
+
+        private bool PickAt(Vector2 texturePixel, out PickEntry pick)
+        {
+            // Exact plate first, topmost (last drawn) wins. This is the apsis tag
+            // itself, so the hover area and the drawn box always match.
+            for (int i = picks.Count - 1; i >= 0; i--)
+            {
+                PickEntry entry = picks[i];
+                if (entry.HasBox
+                    && texturePixel.x >= entry.Box.x && texturePixel.x < entry.Box.x + entry.Box.width
+                    && texturePixel.y >= entry.Box.y && texturePixel.y < entry.Box.y + entry.Box.height)
+                {
+                    pick = entry;
+                    return true;
+                }
+            }
+
+            pick = default;
+            bool found = false;
             float best = 14f * 14f;
             for (int i = 0; i < picks.Count; i++)
             {
-                PickEntry pick = picks[i];
-                float dx = pick.X - texturePixel.x;
-                float dy = pick.Y - texturePixel.y;
+                PickEntry entry = picks[i];
+                float dx = entry.X - texturePixel.x;
+                float dy = entry.Y - texturePixel.y;
                 float d = (dx * dx) + (dy * dy);
                 if (d <= best)
                 {
                     best = d;
-                    text = pick.Text;
+                    pick = entry;
+                    found = true;
                 }
             }
 
-            return text != null;
+            return found;
         }
 
         // ─── Map geometry ─────────────────────────────────────────────────────
@@ -650,14 +724,42 @@ namespace Galilego.Tablet
                 }
 
                 string name = body.IsFrame ? "[" + body.Name + "]" : body.Name;
+                string radiusLine = "R " + TabletFormat.Dist(body.RadiusMeters);
                 float labelY = bodyRadius > 40f ? p.y - bodyRadius - 12f : p.y - 3f;
-                DrawLabel(p.x + (bodyRadius > 40f ? 0f : bodyRadius + 5f), labelY, name, rect, color);
+                float labelX = p.x + (bodyRadius > 40f ? 0f : bodyRadius + 5f);
+                RectInt labelBox;
+                if (hoverKind == PickKind.Body && hoverIndex == i)
+                {
+                    // Same in-place plate as the apsis/ship markers: header plus the
+                    // data row, no separate floating window.
+                    var pal = new MarkerPalette { Main = color, Light = color, Dark = TabletTheme.Bg };
+                    int tw = Mathf.Max(PixelCanvas.TextWidth(name), PixelCanvas.TextWidth(radiusLine)) + 10;
+                    const int th = 11 + 3 + PlateRowHeight;
+                    int tx = Mathf.RoundToInt(labelX) - 2;
+                    int ty = Mathf.RoundToInt(labelY) - 1;
+                    tx = Mathf.Clamp(tx, rect.x + 2, Mathf.Max(rect.x + 2, rect.x + rect.width - tw - 2));
+                    ty = Mathf.Clamp(ty, rect.y + 2, Mathf.Max(rect.y + 2, rect.y + rect.height - th - 2));
+                    DrawTagBox(tx, ty, tw, th, pal);
+                    canvas.Text(tx + 5, ty + 2, name, pal.Main);
+                    canvas.HLine(tx + 2, ty + 11, tw - 4, pal.Main);
+                    canvas.Text(tx + 5, ty + 14, radiusLine, pal.Light);
+                    labelBox = new RectInt(tx, ty, tw, th);
+                }
+                else
+                {
+                    labelBox = DrawLabel(labelX, labelY, name, rect, color);
+                }
+
                 picks.Add(new PickEntry
                 {
                     X = p.x,
                     Y = p.y,
                     Radius = Mathf.Max(5f, Mathf.Min(bodyRadius, 20f)),
-                    Text = name + "\nR " + TabletFormat.Dist(body.RadiusMeters),
+                    Kind = PickKind.Body,
+                    Index = i,
+                    Box = labelBox,
+                    HasBox = true,
+                    Text = name + "\n" + radiusLine,
                 });
             }
 
@@ -671,8 +773,19 @@ namespace Galilego.Tablet
                     Vector2 pe = Project(model.PeriapsisPosition);
                     if (IsFinite(pe) && Inside(rect, pe, 12f))
                     {
-                        DrawApsisMarker(pe.x, pe.y, false, markers, rect);
-                        picks.Add(new PickEntry { X = pe.x, Y = pe.y, Radius = 8f, Text = "ПЕРИЦЕНТР\n" + orbitKind });
+                        string detail = ApsisDetail(model.PeriapsisAltitudeMeters, model.PeriapsisSpeedMps);
+                        DrawApsisMarker(pe.x, pe.y, false, markers, rect, detail,
+                            hoverKind == PickKind.Periapsis, out RectInt box);
+                        picks.Add(new PickEntry
+                        {
+                            X = pe.x,
+                            Y = pe.y,
+                            Radius = 10f,
+                            Kind = PickKind.Periapsis,
+                            Box = box,
+                            HasBox = true,
+                            Text = "ПЕРИЦЕНТР\n" + orbitKind + "\n" + detail,
+                        });
                     }
                 }
 
@@ -682,8 +795,19 @@ namespace Galilego.Tablet
                     Vector2 ap = Project(model.ApoapsisPosition);
                     if (IsFinite(ap) && Inside(rect, ap, 12f))
                     {
-                        DrawApsisMarker(ap.x, ap.y, true, markers, rect);
-                        picks.Add(new PickEntry { X = ap.x, Y = ap.y, Radius = 8f, Text = "АПОЦЕНТР\n" + orbitKind });
+                        string detail = ApsisDetail(model.ApoapsisAltitudeMeters, model.ApoapsisSpeedMps);
+                        DrawApsisMarker(ap.x, ap.y, true, markers, rect, detail,
+                            hoverKind == PickKind.Apoapsis, out RectInt box);
+                        picks.Add(new PickEntry
+                        {
+                            X = ap.x,
+                            Y = ap.y,
+                            Radius = 10f,
+                            Kind = PickKind.Apoapsis,
+                            Box = box,
+                            HasBox = true,
+                            Text = "АПОЦЕНТР\n" + orbitKind + "\n" + detail,
+                        });
                     }
                 }
             }
@@ -696,15 +820,20 @@ namespace Galilego.Tablet
                 if (IsFinite(ship) && Inside(rect, ship, 12f))
                 {
                     DrawShip(ship.x, ship.y, model.FrameRelativeShipVelocity, screenRight, screenUp, markers);
-                    DrawShipTag(ship.x, ship.y, model.ShipThrusting ? "АППАРАТ · МАНЁВР" : "АППАРАТ", markers, rect,
-                        model.FrameRelativeShipVelocity, screenRight, screenUp);
                     double speed = model.FrameRelativeShipVelocity.Magnitude;
+                    string detail = "V " + TabletFormat.Speed(speed) + " М/С";
+                    DrawShipTag(ship.x, ship.y, model.ShipThrusting ? "АППАРАТ · МАНЁВР" : "АППАРАТ", markers, rect,
+                        model.FrameRelativeShipVelocity, screenRight, screenUp,
+                        detail, hoverKind == PickKind.Ship, out RectInt tagBox);
                     picks.Add(new PickEntry
                     {
                         X = ship.x,
                         Y = ship.y,
                         Radius = 12f,
-                        Text = "АППАРАТ · " + orbitKind + "\nV " + TabletFormat.Speed(speed) + " М/С",
+                        Kind = PickKind.Ship,
+                        Box = tagBox,
+                        HasBox = true,
+                        Text = "АППАРАТ · " + orbitKind + "\n" + detail,
                     });
                 }
             }
@@ -843,7 +972,7 @@ namespace Galilego.Tablet
 
             // Real ground track and the ship at its true sub-point.
             DrawSurfaceHistory(model, body, centerX, centerY, mpp, radius, lat0, lon0, cosLat);
-            DrawSurfaceShip(centerX, centerY, model);
+            DrawSurfaceShip(centerX, centerY, model, rect);
         }
 
         private void DrawSurfaceHistory(NavMapModel model, OrbitingBody body, float centerX, float centerY,
@@ -899,7 +1028,7 @@ namespace Galilego.Tablet
             }
         }
 
-        private void DrawSurfaceShip(float centerX, float centerY, NavMapModel model)
+        private void DrawSurfaceShip(float centerX, float centerY, NavMapModel model, RectInt rect)
         {
             int x = Mathf.RoundToInt(centerX);
             int y = Mathf.RoundToInt(centerY);
@@ -922,13 +1051,34 @@ namespace Galilego.Tablet
                 canvas.Px(Mathf.RoundToInt(ex), Mathf.RoundToInt(ey), color);
             }
 
+            string altitude = "H " + TabletFormat.Dist(model.ShipHeightAboveTerrain);
+            string velocity = "V " + TabletFormat.Speed(speed) + " М/С";
+            RectInt box = default;
+            bool hasBox = false;
+            if (hoverKind == PickKind.Ship)
+            {
+                // In-place readout beside the marker: no separate tooltip window.
+                MarkerPalette pal = MarkersFor(model);
+                int tw = Mathf.Max(PixelCanvas.TextWidth(altitude), PixelCanvas.TextWidth(velocity)) + 10;
+                const int th = 4 + (2 * PlateRowHeight);
+                int tx = Mathf.Clamp(x + 16, rect.x + 2, Mathf.Max(rect.x + 2, rect.x + rect.width - tw - 2));
+                int ty = Mathf.Clamp(y - (th / 2), rect.y + 2, Mathf.Max(rect.y + 2, rect.y + rect.height - th - 2));
+                DrawTagBox(tx, ty, tw, th, pal);
+                canvas.Text(tx + 5, ty + 3, altitude, pal.Light);
+                canvas.Text(tx + 5, ty + 3 + PlateRowHeight, velocity, pal.Light);
+                box = new RectInt(tx, ty, tw, th);
+                hasBox = true;
+            }
+
             picks.Add(new PickEntry
             {
                 X = x,
                 Y = y,
                 Radius = 12f,
-                Text = "АППАРАТ\nH " + TabletFormat.Dist(model.ShipHeightAboveTerrain)
-                    + "\nV " + TabletFormat.Speed(speed) + " М/С",
+                Kind = PickKind.Ship,
+                Box = box,
+                HasBox = hasBox,
+                Text = "АППАРАТ\n" + altitude + "\n" + velocity,
             });
         }
 
@@ -1505,6 +1655,20 @@ namespace Galilego.Tablet
         private static readonly string[] ApoGlyph = { "..#..", ".###.", "#####" };
         private static readonly string[] PeriGlyph = { "#####", ".###.", "..#.." };
 
+        /// <summary>Chunky 2x tag plate: the old 1x labels were unreadable on a monitor.</summary>
+        private const int ApsisTagScale = 2;
+        private const int ApsisHeaderHeight = 20;
+        private const int ApsisValueRowHeight = 18;
+
+        /// <summary>Row step for the smaller 1x plates (ship, body, surface readout).</summary>
+        private const int PlateRowHeight = 9;
+
+        private static string ApsisDetail(double altitudeMeters, double speedMps)
+        {
+            return "H " + TabletFormat.Dist(altitudeMeters)
+                + "\nV " + TabletFormat.Speed(speedMps) + " М/С";
+        }
+
         /// <summary>Small cross with a letter: used for the planned burn points.</summary>
         private void DrawMarker(float x, float y, string label, Color32 color, RectInt rect)
         {
@@ -1549,39 +1713,75 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
-        /// Apsis mark: a reticle on the exact orbit point, a leader and a tag with a
-        /// triangle (up = apoapsis, down = periapsis) and the letter.
+        /// Apsis mark: a reticle on the exact orbit point, a leader and a large tag
+        /// with a triangle (up = apoapsis, down = periapsis) and the letters.
+        /// While hovered the same plate expands in place with the altitude and speed
+        /// at that point; <paramref name="box"/> is the exact drawn rectangle and is
+        /// reused as the pick area, so the hover zone always matches the plate.
         /// </summary>
-        private void DrawApsisMarker(float x, float y, bool apoapsis, MarkerPalette pal, RectInt rect)
+        private void DrawApsisMarker(float x, float y, bool apoapsis, MarkerPalette pal, RectInt rect,
+            string detail, bool expanded, out RectInt box)
         {
             int xi = Mathf.RoundToInt(x);
             int yi = Mathf.RoundToInt(y);
-            string letter = apoapsis ? "А" : "П";
+            string letter = apoapsis ? "АП" : "ПР";
 
-            int tw = 13 + PixelCanvas.TextWidth(letter);
-            const int th = 11;
-            int tx = xi + 9;
-            int ty = apoapsis ? yi - 9 - th : yi + 9;
+            string[] rows = expanded && !string.IsNullOrEmpty(detail)
+                ? detail.Split('\n')
+                : Array.Empty<string>();
+            int glyphW = 5 * ApsisTagScale;
+            int letterW = PixelCanvas.TextWidth(letter, ApsisTagScale);
+            int innerW = glyphW + 4 + letterW;
+            int tw = innerW + 8;
+            int dataH = rows.Length > 0 ? 3 + (rows.Length * ApsisValueRowHeight) : 0;
+            for (int i = 0; i < rows.Length; i++)
+            {
+                tw = Mathf.Max(tw, PixelCanvas.TextWidth(rows[i], ApsisTagScale) + 10);
+            }
+
+            int th = ApsisHeaderHeight + dataH;
+            int tx = xi + 12;
+            // Apoapsis grows upward, periapsis downward: the header stays put, the
+            // values appear away from the orbit point and never cover the reticle.
+            int ty = apoapsis ? yi - 11 - th : yi + 11;
             tx = Mathf.Clamp(tx, rect.x + 2, Mathf.Max(rect.x + 2, rect.x + rect.width - tw - 2));
             ty = Mathf.Clamp(ty, rect.y + 2, Mathf.Max(rect.y + 2, rect.y + rect.height - th - 2));
 
-            // Leader from the point to the nearest spot of the tag.
+            // Leader from the point to the nearest spot of the plate.
             int lx = Mathf.Clamp(xi, tx, tx + tw - 1);
             int ly = Mathf.Clamp(yi, ty, ty + th - 1);
             DrawHaloLine(xi, yi, lx, ly, pal.Main, pal.Dark);
 
             DrawTagBox(tx, ty, tw, th, pal);
-            canvas.Bitmap(tx + 3, ty + 4, apoapsis ? ApoGlyph : PeriGlyph, pal.Main);
-            canvas.Text(tx + 10, ty + 2, letter, pal.Light);
+
+            int headerY = apoapsis ? ty + dataH : ty;
+            // Anchored to the left edge so the header does not slide when the plate
+            // widens for the value rows.
+            int headerX = tx + 4;
+            canvas.Bitmap(headerX, headerY + 7, apoapsis ? ApoGlyph : PeriGlyph, pal.Main, ApsisTagScale);
+            canvas.Text(headerX + glyphW + 4, headerY + 3, letter, pal.Light, ApsisTagScale);
+
+            if (rows.Length > 0)
+            {
+                canvas.HLine(tx + 2, apoapsis ? headerY - 1 : headerY + ApsisHeaderHeight, tw - 4, pal.Main);
+                int rowY = apoapsis ? ty + 2 : headerY + ApsisHeaderHeight + 2;
+                for (int i = 0; i < rows.Length; i++)
+                {
+                    canvas.Text(tx + 5, rowY, rows[i], pal.Light, ApsisTagScale);
+                    rowY += ApsisValueRowHeight;
+                }
+            }
 
             // Reticle on top of everything else.
-            DrawCircle(xi, yi, 4, pal.Dark);
-            DrawCircle(xi, yi, 3, pal.Main);
-            canvas.HLine(xi - 7, yi, 3, pal.Main);
-            canvas.HLine(xi + 5, yi, 3, pal.Main);
-            canvas.VLine(xi, yi - 7, 3, pal.Main);
-            canvas.VLine(xi, yi + 5, 3, pal.Main);
+            DrawCircle(xi, yi, 5, pal.Dark);
+            DrawCircle(xi, yi, 4, pal.Main);
+            canvas.HLine(xi - 9, yi, 4, pal.Main);
+            canvas.HLine(xi + 6, yi, 4, pal.Main);
+            canvas.VLine(xi, yi - 9, 4, pal.Main);
+            canvas.VLine(xi, yi + 6, 4, pal.Main);
             canvas.Px(xi, yi, pal.Light);
+
+            box = new RectInt(tx, ty, tw, th);
         }
 
         /// <summary>Screen-space direction of a world velocity (x right, y down). False when it has none.</summary>
@@ -1604,12 +1804,25 @@ namespace Galilego.Tablet
         /// <summary>
         /// Name plate next to the ship, tinted by the kind of orbit. It sits on the
         /// side the velocity arrow does not point at, so the arrow is never hidden.
+        /// Hovering expands the same plate with the flight data instead of opening
+        /// a separate floating window.
         /// </summary>
         private void DrawShipTag(float x, float y, string text, MarkerPalette pal, RectInt rect,
-            Vector3d velocity, Vector3d screenRight, Vector3d screenUp)
+            Vector3d velocity, Vector3d screenRight, Vector3d screenUp,
+            string detail, bool expanded, out RectInt box)
         {
+            string[] rows = expanded && !string.IsNullOrEmpty(detail)
+                ? detail.Split('\n')
+                : Array.Empty<string>();
             int tw = PixelCanvas.TextWidth(text) + 8;
-            const int th = 11;
+            const int headerH = 11;
+            int dataH = rows.Length > 0 ? 3 + (rows.Length * PlateRowHeight) : 0;
+            for (int i = 0; i < rows.Length; i++)
+            {
+                tw = Mathf.Max(tw, PixelCanvas.TextWidth(rows[i]) + 10);
+            }
+
+            int th = headerH + dataH;
             float px, py;
             TryProjectDirection(velocity, screenRight, screenUp, out px, out py);
 
@@ -1617,10 +1830,34 @@ namespace Galilego.Tablet
             int yi = Mathf.RoundToInt(y);
             int tx = px > 0f ? xi - 12 - tw : xi + 12;
             int ty = py < 0f ? yi + 4 : yi - 15;
+
+            // Grow away from the ship; keep the header on the side nearest the ship
+            // so it does not shift when the plate gains its data rows.
+            int headerOffset = 0;
+            if (rows.Length > 0 && py >= 0f)
+            {
+                ty -= dataH;
+                headerOffset = dataH;
+            }
+
             tx = Mathf.Clamp(tx, rect.x + 2, Mathf.Max(rect.x + 2, rect.x + rect.width - tw - 2));
             ty = Mathf.Clamp(ty, rect.y + 2, Mathf.Max(rect.y + 2, rect.y + rect.height - th - 2));
+            int headerY = ty + headerOffset;
             DrawTagBox(tx, ty, tw, th, pal);
-            canvas.Text(tx + 4, ty + 2, text, pal.Light);
+            canvas.Text(tx + 4, headerY + 2, text, pal.Light);
+
+            if (rows.Length > 0)
+            {
+                canvas.HLine(tx + 2, py >= 0f ? headerY - 1 : headerY + headerH, tw - 4, pal.Main);
+                int rowY = py >= 0f ? ty + 2 : headerY + headerH + 2;
+                for (int i = 0; i < rows.Length; i++)
+                {
+                    canvas.Text(tx + 5, rowY, rows[i], pal.Light);
+                    rowY += PlateRowHeight;
+                }
+            }
+
+            box = new RectInt(tx, ty, tw, th);
         }
 
         /// <summary>Ship: ringed diamond with a core and a velocity arrow, tinted by the kind of orbit.</summary>
@@ -2055,7 +2292,7 @@ namespace Galilego.Tablet
             return NavBodyTextureCache.Get(planet);
         }
 
-        private void DrawLabel(float x, float y, string text, RectInt rect, Color32 color)
+        private RectInt DrawLabel(float x, float y, string text, RectInt rect, Color32 color)
         {
             int xi = Mathf.RoundToInt(x);
             int yi = Mathf.RoundToInt(y);
@@ -2082,6 +2319,7 @@ namespace Galilego.Tablet
 
             canvas.Fill(xi - 2, yi - 1, width + 4, 9, TabletTheme.Bg);
             canvas.Text(xi, yi, text, color);
+            return new RectInt(xi - 2, yi - 1, width + 4, 9);
         }
 
         // ─── HUD / preview ────────────────────────────────────────────────────

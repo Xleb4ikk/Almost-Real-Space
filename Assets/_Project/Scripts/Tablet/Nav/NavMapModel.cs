@@ -148,6 +148,14 @@ namespace Galilego.Tablet
         public bool HasApoapsis;
         public Vector3d PeriapsisPosition;
         public Vector3d ApoapsisPosition;
+
+        /// <summary>Apsis altitude above the dominant body's mean radius (same value as the orbit panel).</summary>
+        public double PeriapsisAltitudeMeters = double.NaN;
+        public double ApoapsisAltitudeMeters = double.NaN;
+
+        /// <summary>Speed at the apsis from the osculating orbit's angular momentum (h / r).</summary>
+        public double PeriapsisSpeedMps = double.NaN;
+        public double ApoapsisSpeedMps = double.NaN;
         public string Note = string.Empty;
         public bool ForecastValid;
         public bool ForecastTruncated;
@@ -250,6 +258,10 @@ namespace Galilego.Tablet
             HistorySeconds = historySeconds;
             HasApsides = false;
             HasApoapsis = false;
+            PeriapsisAltitudeMeters = double.NaN;
+            ApoapsisAltitudeMeters = double.NaN;
+            PeriapsisSpeedMps = double.NaN;
+            ApoapsisSpeedMps = double.NaN;
             HasSurfaceFrame = false;
             ViewMode = NavViewMode.Orbits;
             DominantBody = null;
@@ -367,6 +379,10 @@ namespace Galilego.Tablet
         {
             HasApsides = false;
             HasApoapsis = false;
+            PeriapsisAltitudeMeters = double.NaN;
+            ApoapsisAltitudeMeters = double.NaN;
+            PeriapsisSpeedMps = double.NaN;
+            ApoapsisSpeedMps = double.NaN;
             if (ship == null)
             {
                 return;
@@ -390,9 +406,13 @@ namespace Galilego.Tablet
             Vector3d eDirection = elements.EccentricityVector / elements.Eccentricity;
             Vector3d local = bodyPosition - FramePosition;
             PeriapsisPosition = local + (eDirection * elements.PeriapsisDistance);
+            PeriapsisAltitudeMeters = elements.PeriapsisDistance - dominant.Radius;
+            PeriapsisSpeedMps = ApsisSpeed(elements.SpecificAngularMomentum, elements.PeriapsisDistance);
             if (elements.IsBound && double.IsFinite(elements.ApoapsisDistance))
             {
                 ApoapsisPosition = local - (eDirection * elements.ApoapsisDistance);
+                ApoapsisAltitudeMeters = elements.ApoapsisDistance - dominant.Radius;
+                ApoapsisSpeedMps = ApsisSpeed(elements.SpecificAngularMomentum, elements.ApoapsisDistance);
                 HasApoapsis = true;
             }
             else
@@ -401,6 +421,14 @@ namespace Galilego.Tablet
             }
 
             HasApsides = true;
+        }
+
+        /// <summary>Speed at an apsis: the specific angular momentum h = r·v is constant, so v = h / r.</summary>
+        private static double ApsisSpeed(double specificAngularMomentum, double distance)
+        {
+            return distance > 0d && double.IsFinite(specificAngularMomentum)
+                ? specificAngularMomentum / distance
+                : double.NaN;
         }
 
         /// <summary>
