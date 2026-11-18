@@ -178,10 +178,19 @@ namespace Galilego.Simulation.Player
                 return false;
             }
 
-            if (collider is MeshCollider mc && !mc.convex && warnedNonConvex.Add(mc))
+            if (collider is MeshCollider mc && !mc.convex)
             {
-                Debug.LogWarning("[Support] невыпуклый MeshCollider на '" + collider.name
-                    + "' — ComputePenetration не работает", collider);
+                // Destroyed colliders would otherwise stay in the set for the session.
+                if (warnedNonConvex.Count > 64)
+                {
+                    warnedNonConvex.RemoveWhere(c => c == null);
+                }
+
+                if (warnedNonConvex.Add(mc))
+                {
+                    Debug.LogWarning("[Support] невыпуклый MeshCollider на '" + collider.name
+                        + "' — ComputePenetration не работает", collider);
+                }
             }
 
             CapsuleCollider probe = SiteBoxRegistry.Probe(radius);

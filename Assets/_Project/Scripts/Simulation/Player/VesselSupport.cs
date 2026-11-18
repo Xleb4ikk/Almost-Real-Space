@@ -50,6 +50,11 @@ namespace Galilego.Simulation.Player
 
         protected override int SourceIdFor(Collider collider)
         {
+            if (partIds.Count > 256)
+            {
+                PruneDead();
+            }
+
             VesselPartCollider part = ResolvePart(collider);
             if (part == null)
             {
@@ -64,6 +69,32 @@ namespace Galilego.Simulation.Player
             }
 
             return id;
+        }
+
+        /// <summary>
+        /// Drop only destroyed parts: a full Clear would strip ids from live build-mode
+        /// colliders and break the player standing on the capsule for one frame.
+        /// </summary>
+        private void PruneDead()
+        {
+            var dead = new System.Collections.Generic.List<VesselPartCollider>();
+            foreach (System.Collections.Generic.KeyValuePair<VesselPartCollider, int> kv in partIds)
+            {
+                if (kv.Key == null)
+                {
+                    dead.Add(kv.Key);
+                }
+            }
+
+            for (int i = 0; i < dead.Count; i++)
+            {
+                if (partIds.TryGetValue(dead[i], out int id))
+                {
+                    platforms.Remove(id);
+                }
+
+                partIds.Remove(dead[i]);
+            }
         }
     }
 }
