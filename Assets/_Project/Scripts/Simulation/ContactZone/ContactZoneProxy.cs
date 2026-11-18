@@ -21,6 +21,7 @@ namespace Galilego.Simulation.ContactZone
 
         private readonly List<Rigidbody> bodies = new List<Rigidbody>();
         private readonly List<Joint> joints = new List<Joint>();
+        private readonly List<Mesh> partMeshes = new List<Mesh>();
 
         // Joint breaks: indices of CHILD parts with a broken joint; the root-island
         // mask marks which bodies still belong to the ship (the rest are debris,
@@ -392,6 +393,23 @@ namespace Galilego.Simulation.ContactZone
 
         public void Clear()
         {
+            // Detach the prism meshes from their colliders before destroying them:
+            // Destroy(gameObject) is deferred to the end of the frame, and a collider
+            // must not keep a reference to a destroyed mesh.
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                if (bodies[i] == null) continue;
+                MeshCollider mc = bodies[i].GetComponent<MeshCollider>();
+                if (mc != null) mc.sharedMesh = null;
+            }
+
+            for (int i = 0; i < partMeshes.Count; i++)
+            {
+                if (partMeshes[i] != null) Destroy(partMeshes[i]);
+            }
+
+            partMeshes.Clear();
+
             for (int i = 0; i < bodies.Count; i++)
             {
                 if (bodies[i] != null) Destroy(bodies[i].gameObject);
@@ -474,7 +492,7 @@ namespace Galilego.Simulation.ContactZone
             }
         }
 
-        private static void AddShapeCollider(GameObject go, PartDefinition d)
+        private void AddShapeCollider(GameObject go, PartDefinition d)
         {
             switch (d.Shape)
             {
@@ -490,13 +508,17 @@ namespace Galilego.Simulation.ContactZone
                     // Convex mesh prism (12 faces): PhysX has no direct cylinder.
                     var mc = go.AddComponent<MeshCollider>();
                     mc.convex = true;
-                    mc.sharedMesh = Prism(d.Dimensions.x, d.Dimensions.x, d.Dimensions.y, 12);
+                    Mesh prism = Prism(d.Dimensions.x, d.Dimensions.x, d.Dimensions.y, 12);
+                    partMeshes.Add(prism);
+                    mc.sharedMesh = prism;
                     break;
                 case PartShape.Frustum:
                     // Tank adapter: the same prism but with different end radii.
                     var fmc = go.AddComponent<MeshCollider>();
                     fmc.convex = true;
-                    fmc.sharedMesh = Prism(d.Dimensions.x, d.Dimensions.z, d.Dimensions.y, 16);
+                    Mesh frustum = Prism(d.Dimensions.x, d.Dimensions.z, d.Dimensions.y, 16);
+                    partMeshes.Add(frustum);
+                    fmc.sharedMesh = frustum;
                     break;
                 default:
                     // Point: mass without geometry — a tiny collider so the body stays put.

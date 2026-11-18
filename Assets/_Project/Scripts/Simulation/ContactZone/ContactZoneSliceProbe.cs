@@ -88,6 +88,11 @@ namespace Galilego.Simulation.ContactZone
         private float rescueTimer;
         private bool rescueColliderDisabled;
 
+        // cycles (test-only): enter/exit 20 times, compare the live Mesh count.
+        private int cyclesDone;
+        private int cyclesMeshBase = -1;
+        private float cyclesTimer;
+
         // land00 / land30
         private SiteFrame landingFrame;
         private double landingMinAltitude = double.PositiveInfinity;
@@ -160,6 +165,12 @@ namespace Galilego.Simulation.ContactZone
             if (Case == "rescue")
             {
                 UpdateRescue();
+                return;
+            }
+
+            if (Case == "cycles")
+            {
+                UpdateCycles();
                 return;
             }
 
@@ -385,6 +396,43 @@ namespace Galilego.Simulation.ContactZone
 
                 Finish();
                 return;
+            }
+        }
+
+        // ─── cycles ──────────────────────────────────────────────────────────
+
+        private void UpdateCycles()
+        {
+            if (Runner == null)
+            {
+                return;
+            }
+
+            cyclesTimer += Time.deltaTime;
+            if (cyclesMeshBase < 0 && ContactZoneHost.Active && cyclesTimer > 1f)
+            {
+                cyclesMeshBase = Resources.FindObjectsOfTypeAll<Mesh>().Length;
+                Debug.Log("[CZProbe] cycles: база Mesh=" + cyclesMeshBase);
+            }
+
+            if (cyclesMeshBase < 0 || !ContactZoneHost.Active || cyclesTimer < 0.5f)
+            {
+                return;
+            }
+
+            Host.ForceExit();
+            OrbitingBody body = Runner.DominantBody;
+            body.GetSurfaceState(0d, 0d, 0.2d, Runner.TimeSeconds, out Vector3d p, out Vector3d v);
+            Runner.SetShipState(p, v, VesselRegime.Landed);
+            cyclesDone++;
+            cyclesTimer = 0f;
+
+            if (cyclesDone >= 20)
+            {
+                int meshNow = Resources.FindObjectsOfTypeAll<Mesh>().Length;
+                Debug.Log("[CZProbe] DONE-cycles: входов/выходов=" + cyclesDone
+                    + ", Mesh было=" + cyclesMeshBase + ", стало=" + meshNow);
+                Finish();
             }
         }
 
