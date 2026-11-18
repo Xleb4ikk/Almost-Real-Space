@@ -291,6 +291,22 @@ internal static partial class P1bTests
         return 0;
     }
 
+    // Test322: entry/floor thresholds from FIX-01.
+    static int Test322_EntryFloor()
+    {
+        bool canEnter = !ContactZoneGate.CanEnter(-1.9d)
+            && !ContactZoneGate.CanEnter(0d)
+            && ContactZoneGate.CanEnter(0.6d);
+        bool belowFloor = !ContactZoneGate.BelowFloor(-1.9d)
+            && ContactZoneGate.BelowFloor(-2.1d);
+
+        Check(canEnter && belowFloor, "T322 entry-floor",
+            string.Format(Inv, "CanEnter: −1.9={0}, 0={1}, 0.6={2}; BelowFloor: −1.9={3}, −2.1={4}",
+                ContactZoneGate.CanEnter(-1.9d), ContactZoneGate.CanEnter(0d), ContactZoneGate.CanEnter(0.6d),
+                ContactZoneGate.BelowFloor(-1.9d), ContactZoneGate.BelowFloor(-2.1d)));
+        return 0;
+    }
+
     // Test323: zone-local velocity written to rb.linearVelocity must pass through the
     // site basis. SiteToZone alone is a permutation; using it as a world vector rotates
     // (and here mirrors) the direction — exactly the land30 Δv = 59.96 m/s finding.

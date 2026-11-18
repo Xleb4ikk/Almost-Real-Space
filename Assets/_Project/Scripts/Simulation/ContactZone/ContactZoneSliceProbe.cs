@@ -79,6 +79,15 @@ namespace Galilego.Simulation.ContactZone
         private Vector3[] dropHome;
         private float savedTimeScale = 1f;
 
+        // rescue (test-only): push the assembly under the patch and watch exit/rescue/re-entry.
+        private SiteFrame rescueFrame;
+        private bool rescueDropped;
+        private bool rescueWasActive;
+        private int rescueEntries;
+        private int rescueExits;
+        private float rescueTimer;
+        private bool rescueColliderDisabled;
+
         // land00 / land30
         private SiteFrame landingFrame;
         private double landingMinAltitude = double.PositiveInfinity;
@@ -145,6 +154,12 @@ namespace Galilego.Simulation.ContactZone
             if (Case == "drop100")
             {
                 UpdateDrop100();
+                return;
+            }
+
+            if (Case == "rescue")
+            {
+                UpdateRescue();
                 return;
             }
 
@@ -370,6 +385,105 @@ namespace Galilego.Simulation.ContactZone
 
                 Finish();
                 return;
+            }
+        }
+
+        // ─── rescue ──────────────────────────────────────────────────────────
+
+        private void UpdateRescue()
+        {
+            if (Runner == null)
+            {
+                return;
+            }
+
+            if (!rescueDropped)
+            {
+                if (!ContactZoneHost.Active)
+                {
+                    return;
+                }
+
+                if (elapsed < 2f)
+                {
+                    return;
+                }
+
+                rescueFrame = SiteFrame.Anchor(Runner.DominantBody, Runner.DominantBody.Terrain,
+                    Runner.Ship.Position, Runner.TimeSeconds);
+
+                // The patch would push the assembly back out before the host sees the
+                // floor; disabling it is a test-only way to force the below-floor path.
+                MeshCollider patchCollider = Host.Patch != null ? Host.Patch.GetComponent<MeshCollider>() : null;
+                if (patchCollider != null)
+                {
+                    patchCollider.enabled = false;
+                    rescueColliderDisabled = true;
+                }
+
+                for (int i = 0; i < Proxy.BodyCount; i++)
+                {
+                    Rigidbody b = Proxy.BodyAt(i);
+                    if (b != null)
+                    {
+                        b.position -= Proxy.transform.up * 5f;
+                        b.linearVelocity = Vector3.zero;
+                        b.angularVelocity = Vector3.zero;
+                    }
+                }
+
+                rescueDropped = true;
+                Debug.Log("[CZProbe] rescue-test: сборка опущена на 5 м под патч");
+            }
+
+            bool active = ContactZoneHost.Active;
+            if (active && !rescueWasActive)
+            {
+                rescueEntries++;
+                Debug.Log("[CZProbe] rescue-test: вход №" + rescueEntries);
+            }
+            else if (!active && rescueWasActive)
+            {
+                rescueExits++;
+                Debug.Log("[CZProbe] rescue-test: выход №" + rescueExits);
+            }
+
+            rescueWasActive = active;
+            rescueTimer += Time.deltaTime;
+
+            ContactZoneGate.Measure(Runner.DominantBody, Runner.DominantBody.Terrain,
+                Runner.Ship.Position, Runner.Ship.Velocity, Runner.TimeSeconds,
+                out double altitude, out double speed);
+
+            if (rescueColliderDisabled && active && altitude > 1d)
+            {
+                MeshCollider patchCollider = Host.Patch != null ? Host.Patch.GetComponent<MeshCollider>() : null;
+                if (patchCollider != null)
+                {
+                    patchCollider.enabled = true;
+                    rescueColliderDisabled = false;
+                }
+            }
+
+            if (rescueTimer > 1.5f && active && altitude > 1d)
+            {
+                rescueFrame.At(Runner.TimeSeconds).ToLocal(Runner.Ship.Position, Runner.Ship.Velocity,
+                    out Vector3d local, out _);
+                double horizontal = System.Math.Sqrt((local.X * local.X) + (local.Y * local.Y));
+                Debug.Log("[CZProbe] DONE-rescue: входов=" + rescueEntries + ", выходов=" + rescueExits
+                    + ", высота=" + altitude.ToString("F2", Inv) + " м"
+                    + ", горизонт=" + horizontal.ToString("F2", Inv) + " м"
+                    + ", |v|=" + speed.ToString("F2", Inv) + " м/с"
+                    + ", зона=" + active);
+                Finish();
+                return;
+            }
+
+            if (rescueTimer > 15f)
+            {
+                Debug.Log("[CZProbe] DONE-rescue ФЕЙЛ: входов=" + rescueEntries + ", выходов=" + rescueExits
+                    + ", высота=" + altitude.ToString("F2", Inv) + " м, зона=" + active);
+                Finish();
             }
         }
 

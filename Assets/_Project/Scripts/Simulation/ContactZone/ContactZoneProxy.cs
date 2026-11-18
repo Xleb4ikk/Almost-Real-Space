@@ -212,6 +212,38 @@ namespace Galilego.Simulation.ContactZone
             }
         }
 
+        /// <summary>
+        /// Lowest point of the CURRENT root island in the zone root's local up (m).
+        /// After a joint break the root hull rests higher than the entry assembly, so
+        /// the entry-time COM-to-bottom offset would report the ship below the terrain.
+        /// </summary>
+        public bool TryGetRootBottomLocal(out double bottomUp)
+        {
+            bottomUp = 0d;
+            if (partDefs == null)
+            {
+                return false;
+            }
+
+            bool found = false;
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                if (!IsRootBody(i) || bodies[i] == null || i >= partDefs.Length)
+                {
+                    continue;
+                }
+
+                double low = bodies[i].transform.localPosition.y - PartHalfHeight(partDefs[i]);
+                if (!found || low < bottomUp)
+                {
+                    bottomUp = low;
+                    found = true;
+                }
+            }
+
+            return found;
+        }
+
         /// <summary>Index of the root-island body (for ship orientation); −1 — none.</summary>
         public int RootBodyIndex()
         {

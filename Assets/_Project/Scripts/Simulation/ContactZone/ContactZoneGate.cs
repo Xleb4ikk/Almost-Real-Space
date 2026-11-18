@@ -19,6 +19,9 @@ namespace Galilego.Simulation.ContactZone
 
         public bool Inside { get; private set; }
 
+        /// <summary>Altitude above the terrain from the latest Update (m).</summary>
+        public double LastAltitudeMeters { get; private set; }
+
         /// <summary>Altitude above terrain and speed relative to the surface (co-rotating).</summary>
         public static void Measure(OrbitingBody body, ITerrainModel terrain, Vector3d position, Vector3d velocity,
             double timeSeconds, out double altitudeAboveTerrain, out double relativeSpeed)
@@ -38,6 +41,7 @@ namespace Galilego.Simulation.ContactZone
         public bool Update(OrbitingBody body, ITerrainModel terrain, Vector3d position, Vector3d velocity, double timeSeconds)
         {
             Measure(body, terrain, position, velocity, timeSeconds, out double altitude, out double speed);
+            LastAltitudeMeters = altitude;
             if (!Inside)
             {
                 if (altitude < EnterAltitudeMeters && speed < EnterSpeedMps)
@@ -56,6 +60,18 @@ namespace Galilego.Simulation.ContactZone
         public void Reset()
         {
             Inside = false;
+        }
+
+        /// <summary>Entry is forbidden at zero and below the terrain.</summary>
+        public static bool CanEnter(double altitudeMeters)
+        {
+            return altitudeMeters > 0d;
+        }
+
+        /// <summary>The zone must not hold the ship below the terrain.</summary>
+        public static bool BelowFloor(double altitudeMeters)
+        {
+            return altitudeMeters < -2d;
         }
 
         /// <summary>Whether the terrain patch should be rebuilt around the ship (pure decision).</summary>
