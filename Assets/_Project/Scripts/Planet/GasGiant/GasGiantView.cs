@@ -678,12 +678,18 @@ namespace Galilego.Universe
                         int b = a + 1;
                         int c = a + n;
                         int d = c + 1;
+                        // Clockwise seen from OUTSIDE, so Unity's front face is
+                        // the visible shell. The a,c,b order used by
+                        // BuildSphereMesh (clouds/atmosphere domes) is the
+                        // opposite: those meshes are viewed from inside, and an
+                        // inward winding here made Cull Back discard the near
+                        // hemisphere and show the far hemisphere's interior.
                         indices[t++] = a;
-                        indices[t++] = c;
-                        indices[t++] = b;
                         indices[t++] = b;
                         indices[t++] = c;
+                        indices[t++] = b;
                         indices[t++] = d;
+                        indices[t++] = c;
                     }
                 }
             }
