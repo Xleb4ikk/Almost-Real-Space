@@ -311,6 +311,18 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Rollback support (physics off): restore the seat the player occupied at the
+        /// moment physics was switched on. The seat itself is a vessel part, so it is
+        /// already back on the pad after the world restore — only the reference and the
+        /// legacy interior offset need to be put back.
+        /// </summary>
+        public void RestoreSeatState(CockpitSeat seat, Vector3 shipLocalOffset)
+        {
+            SeatedSeat = seat;
+            ShipLocalOffset = shipLocalOffset;
+        }
+
+        /// <summary>
         /// Sit in a seat: the player pose is fixed at the anchor (the physics step
         /// freezes, the ship keeps moving). SimulationRunner converts render →
         /// double world via the site frame (like walking). false — no anchor/runner.

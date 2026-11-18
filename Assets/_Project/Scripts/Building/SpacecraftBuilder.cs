@@ -17,8 +17,9 @@ namespace Galilego.Building
     ///   Flight: holding R (1 s) turns the draft into PartDefinition[],
     ///     mass/position/velocity are handed to the simulation, and the contact
     ///     zone turns on (exact PhysX physics near the ground). Holding R again
-    ///     returns the vessel and the world exactly to the build state (the
-    ///     snapshot is the draft itself; zone bodies and debris are cleaned up).
+    ///     restores the world snapshot taken at launch — world time, the player and
+    ///     the vessel return exactly to the moment physics was switched on — and
+    ///     zone bodies and debris are cleaned up.
     ///
     /// Placement: the part ghost follows the camera ray and snaps to free nodes
     /// of placed parts (one part per node); checks require the footprint to be
@@ -168,6 +169,9 @@ namespace Galilego.Building
         private Vector3 lastPivot;
         private bool pendingPhysics;
         private System.Action<double> frameHook;
+
+        /// <summary>World state at the moment physics was switched on — the exact rollback target.</summary>
+        private SimulationRunner.WorldSnapshot launchSnapshot;
 
         // ─── Mirror filter (solver jitter) ──────────────────────────────────
 
@@ -915,6 +919,13 @@ namespace Galilego.Building
                 ZoneHost.Enabled = true;
             }
 
+            // Rollback anchor: the world EXACTLY as it is at the instant physics is
+            // switched on. Turning physics off returns time, the craft and the player
+            // to this point (see ReturnToBuild), not to a re-pinned state at the
+            // current (later) time.
+            Runner.Warp.SetWarpFactor(Galilego.Events.WarpController.MinWarpFactor);
+            launchSnapshot = Runner.CaptureWorldSnapshot();
+
             HideGhost();
             Debug.Log(string.Format(
                 "[Build] физика включена: деталей {0}, масса {1:F0} кг", defs.Length, Runner.Ship.Mass));
@@ -1068,14 +1079,48 @@ namespace Galilego.Building
             // Staged propulsion is removed: build mode uses the legacy path.
             Galilego.Flight.FlightRuntime.End();
             Runner.ClearVesselPropulsion();
-            Runner.Ship.Attitude = Galilego.Core.QuaternionD.Identity;
-            Runner.Ship.AngularVelocity = Galilego.Core.Vector3d.Zero;
-            Runner.Ship.PositionIsCom = false;
+
+            SimulationRunner.WorldSnapshot snapshot = launchSnapshot;
+            launchSnapshot = null;
+            if (snapshot != null)
+            {
+                // STRICT rollback: time, the vessel and the player return to the
+                // instant physics was switched on. The craft is then pinned to the
+                // pad AT THAT SAME INSTANT: the pad rides the planet, so a pin at the
+                // current time would leave the rocket metres away from the launch point.
+                Runner.RestoreWorldSnapshot(snapshot);
+
+                // The site moves itself in LateUpdate; refresh it NOW so the pad pose
+                // (and therefore the craft's rotation) belongs to the restored time
+                // already on this frame instead of the flight-time pose.
+                SurfaceSite site = Zone.GetComponentInParent<SurfaceSite>();
+                if (site != null)
+                {
+                    site.Refresh();
+                }
+
+                PinShipAt(snapshot.TimeSeconds);
+            }
+            else
+            {
+                Runner.Ship.Attitude = Galilego.Core.QuaternionD.Identity;
+                Runner.Ship.AngularVelocity = Galilego.Core.Vector3d.Zero;
+                Runner.Ship.PositionIsCom = false;
+            }
 
             SetPartColliders(true);
-
             RefreshVisualLocals();
-            Debug.Log("[Build] возврат к стройке: состояние восстановлено");
+
+            // Put the visuals/colliders on the pad right now, not in LateUpdate: the
+            // first player step of this same frame must already see the restored craft
+            // (otherwise someone standing inside it would fall for one frame).
+            if (ShipTransform != null && Runner.Ship != null)
+            {
+                ShipTransform.position = FloatingOrigin.ToRender(Runner.Ship.Position);
+                Physics.SyncTransforms();
+            }
+
+            Debug.Log("[Build] возврат к стройке: мир, время и игрок возвращены к моменту включения физики");
         }
 
         // ─── Stages in flight ────────────────────────────────────────────────

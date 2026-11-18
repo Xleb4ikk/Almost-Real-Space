@@ -1087,6 +1087,206 @@ namespace Galilego.Universe
             FloatingOrigin.Anchor = PlayerPosition;
         }
 
+        // --- World snapshot (build rollback) --------------------------------
+
+        /// <summary>
+        /// The whole world at the instant physics was enabled: time, the vessel, the
+        /// player, warp and the player's transient frames. The builder restores it when
+        /// physics is switched off, so the player, the craft and the clock return
+        /// EXACTLY to that moment instead of being recomputed at the current time.
+        /// </summary>
+        public sealed class WorldSnapshot
+        {
+            public double TimeSeconds;
+            public double WarpFactor;
+            public double RawThrottle;
+
+            public Vector3d ShipPosition;
+            public Vector3d ShipVelocity;
+            public double ShipMass;
+            public QuaternionD ShipAttitude;
+            public Vector3d ShipAngularVelocity;
+            public bool ShipPositionIsCom;
+            public VesselRegime ShipRegime;
+            public OrbitingBody DominantBody;
+            public PartDefinition[] ShipParts;
+
+            public Vector3d PlayerPosition;
+            public Vector3d PlayerVelocity;
+            public PlayerMode PlayerMode;
+            public bool PlayerAirborne;
+            public bool JetpackActive;
+            public bool PlayerHoverActive;
+            public bool PlayerSeated;
+            public Vector3d PlayerSeatedPosition;
+            public Vector3 PlayerSeatedUpRender;
+            public Vector3d SeatedShipAnchor;
+            public Vector3d SmoothedShipPosition;
+            public int PlayerGroundSourceId;
+
+            public bool EvaRelativeValid;
+            public Vector3d EvaRelativeVelocity;
+            public bool EvaUpValid;
+            public Vector3d EvaUpAstro;
+            public bool EvaCollisionUpValid;
+            public Vector3d EvaCollisionUpAstro;
+            public bool EvaAlignedToVessel;
+            public float EvaCapsuleDistance;
+            public bool EvaCrouched;
+            public double EvaCollisionGraceUntil;
+
+            public bool ShipAccelerationValid;
+            public Vector3d ShipAcceleration;
+            public Vector3d LastShipVelocity;
+            public double LastShipAccelerationTime;
+
+            public CockpitSeat SeatedSeat;
+            public Vector3 ShipLocalOffset;
+        }
+
+        /// <summary>Capture the current state for a later exact rollback (build mode).</summary>
+        public WorldSnapshot CaptureWorldSnapshot()
+        {
+            var snapshot = new WorldSnapshot
+            {
+                TimeSeconds = TimeSeconds,
+                WarpFactor = Warp != null ? Warp.WarpFactor : 1d,
+                RawThrottle = RawThrottle,
+
+                ShipPosition = Ship.Position,
+                ShipVelocity = Ship.Velocity,
+                ShipMass = Ship.Mass,
+                ShipAttitude = Ship.Attitude,
+                ShipAngularVelocity = Ship.AngularVelocity,
+                ShipPositionIsCom = Ship.PositionIsCom,
+                ShipRegime = Regime,
+                DominantBody = DominantBody,
+                ShipParts = Parts,
+
+                PlayerPosition = PlayerPosition,
+                PlayerVelocity = PlayerVelocity,
+                PlayerMode = PlayerMode,
+                PlayerAirborne = playerAirborne,
+                JetpackActive = JetpackActive,
+                PlayerHoverActive = PlayerHoverActive,
+                PlayerSeated = PlayerSeated,
+                PlayerSeatedPosition = PlayerSeatedPosition,
+                PlayerSeatedUpRender = PlayerSeatedUpRender,
+                SeatedShipAnchor = seatedShipAnchor,
+                SmoothedShipPosition = smoothedShipPosition,
+                PlayerGroundSourceId = playerController.GroundSourceId,
+
+                EvaRelativeValid = evaRelativeValid,
+                EvaRelativeVelocity = evaRelativeVelocity,
+                EvaUpValid = evaUpValid,
+                EvaUpAstro = evaUpAstro,
+                EvaCollisionUpValid = evaCollisionUpValid,
+                EvaCollisionUpAstro = evaCollisionUpAstro,
+                EvaAlignedToVessel = evaAlignedToVessel,
+                EvaCapsuleDistance = evaCapsuleDistance,
+                EvaCrouched = evaCrouched,
+                EvaCollisionGraceUntil = evaCollisionGraceUntil,
+
+                ShipAccelerationValid = shipAccelerationValid,
+                ShipAcceleration = shipAcceleration,
+                LastShipVelocity = lastShipVelocity,
+                LastShipAccelerationTime = lastShipAccelerationTime,
+            };
+
+            PlayerController controller = FindAnyObjectByType<PlayerController>();
+            if (controller != null)
+            {
+                snapshot.SeatedSeat = controller.SeatedSeat;
+                snapshot.ShipLocalOffset = controller.ShipLocalOffset;
+            }
+
+            return snapshot;
+        }
+
+        /// <summary>
+        /// Restore a captured state bit-for-bit: the clock goes BACK to the snapshot
+        /// instant, then the ship, the player and the transient frames are put back.
+        /// Bodies/ephemerides are pure functions of time, so they follow the clock.
+        /// </summary>
+        public void RestoreWorldSnapshot(WorldSnapshot snapshot)
+        {
+            if (snapshot == null || step == null || Ship == null)
+            {
+                return;
+            }
+
+            // Time first: the state below belongs to the restored instant, and every
+            // body/ephemeris query must see that time.
+            step.SetTime(snapshot.TimeSeconds);
+            if (Warp != null)
+            {
+                Warp.SetWarpFactor(snapshot.WarpFactor);
+                Warp.ResetTicks(snapshot.TimeSeconds);
+            }
+
+            RawThrottle = snapshot.RawThrottle;
+
+            SetVesselParts(snapshot.ShipParts);
+            Ship.Position = snapshot.ShipPosition;
+            Ship.Velocity = snapshot.ShipVelocity;
+            Ship.Mass = snapshot.ShipMass;
+            Ship.Attitude = snapshot.ShipAttitude;
+            Ship.AngularVelocity = snapshot.ShipAngularVelocity;
+            Ship.PositionIsCom = snapshot.ShipPositionIsCom;
+            step.Regime = snapshot.ShipRegime;
+            step.DominantBody = snapshot.DominantBody;
+            step.ResetTimeAccumulator();
+
+            PlayerPosition = snapshot.PlayerPosition;
+            PlayerVelocity = snapshot.PlayerVelocity;
+            PlayerMode = snapshot.PlayerMode;
+            playerAirborne = snapshot.PlayerAirborne;
+            JetpackActive = snapshot.JetpackActive;
+            PlayerHoverActive = snapshot.PlayerHoverActive;
+            PlayerSeated = snapshot.PlayerSeated;
+            PlayerSeatedPosition = snapshot.PlayerSeatedPosition;
+            PlayerSeatedUpRender = snapshot.PlayerSeatedUpRender;
+            seatedShipAnchor = snapshot.SeatedShipAnchor;
+            smoothedShipPosition = snapshot.SmoothedShipPosition;
+            playerController.SetGroundSource(snapshot.PlayerGroundSourceId);
+
+            evaRelativeValid = snapshot.EvaRelativeValid;
+            evaRelativeVelocity = snapshot.EvaRelativeVelocity;
+            evaUpValid = snapshot.EvaUpValid;
+            evaUpAstro = snapshot.EvaUpAstro;
+            evaCollisionUpValid = snapshot.EvaCollisionUpValid;
+            evaCollisionUpAstro = snapshot.EvaCollisionUpAstro;
+            evaAlignedToVessel = snapshot.EvaAlignedToVessel;
+            evaCapsuleDistance = snapshot.EvaCapsuleDistance;
+            evaCrouched = snapshot.EvaCrouched;
+            evaCollisionGraceUntil = snapshot.EvaCollisionGraceUntil;
+
+            shipAccelerationValid = snapshot.ShipAccelerationValid;
+            shipAcceleration = snapshot.ShipAcceleration;
+            lastShipVelocity = snapshot.LastShipVelocity;
+            lastShipAccelerationTime = snapshot.LastShipAccelerationTime;
+
+            playerJumpQueued = false;
+            jetpackToggleQueued = false;
+            hoverToggleQueued = false;
+
+            // Build mode does not carry the player in a cabin: the restored world point
+            // is the truth, and the walking controller re-detects the support under it
+            // on the next step (the vessel visuals are already back on the pad).
+            platformCarry.Reset();
+
+            // The seat is a vessel part: it is already back on the pad, only the
+            // controller's reference has to be restored (otherwise a player who stood
+            // up during the flight would stay frozen in the seated branch).
+            PlayerController controller = FindAnyObjectByType<PlayerController>();
+            if (controller != null)
+            {
+                controller.RestoreSeatState(snapshot.SeatedSeat, snapshot.ShipLocalOffset);
+            }
+
+            FloatingOrigin.Anchor = PlayerPosition;
+        }
+
         // --- Player ----------------------------------------------------------
 
         /// <summary>

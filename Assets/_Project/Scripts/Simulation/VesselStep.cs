@@ -176,6 +176,24 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Restores the world clock to an earlier instant (build rollback: physics is
+        /// switched off — time, the vessel and the player return to the moment it was
+        /// switched on). The accumulator is reset: the old compensation does not apply
+        /// to the restored trajectory.
+        /// </summary>
+        public void SetTime(double timeSeconds)
+        {
+            if (!double.IsFinite(timeSeconds))
+            {
+                throw new ArgumentOutOfRangeException(nameof(timeSeconds),
+                    "SetTime: время обязано быть конечным, получено " + timeSeconds + ".");
+            }
+
+            TimeSeconds = timeSeconds;
+            time.Reset(timeSeconds);
+        }
+
+        /// <summary>
         /// Advances step time WITHOUT physics: the contact zone drives the ship itself (PhysX),
         /// but world time flows (the planet moves, ephemerides are read at the current t).
         /// The accumulator is updated the same way as in the steps (time.Reset).
