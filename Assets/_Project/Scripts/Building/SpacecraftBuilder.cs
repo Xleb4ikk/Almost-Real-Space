@@ -75,6 +75,13 @@ namespace Galilego.Building
         /// <summary>Maximum placement height above the slab (in-air placement), m.</summary>
         public const float MaxBuildHeight = 30f;
 
+        /// <summary>
+        /// How far from the pad the placement ghost is still drawn, m. Placement is
+        /// pad-limited anyway; farther away (noclip above the planet) the ghost's air
+        /// fallback would sit 6 m in front of the eye and cover the whole view.
+        /// </summary>
+        private const float MaxGhostPadDistanceMeters = 200f;
+
         // ─── Draft ────────────────────────────────────────────────────────
 
         private readonly System.Collections.Generic.List<PlacedPart> parts
@@ -350,7 +357,19 @@ namespace Galilego.Building
 
             // Alt: delete mode — the aim target turns red, RMB deletes it;
             // the placement ghost is hidden.
-            if (!UiOpen && PlayerInput.Held(GameAction.BuildDelete))
+            //
+            // The ghost only makes sense near the pad: snapping and placement are
+            // pad-limited. Far from it (noclip above the planet) the air fallback would
+            // park a multi-metre part ghost 6 m from the eye, where it covers the whole
+            // view as a dark polygon and hides the sky, the stars and the atmosphere
+            // behind it — the "circle around the reticle" seen from orbit.
+            bool nearPad = IsNearPad(MaxGhostPadDistanceMeters);
+            if (!nearPad)
+            {
+                HideGhost();
+                ClearDeleteHighlight();
+            }
+            else if (!UiOpen && PlayerInput.Held(GameAction.BuildDelete))
             {
                 HideGhost();
                 UpdateDeleteAim();
@@ -1623,6 +1642,14 @@ namespace Galilego.Building
         }
 
         // ─── Ghost and placement ────────────────────────────────────────────
+
+        /// <summary>The player is close enough to the pad for a meaningful ghost.</summary>
+        private bool IsNearPad(float meters)
+        {
+            Camera camera = Camera.main;
+            return Zone != null && camera != null
+                && Vector3.Distance(Zone.transform.position, camera.transform.position) <= meters;
+        }
 
         private void UpdatePlacement()
         {
