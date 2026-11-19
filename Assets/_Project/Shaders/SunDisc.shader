@@ -47,6 +47,10 @@ Shader "Galilego/SunDisc"
             // Far plane (m), from SunBillboard. A depth at/over it is "no geometry",
             // not an occluder: the test never relies on IsSky alone.
             float _SunFarLimit;
+            // Debug (set from the console/eval): >0 draws the depth test result as a
+            // solid patch — green = sky, blue = far plane, red = a real occluder —
+            // and skips every discard, so a capture shows WHY the star is hidden.
+            float _SunDebugDepth;
 
             struct Attributes
             {
@@ -74,10 +78,22 @@ Shader "Galilego/SunDisc"
 
             float4 Frag(Varyings input) : SV_Target
             {
-                // Radial falloff: core + soft corona; outside the circle it is
-                // transparent (the quad no longer looks like a square).
                 float2 centered = (input.uv * 2.0) - 1.0;
                 float radius = length(centered);
+
+                float rawDepth = LoadCameraDepth(uint2(input.positionCS.xy));
+                float eyeDepth = LinearEyeDepth(rawDepth, _ZBufferParams);
+
+                if (_SunDebugDepth > 0.5)
+                {
+                    float3 dbg = IsSky(rawDepth)
+                        ? float3(0.0, 1.0, 0.0)
+                        : (eyeDepth >= _SunFarLimit ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0));
+                    return float4(dbg, 1.0);
+                }
+
+                // Radial falloff: core + soft corona; outside the circle it is
+                // transparent (the quad no longer looks like a square).
                 float core = 1.0 - smoothstep(_CoreRadius - 0.08, _CoreRadius, radius);
                 float glow = pow(saturate(1.0 - radius), _GlowFalloff);
                 float alpha = saturate((core + glow) * 0.9);
@@ -94,8 +110,6 @@ Shader "Galilego/SunDisc"
                 // the test does not depend on IsSky() alone. In a cockpit SunBillboard
                 // publishes 0: the cabin wall still hides the sun and only the glass
                 // (transparent, no depth) lets it through.
-                float rawDepth = LoadCameraDepth(uint2(input.positionCS.xy));
-                float eyeDepth = LinearEyeDepth(rawDepth, _ZBufferParams);
                 if (!IsSky(rawDepth)
                     && eyeDepth > max(_SunSelfOccluder, 0.05)
                     && eyeDepth < _SunFarLimit)

@@ -17,7 +17,7 @@ namespace Galilego.Universe
     ///
     /// The gas giant is usually far beyond the camera's physical far plane (the
     /// FirstPersonCamera sets it to the horizon). Like SunBillboard, the far
-    /// disc is placed at 0.9*far with the true angular radius, and switches to
+    /// disc is placed at 0.25*far with the true angular radius, and switches to
     /// the real mesh when the body fits inside the far plane.
     ///
     /// Lighting direction is computed from the actual body/star positions:
@@ -482,7 +482,10 @@ namespace Galilego.Universe
                 return;
             }
 
-            float discDistance = Mathf.Max(1f, far * 0.9f);
+            // 0.9*far put the quad's clip-space depth on the far plane (near/far ~ 1e7)
+            // and the rasterizer dropped it entirely. 0.25*far keeps the same angular
+            // size; the shader's depth test only needs the disc to be behind the body.
+            float discDistance = Mathf.Max(1f, far * 0.25f);
             Vector3 cameraPosition = camera.transform.position;
             farDisc.position = cameraPosition + (simDirection * discDistance);
 

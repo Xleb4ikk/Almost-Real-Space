@@ -40,8 +40,9 @@ namespace Galilego.Universe
         [Tooltip("HDR-яркость диска/сферы (>1 питает bloom = корона).")]
         public float DiscBrightness = 4f;
 
-        [Tooltip("Доля far plane для диск-билборда.")]
-        public float BillboardFarFraction = 0.9f;
+        [Tooltip("Доля far plane для диск-билборда (жёстко ограничена 0.25: ближе к far plane " +
+                 "квад перестаёт растеризоваться — near/far ~1e7 схлопывает z на дальней плоскости).")]
+        public float BillboardFarFraction = 0.25f;
 
         [Tooltip("Радиус собственного корабля вокруг камеры (м) при EVA: твёрдые части ближе этого " +
                  "радиуса не скрывают диск. Тёмный борт корабля невидим на фоне космоса, но всё равно " +
@@ -65,6 +66,13 @@ namespace Galilego.Universe
 
         [Tooltip("Рисовать ближнюю сферу солнца (когда влезает в far).")]
         public bool RenderBodySphere = true;
+
+        /// <summary>
+        /// Hard ceiling on the disc's distance as a fraction of far. Closer to the far
+        /// plane the clip-space z of a quad collapses onto it (near/far ~ 1e7) and the
+        /// rasterizer drops the whole quad — the sun used to vanish near a planet.
+        /// </summary>
+        private const float MaxDiscFarFraction = 0.25f;
 
         private bool loggedDiag;
 
@@ -150,16 +158,22 @@ namespace Galilego.Universe
             float far = camera.farClipPlane;
             Vector3 cameraPosition = camera.transform.position;
 
-            // The far disc is a billboard at 0.9·far drawn after the atmosphere, so the
-            // scene depth is its only occluder. The shader tests it by hand (ZTest
-            // Always): anything FARTHER than the clearance is the world (the planet,
-            // terrain) and hides the star; anything NEARER is the observer's own craft.
-            // In EVA the craft's unlit side is a black silhouette against space —
-            // invisible, yet it still wrote depth and swallowed the sun exactly when it
-            // drifted behind the hull (visible at the screen edge, gone in the middle).
+            // The far disc is a billboard drawn after the atmosphere, so the scene depth
+            // is its only occluder. The shader tests it by hand (ZTest Always): anything
+            // FARTHER than the clearance is the world (the planet, terrain) and hides the
+            // star; anything NEARER is the observer's own craft. In EVA the craft's unlit
+            // side is a black silhouette against space — invisible, yet it still wrote
+            // depth and swallowed the sun (visible at the screen edge, gone in the middle).
             // Inside a vessel the clearance is 0: the cabin wall must hide the sun and
             // only the glass (transparent, no depth) may let it through.
-            float discDistance = Mathf.Max(1f, far * BillboardFarFraction);
+            //
+            // The disc must also stay well inside the far plane. At 0.9*far the quad's
+            // clip-space depth collapses onto the far plane (near/far ~ 1e7 with a 0.03 m
+            // seated near plane) and the rasterizer drops the whole quad: near a planet
+            // far is ~1e6 m, so the sun vanished while the horizon was close and only
+            // came back once the ship climbed high enough. 0.25*far keeps the same
+            // angular size — the manual depth test no longer cares where the disc is.
+            float discDistance = Mathf.Clamp(far * BillboardFarFraction, 1f, far * MaxDiscFarFraction);
             bool eva = Runner.PlayerMode == PlayerMode.EVA;
             Shader.SetGlobalFloat("_SunSelfOccluder",
                 eva ? Mathf.Max(0f, EvaCraftClearanceMeters) : 0f);
