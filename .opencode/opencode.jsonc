@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // Unity MCP is enabled only in Unity projects. The global config keeps the
+  // server defined but disabled, so it starts only inside this directory.
+  // The project entry replaces the global server object, so repeat every field.
+  "mcp": {
+    "unity": {
+      "type": "local",
+      "command": [
+        "C:\\Users\\xleb4ikk\\AppData\\Local\\Unity\\bin\\unity.exe",
+        "mcp"
+      ],
+      "enabled": true
+    }
+  }
+}

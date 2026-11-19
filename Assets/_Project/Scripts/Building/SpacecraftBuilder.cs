@@ -76,11 +76,14 @@ namespace Galilego.Building
         public const float MaxBuildHeight = 30f;
 
         /// <summary>
-        /// How far from the pad the placement ghost is still drawn, m. Placement is
-        /// pad-limited anyway; farther away (noclip above the planet) the ghost's air
+        /// How far from the BUILD SITE the placement ghost is still drawn, m.
+        /// Measured to the vessel first (the pad's transform is not the surface the
+        /// player stands on: at spawn its origin is already ~200 m away, so a tight
+        /// radius silently killed the ghost and the Alt-delete). Placement is
+        /// pad-limited anyway; far away (noclip above the planet) the ghost's air
         /// fallback would sit 6 m in front of the eye and cover the whole view.
         /// </summary>
-        private const float MaxGhostPadDistanceMeters = 200f;
+        private const float MaxGhostPadDistanceMeters = 500f;
 
         // ─── Draft ────────────────────────────────────────────────────────
 
@@ -355,21 +358,11 @@ namespace Galilego.Building
                 return;
             }
 
-            // Alt: delete mode — the aim target turns red, RMB deletes it;
-            // the placement ghost is hidden.
-            //
-            // The ghost only makes sense near the pad: snapping and placement are
-            // pad-limited. Far from it (noclip above the planet) the air fallback would
-            // park a multi-metre part ghost 6 m from the eye, where it covers the whole
-            // view as a dark polygon and hides the sky, the stars and the atmosphere
-            // behind it — the "circle around the reticle" seen from orbit.
-            bool nearPad = IsNearPad(MaxGhostPadDistanceMeters);
-            if (!nearPad)
-            {
-                HideGhost();
-                ClearDeleteHighlight();
-            }
-            else if (!UiOpen && PlayerInput.Held(GameAction.BuildDelete))
+            // Alt: delete mode — the aim target turns red, RMB deletes it.
+            // Deleting needs only the aim ray, so it must NOT depend on the distance
+            // to the pad: from the spawn the player is a couple of hundred metres from
+            // the vessel and still has to delete its parts by aim.
+            if (!UiOpen && PlayerInput.Held(GameAction.BuildDelete))
             {
                 HideGhost();
                 UpdateDeleteAim();
@@ -377,7 +370,20 @@ namespace Galilego.Building
             else
             {
                 ClearDeleteHighlight();
-                UpdatePlacement();
+
+                // The ghost only makes sense near the build site: snapping and
+                // placement are pad-limited. Far away (noclip above the planet) the
+                // air fallback would park a multi-metre part ghost 6 m from the eye,
+                // where it covers the whole view as a dark polygon and hides the sky,
+                // the stars and the atmosphere behind it.
+                if (IsNearBuildSite(MaxGhostPadDistanceMeters))
+                {
+                    UpdatePlacement();
+                }
+                else
+                {
+                    HideGhost();
+                }
             }
 
             if (!UiOpen)
@@ -1643,12 +1649,27 @@ namespace Galilego.Building
 
         // ─── Ghost and placement ────────────────────────────────────────────
 
-        /// <summary>The player is close enough to the pad for a meaningful ghost.</summary>
-        private bool IsNearPad(float meters)
+        /// <summary>
+        /// The player is close enough to the build site for a meaningful ghost.
+        /// Measured to the VESSEL first: the pad object's transform is not the pad's
+        /// top surface (at spawn its origin is already ~200 m from the eye, which made
+        /// a tighter radius hide the ghost and the delete aim at the pad itself).
+        /// </summary>
+        private bool IsNearBuildSite(float meters)
         {
             Camera camera = Camera.main;
-            return Zone != null && camera != null
-                && Vector3.Distance(Zone.transform.position, camera.transform.position) <= meters;
+            if (camera == null)
+            {
+                return false;
+            }
+
+            Vector3 eye = camera.transform.position;
+            if (ShipTransform != null && Vector3.Distance(ShipTransform.position, eye) <= meters)
+            {
+                return true;
+            }
+
+            return Zone != null && Vector3.Distance(Zone.transform.position, eye) <= meters;
         }
 
         private void UpdatePlacement()

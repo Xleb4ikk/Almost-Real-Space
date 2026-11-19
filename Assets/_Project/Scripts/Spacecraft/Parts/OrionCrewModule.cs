@@ -216,7 +216,6 @@ namespace Galilego.Spacecraft
                 lamp.color = cabinLampColor;
                 lamp.shadows = LightShadows.None;
                 lamp.lightUnit = LightUnit.Lumen;
-                lamp.lightmapBakeType = LightmapBakeType.Realtime;
                 cabinLamps[i] = lamp;
 
                 HDAdditionalLightData hd = go.GetComponent<HDAdditionalLightData>();
