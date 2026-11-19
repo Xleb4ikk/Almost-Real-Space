@@ -35,8 +35,14 @@ namespace Galilego.Building
         private const float IconSpinDegrees = 25f;
         private const float RenderInterval = 1f / 30f;
 
-        /// <summary>Fixed exposure of the preview frame (EV100).</summary>
-        private const float FixedExposureEv = -3f;
+        /// <summary>
+        /// Fixed exposure of the preview frame (EV100). Calibrated for the scene's
+        /// physical sun (Sol at 0.368 AU ≈ 7.6× the reference irradiance): the parts
+        /// read the same as before the star became physical, without clipping.
+        /// The value is only meaningful because the rig's local volume is actually
+        /// applied (see the camera volume layer mask in EnsureRig).
+        /// </summary>
+        private const float FixedExposureEv = 0f;
 
         /// <summary>Frame background (LINEAR) — matches the Viewport/Cell fill (sRGB 0.168, 0.176, 0.186) to avoid seams.</summary>
         private static readonly Color Background = new Color(0.0240f, 0.0261f, 0.0289f, 1f);
@@ -442,6 +448,13 @@ namespace Galilego.Building
             hd.backgroundColorHDR = Background;
             hd.antialiasing = HDAdditionalCameraData.AntialiasingMode.SubpixelMorphologicalAntiAliasing;
 
+            // HDRP only evaluates a local (non-global) Volume when its GameObject
+            // is in the camera's volume layer mask; the default mask is layer 0
+            // alone, while the rig lives on layer 31. Without this the PreviewExposure
+            // volume (fixed exposure, bloom off) was silently ignored and the icons
+            // rendered with the scene's automatic exposure and bloom.
+            hd.volumeLayerMask = (1 << 0) | (1 << Layer);
+
             target = new RenderTexture(Width, Height, 24, RenderTextureFormat.ARGB32)
             {
                 name = "BuilderPreviewRT",
@@ -452,8 +465,9 @@ namespace Galilego.Building
             camera.targetTexture = target;
 
             // Own exposure for the preview frame: scene auto-exposure would sink
-            // the part into darkness against the bright background. Fixed EV
-            // gives a stable "studio" look at any time of day.
+            // the part into darkness or clip it against the star brightness. The
+            // fixed EV gives a stable "studio" look at any time of day, and the same
+            // volume also keeps the scene bloom out of the frame.
             BuildExposureVolume(cameraGo);
 
             // Metal needs an environment for reflections, otherwise the tank is a
@@ -535,9 +549,10 @@ namespace Galilego.Building
         }
 
         /// <summary>
-        /// Volume on the preview camera: Fixed Exposure only. The collider box
-        /// makes the Volume non-global so it affects only this camera (the main
-        /// camera is 10 km away, outside the box).
+        /// Volume on the preview camera: fixed exposure and bloom off. The collider
+        /// box makes the Volume non-global so it affects only this camera (the main
+        /// camera is 10 km away, outside the box); the camera's volume layer mask
+        /// includes the rig layer so HDRP actually applies it (see EnsureRig).
         /// </summary>
         private void BuildExposureVolume(GameObject cameraGo)
         {
@@ -558,6 +573,14 @@ namespace Galilego.Building
             exposure.mode.value = ExposureMode.Fixed;
             exposure.fixedExposure.value = FixedExposureEv;
             exposure.compensation.value = 0f;
+
+            // Icons are UI thumbnails: the scene Bloom (Star Volume, threshold 1)
+            // turned every specular highlight of the part into a halo baked into
+            // the icon texture. The background key then kept the halo as "part",
+            // so the slots glowed. No bloom in the preview/icon frame.
+            var bloom = previewProfile.Add<Bloom>(true);
+            bloom.active = true;
+            bloom.intensity.Override(0f);
 
             var box = volumeGo.AddComponent<BoxCollider>();
             box.isTrigger = true;
