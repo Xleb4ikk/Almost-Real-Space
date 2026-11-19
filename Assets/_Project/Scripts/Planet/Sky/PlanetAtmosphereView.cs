@@ -288,10 +288,10 @@ namespace Galilego.Universe
 
             Vector3 cameraPosition = camera.transform.position;
             // The dome mesh has unit radius (BuildSphereMesh(1f, …)), so
-            // localScale == world radius. Radius 0.5·far keeps the dome surface
-            // INSIDE far: otherwise far-plane clipping cuts vertices at the
-            // frustum edge and black holes appear in the sky.
-            float domeRadius = Mathf.Max(1f, camera.farClipPlane * 0.5f);
+            // localScale == world radius. The shader only needs the ray
+            // direction, so the proxy sits at a fixed, depth-safe distance
+            // instead of a fraction of far — see SkyDomeLayout for why.
+            float domeRadius = SkyDomeLayout.Radius(camera);
             shell.position = cameraPosition;
             shell.rotation = Quaternion.identity;
             shell.localScale = new Vector3(domeRadius, domeRadius, domeRadius);

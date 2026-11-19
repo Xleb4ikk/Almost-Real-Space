@@ -266,16 +266,16 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Same approach as AtmosphereDome: keep the dome inside far,
-            // otherwise vertices at the frustum edge are clipped by the far plane.
-            //
-            // The dome radius is ONLY a screen-covering proxy: the shader marches the ray
-            // analytically against the cloud spheres, so the dome does not have to reach
-            // the planet. This view must NOT touch camera.farClipPlane: FirstPersonCamera
-            // owns near/far (it sets them every frame from the horizon), and a LateUpdate
-            // that inflated far here fought it — the sun billboard sits at 0.9·far, so the
-            // star jumped millions of metres between frames.
-            float domeRadius = Mathf.Max(1f, camera.farClipPlane * 0.5f);
+            // Same approach as AtmosphereDome: the dome is ONLY a screen-covering
+            // proxy, the shader marches the ray analytically against the cloud
+            // spheres, so it does not have to reach the planet. The radius is a
+            // fixed depth-safe distance instead of a fraction of far — see
+            // SkyDomeLayout for why (domes near 0.5·far lost fragments at altitude).
+            // This view must NOT touch camera.farClipPlane: FirstPersonCamera owns
+            // near/far (it sets them every frame from the horizon), and a LateUpdate
+            // that inflated far here fought it — the sun billboard sits at 0.9·far,
+            // so the star jumped millions of metres between frames.
+            float domeRadius = SkyDomeLayout.Radius(camera);
             Vector3 cameraPosition = camera.transform.position;
             shell.position = cameraPosition;
             shell.rotation = Quaternion.identity;

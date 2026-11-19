@@ -90,8 +90,11 @@ namespace Galilego.Universe
                 shell.gameObject.SetActive(true);
             }
 
-            // Keep the sphere inside far, centered on the camera; world orientation.
-            float radius = Mathf.Max(1f, camera.farClipPlane * 0.5f);
+            // Centered on the camera; world orientation. The shader keeps only
+            // sky pixels (IsSky), so the shell does not need to sit behind the
+            // planet — it uses the same fixed, depth-safe radius as the other
+            // sky domes (see SkyDomeLayout).
+            float radius = SkyDomeLayout.Radius(camera);
             shell.position = camera.transform.position;
             shell.rotation = Quaternion.identity;
             shell.localScale = new Vector3(radius * 2f, radius * 2f, radius * 2f);
