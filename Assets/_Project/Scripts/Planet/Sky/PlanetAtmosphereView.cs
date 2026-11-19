@@ -45,7 +45,7 @@ namespace Galilego.Universe
         public SimulationRunner Runner;
 
         [Tooltip("Камера игрока (FirstPersonCamera). Пусто — Camera.main. " +
-                 "То же поле, что у SunBillboard: купол должен строиться вокруг ТОЙ камеры, " +
+                 "То же поле, что у StarRenderer: купол должен строиться вокруг ТОЙ камеры, " +
                  "которая реально рисует кадр, даже если в сцене появится вторая.")]
         public Camera PlayerCamera;
 
@@ -311,7 +311,7 @@ namespace Galilego.Universe
             }
 
             // Photosphere color (~5772 K) for the scattering contribution:
-            // single source shared with SunBillboard/SkyEnvironment
+            // single source shared with StarRenderer/SkyEnvironment
             // (SkyEnvironment.PhotosphereLinear).
             Vector3d starLinear = SkyEnvironment.PhotosphereLinear;
             Shader.SetGlobalVector("_AtmSunColor",

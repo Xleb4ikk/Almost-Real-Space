@@ -6834,7 +6834,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Direction TO the sun from globals (SunBillboard/SkyEnvironment).</summary>
+        /// <summary>Direction TO the sun from globals (StarRenderer/SkyEnvironment).</summary>
         private static Vector3 GetSunDirectionWS()
         {
             Vector3 sun = Shader.GetGlobalVector("_TerrainSunDir");

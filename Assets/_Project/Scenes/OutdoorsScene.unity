@@ -422,7 +422,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyAuthoring
   StandardGravitationalParameter: 2.65433e+19
-  Radius: 234500000
+  Radius: 695700000
   CrashToleranceMps: 5
   J2: 0
   J2ReferenceRadius: 0
@@ -547,6 +547,55 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &728260597
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 728260599}
+  - component: {fileID: 728260598}
+  m_Layer: 0
+  m_Name: Star Volume
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &728260598
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 728260597}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.Volume
+  m_IsGlobal: 1
+  priority: 100
+  blendDistance: 0
+  weight: 1
+  sharedProfile: {fileID: 11400000, guid: 035a606af554eaa4284f5a36367c27e0, type: 2}
+--- !u!4 &728260599
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 728260597}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &834686766
 GameObject:
   m_ObjectHideFlags: 0
@@ -584,6 +633,10 @@ MonoBehaviour:
   Patch: {fileID: 834686768}
   Log: 1
   Enabled: 0
+  PatchRecenterFraction: 0.4
+  PatchRebuildIntervalSeconds: 0.5
+  EntryUnblockAltitudeMeters: 5
+  RescueLiftMeters: 10
 --- !u!114 &834686768
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1288,6 +1341,8 @@ MonoBehaviour:
   View: {fileID: 1823688469}
   Benchmark: {fileID: 0}
   FlyToBodyName: Aeolus
+  OrbitBodyName: Terra
+  OrbitAltitudeMeters: 200000
   OpenOnStart: 0
   MenuKey: 96
   ShowPerformance: 1
@@ -2149,15 +2204,14 @@ MonoBehaviour:
   PlayerCamera: {fileID: 1823688466}
   SunLight: {fileID: 157207113}
   Sky: {fileID: 1982425602}
+  Preset: {fileID: 11400000, guid: 78e29cf587f4f154eab59e2ad31234c5, type: 2}
+  StarVolume: {fileID: 728260598}
   TemperatureKelvin: 5772
   DiscBrightness: 4
-  BillboardFarFraction: 0.9
-  SurfaceTextureWidth: 512
-  SurfaceSeed: 1
-  Tint: {r: 1, g: 1, b: 1, a: 1}
-  DebugHud: 0
+  BillboardFarFraction: 0.25
+  EvaCraftClearanceMeters: 25
   RenderDisc: 1
-  RenderBodySphere: 1
+  DebugHud: 0
 --- !u!114 &1982425602
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2173,6 +2227,7 @@ MonoBehaviour:
   Runner: {fileID: 1332194275}
   EditorTimeSeconds: 0
   SunLight: {fileID: 157207113}
+  Star: {fileID: 1982425601}
   SkyFillLight: {fileID: 936229021}
   FillLightScale: 2
   SunLightDayLux: 80000
@@ -2383,3 +2438,4 @@ SceneRoots:
   - {fileID: 936229020}
   - {fileID: 834686771}
   - {fileID: 1558714145}
+  - {fileID: 728260599}

@@ -16,7 +16,7 @@ namespace Galilego.Universe
     ///     the silhouette and normals are correct even for a tilted axis.
     ///
     /// The gas giant is usually far beyond the camera's physical far plane (the
-    /// FirstPersonCamera sets it to the horizon). Like SunBillboard, the far
+    /// FirstPersonCamera sets it to the horizon). Like StarRenderer, the far
     /// disc is placed at 0.25*far with the true angular radius, and switches to
     /// the real mesh when the body fits inside the far plane.
     ///

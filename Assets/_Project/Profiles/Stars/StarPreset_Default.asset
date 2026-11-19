@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b565bb5395409d468024ef6ef5e0949, type: 3}
+  m_Name: StarPreset_Default
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.StarPreset
+  MassSolar: 0.2
+  RadiusSolarOverride: 0
+  LuminositySolarOverride: 0
+  EffectiveTemperatureKOverride: 0
+  Activity01: 1
+  GranulationContrastMultiplier: 1
+  BloomGain: 1
+  GlareGain: 1
+  CoronaGain: 1
+  ExposureBias: 0
+  Adaptation01: 0.25
+  RenderDistanceMeters: 0
+  GlareTheta0Degrees: 0.15
+  GlareExtentDegrees: 8
+  CoronaExtentRadii: 12
+  GranulationPeriodSeconds: 1800
+  SurfaceSeed: 1
+  DiffractionRays: 0
+  ApplyDerivedRadiusToStarBody: 1

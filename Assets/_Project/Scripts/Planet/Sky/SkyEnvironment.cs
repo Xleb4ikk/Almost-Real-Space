@@ -14,7 +14,7 @@ namespace Galilego.Universe
     /// vertical β profiles), so the sun disc, the direct light color and the sky
     /// do not diverge at sunset. SkyPhysics.SunTransmittance is only used in tests.
     ///
-    /// Called from LateUpdate; consumers (SunBillboard, StarField) read the values
+    /// Called from LateUpdate; consumers (StarRenderer, StarField) read the values
     /// computed this or the previous frame.
     /// </summary>
     [ExecuteAlways]
@@ -38,6 +38,10 @@ namespace Galilego.Universe
 
         [Tooltip("Directional Light солнца (гасится/краснится по физике).")]
         public Light SunLight;
+
+        [Tooltip("Физический рендер звезды. Если назначен, цвет и освещённость Directional Light берутся из StarPhysics " +
+                 "(масса → L, Teff, E). Пусто — прежняя калибровка фотосферы 5772 K.")]
+        public StarRenderer Star;
 
         [Tooltip("Directional Light без теней: заполняющий ambient неба для обычных HDRP-материалов (здания, пропсы). Пусто — только солнце.")]
         public Light SkyFillLight;
@@ -165,6 +169,11 @@ namespace Galilego.Universe
 
         private void Start()
         {
+            if (Star == null)
+            {
+                Star = FindAnyObjectByType<StarRenderer>();
+            }
+
             // Sun shadow resolution is set by the HDRP asset
             // (Max Directional Shadow Map Resolution), not by this code: a manual
             // override here would fight both the asset and the presets
@@ -270,7 +279,7 @@ namespace Galilego.Universe
             ApplyGlobalsNow(frame.BodyState, observer, EditorTimeSeconds, applyToLight: true);
 
             // The HDRP shadow follows the Sun rotation. In Play it is set by
-            // SunBillboard, in the editor by this code; otherwise the shader and
+            // StarRenderer, in the editor by this code; otherwise the shader and
             // the shadow would use different suns.
             if (SunLight != null && LastSunDirectionSim.sqrMagnitude > 0.5f)
             {
@@ -367,12 +376,18 @@ namespace Galilego.Universe
             // varies smoothly with altitude. Normalized by photosphere luminance:
             // at T=1 the light is exactly unit brightness, the star's warm hue
             // darkens nothing, and the atmosphere only tints and attenuates.
-            Vector3d sunLight = AtmosphereOptics.VecMul(PhotosphereLinear, transmittance) / PhotosphereLuminance;
+            //
+            // With a StarRenderer the photosphere is the preset's physically
+            // derived black body (luminance = 1 by construction).
+            Vector3d photosphere = Star != null && Star.IsReady
+                ? Star.LightColorLinear
+                : PhotosphereLinear / PhotosphereLuminance;
+            Vector3d sunLight = AtmosphereOptics.VecMul(photosphere, transmittance);
             Shader.SetGlobalVector("_SunLightColor",
                 new Vector3((float)sunLight.X, (float)sunLight.Y, (float)sunLight.Z));
 
             // Direction to the star for the planar terrain shader. Same global
-            // SunBillboard sets at runtime: preview and game must be lit from the
+            // StarRenderer sets at runtime: preview and game must be lit from the
             // same angle.
             LastSunDirectionSim = AstroFrame.ToSimulation(sunDir);
             Shader.SetGlobalVector("_TerrainSunDir", LastSunDirectionSim);
@@ -433,24 +448,36 @@ namespace Galilego.Universe
                 // Intensity here must NOT use raw SunLightDayLux: those are
                 // physical luxes, orders of magnitude above the scene scale.
                 //
-                // Color stays physical: photosphere × atmospheric transmittance,
-                // the same hue as the sky.
+                // With StarRenderer the base value is the physical irradiance of
+                // the preset star, (E/E_ref)·(eta/eta_sun)·f_vis; the renderer owns
+                // the peak-normalised colour and the ×π HDRP conversion.
                 //
                 // applyToLight=false for the editor preview: only shaders need the
                 // light there, and writing to the scene's SunLight would dirty it.
-                double brightness = Luminance(sunLight);
-                double peak = System.Math.Max(sunLight.X, System.Math.Max(sunLight.Y, sunLight.Z));
-                if (peak > 1e-6d && brightness > 0d)
+                if (Star != null && Star.IsReady)
                 {
-                    SunLight.color = new Color(
-                        (float)(sunLight.X / peak), (float)(sunLight.Y / peak), (float)(sunLight.Z / peak), 1f);
-                    SunLight.intensity = (float)(brightness
-                        * System.Math.PI * TerrainRadianceScale * TerrainSunIntensity * MaterialLightScale);
+                    Star.ApplyLight(
+                        SunLight,
+                        Transmittance,
+                        occlusion,
+                        TerrainRadianceScale * TerrainSunIntensity * MaterialLightScale);
                 }
                 else
                 {
-                    SunLight.color = new Color(0f, 0f, 0f, 1f);
-                    SunLight.intensity = 0f;
+                    double brightness = Luminance(sunLight);
+                    double peak = System.Math.Max(sunLight.X, System.Math.Max(sunLight.Y, sunLight.Z));
+                    if (peak > 1e-6d && brightness > 0d)
+                    {
+                        SunLight.color = new Color(
+                            (float)(sunLight.X / peak), (float)(sunLight.Y / peak), (float)(sunLight.Z / peak), 1f);
+                        SunLight.intensity = (float)(brightness
+                            * System.Math.PI * TerrainRadianceScale * TerrainSunIntensity * MaterialLightScale);
+                    }
+                    else
+                    {
+                        SunLight.color = new Color(0f, 0f, 0f, 1f);
+                        SunLight.intensity = 0f;
+                    }
                 }
             }
 
@@ -515,10 +542,29 @@ namespace Galilego.Universe
             }
 
             ExposureCompensation = (float)exposureComp;
-            if (ExposureVolume != null && ExposureVolume.profile != null
-                && ExposureVolume.profile.TryGet<UnityEngine.Rendering.HighDefinition.Exposure>(out var exposure))
+
+            // The star's dedicated Volume (priority 100) owns Exposure when it is
+            // present; otherwise the scene's Sky and Fog Volume does. Writing the
+            // deterministic twilight/night compensation into the same instance keeps
+            // the two exposure models from fighting: HDRP supplies the automatic
+            // histogram/hysteresis, this term supplies the scene-level twilight
+            // adaptation, and the preset adds its artistic exposureBias.
+            UnityEngine.Rendering.Volume exposureTarget = ExposureVolume;
+            if (Star != null && Star.StarVolume != null)
             {
-                exposure.compensation.Override((float)exposureComp);
+                exposureTarget = Star.StarVolume;
+            }
+
+            if (exposureTarget != null && exposureTarget.profile != null
+                && exposureTarget.profile.TryGet<UnityEngine.Rendering.HighDefinition.Exposure>(out var exposure))
+            {
+                double bias = Star != null && Star.Preset != null ? Star.Preset.ExposureBias : 0d;
+                if (Star != null)
+                {
+                    bias += Star.StartupExposureBiasEv;
+                }
+
+                exposure.compensation.Override((float)(exposureComp + bias));
             }
 
             // True sky-hemisphere ambient for regular HDRP materials: a single
