@@ -78,6 +78,8 @@ namespace Galilego.Universe
         public bool IsWater => BodyState != null && WaterQuery.IsWaterAt(BodyState, LatitudeDegrees, LongitudeDegrees);
 
         private bool poseValid;
+        private OrbitingBody lastRoadBody;
+        private int lastRoadRevision = int.MinValue;
         private readonly int[] ringSegments = new int[12];
 
         private void OnEnable()
@@ -149,6 +151,17 @@ namespace Galilego.Universe
 
             ApplyPose(position, rotation);
             SurfaceGrounded.RefreshAll(transform);
+
+            // The site resolves the body and the terrain pad table asynchronously.
+            // Roads built before that keep the raw heightfield and dive under the
+            // flattened pad - rebuild them once per body/pad revision.
+            int roadRevision = Terrain != null ? Terrain.ModsRevision : -1;
+            if (!ReferenceEquals(BodyState, lastRoadBody) || roadRevision != lastRoadRevision)
+            {
+                lastRoadBody = BodyState;
+                lastRoadRevision = roadRevision;
+                SurfaceRoad.RefreshAll(transform);
+            }
         }
 
         private bool TryResolve(out OrbitingBody body)

@@ -956,6 +956,7 @@ GameObject:
   - component: {fileID: 1081663222}
   - component: {fileID: 1081663223}
   - component: {fileID: 1081663224}
+  - component: {fileID: 1081663225}
   m_Layer: 0
   m_Name: Terra
   m_TagString: Untagged
@@ -1030,7 +1031,13 @@ MonoBehaviour:
   GasGiantPreset: {fileID: 0}
   GroundDecorPreset: {fileID: 11400000, guid: b70dba692e6607b4985ce5eaa0a0df5e, type: 2}
   TerrainSeed: 24334543
-  TerrainPads: []
+  TerrainPads:
+  - LatitudeDegrees: -1.2972825934861871
+    LongitudeDegrees: 225.96700450491107
+    InnerRadiusMeters: 650
+    OuterRadiusMeters: 950
+    TargetHeightMeters: 268.64899375199417
+    OverridesSeaLevel: 0
 --- !u!135 &1081663219
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -1247,6 +1254,20 @@ MonoBehaviour:
   LatitudeSegments: 24
   LongitudeSegments: 48
   IgnoreCockpitDepth: 0
+--- !u!114 &1081663225
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1081663215}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ca7a524cfde85064b8c7b9081d31dd84, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.TerrainMods
+  NewPadInnerRadiusMeters: 650
+  NewPadOuterRadiusMeters: 950
 --- !u!1 &1250304429
 GameObject:
   m_ObjectHideFlags: 0
@@ -1862,13 +1883,17 @@ PrefabInstance:
       propertyPath: m_Name
       value: "\u041C\u0435\u0441\u0442\u043E 1Site 1"
       objectReference: {fileID: 0}
+    - target: {fileID: 6990330409117967615, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: -5.31
+      objectReference: {fileID: 0}
     - target: {fileID: 7812448366381497200, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
       propertyPath: m_Mesh
       value: 
       objectReference: {fileID: 0}
     - target: {fileID: 7878379441133541417, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.9669487
+      value: -1.08
       objectReference: {fileID: 0}
     - target: {fileID: 8193374507523605755, guid: a5278f8686abc3e41a0b471880c6ec9e, type: 3}
       propertyPath: m_Mesh

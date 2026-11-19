@@ -298,7 +298,8 @@ MonoBehaviour:
   Smooth: 1
   StepMeters: 2
   CrossSegments: 3
-  LiftMeters: 0.06
+  LiftMeters: 0.3
+  MaxDropBelowSiteMeters: 2
   ThicknessMeters: 0.4
   EdgeSlopeDegrees: 25
   AddCollider: 1
@@ -1021,7 +1022,8 @@ MonoBehaviour:
   Smooth: 1
   StepMeters: 2
   CrossSegments: 3
-  LiftMeters: 0.06
+  LiftMeters: 0.3
+  MaxDropBelowSiteMeters: 2
   ThicknessMeters: 0.72
   EdgeSlopeDegrees: 25
   AddCollider: 1
@@ -1998,7 +2000,8 @@ MonoBehaviour:
   Smooth: 1
   StepMeters: 2
   CrossSegments: 3
-  LiftMeters: 0.06
+  LiftMeters: 0.3
+  MaxDropBelowSiteMeters: 2
   ThicknessMeters: 0.4
   EdgeSlopeDegrees: 25
   AddCollider: 1

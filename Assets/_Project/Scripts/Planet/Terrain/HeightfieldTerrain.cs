@@ -456,6 +456,14 @@ namespace Galilego.Universe
         public NativeArray<TerrainModifierData> Mods = TerrainModifiers.Empty;
 
         /// <summary>
+        /// Incremented whenever the pad table is replaced. Consumers that sample the
+        /// ground once (SurfaceRoad builds its mesh at runtime, before the system
+        /// installs the pads) use it to rebuild instead of keeping the raw-noise
+        /// shape: the road would otherwise dive under the flattened site ground.
+        /// </summary>
+        public int ModsRevision { get; private set; }
+
+        /// <summary>
         /// Decor exclusion zones: no trees, grass or rocks grow under them. Built by
         /// DecorExclusionTable from site objects; the table is owned here, by the same
         /// rule as Mods: a rebuild every half second must not allocate on every height query.
@@ -481,6 +489,7 @@ namespace Galilego.Universe
             NativeArray<TerrainModifierData> previous = Mods;
             Mods = built;
             TerrainModifiers.Release(ref previous);
+            ModsRevision++;
         }
 
         /// <summary>Release the pad table (on system teardown).</summary>
@@ -490,6 +499,7 @@ namespace Galilego.Universe
             Mods = TerrainModifiers.Empty;
             TerrainModifiers.Release(ref current);
             DecorExclusionTable.Release(ref DecorExclusions);
+            ModsRevision++;
         }
 
         public double GetHeightMeters(OrbitingBody body, double latitudeRadians, double longitudeRadians)

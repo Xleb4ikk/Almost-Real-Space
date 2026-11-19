@@ -72,6 +72,12 @@ namespace Galilego.Universe
                  "0.2-0.3 — дорога заметно возвышается над грунтом (игрок поднимается шагом до 0.5 м).")]
         public float LiftMeters = 0.2f;
 
+        [Tooltip("На сколько дорога может опуститься ниже плоскости места, м. Рельеф между " +
+                 "зданием и площадкой может уйти вниз на сотни метров — без ограничения лента " +
+                 "ныряет под горизонт и её не видно. 2-5 м — пологая насыпь; 0 — строго плоско.")]
+        [Min(0f)]
+        public float MaxDropBelowSiteMeters = 2f;
+
         [Tooltip("Толщина плиты, м: борта уходят вниз от верхней поверхности. " +
                  "0 = плоский лист (старое поведение). 0.5-1 делает дорогу насыпью с видимым краем.")]
         [Min(0f)]
@@ -97,6 +103,7 @@ namespace Galilego.Universe
         private Mesh mesh;
         private bool built;
         private int signature;
+        private int terrainRevision = int.MinValue;
         private MeshCollider roadCollider;
         private SiteBox solidMarker;
         private float lastAppliedLength;
@@ -107,11 +114,23 @@ namespace Galilego.Universe
 
         private void OnEnable()
         {
+            // Must happen before the renderer gets a mesh: the GPU Resident Drawer
+            // registers a renderer the first time it has geometry, and a flag set
+            // after that registration is ignored until the renderer is recreated.
+            EnsureGpuDrivenExcluded();
             built = false;
             // Base mark for the length field: on load the truth is in the points (in
             // saved state the field already matches them; for old data it is filled in).
             RefreshLengthFromPoints();
             TryBuild();
+
+            if (Application.isPlaying)
+            {
+                // The system (body, terrain pads) resolves a frame or two after the
+                // site enables. A build that ran against the pre-system raw heightfield
+                // would otherwise stay on screen (the long road dives under the pad).
+                Invoke(nameof(Rebuild), 1f);
+            }
         }
 
         private void OnDisable()
@@ -148,9 +167,18 @@ namespace Galilego.Universe
                 return;
             }
 
+            SurfaceSite site = GetComponentInParent<SurfaceSite>();
+            if (site != null && site.Terrain != null && site.Terrain.ModsRevision != terrainRevision)
+            {
+                // The system installs the site's flat pads after the road is first
+                // built. Without this rebuild the mesh keeps the raw-noise ground and
+                // dives under the flattened site (the long road disappears).
+                TryBuild();
+                return;
+            }
+
             if (!Application.isPlaying)
             {
-                SurfaceSite site = GetComponentInParent<SurfaceSite>();
                 if (site != null && SiteSignature(site) != signature)
                 {
                     TryBuild();
@@ -164,6 +192,25 @@ namespace Galilego.Universe
         {
             RefreshLengthFromPoints();
             TryBuild();
+        }
+
+        /// <summary>
+        /// Rebuild every road under a site. The site calls this once the body and the
+        /// terrain pad table are resolved: a road built before that keeps the raw
+        /// heightfield shape and dives under the flattened pad.
+        /// </summary>
+        public static void RefreshAll(Transform root)
+        {
+            if (root == null)
+            {
+                return;
+            }
+
+            SurfaceRoad[] roads = root.GetComponentsInChildren<SurfaceRoad>(true);
+            for (int i = 0; i < roads.Length; i++)
+            {
+                roads[i].Rebuild();
+            }
         }
 
         // ---------- Length and width ----------
@@ -344,7 +391,7 @@ namespace Galilego.Universe
                 return null;
             }
 
-            GroundSampler ground = GroundSampler.Create(site);
+            GroundSampler ground = GroundSampler.Create(site, MaxDropBelowSiteMeters);
             if (ground == null)
             {
                 return null;
@@ -354,7 +401,7 @@ namespace Galilego.Universe
             for (int i = 0; i < Points.Count; i++)
             {
                 Vector3 s = site.transform.InverseTransformPoint(transform.TransformPoint(Points[i]));
-                float y = ground.LocalHeight(s.x, s.z, LiftMeters);
+                float y = LiftMeters;
                 result[i] = site.transform.TransformPoint(new Vector3(s.x, y, s.z));
             }
 
@@ -396,7 +443,9 @@ namespace Galilego.Universe
                 return false;
             }
 
-            GroundSampler ground = GroundSampler.Create(site);
+            terrainRevision = site.Terrain != null ? site.Terrain.ModsRevision : -1;
+
+            GroundSampler ground = GroundSampler.Create(site, MaxDropBelowSiteMeters);
             if (ground == null)
             {
                 built = false;
@@ -449,29 +498,47 @@ namespace Galilego.Universe
             mesh.RecalculateBounds();
             mesh.RecalculateTangents();
 
+            GetComponent<MeshFilter>().sharedMesh = null;
+            EnsureGpuDrivenExcluded();
             GetComponent<MeshFilter>().sharedMesh = mesh;
             UpdateCollider();
-            EnsureGpuDrivenExcluded();
         }
 
         private static readonly System.Type GpuDrivenExclusionType =
             System.Type.GetType("UnityEngine.Rendering.DisallowGPUDrivenRendering, Unity.RenderPipelines.GPUDriven.Runtime");
 
+        // MeshRenderer.allowGPUDrivenRendering is internal; the exclusion component
+        // only writes it once in OnEnable, which may run before the drawer starts
+        // tracking the renderer. Writing it here, before the mesh is assigned, is
+        // what actually keeps the runtime-built road out of the GPU drawer.
+        private static readonly System.Reflection.PropertyInfo AllowGpuDrivenRenderingProperty =
+            typeof(MeshRenderer).GetProperty(
+                "allowGPUDrivenRendering",
+                System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic);
+
         /// <summary>
         /// Exclude the road from the GPU Resident Drawer: its mesh is built at runtime
         /// (HideAndDontSave), and the drawer with such meshes without GPU registration
         /// gives "A BatchDrawCommand was submitted with an invalid Batch, Mesh, or
-        /// Material ID". The stock exclusion component (Unity shows it in Add
-        /// Component) is declared internal — the type is fetched by reflection.
+        /// Material ID" - and, more visibly, skips the road in the colour pass while
+        /// its shadow still lands on the terrain (the road reads as "missing").
+        /// The stock exclusion component (Unity shows it in Add Component) is
+        /// internal - the type is fetched by reflection.
         /// </summary>
         private void EnsureGpuDrivenExcluded()
         {
-            if (GpuDrivenExclusionType == null || GetComponent(GpuDrivenExclusionType) != null)
+            MeshRenderer renderer = GetComponent<MeshRenderer>();
+            if (renderer != null && AllowGpuDrivenRenderingProperty != null)
             {
-                return;
+                AllowGpuDrivenRenderingProperty.SetValue(renderer, false);
             }
 
-            gameObject.AddComponent(GpuDrivenExclusionType);
+            if (GpuDrivenExclusionType != null && GetComponent(GpuDrivenExclusionType) == null)
+            {
+                gameObject.AddComponent(GpuDrivenExclusionType);
+            }
         }
 
         /// <summary>
@@ -653,7 +720,7 @@ namespace Galilego.Universe
             SurfaceSite site, GroundSampler ground, float north, float east,
             List<Vector3> verts, List<Vector2> uvs)
         {
-            float y = ground.LocalHeight(north, east, LiftMeters);
+            float y = LiftMeters;
             Vector3 world = site.transform.TransformPoint(new Vector3(north, y, east));
             verts.Add(transform.InverseTransformPoint(world));
 
@@ -924,8 +991,8 @@ namespace Galilego.Universe
             }
 
             float tile = Mathf.Max(0.1f, TileMeters);
-            float topA = ground.LocalHeight(a.x, a.y, LiftMeters);
-            float topB = ground.LocalHeight(b.x, b.y, LiftMeters);
+            float topA = LiftMeters;
+            float topB = LiftMeters;
             Vector2 bottomA = a + shift;
             Vector2 bottomB = b + shift;
             float length = Vector2.Distance(a, b);
@@ -1215,8 +1282,9 @@ namespace Galilego.Universe
             private readonly double latRad;
             private readonly double lonRad;
             private readonly double siteAltitude;
+            private readonly double maxDropBelowSite;
 
-            private GroundSampler(SurfaceSite site, OrbitingBody body, HeightfieldTerrain terrain)
+            private GroundSampler(SurfaceSite site, OrbitingBody body, HeightfieldTerrain terrain, float maxDropBelowSite)
             {
                 this.body = body;
                 this.terrain = terrain;
@@ -1224,9 +1292,10 @@ namespace Galilego.Universe
                 latRad = site.LatitudeDegrees * (System.Math.PI / 180d);
                 lonRad = site.LongitudeDegrees * (System.Math.PI / 180d);
                 siteAltitude = site.AltitudeMeters;
+                this.maxDropBelowSite = Mathf.Max(0f, maxDropBelowSite);
             }
 
-            public static GroundSampler Create(SurfaceSite site)
+            public static GroundSampler Create(SurfaceSite site, float maxDropBelowSite)
             {
                 OrbitingBody body = site.BodyState;
                 if (body == null)
@@ -1234,7 +1303,7 @@ namespace Galilego.Universe
                     return null;
                 }
 
-                return new GroundSampler(site, body, site.Terrain);
+                return new GroundSampler(site, body, site.Terrain, maxDropBelowSite);
             }
 
             public float LocalHeight(double north, double east, float lift)
@@ -1248,7 +1317,20 @@ namespace Galilego.Universe
                         new Unity.Mathematics.double3(direction.X, direction.Y, direction.Z)) * terrain.AmplitudeMeters;
                 }
 
-                return (float)(ground - siteAltitude + lift);
+                // A site is a graded pad, not a contour follower: the raw heightfield
+                // over the 300-500 m between the VAB and the launch pad can dip
+                // hundreds of metres, and the ribbon would dive out of sight (the road
+                // reads as "missing" from the pad). Keep the road within a walking
+                // grade of the site plane; the site's own terrain pad flattens the
+                // ground under it, this clamp keeps the mesh there even when the pad
+                // table is installed a frame later.
+                double local = ground - siteAltitude;
+                if (local < -maxDropBelowSite)
+                {
+                    local = -maxDropBelowSite;
+                }
+
+                return (float)(local + lift);
             }
         }
     }

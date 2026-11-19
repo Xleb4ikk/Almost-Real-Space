@@ -505,10 +505,18 @@ namespace Galilego.Universe
                 float peak = Mathf.Max(ambientColor.r, Mathf.Max(ambientColor.g, ambientColor.b));
                 if (peak > 1e-5f)
                 {
+                    // The Directional Light above runs in the star's physical scale
+                    // (StarRenderer.SceneLightScale), which is not 1 in general. A
+                    // fixed fill would then be a fraction of the OLD, unscaled sun:
+                    // shadows go pitch black and dark materials (asphalt) read as a
+                    // hole in the ground. Keep the fill at the same fraction of the
+                    // sun it had before the physical star.
+                    double starScale = Star != null && Star.IsReady ? Star.SceneLightScale : 1d;
                     SkyFillLight.color = new Color(
                         ambientColor.r / peak, ambientColor.g / peak, ambientColor.b / peak, 1f);
                     SkyFillLight.intensity =
-                        AmbientAmount * Mathf.PI * SkyAmbient * TerrainRadianceScale * FillLightScale;
+                        AmbientAmount * Mathf.PI * SkyAmbient * TerrainRadianceScale * FillLightScale
+                        * MaterialLightScale * (float)starScale;
                 }
                 else
                 {
