@@ -46,6 +46,20 @@ namespace Galilego.Universe
         [Tooltip("Volume с Bloom/Tonemapping/Exposure. Пусто — будет создан на старте (runtime).")]
         public Volume StarVolume;
 
+        [Header("Экспозиция на старте")]
+        [Tooltip("EV100 самого первого отрисованного кадра. HDRP в режиме Automatic берёт яркость из " +
+                 "предыдущего кадра: на первом кадре буфер пуст, метрика упирается в limitMin (−1 EV), " +
+                 "и мир показывается в 4…100 раз ярче нормы — ровно этот кадр игрок и видит при запуске " +
+                 "(а в этой сцене после него бывают секунды хич-фризов: LUT атмосферы, шум облаков, " +
+                 "чанки поверхности). Задайте примерно EV дневной сцены. Значение важно только для " +
+                 "одного кадра: со второго автоэкспозиция даёт точное значение.")]
+        public float StartupFixedExposureEv = 3f;
+
+        [Tooltip("Сколько первых отрисованных кадров держать StartupFixedExposureEv. " +
+                 "По умолчанию 1: дальше автоэкспозиция мгновенно (без плавного переходa) берёт " +
+                 "измеренное значение. 0 — выключено.")]
+        public int StartupWarmupFrames = 1;
+
         [Header("Устаревшие поля SunBillboard (совместимость сцены)")]
         [Tooltip("Используется только если Preset не назначен: температура фотосферы, K.")]
         public double TemperatureKelvin = 5772d;
@@ -121,18 +135,18 @@ namespace Galilego.Universe
         private Tonemapping tonemapping;
         private int startupExposureFrames;
         private bool startupExposureArmed = true;
+        private int startupWarmupFramesLeft;
+        private int exposureHandoverFrames;
         private double sunElevationDeg = double.NaN;
         private bool loggedSummary;
         private bool loggedMissingShader;
 
         /// <summary>
-        /// HDRP auto exposure starts from a default and only then stops down. With a
-        /// solar star at the scene's 0.368 AU the first frames are ~3 EV too bright;
-        /// run the exposure adaptation fast for the first few rendered frames, then
-        /// restore the artistic asymmetric speeds.
+        /// Window (in rendered frames) of the star-distance exposure bias ramp.
+        /// The bias itself is folded into <c>Exposure.compensation</c> by
+        /// SkyEnvironment, which HDRP still applies in Fixed mode.
         /// </summary>
         private const int StartupExposureFrameCount = 90;
-        private const float StartupAdaptationSpeed = 50f;
 
         private static readonly int StarColorId = Shader.PropertyToID("_StarColor");
         private static readonly int BrightnessId = Shader.PropertyToID("_Brightness");
@@ -261,26 +275,7 @@ namespace Galilego.Universe
                 return;
             }
 
-            if (startupExposureArmed)
-            {
-                // The first frames include the terrain/cloud build hitch. Do not
-                // spend the startup window on frames the player never sees: arm the
-                // countdown on the first normal frame after the hitch.
-                if (Time.unscaledDeltaTime < 0.1f)
-                {
-                    startupExposureArmed = false;
-                    startupExposureFrames = StartupExposureFrameCount;
-                }
-            }
-            else if (startupExposureFrames > 0)
-            {
-                startupExposureFrames--;
-                if (startupExposureFrames == 0 && exposure != null)
-                {
-                    exposure.adaptationSpeedLightToDark.Override(3f);
-                    exposure.adaptationSpeedDarkToLight.Override(0.7f);
-                }
-            }
+            AdvanceStartupExposure();
 
             Camera camera = PlayerCamera != null ? PlayerCamera : Camera.main;
             if (camera == null)
@@ -677,18 +672,91 @@ namespace Galilego.Universe
             }
 
             exposure.active = true;
-            exposure.mode.Override(ExposureMode.Automatic);
+            // Frame 0 must not be drawn with HDRP's neutral exposure: Automatic
+            // needs one measured frame before it has a value, and until then it
+            // clamps to limitMin (the brightest allowed). Hold the calibrated fixed
+            // exposure while the world is built, then hand over in one frame
+            // (AdvanceStartupExposure).
+            bool warmup = StartupWarmupFrames > 0;
+            exposure.mode.Override(warmup ? ExposureMode.Fixed : ExposureMode.Automatic);
+            exposure.fixedExposure.Override(StartupFixedExposureEv);
             exposure.meteringMode.Override(MeteringMode.CenterWeighted);
             exposure.compensation.Override((float)Preset.ExposureBias);
             exposure.limitMin.Override(-1f);
             exposure.limitMax.Override(14f);
-            exposure.adaptationMode.Override(AdaptationMode.Progressive);
-            // The steady-state speeds are 3 (darken quickly) and 0.7 (brighten
-            // slowly). The startup window below temporarily overrides both so the
-            // first frames do not flash while HDRP finds the scene exposure.
-            exposure.adaptationSpeedLightToDark.Override(StartupAdaptationSpeed);
-            exposure.adaptationSpeedDarkToLight.Override(StartupAdaptationSpeed);
+            // AdaptationMode.Fixed means "the exposure changes instantly": it is
+            // what makes the hand-over invisible. Afterwards the artistic speeds
+            // apply: 3 (darken quickly) and 0.7 (brighten slowly).
+            exposure.adaptationMode.Override(warmup ? AdaptationMode.Fixed : AdaptationMode.Progressive);
+            exposure.adaptationSpeedLightToDark.Override(3f);
+            exposure.adaptationSpeedDarkToLight.Override(0.7f);
             startupExposureFrames = StartupExposureFrameCount;
+            startupWarmupFramesLeft = Mathf.Max(0, StartupWarmupFrames);
+            exposureHandoverFrames = 0;
+        }
+
+        /// <summary>
+        /// Startup exposure hand-over. HDRP meters the previous frame, so the first
+        /// frame is metered from an empty buffer: the exposure pins to
+        /// <c>limitMin</c> and that first frame is shown several stops too bright.
+        /// The scene's build hitches can stretch it into seconds, which is what the
+        /// player sees as the bright flash.
+        /// Draw <see cref="StartupWarmupFrames"/> frame(s) on the fixed, calibrated
+        /// exposure, then switch to Automatic with instant adaptation for two frames
+        /// so nothing ramps, and only then restore the artistic speeds.
+        /// </summary>
+        private void AdvanceStartupExposure()
+        {
+            // Star-distance bias ramp (see StartupExposureBiasEv). The bias itself
+            // goes into Exposure.compensation, which HDRP applies in Fixed mode too.
+            if (startupExposureArmed)
+            {
+                // The first frames include the terrain/cloud build hitch. Do not
+                // spend the startup window on frames the player never sees: arm the
+                // countdown on the first normal frame after the hitch.
+                if (Time.unscaledDeltaTime < 0.1f)
+                {
+                    startupExposureArmed = false;
+                    startupExposureFrames = StartupExposureFrameCount;
+                }
+            }
+            else if (startupExposureFrames > 0)
+            {
+                startupExposureFrames--;
+            }
+
+            if (exposure == null || StartupWarmupFrames <= 0)
+            {
+                return;
+            }
+
+            if (exposureHandoverFrames > 0)
+            {
+                if (--exposureHandoverFrames == 0)
+                {
+                    exposure.adaptationMode.Override(AdaptationMode.Progressive);
+                }
+
+                return;
+            }
+
+            if (startupWarmupFramesLeft < 0)
+            {
+                return;
+            }
+
+            // LateUpdate runs before this frame is drawn: count the frames already
+            // rendered, so frame 0 is the one on the fixed exposure.
+            if (startupWarmupFramesLeft < StartupWarmupFrames)
+            {
+                startupWarmupFramesLeft++;
+                return;
+            }
+
+            exposure.mode.Override(ExposureMode.Automatic);
+            exposure.adaptationMode.Override(AdaptationMode.Fixed);
+            exposureHandoverFrames = 2;
+            startupWarmupFramesLeft = -1;
         }
 
         // ------------------------------------------------------------------
