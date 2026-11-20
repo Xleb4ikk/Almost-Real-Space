@@ -645,12 +645,12 @@ namespace Galilego.Tablet
                 {
                     DrawPolylineFade(line.Points, Project, rect,
                         PixelCanvas.Mix(TabletTheme.Main, TabletTheme.Bg, 0.55f), TabletTheme.Main,
-                        false, 2);
+                        false, 2.2f, 1.8f);
                 }
                 else if (line.Kind == NavLineKind.BodyForecast)
                 {
                     DrawPolylineFade(line.Points, Project, rect, ForecastColor,
-                        PixelCanvas.Mix(ForecastColor, TabletTheme.Bg, 0.55f), true, 2);
+                        PixelCanvas.Mix(ForecastColor, TabletTheme.Bg, 0.55f), true, 2.2f, 1.8f);
                 }
             }
 
@@ -665,7 +665,8 @@ namespace Galilego.Tablet
                     bool surface = model.HasSurfaceHistory;
                     Color32 trail = surface ? SurfaceHistoryColor : TabletTheme.Main;
                     DrawPolylineFade(line.Points, Project, rect,
-                        PixelCanvas.Mix(trail, TabletTheme.Bg, 0.60f), trail, false, surface ? 1 : 2);
+                        PixelCanvas.Mix(trail, TabletTheme.Bg, 0.60f), trail, false,
+                        surface ? 1.4f : 2.4f, surface ? 1f : 2.2f);
                 }
             }
 
@@ -680,18 +681,18 @@ namespace Galilego.Tablet
                         // ballistic orbit. A solid amber circle at 4 m AGL reads as
                         // a very low orbit, which is exactly the wrong message.
                         DrawPolylineFade(line.Points, Project, rect, SurfaceForecastColor,
-                            PixelCanvas.Mix(SurfaceForecastColor, TabletTheme.Bg, 0.55f), true, 1);
+                            PixelCanvas.Mix(SurfaceForecastColor, TabletTheme.Bg, 0.55f), true, 1.4f, 1f);
                     }
                     else
                     {
                         DrawPolylineFade(line.Points, Project, rect, ForecastColor,
-                            PixelCanvas.Mix(ForecastColor, TabletTheme.Bg, 0.50f), false, 2);
+                            PixelCanvas.Mix(ForecastColor, TabletTheme.Bg, 0.50f), false, 2.4f, 2.6f);
                     }
                 }
                 else if (line.Kind == NavLineKind.ManeuverForecast)
                 {
                     DrawPolylineFade(line.Points, Project, rect, ManeuverForecastColor,
-                        PixelCanvas.Mix(ManeuverForecastColor, TabletTheme.Bg, 0.55f), true, 2);
+                        PixelCanvas.Mix(ManeuverForecastColor, TabletTheme.Bg, 0.55f), true, 2.4f, 2.6f);
                 }
             }
 
@@ -742,29 +743,30 @@ namespace Galilego.Tablet
                         Color32 trail = surface ? SurfaceHistoryColor : TabletTheme.Main;
                         DrawPolylineNearFade(line.Points, Project, rect,
                             PixelCanvas.Mix(trail, TabletTheme.Bg, 0.60f), trail,
-                            false, surface ? 1 : 2,
-                            occluderCenter, occluderRadius, screenRight, screenUp, camDir);
+                            false, surface ? 1.4f : 2.4f,
+                            occluderCenter, occluderRadius, screenRight, screenUp, camDir,
+                            surface ? 1f : 2.2f);
                     }
                     else if (line.Kind == NavLineKind.ShipForecast)
                     {
                         if (model.HasSurfaceForecast)
                         {
                             DrawPolylineNearFade(line.Points, Project, rect, SurfaceForecastColor,
-                                PixelCanvas.Mix(SurfaceForecastColor, TabletTheme.Bg, 0.55f), true, 1,
-                                occluderCenter, occluderRadius, screenRight, screenUp, camDir);
+                                PixelCanvas.Mix(SurfaceForecastColor, TabletTheme.Bg, 0.55f), true, 1.4f,
+                                occluderCenter, occluderRadius, screenRight, screenUp, camDir, 1f);
                         }
                         else
                         {
                             DrawPolylineNearFade(line.Points, Project, rect, ForecastColor,
-                                PixelCanvas.Mix(ForecastColor, TabletTheme.Bg, 0.50f), false, 2,
-                                occluderCenter, occluderRadius, screenRight, screenUp, camDir);
+                                PixelCanvas.Mix(ForecastColor, TabletTheme.Bg, 0.50f), false, 2.4f,
+                                occluderCenter, occluderRadius, screenRight, screenUp, camDir, 2.6f);
                         }
                     }
                     else if (line.Kind == NavLineKind.ManeuverForecast)
                     {
                         DrawPolylineNearFade(line.Points, Project, rect, ManeuverForecastColor,
-                            PixelCanvas.Mix(ManeuverForecastColor, TabletTheme.Bg, 0.55f), true, 2,
-                            occluderCenter, occluderRadius, screenRight, screenUp, camDir);
+                            PixelCanvas.Mix(ManeuverForecastColor, TabletTheme.Bg, 0.55f), true, 2.4f,
+                            occluderCenter, occluderRadius, screenRight, screenUp, camDir, 2.6f);
                     }
                 }
             }
@@ -1581,78 +1583,237 @@ namespace Galilego.Tablet
             return new Vector2(x, y);
         }
 
+        // ─── Curves ───────────────────────────────────────────────────────────
+        //
+        // Every trajectory used to be a Bresenham chain between rounded integer
+        // endpoints. Two things made that read as "broken and pixelated":
+        //   * a 2 px staircase per segment, worst on the shallow chords of an orbit;
+        //   * the source polyline is only ~160 samples long, so a zoomed view showed
+        //     its corners as real kinks (a chord can be a hundred pixels long).
+        // A line is now built in three steps:
+        //   1. project the samples (and drop the pieces hidden by a globe);
+        //   2. resample the projected polyline as a smooth Hermite curve with about
+        //      one mini-segment per pixel, so the corners become arcs at ANY zoom;
+        //   3. rasterise each mini-segment as an anti-aliased capsule
+        //      (PixelCanvas.StrokeAA), which removes the staircase and keeps a thick
+        //      stroke evenly bright (the pieces tessellate, they do not overlap).
+        // The buffers are reused: a rebuild runs a few times per second and a camera
+        // drag redraws at 30 fps, so a per-line allocation would churn the GC.
+
+        private Vector2[] curvePoints = new Vector2[512];
+        private Color32[] curveColors = new Color32[512];
+
+        /// <summary>True when the segment from this index to the next one must not be drawn.</summary>
+        private bool[] curveBreaks = new bool[512];
+
+        /// <summary>Target length of one mini-segment, screen pixels.</summary>
+        private const float CurveStepPixels = 1.25f;
+
+        /// <summary>Dash pattern along the curve, screen pixels (5 on / 4 off, as the old lines).</summary>
+        private const float DashOn = 5f;
+        private const float DashPeriod = 9f;
+
+        private void EnsureCurveCapacity(int count)
+        {
+            if (curvePoints.Length >= count)
+            {
+                return;
+            }
+
+            int size = Mathf.NextPowerOfTwo(count);
+            Array.Resize(ref curvePoints, size);
+            Array.Resize(ref curveColors, size);
+            Array.Resize(ref curveBreaks, size);
+        }
+
         /// <summary>
         /// Polyline whose colour runs from <paramref name="start"/> to
         /// <paramref name="end"/> along the samples: a trail fades into the past and
         /// a forecast fades into the future, so the direction of time is visible.
+        /// <paramref name="glow"/> adds a wider, very dim halo pass first, so a bright
+        /// trajectory reads as phosphor glow instead of a hard ridge.
         /// </summary>
         private void DrawPolylineFade(List<Vector3d> points, Func<Vector3d, Vector2> project, RectInt rect,
-            Color32 start, Color32 end, bool dashed, int width)
+            Color32 start, Color32 end, bool dashed, float width, float glow)
         {
             if (points == null || points.Count < 2)
             {
                 return;
             }
 
-            float dashPhase = 0f;
-            Vector2 previous = project(points[0]);
-            int last = points.Count - 1;
-            for (int i = 1; i <= last; i++)
-            {
-                Vector2 current = project(points[i]);
-                if (!IsFinite(previous) || !IsFinite(current))
-                {
-                    previous = current;
-                    continue;
-                }
-
-                Color32 color = last > 0
-                    ? PixelCanvas.Mix(start, end, (i - 0.5f) / last)
-                    : end;
-                DrawClippedLine(previous, current, rect, color, dashed, width, ref dashPhase);
-                previous = current;
-            }
+            int count = ProjectCurve(points, project, start, end);
+            DrawCurveBuffers(count, rect, dashed, width, glow);
         }
 
+        /// <summary>
+        /// Same curve, but only the pieces in front of the globe are kept. The
+        /// occlusion test subdivides each source segment, so the visible edge follows
+        /// the horizon instead of jumping a whole chord.
+        /// </summary>
         private void DrawPolylineNearFade(List<Vector3d> points, Func<Vector3d, Vector2> project, RectInt rect,
-            Color32 start, Color32 end, bool dashed, int width, Vector3d occluderCenter,
-            double occluderRadius, Vector3d screenRight, Vector3d screenUp, Vector3d camDir)
+            Color32 start, Color32 end, bool dashed, float width, Vector3d occluderCenter,
+            double occluderRadius, Vector3d screenRight, Vector3d screenUp, Vector3d camDir, float glow)
         {
             if (points == null || points.Count < 2 || !(occluderRadius > 0d))
             {
                 return;
             }
 
-            double radiusSquared = occluderRadius * occluderRadius * 1.02d;
-            const int subdivisions = 4;
-            float dashPhase = 0f;
+            int count = ProjectCurveNear(points, project, start, end, occluderCenter, occluderRadius,
+                screenRight, screenUp, camDir);
+            DrawCurveBuffers(count, rect, dashed, width, glow);
+        }
+
+        /// <summary>Projects a sample list into the curve buffers with a fade colour along it.</summary>
+        private int ProjectCurve(List<Vector3d> points, Func<Vector3d, Vector2> project,
+            Color32 start, Color32 end)
+        {
+            int count = points.Count;
+            EnsureCurveCapacity(count);
+            float last = Mathf.Max(1, count - 1);
+            for (int i = 0; i < count; i++)
+            {
+                curvePoints[i] = project(points[i]);
+                curveColors[i] = i == count - 1 ? end : PixelCanvas.Mix(start, end, i / last);
+                curveBreaks[i] = false;
+            }
+
+            return count;
+        }
+
+        private int ProjectCurveNear(List<Vector3d> points, Func<Vector3d, Vector2> project,
+            Color32 start, Color32 end, Vector3d occluderCenter, double occluderRadius,
+            Vector3d screenRight, Vector3d screenUp, Vector3d camDir)
+        {
+            const int Subdivisions = 4;
             int last = points.Count - 1;
+            int count = (last * Subdivisions) + 1;
+            EnsureCurveCapacity(count);
+
+            double radiusSquared = occluderRadius * occluderRadius * 1.02d;
+            float fade = Mathf.Max(1, last);
+
+            curvePoints[0] = project(points[0]);
+            curveColors[0] = start;
+            curveBreaks[0] = false;
+            int n = 1;
             for (int i = 1; i <= last; i++)
             {
                 Vector3d a = points[i - 1];
                 Vector3d b = points[i];
-                Color32 color = last > 0
-                    ? PixelCanvas.Mix(start, end, (i - 0.5f) / last)
-                    : end;
-                Vector2 previous = project(a);
-                for (int s = 1; s <= subdivisions; s++)
+                for (int s = 1; s <= Subdivisions; s++)
                 {
-                    double t = (double)s / subdivisions;
+                    float t = s / (float)Subdivisions;
                     Vector3d point = a + ((b - a) * t);
                     Vector3d q = point - occluderCenter;
                     double dx = Vector3d.Dot(q, screenRight);
                     double dy = Vector3d.Dot(q, screenUp);
                     bool insideDisk = (dx * dx) + (dy * dy) <= radiusSquared;
                     bool nearSide = Vector3d.Dot(q, camDir) > 0d;
-                    Vector2 current = project(point);
-                    if (insideDisk && nearSide)
-                    {
-                        DrawClippedLine(previous, current, rect, color, dashed, width, ref dashPhase);
-                    }
 
-                    previous = current;
+                    curvePoints[n] = project(point);
+                    curveColors[n] = PixelCanvas.Mix(start, end, ((i - 1) + t) / fade);
+                    curveBreaks[n] = !(insideDisk && nearSide);
+                    n++;
                 }
             }
+
+            return n;
+        }
+
+        private void DrawCurveBuffers(int count, RectInt rect, bool dashed, float width, float glow)
+        {
+            if (count < 2)
+            {
+                return;
+            }
+
+            if (glow > 0f)
+            {
+                // The halo runs on a coarser tessellation: it is soft, so a 3 px step
+                // is invisible, and the wider capsule would otherwise triple its cost.
+                RasterizeCurve(count, rect, dashed, width + (glow * 2f), 0.085f,
+                    CurveStepPixels * 2.5f);
+            }
+
+            RasterizeCurve(count, rect, dashed, width, 1f, CurveStepPixels);
+        }
+
+        private void RasterizeCurve(int count, RectInt rect, bool dashed, float width, float alpha,
+            float stepPixels)
+        {
+            float dashPhase = 0f;
+            for (int i = 0; i < count - 1; i++)
+            {
+                Vector2 p1 = curvePoints[i];
+                Vector2 p2 = curvePoints[i + 1];
+                if (!IsFinite(p1) || !IsFinite(p2))
+                {
+                    continue;
+                }
+
+                bool drawn = !curveBreaks[i];
+                Vector2 p0 = i > 0 && !curveBreaks[i - 1] ? curvePoints[i - 1] : p1;
+                Vector2 p3 = i + 2 < count && !curveBreaks[i + 1] ? curvePoints[i + 2] : p2;
+
+                float chord = Vector2.Distance(p1, p2);
+                int steps = Mathf.Clamp(Mathf.CeilToInt(chord / stepPixels), 1, 128);
+                Color32 colorA = curveColors[i];
+                Color32 colorB = curveColors[i + 1];
+                Vector2 previous = p1;
+                for (int s = 1; s <= steps; s++)
+                {
+                    float t = s / (float)steps;
+                    Vector2 point = SmoothPoint(p0, p1, p2, p3, t);
+                    if (!IsFinite(point))
+                    {
+                        previous = p2;
+                        continue;
+                    }
+
+                    float length = Vector2.Distance(previous, point);
+                    bool visible = drawn
+                        && (!dashed || Mathf.Repeat(dashPhase + (length * 0.5f), DashPeriod) < DashOn);
+                    if (visible && length > 1e-4f)
+                    {
+                        Vector2 a = previous;
+                        Vector2 b = point;
+                        if (Clip(ref a, ref b, rect, 4f))
+                        {
+                            canvas.StrokeAA(a, b, PixelCanvas.Mix(colorA, colorB, t), width, alpha);
+                        }
+                    }
+
+                    previous = point;
+                    dashPhase += length;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Cubic Hermite point through <paramref name="p1"/> and <paramref name="p2"/>.
+        /// The tangent direction comes from the neighbours, but its magnitude is the
+        /// local chord length: that is what turns a 160-sample ellipse into the arc it
+        /// represents, while an unevenly sampled trail cannot bulge far past its real
+        /// corners the way a uniform Catmull-Rom spline would.
+        /// </summary>
+        private static Vector2 SmoothPoint(Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, float t)
+        {
+            Vector2 chord = p2 - p1;
+            float length = chord.magnitude;
+            Vector2 first = p2 - p0;
+            Vector2 second = p3 - p1;
+            float firstLength = first.magnitude;
+            float secondLength = second.magnitude;
+            Vector2 tangent1 = firstLength > 1e-4f ? first * (length / firstLength) : chord;
+            Vector2 tangent2 = secondLength > 1e-4f ? second * (length / secondLength) : chord;
+
+            float t2 = t * t;
+            float t3 = t2 * t;
+            return (p1 * ((2f * t3) - (3f * t2) + 1f))
+                + (tangent1 * (t3 - (2f * t2) + t))
+                + (p2 * ((-2f * t3) + (3f * t2)))
+                + (tangent2 * (t3 - t2));
         }
 
         private void DrawClippedLine(Vector2 a, Vector2 b, RectInt rect, Color32 color, bool dashed, int width = 1)

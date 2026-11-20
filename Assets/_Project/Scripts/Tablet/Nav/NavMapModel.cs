@@ -40,6 +40,14 @@ namespace Galilego.Tablet
         public double StartTimeS;
         public double EndTimeS;
         public readonly List<Vector3d> Points = new List<Vector3d>();
+
+        /// <summary>
+        /// Simulation time of each point (same count as <see cref="Points"/> for an
+        /// integrated ship path). Body rails do not fill it: only the forecast cache
+        /// needs per-vertex time, to rebuild a path in another frame without
+        /// integrating it again.
+        /// </summary>
+        public readonly List<double> Times = new List<double>();
     }
 
     /// <summary>Body marker at the current simulation time.</summary>
@@ -93,7 +101,12 @@ namespace Galilego.Tablet
     /// </summary>
     public sealed class NavMapModel
     {
-        public const int BodyOrbitSamples = 160;
+        /// <summary>
+        /// Samples per body rail / body trail arc. These are ephemeris evaluations,
+        /// not an integration, so they are cheap; 256 of them keep a zoomed rail a
+        /// curve even before the renderer's smoothing.
+        /// </summary>
+        public const int BodyOrbitSamples = 256;
         public const int ForecastSamples = 160;
         public const int MaxHistoryPoints = 512;
 
@@ -105,6 +118,17 @@ namespace Galilego.Tablet
 
         /// <summary>Longest history reconstructed from the ephemerides, seconds (same ≈100-year ceiling as the UI).</summary>
         public const double MaxHistorySeconds = 3.156e9d;
+
+        /// <summary>
+        /// Integrator tolerance of the map's own forecast. The map is a picture, not
+        /// the flown state: a 3-orbit LEO forecast takes ~460 ms at the production
+        /// 1e-11 and ~31 ms at 1e-7, while the trajectory moves by centimetres —
+        /// orders of magnitude below one pixel. Kept as a field so a test can pin it.
+        /// </summary>
+        public double ForecastRelativeTolerance = 1e-7d;
+
+        /// <summary>Absolute position tolerance of the forecast, metres (one map pixel is kilometres).</summary>
+        public double ForecastPositionToleranceMeters = 1e-2d;
 
         private const double DaySeconds = 86400d;
         private const double HourSeconds = 3600d;
@@ -1290,6 +1314,7 @@ namespace Galilego.Tablet
             // executable. A maneuver with ΔV = 0 is still listed: the card asks for
             // the time first, and the map must already show where that ignition
             // happens even though it changes nothing yet.
+            lastPostBurnValid = false;
             var burns = new List<PlannedBurn>();
             bool anyBurnDv = false;
             if (plan != null)
@@ -1373,6 +1398,18 @@ namespace Galilego.Tablet
             // and only get their ignition marker.
             bool planned = anyBurnDv && plannedWindow > 1d;
 
+            // While the craft coasts it flies a fixed curve in world space, so a
+            // rebuild can replay the previous integration (re-translated into the
+            // current frame) instead of integrating again. That is the difference
+            // between a map that redraws smoothly and one that stalls for a third of
+            // a second on every tick — and the cache is dropped the moment anything
+            // real changes (a burn, a new plan, another window or frame).
+            int planVersion = plan != null ? plan.Version : -1;
+            if (TryReplayForecast(system, ship, frame, time, window, plannedWindow, planned, planVersion))
+            {
+                return;
+            }
+
             // The same force sources as SimulationRunner: N-body gravity (baked
             // ephemerides + the indirect star term + J2) and drag in atmospheres.
             // A planned burn is an impulse at ignition: the map is a plan view, and
@@ -1383,6 +1420,15 @@ namespace Galilego.Tablet
             {
                 ToleranceFrameSystem = system,
                 MaxStepSize = Math.Min(Math.Max(OrbitIntegrator.DefaultMaxStepSize, maxDt), 6d * HourSeconds),
+
+                // A preview, not the flown state: at the map's best zoom one pixel is
+                // kilometres, so the production 1e-11 relative target buys nothing
+                // visible and costs a lot. Measured on the real system, a 3-orbit LEO
+                // forecast drops from ~460 ms to ~31 ms at 1e-7 while the drawn
+                // polyline moves by centimetres — and that cost is what made the map
+                // stall for a third of a second every tick.
+                RelativeTolerance = ForecastRelativeTolerance,
+                PositionAbsoluteTolerance = ForecastPositionToleranceMeters,
             };
             physics.Sources.Add(new CachedGravitySource(system));
             for (int i = 0; i < system.AllBodies.Count; i++)
@@ -1441,6 +1487,400 @@ namespace Galilego.Tablet
                     Note = impact;
                 }
             }
+
+            StoreForecastCache(ship, frame, time, window, plannedWindow, planned, planVersion);
+        }
+
+        // ─── Forecast cache ───────────────────────────────────────────────────
+        //
+        // The forecast is the only part of a rebuild that costs real time (an
+        // N-body integration of up to 160 chunks per probe). While the craft coasts,
+        // that whole path is a fixed curve in world space: only the reference frame
+        // it is drawn in moves. So the integration result is kept in ABSOLUTE
+        // coordinates and replayed — re-translated into the current frame — until
+        // something genuinely changes: a burn, a new plan, another window, another
+        // frame, or the craft leaving the cached path.
+        //
+        // This is purely an optimisation: every replay is validated against the live
+        // state, and a miss falls back to exactly the old integration path.
+
+        private sealed class ForecastCache
+        {
+            public bool Valid;
+            public int FrameIndex = -1;
+            public int PlanVersion = -1;
+            public bool HasPlan;
+            public double WindowSeconds;
+            public double PlannedWindowSeconds;
+            public double StartTime;
+            public double EndTime;
+            public double ShipMass;
+            public int AppliedManeuvers;
+            public bool PlanConflicted;
+            public bool PlanOutside;
+            public bool Truncated;
+            public double BallisticEnd;
+            public double PlannedEnd;
+            public string Note = string.Empty;
+            public bool HasPostBurn;
+            public double PostBurnTime;
+            public Vector3d PostBurnPosition;
+            public Vector3d PostBurnVelocity;
+            public readonly List<CachedPath> Paths = new List<CachedPath>();
+            public readonly List<CachedBurn> Burns = new List<CachedBurn>();
+
+            public void Clear()
+            {
+                Valid = false;
+                Paths.Clear();
+                Burns.Clear();
+                HasPostBurn = false;
+                Note = string.Empty;
+            }
+        }
+
+        private sealed class CachedPath
+        {
+            public NavLineKind Kind;
+            public readonly List<NavShipSample> Samples = new List<NavShipSample>();
+        }
+
+        private sealed class CachedBurn
+        {
+            public int Index;
+            public double TimeSeconds;
+            public Vector3d Position;
+            public double DvMs;
+            public int FrameBodyIndex;
+        }
+
+        private readonly ForecastCache forecastCache = new ForecastCache();
+
+        /// <summary>Post-burn state of the last plan build, in absolute coordinates (cache input).</summary>
+        private bool lastPostBurnValid;
+        private double lastPostBurnTime;
+        private Vector3d lastPostBurnPosition;
+        private Vector3d lastPostBurnVelocity;
+
+        /// <summary>
+        /// Replays the cached forecast when the craft still flies it. Returns false
+        /// (and leaves the state untouched) on any doubt, so the caller integrates.
+        /// </summary>
+        private bool TryReplayForecast(StarSystem system, Ship ship, OrbitingBody frame, double time,
+            double window, double plannedWindow, bool planned, int planVersion)
+        {
+            ForecastCache cache = forecastCache;
+            if (!cache.Valid
+                || cache.FrameIndex != FrameIndex
+                || cache.PlanVersion != planVersion
+                || cache.HasPlan != planned
+                || Math.Abs(cache.WindowSeconds - window) > WindowMatchSeconds(window)
+                || Math.Abs(cache.PlannedWindowSeconds - plannedWindow) > WindowMatchSeconds(plannedWindow)
+                || Math.Abs(ship.Mass - cache.ShipMass) > 1e-9d * Math.Max(1d, cache.ShipMass)
+                || cache.Paths.Count == 0
+                || time < cache.StartTime - 1e-6d
+                || time > cache.EndTime + 1e-6d)
+            {
+                return false;
+            }
+
+            // Still on the cached coast? Two independent checks:
+            //  * the craft mass is unchanged — a burn (or staging) consumes propellant,
+            //    and a coast does not, so this catches a burn at its first frame;
+            //  * the craft sits on the cached curve — the threshold has to allow for
+            //    the chord sag of a polyline whose vertices are ~60 s apart (kilometres),
+            //    otherwise the check fails randomly on a perfectly good cache.
+            if (!TrySampleWorld(cache.Paths[0], time, out Vector3d expected))
+            {
+                return false;
+            }
+
+            frame.EvaluateWorldState(time, out Vector3d frameNow, out _);
+            double scale = Math.Max(1d, (ship.Position - frameNow).Magnitude);
+            if ((ship.Position - expected).Magnitude > Math.Max(7_500d, scale * 5e-3d))
+            {
+                return false;
+            }
+
+            int replayed = 0;
+            for (int i = 0; i < cache.Paths.Count; i++)
+            {
+                NavLine line = ReplayPath(cache.Paths[i], frame, time, FrameRelativeShipPosition);
+                if (line != null)
+                {
+                    Lines.Add(line);
+                    replayed++;
+                }
+            }
+
+            if (replayed == 0)
+            {
+                // Nothing survives the trim (the window ends before "now"): let the
+                // caller integrate instead of leaving the map with a missing path.
+                return false;
+            }
+
+            if (cache.Burns.Count > 0)
+            {
+                for (int i = 0; i < cache.Burns.Count; i++)
+                {
+                    CachedBurn burn = cache.Burns[i];
+                    if (burn.TimeSeconds < time - 1e-6d)
+                    {
+                        continue; // already fired: its result is the live orbit
+                    }
+
+                    try
+                    {
+                        frame.EvaluateWorldState(burn.TimeSeconds, out Vector3d frameAtBurn, out _);
+                        BurnMarkers.Add(new NavBurnMarker
+                        {
+                            Index = burn.Index,
+                            TimeSeconds = burn.TimeSeconds,
+                            Position = burn.Position - frameAtBurn,
+                            DvMs = burn.DvMs,
+                            FrameBodyIndex = burn.FrameBodyIndex,
+                        });
+                    }
+                    catch (EphemerisRangeException)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            AppliedManeuverCount = cache.AppliedManeuvers;
+            PlanConflict = cache.PlanConflicted;
+            PlanOutsideWindow = cache.PlanOutside;
+            ForecastTruncated = cache.Truncated;
+            BallisticWindowSeconds = cache.BallisticEnd > 0d ? Math.Max(0d, cache.BallisticEnd - time) : 0d;
+            PlannedWindowSeconds = cache.PlannedEnd > 0d ? Math.Max(0d, cache.PlannedEnd - time) : 0d;
+            ForecastWindowSeconds = Math.Max(BallisticWindowSeconds, PlannedWindowSeconds);
+            Note = cache.Note;
+
+            if (cache.HasPostBurn)
+            {
+                BuildPlannedApsides(system, frame, cache.PostBurnTime,
+                    cache.PostBurnPosition, cache.PostBurnVelocity);
+            }
+
+            ForecastValid = replayed > 0;
+            return true;
+        }
+
+        /// <summary>Stores the just-integrated forecast in absolute coordinates for the next rebuild.</summary>
+        private void StoreForecastCache(Ship ship, OrbitingBody frame, double time,
+            double window, double plannedWindow, bool planned, int planVersion)
+        {
+            ForecastCache cache = forecastCache;
+            cache.Clear();
+            cache.FrameIndex = FrameIndex;
+            cache.PlanVersion = planVersion;
+            cache.HasPlan = planned;
+            cache.WindowSeconds = window;
+            cache.PlannedWindowSeconds = plannedWindow;
+            cache.StartTime = time;
+            cache.EndTime = time;
+            cache.ShipMass = ship.Mass;
+            cache.AppliedManeuvers = AppliedManeuverCount;
+            cache.PlanConflicted = PlanConflict;
+            cache.PlanOutside = PlanOutsideWindow;
+            cache.Truncated = ForecastTruncated;
+            cache.BallisticEnd = BallisticWindowSeconds > 0d ? time + BallisticWindowSeconds : 0d;
+            cache.PlannedEnd = PlannedWindowSeconds > 0d ? time + PlannedWindowSeconds : 0d;
+            cache.Note = Note;
+            cache.HasPostBurn = lastPostBurnValid;
+            cache.PostBurnTime = lastPostBurnTime;
+            cache.PostBurnPosition = lastPostBurnPosition;
+            cache.PostBurnVelocity = lastPostBurnVelocity;
+
+            bool complete = true;
+            for (int i = 0; i < Lines.Count; i++)
+            {
+                NavLine line = Lines[i];
+                if (line.Kind != NavLineKind.ShipForecast && line.Kind != NavLineKind.ManeuverForecast)
+                {
+                    continue;
+                }
+
+                if (line.Times.Count != line.Points.Count)
+                {
+                    // A path with an unknown time per vertex cannot be re-translated;
+                    // rather leave the cache empty than replay a wrong curve.
+                    complete = false;
+                    break;
+                }
+
+                var path = new CachedPath { Kind = line.Kind };
+                for (int k = 0; k < line.Points.Count; k++)
+                {
+                    try
+                    {
+                        frame.EvaluateWorldState(line.Times[k], out Vector3d frameAtPoint, out _);
+                        path.Samples.Add(new NavShipSample(line.Times[k], line.Points[k] + frameAtPoint));
+                        if (line.Times[k] > cache.EndTime)
+                        {
+                            cache.EndTime = line.Times[k];
+                        }
+                    }
+                    catch (EphemerisRangeException)
+                    {
+                        complete = false;
+                        break;
+                    }
+                }
+
+                if (!complete || path.Samples.Count < 2)
+                {
+                    complete = false;
+                    break;
+                }
+
+                cache.Paths.Add(path);
+            }
+
+            if (cache.Paths.Count == 0)
+            {
+                complete = false;
+            }
+
+            for (int i = 0; i < BurnMarkers.Count && complete; i++)
+            {
+                NavBurnMarker marker = BurnMarkers[i];
+                try
+                {
+                    frame.EvaluateWorldState(marker.TimeSeconds, out Vector3d frameAtBurn, out _);
+                    cache.Burns.Add(new CachedBurn
+                    {
+                        Index = marker.Index,
+                        TimeSeconds = marker.TimeSeconds,
+                        Position = marker.Position + frameAtBurn,
+                        DvMs = marker.DvMs,
+                        FrameBodyIndex = marker.FrameBodyIndex,
+                    });
+                }
+                catch (EphemerisRangeException)
+                {
+                    complete = false;
+                }
+            }
+
+            cache.Valid = complete;
+            if (!complete)
+            {
+                cache.Clear();
+            }
+        }
+
+        /// <summary>Samples a cached absolute path at a time, linearly between its vertices.</summary>
+        private static bool TrySampleWorld(CachedPath path, double time, out Vector3d position)
+        {
+            position = default;
+            List<NavShipSample> samples = path.Samples;
+            if (samples.Count == 0 || time < samples[0].TimeSeconds - 1e-6d
+                || time > samples[samples.Count - 1].TimeSeconds + 1e-6d)
+            {
+                return false;
+            }
+
+            int lo = 0;
+            int hi = samples.Count - 1;
+            while (lo < hi)
+            {
+                int mid = (lo + hi + 1) / 2;
+                if (samples[mid].TimeSeconds <= time)
+                {
+                    lo = mid;
+                }
+                else
+                {
+                    hi = mid - 1;
+                }
+            }
+
+            NavShipSample a = samples[lo];
+            if (lo + 1 >= samples.Count || time <= a.TimeSeconds)
+            {
+                position = a.Position;
+                return true;
+            }
+
+            NavShipSample b = samples[lo + 1];
+            double span = b.TimeSeconds - a.TimeSeconds;
+            double f = span > 1e-9d ? (time - a.TimeSeconds) / span : 0d;
+            position = a.Position + ((b.Position - a.Position) * f);
+            return true;
+        }
+
+        /// <summary>
+        /// Re-translates one cached absolute path into the current frame, trimmed at
+        /// "now". The live craft position is used as the first vertex when the path
+        /// already started: interpolating between two cached vertices would put the
+        /// start on the chord of a 60 s arc, i.e. a couple of kilometres inside the
+        /// real curve — a visible gap between the line and the ship marker at zoom.
+        /// </summary>
+        private NavLine ReplayPath(CachedPath path, OrbitingBody frame, double time, Vector3d shipPoint)
+        {
+            List<NavShipSample> samples = path.Samples;
+            var line = new NavLine
+            {
+                Kind = path.Kind,
+                Dashed = path.Kind == NavLineKind.ManeuverForecast,
+                StartTimeS = samples[0].TimeSeconds,
+                EndTimeS = samples[samples.Count - 1].TimeSeconds,
+            };
+
+            bool started = false;
+            if (samples[0].TimeSeconds <= time + 1e-6d && shipPoint.IsFinite)
+            {
+                line.Points.Add(shipPoint);
+                line.Times.Add(time);
+                line.StartTimeS = time;
+                started = true;
+            }
+
+            for (int i = 0; i < samples.Count; i++)
+            {
+                NavShipSample sample = samples[i];
+                if (sample.TimeSeconds <= time + 1e-6d)
+                {
+                    continue;
+                }
+
+                if (TryToFrame(frame, sample.TimeSeconds, sample.Position, out Vector3d point))
+                {
+                    line.Points.Add(point);
+                    line.Times.Add(sample.TimeSeconds);
+                    started = true;
+                }
+            }
+
+            return started && line.Points.Count >= 2 ? line : null;
+        }
+
+        /// <summary>
+        /// Window match for the cache. The window is derived from the live osculating
+        /// period, so it jitters by microseconds between rebuilds; requiring an exact
+        /// match would throw the cache away for nothing.
+        /// </summary>
+        private static double WindowMatchSeconds(double window)
+        {
+            return Math.Max(1d, Math.Abs(window) * 1e-6d);
+        }
+
+        private static bool TryToFrame(OrbitingBody frame, double time, Vector3d world, out Vector3d point)
+        {
+            try
+            {
+                frame.EvaluateWorldState(time, out Vector3d framePosition, out _);
+                point = world - framePosition;
+                return point.IsFinite;
+            }
+            catch (EphemerisRangeException)
+            {
+                point = default;
+                return false;
+            }
         }
 
         /// <summary>
@@ -1480,6 +1920,7 @@ namespace Galilego.Tablet
 
             var line = NewForecastLine(NavLineKind.ShipForecast, time);
             line.Points.Add(probe.Position - FramePosition);
+            line.Times.Add(time);
             double t = time;
             int ignition = 0;
             try
@@ -1617,11 +2058,16 @@ namespace Galilego.Tablet
                     line = NewForecastLine(NavLineKind.ManeuverForecast, t);
                     frame.EvaluateWorldState(t, out Vector3d burnFrame, out _);
                     line.Points.Add(probe.Position - burnFrame);
+                    line.Times.Add(t);
                     started = true;
                     postBurnTime = t;
                     postBurnPosition = probe.Position;
                     postBurnVelocity = probe.Velocity;
                     hasPostBurnState = true;
+                    lastPostBurnValid = true;
+                    lastPostBurnTime = postBurnTime;
+                    lastPostBurnPosition = postBurnPosition;
+                    lastPostBurnVelocity = postBurnVelocity;
                 }
 
                 if (impact == null)
@@ -1884,6 +2330,7 @@ namespace Galilego.Tablet
 
             frame.EvaluateWorldState(t, out Vector3d framePosition, out _);
             line.Points.Add(probe.Position - framePosition);
+            line.Times.Add(t);
             line.EndTimeS = t;
 
             if (!TryFindImpact(system, probe.Position, t, out hit))
@@ -1900,6 +2347,7 @@ namespace Galilego.Tablet
                 // the approach follows the real curve all the way to the surface.
                 const int tailSamples = 8;
                 var tail = new Vector3d[tailSamples - 1];
+                var tailTimes = new double[tailSamples - 1];
                 int tailCount = 0;
                 double span = impactTime - fromTime;
                 for (int j = 1; j < tailSamples && span > 0d; j++)
@@ -1913,14 +2361,24 @@ namespace Galilego.Tablet
                     }
 
                     frame.EvaluateWorldState(fromTime + offset, out Vector3d subFrame, out _);
+                    tailTimes[tailCount] = fromTime + offset;
                     tail[tailCount++] = sub.Position - subFrame;
                 }
 
                 frame.EvaluateWorldState(impactTime, out framePosition, out _);
                 line.Points[line.Points.Count - 1] = impactPosition - framePosition;
+                if (line.Times.Count == line.Points.Count)
+                {
+                    line.Times[line.Times.Count - 1] = impactTime;
+                }
+
                 for (int i = 0; i < tailCount; i++)
                 {
                     line.Points.Insert(line.Points.Count - 1, tail[i]);
+                    if (line.Times.Count == line.Points.Count - 1)
+                    {
+                        line.Times.Insert(line.Times.Count - 1, tailTimes[i]);
+                    }
                 }
 
                 line.EndTimeS = impactTime;

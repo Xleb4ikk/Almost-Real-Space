@@ -153,6 +153,66 @@ namespace Galilego.Tablet
             }
         }
 
+        /// <summary>
+        /// Anti-aliased thick segment. Coverage comes from the exact distance from
+        /// the pixel centre to the segment (a capsule), so the edge is a soft ramp
+        /// instead of a Bresenham staircase. Drawing a polyline as a chain of short
+        /// pieces works: the capsules tessellate, so a dense chain reads as one
+        /// stroke with a single brightness and no beads at the vertices.
+        /// </summary>
+        public void StrokeAA(Vector2 a, Vector2 b, Color32 color, float width, float alpha = 1f)
+        {
+            if (!(width > 0f) || !(alpha > 0f))
+            {
+                return;
+            }
+
+            float radius = width * 0.5f;
+            int x0 = Mathf.Max(0, Mathf.FloorToInt(Mathf.Min(a.x, b.x) - radius - 1f));
+            int x1 = Mathf.Min(Width - 1, Mathf.CeilToInt(Mathf.Max(a.x, b.x) + radius + 1f));
+            int y0 = Mathf.Max(0, Mathf.FloorToInt(Mathf.Min(a.y, b.y) - radius - 1f));
+            int y1 = Mathf.Min(Height - 1, Mathf.CeilToInt(Mathf.Max(a.y, b.y) + radius + 1f));
+            if (x0 > x1 || y0 > y1)
+            {
+                return;
+            }
+
+            float dx = b.x - a.x;
+            float dy = b.y - a.y;
+            float lengthSquared = (dx * dx) + (dy * dy);
+            float inverseLengthSquared = lengthSquared > 1e-8f ? 1f / lengthSquared : 0f;
+            float edge = radius + 0.5f;
+
+            for (int y = y0; y <= y1; y++)
+            {
+                float py = y + 0.5f;
+                int row = (Height - 1 - y) * Width;
+                for (int x = x0; x <= x1; x++)
+                {
+                    float px = x + 0.5f;
+                    float t = inverseLengthSquared > 0f
+                        ? (((px - a.x) * dx) + ((py - a.y) * dy)) * inverseLengthSquared
+                        : 0f;
+                    t = t < 0f ? 0f : (t > 1f ? 1f : t);
+                    float qx = (a.x + (dx * t)) - px;
+                    float qy = (a.y + (dy * t)) - py;
+                    float coverage = edge - Mathf.Sqrt((qx * qx) + (qy * qy));
+                    if (coverage <= 0f)
+                    {
+                        continue;
+                    }
+
+                    float amount = (coverage > 1f ? 1f : coverage) * alpha;
+                    Color32 destination = Pixels[row + x];
+                    Pixels[row + x] = new Color32(
+                        (byte)(destination.r + ((color.r - destination.r) * amount) + 0.5f),
+                        (byte)(destination.g + ((color.g - destination.g) * amount) + 0.5f),
+                        (byte)(destination.b + ((color.b - destination.b) * amount) + 0.5f),
+                        255);
+                }
+            }
+        }
+
         /// <summary>Bitmap from rows ('#' is a pixel), top-left corner at (x, y). Scale makes chunky pixels.</summary>
         public void Bitmap(int x, int y, string[] rows, Color32 c, int scale = 1)
         {

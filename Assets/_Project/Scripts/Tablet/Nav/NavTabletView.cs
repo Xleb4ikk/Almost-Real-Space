@@ -289,6 +289,34 @@ namespace Galilego.Tablet
             }
         }
 
+        /// <summary>
+        /// Device pixels per UI Toolkit pixel: the panel covers the screen but its
+        /// layout size is in UI units, so the ratio is the real scale the map
+        /// texture is displayed at. A 1024 px texture stretched onto a smaller panel
+        /// is resampled by the GPU (and point filtering drops whole rows), which is
+        /// what made the orbit lines look chunky; rendering at this size keeps the
+        /// upload 1:1 and the anti-aliased lines smooth.
+        /// </summary>
+        public float PanelScale
+        {
+            get
+            {
+                if (root == null)
+                {
+                    return 1f;
+                }
+
+                float width = root.resolvedStyle.width;
+                if (!(width > 1f))
+                {
+                    return 1f;
+                }
+
+                float scale = Screen.width / width;
+                return float.IsFinite(scale) && scale >= 0.25f && scale <= 8f ? scale : 1f;
+            }
+        }
+
         public void ShowTip(string richText, Vector2 mapPos)
         {
             tip.text = richText;

@@ -52,11 +52,14 @@ namespace Galilego.Tablet
 
         // Live map: the model is rebuilt from the simulation, the renderers only draw it.
         private NavMapModel mapModel;
+        private NavMapModel mapModelScratch;
         private NavMapRenderer overlayMap;
         private NavMapRenderer previewMap;
         private readonly List<NavShipSample> shipHistory = new List<NavShipSample>();
         private readonly NavMapInfo mapInfo = new NavMapInfo();
         private double lastHistorySampleTime = double.NaN;
+        private double lastBuiltTime = double.NaN;
+        private float lastRebuildMs;
         private double nextMapBuild;
         private int lastCalcVersion = -1;
         private int lastViewVersion = -1;
@@ -74,10 +77,8 @@ namespace Galilego.Tablet
         private float interactiveUntil;
         private bool mapDirty;
 
-        /// <summary>Map view aspect the overlay texture was last sized for (0 = not sized yet).</summary>
-        private float overlayAspect;
-
-        private const int OverlayMapHeight = 640;
+        private const int OverlayMapMinHeight = 420;
+        private const int OverlayMapMaxHeight = 1080;
         private const int OverlayMapMinWidth = 320;
         private const int OverlayMapMaxWidth = 2048;
 
@@ -305,11 +306,10 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
-        /// The overlay texture must have the map view's aspect ratio. The globe is
-        /// drawn with one uniform scale (a circle in texture pixels); the map view
-        /// stretches the texture to its own box, so a 16:10 texture in a squarer
-        /// panel shows an oval planet on any resolution whose panel is not 16:10.
-        /// Reallocated only when the panel size actually changes.
+        /// The overlay texture is rendered at the panel's own pixel size, so the UI
+        /// shows it 1:1. A fixed 1024 px bitmap stretched onto a smaller panel was
+        /// resampled by the GPU with point filtering: rows and columns were dropped
+        /// and a 1 px orbit line became a dashed staircase.
         /// </summary>
         private void EnsureOverlayAspect()
         {
@@ -325,23 +325,23 @@ namespace Galilego.Tablet
             }
 
             float aspect = size.x / size.y;
-            if (Mathf.Abs(aspect - overlayAspect) < 0.005f)
-            {
-                return;
-            }
-
-            overlayAspect = aspect;
+            float deviceScale = view.PanelScale;
 
             // Clamp a sensible size, but keep the exact aspect: the height follows
             // the width when the width had to be clamped.
-            int height = OverlayMapHeight;
+            int height = Mathf.Clamp(Mathf.RoundToInt(size.y * deviceScale),
+                OverlayMapMinHeight, OverlayMapMaxHeight);
             int width = Mathf.Clamp(Mathf.RoundToInt(height * aspect), OverlayMapMinWidth, OverlayMapMaxWidth);
             if (width == OverlayMapMinWidth || width == OverlayMapMaxWidth)
             {
                 height = Mathf.Max(64, Mathf.RoundToInt(width / aspect));
             }
 
-            if (Mathf.Abs(((float)width / height) - ((float)overlayMap.Width / overlayMap.Height)) < 0.005f)
+            // Hysteresis: the open/close animation resizes the panel continuously,
+            // and reallocating (plus re-rasterising the globe) every frame of it
+            // would hitch the whole tablet.
+            if (Mathf.Abs(width - overlayMap.Width) < Mathf.Max(12, overlayMap.Width / 10)
+                && Mathf.Abs(height - overlayMap.Height) < Mathf.Max(12, overlayMap.Height / 10))
             {
                 return;
             }
@@ -630,10 +630,28 @@ namespace Galilego.Tablet
             }
 
             double interval = overlay
-                ? (mapModel != null && mapModel.ViewMode == NavViewMode.Surface ? 0.6d : 0.35d)
+                ? (mapModel != null && mapModel.ViewMode == NavViewMode.Surface ? 0.6d : 0.28d)
                 : PreviewMapIntervalSeconds;
+
+            // Pace the rebuild by its own cost: a forecast rebuild that takes a
+            // chunk of a frame repeated every 0.3 s is a visible hitch, and the
+            // hitch is what made a burn look like the map froze. Three rebuild
+            // times of headroom keeps the map under a quarter of the frame budget
+            // on a slow machine; a fast one still gets the full rate.
+            float rebuildSeconds = Mathf.Max(0f, lastRebuildMs) * 0.001f;
+            interval = Math.Min(1.0d, Math.Max(interval, rebuildSeconds * 3f));
+
             if (!forced && Time.unscaledTime < nextMapBuild)
             {
+                return;
+            }
+
+            // Nothing moved: the previous image is still exact. This matters while
+            // the sim is paused or the tablet sits in a menu — it used to burn the
+            // whole forecast again for an identical picture.
+            if (!forced && Math.Abs(runner.TimeSeconds - lastBuiltTime) < 1e-9d)
+            {
+                nextMapBuild = Time.unscaledTime + interval;
                 return;
             }
 
@@ -666,6 +684,11 @@ namespace Galilego.Tablet
                 mapModel = new NavMapModel();
             }
 
+            if (mapModelScratch == null)
+            {
+                mapModelScratch = new NavMapModel();
+            }
+
             bool allowForecast = !ContactZoneHost.Active
                 && !runner.BuildMode
                 && runner.Regime == VesselRegime.Flying
@@ -677,9 +700,17 @@ namespace Galilego.Tablet
             bool parked = runner.Ship != null
                 && (ContactZoneHost.Active || runner.BuildMode || runner.Regime == VesselRegime.Landed);
 
+            float startedAt = Time.realtimeSinceStartup;
+
+            // Build into the spare model and keep the previous one until the new
+            // geometry is complete. Rebuilding in place cleared the line lists
+            // first, so a forecast that stopped half way (an ephemeris edge, the
+            // craft hitting the ground mid-burn) left the map with truncated
+            // lines — the "the orbit breaks during acceleration" picture.
+            NavMapModel rebuilt = mapModelScratch;
             try
             {
-                mapModel.Rebuild(
+                rebuilt.Rebuild(
                     runner.SystemState,
                     runner.Ship,
                     runner.TimeSeconds,
@@ -695,7 +726,7 @@ namespace Galilego.Tablet
                     view.IspS);
 
                 // Ballistic coast vs. a maneuver in progress: the map tints the ship and its apsis marks by it.
-                mapModel.ShipThrusting = IsShipThrusting();
+                rebuilt.ShipThrusting = IsShipThrusting();
             }
             catch (Exception e)
             {
@@ -725,6 +756,11 @@ namespace Galilego.Tablet
                 return;
             }
 
+            mapModelScratch = mapModel;
+            mapModel = rebuilt;
+            lastBuiltTime = runner.TimeSeconds;
+            lastRebuildMs = (Time.realtimeSinceStartup - startedAt) * 1000f;
+
             FillMapInfo();
             // A body forecast (the centred body's own ephemeris span) uses the
             // forecast slider even when the ship has no free-flight forecast.
@@ -744,7 +780,7 @@ namespace Galilego.Tablet
             if (force)
             {
                 nextMapBuild = Time.unscaledTime + (overlay
-                    ? (mapModel.ViewMode == NavViewMode.Surface ? 0.6d : 0.35d)
+                    ? (mapModel.ViewMode == NavViewMode.Surface ? 0.6d : 0.28d)
                     : PreviewMapIntervalSeconds);
             }
         }
