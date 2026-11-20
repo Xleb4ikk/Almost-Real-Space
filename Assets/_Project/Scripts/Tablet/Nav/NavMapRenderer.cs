@@ -59,11 +59,30 @@ namespace Galilego.Tablet
         private const float RotateDamping = 13f;
 
         /// <summary>
-        /// While the player drags/zooms the map, the globe is rasterised at a coarse
-        /// block size (a full-quality ray-sphere pass is a 100 ms main-thread hit).
-        /// The station turns this off after the gesture and asks for one clean frame.
+        /// True while the player drags/zooms the map. The station uses it to keep
+        /// redrawing during the gesture (and to render one final frame when it
+        /// settles). It does not change the image: the globe is always rasterised
+        /// at full resolution, so a drag never turns the planet blocky.
         /// </summary>
         public bool Interactive { get; set; }
+
+        /// <summary>
+        /// Duration of the last globe raster, in milliseconds. The station paces its
+        /// gesture redraws with it: a slow machine gets fewer full-quality frames
+        /// instead of a coarser image.
+        /// </summary>
+        public float LastRasterMs { get; private set; }
+
+        /// <summary>
+        /// Worker budget for the globe raster. One core stays free for the
+        /// simulation, and the fan-out is capped: a 250k-pixel disk then lands in
+        /// a few milliseconds instead of a full frame.
+        /// </summary>
+        private static readonly System.Threading.Tasks.ParallelOptions DiskRasterOptions =
+            new System.Threading.Tasks.ParallelOptions
+            {
+                MaxDegreeOfParallelism = Math.Max(1, Math.Min(16, Environment.ProcessorCount - 1)),
+            };
 
         private readonly PixelCanvas canvas;
         private readonly Texture2D texture;
@@ -96,7 +115,6 @@ namespace Galilego.Tablet
         private int diskCacheY;
         private int diskCacheWidth;
         private int diskCacheHeight;
-        private int diskCacheStep = -1;
         private int diskCacheMapX;
         private int diskCacheMapY;
         private int diskCacheMapWidth;
@@ -2337,16 +2355,16 @@ namespace Galilego.Tablet
 
             QuaternionD orientation = planet.GetVisualOrientation(model.TimeSeconds);
 
-            // Two block sizes: a coarse interactive pass while the finger is down,
-            // then one clean frame when the gesture ends. The clean pass is full
-            // screen resolution (step 1) and is cached, so it is paid once per view
-            // change — not on every map tick.
-            int step = Interactive ? 4 : 1;
+            // The globe is always rasterised at full screen resolution. The old
+            // interactive pass drew 4×4 blocks while the finger was down, which read
+            // as a pixelated planet in the middle of every drag. A frame that does
+            // not move the camera reuses the cached disk, so the clean image is paid
+            // once per view change, not per map tick.
             if (!TryBlitPlanetDisk(planet, texture, center, radius, right, screenUp, viewDir,
-                    sun, orientation, rect, step))
+                    sun, orientation, rect))
             {
                 RasterisePlanetDisk(planet, texture, center, radius, right, screenUp, viewDir,
-                    sun, orientation, rect, step);
+                    sun, orientation, rect);
             }
         }
 
@@ -2452,12 +2470,19 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
-        /// Ray-sphere raster of the planet. The disk is stored so panning the map,
-        /// moving the ship marker and ticking the map do not repeat this work.
+        /// Ray-sphere raster of the planet at full screen resolution. The disk is
+        /// stored so panning the map, moving the ship marker and ticking the map do
+        /// not repeat this work.
+        ///
+        /// The inner loop is the hottest code in the tablet, so everything that does
+        /// not depend on the pixel is hoisted: the world→body rotation is one 3×3
+        /// float matrix instead of a quaternion multiply chain per pixel, the sun and
+        /// glint half-vector are reduced to screen-space components, and the facing
+        /// term is just nz because viewDir is the third basis vector.
         /// </summary>
         private void RasterisePlanetDisk(OrbitingBody planet, NavBodyTexture texture, Vector2 center,
             float radius, Vector3d right, Vector3d screenUp, Vector3d viewDir, Vector3d sun,
-            QuaternionD orientation, RectInt rect, int step)
+            QuaternionD orientation, RectInt rect)
         {
             int texWidth = texture.Width;
             int texHeight = texture.Height;
@@ -2473,74 +2498,108 @@ namespace Galilego.Tablet
                 return;
             }
 
+            // worldNormal = right·nx + screenUp·ny + viewDir·nz, so the body-fixed
+            // direction is a single matrix multiply by the inverse orientation applied
+            // to those three basis vectors.
             QuaternionD inverse = orientation.Conjugated;
+            Vector3d bodyRight = inverse.Rotate(right);
+            Vector3d bodyUp = inverse.Rotate(screenUp);
+            Vector3d bodyView = inverse.Rotate(viewDir);
+            float m00 = (float)bodyRight.X, m01 = (float)bodyUp.X, m02 = (float)bodyView.X;
+            float m10 = (float)bodyRight.Y, m11 = (float)bodyUp.Y, m12 = (float)bodyView.Y;
+            float m20 = (float)bodyRight.Z, m21 = (float)bodyUp.Z, m22 = (float)bodyView.Z;
+
             int canvasWidth = canvas.Width;
             int canvasHeight = canvas.Height;
+
             Vector3d sunN = sun.Normalized;
+            float sunRight = (float)Vector3d.Dot(right, sunN);
+            float sunUp = (float)Vector3d.Dot(screenUp, sunN);
+            float sunView = (float)Vector3d.Dot(viewDir, sunN);
+
+            // The glint half-vector is constant for the whole frame; the old loop
+            // normalised it (with a square root) on every pixel.
+            Vector3d half = sunN + viewDir;
+            double halfMagnitude = half.Magnitude;
+            bool glintVisible = halfMagnitude > 1e-6d;
+            float halfRight = 0f;
+            float halfUp = 0f;
+            float halfView = 0f;
+            if (glintVisible)
+            {
+                half = half * (1d / halfMagnitude);
+                halfRight = (float)Vector3d.Dot(right, half);
+                halfUp = (float)Vector3d.Dot(screenUp, half);
+                halfView = (float)Vector3d.Dot(viewDir, half);
+            }
+
+            float texelsPerRadianU = texWidth / (float)(Math.PI * 2d);
+            float texelsPerRadianV = texHeight / (float)Math.PI;
+            float texelOriginU = (texWidth * 0.5f) - 0.5f;
+            float texelOriginV = (texHeight * 0.5f) - 0.5f;
+
+            // The limb blend is a no-op outside the last ~1/1.5r of the radius: skip
+            // the read-modify-write for the whole interior of the disk.
+            float limbSq = 1f - (1f / (1.5f * Mathf.Max(1f, radius)));
+            limbSq *= limbSq;
+            float limbScale = radius * 1.5f;
 
             Action<int> rasterRow = y =>
             {
-                int cellHeight = Mathf.Min(step, y1 - y + 1);
                 float ny = (center.y - y) * invRadius;
+                float rrY = ny * ny;
+                if (rrY >= 1f)
+                {
+                    return;
+                }
+
+                float sunRow = ny * sunUp;
+                float halfRow = ny * halfUp;
                 int rowTop = (canvasHeight - 1 - y) * canvasWidth;
-                for (int x = x0; x <= x1; x += step)
+                for (int x = x0; x <= x1; x++)
                 {
                     float nx = (x - center.x) * invRadius;
-                    float rr = (nx * nx) + (ny * ny);
+                    float rr = (nx * nx) + rrY;
                     if (rr > 1f)
                     {
                         continue;
                     }
 
                     float nz = Mathf.Sqrt(1f - rr);
-                    Vector3d worldNormal = (right * nx) + (screenUp * ny) + (viewDir * nz);
-                    Vector3d bodyNormal = inverse.Rotate(worldNormal);
 
-                    double lat = Math.Asin(Math.Max(-1d, Math.Min(1d, bodyNormal.Z)));
-                    double lon = Math.Atan2(bodyNormal.Y, bodyNormal.X);
-                    double u = (((lon + Math.PI) / (Math.PI * 2d)) * texWidth) - 0.5d;
-                    double v = (((lat + (Math.PI * 0.5d)) / Math.PI) * texHeight) - 0.5d;
+                    float bx = (m00 * nx) + (m01 * ny) + (m02 * nz);
+                    float by = (m10 * nx) + (m11 * ny) + (m12 * nz);
+                    float bz = (m20 * nx) + (m21 * ny) + (m22 * nz);
 
-                    Color32 c;
-                    if (step <= 1)
-                    {
-                        // Full-resolution clean pass: bilinear keeps the high-res
-                        // map smooth instead of aliasing into speckle. The pass is
-                        // cached, so the extra taps are paid once per view change.
-                        c = SampleBilinear(pixels, texWidth, texHeight, u, v);
-                    }
-                    else
-                    {
-                        int tx = (int)(((lon + Math.PI) / (Math.PI * 2d)) * texWidth);
-                        int ty = (int)(((lat + (Math.PI * 0.5d)) / Math.PI) * texHeight);
-                        if (tx < 0) { tx = 0; } else if (tx >= texWidth) { tx = texWidth - 1; }
-                        if (ty < 0) { ty = 0; } else if (ty >= texHeight) { ty = texHeight - 1; }
-                        c = pixels[(ty * texWidth) + tx];
-                    }
+                    float lat = Mathf.Asin(Mathf.Clamp(bz, -1f, 1f));
+                    float u = (Mathf.Atan2(by, bx) * texelsPerRadianU) + texelOriginU;
+                    float v = (lat * texelsPerRadianV) + texelOriginV;
+
+                    // Bilinear keeps the high-res map smooth instead of aliasing
+                    // into speckle; the raster is cached, so the taps are paid once
+                    // per view change, not once per frame.
+                    Color32 c = SampleBilinear(pixels, texWidth, texHeight, u, v);
 
                     // Alpha is the water mask, so the mask comes free with the colour.
                     float sea = c.a * (1f / 255f);
 
                     // Wrapped terminator: the night side stays readable but clearly
-                    // unlit, and the day side gets a warmer, fuller light.
-                    float light = (float)Vector3d.Dot(worldNormal, sunN);
-                    float facing = Mathf.Max(0f, (float)Vector3d.Dot(worldNormal, viewDir));
+                    // unlit, and the day side gets a warmer, fuller light. facing is
+                    // nz: viewDir is the third basis vector of the normal.
+                    float light = (nx * sunRight) + sunRow + (nz * sunView);
                     float wrap = SmoothStep(-0.14f, 0.30f, light);
-                    float shade = 0.20f + (0.11f * facing) + (0.72f * wrap);
-                    shade *= 0.94f + (0.06f * facing);
+                    float shade = 0.20f + (0.11f * nz) + (0.72f * wrap);
+                    shade *= 0.94f + (0.06f * nz);
                     shade = Mathf.Clamp(shade, 0.15f, 1.02f);
 
                     // Sun glint on water: a soft highlight makes the globe read as
                     // a lit sphere instead of a flat tinted map.
                     float glint = 0f;
-                    if (sea > 0.01f)
+                    if (glintVisible && sea > 0.01f)
                     {
-                        Vector3d half = sunN + viewDir;
-                        double halfMagnitude = half.Magnitude;
-                        if (halfMagnitude > 1e-6d)
+                        float d = (nx * halfRight) + halfRow + (nz * halfView);
+                        if (d > 0f)
                         {
-                            half = half * (1d / halfMagnitude);
-                            float d = Mathf.Max(0f, (float)Vector3d.Dot(worldNormal, half));
                             // d^48 without Math.Pow: three squarings and products.
                             float d2 = d * d;
                             float d4 = d2 * d2;
@@ -2551,59 +2610,50 @@ namespace Galilego.Tablet
                         }
                     }
 
+                    int index = rowTop + x;
                     Color32 shaded = new Color32(
-                        (byte)Mathf.Clamp(Mathf.RoundToInt((c.r * shade) + (glint * 60f)), 0, 255),
-                        (byte)Mathf.Clamp(Mathf.RoundToInt((c.g * shade) + (glint * 82f)), 0, 255),
-                        (byte)Mathf.Clamp(Mathf.RoundToInt((c.b * shade) + (glint * 98f)), 0, 255),
+                        ShadeByte((c.r * shade) + (glint * 60f)),
+                        ShadeByte((c.g * shade) + (glint * 82f)),
+                        ShadeByte((c.b * shade) + (glint * 98f)),
                         255);
 
                     // Anti-aliased limb: blend the last pixel ring with what is
-                    // behind the globe instead of leaving a hard stair edge.
-                    if (step <= 1)
+                    // behind the globe instead of leaving a hard stair edge. Only
+                    // the ring is touched; inside it the blend is a no-op.
+                    if (rr > limbSq)
                     {
-                        float edge = Mathf.Clamp01((1f - Mathf.Sqrt(rr)) * radius * 1.5f);
+                        float edge = (1f - Mathf.Sqrt(rr)) * limbScale;
                         if (edge < 1f)
                         {
-                            shaded = PixelCanvas.Mix(canvas.Get(x, y), shaded, edge);
+                            shaded = PixelCanvas.Mix(canvas.Pixels[index], shaded, edge);
                         }
                     }
 
-                    int cellWidth = Mathf.Min(step, x1 - x + 1);
-                    for (int yy = 0; yy < cellHeight; yy++)
-                    {
-                        int row = rowTop - (yy * canvasWidth);
-                        for (int xx = 0; xx < cellWidth; xx++)
-                        {
-                            canvas.Pixels[row + x + xx] = shaded;
-                        }
-                    }
+                    canvas.Pixels[index] = shaded;
                 }
             };
 
-            if (step <= 1)
+            // Rows write disjoint canvas pixels, so no locking is needed. A small
+            // disk (the preview monitor) stays serial: scheduling would cost more
+            // than the work.
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
+            int rows = y1 - y0 + 1;
+            if (rows >= 24 && x1 - x0 >= 24)
             {
-                // The full-res clean pass is the one expensive frame; split its
-                // rows across workers so it costs a few milliseconds, not ~17.
-                // Rows write disjoint canvas pixels, so no locking is needed. The
-                // coarse drag pass is small enough that parallelism would only add
-                // scheduling overhead.
-                int rows = ((y1 - y0) / step) + 1;
-                var options = new System.Threading.Tasks.ParallelOptions
-                {
-                    MaxDegreeOfParallelism = Math.Max(1, Math.Min(4, Environment.ProcessorCount - 1)),
-                };
-                System.Threading.Tasks.Parallel.For(0, rows, options, i => rasterRow(y0 + (i * step)));
+                System.Threading.Tasks.Parallel.For(0, rows, DiskRasterOptions, i => rasterRow(y0 + i));
             }
             else
             {
-                for (int y = y0; y <= y1; y += step)
+                for (int y = y0; y <= y1; y++)
                 {
                     rasterRow(y);
                 }
             }
 
             StorePlanetDisk(planet, texture, center, radius, right, screenUp, viewDir, sun,
-                orientation, rect, step, x0, y0, x1, y1);
+                orientation, rect, x0, y0, x1, y1);
+            LastRasterMs = (float)((System.Diagnostics.Stopwatch.GetTimestamp() - started)
+                * 1000d / System.Diagnostics.Stopwatch.Frequency);
         }
 
         /// <summary>Bilinear texel fetch with longitude wrap and latitude clamp.</summary>
@@ -2639,6 +2689,17 @@ namespace Galilego.Tablet
                 BlendChannel(c00.a, c10.a, c01.a, c11.a, w00, w10, w01, w11));
         }
 
+        /// <summary>Colour channel to a byte, rounding and clamping in one step.</summary>
+        private static byte ShadeByte(float value)
+        {
+            if (!(value > 0f))
+            {
+                return 0; // also catches NaN
+            }
+
+            return value >= 255f ? (byte)255 : (byte)(value + 0.5f);
+        }
+
         private static byte BlendChannel(byte c00, byte c10, byte c01, byte c11,
             float w00, float w10, float w01, float w11)
         {
@@ -2649,7 +2710,7 @@ namespace Galilego.Tablet
 
         private bool TryBlitPlanetDisk(OrbitingBody planet, NavBodyTexture texture, Vector2 center,
             float radius, Vector3d right, Vector3d up, Vector3d view, Vector3d sun,
-            QuaternionD orientation, RectInt rect, int step)
+            QuaternionD orientation, RectInt rect)
         {
             if (!diskCacheValid || diskCache == null)
             {
@@ -2657,7 +2718,6 @@ namespace Galilego.Tablet
             }
 
             if (!ReferenceEquals(diskCacheBody, planet) || !ReferenceEquals(diskCacheTexture, texture)
-                || diskCacheStep != step
                 || diskCacheMapX != rect.x || diskCacheMapY != rect.y
                 || diskCacheMapWidth != rect.width || diskCacheMapHeight != rect.height)
             {
@@ -2737,7 +2797,7 @@ namespace Galilego.Tablet
 
         private void StorePlanetDisk(OrbitingBody planet, NavBodyTexture texture, Vector2 center,
             float radius, Vector3d right, Vector3d up, Vector3d view, Vector3d sun,
-            QuaternionD orientation, RectInt rect, int step, int x0, int y0, int x1, int y1)
+            QuaternionD orientation, RectInt rect, int x0, int y0, int x1, int y1)
         {
             int width = x1 - x0 + 1;
             int height = y1 - y0 + 1;
@@ -2769,7 +2829,6 @@ namespace Galilego.Tablet
             diskCacheY = y0;
             diskCacheWidth = width;
             diskCacheHeight = height;
-            diskCacheStep = step;
             diskCacheMapX = rect.x;
             diskCacheMapY = rect.y;
             diskCacheMapWidth = rect.width;

@@ -381,8 +381,8 @@ namespace Galilego.Tablet
             }
             else if (previewMap.Interactive)
             {
-                // The camera has settled: draw one clean globe instead of keeping
-                // the coarse interactive raster forever.
+                // The camera has settled: draw the final frame (and stop asking for
+                // the gesture redraw rate).
                 previewMap.Interactive = false;
                 mapDirty = true;
             }
@@ -391,7 +391,7 @@ namespace Galilego.Tablet
         /// <summary>
         /// Eases the map camera toward the drag target. While it moves, the map is
         /// redrawn at the interactive rate; when it settles, TickInteractiveMap
-        /// renders one clean frame. Without this the view snapped on every drag delta.
+        /// renders one final frame. Without this the view snapped on every drag delta.
         /// </summary>
         private void TickMapAnimation()
         {
@@ -411,8 +411,8 @@ namespace Galilego.Tablet
         /// <summary>
         /// Dragging the map used to redraw the whole software globe on every pointer
         /// event (a 100+ ms main-thread raster per event). Input now only records the
-        /// new view; the image follows at ~10 Hz with a coarse globe, and one clean
-        /// frame is rendered when the gesture ends.
+        /// new view; the image follows at the gesture rate (30 fps) with the globe at
+        /// full resolution, and one final frame is rendered when the gesture ends.
         /// </summary>
         private void TickInteractiveMap()
         {
@@ -460,9 +460,24 @@ namespace Galilego.Tablet
                 return;
             }
 
-            nextInteractiveMapRedraw = Time.unscaledTime + (interacting ? 0.033f : 0f);
+            nextInteractiveMapRedraw = Time.unscaledTime + (interacting ? InteractiveRedrawInterval() : 0f);
             mapDirty = false;
             RedrawOverlayMap();
+        }
+
+        /// <summary>
+        /// Redraw period while a gesture is running. Each of those frames rasterises
+        /// the globe at full resolution, so a machine where that takes longer than a
+        /// 30 fps slot gets fewer of them instead of a pixelated planet.
+        /// </summary>
+        private float InteractiveRedrawInterval()
+        {
+            const float minPeriod = 0.033f;
+
+            // Four times the raster cost keeps the globe at no more than a quarter
+            // of the gesture frames' time.
+            float rasterMs = overlayMap != null ? overlayMap.LastRasterMs : 0f;
+            return Mathf.Max(minPeriod, rasterMs * 0.004f);
         }
 
         /// <summary>
