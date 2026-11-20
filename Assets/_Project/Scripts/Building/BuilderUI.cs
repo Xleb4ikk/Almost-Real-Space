@@ -913,7 +913,13 @@ namespace Galilego.Building
                     DrawHints();                     // the inventory has its own hint line
                 }
 
-                DrawHotbar();
+                // The time panel (T) is a modal that sits in the same bottom-center spot:
+                // while it is open it owns that area (input is blocked anyway).
+                if (!TimeControlPanel.IsOpen)
+                {
+                    DrawHotbar();
+                }
+
                 DrawRHold("Включение физики…");
                 if (openAnim > 0.001f)
                 {

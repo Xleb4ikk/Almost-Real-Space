@@ -188,7 +188,7 @@ namespace Galilego.Universe
         private bool CanOpen()
         {
             ResolveRefs();
-            if (ShipTablet.AnyExpanded || BuilderUI.AnyOpen || CheatMenu.AnyOpen)
+            if (ShipTablet.AnyExpanded || BuilderUI.AnyOpen || CheatMenu.AnyOpen || TimeControlPanel.IsOpen)
             {
                 return false;
             }

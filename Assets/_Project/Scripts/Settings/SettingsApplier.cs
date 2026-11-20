@@ -54,6 +54,7 @@ namespace Galilego.Universe
             DontDestroyOnLoad(go);
             go.AddComponent<SettingsApplier>();
             go.AddComponent<SettingsMenu>();
+            go.AddComponent<TimeControlPanel>();
         }
 
         // ─── State for the menu ──────────────────────────────────────────────

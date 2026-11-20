@@ -26,7 +26,7 @@ namespace Galilego.Universe
 
         private static bool Blocked
         {
-            get { return SettingsMenu.IsOpen; }
+            get { return SettingsMenu.IsOpen || TimeControlPanel.BlocksInput; }
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
