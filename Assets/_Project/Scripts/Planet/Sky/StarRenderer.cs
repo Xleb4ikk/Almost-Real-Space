@@ -35,7 +35,8 @@ namespace Galilego.Universe
         [Tooltip("Directional Light звезды. Пусто — первый directional в сцене.")]
         public Light SunLight;
 
-        [Tooltip("Физика неба: применяет атмосферную прозрачность к цвету света. Необязательно.")]
+        [Tooltip("Физика неба: атмосферная прозрачность к цвету света И к собственному излучению звезды " +
+                 "(диск, хромосфера, гало, корона) — у земли солнце тёплое, в космосе белое. Необязательно.")]
         public SkyEnvironment Sky;
 
         [Header("Звезда")]
@@ -411,9 +412,24 @@ namespace Galilego.Universe
                 renderDistance,
                 Math.Min(60d * DegToRad, alpha * Math.Max(1d, Preset.CoronaExtentRadii)));
 
+            // Everything the star itself emits is seen THROUGH the observer's
+            // atmosphere: the disc, chromosphere, glare and corona all lose the
+            // blue end of the spectrum to Rayleigh extinction before they reach
+            // the eye. T comes from the same single-source integral
+            // (AtmosphereOptics.TransmittanceToSpace) that builds the GPU
+            // transmittance LUT and colours the Directional Light / _SunLightColor,
+            // evaluated for the current eye altitude and sun elevation. At the
+            // ground it is ≈(0.93, 0.83, 0.70) for a 44° sun — the photosphere
+            // takes the warm cast; above the atmosphere it is exactly (1,1,1),
+            // so the disc becomes its true white. Without it the disc kept its
+            // vacuum colour at every altitude and the sun never reddened at sunset.
+            Vector3 transmittance = Sky != null && Sky.isActiveAndEnabled
+                ? Sky.Transmittance
+                : Vector3.one;
+
             if (discMaterial != null)
             {
-                Color starColor = ToColor(state.ColorR, state.ColorG, state.ColorB);
+                Color starColor = Tinted(transmittance, state.ColorR, state.ColorG, state.ColorB);
                 Vector3 umbra = new Vector3(
                     (float)state.SpotUmbraR,
                     (float)state.SpotUmbraG,
@@ -442,7 +458,11 @@ namespace Galilego.Universe
                 discMaterial.SetVector(StarBitangentLocalId, bitangentLocal);
                 discMaterial.SetFloat(ChromosphereIntensityId,
                     (float)(1e-3d * state.DiscBrightnessCompressed * (1d - EclipseVisibility)));
-                discMaterial.SetColor(ChromosphereColorId, new Color(0.9f, 0.25f, 0.3f, 1f));
+                discMaterial.SetColor(ChromosphereColorId, new Color(
+                    0.9f * transmittance.x,
+                    0.25f * transmittance.y,
+                    0.3f * transmittance.z,
+                    1f));
                 discMaterial.SetFloat(EclipseVisibilityId, (float)EclipseVisibility);
                 discMaterial.SetFloat(PixelAngleId, (float)pixelAngle);
                 discMaterial.SetFloat(DiscOverscanId, (float)discOverscan);
@@ -455,7 +475,7 @@ namespace Galilego.Universe
                 double moffatPeak = (1.8d - 1d) / (Math.PI * theta0 * theta0);
                 double peakRadiance = state.DiscBrightnessCompressed * fluxRatio * etaRatio
                     * Preset.GlareGain * EclipseVisibility;
-                glareMaterial.SetColor(GlareColorId, ToColor(state.ColorR, state.ColorG, state.ColorB));
+                glareMaterial.SetColor(GlareColorId, Tinted(transmittance, state.ColorR, state.ColorG, state.ColorB));
                 glareMaterial.SetFloat(GlareAmplitudeId, (float)(peakRadiance / Math.Max(1e-12d, moffatPeak)));
                 glareMaterial.SetFloat(GlareTheta0Id, (float)theta0);
                 glareMaterial.SetFloat(GlareBetaId, 1.8f);
@@ -465,7 +485,7 @@ namespace Galilego.Universe
 
             if (coronaMaterial != null)
             {
-                coronaMaterial.SetColor(CoronaColorId, ToColor(state.ColorR, state.ColorG, state.ColorB));
+                coronaMaterial.SetColor(CoronaColorId, Tinted(transmittance, state.ColorR, state.ColorG, state.ColorB));
                 coronaMaterial.SetFloat(CoronaIcId, (float)coronaIc);
                 coronaMaterial.SetFloat(CoronaExtentId, (float)Math.Max(1d, Preset.CoronaExtentRadii));
                 coronaMaterial.SetFloat(CoronaTimeId, (float)Runner.TimeSeconds);
@@ -617,7 +637,12 @@ namespace Galilego.Universe
 
             bloom.intensity.Override((float)StarPhysics.Clamp(requestedBloom, 0.8d, 1d));
             bloom.scatter.Override(0.7f);
-            bloom.tint.Override(ToColor(state.ColorR, state.ColorG, state.ColorB));
+            // Neutral tint: the bloom takes the colour of what it blooms. The disc,
+            // glare and corona already carry the star's colour times the atmospheric
+            // transmittance, so tinting the volume here as well would apply the
+            // photosphere colour (and the atmospheric warm cast) twice and turn the
+            // space sun's halo yellow.
+            bloom.tint.Override(Color.white);
 
             if (!profile.TryGet(out tonemapping))
             {
@@ -854,9 +879,17 @@ namespace Galilego.Universe
                     ? Camera.main.transform.position : Vector3.zero) : 0f));
         }
 
-        private static Color ToColor(double r, double g, double b)
+        /// <summary>
+        /// Per-channel atmospheric transmittance applied to a star colour
+        /// (linear). 1 = vacuum, so the photosphere keeps its true colour.
+        /// </summary>
+        private static Color Tinted(Vector3 transmittance, double r, double g, double b)
         {
-            return new Color((float)r, (float)g, (float)b, 1f);
+            return new Color(
+                (float)(r * transmittance.x),
+                (float)(g * transmittance.y),
+                (float)(b * transmittance.z),
+                1f);
         }
 
         private static void DestroyMaterial(ref Material material)

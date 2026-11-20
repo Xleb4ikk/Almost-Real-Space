@@ -22,7 +22,7 @@ MonoBehaviour:
   GlareGain: 1
   CoronaGain: 1
   ExposureBias: 0
-  Adaptation01: 0.25
+  Adaptation01: 1
   RenderDistanceMeters: 0
   GlareTheta0Degrees: 0.15
   GlareExtentDegrees: 8

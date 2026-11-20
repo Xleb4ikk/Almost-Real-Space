@@ -49,7 +49,9 @@ the important pieces:
 analytic fit), integrated 380–780 nm over 100–3000 nm; `η_sun` is computed by the
 same code. The black-body chromaticity is Kim et al. (1667–25000 K), converted to
 linear sRGB, negative channels clipped, luminance normalized to 1, then blended
-25 % toward white (`adaptation = 0.25` by default).
+toward white by `adaptation` (default 0.25; `StarPreset_Sol` uses **1.0** — a
+fully white-balanced eye, so the Sun is white in vacuum and only the atmosphere
+can tint it).
 
 The `M = 0.2 M☉` reference (adaptation 0, adaptation only affects the rendered
 colour, not the photometry):
@@ -87,6 +89,15 @@ The Directional Light is the physical irradiance in scene units,
 `(E/E_ref)(η/η_sun)`, multiplied by `π` for HDRP lux. Its colour is `cT'` with
 atmospheric transmittance. The celestial eclipse and the local horizon model are
 the same event, so the stricter of the two is used rather than multiplying both.
+
+The star's own radiation — disc, chromosphere, glare and corona — is attenuated
+by the same `SkyEnvironment.Transmittance` (`AtmosphereOptics.TransmittanceToSpace`
+for the eye altitude and sun elevation): at the ground the photosphere takes the
+warm Rayleigh cast, above the atmosphere `T = (1,1,1)` and the disc is its true
+white. Without it the disc kept its vacuum colour at every altitude and the sun
+never reddened at sunset. The volume Bloom keeps a neutral tint for the same
+reason: the disc already carries the colour, so tinting the bloom again would
+double the warm cast and the space Sun's halo would stay yellow.
 
 ## Assumptions
 
