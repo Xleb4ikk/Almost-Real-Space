@@ -320,8 +320,39 @@ namespace Galilego.Universe
             ScreenDiscPixels = (int)Math.Round((2d * alpha) / pixelAngle);
 
             double discBrightness = state.DiscBrightnessCompressed * energyScale;
+
+            // Everything the star itself emits is seen THROUGH the observer's
+            // atmosphere: the disc, chromosphere, glare and corona all lose the
+            // blue end of the spectrum to Rayleigh extinction before they reach
+            // the eye. T comes from the same single-source integral
+            // (AtmosphereOptics.TransmittanceToSpace) that builds the GPU
+            // transmittance LUT and colours the Directional Light / _SunLightColor,
+            // evaluated for the current eye altitude and sun elevation. At the
+            // ground it is ≈(0.93, 0.83, 0.70) for a 44° sun — the photosphere
+            // takes the warm cast; above the atmosphere it is exactly (1,1,1),
+            // so the disc becomes its true white.
+            Vector3 transmittance = Sky != null && Sky.isActiveAndEnabled
+                ? Sky.Transmittance
+                : Vector3.one;
+
+            // The bright aureole around the sun is scattered sunlight: it belongs
+            // to the atmosphere, not to the star. In vacuum there is nothing to
+            // scatter, so the glare quad fades out with the air column and the
+            // disc keeps a sharp edge. 0.15 ≈ the vertical optical depth that
+            // already visibly warms the direct beam (T_luminance ≈ 0.86).
+            double transmittanceLuminance = (0.2126d * transmittance.x)
+                + (0.7152d * transmittance.y)
+                + (0.0722d * transmittance.z);
+            double aureole01 = StarPhysics.Clamp(
+                -Math.Log(StarPhysics.Clamp(transmittanceLuminance, 1e-6d, 1d)) / 0.15d, 0d, 1d);
+
+            // The corona is the star's outer atmosphere: it is always there, but
+            // the photosphere outshines it by orders of magnitude. Only a total
+            // eclipse uncovers it, so the visible amount follows the obscured
+            // fraction (cubed: a partial eclipse still hides it).
+            double coronaVisibility = Math.Pow(StarPhysics.Clamp(1d - EclipseVisibility, 0d, 1d), 3d);
             double coronaIc = 1.5e-5d * state.DiscBrightnessCompressed * Preset.CoronaGain
-                * (0.3d + (0.7d * state.Activity01));
+                * (0.3d + (0.7d * state.Activity01)) * coronaVisibility;
 
             SceneLightScale = fluxRatio * etaRatio;
 
@@ -412,21 +443,6 @@ namespace Galilego.Universe
                 renderDistance,
                 Math.Min(60d * DegToRad, alpha * Math.Max(1d, Preset.CoronaExtentRadii)));
 
-            // Everything the star itself emits is seen THROUGH the observer's
-            // atmosphere: the disc, chromosphere, glare and corona all lose the
-            // blue end of the spectrum to Rayleigh extinction before they reach
-            // the eye. T comes from the same single-source integral
-            // (AtmosphereOptics.TransmittanceToSpace) that builds the GPU
-            // transmittance LUT and colours the Directional Light / _SunLightColor,
-            // evaluated for the current eye altitude and sun elevation. At the
-            // ground it is ≈(0.93, 0.83, 0.70) for a 44° sun — the photosphere
-            // takes the warm cast; above the atmosphere it is exactly (1,1,1),
-            // so the disc becomes its true white. Without it the disc kept its
-            // vacuum colour at every altitude and the sun never reddened at sunset.
-            Vector3 transmittance = Sky != null && Sky.isActiveAndEnabled
-                ? Sky.Transmittance
-                : Vector3.one;
-
             if (discMaterial != null)
             {
                 Color starColor = Tinted(transmittance, state.ColorR, state.ColorG, state.ColorB);
@@ -474,7 +490,7 @@ namespace Galilego.Universe
                 double theta0 = Math.Max(0.001d, Preset.GlareTheta0Degrees) * DegToRad;
                 double moffatPeak = (1.8d - 1d) / (Math.PI * theta0 * theta0);
                 double peakRadiance = state.DiscBrightnessCompressed * fluxRatio * etaRatio
-                    * Preset.GlareGain * EclipseVisibility;
+                    * Preset.GlareGain * EclipseVisibility * aureole01;
                 glareMaterial.SetColor(GlareColorId, Tinted(transmittance, state.ColorR, state.ColorG, state.ColorB));
                 glareMaterial.SetFloat(GlareAmplitudeId, (float)(peakRadiance / Math.Max(1e-12d, moffatPeak)));
                 glareMaterial.SetFloat(GlareTheta0Id, (float)theta0);
@@ -500,8 +516,8 @@ namespace Galilego.Universe
 
             if (glareObject != null)
             {
-                bool visibleGlare = glareMaterial != null && EclipseVisibility > 0d
-                    && state.DiscBrightnessCompressed * fluxRatio * etaRatio * Preset.GlareGain > 1e-7d;
+                bool visibleGlare = glareMaterial != null && EclipseVisibility > 0d && aureole01 > 0d
+                    && state.DiscBrightnessCompressed * fluxRatio * etaRatio * Preset.GlareGain * aureole01 > 1e-7d;
                 glareObject.gameObject.SetActive(visibleGlare);
             }
 
@@ -635,8 +651,10 @@ namespace Galilego.Universe
                     Preset.BloomGain + " будет обрезан до 1.0.");
             }
 
-            bloom.intensity.Override((float)StarPhysics.Clamp(requestedBloom, 0.8d, 1d));
-            bloom.scatter.Override(0.7f);
+            bloom.intensity.Override((float)StarPhysics.Clamp(requestedBloom, 0d, 1d));
+            // Tight scatter: a wide halo reads as an atmospheric diffusion
+            // around the sun, and in vacuum there is nothing to diffuse.
+            bloom.scatter.Override(0.5f);
             // Neutral tint: the bloom takes the colour of what it blooms. The disc,
             // glare and corona already carry the star's colour times the atmospheric
             // transmittance, so tinting the volume here as well would apply the

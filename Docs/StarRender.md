@@ -12,7 +12,8 @@ double, no UnityEngine). No appearance value is hand-tuned in the renderer.
   reference preset used by the checks, not by the scene.
   `Runner`, `PlayerCamera`, `SunLight`, `SkyEnvironment`.
 * `Star Volume` — global Volume (priority 100) with `StarVolumeProfile`:
-  ACES tonemapping, bloom (threshold 1, scatter 0.7), automatic exposure with
+  ACES tonemapping, subtle bloom (threshold 1, scatter 0.5, gain from the preset,
+  0.1 for Sol), automatic exposure with
   asymmetric adaptation speeds and `exposureBias`.
 * `SkyEnvironment.Star` — the same `StarRenderer`, so the Directional Light
   colour/intensity come from the preset (the atmosphere only multiplies its
@@ -76,14 +77,18 @@ and limb faculae. The edge is smoothed by `fwidth` only.
 
 Sub-pixel discs are drawn at half a pixel of radius with the surface brightness
 lowered by the area ratio, so the integrated flux is preserved. `f_vis` from the
-circle-overlap formula scales the disc and glare; the corona is always additive
-and becomes visible when the glare disappears.
+circle-overlap formula scales the disc and glare.
 
 Glare is a Moffat profile with `θ0 = 0.15°`, `β = 1.8`, peak radiance
-`V' · (E/E_ref) · (η/η_sun) · glareGain · f_vis` (peak-normalized profile, so the
-default 8° quad does not become an unphysically bright wall of light). Corona is
-`Ic (0.7 ρ⁻⁷ + 0.3 ρ⁻²·⁵)` with `Ic = 1.5e-5 V' coronaGain (0.3 + 0.7 activity)`
-and polar noise.
+`V' · (E/E_ref) · (η/η_sun) · glareGain · f_vis · aureole` (peak-normalized
+profile, so the default 8° quad does not become an unphysically bright wall of
+light). `aureole = clamp(−ln T_luminance / 0.15, 0, 1)` is the air column in front
+of the star: the halo around the Sun is scattered sunlight, so it fades with the
+atmosphere and is exactly zero in vacuum (sharp disc). Corona is
+`Ic (0.7 ρ⁻⁷ + 0.3 ρ⁻²·⁵)` with
+`Ic = 1.5e-5 V' coronaGain (0.3 + 0.7 activity) (1 − f_vis)³` and polar noise:
+the photosphere outshines the corona by orders of magnitude, so it only appears
+when an eclipse has hidden the disc.
 
 The Directional Light is the physical irradiance in scene units,
 `(E/E_ref)(η/η_sun)`, multiplied by `π` for HDRP lux. Its colour is `cT'` with
@@ -95,9 +100,10 @@ by the same `SkyEnvironment.Transmittance` (`AtmosphereOptics.TransmittanceToSpa
 for the eye altitude and sun elevation): at the ground the photosphere takes the
 warm Rayleigh cast, above the atmosphere `T = (1,1,1)` and the disc is its true
 white. Without it the disc kept its vacuum colour at every altitude and the sun
-never reddened at sunset. The volume Bloom keeps a neutral tint for the same
-reason: the disc already carries the colour, so tinting the bloom again would
-double the warm cast and the space Sun's halo would stay yellow.
+never reddened at sunset. The volume Bloom keeps a neutral tint and a low gain
+(Sol preset 0.1, scatter 0.5): a wide halo reads as atmospheric diffusion, and in
+vacuum there is nothing to diffuse — only a thin glow around the disc should
+remain.
 
 ## Assumptions
 
@@ -122,12 +128,14 @@ double the warm cast and the space Sun's halo would stay yellow.
    shaders still use `_TerrainSun`/`_TerrainRadianceScale` as before, and the
    atmosphere/cloud scattering source remains the existing 5772 K photosphere.
    Re-lighting the whole planet from the preset is a separate change.
-8. **Glare is an optical halo**, so it is drawn without depth testing and uses
-   `f_vis` to vanish behind a celestial occluder. The corona also is not masked
-   per-fragment by the occluder silhouette; the eclipse fraction handles the
-   photometry.
+8. **Glare is an atmospheric aureole**, so it is drawn without depth testing,
+   uses `f_vis` to vanish behind a celestial occluder and fades out with the air
+   column (`aureole`), leaving a sharp disc in vacuum. The corona also is not
+   masked per-fragment by the occluder silhouette; the eclipse fraction handles
+   the photometry and gates the corona itself.
 9. **HDRP clamps `Bloom.intensity` to 1.0.** `bloomGain > 1` is reported and
-   clamped; the remaining energy goes through the glare quad and tonemapping.
+   clamped; the sun's disc stays sharp in vacuum (Sol preset gain 0.1) because
+   the halo is the atmosphere's job, not bloom's.
 10. **Auto exposure is HDRP's histogram/automatic mode**, configured with
     `adaptationSpeedLightToDark = 3`, `adaptationSpeedDarkToLight = 0.7` and
     `exposureBias`. On the first 30 visible frames the renderer adds a temporary

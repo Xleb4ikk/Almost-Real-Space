@@ -18,7 +18,7 @@ MonoBehaviour:
   EffectiveTemperatureKOverride: 0
   Activity01: 1
   GranulationContrastMultiplier: 1
-  BloomGain: 1
+  BloomGain: 0.1
   GlareGain: 1
   CoronaGain: 1
   ExposureBias: 0
