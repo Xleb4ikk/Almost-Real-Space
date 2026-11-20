@@ -333,6 +333,7 @@ public static class TimeTests
             + " lat=" + F(lat) + " lon=" + F(lon) + " vRel=" + F(vRel)
             + " sun=(" + F(sunDir.X) + "," + F(sunDir.Y) + "," + F(sunDir.Z) + ")"
             + " zone=" + Galilego.Simulation.ContactZone.ContactZoneHost.Active
+            + " attUp=" + R.Ship.Attitude.Rotate(new Vector3d(0d, 1d, 0d))
             + " regime=" + R.Regime
             + " eff=" + F(Step.LastEffectiveFactor);
     }

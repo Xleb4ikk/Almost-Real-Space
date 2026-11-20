@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Galilego.Core;
 using Galilego.Debris;
@@ -19,40 +19,40 @@ namespace Galilego.Universe
     // Scene: a GameObject hierarchy of bodies with BodyAuthoring (GO name = body name)
     // under StarSystemAuthoring at the root, BodyView on each body, and SimulationRunner
     // (System = root), ShipController, ShipView on the ship GameObject.
-    // Execution order: SimulationRunner.Update → BodyView.LateUpdate → ShipView.LateUpdate.
+    // Execution order: SimulationRunner.Update > BodyView.LateUpdate > ShipView.LateUpdate.
 
     /// <summary>
     /// Owner of time and the physics loop (B1). The only MonoBehaviour that
     /// advances the simulation; BodyView/ShipView read the finished states.
     ///
     /// Mode automaton (SurfaceMotion.VesselRegime):
-    ///   Flying  — orbital chain: chunks by control-tick, SampleControl,
+    ///   Flying  � orbital chain: chunks by control-tick, SampleControl,
     ///             Propagate; the returned event is handled here.
-    ///   Landed  — constrained SurfaceMotion.Step dynamics by chunks; on thrust
+    ///   Landed  � constrained SurfaceMotion.Step dynamics by chunks; on thrust
     ///             EventReactions.TryLiftoff returns to Flying.
-    ///   Destroyed — the ship simulation is stopped (debris — stage R2/A4).
+    ///   Destroyed � the ship simulation is stopped (debris � stage R2/A4).
     ///
     /// Frame contract (implements EphemerisRuntime.ComputeFrame):
     /// 1. decision = EphemerisRuntime.ComputeFrame(sys, warp, ship, t, realDt);
-    /// 2. useLongWarp → warp.PrepareForLongWarp(t) + LongWarpDriver.AdvanceToTarget
+    /// 2. useLongWarp > warp.PrepareForLongWarp(t) + LongWarpDriver.AdvanceToTarget
     ///    (ballistics, thrust fully forbidden);
-    /// 3. otherwise — the physical chain with the same RHS as at ×1: chunks by the
+    /// 3. otherwise � the physical chain with the same RHS as at ?1: chunks by the
     ///    control-tick boundary, SampleControl on each chunk, Propagate.
-    /// HardHorizonSeconds is set from BakedEndSeconds() at start — warp will not
+    /// HardHorizonSeconds is set from BakedEndSeconds() at start � warp will not
     /// fly past the end of the baked world (the EphemerisEnd event fires honestly).
     /// The physical chain's time accumulates via Kahan (years of warp, thousands of
     /// frames); after a long warp the accumulator is reset to the result time.
     /// On the ground time also uses Kahan: after exact-root events the accumulator
     /// is reset to the event time.
-    /// Calls — main thread only.
+    /// Calls � main thread only.
     /// </summary>
     public sealed class SimulationRunner : MonoBehaviour
     {
-        [Header("Система")]
-        [Tooltip("StarSystemAuthoring на корневом GameObject иерархии тел.")]
+        [Header("�������")]
+        [Tooltip("StarSystemAuthoring �� �������� GameObject �������� ���.")]
         public StarSystemAuthoring System;
 
-        [Tooltip("Пауза симуляции (время не идёт, рендер остаётся).")]
+        [Tooltip("����� ��������� (����� �� ���, ������ �������).")]
         public bool Paused;
 
         // TODO(INTEGRATOR-V2): THIS IS THE GAME-SIDE ACTIVATION POINT.
@@ -60,54 +60,54 @@ namespace Galilego.Universe
         // their production tests pass. Surface v1: EnableRegimeIntegratorPolicy=true,
         // EnableSunCoastPolicy=false. Sun v1: both true only after a real VesselStep
         // Sun-coast cost/event test; never enable it for 5 AU/cislunar.
-        [Header("Интегратор")]
-        [Tooltip("Включить политику v1: поверхность 0.05 с (Flight-модель). Sun-coast включается отдельным флагом ниже; по умолчанию всё на DOP853.")]
+        [Header("����������")]
+        [Tooltip("�������� �������� v1: ����������� 0.05 � (Flight-������). Sun-coast ���������� ��������� ������ ����; �� ��������� �� �� DOP853.")]
         public bool EnableRegimeIntegratorPolicy;
 
-        [Tooltip("Разрешить Sun-coast ветку. Оставь выключенным для 5 AU/cislunar: это явный allowlist; поверхность работает независимо.")]
+        [Tooltip("��������� Sun-coast �����. ������ ����������� ��� 5 AU/cislunar: ��� ����� allowlist; ����������� �������� ����������.")]
         public bool EnableSunCoastPolicy;
 
-        [Tooltip("Разрешить порт WH-BM14A: только планетоцентрический near-circular coast на длинном варпе (чанк 600 с). По умолчанию false; DOP853 остаётся везде остальном.")]
+        [Tooltip("��������� ���� WH-BM14A: ������ ������������������� near-circular coast �� ������� ����� (���� 600 �). �� ��������� false; DOP853 ������� ����� ���������.")]
         public bool EnablePortedIntegratorPolicy;
 
-        [Header("Корабль")]
-        [Tooltip("Начальная высота над поверхностью тела спавна (м).")]
+        [Header("�������")]
+        [Tooltip("��������� ������ ��� ������������ ���� ������ (�).")]
         public double SpawnAltitudeMeters = 200000d;
 
-        [Tooltip("Спавнить корабль на солнечной стороне (со стороны звезды) вместо противоположной.")]
+        [Tooltip("�������� ������� �� ��������� ������� (�� ������� ������) ������ ���������������.")]
         public bool SpawnFacingSun;
 
-        [Tooltip("Стартовая фаза по орбите (градусы). 0 — солнце в зените (при SpawnFacingSun), 90 — солнце на горизонте, 180 — за планетой. Фаза вращает точку старта вдоль плоскости орбиты.")]
+        [Tooltip("��������� ���� �� ������ (�������). 0 � ������ � ������ (��� SpawnFacingSun), 90 � ������ �� ���������, 180 � �� ��������. ���� ������� ����� ������ ����� ��������� ������.")]
         public double SpawnPhaseDegrees;
 
-        [Tooltip("Начальная горизонтальная скорость (м/с): 0 — сидим, ~7800 — орбита.")]
+        [Tooltip("��������� �������������� �������� (�/�): 0 � �����, ~7800 � ������.")]
         public double SpawnHorizontalSpeedMps = 7800d;
 
-        [Tooltip("Начальная масса корабля, кг.")]
+        [Tooltip("��������� ����� �������, ��.")]
         public double SpawnMassKg = 5000d;
 
-        [Tooltip("Максимальная тяга главного двигателя, Н (0 — корабль без тяги).")]
+        [Tooltip("������������ ���� �������� ���������, � (0 � ������� ��� ����).")]
         public double MainThrustNewtons;
 
-        [Tooltip("Удельный импульс, с.")]
+        [Tooltip("�������� �������, �.")]
         public double MainIspSeconds = 320d;
 
-        [Tooltip("Сухая масса (без топлива), кг.")]
+        [Tooltip("����� ����� (��� �������), ��.")]
         public double DryMassKg = 3000d;
 
-        [Tooltip("Тело спавна (имя из иерархии); пусто — самое глубокое тело под корнем.")]
+        [Tooltip("���� ������ (��� �� ��������); ����� � ����� �������� ���� ��� ������.")]
         public string SpawnBodyName;
 
-        [Tooltip("Спавнить игрока пешком на поверхности (OnSurface), корабль — рядом на земле. Иначе старт в корабле на орбите.")]
+        [Tooltip("�������� ������ ������ �� ����������� (OnSurface), ������� � ����� �� �����. ����� ����� � ������� �� ������.")]
         public bool SpawnOnSurface;
 
-        [Tooltip("Спавн по координатам: вместо точки из орбитальной фазы игрок и корабль ставятся в lat/lon ниже (тело — SpawnBodyName). Для проверки биомов и декора в конкретных местах.")]
+        [Tooltip("����� �� �����������: ������ ����� �� ����������� ���� ����� � ������� �������� � lat/lon ���� (���� � SpawnBodyName). ��� �������� ������ � ������ � ���������� ������.")]
         public bool SpawnByCoordinates;
 
-        [Tooltip("Широта точки спавна (градусы, −90..90). Работает только со SpawnByCoordinates и SpawnOnSurface.")]
+        [Tooltip("������ ����� ������ (�������, ?90..90). �������� ������ �� SpawnByCoordinates � SpawnOnSurface.")]
         public double SpawnLatitudeDegrees;
 
-        [Tooltip("Долгота точки спавна (градусы). Работает только со SpawnByCoordinates и SpawnOnSurface.")]
+        [Tooltip("������� ����� ������ (�������). �������� ������ �� SpawnByCoordinates � SpawnOnSurface.")]
         public double SpawnLongitudeDegrees;
 
         /// <summary>Last walking-player coordinate output (spam throttle).</summary>
@@ -133,22 +133,22 @@ namespace Galilego.Universe
             OrbitingBody body = DominantBody;
             body.SurfaceLatLonAt(PlayerPosition, TimeSeconds, out double latDeg, out double lonDeg);
             Debug.Log(string.Format(
-                "[Walk] {0}: lat={1:F2}°, lon={2:F2}°, relief={3:F0} м",
+                "[Walk] {0}: lat={1:F2}�, lon={2:F2}�, relief={3:F0} �",
                 body.Name, latDeg, lonDeg, GroundHeight(body, latDeg, lonDeg)));
         }
 
-        [Tooltip("Отступ спавна обломков над поверхностью при разрушении (м).")]
+        [Tooltip("������ ������ �������� ��� ������������ ��� ���������� (�).")]
         public double SpawnEpsilonMeters = 1d;
 
-        [Header("Сборка (для разрушения по стыкам)")]
-        [Tooltip("Детали сборки. Пусто — корабль цельный (whole-ship разрушение). Массы нормируются к SpawnMassKg.")]
+        [Header("������ (��� ���������� �� ������)")]
+        [Tooltip("������ ������. ����� � ������� ������� (whole-ship ����������). ����� ����������� � SpawnMassKg.")]
         public PartDefinition[] Parts = new PartDefinition[0];
 
-        [Header("Обломки")]
-        [Tooltip("Время жизни обломка (с).")]
+        [Header("�������")]
+        [Tooltip("����� ����� ������� (�).")]
         public double DebrisLifetimeSeconds = 600d;
 
-        [Tooltip("Коэффициент отскока обломков от поверхности (0 — исчезают при входе в тело).")]
+        [Tooltip("����������� ������� �������� �� ����������� (0 � �������� ��� ����� � ����).")]
         public double DebrisSurfaceRestitution = 0.2d;
 
         /// <summary>Simulated system time (s since the ephemeris epoch).</summary>
@@ -242,9 +242,9 @@ namespace Galilego.Universe
 
         /// <summary>
         /// Seat "up" in render space: the seated camera lays the eye height along it
-        /// (in the same axes the ship is drawn in — the astro version via the flat
+        /// (in the same axes the ship is drawn in � the astro version via the flat
         /// bridge lies here in the contact zone). While the player is seated,
-        /// PlayerView updates it every frame — a live seat "up".
+        /// PlayerView updates it every frame � a live seat "up".
         /// </summary>
         public Vector3 PlayerSeatedUpRender { get; set; }
 
@@ -259,8 +259,8 @@ namespace Galilego.Universe
         public bool NoclipActive { get; private set; }
 
         /// <summary>
-        /// Enable/disable noclip. exitDirection — where to eject the player from the
-        /// ship on enable (camera direction); zero — outward from the body.
+        /// Enable/disable noclip. exitDirection � where to eject the player from the
+        /// ship on enable (camera direction); zero � outward from the body.
         /// On disable the player stays where they flew: if inside terrain or water
         /// they are landed on the surface (otherwise the mode step would push them
         /// out of the planet), otherwise free EVA flight continues.
@@ -301,7 +301,7 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Inside terrain/water — land on the surface: otherwise the very next mode
+            // Inside terrain/water � land on the surface: otherwise the very next mode
             // step (EVA/OnSurface) would treat the point as contact and push the player
             // out from its side of the planet.
             body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out _);
@@ -327,7 +327,7 @@ namespace Galilego.Universe
             return radial.SqrMagnitude > 1e-12d ? radial.Normalized : new Vector3d(0d, 0d, 1d);
         }
 
-        /// <summary>Raw throttle 0..1 from input (ShipController); EffectiveThrottle caps above ×3.</summary>
+        /// <summary>Raw throttle 0..1 from input (ShipController); EffectiveThrottle caps above ?3.</summary>
         public double RawThrottle { get; set; }
 
         /// <summary>Registry of body transforms (filled by BodyView); ShipView reads it for the floating origin.</summary>
@@ -354,8 +354,8 @@ namespace Galilego.Universe
         public DebrisPool Debris => step.Debris;
 
         /// <summary>
-        /// Staged propulsion model (null — legacy: a single thrust from the inspector).
-        /// Read by the ΔV panel; set by SpacecraftBuilder when flight starts.
+        /// Staged propulsion model (null � legacy: a single thrust from the inspector).
+        /// Read by the ?V panel; set by SpacecraftBuilder when flight starts.
         /// </summary>
         public StagePropulsion Propulsion => step != null ? step.Propulsion : null;
 
@@ -389,7 +389,7 @@ namespace Galilego.Universe
         /// <summary>Current player capsule height (m): crouches under a slanted wall/hatch.</summary>
         public double PlayerCapsuleHeight => playerController.CurrentHeightMeters;
 
-        /// <summary>Stoop fraction 0..1 (0 — full height, 1 — minimum height). The camera lowers the eyes by it.</summary>
+        /// <summary>Stoop fraction 0..1 (0 � full height, 1 � minimum height). The camera lowers the eyes by it.</summary>
         public float PlayerStoopFraction
         {
             get
@@ -406,7 +406,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Support id under the player (-1 — no support; see TerrainSupport/SiteBoxSupport).</summary>
+        /// <summary>Support id under the player (-1 � no support; see TerrainSupport/SiteBoxSupport).</summary>
         public int PlayerGroundSourceId => playerController.GroundSourceId;
 
         private readonly TerrainSupport terrainSupport = new TerrainSupport();
@@ -419,7 +419,7 @@ namespace Galilego.Universe
         private ContactZoneHost zoneHost;
 
         // Inertial acceleration of the vessel (gravity included), low-pass filtered. A carried
-        // player feels gravity MINUS this: thrust presses them to the floor, free fall — weightless.
+        // player feels gravity MINUS this: thrust presses them to the floor, free fall � weightless.
         private Vector3d shipAcceleration;
         private Vector3d lastShipVelocity;
         private double lastShipAccelerationTime;
@@ -435,7 +435,7 @@ namespace Galilego.Universe
         /// </summary>
         public Transform VesselRoot;
 
-        [Tooltip("Коллизия игрока с корпусом в EVA. Выключи для диагностики дрейфа.")]
+        [Tooltip("�������� ������ � �������� � EVA. ������� ��� ����������� ������.")]
         public bool EvaHullCollision = true;
 
         /// <summary>Cumulative EVA hull correction events (diagnostics).</summary>
@@ -489,13 +489,13 @@ namespace Galilego.Universe
         /// <summary>How fast the CAMERA/INPUT vertical eases back to the planet radial far away (1/s).</summary>
         private const double EvaUpAlignRate = 2.5d;
 
-        /// <summary>Felt weight below this (m/s²) in free flight counts as zero: filtered-acceleration noise must not "drop" a player standing in the hatch onto the hull.</summary>
+        /// <summary>Felt weight below this (m/s?) in free flight counts as zero: filtered-acceleration noise must not "drop" a player standing in the hatch onto the hull.</summary>
         private const double CabinWeightlessDeadbandMps2 = 0.15d;
 
         // Ship state at the START of the current frame. The player is stepped after the
         // whole ship step, so Ship.Position/Velocity are already at the END of the
         // frame: moving the player with them for the whole frame made the player travel
-        // farther than the craft by half its acceleration × frame² — a steady drift
+        // farther than the craft by half its acceleration ? frame? � a steady drift
         // that was independent of input and got worse at low FPS.
         private Vector3d frameShipStartPosition;
         private Vector3d frameEvaOffset;
@@ -504,7 +504,7 @@ namespace Galilego.Universe
         // EVA velocity RELATIVE to the vessel frame, kept across frames. Do not re-derive
         // it as PlayerVelocity - frameVelocity every step: the frame velocity already
         // contains the ship's acceleration, and the smooth brake would then leave a
-        // permanent lag of about a/response (≈1.6 m/s at g) — the craft "falls away"
+        // permanent lag of about a/response (?1.6 m/s at g) � the craft "falls away"
         // even though nothing is pressed. The relative state is the player's own.
         private Vector3d evaRelativeVelocity;
         private bool evaRelativeValid;
@@ -524,38 +524,71 @@ namespace Galilego.Universe
         /// <summary>Horizontal velocity response in air (1/s), the same with and without the jetpack.</summary>
         private const double PlayerAirResponse = 6d;
 
-        /// <summary>Максимальный подшаг игрока (s).</summary>
+        /// <summary>������������ ������ ������ (s).</summary>
         private const double PlayerMaxStepSeconds = 0.5d;
 
         /// <summary>
-        /// Порог «аппарат стоит»: скорость относительно поверхности, м/с. Ниже него
-        /// ускорение времени разрешено на поверхности (корабль при этом не интегрируется,
-        /// а жёстко едет с вращением планеты).
+        /// ����� �������� �����: �������� ������������ �����������, �/�. ���� ����
+        /// ��������� ������� ��������� �� ����������� (������� ��� ���� �� �������������,
+        /// � ����� ���� � ��������� �������).
         /// </summary>
         private const double ParkedMaxRelativeSpeed = 0.1d;
 
-        /// <summary>Камера игрока (кэш для поворота взгляда при ускорении на поверхности).</summary>
+        /// <summary>������ ������ (��� ��� �������� ������� ��� ��������� �� �����������).</summary>
         private FirstPersonCamera lookCamera;
 
-        /// <summary>Контактная зона (кэш для проверки «стоит на поверхности»).</summary>
+        /// <summary>���������� ���� (��� ��� �������� ������ �� �����������).</summary>
         private ContactZoneHost zoneHostCache;
 
         /// <summary>
-        /// true — этот кадр прожит «парковкой»: аппарат стоит, время ускорено, точку
-        /// держит SimulationRunner жёстким поворотом вместе с планетой. Контактная зона
-        /// в такие кадры не переписывает корабль из PhysX (иначе вернёт позу прошлого кадра).
+        /// true � ���� �������� �� ����� �������� (������ ��������, Enabled=false).
+        /// ��� ������ �� �������� ���� ���������� ������� � ������������ ������ ������.
+        /// </summary>
+        private bool parkedZoneReleased;
+
+        /// <summary>
+        /// true � ���, ���� ���� ����� ����� � ���������� ������. � ��� ����� �����
+        /// ������ ����, ����� StepLanded ������ ������� � �������� �� �����.
+        /// </summary>
+        private bool zoneReentryPending;
+
+        /// <summary>������� ���� ����� ��������: ������ ������������ �� ������� ������.</summary>
+        private void RestoreZoneAfterParked()
+        {
+            if (!parkedZoneReleased)
+            {
+                return;
+            }
+
+            parkedZoneReleased = false;
+            if (zoneHostCache == null)
+            {
+                zoneHostCache = FindAnyObjectByType<ContactZoneHost>();
+            }
+
+            if (zoneHostCache != null)
+            {
+                zoneHostCache.Enabled = true;
+                zoneReentryPending = true;
+            }
+        }
+
+        /// <summary>
+        /// true � ���� ���� ������ ����������: ������� �����, ����� ��������, �����
+        /// ������ SimulationRunner ������ ��������� ������ � ��������. ���������� ����
+        /// � ����� ����� �� ������������ ������� �� PhysX (����� ������ ���� �������� �����).
         /// </summary>
         public bool ParkedWarpFrame { get; private set; }
 
         /// <summary>
-        /// Ускорение времени на СТОЯЩЕМ аппарате: мир идёт вперёд, а корабль остаётся на
-        /// той же точке вращающейся поверхности. Условия входа:
-        ///  • аппарат на поверхности (контактная зона или режим Landed);
-        ///  • относительная скорость к поверхности &lt; 0.1 м/с;
-        ///  • газ закрыт — касание тяги снимает ускорение в ×1 (как долгий варп);
-        ///  • игрок не в свободном полёте/EVA и не в прыжке;
-        ///  • тело вращается.
-        /// Выход — тот же кадр: шаг физики продолжается с обычным капом, но при warp ×1.
+        /// ��������� ������� �� ������� ��������: ��� ��� �����, � ������� ������� ��
+        /// ��� �� ����� ����������� �����������. ������� �����:
+        ///  � ������� �� ����������� (���������� ���� ��� ����� Landed);
+        ///  � ������������� �������� � ����������� &lt; 0.1 �/�;
+        ///  � ��� ������ � ������� ���� ������� ��������� � ?1 (��� ������ ����);
+        ///  � ����� �� � ��������� �����/EVA � �� � ������;
+        ///  � ���� ���������.
+        /// ����� � ��� �� ����: ��� ������ ������������ � ������� �����, �� ��� warp ?1.
         /// </summary>
         private bool TryParkedWarpStep(float realDt)
         {
@@ -571,7 +604,7 @@ namespace Galilego.Universe
 
             if (RawThrottle > 1e-6d)
             {
-                // Игрок дал газ: ускорение времени снимается, дальше — нормальная физика.
+                // ����� ��� ���: ��������� ������� ���������, ������ � ���������� ������.
                 Warp.ResetToPhysicalOne();
                 return false;
             }
@@ -579,6 +612,28 @@ namespace Galilego.Universe
             if (!ContactZoneHost.Active && Regime != VesselRegime.Landed)
             {
                 return false;
+            }
+
+            // ���� ��� ��������, ������� ��������� ���������� ����. ������� ����������:
+            // �������� ���� �� ������������� ������������ ������ � ��������� �������
+            // (�� ?100 000 ��� ����� ������ �� ����), � PhysX-������ ������� �� ����� �
+            // �� ������, � ����� ���������� ����� ���� ������� �� ������� �������.
+            // ForceExit �� ����� ��������� �������, ������� ����� ��������� ������� �����.
+            if (!parkedZoneReleased)
+            {
+                if (zoneHostCache == null)
+                {
+                    zoneHostCache = FindAnyObjectByType<ContactZoneHost>();
+                }
+
+                if (zoneHostCache != null)
+                {
+                    zoneHostCache.ForceExit();
+                    zoneHostCache.Enabled = false;
+                }
+
+                step.Regime = VesselRegime.Landed;
+                parkedZoneReleased = true;
             }
 
             if (Ship.PositionIsCom)
@@ -602,10 +657,10 @@ namespace Galilego.Universe
                 return false;
             }
 
-            // Стоит ли аппарат: скорость относительно поверхности (с учётом вращения).
-            // В контактной зоне велосити прокси приходит с задержкой кадра и после паузы
-            // может показывать «свободное падение», поэтому там решает контакт гейта:
-            // высота над поверхностью, а скорость на первом кадре парковки ставится точной.
+            // ����� �� �������: �������� ������������ ����������� (� ������ ��������).
+            // � ���������� ���� �������� ������ �������� � ��������� ����� � ����� �����
+            // ����� ���������� ���������� �������, ������� ��� ������ ������� �����:
+            // ������ ��� ������������, � �������� �� ������ ����� �������� �������� ������.
             body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out Vector3d bodyVel);
             Vector3d offset = Ship.Position - bodyPos;
             Vector3d omega = body.SpinAxis * body.SpinAngularSpeed;
@@ -638,10 +693,80 @@ namespace Galilego.Universe
                 return false;
             }
 
+            PinSurface(body, dtSim, Warp.Factor, true);
+            return true;
+        }
+
+        /// <summary>
+        /// ������� �����, ���� ���������� ���� �� ����������� ������. ����-��� �����
+        /// ����� ���������� ���������: ����� `StepLanded` ������ ������� � �������� ��
+        /// ����������� ����������� (�������� ���� ������ �� ����� ������) � ���� ���
+        /// �� ������ �����.
+        /// </summary>
+        private bool TryZoneReentryHold(float realDt)
+        {
+            if (!zoneReentryPending)
+            {
+                return false;
+            }
+
+            if (ContactZoneHost.Active)
+            {
+                zoneReentryPending = false;
+                // Зона снова владеет аппаратом: режим должен быть Flying, иначе после её
+                // выхода (взлёт) включится наземная цепочка вместо орбитальной.
+                if (step != null)
+                {
+                    step.Regime = VesselRegime.Flying;
+                }
+
+                return false;
+            }
+
+            if (step == null || Ship == null)
+            {
+                return false;
+            }
+
+            OrbitingBody body = step.DominantBody;
+            if (body == null || !(body.RotationPeriodSeconds > 0d))
+            {
+                return false;
+            }
+
+            double dtSim = realDt;
+            double bakedEnd = SystemState.BakedEndSeconds();
+            if (double.IsFinite(bakedEnd) && TimeSeconds + dtSim > bakedEnd)
+            {
+                dtSim = Math.Max(0d, bakedEnd - TimeSeconds);
+            }
+
+            if (!(dtSim > 0d))
+            {
+                return false;
+            }
+
+            PinSurface(body, dtSim, 1d, false);
+            return true;
+        }
+
+        /// <summary>
+        /// Ƹ���� ��������� ������� ������� �� �� �� ����� ����������� ����������� �����
+        /// dtSim ��������� ������: ������� ������ ��� �������� ���� + ������� �������
+        /// ����. �������, �����, ����� � ������ �������������� ����� � ��� ��
+        /// ������������, ������� ������������� ��������� ����������� ���-�-���.
+        /// ������ �� ������������� � ������������� ������, ������� �����.
+        /// </summary>
+        private void PinSurface(OrbitingBody body, double dtSim, double factor, bool blockZone)
+        {
+            body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out Vector3d bodyVel);
+            Vector3d offset = Ship.Position - bodyPos;
+            Vector3d omega = body.SpinAxis * body.SpinAngularSpeed;
+
             double tNew = TimeSeconds + dtSim;
 
-            // Жёсткий поворот всей поверхности: смещения от центра тела крутятся вокруг
-            // оси вращения, само тело едет по своей орбите.
+            // Ƹ����� ������� ���� �����������: �������� �� ������ ���� �������� ������
+            // ��� ��������, ���� ���� ���� �� ����� ������.
             QuaternionD spin = QuaternionD.FromAxisAngle(body.SpinAxis, body.SpinAngularSpeed * dtSim);
             body.EvaluateWorldState(tNew, out Vector3d bodyPosNew, out Vector3d bodyVelNew);
 
@@ -650,15 +775,15 @@ namespace Galilego.Universe
             Ship.Velocity = bodyVelNew + Vector3d.Cross(omega, shipOffsetNew);
             Ship.InvalidateLocalState();
 
-            // Игрок и все его якоря — тем же поворотом: смещения относительно корабля
-            // сохраняются бит-в-бит, и «камера смотрит туда же» относительно грунта.
+            // ����� � ��� ��� ����� � ��� �� ���������: �������� ������������ �������
+            // ����������� ���-�-���, � ������� ������� ���� �� ������������ ������.
             PlayerPosition = bodyPosNew + spin.Rotate(PlayerPosition - bodyPos);
             PlayerVelocity = bodyVelNew + Vector3d.Cross(omega, PlayerPosition - bodyPosNew);
             PlayerSeatedPosition = bodyPosNew + spin.Rotate(PlayerSeatedPosition - bodyPos);
             seatedShipAnchor = bodyPosNew + spin.Rotate(seatedShipAnchor - bodyPos);
             smoothedShipPosition = bodyPosNew + spin.Rotate(smoothedShipPosition - bodyPos);
 
-            // Вводы, которые копились бы до шага игрока: в этом кадре шага нет.
+            // �����, ������� �������� �� �� ���� ������: � ���� ����� ���� ���.
             PlayerIntent.Jump = false;
             PlayerIntent.JetpackToggle = false;
             PlayerIntent.HoverToggle = false;
@@ -667,11 +792,11 @@ namespace Galilego.Universe
             hoverToggleQueued = false;
 
             step.AdvanceTime(dtSim);
-            step.MarkEffectiveFactor(Warp.Factor);
+            step.MarkEffectiveFactor(factor);
             step.DominantBody = SystemState.FindDominantBody(Ship.Position, TimeSeconds);
-            ParkedWarpFrame = true;
+            ParkedWarpFrame = blockZone;
 
-            // Взгляд поворачивается вместе с грунтом, иначе планета «крутится под игроком».
+            // ������ �������������� ������ � �������, ����� ������� ��������� ��� �������.
             if (lookCamera == null)
             {
                 lookCamera = FindAnyObjectByType<FirstPersonCamera>();
@@ -684,7 +809,6 @@ namespace Galilego.Universe
 
             FloatingOrigin.Anchor = PlayerPosition;
             LogSurfacePosition();
-            return true;
         }
 
         /// <summary>
@@ -710,7 +834,7 @@ namespace Galilego.Universe
             if (System == null)
             {
                 enabled = false;
-                Debug.LogWarning("SimulationRunner: не назначен StarSystemAuthoring — симуляция отключена.");
+                Debug.LogWarning("SimulationRunner: �� �������� StarSystemAuthoring � ��������� ���������.");
                 return;
             }
 
@@ -741,7 +865,7 @@ namespace Galilego.Universe
             }
 
             // Horizon contract: long warp does not fly past the end of the baked world
-            // (duplicated explicitly in the ComputeFrame wiring — without it the
+            // (duplicated explicitly in the ComputeFrame wiring � without it the
             // EphemerisEnd event would not fire).
             propagator.HardHorizonSeconds = SystemState.BakedEndSeconds();
             var driver = new LongWarpDriver(physics, propagator);
@@ -773,13 +897,13 @@ namespace Galilego.Universe
 
             FloatingOrigin.Anchor = PlayerPosition;
 
-            // Панель времени (T): точки перемотки + режимы варпа. Живёт на раннере, а не
-            // на UI-объекте: панель создаётся до сцены и находит модель через Current.
+            // ������ ������� (T): ����� ��������� + ������ �����. ���� �� �������, � ��
+            // �� UI-�������: ������ �������� �� ����� � ������� ������ ����� Current.
             timeControl = new TimeControlRuntime(this);
 
             if (!baked)
             {
-                Debug.LogWarning("SimulationRunner: эфемериды не прицеплены — тела на кеплеровых рельсах (штатно, точность ниже).");
+                Debug.LogWarning("SimulationRunner: ��������� �� ���������� � ���� �� ���������� ������� (������, �������� ����).");
             }
         }
 
@@ -793,8 +917,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Тик панели времени после шага физики. Отдельный LateUpdate, чтобы откат и
-        /// показания работали и когда Update вышел раньше (пауза, разрушенный корабль).
+        /// ��� ������ ������� ����� ���� ������. ��������� LateUpdate, ����� ����� �
+        /// ��������� �������� � ����� Update ����� ������ (�����, ����������� �������).
         /// </summary>
         private void LateUpdate()
         {
@@ -805,8 +929,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Новый полёт (SpacecraftBuilder.EnterFlightAt): шкала перемотки начинается заново,
-        /// точка 0 — этот кадр и это время.
+        /// ����� ���� (SpacecraftBuilder.EnterFlightAt): ����� ��������� ���������� ������,
+        /// ����� 0 � ���� ���� � ��� �����.
         /// </summary>
         public void ResetFlightTimeline()
         {
@@ -816,12 +940,12 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Доля модели панели (для отчёта/тестов).</summary>
+        /// <summary>���� ������ ������ (��� ������/������).</summary>
         internal TimeControlRuntime TimeControl { get { return timeControl; } }
 
         /// <summary>
-        /// Фактор, реально применённый в последнем кадре (после капов). Слот панели
-        /// показывает именно его, если он меньше выбранного.
+        /// ������, ������� ����������� � ��������� ����� (����� �����). ���� ������
+        /// ���������� ������ ���, ���� �� ������ ����������.
         /// </summary>
         public double EffectiveWarpFactor
         {
@@ -837,8 +961,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Сброс межкадрового состояния варпа после перемотки: отмена запроса, сброс
-        /// планировщика (он чистый, но флаг отказа и бюджет должны начать заново).
+        /// ����� ������������ ��������� ����� ����� ���������: ������ �������, �����
+        /// ������������ (�� ������, �� ���� ������ � ������ ������ ������ ������).
         /// </summary>
         public void ResetLongWarpState()
         {
@@ -875,9 +999,9 @@ namespace Galilego.Universe
 
             horizontal = horizontal.Normalized;
 
-            // Phase: rotates the start point along the orbital plane. 0° — the point
-            // "under the sun" (or opposite it), 90° — a quarter orbit (sun on the
-            // horizon), 180° — the opposite side of the planet.
+            // Phase: rotates the start point along the orbital plane. 0� � the point
+            // "under the sun" (or opposite it), 90� � a quarter orbit (sun on the
+            // horizon), 180� � the opposite side of the planet.
             double phase = SpawnPhaseDegrees * (Math.PI / 180d);
             Vector3d positionDirection = radial;
             Vector3d velocityDirection = horizontal;
@@ -909,7 +1033,7 @@ namespace Galilego.Universe
         {
             if (!SystemStateInitialized())
             {
-                Debug.LogWarning("[Teleport] Система не инициализирована — некуда телепортироваться.");
+                Debug.LogWarning("[Teleport] ������� �� ���������������� � ������ �����������������.");
                 return;
             }
 
@@ -921,7 +1045,7 @@ namespace Galilego.Universe
             evaRelativeValid = false;
             step.ResetTimeAccumulator();
             FloatingOrigin.Anchor = PlayerPosition;
-            Debug.Log(string.Format("[Teleport] игрок -> lat/lon места, смещение {0:F0} м", delta.Magnitude));
+            Debug.Log(string.Format("[Teleport] ����� -> lat/lon �����, �������� {0:F0} �", delta.Magnitude));
         }
 
         private bool SystemStateInitialized()
@@ -947,8 +1071,8 @@ namespace Galilego.Universe
 
             double ground = GroundHeight(body, latDeg, lonDeg);
             Debug.Log(string.Format(
-                "[Spawn] {0}: тело={1} lat={2:F3}° lon={3:F3}° relief={4:F0} м",
-                SpawnByCoordinates ? "по координатам" : "точка фазы",
+                "[Spawn] {0}: ����={1} lat={2:F3}� lon={3:F3}� relief={4:F0} �",
+                SpawnByCoordinates ? "�� �����������" : "����� ����",
                 body.Name, latDeg, lonDeg, ground));
             body.GetSurfaceState(latDeg, lonDeg, ground, 0d, out Vector3d surfacePos, out Vector3d surfaceVel);
 
@@ -970,7 +1094,7 @@ namespace Galilego.Universe
 
             PlayerPosition = playPos;
             PlayerVelocity = playVel;
-            // Spawning in the ocean — swim immediately (for water checks: coordinate
+            // Spawning in the ocean � swim immediately (for water checks: coordinate
             // spawn into the ocean in biome tests).
             PlayerMode = WaterQuery.IsWaterAt(body, playLat, playLon)
                 ? PlayerMode.Swimming
@@ -992,7 +1116,7 @@ namespace Galilego.Universe
                     }
                 }
 
-                throw new InvalidOperationException("SimulationRunner: тело спавна \"" + SpawnBodyName + "\" не найдено в системе.");
+                throw new InvalidOperationException("SimulationRunner: ���� ������ \"" + SpawnBodyName + "\" �� ������� � �������.");
             }
 
             // The deepest body under the root (the first planet in the hierarchy).
@@ -1007,15 +1131,15 @@ namespace Galilego.Universe
 
         private void Update()
         {
-            // Запрос перемотки из IMGUI применяется ЗДЕСЬ, до шага физики: иначе шаг в
-            // этом же кадре затёр бы восстановленное. Работает и на паузе, и после
-            // разрушения корабля — откат должен поднимать экипаж.
+            // ������ ��������� �� IMGUI ����������� �����, �� ���� ������: ����� ��� �
+            // ���� �� ����� ���� �� ���������������. �������� � �� �����, � �����
+            // ���������� ������� � ����� ������ ��������� ������.
             if (timeControl != null)
             {
                 timeControl.ApplyPendingRewind();
             }
 
-            // step == null — initialisation failed (early error/disable): stay silent
+            // step == null � initialisation failed (early error/disable): stay silent
             // like a disabled runner rather than throwing NRE every frame.
             if (step == null || Paused || Ship == null || Regime == VesselRegime.Destroyed)
             {
@@ -1037,19 +1161,19 @@ namespace Galilego.Universe
 
             // Build mode: the craft is static (its position is held by build mode at
             // execution order -110, before this Update), so the ship step is skipped.
-            // World time flows (the planet moves and the site rides with it — craft
+            // World time flows (the planet moves and the site rides with it � craft
             // pinning accounts for that) and the player lives normally: walking, water,
             // render anchor.
             if (BuildMode)
             {
                 double buildFrameStart = TimeSeconds;
                 step.AdvanceTime(realDt);
-                // Время идёт 1:1: панель должна показывать измеренный фактор ×1.
+                // ����� ��� 1:1: ������ ������ ���������� ���������� ������ ?1.
                 step.MarkRealTimeOnly();
                 StepPlayer(buildFrameStart);
-                // Build mode does the pinning and hands the craft to physics — EXACTLY
+                // Build mode does the pinning and hands the craft to physics � EXACTLY
                 // HERE and at exactly this time: computed earlier (before AdvanceTime)
-                // the craft lags the pad by the surface velocity × dt (the planet spins fast).
+                // the craft lags the pad by the surface velocity ? dt (the planet spins fast).
                 BuildModeFrameHook?.Invoke(TimeSeconds);
                 step.DominantBody = SystemState.FindDominantBody(Ship.Position, TimeSeconds);
                 FloatingOrigin.Anchor = PlayerPosition;
@@ -1057,24 +1181,32 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Парковка: аппарат стоит на поверхности. Время может идти ускоренно, но
-            // физика не интегрируется вовсе — интегрировать нечего. Корабль, игрок и
-            // камера жёстко едут с вращением планеты, поэтому «ракета не двигается».
+            // ��������: ������� ����� �� �����������. ����� ����� ���� ���������, ��
+            // ������ �� ������������� ����� � ������������� ������. �������, ����� �
+            // ������ ����� ���� � ��������� �������, ������� ������� �� ����������.
             if (TryParkedWarpStep(realDt))
             {
                 return;
             }
 
+            // �������� ����������� (?1, ���, ������): ���� ������������ � ������������
+            // ������ �� ������� � ������� ����� ����� �� ��������, ��� ��� �������.
+            RestoreZoneAfterParked();
+            if (TryZoneReentryHold(realDt))
+            {
+                return;
+            }
+
             // The contact zone drives the ship itself (vertical slice): the physics step is
-            // skipped, but world time flows with the real dt — TimeSeconds advances and the
+            // skipped, but world time flows with the real dt � TimeSeconds advances and the
             // planet moves (VesselStep.AdvanceTime, no orbital logic). The player is stepped
             // too: they walk near the craft on the pad. Debris and tracing inside the zone
-            // are not updated — deferred to phase 7. Outside the zone — as usual.
+            // are not updated � deferred to phase 7. Outside the zone � as usual.
             if (ContactZoneHost.Active)
             {
                 double zoneFrameStart = TimeSeconds;
                 step.AdvanceTime(realDt);
-                // Контактная зона идёт по реальному времени (PhysX): фактор измеренно ×1.
+                // ���������� ���� ��� �� ��������� ������� (PhysX): ������ ��������� ?1.
                 step.MarkRealTimeOnly();
                 StepPlayer(zoneFrameStart);
                 step.DominantBody = SystemState.FindDominantBody(Ship.Position, TimeSeconds);
@@ -1104,7 +1236,7 @@ namespace Galilego.Universe
             StepPlayer(frameStartTime);
             step.DominantBody = SystemState.FindDominantBody(Ship.Position, TimeSeconds);
 
-            // Render anchor — the player position (floating origin): views read the fresh
+            // Render anchor � the player position (floating origin): views read the fresh
             // anchor in LateUpdate, so it is set at the very end of the physics step.
             FloatingOrigin.Anchor = PlayerPosition;
 
@@ -1139,7 +1271,7 @@ namespace Galilego.Universe
         /// Set the staged propulsion model (build mode on flight start): the legacy
         /// source is removed from physics, the staged one is enabled (thrust/flow of the
         /// active stage) and the section-depletion detector is registered in the propagator.
-        /// null — revert to the legacy path.
+        /// null � revert to the legacy path.
         /// </summary>
         public void SetVesselPropulsion(StagePropulsion propulsion)
         {
@@ -1209,25 +1341,25 @@ namespace Galilego.Universe
             if (relative > 1e-6d)
             {
                 Debug.LogWarning(string.Format(
-                    "[Prop] модель не сходится с массой корабля: ядра {0:F1} кг + вне сборки {1:F1} кг, Ship.Mass {2:F1} кг (отн. {3:E2})",
+                    "[Prop] ������ �� �������� � ������ �������: ���� {0:F1} �� + ��� ������ {1:F1} ��, Ship.Mass {2:F1} �� (���. {3:E2})",
                     propulsion.AttachedTotalKg(), propulsion.DetachedMassKg, Ship.Mass, relative));
             }
             else
             {
                 Debug.Log(string.Format(
-                    "[Prop] ступенчатая тяга: ступеней {0}, масса по модели {1:F0} кг, автозажигание {2}",
-                    propulsion.StageCount, expected, propulsion.AutoIgnite ? "вкл" : "выкл"));
+                    "[Prop] ����������� ����: �������� {0}, ����� �� ������ {1:F0} ��, ������������� {2}",
+                    propulsion.StageCount, expected, propulsion.AutoIgnite ? "���" : "����"));
             }
         }
 
         private Galilego.Flight.FlightThrustSource flightSource;
 
-        /// <summary>6-DOF flight model of the current craft (null — none).</summary>
+        /// <summary>6-DOF flight model of the current craft (null � none).</summary>
         public Galilego.Flight.VesselFlightModel Flight => step != null ? step.Flight : null;
 
         /// <summary>
         /// Attach the flight model (after SetVesselPropulsion): engine forces/torques at
-        /// their real points instead of centre thrust. null — detach (back to building).
+        /// their real points instead of centre thrust. null � detach (back to building).
         /// </summary>
         public void SetVesselFlight(Galilego.Flight.VesselFlightModel model)
         {
@@ -1272,8 +1404,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Static ambient pressure at a point, Pa: p = ρ0·g·H·exp(−h/H) (isothermal
-        /// atmosphere, consistent with the body profile's density and scale height). Vacuum — 0.
+        /// Static ambient pressure at a point, Pa: p = ?0�g�H�exp(?h/H) (isothermal
+        /// atmosphere, consistent with the body profile's density and scale height). Vacuum � 0.
         /// </summary>
         public double AmbientPressurePa(Galilego.Core.Vector3d position, double timeSeconds)
         {
@@ -1295,7 +1427,7 @@ namespace Galilego.Universe
             return atm.SeaLevelDensityKgPerCubicMeter * g * atm.ScaleHeightMeters * Math.Exp(-Math.Max(0d, h) / atm.ScaleHeightMeters);
         }
 
-        /// <summary>Remove the staged model (back to building) — returns to the legacy path.</summary>
+        /// <summary>Remove the staged model (back to building) � returns to the legacy path.</summary>
         public void ClearVesselPropulsion()
         {
             SetVesselPropulsion(null);
@@ -1332,7 +1464,7 @@ namespace Galilego.Universe
 
         /// <summary>
         /// Place the player on foot on the surface (build mode: move the spawn to the
-        /// launch pad). Velocity — the surface velocity.
+        /// launch pad). Velocity � the surface velocity.
         /// </summary>
         public void SetPlayerOnSurface(Vector3d position, Vector3d velocity)
         {
@@ -1399,16 +1531,16 @@ namespace Galilego.Universe
             public Vector3d LastShipVelocity;
             public double LastShipAccelerationTime;
 
-            /// <summary>Топливо и ступени на момент снимка; null — модель не используется.</summary>
+            /// <summary>������� � ������� �� ������ ������; null � ������ �� ������������.</summary>
             public StagePropulsionSnapshot? Propulsion;
 
-            /// <summary>Цель SAS на момент снимка (тумблеры двигателей/РСУ — намерение игрока, не откатываются).</summary>
+            /// <summary>���� SAS �� ������ ������ (�������� ����������/��� � ��������� ������, �� ������������).</summary>
             public Galilego.Flight.VesselFlightModel.AttitudeHoldState FlightHold;
 
-            /// <summary>Уровни тяги, углы подвеса и остаток РСУ на момент снимка.</summary>
+            /// <summary>������ ����, ���� ������� � ������� ��� �� ������ ������.</summary>
             public Galilego.Flight.VesselFlightModel.ActuatorState FlightActuators;
 
-            /// <summary>Активные обломки на момент снимка; null — пула нет.</summary>
+            /// <summary>�������� ������� �� ������ ������; null � ���� ���.</summary>
             public DebrisPoolSnapshot Debris;
 
             public CockpitSeat SeatedSeat;
@@ -1527,12 +1659,12 @@ namespace Galilego.Universe
             step.DominantBody = snapshot.DominantBody;
             step.ResetTimeAccumulator();
 
-            // Топливо, ступени, цель SAS, обломки. Сборка (cores) та же — снимок снят с неё.
+            // �������, �������, ���� SAS, �������. ������ (cores) �� �� � ������ ���� � ��.
             if (snapshot.Propulsion.HasValue && Propulsion != null)
             {
                 if (!Propulsion.RestoreState(snapshot.Propulsion.Value))
                 {
-                    Debug.LogError("[Rewind] снимок топлива не сходится с текущей сборкой — откат неполный");
+                    Debug.LogError("[Rewind] ������ ������� �� �������� � ������� ������� � ����� ��������");
                 }
             }
 
@@ -1541,7 +1673,7 @@ namespace Galilego.Universe
                 Flight.RestoreHoldState(snapshot.FlightHold);
                 if (!Flight.RestoreActuators(snapshot.FlightActuators))
                 {
-                    Debug.LogError("[Rewind] снимок исполнительных органов не сходится со сборкой — откат неполный");
+                    Debug.LogError("[Rewind] ������ �������������� ������� �� �������� �� ������� � ����� ��������");
                 }
             }
 
@@ -1638,10 +1770,10 @@ namespace Galilego.Universe
         /// <summary>
         /// Sit in the seat: the anchor (the seated EYES) and the seat "up" arrive in
         /// render space (the anchor transform) and are converted once here into the
-        /// double world via the site frame — the same basis the player supports use.
+        /// double world via the site frame � the same basis the player supports use.
         /// After that the pose rides the SHIP POINT (StepPlayer) rather than being
         /// recomputed from the render seat position (which jitters with the contact-zone
-        /// physics). The seat can be in any mode — seating outranks the mode step
+        /// physics). The seat can be in any mode � seating outranks the mode step
         /// (walking/falling freeze).
         /// </summary>
         public void SeatPlayerAtRender(Vector3 seatEyeRender, Vector3 seatUpRender, double eyeHeight)
@@ -1705,7 +1837,7 @@ namespace Galilego.Universe
         /// frame), so the conversion goes through the same frame and basis as the
         /// player supports: the "flat" FloatingOrigin bridge errs the more the farther
         /// the point is from the frame origin (at the seat that is ~40 m to the rocket's
-        /// bottom — tens of metres off). Outside the zone (n-body flight) — the flat bridge.
+        /// bottom � tens of metres off). Outside the zone (n-body flight) � the flat bridge.
         /// </summary>
         private void RenderToAstro(Vector3 renderPoint, out Vector3d astroPoint)
         {
@@ -1724,8 +1856,8 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// The site frame and its render basis — exactly as player walking builds them
-        /// (StepPlayerSurface + MeshSupportBase.SetFrame). false — no frame (no body/zone):
+        /// The site frame and its render basis � exactly as player walking builds them
+        /// (StepPlayerSurface + MeshSupportBase.SetFrame). false � no frame (no body/zone):
         /// the world is drawn with the "flat" bridge.
         /// </summary>
         private bool TryPlayerFrame(out SiteFrame frame, out Vector3 renderOrigin,
@@ -1759,7 +1891,7 @@ namespace Galilego.Universe
             return world;
         }
 
-        /// <summary>Local frame direction (north/zenith/east — metres) in render space.</summary>
+        /// <summary>Local frame direction (north/zenith/east � metres) in render space.</summary>
         private static Vector3 FrameRenderDirection(SiteFrame frame, Vector3d localDirection)
         {
             Vector3 origin = FloatingOrigin.ToRender(FrameToWorld(frame, Vector3d.Zero));
@@ -1768,7 +1900,7 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Enter the ship: EVA/OnSurface and distance to the ship ≤ EnterDistance.
+        /// Enter the ship: EVA/OnSurface and distance to the ship ? EnterDistance.
         /// No entry in noclip: the player is in free flight, and a forced seat would
         /// yank the camera out of the player's control.
         /// </summary>
@@ -1820,7 +1952,7 @@ namespace Galilego.Universe
 
         /// <summary>
         /// Per-frame player step. While the player is outside the ship, physical time is
-        /// capped (see StepFlying/StepLanded: warp factor ≤ 4), so a substep ≤ 0.5 s
+        /// capped (see StepFlying/StepLanded: warp factor ? 4), so a substep ? 0.5 s
         /// always fits a frame; long warp only while the player is in the ship.
         /// </summary>
         private void StepPlayer(double fromTime)
@@ -1849,17 +1981,17 @@ namespace Galilego.Universe
 
             // EVA offset at the START of the frame: the player is still at the previous
             // end point while Ship.Position is already at the end of this frame. Using
-            // PlayerPosition - Ship.Position for the ω×r term would add ω × (ship
-            // displacement over the frame) — with 5.7 km/s orbital speed and ~3°/s turn
+            // PlayerPosition - Ship.Position for the ??r term would add ? ? (ship
+            // displacement over the frame) � with 5.7 km/s orbital speed and ~3�/s turn
             // that is a spurious several m/s radial velocity, felt as "flying up".
             frameEvaOffset = PlayerPosition - frameShipStartPosition;
 
             double t = fromTime;
             bool jump = playerJumpQueued;
 
-            // Игрок привязан к кораблю (в кабине/в кресле): промежуточные подшаги не
-            // рендерятся, важен только конец кадра. При полном варпе кадр несёт десятки
-            // тысяч модельных секунд — сворачиваем цикл вместо 30 000 одинаковых итераций.
+            // ����� �������� � ������� (� ������/� ������): ������������� ������� ��
+            // ����������, ����� ������ ����� �����. ��� ������ ����� ���� ���� �������
+            // ����� ��������� ������ � ����������� ���� ������ 30 000 ���������� ��������.
             bool shipBound = PlayerSeated || PlayerMode == PlayerMode.InShip;
             if (shipBound && TimeSeconds - fromTime > PlayerMaxStepSeconds * 8d)
             {
@@ -1881,9 +2013,9 @@ namespace Galilego.Universe
                 {
                     evaRelativeValid = false;
                     // Seated: no gravity, no walking. We ride the OFFICIAL ship point
-                    // — but SMOOTHED: the contact zone writes it from physics and it can
+                    // � but SMOOTHED: the contact zone writes it from physics and it can
                     // jitter frame to frame. This is only the render anchor; the visible
-                    // camera does NOT depend on it — PlayerView places it at the drawn
+                    // camera does NOT depend on it � PlayerView places it at the drawn
                     // seat anchor, so lag/jitter here does not shake the picture.
                     // The point is predicted by ship velocity and only the residual is
                     // filtered, which damps physics jitter without a steady lag.
@@ -2017,7 +2149,7 @@ namespace Galilego.Universe
 
             // Same stateful relative velocity as normal EVA: deriving it again from
             // PlayerVelocity - frameVelocity would make hover lag the ship's acceleration
-            // (≈a/response) and drift radially in orbit, where gravity is perpendicular
+            // (?a/response) and drift radially in orbit, where gravity is perpendicular
             // to the motion. Hover is a velocity command relative to the vessel.
             if (!evaRelativeValid)
             {
@@ -2035,8 +2167,8 @@ namespace Galilego.Universe
 
         /// <summary>
         /// Noclip step for a substep: the player flies at a speed RELATIVE TO THE
-        /// LOCAL FRAME — like walking, swimming and jetpack flight. No gravity,
-        /// no terrain landing, no water and no decor collisions — that is the "cheat".
+        /// LOCAL FRAME � like walking, swimming and jetpack flight. No gravity,
+        /// no terrain landing, no water and no decor collisions � that is the "cheat".
         /// The frame velocity (orbital + body spin) is essential, or a player
         /// standing on the surface would stay put in the inertial frame.
         /// </summary>
@@ -2056,15 +2188,15 @@ namespace Galilego.Universe
         private const double VesselEvaFrameRadiusMeters = 100d;
 
         /// <summary>
-        /// EVA reference velocity: the vessel's own rigid-body velocity at the player —
-        /// linear plus ω×r. Stepping out must not change the player's velocity, and the
+        /// EVA reference velocity: the vessel's own rigid-body velocity at the player �
+        /// linear plus ??r. Stepping out must not change the player's velocity, and the
         /// craft (engine off) must stay beside them; the planet frame would brake the
         /// shared orbital velocity.
         ///
         /// The player step runs AFTER the whole ship step, so both Ship.Position and
         /// Ship.Velocity are already at the END of the frame. Using the end velocity for
         /// the whole frame made the player cover more distance than the craft by roughly
-        /// half the ship acceleration × frame² — a steady drift in a fixed direction that
+        /// half the ship acceleration ? frame? � a steady drift in a fixed direction that
         /// no amount of braking could remove (worse at low FPS). The frame's ACTUAL
         /// displacement and attitude delta are the ground truth: the average velocity
         /// below moves the player exactly by the craft's displacement over the frame.
@@ -2080,7 +2212,7 @@ namespace Galilego.Universe
                 && (PlayerPosition - Ship.Position).SqrMagnitude <= VesselEvaFrameRadiusMeters * VesselEvaFrameRadiusMeters
                 && TryZoneVesselVelocityAt(PlayerPosition, t, out Vector3d zoneVelocityAtPlayer))
             {
-                // Zone: exact PhysX rigid-body velocity at the player's point (linear + ω×r).
+                // Zone: exact PhysX rigid-body velocity at the player's point (linear + ??r).
                 return zoneVelocityAtPlayer;
             }
 
@@ -2112,7 +2244,7 @@ namespace Galilego.Universe
 
         /// <summary>
         /// Contact zone: EXACT rigid-body velocity (world, inertial) of the vessel at an astro point,
-        /// from PhysX (linear + ω×r). false — no zone.
+        /// from PhysX (linear + ??r). false � no zone.
         /// </summary>
         private bool TryZoneVesselVelocityAt(Vector3d astroPosition, double t, out Vector3d velocity)
         {
@@ -2138,7 +2270,7 @@ namespace Galilego.Universe
             return true;
         }
 
-        /// <summary>Rigid-body velocity of the vessel at an astro point (linear + ω×r).</summary>
+        /// <summary>Rigid-body velocity of the vessel at an astro point (linear + ??r).</summary>
         private Vector3d VesselVelocityAt(Vector3d position)
         {
             if (Ship == null)
@@ -2152,7 +2284,7 @@ namespace Galilego.Universe
 
         /// <summary>
         /// Local frame velocity at the player point: the body's orbital velocity plus
-        /// its own spin (the same as GetSurfaceState gives for the surface — walking
+        /// its own spin (the same as GetSurfaceState gives for the surface � walking
         /// velocity comes from there too).
         /// </summary>
         private Vector3d LocalFrameVelocity(double t)
@@ -2169,7 +2301,7 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Player velocity relative to the local frame — the "speedometer". The inertial
+        /// Player velocity relative to the local frame � the "speedometer". The inertial
         /// speed when running on the surface equals the planet's orbital speed (~30 km/s
         /// for Terra), so the readings use the difference.
         /// </summary>
@@ -2179,7 +2311,7 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Near the ground and slow — EVA flight has no collisions at all (only the planet
+        /// Near the ground and slow � EVA flight has no collisions at all (only the planet
         /// radius), so it must go through the surface controller instead.
         /// </summary>
         private bool ShouldUseSurfaceController(OrbitingBody body, double t)
@@ -2257,7 +2389,7 @@ namespace Galilego.Universe
         /// Render pose of the vessel root in FREE FLIGHT. There Ship.Position is the
         /// CENTER OF MASS, while the visual root's origin is the craft's bottom pivot:
         /// the root is shifted back along the attitude by Flight.Com, and the attitude
-        /// itself becomes the root rotation. false — the zone/build owns the root pose
+        /// itself becomes the root rotation. false � the zone/build owns the root pose
         /// (there the ship point is the bottom and the attitude is stale).
         /// </summary>
         public bool TryGetFlightVesselRootPose(out Vector3 position, out Quaternion rotation)
@@ -2283,7 +2415,7 @@ namespace Galilego.Universe
             return PlayerMode == PlayerMode.OnSurface && !NoclipActive && !PlayerSeated && !BuildMode;
         }
 
-        /// <summary>Contact zone (the vessel is PhysX bodies); null — the vessel is in free flight.</summary>
+        /// <summary>Contact zone (the vessel is PhysX bodies); null � the vessel is in free flight.</summary>
         private ContactZoneHost CarryZone()
         {
             if (!ContactZoneHost.Active)
@@ -2342,7 +2474,7 @@ namespace Galilego.Universe
             double weight = Math.Max(0d, -(double)Vector3.Dot(effective, up));
 
             // Free flight: the weight is a DIFFERENCE of two estimates (gravity minus the filtered
-            // vessel acceleration), so in orbit it is never exactly zero. A few cm/s² were enough
+            // vessel acceleration), so in orbit it is never exactly zero. A few cm/s? were enough
             // to slowly "land" a player drifting out of the hatch onto the hull below.
             if (host == null && weight < CabinWeightlessDeadbandMps2)
             {
@@ -2380,7 +2512,7 @@ namespace Galilego.Universe
                 Transform zone = host.Proxy.transform;
                 Vector3 zonePoint = zone.InverseTransformPoint(render);
                 // STRICT: the platform's velocity is the PhysX rigid-body velocity of the player's point
-                // (linear + ω×r), not a finite difference of the (smoothed, fixed-step) visual pose.
+                // (linear + ??r), not a finite difference of the (smoothed, fixed-step) visual pose.
                 Vector3 platformVelocityZone = platformCarry.PlatformVelocityZone;
                 if (host.Proxy.TryGetPointVelocity(platformCarry.Platform, render, out Vector3 pointVelocity))
                 {
@@ -2469,7 +2601,7 @@ namespace Galilego.Universe
             }
 
             // Which part carries the player now: the floor under them (a part of the vessel),
-            // or — in the air — the part whose bounds they are still inside. Anything else
+            // or � in the air � the part whose bounds they are still inside. Anything else
             // (terrain, a building, open space) ends the cabin mode.
             Vector3 render = platformCarry.RenderPoint();
             Transform next = null;
@@ -2497,7 +2629,7 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Surface mode, end of a substep: the player stands on a vessel part — from now on they
+        /// Surface mode, end of a substep: the player stands on a vessel part � from now on they
         /// live in its frame. The point is taken where the controller believes the player is, in
         /// the very space the colliders live in.
         /// </summary>
@@ -2587,7 +2719,7 @@ namespace Galilego.Universe
                 return;
             }
 
-            // The position is already at t+dt — check contact and land at t+dt, not t.
+            // The position is already at t+dt � check contact and land at t+dt, not t.
             double tEnd = t + dt;
             body.EvaluateWorldState(tEnd, out Vector3d bodyPosEnd, out _);
             body.SurfaceLatLonAt(PlayerPosition, tEnd, out double latDeg, out double lonDeg);
@@ -2738,7 +2870,7 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>The EVA vertical in render space (the camera's up in free-flight EVA). false — not applicable.</summary>
+        /// <summary>The EVA vertical in render space (the camera's up in free-flight EVA). false � not applicable.</summary>
         public bool TryGetEvaUpRender(out Vector3 up)
         {
             if (!evaUpValid || ContactZoneHost.Active || PlayerMode != PlayerMode.EVA)
@@ -3053,8 +3185,8 @@ namespace Galilego.Universe
         /// <summary>
         /// Player touching the surface: over water a splash (EnterWater), over land a
         /// projection onto the surface, the normal velocity is absorbed, the tangential
-        /// one is kept. Impact severity is logged (injuries/death — a later stage).
-        /// No spawn epsilon is needed — the player lands exactly on the surface.
+        /// one is kept. Impact severity is logged (injuries/death � a later stage).
+        /// No spawn epsilon is needed � the player lands exactly on the surface.
         /// </summary>
         private void LandPlayer(OrbitingBody body, double t)
         {
@@ -3079,7 +3211,7 @@ namespace Galilego.Universe
             playerAirborne = false;
             if (normalSpeed < -10d)
             {
-                Debug.Log("Жёсткое приземление игрока: " + (-normalSpeed).ToString("F1") + " м/с (травмы — будущий этап)");
+                Debug.Log("Ƹ����� ����������� ������: " + (-normalSpeed).ToString("F1") + " �/� (������ � ������� ����)");
             }
         }
 
@@ -3089,7 +3221,7 @@ namespace Galilego.Universe
         /// <summary>
         /// Free ascend/descend speed with no input near the surface (m/s): towards
         /// hovering at SwimSurfaceHoldMeters below the surface. Deeper than
-        /// SwimNeutralDepthMeters — neutral buoyancy (hovering): dive, release the keys
+        /// SwimNeutralDepthMeters � neutral buoyancy (hovering): dive, release the keys
         /// and you float looking up, not pushed out. Ascend/descend there is input only
         /// (Space/Ctrl or look+W/S).
         /// </summary>
@@ -3103,7 +3235,7 @@ namespace Galilego.Universe
 
         /// <summary>
         /// Foot depth (m) beyond which, with no input, it is neutral (0): the swimmer's
-        /// eyes (~0.5 m above the feet — the swimmer lies flat, see SwimEyeHeightMeters)
+        /// eyes (~0.5 m above the feet � the swimmer lies flat, see SwimEyeHeightMeters)
         /// are already underwater, so the player floats looking at the surface.
         /// Must be &gt; SwimEyeHeightMeters.
         /// </summary>
@@ -3120,7 +3252,7 @@ namespace Galilego.Universe
 
         /// <summary>
         /// Water entry: the position is clamped between the surface and seabed+clearance,
-        /// the velocity is damped as a splash (tangential ×0.3, incoming normal — at most
+        /// the velocity is damped as a splash (tangential ?0.3, incoming normal � at most
         /// 3 m/s down). The same idea will underlie future soft ship splashdown
         /// (see WaterQuery.GetSplashdownInfo).
         /// </summary>
@@ -3154,13 +3286,13 @@ namespace Galilego.Universe
             PlayerHoverActive = false;
             if (normalSpeed < -10d)
             {
-                Debug.Log("Всплеск: вход в воду на " + (-normalSpeed).ToString("F1") + " м/с погашен водой");
+                Debug.Log("�������: ���� � ���� �� " + (-normalSpeed).ToString("F1") + " �/� ������� �����");
             }
         }
 
         /// <summary>
         /// Swimming step for a substep: velocity = planet co-rotation + intent
-        /// (water holds you — no ballistics); with no input near the surface it drifts
+        /// (water holds you � no ballistics); with no input near the surface it drifts
         /// to SwimSurfaceHoldMeters, and deeper than SwimNeutralDepthMeters it is neutral
         /// hover (not pushed out, can look up). Bumps against the raw seabed, clamped at
         /// the surface; jumping out of deep water goes to EVA (will fall back), reaching
@@ -3210,7 +3342,7 @@ namespace Galilego.Universe
             if (swimVel.SqrMagnitude < 1e-12d)
             {
                 // Shallow shore water (depth does not reach neutral + seabed
-                // clearance): nowhere to hover — neutral everywhere.
+                // clearance): nowhere to hover � neutral everywhere.
                 double rawHere = WaterQuery.RawSeabedHeightAt(body, latDeg, lonDeg);
                 double waterDepthHere = double.IsNaN(rawHere) ? double.PositiveInfinity : sea - rawHere;
                 if (waterDepthHere < SwimNeutralDepthMeters + SwimSeabedClearanceMeters + 0.2d)
@@ -3230,9 +3362,9 @@ namespace Galilego.Universe
             PlayerVelocity = surfaceVel + swimVel;
 
             // Orbit curvature: linear advection at co-rotation speed (~5 km/s) gives a
-            // radial error v²dt²/2R, so track depth explicitly: tangential by advection,
-            // radial by intent (submersion = seaRadius − dist). Walking does not need
-            // this — it re-projects onto the surface, while swimming has no projection
+            // radial error v?dt?/2R, so track depth explicitly: tangential by advection,
+            // radial by intent (submersion = seaRadius ? dist). Walking does not need
+            // this � it re-projects onto the surface, while swimming has no projection
             // (depth is state).
             double intendedSubmersion = submersion - Vector3d.Dot(swimVel, up) * dt;
             double tAfter = t + dt;
@@ -3244,7 +3376,7 @@ namespace Galilego.Universe
             PlayerPosition = bodyPosAfter + (upAfter * (seaRadius - intendedSubmersion));
 
             // Clamps AT THE END of the substep (same principle as walking: project at
-            // toTime, otherwise the body's orbital velocity gives a bodyVel·dt error).
+            // toTime, otherwise the body's orbital velocity gives a bodyVel�dt error).
             double tEnd = t + dt;
             body.EvaluateWorldState(tEnd, out Vector3d bodyPosEnd, out _);
             body.SurfaceLatLonAt(PlayerPosition, tEnd, out double latEnd, out double lonEnd);
@@ -3352,8 +3484,8 @@ namespace Galilego.Universe
             playerController.HoverVelocity = hoverLocal;
             playerController.Step(playerSupport, dt, playerAirborne ? airLocal : walkLocal, jetpackLocal);
 
-            // To world — with the frame AT THE END of the substep (frame.At(t+dt)): the
-            // frame at time t lags the body's orbital motion by v·dt, and projecting onto
+            // To world � with the frame AT THE END of the substep (frame.At(t+dt)): the
+            // frame at time t lags the body's orbital motion by v�dt, and projecting onto
             // the surface at t+dt would bake that lag into the position every substep.
             double tEnd = t + dt;
             frame.At(tEnd).ToWorld(playerController.Position, playerController.Velocity,
@@ -3362,7 +3494,7 @@ namespace Galilego.Universe
             PlayerVelocity = worldVelocity;
             playerAirborne = playerController.Airborne;
 
-            // Touched support — hover turns off (the mode is air-only).
+            // Touched support � hover turns off (the mode is air-only).
             if (!playerAirborne && PlayerHoverActive)
             {
                 PlayerHoverActive = false;
@@ -3382,7 +3514,7 @@ namespace Galilego.Universe
                 return;
             }
 
-            // Safety: body below the terrain (sank in) — put it back on the surface,
+            // Safety: body below the terrain (sank in) � put it back on the surface,
             // otherwise support queries can no longer find it (the surface stayed above).
             // A possibly "inside a wall" body gets itself out: the sweep blocks only
             // motion INTO the surface, not contact (see SiteBoxSupport.Sweep).
@@ -3397,7 +3529,7 @@ namespace Galilego.Universe
                 playerController.SetGroundSource(TerrainSupport.SourceId);
             }
 
-            // Projection onto the terrain — only when the player stands on terrain (not on
+            // Projection onto the terrain � only when the player stands on terrain (not on
             // a structure): roofs hold the controller's local height and projection would pull it down.
             if (!playerAirborne && playerController.GroundSourceId == TerrainSupport.SourceId)
             {
