@@ -128,6 +128,21 @@ namespace Galilego.Universe
             lookOverrideUntil = Time.unscaledTime + 2f;
         }
 
+        /// <summary>
+        /// Повернуть взгляд вместе с поверхностью: при ускорении времени на стоящем
+        /// аппарате планета вращается под игроком, и «смотреть на ракету» должно
+        /// оставаться взглядом на ракету, а не заставлять её облетать камеру.
+        /// </summary>
+        public void RotateLook(Quaternion worldRotation)
+        {
+            lookDirection = worldRotation * lookDirection;
+            lastFlatDirection = Vector3.ProjectOnPlane(lookDirection, transform.up);
+            hasLook = true;
+            lastUp = transform.up;
+            lookOverrideDirection = lookDirection;
+            lookOverrideUntil = Time.unscaledTime + 2f;
+        }
+
         private void ApplyFocusBlend(Camera cam)
         {
             // The target is a destroyed Unity object (ship removed): reset.

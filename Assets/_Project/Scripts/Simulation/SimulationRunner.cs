@@ -524,8 +524,168 @@ namespace Galilego.Universe
         /// <summary>Horizontal velocity response in air (1/s), the same with and without the jetpack.</summary>
         private const double PlayerAirResponse = 6d;
 
-        /// <summary>Maximum player integration substep (s).</summary>
+        /// <summary>Максимальный подшаг игрока (s).</summary>
         private const double PlayerMaxStepSeconds = 0.5d;
+
+        /// <summary>
+        /// Порог «аппарат стоит»: скорость относительно поверхности, м/с. Ниже него
+        /// ускорение времени разрешено на поверхности (корабль при этом не интегрируется,
+        /// а жёстко едет с вращением планеты).
+        /// </summary>
+        private const double ParkedMaxRelativeSpeed = 0.1d;
+
+        /// <summary>Камера игрока (кэш для поворота взгляда при ускорении на поверхности).</summary>
+        private FirstPersonCamera lookCamera;
+
+        /// <summary>Контактная зона (кэш для проверки «стоит на поверхности»).</summary>
+        private ContactZoneHost zoneHostCache;
+
+        /// <summary>
+        /// true — этот кадр прожит «парковкой»: аппарат стоит, время ускорено, точку
+        /// держит SimulationRunner жёстким поворотом вместе с планетой. Контактная зона
+        /// в такие кадры не переписывает корабль из PhysX (иначе вернёт позу прошлого кадра).
+        /// </summary>
+        public bool ParkedWarpFrame { get; private set; }
+
+        /// <summary>
+        /// Ускорение времени на СТОЯЩЕМ аппарате: мир идёт вперёд, а корабль остаётся на
+        /// той же точке вращающейся поверхности. Условия входа:
+        ///  • аппарат на поверхности (контактная зона или режим Landed);
+        ///  • относительная скорость к поверхности &lt; 0.1 м/с;
+        ///  • газ закрыт — касание тяги снимает ускорение в ×1 (как долгий варп);
+        ///  • игрок не в свободном полёте/EVA и не в прыжке;
+        ///  • тело вращается.
+        /// Выход — тот же кадр: шаг физики продолжается с обычным капом, но при warp ×1.
+        /// </summary>
+        private bool TryParkedWarpStep(float realDt)
+        {
+            if (Warp == null || step == null || Ship == null)
+            {
+                return false;
+            }
+
+            if (Warp.Factor <= 1d + 1e-9d)
+            {
+                return false;
+            }
+
+            if (RawThrottle > 1e-6d)
+            {
+                // Игрок дал газ: ускорение времени снимается, дальше — нормальная физика.
+                Warp.ResetToPhysicalOne();
+                return false;
+            }
+
+            if (!ContactZoneHost.Active && Regime != VesselRegime.Landed)
+            {
+                return false;
+            }
+
+            if (Ship.PositionIsCom)
+            {
+                return false;
+            }
+
+            if (PlayerMode == PlayerMode.EVA || PlayerMode == PlayerMode.Swimming)
+            {
+                return false;
+            }
+
+            if (PlayerMode == PlayerMode.OnSurface && playerAirborne)
+            {
+                return false;
+            }
+
+            OrbitingBody body = step.DominantBody;
+            if (body == null || !(body.RotationPeriodSeconds > 0d))
+            {
+                return false;
+            }
+
+            // Стоит ли аппарат: скорость относительно поверхности (с учётом вращения).
+            // В контактной зоне велосити прокси приходит с задержкой кадра и после паузы
+            // может показывать «свободное падение», поэтому там решает контакт гейта:
+            // высота над поверхностью, а скорость на первом кадре парковки ставится точной.
+            body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out Vector3d bodyVel);
+            Vector3d offset = Ship.Position - bodyPos;
+            Vector3d omega = body.SpinAxis * body.SpinAngularSpeed;
+            Vector3d surfaceVelocity = bodyVel + Vector3d.Cross(omega, offset);
+            bool standing = (Ship.Velocity - surfaceVelocity).Magnitude <= ParkedMaxRelativeSpeed;
+            if (!standing && ContactZoneHost.Active)
+            {
+                if (zoneHostCache == null)
+                {
+                    zoneHostCache = FindAnyObjectByType<ContactZoneHost>();
+                }
+
+                standing = zoneHostCache != null && zoneHostCache.LastAltitudeMeters < 1d;
+            }
+
+            if (!standing)
+            {
+                return false;
+            }
+
+            double dtSim = realDt * Warp.Factor;
+            double bakedEnd = SystemState.BakedEndSeconds();
+            if (double.IsFinite(bakedEnd) && TimeSeconds + dtSim > bakedEnd)
+            {
+                dtSim = Math.Max(0d, bakedEnd - TimeSeconds);
+            }
+
+            if (!(dtSim > 0d))
+            {
+                return false;
+            }
+
+            double tNew = TimeSeconds + dtSim;
+
+            // Жёсткий поворот всей поверхности: смещения от центра тела крутятся вокруг
+            // оси вращения, само тело едет по своей орбите.
+            QuaternionD spin = QuaternionD.FromAxisAngle(body.SpinAxis, body.SpinAngularSpeed * dtSim);
+            body.EvaluateWorldState(tNew, out Vector3d bodyPosNew, out Vector3d bodyVelNew);
+
+            Vector3d shipOffsetNew = spin.Rotate(offset);
+            Ship.Position = bodyPosNew + shipOffsetNew;
+            Ship.Velocity = bodyVelNew + Vector3d.Cross(omega, shipOffsetNew);
+            Ship.InvalidateLocalState();
+
+            // Игрок и все его якоря — тем же поворотом: смещения относительно корабля
+            // сохраняются бит-в-бит, и «камера смотрит туда же» относительно грунта.
+            PlayerPosition = bodyPosNew + spin.Rotate(PlayerPosition - bodyPos);
+            PlayerVelocity = bodyVelNew + Vector3d.Cross(omega, PlayerPosition - bodyPosNew);
+            PlayerSeatedPosition = bodyPosNew + spin.Rotate(PlayerSeatedPosition - bodyPos);
+            seatedShipAnchor = bodyPosNew + spin.Rotate(seatedShipAnchor - bodyPos);
+            smoothedShipPosition = bodyPosNew + spin.Rotate(smoothedShipPosition - bodyPos);
+
+            // Вводы, которые копились бы до шага игрока: в этом кадре шага нет.
+            PlayerIntent.Jump = false;
+            PlayerIntent.JetpackToggle = false;
+            PlayerIntent.HoverToggle = false;
+            playerJumpQueued = false;
+            jetpackToggleQueued = false;
+            hoverToggleQueued = false;
+
+            step.AdvanceTime(dtSim);
+            step.MarkEffectiveFactor(Warp.Factor);
+            step.DominantBody = SystemState.FindDominantBody(Ship.Position, TimeSeconds);
+            ParkedWarpFrame = true;
+
+            // Взгляд поворачивается вместе с грунтом, иначе планета «крутится под игроком».
+            if (lookCamera == null)
+            {
+                lookCamera = FindAnyObjectByType<FirstPersonCamera>();
+            }
+
+            if (lookCamera != null)
+            {
+                lookCamera.RotateLook(AstroFrame.ToSimulation(spin));
+            }
+
+            FloatingOrigin.Anchor = PlayerPosition;
+            LogSurfacePosition();
+            return true;
+        }
 
         /// <summary>
         /// Below this altitude (m) and slower than the speed below, free EVA flight is handed
@@ -873,6 +1033,7 @@ namespace Galilego.Universe
             // end-of-frame linear velocity.
             frameShipStartPosition = Ship.Position;
             frameShipStartTime = TimeSeconds;
+            ParkedWarpFrame = false;
 
             // Build mode: the craft is static (its position is held by build mode at
             // execution order -110, before this Update), so the ship step is skipped.
@@ -893,6 +1054,14 @@ namespace Galilego.Universe
                 step.DominantBody = SystemState.FindDominantBody(Ship.Position, TimeSeconds);
                 FloatingOrigin.Anchor = PlayerPosition;
                 LogSurfacePosition();
+                return;
+            }
+
+            // Парковка: аппарат стоит на поверхности. Время может идти ускоренно, но
+            // физика не интегрируется вовсе — интегрировать нечего. Корабль, игрок и
+            // камера жёстко едут с вращением планеты, поэтому «ракета не двигается».
+            if (TryParkedWarpStep(realDt))
+            {
                 return;
             }
 

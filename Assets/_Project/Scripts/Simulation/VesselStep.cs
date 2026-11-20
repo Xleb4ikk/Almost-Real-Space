@@ -103,6 +103,15 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Кадр прожит в режиме «парковка» (аппарат стоит на поверхности, время
+        /// ускоряется без интегрирования): панель показывает фактический фактор.
+        /// </summary>
+        public void MarkEffectiveFactor(double factor)
+        {
+            LastEffectiveFactor = factor;
+        }
+
+        /// <summary>
         /// Why the policy picked <see cref="LastSelectedIntegrator"/> (D3 observability):
         /// DECISION_TABLE.md rows R1/R2/R3, otherwise Default. Does not affect the choice.
         /// </summary>

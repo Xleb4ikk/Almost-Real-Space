@@ -32,7 +32,7 @@ public static class TimeTests
 
     private static string F(double v)
     {
-        return v.ToString("R");
+        return v.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static OrbitingBody FindBody(string name)
@@ -309,6 +309,171 @@ public static class TimeTests
             + " x6@60-vs-x1@60=" + F(warp60) + " m"
             + " x6@30-vs-x6@60=" + F(warpVsWarp) + " m"
             + (pass ? " => PASS" : " => FAIL");
+    }
+
+    // ─── Парковка: ускорение на стоящем аппарате ────────────────────────────
+
+    private static string SurfaceFingerprint(string tag)
+    {
+        OrbitingBody body = Step.DominantBody ?? R.DominantBody;
+        body.EvaluateWorldState(R.TimeSeconds, out Vector3d bp, out Vector3d bv);
+        Vector3d offset = R.Ship.Position - bp;
+        double r = offset.Magnitude;
+        Vector3d dir = r > 0d ? offset / r : new Vector3d(1d, 0d, 0d);
+        Vector3d omega = body.SpinAxis * body.SpinAngularSpeed;
+        double vRel = (R.Ship.Velocity - (bv + Vector3d.Cross(omega, offset))).Magnitude;
+
+        body.SurfaceLatLonAt(R.Ship.Position, R.TimeSeconds, out double lat, out double lon);
+        R.SystemState.Root.EvaluateWorldState(R.TimeSeconds, out Vector3d starPos, out _);
+        Vector3d sunDir = (starPos - R.Ship.Position).Normalized;
+
+        return tag + " t=" + F(R.TimeSeconds)
+            + " dir=(" + F(dir.X) + "," + F(dir.Y) + "," + F(dir.Z) + ")"
+            + " r=" + F(r)
+            + " lat=" + F(lat) + " lon=" + F(lon) + " vRel=" + F(vRel)
+            + " sun=(" + F(sunDir.X) + "," + F(sunDir.Y) + "," + F(sunDir.Z) + ")"
+            + " zone=" + Galilego.Simulation.ContactZone.ContactZoneHost.Active
+            + " regime=" + R.Regime
+            + " eff=" + F(Step.LastEffectiveFactor);
+    }
+
+    private const string ParkedKey = "TimeTests.ParkedStart";
+
+    /// <summary>Проверка самой математики удержания точки (без зоны/PhysX).</summary>
+    public static string RotationCheck()
+    {
+        if (!Bind())
+        {
+            return "no runner/step";
+        }
+
+        OrbitingBody body = Step.DominantBody ?? R.DominantBody;
+        double dt = 12345.678d;
+        double t0 = R.TimeSeconds;
+        double t1 = t0 + dt;
+
+        body.EvaluateWorldState(t0, out Vector3d bp0, out _);
+        body.EvaluateWorldState(t1, out Vector3d bp1, out _);
+        Vector3d offset = R.Ship.Position - bp0;
+
+        QuaternionD spin = QuaternionD.FromAxisAngle(body.SpinAxis, body.SpinAngularSpeed * dt);
+        Vector3d viaRotation = spin.Rotate(offset);
+
+        body.SurfaceLatLonAt(R.Ship.Position, t0, out double lat, out double lon);
+        double altitude = offset.Magnitude - body.Radius;
+        body.GetSurfaceState(lat, lon, altitude, t1, out Vector3d viaSurface, out _);
+        Vector3d viaSurfaceOffset = viaSurface - bp1;
+
+        return "RotationCheck axis=" + body.SpinAxis + " omega=" + F(body.SpinAngularSpeed)
+            + " dt=" + F(dt) + " angleDeg=" + F(body.SpinAngularSpeed * dt * 180d / Math.PI)
+            + " | viaRotation-viaSurface=" + F((viaRotation - viaSurfaceOffset).Magnitude) + " m"
+            + " lat=" + F(lat) + " lon=" + F(lon) + " alt=" + F(altitude);
+    }
+
+    /// <summary>Включить полный варп на стоящем аппарате и запомнить точку.</summary>
+    public static string ParkedStart()
+    {
+        if (!Bind())
+        {
+            return "no runner/step";
+        }
+
+        R.Paused = false;
+        R.RawThrottle = 0d;
+        Step.RawThrottle = 0d;
+        R.Warp.SetFullWarp(1000d);
+        PlayerPrefs.SetString(ParkedKey, SurfaceRecord());
+        PlayerPrefs.Save();
+        return SurfaceFingerprint("start");
+    }
+
+    /// <summary>
+    /// Числовой эталон для сравнения: t | dir | r | lat | lon | высота солнца над
+    /// местным горизонтом (sin). Разделитель '|', InvariantCulture — без разбора строк.
+    /// </summary>
+    private static string SurfaceRecord()
+    {
+        OrbitingBody body = Step.DominantBody ?? R.DominantBody;
+        body.EvaluateWorldState(R.TimeSeconds, out Vector3d bp, out Vector3d bv);
+        Vector3d offset = R.Ship.Position - bp;
+        double r = offset.Magnitude;
+        Vector3d dir = r > 0d ? offset / r : new Vector3d(1d, 0d, 0d);
+        body.SurfaceLatLonAt(R.Ship.Position, R.TimeSeconds, out double lat, out double lon);
+        R.SystemState.Root.EvaluateWorldState(R.TimeSeconds, out Vector3d starPos, out _);
+        double sunUp = Vector3d.Dot((starPos - R.Ship.Position).Normalized, dir);
+
+        return F(R.TimeSeconds) + "|" + F(dir.X) + "|" + F(dir.Y) + "|" + F(dir.Z) + "|" + F(r)
+            + "|" + F(lat) + "|" + F(lon) + "|" + F(sunUp);
+    }
+
+    /// <summary>Через секунду: сдвинулся ли аппарат по поверхности и повернулось ли солнце.</summary>
+    public static string ParkedCheck()
+    {
+        if (!Bind())
+        {
+            return "no runner/step";
+        }
+
+        string record = PlayerPrefs.GetString(ParkedKey, string.Empty);
+        if (record.Length == 0)
+        {
+            return "ParkedCheck без ParkedStart";
+        }
+
+        string[] p = record.Split('|');
+        double t0 = double.Parse(p[0], System.Globalization.CultureInfo.InvariantCulture);
+        var dir0 = new Vector3d(
+            double.Parse(p[1], System.Globalization.CultureInfo.InvariantCulture),
+            double.Parse(p[2], System.Globalization.CultureInfo.InvariantCulture),
+            double.Parse(p[3], System.Globalization.CultureInfo.InvariantCulture));
+        double r0 = double.Parse(p[4], System.Globalization.CultureInfo.InvariantCulture);
+        double lat0 = double.Parse(p[5], System.Globalization.CultureInfo.InvariantCulture);
+        double lon0 = double.Parse(p[6], System.Globalization.CultureInfo.InvariantCulture);
+        double sunUp0 = double.Parse(p[7], System.Globalization.CultureInfo.InvariantCulture);
+
+        OrbitingBody body = Step.DominantBody ?? R.DominantBody;
+        body.EvaluateWorldState(R.TimeSeconds, out Vector3d bp, out _);
+        Vector3d offset = R.Ship.Position - bp;
+        double r = offset.Magnitude;
+        Vector3d dir = r > 0d ? offset / r : new Vector3d(1d, 0d, 0d);
+        body.SurfaceLatLonAt(R.Ship.Position, R.TimeSeconds, out double lat, out double lon);
+        R.SystemState.Root.EvaluateWorldState(R.TimeSeconds, out Vector3d starPos, out _);
+        double sunUp = Vector3d.Dot((starPos - R.Ship.Position).Normalized, dir);
+
+        // Широта/долгота — единственная честная мера «аппарат остался на месте»:
+        // инерциальное направление обязано крутиться вместе с планетой.
+        double lonDeltaDeg = Math.Abs(lon - lon0);
+        lonDeltaDeg = Math.Min(lonDeltaDeg, 360d - lonDeltaDeg);
+        double surfaceMeters = lonDeltaDeg * Math.PI / 180d * body.Radius * Math.Cos(lat0 * Math.PI / 180d);
+
+        return "ParkedCheck dtModel=" + F(R.TimeSeconds - t0)
+            + " dLat=" + F(lat - lat0) + " deg"
+            + " dLon=" + F(lonDeltaDeg) + " deg (" + F(surfaceMeters) + " m)"
+            + " dR=" + F(r - r0) + " m"
+            + " sunElevChange=" + F((sunUp - sunUp0) * 180d / Math.PI) + " deg"
+            + " | " + SurfaceFingerprint("now");
+    }
+
+    private static Vector3d ParseVec(string text)
+    {
+        string[] p = text.Trim('(', ')').Split(',');
+        return new Vector3d(
+            double.Parse(p[0], System.Globalization.CultureInfo.InvariantCulture),
+            double.Parse(p[1], System.Globalization.CultureInfo.InvariantCulture),
+            double.Parse(p[2], System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>Выключить ускорение: аппарат обязан остаться на месте.</summary>
+    public static string ParkedOff()
+    {
+        if (!Bind())
+        {
+            return "no runner/step";
+        }
+
+        R.Warp.SetPhysicalWarp(1);
+        R.Warp.ResetTicks(R.TimeSeconds);
+        return "warp off; " + SurfaceFingerprint("off");
     }
 
     // ─── Запуск/подготовка ──────────────────────────────────────────────────

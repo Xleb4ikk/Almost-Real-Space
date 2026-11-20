@@ -30,6 +30,13 @@ namespace Galilego.Simulation.ContactZone
 
         public static bool Active { get; private set; }
 
+        /// <summary>
+        /// Высота корабля над поверхностью по последнему проходу гейта, м. Нужна ускорению
+        /// времени на стоящем аппарате: в зоне «стоит» решает контакт, а не скорость,
+        /// которую PhysX-прокси пишет с задержкой кадра.
+        /// </summary>
+        public double LastAltitudeMeters { get { return gate.LastAltitudeMeters; } }
+
         private readonly ContactZoneGate gate = new ContactZoneGate();
         private SiteFrame frame;
 
@@ -103,6 +110,14 @@ namespace Galilego.Simulation.ContactZone
         private void LateUpdate()
         {
             if (Runner == null || Runner.Ship == null || Runner.DominantBody == null)
+            {
+                return;
+            }
+
+            // Ускорение на стоящем аппарате: точку в этом кадре держит SimulationRunner
+            // (жёсткий поворот вместе с планетой). Если зона перепишет корабль из PhysX,
+            // она вернёт его в позу прошлого кадра — и планета «уедет» под стоящей ракетой.
+            if (Runner.ParkedWarpFrame)
             {
                 return;
             }
