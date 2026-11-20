@@ -37,6 +37,7 @@ Shader "Galilego/StarDisc"
 
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
+            #include "GalilegoStarOcclusion.hlsl"
 
             float4 _StarColor;
             float _Brightness;
@@ -61,11 +62,7 @@ Shader "Galilego/StarDisc"
             float _DiscOverscan;
             float _Seed;
 
-            // Set by SunBillboard/StarRenderer: the observer's own craft must not
-            // swallow the star, but the world (planet, terrain, buildings) must.
-            float _SunSelfOccluder;
-            float _SunFarLimit;
-
+            // Occlusion (own craft vs. the world) lives in the shared include.
             struct Attributes
             {
                 float3 positionOS : POSITION;
@@ -171,14 +168,11 @@ Shader "Galilego/StarDisc"
                     discard;
                 }
 
-                float rawDepth = LoadCameraDepth(uint2(input.positionCS.xy));
-                if (!IsSky(rawDepth))
+                // Occlusion by the scene depth, with a craft-sized hole around the
+                // eye (see GalilegoStarOcclusion.hlsl).
+                if (StarPixelOccluded(uint2(input.positionCS.xy)))
                 {
-                    float eyeDepth = LinearEyeDepth(rawDepth, _ZBufferParams);
-                    if (eyeDepth > max(_SunSelfOccluder, 0.05) && eyeDepth < _SunFarLimit)
-                    {
-                        discard;
-                    }
+                    discard;
                 }
 
                 float mu = sqrt(saturate(1.0 - rn * rn));

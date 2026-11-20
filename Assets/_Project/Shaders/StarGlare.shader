@@ -31,6 +31,7 @@ Shader "Galilego/StarGlare"
 
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
+            #include "GalilegoStarOcclusion.hlsl"
 
             float4 _GlareColor;
             float _GlareAmplitude;
@@ -68,6 +69,14 @@ Shader "Galilego/StarGlare"
                 float2 p = input.positionOS.xy * 2.0;
                 float r = length(p);
                 if (r >= 1.0)
+                {
+                    discard;
+                }
+
+                // The halo is scene radiance, not a lens artefact: an opaque
+                // hull in front of the star hides it, glare included. Without
+                // this the additive quad painted a full halo through the ship.
+                if (StarPixelOccluded(uint2(input.positionCS.xy)))
                 {
                     discard;
                 }

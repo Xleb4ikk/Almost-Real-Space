@@ -30,6 +30,7 @@ Shader "Galilego/StarCorona"
 
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
+            #include "GalilegoStarOcclusion.hlsl"
 
             float4 _CoronaColor;
             float _CoronaIc;
@@ -104,6 +105,13 @@ Shader "Galilego/StarCorona"
                 float extent = max(_CoronaExtent, 1.01);
                 float rho = r * extent;
                 if (rho < 1.0 || rho > extent)
+                {
+                    discard;
+                }
+
+                // Same contract as the disc and the glare: the corona is hidden
+                // by whatever opaque surface hides the star.
+                if (StarPixelOccluded(uint2(input.positionCS.xy)))
                 {
                     discard;
                 }

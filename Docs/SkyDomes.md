@@ -81,6 +81,12 @@ precedent to copy:
   depth test) and fixed it.
 * `ac738a4` — the same disc's occlusion, moved from `ZTest LEqual` into the
   fragment shader.
+* the glare and the corona had **no** occlusion at all (`ZTest Always`, no depth
+  read): the disc was correctly hidden behind a hull while an additive Moffat halo
+  and the corona kept painting the sun through it — with bloom on top that reads as
+  a glowing sun inside the ship. All three proxies now share
+  `GalilegoStarOcclusion.hlsl` (`StarPixelOccluded`), so "scene depth hides the
+  star" has exactly one implementation.
 
 `SkyDomeLayout.MaxFarFraction = 0.25f` follows that precedent: nothing that is
 supposed to be visible may sit near the far plane when the near/far ratio is in
@@ -91,7 +97,9 @@ the 1e7 range.
 1. Any new camera-centred dome or full-screen proxy: `SkyDomeLayout.Radius(camera)`.
    Do **not** copy `far * 0.5f` from older code.
 2. Prefer `ZTest Always` + explicit occlusion (`IsSky`, analytic ray/sphere) over
-   relying on the depth test at planetary distances.
+   relying on the depth test at planetary distances. A new additive star/sky proxy
+   needs `StarPixelOccluded` too — `ZTest Always` alone means *everything* in front
+   of it is invisible.
 3. If a new dome must sit farther away for some reason, keep it **well inside `far`**
    and **distinct** from the other domes' radii — two coincident transparent domes at
    the same depth is exactly what made this bug deterministic.
