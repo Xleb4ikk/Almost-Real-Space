@@ -695,9 +695,7 @@ namespace Galilego.Tablet
                     view.IspS);
 
                 // Ballistic coast vs. a maneuver in progress: the map tints the ship and its apsis marks by it.
-                mapModel.ShipThrusting = runner.Ship != null
-                    && runner.RawThrottle > 0.001d
-                    && ((runner.Propulsion != null && runner.Propulsion.ThrustN > 0d) || runner.MainThrustNewtons > 0d);
+                mapModel.ShipThrusting = IsShipThrusting();
             }
             catch (Exception e)
             {
@@ -749,6 +747,53 @@ namespace Galilego.Tablet
                     ? (mapModel.ViewMode == NavViewMode.Surface ? 0.6d : 0.35d)
                     : PreviewMapIntervalSeconds);
             }
+        }
+
+        /// <summary>
+        /// True only while the main engines really produce thrust. A raised throttle
+        /// lever is not a burn by itself: with the engine switch off it used to tint
+        /// the ship, its apsides and the whole map as an ongoing maneuver, which read
+        /// as "the maneuver orbit is already here" before any burn happened.
+        /// </summary>
+        private bool IsShipThrusting()
+        {
+            if (runner == null || runner.Ship == null || runner.RawThrottle <= 1e-3d)
+            {
+                return false;
+            }
+
+            Galilego.Flight.VesselFlightModel flight = runner.Flight;
+            if (flight != null)
+            {
+                if (flight.MainEngineCount <= 0)
+                {
+                    return false;
+                }
+
+                double pressure = runner.AmbientPressurePa(runner.Ship.Position, runner.TimeSeconds);
+                for (int i = 0; i < flight.MainEngineCount; i++)
+                {
+                    Galilego.Flight.Thruster engine = flight.MainEngine(i);
+                    if (engine == null || flight.IsGone(engine.PartIndex) || !(engine.Level > 1e-3d))
+                    {
+                        continue;
+                    }
+
+                    if (engine.ThrustAt(pressure) > 1d)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            if (runner.Propulsion != null)
+            {
+                return runner.Propulsion.ThrustN > 0d;
+            }
+
+            return runner.MainThrustNewtons > 0d;
         }
 
         private void FillMapInfo()

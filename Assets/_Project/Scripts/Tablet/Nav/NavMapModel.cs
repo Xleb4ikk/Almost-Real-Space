@@ -1176,8 +1176,11 @@ namespace Galilego.Tablet
             // Planned burns enter the prediction exactly where the countdown will
             // fire them. Conflict entries are never applied (same rule as the live
             // AdvanceTime), so the line changes at the point the plan stops being
-            // executable.
+            // executable. A maneuver with ΔV = 0 is still listed: the card asks for
+            // the time first, and the map must already show where that ignition
+            // happens even though it changes nothing yet.
             var burns = new List<PlannedBurn>();
+            bool anyBurnDv = false;
             if (plan != null)
             {
                 PlanConflict = plan.ConflictIndex >= 0;
@@ -1185,7 +1188,7 @@ namespace Galilego.Tablet
                 for (int i = 0; i < valid; i++)
                 {
                     Maneuver maneuver = plan[i];
-                    if (maneuver == null || !(maneuver.DvMagnitude > 1e-9d))
+                    if (maneuver == null)
                     {
                         continue;
                     }
@@ -1208,6 +1211,11 @@ namespace Galilego.Tablet
                         TimeSeconds = ignite,
                         Number = i + 1,
                     });
+
+                    if (maneuver.DvMagnitude > 1e-9d)
+                    {
+                        anyBurnDv = true;
+                    }
                 }
 
                 burns.Sort((a, b) => a.TimeSeconds.CompareTo(b.TimeSeconds));
@@ -1249,7 +1257,10 @@ namespace Galilego.Tablet
                 plannedWindow = Math.Min(plannedWindow, Math.Max(0d, plan.CutTimeS));
             }
 
-            bool planned = burns.Count > 0 && plannedWindow > 1d;
+            // A maneuver orbit exists only when at least one burn really changes
+            // the trajectory. Time-only maneuvers leave the solid coast line alone
+            // and only get their ignition marker.
+            bool planned = anyBurnDv && plannedWindow > 1d;
 
             // The same force sources as SimulationRunner: N-body gravity (baked
             // ephemerides + the indirect star term + J2) and drag in atmospheres.
@@ -1276,12 +1287,17 @@ namespace Galilego.Tablet
             // is the plan. Keeping the coast visible is the whole point: after a
             // maneuver is added the player must still see where the craft would go
             // without it.
+            //
+            // The coast is sampled exactly at every ignition time, so the burn
+            // marker sits on a real vertex of the drawn orbit. Only a plan with no
+            // ΔV at all records its markers here: once a burn changes the orbit,
+            // the later ignitions are on the dashed line, not on the coast.
             double ballisticReached = time;
             bool ballisticAny = false;
             string ballisticImpact = null;
             var ballisticProbe = new Ship(ship.Position, ship.Velocity, ship.Mass);
             BuildBallisticPath(physics, system, ballisticProbe, frame, time, window, impactSeconds,
-                ref ballisticReached, ref ballisticAny, ref ballisticImpact);
+                burns, !anyBurnDv, ref ballisticReached, ref ballisticAny, ref ballisticImpact);
 
             double plannedReached = time;
             bool plannedAny = false;
@@ -1321,9 +1337,15 @@ namespace Galilego.Tablet
         /// maneuver is planned, so the player can compare the flown path with the
         /// plan. A suborbital conic is sampled densely over the actual flight and
         /// coarsely for the rest of the window.
+        /// <paramref name="ignitions"/> makes the loop end its steps exactly on the
+        /// planned burn times, so a burn point is a real vertex of the drawn line and
+        /// not a point in the middle of a chord. <paramref name="recordMarkers"/> is
+        /// set when the plan has no ΔV at all: then every planned ignition lies on
+        /// this very coast line and the markers are recorded here.
         /// </summary>
         private void BuildBallisticPath(SpacecraftPhysics physics, StarSystem system, Ship probe,
             OrbitingBody frame, double time, double window, double impactSeconds,
+            List<PlannedBurn> ignitions, bool recordMarkers,
             ref double reachedTime, ref bool anyLine, ref string impact)
         {
             double sampleWindow = window;
@@ -1348,15 +1370,46 @@ namespace Galilego.Tablet
             var line = NewForecastLine(NavLineKind.ShipForecast, time);
             line.Points.Add(probe.Position - FramePosition);
             double t = time;
+            int ignition = 0;
             try
             {
                 while (impact == null && t < endTime - 1e-9d)
                 {
                     double step = Math.Min(NextForecastStep(t, denseEnd, dt, coarseDt), endTime - t);
+
+                    if (ignitions != null)
+                    {
+                        while (ignition < ignitions.Count && ignitions[ignition].TimeSeconds <= t + 1e-9d)
+                        {
+                            ignition++;
+                        }
+
+                        if (ignition < ignitions.Count)
+                        {
+                            double ignite = ignitions[ignition].TimeSeconds;
+                            if (ignite < t + step - 1e-9d)
+                            {
+                                step = ignite - t;
+                            }
+                        }
+                    }
+
                     if (!AdvanceForecast(physics, system, probe, frame, line, ref t, step, out OrbitingBody hit))
                     {
                         impact = "ПРОГНОЗ ОСТАНОВЛЕН: НЕКОНЕЧНОЕ СОСТОЯНИЕ";
                         break;
+                    }
+
+                    if (ignitions != null && recordMarkers)
+                    {
+                        while (ignition < ignitions.Count
+                            && Math.Abs(t - ignitions[ignition].TimeSeconds) <= 1e-6d)
+                        {
+                            PlannedBurn marker = ignitions[ignition];
+                            ResolveBurnReference(system, probe, marker, t, out int markerBody);
+                            AddBurnMarker(frame, probe, marker, t, markerBody);
+                            ignition++;
+                        }
                     }
 
                     if (hit != null)
@@ -1529,34 +1582,29 @@ namespace Galilego.Tablet
         /// Applies one planned impulse in the maneuver's frame axes: tangent along the
         /// frame-relative velocity, normal towards that body, binormal along r×v. Mass
         /// follows the rocket equation with the same Isp the burn-time card uses.
+        /// Its ignition marker is recorded even when ΔV is still zero.
         /// </summary>
         private bool ApplyBurn(StarSystem system, Ship probe, OrbitingBody mapFrame,
             PlannedBurn burn, double t, double ispS)
         {
-            Maneuver maneuver = burn.Item;
-            double dv = maneuver.DvMagnitude;
-            if (!(dv > 1e-9d) || !probe.Position.IsFinite || !probe.Velocity.IsFinite)
+            if (!probe.Position.IsFinite || !probe.Velocity.IsFinite)
             {
                 return false;
             }
 
-            OrbitingBody reference = null;
-            int referenceIndex = -1;
-            if (maneuver.FrameBody >= 0 && maneuver.FrameBody < system.AllBodies.Count)
+            Maneuver maneuver = burn.Item;
+            OrbitingBody reference = ResolveBurnReference(system, probe, burn, t, out int referenceIndex);
+            if (reference == null)
             {
-                reference = system.AllBodies[maneuver.FrameBody];
-                referenceIndex = maneuver.FrameBody;
-            }
-            else
-            {
-                reference = system.FindDominantBody(probe.Position, t);
-                if (reference != null)
-                {
-                    referenceIndex = IndexOf(system, reference);
-                }
+                return false;
             }
 
-            if (reference == null)
+            // ΔV is the last thing the player sets on the card, so the marker must
+            // exist before the impulse (and therefore before the dashed orbit).
+            AddBurnMarker(mapFrame, probe, burn, t, referenceIndex);
+
+            double dv = maneuver.DvMagnitude;
+            if (!(dv > 1e-9d))
             {
                 return false;
             }
@@ -1599,17 +1647,48 @@ namespace Galilego.Tablet
                 probe.Mass *= Math.Exp(-dv / (ispS * ManeuverPlan.StandardGravity));
             }
 
+            AppliedManeuverCount++;
+            return true;
+        }
+
+        /// <summary>The body whose axes define the burn (the card's frame, else the dominant body).</summary>
+        private static OrbitingBody ResolveBurnReference(StarSystem system, Ship probe,
+            PlannedBurn burn, double t, out int index)
+        {
+            index = -1;
+            int frameBody = burn.Item.FrameBody;
+            if (frameBody >= 0 && frameBody < system.AllBodies.Count)
+            {
+                index = frameBody;
+                return system.AllBodies[frameBody];
+            }
+
+            OrbitingBody body = system.FindDominantBody(probe.Position, t);
+            if (body != null)
+            {
+                index = IndexOf(system, body);
+            }
+
+            return body;
+        }
+
+        /// <summary>Records one planned ignition in the map frame at its real time.</summary>
+        private void AddBurnMarker(OrbitingBody mapFrame, Ship probe, PlannedBurn burn, double t, int referenceIndex)
+        {
+            if (!probe.Position.IsFinite || mapFrame == null)
+            {
+                return;
+            }
+
             mapFrame.EvaluateWorldState(t, out Vector3d framePosition, out _);
             BurnMarkers.Add(new NavBurnMarker
             {
                 Index = burn.Number,
                 TimeSeconds = t,
                 Position = probe.Position - framePosition,
-                DvMs = dv,
+                DvMs = burn.Item.DvMagnitude,
                 FrameBodyIndex = referenceIndex,
             });
-            AppliedManeuverCount++;
-            return true;
         }
 
         private string PlannedNote(bool planned, bool revolutionsLimited, double window)

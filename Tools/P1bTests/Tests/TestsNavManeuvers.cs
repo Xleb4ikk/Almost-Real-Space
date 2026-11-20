@@ -107,6 +107,68 @@ internal static partial class P1bTests
             }
         }
 
+        // The player picks the TIME first: a maneuver with ΔV = 0 must already put
+        // its ignition marker on the solid coast line, while no maneuver orbit is
+        // drawn at all (a zero burn changes nothing).
+        var timeOnlyPlan = new ManeuverPlan();
+        timeOnlyPlan.Add(1, burnTime);
+        var timeOnlyModel = new NavMapModel();
+        timeOnlyModel.Rebuild(system, ship, 0d, 1, shipId, visible, 6d * 3600d, 0d, null,
+            true, false, timeOnlyPlan, 300d);
+
+        NavLine timeOnlyCoast = null;
+        bool timeOnlyPlanLine = false;
+        for (int i = 0; i < timeOnlyModel.Lines.Count; i++)
+        {
+            NavLine line = timeOnlyModel.Lines[i];
+            if (line.Kind == NavLineKind.ShipForecast)
+            {
+                timeOnlyCoast = line;
+            }
+            else if (line.Kind == NavLineKind.ManeuverForecast)
+            {
+                timeOnlyPlanLine = true;
+            }
+        }
+
+        double timeOnlyGap = double.PositiveInfinity;
+        if (timeOnlyModel.BurnMarkers.Count == 1 && timeOnlyCoast != null)
+        {
+            Vector3d marker = timeOnlyModel.BurnMarkers[0].Position;
+            for (int i = 0; i < timeOnlyCoast.Points.Count; i++)
+            {
+                timeOnlyGap = Math.Min(timeOnlyGap, (timeOnlyCoast.Points[i] - marker).Magnitude);
+            }
+        }
+
+        bool timeOnly = timeOnlyModel.BurnMarkers.Count == 1
+            && Math.Abs(timeOnlyModel.BurnMarkers[0].TimeSeconds - burnTime) < 1e-6d
+            && Math.Abs(timeOnlyModel.BurnMarkers[0].DvMs) < 1e-9d
+            && !timeOnlyPlanLine
+            && timeOnlyModel.AppliedManeuverCount == 0
+            && timeOnlyModel.PlannedWindowSeconds <= 0d
+            && timeOnlyCoast != null
+            && timeOnlyGap < 1d;
+
+        // The dashed orbit must start exactly at that ignition marker, not at the
+        // craft's current position.
+        double planStartGap = double.PositiveInfinity;
+        double coastMarkerGap = double.PositiveInfinity;
+        if (planned != null && model.BurnMarkers.Count == 1)
+        {
+            planStartGap = (planned.Points[0] - model.BurnMarkers[0].Position).Magnitude;
+            Vector3d marker = model.BurnMarkers[0].Position;
+            if (coast != null)
+            {
+                for (int i = 0; i < coast.Points.Count; i++)
+                {
+                    coastMarkerGap = Math.Min(coastMarkerGap, (coast.Points[i] - marker).Magnitude);
+                }
+            }
+        }
+
+        bool startsAtMarker = planStartGap < 1d && coastMarkerGap < 1d;
+
         // The default "+ МАНЁВР" in LEO lands almost at the 3-orbit visual cap.
         // The forecast must extend past that cap, otherwise the new orbit is a
         // two-degree stub and looks like "the maneuver was not drawn".
@@ -205,13 +267,16 @@ internal static partial class P1bTests
             && (pitchedModel.OrbitRight - model.OrbitRight).Magnitude < 1e-12d;
 
         bool pass = applied && split && planNoted && orbitRaised && ballisticUnchanged
-            && lateVisible && axes && mapStable;
+            && timeOnly && startsAtMarker && lateVisible && axes && mapStable;
         Check(pass, "T569 nav map maneuvers",
             "applied=" + model.AppliedManeuverCount
             + " markers=" + model.BurnMarkers.Count
             + " split=" + split
             + " coastEnd=" + (coast != null ? coast.EndTimeS.ToString("F1") : "-")
             + " planStart=" + (planned != null ? planned.StartTimeS.ToString("F1") : "-")
+            + " planStartGap=" + planStartGap.ToString("F1") + "m"
+            + " coastMarkerGap=" + coastMarkerGap.ToString("F1") + "m"
+            + " timeOnly=" + timeOnly + " timeOnlyMarkerGap=" + timeOnlyGap.ToString("F1") + "m"
             + " coastMax=" + coastMax.ToString("F0") + "m"
             + " planMax=" + plannedMax.ToString("F0") + "m"
             + " note=" + model.Note

@@ -798,7 +798,9 @@ namespace Galilego.Tablet
             }
 
             // Planned burn points: the forecast changes colour there because the
-            // orbit changes, not merely because time passed.
+            // orbit changes, not merely because time passed. The marker exists as
+            // soon as the maneuver has a time, so the player sees the ignition
+            // point while still choosing it (ΔV may be 0).
             for (int i = 0; i < model.BurnMarkers.Count; i++)
             {
                 NavBurnMarker burn = model.BurnMarkers[i];
@@ -813,7 +815,25 @@ namespace Galilego.Tablet
                     continue;
                 }
 
-                DrawMarker(p.x, p.y, "ΔV" + burn.Index.ToString(), ForecastColor, rect);
+                // The label carries what the marker is and when it fires: the
+                // overlay map has no tooltip, so the plate cannot be the only place
+                // that shows the countdown.
+                double toBurn = Math.Max(0d, burn.TimeSeconds - model.TimeSeconds);
+                string label = "М" + burn.Index.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + " " + TabletFormat.Time(toBurn);
+                DrawMarker(p.x, p.y, label, ManeuverForecastColor, rect);
+
+                string detail = "T− " + TabletFormat.Time(toBurn)
+                    + "\nΔV " + TabletFormat.Num(burn.DvMs, 0) + " М/С";
+                picks.Add(new PickEntry
+                {
+                    X = p.x,
+                    Y = p.y,
+                    Radius = 10f,
+                    Kind = PickKind.Burn,
+                    Index = burn.Index,
+                    Text = "МАНЁВР " + burn.Index.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\n" + detail,
+                });
             }
 
             // 6. Body markers and labels, on top of every line.
@@ -2942,7 +2962,7 @@ namespace Galilego.Tablet
             // No full-orbit row: rails are not drawn. The plan row needs one more
             // line; lift the legend while it is visible so it never collides with
             // the status text at y.
-            int legendY = y - 33 - (model.PlannedWindowSeconds > 0d ? 13 : 0);
+            int legendY = y - 33 - (model.PlannedWindowSeconds > 0d || model.BurnMarkers.Count > 0 ? 13 : 0);
             canvas.Line(legendX, legendY + 3, legendX + 16, legendY + 3,
                 model.HasSurfaceHistory ? SurfaceHistoryColor : TabletTheme.Main);
             string history;
@@ -3050,6 +3070,14 @@ namespace Galilego.Tablet
             {
                 DashedHudLine(legendX, legendY + 28, 16, ManeuverForecastColor);
                 string plan = "МАНЁВР " + Math.Max(1, model.AppliedManeuverCount).ToString();
+                canvas.Text(legendX + 20, legendY + 25, plan, TabletTheme.Dim);
+            }
+            else if (model.BurnMarkers.Count > 0)
+            {
+                // Time chosen, ΔV not yet: the ignition point is on the coast line,
+                // there is deliberately no second orbit.
+                DashedHudLine(legendX, legendY + 28, 16, ManeuverForecastColor);
+                string plan = "МАНЁВР " + model.BurnMarkers.Count.ToString() + " · ΔV 0";
                 canvas.Text(legendX + 20, legendY + 25, plan, TabletTheme.Dim);
             }
 
