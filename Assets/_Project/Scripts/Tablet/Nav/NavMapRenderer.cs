@@ -169,6 +169,18 @@ namespace Galilego.Tablet
             Dark = new Color32(66, 28, 5, 255),
         };
 
+        /// <summary>
+        /// Apsides of the PLANNED orbit (after the last burn): violet. Deliberately
+        /// outside the cyan ballistic / orange thrusting pair, so a glance separates
+        /// "where I am going now" from "where the maneuver takes me".
+        /// </summary>
+        private static readonly MarkerPalette PlannedMarkers = new MarkerPalette
+        {
+            Main = new Color32(198, 132, 255, 255),
+            Light = new Color32(236, 218, 255, 255),
+            Dark = new Color32(40, 16, 62, 255),
+        };
+
         private static MarkerPalette MarkersFor(NavMapModel model)
         {
             return model.ShipThrusting ? ManeuverMarkers : BallisticMarkers;
@@ -183,6 +195,12 @@ namespace Galilego.Tablet
             Apoapsis,
             Periapsis,
             Ship,
+
+            /// <summary>Apoapsis of the planned (post-burn) orbit: the violet "АП·М" tag.</summary>
+            PlannedApoapsis,
+
+            /// <summary>Periapsis of the planned (post-burn) orbit: the violet "ПР·М" tag.</summary>
+            PlannedPeriapsis,
         }
 
         private struct PickEntry
@@ -963,6 +981,65 @@ namespace Galilego.Tablet
                             Box = box,
                             HasBox = true,
                             Text = "АПОЦЕНТР\n" + orbitKind + "\n" + detail,
+                        });
+                    }
+                }
+            }
+
+            // Apsides of the PLANNED orbit: the conic right after the last burn.
+            // Same plates as the ballistic pair, but violet and marked "·М", with
+            // the post-burn numbers. Drawn after them so the maneuver result is the
+            // one that stays on top when the two orbits are close.
+            if (model.HasPlannedApsides)
+            {
+                string plannedKind = string.IsNullOrEmpty(model.PlannedApsisBodyName)
+                    ? "МАНЁВР"
+                    : "МАНЁВР · " + model.PlannedApsisBodyName;
+                if (!IsMarkerOccluded(model, occluderIndex, model.PlannedPeriapsisPosition,
+                        screenRight, screenUp, camDir))
+                {
+                    Vector2 pe = Project(model.PlannedPeriapsisPosition);
+                    if (IsFinite(pe))
+                    {
+                        Vector2 placed = ClampToMap(rect, pe, ApsisEdgeMargin, out bool offMap);
+                        string detail = ApsisDetail(model.PlannedPeriapsisAltitudeMeters,
+                            model.PlannedPeriapsisSpeedMps);
+                        DrawApsisMarker(placed.x, placed.y, false, PlannedMarkers, rect, detail,
+                            hoverKind == PickKind.PlannedPeriapsis, offMap, out RectInt box, "·М");
+                        picks.Add(new PickEntry
+                        {
+                            X = placed.x,
+                            Y = placed.y,
+                            Radius = 10f,
+                            Kind = PickKind.PlannedPeriapsis,
+                            Box = box,
+                            HasBox = true,
+                            Text = "ПЕРИЦЕНТР\n" + plannedKind + "\n" + detail,
+                        });
+                    }
+                }
+
+                if (model.HasPlannedApoapsis
+                    && !IsMarkerOccluded(model, occluderIndex, model.PlannedApoapsisPosition,
+                        screenRight, screenUp, camDir))
+                {
+                    Vector2 ap = Project(model.PlannedApoapsisPosition);
+                    if (IsFinite(ap))
+                    {
+                        Vector2 placed = ClampToMap(rect, ap, ApsisEdgeMargin, out bool offMap);
+                        string detail = ApsisDetail(model.PlannedApoapsisAltitudeMeters,
+                            model.PlannedApoapsisSpeedMps);
+                        DrawApsisMarker(placed.x, placed.y, true, PlannedMarkers, rect, detail,
+                            hoverKind == PickKind.PlannedApoapsis, offMap, out RectInt box, "·М");
+                        picks.Add(new PickEntry
+                        {
+                            X = placed.x,
+                            Y = placed.y,
+                            Radius = 10f,
+                            Kind = PickKind.PlannedApoapsis,
+                            Box = box,
+                            HasBox = true,
+                            Text = "АПОЦЕНТР\n" + plannedKind + "\n" + detail,
                         });
                     }
                 }
@@ -2042,13 +2119,16 @@ namespace Galilego.Tablet
         /// reused as the pick area, so the hover zone always matches the plate.
         /// <paramref name="offMap"/> draws an outward chevron: the real point is
         /// outside the view and the marker is clamped to the map edge.
+        /// <paramref name="suffix"/> is appended to the "АП"/"ПР" letters — the
+        /// planned orbit's pair carries "·М" so it cannot be confused with the
+        /// ballistic pair even on a colour-blind display.
         /// </summary>
         private void DrawApsisMarker(float x, float y, bool apoapsis, MarkerPalette pal, RectInt rect,
-            string detail, bool expanded, bool offMap, out RectInt box)
+            string detail, bool expanded, bool offMap, out RectInt box, string suffix = "")
         {
             int xi = Mathf.RoundToInt(x);
             int yi = Mathf.RoundToInt(y);
-            string letter = apoapsis ? "АП" : "ПР";
+            string letter = (apoapsis ? "АП" : "ПР") + suffix;
 
             string[] rows = expanded && !string.IsNullOrEmpty(detail)
                 ? detail.Split('\n')

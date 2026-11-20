@@ -156,6 +156,27 @@ namespace Galilego.Tablet
         /// <summary>Speed at the apsis from the osculating orbit's angular momentum (h / r).</summary>
         public double PeriapsisSpeedMps = double.NaN;
         public double ApoapsisSpeedMps = double.NaN;
+
+        /// <summary>
+        /// Apsides of the orbit the plan will actually fly: the osculating conic
+        /// right after the LAST applied burn. Drawn as a second, differently
+        /// coloured Ap/Pe pair next to the ballistic ones, so the player sees what
+        /// the maneuver changes before igniting. False when the plan changes
+        /// nothing (no ΔV), the burn leg is not drawn, or the resulting orbit is
+        /// circular/unbound in a way that has no meaningful pair.
+        /// </summary>
+        public bool HasPlannedApsides;
+        public bool HasPlannedApoapsis;
+        public Vector3d PlannedPeriapsisPosition;
+        public Vector3d PlannedApoapsisPosition;
+        public double PlannedPeriapsisAltitudeMeters = double.NaN;
+        public double PlannedApoapsisAltitudeMeters = double.NaN;
+        public double PlannedPeriapsisSpeedMps = double.NaN;
+        public double PlannedApoapsisSpeedMps = double.NaN;
+
+        /// <summary>Body the planned apsides are measured around; null when unknown.</summary>
+        public string PlannedApsisBodyName;
+
         public string Note = string.Empty;
         public bool ForecastValid;
         public bool ForecastTruncated;
@@ -262,6 +283,13 @@ namespace Galilego.Tablet
             ApoapsisAltitudeMeters = double.NaN;
             PeriapsisSpeedMps = double.NaN;
             ApoapsisSpeedMps = double.NaN;
+            HasPlannedApsides = false;
+            HasPlannedApoapsis = false;
+            PlannedPeriapsisAltitudeMeters = double.NaN;
+            PlannedApoapsisAltitudeMeters = double.NaN;
+            PlannedPeriapsisSpeedMps = double.NaN;
+            PlannedApoapsisSpeedMps = double.NaN;
+            PlannedApsisBodyName = null;
             HasSurfaceFrame = false;
             ViewMode = NavViewMode.Orbits;
             DominantBody = null;
@@ -395,19 +423,67 @@ namespace Galilego.Tablet
             }
 
             OrbitingBody dominant = system.FindDominantBody(ship.Position, time);
-            if (dominant == null)
+            if (!TryBuildApsisSet(dominant, frame, time, ship.Position, ship.Velocity, out ApsisSet apsis))
             {
                 return;
             }
 
-            dominant.EvaluateWorldState(time, out Vector3d bodyPosition, out Vector3d bodyVelocity);
+            HasApsides = apsis.HasPeriapsis;
+            PeriapsisPosition = apsis.PeriapsisPosition;
+            PeriapsisAltitudeMeters = apsis.PeriapsisAltitudeMeters;
+            PeriapsisSpeedMps = apsis.PeriapsisSpeedMps;
+            HasApoapsis = apsis.HasApoapsis;
+            if (apsis.HasApoapsis)
+            {
+                ApoapsisPosition = apsis.ApoapsisPosition;
+                ApoapsisAltitudeMeters = apsis.ApoapsisAltitudeMeters;
+                ApoapsisSpeedMps = apsis.ApoapsisSpeedMps;
+            }
+            else
+            {
+                // Unbound: no apoapsis, and the marker is never drawn. Keep the
+                // body centre as the placeholder (same as before the refactor).
+                dominant.EvaluateWorldState(time, out Vector3d bodyPosition, out _);
+                ApoapsisPosition = bodyPosition - FramePosition;
+            }
+        }
+
+        /// <summary>One osculating orbit's apsides: map-frame points plus body-relative data.</summary>
+        private struct ApsisSet
+        {
+            public bool HasPeriapsis;
+            public bool HasApoapsis;
+            public Vector3d PeriapsisPosition;
+            public Vector3d ApoapsisPosition;
+            public double PeriapsisAltitudeMeters;
+            public double ApoapsisAltitudeMeters;
+            public double PeriapsisSpeedMps;
+            public double ApoapsisSpeedMps;
+        }
+
+        /// <summary>
+        /// Apsides of the osculating conic of an arbitrary state vector around
+        /// <paramref name="dominant"/> at <paramref name="stateTime"/>. The ballistic
+        /// orbit ("now") and the post-burn orbit (at the last ignition) use the same
+        /// math, so the two marker pairs stay directly comparable.
+        /// </summary>
+        private static bool TryBuildApsisSet(OrbitingBody dominant, OrbitingBody frame, double stateTime,
+            Vector3d position, Vector3d velocity, out ApsisSet apsis)
+        {
+            apsis = default;
+            if (dominant == null || frame == null)
+            {
+                return false;
+            }
+
+            dominant.EvaluateWorldState(stateTime, out Vector3d bodyPosition, out Vector3d bodyVelocity);
             double mu = dominant.ResolveStandardGravitationalParameter();
-            Vector3d r = ship.Position - bodyPosition;
-            Vector3d v = ship.Velocity - bodyVelocity;
+            Vector3d r = position - bodyPosition;
+            Vector3d v = velocity - bodyVelocity;
             OrbitalElements elements = OrbitalElements.FromState(r, v, mu);
             if (!elements.IsValid || elements.Eccentricity <= 1e-9d)
             {
-                return;
+                return false;
             }
 
             double toPeriapsis = 0d;
@@ -419,24 +495,59 @@ namespace Galilego.Tablet
             }
 
             Vector3d eDirection = elements.EccentricityVector / elements.Eccentricity;
-            PeriapsisPosition = ApsisPointInFrame(dominant, frame, time, toPeriapsis,
+            apsis.HasPeriapsis = true;
+            apsis.PeriapsisPosition = ApsisPointInFrame(dominant, frame, stateTime, toPeriapsis,
                 eDirection, elements.PeriapsisDistance);
-            PeriapsisAltitudeMeters = elements.PeriapsisDistance - dominant.Radius;
-            PeriapsisSpeedMps = ApsisSpeed(elements.SpecificAngularMomentum, elements.PeriapsisDistance);
+            apsis.PeriapsisAltitudeMeters = elements.PeriapsisDistance - dominant.Radius;
+            apsis.PeriapsisSpeedMps = ApsisSpeed(elements.SpecificAngularMomentum, elements.PeriapsisDistance);
             if (elements.IsBound && double.IsFinite(elements.ApoapsisDistance))
             {
-                ApoapsisPosition = ApsisPointInFrame(dominant, frame, time, toApoapsis,
+                apsis.HasApoapsis = true;
+                apsis.ApoapsisPosition = ApsisPointInFrame(dominant, frame, stateTime, toApoapsis,
                     -eDirection, elements.ApoapsisDistance);
-                ApoapsisAltitudeMeters = elements.ApoapsisDistance - dominant.Radius;
-                ApoapsisSpeedMps = ApsisSpeed(elements.SpecificAngularMomentum, elements.ApoapsisDistance);
-                HasApoapsis = true;
-            }
-            else
-            {
-                ApoapsisPosition = bodyPosition - FramePosition;
+                apsis.ApoapsisAltitudeMeters = elements.ApoapsisDistance - dominant.Radius;
+                apsis.ApoapsisSpeedMps = ApsisSpeed(elements.SpecificAngularMomentum, elements.ApoapsisDistance);
             }
 
-            HasApsides = true;
+            return true;
+        }
+
+        /// <summary>
+        /// Apsides of the orbit the plan flies: the osculating conic immediately
+        /// after the last applied burn. Like the ballistic pair they are placed in
+        /// the reference frame at the time the craft really reaches each apsis, so
+        /// they sit on the dashed maneuver path.
+        /// </summary>
+        private void BuildPlannedApsides(StarSystem system, OrbitingBody frame, double burnTime,
+            Vector3d position, Vector3d velocity)
+        {
+            HasPlannedApsides = false;
+            HasPlannedApoapsis = false;
+            PlannedPeriapsisAltitudeMeters = double.NaN;
+            PlannedApoapsisAltitudeMeters = double.NaN;
+            PlannedPeriapsisSpeedMps = double.NaN;
+            PlannedApoapsisSpeedMps = double.NaN;
+            PlannedApsisBodyName = null;
+            if (system == null || frame == null)
+            {
+                return;
+            }
+
+            OrbitingBody dominant = system.FindDominantBody(position, burnTime);
+            if (!TryBuildApsisSet(dominant, frame, burnTime, position, velocity, out ApsisSet apsis))
+            {
+                return;
+            }
+
+            HasPlannedApsides = apsis.HasPeriapsis;
+            PlannedPeriapsisPosition = apsis.PeriapsisPosition;
+            PlannedPeriapsisAltitudeMeters = apsis.PeriapsisAltitudeMeters;
+            PlannedPeriapsisSpeedMps = apsis.PeriapsisSpeedMps;
+            HasPlannedApoapsis = apsis.HasApoapsis;
+            PlannedApoapsisPosition = apsis.ApoapsisPosition;
+            PlannedApoapsisAltitudeMeters = apsis.ApoapsisAltitudeMeters;
+            PlannedApoapsisSpeedMps = apsis.ApoapsisSpeedMps;
+            PlannedApsisBodyName = (dominant.Name ?? "?").ToUpperInvariant();
         }
 
         /// <summary>
@@ -1451,6 +1562,14 @@ namespace Galilego.Tablet
             double t = time;
             int burnIndex = 0;
             bool started = false;
+
+            // State right after the last applied impulse: its osculating orbit IS
+            // the maneuver orbit, and its apsides are the second Ap/Pe pair on the
+            // map. Recorded per burn, so a multi-burn plan shows the final leg.
+            double postBurnTime = double.NaN;
+            Vector3d postBurnPosition = default;
+            Vector3d postBurnVelocity = default;
+            bool hasPostBurnState = false;
             try
             {
                 while (impact == null && burnIndex < burns.Count)
@@ -1499,6 +1618,10 @@ namespace Galilego.Tablet
                     frame.EvaluateWorldState(t, out Vector3d burnFrame, out _);
                     line.Points.Add(probe.Position - burnFrame);
                     started = true;
+                    postBurnTime = t;
+                    postBurnPosition = probe.Position;
+                    postBurnVelocity = probe.Velocity;
+                    hasPostBurnState = true;
                 }
 
                 if (impact == null)
@@ -1531,6 +1654,14 @@ namespace Galilego.Tablet
             if (started)
             {
                 FinishForecastLine(line, ref reachedTime, ref anyLine);
+            }
+
+            // Only when the dashed maneuver orbit really exists: a marker pair
+            // without a drawn orbit would be a lie. The impact cases still keep
+            // anyLine=true when the post-burn leg was sampled before the hit.
+            if (hasPostBurnState && anyLine)
+            {
+                BuildPlannedApsides(system, frame, postBurnTime, postBurnPosition, postBurnVelocity);
             }
         }
 
