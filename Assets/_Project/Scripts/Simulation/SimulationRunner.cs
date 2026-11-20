@@ -537,6 +537,8 @@ namespace Galilego.Universe
         /// <summary>������ ������ (��� ��� �������� ������� ��� ��������� �� �����������).</summary>
         private FirstPersonCamera lookCamera;
 
+        private ShipView shipViewCache;
+
         /// <summary>���������� ���� (��� ��� �������� ������ �� �����������).</summary>
         private ContactZoneHost zoneHostCache;
 
@@ -805,6 +807,21 @@ namespace Galilego.Universe
             if (lookCamera != null)
             {
                 lookCamera.RotateLook(AstroFrame.ToSimulation(spin));
+            }
+
+            // Корень визуала: в зоне его поворот держит зеркало деталей, а на парковке
+            // зеркало отключено — без этого поворота корпус стоит под старым углом,
+            // грунт уезжает из-под него, и ракета «падает и уходит под землю»
+            // (хотя состояние корабля при этом правильное).
+            if (shipViewCache == null)
+            {
+                shipViewCache = FindAnyObjectByType<ShipView>();
+            }
+
+            if (shipViewCache != null)
+            {
+                shipViewCache.transform.rotation =
+                    AstroFrame.ToSimulation(spin) * shipViewCache.transform.rotation;
             }
 
             FloatingOrigin.Anchor = PlayerPosition;

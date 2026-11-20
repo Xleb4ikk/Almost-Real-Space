@@ -371,6 +371,37 @@ public static class TimeTests
             + " lat=" + F(lat) + " lon=" + F(lon) + " alt=" + F(altitude);
     }
 
+    /// <summary>Что происходит с визуалом корня корабля во время ускорения.</summary>
+    public static string VisualCheck()
+    {
+        if (!Bind())
+        {
+            return "no runner/step";
+        }
+
+        ShipView view = UnityEngine.Object.FindAnyObjectByType<ShipView>();
+        OrbitingBody body = Step.DominantBody ?? R.DominantBody;
+        body.EvaluateWorldState(R.TimeSeconds, out Vector3d bp, out _);
+        Vector3d upAstro = (R.Ship.Position - bp).Normalized;
+
+        Vector3 rootPos = view != null ? view.transform.position : Vector3.zero;
+        Quaternion rootRot = view != null ? view.transform.rotation : Quaternion.identity;
+        Vector3 rootUp = rootRot * Vector3.up;
+
+        bool flightPose = R.TryGetFlightVesselRootPose(out Vector3 fp, out Quaternion fr);
+
+        return "VisualCheck t=" + F(R.TimeSeconds)
+            + " zone=" + Galilego.Simulation.ContactZone.ContactZoneHost.Active
+            + " isCom=" + R.Ship.PositionIsCom
+            + " att=" + R.Ship.Attitude
+            + " localUp=" + Galilego.Universe.AstroFrame.ToSimulation(upAstro)
+            + " rootPos=" + rootPos
+            + " expectRootPos=" + Galilego.Universe.FloatingOrigin.ToRender(R.Ship.Position)
+            + " rootUp=" + rootUp
+            + " flightPose=" + flightPose + (flightPose ? (" fp=" + fp + " fr=" + fr) : string.Empty)
+            + " anchor=" + Galilego.Universe.FloatingOrigin.Anchor;
+    }
+
     /// <summary>Включить полный варп на стоящем аппарате и запомнить точку.</summary>
     public static string ParkedStart()
     {
