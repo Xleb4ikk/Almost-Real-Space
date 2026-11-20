@@ -183,6 +183,40 @@ namespace Galilego.Building
         /// <summary>World state at the moment physics was switched on — the exact rollback target.</summary>
         private SimulationRunner.WorldSnapshot launchSnapshot;
 
+        /// <summary>
+        /// true — вход в полёт вызван перемоткой на точку 0: шкалу перемотки не чистим
+        /// (иначе перемотка уничтожила бы саму себя).
+        /// </summary>
+        private bool reenteringFromRewind;
+
+        /// <summary>Можно ли вернуться на точку 0 через билдер: полёт шёл, снимок старта жив.</summary>
+        public bool CanRewindToLaunch
+        {
+            get { return PhysicsOn && launchSnapshot != null; }
+        }
+
+        /// <summary>
+        /// Перемотка на точку 0 по пути «вернуться в билдер → включить физику»: PhysX-зона
+        /// и прокси создаются заново из чертежа, состояние аппарата детерминировано.
+        /// Возвращает false, если возвращаться некуда.
+        /// </summary>
+        public bool RewindToLaunch()
+        {
+            if (!CanRewindToLaunch)
+            {
+                return false;
+            }
+
+            ReturnToBuild();
+            reenteringFromRewind = true;
+
+            // Входим в полёт В ТОМ ЖЕ кадре и в восстановленном времени: за кадр между
+            // ReturnToBuild и EnterFlightAt мировое время ушло бы на realDt, и точка 0
+            // перестала бы быть точкой 0.
+            EnterFlightAt(Runner.TimeSeconds);
+            return true;
+        }
+
         // ─── Mirror filter (solver jitter) ──────────────────────────────────
 
         /// <summary>Smoothed pose of the mirrored parts, in the zone root axes.</summary>
@@ -951,6 +985,21 @@ namespace Galilego.Building
             // current (later) time.
             Runner.Warp.SetWarpFactor(Galilego.Events.WarpController.MinWarpFactor);
             launchSnapshot = Runner.CaptureWorldSnapshot();
+
+            // Точка 0 перемотки — ровно этот кадр и это время. При повторном входе после
+            // отката шкалу НЕ чистим: откат на точку 0 вернул её же.
+            if (reenteringFromRewind)
+            {
+                reenteringFromRewind = false;
+                if (Runner.TimeControl != null)
+                {
+                    Runner.TimeControl.MarkReenteringFromRewind();
+                }
+            }
+            else
+            {
+                Runner.ResetFlightTimeline();
+            }
 
             HideGhost();
             Debug.Log(string.Format(

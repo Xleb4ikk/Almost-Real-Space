@@ -80,6 +80,19 @@ namespace Galilego.Universe
         public SpacecraftIntegrator LastSelectedIntegrator { get; private set; } = SpacecraftIntegrator.Dop853;
 
         /// <summary>
+        /// Фактор, реально применённый в последнем кадре (после капа EVA/атмосферы).
+        /// Панель показывает его, если он меньше выбранного: молчаливого среза нет.
+        /// </summary>
+        public double LastEffectiveFactor { get; private set; } = 1d;
+
+        /// <summary>Сброс межкадрового состояния варпа (после перемотки).</summary>
+        public void ResetBudgetState()
+        {
+            Driver.ClearCancel();
+            longWarpRefusalLogged = false;
+        }
+
+        /// <summary>
         /// Why the policy picked <see cref="LastSelectedIntegrator"/> (D3 observability):
         /// DECISION_TABLE.md rows R1/R2/R3, otherwise Default. Does not affect the choice.
         /// </summary>
@@ -134,6 +147,21 @@ namespace Galilego.Universe
 
         /// <summary>Mass invariant violated (logged on the edge, not every chunk).</summary>
         private bool massInvariantBroken;
+
+        /// <summary>Отказ полного варпа уже залогирован (не спамим каждый кадр).</summary>
+        private bool longWarpRefusalLogged;
+
+        private void NotifyLongWarpRefused()
+        {
+            if (longWarpRefusalLogged)
+            {
+                return;
+            }
+
+            longWarpRefusalLogged = true;
+            Debug.LogWarning("[Warp] полный варп запрошен, но запрещён (атмосфера / тяга / сопротивление) — " +
+                "кадр идёт физической цепочкой с капом ×" + WarpController.AtmosphereMaxWarpFactor);
+        }
 
         /// <summary>Upper bound on a surface substep (s), consistent with the control-tick grain.</summary>
         private const double SurfaceMaxStepSeconds = 0.5d;
@@ -214,18 +242,47 @@ namespace Galilego.Universe
         /// <summary>
         /// Flight for a frame: orbital chain in chunks by the control-tick boundary,
         /// the event is handled here too. playerInShip=false (player outside the
-        /// ship) forbids long warp and caps physical ×4 — otherwise the player could
-        /// not be caught up by substeps.
+        /// ship) forbids long warp and caps the physical factor — otherwise the player
+        /// could not be caught up by substeps.
+        ///
+        /// Полный варп выбирается только при формальном разрешении
+        /// (LongWarpDriver.CanEnterLongWarp): тяга и сопротивление должны быть ровно
+        /// нулевыми. Иначе кадр идёт физической цепочкой с капом ×3 и один раз логирует
+        /// отказ — молчаливой баллистики в атмосфере не бывает.
         /// </summary>
         public void StepFlying(float realDt, bool playerInShip)
         {
-            WarpFrameDecision decision = EphemerisRuntime.ComputeFrame(
-                SystemState, Warp, Ship.Position, TimeSeconds, realDt);
-            double playerCap = playerInShip ? double.PositiveInfinity : 4d;
-            double factor = Math.Min(decision.EffectiveFactor, playerCap);
-            double frameEnd = TimeSeconds + (realDt * factor);
+            if (Warp.Mode != WarpMode.Full)
+            {
+                longWarpRefusalLogged = false;
+            }
 
-            if (decision.UseLongWarp && playerCap == double.PositiveInfinity)
+            bool longWarpAllowed = false;
+            if (Warp.Mode == WarpMode.Full)
+            {
+                var probe = new SpacecraftIntegrationState
+                {
+                    Position = Ship.Position,
+                    Velocity = Ship.Velocity,
+                    Mass = Ship.Mass
+                };
+                longWarpAllowed = Driver.CanEnterLongWarp(probe, TimeSeconds);
+            }
+
+            WarpFrameDecision decision = EphemerisRuntime.ComputeFrame(
+                SystemState, Warp, Ship.Position, TimeSeconds, realDt, longWarpAllowed);
+            if (decision.LongWarpRefused)
+            {
+                NotifyLongWarpRefused();
+            }
+
+            double playerCap = playerInShip ? double.PositiveInfinity : WarpController.PlayerOutsideMaxWarpFactor;
+            double factor = Math.Min(decision.EffectiveFactor, playerCap);
+            LastEffectiveFactor = factor;
+            double frameEnd = TimeSeconds + (realDt * factor);
+            bool useLongWarp = decision.UseLongWarp && double.IsPositiveInfinity(playerCap);
+
+            if (useLongWarp)
             {
                 // Long warp: ballistics entirely, thrust forbidden by construction.
                 if (Flight != null)
@@ -242,11 +299,12 @@ namespace Galilego.Universe
                 return;
             }
 
-            double throttle = Warp.EffectiveThrottle(RawThrottle, factor);
+            double throttle = Warp.EffectiveThrottle(RawThrottle, false);
             bool thrustActive = Thrust != null && throttle > 0d
                 && (Propulsion == null || Propulsion.MassFlowKgS > 0d);
             bool flightOn = Flight != null;
-            bool flightAllowed = flightOn && factor <= WarpController.ThrustMaxWarpFactor;
+            // Физическая цепочка: фактор ≤ 6, шаг модели не огрубляется, тяга разрешена.
+            bool flightAllowed = flightOn;
             if (flightAllowed)
             {
                 thrustActive = true;
@@ -254,6 +312,10 @@ namespace Galilego.Universe
 
             while (TimeSeconds < frameEnd - 1e-12d)
             {
+                // Сначала снимок управления (он же двигает границу тика), потом размер
+                // чанка: если брать чанк первым, GetMaxChunkSeconds сдвигает границу вперёд
+                // и SampleControl уже никогда не срабатывает — газ замирает на первом снимке.
+                Warp.SampleControl(TimeSeconds, throttle);
                 double chunk = Warp.GetMaxChunkSeconds(TimeSeconds, OrbitIntegrator.DefaultMaxStepSize, thrustActive);
                 if (flightAllowed)
                 {
@@ -273,8 +335,6 @@ namespace Galilego.Universe
                     FlightSource.Attitude = Ship.Attitude;
                     chunk = Math.Max(Math.Min(chunk, Flight.MaxChunkSeconds()), 1e-4d);
                 }
-
-                Warp.SampleControl(TimeSeconds, throttle);
                 RearmDepletion();
                 double massBefore = Ship.Mass;
                 double chunkStart = TimeSeconds;
@@ -480,11 +540,12 @@ namespace Galilego.Universe
         public void StepLanded(float realDt, bool playerInShip)
         {
             WarpFrameDecision decision = EphemerisRuntime.ComputeFrame(
-                SystemState, Warp, Ship.Position, TimeSeconds, realDt);
-            double playerCap = playerInShip ? double.PositiveInfinity : 4d;
+                SystemState, Warp, Ship.Position, TimeSeconds, realDt, false);
+            double playerCap = playerInShip ? double.PositiveInfinity : WarpController.PlayerOutsideMaxWarpFactor;
             double factor = Math.Min(Math.Min(decision.EffectiveFactor, WarpController.AtmosphereMaxWarpFactor), playerCap);
+            LastEffectiveFactor = factor;
             double frameEnd = TimeSeconds + (realDt * factor);
-            double throttle = Warp.EffectiveThrottle(RawThrottle, factor);
+            double throttle = Warp.EffectiveThrottle(RawThrottle, false);
             bool thrustActive = Thrust != null && throttle > 0d
                 && (Propulsion == null || Propulsion.MassFlowKgS > 0d);
 
@@ -504,6 +565,7 @@ namespace Galilego.Universe
                     }
                 }
 
+                Warp.SampleControl(TimeSeconds, throttle);
                 double chunk = Warp.GetMaxChunkSeconds(TimeSeconds, SurfaceMaxStepSeconds, thrustActive);
                 chunk = Math.Min(chunk, frameEnd - TimeSeconds);
                 if (chunk <= 0d)
@@ -511,7 +573,6 @@ namespace Galilego.Universe
                     chunk = Math.Min(SurfaceMaxStepSeconds, frameEnd - TimeSeconds);
                 }
 
-                Warp.SampleControl(TimeSeconds, throttle);
                 SurfaceMotionResult result = SurfaceMotion.Step(
                     Ship.Position, Ship.Velocity, DominantBody, surfaceTerrain,
                     (position, t) => SystemState.EvaluateShipAcceleration(position, t),

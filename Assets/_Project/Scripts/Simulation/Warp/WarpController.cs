@@ -1,5 +1,15 @@
 namespace Galilego.Events
 {
+    /// <summary>Вид ускорения времени.</summary>
+    public enum WarpMode
+    {
+        /// <summary>Физическое: та же физика и тот же шаг модели, только больше модельного времени за кадр.</summary>
+        Physical,
+
+        /// <summary>Полное (долгое): баллистика без тяги и сопротивления, адаптивный шаг по событиям.</summary>
+        Full
+    }
+
     /// <summary>
     /// Immutable input snapshot at a control tick. Passed INTO the RHS as a
     /// parameter rather than read from the live controller inside the call: the RHS
@@ -26,37 +36,65 @@ namespace Galilego.Events
     }
 
     /// <summary>
-    /// Physical warp: the same RHS/integrator/event layer as at ×1 — the only
-    /// difference is how much simulated time is asked to pass per real frame.
-    /// The quantum Δt_control is a boundary no accepted chunk may cross while
-    /// thrust is active: under physical warp control does not coarsen, input is
-    /// sampled with the same simulated-time step as at ×1.
+    /// Ускорение времени двумя режимами (решение заказчика):
     ///
-    /// The factor ladder is discrete [1, 5, 10, 100, 500, 1000, 3000] with two caps:
-    /// in the atmosphere effective = min(rung, 3); thrust is allowed only at
-    /// effective ≤ 3 — above that the engine is forced to zero and flight is
-    /// ballistic (long warp). Long warp inside the atmosphere is impossible by
-    /// construction (drag contribution → CanEnterLongWarp=false), and the ×3 cap
-    /// makes physical warp with thrust legitimate there.
+    ///  • Physical ×1, ×2, ×3, ×4, ×6 — ТЯГА РАЗРЕШЕНА, физика прежняя: шаг модели не
+    ///    огрубляется, тик управления 0.5 с и чанк полётной модели 0.05 с остаются
+    ///    модельными. В кадр просто укладывается больше чанков.
+    ///  • Full ×10 … ×1 000 000 — только баллистика: тяга принудительно ноль, вход
+    ///    формально проверяется LongWarpDriver.CanEnterLongWarp (нет тяги и нет
+    ///    сопротивления). При невыполнении — физическая цепочка с капом ×3.
+    ///
+    /// Кап в атмосфере/на посадке (×3) сохраняется: там модель шага теснее связана с
+    /// поверхностью и контактной зоной.
+    ///
+    /// Старый SetWarpFactor(double) остаётся: клавиши 1…7 и чит-меню работают по той же
+    /// лестнице, ни одна ступень (включая 3000) не теряется.
     /// </summary>
     public sealed class WarpController
     {
         public const double ControlTickSeconds = 0.5d;
         public const double MinWarpFactor = 1d;
 
-        /// <summary>Discrete time-acceleration rungs.</summary>
-        public static readonly double[] WarpRungs = { 1d, 5d, 10d, 100d, 500d, 1000d, 3000d };
+        /// <summary>Физические ступени (тяга разрешена, шаг модели не меняется).</summary>
+        public static readonly int[] PhysicalRungs = { 1, 2, 3, 4, 6 };
 
-        /// <summary>Top rung (space, no thrust — long warp).</summary>
-        public const double MaxWarpFactor = 3000d;
+        /// <summary>Полные ступени (баллистика, тяга запрещена).</summary>
+        public static readonly double[] FullRungs = { 10d, 50d, 100d, 500d, 1000d, 10000d, 100000d, 1000000d };
 
-        /// <summary>Cap on the effective factor inside the atmosphere.</summary>
+        /// <summary>Верхняя физическая ступень.</summary>
+        public const double PhysicalMaxWarpFactor = 6d;
+
+        /// <summary>Верхняя ступень полного варпа.</summary>
+        public const double MaxWarpFactor = 1000000d;
+
+        /// <summary>Кап на эффективный фактор в атмосфере и на посадке.</summary>
         public const double AtmosphereMaxWarpFactor = 3d;
 
-        /// <summary>Thrust is allowed only at effective ≤ this value.</summary>
-        public const double ThrustMaxWarpFactor = 3d;
+        /// <summary>
+        /// Потолок для игрока ВНЕ корабля (EVA/на поверхности): тот же верх физической
+        /// цепочки, чтобы настройка ×6 не срезалась молча. Долгий варп без игрока в
+        /// корабле запрещён отдельно (playerCap конечен).
+        /// </summary>
+        public const double PlayerOutsideMaxWarpFactor = PhysicalMaxWarpFactor;
 
-        public double WarpFactor { get; private set; } = 1d;
+        /// <summary>
+        /// Лестница старых клавиш 1…7 (историческое поведение): 1, 5, 10, 100, 500, 1000,
+        /// 3000. Значения попадают в объединённую таблицу SetWarpFactor без потерь.
+        /// </summary>
+        public static readonly double[] WarpRungs = { 1d, 5d, 10d, 100d, 500d, 1000d, 3000d };
+
+        /// <summary>Объединённая таблица для SetWarpFactor: обе лестницы плюс 3000.</summary>
+        private static readonly double[] AllRungs =
+            { 1d, 2d, 3d, 4d, 5d, 6d, 10d, 50d, 100d, 500d, 1000d, 3000d, 10000d, 100000d, 1000000d };
+
+        public WarpMode Mode { get; private set; } = WarpMode.Physical;
+
+        /// <summary>Запрошенный фактор (в режиме Physical ≤ 6, в Full ≥ 10).</summary>
+        public double Factor { get; private set; } = 1d;
+
+        /// <summary>Последняя выбранная физическая ступень — её показывает слот панели.</summary>
+        public int LastPhysicalFactor { get; private set; } = 1;
 
         public ControlInputSnapshot CurrentControlSnapshot { get; private set; } =
             ControlInputSnapshot.Idle(0d);
@@ -69,38 +107,81 @@ namespace Galilego.Events
         /// </summary>
         private bool snapshotPending = true;
 
-        /// <summary>Snaps the request to the nearest ladder rung downwards (request 7 → ×5).</summary>
+        /// <summary>
+        /// Физическое ускорение: тяга разрешена, шаг модели не огрубляется.
+        /// </summary>
+        public void SetPhysicalWarp(int factor)
+        {
+            Mode = WarpMode.Physical;
+            Factor = factor < MinWarpFactor ? MinWarpFactor
+                : (factor > PhysicalMaxWarpFactor ? PhysicalMaxWarpFactor : factor);
+            LastPhysicalFactor = (int)Factor;
+        }
+
+        /// <summary>
+        /// Полное ускорение: баллистика без тяги. Ниже ×10 не опускаем — это уже
+        /// физическая цепочка, и молчаливое смешивание режимов запрещено.
+        /// </summary>
+        public void SetFullWarp(double factor)
+        {
+            Mode = WarpMode.Full;
+            Factor = factor < FullRungs[0] ? FullRungs[0]
+                : (factor > MaxWarpFactor ? MaxWarpFactor : factor);
+        }
+
+        /// <summary>
+        /// Старый вход (клавиши 1…7, чит-меню, билдер): снимок вниз по объединённой
+        /// таблице и выбор режима по значению. Поведение ступеней сохранено.
+        /// </summary>
         public void SetWarpFactor(double factor)
         {
-            double rung = WarpRungs[0];
-            for (int i = 0; i < WarpRungs.Length; i++)
+            double rung = AllRungs[0];
+            for (int i = 0; i < AllRungs.Length; i++)
             {
-                if (factor >= WarpRungs[i])
+                if (factor >= AllRungs[i])
                 {
-                    rung = WarpRungs[i];
+                    rung = AllRungs[i];
                 }
             }
 
-            WarpFactor = rung;
+            if (rung <= PhysicalMaxWarpFactor)
+            {
+                SetPhysicalWarp((int)rung);
+            }
+            else
+            {
+                SetFullWarp(rung);
+            }
         }
 
         /// <summary>
-        /// Frame effective factor: in the atmosphere any rung above the cap gives
-        /// exactly AtmosphereMaxWarpFactor. The rule lives here rather than in the
-        /// caller so the cap cannot be bypassed silently.
+        /// Сброс в физический ×1 — обязательное состояние после любой перемотки.
+        /// </summary>
+        public void ResetToPhysicalOne()
+        {
+            Mode = WarpMode.Physical;
+            Factor = 1d;
+            LastPhysicalFactor = 1;
+        }
+
+        /// <summary>
+        /// Фактор, который РЕАЛЬНО применён в этом кадре: в атмосфере кап ×3.
+        /// В режиме Full в атмосфере это значение относится к физической цепочке.
         /// </summary>
         public double EffectiveWarpFactor(bool inAtmosphere)
         {
-            return inAtmosphere && WarpFactor > AtmosphereMaxWarpFactor ? AtmosphereMaxWarpFactor : WarpFactor;
+            double cap = inAtmosphere ? AtmosphereMaxWarpFactor : MaxWarpFactor;
+            return Factor > cap ? cap : Factor;
         }
 
         /// <summary>
-        /// Thrust above physical warp is fully forbidden: at effective > 3
-        /// throttle is forced to 0 (rungs 5+ are ballistics only).
+        /// Тяга разрешена только в физической цепочке. В долгом варпе она нулевая ВСЕГДА,
+        /// и это не проверка «на глаз»: LongWarpDriver.CanEnterLongWarp формально требует
+        /// нулевой вклад всех негравитационных источников.
         /// </summary>
-        public double EffectiveThrottle(double rawThrottle, double effectiveFactor)
+        public double EffectiveThrottle(double rawThrottle, bool useLongWarp)
         {
-            return effectiveFactor > ThrustMaxWarpFactor ? 0d : rawThrottle;
+            return useLongWarp ? 0d : rawThrottle;
         }
 
         /// <summary>
@@ -131,12 +212,11 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Maximum size of the next chunk taking the control-tick boundary into
-        /// account. Without thrust the only limit is above (maxChunk); with thrust
-        /// the chunk is cut at the tick boundary and never crosses it.
-        /// The side effect is part of the contract: if the boundary lags behind
-        /// currentTime it is shifted right here (single-threaded sequential calls
-        /// from the game loop are the only consumption pattern).
+        /// Maximum size of the next chunk taking the control-tick boundary into account.
+        /// Without thrust the only limit is above (maxChunk); with thrust the chunk is cut
+        /// at the tick boundary and never crosses it.
+        /// Границу двигает ТОЛЬКО SampleControl (он вызывается первым в кадровом цикле):
+        /// раньше она сдвигалась здесь, и снимок газа переставал обновляться вообще.
         /// </summary>
         public double GetMaxChunkSeconds(double currentTimeSeconds, double maxChunk, bool thrustActive)
         {
@@ -148,8 +228,7 @@ namespace Galilego.Events
             double untilTick = nextTickBoundary - currentTimeSeconds;
             if (untilTick <= 0d)
             {
-                untilTick = ControlTickSeconds;
-                nextTickBoundary = currentTimeSeconds + ControlTickSeconds;
+                return maxChunk;
             }
 
             return untilTick < maxChunk ? untilTick : maxChunk;

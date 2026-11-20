@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using Galilego.Core;
 using Galilego.Spacecraft;
 using Ship = Galilego.Spacecraft.Spacecraft;
@@ -16,11 +17,19 @@ namespace Galilego.Events
         public readonly EventOccurrence? StoppingEvent;
         public readonly bool ReachedTarget;
 
-        public LongWarpResult(double reachedTimeSeconds, EventOccurrence? stoppingEvent, bool reachedTarget)
+        /// <summary>
+        /// true — кадровый бюджет кончился, недоигранное переносится на следующий кадр.
+        /// Часы уже стоят на честно прожитом времени, поэтому показ не врёт.
+        /// </summary>
+        public readonly bool BudgetExhausted;
+
+        public LongWarpResult(double reachedTimeSeconds, EventOccurrence? stoppingEvent, bool reachedTarget,
+            bool budgetExhausted = false)
         {
             ReachedTimeSeconds = reachedTimeSeconds;
             StoppingEvent = stoppingEvent;
             ReachedTarget = reachedTarget;
+            BudgetExhausted = budgetExhausted;
         }
     }
 
@@ -33,9 +42,28 @@ namespace Galilego.Events
     /// player mode). Cancelling on thrust touch is silent, BEFORE the next RHS
     /// call, so no call ever sees a warp-scale step together with an active
     /// non-gravity source.
+    ///
+    /// Кадровый бюджет: цель режется на срезы (не больше MaxChunkSeconds — столько же,
+    /// сколько максимальный чанк пропагатора), между срезами проверяется Stopwatch.
+    /// Один срез вдали от тел — один чанк 600 с (накладных расходов нет), у планеты
+    /// детектор дробит его на подшаги, и срез автоматически мельчает, чтобы бюджет
+    /// соблюдался. Без бюджета ×1 000 000 в LEO — это ~5300 подшагов на кадр, то есть
+    /// рывок; с бюджетом темп ниже, но честный и без потери точности событий.
     /// </summary>
     public sealed class LongWarpDriver
     {
+        /// <summary>Максимальный срез цели — равен максимальному чанку пропагатора.</summary>
+        public const double MaxSliceSeconds = OrbitIntegrator.DefaultMaxStepSize;
+
+        /// <summary>Минимальный срез: мельче не имеет смысла, зерно событий уже 3 с.</summary>
+        public const double MinSliceSeconds = 1d;
+
+        /// <summary>
+        /// Бюджет одного кадра на активный корабль, мс. 6 мс — потолок, после которого
+        /// кадр начинает проседать; недоигранное переносится.
+        /// </summary>
+        public double FrameBudgetMilliseconds = 6d;
+
         private readonly SpacecraftPhysics physics;
         private readonly EventDrivenPropagator propagator;
 
@@ -90,8 +118,10 @@ namespace Galilego.Events
         /// <summary>
         /// The same jump plus a chain of dense segments for the traversed path
         /// (only up to the event/target) for render sampling without Step.
+        /// Останавливается на событии, на цели или по кадровому бюджету.
         /// </summary>
-        public LongWarpResult AdvanceToTargetWithSegments(Ship ship, double currentTimeSeconds, double targetTimeSeconds, System.Collections.Generic.List<DenseSegment> render)
+        public LongWarpResult AdvanceToTargetWithSegments(Ship ship, double currentTimeSeconds, double targetTimeSeconds,
+            System.Collections.Generic.List<DenseSegment> render)
         {
             if (ship == null)
             {
@@ -103,7 +133,11 @@ namespace Galilego.Events
                 return new LongWarpResult(currentTimeSeconds, null, true);
             }
 
+            bool budgeted = FrameBudgetMilliseconds > 0d;
+            Stopwatch watch = budgeted ? Stopwatch.StartNew() : null;
+            double sliceSeconds = MaxSliceSeconds;
             double time = currentTimeSeconds;
+
             while (time < targetTimeSeconds)
             {
                 if (CancelRequested)
@@ -112,13 +146,38 @@ namespace Galilego.Events
                 }
 
                 double remaining = targetTimeSeconds - time;
-                EventOccurrence? hit = propagator.PropagateWithSegments(ship, time, remaining, render);
+                double slice = remaining < sliceSeconds ? remaining : sliceSeconds;
+
+                double sliceStartedMs = budgeted ? watch.Elapsed.TotalMilliseconds : 0d;
+                EventOccurrence? hit = propagator.PropagateWithSegments(ship, time, slice, render);
                 if (hit.HasValue)
                 {
                     return new LongWarpResult(hit.Value.TimeSeconds, hit, false);
                 }
 
-                time = targetTimeSeconds;
+                time += slice;
+
+                if (!budgeted)
+                {
+                    continue;
+                }
+
+                double spentMs = watch.Elapsed.TotalMilliseconds - sliceStartedMs;
+                if (watch.Elapsed.TotalMilliseconds >= FrameBudgetMilliseconds)
+                {
+                    return new LongWarpResult(time, null, false, true);
+                }
+
+                // Срез дороже половины бюджета — мельчим, чтобы следующий кадр не получил
+                // один длинный срез в самом дорогом месте (низкая орбита, тесное сближение).
+                if (spentMs > FrameBudgetMilliseconds * 0.5d)
+                {
+                    sliceSeconds = Math.Max(MinSliceSeconds, sliceSeconds * 0.25d);
+                }
+                else if (spentMs < FrameBudgetMilliseconds * 0.125d)
+                {
+                    sliceSeconds = Math.Min(MaxSliceSeconds, sliceSeconds * 2d);
+                }
             }
 
             return new LongWarpResult(targetTimeSeconds, null, true);

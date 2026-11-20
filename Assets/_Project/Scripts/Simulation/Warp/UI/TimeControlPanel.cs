@@ -7,9 +7,9 @@ using UnityEngine;
 namespace Galilego.Universe
 {
     /// <summary>
-    /// Time panel (T): rewind timeline + time acceleration. DESIGN ONLY — the panel draws a
-    /// <see cref="TimeControlModel"/> and reports what the player did through its events; it
-    /// contains no rewind / warp / physics logic.
+    /// Time panel (T): rewind timeline + time acceleration. The panel draws a
+    /// <see cref="TimeControlModel"/> and reports what the player did through its events;
+    /// the rewind / warp / physics logic lives in <see cref="TimeControlRuntime"/>.
     ///
     ///   ┌ physics slot │ full warp ×10 … ×1M ┐   ← tab that sticks out of the window (top-left)
     ///   ├─────────────────────────────────────┴──────────────┐
@@ -107,11 +107,15 @@ namespace Galilego.Universe
         private const int IdCount = 16;
 
         // ─── State ───────────────────────────────────────────────────────────
-        [SerializeField] private bool useDemoData = true;
+        /// <summary>Наведение на слот, с: через это время вылет открывается сам.</summary>
+        private const float SlotHoverOpenSeconds = 0.18f;
 
         private TimeControlModel model;
         private PlayerController controller;
         private bool cursorClaimed;
+
+        private float slotHover;
+        private bool slotPressed;
 
         private float openAnim;
         private float flyoutT;
@@ -141,6 +145,26 @@ namespace Galilego.Universe
         {
             get { return model; }
             set { model = value; }
+        }
+
+        /// <summary>
+        /// Живая привязка к симуляции: модель принадлежит TimeControlRuntime (раннер сцены).
+        /// Перечитывается каждый кадр — смена сцены подменяет рантайм, панель остаётся.
+        /// Живой модели нет — панель показывает пустой таймлайн «полёт не начался».
+        /// </summary>
+        private void UpdateModelBinding()
+        {
+            TimeControlRuntime runtime = TimeControlRuntime.Current;
+            if (runtime != null)
+            {
+                model = runtime.Model;
+                return;
+            }
+
+            if (model == null)
+            {
+                model = new TimeControlModel();
+            }
         }
 
         // ─── Open / close ────────────────────────────────────────────────────
@@ -251,31 +275,7 @@ namespace Galilego.Universe
 
         private void EnsureModel()
         {
-            if (model != null || !useDemoData)
-            {
-                return;
-            }
-
-            // Demo only: emulate the state change so every control can be clicked and judged.
-            // The real logic replaces this by assigning Model and subscribing to the events.
-            TimeControlModel m = TimeControlModel.CreateDemo();
-            m.RewindRequested += i =>
-            {
-                m.CurrentRealMinutes = i;
-                m.CurrentFlightSeconds = m.PointFlightSeconds[i];
-            };
-            m.PhysicalFactorChosen += f =>
-            {
-                m.PhysicalFactor = f;
-                m.ActiveKind = WarpKind.Physical;
-                m.FullIndex = -1;
-            };
-            m.FullFactorChosen += i =>
-            {
-                m.FullIndex = i;
-                m.ActiveKind = WarpKind.Full;
-            };
-            model = m;
+            UpdateModelBinding();
         }
 
         // ─── Frame ───────────────────────────────────────────────────────────
@@ -287,6 +287,7 @@ namespace Galilego.Universe
                 return;
             }
 
+            UpdateModelBinding();
             if (model == null)
             {
                 return;
@@ -399,6 +400,14 @@ namespace Galilego.Universe
                 readoutCol = WarpCol;
             }
 
+            if (model.AppliedFactorClamped)
+            {
+                // Кап (атмосфера/посадка/запрет долгого варпа) показан явно: молчаливый
+                // срез запрещён.
+                readout += " · кап " + FormatFactor(model.AppliedFactor);
+                readoutCol = Color.Lerp(readoutCol, MenuTheme.Muted, 0.35f);
+            }
+
             Txt(L(TabW - TabPad - 220f, CapY, 220f, 12f), readout, 10, true, TextAnchor.MiddleRight, readoutCol);
 
             // Physics slot. Left click = use it, right click = flyout with the other values.
@@ -417,13 +426,38 @@ namespace Galilego.Universe
             Txt(slotRect, "×" + model.PhysicalFactor, 14, true, TextAnchor.MiddleCenter, physActive ? OnPhys : PhysCol);
             Tri(triUp, new Rect(slotRect.xMax - 12f, slotRect.y + 5f, 7f, 4.5f), physActive ? WithA(OnPhys, 0.7f) : WithA(PhysCol, 0.8f));
 
+            if (live)
+            {
+                // Наведение на слот выдвигает меню физического ускорения (без клика).
+                if (slotRect.Contains(mp))
+                {
+                    slotHover += Time.unscaledDeltaTime;
+                    if (slotHover >= SlotHoverOpenSeconds)
+                    {
+                        flyoutOpen = true;
+                    }
+                }
+                else
+                {
+                    slotHover = 0f;
+                }
+            }
+
+            // ЛКМ: нажатие открывает вылет, протяжка вверх выбирает, отпускание применяет.
             if (Clicked(slotRect, 0))
             {
-                model.RaisePhysical(model.PhysicalFactor);
+                slotPressed = true;
+                flyoutOpen = true;
             }
             else if (Clicked(slotRect, 1))
             {
                 flyoutOpen = !flyoutOpen;
+            }
+
+            if (live && slotPressed && (Event.current.type == EventType.MouseUp || Event.current.rawType == EventType.MouseUp))
+            {
+                slotPressed = false;
+                ApplySlotRelease();
             }
 
             Flat(L(warpX - 11f, BtnY + 3f, 1f, BtnH - 6f), MenuTheme.HairStrong);
@@ -458,6 +492,33 @@ namespace Galilego.Universe
         private Rect WarpButtonRect(int i)
         {
             return L(TabPad + SlotW + 22f + (i * (WarpBtnW + WarpGap)), BtnY, WarpBtnW, BtnH);
+        }
+
+        /// <summary>
+        /// Отпускание мыши после протяжки от слота: над пунктом вылета — применить его,
+        /// над слотом — применить текущий, иначе просто закрыть вылет.
+        /// </summary>
+        private void ApplySlotRelease()
+        {
+            Event e = Event.current;
+
+            for (int i = 0; i < flyoutItems.Count; i++)
+            {
+                if (FlyoutItemRect(i).Contains(mp))
+                {
+                    flyoutOpen = false;
+                    model.RaisePhysical(flyoutItems[i]);
+                    e.Use();
+                    return;
+                }
+            }
+
+            if (slotRect.Contains(mp))
+            {
+                model.RaisePhysical(model.PhysicalFactor);
+            }
+
+            flyoutOpen = false;
         }
 
         private int HoveredWarpButton()
@@ -647,10 +708,18 @@ namespace Galilego.Universe
             float pointR = spacing < 16f ? Mathf.Max(2.5f, spacing * 0.3f) : 5f;
             int stride = Mathf.Max(1, Mathf.CeilToInt(26f / Mathf.Max(1f, spacing)));
             bool wordStart = spacing * stride >= 44f;
+            // Сжатие шкалы: при тысячах точек рисуем каждую N-ю, иначе каша из точек.
+            int drawStride = Mathf.Max(1, Mathf.CeilToInt(3f / Mathf.Max(1f, spacing)));
             int hoverK = live ? NearestTarget(mp.x, count, cur, 14f) : -2;
             for (int k = 0; k < count; k++)
             {
+                if (drawStride > 1 && (k % drawStride) != 0 && k != sel && k != 0 && k != count - 1)
+                {
+                    continue;
+                }
+
                 float x = XOf(k);
+                bool available = model.IsPointAvailable(k);
                 bool future = k > cur + 0.0001f;
                 float r = k == 0 ? pointR * 1.3f : pointR;
                 if (k == hoverK)
@@ -658,7 +727,13 @@ namespace Galilego.Universe
                     r += 1.2f;
                 }
 
-                if (future)
+                if (!available)
+                {
+                    // Точка снята в контактной зоне/освобождена лимитом: откат запрещён.
+                    Dot(x, TrackY, r, WithA(MenuTheme.Muted, 0.5f));
+                    Dot(x, TrackY, Mathf.Max(1f, r - 2f), Hole);
+                }
+                else if (future)
                 {
                     Dot(x, TrackY, r, MenuTheme.Muted);
                     Dot(x, TrackY, r - 2f, Hole);
@@ -724,7 +799,14 @@ namespace Galilego.Universe
             Dot(117f, H - 35f, 5f, MenuTheme.Muted);
             Dot(117f, H - 35f, 3f, Hole);
             Txt(L(128f, H - 43f, 240f, 16f), "будет перезаписано", 11, false, TextAnchor.MiddleLeft, MenuTheme.Subtle);
-            Txt(L(28f, H - 26f, 260f, 16f), "1 точка = 1 минута полёта", 11, false, TextAnchor.MiddleLeft, WithA(MenuTheme.Subtle, 0.7f));
+
+            string footer = model.Notice.Length > 0
+                ? model.Notice
+                : (count == 0
+                    ? "полёт не начался"
+                    : (drawStride > 1 ? "точка каждые " + drawStride + " мин" : "1 точка = 1 минута полёта"));
+            Txt(L(28f, H - 26f, 360f, 16f), footer, 11, false, TextAnchor.MiddleLeft,
+                model.Notice.Length > 0 ? MenuTheme.Accent : WithA(MenuTheme.Subtle, 0.7f));
 
             // ── rewind button ──
             DrawRewind(sel, cur);
@@ -733,7 +815,7 @@ namespace Galilego.Universe
         private void DrawRewind(int sel, float cur)
         {
             Rect r = L(W - 26f - RewindW, H - 24f - RewindH, RewindW, RewindH);
-            bool can = sel >= 0;
+            bool can = sel >= 0 && model.IsPointAvailable(sel);
             float h = Hov(IdRewind, r, can);
 
             if (can)

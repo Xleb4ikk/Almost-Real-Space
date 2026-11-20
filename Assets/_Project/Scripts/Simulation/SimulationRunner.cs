@@ -363,6 +363,7 @@ namespace Galilego.Universe
         private VesselStep step;
         private DebrisUpdater debrisUpdater;
         private SpacecraftPhysics physics;
+        private TimeControlRuntime timeControl;
         private ThrustSource mainThrustSource;
         private StageThrustSource stageThrustSource;
         private StageDepletionDetector stageDetector;
@@ -612,10 +613,82 @@ namespace Galilego.Universe
 
             FloatingOrigin.Anchor = PlayerPosition;
 
+            // Панель времени (T): точки перемотки + режимы варпа. Живёт на раннере, а не
+            // на UI-объекте: панель создаётся до сцены и находит модель через Current.
+            timeControl = new TimeControlRuntime(this);
+
             if (!baked)
             {
                 Debug.LogWarning("SimulationRunner: эфемериды не прицеплены — тела на кеплеровых рельсах (штатно, точность ниже).");
             }
+        }
+
+        private void OnDestroy()
+        {
+            if (timeControl != null)
+            {
+                timeControl.Dispose();
+                timeControl = null;
+            }
+        }
+
+        /// <summary>
+        /// Тик панели времени после шага физики. Отдельный LateUpdate, чтобы откат и
+        /// показания работали и когда Update вышел раньше (пауза, разрушенный корабль).
+        /// </summary>
+        private void LateUpdate()
+        {
+            if (timeControl != null)
+            {
+                timeControl.Tick(Time.deltaTime);
+            }
+        }
+
+        /// <summary>
+        /// Новый полёт (SpacecraftBuilder.EnterFlightAt): шкала перемотки начинается заново,
+        /// точка 0 — этот кадр и это время.
+        /// </summary>
+        public void ResetFlightTimeline()
+        {
+            if (timeControl != null)
+            {
+                timeControl.ResetFlightTimeline();
+            }
+        }
+
+        /// <summary>Доля модели панели (для отчёта/тестов).</summary>
+        internal TimeControlRuntime TimeControl { get { return timeControl; } }
+
+        /// <summary>
+        /// Фактор, реально применённый в последнем кадре (после капов). Слот панели
+        /// показывает именно его, если он меньше выбранного.
+        /// </summary>
+        public double EffectiveWarpFactor
+        {
+            get
+            {
+                if (step == null || Warp == null)
+                {
+                    return 1d;
+                }
+
+                return step.LastEffectiveFactor;
+            }
+        }
+
+        /// <summary>
+        /// Сброс межкадрового состояния варпа после перемотки: отмена запроса, сброс
+        /// планировщика (он чистый, но флаг отказа и бюджет должны начать заново).
+        /// </summary>
+        public void ResetLongWarpState()
+        {
+            if (step == null)
+            {
+                return;
+            }
+
+            step.Driver.ClearCancel();
+            step.ResetBudgetState();
         }
 
         private void SpawnShip()
@@ -774,6 +847,14 @@ namespace Galilego.Universe
 
         private void Update()
         {
+            // Запрос перемотки из IMGUI применяется ЗДЕСЬ, до шага физики: иначе шаг в
+            // этом же кадре затёр бы восстановленное. Работает и на паузе, и после
+            // разрушения корабля — откат должен поднимать экипаж.
+            if (timeControl != null)
+            {
+                timeControl.ApplyPendingRewind();
+            }
+
             // step == null — initialisation failed (early error/disable): stay silent
             // like a disabled runner rather than throwing NRE every frame.
             if (step == null || Paused || Ship == null || Regime == VesselRegime.Destroyed)
@@ -1070,6 +1151,7 @@ namespace Galilego.Universe
         {
             Ship.Position = position;
             Ship.Velocity = velocity;
+            Ship.InvalidateLocalState();
             step.Regime = regime;
             step.ResetTimeAccumulator();
             FloatingOrigin.Anchor = PlayerPosition;
@@ -1102,6 +1184,7 @@ namespace Galilego.Universe
         {
             public double TimeSeconds;
             public double WarpFactor;
+            public Galilego.Events.WarpMode WarpMode;
             public double RawThrottle;
 
             public Vector3d ShipPosition;
@@ -1143,6 +1226,18 @@ namespace Galilego.Universe
             public Vector3d LastShipVelocity;
             public double LastShipAccelerationTime;
 
+            /// <summary>Топливо и ступени на момент снимка; null — модель не используется.</summary>
+            public StagePropulsionSnapshot? Propulsion;
+
+            /// <summary>Цель SAS на момент снимка (тумблеры двигателей/РСУ — намерение игрока, не откатываются).</summary>
+            public Galilego.Flight.VesselFlightModel.AttitudeHoldState FlightHold;
+
+            /// <summary>Уровни тяги, углы подвеса и остаток РСУ на момент снимка.</summary>
+            public Galilego.Flight.VesselFlightModel.ActuatorState FlightActuators;
+
+            /// <summary>Активные обломки на момент снимка; null — пула нет.</summary>
+            public DebrisPoolSnapshot Debris;
+
             public CockpitSeat SeatedSeat;
             public Vector3 ShipLocalOffset;
         }
@@ -1153,7 +1248,8 @@ namespace Galilego.Universe
             var snapshot = new WorldSnapshot
             {
                 TimeSeconds = TimeSeconds,
-                WarpFactor = Warp != null ? Warp.WarpFactor : 1d,
+                WarpFactor = Warp != null ? Warp.Factor : 1d,
+                WarpMode = Warp != null ? Warp.Mode : Galilego.Events.WarpMode.Physical,
                 RawThrottle = RawThrottle,
 
                 ShipPosition = Ship.Position,
@@ -1194,6 +1290,15 @@ namespace Galilego.Universe
                 ShipAcceleration = shipAcceleration,
                 LastShipVelocity = lastShipVelocity,
                 LastShipAccelerationTime = lastShipAccelerationTime,
+
+                Propulsion = Propulsion != null ? Propulsion.CaptureState() : (StagePropulsionSnapshot?)null,
+                FlightHold = Flight != null
+                    ? Flight.CaptureHoldState()
+                    : new Galilego.Flight.VesselFlightModel.AttitudeHoldState(false, QuaternionD.Identity),
+                FlightActuators = Flight != null
+                    ? Flight.CaptureActuators()
+                    : new Galilego.Flight.VesselFlightModel.ActuatorState(null, null, null, null),
+                Debris = Debris != null ? Debris.CaptureState() : null,
             };
 
             PlayerController controller = FindAnyObjectByType<PlayerController>();
@@ -1223,7 +1328,15 @@ namespace Galilego.Universe
             step.SetTime(snapshot.TimeSeconds);
             if (Warp != null)
             {
-                Warp.SetWarpFactor(snapshot.WarpFactor);
+                if (snapshot.WarpMode == Galilego.Events.WarpMode.Full && snapshot.WarpFactor >= Galilego.Events.WarpController.FullRungs[0])
+                {
+                    Warp.SetFullWarp(snapshot.WarpFactor);
+                }
+                else
+                {
+                    Warp.SetWarpFactor(snapshot.WarpFactor);
+                }
+
                 Warp.ResetTicks(snapshot.TimeSeconds);
             }
 
@@ -1236,9 +1349,33 @@ namespace Galilego.Universe
             Ship.Attitude = snapshot.ShipAttitude;
             Ship.AngularVelocity = snapshot.ShipAngularVelocity;
             Ship.PositionIsCom = snapshot.ShipPositionIsCom;
+            Ship.InvalidateLocalState();
             step.Regime = snapshot.ShipRegime;
             step.DominantBody = snapshot.DominantBody;
             step.ResetTimeAccumulator();
+
+            // Топливо, ступени, цель SAS, обломки. Сборка (cores) та же — снимок снят с неё.
+            if (snapshot.Propulsion.HasValue && Propulsion != null)
+            {
+                if (!Propulsion.RestoreState(snapshot.Propulsion.Value))
+                {
+                    Debug.LogError("[Rewind] снимок топлива не сходится с текущей сборкой — откат неполный");
+                }
+            }
+
+            if (Flight != null)
+            {
+                Flight.RestoreHoldState(snapshot.FlightHold);
+                if (!Flight.RestoreActuators(snapshot.FlightActuators))
+                {
+                    Debug.LogError("[Rewind] снимок исполнительных органов не сходится со сборкой — откат неполный");
+                }
+            }
+
+            if (Debris != null && snapshot.Debris != null)
+            {
+                Debris.RestoreState(snapshot.Debris);
+            }
 
             PlayerPosition = snapshot.PlayerPosition;
             PlayerVelocity = snapshot.PlayerVelocity;
@@ -1546,6 +1683,16 @@ namespace Galilego.Universe
 
             double t = fromTime;
             bool jump = playerJumpQueued;
+
+            // Игрок привязан к кораблю (в кабине/в кресле): промежуточные подшаги не
+            // рендерятся, важен только конец кадра. При полном варпе кадр несёт десятки
+            // тысяч модельных секунд — сворачиваем цикл вместо 30 000 одинаковых итераций.
+            bool shipBound = PlayerSeated || PlayerMode == PlayerMode.InShip;
+            if (shipBound && TimeSeconds - fromTime > PlayerMaxStepSeconds * 8d)
+            {
+                t = TimeSeconds - PlayerMaxStepSeconds;
+            }
+
             while (t < TimeSeconds - 1e-12)
             {
                 double dt = Math.Min(PlayerMaxStepSeconds, TimeSeconds - t);

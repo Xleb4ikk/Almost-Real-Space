@@ -15,25 +15,36 @@ namespace Galilego.Events
         /// false — physical chain (Propagate/SpacecraftPhysics, thrust allowed).</summary>
         public bool UseLongWarp { get; }
 
-        public WarpFrameDecision(double effectiveFactor, double simSeconds, bool useLongWarp)
+        /// <summary>
+        /// true — игрок выбрал полный варп, но он запрещён (атмосфера или ненулевой вклад
+        /// негравитационных сил). Кадр идёт физической цепочкой с капом ×3; вызывающий
+        /// обязан один раз залогировать это, чтобы срез не был молчаливым.
+        /// </summary>
+        public bool LongWarpRefused { get; }
+
+        public WarpFrameDecision(double effectiveFactor, double simSeconds, bool useLongWarp, bool longWarpRefused)
         {
             EffectiveFactor = effectiveFactor;
             SimSeconds = simSeconds;
             UseLongWarp = useLongWarp;
+            LongWarpRefused = longWarpRefused;
         }
     }
 
     /// <summary>
     /// Pure accelerated-time frame planner: effective factor (the atmosphere cap
-    /// lives in WarpController) → simulated seconds → execution layer. Thrust is
-    /// allowed only at effective ≤ ThrustMaxWarpFactor; higher rungs are ballistics
-    /// (LongWarpDriver), where CanEnterLongWarp loudly guards against forgotten
-    /// thrust. horizonSeconds caps at the end of the world
+    /// lives in WarpController) → simulated seconds → execution layer.
+    ///
+    /// Полный варп выбирается ТОЛЬКО при выполненном формальном условии
+    /// <paramref name="longWarpAllowed"/> (LongWarpDriver.CanEnterLongWarp: нулевой вклад
+    /// тяги и сопротивления). Иначе — физическая цепочка с капом ×3: молчаливая
+    /// баллистика в атмосфере запрещена. horizonSeconds caps at the end of the world
     /// (BakedEndSeconds − t): past the end a frame simply does not fly.
     /// </summary>
     public static class WarpPlanner
     {
-        public static WarpFrameDecision ComputeFrame(WarpController warp, bool inAtmosphere, double realDtSeconds, double horizonSeconds)
+        public static WarpFrameDecision ComputeFrame(
+            WarpController warp, bool inAtmosphere, bool longWarpAllowed, double realDtSeconds, double horizonSeconds)
         {
             if (warp == null)
             {
@@ -46,16 +57,25 @@ namespace Galilego.Events
                     "realDtSeconds обязан быть конечным и положительным, получено " + realDtSeconds + ".");
             }
 
+            bool useLongWarp = warp.Mode == WarpMode.Full && !inAtmosphere && longWarpAllowed;
+            bool refused = warp.Mode == WarpMode.Full && !useLongWarp;
+
             double effective = warp.EffectiveWarpFactor(inAtmosphere);
+            if (refused)
+            {
+                // Полный варп недоступен: работаем физической цепочкой, и её потолок —
+                // тот же кап, что в атмосфере/на посадке.
+                effective = Math.Min(effective, WarpController.AtmosphereMaxWarpFactor);
+            }
+
             double sim = effective * realDtSeconds;
-            bool useLongWarp = effective > WarpController.ThrustMaxWarpFactor;
 
             if (double.IsFinite(horizonSeconds) && sim > horizonSeconds)
             {
                 sim = Math.Max(0d, horizonSeconds);
             }
 
-            return new WarpFrameDecision(effective, sim, useLongWarp);
+            return new WarpFrameDecision(effective, sim, useLongWarp, refused);
         }
     }
 }

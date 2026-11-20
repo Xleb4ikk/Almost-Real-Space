@@ -131,6 +131,20 @@ namespace Galilego.Events
                 return true; // no data to estimate — conservative
             }
 
+            // Ускорение в точке — вторая половина оценки достижимости. Без неё падение
+            // «с нулевой относительной скоростью» (сброс с высоты) выглядит недостижимым:
+            // v_rel = 0, а через 90 с корабль уже на поверхности. Чанк в 600 с тогда
+            // проскакивает тело насквозь — классический туннель.
+            double accel = 0d;
+            try
+            {
+                accel = system.EvaluateShipAcceleration(state.Position, timeSeconds).Magnitude;
+            }
+            catch (Exception)
+            {
+                accel = 0d;
+            }
+
             for (int i = 0; i < crossingDetectors.Count; i++)
             {
                 if (crossingDetectors[i] is AltitudeCrossingDetector alt)
@@ -138,7 +152,7 @@ namespace Galilego.Events
                     OrbitingBody body = alt.Body;
                     body.EvaluateWorldState(timeSeconds, out Vector3d bp, out Vector3d bv);
                     double gap = (state.Position - bp).Magnitude - (body.Radius + alt.ThresholdAltitude);
-                    if (gap <= ReachableDistance(state.Velocity, bv, chunkSeconds, safetyFactor))
+                    if (gap <= ReachableDistance(state.Velocity, bv, chunkSeconds, safetyFactor, accel))
                     {
                         return true;
                     }
@@ -156,7 +170,7 @@ namespace Galilego.Events
 
                 body.EvaluateWorldState(timeSeconds, out Vector3d bp, out Vector3d bv);
                 double gap = (state.Position - bp).Magnitude - body.SphereOfInfluenceRadius;
-                if (gap <= ReachableDistance(state.Velocity, bv, chunkSeconds, safetyFactor))
+                if (gap <= ReachableDistance(state.Velocity, bv, chunkSeconds, safetyFactor, accel))
                 {
                     return true;
                 }
@@ -165,9 +179,17 @@ namespace Galilego.Events
             return false;
         }
 
-        private static double ReachableDistance(Vector3d shipVelocity, Vector3d bodyVelocity, double chunkSeconds, double safetyFactor)
+        /// <summary>
+        /// Консервативная оценка пути за чанк: относительная скорость плюс разгон
+        /// ½·a·t². Скорость берётся ОТНОСИТЕЛЬНАЯ тела, а не сумма модулей: сумма
+        /// модулей завышает путь у быстрых тел и занижает у медленных.
+        /// </summary>
+        private static double ReachableDistance(Vector3d shipVelocity, Vector3d bodyVelocity, double chunkSeconds,
+            double safetyFactor, double accel)
         {
-            return (shipVelocity.Magnitude + bodyVelocity.Magnitude) * chunkSeconds * safetyFactor;
+            double vRel = (shipVelocity - bodyVelocity).Magnitude;
+            double distance = (vRel * chunkSeconds) + (0.5d * accel * chunkSeconds * chunkSeconds);
+            return distance * safetyFactor;
         }
     }
 }

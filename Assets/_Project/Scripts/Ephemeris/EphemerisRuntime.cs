@@ -48,12 +48,16 @@ namespace Galilego.Universe
         /// <summary>
         /// Accelerated-time decision for this frame: atmosphere cap ×3, effective factor,
         /// execution layer (physics vs long warp); the horizon is the end of the baked
-        /// world. After it the caller runs either the long-warp path (warp.PrepareForLongWarp
-        /// + LongWarpDriver.AdvanceToTarget) or the physics chain with EffectiveThrottle.
+        /// world. <paramref name="longWarpAllowed"/> — формальный результат
+        /// LongWarpDriver.CanEnterLongWarp (нулевой вклад тяги и сопротивления): без него
+        /// полный варп не выбирается вообще. After it the caller runs either the long-warp
+        /// path (warp.PrepareForLongWarp + LongWarpDriver.AdvanceToTarget) or the physics
+        /// chain with EffectiveThrottle.
         /// Main thread only.
         /// </summary>
         public static WarpFrameDecision ComputeFrame(
-            StarSystem sys, WarpController warp, Vector3d shipPosition, double timeSeconds, double realDtSeconds)
+            StarSystem sys, WarpController warp, Vector3d shipPosition, double timeSeconds, double realDtSeconds,
+            bool longWarpAllowed)
         {
             if (sys == null)
             {
@@ -68,7 +72,7 @@ namespace Galilego.Universe
                 horizon = bakedEnd - timeSeconds;
             }
 
-            return WarpPlanner.ComputeFrame(warp, inAtmosphere, realDtSeconds, horizon);
+            return WarpPlanner.ComputeFrame(warp, inAtmosphere, longWarpAllowed, realDtSeconds, horizon);
         }
     }
 }

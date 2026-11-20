@@ -33,6 +33,16 @@ namespace Galilego.Spacecraft
         /// <summary>true — Position is the center of mass (after leaving the contact zone), false — the bottom of the craft.</summary>
         public bool PositionIsCom;
 
+        /// <summary>
+        /// Забыть локальный кадр: абсолютные Position/Velocity изменены извне (телепорт,
+        /// откат времени). Следующий шаг спроецирует состояние в локальный кадр доминирующего
+        /// тела заново и не понесёт разность времён из будущего.
+        /// </summary>
+        public void InvalidateLocalState()
+        {
+            HasLocalState = false;
+        }
+
         public Spacecraft(Vector3d position, Vector3d velocity, double mass)
         {
             Position = position;

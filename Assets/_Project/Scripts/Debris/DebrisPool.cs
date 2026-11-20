@@ -30,6 +30,38 @@ namespace Galilego.Debris
     }
 
     /// <summary>
+    /// Состояние пула обломков для перемотки: только активные слоты, с их индексами.
+    /// Хранится компактно (обычно 0–20 слотов), восстанавливается на те же индексы,
+    /// чтобы обломки «из будущего» исчезли, а «из прошлого» вернулись на место.
+    /// </summary>
+    public sealed class DebrisPoolSnapshot
+    {
+        public readonly int[] Indices;
+        public readonly Vector3d[] Positions;
+        public readonly Vector3d[] Velocities;
+        public readonly double[] Masses;
+        public readonly double[] DeathTimes;
+        public readonly double[] NextCheckTimes;
+        public readonly long[] Sequences;
+        public readonly long NextSequence;
+
+        public DebrisPoolSnapshot(int[] indices, Vector3d[] positions, Vector3d[] velocities, double[] masses,
+            double[] deathTimes, double[] nextCheckTimes, long[] sequences, long nextSequence)
+        {
+            Indices = indices;
+            Positions = positions;
+            Velocities = velocities;
+            Masses = masses;
+            DeathTimes = deathTimes;
+            NextCheckTimes = nextCheckTimes;
+            Sequences = sequences;
+            NextSequence = nextSequence;
+        }
+
+        public int Count { get { return Indices != null ? Indices.Length : 0; } }
+    }
+
+    /// <summary>
     /// Fixed pool of N=256 with no allocations in the hot path. A new debris
     /// takes a free slot or evicts the oldest one when full.
     /// </summary>
@@ -125,6 +157,85 @@ namespace Galilego.Debris
             {
                 slots[i].Active = false;
             }
+        }
+
+        /// <summary>Компактный снимок активных слотов (для перемотки).</summary>
+        public DebrisPoolSnapshot CaptureState()
+        {
+            int count = 0;
+            for (int i = 0; i < Capacity; i++)
+            {
+                if (slots[i].Active)
+                {
+                    count++;
+                }
+            }
+
+            var indices = new int[count];
+            var positions = new Vector3d[count];
+            var velocities = new Vector3d[count];
+            var masses = new double[count];
+            var deathTimes = new double[count];
+            var nextCheckTimes = new double[count];
+            var sequences = new long[count];
+
+            int w = 0;
+            for (int i = 0; i < Capacity; i++)
+            {
+                DebrisSlot slot = slots[i];
+                if (!slot.Active)
+                {
+                    continue;
+                }
+
+                indices[w] = i;
+                positions[w] = slot.Body.Position;
+                velocities[w] = slot.Body.Velocity;
+                masses[w] = slot.Body.Mass;
+                deathTimes[w] = slot.DeathTimeSeconds;
+                nextCheckTimes[w] = slot.NextCheckTimeSeconds;
+                sequences[w] = slot.Sequence;
+                w++;
+            }
+
+            return new DebrisPoolSnapshot(indices, positions, velocities, masses, deathTimes, nextCheckTimes, sequences, nextSequence);
+        }
+
+        /// <summary>
+        /// Восстановить снимок: пул очищается и активные слоты занимают ТЕ ЖЕ индексы.
+        /// Локальный кадр каждого тела сбрасывается — абсолютные координаты из прошлого
+        /// не должны проецироваться как продолжение будущего шага.
+        /// </summary>
+        public void RestoreState(DebrisPoolSnapshot snapshot)
+        {
+            Clear();
+            if (snapshot == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < snapshot.Count; i++)
+            {
+                int index = snapshot.Indices[i];
+                if (index < 0 || index >= Capacity)
+                {
+                    continue;
+                }
+
+                DebrisSlot slot = slots[index];
+                slot.Body.Position = snapshot.Positions[i];
+                slot.Body.Velocity = snapshot.Velocities[i];
+                slot.Body.Mass = snapshot.Masses[i];
+                slot.Body.Attitude = Galilego.Core.QuaternionD.Identity;
+                slot.Body.AngularVelocity = Galilego.Core.Vector3d.Zero;
+                slot.Body.InvalidateLocalState();
+                slot.Active = true;
+                slot.DeathTimeSeconds = snapshot.DeathTimes[i];
+                slot.NextCheckTimeSeconds = snapshot.NextCheckTimes[i];
+                slot.Sequence = snapshot.Sequences[i];
+            }
+
+            nextSequence = snapshot.NextSequence;
         }
     }
 

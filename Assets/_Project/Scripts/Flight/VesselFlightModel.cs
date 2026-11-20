@@ -313,6 +313,98 @@ namespace Galilego.Flight
 
         public void HoldCurrentAttitude() { holdValid = false; }
 
+        /// <summary>
+        /// Снимок автопилота для перемотки: держится ли цель и какая именно. Без него
+        /// после отката SAS «схватит» новую цель и траектория уедет от исходной ветви.
+        /// </summary>
+        public readonly struct AttitudeHoldState
+        {
+            public readonly bool Valid;
+            public readonly QuaternionD Target;
+
+            public AttitudeHoldState(bool valid, QuaternionD target)
+            {
+                Valid = valid;
+                Target = target;
+            }
+        }
+
+        public AttitudeHoldState CaptureHoldState()
+        {
+            return new AttitudeHoldState(holdValid, holdTarget);
+        }
+
+        public void RestoreHoldState(AttitudeHoldState state)
+        {
+            holdValid = state.Valid;
+            holdTarget = state.Valid ? state.Target : QuaternionD.Identity;
+        }
+
+        /// <summary>
+        /// Состояние исполнительных органов: уровни тяги, углы подвеса и остаток РСУ.
+        /// Без него после отката двигатели стартуют с чужих углов подвеса и «прошлого»
+        /// топлива РСУ — траектория уезжает от исходной ветви.
+        /// </summary>
+        public readonly struct ActuatorState
+        {
+            public readonly double[] Level;
+            public readonly double[] GimbalX;
+            public readonly double[] GimbalZ;
+            public readonly double[] OwnPropKg;
+
+            public ActuatorState(double[] level, double[] gimbalX, double[] gimbalZ, double[] ownPropKg)
+            {
+                Level = level;
+                GimbalX = gimbalX;
+                GimbalZ = gimbalZ;
+                OwnPropKg = ownPropKg;
+            }
+
+            public int Count { get { return Level != null ? Level.Length : 0; } }
+        }
+
+        public ActuatorState CaptureActuators()
+        {
+            int n = Thrusters.Count;
+            var level = new double[n];
+            var gimbalX = new double[n];
+            var gimbalZ = new double[n];
+            var ownProp = new double[n];
+            for (int i = 0; i < n; i++)
+            {
+                Thruster t = Thrusters[i];
+                level[i] = t.Level;
+                gimbalX[i] = t.GimbalX;
+                gimbalZ[i] = t.GimbalZ;
+                ownProp[i] = t.OwnPropKg;
+            }
+
+            return new ActuatorState(level, gimbalX, gimbalZ, ownProp);
+        }
+
+        /// <summary>
+        /// Восстановить исполнительные органы. Размер не совпал — сборка другая, откат
+        /// неполный: возвращаем false, вызывающий обязан это залогировать.
+        /// </summary>
+        public bool RestoreActuators(ActuatorState state)
+        {
+            if (state.Count != Thrusters.Count)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < Thrusters.Count; i++)
+            {
+                Thruster t = Thrusters[i];
+                t.Level = state.Level[i];
+                t.GimbalX = state.GimbalX[i];
+                t.GimbalZ = state.GimbalZ[i];
+                t.OwnPropKg = state.OwnPropKg[i];
+            }
+
+            return true;
+        }
+
         /// <summary>Least-squares gimbal angle fit for the required torque; returns the residual for RCS.</summary>
         private Vector3d AllocateGimbal(Vector3d tauReq, double dt)
         {

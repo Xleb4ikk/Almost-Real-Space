@@ -16,6 +16,32 @@ namespace Galilego.Spacecraft
     }
 
     /// <summary>
+    /// Полное состояние топливной модели на момент снимка: и «сколько осталось», и
+    /// «что attached / что горит». Нужен перемотке: пулы без индексов ступеней
+    /// восстановили бы топливо, но не отделение ступеней.
+    /// </summary>
+    public readonly struct StagePropulsionSnapshot
+    {
+        public readonly int FirstAttached;
+        public readonly int Ignited;
+        public readonly double DetachedMassKg;
+        public readonly int Revision;
+        public readonly bool AutoIgnite;
+        public readonly StagePoolState[] Pools;
+
+        public StagePropulsionSnapshot(int firstAttached, int ignited, double detachedMassKg, int revision,
+            bool autoIgnite, StagePoolState[] pools)
+        {
+            FirstAttached = firstAttached;
+            Ignited = ignited;
+            DetachedMassKg = detachedMassKg;
+            Revision = revision;
+            AutoIgnite = autoIgnite;
+            Pools = pools;
+        }
+    }
+
+    /// <summary>
     /// Runtime model of the propulsion system in flight: stage cores (StageCore,
     /// from DeltaV.BuildStageAssembly) plus the state of "what is attached and what
     /// is ignited". Pure (no Unity), ONE for both physics and panel: StageThrustSource
@@ -225,6 +251,51 @@ namespace Galilego.Spacecraft
             {
                 cores[k].AppendState(into);
             }
+        }
+
+        /// <summary>
+        /// Полный снимок для перемотки: пулы + какие ступени attached/ignited + масса
+        /// вне сборки. Дешёвый (десятки записей), снимается раз в реальную минуту.
+        /// </summary>
+        public StagePropulsionSnapshot CaptureState()
+        {
+            var pools = new List<StagePoolState>(cores.Count * 2);
+            AppendState(pools);
+            return new StagePropulsionSnapshot(firstAttached, ignited, DetachedMassKg, Revision, AutoIgnite, pools.ToArray());
+        }
+
+        /// <summary>
+        /// Восстановить снимок. Сборка та же (cores не пересоздаются), поэтому пулы
+        /// возвращаются точно: ApplyState клампит в [0, StartKg], а снимок снят с тех же
+        /// StartKg. Возвращает false, если индексы не сходятся — такой откат недопустим.
+        /// </summary>
+        public bool RestoreState(StagePropulsionSnapshot snapshot)
+        {
+            if (snapshot.Pools == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < snapshot.Pools.Length; i++)
+            {
+                StagePoolState state = snapshot.Pools[i];
+                if (state.StageIndex < 0 || state.StageIndex >= cores.Count)
+                {
+                    return false;
+                }
+
+                if (!cores[state.StageIndex].ApplyState(state.Component, state.Kg))
+                {
+                    return false;
+                }
+            }
+
+            firstAttached = snapshot.FirstAttached;
+            ignited = snapshot.Ignited;
+            DetachedMassKg = snapshot.DetachedMassKg;
+            AutoIgnite = snapshot.AutoIgnite;
+            Revision = snapshot.Revision;
+            return true;
         }
 
         /// <summary>Jettisoned-stage flags by core index.</summary>
