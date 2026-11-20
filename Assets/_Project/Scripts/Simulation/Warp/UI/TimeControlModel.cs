@@ -63,6 +63,9 @@ namespace Galilego.Universe
         /// <summary>true — применённый фактор меньше выбранного (сработал кап).</summary>
         public bool AppliedFactorClamped;
 
+        /// <summary>Почему фактор срезан: «площадка», «стройка», «поверхность», «атмосфера».</summary>
+        public string ClampReason = string.Empty;
+
         /// <summary>Короткое сообщение панели: почему откат отклонён и т. п. Пусто — нет сообщения.</summary>
         public string Notice = string.Empty;
 

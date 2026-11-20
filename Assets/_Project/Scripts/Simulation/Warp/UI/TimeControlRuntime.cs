@@ -437,6 +437,26 @@ namespace Galilego.Universe
             double applied = runner.EffectiveWarpFactor;
             Model.AppliedFactor = applied;
             Model.AppliedFactorClamped = applied < warp.Factor - 1e-9d;
+            if (!Model.AppliedFactorClamped)
+            {
+                Model.ClampReason = string.Empty;
+            }
+            else if (ContactZoneHost.Active)
+            {
+                Model.ClampReason = "площадка";
+            }
+            else if (runner.BuildMode)
+            {
+                Model.ClampReason = "стройка";
+            }
+            else if (runner.Regime == VesselRegime.Landed)
+            {
+                Model.ClampReason = "поверхность";
+            }
+            else
+            {
+                Model.ClampReason = "атмосфера";
+            }
         }
 
         private void SetNotice(string text)

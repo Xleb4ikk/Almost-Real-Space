@@ -883,6 +883,8 @@ namespace Galilego.Universe
             {
                 double buildFrameStart = TimeSeconds;
                 step.AdvanceTime(realDt);
+                // Время идёт 1:1: панель должна показывать измеренный фактор ×1.
+                step.MarkRealTimeOnly();
                 StepPlayer(buildFrameStart);
                 // Build mode does the pinning and hands the craft to physics — EXACTLY
                 // HERE and at exactly this time: computed earlier (before AdvanceTime)
@@ -903,6 +905,8 @@ namespace Galilego.Universe
             {
                 double zoneFrameStart = TimeSeconds;
                 step.AdvanceTime(realDt);
+                // Контактная зона идёт по реальному времени (PhysX): фактор измеренно ×1.
+                step.MarkRealTimeOnly();
                 StepPlayer(zoneFrameStart);
                 step.DominantBody = SystemState.FindDominantBody(Ship.Position, TimeSeconds);
                 FloatingOrigin.Anchor = PlayerPosition;

@@ -402,9 +402,14 @@ namespace Galilego.Universe
 
             if (model.AppliedFactorClamped)
             {
-                // Кап (атмосфера/посадка/запрет долгого варпа) показан явно: молчаливый
-                // срез запрещён.
+                // Кап (площадка/посадка/атмосфера/запрет долгого варпа) показан явно:
+                // молчаливый срез запрещён.
                 readout += " · кап " + FormatFactor(model.AppliedFactor);
+                if (model.ClampReason.Length > 0)
+                {
+                    readout += " (" + model.ClampReason + ")";
+                }
+
                 readoutCol = Color.Lerp(readoutCol, MenuTheme.Muted, 0.35f);
             }
 

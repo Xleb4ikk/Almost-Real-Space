@@ -93,6 +93,16 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Кадр прожит в реальном времени (контактная зона, режим стройки): фактор
+        /// фактически единица. Нужен, чтобы панель показывала измеренное значение,
+        /// а не застрявшее от прошлого StepFlying.
+        /// </summary>
+        public void MarkRealTimeOnly()
+        {
+            LastEffectiveFactor = 1d;
+        }
+
+        /// <summary>
         /// Why the policy picked <see cref="LastSelectedIntegrator"/> (D3 observability):
         /// DECISION_TABLE.md rows R1/R2/R3, otherwise Default. Does not affect the choice.
         /// </summary>
