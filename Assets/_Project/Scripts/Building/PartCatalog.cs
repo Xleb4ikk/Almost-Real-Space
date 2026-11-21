@@ -12,7 +12,7 @@ namespace Galilego.Building
     /// The tank can be a cylinder or a truncated cone adapter: bottom and top
     /// radii then differ, and the shape is a body of revolution with a slanted
     /// generatrix. Masses: tank — shell + propellant (ProceduralFuelTank formulas),
-    /// separator — ring volume of steel, engine — placeholder until real
+    /// separator — steel volume of a solid ribbed disc, engine — placeholder until real
     /// calculations. Joint strengths are parameters (placeholders); the separator
     /// is the weakest: it is meant to break first.
     /// </summary>
@@ -156,11 +156,9 @@ namespace Galilego.Building
                 case PartKind.Separator:
                 {
                     float radius = Mathf.Clamp(bottomRadius, SeparatorMinRadius, SeparatorMaxRadius);
-                    float width = ProceduralSeparator.RingWidthFraction * radius;
                     float thickness = ProceduralSeparator.Thickness;
-                    float midRadius = radius - (width * 0.5f);
-                    double volume = 2d * Math.PI * midRadius * width * thickness;
-                    double mass = volume * SeparatorSteelDensity;
+                    // Solid ribbed disc: mass from the same feature set the mesh is built from.
+                    double mass = ProceduralSeparator.MetalVolume(radius) * SeparatorSteelDensity;
                     return new PartMetrics(radius, radius, thickness, 0f, -thickness * 0.5f, thickness * 0.5f, mass, SeparatorJointNewtons, 1e12d);
                 }
 

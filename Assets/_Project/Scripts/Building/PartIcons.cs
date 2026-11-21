@@ -114,15 +114,17 @@ namespace Galilego.Building
             return Finish(pixels);
         }
 
-        // ─── Separator: ring seen from above ─────────────────────────────────
+        // ─── Separator: solid ribbed disc seen from above ────────────────────
 
         private static Texture2D DrawSeparator()
         {
             var pixels = NewCanvas(new Color(0f, 0f, 0f, 0f));
             int cx = Size / 2;
             int cy = Size / 2;
-            float outer = 36f;
-            float inner = 26f;
+            const float outer = 36f;
+            const float hub = 5f;
+            const int ribs = 12;
+
             for (int y = 0; y < Size; y++)
             {
                 for (int x = 0; x < Size; x++)
@@ -130,36 +132,52 @@ namespace Galilego.Building
                     float dx = x - cx;
                     float dy = y - cy;
                     float r = Mathf.Sqrt((dx * dx) + (dy * dy));
-                    if (r > outer || r < inner)
+                    if (r > outer)
                     {
                         continue;
                     }
 
-                    float shade = 0.75f + (0.25f * (dy / outer)); // top slightly lighter
-                    Set(pixels, x, y, new Color(0.13f * shade, 0.14f * shade, 0.16f * shade));
+                    float shade = 0.72f + (0.28f * (dy / outer));
+                    var color = new Color(0.15f * shade, 0.16f * shade, 0.18f * shade);
+
+                    // Concentric frames.
+                    if (Mathf.Abs(r - 30f) < 1f || Mathf.Abs(r - 22f) < 1f || Mathf.Abs(r - 14f) < 1f)
+                    {
+                        color = new Color(0.32f, 0.34f, 0.38f) * shade;
+                    }
+
+                    // Radial stringers.
+                    float angle = Mathf.Atan2(dy, dx) * Mathf.Rad2Deg;
+                    const float step = 360f / ribs;
+                    float phase = Mathf.Repeat(angle, step);
+                    if (r > hub && r < 30f && (phase < 2.5f || phase > step - 2.5f))
+                    {
+                        color = new Color(0.27f, 0.29f, 0.33f) * shade;
+                    }
+
+                    Set(pixels, x, y, color);
                 }
             }
 
-            // Plate bolts around the ring.
+            // Hub.
+            DrawEllipse(pixels, cx, cy, hub, hub, new Color(0.42f, 0.45f, 0.50f));
+
+            // Flange bolts.
             for (int i = 0; i < 12; i++)
             {
                 float a = (2f * Mathf.PI * i) / 12f;
-                int bx = cx + Mathf.RoundToInt(Mathf.Cos(a) * 31f);
-                int by = cy + Mathf.RoundToInt(Mathf.Sin(a) * 31f);
-                Set(pixels, bx, by, new Color(0.55f, 0.58f, 0.64f));
-                Set(pixels, bx + 1, by, new Color(0.38f, 0.41f, 0.46f));
+                int bx = cx + Mathf.RoundToInt(Mathf.Cos(a) * 31.5f);
+                int by = cy + Mathf.RoundToInt(Mathf.Sin(a) * 31.5f);
+                Set(pixels, bx, by, new Color(0.60f, 0.63f, 0.69f));
             }
 
-            // Ring edges.
+            // Outer rim.
             for (int angle = 0; angle < 360; angle++)
             {
                 float a = angle * Mathf.Deg2Rad;
                 int ox = cx + Mathf.RoundToInt(Mathf.Cos(a) * outer);
                 int oy = cy + Mathf.RoundToInt(Mathf.Sin(a) * outer);
-                int ix = cx + Mathf.RoundToInt(Mathf.Cos(a) * inner);
-                int iy = cy + Mathf.RoundToInt(Mathf.Sin(a) * inner);
-                Set(pixels, ox, oy, new Color(0.68f, 0.72f, 0.78f));
-                Set(pixels, ix, iy, new Color(0.30f, 0.33f, 0.38f));
+                Set(pixels, ox, oy, new Color(0.66f, 0.70f, 0.76f));
             }
 
             return Finish(pixels);
