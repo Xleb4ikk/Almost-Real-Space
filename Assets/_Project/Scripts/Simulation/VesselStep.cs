@@ -352,7 +352,17 @@ namespace Galilego.Universe
                     double pressure = PressureAt != null ? PressureAt(Ship.Position, TimeSeconds) : 0d;
                     Flight.Prepare(chunk, Ship.Attitude, Ship.AngularVelocity, throttle, pressure, flightAllowed);
                     FlightSource.Attitude = Ship.Attitude;
-                    chunk = Math.Max(Math.Min(chunk, Flight.MaxChunkSeconds()), 1e-4d);
+                    // The flight model may shorten the chunk (RCS propellant left), but it
+                    // must NEVER lengthen it past the frame remainder: the old 1e-4 floor
+                    // did exactly that, adding 1e-4 s of model time on every frame whose
+                    // remainder was tiny (x3/x6 at 60 fps: +0.036 s and +18 kg of fuel
+                    // over a 20 s burn). A zero-length chunk is the only case the floor
+                    // still has to repair.
+                    chunk = Math.Min(chunk, Flight.MaxChunkSeconds());
+                    if (!(chunk > 0d))
+                    {
+                        chunk = Math.Min(frameEnd - TimeSeconds, 1e-4d);
+                    }
                 }
                 RearmDepletion();
                 double massBefore = Ship.Mass;

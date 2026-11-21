@@ -719,17 +719,21 @@ namespace Galilego.Universe
                 return false;
             }
 
+            if (!ContactZoneHost.Active && Regime != VesselRegime.Landed)
+            {
+                // Free flight (the normal case while the engine is burning): the parked
+                // path must not touch the warp at all. The old order checked the throttle
+                // first, so ANY physical warp above x1 was reset to x1 every frame as soon
+                // as the engine was lit — the player could not accelerate time in flight.
+                return false;
+            }
+
             if (RawThrottle > 1e-6d)
             {
                 // Throttle is open: the craft is about to fly, so the parked warp must
                 // stop. The panel reports the reset (the cut is never silent).
                 Warp.ResetToPhysicalOne();
                 ParkedWarpThrottleResets++;
-                return false;
-            }
-
-            if (!ContactZoneHost.Active && Regime != VesselRegime.Landed)
-            {
                 return false;
             }
 
