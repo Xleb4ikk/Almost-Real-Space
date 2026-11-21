@@ -110,6 +110,13 @@ namespace Galilego.Universe
         /// <summary>Наведение на слот, с: через это время вылет открывается сам.</summary>
         private const float SlotHoverOpenSeconds = 0.18f;
 
+        // Open animation: a damped spring, not a tween — the panel is pulled up from below the
+        // bottom edge of the screen and lands with a small overshoot. The whole travel is over
+        // in ~0.08 s, it bobs ~10 px above its place at ~0.12 s and is still by ~0.2 s. Being a
+        // spring, re-opening mid-close just reverses the motion instead of jumping.
+        private const float SlideOmega = 40f;       // rad/s, higher = snappier
+        private const float SlideZeta = 0.75f;      // < 1 → ~3 % overshoot (≈ 10 px) on landing
+
         private TimeControlModel model;
         private PlayerController controller;
         private bool cursorClaimed;
@@ -117,7 +124,8 @@ namespace Galilego.Universe
         private float slotHover;
         private bool slotPressed;
 
-        private float openAnim;
+        private float slide;                  // 0 = parked below the screen, 1 = resting place
+        private float slideVel;
         private float flyoutT;
         private bool flyoutOpen;
         private int selected = -1;            // point index, -1 = "now"
@@ -282,7 +290,7 @@ namespace Galilego.Universe
 
         private void OnGUI()
         {
-            if (!IsOpen && openAnim <= 0.001f)
+            if (!IsOpen && slide <= 0.0005f)
             {
                 return;
             }
@@ -302,17 +310,21 @@ namespace Galilego.Universe
             float dt = Time.unscaledDeltaTime;
             if (e.type == EventType.Repaint)
             {
-                openAnim = Mathf.MoveTowards(openAnim, IsOpen ? 1f : 0f, dt / 0.20f);
+                AdvanceSlide(dt);
                 flyoutT = Mathf.MoveTowards(flyoutT, flyoutOpen ? 1f : 0f, dt / 0.18f);
             }
 
-            fade = Mathf.Clamp01(openAnim * 1.4f);
-            float ease = 1f - Mathf.Pow(1f - Mathf.Clamp01(openAnim), 3f);
+            fade = Mathf.Clamp01(slide * 2.4f);
 
             float vw = Screen.width / ui;
             float vh = Screen.height / ui;
             ox = Mathf.Round((vw - W) * 0.5f);
-            oy = Mathf.Round(vh - H - BottomMargin + ((1f - ease) * 34f));
+
+            // Resting place on screen vs. parked completely below the bottom edge (the tab
+            // sticks out above the window, hence + TabH), so opening really rises from off-screen.
+            float restY = (vh - H) - BottomMargin;
+            float parkedY = vh + TabH + 6f;
+            oy = Mathf.Round(Mathf.LerpUnclamped(parkedY, restY, slide));
             mp = e.mousePosition / ui;
 
             Color previousColor = GUI.color;
@@ -344,6 +356,41 @@ namespace Galilego.Universe
 
             GUI.color = previousColor;
             GUI.depth = previousDepth;
+        }
+
+        /// <summary>
+        /// Drives <see cref="slide"/> (0 = below the screen, 1 = resting place) with a damped
+        /// spring: fast pull-in, small overshoot, then still. The underdamped solution is
+        /// evaluated in closed form, so it looks identical at any frame rate and a long frame
+        /// cannot make it overshoot the wrong way.
+        /// </summary>
+        private void AdvanceSlide(float dt)
+        {
+            float target = IsOpen ? 1f : 0f;
+
+            float wd = SlideOmega * Mathf.Sqrt(1f - (SlideZeta * SlideZeta));
+            float a = SlideZeta * SlideOmega;
+            float e0 = slide - target;
+            float b = (slideVel + (a * e0)) / wd;
+            float decay = Mathf.Exp(-a * dt);
+            float cos = Mathf.Cos(wd * dt);
+            float sin = Mathf.Sin(wd * dt);
+
+            slide = target + (decay * ((e0 * cos) + (b * sin)));
+            slideVel = decay * ((((b * wd) - (a * e0)) * cos) - (((e0 * wd) + (a * b)) * sin));
+
+            if (slide < 0f)
+            {
+                slide = 0f;
+                slideVel = 0f;
+            }
+
+            // Snap the last invisible pixel: a spring's tail would otherwise crawl for a while.
+            if (Mathf.Abs(target - slide) < 0.003f && Mathf.Abs(slideVel) < 0.15f)
+            {
+                slide = target;
+                slideVel = 0f;
+            }
         }
 
         // ─── Chrome: shadow, outline, fills ──────────────────────────────────
@@ -603,12 +650,12 @@ namespace Galilego.Universe
             }
 
             float ease = 1f - Mathf.Pow(1f - flyoutT, 3f);
-            float slide = (1f - ease) * 14f;
+            float lift = (1f - ease) * 14f;
             float previousFade = fade;
             fade *= ease;
 
             Rect box = flyoutRect;
-            box.y += slide;
+            box.y += lift;
 
             SetCol(Color.white);
             GUI.Box(P(new Rect(box.x - 18f, box.y - 18f, box.width + 36f, box.height + 36f)), GUIContent.none, MenuTheme.Glow);
@@ -618,7 +665,7 @@ namespace Galilego.Universe
             for (int i = 0; i < flyoutItems.Count; i++)
             {
                 Rect r = FlyoutItemRect(i);
-                r.y += slide;
+                r.y += lift;
 
                 // staggered: the item nearest to the slot (bottom) arrives first
                 float stagger = Mathf.Clamp01((flyoutT * 1.7f) - ((flyoutItems.Count - 1 - i) * 0.18f));
