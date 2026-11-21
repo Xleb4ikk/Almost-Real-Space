@@ -76,6 +76,10 @@ namespace Galilego.Universe
         [Tooltip("Рисовать диск звезды.")]
         public bool RenderDisc = true;
 
+        [Tooltip("Оптический блик наблюдателя: глазная вуаль (по умолчанию) или, в режиме CameraLens, " +
+                 "призраки диафрагмы и дифракционные лучи. Компонент StarLensFlare создаётся на этом объекте автоматически.")]
+        public bool OpticalFlare = true;
+
         [Tooltip("Оверлей отладки.")]
         public bool DebugHud;
 
@@ -97,6 +101,16 @@ namespace Galilego.Universe
         public double IrradianceWm2 { get; private set; }
         public double ApparentMagnitude { get; private set; }
         public double AngularDiameterDeg { get; private set; }
+
+        /// <summary>Angular radius of the star's disc, radians (the projection the optics need).</summary>
+        public double AngularRadiusRad { get; private set; }
+
+        /// <summary>
+        /// Direction TO the star in render/simulation world space for the current
+        /// eye. Star proxies and the camera optics (StarLensFlare) project this.
+        /// </summary>
+        public Vector3 SunDirectionSim { get; private set; }
+
         public double DistanceKm { get; private set; }
 
         /// <summary>Fraction of the stellar disc visible around all occluders, 0..1.</summary>
@@ -266,6 +280,15 @@ namespace Galilego.Universe
             CreateVisuals();
             ConfigureVolume();
             LogSummary();
+
+            if (OpticalFlare && GetComponent<StarLensFlare>() == null)
+            {
+                StarLensFlare flare = gameObject.AddComponent<StarLensFlare>();
+                flare.Star = this;
+                flare.Sky = Sky;
+                flare.Runner = Runner;
+                flare.PlayerCamera = PlayerCamera;
+            }
         }
 
         private void LateUpdate()
@@ -295,6 +318,7 @@ namespace Galilego.Universe
             Vector3d direction = delta / distanceMeters;
             DistanceKm = distanceMeters / 1000d;
             double alpha = state.AngularRadiusRad(DistanceKm);
+            AngularRadiusRad = alpha;
             AngularDiameterDeg = alpha * (360d / Math.PI);
             IrradianceWm2 = state.IrradianceWm2(DistanceKm);
             ApparentMagnitude = state.ApparentMagnitude(DistanceKm);
@@ -358,6 +382,7 @@ namespace Galilego.Universe
                 : 0d;
 
             Vector3 simDirection = AstroFrame.ToSimulation(direction);
+            SunDirectionSim = simDirection;
             Vector3 cameraPosition = camera.transform.position;
             float far = Mathf.Max(camera.farClipPlane, 1f);
             float renderDistance = ResolveRenderDistance(far);

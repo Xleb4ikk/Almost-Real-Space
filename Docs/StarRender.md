@@ -18,6 +18,10 @@ double, no UnityEngine). No appearance value is hand-tuned in the renderer.
 * `SkyEnvironment.Star` — the same `StarRenderer`, so the Directional Light
   colour/intensity come from the preset (the atmosphere only multiplies its
   transmittance).
+* `StarLensFlare` — the **observer's** optics on the same `SunVisual ` object
+  (created automatically, `StarRenderer.OpticalFlare`). Veiling glare, the
+  ciliary corona of the eye or, in `CameraLens` mode, aperture ghosts and the
+  diffraction star. See “Observer glare” below.
 * `StarRenderer` applies the derived radius to the system's root body. Gravity
   (μ) and the orbits are untouched.
 
@@ -105,6 +109,100 @@ never reddened at sunset. The volume Bloom keeps a neutral tint and a low gain
 vacuum there is nothing to diffuse — only a thin glow around the disc should
 remain.
 
+## Observer glare (`StarLensFlare`)
+
+The disc, the atmospheric aureole and the stellar corona belong to the star. What
+the **observer's optics** add is a different physical system, so it lives in
+`Assets/_Project/Scripts/Planet/Sky/StarLensFlare.cs` (created automatically by
+`StarRenderer`; one full-screen additive custom pass at `BeforePostProcess`, i.e.
+scene radiance that exposure, bloom and tonemapping handle exactly like the disc).
+
+`Mode` has two values because the observers are not interchangeable:
+
+| | `HumanEye` (default) | `CameraLens` |
+|---|---|---|
+| pupil | round | N-blade polygonal iris |
+| internal reflections | none | aperture ghosts |
+| star shape | ciliary corona, point sources only | λ/D spikes, N-fold |
+| veil normalised to | fraction of the source **radiance** | fraction of the source **flux** |
+
+### Human eye
+
+Intraocular stray light dominates: a healthy young eye scatters ≈10 % of the
+source's radiance at 1° and ≈1 % at 10° (van den Berg's glare spread function).
+The veil is a two-term Moffat normalised to the star's rendered radiance,
+
+```
+L_veil(θ) = L·g·(1−w)·(1+(θ/θ0)²)^−β  +  L·g·w·(1+(θ/θ0w)²)^−βw · air
+```
+
+with `g = EyeGlare` = 0.07, core θ0 = 0.8°, β = 2.4, and a 30 % wide share at
+θ0w = 4°, βw = 1.6. The **core** is the eye's own forward scatter: it is present in
+vacuum, so the Sun in space keeps a compact 2–3° glow. The **wide** term is the
+column of air in front of the eye — the same forward-scattered aureole the star's
+own `Galilego/StarGlare` models — and it is multiplied by the air column
+
+```
+air = clamp(−ln T_luminance / 0.15, 0, 1)
+```
+
+which is exactly 1 at the ground and exactly 0 above the atmosphere. That split is
+what keeps the sun in space a hard, blazing disc instead of a fog ball: a wide
+haze around the Sun is an *atmospheric* phenomenon, not an intraocular one.
+
+A source smaller than the eye's PSF core (`CiliaryCoronaPointDegrees`, 0.1°) only
+delivers its flux, so the veil is multiplied by `(α/α_psf)²`
+(`LensOptics.PointSourceFactor`). The Sun at 0.37 AU (α = 0.73°) is resolved; the
+same star at 5 AU is down to ≈0.3.
+
+In EVA the veil is multiplied by `HelmetGlareMultiplier` (1.6): the observer looks
+through a scratched, dusty visor, which scatters more than the cornea.
+
+**The eye has no hexagonal ghosts and no diffraction spikes around the Sun**, and
+nothing draws any:
+
+* aperture ghosts are reflections between the coated surfaces of a multi-element
+  objective — a biological eye has no such surfaces;
+* the spikes are the Fourier transform of a polygonal iris — the pupil is round,
+  and even if it were not, λ/D at a 3–5 mm pupil is ≈0.01°, ~70× smaller than the
+  solar disc, so a resolved disc cannot show them.
+
+What an eye does show around a bright **point** source (a lamp, a distant star) is
+the **ciliary corona**: 8–14 broad, unequal rays from diffraction on the radial
+fibres of the crystalline lens. It needs a coherent wavefront across the pupil and
+disappears once the source image is a few times the PSF core:
+
+```
+visibility = 1 − smoothstep(1, 2, α / α_psf)
+```
+
+For the Sun α/α_psf ≈ 400 → exactly zero. That is why `CiliaryCorona` is a
+point-source effect (`CiliaryCoronaRays`, `...PointDegrees`, `...ExtentDegrees`,
+`...WidthDegrees`), not a sun star.
+
+### Camera lens
+
+Only for a view through an instrument. The veil is flux-conserving (a Moffat
+normalised so the scattered flux is exactly `VeilingGlare` of the star's flux),
+aperture ghosts sit at `g = −k·s` (a reflection through the optical axis, NDC) with
+the aperture polygon shape, chromatics from lateral aberration and the coating
+tint, and the diffraction star has `N/2` lines whose width is λ/D (floored at one
+pixel, `SpikeDrawWidthRad`) and whose number follows the blade count.
+
+Both observers share the same occlusion and exposure wiring: amplitudes scale with
+the star's rendered disc radiance, the atmosphere's per-channel transmittance, the
+celestial eclipse (`f_vis`), the cos⁴ field falloff and the frame-edge fade, and a
+five-tap depth test over the disc footprint (`GalilegoStarOcclusion.hlsl` contract)
+kills the glare when a hull — or a strut across the Sun — blocks the entrance
+pupil. `Scale` on the rendered disc matters here: the disc is log-compressed to
+V′ ≈ 77 instead of σT⁴/E_ref ≈ 4.6e4, so the **absolute** glare cannot match a
+photometer. The eye's veil is normalised to V′ (the only brightness the observer
+sees), and the camera's ghost peaks carry `GhostGain`, which exists solely to
+compensate that compression.
+
+Debug: `DebugMode` 0 normal, 1 depth coverage, 2 veil, 3 ghosts, 4 spikes,
+5 ciliary corona; `DebugHud` prints the mode, the scatter and the disc radiance.
+
 ## Assumptions
 
 1. **HDRP 17.6 / Unity 6000.6.** The custom shaders are HDRP `ForwardOnly`
@@ -150,6 +248,21 @@ remain.
     `StarPreset_Sol` (M = 1 M☉, R = 1 R☉, Teff = 5772 K), not to the 0.2 M☉
     reference preset. Terra still orbits at 0.368 AU, where a solar star gives
     ≈7.4 E_sun; HDRP auto exposure compensates. Orbits were not changed.
+14. **The observer is a living eye by default.** `StarLensFlare.Mode =
+    HumanEye`; `CameraLens` is for views through an instrument. The two modes are
+    physically different systems and are not blended.
+15. **Observer glare is additive scene radiance before post-processing**, not a
+    post-effect: it goes through the same exposure, bloom and ACES tonemap as the
+    disc, and it is occluded by the scene depth (five taps over the disc
+    footprint), not by the frame buffer.
+16. **Absolute glare is calibrated to the rendered disc**, not to σT⁴/E_ref: the
+    disc is log-compressed (V′ ≈ 77), so the eye's veil is normalised to V′ and
+    the camera's ghosts carry `GhostGain`. The *shape*, *position*, *occlusion*
+    and *scaling with altitude/distance/transmittance* are physical; the absolute
+    photometric ratio to a real photometer is not, by construction of V′.
+17. **`HumanEye` has no aperture ghosts and no sun star**, and that is a feature,
+    not an omission — see “Observer glare”. The ciliary corona exists in code and
+    switches itself off for the Sun's resolved disc.
 
 ## Tests
 
