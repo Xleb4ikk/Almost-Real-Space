@@ -143,6 +143,52 @@ namespace Galilego.Universe
             lookOverrideUntil = Time.unscaledTime + 2f;
         }
 
+        /// <summary>
+        /// Куда игрок смотрел на момент снимка: направление взгляда и «верх», в котором
+        /// оно было построено. Без этого после отката камера остаётся там, куда её увели
+        /// уже после точки, — хотя мир вернулся в прошлое.
+        /// </summary>
+        public readonly struct LookState
+        {
+            public readonly bool HasLook;
+            public readonly Vector3 Direction;
+            public readonly Vector3 Flat;
+            public readonly Vector3 Up;
+
+            public LookState(bool hasLook, Vector3 direction, Vector3 flat, Vector3 up)
+            {
+                HasLook = hasLook;
+                Direction = direction;
+                Flat = flat;
+                Up = up;
+            }
+        }
+
+        public LookState CaptureLookState()
+        {
+            return new LookState(hasLook, lookDirection, lastFlatDirection, lastUp);
+        }
+
+        /// <summary>
+        /// Восстановить взгляд. Отладочный оверрайд снимается: иначе залипшее
+        /// направление из отладочного телепорта перебило бы восстановленное.
+        /// </summary>
+        public void RestoreLookState(LookState state)
+        {
+            if (!state.HasLook)
+            {
+                hasLook = false;
+                return;
+            }
+
+            lookDirection = state.Direction;
+            lastFlatDirection = state.Flat;
+            lastUp = state.Up;
+            hasLook = true;
+            lookOverrideUntil = 0f;
+            hasSeatRotation = false;
+        }
+
         private void ApplyFocusBlend(Camera cam)
         {
             // The target is a destroyed Unity object (ship removed): reset.

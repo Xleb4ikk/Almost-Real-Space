@@ -405,6 +405,59 @@ namespace Galilego.Flight
             return true;
         }
 
+        /// <summary>
+        /// Состояние «какие кнопки были нажаты» на момент снимка: SAS, РСУ и включённость
+        /// каждого двигателя. Физическое удержание клавиш восстановить нельзя (это ввод
+        /// живого игрока), но зафиксированные переключатели — можно и нужно.
+        /// </summary>
+        public readonly struct ControlsState
+        {
+            public readonly bool SasOn;
+            public readonly bool RcsOn;
+            public readonly bool[] EngineEnabled;
+
+            public ControlsState(bool sasOn, bool rcsOn, bool[] engineEnabled)
+            {
+                SasOn = sasOn;
+                RcsOn = rcsOn;
+                EngineEnabled = engineEnabled;
+            }
+
+            public bool HasEngines { get { return EngineEnabled != null; } }
+        }
+
+        public ControlsState CaptureControls()
+        {
+            var enabled = new bool[Thrusters.Count];
+            for (int i = 0; i < Thrusters.Count; i++)
+            {
+                enabled[i] = Thrusters[i].Enabled;
+            }
+
+            return new ControlsState(Controls.SasOn, Controls.RcsOn, enabled);
+        }
+
+        /// <summary>
+        /// Вернуть переключатели. Размер не совпал (сборка другая) — false, вызывающий
+        /// обязан залогировать: откат неполный.
+        /// </summary>
+        public bool RestoreControls(ControlsState state)
+        {
+            if (state.EngineEnabled == null || state.EngineEnabled.Length != Thrusters.Count)
+            {
+                return false;
+            }
+
+            Controls.SasOn = state.SasOn;
+            Controls.RcsOn = state.RcsOn;
+            for (int i = 0; i < Thrusters.Count; i++)
+            {
+                Thrusters[i].Enabled = state.EngineEnabled[i];
+            }
+
+            return true;
+        }
+
         /// <summary>Least-squares gimbal angle fit for the required torque; returns the residual for RCS.</summary>
         private Vector3d AllocateGimbal(Vector3d tauReq, double dt)
         {

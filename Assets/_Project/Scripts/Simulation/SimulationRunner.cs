@@ -554,7 +554,7 @@ namespace Galilego.Universe
         /// </summary>
         private bool zoneReentryPending;
 
-        /// <summary>������� ���� ����� ��������: ������ ������������ �� ������� ������.</summary>
+        /// <summary>Вернуть зону после парковки: прокси пересоберётся из деталей заново.</summary>
         private void RestoreZoneAfterParked()
         {
             if (!parkedZoneReleased)
@@ -638,6 +638,35 @@ namespace Galilego.Universe
                 }
 
                 return false;
+            }
+        }
+
+        /// <summary>Взгляд игрока на момент снимка; null — камеры в сцене нет.</summary>
+        private FirstPersonCamera.LookState? CaptureLookState()
+        {
+            if (lookCamera == null)
+            {
+                lookCamera = FindAnyObjectByType<FirstPersonCamera>();
+            }
+
+            return lookCamera != null ? lookCamera.CaptureLookState() : (FirstPersonCamera.LookState?)null;
+        }
+
+        private void RestoreLookState(FirstPersonCamera.LookState? state)
+        {
+            if (!state.HasValue)
+            {
+                return;
+            }
+
+            if (lookCamera == null)
+            {
+                lookCamera = FindAnyObjectByType<FirstPersonCamera>();
+            }
+
+            if (lookCamera != null)
+            {
+                lookCamera.RestoreLookState(state.Value);
             }
         }
 
@@ -1618,6 +1647,12 @@ namespace Galilego.Universe
             /// <summary>������ ����, ���� ������� � ������� ��� �� ������ ������.</summary>
             public Galilego.Flight.VesselFlightModel.ActuatorState FlightActuators;
 
+            /// <summary>Включённость SAS/РСУ/двигателей на момент снимка.</summary>
+            public Galilego.Flight.VesselFlightModel.ControlsState FlightControls;
+
+            /// <summary>Куда смотрел игрок; null — камеры в сцене нет.</summary>
+            public FirstPersonCamera.LookState? Look;
+
             /// <summary>�������� ������� �� ������ ������; null � ���� ���.</summary>
             public DebrisPoolSnapshot Debris;
 
@@ -1681,6 +1716,10 @@ namespace Galilego.Universe
                 FlightActuators = Flight != null
                     ? Flight.CaptureActuators()
                     : new Galilego.Flight.VesselFlightModel.ActuatorState(null, null, null, null),
+                FlightControls = Flight != null
+                    ? Flight.CaptureControls()
+                    : new Galilego.Flight.VesselFlightModel.ControlsState(true, true, null),
+                Look = CaptureLookState(),
                 Debris = Debris != null ? Debris.CaptureState() : null,
             };
 
@@ -1749,11 +1788,17 @@ namespace Galilego.Universe
             if (Flight != null)
             {
                 Flight.RestoreHoldState(snapshot.FlightHold);
+                if (!Flight.RestoreControls(snapshot.FlightControls))
+                {
+                    Debug.LogError("[Rewind] controls snapshot does not match the assembly");
+                }
                 if (!Flight.RestoreActuators(snapshot.FlightActuators))
                 {
                     Debug.LogError("[Rewind] ������ �������������� ������� �� �������� �� ������� � ����� ��������");
                 }
             }
+
+            RestoreLookState(snapshot.Look);
 
             if (Debris != null && snapshot.Debris != null)
             {

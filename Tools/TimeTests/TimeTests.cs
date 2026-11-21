@@ -1108,6 +1108,82 @@ public static class TimeTests
             + " offset=" + F(offset) + " m zone=" + Galilego.Simulation.ContactZone.ContactZoneHost.Active;
     }
 
+    /// <summary>
+    /// R14: полный снимок «реальности». Меняем взгляд, SAS/РСУ, двигатель и положение,
+    /// затем откатываемся — всё обязано вернуться (взгляд с точностью до нуля).
+    /// </summary>
+    public static string R14()
+    {
+        if (!Bind())
+        {
+            return "no runner/step";
+        }
+
+        FirstPersonCamera cam = UnityEngine.Object.FindAnyObjectByType<FirstPersonCamera>();
+        if (cam == null)
+        {
+            return "R14 нет камеры";
+        }
+
+        Galilego.Flight.VesselFlightModel flight = R.Flight;
+
+        // 1. Отличимое состояние.
+        cam.SnapLookDirection(new Vector3(0.123f, 0.456f, -0.881f).normalized);
+        if (flight != null)
+        {
+            flight.Controls.SasOn = false;
+            flight.Controls.RcsOn = false;
+            if (flight.Thrusters.Count > 0)
+            {
+                flight.Thrusters[0].Enabled = false;
+            }
+        }
+
+        Vector3 look0 = cam.CaptureLookState().Direction;
+        bool sas0 = flight != null && flight.Controls.SasOn;
+        bool rcs0 = flight != null && flight.Controls.RcsOn;
+        bool eng0 = flight != null && flight.Thrusters.Count > 0 && flight.Thrusters[0].Enabled;
+        Vector3d pos0 = R.Ship.Position;
+        QuaternionD att0 = R.Ship.Attitude;
+
+        SimulationRunner.WorldSnapshot snap = R.CaptureWorldSnapshot();
+
+        // 2. Меняем ВСЁ.
+        cam.SnapLookDirection(new Vector3(-0.7f, 0.2f, 0.68f).normalized);
+        if (flight != null)
+        {
+            flight.Controls.SasOn = true;
+            flight.Controls.RcsOn = true;
+            if (flight.Thrusters.Count > 0)
+            {
+                flight.Thrusters[0].Enabled = true;
+            }
+        }
+
+        R.SetShipState(R.Ship.Position + new Vector3d(5000d, 0d, 0d), R.Ship.Velocity, R.Regime);
+
+        // 3. Откат.
+        R.RestoreWorldSnapshot(snap);
+
+        Vector3 look1 = cam.CaptureLookState().Direction;
+        bool sas1 = flight != null && flight.Controls.SasOn;
+        bool rcs1 = flight != null && flight.Controls.RcsOn;
+        bool eng1 = flight != null && flight.Thrusters.Count > 0 && flight.Thrusters[0].Enabled;
+        double dPos = (R.Ship.Position - pos0).Magnitude;
+        double dLookDeg = Vector3.Angle(look0, look1);
+
+        bool pass = dLookDeg <= 1e-3f && sas1 == sas0 && rcs1 == rcs0 && eng1 == eng0 && dPos == 0d;
+        QuaternionD delta = att0.Conjugated * R.Ship.Attitude;
+        double dAttDeg = 2d * Math.Acos(Math.Min(1d, Math.Abs(delta.W))) * 180d / Math.PI;
+        return "R14 dLook=" + F(dLookDeg) + " deg"
+            + " sas=" + sas0 + "->" + sas1
+            + " rcs=" + rcs0 + "->" + rcs1
+            + " engine0=" + eng0 + "->" + eng1
+            + " dPos=" + F(dPos) + " m"
+            + " dAtt=" + F(dAttDeg) + " deg"
+            + (pass ? " => PASS" : " => FAIL");
+    }
+
     /// <summary>Открыть панель времени для визуальной проверки.</summary>
     public static string OpenPanel()
     {
