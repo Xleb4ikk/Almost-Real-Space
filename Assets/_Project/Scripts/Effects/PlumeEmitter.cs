@@ -132,11 +132,17 @@ namespace Galilego.Effects
             PlumeParams p = model.Evaluate(visLevel, ambientPa);
             float re = (float)exitRadius;
 
-            volume.localPosition = new Vector3(0f, 0f, 0.5f * p.BoxLength * re);
-            volume.localScale = new Vector3(2f * p.BoxHalfWidth * re, 2f * p.BoxHalfWidth * re, p.BoxLength * re);
+            // Combustion roughness: the flame is never a static solid — the brightness
+            // flickers and the plume breathes in length by a few percent.
+            float now = Time.time;
+            float flicker = 1f + (0.18f * (Mathf.PerlinNoise(now * 7.3f, 0.5f) - 0.5f));
+            float breathe = 1f + (0.07f * (Mathf.PerlinNoise(now * 3.1f, 1.7f) - 0.5f));
+
+            volume.localPosition = new Vector3(0f, 0f, 0.5f * p.BoxLength * re * breathe);
+            volume.localScale = new Vector3(2f * p.BoxHalfWidth * re, 2f * p.BoxHalfWidth * re, p.BoxLength * re * breathe);
 
             material.SetVector(PlumeA, new Vector4(p.ThetaB, p.N, p.SourceDist, re));
-            material.SetVector(PlumeB, new Vector4(style.Nits * IntensityScale * p.Intensity, p.EnvLength, p.DiamondGain, p.CellLength));
+            material.SetVector(PlumeB, new Vector4(style.Nits * IntensityScale * p.Intensity * flicker, p.EnvLength, p.DiamondGain, p.CellLength));
             material.SetVector(PlumeC, new Vector4(p.BarrelAmp, p.AfterburnK, p.Air, p.Turbulence));
             material.SetVector(PlumeD, new Vector4(p.BoxHalfWidth * re, p.BoxLength * re, style.Absorption, p.Free));
             material.SetVector(ColCore, style.Core);
@@ -146,7 +152,7 @@ namespace Galilego.Effects
 
             // Light cast on the pad / regolith / hull: scales with thrust, dimmer in free expansion.
             float area = Mathf.PI * re * re;
-            lamp.intensity = style.LightLumensPerM2 * area * visLevel * Mathf.Lerp(1f, 0.5f, p.Free);
+            lamp.intensity = style.LightLumensPerM2 * area * visLevel * flicker * Mathf.Lerp(1f, 0.5f, p.Free);
             lamp.enabled = true;
         }
 

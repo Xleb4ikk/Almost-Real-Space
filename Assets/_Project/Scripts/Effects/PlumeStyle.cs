@@ -21,7 +21,7 @@ namespace Galilego.Effects
         public float Nits = 8000f;
         /// <summary>Visible axial decay length in the atmosphere, exit radii.</summary>
         public float AtmosphereLengthRe = 14f;
-        /// <summary>0 = vacuum plume dims as mass spreads, 1 = fully compensated. 0.6 keeps it readable.</summary>
+        /// <summary>How strongly the plume dims as the cone widens in vacuum (0 = not at all, 1 = fully, physical).</summary>
         public float VacuumCompensation = 0.6f;
         public float DiamondGain = 1.6f;
         /// <summary>Shock-diamond cell length in exit DIAMETERS.</summary>
@@ -43,7 +43,7 @@ namespace Galilego.Effects
         public static readonly PlumeStyle Hydrolox = new PlumeStyle
         {
             Id = "hydrolox",
-            Core = new Color(0.55f, 0.70f, 1.00f), Edge = new Color(0.30f, 0.28f, 0.95f),
+            Core = new Color(0.80f, 0.88f, 1.00f), Edge = new Color(0.45f, 0.55f, 0.95f),
             Afterburn = new Color(1.00f, 0.55f, 0.30f),
             Nits = 400f, AtmosphereLengthRe = 14f, DiamondGain = 1.6f, CellSpacingDiameters = 1.5f,
             AfterburnGain = 0.35f, LightLumensPerM2 = 6.0e3f, LightColor = new Color(0.6f, 0.7f, 1f),

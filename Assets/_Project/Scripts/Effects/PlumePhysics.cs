@@ -116,6 +116,18 @@ namespace Galilego.Effects
     /// <summary>Per-engine model: constant part computed once, Evaluate() is cheap (per frame).</summary>
     public sealed class PlumeModel
     {
+        /// <summary>Boundary half-angle cap in vacuum, degrees (the analytic Prandtl-Meyer turn is unbounded).</summary>
+        public static double VacuumBoundaryDeg = 30d;
+
+        /// <summary>Axial decay length in vacuum, exit radii (the bright core fades over this).</summary>
+        public static double VacuumLengthRe = 30d;
+
+        /// <summary>How much the angular profile narrows in vacuum: n = 2 + factor * free.</summary>
+        public static double VacuumNFactor = 5d;
+
+        /// <summary>Length cut-off in vacuum: fraction of the exit-plane emission where the box ends.</summary>
+        public static double VacuumCutoff = 0.001d;
+
         private readonly PlumeNozzle nozzle;
         private readonly PlumeStyle style;
         private readonly double exitMach, exitPressurePa, nuExit, thetaExit, fluxRef;
@@ -144,23 +156,28 @@ namespace Galilego.Effects
             double lnr = Math.Log(Math.Max(ratio, 1e-6));
 
             // Boundary turning: Prandtl-Meyer from M_exit to the Mach that matches ambient pressure.
+            // In vacuum the analytic turn runs away (nu_max ~ 208 deg for gamma = 1.2) and the
+            // boundary closes into a ball. A real nozzle keeps a cone: cap it, otherwise the
+            // "vacuum plume" is a glowing sphere instead of an expanding jet.
             double dnu = ambientPa < 1e-2
                 ? PlumePhysics.NuMax(g) - nuExit
                 : PlumePhysics.Nu(PlumePhysics.MachFromPressureRatio(pc / ambientPa, g), g) - nuExit;
 
             double free = PlumePhysics.SmoothStep(Math.Log(2.5d), Math.Log(1500d), lnr);
-            double thFree = Math.Min(Math.Max(thetaExit + dnu, thetaExit), 125d * Math.PI / 180d);
+            double thFree = Math.Min(Math.Max(thetaExit + dnu, thetaExit), VacuumBoundaryDeg * Math.PI / 180d);
             double thConf = style.ConfinedAngleDeg * Math.PI / 180d;
             double thb = thConf + ((thFree - thConf) * free);
-            double n = 2d + (((2d / (g - 1d)) - 2d) * free);
+            double n = 2d + (VacuumNFactor * free);
             double ds = 1d / Math.Tan(Math.Min(Math.Max(thb, 2d * Math.PI / 180d), 55d * Math.PI / 180d));
 
-            // Same mass spread over a wider cone -> lower density; style.VacuumCompensation brings it back (artistic).
+            // Same mass spread over a wider cone -> the gas thins out and the plume DIMS.
+            // (The original kit used a negative exponent, which boosted the vacuum plume ~15x
+            // and was the main reason it read as a ball of light.)
             double flux = PlumePhysics.ConeFlux(thb, n);
             double dilution = Math.Min(1d, fluxRef / Math.Max(flux, 1e-9));
-            double intensity = level * Math.Pow(dilution, -style.VacuumCompensation);
+            double intensity = level * Math.Pow(dilution, style.VacuumCompensation);
 
-            double lEnv = (style.AtmosphereLengthRe * (1d - free)) + (4000d * free);
+            double lEnv = (style.AtmosphereLengthRe * (1d - free)) + (VacuumLengthRe * free);
 
             double mism = Math.Abs(lnr);
             double diamondShape = PlumePhysics.SmoothStep(0.05d, 0.6d, mism) * (1d - PlumePhysics.SmoothStep(2.5d, 6d, lnr));
@@ -168,16 +185,19 @@ namespace Galilego.Effects
             double cell = style.CellSpacingDiameters * 2d * (1d + (0.25d * Math.Max(0d, lnr)));
             double air = Math.Pow(Math.Min(1d, ambientPa / 101325d), 0.6d);
 
-            // Visible length: where the on-axis emission falls below 2 % of the exit value.
+            // Visible length: where the on-axis emission falls below a small fraction of the
+            // exit value. In vacuum the tail is long and faint, so the cut-off is lower —
+            // with the atmospheric 2 % rule the box ends up shorter than it is wide (a pancake).
+            double cutoff = 0.02d + ((VacuumCutoff - 0.02d) * free);
             double length = 3d;
-            for (; length < 150d; length += 1d)
+            for (; length < 200d; length += 1d)
             {
                 double d = ds / (length + ds);
-                if ((d * d * Math.Exp(-length / lEnv)) < 0.02d) break;
+                if ((d * d * Math.Exp(-length / lEnv)) < cutoff) break;
             }
 
             length *= 1.15d;
-            double th01 = thb * (2d / Math.PI) * Math.Acos(Math.Pow(0.02d, 1d / n));
+            double th01 = thb * (2d / Math.PI) * Math.Acos(Math.Pow(cutoff, 1d / n));
             double half = Math.Min((length + ds) * Math.Tan(Math.Min(th01, 1.35d)), 1.5d * length) * (1d + barrel) + 1.2d;
 
             return new PlumeParams
@@ -193,7 +213,9 @@ namespace Galilego.Effects
                 AfterburnK = (float)(style.AfterburnGain * air * (1d - free)),
                 Air = (float)air,
                 Free = (float)free,
-                Turbulence = (float)(style.Turbulence * air),
+                // The shear layer is turbulent in vacuum too — the gas does not become
+                // smooth just because there is no air to entrain.
+                Turbulence = (float)(style.Turbulence * (air + (0.7d * (1d - air)))),
                 BoxLength = (float)length,
                 BoxHalfWidth = (float)Math.Max(1.5d, half),
                 Ratio = (float)ratio,

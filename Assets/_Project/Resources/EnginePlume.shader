@@ -101,29 +101,52 @@ Shader "Galilego/EnginePlume"
                 float r = rho / k;
                 float zz = z + ds;
                 float R = sqrt(r * r + zz * zz);
+
+                // Ragged, travelling boundary: the shear layer of a real jet is never a clean
+                // cone — the edge boils and the whole boundary breathes with the flow.
+                float t = _TimeParameters.x;
+                float ang = atan2(xy.y, xy.x);
+                float wob = sin(ang * 3.0 + (z * 0.22) - (t * 5.0)) * 0.6
+                          + sin((ang * 5.0) - (z * 0.40) - (t * 8.5)) * 0.4;
+                float thLim = thetaB * (1.0 + (0.55 * turb * wob));
+
                 float th = atan2(r, zz);
-                if (th >= thetaB) { core = 0; }
+                if (th >= thLim) { core = 0; }
                 else
                 {
-                    float x = saturate(th / thetaB);
+                    float x = saturate(th / thLim);
                     float g = pow(max(cos(0.5 * PI * x), 0.0), n);
                     float D = (ds / R) * (ds / R) * g;
                     float dia = 1.0 + dGain * pow(1.0 - sn, 6.0) * exp(-z / (4.0 * lc));
                     core = D * exp(-z / lEnv) * dia;
                 }
 
-                // Ragged shear layer in the atmosphere (smooth in vacuum: turb -> 0).
-                float rb = max(zz * tan(min(thetaB, 1.2)) * k, 1e-3);
+                // Churn: the gas pattern scrolls downstream (faster near the nozzle) and is
+                // strongest at the shear layer, so the edge boils instead of fading as a
+                // smooth gradient. Runs in vacuum too (turb has a floor there).
+                float rb = max(zz * tan(min(thLim, 1.2)) * k, 1e-3);
                 float edgeW = smoothstep(0.3, 1.0, rho / rb);
                 if (turb > 0.001)
                 {
-                    float nz = Noise3(float3(xy * 0.6, z * 0.35 - _TimeParameters.x * 6.0));
-                    core *= 1.0 + turb * (nz - 0.5) * 2.0 * (0.3 + edgeW);
+                    float flow = t * (6.0 + (14.0 / (1.0 + (z * 0.18))));
+                    float n1 = Noise3(float3(xy * 1.05, (z * 0.55) - flow));
+                    float n2 = Noise3(float3((xy * 2.6) + 11.7, (z * 1.45) - (flow * 1.8)));
+                    float churn = ((n1 - 0.5) * 0.7) + ((n2 - 0.5) * 0.3);
+                    core *= max(0.0, 1.0 + (turb * churn * 4.5 * (0.2 + (1.1 * edgeW))));
                 }
 
-                float sh = exp(-pow((rho / rb - 0.95) / 0.28, 2.0));
+                float sh = exp(-pow(((rho / rb) - 0.95) / 0.28, 2.0));
                 float ramp = (1.0 - exp(-z / 6.0)) * exp(-z / max(2.2 * lEnv, 1.0));
                 ab = abK * sh * ramp * (1.0 - freeK);
+                ab *= 1.0 + (turb * wob * 0.5);
+
+                // Fade out before the far face of the box: the line of sight is longest at the
+                // plane where the volume is cut, so without this taper the plume ends in a
+                // bright rounded "cap" instead of dissolving into space.
+                float boxLen = _PlumeD.y / max(_PlumeA.w, 1e-4);
+                float taper = 1.0 - smoothstep(0.55 * boxLen, boxLen, z);
+                core *= taper;
+                ab *= taper;
             }
 
             float4 Frag(Varyings i) : SV_Target
