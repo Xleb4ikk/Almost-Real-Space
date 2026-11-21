@@ -402,6 +402,33 @@ namespace Galilego.Spacecraft
             };
         }
 
+        /// <summary>
+        /// Proper acceleration (specific force) at a state: the sum of every NON-gravity
+        /// source — thrust, drag, anything else — in m/s². This is what an accelerometer
+        /// bolted to the craft reads, and it is a pure function of the state and time:
+        /// it does not depend on the warp factor, the frame rate, or how much model time
+        /// a frame advanced. Gravity is skipped by source type; it is the only source
+        /// that is not a proper force.
+        /// </summary>
+        public Vector3d EvaluateProperAcceleration(Vector3d position, Vector3d velocity, double mass, double timeSeconds)
+        {
+            double m = mass > MinMassForDerivative ? mass : MinMassForDerivative;
+            Vector3d proper = Vector3d.Zero;
+            for (int i = 0; i < Sources.Count; i++)
+            {
+                IDynamicsSource source = Sources[i];
+                if (source is GravitySource || source is CachedGravitySource)
+                {
+                    continue;
+                }
+
+                DynamicsContribution c = source.Evaluate(position, velocity, m, timeSeconds);
+                proper += c.SpecificAcceleration + (c.Force / m);
+            }
+
+            return proper;
+        }
+
         private SpacecraftIntegrationState EvaluateDerivative(SpacecraftIntegrationState state, double timeSeconds)
         {
             if (!double.IsFinite(state.Mass))

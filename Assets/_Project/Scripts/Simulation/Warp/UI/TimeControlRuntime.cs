@@ -49,6 +49,7 @@ namespace Galilego.Universe
         private bool started;
         private bool pointsDirty;
         private int pendingRewind = NoRequest;
+        private int seenThrottleResets;
         private float noticeUntil;
 
         internal TimeControlModel Model { get; }
@@ -108,6 +109,14 @@ namespace Galilego.Universe
                         CapturePoint(timeline.NextCaptureIndex, FlightPointKind.Flight);
                     }
                 }
+            }
+
+            if (runner.ParkedWarpThrottleResets != seenThrottleResets)
+            {
+                // The parked warp was cancelled by an open throttle: say so instead of
+                // letting the slot silently fall back to x1 (read as "the button is dead").
+                seenThrottleResets = runner.ParkedWarpThrottleResets;
+                SetNotice("ускорение снято: газ открыт", 2.5f);
             }
 
             SyncModel();
@@ -390,38 +399,43 @@ namespace Galilego.Universe
 
         private void SyncModel()
         {
-            if (!started)
+            if (started)
             {
+                Model.CurrentRealMinutes = timeline.PlayheadMinutes;
+                Model.CurrentFlightSeconds = runner.TimeSeconds - launchTimeSeconds;
+
+                if (pointsDirty)
+                {
+                    pointsDirty = false;
+                    var list = Model.PointFlightSeconds;
+                    var available = Model.PointAvailable;
+                    while (list.Count < timeline.PointCount)
+                    {
+                        list.Add(0d);
+                        available.Add(false);
+                    }
+
+                    while (list.Count > timeline.PointCount)
+                    {
+                        list.RemoveAt(list.Count - 1);
+                        available.RemoveAt(available.Count - 1);
+                    }
+
+                    for (int i = 0; i < timeline.PointCount; i++)
+                    {
+                        list[i] = timeline.PointAt(i).FlightSeconds;
+                        available[i] = timeline.IsAvailable(i);
+                    }
+                }
+            }
+            else
+            {
+                // Before the flight the timeline is empty — but the warp slot must still
+                // answer the player: clicks have to move the factor and the cap must be
+                // visible. Without this the panel looked dead in build mode and on the pad
+                // before launch (clicks changed the controller, the slot stayed at x1).
                 Model.CurrentRealMinutes = 0d;
                 Model.CurrentFlightSeconds = 0d;
-                return;
-            }
-
-            Model.CurrentRealMinutes = timeline.PlayheadMinutes;
-            Model.CurrentFlightSeconds = runner.TimeSeconds - launchTimeSeconds;
-
-            if (pointsDirty)
-            {
-                pointsDirty = false;
-                var list = Model.PointFlightSeconds;
-                var available = Model.PointAvailable;
-                while (list.Count < timeline.PointCount)
-                {
-                    list.Add(0d);
-                    available.Add(false);
-                }
-
-                while (list.Count > timeline.PointCount)
-                {
-                    list.RemoveAt(list.Count - 1);
-                    available.RemoveAt(available.Count - 1);
-                }
-
-                for (int i = 0; i < timeline.PointCount; i++)
-                {
-                    list[i] = timeline.PointAt(i).FlightSeconds;
-                    available[i] = timeline.IsAvailable(i);
-                }
             }
 
             WarpController warp = runner.Warp;

@@ -308,7 +308,23 @@ namespace Galilego.Tablet
             Vector3d gravity = Runner.SystemState.EvaluateShipAcceleration(statePosition, time);
             t.GravityG = gravity.Magnitude / G0;
 
-            UpdateProperAcceleration(stateVelocity, gravity, time);
+            // Proper acceleration (g-load) is taken from the dynamics sources when the
+            // craft flies free: it is an exact function of state/time, identical at x1 and
+            // x6. Only a moving craft in the contact zone falls back to a velocity
+            // difference (PhysX contacts/joints are not dynamics sources; the zone never
+            // warps).
+            if (Runner != null && Runner.TryGetProperAccelerationMagnitude(out double proper))
+            {
+                hasProperAcceleration = true;
+                properAcceleration = proper;
+                lastVelocity = stateVelocity;
+                lastVelocityTime = time;
+            }
+            else
+            {
+                UpdateProperAcceleration(stateVelocity, gravity, time);
+            }
+
             t.AccelerationMs2 = hasProperAcceleration ? properAcceleration : 0d;
             t.GForce = hasProperAcceleration ? properAcceleration / G0 : 0d;
 

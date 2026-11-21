@@ -26,6 +26,8 @@ namespace Galilego.Universe
                 return;
             }
 
+            bool pilot = Runner.PlayerSeated || Runner.PlayerMode == PlayerMode.InShip;
+
             // Warp rungs: keys 1..7 snap down in SetWarpFactor.
             // Warp is forbidden in the contact zone: zone time runs on real dt
             // (VesselStep.AdvanceTime), and raised warp would jerk the ship on exit.
@@ -41,18 +43,26 @@ namespace Galilego.Universe
                 }
             }
 
+            // The throttle ramp is a pilot action. On foot Shift is sprint and Ctrl is
+            // descend, so reading them here would move the ship's throttle latch while
+            // walking next to it — and the parked time warp refuses an open throttle, so
+            // sprinting near a standing rocket silently made physical acceleration
+            // impossible.
             double throttle = Runner.RawThrottle;
-            if (PlayerInput.Held(GameAction.ThrottleUp))
+            if (pilot)
             {
-                throttle = System.Math.Min(1d, throttle + ThrottleStep * Time.deltaTime * 2d);
-            }
+                if (PlayerInput.Held(GameAction.ThrottleUp))
+                {
+                    throttle = System.Math.Min(1d, throttle + ThrottleStep * Time.deltaTime * 2d);
+                }
 
-            if (PlayerInput.Held(GameAction.ThrottleDown))
-            {
-                throttle = System.Math.Max(0d, throttle - ThrottleStep * Time.deltaTime * 2d);
-            }
+                if (PlayerInput.Held(GameAction.ThrottleDown))
+                {
+                    throttle = System.Math.Max(0d, throttle - ThrottleStep * Time.deltaTime * 2d);
+                }
 
-            Runner.RawThrottle = throttle;
+                Runner.RawThrottle = throttle;
+            }
 
             if (PlayerInput.Down(GameAction.Pause))
             {

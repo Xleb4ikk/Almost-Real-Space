@@ -136,11 +136,19 @@ namespace Galilego.Universe
         public void RotateLook(Quaternion worldRotation)
         {
             lookDirection = worldRotation * lookDirection;
-            lastFlatDirection = Vector3.ProjectOnPlane(lookDirection, transform.up);
+
+            // The reference up must be the LOCAL up (the same one TransportLook uses),
+            // not transform.up: the camera is pitched/rolled, and feeding its own up back
+            // as the transport reference made every parked-warp frame rotate the look
+            // again — the view drifted away from the mouse.
+            Vector3 up = ComputeLocalUp();
+            lastFlatDirection = Vector3.ProjectOnPlane(lookDirection, up);
             hasLook = true;
-            lastUp = transform.up;
-            lookOverrideDirection = lookDirection;
-            lookOverrideUntil = Time.unscaledTime + 2f;
+            lastUp = up;
+
+            // Deliberately NOT the debug look override: it holds the aim for two seconds
+            // and wins over the mouse in LateUpdate. The parked warp calls this every
+            // frame, so engaging it froze the mouse look for as long as the warp ran.
         }
 
         /// <summary>

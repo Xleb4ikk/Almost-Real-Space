@@ -583,6 +583,12 @@ namespace Galilego.Universe
         public bool ParkedWarpFrame { get; private set; }
 
         /// <summary>
+        /// Counter of parked-warps cancelled because the throttle was open. The time panel
+        /// watches it and shows "газ открыт" instead of letting the warp silently snap to x1.
+        /// </summary>
+        public int ParkedWarpThrottleResets { get; private set; }
+
+        /// <summary>
         /// Аппарат стоит на поверхности: зона или Landed, точка — низ корпуса, скорость
         /// относительно поверхности ниже 0.1 м/с (в зоне допускается контакт по высоте,
         /// потому что скорость прокси приходит с задержкой кадра). По этому же признаку
@@ -715,8 +721,10 @@ namespace Galilego.Universe
 
             if (RawThrottle > 1e-6d)
             {
-                // ����� ��� ���: ��������� ������� ���������, ������ � ���������� ������.
+                // Throttle is open: the craft is about to fly, so the parked warp must
+                // stop. The panel reports the reset (the cut is never silent).
                 Warp.ResetToPhysicalOne();
+                ParkedWarpThrottleResets++;
                 return false;
             }
 
@@ -757,8 +765,11 @@ namespace Galilego.Universe
                 return false;
             }
 
-            if (PlayerMode == PlayerMode.OnSurface && playerAirborne)
+            if (PlayerMode == PlayerMode.OnSurface && playerAirborne && Warp.Mode != WarpMode.Physical)
             {
+                // Physical warp steps the player through the same surface controller even
+                // in the air (a jump or a fall accelerates like everything else). Full warp
+                // has no player substeps, so an airborne player would freeze mid-jump.
                 return false;
             }
 
@@ -785,7 +796,28 @@ namespace Galilego.Universe
                 return false;
             }
 
-            PinSurface(body, dtSim, Warp.Factor, true);
+            // The parked warp used to freeze the player together with the craft. Physical
+            // warp means the WHOLE model clock runs faster, so a walking player must cover
+            // the same model time as everything else: at x4 they run four model seconds per
+            // real second, through frame-sized surface substeps (no accuracy loss).
+            // Only the physical ladder does this; Full warp is a ballistic long coast and
+            // the player stays pinned so a x1M frame cannot ask for 30k player substeps.
+            bool walkPlayer = Warp.Mode == WarpMode.Physical
+                && PlayerMode == PlayerMode.OnSurface
+                && !PlayerSeated
+                && !platformCarry.Active;
+
+            double playerFromTime = TimeSeconds;
+            PinSurface(body, dtSim, Warp.Factor, true, !walkPlayer);
+            if (walkPlayer)
+            {
+                // Frame-sized substeps: at x4 the player is integrated in four chunks of
+                // the unaccelerated frame dt, so the surface controller sees exactly the
+                // dt it would see at x1 — the acceleration buys model time, not a coarser step.
+                StepPlayer(playerFromTime, Math.Min(realDt, PlayerMaxStepSeconds));
+                FloatingOrigin.Anchor = PlayerPosition;
+            }
+
             return true;
         }
 
@@ -849,7 +881,7 @@ namespace Galilego.Universe
         /// ������������, ������� ������������� ��������� ����������� ���-�-���.
         /// ������ �� ������������� � ������������� ������, ������� �����.
         /// </summary>
-        private void PinSurface(OrbitingBody body, double dtSim, double factor, bool blockZone)
+        private void PinSurface(OrbitingBody body, double dtSim, double factor, bool blockZone, bool carryPlayer = true)
         {
             body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out Vector3d bodyVel);
             Vector3d offset = Ship.Position - bodyPos;
@@ -869,19 +901,28 @@ namespace Galilego.Universe
 
             // ����� � ��� ��� ����� � ��� �� ���������: �������� ������������ �������
             // ����������� ���-�-���, � ������� ������� ���� �� ������������ ������.
-            PlayerPosition = bodyPosNew + spin.Rotate(PlayerPosition - bodyPos);
-            PlayerVelocity = bodyVelNew + Vector3d.Cross(omega, PlayerPosition - bodyPosNew);
-            PlayerSeatedPosition = bodyPosNew + spin.Rotate(PlayerSeatedPosition - bodyPos);
-            seatedShipAnchor = bodyPosNew + spin.Rotate(seatedShipAnchor - bodyPos);
-            smoothedShipPosition = bodyPosNew + spin.Rotate(smoothedShipPosition - bodyPos);
+            if (carryPlayer)
+            {
+                PlayerPosition = bodyPosNew + spin.Rotate(PlayerPosition - bodyPos);
+                PlayerVelocity = bodyVelNew + Vector3d.Cross(omega, PlayerPosition - bodyPosNew);
+                PlayerSeatedPosition = bodyPosNew + spin.Rotate(PlayerSeatedPosition - bodyPos);
+                seatedShipAnchor = bodyPosNew + spin.Rotate(seatedShipAnchor - bodyPos);
+                smoothedShipPosition = bodyPosNew + spin.Rotate(smoothedShipPosition - bodyPos);
 
-            // �����, ������� �������� �� �� ���� ������: � ���� ����� ���� ���.
-            PlayerIntent.Jump = false;
-            PlayerIntent.JetpackToggle = false;
-            PlayerIntent.HoverToggle = false;
-            playerJumpQueued = false;
-            jetpackToggleQueued = false;
-            hoverToggleQueued = false;
+                // �����, ������� �������� �� �� ���� ������: � ���� ����� ���� ���.
+                PlayerIntent.Jump = false;
+                PlayerIntent.JetpackToggle = false;
+                PlayerIntent.HoverToggle = false;
+                playerJumpQueued = false;
+                jetpackToggleQueued = false;
+                hoverToggleQueued = false;
+            }
+            else
+            {
+                // The player is stepped over the same dtSim by the caller: rotating the
+                // point here as well would move them twice. The input intents stay for
+                // StepPlayer to consume (jump/jetpack during the warp are real actions).
+            }
 
             step.AdvanceTime(dtSim);
             step.MarkEffectiveFactor(factor);
@@ -1065,6 +1106,66 @@ namespace Galilego.Universe
 
                 return step.LastEffectiveFactor;
             }
+        }
+
+        /// <summary>
+        /// Proper acceleration (specific force) at the craft, m/s² — what a real
+        /// accelerometer reads. A pure function of the state and model time: the same at
+        /// x1 and x6, with no finite difference over a frame, so physical time warp
+        /// cannot change the measurement. false for a MOVING craft in the contact zone:
+        /// there the support comes from PhysX contacts and joints, which are not dynamics
+        /// sources; the caller falls back to a measured velocity difference (the zone
+        /// always runs at x1, so that fallback is warp-free by construction).
+        /// </summary>
+        public bool TryGetProperAcceleration(out Vector3d properAccelerationMs2)
+        {
+            properAccelerationMs2 = Vector3d.Zero;
+            if (step == null || Ship == null || SystemState == null || physics == null)
+            {
+                return false;
+            }
+
+            bool standingInZone = ContactZoneHost.Active && IsVesselStandingOnSurface;
+            if (ContactZoneHost.Active && !standingInZone)
+            {
+                return false;
+            }
+
+            if (BuildMode || Regime == VesselRegime.Landed || ParkedWarpFrame || standingInZone)
+            {
+                // The craft is held by the surface: the accelerometer reads the support
+                // force, outward, of magnitude g minus the centripetal term.
+                Vector3d gravity = SystemState.EvaluateShipAcceleration(Ship.Position, TimeSeconds);
+                Vector3d centripetal = Vector3d.Zero;
+                OrbitingBody body = step.DominantBody;
+                if (body != null && body.RotationPeriodSeconds > 0d)
+                {
+                    body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out _);
+                    Vector3d offset = Ship.Position - bodyPos;
+                    Vector3d omega = body.SpinAxis * body.SpinAngularSpeed;
+                    centripetal = Vector3d.Cross(omega, Vector3d.Cross(omega, offset));
+                }
+
+                properAccelerationMs2 = centripetal - gravity;
+                return true;
+            }
+
+            properAccelerationMs2 = physics.EvaluateProperAcceleration(
+                Ship.Position, Ship.Velocity, Ship.Mass, TimeSeconds);
+            return true;
+        }
+
+        /// <summary>Convenience magnitude of <see cref="TryGetProperAcceleration"/>.</summary>
+        public bool TryGetProperAccelerationMagnitude(out double accelerationMs2)
+        {
+            if (TryGetProperAcceleration(out Vector3d proper))
+            {
+                accelerationMs2 = proper.Magnitude;
+                return true;
+            }
+
+            accelerationMs2 = 0d;
+            return false;
         }
 
         /// <summary>
@@ -2075,11 +2176,19 @@ namespace Galilego.Universe
 
         /// <summary>
         /// Per-frame player step. While the player is outside the ship, physical time is
-        /// capped (see StepFlying/StepLanded: warp factor ? 4), so a substep ? 0.5 s
+        /// capped (see StepFlying/StepLanded: warp factor ≤ 6), so a substep ≤ 0.5 s
         /// always fits a frame; long warp only while the player is in the ship.
+        /// <paramref name="maxStepSeconds"/> lets a warp frame keep the unaccelerated
+        /// step grain: at x4 the player is integrated in four frame-sized substeps
+        /// instead of one four-times-larger step, so the surface controller sees the
+        /// same dt as at x1.
         /// </summary>
-        private void StepPlayer(double fromTime)
+        private void StepPlayer(double fromTime, double maxStepSeconds = PlayerMaxStepSeconds)
         {
+            if (!(maxStepSeconds > 1e-9d))
+            {
+                maxStepSeconds = PlayerMaxStepSeconds;
+            }
             playerJumpQueued |= PlayerIntent.Jump;
             jetpackToggleQueued |= PlayerIntent.JetpackToggle;
             hoverToggleQueued |= PlayerIntent.HoverToggle;
@@ -2123,7 +2232,7 @@ namespace Galilego.Universe
 
             while (t < TimeSeconds - 1e-12)
             {
-                double dt = Math.Min(PlayerMaxStepSeconds, TimeSeconds - t);
+                double dt = Math.Min(maxStepSeconds, TimeSeconds - t);
                 if (NoclipActive)
                 {
                     evaRelativeValid = false;
@@ -2458,6 +2567,19 @@ namespace Galilego.Universe
             {
                 shipAcceleration = Vector3d.Zero;
                 shipAccelerationValid = false;
+                return;
+            }
+
+            // Exact inertial acceleration: gravity + the specific force from the dynamics
+            // sources. This is a pure function of state/time, so cabin gravity does not
+            // depend on how much model time the frame happened to advance (the old finite
+            // difference used a warp-scaled window and went to zero above 0.5 s).
+            if (TryGetProperAcceleration(out Vector3d proper))
+            {
+                shipAcceleration = SystemState.EvaluateShipAcceleration(Ship.Position, TimeSeconds) + proper;
+                shipAccelerationValid = true;
+                lastShipVelocity = Ship.Velocity;
+                lastShipAccelerationTime = TimeSeconds;
                 return;
             }
 

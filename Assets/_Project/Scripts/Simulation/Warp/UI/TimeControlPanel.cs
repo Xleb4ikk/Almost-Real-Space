@@ -334,7 +334,7 @@ namespace Galilego.Universe
             slotRect = L(TabPad, BtnY, SlotW, BtnH);
             ComputeFlyout();
 
-            if (live && e.type == EventType.MouseDown && flyoutOpen && !flyoutRect.Contains(mp) && !slotRect.Contains(mp))
+            if (live && e.type == EventType.MouseDown && flyoutOpen && !FlyoutBoxRect().Contains(mp) && !slotRect.Contains(mp))
             {
                 flyoutOpen = false;
             }
@@ -548,7 +548,7 @@ namespace Galilego.Universe
 
         /// <summary>
         /// Отпускание мыши после протяжки от слота: над пунктом вылета — применить его,
-        /// над слотом — применить текущий, иначе просто закрыть вылет.
+        /// над слотом — оставить вылет открытым, иначе просто закрыть вылет.
         /// </summary>
         private void ApplySlotRelease()
         {
@@ -567,7 +567,11 @@ namespace Galilego.Universe
 
             if (slotRect.Contains(mp))
             {
-                model.RaisePhysical(model.PhysicalFactor);
+                // An ordinary click on the slot is how the list is opened: keep it open.
+                // Applying the factor that is already active would be a no-op and closing
+                // the list on mouse-up made the values unreachable for a player who clicks
+                // instead of hovering or dragging.
+                return;
             }
 
             flyoutOpen = false;
@@ -619,7 +623,26 @@ namespace Galilego.Universe
             const float itemH = 30f;
             const float itemGap = 4f;
             const float pad = 8f;
-            return new Rect(flyoutRect.x + pad, flyoutRect.y + pad + (i * (itemH + itemGap)), SlotW, itemH);
+            return new Rect(flyoutRect.x + pad, flyoutRect.y + pad + (i * (itemH + itemGap)) + FlyoutLift(), SlotW, itemH);
+        }
+
+        /// <summary>
+        /// How far the opening flyout still hangs below its resting place. The drawing and
+        /// the hit tests must use the same value: a click on an item that is still riding up
+        /// has to land on the item the player actually sees.
+        /// </summary>
+        private float FlyoutLift()
+        {
+            float ease = 1f - Mathf.Pow(1f - flyoutT, 3f);
+            return (1f - ease) * 14f;
+        }
+
+        /// <summary>The flyout box as drawn this frame (resting rect shifted by the lift).</summary>
+        private Rect FlyoutBoxRect()
+        {
+            Rect box = flyoutRect;
+            box.y += FlyoutLift();
+            return box;
         }
 
         private void HandleFlyoutClick()
@@ -650,12 +673,10 @@ namespace Galilego.Universe
             }
 
             float ease = 1f - Mathf.Pow(1f - flyoutT, 3f);
-            float lift = (1f - ease) * 14f;
             float previousFade = fade;
             fade *= ease;
 
-            Rect box = flyoutRect;
-            box.y += lift;
+            Rect box = FlyoutBoxRect();
 
             SetCol(Color.white);
             GUI.Box(P(new Rect(box.x - 18f, box.y - 18f, box.width + 36f, box.height + 36f)), GUIContent.none, MenuTheme.Glow);
@@ -665,7 +686,6 @@ namespace Galilego.Universe
             for (int i = 0; i < flyoutItems.Count; i++)
             {
                 Rect r = FlyoutItemRect(i);
-                r.y += lift;
 
                 // staggered: the item nearest to the slot (bottom) arrives first
                 float stagger = Mathf.Clamp01((flyoutT * 1.7f) - ((flyoutItems.Count - 1 - i) * 0.18f));
