@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Galilego.Core;
 using Galilego.Universe;
+using Unity.Mathematics;
 using UnityEngine;
 
 namespace Galilego.Tablet
@@ -1222,6 +1223,15 @@ namespace Galilego.Tablet
             double amplitude = Math.Max(1d, model.BodyTerrainAmplitudeMeters);
             double eastStep = mpp * rect.width / sampleW;
             double northStep = mpp * rect.height / sampleH;
+
+            // Polar ice weight: scalar parameters only, evaluated on the main thread.
+            TerrainNoiseParams iceParams = default;
+            HeightfieldTerrain iceTerrain = terrain as HeightfieldTerrain;
+            bool hasPolarIce = iceTerrain != null && iceTerrain.PolarIceLatitudeDeg > 0d;
+            if (hasPolarIce)
+            {
+                iceParams = TerrainNoiseParams.FromTerrain(iceTerrain);
+            }
             float sunEast = (float)Vector3d.Dot(model.SunDirection, model.ShipEast);
             float sunNorth = (float)Vector3d.Dot(model.SunDirection, model.ShipNorth);
             float sunUp = (float)Vector3d.Dot(model.SunDirection, model.ShipUp);
@@ -1239,7 +1249,17 @@ namespace Galilego.Tablet
                     double slopeEast = (heights[right] - heights[left]) / Math.Max(1d, eastStep * (right == left ? 1d : 2d));
                     double slopeNorth = (heights[down] - heights[up]) / Math.Max(1d, northStep * (down == up ? 1d : 2d));
                     float light = Hillshade(slopeEast, slopeNorth, sunEast, sunNorth, sunUp);
-                    colors[k] = TerrainColor(palette, heights[k], seaLevel, amplitude, latitudes[k], slopeEast, slopeNorth, light);
+                    double polarIce = 0d;
+                    if (hasPolarIce)
+                    {
+                        double clat = Math.Cos(latitudes[k]);
+                        var dir = new double3(
+                            clat * Math.Cos(longitudes[k]), clat * Math.Sin(longitudes[k]), Math.Sin(latitudes[k]));
+                        polarIce = TerrainNoise.SamplePolarIceWeight(iceParams, dir);
+                    }
+
+                    colors[k] = TerrainColor(palette, heights[k], seaLevel, amplitude, latitudes[k],
+                        slopeEast, slopeNorth, light, polarIce);
                 }
             }
 
@@ -1389,7 +1409,8 @@ namespace Galilego.Tablet
         internal static readonly TerrainPaletteData DefaultPalette = new TerrainPaletteData();
 
         internal static Color32 TerrainColor(TerrainPaletteData palette, double height, double seaLevel,
-            double amplitude, double latitude, double slopeEast, double slopeNorth, float light)
+            double amplitude, double latitude, double slopeEast, double slopeNorth, float light,
+            double polarIce = 0d)
         {
             if (palette == null)
             {
@@ -1453,6 +1474,15 @@ namespace Galilego.Tablet
             if (slope > 1.2d || rel > 0.9d)
             {
                 color = Color.Lerp(color, palette.Snow, (float)Math.Min(0.8d, Math.Max((slope - 1.2d) / 1.4d, (rel - 0.9d) / 0.1d)));
+            }
+
+            // Polar ice cap: same weight and curve as the 3D surface, so the globe
+            // map does not show beige sand where the player would stand on white ice.
+            if (polarIce > 0d)
+            {
+                float w = Mathf.Clamp01((float)(polarIce * 2d));
+                w = w * w * (3f - (2f * w));
+                color = Color.Lerp(color, palette.Snow, w);
             }
 
             float shading = 0.55f + (0.45f * light);

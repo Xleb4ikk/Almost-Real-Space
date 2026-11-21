@@ -25,6 +25,9 @@ namespace Galilego.Universe
         public float3 Normal;
         public float3 SurfaceDir;
         public float4 Extra;
+        /// <summary>x: polar ice weight 0..1 (the same CPU value that shaped the
+        /// geometry); y: reserved. Feeds PlanetSurface's TEXCOORD3.</summary>
+        public float2 Extra2;
     }
 
     /// <summary>Water surface vertex: position, normal, depth in UV2.
@@ -170,6 +173,11 @@ namespace Galilego.Universe
         [ReadOnly] public NativeArray<float> Masks;
         [ReadOnly] public NativeArray<float> Details;
 
+        /// <summary>Terrain parameters for the polar-ice weight. The weight is a
+        /// pure function of the direction, so the shader does not have to duplicate
+        /// the noise; only the scalar fields are read (the tables are off).</summary>
+        [ReadOnly] public TerrainNoiseParams Params;
+
         public int Res;
         public int N;
         public int Grid;
@@ -262,7 +270,8 @@ namespace Galilego.Universe
                         Normal = unit,
                         SurfaceDir = new float3((float)d.x, (float)d.y, (float)d.z),
                         Extra = new float4(
-                            (float)rawHeight, math.dot(unit, radial), Masks[halo], Details[halo])
+                            (float)rawHeight, math.dot(unit, radial), Masks[halo], Details[halo]),
+                        Extra2 = new float2((float)TerrainNoise.SamplePolarIceWeight(Params, d), 0f)
                     };
 
                     if (hasWater)
@@ -310,7 +319,8 @@ namespace Galilego.Universe
                         Position = core.Position - (inward * (float)SkirtDepth),
                         Normal = core.Normal,
                         SurfaceDir = core.SurfaceDir,
-                        Extra = core.Extra
+                        Extra = core.Extra,
+                        Extra2 = core.Extra2
                     };
 
                     if (hasWater)

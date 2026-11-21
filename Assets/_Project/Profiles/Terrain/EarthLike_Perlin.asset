@@ -67,6 +67,12 @@ MonoBehaviour:
     BeachShelfWidthNoiseFrequency: 150
     BeachShelfWidthNoiseOctaves: 4
     BeachShelfSeawardWidth: 0
+    PolarIceLatitudeDeg: 66.5
+    PolarIceFadeDeg: 1.2
+    PolarIceThicknessMeters: 8
+    PolarIceEdgeAmplitudeDeg: 2.5
+    PolarIceEdgeFrequency: 6
+    PolarIceEdgeOctaves: 2
     DetailMix: 0
     DetailFrequency: 0
     DetailOctaves: 5

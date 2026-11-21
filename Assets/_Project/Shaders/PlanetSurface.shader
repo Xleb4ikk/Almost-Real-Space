@@ -110,6 +110,7 @@ Shader "Galilego/PlanetSurface"
                 float3 normalOS   : NORMAL;
                 float3 dirOS      : TEXCOORD1; // body-fixed unit direction
                 float4 extra      : TEXCOORD2; // x: raw height (m), y: slope cosine, z: CPU color mask, w: CPU detail
+                float2 extra2     : TEXCOORD3; // x: polar ice weight 0..1 (CPU, same noise as geometry)
             };
 
             struct Varyings
@@ -119,6 +120,7 @@ Shader "Galilego/PlanetSurface"
                 float3 positionWS : TEXCOORD1;
                 float3 dirOS      : TEXCOORD2;
                 float4 extra      : TEXCOORD3;
+                float2 extra2     : TEXCOORD4;
             };
 
             Varyings Vert(Attributes input)
@@ -129,6 +131,7 @@ Shader "Galilego/PlanetSurface"
                 output.normalWS = TransformObjectToWorldNormal(input.normalOS);
                 output.dirOS = input.dirOS;
                 output.extra = input.extra;
+                output.extra2 = input.extra2;
                 return output;
             }
 
@@ -518,6 +521,12 @@ Shader "Galilego/PlanetSurface"
                     float3 normalObject = normalize(TransformWorldToObjectNormal(normal));
                     albedo = TerrainTextureAlbedo(input.positionWS, raw, slopeTan, normalObject, albedo);
                 }
+
+                // Polar ice: LAST, over textures, rock and mottling. The per-vertex
+                // weight is the exact CPU value that built the ice geometry, so the
+                // white edge matches the edge of the ice sheet (no shader-side noise).
+                float polarIce = saturate(input.extra2.x * 2.0);
+                albedo = lerp(albedo, _ColSnow.rgb, PaletteSmoothstep(polarIce));
 
                 // Land.
                 float3 land = albedo * lightTerm;

@@ -77,10 +77,10 @@ namespace Galilego.Universe
             double snowSlopeTan, double maskStrength,
             double colorDetail = 0d, double detailStrength = 0d,
             double latitudeRadians = 0d, double rockHeightMin = 0d,
-            double beachHeightMeters = 0d)
+            double beachHeightMeters = 0d, double polarIce = 0d)
         {
             if (rockSlopeTan <= 0d && snowSlopeTan <= 0d && maskStrength == 0d
-                && detailStrength == 0d && beachHeightMeters <= 0d)
+                && detailStrength == 0d && beachHeightMeters <= 0d && polarIce <= 0d)
             {
                 return HeightColorLegacy(height, seaLevel, amplitude);
             }
@@ -140,6 +140,16 @@ namespace Galilego.Universe
             if (snowBand && snowSlopeTan > 0d && slopeTan > snowSlopeTan)
             {
                 c = Rock;
+            }
+
+            // Polar ice LAST: it covers rock, snow bands and mottling alike.
+            // The weight doubles before the smoothstep, so the surface is fully
+            // white from the nominal cap edge inward and fades over the outer
+            // half of the edge band. Mirrors PlanetSurface.shader.
+            if (polarIce > 0d)
+            {
+                double w = Smoothstep01(System.Math.Min(1d, polarIce * 2d));
+                c = Color.Lerp(c, Snow, (float)w);
             }
 
             return c;

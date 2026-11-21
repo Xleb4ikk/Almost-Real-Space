@@ -244,6 +244,34 @@ namespace Galilego.Universe
         /// </summary>
         public double BeachShelfSeawardWidth = 0d;
 
+        /// <summary>
+        /// Polar ice cap edge latitude, degrees (absolute; both poles). ≤0 — off
+        /// (legacy, bit-for-bit). The caps are symmetric about the equator; the
+        /// area above latitude φ is (1 − sin φ)/2 of the sphere, so 66.5° gives
+        /// the classic Earth-like ~8 % of the whole surface.
+        ///
+        /// Inside the cap the sea is filled with a flat ice sheet at
+        /// SeaLevel + PolarIceThicknessMeters; land above it keeps its relief and
+        /// is painted white by the palette. Applied after the beach and before the
+        /// pads, on the UNWARPED direction.
+        /// </summary>
+        public double PolarIceLatitudeDeg = 0d;
+
+        /// <summary>Width of the ice-edge transition in degrees of latitude (full width, w=0..1).</summary>
+        public double PolarIceFadeDeg = 1.2d;
+
+        /// <summary>Ice-sheet surface height above the sea, metres (thin sea ice, not a dome).</summary>
+        public double PolarIceThicknessMeters = 0d;
+
+        /// <summary>Edge latitude perturbation, degrees (0 = a perfect circle).</summary>
+        public double PolarIceEdgeAmplitudeDeg = 0d;
+
+        /// <summary>Edge perturbation frequency (cycles per unit direction; ~6 = continental-scale lobes).</summary>
+        public double PolarIceEdgeFrequency = 0d;
+
+        /// <summary>Edge perturbation octave count.</summary>
+        public int PolarIceEdgeOctaves = 2;
+
         /// <summary>Small-scale detail (rocks/scree) as a fraction of AmplitudeMeters.
         /// Added by a high-frequency stream on land only, fades out on plains.
         /// 0 = off (legacy).</summary>
@@ -401,6 +429,12 @@ namespace Galilego.Universe
             BeachShelfWidthNoiseFrequency = profile.BeachShelfWidthNoiseFrequency;
             BeachShelfWidthNoiseOctaves = profile.BeachShelfWidthNoiseOctaves;
             BeachShelfSeawardWidth = profile.BeachShelfSeawardWidth;
+            PolarIceLatitudeDeg = profile.PolarIceLatitudeDeg;
+            PolarIceFadeDeg = profile.PolarIceFadeDeg;
+            PolarIceThicknessMeters = profile.PolarIceThicknessMeters;
+            PolarIceEdgeAmplitudeDeg = profile.PolarIceEdgeAmplitudeDeg;
+            PolarIceEdgeFrequency = profile.PolarIceEdgeFrequency;
+            PolarIceEdgeOctaves = profile.PolarIceEdgeOctaves;
             DetailMix = profile.DetailMix;
             DetailFrequency = profile.DetailFrequency;
             DetailOctaves = profile.DetailOctaves;

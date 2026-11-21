@@ -272,6 +272,7 @@ namespace Galilego.Tablet
             int width = input.Width;
             int height = input.Height;
             var heights = new double[width * height];
+            var weights = new double[width * height];
             var pixels = new Color32[width * height];
             bool hasSea = input.SeaLevelMeters > -1e29d;
 
@@ -301,6 +302,7 @@ namespace Galilego.Tablet
                     }
 
                     heights[row + x] = meters;
+                    weights[row + x] = TerrainNoise.SamplePolarIceWeight(input.Params, dir);
                 }
             });
 
@@ -328,7 +330,7 @@ namespace Galilego.Tablet
                     float light = ReliefLight(slopeEast, slopeNorth, sunEast, sunNorth, sunUp);
                     Color32 color = NavMapRenderer.TerrainColor(
                         input.Palette, heights[row + x], input.SeaLevelMeters,
-                        input.AmplitudeMeters, lat, slopeEast, slopeNorth, 1f);
+                        input.AmplitudeMeters, lat, slopeEast, slopeNorth, 1f, weights[row + x]);
 
                     // Mild baked relief: the globe raster adds its own day/night shade,
                     // this only stops the texture from reading as flat colour bands.

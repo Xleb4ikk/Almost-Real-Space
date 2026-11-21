@@ -253,6 +253,28 @@ namespace Galilego.Universe
         /// the threshold isoline with a continuous fade.
         /// </summary>
         public double BeachShelfSeawardWidth;
+
+        /// <summary>
+        /// Polar ice cap edge latitude, degrees (absolute; both poles). ≤0 — off
+        /// (legacy, bit-for-bit). The caps are symmetric about the equator.
+        /// </summary>
+        public double PolarIceLatitudeDeg;
+
+        /// <summary>Width of the ice-edge transition in degrees of latitude.</summary>
+        public double PolarIceFadeDeg;
+
+        /// <summary>Ice-sheet surface height above the sea, metres (thin sea ice, not a dome).</summary>
+        public double PolarIceThicknessMeters;
+
+        /// <summary>Edge latitude perturbation, degrees (0 = a perfect circle).</summary>
+        public double PolarIceEdgeAmplitudeDeg;
+
+        /// <summary>Edge perturbation frequency (cycles per unit direction).</summary>
+        public double PolarIceEdgeFrequency;
+
+        /// <summary>Edge perturbation octave count.</summary>
+        public int PolarIceEdgeOctaves;
+
         public double ColorNoiseFrequency;
         public int ColorNoiseOctaves;
         public int ColorNoiseSeedOffset;
@@ -385,6 +407,12 @@ namespace Galilego.Universe
                 BeachShelfWidthNoiseFrequency = terrain.BeachShelfWidthNoiseFrequency,
                 BeachShelfWidthNoiseOctaves = terrain.BeachShelfWidthNoiseOctaves,
                 BeachShelfSeawardWidth = terrain.BeachShelfSeawardWidth,
+                PolarIceLatitudeDeg = terrain.PolarIceLatitudeDeg,
+                PolarIceFadeDeg = terrain.PolarIceFadeDeg,
+                PolarIceThicknessMeters = terrain.PolarIceThicknessMeters,
+                PolarIceEdgeAmplitudeDeg = terrain.PolarIceEdgeAmplitudeDeg,
+                PolarIceEdgeFrequency = terrain.PolarIceEdgeFrequency,
+                PolarIceEdgeOctaves = terrain.PolarIceEdgeOctaves,
                 ColorNoiseFrequency = terrain.ColorNoiseFrequency,
                 ColorNoiseOctaves = terrain.ColorNoiseOctaves,
                 ColorNoiseSeedOffset = terrain.ColorNoiseSeedOffset,
@@ -632,6 +660,11 @@ namespace Galilego.Universe
             h = ApplyTailCompression(p, h);
             h = ApplyDepthCompression(p, h);
             h = ApplyBeachShelf(p, h, continentRaw, q);
+
+            // Polar ice caps go AFTER the beach (the ice covers the coast) and
+            // BEFORE the pads (a site pad must be able to carve through the ice).
+            // Reads the UNWARPED direction: the cap is geographic, not WARPED.
+            h = ApplyPolarIce(p, h, direction);
 
             // Flat pads are applied LAST. Otherwise detail/plains noise would pull
             // the pad apron back and the flat core would stop being flat. The
@@ -899,6 +932,89 @@ namespace Galilego.Universe
             }
 
             return h + ((shelf - h) * w);
+        }
+
+        /// <summary>
+        /// Polar ice cap weight: 0 outside the cap, 1 inside, 0.5 exactly on the
+        /// nominal edge latitude. Symmetric about the equator; measured on |z|,
+        /// i.e. on sin(latitude), because the cap AREA above a latitude is
+        /// (1 − sin φ)/2 of the sphere — the same quantity the edge latitude is
+        /// specified in. The edge is perturbed by a low-frequency own stream
+        /// (salt 12, zero mean) so it is not a perfect circle.
+        ///
+        /// PolarIceLatitudeDeg ≤ 0 — off and no noise is sampled (legacy,
+        /// bit-for-bit). The noise is only sampled after the cheap latitude
+        /// early-out, so the equatorial bulk of the planet pays two compares.
+        /// </summary>
+        public static double SamplePolarIceWeight(TerrainNoiseParams p, double3 direction)
+        {
+            if (!(p.PolarIceLatitudeDeg > 0d) || !(p.PolarIceFadeDeg > 0d))
+            {
+                return 0d;
+            }
+
+            const double degToRad = 0.017453292519943295d;
+            double latRad = math.min(p.PolarIceLatitudeDeg, 89.9d) * degToRad;
+            double edgeSin = math.sin(latRad);
+            double dSinPerDeg = math.cos(latRad) * degToRad;
+            double fadeSin = math.max(1e-9d, p.PolarIceFadeDeg * dSinPerDeg);
+
+            double edgeAmpSin = 0d;
+            double edgeFreq = p.PolarIceEdgeFrequency;
+            if (p.PolarIceEdgeAmplitudeDeg > 0d && edgeFreq > 0d)
+            {
+                edgeAmpSin = p.PolarIceEdgeAmplitudeDeg * dSinPerDeg;
+            }
+
+            double z = math.abs(direction.z);
+
+            // Outside even the widest possible perturbed edge: no noise, no weight.
+            if (z <= edgeSin - edgeAmpSin - (0.5d * fadeSin))
+            {
+                return 0d;
+            }
+
+            if (edgeAmpSin > 0d)
+            {
+                // Own stream (salt 12): the edge must not follow the continent,
+                // mountain or colour masks. Value/perlin follows MaskNoiseStyle,
+                // like every other mask.
+                double n = SampleFbmEx(
+                    direction, edgeFreq, p.PolarIceEdgeOctaves, p.Seed, 12,
+                    EffectiveGain(p.Gain), EffectiveLacunarity(p.Lacunarity), p.MaskNoiseStyle);
+                edgeSin += n * edgeAmpSin;
+            }
+
+            return Smoothstep01(((z - edgeSin) / fadeSin) + 0.5d);
+        }
+
+        /// <summary>
+        /// Polar ice height. Inside the cap the sea is filled with a flat ice
+        /// sheet at SeaLevel + PolarIceThicknessMeters; land already higher than
+        /// that keeps its shape (and is painted white by the palette). The fill is
+        /// weighted by the cap weight, so the seabed rises through the fade band
+        /// instead of ending at a 4 km ice cliff: the ice surface meets the water
+        /// exactly at the cap edge.
+        ///
+        /// Off (PolarIceLatitudeDeg ≤ 0) — returns h unchanged, bit-for-bit.
+        /// </summary>
+        internal static double ApplyPolarIce(TerrainNoiseParams p, double h, double3 direction)
+        {
+            double w = SamplePolarIceWeight(p, direction);
+            if (!(w > 0d))
+            {
+                return h;
+            }
+
+            double amp = math.max(1d, p.AmplitudeMeters);
+            double seaN = p.SeaLevelMeters <= -1e29d ? 0d : (p.SeaLevelMeters / amp);
+            double iceTop = seaN + (math.max(0d, p.PolarIceThicknessMeters) / amp);
+            if (h >= iceTop)
+            {
+                return h;
+            }
+
+            return h + ((iceTop - h) * w);
         }
 
         public static double SampleColorNoise(TerrainNoiseParams p, double3 direction)
@@ -1386,6 +1502,10 @@ namespace Galilego.Universe
                     // continentRaw, so it must not share a stream with the main mask
                     // — otherwise continent elongation would match its shape.
                     return new double3(seed * 19.37d + 11200.7d, seed * 63.91d + 11500.3d, seed * 42.53d + 11800.9d);
+                case 12:
+                    // Polar ice edge. Own stream, so the cap boundary follows neither
+                    // the continents nor the mountain belts — it is weather, not geology.
+                    return new double3(seed * 43.13d + 14300.9d, seed * 27.71d + 14600.1d, seed * 68.47d + 14900.3d);
                 case 400:
                 case 500:
                 case 600:

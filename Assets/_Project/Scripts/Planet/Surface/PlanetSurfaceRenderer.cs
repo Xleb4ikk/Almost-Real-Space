@@ -1678,6 +1678,12 @@ namespace Galilego.Universe
                 && a.BeachShelfWidthNoiseFrequency == b.BeachShelfWidthNoiseFrequency
                 && a.BeachShelfWidthNoiseOctaves == b.BeachShelfWidthNoiseOctaves
                 && a.BeachShelfSeawardWidth == b.BeachShelfSeawardWidth
+                && a.PolarIceLatitudeDeg == b.PolarIceLatitudeDeg
+                && a.PolarIceFadeDeg == b.PolarIceFadeDeg
+                && a.PolarIceThicknessMeters == b.PolarIceThicknessMeters
+                && a.PolarIceEdgeAmplitudeDeg == b.PolarIceEdgeAmplitudeDeg
+                && a.PolarIceEdgeFrequency == b.PolarIceEdgeFrequency
+                && a.PolarIceEdgeOctaves == b.PolarIceEdgeOctaves
                 && a.ColorNoiseFrequency == b.ColorNoiseFrequency
                 && a.ColorNoiseOctaves == b.ColorNoiseOctaves
                 && a.ColorNoiseSeedOffset == b.ColorNoiseSeedOffset
@@ -3065,6 +3071,7 @@ namespace Galilego.Universe
                 Heights = request.Heights,
                 Masks = request.Masks,
                 Details = request.Details,
+                Params = noiseParams,
                 Res = res,
                 N = n,
                 Grid = grid,
@@ -3134,7 +3141,8 @@ namespace Galilego.Universe
                 new VertexAttributeDescriptor(VertexAttribute.Position, VertexAttributeFormat.Float32, 3),
                 new VertexAttributeDescriptor(VertexAttribute.Normal, VertexAttributeFormat.Float32, 3),
                 new VertexAttributeDescriptor(VertexAttribute.TexCoord1, VertexAttributeFormat.Float32, 3),
-                new VertexAttributeDescriptor(VertexAttribute.TexCoord2, VertexAttributeFormat.Float32, 4));
+                new VertexAttributeDescriptor(VertexAttribute.TexCoord2, VertexAttributeFormat.Float32, 4),
+                new VertexAttributeDescriptor(VertexAttribute.TexCoord3, VertexAttributeFormat.Float32, 2));
             mesh.SetVertexBufferData(
                 request.Vertices, 0, 0, request.TotalVerts, 0,
                 MeshUpdateFlags.DontValidateIndices | MeshUpdateFlags.DontRecalculateBounds);
@@ -3333,6 +3341,10 @@ namespace Galilego.Universe
             var jobHeights = new NativeArray<double>(grid * grid, Allocator.TempJob);
             var jobMasks = new NativeArray<float>(grid * grid, Allocator.TempJob);
             var jobDetails = new NativeArray<float>(grid * grid, Allocator.TempJob);
+            // Polar ice coverage at the same vertices. It is a pure function of the
+            // direction (latitude early-out + own noise stream), so the fragment
+            // shader needs the CPU value rather than a duplicate noise implementation.
+            var iceGrid = new float[grid * grid];
 
             for (int gi = 0; gi < grid; gi++)
             {
@@ -3341,7 +3353,10 @@ namespace Galilego.Universe
                 {
                     double v = v0 + ((gj - 1) * stepUv);
                     Vector3d dir = CubeSphere.Direction(node.Face, u, v);
-                    dirs[(gi * grid) + gj] = new double3(dir.X, dir.Y, dir.Z);
+                    double3 d = new double3(dir.X, dir.Y, dir.Z);
+                    int vi = (gi * grid) + gj;
+                    dirs[vi] = d;
+                    iceGrid[vi] = (float)TerrainNoise.SamplePolarIceWeight(noiseParams, d);
                 }
             }
 
@@ -3388,6 +3403,8 @@ namespace Galilego.Universe
             // detail — the same pattern the decor placement reads (parity paint/placement).
             var surfaceDirs = new Vector3[totalVerts];
             var surfaceExtra = new Vector4[totalVerts];
+            // Polar ice weight (UV3.x): the shader blends the albedo to snow with it.
+            var surfaceIce = new Vector2[totalVerts];
             // Chunk water plane: the same core vertices projected onto sea level (water
             // physics is flat; waves only in shader normals). Per-vertex depth drives
             // colour/foam/alpha.
@@ -3422,6 +3439,7 @@ namespace Galilego.Universe
                     surfaceExtra[index] = new Vector4(
                         (float)rawHeight, Vector3.Dot(normals[index], radial),
                         jobMasks[halo], jobDetails[halo]);
+                    surfaceIce[index] = new Vector2(iceGrid[halo], 0f);
 
                     if (hasWater)
                     {
@@ -3500,6 +3518,7 @@ namespace Galilego.Universe
                     normals[baseIndex + k] = normals[coreIndex];
                     surfaceDirs[baseIndex + k] = surfaceDirs[coreIndex];
                     surfaceExtra[baseIndex + k] = surfaceExtra[coreIndex];
+                    surfaceIce[baseIndex + k] = surfaceIce[coreIndex];
                 }
             }
 
@@ -3581,6 +3600,7 @@ namespace Galilego.Universe
             chunk.Mesh.normals = normals;
             chunk.Mesh.SetUVs(1, new List<Vector3>(surfaceDirs));
             chunk.Mesh.SetUVs(2, new List<Vector4>(surfaceExtra));
+            chunk.Mesh.SetUVs(3, new List<Vector2>(surfaceIce));
             chunk.Mesh.triangles = triangles;
             chunk.Mesh.RecalculateBounds();
             // Bounds margin. RecalculateBounds already gives the true mesh AABB

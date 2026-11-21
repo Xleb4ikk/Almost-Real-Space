@@ -299,6 +299,13 @@ namespace Galilego.Universe
                 return false;
             }
 
+            // Solid polar ice: nothing is placed on the ice sheet (rocks included).
+            // The weight is 0 outside the cap, so the equatorial bulk pays one compare.
+            if (TerrainNoise.SamplePolarIceWeight(terrain, direction) >= 0.5d)
+            {
+                return false;
+            }
+
             double rawHeight = TerrainNoise.SampleHeight(terrain, direction) * p.AmplitudeMeters;
             if (p.AvoidWater && rawHeight <= p.SeaLevelMeters + (p.AmplitudeMeters * 0.001d))
             {
@@ -423,6 +430,12 @@ namespace Galilego.Universe
             // Building/road zone: a cell entirely inside the zone gets no
             // instance at all (IsSurfaceAllowed also checks sub-tufts).
             if (IsExcludedFor(p, terrain, direction))
+            {
+                return false;
+            }
+
+            // Solid polar ice: nothing is placed on the ice sheet (rocks included).
+            if (TerrainNoise.SamplePolarIceWeight(terrain, direction) >= 0.5d)
             {
                 return false;
             }

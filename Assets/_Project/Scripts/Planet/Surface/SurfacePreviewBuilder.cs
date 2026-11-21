@@ -164,6 +164,7 @@ namespace Galilego.Universe
             var heightsMeters = new double[count];
             var masksCpu = new float[count];
             var detailsCpu = new float[count];
+            var iceCpu = new Vector2[count];
             var rawDirs = new double3[count];
             var directions = new NativeArray<double3>(count, Allocator.TempJob);
 
@@ -209,12 +210,13 @@ namespace Galilego.Universe
 
             if (terrain != null)
             {
+                TerrainNoiseParams noise = TerrainNoiseParams.FromTerrain(terrain);
                 var heights = new NativeArray<double>(count, Allocator.TempJob);
                 var masks = new NativeArray<float>(count, Allocator.TempJob);
                 var details = new NativeArray<float>(count, Allocator.TempJob);
                 var job = new TerrainTileJob
                 {
-                    Params = TerrainNoiseParams.FromTerrain(terrain),
+                    Params = noise,
                     Directions = directions,
                     Heights = heights,
                     ColorMasks = masks,
@@ -229,10 +231,12 @@ namespace Galilego.Universe
                     masksCpu[v] = masks[v];
                     detailsCpu[v] = details[v];
                     double3 d = rawDirs[v];
+                    double polarIce = TerrainNoise.SamplePolarIceWeight(noise, d);
+                    iceCpu[v] = new Vector2((float)polarIce, 0f);
                     positions[v] = ToFrameLocal(
                         new Vector3d(d.x, d.y, d.z) * (radius + h), anchorBodyFixed, north, up, east);
                     colors[v] = Shade(terrain, h, seaLevel, amplitude, masks[v], details[v],
-                        latitudeRadians, tintUnderwater && hasSea);
+                        latitudeRadians, tintUnderwater && hasSea, polarIce);
                 }
 
                 heights.Dispose();
@@ -288,6 +292,7 @@ namespace Galilego.Universe
             mesh.colors = colors;
             mesh.SetUVs(1, new List<Vector4>(extra));
             mesh.SetUVs(2, new List<Vector3>(directionsLocal));
+            mesh.SetUVs(3, new List<Vector2>(iceCpu));
             mesh.triangles = triangles;
             mesh.RecalculateBounds();
             return mesh;
@@ -320,14 +325,14 @@ namespace Galilego.Universe
 
         private static Color Shade(
             HeightfieldTerrain terrain, double rawHeight, double seaLevel, double amplitude,
-            float mask, float detail, double latitudeRadians, bool tintUnderwater)
+            float mask, float detail, double latitudeRadians, bool tintUnderwater, double polarIce)
         {
             Color c = TerrainPalette.HeightColorEx(
                 rawHeight, seaLevel, amplitude, 0d, mask,
                 terrain.ColorRockSlopeTan, terrain.ColorRockSlopeWidth,
                 terrain.ColorSnowSlopeTan, terrain.ColorNoiseStrength,
                 detail, terrain.ColorDetailStrength, latitudeRadians,
-                terrain.ColorRockHeightMin, terrain.BeachHeightMeters);
+                terrain.ColorRockHeightMin, terrain.BeachHeightMeters, polarIce);
 
             // Underwater ground is tinted blue, otherwise the ocean is
             // indistinguishable from land. The threshold is the same SeaEpsilon

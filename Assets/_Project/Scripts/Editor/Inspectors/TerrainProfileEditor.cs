@@ -17,6 +17,7 @@ namespace Galilego.Universe.EditorTools
         private static bool showOrogeny;
         private static bool showPlains;
         private static bool showBeach = true;
+        private static bool showPolarIce = true;
         private static bool showWarp;
         private static bool showColor = true;
         private static bool showPalette;
@@ -130,6 +131,25 @@ Slider("Profile.ContinentDepth", 0f, 1.5f);
                 Field("Profile.BeachShelfWidthNoiseFrequency");
                 Field("Profile.BeachShelfWidthNoiseOctaves");
                 Field("Profile.BeachShelfSeawardWidth");
+                EditorGUI.indentLevel--;
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+
+            showPolarIce = EditorGUILayout.BeginFoldoutHeaderGroup(showPolarIce, "Полярные льды");
+            if (showPolarIce)
+            {
+                EditorGUI.indentLevel++;
+                Field("Profile.PolarIceLatitudeDeg");
+                Field("Profile.PolarIceFadeDeg");
+                Field("Profile.PolarIceThicknessMeters");
+                Field("Profile.PolarIceEdgeAmplitudeDeg");
+                Field("Profile.PolarIceEdgeFrequency");
+                Field("Profile.PolarIceEdgeOctaves");
+                EditorGUILayout.HelpBox(
+                    "Широта края шапки: 66.5° — земные ~8 % поверхности (площадь выше φ = (1 − sin φ)/2 сферы). "
+                    + "Толщина — это плоский морской лёд на высоте уровня моря + N м; суша выше него сохраняет рельеф.",
+                    MessageType.Info);
                 EditorGUI.indentLevel--;
             }
 
