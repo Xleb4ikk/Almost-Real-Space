@@ -583,6 +583,86 @@ namespace Galilego.Universe
         public bool ParkedWarpFrame { get; private set; }
 
         /// <summary>
+        /// Аппарат стоит на поверхности: зона или Landed, точка — низ корпуса, скорость
+        /// относительно поверхности ниже 0.1 м/с (в зоне допускается контакт по высоте,
+        /// потому что скорость прокси приходит с задержкой кадра). По этому же признаку
+        /// снимаются восстановимые точки перемотки на площадке.
+        /// </summary>
+        public bool IsVesselStandingOnSurface
+        {
+            get
+            {
+                if (step == null || Ship == null)
+                {
+                    return false;
+                }
+
+                if (!ContactZoneHost.Active && Regime != VesselRegime.Landed)
+                {
+                    return false;
+                }
+
+                if (Ship.PositionIsCom)
+                {
+                    return false;
+                }
+
+                OrbitingBody body = step.DominantBody;
+                if (body == null)
+                {
+                    return false;
+                }
+
+                if (!(body.RotationPeriodSeconds > 0d))
+                {
+                    return true;
+                }
+
+                body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out Vector3d bodyVel);
+                Vector3d offset = Ship.Position - bodyPos;
+                Vector3d omega = body.SpinAxis * body.SpinAngularSpeed;
+                Vector3d surfaceVelocity = bodyVel + Vector3d.Cross(omega, offset);
+                if ((Ship.Velocity - surfaceVelocity).Magnitude <= ParkedMaxRelativeSpeed)
+                {
+                    return true;
+                }
+
+                if (ContactZoneHost.Active)
+                {
+                    if (zoneHostCache == null)
+                    {
+                        zoneHostCache = FindAnyObjectByType<ContactZoneHost>();
+                    }
+
+                    return zoneHostCache != null && zoneHostCache.LastAltitudeMeters < 1d;
+                }
+
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Отпустить контактную зону перед перемоткой: прокси разрушается без записи
+        /// состояния, а на следующем кадре зона включается обратно и пересобирает его
+        /// из деталей уже в восстановленном прошлом (как после парковки).
+        /// </summary>
+        public void ReleaseContactZoneForRewind()
+        {
+            if (zoneHostCache == null)
+            {
+                zoneHostCache = FindAnyObjectByType<ContactZoneHost>();
+            }
+
+            if (zoneHostCache != null)
+            {
+                zoneHostCache.ForceExit();
+                zoneHostCache.Enabled = false;
+            }
+
+            parkedZoneReleased = true;
+        }
+
+        /// <summary>
         /// ��������� ������� �� ������� ��������: ��� ��� �����, � ������� ������� ��
         /// ��� �� ����� ����������� �����������. ������� �����:
         ///  � ������� �� ����������� (���������� ���� ��� ����� Landed);
@@ -659,26 +739,7 @@ namespace Galilego.Universe
                 return false;
             }
 
-            // ����� �� �������: �������� ������������ ����������� (� ������ ��������).
-            // � ���������� ���� �������� ������ �������� � ��������� ����� � ����� �����
-            // ����� ���������� ���������� �������, ������� ��� ������ ������� �����:
-            // ������ ��� ������������, � �������� �� ������ ����� �������� �������� ������.
-            body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out Vector3d bodyVel);
-            Vector3d offset = Ship.Position - bodyPos;
-            Vector3d omega = body.SpinAxis * body.SpinAngularSpeed;
-            Vector3d surfaceVelocity = bodyVel + Vector3d.Cross(omega, offset);
-            bool standing = (Ship.Velocity - surfaceVelocity).Magnitude <= ParkedMaxRelativeSpeed;
-            if (!standing && ContactZoneHost.Active)
-            {
-                if (zoneHostCache == null)
-                {
-                    zoneHostCache = FindAnyObjectByType<ContactZoneHost>();
-                }
-
-                standing = zoneHostCache != null && zoneHostCache.LastAltitudeMeters < 1d;
-            }
-
-            if (!standing)
+            if (!IsVesselStandingOnSurface)
             {
                 return false;
             }

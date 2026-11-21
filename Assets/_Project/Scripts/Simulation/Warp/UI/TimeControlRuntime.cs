@@ -172,7 +172,11 @@ namespace Galilego.Universe
         private void CapturePoint(int index, FlightPointKind kind)
         {
             double flightSeconds = runner.TimeSeconds - launchTimeSeconds;
-            bool blocked = index != 0 && ContactZoneHost.Active;
+
+            // В контактной зоне точка восстановима, только если аппарат СТОИТ: тогда его
+            // состояние — это детали + поза на площадке, а PhysX-прокси зона пересоберёт
+            // заново. Катящийся/падающий в зоне аппарат восстановить нельзя.
+            bool blocked = index != 0 && ContactZoneHost.Active && !runner.IsVesselStandingOnSurface;
             if (blocked)
             {
                 timeline.Capture(index, timeline.RealSeconds, flightSeconds, FlightPointKind.Blocked, null);
@@ -214,8 +218,16 @@ namespace Galilego.Universe
 
             if (ContactZoneHost.Active)
             {
-                SetNotice("перемотка недоступна на площадке");
-                return;
+                // Стоящий на площадке аппарат восстанавливается: зона отпускает прокси,
+                // а затем пересобирает его из деталей уже в прошлом. Движущийся —
+                // невосстановим (состояние PhysX), его точки и так серые.
+                if (!runner.IsVesselStandingOnSurface)
+                {
+                    SetNotice("перемотка недоступна на площадке");
+                    return;
+                }
+
+                runner.ReleaseContactZoneForRewind();
             }
 
             if (runner.BuildMode)

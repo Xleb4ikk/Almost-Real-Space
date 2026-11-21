@@ -402,6 +402,51 @@ public static class TimeTests
             + " anchor=" + Galilego.Universe.FloatingOrigin.Anchor;
     }
 
+    /// <summary>
+    /// R13: перемотка на площадке. Точка снята у СТОЯЩЕГО аппарата, поэтому зона
+    /// отпускает прокси, восстанавливает прошлое и пересобирает прокси заново.
+    /// </summary>
+    public static string R13()
+    {
+        if (!Bind())
+        {
+            return "no runner/step";
+        }
+
+        TimeControlRuntime tc = TimeControlRuntime.Current;
+        if (tc == null || !tc.DebugStarted)
+        {
+            return "R13 нет таймлайна";
+        }
+
+        int target = tc.DebugPointCount - 1;
+        if (target < 1)
+        {
+            return "R13 нужно ≥2 точки (сейчас " + tc.DebugPointCount + ")";
+        }
+
+        if (!tc.DebugPointAvailable(target))
+        {
+            return "R13 точка " + target + " серая — перемотка запрещена";
+        }
+
+        double targetTime = tc.DebugPointFlightSeconds(target) + tc.DebugLaunchTimeSeconds;
+        string before = SurfaceFingerprint("before");
+
+        tc.QueueRewind(target);
+        tc.ApplyPendingRewind();
+
+        return "R13 откат на " + target + " (t=" + F(targetTime) + ")"
+            + " now=" + F(R.TimeSeconds)
+            + " dT=" + F(R.TimeSeconds - targetTime)
+            + " zone=" + Galilego.Simulation.ContactZone.ContactZoneHost.Active
+            + " warp=" + R.Warp.Mode + "×" + F(R.Warp.Factor)
+            + " points=" + tc.DebugPointCount
+            + " next=" + tc.DebugNextCaptureIndex
+            + " notice='" + tc.DebugNotice + "'"
+            + " | " + before + " | " + SurfaceFingerprint("after");
+    }
+
     /// <summary>Включить полный варп на стоящем аппарате и запомнить точку.</summary>
     public static string ParkedStart()
     {
