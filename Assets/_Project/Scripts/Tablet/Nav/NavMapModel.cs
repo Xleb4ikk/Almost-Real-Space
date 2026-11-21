@@ -73,6 +73,30 @@ namespace Galilego.Tablet
         public int FrameBodyIndex = -1;
     }
 
+    /// <summary>
+    /// Where a forecast leg stops on the ground, in the reference frame. The line
+    /// cannot continue past the contact (there is nothing to fly through), so the
+    /// map marks the point, the time and the impact speed instead of leaving the
+    /// player with a polyline that simply ends in the middle of a globe.
+    /// </summary>
+    public sealed class NavImpactMarker
+    {
+        /// <summary>Absolute simulation time of the contact.</summary>
+        public double TimeSeconds;
+
+        /// <summary>Contact point in the reference frame (frame body at its centre).</summary>
+        public Vector3d Position;
+
+        /// <summary>Speed relative to the surface at the contact, m/s (not the orbital speed).</summary>
+        public double SpeedMps;
+
+        public int BodyIndex = -1;
+        public string BodyName = "?";
+
+        /// <summary>True when the contact ends the planned (dashed) leg, false when it ends the coast.</summary>
+        public bool Planned;
+    }
+
     /// <summary>Actual ship state sample kept for the history trail.</summary>
     public struct NavShipSample
     {
@@ -137,6 +161,9 @@ namespace Galilego.Tablet
         public readonly List<NavBodyMarker> Bodies = new List<NavBodyMarker>();
         public readonly List<NavShipSample> History = new List<NavShipSample>();
         public readonly List<NavBurnMarker> BurnMarkers = new List<NavBurnMarker>();
+
+        /// <summary>Surface contacts found while building the forecast (one per leg that hits the ground).</summary>
+        public readonly List<NavImpactMarker> Impacts = new List<NavImpactMarker>();
 
         /// <summary>Maneuvers actually folded into the forecast (not just present in the plan).</summary>
         public int AppliedManeuverCount;
@@ -282,6 +309,7 @@ namespace Galilego.Tablet
             Bodies.Clear();
             History.Clear();
             BurnMarkers.Clear();
+            Impacts.Clear();
             AppliedManeuverCount = 0;
             PlanConflict = false;
             PlanOutsideWindow = false;
@@ -1303,7 +1331,13 @@ namespace Galilego.Tablet
                         window = threeOrbits;
                         revolutionsLimited = true;
                     }
+                }
 
+                // A dive is not necessarily a closed orbit: a hyperbolic approach into
+                // the ground is the steepest case of all, and it needs the same dense
+                // sampling up to the contact as a decaying ellipse does.
+                if (elements.IsValid)
+                {
                     impactSeconds = EstimateSurfaceImpactSeconds(elements, dominant.Radius, mu);
                 }
             }
@@ -1528,12 +1562,14 @@ namespace Galilego.Tablet
             public Vector3d PostBurnVelocity;
             public readonly List<CachedPath> Paths = new List<CachedPath>();
             public readonly List<CachedBurn> Burns = new List<CachedBurn>();
+            public readonly List<CachedImpact> Impacts = new List<CachedImpact>();
 
             public void Clear()
             {
                 Valid = false;
                 Paths.Clear();
                 Burns.Clear();
+                Impacts.Clear();
                 HasPostBurn = false;
                 Note = string.Empty;
             }
@@ -1552,6 +1588,17 @@ namespace Galilego.Tablet
             public Vector3d Position;
             public double DvMs;
             public int FrameBodyIndex;
+        }
+
+        /// <summary>Ground contact of a cached forecast, in absolute coordinates.</summary>
+        private sealed class CachedImpact
+        {
+            public double TimeSeconds;
+            public Vector3d Position;
+            public double SpeedMps;
+            public int BodyIndex = -1;
+            public string BodyName = "?";
+            public bool Planned;
         }
 
         private readonly ForecastCache forecastCache = new ForecastCache();
@@ -1646,6 +1693,28 @@ namespace Galilego.Tablet
                     {
                         break;
                     }
+                }
+            }
+
+            for (int i = 0; i < cache.Impacts.Count; i++)
+            {
+                CachedImpact impact = cache.Impacts[i];
+                try
+                {
+                    frame.EvaluateWorldState(impact.TimeSeconds, out Vector3d frameAtImpact, out _);
+                    Impacts.Add(new NavImpactMarker
+                    {
+                        TimeSeconds = impact.TimeSeconds,
+                        Position = impact.Position - frameAtImpact,
+                        SpeedMps = impact.SpeedMps,
+                        BodyIndex = impact.BodyIndex,
+                        BodyName = impact.BodyName,
+                        Planned = impact.Planned,
+                    });
+                }
+                catch (EphemerisRangeException)
+                {
+                    break;
                 }
             }
 
@@ -1757,6 +1826,28 @@ namespace Galilego.Tablet
                         Position = marker.Position + frameAtBurn,
                         DvMs = marker.DvMs,
                         FrameBodyIndex = marker.FrameBodyIndex,
+                    });
+                }
+                catch (EphemerisRangeException)
+                {
+                    complete = false;
+                }
+            }
+
+            for (int i = 0; i < Impacts.Count && complete; i++)
+            {
+                NavImpactMarker marker = Impacts[i];
+                try
+                {
+                    frame.EvaluateWorldState(marker.TimeSeconds, out Vector3d frameAtImpact, out _);
+                    cache.Impacts.Add(new CachedImpact
+                    {
+                        TimeSeconds = marker.TimeSeconds,
+                        Position = marker.Position + frameAtImpact,
+                        SpeedMps = marker.SpeedMps,
+                        BodyIndex = marker.BodyIndex,
+                        BodyName = marker.BodyName,
+                        Planned = marker.Planned,
                     });
                 }
                 catch (EphemerisRangeException)
@@ -1946,7 +2037,7 @@ namespace Galilego.Tablet
                         }
                     }
 
-                    if (!AdvanceForecast(physics, system, probe, frame, line, ref t, step, out OrbitingBody hit))
+                    if (!AdvanceForecast(physics, system, probe, frame, line, ref t, step, out SurfaceContact hit))
                     {
                         impact = "ПРОГНОЗ ОСТАНОВЛЕН: НЕКОНЕЧНОЕ СОСТОЯНИЕ";
                         break;
@@ -1964,9 +2055,10 @@ namespace Galilego.Tablet
                         }
                     }
 
-                    if (hit != null)
+                    if (hit.Valid)
                     {
-                        impact = "УДАР О " + (hit.Name ?? "?").ToUpperInvariant();
+                        impact = "УДАР О " + (hit.Body.Name ?? "?").ToUpperInvariant();
+                        AddImpactMarker(system, frame, hit, false);
                     }
                 }
             }
@@ -2026,15 +2118,16 @@ namespace Galilego.Tablet
                     while (t < ignite - 1e-9d && impact == null)
                     {
                         double step = Math.Min(dt, ignite - t);
-                        if (!AdvanceForecast(physics, system, probe, frame, line, ref t, step, out OrbitingBody hit))
+                        if (!AdvanceForecast(physics, system, probe, frame, line, ref t, step, out SurfaceContact hit))
                         {
                             impact = "ПРОГНОЗ ОСТАНОВЛЕН: НЕКОНЕЧНОЕ СОСТОЯНИЕ";
                             break;
                         }
 
-                        if (hit != null)
+                        if (hit.Valid)
                         {
-                            impact = "УДАР О " + (hit.Name ?? "?").ToUpperInvariant();
+                            impact = "УДАР О " + (hit.Body.Name ?? "?").ToUpperInvariant();
+                            AddImpactMarker(system, frame, hit, true);
                         }
                     }
 
@@ -2072,18 +2165,24 @@ namespace Galilego.Tablet
 
                 if (impact == null)
                 {
-                    while (t < endTime - 1e-9d)
+                    // The guard matters: after a ground contact this loop used to keep
+                    // integrating from a state that is already below the surface, for
+                    // the whole remaining window. That is both the "the calculation goes
+                    // on after the collision" lag (1/r² collapses the integrator) and
+                    // the fan of dashed garbage drawn past the globe.
+                    while (impact == null && t < endTime - 1e-9d)
                     {
                         double step = Math.Min(dt, endTime - t);
-                        if (!AdvanceForecast(physics, system, probe, frame, line, ref t, step, out OrbitingBody hit))
+                        if (!AdvanceForecast(physics, system, probe, frame, line, ref t, step, out SurfaceContact hit))
                         {
                             impact = "ПРОГНОЗ ОСТАНОВЛЕН: НЕКОНЕЧНОЕ СОСТОЯНИЕ";
                             break;
                         }
 
-                        if (hit != null)
+                        if (hit.Valid)
                         {
-                            impact = "УДАР О " + (hit.Name ?? "?").ToUpperInvariant();
+                            impact = "УДАР О " + (hit.Body.Name ?? "?").ToUpperInvariant();
+                            AddImpactMarker(system, frame, hit, true);
                         }
                     }
                 }
@@ -2268,6 +2367,64 @@ namespace Galilego.Tablet
             });
         }
 
+        /// <summary>
+        /// Records a ground contact in the map frame. Two legs that hit the same spot
+        /// (a plan that barely changes the dive) are one marker, and the planned one
+        /// wins: it is the path the player is editing.
+        /// </summary>
+        private void AddImpactMarker(StarSystem system, OrbitingBody mapFrame, SurfaceContact contact, bool planned)
+        {
+            if (!contact.Valid || contact.Body == null || mapFrame == null || !contact.Position.IsFinite)
+            {
+                return;
+            }
+
+            Vector3d position;
+            double speed;
+            try
+            {
+                mapFrame.EvaluateWorldState(contact.TimeSeconds, out Vector3d framePosition, out _);
+                contact.Body.EvaluateWorldState(contact.TimeSeconds, out _, out Vector3d bodyVelocity);
+                position = ClampToSurface(contact.Body, contact.Position, contact.TimeSeconds) - framePosition;
+                speed = (contact.Velocity - bodyVelocity).Magnitude;
+            }
+            catch (EphemerisRangeException)
+            {
+                return;
+            }
+
+            for (int i = 0; i < Impacts.Count; i++)
+            {
+                NavImpactMarker existing = Impacts[i];
+                if (existing.BodyIndex != IndexOf(system, contact.Body)
+                    || Math.Abs(existing.TimeSeconds - contact.TimeSeconds) > 120d
+                    || (existing.Position - position).Magnitude > 20_000d)
+                {
+                    continue;
+                }
+
+                if (planned && !existing.Planned)
+                {
+                    existing.Planned = true;
+                    existing.TimeSeconds = contact.TimeSeconds;
+                    existing.Position = position;
+                    existing.SpeedMps = speed;
+                }
+
+                return;
+            }
+
+            Impacts.Add(new NavImpactMarker
+            {
+                TimeSeconds = contact.TimeSeconds,
+                Position = position,
+                SpeedMps = speed,
+                BodyIndex = IndexOf(system, contact.Body),
+                BodyName = contact.Body.Name ?? "?",
+                Planned = planned,
+            });
+        }
+
         private string PlannedNote(bool planned, bool revolutionsLimited, double window)
         {
             string text;
@@ -2299,10 +2456,42 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
+        /// Margin added to a body radius when a surface contact is detected. The
+        /// osculating conic ignores J2 and drag, so a step capped at the crossing can
+        /// end a few metres above the mean radius; without some slack the next step
+        /// would dive inside the body again. Kept small on purpose: one map pixel is
+        /// kilometres, so this is invisible, while a craft genuinely hovering a hundred
+        /// metres up must not read as a crash.
+        /// </summary>
+        private const double GroundContactMarginMeters = 50d;
+
+        /// <summary>Below this the contact is "now": stepping a millisecond would only loop.</summary>
+        private const double GroundContactMinStepSeconds = 1e-3d;
+
+        /// <summary>First ground contact of a forecast leg, in absolute coordinates.</summary>
+        private struct SurfaceContact
+        {
+            public bool Valid;
+            public OrbitingBody Body;
+            public Vector3d Position;
+            public Vector3d Velocity;
+            public double TimeSeconds;
+        }
+
+        /// <summary>
         /// One forecast step with an exact surface stop. Returns false on a non-finite
-        /// state; <paramref name="hit"/> is non-null when the step ends on the ground,
+        /// state; <paramref name="contact"/> is valid when the step ends on the ground,
         /// in which case the last line point is the real surface crossing, not the
         /// first underground sample.
+        ///
+        /// The step is capped at the first ground crossing of the osculating conic,
+        /// and that is not cosmetic: a step here is minutes long (a 3-day window over
+        /// 160 samples is 27 min), so an uncapped step can carry the probe through a
+        /// planet's interior and out the other side. The crossing is then never seen on
+        /// a step boundary — the map keeps drawing a path through the globe — and the
+        /// leg goes on integrating below the surface for the rest of the window. A dive
+        /// that passes near the body centre is worse still: the unclamped 1/r² term
+        /// throws the state around and collapses the integrator onto its 1 µs floor.
         /// </summary>
         private static bool AdvanceForecast(
             SpacecraftPhysics physics,
@@ -2312,19 +2501,50 @@ namespace Galilego.Tablet
             NavLine line,
             ref double t,
             double stepSeconds,
-            out OrbitingBody hit)
+            out SurfaceContact contact)
         {
+            contact = default;
+
             Vector3d fromPosition = probe.Position;
             Vector3d fromVelocity = probe.Velocity;
             double fromMass = probe.Mass;
             double fromTime = t;
+
+            double toGround = SecondsToGround(system, probe, fromTime, out OrbitingBody ground);
+            if (toGround <= GroundContactMinStepSeconds)
+            {
+                // The cap of the previous step landed on the contact sphere: finish the
+                // line on the ground instead of stepping a fraction of a millisecond
+                // (which would not advance the clock at all).
+                Vector3d surface = ClampToSurface(ground, probe.Position, fromTime);
+                frame.EvaluateWorldState(fromTime, out Vector3d frameAtContact, out _);
+                if (line.Points.Count > 0)
+                {
+                    line.Points[line.Points.Count - 1] = surface - frameAtContact;
+                    line.EndTimeS = fromTime;
+                }
+
+                contact = new SurfaceContact
+                {
+                    Valid = true,
+                    Body = ground,
+                    Position = surface,
+                    Velocity = probe.Velocity,
+                    TimeSeconds = fromTime,
+                };
+                return true;
+            }
+
+            if (toGround < stepSeconds)
+            {
+                stepSeconds = toGround;
+            }
 
             physics.Step(probe, fromTime, stepSeconds);
             t = fromTime + stepSeconds;
 
             if (!probe.Position.IsFinite || !probe.Velocity.IsFinite)
             {
-                hit = null;
                 return false;
             }
 
@@ -2333,15 +2553,23 @@ namespace Galilego.Tablet
             line.Times.Add(t);
             line.EndTimeS = t;
 
-            if (!TryFindImpact(system, probe.Position, t, out hit))
+            if (!TryFindImpact(system, probe.Position, t, out OrbitingBody hit))
             {
-                hit = null;
                 return true;
             }
 
-            if (TryRefineImpact(physics, hit, fromPosition, fromVelocity, fromMass,
-                    fromTime, stepSeconds, out Vector3d impactPosition, out double impactTime))
+            Vector3d impactPosition = probe.Position;
+            Vector3d impactVelocity = probe.Velocity;
+            double impactTime = t;
+            if (IsInsideBody(hit, probe.Position, t)
+                && TryRefineImpact(physics, hit, fromPosition, fromVelocity, fromMass,
+                    fromTime, stepSeconds, out Vector3d refinedPosition, out double refinedTime,
+                    out Vector3d refinedVelocity))
             {
+                impactPosition = refinedPosition;
+                impactVelocity = refinedVelocity;
+                impactTime = refinedTime;
+
                 // A coarse step can be minutes long (an orbital decay), so the last
                 // chord would still dive into the globe. Subdivide the final step so
                 // the approach follows the real curve all the way to the surface.
@@ -2366,6 +2594,7 @@ namespace Galilego.Tablet
                 }
 
                 frame.EvaluateWorldState(impactTime, out framePosition, out _);
+                impactPosition = ClampToSurface(hit, impactPosition, impactTime);
                 line.Points[line.Points.Count - 1] = impactPosition - framePosition;
                 if (line.Times.Count == line.Points.Count)
                 {
@@ -2384,8 +2613,65 @@ namespace Galilego.Tablet
                 line.EndTimeS = impactTime;
                 t = impactTime;
             }
+            else
+            {
+                // The refinement is a display nicety and must never abort the forecast;
+                // put the endpoint on the surface instead of leaving it underground.
+                impactPosition = ClampToSurface(hit, probe.Position, t);
+                impactVelocity = probe.Velocity;
+                impactTime = t;
+                line.Points[line.Points.Count - 1] = impactPosition - framePosition;
+            }
 
+            contact = new SurfaceContact
+            {
+                Valid = true,
+                Body = hit,
+                Position = impactPosition,
+                Velocity = impactVelocity,
+                TimeSeconds = impactTime,
+            };
             return true;
+        }
+
+        /// <summary>
+        /// Seconds until the craft reaches the surface of the body it is falling
+        /// towards, from its osculating conic (two-body, plus a contact margin).
+        /// Positive infinity when the conic stays clear of the ground.
+        /// </summary>
+        private static double SecondsToGround(StarSystem system, Ship probe, double time, out OrbitingBody body)
+        {
+            body = system.FindDominantBody(probe.Position, time);
+            if (body == null || !(body.Radius > 0d))
+            {
+                return double.PositiveInfinity;
+            }
+
+            body.EvaluateWorldState(time, out Vector3d bodyPosition, out Vector3d bodyVelocity);
+            double distance = (probe.Position - bodyPosition).Magnitude;
+            if (distance <= body.Radius + GroundContactMarginMeters)
+            {
+                return 0d;
+            }
+
+            double mu = body.ResolveStandardGravitationalParameter();
+            OrbitalElements elements = OrbitalElements.FromState(
+                probe.Position - bodyPosition, probe.Velocity - bodyVelocity, mu);
+            return EstimateSurfaceImpactSeconds(elements, body.Radius + GroundContactMarginMeters, mu);
+        }
+
+        /// <summary>Projects a contact point onto the mean surface, so the marker sits on the ground.</summary>
+        private static Vector3d ClampToSurface(OrbitingBody body, Vector3d position, double time)
+        {
+            body.EvaluateWorldState(time, out Vector3d bodyPosition, out _);
+            Vector3d offset = position - bodyPosition;
+            double distance = offset.Magnitude;
+            if (!(distance > 1e-6d))
+            {
+                return position;
+            }
+
+            return bodyPosition + (offset * (body.Radius / distance));
         }
 
         /// <summary>
@@ -2403,10 +2689,12 @@ namespace Galilego.Tablet
             double fromTime,
             double stepSeconds,
             out Vector3d impactPosition,
-            out double impactTime)
+            out double impactTime,
+            out Vector3d impactVelocity)
         {
             impactPosition = default;
             impactTime = fromTime;
+            impactVelocity = fromVelocity;
             if (hit == null || !(stepSeconds > 1e-6d))
             {
                 return false;
@@ -2435,6 +2723,7 @@ namespace Galilego.Tablet
                 physics.Step(surface, fromTime, hi);
                 impactTime = fromTime + hi;
                 impactPosition = surface.Position;
+                impactVelocity = surface.Velocity;
                 return impactPosition.IsFinite;
             }
             catch (Exception)
@@ -2452,56 +2741,130 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
-        /// Time until a bound, ballistic arc reaches the body's surface, from the
-        /// osculating conic (two-body). Positive infinity when the periapsis is above
-        /// the ground or the orbit is not an ellipse. Drag can only remove energy and
-        /// make this earlier, never later.
+        /// Time until a ballistic arc reaches the body's surface, from the osculating
+        /// conic (two-body). Positive infinity when the periapsis is above the ground,
+        /// the conic is (nearly) parabolic, or the craft is already past the inbound
+        /// crossing. A bound ellipse uses the mean anomaly of its DESCENDING crossing;
+        /// a hyperbola the inbound one — a dive into the ground is usually hyperbolic,
+        /// and it is the steepest case of all. Drag can only remove energy and make
+        /// this earlier, never later.
         /// </summary>
         private static double EstimateSurfaceImpactSeconds(OrbitalElements elements, double bodyRadius, double mu)
         {
-            if (!elements.IsValid || !elements.IsBound || !(bodyRadius > 0d) || !(mu > 0d))
+            if (!elements.IsValid || !(bodyRadius > 0d) || !(mu > 0d))
             {
                 return double.PositiveInfinity;
             }
 
             double eccentricity = elements.Eccentricity;
-            if (!(eccentricity > 1e-9d) || !(elements.SemiMajorAxis > 0d))
+            if (!(eccentricity > 1e-9d))
             {
                 return double.PositiveInfinity;
             }
 
+            double semiMajor = elements.SemiMajorAxis;
+            if (!double.IsFinite(semiMajor) || !(Math.Abs(semiMajor) > 0d) || Math.Abs(eccentricity - 1d) < 1e-6d)
+            {
+                return double.PositiveInfinity;
+            }
+
+            // Semi-latus rectum and periapsis radius: a conic that never comes down
+            // to the ground cannot hit it, and the answer is needed before any solve.
             double p = elements.SpecificAngularMomentum * elements.SpecificAngularMomentum / mu;
             if (!(p > 0d) || !(p / (1d + eccentricity) < bodyRadius))
             {
                 return double.PositiveInfinity;
             }
 
-            // Descending crossing of the r = bodyRadius sphere.
+            // Crossing of the |r| = bodyRadius sphere (cos ν from p = r(1 + e·cos ν)).
             double cosine = ((p / bodyRadius) - 1d) / eccentricity;
             if (!(cosine > -1d && cosine < 1d))
             {
                 return double.PositiveInfinity;
             }
 
-            double hitAnomaly = (2d * Math.PI) - Math.Acos(cosine);
-            double meanNow = elements.MeanAnomalyDegrees * (Math.PI / 180d);
-            double meanHit = MeanAnomalyFromTrueAnomaly(hitAnomaly, eccentricity);
-
-            double delta = meanHit - meanNow;
-            double twoPi = 2d * Math.PI;
-            delta %= twoPi;
-            if (delta <= 0d)
+            double meanMotion;
+            double meanHit;
+            double meanNow;
+            if (eccentricity < 1d)
             {
-                delta += twoPi;
+                meanMotion = Math.Sqrt(mu / (semiMajor * semiMajor * semiMajor));
+                meanHit = MeanAnomalyFromTrueAnomaly((2d * Math.PI) - Math.Acos(cosine), eccentricity);
+                meanNow = elements.MeanAnomalyDegrees * (Math.PI / 180d);
+            }
+            else
+            {
+                // Hyperbola: alpha = -a > 0; the ground is met on the inbound branch at
+                // the true anomaly -acos(...), and being still outside the sphere means
+                // the craft is before that point.
+                double alpha = -semiMajor;
+                meanMotion = Math.Sqrt(mu / (alpha * alpha * alpha));
+                double hitAnomaly = -Math.Acos(cosine);
+                double nowAnomaly = NormalizeToPi(elements.TrueAnomalyDegrees * (Math.PI / 180d));
+                if (!(nowAnomaly < hitAnomaly))
+                {
+                    return double.PositiveInfinity;
+                }
+
+                meanHit = HyperbolicMeanAnomaly(hitAnomaly, eccentricity);
+                meanNow = HyperbolicMeanAnomaly(nowAnomaly, eccentricity);
+                if (!double.IsFinite(meanHit) || !double.IsFinite(meanNow))
+                {
+                    return double.PositiveInfinity;
+                }
             }
 
-            double meanMotion = Math.Sqrt(mu / (elements.SemiMajorAxis * elements.SemiMajorAxis * elements.SemiMajorAxis));
             if (!(meanMotion > 0d) || !double.IsFinite(meanMotion))
             {
                 return double.PositiveInfinity;
             }
 
+            double delta = meanHit - meanNow;
+            if (eccentricity < 1d)
+            {
+                double twoPi = 2d * Math.PI;
+                delta %= twoPi;
+                if (delta <= 0d)
+                {
+                    delta += twoPi;
+                }
+            }
+            else if (!(delta > 0d))
+            {
+                return double.PositiveInfinity;
+            }
+
             return delta / meanMotion;
+        }
+
+        /// <summary>M = e·sinh H − H of the hyperbolic anomaly derived from the true anomaly.</summary>
+        private static double HyperbolicMeanAnomaly(double trueAnomaly, double eccentricity)
+        {
+            double x = Math.Sqrt((eccentricity - 1d) / (eccentricity + 1d)) * Math.Tan(0.5d * trueAnomaly);
+            if (!double.IsFinite(x) || !(Math.Abs(x) < 1d))
+            {
+                return double.NaN;
+            }
+
+            double h = 0.5d * Math.Log((1d + x) / (1d - x));
+            return (eccentricity * Math.Sinh(h)) - h;
+        }
+
+        /// <summary>Angle reduced to (-π, π], the branch a hyperbolic true anomaly lives on.</summary>
+        private static double NormalizeToPi(double radians)
+        {
+            double twoPi = 2d * Math.PI;
+            radians %= twoPi;
+            if (radians > Math.PI)
+            {
+                radians -= twoPi;
+            }
+            else if (radians <= -Math.PI)
+            {
+                radians += twoPi;
+            }
+
+            return radians;
         }
 
         private static double MeanAnomalyFromTrueAnomaly(double trueAnomaly, double eccentricity)
@@ -2536,7 +2899,7 @@ namespace Galilego.Tablet
             {
                 OrbitingBody body = system.AllBodies[i];
                 body.EvaluateWorldState(time, out Vector3d bodyPosition, out _);
-                if ((position - bodyPosition).Magnitude <= body.Radius)
+                if ((position - bodyPosition).Magnitude <= body.Radius + GroundContactMarginMeters)
                 {
                     hit = body;
                     return true;

@@ -181,6 +181,18 @@ namespace Galilego.Tablet
             Dark = new Color32(40, 16, 62, 255),
         };
 
+        /// <summary>
+        /// Ground contact of a forecast leg: the HUD warning amber. Outside the cyan /
+        /// orange / violet families on purpose — this is not where the craft is going,
+        /// it is where the prediction stops.
+        /// </summary>
+        private static readonly MarkerPalette ImpactMarkers = new MarkerPalette
+        {
+            Main = TabletTheme.Warn,
+            Light = new Color32(255, 248, 220, 255),
+            Dark = new Color32(58, 40, 6, 255),
+        };
+
         private static MarkerPalette MarkersFor(NavMapModel model)
         {
             return model.ShipThrusting ? ManeuverMarkers : BallisticMarkers;
@@ -201,6 +213,9 @@ namespace Galilego.Tablet
 
             /// <summary>Periapsis of the planned (post-burn) orbit: the violet "ПР·М" tag.</summary>
             PlannedPeriapsis,
+
+            /// <summary>Ground contact of a forecast leg: the amber "УДАР" tag.</summary>
+            Impact,
         }
 
         private struct PickEntry
@@ -931,6 +946,45 @@ namespace Galilego.Tablet
                     Box = labelBox,
                     HasBox = true,
                     Text = name + "\n" + radiusLine,
+                });
+            }
+
+            // Ground contact of the forecast: the line cannot continue past it, so the
+            // map names the point, the countdown and the impact speed instead of simply
+            // stopping in the middle of a globe. Drawn before the apsis plates so their
+            // placement code keeps clear of it.
+            for (int i = 0; i < model.Impacts.Count; i++)
+            {
+                NavImpactMarker impact = model.Impacts[i];
+                if (IsMarkerOccluded(model, occluderIndex, impact.Position, screenRight, screenUp, camDir))
+                {
+                    continue;
+                }
+
+                Vector2 p = Project(impact.Position);
+                if (!IsFinite(p))
+                {
+                    continue;
+                }
+
+                Vector2 placed = ClampToMap(rect, p, ApsisEdgeMargin, out _);
+                double toImpact = Math.Max(0d, impact.TimeSeconds - model.TimeSeconds);
+                string title = "УДАР" + (impact.Planned ? "·М" : string.Empty);
+                DrawImpactMarker(placed.x, placed.y, title, impact.BodyName, toImpact, impact.SpeedMps,
+                    rect, hoverKind == PickKind.Impact && hoverIndex == i, out RectInt box);
+                picks.Add(new PickEntry
+                {
+                    X = placed.x,
+                    Y = placed.y,
+                    Radius = 10f,
+                    Kind = PickKind.Impact,
+                    Index = i,
+                    Box = box,
+                    HasBox = true,
+                    Text = "УДАР О " + impact.BodyName.ToUpperInvariant()
+                        + "\n" + (impact.Planned ? "МАНЁВР" : "БАЛЛИСТИКА")
+                        + "\nT+ " + TabletFormat.Time(toImpact)
+                        + "\nV " + TabletFormat.Speed(impact.SpeedMps) + " М/С",
                 });
             }
 
@@ -2074,6 +2128,9 @@ namespace Galilego.Tablet
         private static readonly string[] ApoGlyph = { "..#..", ".###.", "#####" };
         private static readonly string[] PeriGlyph = { "#####", ".###.", "..#.." };
 
+        /// <summary>Hazard reticle glyph for the ground-contact plate (an X in a box).</summary>
+        private static readonly string[] ImpactGlyph = { "#...#", ".#.#.", "..#..", ".#.#.", "#...#" };
+
         /// <summary>Chunky 2x tag plate: the old 1x labels were unreadable on a monitor.</summary>
         private const int ApsisTagScale = 2;
         private const int ApsisHeaderHeight = 20;
@@ -2368,6 +2425,67 @@ namespace Galilego.Tablet
                     DrawHaloLine(tipX, tipY, baseX - perpX, baseY - perpY, pal.Main, pal.Dark);
                 }
             }
+
+            box = new RectInt(tx, ty, tw, th);
+        }
+
+        /// <summary>
+        /// Ground contact of a forecast leg: a hazard reticle on the surface point, a
+        /// leader and a plate. The countdown is always shown (it is the reason the line
+        /// stops there); hovering adds the body and the impact speed. Same plate
+        /// machinery as the apsis tags, so the plates never overlap.
+        /// </summary>
+        private void DrawImpactMarker(float x, float y, string title, string bodyName,
+            double toImpact, double speedMps, RectInt rect, bool expanded, out RectInt box)
+        {
+            int xi = Mathf.RoundToInt(x);
+            int yi = Mathf.RoundToInt(y);
+
+            string[] rows = expanded
+                ? new[]
+                {
+                    bodyName.ToUpperInvariant(),
+                    "T+ " + TabletFormat.Time(toImpact),
+                    "V " + TabletFormat.Speed(speedMps) + " М/С",
+                }
+                : new[] { "T+ " + TabletFormat.Time(toImpact) };
+
+            int glyphW = 5 * ApsisTagScale;
+            int tw = glyphW + 5 + PixelCanvas.TextWidth(title, ApsisTagScale) + 13;
+            for (int i = 0; i < rows.Length; i++)
+            {
+                tw = Mathf.Max(tw, PixelCanvas.TextWidth(rows[i], ApsisTagScale) + 14);
+            }
+
+            int th = ApsisHeaderHeight + 3 + (rows.Length * ApsisValueRowHeight);
+            TryPlacePlate(rect, xi, yi, tw, th, true, false, 15, 11, out int tx, out int ty);
+
+            bool plateRight = tx > xi;
+            int edgeX = plateRight ? tx - 4 : tx + tw + 3;
+            int edgeY = Mathf.Clamp(yi, ty + 4, ty + th - 4);
+            DrawHaloLine(xi + (plateRight ? 6 : -6), yi, edgeX, edgeY, ImpactMarkers.Main, ImpactMarkers.Dark);
+
+            DrawTagBox(tx, ty, tw, th, ImpactMarkers);
+            DrawTagNotch(tx, ty, tw, th, ImpactMarkers, plateRight, edgeY);
+
+            canvas.Bitmap(tx + 6, ty + 5, ImpactGlyph, ImpactMarkers.Main, ApsisTagScale);
+            canvas.Text(tx + 6 + glyphW + 5, ty + 3, title, ImpactMarkers.Light, ApsisTagScale);
+            canvas.HLine(tx + 4, ty + ApsisHeaderHeight - 1, tw - 7,
+                PixelCanvas.Mix(ImpactMarkers.Main, ImpactMarkers.Dark, 0.30f));
+            int rowY = ty + ApsisHeaderHeight + 3;
+            for (int i = 0; i < rows.Length; i++)
+            {
+                canvas.Text(tx + 7, rowY, rows[i], ImpactMarkers.Light, ApsisTagScale);
+                rowY += ApsisValueRowHeight;
+            }
+
+            // Reticle: a ring with an X inside, so it reads as a contact point and not
+            // as a moving object. Drawn last so it stays on top of its own plate leader.
+            DrawCircleBlend(xi, yi, 9f, ImpactMarkers.Main, 0.12f);
+            DrawCircle(xi, yi, 6, ImpactMarkers.Dark);
+            DrawCircle(xi, yi, 5, ImpactMarkers.Main);
+            canvas.Line(xi - 3, yi - 3, xi + 3, yi + 3, ImpactMarkers.Light);
+            canvas.Line(xi - 3, yi + 3, xi + 3, yi - 3, ImpactMarkers.Light);
 
             box = new RectInt(tx, ty, tw, th);
         }
