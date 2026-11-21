@@ -103,11 +103,34 @@ namespace Galilego.Universe
             return true;
         }
 
+        /// <summary>
+        /// Tolerance of the table comparison, in direction-space (radians of arc) and in
+        /// normalized half-sizes (m/R). 1e-6 is ~1 m on a 1000 km body.
+        ///
+        /// An EXACT comparison is not usable here. The zone centre is quantized to 0.25 m
+        /// (see Q in DecorExclusion.cs) from a site pose that is recomputed every frame
+        /// while the planet rotates: when the raw value sits on a rounding boundary, the
+        /// last float bit flips the result by one whole 0.25 m step. With exact equality
+        /// one zone flipped about once per half-second scan, so ParamsEqual in
+        /// PlanetSurfaceRenderer went false, the chunk cache was cleared and the whole
+        /// terrain (≈900 chunks) was rebuilt synchronously — a 2 s freeze every few
+        /// seconds, seen at the pole and anywhere else while standing still.
+        /// A metre-scale change is far below what decor exclusion needs to notice.
+        /// </summary>
+        private const double TableTolerance = 1e-6d;
+
         private static bool Same(DecorExclusionData x, DecorExclusionData y)
         {
-            return x.Center.Equals(y.Center) && x.AxisX.Equals(y.AxisX) && x.AxisZ.Equals(y.AxisZ)
-                && x.HalfX == y.HalfX && x.HalfZ == y.HalfZ
-                && x.SoftHalfX == y.SoftHalfX && x.SoftHalfZ == y.SoftHalfZ;
+            return Near(x.Center, y.Center) && Near(x.AxisX, y.AxisX) && Near(x.AxisZ, y.AxisZ)
+                && Math.Abs(x.HalfX - y.HalfX) <= TableTolerance
+                && Math.Abs(x.HalfZ - y.HalfZ) <= TableTolerance
+                && Math.Abs(x.SoftHalfX - y.SoftHalfX) <= TableTolerance
+                && Math.Abs(x.SoftHalfZ - y.SoftHalfZ) <= TableTolerance;
+        }
+
+        private static bool Near(double3 a, double3 b)
+        {
+            return math.lengthsq(a - b) <= TableTolerance * TableTolerance;
         }
 
         static partial void AfterRelease();   // implemented in DecorExclusion.cs (game), empty in the test stand

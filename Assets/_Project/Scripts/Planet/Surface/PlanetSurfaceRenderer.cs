@@ -987,7 +987,20 @@ namespace Galilego.Universe
         /// 1.3 = keep the temperate-latitude look (costlier in frame time where
         /// grass is added to the candidates at face centres).</summary>
         private const double DecorMetricNorm = 1.0d;
-        private int firstFrameGuard = -1;
+        /// <summary>
+        /// False until the first rendered frame. That single frame builds the terrain
+        /// synchronously on purpose (the world must be ready before the player sees it,
+        /// otherwise he flies off into holes). It is NOT a "the cache was cleared"
+        /// signal: after a terrain edit or a param change the missing chunks go through
+        /// the normal budgeted/async path, otherwise every edit froze the game for the
+        /// full build time (≈900 chunks × 2.4 ms = 2 s).
+        /// </summary>
+        private bool initialFillDone;
+
+        /// <summary>Frame until which the chunk finalize budget is raised (see ClearChunkCache).</summary>
+        private int coldRefillUntilFrame;
+        private const int ColdRefillFrames = 900;
+        private const float ColdRefillBudgetMs = 12f;
         private int diagnosticChunksLogged;
         private float decorAllocLogTime;
         private readonly float[] decorProbeNext = new float[16];
@@ -1075,7 +1088,9 @@ namespace Galilego.Universe
             ApplyGrassQuality(decorProfile, appliedGrassQuality);
             // Clean state on every Play: with Enter Play Mode Options (no Reload
             // Scene/Domain) private component fields can survive the previous run while
-            // their chunks are already destroyed.
+            // their chunks are already destroyed. initialFillDone included: a stale true
+            // would skip the synchronous first build and start the run with holes.
+            initialFillDone = false;
             ClearChunkCache();
             paramsAlive = true;
             EnsureHdrpWaterPatch();
@@ -1220,6 +1235,10 @@ namespace Galilego.Universe
         [ContextMenu("Clear chunk cache")]
         public void ClearChunkCache()
         {
+            // The refill goes through the async path (see initialFillDone), and the whole
+            // planet is missing until it drains: give it a larger per-frame budget for a
+            // few seconds, otherwise 2000+ chunks refill over ~25 s of holes.
+            coldRefillUntilFrame = Time.frameCount + ColdRefillFrames;
             CancelAllDecorBuilds();
             // [PHASE 2] Order matters: first clear the intents, then paramsAlive, and
             // only then reset the cache. Jobs already in flight are awaited and return
@@ -1531,8 +1550,9 @@ namespace Galilego.Universe
             appliedGrassQuality = Mathf.Clamp(GameSettings.Data.grassQuality, 0, 4);
             ApplyGrassQuality(decorProfile, appliedGrassQuality);
 
+            // No synchronous refill: the cleared chunks are rebuilt through the normal
+            // budgeted/async path (see initialFillDone).
             ClearChunkCache();
-            firstFrameGuard = -1;
         }
 
         /// <summary>
@@ -1569,7 +1589,6 @@ namespace Galilego.Universe
                 appliedGrassQuality = Mathf.Clamp(GameSettings.Data.grassQuality, 0, 4);
                 ApplyGrassQuality(decorProfile, appliedGrassQuality);
                 ClearChunkCache();
-                firstFrameGuard = -1;
             }
 
             TerrainNoiseParams current = TerrainNoiseParams.FromTerrain(terrain);
@@ -1578,7 +1597,6 @@ namespace Galilego.Universe
                 noiseParams = current;
                 ApplyTerrainGlobals();
                 ClearChunkCache();
-                firstFrameGuard = -1;
             }
             else if (!ColorStateEquals(CaptureColorState(), colorStateCache))
             {
@@ -1837,9 +1855,9 @@ namespace Galilego.Universe
                 // actual frame state. Otherwise, on the frame a child appears, keep would
                 // still include the parent (the child was a cache miss) — coarse and detailed
                 // chunks show together: z-fighting/pop on every transition.
-            int budget = firstFrameGuard < 0 ? int.MaxValue : BuildsPerFrame;
-            bool firstFrame = firstFrameGuard < 0;
-            firstFrameGuard = 0;
+            int budget = initialFillDone ? BuildsPerFrame : int.MaxValue;
+            bool firstFrame = !initialFillDone;
+            initialFillDone = true;
             int built = 0;
             int enqueued = 0;
             // [PHASE 0] Build time is measured with Stopwatch, not ProfilerMarker: a counter
@@ -2068,8 +2086,6 @@ namespace Galilego.Universe
             StepDecorBuilds();
             UpdateDecorCollision();
             DrawDecor(cameraPosition);
-
-            LogFrameHitch();
 
             // [PHASE 0] Close the frame. Absolute counters run once per 2 s and only behind a
             // flag: FindObjectsOfTypeAll<Mesh> over 1000+ meshes causes a hitch and would
@@ -2890,6 +2906,9 @@ namespace Galilego.Universe
             }
 
             long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            float finalizeBudgetMs = Time.frameCount < coldRefillUntilFrame
+                ? Mathf.Max(ChunkFinalizeBudgetMs, ColdRefillBudgetMs)
+                : ChunkFinalizeBudgetMs;
 
             // Stale entry filtering. A node that entered desired a couple of frames ago and
             // has since moved behind the camera is pointless to build: by the time its turn
@@ -2920,7 +2939,7 @@ namespace Galilego.Universe
                     continue;
                 }
 
-                if (ElapsedMs(startTicks) > ChunkFinalizeBudgetMs)
+                if (ElapsedMs(startTicks) > finalizeBudgetMs)
                 {
                     break;
                 }

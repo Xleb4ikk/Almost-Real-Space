@@ -1062,7 +1062,7 @@ namespace Galilego.Universe.EditorTools
         ///
         /// Measured by cache coverage, not ChunksFinalized: that counter only
         /// grows in the async branch, while the first frame builds every desired
-        /// node synchronously (firstFrameGuard), so on a loaded planet it is
+        /// node synchronously (initialFillDone), so on a loaded planet it is
         /// structurally 0.
         ///
         /// Several consecutive frames are required, otherwise the transient frame
