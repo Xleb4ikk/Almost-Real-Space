@@ -954,6 +954,7 @@ namespace Galilego.Building
             Runner.Ship.AngularVelocity = Galilego.Core.Vector3d.Zero;
             Runner.Ship.PositionIsCom = false;
             Galilego.Flight.FlightRuntime.Begin(Runner, ZoneHost, flight);
+            Galilego.Effects.PlumeRig.Attach(parts, flight, Runner);
 
             // In flight the visual colliders are excluded from PhysX CONTACTS (otherwise the
             // proxy bodies would collide with their own visuals) but stay visible to the
@@ -1152,6 +1153,7 @@ namespace Galilego.Building
             }
 
             // Staged propulsion is removed: build mode uses the legacy path.
+            Galilego.Effects.PlumeRig.Detach();
             Galilego.Flight.FlightRuntime.End();
             Runner.ClearVesselPropulsion();
 

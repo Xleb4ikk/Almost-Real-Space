@@ -66,6 +66,17 @@ namespace Galilego.Building
         /// <summary>Ambient pressure above which ignition/operation is impossible (nozzle flow separation), Pa.</summary>
         public double MaxOperatingPressurePa = double.PositiveInfinity;
 
+        // ─── Plume parameters (Galilego.Effects) ───
+
+        /// <summary>Chamber pressure at 100 % throttle, Pa (sets the nozzle exit pressure p_e together with the expansion ratio).</summary>
+        public double ChamberPressurePa = 5.0e6d;
+
+        /// <summary>Effective exhaust specific-heat ratio (hydrolox/hypergolic ≈ 1.2).</summary>
+        public double ExhaustGamma = 1.2d;
+
+        /// <summary>Flow half-angle at the nozzle exit, degrees.</summary>
+        public double ExitHalfAngleDeg = 9d;
+
         public EngineSpec(
             string id, string displayName, string modelKey, string modelPath, double massKg,
             double expansionRatio,
@@ -114,6 +125,7 @@ namespace Galilego.Building
         {
             IspSeaLevelSeconds = 366d, MinThrottle = 0.61d, GimbalDegrees = 10.5d,
             GimbalRateDegPerS = 20d, ThrottleRatePerS = 1.5d,
+            ChamberPressurePa = 20.64e6d, ExhaustGamma = 1.2d, ExitHalfAngleDeg = 8d,   // 2994 psia at 109 % RPL
         });
 
         // AJ10-118K (Delta II second stage): 43.4 kN in vacuum, Isp 320.5 s,
@@ -129,6 +141,7 @@ namespace Galilego.Building
             // Not throttleable (fixed thrust), gimbal ±4°; the 65:1 nozzle doesn't work at sea level (flow separation).
             IspSeaLevelSeconds = 0d, MinThrottle = 1d, GimbalDegrees = 4d,
             GimbalRateDegPerS = 10d, ThrottleRatePerS = 10d, MaxOperatingPressurePa = 5000d,
+            ChamberPressurePa = 0.9e6d, ExhaustGamma = 1.2d, ExitHalfAngleDeg = 10d,    // ≈ 9 bar (approximate)
         });
 
         public static IReadOnlyList<EngineSpec> All
