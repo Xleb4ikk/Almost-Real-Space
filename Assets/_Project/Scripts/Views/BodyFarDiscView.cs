@@ -189,7 +189,7 @@ namespace Galilego.Universe
             // Hand the body over only when the real chunks are both inside the frustum AND
             // already at least as big as the floor, so the sizes match at the swap.
             bool chunksCover = nearSurface < (far * 0.95d)
-                && nearSurface < (body.Radius * 2d)
+                && nearSurface < (body.Radius * 1.5d)
                 && pixelRadius >= MinScreenRadiusPixels;
             if (chunksCover)
             {

@@ -2309,10 +2309,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlanetSurfaceRenderer
   Runner: {fileID: 1332194275}
-  TileResolution: 65
-  MaxDepth: 12
-  SplitFactor: 3.5
-  MergeHysteresis: 1.5
+  TileResolution: 129
+  MaxDepth: 15
+  SplitFactor: 5
+  MergeHysteresis: 1.35
   SkirtFactor: 0.03
   WaterSkirtFactor: 0.03
   ShoreWetMeters: 3
